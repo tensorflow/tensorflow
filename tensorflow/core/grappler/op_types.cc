@@ -225,8 +225,12 @@ bool IsDivNoNan(const NodeDef& node) { return node.op() == "DivNoNan"; }
 // Returns true if node represents a unary elementwise function that is
 // monotonic. If *is_non_decreasing is true, the function is non-decreasing,
 // e.g. sqrt, exp. *is_non_decreasing is false, the function is non-increasing,
-// e.g. inv.
-bool IsElementWiseMonotonic(const NodeDef& node, bool* is_non_decreasing) {
+// e.g. inv. If *is_strict is true, the function is strictly monotonic
+// (a < b => f(a) < f(b) for non-decreasing, or f(a) > f(b) for
+// non-increasing). Ops with flat regions (e.g. Relu, Floor) are monotonic
+// but not strictly monotonic.
+bool IsElementWiseMonotonic(const NodeDef& node, bool* is_non_decreasing,
+                            bool* is_strict) {
   static const gtl::FlatSet<std::string>* const kMonotonicNonDecreasingOps =
       CHECK_NOTNULL((new gtl::FlatSet<std::string>{
           "Acosh", "Asin", "Asinh",    "Atan",     "Atanh", "Ceil",
@@ -237,18 +241,27 @@ bool IsElementWiseMonotonic(const NodeDef& node, bool* is_non_decreasing) {
   static const gtl::FlatSet<std::string>* const kMonotonicNonIncreasingOps =
       CHECK_NOTNULL(
           (new gtl::FlatSet<std::string>{"Acos", "Erfc", "Neg", "Rsqrt"}));
-  if (kMonotonicNonDecreasingOps->count(node.op()) > 0) {
-    if (is_non_decreasing) {
-      *is_non_decreasing = true;
-    }
-    return true;
-  } else if (kMonotonicNonIncreasingOps->count(node.op()) > 0) {
-    if (is_non_decreasing) {
-      *is_non_decreasing = false;
-    }
-    return true;
+  // Subset of the above that have flat regions and are therefore monotonic
+  // but not strictly monotonic. Transformations that depend on tie-breaking
+  // (e.g. ArgMin/ArgMax) are unsafe for these ops.
+  static const gtl::FlatSet<std::string>* const kNonStrictMonotonicOps =
+      CHECK_NOTNULL((new gtl::FlatSet<std::string>{
+          "Ceil", "Floor", "Relu", "Relu6", "Rint", "Sign",
+      }));
+  const bool is_non_decreasing_op =
+      kMonotonicNonDecreasingOps->count(node.op()) > 0;
+  const bool is_non_increasing_op =
+      kMonotonicNonIncreasingOps->count(node.op()) > 0;
+  if (!is_non_decreasing_op && !is_non_increasing_op) {
+    return false;
   }
-  return false;
+  if (is_non_decreasing) {
+    *is_non_decreasing = is_non_decreasing_op;
+  }
+  if (is_strict) {
+    *is_strict = kNonStrictMonotonicOps->count(node.op()) == 0;
+  }
+  return true;
 }
 
 bool IsElu(const NodeDef& node) { return node.op() == "Elu"; }
