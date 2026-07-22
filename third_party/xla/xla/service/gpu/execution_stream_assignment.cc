@@ -122,7 +122,9 @@ std::optional<ExecutionScopeKind> IsExecutionScopeStart(
     const HloInstruction* hlo) {
   // Async operation that starts a new execution scope.
   if (auto* start = DynCast<HloAsyncStartInstruction>(hlo)) {
-    return IsWrappedCollective(start) || IsCustomCollectiveOp(start)
+    return IsWrappedCollective(start) || IsCustomCollectiveOp(start) ||
+                   start->frontend_attributes().map().contains(
+                       kCollectivesGroupAttr)
                ? ExecutionScopeKind::kCommunication
                : ExecutionScopeKind::kCompute;
   }
