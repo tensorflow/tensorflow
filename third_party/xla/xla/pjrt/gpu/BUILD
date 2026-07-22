@@ -78,6 +78,7 @@ cc_library(
         ":gpu_metrics",
         ":se_gpu_pjrt_runtime_abi_version",
         ":se_gpu_topology_description",
+        "//xla:debug_options_flags",
         "//xla:executable_run_options",
         "//xla:future",
         "//xla:literal",
@@ -214,7 +215,6 @@ cc_library(
         "@tsl//tsl/profiler/lib:traceme",
     ] + if_cuda_or_rocm([
         # keep sorted
-        "//xla:debug_options_flags",
         "//xla/service/gpu:gpu_compiler",
         "//xla/service/gpu:gpu_executable",
         "//xla/service/gpu:gpu_executable_buffer_allocator",
@@ -231,7 +231,6 @@ cc_library(
         "@local_config_rocm//rocm:rocm_headers",
     ]) + if_sycl([
         # keep sorted
-        "//xla:debug_options_flags",
         "//xla/service/gpu:gpu_compiler",
         "//xla/service/gpu:gpu_executable",
         "//xla/service/gpu:gpu_executable_buffer_allocator",

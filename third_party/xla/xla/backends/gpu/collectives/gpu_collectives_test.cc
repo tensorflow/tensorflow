@@ -678,5 +678,43 @@ TEST(GpuCollectivesTest, AllocatorMemoryRegistrationRegistersWithClique) {
   ASSERT_OK(registration->RegisterWithClique(clique));
 }
 
+// Smoke test for the MORI backbone: creates a MORI communicator and exercises
+// MoriCollectives::Allocate/Deallocate. MORI is a ROCm-only backend and the
+// current implementation is bindings-free (stubbed), so this only verifies the
+// plumbing is reachable and does not crash.
+TEST(GpuCollectivesTest, MoriCreateCommunicatorAndAllocate) {
+  ASSERT_OK_AND_ASSIGN(se::Platform * platform,
+                       PlatformUtil::GetPlatform("gpu"));
+
+  // MORI is a ROCm-only backend; skip on any other platform.
+  if (platform->Name() != "ROCM") {
+    GTEST_SKIP() << "MORI is only available on the ROCM platform";
+  }
+
+  if (platform->VisibleDeviceCount() < 4) {
+    GTEST_SKIP() << "Test requires at least 4 GPUs";
+  }
+
+  auto* mori = xla::gpu::GpuCollectives::Resolve("ROCM", "mori");
+  ASSERT_NE(mori, nullptr);
+  ASSERT_OK_AND_ASSIGN(std::vector<se::StreamExecutor*> executors,
+                       CreateExecutors(platform, 4));
+  ASSERT_OK_AND_ASSIGN(
+      auto comms,
+      CreateCommunicators(executors, {kD0, kD1, kD2, kD3}, /*blocking=*/true,
+                          /*num_ids=*/1, mori));
+  ASSERT_EQ(comms.size(), 4u);
+  ASSERT_NE(comms[0], nullptr);
+  ASSERT_OK_AND_ASSIGN(size_t num_ranks, comms[0]->NumRanks());
+  EXPECT_EQ(num_ranks, 4u);
+
+  // Exercise Allocate/Deallocate wiring. The bindings-free stubs are inert
+  // (Allocate returns an error, Deallocate is unimplemented), so we only verify
+  // the calls are reachable and do not crash.
+  auto buffer_or = mori->Allocate(1024);
+  void* buffer = buffer_or.ok() ? *buffer_or : nullptr;
+  ASSERT_OK(mori->Deallocate(buffer));
+}
+
 }  // namespace
 }  // namespace xla::gpu

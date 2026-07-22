@@ -62,26 +62,9 @@ static absl::StatusOr<GlobalDeviceId> GetGlobalDeviceId(
   return it->second;
 }
 
-static GpuCollectives* ResolveCollectives(
-    const GpuExecutableRunOptions* gpu_options, absl::string_view platform_name,
-    const std::optional<std::string>& implementation_name) {
-  if (gpu_options && gpu_options->collectives()) {
-    return gpu_options->collectives();
-  }
-  if (implementation_name.has_value()) {
-    absl::StatusOr<Collectives*> collectives =
-        CollectivesRegistry::Get(platform_name, *implementation_name);
-    CHECK_OK(collectives) << "Failed to get GPU collectives implementation: "
-                          << *implementation_name;
-    return absl::down_cast<GpuCollectives*>(*collectives);
-  }
-  return GpuCollectives::Default(platform_name);
-}
-
 absl::StatusOr<CollectiveParams> CollectiveParams::Create(
     const ServiceExecutableRunOptions& run_options,
     absl::Span<se::Stream* const> async_streams, LocalDeviceId local_device_id,
-    std::optional<std::string> implementation_name,
     int64_t collective_max_nchannels, int64_t p2p_max_nchannels,
     bool collective_use_minimal_resource) {
   const GpuExecutableRunOptions* gpu_options =
@@ -89,8 +72,12 @@ absl::StatusOr<CollectiveParams> CollectiveParams::Create(
 
   const std::string& platform_name =
       run_options.run_options().stream()->parent()->GetPlatform()->Name();
-  auto* collectives =
-      ResolveCollectives(gpu_options, platform_name, implementation_name);
+
+  GpuCollectives* collectives =
+      gpu_options ? gpu_options->collectives() : nullptr;
+  if (collectives == nullptr) {
+    collectives = GpuCollectives::Resolve(platform_name);
+  }
 
   auto* device_id_map = gpu_options && gpu_options->gpu_global_device_ids()
                             ? &*gpu_options->gpu_global_device_ids()
