@@ -20,6 +20,7 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
 #include "xla/autotuning.pb.h"
@@ -118,6 +119,18 @@ TEST_F(MIOpenBackendTest, GetSupportedConfigsFromMIOpenCustomCall) {
   ASSERT_TRUE((*configs)[0]->has_algorithm());
   MIOpenBackendConfig algorithm_config = (*configs)[0]->algorithm();
   EXPECT_NE(algorithm_config.algo_id(), 0);
+}
+
+TEST_F(MIOpenBackendTest, GetSupportedConfigsReturnsErrorForDeviceless) {
+  MIOpenBackend backend_without_stream_executor(
+      nullptr, &debug_options_, &compiler_, &target_config_, &allocator_);
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
+                          ParseAndReturnVerifiedModule(kMIOpenCustomCallHlo));
+  absl::StatusOr<std::vector<std::unique_ptr<BackendConfig>>> configs =
+      backend_without_stream_executor.GetSupportedConfigs(
+          (*hlo_module->entry_computation()->root_instruction()->operand(0)));
+  EXPECT_THAT(configs,
+              absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
 }
 
 TEST_F(MIOpenBackendTest, GetDefaultConfigFromMIOpenCustomCall) {
