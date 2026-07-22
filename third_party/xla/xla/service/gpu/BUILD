@@ -1739,7 +1739,6 @@ cc_library(
         ":ir_emitter_context",
         ":kernel_reuse_cache",
         ":launch_dimensions",
-        ":legacy_gpu_aot_compilation_result",
         ":matmul_utils",
         ":metrics",
         ":pre_scheduling_copy_insertion_pipeline",
@@ -2235,36 +2234,6 @@ cc_library(
 )
 
 cc_library(
-    name = "legacy_gpu_aot_compilation_result",
-    srcs = ["legacy_gpu_aot_compilation_result.cc"],
-    hdrs = ["legacy_gpu_aot_compilation_result.h"],
-    # Explicitly restrict the visibility since this is an internal implementation detail of the
-    # gpu_compiler.
-    visibility = [],
-    deps = [
-        ":gpu_executable_proto_cc",
-        ":ir_emission_utils",
-        "//xla:util",
-        "//xla:xla_proto_cc",
-        "//xla/hlo/ir:hlo",
-        "//xla/pjrt:compiled_memory_stats",
-        "//xla/service:buffer_assignment",
-        "//xla/service:compiled_module",
-        "//xla/service:compiler",
-        "//xla/service:executable",
-        "//xla/stream_executor:device_description",
-        "//xla/stream_executor:platform",
-        "//xla/tsl/lib/strings:proto_serialization",
-        "//xla/tsl/platform:status_macros",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings:string_view",
-        "@com_google_absl//absl/types:span",
-        "@tsl//tsl/profiler/lib:traceme",
-    ],
-)
-
-cc_library(
     name = "gpu_aot_compilation_result",
     srcs = ["gpu_aot_compilation_result.cc"],
     hdrs = ["gpu_aot_compilation_result.h"],
@@ -2639,6 +2608,7 @@ xla_cc_test(
         "//xla:xla_proto_cc",
         "//xla/backends/gpu/codegen/triton:support",
         "//xla/hlo/ir:hlo",
+        "//xla/service:compiled_module",
         "//xla/service:compiler",
         "//xla/service:executable",
         "//xla/service:gpu_plugin",

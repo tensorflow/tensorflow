@@ -531,7 +531,6 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_enable_pdl_launch(true);
   opts.set_xla_gpu_command_buffer_update_mode(DebugOptions::ALWAYS_UPDATE);
 
-  opts.set_xla_gpu_experimental_aot_compiled_thunks(true);
   opts.set_xla_gpu_deviceless_cub_mode(
       DebugOptions::DEVICELESS_CUB_WITH_FALLBACK);
   opts.set_xla_gpu_cudnn_deviceless_compilation_mode(
@@ -2199,15 +2198,6 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       "sizes. "
       "Format: op:size:op_type or op. E.g. "
       "AllReduce:1024:F32,AllGather:2048,ReduceScatter,all."));
-  flag_list->push_back(tsl::Flag(
-      "xla_gpu_experimental_aot_compiled_thunks",
-      bool_setter_for(
-          &DebugOptions::set_xla_gpu_experimental_aot_compiled_thunks),
-      debug_options->xla_gpu_experimental_aot_compiled_thunks(),
-      "Enables an Ahead-of-Time (AOT) compilation flow where the compiled "
-      "binary includes the generated Thunks. In contrast, the legacy flow "
-      "only compiles up to the HLO optimization stage, before Thunk "
-      "generation."));
 
   flag_list->push_back(tsl::Flag(
       "xla_gpu_temp_buffer_use_separate_color",
