@@ -15,8 +15,10 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/eager/context.h"
 
+#include <cstdint>
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include <gmock/gmock.h>
@@ -36,16 +38,18 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/platform/protobuf.h"  // IWYU pragma: keep
 #include "tensorflow/core/platform/refcount.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/test.h"
-#include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/public/session_options.h"
+#include "tsl/platform/refcount.h"
 
 namespace tensorflow {
 namespace {
 
 using ::testing::HasSubstr;
+using ::tsl::protobuf::TextFormat;  // NOLINT
 
 typedef FunctionDefHelper FDH;
 
@@ -256,6 +260,120 @@ TEST_F(EagerContextTest, AddFunctionDefRepeatDifferent) {
       });
   absl::Status s = context()->AddFunctionDef(x_times_two_copy);
   EXPECT_FALSE(s.ok());
+}
+
+TEST_F(EagerContextTest, AddFunctionDefRepeatSameRefCounting) {
+  InitContext(SessionOptions(), DEVICE_PLACEMENT_EXPLICIT);
+  const Tensor kTwo = test::AsScalar<int64_t>(2);
+  const FunctionDef x_times_two = FDH::Define(
+      // Name
+      "XTimesTwo",
+      // Args
+      {"x: T"},
+      // Return values
+      {"y: T"},
+      // Attr def
+      {"T: {float, double, int32, int64}"},
+      // Nodes
+      {
+          {{"two"}, "Const", {}, {{"value", kTwo}, {"dtype", DT_INT64}}},
+          {{"scale"}, "Cast", {"two"}, {{"SrcT", DT_INT64}, {"DstT", "$T"}}},
+          {{"y"}, "Mul", {"x", "scale"}, {{"T", "$T"}}},
+      });
+  TF_EXPECT_OK(context()->AddFunctionDef(x_times_two));
+  EXPECT_TRUE(context()->FindFunctionByName("XTimesTwo"));
+
+  TF_EXPECT_OK(context()->AddFunctionDef(x_times_two));
+  EXPECT_TRUE(context()->FindFunctionByName("XTimesTwo"));
+
+  // Remove once, should still be registered because refcount was 2.
+  TF_EXPECT_OK(context()->RemoveFunction("XTimesTwo"));
+  EXPECT_TRUE(context()->FindFunctionByName("XTimesTwo"));
+
+  // Remove second time, should be fully removed.
+  TF_EXPECT_OK(context()->RemoveFunction("XTimesTwo"));
+  EXPECT_FALSE(context()->FindFunctionByName("XTimesTwo"));
+}
+
+TEST_F(EagerContextTest, RemoveFunctionRemovesChildren) {
+  InitContext(SessionOptions(), DEVICE_PLACEMENT_EXPLICIT);
+  FunctionDef fdef;
+  ASSERT_TRUE(TextFormat::ParseFromString(
+      R"pb(
+        signature {
+          name: "train"
+          input_arg: { name: "include_summaries" }
+          control_output: "out"
+        }
+        node_def { name: "x" }
+        node_def { name: "write_summary/Identity" }
+        node_def {
+          name: "Identity/x"
+          input: "write_summary/Identity"
+          input: "x"
+        }
+        control_ret { key: "out", value: "Identity/x" }
+        attr {
+          key: "disable_summaries_at_runtime"
+          value: { list { s: "include_summaries" b: false } }
+        }
+      )pb",
+      &fdef));
+  TF_EXPECT_OK(context()->AddFunctionDef(fdef));
+  EXPECT_TRUE(context()->FindFunctionByName("train"));
+  EXPECT_TRUE(context()->FindFunctionByName("train__instance__no_summaries"));
+
+  // Remove once, since refcount is 1, it should remove both train and its
+  // child.
+  TF_EXPECT_OK(context()->RemoveFunction("train"));
+  EXPECT_FALSE(context()->FindFunctionByName("train"));
+  EXPECT_FALSE(context()->FindFunctionByName("train__instance__no_summaries"));
+}
+
+TEST_F(EagerContextTest, RemoveFunctionChildrenRefCounting) {
+  InitContext(SessionOptions(), DEVICE_PLACEMENT_EXPLICIT);
+  FunctionDef fdef;
+  ASSERT_TRUE(TextFormat::ParseFromString(
+      R"pb(
+        signature {
+          name: "train"
+          input_arg: { name: "include_summaries" }
+          control_output: "out"
+        }
+        node_def { name: "x" }
+        node_def { name: "write_summary/Identity" }
+        node_def {
+          name: "Identity/x"
+          input: "write_summary/Identity"
+          input: "x"
+        }
+        control_ret { key: "out", value: "Identity/x" }
+        attr {
+          key: "disable_summaries_at_runtime"
+          value: { list { s: "include_summaries" b: false } }
+        }
+      )pb",
+      &fdef));
+  TF_EXPECT_OK(context()->AddFunctionDef(fdef));
+  EXPECT_TRUE(context()->FindFunctionByName("train"));
+  EXPECT_TRUE(context()->FindFunctionByName("train__instance__no_summaries"));
+
+  // Register parent a second time. This hits fast path and increments refcount
+  // of child too.
+  TF_EXPECT_OK(context()->AddFunctionDef(fdef));
+  EXPECT_TRUE(context()->FindFunctionByName("train"));
+  EXPECT_TRUE(context()->FindFunctionByName("train__instance__no_summaries"));
+
+  // Remove once. Parent and child refcount should decrement to 1, so both still
+  // exist.
+  TF_EXPECT_OK(context()->RemoveFunction("train"));
+  EXPECT_TRUE(context()->FindFunctionByName("train"));
+  EXPECT_TRUE(context()->FindFunctionByName("train__instance__no_summaries"));
+
+  // Remove a second time. Both parent and child are fully removed.
+  TF_EXPECT_OK(context()->RemoveFunction("train"));
+  EXPECT_FALSE(context()->FindFunctionByName("train"));
+  EXPECT_FALSE(context()->FindFunctionByName("train__instance__no_summaries"));
 }
 
 TEST_F(EagerContextTest, FunctionErrorRecovery) {
