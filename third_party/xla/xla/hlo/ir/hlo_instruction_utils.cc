@@ -131,16 +131,10 @@ absl::StatusOr<bool> AreOperandsAndOutputFullyBoundImpl(
     return operands_bound && output_bound;
   }
 
-  if (index.front() > 1) {
+  if (index.front() > 1 || !ShapeUtil::IndexIsValid(expected_shape, index)) {
     return absl::InvalidArgumentError(absl::StrCat(
         "Invalid index: ", index.ToString(),
         ", index must start with 0 (for operands) or 1 (for output)."));
-  }
-
-  if (!ShapeUtil::IndexIsValid(expected_shape, index)) {
-    return absl::InvalidArgumentError(absl::StrCat(
-        "Invalid index: ", index.ToString(),
-        " is not valid for expected shape: ", expected_shape.ToString()));
   }
 
   // Check operands
@@ -200,7 +194,7 @@ absl::StatusOr<bool> AreOperandsAndOutputFullyBound(
       async_start->called_computations().front();
 
   if (async_op->opcode() == HloOpcode::kAsyncDone) {
-    if (async_op->operand_count() != 1) {
+    if (async_op->operand_count() == 0) {
       return absl::InvalidArgumentError(
           absl::StrCat("AsyncDone instruction ", async_op->name(),
                        " does not have exactly one operand."));
@@ -265,7 +259,6 @@ absl::StatusOr<bool> IsFirstFullyBound(const HloInstruction* async_inst) {
                    AreOperandsAndOutputFullyBound(async_inst->operand(0)));
   return !prev_fully_bound;
 }
-
 }  // namespace async
 
 }  // namespace hlo_instruction_utils
