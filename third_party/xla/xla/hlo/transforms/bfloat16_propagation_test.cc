@@ -1882,4 +1882,50 @@ ENTRY entry {
                 .status());
 }
 
+TEST_F(BFloat16PropagationTest, ArgmaxValueIsNotDowncastToBF16) {
+  const std::string module_str = R"(
+HloModule ArgmaxModule
+
+argmax_reducer {
+  val.1 = f32[] parameter(0)
+  idx.1 = s32[] parameter(1)
+  val.2 = f32[] parameter(2)
+  idx.2 = s32[] parameter(3)
+  cmp = pred[] compare(val.1, val.2), direction=GT
+  out_val = f32[] select(cmp, val.1, val.2)
+  out_idx = s32[] select(cmp, idx.1, idx.2)
+  ROOT tuple = (f32[], s32[]) tuple(out_val, out_idx)
+}
+
+argmax_fusion {
+  input_f32 = f32[2,29] parameter(0)
+  input_s32 = s32[2,29] parameter(1)
+  init_f32 = f32[] constant(-inf)
+  init_s32 = s32[] constant(-1)
+  ROOT reduce = (f32[2], s32[2]) reduce(input_f32, input_s32, init_f32, init_s32), dimensions={1}, to_apply=argmax_reducer
+}
+
+ENTRY entry {
+  input_f32 = f32[2,29] parameter(0)
+  input_s32 = s32[2,29] parameter(1)
+  maxargmax = (f32[2], s32[2]) fusion(input_f32, input_s32), kind=kLoop, calls=argmax_fusion
+  ROOT gte1 = s32[2] get-tuple-element(maxargmax), index=1
+}
+)";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(module_str));
+  PropagatePrecision(module.get());
+
+  VLOG(0) << "module after: " << module->ToString();
+
+  // The reduce should not be downcast to BF16.
+  HloInstruction* reduce = FindInstruction(module.get(), "reduce");
+  ASSERT_NE(reduce, nullptr);
+  EXPECT_EQ(reduce->shape().tuple_shapes(0).element_type(), F32);
+
+  // The reduce remains the fusion root.
+  HloComputation* fusion = FindComputation(module.get(), "argmax_fusion");
+  ASSERT_NE(fusion, nullptr);
+  EXPECT_EQ(fusion->root_instruction()->opcode(), HloOpcode::kReduce);
+}
 }  // namespace xla
