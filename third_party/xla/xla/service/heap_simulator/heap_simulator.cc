@@ -66,8 +66,6 @@ limitations under the License.
 #include "xla/service/hlo_value.h"
 #include "xla/service/logical_buffer.h"
 #include "xla/service/time_utils.h"
-#include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 
 namespace xla {
@@ -90,13 +88,13 @@ AsciiMemoryMapParameters GetAsciiMemoryMapParameters(
   CHECK(!nodes.empty());
   int64_t min_chunk_offset = std::numeric_limits<int64_t>::max();
   int64_t end_of_last_occupied_chunk = -1;
-  int64_t memory_block_size = nodes.front()->chunk.offset;
+  int64_t memory_block_size = nodes.front()->value.offset;
   for (const BufferIntervalTreeNode* node : nodes) {
-    min_chunk_offset = std::min(min_chunk_offset, node->chunk.offset);
+    min_chunk_offset = std::min(min_chunk_offset, node->value.offset);
     end_of_last_occupied_chunk =
-        std::max(end_of_last_occupied_chunk, node->chunk.chunk_end());
-    memory_block_size = std::gcd(memory_block_size, node->chunk.offset);
-    memory_block_size = std::gcd(memory_block_size, node->chunk.chunk_end());
+        std::max(end_of_last_occupied_chunk, node->value.chunk_end());
+    memory_block_size = std::gcd(memory_block_size, node->value.offset);
+    memory_block_size = std::gcd(memory_block_size, node->value.chunk_end());
   }
   VLOG(3) << " min_chunk_offset: " << min_chunk_offset
           << " end_of_last_occupied_chunk: " << end_of_last_occupied_chunk
@@ -117,8 +115,8 @@ std::vector<std::vector<bool>> GetMemoryMap(
   std::vector<std::vector<bool>> memory_map(
       num_memory_blocks, std::vector<bool>(total_time, false));
   for (const BufferIntervalTreeNode* node : nodes) {
-    for (int64_t i = node->chunk.offset / memory_block_size;
-         i < node->chunk.chunk_end() / memory_block_size; ++i) {
+    for (int64_t i = node->value.offset / memory_block_size;
+         i < node->value.chunk_end() / memory_block_size; ++i) {
       for (int64_t j = std::max(node->start - start, int64_t{0});
            j <= std::min(node->end - start, end - start); ++j) {
         memory_map[i][j] = true;
@@ -134,7 +132,8 @@ std::string BufferIntervalTreeNodesToString(
     absl::Span<const BufferIntervalTreeNode* const> nodes) {
   std::string output;
   for (const BufferIntervalTreeNode* node : nodes) {
-    absl::StrAppend(&output, node->ToString(), "\n");
+    absl::StrAppend(&output, "start: ", node->start, " end: ", node->end,
+                    " chunk: ", node->value.ToString(), "\n");
   }
   return output;
 }
@@ -191,11 +190,6 @@ HeapSimulator::Chunk HeapSimulator::Chunk::FromOffsetSize(int64_t offset,
 
 std::string HeapSimulator::Chunk::ToString() const {
   return absl::StrCat("[", offset, ",", chunk_end(), ")");
-}
-
-std::string BufferIntervalTreeNode::ToString() const {
-  return absl::StrCat("start: ", start, " end: ", end,
-                      " chunk: ", chunk.ToString());
 }
 
 bool HeapSimulator::Chunk::OverlapsWith(Chunk other_chunk) const {
@@ -827,167 +821,6 @@ void GlobalDecreasingSizeBestFitHeap<BufferType>::Free(const BufferType* buffer,
   ++current_time_;
 }
 
-using Chunk = HeapSimulator::Chunk;
-
-void BufferIntervalTree::Add(int64_t start, int64_t end, const Chunk& chunk) {
-  node_storage_.emplace_back(BufferIntervalTreeNode{
-      start, end, end, chunk,
-      /*left=*/nullptr, /*right=*/nullptr, /*parent=*/nullptr});
-  if (root_ == nullptr) {
-    root_ = &node_storage_.back();
-    // This is root.
-    return;
-  }
-
-  BufferIntervalTreeNode* parent = root_;
-  while (true) {
-    parent->subtree_end = std::max(parent->subtree_end, end);
-    if (parent->start > start) {
-      if (parent->left == nullptr) {
-        parent->left = &node_storage_.back();
-        node_storage_.back().parent = parent;
-        return;
-      }
-      parent = parent->left;
-    } else {
-      if (parent->right == nullptr) {
-        parent->right = &node_storage_.back();
-        node_storage_.back().parent = parent;
-        return;
-      }
-      parent = parent->right;
-    }
-  }
-}
-
-bool BufferIntervalTree::Remove(int64_t start, int64_t end,
-                                const Chunk& chunk) {
-  BufferIntervalTreeNode* to_delete = root_;
-  while (to_delete != nullptr) {
-    if (to_delete->start == start && to_delete->end == end &&
-        to_delete->chunk.offset == chunk.offset) {
-      break;
-    }
-    if (start < to_delete->start) {
-      to_delete = to_delete->left;
-    } else {
-      to_delete = to_delete->right;
-    }
-  }
-  if (to_delete == nullptr) {
-    // Nothing to delete.
-    return false;
-  }
-  // Found the node to be deleted, enter deletion sequence.
-
-  // Recursively traverse the parents of node and fix up the `subtree_end`
-  // invariant of a node. Recursive lambda need an explicit
-  // std::function declaration.
-  std::function<void(BufferIntervalTreeNode*)> fix_up =
-      [&](BufferIntervalTreeNode* node) {
-        if (node == nullptr) {
-          return;
-        }
-        node->subtree_end = node->end;
-        if (node->left) {
-          node->subtree_end =
-              std::max(node->subtree_end, node->left->subtree_end);
-        }
-        if (node->right) {
-          node->subtree_end =
-              std::max(node->subtree_end, node->right->subtree_end);
-        }
-        // Recursively go up.
-        fix_up(node->parent);
-      };
-
-  if (to_delete->right == nullptr) {
-    // to_delete has no right child, simply move up left child of to_delete if
-    // any.
-    //
-    // Turn:
-    //      parent
-    //       /
-    // to_delete
-    //  /      \
-    // left    nullptr
-    //
-    // Into:
-    //      parent
-    //      /
-    //    left
-    if (root_ == to_delete) {
-      // Deleting root is simply resetting root;
-      root_ = to_delete->left;
-      return true;
-    }
-
-    if (to_delete == to_delete->parent->left) {
-      // to_delete is left child of parent.
-      to_delete->parent->left = to_delete->left;
-    }
-    if (to_delete == to_delete->parent->right) {
-      // to_delete is right child of parent.
-      to_delete->parent->right = to_delete->left;
-    }
-    // Rewire parent to the node being moved up.
-    if (to_delete->left) {
-      to_delete->left->parent = to_delete->parent;
-    }
-    // Fix up starting from subroot.
-    fix_up(to_delete);
-  } else {
-    // 1. Find left-most node of the right subtree, promote it to the position
-    // of to_delete.
-    BufferIntervalTreeNode* to_promote = to_delete->right;
-    while (to_promote->left != nullptr) {
-      // Go to left-most subtree.
-      to_promote = to_promote->left;
-    }
-
-    // 2. Copy the content of `to_promote` to `to_delete`.
-    to_delete->start = to_promote->start;
-    to_delete->end = to_promote->end;
-    // This is incorrect but we will fix this up later in the `fix_up`
-    // procedure.
-    to_delete->subtree_end = to_promote->subtree_end;
-    to_delete->chunk = to_promote->chunk;
-    auto to_promote_parent = to_promote->parent;
-    // 3. Move the right child of `to_promote` up if there is any.
-    //
-    // Turn
-    //
-    // to_delete
-    //         \
-    //        to_promote_parent
-    //         /
-    //    to_promote
-    //          \
-    //          right
-    // into
-    //
-    // to_promote
-    //         \
-    //         to_promote_parent
-    //         /
-    //      right
-    if (to_promote_parent->left == to_promote) {
-      to_promote_parent->left = to_promote->right;
-    } else {
-      to_promote_parent->right = to_promote->right;
-    }
-    if (to_promote->right) {
-      // Set correct parent.
-      to_promote->right->parent = to_promote_parent;
-    }
-    // 4. Recursive fix up the `subtree_end` starting from
-    // `to_promote_parent`.
-    fix_up(to_promote_parent);
-  }
-  // Don't free the entry in node_storage_ until we free the entire tree.
-  return true;
-}
-
 void BufferIntervalTree::ApplyToNodesOverlappingInTime(
     int64_t start, int64_t end,
     absl::FunctionRef<void(const BufferIntervalTreeNode*)> fn) const {
@@ -1078,16 +911,16 @@ int BufferIntervalTree::NumChunksOverlappingInTime(int64_t start,
                                                    int64_t end) const {
   int result = 0;
   ApplyToNodesOverlappingInTime(
-      start, end, [&result](const BufferIntervalTreeNode* node) { ++result; });
+      start, end, [&](const BufferIntervalTreeNode* node) { ++result; });
   return result;
 }
 
-std::vector<Chunk> BufferIntervalTree::ChunksOverlappingInTime(
+std::vector<HeapSimulator::Chunk> BufferIntervalTree::ChunksOverlappingInTime(
     int64_t start, int64_t end) const {
-  std::vector<Chunk> result;
+  std::vector<HeapSimulator::Chunk> result;
   ApplyToNodesOverlappingInTime(start, end,
                                 [&result](const BufferIntervalTreeNode* node) {
-                                  result.push_back(node->chunk);
+                                  result.push_back(node->value);
                                 });
   return result;
 }
@@ -1141,7 +974,7 @@ std::vector<int64_t> BufferIntervalTree::MemoryUsedInInterval(
     int64_t node_start = std::max(node->start, start);
     int64_t node_end = std::min(node->end, end);
     for (int64_t time = node_start; time <= node_end; ++time) {
-      memory_used_in_interval[time - start] += node->chunk.size;
+      memory_used_in_interval[time - start] += node->value.size;
     }
   }
   return memory_used_in_interval;
@@ -1154,7 +987,7 @@ int64_t BufferIntervalTree::HeapSizeInInterval(const int64_t start,
       NodesOverlappingInTime(start, end);
   int64_t max_memory_used = 0;
   for (const BufferIntervalTreeNode* node : nodes) {
-    max_memory_used = std::max(max_memory_used, node->chunk.chunk_end());
+    max_memory_used = std::max(max_memory_used, node->value.chunk_end());
   }
   return max_memory_used;
 }
@@ -1927,7 +1760,7 @@ namespace {
 constexpr int64_t kMaxRenderOffset = 200;
 constexpr int64_t kMaxRenderSliceTime = 9;
 std::string RenderTimeByFreeChunks(
-    const std::vector<std::vector<Chunk>>& time_by_chunks) {
+    const std::vector<std::vector<HeapSimulator::Chunk>>& time_by_chunks) {
   if (time_by_chunks.size() - 1 > kMaxRenderSliceTime) {
     return "too many time slices to render";
   }
@@ -1937,7 +1770,7 @@ std::string RenderTimeByFreeChunks(
     // Populate each row with Xs to start.
     time_by_memory_units.push_back(std::string(kMaxRenderOffset + 1, 'X'));
 
-    for (const Chunk& chunk : time_by_chunks[i]) {
+    for (const HeapSimulator::Chunk& chunk : time_by_chunks[i]) {
       if (chunk.chunk_end() > kMaxRenderOffset) {
         return "largest offset is too large to render";
       }
@@ -2493,7 +2326,7 @@ GlobalDecreasingSizeBestFitHeap<BufferType>::MakeFreeChunks(
   interval_tree_.ApplyToNodesOverlappingInTime(
       buffer_interval.start, buffer_interval.end,
       [&](const BufferIntervalTreeNode* node) {
-        used_chunks_.push_back(node->chunk);
+        used_chunks_.push_back(node->value);
       });
 
   for (const BufferType* colocation :
@@ -2503,7 +2336,7 @@ GlobalDecreasingSizeBestFitHeap<BufferType>::MakeFreeChunks(
             << ", end " << interval.end << " " << interval.buffer->ToString();
     interval_tree_.ApplyToNodesOverlappingInTime(
         interval.start, interval.end, [&](const BufferIntervalTreeNode* node) {
-          used_chunks_.push_back(node->chunk);
+          used_chunks_.push_back(node->value);
         });
   }
 
@@ -2562,8 +2395,8 @@ int64_t GlobalDecreasingSizeBestFitHeap<BufferType>::
 
   interval_tree_.ApplyToSortedNodesOverlapping(
       buffer_interval.start, buffer_interval.end,
-      [&](const BufferIntervalTreeNode* node) {
-        const Chunk& used_chunk = node->chunk;
+      [&](const IntervalTreeNode<Chunk>* node) {
+        const Chunk& used_chunk = node->value;
         if ((used_chunk.offset < preferred_offset &&
              preferred_offset <
                  ComputeAlignedChunkEnd(used_chunk.chunk_end())) ||
