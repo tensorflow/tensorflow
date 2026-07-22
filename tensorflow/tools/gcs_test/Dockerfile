@@ -13,7 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 
-FROM ubuntu:26.04@sha256:f3d28607ddd78734bb7f71f117f3c6706c666b8b76cbff7c9ff6e5718d46ff64
+FROM ubuntu:26.04@sha256:b7f48194d4d8b763a478a621cdc81c27be222ba2206ca3ca6bc42b49685f3d9e
 
 LABEL maintainer="Shanqing Cai <cais@google.com>"
 
