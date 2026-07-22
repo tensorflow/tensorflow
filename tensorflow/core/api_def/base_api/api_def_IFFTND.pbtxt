@@ -37,7 +37,7 @@ dimensions of `input`. The designated dimensions of `input` are assumed to be
 the result of `IFFTND`.
 
 If fft_length[i]<shape(input)[i], the input is cropped. If
-fft_length[i]>shape(input)[i], the input is padded with zeros. If fft_length
+fft_length[i]>shape(input)[i], an `InvalidArgumentError` is raised. If fft_length
 is not given, the default shape(input) is used.
 
 Axes mean the dimensions to perform the transform on. Default is to perform on
