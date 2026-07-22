@@ -1641,10 +1641,6 @@ message DebugOptions {
   optional bool xla_gpu_experimental_ragged_all_to_all_use_barrier_with_nccl =
       462;
 
-  // DEPRECATED: This flag is a no-op.
-  optional bool xla_gpu_experimental_ragged_all_to_all_zero_copy = 480
-      [deprecated = true];
-
   // If true, enable the GXL (GPU Collective Library) backend for collectives.
   optional bool xla_gpu_enable_gxl_ragged_all_to_all = 513;
 
@@ -1744,6 +1740,7 @@ message DebugOptions {
   reserved "xla_gpu_experimental_enable_triton_i4_rewrites";
   reserved "xla_gpu_experimental_enable_triton_softmax_priority_fusion";
   reserved "xla_gpu_experimental_enable_triton_tma";
+  reserved "xla_gpu_experimental_ragged_all_to_all_zero_copy";
   reserved "xla_gpu_experimental_use_autotuner_pass";
   reserved "xla_gpu_graph_eviction_timeout_seconds";
   reserved "xla_gpu_graph_level";
@@ -1791,7 +1788,7 @@ message DebugOptions {
       242, 243, 249, 263, 264, 266, 270, 271, 275, 276, 278, 279, 281, 282, 286,
       298, 299, 300, 302, 303, 309, 313, 314, 319, 320, 325, 326, 332, 346, 352,
       354, 355, 358, 361, 367, 369, 371, 385, 388, 389, 394, 396, 398, 402, 420,
-      423, 430, 443, 446, 458, 464, 477;
+      423, 430, 443, 446, 458, 464, 477, 480;
 }
 
 // Contains flags which affects the GPU compilation result.
