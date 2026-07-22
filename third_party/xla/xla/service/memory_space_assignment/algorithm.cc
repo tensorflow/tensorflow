@@ -7773,17 +7773,14 @@ void MsaAlgorithm::WindowPrefetchOperand(const HloUse& use, int64_t bytes) {
   ShapeIndex shape_index = use.operand_index;
   HloInstruction* operand = instruction->mutable_operand(use.operand_number);
   // Find the defining position of the operand.
-  for (int i = 0; i < use.operand_index.size(); ++i) {
-    CHECK(operand->opcode() == HloOpcode::kGetTupleElement);
-    operand = operand->mutable_operand(0);
-  }
+  HloPosition position = GetNonTrivialSourcePosition({operand, shape_index});
+  HloInstruction* defining_inst = position.instruction;
 
   // Create a new HloValue for the window buffer.
   HloValue::Id new_value_id = alias_analysis_.dataflow_analysis().NewValueId();
   HloValue hlo_value(new_value_id, operand, shape_index);
-  int64_t start_time = hlo_live_range_.instruction_schedule().at(operand);
+  int64_t start_time = hlo_live_range_.instruction_schedule().at(defining_inst);
   int64_t end_time = hlo_live_range_.instruction_schedule().at(instruction);
-
   // Create a buffer interval, which has the same start and end time as the
   // operand. The hlo value is the operand.
   MsaBufferInterval buffer_interval;
@@ -7831,14 +7828,15 @@ void MsaAlgorithm::WindowPrefetchOperand(const HloUse& use, int64_t bytes) {
 
   if (options_.window_prefetch_mode == WindowPrefetchMode::kWindowPrefetch) {
     // Window prefetch mode
-    Prefetch(request, dummy_prev_allocation);
+    auto result = Prefetch(request, dummy_prev_allocation);
+    if (result != AllocationResult::kSuccess) {
+      VLOG(1) << "Window prefetch failed for use: " << use.instruction->name()
+              << " with result: " << SingleFailureResultToString(result);
+    }
   } else {
     // Window exposure mode, we only need to find a chunk for the window
     // buffer.
     CHECK(options_.window_prefetch_mode == WindowPrefetchMode::kWindowExposure);
-    // Adjust the start time of the buffer interval to be the use time. This is
-    // because we only need the buffer to be alive at the use time.
-    buffer_interval.start = end_time;
     std::optional<Chunk> candidate_chunk = FindBestChunkCandidate(
         request, /*preferred_offset=*/nullptr, &buffer_interval);
     if (candidate_chunk.has_value()) {
@@ -7848,7 +7846,7 @@ void MsaAlgorithm::WindowPrefetchOperand(const HloUse& use, int64_t bytes) {
           allocation_value.mutable_allocation_sequence();
       allocation_sequence->push_back(
           std::make_unique<WindowPrefetchedAllocation>(
-              dummy_prev_allocation, use, *candidate_chunk, end_time - 1,
+              dummy_prev_allocation, use, *candidate_chunk, start_time,
               end_time, options));
       MaybeCreateOrAddToAliasedOffset(*allocation_sequence->back(),
                                       /*aliased_offset=*/nullptr);
