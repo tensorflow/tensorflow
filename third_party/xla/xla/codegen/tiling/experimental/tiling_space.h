@@ -20,7 +20,6 @@ limitations under the License.
 #include <deque>
 #include <memory>
 #include <optional>
-#include <ostream>
 #include <string>
 #include <utility>
 #include <vector>
@@ -28,7 +27,6 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "absl/strings/str_format.h"
 #include "absl/types/span.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/SmallVector.h"
@@ -43,38 +41,6 @@ limitations under the License.
 #include "xla/shape.h"
 
 namespace xla::gpu::experimental {
-
-// Tiled dimension ID with strong type safety.
-class TiledDimId {
- public:
-  constexpr explicit TiledDimId(int64_t value) : value_(value) {}
-  constexpr int64_t value() const { return value_; }
-
-  template <typename H>
-  friend H AbslHashValue(H h, const TiledDimId& i) {
-    return H::combine(std::move(h), i.value_);
-  }
-
-  template <typename Sink>
-  friend void AbslStringify(Sink& sink, const TiledDimId& id) {
-    absl::Format(&sink, "%v", id.value());
-  }
-
-  friend constexpr bool operator==(TiledDimId lhs, TiledDimId rhs) {
-    return lhs.value() == rhs.value();
-  }
-
-  friend constexpr bool operator!=(TiledDimId lhs, TiledDimId rhs) {
-    return lhs.value() != rhs.value();
-  }
-
- private:
-  int64_t value_;
-};
-
-inline std::ostream& operator<<(std::ostream& os, TiledDimId id) {
-  return os << id.value();
-}
 
 // TilingSpace holds information about all tiling parameters of a fusion.
 //
