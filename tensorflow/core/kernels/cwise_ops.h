@@ -79,6 +79,144 @@ struct functor_traits<safe_scalar_binary_pow_op<Scalar, Exponent>> {
   enum { Cost = 5 * NumTraits<Scalar>::MulCost, PacketAccess = false };
 };
 
+template <typename T>
+struct safe_sum_op {
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE T operator()(const T& a,
+                                                     const T& b) const {
+    using U = typename std::make_unsigned<typename std::conditional<
+        std::is_integral<T>::value, T, unsigned int>::type>::type;
+    return static_cast<T>(static_cast<U>(a) + static_cast<U>(b));
+  }
+  template <typename Packet>
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE Packet packetOp(const Packet& a,
+                                                        const Packet& b) const {
+    return padd(a, b);
+  }
+  template <typename Packet>
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE T predux(const Packet& a) const {
+    return Eigen::internal::predux(a);
+  }
+};
+
+template <typename T>
+struct functor_traits<safe_sum_op<T>> {
+  enum {
+    Cost = functor_traits<scalar_sum_op<T>>::Cost,
+    PacketAccess = functor_traits<scalar_sum_op<T>>::PacketAccess,
+  };
+};
+
+template <typename T>
+struct safe_difference_op {
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE T operator()(const T& a,
+                                                     const T& b) const {
+    using U = typename std::make_unsigned<typename std::conditional<
+        std::is_integral<T>::value, T, unsigned int>::type>::type;
+    return static_cast<T>(static_cast<U>(a) - static_cast<U>(b));
+  }
+  template <typename Packet>
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE Packet packetOp(const Packet& a,
+                                                        const Packet& b) const {
+    return psub(a, b);
+  }
+};
+
+template <typename T>
+struct functor_traits<safe_difference_op<T>> {
+  enum {
+    Cost = functor_traits<scalar_difference_op<T>>::Cost,
+    PacketAccess = functor_traits<scalar_difference_op<T>>::PacketAccess,
+  };
+};
+
+template <typename T>
+struct safe_mul_op {
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE T operator()(const T& a,
+                                                     const T& b) const {
+    using U = typename std::make_unsigned<typename std::conditional<
+        std::is_integral<T>::value, T, unsigned int>::type>::type;
+    return static_cast<T>(static_cast<U>(a) * static_cast<U>(b));
+  }
+  template <typename Packet>
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE Packet packetOp(const Packet& a,
+                                                        const Packet& b) const {
+    return pmul(a, b);
+  }
+};
+
+template <typename T>
+struct functor_traits<safe_mul_op<T>> {
+  enum {
+    Cost = functor_traits<scalar_product_op<T>>::Cost,
+    PacketAccess = functor_traits<scalar_product_op<T>>::PacketAccess,
+  };
+};
+
+template <typename T>
+struct safe_square_op {
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE T operator()(const T& a) const {
+    using U = typename std::make_unsigned<typename std::conditional<
+        std::is_integral<T>::value, T, unsigned int>::type>::type;
+    return static_cast<T>(static_cast<U>(a) * static_cast<U>(a));
+  }
+  template <typename Packet>
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE Packet packetOp(const Packet& a) const {
+    return pmul(a, a);
+  }
+};
+
+template <typename T>
+struct functor_traits<safe_square_op<T>> {
+  enum {
+    Cost = functor_traits<scalar_square_op<T>>::Cost,
+    PacketAccess = functor_traits<scalar_square_op<T>>::PacketAccess,
+  };
+};
+
+template <typename T>
+struct safe_opposite_op {
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE T operator()(const T& a) const {
+    using U = typename std::make_unsigned<typename std::conditional<
+        std::is_integral<T>::value, T, unsigned int>::type>::type;
+    return static_cast<T>(-static_cast<U>(a));
+  }
+  template <typename Packet>
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE Packet packetOp(const Packet& a) const {
+    return pnegate(a);
+  }
+};
+
+template <typename T>
+struct functor_traits<safe_opposite_op<T>> {
+  enum {
+    Cost = functor_traits<scalar_opposite_op<T>>::Cost,
+    PacketAccess = functor_traits<scalar_opposite_op<T>>::PacketAccess,
+  };
+};
+
+template <typename T>
+struct safe_abs_op {
+  using result_type = typename scalar_abs_op<T>::result_type;
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE result_type
+  operator()(const T& a) const {
+    using U = typename std::make_unsigned<typename std::conditional<
+        std::is_integral<T>::value, T, unsigned int>::type>::type;
+    return a < 0 ? static_cast<T>(-static_cast<U>(a)) : a;
+  }
+  template <typename Packet>
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE Packet packetOp(const Packet& a) const {
+    return pabs(a);
+  }
+};
+
+template <typename T>
+struct functor_traits<safe_abs_op<T>> {
+  enum {
+    Cost = functor_traits<scalar_abs_op<T>>::Cost,
+    PacketAccess = functor_traits<scalar_abs_op<T>>::PacketAccess,
+  };
+};
+
 template <typename T, typename DivOrMod>
 struct safe_div_or_mod_op {
   static_assert(std::is_integral<T>::value, "Integer type expected");
@@ -327,8 +465,8 @@ struct less_equal : std::function<bool(T, T)> {
 };
 
 // Functor that enables squared difference functor.
-template <typename Scalar>
-struct scalar_squared_difference_op {
+template <typename Scalar, typename Enable = void>
+struct squared_difference_functor {
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE Scalar
   operator()(const Scalar& a, const Scalar& b) const {
     const Scalar v = scalar_difference_op<Scalar>()(a, b);
@@ -340,6 +478,36 @@ struct scalar_squared_difference_op {
     const Packet v = scalar_difference_op<Scalar>().packetOp(a, b);
     return scalar_product_op<Scalar>().packetOp(
         v, scalar_conjugate_op<Scalar>().packetOp(v));
+  }
+};
+
+template <typename Scalar>
+struct squared_difference_functor<
+    Scalar, typename std::enable_if<std::is_integral<Scalar>::value>::type> {
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE Scalar
+  operator()(const Scalar& a, const Scalar& b) const {
+    const Scalar v = safe_difference_op<Scalar>()(a, b);
+    return safe_mul_op<Scalar>()(v, scalar_conjugate_op<Scalar>()(v));
+  }
+  template <typename Packet>
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE Packet packetOp(const Packet& a,
+                                                        const Packet& b) const {
+    const Packet v = safe_difference_op<Scalar>().packetOp(a, b);
+    return safe_mul_op<Scalar>().packetOp(
+        v, scalar_conjugate_op<Scalar>().packetOp(v));
+  }
+};
+
+template <typename Scalar>
+struct scalar_squared_difference_op {
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE Scalar
+  operator()(const Scalar& a, const Scalar& b) const {
+    return squared_difference_functor<Scalar>()(a, b);
+  }
+  template <typename Packet>
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE Packet packetOp(const Packet& a,
+                                                        const Packet& b) const {
+    return squared_difference_functor<Scalar>().packetOp(a, b);
   }
 };
 
@@ -925,18 +1093,51 @@ struct use_bcast_optimization<double> {
 // here. E.g., rectifier, softplus, derivatives of tanh, sigmod, etc.
 // For reference, see speech/lstm/eigen_functors.h.
 
-template <typename T>
-struct abs : base<T, Eigen::internal::scalar_abs_op<T>,
-                  typename Eigen::internal::scalar_abs_op<T>::result_type> {};
+template <typename T, typename Enable = void>
+struct abs_functor {
+  using type = Eigen::internal::scalar_abs_op<T>;
+};
 
 template <typename T>
-struct neg : base<T, Eigen::internal::scalar_opposite_op<T>> {};
+struct abs_functor<T, typename std::enable_if<std::is_integral<T>::value &&
+                                              std::is_signed<T>::value>::type> {
+  using type = Eigen::internal::safe_abs_op<T>;
+};
+
+template <typename T>
+struct abs : base<T, typename abs_functor<T>::type,
+                  typename abs_functor<T>::type::result_type> {};
+
+template <typename T, typename Enable = void>
+struct neg_functor {
+  using type = Eigen::internal::scalar_opposite_op<T>;
+};
+
+template <typename T>
+struct neg_functor<T, typename std::enable_if<std::is_integral<T>::value &&
+                                              std::is_signed<T>::value>::type> {
+  using type = Eigen::internal::safe_opposite_op<T>;
+};
+
+template <typename T>
+struct neg : base<T, typename neg_functor<T>::type> {};
 
 template <typename T>
 struct inverse : base<T, Eigen::internal::scalar_inverse_op<T>> {};
 
+template <typename T, typename Enable = void>
+struct square_functor {
+  using type = Eigen::internal::scalar_square_op<T>;
+};
+
 template <typename T>
-struct square : base<T, Eigen::internal::scalar_square_op<T>> {};
+struct square_functor<
+    T, typename std::enable_if<std::is_integral<T>::value>::type> {
+  using type = Eigen::internal::safe_square_op<T>;
+};
+
+template <typename T>
+struct square : base<T, typename square_functor<T>::type> {};
 
 template <typename T>
 struct sqrt : base<T, Eigen::internal::scalar_sqrt_op<T>> {};
@@ -1072,18 +1273,51 @@ struct rint : base<T, Eigen::internal::scalar_rint_op<T>> {};
 // minimum(x, y) = x < y ? x : y
 // squared_difference(x, y) = conj(x - y) * (x - y)
 
-template <typename T>
-struct add : base<T, Eigen::internal::scalar_sum_op<T>> {
-  static constexpr bool use_bcast_optimization = true;
+template <typename T, typename Enable = void>
+struct add_functor {
+  using type = Eigen::internal::scalar_sum_op<T>;
 };
 
 template <typename T>
-struct sub : base<T, Eigen::internal::scalar_difference_op<T>> {
-  static constexpr bool use_bcast_optimization = true;
+struct add_functor<T,
+                   typename std::enable_if<std::is_integral<T>::value>::type> {
+  using type = Eigen::internal::safe_sum_op<T>;
 };
 
 template <typename T>
-struct mul : base<T, Eigen::internal::scalar_product_op<T>> {
+struct add : base<T, typename add_functor<T>::type> {
+  static constexpr bool use_bcast_optimization = true;
+};
+
+template <typename T, typename Enable = void>
+struct sub_functor {
+  using type = Eigen::internal::scalar_difference_op<T>;
+};
+
+template <typename T>
+struct sub_functor<T,
+                   typename std::enable_if<std::is_integral<T>::value>::type> {
+  using type = Eigen::internal::safe_difference_op<T>;
+};
+
+template <typename T>
+struct sub : base<T, typename sub_functor<T>::type> {
+  static constexpr bool use_bcast_optimization = true;
+};
+
+template <typename T, typename Enable = void>
+struct mul_functor {
+  using type = Eigen::internal::scalar_product_op<T>;
+};
+
+template <typename T>
+struct mul_functor<T,
+                   typename std::enable_if<std::is_integral<T>::value>::type> {
+  using type = Eigen::internal::safe_mul_op<T>;
+};
+
+template <typename T>
+struct mul : base<T, typename mul_functor<T>::type> {
   static constexpr bool use_bcast_optimization = true;
 };
 
