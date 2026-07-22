@@ -134,6 +134,38 @@ struct Options {
   // Backend-specific integer value that describes the alternate memory.
   int64_t alternate_memory_space = 0;
 
+  // Color of "view" values: zero-copy, possibly sub-region aliases into their
+  // defining instruction's operand 0 (the source). A view carries no allocation
+  // of its own and its consumers read the source THROUGH it. When set, MSA
+  // extends a view use's effective time to the view's consumers, so the
+  // source's alternate-memory chunk stays reserved until those consumers have
+  // read it (otherwise the view looks like the source's last use and the
+  // source's storage is reused for the consumers' outputs, corrupting it).
+  // std::nullopt disables the behavior.
+  //
+  // Note for backends adopting this option: dus_view_color alone does NOT
+  // keep the view VALUES themselves out of the alternate memory placement
+  // search; pair it with an is_allowed_in_alternate_mem_fn that rejects view
+  // colored values (a view is an allocation-less pointer stand-in, so MSA
+  // must never prefetch or copy it as if it owned storage).
+  std::optional<int64_t> dus_view_color;
+
+  // When true, a view's source buffer is kept in default memory instead of
+  // being considered for alternate memory. This trades away the source's VMEM
+  // residency (the view still eliminates the materializing copy, which is the
+  // primary win) in exchange for avoiding the alternate-memory placement search
+  // over the source's view-extended live range. For a view whose source is a
+  // while-loop-carried buffer that live range spans the whole loop body, which
+  // makes MSA's prefetch search (interval picker Begin + best-fit chunk search)
+  // blow up superlinearly on large modules. Keeping the source in default
+  // memory sidesteps that: no extended reservation is needed (default storage
+  // is permanent, so the view reads valid data at any later consumer time), so
+  // GetViewExtendedUseTime does not extend, and the source is pinned to default
+  // rather than searched for alternate memory. Defaults to false (current
+  // behavior: view sources may be placed in alternate memory with an extended
+  // reservation). Only meaningful when dus_view_color is set.
+  bool view_source_default_memory_only = false;
+
   // Maximum size of the alternate memory space.
   int64_t max_size_in_bytes = 0;
 

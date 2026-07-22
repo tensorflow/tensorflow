@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/service/buffer_assignment.h"
 
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <optional>
 #include <random>
@@ -208,6 +209,36 @@ class BufferAssignmentTest : public HloHardwareIndependentTestBase {
                [alignment](LogicalBuffer::Color) { return alignment; },
                std::move(opts))
         .value();
+  }
+
+  // Runs buffer assignment after coloring the value defined by
+  // `view_instruction_name` with `view_color` (and everything else color 0).
+  // When `dus_view_color` is set, buffers of that color are skipped (given no
+  // allocation). Used to exercise Options::dus_view_color without depending on
+  // any backend that supplies the real view color.
+  std::unique_ptr<BufferAssignment> RunBufferAssignmentWithDusViewColor(
+      HloModule* module, absl::string_view view_instruction_name,
+      BufferValue::Color view_color,
+      std::optional<BufferValue::Color> dus_view_color) {
+    BufferAssigner::Options opts;
+    opts.allocate_buffers_for_constants = true;
+    opts.dus_view_color = dus_view_color;
+    opts.colorer = [name = std::string(view_instruction_name), view_color](
+                       HloAliasAnalysis* alias_analysis, const HloOrdering&) {
+      for (HloValue* value : alias_analysis->dataflow_analysis().values()) {
+        value->set_color(value->instruction()->name() == name
+                             ? view_color
+                             : BufferValue::Color(0));
+      }
+      return absl::OkStatus();
+    };
+    absl::StatusOr<std::unique_ptr<BufferAssignment>> assignment =
+        BufferAssigner::Run(
+            module, std::make_unique<DependencyHloOrdering>(module),
+            &BufferSizeBytes, &alias_info_,
+            [](LogicalBuffer::Color) { return 1; }, std::move(opts));
+    CHECK_OK(assignment.status());
+    return std::move(assignment).value();
   }
 
   std::unique_ptr<BufferAssignment> RunBufferAssignmentWithInstructionSequence(
@@ -2793,6 +2824,63 @@ ENTRY main {
                 HloOpcode::kConditional);
     }
   }
+}
+
+// Positive: when Options::dus_view_color is set, a buffer colored with that
+// color is a pointer stand-in and gets no allocation of its own, while other
+// buffers (e.g. the consumer) are still allocated normally.
+TEST_F(BufferAssignmentTest, DusViewColoredBufferIsSkipped) {
+  const char* const kHlo = R"(
+HloModule DusViewSkip
+
+ENTRY e {
+  p0 = f32[100,10]{1,0} parameter(0)
+  p1 = f32[100,10]{1,0} parameter(1)
+  view = f32[100,10]{1,0} add(p0, p1)
+  ROOT out = f32[100,10]{1,0} add(view, view)
+}
+)";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHlo));
+  const HloInstruction* view = FindInstruction(module.get(), "view");
+  const HloInstruction* out = FindInstruction(module.get(), "out");
+
+  constexpr BufferValue::Color kViewColor = 7;
+  std::unique_ptr<BufferAssignment> assignment =
+      RunBufferAssignmentWithDusViewColor(module.get(), "view", kViewColor,
+                                          /*dus_view_color=*/kViewColor);
+
+  // The view buffer was skipped: no allocation of its own.
+  EXPECT_FALSE(assignment->HasTopLevelAllocation(view));
+  // The consumer is still allocated normally.
+  EXPECT_TRUE(assignment->HasTopLevelAllocation(out));
+}
+
+// Negative: when Options::dus_view_color is unset (the shipped default), the
+// same colored buffer is allocated normally; the color carries no special
+// meaning on its own.
+TEST_F(BufferAssignmentTest, DusViewColorUnsetAllocatesBuffer) {
+  const char* const kHlo = R"(
+HloModule DusViewDisabled
+
+ENTRY e {
+  p0 = f32[100,10]{1,0} parameter(0)
+  p1 = f32[100,10]{1,0} parameter(1)
+  view = f32[100,10]{1,0} add(p0, p1)
+  ROOT out = f32[100,10]{1,0} add(view, view)
+}
+)";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHlo));
+  const HloInstruction* view = FindInstruction(module.get(), "view");
+
+  constexpr BufferValue::Color kViewColor = 7;
+  std::unique_ptr<BufferAssignment> assignment =
+      RunBufferAssignmentWithDusViewColor(module.get(), "view", kViewColor,
+                                          /*dus_view_color=*/std::nullopt);
+
+  // No skip color set, so the buffer is allocated like any other.
+  EXPECT_TRUE(assignment->HasTopLevelAllocation(view));
 }
 
 class WhileBufferAssignmentTest : public HloHardwareIndependentTestBase {

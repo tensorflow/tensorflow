@@ -43,6 +43,8 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "absl/strings/str_replace.h"
 #include "absl/strings/string_view.h"
+#include "absl/time/clock.h"
+#include "absl/time/time.h"
 #include "absl/types/span.h"
 #include "xla/tsl/platform/status_macros.h"
 #include "xla/comparison_util.h"
@@ -656,6 +658,63 @@ TEST_F(MemorySpaceAssignmentTest, SyncSliceReplacementAfterPrefetch) {
   HloInstruction* p0 = FindInstruction(module.get(), "p0");
   ASSERT_NE(p0, nullptr);
   EXPECT_THAT(concat->operand(1), op::AsyncDone(op::AsyncStart(p0)));
+}
+
+TEST_F(MemorySpaceAssignmentTest, ViewExtendedUseTimeWalksTransitiveReaders) {
+  // A view (dus_view_color colored custom call) aliases its operand's storage
+  // without owning any, and the read side rewrite reattaches a view colored
+  // bitcast ON the view, so the real consumer reads the source THROUGH the
+  // bitcast. The extension must therefore walk transitively through view
+  // colored users to the eventual readers: stopping at the view's direct
+  // users would end the source's reservation at the bitcast (scheduled right
+  // after the view), letting the source's alternate memory chunk be reused
+  // while the consumer still reads it.
+  absl::string_view hlo_string = R"hlo(
+  HloModule module, is_scheduled=true
+
+  ENTRY entry {
+    p0 = f32[4,4]{1,0} parameter(0)
+    p1 = f32[100]{0} parameter(1)
+    p3 = f32[16]{0} parameter(2)
+    source = f32[4,4]{1,0} negate(p0)
+    view = f32[4,4]{1,0:S(5)} custom-call(source), custom_call_target="tpu_get_view"
+    viewbc = f32[16]{0:S(5)} bitcast(view)
+    negate0 = f32[100]{0} negate(p1)
+    negate1 = f32[100]{0} negate(negate0)
+    negate2 = f32[100]{0} negate(negate1)
+    negate3 = f32[100]{0} negate(negate2)
+    consumer = f32[16]{0} add(viewbc, p3)
+    ROOT tuple = (f32[16]{0}, f32[100]{0}) tuple(consumer, negate3)
+  }
+  )hlo";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  absl::flat_hash_map<const HloInstruction*, int64_t> schedule;
+  int64_t time = 0;
+  for (const HloInstruction* instruction :
+       module->schedule()
+           .sequence(module->entry_computation())
+           .instructions()) {
+    schedule[instruction] = time++;
+  }
+  const HloInstruction* view = FindInstruction(module.get(), "view");
+  const HloInstruction* viewbc = FindInstruction(module.get(), "viewbc");
+  const HloInstruction* consumer = FindInstruction(module.get(), "consumer");
+  ASSERT_NE(view, nullptr);
+  ASSERT_NE(viewbc, nullptr);
+  ASSERT_NE(consumer, nullptr);
+  // The transitive walk must reach `consumer` through the view colored
+  // bitcast, well past the bitcast's own (early) schedule position.
+  EXPECT_GT(schedule.at(consumer), schedule.at(viewbc) + 1);
+  EXPECT_EQ(ViewExtendedTransitiveUseTime(view, /*view_color=*/5, schedule),
+            schedule.at(consumer));
+  // Readers missing from the schedule are ignored; a view whose readers are
+  // all unscheduled keeps its own time.
+  absl::flat_hash_map<const HloInstruction*, int64_t> only_viewbc = {
+      {viewbc, schedule.at(viewbc)}};
+  EXPECT_EQ(
+      ViewExtendedTransitiveUseTime(viewbc, /*view_color=*/5, only_viewbc),
+      schedule.at(viewbc));
 }
 
 TEST_F(MemorySpaceAssignmentTest,
@@ -17828,6 +17887,94 @@ TEST_F(MemorySpaceAssignmentTest, ConditionalCommonInputAliasedOutputTest) {
   CheckMemorySpaceForInstructionNames(
       module.get(), {"negate0", "custom_call2", "custom_call0", "custom_call1"},
       kAlternateMemorySpace);
+}
+
+// Generates a scheduled module with `num_candidates` large values that are
+// produced early and consumed late, separated by a long chain of cheap filler
+// ops. Every candidate is live across the whole filler span, so all of them
+// compete for the small alternate memory simultaneously with long prefetch
+// windows, the same shape of allocation search that N simultaneous loop
+// carried alternate memory promotions produce on large models. The filler ops
+// commit many small alternate memory chunks, so every prefetch probe scans a
+// large set of overlapping chunks.
+std::string GenerateLongRangePrefetchStressModule(int num_candidates,
+                                                  int filler_length) {
+  std::string text =
+      "HloModule long_range_prefetch_stress, is_scheduled=true\n\nENTRY "
+      "main {\n";
+  // Filler seed, small so filler ops are cheap relative to candidate copies.
+  absl::StrAppend(&text, "  px = f32[64,64] parameter(0)\n");
+  std::vector<std::string> producers;
+  for (int i = 0; i < num_candidates; ++i) {
+    absl::StrAppend(&text, "  param", i, " = f32[512,512] parameter(", i + 1,
+                    ")\n");
+    // The negate output (not the parameter) is the alternate memory candidate.
+    absl::StrAppend(&text, "  cand", i, " = f32[512,512] negate(param", i,
+                    ")\n");
+    producers.push_back(absl::StrCat("cand", i));
+  }
+  // Long chain of cheap filler ops between the producers and the consumers.
+  absl::StrAppend(&text, "  fill0 = f32[64,64] add(px, px)\n");
+  for (int j = 1; j < filler_length; ++j) {
+    absl::StrAppend(&text, "  fill", j, " = f32[64,64] add(fill", j - 1,
+                    ", px)\n");
+  }
+  // Consumers, interleaved with more filler so use times are spread out.
+  std::vector<std::string> consumers;
+  for (int i = 0; i < num_candidates; ++i) {
+    absl::StrAppend(&text, "  gap", i, " = f32[64,64] add(fill",
+                    filler_length - 1, ", fill", i % filler_length, ")\n");
+    absl::StrAppend(&text, "  use", i, " = f32[512,512] negate(cand", i, ")\n");
+    consumers.push_back(absl::StrCat("use", i));
+  }
+  absl::StrAppend(
+      &text, "  ROOT result = (",
+      absl::StrJoin(std::vector<std::string>(consumers.size(), "f32[512,512]"),
+                    ", "),
+      ") tuple(", absl::StrJoin(consumers, ", "), ")\n");
+  absl::StrAppend(&text, "}\n");
+  return text;
+}
+
+// Regression guard for the memory space assignment allocation search's
+// scaling on many simultaneous long range alternate memory candidates (the N
+// simultaneous loop carried promotion pattern). The allocation search must
+// stay well below quadratic growth in the number of candidates; the wall
+// clock cap has generous headroom over the expected time so it only trips on
+// an asymptotic regression, not on machine noise.
+TEST_F(MemorySpaceAssignmentTest, ManySimultaneousLongRangeCandidatesScales) {
+  constexpr int kFillerLength = 512;
+
+  std::vector<int> candidate_counts = {32, 128, 512};
+  std::vector<absl::Duration> durations;
+  for (int num_candidates : candidate_counts) {
+    std::string text =
+        GenerateLongRangePrefetchStressModule(num_candidates, kFillerLength);
+    TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(text));
+    // Alternate memory fits only a few 1 MiB candidates at a time, so the
+    // candidates constantly compete and most placement probes fail.
+    Options options = DefaultMemorySpaceOptions();
+    options.max_size_in_bytes = 3 * (1 << 20) + (1 << 16);
+    options.max_outstanding_prefetches = -1;
+    options.max_outstanding_evictions = -1;
+    absl::Time start = absl::Now();
+    AssignMemorySpaceUsingCostAnalysis(module.get(), std::move(options));
+    absl::Duration elapsed = absl::Now() - start;
+    durations.push_back(elapsed);
+    LOG(INFO) << "MSA long range stress: candidates = " << num_candidates
+              << ", filler = " << kFillerLength << ", time = " << elapsed;
+  }
+  // Guard the asymptotics, with large noise headroom: growing the candidate
+  // count 16x (32 -> 512) must not cost more than ~12x plus a small constant.
+  // Quadratic growth would cost 256x on the search component, and the
+  // historical pathologies this guards against (the inefficient site retry
+  // livelock and per probe interval tree rebuild churn) cost far more than
+  // that. The expected growth is roughly linear at fixed filler length.
+  EXPECT_LT(durations[2], durations[0] * 12 + absl::Seconds(1))
+      << "MSA allocation search time grew superlinearly in the number of "
+         "simultaneous long range alternate memory candidates: "
+      << durations[0] << " at " << candidate_counts[0] << " vs " << durations[2]
+      << " at " << candidate_counts[2];
 }
 
 }  // namespace
