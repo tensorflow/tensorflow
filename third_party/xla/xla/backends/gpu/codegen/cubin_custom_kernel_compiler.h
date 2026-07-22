@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "llvm/IR/Module.h"
 #include "llvm/TargetParser/Triple.h"
+#include "mlir/IR/MLIRContext.h"
 #include "xla/backends/gpu/codegen/kernel_compiler.h"
 #include "xla/backends/gpu/codegen/triton/triton_kernel_source.h"
 #include "xla/backends/gpu/codegen/triton/xtile_compiler.h"
@@ -92,6 +93,19 @@ class CubinCustomKernelCompiler final : public KernelCompiler {
       bool is_xla_fusion) override;
 
  private:
+  absl::StatusOr<LlvmKernelSource> CompileMlirToLlvmImpl(
+      const se::DeviceDescription& device, const HloModule& hlo_module,
+      const std::string& entry_function_name, int unroll_factor,
+      MlirKernelSource source, mlir::MLIRContext& mlir_context);
+
+  absl::StatusOr<TritonWrapperResult> CompileTritonToLlvmImpl(
+      absl::string_view kernel_name, const HloModule& hlo_module,
+      const se::DeviceDescription& device_info,
+      const BlockLevelParameters& block_level_parameters,
+      const llvm::Triple& target_triple, const std::string& data_layout,
+      TritonKernelSource triton_source, BorrowedMlirContext borrowed_context,
+      bool is_xla_fusion);
+
   absl::StatusOr<std::vector<uint8_t>> CompileToCubinImpl(
       LlvmKernelSource kernel_source);
 
