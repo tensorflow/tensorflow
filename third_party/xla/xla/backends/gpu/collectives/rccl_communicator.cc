@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "xla/backends/gpu/collectives/rccl_communicator.h"
 
-#include <atomic>
 #include <cstddef>
 #include <cstdint>
 #include <memory>
@@ -44,6 +43,7 @@ limitations under the License.
 #include "xla/backends/gpu/collectives/rccl_errors.h"
 #include "xla/backends/gpu/collectives/rccl_group.h"
 #include "xla/backends/gpu/collectives/rccl_symmetric_memory.h"
+#include "xla/backends/gpu/collectives/rccl_types.h"
 #include "xla/backends/gpu/collectives/single_threaded_executor.h"
 #include "xla/core/collectives/communicator.h"
 #include "xla/core/collectives/rank_id.h"
@@ -70,79 +70,6 @@ hipStream_t AsHipStream(se::Stream* stream) {
 
 se::Stream* ToStream(const Communicator::Executor& executor) {
   return absl::down_cast<const GpuCollectives::Executor&>(executor).stream();
-}
-
-//==-----------------------------------------------------------------------===//
-// Conversions between XLA and RCCL data types
-//==-----------------------------------------------------------------------===//
-
-static size_t ToNcclCount(PrimitiveType dtype, size_t count) {
-  return primitive_util::IsComplexType(dtype) ? count * 2 : count;
-}
-
-static absl::StatusOr<ncclDataType_t> ToNcclDataType(
-    PrimitiveType dtype, bool is_reduction_op,
-    se::RocmComputeCapability rocm_cc) {
-  switch (dtype) {
-    case F8E5M2:
-      return rocm_cc.has_ocp_fp8_support() ? ncclFloat8e5m2 : ncclInt8;
-    case F8E4M3FN:
-      return rocm_cc.has_ocp_fp8_support() ? ncclFloat8e4m3 : ncclInt8;
-    case S8:
-    case F8E5M2FNUZ:
-    case F8E4M3FNUZ:
-    case F8E8M0FNU:
-      return ncclInt8;
-    case PRED:
-    case U8:
-      return ncclUint8;
-    case S32:
-      return ncclInt32;
-    case U32:
-      return ncclUint32;
-    case S64:
-      return ncclInt64;
-    case U64:
-      return ncclUint64;
-    case F16:
-      return ncclFloat16;
-    case F32:
-    case C64:
-      return ncclFloat32;
-    case F64:
-    case C128:
-      return ncclFloat64;
-    case S16:
-    case U16:
-      // For reductions we expect 16 bit integer types to be promoted to 32-bit.
-      if (is_reduction_op) {
-        return absl::InvalidArgumentError(
-            absl::StrFormat("Unsupported data type for reduction operation: %s",
-                            primitive_util::LowercasePrimitiveTypeName(dtype)));
-      }
-      // For collectives that just move data around, we can use ncclFloat16 for
-      // 16-bit integer data types.
-      return ncclFloat16;
-    case BF16:
-      return ncclBfloat16;
-    default:
-      return absl::InvalidArgumentError(
-          absl::StrFormat("Unsupported data type: %s",
-                          primitive_util::LowercasePrimitiveTypeName(dtype)));
-  }
-}
-
-static ncclRedOp_t ToNcclReduction(ReductionKind kind) {
-  switch (kind) {
-    case ReductionKind::SUM:
-      return ncclSum;
-    case ReductionKind::PRODUCT:
-      return ncclProd;
-    case ReductionKind::MIN:
-      return ncclMin;
-    case ReductionKind::MAX:
-      return ncclMax;
-  }
 }
 
 }  // namespace

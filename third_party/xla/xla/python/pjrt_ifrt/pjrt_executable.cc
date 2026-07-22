@@ -30,6 +30,7 @@ limitations under the License.
 #include "absl/log/vlog_is_on.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/cord.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/tsl/platform/status_macros.h"
@@ -600,24 +601,24 @@ absl::StatusOr<std::string> PjRtExecutable::CommonMetadata::Serialize(
   return serialized_executable;
 }
 
-absl::StatusOr<std::pair<PjRtExecutable::CommonMetadata, absl::string_view>>
+absl::StatusOr<std::pair<PjRtExecutable::CommonMetadata, absl::Cord>>
 PjRtExecutable::CommonMetadata::Deserialize(
-    absl::string_view serialized_executable,
+    const absl::Cord& serialized_executable,
     absl::FunctionRef<absl::Status(const ExecutableVersion& executable_version,
                                    const DeviceListRef& devices)>
         is_executable_version_compatible,
     const XlaDeserializeExecutableOptions& xla_deserialize_executable_options) {
   SerializedXlaExecutableMetadata metadata;
-  tsl::protobuf::io::ArrayInputStream input_stream(
-      serialized_executable.data(), serialized_executable.size());
+  tsl::protobuf::io::CordInputStream input_stream(&serialized_executable);
   if (!tsl::protobuf::util::ParseDelimitedFromZeroCopyStream(
           &metadata, &input_stream, nullptr)) {
     return absl::InvalidArgumentError(
         "Failed to parse SerializedXlaExecutableMetadata");
   }
 
-  absl::string_view serialized_pjrt_executable =
-      serialized_executable.substr(input_stream.ByteCount());
+  absl::Cord serialized_pjrt_executable = serialized_executable.Subcord(
+      input_stream.ByteCount(),
+      serialized_executable.size() - input_stream.ByteCount());
 
   ASSIGN_OR_RETURN(
       std::unique_ptr<xla::ifrt::XlaExecutableVersion> executable_version,
@@ -713,7 +714,8 @@ PjRtExecutable::CommonMetadata::Deserialize(
   common_metadata.outputs_bundle_slice_sizes =
       std::move(outputs_bundle_slice_sizes);
 
-  return std::make_pair(std::move(common_metadata), serialized_pjrt_executable);
+  return std::make_pair(std::move(common_metadata),
+                        std::move(serialized_pjrt_executable));
 }
 
 absl::StatusOr<std::string> PjRtExecutable::Serialize() const {
@@ -871,9 +873,13 @@ PjRtLoadedExecutable::Execute(absl::Span<ArrayRef> args,
           "Only PjRtCompatibleArray is supported, but argument %d is %s", i,
           args[i] ? args[i]->DebugString() : "null");
     }
+    if (pjrt_array->pjrt_buffers().size() != num_computations) {
+      return InvalidArgument(
+          "Argument %d has %d buffers, but executable expects %d computations",
+          i, static_cast<int>(pjrt_array->pjrt_buffers().size()),
+          num_computations);
+    }
     int j = 0;
-    // TODO(hyeontaek): Check pjrt_array->pjrt_buffers().size() ==
-    // num_computations
     for (const auto& pjrt_buffer : pjrt_array->pjrt_buffers()) {
       argument_handles[j].push_back(pjrt_buffer.get());
       ++j;
@@ -885,6 +891,14 @@ PjRtLoadedExecutable::Execute(absl::Span<ArrayRef> args,
   opts.use_major_to_minor_data_layout_for_callbacks = true;
   opts.non_donatable_input_indices = options.non_donatable_input_indices;
   opts.execution_stream_id = options.execution_stream_id;
+  opts.use_output_arena = false;
+  if (options.custom_options.has_value()) {
+    if (auto use_output_arena =
+            options.custom_options->Get<bool>("use_output_arena");
+        use_output_arena.ok()) {
+      opts.use_output_arena = *use_output_arena;
+    }
+  }
   absl::StatusOr<absl::flat_hash_map<int, IncarnationId>> incarnations =
       client()->Incarnations();
   if (incarnations.ok()) {

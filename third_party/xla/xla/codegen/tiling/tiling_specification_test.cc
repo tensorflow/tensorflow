@@ -50,6 +50,16 @@ class TilingSpecificationTest : public HloHardwareIndependentTestBase {
  public:
   TilingSpecificationTest() { RegisterSymbolicExprStorage(&mlir_context_); }
 
+ protected:
+  DebugOptions GetDebugOptionsForTest() const override {
+    DebugOptions debug_options =
+        HloHardwareIndependentTestBase::GetDebugOptionsForTest();
+    // TODO(b/514293537): remove the test after switching to the new tiling.
+    debug_options.set_xla_gpu_experimental_enable_tiling_propagation(false);
+    return debug_options;
+  }
+
+ public:
   SymbolicTileAnalysis AnalyzeModule(HloModule* module) {
     SymbolicTileAnalysisOrError analysis_or_error =
         SymbolicTileAnalysis::AnalyzeComputation(

@@ -121,10 +121,18 @@ TfLiteStatus ImageClassificationStage::Run() {
   // Preprocessing.
   preprocessing_stage_->SetImagePath(&image_path_);
   if (preprocessing_stage_->Run() != kTfLiteOk) return kTfLiteError;
+  if (preprocessing_stage_->GetPreprocessedImageBytes() <
+      inference_stage_->GetModelInfo()->inputs[0]->bytes) {
+    LOG(ERROR)
+        << "Preprocessed image buffer is smaller than model input tensor size";
+    return kTfLiteError;
+  }
   // Inference.
   std::vector<void*> data_ptrs = {};
   data_ptrs.push_back(preprocessing_stage_->GetPreprocessedImageData());
-  inference_stage_->SetInputs(data_ptrs);
+  std::vector<size_t> data_sizes = {
+      preprocessing_stage_->GetPreprocessedImageBytes()};
+  inference_stage_->SetInputs(data_ptrs, data_sizes);
   if (inference_stage_->Run() != kTfLiteOk) return kTfLiteError;
   // Accuracy Eval.
   if (accuracy_eval_stage_) {

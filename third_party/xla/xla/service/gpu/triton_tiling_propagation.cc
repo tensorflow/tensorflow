@@ -729,6 +729,19 @@ DimOrderMapOrError GetPropagatedDimOrdersForDimAlteringOp(
       for (int i = 0; i < permutation.size(); ++i) {
         dst_logical[permutation[i]] = src_logical[i];
       }
+      if (direction == TransformDirection::kOutputToInput) {
+        for (int i = 0; i < permutation.size(); ++i) {
+          if (!src_logical[i].empty() && src_logical[i][0]->slice_start() < 0) {
+            int dst_dim = permutation[i];
+            int major_most_dim = dst->shape().layout().minor_to_major().back();
+            if (dst_dim != major_most_dim) {
+              return FusionDecision::Forbid(
+                  "Transposing sliced concatenate dimension to non-major-most "
+                  "physical position.");
+            }
+          }
+        }
+      }
     } else if (hlo.opcode() == HloOpcode::kBroadcast) {
       const auto* broadcast = Cast<HloBroadcastInstruction>(&hlo);
       dst_logical.resize(broadcast->dimensions().size());
@@ -1006,10 +1019,6 @@ bool CanNotBeFusedIntoAUser(const HloInstruction& hlo) {
                           hlo.users()[0]->opcode() == HloOpcode::kTuple);
 }
 
-// Maximum contracting dimension size for which slice fusion is allowed when
-// the operand has multiple users.
-constexpr int kMaxContractingDimSizeForSliceFusion = 1024;
-
 // Let input and output data volumes of a fusion grow by small amounts.
 constexpr int kIoToleranceBytes = 1024;
 
@@ -1026,9 +1035,10 @@ bool AllUsersAreSlicesWithSameShape(const HloInstruction& operand,
   return true;
 }
 
+}  // namespace
+
 // Tells that fusing an instruction as an input is efficient.
-bool IsInputWorthFusing(const HloInstruction& hlo,
-                        const DotProperties& properties) {
+bool IsInputWorthFusing(const HloInstruction& hlo) {
   std::optional<int64_t> input_minus_output_bytes = InputMinusOutputBytes(hlo);
   if (!input_minus_output_bytes.has_value()) {
     return false;
@@ -1047,20 +1057,19 @@ bool IsInputWorthFusing(const HloInstruction& hlo,
   // Explanation:
   // * Operand user count > 1 - if the producer of the slice has a single user
   //   the slice can be fused into the producer instead of here.
-  // * contracting_dim_size < 1024 - fusing slices disables split-K rewriter,
-  //   which may outweigh the benefit of fusing it in the first place. Small
-  //   contracting dimension almost never benefits from splitting it, so we
-  //   allow the fusion.
   // * AllUsersAreSlicesWithSameShape - slices of the same shape can be
   //   fused into the producer by the multi output fusion pass.
-  //
-  // TODO: b/393299275 - Remove the contracting dim size restriction once the
-  // new emitter lands and we can support slices in contracting dimension with
-  // splits.
-  if (hlo.opcode() == HloOpcode::kSlice && hlo.operand(0)->user_count() > 1 &&
-      properties.contracting_dim_size <= kMaxContractingDimSizeForSliceFusion &&
-      !AllUsersAreSlicesWithSameShape(*hlo.operand(0), hlo.shape())) {
-    return true;
+  if (hlo.opcode() == HloOpcode::kSlice) {
+    const HloInstruction* operand = hlo.operand(0);
+    while (HloPredicateIsOp<HloOpcode::kBitcast, HloOpcode::kTranspose,
+                            HloOpcode::kReshape>(operand) &&
+           operand->user_count() == 1) {
+      operand = operand->operand(0);
+    }
+    if (operand->user_count() > 1 &&
+        !AllUsersAreSlicesWithSameShape(*operand, hlo.shape())) {
+      return true;
+    }
   }
 
   const bool enable_subchannel_dequantisation_fusion =
@@ -1070,8 +1079,8 @@ bool IsInputWorthFusing(const HloInstruction& hlo,
           .xla_gpu_experimental_enable_subchannel_dequantisation_fusion();
   if (hlo.opcode() == HloOpcode::kMultiply) {
     return enable_subchannel_dequantisation_fusion &&
-           IsInputWorthFusing(*hlo.operand(0), properties) &&
-           IsInputWorthFusing(*hlo.operand(1), properties);
+           IsInputWorthFusing(*hlo.operand(0)) &&
+           IsInputWorthFusing(*hlo.operand(1));
   }
   return hlo_query::AllOperandsAreParametersOrConstantsWithSingleUser(hlo);
 }
@@ -1086,8 +1095,6 @@ bool IsOutputWorthFusing(const HloInstruction& hlo) {
   return CanNotBeFusedIntoAUser(hlo) ||
          input_minus_output_bytes.value() >= -kIoToleranceBytes;
 }
-
-}  // namespace
 
 DimOrdersAndReqsOrError GetPropagatedDimOrdersAndRequirements(
     const HloInstruction& hlo, const DimensionOrder& src_dim_order,
@@ -1178,7 +1185,7 @@ GetPropagatedDimOrdersAndRequirementsIfProfitablyFusible(
         }
       }
     }
-    if (!accepted && !IsInputWorthFusing(hlo, properties)) {
+    if (!accepted && !IsInputWorthFusing(hlo)) {
       return FusionDecision::Forbid(
           "Not obviously profitable to fuse as input.");
     }

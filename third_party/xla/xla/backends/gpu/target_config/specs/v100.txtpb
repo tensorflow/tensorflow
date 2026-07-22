@@ -44,6 +44,8 @@ gpu_device_info {
   pcie_bandwidth: 17179869184
   ecc_enabled: true
   name: "Tesla V100-SXM2-16GB"
+  mem_clock_ghz: 0.877
+  max_blocks_per_multiprocessor: 32
   driver_version: "13.0.0"
   runtime_version: "12.8.0"
   compile_time_toolkit_version: "12.8.0"
@@ -52,6 +54,7 @@ gpu_device_info {
   device_interconnect_info {
     active_links: 6
   }
+  collective_memory_granularity: 2097152
 }
 platform_name: "CUDA"
 dnn_version_info {

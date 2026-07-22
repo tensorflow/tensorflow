@@ -36,7 +36,7 @@ const char* input_file = "";
 float abs_error_bound = 0.0;
 float rel_error_bound = 0.0;
 
-using CorrectnessTest = HloPjRtInterpreterReferenceMixin<HloTestBase>;
+using CorrectnessTest = HloInterpreterReferenceMixin<HloTestBase>;
 
 TEST_F(CorrectnessTest, RunAndCompare) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,

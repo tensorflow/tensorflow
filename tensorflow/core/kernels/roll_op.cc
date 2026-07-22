@@ -132,19 +132,20 @@ void DoRoll(const OpKernelContext* context, const int64_t num_elements,
   auto work = [input, output, num_dims, &dim_size, &threshold, &dim_range](
                   int64_t start, int64_t end) {
     // array of indices for each dimension
-    absl::InlinedVector<int, 4> indices(num_dims);
-    int offset = 0;  // the shift along the flattened tensor for current element
+    absl::InlinedVector<int64_t, 4> indices(num_dims);
+    int64_t offset =
+        0;  // the shift along the flattened tensor for current element
     // initialize indices and offset
     for (int i = 0; i < num_dims; i++) {
       // stride is the number of indices over in the flattened tensor
       // you need to skip in order to make it over to an adjacent element
       // along a dimension. dim_size[i] != 0 because we set it to max(dim, 1)
       const int64_t stride = dim_range[i] / dim_size[i];
-      const int shift = dim_size[i] - threshold[i];
-      const int indx = (start / stride) % dim_size[i];
+      const int64_t shift = dim_size[i] - threshold[i];
+      const int64_t indx = (start / stride) % dim_size[i];
       indices[i] = indx;
       // calculate dimension index after the shift
-      const int shifted_indx = (indx + shift) % dim_size[i];
+      const int64_t shifted_indx = (indx + shift) % dim_size[i];
       offset += (shifted_indx - indx) * stride;
     }
 
@@ -153,7 +154,7 @@ void DoRoll(const OpKernelContext* context, const int64_t num_elements,
       // create next combination of indices
       // while at it adjust offset if needed
       for (int j = num_dims - 1; j >= 0; j--) {
-        const int indx = (indices[j] + 1) % dim_size[j];
+        const int64_t indx = (indices[j] + 1) % dim_size[j];
         indices[j] = indx;
         if (indx != 0) {
           if (indx == threshold[j]) {  // we've reached the threshold
@@ -218,7 +219,7 @@ void DoRollWithMemcpy(const OpKernelContext* context,
 
     // array of indices for each dimension
     // indices = [i, j, k, l, m, n]
-    absl::InlinedVector<int, 4> indices(num_dims);
+    absl::InlinedVector<int64_t, 4> indices(num_dims);
     // the offset needed to make all inner non-shifting dimensions become 0
     int64_t remainder_offset = 0;
     // initialize indices
@@ -227,11 +228,11 @@ void DoRollWithMemcpy(const OpKernelContext* context,
       // you need to skip in order to make it over to an adjacent element
       // along a dimension. dim_size[i] != 0 because we set it to max(dim, 1)
       const int64_t stride = dim_range[i] / dim_size[i];
-      const int shift = dim_size[i] - threshold[i];
-      const int indx = (start / stride) % dim_size[i];
+      const int64_t shift = dim_size[i] - threshold[i];
+      const int64_t indx = (start / stride) % dim_size[i];
       indices[i] = indx;
       // calculate dimension index after the shift
-      int out_indx = (indx + shift) % dim_size[i];
+      int64_t out_indx = (indx + shift) % dim_size[i];
       if (i > isd) {
         // trailing zeroes for indices after the inner shifted dimension
         out_indx = 0;
@@ -244,7 +245,7 @@ void DoRollWithMemcpy(const OpKernelContext* context,
 
     // the number of indices in the isd dimension the next group will skip
     // to make it to the next threshold or end point
-    int isd_indx_skip = 0;
+    int64_t isd_indx_skip = 0;
     // the size of the next group
     int64_t group_size = 0;
     // initialize isd_indx_skip and group_size

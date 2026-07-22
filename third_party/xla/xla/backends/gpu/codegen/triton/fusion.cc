@@ -35,6 +35,7 @@ limitations under the License.
 #include "llvm/IR/Module.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/TargetParser/Triple.h"
+#include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/Support/LLVM.h"
 #include "xla/backends/gpu/codegen/fusion_emitter.h"
 #include "xla/backends/gpu/codegen/kernel_compiler.h"
@@ -46,6 +47,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/codegen/emitters/kernel_arguments.h"
 #include "xla/codegen/llvm_kernel_source.h"
+#include "xla/frontend_attributes.h"
 #include "xla/future.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -109,6 +111,11 @@ xla::Future<TritonWrapperResult> TritonFusion::GenerateTritonKernelAndWrapper(
       CreateTritonModule(impl_fn_name, fusion, device_info,
                          block_level_parameters, **borrowed_context));
 
+  // Forward PDL launch annotation from HLO to MLIR.
+  if (DoesPdlLaunch(fusion)) {
+    kernel_source.module()->setAttr(
+        kXlaPdlLaunch, mlir::UnitAttr::get(borrowed_context->get()));
+  }
   return compiler->CompileTritonToLlvm(
       impl_fn_name, *fusion.GetModule(), device_info, block_level_parameters,
       target_triple, data_layout, std::move(kernel_source),
@@ -133,10 +140,10 @@ AsyncThunkSequence TritonFusion::Emit(
                     result.entry.launch_dimensions.block_counts(),
                     result.entry.launch_dimensions.thread_counts_per_block(),
                     result.entry.shmem_bytes));
-            return ThunkSequence::Of(std::make_unique<CustomKernelThunk>(
+            return ThunkSequence::Of<CustomKernelThunk>(
                 thunk_info, std::move(custom_kernel), result.kernel_arguments,
                 result.entry.use_pdl, std::vector<int64_t>{},
-                result.entry.tma_metadata));
+                result.entry.tma_metadata);
           });
 }
 
@@ -236,7 +243,7 @@ xla::Future<TritonFusion::EmitResult> TritonFusion::Emit(
               local_module.getModuleUnlocked()));
 
           return kernel_compiler
-              ->CompileToPtx(LlvmKernelSource{std::move(local_module)})
+              ->CompileToTargetBinary(LlvmKernelSource{std::move(local_module)})
               .Map([kernel_name = sanitized_kernel_name,
                     launch_dims = std::move(launch_dimensions),
                     tma_metadata = triton_wrapper_result.tma_metadata,

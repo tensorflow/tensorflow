@@ -37,6 +37,10 @@ struct BlockwiseQuantization;
 struct BlockwiseQuantizationBuilder;
 struct BlockwiseQuantizationT;
 
+struct MultiAxisQuantization;
+struct MultiAxisQuantizationBuilder;
+struct MultiAxisQuantizationT;
+
 struct QuantizationParameters;
 struct QuantizationParametersBuilder;
 struct QuantizationParametersT;
@@ -802,31 +806,34 @@ enum QuantizationDetails : uint8_t {
   QuantizationDetails_NONE = 0,
   QuantizationDetails_CustomQuantization = 1,
   QuantizationDetails_BlockwiseQuantization = 2,
+  QuantizationDetails_MultiAxisQuantization = 3,
   QuantizationDetails_MIN = QuantizationDetails_NONE,
-  QuantizationDetails_MAX = QuantizationDetails_BlockwiseQuantization
+  QuantizationDetails_MAX = QuantizationDetails_MultiAxisQuantization
 };
 
-inline const QuantizationDetails (&EnumValuesQuantizationDetails())[3] {
+inline const QuantizationDetails (&EnumValuesQuantizationDetails())[4] {
   static const QuantizationDetails values[] = {
     QuantizationDetails_NONE,
     QuantizationDetails_CustomQuantization,
-    QuantizationDetails_BlockwiseQuantization
+    QuantizationDetails_BlockwiseQuantization,
+    QuantizationDetails_MultiAxisQuantization
   };
   return values;
 }
 
 inline const char * const *EnumNamesQuantizationDetails() {
-  static const char * const names[4] = {
+  static const char * const names[5] = {
     "NONE",
     "CustomQuantization",
     "BlockwiseQuantization",
+    "MultiAxisQuantization",
     nullptr
   };
   return names;
 }
 
 inline const char *EnumNameQuantizationDetails(QuantizationDetails e) {
-  if (::flatbuffers::IsOutRange(e, QuantizationDetails_NONE, QuantizationDetails_BlockwiseQuantization)) return "";
+  if (::flatbuffers::IsOutRange(e, QuantizationDetails_NONE, QuantizationDetails_MultiAxisQuantization)) return "";
   const size_t index = static_cast<size_t>(e);
   return EnumNamesQuantizationDetails()[index];
 }
@@ -843,6 +850,10 @@ template<> struct QuantizationDetailsTraits<tflite::BlockwiseQuantization> {
   static const QuantizationDetails enum_value = QuantizationDetails_BlockwiseQuantization;
 };
 
+template<> struct QuantizationDetailsTraits<tflite::MultiAxisQuantization> {
+  static const QuantizationDetails enum_value = QuantizationDetails_MultiAxisQuantization;
+};
+
 template<typename T> struct QuantizationDetailsUnionTraits {
   static const QuantizationDetails enum_value = QuantizationDetails_NONE;
 };
@@ -853,6 +864,10 @@ template<> struct QuantizationDetailsUnionTraits<tflite::CustomQuantizationT> {
 
 template<> struct QuantizationDetailsUnionTraits<tflite::BlockwiseQuantizationT> {
   static const QuantizationDetails enum_value = QuantizationDetails_BlockwiseQuantization;
+};
+
+template<> struct QuantizationDetailsUnionTraits<tflite::MultiAxisQuantizationT> {
+  static const QuantizationDetails enum_value = QuantizationDetails_MultiAxisQuantization;
 };
 
 struct QuantizationDetailsUnion {
@@ -900,6 +915,14 @@ struct QuantizationDetailsUnion {
   const tflite::BlockwiseQuantizationT *AsBlockwiseQuantization() const {
     return type == QuantizationDetails_BlockwiseQuantization ?
       reinterpret_cast<const tflite::BlockwiseQuantizationT *>(value) : nullptr;
+  }
+  tflite::MultiAxisQuantizationT *AsMultiAxisQuantization() {
+    return type == QuantizationDetails_MultiAxisQuantization ?
+      reinterpret_cast<tflite::MultiAxisQuantizationT *>(value) : nullptr;
+  }
+  const tflite::MultiAxisQuantizationT *AsMultiAxisQuantization() const {
+    return type == QuantizationDetails_MultiAxisQuantization ?
+      reinterpret_cast<const tflite::MultiAxisQuantizationT *>(value) : nullptr;
   }
 };
 
@@ -5282,6 +5305,108 @@ inline ::flatbuffers::Offset<BlockwiseQuantization> CreateBlockwiseQuantization(
 
 ::flatbuffers::Offset<BlockwiseQuantization> CreateBlockwiseQuantization(::flatbuffers::FlatBufferBuilder &_fbb, const BlockwiseQuantizationT *_o, const ::flatbuffers::rehasher_function_t *_rehasher = nullptr);
 
+struct MultiAxisQuantizationT : public ::flatbuffers::NativeTable {
+  typedef MultiAxisQuantization TableType;
+  int32_t scales = 0;
+  int32_t zero_points = 0;
+  int32_t block_size = 0;
+  std::vector<int32_t> quantized_dimensions{};
+};
+
+struct MultiAxisQuantization FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
+  typedef MultiAxisQuantizationT NativeTableType;
+  typedef MultiAxisQuantizationBuilder Builder;
+  enum FlatBuffersVTableOffset FLATBUFFERS_VTABLE_UNDERLYING_TYPE {
+    VT_SCALES = 4,
+    VT_ZERO_POINTS = 6,
+    VT_BLOCK_SIZE = 8,
+    VT_QUANTIZED_DIMENSIONS = 10
+  };
+  int32_t scales() const {
+    return GetField<int32_t>(VT_SCALES, 0);
+  }
+  int32_t zero_points() const {
+    return GetField<int32_t>(VT_ZERO_POINTS, 0);
+  }
+  int32_t block_size() const {
+    return GetField<int32_t>(VT_BLOCK_SIZE, 0);
+  }
+  const ::flatbuffers::Vector<int32_t> *quantized_dimensions() const {
+    return GetPointer<const ::flatbuffers::Vector<int32_t> *>(VT_QUANTIZED_DIMENSIONS);
+  }
+  template <bool B = false>
+  bool Verify(::flatbuffers::VerifierTemplate<B> &verifier) const {
+    return VerifyTableStart(verifier) &&
+           VerifyField<int32_t>(verifier, VT_SCALES, 4) &&
+           VerifyField<int32_t>(verifier, VT_ZERO_POINTS, 4) &&
+           VerifyField<int32_t>(verifier, VT_BLOCK_SIZE, 4) &&
+           VerifyOffset(verifier, VT_QUANTIZED_DIMENSIONS) &&
+           verifier.VerifyVector(quantized_dimensions()) &&
+           verifier.EndTable();
+  }
+  MultiAxisQuantizationT *UnPack(const ::flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  void UnPackTo(MultiAxisQuantizationT *_o, const ::flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  static ::flatbuffers::Offset<MultiAxisQuantization> Pack(::flatbuffers::FlatBufferBuilder &_fbb, const MultiAxisQuantizationT* _o, const ::flatbuffers::rehasher_function_t *_rehasher = nullptr);
+};
+
+struct MultiAxisQuantizationBuilder {
+  typedef MultiAxisQuantization Table;
+  ::flatbuffers::FlatBufferBuilder &fbb_;
+  ::flatbuffers::uoffset_t start_;
+  void add_scales(int32_t scales) {
+    fbb_.AddElement<int32_t>(MultiAxisQuantization::VT_SCALES, scales, 0);
+  }
+  void add_zero_points(int32_t zero_points) {
+    fbb_.AddElement<int32_t>(MultiAxisQuantization::VT_ZERO_POINTS, zero_points, 0);
+  }
+  void add_block_size(int32_t block_size) {
+    fbb_.AddElement<int32_t>(MultiAxisQuantization::VT_BLOCK_SIZE, block_size, 0);
+  }
+  void add_quantized_dimensions(::flatbuffers::Offset<::flatbuffers::Vector<int32_t>> quantized_dimensions) {
+    fbb_.AddOffset(MultiAxisQuantization::VT_QUANTIZED_DIMENSIONS, quantized_dimensions);
+  }
+  explicit MultiAxisQuantizationBuilder(::flatbuffers::FlatBufferBuilder &_fbb)
+        : fbb_(_fbb) {
+    start_ = fbb_.StartTable();
+  }
+  ::flatbuffers::Offset<MultiAxisQuantization> Finish() {
+    const auto end = fbb_.EndTable(start_);
+    auto o = ::flatbuffers::Offset<MultiAxisQuantization>(end);
+    return o;
+  }
+};
+
+inline ::flatbuffers::Offset<MultiAxisQuantization> CreateMultiAxisQuantization(
+    ::flatbuffers::FlatBufferBuilder &_fbb,
+    int32_t scales = 0,
+    int32_t zero_points = 0,
+    int32_t block_size = 0,
+    ::flatbuffers::Offset<::flatbuffers::Vector<int32_t>> quantized_dimensions = 0) {
+  MultiAxisQuantizationBuilder builder_(_fbb);
+  builder_.add_quantized_dimensions(quantized_dimensions);
+  builder_.add_block_size(block_size);
+  builder_.add_zero_points(zero_points);
+  builder_.add_scales(scales);
+  return builder_.Finish();
+}
+
+inline ::flatbuffers::Offset<MultiAxisQuantization> CreateMultiAxisQuantizationDirect(
+    ::flatbuffers::FlatBufferBuilder &_fbb,
+    int32_t scales = 0,
+    int32_t zero_points = 0,
+    int32_t block_size = 0,
+    const std::vector<int32_t> *quantized_dimensions = nullptr) {
+  auto quantized_dimensions__ = quantized_dimensions ? _fbb.CreateVector<int32_t>(*quantized_dimensions) : 0;
+  return tflite::CreateMultiAxisQuantization(
+      _fbb,
+      scales,
+      zero_points,
+      block_size,
+      quantized_dimensions__);
+}
+
+::flatbuffers::Offset<MultiAxisQuantization> CreateMultiAxisQuantization(::flatbuffers::FlatBufferBuilder &_fbb, const MultiAxisQuantizationT *_o, const ::flatbuffers::rehasher_function_t *_rehasher = nullptr);
+
 struct QuantizationParametersT : public ::flatbuffers::NativeTable {
   typedef QuantizationParameters TableType;
   std::vector<float> min{};
@@ -5329,6 +5454,9 @@ struct QuantizationParameters FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::T
   const tflite::BlockwiseQuantization *details_as_BlockwiseQuantization() const {
     return details_type() == tflite::QuantizationDetails_BlockwiseQuantization ? static_cast<const tflite::BlockwiseQuantization *>(details()) : nullptr;
   }
+  const tflite::MultiAxisQuantization *details_as_MultiAxisQuantization() const {
+    return details_type() == tflite::QuantizationDetails_MultiAxisQuantization ? static_cast<const tflite::MultiAxisQuantization *>(details()) : nullptr;
+  }
   int32_t quantized_dimension() const {
     return GetField<int32_t>(VT_QUANTIZED_DIMENSION, 0);
   }
@@ -5360,6 +5488,10 @@ template<> inline const tflite::CustomQuantization *QuantizationParameters::deta
 
 template<> inline const tflite::BlockwiseQuantization *QuantizationParameters::details_as<tflite::BlockwiseQuantization>() const {
   return details_as_BlockwiseQuantization();
+}
+
+template<> inline const tflite::MultiAxisQuantization *QuantizationParameters::details_as<tflite::MultiAxisQuantization>() const {
+  return details_as_MultiAxisQuantization();
 }
 
 struct QuantizationParametersBuilder {
@@ -17440,6 +17572,41 @@ inline ::flatbuffers::Offset<BlockwiseQuantization> BlockwiseQuantization::Pack(
       _block_size);
 }
 
+inline MultiAxisQuantizationT *MultiAxisQuantization::UnPack(const ::flatbuffers::resolver_function_t *_resolver) const {
+  auto _o = std::unique_ptr<MultiAxisQuantizationT>(new MultiAxisQuantizationT());
+  UnPackTo(_o.get(), _resolver);
+  return _o.release();
+}
+
+inline void MultiAxisQuantization::UnPackTo(MultiAxisQuantizationT *_o, const ::flatbuffers::resolver_function_t *_resolver) const {
+  (void)_o;
+  (void)_resolver;
+  { auto _e = scales(); _o->scales = _e; }
+  { auto _e = zero_points(); _o->zero_points = _e; }
+  { auto _e = block_size(); _o->block_size = _e; }
+  { auto _e = quantized_dimensions(); if (_e) { _o->quantized_dimensions.resize(_e->size()); for (::flatbuffers::uoffset_t _i = 0; _i < _e->size(); _i++) { _o->quantized_dimensions[_i] = _e->Get(_i); } } else { _o->quantized_dimensions.resize(0); } }
+}
+
+inline ::flatbuffers::Offset<MultiAxisQuantization> CreateMultiAxisQuantization(::flatbuffers::FlatBufferBuilder &_fbb, const MultiAxisQuantizationT *_o, const ::flatbuffers::rehasher_function_t *_rehasher) {
+  return MultiAxisQuantization::Pack(_fbb, _o, _rehasher);
+}
+
+inline ::flatbuffers::Offset<MultiAxisQuantization> MultiAxisQuantization::Pack(::flatbuffers::FlatBufferBuilder &_fbb, const MultiAxisQuantizationT* _o, const ::flatbuffers::rehasher_function_t *_rehasher) {
+  (void)_rehasher;
+  (void)_o;
+  struct _VectorArgs { ::flatbuffers::FlatBufferBuilder *__fbb; const MultiAxisQuantizationT* __o; const ::flatbuffers::rehasher_function_t *__rehasher; } _va = { &_fbb, _o, _rehasher}; (void)_va;
+  auto _scales = _o->scales;
+  auto _zero_points = _o->zero_points;
+  auto _block_size = _o->block_size;
+  auto _quantized_dimensions = _o->quantized_dimensions.size() ? _fbb.CreateVector(_o->quantized_dimensions) : 0;
+  return tflite::CreateMultiAxisQuantization(
+      _fbb,
+      _scales,
+      _zero_points,
+      _block_size,
+      _quantized_dimensions);
+}
+
 inline QuantizationParametersT *QuantizationParameters::UnPack(const ::flatbuffers::resolver_function_t *_resolver) const {
   auto _o = std::unique_ptr<QuantizationParametersT>(new QuantizationParametersT());
   UnPackTo(_o.get(), _resolver);
@@ -22335,6 +22502,10 @@ inline bool VerifyQuantizationDetails(::flatbuffers::VerifierTemplate<B> &verifi
       auto ptr = reinterpret_cast<const tflite::BlockwiseQuantization *>(obj);
       return verifier.VerifyTable(ptr);
     }
+    case QuantizationDetails_MultiAxisQuantization: {
+      auto ptr = reinterpret_cast<const tflite::MultiAxisQuantization *>(obj);
+      return verifier.VerifyTable(ptr);
+    }
     default: return true;
   }
 }
@@ -22363,6 +22534,10 @@ inline void *QuantizationDetailsUnion::UnPack(const void *obj, enum Quantization
       auto ptr = reinterpret_cast<const tflite::BlockwiseQuantization *>(obj);
       return ptr->UnPack(resolver);
     }
+    case QuantizationDetails_MultiAxisQuantization: {
+      auto ptr = reinterpret_cast<const tflite::MultiAxisQuantization *>(obj);
+      return ptr->UnPack(resolver);
+    }
     default: return nullptr;
   }
 }
@@ -22378,6 +22553,10 @@ inline ::flatbuffers::Offset<void> QuantizationDetailsUnion::Pack(::flatbuffers:
       auto ptr = reinterpret_cast<const tflite::BlockwiseQuantizationT *>(value);
       return CreateBlockwiseQuantization(_fbb, ptr, _rehasher).Union();
     }
+    case QuantizationDetails_MultiAxisQuantization: {
+      auto ptr = reinterpret_cast<const tflite::MultiAxisQuantizationT *>(value);
+      return CreateMultiAxisQuantization(_fbb, ptr, _rehasher).Union();
+    }
     default: return 0;
   }
 }
@@ -22390,6 +22569,10 @@ inline QuantizationDetailsUnion::QuantizationDetailsUnion(const QuantizationDeta
     }
     case QuantizationDetails_BlockwiseQuantization: {
       value = new tflite::BlockwiseQuantizationT(*reinterpret_cast<tflite::BlockwiseQuantizationT *>(u.value));
+      break;
+    }
+    case QuantizationDetails_MultiAxisQuantization: {
+      value = new tflite::MultiAxisQuantizationT(*reinterpret_cast<tflite::MultiAxisQuantizationT *>(u.value));
       break;
     }
     default:
@@ -22406,6 +22589,11 @@ inline void QuantizationDetailsUnion::Reset() {
     }
     case QuantizationDetails_BlockwiseQuantization: {
       auto ptr = reinterpret_cast<tflite::BlockwiseQuantizationT *>(value);
+      delete ptr;
+      break;
+    }
+    case QuantizationDetails_MultiAxisQuantization: {
+      auto ptr = reinterpret_cast<tflite::MultiAxisQuantizationT *>(value);
       delete ptr;
       break;
     }

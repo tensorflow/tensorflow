@@ -1,3 +1,18 @@
+# Copyright 2026 The OpenXLA Authors. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
+
 load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library")
 load("//xla/tsl:tsl.default.bzl", "get_compatible_with_portable")
 load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
@@ -32,6 +47,7 @@ cc_library(
     name = "passes",
     srcs = [
         "convert_elementwise_0d_tensor_to_scalar_pass.cc",
+        "legalize_unsigned_integers_as_signless.cc",
         "lower_stablehlo_to_arith.cc",
         "lower_stablehlo_to_xtile.cc",
         "verify_legal_xtile_ops.cc",
@@ -40,6 +56,7 @@ cc_library(
     deps = [
         ":passes_inc_gen",
         "//xla/codegen/emitters/ir:xla",
+        "//xla/codegen/emitters/transforms:lowering_utils",
         "//xla/codegen/xtile/codegen:emitter_helpers",
         "//xla/codegen/xtile/ir:xtile",
         "//xla/service/llvm_ir:llvm_util",

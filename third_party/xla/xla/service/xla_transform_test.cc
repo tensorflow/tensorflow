@@ -20,10 +20,12 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/log/log.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "xla/hlo/ir/hlo_input_output_alias_config.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
@@ -38,9 +40,9 @@ limitations under the License.
 #include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_cse.h"
 #include "xla/shape.h"
+#include "xla/shape_layout.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/lib/strings/proto_serialization.h"
-#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 
@@ -111,14 +113,14 @@ TEST_F(XlaTransformTest, ApplyTransforms) {
     }
   )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          xla::ParseAndReturnUnverifiedModule(hlo_text));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       xla::ParseAndReturnUnverifiedModule(hlo_text));
 
   auto transform = std::make_shared<TrivialTransform>("trivial_transform");
   RegisterHloXlaTransform(HloXlaTransform::PipelineStage::kPreScheduler,
                           transform);
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       bool changed,
       ApplyXlaTransformsToModule(HloXlaTransform::PipelineStage::kPreScheduler,
                                  module.get()));
@@ -136,8 +138,8 @@ TEST_F(XlaTransformTest, TransformMixedPrecisionPad) {
     }
   )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          xla::ParseAndReturnUnverifiedModule(hlo_text));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       xla::ParseAndReturnUnverifiedModule(hlo_text));
 
   auto transform = std::make_shared<TrivialTransform>("trivial_transform");
   RegisterHloXlaTransform(HloXlaTransform::PipelineStage::kPreScheduler,
@@ -153,7 +155,7 @@ TEST_F(XlaTransformTest, TransformMixedPrecisionPad) {
   pipeline.AddPass<ApplyXlaTransforms>(
       HloXlaTransform::PipelineStage::kPostScheduler);
 
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, pipeline.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, pipeline.Run(module.get()));
   EXPECT_TRUE(changed);
 }
 
@@ -184,10 +186,9 @@ TEST_F(XlaTransformTest, PassPipeline) {
       ROOT neg = f32[] negate(p0)
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnUnverifiedModule(hlo_text));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo_text));
 
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, pipeline.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, pipeline.Run(module.get()));
   EXPECT_TRUE(changed);
 }
 
@@ -203,10 +204,10 @@ TEST_F(XlaTransformTest, PjrtCApiExtension) {
         absl::string_view(args->hlo_module.data, args->hlo_module.size)));
 
     DebugOptions debug_options;
-    TF_ASSERT_OK_AND_ASSIGN(auto config, HloModule::CreateModuleConfigFromProto(
-                                             proto, debug_options));
-    TF_ASSERT_OK_AND_ASSIGN(auto module,
-                            HloModule::CreateFromProto(proto, config));
+    ASSERT_OK_AND_ASSIGN(auto config, HloModule::CreateModuleConfigFromProto(
+                                          proto, debug_options));
+    ASSERT_OK_AND_ASSIGN(auto module,
+                         HloModule::CreateFromProto(proto, config));
 
     // Modify the module by adding a Negate instruction.
     auto* root = module->entry_computation()->root_instruction();
@@ -255,12 +256,11 @@ TEST_F(XlaTransformTest, PjrtCApiExtension) {
     }
   )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnUnverifiedModule(hlo_text));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo_text));
 
   LOG(INFO) << "HloModule before XLA transforms:\n" << module->ToString();
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       bool changed,
       ApplyXlaTransformsToModule(HloXlaTransform::PipelineStage::kPreScheduler,
                                  module.get()));
@@ -396,10 +396,10 @@ TEST_F(XlaTransformTest, PjrtCApiExtensionPreservesSchedule) {
         absl::string_view(args->hlo_module.data, args->hlo_module.size)));
 
     DebugOptions debug_options;
-    TF_ASSERT_OK_AND_ASSIGN(auto config, HloModule::CreateModuleConfigFromProto(
-                                             proto, debug_options));
-    TF_ASSERT_OK_AND_ASSIGN(auto module,
-                            HloModule::CreateFromProto(proto, config));
+    ASSERT_OK_AND_ASSIGN(auto config, HloModule::CreateModuleConfigFromProto(
+                                          proto, debug_options));
+    ASSERT_OK_AND_ASSIGN(auto module,
+                         HloModule::CreateFromProto(proto, config));
 
     // Return it as is but mark as changed.
     xla::HloModuleProto modified_proto = module->ToProto();
@@ -445,8 +445,7 @@ TEST_F(XlaTransformTest, PjrtCApiExtensionPreservesSchedule) {
     }
   )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnUnverifiedModule(hlo_text));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo_text));
 
   EXPECT_TRUE(module->has_schedule());
   std::vector<std::string> expected_order;
@@ -456,7 +455,7 @@ TEST_F(XlaTransformTest, PjrtCApiExtensionPreservesSchedule) {
     expected_order.push_back(std::string(inst->name()));
   }
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       bool changed,
       ApplyXlaTransformsToModule(HloXlaTransform::PipelineStage::kPreScheduler,
                                  module.get()));
@@ -505,10 +504,10 @@ TEST_F(XlaTransformTest, PjrtCApiExtensionUnusedComputationScheduleUAF) {
         absl::string_view(args->hlo_module.data, args->hlo_module.size)));
 
     DebugOptions debug_options;
-    TF_ASSERT_OK_AND_ASSIGN(auto config, HloModule::CreateModuleConfigFromProto(
-                                             proto, debug_options));
-    TF_ASSERT_OK_AND_ASSIGN(auto module,
-                            HloModule::CreateFromProto(proto, config));
+    ASSERT_OK_AND_ASSIGN(auto config, HloModule::CreateModuleConfigFromProto(
+                                          proto, debug_options));
+    ASSERT_OK_AND_ASSIGN(auto module,
+                         HloModule::CreateFromProto(proto, config));
 
     // Add unused computation
     auto builder = HloComputation::Builder("unused_comp");
@@ -562,13 +561,12 @@ TEST_F(XlaTransformTest, PjrtCApiExtensionUnusedComputationScheduleUAF) {
     }
   )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnUnverifiedModule(hlo_text));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo_text));
 
   EXPECT_TRUE(module->has_schedule());
 
   // This should not crash.
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       bool changed,
       ApplyXlaTransformsToModule(HloXlaTransform::PipelineStage::kPreScheduler,
                                  module.get()));
@@ -625,7 +623,7 @@ class UpdateHloModuleFromProtoTest : public XlaTransformTest {
 };
 
 TEST_F(UpdateHloModuleFromProtoTest, PropagatesNewLayout) {
-  TF_ASSERT_OK_AND_ASSIGN(auto module, CreateModuleWithNonDefaultLayout());
+  ASSERT_OK_AND_ASSIGN(auto module, CreateModuleWithNonDefaultLayout());
 
   absl::string_view hlo_text = R"(
     HloModule test_module
@@ -634,8 +632,8 @@ TEST_F(UpdateHloModuleFromProtoTest, PropagatesNewLayout) {
       ROOT neg = f32[2,3] negate(p0)
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(HloModuleProto transformed_proto,
-                          HloTextToProto(hlo_text));
+  ASSERT_OK_AND_ASSIGN(HloModuleProto transformed_proto,
+                       HloTextToProto(hlo_text));
 
   EXPECT_TRUE(UpdateHloModuleFromProto(module.get(), transformed_proto).ok());
 
@@ -649,7 +647,7 @@ TEST_F(UpdateHloModuleFromProtoTest, PropagatesNewLayout) {
 }
 
 TEST_F(UpdateHloModuleFromProtoTest, PropagatesNonDefaultLayout) {
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(R"(
     HloModule test_module
     ENTRY main {
       p0 = f32[2,3] parameter(0)
@@ -664,8 +662,8 @@ TEST_F(UpdateHloModuleFromProtoTest, PropagatesNonDefaultLayout) {
       ROOT neg = f32[2,3]{0,1} negate(p0)
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto transformed_module,
-                          ParseAndReturnUnverifiedModule(transformed_hlo));
+  ASSERT_OK_AND_ASSIGN(auto transformed_module,
+                       ParseAndReturnUnverifiedModule(transformed_hlo));
   HloModuleProto transformed_proto = transformed_module->ToProto();
 
   EXPECT_TRUE(UpdateHloModuleFromProto(module.get(), transformed_proto).ok());
@@ -678,7 +676,7 @@ TEST_F(UpdateHloModuleFromProtoTest, PropagatesNonDefaultLayout) {
 }
 
 TEST_F(UpdateHloModuleFromProtoTest, IncompatibleShape) {
-  TF_ASSERT_OK_AND_ASSIGN(auto module, CreateModuleWithNonDefaultLayout());
+  ASSERT_OK_AND_ASSIGN(auto module, CreateModuleWithNonDefaultLayout());
 
   absl::string_view transformed_hlo_text = R"(
     HloModule test_module
@@ -687,8 +685,8 @@ TEST_F(UpdateHloModuleFromProtoTest, IncompatibleShape) {
       ROOT neg = f32[3,4] negate(p0)
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(HloModuleProto transformed_proto,
-                          HloTextToProto(transformed_hlo_text));
+  ASSERT_OK_AND_ASSIGN(HloModuleProto transformed_proto,
+                       HloTextToProto(transformed_hlo_text));
 
   EXPECT_FALSE(UpdateHloModuleFromProto(module.get(), transformed_proto).ok());
 
@@ -699,7 +697,7 @@ TEST_F(UpdateHloModuleFromProtoTest, IncompatibleShape) {
 }
 
 TEST_F(UpdateHloModuleFromProtoTest, IncompatibleParamCount) {
-  TF_ASSERT_OK_AND_ASSIGN(auto module, CreateModuleWithNonDefaultLayout());
+  ASSERT_OK_AND_ASSIGN(auto module, CreateModuleWithNonDefaultLayout());
 
   absl::string_view transformed_hlo_text = R"(
     HloModule test_module
@@ -709,13 +707,39 @@ TEST_F(UpdateHloModuleFromProtoTest, IncompatibleParamCount) {
       ROOT add = f32[2,3] add(p0, p1)
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(HloModuleProto transformed_proto,
-                          HloTextToProto(transformed_hlo_text));
+  ASSERT_OK_AND_ASSIGN(HloModuleProto transformed_proto,
+                       HloTextToProto(transformed_hlo_text));
 
   EXPECT_FALSE(UpdateHloModuleFromProto(module.get(), transformed_proto).ok());
 
   EXPECT_EQ(module->entry_computation_layout().parameter_layout(0),
             ShapeLayout(NonDefaultShape()));
+}
+
+TEST_F(UpdateHloModuleFromProtoTest, PreservesAliasAndDonorConfigs) {
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(R"(
+    HloModule test_module
+    ENTRY main {
+      p0 = f32[2,3] parameter(0)
+      ROOT neg = f32[2,3] negate(p0)
+    }
+  )"));
+
+  HloInputOutputAliasConfig alias_config(
+      module->entry_computation()->root_instruction()->shape());
+  ASSERT_OK(alias_config.SetUpAlias({}, 0, {}));
+  module->set_input_output_alias_config(alias_config);
+
+  HloBufferDonorConfig donor_config;
+  ASSERT_OK(donor_config.AddBufferDonor(0, {}));
+  module->set_buffer_donor_config(donor_config);
+
+  HloModuleProto transformed_proto = module->ToProto();
+
+  EXPECT_OK(UpdateHloModuleFromProto(module.get(), transformed_proto));
+
+  EXPECT_TRUE(module->input_output_alias_config().ParameterHasAlias(0, {}));
+  EXPECT_TRUE(module->buffer_donor_config().ParameterIsBufferDonor(0, {}));
 }
 
 }  // namespace

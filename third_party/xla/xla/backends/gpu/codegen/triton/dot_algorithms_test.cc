@@ -902,7 +902,7 @@ TEST_F(TritonAlgorithmTest, UnsetAlgorithmToBF16) {
   ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloText));
   module->mutable_config()
       .mutable_debug_options()
-      .set_xla_gpu_default_to_alg_dot_bf16_bf16_f32(true);
+      .set_xla_gpu_match_tpu_precision(true);
   EXPECT_OK(
       CreateTritonIrAndFileCheckForDot(module.get(), "triton_fusion_dot", R"(
       CHECK: tt.dot{{.*}}tensor<256x16xbf16> * tensor<16x16xbf16> -> tensor<256x16xf32>
@@ -1587,22 +1587,10 @@ TEST_P(TritonAndBlasSupportForDifferentTensorSizes,
       break;
     case PC::ALG_DOT_BF16_BF16_F32_X6:
     case PC::ALG_DOT_BF16_BF16_F32_X9:
-      if (GpuComputeComp().IsRocm()) {
-        if (result_or_status.status().ok()) {
-          // X6 and X9 algorithms on ROCm marked as not supported
-          // because they often require too much shared memory.
-          EXPECT_FALSE(result_or_status.value())
-              << "algorithms not supported on ROCm";
-        } else if (GpuComputeComp().rocm_compute_capability()->gfx9_mi200()) {
-          EXPECT_EQ(result_or_status.status().code(),
-                    absl::StatusCode::kInternal);
-        }
-      } else {
-        ASSERT_TRUE(result_or_status.status().ok())
-            << "failed to compile " << algorithm_;
-        EXPECT_TRUE(result_or_status.value())
-            << "wrong result for " << algorithm_;
-      }
+      ASSERT_TRUE(result_or_status.status().ok())
+          << "failed to compile " << algorithm_;
+      EXPECT_TRUE(result_or_status.value())
+          << "wrong result for " << algorithm_;
       break;
     case PC::ALG_DOT_F64_F64_F64:
       EXPECT_EQ(result_or_status.status().code(),
@@ -1878,7 +1866,7 @@ class PrecisionTests
     if (algorithm == PC::ALG_UNSET) {
       // Here we test that the default algorithm for f32 dots is
       // ALG_DOT_BF16_BF16_F32 if the flag is set.
-      debug_options.set_xla_gpu_default_to_alg_dot_bf16_bf16_f32(true);
+      debug_options.set_xla_gpu_match_tpu_precision(true);
     }
     if (backend == Backend::kTriton) {
       debug_options.set_xla_gpu_enable_triton_gemm(true);

@@ -27,15 +27,14 @@ limitations under the License.
 #include "xla/stream_executor/device_description.h"
 #include "xla/tests/hlo_pjrt_interpreter_reference_mixin.h"
 
-// TODO(b/210165681): The tests in this file are fragile to HLO op names.
 namespace xla::gpu {
 namespace {
 
 class SwapConvOperandsTest
     : public HloInterpreterReferenceMixin<HloPjRtGpuTestBase> {
  public:
-  void MatchOptimizedHloWithShapes(absl::string_view hlo,
-                                   absl::string_view expected_hlo) {
+  void MatchOptimizedHlo(absl::string_view hlo,
+                         absl::string_view expected_hlo) {
     ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> optimized_module,
                          GetOptimizedModule(hlo));
     absl::StatusOr<bool> filecheck_result =
@@ -67,14 +66,16 @@ ENTRY swap_conv {
       device_description().gpu_compute_capability();
 
   if (gpu_compute_capability.cuda_compute_capability()->IsAtLeastHopper()) {
-    MatchOptimizedHloWithShapes(hlo_text,
-                                R"(
-// CHECK: [[cudnn_conv_1_0:%[^ ]+]] = (f32[1,32,32,128]{3,2,1,0}, u8[{{.*}}]{0}) custom-call(f32[1,30,30,512]{3,2,1,0} {{[^ ]+}}, f32[128,3,3,512]{3,2,1,0} {{[^ ]+}}), window={size=3x3 pad=2_2x2_2 rhs_reversal=1x1}, dim_labels=b01f_o01i->b01f, custom_call_target="__cudnn$convForward"
+    MatchOptimizedHlo(hlo_text,
+                      R"(
+// CHECK: {{.*(custom-call|convolution)\(}}f32[1,30,30,512]{3,2,1,0} {{[^ ]+}}, f32[128,3,3,512]{3,2,1,0} {{[^ ]+}}), window={size=3x3 pad=2_2x2_2 rhs_reversal=1x1}, dim_labels=b01f_o01i->b01f
+// CHECK: {{(__cudnn\$convForward|__cudnn\$fusion)}}
     )");
   } else {
-    MatchOptimizedHloWithShapes(hlo_text,
-                                R"(
-// CHECK: [[cudnn_conv_1_0:%[^ ]+]] = (f32[1,128,32,32]{3,2,1,0}, u8[{{.*}}]{0}) custom-call(f32[1,512,30,30]{3,2,1,0} [[fusion_1_1:%[^ ]+]], f32[128,512,3,3]{3,2,1,0} [[transpose_1_2:%[^ ]+]]), window={size=3x3 pad=2_2x2_2 rhs_reversal=1x1}, dim_labels=bf01_oi01->bf01, custom_call_target="__cudnn$convForward"
+    MatchOptimizedHlo(hlo_text,
+                      R"(
+// CHECK: {{.*(custom-call|convolution)\(}}f32[1,512,30,30]{3,2,1,0} {{[^ ]+}}, f32[128,512,3,3]{3,2,1,0} {{[^ ]+}}), window={size=3x3 pad=2_2x2_2 rhs_reversal=1x1}, dim_labels=bf01_oi01->bf01
+// CHECK: {{(__cudnn\$convForward|__cudnn\$fusion)}}
     )");
   }
 
@@ -98,14 +99,16 @@ ENTRY swap_conv {
       device_description().gpu_compute_capability();
 
   if (gpu_compute_capability.cuda_compute_capability()->IsAtLeastHopper()) {
-    MatchOptimizedHloWithShapes(hlo_text,
-                                R"(
-// CHECK: [[cudnn_conv_1_0:%[^ ]+]] = (f32[1,32,32,128]{3,2,1,0}, u8[{{[0-9]*}}]{0}) custom-call(f32[1,30,30,512]{3,2,1,0} {{[^ ]+}}, f32[128,3,3,512]{3,2,1,0} {{[^ ]+}}), window={size=3x3 pad=2_2x2_2 rhs_reversal=1x1}, dim_labels=b01f_o01i->b01f, custom_call_target="__cudnn$convForward"
+    MatchOptimizedHlo(hlo_text,
+                      R"(
+// CHECK: {{.*(custom-call|convolution)\(}}f32[1,30,30,512]{3,2,1,0} {{[^ ]+}}, f32[128,3,3,512]{3,2,1,0} {{[^ ]+}}), window={size=3x3 pad=2_2x2_2 rhs_reversal=1x1}, dim_labels=b01f_o01i->b01f
+// CHECK: {{(__cudnn\$convForward|__cudnn\$fusion)}}
     )");
   } else {
-    MatchOptimizedHloWithShapes(hlo_text,
-                                R"(
-// CHECK: [[cudnn_conv_1_0:%[^ ]+]] = (f32[1,128,32,32]{3,2,1,0}, u8[{{[0-9]*}}]{0}) custom-call(f32[1,512,30,30]{3,2,1,0} [[fusion_1_1:%[^ ]+]], f32[128,512,3,3]{3,2,1,0} [[transpose_1_2:%[^ ]+]]), window={size=3x3 pad=2_2x2_2 rhs_reversal=1x1}, dim_labels=bf01_oi01->bf01, custom_call_target="__cudnn$convForward"
+    MatchOptimizedHlo(hlo_text,
+                      R"(
+// CHECK: {{.*(custom-call|convolution)\(}}f32[1,512,30,30]{3,2,1,0} {{[^ ]+}}, f32[128,512,3,3]{3,2,1,0} {{[^ ]+}}), window={size=3x3 pad=2_2x2_2 rhs_reversal=1x1}, dim_labels=bf01_oi01->bf01
+// CHECK: {{(__cudnn\$convForward|__cudnn\$fusion)}}
     )");
   }
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-3, 1e-3}));
@@ -127,10 +130,11 @@ ENTRY %conv3DBackpropInputV2(arg0.1: f32[3,3,3,2,3]) -> f32[2,4,3,3,2] {
 }
 )";
 
-  MatchOptimizedHloWithShapes(hlo_text,
-                              R"(
-// CHECK:   [[cudnn_conv_bw_input_2_0:%[^ ]+]] = (f32[2,2,5,3,3]{4,3,2,1,0}, u8[0]{0}) custom-call(f32[2,3,2,2,2]{4,3,2,1,0} [[constant_1:%[^ ]+]], f32[3,2,3,3,3]{4,3,2,1,0} [[transpose_2:%[^ ]+]]), window={size=3x3x3 stride=2x2x2 pad=0_0x1_1x1_1}, dim_labels=bf012_oi012->bf012, custom_call_target="__cudnn$convBackwardInput"
-      )");
+  MatchOptimizedHlo(hlo_text,
+                    R"(
+// CHECK: {{.*(custom-call|convolution)\(}}f32[2,3,2,2,2]{4,3,2,1,0} {{[^ ]+}}, f32[3,2,3,3,3]{4,3,2,1,0} {{[^ ]+}}), window={size=3x3x3 {{(stride=2x2x2 pad=0_0x1_1x1_1|pad=2_1x1_1x1_1 lhs_dilate=2x2x2)}}
+// CHECK: {{(__cudnn\$convBackwardInput|__cudnn\$fusion)}}
+    )");
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-5, 1e-5}));
 }
 

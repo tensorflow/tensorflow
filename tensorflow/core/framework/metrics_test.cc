@@ -127,4 +127,35 @@ TEST(Metrics, TFDataPrefetchResidenceTime) {
   EXPECT_EQ(sampler.Read("node_2").num(), 1);
 }
 
+TEST(Metrics, TFDataPrefetchEnqueue) {
+  CellReader<int64_t> counter("/tensorflow/data/prefetch_buffer");
+
+  tensorflow::metrics::RecordTFDataPrefetchEnqueue("node_1");
+  tensorflow::metrics::RecordTFDataPrefetchEnqueue("node_1");
+  tensorflow::metrics::RecordTFDataPrefetchEnqueue("node_2");
+
+  EXPECT_EQ(counter.Read("node_1", "enqueue"), 2);
+  EXPECT_EQ(counter.Read("node_2", "enqueue"), 1);
+}
+
+TEST(Metrics, TFDataPrefetchDequeue) {
+  CellReader<int64_t> counter("/tensorflow/data/prefetch_buffer");
+
+  tensorflow::metrics::RecordTFDataPrefetchDequeue("node_1");
+  tensorflow::metrics::RecordTFDataPrefetchDequeue("node_2");
+
+  EXPECT_EQ(counter.Read("node_1", "dequeue"), 1);
+  EXPECT_EQ(counter.Read("node_2", "dequeue"), 1);
+}
+
+TEST(Metrics, TFDataPrefetchBufferSize) {
+  CellReader<int64_t> gauge("/tensorflow/data/prefetch_buffer_size");
+
+  tensorflow::metrics::RecordTFDataPrefetchBufferSize("node_1", 5);
+  EXPECT_EQ(gauge.Read("node_1"), 5);
+
+  tensorflow::metrics::RecordTFDataPrefetchBufferSize("node_1", 3);
+  EXPECT_EQ(gauge.Read("node_1"), 3);
+}
+
 }  // namespace

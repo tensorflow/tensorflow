@@ -15,18 +15,20 @@ limitations under the License.
 
 #include "xla/hlo/ir/backend_config.h"
 
+#include <cstdint>
 #include <memory>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "absl/base/thread_annotations.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
+#include "absl/types/span.h"
 #include "xla/tsl/platform/status_macros.h"
 #include "google/protobuf/message.h"
 #include "re2/re2.h"
-#include "xla/tsl/platform/errors.h"
 #include "xla/util.h"
 #include "tsl/platform/human_readable_json.h"
 #include "tsl/platform/protobuf.h"
@@ -143,4 +145,31 @@ bool BackendConfigWrapper::operator==(const BackendConfigWrapper& other) const {
 
   return GetRawString() == *other_raw_string;
 }
+
+namespace {
+CoreAssignmentHandler* g_core_assignment_handler = nullptr;
+}  // namespace
+
+void RegisterCoreAssignmentHandler(CoreAssignmentHandler* handler) {
+  g_core_assignment_handler = handler;
+}
+
+absl::Status SetCoreAssignment(HloInstruction* inst,
+                               absl::Span<const int64_t> core_ids) {
+  if (g_core_assignment_handler != nullptr) {
+    return g_core_assignment_handler->SetCoreAssignment(inst, core_ids);
+  }
+  return absl::UnimplementedError(
+      "Core assignment is not implemented for this target.");
+}
+
+absl::StatusOr<std::vector<int64_t>> GetCoreAssignment(
+    const HloInstruction* inst) {
+  if (g_core_assignment_handler != nullptr) {
+    return g_core_assignment_handler->GetCoreAssignment(inst);
+  }
+  return absl::UnimplementedError(
+      "Core assignment is not implemented for this target.");
+}
+
 }  // namespace xla

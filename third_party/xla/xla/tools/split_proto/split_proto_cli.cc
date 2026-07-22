@@ -52,12 +52,13 @@ Subcommands:
                      from unpack-aot) back into a Split Proto
                      ExecutableAndOptionsProto, i.e. the reverse of
                      unpack-aot.
+  aot-info:          Prints an overview of the AOT binary (module name, target
+                     config, "interesting" thunk types, etc) to stdout.
   unpack:            Reconstructs a standard protobuf from a split proto file.
                      The proto type is automatically inferred from the split
                      manifest.
   pack:              Converts a standard protobuf (text or binary) into a split
-                     proto. Requires `--proto_type` to identify the message type
-
+                     proto. Requires `--proto_type` to identify the message type.
 
 Usage:
   # Convert an AOT binary into a textproto, so that you can inspect the
@@ -67,11 +68,16 @@ Usage:
   # Re-pack the textproto (which you might have edited) back into a binary.
   split-proto-cli pack-aot output.textproto --output_file=repacked.riegeli
 
+  # Print details about an AOT binary to stdout, including the module name, 
+  # target config, and a summary of compiled thunks (excluding common/trivial 
+  # ones).
+  split-proto-cli aot-info aot_binary.riegeli
+
   # Pack a standard proto (text or binary) into a split proto.
-  split-proto-cli pack --proto_type=<type> aot_binary.riegeli
+  split-proto-cli pack --proto_type=<type> input.pb --output_file=output.riegeli
 
   # Unpack a split proto into a standard proto (text or binary).
-  split-proto-cli unpack aot_binary.riegeli
+  split-proto-cli unpack input.riegeli --output_file=output.pb
 
 Input/Output:
   If the input file is omitted or '-', it reads from stdin.
@@ -126,10 +132,10 @@ absl::Status RunMain(int argc, char** argv) {
 
   std::unique_ptr<riegeli::Reader> reader;
   if (argc < 3 || std::string(argv[2]) == "-") {
-    LOG(INFO) << "Reading input from stdin";
+    std::cout << "Reading input from stdin" << "\n";
     reader = riegeli::Maker<riegeli::StdIn>();
   } else {
-    LOG(INFO) << "Reading input from file: " << argv[2];
+    std::cout << "Reading input from file: " << argv[2] << "\n";
     reader = CreateRiegeliFileReader(argv[2]);
     TF_RETURN_WITH_CONTEXT_IF_ERROR(
         reader->status(), absl::StrCat("Failed to open input file: ", argv[2]));
@@ -138,10 +144,10 @@ absl::Status RunMain(int argc, char** argv) {
 
   std::unique_ptr<riegeli::Writer> writer;
   if (output_file.empty() || output_file == "-") {
-    LOG(INFO) << "Output will be written to stdout";
+    std::cout << "Output will be written to stdout" << "\n";
     writer = riegeli::Maker<riegeli::StdOut>();
   } else {
-    LOG(INFO) << "Output will be written to file: " << output_file;
+    std::cout << "Output will be written to file: " << output_file << "\n";
     writer = CreateRiegeliFileWriter(output_file);
     TF_RETURN_WITH_CONTEXT_IF_ERROR(
         writer->status(),
@@ -184,6 +190,8 @@ absl::Status RunMain(int argc, char** argv) {
     RETURN_IF_ERROR(parse_format(output_format_str, &options.output_format));
 
     status = UnpackAot(std::move(reader), std::move(writer), options);
+  } else if (subcommand == "aot-info") {
+    status = AotInfo(std::move(reader));
   } else {
     return absl::InvalidArgumentError(
         absl::StrCat("Unknown subcommand: ", subcommand));
@@ -199,6 +207,13 @@ int main(int argc, char** argv) {
   absl::Status status = xla::split_proto_cli::RunMain(argc, argv);
   if (!status.ok()) {
     std::cerr << "Error: " << status.ToString() << "\n";
+    if (status.code() == absl::StatusCode::kOutOfRange) {
+      std::cerr << "If you are writing to a file in a workspace directory, "
+                   "there may be size limits. Try writing to a different "
+                   "directory (e.g. "
+                   "in /tmp)"
+                << "\n";
+    }
     return 1;
   }
   return 0;

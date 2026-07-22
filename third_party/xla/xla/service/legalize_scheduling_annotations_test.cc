@@ -670,7 +670,8 @@ TEST_F(SchedulingAnnotationPropagationTest, TwoGroups) {
     slice = f32[16,64,256]{2,1,0} slice(c0), slice={[0:16], [0:64], [0:256]}
     c1 = f32[16,256,256]{2,1,0} convolution(slice, slice), window={size=16 stride=15 lhs_dilate=16}, dim_labels=0fb_0io->0fb, frontend_attributes={_scheduling_group_id="3"}
     agd0 = f32[1024,1024]{1,0} all-gather-done(ags0), frontend_attributes={_scheduling_group_id="2"}
-    ROOT tuple = (f32[16,256,256]{2,1,0}, f32[1024,1024]{1,0}) tuple(c0, agd0)
+    ag = f32[1024,1024]{1,0} all-gather(p0), replica_groups={{0,1,2,3}}, dimensions={0}, frontend_attributes={_scheduling_group_id="3"}
+    ROOT tuple = (f32[16,256,256]{2,1,0}, f32[1024,1024]{1,0}, f32[1024,1024]{1,0}) tuple(c0, agd0, ag)
   }
 )";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
@@ -752,7 +753,8 @@ TEST_F(SchedulingAnnotationPropagationTest, ConflictingAnnotationGroups) {
     slice = f32[16,64,256]{2,1,0} slice(c0), slice={[0:16], [0:64], [0:256]}, control-predecessors={ags0}
     c1 = f32[16,256,256]{2,1,0} convolution(slice, slice), window={size=16 stride=15 lhs_dilate=16}, dim_labels=0fb_0io->0fb, frontend_attributes={_scheduling_group_id="3"}
     agd0 = f32[1024,1024]{1,0} all-gather-done(ags0), frontend_attributes={_scheduling_group_id="2"}, control-predecessors={slice}
-    ROOT tuple = (f32[16,256,256]{2,1,0}, f32[1024,1024]{1,0}) tuple(c0, agd0)
+    ag = f32[1024,1024]{1,0} all-gather(p0), replica_groups={{0,1,2,3}}, dimensions={0}, frontend_attributes={_scheduling_group_id="3"}
+    ROOT tuple = (f32[16,256,256]{2,1,0}, f32[1024,1024]{1,0}, f32[1024,1024]{1,0}) tuple(c0, agd0, ag)
   }
 )";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
@@ -780,7 +782,9 @@ ENTRY entry {
   a2 = f32[16]{0} add(a0, a1)
   a3 = f32[16]{0} add(p0, a2), frontend_attributes={_scheduling_group_id="1"}
   a4 = f32[16]{0} add(p1, a2), frontend_attributes={_scheduling_group_id="2"}
-  ROOT tuple = (f32[16]{0}, f32[16]{0}) tuple(a3, a4)
+  ag1 = f32[16]{0} all-gather(p0), replica_groups={}, dimensions={0}, frontend_attributes={_scheduling_group_id="1"}
+  ag2 = f32[16]{0} all-gather(p1), replica_groups={}, dimensions={0}, frontend_attributes={_scheduling_group_id="2"}
+  ROOT tuple = (f32[16]{0}, f32[16]{0}, f32[16]{0}, f32[16]{0}) tuple(a3, a4, ag1, ag2)
 }
 )";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
@@ -1029,5 +1033,59 @@ ENTRY entry {
   EXPECT_TRUE(annotation);
 }
 
+TEST_F(SchedulingAnnotationPropagationTest, FillSimpleGaps) {
+  absl::string_view hlo_string = R"(
+HloModule module, is_scheduled=true
+
+ENTRY entry {
+  p0 = f32[8]{0} parameter(0)
+  a0 = f32[16]{0} all-gather(p0), replica_groups={{0,1},{2,3}}, dimensions={0}, frontend_attributes={_scheduling_group_id="1"}
+  b1 = f32[16]{0} bitcast(a0)
+  c1 = f32[16]{0} copy(b1)
+  ROOT a1 = f32[32]{0} all-gather(c1), replica_groups={{0,1},{2,3}}, dimensions={0}, frontend_attributes={_scheduling_group_id="1"}
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  LegalizeSchedulingAnnotations::Config config;
+  config.keep_sync_annotation = [](const HloInstruction* instr) {
+    return instr->opcode() == HloOpcode::kAllGather;
+  };
+
+  auto result = LegalizeSchedulingAnnotations(config).Run(hlo_module.get());
+  EXPECT_IS_OK(result);
+  VLOG(1) << "module after: " << hlo_module->ToString();
+  HloInstruction* bitcast = FindInstruction(hlo_module.get(), "b1");
+  EXPECT_TRUE(GetSchedulingAnnotation(bitcast).value());
+  HloInstruction* copy = FindInstruction(hlo_module.get(), "c1");
+  EXPECT_TRUE(GetSchedulingAnnotation(copy).value());
+}
+
+TEST_F(LegalizeSchedulingAnnotationsTest, DropAnnotationsProperly) {
+  absl::string_view hlo_string = R"(
+HloModule module, is_scheduled=true
+
+ENTRY %main.1 {
+  %Arg_0.1 = f32[8,128]{1,0} parameter(0)
+  %custom-call.2 = f32[8,128]{1,0} custom-call(%Arg_0.1), custom_call_target="tpu_custom_call", frontend_attributes={_scheduling_group_id="0"}
+  %add.1 = f32[8,128]{1,0} add(%custom-call.2, %custom-call.2), frontend_attributes={_scheduling_group_id="0"}
+  ROOT %custom-call.3 = f32[8,128]{1,0} custom-call(%add.1), custom_call_target="tpu_custom_call", frontend_attributes={_scheduling_group_id="0"}
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  LegalizeSchedulingAnnotations::Config config;
+  config.keep_sync_annotation = [](const HloInstruction* instr) {
+    return instr->opcode() == HloOpcode::kCustomCall;
+  };
+
+  auto result = LegalizeSchedulingAnnotations(config).Run(hlo_module.get());
+  EXPECT_IS_OK(result);
+  VLOG(1) << "module after: " << hlo_module->ToString();
+  HloInstruction* cc1 = FindInstruction(hlo_module.get(), "custom-call.2");
+  HloInstruction* cc2 = FindInstruction(hlo_module.get(), "custom-call.3");
+  EXPECT_FALSE(GetSchedulingAnnotation(cc1).value());
+  EXPECT_FALSE(GetSchedulingAnnotation(cc2).value());
+}
 }  // namespace
 }  // namespace xla

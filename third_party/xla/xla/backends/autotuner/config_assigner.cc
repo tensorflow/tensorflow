@@ -31,6 +31,7 @@ limitations under the License.
 #include "absl/log/vlog_is_on.h"
 #include "absl/memory/memory.h"
 #include "absl/status/status.h"
+#include "absl/strings/escaping.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
@@ -39,7 +40,9 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/tsl/platform/status_macros.h"
 #include "google/protobuf/text_format.h"
+#include "xla/autotuning.pb.h"
 #include "xla/backends/autotuner/autotuner_cache_interface.h"
+#include "xla/backends/autotuner/backends.pb.h"
 #include "xla/backends/autotuner/codegen_backend.h"
 #include "xla/backends/autotuner/codegen_orchestrator.h"
 #include "xla/backends/autotuner/config_runner.h"
@@ -558,28 +561,23 @@ absl::Status ConfigAssigner::DumpTuningLogs() {
   return absl::OkStatus();
 }
 
-std::string AutotuneConfig::ToString() const {
+std::string ConfigAssigner::Options::ToString() const {
   return absl::StrFormat(
-      "{\n"
-      "  \"check_buffers\": %s,\n"
-      "  \"relative_tolerance\": %f,\n"
-      "  \"crash_on_check_failure\": %s,\n"
-      "  \"scratch_bytes_window_size_us\": %d,\n"
-      "  \"expect_all_instructions_in_cache\": %s,\n"
-      "  \"dump_logs_to\": \"%s\",\n"
-      "  \"exclude_cublas_config\": %s,\n"
-      "  \"select_first_config\": %s,\n"
-      "  \"use_default_config\": %s,\n"
-      "  \"dump_hlos\": %s,\n"
-      "  \"allow_reg_spills\": %s\n"
-      "}",
-      check_buffers ? "true" : "false", relative_tolerance,
-      crash_on_check_failure ? "true" : "false", scratch_bytes_window_size_us,
-      expect_all_instructions_in_cache ? "true" : "false", dump_logs_to,
-      exclude_cublas_config ? "true" : "false",
-      select_first_config ? "true" : "false",
-      use_default_config ? "true" : "false", dump_hlos ? "true" : "false",
-      allow_reg_spills_fn ? "dynamic" : "null");
+      R"json({
+  "check_buffers": %v,
+  "relative_tolerance": %g,
+  "crash_on_check_failure": %v,
+  "scratch_bytes_window_size_us": %d,
+  "expect_all_instructions_in_cache": %v,
+  "dump_logs_to": "%s",
+  "select_first_config": %v,
+  "use_default_config": %v,
+  "dump_hlos": %v
+})json",
+      check_buffers, relative_tolerance, crash_on_check_failure,
+      scratch_bytes_window_size_us, expect_all_instructions_in_cache,
+      absl::CEscape(dump_logs_to), select_first_config, use_default_config,
+      dump_hlos);
 }
 
 AutotunerCacheInterface::CacheStats ConfigAssigner::GetCacheStats() const {

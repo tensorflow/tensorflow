@@ -106,11 +106,12 @@ TEST(CudaCommandBufferTest, CuDnnExplicitConstructionAndUpdateWork) {
         .set_uid(3);
     return graph;
   }());
-  ASSERT_OK(graph.Prepare(dnn_support,
+  ASSERT_OK(graph.Prepare(&dnn_support, executor->GetDeviceDescription(),
                           EngineOptions{/*require_determinism=*/false,
                                         /*allow_tf32=*/true,
                                         /*require_command_buffer=*/true}));
-  ASSERT_OK(graph.Build(dnn_support, /*plan_id=*/std::nullopt));
+  ASSERT_OK(graph.Build(&dnn_support, executor->GetDeviceDescription(),
+                        /*plan_id=*/std::nullopt));
   EXPECT_THAT(graph.SupportsExplicitCommandBufferConstruction(),
               IsOkAndHolds(true));
 

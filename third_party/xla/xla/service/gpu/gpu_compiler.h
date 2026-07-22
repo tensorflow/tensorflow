@@ -130,6 +130,10 @@ class GpuCompiler : public LLVMCompiler {
     return false;
   }
 
+  virtual bool IsScaledDotSupportedByBackend(
+      const HloInstruction* instr,
+      const GpuTargetConfig& gpu_target_config) const;
+
   enum class AlgebraicSimplifierMode {
     kLayoutInsensitive,
     kPostFusionSimplification,
@@ -162,6 +166,9 @@ class GpuCompiler : public LLVMCompiler {
     absl::MutexLock lock(user_asm_hook_m_);
     user_asm_hook_ = nullptr;
   }
+
+  // Clears the MLIR context pool.
+  void ClearMlirContextPool();
 
  protected:
   struct BackendCompileResult {
@@ -199,9 +206,10 @@ class GpuCompiler : public LLVMCompiler {
       const MultiProcessKeyValueStore& key_value_store);
 
   // Runs cuDNN fusion and custom call compiler passes.
-  virtual absl::Status RunCudnnCompilerPasses(HloModule* module,
-                                              se::dnn::DnnSupport& dnn_support,
-                                              BinaryMap* dnn_compiled_graphs) {
+  virtual absl::Status RunCudnnCompilerPasses(
+      HloModule* module, se::StreamExecutor* stream_exec,
+      const Compiler::GpuTargetConfig& gpu_target_config,
+      BinaryMap* dnn_compiled_graphs) {
     return absl::OkStatus();
   }
 

@@ -165,8 +165,8 @@ typedef Eigen::GpuDevice GPUDevice;
 // Forward declarations for functor specializations for GPU.
 template <>
 void FakeQuantWithMinMaxArgsFunctor<GPUDevice>::operator()(
-    const GPUDevice& d, typename TTypes<float>::ConstFlat inputs,
-    const float min, const float max, const int quant_min, const int quant_max,
+    const GPUDevice& d, typename TTypes<float>::ConstFlat inputs, float min,
+    float max, int quant_min, int quant_max,
     typename TTypes<float>::Flat outputs);
 extern template struct FakeQuantWithMinMaxArgsFunctor<GPUDevice>;
 REGISTER_KERNEL_BUILDER(Name("FakeQuantWithMinMaxArgs").Device(DEVICE_GPU),
@@ -175,9 +175,8 @@ REGISTER_KERNEL_BUILDER(Name("FakeQuantWithMinMaxArgs").Device(DEVICE_GPU),
 template <>
 void FakeQuantWithMinMaxArgsGradientFunctor<GPUDevice>::operator()(
     const GPUDevice& d, typename TTypes<float>::ConstFlat gradients,
-    typename TTypes<float>::ConstFlat inputs, const float min, const float max,
-    const int quant_min, const int quant_max,
-    typename TTypes<float>::Flat backprops);
+    typename TTypes<float>::ConstFlat inputs, float min, float max,
+    int quant_min, int quant_max, typename TTypes<float>::Flat backprops);
 REGISTER_KERNEL_BUILDER(
     Name("FakeQuantWithMinMaxArgsGradient").Device(DEVICE_GPU),
     FakeQuantWithMinMaxArgsGradientOp<GPUDevice>);
@@ -309,8 +308,8 @@ template <>
 void FakeQuantWithMinMaxVarsFunctor<GPUDevice>::operator()(
     const GPUDevice& d, typename TTypes<float>::ConstFlat inputs,
     typename TTypes<float>::ConstScalar min,
-    typename TTypes<float>::ConstScalar max, const int quant_min,
-    const int quant_max, typename TTypes<float>::Flat output);
+    typename TTypes<float>::ConstScalar max, int quant_min, int quant_max,
+    typename TTypes<float>::Flat output);
 extern template struct FakeQuantWithMinMaxVarsFunctor<GPUDevice>;
 REGISTER_KERNEL_BUILDER(Name("FakeQuantWithMinMaxVars")
                             .Device(DEVICE_GPU)
@@ -323,8 +322,8 @@ void FakeQuantWithMinMaxVarsGradientFunctor<GPUDevice>::operator()(
     const GPUDevice& d, typename TTypes<float>::ConstFlat gradients,
     typename TTypes<float>::ConstFlat inputs,
     typename TTypes<float>::ConstScalar min,
-    typename TTypes<float>::ConstScalar max, const int quant_min,
-    const int quant_max, typename TTypes<float>::Flat backprops_wrt_input,
+    typename TTypes<float>::ConstScalar max, int quant_min, int quant_max,
+    typename TTypes<float>::Flat backprops_wrt_input,
     typename TTypes<float>::Scalar backprop_wrt_min,
     typename TTypes<float>::Scalar backprop_wrt_max);
 extern template struct FakeQuantWithMinMaxVarsGradientFunctor<GPUDevice>;
@@ -482,8 +481,8 @@ template <>
 void FakeQuantWithMinMaxVarsPerChannelFunctor<GPUDevice>::operator()(
     const GPUDevice& d, typename TTypes<float>::ConstMatrix inputs,
     typename TTypes<float>::ConstFlat min,
-    typename TTypes<float>::ConstFlat max, const int quant_min,
-    const int quant_max, typename TTypes<float>::Matrix outputs);
+    typename TTypes<float>::ConstFlat max, int quant_min, int quant_max,
+    typename TTypes<float>::Matrix outputs);
 extern template struct FakeQuantWithMinMaxVarsPerChannelFunctor<GPUDevice>;
 
 REGISTER_KERNEL_BUILDER(Name("FakeQuantWithMinMaxVarsPerChannel")
@@ -497,7 +496,7 @@ void FakeQuantWithMinMaxVarsPerChannelGradientFunctor<GPUDevice>::operator()(
     const GPUDevice& d, typename TTypes<float>::ConstMatrix gradients,
     typename TTypes<float>::ConstMatrix inputs,
     typename TTypes<float>::ConstVec min, typename TTypes<float>::ConstVec max,
-    const int quant_min, const int quant_max,
+    int quant_min, int quant_max,
     typename TTypes<float>::Matrix backprops_wrt_input,
     typename TTypes<float>::Vec backprop_wrt_min,
     typename TTypes<float>::Vec backprop_wrt_max);

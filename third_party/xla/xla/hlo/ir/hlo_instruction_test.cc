@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
+#include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_print_options.h"
@@ -699,6 +700,36 @@ TEST_F(HloInstructionTest, MapUnaryOutputDimToOperandDimReshapeMixed) {
   EXPECT_EQ(reshape->MapUnaryOutputDimToOperandDim(0), 1);
   EXPECT_EQ(reshape->MapUnaryOutputDimToOperandDim(1), std::nullopt);
   EXPECT_EQ(reshape->MapUnaryOutputDimToOperandDim(2), 2);
+}
+
+TEST_F(HloInstructionTest, AddCallOperandWithoutChainPropagation) {
+  const char* const hlo = R"(
+HloModule test
+
+async_computation {
+  p0 = f32[2,3] parameter(0)
+  abs = f32[2,3] abs(p0)
+  ROOT tuple = (f32[2,3]) tuple(abs)
+}
+
+ENTRY main {
+  p0 = f32[2,3] parameter(0)
+  start = ((f32[2,3]), f32[2,3], s32[]) async-start(p0), calls=async_computation
+  ROOT update = ((f32[2,3]), f32[2,3], s32[]) async-update(start)
+}
+)";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
+  HloAsyncStartInstruction* start =
+      Cast<HloAsyncStartInstruction>(FindInstruction(module.get(), "start"));
+  HloInstruction* update = FindInstruction(module.get(), "update");
+
+  Shape old_update_shape = update->shape();
+  HloInstruction* dummy_param = module->entry_computation()->AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(42.0f)));
+  start->AddCallOperand(dummy_param);
+
+  EXPECT_EQ(update->shape(), old_update_shape);
+  EXPECT_NE(update->shape(), start->shape());
 }
 
 TEST_F(HloInstructionTest, PrecisionConfigMethodConsistency) {

@@ -124,6 +124,10 @@ extern const char kLogTag[];
 // XLA frontend attribute for specifying the table name for SparseDenseMatmulOp.
 extern const char kXlaTableNameAttr[];
 
+extern const char kXlaVocabSizeAttr[];
+extern const char kXlaFeatureWidthAttr[];
+extern const char kXlaSampleCountAttr[];
+
 // Frontend attribute key used to control which collectives can be combined.
 // Collectives with different combiner_key values will not be combined together.
 extern const char kCombinerKeyAttr[];

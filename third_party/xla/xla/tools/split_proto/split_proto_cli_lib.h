@@ -82,6 +82,10 @@ absl::Status UnpackAot(std::unique_ptr<riegeli::Reader> reader,
                        std::unique_ptr<riegeli::Writer> writer,
                        const UnpackOptions& options);
 
+// Reads a split proto serialized ExecutableAndOptions (i.e. an AOT binary) from
+// `reader`, and prints useful info to stdout.
+absl::Status AotInfo(std::unique_ptr<riegeli::Reader> reader);
+
 }  // namespace xla::split_proto_cli
 
 #endif  // XLA_TOOLS_SPLIT_PROTO_SPLIT_PROTO_CLI_LIB_H_

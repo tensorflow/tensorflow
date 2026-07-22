@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "xla/service/gpu/gpu_module_globals.h"
 
-#include <cstdint>
 #include <memory>
 #include <string>
 #include <utility>
@@ -34,6 +33,7 @@ limitations under the License.
 #include "xla/literal.h"
 #include "xla/map_util.h"
 #include "xla/service/gpu/dense_data_intermediate.h"
+#include "xla/service/gpu/gpu_executable.pb.h"
 #include "xla/stream_executor/cuda/cuda_platform_id.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/module_spec.h"
@@ -69,11 +69,9 @@ GpuModuleGlobals::ConstantInfo::FromProto(
           "Instruction for ", proto.symbol_name(), " constant missing."));
     }
     const HloInstruction* instr = it->second;
-    const Literal& literal = instr->literal();
-    auto base = static_cast<const uint8_t*>(literal.untyped_data());
-    return ConstantInfo{proto.symbol_name(),
-                        DenseDataIntermediate::Alias(
-                            absl::MakeSpan(base, base + literal.size_bytes())),
+    ASSIGN_OR_RETURN(DenseDataIntermediate content,
+                     LiteralToXlaFormat(instr->literal()));
+    return ConstantInfo{proto.symbol_name(), content,
                         static_cast<int>(proto.allocation_index())};
   }
   return ConstantInfo{proto.symbol_name(),

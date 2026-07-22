@@ -640,7 +640,7 @@ absl::StatusOr<std::string> GetExpectedBackendFingerprint() {
   ASSIGN_OR_RETURN(std::string platform_name,
                    PlatformUtil::CanonicalPlatformName("gpu"));
   if (platform_name == "rocm") {
-    return "2971291867";
+    return "3128633344";
   }
   return "286644258";
 }
@@ -1097,12 +1097,23 @@ TEST(FunctionalHloRunnerTest, TestDebugOptionsAreNotOverwrittenByRawOptions) {
   // If xla_dump_to is set in the raw options, then the debug options are
   // overridden in `CreateCompileOptions` and we lose the dumping debug options.
   // This test checks that we don't overwrite if we don't set xla_dump_to in the
-  // raw options.
+  // raw options, or if `execution_options` has debug options set.
   xla::DebugOptions debug_options;
   debug_options.set_xla_dump_to("test_dump_to");
   debug_options.set_xla_dump_hlo_as_text(true);
+  debug_options.set_xla_dump_hlo_as_proto(true);
+  debug_options.set_xla_dump_hlo_as_dot(true);
+  debug_options.set_xla_dump_hlo_as_url(true);
+  debug_options.set_xla_dump_hlo_as_riegeli(true);
+  debug_options.set_xla_dump_hlo_as_html(true);
+  debug_options.set_xla_dump_hlo_pass_re(".*");
+  debug_options.set_xla_dump_hlo_module_re(".*");
+  debug_options.set_xla_dump_emitter_re(".*");
   FunctionalHloRunner::RawCompileOptions raw_compile_options;
   raw_compile_options.debug_options = debug_options;
+  ExecutionOptions execution_options;
+  execution_options.mutable_debug_options()->set_xla_dump_to("cns_path");
+  raw_compile_options.execution_options = execution_options;
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::PjRtClient> client,
                           GetPjRtClient());
@@ -1114,19 +1125,38 @@ TEST(FunctionalHloRunnerTest, TestDebugOptionsAreNotOverwrittenByRawOptions) {
                                                 /*kv_store=*/nullptr));
   EXPECT_TRUE(compile_options.executable_build_options.debug_options()
                   .xla_dump_hlo_as_text());
+  EXPECT_TRUE(compile_options.executable_build_options.debug_options()
+                  .xla_dump_hlo_as_proto());
+  EXPECT_TRUE(compile_options.executable_build_options.debug_options()
+                  .xla_dump_hlo_as_dot());
+  EXPECT_TRUE(compile_options.executable_build_options.debug_options()
+                  .xla_dump_hlo_as_url());
+  EXPECT_TRUE(compile_options.executable_build_options.debug_options()
+                  .xla_dump_hlo_as_riegeli());
+  EXPECT_TRUE(compile_options.executable_build_options.debug_options()
+                  .xla_dump_hlo_as_html());
+  EXPECT_EQ(compile_options.executable_build_options.debug_options()
+                .xla_dump_hlo_pass_re(),
+            ".*");
+  EXPECT_EQ(compile_options.executable_build_options.debug_options()
+                .xla_dump_hlo_module_re(),
+            ".*");
+  EXPECT_EQ(compile_options.executable_build_options.debug_options()
+                .xla_dump_emitter_re(),
+            ".*");
   EXPECT_EQ(
       compile_options.executable_build_options.debug_options().xla_dump_to(),
-      "");
+      "test_dump_to");
 }
 
-// Check that xla_dump_to is respected if preserve_xla_dump_to is true.
-TEST(FunctionalHloRunnerTest, TestDebugOptionsDumpToIsRespected) {
-  xla::DebugOptions debug_options;
-  std::string xla_dump_to = "test_dump_to";
-  debug_options.set_xla_dump_to(xla_dump_to);
+// Check that xla_dump_to in execution_options is cleared by default (if not
+// set in flags).
+TEST(FunctionalHloRunnerTest, TestDebugOptionsDumpToIsClearedByDefault) {
+  ExecutionOptions execution_options;
+  execution_options.mutable_debug_options()->set_xla_dump_to("cns_path");
+
   FunctionalHloRunner::RawCompileOptions raw_compile_options;
-  raw_compile_options.preserve_xla_dump_to = true;
-  raw_compile_options.debug_options = debug_options;
+  raw_compile_options.execution_options = execution_options;
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::PjRtClient> client,
                           GetPjRtClient());
@@ -1138,7 +1168,30 @@ TEST(FunctionalHloRunnerTest, TestDebugOptionsDumpToIsRespected) {
                                                 /*kv_store=*/nullptr));
   EXPECT_EQ(
       compile_options.executable_build_options.debug_options().xla_dump_to(),
-      xla_dump_to);
+      "");
+}
+
+// Check that xla_dump_to in execution_options is cleared if debug_options has
+// xla_dump_to set to empty string (explicitly disabling it).
+TEST(FunctionalHloRunnerTest, TestDebugOptionsDumpToIsClearedIfEmptyInFlags) {
+  ExecutionOptions execution_options;
+  execution_options.mutable_debug_options()->set_xla_dump_to("cns_path");
+
+  FunctionalHloRunner::RawCompileOptions raw_compile_options;
+  raw_compile_options.execution_options = execution_options;
+  raw_compile_options.debug_options.set_xla_dump_to("");
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::PjRtClient> client,
+                          GetPjRtClient());
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      CompileOptions compile_options,
+      FunctionalHloRunner::CreateCompileOptions(*client, raw_compile_options,
+                                                /*task_id=*/0, /*num_nodes=*/1,
+                                                /*kv_store=*/nullptr));
+  EXPECT_EQ(
+      compile_options.executable_build_options.debug_options().xla_dump_to(),
+      "");
 }
 
 TEST(FunctionalHloRunnerTest, RespectUseSpmdPartitioning) {

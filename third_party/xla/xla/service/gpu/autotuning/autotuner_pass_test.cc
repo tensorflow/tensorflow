@@ -32,6 +32,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "mlir/IR/MLIRContext.h"
 #include "xla/backends/autotuner/codegen_backend.h"
+#include "xla/backends/autotuner/config_assigner.h"
 #include "xla/backends/autotuner/profiler.h"
 #include "xla/backends/gpu/autotuner/cublaslt.h"
 #include "xla/backends/gpu/autotuner/cudnn.h"
@@ -443,13 +444,15 @@ TEST_P(AutotunerFlagsTest, AutotuneLevel) {
   DebugOptions debug_options = GetDebugOptionsForTest();
   debug_options.set_xla_gpu_autotune_level(params.autotune_level);
 
-  xla::AutotuneConfig autotune_config = GetAutotuneConfig(debug_options);
-  EXPECT_EQ(autotune_config.select_first_config,
+  xla::ConfigAssigner::Options config_assigner_options =
+      GetConfigAssignerOptions(debug_options);
+  EXPECT_EQ(config_assigner_options.select_first_config,
             params.expected_select_first_config);
-  EXPECT_EQ(autotune_config.check_buffers, params.expected_check_buffers);
+  EXPECT_EQ(config_assigner_options.check_buffers,
+            params.expected_check_buffers);
 
   ProfileOptions profile_options =
-      GetProfileOptions(debug_options, autotune_config);
+      GetProfileOptions(debug_options, config_assigner_options);
   EXPECT_EQ(profile_options.should_init_buffers,
             params.expected_should_init_buffers);
 }
@@ -484,7 +487,7 @@ TEST_P(AutotunerRegSpillsTest, RegSpills) {
       params.fail_on_spill_flag);
   debug_options.set_xla_gpu_filter_kernels_spilling_registers_on_autotuning(
       params.filter_kernels_flag);
-  auto config = GetAutotuneConfig(debug_options, /*is_deviceless=*/false);
+  auto config = GetCodegenOrchestratorOptions(debug_options);
   std::unique_ptr<HloInstruction> dummy = HloInstruction::CreateTuple({});
   EXPECT_EQ(config.allow_reg_spills_fn(*dummy),
             params.expected_allow_reg_spills_out);
@@ -506,7 +509,7 @@ INSTANTIATE_TEST_SUITE_P(
 
 TEST_F(AutotunerFlagsTest, DevicelessUsesDefaultConfig) {
   DebugOptions debug_options = GetDebugOptionsForTest();
-  EXPECT_EQ(GetAutotuneConfig(debug_options, /*is_deviceless=*/true)
+  EXPECT_EQ(GetConfigAssignerOptions(debug_options, /*is_deviceless=*/true)
                 .use_default_config,
             true);
 }
@@ -514,10 +517,33 @@ TEST_F(AutotunerFlagsTest, DevicelessUsesDefaultConfig) {
 TEST_F(AutotunerFlagsTest, DeterministicAutotuningSetsSelectFirstConfig) {
   DebugOptions debug_options = GetDebugOptionsForTest();
   debug_options.set_xla_gpu_deterministic_ops(true);
-  EXPECT_EQ(GetAutotuneConfig(debug_options).select_first_config, true);
+  EXPECT_EQ(GetConfigAssignerOptions(debug_options).select_first_config, true);
   debug_options.set_xla_gpu_deterministic_ops(false);
   debug_options.set_xla_gpu_exclude_nondeterministic_ops(true);
-  EXPECT_EQ(GetAutotuneConfig(debug_options).select_first_config, true);
+  EXPECT_EQ(GetConfigAssignerOptions(debug_options).select_first_config, true);
+}
+
+TEST_F(AutotunerFlagsTest, GetGpuAutotunerBackendsRespectsDeterminism) {
+  DebugOptions debug_options = GetDebugOptionsForTest();
+  debug_options.set_xla_gpu_exclude_nondeterministic_ops(true);
+
+  GpuCompiler::GpuTargetConfig target_config(stream_executor_);
+  GpuAliasInfo alias_info(stream_executor_->GetDeviceDescription());
+  mlir::MLIRContext mlir_context;
+  RegisterSymbolicExprStorage(&mlir_context);
+
+  ASSERT_OK_AND_ASSIGN(std::vector<std::unique_ptr<CodegenBackend>> backends,
+                       AutotunerPass::GetGpuAutotunerBackends(
+                           stream_executor_, allocator_.get(), &target_config,
+                           &alias_info, debug_options, &mlir_context,
+                           /*shape_size_fn=*/[](const Shape&) { return 0; },
+                           &compiler_, stream_executor_->GetPlatform()->id()));
+
+  for (const auto& backend : backends) {
+    EXPECT_NE(backend->backend(), autotuner::Backend::TRITON);
+    EXPECT_NE(backend->backend(), autotuner::Backend::NATIVE_EMITTER);
+    EXPECT_NE(backend->backend(), autotuner::Backend::BLOCK_LEVEL_EMITTER);
+  }
 }
 
 TEST_F(AutotunerPassTest, CublasLtSelectFirstConfig) {

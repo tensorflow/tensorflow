@@ -76,8 +76,6 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/tsl/platform/env.h"
-#include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla.pb.h"
 #include "tsl/platform/path.h"
@@ -97,10 +95,8 @@ bool ShouldScheduleAsEarlyAsPossible(const HloInstruction& instr) {
     case HloOpcode::kAllGatherStart:
     case HloOpcode::kAllReduceStart:
     case HloOpcode::kCollectivePermuteStart:
-      return !IsGPUSyncCollective(instr);
     case HloOpcode::kAsyncStart:
-      // Start async ops as early as possible to allow more concurrency.
-      return true;
+      return !IsGPUSyncCollective(instr);
     case HloOpcode::kCustomCall:
       return static_cast<const HloCustomCallInstruction&>(instr)
                  .custom_call_schedule() ==
@@ -122,11 +118,8 @@ bool ShouldScheduleAsLateAsPossible(const HloInstruction& instr) {
     case HloOpcode::kAllGatherDone:
     case HloOpcode::kAllReduceDone:
     case HloOpcode::kCollectivePermuteDone:
-      return ShouldScheduleAsEarlyAsPossible(*instr.operand(0));
     case HloOpcode::kAsyncDone:
-      // Schedule as many other ops as possible before blocking on the
-      // completion of async ops.
-      return true;
+      return ShouldScheduleAsEarlyAsPossible(*instr.operand(0));
     case HloOpcode::kCustomCall:
       return static_cast<const HloCustomCallInstruction&>(instr)
                  .custom_call_schedule() == CustomCallSchedule::SCHEDULE_LATEST;
@@ -821,6 +814,7 @@ absl::Status RunAsyncCollectivesConversionPasses(HloModule* module) {
   config.convert_collective_permute = HloPredicateTrue;
   config.convert_ragged_all_to_all = HloPredicateTrue;
   config.convert_reduce_scatter = HloPredicateTrue;
+  config.use_generic_async_start_done = true;
   pipeline.AddPass<AsyncCollectiveCreator>(std::move(config));
 
   absl::flat_hash_set<DebugOptions::CollectiveOpType> disabled_async_ops;
@@ -857,6 +851,13 @@ absl::Status RunAsyncCollectivesConversionPasses(HloModule* module) {
             return !disabled_async_ops.contains(DebugOptions::ALLTOALL);
           case HloOpcode::kRaggedAllToAll:
             return !disabled_async_ops.contains(DebugOptions::RAGGEDALLTOALL);
+          case HloOpcode::kAllReduce:
+            return !disabled_async_ops.contains(DebugOptions::ALLREDUCE);
+          case HloOpcode::kAllGather:
+            return !disabled_async_ops.contains(DebugOptions::ALLGATHER);
+          case HloOpcode::kCollectivePermute:
+            return !disabled_async_ops.contains(
+                DebugOptions::COLLECTIVEPERMUTE);
           default:
             return false;
         }

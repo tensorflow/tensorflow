@@ -249,6 +249,14 @@ class PriorityFusionQueue {
       // If the priority is negative, it's not helpful to perform fusion on this
       // instruction.
       if (priority < absl::ZeroDuration()) {
+        if (dump_fusion_visualization_ &&
+            priority != -absl::InfiniteDuration()) {
+          RegisterFusionState(*computation_,
+                              absl::StrCat("Rejected |", instruction->name(),
+                                           "|: Negative benefit (",
+                                           absl::FormatDuration(priority), ")"),
+                              *instruction);
+        }
         continue;
       }
 
@@ -617,6 +625,12 @@ class PriorityFusionQueue {
         step->set_producer_name(producer->name());
         step->set_reason(fusion_decision.Explain());
       }
+      if (dump_fusion_visualization_) {
+        RegisterFusionState(*computation_,
+                            absl::StrCat("Ineligible |", producer->name(),
+                                         "|: ", fusion_decision.Explain()),
+                            *producer);
+      }
       return -absl::InfiniteDuration();
     }
 
@@ -821,6 +835,16 @@ class PriorityFusionQueue {
       return can_fuse_triton;
     }
 
+    if (dump_fusion_visualization_) {
+      RegisterFusionState(
+          *computation_,
+          absl::StrCat("Cannot fuse producer |", producer->name(),
+                       "| with consumer |", consumer->name(),
+                       "| using Triton (will try fallback): ",
+                       can_fuse_triton.Explain()),
+          *consumer, producer);
+    }
+
     if (IsFusibleBitcast(*consumer)) {
       return FusionDecision::Forbid(
           "not fusing into a single bitcast as consumer");
@@ -999,6 +1023,14 @@ class PriorityFusionQueue {
           !fusion_decision) {
         VLOG(10) << "Cannot fuse " << producer->name() << " with "
                  << user->name() << ", because: " << fusion_decision.Explain();
+        if (dump_fusion_visualization_) {
+          RegisterFusionState(
+              *computation_,
+              absl::StrCat("Cannot fuse producer |", producer->name(),
+                           "| with consumer |", user->name(),
+                           "|: ", fusion_decision.Explain()),
+              *user, producer);
+        }
         return fusion_decision;
       }
     }

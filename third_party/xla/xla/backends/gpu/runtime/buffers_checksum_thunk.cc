@@ -46,15 +46,11 @@ namespace se = stream_executor;
 
 absl::Status BuffersDebugChecksumThunk::Initialize(
     const InitializeParams& params) {
-  if (params.executor->GetPlatform()->id() != se::cuda::kCudaPlatformId) {
-    VLOG(1)
-        << "Buffer checksumming not supported on non-CUDA platforms, skipping";
-    return absl::OkStatus();
-  }
-  if (!params.executor->GetDeviceDescription()
+  if (params.executor->GetPlatform()->id() == se::cuda::kCudaPlatformId &&
+      !params.executor->GetDeviceDescription()
            .cuda_compute_capability()
            .IsAtLeastPascal()) {
-    VLOG(1)
+    LOG_FIRST_N(WARNING, 1)
         << "Buffer checksumming not supported on CUDA architectures older than "
            "Pascal due to missing atomic fetch_add with system scope, skipping";
     return absl::OkStatus();

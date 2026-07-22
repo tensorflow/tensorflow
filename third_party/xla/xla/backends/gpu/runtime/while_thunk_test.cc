@@ -53,10 +53,7 @@ limitations under the License.
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor_address_allocator.h"
-#include "xla/tests/hlo_pjrt_test_base.h"
-#include "xla/tsl/lib/core/status_test_util.h"
-#include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/statusor.h"
+#include "xla/tests/hlo_test_base.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/tsl/util/proto/parse_text_proto.h"
 #include "xla/tsl/util/proto/proto_matchers.h"
@@ -77,6 +74,7 @@ struct DummyThunk : public Thunk {
   absl::Status ExecuteOnStream(const ExecuteParams& params) override {
     return absl::OkStatus();
   }
+  BufferUses buffer_uses() const override { return {}; }
   static absl::StatusOr<std::unique_ptr<DummyThunk>> FromProto(
       const ThunkProto& thunk_proto, Thunk::Kind kind) {
     ASSIGN_OR_RETURN(Thunk::ThunkInfo thunk_info,
@@ -199,6 +197,8 @@ class IterationLoggerThunk : public Thunk {
     }
     return absl::OkStatus();
   }
+
+  BufferUses buffer_uses() const override { return {}; }
 
   const std::vector<std::optional<int64_t>>& logged_counters() const {
     return iteration_counters_;
@@ -456,15 +456,12 @@ TEST(WhileThunkTest, ToProto) {
   BufferAllocation::Slice slice(&alloc, /*offset=*/0, /*size=*/256);
 
   ThunkSequence condition_thunks;
-  condition_thunks.push_back(
-      std::make_unique<DummyThunk>(Kind::kConditional, thunk_info));
-  condition_thunks.push_back(
-      std::make_unique<DummyThunk>(Kind::kConditional, thunk_info));
+  condition_thunks.Emplace<DummyThunk>(Kind::kConditional, thunk_info);
+  condition_thunks.Emplace<DummyThunk>(Kind::kConditional, thunk_info);
 
   ThunkSequence body_thunks;
-  body_thunks.push_back(std::make_unique<DummyThunk>(Kind::kGemm, thunk_info));
-  body_thunks.push_back(
-      std::make_unique<DummyThunk>(Kind::kCustomCall, thunk_info));
+  body_thunks.Emplace<DummyThunk>(Kind::kGemm, thunk_info);
+  body_thunks.Emplace<DummyThunk>(Kind::kCustomCall, thunk_info);
 
   WhileThunk thunk =
       CreateWhileThunk(thunk_info, slice, std::move(condition_thunks),
@@ -535,11 +532,10 @@ TEST(WhileThunkTest, TransformNested) {
   Thunk::ThunkInfo thunk_info;
   BufferAllocation::Slice slice;
 
-  ThunkSequence condition_thunks;
-  condition_thunks.push_back(
-      std::make_unique<DummyThunk>(Kind::kGemm, thunk_info));
-  ThunkSequence body_thunks;
-  body_thunks.push_back(std::make_unique<DummyThunk>(Kind::kGemm, thunk_info));
+  ThunkSequence condition_thunks =
+      ThunkSequence::Of<DummyThunk>(Kind::kGemm, thunk_info);
+  ThunkSequence body_thunks =
+      ThunkSequence::Of<DummyThunk>(Kind::kGemm, thunk_info);
 
   auto while_thunk = std::make_unique<WhileThunk>(
       Thunk::ThunkInfo(),

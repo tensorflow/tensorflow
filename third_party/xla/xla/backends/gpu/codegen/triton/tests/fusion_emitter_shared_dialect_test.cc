@@ -285,7 +285,7 @@ ENTRY e {
 // CHECK:         %[[EXTRACT1:.*]] = xtile.extract %arg1[] [] [] : memref<f32> -> tensor<f32>
 // CHECK:         %[[OUTPUT:.*]], %{{.*}} = xtile.scan(%[[EXTRACT0]]) inits(%[[EXTRACT1]])
 // CHECK-SAME:        dimension = 0 {scan_dim_size = 1024 : i64}
-// CHECK-SAME:        : (tensor<1024xf32>), (tensor<f32>) -> (tensor<1024xf32>), (tensor<1024xf32>) {
+// CHECK-SAME:        : (tensor<1024xf32>), (tensor<f32>) -> (tensor<1024xf32>), (tensor<f32>) {
 // CHECK:         ^bb0(%[[INPUT:.*]]: tensor<f32>, %[[CARRY:.*]]: tensor<f32>):
 // CHECK:           %[[ADD:.*]] = stablehlo.add %[[INPUT]], %[[CARRY]] : tensor<f32>
 // CHECK:           stablehlo.return %[[ADD]], %[[ADD]] : tensor<f32>, tensor<f32>
@@ -403,7 +403,7 @@ ENTRY e {
   EXPECT_OK(CreateXTileIrAndFileCheck(
       *module->GetComputationWithName("triton_dot"), block_level_parameters,
       R"(
-      CHECK: %[[DOT:.*]] = xtile.dot_scaled %[[LHS:.*]] scale %[[LHS_SCALE:.*]], %[[RHS:.*]] scale %[[RHS_SCALE:.*]] {dot_dimension_numbers = #stablehlo.dot<lhs_contracting_dimensions = [1], rhs_contracting_dimensions = [0]>, fastMath = true} : tensor<128x128xf8E5M2>, tensor<128x4xi8> * tensor<128x256xf8E5M2>, tensor<256x4xi8> -> tensor<128x256xf32>
+      CHECK: %[[DOT:.*]] = xtile.dot_scaled %[[LHS:.*]] scale %[[LHS_SCALE:.*]], %[[RHS:.*]] scale %[[RHS_SCALE:.*]] {dot_dimension_numbers = #stablehlo.dot<lhs_contracting_dimensions = [1], rhs_contracting_dimensions = [0]>, fastMath = true, lhs_elem_type = f8E5M2, rhs_elem_type = f8E5M2} : tensor<128x128xf8E5M2>, tensor<128x4xi8> * tensor<128x256xf8E5M2>, tensor<256x4xi8> -> tensor<128x256xf32>
       CHECK: %[[RES:.*]] = arith.addf %{{.*}}, %[[DOT]] : tensor<128x256xf32>
       )"));
 }
@@ -420,14 +420,14 @@ TEST_P(XTileDialectTestParameterized,
         ROOT %apply_op = f32[] add(%x, %y)
       }
 
-      %wrapped_all-reduce-start {
+      %wrapped_all-reduce {
         %param = f32[65536]{0} parameter(0)
-        ROOT %all-reduce-start = f32[65536]{0} all-reduce-start(%param), replica_groups={{0,1}}, to_apply=%apply_op
+        ROOT %all-reduce = f32[65536]{0} all-reduce(%param), replica_groups={{0,1}}, to_apply=%apply_op
       }
 
       ENTRY %entry {
         %param = f32[65536]{0} parameter(0)
-        ROOT %fusion = f32[65536]{0} fusion(%param), kind=kLoop, calls=%wrapped_all-reduce-start, backend_config={"fusion_backend_config":{"kind":"__triton_collective","block_level_fusion_config":{"num_warps":"16","output_tiles":[{"sizes":["4096"]}],"num_ctas":1,"num_stages":1,"is_tma_allowed":false,"is_warp_specialization_allowed":false}}}
+        ROOT %fusion = f32[65536]{0} fusion(%param), kind=kLoop, calls=%wrapped_all-reduce, backend_config={"fusion_backend_config":{"kind":"__triton_collective","block_level_fusion_config":{"num_warps":"16","output_tiles":[{"sizes":["4096"]}],"num_ctas":1,"num_stages":1,"is_tma_allowed":false,"is_warp_specialization_allowed":false}}}
       }
     )";
 
@@ -440,7 +440,7 @@ TEST_P(XTileDialectTestParameterized,
   block_level_parameters.output_tile_sizes = {{4096}};
 
   EXPECT_OK(CreateXTileIrAndFileCheck(
-      *hlo_module->GetComputationWithName("wrapped_all-reduce-start"),
+      *hlo_module->GetComputationWithName("wrapped_all-reduce"),
       block_level_parameters,
       R"(
 CHECK: stablehlo.all_reduce

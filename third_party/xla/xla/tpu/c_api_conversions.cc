@@ -33,20 +33,13 @@ limitations under the License.
 #include "xla/service/computation_placer.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_module_config.h"
-#include "xla/service/maybe_owning_device_address.h"
-#include "xla/service/shaped_buffer.h"
 #include "xla/shape.h"
 #include "xla/shape_layout.h"
-#include "xla/shape_tree.h"
 #include "xla/shape_util.h"
-#include "xla/stream_executor/device_address.h"
-#include "xla/stream_executor/device_address_allocator.h"
 #include "xla/tpu/c_api_decl.h"
 #include "xla/tpu/c_api_defn.h"  // IWYU pragma: keep
 #include "xla/tpu/proto_helper.h"
 #include "xla/tpu/tpu_api.h"  // IWYU pragma: keep
-#include "xla/tpu/tpu_executor_api.h"
-#include "xla/tpu/tpu_executor_c_api.h"
 #include "xla/tpu/tpu_ops_c_api.h"
 #include "xla/util.h"
 #include "xla/xla.pb.h"
@@ -91,10 +84,6 @@ void CreateVector(const absl::Span<const xla::DimLevelType> src, IntList* dst) {
   CreateVectorBase<const xla::DimLevelType, int, IntList>(src, dst);
 }
 
-static void CreateVector(const absl::Span<const bool> src, IntList* dst) {
-  CreateVectorBase<const bool, int, IntList>(src, dst);
-}
-
 static void CreateVector(const absl::Span<const xla::Tile> src, TileList* dst) {
   dst->size = src.size();
   XLA_Tile* c_tiles;
@@ -137,140 +126,6 @@ absl::Span<const float> MakeSpan(const FloatList& src_list) {
 
 absl::Span<const bool> MakeSpan(const BoolList& src_list) {
   return MakeSpanBase<bool, bool, BoolList>(src_list);
-}
-
-xla::ShapedBuffer FromC(XLA_ShapedBuffer* c_buffer) {
-  xla::Shape xla_on_device_shape =
-      ApiConverter::FromC(&c_buffer->on_device_shape);
-
-  xla::ShapeTree<stream_executor::DeviceAddressBase> xla_shape_tree(
-      xla_on_device_shape);
-  size_t i = 0;
-  for (auto& pair : xla_shape_tree) {
-    pair.second = ApiConverter::FromC(c_buffer->bases[i]);
-    i++;
-  }
-
-  xla::ShapedBuffer xla_shaped_buffer(xla_on_device_shape,
-                                      c_buffer->device_ordinal);
-  xla_shaped_buffer.set_buffers(xla_shape_tree);
-  return xla_shaped_buffer;
-}
-
-SE_MaybeOwningDeviceAddress ToC(xla::MaybeOwningDeviceAddress& mem,
-                                bool aliased) {
-  SE_MaybeOwningDeviceAddress se_mem;
-  se_mem.owned = mem.HasOwnership();
-  se_mem.memory = ApiConverter::ToC(mem.AsDeviceAddress());
-  if (mem.HasOwnership()) {
-    const stream_executor::ScopedDeviceAddress<uint8_t>* owned =
-        mem.AsScopedDeviceAddress();
-    se_mem.device_ordinal = owned->device_ordinal();
-    se_mem.allocator = ApiConverter::ToC(owned->allocator());
-    if (!aliased) {
-      // Underlying buffer is owned by se_mem now.
-      mem.Release()->Release();
-    }
-  } else {
-    se_mem.allocator =
-        ToC(static_cast<stream_executor::DeviceAddressAllocator*>(nullptr));
-    se_mem.device_ordinal = -1;
-  }
-  return se_mem;
-}
-
-xla::MaybeOwningDeviceAddress FromC(
-    SE_MaybeOwningDeviceAddress* se_mem,
-    stream_executor::DeviceAddressAllocator* allocator) {
-  if (se_mem->owned) {
-    return xla::MaybeOwningDeviceAddress(
-        stream_executor::ScopedDeviceAddress<uint8_t>(
-            ApiConverter::FromC(se_mem->memory), se_mem->device_ordinal,
-            allocator));
-  } else {
-    return xla::MaybeOwningDeviceAddress(ApiConverter::FromC(se_mem->memory));
-  }
-}
-
-SE_DeviceAddressAllocator ToC(
-    stream_executor::DeviceAddressAllocator* allocator) {
-  SE_DeviceAddressAllocator se_allocator;
-  if (allocator == nullptr) {
-    se_allocator.ctx = nullptr;
-    se_allocator.platform = nullptr;
-    se_allocator.allocate = nullptr;
-    se_allocator.deallocate = nullptr;
-    return se_allocator;
-  }
-  // N.B. Platform is assumed to be the registered backend platform.
-  se_allocator.platform = nullptr;
-  se_allocator.ctx = allocator;
-  se_allocator.allocate = [](void* ctx, int device_ordinal, uint64_t size,
-                             bool retry_on_failure, int64_t memory_space,
-                             SE_ScopedDeviceAddress* memory,
-                             TF_Status* se_status) {
-    auto allocation =
-        reinterpret_cast<stream_executor::DeviceAddressAllocator*>(ctx)
-            ->Allocate(device_ordinal, size, retry_on_failure, memory_space);
-    if (!allocation.ok()) {
-      auto status = allocation.status();
-      auto message = status.message();
-      stream_executor::tpu::ExecutorApiFn()->TpuStatus_SetFn(
-          se_status, status.raw_code(), message.data(), message.size());
-    } else {
-      auto& scoped_memory = allocation.value();
-      memory->wrapped = ApiConverter::ToC(scoped_memory.Release());
-      memory->device_ordinal = scoped_memory.device_ordinal();
-    }
-  };
-
-  se_allocator.deallocate = [](void* ctx, SE_DeviceAddressBase* base,
-                               int device_ordinal, TF_Status* se_status) {
-    auto status =
-        reinterpret_cast<stream_executor::DeviceAddressAllocator*>(ctx)
-            ->Deallocate(device_ordinal, ApiConverter::FromC(*base));
-    if (!status.ok()) {
-      auto message = status.message();
-      stream_executor::tpu::ExecutorApiFn()->TpuStatus_SetFn(
-          se_status, status.raw_code(), message.data(), message.size());
-    }
-  };
-  return se_allocator;
-}
-
-stream_executor::DeviceAddressAllocator* FromC(
-    const SE_DeviceAddressAllocator& c_allocator) {
-  return reinterpret_cast<stream_executor::DeviceAddressAllocator*>(
-      c_allocator.ctx);
-}
-
-SE_MaybeOwningDeviceAddress ToC(
-    stream_executor::ScopedDeviceAddress<uint8_t>* mem) {
-  SE_MaybeOwningDeviceAddress se_mem;
-  se_mem.device_ordinal = mem->device_ordinal();
-  se_mem.memory = ApiConverter::ToC(mem->Release());
-  se_mem.allocator = ApiConverter::ToC(mem->allocator());
-  se_mem.owned = true;
-  return se_mem;
-}
-
-void ToC(const stream_executor::DeviceAddressBase& base,
-         SE_DeviceAddressBase* se_base) {
-  se_base->opaque = const_cast<void*>(base.opaque());
-  se_base->payload = base.payload();
-  se_base->size = base.size();
-}
-
-SE_DeviceAddressBase ToC(const stream_executor::DeviceAddressBase& base) {
-  SE_DeviceAddressBase se_base;
-  ToC(base, &se_base);
-  return se_base;
-}
-
-stream_executor::DeviceAddressBase FromC(const SE_DeviceAddressBase& se_base) {
-  stream_executor::DeviceAddressBase base(se_base.opaque, se_base.size);
-  base.SetPayload(se_base.payload);
-  return base;
 }
 
 void ToC(const xla::Shape& xla_shape, XLA_Shape* c_shape) {
@@ -439,21 +294,6 @@ xla::MutableBorrowingLiteral FromC(XLA_Literal* c_literal) {
       absl::MakeSpan(c_literal->buffers, c_literal->count), shape);
 }
 
-void ToC(const xla::ShapedBuffer& buffer, XLA_ShapedBuffer* c_device_buffer) {
-  ApiConverter::ToC(buffer.on_device_shape(),
-                    &c_device_buffer->on_device_shape);
-  c_device_buffer->device_ordinal = buffer.device_ordinal();
-  absl::InlinedVector<SE_DeviceAddressBase, 2> bases;
-  for (auto& pair : buffer.buffers()) {
-    bases.push_back(ApiConverter::ToC(pair.second));
-  }
-  c_device_buffer->count = bases.size();
-  c_device_buffer->bases = new SE_DeviceAddressBase[bases.size()];
-  for (int i = 0; i < bases.size(); ++i) {
-    c_device_buffer->bases[i] = bases[i];
-  }
-}
-
 std::unique_ptr<TpuEmbeddingEngineParametersData> Create(int num_tables) {
   auto data = std::make_unique<TpuEmbeddingEngineParametersData>();
   data->c_params.num_tables = num_tables;
@@ -465,17 +305,11 @@ std::unique_ptr<TpuEmbeddingEngineParametersData> Create(int num_tables) {
 }
 
 void Destroy(XLA_ShapeIndex* shape_index) { delete[] shape_index; }
-void Destroy(SE_DeviceAddressBase*) {}
 
 void Destroy(XLA_Literal* c_literal) {
   delete[] c_literal->buffers;
   delete[] c_literal->sizes;
   ApiConverter::Destroy(&c_literal->shape);
-}
-
-void Destroy(XLA_ShapedBuffer* c_buffer) {
-  ApiConverter::Destroy(&c_buffer->on_device_shape);
-  delete[] c_buffer->bases;
 }
 
 XLA_HloModule ToC(const xla::HloModule& module) {

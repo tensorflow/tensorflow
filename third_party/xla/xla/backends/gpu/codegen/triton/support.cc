@@ -624,14 +624,18 @@ CodegenDecision IsTritonSupportedScaledDot(
   }
   PrimitiveType lhs_scale_type = dot.operand(2)->shape().element_type();
   PrimitiveType rhs_scale_type = dot.operand(3)->shape().element_type();
-  std::vector<PrimitiveType> supported_scale_types = {
-      BF16, F16, F32, F64, F8E4M3FN, F8E5M2, F8E8M0FNU,
-      S8,   S16, S32, S64, U8,       U32,    U64};
-  if (!absl::c_linear_search(supported_scale_types, lhs_scale_type)) {
+  std::vector<PrimitiveType> supported_scale_types = {F8E4M3FN, F8E5M2,
+                                                      F8E8M0FNU, S8};
+  // Unscaled 16-bit operands (BF16) do not use dequantization block scales.
+  // In HLO, they carry dummy/placeholder scale constants (e.g. BF16 1.0), so
+  // we skip the scale type check when the operand type is BF16.
+  if (lhs_type != BF16 &&
+      !absl::c_linear_search(supported_scale_types, lhs_scale_type)) {
     return CodegenDecision::Forbid(absl::StrCat(
         "Unsupported LHS scale type: ", PrimitiveType_Name(lhs_scale_type)));
   }
-  if (!absl::c_linear_search(supported_scale_types, rhs_scale_type)) {
+  if (rhs_type != BF16 &&
+      !absl::c_linear_search(supported_scale_types, rhs_scale_type)) {
     return CodegenDecision::Forbid(absl::StrCat(
         "Unsupported RHS scale type: ", PrimitiveType_Name(rhs_scale_type)));
   }
@@ -642,6 +646,21 @@ CodegenDecision IsTritonSupportedConcatenate(const HloInstruction& hlo) {
   CHECK(hlo.opcode() == HloOpcode::kConcatenate);
   if (hlo.shape().element_type() == S4) {
     return CodegenDecision::Forbid("S4 is not supported.");
+  }
+  // Triton emitter requires concatenate operands to be aligned to the tile size
+  // to avoid tiles straddling operand boundaries. Since we don't know the
+  // concrete tile size yet, we enforce divisibility by a minimum reasonable
+  // tile size (64).
+  // The last operand does not need to satisfy this constraint.
+  int concatenate_dimension = hlo.concatenate_dimension();
+  constexpr int kMinConcatFragmentSize = 64;
+  for (int i = 0; i < hlo.operand_count() - 1; ++i) {
+    if (hlo.operand(i)->shape().dimensions(concatenate_dimension) %
+            kMinConcatFragmentSize !=
+        0) {
+      return CodegenDecision::Forbid(
+          "Concatenate operand is not aligned for tiling.");
+    }
   }
   return CodegenDecision::Allow();
 }
@@ -776,15 +795,10 @@ CodegenDecision IsTritonSupportedInstructionImpl(
                                         gpu_version);
     case HloOpcode::kFusion:
       return CodegenDecision::Forbid("Nested fusions are not supported.");
-    case HloOpcode::kAllReduceStart:
+    case HloOpcode::kAllReduce:
       return IsTritonSupportedAllReduce(*Cast<HloAllReduceInstruction>(&instr),
                                         gpu_version);
-    case HloOpcode::kAllReduceDone:
-      return IsTritonSupportedAllReduce(
-          *Cast<HloAllReduceInstruction>(instr.operand(0)), gpu_version);
     case HloOpcode::kAllGather:
-    case HloOpcode::kAllGatherStart:
-    case HloOpcode::kAllGatherDone:
       if (instr.shape().element_type() == S4) {
         return CodegenDecision::Forbid("S4 is not supported.");
       }

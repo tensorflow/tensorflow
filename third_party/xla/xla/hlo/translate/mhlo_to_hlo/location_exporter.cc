@@ -27,7 +27,6 @@ limitations under the License.
 #include "mlir/IR/Operation.h"
 #include "mlir/IR/Visitors.h"
 #include "mlir/Support/LLVM.h"
-#include "xla/hlo/translate/hlo_to_mhlo/hlo_utils.h"
 #include "xla/hlo/translate/mhlo_to_hlo/stack_frame_index_builder.h"
 #include "xla/xla_data.pb.h"
 
@@ -89,8 +88,9 @@ static std::string GetOpTypeFromLoc(Location loc) {
       locs.push_back(call_loc.getCallee());
     } else if (auto fused_loc = mlir::dyn_cast<FusedLoc>(curr_loc)) {
       // The first location is reserved for op_type.
-      if (!fused_loc.getLocations().empty())
+      if (!fused_loc.getLocations().empty()) {
         locs.push_back(fused_loc.getLocations()[0]);
+      }
     }
   }
 
@@ -120,7 +120,9 @@ xla::OpMetadata CreateOpMetadataFromLocation(
     mlir::Operation* op, mlir::StackFrameIndexBuilder* frame_index_builder) {
   xla::OpMetadata metadata;
   mlir::Location loc = op->getLoc();
-  if (isa<mlir::UnknownLoc>(loc)) return metadata;
+  if (isa<mlir::UnknownLoc>(loc)) {
+    return metadata;
+  }
 
   std::string name = GetNameFromLocImpl(loc);
   metadata.set_op_name(name);

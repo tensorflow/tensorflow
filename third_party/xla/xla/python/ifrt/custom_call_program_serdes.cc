@@ -49,7 +49,7 @@ class CustomCallProgramSerDes
     return "xla::ifrt::CustomCallProgram";
   }
 
-  absl::StatusOr<std::string> Serialize(
+  absl::StatusOr<absl::Cord> Serialize(
       const Serializable& serializable,
       std::unique_ptr<SerializeOptions> options) override {
     const SerDesVersion version = GetRequestedSerDesVersion(options.get());
@@ -76,11 +76,11 @@ class CustomCallProgramSerDes
     for (const ArraySpec& spec : program.output_specs) {
       RETURN_IF_ERROR(spec.ToProto(*proto.add_output_specs(), version));
     }
-    return proto.SerializeAsString();
+    return proto.SerializeAsCord();
   }
 
   absl::StatusOr<std::unique_ptr<Serializable>> Deserialize(
-      const std::string& serialized,
+      const absl::Cord& serialized,
       std::unique_ptr<DeserializeOptions> options) override {
     const auto* deserialize_program_options =
         llvm::dyn_cast_or_null<DeserializeProgramOptions>(options.get());
@@ -143,7 +143,7 @@ class CustomCallCompileOptionsSerDes
     return "xla::ifrt::CustomCallCompileOptions";
   }
 
-  absl::StatusOr<std::string> Serialize(
+  absl::StatusOr<absl::Cord> Serialize(
       const Serializable& serializable,
       std::unique_ptr<SerializeOptions> options) override {
     const SerDesVersion version = GetRequestedSerDesVersion(options.get());
@@ -163,7 +163,7 @@ class CustomCallCompileOptionsSerDes
             compile_options.outputs_bundle_slice_sizes->begin(),
             compile_options.outputs_bundle_slice_sizes->end());
       }
-      return proto.SerializeAsString();
+      return proto.SerializeAsCord();
     }
 
     if (compile_options.outputs_bundle_slice_sizes.has_value()) {
@@ -172,11 +172,11 @@ class CustomCallCompileOptionsSerDes
                        " for CustomCallCompileOptions serialization with "
                        "outputs_bundle_slice_sizes"));
     }
-    return "";
+    return absl::Cord();
   }
 
   absl::StatusOr<std::unique_ptr<Serializable>> Deserialize(
-      const std::string& serialized,
+      const absl::Cord& serialized,
       std::unique_ptr<DeserializeOptions>) override {
     if (serialized.empty()) {
       // For a compatibility with version 0, which uses an empty string.

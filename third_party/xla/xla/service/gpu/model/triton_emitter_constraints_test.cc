@@ -452,7 +452,7 @@ ENTRY entry_computation {
 
   EXPECT_OK(CheckTiling(module.get(), {128, 128}));
   EXPECT_THAT(CheckTiling(module.get(), {1, 1}),
-              StatusIs(_, HasSubstr("Number of blocks exceeds the device")));
+              StatusIs(_, HasSubstr("exceeds the device grid")));
 }
 
 TEST_F(VerifyTritonConstraintsTest, FusionHasValidTileSizes) {

@@ -91,7 +91,6 @@ using tsl::profiler::ScopedAnnotation;
 CompileModuleResults InitializeResults(const HloModule* hlo_module) {
   CompileModuleResults results;
   results.module_name = hlo_module->name();
-  results.use_original_allocations = true;
   results.execution_stream_assignment =
       std::make_unique<ExecutionStreamAssignment>(
           hlo_module,
@@ -267,7 +266,8 @@ absl::StatusOr<CompileModuleResults> CompileModuleToLlvmIr(
 
   ASSIGN_OR_RETURN(
       results.constants_binary,
-      compiler->CompileToPtx(thunk_emitter.ConsumeConstantsModule()).Await());
+      compiler->CompileToTargetBinary(thunk_emitter.ConsumeConstantsModule())
+          .Await());
   ASSIGN_OR_RETURN(results.executable,
                    std::move(future_sequential_thunk).Await());
 

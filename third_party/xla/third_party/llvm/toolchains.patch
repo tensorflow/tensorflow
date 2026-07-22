@@ -8,32 +8,32 @@ index 9affa75801b7..2f681c82c298 100644
  
 +config_setting(
 +    name = "macos_arm64",
-+    values = {
-+        "apple_platform_type": "macos",
-+        "cpu": "darwin_arm64",
-+    },
++    constraint_values = [
++        "@platforms//os:macos",
++        "@platforms//cpu:aarch64",
++    ],
 +)
 +
 +config_setting(
 +    name = "macos_x86_64_default",
-+    values = {
-+        "apple_platform_type": "macos",
-+        "cpu": "darwin",
-+    },
++    constraint_values = [
++        "@platforms//os:macos",
++        "@platforms//cpu:x86_64",
++    ],
 +)
 +
-+py_library(
++alias(
 +    name = "lit_lib",
++    actual = "//llvm/utils/lit:lit",
 +    testonly = True,
-+    srcs = ["utils/lit/lit.py"] + glob(["utils/lit/lit/**/*.py"]),
 +)
 +
 +config_setting(
 +    name = "macos_x86_64",
-+    values = {
-+        "apple_platform_type": "macos",
-+        "cpu": "darwin_x86_64",
-+    },
++    constraint_values = [
++        "@platforms//os:macos",
++        "@platforms//cpu:x86_64",
++    ],
 +)
 +
  config_setting(

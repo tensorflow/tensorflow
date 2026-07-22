@@ -785,9 +785,10 @@ def _XLogyGrad(op: ops.Operation, grad):
   sy = array_ops.shape(y)
   rx, ry = gen_array_ops.broadcast_gradient_args(sx, sy)
   with ops.control_dependencies([grad]):
-    not_zero_x = math_ops.cast(
-        math_ops.not_equal(x, math_ops.cast(0., dtype=x.dtype)), dtype=x.dtype)
-    partial_x = gen_math_ops.xlogy(not_zero_x, y)
+    # The gradient of xlogy w.r.t. x is log(y) for all x (including x=0),
+    # because d/dx x*log(y) = log(y). The zero-mask should only apply to
+    # the forward value, not the derivative w.r.t. x.
+    partial_x = gen_math_ops.log(y)
     partial_y = gen_math_ops.xdivy(x, y)
     return (array_ops.reshape(math_ops.reduce_sum(partial_x * grad, rx), sx),
             array_ops.reshape(math_ops.reduce_sum(partial_y * grad, ry), sy))
@@ -802,9 +803,10 @@ def _XLog1pyGrad(op: ops.Operation, grad):
   sy = array_ops.shape(y)
   rx, ry = gen_array_ops.broadcast_gradient_args(sx, sy)
   with ops.control_dependencies([grad]):
-    not_zero_x = math_ops.cast(
-        math_ops.not_equal(x, math_ops.cast(0., dtype=x.dtype)), dtype=x.dtype)
-    partial_x = gen_math_ops.xlog1py(not_zero_x, y)
+    # The gradient of xlog1py w.r.t. x is log1p(y) for all x (including x=0),
+    # because d/dx x*log1p(y) = log1p(y). The zero-mask should only apply to
+    # the forward value, not the derivative w.r.t. x.
+    partial_x = gen_math_ops.log1p(y)
     partial_y = gen_math_ops.xdivy(x, y + 1.)
     return (array_ops.reshape(math_ops.reduce_sum(partial_x * grad, rx), sx),
             array_ops.reshape(math_ops.reduce_sum(partial_y * grad, ry), sy))
@@ -2003,7 +2005,28 @@ def _CumprodGrad(op: ops.Operation, grad):
   out = math_ops.cumsum(
       prod * grad, axis, exclusive=exclusive, reverse=not reverse
   )
-  return [math_ops.div_no_nan(out, x), None]
+  non_zero_grad = math_ops.div_no_nan(out, x)
+
+  is_zero = math_ops.equal(x, 0)
+  zero_count = math_ops.cumsum(
+      math_ops.cast(is_zero, dtypes.int32),
+      axis,
+      exclusive=exclusive,
+      reverse=reverse,
+  )
+  non_zero_x = array_ops.where_v2(is_zero, math_ops.cast(1, x.dtype), x)
+  non_zero_prod = math_ops.cumprod(
+      non_zero_x, axis, exclusive=exclusive, reverse=reverse
+  )
+  zero_prod_grad = array_ops.where_v2(
+      math_ops.equal(zero_count, 1),
+      non_zero_prod * grad,
+      math_ops.cast(0, grad.dtype),
+  )
+  zero_grad = math_ops.cumsum(
+      zero_prod_grad, axis, exclusive=exclusive, reverse=not reverse
+  )
+  return [array_ops.where_v2(is_zero, zero_grad, non_zero_grad), None]
 
 
 # pylint: disable=missing-function-docstring

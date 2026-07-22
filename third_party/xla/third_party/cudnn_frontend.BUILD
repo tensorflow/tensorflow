@@ -2,6 +2,8 @@
 # The cuDNN Frontend API is a C++ header-only library that demonstrates how
 # to use the cuDNN C backend API.
 
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
+
 package(
     default_visibility = ["//visibility:public"],
 )

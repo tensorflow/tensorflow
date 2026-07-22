@@ -20,6 +20,7 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
+#include <iterator>
 #include <memory>
 #include <optional>
 #include <string>
@@ -36,6 +37,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/gpu/ffi.h"
@@ -47,7 +49,6 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/sequential_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk_buffer_debug_filter.h"
-#include "xla/backends/gpu/runtime/thunk_buffer_debug_pass.h"
 #include "xla/backends/gpu/runtime/thunk_pass_pipeline.h"
 #include "xla/ffi/api/c_api.h"
 #include "xla/ffi/attribute_map.h"
@@ -62,11 +63,15 @@ limitations under the License.
 #include "xla/literal.h"
 #include "xla/runtime/buffer_use.h"
 #include "xla/service/buffer_assignment.h"
+#include "xla/service/gpu/gpu_constants.h"
 #include "xla/service/hlo.pb.h"
+#include "xla/service/hlo_module_config.h"
 #include "xla/service/shaped_slice.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/status_macros.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/gpu/buffer_debug_log.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/tsl/platform/env.h"
@@ -123,14 +128,8 @@ size_t CalculateTempBufferSize(const Thunk& thunk) {
   return TempBufferSizeFromMaxBufferSize(max_buffer_size_bytes);
 }
 
-// TODO(b/485867926): This implementation is O(N) where N is the number of
-// instructions in the module. Since WrapWithSyncDumpThunk (which calls this)
-// is invoked for every thunk in the sequence during RunFloatCheckPassInternal,
-// the overall instrumentation becomes O(N^2).
-// For large modules, this can significantly slow down
-// compilation/initialization. Consider building an
-// absl::flat_hash_map<absl::string_view, const HloInstruction*> once in
-// RunFloatCheckPassInternal and passing it down.
+// Finds an HLO instruction by its name. This is an O(N) search and should only
+// be used in cold paths (e.g. anomaly reporting).
 const HloInstruction* FindHloInstructionWithId(const HloModule* hlo_module,
                                                absl::string_view name) {
   if (hlo_module == nullptr) return nullptr;
@@ -144,33 +143,31 @@ const HloInstruction* FindHloInstructionWithId(const HloModule* hlo_module,
   return nullptr;
 }
 
-// Copies device memory for all read-write (inout) buffers to host memory.
+// Copies device memory for all read-write (inout) buffers to backup device
+// buffers.
 //
-// The order of elements in `inout_buffers` must match the order of buffers
-// passed through `remaining_args`.
-absl::Status BackupBuffers(
-    std::vector<BufferAllocation::Slice> inout_buffers,
-    std::shared_ptr<absl::flat_hash_map<BufferAllocation::Slice,
-                                        std::vector<uint8_t>>> absl_nonnull
-    backup_data,
-    se::Stream* stream, xla::ffi::RemainingArgs remaining_args) {
-  backup_data->clear();
-  backup_data->reserve(remaining_args.size());
-  for (size_t i = 0; i < remaining_args.size(); ++i) {
-    if (i >= inout_buffers.size()) {
-      return absl::InternalError("Mismatch in backup buffer count");
+// The first `num_buffers` in `remaining_args` are the active buffers,
+// and the next `num_buffers` are the backup buffers.
+absl::Status BackupBuffers(size_t num_buffers, se::Stream* stream,
+                           xla::ffi::RemainingArgs remaining_args) {
+  if (remaining_args.size() != 2 * num_buffers) {
+    return absl::InternalError("Mismatch in backup buffer count");
+  }
+  for (size_t i = 0; i < num_buffers; ++i) {
+    ASSIGN_OR_RETURN(auto active_buf,
+                     remaining_args.get<xla::ffi::AnyBuffer>(i));
+    ASSIGN_OR_RETURN(auto backup_buf,
+                     remaining_args.get<xla::ffi::AnyBuffer>(num_buffers + i));
+    if (active_buf.size_bytes() == 0) continue;
+    if (active_buf.size_bytes() != backup_buf.size_bytes()) {
+      return absl::InternalError("Backup buffer size mismatch");
     }
-    ASSIGN_OR_RETURN(auto any_buf, remaining_args.get<xla::ffi::AnyBuffer>(i));
-    if (any_buf.size_bytes() == 0) continue;
-    const BufferAllocation::Slice& slice = inout_buffers[i];
-    std::vector<uint8_t>& storage = (*backup_data)[slice];
-    storage.resize(any_buf.size_bytes());
-    se::DeviceMemoryBase active_ptr(const_cast<void*>(any_buf.untyped_data()),
-                                    any_buf.size_bytes());
-    // TODO(b/485867926): Investigate backing up the buffers in device memory
-    // for efficiency.
+    se::DeviceMemoryBase active_ptr(
+        const_cast<void*>(active_buf.untyped_data()), active_buf.size_bytes());
+    se::DeviceMemoryBase backup_ptr(
+        const_cast<void*>(backup_buf.untyped_data()), backup_buf.size_bytes());
     RETURN_IF_ERROR(
-        stream->Memcpy(storage.data(), active_ptr, any_buf.size_bytes()));
+        stream->Memcpy(&backup_ptr, active_ptr, active_buf.size_bytes()));
   }
   return absl::OkStatus();
 }
@@ -178,9 +175,9 @@ absl::Status BackupBuffers(
 absl::Status DumpHloSnapshot(
     se::Stream* stream, const HloInstruction* instr,
     const std::vector<BufferAllocation::Slice>& operand_slices,
-    const absl::flat_hash_map<BufferAllocation::Slice, std::vector<uint8_t>>&
-        backup_map,
-    xla::ffi::RemainingArgs remaining_args, const std::string& crash_dump_dir,
+    const absl::flat_hash_map<BufferAllocation::Slice, size_t>&
+        backup_index_map,
+    xla::ffi::RemainingArgs remaining_args, absl::string_view crash_dump_dir,
     absl::string_view profile_annotation) {
   HloSnapshot snapshot;
   snapshot.set_execution_platform("cuda");
@@ -227,11 +224,20 @@ absl::Status DumpHloSnapshot(
             arg_index++;
             if (any_buf.size_bytes() == 0) return absl::OkStatus();
 
-            if (auto it = backup_map.find(slice);
-                it != backup_map.end() &&
-                it->second.size() >= any_buf.size_bytes()) {
-              std::memcpy(literal.untyped_data(index), it->second.data(),
-                          any_buf.size_bytes());
+            if (auto it = backup_index_map.find(slice);
+                it != backup_index_map.end()) {
+              size_t backup_arg_index = it->second;
+              ASSIGN_OR_RETURN(
+                  auto backup_buf,
+                  remaining_args.get<xla::ffi::AnyBuffer>(backup_arg_index));
+              if (backup_buf.size_bytes() < any_buf.size_bytes()) {
+                return absl::InternalError("Backup buffer size mismatch");
+              }
+              se::DeviceMemoryBase backup_ptr(
+                  const_cast<void*>(backup_buf.untyped_data()),
+                  backup_buf.size_bytes());
+              RETURN_IF_ERROR(stream->Memcpy(literal.untyped_data(index),
+                                             backup_ptr, any_buf.size_bytes()));
             } else {
               se::DeviceMemoryBase active_ptr(
                   const_cast<void*>(any_buf.untyped_data()),
@@ -289,9 +295,8 @@ bool HasAnomaly(const std::vector<BufferDebugFloatCheckEntry>& entries,
 // release host memory before the next thunk execution.
 absl::Status FloatCheckCrashDump(
     absl::string_view profile_annotation,
-    std::shared_ptr<absl::flat_hash_map<BufferAllocation::Slice,
-                                        std::vector<uint8_t>>> absl_nonnull
-    backup_data,
+    const absl::flat_hash_map<BufferAllocation::Slice, size_t>&
+        backup_index_map,
     const HloInstruction* absl_nonnull instr,
     std::vector<BufferAllocation::Slice> operand_slices, se::Stream* stream,
     xla::ffi::Buffer<PrimitiveType::U8> log_buffer,
@@ -311,7 +316,7 @@ absl::Status FloatCheckCrashDump(
     std::string crash_dump_dir = tsl::io::JoinPath(dump_to, "crash_dump");
 
     absl::Status status =
-        DumpHloSnapshot(stream, instr, operand_slices, *backup_data,
+        DumpHloSnapshot(stream, instr, operand_slices, backup_index_map,
                         remaining_args, crash_dump_dir, profile_annotation);
     if (status.ok()) {
       LOG(FATAL) << "Float check crash dump generated to directory: "
@@ -321,8 +326,6 @@ absl::Status FloatCheckCrashDump(
                  << profile_annotation << ": " << status;
     }
   }
-
-  backup_data->clear();
 
   return absl::OkStatus();
 }
@@ -373,22 +376,12 @@ ThunkBuffersToCheckAndBackup GetBuffersToCheckOrBackup(const Thunk& thunk) {
 }
 
 absl::StatusOr<std::vector<NullableShapedSlice>> GetInstructionOperands(
-    const HloInstruction* instr, const BufferAssignment* buffer_assignment) {
+    const Thunk& thunk) {
   std::vector<NullableShapedSlice> operands;
-  operands.reserve(instr->operand_count());
-  for (int64_t i = 0; i < instr->operand_count(); ++i) {
-    const HloInstruction* op = instr->operand(i);
-    absl::Status status = ShapeUtil::ForEachSubshapeWithStatus(
-        op->shape(),
-        [&](const Shape& subshape, const ShapeIndex& index) -> absl::Status {
-          if (subshape.IsArray()) {
-            ASSIGN_OR_RETURN(auto slice,
-                             buffer_assignment->GetUniqueSlice(op, index));
-            operands.push_back(ShapedSlice{slice, subshape});
-          }
-          return absl::OkStatus();
-        });
-    RETURN_IF_ERROR(status);
+  for (const BufferUse& use : thunk.buffer_uses()) {
+    if (use.HasDefinedContentsOnInput()) {
+      operands.push_back(ShapedSlice{use.slice(), use.shape()});
+    }
   }
   return operands;
 }
@@ -399,8 +392,10 @@ absl::StatusOr<std::unique_ptr<Thunk>> WrapWithSyncDumpThunk(
     std::unique_ptr<Thunk> thunk,
     std::shared_ptr<BufferDebugLogEntryMetadataStore> metadata_store,
     BufferAllocation::Slice log_slice, const HloModule* absl_nonnull hlo_module,
-    const BufferAssignment* absl_nonnull buffer_assignment,
-    ThunkPassBufferAllocator& allocator) {
+    ThunkPassBufferAllocator& allocator,
+    const absl::flat_hash_map<absl::string_view, const HloInstruction*>&
+        hlo_instruction_map,
+    BufferAllocation* absl_nullable global_backup_alloc) {
   if (thunk->buffer_uses().empty()) {
     VLOG(3) << "Skipping sync dump wrapping for thunk "
             << thunk->thunk_info().thunk_id << ": no buffers used";
@@ -418,8 +413,11 @@ absl::StatusOr<std::unique_ptr<Thunk>> WrapWithSyncDumpThunk(
 
   std::string profile_annotation = thunk->thunk_info().profile_annotation;
 
-  const HloInstruction* instr =
-      FindHloInstructionWithId(hlo_module, profile_annotation);
+  const HloInstruction* instr = nullptr;
+  if (auto it = hlo_instruction_map.find(profile_annotation);
+      it != hlo_instruction_map.end()) {
+    instr = it->second;
+  }
   if (instr == nullptr) {
     LOG(WARNING) << "Skipping sync dump wrapping for thunk "
                  << thunk->thunk_info().thunk_id
@@ -435,7 +433,7 @@ absl::StatusOr<std::unique_ptr<Thunk>> WrapWithSyncDumpThunk(
   BufferAllocation::Slice tmp_slice(tmp_alloc, 0, tmp_alloc->size());
 
   ASSIGN_OR_RETURN(std::vector<NullableShapedSlice> operands,
-                   GetInstructionOperands(instr, buffer_assignment));
+                   GetInstructionOperands(*thunk));
 
   std::vector<BufferAllocation::Slice> operand_slices;
   operand_slices.reserve(operands.size());
@@ -446,10 +444,35 @@ absl::StatusOr<std::unique_ptr<Thunk>> WrapWithSyncDumpThunk(
       operands.begin(),
       ShapedSlice{log_slice, Shape(PrimitiveType::U8, {log_slice.size()})});
 
-  std::shared_ptr<
-      absl::flat_hash_map<BufferAllocation::Slice, std::vector<uint8_t>>>
-      backup_data = std::make_shared<
-          absl::flat_hash_map<BufferAllocation::Slice, std::vector<uint8_t>>>();
+  std::vector<BufferAllocation::Slice> backup_slices;
+  if (!inout_buffers.empty()) {
+    TF_RET_CHECK(global_backup_alloc != nullptr)
+        << "global_backup_alloc is null but thunk has inout buffers";
+    backup_slices.reserve(inout_buffers.size());
+    int64_t offset = 0;
+    for (const auto& slice : inout_buffers) {
+      offset = xla::RoundUpTo<int64_t>(offset, kXlaAllocatedBufferAlignBytes);
+      backup_slices.push_back(
+          BufferAllocation::Slice(global_backup_alloc, offset, slice.size()));
+      offset += slice.size();
+    }
+    TF_RET_CHECK(offset <= global_backup_alloc->size())
+        << "Slices exceed global backup allocation size. Offset: " << offset
+        << ", Size: " << global_backup_alloc->size();
+  }
+
+  absl::flat_hash_map<BufferAllocation::Slice, size_t> backup_index_map;
+  const size_t num_original_operands = operand_slices.size();
+  for (size_t i = 0; i < inout_buffers.size(); ++i) {
+    backup_index_map[inout_buffers[i]] = num_original_operands + i;
+  }
+
+  // Append backup slices to operands for dump thunk so they are resolved at
+  // runtime.
+  for (const auto& slice : backup_slices) {
+    operands.push_back(
+        ShapedSlice{slice, Shape(PrimitiveType::U8, {slice.size()})});
+  }
 
   CustomCallThunk::OwnedHandlerBundle dump_bundle{};
   dump_bundle.execute =
@@ -458,7 +481,8 @@ absl::StatusOr<std::unique_ptr<Thunk>> WrapWithSyncDumpThunk(
           .Arg<xla::ffi::Buffer<PrimitiveType::U8>>()
           .RemainingArgs()
           .To(absl::bind_front(FloatCheckCrashDump, profile_annotation,
-                               backup_data, instr, std::move(operand_slices)));
+                               std::move(backup_index_map), instr,
+                               std::move(operand_slices)));
 
   ASSIGN_OR_RETURN(
       auto dump_thunk,
@@ -474,11 +498,16 @@ absl::StatusOr<std::unique_ptr<Thunk>> WrapWithSyncDumpThunk(
     CustomCallThunk::OwnedHandlerBundle backup_bundle{};
     backup_bundle.execute =
         xla::ffi::Ffi::Bind().Ctx<xla::ffi::Stream>().RemainingArgs().To(
-            absl::bind_front(BackupBuffers, inout_buffers, backup_data));
+            absl::bind_front(BackupBuffers, inout_buffers.size()));
 
     std::vector<NullableShapedSlice> backup_operands;
-    backup_operands.reserve(inout_buffers.size());
+    backup_operands.reserve(inout_buffers.size() * 2);
+    // Pass active buffers first, then backup buffers.
     for (const auto& slice : inout_buffers) {
+      backup_operands.push_back(
+          ShapedSlice{slice, Shape(PrimitiveType::U8, {slice.size()})});
+    }
+    for (const auto& slice : backup_slices) {
       backup_operands.push_back(
           ShapedSlice{slice, Shape(PrimitiveType::U8, {slice.size()})});
     }
@@ -767,31 +796,22 @@ CreateBufferDebugFloatCheckThunk(
 absl::StatusOr<std::unique_ptr<BuffersDebugFloatCheckThunk>>
 CreateOutputBuffersCheckThunk(
     const DebugOptions& debug_options, const HloModule* absl_nonnull hlo_module,
-    const BufferAssignment* absl_nonnull buffer_assignment,
+    const std::vector<ShapedSlice>& module_output_slices,
     BufferAllocation::Slice log_slice,
     std::shared_ptr<BufferDebugLogEntryMetadataStore> metadata_store,
     ThunkPassBufferAllocator& allocator) {
   if (!debug_options.xla_gpu_experimental_thunk_buffer_debug_module_outputs()) {
     return nullptr;
   }
-  if (buffer_assignment == nullptr) {
-    LOG(ERROR)
-        << "Buffer assignment is null, cannot determine module output buffers";
-    return nullptr;
-  }
-
-  absl::flat_hash_map<size_t, ShapedSlice> buffers_to_check_shaped;
-  ASSIGN_OR_RETURN(buffers_to_check_shaped,
-                   GetOutputShapedBuffers(hlo_module, buffer_assignment));
 
   absl::flat_hash_map<size_t, BufferAllocation::Slice> buffers_to_check;
-  buffers_to_check.reserve(buffers_to_check_shaped.size());
+  buffers_to_check.reserve(module_output_slices.size());
   size_t max_buffer_size_bytes = 0;
 
-  for (const auto& [idx, shaped_slice] : buffers_to_check_shaped) {
-    const BufferAllocation::Slice& slice = shaped_slice.slice;
+  for (size_t i = 0; i < module_output_slices.size(); ++i) {
+    const BufferAllocation::Slice& slice = module_output_slices[i].slice;
     if (IsFloatTypeSupportedByChecker(slice.element_type())) {
-      buffers_to_check.emplace(idx, slice);
+      buffers_to_check.emplace(i, slice);
       max_buffer_size_bytes =
           std::max<size_t>(max_buffer_size_bytes, slice.size());
     }
@@ -818,12 +838,44 @@ CreateOutputBuffersCheckThunk(
       std::move(buffers_to_check), metadata_store);
 }
 
+// Allocates a single global scratch buffer to be shared sequentially by all
+// instrumented thunks for input backups. This keeps the peak memory overhead
+// at O(max_single_thunk_backup_size) instead of O(sum_of_all_backups),
+// while avoiding reallocating buffers for each thunk.
+absl::StatusOr<BufferAllocation*> AllocateBufferForInputBackups(
+    ThunkSequence* thunk_sequence, const ThunkFilter& thunk_filter,
+    ThunkPassBufferAllocator& allocator) {
+  size_t max_backup_size = 0;
+  for (const auto& thunk : *thunk_sequence) {
+    thunk->Walk([&](const Thunk* t) {
+      if (thunk_filter(*t) == InstrumentAction::kSkip) {
+        return;
+      }
+      auto [_, inout_buffers] = GetBuffersToCheckOrBackup(*t);
+      size_t thunk_backup_size = 0;
+      for (const auto& slice : inout_buffers) {
+        thunk_backup_size = xla::RoundUpTo<size_t>(
+            thunk_backup_size, kXlaAllocatedBufferAlignBytes);
+        thunk_backup_size += slice.size();
+      }
+      max_backup_size = std::max(max_backup_size, thunk_backup_size);
+    });
+  }
+
+  if (max_backup_size == 0) {
+    return nullptr;
+  }
+
+  VLOG(1) << "Allocating global backup buffer of size " << max_backup_size;
+  return allocator.NewEmptyAllocation(max_backup_size);
+}
+
 }  // namespace
 
 absl::Status RunFloatCheckPassInternal(
     ThunkSequence* thunk_sequence, const DebugOptions& debug_options,
     const HloModule* absl_nonnull hlo_module,
-    const BufferAssignment* buffer_assignment,
+    const std::vector<ShapedSlice>& module_output_slices,
     ThunkPassBufferAllocator& allocator) {
   const bool dump_mode =
       debug_options.xla_gpu_detect_nan() == DebugOptions::DETECTION_MODE_DUMP ||
@@ -846,13 +898,26 @@ absl::Status RunFloatCheckPassInternal(
   ThunkFilter thunk_filter = CreateThunkFilter(debug_options);
 
   if (dump_mode) {
+    absl::flat_hash_map<absl::string_view, const HloInstruction*>
+        hlo_instruction_map;
+    for (const HloComputation* computation : hlo_module->computations()) {
+      for (const HloInstruction* instruction : computation->instructions()) {
+        hlo_instruction_map[instruction->name()] = instruction;
+      }
+    }
+
+    ASSIGN_OR_RETURN(
+        BufferAllocation * global_backup_alloc,
+        AllocateBufferForInputBackups(thunk_sequence, thunk_filter, allocator));
+
     auto transform_callback = [&](std::unique_ptr<Thunk> thunk)
         -> absl::StatusOr<std::unique_ptr<Thunk>> {
       if (thunk_filter(*thunk) == InstrumentAction::kSkip) {
         return thunk;
       }
       return WrapWithSyncDumpThunk(std::move(thunk), metadata_store, log_slice,
-                                   hlo_module, buffer_assignment, allocator);
+                                   hlo_module, allocator, hlo_instruction_map,
+                                   global_backup_alloc);
     };
     RETURN_IF_ERROR(thunk_sequence->TransformNested(transform_callback));
 
@@ -883,7 +948,7 @@ absl::Status RunFloatCheckPassInternal(
   ASSIGN_OR_RETURN(
       std::unique_ptr<BuffersDebugFloatCheckThunk> output_buffers_check_thunk,
       CreateOutputBuffersCheckThunk(debug_options, hlo_module,
-                                    buffer_assignment, log_slice,
+                                    module_output_slices, log_slice,
                                     metadata_store, allocator));
 
   thunk_sequence->reserve(thunk_sequence->size() + 3);

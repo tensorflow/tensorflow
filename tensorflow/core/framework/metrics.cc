@@ -280,6 +280,16 @@ auto* tf_data_prefetch_residence_time_usecs_histogram =
          "node_name"},
         {tsl::monitoring::Buckets::Exponential(1000, 2, 30)});
 
+auto* tf_data_prefetch_buffer_counter = tsl::monitoring::Counter<2>::New(
+    "/tensorflow/data/prefetch_buffer",
+    "The number of elements enqueued/dequeued into/from a prefetch buffer.",
+    "node_name", "event_type");
+
+auto* tf_data_prefetch_buffer_size_gauge =
+    tsl::monitoring::Gauge<int64_t, 1>::New(
+        "/tensorflow/data/prefetch_buffer_size",
+        "The current number of elements in a prefetch buffer.", "node_name");
+
 auto* tf_data_service_optimal_number_of_workers =
     monitoring::Gauge<int64_t, 0>::New(
         "/tensorflow/data/service/optimal_number_of_workers",
@@ -696,6 +706,21 @@ void RecordTFDataPrefetchResidenceTime(const std::string& node_name,
                                        int64_t duration_us) {
   tf_data_prefetch_residence_time_usecs_histogram->GetCell(node_name)->Add(
       duration_us);
+}
+
+void RecordTFDataPrefetchEnqueue(const std::string& node_name) {
+  tf_data_prefetch_buffer_counter->GetCell(node_name, "enqueue")
+      ->IncrementBy(1);
+}
+
+void RecordTFDataPrefetchDequeue(const std::string& node_name) {
+  tf_data_prefetch_buffer_counter->GetCell(node_name, "dequeue")
+      ->IncrementBy(1);
+}
+
+void RecordTFDataPrefetchBufferSize(const std::string& node_name,
+                                    int64_t buffer_size) {
+  tf_data_prefetch_buffer_size_gauge->GetCell(node_name)->Set(buffer_size);
 }
 
 void RecordTFDataServiceCrossTrainerCacheQuery(bool cache_hit) {

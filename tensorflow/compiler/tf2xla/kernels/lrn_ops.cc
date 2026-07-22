@@ -66,9 +66,11 @@ class LRNOp : public XlaOpKernel {
     auto sqr_sum = XlaHelpers::ConvertElementType(reduce, input_type(0));
 
     auto scale = xla::Pow(
-        xla::Add(xla::ConstantR0<float>(builder, bias_),
-                 xla::Mul(xla::ConstantR0<float>(builder, alpha_), sqr_sum)),
-        xla::ConstantR0<float>(builder, -beta_));
+        xla::Add(
+            XlaHelpers::FloatLiteral(builder, input_type(0), bias_),
+            xla::Mul(XlaHelpers::FloatLiteral(builder, input_type(0), alpha_),
+                     sqr_sum)),
+        XlaHelpers::FloatLiteral(builder, input_type(0), -beta_));
 
     ctx->SetOutput(0, xla::Mul(input, scale));
   }
@@ -153,14 +155,16 @@ class LRNGradOp : public XlaOpKernel {
         /* window_strides = */ {1, 1, 1, 1}, xla::Padding::kSame);
     auto sqr_sum = XlaHelpers::ConvertElementType(reduce, input_type(0));
 
-    auto norm =
-        xla::Add(xla::ConstantR0<float>(builder, bias_),
-                 xla::Mul(xla::ConstantR0<float>(builder, alpha_), sqr_sum));
+    auto norm = xla::Add(
+        XlaHelpers::FloatLiteral(builder, input_type(0), bias_),
+        xla::Mul(XlaHelpers::FloatLiteral(builder, input_type(0), alpha_),
+                 sqr_sum));
 
-    auto dy = xla::Mul(
-        xla::Mul(xla::ConstantR0<float>(builder, -2.0f * alpha_ * beta_),
-                 xla::Div(out_image, norm)),
-        in_grads);
+    auto dy =
+        xla::Mul(xla::Mul(XlaHelpers::FloatLiteral(builder, input_type(0),
+                                                   -2.0f * alpha_ * beta_),
+                          xla::Div(out_image, norm)),
+                 in_grads);
 
     auto converted_dy = XlaHelpers::ConvertElementType(dy, accumulation_type);
     auto dy_reduce = xla::ReduceWindow(
@@ -170,10 +174,11 @@ class LRNGradOp : public XlaOpKernel {
         /* window_strides = */ {1, 1, 1, 1}, xla::Padding::kSame);
     auto dy_reduced = XlaHelpers::ConvertElementType(dy_reduce, input_type(0));
 
-    xla::XlaOp gradients = xla::Add(
-        xla::Mul(in_image, dy_reduced),
-        xla::Mul(in_grads,
-                 xla::Pow(norm, xla::ConstantR0<float>(builder, -beta_))));
+    xla::XlaOp gradients =
+        xla::Add(xla::Mul(in_image, dy_reduced),
+                 xla::Mul(in_grads,
+                          xla::Pow(norm, XlaHelpers::FloatLiteral(
+                                             builder, input_type(0), -beta_))));
 
     ctx->SetOutput(0, gradients);
   }

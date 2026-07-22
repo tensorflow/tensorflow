@@ -176,6 +176,13 @@ class PointsToSet {
     });
   }
   template <typename Fn>
+  absl::Status ForEachMutableElementWithStatus(const Fn& fn) {
+    return tree_.ForEachMutableElementWithStatus(
+        [&fn](const ShapeIndex& index, Elem* elem) {
+          return fn(index, &elem->buffers);
+        });
+  }
+  template <typename Fn>
   absl::Status ForEachElementWithStatus(const Fn& fn) const {
     return tree_.ForEachElementWithStatus(
         [&fn](const ShapeIndex& index, const Elem& elem) {
@@ -344,6 +351,16 @@ class TuplePointsToAnalysis : public DfsHloVisitorWithDefault {
   absl::Status GatherBuffersDefinedByInstruction(
       const HloInstruction* instruction, BufferDefinitionVector* buffers);
 
+  // Applies deferred aliases from async-start to the current instruction's
+  // points-to set.
+  void ApplyDeferredAliases(HloInstruction* current_instruction,
+                            PointsToSet& points_to_set);
+
+  // Propagates points-to sets for an instruction that aggregates its operands
+  // into an output tuple structure.
+  absl::Status ConstructPointsToSetByAggregatingOperands(
+      HloInstruction* instruction);
+
   // Print points-to set for 'instruction' to 'output'.
   void InstructionToString(const HloInstruction* instruction,
                            std::string* output) const;
@@ -351,6 +368,7 @@ class TuplePointsToAnalysis : public DfsHloVisitorWithDefault {
   // Information kept per instruction
   struct PerInstruction {
     std::unique_ptr<PointsToSet> points_to_set;
+    // Buffers defined by this instruction.
     // Empirically, ~92% of instructions have 1
     // instruction_defined_buffer, and 99% have 0 or 1
     BufferDefinitionVector instruction_defined_buffers;

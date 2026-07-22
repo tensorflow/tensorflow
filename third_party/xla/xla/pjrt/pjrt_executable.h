@@ -327,6 +327,12 @@ struct ExecuteOptions {
   // set and that the default seed (usually random) should be used.
   int64_t seed = 0;
 
+  // If true, use arena allocation for output buffers. When this is true, a
+  // single device buffer is allocated for all output buffers, and each output
+  // buffer is a sub-buffer of the arena. The allocated arena will be released
+  // only after all the sub-buffers are deleted.
+  bool use_output_arena = false;
+
   absl::StatusOr<ExecuteOptionsProto> ToProto() const;
   static absl::StatusOr<ExecuteOptions> FromProto(
       const ExecuteOptionsProto& proto);

@@ -250,10 +250,5 @@ class PromoteShuffleToDPPPass
 };
 
 }  // namespace
-
-std::unique_ptr<mlir::Pass> CreatePromoteShuffleToDPPPass() {
-  return std::make_unique<PromoteShuffleToDPPPass>();
-}
-
 }  // namespace gpu
 }  // namespace xla

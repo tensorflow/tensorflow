@@ -751,7 +751,7 @@ pywrap_tensorflow_macro(
         "@mkl_dnn_acl_compatible//:__subpackages__",
         "@nccl_archive//:__subpackages__",
         "@nvtx_archive//:__subpackages__",
-        "@onednn//:__subpackages__",
+        "@onednn_async//:__subpackages__",
         "@org_sqlite//:__subpackages__",
         "@platforms//:__subpackages__",
         "@png//:__subpackages__",
@@ -1547,7 +1547,6 @@ cc_library(
         if_true = (
             if_cuda_is_configured([
                 "@xla//xla/tsl/cuda:cupti",
-                "@xla//xla/tsl/cuda:nvshmem_stub",
                 "@xla//xla/tsl/cuda:cusolver",
             ]) + if_nccl([
                 "@xla//xla/tsl/cuda:nccl",

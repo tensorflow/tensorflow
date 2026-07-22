@@ -366,7 +366,6 @@ cc_library(
         ":stream_executor_h",
         "//xla/service:computation_placer_hdr",
         "//xla/tsl/platform:status_macros",
-        "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
@@ -378,6 +377,27 @@ cc_library(
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/time",
         "@com_google_absl//absl/types:span",
+    ],
+)
+
+xla_cc_test(
+    name = "device_address_vmm_allocator_test",
+    srcs = ["device_address_vmm_allocator_test.cc"],
+    deps = [
+        ":device_address",
+        ":device_address_vmm_allocator",
+        ":memory_allocation",
+        ":memory_reservation",
+        ":mock_platform",
+        ":mock_stream",
+        ":mock_stream_executor",
+        ":platform",
+        ":stream_executor_h",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_matchers",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/types:span",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 

@@ -20,6 +20,7 @@ limitations under the License.
 
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/strings/cord.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "xla/tsl/platform/status_macros.h"
@@ -151,7 +152,7 @@ absl::Status IfrtIrProgramCompiler::IsExecutableVersionCompatible(
 
 tsl::Future<LoadedExecutableRef>
 IfrtIrProgramCompiler::DeserializeLoadedExecutable(
-    absl::string_view serialized,
+    const absl::Cord& serialized,
     std::unique_ptr<DeserializeExecutableOptions> options) {
   tsl::profiler::TraceMe traceme(
       "IfrtIrProgramCompiler::DeserializeLoadedExecutable");

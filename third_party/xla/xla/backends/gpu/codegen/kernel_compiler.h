@@ -90,7 +90,7 @@ class KernelCompiler {
       TritonKernelSource triton_source, BorrowedMlirContext borrowed_context,
       bool is_xla_fusion) = 0;
 
-  virtual xla::Future<std::vector<uint8_t>> CompileToPtx(
+  virtual xla::Future<std::vector<uint8_t>> CompileToTargetBinary(
       LlvmKernelSource kernel_source) = 0;
 
   // Sets a callback to be called prior to llvm::Module compilation.

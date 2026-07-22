@@ -20,6 +20,7 @@ limitations under the License.
 #endif  // TF_LITE_STATIC_MEMORY
 
 #include <cstring>
+#include <limits>
 #include <new>
 #include <type_traits>
 #include <utility>
@@ -145,6 +146,7 @@ TfLiteSparsity* TfLiteSparsityClone(const TfLiteSparsity* const src) {
 TfLiteQuantization TfLiteQuantizationClone(const TfLiteQuantization& src) {
   TfLiteQuantization dst;
   dst.type = src.type;
+  dst.params = nullptr;
   switch (src.type) {
     case kTfLiteNoQuantization:
       break;
@@ -170,6 +172,21 @@ TfLiteQuantization TfLiteQuantizationClone(const TfLiteQuantization& src) {
       dst_params->blocksize = src_params->blocksize;
       dst_params->scale = src_params->scale;
       dst_params->zero_point = src_params->zero_point;
+      dst_params->quantized_dimension = src_params->quantized_dimension;
+      break;
+    }
+    case kTfLiteMultiAxisQuantization: {
+      dst.params = calloc(1, sizeof(TfLiteMultiAxisQuantization));
+      if (!dst.params) return TfLiteQuantization();
+      const TfLiteMultiAxisQuantization* const src_params =
+          reinterpret_cast<TfLiteMultiAxisQuantization*>(src.params);
+      TfLiteMultiAxisQuantization* const dst_params =
+          reinterpret_cast<TfLiteMultiAxisQuantization*>(dst.params);
+      dst_params->scales = src_params->scales;
+      dst_params->zero_points = src_params->zero_points;
+      dst_params->blocksize = src_params->blocksize;
+      dst_params->quantized_dimensions =
+          TfLiteIntArrayCopy(src_params->quantized_dimensions);
       break;
     }
   }
@@ -265,6 +282,15 @@ void TfLiteQuantizationFree(TfLiteQuantization* quantization) {
   if (quantization->type == kTfLiteBlockwiseQuantization) {
     TfLiteBlockwiseQuantization* q_params =
         reinterpret_cast<TfLiteBlockwiseQuantization*>(quantization->params);
+    free(q_params);
+  }
+  if (quantization->type == kTfLiteMultiAxisQuantization) {
+    TfLiteMultiAxisQuantization* q_params =
+        reinterpret_cast<TfLiteMultiAxisQuantization*>(quantization->params);
+    if (q_params->quantized_dimensions) {
+      TfLiteIntArrayFree(q_params->quantized_dimensions);
+      q_params->quantized_dimensions = nullptr;
+    }
     free(q_params);
   }
   quantization->params = nullptr;
@@ -435,15 +461,23 @@ TfLiteStatus TfLiteTensorCopy(const TfLiteTensor* src, TfLiteTensor* dst) {
 
 TfLiteStatus TfLiteTensorResizeMaybeCopy(size_t num_bytes, TfLiteTensor* tensor,
                                          bool preserve_data) {
+  if (tensor == nullptr) {
+    return kTfLiteError;
+  }
   if (tensor->allocation_type != kTfLiteDynamic &&
       tensor->allocation_type != kTfLitePersistentRo) {
     return kTfLiteOk;
+  }
+  // Guard against integer overflow: num_bytes + XNN_EXTRA_BYTES must not wrap.
+  constexpr size_t kXnnExtraBytes = 16;
+  if (num_bytes > std::numeric_limits<size_t>::max() - kXnnExtraBytes) {
+    return kTfLiteError;
   }
 #ifdef TF_LITE_TENSORFLOW_PROFILER
   tflite::PauseHeapMonitoring(/*pause=*/true);
 #endif
   // This buffer may be consumed by XNNPack.
-  size_t alloc_bytes = num_bytes + /*XNN_EXTRA_BYTES=*/16;
+  size_t alloc_bytes = num_bytes + kXnnExtraBytes;
   // TODO(b/145340303): Tensor data should be aligned.
   if (!tensor->data.data) {
     tensor->data.data = (char*)malloc(alloc_bytes);

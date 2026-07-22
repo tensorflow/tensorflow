@@ -20,7 +20,6 @@ limitations under the License.
 #include <functional>
 #include <iterator>
 #include <memory>
-#include <numeric>
 #include <optional>
 #include <queue>
 #include <set>
@@ -66,7 +65,6 @@ limitations under the License.
 #include "xla/sharding_op_util.h"
 #include "xla/status_macros.h"
 #include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/window_util.h"
 #include "xla/xla_data.pb.h"
@@ -175,7 +173,7 @@ XlaOp XlaBuilderFriend::BuildFusion(
         output_operand_aliasing) {
   return builder->ReportErrorOrReturn([&]() -> absl::StatusOr<XlaOp> {
     HloInstructionProto instr;
-    instr.set_fusion_kind(std::string(fusion_kind));
+    instr.set_fusion_kind(fusion_kind);
     if (!output_operand_aliasing.empty()) {
       for (const auto& pair : output_operand_aliasing) {
         auto aliasing = instr.add_output_operand_aliasing();
@@ -534,9 +532,8 @@ XlaOp operator>>(XlaOp x, XlaOp y) {
     }
     if (ShapeUtil::ElementIsSigned(*shape)) {
       return ShiftRightArithmetic(x, y);
-    } else {
-      return ShiftRightLogical(x, y);
     }
+    return ShiftRightLogical(x, y);
   });
 }
 
@@ -1350,9 +1347,8 @@ absl::StatusOr<XlaOp> DegenerateBroadcastWithUnbounded(
   ASSIGN_OR_RETURN(const Shape* operand_shape, builder->GetShapePtr(operand));
 
   std::vector<int64_t> broadcast_dimensions(operand_shape->dimensions().size());
-  std::iota(
-      broadcast_dimensions.begin(), broadcast_dimensions.end(),
-      output_shape.dimensions().size() - operand_shape->dimensions().size());
+  absl::c_iota(broadcast_dimensions, output_shape.dimensions().size() -
+                                         operand_shape->dimensions().size());
 
   return MhloDynamicBroadcastInDim(operand, output_dimensions,
                                    broadcast_dimensions, output_shape);
@@ -1469,9 +1465,8 @@ XlaOp XlaBuilder::BinaryOp(HloOpcode binop, XlaOp lhs, XlaOp rhs,
       }
       if (type == std::nullopt) {
         return Compare(shape, updated_lhs, updated_rhs, *direction);
-      } else {
-        return Compare(shape, updated_lhs, updated_rhs, *direction, *type);
       }
+      return Compare(shape, updated_lhs, updated_rhs, *direction, *type);
     }
 
     if (direction.has_value()) {
@@ -1608,12 +1603,11 @@ XlaOp XlaBuilder::ConstantLiteral(const LiteralSlice& literal) {
             scalar_op, AddInstruction(std::move(instr), HloOpcode::kConstant));
       }
       return Broadcast(scalar_op, literal.shape().dimensions());
-    } else {
-      HloInstructionProto instr;
-      *instr.mutable_shape() = literal.shape().ToProto();
-      *instr.mutable_literal() = literal.ToProto();
-      return AddInstruction(std::move(instr), HloOpcode::kConstant);
     }
+    HloInstructionProto instr;
+    *instr.mutable_shape() = literal.shape().ToProto();
+    *instr.mutable_literal() = literal.ToProto();
+    return AddInstruction(std::move(instr), HloOpcode::kConstant);
   });
 }
 
@@ -3165,23 +3159,24 @@ absl::StatusOr<XlaOp> XlaBuilder::SortInternal(const Shape& shape,
   return AddInstruction(std::move(instr), HloOpcode::kSort, operands);
 }
 
-XlaOp XlaBuilder::TopK(XlaOp operand, int64_t k, bool largest) {
+XlaOp XlaBuilder::TopK(XlaOp operand, int64_t k, bool largest, bool is_stable) {
   return ReportErrorOrReturn([&]() -> absl::StatusOr<XlaOp> {
     std::vector<const Shape*> operand_shape_ptrs;
     ASSIGN_OR_RETURN(const Shape* operand_shape, GetShapePtr(operand));
     ASSIGN_OR_RETURN(Shape shape,
                      ShapeInference::InferTopKShape(*operand_shape, k));
-    return TopKInternal(shape, operand, k, largest);
+    return TopKInternal(shape, operand, k, largest, is_stable);
   });
 }
 
 absl::StatusOr<XlaOp> XlaBuilder::TopKInternal(const Shape& shape,
                                                XlaOp operand, int64_t k,
-                                               bool largest) {
+                                               bool largest, bool is_stable) {
   HloInstructionProto instr;
   *instr.mutable_shape() = shape.ToProto();
   instr.set_k(k);
   instr.set_largest(largest);
+  instr.set_is_stable(is_stable);
   return AddInstruction(std::move(instr), HloOpcode::kTopK, {operand});
 }
 
@@ -3950,7 +3945,7 @@ XlaOp XlaBuilder::ReduceAll(XlaOp operand, XlaOp init_value,
   return ReportErrorOrReturn([&]() -> absl::StatusOr<XlaOp> {
     ASSIGN_OR_RETURN(const Shape* operand_shape, GetShapePtr(operand));
     std::vector<int64_t> all_dimnos(operand_shape->dimensions().size());
-    std::iota(all_dimnos.begin(), all_dimnos.end(), 0);
+    absl::c_iota(all_dimnos, 0);
     return Reduce(absl::Span<XlaOp const>({operand}),
                   absl::Span<XlaOp const>({init_value}), computation,
                   all_dimnos);
@@ -4586,39 +4581,68 @@ XlaOp XlaBuilder::AllToAllTupleWithDeviceList(
 XlaOp XlaBuilder::CollectiveBroadcast(
     XlaOp operand, absl::Span<const ReplicaGroup> replica_groups,
     const std::optional<ChannelHandle>& channel_id) {
-  return CollectiveBroadcastImpl(operand, CollectiveDeviceList(replica_groups),
-                                 channel_id);
+  return CollectiveBroadcastImpl({operand},
+                                 CollectiveDeviceList(replica_groups),
+                                 channel_id, /*has_dynamic_root=*/false);
 }
 
 XlaOp XlaBuilder::CollectiveBroadcastWithDeviceList(
     XlaOp operand, const CollectiveDeviceListBase& replica_groups,
     const std::optional<ChannelHandle>& channel_id) {
-  return CollectiveBroadcastImpl(operand, replica_groups, channel_id);
+  return CollectiveBroadcastImpl({operand}, replica_groups, channel_id,
+                                 /*has_dynamic_root=*/false);
+}
+
+XlaOp XlaBuilder::CollectiveBroadcast(
+    absl::Span<const XlaOp> operands,
+    absl::Span<const ReplicaGroup> replica_groups,
+    const std::optional<ChannelHandle>& channel_id, bool has_dynamic_root) {
+  return CollectiveBroadcastImpl(operands, CollectiveDeviceList(replica_groups),
+                                 channel_id, has_dynamic_root);
+}
+
+XlaOp XlaBuilder::CollectiveBroadcastWithDeviceList(
+    absl::Span<const XlaOp> operands,
+    const CollectiveDeviceListBase& replica_groups,
+    const std::optional<ChannelHandle>& channel_id, bool has_dynamic_root) {
+  return CollectiveBroadcastImpl(operands, replica_groups, channel_id,
+                                 has_dynamic_root);
 }
 
 XlaOp XlaBuilder::CollectiveBroadcastImpl(
-    XlaOp operand, absl::Span<const ReplicaGroup> replica_groups,
-    const std::optional<ChannelHandle>& channel_id) {
-  return CollectiveBroadcastImpl(operand, CollectiveDeviceList(replica_groups),
-                                 channel_id);
+    absl::Span<const XlaOp> operands,
+    absl::Span<const ReplicaGroup> replica_groups,
+    const std::optional<ChannelHandle>& channel_id, bool has_dynamic_root) {
+  return CollectiveBroadcastImpl(operands, CollectiveDeviceList(replica_groups),
+                                 channel_id, has_dynamic_root);
 }
 
 XlaOp XlaBuilder::CollectiveBroadcastImpl(
-    XlaOp operand, const CollectiveDeviceListBase& replica_groups,
-    const std::optional<ChannelHandle>& channel_id) {
+    absl::Span<const XlaOp> operands,
+    const CollectiveDeviceListBase& replica_groups,
+    const std::optional<ChannelHandle>& channel_id, bool has_dynamic_root) {
   return ReportErrorOrReturn([&]() -> absl::StatusOr<XlaOp> {
-    ASSIGN_OR_RETURN(const Shape* operand_shape, GetShapePtr(operand));
+    std::vector<const Shape*> operand_shapes;
+    for (const auto& operand : operands) {
+      ASSIGN_OR_RETURN(const Shape* operand_shape, GetShapePtr(operand));
+      operand_shapes.push_back(operand_shape);
+    }
+    if (has_dynamic_root) {
+      TF_RET_CHECK(operand_shapes.size() > 1);
+    }
     HloInstructionProto instr;
-    ASSIGN_OR_RETURN(Shape shape, ShapeInference::InferCollectiveBroadcastShape(
-                                      {operand_shape}));
+    Shape shape;
+    ASSIGN_OR_RETURN(
+        shape, ShapeInference::InferCollectiveBroadcastShape(
+                   operand_shapes, /*has_dynamic_root=*/has_dynamic_root));
     *instr.mutable_shape() = shape.ToProto();
     PopulateDeviceList(&instr, replica_groups);
     if (channel_id.has_value()) {
       instr.set_channel_id(channel_id->handle());
     }
-
+    instr.set_has_dynamic_root(has_dynamic_root);
     return AddInstruction(std::move(instr), HloOpcode::kCollectiveBroadcast,
-                          {operand});
+                          operands);
   });
 }
 
@@ -5364,7 +5388,7 @@ absl::StatusOr<XlaOp> XlaBuilder::AddInstruction(
                                    ? op_name
                                    : op_name.substr(last_slash_pos + 1);
       instr.set_name(UniquifyInstructionName(
-          xla::SanitizeOpName(std::string(name), kNameSeparator, "_")));
+          xla::SanitizeOpName(name, kNameSeparator, "_")));
     } else {
       instr.set_name(UniquifyInstructionName(instr.opcode()));
     }
@@ -6385,6 +6409,15 @@ XlaOp CollectiveBroadcast(const XlaOp operand,
                                                 channel_id);
 }
 
+XlaOp CollectiveBroadcast(const absl::Span<const XlaOp> operands,
+                          absl::Span<const ReplicaGroup> replica_groups,
+                          const std::optional<ChannelHandle>& channel_id,
+                          bool has_dynamic_root) {
+  CHECK(!operands.empty());
+  return operands.at(0).builder()->CollectiveBroadcast(
+      operands, replica_groups, channel_id, has_dynamic_root);
+}
+
 XlaOp CollectivePermute(
     const XlaOp operand,
     const std::vector<std::pair<int64_t, int64_t>>& source_target_pairs,
@@ -6604,8 +6637,8 @@ XlaOp Sort(absl::Span<const XlaOp> operands, XlaComputationId comparator,
                                      is_stable);
 }
 
-XlaOp TopK(XlaOp operand, int64_t k, bool largest) {
-  return operand.builder()->TopK(operand, k, largest);
+XlaOp TopK(XlaOp operand, int64_t k, bool largest, bool is_stable) {
+  return operand.builder()->TopK(operand, k, largest, is_stable);
 }
 
 XlaOp Clamp(const XlaOp min, const XlaOp operand, const XlaOp max) {
@@ -6891,7 +6924,9 @@ absl::StatusOr<XlaOp> ConvertSpmdFullToShardShape(
       }
       const int64_t partitions_i =
           manual_sharding.tile_assignment_dimensions(i);
-      if (partitions_i == 1) continue;
+      if (partitions_i == 1) {
+        continue;
+      }
       const int64_t dim_size =
           CeilOfRatio(output_shape.dimensions(i), partitions_i);
       output_shape.set_dimensions(i, dim_size);
@@ -7073,6 +7108,14 @@ XlaOp CollectiveBroadcastWithDeviceList(
     const std::optional<ChannelHandle>& channel_id) {
   return operand.builder()->CollectiveBroadcastWithDeviceList(
       operand, replica_groups, channel_id);
+}
+
+XlaOp CollectiveBroadcastWithDeviceList(
+    absl::Span<const XlaOp> operands,
+    const CollectiveDeviceListBase& replica_groups,
+    const std::optional<ChannelHandle>& channel_id, bool has_dynamic_root) {
+  return operands.at(0).builder()->CollectiveBroadcastWithDeviceList(
+      operands, replica_groups, channel_id, has_dynamic_root);
 }
 
 }  // namespace xla

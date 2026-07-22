@@ -29,6 +29,7 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
@@ -139,11 +140,10 @@ Tiles PropagateTileToInputForBroadcastOp(const HloBroadcastInstruction& bcast,
   return {output_tile.CloneWithNewDims(std::move(dim_tiles))};
 }
 
-Tiles PropagateTileToOutputForBroadcastOp(const HloBroadcastInstruction& bcast,
-                                          const Tile& input_tile) {
-  absl::Span<const int64_t> bcast_dims = bcast.dimensions();
-  const Shape& output_shape = bcast.shape();
-  auto output_rank = bcast.shape().dimensions().size();
+Tile PropagateTileToOutputForBroadcastOpImpl(
+    const Shape& output_shape, absl::Span<const int64_t> bcast_dims,
+    const Tile& input_tile) {
+  int64_t output_rank = output_shape.dimensions().size();
 
   SmallVector<DimTile> dim_tiles;
   dim_tiles.reserve(output_rank);
@@ -160,7 +160,13 @@ Tiles PropagateTileToOutputForBroadcastOp(const HloBroadcastInstruction& bcast,
     dim_tiles.push_back(
         input_tile.dim_tiles()[std::distance(bcast_dims.begin(), bcast_dim)]);
   }
-  return {input_tile.CloneWithNewDims(std::move(dim_tiles))};
+  return input_tile.CloneWithNewDims(std::move(dim_tiles));
+}
+
+Tiles PropagateTileToOutputForBroadcastOp(const HloBroadcastInstruction& bcast,
+                                          const Tile& input_tile) {
+  return {PropagateTileToOutputForBroadcastOpImpl(
+      bcast.shape(), bcast.dimensions(), input_tile)};
 }
 
 absl::Status VerifyConcatenateAlignment(
@@ -945,19 +951,41 @@ absl::Status VerifyReshapeContiguity(
   // 3. Contiguous Tiling Verification (All strides are 1)
   // ===========================================================================
   // Verify that the multidim side has at most one partially tiled dimension.
-  // - In Collapse: we allow the inner dimensions to be fully covered
-  //   or skipped (size 1)
   // - In Expand: we allow inner dimensions to be fully covered.
+  // - In Collapse: we allow the inner dimensions to be fully covered, or
+  //   partially tiled with size 1 ONLY if they are at the innermost boundary
+  //   (i.e., not sandwiched between other tiled dimensions).
+  //   A sandwiched size-1 tile is a partially tiled dimension that introduces
+  //   irregular gaps in the access pattern (non-contiguous collapse), whereas
+  //   an innermost size-1 tile only introduces a regular stride multiplier.
   int i = 0;
   while (i < n && IsConstantValue(multidim_side_tiles[i].size, 1)) {
     ++i;
   }
 
   int j = n - 1;
-  while (j >= 0 &&
-         (DimIsFullyCovered(multidim_side_tiles[j], multidim_side_dims[j]) ||
-          (is_collapse && IsConstantValue(multidim_side_tiles[j].size, 1)))) {
-    --j;
+  // Tracks if all dimensions processed so far (from right to left) have a tile
+  // size of 1. If we encounter any dimension with tile size > 1, this becomes
+  // false, meaning any subsequent size-1 dimensions are "sandwiched" (have a
+  // tiled dimension to their right).
+  bool all_suffix_is_size_1 = true;
+  while (j >= 0) {
+    auto size_val = TryGetConstantValue(multidim_side_tiles[j].size);
+    if (!size_val.has_value()) {
+      break;
+    }
+    if (DimIsFullyCovered(multidim_side_tiles[j], multidim_side_dims[j])) {
+      if (*size_val > 1) {
+        all_suffix_is_size_1 = false;
+      }
+      --j;
+    } else if (is_collapse && *size_val == 1 && all_suffix_is_size_1) {
+      // We can skip a size-1 dimension during collapse only if it is not
+      // sandwiched (all_suffix_is_size_1 is still true).
+      --j;
+    } else {
+      break;
+    }
   }
 
   // All dimensions before i are size 1 and all dimensions after j are full.
@@ -1090,22 +1118,44 @@ absl::StatusOr<Tile> PropagateTileThroughReshape(const Tile& tile,
           << "  src: " << src.ToString() << "\n"
           << "  dst: " << dst.ToString() << "\n"
           << "  tile: " << tile.ToString();
-  std::vector<MinimalReshape> reshapes = GetMinimalReshapes(src, dst);
+
+  // Represent reshape as a reshape followed by rank increase:
+  // src -> reshape_shape -> dst.
+  // We use this approach in the emitter as new rank dimensions might not have a
+  // trivial tile size and thus have to be handled as a broadcast. Applying the
+  // same algorithm here for consistency.
+  llvm::SmallVector<int64_t> non_trivial_dim_positions =
+      PositionsOfNonTrivialDims(dst.dimensions());
+
+  llvm::SmallVector<int64_t> reshape_dims;
+  reshape_dims.reserve(non_trivial_dim_positions.size());
+  for (int64_t dim : non_trivial_dim_positions) {
+    reshape_dims.push_back(dst.dimensions(dim));
+  }
+  Shape reshape_shape = ShapeUtil::MakeShape(dst.element_type(), reshape_dims);
+
+  VLOG(2) << absl::StrCat(
+      "reshape: ", reshape_shape.ToString(),
+      "\nbroadcast: ", absl::StrJoin(non_trivial_dim_positions, ","));
+
+  std::vector<MinimalReshape> reshapes = GetMinimalReshapes(src, reshape_shape);
   VLOG(2) << "reshapes: " << absl::StrJoin(reshapes, ", ");
   RETURN_IF_ERROR(IsSupportedReshape(reshapes));
-
   SmallVector<DimTile> target_dim_tiles;
-  target_dim_tiles.reserve(dst.dimensions().size());
+  target_dim_tiles.reserve(reshape_dims.size());
   const TilingSpace& tiling_space = tile.tiling_space();
   mlir::MLIRContext* mlir_context = tiling_space.mlir_context();
-  for (int64_t dim_size : dst.dimensions()) {
+  for (int64_t dim_size : reshape_dims) {
     target_dim_tiles.push_back(GetFullDimTile(dim_size, mlir_context));
   }
   for (const auto& minimal_reshape : reshapes) {
     RETURN_IF_ERROR(PropagateTileThroughMinimalReshape(
-        mlir_context, minimal_reshape, src, dst, tile, target_dim_tiles));
+        mlir_context, minimal_reshape, src, reshape_shape, tile,
+        target_dim_tiles));
   }
-  return {Tile(tiling_space, std::move(target_dim_tiles))};
+  Tile reshape_tile(tiling_space, std::move(target_dim_tiles));
+  return PropagateTileToOutputForBroadcastOpImpl(dst, non_trivial_dim_positions,
+                                                 reshape_tile);
 }
 
 absl::StatusOr<Tiles> PropagateTileToInputForReshapeOp(
@@ -1249,8 +1299,7 @@ absl::StatusOr<Tiles> PropagateTileToInput(TilingSpace& tiling_space,
   VLOG(2) << "tiling_space: " << tiling_space.ToString();
   if (HloInstruction::IsOpElementwise(hlo.opcode()) ||
       // For a single device, all-reduce is an elementwise op.
-      HloPredicateIsOp<HloOpcode::kAllReduceStart, HloOpcode::kAllReduceDone,
-                       HloOpcode::kMap>(&hlo)) {
+      HloPredicateIsOp<HloOpcode::kAllReduce, HloOpcode::kMap>(&hlo)) {
     return {PropagateTileToInputForCwiseOp(hlo, output_tile)};
   }
   if (hlo.opcode() == HloOpcode::kAllGather) {

@@ -15,7 +15,6 @@ limitations under the License.
 
 #include <cstdint>
 #include <limits>
-#include <memory>
 #include <optional>
 #include <string>
 #include <utility>
@@ -46,6 +45,7 @@ limitations under the License.
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/IR/TypeUtilities.h"
 #include "mlir/IR/Value.h"
+#include "mlir/IR/ValueRange.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Support/LLVM.h"
 #include "mlir/Support/LogicalResult.h"
@@ -144,7 +144,12 @@ class LowerBroadcastInDim
 
       auto extracted = mlir::tensor::ExtractOp::create(rewriter, op.getLoc(),
                                                        broadcast_dim_input);
-
+      if (output_shape.empty()) {
+        rewriter.replaceOpWithNewOp<tensor::FromElementsOp>(
+            op, RankedTensorType::get({}, extracted.getType()),
+            ValueRange{extracted});
+        return mlir::success();
+      }
       rewriter.replaceOpWithNewOp<ttir::SplatOp>(op, op.getResult().getType(),
                                                  extracted);
       return mlir::success();
@@ -590,13 +595,15 @@ absl::StatusOr<AlgorithmEmitter> GetAlgorithmEmitter(
 
 bool IsTf32Allowed(const ::xla::xtile::PrecisionSpec& precision_spec) {
   if (precision_spec.algorithm == ::xla::PrecisionConfig::ALG_UNSET) {
-    return tsl::tensor_float_32_execution_enabled() &&
-           StableHloPrecisionToXlaPrecision(
-               precision_spec.lhs_operand_precision) ==
-               ::xla::PrecisionConfig::DEFAULT &&
-           StableHloPrecisionToXlaPrecision(
-               precision_spec.rhs_operand_precision) ==
-               ::xla::PrecisionConfig::DEFAULT;
+    if (!tsl::tensor_float_32_execution_enabled()) {
+      return false;
+    }
+    ::xla::PrecisionConfig::Precision lhs_precision =
+        StableHloPrecisionToXlaPrecision(precision_spec.lhs_operand_precision);
+    ::xla::PrecisionConfig::Precision rhs_precision =
+        StableHloPrecisionToXlaPrecision(precision_spec.rhs_operand_precision);
+    return lhs_precision <= ::xla::PrecisionConfig::HIGH &&
+           rhs_precision <= ::xla::PrecisionConfig::HIGH;
   }
   return ::xla::algorithm_util::HasTf32InputType(precision_spec.algorithm);
 }

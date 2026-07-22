@@ -35,6 +35,7 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
@@ -62,13 +63,13 @@ limitations under the License.
 #include "xla/tsl/lib/io/zlib_outputbuffer.h"
 #include "xla/tsl/lib/strings/proto_serialization.h"
 #include "xla/tsl/platform/env.h"
-#include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/file_system.h"
 #include "xla/tsl/platform/file_system_helper.h"
 #include "xla/util.h"
 #include "xla/util/split_proto/split_hlo_writer.h"
 #include "tsl/platform/path.h"
 #include "tsl/platform/platform.h"
+#include "tsl/platform/protobuf.h"
 #include "tsl/profiler/lib/scoped_annotation.h"
 
 // BuildData isn't available in OSS.
@@ -480,7 +481,7 @@ static std::vector<std::string> DumpHloModuleImpl(
         continue;
       }
       file_paths.push_back(DumpToFileInDirImpl(
-          FilenameFor(module, computation->name(), "_fusion.html"),
+          FilenameFor(module, computation->name(), "_fusion.pyz"),
           *rendered_graph, opts));
     }
   }
@@ -883,7 +884,7 @@ std::optional<std::string> DumpNonDefaultDebugOptions(
   const DebugOptions& debug_options = module.config().debug_options();
   std::string filename = FilenameFor(module, "", suffix);
   std::string nonDefaultDebugOptions = GetNonDefaultDebugOptions(debug_options);
-  // Options steering where the dump is actually written to can be overriden
+  // Options steering where the dump is actually written to can be overridden
   DumpOptions opts = GetDumpOptions(module, dump_options);
   return DumpToFileInDirImpl(filename, nonDefaultDebugOptions, opts);
 }
@@ -906,9 +907,17 @@ std::vector<std::string> DumpHloModuleProtoIfEnabled(
     const HloModuleProto& module_proto, absl::string_view name) {
   auto config = xla::HloModule::CreateModuleConfigFromProto(
       module_proto, xla::GetDebugOptionsFromFlags());
+  if (!config.ok()) {
+    LOG(ERROR) << "Failed to create module config: " << config.status();
+    return {};
+  }
 
-  auto module =
-      xla::HloModule::CreateFromProto(module_proto, config.value()).value();
+  auto module_or = xla::HloModule::CreateFromProto(module_proto, *config);
+  if (!module_or.ok()) {
+    LOG(ERROR) << "Failed to create module from proto: " << module_or.status();
+    return {};
+  }
+  auto module = std::move(*module_or);
 
   DumpOptions opts = GetDumpOptions(*module);
   if (opts.should_dump_module(module->name())) {

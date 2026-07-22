@@ -16,6 +16,7 @@
 
 import re
 
+from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.types import internal
 from tensorflow.python.platform import tf_logging as logging
 
@@ -62,17 +63,24 @@ def register(name):
     # inconsistent with each other.
     if cls in _TYPE_SPEC_TO_NAME and _TYPE_SPEC_TO_NAME[cls] != name:
       raise ValueError(
-          "Class %s.%s has already been registered with name %s." %
-          (cls.__module__, cls.__name__, _TYPE_SPEC_TO_NAME[cls]))
+          "Class %s.%s has already been registered with name %s." 
+        % (cls.__module__, cls.__name__, _TYPE_SPEC_TO_NAME[cls])
+      )
       
     if name in _NAME_TO_TYPE_SPEC:
       existing_cls = _NAME_TO_TYPE_SPEC[name]
       if existing_cls is cls:
         return cls
-      elif (existing_cls.__module__ == cls.__module__ and 
-              existing_cls.__name__ == cls.__name__):
-        logging.warning("Re-registering class %s.%s for name %s.",
-                          cls.__module__, cls.__name__, name)
+      elif (
+          existing_cls.__module__ == cls.__module__
+          and existing_cls.__name__ == cls.__name__
+      ):
+        logging.warning(
+            "Re-registering class %s.%s for name %s.",
+            cls.__module__,
+            cls.__name__,
+            name,
+        )
         # Clear out old mappings in reverse lookup
         _TYPE_SPEC_TO_NAME.pop(existing_cls, None)
         _TYPE_SPEC_TO_NAME[cls] = name
@@ -80,8 +88,9 @@ def register(name):
         return cls
       else:
         raise ValueError(
-            "Name %s has already been registered for class %s.%s." %
-            (name, existing_cls.__module__, existing_cls.__name__))
+            "Name %s has already been registered for class %s.%s."
+            % (name, existing_cls.__module__, existing_cls.__name__)
+        )
 
     _TYPE_SPEC_TO_NAME[cls] = name
     _NAME_TO_TYPE_SPEC[name] = cls

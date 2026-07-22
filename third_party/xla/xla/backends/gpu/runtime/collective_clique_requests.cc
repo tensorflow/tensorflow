@@ -75,6 +75,8 @@ absl::Status CollectiveCliqueRequests::RequestClique(
     if (requirements.barrier_reqs.has_value()) {
       req.barrier_after_module_execution_requested |=
           requirements.barrier_reqs->module_execution_barrier;
+      req.use_cross_device_barrier_requested |=
+          requirements.barrier_reqs->use_cross_device_barrier;
     }
 
     return absl::OkStatus();
@@ -93,6 +95,8 @@ absl::Status CollectiveCliqueRequests::RequestClique(
   if (requirements.barrier_reqs.has_value()) {
     req.barrier_after_module_execution_requested |=
         requirements.barrier_reqs->module_execution_barrier;
+    req.use_cross_device_barrier_requested |=
+        requirements.barrier_reqs->use_cross_device_barrier;
   }
 
   cliques_.try_emplace(clique_key, std::move(req));
