@@ -251,6 +251,49 @@ bool IsElementWiseMonotonic(const NodeDef& node, bool* is_non_decreasing) {
   return false;
 }
 
+// Returns true if node represents a monotonic unary elementwise function that
+// maps distinct floating-point inputs to distinct outputs everywhere except
+// for isolated rounding-induced ties, i.e. has no saturation plateau or
+// overflow that collapses an entire input interval to a single value. This is
+// a strictly stronger property than monotonicity: ops like Tanh or Relu are
+// monotonic but collapse whole input ranges to one constant (tanh rounds to
+// exactly 1.0 in float32 for inputs >= ~9; relu maps every negative input to
+// 0.0), so hoisting them out of index-producing reductions such as
+// ArgMax/ArgMin can change the resulting indices. Monotonic ops omitted here
+// and the float32 property that disqualifies them:
+//
+//   Tanh, Sigmoid, Erf:  saturate to a finite constant for large |x|.
+//   Exp, Expm1, Sinh:    overflow to +/-inf for |x| above ~88.
+//   Elu, Selu:           saturate toward a negative constant for large
+//                        negative inputs as exp(x) underflows to 0.
+//   Relu:                maps every negative input to 0.0.
+//   Relu6:               clamps all inputs above 6 to exactly 6.0.
+//   Softplus:            underflows to 0.0 for large negative inputs.
+//   Softsign:            x / (1 + |x|) rounds to exactly +/-1.0 once
+//                        1 + |x| == |x| in float32.
+//   Atan:                rounds to exactly +/-pi/2 for large |x|.
+//   Acos:                acos(x) = pi/2 - x + O(x^3) near zero, so every
+//                        |x| small relative to an ulp of pi/2 (~1e-8,
+//                        including all denormals) rounds to exactly acos(0).
+//   Erfc:                underflows to exactly 0.0 for x above ~10.5.
+//   Floor, Ceil, Rint:   many-to-one by definition.
+//   Sign:                three-valued.
+//   Atanh:               produces NaN outside the open interval (-1, 1).
+bool IsElementWiseStrictlyInjective(const NodeDef& node) {
+  static const gtl::FlatSet<std::string>* const kStrictlyInjectiveOps =
+      CHECK_NOTNULL((new gtl::FlatSet<std::string>{
+          "Acosh",
+          "Asin",
+          "Asinh",
+          "Log",
+          "Log1p",
+          "Neg",
+          "Rsqrt",
+          "Sqrt",
+      }));
+  return kStrictlyInjectiveOps->count(node.op()) > 0;
+}
+
 bool IsElu(const NodeDef& node) { return node.op() == "Elu"; }
 
 bool IsEluGrad(const NodeDef& node) { return node.op() == "EluGrad"; }
