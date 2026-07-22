@@ -80,6 +80,8 @@ std::string Options::ToString() const {
                     enable_sync_copy_replacement),
        absl::StrCat("enable_sync_slice_replacement: ",
                     enable_sync_slice_replacement),
+       absl::StrCat("enable_sync_custom_fusion_replacement: ",
+                    enable_sync_custom_fusion_replacement),
        absl::StrCat("extend_async_copies_limit_for_sync_mem_op_conversion: ",
                     extend_async_copies_limit_for_sync_mem_op_conversion),
        absl::StrCat("inefficient_use_to_copy_ratio: ",
