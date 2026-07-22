@@ -428,10 +428,11 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
 
   opts.set_xla_gpu_per_fusion_autotune_cache_dir("");
 
+  opts.set_xla_gpu_use_new_autotune_cache_format(false);
+
   opts.set_xla_gpu_experimental_autotune_cache_mode(
       DebugOptions::AUTOTUNE_CACHE_MODE_UPDATE);
 
-  opts.set_xla_gpu_experimental_autotuner_cache_dir("");
 
   opts.set_xla_gpu_autotune_gemm_rtol(0.1f);
 
@@ -2793,12 +2794,13 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       "cache. Supported modes: read (provides readonly access to "
       "the cache), update (loads if the cache exists, runs autotuning "
       "and dumps the result otherwise). Default: update."));
+
   flag_list->push_back(tsl::Flag(
-      "xla_gpu_experimental_autotuner_cache_dir",
-      string_setter_for(
-          &DebugOptions::set_xla_gpu_experimental_autotuner_cache_dir),
-      debug_options->xla_gpu_experimental_autotuner_cache_dir(),
-      "Experimental: Specify the directory to read/write autotuner cache to."));
+      "xla_gpu_use_new_autotune_cache_format",
+      bool_setter_for(&DebugOptions::set_xla_gpu_use_new_autotune_cache_format),
+      debug_options->xla_gpu_use_new_autotune_cache_format(),
+      "Whether to use the new protos for the autotune cache"
+      " (xla.autotuner.AutotuneCache rather than xla.AutotuneResults."));
   flag_list->push_back(tsl::Flag(
       "xla_gpu_experimental_autotune_backends",
       SetterForRepeatedEnum<autotuner::Backend>(

@@ -864,10 +864,9 @@ message DebugOptions {
   optional bool xla_gpu_experimental_autotune_post_fusion = 481
       [deprecated = true];
 
-  // Specifies the directory for the new structured autotuning cache.
-  // This supersedes `xla_gpu_per_fusion_autotune_cache_dir`, which uses
-  // a different cache format.
-  optional string xla_gpu_experimental_autotuner_cache_dir = 407;
+  // No-op, to be removed.
+  optional string xla_gpu_experimental_autotuner_cache_dir = 407
+      [deprecated = true];
 
   // Specifies the distance threshold in ScheduleAwareCollectiveOpsCSE
   optional int64 xla_gpu_experimental_collective_cse_distance_threshold = 374;
@@ -1265,6 +1264,10 @@ message DebugOptions {
   // This instructs the runtime whether to use memcpy for p2p communication when
   // source and target are located within a node(nvlink).
   optional bool xla_gpu_use_memcpy_local_p2p = 287;
+
+  // Whether to use the new protos for the autotune cache
+  // xla.autotuner.AutotuneCache rather than xla.AutotuneResults.
+  optional bool xla_gpu_use_new_autotune_cache_format = 515;
 
   // An option to enable using cuDNN runtime compiled fusion kernels which is
   // available and recommended for Ampere+ GPUs.
@@ -1674,7 +1677,7 @@ message DebugOptions {
   // Note: when adding a new flag, please add it to one of the hardware-specific
   // or hardware-agnostic sections at the top of this proto message.
 
-  // Next id: 515
+  // Next id: 516
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.
