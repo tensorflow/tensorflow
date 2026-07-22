@@ -72,6 +72,7 @@ class HloDimensionsInstruction : public HloInstruction {
       case HloOpcode::kConcatenate:
       case HloOpcode::kReduce:
       case HloOpcode::kReverse:
+      case HloOpcode::kRotate:
       case HloOpcode::kSort:
       case HloOpcode::kTranspose:
         return true;
@@ -1103,6 +1104,36 @@ class HloReverseInstruction : public HloDimensionsInstruction {
   std::unique_ptr<HloInstruction> CloneWithNewOperandsImpl(
       const Shape& shape, absl::Span<HloInstruction* const> new_operands,
       HloCloneContext* context) const override;
+};
+
+class HloRotateInstruction : public HloDimensionsInstruction {
+ public:
+  explicit HloRotateInstruction(const Shape& shape, HloInstruction* operand,
+                                absl::Span<const int64_t> dimensions,
+                                absl::Span<const int64_t> shifts);
+
+  static bool ClassOf(const HloInstruction* hlo) {
+    return hlo->opcode() == HloOpcode::kRotate;
+  }
+
+  const std::vector<int64_t>& shifts() const { return shifts_; }
+  std::vector<int64_t>& mutable_shifts() { return shifts_; }
+  void ToProto(HloInstructionProto* proto) const override;
+
+ private:
+  std::unique_ptr<HloInstruction> CloneWithNewOperandsImpl(
+      const Shape& shape, absl::Span<HloInstruction* const> new_operands,
+      HloCloneContext* context) const override;
+
+  bool IdenticalSlowPath(
+      const HloInstruction& other,
+      absl::FunctionRef<bool(const HloComputation*, const HloComputation*)>
+          eq_computations) const override;
+
+  void PrintExtraAttributesImpl(AttributePrinter& printer,
+                                const HloPrintOptions& options) const override;
+
+  std::vector<int64_t> shifts_;
 };
 
 class HloConcatenateInstruction : public HloDimensionsInstruction {

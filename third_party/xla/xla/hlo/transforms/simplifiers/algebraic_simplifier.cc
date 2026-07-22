@@ -18,9 +18,11 @@ limitations under the License.
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <cstddef>
 #include <cstdint>
 #include <iterator>
 #include <limits>
+#include <map>
 #include <memory>
 #include <numeric>
 #include <optional>
@@ -7016,6 +7018,74 @@ absl::Status AlgebraicSimplifierVisitor::HandleReverse(
                                 new_reverse_dims)));
       }
     }
+  }
+  return absl::OkStatus();
+}
+
+absl::Status AlgebraicSimplifierVisitor::HandleRotate(HloInstruction* hlo) {
+  auto* rotate = Cast<HloRotateInstruction>(hlo);
+
+  // Accumulate shifts per dimension (automatically sorted in ascending order
+  // of dim).
+  std::map<int64_t, int64_t> combined_shifts;
+  for (size_t i = 0; i < rotate->dimensions().size(); ++i) {
+    combined_shifts[rotate->dimensions()[i]] += rotate->shifts()[i];
+  }
+
+  // rotate(rotate(x, {k}, {m}), {k}, {n}) ==> rotate(x, {k}, {m + n})
+  HloInstruction* base_operand = rotate->mutable_operand(0);
+  while (base_operand->opcode() == HloOpcode::kRotate) {
+    auto* inner_rotate = Cast<HloRotateInstruction>(base_operand);
+    for (size_t i = 0; i < inner_rotate->dimensions().size(); ++i) {
+      combined_shifts[inner_rotate->dimensions()[i]] +=
+          inner_rotate->shifts()[i];
+    }
+    base_operand = inner_rotate->mutable_operand(0);
+  }
+
+  // Helper to check if base_operand is a splat along dim.
+  auto is_dim_splat = [&](int64_t dim) -> bool {
+    if (base_operand->IsConstant() && base_operand->literal().IsAllFirst()) {
+      return true;
+    }
+    if (base_operand->opcode() == HloOpcode::kBroadcast) {
+      return !absl::c_linear_search(base_operand->dimensions(), dim);
+    }
+    return false;
+  };
+
+  // Canonicalize shifts & dimensions, remove no-op dims.
+  std::vector<int64_t> new_dimensions;
+  std::vector<int64_t> new_shifts;
+  for (const auto& [dim, total_shift] : combined_shifts) {
+    int64_t dim_size = rotate->shape().dimensions(dim);
+    // No-op: size 1 dim
+    if (dim_size <= 1) {
+      continue;
+    }
+    // No-op: splat along dim
+    if (is_dim_splat(dim)) {
+      continue;
+    }
+    int64_t norm_shift = ((total_shift % dim_size) + dim_size) % dim_size;
+    // No-op: shift == 0
+    if (norm_shift == 0) {
+      continue;
+    }
+    new_dimensions.push_back(dim);
+    new_shifts.push_back(norm_shift);
+  }
+
+  // Replace if changed.
+  if (new_dimensions.empty()) {
+    return ReplaceInstruction(rotate, base_operand);
+  }
+  if (base_operand != rotate->operand(0) ||
+      new_dimensions != rotate->dimensions() ||
+      new_shifts != rotate->shifts()) {
+    auto new_rotate = HloInstruction::CreateRotate(
+        rotate->shape(), base_operand, new_dimensions, new_shifts);
+    return ReplaceWithNewInstruction(rotate, std::move(new_rotate));
   }
   return absl::OkStatus();
 }
