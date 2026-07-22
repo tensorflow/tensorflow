@@ -606,6 +606,7 @@ py_library(
 py_library(
     name = "execute",
     srcs = ["execute.py"],
+    lazy_imports = True,
     strict_deps = True,
     visibility = ["//tensorflow:internal"],
     deps = [
