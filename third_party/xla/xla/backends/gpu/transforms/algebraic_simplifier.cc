@@ -23,6 +23,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/transforms/simplifiers/algebraic_simplifier.h"
+#include "xla/hlo/transforms/simplifiers/hlo_dce.h"
 #include "xla/service/gpu/matmul_utils.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/shape_util.h"
@@ -108,10 +109,14 @@ absl::StatusOr<bool> GpuAlgebraicSimplifier::RunImpl(
       2, "GpuAlgebraicSimplifier::RunImpl(), before:\n" + module->ToString());
   bool changed = false;
   GpuAlgebraicSimplifierVisitor visitor(options_, compute_capability_, this);
-  for (auto* comp : module->MakeNonfusionComputations(execution_threads)) {
+  for (auto* comp : module->MakeComputationPostOrder(execution_threads)) {
     if (visitor.Run(comp, options_, this)) {
       changed = true;
     }
+  }
+  if (changed) {
+    HloDCE dce;
+    RETURN_IF_ERROR(dce.Run(module, execution_threads).status());
   }
   XLA_VLOG_LINES(
       2, "GpuAlgebraicSimplifier::RunImpl(), after:\n" + module->ToString());

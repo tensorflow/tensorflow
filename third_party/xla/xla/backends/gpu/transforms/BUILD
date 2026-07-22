@@ -67,6 +67,7 @@ cc_library(
         "//xla/hlo/ir:hlo",
         "//xla/hlo/pass:hlo_pass",
         "//xla/hlo/transforms/simplifiers:algebraic_simplifier",
+        "//xla/hlo/transforms/simplifiers:hlo_dce",
         "//xla/service:pattern_matcher",
         "//xla/service/gpu:matmul_utils",
         "//xla/stream_executor:device_description",
