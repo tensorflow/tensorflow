@@ -2371,24 +2371,12 @@ absl::StatusOr<Shape> InferWgradConvolveShape(
 }  // namespace
 
 /* static */ absl::StatusOr<Shape> ShapeInference::InferConvolveShape(
-    const Shape& lhs, const Shape& rhs_arg, int64_t feature_group_count,
+    const Shape& lhs, const Shape& rhs, int64_t feature_group_count,
     int64_t batch_group_count, const Window& window,
     const ConvolutionDimensionNumbers& dnums,
     const SparsityConfig& sparsity_config,
     std::optional<PrimitiveType> preferred_element_type,
     ConvolutionKind convolution_kind) {
-  const Shape* rhs_ptr = &rhs_arg;
-  if (rhs_arg.IsTuple()) {
-    if (rhs_arg.tuple_shapes().size() != 2) {
-      return InvalidArgument(
-          "rhs of convolution, if a tuple, must have 2 elements for sparsity; "
-          "got: %s",
-          ShapeUtil::HumanString(rhs_arg));
-    }
-    rhs_ptr = &rhs_arg.tuple_shapes(0);
-  }
-  const Shape& rhs = *rhs_ptr;
-
   RETURN_IF_ERROR(ExpectArray(lhs, "lhs of convolution"));
   RETURN_IF_ERROR(ExpectArray(rhs, "rhs of convolution"));
 

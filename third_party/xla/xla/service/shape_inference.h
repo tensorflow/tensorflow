@@ -115,7 +115,7 @@ class ShapeInference {
   // to lhs in the way specified by the fields on window. An optional
   // preferred_element_type can be specified to upcast the element type.
   static absl::StatusOr<Shape> InferConvolveShape(
-      const Shape& lhs, const Shape& rhs_arg, int64_t feature_group_count,
+      const Shape& lhs, const Shape& rhs, int64_t feature_group_count,
       int64_t batch_group_count, const Window& window,
       const ConvolutionDimensionNumbers& dimension_numbers,
       const SparsityConfig& sparsity_config,

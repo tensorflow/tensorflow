@@ -2651,9 +2651,12 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
       optional<SparsityConfig> parsed_sparsity_config;
       attrs["sparsity_config"] = {/*required=*/false, AttrTy::kSparsityConfig,
                                   &parsed_sparsity_config};
-      if ((!preset_operands &&
-           !ParseOperands(&operands, builder, /*expected_size=*/2)) ||
+      if ((!preset_operands && !ParseOperands(&operands, builder)) ||
           !ParseAttributes(attrs, allow_attributes, shape)) {
+        return nullptr;
+      }
+      if (!preset_operands && operands.size() < 2) {
+        Error(lexer_.GetLoc(), "expects at least 2 operands");
         return nullptr;
       }
       if (!window) {
@@ -2685,9 +2688,9 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
       }
       ConvolutionKind kind = convolution_kind.value_or(CONVOLUTION_KIND_UNSET);
       return builder->AddInstruction(HloInstruction::CreateConvolve(
-          *shape, /*lhs=*/operands[0], /*rhs=*/operands[1],
-          feature_group_count.value(), batch_group_count.value(), *window,
-          *dnums, precision_config, sparsity_config, kind));
+          *shape, operands, feature_group_count.value(),
+          batch_group_count.value(), *window, *dnums, precision_config,
+          sparsity_config, kind));
     }
     case HloOpcode::kFft: {
       optional<FftType> fft_type;
@@ -7520,6 +7523,12 @@ bool HloParserImpl::ParseTensorSparsityConfig(
           return Error(lexer_.GetLoc(), "expects int64_t");
         }
         result->set_stride(stride);
+      } else if (attribute == "idx") {
+        int64_t idx;
+        if (!ParseInt64(&idx)) {
+          return Error(lexer_.GetLoc(), "expects int64_t");
+        }
+        result->set_idx(idx);
       } else {
         return Error(lexer_.GetLoc(), "unknown attribute");
       }

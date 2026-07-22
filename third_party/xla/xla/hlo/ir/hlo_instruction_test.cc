@@ -76,8 +76,8 @@ TEST_F(HloInstructionTest, SparsityConfigToString_RHSOnly) {
   dnums.set_output_feature_dimension(1);
   HloInstruction* conv = builder.AddInstruction(HloInstruction::CreateConvolve(
       /*shape=*/ShapeUtil::MakeShape(BF16, {256, 256}),
-      /*lhs=*/lhs,
-      /*rhs=*/rhs,
+      {/*lhs=*/lhs,
+       /*rhs=*/rhs},
       /*feature_group_count=*/1,
       /*batch_group_count=*/1,
       /*window=*/Window(),
@@ -118,8 +118,8 @@ TEST_F(HloInstructionTest, SparsityConfigToString_LHSAndRHS) {
   dnums.set_output_feature_dimension(1);
   HloInstruction* conv = builder.AddInstruction(HloInstruction::CreateConvolve(
       /*shape=*/ShapeUtil::MakeShape(BF16, {256, 256}),
-      /*lhs=*/lhs,
-      /*rhs=*/rhs,
+      {/*lhs=*/lhs,
+       /*rhs=*/rhs},
       /*feature_group_count=*/1,
       /*batch_group_count=*/1,
       /*window=*/Window(),

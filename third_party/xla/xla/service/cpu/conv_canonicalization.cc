@@ -141,9 +141,9 @@ absl::StatusOr<bool> ConvCanonicalization::RunImpl(
       // example, input height and width are the same as before the reshapes.
       HloInstruction* new_conv = module->entry_computation()->AddInstruction(
           HloInstruction::CreateConvolve(
-              new_conv_shape, new_input, new_kernel, hlo->feature_group_count(),
-              hlo->batch_group_count(), hlo->window(), new_dnums,
-              hlo->precision_config()));
+              new_conv_shape, {new_input, new_kernel},
+              hlo->feature_group_count(), hlo->batch_group_count(),
+              hlo->window(), new_dnums, hlo->precision_config()));
 
       // Reshape the output back to the shape of the original convolution.
       RETURN_IF_ERROR(module->entry_computation()->ReplaceWithNewInstruction(
