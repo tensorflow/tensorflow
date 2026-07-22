@@ -578,7 +578,7 @@ void AddLoopTransformationPasses(mlir::OpPassManager& pm,
   pm.addNestedPass<FuncOp>(emitters::createUnswitchLoopsPass());
   // We need LICM again after unswitching, because that can introduce new
   // opportunities for LICM. This would not be necessary if LICM also moved
-  // instructions over ifs.
+  // instructions over if-statements.
   pm.addPass(mlir::createLoopInvariantCodeMotionPass());
   pm.addNestedPass<FuncOp>(emitters::createVectorizeLoadsAndStoresPass(device));
   OptimizeLoopsPassOptions optimize_loops_options;
