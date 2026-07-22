@@ -14,6 +14,7 @@
 # ==============================================================================
 """TensorFlow Python init file."""
 
+import tensorflow.python.disable_onednn
 # Do not add code to //third_party/tensorflow/python/__init__.py.
 # This file is imported whenever TensorFlow is imported.
 # Additional imports in this file could cause the internal
