@@ -307,6 +307,8 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> TileAndEmitXTileModule(
     ASSIGN_OR_RETURN(
         TiledHloComputation tiled_computation,
         TiledHloComputation::Tile(*fusion_adaptor, std::move(tiling_space)));
+    tiled_computation.Simplify();
+    tiled_computation.SortInstructionsPostOrder();
     if (Decision constraints = experimental::VerifyTritonConstraints(
             tiled_computation, device_info);
         !constraints) {
