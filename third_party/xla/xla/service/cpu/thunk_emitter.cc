@@ -39,7 +39,6 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/Support/DebugStringHelper.h"
 #include "xla/backends/cpu/alignment.h"
-#include "xla/backends/cpu/codegen/computation_kernel_emitter.h"
 #include "xla/backends/cpu/codegen/dot/dot_kernel_emitter.h"
 #include "xla/backends/cpu/codegen/elemental/concatenate_kernel_emitter.h"
 #include "xla/backends/cpu/codegen/elemental/elemental_kernel_emitter.h"
@@ -48,6 +47,8 @@ limitations under the License.
 #include "xla/backends/cpu/codegen/fusion_emitter.h"
 #include "xla/backends/cpu/codegen/ir_compiler.h"
 #include "xla/backends/cpu/codegen/target_machine_features.h"
+#include "xla/backends/cpu/codegen/tiled/tiled_computation_emitter.h"
+#include "xla/backends/cpu/codegen/tiled/tiled_fusion_emitter.h"
 #include "xla/backends/cpu/runtime/all_gather_thunk.h"
 #include "xla/backends/cpu/runtime/all_reduce_thunk.h"
 #include "xla/backends/cpu/runtime/all_to_all_thunk.h"
@@ -100,7 +101,6 @@ limitations under the License.
 #include "xla/service/cpu/cpu_options.h"
 #include "xla/service/cpu/dot_op_emitter.h"
 #include "xla/service/cpu/ir_emission_utils.h"
-#include "xla/service/cpu/ir_emitter2.h"
 #include "xla/service/dump.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_module_config.h"
@@ -157,26 +157,28 @@ static FusionCompiler::Options FusionCompilerOptions(
       llvm_ir::GetCpuFastMathFlags(config)};
 }
 
-static FusionCompiler FusionCompilerFactory(mlir::MLIRContext* context,
-                                            const HloModule& hlo_module) {
+static FusionCompiler FusionCompilerFactory(
+    mlir::MLIRContext* context, const HloModule& hlo_module,
+    const llvm::TargetMachine* target_machine) {
   FusionCompiler::Options options = FusionCompilerOptions(hlo_module.config());
-  return FusionCompiler(context, std::move(options), &hlo_module);
+  return FusionCompiler(context, std::move(options), &hlo_module,
+                        target_machine);
 }
 
-ThunkEmitter::ThunkEmitter(IrEmitter2& ir_emitter,
-                           tsl::thread::ThreadPool& thread_pool,
+ThunkEmitter::ThunkEmitter(tsl::thread::ThreadPool& thread_pool,
                            const BufferAssignment& buffer_assignment,
                            const TargetMachineFeatures& target_machine_features,
                            const HloModule& hlo_module, const Options& options)
-    : ir_emitter_(ir_emitter),
-      buffer_assignment_(buffer_assignment),
+    : buffer_assignment_(buffer_assignment),
       target_machine_features_(target_machine_features),
       hlo_module_config_(hlo_module.config()),
       options_(options),
       communicator_resource_(
           Resource::Create(Resource::kCollectiveCommunicator)),
       mlir_context_(FusionCompiler::CreateContext()),
-      fusion_compiler_(FusionCompilerFactory(mlir_context_.get(), hlo_module)),
+      fusion_compiler_(
+          FusionCompilerFactory(mlir_context_.get(), hlo_module,
+                                target_machine_features.target_machine())),
       parallel_fusion_emitter_(
           thread_pool, FusionCompilerOptions(hlo_module_config_), &hlo_module,
           &buffer_assignment,
@@ -659,29 +661,11 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitReduceScatterThunk(
 
 absl::StatusOr<ThunkSequence> ThunkEmitter::EmitCallThunk(
     const HloInstruction* instruction) {
-  if (std::optional<std::string> maybe_small_call =
-          instruction->get_frontend_attribute("xla_cpu_small_call");
-      maybe_small_call.has_value() && *maybe_small_call == "true") {
-    ComputationKernelEmitter emitter(instruction, &buffer_assignment_,
-                                     &target_machine_features_);
-    ASSIGN_OR_RETURN(KernelDefinition kernel_definition,
-                     emitter.EmitKernelDefinition());
-
-    auto kernel_spec = kernel_definition.spec();
-    auto kernel_source = std::move(kernel_definition).TakeSource();
-
-    kernels_.push_back(
-        {kernel_spec.name(), std::move(kernel_source).thread_safe_module()});
-
-    return MakeKernelThunkSequence(instruction, std::move(kernel_spec),
-                                   /*min_alignment=*/MinAlign());
-  } else {
-    ASSIGN_OR_RETURN(
-        ThunkSequence called_sequence,
-        EmitHloComputation(instruction->called_computations().front()));
-    return ThunkSequence::Of<CallThunk>(ThunkInfo(instruction),
-                                        std::move(called_sequence));
-  }
+  ASSIGN_OR_RETURN(
+      ThunkSequence called_sequence,
+      EmitHloComputation(instruction->called_computations().front()));
+  return ThunkSequence::Of<CallThunk>(ThunkInfo(instruction),
+                                      std::move(called_sequence));
 }
 
 absl::StatusOr<ThunkSequence> ThunkEmitter::EmitConcatenateKernelThunk(
@@ -705,8 +689,8 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitConcatenateKernelThunk(
                             backend_config.llvm_kernel_options());
   }
 
-  return MakeKernelThunkSequence(instruction, std::move(kernel_spec),
-                                 /*min_alignment=*/MinAlign());
+  return ThunkSequence::Of<KernelThunk>(ThunkInfo(instruction),
+                                        std::move(kernel_spec), MinAlign());
 }
 
 absl::StatusOr<ThunkSequence> ThunkEmitter::EmitGetDimensionSizeThunk(
@@ -802,26 +786,20 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitElementalKernelThunk(
   kernels_.push_back(
       {kernel_spec.name(), std::move(kernel_source).thread_safe_module()});
 
-  return MakeKernelThunkSequence(instruction, std::move(kernel_spec),
-                                 /*min_alignment=*/MinAlign());
+  return ThunkSequence::Of<KernelThunk>(ThunkInfo(instruction),
+                                        std::move(kernel_spec), MinAlign());
 }
 
 absl::StatusOr<ThunkSequence> ThunkEmitter::EmitPadKernelThunk(
     const HloInstruction* instruction) {
-  const HloPadInstruction* padInstr = Cast<HloPadInstruction>(instruction);
-  ASSIGN_OR_RETURN(auto kernel, ir_emitter_.EmitPadHostKernel(padInstr));
-  ASSIGN_OR_RETURN(auto buffers, GetHostKernelAllocationSlices(padInstr));
-
-  return MakeKernelThunkSequence(padInstr, buffers, kernel,
-                                 /*min_alignment=*/MinAlign());
+  return EmitElementalKernelThunk(instruction);
 }
 
 absl::StatusOr<ThunkSequence> ThunkEmitter::EmitFusionKernelThunk(
     const HloInstruction* instruction) {
   auto* fusion = Cast<HloFusionInstruction>(instruction);
 
-  if (ir_emitter_.IsSupportedByFusionEmitter(fusion) &&
-      fusion->fused_expression_root()->opcode() == HloOpcode::kScatter) {
+  if (fusion->fused_expression_root()->opcode() == HloOpcode::kScatter) {
     auto kernel_emitter = std::make_unique<CpuScatterFusion>(
         buffer_assignment_, fusion, mlir_context_.get());
 
@@ -837,8 +815,8 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitFusionKernelThunk(
     kernels_.push_back({kernel_spec.name(),
                         std::move(llvm_kernel_source).thread_safe_module()});
 
-    return MakeKernelThunkSequence(instruction, std::move(kernel_spec),
-                                   /*min_alignment=*/MinAlign());
+    return ThunkSequence::Of<KernelThunk>(ThunkInfo(instruction),
+                                          std::move(kernel_spec), MinAlign());
   }
 
   // We currently only support loop fusion & the dot implementation is currently
@@ -860,8 +838,8 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitFusionKernelThunk(
                        emitters::GetKernelSpec(kernel_spec.name(), *fusion,
                                                &buffer_assignment_,
                                                kernel_spec.work_dimensions()));
-      return MakeKernelThunkSequence(instruction, new_kernel_spec,
-                                     /*min_alignment=*/MinAlign());
+      return ThunkSequence::Of<KernelThunk>(
+          ThunkInfo(instruction), std::move(new_kernel_spec), MinAlign());
     }
 
     ASSIGN_OR_RETURN(KernelSpec kernel_spec,
@@ -869,15 +847,27 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitFusionKernelThunk(
 
     kernel_spec_cache_.insert({fingerprint, kernel_spec});
 
-    return MakeKernelThunkSequence(instruction, std::move(kernel_spec),
-                                   /*min_alignment=*/MinAlign());
+    return ThunkSequence::Of<KernelThunk>(ThunkInfo(instruction),
+                                          std::move(kernel_spec), MinAlign());
   }
 
-  ASSIGN_OR_RETURN(auto kernel, ir_emitter_.EmitFusionHostKernel(fusion));
-  ASSIGN_OR_RETURN(auto buffers, GetHostKernelAllocationSlices(instruction));
+  ASSIGN_OR_RETURN(
+      auto kernel_definition,
+      EmitFusionKernel(*mlir_context_, *fusion, &buffer_assignment_,
+                       options_.is_aot_compilation,
+                       /*enable_tiled_emitter=*/true));
 
-  return MakeKernelThunkSequence(instruction, buffers, kernel,
-                                 /*min_alignment=*/MinAlign());
+  auto kernel_spec = kernel_definition.spec();
+  auto kernel_source = std::move(kernel_definition).TakeSource();
+
+  ASSIGN_OR_RETURN(LlvmKernelSource llvm_kernel_source,
+                   fusion_compiler_.Compile(std::move(kernel_source)));
+
+  kernels_.push_back(
+      {kernel_spec.name(), std::move(llvm_kernel_source).thread_safe_module()});
+
+  return ThunkSequence::Of<KernelThunk>(ThunkInfo(instruction),
+                                        std::move(kernel_spec), MinAlign());
 }
 
 absl::StatusOr<ThunkSequence> ThunkEmitter::EmitReductionKernelThunk(
@@ -1050,8 +1040,8 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitDotThunk(
       kernels_.push_back(
           {kernel_spec.name(), std::move(kernel_source).thread_safe_module()});
 
-      return MakeKernelThunkSequence(instruction, std::move(kernel_spec),
-                                     /*min_alignment=*/MinAlign());
+      return ThunkSequence::Of<KernelThunk>(ThunkInfo(instruction),
+                                            std::move(kernel_spec), MinAlign());
     }
 
     // Emit DotThunk implementing dot instruction as a library call.
@@ -1272,12 +1262,7 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitCustomCallThunk(
 
 absl::StatusOr<ThunkSequence> ThunkEmitter::EmitSliceToDynamicThunk(
     const HloInstruction* instruction) {
-  ASSIGN_OR_RETURN(auto kernel,
-                   ir_emitter_.EmitSliceToDynamicHostKernel(instruction));
-  ASSIGN_OR_RETURN(auto buffers, GetHostKernelAllocationSlices(instruction));
-
-  return MakeKernelThunkSequence(instruction, buffers, kernel,
-                                 /*min_alignment=*/MinAlign());
+  return EmitElementalKernelThunk(instruction);
 }
 
 absl::StatusOr<ThunkSequence> ThunkEmitter::EmitSliceThunk(
@@ -1290,17 +1275,7 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitSliceThunk(
 
 absl::StatusOr<ThunkSequence> ThunkEmitter::EmitDynamicUpdateSliceThunk(
     const HloInstruction* instruction) {
-  if (!ir_emitter_.CanUpdateDynamicSliceInPlace(instruction)) {
-    VLOG(2) << "Could not emit in-place dynamic-update-slice kernel: "
-            << instruction->name();
-    return EmitElementalKernelThunk(instruction);
-  }
-
-  ASSIGN_OR_RETURN(auto kernel,
-                   ir_emitter_.EmitDynamicUpdateSliceHostKernel(instruction));
-  ASSIGN_OR_RETURN(auto buffers, GetHostKernelAllocationSlices(instruction));
-
-  return MakeKernelThunkSequence(instruction, buffers, kernel);
+  return EmitElementalKernelThunk(instruction);
 }
 
 // Parse the sort comparator to determine the sort direction. Comparator is
@@ -1328,11 +1303,13 @@ std::optional<SortThunk::SortDirection> ThunkEmitter::MatchSortDirection(
                             .WithOperand(1, m::Parameter(1))));
     switch (compare->comparison_direction()) {
       case ComparisonDirection::kGe:
+      case ComparisonDirection::kGt:
         direction = (expected_param_order)
                         ? SortThunk::SortDirection::kDescending
                         : SortThunk::SortDirection::kAscending;
         break;
       case ComparisonDirection::kLt:
+      case ComparisonDirection::kLe:
         direction = (expected_param_order)
                         ? SortThunk::SortDirection::kAscending
                         : SortThunk::SortDirection::kDescending;
@@ -1354,8 +1331,26 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitSortThunk(
   const std::optional<SortThunk::SortDirection> direction =
       MatchSortDirection(hlocomparator);
 
-  ASSIGN_OR_RETURN(auto comparator,
-                   ir_emitter_.EmitSortComparator(hlocomparator));
+  std::string comparator_name = std::string(hlocomparator->name());
+
+  if (!direction.has_value()) {
+    TiledComputationKernelEmitter emitter(*mlir_context_, sort,
+                                          &buffer_assignment_, comparator_name);
+    ASSIGN_OR_RETURN(KernelDefinition kernel_definition,
+                     emitter.EmitKernelDefinition());
+
+    auto kernel_spec = kernel_definition.spec();
+    auto kernel_source = std::move(kernel_definition).TakeSource();
+
+    ASSIGN_OR_RETURN(LlvmKernelSource llvm_kernel_source,
+                     fusion_compiler_.Compile(std::move(kernel_source)));
+
+    kernels_.push_back({kernel_spec.name(),
+                        std::move(llvm_kernel_source).thread_safe_module(),
+                        EmittedKernel::Type::kComparator});
+    comparator_name = std::string(kernel_spec.name());
+  }
+
   ASSIGN_OR_RETURN(auto buffers, GetHostKernelAllocationSlices(sort));
 
   if (buffers.arguments.size() != buffers.results.size()) {
@@ -1385,10 +1380,18 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitSortThunk(
     inputs.push_back(SortThunk::Input{result.slice, shape});
   }
 
-  ASSIGN_OR_RETURN(
-      thunks.emplace_back(),
-      SortThunk::Create(ThunkInfo(instruction), inputs, sort->sort_dimension(),
-                        sort->is_stable(), comparator.name, direction));
+  if (direction.has_value()) {
+    ASSIGN_OR_RETURN(
+        thunks.emplace_back(),
+        SortThunk::Create(ThunkInfo(instruction), inputs,
+                          sort->sort_dimension(), sort->is_stable(),
+                          SortThunk::LessThan(nullptr), direction));
+  } else {
+    ASSIGN_OR_RETURN(thunks.emplace_back(),
+                     SortThunk::Create(
+                         ThunkInfo(instruction), inputs, sort->sort_dimension(),
+                         sort->is_stable(), comparator_name, direction));
+  }
 
   return thunks;
 }
@@ -1521,26 +1524,6 @@ absl::Status ThunkEmitter::ElementTypesSameAndSupported(
                          HloOpcodeString(instruction.opcode()));
   }
   return absl::OkStatus();
-}
-
-absl::StatusOr<ThunkSequence> ThunkEmitter::MakeKernelThunkSequence(
-    const HloInstruction* instruction,
-    const ThunkEmitter::HostKernelAllocationSlices& buffers,
-    const IrEmitter2::KernelInfo& kernel,
-    std::optional<uint64_t> min_alignment) {
-  // TODO(ezhulenev): Migrate KernelSpec to use NumWorkGroups.
-  NumWorkGroups num_workgroups{kernel.thread_dims.x, kernel.thread_dims.y,
-                               kernel.thread_dims.z};
-  return ThunkSequence::Of<KernelThunk>(
-      ThunkInfo(instruction), buffers.arguments, buffers.results, kernel.name,
-      num_workgroups, kernel.invariant_arguments, min_alignment);
-}
-
-absl::StatusOr<ThunkSequence> ThunkEmitter::MakeKernelThunkSequence(
-    const HloInstruction* instruction, const KernelSpec& kernel_spec,
-    std::optional<uint64_t> min_alignment) {
-  return ThunkSequence::Of<KernelThunk>(ThunkInfo(instruction), kernel_spec,
-                                        min_alignment);
 }
 
 }  // namespace xla::cpu

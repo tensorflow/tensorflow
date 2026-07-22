@@ -260,8 +260,15 @@ SmallVector<Value> GetRuntimeValues(
       TensorValue value = values.at(rt);
       mlir::OpBuilder builder(value.getContext());
       builder.setInsertionPointAfterValue(value);
-      runtime_values.push_back(
-          mlir::tensor::ExtractOp::create(builder, value.getLoc(), value));
+      int64_t rank = value.getType().getRank();
+      SmallVector<Value> indices;
+      indices.reserve(rank);
+      for (int64_t i = 0; i < rank; ++i) {
+        indices.push_back(
+            builder.create<mlir::arith::ConstantIndexOp>(value.getLoc(), 0));
+      }
+      runtime_values.push_back(mlir::tensor::ExtractOp::create(
+          builder, value.getLoc(), value, indices));
     }
   }
   return runtime_values;
@@ -564,6 +571,12 @@ absl::StatusOr<TensorValue> EmitDot(
     ASSIGN_OR_RETURN(
         Value acc_next,
         xtile::EmitSingleTileDot(b, dot, xtile::DotOperands{lhs, rhs, acc}));
+    if (acc_next.getType() != acc.getType()) {
+      if (mlir::isa<mlir::RankedTensorType>(acc.getType()) &&
+          mlir::isa<mlir::RankedTensorType>(acc_next.getType())) {
+        acc_next = mlir::tensor::CastOp::create(b, acc.getType(), acc_next);
+      }
+    }
     mlir::scf::YieldOp::create(b, acc_next);
   }
 
@@ -1082,16 +1095,78 @@ absl::StatusOr<TensorValue> EmitTiledHloInstruction(
                               values[tiled_hlo.operand(0)]);
   }
 
-  // Slice is currently supported only as an operation on indices
-  // which is pushed to loads and stores. We don't generate any further code.
+  if (hlo->opcode() == HloOpcode::kReduceWindow) {
+    TensorValue input = values[tiled_hlo.operand(0)];
+    TensorValue init_val = values[tiled_hlo.operand(1)];
+    llvm::SmallVector<int64_t> reduce_dims;
+    const Window& window = hlo->window();
+    for (int64_t i = 0; i < window.dimensions_size(); ++i) {
+      if (window.dimensions(i).size() > 1) {
+        reduce_dims.push_back(i);
+      }
+    }
+    if (reduce_dims.empty()) {
+      return input;
+    }
+    stablehlo::ReduceOp reduction =
+        stablehlo::ReduceOp::create(b, input, init_val, reduce_dims);
+    RETURN_IF_ERROR(EmitReduceComputation(b, hlo, hlo->to_apply(), reduction));
+    return mlir::cast<TensorValue>(reduction.getResult(0));
+  }
+
+  if (hlo->opcode() == HloOpcode::kReverse) {
+    TensorValue input = values[tiled_hlo.operand(0)];
+    llvm::SmallVector<int64_t> dimensions(hlo->dimensions().begin(),
+                                          hlo->dimensions().end());
+    return mlir::cast<TensorValue>(
+        stablehlo::ReverseOp::create(b, input,
+                                     b.getDenseI64ArrayAttr(dimensions))
+            .getResult());
+  }
+
+  if (hlo->opcode() == HloOpcode::kGather) {
+    const auto* gather = Cast<const HloGatherInstruction>(tiled_hlo.hlo());
+    auto dim_numbers = xla::stablehlo::ConvertGatherDimensionNumbers(
+        gather->gather_dimension_numbers(), &b);
+    llvm::SmallVector<int64_t> slice_sizes =
+        xtile::GetPaddedTileSizes(tiled_hlo.operand(0)->tile_sizes());
+    return mlir::cast<TensorValue>(
+        stablehlo::GatherOp::create(b, values[tiled_hlo.operand(0)],
+                                    values[tiled_hlo.operand(1)], dim_numbers,
+                                    b.getDenseI64ArrayAttr(slice_sizes),
+                                    b.getBoolAttr(gather->indices_are_sorted()))
+            .getResult());
+  }
+
+  if (hlo->opcode() == HloOpcode::kDynamicUpdateSlice) {
+    TensorValue operand = values[tiled_hlo.operand(0)];
+    TensorValue update = values[tiled_hlo.operand(1)];
+    llvm::SmallVector<Value> start_indices;
+    start_indices.reserve(tiled_hlo.operands().size() - 2);
+    for (size_t i = 2; i < tiled_hlo.operands().size(); ++i) {
+      start_indices.push_back(values[tiled_hlo.operand(i)]);
+    }
+    return mlir::cast<TensorValue>(stablehlo::DynamicUpdateSliceOp::create(
+                                       b, operand, update, start_indices)
+                                       .getResult());
+  }
+
   if (hlo->opcode() == HloOpcode::kSlice) {
     return values[tiled_hlo.operand(0)];
   }
 
   if (hlo->opcode() == HloOpcode::kDynamicSlice) {
-    // Dynamic slice is implemented as a load and does not require any further
-    // processing.
-    return values[tiled_hlo.operand(0)];
+    TensorValue operand = values[tiled_hlo.operand(0)];
+    llvm::SmallVector<Value> start_indices;
+    start_indices.reserve(tiled_hlo.operands().size() - 1);
+    for (size_t i = 1; i < tiled_hlo.operands().size(); ++i) {
+      start_indices.push_back(values[tiled_hlo.operand(i)]);
+    }
+    return mlir::cast<TensorValue>(
+        stablehlo::DynamicSliceOp::create(
+            b, operand, start_indices,
+            b.getDenseI64ArrayAttr(llvm::to_vector(hlo->dynamic_slice_sizes())))
+            .getResult());
   }
 
   return absl::UnimplementedError(
@@ -1249,10 +1324,7 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> EmitXTileModule(
     const std::optional<stream_executor::GpuComputeCapability>& gpu_cc) {
   const auto debug_options = fusion.GetModule()->config().debug_options();
 
-  if (fusion.IsMultiOutputFusion() &&
-      !debug_options.xla_gpu_unsupported_enable_triton_multi_output_fusion()) {
-    return absl::InvalidArgumentError("Multi-output fusion is disabled.");
-  }
+  // Multi-output fusions are supported in xtile module emission for CPU.
 
   CHECK(!debug_options.xla_gpu_experimental_enable_tiling_propagation());
 

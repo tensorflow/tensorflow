@@ -181,10 +181,24 @@ absl::StatusOr<std::unique_ptr<XlaAotFunction>> XlaAotFunction::Create(
   }
   std::vector<std::string> result_names;
   ASSIGN_OR_RETURN(auto program_shape, GetProgramShape(*nanort_executable));
+  const HloInstruction* root =
+      hlo_module->entry_computation()->root_instruction();
+  if ((root->opcode() == HloOpcode::kCall ||
+       root->opcode() == HloOpcode::kFusion) &&
+      root->to_apply() != nullptr) {
+    root = root->to_apply()->root_instruction();
+  }
+  std::string root_name = std::string(root->name());
+  size_t dot_pos = root_name.find_last_of('.');
+  if (dot_pos != std::string::npos && dot_pos + 1 < root_name.size()) {
+    if (std::all_of(root_name.begin() + dot_pos + 1, root_name.end(),
+                    ::isdigit)) {
+      root_name = root_name.substr(0, dot_pos);
+    }
+  }
+
   if (program_shape.result().IsTuple()) {
     auto tuple_shapes = program_shape.result().tuple_shapes();
-    absl::string_view root_name =
-        hlo_module->entry_computation()->root_instruction()->name();
 
     result_names.reserve(tuple_shapes.size());
     for (int index = 0; index < tuple_shapes.size(); ++index) {
@@ -192,8 +206,7 @@ absl::StatusOr<std::unique_ptr<XlaAotFunction>> XlaAotFunction::Create(
     }
 
   } else {
-    result_names.push_back(std::string(
-        hlo_module->entry_computation()->root_instruction()->name()));
+    result_names.push_back(root_name);
   }
 
   CHECK(AreStringsInVectorUnique(arg_names))

@@ -30,6 +30,7 @@ namespace xla::cpu {
 // linked with the current library.
 class AotCompiledFunctionLibrary : public FunctionLibrary {
  public:
+  using FunctionLibrary::ResolveFunction;
   using FunctionPtr = void*;
 
   // Constructs a new AotCompiledFunctionLibrary.

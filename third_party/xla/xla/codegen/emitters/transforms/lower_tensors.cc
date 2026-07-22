@@ -316,6 +316,49 @@ struct RewriteFor : public OpRewritePattern<scf::ForOp> {
   }
 };
 
+Value GetLinearIndex(mlir::RankedTensorType shape_type, ValueRange indices,
+                     mlir::ImplicitLocOpBuilder& b) {
+  if (indices.empty()) {
+    auto index_ty = b.getIntegerType(
+        mlir::DataLayout::closest(b.getInsertionBlock()->getParentOp())
+            .getTypeSizeInBits(b.getIndexType()));
+    return mlir::arith::ConstantOp::create(b, b.getIntegerAttr(index_ty, 0));
+  }
+  if (indices.size() == 1) {
+    auto index = indices.front();
+    auto index_ty = b.getIntegerType(
+        mlir::DataLayout::closest(b.getInsertionBlock()->getParentOp())
+            .getTypeSizeInBits(index.getType()));
+    return mlir::arith::IndexCastUIOp::create(b, index_ty, index);
+  }
+
+  auto shape = shape_type.getShape();
+  int64_t rank = shape.size();
+  int64_t current_stride = 1;
+  llvm::SmallVector<int64_t, 4> strides(rank);
+  for (int64_t i = rank - 1; i >= 0; --i) {
+    strides[i] = current_stride;
+    current_stride *= shape[i];
+  }
+
+  auto index_ty = b.getIntegerType(
+      mlir::DataLayout::closest(b.getInsertionBlock()->getParentOp())
+          .getTypeSizeInBits(indices.front().getType()));
+
+  Value linear_index =
+      mlir::arith::ConstantOp::create(b, b.getIntegerAttr(index_ty, 0));
+  for (int64_t i = 0; i < rank; ++i) {
+    Value idx = mlir::arith::IndexCastUIOp::create(b, index_ty, indices[i]);
+    if (strides[i] != 1) {
+      Value stride_val = mlir::arith::ConstantOp::create(
+          b, b.getIntegerAttr(index_ty, strides[i]));
+      idx = mlir::arith::MulIOp::create(b, idx, stride_val);
+    }
+    linear_index = mlir::arith::AddIOp::create(b, linear_index, idx);
+  }
+  return linear_index;
+}
+
 Value GetLinearIndex(ValueRange indices, mlir::ImplicitLocOpBuilder& b) {
   CHECK_LE(indices.size(), 1) << "Only 0D and 1D tensors are supported";
   auto index = indices.empty() ? mlir::arith::ConstantIndexOp::create(b, 0)
@@ -376,8 +419,11 @@ ml::GEPOp CreateGep(TypedValue<mlir::RankedTensorType> tensor,
     num_elements = CeilOfRatio<int64_t>(num_elements, 8 / *sub_byte_width);
   }
   auto ptr = ml::LLVMPointerType::get(b.getContext());
-  auto tensor_ptr =
-      UnrealizedConversionCastOp::create(b, ptr, tensor).getResult(0);
+  Value tensor_ptr = GetPtr(tensor);
+  if (!tensor_ptr) {
+    tensor_ptr =
+        UnrealizedConversionCastOp::create(b, ptr, tensor).getResult(0);
+  }
   mlir::LLVMTypeConverter converter(b.getContext());
   auto llvm_element_type = converter.convertType(element_type);
   auto array_type =
@@ -391,7 +437,7 @@ ml::GEPOp CreateGep(TypedValue<mlir::RankedTensorType> tensor,
 
 ml::GEPOp CreateGep(TypedValue<mlir::RankedTensorType> tensor,
                     ValueRange indices, mlir::ImplicitLocOpBuilder& b) {
-  return CreateGep(tensor, GetLinearIndex(indices, b), b);
+  return CreateGep(tensor, GetLinearIndex(tensor.getType(), indices, b), b);
 }
 
 struct RewriteTensorExtract : OpRewritePattern<mlir::tensor::ExtractOp> {
@@ -401,7 +447,8 @@ struct RewriteTensorExtract : OpRewritePattern<mlir::tensor::ExtractOp> {
       mlir::tensor::ExtractOp op,
       mlir::PatternRewriter& rewriter) const override {
     mlir::ImplicitLocOpBuilder b(op.getLoc(), rewriter);
-    auto linear_index = GetLinearIndex(op.getIndices(), b);
+    auto linear_index =
+        GetLinearIndex(op.getTensor().getType(), op.getIndices(), b);
     Type element_type = op.getTensor().getType().getElementType();
     Value sub_byte_shift = nullptr;
     std::optional<int> sub_byte_width = GetSubByteBitWidth(element_type);
@@ -505,7 +552,8 @@ struct RewriteTensorInsert : OpRewritePattern<mlir::tensor::InsertOp> {
 
     mlir::ImplicitLocOpBuilder b(op.getLoc(), rewriter);
     auto tensor_dest = mlir::cast<TypedValue<mlir::RankedTensorType>>(dest);
-    auto linear_index = GetLinearIndex(op.getIndices(), b);
+    auto linear_index =
+        GetLinearIndex(tensor_dest.getType(), op.getIndices(), b);
     auto scalar_value = op.getScalar();
 
     // For i4 we store 2 values into one byte. This needs special handling here.

@@ -1235,5 +1235,209 @@ TEST_F(TilePropagationTest, FailsToPropagateToConcatenateThroughBitcast) {
   )"));
 }
 
+TEST_F(TilePropagationTest, CanPropagateToOutputOfGatherOpDataOperand) {
+  HloInstruction* root = ParseAndGetRoot(R"(
+    HloModule m
+    ENTRY e {
+      p0 = f32[100,64] parameter(0)
+      p1 = s32[32,16] parameter(1)
+      ROOT gather = f32[32,16,64] gather(p0, p1),
+        offset_dims={2}, collapsed_slice_dims={0},
+        start_index_map={0}, index_vector_dim=2,
+        slice_sizes={1,64}
+    }
+  )");
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<TilingSpace> tiling_space,
+      TilingSpace::Create(*HloFusionAdaptor::ForInstruction(root),
+                          &mlir_context_));
+  ASSERT_OK_AND_ASSIGN(
+      auto from_data_operand,
+      PropagateTileToOutput(
+          *tiling_space, *root,
+          GetTestTile(*tiling_space, root->operand(0)->shape().dimensions()),
+          0));
+  EXPECT_THAT(from_data_operand, MatchToString(R"(
+    0) (tid_0, tid_1, tid_2)
+      -> offsets [0, 0, tid_1 * ts_1]
+         sizes [32, 16, ts_1]
+         strides [1, 1, 2]
+         upper bounds [32, 16, 64]
+  )"));
+}
+
+TEST_F(TilePropagationTest, CanPropagateToOutputOfGatherOpIndicesOperand) {
+  HloInstruction* root = ParseAndGetRoot(R"(
+    HloModule m
+    ENTRY e {
+      p0 = f32[100,64] parameter(0)
+      p1 = s32[32,16] parameter(1)
+      ROOT gather = f32[32,16,64] gather(p0, p1),
+        offset_dims={2}, collapsed_slice_dims={0},
+        start_index_map={0}, index_vector_dim=2,
+        slice_sizes={1,64}
+    }
+  )");
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<TilingSpace> tiling_space,
+      TilingSpace::Create(*HloFusionAdaptor::ForInstruction(root),
+                          &mlir_context_));
+  ASSERT_OK_AND_ASSIGN(
+      auto from_indices_operand,
+      PropagateTileToOutput(
+          *tiling_space, *root,
+          GetTestTile(*tiling_space, root->operand(1)->shape().dimensions()),
+          1));
+  EXPECT_THAT(from_indices_operand, MatchToString(R"(
+    0) (tid_0, tid_1, tid_2)
+      -> offsets [tid_0 * ts_0, tid_1 * ts_1, 0]
+         sizes [ts_0, ts_1, 64]
+         strides [1, 2, 1]
+         upper bounds [32, 16, 64]
+  )"));
+}
+
+TEST_F(TilePropagationTest, PropagateToOutputOfGatherOpInvalidIndex) {
+  HloInstruction* root = ParseAndGetRoot(R"(
+    HloModule m
+    ENTRY e {
+      p0 = f32[100,64] parameter(0)
+      p1 = s32[32,16] parameter(1)
+      ROOT gather = f32[32,16,64] gather(p0, p1),
+        offset_dims={2}, collapsed_slice_dims={0},
+        start_index_map={0}, index_vector_dim=2,
+        slice_sizes={1,64}
+    }
+  )");
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<TilingSpace> tiling_space,
+      TilingSpace::Create(*HloFusionAdaptor::ForInstruction(root),
+                          &mlir_context_));
+  EXPECT_THAT(
+      PropagateTileToOutput(
+          *tiling_space, *root,
+          GetTestTile(*tiling_space, root->operand(0)->shape().dimensions()),
+          2),
+      StatusIs(absl::StatusCode::kInvalidArgument));
+}
+
+TEST_F(TilePropagationTest, GatherOpIndexVectorDimAtPositionZero) {
+  HloInstruction* root = ParseAndGetRoot(R"(
+    HloModule m
+    ENTRY e {
+      p0 = f32[100,64] parameter(0)
+      p1 = s32[1,32,16] parameter(1)
+      ROOT gather = f32[32,16,64] gather(p0, p1),
+        offset_dims={2}, collapsed_slice_dims={0},
+        start_index_map={0}, index_vector_dim=0,
+        slice_sizes={1,64}
+    }
+  )");
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<TilingSpace> tiling_space,
+      TilingSpace::Create(*HloFusionAdaptor::ForInstruction(root),
+                          &mlir_context_));
+  ASSERT_OK_AND_ASSIGN(
+      auto input_tiles,
+      PropagateTileToInput(
+          *tiling_space, *root,
+          GetTestTile(*tiling_space, root->shape().dimensions()), 0));
+  EXPECT_EQ(input_tiles.size(), 2);
+}
+
+TEST_F(TilePropagationTest, GatherOpScalarIndexVectorDim) {
+  HloInstruction* root = ParseAndGetRoot(R"(
+    HloModule m
+    ENTRY e {
+      p0 = f32[100,64] parameter(0)
+      p1 = s32[32] parameter(1)
+      ROOT gather = f32[32,64] gather(p0, p1),
+        offset_dims={1}, collapsed_slice_dims={0},
+        start_index_map={0}, index_vector_dim=1,
+        slice_sizes={1,64}
+    }
+  )");
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<TilingSpace> tiling_space,
+      TilingSpace::Create(*HloFusionAdaptor::ForInstruction(root),
+                          &mlir_context_));
+  ASSERT_OK_AND_ASSIGN(
+      auto input_tiles,
+      PropagateTileToInput(
+          *tiling_space, *root,
+          GetTestTile(*tiling_space, root->shape().dimensions()), 0));
+  EXPECT_EQ(input_tiles.size(), 2);
+}
+
+TEST_F(TilePropagationTest, GatherOpMultipleCollapsedAndOffsetDims) {
+  HloInstruction* root = ParseAndGetRoot(R"(
+    HloModule m
+    ENTRY e {
+      p0 = f32[10,20,30,40] parameter(0)
+      p1 = s32[5,2] parameter(1)
+      ROOT gather = f32[5,20,40] gather(p0, p1),
+        offset_dims={1,2}, collapsed_slice_dims={0,2},
+        start_index_map={0,2}, index_vector_dim=1,
+        slice_sizes={1,20,1,40}
+    }
+  )");
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<TilingSpace> tiling_space,
+      TilingSpace::Create(*HloFusionAdaptor::ForInstruction(root),
+                          &mlir_context_));
+  ASSERT_OK_AND_ASSIGN(
+      auto input_tiles,
+      PropagateTileToInput(
+          *tiling_space, *root,
+          GetTestTile(*tiling_space, root->shape().dimensions()), 0));
+  EXPECT_EQ(input_tiles.size(), 2);
+
+  ASSERT_OK_AND_ASSIGN(
+      auto from_data,
+      PropagateTileToOutput(
+          *tiling_space, *root,
+          GetTestTile(*tiling_space, root->operand(0)->shape().dimensions()),
+          0));
+  EXPECT_EQ(from_data.size(), 1);
+
+  ASSERT_OK_AND_ASSIGN(
+      auto from_indices,
+      PropagateTileToOutput(
+          *tiling_space, *root,
+          GetTestTile(*tiling_space, root->operand(1)->shape().dimensions()),
+          1));
+  EXPECT_EQ(from_indices.size(), 1);
+}
+
+TEST_F(TilePropagationTest, GatherOpOutOfBoundsInputIndex) {
+  HloInstruction* root = ParseAndGetRoot(R"(
+    HloModule m
+    ENTRY e {
+      p0 = f32[100,64] parameter(0)
+      p1 = s32[32,16] parameter(1)
+      ROOT gather = f32[32,16,64] gather(p0, p1),
+        offset_dims={2}, collapsed_slice_dims={0},
+        start_index_map={0}, index_vector_dim=2,
+        slice_sizes={1,64}
+    }
+  )");
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<TilingSpace> tiling_space,
+      TilingSpace::Create(*HloFusionAdaptor::ForInstruction(root),
+                          &mlir_context_));
+  EXPECT_THAT(
+      PropagateTileToOutput(
+          *tiling_space, *root,
+          GetTestTile(*tiling_space, root->operand(0)->shape().dimensions()),
+          2),
+      StatusIs(absl::StatusCode::kInvalidArgument));
+  EXPECT_THAT(
+      PropagateTileToOutput(
+          *tiling_space, *root,
+          GetTestTile(*tiling_space, root->operand(0)->shape().dimensions()),
+          -1),
+      StatusIs(absl::StatusCode::kInvalidArgument));
+}
+
 }  // namespace
 }  // namespace xla::gpu::experimental

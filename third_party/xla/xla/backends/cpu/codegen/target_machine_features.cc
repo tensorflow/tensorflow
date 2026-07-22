@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <cstdint>
+#include <optional>
 #include <string>
 
 #include "absl/log/check.h"
@@ -106,6 +107,45 @@ std::string TargetMachineFeatures::get_target_feature_string() const {
   return target_machine_ == nullptr
              ? ""
              : target_machine_->getTargetFeatureString().str();
+}
+
+int64_t TargetMachineFeatures::cache_line_bytes(
+    const llvm::Function* fn) const {
+  if (target_machine_ != nullptr && fn != nullptr) {
+    unsigned size = GetTargetTransformInfoFor(*fn)->getCacheLineSize();
+    if (size > 0) {
+      return static_cast<int64_t>(size);
+    }
+  }
+  return kDefaultCacheLineBytes;
+}
+
+int64_t TargetMachineFeatures::l1_cache_size_bytes(
+    const llvm::Function* fn) const {
+  if (target_machine_ != nullptr && fn != nullptr) {
+    std::optional<unsigned> size = GetTargetTransformInfoFor(*fn)->getCacheSize(
+        llvm::TargetTransformInfo::CacheLevel::L1D);
+    if (size.has_value() && *size > 0) {
+      return static_cast<int64_t>(*size);
+    }
+  }
+  return kDefaultL1CacheSizeBytes;
+}
+
+int64_t TargetMachineFeatures::l2_cache_size_bytes(
+    const llvm::Function* fn) const {
+  if (target_machine_ != nullptr && fn != nullptr) {
+    std::optional<unsigned> size = GetTargetTransformInfoFor(*fn)->getCacheSize(
+        llvm::TargetTransformInfo::CacheLevel::L2D);
+    if (size.has_value() && *size > 0) {
+      return static_cast<int64_t>(*size);
+    }
+  }
+  return kDefaultL2CacheSizeBytes;
+}
+
+int64_t TargetMachineFeatures::max_stack_alloc_bytes() const {
+  return kDefaultMaxStackAllocBytes;
 }
 
 }  // namespace xla::cpu

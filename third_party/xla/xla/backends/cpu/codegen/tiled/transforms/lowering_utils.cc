@@ -19,6 +19,7 @@ limitations under the License.
 #include <optional>
 
 #include "mlir/Dialect/Arith/IR/Arith.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/Dialect/Vector/IR/VectorOps.h"
@@ -88,6 +89,18 @@ mlir::TypedValue<mlir::MemRefType> CreateBufferOfShape(mlir::OpBuilder& builder,
                                                        mlir::ShapedType shape) {
   mlir::MemRefType memrefType =
       mlir::MemRefType::get(shape.getShape(), shape.getElementType());
+  mlir::func::FuncOp func = nullptr;
+  if (mlir::Block* block = builder.getBlock()) {
+    for (mlir::Operation* parent = block->getParentOp(); parent != nullptr;
+         parent = parent->getParentOp()) {
+      if ((func = mlir::dyn_cast<mlir::func::FuncOp>(parent))) break;
+    }
+  }
+  if (func) {
+    mlir::OpBuilder::InsertionGuard guard(builder);
+    builder.setInsertionPointToStart(&func.front());
+    return mlir::memref::AllocaOp::create(builder, loc, memrefType);
+  }
   return mlir::memref::AllocaOp::create(builder, loc, memrefType);
 }
 

@@ -25,4 +25,11 @@ FunctionLibrary::TypeId FunctionLibrary::GetNextTypeId() {
   return TypeId(counter->fetch_add(1));
 }
 
+static struct TypeIdInitializer {
+  TypeIdInitializer() {
+    (void)FunctionLibrary::Sym<FunctionLibrary::Kernel>("");
+    (void)FunctionLibrary::Sym<FunctionLibrary::Comparator>("");
+  }
+} type_id_initializer;
+
 }  // namespace xla::cpu

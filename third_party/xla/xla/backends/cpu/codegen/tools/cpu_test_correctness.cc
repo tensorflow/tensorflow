@@ -31,6 +31,7 @@ struct Flags {
   std::string input_file = "";
   float abs_error_bound = 1e-6;
   float rel_error_bound = 1e-6;
+  bool has_bijection_inputs = false;
 };
 
 Flags& flags = *new Flags;
@@ -42,9 +43,40 @@ using CpuCorrectnessTest = HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>;
 
 TEST_F(CpuCorrectnessTest, RunAndCompare) {
   TF_ASSERT_OK_AND_ASSIGN(auto module, LoadTestModule(flags.input_file));
+  auto preprocessor = [](HloModule* mod) {
+    for (HloComputation* comp : mod->computations()) {
+      if (comp->root_instruction()->opcode() == HloOpcode::kTuple) continue;
+      std::vector<HloInstruction*> dus_insts;
+      for (HloInstruction* inst : comp->instructions()) {
+        if (inst->opcode() == HloOpcode::kDynamicUpdateSlice) {
+          dus_insts.push_back(inst);
+        }
+      }
+      for (HloInstruction* inst : dus_insts) {
+        HloInstruction* zero =
+            comp->AddInstruction(HloInstruction::CreateConstant(
+                LiteralUtil::Zero(inst->shape().element_type())));
+        if (inst->shape().dimensions_size() > 0) {
+          zero = comp->AddInstruction(
+              HloInstruction::CreateBroadcast(inst->shape(), zero, {}));
+        }
+        HloInstruction* add = comp->AddInstruction(HloInstruction::CreateBinary(
+            inst->shape(), HloOpcode::kAdd, inst, zero));
+        std::vector<HloInstruction*> users;
+        for (HloInstruction* user : inst->users()) {
+          if (user != add) {
+            users.push_back(user);
+          }
+        }
+        TF_CHECK_OK(inst->ReplaceUsesWith(users, add));
+      }
+    }
+  };
   EXPECT_TRUE(RunAndCompareNoHloPasses(
       std::move(module),
-      ErrorSpec{flags.abs_error_bound, flags.rel_error_bound}));
+      ErrorSpec{flags.abs_error_bound, flags.rel_error_bound},
+      /*reference_preprocessor=*/preprocessor,
+      /*test_preprocessor=*/preprocessor));
 }
 
 }  // namespace
@@ -56,6 +88,16 @@ int main(int argc, char* argv[]) {
                 "Absolute error bound."),
       tsl::Flag("rel_error_bound", &flags.rel_error_bound,
                 "Relative error bound."),
+      tsl::Flag(
+          "bijection_inputs",
+          [](std::string val) {
+            flags.has_bijection_inputs = true;
+            return true;
+          },
+          "", "Bijection inputs flag."),
+      tsl::Flag(
+          "bijection_outputs", [](std::string val) { return true; }, "",
+          "Bijection outputs flag."),
   };
 
   xla::AppendDebugOptionsFlags(&flag_list);

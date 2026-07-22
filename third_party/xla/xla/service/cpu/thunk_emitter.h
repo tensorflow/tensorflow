@@ -32,6 +32,8 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"
 #include "xla/backends/cpu/codegen/fusion_compiler.h"
 #include "xla/backends/cpu/codegen/target_machine_features.h"
+#include "xla/backends/cpu/codegen/tiled/tiled_computation_emitter.h"
+#include "xla/backends/cpu/codegen/tiled/tiled_fusion_emitter.h"
 #include "xla/backends/cpu/runtime/sort_thunk.h"
 #include "xla/backends/cpu/runtime/thunk.h"
 #include "xla/codegen/kernel_spec.h"
@@ -41,7 +43,6 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/runtime/resource_use.h"
 #include "xla/service/buffer_assignment.h"
-#include "xla/service/cpu/ir_emitter2.h"
 #include "xla/service/cpu/parallel_fusion_emitter.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/shape_util.h"
@@ -70,14 +71,18 @@ class ThunkEmitter {
   };
 
   struct EmittedKernel {
-    EmittedKernel(absl::string_view name, llvm::orc::ThreadSafeModule module)
-        : kernel_name(name), module(std::move(module)) {}
+    enum class Type { kKernel, kComparator };
+
+    EmittedKernel(absl::string_view name, llvm::orc::ThreadSafeModule module,
+                  Type type = Type::kKernel)
+        : kernel_name(name), module(std::move(module)), type(type) {}
 
     std::string kernel_name;
     llvm::orc::ThreadSafeModule module;
+    Type type = Type::kKernel;
   };
 
-  ThunkEmitter(IrEmitter2& ir_emitter, tsl::thread::ThreadPool& thread_pool,
+  ThunkEmitter(tsl::thread::ThreadPool& thread_pool,
                const BufferAssignment& buffer_assignment,
                const TargetMachineFeatures& target_machine_features,
                const HloModule& hlo_module,
@@ -247,16 +252,9 @@ class ThunkEmitter {
 
   // Convenience function that creates a thunk sequence containing given kernel.
   static absl::StatusOr<ThunkSequence> MakeKernelThunkSequence(
-      const HloInstruction* instruction,
-      const ThunkEmitter::HostKernelAllocationSlices& buffers,
-      const IrEmitter2::KernelInfo& kernel,
-      std::optional<uint64_t> min_alignment = std::nullopt);
-
-  static absl::StatusOr<ThunkSequence> MakeKernelThunkSequence(
       const HloInstruction* instruction, const KernelSpec& kernel_spec,
       std::optional<uint64_t> min_alignment = std::nullopt);
 
-  IrEmitter2& ir_emitter_;
   const BufferAssignment& buffer_assignment_;
 
   const TargetMachineFeatures& target_machine_features_;

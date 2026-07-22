@@ -168,7 +168,6 @@ tsl_pybind_extension(
         "@llvm-project//mlir:IR",
         "@nanobind",
         "@rules_python//python/cc:current_py_cc_headers",  # buildcleaner: keep
-        "//xla/backends/cpu/codegen:computation_kernel_emitter",
         "//xla/backends/cpu/codegen:fusion_compiler",
         "//xla/backends/cpu/codegen:fusion_emitter",
         "//xla/backends/cpu/codegen:jit_compiler",

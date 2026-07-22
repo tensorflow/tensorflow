@@ -31,6 +31,7 @@ namespace xla::cpu {
 // to compiled functions using LLVM's ORC JIT.
 class CompiledFunctionLibrary : public FunctionLibrary {
  public:
+  using FunctionLibrary::ResolveFunction;
   struct ResolvedSymbol {
     TypeId type_id;
     void* ptr;

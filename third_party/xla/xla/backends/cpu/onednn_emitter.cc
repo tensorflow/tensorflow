@@ -228,6 +228,11 @@ static absl::StatusOr<OneDnnFusion> EmitOneDnnFusion(
   // Traverse fused computation in post-order and define oneDNN operations
   // corresponding to each HLO instruction.
   LogicalTensorMap logical_tensors;
+  for (const HloInstruction* param : computation->parameter_instructions()) {
+    ASSIGN_OR_RETURN(logical_tensors[param],
+                     DefineParameter(logical_tensors, param));
+  }
+
   auto instructions = computation->MakeInstructionPostOrder();
 
   size_t op_id = 0;
@@ -235,8 +240,7 @@ static absl::StatusOr<OneDnnFusion> EmitOneDnnFusion(
   for (const HloInstruction* instr : instructions) {
     switch (instr->opcode()) {
       case HloOpcode::kParameter: {
-        ASSIGN_OR_RETURN(logical_tensors[instr],
-                         DefineParameter(logical_tensors, instr));
+        // Already defined in parameter index order.
       } break;
 
       // Unary elementwise ops.
