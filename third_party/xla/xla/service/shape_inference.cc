@@ -3638,7 +3638,8 @@ ShapeInference::InferCollectivePermuteDoneShape(const Shape& operand_shape) {
           "Size index %d to dynamic update slice must be >= 0.",
           update_dim_size);
     }
-    if (update_dim_size > input_dim_size) {
+    if (!IsUnboundedDynamicSize(input_dim_size) &&
+        update_dim_size > input_dim_size) {
       return InvalidArgument(
           "Update dim size %d greater than dynamic slice dimension: %d.",
           update_dim_size, input_dim_size);
