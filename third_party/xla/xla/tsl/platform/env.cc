@@ -496,7 +496,7 @@ bool Env::CreateUniqueFileName(std::string* prefix, const std::string& suffix) {
 
 int32_t Env::GetProcessId() {
 #ifdef PLATFORM_WINDOWS
-  return static_cast<int32>(GetCurrentProcessId());
+  return static_cast<int32_t>(GetCurrentProcessId());
 #else
   return static_cast<int32_t>(getpid());
 #endif

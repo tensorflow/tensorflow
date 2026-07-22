@@ -467,7 +467,7 @@ class RandomAccessFile {
   /// \brief Read up to `n` bytes from the file starting at `offset`.
   virtual absl::Status Read(uint64_t offset, size_t n, absl::Cord* cord) const {
     return absl::UnimplementedError(
-        "Read(uint64, size_t, absl::Cord*) is not implemented");
+        "Read(uint64_t, size_t, absl::Cord*) is not implemented");
   }
 #endif
 
