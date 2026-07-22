@@ -106,16 +106,18 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
     // shift to make integer for scales.
     data->arithmetic_params.left_shift = 7;
     const double twice_max_input_scale =
-        2 * std::max(input1_quantization_params.scale,
-                     input2_quantization_params.scale);
+        2 * static_cast<double>(std::max(input1_quantization_params.scale,
+                                         input2_quantization_params.scale));
     const double real_input1_multiplier =
-        input1_quantization_params.scale / twice_max_input_scale;
+        static_cast<double>(input1_quantization_params.scale) /
+        twice_max_input_scale;
     double real_input2_multiplier =
-        input2_quantization_params.scale / twice_max_input_scale;
+        static_cast<double>(input2_quantization_params.scale) /
+        twice_max_input_scale;
     const double real_output_multiplier =
         (twice_max_input_scale * twice_max_input_scale) /
         ((1 << data->arithmetic_params.left_shift * 2) *
-         output_quantization_params.scale);
+         static_cast<double>(output_quantization_params.scale));
     tflite::QuantizeMultiplierSmallerThanOneExp(
         real_input1_multiplier, &data->arithmetic_params.input1_multiplier,
         &data->arithmetic_params.input1_shift);
