@@ -85,7 +85,7 @@ cc_library(
         "@xla//xla/tsl/profiler:internal",
         "@xla//xla/tsl/profiler:xla_profiler_backends",
         "@xla//xla/python:__pkg__",
-        "//learning/brain/tfrc/executor/stream_executor:__pkg__",
+        "//learning/brain/tfrc/executor/api:__pkg__",
         "//net/grpc/internal/src/core/ext/xprof_profiler:__pkg__",
         "//third_party/py/torch_tpu/pjrt:__pkg__",
     ]),
@@ -106,7 +106,7 @@ cc_library(
     copts = tf_profiler_copts(),
     visibility = internal_visibility([
         "@xla//xla/tsl/profiler:internal",
-        "//learning/brain/tfrc/executor/stream_executor:__pkg__",
+        "//learning/brain/tfrc/executor/api:__pkg__",
     ]),
     deps = [
         ":profiler_controller",
@@ -399,7 +399,7 @@ cc_library(
     hdrs = ["profiler_collection.h"],
     visibility = internal_visibility([
         "@xla//xla/backends/profiler/plugin:__pkg__",
-        "//learning/brain/tfrc/executor/stream_executor:__pkg__",
+        "//learning/brain/tfrc/executor/api:__pkg__",
         "@xla//xla/backends/profiler/cpu:__pkg__",
         "@xla//xla/backends/profiler/subprocess:__pkg__",
     ]),
