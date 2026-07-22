@@ -45,6 +45,7 @@ limitations under the License.
 #include "xla/backends/gpu/collectives/gpu_communicator.h"
 #include "xla/backends/gpu/collectives/gxl_communicator.h"
 #include "xla/backends/gpu/runtime/collective_clique_requests.h"
+#include "xla/backends/gpu/runtime/collective_cliques.h"
 #include "xla/backends/gpu/runtime/collective_kernel_api.h"
 #include "xla/backends/gpu/runtime/collective_memory.h"
 #include "xla/backends/gpu/runtime/collective_memory_requests.h"
@@ -70,6 +71,8 @@ limitations under the License.
 #include "xla/status_macros.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/device_address_allocator.h"
+#include "xla/stream_executor/device_address_handle.h"
+#include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/gpu/multi_gpu_barrier_kernel.h"
 #include "xla/stream_executor/gpu/ragged_all_to_all_kernel.h"
 #include "xla/stream_executor/memory_allocation.h"
@@ -147,6 +150,11 @@ RaggedAllToAllConfig GetRaggedAllToAllConfig(
           ->config()
           .debug_options()
           .xla_gpu_experimental_ragged_all_to_all_use_barrier_with_nccl();
+  config.use_device_kernel =
+      instr->GetModule()
+          ->config()
+          .debug_options()
+          .xla_gpu_experimental_ragged_all_to_all_use_device_kernel();
 
   config.collectives_mode = instr->GetModule()
                                 ->config()
@@ -405,9 +413,11 @@ RaggedAllToAllThunk::RaggedAllToAllThunk(
 CollectiveCliqueRequests::CliqueRequirements
 RaggedAllToAllThunk::GetCliqueRequirements(const GpuCliqueKey& clique_key) {
   CollectiveCliqueRequests::CliqueRequirements clique_reqs;
-  if (config_.use_multi_gpu_barrier_with_nccl_in_one_shot_kernel) {
+  if (UsesDeviceKernel()) {
+    clique_reqs.dev_comm = DeviceKernelLsaDevCommRequirements();
+  } else if (config_.use_multi_gpu_barrier_with_nccl_in_one_shot_kernel) {
     clique_reqs.dev_comm =
-        GpuDeviceCommunicator::Requirements{/*lsa_barrier_count=*/1};
+        GpuDeviceCommunicator::Requirements{.lsa_barrier_count = 1};
   }
   return clique_reqs;
 }
@@ -456,15 +466,18 @@ absl::StatusOr<RaggedAllToAllStreamState*> RaggedAllToAllThunk::InitializeOnce(
     return absl::InternalError("Failed to allocate output offsets buffer.");
   }
 
-  if (use_multi_gpu_barrier_with_nccl_in_one_shot_kernel()) {
+  if (use_multi_gpu_barrier_with_nccl_in_one_shot_kernel() ||
+      config_.use_device_kernel) {
     if (config_.fast_interconnect_slice_size_override.has_value()) {
       state->lsa_size = config_.fast_interconnect_slice_size_override.value();
     } else {
-      ASSIGN_OR_RETURN(
-          auto* dev_comm,
-          params.collective_cliques->GetDeviceComm(
-              state->clique_key, state->rank,
-              GpuDeviceCommunicator::Requirements{/*lsa_barrier_count=*/1}));
+      GpuDeviceCommunicator::Requirements req =
+          UsesDeviceKernel()
+              ? DeviceKernelLsaDevCommRequirements()
+              : GpuDeviceCommunicator::Requirements{.lsa_barrier_count = 1};
+      ASSIGN_OR_RETURN(auto* dev_comm,
+                       params.collective_cliques->GetDeviceComm(
+                           state->clique_key, state->rank, req));
 
       state->lsa_size = dev_comm->lsa_size();
     }
@@ -719,7 +732,7 @@ RaggedAllToAllThunk::FromProto(
           config, thunk_proto.num_total_updates(), thunk_proto.num_input_rows(),
           thunk_proto.num_row_elements(), thunk_proto.one_shot_kernel_enabled(),
           thunk_proto.use_multi_gpu_barrier_with_nccl_in_one_shot_kernel(),
-          thunk_proto.collectives_mode(),
+          thunk_proto.collectives_mode(), thunk_proto.use_device_kernel(),
           fast_interconnect_slice_size_override},
       std::move(buffers));
 }
@@ -744,6 +757,7 @@ absl::StatusOr<ThunkProto> RaggedAllToAllThunk::ToProto() const {
   thunk_proto->set_use_multi_gpu_barrier_with_nccl_in_one_shot_kernel(
       use_multi_gpu_barrier_with_nccl_in_one_shot_kernel());
   thunk_proto->set_collectives_mode(collectives_mode());
+  thunk_proto->set_use_device_kernel(config_.use_device_kernel);
   thunk_proto->set_fast_interconnect_slice_size_override(
       config_.fast_interconnect_slice_size_override.value_or(0));
 
@@ -767,6 +781,68 @@ absl::Status RaggedAllToAllThunk::RunCollective(const ExecuteParams& params,
     state = per_stream_states_[stream.parent()].get();
   }
 
+  auto* gpu_comm = tsl::down_cast<GpuCommunicator*>(&comm);
+  if (UsesDeviceKernel() && gpu_comm->SupportsDeviceComm() &&
+      params.collective_memory != nullptr) {
+    auto [input_sym, input_offset] =
+        params.collective_memory->FindSymmetricMemory(
+            clique_key, device_buffers[0].source_buffer);
+    auto [output_sym, output_offset] =
+        params.collective_memory->FindSymmetricMemory(
+            clique_key, device_buffers[1].destination_buffer);
+
+    if (input_sym != nullptr && output_sym != nullptr) {
+      ASSIGN_OR_RETURN(int32_t num_ranks, comm.NumRanks());
+      ASSIGN_OR_RETURN(
+          auto* lsa_dev_comm,
+          params.collective_cliques->GetDeviceComm(
+              clique_key, state->rank, DeviceKernelLsaDevCommRequirements()));
+
+      const int64_t lsa_size = lsa_dev_comm->lsa_size();
+      const bool has_remote_peers = lsa_size < num_ranks;
+      if (has_remote_peers && !gpu_comm->SupportsGin()) {
+        XLA_VLOG_DEVICE(3, state->device_ordinal)
+            << "Device kernel skipped: lsa_size=" << lsa_size
+            << " num_ranks=" << num_ranks << " requires GIN";
+      } else {
+        GpuDeviceCommunicator* dev_comm = lsa_dev_comm;
+        const bool gin = has_remote_peers && gpu_comm->SupportsGin();
+        if (has_remote_peers) {
+          ASSIGN_OR_RETURN(dev_comm, params.collective_cliques->GetDeviceComm(
+                                         clique_key, state->rank,
+                                         DeviceKernelDevCommRequirements()));
+        }
+
+        const int64_t num_updates_per_replica =
+            config_.num_total_updates / num_ranks;
+        // Remote peers are reached via GIN puts; local peers via LSA copies.
+        const int64_t num_active_updates =
+            (gin ? num_ranks : lsa_size) * num_updates_per_replica;
+        const int32_t cta_count = DeviceKernelLaunchCtaCount(
+            stream.parent()->GetDeviceDescription().core_count(),
+            num_active_updates);
+        const PrimitiveType element_type = device_buffers[0].element_type;
+
+        XLA_VLOG_DEVICE(3, state->device_ordinal)
+            << "Device kernel: lsa_size=" << lsa_size
+            << " num_ranks=" << num_ranks << " gin=" << gin
+            << " cta_count=" << cta_count
+            << " num_updates_per_replica=" << num_updates_per_replica
+            << " num_row_elements=" << config_.num_row_elements
+            << " element_type="
+            << primitive_util::LowercasePrimitiveTypeName(element_type);
+
+        return RunDeviceRaggedAllToAllKernel(
+            &stream, element_type, dev_comm, input_sym, output_sym,
+            device_buffers[2].source_buffer, device_buffers[3].source_buffer,
+            device_buffers[4].source_buffer, num_ranks, num_updates_per_replica,
+            config_.num_row_elements, cta_count,
+            static_cast<int64_t>(input_offset),
+            static_cast<int64_t>(output_offset));
+      }
+    }
+  }
+
   FabricHomogeneity homogeneity =
       CheckFabricHomogeneity(stream.parent(), clique_key);
   // The fabric is "safe" unless we have confirmed a mismatch.
@@ -775,7 +851,8 @@ absl::Status RaggedAllToAllThunk::RunCollective(const ExecuteParams& params,
   bool fabric_safe = (homogeneity != FabricHomogeneity::kHeterogeneous);
 
   if (is_one_shot_kernel_enabled() && fabric_safe) {
-    if (IsRaggedAllToAllWithSymmetricMemoryKernelSupported(
+    if (use_multi_gpu_barrier_with_nccl_in_one_shot_kernel() &&
+        IsRaggedAllToAllWithSymmetricMemoryKernelSupported(
             config_.config.operand_element_type[0]) &&
         state->lsa_size.has_value() &&
         state->lsa_size.value() == clique_key.num_devices()) {
@@ -800,7 +877,8 @@ absl::Status RaggedAllToAllThunk::RunCollective(const ExecuteParams& params,
           config_.num_row_elements, device_buffers);
     }
 
-    if (IsOneShotKernelSupported() && peer_access_enabled &&
+    if (state->participants != nullptr && IsOneShotKernelSupported() &&
+        peer_access_enabled &&
         is_local(params.collective_params->local_device_count)) {
       return RunOneShotRaggedAllToAll(
           clique_key, stream, state->rank,
@@ -885,6 +963,19 @@ absl::Status RaggedAllToAllThunk::PrepareCollective(
     RETURN_IF_ERROR(
         params.collective_memory_requests->RequestSymmetricAllocationSlice(
             clique_key, output_buffer.destination_buffer.slice));
+  }
+
+  if (UsesDeviceKernel()) {
+    const Buffer& input_buf = buffers()[0];
+    RETURN_IF_ERROR(
+        params.collective_memory_requests->RequestSymmetricAllocation(
+            clique_key, input_buf.source_buffer.slice.index()));
+
+    RETURN_IF_ERROR(device_groups().status());
+    CollectiveCliqueRequests::CliqueRequirements gin_reqs;
+    gin_reqs.dev_comm = DeviceKernelDevCommRequirements();
+    RETURN_IF_ERROR(params.collective_clique_requests->RequestClique(
+        clique_key, *device_groups(), gin_reqs));
   }
 
   return absl::OkStatus();
