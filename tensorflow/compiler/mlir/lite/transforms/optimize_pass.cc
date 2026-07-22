@@ -186,11 +186,24 @@ bool IsBalancedPaddingArray(int spatials_start, int spatials_end,
   return false;
 }
 
-bool HasSameStridedDim(int in, int dilate, int stride, int k, int p) {
+bool HasSameStridedDim(int in, int dilate, int stride, int k, int p,
+                       llvm::StringRef faf) {
   const int effective_filter = (k - 1) * dilate + 1;
   const int out_size = (in + stride - 1) / stride;
   const int padding_needed = (out_size - 1) * stride + effective_filter - in;
-  return padding_needed == p;
+  if (padding_needed == p) return true;
+
+  // Only apply the relaxed check for specific activation functions, like RELU6,
+  // which is used in models such as MobileNetV2. RELU6 clips the output to
+  // [0, 6], and FP16 precision issues near these boundaries can cause
+  // noticeable discrepancies in output.
+  if (faf == kRelu6 && stride == 2) {
+    // Allow one extra padding element when input is divisible by stride.
+    if (stride > 1 && in % stride == 0 && padding_needed + 1 == p) {
+      return true;
+    }
+  }
+  return false;
 }
 
 // Is the pre pad shape amenable to given conv with SAME padding.
@@ -207,14 +220,14 @@ bool HasSameStridedShape(TFL::Conv2DOp op, ArrayRef<int64_t> pre_pad_shape) {
   }
 
   const int64_t h_pad = conv_in_shape[1] - pre_pad_shape[1];
-  const bool h_strided =
-      HasSameStridedDim(pre_pad_shape[1], op.getDilationHFactor(),
-                        op.getStrideH(), kernel_shape[1], h_pad);
+  const bool h_strided = HasSameStridedDim(
+      pre_pad_shape[1], op.getDilationHFactor(), op.getStrideH(),
+      kernel_shape[1], h_pad, op.getFusedActivationFunction());
 
   const int64_t w_pad = conv_in_shape[2] - pre_pad_shape[2];
-  const bool w_strided =
-      HasSameStridedDim(pre_pad_shape[2], op.getDilationWFactor(),
-                        op.getStrideW(), kernel_shape[2], w_pad);
+  const bool w_strided = HasSameStridedDim(
+      pre_pad_shape[2], op.getDilationWFactor(), op.getStrideW(),
+      kernel_shape[2], w_pad, op.getFusedActivationFunction());
   return h_strided && w_strided;
 }
 
@@ -226,14 +239,14 @@ bool HasSameStridedShape(TFL::DepthwiseConv2DOp op,
       llvm::dyn_cast<ShapedType>(op.getFilter().getType()).getShape();
 
   const int64_t h_pad = conv_in_shape[1] - pre_pad_shape[1];
-  const bool h_strided =
-      HasSameStridedDim(pre_pad_shape[1], op.getDilationHFactor(),
-                        op.getStrideH(), kernel_shape[1], h_pad);
+  const bool h_strided = HasSameStridedDim(
+      pre_pad_shape[1], op.getDilationHFactor(), op.getStrideH(),
+      kernel_shape[1], h_pad, op.getFusedActivationFunction());
 
   const int64_t w_pad = conv_in_shape[2] - pre_pad_shape[2];
-  const bool w_strided =
-      HasSameStridedDim(pre_pad_shape[2], op.getDilationWFactor(),
-                        op.getStrideW(), kernel_shape[2], w_pad);
+  const bool w_strided = HasSameStridedDim(
+      pre_pad_shape[2], op.getDilationWFactor(), op.getStrideW(),
+      kernel_shape[2], w_pad, op.getFusedActivationFunction());
   return h_strided && w_strided;
 }
 
@@ -244,19 +257,19 @@ bool HasSameStridedShape(TFL::Conv3DOp op, ArrayRef<int64_t> pre_pad_shape) {
       llvm::dyn_cast<ShapedType>(op.getFilter().getType()).getShape();
 
   const int64_t d_pad = conv_in_shape[1] - pre_pad_shape[1];
-  const bool d_strided =
-      HasSameStridedDim(pre_pad_shape[1], op.getDilationDFactor(),
-                        op.getStrideD(), kernel_shape[0], d_pad);
+  const bool d_strided = HasSameStridedDim(
+      pre_pad_shape[1], op.getDilationDFactor(), op.getStrideD(),
+      kernel_shape[0], d_pad, op.getFusedActivationFunction());
 
   const int64_t h_pad = conv_in_shape[2] - pre_pad_shape[2];
-  const bool h_strided =
-      HasSameStridedDim(pre_pad_shape[2], op.getDilationHFactor(),
-                        op.getStrideH(), kernel_shape[1], h_pad);
+  const bool h_strided = HasSameStridedDim(
+      pre_pad_shape[2], op.getDilationHFactor(), op.getStrideH(),
+      kernel_shape[1], h_pad, op.getFusedActivationFunction());
 
   const int64_t w_pad = conv_in_shape[3] - pre_pad_shape[3];
-  const bool w_strided =
-      HasSameStridedDim(pre_pad_shape[3], op.getDilationWFactor(),
-                        op.getStrideW(), kernel_shape[2], w_pad);
+  const bool w_strided = HasSameStridedDim(
+      pre_pad_shape[3], op.getDilationWFactor(), op.getStrideW(),
+      kernel_shape[2], w_pad, op.getFusedActivationFunction());
   return h_strided && w_strided && d_strided;
 }
 
