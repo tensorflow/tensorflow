@@ -220,6 +220,7 @@ cc_library(
         "//xla/codegen/emitters:implicit_arith_op_builder",
         "//xla/codegen/emitters:kernel_api_builder",
         "//xla/codegen/emitters/ir:xla",
+        "//xla/codegen/intrinsic:atan2",
         "//xla/codegen/intrinsic:erf",
         "//xla/codegen/intrinsic:exp",
         "//xla/codegen/intrinsic:fptrunc",
