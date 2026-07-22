@@ -147,11 +147,20 @@ message DebugOptions {
     WHILE_LOOP_UNROLLING_MANUAL_UNROLL = 4;
   }
 
+  // Enum to define how to track modifying passes.
+  enum ModifyingPassTrackMode {
+    TRACK_NONE = 0;
+    LAST_PASS = 1;
+    FULL_PATH = 2;
+  }
+
   //--------------------------------------------------------------------------//
   // XLA backend-agnostic options.
   //--------------------------------------------------------------------------//
   // go/keep-sorted start
 
+  // Track the modifying passes for each HLO operation.
+  optional ModifyingPassTrackMode xla_track_modifying_passes = 516;
   // Allow host-to-host copy even when automatic host compute offload is
   // disabled, i.e. when xla_disable_automatic_host_compute_offload is set.
   optional bool
@@ -1672,7 +1681,7 @@ message DebugOptions {
   // Note: when adding a new flag, please add it to one of the hardware-specific
   // or hardware-agnostic sections at the top of this proto message.
 
-  // Next id: 516
+  // Next id: 517
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.
