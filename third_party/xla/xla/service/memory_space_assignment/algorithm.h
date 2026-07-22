@@ -499,6 +499,32 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
     Allocation* allocation;
   };
 
+  // Holds transient state for allocation tracking.
+  struct AllocationTransientState {
+    // Maps a while loop body computation to its preferred memory offset.
+    // This is used to ensure that the allocations for loop inputs (outside the
+    // loop) and loop outputs/parameters (inside the loop body) use the same
+    // offset.
+    absl::flat_hash_map<const HloComputation*, AliasedOffset*>
+        preferred_offset_for_computation;
+    absl::flat_hash_map<const AllocationValue*, AliasedOffset*>
+        preferred_offset_for_allocation_value;
+    absl::flat_hash_map<const AllocationValue*, int64_t>
+        definition_time_for_allocation_value;
+  };
+
+  // Gets or creates the definition time for the given allocation value.
+  // Also assigns default memory if not allowed in alternate memory.
+  int64_t GetOrCreateDefinitionTime(
+      AllocationTransientState& state,
+      AllocationValue& allocation_value_to_update);
+
+  // Updates and gets preferred offset for the allocation value and use.
+  AliasedOffset* UpdateAndGetPreferredOffset(
+      AllocationTransientState& state,
+      const AllocationValue& allocation_value_to_update,
+      const AllocationValue::Use& use);
+
   // This struct contains mandatory memory assignments at a given time. E.g., an
   // input's required memory assignment time would correspond to the definition
   // time of the parameter instruction, and an output's time would correspond to
@@ -874,6 +900,14 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
       int allocation_value_idx) const;
 
   bool VerifyAllConversionsAreSuccessful();
+
+  // Validates the async copy allocation found for the request and records
+  // the result in failed_async_conversions_ or
+  // not_finalized_async_conversions_.
+  // Updates the result if validation fails.
+  void ValidateRequiredCopyAllocation(
+      const AllocationRequest& request,
+      const AllocationSequence& allocation_sequence, AllocationResult& result);
 
   // Finds allocations for allocation values generated from colocated intervals.
   // All of the allocation values have a must-alias relationship with each
@@ -1304,6 +1338,11 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
                               absl::string_view producer_name,
                               ShapeIndex producer_shape_index,
                               absl::string_view consumer_name) const;
+
+  // Finds the matching AllocationValue for a given HloUse.
+  AllocationValue* FindMatchingAllocationValue(
+      const HloUse& use,
+      absl::Span<AllocationValue> candidate_allocation_values) const;
 
   // Takes a group of allocation values and splits them if they can be split on
   // the same dimension.
