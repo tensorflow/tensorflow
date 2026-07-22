@@ -372,17 +372,39 @@ def _shape_invariant_to_type_spec(var, shape=None):
     TypeError: If `shape` is a TensorShape, `var` is a CompositeTensor, and
       `var` doesn't implement the `_shape_invariant_to_type_spec` method.
   """
+  is_tensor_array = isinstance(var, tensor_array_ops.TensorArray)
   var = _convert_tensorarray_to_flow(var)
   if shape is None:
     return type_spec.type_spec_from_value(var)
   elif isinstance(shape, type_spec.TypeSpec):
     if not shape.is_compatible_with(var):
       raise TypeError("TypeSpec %r is not compatible with %r" % (shape, var))
+    if isinstance(var, tensor_array_ops.TensorArray):
+      if (isinstance(shape, type_spec.TensorSpec) and
+          shape.shape.ndims is not None and shape.shape.ndims > 0):
+        raise ValueError(
+            "The shape invariant for a TensorArray must be a scalar shape "
+            "(e.g., tf.TensorShape([]) or tf.TensorShape(None)), or omitted "
+            "entirely. Received TensorSpec with shape: {}. "
+            "TensorArray shape invariants apply to its underlying flow "
+            "variable (a scalar variant tensor), not to its stacked "
+            "output shape.".format(shape.shape)
+        )
     return shape
   elif not isinstance(shape, tensor_shape.TensorShape):
     raise TypeError(
         "'shape' must be one of TypeSpec, TensorShape or None. "
         f"Received: {type(shape)}")
+
+  if is_tensor_array and shape.ndims is not None and shape.ndims > 0:
+    raise ValueError(
+        "The shape invariant for a TensorArray must be a scalar shape "
+        "(e.g., tf.TensorShape([]) or tf.TensorShape(None)), or omitted "
+        "entirely. Received: {}. "
+        "TensorArray shape invariants apply to its underlying flow "
+        "variable (a scalar variant tensor), not to its stacked "
+        "output shape.".format(shape)
+    )
 
   if isinstance(var, tensor_lib.Tensor):
     return tensor_lib.TensorSpec(shape, var.dtype)

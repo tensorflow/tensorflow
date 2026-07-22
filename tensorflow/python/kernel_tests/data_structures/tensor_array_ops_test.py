@@ -1796,7 +1796,7 @@ class TensorArrayTest(test.TestCase):
   def testTensorArrayScatterBfloat16GPU(self):
     if not test.is_gpu_available():
       return
-    with self.session(force_gpu=True) as sess:
+    with self.session(force_gpu=True):
       ta = tensor_array_ops.TensorArray(
           dtype=dtypes.bfloat16, tensor_array_name="foo", size=5)
       ta = ta.scatter(
@@ -1866,6 +1866,52 @@ class TensorArrayTest(test.TestCase):
         errors.NotFoundError, "Container .* does not exist"
     ):
       self.evaluate(func())
+
+  def testWhileTensorArrayShapeInvariantFailsForNonScalar(self):
+    if context.executing_eagerly():
+      return
+    ta = tensor_array_ops.TensorArray(dtype=dtypes.float32, size=3)
+    i = array_ops.identity(0)
+
+    # Non-scalar TensorShape invariant should raise ValueError
+    with self.assertRaisesRegex(
+        ValueError,
+        "The shape invariant for a TensorArray must be a scalar shape",
+    ):
+      while_loop.while_loop(
+          lambda j, ta_j: j < 3,
+          lambda j, ta_j: (j + 1, ta_j),
+          [i, ta],
+          shape_invariants=[i.get_shape(), tensor_shape.TensorShape([3])],
+      )
+
+    # Scalar TensorShape([]) should pass
+    result_i, _ = while_loop.while_loop(
+        lambda j, ta_j: j < 3,
+        lambda j, ta_j: (j + 1, ta_j.write(j, [1.0, 2.0, 3.0])),
+        [i, ta],
+        shape_invariants=[i.get_shape(), tensor_shape.TensorShape([])],
+    )
+    self.assertEqual(self.evaluate(result_i), 3)
+
+    # TensorShape(None) should pass
+    ta2 = tensor_array_ops.TensorArray(dtype=dtypes.float32, size=3)
+    result_i2, _ = while_loop.while_loop(
+        lambda j, ta_j: j < 3,
+        lambda j, ta_j: (j + 1, ta_j.write(j, [1.0, 2.0, 3.0])),
+        [i, ta2],
+        shape_invariants=[i.get_shape(), tensor_shape.TensorShape(None)],
+    )
+    self.assertEqual(self.evaluate(result_i2), 3)
+
+    # Omitting invariant entirely should pass
+    ta3 = tensor_array_ops.TensorArray(dtype=dtypes.float32, size=3)
+    result_i3, _ = while_loop.while_loop(
+        lambda j, ta_j: j < 3,
+        lambda j, ta_j: (j + 1, ta_j.write(j, [1.0, 2.0, 3.0])),
+        [i, ta3],
+    )
+    self.assertEqual(self.evaluate(result_i3), 3)
 
 
 class TensorArrayBenchmark(test.Benchmark):

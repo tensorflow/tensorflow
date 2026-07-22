@@ -33,6 +33,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor as tensor_lib
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
+from tensorflow.python.framework import type_spec
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
@@ -71,6 +72,29 @@ def while_loop(cond,
   flat_orig_loop_vars = nest.flatten(orig_loop_vars, expand_composites=True)
   # Cache its length since we use it at multiple places below.
   len_orig_loop_vars = len(orig_loop_vars)
+
+  if shape_invariants is not None:
+
+    def _check_ta_invariant(var, shape):
+      if isinstance(var, tensor_array_ops.TensorArray):
+        if shape is not None and not isinstance(shape, type_spec.TypeSpec):
+          if isinstance(shape, tensor_shape.TensorShape):
+            if shape.ndims is not None and shape.ndims > 0:
+              raise ValueError(
+                  "The shape invariant for a TensorArray must be a scalar "
+                  "shape (e.g., tf.TensorShape([]) or tf.TensorShape(None)), "
+                  "or omitted entirely. Received: {}. "
+                  "TensorArray shape invariants apply to its underlying flow "
+                  "variable (a scalar variant tensor), not to its stacked "
+                  "output shape.".format(shape)
+              )
+          else:
+            raise TypeError(
+                "'shape' must be one of TypeSpec, TensorShape, or None. "
+                "Received: {}".format(type(shape))
+            )
+
+    nest.map_structure(_check_ta_invariant, loop_vars, shape_invariants)
 
   # Convert TensorArrays to their flow variables. These get converted back to
   # TensorArrays before calling `cond` and `body`. See `wrapped_cond` and
