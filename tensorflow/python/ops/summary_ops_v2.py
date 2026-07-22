@@ -85,6 +85,7 @@ class _SummaryContextManager:
             "Argument `step` must be a scalar. "
             f"Received step with shape {step_tensor.shape}."
         )
+      math_ops.cast(step_tensor, dtypes.int64)
     self._step = step
     self._old_writer = None
     self._old_step = None
@@ -261,6 +262,7 @@ def set_step(step):
           "Argument `step` must be a scalar. "
           f"Received step with shape {step_tensor.shape}."
       )
+    math_ops.cast(step_tensor, dtypes.int64)
   _summary_state.step = step
 
 
