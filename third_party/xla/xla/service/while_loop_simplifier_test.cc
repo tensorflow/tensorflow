@@ -1774,5 +1774,154 @@ TEST_F(WhileLoopSimplifierTest, MergeInductionVariablesWithOriginalValue) {
             R"({"induction_var_1"})");
 }
 
+TEST_F(WhileLoopSimplifierTest, RemoveUnusedLoopOperandsManyParameters) {
+  int num_params = 70;
+
+  std::string shape_str = "s32[]";
+  for (int i = 1; i < num_params; ++i) {
+    absl::StrAppend(&shape_str, ", s32[]");
+  }
+
+  std::string body_gtes = "";
+  std::string body_root_elems = "";
+  std::string entry_constants = "const_0 = s32[] constant(0)";
+  std::string entry_init_elems = "const_0";
+  std::string entry_gtes = "";
+  std::string entry_root_elems = "";
+  std::string root_shapes = "s32[]";
+
+  for (int i = 1; i < num_params; ++i) {
+    absl::StrAppend(&entry_constants, "\n    const_", i, " = s32[] constant(",
+                    i, ")");
+    absl::StrAppend(&entry_init_elems, ", const_", i);
+
+    if (i % 2 == 1) {  // odd index: modified and used
+      absl::StrAppend(&body_gtes, "\n    gte_", i,
+                      " = s32[] get-tuple-element(param), index=", i);
+      absl::StrAppend(&body_gtes, "\n    next_", i, " = s32[] add(gte_", i,
+                      ", one)");
+      if (body_root_elems.empty()) {
+        body_root_elems = absl::StrCat("next_", i);
+      } else {
+        absl::StrAppend(&body_root_elems, ", next_", i);
+      }
+
+      absl::StrAppend(&entry_gtes, "\n    gte_out_", i,
+                      " = s32[] get-tuple-element(while), index=", i);
+      if (entry_root_elems.empty()) {
+        entry_root_elems = absl::StrCat("gte_out_", i);
+      } else {
+        absl::StrAppend(&entry_root_elems, ", gte_out_", i);
+      }
+      absl::StrAppend(&root_shapes, ", s32[]");
+    } else {  // even index: passed-through and unused
+      absl::StrAppend(&body_gtes, "\n    gte_", i,
+                      " = s32[] get-tuple-element(param), index=", i);
+      if (body_root_elems.empty()) {
+        body_root_elems = absl::StrCat("gte_", i);
+      } else {
+        absl::StrAppend(&body_root_elems, ", gte_", i);
+      }
+    }
+  }
+
+  std::string hlo_string_template = R"(
+  HloModule ManyParameters
+
+  ManyParameters.cond {
+    param = ({{SHAPE_TEMPL}}) parameter(0)
+    gte_0 = s32[] get-tuple-element(param), index=0
+    limit = s32[] constant(10)
+    ROOT less_than = pred[] compare(gte_0, limit), direction=LT
+  }
+
+  ManyParameters.body {
+    param = ({{SHAPE_TEMPL}}) parameter(0)
+    gte_0 = s32[] get-tuple-element(param), index=0
+    one = s32[] constant(1)
+    next_0 = s32[] add(gte_0, one)
+    {{BODY_GTES}}
+    ROOT body_root = ({{SHAPE_TEMPL}}) tuple(next_0, {{BODY_ROOT_ELEMS}})
+  }
+
+  ENTRY ManyParameters {
+    {{ENTRY_CONSTANTS}}
+    init = ({{SHAPE_TEMPL}}) tuple({{ENTRY_INIT_ELEMS}})
+    while = ({{SHAPE_TEMPL}}) while(init), condition=ManyParameters.cond, body=ManyParameters.body
+    gte_out_0 = s32[] get-tuple-element(while), index=0
+    {{ENTRY_GTES}}
+    ROOT root = ({{ROOT_SHAPE}}) tuple(gte_out_0, {{ENTRY_ROOT_ELEMS}})
+  }
+  )";
+
+  std::string hlo_string = absl::StrReplaceAll(
+      hlo_string_template, {{"{{SHAPE_TEMPL}}", shape_str},
+                            {"{{BODY_GTES}}", body_gtes},
+                            {"{{BODY_ROOT_ELEMS}}", body_root_elems},
+                            {"{{ENTRY_CONSTANTS}}", entry_constants},
+                            {"{{ENTRY_INIT_ELEMS}}", entry_init_elems},
+                            {"{{ENTRY_GTES}}", entry_gtes},
+                            {"{{ENTRY_ROOT_ELEMS}}", entry_root_elems},
+                            {"{{ROOT_SHAPE}}", root_shapes}});
+
+  ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(bool changed, WhileLoopSimplifier().Run(m.get()));
+  EXPECT_TRUE(changed);
+
+  // Verify the new while loop.
+  EXPECT_TRUE(HloDCE().Run(m.get()).ok());
+  EXPECT_TRUE(TupleSimplifier().Run(m.get()).ok());
+
+  HloInstruction* new_while = FindFirstWhile(m.get());
+  int expected_size = 1 + num_params / 2;
+  EXPECT_EQ(ShapeUtil::TupleElementCount(new_while->shape()), expected_size);
+}
+
+TEST_F(WhileLoopSimplifierTest, RemoveDeadParametersWithMultipleParams) {
+  const std::string hlo_string = R"(
+  HloModule DeadParams
+
+  Body (param: (s32[], s32[], s32[])) -> (s32[], s32[], s32[]) {
+    param = (s32[], s32[], s32[]) parameter(0)
+    gte0 = s32[] get-tuple-element(param), index=0
+    gte1 = s32[] get-tuple-element(param), index=1
+    gte2 = s32[] get-tuple-element(param), index=2
+    one = s32[] constant(1)
+    add0 = s32[] add(gte0, one)
+    add2 = s32[] add(gte2, one)
+    ROOT tuple = (s32[], s32[], s32[]) tuple(add0, gte1, add2)
+  }
+
+  Cond (param: (s32[], s32[], s32[])) -> pred[] {
+    param = (s32[], s32[], s32[]) parameter(0)
+    gte0 = s32[] get-tuple-element(param), index=0
+    limit = s32[] constant(5)
+    ROOT cmp = pred[] compare(gte0, limit), direction=LT
+  }
+
+  ENTRY Main () -> s32[] {
+    c0 = s32[] constant(0)
+    c42 = s32[] constant(42)
+    c100 = s32[] constant(100)
+    init = (s32[], s32[], s32[]) tuple(c0, c42, c100), origin={({"c0"}, {"c42"}, {"c100"})}
+    while_op = (s32[], s32[], s32[]) while(init), condition=Cond, body=Body, origin={({"while" {0}}, {"while" {1}}, {"while" {2}})}
+    ROOT out = s32[] get-tuple-element(while_op), index=0
+  }
+  )";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(bool changed, WhileLoopSimplifier().Run(module.get()));
+  EXPECT_TRUE(changed);
+
+  HloInstruction* while_instr = FindFirstWhile(module.get());
+  EXPECT_EQ(ShapeUtil::TupleElementCount(while_instr->shape()), 1);
+
+  ASSERT_NE(while_instr->original_value(), nullptr);
+  EXPECT_EQ(while_instr->original_value()->ToString(), R"(({"while" {0}}))");
+  HloInstruction* while_init = while_instr->while_init();
+  ASSERT_NE(while_init->original_value(), nullptr);
+  EXPECT_EQ(while_init->original_value()->ToString(), R"(({"c0"}))");
+}
+
 }  // namespace
 }  // namespace xla
