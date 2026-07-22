@@ -282,7 +282,7 @@ static void AddScalarOptimizationPasses(mlir::OpPassManager& pm,
   pm.addNestedPass<mlir::func::FuncOp>(emitters::createUnswitchLoopsPass());
   // We need LICM again after unswitching, because that can introduce new
   // opportunities for LICM. This would not be necessary if LICM also moved
-  // instructions over ifs.
+  // instructions over if-statements.
   pm.addPass(mlir::createLoopInvariantCodeMotionPass());
   // TODO(willfroom): Re-enable vectorization once b/431961172 is fixed.
   // emitters::VectorizeLoadsAndStoresPassOptions vectorize_options;
