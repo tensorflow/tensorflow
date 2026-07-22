@@ -23,7 +23,7 @@ limitations under the License.
 #include <vector>
 
 #if defined(PLATFORM_GOOGLE)
-#include "base/context.h"
+#include "third_party/gloop/base/context.h"
 #endif
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
