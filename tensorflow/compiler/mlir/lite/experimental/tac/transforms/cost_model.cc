@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/lite/experimental/tac/transforms/cost_model.h"
 
-#include <algorithm>
 #include <cstdint>
 #include <memory>
 #include <string>
