@@ -4,6 +4,10 @@ tf_class {
   is_instance: "<class \'tensorflow.python.lib.io.file_io.FileIO\'>"
   is_instance: "<class \'object\'>"
   member {
+    name: "closed"
+    mtype: "<class \'property\'>"
+  }
+  member {
     name: "mode"
     mtype: "<class \'property\'>"
   }
@@ -33,6 +37,10 @@ tf_class {
   }
   member_method {
     name: "close"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "fileno"
     argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
