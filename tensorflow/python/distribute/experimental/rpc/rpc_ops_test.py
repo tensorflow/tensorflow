@@ -473,7 +473,6 @@ class RpcOpsTest(test.TestCase):
                 constant_op.constant(30)],
         timeout_in_ms=5000)
     self.assertAllEqual(result_or.is_ok(), True)
-    error_code, _ = result_or.get_error()
 
     # Test timeouts for convenience methods
 
@@ -558,7 +557,7 @@ class RpcOpsTest(test.TestCase):
 
       self.assertAllEqual(True, result_or.is_ok())
       result = result_or.get_value()
-      self.assertEqual(len(result), 1)  # Call returns a list(tensors)
+      self.assertLen(result, 1)  # Call returns a list(tensors)
       # TODO(ishark): Shape for output tensor is unknown currently.
       # Add attribute for capturing TensorSpec for output and enable
       # check below:
@@ -821,6 +820,31 @@ class RpcOpsTest(test.TestCase):
 
     for e in elements:
       self.assertAllEqual(e, queue.dequeue())
+
+
+  def test_type_confusion_bug_512810573(self):
+    @eager_def_function.function(input_signature=[])
+    def return_string():
+      return constant_op.constant("malicious_string", dtype=dtypes.string)
+
+    port = portpicker.pick_unused_port()
+    address = "localhost:{}".format(port)
+    server_resource = rpc_ops.GrpcServer(address)
+    server_resource.register("return_string", return_string)
+    server_resource.start()
+
+    client = rpc_ops.GrpcClient(
+        address=address, name="test_client_type_confusion"
+    )
+
+    result_or = client.call(
+        args=[],
+        method_name="return_string",
+        output_specs=[tensor_spec.TensorSpec([], dtypes.float32)],
+    )
+
+    with self.assertRaisesRegex(errors.InvalidArgumentError, "Type mismatch"):
+      result_or.get_value()
 
   def test_multi_device_resource_cpu(self):
     with ops.device("/device:cpu:1"):
