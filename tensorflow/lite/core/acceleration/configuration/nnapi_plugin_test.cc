@@ -18,6 +18,7 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 #include <string>
+#include <utility>
 
 #include <gtest/gtest.h>
 #include "flatbuffers/buffer.h"  // from @flatbuffers
@@ -46,8 +47,8 @@ using delegate::nnapi::NnApiMock;
 
 class SingleAddOpModel : public tflite::SingleOpModel {
  public:
-  // Note the caller owns the memory of the passed-in 'delegate'.
-  void Build(TfLiteDelegate* delegate) {
+  // Takes ownership of the passed-in 'delegate'.
+  void Build(delegates::TfLiteDelegatePtr&& delegate) {
     int input = AddInput({tflite::TensorType_FLOAT32, {1, 2, 2}});
     int constant = AddConstInput({tflite::TensorType_FLOAT32, {1, 2, 2}},
                                  {1.0f, 1.0f, 1.0f, 1.0f});
@@ -56,7 +57,7 @@ class SingleAddOpModel : public tflite::SingleOpModel {
     SetBuiltinOp(tflite::BuiltinOperator_ADD, tflite::BuiltinOptions_AddOptions,
                  tflite::CreateAddOptions(builder_).Union());
 
-    SetDelegate(delegate);
+    SetDelegate(std::move(delegate));
     // Set 'apply_delegate' to false to manually apply the delegate later and
     // check its return status.
     BuildInterpreter({GetShape(input), GetShape(constant)},
@@ -96,7 +97,7 @@ class NNAPIPluginTest : public ::testing::Test {
     // Since delegation succeeds, the model becomes immutable and hence can't
     // reuse it.
     SingleAddOpModel model;
-    model.Build(delegate_.get());
+    model.Build(std::move(delegate_));
     EXPECT_EQ(model.ApplyDelegate(), kTfLiteOk)
         << " given input: " << input << " expected output: " << output;
   }
@@ -115,7 +116,7 @@ class NNAPIPluginTest : public ::testing::Test {
     // Since delegation succeeds, the model becomes immutable and hence can't
     // reuse it.
     SingleAddOpModel model;
-    model.Build(delegate_.get());
+    model.Build(std::move(delegate_));
     EXPECT_EQ(model.ApplyDelegate(), kTfLiteOk)
         << " given input: " << input << " expected output: " << output;
   }
@@ -131,7 +132,7 @@ class NNAPIPluginTest : public ::testing::Test {
   }
 
   TfLiteStatus ApplyDelegate() {
-    model_.Build(delegate_.get());
+    model_.Build(std::move(delegate_));
     return model_.ApplyDelegate();
   }
 
@@ -405,8 +406,8 @@ TEST_F(NNAPIPluginTest, PassesTrueNNAPICpuFlag) {
  */
 class MultiplePartitionsModel : public tflite::MultiOpModel {
  public:
-  // Note the caller owns the memory of the passed-in 'delegate'.
-  void Build(TfLiteDelegate* delegate) {
+  // Takes ownership of the passed-in 'delegate'.
+  void Build(delegates::TfLiteDelegatePtr&& delegate) {
     const tflite::TensorData tensors_data = {tflite::TensorType_FLOAT32,
                                              {1, 2, 2}};
     int input1 = AddInput(tensors_data);
@@ -429,7 +430,7 @@ class MultiplePartitionsModel : public tflite::MultiOpModel {
         CreateAddOptions(builder_, ActivationFunctionType_NONE).Union(),
         {round_out, input3}, {output});
 
-    SetDelegate(delegate);
+    SetDelegate(std::move(delegate));
     // Set 'apply_delegate' to false to manually apply the delegate later and
     // check its return status.
     BuildInterpreter({GetShape(input1), GetShape(input2), GetShape(input3)},
@@ -479,7 +480,7 @@ class NNAPIMultiOpPluginTest : public ::testing::Test {
   }
 
   TfLiteStatus ApplyDelegate() {
-    model_.Build(delegate_.get());
+    model_.Build(std::move(delegate_));
     return model_.ApplyDelegate();
   }
 

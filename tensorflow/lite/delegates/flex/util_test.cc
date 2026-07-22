@@ -83,7 +83,7 @@ TEST(UtilTest, ConvertStatus) {
   TestContext context;
   context.ReportError = ReportError;
 
-  EXPECT_EQ(ConvertStatus(&context, tensorflow::errors::Internal("Some Error")),
+  EXPECT_EQ(ConvertStatus(&context, absl::InternalError("Some Error")),
             kTfLiteError);
   EXPECT_EQ(context.error, "Some Error");
 

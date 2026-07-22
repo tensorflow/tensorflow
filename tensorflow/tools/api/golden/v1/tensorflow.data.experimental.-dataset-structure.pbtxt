@@ -6,18 +6,30 @@ tf_class {
   is_instance: "<class \'tensorflow.python.types.internal.TypeSpec\'>"
   is_instance: "<class \'tensorflow.python.types.trace.TraceType\'>"
   is_instance: "<class \'tensorflow.core.function.trace_type.serialization.Serializable\'>"
-  is_instance: "<type \'object\'>"
+  is_instance: "<class \'object\'>"
   member {
     name: "element_spec"
-    mtype: "<type \'property\'>"
+    mtype: "<class \'property\'>"
   }
   member {
     name: "value_type"
-    mtype: "<type \'property\'>"
+    mtype: "<class \'property\'>"
+  }
+  member_method {
+    name: "__eq__"
+    argspec: "args=[\'self\', \'other\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "__init__"
     argspec: "args=[\'self\', \'element_spec\', \'dataset_shape\'], varargs=None, keywords=None, defaults=[\'()\'], "
+  }
+  member_method {
+    name: "__ne__"
+    argspec: "args=[\'self\', \'other\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "__tf_tracing_type__"
+    argspec: "args=[\'self\', \'context\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "cast"
@@ -46,6 +58,7 @@ tf_class {
   member_method {
     name: "from_value"
     argspec: "args=[\'value\'], varargs=None, keywords=None, defaults=None"
+    method_kind: STATIC
   }
   member_method {
     name: "is_compatible_with"

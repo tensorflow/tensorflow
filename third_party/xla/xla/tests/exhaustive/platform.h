@@ -31,6 +31,7 @@ class Platform {
     kX86_64,
     kCuda,
     kRocm,
+    kOneAPI,
   };
 
   explicit Platform(const HloRunnerInterface& runner);
@@ -41,9 +42,11 @@ class Platform {
 
   bool IsArmCpu() const { return value_ == Value::kAarch64; }
 
-  bool IsGpu() const { return IsAmdGpu() || IsNvidiaGpu(); }
+  bool IsGpu() const { return IsAmdGpu() || IsNvidiaGpu() || IsIntelGpu(); }
 
   bool IsAmdGpu() const { return value_ == Value::kRocm; }
+
+  bool IsIntelGpu() const { return value_ == Value::kOneAPI; }
 
   bool IsNvidiaGpu() const { return value_ == Value::kCuda; }
 

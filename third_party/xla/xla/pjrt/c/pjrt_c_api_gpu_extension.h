@@ -44,7 +44,7 @@ typedef PJRT_Error* PJRT_Gpu_Register_Custom_Call(
 
 typedef struct PJRT_Gpu_Custom_Call {
   PJRT_Extension_Base base;
-  PJRT_Gpu_Register_Custom_Call* custom_call;
+  PJRT_NO_DISCARD PJRT_Gpu_Register_Custom_Call* custom_call;
 } PJRT_Gpu_Custom_Call;
 PJRT_DEFINE_STRUCT_TRAITS(PJRT_Gpu_Custom_Call, custom_call);
 

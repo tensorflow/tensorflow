@@ -2,17 +2,25 @@ path: "tensorflow.data.experimental.DistributeOptions"
 tf_class {
   is_instance: "<class \'tensorflow.python.data.ops.options.DistributeOptions\'>"
   is_instance: "<class \'tensorflow.python.data.util.options.OptionsBase\'>"
-  is_instance: "<type \'object\'>"
+  is_instance: "<class \'object\'>"
   member {
     name: "auto_shard_policy"
-    mtype: "<type \'property\'>"
+    mtype: "<class \'property\'>"
   }
   member {
     name: "num_devices"
-    mtype: "<type \'property\'>"
+    mtype: "<class \'property\'>"
+  }
+  member_method {
+    name: "__eq__"
+    argspec: "args=[\'self\', \'other\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "__init__"
     argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "__ne__"
+    argspec: "args=[\'self\', \'other\'], varargs=None, keywords=None, defaults=None"
   }
 }

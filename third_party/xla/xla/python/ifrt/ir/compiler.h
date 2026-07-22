@@ -20,6 +20,7 @@ limitations under the License.
 #include "absl/functional/any_invocable.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/cord.h"
 #include "absl/strings/string_view.h"
 #include "llvm/Support/ExtensibleRTTI.h"
 #include "xla/python/ifrt/client.h"
@@ -27,6 +28,7 @@ limitations under the License.
 #include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/executable.h"
 #include "xla/python/ifrt/ir/atom_program_compiler.h"
+#include "xla/python/ifrt/ir/compiled_ifrt_ir_program.h"
 #include "xla/python/ifrt/ir/ifrt_ir_program.h"
 #include "xla/python/ifrt/program.h"
 #include "xla/python/ifrt/topology.h"
@@ -35,45 +37,44 @@ limitations under the License.
 namespace xla {
 namespace ifrt {
 
-// Implements the IFRT IR compiler. Accepts `xla::ifrt::IfrtIRProgram` and
-// returns a `LoadedExecutable` that runs the compiled IR program.
+// Implements the IFRT IR compiler. Accepts `IfrtIRProgram` and returns a
+// `LoadedExecutable` that runs the compiled IR program.
 class IfrtIrProgramCompiler final
-    : public llvm::RTTIExtends<IfrtIrProgramCompiler, xla::ifrt::Compiler> {
+    : public llvm::RTTIExtends<IfrtIrProgramCompiler, Compiler> {
  public:
   static char ID;  // NOLINT
 
   // Callback that creates an `AtomProgramCompiler` from the given compile
   // options.
-  using AtomProgramCompilerFactory = absl::AnyInvocable<
-      absl::StatusOr<std::unique_ptr<xla::ifrt::AtomProgramCompiler>>(
-          const xla::ifrt::IfrtIRCompileOptions&) const>;
-
-  using xla::ifrt::Compiler::Compile;
+  using AtomProgramCompilerFactory =
+      absl::AnyInvocable<absl::StatusOr<std::unique_ptr<AtomProgramCompiler>>(
+          const IfrtIRCompileOptions&) const>;
 
   IfrtIrProgramCompiler(
-      xla::ifrt::Client* client,
-      AtomProgramCompilerFactory atom_program_compiler_factory);
+      Client* client, AtomProgramCompilerFactory atom_program_compiler_factory);
 
-  tsl::Future<xla::ifrt::LoadedExecutableRef> CompileAndLoad(
-      std::unique_ptr<xla::ifrt::Program> program,
-      std::unique_ptr<xla::ifrt::CompileOptions> options) override;
+  tsl::Future<std::shared_ptr<CompiledIfrtIrProgram>> Compile(
+      std::unique_ptr<Program> program,
+      std::unique_ptr<CompileOptions> options);
 
-  tsl::Future<xla::ifrt::ExecutableRef> Compile(
-      std::unique_ptr<xla::ifrt::Program> program,
-      const xla::ifrt::Topology& topology,
-      std::unique_ptr<xla::ifrt::CompileOptions> options) override;
+  tsl::Future<LoadedExecutableRef> CompileAndLoad(
+      std::unique_ptr<Program> program,
+      std::unique_ptr<CompileOptions> options) override;
+
+  tsl::Future<ExecutableRef> Compile(
+      std::unique_ptr<Program> program, const Topology& topology,
+      std::unique_ptr<CompileOptions> options) override;
 
   absl::Status IsExecutableVersionCompatible(
-      const xla::ifrt::ExecutableVersion& executable_version,
-      const xla::ifrt::DeviceListRef& devices) const override;
+      const ExecutableVersion& executable_version,
+      const DeviceListRef& devices) const override;
 
-  tsl::Future<xla::ifrt::LoadedExecutableRef> DeserializeLoadedExecutable(
-      absl::string_view serialized,
-      std::unique_ptr<xla::ifrt::DeserializeExecutableOptions> options)
-      override;
+  tsl::Future<LoadedExecutableRef> DeserializeLoadedExecutable(
+      const absl::Cord& serialized,
+      std::unique_ptr<DeserializeExecutableOptions> options) override;
 
  private:
-  xla::ifrt::Client* const client_;
+  Client* const client_;
   const AtomProgramCompilerFactory atom_program_compiler_factory_;
 };
 

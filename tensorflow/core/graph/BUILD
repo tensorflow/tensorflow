@@ -1,3 +1,18 @@
+# Copyright 2026 The TensorFlow Authors. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
+
 load(
     "@xla//xla/tsl/mkl:build_defs.bzl",
     "if_mkl",
@@ -174,43 +189,49 @@ filegroup(
     name = "mobile_srcs_only_runtime",
     srcs = [
         "algorithm.cc",
+        "collective_order.cc",
+        "colors.cc",
+        "control_flow.cc",
+        "costmodel.cc",
+        "edgeset.cc",
+        "graph.cc",
+        "graph_debug_info_builder.cc",
+        "graph_def_builder.cc",
+        "graph_node_util.cc",
+        "graph_partition.cc",
+        "node_builder.cc",
+        "optimizer_cse.cc",
+        "subgraph.cc",
+        "tensor_id.cc",
+        "validate.cc",
+        "while_context.cc",
+    ],
+)
+
+filegroup(
+    name = "mobile_hdrs_only_runtime",
+    srcs = [
         "algorithm.h",
         "benchmark_testlib.h",
-        "collective_order.cc",
         "collective_order.h",
-        "colors.cc",
         "colors.h",
-        "control_flow.cc",
         "control_flow.h",
-        "costmodel.cc",
         "costmodel.h",
         "default_device.h",
-        "edgeset.cc",
         "edgeset.h",
-        "graph.cc",
         "graph.h",
-        "graph_debug_info_builder.cc",
         "graph_debug_info_builder.h",
-        "graph_def_builder.cc",
         "graph_def_builder.h",
-        "graph_node_util.cc",
         "graph_node_util.h",
-        "graph_partition.cc",
         "graph_partition.h",
         "mkl_graph_util.h",
-        "node_builder.cc",
         "node_builder.h",
-        "optimizer_cse.cc",
         "optimizer_cse.h",
-        "subgraph.cc",
         "subgraph.h",
-        "tensor_id.cc",
         "tensor_id.h",
         "testlib.h",
         "types.h",
-        "validate.cc",
         "validate.h",
-        "while_context.cc",
         "while_context.h",
     ],
 )

@@ -1,3 +1,18 @@
+# Copyright 2026 The OpenXLA Authors. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
+
 load("@bazel_skylib//rules:build_test.bzl", "build_test")
 load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library")
 load("//xla:xla.default.bzl", "xla_cc_test")
@@ -20,11 +35,13 @@ cc_library(
     hdrs = ["attribute_exporter.h"],
     deps = [
         ":type_to_shape",
+        "//xla:array",
         "//xla:shape_util",
         "//xla:types",
         "//xla:util",
         "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
+        "//xla/hlo/ir:mesh_and_axis",
         "//xla/hlo/parser:hlo_parser",
         "//xla/hlo/translate/hlo_to_mhlo:hlo_utils",
         "//xla/mlir_hlo",
@@ -34,13 +51,19 @@ cc_library(
         "//xla/service/spmd/shardy:utils",
         "//xla/service/spmd/shardy/stablehlo_round_trip:export_shardings",
         "//xla/stream_executor:dnn",
+        "//xla/tsl/platform:status_macros",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/types:span",
         "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:AsmParser",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Parser",
         "@llvm-project//mlir:Support",
         "@shardy//shardy/dialect/sdy/ir:dialect",
         "@stablehlo//:base",
@@ -53,14 +76,19 @@ xla_cc_test(
     srcs = ["attribute_exporter_test.cc"],
     deps = [
         ":attribute_exporter",
+        ":mlir_hlo_to_hlo",
         "//xla:xla_data_proto_cc",
+        "//xla/hlo/ir:hlo",
         "//xla/hlo/ir:hlo_sharding",
         "//xla/hlo/parser:hlo_parser",
         "//xla/mlir/utils:error_util",
         "//xla/mlir_hlo",
+        "//xla/service:hlo_verifier",
         "//xla/service/spmd/shardy:constants",
         "//xla/service/spmd/shardy:utils",
         "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:status_macros",
+        "//xla/tsl/platform:status_matchers",
         "//xla/tsl/platform:statusor",
         "//xla/tsl/platform:test",
         "//xla/tsl/platform:test_main",
@@ -68,6 +96,7 @@ xla_cc_test(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest",
+        "@llvm-project//llvm:Support",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Parser",
@@ -86,6 +115,7 @@ cc_library(
         "//xla/hlo/builder:xla_builder",
         "//xla/hlo/ir:hlo",
         "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:status_macros",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
@@ -119,7 +149,6 @@ cc_library(
     deps = [
         ":stack_frame_index_builder",
         "//xla:xla_data_proto_cc",
-        "//xla/hlo/translate/hlo_to_mhlo:hlo_utils",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
@@ -135,8 +164,7 @@ cc_library(
         "//xla/mlir_hlo:unregistered_attributes",
         "//xla/service:hlo_module_config",
         "//xla/service:hlo_proto_cc",
-        "//xla/tsl/platform:errors",
-        "//xla/tsl/platform:statusor",
+        "//xla/tsl/platform:status_macros",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@llvm-project//llvm:Support",
@@ -210,6 +238,7 @@ cc_library(
         "//xla/service/spmd/shardy:utils",
         "//xla/service/spmd/shardy/stablehlo_round_trip:export_shardings",
         "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:status_macros",
         "//xla/tsl/platform:statusor",
         "//xla/tsl/platform:types",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -231,6 +260,7 @@ cc_library(
         "@llvm-project//mlir:TransformUtils",
         "@shardy//shardy/dialect/sdy/ir:dialect",
         "@stablehlo//:base",
+        "@stablehlo//:replica_group_utils",
         "@stablehlo//:stablehlo_ops",
         "@stablehlo//:stablehlo_passes",
         "@tsl//tsl/platform:ml_dtypes",
@@ -312,12 +342,12 @@ cc_library(
         "//xla/hlo/builder:xla_computation",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/translate:register",
+        "//xla/mlir_hlo",
         "//xla/mlir_hlo:unregistered_attributes",
         "//xla/service:hlo_module_config",
         "//xla/service:hlo_proto_cc",
         "//xla/service:hlo_proto_util",
-        "//xla/tsl/platform:errors",
-        "//xla/tsl/platform:statusor",
+        "//xla/tsl/platform:status_macros",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
@@ -327,6 +357,7 @@ cc_library(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Parser",
         "@llvm-project//mlir:Support",
+        "@tsl//tsl/platform:protobuf",
     ],
 )
 

@@ -30,11 +30,11 @@ template struct functor::AdjustContrastv2<GPUDevice, float>;
 template struct functor::AdjustContrastv2<GPUDevice, Eigen::half>;
 
 // these are for v1
-template struct functor::AdjustContrast<GPUDevice, uint8>;
-template struct functor::AdjustContrast<GPUDevice, int8>;
-template struct functor::AdjustContrast<GPUDevice, int16>;
-template struct functor::AdjustContrast<GPUDevice, int32>;
-template struct functor::AdjustContrast<GPUDevice, int64>;
+template struct functor::AdjustContrast<GPUDevice, uint8_t>;
+template struct functor::AdjustContrast<GPUDevice, int8_t>;
+template struct functor::AdjustContrast<GPUDevice, int16_t>;
+template struct functor::AdjustContrast<GPUDevice, int32_t>;
+template struct functor::AdjustContrast<GPUDevice, int64_t>;
 template struct functor::AdjustContrast<GPUDevice, float>;
 template struct functor::AdjustContrast<GPUDevice, double>;
 

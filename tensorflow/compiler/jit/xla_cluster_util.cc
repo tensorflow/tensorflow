@@ -213,10 +213,10 @@ absl::StatusOr<bool> CreateCycleDetectionGraph(const Graph* graph,
     if (!cycles->InsertEdge(edge->src()->id(), edge->dst()->id())) {
       // This should never happen. All cycles in the graph should contain
       // a control flow operator.
-      return errors::Internal(
+      return absl::InternalError(absl::StrCat(
           "Found cycle in graph without control flow operator during XLA "
           "compilation: ",
-          DescribeCycle(cycles, *graph, edge->src()->id(), edge->dst()->id()));
+          DescribeCycle(cycles, *graph, edge->src()->id(), edge->dst()->id())));
     }
   }
 
@@ -631,7 +631,7 @@ absl::StatusOr<std::string> SerializeGraphDeterministic(const Graph& graph) {
 
   std::string s;
   if (!SerializeToStringDeterministic(def, &s)) {
-    return errors::Internal("Failed to serialize graphdef.");
+    return absl::InternalError("Failed to serialize graphdef.");
   }
   return s;
 }

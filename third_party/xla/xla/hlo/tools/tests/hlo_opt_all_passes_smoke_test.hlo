@@ -1,4 +1,4 @@
-// RUN: PASSES=$(hlo-opt --list-passes); hlo-opt --passes=$PASSES %s | FileCheck %s
+// RUN: hlo-opt --list-passes | xargs -I {} hlo-opt --passes={} %s | FileCheck %s
 
 HloModule test_module
 

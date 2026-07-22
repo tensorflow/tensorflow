@@ -30,6 +30,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/analysis/hlo_replication_analysis.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -58,7 +59,7 @@ namespace {
 // performance.
 absl::StatusOr<bool> ReplaceReplicatedAllReduce(HloModule* module,
                                                 int64_t partition_count) {
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       auto replication_analysis,
       HloReplicationAnalysis::Run(module, /*cross_partition_spmd=*/true));
 
@@ -92,7 +93,7 @@ absl::StatusOr<bool> ReplaceReplicatedAllReduce(HloModule* module,
               HloInstruction::CreateBroadcast(shape, divisor, {}));
           auto div = computation->AddInstruction(HloInstruction::CreateBinary(
               ar->shape(), HloOpcode::kDivide, ar, bcast));
-          TF_RETURN_IF_ERROR(ar->ReplaceAllUsesWith(div));
+          RETURN_IF_ERROR(ar->ReplaceAllUsesWith(div));
           changed = true;
         }
       }
@@ -196,12 +197,18 @@ std::optional<ArCrsCombiner::ArCrsPair> ArCrsCombiner::MatchesArCrsPattern(
   // belongs to its own group, since the later cross-replica all-reduce combines
   // along the replica dimension.
   if (instruction->IsCrossModuleAllReduce() &&
+      // TODO: b/501070020 - Support async all-reduce.
+      instruction->opcode() != HloOpcode::kAllReduceStart &&
+      instruction->opcode() != HloOpcode::kAllReduceDone &&
       HasCombinableReplicaGroup(instruction, num_spatial_partitions_) &&
       computation_is_addition(instruction->called_computations()[0]) &&
       instruction->user_count() == 1) {
     auto next = instruction->users()[0];
     int64_t distance = 1;
-    while (!next->IsCrossReplicaAllReduce()) {
+    // TODO: b/501070020 - Support async all-reduce.
+    while (!next->IsCrossReplicaAllReduce() &&
+           next->opcode() != HloOpcode::kAllReduceStart &&
+           next->opcode() != HloOpcode::kAllReduceDone) {
       if (can_ar_move_past_instruction(next)) {
         next = next->users()[0];
       } else {
@@ -531,7 +538,7 @@ absl::Status ArCrsCombiner::KeepProvablyEqualInstructionGroupsSPMD(
     HloModule* module) {
   // For SPMD mode, use HloReplicationAnalysis to figure out HLO value
   // equivalence across partitions.
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       auto replication_analysis,
       HloReplicationAnalysis::Run(module, /*cross_partition_spmd=*/true));
 
@@ -639,16 +646,16 @@ absl::StatusOr<bool> ArCrsCombiner::RunImpl(
   GroupAllReducesById(module);
 
   if (spmd_partition_) {
-    TF_RETURN_IF_ERROR(KeepProvablyEqualInstructionGroupsSPMD(module));
+    RETURN_IF_ERROR(KeepProvablyEqualInstructionGroupsSPMD(module));
   } else {
-    TF_RETURN_IF_ERROR(KeepProvablyEqualInstructionGroupsMPMD());
+    RETURN_IF_ERROR(KeepProvablyEqualInstructionGroupsMPMD());
   }
 
-  TF_ASSIGN_OR_RETURN(auto changed, RewriteGraph());
+  ASSIGN_OR_RETURN(auto changed, RewriteGraph());
 
   if (module->config().replica_count() > 1 && spmd_partition_) {
-    TF_ASSIGN_OR_RETURN(auto replaced, ReplaceReplicatedAllReduce(
-                                           module, num_spatial_partitions_));
+    ASSIGN_OR_RETURN(auto replaced, ReplaceReplicatedAllReduce(
+                                        module, num_spatial_partitions_));
     changed |= replaced;
   }
 

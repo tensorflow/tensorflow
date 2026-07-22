@@ -1,3 +1,18 @@
+# Copyright 2026 The TensorFlow Authors. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
+
 load("@bazel_skylib//lib:selects.bzl", "selects")
 load(
     "@xla//xla/tsl/mkl:build_defs.bzl",
@@ -255,6 +270,9 @@ tf_cuda_library(
             "@com_google_absl//absl/time",
             "@tsl//tsl/platform:mutex",
             "@xla//xla/pjrt/gpu:se_gpu_pjrt_client",
+            "@xla//xla/pjrt/plugin/xla_gpu:xla_gpu_client_options",
+            "@xla//xla/pjrt/se:local_device_state",
+            "@xla//xla/pjrt/se:pjrt_stream_executor_client",
             "@xla//xla/tsl/distributed_runtime/coordination:coordination_service",
             "@xla//xla/tsl/distributed_runtime/coordination:coordination_service_agent",
             "@xla//xla/tsl/distributed_runtime/preemption:preemption_notifier",
@@ -989,10 +1007,21 @@ filegroup(
     srcs = glob(
         [
             "*.cc",
-            "*.h",
         ],
         exclude = [
             "*_test.cc",
+            "remote_*",
+        ],
+    ),
+)
+
+filegroup(
+    name = "hdrs",
+    srcs = glob(
+        [
+            "*.h",
+        ],
+        exclude = [
             "remote_*",
         ],
     ),

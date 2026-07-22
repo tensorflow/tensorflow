@@ -45,6 +45,7 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/internal/types.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
+#include "tensorflow/lite/types/half.h"
 
 namespace tflite {
 namespace ops {
@@ -1170,6 +1171,16 @@ TfLiteStatus SoftmaxFloat(TfLiteContext* context, const TfLiteTensor* input,
   return kTfLiteOk;
 }
 
+TfLiteStatus SoftmaxHalf(TfLiteContext* context, const TfLiteTensor* input,
+                         TfLiteTensor* output, TfLiteSoftmaxParams* params) {
+  SoftmaxParams op_params;
+  op_params.beta = params->beta;
+  reference_ops::Softmax(op_params, GetTensorShape(input),
+                         GetTensorData<half>(input), GetTensorShape(output),
+                         GetTensorData<half>(output));
+  return kTfLiteOk;
+}
+
 template <typename In, typename Out>
 TfLiteStatus SoftmaxQuantized(TfLiteContext* context, const TfLiteTensor* input,
                               TfLiteTensor* output, SoftmaxOpData* data,
@@ -1240,18 +1251,10 @@ TfLiteStatus SoftmaxQuantized<int16, int16>(TfLiteContext* context,
                                             TfLiteTensor* output,
                                             SoftmaxOpData* data,
                                             KernelType kernel_type) {
-  if (NumDimensions(input) >= 1 && NumDimensions(input) <= 4) {
-    reference_ops::SoftmaxInt16(
-        data->params, GetTensorShape(input), GetTensorData<int16_t>(input),
-        GetTensorShape(output), GetTensorData<int16_t>(output));
-    return kTfLiteOk;
-  } else {
-    TF_LITE_KERNEL_LOG(context,
-                       "Only 1D, 2D, 3D and 4D tensors supported for int16 "
-                       "input with int16 output, got %dD.",
-                       NumDimensions(input));
-    return kTfLiteError;
-  }
+  reference_ops::SoftmaxInt16(
+      data->params, GetTensorShape(input), GetTensorData<int16_t>(input),
+      GetTensorShape(output), GetTensorData<int16_t>(output));
+  return kTfLiteOk;
 }
 
 template <KernelType kernel_type>
@@ -1267,6 +1270,9 @@ TfLiteStatus SoftmaxEval(TfLiteContext* context, TfLiteNode* node) {
   switch (input->type) {
     case kTfLiteFloat32: {
       return SoftmaxFloat(context, input, output, params, kernel_type);
+    }
+    case kTfLiteFloat16: {
+      return SoftmaxHalf(context, input, output, params);
     }
     case kTfLiteUInt8: {
       switch (output->type) {
@@ -1667,6 +1673,12 @@ TfLiteStatus GeluEval(TfLiteContext* context, TfLiteNode* node) {
       reference_ops::Gelu(GetTensorShape(input), GetTensorData<float>(input),
                           params->approximate, GetTensorShape(output),
                           GetTensorData<float>(output));
+      return kTfLiteOk;
+    case kTfLiteFloat16:
+      reference_ops::Gelu(GetTensorShape(input),
+                          GetTensorData<Eigen::half>(input),
+                          params->approximate, GetTensorShape(output),
+                          GetTensorData<Eigen::half>(output));
       return kTfLiteOk;
     case kTfLiteUInt8:
       optimized_integer_ops::LookupTable(

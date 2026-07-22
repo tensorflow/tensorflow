@@ -22,57 +22,70 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/strings/string_view.h"
 #include "xla/tsl/lib/gtl/map_util.h"
+#include "xla/tsl/platform/logging.h"
+#include "xla/tsl/platform/macros.h"
 #include "xla/tsl/profiler/utils/tf_op_utils.h"
 
 namespace tsl {
 namespace profiler {
 
-const absl::string_view kHostThreadsPlaneName = "/host:CPU";
-const absl::string_view kGpuPlanePrefix = "/device:GPU:";
-const absl::string_view kTpuPlanePrefix = "/device:TPU:";
-const absl::string_view kVirtualDevicePlanePrefix = "/virtualdevice:";
-const absl::string_view kTpuNonCorePlaneNamePrefix = "#Chip";
-const char kTpuPlaneRegex[] = {"/device:TPU:([0-9]*)$"};
-const char kSparseCorePlaneRegex[] = {
-    "/device:TPU:[0-9]+ SparseCore ([0-9]+)$"};
+TF_CONST_INIT const absl::string_view kHostThreadsPlaneName = "/host:CPU";
+TF_CONST_INIT const absl::string_view kGpuPlanePrefix = "/device:GPU:";
+TF_CONST_INIT const absl::string_view kTpuPlanePrefix = "/device:TPU:";
+TF_CONST_INIT const absl::string_view kVirtualDevicePlanePrefix =
+    "/virtualdevice:";
+TF_CONST_INIT const absl::string_view kTpuNonCorePlaneNamePrefix = "#Chip";
+TF_CONST_INIT const char kTpuPlaneRegex[] = {"/device:TPU:([0-9]*)$"};
+TF_CONST_INIT const char kSparseCorePlaneRegex[] = {
+    "/device:TPU:[0-9]+ SparseCore(?: [a-zA-Z]+)? ([0-9]+)$"};
 // TODO(b/195582092): change it to /device:custom once all literals are
 // migrated.
-const absl::string_view kCustomPlanePrefix = "/device:CUSTOM:";
-const absl::string_view kCustomGpuOnDeviceTracePlanePrefix =
+TF_CONST_INIT const absl::string_view kCustomPlanePrefix = "/device:CUSTOM:";
+TF_CONST_INIT const absl::string_view kCustomGpuOnDeviceTracePlanePrefix =
     "/device:CUSTOM:MOSAIC:";  // /device:CUSTOM:MOSAIC:INSTANCE_ID
 
-const absl::string_view kScopeRangeIdTreePlaneName =
+TF_CONST_INIT const absl::string_view kScopeRangeIdTreePlaneName =
     "/host:__ScopeRangeCallStack__";
-const absl::string_view kTpuRuntimePlaneName = "/host:TPU-runtime";
-const absl::string_view kCuptiDriverApiPlaneName = "/host:CUPTI";
-const absl::string_view kCuptiActivityNvtxPlaneName = "/host:NVTX-CUPTI";
-const absl::string_view kRoctracerApiPlaneName = "/host:ROCTRACER";
-const absl::string_view kMetadataPlaneName = "/host:metadata";
-const absl::string_view kTFStreamzPlaneName = "/host:tfstreamz";
-const absl::string_view kPythonTracerPlaneName = "/host:python-tracer";
-const absl::string_view kHostCpusPlaneName = "Host CPUs";
-const absl::string_view kSyscallsPlaneName = "Syscalls";
+TF_CONST_INIT const absl::string_view kTpuRuntimePlaneName =
+    "/host:TPU-runtime";
+TF_CONST_INIT const absl::string_view kCuptiDriverApiPlaneName = "/host:CUPTI";
+TF_CONST_INIT const absl::string_view kCuptiActivityNvtxPlaneName =
+    "/host:NVTX-CUPTI";
+TF_CONST_INIT const absl::string_view kRoctracerApiPlaneName =
+    "/host:ROCTRACER";
+TF_CONST_INIT const absl::string_view kMetadataPlaneName = "/host:metadata";
+TF_CONST_INIT const absl::string_view kTFStreamzPlaneName = "/host:tfstreamz";
+TF_CONST_INIT const absl::string_view kPythonTracerPlaneName =
+    "/host:python-tracer";
+TF_CONST_INIT const absl::string_view kHostCpusPlaneName = "Host CPUs";
+TF_CONST_INIT const absl::string_view kSyscallsPlaneName = "Syscalls";
 
-const absl::string_view kStepLineName = "Steps";
-const absl::string_view kSparseCoreStepLineName = "Sparse Core Steps";
-const absl::string_view kSparseCoreModuleLineName = "Sparse Core Modules";
-const absl::string_view kSparseCoreOpLineName = "Sparse Core Ops";
-const absl::string_view kTensorFlowNameScopeLineName = "Framework Name Scope";
-const absl::string_view kTensorFlowOpLineName = "Framework Ops";
-const absl::string_view kXlaModuleLineName = "XLA Modules";
-const absl::string_view kXlaOpLineName = "XLA Ops";
-const absl::string_view kXlaAsyncOpLineName = "Async XLA Ops";
-const absl::string_view kKernelLaunchLineName = "Launch Stats";
-const absl::string_view kSourceLineName = "Source code";
-const absl::string_view kHostOffloadOpLineName = "Host Offload Ops";
-const absl::string_view kCounterEventsLineName = "_counters_";
-const absl::string_view kTensorCoreSyncFlagLineName = "Tensor Core Sync Flag";
-const absl::string_view kSparseCoreSyncsLineName = "Sparse Core Syncs";
+TF_CONST_INIT const absl::string_view kStepLineName = "Steps";
+TF_CONST_INIT const absl::string_view kSparseCoreStepLineName =
+    "Sparse Core Steps";
+TF_CONST_INIT const absl::string_view kSparseCoreModuleLineName =
+    "Sparse Core Modules";
+TF_CONST_INIT const absl::string_view kSparseCoreOpLineName = "Sparse Core Ops";
+TF_CONST_INIT const absl::string_view kTensorFlowNameScopeLineName =
+    "Framework Name Scope";
+TF_CONST_INIT const absl::string_view kTensorFlowOpLineName = "Framework Ops";
+TF_CONST_INIT const absl::string_view kXlaModuleLineName = "XLA Modules";
+TF_CONST_INIT const absl::string_view kXlaOpLineName = "XLA Ops";
+TF_CONST_INIT const absl::string_view kXlaAsyncOpLineName = "Async XLA Ops";
+TF_CONST_INIT const absl::string_view kKernelLaunchLineName = "Launch Stats";
+TF_CONST_INIT const absl::string_view kSourceLineName = "Source code";
+TF_CONST_INIT const absl::string_view kHostOffloadOpLineName =
+    "Host Offload Ops";
+TF_CONST_INIT const absl::string_view kCounterEventsLineName = "_counters_";
+TF_CONST_INIT const absl::string_view kTensorCoreSyncFlagLineName =
+    "Tensor Core Sync Flag";
+TF_CONST_INIT const absl::string_view kSparseCoreSyncsLineName =
+    "Sparse Core Syncs";
 
-const absl::string_view kDeviceVendorNvidia = "Nvidia";
-const absl::string_view kDeviceVendorAMD = "AMD";
+TF_CONST_INIT const absl::string_view kDeviceVendorNvidia = "Nvidia";
+TF_CONST_INIT const absl::string_view kDeviceVendorAMD = "AMD";
 
-const absl::string_view kTaskEnvPlaneName = "Task Environment";
+TF_CONST_INIT const absl::string_view kTaskEnvPlaneName = "Task Environment";
 
 namespace {
 
@@ -160,6 +173,8 @@ const HostEventTypeMap& GetHostEventTypeMap() {
       {"ScheduleWithSplit", kScheduleWithSplit},
       {"ScheduleWithEagerSplit", kScheduleWithEagerSplit},
       {"ASBSQueue::Schedule", kASBSQueueSchedule},
+      {"OrbaxServing::ProcessBatch", kOrbaxProcessBatch},
+      {"OrbaxServing::ConcatInputBuffers", kOrbaxConcatInputBuffers},
       // TFRT related.
       {"TfrtModelRun", kTfrtModelRun},
       // Serving related.
@@ -254,6 +269,8 @@ const StatTypeMap& GetStatTypeMap() {
        {"_ct", kConsumerType},
        {"_p", kProducerId},
        {"_c", kConsumerId},
+       {"_pid", kConsumerPid},
+       {"process_id", kProcessId},
        {"_r", kIsRoot},
        {"_a", kIsAsync},
        // Device trace arguments.
@@ -278,6 +295,7 @@ const StatTypeMap& GetStatTypeMap() {
        {"deduplicated_name", kDeduplicatedName},
        {"hlo_category", kHloCategory},
        {"hlo_module", kHloModule},
+       {"unique_hlo_op_id", kUniqueHloOpId},
        {"program_id", kProgramId},
        {"equation", kEquation},
        {"is_eager", kIsEager},
@@ -405,7 +423,10 @@ const StatTypeMap& GetStatTypeMap() {
        {"vdd_core_energy_nj", kVddCoreEnergy},
        {"vdd_core_power_events", kVddCorePowerEvents},
        {"hbm_energy_nj", kHbmEnergy},
-       {"hbm_power_events", kHbmPowerEvents}});
+       {"hbm_power_events", kHbmPowerEvents},
+       {"transaction_with_chip_core_id", kTransactionWithChipCoreId},
+       {"program_counter", kProgramCounter},
+       {"uses_ici", kUsesIci}});
   DCHECK_EQ(stat_type_map->size(), kNumStatTypes);
   return *stat_type_map;
 }
@@ -433,10 +454,10 @@ const MegaScaleStatTypeMap& GetMegaScaleStatTypeMap() {
        {"chunk", kMegaScaleChunk},
        {"launch_id", kMegaScaleLaunchId},
        {"loop_iteration", kMegaScaleLoopIteration},
-       {"transmission_budget_us", kMegaScaleTransmissionBudgetUs},
-       {"delay_budget_us", kMegaScaleDelayBudgetUs},
        {"graph_protos", kMegaScaleGraphProtos},
        {"network_transport_latency_us", kMegaScaleNetworkTransportLatency},
+       {"activation_to_network_receive_duration_us",
+        kMegaScaleActivationToNetworkReceiveDurationUs},
        {"hlo_module", kMegaScaleHloModule},
        {"multi_slice_topology", kMegaScaleMultiSliceTopology}});
   DCHECK_EQ(stat_type_map->size(), kNumMegaScaleStatTypes);
@@ -566,7 +587,9 @@ absl::string_view GetLineIdTypeStr(LineIdType line_id_type) {
 
 bool IsInternalEvent(std::optional<int64_t> event_type) {
   // TODO(b/162102421): Introduce a prefix for internal event names.
-  if (!event_type.has_value()) return false;
+  if (!event_type.has_value()) {
+    return false;
+  }
   switch (*event_type) {
     case HostEventType::kMemoryAllocation:
     case HostEventType::kMemoryDeallocation:
@@ -588,7 +611,9 @@ bool IsInternalEvent(std::optional<int64_t> event_type) {
 }
 
 bool IsInternalStat(std::optional<int64_t> stat_type) {
-  if (!stat_type.has_value()) return false;
+  if (!stat_type.has_value()) {
+    return false;
+  }
   switch (*stat_type) {
     // case StatType::kKernelDetails:  # removed for rocm gpu kernel details
     case StatType::kProducerType:
@@ -608,48 +633,54 @@ bool IsInternalStat(std::optional<int64_t> stat_type) {
 /*static*/ std::atomic<uint64_t> XFlow::next_flow_id_(0);
 
 // String constants for XProf TraceMes.
-const absl::string_view kMegaScaleDcnReceive =
+TF_CONST_INIT const absl::string_view kMegaScaleDcnReceive =
     "MegaScale: Communication Transport Receive";
-const absl::string_view kMegaScaleDcnSend =
+TF_CONST_INIT const absl::string_view kMegaScaleDcnSend =
     "MegaScale: Communication Transport Send";
-const absl::string_view kMegaScaleDcnSendFinished = "MegaScale: Send Finished";
-const absl::string_view kMegaScaleDcnMemAllocate = "MegaScale: Memory Allocate";
-const absl::string_view kMegaScaleDcnMemCopy = "MegaScale: Memory Copy";
-const absl::string_view kMegaScaleTopologyDiscovery =
+TF_CONST_INIT const absl::string_view kMegaScaleDcnSendFinished =
+    "MegaScale: Send Finished";
+TF_CONST_INIT const absl::string_view kMegaScaleDcnMemAllocate =
+    "MegaScale: Memory Allocate";
+TF_CONST_INIT const absl::string_view kMegaScaleDcnMemCopy =
+    "MegaScale: Memory Copy";
+TF_CONST_INIT const absl::string_view kMegaScaleTopologyDiscovery =
     "MegaScale: Communication Topology Discovery.";
-const absl::string_view kMegaScaleBarrier = "MegaScale: Barrier.";
-const absl::string_view kMegaScaleHostCommand = "MegaScale: HostCommandHandle";
-const absl::string_view kMegaScaleD2HTransferStart =
+TF_CONST_INIT const absl::string_view kMegaScaleBarrier = "MegaScale: Barrier.";
+TF_CONST_INIT const absl::string_view kMegaScaleHostCommand =
+    "MegaScale: HostCommandHandle";
+TF_CONST_INIT const absl::string_view kMegaScaleD2HTransferStart =
     "MegaScale: Device to Host Action";
-const absl::string_view kMegaScaleD2HTransferFinished =
+TF_CONST_INIT const absl::string_view kMegaScaleD2HTransferFinished =
     "MegaScale: Device to Host Transfer Finished";
-const absl::string_view kMegaScaleH2DTransferStart =
+TF_CONST_INIT const absl::string_view kMegaScaleH2DTransferStart =
     "MegaScale: Host to Device Action";
-const absl::string_view kMegaScaleH2DTransferFinished =
+TF_CONST_INIT const absl::string_view kMegaScaleH2DTransferFinished =
     "MegaScale: Host to Device Transfer Finished";
-const absl::string_view kMegaScaleReductionStart = "MegaScale: Reduction";
-const absl::string_view kMegaScaleReductionFinished =
+TF_CONST_INIT const absl::string_view kMegaScaleReductionStart =
+    "MegaScale: Reduction";
+TF_CONST_INIT const absl::string_view kMegaScaleReductionFinished =
     "MegaScale: Reduction Finished";
-const absl::string_view kMegaScaleCompressionStart = "MegaScale: Compression";
-const absl::string_view kMegaScaleCompressionFinished =
+TF_CONST_INIT const absl::string_view kMegaScaleCompressionStart =
+    "MegaScale: Compression";
+TF_CONST_INIT const absl::string_view kMegaScaleCompressionFinished =
     "MegaScale: Compression Finished";
-const absl::string_view kMegaScaleDecompressionStart =
+TF_CONST_INIT const absl::string_view kMegaScaleDecompressionStart =
     "MegaScale: Decompression";
-const absl::string_view kMegaScaleDecompressionFinished =
+TF_CONST_INIT const absl::string_view kMegaScaleDecompressionFinished =
     "MegaScale: Decompression Finished";
-const char kXProfMetadataKey[] = "key";
-const char kXProfMetadataFlow[] = "flow";
-const char kXProfMetadataTransfers[] = "transfers";
-const char kXProfMetadataBufferSize[] = "buffer_size";
+TF_CONST_INIT const char kXProfMetadataKey[] = "key";
+TF_CONST_INIT const char kXProfMetadataFlow[] = "flow";
+TF_CONST_INIT const char kXProfMetadataTransfers[] = "transfers";
+TF_CONST_INIT const char kXProfMetadataBufferSize[] = "buffer_size";
 
 // String constants for threadpool_listener
-const absl::string_view kThreadpoolListenerRecord =
+TF_CONST_INIT const absl::string_view kThreadpoolListenerRecord =
     "ThreadpoolListener::Record";
-const absl::string_view kThreadpoolListenerStartRegion =
+TF_CONST_INIT const absl::string_view kThreadpoolListenerStartRegion =
     "ThreadpoolListener::StartRegion";
-const absl::string_view kThreadpoolListenerStopRegion =
+TF_CONST_INIT const absl::string_view kThreadpoolListenerStopRegion =
     "ThreadpoolListener::StopRegion";
-const absl::string_view kThreadpoolListenerRegion =
+TF_CONST_INIT const absl::string_view kThreadpoolListenerRegion =
     "ThreadpoolListener::Region";
 }  // namespace profiler
 }  // namespace tsl

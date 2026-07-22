@@ -1,3 +1,17 @@
+// Copyright 2026 The OpenXLA Authors. All Rights Reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// ==============================================================================
 // RUN: mlir-hlo-opt -split-input-file %s | FileCheck %s
 // RUN: mlir-hlo-opt -split-input-file %s | mlir-hlo-opt -split-input-file | FileCheck %s
 
@@ -146,8 +160,8 @@ func.func @no_attr_ops(%arg0 : tensor<4xf32>, %arg1 : !mhlo.token,
   // CHECK-NEXT: mhlo.clamp %arg0, %arg0, %arg0 : tensor<4xf32>
   // CHECK-NEXT: mhlo.complex %arg0, %arg0 : tensor<4xcomplex<f32>>
   // CHECK-NEXT: mhlo.copy %arg2 : tensor<4xi32>
-  // CHECK-NEXT: mhlo.uniform_quantize %arg0 : (tensor<4xf32>) -> tensor<4x!quant.uniform<u8:f32, 3.400000e+01:16>>
-  // CHECK-NEXT: mhlo.uniform_dequantize %[[_:[0-9]+]] : (tensor<4x!quant.uniform<u8:f32, 3.400000e+01:16>>) -> tensor<4xf32>
+  // CHECK-NEXT: mhlo.uniform_quantize %arg0 : (tensor<4xf32>) -> tensor<4x!quant.uniform<ui8:f32, 3.400000e+01:16>>
+  // CHECK-NEXT: mhlo.uniform_dequantize %[[_:[0-9]+]] : (tensor<4x!quant.uniform<ui8:f32, 3.400000e+01:16>>) -> tensor<4xf32>
   // CHECK-NEXT: mhlo.after_all %arg1, %arg1 : !mhlo.token
   // CHECK-NEXT: mhlo.after_all : !mhlo.token
   %0 = "mhlo.add_dependency"(%arg0, %arg1) : (tensor<4xf32>, !mhlo.token) -> tensor<4xf32>

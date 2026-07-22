@@ -18,14 +18,11 @@ limitations under the License.
 
 #include <cstdint>
 
-#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "mlir/IR/MLIRContext.h"
 #include "xla/codegen/kernel_definition.h"
 #include "xla/codegen/mlir_kernel_source.h"
-#include "xla/codegen/tiling/symbolic_tile_analysis.h"
-#include "xla/codegen/tiling/tiling_specification.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/xla_data.pb.h"
@@ -34,20 +31,15 @@ namespace xla::cpu {
 
 bool IsSupportedTilingType(PrimitiveType type);
 
-absl::StatusOr<SymbolicTileAnalysis> GetSymbolicTileAnalysis(
-    mlir::MLIRContext& context, const HloFusionInstruction& fusion);
+struct TiledEmissionResult {
+  absl::StatusOr<KernelDefinition<MlirKernelSource>> kernel;
+  bool tiling_succeeded = true;
+};
 
-absl::Status IsSupportedTiledFusion(const HloFusionInstruction& fusion);
-
-absl::StatusOr<Tiling> GetTiling(
-    mlir::MLIRContext& context, const HloFusionInstruction& fusion,
-    const SymbolicTileAnalysis& symbolic_tile_analysis);
-
-absl::StatusOr<KernelDefinition<MlirKernelSource>> EmitTiledFusionKernel(
+TiledEmissionResult EmitTiledFusionKernel(
     mlir::MLIRContext& context, const HloFusionInstruction& fusion,
     const BufferAssignment* buffer_assignment, absl::string_view name,
-    int64_t num_work_groups, const SymbolicTileAnalysis& symbolic_tile_analysis,
-    const Tiling& tiling);
+    int64_t num_work_groups);
 
 }  // namespace xla::cpu
 

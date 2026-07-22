@@ -1,3 +1,17 @@
+// Copyright 2026 The OpenXLA Authors. All Rights Reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// ==============================================================================
 // RUN: xla-translate --print-sugar=false -split-input-file -mlir-hlo-to-hlo-text -verify-diagnostics %s | FileCheck %s
 
 // CHECK:  HloModule
@@ -20,12 +34,12 @@ func.func @main(%arg0: tensor<128x32xf32>) -> tensor<128x128xf32> {
 
 // CHECK: ENTRY
 // CHECK: %[[INPUT:.*]] = f32[128,32] parameter(0)
-// CHECK: %[[OUTPUT:.*]] = f32[128,128] all-gather-start(%[[INPUT]])
+// CHECK: %[[OUTPUT:.*]] = (f32[128,32], f32[128,128]) all-gather-start(%[[INPUT]])
 // CHECK-SAME: channel_id=1
 // CHECK-SAME{LITERAL}: replica_groups={{0,2,4,6},{1,3,5,7}}
 // CHECK-SAME: dimensions={1}
 // CHECK-SAME: use_global_device_ids=true
-// CHECK: ROOT {{.*}} f32[128,128] all-gather-done(%[[OUTPUT]]
+// CHECK: ROOT {{.*}} f32[128,128] all-gather-done(%[[OUTPUT]])
 
 // -----
 
@@ -125,10 +139,10 @@ func.func @main(%arg0: tensor<128x32xf32>) -> tensor<128x32xf32> {
 
 // CHECK: ENTRY
 // CHECK: %[[INPUT:.*]] = f32[128,32] parameter(0)
-// CHECK: %[[OUTPUT:.*]] = f32[128,32] collective-permute-start(%[[INPUT]])
+// CHECK: %[[OUTPUT:.*]] = (f32[128,32], f32[128,32]) collective-permute-start(%[[INPUT]])
 // CHECK-SAME:  channel_id=1
 // CHECK-SAME{LITERAL}:  source_target_pairs={{0,1},{1,2},{2,3}}
-// CHECK: ROOT {{.*}} f32[128,32] collective-permute-done(%[[OUTPUT]]
+// CHECK: ROOT {{.*}} f32[128,32] collective-permute-done(%[[OUTPUT]])
 
 // -----
 

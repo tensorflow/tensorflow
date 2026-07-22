@@ -18,7 +18,6 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <iterator>
-#include <memory>
 #include <utility>
 
 #include "llvm/ADT/StringExtras.h"
@@ -192,11 +191,6 @@ struct LegalizeEinsumToDotGeneralPass
 void populateEinsumToDotGeneralPatterns(mlir::MLIRContext *context,
                                         RewritePatternSet *patterns) {
   patterns->add<EinsumToDotGeneralPattern>(context);
-}
-
-std::unique_ptr<OperationPass<func::FuncOp>>
-createLegalizeEinsumToDotGeneralPass() {
-  return std::make_unique<LegalizeEinsumToDotGeneralPass>();
 }
 
 }  // namespace mhlo

@@ -20,10 +20,12 @@ limitations under the License.
 #include <cstdint>
 #include <functional>
 #include <memory>
+#include <optional>
 
 #include "absl/functional/any_invocable.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "xla/runtime/device_id.h"
 #include "xla/tsl/framework/allocator.h"
 #include "tsl/platform/numa.h"
 
@@ -37,14 +39,20 @@ class HostMemoryAllocator {
     size_t alignment = tsl::Allocator::kAllocatorAlignment;
 
     // Functions for mapping and unmapping the allocated memory.
-    absl::AnyInvocable<absl::Status(void*, size_t)> map_fn;
-    absl::AnyInvocable<absl::Status(void*)> unmap_fn;
+    absl::AnyInvocable<absl::Status(std::optional<LocalDeviceId>, void*,
+                                    size_t)>
+        map_fn;
+    absl::AnyInvocable<absl::Status(std::optional<LocalDeviceId>, void*)>
+        unmap_fn;
   };
 
   struct AllocateOptions {
     // The NUMA node hint for memory allocation. If set to
     // `tsl::port::kNUMANoAffinity`, the behavior is implementation defined.
     int numa_node = tsl::port::kNUMANoAffinity;
+
+    // ID of the local device by which the memory will be used.
+    std::optional<LocalDeviceId> local_device_id;
   };
 
   using Factory =

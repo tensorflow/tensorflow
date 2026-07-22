@@ -40,20 +40,20 @@ class GradOpRegistry {
  public:
   /// Registers 'func' as the gradient function for 'op'.
   /// Returns true if registration was successful, check fails otherwise.
-  bool Register(const string& op, GradFunc func);
+  bool Register(const std::string& op, GradFunc func);
 
   /// Sets 'func' to the gradient function for 'op' and returns Status OK if
   /// the gradient function for 'op' exists in the registry.
   /// Note that 'func' can be null for ops that have registered no-gradient with
   /// the registry.
   /// Returns error status otherwise.
-  absl::Status Lookup(const string& op, GradFunc* func) const;
+  absl::Status Lookup(const std::string& op, GradFunc* func) const;
 
   /// Returns a pointer to the global gradient function registry.
   static GradOpRegistry* Global();
 
  private:
-  std::unordered_map<string, GradFunc> registry_;
+  std::unordered_map<std::string, GradFunc> registry_;
 };
 
 }  // namespace ops

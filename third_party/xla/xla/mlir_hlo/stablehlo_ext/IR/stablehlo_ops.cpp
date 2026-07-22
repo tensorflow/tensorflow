@@ -403,9 +403,10 @@ LogicalResult DynamicTopKOpAdaptor::verify() {
     // api_version and backend_config have default values.
     // call_target_name should be "stablehlo.dynamic_top_k".
     if (attr.getName() != "api_version" && attr.getName() != "backend_config" &&
-        attr.getName() != "call_target_name")
+        attr.getName() != "call_target_name" && attr.getName() != "is_stable") {
       return op_.emitError()
              << attr.getName() << " is not a supported attribute";
+    }
   }
   if (!op_.hasEmptyBackendConfig())
     return op_.emitError() << "expects an empty backend_config";
@@ -489,6 +490,12 @@ TypedValue<ShapedType> DynamicTopKOpAdaptor::getOperand() {
 
 TypedValue<ShapedType> DynamicTopKOpAdaptor::getK() {
   return cast<TypedValue<ShapedType>>(op_.getInputs()[1]);
+}
+
+bool DynamicTopKOpAdaptor::getIsStable() {
+  auto attr = op_->getAttrOfType<mlir::BoolAttr>("is_stable");
+  // Defaulting to true
+  return attr ? attr.getValue() : true;
 }
 
 TypedValue<ShapedType> DynamicTopKOpAdaptor::getValues() {

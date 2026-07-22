@@ -28,7 +28,6 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/algorithm/container.h"
-#include "absl/base/log_severity.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
 #include "absl/strings/match.h"
@@ -36,8 +35,9 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "ml_dtypes/include/float8.h"
 #include "xla/hlo/testlib/test.h"
-#include "xla/maybe_owning.h"
 #include "xla/tsl/platform/logging.h"
+#include "xla/tsl/platform/test_benchmark.h"
+#include "xla/tsl/util/maybe_owning.h"
 #include "xla/types.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/ml_dtypes.h"
@@ -385,40 +385,221 @@ void PackInt4(absl::Span<const char> input, absl::Span<char> output) {
 }
 
 TEST(UtilTest, PackInt4) {
-  std::vector<char> input(7);
-  absl::c_iota(input, 0);
+  for (int size : {7, 15, 63, 64, 127, 128, 1024}) {
+    std::vector<char> input(size);
 
-  std::vector<char> output_ref(CeilOfRatio<int64_t>(input.size(), 2));
-  PackInt4(input, absl::MakeSpan(output_ref));
+    absl::c_iota(input, 0);
 
-  std::vector<char> output_dut(CeilOfRatio<int64_t>(input.size(), 2));
-  PackIntN(4, input, absl::MakeSpan(output_dut));
-  for (size_t i = 0; i < output_dut.size(); ++i) {
-    EXPECT_EQ(output_ref[i], output_dut[i]) << i;
+    std::vector<char> output_ref(CeilOfRatio<int64_t>(input.size(), 2));
+    PackInt4(input, absl::MakeSpan(output_ref));
+
+    std::vector<char> output_dut(CeilOfRatio<int64_t>(input.size(), 2));
+    PackIntN(4, input, absl::MakeSpan(output_dut));
+    for (size_t i = 0; i < output_dut.size(); ++i) {
+      EXPECT_EQ(output_ref[i], output_dut[i])
+          << "Size: " << size << " i: " << i;
+    }
+
+    std::vector<char> unpacked(input.size());
+    UnpackIntN(4, output_ref, absl::MakeSpan(unpacked));
+    for (size_t i = 0; i < input.size(); ++i) {
+      EXPECT_EQ(unpacked[i], input[i] & 0xf) << "Size: " << size << " i: " << i;
+    }
   }
+}
 
-  std::vector<char> unpacked(input.size());
-  UnpackIntN(4, output_ref, absl::MakeSpan(unpacked));
-  for (size_t i = 0; i < input.size(); ++i) {
-    EXPECT_EQ(unpacked[i], input[i]) << i;
-  }
+TEST(UtilTest, PackInt4HexCheck) {
+  std::vector<char> input = {0x0, 0x1, 0x2, 0x3, 0x4, 0x5, 0x6, 0x7,
+                             0x8, 0x9, 0xa, 0xb, 0xc, 0xd, 0xe, 0xf};
+
+  std::vector<char> expected_output = {
+      static_cast<char>(0x10), static_cast<char>(0x32), static_cast<char>(0x54),
+      static_cast<char>(0x76), static_cast<char>(0x98), static_cast<char>(0xba),
+      static_cast<char>(0xdc), static_cast<char>(0xfe)};
+
+  std::vector<char> output(expected_output.size(), 0);
+  PackIntN(4, input, absl::MakeSpan(output));
+
+  EXPECT_EQ(output, expected_output);
+}
+
+TEST(UtilTest, UnpackInt4HexCheck) {
+  std::vector<char> input = {static_cast<char>(0x10), static_cast<char>(0x32),
+                             static_cast<char>(0x54), static_cast<char>(0x76),
+                             static_cast<char>(0x98), static_cast<char>(0xba),
+                             static_cast<char>(0xdc), static_cast<char>(0xfe)};
+
+  std::vector<char> expected_output = {0x0, 0x1, 0x2, 0x3, 0x4, 0x5, 0x6, 0x7,
+                                       0x8, 0x9, 0xa, 0xb, 0xc, 0xd, 0xe, 0xf};
+
+  std::vector<char> output(expected_output.size(), 0);
+  UnpackIntN(4, input, absl::MakeSpan(output));
+
+  EXPECT_EQ(output, expected_output);
+}
+
+TEST(UtilTest, PackInt4HexCheckOdd) {
+  std::vector<char> input = {0x0, 0x1, 0x2, 0x3, 0x4, 0x5, 0x6, 0x7, 0x8,
+                             0x9, 0xa, 0xb, 0xc, 0xd, 0xe, 0xf, 0x9};
+
+  std::vector<char> expected_output = {
+      static_cast<char>(0x10), static_cast<char>(0x32),
+      static_cast<char>(0x54), static_cast<char>(0x76),
+      static_cast<char>(0x98), static_cast<char>(0xba),
+      static_cast<char>(0xdc), static_cast<char>(0xfe),
+      static_cast<char>(0x09)};
+
+  std::vector<char> output(expected_output.size(), 0);
+  PackIntN(4, input, absl::MakeSpan(output));
+
+  EXPECT_EQ(output, expected_output);
+}
+
+TEST(UtilTest, UnpackInt4HexCheckOdd) {
+  std::vector<char> input = {static_cast<char>(0x10), static_cast<char>(0x32),
+                             static_cast<char>(0x54), static_cast<char>(0x76),
+                             static_cast<char>(0x98), static_cast<char>(0xba),
+                             static_cast<char>(0xdc), static_cast<char>(0xfe),
+                             static_cast<char>(0xf9)};
+
+  std::vector<char> expected_output = {0x0, 0x1, 0x2, 0x3, 0x4, 0x5,
+                                       0x6, 0x7, 0x8, 0x9, 0xa, 0xb,
+                                       0xc, 0xd, 0xe, 0xf, 0x9};
+
+  std::vector<char> output(expected_output.size(), 0);
+  UnpackIntN(4, input, absl::MakeSpan(output));
+
+  EXPECT_EQ(output, expected_output);
+}
+
+TEST(UtilTest, PackInt2HexCheck) {
+  std::vector<char> input = {0x0, 0x1, 0x2, 0x3, 0x3, 0x2, 0x1, 0x0,
+                             0x1, 0x2, 0x3, 0x0, 0x2, 0x3, 0x0, 0x1};
+
+  std::vector<char> expected_output = {
+      static_cast<char>(0xe4), static_cast<char>(0x1b), static_cast<char>(0x39),
+      static_cast<char>(0x4e)};
+
+  std::vector<char> output(expected_output.size(), 0);
+  PackIntN(2, input, absl::MakeSpan(output));
+
+  EXPECT_EQ(output, expected_output);
+}
+
+TEST(UtilTest, UnpackInt2HexCheck) {
+  std::vector<char> input = {static_cast<char>(0xe4), static_cast<char>(0x1b),
+                             static_cast<char>(0x39), static_cast<char>(0x4e)};
+
+  std::vector<char> expected_output = {0x0, 0x1, 0x2, 0x3, 0x3, 0x2, 0x1, 0x0,
+                                       0x1, 0x2, 0x3, 0x0, 0x2, 0x3, 0x0, 0x1};
+
+  std::vector<char> output(expected_output.size(), 0);
+  UnpackIntN(2, input, absl::MakeSpan(output));
+
+  EXPECT_EQ(output, expected_output);
+}
+
+TEST(UtilTest, PackInt2HexCheckOdd) {
+  std::vector<char> input = {0x0, 0x1, 0x2, 0x3, 0x3, 0x2, 0x1, 0x0, 0x1,
+                             0x2, 0x3, 0x0, 0x2, 0x3, 0x0, 0x1, 0x2};
+
+  std::vector<char> expected_output = {
+      static_cast<char>(0xe4), static_cast<char>(0x1b), static_cast<char>(0x39),
+      static_cast<char>(0x4e), static_cast<char>(0x02)};
+
+  std::vector<char> output(expected_output.size(), 0);
+  PackIntN(2, input, absl::MakeSpan(output));
+
+  EXPECT_EQ(output, expected_output);
+}
+
+TEST(UtilTest, UnpackInt2HexCheckOdd) {
+  std::vector<char> input = {static_cast<char>(0xe4), static_cast<char>(0x1b),
+                             static_cast<char>(0x39), static_cast<char>(0x4e),
+                             static_cast<char>(0xfa)};
+
+  std::vector<char> expected_output = {0x0, 0x1, 0x2, 0x3, 0x3, 0x2,
+                                       0x1, 0x0, 0x1, 0x2, 0x3, 0x0,
+                                       0x2, 0x3, 0x0, 0x1, 0x2};
+
+  std::vector<char> output(expected_output.size(), 0);
+  UnpackIntN(2, input, absl::MakeSpan(output));
+
+  EXPECT_EQ(output, expected_output);
+}
+
+TEST(UtilTest, PackInt1HexCheck) {
+  std::vector<char> input = {0x0, 0x1, 0x0, 0x1, 0x0, 0x1, 0x0, 0x1,
+                             0x0, 0x1, 0x0, 0x1, 0x0, 0x1, 0x0, 0x1};
+
+  std::vector<char> expected_output = {static_cast<char>(0xaa),
+                                       static_cast<char>(0xaa)};
+
+  std::vector<char> output(expected_output.size(), 0);
+  PackIntN(1, input, absl::MakeSpan(output));
+
+  EXPECT_EQ(output, expected_output);
+}
+
+TEST(UtilTest, UnpackInt1HexCheck) {
+  std::vector<char> input = {static_cast<char>(0xaa), static_cast<char>(0xaa)};
+
+  std::vector<char> expected_output = {0x0, 0x1, 0x0, 0x1, 0x0, 0x1, 0x0, 0x1,
+                                       0x0, 0x1, 0x0, 0x1, 0x0, 0x1, 0x0, 0x1};
+
+  std::vector<char> output(expected_output.size(), 0);
+  UnpackIntN(1, input, absl::MakeSpan(output));
+
+  EXPECT_EQ(output, expected_output);
+}
+
+TEST(UtilTest, PackInt1HexCheckOdd) {
+  std::vector<char> input = {0x0, 0x1, 0x0, 0x1, 0x0, 0x1, 0x0, 0x1, 0x0,
+                             0x1, 0x0, 0x1, 0x0, 0x1, 0x0, 0x1, 0x1};
+
+  std::vector<char> expected_output = {static_cast<char>(0xaa),
+                                       static_cast<char>(0xaa),
+                                       static_cast<char>(0x01)};
+
+  std::vector<char> output(expected_output.size(), 0);
+  PackIntN(1, input, absl::MakeSpan(output));
+
+  EXPECT_EQ(output, expected_output);
+}
+
+TEST(UtilTest, UnpackInt1HexCheckOdd) {
+  std::vector<char> input = {static_cast<char>(0xaa), static_cast<char>(0xaa),
+                             static_cast<char>(0xff)};
+
+  std::vector<char> expected_output = {0x0, 0x1, 0x0, 0x1, 0x0, 0x1,
+                                       0x0, 0x1, 0x0, 0x1, 0x0, 0x1,
+                                       0x0, 0x1, 0x0, 0x1, 0x1};
+
+  std::vector<char> output(expected_output.size(), 0);
+  UnpackIntN(1, input, absl::MakeSpan(output));
+
+  EXPECT_EQ(output, expected_output);
 }
 
 class PackUnpackIntNTest : public testing::TestWithParam<int> {};
 
 TEST_P(PackUnpackIntNTest, RoundTrip) {
   const int bitwidth = GetParam();
-  std::vector<char> input(15);
-  for (int i = 0; i < input.size(); ++i) {
-    input[i] = i & LsbMask<uint8_t>(bitwidth);
-  }
+  for (int size : {7, 15, 63, 64, 127, 128, 1024}) {
+    std::vector<char> input(size);
 
-  std::vector<char> packed(CeilOfRatio<int64_t>(input.size(), 8 / bitwidth));
-  PackIntN(bitwidth, input, absl::MakeSpan(packed));
-  std::vector<char> unpacked(input.size());
-  UnpackIntN(bitwidth, packed, absl::MakeSpan(unpacked));
-  for (size_t i = 0; i < input.size(); ++i) {
-    EXPECT_EQ(unpacked[i], input[i]) << i;
+    for (int i = 0; i < input.size(); ++i) {
+      input[i] = i & LsbMask<uint8_t>(bitwidth);
+    }
+
+    std::vector<char> packed(CeilOfRatio<int64_t>(input.size(), 8 / bitwidth));
+    PackIntN(bitwidth, input, absl::MakeSpan(packed));
+    std::vector<char> unpacked(input.size());
+    UnpackIntN(bitwidth, packed, absl::MakeSpan(unpacked));
+    for (size_t i = 0; i < input.size(); ++i) {
+      EXPECT_EQ(unpacked[i], input[i])
+          << "Bitwidth: " << bitwidth << " Size: " << size << " i: " << i;
+    }
   }
 }
 
@@ -470,6 +651,94 @@ TEST(UtilTest, PrintAllFields) {
   result = PrintAllFields(execution_profile);
   EXPECT_TRUE(absl::StrContains(result, "compilation_cache_hit: false"));
 }
+
+TEST(UtilTest, ScopedLoggingTimerLazyEvaluation) {
+  int counter = 0;
+  auto get_label = [&]() {
+    counter++;
+    return "lazy_label";
+  };
+
+  // Case 1: Condition is false, should not evaluate label.
+  {
+    XLA_SCOPED_LOGGING_TIMER_IF(get_label(), false);
+  }
+  EXPECT_EQ(counter, 0);
+
+  // Case 2: Level is very high (disabled), should not evaluate label.
+  {
+    XLA_SCOPED_LOGGING_TIMER_LEVEL(get_label(), 100);
+  }
+  EXPECT_EQ(counter, 0);
+}
+
+void BM_PackIntN(::testing::benchmark::State& state) {
+  const int bitwidth = state.range(0);
+  const size_t num_elements = state.range(1);
+
+  std::vector<char> input(num_elements);
+  for (size_t i = 0; i < input.size(); ++i) {
+    input[i] = i & LsbMask<uint8_t>(bitwidth);
+  }
+
+  std::vector<char> packed(CeilOfRatio<int64_t>(num_elements, 8 / bitwidth));
+
+  for (auto s : state) {
+    PackIntN(bitwidth, input, absl::MakeSpan(packed));
+    ::benchmark::DoNotOptimize(packed);
+  }
+
+  state.SetItemsProcessed(state.iterations() * num_elements);
+}
+
+BENCHMARK(BM_PackIntN)
+    ->ArgPair(1, 10000)
+    ->ArgPair(1, 10000000)
+    ->ArgPair(1, 100000000)
+    ->ArgPair(1, 500000000)
+    ->ArgPair(1, 1000000000)
+    ->ArgPair(2, 10000)
+    ->ArgPair(2, 10000000)
+    ->ArgPair(2, 100000000)
+    ->ArgPair(2, 500000000)
+    ->ArgPair(2, 1000000000)
+    ->ArgPair(4, 10000)
+    ->ArgPair(4, 10000000)
+    ->ArgPair(4, 100000000)
+    ->ArgPair(4, 500000000)
+    ->ArgPair(4, 1000000000);
+
+void BM_UnpackIntN(::testing::benchmark::State& state) {
+  const int bitwidth = state.range(0);
+  const size_t num_elements = state.range(1);
+
+  std::vector<char> packed(CeilOfRatio<int64_t>(num_elements, 8 / bitwidth));
+  std::vector<char> unpacked(num_elements);
+
+  for (auto s : state) {
+    UnpackIntN(bitwidth, packed, absl::MakeSpan(unpacked));
+    ::benchmark::DoNotOptimize(unpacked);
+  }
+
+  state.SetItemsProcessed(state.iterations() * num_elements);
+}
+
+BENCHMARK(BM_UnpackIntN)
+    ->ArgPair(1, 10000)
+    ->ArgPair(1, 10000000)
+    ->ArgPair(1, 100000000)
+    ->ArgPair(1, 500000000)
+    ->ArgPair(1, 1000000000)
+    ->ArgPair(2, 10000)
+    ->ArgPair(2, 10000000)
+    ->ArgPair(2, 100000000)
+    ->ArgPair(2, 500000000)
+    ->ArgPair(2, 1000000000)
+    ->ArgPair(4, 10000)
+    ->ArgPair(4, 10000000)
+    ->ArgPair(4, 100000000)
+    ->ArgPair(4, 500000000)
+    ->ArgPair(4, 1000000000);
 
 }  // namespace
 }  // namespace xla

@@ -103,7 +103,7 @@ StatusOr<mlir::Operation*> ReplicatedOpSPMDExpander::ExpandOp(
     return ReplicatedRelayoutOperandsAndOutputs(op, operand_layouts,
                                                 output_layouts);
   if (!AllReplicated(output_layouts) || !AllReplicated(operand_layouts)) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(
         llvm::formatv("Expecting {0} to have input and output layouts to be "
                       "fully replicated but was not. ",
                       OpName(op))

@@ -2,7 +2,11 @@ path: "tensorflow.initializers.Zeros"
 tf_class {
   is_instance: "<class \'tf_keras.initializers.initializers.Zeros\'>"
   is_instance: "<class \'tf_keras.initializers.initializers.Initializer\'>"
-  is_instance: "<type \'object\'>"
+  is_instance: "<class \'object\'>"
+  member_method {
+    name: "__call__"
+    argspec: "args=[\'self\', \'shape\', \'dtype\'], varargs=None, keywords=kwargs, defaults=[\'None\'], "
+  }
   member_method {
     name: "__init__"
   }

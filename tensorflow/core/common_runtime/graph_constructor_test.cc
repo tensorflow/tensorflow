@@ -229,7 +229,7 @@ REGISTER_OP("RequiresCurrentGraphVersion")
     .SetIsStateful()
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       if (c->graph_def_version() != TF_GRAPH_DEF_VERSION) {
-        return errors::InvalidArgument("Wrong graph version for shape");
+        return absl::InvalidArgumentError("Wrong graph version for shape");
       }
       return shape_inference::ScalarShape(c);
     });

@@ -20,6 +20,7 @@
 
 #include <gtest/gtest.h>
 #include "absl/status/status_matchers.h"
+#include "absl/strings/str_cat.h"
 #include "xla/python/ifrt/dtype.pb.h"
 #include "xla/python/ifrt/serdes_test_util.h"
 #include "xla/python/ifrt/serdes_version.h"
@@ -53,7 +54,7 @@ TEST_P(DTypeSerDesTest, FromToFromProto) {
   for (int i = 1; i < DTypeProto::Kind_descriptor()->value_count(); ++i) {
     SCOPED_TRACE(DTypeProto::Kind_descriptor()->value(i)->name());
     DTypeProto proto;
-    proto.set_version_number(version().version_number().value());
+    proto.set_version_number(SerDesVersionNumber(0).value());
     proto.set_kind(static_cast<DTypeProto::Kind>(
         DTypeProto::Kind_descriptor()->value(i)->number()));
     TF_ASSERT_OK_AND_ASSIGN(DType dtype, DType::FromProto(proto));
@@ -66,7 +67,10 @@ TEST_P(DTypeSerDesTest, FromToFromProto) {
 
 INSTANTIATE_TEST_SUITE_P(
     SerDesVersion, DTypeSerDesTest,
-    testing::ValuesIn(test_util::AllSupportedSerDesVersions()));
+    testing::ValuesIn(test_util::AllSupportedSerDesVersions()),
+    [](const testing::TestParamInfo<SerDesVersion>& info) {
+      return absl::StrCat(info.param.version_number().value());
+    });
 
 TEST(DTypeTest, ByteSize) {
   for (const auto& [kind, byte_size] :
@@ -75,6 +79,7 @@ TEST(DTypeTest, ByteSize) {
            {DType::kS4, -1},        {DType::kU4, -1},
            {DType::kPred, 1},       {DType::kS8, 1},
            {DType::kU8, 1},         {DType::kF4E2M1FN, -1},
+           {DType::kF6E2M3FN, -1},  {DType::kF6E3M2FN, -1},
            {DType::kF8E3M4, 1},     {DType::kF8E4M3, 1},
            {DType::kF8E4M3FN, 1},   {DType::kF8E4M3B11FNUZ, 1},
            {DType::kF8E4M3FNUZ, 1}, {DType::kF8E5M2, 1},
@@ -100,6 +105,7 @@ TEST(DTypeTest, BitSize) {
            {DType::kS4, 4},         {DType::kU4, 4},
            {DType::kPred, 8},       {DType::kS8, 8},
            {DType::kU8, 8},         {DType::kF4E2M1FN, 4},
+           {DType::kF6E2M3FN, 6},   {DType::kF6E3M2FN, 6},
            {DType::kF8E3M4, 8},     {DType::kF8E4M3, 8},
            {DType::kF8E4M3FN, 8},   {DType::kF8E4M3B11FNUZ, 8},
            {DType::kF8E4M3FNUZ, 8}, {DType::kF8E5M2, 8},

@@ -32,7 +32,9 @@ limitations under the License.
 #include "xla/client/executable_build_options.h"
 #include "xla/hlo/builder/xla_computation.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/layout.h"
 #include "xla/pjrt/layout_mode.h"
+#include "xla/service/computation_layout.h"
 #include "xla/service/computation_placer.h"
 #include "xla/shape.h"
 #include "xla/xla_data.pb.h"
@@ -98,6 +100,15 @@ absl::StatusOr<std::vector<MemorySpaceColor>> GetArgMemoryKinds(
 absl::StatusOr<std::vector<MemorySpaceColor>> GetOutputMemoryKinds(
     const XlaComputation& computation);
 
+// Populates the frontend attributes map with serialized layout modes and
+// memory spaces.
+void PopulateFrontendAttributesMap(
+    google::protobuf::Map<std::string, std::string>& frontend_attrs_map,
+    const std::vector<LayoutMode>& arg_layout_modes,
+    const std::vector<LayoutMode>& out_layout_modes,
+    const std::vector<MemorySpaceColor>& arg_memory_spaces,
+    const std::vector<MemorySpaceColor>& out_memory_spaces);
+
 // Returns xla shape with layout set to reflect the given layout mode.
 absl::StatusOr<Shape> LayoutModeToXlaShape(
     const LayoutMode& layout_mode, const Shape& unsharded_shape,
@@ -145,6 +156,9 @@ absl::Status DetermineArgumentLayoutsFromCompileOptions(
 // executable was compiled with.
 absl::StatusOr<std::vector<int>> ComputeParametersThatMustBeDonated(
     const HloModule& hlo_module, bool tuple_inputs);
+absl::StatusOr<std::vector<int>> ComputeParametersThatMustBeDonated(
+    const HloInputOutputAliasConfig& config, int num_parameters,
+    bool tuple_inputs);
 
 // Return max parallelism level.
 int DefaultThreadPoolSize();
@@ -174,6 +188,24 @@ absl::Status TestBufferDonationClashes(
 // Capitalizes the first character in a string, which can be empty.
 std::string MakeAsciiTitlecase(absl::string_view s);
 void MakeAsciiTitlecase(std::string* s);
+
+// Returns a list of each parameter's layout. If the parameters are tupled,
+// returns an untupled list. Must only be called if all array parameters have
+// layouts set. Non-array parameters (such as token or opaque parameters) are
+// returned as default-constructed `xla::Layout()`; this is a different
+// behavior from `ComputationLayout::FlattenedParameterLayouts()`, and it is
+// geared towards use with PjRt APIs.
+absl::StatusOr<std::vector<Layout>> FlattenedParameterLayouts(
+    const ComputationLayout& computation_layout);
+
+// Returns a list of each output's layout. If the result shape is a tuple,
+// returns an untupled list. Must only be called if all array outputs have
+// layouts set. Non-array outputs (such as token or opaque outputs) are
+// returned as default-constructed `xla::Layout()` (which is a different
+// behavior from `ComputationLayout::FlattenedResultLayouts()`, and it is
+// geared towards use with PjRt APIs.
+absl::StatusOr<std::vector<Layout>> FlattenedResultLayouts(
+    const ComputationLayout& computation_layout);
 
 }  // namespace xla
 

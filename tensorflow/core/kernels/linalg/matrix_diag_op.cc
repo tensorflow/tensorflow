@@ -70,11 +70,11 @@ class MatrixDiagPartOp : public OpKernel {
       OP_REQUIRES(context,
                   TensorShapeUtils::IsScalar(diag_index.shape()) ||
                       TensorShapeUtils::IsVector(diag_index.shape()),
-                  errors::InvalidArgument(
+                  absl::InvalidArgumentError(absl::StrCat(
                       "diag_index must be a scalar or vector, received shape: ",
-                      diag_index.shape().DebugString()));
+                      diag_index.shape().DebugString())));
       OP_REQUIRES(context, diag_index.NumElements() > 0,
-                  errors::InvalidArgument(
+                  absl::InvalidArgumentError(
                       "Expected diag_index to have at least 1 element"));
       lower_diag_index = diag_index.flat<int32_t>()(0);
       upper_diag_index = lower_diag_index;
@@ -82,25 +82,25 @@ class MatrixDiagPartOp : public OpKernel {
         auto diag_index_size = diag_index.dim_size(0);
         OP_REQUIRES(
             context, 0 < diag_index_size && diag_index_size <= 2,
-            errors::InvalidArgument(
+            absl::InvalidArgumentError(absl::StrCat(
                 "diag_index must have only one or two elements, received ",
-                diag_index_size, " elements."));
+                diag_index_size, " elements.")));
         if (diag_index_size > 1) {
           upper_diag_index = diag_index.flat<int32_t>()(1);
         }
       }
       const Tensor& padding_in = context->input(2);
       OP_REQUIRES(context, padding_in.NumElements() == 1,
-                  errors::InvalidArgument("Padding must be scalar."));
+                  absl::InvalidArgumentError("Padding must be scalar."));
       padding_value = padding_in.flat<T>()(0);
     }
     const TensorShape& input_shape = input.shape();
 
     // Preliminary validation of sizes.
     OP_REQUIRES(context, TensorShapeUtils::IsMatrixOrHigher(input_shape),
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(absl::StrCat(
                     "input must be at least 2-dim, received shape: ",
-                    input.shape().DebugString()));
+                    input.shape().DebugString())));
 
     // Make sure lower_diag_index and upper_diag_index is valid.
     const int rank = input_shape.dims();
@@ -110,20 +110,20 @@ class MatrixDiagPartOp : public OpKernel {
         context,
         (-num_rows < lower_diag_index && lower_diag_index < num_cols) ||
             lower_diag_index == 0,
-        errors::InvalidArgument(
+        absl::InvalidArgumentError(absl::StrCat(
             "lower_diag_index is out of bound: ", lower_diag_index,
-            ". It must be between ", -num_rows, " and ", num_cols));
+            ". It must be between ", -num_rows, " and ", num_cols)));
     OP_REQUIRES(context,
                 (-num_rows < upper_diag_index && upper_diag_index < num_cols) ||
                     upper_diag_index == 0,
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(absl::StrCat(
                     "upper_diag_index is out of bound: ", upper_diag_index,
-                    " It must be between ", -num_rows, " and ", num_cols));
+                    " It must be between ", -num_rows, " and ", num_cols)));
     OP_REQUIRES(
         context, lower_diag_index <= upper_diag_index,
-        errors::InvalidArgument(
+        absl::InvalidArgumentError(absl::StrCat(
             "lower_diag_index must not be larger than upper_diag_index: ",
-            lower_diag_index, " > ", upper_diag_index));
+            lower_diag_index, " > ", upper_diag_index)));
 
     TensorShape output_shape;
     for (int i = 0; i < rank - 2; ++i) {
@@ -186,11 +186,11 @@ class MatrixDiagOp : public OpKernel {
       OP_REQUIRES(context,
                   TensorShapeUtils::IsScalar(diag_index.shape()) ||
                       TensorShapeUtils::IsVector(diag_index.shape()),
-                  errors::InvalidArgument(
+                  absl::InvalidArgumentError(absl::StrCat(
                       "diag_index must be a scalar or vector, received shape: ",
-                      diag_index.shape().DebugString()));
+                      diag_index.shape().DebugString())));
       OP_REQUIRES(context, diag_index.NumElements() > 0,
-                  errors::InvalidArgument(
+                  absl::InvalidArgumentError(
                       "Expected diag_index to have at least 1 element"));
       lower_diag_index = diag_index.flat<int32_t>()(0);
       upper_diag_index = lower_diag_index;
@@ -198,9 +198,9 @@ class MatrixDiagOp : public OpKernel {
         auto diag_index_size = diag_index.dim_size(0);
         OP_REQUIRES(
             context, 0 < diag_index_size && diag_index_size <= 2,
-            errors::InvalidArgument(
+            absl::InvalidArgumentError(absl::StrCat(
                 "diag_index must have only one or two elements, received ",
-                diag_index_size, " elements."));
+                diag_index_size, " elements.")));
         if (diag_index_size > 1) {
           upper_diag_index = diag_index.flat<int32_t>()(1);
         }
@@ -208,18 +208,18 @@ class MatrixDiagOp : public OpKernel {
 
       auto& num_rows_tensor = context->input(2);
       OP_REQUIRES(context, TensorShapeUtils::IsScalar(num_rows_tensor.shape()),
-                  errors::InvalidArgument("num_rows must be a scalar"));
+                  absl::InvalidArgumentError("num_rows must be a scalar"));
       num_rows = num_rows_tensor.flat<int32_t>()(0);
 
       auto& num_cols_tensor = context->input(3);
       OP_REQUIRES(context, TensorShapeUtils::IsScalar(num_cols_tensor.shape()),
-                  errors::InvalidArgument("num_cols must be a scalar"));
+                  absl::InvalidArgumentError("num_cols must be a scalar"));
       num_cols = num_cols_tensor.flat<int32_t>()(0);
 
       auto& padding_value_tensor = context->input(4);
       OP_REQUIRES(context,
                   TensorShapeUtils::IsScalar(padding_value_tensor.shape()),
-                  errors::InvalidArgument("padding_value must be a scalar"));
+                  absl::InvalidArgumentError("padding_value must be a scalar"));
       padding_value = padding_value_tensor.flat<T>()(0);
     }
 
@@ -228,19 +228,19 @@ class MatrixDiagOp : public OpKernel {
     const int diag_rank = diagonal_shape.dims();
     const Eigen::Index num_diags = upper_diag_index - lower_diag_index + 1;
     OP_REQUIRES(context, TensorShapeUtils::IsVectorOrHigher(diagonal_shape),
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(absl::StrCat(
                     "diagonal must be at least 1-dim, received shape: ",
-                    diagonal.shape().DebugString()));
+                    diagonal.shape().DebugString())));
     OP_REQUIRES(
         context, lower_diag_index <= upper_diag_index,
-        errors::InvalidArgument(
+        absl::InvalidArgumentError(absl::StrCat(
             "lower_diag_index must not be larger than upper_diag_index: ",
-            lower_diag_index, " > ", upper_diag_index));
+            lower_diag_index, " > ", upper_diag_index)));
     OP_REQUIRES(
         context,
         lower_diag_index == upper_diag_index ||
             diagonal_shape.dim_size(std::max(diag_rank - 2, 0)) == num_diags,
-        errors::InvalidArgument(
+        absl::InvalidArgumentError(
             "The number of diagonals provided in the input does not "
             "match the lower_diag_index and upper_diag_index range."));
 
@@ -250,9 +250,10 @@ class MatrixDiagOp : public OpKernel {
     const Eigen::Index min_num_cols =
         max_diag_len + std::max(lower_diag_index, 0);
     OP_REQUIRES(context, num_rows == -1 || num_rows >= min_num_rows,
-                errors::InvalidArgument("The number of rows is too small."));
-    OP_REQUIRES(context, num_cols == -1 || num_cols >= min_num_cols,
-                errors::InvalidArgument("The number of columns is too small."));
+                absl::InvalidArgumentError("The number of rows is too small."));
+    OP_REQUIRES(
+        context, num_cols == -1 || num_cols >= min_num_cols,
+        absl::InvalidArgumentError("The number of columns is too small."));
 
     // If both num_rows and num_cols are unknown, assume that output is square.
     // Otherwise, use smallest possible values.
@@ -265,7 +266,7 @@ class MatrixDiagOp : public OpKernel {
       num_cols = min_num_cols;
     }
     OP_REQUIRES(context, num_rows == min_num_rows || num_cols == min_num_cols,
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(
                     "The number of rows or columns is not consistent with "
                     "the specified d_lower, d_upper, and diagonal."));
 

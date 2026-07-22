@@ -3,7 +3,11 @@ tf_class {
   is_instance: "<class \'tf_keras.losses.CategoricalFocalCrossentropy\'>"
   is_instance: "<class \'tf_keras.losses.LossFunctionWrapper\'>"
   is_instance: "<class \'tf_keras.losses.Loss\'>"
-  is_instance: "<type \'object\'>"
+  is_instance: "<class \'object\'>"
+  member_method {
+    name: "__call__"
+    argspec: "args=[\'self\', \'y_true\', \'y_pred\', \'sample_weight\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
   member_method {
     name: "__init__"
     argspec: "args=[\'self\', \'alpha\', \'gamma\', \'from_logits\', \'label_smoothing\', \'axis\', \'reduction\', \'name\'], varargs=None, keywords=None, defaults=[\'0.25\', \'2.0\', \'False\', \'0.0\', \'-1\', \'auto\', \'categorical_focal_crossentropy\'], "

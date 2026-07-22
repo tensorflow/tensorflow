@@ -70,7 +70,7 @@ class IfrtSetTpuHostAllocatorPass
 
     llvm::SmallDenseSet<mlir::Operation *> producers;
 
-    mlir::WalkResult walk_result = func.walk([&](mlir::TF::IfrtCallOp call) {
+    auto process_call = [&](auto call) {
       std::vector<int> variable_arg_indices;
       variable_arg_indices.reserve(call.getVariableArgIndices().size());
       for (auto variable_index_attr : call.getVariableArgIndices()) {
@@ -95,7 +95,16 @@ class IfrtSetTpuHostAllocatorPass
         producers.insert(call.getOperands()[i].getDefiningOp());
       }
       return mlir::WalkResult::advance();
-    });
+    };
+
+    mlir::WalkResult walk_result = func.walk(
+        [&](mlir::TF::IfrtCallOp call) { return process_call(call); });
+    if (walk_result.wasInterrupted()) {
+      return signalPassFailure();
+    }
+
+    walk_result = func.walk(
+        [&](mlir::TF::AsyncIfrtCallOp call) { return process_call(call); });
     if (walk_result.wasInterrupted()) {
       return signalPassFailure();
     }

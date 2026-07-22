@@ -30,6 +30,7 @@ limitations under the License.
 
 #include "absl/base/attributes.h"
 #include "absl/base/no_destructor.h"
+#include "absl/base/nullability.h"
 #include "absl/base/optimization.h"
 #include "absl/base/thread_annotations.h"
 #include "absl/functional/bind_front.h"
@@ -83,11 +84,15 @@ struct IsFuture<Future<T>> : std::true_type {};
 
 // Returns a `Future` that will be successful if all `futures` complete
 // successfully, or return a first encountered error.
+//
+// If any of the futures is invalid, the returned future will be invalid.
 Future<> JoinFutures(absl::Span<const Future<>> futures);
 
 // Returns a `Future` that will be successful if all `futures` complete
 // successfully, or return a first encountered error. Copies values from
 // completed futures into the result vector.
+//
+// If any of the futures is invalid, the returned future will be invalid.
 template <typename T, std::enable_if_t<!std::is_void_v<T>>* = nullptr>
 Future<std::vector<T>> JoinFutures(absl::Span<const Future<T>> futures);
 
@@ -96,6 +101,8 @@ Future<std::vector<T>> JoinFutures(absl::Span<const Future<T>> futures);
 // completed futures into the result vector and leaves `futures` in move-from
 // state (for copyable `T` it still incurs a copy overhead, see `OnReady`
 // documentation for details).
+//
+// If any of the futures is invalid, the returned future will be invalid.
 template <typename T, std::enable_if_t<!std::is_void_v<T>>* = nullptr>
 Future<std::vector<T>> JoinFutures(absl::Span<Future<T>> futures);
 
@@ -124,6 +131,8 @@ Future<std::vector<T>> JoinFutures(absl::Span<Future<T>> futures);
 // If custom result type for `JoinFutures` is not defined (is void by default),
 // then the result type will be inferred as `std::tuple`. Otherwise the result
 // value of type `R` will be constructed from expanded tuple values.
+//
+// If any of the futures is invalid, the returned future will be invalid.
 template <typename R = void, typename... Futures,
           std::enable_if_t<std::conjunction_v<
               internal::IsFuture<std::decay_t<Futures>>...>>* = nullptr>
@@ -149,17 +158,49 @@ class FutureHelpers {
   // blocking a thread.
   using OnBlockEnd = std::function<void(ProfilingKeys)>;
 
+  struct OnBlockCallbacks {
+    absl_nonnull OnBlockStart start;
+    absl_nonnull OnBlockEnd end;
+
+    static absl_nullable std::shared_ptr<OnBlockCallbacks> Create(
+        absl_nullable OnBlockStart on_block_start,
+        absl_nullable OnBlockEnd on_block_end) {
+      if (!on_block_start && !on_block_end) [[likely]] {
+        return nullptr;
+      }
+
+      auto callbacks = std::make_shared<OnBlockCallbacks>();
+      if (on_block_start) {
+        callbacks->start = std::move(on_block_start);
+      } else {
+        callbacks->start = []() { return ProfilingKeys(); };
+      }
+      if (on_block_end) {
+        callbacks->end = std::move(on_block_end);
+      } else {
+        callbacks->end = [](ProfilingKeys) {};
+      }
+      return callbacks;
+    }
+  };
+
   // Returns a Future<T> with optionally updated profiling handlers. If
   // profiling handlers are not provided, the original ones will be used.
   template <int&... ExplicitParameterBarrier, typename T>
   static Future<T> WithProfiling(Future<T> future,
                                  OnBlockStart on_block_start = nullptr,
                                  OnBlockEnd on_block_end = nullptr) {
+    if (future.on_block_callbacks_) {
+      if (!on_block_start) {
+        on_block_start = future.on_block_callbacks_->start;
+      }
+      if (!on_block_end) {
+        on_block_end = future.on_block_callbacks_->end;
+      }
+    }
     return Future<T>(std::move(future.promise_),
-                     on_block_start ? std::move(on_block_start)
-                                    : std::move(future.on_block_start_),
-                     on_block_end ? std::move(on_block_end)
-                                  : std::move(future.on_block_end_));
+                     FutureHelpers::OnBlockCallbacks::Create(
+                         std::move(on_block_start), std::move(on_block_end)));
   }
 };
 
@@ -249,11 +290,10 @@ class FutureBase : public FutureMoveControl<is_move_only> {
   // A protected constructor that hides AsyncValueRef implementation detail
   // from the end users of Future and Promise. Must not be made public!
   FutureBase(tsl::AsyncValueRef<T> promise,
-             FutureHelpers::OnBlockStart on_block_start,
-             FutureHelpers::OnBlockEnd on_block_end)
+             absl_nullable std::shared_ptr<FutureHelpers::OnBlockCallbacks>
+                 on_block_callbacks)
       : promise_(std::move(promise)),
-        on_block_start_(std::move(on_block_start)),
-        on_block_end_(std::move(on_block_end)) {}
+        on_block_callbacks_(std::move(on_block_callbacks)) {}
 
   // Constructor for an already-available Future.
   template <int&... ExplicitParameterBarrier, typename U,
@@ -261,7 +301,7 @@ class FutureBase : public FutureMoveControl<is_move_only> {
                              std::is_same_v<T, U>>* = nullptr>
   explicit FutureBase(U&& value)
       : FutureBase(tsl::MakeAvailableAsyncValueRef<T>(std::forward<U>(value)),
-                   /*on_block_start=*/nullptr, /*on_block_end=*/nullptr) {}
+                   /*on_block_callbacks=*/nullptr) {}
 
  public:
   using value_type = T;
@@ -307,8 +347,8 @@ class FutureBase : public FutureMoveControl<is_move_only> {
                      FutureHelpers::ProfilingKeys keys)
         : parent_(parent), keys_(std::move(keys)) {}
     ~ProfilingCleanup() {
-      if (parent_ && parent_->on_block_end_) {
-        parent_->on_block_end_(std::move(keys_));
+      if (parent_ && parent_->on_block_callbacks_) {
+        parent_->on_block_callbacks_->end(std::move(keys_));
       }
     }
     ProfilingCleanup(const ProfilingCleanup& other) = delete;
@@ -320,8 +360,8 @@ class FutureBase : public FutureMoveControl<is_move_only> {
   };
 
   ProfilingCleanup OnBlockStartScope() const {
-    return ProfilingCleanup(this, on_block_start_
-                                      ? on_block_start_()
+    return ProfilingCleanup(this, on_block_callbacks_
+                                      ? on_block_callbacks_->start()
                                       : FutureHelpers::ProfilingKeys());
   }
 
@@ -471,11 +511,8 @@ class FutureBase : public FutureMoveControl<is_move_only> {
   }
 
   tsl::AsyncValueRef<T> promise_;
-
-  // Function that is called before a thread starts blocking on the promise.
-  FutureHelpers::OnBlockStart on_block_start_;
-  // Function that is called after a thread finishes blocking on the promise.
-  FutureHelpers::OnBlockEnd on_block_end_;
+  absl_nullable std::shared_ptr<FutureHelpers::OnBlockCallbacks>
+      on_block_callbacks_;
 };
 
 template <typename T>
@@ -553,10 +590,21 @@ template <>
 struct IsMappable<void, absl::Status> : public std::true_type {};
 template <typename R, typename U>
 struct IsMappable<R, absl::StatusOr<U>> : public std::is_constructible<R, U> {};
+template <typename R>
+struct IsMappable<R, Future<>> : public IsMappable<R, absl::Status> {};
+template <typename R, typename U>
+struct IsMappable<R, Future<U>> : public IsMappable<R, absl::StatusOr<U>> {};
 
 // A pre C++20 "concept" that checks if `R` and `U` are mappable types.
 template <typename R, typename U>
 using Mappable = std::enable_if_t<IsMappable<R, U>::value>;
+
+// True when the functor returns a Future (U is a Future type) but the Map
+// result type R is the unwrapped inner type (not a Future). In this case
+// SetPromise subscribes to the inner future and forwards its result.
+template <typename R, typename U>
+struct IsFlattened
+    : std::bool_constant<IsFuture<U>::value && !IsFuture<R>::value> {};
 
 // Automatic type inference for the result type of `Future<T>::Map(...)` is
 // based on the result type of `f` functor:
@@ -564,6 +612,7 @@ using Mappable = std::enable_if_t<IsMappable<R, U>::value>;
 // - `void`              to `Future<>`
 // - `absl::Status`      to `Future<>`
 // - `absl::StatusOr<T>` to `Future<T>`
+// - `Future<T>`         to `Future<T>` (flattened)
 // - `R`                 to `Future<R>` (default)
 //
 // clang-format off
@@ -571,6 +620,8 @@ template <typename R> struct MapResult                    { using T = R; };
 template <>           struct MapResult<void>              { using T = void; };
 template <>           struct MapResult<absl::Status>      { using T = void; };
 template <typename R> struct MapResult<absl::StatusOr<R>> { using T = R; };
+template <>           struct MapResult<Future<>>          { using T = void; };
+template <typename R> struct MapResult<Future<R>>         { using T = R; };
 // clang-format on
 
 template <typename R>
@@ -649,6 +700,7 @@ class Future : public internal::FutureBase<absl::StatusOr<T>> {
   // - `Future<>`  from `(const T&) -> void`
   // - `Future<>`  from `(const T&) -> absl::Status`
   // - `Future<R>` from `(const T&) -> absl::StatusOr<U>`
+  // - `Future<R>` from `(const T&) -> Future<R>` (flattened)
   // - `Future<R>` from `(const T&) -> U`
   //
   // See `Map` functor type inference defined below for more details.
@@ -682,6 +734,7 @@ class Future : public internal::FutureBase<absl::StatusOr<T>> {
   // - `Future<>`  from `(T) -> void`
   // - `Future<>`  from `(T) -> absl::Status`
   // - `Future<R>` from `(T) -> absl::StatusOr<U>`
+  // - `Future<R>` from `(T) -> Future<R>` (flattened)
   // - `Future<R>` from `(T) -> U`
   //
   // See `Map` functor type inference defined below for more details.
@@ -704,6 +757,7 @@ class Future : public internal::FutureBase<absl::StatusOr<T>> {
   //
   // - `R` is `absl::Status`      -> Future<>
   // - `R` is `absl::StatusOr<T>` -> Future<T>
+  // - `R` is `Future<T>`         -> Future<T> (flattened)
   // - `R` is any other type      -> Future<R>
   //
   template <int&... ExplicitParameterBarrier, typename F,
@@ -723,6 +777,7 @@ class Future : public internal::FutureBase<absl::StatusOr<T>> {
   //
   // - `R` is `absl::Status`      -> Future<>
   // - `R` is `absl::StatusOr<T>` -> Future<T>
+  // - `R` is `Future<T>`         -> Future<T> (flattened)
   // - `R` is any other type      -> Future<R>
   //
   template <int&... ExplicitParameterBarrier, typename F,
@@ -745,12 +800,14 @@ class Future : public internal::FutureBase<absl::StatusOr<T>> {
   // Flattens a `Future<Future<T>>` to `Future<T>`
   template <typename U = T, std::enable_if_t<internal::IsFuture<U>::value &&
                                              !is_move_only>* = nullptr>
-  Future<internal::future_type_t<typename U::value_type>> Flatten() const&;
+  [[nodiscard]] Future<internal::future_type_t<typename U::value_type>>
+  Flatten() const&;
 
   // Flattens a `Future<Future<T>>` to `Future<T>`
   template <typename U = T,
             std::enable_if_t<internal::IsFuture<U>::value>* = nullptr>
-  Future<internal::future_type_t<typename U::value_type>> Flatten() &&;
+  [[nodiscard]] Future<internal::future_type_t<typename U::value_type>>
+  Flatten() &&;
 
  private:
   friend class FutureHelpers;
@@ -767,13 +824,12 @@ class Future : public internal::FutureBase<absl::StatusOr<T>> {
   // Constructor for unavailable future that will be fulfilled later via the
   // promise object.
   //
-  // - on_block_start is called before Await starts to block.
-  // - on_block_end is called after Await finishes blocking.
+  // - on_block_callback->start is called before Await starts to block.
+  // - on_block_callback->end is called after Await finishes blocking.
   Future(const internal::PromiseBase<absl::StatusOr<T>>& promise,
-         FutureHelpers::OnBlockStart on_block_start,
-         FutureHelpers::OnBlockEnd on_block_end)
-      : Base(promise.ref(), std::move(on_block_start),
-             std::move(on_block_end)) {}
+         absl_nullable std::shared_ptr<FutureHelpers::OnBlockCallbacks>
+             on_block_callbacks)
+      : Base(promise.ref(), std::move(on_block_callbacks)) {}
 };
 
 template <typename T>
@@ -806,7 +862,9 @@ class [[nodiscard]] Promise : public internal::PromiseBase<absl::StatusOr<T>> {
   [[nodiscard]] Future<T> future(
       FutureHelpers::OnBlockStart on_block_start = nullptr,
       FutureHelpers::OnBlockEnd on_block_end = nullptr) const {
-    return Future<T>(*this, std::move(on_block_start), std::move(on_block_end));
+    return Future<T>(*this,
+                     FutureHelpers::OnBlockCallbacks::Create(
+                         std::move(on_block_start), std::move(on_block_end)));
   }
 
  private:
@@ -836,7 +894,7 @@ class Future<void> : public internal::FutureBase<absl::Status> {
                  ? ready_promise_->AsRef()
                  : tsl::MakeAvailableAsyncValueRef<absl::Status>(
                        std::move(status)),
-             /*on_block_start=*/nullptr, /*on_block_end=*/nullptr) {}
+             /*on_block_callbacks=*/nullptr) {}
 
   // Support implicit construction from immediate `U` convertible to
   // `absl::Status`.
@@ -869,6 +927,7 @@ class Future<void> : public internal::FutureBase<absl::Status> {
   // - `Future<>`  from `() -> void`
   // - `Future<>`  from `() -> absl::Status`
   // - `Future<R>` from `() -> absl::StatusOr<U>`
+  // - `Future<R>` from `() -> Future<R>` (flattened)
   // - `Future<R>` from `() -> U`
   //
   // See `Map` functor type inference defined below for more details.
@@ -887,6 +946,7 @@ class Future<void> : public internal::FutureBase<absl::Status> {
   //
   // - `R` is `absl::Status`      -> Future<>
   // - `R` is `absl::StatusOr<T>` -> Future<T>
+  // - `R` is `Future<T>`         -> Future<T> (flattened)
   // - `R` is any other type      -> Future<R>
   //
   // Functor `f` will be invoked on a thread that sets the promise value,
@@ -941,13 +1001,12 @@ class Future<void> : public internal::FutureBase<absl::Status> {
   // Constructor for unavailable future that will be fulfilled later via the
   // promise object.
   //
-  // - on_block_start is called before Await starts to block.
-  // - on_block_end is called after Await finishes blocking.
+  // - on_block_callbacks->start is called before Await starts to block.
+  // - on_block_callbacks->end is called after Await finishes blocking.
   Future(const internal::PromiseBase<absl::Status>& promise,
-         FutureHelpers::OnBlockStart on_block_start,
-         FutureHelpers::OnBlockEnd on_block_end)
-      : Base(promise.ref(), std::move(on_block_start),
-             std::move(on_block_end)) {}
+         absl_nullable std::shared_ptr<FutureHelpers::OnBlockCallbacks>
+             on_block_callbacks)
+      : Base(promise.ref(), std::move(on_block_callbacks)) {}
 };
 
 template <>
@@ -976,7 +1035,9 @@ class [[nodiscard]] Promise<void> : public internal::PromiseBase<absl::Status> {
   [[nodiscard]] Future<> future(
       FutureHelpers::OnBlockStart on_block_start = nullptr,
       FutureHelpers::OnBlockEnd on_block_end = nullptr) const {
-    return Future<>(*this, std::move(on_block_start), std::move(on_block_end));
+    return Future<>(*this,
+                    FutureHelpers::OnBlockCallbacks::Create(
+                        std::move(on_block_start), std::move(on_block_end)));
   }
 
  private:
@@ -998,8 +1059,9 @@ class PromiseMaker {
       FutureHelpers::OnBlockEnd on_block_end) {
     Promise<T> promise(tsl::MakeUnconstructedAsyncValueRef<
                        typename tsl::Future<T>::value_type>());
-    Future<T> future(promise, std::move(on_block_start),
-                     std::move(on_block_end));
+    Future<T> future(promise,
+                     FutureHelpers::OnBlockCallbacks::Create(
+                         std::move(on_block_start), std::move(on_block_end)));
     return std::make_pair(std::move(promise), std::move(future));
   }
 };
@@ -1076,8 +1138,8 @@ template <int&... ExplicitParameterBarrier, typename U,
           std::enable_if_t<!is_move_only && std::is_void_v<U>>*>
 Future<future_type_t<T>> FutureBase<T, is_move_only>::Detach(
     Executor& executor) const& {
-  if (ABSL_PREDICT_FALSE(IsReady())) {
-    return Future<future_type_t<T>>(promise_, on_block_start_, on_block_end_);
+  if (IsReady()) {
+    return Future<future_type_t<T>>(promise_, on_block_callbacks_);
   }
 
   RCReference<IndirectAsyncValue> detached = MakeIndirectAsyncValue<T>();
@@ -1093,16 +1155,15 @@ Future<future_type_t<T>> FutureBase<T, is_move_only>::Detach(
     }
   });
   return Future<future_type_t<T>>(AsyncValueRef<T>(std::move(detached)),
-                                  on_block_start_, on_block_end_);
+                                  on_block_callbacks_);
 }
 
 template <typename T, bool is_move_only>
 Future<future_type_t<T>> FutureBase<T, is_move_only>::Detach(
     Executor& executor) && {
-  if (ABSL_PREDICT_FALSE(IsReady())) {
+  if (IsReady()) {
     return Future<future_type_t<T>>(std::move(promise_),
-                                    std::move(on_block_start_),
-                                    std::move(on_block_end_));
+                                    std::move(on_block_callbacks_));
   }
 
   AsyncValuePtr<T> ptr = promise_.AsPtr();
@@ -1119,8 +1180,7 @@ Future<future_type_t<T>> FutureBase<T, is_move_only>::Detach(
     }
   });
   return Future<future_type_t<T>>(AsyncValueRef<T>(std::move(detached)),
-                                  std::move(on_block_start_),
-                                  std::move(on_block_end_));
+                                  std::move(on_block_callbacks_));
 }
 
 template <typename T, bool is_move_only>
@@ -1149,7 +1209,7 @@ template <typename R, int&... ExplicitParameterBarrier, typename F, typename U,
 [[nodiscard]] ABSL_ATTRIBUTE_ALWAYS_INLINE Future<R> Future<T>::Map(
     F&& f) const& {
   // If `*this` is ready, construct the mapped future immediately.
-  if (ABSL_PREDICT_TRUE(Base::promise().IsAvailable())) {
+  if (Base::promise().IsAvailable()) {
     const absl::StatusOr<T>& value = *Base::promise();
 
     // Short-circuit and forward existing error to the mapped future.
@@ -1165,8 +1225,8 @@ template <typename R, int&... ExplicitParameterBarrier, typename F, typename U,
     }
   }
 
-  // If `*this` is not ready yet, we need to create a new promise and fulfill
-  // it with a result of `f` when `*this` becomes ready.
+  // If `*this` is not ready yet, create a new promise and fulfill it with a
+  // result of `f` when `*this` becomes ready.
   auto [promise, future] = ::tsl::MakePromise<R>();
   OnReady(SetPromise<R, U>(std::move(promise), std::forward<F>(f)));
   return std::move(future);
@@ -1202,7 +1262,7 @@ template <typename R, int&... ExplicitParameterBarrier, typename F, typename U,
           internal::Mappable<R, U>*>
 [[nodiscard]] ABSL_ATTRIBUTE_ALWAYS_INLINE Future<R> Future<T>::Map(F&& f) && {
   // If `*this` is ready, construct the mapped future immediately.
-  if (ABSL_PREDICT_TRUE(Base::promise().IsAvailable())) {
+  if (Base::promise().IsAvailable()) {
     // For copyable types bind to const reference, so that we don't
     // accidentally move the value from the underlying async value storage.
     using Value = std::conditional_t<is_move_only, absl::StatusOr<T>&,
@@ -1222,8 +1282,8 @@ template <typename R, int&... ExplicitParameterBarrier, typename F, typename U,
     }
   }
 
-  // If `*this` is not ready yet, we need to create a new promise and fulfill
-  // it with a result of `f` when `*this` becomes ready.
+  // If `*this` is not ready yet, create a new promise and fulfill it with a
+  // result of `f` when `*this` becomes ready.
   auto [promise, future] = ::tsl::MakePromise<R>();
   std::move(*this).OnReady(SetPromise<R, U, /*rvalue=*/true>(
       std::move(promise), std::forward<F>(f)));
@@ -1273,14 +1333,14 @@ template <typename R, int&... ExplicitParameterBarrier, typename F, typename U,
 template <typename T>
 template <typename U, std::enable_if_t<internal::IsFuture<U>::value &&
                                        !Future<T>::is_move_only>*>
-[[nodiscard]] Future<internal::future_type_t<typename U::value_type>>
-Future<T>::Flatten() const& {
+Future<internal::future_type_t<typename U::value_type>> Future<T>::Flatten()
+    const& {
   using R = internal::future_type_t<typename U::value_type>;
   auto [promise, future] = MakePromise<R>();
 
   // For const& API call we always get nested futures and values by reference.
   using NestedFuture = const absl::StatusOr<Future<R>>&;
-  using Value = const absl::StatusOr<R>&;
+  using Value = const typename Future<R>::value_type&;
 
   OnReady([promise = std::move(promise)](NestedFuture nested_future) mutable {
     // Immediately forward error to flatten future.
@@ -1300,7 +1360,7 @@ Future<T>::Flatten() const& {
 
 template <typename T>
 template <typename U, std::enable_if_t<internal::IsFuture<U>::value>*>
-[[nodiscard]] Future<internal::future_type_t<typename U::value_type>>
+Future<internal::future_type_t<typename U::value_type>>
 Future<T>::Flatten() && {
   using R = internal::future_type_t<typename U::value_type>;
   auto [promise, future] = MakePromise<R>();
@@ -1311,8 +1371,8 @@ Future<T>::Flatten() && {
   using NestedFuture =
       std::conditional_t<is_move_only, absl::StatusOr<Future<R>>,
                          const absl::StatusOr<Future<R>>&>;
-  using Value = std::conditional_t<is_move_only, absl::StatusOr<R>,
-                                   const absl::StatusOr<R>&>;
+  using Value = std::conditional_t<is_move_only, typename Future<R>::value_type,
+                                   const typename Future<R>::value_type&>;
 
   std::move(*this).OnReady(
       [promise = std::move(promise)](NestedFuture nested_future) mutable {
@@ -1357,6 +1417,14 @@ auto Future<T>::SetPromise(Promise<R> promise, F&& f) {
     // Set the result future available with a result of invoking `f`.
     if constexpr (std::is_void_v<U>) {
       promise.Set((f(std::move(*value)), absl::OkStatus()));
+    } else if constexpr (internal::IsFlattened<R, U>::value) {
+      // If the functor returns a Future, subscribe to it and forward the
+      // result to the promise when it becomes ready.
+      f(std::move(*value))
+          .OnReady([promise = std::move(promise)](
+                       typename U::value_type result) mutable {
+            promise.Set(std::move(result));
+          });
     } else {
       promise.Set(f(std::move(*value)));
     }
@@ -1372,7 +1440,7 @@ template <typename R, int&... ExplicitParameterBarrier, typename F, typename U,
 [[nodiscard]] ABSL_ATTRIBUTE_ALWAYS_INLINE Future<R> Future<void>::Map(
     F&& f) const {
   // If `*this` is ready, construct the mapped future immediately.
-  if (ABSL_PREDICT_TRUE(Base::promise().IsAvailable())) {
+  if (Base::promise().IsAvailable()) {
     // Short-circuit and forward existing error to the mapped future.
     if (ABSL_PREDICT_FALSE(!Base::promise()->ok())) {
       return Future<R>(*Base::promise());
@@ -1386,8 +1454,8 @@ template <typename R, int&... ExplicitParameterBarrier, typename F, typename U,
     }
   }
 
-  // If `*this` is not ready yet, we need to create a new promise and fulfill
-  // it with a result of `f` when `*this` becomes ready.
+  // If `*this` is not ready yet, create a new promise and fulfill it with a
+  // result of `f` when `*this` becomes ready.
   auto [promise, future] = ::tsl::MakePromise<R>();
   OnReady(SetPromise<R, U>(std::move(promise), std::forward<F>(f)));
   return std::move(future);
@@ -1408,8 +1476,8 @@ template <typename R, int&... ExplicitParameterBarrier, typename F, typename U,
 
     // Pass `status` by value because it's cheap to copy, instead of extending
     // the lifetime of the underlying async value storage.
-    executor.Execute(
-        std::bind(SetPromise<R, U>(std::move(promise), std::move(f)), status));
+    executor.Execute(absl::bind_front(
+        SetPromise<R, U>(std::move(promise), std::move(f)), status));
   });
 
   return std::move(future);
@@ -1434,6 +1502,13 @@ auto Future<void>::SetPromise(Promise<R> promise, F&& f) {
     // Set the result future available with a result of invoking `f`.
     if constexpr (std::is_void_v<U>) {
       promise.Set((f(), absl::OkStatus()));
+    } else if constexpr (internal::IsFlattened<R, U>::value) {
+      // If the functor returns a Future, subscribe to it and forward the
+      // result to the promise when it becomes ready.
+      f().OnReady([promise = std::move(promise)](
+                      typename U::value_type result) mutable {
+        promise.Set(std::move(result));
+      });
     } else {
       promise.Set(f());
     }
@@ -1544,6 +1619,9 @@ Future<std::vector<T>> JoinFutures(absl::Span<const Future<T>> futures) {
                                                           std::move(promise));
 
   for (size_t index = 0; index < futures.size(); ++index) {
+    if (!futures[index].IsValid()) [[unlikely]] {
+      return {};
+    }
     futures[index].OnReady([index, join](absl::StatusOr<T> value) {
       join->OnReady(index, std::move(value));
     });
@@ -1565,6 +1643,9 @@ Future<std::vector<T>> JoinFutures(absl::Span<Future<T>> futures) {
                                                           std::move(promise));
 
   for (size_t index = 0; index < futures.size(); ++index) {
+    if (!futures[index].IsValid()) [[unlikely]] {
+      return {};
+    }
     std::move(futures[index]).OnReady([index, join](absl::StatusOr<T> value) {
       join->OnReady(index, std::move(value));
     });
@@ -1691,6 +1772,10 @@ auto JoinFutures(Futures&&... futures) {
     auto [promise, future] = MakePromise<PromiseResult>();
     auto join = std::make_shared<internal::JoinStatic<PromiseResult, State>>(
         sizeof...(futures), std::move(promise));
+
+    if (((!futures.IsValid()) || ...)) [[unlikely]] {
+      return tsl::Future<PromiseResult>();
+    }
 
     using Is = std::make_index_sequence<sizeof...(Futures)>;
     join->OnReady(std::move(join), Is{}, std::forward<Futures>(futures)...);

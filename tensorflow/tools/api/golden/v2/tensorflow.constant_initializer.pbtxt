@@ -2,7 +2,11 @@ path: "tensorflow.constant_initializer"
 tf_class {
   is_instance: "<class \'tensorflow.python.ops.init_ops_v2.Constant\'>"
   is_instance: "<class \'tensorflow.python.ops.init_ops_v2.Initializer\'>"
-  is_instance: "<type \'object\'>"
+  is_instance: "<class \'object\'>"
+  member_method {
+    name: "__call__"
+    argspec: "args=[\'self\', \'shape\', \'dtype\'], varargs=None, keywords=kwargs, defaults=[\'None\'], "
+  }
   member_method {
     name: "__init__"
     argspec: "args=[\'self\', \'value\', \'support_partition\'], varargs=None, keywords=None, defaults=[\'0\', \'False\'], "

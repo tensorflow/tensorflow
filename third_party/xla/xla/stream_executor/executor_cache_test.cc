@@ -21,8 +21,8 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "xla/stream_executor/mock_stream_executor.h"
 #include "xla/stream_executor/stream.h"
-#include "tsl/platform/statusor.h"
-#include "tsl/platform/test.h"
+#include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/platform/test.h"
 
 namespace stream_executor {
 namespace {

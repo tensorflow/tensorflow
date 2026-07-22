@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/gpu/transforms/reduce_scatter_creator.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -70,13 +71,44 @@ class AllReduceSplitterFilecheckTest : public AllReduceSplitterTest {
  public:
   absl::Status FileCheck(const std::string& hlo_text,
                          absl::string_view pattern) {
-    TF_ASSIGN_OR_RETURN(bool matched, RunFileCheck(hlo_text, pattern));
+    ASSIGN_OR_RETURN(bool matched, RunFileCheck(hlo_text, pattern));
     if (!matched) {
       return absl::InternalError("Filecheck failed.");
     }
     return absl::OkStatus();
   }
 };
+
+TEST_F(AllReduceSplitterTest,
+       HandlesAllReducesWithNonUniformReplicaGroupsOfSameCount) {
+  // Two all-reduces whose replica-group sets have the same number of groups but
+  // different per-group sizes previously read out of bounds in the
+  // ReplicaGroups dedup comparator (which bounds the inner loop on one group's
+  // size while indexing the other). Building the replica-groups map must not
+  // crash.
+  absl::string_view hlo_string = R"(
+HloModule m
+
+sum {
+  a = bf16[] parameter(0)
+  b = bf16[] parameter(1)
+  ROOT _ = bf16[] add(a,b)
+}
+
+ENTRY main {
+  p = bf16[8] parameter(0)
+  ar0 = bf16[8] all-reduce(p), replica_groups={{0,1},{2,3}}, to_apply=sum, use_global_device_ids=true, channel_id=1
+  ROOT ar1 = bf16[8] all-reduce(ar0), replica_groups={{0,1,2},{3}}, to_apply=sum, use_global_device_ids=true, channel_id=2
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<HloModule> module,
+      PrepareModule(hlo_string, /*num_replicas=*/1, /*num_partitions=*/4));
+
+  EXPECT_THAT(AllReduceSplitter().Run(module.get()),
+              absl_testing::IsOkAndHolds(false));
+}
 
 TEST_F(
     AllReduceSplitterFilecheckTest,

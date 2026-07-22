@@ -807,15 +807,31 @@ def sign(x, name=None):
   """
   x = ops.convert_to_tensor(x)
   if x.dtype.is_complex:
-    return gen_math_ops.div_no_nan(
-        x,
-        cast(
-            gen_math_ops.complex_abs(
-                x,
-                Tout=dtypes.float32
-                if x.dtype == dtypes.complex64 else dtypes.float64),
-            dtype=x.dtype),
-        name=name)
+    # Promote to complex128 for the entire computation to avoid underflow for
+    # small complex64 values. Two distinct underflow hazards must be addressed:
+    #   (1) |z| = sqrt(re^2 + im^2) computed via complex_abs on complex64
+    #       underflows to 0 for |z| < ~1.08e-19 (sqrt(float32_min)). The
+    #       ComplexAbs C++ kernel also rejects mismatched input/output
+    #       precision (e.g. complex64 -> float64), so we cannot simply ask
+    #       the kernel for a float64 magnitude while feeding it complex64.
+    #   (2) The vectorized complex division (div_no_nan) involves an
+    #       intermediate conjugate product that still underflows on FTZ
+    #       systems when the divisor's magnitude is below the input dtype's
+    #       smallest normal value, even when the divisor is computed in
+    #       float64.
+    # Casting the input itself to complex128 lifts both computations above
+    # the underflow threshold (~1e-154). The DivNoNan C++ kernel requires
+    # both operands to share the same dtype, so the float64 magnitude from
+    # complex_abs is cast back to complex128 before division. The final
+    # result is cast back to the original dtype.
+    compute_dtype = dtypes.complex128
+    x_compute = cast(x, compute_dtype) if x.dtype != compute_dtype else x
+    magnitude = cast(
+        gen_math_ops.complex_abs(x_compute, Tout=dtypes.float64), compute_dtype
+    )
+    return cast(
+        gen_math_ops.div_no_nan(x_compute, magnitude, name=name), dtype=x.dtype
+    )
   return gen_math_ops.sign(x, name=name)
 
 
@@ -3634,6 +3650,24 @@ def matmul(
     a_shape = a._shape_tuple()  # pylint: disable=protected-access
     b_shape = b._shape_tuple()  # pylint: disable=protected-access
 
+    if a_shape is not None and len(a_shape) < 2:
+      raise ValueError(
+          "Argument `a` passed to `tf.linalg.matmul` must be at least rank 2."
+          f" Received `a` with shape {a_shape} (rank {len(a_shape)})."
+          " To fix this, consider using `tf.expand_dims(a, axis=0)` to add a"
+          " batch dimension, or `tf.reshape(a, [...])` to reshape it into a"
+          " 2-D (or higher-rank) matrix before calling `tf.linalg.matmul`."
+      )
+    if b_shape is not None and len(b_shape) < 2:
+      raise ValueError(
+          "Argument `b` passed to `tf.linalg.matmul` must be at least rank 2."
+          f" Received `b` with shape {b_shape} (rank {len(b_shape)})."
+          " For matrix-vector multiplication, use `tf.linalg.matvec`."
+          " Alternatively, consider using `tf.expand_dims(b, axis=-1)` to add a"
+          " column dimension, or `tf.reshape(b, [...])` to reshape it into a"
+          " 2-D (or higher-rank) matrix before calling `tf.linalg.matmul`."
+      )
+
     output_may_have_non_empty_batch_shape = (
         (a_shape is None or len(a_shape) > 2) or
         (b_shape is None or len(b_shape) > 2))
@@ -4699,7 +4733,7 @@ def sparse_segment_sum(
   tf.sparse.segment_sum(c, tf.constant([0, 1]), tf.constant([0, 0]))
   # => [[0 0 0 0]]
 
-  # Select two rows, two segment.
+  # Select two rows, two segments.
   tf.sparse.segment_sum(c, tf.constant([0, 1]), tf.constant([0, 1]))
   # => [[ 1  2  3  4]
   #     [-1 -2 -3 -4]]
@@ -4983,7 +5017,7 @@ def sparse_segment_sum_v2(
   tf.sparse.segment_sum(c, tf.constant([0, 1]), tf.constant([0, 0]))
   # => [[0 0 0 0]]
 
-  # Select two rows, two segment.
+  # Select two rows, two segments.
   tf.sparse.segment_sum(c, tf.constant([0, 1]), tf.constant([0, 1]))
   # => [[ 1  2  3  4]
   #     [-1 -2 -3 -4]]

@@ -1,54 +1,64 @@
 diff --git a/third_party/llvm/generated.patch b/third_party/llvm/generated.patch
-index 67801b9..509398d 100644
+index ce46b4ce..509398da 100644
 --- a/third_party/llvm/generated.patch
 +++ b/third_party/llvm/generated.patch
-@@ -1,34 +1 @@
+@@ -1,44 +1 @@
  Auto generated patch. Do not edit or delete it, even if empty.
--diff -ruN --strip-trailing-cr a/lld/ELF/Symbols.cpp b/lld/ELF/Symbols.cpp
----- a/lld/ELF/Symbols.cpp
--+++ b/lld/ELF/Symbols.cpp
--@@ -501,6 +501,12 @@
--     // reference is weak.
--     if (other.binding != STB_WEAK || !referenced)
--       binding = other.binding;
--+    // -u creates a placeholder Undefined (internalFile, STT_NOTYPE).
--+    // Adopt the real file and type from the object file's undefined.
--+    if (file == ctx.internalFile) {
--+      file = other.file;
--+      type = other.type;
--+    }
--   }
+-diff -ruN --strip-trailing-cr a/llvm/lib/Transforms/Vectorize/SLPVectorizer.cpp b/llvm/lib/Transforms/Vectorize/SLPVectorizer.cpp
+---- a/llvm/lib/Transforms/Vectorize/SLPVectorizer.cpp
+-+++ b/llvm/lib/Transforms/Vectorize/SLPVectorizer.cpp
+-@@ -24633,9 +24633,10 @@
+-   const Value *Base2 = getUnderlyingObject(Ptr2);
+-   if (Base1 == Base2)
+-     return false;
+--  if (Base2 < Base1)
+--    std::swap(Base1, Base2);
+--  return It->second.contains({Base1, Base2});
+-+  // The recorded pairs keep their discovery order (see
+-+  // recordRuntimeAliasCheck), so accept either orientation.
+-+  return It->second.contains({Base1, Base2}) ||
+-+         It->second.contains({Base2, Base1});
 - }
 - 
--diff -ruN --strip-trailing-cr a/lld/test/ELF/tls-mismatch.s b/lld/test/ELF/tls-mismatch.s
----- a/lld/test/ELF/tls-mismatch.s
--+++ b/lld/test/ELF/tls-mismatch.s
--@@ -31,6 +31,13 @@
-- # RUN: ld.lld %t.o %t.bc -o /dev/null
-- # RUN: ld.lld %t.bc %t.o -o /dev/null
+- /// Returns true if \p BB's body already contains vector instructions, e.g.
+-@@ -24675,16 +24676,20 @@
+-   // Only a single block can be versioned per attempt.
+-   if (RTChecks.BB && RTChecks.BB != BB)
+-     return false;
+--  // Normalize the pair order so duplicate checks collapse.
+--  if (Base2 < Base1)
+--    std::swap(Base1, Base2);
+-+  // A base-object pair is unordered: (Base1, Base2) and (Base2, Base1) are the
+-+  // same check. Keep it in discovery (program) order and drop the reverse as a
+-+  // duplicate, rather than ordering by pointer value, which would make the
+-+  // emitted checks depend on allocation addresses.
+-   auto Pair = std::make_pair(Base1, Base2);
+-+  bool Present = RTChecks.BasePairs.contains(Pair) ||
+-+                 RTChecks.BasePairs.contains({Base2, Base1});
+-   // After the checks have been validated and bounded, do not introduce new
+-   // pairs.
+-   if (RTChecksFinalized)
+--    return RTChecks.BasePairs.contains(Pair);
+-+    return Present;
+-   RTChecks.BB = BB;
+--  RTChecks.BasePairs.insert(Pair);
+-+  if (!Present)
+-+    RTChecks.BasePairs.insert(Pair);
+-   return true;
+- }
 - 
--+## -u creates an Undefined with STT_NOTYPE. The object file's STT_TLS undefined
--+## should update the type so that the TLS IE GOT entry is correctly created.
--+# RUN: ld.lld -shared -u tls1 %t1.o %t1.o -o %t1.so
--+# RUN: llvm-readelf -rs %t1.so | FileCheck %s --check-prefix=UNDEF
--+# UNDEF: R_X86_64_TPOFF64 {{.*}} tls1 + 0
--+# UNDEF: 0000000000000000     0 TLS     GLOBAL DEFAULT  UND tls1
--+
-- # CHECK: error: TLS attribute mismatch: tls1
-- # CHECK-NEXT: >>> in {{.*}}.tmp.o
-- # CHECK-NEXT: >>> in {{.*}}
 diff --git a/third_party/llvm/workspace.bzl b/third_party/llvm/workspace.bzl
-index 8165939..1752f8e 100644
+index 0632f277..fe40a137 100644
 --- a/third_party/llvm/workspace.bzl
 +++ b/third_party/llvm/workspace.bzl
 @@ -4,8 +4,8 @@ load("//third_party:repo.bzl", "tf_http_archive")
  
  def repo(name):
      """Imports LLVM."""
--    LLVM_COMMIT = "acd52a2419592d7d3da0c4bacf736e8b84bcacbf"
--    LLVM_SHA256 = "2e19523c1b21129593aee41b7a532a6e5bccdfdc2ce80a517f4e998aed68c317"
-+    LLVM_COMMIT = "fdd62de9a5f3c92436f91fadedc7578e295c38da"
-+    LLVM_SHA256 = "7968f0e8f420c7061aa6080320a33609d4e19af5b31ba9bd33eee1c48de9286c"
+-    LLVM_COMMIT = "9ec7974432975674b0128ea85a54cb3e5b0ffa75"
+-    LLVM_SHA256 = "5657b40438128de5fc2f8ec36eda82537c44a3c8770e89cf5f9eb6121901b08f"
++    LLVM_COMMIT = "963e226d9a6b923b10c8e328438838bd42e03d18"
++    LLVM_SHA256 = "8a8847099235dec4506408aba0caa630e72e18fac64793dfda23db37571861c7"
  
      tf_http_archive(
          name = name,

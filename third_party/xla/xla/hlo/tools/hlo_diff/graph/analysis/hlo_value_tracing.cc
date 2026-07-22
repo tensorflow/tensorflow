@@ -30,6 +30,7 @@
 #include "absl/memory/memory.h"
 #include "absl/status/status.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -1169,7 +1170,7 @@ absl::StatusOr<std::unique_ptr<HloValueTracing>> HloValueTracing::Run(
   auto hlo_value_tracing =
       absl::WrapUnique(new HloValueTracing(module, execution_threads));
 
-  TF_RETURN_IF_ERROR(hlo_value_tracing->InitializeInstructionValueSets());
+  RETURN_IF_ERROR(hlo_value_tracing->InitializeInstructionValueSets());
   hlo_value_tracing->Propagate();
 
   // Delete all values marked for deletion.

@@ -22,10 +22,12 @@ limitations under the License.
 #include <vector>
 
 #include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/strings/match.h"
 #include "xla/hlo/analysis/hlo_operand_index.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_instruction_utils.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/shape.h"
@@ -33,15 +35,29 @@ limitations under the License.
 
 namespace xla {
 
-// Returns in-place input/output pairs for the given fusion instruction,
-// according to the aliasing rules for the corresponding fusion computation.
-//
-// `instruction` must be a fusion instruction.
+std::vector<std::pair<HloOperandIndex, ShapeIndex>>
+AliasInfo::GetOutputSourceInPlaceInputOutputPairs(
+    const HloInstruction* instruction) const {
+  if (const auto* fusion = DynCast<HloFusionInstruction>(instruction)) {
+    return GetFusionInstructionInPlaceInputOutputPairs(fusion);
+  }
+  return GetInPlaceInputOutputPairs(instruction);
+}
+
+// Returns in-place input/output pairs discovered from the fusion computation
+// body. This does not include output_to_operand_aliasing annotations on
+// `fusion` itself; GetInPlaceInputOutputPairs adds them for the public API.
 std::vector<std::pair<HloOperandIndex, ShapeIndex>>
 AliasInfo::GetFusionInstructionInPlaceInputOutputPairs(
     const HloFusionInstruction* fusion) const {
   std::vector<std::pair<HloOperandIndex, ShapeIndex>>
       in_place_input_output_pairs;
+  // Follow HLO use-def chains through tuple and no-op indirections.
+  auto follow_indirections = [&](const HloInstruction* instruction,
+                                 ShapeIndex index) {
+    std::tie(instruction, index) = FollowTupleIndirection(instruction, index);
+    return FollowNoOpIndirection(instruction, index);
+  };
 
   // Each of these leaves represents one array output of the fusion that might
   // be aliased with one of the fusion computation's array inputs (both could be
@@ -49,22 +65,23 @@ AliasInfo::GetFusionInstructionInPlaceInputOutputPairs(
   ShapeUtil::ForEachLeafShape(fusion->shape(), [&](const Shape& sub_shape,
                                                    const ShapeIndex& index) {
     // Start from the root instruction of the fusion computation and follow
-    // tuple indirection backwards to find the "output source", i.e. the
-    // instruction that is the original source of the array output in
-    // question. If there is no such indirection the "output source" will
-    // just be the fusion root instruction itself.
+    // indirections backwards to find the "output source", i.e. the instruction
+    // that is the original source of the array output in question. If there is
+    // no such indirection the "output source" will just be the fusion root
+    // instruction itself.
     const HloInstruction* output_source_instruction =
         fusion->fused_expression_root();
     ShapeIndex output_source_index = index;
     std::tie(output_source_instruction, output_source_index) =
-        FollowTupleIndirection(output_source_instruction, output_source_index);
+        follow_indirections(output_source_instruction, output_source_index);
 
     // The aliasing rules of the "output source" instruction determine the
     // aliasing rules for the entire fusion. If we can connect (following
-    // tuple indirection) the input of an "in-place" pair to one of the
-    // fusion's inputs, and the output of this "in-place" pair to the fusion
-    // output in question, then this fusion input and output must alias.
-    auto in_place_pairs = GetInPlaceInputOutputPairs(output_source_instruction);
+    // indirections) the input of an "in-place" pair to one of the fusion's
+    // inputs, and the output of this "in-place" pair to the fusion output in
+    // question, then this fusion input and output must alias.
+    auto in_place_pairs =
+        GetOutputSourceInPlaceInputOutputPairs(output_source_instruction);
     ShapeIndex in_place_input_index;
     const HloInstruction* in_place_input_source = nullptr;
 
@@ -77,11 +94,11 @@ AliasInfo::GetFusionInstructionInPlaceInputOutputPairs(
         in_place_input_source =
             output_source_instruction->operand(input.operand_number);
         in_place_input_index = input.operand_index;
-        // Follow tuple indirection backwards from the instruction input to
-        // try to find a fusion parameter. If found, that parameter aliases
-        // the current output. If not, the current output aliases no input.
+        // Follow indirections backwards from the instruction input to try to
+        // find a fusion parameter. If found, that parameter aliases the current
+        // output. If not, the current output aliases no input.
         std::tie(in_place_input_source, in_place_input_index) =
-            FollowTupleIndirection(in_place_input_source, in_place_input_index);
+            follow_indirections(in_place_input_source, in_place_input_index);
         if (in_place_input_source->opcode() == HloOpcode::kFusion) {
           // Nested fusions can have aliasing that allows us to peephole
           // through to their producer.
@@ -95,17 +112,12 @@ AliasInfo::GetFusionInstructionInPlaceInputOutputPairs(
                   in_place_input_source->operand(pair.first.operand_number);
               in_place_input_index = pair.first.operand_index;
               std::tie(in_place_input_source, in_place_input_index) =
-                  FollowTupleIndirection(in_place_input_source,
-                                         in_place_input_index);
+                  follow_indirections(in_place_input_source,
+                                      in_place_input_index);
             }
           }
         }
       }
-    }
-    // Skip bitcast
-    if (in_place_input_source != nullptr &&
-        in_place_input_source->opcode() == HloOpcode::kBitcast) {
-      in_place_input_source = in_place_input_source->operand(0);
     }
     if (in_place_input_source != nullptr &&
         in_place_input_source->opcode() == HloOpcode::kParameter) {
@@ -140,14 +152,6 @@ AliasInfo::GetInPlaceInputOutputPairs(const HloInstruction* user) const {
     return *hint;
   }
 
-  // TODO tixxx: nvshmem default one-shot allreduce algo requires
-  // separate buffers for IO, remove this once nvshmem is upgraded to 3.3
-  if (user->opcode() == HloOpcode::kAllReduceStart) {
-    if (absl::StrContainsIgnoreCase(user->raw_backend_config_string(),
-                                    "nvshmem")) {
-      return {};
-    }
-  }
   if (IsDefaultInPlaceOperation(user)) {
     int64_t num_in_place_operands = user->operand_count();
     const HloScatterInstruction* scatter = DynCast<HloScatterInstruction>(user);
@@ -172,6 +176,10 @@ AliasInfo::GetInPlaceInputOutputPairs(const HloInstruction* user) const {
   // Ops that require special handling.
   if (user->opcode() == HloOpcode::kCollectivePermute &&
       user->operands().size() == 4) {
+    auto cp = Cast<HloCollectivePermuteInstruction>(user);
+    if (!cp->inplace()) {
+      return {};
+    }
     if (user->operand(1)->shape().IsTuple()) {
       std::vector<std::pair<HloOperandIndex, ShapeIndex>> in_place_pairs(
           {{HloOperandIndex{1, {}}, {}}});
@@ -185,16 +193,21 @@ AliasInfo::GetInPlaceInputOutputPairs(const HloInstruction* user) const {
   }
   if (user->opcode() == HloOpcode::kCollectivePermuteStart &&
       user->operands().size() == 4) {
-    if (user->operand(1)->shape().IsTuple()) {
-      std::vector<std::pair<HloOperandIndex, ShapeIndex>> in_place_pairs(
-          {{HloOperandIndex{1, {}}, {1}}});
-      for (int i = 0; i < user->operand(1)->shape().tuple_shapes().size();
-           i++) {
-        in_place_pairs.push_back({HloOperandIndex{1, {i}}, {1, i}});
+    auto cp = Cast<HloCollectivePermuteInstruction>(user);
+    if (cp->inplace()) {
+      if (user->operand(1)->shape().IsTuple()) {
+        std::vector<std::pair<HloOperandIndex, ShapeIndex>> in_place_pairs(
+            {{HloOperandIndex{1, {}}, {1}}});
+        for (int i = 0; i < user->operand(1)->shape().tuple_shapes().size();
+             i++) {
+          in_place_pairs.push_back({HloOperandIndex{1, {i}}, {1, i}});
+        }
+        return in_place_pairs;
       }
-      return in_place_pairs;
+      return {{HloOperandIndex{1, {}}, {1}}};
+    } else {
+      return {};
     }
-    return {{HloOperandIndex{1, {}}, {1}}};
   }
   if (user->opcode() == HloOpcode::kCustomCall) {
     // Custom Calls previously assumed that aliased operands were
@@ -235,19 +248,182 @@ AliasInfo::GetInPlaceInputOutputPairs(const HloInstruction* user) const {
     return in_place_pairs;
   }
   if (user->opcode() == HloOpcode::kAsyncStart) {
-    // Custom Calls previously assumed that aliased operands were
-    // forwarded, but now supports modification semantics.
     const auto& aliasing_pairs =
         Cast<HloAsyncStartInstruction>(user)->output_to_operand_aliasing();
     std::vector<std::pair<HloOperandIndex, ShapeIndex>> in_place_pairs;
+
+    // No operands bound, exit early or no aliasing, exit early.
+    if (user->operands().empty() || aliasing_pairs.empty()) {
+      return in_place_pairs;
+    }
+
     in_place_pairs.reserve(aliasing_pairs.size());
+    const Shape& async_shape = user->shape();
+    CHECK(async_shape.IsTuple());
+    CHECK_GE(ShapeUtil::TupleElementCount(async_shape), 2);
+    const Shape& output_subshape = async_shape.tuple_shapes(1);
     for (const auto& pair : aliasing_pairs) {
       ShapeIndex output_shape_index = pair.first;
       int64_t operand_index = pair.second.first;
       ShapeIndex operand_shape_index = pair.second.second;
+
+      // TODO(phui): Move this to verifier.
+      CHECK(!output_shape_index.empty())
+          << "output_shape_index should not be empty, it should not alias with "
+             "the whole output tuple!";
+
+      // Aliasing is for output_subshape, but output_subshape is not bound yet.
+      if (output_shape_index[0] == 1 &&
+          (output_subshape.IsTuple() &&
+           output_subshape.tuple_shapes().empty())) {
+        VLOG(1) << "aliasing config for output_subshape, but it is not bound "
+                   "yet";
+        continue;
+      }
+
+      if (!ShapeUtil::IndexIsValid(async_shape, output_shape_index)) {
+        VLOG(1) << "output_shape_index (`" << output_shape_index.ToString()
+                << "`) in aliasing config for async operations invalid "
+                   "and ignored, reason:\n"
+                << "it may not be bound yet";
+        continue;
+      }
+
+      // This operand is not bound yet.
+      if (operand_index >= user->operands().size()) {
+        continue;
+      }
+
+      // TODO(phui): Move this to verifier.
+      CHECK(ShapeUtil::IndexIsValid(user->operand(operand_index)->shape(),
+                                    operand_shape_index));
+
       in_place_pairs.push_back(
           {HloOperandIndex{operand_index, {operand_shape_index}},
            output_shape_index});
+    }
+    return in_place_pairs;
+  }
+
+  if (user->opcode() == HloOpcode::kAsyncUpdate) {
+    std::vector<std::pair<HloOperandIndex, ShapeIndex>> in_place_pairs;
+    const Shape& async_shape = user->shape();
+    CHECK(async_shape.IsTuple());
+    CHECK_GE(ShapeUtil::TupleElementCount(async_shape), 2);
+    const Shape& input_subshape = async_shape.tuple_shapes(0);
+    CHECK(input_subshape.IsTuple());
+    const Shape& output_subshape = async_shape.tuple_shapes(1);
+
+    CHECK_GE(user->operand_count(), 1);
+
+    // Retrieve the aliasing pairs from the async-start.
+    const HloInstruction* start = user->async_chain_start();
+    CHECK_EQ(start->opcode(), HloOpcode::kAsyncStart);
+    const auto& aliasing_pairs =
+        Cast<HloAsyncStartInstruction>(start)->output_to_operand_aliasing();
+
+    if (user->operand_count() == 1 || aliasing_pairs.empty()) {
+      return in_place_pairs;
+    }
+
+    std::vector<const HloInstruction*> prev_bound_operands =
+        hlo_instruction_utils::async::GetAsyncBoundOperands(
+            Cast<HloAsyncInstruction>(user->operand(0)));
+
+    for (const auto& pair : aliasing_pairs) {
+      ShapeIndex output_shape_index = pair.first;
+      int64_t logical_operand_index = pair.second.first;
+      ShapeIndex operand_shape_index = pair.second.second;
+
+      // TODO(phui): Move this to verifier.
+      CHECK(!output_shape_index.empty())
+          << "output_shape_index should not be empty, it should not alias with "
+             "the whole output tuple!";
+
+      // Aliasing is for output_subshape, but output_subshape is not bound yet.
+      if (output_shape_index[0] == 1 &&
+          (output_subshape.IsTuple() &&
+           output_subshape.tuple_shapes().empty())) {
+        VLOG(1) << "aliasing config for output_subshape, but it is not bound "
+                   "yet";
+        continue;
+      }
+
+      if (!ShapeUtil::IndexIsValid(async_shape, output_shape_index)) {
+        VLOG(1) << "output_shape_index (`" << output_shape_index.ToString()
+                << "`) in aliasing config for async operations invalid "
+                   "and ignored, reason:\n"
+                << "it may not be bound yet";
+        continue;
+      }
+
+      // The operand index for this async-update instruction.
+      int64_t operand_index =
+          logical_operand_index - prev_bound_operands.size() + 1;
+
+      if (operand_index <= 0 || operand_index >= user->operand_count()) {
+        // This operand is already bound or not bound yet, having been handled
+        // in the previous ones or to be handled in the next ones.
+        continue;
+      }
+
+      // TODO(phui): Move this to verifier.
+      CHECK(ShapeUtil::IndexIsValid(user->operand(operand_index)->shape(),
+                                    operand_shape_index));
+
+      in_place_pairs.push_back(
+          {HloOperandIndex{operand_index, {operand_shape_index}},
+           output_shape_index});
+    }
+
+    return in_place_pairs;
+  }
+
+  if (user->opcode() == HloOpcode::kAsyncDone) {
+    std::vector<std::pair<HloOperandIndex, ShapeIndex>> in_place_pairs;
+    const Shape& prev_shape = user->operand(0)->shape();
+    CHECK(prev_shape.IsTuple());
+    CHECK_GE(ShapeUtil::TupleElementCount(prev_shape), 2);
+    const Shape& prev_input_subshape = prev_shape.tuple_shapes(0);
+    CHECK(prev_input_subshape.IsTuple());
+
+    // Additional logic for late-bound result-to-parameter aliasing:
+    const HloInstruction* start = user->async_chain_start();
+    CHECK_EQ(start->opcode(), HloOpcode::kAsyncStart);
+    const auto& aliasing_pairs =
+        Cast<HloAsyncStartInstruction>(start)->output_to_operand_aliasing();
+
+    for (const auto& pair : aliasing_pairs) {
+      const ShapeIndex& start_output_index = pair.first;
+      int64_t logical_param_number = pair.second.first;
+      const ShapeIndex& param_subindex = pair.second.second;
+
+      // We only care about result-to-parameter aliasing.
+      if (!start_output_index.empty() && start_output_index[0] == 1) {
+        ShapeIndex result_subindex(start_output_index.begin() + 1,
+                                   start_output_index.end());
+        if (!ShapeUtil::IndexIsValid(user->shape(), result_subindex)) {
+          continue;
+        }
+
+        // Alias async-done output at {result_subindex}
+        // with async-done operand 0 (the chain) at
+        // {0, logical_param, param_subindex}.
+        ShapeIndex chain_index = {0, logical_param_number};
+        chain_index.insert(chain_index.end(), param_subindex.begin(),
+                           param_subindex.end());
+
+        in_place_pairs.push_back(
+            {HloOperandIndex{0, chain_index}, result_subindex});
+      } else {
+        // TODO(phui): move this to verifier.
+        LOG(INFO)
+            << "output_index (`" << start_output_index.ToString()
+            << "`) in aliasing config for async operations invalid "
+               "and ignored, reason:\n"
+            << "it should be an non-empty index pointing to output subshape "
+               "({1,...})";
+      }
     }
     return in_place_pairs;
   }
@@ -264,6 +440,14 @@ AliasInfo::GetInPlaceInputOutputPairs(const HloInstruction* user) const {
     return {{HloOperandIndex{1, {}}, {}}};
   }
   return {};
+}
+
+std::pair<const HloInstruction*, ShapeIndex> AliasInfo::FollowNoOpIndirection(
+    const HloInstruction* instruction, ShapeIndex operand_index) const {
+  while (operand_index.empty() && IsNoOpForAliasAnalysis(instruction)) {
+    instruction = instruction->operand(0);
+  }
+  return {instruction, operand_index};
 }
 
 std::pair<const HloInstruction*, ShapeIndex> FollowTupleIndirection(

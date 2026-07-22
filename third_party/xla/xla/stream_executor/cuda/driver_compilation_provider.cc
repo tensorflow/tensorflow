@@ -28,25 +28,23 @@ limitations under the License.
 #include "absl/cleanup/cleanup.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/log/vlog_is_on.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "third_party/gpus/cuda/include/cuda.h"
 #include "xla/stream_executor/activate_context.h"
 #include "xla/stream_executor/cuda/compilation_options.h"
 #include "xla/stream_executor/cuda/compilation_provider.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
-#include "xla/stream_executor/cuda/cuda_platform_id.h"
 #include "xla/stream_executor/cuda/cuda_status.h"
 #include "xla/stream_executor/cuda/ptx_compiler_helpers.h"
 #include "xla/stream_executor/platform.h"
-#include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/statusor.h"
-#include "xla/tsl/platform/status_macros.h"
 
 namespace stream_executor::cuda {
 absl::StatusOr<Assembly> DriverCompilationProvider::Compile(
@@ -68,11 +66,7 @@ absl::StatusOr<Assembly> DriverCompilationProvider::CompileAndLink(
     const CudaComputeCapability& cc,
     absl::Span<const RelocatableModuleOrPtx> inputs,
     const CompilationOptions& options) const {
-  TF_ASSIGN_OR_RETURN(Platform * platform,
-                      PlatformManager::PlatformWithId(kCudaPlatformId));
-  TF_ASSIGN_OR_RETURN(StreamExecutor * executor,
-                      platform->ExecutorForDevice(0));
-  std::unique_ptr<ActivateContext> context = executor->Activate();
+  std::unique_ptr<ActivateContext> context = stream_exec_->Activate();
 
   CUlinkState link_state;
   CUjit_option jit_options[] = {CU_JIT_TARGET,
@@ -191,8 +185,8 @@ absl::StatusOr<Assembly> DriverCompilationProvider::CompileAndLink(
   }
 
   VLOG(3) << "Driver compilation info log output: " << info_log_buffer;
-  TF_RETURN_IF_ERROR(CreateErrorFromPTXASLog(info_log_buffer, architecture,
-                                             options.cancel_if_reg_spill));
+  RETURN_IF_ERROR(CreateErrorFromPTXASLog(info_log_buffer, architecture,
+                                          options.cancel_if_reg_spill));
 
   std::vector<uint8_t> cubin(static_cast<uint8_t*>(cubin_out),
                              static_cast<uint8_t*>(cubin_out) + cubin_size);

@@ -3,18 +3,22 @@ tf_class {
   is_instance: "<class \'tensorflow.python.training.experimental.loss_scale.DynamicLossScale\'>"
   is_instance: "<class \'tensorflow.python.training.experimental.loss_scale.LossScale\'>"
   is_instance: "<class \'tensorflow.python.trackable.base.Trackable\'>"
-  is_instance: "<type \'object\'>"
+  is_instance: "<class \'object\'>"
   member {
     name: "increment_period"
-    mtype: "<type \'property\'>"
+    mtype: "<class \'property\'>"
   }
   member {
     name: "initial_loss_scale"
-    mtype: "<type \'property\'>"
+    mtype: "<class \'property\'>"
   }
   member {
     name: "multiplier"
-    mtype: "<type \'property\'>"
+    mtype: "<class \'property\'>"
+  }
+  member_method {
+    name: "__call__"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "__init__"

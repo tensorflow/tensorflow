@@ -5346,7 +5346,7 @@ class ConvertInfeedDequeueTupleOp
       // the token to device 0.
       if (sharding_proto.type() == ::xla::OpSharding::TUPLE) {
         *sharding_proto.add_tuple_shardings() =
-            ::xla::sharding_builder::AssignDevice(0);
+            ::xla::sharding_builder::SingleDevice(0);
         data_and_token->setAttr(
             kShardingAttr,
             rewriter.getStringAttr(sharding_proto.SerializeAsString()));
@@ -6249,6 +6249,68 @@ class ConvertConstOp : public OpRewritePattern<TF::ConstOp> {
   }
 };
 
+// Converts TF::CrossOp to mhlo operations.
+class ConvertCrossOp : public OpRewritePattern<TF::CrossOp> {
+ public:
+  using OpRewritePattern::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(TF::CrossOp op,
+                                PatternRewriter& rewriter) const override {
+    Location loc = op.getLoc();
+    Value a = op.getA();
+    Value b = op.getB();
+    auto a_type = mlir::dyn_cast<RankedTensorType>(a.getType());
+    auto b_type = mlir::dyn_cast<RankedTensorType>(b.getType());
+    if (!a_type || !b_type || !a_type.hasStaticShape() ||
+        !b_type.hasStaticShape()) {
+      return failure();
+    }
+
+    if (a_type.getShape() != b_type.getShape()) return failure();
+
+    int64_t rank = a_type.getRank();
+    if (rank < 1 || a_type.getShape().back() != 3) return failure();
+
+    SmallVector<int64_t> starts(rank, 0);
+    auto limits = llvm::to_vector(a_type.getShape());
+    SmallVector<int64_t> strides(rank, 1);
+
+    auto slice = [&](Value val, int64_t slice_idx) -> Value {
+      starts[rank - 1] = slice_idx;
+      limits[rank - 1] = slice_idx + 1;
+      return SliceOp::create(rewriter, loc, val,
+                             GetI64ElementsAttr(starts, &rewriter),
+                             GetI64ElementsAttr(limits, &rewriter),
+                             GetI64ElementsAttr(strides, &rewriter));
+    };
+
+    Value u1 = slice(a, 0);
+    Value v1 = slice(b, 0);
+    Value u2 = slice(a, 1);
+    Value v2 = slice(b, 1);
+    Value u3 = slice(a, 2);
+    Value v3 = slice(b, 2);
+
+    auto mul = [&](Value x, Value y) -> Value {
+      return MulOp::create(rewriter, loc, x, y);
+    };
+    auto sub = [&](Value x, Value y) -> Value {
+      return SubtractOp::create(rewriter, loc, x, y);
+    };
+
+    Value s1 = sub(mul(u2, v3), mul(u3, v2));
+    Value s2 = sub(mul(u3, v1), mul(u1, v3));
+    Value s3 = sub(mul(u1, v2), mul(u2, v1));
+
+    Value output = ConcatenateOp::create(rewriter, loc, op.getType(),
+                                         ValueRange{s1, s2, s3},
+                                         rewriter.getI64IntegerAttr(rank - 1));
+
+    rewriter.replaceOp(op, output);
+    return success();
+  }
+};
+
 // Converts the Cumsum or Cumprod TensorFlow op to the HLO ReduceWindow op by
 // setting appropriate window dimensions, with the given aggregation op as the
 // reduction function. The input tensor needs to have a static shape, and 'axis'
@@ -6927,6 +6989,7 @@ void PopulatePatterns(MLIRContext *context, RewritePatternSet *patterns) {
     ConvertConv3DBackpropFilterOp,
     ConvertConv2DBackpropInputOp,
     ConvertConv3DBackpropInputOp,
+    ConvertCrossOp,
     ConvertCumprodOp,
     ConvertCumsumOp,
     ConvertDiagPartOp,

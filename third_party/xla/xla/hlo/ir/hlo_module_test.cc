@@ -17,7 +17,6 @@ limitations under the License.
 
 #include <cstddef>
 #include <cstdint>
-#include <iterator>
 #include <memory>
 #include <optional>
 #include <string>
@@ -30,14 +29,17 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/hash/hash.h"
 #include "absl/log/check.h"
+#include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_replace.h"
 #include "absl/strings/string_view.h"
 #include "google/protobuf/text_format.h"
+#include "xla/debug_options_flags.h"
 #include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/analysis/hlo_ordering.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_print_options.h"
 #include "xla/hlo/ir/hlo_schedule.h"
 #include "xla/hlo/ir/stack_frames.h"
@@ -69,13 +71,25 @@ using ::testing::Eq;
 using ::testing::IsEmpty;
 using ::testing::Pointwise;
 using ::testing::Property;
+using ::testing::StrEq;
 using ::testing::UnorderedElementsAre;
+using ::tsl::proto_testing::EqualsProto;
 
 // Adapts the internal equals proto to work with PointWise
 MATCHER(EqualsProto, "") {
   const auto& a = ::testing::get<0>(arg);
   const auto& b = ::testing::get<1>(arg);
   return ::testing::Matches(tsl::proto_testing::EqualsProto(b))(a);
+}
+
+OriginalValueRecoveryTableProto ClearRecoveryModuleIds(
+    OriginalValueRecoveryTableProto proto) {
+  for (auto& entry : *proto.mutable_entries()) {
+    if (entry.has_recovery_module()) {
+      entry.mutable_recovery_module()->clear_id();
+    }
+  }
+  return proto;
 }
 
 TEST(HloModuleTest, AbslHashValue) {
@@ -174,6 +188,65 @@ TEST(HloModuleTest, SharedConfig) {
   EXPECT_EQ(m1.config().device_memory_size(), m2.config().device_memory_size());
   EXPECT_EQ(m1.shared_config().use_count(), 2);
   EXPECT_EQ(m2.shared_config().use_count(), 2);
+}
+
+TEST(HloModuleTest, CanonicalizeComputationLocalIds) {
+  absl::string_view hlo_string = R"(
+HloModule my_module
+
+comp1 {
+  p0 = f32[] parameter(0)
+  p1 = f32[] parameter(1)
+  mul0 = f32[] multiply(p0, p1)
+  add0 = f32[] add(p0, p1)
+  ROOT out = f32[] add(add0, mul0)
+}
+
+ENTRY entry {
+  p0 = f32[] parameter(0)
+  p1 = f32[] parameter(1)
+  mul0 = f32[] multiply(p0, p1)
+  add0 = f32[] add(p0, p1)
+  ROOT out = f32[] add(add0, mul0)
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnUnverifiedModule(hlo_string));
+
+  HloComputation* comp1 = module->GetComputationWithName("comp1");
+  HloComputation* entry = module->entry_computation();
+
+  auto get_local_id = [](HloComputation* comp, absl::string_view name) {
+    for (const auto& inst : comp->instructions()) {
+      if (absl::StrContains(inst->name(), name)) {
+        return inst->local_id();
+      }
+    }
+    return -1;
+  };
+
+  // Verify initial IDs reflect construction order (mul0 then add0).
+  EXPECT_EQ(get_local_id(comp1, "mul0"), 2);
+  EXPECT_EQ(get_local_id(comp1, "add0"), 3);
+  EXPECT_EQ(get_local_id(entry, "mul0"), 2);
+  EXPECT_EQ(get_local_id(entry, "add0"), 3);
+
+  module->CanonicalizeComputationLocalIds();
+
+  // We expect the post-order: p0, p1, add0, mul0, out
+  // So IDs should be 0, 1, 2, 3, 4 respectively.
+
+  EXPECT_EQ(get_local_id(comp1, "p0"), 0);
+  EXPECT_EQ(get_local_id(comp1, "p1"), 1);
+  EXPECT_EQ(get_local_id(comp1, "add0"), 2);
+  EXPECT_EQ(get_local_id(comp1, "mul0"), 3);
+  EXPECT_EQ(get_local_id(comp1, "out"), 4);
+
+  EXPECT_EQ(get_local_id(entry, "p0"), 0);
+  EXPECT_EQ(get_local_id(entry, "p1"), 1);
+  EXPECT_EQ(get_local_id(entry, "add0"), 2);
+  EXPECT_EQ(get_local_id(entry, "mul0"), 3);
+  EXPECT_EQ(get_local_id(entry, "out"), 4);
 }
 
 // Common patter across XLA. Besides possibility of a dangling pointer issue
@@ -1073,7 +1146,7 @@ TEST(HloModuleTest, LoadAndFixNonConsecutiveInstructionIds) {
 
   TF_ASSERT_OK_AND_ASSIGN(HloModuleConfig config,
                           xla::HloModule::CreateModuleConfigFromProto(
-                              hlo_module_proto, xla::DebugOptions()));
+                              hlo_module_proto, GetDebugOptionsFromFlags()));
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<HloModule> module,
       xla::HloModule::CreateFromProto(hlo_module_proto, config,
@@ -1083,7 +1156,8 @@ TEST(HloModuleTest, LoadAndFixNonConsecutiveInstructionIds) {
 
   EXPECT_EQ(module->computation_count(), 2);
   HloComputation* entry_computation = module->entry_computation();
-  HloComputation* computation_2 = *std::next(module->computations().begin());
+  HloComputation* computation_2 = module->GetComputationWithName("comp2");
+  ASSERT_NE(computation_2, nullptr);
   EXPECT_EQ(entry_computation->instruction_count(), 3);
 
   EXPECT_EQ(computation_2->instruction_count(), 4);
@@ -1159,6 +1233,309 @@ TEST(HloModuleTest, TestHloModuleToFromProtoInvarianceInComputation) {
       Pointwise(EqualsProto(), module_from_proto->ToProto().computations()));
 }
 
+TEST(HloModuleTest, ReorderComputationsToPostOrderPreservesSemantics) {
+  // Test graph structure:
+  //
+  //     comp0
+  //    /     \
+  //  comp1   comp2
+  //    \     /
+  //     entry
+
+  auto module = std::make_unique<HloModule>("test_module", HloModuleConfig());
+
+  Shape shape = ShapeUtil::MakeShape(F32, {});
+
+  auto make_comp = [&](absl::string_view name,
+                       HloComputation* callee = nullptr) {
+    HloComputation::Builder builder(name);
+    auto p =
+        builder.AddInstruction(HloInstruction::CreateParameter(0, shape, "p0"));
+    if (callee) {
+      builder.AddInstruction(HloInstruction::CreateCall(shape, {p}, callee));
+    }
+    return builder.Build();
+  };
+
+  auto comp0 = make_comp("comp0");
+  HloComputation* comp0_ptr = comp0.get();
+
+  auto comp1 = make_comp("comp1", comp0_ptr);
+  HloComputation* comp1_ptr = comp1.get();
+
+  auto comp2 = make_comp("comp2", comp0_ptr);
+  HloComputation* comp2_ptr = comp2.get();
+
+  HloComputation::Builder entry_builder("entry");
+  auto p_entry = entry_builder.AddInstruction(
+      HloInstruction::CreateParameter(0, shape, "p0"));
+  auto call1 = entry_builder.AddInstruction(
+      HloInstruction::CreateCall(shape, {p_entry}, comp1_ptr));
+  auto call2 = entry_builder.AddInstruction(
+      HloInstruction::CreateCall(shape, {p_entry}, comp2_ptr));
+  entry_builder.AddInstruction(
+      HloInstruction::CreateBinary(shape, HloOpcode::kAdd, call1, call2));
+  auto entry_comp = entry_builder.Build();
+  HloComputation* entry_ptr = entry_comp.get();
+
+  // Add computations in a non-post-order: entry, comp1, comp2, comp0
+  module->AddEntryComputation(std::move(entry_comp));
+  module->AddEmbeddedComputation(std::move(comp1));
+  module->AddEmbeddedComputation(std::move(comp2));
+  module->AddEmbeddedComputation(std::move(comp0));
+
+  // Verify initial non-post-order
+  EXPECT_THAT(module->computations(),
+              ElementsAre(entry_ptr, comp1_ptr, comp2_ptr, comp0_ptr));
+
+  TF_ASSERT_OK(module->ReorderComputationsToPostOrder());
+
+  // Verify post-order. So:
+  // comp0 must be before comp1 and comp2.
+  // comp1 and comp2 must be before entry.
+  // Earliest calling instructions in postorder should appear first.
+  int index0 = -1, index1 = -1, index2 = -1, index_entry = -1;
+  int i = 0;
+  for (HloComputation* comp : module->computations()) {
+    if (comp == comp0_ptr) {
+      index0 = i;
+    } else if (comp == comp1_ptr) {
+      index1 = i;
+    } else if (comp == comp2_ptr) {
+      index2 = i;
+    } else if (comp == entry_ptr) {
+      index_entry = i;
+    }
+    i++;
+  }
+
+  EXPECT_GE(index0, 0);
+  EXPECT_GE(index1, 0);
+  EXPECT_GE(index2, 0);
+  EXPECT_GE(index_entry, 0);
+
+  EXPECT_LT(index0, index1);
+  EXPECT_LT(index0, index2);
+  EXPECT_LT(index1, index_entry);
+  EXPECT_LT(index2, index_entry);
+
+  EXPECT_EQ(module->entry_computation(), entry_ptr);
+  EXPECT_EQ(entry_ptr->root_instruction()->operands()[0]->to_apply(),
+            comp1_ptr);
+  EXPECT_EQ(entry_ptr->root_instruction()->operands()[1]->to_apply(),
+            comp2_ptr);
+}
+
+TEST(HloModuleTest, ReorderComputationsToPostOrderEquivalenceCheck) {
+  // This test is an equivalence check. It verifies that reordering computations
+  // to post-order does not lose or corrupt any computations.
+  // We use ToString() with canonicalize_computations(true) to sort computations
+  // by name when printing. This ignores the storage order in the module and
+  // allows us to verify that the content is identical before and after
+  // reordering.
+  const std::string text = R"(
+HloModule test_module
+
+callee {
+  p0 = f32[] parameter(0)
+  p1 = f32[] parameter(1)
+  ROOT add = f32[] add(p0, p1)
+}
+
+ENTRY entry_comp {
+  p0 = f32[] parameter(0)
+  p1 = f32[] parameter(1)
+  ROOT call = f32[] call(p0, p1), to_apply=callee
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(text));
+
+  HloPrintOptions options;
+  options.set_canonicalize_computations(true);
+  options.set_canonicalize_instruction_names(true);
+  options.set_print_percent(false);
+
+  std::string string_before = module->ToString(options);
+
+  TF_ASSERT_OK(module->ReorderComputationsToPostOrder());
+
+  std::string string_after = module->ToString(options);
+
+  EXPECT_THAT(string_before, StrEq(string_after));
+}
+
+TEST(HloModuleTest, OriginalValueRecoveryTableProtoRoundTrip) {
+  const char* const hlo_string =
+      R"(HloModule module, entry_computation_layout={()->s32[1,3]{1,0}}, num_partitions=2, origin_recovery_table={
+  {"constant"} : {"constant__ovp0"},
+  "
+    HloModule recovery_module, entry_computation_layout={(s32[2,3]{1,0})->s32[2,3]{1,0}}
+
+    %add (x: s32[], y: s32[]) -> s32[] {
+      %x = s32[] parameter(0)
+      %y = s32[] parameter(1)
+      ROOT %add = s32[] add(%x, %y)
+    }
+
+    %add.clone (x.1: s32[], y.1: s32[]) -> s32[] {
+      %x.1 = s32[] parameter(0)
+      %y.1 = s32[] parameter(1)
+      ROOT %add.1 = s32[] add(%x.1, %y.1)
+    }
+
+    ENTRY %recovery_computation (param: s32[2,3]) -> s32[2,3] {
+      %partition-id = u32[] partition-id()
+      %constant = u32[] constant(0)
+      %compare = pred[] compare(%partition-id, %constant), direction=EQ
+      %broadcast = pred[2,3]{1,0} broadcast(%compare), dimensions={}
+      %param = s32[2,3]{1,0} parameter(0), sharding={maximal device=0}
+      %constant.1 = s32[] constant(0)
+      %broadcast.1 = s32[2,3]{1,0} broadcast(%constant.1), dimensions={}
+      %select = s32[2,3]{1,0} select(%broadcast, %param, %broadcast.1)
+      ROOT %all-reduce = s32[2,3]{1,0} all-reduce(%select), channel_id=1, replica_groups={{0,1}}, use_global_device_ids=true, to_apply=%add.clone, sharding={replicated}
+    }
+  "
+}
+
+%add.clone (x.1: s32[], y.1: s32[]) -> s32[] {
+  %x.1 = s32[] parameter(0)
+  %y.1 = s32[] parameter(1)
+  ROOT %add.1 = s32[] add(s32[] %x.1, s32[] %y.1)
+}
+
+ENTRY %entry_spmd () -> s32[1,3] {
+  %partition-id = u32[] partition-id()
+  %constant.2 = u32[] constant(0)
+  %compare = pred[] compare(u32[] %partition-id, u32[] %constant.2), direction=EQ
+  %broadcast = pred[2,3]{1,0} broadcast(pred[] %compare), dimensions={}
+  %constant.1 = s32[2,3]{1,0} constant({ { 1, 1, 1 }, { 1, 1, 1 } }), origin={{"constant__ovp0"}}
+  %constant.3 = s32[] constant(0)
+  %broadcast.1 = s32[2,3]{1,0} broadcast(s32[] %constant.3), dimensions={}
+  %select = s32[2,3]{1,0} select(pred[2,3]{1,0} %broadcast, s32[2,3]{1,0} %constant.1, s32[2,3]{1,0} %broadcast.1)
+  %all-reduce = s32[2,3]{1,0} all-reduce(s32[2,3]{1,0} %select), channel_id=1, replica_groups={{0,1}}, use_global_device_ids=true, to_apply=%add.clone
+  %constant.4 = s32[2]{0} constant({1, 0})
+  %dynamic-slice = s32[1]{0} dynamic-slice(s32[2]{0} %constant.4, u32[] %partition-id), dynamic_slice_sizes={1}
+  %reshape = s32[] reshape(s32[1]{0} %dynamic-slice)
+  %dynamic-slice.1 = s32[1,3]{1,0} dynamic-slice(s32[2,3]{1,0} %all-reduce, s32[] %reshape, s32[] %constant.3), dynamic_slice_sizes={1,3}
+  ROOT %copy.1 = s32[1,3]{1,0} copy(s32[1,3]{1,0} %dynamic-slice.1)
+}
+)";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnUnverifiedModule(hlo_string));
+  HloModuleProto module_proto = module->ToProto();
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<HloModule> module_from_proto,
+      HloModule::CreateFromProto(module_proto, module->config()));
+  EXPECT_THAT(ClearRecoveryModuleIds(
+                  module_from_proto->original_value_recovery_table().ToProto()),
+              EqualsProto(ClearRecoveryModuleIds(
+                  module->original_value_recovery_table().ToProto())));
+}
+
+TEST(HloModuleTest, DebugAttributesProtoRoundTrip) {
+  const char* const hlo_string =
+      R"(HloModule module, entry_computation_layout={()->s32[2,3]{1,0}},
+debug_attributes={
+  {"constant"}:({log_mode=default,callback_id=123,partitioned=true}),
+  {"constant.1"}:({log_mode=fusion_debugger,callback_id=456,partitioned=false})
+}
+
+
+ENTRY %entry_comp () -> s32[2,3] {
+  %c = s32[2,3]{1,0} constant({ { 1, 1, 1 }, { 1, 1, 1 } }), origin={{"constant"}}
+  ROOT %c1 = s32[2,3]{1,0} copy(%c), origin={{"constant.1"}}
+}
+)";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnUnverifiedModule(hlo_string));
+  HloModuleProto module_proto = module->ToProto();
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<HloModule> module_from_proto,
+      HloModule::CreateFromProto(module_proto, module->config()));
+  EXPECT_THAT(module_from_proto->ToProto().debug_attributes(),
+              Pointwise(EqualsProto(), module->ToProto().debug_attributes()));
+}
+
+TEST(HloModuleTest,
+     OriginalValueRecoveryTableAndDebugAttributesProtoRoundTrip) {
+  const char* const hlo_string =
+      R"(HloModule module, entry_computation_layout={()->s32[1,3]{1,0}}, num_partitions=2,
+origin_recovery_table={
+  {"constant"} : {"constant__ovp0"},
+  "
+    HloModule recovery_module, entry_computation_layout={(s32[2,3]{1,0})->s32[2,3]{1,0}}
+
+    %add (x: s32[], y: s32[]) -> s32[] {
+      %x = s32[] parameter(0)
+      %y = s32[] parameter(1)
+      ROOT %add = s32[] add(%x, %y)
+    }
+
+    %add.clone (x.1: s32[], y.1: s32[]) -> s32[] {
+      %x.1 = s32[] parameter(0)
+      %y.1 = s32[] parameter(1)
+      ROOT %add.1 = s32[] add(%x.1, %y.1)
+    }
+
+    ENTRY %recovery_computation (param: s32[2,3]) -> s32[2,3] {
+      %partition-id = u32[] partition-id()
+      %constant = u32[] constant(0)
+      %compare = pred[] compare(%partition-id, %constant), direction=EQ
+      %broadcast = pred[2,3]{1,0} broadcast(%compare), dimensions={}
+      %param = s32[2,3]{1,0} parameter(0), sharding={maximal device=0}
+      %constant.1 = s32[] constant(0)
+      %broadcast.1 = s32[2,3]{1,0} broadcast(%constant.1), dimensions={}
+      %select = s32[2,3]{1,0} select(%broadcast, %param, %broadcast.1)
+      ROOT %all-reduce = s32[2,3]{1,0} all-reduce(%select), channel_id=1, replica_groups={{0,1}}, use_global_device_ids=true, to_apply=%add.clone, sharding={replicated}
+    }
+  "
+},
+debug_attributes={
+  {"constant"}:({log_mode=default,callback_id=123,partitioned=true}),
+  {"constant.1"}:({log_mode=fusion_debugger,callback_id=456,partitioned=false})
+}
+
+%add.clone (x.1: s32[], y.1: s32[]) -> s32[] {
+  %x.1 = s32[] parameter(0)
+  %y.1 = s32[] parameter(1)
+  ROOT %add.1 = s32[] add(s32[] %x.1, s32[] %y.1)
+}
+
+ENTRY %entry_spmd () -> s32[1,3] {
+  %partition-id = u32[] partition-id()
+  %constant.2 = u32[] constant(0)
+  %compare = pred[] compare(u32[] %partition-id, u32[] %constant.2), direction=EQ
+  %broadcast = pred[2,3]{1,0} broadcast(pred[] %compare), dimensions={}
+  %constant.1 = s32[2,3]{1,0} constant({ { 1, 1, 1 }, { 1, 1, 1 } }), origin={{"constant__ovp0"}}
+  %constant.3 = s32[] constant(0)
+  %broadcast.1 = s32[2,3]{1,0} broadcast(s32[] %constant.3), dimensions={}
+  %select = s32[2,3]{1,0} select(pred[2,3]{1,0} %broadcast, s32[2,3]{1,0} %constant.1, s32[2,3]{1,0} %broadcast.1)
+  %all-reduce = s32[2,3]{1,0} all-reduce(s32[2,3]{1,0} %select), channel_id=1, replica_groups={{0,1}}, use_global_device_ids=true, to_apply=%add.clone
+  %constant.4 = s32[2]{0} constant({1, 0})
+  %dynamic-slice = s32[1]{0} dynamic-slice(s32[2]{0} %constant.4, u32[] %partition-id), dynamic_slice_sizes={1}
+  %reshape = s32[] reshape(s32[1]{0} %dynamic-slice)
+  %dynamic-slice.1 = s32[1,3]{1,0} dynamic-slice(s32[2,3]{1,0} %all-reduce, s32[] %reshape, s32[] %constant.3), dynamic_slice_sizes={1,3}
+  ROOT %copy.1 = s32[1,3]{1,0} copy(s32[1,3]{1,0} %dynamic-slice.1)
+}
+)";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnUnverifiedModule(hlo_string));
+  HloModuleProto module_proto = module->ToProto();
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<HloModule> module_from_proto,
+      HloModule::CreateFromProto(module_proto, module->config()));
+  EXPECT_THAT(ClearRecoveryModuleIds(
+                  module_from_proto->original_value_recovery_table().ToProto()),
+              EqualsProto(ClearRecoveryModuleIds(
+                  module->original_value_recovery_table().ToProto())));
+  EXPECT_THAT(module_from_proto->ToProto().debug_attributes(),
+              Pointwise(EqualsProto(), module->ToProto().debug_attributes()));
+}
+
 TEST(HloModuleTest, TestCreateFromProtoUpdatesBufferAssignment) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnUnverifiedModule(R"(
@@ -1185,7 +1562,8 @@ TEST(HloModuleTest, TestCreateFromProtoUpdatesBufferAssignment) {
   TF_ASSERT_OK_AND_ASSIGN(
       HloModuleConfig config,
       HloModule::CreateModuleConfigFromShape(
-          module->entry_computation()->ComputeProgramShape(), DebugOptions()));
+          module->entry_computation()->ComputeProgramShape(),
+          GetDebugOptionsFromFlags()));
 
   module->set_config(std::move(config));
 
@@ -1238,10 +1616,10 @@ TEST(HloModuleTest, TestCreateFromProtoUpdatesBufferAssignment) {
       opt_hlo_module_proto_str, &opt_hlo_module_proto_modified));
 
   // Recreate the hlo module from the altered protos.
-  TF_ASSERT_OK_AND_ASSIGN(
-      HloModuleConfig module_config_recreated,
-      HloModule::CreateModuleConfigFromProto(
-          opt_hlo_module_proto_modified.hlo_module(), DebugOptions()));
+  TF_ASSERT_OK_AND_ASSIGN(HloModuleConfig module_config_recreated,
+                          HloModule::CreateModuleConfigFromProto(
+                              opt_hlo_module_proto_modified.hlo_module(),
+                              GetDebugOptionsFromFlags()));
 
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<HloModule> hlo_module_recreated,
@@ -1325,9 +1703,9 @@ TEST(HloModuleTest, OnTheFlyCanonicalizeStackFrameId) {
   frame3->set_file_location_id(1);
   frame3->set_parent_frame_id(0);
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      HloModuleConfig config,
-      HloModule::CreateModuleConfigFromProto(proto, DebugOptions()));
+  TF_ASSERT_OK_AND_ASSIGN(HloModuleConfig config,
+                          HloModule::CreateModuleConfigFromProto(
+                              proto, GetDebugOptionsFromFlags()));
 
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           HloModule::CreateFromProto(proto, config));
@@ -1344,6 +1722,12 @@ TEST(HloModuleTest, OnTheFlyCanonicalizeStackFrameId) {
       module->entry_computation()->GetInstructionWithName("inst2");
   EXPECT_EQ(i1->metadata().stack_frame_id(), 1);
   EXPECT_EQ(i2->metadata().stack_frame_id(), 1);
+
+  // Make sure we didn't accidentally populate an instruction with no
+  // metadata with empty metadata instead.
+  HloInstruction* r =
+      module->entry_computation()->GetInstructionWithName("root");
+  ASSERT_FALSE(r->has_metadata());
 }
 
 TEST(HloModuleTest, DeviceTypeSerialization) {
@@ -1380,7 +1764,7 @@ TEST(HloModuleTest, DeviceTypeSerialization) {
   // Create config from proto (which we verified sets device type)
   // But let's unset it to be sure CreateFromProto does the work.
   auto status_or_config_default =
-      HloModule::CreateModuleConfigFromProto(proto, DebugOptions());
+      HloModule::CreateModuleConfigFromProto(proto, GetDebugOptionsFromFlags());
   ASSERT_TRUE(status_or_config_default.ok());
   HloModuleConfig config_default = std::move(status_or_config_default).value();
   config_default.set_device_type("");
@@ -1391,6 +1775,131 @@ TEST(HloModuleTest, DeviceTypeSerialization) {
   std::unique_ptr<HloModule> module_from_proto_2 =
       std::move(status_or_module_from_proto_2).value();
   EXPECT_EQ(module_from_proto_2->config().device_type(), "GPU");
+}
+
+TEST(HloModuleTest, CreateFromProto_DecodesBackendConfigPayload) {
+  HloModuleProto proto;
+  ASSERT_TRUE(tsl::protobuf::TextFormat::ParseFromString(
+      R"pb(
+        name: "test_module"
+        entry_computation_id: 1
+        payloads: "inlined_large_payload_string"
+        computations {
+          name: "main"
+          id: 1
+          instructions {
+            name: "inst1"
+            opcode: "parameter"
+            shape { element_type: F32 }
+            id: 2
+            backend_config_payload { id: 0 }
+          }
+          instructions {
+            name: "inst2"
+            opcode: "parameter"
+            shape { element_type: F32 }
+            parameter_number: 1
+            id: 3
+            backend_config_payload { value: "small_inline_payload" }
+          }
+          instructions {
+            name: "root"
+            opcode: "add"
+            shape { element_type: F32 }
+            id: 4
+            operand_ids: 2
+            operand_ids: 3
+          }
+          root_id: 4
+        }
+        host_program_shape {
+          parameters { element_type: F32 }
+          parameters { element_type: F32 }
+          result { element_type: F32 }
+          parameter_names: "p0"
+          parameter_names: "p1"
+        }
+      )pb",
+      &proto));
+
+  TF_ASSERT_OK_AND_ASSIGN(HloModuleConfig config,
+                          HloModule::CreateModuleConfigFromProto(
+                              proto, GetDebugOptionsFromFlags()));
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          HloModule::CreateFromProto(proto, config));
+
+  HloInstruction* i1 =
+      module->entry_computation()->GetInstructionWithName("inst1");
+  HloInstruction* i2 =
+      module->entry_computation()->GetInstructionWithName("inst2");
+
+  EXPECT_EQ(i1->raw_backend_config_string(), "inlined_large_payload_string");
+  EXPECT_EQ(i2->raw_backend_config_string(), "small_inline_payload");
+}
+
+TEST(HloModuleTest, CreateFromProto_DeduplicatedBackendConfig) {
+  HloModuleProto proto;
+  ASSERT_TRUE(tsl::protobuf::TextFormat::ParseFromString(
+      R"pb(
+        name: "test_module"
+        entry_computation_id: 1
+        payloads: "inlined_large_payload_string"
+        computations {
+          name: "main"
+          id: 1
+          instructions {
+            name: "inst1"
+            opcode: "parameter"
+            shape { element_type: F32 }
+            id: 2
+            backend_config_payload { id: 0 }
+          }
+          instructions {
+            name: "inst2"
+            opcode: "parameter"
+            shape { element_type: F32 }
+            parameter_number: 1
+            id: 3
+            backend_config_payload { id: 0 }
+          }
+          instructions {
+            name: "root"
+            opcode: "add"
+            shape { element_type: F32 }
+            id: 4
+            operand_ids: 2
+            operand_ids: 3
+          }
+          root_id: 4
+        }
+        host_program_shape {
+          parameters { element_type: F32 }
+          parameters { element_type: F32 }
+          result { element_type: F32 }
+          parameter_names: "p0"
+          parameter_names: "p1"
+        }
+      )pb",
+      &proto));
+
+  TF_ASSERT_OK_AND_ASSIGN(HloModuleConfig config,
+                          HloModule::CreateModuleConfigFromProto(
+                              proto, GetDebugOptionsFromFlags()));
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          HloModule::CreateFromProto(proto, config));
+
+  HloInstruction* i1 =
+      module->entry_computation()->GetInstructionWithName("inst1");
+  HloInstruction* i2 =
+      module->entry_computation()->GetInstructionWithName("inst2");
+
+  EXPECT_EQ(i1->raw_backend_config_string(), "inlined_large_payload_string");
+  EXPECT_EQ(i2->raw_backend_config_string(), "inlined_large_payload_string");
+
+  // Verify that the backend config strings are backed by the same object.
+  EXPECT_EQ(&i1->raw_backend_config_string(), &i2->raw_backend_config_string());
 }
 
 class TestCacheEntry : public HloModule::CacheEntry {
@@ -1436,6 +1945,424 @@ TEST(HloModuleTest, ModuleLevelCacheAPIs) {
   // Test overwrite = true
   EXPECT_TRUE(module.SetCacheEntry(entry1_new, /*overwrite=*/true));
   EXPECT_EQ(module.GetCacheEntry<TestCacheEntry>(key1)->value(), 100);
+}
+
+TEST(HloModuleTest, BackendConfigDeduplicationAndRoundtrip) {
+  const char* hlo_text = R"(
+    HloModule test_module
+    ENTRY comp {
+      p0 = f32[] parameter(0)
+      p1 = f32[] parameter(1)
+      ROOT add = f32[] add(p0, p1)
+    })";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnUnverifiedModule(hlo_text));
+  HloInstruction* p0 = m->entry_computation()->GetInstructionWithName("p0");
+  HloInstruction* p1 = m->entry_computation()->GetInstructionWithName("p1");
+
+  p0->set_raw_backend_config_string("tokamax:{\"data\": 1}");
+  p1->CopyBackendConfigFrom(p0);  // Force in-memory sharing to test fast path.
+
+  // Verify in-memory deduplication is active.
+  EXPECT_EQ(&p0->raw_backend_config_string(), &p1->raw_backend_config_string());
+
+  HloModuleProto proto =
+      m->ToProto(HloProtoOptions{/*deduplicate_backend_config=*/true});
+
+  // Verify the serialized proto structure partially using proto matchers.
+  using ::tsl::proto_testing::Partially;
+  EXPECT_THAT(proto, Partially(EqualsProto(R"pb(
+                payloads: "tokamax:{\"data\": 1}"
+                computations {
+                  instructions {
+                    name: "p0"
+                    backend_config_payload { id: 0 }
+                    backend_config: ""
+                  }
+                  instructions {
+                    name: "p1"
+                    backend_config_payload { id: 0 }
+                    backend_config: ""
+                  }
+                  instructions { name: "add" }
+                }
+              )pb")));
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> loaded,
+                          HloModule::CreateFromProto(proto, m->config()));
+  const HloInstruction* loaded_p0 =
+      loaded->entry_computation()->GetInstructionWithName("p0");
+  const HloInstruction* loaded_p1 =
+      loaded->entry_computation()->GetInstructionWithName("p1");
+
+  // Verify identical string object in memory is shared post-deserialization.
+  EXPECT_EQ(loaded_p0->raw_backend_config_string(), "tokamax:{\"data\": 1}");
+  EXPECT_EQ(&loaded_p0->raw_backend_config_string(),
+            &loaded_p1->raw_backend_config_string());
+}
+
+TEST(HloModuleTest, BackendConfigNoInternByDefault) {
+  const char* hlo_text = R"(
+    HloModule test_module
+    ENTRY comp {
+      ROOT p0 = f32[] parameter(0)
+    })";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnUnverifiedModule(hlo_text));
+  HloInstruction* p0 = m->entry_computation()->root_instruction();
+  p0->set_raw_backend_config_string("tokamax:{\"data\": 1}");
+
+  HloModuleProto proto = m->ToProto();
+  // Config is NOT interned in payloads.
+  ASSERT_EQ(proto.payloads_size(), 0);
+
+  using ::tsl::proto_testing::EqualsProto;
+  using ::tsl::proto_testing::Partially;
+  EXPECT_THAT(
+      proto, Partially(EqualsProto(R"pb(
+        computations {
+          instructions { name: "p0" backend_config: "tokamax:{\"data\": 1}" }
+        }
+      )pb")));
+  EXPECT_FALSE(
+      proto.computations(0).instructions(0).has_backend_config_payload());
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> loaded,
+                          HloModule::CreateFromProto(proto, m->config()));
+  const HloInstruction* loaded_p0 =
+      loaded->entry_computation()->root_instruction();
+  EXPECT_EQ(loaded_p0->raw_backend_config_string(), "tokamax:{\"data\": 1}");
+}
+
+TEST(HloModuleTest, BackendConfigDeduplicationWithBaseOffset) {
+  const char* hlo_text = R"(
+    HloModule test_module
+    ENTRY comp {
+      ROOT p0 = f32[] parameter(0)
+    })";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnUnverifiedModule(hlo_text));
+  HloInstruction* p0 = m->entry_computation()->root_instruction();
+  p0->set_raw_backend_config_string("tokamax:{\"data\": 1}");
+
+  // 1. Create a proto and pre-fill its payloads with an existing string!
+  HloModuleProto proto;
+  proto.add_payloads("pre_existing_metadata");
+
+  // 2. Serialize to this pre-filled proto with interning!
+  m->ToProto(&proto, HloProtoOptions{/*deduplicate_backend_config=*/true});
+
+  // Verify shifted ID and combined payloads.
+  using ::tsl::proto_testing::EqualsProto;
+  using ::tsl::proto_testing::Partially;
+  EXPECT_THAT(proto, Partially(EqualsProto(R"pb(
+                payloads: "pre_existing_metadata"
+                payloads: "tokamax:{\"data\": 1}"
+                computations {
+                  instructions {
+                    name: "p0"
+                    backend_config_payload { id: 1 }
+                  }
+                }
+              )pb")));
+}
+
+TEST(HloModuleTest, MetadataValueSerializesAsPayloadId) {
+  HloModule m("test_module", HloModuleConfig());
+  HloComputation::Builder builder("comp");
+  Shape shape = ShapeUtil::MakeShape(F32, {});
+  HloInstruction* inst =
+      builder.AddInstruction(HloInstruction::CreateParameter(0, shape, "inst"));
+  OpMetadata metadata;
+  metadata.mutable_metadata_payload()->set_value("abc");
+  inst->set_metadata(metadata);
+  m.AddEntryComputation(builder.Build());
+
+  HloModuleProto proto = m.ToProto(HloProtoOptions());
+
+  // Expect that the serialized payloads contains "abc"
+  ASSERT_EQ(proto.payloads_size(), 1);
+  EXPECT_EQ(proto.payloads(0), "abc");
+
+  // Expect the instruction to use the ID instead of the value
+  const HloInstructionProto& inst_proto = proto.computations(0).instructions(0);
+  EXPECT_THAT(inst_proto.metadata(), EqualsProto(R"pb(
+                metadata_payload { id: 0 }
+              )pb"));
+}
+
+TEST(HloModuleTest, RepeatedMetadataPayloadValuesDedupInStorage) {
+  HloModule m("test_module", HloModuleConfig());
+  HloComputation::Builder builder("comp");
+  Shape shape = ShapeUtil::MakeShape(F32, {});
+  HloInstruction* p0 =
+      builder.AddInstruction(HloInstruction::CreateParameter(0, shape, "p0"));
+  HloInstruction* p1 =
+      builder.AddInstruction(HloInstruction::CreateParameter(1, shape, "p1"));
+
+  OpMetadata metadata;
+  metadata.mutable_metadata_payload()->set_value("abc");
+  p0->set_metadata(metadata);
+  p1->set_metadata(metadata);
+
+  m.AddEntryComputation(builder.Build());
+
+  HloModuleProto proto = m.ToProto(HloProtoOptions());
+
+  // Only 1 payload entry should exist (deduplicated!)
+  ASSERT_EQ(proto.payloads_size(), 1);
+  EXPECT_EQ(proto.payloads(0), "abc");
+
+  // Both instructions point to ID 0
+  const HloInstructionProto& inst0_proto =
+      proto.computations(0).instructions(0);
+  const HloInstructionProto& inst1_proto =
+      proto.computations(0).instructions(1);
+  EXPECT_THAT(inst0_proto.metadata(), EqualsProto(R"pb(
+                metadata_payload { id: 0 }
+              )pb"));
+  EXPECT_THAT(inst1_proto.metadata(), EqualsProto(R"pb(
+                metadata_payload { id: 0 }
+              )pb"));
+}
+
+TEST(HloModuleTest, CreateFromProtoInlinesMetadataPayloadIds) {
+  HloModuleProto proto;
+  proto.set_name("test_module");
+  proto.set_entry_computation_id(1);
+  ProgramShapeProto program_shape;
+  *program_shape.mutable_result() = ShapeUtil::MakeShape(F32, {}).ToProto();
+  *proto.mutable_host_program_shape() = program_shape;
+  proto.add_payloads("abc");
+
+  HloComputationProto* comp_proto = proto.add_computations();
+  comp_proto->set_id(1);
+  comp_proto->set_name("comp");
+  comp_proto->set_root_id(0);
+
+  HloInstructionProto* inst_proto = comp_proto->add_instructions();
+  inst_proto->set_id(0);
+  inst_proto->set_name("inst");
+  inst_proto->set_opcode("parameter");
+  *inst_proto->mutable_shape() = ShapeUtil::MakeShape(F32, {}).ToProto();
+  inst_proto->mutable_metadata()->mutable_metadata_payload()->set_id(0);
+
+  TF_ASSERT_OK_AND_ASSIGN(HloModuleConfig config,
+                          HloModule::CreateModuleConfigFromProto(
+                              proto, GetDebugOptionsFromFlags()));
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> loaded,
+                          HloModule::CreateFromProto(proto, config));
+
+  const HloInstruction* loaded_inst =
+      loaded->entry_computation()->root_instruction();
+
+  // In-memory instruction must have the value inlined and no ID!
+  EXPECT_TRUE(loaded_inst->has_metadata_payload());
+  EXPECT_EQ(loaded_inst->metadata_payload_string(), "abc");
+  EXPECT_EQ(loaded_inst->metadata().metadata_payload().payload_source_case(),
+            xla::Payload::kValue);
+}
+
+TEST(HloModuleTest, InvalidMetadataIdFails) {
+  HloModuleProto proto;
+  proto.set_name("test_module");
+  proto.set_entry_computation_id(1);
+  ProgramShapeProto program_shape;
+  *program_shape.mutable_result() = ShapeUtil::MakeShape(F32, {}).ToProto();
+  *proto.mutable_host_program_shape() = program_shape;
+  proto.add_payloads("abc");  // payloads size is 1 (valid ID is 0 only)
+
+  HloComputationProto* comp_proto = proto.add_computations();
+  comp_proto->set_id(1);
+  comp_proto->set_name("comp");
+  comp_proto->set_root_id(0);
+
+  HloInstructionProto* inst_proto = comp_proto->add_instructions();
+  inst_proto->set_id(0);
+  inst_proto->set_name("inst");
+  inst_proto->set_opcode("parameter");
+  *inst_proto->mutable_shape() = ShapeUtil::MakeShape(F32, {}).ToProto();
+  inst_proto->mutable_metadata()->mutable_metadata_payload()->set_id(
+      5);  // Invalid ID!
+
+  TF_ASSERT_OK_AND_ASSIGN(HloModuleConfig config,
+                          HloModule::CreateModuleConfigFromProto(
+                              proto, GetDebugOptionsFromFlags()));
+  absl::Status status = HloModule::CreateFromProto(proto, config).status();
+  EXPECT_FALSE(status.ok());
+  EXPECT_THAT(status.message(),
+              ::testing::HasSubstr("Invalid metadata payload id 5"));
+}
+
+TEST(HloModuleTest, CloneWorksNaturally) {
+  HloModule m("test_module", HloModuleConfig());
+  HloComputation::Builder builder("comp");
+  Shape shape = ShapeUtil::MakeShape(F32, {});
+  HloInstruction* inst =
+      builder.AddInstruction(HloInstruction::CreateParameter(0, shape, "inst"));
+  OpMetadata metadata;
+  metadata.mutable_metadata_payload()->set_value("abc");
+  inst->set_metadata(metadata);
+  m.AddEntryComputation(builder.Build());
+
+  std::unique_ptr<HloModule> cloned = m.Clone();
+  const HloInstruction* cloned_inst =
+      cloned->entry_computation()->root_instruction();
+
+  EXPECT_TRUE(cloned_inst->has_metadata_payload());
+  EXPECT_EQ(cloned_inst->metadata_payload_string(), "abc");
+  EXPECT_EQ(cloned_inst->metadata().metadata_payload().payload_source_case(),
+            xla::Payload::kValue);
+}
+
+TEST(HloModuleTest, PreFilledProtoSafety) {
+  HloModule m("test_module", HloModuleConfig());
+  HloComputation::Builder builder("comp");
+  Shape shape = ShapeUtil::MakeShape(F32, {});
+  HloInstruction* inst =
+      builder.AddInstruction(HloInstruction::CreateParameter(0, shape, "inst"));
+  OpMetadata metadata;
+  metadata.mutable_metadata_payload()->set_value("new_payload");
+  inst->set_metadata(metadata);
+  m.AddEntryComputation(builder.Build());
+
+  HloModuleProto proto;
+  proto.add_payloads("existing_payload");
+  HloComputationProto* existing_comp = proto.add_computations();
+  existing_comp->set_id(0);
+  existing_comp->set_name("existing_comp");
+  existing_comp->set_root_id(0);
+  HloInstructionProto* existing_inst = existing_comp->add_instructions();
+  existing_inst->set_id(0);
+  existing_inst->set_name("existing_inst");
+  existing_inst->set_opcode("parameter");
+  *existing_inst->mutable_shape() = ShapeUtil::MakeShape(F32, {}).ToProto();
+
+  // Serialize on top of pre-filled proto
+  m.ToProto(&proto, HloProtoOptions());
+
+  // Expect:
+  // - payloads: ["existing_payload", "new_payload"]
+  // - new computation metadata id is shifted by 1 pointing to index 1
+  ASSERT_EQ(proto.payloads_size(), 2);
+  EXPECT_EQ(proto.payloads(0), "existing_payload");
+  EXPECT_EQ(proto.payloads(1), "new_payload");
+
+  // New instruction points to ID 1
+  const HloInstructionProto& new_inst_proto =
+      proto.computations(1).instructions(0);
+  EXPECT_EQ(new_inst_proto.metadata().metadata_payload().id(), 1);
+
+  // Existing computation instructions are COMPLETELY untouched (no metadata
+  // added or modified!)
+  const HloInstructionProto& old_inst_proto =
+      proto.computations(0).instructions(0);
+  EXPECT_FALSE(old_inst_proto.has_metadata());
+}
+
+TEST(HloModuleTest, OrdinaryMetadataNotPolluted) {
+  HloModule m("test_module", HloModuleConfig());
+  HloComputation::Builder builder("comp");
+  Shape shape = ShapeUtil::MakeShape(F32, {});
+  HloInstruction* inst =
+      builder.AddInstruction(HloInstruction::CreateParameter(0, shape, "inst"));
+
+  // Set standard metadata but NO interned payload!
+  OpMetadata metadata;
+  metadata.set_op_name("x");
+  inst->set_metadata(metadata);
+  m.AddEntryComputation(builder.Build());
+
+  HloModuleProto proto = m.ToProto(HloProtoOptions());
+
+  const HloInstructionProto& inst_proto = proto.computations(0).instructions(0);
+  EXPECT_TRUE(inst_proto.has_metadata());
+  EXPECT_EQ(inst_proto.metadata().op_name(), "x");
+
+  // Must NOT contain an empty metadata_payload field!
+  EXPECT_FALSE(inst_proto.metadata().has_metadata_payload());
+}
+
+TEST(HloModuleTest, NoDeduplicateMetadataOption) {
+  HloModule m("test_module", HloModuleConfig());
+  HloComputation::Builder builder("comp");
+  Shape shape = ShapeUtil::MakeShape(F32, {});
+  HloInstruction* inst =
+      builder.AddInstruction(HloInstruction::CreateParameter(0, shape, "inst"));
+
+  OpMetadata metadata;
+  metadata.mutable_metadata_payload()->set_value("abc");
+  inst->set_metadata(metadata);
+  m.AddEntryComputation(builder.Build());
+
+  HloModuleProto proto = m.ToProto(HloProtoOptions{
+      /*deduplicate_backend_config=*/false, /*deduplicate_metadata=*/false});
+
+  // Payloads array must be completely empty!
+  ASSERT_EQ(proto.payloads_size(), 0);
+
+  // Value is stored directly inline inside the instruction metadata!
+  const HloInstructionProto& inst_proto = proto.computations(0).instructions(0);
+  EXPECT_TRUE(inst_proto.has_metadata());
+  EXPECT_TRUE(inst_proto.metadata().has_metadata_payload());
+  EXPECT_EQ(inst_proto.metadata().metadata_payload().payload_source_case(),
+            xla::Payload::kValue);
+  EXPECT_EQ(inst_proto.metadata().metadata_payload().value(), "abc");
+}
+
+TEST(HloModuleTest, TextHloRoundtripStrict) {
+  const char* hlo_text = R"(
+    HloModule text_module
+    ENTRY comp {
+      ROOT inst = f32[] parameter(0), metadata={metadata_payload="abc"}
+    })";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnUnverifiedModule(hlo_text));
+
+  // 1. Verify initial parsed state
+  const HloInstruction* inst = m->entry_computation()->root_instruction();
+  EXPECT_TRUE(inst->has_metadata_payload());
+  EXPECT_EQ(inst->metadata_payload_string(), "abc");
+
+  // 2. Print textual representation
+  std::string printed = m->ToString();
+
+  // 3. Parse the printed textual HLO string back again!
+  TF_ASSERT_OK_AND_ASSIGN(auto m_again,
+                          ParseAndReturnUnverifiedModule(printed));
+  const HloInstruction* inst_again =
+      m_again->entry_computation()->root_instruction();
+
+  // 4. Verify strict round-trip equivalence
+  EXPECT_TRUE(inst_again->has_metadata_payload());
+  EXPECT_EQ(inst_again->metadata_payload_string(), "abc");
+}
+
+TEST(HloModuleTest, CombinedDeduplicationSharesPayloadId) {
+  HloModule m("test_module", HloModuleConfig());
+  HloComputation::Builder builder("comp");
+  Shape shape = ShapeUtil::MakeShape(F32, {});
+  HloInstruction* inst =
+      builder.AddInstruction(HloInstruction::CreateParameter(0, shape, "inst"));
+
+  // Set identical backend config and interned metadata value!
+  inst->set_raw_backend_config_string("abc");
+  OpMetadata metadata;
+  metadata.mutable_metadata_payload()->set_value("abc");
+  inst->set_metadata(metadata);
+  m.AddEntryComputation(builder.Build());
+
+  HloModuleProto proto = m.ToProto(HloProtoOptions{
+      /*deduplicate_backend_config=*/true, /*deduplicate_metadata=*/true});
+
+  // Verify that the unified payloads array has EXACTLY 1 shared payload entry!
+  ASSERT_EQ(proto.payloads_size(), 1);
+  EXPECT_EQ(proto.payloads(0), "abc");
+
+  // Both backend config and metadata must point to ID 0!
+  const HloInstructionProto& inst_proto = proto.computations(0).instructions(0);
+  EXPECT_TRUE(inst_proto.has_backend_config_payload());
+  EXPECT_EQ(inst_proto.backend_config_payload().id(), 0);
+
+  EXPECT_TRUE(inst_proto.has_metadata());
+  EXPECT_TRUE(inst_proto.metadata().has_metadata_payload());
+  EXPECT_EQ(inst_proto.metadata().metadata_payload().id(), 0);
 }
 
 }  // namespace

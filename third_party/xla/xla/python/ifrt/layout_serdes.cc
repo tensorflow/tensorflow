@@ -18,6 +18,7 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/cord.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "llvm/Support/Casting.h"
@@ -39,7 +40,7 @@ class CompactLayoutSerDes
     return "xla::ifrt::CompactLayout";
   }
 
-  absl::StatusOr<std::string> Serialize(
+  absl::StatusOr<absl::Cord> Serialize(
       const Serializable& serializable,
       std::unique_ptr<SerializeOptions> options) override {
     const SerDesVersion version = GetRequestedSerDesVersion(options.get());
@@ -56,11 +57,11 @@ class CompactLayoutSerDes
     proto.mutable_major_to_minor()->Reserve(major_to_minor.size());
     proto.mutable_major_to_minor()->Add(major_to_minor.begin(),
                                         major_to_minor.end());
-    return proto.SerializeAsString();
+    return proto.SerializeAsCord();
   }
 
   absl::StatusOr<std::unique_ptr<Serializable>> Deserialize(
-      const std::string& serialized,
+      const absl::Cord& serialized,
       std::unique_ptr<DeserializeOptions> options) override {
     CompactLayoutProto proto;
     if (!proto.ParseFromString(serialized)) {

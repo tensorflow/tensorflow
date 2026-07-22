@@ -46,7 +46,7 @@ void SetDefaultSharding(mlir::tf_device::ClusterFuncOp cluster,
     sharding = xla::sharding_builder::Replicate().SerializeAsString();
   } else {
     // Assigns inputs/outputs for TPU computation to logical core 0.
-    sharding = xla::sharding_builder::AssignDevice(0).SerializeAsString();
+    sharding = xla::sharding_builder::SingleDevice(0).SerializeAsString();
   }
 
   llvm::SmallVector<llvm::StringRef, 4> input_sharding(cluster.getNumOperands(),

@@ -25,8 +25,11 @@ limitations under the License.
 #include "mlir/Dialect/GPU/IR/GPUDialect.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/IR/Builders.h"
+#include "mlir/IR/BuiltinAttributeInterfaces.h"
+#include "mlir/IR/BuiltinTypeInterfaces.h"
 #include "mlir/IR/Matchers.h"
 #include "mlir/IR/PatternMatch.h"
+#include "mlir/IR/TypeUtilities.h"
 #include "mlir/IR/Value.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Support/LLVM.h"
@@ -38,10 +41,11 @@ limitations under the License.
 
 namespace xla {
 namespace emitters {
-namespace {
 
 #define GEN_PASS_DEF_SIMPLIFYARITHPASS
 #include "xla/codegen/emitters/transforms/passes.h.inc"
+
+namespace {
 
 using mlir::LogicalResult;
 using mlir::OpRewritePattern;
@@ -84,8 +88,14 @@ struct RewriteCmpI : OpRewritePattern<CmpIOp> {
     Interval::ComparisonResult result =
         EvaluateCmpI(op.getPredicate(), *lhs, *rhs);
     if (result != std::nullopt) {
-      rewriter.replaceOpWithNewOp<mlir::arith::ConstantIntOp>(
-          op, rewriter.getI1Type(), *result);
+      if (auto shaped_type = mlir::dyn_cast<mlir::ShapedType>(op.getType())) {
+        auto attr = mlir::DenseElementsAttr::get(shaped_type,
+                                                 rewriter.getBoolAttr(*result));
+        rewriter.replaceOpWithNewOp<mlir::arith::ConstantOp>(op, attr);
+      } else {
+        rewriter.replaceOpWithNewOp<mlir::arith::ConstantIntOp>(
+            op, rewriter.getI1Type(), *result);
+      }
       return mlir::success();
     }
     return rewriter.notifyMatchFailure(op, "not a constant result");
@@ -142,8 +152,10 @@ mlir::Value FindNarrowestValueInChain(mlir::Value value) {
   auto defining_op = value.getDefiningOp<mlir::arith::TruncIOp>();
   if (defining_op) {
     auto first_trunc = FindNarrowestValueInChain(defining_op.getOperand());
-    if (first_trunc && first_trunc.getType().getIntOrFloatBitWidth() <=
-                           defining_op.getType().getIntOrFloatBitWidth()) {
+    if (first_trunc && mlir::getElementTypeOrSelf(first_trunc.getType())
+                               .getIntOrFloatBitWidth() <=
+                           mlir::getElementTypeOrSelf(defining_op.getType())
+                               .getIntOrFloatBitWidth()) {
       return first_trunc;
     }
     return defining_op;
@@ -261,6 +273,53 @@ struct RewriteMaximumF : OpRewritePattern<mlir::arith::MaximumFOp> {
     return mlir::success();
   }
 };
+
+template <typename OpType, mlir::arith::CmpFPredicate Predicate>
+struct RewriteMinMaxFWithNaNPropagation : OpRewritePattern<OpType> {
+  using OpRewritePattern<OpType>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(OpType op,
+                                PatternRewriter& rewriter) const override {
+    // Check if either operand is NaN using ORD (ordered) predicate
+    // ORD returns true only if neither operand is NaN
+    auto is_neither_nan = mlir::arith::CmpFOp::create(
+        rewriter, op.getLoc(), mlir::arith::CmpFPredicate::ORD, op.getLhs(),
+        op.getRhs());
+
+    // Ordered comparison (returns false if either is NaN)
+    auto cmp = mlir::arith::CmpFOp::create(rewriter, op.getLoc(), Predicate,
+                                           op.getLhs(), op.getRhs());
+    auto selected = mlir::arith::SelectOp::create(
+        rewriter, op.getLoc(), op.getType(), cmp, op.getLhs(), op.getRhs());
+
+    // Create constant NaN
+    auto elem_type =
+        mlir::cast<mlir::FloatType>(mlir::getElementTypeOrSelf(op.getType()));
+    auto float_attr = rewriter.getFloatAttr(
+        elem_type, llvm::APFloat::getNaN(elem_type.getFloatSemantics()));
+    mlir::TypedAttr attr = float_attr;
+    if (auto shaped_type = mlir::dyn_cast<mlir::ShapedType>(op.getType())) {
+      attr = mlir::DenseElementsAttr::get(shaped_type, float_attr);
+    }
+    auto nan_const =
+        mlir::arith::ConstantOp::create(rewriter, op.getLoc(), attr);
+
+    // If either is NaN, return constant NaN; otherwise return selected
+    auto result =
+        mlir::arith::SelectOp::create(rewriter, op.getLoc(), op.getType(),
+                                      is_neither_nan, selected, nan_const);
+
+    rewriter.replaceOp(op, result);
+    return mlir::success();
+  }
+};
+
+using RewriteMinimumFWithNaNPropagation =
+    RewriteMinMaxFWithNaNPropagation<mlir::arith::MinimumFOp,
+                                     mlir::arith::CmpFPredicate::OLE>;
+using RewriteMaximumFWithNaNPropagation =
+    RewriteMinMaxFWithNaNPropagation<mlir::arith::MaximumFOp,
+                                     mlir::arith::CmpFPredicate::OGE>;
 
 static std::optional<Interval> GetSelectRange(mlir::Operation* sel) {
   // Match |x| implemented as (x >= 0) ? x : (0 - x).
@@ -397,9 +456,11 @@ class SimplifyArithPass
       RewriteTruncExtShuffle
     >(ctx);
 
-    if (fast_min_max_)
-    {
+    if (fast_min_max_) {
       patterns.add<RewriteMinimumF, RewriteMaximumF>(ctx);
+    } else if (explicit_nan_propagation_) {
+      patterns.add<RewriteMinimumFWithNaNPropagation,
+                   RewriteMaximumFWithNaNPropagation>(ctx);
     }
 
     // clang-format on
@@ -418,12 +479,6 @@ class SimplifyArithPass
 };
 
 }  // namespace
-
-std::unique_ptr<mlir::Pass> CreateSimplifyArithPass(bool fast_min_max) {
-  SimplifyArithPassOptions options;
-  options.fast_min_max_ = fast_min_max;
-  return std::make_unique<SimplifyArithPass>(options);
-}
 
 }  // namespace emitters
 }  // namespace xla

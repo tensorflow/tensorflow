@@ -3,7 +3,11 @@ tf_class {
   is_instance: "<class \'tensorflow.python.ops.init_ops.GlorotNormal\'>"
   is_instance: "<class \'tensorflow.python.ops.init_ops.VarianceScaling\'>"
   is_instance: "<class \'tensorflow.python.ops.init_ops.Initializer\'>"
-  is_instance: "<type \'object\'>"
+  is_instance: "<class \'object\'>"
+  member_method {
+    name: "__call__"
+    argspec: "args=[\'self\', \'shape\', \'dtype\', \'partition_info\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
+  }
   member_method {
     name: "__init__"
     argspec: "args=[\'self\', \'seed\', \'dtype\'], varargs=None, keywords=None, defaults=[\'None\', \"<dtype: \'float32\'>\"], "

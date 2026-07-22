@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/service/gpu/model/triton_emitter_constraints.h"
 
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <utility>
@@ -23,9 +24,15 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
+#include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "mlir/IR/MLIRContext.h"
+#include "xla/codegen/tiling/experimental/tiled_hlo.h"
+#include "xla/codegen/tiling/experimental/tiling_space.h"
 #include "xla/codegen/tiling/symbolic_tile_analysis.h"
+#include "xla/codegen/tiling/tiling_specification.h"
 #include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -33,21 +40,24 @@ limitations under the License.
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/verified_hlo_module.h"
 #include "xla/hlo/utils/hlo_traversal.h"
+#include "xla/service/decision.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
 #include "xla/service/instruction_fusion.h"
 #include "xla/stream_executor/device_description.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 
 namespace xla {
 namespace gpu {
 namespace {
 
+using ::absl::Status;
+using ::absl_testing::StatusIs;
+using ::testing::_;
+using ::testing::HasSubstr;
+
 class TritonEmitterConstraintsTest : public HloHardwareIndependentTestBase {
  public:
-  TritonEmitterConstraintsTest() {
-    RegisterSymbolicExprStorage(&mlir_context_);
-  }
+  TritonEmitterConstraintsTest() = default;
   std::optional<SymbolicTileAnalysis> TryAnalyzeModule(
       HloModule* module, bool with_triton_emitter_specific_constraints = true) {
     EmitterSpecificConstraintsBuilder constraints_builder = nullptr;
@@ -72,14 +82,21 @@ class TritonEmitterConstraintsTest : public HloHardwareIndependentTestBase {
     return std::nullopt;
   }
 
+  DebugOptions GetDebugOptionsForTest() const override {
+    DebugOptions debug_options =
+        HloHardwareIndependentTestBase::GetDebugOptionsForTest();
+    debug_options.set_xla_gpu_experimental_enable_tiling_propagation(false);
+    return debug_options;
+  }
+
   mlir::MLIRContext mlir_context_;
   se::DeviceDescription device_description_ =
       TestGpuDeviceInfo::RTXA6000DeviceInfo();
 };
 
 TEST_F(TritonEmitterConstraintsTest, TooBigTileSizesConstraintIsEnforced) {
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(R"(
 HloModule m
 
 max_computation {
@@ -128,8 +145,8 @@ ENTRY entry_computation {
 }
 
 TEST_F(TritonEmitterConstraintsTest, DotOperandSizeConstraintIsEnforced) {
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(R"(
 HloModule m
 
 fused_computation {
@@ -161,8 +178,8 @@ ENTRY entry_computation {
 }
 
 TEST_F(TritonEmitterConstraintsTest, TooManyBlocksConstraintIsEnforced) {
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(R"(
 HloModule m
 
 max_computation {
@@ -200,8 +217,8 @@ ENTRY entry_computation {
 }
 
 TEST_F(TritonEmitterConstraintsTest, FusionHasValidTileSizes) {
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(R"(
 HloModule m
 
 fused_computation {
@@ -259,8 +276,8 @@ ENTRY entry_computation {
 }
 
 TEST_F(TritonEmitterConstraintsTest, MultiOutputFusionHasPowerOfTwoTileSizes) {
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(R"(
 HloModule m
 
 add {
@@ -314,6 +331,187 @@ ENTRY entry_computation {
   EXPECT_THAT(
       analysis_with_triton_constraints->ParametersSatisfyConstraints(tiling),
       absl_testing::IsOkAndHolds(false));
+}
+
+class VerifyTritonConstraintsTest : public HloHardwareIndependentTestBase {
+ protected:
+  VerifyTritonConstraintsTest() = default;
+
+  Status CheckTiling(HloModule* module, absl::Span<const int64_t> tile_sizes) {
+    HloInstruction* root = module->entry_computation()->root_instruction();
+    std::unique_ptr<HloFusionAdaptor> fusion_adaptor =
+        HloFusionAdaptor::ForInstruction(root);
+    ASSIGN_OR_RETURN(
+        std::unique_ptr<experimental::TilingSpace> tiling_space,
+        experimental::TilingSpace::Create(*fusion_adaptor, &mlir_context_));
+    RETURN_IF_ERROR(tiling_space->AssignTileSizes(tile_sizes));
+    ASSIGN_OR_RETURN(experimental::TiledHloComputation tiled_comp,
+                     experimental::TiledHloComputation::Tile(
+                         *fusion_adaptor, std::move(tiling_space)));
+    Decision decision =
+        experimental::VerifyTritonConstraints(tiled_comp, device_description_);
+    if (!decision) {
+      return absl::InvalidArgumentError(decision.Explain());
+    }
+    return absl::OkStatus();
+  }
+
+  mlir::MLIRContext mlir_context_;
+  se::DeviceDescription device_description_ =
+      TestGpuDeviceInfo::RTXA6000DeviceInfo();
+};
+
+TEST_F(VerifyTritonConstraintsTest, TooBigTileSizesConstraintIsEnforced) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(R"hlo(
+HloModule m
+
+max_computation {
+  param_0 = f32[] parameter(0)
+  param_1 = f32[] parameter(1)
+  ROOT maximum = f32[] maximum(param_0, param_1)
+}
+
+fused_computation {
+  param_0 = f32[8192,50304] parameter(0)
+  constant = f32[] constant(-inf)
+  reduce = f32[8192] reduce(param_0, constant), dimensions={1},
+      to_apply=max_computation
+  broadcast = f32[8192,50304] broadcast(reduce), dimensions={0}
+  ROOT subtract = f32[8192,50304] subtract(param_0, broadcast)
+}
+
+ENTRY entry_computation {
+  param_0 = f32[8192,50304] parameter(0)
+  ROOT fusion = f32[8192,50304] fusion(param_0), kind=kCustom,
+    calls=fused_computation,
+    backend_config={"fusion_backend_config":{"kind":"__triton"}}
+}
+)hlo"));
+
+  EXPECT_OK(CheckTiling(module.get(), {8, 128, 8192}));
+  EXPECT_THAT(
+      CheckTiling(module.get(), {18, 50304, 8192}),
+      StatusIs(_,
+               HasSubstr("padded tile size product that exceeds the maximum")));
+  EXPECT_THAT(
+      CheckTiling(module.get(), {1024, 1, 8192}),
+      StatusIs(_,
+               HasSubstr("padded tile size product that exceeds the maximum")));
+}
+
+TEST_F(VerifyTritonConstraintsTest, DotOperandSizeConstraintIsEnforced) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(R"hlo(
+HloModule m
+
+fused_computation {
+  p0 = f32[4,5376] parameter(0)
+  p1 = f32[32768,5376] parameter(1)
+  ROOT dot = f32[4,32768] dot(p0, p1),
+    lhs_contracting_dims={1}, rhs_contracting_dims={1}
+}
+
+ENTRY entry_computation {
+  param_0 = f32[4,5376] parameter(0)
+  param_1 =  f32[32768,5376] parameter(1)
+  ROOT fusion = f32[4,32768] fusion(param_0, param_1), kind=kCustom,
+    calls=fused_computation,
+    backend_config={"fusion_backend_config":{"kind":"__triton"}}
+}
+)hlo"));
+
+  EXPECT_OK(CheckTiling(module.get(), {4, 4, 4}));
+  EXPECT_THAT(CheckTiling(module.get(), {512, 4, 4}),
+              StatusIs(_, HasSubstr("exceeds the maximum MMA dimension size")));
+}
+
+TEST_F(VerifyTritonConstraintsTest, TooManyBlocksConstraintIsEnforced) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(R"hlo(
+HloModule m
+
+max_computation {
+  param_0 = f32[] parameter(0)
+  param_1 = f32[] parameter(1)
+  ROOT maximum = f32[] maximum(param_0, param_1)
+}
+
+fused_computation {
+  param_0 = f32[65536,65536] parameter(0)
+  ROOT log = f32[65536,65536] log(param_0)
+}
+
+ENTRY entry_computation {
+  param_0 = f32[65536,65536] parameter(0)
+  ROOT fusion = f32[65536,65536] fusion(param_0), kind=kCustom,
+    calls=fused_computation,
+    backend_config={"fusion_backend_config":{"kind":"__triton"}}
+}
+)hlo"));
+
+  EXPECT_OK(CheckTiling(module.get(), {128, 128}));
+  EXPECT_THAT(CheckTiling(module.get(), {1, 1}),
+              StatusIs(_, HasSubstr("exceeds the device grid")));
+}
+
+TEST_F(VerifyTritonConstraintsTest, FusionHasValidTileSizes) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(R"hlo(
+HloModule m
+
+fused_computation {
+  param_0 = f32[36] parameter(0)
+  abs = f32[36] abs(param_0)
+  ROOT reshape = f32[6,6] reshape(abs)
+}
+
+ENTRY entry_computation {
+  param_0 = f32[36] parameter(0)
+  ROOT fusion = f32[6,6] fusion(param_0), kind=kCustom,
+    calls=fused_computation,
+    backend_config={"fusion_backend_config":{"kind":"__triton"}}
+})hlo"));
+
+  EXPECT_THAT(CheckTiling(module.get(), {1, 3}),
+              StatusIs(_, HasSubstr("neither a power of 2 nor equal")));
+  EXPECT_OK(CheckTiling(module.get(), {1, 6}));
+  EXPECT_OK(CheckTiling(module.get(), {2, 1}));
+  EXPECT_OK(CheckTiling(module.get(), {1, 8}));
+  EXPECT_OK(CheckTiling(module.get(), {1, 4}));
+}
+
+TEST_F(VerifyTritonConstraintsTest, MultiOutputFusionHasPowerOfTwoTileSizes) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(R"hlo(
+HloModule m
+
+add {
+  p0 = f32[] parameter(0)
+  p1 = f32[] parameter(1)
+  ROOT add = f32[] add(p0, p1)
+}
+
+fused_computation {
+  param_0 = f32[36] parameter(0)
+  abs = f32[36] abs(param_0)
+  reshape = f32[3,12] reshape(abs)
+  zero = f32[] constant(0)
+  reduce = f32[3] reduce(reshape, zero), to_apply=add, dimensions={1}
+  ROOT tuple = (f32[3], f32[36]) tuple(reduce, abs)
+}
+
+ENTRY entry_computation {
+  param_0 = f32[36] parameter(0)
+  ROOT fusion = (f32[3], f32[36]) fusion(param_0), kind=kCustom,
+    calls=fused_computation,
+    backend_config={"fusion_backend_config":{"kind":"__triton"}}
+})hlo"));
+  module->mutable_config()
+      .mutable_debug_options()
+      .set_xla_gpu_unsupported_enable_triton_multi_output_fusion(true);
+  EXPECT_THAT(CheckTiling(module.get(), {1, 12, 12}),
+              StatusIs(_, HasSubstr("neither a power of 2 nor equal")));
 }
 
 }  // namespace

@@ -1,10 +1,14 @@
 path: "tensorflow.distribute.experimental.PreemptionCheckpointHandler"
 tf_class {
   is_instance: "<class \'tensorflow.python.distribute.failure_handling.failure_handling.PreemptionCheckpointHandler\'>"
-  is_instance: "<type \'object\'>"
+  is_instance: "<class \'object\'>"
   member {
     name: "total_run_calls"
-    mtype: "<type \'property\'>"
+    mtype: "<class \'property\'>"
+  }
+  member_method {
+    name: "__del__"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "__init__"

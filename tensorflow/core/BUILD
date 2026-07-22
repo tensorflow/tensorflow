@@ -1,3 +1,18 @@
+# Copyright 2026 The TensorFlow Authors. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
+
 # Description:
 # TensorFlow is a computational framework, primarily for use in machine
 # learning applications.
@@ -814,24 +829,36 @@ filegroup(
     name = "mobile_srcs_no_runtime",
     srcs = [
         "//tensorflow/compiler/jit:mobile_srcs_no_runtime",
-        "//tensorflow/core/activity_watcher:activity_watcher_headers",
         "//tensorflow/core/example:mobile_srcs_no_runtime",
-        "//tensorflow/core/framework:attr_value_proto_text_srcs",
         "//tensorflow/core/framework:mobile_srcs_no_runtime",
-        "//tensorflow/core/lib/core:mobile_srcs_no_runtime",
-        "//tensorflow/core/lib/gtl:mobile_srcs_no_runtime",
-        "//tensorflow/core/lib/hash:mobile_srcs_no_runtime",
         "//tensorflow/core/lib/strings:mobile_srcs_no_runtime",
         "//tensorflow/core/platform:mobile_srcs_no_runtime",
         "//tensorflow/core/profiler:mobile_srcs_no_runtime",
-        "//tensorflow/core/public:mobile_srcs_no_runtime",
         "//tensorflow/core/util:mobile_srcs_no_runtime",
-        "//tensorflow/core/util/ctc:mobile_srcs",
         "@tsl//tsl/platform:mobile_srcs_no_runtime",
         "@xla//xla/tsl/framework:mobile_srcs_no_runtime",
-        "@xla//xla/tsl/framework/fixedpoint:mobile_srcs_no_runtime",
     ],
-    visibility = ["//visibility:public"],
+)
+
+filegroup(
+    name = "mobile_hdrs_no_runtime",
+    srcs = [
+        "//tensorflow/compiler/jit:mobile_hdrs_no_runtime",
+        "//tensorflow/core/activity_watcher:activity_watcher_headers",
+        "//tensorflow/core/example:mobile_hdrs_no_runtime",
+        "//tensorflow/core/framework:mobile_hdrs_no_runtime",
+        "//tensorflow/core/lib/core:mobile_hdrs_no_runtime",
+        "//tensorflow/core/lib/gtl:mobile_hdrs_no_runtime",
+        "//tensorflow/core/lib/hash:mobile_hdrs_no_runtime",
+        "//tensorflow/core/lib/strings:mobile_hdrs_no_runtime",
+        "//tensorflow/core/platform:mobile_hdrs_no_runtime",
+        "//tensorflow/core/profiler:mobile_hdrs_no_runtime",
+        "//tensorflow/core/public:mobile_hdrs_no_runtime",
+        "//tensorflow/core/util:mobile_hdrs_no_runtime",
+        "//tensorflow/core/util/ctc:mobile_hdrs",
+        "@tsl//tsl/platform:mobile_hdrs_no_runtime",
+        "@xla//xla/tsl/framework:mobile_hdrs_no_runtime",
+    ] + tf_portable_proto_lib(),
 )
 
 # Sources required to build the TensorFlow framework with runtime on
@@ -842,53 +869,92 @@ filegroup(
     name = "mobile_srcs_only_runtime",
     srcs = [
         # Sources for which we do not yet have granular targets.
-        "//tensorflow/c/eager:srcs",
-        # StreamExecutor C API is currently not supported for mobile.
-        # Including just the header for SP_Stream reference in kernels C API.
-        "//tensorflow/c/experimental/stream_executor:headers",
         "//tensorflow/c:srcs",
+        "//tensorflow/c/eager:srcs",
+        "@xla//xla/tsl/lib/io:mobile_srcs_only_runtime",
         "//tensorflow/core/common_runtime:mobile_srcs_only_runtime",
         "//tensorflow/core/common_runtime/eager:srcs",
         "//tensorflow/core/framework:mobile_srcs_only_runtime",
         "//tensorflow/core/graph:mobile_srcs_only_runtime",
         "//tensorflow/core/kernels:mobile_srcs",
-        "//tensorflow/core/lib/io:mobile_srcs_only_runtime",
-        "@xla//xla/tsl/lib/io:mobile_srcs_only_runtime",
         "//tensorflow/core/nccl:mobile_srcs",
-        "//tensorflow/core/profiler:mobile_srcs_only_runtime",
-        "//tensorflow/core/public:mobile_srcs_only_runtime",
+        "//tensorflow/core/util:mobile_srcs_only_runtime",
         "//tensorflow/core/util/sparse:mobile_srcs_only_runtime",
         "//tensorflow/core/util/tensor_bundle:mobile_srcs",
-        "//tensorflow/core/util:mobile_srcs_only_runtime",
 
         # Sources for which we already have granular targets.
+        "@xla//xla/tsl/framework:mobile_srcs_only_runtime",
         "//tensorflow/core/lib/core:mobile_srcs_only_runtime",
-        "@xla//xla/tsl/lib/core:mobile_srcs_only_runtime",
-        "//tensorflow/core/lib/gtl:mobile_srcs_only_runtime",
         "//tensorflow/core/lib/hash:mobile_srcs_only_runtime",
         "//tensorflow/core/lib/histogram:mobile_srcs_only_runtime",
-        "//tensorflow/core/lib/math:mobile_srcs_only_runtime",
-        "@xla//xla/tsl/lib/math:mobile_srcs_only_runtime",
-        "//tensorflow/core/lib/monitoring:mobile_srcs_only_runtime",
         "//tensorflow/core/lib/random:mobile_srcs_only_runtime",
         "//tensorflow/core/lib/strings:mobile_srcs_only_runtime",
         "//tensorflow/core/platform:mobile_srcs_only_runtime",
         "@tsl//tsl/platform:mobile_srcs_only_runtime",
-        "@xla//xla/tsl/framework:mobile_srcs_only_runtime",
-        "@xla//xla/tsl/framework/fixedpoint:mobile_srcs_only_runtime",
+
+        # Wav io files
+        "//tensorflow/core/lib/wav:wav_io.cc",
+    ],
+)
+
+filegroup(
+    name = "mobile_hdrs_only_runtime",
+    srcs = [
+        # Sources for which we do not yet have granular targets.
+        "//tensorflow/c/eager:hdrs",
+        # StreamExecutor C API is currently not supported for mobile.
+        # Including just the header for SP_Stream reference in kernels C API.
+        "//tensorflow/c/experimental/stream_executor:headers",
+        "//tensorflow/c:mobile_hdrs_only_runtime",
+        "@xla//xla/tsl/lib/io:mobile_hdrs_only_runtime",
+        "//tensorflow/core/common_runtime:mobile_hdrs_only_runtime",
+        "//tensorflow/core/common_runtime/eager:hdrs",
+        "//tensorflow/core/framework:mobile_hdrs_only_runtime",
+        "//tensorflow/core/graph:mobile_hdrs_only_runtime",
+        "//tensorflow/core/kernels:mobile_hdrs",
+        "//tensorflow/core/lib/io:mobile_hdrs_only_runtime",
+        "//tensorflow/core/nccl:mobile_hdrs",
+        "//tensorflow/core/profiler:mobile_hdrs_only_runtime",
+        "//tensorflow/core/public:mobile_hdrs_only_runtime",
+        "//tensorflow/core/util:mobile_hdrs_only_runtime",
+        "//tensorflow/core/util/sparse:mobile_hdrs_only_runtime",
+        "//tensorflow/core/util/tensor_bundle:mobile_hdrs",
+
+        # Sources for which we already have granular targets.
+        "@xla//xla/tsl/framework:mobile_hdrs_only_runtime",
+        "@xla//xla/tsl/lib/core:mobile_hdrs_only_runtime",
+        "@xla//xla/tsl/lib/math:mobile_hdrs_only_runtime",
+        "//tensorflow/core/lib/core:mobile_hdrs_only_runtime",
+        "//tensorflow/core/lib/gtl:mobile_hdrs_only_runtime",
+        "//tensorflow/core/lib/hash:mobile_hdrs_only_runtime",
+        "//tensorflow/core/lib/histogram:mobile_hdrs_only_runtime",
+        "//tensorflow/core/lib/math:mobile_hdrs_only_runtime",
+        "//tensorflow/core/lib/monitoring:mobile_hdrs_only_runtime",
+        "//tensorflow/core/lib/random:mobile_hdrs_only_runtime",
+        "//tensorflow/core/lib/strings:mobile_hdrs_only_runtime",
+        "//tensorflow/core/platform:mobile_hdrs_only_runtime",
+        "@tsl//tsl/platform:mobile_hdrs_only_runtime",
 
         # Wav io files
         "//tensorflow/core/lib/wav:wav_io.h",
-        "//tensorflow/core/lib/wav:wav_io.cc",
     ],
-    visibility = ["//visibility:public"],
 )
 
 filegroup(
     name = "mobile_srcs",
     srcs = [
+        ":mobile_hdrs",
         ":mobile_srcs_no_runtime",
         ":mobile_srcs_only_runtime",
+    ],
+    visibility = ["//visibility:public"],
+)
+
+filegroup(
+    name = "mobile_hdrs",
+    srcs = [
+        ":mobile_hdrs_no_runtime",
+        ":mobile_hdrs_only_runtime",
     ],
     visibility = ["//visibility:public"],
 )
@@ -1013,7 +1079,6 @@ filegroup(
 cc_library(
     name = "portable_tensorflow_lib_lite",
     srcs = if_mobile([":mobile_srcs"]),
-    hdrs = if_mobile(["//tensorflow/core/config:flags_headers_filegroup"]),
     copts = tf_copts(android_optimization_level_override = None) + tf_opts_nortti_if_lite_protos() + if_ios(["-Os"]),
     defines = ["SUPPORT_SELECTIVE_REGISTRATION"] + select({
                   # copybara:uncomment_begin(google-only)
@@ -1028,6 +1093,7 @@ cc_library(
     features = ["-layering_check"],
     linkopts = if_android(["-lz"]) + if_ios(["-lz"]),
     tags = [
+        "avoid_dep",
         "manual",
         "notap",
     ],
@@ -1047,6 +1113,7 @@ cc_library(
 # cc_library(
 #     name = "portable_tensorflow_lib_lite_no_runtime",
 #     srcs = if_mobile([":mobile_srcs_no_runtime"]),
+#     hdrs = if_mobile([":mobile_hdrs_no_runtime"]),
 #     copts = tf_copts(android_optimization_level_override = None) + tf_opts_nortti_if_lite_protos() + if_ios(["-Os"]),
 #     defines = [
 #         "SUPPORT_SELECTIVE_REGISTRATION",
@@ -1062,6 +1129,7 @@ cc_library(
 #     }),
 #     features = ["-layering_check"],
 #     tags = [
+#         "avoid_dep",
 #         "manual",
 #         "notap",
 #     ],
@@ -1103,11 +1171,16 @@ cc_library(
 
 cc_library(
     name = "portable_tensorflow_lib",
-    srcs = if_mobile([":portable_op_registrations_and_gradients"]),
+    srcs = if_mobile(["//tensorflow/core/ops:mobile_srcs"]),
+    hdrs = if_mobile([
+        ":mobile_hdrs",
+        "//tensorflow/core/ops:mobile_hdrs",
+    ]),
     copts = tf_copts() + tf_opts_nortti_if_lite_protos() + if_ios(["-Os"]),
     # Using private headers from other libraries violates layering check.
     features = tf_features_nomodules_if_mobile() + ["-layering_check"],
     tags = [
+        "avoid_dep",
         "manual",
         "notap",
     ],
@@ -1147,8 +1220,9 @@ cc_library(
         "//tensorflow/core/util:android_test_hdrs",
     ],
     copts = tf_copts(android_optimization_level_override = None) + if_ios(["-Os"]),
-    features = tf_features_nomodules_if_mobile() + tf_opts_nortti_if_lite_protos() + if_android(["-layering_check"]),
+    features = tf_features_nomodules_if_mobile() + tf_opts_nortti_if_lite_protos() + if_mobile(["-layering_check"]),
     tags = [
+        "avoid_dep",
         "manual",
         "notap",
     ],
@@ -1934,6 +2008,7 @@ tf_cc_tests(
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:optional",
         "@eigen_archive//:eigen3",
+        "@xla//xla/tsl/lib/monitoring:test_utils",
         "@zlib",
     ],
 )

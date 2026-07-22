@@ -10,7 +10,6 @@ load(
 )
 
 visibility = [
-    "//engedu/ml/tf_from_scratch:__pkg__",
     "//third_party/cloud_tpu/convergence_tools:__subpackages__",
     "//third_party/mlperf:__subpackages__",
     "//tensorflow:internal",
@@ -37,9 +36,7 @@ visibility = [
     "//third_party/py/tensorflow_privacy:__subpackages__",
     "//third_party/reverb:__subpackages__",
     "//tensorflow_minigo:__subpackages__",
-    "//research/graph/fairness/inproc_fair_reg:__subpackages__",
     "//third_party/py/scenic:__subpackages__",
-    "//smartass/brain/ops:__subpackages__",
 ]
 
 package(
@@ -141,7 +138,6 @@ tf_gen_op_strict_wrapper_private_py(
     name = "array_ops_gen",
     visibility = [
         "//learning/brain/python/ops:__pkg__",
-        "//smartass/brain/ops:__subpackages__",
         "//tensorflow/compiler/mlir/tfr:__pkg__",
         "//tensorflow/compiler/mlir/tfr/python/experimental:__pkg__",
         "//tensorflow/compiler/tests:__pkg__",
@@ -528,7 +524,6 @@ tf_gen_op_strict_wrapper_private_py(
 tf_gen_op_strict_wrapper_private_py(
     name = "resource_variable_ops_gen",
     visibility = [
-        "//smartass/brain/configure:__subpackages__",
         "//tensorflow/compiler/mlir/tfr:__pkg__",
         "//tensorflow/compiler/tf2xla:internal",
         "//tensorflow/dtensor:dtensor-internal",
@@ -686,7 +681,6 @@ tf_gen_op_strict_wrapper_private_py(
 tf_gen_op_strict_wrapper_private_py(
     name = "tpu_ops_gen",
     visibility = [
-        "//smartass/brain/configure/python:__pkg__",
         "//tensorflow/compiler/tests:__pkg__",
         "//tensorflow/python:__pkg__",
         "//tensorflow/python/tpu:__pkg__",
@@ -1288,7 +1282,7 @@ py_library(
     name = "control_flow_util_v2",
     srcs = ["control_flow_util_v2.py"],
     strict_deps = True,
-    visibility = visibility + ["//waymo/ml:__subpackages__"],
+    visibility = visibility,
     deps = [
         ":control_flow_util",
         ":control_flow_v2_func_graphs",
@@ -1488,6 +1482,7 @@ cuda_py_strict_test(
 py_library(
     name = "ctc_ops",
     srcs = ["ctc_ops.py"],
+    lazy_imports = True,
     strict_deps = True,
     deps = [
         ":array_ops",
@@ -1893,6 +1888,7 @@ py_library(
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/ops/linalg:linalg_impl",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -4377,6 +4373,7 @@ py_library(
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:ops",
+        "//tensorflow/python/framework:tensor_util",
         "//tensorflow/python/platform:device_context",
         "//tensorflow/python/util:deprecation",
         "//tensorflow/python/util:dispatch",
@@ -4452,6 +4449,7 @@ py_library(
 py_library(
     name = "custom_gradient",
     srcs = ["custom_gradient.py"],
+    lazy_imports = True,
     strict_deps = True,
     deps = [
         ":array_ops",

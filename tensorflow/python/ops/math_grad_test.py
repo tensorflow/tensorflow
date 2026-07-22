@@ -523,12 +523,16 @@ class XlogyTest(test.TestCase):
   @test_util.run_deprecated_v1
   def testZeroXGrad(self):
     for dtype in [dtypes.float16, dtypes.float32, dtypes.float64]:
-      x = constant_op.constant(0., dtype=dtype)
-      y = constant_op.constant(3.1, dtype=dtype)
-      xlogy_xgrad, xlogy_ygrad = self._xlogy_gradients(x, y)
-      zero = self.evaluate(x)
-      self.assertAllClose(zero, xlogy_xgrad)
-      self.assertAllClose(zero, xlogy_ygrad)
+      for y_val in [3.1, 0.0]:
+        x = constant_op.constant(0.0, dtype=dtype)
+        y = constant_op.constant(y_val, dtype=dtype)
+        xlogy_xgrad, xlogy_ygrad = self._xlogy_gradients(x, y)
+        # Gradient w.r.t. x at x=0 should be log(y), not 0.
+        # d/dx x*log(y) = log(y) for all x including x=0.
+        expected_xgrad = self.evaluate(math_ops.log(y))
+        zero = self.evaluate(x)
+        self.assertAllClose(expected_xgrad, xlogy_xgrad)
+        self.assertAllClose(zero, xlogy_ygrad)
 
   @test_util.run_deprecated_v1
   def testZeroYGrad(self):
@@ -545,8 +549,9 @@ class XlogyTest(test.TestCase):
       x = constant_op.constant(0., dtype=dtype)
       y = constant_op.constant(0., dtype=dtype)
       xlogy_xgrad, xlogy_ygrad = self._xlogy_gradients(x, y)
+      # Gradient w.r.t. x at x=0, y=0 is log(0) = -inf.
+      self.assertAllClose(-np.inf, xlogy_xgrad)
       zero = self.evaluate(x)
-      self.assertAllClose(zero, xlogy_xgrad)
       self.assertAllClose(zero, xlogy_ygrad)
 
 
@@ -573,12 +578,16 @@ class Xlog1pyTest(test.TestCase):
   @test_util.run_deprecated_v1
   def testZeroXGrad(self):
     for dtype in [dtypes.float16, dtypes.float32, dtypes.float64]:
-      x = constant_op.constant(0., dtype=dtype)
-      y = constant_op.constant(3.1, dtype=dtype)
-      xlog1py_xgrad, xlog1py_ygrad = self._xlog1py_gradients(x, y)
-      zero = self.evaluate(x)
-      self.assertAllClose(zero, xlog1py_xgrad)
-      self.assertAllClose(zero, xlog1py_ygrad)
+      for y_val in [3.1, -1.0]:
+        x = constant_op.constant(0.0, dtype=dtype)
+        y = constant_op.constant(y_val, dtype=dtype)
+        xlog1py_xgrad, xlog1py_ygrad = self._xlog1py_gradients(x, y)
+        # Gradient w.r.t. x at x=0 should be log1p(y), not 0.
+        # d/dx x*log1p(y) = log1p(y) for all x including x=0.
+        expected_xgrad = self.evaluate(math_ops.log1p(y))
+        zero = self.evaluate(x)
+        self.assertAllClose(expected_xgrad, xlog1py_xgrad)
+        self.assertAllClose(zero, xlog1py_ygrad)
 
   @test_util.run_deprecated_v1
   def testNegOneYGrad(self):
@@ -595,8 +604,9 @@ class Xlog1pyTest(test.TestCase):
       x = constant_op.constant(0., dtype=dtype)
       y = constant_op.constant(-1., dtype=dtype)
       xlog1py_xgrad, xlog1py_ygrad = self._xlog1py_gradients(x, y)
+      # Gradient w.r.t. x at x=0, y=-1 is log1p(-1) = log(0) = -inf.
+      self.assertAllClose(-np.inf, xlog1py_xgrad)
       zero = self.evaluate(x)
-      self.assertAllClose(zero, xlog1py_xgrad)
       self.assertAllClose(zero, xlog1py_ygrad)
 
 
@@ -646,6 +656,109 @@ class XdivyTest(test.TestCase):
       zero = self.evaluate(x)
       self.assertAllClose(zero, xdivy_xgrad)
       self.assertAllClose(zero, xdivy_ygrad)
+
+
+@test_util.run_all_in_graph_and_eager_modes
+class CumprodGradTest(test.TestCase):
+
+  def _cumprod_grad(
+      self, values, axis=0, exclusive=False, reverse=False, dtype=dtypes.float64
+  ):
+    x = constant_op.constant(values, dtype=dtype)
+    with backprop.GradientTape() as tape:
+      tape.watch(x)
+      y = math_ops.reduce_sum(
+          math_ops.cumprod(x, axis=axis, exclusive=exclusive, reverse=reverse)
+      )
+    return self.evaluate(tape.gradient(y, x))
+
+  def testCumprodGradients(self):
+    cases = [
+        ("no_zero", [2.0, 3.0, 4.0], [16.0, 10.0, 6.0]),
+        ("zero_beginning", [0.0, 2.0, 3.0], [9.0, 0.0, 0.0]),
+        ("zero_middle", [1.5, 0.0, 2.0, 3.0], [1.0, 13.5, 0.0, 0.0]),
+        ("zero_end", [2.0, 3.0, 0.0], [4.0, 2.0, 6.0]),
+        ("multiple_zeros", [2.0, 0.0, 0.0, 3.0], [1.0, 2.0, 0.0, 0.0]),
+    ]
+    for dtype in (dtypes.float32, dtypes.float64):
+      for name, values, expected in cases:
+        with self.subTest(name=name, dtype=dtype):
+          self.assertAllClose(expected, self._cumprod_grad(values, dtype=dtype))
+
+  def testCumprodGradientAxisOne(self):
+    values = [[0.0, 2.0, 3.0], [2.0, 3.0, 0.0]]
+    expected = [[9.0, 0.0, 0.0], [4.0, 2.0, 6.0]]
+    self.assertAllClose(expected, self._cumprod_grad(values, axis=1))
+
+  def testExclusiveCumprodGradientWithZero(self):
+    self.assertAllClose(
+        [1.0, 4.5, 0.0, 0.0],
+        self._cumprod_grad([1.5, 0.0, 2.0, 3.0], exclusive=True),
+    )
+
+  def testReverseCumprodGradientWithZero(self):
+    self.assertAllClose(
+        [0.0, 15.0, 3.0, 3.0],
+        self._cumprod_grad([1.5, 0.0, 2.0, 3.0], reverse=True),
+    )
+
+  def testExclusiveReverseCumprodGradientWithZero(self):
+    self.assertAllClose(
+        [0.0, 6.0, 3.0, 3.0],
+        self._cumprod_grad([1.5, 0.0, 2.0, 3.0], exclusive=True, reverse=True),
+    )
+
+  def testCumprodGradientZeroPlacementByMode(self):
+    cases = [
+        ("exclusive_beginning", [0.0, 2.0, 3.0], [3.0, 0.0, 0.0], True, False),
+        ("exclusive_middle", [2.0, 0.0, 3.0], [1.0, 2.0, 0.0], True, False),
+        ("exclusive_end", [2.0, 3.0, 0.0], [4.0, 2.0, 0.0], True, False),
+        (
+            "exclusive_multiple",
+            [2.0, 0.0, 3.0, 0.0],
+            [1.0, 8.0, 0.0, 0.0],
+            True,
+            False,
+        ),
+        ("reverse_beginning", [0.0, 2.0, 3.0], [6.0, 3.0, 3.0], False, True),
+        ("reverse_middle", [2.0, 0.0, 3.0], [0.0, 9.0, 1.0], False, True),
+        ("reverse_end", [2.0, 3.0, 0.0], [0.0, 0.0, 10.0], False, True),
+        (
+            "reverse_multiple",
+            [2.0, 0.0, 3.0, 0.0],
+            [0.0, 0.0, 0.0, 4.0],
+            False,
+            True,
+        ),
+        (
+            "exclusive_reverse_beginning",
+            [0.0, 2.0, 3.0],
+            [0.0, 3.0, 3.0],
+            True,
+            True,
+        ),
+        (
+            "exclusive_reverse_middle",
+            [2.0, 0.0, 3.0],
+            [0.0, 3.0, 1.0],
+            True,
+            True,
+        ),
+        ("exclusive_reverse_end", [2.0, 3.0, 0.0], [0.0, 0.0, 4.0], True, True),
+        (
+            "exclusive_reverse_multiple",
+            [2.0, 0.0, 3.0, 0.0],
+            [0.0, 0.0, 0.0, 4.0],
+            True,
+            True,
+        ),
+    ]
+    for name, values, expected, exclusive, reverse in cases:
+      with self.subTest(name=name):
+        self.assertAllClose(
+            expected,
+            self._cumprod_grad(values, exclusive=exclusive, reverse=reverse),
+        )
 
 
 @test_util.run_all_in_graph_and_eager_modes

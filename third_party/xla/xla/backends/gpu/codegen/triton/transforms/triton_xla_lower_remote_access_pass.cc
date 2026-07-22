@@ -15,7 +15,6 @@ limitations under the License.
 
 #include <cstddef>
 #include <cstdint>
-#include <memory>
 #include <utility>
 
 #include "mlir/Dialect/Arith/IR/Arith.h"
@@ -179,9 +178,5 @@ class TritonXLALowerRemoteAccessPass
 };
 
 }  // namespace
-
-std::unique_ptr<Pass> CreateTritonXLALowerRemoteAccessPass() {
-  return std::make_unique<TritonXLALowerRemoteAccessPass>();
-}
 
 }  // namespace mlir::triton::xla

@@ -7,74 +7,274 @@ tf_class {
   is_instance: "<class \'tensorflow.python.trackable.base.Trackable\'>"
   is_instance: "<class \'tensorflow.python.types.core.Tensor\'>"
   is_instance: "<class \'tensorflow.python.framework.composite_tensor.CompositeTensor\'>"
-  is_instance: "<type \'object\'>"
+  is_instance: "<class \'object\'>"
   member {
     name: "SaveSliceInfo"
-    mtype: "<type \'type\'>"
+    mtype: "<class \'type\'>"
   }
   member {
     name: "aggregation"
-    mtype: "<type \'property\'>"
+    mtype: "<class \'property\'>"
   }
   member {
     name: "constraint"
-    mtype: "<type \'property\'>"
+    mtype: "<class \'property\'>"
   }
   member {
     name: "create"
-    mtype: "<type \'property\'>"
+    mtype: "<class \'property\'>"
   }
   member {
     name: "device"
-    mtype: "<type \'property\'>"
+    mtype: "<class \'property\'>"
   }
   member {
     name: "dtype"
-    mtype: "<type \'property\'>"
+    mtype: "<class \'property\'>"
   }
   member {
     name: "graph"
-    mtype: "<type \'property\'>"
+    mtype: "<class \'property\'>"
   }
   member {
     name: "handle"
-    mtype: "<type \'property\'>"
+    mtype: "<class \'property\'>"
   }
   member {
     name: "initial_value"
-    mtype: "<type \'property\'>"
+    mtype: "<class \'property\'>"
   }
   member {
     name: "initializer"
-    mtype: "<type \'property\'>"
+    mtype: "<class \'property\'>"
   }
   member {
     name: "name"
-    mtype: "<type \'property\'>"
+    mtype: "<class \'property\'>"
   }
   member {
     name: "op"
-    mtype: "<type \'property\'>"
+    mtype: "<class \'property\'>"
   }
   member {
     name: "save_as_bf16"
-    mtype: "<type \'property\'>"
+    mtype: "<class \'property\'>"
   }
   member {
     name: "shape"
-    mtype: "<type \'property\'>"
+    mtype: "<class \'property\'>"
   }
   member {
     name: "synchronization"
-    mtype: "<type \'property\'>"
+    mtype: "<class \'property\'>"
   }
   member {
     name: "trainable"
-    mtype: "<type \'property\'>"
+    mtype: "<class \'property\'>"
+  }
+  member_method {
+    name: "__abs__"
+    argspec: "args=[\'a\'], varargs=args, keywords=kwargs, defaults=None"
+  }
+  member_method {
+    name: "__add__"
+    argspec: "args=[\'x\', \'y\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "__and__"
+    argspec: "args=[\'x\', \'y\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "__array__"
+    argspec: "args=[\'self\', \'dtype\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "__bool__"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "__complex__"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "__div__"
+    argspec: "args=[\'x\', \'y\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "__eq__"
+    argspec: "args=[\'self\', \'other\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "__float__"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "__floordiv__"
+    argspec: "args=[\'x\', \'y\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "__ge__"
+    argspec: "args=[\'x\', \'y\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "__getitem__"
+    argspec: "args=[\'var\', \'slice_spec\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "__gt__"
+    argspec: "args=[\'x\', \'y\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "__iadd__"
+    argspec: "args=[\'self\', \'unused_other\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "__idiv__"
+    argspec: "args=[\'self\', \'unused_other\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "__imul__"
+    argspec: "args=[\'self\', \'unused_other\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "__init__"
     argspec: "args=[\'self\', \'initial_value\', \'dtype\'], varargs=args, keywords=kwargs, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "__int__"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "__invert__"
+    argspec: "args=[\'a\'], varargs=args, keywords=kwargs, defaults=None"
+  }
+  member_method {
+    name: "__ipow__"
+    argspec: "args=[\'self\', \'unused_other\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "__irealdiv__"
+    argspec: "args=[\'self\', \'unused_other\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "__isub__"
+    argspec: "args=[\'self\', \'unused_other\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "__iter__"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "__itruediv__"
+    argspec: "args=[\'self\', \'unused_other\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "__le__"
+    argspec: "args=[\'x\', \'y\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "__long__"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "__lt__"
+    argspec: "args=[\'x\', \'y\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "__matmul__"
+    argspec: "args=[\'x\', \'y\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "__mod__"
+    argspec: "args=[\'x\', \'y\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "__mul__"
+    argspec: "args=[\'x\', \'y\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "__ne__"
+    argspec: "args=[\'self\', \'other\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "__neg__"
+    argspec: "args=[\'a\'], varargs=args, keywords=kwargs, defaults=None"
+  }
+  member_method {
+    name: "__nonzero__"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "__or__"
+    argspec: "args=[\'x\', \'y\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "__pow__"
+    argspec: "args=[\'x\', \'y\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "__radd__"
+    argspec: "args=[\'y\', \'x\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "__rand__"
+    argspec: "args=[\'y\', \'x\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "__rdiv__"
+    argspec: "args=[\'y\', \'x\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "__rfloordiv__"
+    argspec: "args=[\'y\', \'x\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "__rmatmul__"
+    argspec: "args=[\'y\', \'x\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "__rmod__"
+    argspec: "args=[\'y\', \'x\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "__rmul__"
+    argspec: "args=[\'y\', \'x\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "__ror__"
+    argspec: "args=[\'y\', \'x\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "__rpow__"
+    argspec: "args=[\'y\', \'x\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "__rsub__"
+    argspec: "args=[\'y\', \'x\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "__rtruediv__"
+    argspec: "args=[\'y\', \'x\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "__rxor__"
+    argspec: "args=[\'y\', \'x\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "__sub__"
+    argspec: "args=[\'x\', \'y\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "__tf_tracing_type__"
+    argspec: "args=[\'self\', \'signature_context\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "__truediv__"
+    argspec: "args=[\'x\', \'y\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "__xor__"
+    argspec: "args=[\'x\', \'y\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "assign"

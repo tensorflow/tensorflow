@@ -205,7 +205,45 @@ gpu_device_info {
         ops_per_clock: 2048
       }
     }
+    rate_infos {
+      key: 35
+      value {
+        clock_rate_ghz: 1.9259081
+        units_per_core: 4
+        ops_per_clock: 2048
+      }
+    }
+    rate_infos {
+      key: 36
+      value {
+        clock_rate_ghz: 1.9259081
+        units_per_core: 4
+        ops_per_clock: 2048
+      }
+    }
   }
+  thread_dim_limit_x: 1024
+  thread_dim_limit_y: 1024
+  thread_dim_limit_z: 64
+  device_vendor: "NVIDIA Corporation"
+  platform_version: "Compute Capability 10.0a"
+  model_str: "sm_10.0a with 197897748480B RAM, 152 cores, 2062000KHz clock, 3996000KHz mem clock, 135528448B L2$"
+  device_address_bits: 64
+  pcie_bandwidth: 2147483648
+  ecc_enabled: true
+  name: "NVIDIA GB200"
+  mem_clock_ghz: 3.996
+  reserved_shared_memory_per_block: 1024
+  max_blocks_per_multiprocessor: 32
+  driver_version: "13.0.0"
+  runtime_version: "12.8.0"
+  compile_time_toolkit_version: "12.8.0"
+  dnn_version: "9.10.0"
+  cub_version: "3.1.2"
+  device_interconnect_info {
+    active_links: 18
+  }
+  collective_memory_granularity: 2097152
 }
 platform_name: "CUDA"
 dnn_version_info {

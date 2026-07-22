@@ -15,121 +15,95 @@ limitations under the License.
 
 #include "xla/backends/gpu/runtime/collective_group_thunk.h"
 
-#include <cstdint>
 #include <memory>
-#include <optional>
+#include <string>
 #include <utility>
 #include <vector>
 
-#include "absl/container/flat_hash_set.h"
-#include "absl/functional/function_ref.h"
+#include "absl/algorithm/container.h"
+#include "absl/base/casts.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
+#include "xla/backends/gpu/collectives/gpu_collectives.h"
 #include "xla/backends/gpu/collectives/gpu_communicator.h"
+#include "xla/backends/gpu/runtime/collective_cliques.h"
 #include "xla/backends/gpu/runtime/collective_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
-#include "xla/core/collectives/communicator.h"
+#include "xla/backends/gpu/runtime/thunk.pb.h"
+#include "xla/backends/gpu/runtime/thunk_executor.h"
 #include "xla/future.h"
+#include "xla/runtime/device_id.h"
 #include "xla/service/buffer_assignment.h"
-#include "xla/stream_executor/event.h"
-#include "xla/stream_executor/stream.h"
-#include "tsl/platform/casts.h"
-#include "xla/tsl/platform/status_macros.h"
+#include "xla/util.h"
 
-namespace xla {
-namespace gpu {
+namespace xla::gpu {
 
-CollectiveGroupThunk::CollectiveGroupThunk(
-    ThunkInfo thunk_info, Thunk::Kind kind, ThunkSequence thunks,
-    std::shared_ptr<CollectiveThunk::AsyncEvents> async_events)
-    : Thunk(kind, std::move(thunk_info)), async_events_(async_events) {
-  for (auto& thunk : thunks) {
-    thunks_.emplace_back(std::move(thunk));
-  }
-}
+CollectiveGroupThunk::CollectiveGroupThunk(ThunkInfo thunk_info,
+                                           Thunk::Kind kind,
+                                           ThunkSequence thunks)
+    : Thunk(kind, std::move(thunk_info)), executor_(std::move(thunks)) {}
+
 absl::Status CollectiveGroupThunk::Prepare(const PrepareParams& params) {
-  for (const std::unique_ptr<Thunk>& thunk : thunks_) {
-    RETURN_IF_ERROR(thunk->Prepare(params));
-  }
-  return absl::OkStatus();
+  return executor_.Prepare(params);
 }
+
 absl::Status CollectiveGroupThunk::Initialize(const InitializeParams& params) {
-  if (async_events_) {
-    RETURN_IF_ERROR(async_events_->Initialize(params.executor));
-  }
-  for (const std::unique_ptr<Thunk>& thunk : thunks_) {
-    RETURN_IF_ERROR(thunk->Initialize(params));
-  }
-  return absl::OkStatus();
+  return executor_.Initialize(params);
+}
+
+std::string CollectiveGroupThunk::ToString(int indent) const {
+  return absl::StrCat("\n", executor_.thunks().ToString(indent + 1));
 }
 
 absl::Status CollectiveGroupThunk::ExecuteOnStream(
     const Thunk::ExecuteParams& params) {
-  int64_t async_stream_idx = Thunk::execution_stream_id().value();
-  // Async streams are already assigned in gpu_executable.cc::ExecuteThunks.
-  // async_streams is therefore guaranteed to be non-null and to have enough
-  // elements to index by the AsyncStreamKind enum.
-  se::Stream* async_stream =
-      params.collective_params->async_streams.at(async_stream_idx);
-  RETURN_IF_ERROR(async_stream->WaitFor(params.stream));
+  GlobalDeviceId global_device_id = params.collective_params->global_device_id;
 
-  // Gather the set of all communicators. There should be only one.
-  absl::flat_hash_set<Communicator*> communicator_set;
-  RETURN_IF_ERROR(Walk([&](const Thunk* thunk) -> absl::Status {
-    ASSIGN_OR_RETURN(auto communicators, thunk->GetCommunicators(params));
-    for (Communicator* comm : communicators) {
-      communicator_set.insert(comm);
+  // Collect all communicators used by nested thunks.
+  std::vector<GpuCommunicator*> comms;
+  for (const std::unique_ptr<Thunk>& thunk : executor_.thunks()) {
+    auto* collective_thunk = absl::down_cast<CollectiveThunk*>(thunk.get());
+    ASSIGN_OR_RETURN(auto clique_key, collective_thunk->GetCliqueKey(params));
+    ASSIGN_OR_RETURN(GpuCommunicator * comm, params.collective_cliques->GetComm(
+                                                 clique_key, global_device_id));
+    if (!absl::c_contains(comms, comm)) {
+      comms.push_back(comm);
     }
-    return absl::OkStatus();
-  }));
-
-  if (communicator_set.empty()) {
-    return absl::InvalidArgumentError("No communicators in NCCL group");
-  }
-  if (communicator_set.size() > 1) {
-    return absl::InvalidArgumentError(
-        "More than one communicator in NCCL group");
   }
 
-  Communicator* comm = *communicator_set.begin();
-  auto* gpu_comm = tsl::down_cast<GpuCommunicator*>(comm);
-  Future<> group_future = gpu_comm->GroupExecute(
-      [this, &params](GpuCommunicator* comm) -> absl::Status {
-        for (const std::unique_ptr<Thunk>& thunk : thunks_) {
-          RETURN_IF_ERROR(thunk->ExecuteOnStream(params));
-        }
-        return absl::OkStatus();
-      });
-  RETURN_IF_ERROR(group_future.Await());
+  // It is a bug if collective group was formed with no collective ops.
+  if (comms.empty()) {
+    return InvalidArgument(
+        "Collective group must have at least one nested collective thunk");
+  }
 
-  ASSIGN_OR_RETURN(se::Event * event,
-                   async_events_->GetEvent(params.stream->parent()));
-  RETURN_IF_ERROR(async_stream->RecordEvent(event));
+  // If nested thunks use a single comm, use it directly to execute the group.
+  if (comms.size() == 1) {
+    Future<> executed = comms.front()->GroupExecute(
+        [&] { return executor_.ExecuteOnStream(params); });
+    return executed.Await();
+  }
 
-  return absl::OkStatus();
+  // Otherwise use a multi-comm group launch.
+  return params.collective_params->collectives->GroupLaunch(
+      comms, [&] { return executor_.ExecuteOnStream(params); });
 }
 
 absl::Status CollectiveGroupThunk::WalkNested(Walker callback) {
-  for (const std::unique_ptr<Thunk>& thunk : thunks_) {
-    RETURN_IF_ERROR(thunk->Walk(callback));
-  }
-  return absl::OkStatus();
+  return executor_.thunks().WalkNested(callback);
 }
 
 absl::Status CollectiveGroupThunk::TransformNested(Transformer callback) {
-  for (std::unique_ptr<Thunk>& thunk : thunks_) {
-    RETURN_IF_ERROR(thunk->TransformNested(callback));
-    ASSIGN_OR_RETURN(thunk, callback(std::move(thunk)));
-  }
-  return absl::OkStatus();
+  return executor_.thunks().TransformNested(callback);
 }
 
 absl::StatusOr<std::unique_ptr<CollectiveGroupThunk>>
 CollectiveGroupThunk::FromProto(
     ThunkInfo thunk_info, const CollectiveGroupThunkProto& thunk_proto,
     absl::Span<const BufferAllocation> buffer_allocations,
-    CollectiveThunk::AsyncEventsMap& async_events_map,
     const Deserializer& deserializer) {
   ThunkSequence thunk_sequence;
   for (const auto& sub_thunk_proto : thunk_proto.thunks()) {
@@ -138,22 +112,11 @@ CollectiveGroupThunk::FromProto(
     thunk_sequence.push_back(std::move(sub_thunk));
   }
 
-  std::shared_ptr<CollectiveThunk::AsyncEvents> async_events;
-  if (thunk_proto.has_async_events_unique_id()) {
-    std::shared_ptr<CollectiveThunk::AsyncEvents>& events =
-        async_events_map[AsyncEventsUniqueId{
-            thunk_proto.async_events_unique_id()}];
-    if (!events) {
-      events = std::make_shared<CollectiveThunk::AsyncEvents>();
-    }
-    async_events = events;
-  }
-
   ASSIGN_OR_RETURN(Thunk::Kind kind,
                    Thunk::KindFromProto(thunk_proto.thunk_kind()));
 
-  return std::make_unique<CollectiveGroupThunk>(
-      std::move(thunk_info), kind, std::move(thunk_sequence), async_events);
+  return std::make_unique<CollectiveGroupThunk>(std::move(thunk_info), kind,
+                                                std::move(thunk_sequence));
 }
 
 absl::StatusOr<ThunkProto> CollectiveGroupThunk::ToProto() const {
@@ -163,18 +126,13 @@ absl::StatusOr<ThunkProto> CollectiveGroupThunk::ToProto() const {
   CollectiveGroupThunkProto* thunk_proto =
       proto.mutable_collective_group_thunk();
 
-  std::optional<AsyncEventsUniqueId> async_events_id = GetAsyncEventsUniqueId();
-  if (async_events_id.has_value()) {
-    thunk_proto->set_async_events_unique_id(async_events_id->value());
-  }
   thunk_proto->set_thunk_kind(Thunk::KindToProto(kind()));
 
-  for (const auto& thunk : thunks_) {
+  for (const auto& thunk : executor_.thunks()) {
     ASSIGN_OR_RETURN(*thunk_proto->add_thunks(), thunk->ToProto());
   }
 
   return proto;
 }
 
-}  // namespace gpu
-}  // namespace xla
+}  // namespace xla::gpu

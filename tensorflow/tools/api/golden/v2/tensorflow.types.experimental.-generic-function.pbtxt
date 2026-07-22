@@ -2,10 +2,14 @@ path: "tensorflow.types.experimental.GenericFunction"
 tf_class {
   is_instance: "<class \'tensorflow.python.types.core.PolymorphicFunction\'>"
   is_instance: "<class \'tensorflow.python.types.core.Callable\'>"
-  is_instance: "<type \'object\'>"
+  is_instance: "<class \'object\'>"
   member {
     name: "function_type"
-    mtype: "<type \'property\'>"
+    mtype: "<class \'property\'>"
+  }
+  member_method {
+    name: "__call__"
+    argspec: "args=[\'self\'], varargs=args, keywords=kwargs, defaults=None"
   }
   member_method {
     name: "__init__"

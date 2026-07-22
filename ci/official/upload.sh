@@ -14,7 +14,7 @@
 # limitations under the License.
 # ==============================================================================
 # This script uploads all staged artifacts from all previous builds in the same
-# job chain to GCS and PyPI.
+# job chain to GCS, GAR, and PyPI.
 source "${BASH_SOURCE%/*}/utilities/setup.sh"
 
 # Calculate the version number for choosing the final directory name. This adds
@@ -25,18 +25,18 @@ else
   export TF_VER_FULL="$(tfrun bazel run //tensorflow/tools/ci_build:calculate_full_version -- --wheel-type release)"
 fi
 
-# Note on gsutil commands:
-# "gsutil cp" always "copies into". It cannot act on the contents of a directory
+# Note on gcloud storage commands:
+# "gcloud storage cp" always "copies into". It cannot act on the contents of a directory
 # and it does not seem possible to e.g. copy "gs://foo/bar" as anything other than
-# "/path/bar". This script uses "gsutil rsync" instead, which acts on directory
-# contents. About arguments to gsutil:
-# "gsutil -m rsync" runs in parallel.
-# "gsutil rsync -r" is recursive and makes directories work.
-# "gsutil rsync -d" is "sync and delete files from destination if not present in source"
+# "/path/bar". This script uses "gcloud storage rsync" instead, which acts on directory
+# contents. About arguments to gcloud storage:
+# "gcloud storage rsync" runs in parallel.
+# "gcloud storage rsync --recursive" is recursive and makes directories work.
+# "gcloud storage rsync --delete-unmatched-destination-objects" is "sync and delete files from destination if not present in source"
 
 DOWNLOADS="$(mktemp -d)"
 mkdir -p "$DOWNLOADS"
-gsutil -m rsync -r "$TFCI_ARTIFACT_STAGING_GCS_URI" "$DOWNLOADS"
+gcloud storage rsync --recursive "$TFCI_ARTIFACT_STAGING_GCS_URI" "$DOWNLOADS"
 ls "$DOWNLOADS"
 
 # Upload all build artifacts to e.g. gs://tensorflow/versions/2.16.0-rc1 (releases) or
@@ -48,13 +48,24 @@ if [[ "$TFCI_ARTIFACT_FINAL_GCS_ENABLE" == 1 ]]; then
   # from get_versions.sh, which must be run *after* update_version.py, FINAL_URI
   # can't be set inside the rest of the _upload envs.
   FINAL_URI="$TFCI_ARTIFACT_FINAL_GCS_URI/$TF_VER_FULL"
-  gsutil -m rsync -d -r "$DOWNLOADS" "$FINAL_URI"
+  gcloud storage rsync --delete-unmatched-destination-objects --recursive "$DOWNLOADS" "$FINAL_URI"
 
   # Also mirror the latest-uploaded folder to the "latest" directory.
   # GCS does not support symlinks.
-  gsutil -m rsync -d -r "$FINAL_URI" "$TFCI_ARTIFACT_LATEST_GCS_URI"
+  gcloud storage rsync --delete-unmatched-destination-objects --recursive "$FINAL_URI" "$TFCI_ARTIFACT_LATEST_GCS_URI"
 fi
 
 if [[ "$TFCI_ARTIFACT_FINAL_PYPI_ENABLE" == 1 ]]; then
-  twine upload $TFCI_ARTIFACT_FINAL_PYPI_ARGS "$DOWNLOADS"/*.whl
+  pip install --upgrade twine keyring keyrings.google-artifactregistry-auth
+  py_exit=0
+  gar_exit=0
+  # Using `|| var=$?` prevents `set -e` from aborting the script immediately if
+  # an upload fails. This guarantees that both PyPI and GAR uploads are attempted
+  # sequentially, while preserving their exit codes to fail the build afterwards.
+  twine upload $TFCI_ARTIFACT_FINAL_PYPI_ARGS "$DOWNLOADS"/*.whl || py_exit=$?
+  twine upload $TFCI_ARTIFACT_FINAL_GAR_ARGS "$DOWNLOADS"/*.whl || gar_exit=$?
+  if [[ $py_exit -ne 0 || $gar_exit -ne 0 ]]; then
+    echo "One or more uploads failed (PyPI exit code: $py_exit, GAR exit code: $gar_exit)." >&2
+    exit 1
+  fi
 fi

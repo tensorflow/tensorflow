@@ -15,6 +15,7 @@ limitations under the License.
 
 #ifndef XLA_PYTHON_IFRT_IR_COMPILED_IFRT_IR_PROGRAM_H_
 #define XLA_PYTHON_IFRT_IR_COMPILED_IFRT_IR_PROGRAM_H_
+
 #include <memory>
 #include <optional>
 #include <string>
@@ -63,9 +64,8 @@ struct CompiledIfrtIrProgram {
   // The input program.
   std::unique_ptr<IfrtIRProgram> program;
 
-  // Mapping from logical device ids in IFRT IR MLIR module to runtime device
-  // ids obtained from IFRT client.
-  std::vector<DeviceId> device_assignments;
+  // The device list used used by the program.
+  DeviceListRef devices;
 
   // The compile options used to compile the program.
   std::shared_ptr<IfrtIRCompileOptions> compile_options;

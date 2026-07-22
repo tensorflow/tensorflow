@@ -20,7 +20,7 @@ limitations under the License.
 #include <string>
 
 #include "absl/status/statusor.h"
-#include "absl/strings/string_view.h"
+#include "absl/strings/cord.h"
 #include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/executable.h"
 #include "xla/python/ifrt/ir/compiled_ifrt_ir_program.h"
@@ -34,14 +34,14 @@ absl::StatusOr<std::string> SerializeIfrtIrExecutable(
     std::shared_ptr<CompiledIfrtIrProgram> program);
 
 struct DeserializedIfrtIRProgram {
-  std::unique_ptr<xla::ifrt::IfrtIRProgram> program;
-  std::unique_ptr<xla::ifrt::IfrtIRCompileOptions> compile_options;
+  std::unique_ptr<IfrtIRProgram> program;
+  std::unique_ptr<IfrtIRCompileOptions> compile_options;
 };
 
 // Deserializes an IFRT executable and compile options from a string.
 absl::StatusOr<DeserializedIfrtIRProgram> DeserializeIfrtIrExecutable(
-    xla::ifrt::Client* client, absl::string_view serialized,
-    std::unique_ptr<xla::ifrt::DeserializeIfrtIRProgramOptions> options);
+    Client* client, const absl::Cord& serialized,
+    std::unique_ptr<DeserializeIfrtIRProgramOptions> options);
 
 }  // namespace ifrt
 }  // namespace xla

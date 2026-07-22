@@ -19,6 +19,7 @@ limitations under the License.
 #include <cstdint>
 #include <string>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include "absl/base/thread_annotations.h"
@@ -37,15 +38,25 @@ class RequestCost {
   void RecordCost(
       const std::vector<std::pair<absl::string_view, absl::Duration>>& costs);
 
-  // Scales all types of costs for processing an rpc request.
-  // It's thread-safe. It's expected to be called at the end of processing an
-  // rpc request, when all the costs have been collected.
-  void ScaleCosts(int scale_factor);
-
   // Gets all types of costs for processing an rpc request.
   // It's thread-safe. It's expected to be called at the end of processing an
   // rpc request, when all the costs have been collected.
   absl::flat_hash_map<std::string, absl::Duration> GetCosts() const;
+
+  // A cost broken down by named dimensions (e.g. different unit types).
+  // Keys are dimension names, values are the cost in that dimension.
+  using StructuredCost = absl::flat_hash_map<std::string, absl::Duration>;
+
+  // Records structured costs. The inputs should be pairs of cost type and
+  // StructuredCost. It's thread-safe, and can be called from different
+  // threads. Costs are summed up if recorded with the same key.
+  void RecordStructuredCosts(
+      const std::vector<std::pair<absl::string_view, StructuredCost>>& costs);
+
+  // Gets all types of structured costs for processing an rpc request.
+  // It's thread-safe. It's expected to be called at the end of processing an
+  // rpc request, when all the costs have been collected.
+  absl::flat_hash_map<std::string, StructuredCost> GetStructuredCosts() const;
 
   // Records metrics. The inputs should be pairs of metric name and value.
   // It's thread-safe, and can be called from different threads. Unlike
@@ -53,6 +64,24 @@ class RequestCost {
   // metrics are replaced.
   void RecordMetrics(
       const std::vector<std::pair<absl::string_view, double>>& metrics);
+
+  // A metric that carries either an array of doubles or an array of byte
+  // strings, but not both.
+  struct StructuredMetric {
+    std::variant<std::vector<double>, std::vector<std::string>> values;
+  };
+
+  // Records structured metrics (name → StructuredMetric).
+  // It's thread-safe. Metrics are replaced if recorded with the same key.
+  void RecordStructuredMetrics(
+      const std::vector<std::pair<std::string, StructuredMetric>>&
+          structured_metrics);
+
+  // Gets all structured metrics for processing an rpc request.
+  // It's thread-safe. It's expected to be called at the end of processing an
+  // rpc request, when all the structured metrics have been collected.
+  absl::flat_hash_map<std::string, StructuredMetric> GetStructuredMetrics()
+      const;
 
   // Gets all types of metrics for processing an rpc request.
   // It's thread-safe. It's expected to be called at the end of processing an
@@ -92,9 +121,14 @@ class RequestCost {
   // Query costs. Map from cost type to cost.
   absl::flat_hash_map<std::string, absl::Duration> cost_map_
       ABSL_GUARDED_BY(mutex_);
+  // Structured costs. Map from cost type to StructuredCost.
+  absl::flat_hash_map<std::string, StructuredCost> structured_cost_map_
+      ABSL_GUARDED_BY(mutex_);
   // Query metrics. Map from metric name to value.
   absl::flat_hash_map<std::string, double> metric_map_ ABSL_GUARDED_BY(mutex_);
-
+  // Structured metrics. Map from metric name to StructuredMetric.
+  absl::flat_hash_map<std::string, StructuredMetric> structured_metric_map_
+      ABSL_GUARDED_BY(mutex_);
   // Metrics of batches that process this rpc request.
   std::vector<BatchMetrics> batch_metrics_ ABSL_GUARDED_BY(mutex_);
 };

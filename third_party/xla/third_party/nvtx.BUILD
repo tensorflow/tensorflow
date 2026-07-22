@@ -1,5 +1,7 @@
 #Description : NVIDIA Tools Extension (NVTX) library for adding profiling annotations to applications.
 
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
+
 package(
     default_visibility = ["//visibility:public"],
 )

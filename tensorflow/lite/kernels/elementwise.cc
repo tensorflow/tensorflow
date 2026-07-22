@@ -30,6 +30,7 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/kernels/op_macros.h"
+#include "tensorflow/lite/types/half.h"
 
 namespace tflite {
 namespace ops {
@@ -55,6 +56,10 @@ struct OpData {
 
 bool IsNumericSupportedType(const TfLiteType type) {
   return type == kTfLiteFloat32;
+}
+
+bool IsSinCosSupportedType(const TfLiteType type) {
+  return type == kTfLiteFloat32 || type == kTfLiteFloat16;
 }
 
 bool IsLogicalSupportedType(const TfLiteType type) {
@@ -322,10 +327,28 @@ TfLiteStatus AbsEval(TfLiteContext* context, TfLiteNode* node) {
 }
 
 TfLiteStatus SinEval(TfLiteContext* context, TfLiteNode* node) {
+  const TfLiteTensor* input = GetInput(context, node, 0);
+  if (input->type == kTfLiteFloat16) {
+    return EvalImpl<half>(
+        context, node,
+        [](half h) {
+          return static_cast<half>(std::sin(static_cast<float>(h)));
+        },
+        kTfLiteFloat16);
+  }
   return EvalNumeric(context, node, std::sin);
 }
 
 TfLiteStatus CosEval(TfLiteContext* context, TfLiteNode* node) {
+  const TfLiteTensor* input = GetInput(context, node, 0);
+  if (input->type == kTfLiteFloat16) {
+    return EvalImpl<half>(
+        context, node,
+        [](half h) {
+          return static_cast<half>(std::cos(static_cast<float>(h)));
+        },
+        kTfLiteFloat16);
+  }
   return EvalNumeric(context, node, std::cos);
 }
 
@@ -523,7 +546,7 @@ TfLiteRegistration* Register_ABS() {
   return &r;
 }
 
-GENERIC_PREPARE(PrepareSin, elementwise::IsNumericSupportedType, "Sin")
+GENERIC_PREPARE(PrepareSin, elementwise::IsSinCosSupportedType, "Sin")
 
 TfLiteRegistration* Register_SIN() {
   static TfLiteRegistration r = {/*init=*/nullptr, /*free=*/nullptr, PrepareSin,
@@ -531,7 +554,7 @@ TfLiteRegistration* Register_SIN() {
   return &r;
 }
 
-GENERIC_PREPARE(PrepareCos, elementwise::IsNumericSupportedType, "Cos")
+GENERIC_PREPARE(PrepareCos, elementwise::IsSinCosSupportedType, "Cos")
 
 TfLiteRegistration* Register_COS() {
   static TfLiteRegistration r = {/*init=*/nullptr, /*free=*/nullptr, PrepareCos,

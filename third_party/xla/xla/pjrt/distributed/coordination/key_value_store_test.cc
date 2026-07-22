@@ -24,8 +24,8 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/pjrt/distributed/coordination/coordination_service.pb.h"
 #include "xla/tsl/platform/test.h"
-#include "xla/tsl/protobuf/coordination_service.pb.h"
 
 namespace xla {
 namespace {
@@ -40,9 +40,9 @@ using ::testing::status::StatusIs;
 
 // Converts a list of KeyValueEntries into a list of pairs.
 std::vector<std::pair<std::string, std::string>> AsPairs(
-    absl::Span<const tensorflow::KeyValueEntry> entries) {
+    absl::Span<const xla::coordination::KeyValueEntry> entries) {
   std::vector<std::pair<std::string, std::string>> pairs;
-  for (const tensorflow::KeyValueEntry& entry : entries) {
+  for (const xla::coordination::KeyValueEntry& entry : entries) {
     pairs.push_back({entry.key(), entry.value()});
   }
   return pairs;

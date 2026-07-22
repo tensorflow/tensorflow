@@ -1,3 +1,18 @@
+# Copyright 2026 The TensorFlow Authors. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
+
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 load("//tensorflow/core/platform:build_config.bzl", "tf_proto_library")
@@ -6,12 +21,10 @@ package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
         # copybara:uncomment "//learning/brain/tfrt:__subpackages__",
-        # TODO(b/476497239): Remove the old JSV codebase once the migration is done.
-        # copybara:uncomment "//learning/infra/mira/experimental/orbax_model:__subpackages__",
+        # copybara:uncomment "//third_party/neptune:__subpackages__",
         "//tensorflow/compiler/mlir/tfrt:__subpackages__",
         "//tensorflow/core/tfrt:__subpackages__",
         "//tensorflow/core/tfrt/mlrt:__subpackages__",
-        # copybara:uncomment "//third_party/neptune:__subpackages__",
     ],
 )
 
@@ -141,9 +154,11 @@ cc_library(
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/hash",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/log:vlog_is_on",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
@@ -163,6 +178,7 @@ cc_library(
         "@xla//xla/hlo/ir:hlo",
         "@xla//xla/hlo/translate:stablehlo",
         "@xla//xla/pjrt:host_callback",
+        "@xla//xla/pjrt:pjrt_client",
         "@xla//xla/pjrt:pjrt_compiler",
         "@xla//xla/pjrt:pjrt_executable",
         "@xla//xla/pjrt:pjrt_layout",
@@ -611,6 +627,7 @@ tf_cc_test(
         ":ifrt_restore_tensor_registry",
         ":ifrt_serving_executable",
         ":ifrt_serving_executable_test_util",
+        ":sharding_utils",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tfrt/transforms/ifrt:ifrt_types",
         "//tensorflow/compiler/tf2xla:xla_helpers",
@@ -623,7 +640,9 @@ tf_cc_test(
         "//tensorflow/core/framework:tensor_matcher",
         "//tensorflow/core/framework:tensor_testutil",
         "//tensorflow/core/framework:types_proto_cc",
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/log:globals",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_matchers",
         "@com_google_absl//absl/status:statusor",
@@ -643,11 +662,12 @@ tf_cc_test(
         "@tsl//tsl/platform:tstring",
         "@xla//xla:shape_util",
         "@xla//xla:xla_data_proto_cc",
-        "@xla//xla/python/ifrt:test_util",
+        "@xla//xla/python/ifrt",
         "@xla//xla/python/pjrt_ifrt:tfrt_cpu_client_test_lib",
         "@xla//xla/tsl/concurrency:future",
         "@xla//xla/tsl/framework:serving_device_selector",
         "@xla//xla/tsl/framework/test_util:mock_serving_device_selector",
+        "@xla//xla/tsl/platform:env",
         "@xla//xla/tsl/platform:statusor",
     ],
 )

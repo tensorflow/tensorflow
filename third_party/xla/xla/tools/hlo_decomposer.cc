@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/hlo_clone_context.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -106,8 +107,8 @@ absl::StatusOr<std::vector<std::unique_ptr<HloModule>>> DecomposeHloModule(
     return true;
   };
 
-  TF_ASSIGN_OR_RETURN(std::vector<std::unique_ptr<HloModule>> isolated_modules,
-                      Decompose(module));
+  ASSIGN_OR_RETURN(std::vector<std::unique_ptr<HloModule>> isolated_modules,
+                   Decompose(module));
   for (auto& module : isolated_modules) {
     if (should_add_module(module.get())) {
       modules.push_back(std::move(module));
@@ -197,12 +198,12 @@ std::unique_ptr<HloModule> ExtractInstructionIntoNewModule(
   return new_hlo_module;
 }
 
-std::unique_ptr<HloModule> ExtractProducerConsumerIntoNewModule(
-    const HloInstruction& producer, const HloInstruction& consumer) {
+std::unique_ptr<HloModule> ExtractProducerConsumersIntoNewModule(
+    const HloInstruction& producer) {
   auto new_hlo_module =
       std::make_unique<HloModule>("extracted", HloModuleConfig{},
                                   std::make_unique<CompilationEnvironments>(
-                                      consumer.GetModule()->comp_envs()));
+                                      producer.GetModule()->comp_envs()));
   int parameter_number = 0;
   HloComputation::Builder builder("entry_computation");
   HloCloneContext clone_context(new_hlo_module.get());
@@ -223,22 +224,28 @@ std::unique_ptr<HloModule> ExtractProducerConsumerIntoNewModule(
   absl::flat_hash_map<const HloInstruction*, HloInstruction*> operand_map;
   operand_map.emplace(&producer, new_producer);
 
-  absl::InlinedVector<HloInstruction*, 8> consumer_operands;
-  for (const HloInstruction* operand : consumer.operands()) {
-    auto it = operand_map.find(operand);
-    if (it != operand_map.end()) {
-      consumer_operands.push_back(it->second);
-    } else {
-      HloInstruction* new_parameter =
-          builder.AddInstruction(HloInstruction::CreateParameter(
-              parameter_number, operand->shape(), operand->name()));
-      ++parameter_number;
-
-      consumer_operands.push_back(new_parameter);
+  std::vector<HloInstruction*> consumer_outputs;
+  for (const HloInstruction* c : producer.users()) {
+    absl::InlinedVector<HloInstruction*, 8> consumer_operands;
+    for (const HloInstruction* operand : c->operands()) {
+      auto it = operand_map.find(operand);
+      if (it != operand_map.end()) {
+        consumer_operands.push_back(it->second);
+      } else {
+        HloInstruction* new_parameter =
+            builder.AddInstruction(HloInstruction::CreateParameter(
+                parameter_number, operand->shape(), operand->name()));
+        ++parameter_number;
+        consumer_operands.push_back(new_parameter);
+      }
     }
+    consumer_outputs.push_back(builder.AddInstruction(c->CloneWithNewOperands(
+        c->shape(), consumer_operands, &clone_context)));
   }
-  builder.AddInstruction(consumer.CloneWithNewOperands(
-      consumer.shape(), consumer_operands, &clone_context));
+
+  if (consumer_outputs.size() > 1) {
+    builder.AddInstruction(HloInstruction::CreateTuple(consumer_outputs));
+  }
 
   new_hlo_module->AddEntryComputationWithLayouts(builder.Build());
   return new_hlo_module;

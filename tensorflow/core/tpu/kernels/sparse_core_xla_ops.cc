@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/numeric/bits.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/tf2xla/type_util.h"
@@ -41,9 +42,9 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
-#include "xla/stream_executor/tpu/c_api_decl.h"
-#include "xla/stream_executor/tpu/tpu_api.h"
-#include "xla/stream_executor/tpu/tpu_ops_c_api.h"
+#include "xla/tpu/c_api_decl.h"
+#include "xla/tpu/tpu_api.h"
+#include "xla/tpu/tpu_ops_c_api.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/macros.h"
 #include "xla/tsl/platform/statusor.h"
@@ -54,8 +55,6 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/monitoring/gauge.h"
-#include "tensorflow/core/platform/errors.h"
-#include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/tpu/kernels/sparse_core_ops_utils.h"
 
 typedef tensorflow::monitoring::Gauge<int64_t, 2> TFGaugeMetric;
@@ -147,7 +146,7 @@ class XlaSparseDenseMatmulOp : public XlaOpKernel {
             /*tpu_core_type=*/TpuCoreTypeEnum::kEmbeddingV2);
 
     OP_REQUIRES(ctx, num_physical_replica > 0,
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(
                     "No SparseCore is available in the tpu system."));
 
     // TODO(pineapplejuice233): Add error checking logic.
@@ -163,8 +162,11 @@ class XlaSparseDenseMatmulOp : public XlaOpKernel {
     // Construct the shape and a const 0 input for the activations
     xla::XlaOp zero = xla::ConstantLiteral(
         builder, xla::LiteralUtil::Zero(ctx->InputXlaType("embedding_table")));
-    OP_REQUIRES_VALUE(xla::Shape activation_shape, ctx,
+    OP_REQUIRES_VALUE(xla::Shape embedding_table_shape, ctx,
                       ctx->InputXlaShape("embedding_table"));
+    const int64_t vocab_size = embedding_table_shape.dimensions(0);
+    const int64_t feature_width = embedding_table_shape.dimensions(1);
+    xla::Shape activation_shape(embedding_table_shape);
     activation_shape.set_dimensions(0, input_size_);
     xla::Shape row_pointers_shape =
         xla::ShapeUtil::MakeShapeWithType<int32_t>({num_physical_replica});
@@ -187,25 +189,13 @@ class XlaSparseDenseMatmulOp : public XlaOpKernel {
         builder->frontend_attributes();
 
     xla::FrontendAttributes new_frontend_attributes;
-
-    new_frontend_attributes.mutable_map()->insert(
-        {"_xla_compute_type", "sparse"});
-
-    builder->SetFrontendAttributes(new_frontend_attributes);
+    OP_REQUIRES_OK(ctx, SetSparseCoreFrontendAttributes(
+                            &new_frontend_attributes, max_ids_per_partition_,
+                            max_unique_ids_per_partition_, num_physical_replica,
+                            vocab_size, feature_width, input_size_));
 
     // Pack the input tensors as a tuple. This is a intermediate stage before
     // switching to SparseTensor type.
-
-    new_frontend_attributes.mutable_map()->insert(
-        {"_xla_sharding_strategy", "mod"});
-
-    new_frontend_attributes.mutable_map()->insert(
-        {"_xla_max_ids_per_partition", absl::StrCat(max_ids_per_partition_)});
-
-    new_frontend_attributes.mutable_map()->insert(
-        {"_xla_max_unique_ids_per_partition",
-         absl::StrCat(max_unique_ids_per_partition_)});
-
     builder->SetFrontendAttributes(new_frontend_attributes);
 
     xla::XlaOp result = xla::CustomCall(
@@ -275,12 +265,13 @@ class XlaSparseDenseMatmulWithCsrInputOp : public XlaOpKernel {
     }
     device_name_ = ctx->device()->name();
     // Check for incomplete quantization config.
-    OP_REQUIRES(ctx,
-                quantization_config_low_.has_value() ==
-                        quantization_config_high_.has_value() &&
-                    quantization_config_low_.has_value() ==
-                        quantization_config_num_buckets_.has_value(),
-                errors::InvalidArgument("Quantization config is incomplete."));
+    OP_REQUIRES(
+        ctx,
+        quantization_config_low_.has_value() ==
+                quantization_config_high_.has_value() &&
+            quantization_config_low_.has_value() ==
+                quantization_config_num_buckets_.has_value(),
+        absl::InvalidArgumentError("Quantization config is incomplete."));
   }
 
   ~XlaSparseDenseMatmulWithCsrInputOp() override = default;
@@ -311,10 +302,6 @@ class XlaSparseDenseMatmulWithCsrInputOp : public XlaOpKernel {
     const int32_t vocab_size = embedding_table_shape.dimensions(0);
     const int32_t feature_width = embedding_table_shape.dimensions(1);
 
-    const int32_t sharded_vocab_size = vocab_size / num_sparsecores_per_device_;
-    const int32_t sharded_sample_count =
-        input_size_ / num_sparsecores_per_device_;
-
     OP_REQUIRES_OK(
         ctx, GetMaxIdsAndUniques(per_sparse_core_batch_size, feature_width,
                                  &max_ids_per_partition,
@@ -333,7 +320,7 @@ class XlaSparseDenseMatmulWithCsrInputOp : public XlaOpKernel {
     OP_REQUIRES(ctx,
                 TensorShapeUtils::IsScalar(ctx->InputShape(
                     "num_minibatches_per_physical_sparse_core")),
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(
                     "num_minibatches_per_physical_sparse_core must be scalar"));
 
     xla::XlaOp num_minibatches_per_physical_sparse_core =
@@ -350,46 +337,13 @@ class XlaSparseDenseMatmulWithCsrInputOp : public XlaOpKernel {
         xla::Broadcast(zero, activation_shape.dimensions());
 
     xla::FrontendAttributes new_frontend_attributes;
-
-    new_frontend_attributes.mutable_map()->insert(
-        {"_xla_compute_type", "sparse"});
-
-    builder->SetFrontendAttributes(new_frontend_attributes);
-
-    new_frontend_attributes.mutable_map()->insert(
-        {"_xla_sharding_strategy", "mod"});
-
-    new_frontend_attributes.mutable_map()->insert(
-        {"_xla_pad_value", absl::StrCat(kXlaPadValue)});
-
-    new_frontend_attributes.mutable_map()->insert(
-        {"_xla_max_ids_per_partition", absl::StrCat(max_ids_per_partition)});
-
-    new_frontend_attributes.mutable_map()->insert(
-        {"_xla_max_unique_ids_per_partition",
-         absl::StrCat(max_unique_ids_per_partition)});
-
-    if (quantization_config_low_.has_value()) {
-      new_frontend_attributes.mutable_map()->insert(
-          {"_xla_quantization_high_value",
-           absl::StrCat(quantization_config_high_.value())});
-      new_frontend_attributes.mutable_map()->insert(
-          {"_xla_quantization_low_value",
-           absl::StrCat(quantization_config_low_.value())});
-      new_frontend_attributes.mutable_map()->insert(
-          {"_xla_quantization_num_buckets_value",
-           absl::StrCat(quantization_config_num_buckets_.value())});
-    }
-    new_frontend_attributes.mutable_map()->insert(
-        {"_xla_table_name", table_name_});
-    new_frontend_attributes.mutable_map()->insert(
-        {"_xla_vocab_size", absl::StrCat(sharded_vocab_size)});
-    new_frontend_attributes.mutable_map()->insert(
-        {"_xla_feature_width", absl::StrCat(feature_width)});
-    new_frontend_attributes.mutable_map()->insert(
-        {"_xla_sample_count", absl::StrCat(sharded_sample_count)});
-    new_frontend_attributes.mutable_map()->insert(
-        {"_xla_enable_full_hbm_sort", "false"});
+    OP_REQUIRES_OK(
+        ctx, SetSparseCoreFrontendAttributes(
+                 &new_frontend_attributes, max_ids_per_partition,
+                 max_unique_ids_per_partition, num_sparsecores_per_device_,
+                 vocab_size, feature_width, input_size_, table_name_,
+                 /*max_valency=*/std::nullopt, quantization_config_low_,
+                 quantization_config_high_, quantization_config_num_buckets_));
 
     LOG(INFO) << "XlaSparseDenseMatmulWithCsrInputOp: Frontend Attributes: "
               << new_frontend_attributes.DebugString();
@@ -500,6 +454,7 @@ class XlaSparseDenseMatmulCustomCombinerOnTcWithCsrInputOp
 
     OP_REQUIRES_VALUE(xla::Shape embedding_table_shape, ctx,
                       ctx->InputXlaShape("embedding_table"));
+    const int32_t vocab_size = embedding_table_shape.dimensions(0);
     const int32_t feature_width = embedding_table_shape.dimensions(1);
 
     OP_REQUIRES_OK(
@@ -526,36 +481,13 @@ class XlaSparseDenseMatmulCustomCombinerOnTcWithCsrInputOp
     tuple_frontend_attributes.mutable_map()->insert(
         {"_xla_compute_type", "sparse"});
 
-    sc_frontend_attributes.mutable_map()->insert(
-        {"_xla_compute_type", "sparse"});
-
-    sc_frontend_attributes.mutable_map()->insert(
-        {"_xla_sharding_strategy", "mod"});
-
-    sc_frontend_attributes.mutable_map()->insert(
-        {"_xla_pad_value", absl::StrCat(kXlaPadValue)});
-
-    sc_frontend_attributes.mutable_map()->insert(
-        {"_xla_max_ids_per_partition", absl::StrCat(max_ids_per_partition)});
-
-    sc_frontend_attributes.mutable_map()->insert(
-        {"_xla_max_unique_ids_per_partition",
-         absl::StrCat(max_unique_ids_per_partition)});
-
-    sc_frontend_attributes.mutable_map()->insert(
-        {"_xla_max_valency", absl::StrCat(max_valency_)});
-
-    if (quantization_config_low_.has_value()) {
-      sc_frontend_attributes.mutable_map()->insert(
-          {"_xla_quantization_high_value",
-           absl::StrCat(quantization_config_high_.value())});
-      sc_frontend_attributes.mutable_map()->insert(
-          {"_xla_quantization_low_value",
-           absl::StrCat(quantization_config_low_.value())});
-      sc_frontend_attributes.mutable_map()->insert(
-          {"_xla_quantization_num_buckets_value",
-           absl::StrCat(quantization_config_num_buckets_.value())});
-    }
+    OP_REQUIRES_OK(
+        ctx, SetSparseCoreFrontendAttributes(
+                 &sc_frontend_attributes, max_ids_per_partition,
+                 max_unique_ids_per_partition, num_sparsecores_per_device_,
+                 vocab_size, feature_width, input_size_, table_name_,
+                 max_valency_, quantization_config_low_,
+                 quantization_config_high_, quantization_config_num_buckets_));
 
     tc_frontend_attributes =
         builder->SwapFrontendAttributes(sc_frontend_attributes);
@@ -674,15 +606,15 @@ class XlaSparseDenseMatmulGradWithCsrInputBase : public XlaOpKernel {
     OP_REQUIRES(ctx,
                 activation_shape.is_static() &&
                     activation_shape.dimensions().size() == 2,
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(absl::StrCat(
                     "activations input has non static or non-rank 2 shape: ",
-                    activation_shape.ToString()));
+                    activation_shape.ToString())));
     int64_t num_samples_per_chip = activation_shape.dimensions(0);
     OP_REQUIRES(ctx, num_samples_per_chip % num_sparsecores_per_device_ == 0,
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(absl::StrCat(
                     "num_samples_per_chip ", num_samples_per_chip,
                     " not divisible by the number of sparsecores per chip ",
-                    num_sparsecores_per_device_));
+                    num_sparsecores_per_device_)));
     int64_t per_sparse_core_batch_size =
         num_samples_per_chip / num_sparsecores_per_device_;
     int64_t max_ids_per_partition = 0;
@@ -690,6 +622,7 @@ class XlaSparseDenseMatmulGradWithCsrInputBase : public XlaOpKernel {
     OP_REQUIRES_VALUE(xla::Shape embedding_table_shape, ctx,
                       ctx->InputXlaShape("embedding_table"));
 
+    const int64_t vocab_size = embedding_table_shape.dimensions(0);
     const int32_t feature_width = embedding_table_shape.dimensions(1);
     OP_REQUIRES_OK(
         ctx, GetMaxIdsAndUniques(per_sparse_core_batch_size, feature_width,
@@ -720,22 +653,11 @@ class XlaSparseDenseMatmulGradWithCsrInputBase : public XlaOpKernel {
     xla::Shape tables_shape = get_tables_shape(embedding_table_shape);
 
     xla::FrontendAttributes custom_call_frontend_attributes;
-
-    custom_call_frontend_attributes.mutable_map()->insert(
-        {"_xla_compute_type", "sparse"});
-
-    custom_call_frontend_attributes.mutable_map()->insert(
-        {"_xla_sharding_strategy", "mod"});
-
-    custom_call_frontend_attributes.mutable_map()->insert(
-        {"_xla_pad_value", absl::StrCat(kXlaPadValue)});
-
-    custom_call_frontend_attributes.mutable_map()->insert(
-        {"_xla_max_ids_per_partition", absl::StrCat(max_ids_per_partition)});
-
-    custom_call_frontend_attributes.mutable_map()->insert(
-        {"_xla_max_unique_ids_per_partition",
-         absl::StrCat(max_unique_ids_per_partition)});
+    OP_REQUIRES_OK(
+        ctx, SetSparseCoreFrontendAttributes(
+                 &custom_call_frontend_attributes, max_ids_per_partition,
+                 max_unique_ids_per_partition, num_sparsecores_per_device_,
+                 vocab_size, feature_width, num_samples_per_chip, table_name_));
 
     builder->SetFrontendAttributes(custom_call_frontend_attributes);
 
@@ -828,6 +750,7 @@ class XlaSparseDenseMatmulGradWithCsrInputOp : public XlaOpKernel {
     int64_t max_ids_per_partition = 0;
     int64_t max_unique_ids_per_partition = 0;
 
+    const int64_t vocab_size = tables_shapes[0].dim_size(0);
     const int32_t feature_width = tables_shapes[0].dim_size(1);
     OP_REQUIRES_OK(
         ctx, GetMaxIdsAndUniquesExternal(kUnknownProgramKey, table_name_,
@@ -937,22 +860,11 @@ class XlaSparseDenseMatmulGradWithCsrInputOp : public XlaOpKernel {
     xla::Shape tables_shape = xla::ShapeUtil::MakeTupleShape(xla_tables_shapes);
 
     xla::FrontendAttributes custom_call_frontend_attributes;
-
-    custom_call_frontend_attributes.mutable_map()->insert(
-        {"_xla_compute_type", "sparse"});
-
-    custom_call_frontend_attributes.mutable_map()->insert(
-        {"_xla_sharding_strategy", "mod"});
-
-    custom_call_frontend_attributes.mutable_map()->insert(
-        {"_xla_pad_value", absl::StrCat(kXlaPadValue)});
-
-    custom_call_frontend_attributes.mutable_map()->insert(
-        {"_xla_max_ids_per_partition", absl::StrCat(max_ids_per_partition)});
-
-    custom_call_frontend_attributes.mutable_map()->insert(
-        {"_xla_max_unique_ids_per_partition",
-         absl::StrCat(max_unique_ids_per_partition)});
+    OP_REQUIRES_OK(
+        ctx, SetSparseCoreFrontendAttributes(
+                 &custom_call_frontend_attributes, max_ids_per_partition,
+                 max_unique_ids_per_partition, num_sparsecores_per_device_,
+                 vocab_size, feature_width, num_samples_per_chip, table_name_));
 
     builder->SetFrontendAttributes(custom_call_frontend_attributes);
 
@@ -1230,7 +1142,8 @@ class XlaSparseDenseMatmulCustomCombinerOnTcGradWithCsrInputBase
                                           xla::XlaOp lookup_gradients,
                                           int32_t max_ids_per_partition,
                                           int32_t max_unique_ids_per_partition,
-                                          int32_t feature_width) {
+                                          int32_t feature_width,
+                                          int32_t input_size) {
     xla::XlaOp row_pointers = ctx->Input("row_pointers");
     xla::XlaOp sorted_sample_ids = ctx->Input("sorted_sample_ids");
     xla::XlaOp sorted_token_ids = ctx->Input("sorted_token_ids");
@@ -1260,24 +1173,13 @@ class XlaSparseDenseMatmulCustomCombinerOnTcGradWithCsrInputBase
 
     TF_ASSIGN_OR_RETURN(std::shared_ptr<xla::XlaComputation> optimizer,
                         BuildOptimizerComputation(ctx, feature_width));
+    const int64_t vocab_size = tables_shape.tuple_shapes(0).dimensions(0);
 
     xla::FrontendAttributes custom_call_frontend_attributes;
-
-    custom_call_frontend_attributes.mutable_map()->insert(
-        {"_xla_compute_type", "sparse"});
-
-    custom_call_frontend_attributes.mutable_map()->insert(
-        {"_xla_sharding_strategy", "mod"});
-
-    custom_call_frontend_attributes.mutable_map()->insert(
-        {"_xla_pad_value", absl::StrCat(kXlaPadValue)});
-
-    custom_call_frontend_attributes.mutable_map()->insert(
-        {"_xla_max_ids_per_partition", absl::StrCat(max_ids_per_partition)});
-
-    custom_call_frontend_attributes.mutable_map()->insert(
-        {"_xla_max_unique_ids_per_partition",
-         absl::StrCat(max_unique_ids_per_partition)});
+    RETURN_IF_ERROR(SetSparseCoreFrontendAttributes(
+        &custom_call_frontend_attributes, max_ids_per_partition,
+        max_unique_ids_per_partition, num_sparsecores_per_device_, vocab_size,
+        feature_width, input_size, table_name_));
 
     builder->SetFrontendAttributes(custom_call_frontend_attributes);
 
@@ -1346,10 +1248,10 @@ class XlaSparseDenseMatmulCustomCombinerOnTcGradWithCsrInputBase
 
     // Pass the TC activation gradients back to SC for back-propagation with
     // optimizer.
-    OP_REQUIRES_OK(ctx,
-                   EmitSparseCoreComputations(
-                       ctx, builder, lookup_gradients, max_ids_per_partition,
-                       max_unique_ids_per_partition, feature_width));
+    OP_REQUIRES_OK(
+        ctx, EmitSparseCoreComputations(
+                 ctx, builder, lookup_gradients, max_ids_per_partition,
+                 max_unique_ids_per_partition, feature_width, input_size));
   }
 
  protected:
