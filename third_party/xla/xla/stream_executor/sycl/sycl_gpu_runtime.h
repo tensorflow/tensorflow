@@ -139,6 +139,10 @@ struct SyclTimerProperties {
   uint64_t timestamp_mask;
 };
 
+// Returns whether location belongs to a driver-imported host-memory range.
+bool SyclIsHostMemoryRegistered(const ::sycl::device& device,
+                                const void* location);
+
 // Returns the timer frequency (Hz) and valid timestamp bitmask for the given
 // device ordinal using the Level Zero backend.
 absl::StatusOr<SyclTimerProperties> SyclGetTimerProperties(int device_ordinal);

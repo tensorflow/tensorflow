@@ -396,11 +396,6 @@ TEST_F(PjrtCApiGpuTest, CreateAndDestroyExecuteContext) {
 }
 
 TEST_F(PjrtCApiGpuTest, DmaMapAndUnmap) {
-// TODO(Intel-tf) : DMA map/unmap is currently not supported
-// on SYCL backend, re-enable the test once it's supported.
-#ifdef TENSORFLOW_USE_SYCL
-  GTEST_SKIP() << "DMA map/unmap not supported on SYCL backend";
-#endif
   size_t dma_size = 1024 * 1024;
   size_t alignment = 1024 * 1024;
   void* host_dma_ptr = tsl::port::AlignedMalloc(

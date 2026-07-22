@@ -146,6 +146,9 @@ class SyclExecutor : public gpu::GpuExecutor {
   absl::StatusOr<std::unique_ptr<MemoryAllocation>> HostMemoryAllocate(
       uint64_t size) override;
 
+  bool HostMemoryRegister(void* location, uint64_t size) override;
+  bool HostMemoryUnregister(void* location) override;
+
   // Deallocates the given stream.
   void DeallocateStream(Stream* stream) override;
 
