@@ -131,14 +131,22 @@ bool ContainsOnlyFormattingOps(const HloInstruction* async_op) {
   if (async_op->opcode() == HloOpcode::kAsyncDone) {
     return ContainsOnlyFormattingOps(async_op->operand(0));
   }
-  HloInstruction* call =
-      async_op->async_wrapped_computation()->root_instruction();
-  bool result = true;
-  for (HloInstruction* instr :
-       call->called_computations().front()->instructions()) {
+
+  const HloComputation* computation = async_op->async_wrapped_computation();
+
+  // Async wrappers can nest call-like instructions. Look through the root's
+  // callee so the recursive checks below continue into the nested async.
+  const HloInstruction* root = computation->root_instruction();
+  if (!root->called_computations().empty()) {
+    computation = root->called_computations().front();
+  }
+
+  for (const HloInstruction* instr : computation->instructions()) {
     if (HloPredicateIsOp<HloOpcode::kAsyncStart, HloOpcode::kAsyncDone>(
             instr)) {
-      result &= ContainsOnlyFormattingOps(instr);
+      if (!ContainsOnlyFormattingOps(instr)) {
+        return false;
+      }
     } else if (!HloPredicateIsOp<HloOpcode::kCopy, HloOpcode::kParameter>(
                    instr)) {
       return false;
