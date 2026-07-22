@@ -508,8 +508,10 @@ bool LegalizeSchedulingAnnotations::RemoveTrivialGroups(
       }
     }
     if (!deleted_instructions.empty()) {
-      for (auto& [annotation, comp_inst_vector] : annotation_to_instruction) {
-        for (auto& [comp, annotated_instructions] : comp_inst_vector) {
+      absl::erase_if(annotation_to_instruction, [&](auto& annotation_entry) {
+        auto& [annotation, comp_inst_vector] = annotation_entry;
+        absl::erase_if(comp_inst_vector, [&](auto& comp_entry) {
+          auto& [comp, annotated_instructions] = comp_entry;
           std::vector<HloInstruction*> updated_annotated_instructions;
           for (HloInstruction* instr : annotated_instructions) {
             if (!deleted_instructions.contains(instr)) {
@@ -519,15 +521,13 @@ bool LegalizeSchedulingAnnotations::RemoveTrivialGroups(
             }
           }
           if (updated_annotated_instructions.empty()) {
-            comp_inst_vector.erase(comp);
-          } else {
-            comp_inst_vector[comp] = updated_annotated_instructions;
+            return true;
           }
-        }
-        if (comp_inst_vector.empty()) {
-          annotation_to_instruction.erase(annotation);
-        }
-      }
+          annotated_instructions = std::move(updated_annotated_instructions);
+          return false;
+        });
+        return comp_inst_vector.empty();
+      });
     }
     VLOG(3) << "Retaining nontrivial group: " << group_id;
   }
