@@ -129,3 +129,7 @@ message CompilerBuildInfo {
   // Whether the build client was mint (unmodified) or modified.
   ClientStatus client_status = 4;
 }
+
+message CompilationLogs {
+  repeated CompilationLogEntry entries = 1;
+}
