@@ -33,6 +33,9 @@ def _llvm_extension_impl(mctx):  # @unused
     _llvm_zstd_compat(name = "llvm_zstd")
     llvm_configure(
         name = "llvm-project",
+        repo_mapping = {
+            "@llvm": "@llvm-project",
+        },
         targets = [
             "AArch64",
             "AMDGPU",

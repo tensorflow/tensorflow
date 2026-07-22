@@ -114,6 +114,9 @@ absl::Status CopyAssociatedFunctions(
          GetAssociatedFunctions(*n, lookup_fld)) {
       switch (associated_function.type()) {
         case AssociatedFunctionInfo::kFunctionCallNode: {
+          if (fld->Find(associated_function.func_name()) != nullptr) {
+            break;
+          }
           const FunctionDef* fdef =
               lookup_fld->Find(associated_function.func_name());
           if (!fdef) {
@@ -258,13 +261,18 @@ absl::Status PropagateConstIntoFuncAttr(
   NameAttrList func_attr;
   TF_RETURN_IF_ERROR(GetNodeAttr(n->def(), attr_name, &func_attr));
   const FunctionDef* fdef = lookup_fld->Find(func_attr.name());
+  const FunctionLibraryDefinition* fld_to_use = lookup_fld;
+  if (!fdef) {
+    fdef = fld->Find(func_attr.name());
+    fld_to_use = fld;
+  }
   if (!fdef) {
     return absl::InternalError(absl::StrCat(
         "Cannot find function ", func_attr.name(), " for node ", n->name()));
   }
   std::unique_ptr<FunctionBody> fbody;
   TF_RETURN_IF_ERROR(FunctionDefToBodyHelper(
-      *fdef, AttrSlice(&func_attr.attr()), lookup_fld, &fbody));
+      *fdef, AttrSlice(&func_attr.attr()), fld_to_use, &fbody));
 
   // Rewrite _Arg usages with Const node.
   Graph* func_graph = fbody->graph;
@@ -439,6 +447,11 @@ absl::Status PropagateConstIntoAndAroundWhileNode(
   TF_RETURN_IF_ERROR(GetNodeAttr(while_node->def(), "body", &body_attr));
   const std::string fn_name = body_attr.name();
   const FunctionDef* body_func = lookup_fld->Find(fn_name);
+  const FunctionLibraryDefinition* fld_to_use = lookup_fld;
+  if (!body_func) {
+    body_func = fld->Find(fn_name);
+    fld_to_use = fld;
+  }
   if (!body_func) {
     return absl::InternalError(
         absl::StrCat("Propagate: Cannot find body function ", fn_name,
@@ -446,7 +459,7 @@ absl::Status PropagateConstIntoAndAroundWhileNode(
   }
   std::unique_ptr<FunctionBody> fbody;
   TF_RETURN_IF_ERROR(FunctionDefToBodyHelper(
-      *body_func, AttrSlice(&body_attr.attr()), lookup_fld, &fbody));
+      *body_func, AttrSlice(&body_attr.attr()), fld_to_use, &fbody));
   GraphCache cache;
   for (int i = 0; i < while_node->num_inputs(); i++) {
     // Check if i-th retval's input comes from i-th arg directly.

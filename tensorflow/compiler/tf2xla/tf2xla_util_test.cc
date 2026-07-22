@@ -515,5 +515,53 @@ TEST(PropagateConstIntoFunctionalNodes, RewriteTensorListWithConstMember) {
   EXPECT_EQ(input->type_string(), "Const");
 }
 
+TEST(PropagateConstIntoFunctionalNodes, RepeatedWhileLoops) {
+  FunctionLibraryDefinition fld(OpRegistry::Global(), FunctionDefLibrary());
+  {
+    Scope scope = Scope::NewRootScope().ExitOnError();
+    auto arg0 = ops::_Arg(scope.WithOpName("arg0"), DT_INT32, 0);
+    auto arg1 = ops::_Arg(scope.WithOpName("arg1"), DT_INT32, 1);
+    auto ret0 = ops::_Retval(scope.WithOpName("ret0"), arg0, 0);
+    auto ret1 = ops::_Retval(scope.WithOpName("ret1"), arg1, 1);
+    Graph graph(OpRegistry::Global());
+    TF_ASSERT_OK(scope.ToGraph(&graph));
+    
+    FunctionDef cond_fdef;
+    TF_ASSERT_OK(GraphToFunctionDef(graph, "cond", &cond_fdef));
+    TF_ASSERT_OK(fld.AddFunctionDef(cond_fdef));
+    
+    FunctionDef body_fdef;
+    TF_ASSERT_OK(GraphToFunctionDef(graph, "body", &body_fdef));
+    TF_ASSERT_OK(fld.AddFunctionDef(body_fdef));
+  }
+  
+  Scope scope = Scope::NewRootScope().ExitOnError();
+  auto val0 = ops::Const(scope.WithOpName("val0"), 0, TensorShape({}));
+  auto val1 = ops::Const(scope.WithOpName("val1"), 6, TensorShape({}));
+  
+  NameAttrList cond_fn, body_fn;
+  cond_fn.set_name("cond");
+  body_fn.set_name("body");
+  
+  auto while_op0 =
+      ops::While(scope.WithOpName("while0"),
+                 std::initializer_list<Input>{val0, val1}, cond_fn, body_fn);
+  auto while_op1 =
+      ops::While(scope.WithOpName("while1"),
+                 std::initializer_list<Input>{Output(while_op0, 0), Output(while_op0, 1)},
+                 cond_fn, body_fn);
+  auto while_op2 =
+      ops::While(scope.WithOpName("while2"),
+                 std::initializer_list<Input>{Output(while_op1, 0), Output(while_op1, 1)},
+                 cond_fn, body_fn);
+                 
+  Graph graph(OpRegistry::Global());
+  TF_ASSERT_OK(scope.ToGraph(&graph));
+
+  FunctionLibraryDefinition lookup_fld(fld);
+  TF_EXPECT_OK(PropagateConstIntoFunctionalNodes(&graph, &fld, &lookup_fld));
+  TF_EXPECT_OK(PropagateConstIntoFunctionalNodes(&graph, &fld, &lookup_fld));
+}
+
 }  // namespace
 }  // namespace tensorflow
