@@ -544,6 +544,18 @@ class RFFTOpsTest(BaseFFTOpsTest, parameterized.TestCase):
     else:
       raise ValueError("invalid rank")
 
+  @parameterized.named_parameters(("Irfft", fft_ops.irfft),
+                                  ("IrfftNd", fft_ops.irfftnd))
+  def testIrfftRejectsStaticInnerDimLessThanTwo(self, irfft_fn):
+    with self.assertRaisesRegex(ValueError, "inner-most dimension"):
+      irfft_fn(np.zeros([1], dtype=np.complex64))
+
+  @test_util.run_deprecated_v1
+  def testIrfftAllowsUnknownRankConstruction(self):
+    x = array_ops.placeholder(dtype=dtypes.complex64)
+    y = fft_ops.irfft(x)
+    self.assertEqual(y.dtype, dtypes.float32)
+
   # rocFFT requires/assumes that the input to the irfft transform
   # is of the form that is a valid output from the rfft transform
   # (i.e. it cannot be a set of random numbers)
