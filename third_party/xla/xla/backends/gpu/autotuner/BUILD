@@ -711,6 +711,7 @@ xla_test(
         "//xla/service:transfer_manager",
         "//xla/service/gpu:gpu_compiler",
         "//xla/service/gpu:nvptx_compiler_impl",
+        "//xla/stream_executor:device_address",
         "//xla/stream_executor:device_address_allocator",
         "//xla/stream_executor:platform",
         "//xla/stream_executor:stream_executor_address_allocator",
