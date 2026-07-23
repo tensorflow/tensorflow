@@ -1022,6 +1022,69 @@ TEST(FusionDebuggerTest, DestructorCleansUpAllFiles) {
   EXPECT_THAT(GetLeftoverFusionDebuggerFiles(), IsEmpty());
 }
 
+TEST(PassTrackingTest, ModuleContainsFusionsAndIsBeforeOptimizations) {
+  const char* hlo_text_simple = R"(
+HloModule SimpleModule
+
+ENTRY main {
+  a = f32[] parameter(0)
+  b = f32[] parameter(1)
+  ROOT add = f32[] add(a, b)
+}
+)";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module_simple,
+                       ParseAndReturnUnverifiedModule(hlo_text_simple));
+  EXPECT_FALSE(ModuleContainsFusions(*module_simple));
+  EXPECT_TRUE(IsBeforeOptimizations(*module_simple, /*run_hlo_passes=*/false));
+  EXPECT_TRUE(IsBeforeOptimizations(*module_simple, /*run_hlo_passes=*/true));
+
+  const char* hlo_text_fusion = R"(
+HloModule FusionModule
+
+fused_computation {
+  p0 = f32[] parameter(0)
+  p1 = f32[] parameter(1)
+  ROOT add = f32[] add(p0, p1)
+}
+
+ENTRY main {
+  a = f32[] parameter(0)
+  b = f32[] parameter(1)
+  ROOT fusion = f32[] fusion(a, b), kind=kLoop, calls=fused_computation
+}
+)";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module_fusion,
+                       ParseAndReturnUnverifiedModule(hlo_text_fusion));
+  EXPECT_TRUE(ModuleContainsFusions(*module_fusion));
+  EXPECT_FALSE(IsBeforeOptimizations(*module_fusion, /*run_hlo_passes=*/false));
+  EXPECT_TRUE(IsBeforeOptimizations(*module_fusion, /*run_hlo_passes=*/true));
+}
+
+TEST(PassTrackingTest, GetModifyingPassesForInstructionAndLogging) {
+  const char* hlo_text = R"(
+HloModule AttrModule
+
+ENTRY main {
+  a = f32[] parameter(0)
+  b = f32[] parameter(1)
+  ROOT add = f32[] add(a, b)
+}
+)";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnUnverifiedModule(hlo_text));
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  EXPECT_EQ(GetModifyingPassesForInstruction(root), "");
+
+  xla::FrontendAttributes attrs;
+  (*attrs.mutable_map())["_xla_modifying_passes"] = "pass1,pass2";
+  root->set_frontend_attributes(attrs);
+  EXPECT_EQ(GetModifyingPassesForInstruction(root), "pass1,pass2");
+
+  // Verify logging runs without crashing
+  LogModifyingPassesOnMismatch(*module, "add");
+  LogModifyingPassesOnMismatch(*module, "nonexistent_op");
+}
+
 }  // namespace
 }  // namespace hlo_isolation
 }  // namespace xla
