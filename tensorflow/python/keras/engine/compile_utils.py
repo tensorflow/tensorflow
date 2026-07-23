@@ -503,6 +503,13 @@ class MetricsContainer(Container):
     if str(metric).lower() not in ['accuracy', 'acc', 'crossentropy', 'ce']:
       metric_obj = metrics_mod.get(metric)
     else:
+      if y_t.shape.rank is None or y_p.shape.rank is None:
+        raise ValueError(
+            "Unable to automatically select a metric for tensors with "
+            "unknown shapes. When using tf.numpy_function or similar ops "
+            "that produce tensors with unknown shapes, you must set the "
+            "shape on the output tensors (e.g., tensor.set_shape(...) or "
+            "use tf.ensure_shape(tensor, ...)).")
       y_t_rank = len(y_t.shape.as_list())
       y_p_rank = len(y_p.shape.as_list())
       y_t_last_dim = y_t.shape.as_list()[-1]

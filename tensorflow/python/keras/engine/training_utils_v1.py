@@ -642,11 +642,13 @@ def standardize_input_data(data,
       if shapes[i] is not None:
         if tensor_util.is_tf_type(data[i]):
           tensorshape = data[i].shape
-          if not tensorshape:
+          if tensorshape.rank is None:
             continue
           data_shape = tuple(tensorshape.as_list())
         elif is_composite_or_composite_value(data[i]):
           tensorshape = get_composite_shape(data[i])
+          if tensorshape.rank is None:
+            continue
           data_shape = tuple(tensorshape.as_list())
         else:
           data_shape = data[i].shape
