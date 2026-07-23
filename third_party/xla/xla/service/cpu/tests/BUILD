@@ -265,7 +265,6 @@ xla_test(
     backends = ["cpu"],
     deps = [
         "//xla:debug_options_flags",
-        "//xla/service:computation_placer",
         "//xla/service:hlo_module_config",
         "//xla/service/cpu:cpu_compiler",
         "//xla/service/cpu:test_header_helper",

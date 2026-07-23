@@ -627,13 +627,8 @@ absl::Status CpuCompiler::RunHloPassesThroughLayoutAssn(
           module->config().allow_spmd_sharding_propagation_to_output(),
           module->config().allow_spmd_sharding_propagation_to_parameters());
     }
-    auto spmd_partitioner_options =
-        spmd::StatefulRngSpmdPartitioner::GetDefaultOptions();
-    // XLA:CPU does not support kCollectiveBroadcast.
-    spmd_partitioner_options.enable_dynamic_slice_collective_broadcast = false;
     spmd_pipeline.AddPass<spmd::StatefulRngSpmdPartitioner>(
-        num_partitions, module->config().replica_count(),
-        std::move(spmd_partitioner_options));
+        num_partitions, module->config().replica_count());
     spmd_pipeline.AddPass<ControlDepRewriter>();
     if (module->config().debug_options().xla_enable_enzyme_comms_opt()) {
       spmd_pipeline.AddPass<RecognizeReduceWindow>();
