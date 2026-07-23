@@ -43,7 +43,9 @@ limitations under the License.
 #include "mlir/IR/OperationSupport.h"
 #include "mlir/IR/OwningOpRef.h"
 #include "mlir/Parser/Parser.h"
+#include "mlir/Pass/PassManager.h"
 #include "mlir/Support/LLVM.h"
+#include "mlir/Transforms/Passes.h"
 #include "xla/pjrt/maybe_owning_mlir_module.h"
 #include "xla/pjrt/mlir_to_hlo.h"
 #include "xla/status_macros.h"
@@ -161,14 +163,8 @@ class HighwayHashStream final : public llvm::raw_ostream {
   uint64_t buffer_pos_ = 0;
 };
 
-}  // namespace
-
-absl::StatusOr<uint64_t> HloProgram::Fingerprint() const {
-  tsl::StatusScopedDiagnosticHandler diag_handler(mlir_module_->getContext());
-
-  mlir::BytecodeWriterConfig config;
-  config.setElideLocations(true);
-
+absl::StatusOr<uint64_t> FingerprintInternal(
+    mlir::ModuleOp module, mlir::BytecodeWriterConfig config) {
   // Use a version before `kUseListOrdering` due to an MLIR bug where use list
   // ordering is not stable.
   //
@@ -177,9 +173,10 @@ absl::StatusOr<uint64_t> HloProgram::Fingerprint() const {
   config.setDesiredBytecodeVersion(
       mlir::bytecode::BytecodeVersion::kLazyLoading);
 
+  tsl::StatusScopedDiagnosticHandler diag_handler(module->getContext());
+
   HighwayHashStream os;
-  mlir::LogicalResult result =
-      mlir::writeBytecodeToFile(mlir_module_, os, config);
+  mlir::LogicalResult result = mlir::writeBytecodeToFile(module, os, config);
   absl::Status status = diag_handler.consumeStatus();
   if (!status.ok()) {
     tsl::errors::AppendToMessage(
@@ -188,6 +185,32 @@ absl::StatusOr<uint64_t> HloProgram::Fingerprint() const {
   }
   TF_RET_CHECK(mlir::succeeded(result));
   return std::move(os).fingerprint();
+}
+
+}  // namespace
+
+absl::StatusOr<uint64_t> HloProgram::Fingerprint() const {
+  mlir::BytecodeWriterConfig config;
+  config.setElideLocations(true);
+
+  return FingerprintInternal(mlir_module_, std::move(config));
+}
+
+absl::StatusOr<uint64_t> HloProgram::FingerprintWithStripDebugInfoPass() const {
+  // Clone the module to avoid modifying the original.
+  mlir::OwningOpRef<mlir::ModuleOp> cloned_module(
+      llvm::cast<mlir::ModuleOp>(mlir_module_->clone()));
+
+  // Run StripDebugInfoPass on the cloned module.
+  mlir::PassManager pm(cloned_module->getContext());
+  pm.addPass(mlir::createStripDebugInfoPass());
+  if (mlir::failed(pm.run(*cloned_module))) {
+    return absl::InternalError(
+        "Failed to strip debug info during fingerprinting");
+  }
+
+  mlir::BytecodeWriterConfig config;
+  return FingerprintInternal(*cloned_module, std::move(config));
 }
 
 xla::MaybeOwningMlirModule HloProgram::ToMaybeOwningMlirModule() && {

@@ -78,6 +78,12 @@ class HloProgram : public llvm::RTTIExtends<HloProgram, Program> {
   // if their fingerprints are the same. May ignore debug info.
   absl::StatusOr<uint64_t> Fingerprint() const;
 
+  // Like Fingerprint(), but strips debug info by cloning the module and running
+  // mlir::StripDebugInfoPass instead of using attachAttributeCallback.
+  // TODO(krishnahari,phawkins): Clean up once Fingerprint() is fixed to work
+  // correctly with debug info.
+  absl::StatusOr<uint64_t> FingerprintWithStripDebugInfoPass() const;
+
   // Destructively converts this HloProgram into a MaybeOwningMlirModule.
   xla::MaybeOwningMlirModule ToMaybeOwningMlirModule() &&;
 
