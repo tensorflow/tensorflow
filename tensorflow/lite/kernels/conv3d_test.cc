@@ -336,5 +336,15 @@ TEST(Conv3dOpModel, NoIm2ColTensorTest) {
                         708, 794, 632, 734, 836, 938, 728, 846, 964, 1082}));
 }
 
+TEST(Conv3dPrepareSecurityTest, RejectsShapeOverflow) {
+  constexpr int kHugeDim = 46341;
+  PrepareOnlyConv3dOpModel m(
+      {TensorType_FLOAT32, {1, kHugeDim, kHugeDim, 1, 1}},
+      {TensorType_FLOAT32, {1, 1, 1, 1, 1}}, {TensorType_FLOAT32, {}},
+      Padding_SAME);
+
+  EXPECT_EQ(m.AllocateTensors(), kTfLiteError);
+}
+
 }  // namespace
 }  // namespace tflite
