@@ -2383,9 +2383,22 @@ class AUC(Metric):
             math_ops.reduce_sum(self.label_weights),
             name=self.name)
     else:
-      return math_ops.reduce_sum(
+      auc = math_ops.reduce_sum(
           math_ops.multiply(x[:self.num_thresholds - 1] - x[1:], heights),
           name=self.name)
+      if self.curve == metrics_utils.AUCCurve.ROC:
+        # ROC-AUC is undefined when only one class is present in y_true.
+        # TP+FN == total positives and FP+TN == total negatives at any threshold,
+        # so summing at index 0 gives true class counts independent of thresholds.
+        total_positives = self.true_positives[0] + self.false_negatives[0]
+        total_negatives = self.false_positives[0] + self.true_negatives[0]
+        no_positives = math_ops.equal(total_positives, 0)
+        no_negatives = math_ops.equal(total_negatives, 0)
+        return array_ops.where(
+            math_ops.logical_or(no_positives, no_negatives),
+            constant_op.constant(float('nan'), dtype=auc.dtype),
+            auc)
+      return auc
 
   def reset_state(self):
     if self._built:
