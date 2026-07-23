@@ -14,6 +14,7 @@
 # ==============================================================================
 """File IO methods that wrap the C++ FileSystem API."""
 import binascii
+import io
 import os
 from posixpath import join as urljoin
 import uuid
@@ -51,6 +52,7 @@ class FileIO(object):
     self.__encoding = encoding
     self._read_buf = None
     self._writable_file = None
+    self._closed = False
     self._binary_mode = "b" in mode
     mode = mode.replace("b", "")
     if mode not in ("r", "w", "a", "r+", "w+", "a+"):
@@ -90,6 +92,22 @@ class FileIO(object):
       return compat.as_bytes(val, encoding=self.__encoding)
     else:
       return compat.as_str_any(val, encoding=self.__encoding)
+
+  @property
+  def closed(self):
+    """Returns True if the file is closed."""
+    return self._closed
+
+  def fileno(self):
+    """Returns the underlying file descriptor if one exists.
+
+    Raises:
+      io.UnsupportedOperation: This always raises io.UnsupportedOperation
+        because TensorFlow FileIO doesn't support file descriptors.
+    """
+    raise io.UnsupportedOperation(
+        "File descriptors are not supported by TensorFlow FileIO"
+    )
 
   def size(self):
     """Returns the size of the file."""
@@ -240,6 +258,7 @@ class FileIO(object):
     if self._writable_file:
       self._writable_file.close()
       self._writable_file = None
+    self._closed = True
 
   def seekable(self):
     """Returns True as FileIO supports random access ops of seek()/tell()"""

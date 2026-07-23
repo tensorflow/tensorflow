@@ -513,6 +513,8 @@ absl::StatusOr<ge::TiledHloComputation> GetTiledHloComputation(
     auto tiled_computation = ge::TiledHloComputation::Tile(
         *fusion_adaptor, std::move(winning_tiling_space));
     if (tiled_computation.ok()) {
+      tiled_computation->Simplify();
+      tiled_computation->SortInstructionsPostOrder();
       VLOG(2) << "  Tiling succeeded! Winner picked.";
       return std::move(*tiled_computation);
     }

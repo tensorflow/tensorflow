@@ -353,9 +353,6 @@ message DebugOptions {
   //--------------------------------------------------------------------------//
   // XLA:GPU options.
   //--------------------------------------------------------------------------//
-  // clang-format off
-  // go/keep-sorted start newline_separated=yes skip_lines=2 ignore_prefixes=["optional AutotuneCacheMode","optional bool","optional float","optional int32","optional int64","optional LibNvJitLinkMode","map<string, string>","optional PGLEStrictnessLevel","optional PipelineParallelismOptLevel","repeated CollectiveOpType","repeated CommandBufferCmdType","repeated string","optional ShapeChecks","optional string","optional WhileLoopUnrolling","repeated GenericTritonEmitterFeature","optional CommandBufferSchedulingMode", "repeated AutotuneBackend", "optional CollectivesMode","optional CommandBufferUpdateMode"] // NOLINT
-  // clang-format on
 
   // Memory mode for XLA:GPU collective operations.
   //
@@ -414,9 +411,22 @@ message DebugOptions {
   //   SKIP_TEMP: Command-buffer-referenced preallocated temp buffers
   //     use fixed VMM reservation addresses; other dynamic allocations still
   //     trigger command updates when their addresses change.
+  //   SKIP_PROFILED: For the first few executions, buffers use regular
+  //     dynamically allocated addresses. Preallocated temp buffers are
+  //     automatically selected for remapping while the runtime records which
+  //     other non-constant, non-thread-local command-buffer-referenced
+  //     allocations keep a stable address. Afterwards, the temp buffers and
+  //     stable profile candidates use fixed VMM reservation addresses during
+  //     execution. Temp buffers are allocated through the reservation;
+  //     finalized input and output addresses are aliased into it immediately
+  //     before execution.
+  //     Remapping enforces address stability, so a mispredicted profile costs
+  //     an extra VMM remap instead of correctness. Requires the VMM allocator
+  //     and assumes symmetric behavior across ranks.
   enum CommandBufferUpdateMode {
     ALWAYS_UPDATE = 0;
     SKIP_TEMP = 1;
+    SKIP_PROFILED = 2;
   }
 
   // Controls when cuDNN fusions are compiled in "deviceless" mode, i.e. driven
@@ -639,14 +649,6 @@ message DebugOptions {
   // but potentially higher the performance.
   optional int32 xla_gpu_cudnn_gemm_max_plans = 318;
 
-  // Allows using the dot precision algorithm `ALG_DOT_BF16_BF16_F32 for f32 dot
-  // ops by default. This is expected to improve performance at the expense of
-  // numerical accuracy.
-  //
-  // At this point, XLA may still choose a higher precision dot algorithm, but
-  // we expect this to change at a later point.
-  optional bool xla_gpu_default_to_alg_dot_bf16_bf16_f32 = 441;
-
   // Guarantees run-to-run determinism.
   // This flag disables autotuning and selects the first __valid__ autotune
   // config.
@@ -791,10 +793,6 @@ message DebugOptions {
   // 'xla_gpu_exclude_nondeterministic_ops' is enabled.
   optional bool xla_gpu_enable_scatter_determinism_expander = 345;
 
-  // Enables shared constants for XLA/GPU. This allows large constants to be
-  // shared among multiple GPU executables.
-  optional bool xla_gpu_enable_shared_constants = 165 [deprecated = true];
-
   optional bool xla_gpu_enable_triton_gemm = 188;
 
   // Enable double buffering for loops.
@@ -853,11 +851,6 @@ message DebugOptions {
   // If true, autotune all fusions with block level emitter.
   optional bool xla_gpu_experimental_all_fusions_with_triton = 444;
 
-  // Enables an Ahead-of-Time (AOT) compilation flow where the compiled binary
-  // includes the generated Thunks. In contrast, the legacy flow only compiles
-  // up to the HLO optimization stage, before Thunk generation.
-  optional bool xla_gpu_experimental_aot_compiled_thunks = 435;
-
   // Specifies the behavior of per kernel autotuning cache.
   optional AutotuneCacheMode xla_gpu_experimental_autotune_cache_mode = 324;
 
@@ -866,10 +859,9 @@ message DebugOptions {
   optional bool xla_gpu_experimental_autotune_post_fusion = 481
       [deprecated = true];
 
-  // Specifies the directory for the new structured autotuning cache.
-  // This supersedes `xla_gpu_per_fusion_autotune_cache_dir`, which uses
-  // a different cache format.
-  optional string xla_gpu_experimental_autotuner_cache_dir = 407;
+  // No-op, to be removed.
+  optional string xla_gpu_experimental_autotuner_cache_dir = 407
+      [deprecated = true];
 
   // Specifies the distance threshold in ScheduleAwareCollectiveOpsCSE
   optional int64 xla_gpu_experimental_collective_cse_distance_threshold = 374;
@@ -1092,6 +1084,14 @@ message DebugOptions {
   // CUDA.
   optional string xla_gpu_load_autotune_results_from = 223;
 
+  // Allows using the dot precision algorithm `ALG_DOT_BF16_BF16_F32 for f32 dot
+  // ops by default. This is expected to improve performance at the expense of
+  // numerical accuracy.
+  //
+  // At this point, XLA may still choose a higher precision dot algorithm, but
+  // we expect this to change at a later point.
+  optional bool xla_gpu_match_tpu_precision = 441;
+
   optional int32 xla_gpu_memory_limit_slop_factor = 260;
 
   // Replace custom calls with noop operations.
@@ -1260,6 +1260,10 @@ message DebugOptions {
   // source and target are located within a node(nvlink).
   optional bool xla_gpu_use_memcpy_local_p2p = 287;
 
+  // Whether to use the new protos for the autotune cache
+  // xla.autotuner.AutotuneCache rather than xla.AutotuneResults.
+  optional bool xla_gpu_use_new_autotune_cache_format = 515;
+
   // An option to enable using cuDNN runtime compiled fusion kernels which is
   // available and recommended for Ampere+ GPUs.
   optional bool xla_gpu_use_runtime_fusion = 181;
@@ -1267,8 +1271,6 @@ message DebugOptions {
   // If true, will verify that the numerical results of Triton fusions match
   // the results of regular emitters.
   optional bool xla_gpu_verify_triton_fusion_numerics = 291;
-
-  // go/keep-sorted end
 
   //--------------------------------------------------------------------------//
   // XLA:TPU options.
@@ -1501,10 +1503,6 @@ message DebugOptions {
   // Enable HLO dumping. If this is disabled, no HLO modules will be dumped.
   optional bool xla_enable_dumping = 253;
 
-  // Whether to force inline before llvm module split to get a more balanced
-  // splits for parallel compilation.
-  optional bool xla_llvm_force_inline_before_split = 300 [deprecated = true];
-
   // Disable dumping metadata in HLO dumps.
   optional bool xla_dump_disable_metadata = 153;
 
@@ -1641,7 +1639,10 @@ message DebugOptions {
   optional bool xla_gpu_experimental_scaled_dot_with_triton = 410;
 
   // If true, use third-party library raft::matrix::select_k to implement TopK.
-  optional bool xla_gpu_experimental_use_raft_select_k = 413;
+  // DEPRECATED: Use top_k(is_stable=False) instead. This flag will be no-op
+  // in the future.
+  optional bool xla_gpu_experimental_use_raft_select_k = 413
+      [deprecated = true];
 
   // If true, use MultiGpuBarrierKernel in one-shot RaggedAllToAll thunk.
   optional bool xla_gpu_experimental_ragged_all_to_all_use_barrier = 450;
@@ -1650,10 +1651,6 @@ message DebugOptions {
   // thunk.
   optional bool xla_gpu_experimental_ragged_all_to_all_use_barrier_with_nccl =
       462;
-
-  // DEPRECATED: This flag is a no-op.
-  optional bool xla_gpu_experimental_ragged_all_to_all_zero_copy = 480
-      [deprecated = true];
 
   // If true, enable the GXL (GPU Collective Library) backend for collectives.
   optional bool xla_gpu_enable_gxl_ragged_all_to_all = 513;
@@ -1675,7 +1672,7 @@ message DebugOptions {
   // Note: when adding a new flag, please add it to one of the hardware-specific
   // or hardware-agnostic sections at the top of this proto message.
 
-  // Next id: 515
+  // Next id: 516
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.
@@ -1746,6 +1743,7 @@ message DebugOptions {
   reserved "xla_gpu_enable_triton_softmax_priority_fusion";
   reserved "xla_gpu_enable_xla_runtime_executable";
   reserved "xla_gpu_ensure_minor_dot_contraction_dims";
+  reserved "xla_gpu_experimental_aot_compiled_thunks";
   reserved "xla_gpu_experimental_allow_unroll_factor_eight";
   reserved "xla_gpu_experimental_enable_command_buffer_on_thunks";
   reserved "xla_gpu_experimental_enable_dynamic_dot_search_space";
@@ -1754,6 +1752,7 @@ message DebugOptions {
   reserved "xla_gpu_experimental_enable_triton_i4_rewrites";
   reserved "xla_gpu_experimental_enable_triton_softmax_priority_fusion";
   reserved "xla_gpu_experimental_enable_triton_tma";
+  reserved "xla_gpu_experimental_ragged_all_to_all_zero_copy";
   reserved "xla_gpu_experimental_use_autotuner_pass";
   reserved "xla_gpu_graph_eviction_timeout_seconds";
   reserved "xla_gpu_graph_level";
@@ -1791,15 +1790,17 @@ message DebugOptions {
   reserved "xla_use_shardy";
   reserved "xla_gpu_experimental_move_gemm_conv_autotuner";
   reserved "xla_gpu_experimental_enable_nvshmem";
+  reserved "xla_llvm_force_inline_before_split";
+  reserved "xla_gpu_enable_shared_constants";
 
   reserved 5, 63, 80, 93, 94, 98, 117, 130, 133, 134, 139, 141, 143, 152, 156,
-      158, 160, 161, 162, 167, 168, 169, 171, 172, 173, 176, 177, 178, 179, 180,
-      183, 184, 191, 192, 193, 194, 195, 196, 197, 198, 199, 200, 201, 202, 204,
-      206, 207, 211, 214, 218, 220, 221, 226, 229, 230, 233, 234, 238, 241, 242,
-      243, 249, 263, 264, 266, 270, 271, 275, 276, 278, 279, 281, 282, 286, 298,
-      299, 302, 303, 309, 313, 314, 319, 320, 325, 326, 332, 346, 352, 354, 355,
-      358, 361, 367, 369, 371, 385, 388, 389, 394, 396, 398, 402, 420, 423, 430,
-      443, 446, 458, 464, 477;
+      158, 160, 161, 162, 165, 167, 168, 169, 171, 172, 173, 176, 177, 178, 179,
+      180, 183, 184, 191, 192, 193, 194, 195, 196, 197, 198, 199, 200, 201, 202,
+      204, 206, 207, 211, 214, 218, 220, 221, 226, 229, 230, 233, 234, 238, 241,
+      242, 243, 249, 263, 264, 266, 270, 271, 275, 276, 278, 279, 281, 282, 286,
+      298, 299, 300, 302, 303, 309, 313, 314, 319, 320, 325, 326, 332, 346, 352,
+      354, 355, 358, 361, 367, 369, 371, 385, 388, 389, 394, 396, 398, 402, 420,
+      423, 430, 435, 443, 446, 458, 464, 477, 480;
 }
 
 // Contains flags which affects the GPU compilation result.

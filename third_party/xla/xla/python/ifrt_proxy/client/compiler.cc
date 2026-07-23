@@ -253,7 +253,7 @@ tsl::Future<xla::ifrt::ExecutableRef> Compiler::Compile(
 
 tsl::Future<xla::ifrt::LoadedExecutableRef>
 Compiler::DeserializeLoadedExecutable(
-    absl::string_view serialized,
+    const absl::Cord& serialized,
     std::unique_ptr<xla::ifrt::DeserializeExecutableOptions> options) {
   return absl::UnimplementedError(
       "IFRT service compiler does not support `DeserializeLoadedExecutable` "

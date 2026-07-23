@@ -1,3 +1,18 @@
+# Copyright 2026 The TensorFlow Authors. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
+
 load("@flatbuffers//:build_defs.bzl", "flatbuffer_py_library")
 load("@rules_shell//shell:sh_test.bzl", "sh_test")
 load("@xla//third_party/rules_python/python:py_binary.bzl", "py_binary")
@@ -532,6 +547,9 @@ py_library(
 pytype_strict_contrib_test(
     name = "convert_test",
     srcs = ["convert_test.py"],
+    data = [
+        "//tensorflow/compiler/mlir/lite:flatbuffer_translate",
+    ],
     deps = [
         ":convert",
         ":interpreter",
@@ -548,6 +566,7 @@ pytype_strict_contrib_test(
         "//tensorflow/python/ops:array_ops_stack",
         "//tensorflow/python/ops:math_ops",
         "//tensorflow/python/platform:client_testlib",
+        "//tensorflow/python/platform:resource_loader",
         "//third_party/py/numpy",
     ] + if_pywrap(
         if_true = [":pywrap_tflite"],

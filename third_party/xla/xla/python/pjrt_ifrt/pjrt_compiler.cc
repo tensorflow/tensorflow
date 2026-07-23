@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/functional/bind_front.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/cord.h"
 #include "absl/strings/string_view.h"
 #include "xla/tsl/platform/status_macros.h"
 #include "llvm/Support/Casting.h"
@@ -147,7 +148,7 @@ tsl::Future<ExecutableRef> PjRtCompiler::Compile(
 }
 
 tsl::Future<LoadedExecutableRef> PjRtCompiler::DeserializeLoadedExecutable(
-    absl::string_view serialized,
+    const absl::Cord& serialized,
     std::unique_ptr<DeserializeExecutableOptions> options) {
   DCHECK(this);
   if (client_ == nullptr) {

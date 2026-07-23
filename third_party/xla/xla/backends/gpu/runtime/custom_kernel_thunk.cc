@@ -173,13 +173,15 @@ absl::StatusOr<const se::CommandBuffer::Command*> CustomKernelThunk::Record(
 
   if (auto* create = std::get_if<RecordCreate>(&record_action)) {
     return command_buffer->CreateLaunch(
-        custom_kernel_.thread_dims(), custom_kernel_.block_dims(), *kernel,
-        *kernel_args, create->dependencies, priority());
+        custom_kernel_.thread_dims(), custom_kernel_.block_dims(),
+        custom_kernel_.cluster_dims(), *kernel, *kernel_args,
+        create->dependencies, priority());
   }
   if (auto* update = std::get_if<RecordUpdate>(&record_action)) {
     RETURN_IF_ERROR(command_buffer->UpdateLaunch(
         update->command, custom_kernel_.thread_dims(),
-        custom_kernel_.block_dims(), *kernel, *kernel_args));
+        custom_kernel_.block_dims(), custom_kernel_.cluster_dims(), *kernel,
+        *kernel_args));
     return update->command;
   }
   return Internal("Invalid record action");

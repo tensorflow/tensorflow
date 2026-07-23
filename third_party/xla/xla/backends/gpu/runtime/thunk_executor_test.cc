@@ -105,8 +105,8 @@ TEST(SequentialThunkProgressTrackerTest, TrackProgress) {
   }
 
   // Create a nested sequential thunk in the outer thunk sequence.
-  outer_sequence.push_back(std::make_unique<SequentialThunk>(
-      ThunkInfo("nested"), std::move(nested_sequence)));
+  outer_sequence.Emplace<SequentialThunk>(ThunkInfo("nested"),
+                                          std::move(nested_sequence));
 
   ThunkExecutor executor(std::move(outer_sequence));
   ASSERT_OK_AND_ASSIGN(ThunkExecutor::ScopedProgressTracker tracker,
@@ -189,14 +189,12 @@ TEST(SequentialThunkProgressTrackerTest, TrackWhileLoopNest) {
 
   // Build a while loop with a known trip count containing a single body thunk.
   ThunkSequence condition_thunks;  // empty, not used with trip_count
-  ThunkSequence body_thunks;
-  body_thunks.push_back(std::make_unique<MemzeroThunk>(
-      ThunkInfo("loop_body_memzero"), ShapedSlice{slice, shape}));
+  ThunkSequence body_thunks = ThunkSequence::Of<MemzeroThunk>(
+      ThunkInfo("loop_body_memzero"), ShapedSlice{slice, shape});
 
-  ThunkSequence outer_sequence;
-  outer_sequence.push_back(std::make_unique<WhileThunk>(
+  ThunkSequence outer_sequence = ThunkSequence::Of<WhileThunk>(
       ThunkInfo("while_loop"), slice, std::move(condition_thunks),
-      std::move(body_thunks), /*trip_count=*/kTripCount));
+      std::move(body_thunks), /*trip_count=*/kTripCount);
 
   ThunkExecutor executor(std::move(outer_sequence));
   ASSERT_OK_AND_ASSIGN(ThunkExecutor::ScopedProgressTracker tracker,

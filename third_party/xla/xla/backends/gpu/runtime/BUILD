@@ -3599,6 +3599,7 @@ xla_cc_test(
     srcs = ["thunk_test.cc"],
     deps = [
         ":thunk",
+        ":thunk_proto_cc",
         "//xla/tsl/util/proto:proto_matchers",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
@@ -4919,6 +4920,7 @@ xla_cc_test(
         ":thunk_executor",
         ":thunk_id",
         ":thunk_pass_pipeline",
+        ":thunk_proto_cc",
         ":while_thunk",
         "//xla:debug_options_flags",
         "//xla:literal_util",

@@ -117,11 +117,13 @@ cc_library(
         "abstract_tracked_device_buffer.cc",
         "common_pjrt_client.cc",
         "host_to_device_transfer_manager.cc",
+        "undonatable_common_pjrt_buffer.cc",
     ],
     hdrs = [
         "abstract_tracked_device_buffer.h",
         "common_pjrt_client.h",
         "host_to_device_transfer_manager.h",
+        "undonatable_common_pjrt_buffer.h",
     ],
     visibility = internal_visibility([
         ":friends",
@@ -218,6 +220,32 @@ cc_library(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
         "@shardy//shardy/dialect/sdy/ir:dialect",
+    ],
+)
+
+xla_cc_test(
+    name = "undonatable_common_pjrt_buffer_test",
+    srcs = ["undonatable_common_pjrt_buffer_test.cc"],
+    deps = [
+        ":common_pjrt_client",
+        ":device_event",
+        ":pjrt_client",
+        ":pjrt_executable",
+        ":raw_buffer",
+        "//xla:future",
+        "//xla:shape_util",
+        "//xla/hlo/builder:xla_builder",
+        "//xla/pjrt/plugin/xla_cpu:cpu_client_options",
+        "//xla/pjrt/plugin/xla_cpu:xla_cpu_pjrt_client",
+        "//xla/tsl/concurrency:async_value",
+        "//xla/tsl/concurrency:future",
+        "@com_google_absl//absl/base",
+        "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_matchers",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 

@@ -147,10 +147,6 @@ class GpuCompiler : public LLVMCompiler {
       AlgebraicSimplifierMode mode, const DebugOptions& debug_options,
       bool is_rocm);
 
-  absl::StatusOr<std::unique_ptr<Executable>> LoadExecutableFromLegacyAotResult(
-      const CompiledModule& aot_result,
-      const se::DeviceDescription& device_description) override;
-
   // Returns the LLVM command line options that we use for compilation.
   // THey need to be set globally whenever we call into LLVM.
   virtual std::vector<std::string> GetLLVMCommandLineOptions(
@@ -166,6 +162,9 @@ class GpuCompiler : public LLVMCompiler {
     absl::MutexLock lock(user_asm_hook_m_);
     user_asm_hook_ = nullptr;
   }
+
+  // Clears the MLIR context pool.
+  void ClearMlirContextPool();
 
  protected:
   struct BackendCompileResult {
@@ -283,16 +282,6 @@ class GpuCompiler : public LLVMCompiler {
       std::unique_ptr<HloModule> hlo_module,
       se::StreamExecutor* absl_nullable executor,
       const CompileOptions& compile_options);
-
-  // New AOT compilation which compiles up the the Thunk generation stage.
-  absl::StatusOr<std::vector<std::unique_ptr<CompiledModule>>>
-  NewCompileAheadOfTime(std::unique_ptr<HloModule> hlo_module,
-                        se::StreamExecutor* executor,
-                        const CompileOptions& compile_options);
-  // Legacy AOT compilation.
-  absl::StatusOr<std::vector<std::unique_ptr<CompiledModule>>>
-  LegacyCompileAheadOfTime(std::unique_ptr<HloModule> hlo_module,
-                           const AotCompilationOptions& options);
 
   se::Platform::Id platform_id_;
 

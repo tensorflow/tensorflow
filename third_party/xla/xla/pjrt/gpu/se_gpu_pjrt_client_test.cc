@@ -82,6 +82,7 @@ limitations under the License.
 #include "xla/pjrt/raw_buffer.h"
 #include "xla/pjrt/se/local_device_state.h"
 #include "xla/pjrt/se/pjrt_stream_executor_client.h"
+#include "xla/pjrt/se/stream_executor_executable.h"
 #include "xla/runtime/device_id.h"
 #include "xla/service/gpu_topology.h"
 #include "xla/service/gpu_topology.pb.h"
@@ -118,6 +119,7 @@ limitations under the License.
 namespace xla {
 namespace {
 
+using ::absl_testing::IsOkAndHolds;
 using ::absl_testing::StatusIs;
 using ::testing::_;
 using ::testing::Contains;
@@ -128,6 +130,7 @@ using ::testing::FloatEq;
 using ::testing::Ge;
 using ::testing::Gt;
 using ::testing::HasSubstr;
+using ::testing::IsEmpty;
 using ::testing::Pair;
 using ::testing::SizeIs;
 
@@ -1810,6 +1813,98 @@ ENTRY %Add.6 (a.1: f32[], b.2: f32[]) -> (f32[], f32[]) {
                             "executable: SomeGpuClient")));
 }
 
+TEST(StreamExecutorGpuClientTest,
+     SerializeStreamExecutorExecutableSplitProtoAndDeserialize) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
+                       GetStreamExecutorGpuClient(GpuClientOptions()));
+  static constexpr absl::string_view kAddProgram =
+      R"hlo(
+      HloModule Add, entry_computation_layout={(f32[], f32[])->(f32[], f32[])}
+
+      ENTRY %Add (a: f32[], b: f32[]) -> (f32[], f32[]) {
+        %a = f32[] parameter(0)
+        %b = f32[] parameter(1)
+        %add = f32[] add(f32[] %a, f32[] %b)
+        ROOT %tuple = (f32[], f32[]) tuple(f32[] %add, f32[] %add)
+      }
+)hlo";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtLoadedExecutable> executable,
+                       CompileExecutable(kAddProgram, *client));
+  PjRtExecutable* se_exe = executable->GetExecutable();
+  ASSERT_OK_AND_ASSIGN(std::string serialized, se_exe->SerializeExecutable());
+
+  {
+    // Check that the executable is a serialized as a split proto, meaning it
+    // supports executables larger than 2GB.
+    auto reader = std::make_unique<riegeli::StringReader<>>(serialized);
+    ASSERT_THAT(IsSplitProto(*reader), IsOkAndHolds(true));
+  }
+
+  ASSERT_OK(client->DeserializeExecutable(serialized, std::nullopt));
+}
+
+TEST(StreamExecutorGpuClientTest,
+     ReadSerializedExecutableAndOptionsFromString) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
+                       GetStreamExecutorGpuClient(GpuClientOptions()));
+  static constexpr absl::string_view kAddProgram =
+      R"hlo(
+      HloModule Add, entry_computation_layout={(f32[], f32[])->(f32[], f32[])}
+
+      ENTRY %Add (a: f32[], b: f32[]) -> (f32[], f32[]) {
+        %a = f32[] parameter(0)
+        %b = f32[] parameter(1)
+        %add = f32[] add(f32[] %a, f32[] %b)
+        ROOT %tuple = (f32[], f32[]) tuple(f32[] %add, f32[] %add)
+      }
+)hlo";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtLoadedExecutable> executable,
+                       CompileExecutable(kAddProgram, *client));
+  PjRtExecutable* se_exe = executable->GetExecutable();
+  ASSERT_OK_AND_ASSIGN(std::string serialized, se_exe->SerializeExecutable());
+
+  ASSERT_OK_AND_ASSIGN(ExecutableAndOptionsProto proto,
+                       SerializedGpuExecutableFromString(serialized));
+  EXPECT_THAT(proto.serialized_executable(), Not(IsEmpty()));
+}
+
+TEST(StreamExecutorGpuClientTest, DeserializeExecutableWithOptionsOverrides) {
+  ASSERT_OK_AND_ASSIGN(auto client,
+                       GetStreamExecutorGpuClient(GpuClientOptions()));
+
+  static constexpr absl::string_view kAddProgram = R"(
+    HloModule Add.6, entry_computation_layout={(f32[], f32[])->(f32[], f32[])}
+    ENTRY %add.6 (a.1: f32[], b.2: f32[]) -> (f32[], f32[]) {
+      %a.1 = f32[] parameter(0)
+      %b.2 = f32[] parameter(1)
+      %add.3 = f32[] add(f32[] %a.1, f32[] %b.2)
+      %add.4 = f32[] add(f32[] %add.3, f32[] %add.3)
+      ROOT %tuple.5 = (f32[], f32[]) tuple(f32[] %add.3, f32[] %add.4)
+    }
+  )";
+
+  CompileOptions compile_options;
+  // Use a debug option override
+  compile_options.env_option_overrides.push_back(
+      {"xla_gpu_graph_min_graph_size", int64_t{42}});
+  ASSERT_OK_AND_ASSIGN(auto executable, CompileExecutable(kAddProgram, *client,
+                                                          compile_options));
+  auto gpu_exe =
+      static_cast<PjRtStreamExecutorLoadedExecutable*>(executable.get());
+  ASSERT_OK_AND_ASSIGN(std::string serialized, gpu_exe->SerializeExecutable());
+  // Reload without passing explicit CompileOptions (so it deserializes from
+  // proto)
+  ASSERT_OK_AND_ASSIGN(auto reloaded_executable,
+                       client->DeserializeExecutable(serialized, std::nullopt));
+
+  // Verify the override has been applied after deserialization
+  ASSERT_OK_AND_ASSIGN(CompileOptions reloaded_options,
+                       reloaded_executable->GetCompileOptions());
+  EXPECT_EQ(reloaded_options.executable_build_options.debug_options()
+                .xla_gpu_graph_min_graph_size(),
+            42);
+}
+
 TEST(StreamExecutorGpuClientTest, MlirParameterLayoutIsSetInHlo) {
   constexpr char kMlirWithParameterLayout[] =
       R"(
@@ -2006,8 +2101,14 @@ TEST(StreamExecutorGpuClientTest, DmaMapUnmap) {
       });
   TF_EXPECT_OK(client->DmaMap(host_dma_ptr, dma_size));
   EXPECT_TRUE(client->IsHostMemoryPinned(host_dma_ptr, dma_size));
-  EXPECT_FALSE(client->IsHostMemoryPinned(
-      reinterpret_cast<char*>(host_dma_ptr) + 5, dma_size));
+  if (client->platform_name() != xla::RocmName()) {
+    // Some ROCm driver versions report page-granularity range size (4096) for
+    // hipDrvPointerGetAttributes, so querying host_dma_ptr + 5 (size 1024)
+    // stays within the 4KB pinned page and returns true on those ROCm runners.
+    // Only CUDA consistently enforces exact byte-length range bounds.
+    EXPECT_FALSE(client->IsHostMemoryPinned(
+        reinterpret_cast<char*>(host_dma_ptr) + 5, dma_size));
+  }
   TF_EXPECT_OK(client->DmaUnmap(host_dma_ptr));
   EXPECT_FALSE(client->IsHostMemoryPinned(host_dma_ptr, dma_size));
 }
@@ -2440,6 +2541,13 @@ CompileOptions SkipTempCommandBufferOptions() {
   return options;
 }
 
+CompileOptions SkipProfiledCommandBufferOptions() {
+  CompileOptions options = SkipTempCommandBufferOptions();
+  options.executable_build_options.mutable_debug_options()
+      ->set_xla_gpu_command_buffer_update_mode(DebugOptions::SKIP_PROFILED);
+  return options;
+}
+
 Literal DiagonalMatrix(float diagonal) {
   return LiteralUtil::CreateR2<float>({{diagonal, 0, 0, 0},
                                        {0, diagonal, 0, 0},
@@ -2483,6 +2591,51 @@ void RunTwoGemmCommandBuffer(PjRtClient& client) {
     ASSERT_OK_AND_ASSIGN(auto result_literal, ExtractSingleResult(result));
     EXPECT_TRUE(LiteralTestUtil::Near(DiagonalMatrix(6.0f * scale),
                                       *result_literal, ErrorSpec{1e-5}))
+        << "Mismatch on run " << run;
+  }
+}
+
+// Runs a two-GEMM command buffer in SKIP_PROFILED mode across enough
+// executions to cover the profiling phase (3 executions), the
+// profile transition, and several remapped executions. Input buffers are
+// created once and reused so parameter addresses stay stable and get selected
+// for VA remapping; the output buffer is freed after each execution so its
+// physical allocation is reused across executions.
+void RunTwoGemmCommandBufferProfiled(PjRtClient& client) {
+  static constexpr char kHlo[] = R"(
+    HloModule skip_profiled_command_buffer_test
+    ENTRY main {
+      lhs = f32[4,4] parameter(0)
+      rhs0 = f32[4,4] parameter(1)
+      rhs1 = f32[4,4] parameter(2)
+      temp = f32[4,4] dot(lhs, rhs0),
+        lhs_contracting_dims={1}, rhs_contracting_dims={0}
+      ROOT output = f32[4,4] dot(temp, rhs1),
+        lhs_contracting_dims={1}, rhs_contracting_dims={0}
+    })";
+
+  ASSERT_OK_AND_ASSIGN(
+      auto executable,
+      CompileExecutable(kHlo, client, SkipProfiledCommandBufferOptions()));
+  ASSERT_OK_AND_ASSIGN(auto* memory_space,
+                       client.addressable_devices()[0]->default_memory_space());
+
+  const Literal lhs = DiagonalMatrix(1.0f);
+  const Literal rhs0 = DiagonalMatrix(2.0f);
+  const Literal rhs1 = DiagonalMatrix(3.0f);
+  ASSERT_OK_AND_ASSIGN(auto lhs_buffer,
+                       client.BufferFromHostLiteral(lhs, memory_space));
+  ASSERT_OK_AND_ASSIGN(auto rhs0_buffer,
+                       client.BufferFromHostLiteral(rhs0, memory_space));
+  ASSERT_OK_AND_ASSIGN(auto rhs1_buffer,
+                       client.BufferFromHostLiteral(rhs1, memory_space));
+
+  for (int run = 0; run < 6; ++run) {
+    auto result = executable->Execute(
+        {{lhs_buffer.get(), rhs0_buffer.get(), rhs1_buffer.get()}}, {});
+    ASSERT_OK_AND_ASSIGN(auto result_literal, ExtractSingleResult(result));
+    EXPECT_TRUE(LiteralTestUtil::Near(DiagonalMatrix(6.0f), *result_literal,
+                                      ErrorSpec{1e-5}))
         << "Mismatch on run " << run;
   }
 }
@@ -2543,6 +2696,53 @@ TEST_F(VmmTest, CommandBufferSkipTempFallsBackWithoutVmmAllocator) {
       .Times(0);
   mock_log.StartCapturingLogs();
   RunTwoGemmCommandBuffer(*client);
+  mock_log.StopCapturingLogs();
+}
+
+TEST_F(VmmTest, CommandBufferSkipProfiledTwoGemmChain) {
+  ASSERT_OK_AND_ASSIGN(auto client,
+                       GetStreamExecutorGpuClient(VmmClientOptions()));
+
+  ScopedBufferAllocatorVLog vlog;
+  absl::ScopedMockLog mock_log(absl::MockLogDefault::kIgnoreUnexpected);
+  // The profile transition happens exactly once, combining the automatically
+  // selected temp buffer with stable parameter buffers, after which the VA
+  // reservation is created.
+  EXPECT_CALL(mock_log, Log(absl::LogSeverity::kInfo, ::testing::_,
+                            ::testing::HasSubstr("profile selected")))
+      .Times(1);
+  EXPECT_CALL(
+      mock_log,
+      Log(absl::LogSeverity::kInfo, ::testing::_,
+          ::testing::HasSubstr(
+              "reserved range for module skip_profiled_command_buffer_test")))
+      .Times(1);
+  // Output buffers handed to the caller must be allocator-owned addresses,
+  // not per-execution reservation addresses, so releasing them never fails.
+  EXPECT_CALL(mock_log, Log(absl::LogSeverity::kError, ::testing::_,
+                            ::testing::HasSubstr("Buffer deallocation failed")))
+      .Times(0);
+  mock_log.StartCapturingLogs();
+  RunTwoGemmCommandBufferProfiled(*client);
+  mock_log.StopCapturingLogs();
+}
+
+TEST_F(VmmTest, CommandBufferSkipProfiledFallsBackWithoutVmmAllocator) {
+  GpuClientOptions options;
+  options.allowed_devices = {0};
+  options.allocator_config.kind = GpuAllocatorConfig::Kind::kPlatform;
+  ASSERT_OK_AND_ASSIGN(auto client, GetStreamExecutorGpuClient(options));
+
+  ScopedBufferAllocatorVLog vlog;
+  absl::ScopedMockLog mock_log(absl::MockLogDefault::kIgnoreUnexpected);
+  EXPECT_CALL(
+      mock_log,
+      Log(absl::LogSeverity::kInfo, ::testing::_,
+          ::testing::HasSubstr(
+              "reserved range for module skip_profiled_command_buffer_test")))
+      .Times(0);
+  mock_log.StartCapturingLogs();
+  RunTwoGemmCommandBufferProfiled(*client);
   mock_log.StopCapturingLogs();
 }
 

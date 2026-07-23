@@ -2007,7 +2007,7 @@ absl::StatusOr<std::unique_ptr<PjRtClient>> GetStreamExecutorGpuClient(
       std::move(memory_registration));
 }
 
-std::vector<std::unique_ptr<PjRtStreamExecutorDevice>> BuildLocalDevices(
+static std::vector<std::unique_ptr<PjRtStreamExecutorDevice>> BuildLocalDevices(
     std::map<int, std::unique_ptr<LocalDeviceState>> local_device_states,
     int process_id) {
   std::vector<std::unique_ptr<PjRtStreamExecutorDevice>> devices;
@@ -2035,6 +2035,71 @@ std::vector<std::unique_ptr<PjRtStreamExecutorDevice>> BuildLocalDevices(
   }
   return devices;
 }
+
+absl::StatusOr<std::unique_ptr<PjRtClient>> GetSharedStreamExecutorGpuClient(
+    const GpuClientOptions& options, LocalClient* local_client,
+    std::map<int, std::unique_ptr<LocalDeviceState>> local_device_states,
+    std::unique_ptr<se::DeviceAddressAllocator> allocator,
+    std::unique_ptr<HostMemoryAllocator> host_memory_allocator) {
+  auto gpu_run_options = std::make_unique<gpu::GpuExecutableRunOptions>();
+#if TENSORFLOW_USE_ROCM
+  auto platform_name = RocmName();
+#elif TENSORFLOW_USE_SYCL
+  auto platform_name = SyclName();
+#else   // TENSORFLOW_USE_ROCM
+  auto platform_name = CudaName();
+#endif  // TENSORFLOW_USE_ROCM
+  if (options.num_nodes == 1) {
+    std::vector<std::unique_ptr<xla::PjRtStreamExecutorDevice>> pjrt_devices =
+        xla::BuildLocalDevices(std::move(local_device_states),
+                               /*process_id=*/options.node_id);
+    std::unique_ptr<xla::PjRtClient> pjrt_client =
+        std::make_unique<xla::StreamExecutorGpuClient>(
+            platform_name, local_client, std::move(pjrt_devices),
+            /*process_index=*/0,
+            /*allocator=*/std::move(allocator),
+            /*host_memory_allocator=*/std::move(host_memory_allocator),
+            /*should_stage_host_to_device_transfers=*/true,
+            /*gpu_run_options=*/std::move(gpu_run_options),
+            /*kv_store=*/nullptr,
+            /*abort_collectives_on_failure=*/false, /*gpu_topology=*/nullptr,
+            /*num_nodes=*/std::nullopt);
+    return pjrt_client;
+  }
+  std::vector<std::unique_ptr<PjRtStreamExecutorDevice>> pjrt_devices;
+  auto device_topology_pair = BuildDistributedDevices(
+      platform_name, std::move(local_device_states), options.node_id,
+      options.num_nodes, gpu_run_options.get(), options.kv_store,
+      /*enable_mock_nccl=*/false);
+  if (!device_topology_pair.ok()) {
+    return device_topology_pair.status();
+  }
+
+  pjrt_devices = std::move(device_topology_pair->first);
+  VLOG(2) << "Distributed devices built with size=" << pjrt_devices.size();
+  int i = 0;
+  for (const auto& pjrt_device : pjrt_devices) {
+    if (pjrt_device != nullptr) {
+      VLOG(2) << "  pjrt_device " << i++ << ":"
+              << pjrt_device->description().DebugString();
+    } else {
+      VLOG(2) << "  pjrt_device " << i++ << ":" << "nullptr";
+    }
+  }
+  ASSIGN_OR_RETURN(auto gpu_topology,
+                   absl::StatusOr<std::shared_ptr<const GpuTopology>>(
+                       GpuTopology::FromProto(device_topology_pair->second)));
+  return std::make_unique<StreamExecutorGpuClient>(
+      platform_name, local_client, std::move(pjrt_devices),
+      /*process_index=*/options.node_id,
+      /*allocator=*/std::move(allocator),
+      /*host_memory_allocator=*/std::move(host_memory_allocator),
+      /*should_stage_host_to_device_transfers=*/true,
+      /*gpu_run_options=*/std::move(gpu_run_options), options.kv_store,
+      /*abort_collectives_on_failure=*/false,
+      /*gpu_topology=*/std::move(gpu_topology),
+      /*num_nodes=*/options.num_nodes);
+};
 
 absl::StatusOr<PjRtStreamExecutorExecutionOutput>
 StreamExecutorGpuClient::RunAsync(

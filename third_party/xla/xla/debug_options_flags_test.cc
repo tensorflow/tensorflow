@@ -89,7 +89,8 @@ TEST(DebugOptions, CommandBufferUpdateModesParseFromFlags) {
   for (const auto& [name, expected] : std::vector<
            std::pair<const char*, DebugOptions::CommandBufferUpdateMode>>{
            {"ALWAYS_UPDATE", DebugOptions::ALWAYS_UPDATE},
-           {"SKIP_TEMP", DebugOptions::SKIP_TEMP}}) {
+           {"SKIP_TEMP", DebugOptions::SKIP_TEMP},
+           {"SKIP_PROFILED", DebugOptions::SKIP_PROFILED}}) {
     int* pargc;
     std::vector<char*>* pargv;
     ResetFlagsFromEnvForTesting("XLA_FLAGS", &pargc, &pargv);

@@ -186,12 +186,12 @@ TEST(ConditionalThunkTest, BufferUses) {
   Shape shape = ShapeUtil::MakeShape(PRED, {});
 
   ThunkSequence false_seq;
-  false_seq.push_back(std::make_unique<DummyThunk>(Kind::kGemm, thunk_info));
-  false_seq.push_back(std::make_unique<DummyThunk>(Kind::kGemm, thunk_info));
+  false_seq.Emplace<DummyThunk>(Kind::kGemm, thunk_info);
+  false_seq.Emplace<DummyThunk>(Kind::kGemm, thunk_info);
 
   ThunkSequence true_seq;
-  true_seq.push_back(std::make_unique<DummyThunk>(Kind::kGemm, thunk_info));
-  true_seq.push_back(std::make_unique<DummyThunk>(Kind::kGemm, thunk_info));
+  true_seq.Emplace<DummyThunk>(Kind::kGemm, thunk_info);
+  true_seq.Emplace<DummyThunk>(Kind::kGemm, thunk_info);
 
   std::vector<ThunkSequence> branch_thunk_sequences;
   branch_thunk_sequences.push_back(std::move(false_seq));
@@ -401,12 +401,12 @@ TEST(ConditionalThunkTest, ToProto) {
   Shape shape = ShapeUtil::MakeShape(PRED, {});
 
   ThunkSequence false_seq;
-  false_seq.push_back(std::make_unique<DummyThunk>(Kind::kGemm, thunk_info));
-  false_seq.push_back(std::make_unique<DummyThunk>(Kind::kGemm, thunk_info));
+  false_seq.Emplace<DummyThunk>(Kind::kGemm, thunk_info);
+  false_seq.Emplace<DummyThunk>(Kind::kGemm, thunk_info);
 
   ThunkSequence true_seq;
-  true_seq.push_back(std::make_unique<DummyThunk>(Kind::kGemm, thunk_info));
-  true_seq.push_back(std::make_unique<DummyThunk>(Kind::kGemm, thunk_info));
+  true_seq.Emplace<DummyThunk>(Kind::kGemm, thunk_info);
+  true_seq.Emplace<DummyThunk>(Kind::kGemm, thunk_info);
 
   std::vector<ThunkSequence> branch_thunk_seq;
   branch_thunk_seq.push_back(std::move(false_seq));
@@ -492,12 +492,12 @@ TEST(ConditionalThunkTest, ToString) {
   Shape int_shape = ShapeUtil::MakeShape(S32, {});
 
   auto create_branch_thunk_sequences = [&]() -> std::vector<ThunkSequence> {
-    ThunkSequence false_seq;
-    false_seq.push_back(std::make_unique<DummyThunk>(Kind::kGemm, thunk_info));
+    ThunkSequence false_seq =
+        ThunkSequence::Of<DummyThunk>(Kind::kGemm, thunk_info);
 
     ThunkSequence true_seq;
-    true_seq.push_back(std::make_unique<DummyThunk>(Kind::kGemm, thunk_info));
-    true_seq.push_back(std::make_unique<DummyThunk>(Kind::kGemm, thunk_info));
+    true_seq.Emplace<DummyThunk>(Kind::kGemm, thunk_info);
+    true_seq.Emplace<DummyThunk>(Kind::kGemm, thunk_info);
 
     std::vector<ThunkSequence> branch_thunk_sequences;
     branch_thunk_sequences.push_back(std::move(false_seq));
@@ -533,10 +533,10 @@ TEST(ConditionalThunkTest, TransformNested) {
   Shape shape = ShapeUtil::MakeShape(S32, {});
   Thunk::ThunkInfo thunk_info;
 
-  ThunkSequence branch0;
-  branch0.push_back(std::make_unique<DummyThunk>(Kind::kGemm, thunk_info));
-  ThunkSequence branch1;
-  branch1.push_back(std::make_unique<DummyThunk>(Kind::kGemm, thunk_info));
+  ThunkSequence branch0 =
+      ThunkSequence::Of<DummyThunk>(Kind::kGemm, thunk_info);
+  ThunkSequence branch1 =
+      ThunkSequence::Of<DummyThunk>(Kind::kGemm, thunk_info);
 
   std::vector<ThunkSequence> branch_thunks;
   branch_thunks.push_back(std::move(branch0));

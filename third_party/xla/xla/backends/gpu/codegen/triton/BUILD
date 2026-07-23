@@ -102,6 +102,7 @@ cc_library(
     hdrs = ["lowering_util.h"],
     deps = [
         ":tma_utils",
+        "//xla:permutation_util",
         "//xla:util",
         "//xla/backends/gpu/codegen/triton/ir:triton_xla",
         "//xla/codegen/emitters/ir:xla",

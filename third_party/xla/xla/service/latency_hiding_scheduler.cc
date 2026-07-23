@@ -743,13 +743,13 @@ AsyncTracker::RecursivelyComputeResourceMapForScheduledComputation(
         --inflight_resource_usage[resource.first];
       }
     }
-    for (const HloComputation* called_comp : inst->called_computations()) {
-      for (const auto& [type, usage] :
-           RecursivelyComputeResourceMap(called_comp)) {
-        int64_t current_usage = inflight_resource_usage[type] + usage;
-        int64_t& max_usage = res_map[type];
-        max_usage = std::max(max_usage, current_usage);
-      }
+    if (inst->called_computations().empty()) {
+      continue;
+    }
+    for (const auto& [type, usage] : GetNumResourcesPerInstruction(*inst)) {
+      int64_t current_usage = inflight_resource_usage[type] + usage;
+      int64_t& max_usage = res_map[type];
+      max_usage = std::max(max_usage, current_usage);
     }
   }
   return res_map;
@@ -1896,9 +1896,11 @@ bool ReadySetLt::MaybeUpdate(DefaultSchedulerCore::ScheduleCandidate& a,
                              DefaultSchedulerCore::ScheduleCandidate& b,
                              const char** reason) const {
   bool result = AIsBetterThanB(a, b, reason);
-  if (a.node->IsSupportedAsyncStart() || a.node->IsSupportedAsyncDone() ||
-      b.node->IsSupportedAsyncStart() || b.node->IsSupportedAsyncDone() ||
-      IsCollective(&a.node->GetInstr()) || IsCollective(&b.node->GetInstr())) {
+  if (VLOG_IS_ON(1) &&
+      (a.node->IsSupportedAsyncStart() || a.node->IsSupportedAsyncDone() ||
+       b.node->IsSupportedAsyncStart() || b.node->IsSupportedAsyncDone() ||
+       IsCollective(&a.node->GetInstr()) ||
+       IsCollective(&b.node->GetInstr()))) {
     VLOG(1) << "Async comparison: a: " << a.node->GetInstr().name()
             << " b: " << b.node->GetInstr().name() << " result: " << result
             << " reason: " << *reason;

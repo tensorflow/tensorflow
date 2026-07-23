@@ -348,6 +348,8 @@ class VerifyTritonConstraintsTest : public HloHardwareIndependentTestBase {
     ASSIGN_OR_RETURN(experimental::TiledHloComputation tiled_comp,
                      experimental::TiledHloComputation::Tile(
                          *fusion_adaptor, std::move(tiling_space)));
+    tiled_comp.Simplify();
+    tiled_comp.SortInstructionsPostOrder();
     Decision decision =
         experimental::VerifyTritonConstraints(tiled_comp, device_description_);
     if (!decision) {

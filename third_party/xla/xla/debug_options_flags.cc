@@ -239,7 +239,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
 
   opts.set_xla_cpu_enable_fast_math(false);
   opts.set_xla_cpu_enable_platform_dependent_math(true);
-  opts.set_xla_cpu_experimental_enable_tiling_propagation(false);
+  opts.set_xla_cpu_experimental_enable_tiling_propagation(true);
   // Disable forms of fast math that have caused users problems in the past.
   opts.set_xla_cpu_fast_math_honor_nans(true);
   opts.set_xla_cpu_fast_math_honor_infs(true);
@@ -391,7 +391,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
 
   opts.set_xla_gpu_experimental_enable_fusion_block_level_rewriter(false);
 
-  opts.set_xla_gpu_default_to_alg_dot_bf16_bf16_f32(false);
+  opts.set_xla_gpu_match_tpu_precision(false);
   opts.set_xla_gpu_enable_libnvptxcompiler(
       stream_executor::IsLibNvPtxCompilerSupported());
   opts.set_xla_gpu_libnvjitlink_mode(DebugOptions::LIB_NV_JIT_LINK_MODE_AUTO);
@@ -428,10 +428,11 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
 
   opts.set_xla_gpu_per_fusion_autotune_cache_dir("");
 
+  opts.set_xla_gpu_use_new_autotune_cache_format(false);
+
   opts.set_xla_gpu_experimental_autotune_cache_mode(
       DebugOptions::AUTOTUNE_CACHE_MODE_UPDATE);
 
-  opts.set_xla_gpu_experimental_autotuner_cache_dir("");
 
   opts.set_xla_gpu_autotune_gemm_rtol(0.1f);
 
@@ -530,7 +531,6 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_enable_pdl_launch(true);
   opts.set_xla_gpu_command_buffer_update_mode(DebugOptions::ALWAYS_UPDATE);
 
-  opts.set_xla_gpu_experimental_aot_compiled_thunks(true);
   opts.set_xla_gpu_deviceless_cub_mode(
       DebugOptions::DEVICELESS_CUB_WITH_FALLBACK);
   opts.set_xla_gpu_cudnn_deviceless_compilation_mode(
@@ -1876,14 +1876,17 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       debug_options->xla_gpu_force_compilation_parallelism(),
       "Overrides normal multi-threaded compilation setting to use this many "
       "threads. Setting to 0 (the default value) means no enforcement."));
-
+  flag_list->push_back(
+      tsl::Flag("xla_gpu_default_to_alg_dot_bf16_bf16_f32",
+                bool_setter_for(&DebugOptions::set_xla_gpu_match_tpu_precision),
+                debug_options->xla_gpu_match_tpu_precision(),
+                "Deprecated. Use `xla_gpu_match_tpu_precision` instead."));
   flag_list->push_back(tsl::Flag(
-      "xla_gpu_default_to_alg_dot_bf16_bf16_f32",
-      bool_setter_for(
-          &DebugOptions::set_xla_gpu_default_to_alg_dot_bf16_bf16_f32),
-      debug_options->xla_gpu_default_to_alg_dot_bf16_bf16_f32(),
+      "xla_gpu_match_tpu_precision",
+      bool_setter_for(&DebugOptions::set_xla_gpu_match_tpu_precision),
+      debug_options->xla_gpu_match_tpu_precision(),
       "Use the dot precision algorithm `ALG_DOT_BF16_BF16_F32 by default for "
-      "f32 dots."));
+      "f32 dots. This leads to the same precision as on TPU."));
   flag_list->push_back(
       tsl::Flag("xla_gpu_deterministic_ops",
                 bool_setter_for(&DebugOptions::set_xla_gpu_deterministic_ops),
@@ -1993,13 +1996,6 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       debug_options->xla_gpu_collective_inflation_factor(),
       "Inflation factor for collectives. If set to > 1, each XLA/GPU "
       "collective will execute multiple times (will yield incorrect results)"));
-
-  flag_list->push_back(tsl::Flag(
-      "xla_llvm_force_inline_before_split",
-      bool_setter_for(&DebugOptions::set_xla_llvm_force_inline_before_split),
-      debug_options->xla_llvm_force_inline_before_split(),
-      "Decide whether to force inline before llvm module split to get a more "
-      "balanced splits for parallel compilation"));
 
   flag_list->push_back(tsl::Flag(
       "xla_gpu_enable_reassociation_for_converted_ar",
@@ -2202,15 +2198,6 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       "sizes. "
       "Format: op:size:op_type or op. E.g. "
       "AllReduce:1024:F32,AllGather:2048,ReduceScatter,all."));
-  flag_list->push_back(tsl::Flag(
-      "xla_gpu_experimental_aot_compiled_thunks",
-      bool_setter_for(
-          &DebugOptions::set_xla_gpu_experimental_aot_compiled_thunks),
-      debug_options->xla_gpu_experimental_aot_compiled_thunks(),
-      "Enables an Ahead-of-Time (AOT) compilation flow where the compiled "
-      "binary includes the generated Thunks. In contrast, the legacy flow "
-      "only compiles up to the HLO optimization stage, before Thunk "
-      "generation."));
 
   flag_list->push_back(tsl::Flag(
       "xla_gpu_temp_buffer_use_separate_color",
@@ -2797,12 +2784,13 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       "cache. Supported modes: read (provides readonly access to "
       "the cache), update (loads if the cache exists, runs autotuning "
       "and dumps the result otherwise). Default: update."));
+
   flag_list->push_back(tsl::Flag(
-      "xla_gpu_experimental_autotuner_cache_dir",
-      string_setter_for(
-          &DebugOptions::set_xla_gpu_experimental_autotuner_cache_dir),
-      debug_options->xla_gpu_experimental_autotuner_cache_dir(),
-      "Experimental: Specify the directory to read/write autotuner cache to."));
+      "xla_gpu_use_new_autotune_cache_format",
+      bool_setter_for(&DebugOptions::set_xla_gpu_use_new_autotune_cache_format),
+      debug_options->xla_gpu_use_new_autotune_cache_format(),
+      "Whether to use the new protos for the autotune cache"
+      " (xla.autotuner.AutotuneCache rather than xla.AutotuneResults."));
   flag_list->push_back(tsl::Flag(
       "xla_gpu_experimental_autotune_backends",
       SetterForRepeatedEnum<autotuner::Backend>(

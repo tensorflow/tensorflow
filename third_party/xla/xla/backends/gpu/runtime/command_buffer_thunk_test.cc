@@ -1466,10 +1466,9 @@ TEST(CommandBufferThunkTest, ConditionalThunkCaseCommand) {
   }
 
   // Prepare thunk sequence for command buffer conversion.
-  ThunkSequence thunks;
-  thunks.push_back(std::make_unique<ConditionalThunk>(
+  ThunkSequence thunks = ThunkSequence::Of<ConditionalThunk>(
       Thunk::ThunkInfo(), ShapedSlice{slice_i, i_shape},
-      std::move(branch_thunks)));
+      std::move(branch_thunks));
 
   ConvertToCommandsOptions options;
   options.synchronization_mode = serialize;
@@ -1579,10 +1578,9 @@ TEST(CommandBufferThunkTest, WhileThunk) {
       /*shmem_bytes=*/0));
 
   // Prepare thunk sequence for command buffer conversion.
-  ThunkSequence thunks;
-  thunks.push_back(std::make_unique<WhileThunk>(Thunk::ThunkInfo(), slice_pred,
-                                                std::move(cond_thunks),
-                                                std::move(body_thunks)));
+  ThunkSequence thunks = ThunkSequence::Of<WhileThunk>(
+      Thunk::ThunkInfo(), slice_pred, std::move(cond_thunks),
+      std::move(body_thunks));
 
   ConvertToCommandsOptions options;
   options.synchronization_mode = serialize;

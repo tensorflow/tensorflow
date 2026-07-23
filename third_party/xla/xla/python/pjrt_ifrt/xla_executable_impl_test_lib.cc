@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/cord.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/tsl/platform/status_macros.h"
@@ -198,8 +199,8 @@ absl::StatusOr<LoadedExecutableRef> CompileOnDevices(
   auto options = std::make_unique<XlaDeserializeExecutableOptions>();
   options->devices = std::move(device_list);
   return compiler
-      ->DeserializeLoadedExecutable(std::move(serialized_executable),
-                                    std::move(options))
+      ->DeserializeLoadedExecutable(
+          absl::Cord(std::move(serialized_executable)), std::move(options))
       .Await();
 }
 
@@ -1094,11 +1095,12 @@ TEST(ExecutableTest, ExecutableSerialization) {
                           client->MakeDeviceList(devices));
   auto options = std::make_unique<xla::ifrt::XlaDeserializeExecutableOptions>();
   options->devices = device_list;
-  TF_ASSERT_OK_AND_ASSIGN(auto deserialized_executable,
-                          client->GetDefaultCompiler()
-                              ->DeserializeLoadedExecutable(
-                                  *serialized_executable, std::move(options))
-                              .Await());
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto deserialized_executable,
+      client->GetDefaultCompiler()
+          ->DeserializeLoadedExecutable(absl::Cord(*serialized_executable),
+                                        std::move(options))
+          .Await());
 
   TF_ASSERT_OK_AND_ASSIGN(auto loaded_output_layouts,
                           loaded_executable->GetOutputLayouts());
