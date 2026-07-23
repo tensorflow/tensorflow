@@ -63,6 +63,7 @@ cc_library(
         "//xla/service:hlo_value",
         "//xla/service/heap_simulator",
         "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:logging",
         "//xla/tsl/platform:status_macros",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/algorithm:container",
