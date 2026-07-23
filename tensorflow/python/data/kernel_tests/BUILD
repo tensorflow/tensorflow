@@ -1421,6 +1421,7 @@ py_test(
     deps = [
         ":checkpoint_test_base",
         ":test_base",
+        "//tensorflow/python/data/ops:debug_mode",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/framework:combinations",
