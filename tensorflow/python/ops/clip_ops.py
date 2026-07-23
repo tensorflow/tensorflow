@@ -215,13 +215,26 @@ def clip_by_norm(t, clip_norm, axes=None, name=None):
         t.values if isinstance(t, indexed_slices.IndexedSlices) else t,
         name="t")
 
+    is_clip_norm_inf = None
     if np.isscalar(clip_norm):
+      if (np.isposinf(clip_norm) or
+          clip_norm > values.dtype.real_dtype.max):
+        if isinstance(t, indexed_slices.IndexedSlices):
+          return indexed_slices.IndexedSlices(
+              array_ops.identity(values, name=name), t.indices, t.dense_shape)
+        return array_ops.identity(values, name=name)
       if clip_norm < 0:
         clip_norm = 0
+      clip_norm_safe = clip_norm
     else:
-      clip_norm = math_ops.cast(
-          math_ops.maximum(clip_norm, 0), dtype=values.dtype
-      )
+      clip_norm = math_ops.maximum(clip_norm, 0)
+      is_clip_norm_inf = math_ops.is_inf(
+          math_ops.cast(clip_norm, values.dtype.real_dtype))
+      clip_norm = math_ops.cast(clip_norm, dtype=values.dtype)
+      clip_norm_safe = array_ops.where(
+          is_clip_norm_inf,
+          array_ops.ones_like(clip_norm),
+          clip_norm)
 
     # Calculate L2-norm, clip elements by ratio of clip_norm to L2-norm
     l2sum = math_ops.reduce_sum(values * values, axes, keepdims=True)
@@ -229,12 +242,14 @@ def clip_by_norm(t, clip_norm, axes=None, name=None):
     # Two-tap tf.where trick to bypass NaN gradients
     l2sum_safe = array_ops.where(pred, l2sum, array_ops.ones_like(l2sum))
     l2norm = array_ops.where(pred, math_ops.sqrt(l2sum_safe), l2sum)
-    intermediate = values * clip_norm
+    intermediate = values * clip_norm_safe
     # Assert that the shape is compatible with the initial shape,
     # to prevent unintentional broadcasting.
     values.shape.assert_is_compatible_with(intermediate.shape)
-    values_clip = array_ops.identity(
-        intermediate / math_ops.maximum(l2norm, clip_norm), name=name)
+    values_clip = intermediate / math_ops.maximum(l2norm, clip_norm_safe)
+    if is_clip_norm_inf is not None:
+      values_clip = array_ops.where(is_clip_norm_inf, values, values_clip)
+    values_clip = array_ops.identity(values_clip, name=name)
 
     if isinstance(t, indexed_slices.IndexedSlices):
       return indexed_slices.IndexedSlices(values_clip, t.indices, t.dense_shape)
@@ -357,12 +372,33 @@ def clip_by_global_norm(t_list, clip_norm, use_norm=None, name=None):
   with ops.name_scope(name, "clip_by_global_norm",
                       t_list + [clip_norm]) as name:
     # Calculate L2-norm, clip elements by ratio of clip_norm to L2-norm
-    scale_for_finite = clip_norm * math_ops.minimum(
-        1.0 / use_norm,
-        constant_op.constant(1.0, dtype=use_norm.dtype) / clip_norm)
-    # If use_norm is any finite number, this is a no-op. For inf/-inf/NaN,
-    # this will make scale NaN.
-    scale = scale_for_finite + (use_norm - use_norm)
+    if np.isscalar(clip_norm):
+      if (np.isposinf(clip_norm) or
+          clip_norm > use_norm.dtype.real_dtype.max):
+        scale = constant_op.constant(1.0, dtype=use_norm.dtype)
+      else:
+        scale = clip_norm * math_ops.minimum(
+            1.0 / use_norm,
+            constant_op.constant(1.0, dtype=use_norm.dtype) / clip_norm)
+      # If use_norm is any finite number, this is a no-op. For inf/-inf/NaN,
+      # this will make scale NaN.
+      scale = scale + (use_norm - use_norm)
+    else:
+      clip_norm = math_ops.cast(clip_norm, dtype=use_norm.dtype)
+      is_clip_norm_inf = math_ops.is_inf(clip_norm)
+      clip_norm_safe = array_ops.where(
+          is_clip_norm_inf,
+          array_ops.ones_like(clip_norm),
+          clip_norm)
+      scale_for_finite = clip_norm_safe * math_ops.minimum(
+          1.0 / use_norm,
+          constant_op.constant(1.0, dtype=use_norm.dtype) / clip_norm_safe)
+      # If use_norm is any finite number, this is a no-op. For inf/-inf/NaN,
+      # this will make scale NaN.
+      scale = scale_for_finite + (use_norm - use_norm)
+      scale_if_inf = constant_op.constant(1.0, dtype=use_norm.dtype) + (
+          use_norm - use_norm)
+      scale = array_ops.where(is_clip_norm_inf, scale_if_inf, scale)
 
     values = [
         ops.convert_to_tensor(

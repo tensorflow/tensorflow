@@ -91,6 +91,63 @@ class ClipOpsTest(test.TestCase):
                                      [[0.0, 0.0, 0.0], [0.0, 0.0, 0.0]])
 
   @test_util.run_deprecated_v1
+  def testClipTensorByNormInfinite(self):
+    self._testClipTensorByNorm([1.0, 2.0, 3.0], float("inf"),
+                               [1.0, 2.0, 3.0])
+    self._testClipTensorByNorm([1.0, 2.0, 3.0], np.float32(float("inf")),
+                               [1.0, 2.0, 3.0])
+
+    clipped = clip_ops.clip_by_norm(
+        constant_op.constant([1.0, 2.0, 3.0]),
+        constant_op.constant(float("inf")))
+    self.assertAllClose(self.evaluate(clipped), [1.0, 2.0, 3.0])
+
+  @test_util.run_deprecated_v1
+  def testClipTensorByGlobalNormInfinite(self):
+    self._testClipTensorByGlobalNorm([[1.0, 2.0, 3.0]], float("inf"),
+                                     [[1.0, 2.0, 3.0]])
+    self._testClipTensorByGlobalNorm([[1.0, 2.0, 3.0]],
+                                     np.float32(float("inf")),
+                                     [[1.0, 2.0, 3.0]])
+    self._testClipTensorByGlobalNorm(
+        [[1.0, 2.0, 3.0]], constant_op.constant(float("inf")),
+        [[1.0, 2.0, 3.0]])
+
+  def testClipTensorByNormOverflow(self):
+    clip_norm = constant_op.constant(1e300, dtype=dtypes.float64)
+    values = constant_op.constant([1.0, 2.0, 3.0], dtype=dtypes.float32)
+    result = self.evaluate(clip_ops.clip_by_norm(values, clip_norm))
+    self.assertFalse(np.any(np.isnan(result)))
+    self.assertAllClose(result, [1.0, 2.0, 3.0])
+
+  def testClipScalarByNormOverflow(self):
+    values = constant_op.constant([1.0, 2.0, 3.0], dtype=dtypes.float32)
+    result = self.evaluate(clip_ops.clip_by_norm(values, 1e300))
+    self.assertFalse(np.any(np.isnan(result)))
+    self.assertAllClose(result, [1.0, 2.0, 3.0])
+
+  def testClipScalarByNormNegativeInfinity(self):
+    values = constant_op.constant([1.0, 2.0, 3.0], dtype=dtypes.float32)
+    result = self.evaluate(clip_ops.clip_by_norm(values, float("-inf")))
+    self.assertAllClose(result, [0.0, 0.0, 0.0])
+
+  def testClipScalarByGlobalNormOverflow(self):
+    values = [
+        constant_op.constant([1.0, 2.0, 3.0], dtype=dtypes.float32)
+    ]
+    clipped, _ = clip_ops.clip_by_global_norm(values, 1e300)
+    result = self.evaluate(clipped[0])
+    self.assertFalse(np.any(np.isnan(result)))
+    self.assertAllClose(result, [1.0, 2.0, 3.0])
+
+  def testClipScalarByGlobalNormNegativeInfinity(self):
+    values = [
+        constant_op.constant([1.0, 2.0, 3.0], dtype=dtypes.float32)
+    ]
+    clipped, _ = clip_ops.clip_by_global_norm(values, float("-inf"))
+    self.assertTrue(np.all(np.isnan(self.evaluate(clipped[0]))))
+
+  @test_util.run_deprecated_v1
   def testClipTensorByGlobalNormMultipleDtypes(self):
     (a, b), _ = self.evaluate(
         clip_ops.clip_by_global_norm(
