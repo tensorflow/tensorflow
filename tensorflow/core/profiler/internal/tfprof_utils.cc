@@ -18,15 +18,22 @@ limitations under the License.
 #include <stdio.h>
 
 #include <algorithm>
-#include <memory>
+#include <cstdint>
 #include <set>
+#include <string>
 #include <vector>
 
+#include "absl/log/check.h"
+#include "absl/status/status.h"
+#include "absl/strings/ascii.h"
 #include "absl/strings/match.h"
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
+#include "absl/strings/str_join.h"
 #include "absl/strings/str_split.h"
+#include "absl/strings/string_view.h"
+#include "third_party/re2/re2.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/regexp.h"
 
