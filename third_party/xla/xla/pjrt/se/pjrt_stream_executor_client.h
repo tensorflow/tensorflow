@@ -402,6 +402,7 @@ class PjRtStreamExecutorClient : public CommonPjRtClient {
 
   bool allows_recursion() const override { return false; }
   bool allows_execute_recursion() const override { return true; }
+  bool use_stream_based_compaction() const override { return true; }
 
   PjRtDynamicShapeKind GetDynamicShapeKind(
       int memory_space_kind_id) const override {
@@ -463,8 +464,14 @@ class PjRtStreamExecutorClient : public CommonPjRtClient {
   void LaunchOnDevice(PjRtDevice* device,
                       absl::AnyInvocable<void()> execute_fn) const override;
 
+  absl::StatusOr<xla::Shape> GetCopyDestinationShape(
+      const xla::Shape& shape, PjRtMemorySpace* src_memory_space,
+      PjRtMemorySpace* dst_memory_space) override;
+
  protected:
   friend class PjRtStreamExecutorRawBuffer;
+
+  virtual void RecordMemoryStats() {}
 
   // Helper function for creating PjRtStreamExecutorExecutables. Modifies
   // `options` in-place.

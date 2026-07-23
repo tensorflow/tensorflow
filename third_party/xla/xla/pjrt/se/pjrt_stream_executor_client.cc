@@ -180,9 +180,9 @@ limitations under the License.
 
 namespace xla {
 
-template <typename T>
-static std::function<void()> WrapClosureAsCopyable(T cb) {
-  return [state = std::make_shared<T>(std::move(cb))]() { return (*state)(); };
+template <typename MemorySpaceKind>
+static bool IsMemorySpaceKind(const PjRtMemorySpace* memory_space) {
+  return memory_space->kind_id() == MemorySpaceKind::kKindId;
 }
 
 void PjRtStreamExecutorClient::ThenRecordEvent(BufferSequencingEventRef event,
@@ -382,6 +382,10 @@ PjRtStreamExecutorClient::GetDefaultDeviceAssignment(int num_replicas,
 
 absl::StatusOr<Layout> PjRtStreamExecutorClient::GetDefaultLayout(
     PrimitiveType element_type, absl::Span<const int64_t> dims) {
+  auto topology = GetTopologyDescription();
+  if (topology.ok()) {
+    return (*topology)->GetDefaultLayout(element_type, dims);
+  }
   if (!primitive_util::IsArrayType(element_type)) {
     return InvalidArgument("Element type %s does not support layout",
                            PrimitiveType_Name(element_type));
@@ -2305,7 +2309,9 @@ PjRtStreamExecutorClient::CompileAndLoad(const XlaComputation& computation,
   ASSIGN_OR_RETURN(
       std::unique_ptr<PjRtExecutable> executable,
       Compile(computation, options, /*lookup_addressable_devices=*/true));
-  return Load(std::move(executable), LoadOptions());
+  auto loaded_executable = Load(std::move(executable), LoadOptions());
+  RecordMemoryStats();
+  return loaded_executable;
 }
 
 absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>>
@@ -2314,7 +2320,9 @@ PjRtStreamExecutorClient::CompileAndLoad(MaybeOwningMlirModule module,
   ASSIGN_OR_RETURN(
       std::unique_ptr<PjRtExecutable> executable,
       Compile(std::move(module), options, /*lookup_addressable_devices=*/true));
-  return Load(std::move(executable), LoadOptions());
+  auto loaded_executable = Load(std::move(executable), LoadOptions());
+  RecordMemoryStats();
+  return loaded_executable;
 }
 
 namespace {
@@ -2673,6 +2681,19 @@ PjRtStreamExecutorClient::AllocateForDelinearizationAsync(
   }
   absl::Span<uint8_t> span(static_cast<uint8_t*>(ptr), size);
   return PjRtStagingBuffer::Create(span, [ptr]() { free(ptr); });
+}
+
+absl::StatusOr<xla::Shape> PjRtStreamExecutorClient::GetCopyDestinationShape(
+    const xla::Shape& shape, PjRtMemorySpace* src_memory_space,
+    PjRtMemorySpace* dst_memory_space) {
+  if (this != dst_memory_space->client() ||
+      IsMemorySpaceKind<UnpinnedHostMemorySpace>(src_memory_space) !=
+          IsMemorySpaceKind<UnpinnedHostMemorySpace>(dst_memory_space)) {
+    return CommonPjRtClient::GetCopyDestinationShape(shape, src_memory_space,
+                                                     dst_memory_space);
+  }
+  return MakeDefaultShapeForMemorySpace(
+      dst_memory_space, shape, shape.has_layout() ? &shape.layout() : nullptr);
 }
 
 }  // namespace xla
