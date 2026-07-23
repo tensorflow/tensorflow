@@ -23,19 +23,19 @@ limitations under the License.
 
 #include "absl/strings/string_view.h"
 #include "llvm/ADT/StringRef.h"
-#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
-#include "mlir/Dialect/SparseTensor/IR/SparseTensor.h"  // from @llvm-project
-#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
-#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
-#include "mlir/IR/Dialect.h"  // from @llvm-project
-#include "mlir/IR/Matchers.h"  // from @llvm-project
-#include "mlir/IR/Operation.h"  // from @llvm-project
-#include "mlir/Pass/Pass.h"  // from @llvm-project
-#include "mlir/Support/DebugStringHelper.h"  // from @llvm-project
-#include "mlir/Support/LLVM.h"  // from @llvm-project
-#include "mlir/Support/LogicalResult.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"                // from @llvm-project
+#include "mlir/Dialect/SparseTensor/IR/SparseTensor.h"   // from @llvm-project
+#include "mlir/IR/BuiltinAttributes.h"                   // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"                          // from @llvm-project
+#include "mlir/IR/Dialect.h"                             // from @llvm-project
+#include "mlir/IR/Matchers.h"                            // from @llvm-project
+#include "mlir/IR/Operation.h"                           // from @llvm-project
+#include "mlir/Pass/Pass.h"                              // from @llvm-project
+#include "mlir/Support/DebugStringHelper.h"              // from @llvm-project
+#include "mlir/Support/LLVM.h"                           // from @llvm-project
+#include "mlir/Support/LogicalResult.h"                  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
-#include "stablehlo/dialect/ChloOps.h"  // from @stablehlo
+#include "stablehlo/dialect/ChloOps.h"                   // from @stablehlo
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tf2xla/transforms/utils.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
@@ -75,7 +75,7 @@ LogicalResult SetOnceModuleAttribute(StringRef attr_name,
   }
   return op->emitOpError() << "module already contains an attribute "
                            << attr_name << "=" << ex_attr_value.getInt()
-                           << ", overwritting to a new value "
+                           << ", overwriting to a new value "
                            << attr_value.getInt() << " is not allowed.";
 }
 

@@ -218,7 +218,7 @@ func.func @WhileCanonicalizeBug1(%arg0: tensor<f32>, %arg1: tensor<f32>) -> tens
 // -----
 
 // Test case to test While op with resources that are not read-only variables.
-// Do not remove resource arugments if they are not read-only variables to keep
+// Do not remove resource arguments if they are not read-only variables to keep
 // the graph's control dependency.
 // CHECK-LABEL: WhileWithNonReadOnlyVariableResources
 func.func @WhileWithNonReadOnlyVariableResources(%arg0: tensor<i32>) -> tensor<!tf_type.resource> {

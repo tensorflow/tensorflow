@@ -115,7 +115,7 @@ struct OpsAdded {
 
 // Given a `Subgraph` containing a sequence of adjacent `Operations` from
 // the `module`, raise these `Operations` (and any ops contained nested within)
-// to the body of a new seperate root level function. Replace in their current
+// to the body of a new separate root level function. Replace in their current
 // location with a `CallOp` which invokes said `FuncOp`. The inputs to
 // this new functions are taken to be the `Values` that appear as operands
 // to ops in the subgraph, which are not self-contained within the subgraph.

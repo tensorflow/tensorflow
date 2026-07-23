@@ -461,7 +461,7 @@ def eval_on_shapes(f, static_argnums=(), allow_static_outputs=False):
 
   if allow_static_outputs:
     # When `tf_f` below is called (via get_concrete_function) with the same
-    # arugments (after abstraction), the Python function `f` won't be run, so we
+    # arguments (after abstraction), the Python function `f` won't be run, so we
     # need this python_outputs_map to retrieve the Python outputs we've seen
     # before that correspond the arguments.
     python_outputs_map = {}
@@ -840,7 +840,7 @@ def tf_conv_general_dilated(lhs, rhs, window_strides, padding, output_shape,
     raise ValueError("Current implementation requires the `data_format` of the "
                      "inputs and outputs to be the same.")
   if len(lhs_spec) >= 6:
-    raise ValueError("Current implmentation does not support 4 or higher"
+    raise ValueError("Current implementation does not support 4 or higher"
                      "dimensional convolution, but got: ", len(lhs_spec) - 2)
   dim = len(lhs_spec) - 2
   if lhs_dilation and rhs_dilation:
