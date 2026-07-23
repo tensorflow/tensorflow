@@ -80,6 +80,14 @@ cc_library(
 )
 
 cc_library(
+    name = "float8",
+    hdrs = ["float8.h"],
+    compatible_with = get_compatible_with_portable(),
+    copts = tflite_copts(),
+    deps = ["@ml_dtypes_py//ml_dtypes:float8"],
+)
+
+cc_library(
     name = "legacy_types",
     hdrs = ["legacy_types.h"],
     compatible_with = get_compatible_with_portable(),
