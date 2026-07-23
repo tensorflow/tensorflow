@@ -28,6 +28,7 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/base/casts.h"
+#include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/functional/function_ref.h"
 #include "absl/log/check.h"
@@ -145,12 +146,21 @@ bool Allocation::is_in_default_mem() const {
 }
 
 void Allocation::RemoveUse(HloUse use) {
-  uses_.erase(std::remove_if(uses_.begin(), uses_.end(),
-                             [=](const auto& u) { return u == use; }),
-              uses_.end());
+  for (int i = 0; i < uses_.size();) {
+    if (uses_[i] == use) {
+      uses_.erase(uses_.begin() + i);
+      use_producers_.erase(use_producers_.begin() + i);
+    } else {
+      ++i;
+    }
+  }
 }
 
 void Allocation::AddUse(HloUse use) {
+  AddUse(use, original_defining_position_);
+}
+
+void Allocation::AddUse(HloUse use, HloPosition producer_position) {
   HloInstruction* operand =
       use.instruction->mutable_operand(use.operand_number);
   // If the use is a tuple, look inside the tuple to find the actual use.
@@ -178,6 +188,141 @@ void Allocation::AddUse(HloUse use) {
   operand = get_simplified_operand(operand);
 
   uses_.push_back(use);
+  use_producers_.push_back(producer_position);
+}
+
+HloPosition Allocation::GetProducerForUse(HloUse use) const {
+  for (size_t i = 0; i < uses_.size(); ++i) {
+    if (uses_[i] == use) {
+      return use_producers_[i];
+    }
+  }
+  return original_defining_position_;
+}
+
+absl::Status Allocation::UpdateUse(const HloUse& use,
+                                   HloInstruction* producing_instruction,
+                                   const BitcastSplitFn& bitcast_split_fn,
+                                   const HloLiveRange& hlo_live_range,
+                                   const HloAliasAnalysis& alias_analysis) {
+  HloInstruction* replacement_instruction = producing_instruction;
+  HloComputation* computation = use.instruction->parent();
+  const Shape& operand_shape =
+      use.instruction->operand(use.operand_number)->shape();
+  if (operand_shape.IsTuple()) {
+    HloInstruction* tuple_inst =
+        use.instruction->mutable_operand(use.operand_number);
+
+    // Trace back to original instructions in the schedule to use
+    // HloAliasAnalysis safely.
+    auto find_original_leaf =
+        [&](const HloInstruction* inst,
+            ShapeIndex index) -> std::pair<const HloInstruction*, ShapeIndex> {
+      while (!hlo_live_range.instruction_schedule().contains(inst)) {
+        if (inst->opcode() == HloOpcode::kTuple) {
+          if (index.empty()) {
+            break;
+          }
+          int64_t op_idx = index[0];
+          inst = inst->operand(op_idx);
+          index = ShapeIndex(index.begin() + 1, index.end());
+        } else if (inst->opcode() == HloOpcode::kGetTupleElement) {
+          ShapeIndex new_index;
+          new_index.push_back(inst->tuple_index());
+          for (int i : index) {
+            new_index.push_back(i);
+          }
+          inst = inst->operand(0);
+          index = new_index;
+        } else if (inst->opcode() == HloOpcode::kBitcast ||
+                   inst->opcode() == HloOpcode::kCopy ||
+                   inst->opcode() == HloOpcode::kCopyDone ||
+                   inst->opcode() == HloOpcode::kCopyStart) {
+          inst = inst->operand(0);
+        } else {
+          break;
+        }
+      }
+      return {inst, index};
+    };
+
+    bool should_skip_reconstruction = false;
+
+    // If the producing instruction shares the same buffer with the operand,
+    // then we skip the reconstruction.
+    auto is_aliasing_operand = [&](int operand_index) {
+      ShapeIndex sub_index;
+      if (use.operand_index.size() > 1) {
+        sub_index =
+            ShapeIndex(use.operand_index.begin() + 1, use.operand_index.end());
+      }
+      if (!ShapeUtil::Compatible(
+              tuple_inst->operand(operand_index)->shape(),
+              ShapeUtil::GetSubshape(tuple_inst->shape(), {operand_index}))) {
+        return false;
+      }
+      auto [traced_operand, traced_index] =
+          find_original_leaf(tuple_inst->operand(operand_index), sub_index);
+      return hlo_live_range.instruction_schedule().contains(traced_operand) &&
+             hlo_live_range.instruction_schedule().contains(tuple_inst) &&
+             alias_analysis.GetUniqueBufferAt(traced_operand, traced_index)
+                     .id() ==
+                 alias_analysis.GetUniqueBufferAt(tuple_inst, use.operand_index)
+                     .id();
+    };
+
+    for (int operand_index = 0; operand_index < tuple_inst->operand_count();
+         ++operand_index) {
+      if (tuple_inst->opcode() == HloOpcode::kTuple &&
+          !use.operand_index.empty() &&
+          operand_index != use.operand_index.front()) {
+        continue;
+      }
+      if (tuple_inst->operand(operand_index) == producing_instruction &&
+          is_aliasing_operand(operand_index)) {
+        should_skip_reconstruction = true;
+        break;
+      }
+    }
+
+    if (should_skip_reconstruction) {
+      VLOG(4) << "Skipping tuple reconstruction for " << tuple_inst->name()
+              << " at index " << use.operand_index.ToString();
+      replacement_instruction = tuple_inst;
+    } else {
+      ASSIGN_OR_RETURN(
+          replacement_instruction,
+          TupleUtil::ReplaceTupleWith(producing_instruction, tuple_inst,
+                                      use.operand_index));
+    }
+  } else if (!Shape::Equal().IgnoreSplitConfigInLayout()(
+                 operand_shape, producing_instruction->shape())) {
+    // When processing allocations, we treat bitcasts as trivial positions and
+    // do not create allocations for them. We insert bitcasts after copies, to
+    // account for the fact that we don't have an allocation for the bitcast.
+    VLOG(4) << "Old shape = " << operand_shape.ToString()
+            << ", new shape = " << producing_instruction->shape().ToString()
+            << "; inserting a bitcast.";
+    replacement_instruction = computation->AddInstruction(
+        HloInstruction::CreateBitcast(operand_shape, producing_instruction));
+    if (mutable_split_shape().has_value() &&
+        !producing_instruction->shape().layout().split_configs().empty()) {
+      ASSIGN_OR_RETURN(
+          int64_t split_dim,
+          bitcast_split_fn(
+              replacement_instruction,
+              mutable_split_shape()->layout().split_configs(0).dimension()));
+      SplitConfig split_config(
+          split_dim,
+          {mutable_split_shape()->layout().split_configs(0).split_indices(0)});
+      replacement_instruction->mutable_shape()
+          ->mutable_layout()
+          ->add_split_configs(split_config);
+    }
+  }
+  RETURN_IF_ERROR(use.instruction->ReplaceOperandWith(use.operand_number,
+                                                      replacement_instruction));
+  return absl::OkStatus();
 }
 
 absl::Status Allocation::UpdateUses(HloComputation* computation,
@@ -186,119 +331,48 @@ absl::Status Allocation::UpdateUses(HloComputation* computation,
                                     const HloLiveRange& hlo_live_range,
                                     const HloAliasAnalysis& alias_analysis) {
   for (const HloUse& use : uses()) {
-    HloInstruction* replacement_instruction = producing_instruction;
-    const Shape& operand_shape =
-        use.instruction->operand(use.operand_number)->shape();
-    if (operand_shape.IsTuple()) {
-      HloInstruction* tuple_inst =
-          use.instruction->mutable_operand(use.operand_number);
-
-      // Trace back to original instructions in the schedule to use
-      // HloAliasAnalysis safely.
-      auto find_original_leaf = [&](const HloInstruction* inst,
-                                    ShapeIndex index)
-          -> std::pair<const HloInstruction*, ShapeIndex> {
-        while (!hlo_live_range.instruction_schedule().contains(inst)) {
-          if (inst->opcode() == HloOpcode::kTuple) {
-            if (index.empty()) {
-              break;
-            }
-            int64_t op_idx = index[0];
-            inst = inst->operand(op_idx);
-            index = ShapeIndex(index.begin() + 1, index.end());
-          } else if (inst->opcode() == HloOpcode::kGetTupleElement) {
-            ShapeIndex new_index;
-            new_index.push_back(inst->tuple_index());
-            for (int i : index) {
-              new_index.push_back(i);
-            }
-            inst = inst->operand(0);
-            index = new_index;
-          } else if (inst->opcode() == HloOpcode::kBitcast ||
-                     inst->opcode() == HloOpcode::kCopy ||
-                     inst->opcode() == HloOpcode::kCopyDone ||
-                     inst->opcode() == HloOpcode::kCopyStart) {
-            inst = inst->operand(0);
-          } else {
-            break;
-          }
-        }
-        return {inst, index};
-      };
-
-      bool should_skip_reconstruction = false;
-
-      // If the producing instruction shares the same buffer with the operand,
-      // then we skip the reconstruction.
-      auto is_aliasing_operand = [&](int operand_index) {
-        ShapeIndex sub_index;
-        if (use.operand_index.size() > 1) {
-          sub_index = ShapeIndex(use.operand_index.begin() + 1,
-                                 use.operand_index.end());
-        }
-        auto [traced_operand, traced_index] =
-            find_original_leaf(tuple_inst->operand(operand_index), sub_index);
-        return hlo_live_range.instruction_schedule().contains(traced_operand) &&
-               hlo_live_range.instruction_schedule().contains(tuple_inst) &&
-               alias_analysis.GetUniqueBufferAt(traced_operand, traced_index)
-                       .id() ==
-                   alias_analysis
-                       .GetUniqueBufferAt(tuple_inst, use.operand_index)
-                       .id();
-      };
-
-      for (int operand_index = 0; operand_index < tuple_inst->operand_count();
-           ++operand_index) {
-        if (tuple_inst->opcode() == HloOpcode::kTuple &&
-            !use.operand_index.empty() &&
-            operand_index != use.operand_index.front()) {
-          continue;
-        }
-        if (tuple_inst->operand(operand_index) == producing_instruction &&
-            is_aliasing_operand(operand_index)) {
-          should_skip_reconstruction = true;
-          break;
-        }
-      }
-
-      if (should_skip_reconstruction) {
-        VLOG(4) << "Skipping tuple reconstruction for " << tuple_inst->name()
-                << " at index " << use.operand_index.ToString();
-        replacement_instruction = tuple_inst;
-      } else {
-        ASSIGN_OR_RETURN(
-            replacement_instruction,
-            TupleUtil::ReplaceTupleWith(producing_instruction, tuple_inst,
-                                        use.operand_index));
-      }
-    } else if (!Shape::Equal().IgnoreSplitConfigInLayout()(
-                   operand_shape, producing_instruction->shape())) {
-      // When processing allocations, we treat bitcasts as trivial positions and
-      // do not create allocations for them. We insert bitcasts after copies, to
-      // account for the fact that we don't have an allocation for the bitcast.
-      VLOG(4) << "Old shape = " << operand_shape.ToString()
-              << ", new shape = " << producing_instruction->shape().ToString()
-              << "; inserting a bitcast.";
-      replacement_instruction = computation->AddInstruction(
-          HloInstruction::CreateBitcast(operand_shape, producing_instruction));
-      if (mutable_split_shape().has_value() &&
-          producing_instruction->shape().layout().split_configs().size() != 0) {
-        ASSIGN_OR_RETURN(
-            int64_t split_dim,
-            bitcast_split_fn(
-                replacement_instruction,
-                mutable_split_shape()->layout().split_configs(0).dimension()));
-        SplitConfig split_config(
-            split_dim,
-            {mutable_split_shape()->layout().split_configs(0).split_indices(
-                0)});
-        replacement_instruction->mutable_shape()
-            ->mutable_layout()
-            ->add_split_configs(split_config);
-      }
+    if (use.instruction->parent() != computation) {
+      continue;
     }
-    RETURN_IF_ERROR(use.instruction->ReplaceOperandWith(
-        use.operand_number, replacement_instruction));
+    RETURN_IF_ERROR(UpdateUse(use, producing_instruction, bitcast_split_fn,
+                              hlo_live_range, alias_analysis));
+  }
+  return absl::OkStatus();
+}
+
+absl::Status Allocation::UpdateUses(const BitcastSplitFn& bitcast_split_fn,
+                                    const HloLiveRange& hlo_live_range,
+                                    const HloAliasAnalysis& alias_analysis) {
+  absl::flat_hash_map<HloPosition, HloInstruction*> producers;
+
+  for (int i = 0; i < uses().size(); ++i) {
+    const HloUse& use = uses()[i];
+    HloPosition producer_position = use_producers_[i];
+    if (producer_position.instruction == nullptr) {
+      producer_position = defining_position();
+    }
+
+    HloInstruction* producing_instruction = nullptr;
+    auto it = producers.find(producer_position);
+    if (it != producers.end()) {
+      producing_instruction = it->second;
+    } else {
+      producing_instruction = TupleUtil::AddGetTupleElements(producer_position);
+      producers[producer_position] = producing_instruction;
+    }
+
+    HloComputation* computation = use.instruction->parent();
+    HloInstruction* resolved_producing_instruction = producing_instruction;
+
+    if (producing_instruction->parent() != computation) {
+      return Internal(
+          "Producer instruction %s is not in the same computation as use %s",
+          producing_instruction->name(), use.instruction->name());
+    }
+
+    RETURN_IF_ERROR(UpdateUse(use, resolved_producing_instruction,
+                              bitcast_split_fn, hlo_live_range,
+                              alias_analysis));
   }
   return absl::OkStatus();
 }
@@ -378,10 +452,7 @@ bool PinnedAllocation::operator==(const Allocation& other) const {
 absl::Status PinnedAllocation::Process(const BitcastSplitFn& bitcast_split_fn,
                                        const HloLiveRange& hlo_live_range,
                                        const HloAliasAnalysis& alias_analysis) {
-  HloInstruction* producing_instruction = AddGetTupleElements();
-  HloComputation* computation = producing_instruction->parent();
-  return UpdateUses(computation, producing_instruction, bitcast_split_fn,
-                    hlo_live_range, alias_analysis);
+  return UpdateUses(bitcast_split_fn, hlo_live_range, alias_analysis);
 }
 
 std::string PinnedAllocation::ToString() const {
