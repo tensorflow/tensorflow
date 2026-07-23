@@ -22,8 +22,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 
-namespace mlir {
-namespace odml {
+namespace mlir::odml {
 
 // Applies various optimizations on MHLO IR.
 std::unique_ptr<Pass> createOptimizePass();
@@ -65,11 +64,15 @@ std::unique_ptr<OperationPass<func::FuncOp>> CreatePrepareHloPass();
 void PopulateLegalizeHloToTfPatterns(RewritePatternSet* patterns,
                                      MLIRContext* context);
 
+// Drops vhlo/stablehlo custom calls targeting 'shape_assertion'.
+std::unique_ptr<OperationPass<ModuleOp>> CreateDropShapeAssertionsPass();
+
 #define GEN_PASS_DECL
+#include "tensorflow/compiler/mlir/lite/stablehlo/transforms/stablehlo_passes.h.inc"
+
 #define GEN_PASS_REGISTRATION
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/stablehlo_passes.h.inc"
 
-}  // namespace odml
-}  // namespace mlir
+}  // namespace mlir::odml
 
 #endif  // TENSORFLOW_COMPILER_MLIR_LITE_STABLEHLO_TRANSFORMS_STABLEHLO_PASSES_H_
