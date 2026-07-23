@@ -2061,6 +2061,16 @@ absl::StatusOr<bool> BufferAssigner::AssignSpecialHloBuffer(
     const HloBuffer* hlo_buffer, bool is_thread_local,
     BufferAllocationsManagerForComputationsWithoutOrdering* allocation_manager,
     BufferAssignment* assignment) {
+  // "View" buffers are pointer stand-ins that alias into another allocation, so
+  // they get no allocation of their own.
+  if (opts_.dus_view_color.has_value()) {
+    ASSIGN_OR_RETURN(BufferValue::Color buffer_color, hlo_buffer->color());
+    if (buffer_color == *opts_.dus_view_color) {
+      VLOG(3) << "Not allocating buffer for view buffer: " << *hlo_buffer;
+      return true;
+    }
+  }
+
   const int64_t buffer_size = assignment->HloBufferSize(*hlo_buffer);
   for (const HloValue* value : hlo_buffer->values()) {
     if (value->instruction()->opcode() == HloOpcode::kConstant) {

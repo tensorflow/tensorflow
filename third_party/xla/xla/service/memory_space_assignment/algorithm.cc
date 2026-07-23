@@ -2389,12 +2389,56 @@ std::optional<int64_t> MsaAlgorithm::EarliestBlockPrefetchStartTime(
   return std::nullopt;
 }
 
+int64_t ViewExtendedTransitiveUseTime(
+    const HloInstruction* view, int64_t view_color,
+    const absl::flat_hash_map<const HloInstruction*, int64_t>&
+        instruction_schedule) {
+  CHECK(!view->shape().IsTuple() && view->shape().has_layout() &&
+        view->shape().layout().memory_space() == view_color)
+      << "not a view: " << view->ToString();
+  auto is_view_colored = [view_color](const HloInstruction* instruction) {
+    return instruction->shape().has_layout() &&
+           instruction->shape().layout().memory_space() == view_color;
+  };
+  int64_t use_time = -1;
+  absl::flat_hash_set<const HloInstruction*> visited = {view};
+  std::vector<const HloInstruction*> worklist = {view};
+  while (!worklist.empty()) {
+    const HloInstruction* current = worklist.back();
+    worklist.pop_back();
+    auto time_it = instruction_schedule.find(current);
+    if (time_it != instruction_schedule.end()) {
+      use_time = std::max(use_time, time_it->second);
+    }
+    for (const HloInstruction* user : current->users()) {
+      if (is_view_colored(user)) {
+        if (visited.insert(user).second) {
+          worklist.push_back(user);
+        }
+      } else {
+        auto user_time_it = instruction_schedule.find(user);
+        if (user_time_it != instruction_schedule.end()) {
+          use_time = std::max(use_time, user_time_it->second);
+        }
+      }
+    }
+  }
+  return use_time;
+}
+
 namespace {
 
+// Computes each value's [first_use_time, last_use_time] interval. When
+// `view_color` is set, a use by a view colored instruction extends the last
+// use time through the view's transitive readers (see
+// ViewExtendedTransitiveUseTime): the view carries no storage of its own, so
+// the value's buffer must stay reserved while any consumer still reads it
+// through the view.
 absl::flat_hash_map<const HloValue*, UseInterval> GetUseIntervals(
     const std::vector<const HloValue*>& values,
     const absl::flat_hash_map<const HloInstruction*, int64_t>&
-        instruction_schedule) {
+        instruction_schedule,
+    std::optional<int64_t> view_color) {
   absl::flat_hash_map<const HloValue*, UseInterval> value_to_use_intervals;
   for (const HloValue* value : values) {
     UseInterval& use_interval = value_to_use_intervals[value];
@@ -2407,8 +2451,16 @@ absl::flat_hash_map<const HloValue*, UseInterval> GetUseIntervals(
       }
       use_interval.first_use_time =
           std::min(use_interval.first_use_time, it->second);
+      int64_t last_use_time = it->second;
+      if (view_color.has_value() && use.instruction->shape().has_layout() &&
+          use.instruction->shape().layout().memory_space() == *view_color) {
+        last_use_time =
+            std::max(last_use_time,
+                     ViewExtendedTransitiveUseTime(use.instruction, *view_color,
+                                                   instruction_schedule));
+      }
       use_interval.last_use_time =
-          std::max(use_interval.last_use_time, it->second);
+          std::max(use_interval.last_use_time, last_use_time);
     }
     CHECK_NE(use_interval.last_use_time, -1);
   }
@@ -2502,9 +2554,14 @@ absl::Status MsaAlgorithm::AllocateAndScheduleExistingBlockPrefetches(
 
   const auto& instruction_schedule = hlo_live_range_.instruction_schedule();
 
-  // Compute the live ranges for each block prefetched value.
+  // Compute the live ranges for each block prefetched value. When view
+  // sources stay in default memory their storage is permanent, so no
+  // extension is needed (mirrors GetExtendedUseTimeIfUseIsView).
   absl::flat_hash_map<const HloValue*, UseInterval> value_to_use_intervals =
-      GetUseIntervals(block_prefetched_values, instruction_schedule);
+      GetUseIntervals(block_prefetched_values, instruction_schedule,
+                      options_.view_source_default_memory_only
+                          ? std::nullopt
+                          : options_.dus_view_color);
 
   // Erase all the values from block_prefetched_values that have been finalized.
   block_prefetched_values.erase(
@@ -4431,11 +4488,14 @@ absl::StatusOr<AllocationResult> MsaAlgorithm::AllocateAllocationValues(
     }
   }
 
-  // Extract all use times
+  // Extract all use times. Use the view-extended time so this list agrees with
+  // the chunk reservation end (request.end_time) computed in
+  // CreateAllocationRequest; otherwise a view-extended end_time would not be
+  // found in this list.
   std::vector<int64_t> all_use_times;
   for (const AllocationValue& allocation_value : allocation_values) {
     for (const auto& use : allocation_value.uses()) {
-      all_use_times.push_back(use.time);
+      all_use_times.push_back(GetExtendedUseTimeIfUseIsView(use.hlo_use));
     }
   }
   absl::c_sort(all_use_times);
@@ -4780,14 +4840,20 @@ AllocationRequest MsaAlgorithm::CreateAllocationRequest(
     }
   }
 
-  int64_t use_time = instruction_schedule.at(hlo_use.instruction);
+  // GetExtendedUseTimeIfUseIsView() is used to bound request.end_time below,
+  // and must match the all-use-times list.
+  int64_t use_time = GetExtendedUseTimeIfUseIsView(hlo_use);
   bool allow_no_copy_alternate_mem_allocation = true;
   bool allow_prefetch = true;
   bool prefer_no_copy_alternate_mem_allocation = false;
   // TODO(b/318886791):  Rename boundary variables (here and other places)
   // like `latest_prefetch_time` and `earliest_prefetch_time` indicate
   // whether they are exclusive or inclusive boundaries.
-  int64_t latest_prefetch_time = use_time;
+  //
+  // Bound the latest prefetch deadline by the instruction's schedule time. A
+  // materializing copy must execute before the use.
+  int64_t latest_prefetch_time =
+      std::min(use_time, instruction_schedule.at(hlo_use.instruction));
 
   // Control flow  calls include kWhile, kCall, and kConditional opcodes.
   bool is_sequential_call =
@@ -4804,11 +4870,19 @@ AllocationRequest MsaAlgorithm::CreateAllocationRequest(
     use_time = GetCorrectedUseTime(hlo_use);
   }
 
+  const bool is_view_use_requiring_default_memory =
+      options_.view_source_default_memory_only &&
+      options_.dus_view_color.has_value() && hlo_use.operand_number == 0 &&
+      hlo_use.instruction->shape().has_layout() &&
+      hlo_use.instruction->shape().layout().memory_space() ==
+          *options_.dus_view_color;
+
   // Add a required assignment in default memory if the use not allowed in
   // alternate memory.
   if (IsWhileLoopUseRequiredInDefaultMemory(hlo_use) ||
       !IsUseAllowedInAlternateMemory(hlo_use) ||
-      !IsWhileLoopUseBeneficialInAlternateMemory(hlo_use)) {
+      !IsWhileLoopUseBeneficialInAlternateMemory(hlo_use) ||
+      is_view_use_requiring_default_memory) {
     if (require_no_copy_alternate_mem_allocation) {
       LOG(WARNING) << "The value "
                    << allocation_value_to_update.value()->ToShortString()
@@ -5583,17 +5657,15 @@ void MsaAlgorithm::AllocateCrossProgramPrefetchBuffer(
   int64_t latest_prefetch_time =
       instruction_schedule.at(first_use->instruction);
 
-  // Find the latest use time.
-  int64_t last_use_time = instruction_schedule.at(
-      absl::c_max_element(uses, use_schedule_compare)->instruction);
+  // Find the last use time. Note, view uses may extend the last use time.
+  int64_t last_use_time = std::numeric_limits<int64_t>::min();
+  for (const HloUse& use : uses) {
+    last_use_time = std::max(last_use_time, GetExtendedUseTimeIfUseIsView(use));
+  }
   for (const HloValue* colocation : prefetch_candidate.colocations) {
-    auto colocation_uses = colocation->GetUses();
-    if (!colocation_uses.empty()) {
-      last_use_time = std::max(
-          last_use_time,
-          instruction_schedule.at(
-              absl::c_max_element(colocation_uses, use_schedule_compare)
-                  ->instruction));
+    for (const HloUse& use : colocation->GetUses()) {
+      last_use_time =
+          std::max(last_use_time, GetExtendedUseTimeIfUseIsView(use));
     }
   }
 
@@ -5825,6 +5897,33 @@ int64_t MsaAlgorithm::GetCorrectedUseTime(
 
 int64_t MsaAlgorithm::GetCorrectedUseTime(const HloUse& use) const {
   return GetCorrectedUseTime(use.instruction);
+}
+
+int64_t MsaAlgorithm::GetExtendedUseTimeIfUseIsView(const HloUse& use) const {
+  const absl::flat_hash_map<const HloInstruction*, int64_t>& schedule =
+      hlo_live_range_.instruction_schedule();
+  int64_t use_time = schedule.at(use.instruction);
+  // When view sources are kept in default memory, their storage is permanent,
+  // so a view reads valid data at any later consumer time without extending the
+  // reservation. Skip the extension entirely (it exists only to keep an
+  // alternate-memory copy of the source alive across the view's consumers).
+  if (options_.view_source_default_memory_only) {
+    return use_time;
+  }
+  // Only the viewed value itself (operand 0 of the view, on both the read
+  // and write sides) needs its reservation extended; a view's start index
+  // operands are consumed at the view's own time.
+  if (!options_.dus_view_color.has_value() || use.operand_number != 0 ||
+      !use.instruction->shape().has_layout() ||
+      use.instruction->shape().layout().memory_space() !=
+          *options_.dus_view_color) {
+    return use_time;
+  }
+  // The use instruction is a view into the used value; its consumers read the
+  // value's storage through it at later times.
+  return std::max(use_time,
+                  ViewExtendedTransitiveUseTime(
+                      use.instruction, *options_.dus_view_color, schedule));
 }
 
 std::optional<MsaAlgorithm::RequiredMemoryAssignment>
