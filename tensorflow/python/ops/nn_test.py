@@ -1595,25 +1595,26 @@ class AvgPoolTest(test_lib.TestCase):
   def test1DNegativeDimError(self):
     # Tests that when W < kernel size with VALID padding, the output size is 0
     # and tf.function does not raise a negative dimension error.
-    from tensorflow.python.eager import def_function
-    from tensorflow.python.ops import random_ops
-    
-    @def_function.function
-    def f_ncw(x):
-        return nn_ops.avg_pool1d(x, ksize=4, strides=4, padding='VALID', data_format='NCW')
-
+    # NCW is GPU-only on CPU kernels; gate that path on GPU availability.
     @def_function.function
     def f_nwc(x):
-        return nn_ops.avg_pool1d(x, ksize=4, strides=4, padding='VALID', data_format='NWC')
+      return nn_ops.avg_pool1d(
+          x, ksize=4, strides=4, padding="VALID", data_format="NWC")
 
-    x_ncw = random_ops.random_normal((4, 10, 3))
-    out_ncw = f_ncw(x_ncw)
-    self.assertAllEqual(self.evaluate(out_ncw).shape, (4, 10, 0))
-
-    x_nwc = random_ops.random_normal((4, 3, 10))
+    x_nwc = array_ops.ones((4, 3, 10))
     out_nwc = f_nwc(x_nwc)
     self.assertAllEqual(self.evaluate(out_nwc).shape, (4, 0, 10))
 
+    if test_util.is_gpu_available():
+      @def_function.function
+      def f_ncw(x):
+        return nn_ops.avg_pool1d(
+            x, ksize=4, strides=4, padding="VALID", data_format="NCW")
+
+      with test_util.use_gpu():
+        x_ncw = array_ops.ones((4, 10, 3))
+        out_ncw = f_ncw(x_ncw)
+        self.assertAllEqual(self.evaluate(out_ncw).shape, (4, 10, 0))
 
   def test1DNumpy(self):
     # explicitly use float32 for ROCm, as MIOpen does not yet support float64
