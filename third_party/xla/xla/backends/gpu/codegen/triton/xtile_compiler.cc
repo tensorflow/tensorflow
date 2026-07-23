@@ -108,6 +108,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_print_options.h"
 #include "xla/hlo/translate/hlo_to_mhlo/hlo_function_importer.h"
 #include "xla/hlo/utils/hlo_traversal.h"
+#include "xla/primitive_util.h"
 #include "xla/service/decision.h"
 #include "xla/service/dump.h"
 #include "xla/service/gpu/backend_configs.pb.h"
@@ -208,6 +209,18 @@ absl::Status ValidateF4UseInTritonFusion(const HloComputation& computation) {
           "f4e2m1fn storage value has unsupported Triton user: ",
           instruction->ToString(HloPrintOptions::ShortParsable()), " -> ",
           user->ToString(HloPrintOptions::ShortParsable())));
+    }
+  }
+  return absl::OkStatus();
+}
+
+absl::Status ValidateComplexUseInTritonFusion(
+    const HloComputation& computation) {
+  for (const HloInstruction* instruction : computation.instructions()) {
+    if (primitive_util::IsComplexType(instruction->shape().element_type())) {
+      return absl::InvalidArgumentError(absl::StrCat(
+          "Complex types are unsupported in Triton codegen: ",
+          instruction->ToString(HloPrintOptions::ShortParsable())));
     }
   }
   return absl::OkStatus();
@@ -405,6 +418,7 @@ absl::StatusOr<TritonKernelSource> CreateTritonModule(
         AddCollectiveMetadataArguments(opaque_args_types, b, hlo_computation));
   }
 
+  RETURN_IF_ERROR(ValidateComplexUseInTritonFusion(*hlo_computation));
   RETURN_IF_ERROR(ValidateF4UseInTritonFusion(*hlo_computation));
 
   ASSIGN_OR_RETURN(auto triton_module,
