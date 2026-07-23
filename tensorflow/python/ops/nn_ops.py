@@ -2048,10 +2048,14 @@ def conv1d(
     A `Tensor`.  Has the same type as input.
 
   Raises:
-    ValueError: if `data_format` is invalid.
+    ValueError: If `data_format` is invalid, or if `padding="VALID"` would
+      produce a statically known negative output width.
   """
   value = deprecation.deprecated_argument_lookup("input", input, "value", value)
   with ops.name_scope(name, "conv1d", [value, filters]) as name:
+    value = ops.convert_to_tensor(value, name="input")
+    filters = ops.convert_to_tensor(filters, name="filters")
+
     # Reshape the input tensor to batch_shape + [1, in_width, in_channels]
     if data_format is None or data_format == "NHWC" or data_format == "NWC":
       data_format = "NHWC"
@@ -2066,6 +2070,26 @@ def conv1d(
                        f"Received: data_format={data_format}")
     strides = [1] + _get_sequence(stride, 1, channel_index, "stride")
     dilations = [1] + _get_sequence(dilations, 1, channel_index, "dilations")
+
+    # Reject negative output spatial dimensions for VALID padding while
+    # preserving valid zero-sized outputs.
+    if isinstance(padding, str) and padding.upper() == "VALID":
+      value_shape = value.shape
+      filters_shape = filters.shape
+      if value_shape.rank is not None and filters_shape.rank is not None:
+        spatial_idx = -2 if data_format == "NHWC" else -1
+        in_width = tensor_shape.dimension_value(value_shape[spatial_idx])
+        filter_width = tensor_shape.dimension_value(filters_shape[0])
+        if in_width is not None and filter_width is not None:
+          dilation_rate = dilations[spatial_idx]
+          effective_filter_width = filter_width + (filter_width - 1) * (
+              dilation_rate - 1)
+          if in_width - effective_filter_width + strides[spatial_idx] < 0:
+            raise ValueError(
+                f"Negative dimension size caused by subtracting "
+                f"{effective_filter_width} from {in_width} for conv1d with "
+                f"VALID padding. Input spatial dimension is too small for "
+                f"the filter size.")
 
     value = array_ops.expand_dims(value, spatial_start_dim)
     filters = array_ops.expand_dims(filters, 0)
@@ -2153,7 +2177,8 @@ def conv1d_v2(
     A `Tensor`.  Has the same type as input.
 
   Raises:
-    ValueError: if `data_format` is invalid.
+    ValueError: If `data_format` is invalid, or if `padding="VALID"` would
+      produce a statically known negative output width.
   """
   return conv1d(
       input,  # pylint: disable=redefined-builtin

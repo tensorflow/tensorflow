@@ -596,6 +596,36 @@ absl::Status ShapeFromDimensions(DimensionHandle batch_dim,
 
 namespace {
 
+// Conv2D permits a zero-sized VALID output when adding the stride makes the
+// window formula non-negative. Keep this exception local to convolution:
+// pooling and the other users of GetWindowedOutputSizeFromDimsV2 require the
+// filter window to fit within the input.
+absl::Status GetConv2DWindowedOutputSizeFromDims(
+    shape_inference::InferenceContext* c,
+    shape_inference::DimensionHandle input_size,
+    shape_inference::DimensionOrConstant filter_size, int64_t dilation_rate,
+    int64_t stride, Padding padding_type, int64_t padding_before,
+    int64_t padding_after, shape_inference::DimensionHandle* output_size) {
+  if (padding_type == Padding::VALID && stride > 0 && dilation_rate >= 1) {
+    DimensionHandle window_size = c->MakeDim(filter_size);
+    if (dilation_rate > 1) {
+      TF_RETURN_IF_ERROR(c->Subtract(window_size, 1, &window_size));
+      TF_RETURN_IF_ERROR(
+          c->Multiply(window_size, dilation_rate, &window_size));
+      TF_RETURN_IF_ERROR(c->Add(window_size, 1, &window_size));
+    }
+    if (c->ValueKnown(input_size) && c->ValueKnown(window_size) &&
+        c->Value(input_size) < c->Value(window_size) &&
+        c->Value(window_size) - c->Value(input_size) <= stride) {
+      *output_size = c->MakeDim(0);
+      return absl::OkStatus();
+    }
+  }
+  return GetWindowedOutputSizeFromDimsV2(
+      c, input_size, filter_size, dilation_rate, stride, padding_type,
+      padding_before, padding_after, output_size);
+}
+
 absl::Status Conv2DShapeImpl(shape_inference::InferenceContext* c,
                              bool supports_explicit_padding) {
   std::string data_format_str, filter_format_str;
@@ -751,10 +781,10 @@ absl::Status Conv2DShapeImpl(shape_inference::InferenceContext* c,
     GetExplicitPaddingForDim(explicit_paddings, data_format, 'W',
                              &pad_cols_before, &pad_cols_after);
   }
-  TF_RETURN_IF_ERROR(GetWindowedOutputSizeFromDimsV2(
+  TF_RETURN_IF_ERROR(GetConv2DWindowedOutputSizeFromDims(
       c, input_spatial_dims[0], filter_rows_dim, dilation_rows, stride_rows,
       padding, pad_rows_before, pad_rows_after, &output_rows));
-  TF_RETURN_IF_ERROR(GetWindowedOutputSizeFromDimsV2(
+  TF_RETURN_IF_ERROR(GetConv2DWindowedOutputSizeFromDims(
       c, input_spatial_dims[1], filter_cols_dim, dilation_cols, stride_cols,
       padding, pad_cols_before, pad_cols_after, &output_cols));
 
