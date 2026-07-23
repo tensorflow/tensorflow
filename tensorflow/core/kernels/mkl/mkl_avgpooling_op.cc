@@ -224,6 +224,11 @@ class MklAvgPoolingGradOp : public MklPoolingBackwardOpBase<T> {
           errors::InvalidArgument("ksize must have 4 or 5 elements, but got ",
                                   this->ksize_.size()));
 
+      OP_REQUIRES(context, this->ksize_.size() == grad_tensor.dims(),
+                  errors::InvalidArgument(
+                      "Expected grad_tensor to have ", this->ksize_.size(),
+                      " dimensions, but got ", grad_tensor.dims()));
+
       bool is_pool2d = (this->ksize_.size() == 4);
       int expected_rank = is_pool2d ? 4 : 5;
 

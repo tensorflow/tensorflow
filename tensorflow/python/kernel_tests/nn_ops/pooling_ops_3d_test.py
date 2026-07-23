@@ -189,6 +189,27 @@ class PoolingTest(test.TestCase):
           )
           self.evaluate(t)
 
+  # This test is for CPU only.
+  def testAvgPool3dGradInvalidGrad(self):
+    for data_format, use_gpu in GetTestConfigs():
+      if use_gpu:
+        continue
+      with self.cached_session(use_gpu=False):
+        orig_input_shape = constant_op.constant(
+            [2, 2, 1, 1, 1], dtype=dtypes.int32
+        )
+        grad = array_ops.zeros([2, 2], dtype=dtypes.float32)
+        with self.assertRaises(errors.InvalidArgumentError):
+          t = gen_nn_ops.AvgPool3DGrad(
+              orig_input_shape=orig_input_shape,
+              grad=grad,
+              ksize=[1, 1, 1, 1, 1],
+              strides=[1, 1, 1, 1, 1],
+              padding="VALID",
+              data_format=data_format,
+          )
+          self.evaluate(t)
+
   def testMaxPool3dValidPadding(self):
     expected_output = [40.0, 41.0, 42.0]
     self._VerifyValues(
