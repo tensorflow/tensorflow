@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/backends/gpu/transforms/composite_rewriter.h"
 
+#include <cstddef>
 #include <cstdint>
 
 #include "absl/container/flat_hash_set.h"
@@ -22,6 +23,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "xla/tsl/platform/status_macros.h"
 #include "mlir/AsmParser/AsmParser.h"
 #include "mlir/IR/Attributes.h"
@@ -99,6 +101,58 @@ absl::StatusOr<DotDimensionNumbers> ParseDimensionNumbers(
   return dnums;
 }
 
+struct ScanAttributes {
+  int64_t scan_dimension;
+  bool is_reverse;
+  TriState is_associative = TRI_STATE_UNSPECIFIED;
+  std::vector<int32_t> operand_segment_sizes;
+};
+
+absl::StatusOr<ScanAttributes> ParseScanAttributes(
+    absl::string_view composite_attributes) {
+  mlir::MLIRContext context;
+  mlir::Attribute attr = mlir::parseAttribute(composite_attributes, &context);
+  mlir::DictionaryAttr dict_attrs =
+      mlir::dyn_cast_or_null<mlir::DictionaryAttr>(attr);
+  if (!dict_attrs) {
+    return absl::InvalidArgumentError(
+        "composite attributes is not a dictionary");
+  }
+
+  ScanAttributes result;
+
+  auto dim_attr =
+      mlir::dyn_cast_or_null<mlir::IntegerAttr>(dict_attrs.get("dimension"));
+  if (!dim_attr) {
+    return absl::InvalidArgumentError("dimension is not an integer");
+  }
+  result.scan_dimension = dim_attr.getInt();
+
+  auto reverse_attr =
+      mlir::dyn_cast_or_null<mlir::BoolAttr>(dict_attrs.get("is_reverse"));
+  if (!reverse_attr) {
+    return absl::InvalidArgumentError("is_reverse is not a bool");
+  }
+  result.is_reverse = reverse_attr.getValue();
+
+  auto assoc_attr =
+      mlir::dyn_cast_or_null<mlir::BoolAttr>(dict_attrs.get("is_associative"));
+  if (assoc_attr) {
+    result.is_associative =
+        assoc_attr.getValue() ? TRI_STATE_TRUE : TRI_STATE_FALSE;
+  }
+
+  auto operand_segments_attr = mlir::dyn_cast_or_null<mlir::DenseI32ArrayAttr>(
+      dict_attrs.get("operandSegmentSizes"));
+  if (operand_segments_attr) {
+    result.operand_segment_sizes.assign(
+        operand_segments_attr.asArrayRef().begin(),
+        operand_segments_attr.asArrayRef().end());
+  }
+
+  return result;
+}
+
 }  // namespace
 
 absl::StatusOr<bool> CompositeRewriter::RewriteComputation(
@@ -118,90 +172,130 @@ absl::StatusOr<bool> CompositeRewriter::RewriteComputation(
     }
     auto frontend_attrs = call->frontend_attributes().map();
     auto key = "composite.name";
-    if (!frontend_attrs.contains(key) ||
-        frontend_attrs.at(key) != "xla.scaled_dot") {
-      VLOG(3) << key << " is not xla.scaled_dot: " << frontend_attrs.at(key);
+    auto it = frontend_attrs.find(key);
+    if (it == frontend_attrs.end()) {
       continue;
     }
-    if (!frontend_attrs.contains("composite.attributes")) {
-      return absl::InvalidArgumentError(
-          "composite.attributes is not set for xla.scaled_dot");
-    }
-    ASSIGN_OR_RETURN(
-        DotDimensionNumbers dot_dimension_numbers,
-        ParseDimensionNumbers(frontend_attrs.at("composite.attributes")));
+    absl::string_view composite_name = it->second;
 
-    if (dot_dimension_numbers.lhs_contracting_dimensions_size() != 1 ||
-        dot_dimension_numbers.rhs_contracting_dimensions_size() != 1 ||
-        dot_dimension_numbers.lhs_batch_dimensions_size() > 1 ||
-        dot_dimension_numbers.rhs_batch_dimensions_size() > 1) {
-      LOG(ERROR) << "Unsupported dimension numbers: "
-                 << dot_dimension_numbers.DebugString();
-      continue;
-    }
-
-    const HloInstruction* lhs = call->operand(0);
-    const HloInstruction* rhs = call->operand(1);
-    const HloInstruction* lhs_scale = call->operand(2);
-    const HloInstruction* rhs_scale = call->operand(3);
-
-    int64_t lhs_contracting_dim =
-        dot_dimension_numbers.lhs_contracting_dimensions(0);
-    int64_t rhs_contracting_dim =
-        dot_dimension_numbers.rhs_contracting_dimensions(0);
-
-    auto is_supported = [&](const HloInstruction* operand,
-                            const HloInstruction* scale,
-                            int64_t contracting_dim) {
-      auto op_type = operand->shape().element_type();
-      auto scale_type = scale->shape().element_type();
-      if ((op_type == F8E4M3FN || op_type == F8E5M2 || op_type == F4E2M1FN) &&
-          scale_type == F8E8M0FNU) {
-        if (contracting_dim >= scale->shape().dimensions().size()) {
-          return false;
-        }
-        int64_t operand_dim_size = operand->shape().dimensions(contracting_dim);
-        int64_t scale_dim_size = scale->shape().dimensions(contracting_dim);
-
-        if (scale_dim_size == 0 || operand_dim_size % scale_dim_size != 0) {
-          return false;
-        }
-        int64_t scale_factor = operand_dim_size / scale_dim_size;
-        return scale_factor % 32 == 0;
+    if (composite_name == "xla.scaled_dot") {
+      auto it = frontend_attrs.find("composite.attributes");
+      if (it == frontend_attrs.end()) {
+        return absl::InvalidArgumentError(
+            "composite.attributes is not set for xla.scaled_dot");
       }
-      if (op_type == BF16 && scale_type == BF16) {
-        if (scale->shape().dimensions().size() !=
-            operand->shape().dimensions().size()) {
-          return false;
-        }
-        for (int64_t dim : scale->shape().dimensions()) {
-          if (dim != 1) {
+      ASSIGN_OR_RETURN(DotDimensionNumbers dot_dimension_numbers,
+                       ParseDimensionNumbers(it->second));
+
+      if (dot_dimension_numbers.lhs_contracting_dimensions_size() != 1 ||
+          dot_dimension_numbers.rhs_contracting_dimensions_size() != 1 ||
+          dot_dimension_numbers.lhs_batch_dimensions_size() > 1 ||
+          dot_dimension_numbers.rhs_batch_dimensions_size() > 1) {
+        LOG(ERROR) << "Unsupported dimension numbers: "
+                   << dot_dimension_numbers.DebugString();
+        continue;
+      }
+
+      const HloInstruction* lhs = call->operand(0);
+      const HloInstruction* rhs = call->operand(1);
+      const HloInstruction* lhs_scale = call->operand(2);
+      const HloInstruction* rhs_scale = call->operand(3);
+
+      int64_t lhs_contracting_dim =
+          dot_dimension_numbers.lhs_contracting_dimensions(0);
+      int64_t rhs_contracting_dim =
+          dot_dimension_numbers.rhs_contracting_dimensions(0);
+
+      auto is_supported = [&](const HloInstruction* operand,
+                              const HloInstruction* scale,
+                              int64_t contracting_dim) {
+        auto op_type = operand->shape().element_type();
+        auto scale_type = scale->shape().element_type();
+        if ((op_type == F8E4M3FN || op_type == F8E5M2 || op_type == F4E2M1FN) &&
+            scale_type == F8E8M0FNU) {
+          if (contracting_dim >= scale->shape().dimensions().size()) {
             return false;
           }
-        }
-        if (scale->opcode() != HloOpcode::kConstant) {
-          return false;
-        }
-        return scale->literal().IsAllFloat(1.0);
-      }
-      return false;
-    };
+          int64_t operand_dim_size =
+              operand->shape().dimensions(contracting_dim);
+          int64_t scale_dim_size = scale->shape().dimensions(contracting_dim);
 
-    if (!is_supported(lhs, lhs_scale, lhs_contracting_dim) ||
-        !is_supported(rhs, rhs_scale, rhs_contracting_dim)) {
+          if (scale_dim_size == 0 || operand_dim_size % scale_dim_size != 0) {
+            return false;
+          }
+          int64_t scale_factor = operand_dim_size / scale_dim_size;
+          return scale_factor % 32 == 0;
+        }
+        if (op_type == BF16 && scale_type == BF16) {
+          if (scale->shape().dimensions().size() !=
+              operand->shape().dimensions().size()) {
+            return false;
+          }
+          for (int64_t dim : scale->shape().dimensions()) {
+            if (dim != 1) {
+              return false;
+            }
+          }
+          if (scale->opcode() != HloOpcode::kConstant) {
+            return false;
+          }
+          return scale->literal().IsAllFloat(1.0);
+        }
+        return false;
+      };
+
+      if (!is_supported(lhs, lhs_scale, lhs_contracting_dim) ||
+          !is_supported(rhs, rhs_scale, rhs_contracting_dim)) {
+        continue;
+      }
+
+      PrecisionConfig precision{};
+      precision.mutable_operand_precision()->Resize(2,
+                                                    PrecisionConfig::DEFAULT);
+      auto* scaled_dot =
+          computation->AddInstruction(HloInstruction::CreateScaledDot(
+              call->shape(), call->mutable_operand(0), call->mutable_operand(1),
+              call->mutable_operand(2), call->mutable_operand(3),
+              dot_dimension_numbers, precision));
+      RETURN_IF_ERROR(call->ReplaceAllUsesWith(scaled_dot));
+      RETURN_IF_ERROR(computation->RemoveInstruction(call));
+      changed = true;
+    } else if (composite_name == "chlo.scan") {
+      auto it = frontend_attrs.find("composite.attributes");
+      if (it == frontend_attrs.end()) {
+        return absl::InvalidArgumentError(
+            "composite.attributes is not set for chlo.scan");
+      }
+      ASSIGN_OR_RETURN(ScanAttributes scan_attrs,
+                       ParseScanAttributes(it->second));
+
+      const auto& operands = call->operands();
+      if (call->called_computations().empty()) {
+        return absl::InvalidArgumentError(
+            "chlo.scan requires a called computation");
+      }
+      HloComputation* to_apply = call->called_computations()[0];
+
+      if (scan_attrs.operand_segment_sizes.empty()) {
+        return absl::InvalidArgumentError(
+            "operandSegmentSizes is not set for chlo.scan");
+      }
+      size_t num_inputs = scan_attrs.operand_segment_sizes[0];
+
+      absl::Span<HloInstruction* const> inputs(&operands[0], num_inputs);
+      absl::Span<HloInstruction* const> inits(&operands[num_inputs],
+                                              operands.size() - num_inputs);
+
+      auto* scan = computation->AddInstruction(HloInstruction::CreateScan(
+          call->shape(), inputs, inits, to_apply, scan_attrs.scan_dimension,
+          scan_attrs.is_reverse, scan_attrs.is_associative));
+      RETURN_IF_ERROR(call->ReplaceAllUsesWith(scan));
+      RETURN_IF_ERROR(computation->RemoveInstruction(call));
+      changed = true;
+    } else {
+      VLOG(3) << "Unsupported composite name: " << composite_name;
       continue;
     }
-
-    PrecisionConfig precision{};
-    precision.mutable_operand_precision()->Resize(2, PrecisionConfig::DEFAULT);
-    auto* scaled_dot =
-        computation->AddInstruction(HloInstruction::CreateScaledDot(
-            call->shape(), call->mutable_operand(0), call->mutable_operand(1),
-            call->mutable_operand(2), call->mutable_operand(3),
-            dot_dimension_numbers, precision));
-    RETURN_IF_ERROR(call->ReplaceAllUsesWith(scaled_dot));
-    RETURN_IF_ERROR(computation->RemoveInstruction(call));
-    changed = true;
   }
   return changed;
 }
