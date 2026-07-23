@@ -262,6 +262,18 @@ py_library(
     ],
 )
 
+py_test(
+    name = "losses_test",
+    srcs = ["losses_test.py"],
+    python_version = "PY3",
+    srcs_version = "PY3",
+    deps = [
+        ":losses",
+        "//tensorflow/python/platform:test",
+        "//third_party/py/numpy",
+    ],
+)
+
 py_library(
     name = "metrics",
     srcs = [
