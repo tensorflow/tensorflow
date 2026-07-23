@@ -1939,6 +1939,12 @@ TfLiteStatus Subgraph::SetTensorParametersReadOnly(
 
   TF_LITE_ENSURE(&context_,
                  tensor_index < context_.tensors_size && tensor_index >= 0);
+  for (size_t d = 0; d < ndims; ++d) {
+    if (dims[d] < 0) {
+      ReportError("Tensor has negative dimension.");
+      return kTfLiteError;
+    }
+  }
 
   // For most tensors we know exactly how much memory is necessary so we can
   // ensure the buffer is large enough. However, we need to skip string tensors
@@ -2010,6 +2016,12 @@ TfLiteStatus Subgraph::SetTensorParametersReadWrite(
   }
   TF_LITE_ENSURE(&context_,
                  tensor_index < context_.tensors_size && tensor_index >= 0);
+  for (size_t d = 0; d < ndims; ++d) {
+    if (dims[d] < 0) {
+      ReportError("Tensor has negative dimension.");
+      return kTfLiteError;
+    }
+  }
   size_t required_bytes = 0;
   if (type != kTfLiteString && type != kTfLiteResource &&
       type != kTfLiteVariant) {
