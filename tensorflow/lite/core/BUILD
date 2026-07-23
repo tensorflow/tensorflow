@@ -506,6 +506,7 @@ cc_library(
         "//tensorflow/lite:util",
         "//tensorflow/lite/c:common_internal",
         "//tensorflow/lite/core/api",
+        "//tensorflow/lite/core/c:allocator_internal",
         "//tensorflow/lite/core/c:c_api_types",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/experimental/resource",
