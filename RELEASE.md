@@ -33,6 +33,8 @@ In `tensorflow/c/experimental/filesystem/filesystem_interface.h`, removed `TF_Tr
     * Exports `__new__` in public API golden files for subclasses of `tuple` (like `tf.io.FixedLenFeature`) to fix false positives during static type checking.>
 * `tf.data`
     * Fixes a bug in `tf.data.Dataset.scan` where the shape of the state returned by `scan_func` was not strictly validated against the initial state.
+* `tf.experimental.numpy`
+    * `tf.experimental.numpy.isclose` and `tf.experimental.numpy.allclose` now apply `rtol` and `atol` to integer inputs, matching NumPy, instead of comparing with pure equality. The comparison stays in integer arithmetic; combining integer inputs with floating-point tolerances (including the defaults) now raises an error unless automatic type promotion is enabled, which keeps the cost of promotion opt-in.
 
 * <SIMILAR TO ABOVE SECTION, BUT FOR OTHER IMPORTANT CHANGES / BUG FIXES>
 * <IF A CHANGE CLOSES A GITHUB ISSUE, IT SHOULD BE DOCUMENTED HERE>

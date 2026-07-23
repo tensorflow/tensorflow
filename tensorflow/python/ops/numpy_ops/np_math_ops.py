@@ -533,6 +533,24 @@ def isclose(a, b, rtol=1e-05, atol=1e-08, equal_nan=False):  # pylint: disable=m
       if equal_nan:
         result = result | (math_ops.is_nan(a) & math_ops.is_nan(b))
       return result
+    elif np.issubdtype(dtype.as_numpy_dtype, np.integer):
+      # Use the operands' own arithmetic instead of casting to float, so
+      # integer tolerances stay in integer arithmetic and float tolerances
+      # require automatic type promotion to be enabled, keeping the cost of
+      # promotion opt-in. The difference is computed as max - min so that
+      # unsigned inputs cannot wrap around, and tf.abs does not support
+      # unsigned dtypes.
+      diff = math_ops.maximum(a, b) - math_ops.minimum(a, b)
+      if np.issubdtype(dtype.as_numpy_dtype, np.unsignedinteger):
+        abs_b = b
+      else:
+        abs_b = math_ops.abs(b)
+      rhs = atol + rtol * abs_b
+      if rhs.dtype != diff.dtype:
+        # Reachable only with type promotion enabled and float tolerances,
+        # where the tolerance side has been promoted to floating point.
+        diff = math_ops.cast(diff, rhs.dtype)
+      return diff <= rhs
     else:
       return math_ops.equal(a, b)
 

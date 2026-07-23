@@ -230,6 +230,46 @@ class MathTest(test.TestCase, parameterized.TestCase):
         np_math_ops.isclose(a, b, equal_nan=equal_nan),
         np.isclose(a, b, equal_nan=equal_nan))
 
+  @parameterized.parameters([np.int32, np.int64])
+  def testIsCloseIntegerTolerances(self, dtype):
+    # Regression test for GitHub issue 108657: integer inputs used to be
+    # compared with pure equality, ignoring rtol and atol.
+    a = np.array([[-13, -5, -12], [3, 17, -6], [5, 3, -8], [-18, 19, 10]],
+                 dtype)
+    b = np.array([-7], dtype)
+    self.match(
+        np_math_ops.isclose(a, b, rtol=9, atol=0),
+        np.isclose(a, b, rtol=9, atol=0))
+    self.assertEqual(
+        bool(np_math_ops.allclose(a, b, rtol=9, atol=0)),
+        np.allclose(a, b, rtol=9, atol=0))
+    c = np.array([100, 200, -300, 0], dtype)
+    d = np.array([105, 900, -300, 4], dtype)
+    self.match(
+        np_math_ops.isclose(c, d, rtol=0, atol=5),
+        np.isclose(c, d, rtol=0, atol=5))
+
+  def testIsCloseUnsignedNoWraparound(self):
+    # The difference must be computed as max - min: 1 - 2 wraps around to 255
+    # in uint8 arithmetic and would defeat the tolerance comparison.
+    a = np.array([1, 250, 7], np.uint8)
+    b = np.array([2, 5, 7], np.uint8)
+    self.match(
+        np_math_ops.isclose(a, b, rtol=0, atol=3),
+        np.isclose(a, b, rtol=0, atol=3))
+
+  def testIsCloseIntegerFloatTolerancePromotes(self):
+    # Integer inputs with floating-point tolerances (including the defaults)
+    # rely on type promotion, which this test environment enables, and the
+    # promoted results match NumPy. Without promotion this combination
+    # raises instead of silently casting.
+    a = np.array([1000000, 1000001, 5], np.int32)
+    b = np.array([1000001, 1000000, 900], np.int32)
+    self.match(np_math_ops.isclose(a, b), np.isclose(a, b))
+    self.match(
+        np_math_ops.isclose(a, b, rtol=1e-6, atol=0.5),
+        np.isclose(a, b, rtol=1e-6, atol=0.5))
+
   @parameterized.named_parameters(
       ('isclose_int32', np_math_ops.isclose, np.int32),
       ('allclose_int32', np_math_ops.allclose, np.int32),
