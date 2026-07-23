@@ -465,7 +465,7 @@ absl::Status SetAttrBoolList(AbstractOperation* op_, const char* attr_name,
     b[i] = values[i];
   }
   forward_op_->attrs.Set(attr_name,
-                         gtl::ArraySlice<const bool>(b.get(), num_values));
+                         absl::Span<const const bool>(b.get(), num_values));
   return op_->SetAttrBoolList(attr_name, values, num_values);
 }
 absl::Status SetAttrShapeList(AbstractOperation* op_, const char* attr_name,
