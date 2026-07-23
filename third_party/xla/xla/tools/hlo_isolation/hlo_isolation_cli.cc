@@ -16,6 +16,7 @@ limitations under the License.
 #include <iostream>
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/status/status.h"
@@ -23,13 +24,12 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "xla/tsl/platform/status_macros.h"
+#include "xla/pjrt/pjrt_client.h"
+#include "xla/service/hlo_runner.h"
 #include "xla/service/hlo_runner_interface.h"
-#include "xla/service/platform_util.h"
-#include "xla/service/restricted/hlo_runner_legacy.h"
-#include "xla/stream_executor/platform.h"
 #include "xla/tools/hlo_isolation/hlo_isolation.pb.h"
 #include "xla/tools/hlo_isolation/hlo_isolation_api.h"
-#include "xla/tsl/platform/statusor.h"
+#include "xla/tools/run_hlo_module.h"
 #include "xla/tsl/util/command_line_flags.h"
 #include "tsl/platform/init_main.h"
 
@@ -60,16 +60,16 @@ absl::Status RunMain(
   }
 
   // 1. Create Runners
-  ASSIGN_OR_RETURN(se::Platform * test_platform,
-                   PlatformUtil::GetPlatform(test_platform_name));
-  HloRunnerLegacy test_runner(test_platform);
+  ASSIGN_OR_RETURN(std::unique_ptr<PjRtClient> test_client,
+                   GetPjRtClientForPlatform(test_platform_name));
+  HloRunner test_runner(std::move(test_client));
 
-  std::unique_ptr<HloRunnerLegacy> reference_runner_ptr;
+  std::unique_ptr<HloRunner> reference_runner_ptr;
   HloRunnerInterface* reference_runner_ptr_raw = nullptr;
   if (!reference_platform_name.empty()) {
-    ASSIGN_OR_RETURN(se::Platform * ref_platform,
-                     PlatformUtil::GetPlatform(reference_platform_name));
-    reference_runner_ptr = std::make_unique<HloRunnerLegacy>(ref_platform);
+    ASSIGN_OR_RETURN(std::unique_ptr<PjRtClient> ref_client,
+                     GetPjRtClientForPlatform(reference_platform_name));
+    reference_runner_ptr = std::make_unique<HloRunner>(std::move(ref_client));
     reference_runner_ptr_raw = reference_runner_ptr.get();
   }
 
