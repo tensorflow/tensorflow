@@ -280,28 +280,11 @@ template <typename Device, typename T>
 absl::Status GetInputTensorFromVariable(OpKernelContext* ctx, int input,
                                         bool lock_held, bool sparse,
                                         Tensor* out) {
-  const DataType expected_dtype = DataTypeToEnum<T>::value;
   if (ctx->input_dtype(input) == DT_RESOURCE) {
     core::RefCountPtr<Var> var;
-<<<<<<< HEAD
-<<<<<<< HEAD
     ResourceHandle handle;
     TF_RETURN_IF_ERROR(HandleFromInput(ctx, input, &handle));
     TF_RETURN_IF_ERROR(LookupResource(ctx, handle, &var));
-=======
-    TF_RETURN_IF_ERROR(LookupResource(ctx, HandleFromInput(ctx, input), &var));
-=======
-    ResourceHandle handle;
-    TF_RETURN_IF_ERROR(HandleFromInput(ctx, input, &handle));
-    TF_RETURN_IF_ERROR(LookupResource(ctx, handle, &var));
->>>>>>> e3b237f1456 (resolving the conflicts)
-    if (var->tensor()->dtype() != expected_dtype) {
-      return errors::InvalidArgument(
-          "Resource variable input at index ", input,
-          " has dtype ", DataTypeString(var->tensor()->dtype()),
-          ", but op expects ", DataTypeString(expected_dtype), ".");
-    }
->>>>>>> b6f7782f7cd (Add)
     if (sparse) {
       var->mu()->assert_held_shared();
       *out = *var->tensor();

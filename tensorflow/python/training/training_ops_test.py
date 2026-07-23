@@ -504,24 +504,34 @@ class TrainingOpsTest(TensorFlowTestCase):
         target=lambda: self.evaluate(fn_resource_sparse_apply_adagrad_v2()))
     thread1.start()
     thread2.start()
-    thread1.join() 
+    thread1.join()
     thread2.join()
 
-  @test_util.run_v2_only
-  def testResourceSparseApplyAdagradDtypeMismatch(self):
-    var = variables.Variable(np.zeros((3, 3), dtype=np.float32))
-    accum = variables.Variable(np.zeros((3, 3), dtype=np.float32))
-    lr = constant_op.constant(0.1, dtype=dtypes.float16)
-    grad = constant_op.constant(
-        [[0.1, 0.2, 0.3], [0.0, 0.0, 0.0], [0.5, 0.5, 0.5]],
-        dtype=dtypes.float16)
-    indices = constant_op.constant([0, 1, 2], dtype=dtypes.int32)
+  def testResourceSparseApplyAdagradDARejectsScalarGrad(self):
+    # Regression test for #94130: a scalar grad made the kernel read dimension
+    # 1 and terminate the process instead of returning InvalidArgument.
+    var, grad_accum, grad_squared_accum = [
+        variables.Variable(np.zeros((10, 2), np.float32)) for _ in range(3)
+    ]
     self.evaluate(variables.global_variables_initializer())
-
-    with self.assertRaisesRegex(errors.InvalidArgumentError,
-                                "Resource variable input at index 0"):
-      self.evaluate(gen_training_ops.resource_sparse_apply_adagrad(
-          var.handle, accum.handle, lr, grad, indices))
+    with self.assertRaisesRegex(
+        errors.InvalidArgumentError,
+        "grad must have the same number of dimensions as var",
+    ):
+      self.evaluate(
+          gen_training_ops.resource_sparse_apply_adagrad_da(
+              var.handle,
+              grad_accum.handle,
+              grad_squared_accum.handle,
+              np.float32(0.0),
+              constant_op.constant([0, 0], dtypes.int32),
+              np.float32(0.0),
+              np.float32(0.0),
+              np.float32(0.0),
+              np.int64(1),
+              use_locking=True,
+          )
+      )
 
   def testSparseApplyOpsRejectLowerRankGrad(self):
     # Regression test for #94131: a grad of lower rank than var made the
