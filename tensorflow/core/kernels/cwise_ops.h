@@ -749,6 +749,46 @@ struct functor_traits<scalar_erfinv_op<T>> {
     PacketAccess = packet_traits<T>::HasNdtri,
   };
 };
+template <typename Scalar>
+struct digamma_op {
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE Scalar
+  operator()(const Scalar& x) const {
+    if (x < Scalar(0.)) {
+      Scalar floor_x = Eigen::numext::floor(x);
+      if (x == floor_x) {
+        return Eigen::NumTraits<Scalar>::quiet_NaN();
+      }
+    }
+    if (x == Scalar(0.)) {
+      return -Eigen::NumTraits<Scalar>::infinity();
+    }
+    return Eigen::internal::scalar_digamma_op<Scalar>()(x);
+  }
+  template <typename Packet>
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE Packet packetOp(const Packet& x) const {
+    Packet zeros = pzero(x);
+    Packet is_zero = pcmp_eq(x, zeros);
+    Packet is_lt_zero = pcmp_lt(x, zeros);
+    Packet is_integer = pcmp_eq(x, pfloor(x));
+    Packet is_negative_integer = pand(is_lt_zero, is_integer);
+
+    Packet infs = pset1<Packet>(-Eigen::NumTraits<Scalar>::infinity());
+    Packet nans = pset1<Packet>(Eigen::NumTraits<Scalar>::quiet_NaN());
+    Packet digamma_x = Eigen::internal::scalar_digamma_op<Scalar>().packetOp(x);
+    
+    Packet result = pselect(is_negative_integer, nans, digamma_x);
+    return pselect(is_zero, infs, result);
+  }
+};
+
+template <typename Scalar>
+struct functor_traits<digamma_op<Scalar>> {
+  enum {
+    Cost = functor_traits<scalar_digamma_op<Scalar>>::Cost +
+           Eigen::NumTraits<Scalar>::AddCost,
+    PacketAccess = functor_traits<scalar_digamma_op<Scalar>>::PacketAccess
+  };
+};
 
 // Specialization of erfinv for float.
 //
@@ -981,7 +1021,7 @@ template <typename T>
 struct lgamma : base<T, Eigen::internal::scalar_lgamma_op<T>> {};
 
 template <typename T>
-struct digamma : base<T, Eigen::internal::scalar_digamma_op<T>> {};
+struct digamma : base<T, Eigen::internal::digamma_op<T>> {};
 
 template <typename T>
 struct erf : base<T, Eigen::internal::scalar_erf_op<T>> {};
