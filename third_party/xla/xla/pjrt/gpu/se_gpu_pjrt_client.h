@@ -111,8 +111,6 @@ class StreamExecutorGpuHbmMemorySpace : public PjRtStreamExecutorMemorySpace {
 // A custom PjRtClient that overrides the device assignment method.
 class StreamExecutorGpuClient : public xla::PjRtStreamExecutorClient {
  public:
-  using xla::PjRtStreamExecutorClient::PjRtStreamExecutorClient;
-
   StreamExecutorGpuClient(
       std::string platform_name, LocalClient* client,
       std::vector<std::unique_ptr<PjRtStreamExecutorDevice>> devices,
@@ -126,14 +124,6 @@ class StreamExecutorGpuClient : public xla::PjRtStreamExecutorClient {
       std::optional<int> num_processes,
       std::shared_ptr<gpu::AllocatorMemoryRegistration> memory_registration =
           nullptr);
-
-  std::optional<std::shared_ptr<KeyValueStoreInterface>> key_value_store()
-      const override {
-    return kv_store_;
-  }
-
-  gpu::GpuExecutableRunOptions* gpu_run_options(
-      const ExecuteOptions& options) override;
 
   absl::StatusOr<xla::DeviceAssignment> GetDefaultDeviceAssignment(
       int num_replicas, int num_partitions) const override;
@@ -159,9 +149,6 @@ class StreamExecutorGpuClient : public xla::PjRtStreamExecutorClient {
                               PjRtDevice* device,
                               PjRtCrossHostRecvNotifier notifier) override;
 
-  absl::StatusOr<const xla::PjRtTopologyDescription*> GetTopologyDescription()
-      const override;
-
   void RecordMemoryStats();
 
   absl::StatusOr<PjRtStreamExecutorExecutionOutput> RunAsync(
@@ -179,17 +166,8 @@ class StreamExecutorGpuClient : public xla::PjRtStreamExecutorClient {
       const override;
 
  private:
-  absl::flat_hash_map<GlobalDeviceId, IncarnationId> GetLatestIncarnations(
-      const ExecuteOptions& options);
-
-  std::optional<int> num_nodes_;
   const bool abort_collectives_on_failure_ = false;
-  std::shared_ptr<xla::StreamExecutorGpuTopologyDescription> topology_;
   std::shared_ptr<gpu::AllocatorMemoryRegistration> memory_registration_;
-  std::shared_ptr<KeyValueStoreInterface> kv_store_;
-
-  // Helpers for cross host transfers.
-  absl::Duration cross_host_transfer_timeout_ = absl::Minutes(3);
 
   absl::StatusOr<PjRtDeviceEventRefVector> CrossHostTransferBuffers(
       PjRtDeviceEventRefVector transfer_dependencies,

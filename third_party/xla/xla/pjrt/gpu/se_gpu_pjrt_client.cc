@@ -247,13 +247,12 @@ StreamExecutorGpuClient::StreamExecutorGpuClient(
     : xla::PjRtStreamExecutorClient(
           platform_name, client, std::move(devices), process_index,
           /*memory_spaces=*/{},  // Initialized below.
-          std::move(allocator), std::move(host_memory_allocator),
-          should_stage_host_to_device_transfers, std::move(gpu_run_options)),
-      num_nodes_(num_nodes),
+          std::move(topology), std::move(allocator),
+          std::move(host_memory_allocator),
+          should_stage_host_to_device_transfers, std::move(gpu_run_options),
+          std::move(kv_store)),
       abort_collectives_on_failure_(abort_collectives_on_failure),
-      topology_(std::move(topology)),
-      memory_registration_(std::move(memory_registration)),
-      kv_store_(std::move(kv_store)) {
+      memory_registration_(std::move(memory_registration)) {
   VLOG(1) << absl::StreamFormat(
       "Constructed StreamExecutor GPU client: #devices=%d #num_nodes=%d",
       devices_.size(), num_nodes.value_or(1));
@@ -324,35 +323,6 @@ void StreamExecutorGpuClient::UpdateGlobalProcessInfo(
   }
 }
 
-absl::flat_hash_map<GlobalDeviceId, IncarnationId>
-StreamExecutorGpuClient::GetLatestIncarnations(const ExecuteOptions& options) {
-  // Map every device to its incarnation.
-  absl::flat_hash_map<GlobalDeviceId, IncarnationId> device_incarnations;
-  for (const PjRtDevice* device : devices()) {
-    int task_id = device->process_index();
-    GlobalDeviceId device_id(device->global_device_id().value());
-
-    auto it = options.incarnations.find(task_id);
-    if (it == options.incarnations.end()) {
-      // The task might be dead.
-      LOG(WARNING) << "Incarnation for task " << task_id << " not found";
-      continue;
-    }
-    device_incarnations[device_id] = it->second;
-  }
-  return device_incarnations;
-}
-
-gpu::GpuExecutableRunOptions* StreamExecutorGpuClient::gpu_run_options(
-    const ExecuteOptions& options) {
-  if (!options.incarnations.empty()) {
-    absl::flat_hash_map<GlobalDeviceId, IncarnationId> incarnations =
-        GetLatestIncarnations(options);
-    gpu_run_options_->set_incarnations(std::move(incarnations));
-  }
-  return gpu_run_options_.get();
-}
-
 absl::StatusOr<xla::DeviceAssignment>
 StreamExecutorGpuClient::GetDefaultDeviceAssignment(int num_replicas,
                                                     int num_partitions) const {
@@ -373,10 +343,11 @@ absl::Status StreamExecutorGpuClient::UpdateCompileOptionsInternal(
     bool lookup_addressable_devices) {
   RETURN_IF_ERROR(PjRtStreamExecutorClient::UpdateCompileOptionsInternal(
       options, returned_extras, lookup_addressable_devices));
-  if (topology_) {
-    options->executable_build_options.set_slice_size(
-        topology_->gpu_topology().slice_size());
-  }
+  options->executable_build_options.set_slice_size(
+      tensorflow::down_cast<const StreamExecutorGpuTopologyDescription*>(
+          topology())
+          ->gpu_topology()
+          .slice_size());
   return absl::OkStatus();
 }
 
@@ -490,9 +461,8 @@ absl::StatusOr<AcquiredCliqueAndCommunicator> AcquireCliqueAndCommunicator(
     gpu::AcquiredCliquesMap& acquired_cliques_map, RankId rank_id,
     se::Stream* stream) {
   // Get the clique ID callback.
-  const ExecuteOptions dummy_execute_options;
   gpu::GpuExecutableRunOptions* dummy_gpu_run_options =
-      client->gpu_run_options(dummy_execute_options);
+      client->gpu_run_options();
   gpu::CliqueIdCallback clique_id_callback =
       dummy_gpu_run_options->clique_id_callback();
 
@@ -1111,14 +1081,6 @@ StreamExecutorGpuClient::MakeCrossHostReceiveBuffers(
 }
 
 // ==== End cross-host transfer implementations ==== //
-
-absl::StatusOr<const xla::PjRtTopologyDescription*>
-StreamExecutorGpuClient::GetTopologyDescription() const {
-  if (!topology_) {
-    return absl::FailedPreconditionError("GPU Topology is missing");
-  }
-  return &*topology_;
-}
 
 void StreamExecutorGpuClient::RecordMemoryStats() {
 #if defined(GOOGLE_CUDA) || defined(TENSORFLOW_USE_ROCM) || \

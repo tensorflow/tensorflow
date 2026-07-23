@@ -244,10 +244,12 @@ class PjRtStreamExecutorClient : public CommonPjRtClient {
       std::vector<std::unique_ptr<PjRtStreamExecutorDevice>> devices,
       int process_index,
       std::vector<std::unique_ptr<PjRtMemorySpace>> memory_spaces,
+      std::shared_ptr<const xla::PjRtTopologyDescription> topology,
       std::unique_ptr<se::DeviceAddressAllocator> allocator,
       std::unique_ptr<HostMemoryAllocator> host_memory_allocator,
       bool should_stage_host_to_device_transfers,
-      std::unique_ptr<gpu::GpuExecutableRunOptions> gpu_run_options);
+      std::unique_ptr<gpu::GpuExecutableRunOptions> gpu_run_options = nullptr,
+      std::shared_ptr<KeyValueStoreInterface> kv_store = nullptr);
   ~PjRtStreamExecutorClient() override;
 
   int process_index() const override { return process_index_; }
@@ -369,8 +371,7 @@ class PjRtStreamExecutorClient : public CommonPjRtClient {
            size < (int64_t{1} << 30) && !IsHostMemoryPinned(data, size);
   }
 
-  virtual gpu::GpuExecutableRunOptions* gpu_run_options(
-      const ExecuteOptions& options) {
+  gpu::GpuExecutableRunOptions* gpu_run_options() const {
     return gpu_run_options_.get();
   }
 
@@ -468,8 +469,26 @@ class PjRtStreamExecutorClient : public CommonPjRtClient {
       const xla::Shape& shape, PjRtMemorySpace* src_memory_space,
       PjRtMemorySpace* dst_memory_space) override;
 
+  absl::StatusOr<const xla::PjRtTopologyDescription*> GetTopologyDescription()
+      const override {
+    return topology();
+  }
+
+  const xla::PjRtTopologyDescription* topology() const {
+    return topology_.get();
+  }
+
+  std::optional<std::shared_ptr<KeyValueStoreInterface>> key_value_store()
+      const override {
+    if (!kv_store_) {
+      return std::nullopt;
+    }
+    return kv_store_;
+  }
+
  protected:
   friend class PjRtStreamExecutorRawBuffer;
+  friend class PjRtStreamExecutorRawLoadedExecutable;
 
   virtual void RecordMemoryStats() {}
 
@@ -525,6 +544,7 @@ class PjRtStreamExecutorClient : public CommonPjRtClient {
   const PjRtPlatformId platform_id_;
   const std::string platform_name_;
   LocalClient* client_;
+  std::shared_ptr<const xla::PjRtTopologyDescription> topology_;
 
   // Allocator to be used for staging memory transfers to devices.
   std::unique_ptr<HostMemoryAllocator> host_memory_allocator_;
@@ -555,6 +575,7 @@ class PjRtStreamExecutorClient : public CommonPjRtClient {
   bool should_stage_host_to_device_transfers_;
 
   std::unique_ptr<gpu::GpuExecutableRunOptions> gpu_run_options_;
+  std::shared_ptr<KeyValueStoreInterface> kv_store_;
 
   tsl::thread::ThreadPool compile_thread_pool_;
   std::unique_ptr<AsyncWorkRunner> async_work_runner_;

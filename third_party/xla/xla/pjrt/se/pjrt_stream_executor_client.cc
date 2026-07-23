@@ -294,13 +294,16 @@ PjRtStreamExecutorClient::PjRtStreamExecutorClient(
     std::vector<std::unique_ptr<PjRtStreamExecutorDevice>> devices,
     int process_index,
     std::vector<std::unique_ptr<PjRtMemorySpace>> memory_spaces,
+    std::shared_ptr<const xla::PjRtTopologyDescription> topology,
     std::unique_ptr<se::DeviceAddressAllocator> allocator,
     std::unique_ptr<HostMemoryAllocator> host_memory_allocator,
     bool should_stage_host_to_device_transfers,
-    std::unique_ptr<gpu::GpuExecutableRunOptions> gpu_run_options)
+    std::unique_ptr<gpu::GpuExecutableRunOptions> gpu_run_options,
+    std::shared_ptr<KeyValueStoreInterface> kv_store)
     : platform_id_(tsl::Fingerprint64(platform_name)),
       platform_name_(std::move(platform_name)),
       client_(client),
+      topology_(std::move(topology)),
       host_memory_allocator_(std::move(host_memory_allocator)),
       owned_allocator_(std::move(allocator)),
       owned_devices_(std::move(devices)),
@@ -309,11 +312,13 @@ PjRtStreamExecutorClient::PjRtStreamExecutorClient(
       should_stage_host_to_device_transfers_(
           should_stage_host_to_device_transfers),
       gpu_run_options_(std::move(gpu_run_options)),
+      kv_store_(std::move(kv_store)),
       compile_thread_pool_(
           tsl::Env::Default(), "pjrt_compile_thread_pool",
           std::max<int>(DefaultThreadPoolSize(), client->device_count())),
       async_work_runner_(MakeUnboundedAsyncWorkRunner(
           "pjrt_async_work_runner", {/*stack_size=*/512 * 1024})) {
+  CHECK(topology_) << " topology is required.";
   if (owned_allocator_ != nullptr) {
     allocator_ = owned_allocator_.get();
   } else {
@@ -382,20 +387,7 @@ PjRtStreamExecutorClient::GetDefaultDeviceAssignment(int num_replicas,
 
 absl::StatusOr<Layout> PjRtStreamExecutorClient::GetDefaultLayout(
     PrimitiveType element_type, absl::Span<const int64_t> dims) {
-  auto topology = GetTopologyDescription();
-  if (topology.ok()) {
-    return (*topology)->GetDefaultLayout(element_type, dims);
-  }
-  if (!primitive_util::IsArrayType(element_type)) {
-    return InvalidArgument("Element type %s does not support layout",
-                           PrimitiveType_Name(element_type));
-  }
-  Shape shape = ShapeUtil::MakeShape(element_type, dims);
-  ASSIGN_OR_RETURN(
-      shape,
-      client()->backend().transfer_manager()->ChooseCompactLayoutForShape(
-          shape));
-  return shape.layout();
+  return topology_->GetDefaultLayout(element_type, dims);
 }
 
 absl::StatusOr<std::unique_ptr<HloCostAnalysis>>
@@ -505,55 +497,8 @@ absl::StatusOr<xla::Shape>
 PjRtStreamExecutorClient::MakeDefaultShapeForMemorySpace(
     PjRtMemorySpace* memory_space, xla::Shape shape,
     const xla::Layout* layout) const {
-  auto topo = GetTopologyDescription();
-  if (topo.ok()) {
-    return (*topo)->MakeCanonicalShapeForMemorySpace(memory_space->kind_id(),
+  return topology_->MakeCanonicalShapeForMemorySpace(memory_space->kind_id(),
                                                      std::move(shape), layout);
-  }
-  // TODO(parkers): ensure that topologies are always passed.
-  if (shape.IsToken()) {
-    return shape;
-  }
-  TransferManager* transfer_manager = client()->backend().transfer_manager();
-  if (layout != nullptr) {
-    *shape.mutable_layout() = *layout;
-    if (primitive_util::IsSubByteNonPredType(shape.element_type())) {
-      ASSIGN_OR_RETURN(xla::Shape default_shape,
-                       transfer_manager->ChooseCompactLayoutForShape(shape));
-      if (default_shape.layout().element_size_in_bits() !=
-          shape.layout().element_size_in_bits()) {
-        return InvalidArgument(
-            "Device buffers require %d bits per element for an element type "
-            "%s, but got layout %s for shape %s",
-            default_shape.layout().element_size_in_bits(),
-            PrimitiveType_Name(shape.element_type()), layout->ToString(),
-            shape.ToString());
-      }
-    }
-  } else {
-    ASSIGN_OR_RETURN(shape,
-                     transfer_manager->ChooseCompactLayoutForShape(shape));
-  }
-  auto* device = tensorflow::down_cast<PjRtStreamExecutorDevice*>(
-      memory_space->devices()[0]);
-  PjRtMemorySpace* default_memory_space =
-      device->default_memory_space().value_or(nullptr);
-  Shape on_device_shape = transfer_manager->HostShapeToDeviceShape(shape);
-  // Only allow pinned host memory or device memory.
-  if (memory_space->kind() == PinnedHostMemorySpace::kKind) {
-    on_device_shape.mutable_layout()->set_memory_space(
-        Layout::kHostMemorySpace);
-  } else if (memory_space == default_memory_space) {
-    if (on_device_shape.has_layout()) {
-      on_device_shape.mutable_layout()->set_memory_space(
-          Layout::kDefaultMemorySpace);
-    }
-  } else {
-    return absl::InvalidArgumentError(
-        absl::StrCat("Buffer allocation: invalid memory space: ",
-                     memory_space->DebugString()));
-  }
-  return on_device_shape;
 }
 
 absl::StatusOr<PjRtRawBufferRef> PjRtStreamExecutorClient::AllocateRawBuffer(
@@ -1595,9 +1540,26 @@ PjRtStreamExecutorRawLoadedExecutable::Execute(
     compute_reservation = std::make_shared<Semaphore::ScopedReservation>(
         compute_semaphore->ScopedAcquire(1));
   }
+  auto* gpu_run_options = client_->gpu_run_options_.get();
+  if (gpu_run_options && !options.incarnations.empty()) {
+    absl::flat_hash_map<GlobalDeviceId, IncarnationId> device_incarnations;
+    for (const PjRtDevice* device : client_->devices()) {
+      int task_id = device->process_index();
+      GlobalDeviceId device_id(device->global_device_id().value());
+
+      auto it = options.incarnations.find(task_id);
+      if (it == options.incarnations.end()) {
+        // The task might be dead.
+        LOG(WARNING) << "Incarnation for task " << task_id << " not found";
+        continue;
+      }
+      device_incarnations[device_id] = it->second;
+    }
+    gpu_run_options->set_incarnations(std::move(device_incarnations));
+  }
 
   auto launch_on_device =
-      [device_state, gpu_run_options = client_->gpu_run_options(options),
+      [device_state, gpu_run_options = gpu_run_options,
        launch_id = options.launch_id, run_id = run_id_, seed = options.seed,
        context = options.context, client = client_, device = device_,
        device_assignment = device_assignment_,
