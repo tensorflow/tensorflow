@@ -98,7 +98,8 @@ absl::StatusOr<ScopedDeviceAddress<uint8_t>> TfAllocatorAdapter::Allocate(
     data = wrapped_->AllocateRaw(min_alignment_, size, attrs);
     if (data == nullptr) {
       return MemoryAllocationError(
-          size, memory_space == xla::Layout::kHostMemorySpace);
+          device_ordinal, size, wrapped_->Name(),
+          memory_space == xla::Layout::kHostMemorySpace);
     }
   }
   return ScopedDeviceAddress<uint8_t>(DeviceAddressBase(data, size),
@@ -260,17 +261,20 @@ absl::StatusOr<tsl::Allocator*> MultiDeviceAdapter::GetAllocator(
 static constexpr absl::string_view kMemoryAllocationErrorPayloadKey =
     "tf-allocator-allocation-error";
 
-absl::Status MemoryAllocationError(uint64_t size, bool is_host_mem) {
+absl::Status MemoryAllocationError(int64_t device_ordinal, uint64_t size,
+                                   absl::string_view allocator_name,
+                                   bool is_host_mem) {
   constexpr absl::string_view kHostMemoryExplanation =
       " Please set the environment variable "
       "XLA_PJRT_GPU_HOST_MEMORY_LIMIT_GB to allocate larger "
       "host memory than the default 64 GB.";
 
-  absl::Status status = absl::ResourceExhaustedError(
-      absl::StrCat("Out of ", (is_host_mem ? "host " : ""),
-                   "memory while trying to allocate ",
-                   tsl::strings::HumanReadableNumBytes(size), ".",
-                   (is_host_mem ? kHostMemoryExplanation : "")));
+  absl::Status status = absl::ResourceExhaustedError(absl::StrCat(
+      "Out of ", (is_host_mem ? "host " : ""),
+      "memory while trying to allocate ",
+      tsl::strings::HumanReadableNumBytes(size), " with allocator ",
+      allocator_name, " on device ", device_ordinal, ".",
+      (is_host_mem ? kHostMemoryExplanation : "")));
   status.SetPayload(kMemoryAllocationErrorPayloadKey, absl::Cord());
   return status;
 }

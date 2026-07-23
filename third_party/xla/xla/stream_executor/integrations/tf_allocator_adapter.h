@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/device_address_allocator.h"
@@ -196,7 +197,9 @@ class MultiDeviceAdapter : public DeviceAddressAllocator {
 
 // Creates a status with a payload indicating an error while allocating `size`
 // bytes of memory.
-absl::Status MemoryAllocationError(uint64_t size, bool is_host_mem);
+absl::Status MemoryAllocationError(int64_t device_ordinal, uint64_t size,
+                                   absl::string_view allocator_name,
+                                   bool is_host_mem);
 
 // Checks whether the status is a memory allocation error.
 bool IsMemoryAllocationError(absl::Status status);
