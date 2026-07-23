@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "xla/tests/constraint_propagator.h"
 
+#include <cmath>
+
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/testlib/test.h"
 #include "xla/tests/constraint_state.h"
@@ -356,6 +358,163 @@ ENTRY main {
   // from log(x), so the ConstraintInterval for x is empty.
   EXPECT_TRUE(x_int.IsEmpty());
   EXPECT_TRUE(y_int.IsNegativeStrict());
+}
+
+TEST_F(ConstraintPropagatorTest, MultiplySquareReverseConstraintShapes) {
+  const char* hlo = R"(
+HloModule TestModule
+ENTRY main {
+  param_0 = bf16[8,1024,3072] parameter(0)
+  ROOT mul = bf16[8,1024,3072] multiply(param_0, param_0)
+}
+)";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(auto states, ConstraintPropagator::Run(*module));
+
+  auto p0_int = states[module->entry_computation()->parameter_instruction(0)]
+                    .GetConstraintInterval();
+
+  // Root bf16 output is seeded with [-65504.0, 65504.0].
+  // Reverse propagation for multiply computes max_in = sqrt(65504.0) ~
+  // 255.9375.
+  EXPECT_FALSE(p0_int.IsEmpty());
+  EXPECT_NEAR(p0_int.max, std::sqrt(65504.0), 1e-3);
+  EXPECT_NEAR(p0_int.min, -std::sqrt(65504.0), 1e-3);
+}
+
+TEST_F(ConstraintPropagatorTest, ConvolutionReverseConstraintShapes) {
+  const char* hlo = R"(
+HloModule TestModule
+ENTRY main {
+  param_0 = bf16[8,1024,3072,1] parameter(0)
+  param_1 = bf16[24,3072,256,1] parameter(1)
+  ROOT conv = bf16[8,1024,24,256] convolution(param_0, param_1),
+    window={size=1x24 pad=0_0x23_23 rhs_reversal=0x1}, dim_labels=0bf1_1io0->0b1f
+}
+)";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(auto states, ConstraintPropagator::Run(*module));
+
+  auto p0_int = states[module->entry_computation()->parameter_instruction(0)]
+                    .GetConstraintInterval();
+  auto p1_int = states[module->entry_computation()->parameter_instruction(1)]
+                    .GetConstraintInterval();
+
+  // Contracting size K = 3072 * 1 * 24 = 73728 terms.
+  // Root max_out = 65504.0.
+  // max_in = sqrt(65504.0 / 73728) ~ 0.9426.
+  double expected_max_in = std::sqrt(65504.0 / 73728.0);
+  EXPECT_FALSE(p0_int.IsEmpty());
+  EXPECT_NEAR(p0_int.max, expected_max_in, 1e-3);
+  EXPECT_NEAR(p0_int.min, -expected_max_in, 1e-3);
+
+  EXPECT_FALSE(p1_int.IsEmpty());
+  EXPECT_NEAR(p1_int.max, expected_max_in, 1e-3);
+  EXPECT_NEAR(p1_int.min, -expected_max_in, 1e-3);
+}
+
+TEST_F(ConstraintPropagatorTest, ReduceSumReverseConstraintShapes) {
+  const char* hlo = R"(
+HloModule TestModule
+add_computation {
+  x = bf16[] parameter(0)
+  y = bf16[] parameter(1)
+  ROOT add = bf16[] add(x, y)
+}
+ENTRY main {
+  param_0 = bf16[8,1024,24,256] parameter(0)
+  init = bf16[] constant(0)
+  ROOT reduce = bf16[8,1024] reduce(param_0, init), dimensions={2,3},
+    to_apply=add_computation
+}
+)";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(auto states, ConstraintPropagator::Run(*module));
+
+  auto p0_int = states[module->entry_computation()->parameter_instruction(0)]
+                    .GetConstraintInterval();
+
+  // Reduce sum across 24 * 256 = 6144 elements.
+  // Root max_out = 65504.0.
+  // max_in = 65504.0 / 6144 ~ 10.661458.
+  double expected_max_in = 65504.0 / 6144.0;
+  EXPECT_FALSE(p0_int.IsEmpty());
+  EXPECT_NEAR(p0_int.max, expected_max_in, 1e-3);
+  EXPECT_NEAR(p0_int.min, -expected_max_in, 1e-3);
+}
+
+TEST_F(ConstraintPropagatorTest, DotReverseConstraintShapes) {
+  const char* hlo = R"(
+HloModule TestModule
+ENTRY main {
+  lhs = bf16[8,1024,3072] parameter(0)
+  rhs = bf16[3072,256] parameter(1)
+  ROOT dot = bf16[8,1024,256] dot(lhs, rhs),
+    lhs_contracting_dims={2}, rhs_contracting_dims={0}
+}
+)";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(auto states, ConstraintPropagator::Run(*module));
+
+  auto lhs_int = states[module->entry_computation()->parameter_instruction(0)]
+                     .GetConstraintInterval();
+  auto rhs_int = states[module->entry_computation()->parameter_instruction(1)]
+                     .GetConstraintInterval();
+
+  // Contracting size K = 3072 terms.
+  // Root max_out = 65504.0.
+  // max_in = sqrt(65504.0 / 3072) ~ 4.61735.
+  double expected_max_in = std::sqrt(65504.0 / 3072.0);
+  EXPECT_FALSE(lhs_int.IsEmpty());
+  EXPECT_NEAR(lhs_int.max, expected_max_in, 1e-3);
+  EXPECT_NEAR(lhs_int.min, -expected_max_in, 1e-3);
+
+  EXPECT_FALSE(rhs_int.IsEmpty());
+  EXPECT_NEAR(rhs_int.max, expected_max_in, 1e-3);
+  EXPECT_NEAR(rhs_int.min, -expected_max_in, 1e-3);
+}
+
+TEST_F(ConstraintPropagatorTest, MultiplyReduceFusionSequence) {
+  const char* hlo = R"(
+HloModule TestModule
+add_computation {
+  x = bf16[] parameter(0)
+  y = bf16[] parameter(1)
+  ROOT add = bf16[] add(x, y)
+}
+ENTRY main {
+  param_0 = bf16[8,1024,3072,1] parameter(0)
+  param_1 = bf16[24,3072,256,1] parameter(1)
+  conv = bf16[8,1024,24,256] convolution(param_0, param_1),
+    window={size=1x24 pad=0_0x23_23 rhs_reversal=0x1}, dim_labels=0bf1_1io0->0b1f
+  square = bf16[8,1024,24,256] multiply(conv, conv)
+  init = bf16[] constant(0)
+  ROOT reduce = bf16[8,1024] reduce(square, init), dimensions={2,3},
+    to_apply=add_computation
+}
+)";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(auto states, ConstraintPropagator::Run(*module));
+
+  auto p0_int = states[module->entry_computation()->parameter_instruction(0)]
+                    .GetConstraintInterval();
+  auto p1_int = states[module->entry_computation()->parameter_instruction(1)]
+                    .GetConstraintInterval();
+
+  // Sequence trace:
+  // 1. reduce max_out = 65504.0 -> square bound max_in = 65504 / 6144
+  // ~ 10.661458.
+  // 2. square (conv * conv) -> conv bound max_in = sqrt(10.661458) ~ 3.265188.
+  // 3. conv (K = 73728) -> param_0 and param_1 bound max_in = sqrt(3.265188 /
+  // 73728) ~ 0.006654.
+  double expected_max_in = std::sqrt(std::sqrt(65504.0 / 6144.0) / 73728.0);
+  EXPECT_FALSE(p0_int.IsEmpty());
+  EXPECT_NEAR(p0_int.max, expected_max_in, 1e-4);
+  EXPECT_NEAR(p0_int.min, -expected_max_in, 1e-4);
+
+  EXPECT_FALSE(p1_int.IsEmpty());
+  EXPECT_NEAR(p1_int.max, expected_max_in, 1e-4);
+  EXPECT_NEAR(p1_int.min, -expected_max_in, 1e-4);
 }
 
 }  // namespace

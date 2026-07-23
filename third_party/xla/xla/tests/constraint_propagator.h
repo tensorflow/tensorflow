@@ -98,6 +98,14 @@ class ConstraintPropagator {
   // and also result in empty constraints.
   absl::Status PropagateConstraintsApprox(const HloInstruction* instruction);
 
+  // Attempts to apply constraint_0 to inst_0 AND constraint_1 to inst_1.
+  // Applies BOTH constraints ONLY IF neither instruction's state becomes Empty.
+  // Returns true if both constraints were applied, false otherwise.
+  bool TryAddDualConstraints(const HloInstruction* inst_0,
+                             const ConstraintInterval& constraint_0,
+                             const HloInstruction* inst_1,
+                             const ConstraintInterval& constraint_1);
+
   // Function that extracts known zeroes bitmask for the given dimension of a
   // DynamicSlice or DynamicUpdateSlice instruction.
   std::function<std::optional<uint64_t>(const HloInstruction*, int64_t)>
