@@ -32,6 +32,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import smart_cond
+from tensorflow.python.framework import stack
 from tensorflow.python.framework import tensor as tensor_lib
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
@@ -506,7 +507,7 @@ def initialize(
   if _summary_state.writer is None:
     raise RuntimeError("No default tf.contrib.summary.SummaryWriter found")
   if session is None:
-    session = ops.get_default_session()
+    session = stack.get_default_session()
     if session is None:
       raise ValueError("Argument `session must be passed if no default "
                        "session exists")
