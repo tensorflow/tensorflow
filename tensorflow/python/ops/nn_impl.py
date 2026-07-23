@@ -20,6 +20,7 @@ import warnings
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.ops import candidate_sampling_ops
@@ -37,7 +38,6 @@ from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import device_context
 from tensorflow.python.util import dispatch
-from tensorflow.python.framework import tensor_util
 from tensorflow.python.util.deprecation import deprecated_args
 from tensorflow.python.util.deprecation import deprecated_argument_lookup
 from tensorflow.python.util.tf_export import tf_export
