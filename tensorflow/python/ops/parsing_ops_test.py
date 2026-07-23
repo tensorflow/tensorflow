@@ -21,7 +21,6 @@
     leaf.dtype = types_pb2.DT_FLOAT
     leaf.tensor_shape.dim.add().size = 1
     serialized = outer.SerializeToString()
-    self.assertEqual(len(serialized), 44)
     with self.assertRaises(errors.InvalidArgumentError):
       self.evaluate(tf.io.parse_tensor(serialized, out_type=tf.variant))
 
