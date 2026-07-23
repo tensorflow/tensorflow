@@ -26,17 +26,20 @@ from tensorflow.python.ops import math_ops
 
 def _check_penalty_number(x):
   """check penalty number availability, raise ValueError if failed."""
-  if not isinstance(x, (float, int)) and not tensor_util.is_tf_type(x):
+  if tensor_util.is_tf_type(x):
+    return  # Skip static validation for dynamic Tensors
+
+  if not isinstance(x, (float, int)):
     raise ValueError(('Value: {} is not a valid regularization penalty number, '
                       'expected an int or float value').format(x))
 
-  if not tensor_util.is_tf_type(x) and x < 0:
+  if x < 0:
     raise ValueError(
         ('Value: {} is not a valid regularization penalty number, '
          'expected a non-negative value').format(x)
     )
 
-  if not tensor_util.is_tf_type(x) and (math.isinf(x) or math.isnan(x)):
+  if math.isinf(x) or math.isnan(x):
     raise ValueError(
         (
             'Value: {} is not a valid regularization penalty number, '
