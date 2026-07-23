@@ -303,27 +303,11 @@ absl::Status CreateClientOnce(
       return absl::OkStatus();
     }
 
-    std::vector<std::unique_ptr<xla::PjRtStreamExecutorDevice>> pjrt_devices;
-    auto gpu_run_options =
-        std::make_unique<xla::gpu::GpuExecutableRunOptions>();
-#if TENSORFLOW_USE_ROCM
-    auto platform_name = xla::RocmName();
-#elif TENSORFLOW_USE_SYCL
-    auto platform_name = xla::SyclName();
-#else   // TENSORFLOW_USE_ROCM
-    auto platform_name = xla::CudaName();
-#endif  // TENSORFLOW_USE_ROCM
-
-    auto kv_store =
-        std::make_shared<XlaKeyValueStore>(coordination_service_agent);
-    std::map<int, std::unique_ptr<xla::LocalDeviceState>> local_device_states;
-    // TODO(parkers): figure out why the old code was dilligently calling just
-    // this with an empty 'local_device_states' when !use_creation_info.
-    auto device_topology_pair = BuildDistributedDevices(
-        platform_name, std::move(local_device_states), node_id, num_nodes,
-        gpu_run_options.get(), kv_store, /*enable_mock_nccl=*/false);
-    if (!device_topology_pair.ok()) {
-      return device_topology_pair.status();
+    absl::Status status = ExchangeEmptyStreamExecutorGpuTopology(
+        node_id, num_nodes,
+        std::make_shared<XlaKeyValueStore>(coordination_service_agent));
+    if (!status.ok()) {
+      return status;
     }
     LOG(INFO) << "Skipping creating PJRT GPU client, another thread has "
                  "already created the client.";

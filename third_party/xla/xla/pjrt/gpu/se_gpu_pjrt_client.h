@@ -240,19 +240,6 @@ class StreamExecutorGpuClient : public xla::PjRtStreamExecutorClient {
       PjRtDevice* device, Shape shape);
 };
 
-std::string MakeComputeCapabilityString(const se::DeviceDescription* desc);
-
-absl::StatusOr<DeviceTopologyPair> BuildDistributedDevices(
-    absl::string_view platform_name,
-    std::map<int, std::unique_ptr<LocalDeviceState>> local_device_states,
-    int process_id, int num_nodes,
-    gpu::GpuExecutableRunOptions* gpu_executable_run_options,
-    std::shared_ptr<KeyValueStoreInterface> kv_store, bool enable_mock_nccl,
-    std::optional<absl::string_view> mock_gpu_topology = std::nullopt,
-    std::optional<int> partition_index = std::nullopt,
-    absl::Duration get_local_topology_timeout = absl::Minutes(2),
-    absl::Duration get_global_topology_timeout = absl::Minutes(5));
-
 absl::StatusOr<std::unique_ptr<PjRtClient>> GetStreamExecutorGpuClient(
     const GpuClientOptions& options);
 
@@ -265,9 +252,14 @@ absl::StatusOr<std::unique_ptr<PjRtClient>> GetSharedStreamExecutorGpuClient(
     std::unique_ptr<se::DeviceAddressAllocator> allocator,
     std::unique_ptr<HostMemoryAllocator> host_memory_allocator);
 
-// Get the fabric info of a local device ordinal in the format of
-// "clusterUuid/cliqueId". Empty on SM90 or lower.
-absl::StatusOr<std::string> GetDeviceFabricInfo(int device_ordinal);
+// Tensorflow specific API for exchanging an empty topology. Tensorflow
+// has some processes which don't have any hardware on them but still exchanges
+// topologies for these devices for some reason.
+absl::Status ExchangeEmptyStreamExecutorGpuTopology(
+    int process_id, int num_nodes,
+    std::shared_ptr<KeyValueStoreInterface> kv_store,
+    absl::Duration get_local_topology_timeout = absl::Minutes(2),
+    absl::Duration get_global_topology_timeout = absl::Minutes(5));
 
 // Creates allocator memory registration and adds the required suballocator
 // visitors to `allocator_config`.
