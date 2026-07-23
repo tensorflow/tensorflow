@@ -163,6 +163,18 @@ class Conv3DOp : public BinaryOp<T> {
     OP_REQUIRES_OK(
         context, Get3dOutputSizeV2(input_size, filter_size, dilations, strides,
                                    padding_, &out, &padding));
+    if (padding_ == Padding::VALID) {
+      for (size_t i = 0; i < 3; ++i) {
+        int64_t effective_filter_size =
+            (filter_size[i] - 1) * dilations[i] + 1;
+        OP_REQUIRES(
+            context, input_size[i] >= effective_filter_size,
+            errors::InvalidArgument(absl::StrCat(
+                "input_size (", input_size[i],
+                ") must be at least effective_filter_size (",
+                effective_filter_size, ") for VALID padding.")));
+      }
+    }
     TensorShape out_shape;
     OP_REQUIRES_OK(context,
                    ShapeFromFormatWithStatus(data_format_, in_batch,
