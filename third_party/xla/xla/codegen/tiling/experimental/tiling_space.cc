@@ -440,28 +440,11 @@ TilingSpace::GetValidTilings() {
   // all possible tilings and rely on the downstream to check the validity.
   llvm::SmallVector<int64_t, 4> input_space;
 
-  // Sequential reduce dimensions are not tiled yet. To work around the
-  // limitation of `GetFlatTilingsForInputSpace`, we set the tile size to 1 here
-  // and later replace with the actual dimension size.
   for (const auto& dim : dimensions_) {
-    if (dim.type == DimensionSemantics::kSequential &&
-        dim.hlo->opcode() == HloOpcode::kReduce) {
-      input_space.push_back(1);
-    } else {
-      input_space.push_back(dim.dimension_size);
-    }
+    input_space.push_back(dim.dimension_size);
   }
 
   ASSIGN_OR_RETURN(auto flat_tilings, GetFlatTilingsForInputSpace(input_space));
-
-  for (auto& flat_tiling : flat_tilings) {
-    for (const auto& [idx, dim] : llvm::enumerate(dimensions_)) {
-      if (dim.type == DimensionSemantics::kSequential &&
-          dim.hlo->opcode() == HloOpcode::kReduce) {
-        flat_tiling[idx] = dim.dimension_size;
-      }
-    }
-  }
 
   std::vector<llvm::SmallVector<int64_t, 4>> valid_tilings;
   valid_tilings.reserve(flat_tilings.size());

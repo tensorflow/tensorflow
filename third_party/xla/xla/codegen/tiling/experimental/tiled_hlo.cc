@@ -212,6 +212,18 @@ void SortTiledHloInstructionsInPostOrder(
 }
 // Defines how the operands of a TiledHloInstruction are partitioned during
 // region reconstruction.
+//
+// Examples:
+// - For a tiled reduction (e.g., `reduce(input, init)`), the input operand
+//   (index 0) is treated as a region root to be generated inside the loop body,
+//   while the init value (index 1) is a regular input to the loop and remains
+//   in the outer region:
+//     region_roots = {{0}}
+//     operand_ids = {1}
+// - For a dot product (e.g., `dot(lhs, rhs)`), both operands are grouped
+//   together as region roots to represent the sub-computation:
+//     region_roots = {{0, 1}}
+//     operand_ids = {}
 struct OperandsSpec {
   using OperandIDs = llvm::SmallVector<int64_t>;
   // Groups of operand indices. Each group represents the roots of a new
@@ -231,8 +243,8 @@ struct OperandsSpec {
 // to initiate the creation of nested `TiledHloRegion`s. Regular operands that
 // are simply inputs to the current computation level are kept under
 // `operand_ids` to be processed in the current region.
-OperandsSpec GetSpec(const TiledHloInstruction& tiled_hlo,
-                     const TilingSpace& tiling_space) {
+OperandsSpec GetOperandsSpec(const TiledHloInstruction& tiled_hlo,
+                             const TilingSpace& tiling_space) {
   // Helper to generate a contiguous sequence of operand indices.
   auto iota = [](int64_t size, int64_t start = 0) {
     return llvm::to_vector(llvm::iota_range<int64_t>(start, start + size,
@@ -241,16 +253,40 @@ OperandsSpec GetSpec(const TiledHloInstruction& tiled_hlo,
   const HloOpcode opcode = tiled_hlo.hlo()->opcode();
   const int64_t num_operands = tiled_hlo.hlo()->operand_count();
   OperandsSpec spec;
-  if (opcode == HloOpcode::kDot || opcode == HloOpcode::kScaledDot) {
-    spec.region_roots.push_back(iota(num_operands));
-  } else if (opcode == HloOpcode::kConcatenate) {
-    spec.region_roots.reserve(num_operands);
-    for (int64_t i = 0; i < num_operands; ++i) {
-      spec.region_roots.push_back({i});
+
+  switch (opcode) {
+    case HloOpcode::kReduce: {
+      bool is_tiled_reduction = absl::c_any_of(
+          tiling_space.dimensions(),
+          [&](const TilingSpace::DimensionInfo& dim) {
+            return dim.hlo == tiled_hlo.hlo() &&
+                   dim.type == TilingSpace::DimensionSemantics::kSequential &&
+                   dim.tile_size.has_value() &&
+                   *dim.tile_size < dim.dimension_size;
+          });
+      if (is_tiled_reduction) {
+        int64_t num_inputs = num_operands / 2;
+        spec.region_roots.push_back(iota(num_inputs));
+        spec.operand_ids = iota(num_operands - num_inputs, num_inputs);
+        return spec;
+      }
+      break;
     }
-  } else {
-    spec.operand_ids = iota(num_operands);
+    case HloOpcode::kDot:
+    case HloOpcode::kScaledDot:
+      spec.region_roots.push_back(iota(num_operands));
+      return spec;
+    case HloOpcode::kConcatenate:
+      spec.region_roots.reserve(num_operands);
+      for (int64_t i = 0; i < num_operands; ++i) {
+        spec.region_roots.push_back({i});
+      }
+      return spec;
+    default:
+      break;
   }
+
+  spec.operand_ids = iota(num_operands);
   return spec;
 }
 
@@ -382,7 +418,7 @@ absl::StatusOr<TiledHloRegion> TiledHloComputation::CreateHloRegion(
         auto operands_tiles,
         PropagateTileToInput(tiling_space, *hlo, tiled_hlo->tile(), 0));
 
-    OperandsSpec spec = GetSpec(*tiled_hlo, tiling_space);
+    OperandsSpec spec = GetOperandsSpec(*tiled_hlo, tiling_space);
 
     HloInstructionAdaptor instruction_adaptor(*hlo, &fusion);
     std::vector<std::unique_ptr<TiledHloInstruction>> tiled_operands;
