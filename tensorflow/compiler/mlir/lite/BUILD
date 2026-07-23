@@ -2192,7 +2192,7 @@ cc_library(
     srcs = [
         "allocation.cc",
     ] + select({
-        ":tflite_mmap_disabled": [
+        ":tflite_file_mmap_disabled": [
             "mmap_allocation_disabled.cc",
         ],
         "//conditions:default": [
@@ -2287,6 +2287,19 @@ selects.config_setting_group(
     ],
 )
 # LINT.ThenChange(//tensorflow/lite/BUILD)
+
+# Governs selection of the file-backed mmap allocation implementation only.
+# Unlike ":tflite_mmap_disabled" (which also drives the -DTFLITE_MMAP_DISABLED
+# define used for anonymous scratch mmap in e.g. fully_connected_4bit.h), this
+# group intentionally excludes Windows, which now supports file-backed mmap via
+# CreateFileMapping/MapViewOfFile in mmap_allocation.cc.
+selects.config_setting_group(
+    name = "tflite_file_mmap_disabled",
+    match_any = [
+        ":fuchsia_mmap_disabled",
+        ":tflite_mmap_disabled_true",
+    ],
+)
 
 # LINT.IfChange(version)
 cc_library(
