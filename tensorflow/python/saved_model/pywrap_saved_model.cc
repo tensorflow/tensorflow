@@ -16,6 +16,7 @@ limitations under the License.
 // Defines the pywrap_saved_model module. In order to have only one dynamically-
 // linked shared object, all SavedModel python bindings should be added here.
 
+// Placeholder for artifactoid include.
 #include "pybind11/pybind11.h"  // from @pybind11
 #include "tensorflow/cc/experimental/libexport/save.h"
 #include "tensorflow/python/lib/core/pybind11_status.h"
@@ -29,6 +30,7 @@ namespace saved_model {
 namespace python {
 
 PYBIND11_MODULE(pywrap_saved_model, m) {
+  // Placeholder for artifactoid registration.
   m.doc() = "TensorFlow SavedModel Python bindings";
 
   m.def("Save", [](const char* export_dir) {
