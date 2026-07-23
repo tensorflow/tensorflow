@@ -425,11 +425,10 @@ struct google_floor_div_real {
     const Packet infinity = pset1<Packet>(NumTraits<T>::infinity());
     const Packet signs_differ =
         pxor(pcmp_lt(x, zero), pcmp_lt(y, zero));
-    Packet result =
-        pselect(signs_differ, pset1<Packet>(T(-1)), floored);
-    result = pselect(pcmp_eq(pabs(y), infinity), result, floored);
-    result = pselect(pcmp_eq(x, zero), floored, result);
-    return pselect(pcmp_lt(pabs(x), infinity), result, floored);
+    Packet mask = pandnot(signs_differ, pcmp_eq(x, zero));
+    mask = pand(mask, pcmp_eq(pabs(y), infinity));
+    mask = pand(mask, pcmp_lt(pabs(x), infinity));
+    return pselect(mask, pset1<Packet>(T(-1)), floored);
   }
 };
 
