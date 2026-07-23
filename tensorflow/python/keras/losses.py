@@ -591,6 +591,10 @@ class BinaryCrossentropy(LossFunctionWrapper):
             more details.
       name: Name for the op. Defaults to 'binary_crossentropy'.
     """
+    if (not tensor_util.is_tf_type(label_smoothing) and
+        not 0 <= label_smoothing <= 1):
+      raise ValueError(
+          f'`label_smoothing` must be in [0, 1], got {label_smoothing}')
     super().__init__(
         binary_crossentropy,
         name=name,
@@ -1770,6 +1774,10 @@ def binary_crossentropy(y_true,
   Returns:
     Binary crossentropy loss value. shape = `[batch_size, d0, .. dN-1]`.
   """
+  if (not tensor_util.is_tf_type(label_smoothing) and
+      not 0 <= label_smoothing <= 1):
+    raise ValueError(
+        f'`label_smoothing` must be in [0, 1], got {label_smoothing}')
   y_pred = tensor_conversion.convert_to_tensor_v2_with_dispatch(y_pred)
   y_true = math_ops.cast(y_true, y_pred.dtype)
   label_smoothing = tensor_conversion.convert_to_tensor_v2_with_dispatch(
