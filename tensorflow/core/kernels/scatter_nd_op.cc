@@ -942,6 +942,13 @@ absl::Status DoScatterNdImpl(OpKernelContext* c, const Tensor& indices,
   TF_RETURN_IF_ERROR(PrepareAndValidateInputs<Index>(
       shape, indices, updates, &slice_dim, &num_updates, &slice_size));
 
+  if (slice_dim < 1 || slice_dim > 5) {
+    return absl::InvalidArgumentError(
+        absl::StrCat("Only indices.shape[-1] values between 1 and 5 "
+                     "are currently supported.  Requested rank: ",
+                     slice_dim));
+  }
+
   IndexFlattener<Device, Index> index_flattener;
   auto indices_flat = index_flattener(c, indices);
   auto updates_flat = updates.shaped<T, 2>({num_updates, slice_size});
@@ -966,6 +973,11 @@ absl::Status DoScatterNdImpl(OpKernelContext* c, const Tensor& indices,
     functor::SetZeroFunctor<Device, T> fill;
     fill(c->eigen_device<Device>(), out->flat<T>());
   }
+
+  if (num_updates == 0) {
+    return absl::OkStatus();
+  }
+
   auto output_matrix =
       out->shaped<T, 2>({shape.num_elements() / slice_size, slice_size});
 
