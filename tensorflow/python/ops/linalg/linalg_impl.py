@@ -115,7 +115,7 @@ def adjoint(matrix, name=None):
   ```
 
   Args:
-    matrix:  A `Tensor`. Must be `float16`, `float32`, `float64`, `complex64`,
+    matrix:  A `Tensor`. Must be `bfloat16`, `float16`, `float32`, `float64`, `complex64`,
       or `complex128` with shape `[..., M, M]`.
     name:  A name to give this `Op` (optional).
 
@@ -246,7 +246,7 @@ def matrix_exponential(input, name=None):  # pylint: disable=redefined-builtin
   containing the exponential for all input submatrices `[..., :, :]`.
 
   Args:
-    input: A `Tensor`. Must be `float16`, `float32`, `float64`, `complex64`, or
+    input: A `Tensor`. Must be `bfloat16`, `float16`, `float32`, `float64`,`complex64`, or
       `complex128` with shape `[..., M, M]`.
     name:  A name to give this `Op` (optional).
 
@@ -264,6 +264,11 @@ def matrix_exponential(input, name=None):  # pylint: disable=redefined-builtin
     matrix = ops.convert_to_tensor(input, name='input')
     if matrix.shape[-2:] == [0, 0]:
       return matrix
+
+    original_dtype = matrix.dtype
+    if original_dtype in (dtypes.float16, dtypes.bfloat16):
+      matrix = math_ops.cast(matrix, dtypes.float32)
+
     batch_shape = matrix.shape[:-2]
     if not batch_shape.is_fully_defined():
       batch_shape = array_ops.shape(matrix)[:-2]
@@ -341,10 +346,24 @@ def matrix_exponential(input, name=None):  # pylint: disable=redefined-builtin
 
     _, result = while_loop.while_loop(c, b, [i, result])
     if not matrix.shape.is_fully_defined():
-      return array_ops.reshape(
-          result,
-          array_ops.concat((batch_shape, array_ops.shape(result)[-2:]), axis=0))
-    return array_ops.reshape(result, batch_shape.concatenate(result.shape[-2:]))
+      result = array_ops.reshape(
+        result,
+        array_ops.concat((batch_shape, array_ops.shape(result)[-2:]), axis=0))
+    else:
+      result = array_ops.reshape(
+        result,
+        batch_shape.concatenate(result.shape[-2:]))
+
+    # Cast result back to original dtype if it was float16 or bfloat16.
+    # Note: casting from float32 to float16/bfloat16 follows standard TF semantics:
+    # - Values outside the representable range saturate to inf/-inf
+    # - NaNs remain NaN
+    # This behavior is consistent with TensorFlow's standard cast semantics
+    # and is appropriate for the matrix exponential use case.
+    if original_dtype in (dtypes.float16, dtypes.bfloat16):
+      result = math_ops.cast(result, original_dtype)
+
+    return result
 
 
 @tf_export('linalg.banded_triangular_solve', v1=[])
