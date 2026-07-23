@@ -132,7 +132,7 @@ ENTRY %conv3DBackpropInputV2(arg0.1: f32[3,3,3,2,3]) -> f32[2,4,3,3,2] {
 
   MatchOptimizedHlo(hlo_text,
                     R"(
-// CHECK: {{.*(custom-call|convolution)\(}}f32[2,3,2,2,2]{4,3,2,1,0} {{[^ ]+}}, f32[3,2,3,3,3]{4,3,2,1,0} {{[^ ]+}}), window={size=3x3x3 {{(stride=2x2x2 pad=0_0x1_1x1_1|pad=2_1x1_1x1_1 lhs_dilate=2x2x2)}}
+// CHECK: {{.*(custom-call|convolution)\(}}f32[2,3,2,2,2]{4,3,2,1,0} {{[^ ]+}}, f32[3,2,3,3,3]{4,3,2,1,0} {{[^ ]+}}), window={size=3x3x3 {{(stride=2x2x2 pad=0_0x1_1x1_1|pad=2_2x1_1x1_1 lhs_dilate=2x2x2)}}
 // CHECK: {{(__cudnn\$convBackwardInput|__cudnn\$fusion)}}
     )");
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-5, 1e-5}));
