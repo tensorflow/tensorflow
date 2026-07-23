@@ -876,6 +876,7 @@ cc_library(
     name = "python_api_parameter_converter",
     srcs = ["python_api_parameter_converter.cc"],
     hdrs = ["python_api_parameter_converter.h"],
+    alwayslink = True,
     deps = [
         ":op_def_util_cc",
         ":python_api_info",
