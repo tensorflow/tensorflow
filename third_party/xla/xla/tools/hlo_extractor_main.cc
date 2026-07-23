@@ -23,6 +23,8 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
+#include "absl/strings/strip.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/debug_options_flags.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -82,7 +84,7 @@ static absl::Status RunHloExtractor(const HloExtractorConfig& opts, int argc,
   std::string hlo_path = GetHloPath(opts, argc, argv);
 
   std::string module_str;
-  TF_RETURN_IF_ERROR(
+  RETURN_IF_ERROR(
       tsl::ReadFileToString(tsl::Env::Default(), hlo_path, &module_str));
 
   std::string format = opts.input_format;
@@ -90,13 +92,18 @@ static absl::Status RunHloExtractor(const HloExtractorConfig& opts, int argc,
     format = std::string(tsl::io::Extension(hlo_path));
   }
 
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
-                      LoadModuleFromData(module_str, format));
+  ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
+                   LoadModuleFromData(module_str, format));
 
-  HloInstruction* instruction = FindInstruction(module.get(), opts.instruction);
+  // Instructions are printed with % prefix in the HLO text but it is not
+  // present in proto.
+  absl::string_view instruction_name = opts.instruction;
+  absl::ConsumePrefix(&instruction_name, "%");
+
+  HloInstruction* instruction = FindInstruction(module.get(), instruction_name);
   if (!instruction) {
     return InvalidArgument(
-        "Instruction '%s' was not found in the hlo module %s", opts.instruction,
+        "Instruction '%s' was not found in the hlo module %s", instruction_name,
         hlo_path);
   }
 

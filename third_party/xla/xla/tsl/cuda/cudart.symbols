@@ -101,6 +101,7 @@ cudaGetDeviceProperties
 cudaGetDeviceProperties_v2
 cudaGetDriverEntryPoint
 cudaGetDriverEntryPoint_ptsz
+cudaGetDriverEntryPointByVersion
 cudaGetErrorName
 cudaGetErrorString
 cudaGetExportTable
@@ -231,6 +232,7 @@ cudaIpcGetEventHandle
 cudaIpcGetMemHandle
 cudaIpcOpenEventHandle
 cudaIpcOpenMemHandle
+cudaKernelSetAttributeForDevice
 cudaLaunchCooperativeKernel
 cudaLaunchCooperativeKernelMultiDevice
 cudaLaunchCooperativeKernel_ptsz
@@ -240,6 +242,9 @@ cudaLaunchKernel
 cudaLaunchKernelExC
 cudaLaunchKernelExC_ptsz
 cudaLaunchKernel_ptsz
+cudaLibraryGetKernel
+cudaLibraryLoadData
+cudaLibraryUnload
 cudaMalloc
 cudaMalloc3D
 cudaMalloc3DArray

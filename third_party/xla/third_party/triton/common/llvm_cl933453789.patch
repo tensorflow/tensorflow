@@ -1,0 +1,83 @@
+--- a/lib/Analysis/Membar.cpp
++++ b/lib/Analysis/Membar.cpp
+@@ -201,7 +201,7 @@ void MembarOrFenceAnalysis::visitTerminator(
+     SmallVector<RegionSuccessor> regions;
+     br.getSuccessorRegions(RegionBranchPoint::parent(), regions);
+     for (RegionSuccessor &region : regions) {
+-      if (region.isParent()) {
++      if (region.isOperation()) {
+         successors.emplace_back(br->getBlock(), br->getIterator());
+       } else {
+         Block &block = region.getSuccessor()->front();
+@@ -221,7 +221,7 @@ void MembarOrFenceAnalysis::visitTerminator(
+     SmallVector<RegionSuccessor> regions;
+     br.getSuccessorRegions(operands, regions);
+     for (RegionSuccessor &region : regions) {
+-      if (region.isParent()) {
++      if (region.isOperation()) {
+         Operation *parent = br->getParentOp();
+         successors.emplace_back(parent->getBlock(), parent->getIterator());
+       } else {
+
+--- a/lib/Dialect/TritonGPU/IR/Ops.cpp
++++ b/lib/Dialect/TritonGPU/IR/Ops.cpp
+@@ -1249,12 +1249,12 @@ void WarpSpecializeOp::getSuccessorRegions(
+   // And the default region branches transparently back to the parent.
+   if (src.getTerminatorPredecessorOrNull()->getParentRegion() ==
+       &getDefaultRegion())
+-    successors.push_back(RegionSuccessor::parent());
++    successors.push_back(RegionSuccessor(getOperation()));
+ }
+ 
+ ValueRange WarpSpecializeOp::getSuccessorInputs(RegionSuccessor successor) {
+   // When returning to parent, the successor inputs are the op results.
+-  return successor.isParent() ? getResults() : ValueRange();
++  return successor.isOperation() ? getResults() : ValueRange();
+ }
+ 
+ void WarpSpecializePartitionsOp::getSuccessorRegions(
+
+--- a/third_party/amd/lib/Analysis/RangeAnalysis.cpp
++++ b/third_party/amd/lib/Analysis/RangeAnalysis.cpp
+@@ -720,14 +720,14 @@ void TritonIntegerRangeAnalysis::visitRegionSuccessors(
+       if (!point->isBlockStart()) {
+         if (!inputs.empty())
+           firstIndex = cast<OpResult>(inputs.front()).getResultNumber();
+-        SmallVector<Value> nonSuccessorInputs =
+-            branch.getNonSuccessorInputs(RegionSuccessor::parent());
++        SmallVector<Value> nonSuccessorInputs = branch.getNonSuccessorInputs(
++            RegionSuccessor(branch.getOperation()));
+         SmallVector<dataflow::IntegerValueRangeLattice *>
+             nonSuccessorInputLattices =
+                 llvm::map_to_vector(nonSuccessorInputs, valueToLattices);
+-        visitNonControlFlowArguments(branch, RegionSuccessor::parent(),
+-                                     nonSuccessorInputs,
+-                                     nonSuccessorInputLattices);
++        visitNonControlFlowArguments(
++            branch, RegionSuccessor(branch.getOperation()), nonSuccessorInputs,
++            nonSuccessorInputLattices);
+       } else {
+         if (!inputs.empty())
+           firstIndex = cast<BlockArgument>(inputs.front()).getArgNumber();
+
+--- a/third_party/proton/Dialect/lib/Analysis/ScopeIdAllocation.cpp
++++ b/third_party/proton/Dialect/lib/Analysis/ScopeIdAllocation.cpp
+@@ -297,7 +297,7 @@ void ScopeIdAllocation::visitTerminator(Operation *op,
+     SmallVector<RegionSuccessor> regions;
+     br.getSuccessorRegions(RegionBranchPoint::parent(), regions);
+     for (RegionSuccessor &region : regions) {
+-      if (region.isParent()) {
++      if (region.isOperation()) {
+         successors.emplace_back(br->getBlock(), br->getIterator());
+       } else {
+         Block &block = region.getSuccessor()->front();
+@@ -317,7 +317,7 @@ void ScopeIdAllocation::visitTerminator(Operation *op,
+     SmallVector<RegionSuccessor> regions;
+     br.getSuccessorRegions(operands, regions);
+     for (RegionSuccessor &region : regions) {
+-      if (region.isParent()) {
++      if (region.isOperation()) {
+         Operation *parent = br->getParentOp();
+         successors.emplace_back(parent->getBlock(), parent->getIterator());
+       } else {
+

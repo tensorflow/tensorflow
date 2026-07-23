@@ -1,19 +1,25 @@
+# Copyright 2026 The OpenXLA Authors. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
+
 load("//xla:lit.bzl", "lit_test_suite")
 load("//xla:xla.default.bzl", "xla_cc_binary")
 load("//xla/tsl:tsl.bzl", "internal_visibility")
 
-package_group(
-    name = "internal",
-    packages = [
-        "//xla/python/ifrt/ir/tests/...",
-    ],
-)
-
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
-    default_visibility = internal_visibility([
-        ":internal",
-    ]),
+    default_visibility = internal_visibility(["//xla/python/ifrt/ir:internal"]),
     licenses = ["notice"],
 )
 
@@ -42,8 +48,8 @@ xla_cc_binary(
         "//xla/python/ifrt/ir:atom_program_compiler",
         "//xla/python/ifrt/ir:ifrt_ir_program",
         "//xla/python/ifrt/ir/conversions/mpmd:lower_to_ifrt",
+        "//xla/python/ifrt/ir/support:module_parsing",
         "//xla/python/ifrt/ir/transforms:passes",
-        "//xla/python/ifrt/support:module_parsing",
         "//xla/tsl/concurrency:future",
         "//xla/tsl/platform:test",
         "@com_google_absl//absl/base:core_headers",
@@ -85,6 +91,7 @@ xla_cc_binary(
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:Transforms",
         "@llvm-project//mlir:TranslateLib",
+        "@shardy//shardy/dialect/sdy/ir:dialect",
         "@stablehlo//:register",
         "@stablehlo//:version",
     ],

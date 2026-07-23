@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/service/while_loop_all_reduce_code_motion.h"
 
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <optional>
 #include <stack>
@@ -32,6 +33,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/core/collectives/reduction_kind.h"
 #include "xla/hlo/analysis/hlo_replication_analysis.h"
 #include "xla/hlo/analysis/while_loop_analysis.h"
@@ -92,6 +94,14 @@ struct MovableAllReduceContext {
   std::optional<UpdateSliceContext> update_slice_context = std::nullopt;
 };
 
+struct BufferTupleIndex {
+  bool unsupported_operation{false};
+  std::optional<int64_t> tuple_index;
+  bool returned_from_computation{false};
+  std::optional<HloInstruction*> dynamic_slice;
+  std::optional<HloInstruction*> dynamic_update_slice;
+};
+
 bool IsZero(const HloInstruction* hlo) {
   if (hlo->IsConstant() && hlo->shape().dimensions().empty() &&
       hlo->literal().IsZero({})) {
@@ -99,6 +109,67 @@ bool IsZero(const HloInstruction* hlo) {
   }
   if (hlo->opcode() == HloOpcode::kBroadcast) {
     return IsZero(hlo->operand(0));
+  }
+  return false;
+}
+
+std::optional<AccumulationContext> FindScatterPattern(
+    HloInstruction* all_reduce, HloComputation* while_body,
+    const std::function<BufferTupleIndex(HloInstruction*)>&
+        get_origin_tuple_index,
+    const std::function<BufferTupleIndex(HloInstruction*, HloComputation*)>&
+        get_output_tuple_index) {
+  HloInstruction* input = all_reduce->mutable_operand(0);
+  while (input->opcode() == HloOpcode::kConvert ||
+         input->opcode() == HloOpcode::kBitcast ||
+         input->opcode() == HloOpcode::kReshape ||
+         input->opcode() == HloOpcode::kTranspose ||
+         input->opcode() == HloOpcode::kSlice) {
+    input = input->mutable_operand(0);
+  }
+  if (input->opcode() != HloOpcode::kScatter) {
+    return std::nullopt;
+  }
+  HloInstruction* scatter = input;
+  HloInstruction* base = scatter->mutable_operand(0);
+  while (base->opcode() == HloOpcode::kSelect) {
+    bool operand_1_is_zero = IsZero(base->operand(1));
+    bool operand_2_is_zero = IsZero(base->operand(2));
+    if (operand_1_is_zero && !operand_2_is_zero) {
+      base = base->mutable_operand(2);
+    } else if (operand_2_is_zero && !operand_1_is_zero) {
+      base = base->mutable_operand(1);
+    } else {
+      return std::nullopt;
+    }
+  }
+  const BufferTupleIndex& origin = get_origin_tuple_index(base);
+  const BufferTupleIndex& output =
+      get_output_tuple_index(all_reduce, while_body);
+  if (origin.unsupported_operation || output.unsupported_operation ||
+      !output.returned_from_computation || !origin.tuple_index.has_value() ||
+      !output.tuple_index.has_value() ||
+      *origin.tuple_index != *output.tuple_index) {
+    return std::nullopt;
+  }
+  return AccumulationContext{scatter, base, *output.tuple_index,
+                             origin.dynamic_slice, std::nullopt};
+}
+
+bool IsScatterBufferUsed(const AccumulationContext& accumulation) {
+  HloInstruction* buffer = accumulation.accumulation_buffer;
+  HloInstruction* accumulation_instruction =
+      accumulation.accumulation_instruction;
+  for (HloInstruction* user : buffer->users()) {
+    if (user->opcode() == HloOpcode::kGetTupleElement) continue;
+    if (user->opcode() == HloOpcode::kSelect &&
+        ((user->operand_index(buffer) == 1 && IsZero(user->operand(2))) ||
+         (user->operand_index(buffer) == 2 && IsZero(user->operand(1)))))
+      continue;
+    if (user->opcode() == HloOpcode::kScatter &&
+        user == accumulation_instruction)
+      continue;
+    return true;
   }
   return false;
 }
@@ -448,13 +519,6 @@ MovableAllReduceContext IsAllReduceMovable(
             << " is_replicate: " << is_replicated;
     return is_replicated;
   };
-  struct BufferTupleIndex {
-    bool unsupported_operation{false};
-    std::optional<int64_t> tuple_index;
-    bool returned_from_computation{false};
-    std::optional<HloInstruction*> dynamic_slice;
-    std::optional<HloInstruction*> dynamic_update_slice;
-  };
 
   const bool is_reduce_scatter =
       all_reduce->opcode() == HloOpcode::kReduceScatter;
@@ -662,7 +726,8 @@ MovableAllReduceContext IsAllReduceMovable(
               }
               break;
             }
-            case HloOpcode::kAdd: {
+            case HloOpcode::kAdd:
+            case HloOpcode::kScatter: {
               if (user != accumulation_instruction) {
                 return true;
               }
@@ -724,6 +789,15 @@ MovableAllReduceContext IsAllReduceMovable(
   // Finds all accumulation contexts of the given all-reduce instruction
   // if it is movable.
   std::vector<AccumulationContext> accumulation_contexts;
+
+  if (auto scatter_context =
+          FindScatterPattern(all_reduce, while_body, get_origin_tuple_index,
+                             get_output_tuple_index);
+      scatter_context && !IsScatterBufferUsed(*scatter_context)) {
+    accumulation_contexts.push_back(*scatter_context);
+    return MovableAllReduceContext{true, accumulation_contexts};
+  }
+
   // DFS starting from the all-reduce instruction and stops at the first
   // non-trival uses of the all-reduce result or finds all accmululations
   // of the all-reduce result.
@@ -776,6 +850,75 @@ MovableAllReduceContext IsAllReduceMovable(
           } else {
             is_all_reduce_movable = false;
           }
+          break;
+        }
+        case HloOpcode::kMultiply: {
+          // Hoisting reduce-scatter through a multiply is unsupported: it
+          // would require rewriting the other operand to the post-scatter
+          // shape, which this pass does not do.
+          if (is_reduce_scatter) {
+            is_all_reduce_movable = false;
+            break;
+          }
+          HloInstruction* other_operand =
+              user->mutable_operand(1 - user->operand_index(instruction));
+          HloInstruction* unwrapped_other = other_operand;
+          bool other_is_broadcast = false;
+          while (unwrapped_other->opcode() == HloOpcode::kBroadcast ||
+                 unwrapped_other->opcode() == HloOpcode::kConvert) {
+            if (unwrapped_other->opcode() == HloOpcode::kBroadcast) {
+              other_is_broadcast = true;
+            }
+            unwrapped_other = unwrapped_other->mutable_operand(0);
+          }
+          const bool current_is_scalar =
+              ShapeUtil::IsScalar(all_reduce->shape());
+          const bool unwrapped_other_is_all_reduce =
+              unwrapped_other->opcode() == HloOpcode::kAllReduce;
+          const bool unwrapped_other_is_scalar =
+              ShapeUtil::IsScalar(unwrapped_other->shape());
+
+          if (current_is_scalar && unwrapped_other_is_all_reduce) {
+            // Scalar side of the ZeRO-1 weight-normalization pattern
+            //   grads_accum = tree_map(
+            //       lambda g, b: AR(g) * AR(total_weights) + b,
+            //       grads, grads_accum)
+            // expressed in HLO as
+            //   multiply(all-reduce(g),
+            //            broadcast(convert(all-reduce(total_weights)))).
+            // Hoisting all-reduce(total_weights) would replace it inside
+            // the body with its local pre-all-reduce value, scaling the
+            // gradient by an unreduced scalar and producing an
+            // accumulation off by a factor of num_replicas. Keep it in
+            // the body.
+            VLOG(4) << "Scalar all-reduce " << all_reduce->name()
+                    << " is used as a factor of a multiply with another "
+                       "all-reduce ("
+                    << unwrapped_other->name()
+                    << "); marking it unmovable so it stays in the loop body "
+                       "and preserves the math of the hoisted all-reduce.";
+            is_all_reduce_movable = false;
+          } else if (unwrapped_other_is_all_reduce && other_is_broadcast &&
+                     unwrapped_other_is_scalar) {
+            // Gradient (non-scalar) side of the same pattern. The other
+            // operand is a broadcasted scalar all-reduce acting as a
+            // per-iteration scaling factor; it is pinned in the body by
+            // the branch above when it is itself analyzed, so hoisting
+            // the current all-reduce is safe. Requiring the unwrapped
+            // other operand to be scalar excludes non-scaling shapes such
+            // as multiply(broadcast(all-reduce(a)), broadcast(all-reduce(b)))
+            // where both all-reduces are non-scalar; hoisting either
+            // all-reduce in that pattern would scale the other side by a
+            // pre-all-reduce local value, producing an accumulation off
+            // by a factor of num_replicas.
+            to_visit.push(user);
+          } else {
+            is_all_reduce_movable = false;
+          }
+          break;
+        }
+        case HloOpcode::kBroadcast: {
+          to_visit.push(user);
           break;
         }
         case HloOpcode::kAdd: {
@@ -964,7 +1107,7 @@ absl::Status ChangeAccumulatorShapesInLoopBodies(
           HloInstruction* pred =
               body->AddInstruction(HloInstruction::CreateBroadcast(
                   pred_shape, scalar_predicate, {}));
-          TF_RETURN_IF_ERROR(user->ReplaceOperandWithDifferentShape(0, pred));
+          RETURN_IF_ERROR(user->ReplaceOperandWithDifferentShape(0, pred));
           HloInstruction *new_operand_1, *new_operand_2;
           if (user->operand_index(loop_reduce_scatter) == 1) {
             new_operand_1 = loop_reduce_scatter->mutable_operand(0);
@@ -973,9 +1116,9 @@ absl::Status ChangeAccumulatorShapesInLoopBodies(
             new_operand_1 = zero;
             new_operand_2 = loop_reduce_scatter->mutable_operand(0);
           }
-          TF_RETURN_IF_ERROR(
+          RETURN_IF_ERROR(
               user->ReplaceOperandWithDifferentShape(1, new_operand_1));
-          TF_RETURN_IF_ERROR(
+          RETURN_IF_ERROR(
               user->ReplaceOperandWithDifferentShape(2, new_operand_2));
           *user->mutable_shape() = accumulation_shape;
         } else {
@@ -1123,7 +1266,7 @@ absl::Status AddSinkedAllReducesAndReplaceWhile(
 
   // For reduce-scatter, we need to adjust all the accumulator shapes to use
   // the pre-scatter shape.
-  TF_RETURN_IF_ERROR(ChangeAccumulatorShapesInLoopBodies(
+  RETURN_IF_ERROR(ChangeAccumulatorShapesInLoopBodies(
       while_instruction, all_reduce_to_accumulations));
 
   // Step 2) create the new while instruction.
@@ -1132,6 +1275,7 @@ absl::Status AddSinkedAllReducesAndReplaceWhile(
           new_while_init_context.while_init->shape(),
           while_instruction->while_condition(), while_instruction->while_body(),
           new_while_init_context.while_init));
+  while_instruction->SetupDerivedInstruction(new_while_instruction);
   // Step 3) create the new all-reduce instructions after the while loop.
   absl::flat_hash_map<int, HloInstruction*> tuple_index_to_new_buffer =
       CreateSinkedAllReduces(new_while_instruction, all_reduce_to_accumulations,
@@ -1140,7 +1284,7 @@ absl::Status AddSinkedAllReducesAndReplaceWhile(
   // its uses.
   HloInstruction* new_while_result =
       CreateNewWhileResult(new_while_instruction, tuple_index_to_new_buffer);
-  TF_RETURN_IF_ERROR(while_instruction->parent()->ReplaceInstruction(
+  RETURN_IF_ERROR(while_instruction->parent()->ReplaceInstruction(
       while_instruction, new_while_result));
   return absl::OkStatus();
 }
@@ -1235,7 +1379,7 @@ absl::StatusOr<HloInstruction*> AddSinkedAllReducesAndReplaceWhile(
   // Replace the old while instruction with the new one.
   HloInstruction* new_while_result =
       CreateNewWhileResult(new_while_instruction, tuple_index_to_new_buffer);
-  TF_RETURN_IF_ERROR(
+  RETURN_IF_ERROR(
       while_parent->ReplaceInstruction(while_instruction, new_while_result));
   return new_while_instruction;
 }
@@ -1260,18 +1404,18 @@ absl::StatusOr<bool> WhileLoopAllReduceCodeMotion::RunImpl(
   if (module->config().replica_count() > 1) {
     VLOG(5) << "num_replicas: " << module->config().replica_count()
             << " run HloReplicationAnalysis across replicas";
-    TF_ASSIGN_OR_RETURN(cross_replica_replication_analysis,
-                        HloReplicationAnalysis::RunWithPartialReplication(
-                            module, /*cross_partition_spmd=*/false));
+    ASSIGN_OR_RETURN(cross_replica_replication_analysis,
+                     HloReplicationAnalysis::RunWithPartialReplication(
+                         module, /*cross_partition_spmd=*/false));
   }
   std::unique_ptr<HloReplicationAnalysis> cross_partition_replication_analysis;
   if (module->config().use_spmd_partitioning() &&
       module->config().num_partitions() > 1) {
     VLOG(5) << "num_partitions: " << module->config().num_partitions()
             << " run HloReplicationAnalysis across partitions";
-    TF_ASSIGN_OR_RETURN(cross_partition_replication_analysis,
-                        HloReplicationAnalysis::RunWithPartialReplication(
-                            module, /*cross_partition_spmd=*/true));
+    ASSIGN_OR_RETURN(cross_partition_replication_analysis,
+                     HloReplicationAnalysis::RunWithPartialReplication(
+                         module, /*cross_partition_spmd=*/true));
   }
 
   // Run setup passes that may setup the add(all-reduce/reduce-scatter,
@@ -1283,7 +1427,7 @@ absl::StatusOr<bool> WhileLoopAllReduceCodeMotion::RunImpl(
     }
     pipeline.AddPass<ReorderConvertReduceAdd>(
         /*enable_reduce_scatter=*/enable_reduce_scatter_);
-    TF_RETURN_IF_ERROR(pipeline.Run(module, execution_threads).status());
+    RETURN_IF_ERROR(pipeline.Run(module, execution_threads).status());
   }
 
   // The while instruction's parent could be a while body for another while
@@ -1362,15 +1506,14 @@ absl::StatusOr<bool> WhileLoopAllReduceCodeMotion::RunImpl(
       // For each while instruction calling this computation, create the
       // corresponding all-reduces after the while loop.
       for (auto& while_instruction : while_caller_instructions) {
-        TF_ASSIGN_OR_RETURN(
-            while_instruction,
-            AddSinkedAllReducesAndReplaceWhile(while_instruction,
-                                               all_reduce_to_update_slices));
+        ASSIGN_OR_RETURN(while_instruction,
+                         AddSinkedAllReducesAndReplaceWhile(
+                             while_instruction, all_reduce_to_update_slices));
       }
       // Remove all-reduce instructions in the loop body.
       for (const auto& [all_reduce, _] : all_reduce_to_update_slices) {
         ++count_all_reduce;
-        TF_RETURN_IF_ERROR(computation->ReplaceInstruction(
+        RETURN_IF_ERROR(computation->ReplaceInstruction(
             all_reduce, all_reduce->mutable_operand(0)));
       }
       is_changed = true;
@@ -1379,7 +1522,7 @@ absl::StatusOr<bool> WhileLoopAllReduceCodeMotion::RunImpl(
       // For each while instruction calling this computation, create the
       // corresponding all-reduces after the while loop.
       for (HloInstruction* while_instruction : while_caller_instructions) {
-        TF_RETURN_IF_ERROR(AddSinkedAllReducesAndReplaceWhile(
+        RETURN_IF_ERROR(AddSinkedAllReducesAndReplaceWhile(
             while_instruction, all_reduce_to_accumulations));
       }
       // At last, remove the old all-reduce instructions in the while body.
@@ -1391,7 +1534,7 @@ absl::StatusOr<bool> WhileLoopAllReduceCodeMotion::RunImpl(
         } else {
           ++count_reduce_scatter;
         }
-        TF_RETURN_IF_ERROR(computation->ReplaceInstructionWithDifferentShape(
+        RETURN_IF_ERROR(computation->ReplaceInstructionWithDifferentShape(
             all_reduce, all_reduce->mutable_operand(0)));
       }
       is_changed = true;

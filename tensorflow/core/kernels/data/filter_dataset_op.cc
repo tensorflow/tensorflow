@@ -164,7 +164,7 @@ class FilterDatasetOp::Dataset : public DatasetBase {
           // Clear the output tensor list since there were errors with Filter
           // prediction result.
           out_tensors->clear();
-          return errors::InvalidArgument(
+          return absl::InvalidArgumentError(
               "Filter predicate `f` must return a scalar bool.");
         }
         matched = result[0].scalar<bool>()();
@@ -278,7 +278,7 @@ FilterDatasetOp::FilterDatasetOp(OpKernelConstruction* ctx)
   OP_REQUIRES_OK(ctx, FunctionMetadata::Create(ctx, kPredicate, /*params=*/{},
                                                &func_metadata_));
   OP_REQUIRES(ctx, func_metadata_->short_circuit_info().indices.size() <= 1,
-              errors::InvalidArgument(
+              absl::InvalidArgumentError(
                   "predicate function has more than one return value."));
 }
 

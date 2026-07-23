@@ -1,3 +1,18 @@
+# Copyright 2026 The OpenXLA Authors. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
+
 load("//xla:xla.default.bzl", "xla_cc_test")
 load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
 
@@ -29,6 +44,7 @@ cc_library(
     deps = [
         ":kernel_definition",
         ":kernel_source",
+        "//xla/tsl/platform:status_macros",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:string_view",
@@ -125,6 +141,7 @@ cc_library(
         "//xla/hlo/ir:hlo",
         "//xla/hlo/utils:hlo_traversal",
         "//xla/service:buffer_assignment",
+        "//xla/tsl/platform:status_macros",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_set",
@@ -132,6 +149,8 @@ cc_library(
         "@com_google_absl//absl/functional:any_invocable",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/types:span",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
     ],
 )
 
@@ -169,6 +188,7 @@ cc_library(
     hdrs = ["intrinsic_lib.h"],
     deps = [
         ":intrinsic_function",
+        "//xla:comparison_util",
         "//xla:xla_data_proto_cc",
         "//xla/codegen/intrinsic",
         "//xla/codegen/intrinsic:erf",
@@ -182,7 +202,9 @@ cc_library(
         "//xla/codegen/intrinsic:type",
         "//xla/codegen/intrinsic:vec_name_mangler",
         "//xla/codegen/intrinsic/cpp:_cpp_gen_intrinsics",
+        "//xla/codegen/intrinsic/cpp:_intrinsic_declarations",
         "//xla/service/llvm_ir:llvm_util",
+        "@com_google_absl//absl/container:btree",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/log",
@@ -190,14 +212,7 @@ cc_library(
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/types:span",
         "@llvm-project//llvm:Analysis",
-        "@llvm-project//llvm:ExecutionEngine",
-        "@llvm-project//llvm:IPO",
-        "@llvm-project//llvm:JITLink",
-        "@llvm-project//llvm:Linker",
-        "@llvm-project//llvm:Passes",
-        "@llvm-project//llvm:Scalar",
         "@llvm-project//llvm:Support",
-        "@llvm-project//llvm:TransformUtils",
         "@llvm-project//llvm:ir_headers",
     ],
 )

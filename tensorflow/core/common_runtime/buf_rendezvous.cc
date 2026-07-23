@@ -38,7 +38,7 @@ void DeregisterCancellation(BufRendezvous::Hook* h) {
 BufRendezvous::~BufRendezvous() {
   mutex_lock l(mu_);
   if (!hook_table_.empty()) {
-    PurgeTable(errors::Internal("Delete called on non-empty BufRendezvous"),
+    PurgeTable(absl::InternalError("Delete called on non-empty BufRendezvous"),
                &hook_table_);
   }
 }
@@ -113,8 +113,8 @@ void BufRendezvous::ProvideBuf(const std::string& key, Device* dev,
         it = hook_table_.insert(std::make_pair(key, h)).first;
       } else {
         if (it->second->prod_cb != nullptr) {
-          providebuf_status = errors::Internal(
-              "BufRendezvous::ProvideBuf already called for key ", key);
+          providebuf_status = absl::InternalError(absl::StrCat(
+              "BufRendezvous::ProvideBuf already called for key ", key));
           break;
         }
         h = it->second;
@@ -135,8 +135,8 @@ void BufRendezvous::ProvideBuf(const std::string& key, Device* dev,
                 cancellation_token, [this, key]() { CancelHook(key); })) {
           // Register cancellation callback with CancellationManager.  If it is
           // already cancelled, call done immediately with cancelled status.
-          providebuf_status = errors::Cancelled(
-              "Operation was cancelled for BufRendezvous key ", key);
+          providebuf_status = absl::CancelledError(absl::StrCat(
+              "Operation was cancelled for BufRendezvous key ", key));
           hook_table_.erase(it);
           delete h;
         }
@@ -172,12 +172,12 @@ void BufRendezvous::ConsumeBuf(const std::string& key,
   absl::Status consumebuf_status = dev_mgr_->LookupDevice(device_name, &device);
   if (consumebuf_status.ok() &&
       device->attributes().incarnation() != device_incarnation) {
-    consumebuf_status = errors::FailedPrecondition(
+    consumebuf_status = absl::FailedPreconditionError(absl::StrCat(
         "RecvBuf expects a different device incarnation: ", device_incarnation,
         " vs. ", device->attributes().incarnation(),
         ". Your worker job that contains the device (\"", device_name,
         "\") was probably restarted. Check your "
-        "worker job for the reason why it was restarted.");
+        "worker job for the reason why it was restarted."));
   }
   if (!consumebuf_status.ok()) {
     done(consumebuf_status, nullptr);
@@ -194,8 +194,8 @@ void BufRendezvous::ConsumeBuf(const std::string& key,
     if (it != hook_table_.end()) {
       // Prepare to consume immediately.
       if (it->second->cons_cb) {
-        consumebuf_status =
-            errors::Internal("Second consumer arrived for key ", key);
+        consumebuf_status = absl::InternalError(
+            absl::StrCat("Second consumer arrived for key ", key));
         break;
       }
       existing_hook = it->second;
@@ -211,8 +211,8 @@ void BufRendezvous::ConsumeBuf(const std::string& key,
             cancellation_token, [this, key]() { CancelHook(key); });
       }
       if (already_cancelled) {
-        consumebuf_status = errors::Cancelled(
-            "Operation was cancelled for BufRendezvous key ", key);
+        consumebuf_status = absl::CancelledError(absl::StrCat(
+            "Operation was cancelled for BufRendezvous key ", key));
       } else {
         Hook* h = new Hook(cancellation_manager, cancellation_token);
         h->cons_cb = done;
@@ -244,8 +244,8 @@ void BufRendezvous::CancelHook(const std::string& key) {
     hook_table_.erase(it);
   }
   if (h != nullptr) {
-    auto s = errors::Cancelled("Operation was cancelled for BufRendezvous key ",
-                               key);
+    auto s = absl::CancelledError(
+        absl::StrCat("Operation was cancelled for BufRendezvous key ", key));
     if (h->prod_cb != nullptr) {
       h->prod_cb(s);
     }

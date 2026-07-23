@@ -1,3 +1,17 @@
+// Copyright 2026 The OpenXLA Authors. All Rights Reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// ==============================================================================
 // RUN: xla-translate -split-input-file -mlir-hlo-to-hlo-text %s | FileCheck %s
 
 // CHECK-LABEL: ENTRY %main.{{.*}} (Arg_0.1: f32[], Arg_1.1: f32[4]) -> f32[4,4]
@@ -466,4 +480,32 @@ func.func @main(%arg0: tensor<4xf32>, %arg1: tensor<4xf32>) -> () {
   %2 = mhlo.create_token {mhlo.sharding = "{manual}", xla_shape = "token[]"} : !mhlo.token
   %3 = "mhlo.outfeed"(%0, %1, %2) <{infeed_config = "", layout = [[1, 0]]}> {mhlo.sharding = "{manual}"} : (tensor<4xf32>, tensor<4xf32>, !mhlo.token) -> !mhlo.token
   return
+}
+
+// -----
+// CHECK: HloModule
+// CHECK: ENTRY
+func.func @main() -> tensor<4xf32> {
+  // CHECK-NEXT: %after-all.1 = token[] after-all(), sharding={manual}
+  // CHECK-NEXT: %recv.1 = (f32[4], u32[], token[]) recv(%after-all.1), channel_id=1, is_host_transfer=true, sharding={{[{][{]manual}, {manual}, {replicated[}][}]}}
+  // CHECK-NEXT: %recv-done.1 = (f32[4], token[]) recv-done(%recv.1), channel_id=1, is_host_transfer=true, sharding={{[{][{]manual}, {replicated[}][}]}}
+  // CHECK-NEXT: ROOT %get-tuple-element.{{[0-9]+}} = f32[4] get-tuple-element(%recv-done.1), index=0, sharding={manual}
+  // CHECK-NEXT: %get-tuple-element.{{[0-9]+}} = token[] get-tuple-element(%recv-done.1), index=1, sharding={replicated}
+  %0 = stablehlo.create_token {mhlo.sharding = "{manual}", xla_shape = "token[]"} : !stablehlo.token
+  %1:2 = "stablehlo.recv"(%0) <{channel_handle = #stablehlo.channel_handle<handle = 1, type = 3>, is_host_transfer = true}> {mhlo.sharding = "{{manual}, {replicated}}"} : (!stablehlo.token) -> (tensor<4xf32>, !stablehlo.token)
+  return %1#0 : tensor<4xf32>
+}
+
+// -----
+// CHECK-LABEL: ENTRY %main{{.*}} (Arg_0.1: s32[128,8]) -> s32[128,8] {
+// CHECK: %[[ARG:.*]] = s32[128,8] parameter(0)
+// CHECK-NOT: s32[] constant(8), sharding={devices=[8,1]<=[8]}, metadata=
+// CHECK: %[[SIZE:.*]] = s32[] constant(8), metadata=
+// CHECK: ROOT %{{.*}} = s32[128,8] set-dimension-size(%[[ARG]], %[[SIZE]]), dimensions={1}, sharding={devices=[8,1]<=[8]}, metadata=
+func.func @main(%arg0: tensor<128x8xi32>) -> tensor<128x8xi32> {
+  %size = stablehlo.constant dense<8> : tensor<i32>
+  %0 = "stablehlo.set_dimension_size"(%arg0, %size) <{dimension = 1 : i64}>
+      {mhlo.sharding = "{devices=[8,1]<=[8]}"}
+      : (tensor<128x8xi32>, tensor<i32>) -> tensor<128x8xi32>
+  func.return %0 : tensor<128x8xi32>
 }

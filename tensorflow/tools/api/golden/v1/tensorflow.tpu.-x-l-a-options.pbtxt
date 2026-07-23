@@ -2,7 +2,7 @@ path: "tensorflow.tpu.XLAOptions"
 tf_class {
   is_instance: "<class \'tensorflow.python.tpu.tpu.XLAOptions\'>"
   is_instance: "<class \'tensorflow.python.tpu.tpu.XLAOptions\'>"
-  is_instance: "<type \'tuple\'>"
+  is_instance: "<class \'tuple\'>"
   member {
     name: "enable_xla_dynamic_padder"
     mtype: "<class \'collections._tuplegetter\'>"
@@ -16,7 +16,20 @@ tf_class {
     mtype: "<class \'collections._tuplegetter\'>"
   }
   member_method {
+    name: "__getnewargs__"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
     name: "__init__"
+  }
+  member_method {
+    name: "__new__"
+    argspec: "args=[\'cls\', \'use_spmd_for_xla_partitioning\', \'enable_xla_dynamic_padder\', \'use_shardy_partitioner\'], varargs=None, keywords=None, defaults=[\'True\', \'True\', \'False\'], "
+    method_kind: STATIC
+  }
+  member_method {
+    name: "__replace__"
+    argspec: "args=[\'self\'], varargs=None, keywords=kwds, defaults=None"
   }
   member_method {
     name: "count"

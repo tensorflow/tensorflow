@@ -56,6 +56,9 @@ struct IntrinsicOptions {
   // AMD vs. Intel CPUs.
   bool disable_platform_dependent_math = false;
 
+  // Preferred vector width of the target module.
+  int prefer_vector_width = 0;
+
   bool Contains(absl::string_view feature) const {
     return absl::StrContains(features, feature);
   }

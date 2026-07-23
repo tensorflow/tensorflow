@@ -685,6 +685,7 @@ class TFLiteConverterBase:
     self.canonicalizing_inf_as_min_max_float = True
     self._experimental_strict_qdq = False
     self._experimental_unsafe_fuse_dynamic_shaped_broadcast = False
+    self._experimental_unsafe_single_batch_rank_reduction = False
 
     # Debug parameters
     self.ir_dump_dir = None
@@ -856,6 +857,9 @@ class TFLiteConverterBase:
         "serialize_debug_metadata": self.serialize_debug_metadata,
         "unsafe_fuse_dynamic_shaped_broadcast": (
             self._experimental_unsafe_fuse_dynamic_shaped_broadcast
+        ),
+        "unsafe_single_batch_rank_reduction": (
+            self._experimental_unsafe_single_batch_rank_reduction
         ),
     }
 
@@ -1573,19 +1577,18 @@ class TFLiteSavedModelConverterV2(TFLiteConverterBaseV2):
           graph_def, input_tensors, output_tensors
       )
 
-    # Read debug info directly from the SavedModel directory instead of loading
-    # the full model with _load(). Loading the model allocates all variable
-    # tensors (~25MB for DenseNet121) plus registers function defs in the
-    # EagerContext, and these can leak across convert() calls due to reference
-    # cycles that are slow to collect.  The debug info proto is already written
-    # to disk alongside saved_model.pb and can be read cheaply.
-    _, saved_debug_info = _parse_saved_model_with_debug_info(
-        self.saved_model_dir
-    )
-    self._debug_info = _get_debug_info(
-        _convert_debug_info_func(saved_debug_info),
-        graph_def,
-    )
+    trackable_obj = _load(self.saved_model_dir, self._saved_model_tags)
+    if trackable_obj is None:
+      self._debug_info = _get_debug_info(
+          _build_debug_info_func(self._funcs[0].graph), graph_def
+      )
+    else:
+      self._debug_info = _get_debug_info(
+          _convert_debug_info_func(trackable_obj.graph_debug_info),
+          graph_def,
+      )
+
+    del trackable_obj
     return self._convert_from_saved_model(graph_def)
 
 
@@ -1643,9 +1646,10 @@ class TFLiteKerasModelConverterV2(TFLiteConverterBaseV2):
         # inference only and TFLite conversion.
         export_archive = keras.export.ExportArchive()
         export_archive.track(self._keras_model)
+        # We use `keras.Function` to detect functional models as keras does not
+        # expose the `Functional` class.
         if isinstance(
-            self._keras_model,
-            (keras.src.models.Functional, keras.src.models.Sequential),
+            self._keras_model, (keras.models.Sequential, keras.Function)
         ):
           input_signature = nest.map_structure(
               lambda x: tensor_spec.TensorSpec(

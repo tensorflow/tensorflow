@@ -23,13 +23,11 @@ limitations under the License.
 #include <variant>
 #include <vector>
 
-#include "absl/base/thread_annotations.h"
-#include "absl/container/flat_hash_map.h"
 #include "absl/functional/function_ref.h"
+#include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/stream_executor/activate_context.h"
 #include "xla/stream_executor/allocator_stats.h"
@@ -69,7 +67,12 @@ namespace stream_executor {
 // (e.g. GPU, TPU).
 class StreamExecutor {
  public:
-  virtual ~StreamExecutor() = default;
+  // We use ResourceTypeId to distinguish between different resource types.
+  TSL_LIB_GTL_DEFINE_INT_TYPE(ResourceTypeId, int64_t);
+
+  StreamExecutor();
+
+  virtual ~StreamExecutor();
 
   // A base class for external resources that can be attached to a
   // StreamExecutor instance. When a StreamExecutor instance is destroyed, all
@@ -186,13 +189,12 @@ class StreamExecutor {
     return absl::UnimplementedError("Not implemented");
   }
 
+  // Checks if the given address points to the memory which was allocated with
+  // virtual memory management API.
+  virtual bool IsVmmMemory(const DeviceAddressBase& address) { return false; }
+
   // Synchronizes all activity occurring in the StreamExecutor's context.
   virtual bool SynchronizeAllActivity() = 0;
-
-  // Blocks the caller while "size" bytes are zeroed out (in POD fashion) at the
-  // given location in device memory.
-  virtual absl::Status SynchronousMemZero(DeviceAddressBase* location,
-                                          uint64_t size) = 0;
 
   // Returns a DeviceAddressBase representing the range [base, base + size)
   // for the given DeviceAddressBase, such that location is contained within the
@@ -202,10 +204,24 @@ class StreamExecutor {
     return absl::UnimplementedError("Not implemented for this executor.");
   }
 
+  virtual absl::StatusOr<uint64_t> GetCollectiveMemoryGranularity() const {
+    return absl::UnimplementedError("Not implemented for this executor.");
+  }
+
   virtual bool HostMemoryUnregister(void* location) { return false; };
   virtual bool HostMemoryRegister(void* location, uint64_t size) {
     return false;
   };
+  virtual bool IsHostMemoryPinned(const void* ptr, uint64_t size) {
+    if (size == 0) return false;
+    auto start_space = GetPointerMemorySpace(ptr);
+    if (!start_space.ok() || *start_space != MemorySpace::kHost) {
+      return false;
+    }
+    auto end_space =
+        GetPointerMemorySpace(static_cast<const char*>(ptr) + size - 1);
+    return end_space.ok() && *end_space == MemorySpace::kHost;
+  }
 
   // Blocks the caller while "size" bytes are copied to the given location in
   // device memory.
@@ -231,7 +247,7 @@ class StreamExecutor {
   virtual void DeallocateStream(Stream* stream) = 0;
 
   // Enables peer access from this StreamExecutor to memory
-  // allocated by other, such that launched device code, memcpies, etc may
+  // allocated by other, such that launched device code, memcopies, etc may
   // access it directly.
   virtual absl::Status EnablePeerAccessTo(StreamExecutor* other) = 0;
 
@@ -265,6 +281,11 @@ class StreamExecutor {
   // caller.
   virtual absl::StatusOr<std::unique_ptr<DeviceDescription>>
   CreateDeviceDescription() const = 0;
+
+  // Returns the interconnect status of the device.
+  virtual absl::StatusOr<std::string> GetInterconnectStatus() const {
+    return absl::UnimplementedError("Not implemented");
+  }
 
   // Return the platform dependent stream priority value for the given priority.
   virtual int GetGpuStreamPriority(StreamPriority priority) { return 0; }
@@ -360,35 +381,31 @@ class StreamExecutor {
 
   // Returns a pointer to the resource of the given type, or nullptr if resource
   // of the given type is not attached to this stream executor.
-  template <typename ConcreteResource>
-  ConcreteResource* GetOrNullResource() {
-    static_assert(std::is_base_of_v<Resource, ConcreteResource>);
-    return static_cast<ConcreteResource*>(
-        GetOrNullResource(GetResourceTypeId<ConcreteResource>()));
+  template <typename R>
+  R* GetOrNullResource() {
+    static_assert(std::is_base_of_v<Resource, R>);
+    return static_cast<R*>(GetOrNullResource(GetResourceTypeId<R>()));
   }
 
   // Returns a pointer to the resource of the given type, or creates a new
   // resource of the given type and attaches it to this stream executor.
-  template <typename ConcreteResource>
-  ConcreteResource* GetOrCreateResource(
-      absl::FunctionRef<std::unique_ptr<ConcreteResource>()> create) {
-    static_assert(std::is_base_of_v<Resource, ConcreteResource>);
-    return static_cast<ConcreteResource*>(GetOrCreateResource(
-        GetResourceTypeId<ConcreteResource>(), [&] { return create(); }));
+  template <typename R>
+  R* GetOrCreateResource(absl::FunctionRef<std::unique_ptr<R>()> create) {
+    static_assert(std::is_base_of_v<Resource, R>);
+    return static_cast<R*>(
+        GetOrCreateResource(GetResourceTypeId<R>(), [&] { return create(); }));
   }
 
   // Returns a pointer to the resource of the given type, or creates a new
   // resource of the given type and attaches it to this stream executor.
-  template <typename ConcreteResource>
-  ConcreteResource* GetOrCreateResource() {
-    return GetOrCreateResource<ConcreteResource>(
-        [] { return std::make_unique<ConcreteResource>(); });
+  // Constructor arguments are forwarded to std::make_unique<R>.
+  template <typename R, typename... Args>
+  R* GetOrConstructResource(Args&&... args) {
+    return GetOrCreateResource<R>(
+        [&] { return std::make_unique<R>(std::forward<Args>(args)...); });
   }
 
  private:
-  // We use ResourceTypeId to distinguish between different resource types.
-  TSL_LIB_GTL_DEFINE_INT_TYPE(ResourceTypeId, int64_t);
-
   Resource* GetOrNullResource(ResourceTypeId type_id);
   Resource* GetOrCreateResource(
       ResourceTypeId type_id,
@@ -402,9 +419,11 @@ class StreamExecutor {
 
   static ResourceTypeId GetNextResourceTypeId();
 
-  absl::Mutex resource_mutex_;
-  absl::flat_hash_map<ResourceTypeId, std::unique_ptr<Resource>> resources_
-      ABSL_GUARDED_BY(resource_mutex_);
+  // Forward declaration
+  struct ResourceStorage;
+
+  // RAII container for resources attached to this stream executor
+  std::unique_ptr<ResourceStorage> resources_;
 };
 
 template <typename T>
@@ -420,7 +439,20 @@ inline DeviceAddress<T> StreamExecutor::AllocateArray(uint64_t element_count,
                  << "]";
     return DeviceAddress<T>();
   }
-  return DeviceAddress<T>(Allocate(bytes, memory_space));
+
+  DeviceAddressBase raw_allocation = Allocate(bytes, memory_space);
+  if (raw_allocation.is_null()) {
+    return DeviceAddress<T>();
+  }
+
+  // Raw allocations can report a larger backend allocation size (for example,
+  // CUDA VMM granularity padding). AllocateArray exposes only the logical array
+  // byte range because callers requested exactly `element_count` elements and
+  // should not treat allocator padding as additional array elements.
+  DCHECK_GE(raw_allocation.size(), bytes);
+  DeviceAddressBase logical_allocation(raw_allocation.opaque(), bytes);
+  logical_allocation.SetPayload(raw_allocation.payload());
+  return DeviceAddress<T>(logical_allocation);
 }
 
 }  // namespace stream_executor

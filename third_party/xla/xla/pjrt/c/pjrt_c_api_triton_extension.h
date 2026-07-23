@@ -49,7 +49,7 @@ typedef PJRT_Error* PJRT_Triton_Compile(PJRT_Triton_Compile_Args* args);
 
 typedef struct PJRT_Triton_Extension {
   PJRT_Extension_Base base;
-  PJRT_Triton_Compile* compile;
+  PJRT_NO_DISCARD PJRT_Triton_Compile* compile;
 } PJRT_Triton;
 PJRT_DEFINE_STRUCT_TRAITS(PJRT_Triton_Extension, compile);
 

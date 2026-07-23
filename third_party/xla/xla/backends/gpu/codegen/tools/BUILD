@@ -1,3 +1,18 @@
+# Copyright 2026 The OpenXLA Authors. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
+
 load(
     "@local_config_rocm//rocm:build_defs.bzl",
     "if_rocm_is_configured",
@@ -24,7 +39,7 @@ package(
 package_group(
     name = "codegen_tests",
     packages = [
-        "//xla/backends/gpu/codegen/emitters/tests",
+        "//xla/backends/gpu/codegen/...",
         "//xla/codegen/emitters/tests",
     ],
 )
@@ -34,10 +49,11 @@ cc_library(
     testonly = 1,
     srcs = ["test_lib.cc"],
     hdrs = ["test_lib.h"],
+    visibility = [":codegen_tests"],
     deps = [
         "//xla:status_macros",
         "//xla/backends/gpu/codegen:fusions",
-        "//xla/backends/gpu/codegen/emitters:emitter_base",
+        "//xla/backends/gpu/codegen/emitters:mlir_kernel_emitter",
         "//xla/hlo/ir:hlo",
         "//xla/service/gpu:gpu_device_info_for_tests",
         "//xla/service/gpu:hlo_fusion_analysis",
@@ -61,11 +77,11 @@ xla_cc_binary(
         ":test_lib",
         "//xla/codegen/tools:test_lib",
         "//xla/hlo/analysis:symbolic_map",
+        "//xla/tsl/platform:status_macros",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@llvm-project//llvm:Support",
         "@tsl//tsl/platform:platform_port",
-        "@tsl//tsl/platform:statusor",
     ],
 )
 
@@ -119,6 +135,7 @@ xla_cc_binary(
     visibility = ["//visibility:private"],
     deps = [
         "//xla/codegen/tools:test_lib",
+        "//xla/tsl/platform:status_macros",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",

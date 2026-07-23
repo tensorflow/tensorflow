@@ -15,3 +15,6 @@ uv ~= 0.5.30
 
 # For running wheel verification script
 immutabledict ~= 4.2.1
+
+# For MLIR's stubgen.py script
+typing-extensions

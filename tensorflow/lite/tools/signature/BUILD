@@ -1,3 +1,18 @@
+# Copyright 2026 The TensorFlow Authors. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
+
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("@rules_cc//cc:cc_test.bzl", "cc_test")
 load("@xla//third_party/rules_python/python:py_library.bzl", "py_library")
@@ -29,19 +44,16 @@ cc_library(
     deps = replace_with_portable_tf_lib_when_required([
         "//tensorflow/core:lib_proto_parsing",
         "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core/platform:errors",
-        "//tensorflow/core/platform:status",
     ]) + [
         "//tensorflow/core:protos_all_cc_impl",
-        "//tensorflow/lite:framework",
-        "//tensorflow/lite/core:framework",
-        "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/schema:schema_fbs",
-        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
         "@com_google_protobuf//:protobuf",
         "@flatbuffers",
-        "@tsl//tsl/platform:status",
     ],
 )
 
@@ -59,18 +71,14 @@ cc_test(
     deps = [
         ":signature_def_util",
         "//tensorflow/cc/saved_model:signature_constants",
-        "//tensorflow/core/platform:errors",
         "//tensorflow/core/protobuf:for_core_protos_cc",
         "//tensorflow/lite:framework",
-        "//tensorflow/lite:string",
-        "//tensorflow/lite/c:c_api",
         "//tensorflow/lite/core:framework",
-        "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/schema:schema_fbs",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest_main",
         "@flatbuffers//:runtime_cc",
-        "@tsl//tsl/platform:status",
     ],
 )
 

@@ -1,16 +1,29 @@
-diff --git a/cc/defs.bzl b/cc/defs.bzl
-index 3448e77..9c298ab 100644
 --- a/cc/defs.bzl
 +++ b/cc/defs.bzl
-@@ -30,9 +30,11 @@ load("//cc/toolchains:cc_toolchain_suite.bzl", _cc_toolchain_suite = "cc_toolcha
- load("//cc/toolchains:compiler_flag.bzl", _compiler_flag = "compiler_flag")
- load("//cc/toolchains:fdo_prefetch_hints.bzl", _fdo_prefetch_hints = "fdo_prefetch_hints")
- load("//cc/toolchains:fdo_profile.bzl", _fdo_profile = "fdo_profile")
+@@ -18,3 +18,4 @@
+ """Starlark rules for building C++ projects."""
+
 +load("@com_google_protobuf//bazel:cc_proto_library.bzl", _protobuf_cc_proto_library = "cc_proto_library")
- 
- # Rules
- 
+ load("//cc:cc_binary.bzl", _cc_binary = "cc_binary")
+@@ -48,20 +49,3 @@
+ objc_import = _objc_import
+
+-# DEPRECATED: use rule from com_google_protobuf repository
+-def cc_proto_library(**kwargs):
+-    """Deprecated redirection macro for cc_proto_library.
+-
+-    Use cc_proto_library from com_google_protobuf.
+-
+-    On Bazel <8, redirects to native.cc_proto_library.
+-    On Bazel >=8, redirects to a mock rule, that fails when analyzed.
+-    This allows for a gradual migration away from this macro.
+-
+-    Args:
+-      **kwargs: passed directly into cc_proto_library
+-    """
+-    __cc_proto_library = getattr(native, "cc_proto_library", _cc_proto_library)
+-    if "deprecation" not in kwargs:
+-        __cc_proto_library(deprecation = CC_PROTO_LIBRARY_DEPRECATION, **kwargs)
+-    else:
+-        __cc_proto_library(**kwargs)
 +cc_proto_library = _protobuf_cc_proto_library
- cc_library = _cc_library
- cc_binary = _cc_binary
- cc_test = _cc_test

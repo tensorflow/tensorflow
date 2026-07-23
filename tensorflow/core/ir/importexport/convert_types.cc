@@ -110,7 +110,7 @@ Status ConvertDataType(DataType dtype, Builder& builder, Type* type) {
 #include "tensorflow/core/ir/types/types.def"
 
     default:
-      return Unimplemented(absl::StrCat(
+      return absl::UnimplementedError(absl::StrCat(
           "Converting DataType '", DataTypeString(dtype), "' to MLIR Type"));
   }
 }
@@ -164,7 +164,7 @@ Status ConvertScalarTypeToDataType(Type type, DataType* dtype) {
             itype.isUnsigned() ? tensorflow::DT_UINT64 : tensorflow::DT_INT64;
         return absl::OkStatus();
       default:
-        return Unimplemented(
+        return absl::UnimplementedError(
             absl::StrCat("Converting ", debugString(type), " to DataType"));
     }
   } else if (auto complex_type = mlir::dyn_cast<ComplexType>(type)) {
@@ -176,7 +176,7 @@ Status ConvertScalarTypeToDataType(Type type, DataType* dtype) {
       *dtype = tensorflow::DT_COMPLEX128;
       return absl::OkStatus();
     }
-    return Unimplemented(
+    return absl::UnimplementedError(
         absl::StrCat("Converting ", debugString(type), " to DataType"));
   }
 
@@ -188,7 +188,7 @@ Status ConvertScalarTypeToDataType(Type type, DataType* dtype) {
 // NOLINTNEXTLINE
 #include "tensorflow/core/ir/types/types.def"
 
-  return Unimplemented(
+  return absl::UnimplementedError(
       absl::StrCat("Converting ", debugString(type), " to DataType"));
 }
 
@@ -216,7 +216,7 @@ Status ConvertToMlirShape(const TensorShapeProto& input_shape,
   auto& dims = input_shape.dim();
   for (auto& d : dims) {
     if (d.size() > std::numeric_limits<int64_t>::max()) {
-      return InvalidArgument("Shape element overflows");
+      return absl::InvalidArgumentError("Shape element overflows");
     }
     // This isn't really expected, but Grappler is using such shapes for its
     // symbolic shape analysis and it may spill into here.

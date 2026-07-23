@@ -19,13 +19,17 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/cord.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/ExtensibleRTTI.h"
 #include "mlir/IR/BuiltinOps.h"
+#include "mlir/IR/DialectRegistry.h"
 #include "mlir/IR/OwningOpRef.h"
 #include "mlir/Pass/PassManager.h"
+#include "shardy/dialect/sdy/ir/register.h"
 #include "stablehlo/dialect/Serialization.h"
 #include "xla/mlir/utils/error_util.h"
 #include "xla/mlir_hlo/mhlo/transforms/passes.h"
@@ -46,12 +50,12 @@ namespace {
 //
 // Serialization:
 // ```
-// TF_ASSIGN_OR_RETURN(Serialized serialized, Serialize(xla_program));
+// ASSIGN_OR_RETURN(Serialized serialized, Serialize(xla_program));
 // ```
 //
 // Deserialization:
 // ```
-// TF_ASSIGN_OR_RETURN(auto deserialized, Deserialize(serialized));
+// ASSIGN_OR_RETURN(auto deserialized, Deserialize(serialized));
 // auto xla_program = llvm::dyn_cast<HloProgram>(deserialized);
 // ```
 
@@ -63,7 +67,7 @@ class HloProgramSerDes : public llvm::RTTIExtends<HloProgramSerDes, SerDes> {
     return "xla::ifrt::XlaProgram";
   }
 
-  absl::StatusOr<std::string> Serialize(
+  absl::StatusOr<absl::Cord> Serialize(
       const Serializable& serializable,
       std::unique_ptr<SerializeOptions> options) override {
     // All serialization of `HloProgram` is pinned to a at-least-4-week-old
@@ -88,13 +92,26 @@ class HloProgramSerDes : public llvm::RTTIExtends<HloProgramSerDes, SerDes> {
     mlir::OwningOpRef<mlir::ModuleOp> module(
         llvm::cast<mlir::ModuleOp>(program.mlir_module()->clone()));
 
-    // Serialize portable artifact.
-    return xla::SerializeUsingVersionedStablehlo(
-        *module, xla::GetDefaultStablehloVersion());
+    // Allow mixed serialization for stablehlo dialects.
+    std::string serialized;
+    if (version.version_number() >= SerDesVersionNumber(3)) {
+      ASSIGN_OR_RETURN(serialized,
+                       xla::SerializeUsingVersionedStablehlo(
+                           *module, xla::GetDefaultStablehloVersion(),
+                           xla::GetDefaultSdyVersion(),
+                           /*inplace=*/false,
+                           /*allow_mixed_serialization=*/true));
+    } else {
+      ASSIGN_OR_RETURN(serialized,
+                       xla::SerializeUsingVersionedStablehlo(
+                           *module, xla::GetDefaultStablehloVersion(),
+                           xla::GetDefaultSdyVersion()));
+    }
+    return absl::Cord(std::move(serialized));
   }
 
   absl::StatusOr<std::unique_ptr<Serializable>> Deserialize(
-      const std::string& serialized,
+      const absl::Cord& serialized,
       std::unique_ptr<DeserializeOptions>) override {
     // MLIR context is created with threading disabled; otherwise, deserializing
     // many programs may end up creating too many threads.
@@ -102,8 +119,17 @@ class HloProgramSerDes : public llvm::RTTIExtends<HloProgramSerDes, SerDes> {
         mlir::MLIRContext::Threading::DISABLED);
     mlir::BaseScopedDiagnosticHandler diagnostic_handler(context.get());
 
+    mlir::DialectRegistry registry;
+    mlir::sdy::registerAllDialects(registry);
+    context->appendDialectRegistry(registry);
+
+    // The MLIR Lexer (used by the text/assembly parser) assumes the input
+    // buffer is null-terminated. To avoid ASan stack-buffer-overflows when
+    // parsing text-based StableHLO, we copy the serialized data to a
+    // `std::string` to guarantee null-termination before deserialization.
+    std::string flat_str(serialized);
     mlir::OwningOpRef<mlir::ModuleOp> module =
-        mlir::stablehlo::deserializePortableArtifact(serialized, context.get());
+        mlir::stablehlo::deserializePortableArtifact(flat_str, context.get());
     if (!module) {
       const absl::Status status = diagnostic_handler.ConsumeStatus();
       return absl::InvalidArgumentError(

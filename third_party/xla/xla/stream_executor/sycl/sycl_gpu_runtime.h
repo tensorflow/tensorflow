@@ -79,14 +79,6 @@ using StreamPtr = std::shared_ptr<::sycl::queue>;
 using StreamPool = std::vector<StreamPtr>;
 using StreamPoolMap = absl::flat_hash_map<int /*device_ordinal*/, StreamPool>;
 
-// TODO(intel-tf): kMaxStreamsPerDevice is the maximum number of streams that
-// can be created per device via GetOrCreateStream when multiple streams are
-// enabled.
-//
-// For now, we set it to 32 so that there is no unbounded growth. However, it
-// can be adjusted based on the device capabilities and workload requirements.
-constexpr int kMaxStreamsPerDevice = 32;
-
 // Manages pools of SYCL streams (queues) per device. All methods are static and
 // thread-safe via a global mutex. For high concurrency workloads, consider
 // refactoring to use per-device mutexes.
@@ -105,8 +97,7 @@ class SyclStreamPool {
   // pool) SYCL stream. If the stream pool is empty, returns an error.
   //
   // If multiple streams are enabled (via enable_multiple_streams), creates
-  // a new stream up to the maximum limit (kMaxStreamsPerDevice). Returns an
-  // error if the limit is reached.
+  // a new stream.
   static absl::StatusOr<StreamPtr> GetOrCreateStream(
       int device_ordinal, bool enable_multiple_streams);
 
@@ -116,6 +107,10 @@ class SyclStreamPool {
   // Destroys a previously created SYCL stream for the given device ordinal.
   static absl::Status DestroyStream(int device_ordinal,
                                     StreamPtr& stream_handle);
+
+  // Resets the entire stream pool by deleting all streams for all devices.
+  // This is used in testing to ensure a clean state between tests.
+  static void Reset();
 
  private:
   // Global mutex protecting the stream pool.
@@ -144,6 +139,10 @@ struct SyclTimerProperties {
   uint64_t timestamp_mask;
 };
 
+// Returns whether location belongs to a driver-imported host-memory range.
+bool SyclIsHostMemoryRegistered(const ::sycl::device& device,
+                                const void* location);
+
 // Returns the timer frequency (Hz) and valid timestamp bitmask for the given
 // device ordinal using the Level Zero backend.
 absl::StatusOr<SyclTimerProperties> SyclGetTimerProperties(int device_ordinal);
@@ -153,9 +152,9 @@ absl::StatusOr<SyclTimerProperties> SyclGetTimerProperties(int device_ordinal);
 absl::Status SyclStreamSynchronize(::sycl::queue* stream_handle)
     ABSL_ATTRIBUTE_NONNULL(1);
 
-// Retrieves the most recent SYCL event associated with the given stream,
-// if available.
-absl::StatusOr<std::optional<::sycl::event>> SyclGetRecentEventFromStream(
+// Returns a SYCL event marking the most recent operation on the given stream.
+// If the stream has no prior work, submits a barrier and returns its event.
+absl::StatusOr<::sycl::event> SyclGetRecentEventFromStream(
     ::sycl::queue* stream_handle) ABSL_ATTRIBUTE_NONNULL(1);
 
 // NOTE: Similar to standard memcpy, all SYCL memcpy functions work

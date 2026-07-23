@@ -36,36 +36,39 @@ absl::Status ValidateRowPartitionTypesAndShapes(
       case RowPartitionType::ROW_SPLITS:
         break;
       default:
-        return InvalidArgument("Unsupported partition type: ",
-                               RowPartitionTypeToString(row_partition_type));
+        return absl::InvalidArgumentError(
+            absl::StrCat("Unsupported partition type: ",
+                         RowPartitionTypeToString(row_partition_type)));
     }
   }
 
   if (row_partition_types.empty()) {
-    return InvalidArgument("Partition info types should not be empty");
+    return absl::InvalidArgumentError(
+        "Partition info types should not be empty");
   }
   for (int i = 1; i < row_partition_types.size(); ++i) {
     if (row_partition_types[i] == RowPartitionType::FIRST_DIM_SIZE) {
-      return InvalidArgument("FIRST_DIM_SIZE must be first");
+      return absl::InvalidArgumentError("FIRST_DIM_SIZE must be first");
     }
   }
   if (row_partition_types[0] == RowPartitionType::FIRST_DIM_SIZE &&
       (row_partition_types.size() < 2 ||
        row_partition_types[1] != RowPartitionType::VALUE_ROWIDS)) {
-    return InvalidArgument("FIRST_DIM_SIZE must be followed by VALUE_ROWIDS");
+    return absl::InvalidArgumentError(
+        "FIRST_DIM_SIZE must be followed by VALUE_ROWIDS");
   }
   if (row_partition_types[0] == RowPartitionType::VALUE_ROWIDS) {
-    return InvalidArgument("VALUE_ROWIDS cannot be first");
+    return absl::InvalidArgumentError("VALUE_ROWIDS cannot be first");
   }
 
   int num_row_partition_tensors;
   TF_RETURN_IF_ERROR(
       c->GetAttr("num_row_partition_tensors", &num_row_partition_tensors));
   if (num_row_partition_tensors != row_partition_types.size()) {
-    return InvalidArgument(
+    return absl::InvalidArgumentError(absl::StrCat(
         "Number of row partition tensors (", num_row_partition_tensors,
         ") does not equal the number of row partition types(",
-        row_partition_types.size(), ").");
+        row_partition_types.size(), ")."));
   }
 
   for (int i = 0; i < num_row_partition_tensors; ++i) {
@@ -76,11 +79,11 @@ absl::Status ValidateRowPartitionTypesAndShapes(
     }
     if (row_partition_types[i] == RowPartitionType::FIRST_DIM_SIZE) {
       if (partition_shape.dim_size() != 0) {
-        return InvalidArgument("FIRST_DIM_SIZE must be a scalar.");
+        return absl::InvalidArgumentError("FIRST_DIM_SIZE must be a scalar.");
       }
     } else {
       if (partition_shape.dim_size() != 1) {
-        return InvalidArgument("Row partition must be a vector.");
+        return absl::InvalidArgumentError("Row partition must be a vector.");
       }
     }
   }
@@ -162,7 +165,7 @@ absl::Status RaggedTensorToSparseShapeFn(InferenceContext* c) {
   TF_RETURN_IF_ERROR(c->GetAttr<int64_t>("RAGGED_RANK", &num_splits));
   // TODO(b/112274756): Allow ragged_rank to be 0.
   if (num_splits < 1) {
-    return errors::InvalidArgument("Requires RAGGED_RANK>0");
+    return absl::InvalidArgumentError("Requires RAGGED_RANK>0");
   }
   ShapeHandle rt_dense_values = c->input(num_splits);
   TF_RETURN_IF_ERROR(c->WithRankAtLeast(rt_dense_values, 1, &rt_dense_values));

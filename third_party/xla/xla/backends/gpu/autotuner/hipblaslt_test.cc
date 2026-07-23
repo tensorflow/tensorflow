@@ -140,6 +140,19 @@ TEST_F(HipblasLtBackendTest, GetSupportedConfigs) {
               absl_testing::IsOkAndHolds(testing::SizeIs(testing::Gt(0))));
 }
 
+TEST_F(HipblasLtBackendTest, GetSupportedConfigsReturnsErrorForDeviceless) {
+  HipblasLtBackend backend_without_stream_executor(
+      /*stream_executor=*/nullptr, &debug_options_, &compiler_,
+      &target_config_);
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
+                       ParseAndReturnVerifiedModule(kHipblasLtCustomCallHlo));
+  absl::StatusOr<std::vector<std::unique_ptr<BackendConfig>>> configs =
+      backend_without_stream_executor.GetSupportedConfigs(
+          *hlo_module->entry_computation()->root_instruction()->operand(0));
+  EXPECT_THAT(configs,
+              absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
+}
+
 TEST_F(HipblasLtBackendTest,
        GetSupportedConfigsReturnsEmptyVectorForNonHipblasLtCustomCall) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
@@ -189,13 +202,13 @@ TEST_F(HipblasLtBackendTest, ApplyConfig) {
   HipblasLtBackendConfig config;
   config.set_algorithm(2);
   config.set_autotune_workspace_size(42);
-  google::protobuf::Any any;
-  any.PackFrom(config);
+  BackendConfig backend_config;
+  *backend_config.mutable_gemm() = config;
   TF_EXPECT_OK(backend_.ApplyConfig(*hlo_module->entry_computation()
                                          ->root_instruction()
                                          ->mutable_operands()
                                          .at(0),
-                                    any));
+                                    backend_config));
   EXPECT_THAT(RunFileCheck(hlo_module->ToString(),
                            R"(CHECK: (f32[100,100]{1,0}, s8[42]{0}) custom-call
                               CHECK: "selected_algorithm":"2")"),
@@ -213,6 +226,96 @@ TEST_F(HipblasLtBackendTest, Compile) {
   absl::StatusOr<std::unique_ptr<Executable>> executable = backend_.Compile(
       *(module->entry_computation()->root_instruction()->operand(0)), *config);
   EXPECT_THAT(executable, absl_testing::IsOk());
+}
+
+const char kScaledDotFp8FusionHlo[] = R"(
+HloModule ScaledDotFusion
+
+%fusion_dot (p0: f8e4m3fn[32,256], p1: f8e4m3fn[16,256], p2: f8e8m0fnu[32,8], p3: f8e8m0fnu[16,8]) -> f32[32,16] {
+  %p0 = f8e4m3fn[32,256]{1,0} parameter(0)
+  %p1 = f8e4m3fn[16,256]{1,0} parameter(1)
+  %p2 = f8e8m0fnu[32,8]{1,0} parameter(2)
+  %p3 = f8e8m0fnu[16,8]{1,0} parameter(3)
+  ROOT %scaled_dot = f32[32,16]{1,0} scaled-dot(%p0, %p1, %p2, %p3), lhs_contracting_dims={1}, rhs_contracting_dims={1}
+}
+
+ENTRY %main (lhs: f8e4m3fn[32,256], rhs: f8e4m3fn[16,256], lhs_scale: f8e8m0fnu[32,8], rhs_scale: f8e8m0fnu[16,8]) -> f32[32,16] {
+  %lhs = f8e4m3fn[32,256]{1,0} parameter(0)
+  %rhs = f8e4m3fn[16,256]{1,0} parameter(1)
+  %lhs_scale = f8e8m0fnu[32,8]{1,0} parameter(2)
+  %rhs_scale = f8e8m0fnu[16,8]{1,0} parameter(3)
+  ROOT %fusion = f32[32,16]{1,0} fusion(%lhs, %rhs, %lhs_scale, %rhs_scale), kind=kCustom, calls=%fusion_dot, backend_config={"fusion_backend_config":{"kind":"__triton_gemm"}}
+})";
+
+const char kScaledDotFp4FusionHlo[] = R"(
+HloModule ScaledDotFp4Fusion
+
+%fusion_dot (p0: f4e2m1fn[32,256], p1: f4e2m1fn[16,256], p2: f8e8m0fnu[32,8], p3: f8e8m0fnu[16,8]) -> f32[32,16] {
+  %p0 = f4e2m1fn[32,256]{1,0} parameter(0)
+  %p1 = f4e2m1fn[16,256]{1,0} parameter(1)
+  %p2 = f8e8m0fnu[32,8]{1,0} parameter(2)
+  %p3 = f8e8m0fnu[16,8]{1,0} parameter(3)
+  ROOT %scaled_dot = f32[32,16]{1,0} scaled-dot(%p0, %p1, %p2, %p3), lhs_contracting_dims={1}, rhs_contracting_dims={1}
+}
+
+ENTRY %main (lhs: f4e2m1fn[32,256], rhs: f4e2m1fn[16,256], lhs_scale: f8e8m0fnu[32,8], rhs_scale: f8e8m0fnu[16,8]) -> f32[32,16] {
+  %lhs = f4e2m1fn[32,256]{1,0} parameter(0)
+  %rhs = f4e2m1fn[16,256]{1,0} parameter(1)
+  %lhs_scale = f8e8m0fnu[32,8]{1,0} parameter(2)
+  %rhs_scale = f8e8m0fnu[16,8]{1,0} parameter(3)
+  ROOT %fusion = f32[32,16]{1,0} fusion(%lhs, %rhs, %lhs_scale, %rhs_scale), kind=kCustom, calls=%fusion_dot, backend_config={"fusion_backend_config":{"kind":"__triton_gemm"}}
+})";
+
+class HipblasLtScaledDotTest : public HipblasLtBackendTest {
+ protected:
+  void SetUp() override {
+    const auto& gpu_cc =
+        target_config_.device_description.gpu_compute_capability();
+    const auto* rocm_cc = gpu_cc.rocm_compute_capability();
+    if (rocm_cc == nullptr || !rocm_cc->has_mx_type_support()) {
+      GTEST_SKIP() << "Scaled dot requires MX type support (gfx950+).";
+    }
+  }
+
+  static constexpr const char* kScaledDotHlos[] = {kScaledDotFp8FusionHlo,
+                                                   kScaledDotFp4FusionHlo};
+};
+
+TEST_F(HipblasLtScaledDotTest, GetSupportedConfigs) {
+  for (const char* hlo : kScaledDotHlos) {
+    TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+    HloInstruction* fusion = module->entry_computation()->root_instruction();
+    auto configs = backend_.GetSupportedConfigs(*fusion);
+    EXPECT_THAT(configs,
+                absl_testing::IsOkAndHolds(testing::SizeIs(testing::Gt(0))));
+  }
+}
+
+TEST_F(HipblasLtScaledDotTest, ApplyConfig) {
+  for (const char* hlo : kScaledDotHlos) {
+    TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+    HloInstruction* fusion = module->entry_computation()->root_instruction();
+    TF_ASSERT_OK_AND_ASSIGN(auto config, backend_.GetDefaultConfig(*fusion));
+
+    TF_EXPECT_OK(backend_.ApplyConfig(*fusion, *config));
+
+    EXPECT_THAT(RunFileCheck(module->ToString(),
+                             R"(CHECK: custom-call
+                        CHECK-SAME: custom_call_target="__cublas$lt$matmul$mx"
+                        CHECK: "scale_mode":2)"),
+                absl_testing::IsOkAndHolds(true));
+  }
+}
+
+TEST_F(HipblasLtScaledDotTest, Compile) {
+  for (const char* hlo : kScaledDotHlos) {
+    TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+    HloInstruction* fusion = module->entry_computation()->root_instruction();
+    TF_ASSERT_OK_AND_ASSIGN(auto config, backend_.GetDefaultConfig(*fusion));
+
+    auto executable = backend_.Compile(*fusion, *config);
+    EXPECT_THAT(executable, absl_testing::IsOk());
+  }
 }
 
 }  // namespace gpu

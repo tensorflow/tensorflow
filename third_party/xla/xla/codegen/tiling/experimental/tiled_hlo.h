@@ -1,3 +1,4 @@
+#include "absl/base/nullability.h"
 /* Copyright 2025 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -20,9 +21,12 @@ limitations under the License.
 #include <memory>
 #include <string>
 #include <utility>
-#include <variant>
 #include <vector>
 
+#include "absl/algorithm/container.h"
+#include "absl/container/flat_hash_map.h"
+#include "absl/log/check.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "llvm/ADT/ArrayRef.h"
@@ -30,12 +34,52 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"
 #include "xla/codegen/tiling/experimental/tile.h"
 #include "xla/codegen/tiling/experimental/tiling_space.h"
+#include "xla/hlo/analysis/interval.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/utils/hlo_traversal.h"
-#include "xla/service/instruction_fusion.h"
+#include "xla/iterator_util.h"
+#include "xla/tsl/lib/gtl/iterator_range.h"
 #include "xla/util.h"
 
 namespace xla::gpu::experimental {
+
+class TiledHloInstruction;
+
+// A region is a collection of instructions grouped to represent a nested
+// control flow (e.g., loops) or a distinct computation branch. It also exposes
+// the subset of those instructions that are the entry points to the region
+// ("roots").
+class TiledHloRegion {
+ public:
+  TiledHloRegion() = default;
+  TiledHloRegion(TiledHloRegion&&) = default;
+  TiledHloRegion& operator=(TiledHloRegion&&) = default;
+
+  TiledHloRegion(
+      std::vector<absl_nonnull std::unique_ptr<TiledHloInstruction>>
+          instructions,
+      llvm::SmallVector<const TiledHloInstruction* absl_nonnull, 4> roots);
+
+  const std::vector<std::unique_ptr<TiledHloInstruction>>& instructions()
+      const {
+    return instructions_;
+  }
+  const llvm::SmallVector<const TiledHloInstruction*, 4>& roots() const {
+    return roots_;
+  }
+
+  // Simplifies the tiles of instructions in the region recursively.
+  void Simplify();
+
+  // Sorts instructions in def-before-use (post order) order recursively.
+  void SortInstructionsPostOrder();
+
+ private:
+  // The tiled HLO instructions. Instructions are not ordered by
+  // default, call SortInstructionsPostOrder() to sort them.
+  std::vector<std::unique_ptr<TiledHloInstruction>> instructions_;
+  llvm::SmallVector<const TiledHloInstruction*, 4> roots_;
+};
 
 // A node in the symbolic tiled representation of an HLO computation. During
 // tiling and codegen an HLO instruction may need to be emitted multiple times
@@ -56,11 +100,19 @@ class TiledHloInstruction {
   llvm::ArrayRef<const TiledHloInstruction*> operands() const {
     return operands_;
   }
-
-  // Appends an operand to the end of the operand list.
-  void AppendOperand(TiledHloInstruction* operand) {
+  void AddOperand(const TiledHloInstruction* operand) {
     operands_.push_back(operand);
   }
+
+  llvm::ArrayRef<TiledHloRegion> hlo_regions() const { return regions_; }
+  llvm::MutableArrayRef<TiledHloRegion> hlo_regions() { return regions_; }
+  void AddHloRegion(TiledHloRegion region) {
+    regions_.push_back(std::move(region));
+  }
+
+  // Returns the TiledHloInstructions that correspond to the runtime variables
+  // of the original HLO instruction.
+  llvm::SmallVector<const TiledHloInstruction*, 2> runtime_variables() const;
 
   // Returns a string representation of the instruction. Used only for error
   // messages and debugging.
@@ -72,15 +124,31 @@ class TiledHloInstruction {
     sink.Append(tiled_hlo.ToString());
   }
 
-  // A region is a collection of instructions grouped to represent a nested
-  // control flow (e.g., loops) or a distinct computation branch.
-  using Region = std::vector<std::unique_ptr<TiledHloInstruction>>;
+  // Temporary helpers to match API of the old TiledHloInstruction.
+  // TODO: b/509505290 -- Remove these once we migrate to this tiling and the
+  // old API is removed.
+  llvm::SmallVector<int64_t> tile_sizes() const {
+    auto tile_sizes = tile_.GetStaticTileSizes();
+    CHECK_OK(tile_sizes);
+    return *tile_sizes;
+  }
+  llvm::SmallVector<int64_t> tile_strides() const {
+    auto tile_strides = tile_.GetStaticTileStrides();
+    CHECK_OK(tile_strides);
+    return *tile_strides;
+  }
 
-  // Returns the regions of the instruction.
-  absl::Span<const Region> regions() const { return regions_; }
+  int64_t tile_size(int64_t dim) const {
+    auto tile_sizes = this->tile_sizes();
+    CHECK_LT(dim, tile_sizes.size());
+    return tile_sizes[dim];
+  }
 
-  // Adds a region to the instruction. The region is owned by the instruction.
-  void AddRegion(Region region) { regions_.push_back(std::move(region)); }
+  int64_t tile_stride(int64_t dim) const {
+    auto tile_strides = this->tile_strides();
+    CHECK_LT(dim, tile_strides.size());
+    return tile_strides[dim];
+  }
 
  private:
   // Pointer to the original HLO instruction.
@@ -93,7 +161,7 @@ class TiledHloInstruction {
   llvm::SmallVector<const TiledHloInstruction*, 2> operands_;
 
   // Regions of the instruction.
-  llvm::SmallVector<Region> regions_;
+  llvm::SmallVector<TiledHloRegion, 2> regions_;
 };
 
 inline bool operator==(const TiledHloInstruction& lhs,
@@ -117,26 +185,54 @@ H AbslHashValue(H h, const TiledHloInstruction& tiled_hlo_instruction) {
   return h;
 }
 
-class TiledHloComputation;
-using TileAnalysisOrError = std::variant<TiledHloComputation, FusionDecision>;
-using TiledHloRegionOrError =
-    std::variant<TiledHloInstruction::Region, FusionDecision>;
-
 // Constructs and holds symbolic tiles for all the instructions within a fusion.
 class TiledHloComputation {
  public:
-  static TileAnalysisOrError Tile(const HloFusionAdaptor& fusion,
-                                  std::unique_ptr<TilingSpace> tiling_space);
+  using InstructionType = TiledHloInstruction;
 
-  // Returns the symbolic tiled HLO instructions in def-before-use order.
-  llvm::ArrayRef<std::unique_ptr<TiledHloInstruction>> tiled_hlo_instructions()
-      const {
-    return tiled_hlo_instructions_;
+  // Creates a tiled HLO computation from a fusion and a tiling space.
+  static absl::StatusOr<TiledHloComputation> Tile(
+      const HloFusionAdaptor& fusion,
+      std::unique_ptr<TilingSpace> tiling_space);
+
+  // Simplifies the tiles of instructions in the computation recursively.
+  void Simplify();
+
+  // Sorts instructions in def-before-use (post order) order recursively.
+  void SortInstructionsPostOrder();
+
+  // Returns the symbolic tiled HLO instructions. Instructions in regions are
+  // not in def-before-use order by default.
+  const TiledHloRegion& tiled_root_region() const { return region_; }
+
+  // Returns an iterator range over the instructions in the root region of
+  // the computation (not in def-before-use order by default).
+  tsl::gtl::iterator_range<UnwrappingIterator<
+      std::vector<std::unique_ptr<TiledHloInstruction>>::const_iterator>>
+  instructions() const {
+    return {MakeUnwrappingIterator(region_.instructions().begin()),
+            MakeUnwrappingIterator(region_.instructions().end())};
   }
+
   // Return the underlying MLIRContext.
   mlir::MLIRContext* GetMLIRContext() const {
     return tiling_space_->mlir_context();
   };
+
+  // Returns the tiling space.
+  const TilingSpace& tiling_space() const { return *tiling_space_; }
+
+  // Returns the root instructions.
+  absl::Span<const TiledHloInstruction* const> roots() const {
+    return region_.roots();
+  }
+
+  // Returns the map from runtime variable symbol to TiledHloInstruction.
+  const absl::flat_hash_map<int64_t,
+                            std::pair<const TiledHloInstruction*, Interval>>&
+  rt_symbol_to_tiled_hlo() const {
+    return rt_symbol_to_tiled_hlo_;
+  }
 
   // Returns a string representation of the analysis.
   std::string ToString() const;
@@ -148,20 +244,45 @@ class TiledHloComputation {
     sink.Append(tiled_computation.ToString());
   }
 
+  // Temporary helpers to match API of the old TiledHloComputation.
+  // TODO: b/509505290 -- Remove these once we migrate to this tiling and the
+  // old API is removed.
+  int64_t num_output_tiles() const {
+    int64_t res = 1;
+    for (const auto& dimension : tiling_space_->dimensions()) {
+      if (dimension.type != TilingSpace::DimensionSemantics::kParallel) {
+        continue;
+      }
+      res *= CeilOfRatio(dimension.dimension_size, *dimension.tile_size);
+    }
+    return res;
+  }
+
  private:
   TiledHloComputation(
       std::unique_ptr<TilingSpace> tiling_space,
-      std::vector<std::unique_ptr<TiledHloInstruction>> tiled_hlo_instructions)
+      TiledHloRegion tiled_root_region,
+      absl::flat_hash_map<int64_t,
+                          std::pair<const TiledHloInstruction*, Interval>>
+          rt_symbol_to_tiled_hlo)
       : tiling_space_(std::move(tiling_space)),
-        tiled_hlo_instructions_(std::move(tiled_hlo_instructions)) {}
+        region_(std::move(tiled_root_region)),
+        rt_symbol_to_tiled_hlo_(std::move(rt_symbol_to_tiled_hlo)) {}
 
-  static TiledHloRegionOrError CreateRegion(
-      std::unique_ptr<TiledHloInstruction> tiled_root,
-      const HloFusionAdaptor& fusion, const TilingSpace& tiling_space);
+  static absl::StatusOr<TiledHloRegion> CreateHloRegion(
+      std::vector<std::unique_ptr<TiledHloInstruction>> roots,
+      const HloFusionAdaptor& fusion, TilingSpace& tiling_space,
+      absl::flat_hash_map<int64_t,
+                          std::pair<const TiledHloInstruction*, Interval>>&
+          rt_symbol_to_tiled_hlo);
 
   std::unique_ptr<TilingSpace> tiling_space_;
-  // The tiled HLO instructions in def-before-use order.
-  std::vector<std::unique_ptr<TiledHloInstruction>> tiled_hlo_instructions_;
+
+  TiledHloRegion region_;
+
+  // Map from runtime variable symbol to TiledHloInstruction.
+  absl::flat_hash_map<int64_t, std::pair<const TiledHloInstruction*, Interval>>
+      rt_symbol_to_tiled_hlo_;
 };
 
 }  // namespace xla::gpu::experimental

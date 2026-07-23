@@ -33,6 +33,7 @@
 #include "xla/python/ifrt/topology.h"
 #include "xla/python/ifrt/user_context.h"
 #include "xla/python/ifrt_proxy/client/rpc_helper.h"
+#include "xla/python/ifrt_proxy/common/ifrt_service.pb.h"
 #include "xla/tsl/concurrency/future.h"
 #include "xla/tsl/concurrency/ref_count.h"
 
@@ -61,7 +62,7 @@ class Compiler final : public llvm::RTTIExtends<Compiler, xla::ifrt::Compiler> {
   }
 
   tsl::Future<xla::ifrt::LoadedExecutableRef> DeserializeLoadedExecutable(
-      absl::string_view serialized,
+      const absl::Cord& serialized,
       std::unique_ptr<xla::ifrt::DeserializeExecutableOptions> options)
       override;
 

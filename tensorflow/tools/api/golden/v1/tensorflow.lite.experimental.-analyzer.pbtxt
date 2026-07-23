@@ -1,12 +1,13 @@
 path: "tensorflow.lite.experimental.Analyzer"
 tf_class {
   is_instance: "<class \'tensorflow.lite.python.analyzer.ModelAnalyzer\'>"
-  is_instance: "<type \'object\'>"
+  is_instance: "<class \'object\'>"
   member_method {
     name: "__init__"
   }
   member_method {
     name: "analyze"
     argspec: "args=[\'model_path\', \'model_content\', \'gpu_compatibility\'], varargs=None, keywords=kwargs, defaults=[\'None\', \'None\', \'False\'], "
+    method_kind: STATIC
   }
 }

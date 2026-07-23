@@ -29,6 +29,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -100,9 +101,9 @@ absl::Status CheckTypes(HloInstruction* conv, const se::GpuComputeCapability cc,
     return absl::OkStatus();
   };
 
-  TF_RETURN_IF_ERROR(valid_shape(conv->shape()));
-  TF_RETURN_IF_ERROR(valid_shape(conv->operand(0)->shape()));
-  TF_RETURN_IF_ERROR(valid_shape(conv->operand(1)->shape()));
+  RETURN_IF_ERROR(valid_shape(conv->shape()));
+  RETURN_IF_ERROR(valid_shape(conv->operand(0)->shape()));
+  RETURN_IF_ERROR(valid_shape(conv->operand(1)->shape()));
   return absl::OkStatus();
 }
 
@@ -434,13 +435,13 @@ ConvolutionMatch MatchBackwardInput(HloInstruction* conv) {
   return rhs;
 }
 
-using ConvKind = HloConvolutionInstruction::ConvKind;
-
-HloInstruction* CreateGpuConv(ConvKind conv_kind, HloInstruction* conv,
-                              HloInstruction* lhs, HloInstruction* rhs) {
+HloInstruction* CreateGpuConv(ConvolutionKind convolution_kind,
+                              HloInstruction* conv, HloInstruction* lhs,
+                              HloInstruction* rhs) {
   HloInstruction* cloned_conv = conv->parent()->AddInstruction(
       conv->CloneWithNewOperands(conv->shape(), {lhs, rhs}));
-  DynCast<HloConvolutionInstruction>(cloned_conv)->set_conv_kind(conv_kind);
+  DynCast<HloConvolutionInstruction>(cloned_conv)
+      ->set_convolution_kind(convolution_kind);
   return cloned_conv;
 }
 
@@ -500,18 +501,23 @@ HloInstruction* ConvertBatchGroupedToFeatureGroupedConvolution(
 absl::StatusOr<HloInstruction*> AssignConvKind(
     HloInstruction* conv, const se::GpuComputeCapability& cc,
     const se::dnn::VersionInfo& dnn_version) {
-  TF_RETURN_IF_ERROR(CheckTypes(conv, cc, dnn_version));
+  RETURN_IF_ERROR(CheckTypes(conv, cc, dnn_version));
   if (ConvolutionMatch m = MatchBackwardInput(conv)) {
-    conv = CreateGpuConv(ConvKind::DGRAD, conv, conv->mutable_operand(0), *m);
+    conv = CreateGpuConv(CONVOLUTION_KIND_DGRAD, conv, conv->mutable_operand(0),
+                         *m);
   } else if (ConvolutionMatch m = MatchBackwardFilter(conv)) {
-    conv = CreateGpuConv(ConvKind::WGRAD, conv, *m, conv->mutable_operand(1));
+    conv = CreateGpuConv(CONVOLUTION_KIND_WGRAD, conv, *m,
+                         conv->mutable_operand(1));
   } else if (CanImplementAsGpuForwardConv(conv)) {
     // If all else fails, try a forward convolution.
     if (conv->batch_group_count() > 1) {
       conv = ConvertBatchGroupedToFeatureGroupedConvolution(conv);
+      Cast<HloConvolutionInstruction>(conv)->set_convolution_kind(
+          CONVOLUTION_KIND_FPROP);
+    } else {
+      conv = CreateGpuConv(CONVOLUTION_KIND_FPROP, conv,
+                           conv->mutable_operand(0), conv->mutable_operand(1));
     }
-    conv = CreateGpuConv(ConvKind::FPROP, conv, conv->mutable_operand(0),
-                         conv->mutable_operand(1));
   }
   return conv;
 }
@@ -521,15 +527,15 @@ absl::StatusOr<bool> RunOnInstruction(HloInstruction* conv,
                                       const se::GpuComputeCapability& cc,
                                       const se::dnn::VersionInfo& dnn_version) {
   CHECK_EQ(conv->opcode(), HloOpcode::kConvolution);
-  TF_ASSIGN_OR_RETURN(HloInstruction * conv_with_kind,
-                      AssignConvKind(conv, cc, dnn_version));
+  ASSIGN_OR_RETURN(HloInstruction * conv_with_kind,
+                   AssignConvKind(conv, cc, dnn_version));
   if (conv == nullptr) {
     return false;
   }
 
   VLOG(1) << "Replacing convolution " << conv->ToString() << " with "
           << conv_with_kind->ToString();
-  TF_RETURN_IF_ERROR(conv->parent()->ReplaceInstruction(conv, conv_with_kind));
+  RETURN_IF_ERROR(conv->parent()->ReplaceInstruction(conv, conv_with_kind));
   return true;
 }
 
@@ -539,13 +545,17 @@ absl::StatusOr<bool> RunOnComputation(HloComputation* computation,
   std::vector<HloInstruction*> convs;
   for (auto* hlo : computation->instructions()) {
     if (HloPredicateIsOp<HloOpcode::kConvolution>(hlo)) {
-      convs.push_back(hlo);
+      ConvolutionKind convolution_kind =
+          DynCast<HloConvolutionInstruction>(hlo)->convolution_kind();
+      if (convolution_kind == CONVOLUTION_KIND_UNSET) {
+        convs.push_back(hlo);
+      }
     }
   }
 
   bool changed = false;
   for (HloInstruction* conv : convs) {
-    TF_ASSIGN_OR_RETURN(bool result, RunOnInstruction(conv, cc, dnn_version));
+    ASSIGN_OR_RETURN(bool result, RunOnInstruction(conv, cc, dnn_version));
     changed |= result;
   }
   return changed;
@@ -560,7 +570,7 @@ absl::StatusOr<bool> ConvKindAssignment::RunImpl(
   bool changed = false;
   for (HloComputation* computation :
        module->MakeNonfusionComputations(execution_threads)) {
-    TF_ASSIGN_OR_RETURN(
+    ASSIGN_OR_RETURN(
         bool result,
         RunOnComputation(computation, compute_capability_, dnn_version_));
     changed |= result;

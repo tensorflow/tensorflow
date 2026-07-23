@@ -14,6 +14,16 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/kernels/data/fixed_length_record_dataset_op.h"
 
+#include <cstddef>
+#include <cstdint>
+#include <memory>
+#include <string>
+#include <utility>
+#include <vector>
+
+#include "absl/log/check.h"
+#include "absl/status/status.h"
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/data/name_utils.h"
 #include "tensorflow/core/data/utils.h"
 #include "tensorflow/core/framework/dataset.h"
@@ -21,6 +31,7 @@ limitations under the License.
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tf_data_file_logger_options.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/io/buffered_inputstream.h"
 #include "tensorflow/core/lib/io/inputbuffer.h"
 #include "tensorflow/core/lib/io/random_inputstream.h"
@@ -184,6 +195,13 @@ class FixedLengthRecordDatasetOp::Dataset : public DatasetBase {
         const std::string& next_filename =
             dataset()->filenames_[current_file_index_];
         TF_RETURN_IF_ERROR(ctx->env()->GetFileSize(next_filename, &file_size));
+        if (file_size < dataset()->header_bytes_ + dataset()->footer_bytes_) {
+          return errors::InvalidArgument(
+              "Input file \"", next_filename, "\" has length ", file_size,
+              " bytes, which is smaller than the sum of the header (",
+              dataset()->header_bytes_, " bytes) and footer (",
+              dataset()->footer_bytes_, " bytes).");
+        }
         file_pos_limit_ = file_size - dataset()->footer_bytes_;
 
         uint64_t body_size =
@@ -353,6 +371,14 @@ class FixedLengthRecordDatasetOp::Dataset : public DatasetBase {
           uint64_t file_size;
           TF_RETURN_IF_ERROR(ctx->env()->GetFileSize(
               dataset()->filenames_[current_file_index_], &file_size));
+          if (file_size < dataset()->header_bytes_ + dataset()->footer_bytes_) {
+            return errors::InvalidArgument(
+                "Input file \"", dataset()->filenames_[current_file_index_],
+                "\" has length ", file_size,
+                " bytes, which is smaller than the sum of the header (",
+                dataset()->header_bytes_, " bytes) and footer (",
+                dataset()->footer_bytes_, " bytes).");
+          }
           file_pos_limit_ = file_size - dataset()->footer_bytes_;
 
           uint64_t body_size =

@@ -1,22 +1,22 @@
 path: "tensorflow.tpu.experimental.DeviceAssignment"
 tf_class {
   is_instance: "<class \'tensorflow.python.tpu.device_assignment.DeviceAssignment\'>"
-  is_instance: "<type \'object\'>"
+  is_instance: "<class \'object\'>"
   member {
     name: "core_assignment"
-    mtype: "<type \'property\'>"
+    mtype: "<class \'property\'>"
   }
   member {
     name: "num_cores_per_replica"
-    mtype: "<type \'property\'>"
+    mtype: "<class \'property\'>"
   }
   member {
     name: "num_replicas"
-    mtype: "<type \'property\'>"
+    mtype: "<class \'property\'>"
   }
   member {
     name: "topology"
-    mtype: "<type \'property\'>"
+    mtype: "<class \'property\'>"
   }
   member_method {
     name: "__init__"
@@ -25,6 +25,7 @@ tf_class {
   member_method {
     name: "build"
     argspec: "args=[\'cls\', \'topology\', \'computation_shape\', \'computation_stride\', \'num_replicas\', \'device_order_mode\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'1\', \'0\'], "
+    method_kind: CLASS
   }
   member_method {
     name: "coordinates"

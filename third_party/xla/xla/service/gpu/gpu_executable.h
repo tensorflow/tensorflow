@@ -28,18 +28,20 @@ limitations under the License.
 #include "absl/base/nullability.h"
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
-#include "absl/container/flat_hash_set.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
+#include "xla/backends/cpu/target_machine_options.h"
 #include "xla/backends/gpu/runtime/annotation.h"
+#include "xla/backends/gpu/runtime/collective_memory_cache.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
 #include "xla/backends/gpu/runtime/thunk_executor.h"
 #include "xla/client/executable_build_options.h"
 #include "xla/hlo/ir/hlo_input_output_alias_config.h"
+#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/computation_layout.h"
@@ -47,19 +49,22 @@ limitations under the License.
 #include "xla/service/gpu/alias_info.h"
 #include "xla/service/gpu/buffer_allocations.h"
 #include "xla/service/gpu/gpu_executable.pb.h"
+#include "xla/service/gpu/gpu_executable_buffer_allocator.h"
+#include "xla/service/gpu/gpu_module_globals.h"
 #include "xla/service/gpu/ir_emission_utils.h"
-#include "xla/service/logical_buffer.h"
+#include "xla/service/hlo.pb.h"
 #include "xla/service/service_executable_run_options.h"
 #include "xla/service/shaped_buffer.h"
+#include "xla/service/stream_pool.h"
+#include "xla/service/xla_debug_info_manager.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/abi/executable_abi_version.h"
 #include "xla/stream_executor/device_address.h"
-#include "xla/stream_executor/device_address_allocator.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/kernel_stats.h"
 #include "xla/stream_executor/platform.h"
-#include "xla/stream_executor/scoped_module_handle.h"
+#include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/xla.pb.h"
 
@@ -73,19 +78,17 @@ namespace gpu {
 // This is an immutable data type after initialization, and thus thread safe.
 class GpuExecutable : public Executable {
  public:
-  struct ConstantInfo {
-    std::string symbol_name;
-    DenseDataIntermediate content;
-    int allocation_index = -1;
-
-    GpuExecutableProto::ConstantInfoProto ToProto() const;
-
-    static ConstantInfo FromProto(
-        const GpuExecutableProto::ConstantInfoProto& proto);
+  struct NumAdditionalStreams {
+    int compute = 0;
+    int communication = 0;
   };
+
+  using ConstantInfo = GpuModuleGlobals::ConstantInfo;
 
   struct OutputInfo {
     // Corresponding allocation index.
+    // Note that each output lives on its own allocation, i.e., it is allocated
+    // in a slice with offset 0, and size equal to the size of the allocation.
     int allocation_index;
 
     // Output is passed-through from a parameter.
@@ -111,7 +114,6 @@ class GpuExecutable : public Executable {
   };
 
   struct Params {
-    std::string asm_text;
     std::vector<uint8_t> binary;
     BinaryMap dnn_compiled_graphs;
     std::unique_ptr<ThunkExecutor> executable;
@@ -119,24 +121,23 @@ class GpuExecutable : public Executable {
     absl::flat_hash_map<ShapeIndex, OutputInfo> output_info;
     std::string module_name;
     ProgramShape program_shape;
-    std::optional<std::vector<BufferAllocation>> mlir_allocations;
-    std::unique_ptr<const BufferAssignment> buffer_assignment;
+    std::vector<BufferAllocation> allocations;
     std::unique_ptr<GpuAliasInfo> alias_info;
     DebugOptions debug_options;
     se::DeviceDescription device_description;
     std::unique_ptr<HloModule> debug_module = nullptr;
     bool enable_debug_info_manager = true;
     ModuleStats module_stats;
-    stream_executor::ExecutableAbiVersion executable_abi_version;
+    se::ExecutableAbiVersion executable_abi_version;
+    std::optional<xla::cpu::TargetMachineOptions> cpu_target_machine_options;
+    BufferAssignmentProto buffer_assignment_proto;
+    std::string buffer_allocations_debug_summary;
   };
 
   static absl::StatusOr<std::unique_ptr<GpuExecutable>> Create(Params params);
   ~GpuExecutable() override;
 
   int64_t SizeOfGeneratedCodeInBytes() const override;
-
-  // This should be called after set_ir_module_string.
-  const std::string& ir_module_string() const { return ir_module_string_; }
 
   absl::string_view name() const override { return module_name_; }
 
@@ -149,19 +150,6 @@ class GpuExecutable : public Executable {
   ComputationLayout compute_computation_layout() const override {
     return ComputationLayout(program_shape_, /*ignore_layouts=*/false);
   }
-
-  // This should be called before ExecuteOnStream.
-  void set_ir_module_string(const std::string& ir_module_string) {
-    ir_module_string_ = ir_module_string;
-  }
-
-  // Returns the compiled code for the computation.
-  //
-  // The compiled code is PTX in Cuda and unused empty string in ROCm.
-  // This may be left empty for saving memory if we have a non-empty binary.
-  // If both text() and binary() are empty, that means the HLO required no
-  // custom kernels to be compiled.
-  const std::string& text() const { return text_; }
 
   // Returns the binary stored in this GpuExecutable.
   //
@@ -194,21 +182,41 @@ class GpuExecutable : public Executable {
     return allocation_ptrs_;
   }
 
+  absl::Span<const BufferAllocation> allocations() const {
+    return allocations_;
+  }
+
   const std::vector<ConstantInfo>& constants() const { return constants_; }
 
-  const BufferAssignment* buffer_assignment() const {
-    return buffer_assignment_.get();
+  // Human readable summary of the buffer allocations. Tailored to debugging
+  // OOMs, includes the Hlo op metadata for every buffer associated with each
+  // allocation.
+  const std::string& buffer_allocations_debug_summary() const {
+    return buffer_allocations_debug_summary_;
   }
+
+  // Returns the stored buffer assignment proto.
+  const BufferAssignmentProto& buffer_assignment_proto() const;
 
   const GpuAliasInfo* alias_info() const { return alias_info_.get(); }
 
   const ThunkExecutor& thunk_executor() const { return *thunk_executor_; }
 
-  absl::Status ExecuteThunks(const BufferAllocations& buffer_allocations,
-                             const ServiceExecutableRunOptions* run_options);
+  GpuExecutableBufferAllocator& buffer_allocator() {
+    return *buffer_allocator_;
+  }
+  const GpuExecutableBufferAllocator& buffer_allocator() const {
+    return *buffer_allocator_;
+  }
+
+  absl::Status ExecuteThunks(
+      const BufferAllocations& buffer_allocations,
+      const ServiceExecutableRunOptions* run_options,
+      std::optional<absl::Span<const BufferAllocation::Index>>
+          persistent_alloc_indices = std::nullopt);
 
   using BufferAllocToDeviceMemoryMap =
-      absl::flat_hash_map<BufferAllocation::Index, se::DeviceAddressBase>;
+      GpuModuleGlobals::BufferAllocToDeviceMemoryMap;
 
   // Loads the PTX or CUBIN for this executable and initializes all
   // constants that haven't already been initialized by the CUDA driver. Loaded
@@ -221,15 +229,13 @@ class GpuExecutable : public Executable {
   // the given stream, it is skipped and the cached map is immediately returned
   // instead.
   absl::StatusOr<const BufferAllocToDeviceMemoryMap*> ResolveConstantGlobals(
-      stream_executor::Stream* stream);
-
-  absl::Status VerboseAllocationError(absl::Status s);
+      se::Stream* stream);
 
   static absl::StatusOr<std::unique_ptr<GpuExecutable>> FromProto(
       const GpuExecutableProto&,
       const se::DeviceDescription& device_description,
       absl::string_view platform, DebugOptions debug_options,
-      const std::optional<stream_executor::KernelLoaderSpec::SymbolResolver>&
+      const std::optional<se::KernelLoaderSpec::SymbolResolver>&
           symbol_resolver = std::nullopt);
 
   absl::StatusOr<GpuExecutableProto> ToProto() const;
@@ -238,59 +244,72 @@ class GpuExecutable : public Executable {
       const ExecutableBuildOptions& options,
       const DebugOptions& debug_options) const final;
 
-  absl::StatusOr<stream_executor::ExecutableAbiVersion>
-  GetExecutableAbiVersion() const override {
+  absl::StatusOr<se::ExecutableAbiVersion> GetExecutableAbiVersion()
+      const override {
     return executable_abi_version_;
   }
 
+  const std::optional<xla::cpu::TargetMachineOptions>&
+  cpu_target_machine_options() const {
+    return cpu_target_machine_options_;
+  }
+
  private:
+  // Additional streams borrowed at run time for the execution.
+  struct BorrowedStreams {
+    std::vector<se::Stream*> streams;
+    std::vector<StreamPool::Ptr> owners;
+
+    // Assigns `stream` to all requested stream slots.
+    static BorrowedStreams Assign(se::Stream* stream, int num_streams);
+  };
+
   // Use GpuExecutable::Create() to create an instance.
   explicit GpuExecutable(
-      std::unique_ptr<HloModule> debug_module, std::string asm_text,
-      std::vector<uint8_t> binary, BinaryMap dnn_compiled_graphs,
-      se::DeviceDescription device_description,
+      std::unique_ptr<HloModule> debug_module, std::vector<uint8_t> binary,
+      BinaryMap dnn_compiled_graphs, se::DeviceDescription device_description,
       std::unique_ptr<ThunkExecutor> executable, std::string module_name,
-      ProgramShape program_shape,
-      std::optional<std::vector<BufferAllocation>> mlir_allocations,
-      std::unique_ptr<const BufferAssignment> buffer_assignment,
+      ProgramShape program_shape, std::vector<BufferAllocation> allocations,
       std::deque<BufferAllocation> thunk_pass_allocations,
       std::unique_ptr<GpuAliasInfo> alias_info, DebugOptions debug_options,
       std::vector<ConstantInfo> constants,
       absl::flat_hash_map<ShapeIndex, OutputInfo> output_info,
       bool enable_debug_info_manager, ModuleStats module_stats,
       absl::StatusOr<std::vector<ThunkProto>> thunk_sequence_proto,
-      stream_executor::ExecutableAbiVersion executable_abi_version);
+      se::ExecutableAbiVersion executable_abi_version,
+      std::optional<xla::cpu::TargetMachineOptions> cpu_target_machine_options,
+      BufferAssignmentProto buffer_assignment_proto,
+      std::string buffer_allocations_debug_summary,
+      bool collective_use_minimal_resource);
 
   // GpuExecutable check with either AMD's ISA version, or Nvidia's major minor
   // version for compute capability, depending on the hardware.
   absl::Status CheckCompatibilityWithServiceExecutableRunOptions(
       const ServiceExecutableRunOptions* run_options);
 
-  absl::StatusOr<BufferAllocations> GenerateBufferAllocations(
+  static absl::StatusOr<BorrowedStreams> BorrowStreams(
+      const ServiceExecutableRunOptions& run_options, int device_ordinal,
+      int num_streams, se::StreamPriority priority);
+
+  static absl::Status ExecuteThunksImpl(
+      const DebugOptions* debug_options, const std::string& module_name,
+      ModuleIdentifier module_id, ThunkExecutor& thunk_executor,
+      Thunk::ExecutableSource executable_source,
       const ServiceExecutableRunOptions* run_options,
-      VariantArguments arguments,
-      const GpuExecutable::BufferAllocToDeviceMemoryMap* globals,
-      se::DeviceAddressAllocator* memory_allocator, int device_ordinal);
+      const BufferAllocations& buffer_allocations, bool block_host_until_done,
+      std::optional<absl::Span<const BufferAllocation::Index>>
+          persistent_alloc_indices,
+      NumAdditionalStreams num_additional_streams,
+      CollectiveMemoryCache& collective_memory_cache,
+      bool collective_use_minimal_resource);
 
-  absl::StatusOr<se::DeviceAddressBase> BufferForAllocation(
-      VariantArguments arguments,
-      const GpuExecutable::BufferAllocToDeviceMemoryMap* globals,
-      const BufferAllocation& allocation,
-      se::DeviceAddressAllocator* memory_allocator, int device_ordinal,
-      int64_t arg_idx,
-      const absl::flat_hash_map<LogicalBuffer::Color, int64_t>&
-          allocate_granularity);
-
-  // The LLVM IR, in string format, of the unoptimized module generated for
-  // this GpuExecutable. We save a string instead of an llvm::Module* because
-  // leaving llvm::Module* in a singleton can cause the heap checker to emit
-  // false positives.
-  //
-  // This string should be modified only before ExecuteOnStream.
-  std::string ir_module_string_;
-
-  // The compiled code for the computation.
-  const std::string text_;
+  // Compare current allocation's address with previous run's address, and
+  // report the allocation info if memory addressed changed. Useful for identify
+  // in user's model if it is command buffer perf friendly (no command buffer
+  // update cost).
+  void LogChangedAllocationsInBetweenExecutions(
+      const BufferAllocations& buffer_allocations,
+      const ServiceExecutableRunOptions* run_options);
 
   // The GPU machine code for the computation, targeting GPUs at
   // compute_capability_.
@@ -307,8 +326,8 @@ class GpuExecutable : public Executable {
   // ThunkEmitter.
   std::unique_ptr<ThunkExecutor> thunk_executor_;
 
-  // Additional execution streams requested by `thunks_`.
-  absl::flat_hash_set<ExecutionStreamId> execution_stream_ids_;
+  // Number of additional streams available at run time.
+  NumAdditionalStreams num_additional_streams_;
 
   std::string module_name_;
 
@@ -332,14 +351,12 @@ class GpuExecutable : public Executable {
   // The allocations_ object contains allocations that **may** be used to
   // provide information for allocating memory for every output/temp buffer.
   // See the comment on allocation_ptrs_.
-  std::optional<const std::vector<BufferAllocation>> allocations_;
+  std::vector<BufferAllocation> allocations_;
 
-  // The buffer_assignment_ object contains allocations that **may** be used to
-  // provide information for allocating memory for every output/temp buffer.
-  // See the comment on allocation_ptrs_.
-  //
-  // This object is also used for dumping debug info.
-  std::shared_ptr<const xla::BufferAssignment> buffer_assignment_;
+  // Proto representation of the buffer assignments that was used to compile
+  // this executable. The actual BufferAssignment is only available during
+  // compilation.
+  BufferAssignmentProto buffer_assignment_proto_;
 
   // Extra allocations added by thunk passes outside of the normal buffer
   // assignment process.
@@ -359,25 +376,18 @@ class GpuExecutable : public Executable {
 
   int64_t debug_buffer_assignment_show_max_;
 
-  absl::Mutex module_handle_mutex_;
-  // Cache of module handles. Required to keep loaded modules alive until this
-  // executable is destroyed.
-  absl::flat_hash_map<stream_executor::StreamExecutor*, se::ScopedModuleHandle>
-      module_handles_ ABSL_GUARDED_BY(module_handle_mutex_);
-  // Cache of constant buffer allocation maps used by `ResolveConstantGlobals`.
-  absl::flat_hash_map<stream_executor::StreamExecutor*,
-                      std::unique_ptr<BufferAllocToDeviceMemoryMap>>
-      module_globals_ ABSL_GUARDED_BY(module_handle_mutex_);
-
   // Cache previous memory allocations for current module, this is used to help
   // identify if user's model have unstable pointers by turning on VLOG(5).
-  absl::flat_hash_map<stream_executor::StreamExecutor*,
-                      std::vector<se::DeviceAddressBase>>
-      module_allocations_ ABSL_GUARDED_BY(module_handle_mutex_);
+  absl::Mutex module_allocations_mutex_;
+  absl::flat_hash_map<se::StreamExecutor*, std::vector<se::DeviceAddressBase>>
+      module_allocations_ ABSL_GUARDED_BY(module_allocations_mutex_);
 
   std::vector<ConstantInfo> constants_;
+  std::unique_ptr<GpuModuleGlobals> module_globals_;
   const absl::flat_hash_map<ShapeIndex, OutputInfo> output_info_;
   bool enable_debug_info_manager_;
+
+  std::unique_ptr<GpuExecutableBufferAllocator> buffer_allocator_;
 
   GpuExecutable(const GpuExecutable&) = delete;
   GpuExecutable& operator=(const GpuExecutable&) = delete;
@@ -386,7 +396,18 @@ class GpuExecutable : public Executable {
   // Might contain an error if the given thunk graph is not serializable.
   absl::StatusOr<std::vector<ThunkProto>> thunk_sequence_proto_;
 
-  stream_executor::ExecutableAbiVersion executable_abi_version_;
+  se::ExecutableAbiVersion executable_abi_version_;
+
+  std::optional<xla::cpu::TargetMachineOptions> cpu_target_machine_options_;
+
+  CollectiveMemoryCache collective_memory_cache_;
+
+  // Human readable summary of the buffer allocations. Tailored to debugging
+  // OOMs, includes the Hlo op metadata for every buffer associated with each
+  // allocation.
+  std::string buffer_allocations_debug_summary_;
+
+  const bool collective_use_minimal_resource_;
 };
 
 absl::StatusOr<absl::flat_hash_map<ShapeIndex, GpuExecutable::OutputInfo>>

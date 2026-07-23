@@ -16,19 +16,24 @@ limitations under the License.
 #ifndef XLA_PJRT_GPU_SE_GPU_PJRT_COMPILER_H_
 #define XLA_PJRT_GPU_SE_GPU_PJRT_COMPILER_H_
 
+#include <functional>
 #include <memory>
 #include <optional>
 #include <utility>
+#include <vector>
 
 #include "absl/base/thread_annotations.h"
 #include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
 #include "xla/hlo/builder/xla_computation.h"
+#include "xla/hlo/ir/hlo_module.h"
 #include "xla/pjrt/maybe_owning_mlir_module.h"
+#include "xla/pjrt/pjrt_abi_version.h"
 #include "xla/pjrt/pjrt_common.h"
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/service/compiler.h"
+#include "xla/shape.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform_id.h"
 
@@ -44,6 +49,10 @@ class StreamExecutorGpuCompiler : public PjRtCompiler {
   explicit StreamExecutorGpuCompiler(PjRtPlatformId pjrt_platform_id,
                                      stream_executor::PlatformId platform_id);
 
+  // Constructs a compiler with a given XLA compiler instance.
+  StreamExecutorGpuCompiler(PjRtPlatformId pjrt_platform_id,
+                            std::unique_ptr<Compiler> compiler);
+
   // Setting CompileOptions.TargetConfig field will trigger deviceless
   // compilation, which will not query the GPU attached to the machine.
   // In this case, the `client` argument could be left as `nullptr`.
@@ -57,7 +66,22 @@ class StreamExecutorGpuCompiler : public PjRtCompiler {
 
   PjRtPlatformId pjrt_platform_id() const { return pjrt_platform_id_; }
 
+  // Returns the target runtime ABI version that the compiled executables will
+  // be compatible with.
+  absl::StatusOr<std::unique_ptr<PjRtRuntimeAbiVersion>>
+  GetTargetRuntimeAbiVersion() override;
+
  private:
+  using LayoutCanonicalizationCallback =
+      std::function<absl::StatusOr<std::pair<std::vector<Shape>, Shape>>(
+          const HloModule& module)>;
+
+  // Helper function for Compile above.
+  absl::StatusOr<std::unique_ptr<PjRtExecutable>> Compile(
+      CompileOptions options, const XlaComputation& computation,
+      const PjRtTopologyDescription& topology, PjRtClient* client,
+      LayoutCanonicalizationCallback layout_callback);
+
   std::optional<stream_executor::Platform::Id> requested_platform_id_;
   mutable absl::Mutex compiler_mutex_;
   std::unique_ptr<Compiler> compiler_ ABSL_GUARDED_BY(compiler_mutex_);

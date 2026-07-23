@@ -42,7 +42,7 @@ class ErrorOp : public OpKernel {
     if (ctx->cancellation_manager() && log_error_) {
       LOG(ERROR) << "ErrorOp: " << errmsg_;
     }
-    ctx->SetStatus(errors::Internal(errmsg_));
+    ctx->SetStatus(absl::InternalError(errmsg_));
   }
 
  private:

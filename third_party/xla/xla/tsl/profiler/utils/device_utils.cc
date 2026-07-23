@@ -26,7 +26,8 @@ namespace profiler {
 DeviceType GetDeviceType(absl::string_view plane_name) {
   if (plane_name == kHostThreadsPlaneName) {
     return DeviceType::kCpu;
-  } else if (absl::StartsWith(plane_name, kTpuPlanePrefix)) {
+  }
+  if (absl::StartsWith(plane_name, kTpuPlanePrefix)) {
     return DeviceType::kTpu;
   } else if (absl::StartsWith(plane_name, kGpuPlanePrefix)) {
     return DeviceType::kGpu;

@@ -1,0 +1,12 @@
+diff --git a/src/google/protobuf/message_lite.h b/src/google/protobuf/message_lite.h
+--- a/src/google/protobuf/message_lite.h
++++ b/src/google/protobuf/message_lite.h
+@@ -293,7 +293,7 @@
+ using MessageTraits = decltype(MessageTraitsImpl::value<T>);
+ 
+ struct EnumTraitsImpl {
+-  struct Undefined;
++  struct Undefined {};
+   template <typename T>
+   static Undefined value;
+ };

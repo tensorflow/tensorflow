@@ -31,6 +31,7 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/ffi/api/api.h"
 #include "xla/ffi/api/c_api.h"
 #include "xla/ffi/api/c_api_internal.h"  // IWYU pragma: keep
@@ -590,7 +591,7 @@ absl::StatusOr<CallFrame> CallFrame::CopyWithBuffers(
     absl::Span<const se::DeviceAddressBase> args,
     absl::Span<const se::DeviceAddressBase> rets) const {
   CallFrame clone(CopyArgs(*arguments_), CopyRets(*results_), attributes_);
-  TF_RETURN_IF_ERROR(clone.UpdateWithBuffers(args, rets));
+  RETURN_IF_ERROR(clone.UpdateWithBuffers(args, rets));
   return clone;
 }
 

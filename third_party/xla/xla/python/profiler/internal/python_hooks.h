@@ -126,6 +126,7 @@ class PythonHooks;
 
 class PythonHookContext {
  public:
+  ~PythonHookContext();
   void Finalize(tensorflow::profiler::XSpace* space);
 
   friend class ::xla::profiler::PythonHooks;

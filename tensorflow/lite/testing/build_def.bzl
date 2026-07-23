@@ -1,3 +1,18 @@
+# Copyright 2026 The TensorFlow Authors. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
+
 """Build rule definitions for TFLite zip tests."""
 
 load(
@@ -312,7 +327,7 @@ def max_number_of_test_models_in_merged_zip():
     Returns:
       Maximum number of merged test models in a zip file.
     """
-    return 15
+    return 5
 
 def number_of_merged_zip_file(conversion_mode, delegate):
     """Returns the number of merged zip file targets.
@@ -576,8 +591,10 @@ def gen_zipped_test_file(name, file, flags = ""):
     """
     native.genrule(
         name = file + ".files",
-        cmd = (("$(location //tensorflow/lite/testing:generate_examples) " +
-                " --zip_to_output {0} {1} $(@D)").format(file, flags)),
+        cmd = (("TF_FLAG_SAVED_MODEL_FINGERPRINTING=0 " +
+                "$(location //tensorflow/lite/testing:generate_examples) " +
+                "--enable_tensorflow_metrics_export=false " +
+                "--zip_to_output {0} {1} $(@D)").format(file, flags)),
         outs = [file],
         # `exec_tools` is required for PY3 compatibility in place of `tools`.
         tools = [

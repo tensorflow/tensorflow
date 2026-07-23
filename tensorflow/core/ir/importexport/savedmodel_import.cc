@@ -26,12 +26,11 @@ absl::StatusOr<OwningOpRef<mlir::ModuleOp>> ImportSavedModelToMlir(
     mlir::MLIRContext *context, const tensorflow::GraphDebugInfo &debug_info,
     const tensorflow::SavedModel &saved_model) {
   if (saved_model.meta_graphs_size() == 0) {
-    return tensorflow::errors::InvalidArgument(
-        "Input saved model has no meta graphs");
+    return absl::InvalidArgumentError("Input saved model has no meta graphs");
   }
 
   if (saved_model.meta_graphs_size() > 1) {
-    return tensorflow::errors::InvalidArgument(
+    return absl::InvalidArgumentError(
         "Input saved model has more than one meta graph, currently not "
         "supported");
   }

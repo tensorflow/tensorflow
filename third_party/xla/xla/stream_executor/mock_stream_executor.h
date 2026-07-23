@@ -70,8 +70,6 @@ class MockStreamExecutor : public StreamExecutor {
   MOCK_METHOD(absl::StatusOr<std::unique_ptr<MemoryAllocation>>,
               HostMemoryAllocate, (uint64_t size), (override));
   MOCK_METHOD(bool, SynchronizeAllActivity, (), (override));
-  MOCK_METHOD(absl::Status, SynchronousMemZero,
-              (DeviceAddressBase * location, uint64_t size), (override));
   MOCK_METHOD(absl::Status, SynchronousMemcpy,
               (DeviceAddressBase * device_dst, const void* host_src,
                uint64_t size),

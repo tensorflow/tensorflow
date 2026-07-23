@@ -1,14 +1,18 @@
 path: "tensorflow.train.Server"
 tf_class {
   is_instance: "<class \'tensorflow.python.training.server_lib.Server\'>"
-  is_instance: "<type \'object\'>"
+  is_instance: "<class \'object\'>"
   member {
     name: "server_def"
-    mtype: "<type \'property\'>"
+    mtype: "<class \'property\'>"
   }
   member {
     name: "target"
-    mtype: "<type \'property\'>"
+    mtype: "<class \'property\'>"
+  }
+  member_method {
+    name: "__del__"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "__init__"
@@ -17,6 +21,7 @@ tf_class {
   member_method {
     name: "create_local_server"
     argspec: "args=[\'config\', \'start\'], varargs=None, keywords=None, defaults=[\'None\', \'True\'], "
+    method_kind: STATIC
   }
   member_method {
     name: "join"

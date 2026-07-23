@@ -1,0 +1,8 @@
+cmake
+ninja-build
+ccache
+clang-18
+lld-18
+libclang-rt-18-dev
+libstdc++-13-dev
+lsb-release

@@ -16,7 +16,9 @@ limitations under the License.
 
 #include <gtest/gtest.h>
 #include "absl/status/status_matchers.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/platform/errors.h"
 
 namespace stream_executor::sycl {
 namespace {
@@ -27,7 +29,7 @@ class SyclGpuRuntimeTest : public ::testing::Test {
 
  protected:
   absl::StatusOr<void*> AllocateHostBuffer(int count) {
-    TF_ASSIGN_OR_RETURN(
+    ASSIGN_OR_RETURN(
         void* buf, SyclMallocHost(kDefaultDeviceOrdinal, sizeof(int) * count));
     if (buf == nullptr) {
       return absl::InternalError(
@@ -39,8 +41,8 @@ class SyclGpuRuntimeTest : public ::testing::Test {
 
   absl::StatusOr<void*> AllocateDeviceBuffer(
       int count, int device_ordinal = kDefaultDeviceOrdinal) {
-    TF_ASSIGN_OR_RETURN(void* buf,
-                        SyclMallocDevice(device_ordinal, sizeof(int) * count));
+    ASSIGN_OR_RETURN(void* buf,
+                     SyclMallocDevice(device_ordinal, sizeof(int) * count));
     if (buf == nullptr) {
       return absl::InternalError(
           "SyclGpuRuntimeTest::AllocateDeviceBuffer: Failed to allocate "
@@ -57,7 +59,7 @@ class SyclGpuRuntimeTest : public ::testing::Test {
   }
 
   absl::StatusOr<void*> AllocateAndInitHostBuffer(int count, int value) {
-    TF_ASSIGN_OR_RETURN(void* buf, AllocateHostBuffer(count));
+    ASSIGN_OR_RETURN(void* buf, AllocateHostBuffer(count));
     for (int i = 0; i < count; ++i) {
       static_cast<int*>(buf)[i] = value;
     }
@@ -66,9 +68,8 @@ class SyclGpuRuntimeTest : public ::testing::Test {
 
   absl::StatusOr<void*> AllocateAndInitDeviceBuffer(
       int count, int value, int device_ordinal = kDefaultDeviceOrdinal) {
-    TF_ASSIGN_OR_RETURN(void* buf, AllocateDeviceBuffer(count));
-    TF_RETURN_IF_ERROR(
-        SyclMemfillDevice(device_ordinal, buf, value, sizeof(int) * count));
+    ASSIGN_OR_RETURN(void* buf, AllocateDeviceBuffer(count));
+    RETURN_IF_ERROR(SyclMemfillDevice(device_ordinal, buf, value, count));
     if (buf == nullptr) {
       return absl::InternalError(
           "SyclGpuRuntimeTest::AllocateAndInitDeviceBuffer: Failed to fill "
@@ -102,6 +103,11 @@ class SyclGpuRuntimeTest : public ::testing::Test {
       sycl_devices_.push_back(sycl_device);
     }
   }
+
+  void TearDown() override {
+    // Reset the stream pool to ensure a clean state for the next test.
+    SyclStreamPool::Reset();
+  }
 };
 
 TEST_F(SyclGpuRuntimeTest, GetDeviceCount) {
@@ -127,38 +133,29 @@ TEST_F(SyclGpuRuntimeTest, TestStaticDeviceContext) {
   EXPECT_EQ(saved_sycl_context, current_sycl_context);
 }
 
-TEST_F(SyclGpuRuntimeTest, TestDefaultStreamSynchronizeAndDestroy) {
+TEST_F(SyclGpuRuntimeTest, TestDefaultStreamSynchronize) {
   TF_ASSERT_OK_AND_ASSIGN(
       StreamPtr stream_handle,
       SyclStreamPool::GetDefaultStream(kDefaultDeviceOrdinal));
   ASSERT_NE(stream_handle, nullptr);
-
   TF_ASSERT_OK(SyclStreamPool::SynchronizeStreamPool(kDefaultDeviceOrdinal));
-
-  TF_ASSERT_OK(
-      SyclStreamPool::DestroyStream(kDefaultDeviceOrdinal, stream_handle));
-  EXPECT_EQ(stream_handle, nullptr);
 }
 
-TEST_F(SyclGpuRuntimeTest, TestCreateStreamSynchronizeAndDestroy) {
+TEST_F(SyclGpuRuntimeTest, TestCreateStreamSynchronize) {
   TF_ASSERT_OK_AND_ASSIGN(
       StreamPtr stream_handle,
       SyclStreamPool::GetOrCreateStream(kDefaultDeviceOrdinal,
                                         /*enable_multiple_streams=*/false));
   ASSERT_NE(stream_handle, nullptr);
-
   TF_ASSERT_OK(SyclStreamPool::SynchronizeStreamPool(kDefaultDeviceOrdinal));
-
-  TF_ASSERT_OK(
-      SyclStreamPool::DestroyStream(kDefaultDeviceOrdinal, stream_handle));
-  EXPECT_EQ(stream_handle, nullptr);
 }
 
 TEST_F(SyclGpuRuntimeTest, TestStreamPoolCreateAfterDestroy) {
+  // Create a non-default stream since other tests use the default stream.
   TF_ASSERT_OK_AND_ASSIGN(
       StreamPtr stream_handle,
       SyclStreamPool::GetOrCreateStream(kDefaultDeviceOrdinal,
-                                        /*enable_multiple_streams=*/false));
+                                        /*enable_multiple_streams=*/true));
   ASSERT_NE(stream_handle, nullptr);
 
   TF_ASSERT_OK(
@@ -166,16 +163,10 @@ TEST_F(SyclGpuRuntimeTest, TestStreamPoolCreateAfterDestroy) {
   ASSERT_EQ(stream_handle, nullptr);
 
   // Verify that we can create a new stream after destroying the previous one.
-  TF_ASSERT_OK_AND_ASSIGN(
-      stream_handle,
-      SyclStreamPool::GetOrCreateStream(kDefaultDeviceOrdinal,
-                                        /*enable_multiple_streams=*/false));
+  TF_ASSERT_OK_AND_ASSIGN(stream_handle, SyclStreamPool::GetOrCreateStream(
+                                             kDefaultDeviceOrdinal,
+                                             /*enable_multiple_streams=*/true));
   ASSERT_NE(stream_handle, nullptr);
-
-  // Clean up the stream after the test.
-  TF_ASSERT_OK(
-      SyclStreamPool::DestroyStream(kDefaultDeviceOrdinal, stream_handle));
-  EXPECT_EQ(stream_handle, nullptr);
 }
 
 TEST_F(SyclGpuRuntimeTest, TestStreamPoolCreate_Negative) {
@@ -187,10 +178,11 @@ TEST_F(SyclGpuRuntimeTest, TestStreamPoolCreate_Negative) {
 }
 
 TEST_F(SyclGpuRuntimeTest, TestStreamPoolDestroy_Negative) {
+  // Create a non-default stream since other tests use the default stream.
   TF_ASSERT_OK_AND_ASSIGN(
       StreamPtr stream_handle,
       SyclStreamPool::GetOrCreateStream(kDefaultDeviceOrdinal,
-                                        /*enable_multiple_streams=*/false));
+                                        /*enable_multiple_streams=*/true));
   ASSERT_NE(stream_handle, nullptr);
 
   TF_ASSERT_OK(
@@ -202,31 +194,6 @@ TEST_F(SyclGpuRuntimeTest, TestStreamPoolDestroy_Negative) {
       SyclStreamPool::DestroyStream(kDefaultDeviceOrdinal, stream_handle),
       absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
   EXPECT_EQ(stream_handle, nullptr);
-}
-
-TEST_F(SyclGpuRuntimeTest, TestMaxStreamsPerDevice) {
-  // Ensure that the maximum number of streams per device is respected.
-  constexpr int kMaxStreams = kMaxStreamsPerDevice;
-  std::vector<StreamPtr> streams(kMaxStreams);
-  for (int i = 0; i < kMaxStreams - 1; ++i) {
-    TF_ASSERT_OK_AND_ASSIGN(streams[i], SyclStreamPool::GetOrCreateStream(
-                                            kDefaultDeviceOrdinal,
-                                            /*enable_multiple_streams=*/true));
-    ASSERT_NE(streams[i], nullptr);
-  }
-
-  // Attempt to create one more stream, which should fail.
-  EXPECT_THAT(
-      SyclStreamPool::GetOrCreateStream(kDefaultDeviceOrdinal,
-                                        /*enable_multiple_streams=*/true),
-      absl_testing::StatusIs(absl::StatusCode::kResourceExhausted));
-
-  // Clean up the streams created.
-  for (int i = 0; i < kMaxStreams - 1; ++i) {
-    TF_ASSERT_OK(
-        SyclStreamPool::DestroyStream(kDefaultDeviceOrdinal, streams[i]));
-    EXPECT_EQ(streams[i], nullptr);
-  }
 }
 
 TEST_F(SyclGpuRuntimeTest, TestGetTimerProperties) {
@@ -251,23 +218,15 @@ TEST_F(SyclGpuRuntimeTest, TestSyclGetRecentEventFromStream) {
 
   TF_ASSERT_OK(SyclStreamSynchronize(stream_handle.get()));
 
-  TF_ASSERT_OK_AND_ASSIGN(std::optional<::sycl::event> event,
-                          SyclGetRecentEventFromStream(stream_handle.get()));
-
-  ASSERT_TRUE(event.has_value());
+  ASSERT_OK_AND_ASSIGN(::sycl::event event,
+                       SyclGetRecentEventFromStream(stream_handle.get()));
 
   // Expect the event to be in a valid state. The command_execution_status
   // should not be "unknown".
-  EXPECT_NE(
-      event.value().get_info<::sycl::info::event::command_execution_status>(),
-      ::sycl::info::event_command_status::ext_oneapi_unknown);
+  EXPECT_NE(event.get_info<::sycl::info::event::command_execution_status>(),
+            ::sycl::info::event_command_status::ext_oneapi_unknown);
 
   FreeAndNullify(device_buf);
-
-  // Destroy the stream after use.
-  TF_ASSERT_OK(
-      SyclStreamPool::DestroyStream(kDefaultDeviceOrdinal, stream_handle));
-  EXPECT_EQ(stream_handle, nullptr);
 }
 
 TEST_F(SyclGpuRuntimeTest, TestSyclMemcopyAsync_DeviceToHost) {
@@ -295,11 +254,6 @@ TEST_F(SyclGpuRuntimeTest, TestSyclMemcopyAsync_DeviceToHost) {
 
   FreeAndNullify(src_device);
   FreeAndNullify(dst_host);
-
-  // Destroy the stream after use.
-  ASSERT_OK(
-      SyclStreamPool::DestroyStream(kDefaultDeviceOrdinal, stream_handle));
-  EXPECT_EQ(stream_handle, nullptr);
 }
 
 TEST_F(SyclGpuRuntimeTest, TestSyclMemcopyAsync_HostToDeviceAndBack) {
@@ -338,11 +292,6 @@ TEST_F(SyclGpuRuntimeTest, TestSyclMemcopyAsync_HostToDeviceAndBack) {
 
   FreeAndNullify(src_host);
   FreeAndNullify(dst_device);
-
-  // Destroy the stream after use.
-  ASSERT_OK(
-      SyclStreamPool::DestroyStream(kDefaultDeviceOrdinal, stream_handle));
-  EXPECT_EQ(stream_handle, nullptr);
 }
 
 TEST_F(SyclGpuRuntimeTest, TestSyclMemcopyAsync_DeviceToDeviceAndBackToHost) {
@@ -383,11 +332,6 @@ TEST_F(SyclGpuRuntimeTest, TestSyclMemcopyAsync_DeviceToDeviceAndBackToHost) {
   FreeAndNullify(src_device);
   FreeAndNullify(dst_device);
   FreeAndNullify(dst_host);
-
-  // Destroy the stream after use.
-  ASSERT_OK(
-      SyclStreamPool::DestroyStream(kDefaultDeviceOrdinal, stream_handle));
-  EXPECT_EQ(stream_handle, nullptr);
 }
 
 TEST_F(SyclGpuRuntimeTest, TestMemcopyDeviceToHost) {
@@ -465,11 +409,6 @@ TEST_F(SyclGpuRuntimeTest, TestMemcopyDeviceToHostAsync) {
 
   FreeAndNullify(src_device);
   FreeAndNullify(dst_host);
-
-  // Destroy the stream after use.
-  TF_ASSERT_OK(
-      SyclStreamPool::DestroyStream(kDefaultDeviceOrdinal, stream_handle));
-  EXPECT_EQ(stream_handle, nullptr);
 }
 
 TEST_F(SyclGpuRuntimeTest, TestMemcopyHostToDeviceAsync) {
@@ -504,11 +443,6 @@ TEST_F(SyclGpuRuntimeTest, TestMemcopyHostToDeviceAsync) {
 
   FreeAndNullify(src_host);
   FreeAndNullify(dst_device);
-
-  // Destroy the stream after use.
-  TF_ASSERT_OK(
-      SyclStreamPool::DestroyStream(kDefaultDeviceOrdinal, stream_handle));
-  EXPECT_EQ(stream_handle, nullptr);
 }
 
 TEST_F(SyclGpuRuntimeTest, TestMemsetDevice) {
@@ -518,8 +452,8 @@ TEST_F(SyclGpuRuntimeTest, TestMemsetDevice) {
       SyclMallocDevice(kDefaultDeviceOrdinal, sizeof(char) * kCount));
   ASSERT_NE(src_device, nullptr);
 
-  TF_ASSERT_OK(SyclMemsetDevice(kDefaultDeviceOrdinal, src_device, 'A',
-                                sizeof(char) * kCount));
+  TF_ASSERT_OK(
+      SyclMemsetDevice(kDefaultDeviceOrdinal, src_device, 'A', kCount));
 
   TF_ASSERT_OK_AND_ASSIGN(void* dst_host, AllocateHostBuffer(kCount));
 
@@ -543,14 +477,12 @@ TEST_F(SyclGpuRuntimeTest, TestMemsetDevice_Negative) {
   ASSERT_NE(src_device, nullptr);
 
   // Attempt to memset with an invalid device ordinal.
-  EXPECT_THAT(SyclMemsetDevice(kInvalidDeviceOrdinal, src_device, 'A',
-                               sizeof(char) * kCount),
+  EXPECT_THAT(SyclMemsetDevice(kInvalidDeviceOrdinal, src_device, 'A', kCount),
               absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
 
   // Attempt to memset a null pointer.
   void* null_ptr = nullptr;
-  EXPECT_THAT(SyclMemsetDevice(kDefaultDeviceOrdinal, null_ptr, 'A',
-                               sizeof(char) * kCount),
+  EXPECT_THAT(SyclMemsetDevice(kDefaultDeviceOrdinal, null_ptr, 'A', kCount),
               absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
 
   FreeAndNullify(src_device);
@@ -566,8 +498,8 @@ TEST_F(SyclGpuRuntimeTest, TestMemsetDeviceAsync) {
 
   TF_ASSERT_OK_AND_ASSIGN(void* device_buf, AllocateDeviceBuffer(kCount));
 
-  TF_ASSERT_OK(SyclMemsetDeviceAsync(stream_handle.get(), device_buf, 'B',
-                                     sizeof(char) * kCount));
+  TF_ASSERT_OK(
+      SyclMemsetDeviceAsync(stream_handle.get(), device_buf, 'B', kCount));
 
   // Synchronize the stream to ensure the memset is complete before checking
   // results.
@@ -585,11 +517,6 @@ TEST_F(SyclGpuRuntimeTest, TestMemsetDeviceAsync) {
 
   FreeAndNullify(device_buf);
   FreeAndNullify(host_buf);
-
-  // Destroy the stream after use.
-  TF_ASSERT_OK(
-      SyclStreamPool::DestroyStream(kDefaultDeviceOrdinal, stream_handle));
-  EXPECT_EQ(stream_handle, nullptr);
 }
 
 TEST_F(SyclGpuRuntimeTest, TestMemfillDeviceAsync) {
@@ -603,7 +530,7 @@ TEST_F(SyclGpuRuntimeTest, TestMemfillDeviceAsync) {
   TF_ASSERT_OK_AND_ASSIGN(void* device_buf, AllocateDeviceBuffer(kCount));
 
   TF_ASSERT_OK(SyclMemfillDeviceAsync(stream_handle.get(), device_buf,
-                                      0xDEADC0DE, sizeof(int) * kCount));
+                                      0xDEADC0DE, kCount));
 
   // Synchronize the stream to ensure the fill is complete before checking
   // results.
@@ -618,11 +545,6 @@ TEST_F(SyclGpuRuntimeTest, TestMemfillDeviceAsync) {
 
   FreeAndNullify(device_buf);
   FreeAndNullify(host_buf);
-
-  // Destroy the stream after use.
-  TF_ASSERT_OK(
-      SyclStreamPool::DestroyStream(kDefaultDeviceOrdinal, stream_handle));
-  ASSERT_EQ(stream_handle, nullptr);
 }
 
 TEST_F(SyclGpuRuntimeTest, TestMemfillDeviceAsync_Negative) {
@@ -635,14 +557,9 @@ TEST_F(SyclGpuRuntimeTest, TestMemfillDeviceAsync_Negative) {
 
   // Attempt to fill a null pointer.
   void* null_ptr = nullptr;
-  EXPECT_THAT(SyclMemfillDeviceAsync(stream_handle.get(), null_ptr, 0xFEEDEAF,
-                                     sizeof(int) * kCount),
-              absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
-
-  // Destroy the stream after use.
-  TF_ASSERT_OK(
-      SyclStreamPool::DestroyStream(kDefaultDeviceOrdinal, stream_handle));
-  EXPECT_EQ(stream_handle, nullptr);
+  EXPECT_THAT(
+      SyclMemfillDeviceAsync(stream_handle.get(), null_ptr, 0xFEEDEAF, kCount),
+      absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
 }
 
 TEST_F(SyclGpuRuntimeTest, TestMultiDeviceAllocationAndSyncCopy) {
@@ -722,10 +639,6 @@ TEST_F(SyclGpuRuntimeTest, TestMultiDeviceAllocationAndAsyncCopy) {
   FreeAndNullify(device0_buf, kDevice0);
   FreeAndNullify(device1_buf, kDevice1);
   FreeAndNullify(host_buf, kDefaultDeviceOrdinal);
-
-  // Destroy the stream after use.
-  TF_ASSERT_OK(SyclStreamPool::DestroyStream(kDevice0, stream0));
-  EXPECT_EQ(stream0, nullptr);
 }
 
 TEST_F(SyclGpuRuntimeTest, TestMallocAll_Positive) {

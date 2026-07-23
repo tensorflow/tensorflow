@@ -19,6 +19,8 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <optional>
+#include <string>
 #include <type_traits>
 #include <vector>
 
@@ -33,16 +35,14 @@ limitations under the License.
 #include "xla/stream_executor/command_buffer.h"
 #include "xla/stream_executor/cuda/cuda_context.h"
 #include "xla/stream_executor/device_address.h"
+#include "xla/stream_executor/dnn.h"
 #include "xla/stream_executor/gpu/gpu_command_buffer.h"
 #include "xla/stream_executor/kernel.h"
+#include "xla/stream_executor/kernel_args.h"
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
-
-#if CUDA_VERSION < 12030
-typedef cuuint64_t CUgraphConditionalHandle;
-#endif
 
 namespace stream_executor::gpu {
 
@@ -139,25 +139,32 @@ class CudaCommandBuffer final : public GpuCommandBuffer {
   absl::StatusOr<GraphNodeHandle> CreateMovedChildNode(
       absl::Span<const GraphNodeHandle> dependencies,
       CommandBuffer* nested) override;
+  // Version specific implementation of CreateMovedChildNode.
+  absl::StatusOr<GraphNodeHandle> CreateMovedChildNodeImpl(
+      absl::Span<const GraphNodeHandle> dependencies, CommandBuffer* nested);
 
   absl::Status UpdateClonedChildNode(GraphNodeHandle node_handle,
                                      const CommandBuffer& nested) override;
 
   absl::StatusOr<GraphNodeHandle> CreateKernelNode(
       absl::Span<const GraphNodeHandle> dependencies, StreamPriority priority,
-      const ThreadDim& threads, const BlockDim& blocks, const Kernel& kernel,
+      const ThreadDim& threads, const BlockDim& blocks,
+      const std::optional<ClusterDim>& cluster_dims, const Kernel& kernel,
       const KernelArgsPackedArrayBase& args) override;
 
   absl::Status UpdateKernelNode(GraphNodeHandle node_handle,
                                 const ThreadDim& threads,
-                                const BlockDim& blocks, const Kernel& kernel,
+                                const BlockDim& blocks,
+                                const std::optional<ClusterDim>& cluster_dims,
+                                const Kernel& kernel,
                                 const KernelArgsPackedArrayBase& args) override;
 
   absl::StatusOr<GraphNodeHandle> CreateEmptyNode(
       absl::Span<const GraphNodeHandle> dependencies) override;
 
-  absl::Status Trace(Stream* stream,
-                     absl::AnyInvocable<absl::Status()> function) override;
+  absl::Status Trace(
+      Stream* stream,
+      absl::AnyInvocable<absl::Status(Stream* stream)> function) override;
 
   absl::Status LaunchGraph(Stream* stream) override;
 
@@ -180,6 +187,22 @@ class CudaCommandBuffer final : public GpuCommandBuffer {
   CUgraphExec graph_exec() const;
 
   absl::Status CheckCanBeUpdated() override;
+
+  // Static helpers that are needed across different versions of CUDA.
+  // We declare them here and define it in the base .cc file so its available
+  // to all versions.
+  // Helper to print a list of graph conditional handles for debugging
+  static std::string FormatGraphNodeHandles(
+      absl::Span<const GraphNodeHandle> handles);
+  // Converts a CUDA specific CUgraphNode into a platform independent
+  // GraphNodeHandle.
+  static GraphNodeHandle FromCudaGraphHandle(CUgraphNode handle);
+  // Converts a CUDA specific CUgraphConditionalHandle into a platform
+  // independent GraphConditionalHandle.
+  static GraphConditionalHandle FromCudaGraphHandle(
+      CUgraphConditionalHandle handle);
+  static std::vector<CUgraphNode> ToCudaGraphHandles(
+      absl::Span<const GraphNodeHandle> opaque_handles);
 
   // A signature of a device kernels updating conditional handle(s).
   using SetCaseConditionKernel =

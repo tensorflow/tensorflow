@@ -215,6 +215,22 @@ struct TFInlinerInterface : public DialectInlinerInterface {
 // TF Dialect
 //===----------------------------------------------------------------------===//
 
+//===----------------------------------------------------------------------===//
+// RecordEventMetricForTensor
+//===----------------------------------------------------------------------===//
+
+void RecordEventMetricForTensorOp::getEffects(
+    SmallVectorImpl<SideEffects::EffectInstance<MemoryEffects::Effect>>&
+        effects) {
+  // Modeling as a Read rather than a Write prevents XLA from
+  // forcefully serializing every streamz op against one another (which hangs
+  // the TPU execution due to synchronous host callbacks), while still modeling
+  // a side-effect footprint to avoid aggressive compilation errors.
+  effects.reserve(1);
+  effects.emplace_back(MemoryEffects::Read::get(),
+                       ResourceEffects::RecordEventMetricForTensor::get());
+}
+
 // Returns true if the op can be duplicated.
 bool TensorFlowDialect::CanDuplicate(Operation *op) {
   // If the op is marked with the cannot duplicate trait, it cannot be

@@ -807,7 +807,27 @@ TEST_P(ConcreteEvenShardingTest, DisassembleFailsForUnexpectedShape) {
                        HasSubstr("ConcreteEvenSharding can only disassemble")));
 }
 
-TEST_P(ConcreteEvenShardingTest, IndexDomainsFails) {
+TEST_P(ConcreteEvenShardingTest, IndexDomainsForFullyReplicated) {
+  Shape shape({10, 20});
+
+  auto device_list = GetDevices({0, 4});
+  ASSERT_TRUE(device_list->devices()[0]->IsAddressable());
+  ASSERT_FALSE(device_list->devices()[1]->IsAddressable());
+
+  ShardingRef sharding = ConcreteEvenSharding::Create(
+      device_list, MemoryKind(), /*shape=*/shape, /*shard_shape=*/shape,
+      /*is_fully_replicated=*/true);
+
+  EXPECT_THAT(
+      sharding->IndexDomains(shape, SingleDeviceShardSemantics::kAllShards),
+      IsOkAndHolds(ElementsAre(IndexDomain(shape), IndexDomain(shape))));
+
+  EXPECT_THAT(sharding->IndexDomains(
+                  shape, SingleDeviceShardSemantics::kAddressableShards),
+              IsOkAndHolds(ElementsAre(IndexDomain(shape))));
+}
+
+TEST_P(ConcreteEvenShardingTest, IndexDomainsFailsForNonFullyReplicated) {
   auto device_list = GetDevices({0, 1});
   std::vector<Shape> shard_shapes;
   ShardingRef sharding =

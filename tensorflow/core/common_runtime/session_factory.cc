@@ -98,17 +98,17 @@ absl::Status SessionFactory::GetFactory(const SessionOptions& options,
     for (const auto& candidate_factory : candidate_factories) {
       factory_types.push_back(candidate_factory.first);
     }
-    return errors::Internal(
+    return absl::InternalError(absl::StrCat(
         "Multiple session factories registered for the given session "
         "options: {",
         SessionOptionsToString(options), "} Candidate factories are {",
         absl::StrJoin(factory_types, ", "), "}. ",
-        RegisteredFactoriesErrorMessageLocked());
+        RegisteredFactoriesErrorMessageLocked()));
   } else {
-    return errors::NotFound(
+    return absl::NotFoundError(absl::StrCat(
         "No session factory registered for the given session options: {",
         SessionOptionsToString(options), "} ",
-        RegisteredFactoriesErrorMessageLocked());
+        RegisteredFactoriesErrorMessageLocked()));
   }
 }
 

@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef XLA_TSL_LIB_MONITORING_TIMED_H_
 #define XLA_TSL_LIB_MONITORING_TIMED_H_
 
+#include <cstdint>
+
 #include "xla/tsl/platform/env_time.h"
 
 namespace tsl {
@@ -34,7 +36,7 @@ class Timed {
  private:
   T* cell_ = nullptr;
   double scale_ = 1e-6;
-  uint64 start_ = 0;
+  uint64_t start_ = 0;
 };
 
 template <typename T>

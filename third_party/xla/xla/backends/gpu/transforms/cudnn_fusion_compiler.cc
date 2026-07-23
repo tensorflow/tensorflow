@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/backends/gpu/transforms/cudnn_fusion_compiler.h"
 
 #include <algorithm>
+#include <array>
 #include <cstdint>
 #include <memory>
 #include <optional>
@@ -30,7 +31,14 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
+#include "third_party/cudnn_frontend/include/cudnn_frontend.h"
+#include "third_party/cudnn_frontend/include/cudnn_frontend/graph_interface.h"
+#include "third_party/cudnn_frontend/include/cudnn_frontend/graph_properties.h"
+#include "third_party/cudnn_frontend/include/cudnn_frontend_utils.h"
+#include "third_party/cudnn_frontend/include/cudnn_frontend_version.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "third_party/gpus/cudnn/cudnn_version.h"
 #include "xla/backends/gpu/transforms/block_scaling_rewriter.h"
 #include "xla/codegen/emitters/computation_fingerprint.h"
@@ -47,19 +55,23 @@ limitations under the License.
 #include "xla/primitive_util.h"
 #include "xla/service/dump.h"
 #include "xla/service/gpu/backend_configs.pb.h"
+#include "xla/service/gpu/conv_utils.h"
 #include "xla/service/gpu/cudnn_support_utils.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/stream_executor_util.h"
 #include "xla/service/gpu/triton_fusion_analysis.h"
 #include "xla/service/matmul_indexing_utils.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/status_macros.h"
 #include "xla/stream_executor/cuda/cuda_dnn.h"
 #include "xla/stream_executor/cuda/cudnn_frontend_helpers.h"
+#include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/dnn.h"
+#include "xla/stream_executor/engine_options.h"
 #include "xla/stream_executor/stream_executor.h"
+#include "xla/tsl/platform/errors.h"
 #include "xla/util.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {
@@ -142,6 +154,8 @@ inline std::optional<fe::PointwiseMode_t> GetElementwiseMode(
 inline std::optional<fe::DataType_t> ToCudnnDataType(const PrimitiveType type) {
   using t = fe::DataType_t;
   switch (type) {
+    case PrimitiveType::F64:
+      return t::DOUBLE;
     case PrimitiveType::F32:
       return t::FLOAT;
     case PrimitiveType::F16:
@@ -150,6 +164,8 @@ inline std::optional<fe::DataType_t> ToCudnnDataType(const PrimitiveType type) {
       return t::BFLOAT16;
     case PrimitiveType::S32:
       return t::INT32;
+    case PrimitiveType::S64:
+      return t::INT64;
     case PrimitiveType::S4:
       return t::INT4;
     case PrimitiveType::S8:
@@ -172,7 +188,11 @@ inline std::optional<fe::DataType_t> ToCudnnDataType(const PrimitiveType type) {
 inline std::optional<fe::DataType_t> GetComputeDataType(
     const PrimitiveType type) {
   fe::DataType_t compute_dtype = fe::DataType_t::FLOAT;
-  if (primitive_util::IsIntegralType(type)) {
+  if (type == F64) {
+    compute_dtype = fe::DataType_t::DOUBLE;
+  } else if (type == S64) {
+    compute_dtype = fe::DataType_t::INT64;
+  } else if (primitive_util::IsIntegralType(type)) {
 #if CUDNN_VERSION >= 90100
     compute_dtype = fe::DataType_t::INT32;
 #else
@@ -189,6 +209,84 @@ struct Result {
   std::vector<int64_t> sizes;
   std::vector<int64_t> strides;
   std::optional<std::vector<std::pair<int64_t, int64_t>>> slices;
+};
+
+class RaggedDotDimensionAdapter {
+  explicit RaggedDotDimensionAdapter(const HloInstruction& ragged_dot,
+                                     RaggedDotDimensionNumbers dums)
+      : ragged_dot_(ragged_dot), dums_(dums) {}
+
+ public:
+  const HloInstruction& ragged_dot_;
+
+  static absl::StatusOr<std::optional<RaggedDotDimensionAdapter>> Create(
+      const HloFusionInstruction& fusion, const HloComputation& computation) {
+    const HloInstruction* maybe_ragged_dot =
+        hlo_query::GetFirstInstructionWithOpcode(computation,
+                                                 HloOpcode::kRaggedDot);
+
+    if (maybe_ragged_dot == nullptr) {
+      VLOG(3) << "Not a ragged dot fusion.";
+      return std::nullopt;
+    }
+
+    const RaggedDotDimensionNumbers& dnums =
+        DynCast<HloRaggedDotInstruction>(maybe_ragged_dot)
+            ->ragged_dot_dimension_numbers();
+
+    return RaggedDotDimensionAdapter{*maybe_ragged_dot, dnums};
+  }
+
+  std::optional<Result> DimensionsAndStrides(const HloInstruction& hlo) {
+    // placeholder FP32 data type here, it is not used
+    auto desc = se::dnn::TensorDescriptor::For(
+        se::dnn::DataType::kFloat, hlo.shape().dimensions(),
+        hlo.shape().layout().minor_to_major());
+    std::vector<int64_t> dims = desc.dimensions();
+    std::vector<int64_t> strides = desc.GetLogicalStrides();
+
+    std::vector<int64_t> fixed_dims;
+    std::vector<int64_t> fixed_strides;
+
+    bool is_output = (&hlo == &ragged_dot_);
+    int operand_idx = -1;
+
+    if (!is_output) {
+      operand_idx = ragged_dot_.operand_index(&hlo);
+    }
+    if (is_output || operand_idx == 0) {
+      // input & output
+      fixed_dims = {1, dims[0], dims[1]};
+      fixed_strides = {dims[0] * strides[0], strides[0], strides[1]};
+    } else if (operand_idx == 1) {
+      // weight
+      const auto& dot_dims = dums_.dot_dimension_numbers();
+      const int rhs_contracting_dim = dot_dims.rhs_contracting_dimensions()[0];
+      const int rhs_non_contracting_dim =
+          GetNonContractingDims(ragged_dot_.operand(1)->shape(),
+                                dums_.rhs_group_dimensions(),
+                                dot_dims.rhs_contracting_dimensions())
+              .value()[0];
+      fixed_dims = {dims[0], dims[rhs_contracting_dim],
+                    dims[rhs_non_contracting_dim]};
+      fixed_strides = {strides[0], strides[rhs_contracting_dim],
+                       strides[rhs_non_contracting_dim]};
+    } else if (operand_idx == 2) {
+      // group size
+      fixed_dims = {dims[0], 1, 1};
+      fixed_strides = {1, 1, 1};
+    } else {
+      return std::nullopt;
+    }
+
+    Result result;
+    result.sizes = fixed_dims;
+    result.strides = fixed_strides;
+    return result;
+  }
+
+ private:
+  RaggedDotDimensionNumbers dums_;
 };
 
 class GemmDimensionAdapter {
@@ -221,8 +319,7 @@ class GemmDimensionAdapter {
       VLOG(3) << "Non-default algorithm is not supported.";
       return std::nullopt;
     }
-    TF_ASSIGN_OR_RETURN(auto analysis,
-                        TritonFusionAnalysis::Execute(computation));
+    ASSIGN_OR_RETURN(auto analysis, TritonFusionAnalysis::Execute(computation));
     return GemmDimensionAdapter{*dot, std::move(analysis)};
   }
 
@@ -281,51 +378,50 @@ class GemmDimensionAdapter {
             result.strides.empty() ? 1 : result.strides.back());
         result.slices->push_back({0, 1});
         continue;
-      } else {
-        if (spec->size() == 1) {
-          // The dimension is not split, nothing to do.
-        } else if (spec->size() == 2) {
-          if (!dims.lhs_batch_dimensions().empty()) {
-            VLOG(8) << "Noncontracting dimension split is not compatible with "
-                       "batch dimensions.";
-            return std::nullopt;
-          }
-          if (index != lhs_noncontracting_index) {
-            VLOG(8) << "Only LHS noncontracting dimension can be split.";
-            return std::nullopt;
-          }
-          switch (scope) {
-            case TritonFusionAnalysis::Scope::LHS:
-              lhs_noncontracting_split_ = spec->back().count;
-              break;
-            case TritonFusionAnalysis::Scope::OUTPUT:
-              if (lhs_noncontracting_split_ != spec->back().count) {
-                VLOG(8) << "Output non-contracting dimension has to be split "
-                           "the same way as the LHS input one if it is split.";
-                return std::nullopt;
-              }
-              break;
-            default:
-              VLOG(8) << "Only LHS noncontracting dimension can be split.";
-              return std::nullopt;
-          }
-          // Assign the major part of the noncontracting dimension to the
-          // unused batch one.
-          CHECK_EQ(result.sizes[kBatchDimensionIndex], 1);
-          result.sizes[kBatchDimensionIndex] = spec->back().count;
-          result.strides[kBatchDimensionIndex] = spec->back().stride;
-        } else {
-          VLOG(8) << "The dimension is split multiple times.";
+      }
+      if (spec->size() == 1) {
+        // The dimension is not split, nothing to do.
+      } else if (spec->size() == 2) {
+        if (!dims.lhs_batch_dimensions().empty()) {
+          VLOG(8) << "Noncontracting dimension split is not compatible with "
+                     "batch dimensions.";
           return std::nullopt;
         }
-        result.sizes.push_back(spec->front().count);
-        result.strides.push_back(spec->front().stride);
-        result.slices->push_back(
-            {spec->front().slice_start,
-             spec->front().slice_start + spec->front().sliced_count});
-        if (spec->front().count != spec->front().sliced_count) {
-          slicing_is_present = true;
+        if (index != lhs_noncontracting_index) {
+          VLOG(8) << "Only LHS noncontracting dimension can be split.";
+          return std::nullopt;
         }
+        switch (scope) {
+          case TritonFusionAnalysis::Scope::LHS:
+            lhs_noncontracting_split_ = spec->back().count;
+            break;
+          case TritonFusionAnalysis::Scope::OUTPUT:
+            if (lhs_noncontracting_split_ != spec->back().count) {
+              VLOG(8) << "Output non-contracting dimension has to be split "
+                         "the same way as the LHS input one if it is split.";
+              return std::nullopt;
+            }
+            break;
+          default:
+            VLOG(8) << "Only LHS noncontracting dimension can be split.";
+            return std::nullopt;
+        }
+        // Assign the major part of the noncontracting dimension to the
+        // unused batch one.
+        CHECK_EQ(result.sizes[kBatchDimensionIndex], 1);
+        result.sizes[kBatchDimensionIndex] = spec->back().count;
+        result.strides[kBatchDimensionIndex] = spec->back().stride;
+      } else {
+        VLOG(8) << "The dimension is split multiple times.";
+        return std::nullopt;
+      }
+      result.sizes.push_back(spec->front().count);
+      result.strides.push_back(spec->front().stride);
+      result.slices->push_back(
+          {spec->front().slice_start,
+           spec->front().slice_start + spec->front().sliced_count});
+      if (spec->front().count != spec->front().sliced_count) {
+        slicing_is_present = true;
       }
     }
     if (lhs_noncontracting_split_ > 1 &&
@@ -368,13 +464,13 @@ class GemmDimensionAdapter {
 
 class ConvDimensionAdapter {
   explicit ConvDimensionAdapter(const HloInstruction& conv,
-                                CuDnnFusionConfig_Kind conv_kind,
+                                ConvolutionKind convolution_kind,
                                 ConvolutionDimensionNumbers dums)
-      : conv_(conv), conv_kind_(conv_kind), dums_(dums) {}
+      : conv_(conv), convolution_kind_(convolution_kind), dums_(dums) {}
 
  public:
   const HloInstruction& conv_;
-  CuDnnFusionConfig_Kind conv_kind_;
+  ConvolutionKind convolution_kind_;
 
   static absl::StatusOr<std::optional<ConvDimensionAdapter>> Create(
       const HloFusionInstruction& fusion, const HloComputation& computation) {
@@ -384,45 +480,15 @@ class ConvDimensionAdapter {
       VLOG(3) << "Not a Conv fusion.";
       return std::nullopt;
     }
-
-    // get conv type from backend config
-    TF_ASSIGN_OR_RETURN(auto gpu_config,
-                        fusion.backend_config<GpuBackendConfig>());
-    const FusionBackendConfig& fusion_backend_config =
-        gpu_config.fusion_backend_config();
-    if (!fusion_backend_config.has_cudnn_fusion_config() ||
-        !fusion_backend_config.cudnn_fusion_config().has_kind()) {
-      VLOG(3) << "Can't find cudnn fusion config or conv kind for cudnn conv "
-                 "fusion.";
+    ConvolutionKind convolution_kind =
+        DynCast<HloConvolutionInstruction>(maybe_conv)->convolution_kind();
+    if (convolution_kind == CONVOLUTION_KIND_UNSET) {
+      LOG(ERROR) << "Conv kind is not set.";
       return std::nullopt;
     }
-    CuDnnFusionConfig_Kind conv_kind =
-        fusion_backend_config.cudnn_fusion_config().kind();
 
-    const ConvolutionDimensionNumbers& dnums =
-        DynCast<HloConvolutionInstruction>(maybe_conv)
-            ->convolution_dimension_numbers();
-    // for fprop, we do nothing, copy directly
-    ConvolutionDimensionNumbers dnums_for_layout = dnums;
-    if (conv_kind == CuDnnFusionConfig::CONV_WGRAD) {
-      dnums_for_layout.set_input_batch_dimension(
-          dnums.input_feature_dimension());
-      dnums_for_layout.set_input_feature_dimension(
-          dnums.input_batch_dimension());
-      dnums_for_layout.set_output_batch_dimension(
-          dnums.output_feature_dimension());
-      dnums_for_layout.set_output_feature_dimension(
-          dnums.output_batch_dimension());
-      dnums_for_layout.set_kernel_input_feature_dimension(
-          dnums.kernel_output_feature_dimension());
-      dnums_for_layout.set_kernel_output_feature_dimension(
-          dnums.kernel_input_feature_dimension());
-    } else if (conv_kind == CuDnnFusionConfig::CONV_DGRAD) {
-      dnums_for_layout.set_kernel_input_feature_dimension(
-          dnums.kernel_output_feature_dimension());
-      dnums_for_layout.set_kernel_output_feature_dimension(
-          dnums.kernel_input_feature_dimension());
-    }
+    ConvolutionDimensionNumbers dnums_for_layout =
+        RestoreDimNumber(DynCast<HloConvolutionInstruction>(maybe_conv));
 
     // make sure input/kernel/output has the same layout
     TF_RET_CHECK(dnums_for_layout.input_batch_dimension() ==
@@ -440,20 +506,30 @@ class ConvDimensionAdapter {
                    dnums_for_layout.kernel_spatial_dimensions(i) ==
                        dnums_for_layout.output_spatial_dimensions(i));
     }
-    return ConvDimensionAdapter{*maybe_conv, conv_kind, dnums_for_layout};
+    return ConvDimensionAdapter{*maybe_conv, convolution_kind,
+                                dnums_for_layout};
   }
 
   std::optional<Result> DimensionsAndStrides(const HloInstruction& hlo) {
-    // placeholder FP32 data type here, it is not used
+    if (ShapeUtil::IsScalar(hlo.shape())) {
+      Result result;
+      // cuDNN convolution tensors have a batch and a feature dimension in
+      // addition to spatial dimensions.
+      result.sizes =
+          std::vector<int64_t>(dums_.input_spatial_dimensions_size() + 2, 1);
+      result.strides =
+          std::vector<int64_t>(dums_.input_spatial_dimensions_size() + 2, 1);
+      return result;
+    }
+    // Placeholder FP32 data type here, it is not used.
     auto desc = se::dnn::TensorDescriptor::For(
         se::dnn::DataType::kFloat, hlo.shape().dimensions(),
         hlo.shape().layout().minor_to_major());
-    // logical layout and physical layout should be the same after layout
+    // Logical layout and physical layout should be the same after layout
     // assignment.
     std::vector<int64_t> logical_dims = desc.dimensions();
     std::vector<int64_t> logical_strides = desc.GetLogicalStrides();
-    // cuDNN conv frontend requires logical layout to be NCHW. return logical
-    // NCHW layout. we shouldn't need to know if this hlo is LHS, RHS or Output,
+    // We shouldn't need to know if this hlo is LHS, RHS or Output,
     // they should have same layout after layout assignment. Use input dums
     // here.
     Result result;
@@ -475,34 +551,47 @@ class ConvDimensionAdapter {
 
 template <PrimitiveType XlaT, typename T>
 std::shared_ptr<graph::Tensor_attributes> LiteralToCudnnTensor(
-    const HloInstruction& hlo, graph::Graph& graph) {
+    const HloInstruction& hlo, graph::Graph& graph, int64_t rank) {
   using NativeT = typename primitive_util::PrimitiveTypeToNative<XlaT>::type;
-  return graph.tensor(T(hlo.literal().GetFirstElement<NativeT>()));
+  auto tensor = graph.tensor(T(hlo.literal().GetFirstElement<NativeT>()));
+  tensor->set_dim(std::vector<int64_t>(rank, 1))
+      .set_stride(std::vector<int64_t>(rank, 1));
+  return tensor;
 }
 
-std::optional<std::shared_ptr<graph::Tensor_attributes>>
-HandleConstantHloToCudnnGraph(const HloInstruction& hlo, graph::Graph& graph) {
+absl::StatusOr<std::shared_ptr<graph::Tensor_attributes>>
+HandleConstantHloToCudnnGraph(const HloInstruction& hlo, graph::Graph& graph,
+                              int64_t rank = 3) {
   CHECK(hlo.IsConstant()) << "HLO is not a constant: " << hlo.ToShortString();
   if (!ShapeUtil::IsScalar(hlo.shape())) {
-    VLOG(3) << "Currently only support fusing scalar in the graph";
-    return std::nullopt;
+    return absl::UnimplementedError(
+        absl::StrCat("Currently only support fusing scalar in the graph, got: ",
+                     hlo.ToString()));
   }
   PrimitiveType constant_type = hlo.shape().element_type();
   switch (constant_type) {
+    case F16:
+      return LiteralToCudnnTensor<F16, __half>(hlo, graph, rank);
     case BF16:
-      return LiteralToCudnnTensor<BF16, __nv_bfloat16>(hlo, graph);
+      return LiteralToCudnnTensor<BF16, __nv_bfloat16>(hlo, graph, rank);
     case F32:
-      return LiteralToCudnnTensor<F32, float>(hlo, graph);
+      return LiteralToCudnnTensor<F32, float>(hlo, graph, rank);
+#if CUDNN_FRONTEND_VERSION >= 12300
+    case F64:
+      return LiteralToCudnnTensor<F64, double>(hlo, graph, rank);
+#endif
     case S32:
-      return LiteralToCudnnTensor<S32, int>(hlo, graph);
+      return LiteralToCudnnTensor<S32, int>(hlo, graph, rank);
+    case S8:
+      return LiteralToCudnnTensor<S8, int8_t>(hlo, graph, rank);
     default:
-      VLOG(3) << "Unsupported constant type: "
-              << PrimitiveType_Name(constant_type);
-      return std::nullopt;
+      return absl::UnimplementedError(absl::StrCat(
+          "Unsupported constant type: ", PrimitiveType_Name(constant_type),
+          " in instruction: ", hlo.ToString()));
   }
 }
 
-std::optional<std::shared_ptr<graph::Tensor_attributes>>
+absl::StatusOr<std::shared_ptr<graph::Tensor_attributes>>
 HandleClampToCudnnGraph(
     const HloInstruction& hlo, graph::Graph& graph,
     absl::flat_hash_map<const HloInstruction*,
@@ -522,9 +611,10 @@ HandleClampToCudnnGraph(
   const std::optional<fe::DataType_t> data_type =
       ToCudnnDataType(hlo.shape().element_type());
   if (!data_type.has_value()) {
-    VLOG(3) << "Unimplemented data type: "
-            << PrimitiveType_Name(hlo.shape().element_type());
-    return std::nullopt;
+    return absl::UnimplementedError(
+        absl::StrCat("Unimplemented data type: ",
+                     PrimitiveType_Name(hlo.shape().element_type()),
+                     " in instruction: ", hlo.ToString()));
   }
   min_tensor->set_data_type(*data_type).set_name(std::string(hlo.name()));
   const auto max_attrs = graph::Pointwise_attributes()
@@ -533,8 +623,40 @@ HandleClampToCudnnGraph(
   return graph.pointwise(min_tensor, hlo_to_cudnn[hlo.operand(0)], max_attrs);
 }
 
+absl::StatusOr<std::shared_ptr<graph::Tensor_attributes>>
+HandleExpMinusOneToCudnnGraph(
+    const HloInstruction& hlo, graph::Graph& graph,
+    absl::flat_hash_map<const HloInstruction*,
+                        std::shared_ptr<graph::Tensor_attributes>>
+        hlo_to_cudnn,
+    fe::DataType_t compute_dtype) {
+  CHECK(hlo.opcode() == HloOpcode::kExpm1)
+      << "HLO is not a Exp-minus-one: " << hlo.ToShortString();
+  CHECK(hlo.operands().size() == 1)
+      << "Exp-minus-one requires to have 1 operand: " << hlo.ToShortString();
+  // exp-minus-one = exp(value) - 1;
+  const auto exp_attrs = graph::Pointwise_attributes()
+                             .set_mode(fe::PointwiseMode_t::EXP)
+                             .set_compute_data_type(compute_dtype);
+  std::shared_ptr<graph::Tensor_attributes> exp_tensor =
+      graph.pointwise(hlo_to_cudnn[hlo.operand(0)], exp_attrs);
+  const std::optional<fe::DataType_t> data_type =
+      ToCudnnDataType(hlo.shape().element_type());
+  if (!data_type.has_value()) {
+    return absl::UnimplementedError(
+        absl::StrCat("Unimplemented data type: ",
+                     PrimitiveType_Name(hlo.shape().element_type()),
+                     " in instruction: ", hlo.ToString()));
+  }
+  exp_tensor->set_data_type(*data_type).set_name(std::string(hlo.name()));
+  const auto minus_attrs = graph::Pointwise_attributes()
+                               .set_mode(fe::PointwiseMode_t::SUB)
+                               .set_compute_data_type(compute_dtype);
+  return graph.pointwise(exp_tensor, graph.tensor(1), minus_attrs);
+}
+
 // Traverses fusion computations and creates cuDNN graphs out of them.
-absl::StatusOr<std::optional<se::gpu::CudnnGraph>> HloFusionToCuDnnGraph(
+absl::StatusOr<se::gpu::CudnnGraph> HloFusionToCuDnnGraph(
     const HloFusionInstruction& fusion) {
   const HloComputation& computation = *fusion.fused_instructions_computation();
   VLOG(5) << fusion.ToString();
@@ -548,22 +670,27 @@ absl::StatusOr<std::optional<se::gpu::CudnnGraph>> HloFusionToCuDnnGraph(
   absl::flat_hash_map<const HloInstruction*,
                       std::shared_ptr<graph::Tensor_attributes>>
       hlo_to_cudnn;
-  TF_ASSIGN_OR_RETURN(std::optional<GemmDimensionAdapter> gemm_adapter,
-                      GemmDimensionAdapter::Create(computation));
-  TF_ASSIGN_OR_RETURN(std::optional<ConvDimensionAdapter> conv_adapter,
-                      ConvDimensionAdapter::Create(fusion, computation));
-  if (!gemm_adapter.has_value() && !conv_adapter.has_value()) {
-    VLOG(3) << "No dot or conv found inside cudnn fusion.";
-    return std::nullopt;
+  ASSIGN_OR_RETURN(std::optional<GemmDimensionAdapter> gemm_adapter,
+                   GemmDimensionAdapter::Create(computation));
+  ASSIGN_OR_RETURN(std::optional<ConvDimensionAdapter> conv_adapter,
+                   ConvDimensionAdapter::Create(fusion, computation));
+  ASSIGN_OR_RETURN(std::optional<RaggedDotDimensionAdapter> ragged_dot_adapter,
+                   RaggedDotDimensionAdapter::Create(fusion, computation));
+  if (!gemm_adapter.has_value() && !conv_adapter.has_value() &&
+      !ragged_dot_adapter.has_value()) {
+    return absl::UnimplementedError(
+        "No dot or conv or ragged_dot found inside cudnn fusion.");
   }
 
   auto add_parameter = [&](const HloInstruction& parameter,
-                           const Result& dims) {
+                           const Result& dims) -> absl::Status {
     const std::optional<fe::DataType_t> data_type =
         ToCudnnDataType(parameter.shape().element_type());
     if (!data_type.has_value()) {
-      VLOG(3) << "Unsupported data type.";
-      return false;
+      return absl::UnimplementedError(
+          absl::StrCat("Unsupported data type: ",
+                       PrimitiveType_Name(parameter.shape().element_type()),
+                       " for parameter: ", parameter.ToString()));
     }
     hlo_to_cudnn[&parameter] = graph.tensor(
         graph::Tensor_attributes()
@@ -577,16 +704,10 @@ absl::StatusOr<std::optional<se::gpu::CudnnGraph>> HloFusionToCuDnnGraph(
           hlo_to_cudnn[&parameter],
           graph::Slice_attributes().set_slices(dims.slices.value()));
     }
-    return true;
+    return absl::OkStatus();
   };
 
   if (conv_adapter.has_value()) {
-    for (const HloInstruction* operand : conv_adapter->conv_.operands()) {
-      if (!HloPredicateIsOp<HloOpcode::kParameter>(operand)) {
-        VLOG(3) << "Conv operands are expected to be parameters.";
-        return std::nullopt;
-      }
-    }
     for (const HloInstruction* parameter :
          computation.parameter_instructions()) {
       // for now, we assume all parameters have same layout even if they are not
@@ -595,12 +716,22 @@ absl::StatusOr<std::optional<se::gpu::CudnnGraph>> HloFusionToCuDnnGraph(
           conv_adapter->DimensionsAndStrides(*parameter);
       VLOG(3) << "parameter: " << parameter->ToString() << "\n";
       if (!dims.has_value()) {
-        VLOG(3) << "Unsupported dimensions.";
-        return std::nullopt;
+        return absl::UnimplementedError(absl::StrCat(
+            "Unsupported dimensions for parameter: ", parameter->ToString()));
       }
-      if (!add_parameter(*parameter, *dims)) {
-        return std::nullopt;
+      RETURN_IF_ERROR(add_parameter(*parameter, *dims));
+    }
+  } else if (ragged_dot_adapter.has_value()) {
+    for (const HloInstruction* parameter :
+         computation.parameter_instructions()) {
+      const std::optional<Result> dims =
+          ragged_dot_adapter->DimensionsAndStrides(*parameter);
+      VLOG(3) << "parameter: " << parameter->ToString() << "\n";
+      if (!dims.has_value()) {
+        return absl::UnimplementedError(absl::StrCat(
+            "Unsupported dimensions for parameter: ", parameter->ToString()));
       }
+      RETURN_IF_ERROR(add_parameter(*parameter, *dims));
     }
   } else {
     // dot and scale dot
@@ -621,12 +752,10 @@ absl::StatusOr<std::optional<se::gpu::CudnnGraph>> HloFusionToCuDnnGraph(
             gemm_adapter->DimensionsAndStrides(*parameter, scope);
         VLOG(3) << "parameter: " << parameter->ToString() << "\n";
         if (!dims.has_value()) {
-          VLOG(3) << "Unsupported dimensions.";
-          return std::nullopt;
+          return absl::UnimplementedError(absl::StrCat(
+              "Unsupported dimensions for parameter: ", parameter->ToString()));
         }
-        if (!add_parameter(*parameter, *dims)) {
-          return std::nullopt;
-        }
+        RETURN_IF_ERROR(add_parameter(*parameter, *dims));
       }
     }
   }
@@ -636,55 +765,72 @@ absl::StatusOr<std::optional<se::gpu::CudnnGraph>> HloFusionToCuDnnGraph(
     auto operand = [&hlo_to_cudnn, &hlo](int i) {
       return hlo_to_cudnn[hlo->operand(i)];
     };
-    if (HloPredicateIsOp<HloOpcode::kParameter>(hlo)) {
+
+    if (HloPredicateIsOp<HloOpcode::kConvert>(hlo) && hlo->user_count() == 1 &&
+        HloPredicateIsOp<HloOpcode::kConvolution>(hlo->users()[0])) {
+      // consume converts of inputs to conv, conv can do fp32 = conv(fp8, fp8)
+      // and int32 = conv(int8, int8)
+      hlo_to_cudnn[hlo] = operand(0);
+      continue;
+    } else if (HloPredicateIsOp<HloOpcode::kParameter>(hlo)) {
       CHECK(hlo_to_cudnn.contains(hlo));
       continue;
     } else if (HloPredicateIsOp<HloOpcode::kCustomCall>(hlo)) {
       if (hlo->user_count() != 1 ||
           !IsWorkspaceAllocationRoot(*hlo->users()[0])) {
-        VLOG(3) << "Custom calls are only expected to be used for workspace "
-                   "allocation.";
-        return std::nullopt;
+        return absl::UnimplementedError(
+            absl::StrCat("Custom calls are only expected to be used for "
+                         "workspace allocation, got: ",
+                         hlo->ToString()));
       }
       continue;
     } else if (HloPredicateIsOp<HloOpcode::kTuple>(hlo)) {
-      if (!IsWorkspaceAllocationRoot(*hlo)) {
-        VLOG(3) << "Tuples are only expected at outputs for workspace "
-                   "allocation.";
-        return std::nullopt;
+      if (!IsWorkspaceAllocationRoot(*hlo) && !IsAmaxRoot(*hlo)) {
+        return absl::UnimplementedError(
+            absl::StrCat("Tuples are only expected at outputs for workspace "
+                         "allocation, got: ",
+                         hlo->ToString()));
       }
       continue;
     } else if (HloPredicateIsOp<HloOpcode::kConstant>(hlo)) {
-      if (const auto const_tensor = HandleConstantHloToCudnnGraph(*hlo, graph);
-          const_tensor.has_value()) {
-        hlo_to_cudnn[hlo] = const_tensor.value();
-      } else {
-        return std::nullopt;
-      }
+      ASSIGN_OR_RETURN(hlo_to_cudnn[hlo],
+                       HandleConstantHloToCudnnGraph(*hlo, graph));
     } else if (HloPredicateIsOp<HloOpcode::kReshape, HloOpcode::kBitcast,
                                 HloOpcode::kTranspose, HloOpcode::kCopy,
-                                HloOpcode::kBroadcast, HloOpcode::kSlice>(
-                   hlo)) {
+                                HloOpcode::kSlice>(hlo)) {
       // All these are accounted for separately as transformations of strides.
       hlo_to_cudnn[hlo] = operand(0);
+    } else if (HloPredicateIsOp<HloOpcode::kBroadcast>(hlo)) {
+      if (hlo->operand(0)->opcode() == HloOpcode::kConstant) {
+        ASSIGN_OR_RETURN(
+            hlo_to_cudnn[hlo],
+            HandleConstantHloToCudnnGraph(*hlo->operand(0), graph,
+                                          hlo->shape().dimensions().size()));
+      } else {
+        hlo_to_cudnn[hlo] = operand(0);
+      }
     } else if (hlo->IsElementwise()) {
       const auto compute_dtype =
           GetComputeDataType(hlo->shape().element_type());
       if (!compute_dtype.has_value()) {
-        return std::nullopt;
+        return absl::UnimplementedError(
+            absl::StrCat("Unsupported compute data type for: ",
+                         PrimitiveType_Name(hlo->shape().element_type()),
+                         " in instruction: ", hlo->ToString()));
       }
       if (HloPredicateIsOp<HloOpcode::kClamp>(hlo)) {
-        const auto clamp = HandleClampToCudnnGraph(*hlo, graph, hlo_to_cudnn,
-                                                   compute_dtype.value());
-        if (!clamp.has_value()) {
-          return std::nullopt;
-        }
-        hlo_to_cudnn[hlo] = clamp.value();
+        ASSIGN_OR_RETURN(hlo_to_cudnn[hlo],
+                         HandleClampToCudnnGraph(*hlo, graph, hlo_to_cudnn,
+                                                 compute_dtype.value()));
+      } else if (HloPredicateIsOp<HloOpcode::kExpm1>(hlo)) {
+        ASSIGN_OR_RETURN(hlo_to_cudnn[hlo],
+                         HandleExpMinusOneToCudnnGraph(
+                             *hlo, graph, hlo_to_cudnn, compute_dtype.value()));
       } else {
         const auto mode = GetElementwiseMode(*hlo);
         if (!mode.has_value()) {
-          VLOG(3) << "Unsupported elementwise operation.";
-          return std::nullopt;
+          return absl::UnimplementedError(absl::StrCat(
+              "Unsupported elementwise operation: ", hlo->ToString()));
         }
         const auto attrs = graph::Pointwise_attributes()
                                .set_mode(mode.value())
@@ -716,22 +862,25 @@ absl::StatusOr<std::optional<se::gpu::CudnnGraph>> HloFusionToCuDnnGraph(
           hlo_to_cudnn[hlo] = graph.pointwise(operand(0), operand(1), attrs);
         } else if (hlo->operand_count() == 3) {
           if (HloPredicateIsNotOp<HloOpcode::kSelect>(hlo)) {
-            VLOG(3) << "Unexpected ternary operation: " << hlo->ToString();
-            return std::nullopt;
+            return absl::UnimplementedError(absl::StrCat(
+                "Unexpected ternary operation: ", hlo->ToString()));
           }
           // Operand order for select differs between HLO and cuDNN.
           hlo_to_cudnn[hlo] =
               graph.pointwise(operand(1), operand(2), operand(0), attrs);
         } else {
-          VLOG(3) << "Unimplemented elementwise operation.";
-          return std::nullopt;
+          return absl::UnimplementedError(absl::StrCat(
+              "Unimplemented elementwise operation: ", hlo->ToString()));
         }
       }
     } else if (HloPredicateIsOp<HloOpcode::kDot>(hlo)) {
       const auto compute_dtype =
           GetComputeDataType(hlo->shape().element_type());
       if (!compute_dtype.has_value()) {
-        return std::nullopt;
+        return absl::UnimplementedError(
+            absl::StrCat("Unsupported compute data type for: ",
+                         PrimitiveType_Name(hlo->shape().element_type()),
+                         " in instruction: ", hlo->ToString()));
       }
       hlo_to_cudnn[hlo] =
           graph.matmul(operand(0), operand(1),
@@ -741,7 +890,10 @@ absl::StatusOr<std::optional<se::gpu::CudnnGraph>> HloFusionToCuDnnGraph(
       const auto compute_dtype =
           GetComputeDataType(hlo->shape().element_type());
       if (!compute_dtype.has_value()) {
-        return std::nullopt;
+        return absl::UnimplementedError(
+            absl::StrCat("Unsupported compute data type for: ",
+                         PrimitiveType_Name(hlo->shape().element_type()),
+                         " in instruction: ", hlo->ToString()));
       }
       std::array<std::shared_ptr<graph::Tensor_attributes>, 2> dot_operands;
       for (int i = 0; i < 2; ++i) {
@@ -764,10 +916,25 @@ absl::StatusOr<std::optional<se::gpu::CudnnGraph>> HloFusionToCuDnnGraph(
           graph::Matmul_attributes().set_compute_data_type(*compute_dtype));
     } else if (HloPredicateIsOp<HloOpcode::kConvolution>(hlo)) {
       // translate conv windows to cudnn conv attr
-      const Window& window = DynCast<HloConvolutionInstruction>(hlo)->window();
+      std::optional<Window> window_opt =
+          RestoreWindow(DynCast<HloConvolutionInstruction>(hlo));
+      CHECK(window_opt.has_value());
+      Window window = window_opt.value();
+      int64_t dims_size = window.dimensions_size();
       std::vector<int64_t> pre_padding, post_padding, stride, dilation;
+      pre_padding.reserve(dims_size);
+      post_padding.reserve(dims_size);
+      stride.reserve(dims_size);
+      dilation.reserve(dims_size);
+      bool dims_reversed =
+          dims_size > 0 && window.dimensions(0).window_reversal();
       for (int64_t i = 0; i < window.dimensions_size(); ++i) {
         const auto& dim = window.dimensions(i);
+        if (dim.window_reversal() != dims_reversed) {
+          return absl::UnimplementedError(absl::StrCat(
+              "cuDNN fusion does not support mixed window reversal: ",
+              hlo->ToString()));
+        }
         pre_padding.push_back(dim.padding_low());
         post_padding.push_back(dim.padding_high());
         stride.push_back(dim.stride());
@@ -776,79 +943,126 @@ absl::StatusOr<std::optional<se::gpu::CudnnGraph>> HloFusionToCuDnnGraph(
       const auto compute_dtype =
           GetComputeDataType(hlo->shape().element_type());
       if (!compute_dtype.has_value()) {
-        return std::nullopt;
+        return absl::UnimplementedError(
+            absl::StrCat("Unsupported compute data type for: ",
+                         PrimitiveType_Name(hlo->shape().element_type()),
+                         " in instruction: ", hlo->ToString()));
       }
 
-      // lower to different conv based on conv_kind set in cudnn fusion backend
-      // config
+      // lower to different conv based on convolution_kind set in cudnn fusion
+      // backend config
       auto set_conv_attr = [&](auto conv_attr) {
+        auto math_mode = dims_reversed
+                             ? fe::ConvolutionMode_t::CONVOLUTION
+                             : fe::ConvolutionMode_t::CROSS_CORRELATION;
         return conv_attr.set_pre_padding(pre_padding)
             .set_post_padding(post_padding)
             .set_stride(stride)
             .set_dilation(dilation)
+            .set_convolution_mode(math_mode)
             .set_compute_data_type(compute_dtype.value());
       };
-      if (conv_adapter->conv_kind_ == CuDnnFusionConfig::CONV_FPROP) {
+      if (conv_adapter->convolution_kind_ == CONVOLUTION_KIND_FPROP) {
         hlo_to_cudnn[hlo] =
             graph.conv_fprop(operand(0), operand(1),
                              set_conv_attr(graph::Conv_fprop_attributes()));
-      } else if (conv_adapter->conv_kind_ == CuDnnFusionConfig::CONV_DGRAD) {
+      } else if (conv_adapter->convolution_kind_ == CONVOLUTION_KIND_DGRAD) {
         hlo_to_cudnn[hlo] =
             graph.conv_dgrad(operand(0), operand(1),
                              set_conv_attr(graph::Conv_dgrad_attributes()));
-      } else if (conv_adapter->conv_kind_ == CuDnnFusionConfig::CONV_WGRAD) {
+      } else if (conv_adapter->convolution_kind_ == CONVOLUTION_KIND_WGRAD) {
         // cudnn frontend accepts operand in the order of dout, input, but xla
         // uses reverse order
         hlo_to_cudnn[hlo] =
             graph.conv_wgrad(operand(1), operand(0),
                              set_conv_attr(graph::Conv_wgrad_attributes()));
       } else {
-        VLOG(3) << "Unimplemented conv type.";
-        return std::nullopt;
+        return absl::UnimplementedError(
+            absl::StrCat("Unimplemented conv type: ",
+                         static_cast<int>(conv_adapter->convolution_kind_),
+                         " in instruction: ", hlo->ToString()));
       }
       // cuDNN requires output dims to be set for conv dgrad and wgrad, it is
       // not required for fprop but we do it anyway for simplicity
       const std::optional<Result> dims =
           conv_adapter->DimensionsAndStrides(*hlo);
       hlo_to_cudnn[hlo]->set_dim(dims->sizes);
+    } else if (HloPredicateIsOp<HloOpcode::kRaggedDot>(hlo)) {
+      const auto compute_dtype =
+          GetComputeDataType(hlo->shape().element_type());
+      if (!compute_dtype.has_value()) {
+        return absl::UnimplementedError(
+            absl::StrCat("Unsupported compute data type for: ",
+                         PrimitiveType_Name(hlo->shape().element_type()),
+                         " in instruction: ", hlo->ToString()));
+      }
+      auto moe_grouped_matmul_attr =
+          graph::Moe_grouped_matmul_attributes()
+              .set_mode(fe::MoeGroupedMatmulMode_t::NONE)
+              .set_compute_data_type(compute_dtype.value())
+              .set_top_k(1);
+      hlo_to_cudnn[hlo] =
+          graph.moe_grouped_matmul(operand(0), operand(1), operand(2), nullptr,
+                                   nullptr, moe_grouped_matmul_attr);
+    } else if (HloPredicateIsOp<HloOpcode::kReduce>(hlo)) {
+      hlo_to_cudnn[hlo] = graph.reduction(
+          operand(0), graph::Reduction_attributes()
+                          .set_mode(fe::ReductionMode_t::AMAX)
+                          .set_compute_data_type(fe::DataType_t::FLOAT));
     } else {
-      VLOG(3) << "Unimplemented operation.";
-      return std::nullopt;
+      return absl::UnimplementedError(
+          absl::StrCat("Unimplemented operation: ", hlo->ToString()));
     }
     if (hlo_to_cudnn[hlo] == nullptr) {
-      VLOG(3) << "Creation of the operation failed.";
-      return std::nullopt;
+      return absl::InternalError(absl::StrCat(
+          "Creation of the operation failed for: ", hlo->ToString()));
     }
     const std::optional<fe::DataType_t> data_type =
         ToCudnnDataType(hlo->shape().element_type());
     if (!data_type.has_value()) {
-      VLOG(3) << "Unimplemented data type: "
-              << PrimitiveType_Name(hlo->shape().element_type());
-      return std::nullopt;
+      return absl::UnimplementedError(
+          absl::StrCat("Unimplemented data type: ",
+                       PrimitiveType_Name(hlo->shape().element_type()),
+                       " in instruction: ", hlo->ToString()));
     }
     hlo_to_cudnn[hlo]
         ->set_data_type(data_type.value())
         .set_name(std::string(hlo->name()));
   }
-  const HloInstruction* output = instructions.back();
+
+  std::vector<HloInstruction*> outputs;
   if (instructions.back()->shape().IsTuple()) {
-    output = instructions.back()->operand(0);
+    for (auto operand : instructions.back()->operands()) {
+      if (!operand->IsCustomCall(kWorkspaceAllocationCustomCallTarget)) {
+        outputs.push_back(operand);
+      }
+    }
+  } else {
+    outputs.push_back(instructions.back());
   }
 
-  const std::optional<Result> dims =
-      conv_adapter.has_value()
-          ? conv_adapter->DimensionsAndStrides(*output)
-          : gemm_adapter->DimensionsAndStrides(
-                *output, TritonFusionAnalysis::Scope::OUTPUT);
-  if (!dims.has_value()) {
-    VLOG(3) << "Unsupported dimensions.";
-    return std::nullopt;
+  for (int i = 0; i < outputs.size(); ++i) {
+    HloInstruction* output = outputs[i];
+    std::optional<Result> dims = std::nullopt;
+    if (conv_adapter.has_value()) {
+      dims = conv_adapter->DimensionsAndStrides(*output);
+    } else if (ragged_dot_adapter.has_value()) {
+      dims = ragged_dot_adapter->DimensionsAndStrides(*output);
+    } else {
+      dims = gemm_adapter->DimensionsAndStrides(
+          *output, TritonFusionAnalysis::Scope::OUTPUT);
+    }
+    if (!dims.has_value()) {
+      return absl::UnimplementedError(absl::StrCat(
+          "Unsupported dimensions for output: ", output->ToString()));
+    }
+    hlo_to_cudnn[output]
+        ->set_output(true)
+        .set_dim(dims->sizes)
+        .set_stride(dims->strides)
+        .set_uid(se::gpu::CuDnnTensorUID(fusion.operand_count() + i));
   }
-  hlo_to_cudnn[output]
-      ->set_output(true)
-      .set_dim(dims->sizes)
-      .set_stride(dims->strides)
-      .set_uid(se::gpu::CuDnnTensorUID(fusion.operand_count()));
+
   if (!fusion.GetModule()->config().debug_options().xla_dump_to().empty()) {
     json dump;
     graph.serialize(dump);
@@ -865,17 +1079,16 @@ absl::StatusOr<std::optional<se::gpu::CudnnGraph>> HloFusionToCuDnnGraph(
 
 // Creates a cuDNN graph, queries cuDNN whether it is supported.
 absl::StatusOr<se::gpu::CudnnGraph> PrepareGraph(
-    se::dnn::DnnSupport& dnn_support, const HloFusionInstruction& hlo) {
-  TF_ASSIGN_OR_RETURN(std::optional<se::gpu::CudnnGraph> graph,
-                      HloFusionToCuDnnGraph(hlo));
-  if (!graph.has_value()) {
-    return absl::InternalError("Construction of cuDNN graph failed.");
-  }
-  TF_RETURN_IF_ERROR(graph->Prepare(
-      dnn_support, se::EngineOptions{
-                       RequireDeterminism(hlo.GetModule()->config()),
-                       /*allow_tf32=*/true, /*require_command_buffer=*/false}));
-  return *graph;
+    se::dnn::DnnSupport* dnn_support,
+    const se::DeviceDescription& gpu_device_info,
+    const HloFusionInstruction& hlo) {
+  ASSIGN_OR_RETURN(se::gpu::CudnnGraph graph, HloFusionToCuDnnGraph(hlo));
+  RETURN_IF_ERROR(graph.Prepare(
+      dnn_support, gpu_device_info,
+      se::EngineOptions{RequireDeterminism(hlo.GetModule()->config()),
+                        /*allow_tf32=*/true,
+                        /*require_command_buffer=*/false}));
+  return graph;
 }
 
 absl::StatusOr<HloInstruction*> AddWorkspace(HloInstruction& fusion,
@@ -885,29 +1098,50 @@ absl::StatusOr<HloInstruction*> AddWorkspace(HloInstruction& fusion,
       computation->AddInstruction(HloInstruction::CreateCustomCall(
           ShapeUtil::MakeShape(S8, {workspace_size}), {},
           kWorkspaceAllocationCustomCallTarget));
-  HloInstruction* output_tuple =
-      computation->AddInstruction(HloInstruction::CreateTuple(
-          {computation->root_instruction(), custom_call}));
+  HloInstruction* output_tuple;
+  bool is_tuple_output =
+      computation->root_instruction()->opcode() == HloOpcode::kTuple;
+  if (is_tuple_output) {
+    std::vector<HloInstruction*> operands;
+    operands.insert(operands.begin(),
+                    computation->root_instruction()->operands().begin(),
+                    computation->root_instruction()->operands().end());
+    operands.push_back(custom_call);
+    output_tuple =
+        computation->AddInstruction(HloInstruction::CreateTuple(operands));
+    RETURN_IF_ERROR(computation->ReplaceInstructionWithDifferentShape(
+        computation->root_instruction(), output_tuple));
+  } else {
+    output_tuple = computation->AddInstruction(HloInstruction::CreateTuple(
+        {computation->root_instruction(), custom_call}));
+  }
   computation->set_root_instruction(output_tuple, true);
   HloInstruction* new_fusion = fusion.parent()->AddInstruction(
       fusion.CloneWithNewShape(output_tuple->shape()));
-  TF_RETURN_IF_ERROR(new_fusion->CopyAllControlDepsFrom(&fusion));
-  TF_RETURN_IF_ERROR(fusion.DropAllControlDeps());
-  TF_RETURN_IF_ERROR(fusion.ReplaceAllUsesWith(fusion.parent()->AddInstruction(
-      HloInstruction::CreateGetTupleElement(new_fusion, 0))));
-  TF_RETURN_IF_ERROR(fusion.parent()->RemoveInstruction(&fusion));
+  RETURN_IF_ERROR(new_fusion->CopyAllControlDepsFrom(&fusion));
+  RETURN_IF_ERROR(fusion.DropAllControlDeps());
+  if (is_tuple_output) {
+    RETURN_IF_ERROR(fusion.parent()->ReplaceInstructionWithDifferentShape(
+        &fusion, new_fusion));
+  } else {
+    RETURN_IF_ERROR(fusion.ReplaceAllUsesWith(fusion.parent()->AddInstruction(
+        HloInstruction::CreateGetTupleElement(new_fusion, 0))));
+    RETURN_IF_ERROR(fusion.parent()->RemoveInstruction(&fusion));
+  }
   return new_fusion;
 }
 
 class CuDnnFusionVisitor : public DfsHloRewriteVisitor {
  public:
-  explicit CuDnnFusionVisitor(se::dnn::DnnSupport& dnn_support,
+  explicit CuDnnFusionVisitor(se::dnn::DnnSupport* dnn_support,
+                              const se::DeviceDescription& gpu_device_info,
                               BinaryMap& compilation_results)
-      : dnn_support_(dnn_support), compilation_results_(compilation_results) {}
+      : dnn_support_(dnn_support),
+        gpu_device_info_(gpu_device_info),
+        compilation_results_(compilation_results) {}
 
   absl::Status HandleFusion(HloInstruction* hlo) override {
-    TF_ASSIGN_OR_RETURN(auto gpu_config,
-                        hlo->backend_config<GpuBackendConfig>());
+    ASSIGN_OR_RETURN(auto gpu_config, hlo->backend_config<GpuBackendConfig>());
     const FusionBackendConfig& fusion_backend_config =
         gpu_config.fusion_backend_config();
     if (fusion_backend_config.kind() != kCuDnnFusionKind) {
@@ -915,10 +1149,26 @@ class CuDnnFusionVisitor : public DfsHloRewriteVisitor {
     }
     VLOG(4) << "Processing " << hlo->ToString();
 
+    absl::Status status = ProcessCudnnFusion(hlo, gpu_config);
+    if (!status.ok()) {
+      tsl::errors::AppendToMessage(
+          &status, "\nFailed to process cuDNN fusion: ", hlo->ToString(),
+          "\nComputation:\n",
+          hlo->fused_instructions_computation()->ToString());
+    }
+    return status;
+  }
+
+ private:
+  absl::Status ProcessCudnnFusion(HloInstruction*& hlo,
+                                  GpuBackendConfig& gpu_config) {
+    const FusionBackendConfig& fusion_backend_config =
+        gpu_config.fusion_backend_config();
+
     auto compile_graph = [&]() -> absl::StatusOr<se::gpu::CudnnGraph> {
-      TF_ASSIGN_OR_RETURN(
-          se::gpu::CudnnGraph graph,
-          PrepareGraph(dnn_support_, *DynCast<HloFusionInstruction>(hlo)));
+      ASSIGN_OR_RETURN(se::gpu::CudnnGraph graph,
+                       PrepareGraph(dnn_support_, gpu_device_info_,
+                                    *DynCast<HloFusionInstruction>(hlo)));
 
       if (fusion_backend_config.has_cudnn_fusion_config() &&
           fusion_backend_config.cudnn_fusion_config().plan_id() >= 0) {
@@ -929,14 +1179,14 @@ class CuDnnFusionVisitor : public DfsHloRewriteVisitor {
         if (plan_id >= graph.Graph().get_execution_plan_count()) {
           return absl::InternalError("cuDNN graph plan does not exist.");
         }
-        TF_RETURN_IF_ERROR(graph.Build(dnn_support_, plan_id));
+        RETURN_IF_ERROR(graph.Build(dnn_support_, gpu_device_info_, plan_id));
       } else {
         // Build plans one by one till first successful when no plan_id was
         // provided.
         int64_t plan_id = 0;
         for (; plan_id < graph.Graph().get_execution_plan_count(); ++plan_id) {
           VLOG(7) << "Trying plan ID " << plan_id;
-          if (graph.Build(dnn_support_, plan_id).ok()) {
+          if (graph.Build(dnn_support_, gpu_device_info_, plan_id).ok()) {
             VLOG(7) << "Successfully built plan ID " << plan_id;
             break;
           }
@@ -948,7 +1198,7 @@ class CuDnnFusionVisitor : public DfsHloRewriteVisitor {
             gpu_config.mutable_fusion_backend_config()
                 ->mutable_cudnn_fusion_config();
         cudnn_config->set_plan_id(plan_id);
-        TF_RETURN_IF_ERROR(hlo->set_backend_config(gpu_config));
+        RETURN_IF_ERROR(hlo->set_backend_config(gpu_config));
       }
       return graph;
     };
@@ -967,9 +1217,8 @@ class CuDnnFusionVisitor : public DfsHloRewriteVisitor {
           hlo->fused_instructions_computation(), {});
       if (auto it = compilation_results_.find(fingerprint);
           it == compilation_results_.cend()) {
-        TF_ASSIGN_OR_RETURN(const se::gpu::CudnnGraph graph, compile_graph());
-        TF_ASSIGN_OR_RETURN(const std::string serialized,
-                            serialize_graph(graph));
+        ASSIGN_OR_RETURN(const se::gpu::CudnnGraph graph, compile_graph());
+        ASSIGN_OR_RETURN(const std::string serialized, serialize_graph(graph));
         compilation_results_.insert(it, {fingerprint, serialized});
       }
       return absl::OkStatus();
@@ -977,7 +1226,7 @@ class CuDnnFusionVisitor : public DfsHloRewriteVisitor {
 
     auto add_workspace = [&](const int64_t workspace_size) {
       if (workspace_size > 0) {
-        TF_ASSIGN_OR_RETURN(hlo, AddWorkspace(*hlo, workspace_size));
+        ASSIGN_OR_RETURN(hlo, AddWorkspace(*hlo, workspace_size));
         SetVisited(*hlo);
       }
       return absl::OkStatus();
@@ -990,17 +1239,17 @@ class CuDnnFusionVisitor : public DfsHloRewriteVisitor {
     auto workspace_size_it =
         workspace_sizes_.find(fingerprint_without_workspace);
     if (workspace_size_it == workspace_sizes_.cend()) {
-      TF_ASSIGN_OR_RETURN(const se::gpu::CudnnGraph graph, compile_graph());
+      ASSIGN_OR_RETURN(const se::gpu::CudnnGraph graph, compile_graph());
       const int64_t workspace_size = graph.Graph().get_workspace_size();
       workspace_sizes_.insert(workspace_size_it,
                               {fingerprint_without_workspace, workspace_size});
-      TF_RETURN_IF_ERROR(add_workspace(workspace_size));
-      TF_ASSIGN_OR_RETURN(const std::string serialized, serialize_graph(graph));
+      RETURN_IF_ERROR(add_workspace(workspace_size));
+      ASSIGN_OR_RETURN(const std::string serialized, serialize_graph(graph));
       compilation_results_[emitters::GetComputationFingerprint(
           hlo->fused_instructions_computation(), {})] = serialized;
     } else {
       VLOG(4) << "Cache hit.";
-      TF_RETURN_IF_ERROR(add_workspace(workspace_size_it->second));
+      RETURN_IF_ERROR(add_workspace(workspace_size_it->second));
     }
 
     MarkAsChanged();
@@ -1008,7 +1257,8 @@ class CuDnnFusionVisitor : public DfsHloRewriteVisitor {
   }
 
  private:
-  se::dnn::DnnSupport& dnn_support_;
+  se::dnn::DnnSupport* dnn_support_;
+  const se::DeviceDescription& gpu_device_info_;
   // <HLO computation fingerprint, serialized compiled cuDNN graph>.
   BinaryMap& compilation_results_;
   absl::flat_hash_map<std::string, int64_t> workspace_sizes_;
@@ -1020,19 +1270,19 @@ absl::StatusOr<bool> CuDnnFusionCompiler::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   XLA_SCOPED_LOGGING_TIMER("cuDNN fusion compiler");
-  return CuDnnFusionVisitor(dnn_support_, compilation_results_)
+  return CuDnnFusionVisitor(dnn_support_, gpu_device_info_,
+                            compilation_results_)
       .RunOnModule(module, execution_threads);
 }
 
-int CuDnnFusionCompiler::GetAvailablePlanCount(
-    se::StreamExecutor& stream_exec, const HloFusionInstruction& hlo) {
-  auto graph = PrepareGraph(*stream_exec.AsDnn(), hlo);
-  if (!graph.ok()) {
-    VLOG(1) << "Failed to prepare graph: " << graph.status();
-    return 0;
-  }
+absl::StatusOr<int> CuDnnFusionCompiler::GetAvailablePlanCount(
+    se::StreamExecutor* stream_exec,
+    const se::DeviceDescription& gpu_device_info,
+    const HloFusionInstruction& hlo) {
+  se::dnn::DnnSupport* dnn = stream_exec ? stream_exec->AsDnn() : nullptr;
+  ASSIGN_OR_RETURN(auto graph, PrepareGraph(dnn, gpu_device_info, hlo));
   return std::min(
-      static_cast<int32_t>(graph->Graph().get_execution_plan_count()),
+      static_cast<int32_t>(graph.Graph().get_execution_plan_count()),
       hlo.GetModule()->config().debug_options().xla_gpu_cudnn_gemm_max_plans());
 }
 

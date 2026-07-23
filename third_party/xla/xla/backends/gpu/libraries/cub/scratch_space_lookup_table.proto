@@ -1,0 +1,57 @@
+/* Copyright 2026 The OpenXLA Authors.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+==============================================================================*/
+
+syntax = "proto3";
+
+package xla.gpu;
+
+option java_multiple_files = true;
+option java_outer_classname = "ScratchSpaceLookupTableProto";
+
+message CubScratchSizeEntry {
+  // Version(s) of CUB used to calculate the scratch space
+  // If multiple CUB versions produced the same scratch space, they will be
+  // listed and one entry with multiple cub_versions.
+  repeated string cub_version = 1;
+
+  // Identifier for the device (e.g., "sm_80", "h100")
+  string device_name = 2;
+
+  // Size of the key type in bytes (e.g., 1, 2, 4, 8)
+  int32 key_type_size = 3;
+
+  // Size of the value type in bytes, not set for key-only sorts.
+  optional int32 value_type_size = 4;
+
+  // Whether this entry is for segmented sort
+  bool is_segmented = 5;
+
+  message ScratchSizeRecord {
+    // Number of items in the CUB sort
+    int64 num_items = 1;
+
+    // Scratch space required for the number of items
+    int64 scratch_space_bytes = 2;
+  }
+
+  // Ascending sorted list of the scratch space required at different number of
+  // items.
+  repeated ScratchSizeRecord scratch_size_recordings = 6;
+}
+
+// Lookup table estimating the scratch space required for CUB sorts.
+message CubScratchSizeLookupTable {
+  repeated CubScratchSizeEntry entries = 1;
+}

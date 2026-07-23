@@ -56,8 +56,8 @@ absl::Status GetSeed(const Tensor& seed_t, const int row,
   } else if (seed_t.dtype() == DT_UINT64) {
     *seed = CastSeedFrom<uint64_t>(seed_t, row);
   } else {
-    return errors::InvalidArgument("Invalid seed type: ",
-                                   DataTypeString(seed_t.dtype()));
+    return absl::InvalidArgumentError(
+        absl::StrCat("Invalid seed type: ", DataTypeString(seed_t.dtype())));
   }
   return absl::OkStatus();
 }
@@ -82,15 +82,16 @@ class RandomIndexShuffleOp : public OpKernel {
                  seed_t.NumElements() / 3);
 
     // Check shapes.
-    OP_REQUIRES(context,
-                index_t.dims() == 0 ||
-                    (index_t.dims() == 1 && index_t.dim_size(0) == num_outputs),
-                errors::InvalidArgument("Index bust be a scalar or vector."));
+    OP_REQUIRES(
+        context,
+        index_t.dims() == 0 ||
+            (index_t.dims() == 1 && index_t.dim_size(0) == num_outputs),
+        absl::InvalidArgumentError("Index bust be a scalar or vector."));
     OP_REQUIRES(context,
                 (seed_t.dims() == 1 && seed_t.dim_size(0) == 3) ||
                     (seed_t.dims() == 2 && seed_t.dim_size(0) == num_outputs &&
                      seed_t.dim_size(1) == 3),
-                errors::InvalidArgument(absl::StrFormat(
+                absl::InvalidArgumentError(absl::StrFormat(
                     "Seed must be a vector of size [3] "
                     "or a matrix of size [%d, 3] but got %s.",
                     num_outputs, seed_t.shape().DebugString())));
@@ -98,7 +99,7 @@ class RandomIndexShuffleOp : public OpKernel {
         context,
         max_index_t.dims() == 0 ||
             (max_index_t.dims() == 1 && max_index_t.dim_size(0) == num_outputs),
-        errors::InvalidArgument(
+        absl::InvalidArgumentError(
             absl::StrFormat("Maxval must be a scalar or a vector of "
                             "the same size as index but got %s",
                             max_index_t.shape().DebugString())));

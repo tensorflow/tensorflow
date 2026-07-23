@@ -57,6 +57,8 @@ TEST(RocmExecutorTest, CreateDeviceDescription) {
                   .rocm_compute_capability()
                   ->gcn_arch_name(),
               Not(IsEmpty()));
+
+  EXPECT_GT(result->pcie_bandwidth(), 1024 * 1024);
 }
 
 TEST(RocmExecutorTest, GetRocmKernel) {

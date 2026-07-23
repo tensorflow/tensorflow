@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/backends/gpu/codegen/triton/lowering_util.h"
 
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <string>
@@ -26,6 +27,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
@@ -42,6 +44,10 @@ limitations under the License.
 #include "xla/backends/gpu/codegen/triton/ir/triton_xla_ops.h"
 #include "xla/backends/gpu/codegen/triton/tma_utils.h"
 #include "xla/codegen/emitters/ir/xla_ops.h"
+#include "xla/hlo/analysis/indexing_map.h"
+#include "xla/hlo/analysis/interval.h"
+#include "xla/hlo/analysis/symbolic_map.h"
+#include "xla/permutation_util.h"
 #include "xla/stream_executor/gpu/tma_metadata.h"
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/tsl/platform/statusor.h"
@@ -130,7 +136,7 @@ absl::StatusOr<stream_executor::gpu::TmaMetadata> ExtractTmaMetadata(
     if (auto attr =
             func_op.getArgAttrOfType<mlir::triton::xla::TmaDescriptorAttr>(
                 idx, "tt.tma_descriptor")) {
-      TF_ASSIGN_OR_RETURN(
+      ASSIGN_OR_RETURN(
           auto tma_desc,
           CreateTmaDescriptor(attr.getGlobalShape(), attr.getTileShape(),
                               attr.getTileStrides(), attr.getLayout(),
@@ -166,6 +172,30 @@ llvm::SmallVector<int64_t> ComputeStrides(llvm::ArrayRef<int64_t> shape,
     stride *= shape[dim];
   }
   return result;
+}
+
+bool IsMajorToMinorLayout(llvm::ArrayRef<int64_t> layout) {
+  for (auto [i, value] : llvm::enumerate(layout)) {
+    if (value != layout.size() - 1 - i) {
+      return false;
+    }
+  }
+  return true;
+}
+
+llvm::SmallVector<mlir::Value> GetMajorToMinorOrder(
+    mlir::ValueRange values, llvm::ArrayRef<int64_t> layout) {
+  return GetMajorToMinorOrder(
+      llvm::ArrayRef<mlir::Value>(llvm::to_vector(values)), layout);
+}
+
+llvm::SmallVector<int32_t> GetInverseLayoutPermutation(
+    llvm::ArrayRef<int64_t> layout) {
+  auto reversed_layout = llvm::to_vector(layout);
+  std::reverse(reversed_layout.begin(), reversed_layout.end());
+  auto permutation =
+      llvm::to_vector_of<int32_t>(::xla::InversePermutation(reversed_layout));
+  return llvm::SmallVector<int32_t>(permutation.begin(), permutation.end());
 }
 
 llvm::SmallVector<unsigned> GetRetainedDims(
@@ -210,11 +240,31 @@ bool IsGuaranteedDivisible(mlir::Value value, int64_t divisor) {
     return const_op.value() % divisor == 0;
   }
   if (auto apply_indexing = value.getDefiningOp<::xla::ApplyIndexingOp>()) {
-    mlir::AffineMap affine_map = apply_indexing.getIndexingMap().GetAffineMap();
-    if (affine_map.getNumResults() != 1) {
+    SymbolicMap symbolic_map = apply_indexing.getIndexingMap().GetSymbolicMap();
+    if (symbolic_map.GetNumResults() != 1) {
       return false;
     }
-    return affine_map.getResult(0).isMultipleOf(divisor);
+    return symbolic_map.GetResult(0).IsMultipleOf(divisor);
+  }
+  return false;
+}
+
+bool IsGuaranteedInBounds(mlir::Value value, int64_t tile_size,
+                          int64_t original_shape) {
+  if (auto const_op = value.getDefiningOp<arith::ConstantIndexOp>()) {
+    return const_op.value() >= 0 &&
+           const_op.value() + tile_size <= original_shape;
+  }
+  if (auto apply_indexing = value.getDefiningOp<::xla::ApplyIndexingOp>()) {
+    IndexingMap indexing_map = apply_indexing.getIndexingMap();
+    if (indexing_map.GetNumResults() != 1) {
+      return false;
+    }
+
+    // Compute the maximum possible offset for the given indexing map.
+    Interval range = indexing_map.GetRangeEvaluator().ComputeExpressionRange(
+        indexing_map.GetSymbolicMap().GetResult(0));
+    return range.lower >= 0 && range.upper + tile_size <= original_shape;
   }
   return false;
 }
@@ -272,14 +322,24 @@ std::pair<mlir::Value, mlir::Value> CreateTensorOfPointersAndMask(
     // otherwise we might load/store outside the valid range of the tile, even
     // if the original shape is divisible by the tile size.
     if (original_shape[dim] % sizes[dim] != 0 ||
-        !IsGuaranteedDivisible(offsets[dim], sizes[dim])) {
+        !IsGuaranteedDivisible(offsets[dim], sizes[dim]) ||
+        !IsGuaranteedInBounds(offsets[dim], sizes[dim], original_shape[dim])) {
       mlir::Value upper_bound =
           arith::ConstantIntOp::create(builder, i64_type, original_shape[dim]);
       upper_bound =
           arith::SubIOp::create(builder, upper_bound, cast_offsets[dim]);
       upper_bound = ttir::SplatOp::create(builder, i64_tile_type, upper_bound);
-      mlir::Value mask = arith::CmpIOp::create(
+      mlir::Value mask_right = arith::CmpIOp::create(
           builder, arith::CmpIPredicate::slt, range, upper_bound);
+
+      mlir::Value lower_bound =
+          arith::ConstantIntOp::create(builder, i64_type, 0);
+      lower_bound =
+          arith::SubIOp::create(builder, lower_bound, cast_offsets[dim]);
+      lower_bound = ttir::SplatOp::create(builder, i64_tile_type, lower_bound);
+      mlir::Value mask_left = arith::CmpIOp::create(
+          builder, arith::CmpIPredicate::sge, range, lower_bound);
+      mlir::Value mask = arith::AndIOp::create(builder, mask_left, mask_right);
 
       // Combine mask with previous iteration.
       mask_tile = add_if(arith::AndIOp(), mask, mask_tile);

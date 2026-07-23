@@ -16,18 +16,59 @@ limitations under the License.
 #ifndef XLA_CODEGEN_TILING_EXPERIMENTAL_TILE_H_
 #define XLA_CODEGEN_TILING_EXPERIMENTAL_TILE_H_
 
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
+#include <ostream>
 #include <string>
+#include <utility>
 
+#include "absl/status/statusor.h"
+#include "absl/strings/str_format.h"
 #include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/Hashing.h"
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
-#include "mlir/IR/AffineExpr.h"
-#include "mlir/IR/AffineMap.h"
+#include "mlir/IR/MLIRContext.h"
 #include "mlir/Support/LLVM.h"
+#include "xla/hlo/analysis/symbolic_expr.h"
 
 namespace xla::gpu::experimental {
+
+// Tiled dimension ID within tiling space. Separate type for safety to not
+// confuse dimension ID in the tiling space with e.g. position of dimension
+// in HLO op etc.
+class TiledDimId {
+ public:
+  constexpr explicit TiledDimId(int64_t value) : value_(value) {}
+  constexpr int64_t value() const { return value_; }
+
+  template <typename H>
+  friend H AbslHashValue(H h, const TiledDimId& i) {
+    return H::combine(std::move(h), i.value_);
+  }
+
+  template <typename Sink>
+  friend void AbslStringify(Sink& sink, const TiledDimId& id) {
+    absl::Format(&sink, "%v", id.value());
+  }
+
+  friend constexpr bool operator==(TiledDimId lhs, TiledDimId rhs) {
+    return lhs.value() == rhs.value();
+  }
+
+  friend constexpr bool operator!=(TiledDimId lhs, TiledDimId rhs) {
+    return lhs.value() != rhs.value();
+  }
+
+ private:
+  int64_t value_;
+};
+
+inline std::ostream& operator<<(std::ostream& os, TiledDimId id) {
+  return os << id.value();
+}
 
 class TilingSpace;
 
@@ -37,10 +78,10 @@ class TilingSpace;
 // bounds set the range [0, upper_bound), values outside of this range are
 // masked.
 //
-// Expressions for offset, size, stride and upper bound are AffineExpr
+// Expressions for offset, size, stride and upper bound are SymbolicExpr
 // functions. The TilingSpace keeps track of all dimensions and symbols we use
 // in the expressions and allows to create a consistent mapping from dimensions
-// and runtime variables to affine expression dimensions and symbols.
+// and runtime variables to symbolic expression dimensions and symbols.
 //
 // N.B.! not all of the symbols that the TilingSpace defines are used in
 // every expression. That depends on the position of the instruction in
@@ -55,9 +96,9 @@ class TilingSpace;
 struct DimTile {
   bool operator==(const DimTile& other) const;
 
-  mlir::AffineExpr offset;
-  mlir::AffineExpr size;
-  mlir::AffineExpr stride;
+  SymbolicExpr offset;
+  SymbolicExpr size;
+  SymbolicExpr stride;
   // The masking condition of the upper bound can be written as:
   // dimension_index < upper_bounds(tile IDs)[tile sizes]{runtime variables}
   //
@@ -81,7 +122,11 @@ struct DimTile {
   //                      sizes [ts1]
   //                      strides [1]
   //                      upper bounds [17 * tid0]
-  mlir::AffineExpr upper_bound;
+  SymbolicExpr upper_bound;
+
+  // Simplify expressions inside the DimTile using the actual dimension and
+  // symbol bounds.
+  void Simplify(const TilingSpace& space);
 };
 
 template <typename H>
@@ -95,29 +140,53 @@ H AbslHashValue(H h, const DimTile& dim_tile) {
 // of an HLO instruction. TiledHloInstruction associates a Tile
 // with an HLO instruction.
 class Tile {
- public:
-  Tile(const TilingSpace& tiling_space, llvm::SmallVector<DimTile> dim_tiles);
+  // Differentiate between dimensions and replica IDs.
+  enum class DimTileType { kSpatial, kReplicaId };
 
-  Tile(const TilingSpace& tiling_space,
-       llvm::ArrayRef<mlir::AffineExpr> offsets,
-       llvm::ArrayRef<mlir::AffineExpr> sizes,
-       llvm::ArrayRef<mlir::AffineExpr> strides,
-       llvm::ArrayRef<mlir::AffineExpr> upper_bounds);
+ public:
+  Tile(const TilingSpace& tiling_space, llvm::SmallVector<DimTile> dim_tiles,
+       llvm::SmallVector<DimTile> replica_ids = {});
+
+  Tile(const TilingSpace& tiling_space, llvm::ArrayRef<SymbolicExpr> offsets,
+       llvm::ArrayRef<SymbolicExpr> sizes, llvm::ArrayRef<SymbolicExpr> strides,
+       llvm::ArrayRef<SymbolicExpr> upper_bounds);
 
   std::string ToString(bool print_variables = true) const;
 
-  llvm::SmallVector<mlir::AffineExpr> offsets() const;
-  llvm::SmallVector<mlir::AffineExpr> sizes() const;
-  llvm::SmallVector<mlir::AffineExpr> strides() const;
-  llvm::SmallVector<mlir::AffineExpr> upper_bounds() const;
+  llvm::SmallVector<SymbolicExpr> offsets(
+      DimTileType type = DimTileType::kSpatial) const;
+  llvm::SmallVector<SymbolicExpr> sizes(
+      DimTileType type = DimTileType::kSpatial) const;
+  llvm::SmallVector<SymbolicExpr> strides(
+      DimTileType type = DimTileType::kSpatial) const;
+  llvm::SmallVector<SymbolicExpr> upper_bounds(
+      DimTileType type = DimTileType::kSpatial) const;
   llvm::ArrayRef<DimTile> dim_tiles() const { return dim_tiles_; }
+  llvm::ArrayRef<DimTile> replica_ids() const { return replica_ids_; }
+  llvm::ArrayRef<DimTile> TilesOf(DimTileType type) const {
+    return type == DimTileType::kSpatial ? dim_tiles_ : replica_ids_;
+  }
   int64_t num_dim_tiles() const { return dim_tiles_.size(); }
+  int64_t num_replica_ids() const { return replica_ids_.size(); }
+
+  absl::StatusOr<llvm::SmallVector<int64_t>> GetStaticTileSizes() const;
+  absl::StatusOr<llvm::SmallVector<int64_t>> GetStaticTileStrides() const;
 
   const TilingSpace& tiling_space() const { return *tiling_space_; }
   mlir::MLIRContext* mlir_context() const;
 
   // Replace tiling expressions with the given map.
-  void Replace(const mlir::DenseMap<mlir::AffineExpr, mlir::AffineExpr>& map);
+  void Replace(const llvm::DenseMap<SymbolicExpr, SymbolicExpr>& map);
+
+  // Simplify expressions inside the tile using actual dimension and symbol
+  // bounds.
+  void Simplify();
+
+  // Clone the tile with new dim tiles.
+  // When we are propagating a tile to an input, we need to adjust the offsets
+  // and upper bounds according to the input. The other fields are copied from
+  // the original tile.
+  Tile CloneWithNewDims(llvm::SmallVector<DimTile> new_dim_tiles) const;
 
   bool operator==(const Tile& other) const;
 
@@ -130,12 +199,18 @@ class Tile {
  private:
   const TilingSpace* tiling_space_;
   llvm::SmallVector<DimTile> dim_tiles_;
+  // Keep replica IDs separate from the dim tiles since it does not correspond
+  // to a specific dimension on the tile. Propagating a tile to an input may add
+  // a replica ID, but does not change the number of dimensions so propagation
+  // for ops that don't have replica IDs stays the same.
+  llvm::SmallVector<DimTile> replica_ids_;
 };
 
 template <typename H>
 H AbslHashValue(H h, const Tile& tile) {
   h = H::combine(std::move(h), &tile.tiling_space());
-  for (const DimTile& dim_tile : tile.dim_tiles()) {
+  for (const DimTile& dim_tile :
+       llvm::concat<const DimTile>(tile.dim_tiles(), tile.replica_ids())) {
     h = H::combine(std::move(h), dim_tile);
   }
   return h;
@@ -147,9 +222,9 @@ H AbslHashValue(H h, const Tile& tile) {
 DimTile GetFullDimTile(int64_t dim_size, mlir::MLIRContext* ctx);
 
 // Returns a DimTile that covers the entire dimension, i.e.
-//  offset = AffineDimExpr(id) * AffineSymbolExpr(id),
-//  size = AffineSymbolExpr(id), stride 1, upper_bound = dim_size.
-DimTile GetDefaultDimTile(int64_t id, mlir::AffineExpr tile_size,
+//  offset = SymbolicDimExpr(id) * SymbolicSymbolExpr(id),
+//  size = SymbolicVariable(id), stride 1, upper_bound = dim_size.
+DimTile GetDefaultDimTile(TiledDimId id, SymbolicExpr tile_size,
                           int64_t dim_size);
 
 }  // namespace xla::gpu::experimental

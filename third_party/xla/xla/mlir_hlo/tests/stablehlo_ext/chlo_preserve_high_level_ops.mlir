@@ -1,3 +1,17 @@
+// Copyright 2026 The OpenXLA Authors. All Rights Reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// ==============================================================================
 // RUN: mlir-hlo-opt %s --stablehlo-ext-chlo-preserve-high-level-ops --split-input-file | FileCheck %s
 // RUN: mlir-hlo-opt %s > %t.0
 // RUN: mlir-hlo-opt %s --stablehlo-ext-chlo-preserve-high-level-ops --stablehlo-ext-chlo-recompose-ops --symbol-dce > %t.1
@@ -128,6 +142,16 @@ func.func @asinh_preserve(%arg0: tensor<3x20x20xbf16>) -> tensor<?x20x20xbf16> {
 }
 
 // -----
+
+// CHECK-LABEL: func @mulhi_preserve
+func.func @mulhi_preserve(%arg0: tensor<3x20x20xi32>, %arg1: tensor<3x20x20xi32>) -> tensor<?x20x20xi32> {
+  // CHECK: stablehlo.composite "chlo.mulhi" %arg0, %arg1 {decomposition = @chlo.mulhi.impl, version = 1 : i32}
+  %0 = chlo.mulhi %arg0, %arg1 : tensor<3x20x20xi32>, tensor<3x20x20xi32> -> tensor<?x20x20xi32>
+  return %0 : tensor<?x20x20xi32>
+}
+
+// -----
+
 
 // CHECK-LABEL: func @tan_no_preserve
 func.func @tan_no_preserve(%arg0: tensor<16xf32>) -> tensor<?xf32> {

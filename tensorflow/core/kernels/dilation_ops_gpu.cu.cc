@@ -36,7 +36,7 @@ namespace {
 
 template <typename T>
 __global__ void DilationKernel(
-    const int32 nthreads, const T* __restrict__ input_ptr,
+    const int32_t nthreads, const T* __restrict__ input_ptr,
     const T* __restrict__ filter_ptr, int batch, int input_rows, int input_cols,
     int depth, int filter_rows, int filter_cols, int output_rows,
     int output_cols, int stride_rows, int stride_cols, int rate_rows,
@@ -75,7 +75,7 @@ __global__ void DilationKernel(
 
 template <typename T>
 __global__ void DilationBackpropInputKernel(
-    const int32 nthreads, const T* __restrict__ input_ptr,
+    const int32_t nthreads, const T* __restrict__ input_ptr,
     const T* __restrict__ filter_ptr, const T* __restrict__ out_backprop_ptr,
     int batch, int input_rows, int input_cols, int depth, int filter_rows,
     int filter_cols, int output_rows, int output_cols, int stride_rows,
@@ -125,7 +125,7 @@ __global__ void DilationBackpropInputKernel(
 
 template <typename T>
 __global__ void DilationBackpropFilterKernel(
-    const int32 nthreads, const T* __restrict__ input_ptr,
+    const int32_t nthreads, const T* __restrict__ input_ptr,
     const T* __restrict__ filter_ptr, const T* __restrict__ out_backprop_ptr,
     int batch, int input_rows, int input_cols, int depth, int filter_rows,
     int filter_cols, int output_rows, int output_cols, int stride_rows,

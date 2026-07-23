@@ -53,6 +53,18 @@ class StatefulRngSpmdPartitioningVisitor
 
 class StatefulRngSpmdPartitioner : public spmd::SpmdPartitioner {
  public:
+  static spmd::SpmdPartitionerOptions GetDefaultOptions() {
+    spmd::SpmdPartitionerOptions options;
+    options.allow_module_signature_change = true;
+    options.threshold_for_windowed_einsum_mib = 100000;
+    return options;
+  }
+
+  StatefulRngSpmdPartitioner(int64_t num_partitions, int64_t num_replicas,
+                             spmd::SpmdPartitionerOptions options)
+      : spmd::SpmdPartitioner(num_partitions, num_replicas,
+                              std::move(options)) {}
+
   StatefulRngSpmdPartitioner(
       int64_t num_partitions, int64_t num_replicas,
       int64_t threshold_for_windowed_einsum_mib = 100000,
@@ -63,7 +75,7 @@ class StatefulRngSpmdPartitioner : public spmd::SpmdPartitioner {
       std::optional<int64_t> total_bytes_windowed_einsum_threshold =
           std::nullopt,
       int64_t max_windowed_einsum_iteration = 32)
-      : spmd::SpmdPartitioner(
+      : StatefulRngSpmdPartitioner(
             num_partitions, num_replicas,
             GetSpmdPartitionerOptions(threshold_for_windowed_einsum_mib,
                                       windowed_einsum_use_multiple_streams,
@@ -98,8 +110,7 @@ class StatefulRngSpmdPartitioner : public spmd::SpmdPartitioner {
       std::optional<int64_t> total_bytes_windowed_einsum_threshold =
           std::nullopt,
       int64_t max_windowed_einsum_iteration = 32) {
-    spmd::SpmdPartitionerOptions options;
-    options.allow_module_signature_change = true;
+    spmd::SpmdPartitionerOptions options = GetDefaultOptions();
     options.threshold_for_windowed_einsum_mib =
         threshold_for_windowed_einsum_mib;
     options.unroll_windowed_einsum = windowed_einsum_use_multiple_streams;

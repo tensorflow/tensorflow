@@ -1,0 +1,142 @@
+/* Copyright 2021 The OpenXLA Authors.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+==============================================================================*/
+
+#include <memory>
+
+#include <gmock/gmock.h>
+#include <gtest/gtest.h>
+#include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
+#include "xla/backends/gpu/tests/hlo_pjrt_gpu_test_base.h"
+#include "xla/error_spec.h"
+#include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/ir/hlo_print_options.h"
+#include "xla/hlo/testlib/filecheck.h"
+#include "xla/stream_executor/device_description.h"
+#include "xla/tests/hlo_pjrt_interpreter_reference_mixin.h"
+
+namespace xla::gpu {
+namespace {
+
+class SwapConvOperandsTest
+    : public HloInterpreterReferenceMixin<HloPjRtGpuTestBase> {
+ public:
+  void MatchOptimizedHlo(absl::string_view hlo,
+                         absl::string_view expected_hlo) {
+    ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> optimized_module,
+                         GetOptimizedModule(hlo));
+    absl::StatusOr<bool> filecheck_result =
+        RunFileCheck(optimized_module->ToString(
+                         HloPrintOptions().set_print_operand_shape(true)),
+                     expected_hlo);
+    ASSERT_TRUE(filecheck_result.ok());
+    EXPECT_TRUE(filecheck_result.value());
+  }
+};
+
+// Here, we swap the operands of a convolution to avoid the performance penalty
+// associated with convolutions with large padding. This tests that the operands
+// are swapped in this case, and that the emitted convolution is successfully
+// lowered to a cuDNN custom-call.
+TEST_F(SwapConvOperandsTest, LargePadding) {
+  const char* hlo_text = R"(
+HloModule swap_conv
+
+ENTRY swap_conv {
+  input = f32[512,128,3,3]{3,2,1,0} parameter(0)
+  filter = f32[1,30,30,512]{3,2,1,0}  parameter(1)
+  convolution = f32[1,32,32,128]{3,2,1,0} convolution(input, filter), window={size=30x30 pad=29_29x29_29}, dim_labels=fb01_o01i->f01b
+  ROOT tuple = (f32[1,32,32,128]{3,2,1,0}) tuple(convolution)
+}
+)";
+
+  const se::GpuComputeCapability& gpu_compute_capability =
+      device_description().gpu_compute_capability();
+
+  if (gpu_compute_capability.cuda_compute_capability()->IsAtLeastHopper()) {
+    MatchOptimizedHlo(hlo_text,
+                      R"(
+// CHECK: {{.*(custom-call|convolution)\(}}f32[1,30,30,512]{3,2,1,0} {{[^ ]+}}, f32[128,3,3,512]{3,2,1,0} {{[^ ]+}}), window={size=3x3 pad=2_2x2_2 rhs_reversal=1x1}, dim_labels=b01f_o01i->b01f
+// CHECK: {{(__cudnn\$convForward|__cudnn\$fusion)}}
+    )");
+  } else {
+    MatchOptimizedHlo(hlo_text,
+                      R"(
+// CHECK: {{.*(custom-call|convolution)\(}}f32[1,512,30,30]{3,2,1,0} {{[^ ]+}}, f32[128,512,3,3]{3,2,1,0} {{[^ ]+}}), window={size=3x3 pad=2_2x2_2 rhs_reversal=1x1}, dim_labels=bf01_oi01->bf01
+// CHECK: {{(__cudnn\$convForward|__cudnn\$fusion)}}
+    )");
+  }
+
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-3, 1e-3}));
+}
+
+// If the padding is already small, we leave the operands as-is before lowering.
+TEST_F(SwapConvOperandsTest, SmallPadding) {
+  const char* hlo_text = R"(
+HloModule swap_conv
+
+ENTRY swap_conv {
+  filter = f32[512,128,3,3]{3,2,1,0} parameter(0)
+  input = f32[1,30,30,512]{3,2,1,0}  parameter(1)
+  convolution = f32[1,32,32,128]{2,1,3,0} convolution(input, filter), window={size=3x3 pad=2_2x2_2 rhs_reversal=1x1}, dim_labels=b01f_io01->b01f
+  ROOT tuple = (f32[1,32,32,128]{3,2,1,0}) tuple(convolution)
+}
+)";
+
+  const se::GpuComputeCapability& gpu_compute_capability =
+      device_description().gpu_compute_capability();
+
+  if (gpu_compute_capability.cuda_compute_capability()->IsAtLeastHopper()) {
+    MatchOptimizedHlo(hlo_text,
+                      R"(
+// CHECK: {{.*(custom-call|convolution)\(}}f32[1,30,30,512]{3,2,1,0} {{[^ ]+}}, f32[128,3,3,512]{3,2,1,0} {{[^ ]+}}), window={size=3x3 pad=2_2x2_2 rhs_reversal=1x1}, dim_labels=b01f_o01i->b01f
+// CHECK: {{(__cudnn\$convForward|__cudnn\$fusion)}}
+    )");
+  } else {
+    MatchOptimizedHlo(hlo_text,
+                      R"(
+// CHECK: {{.*(custom-call|convolution)\(}}f32[1,512,30,30]{3,2,1,0} {{[^ ]+}}, f32[128,512,3,3]{3,2,1,0} {{[^ ]+}}), window={size=3x3 pad=2_2x2_2 rhs_reversal=1x1}, dim_labels=bf01_oi01->bf01
+// CHECK: {{(__cudnn\$convForward|__cudnn\$fusion)}}
+    )");
+  }
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-3, 1e-3}));
+}
+
+// If swapping the conv operands would result in a conv that does not lower to a
+// valid cuDNN call, we do not transform the op.
+TEST_F(SwapConvOperandsTest, DoesNotLower) {
+  const char* hlo_text = R"(
+HloModule swap_conv
+
+ENTRY %conv3DBackpropInputV2(arg0.1: f32[3,3,3,2,3]) -> f32[2,4,3,3,2] {
+  %constant.5 = f32[2,2,2,2,3]{4,3,2,1,0} constant({...})
+  %arg0.1 = f32[3,3,3,2,3]{4,3,2,1,0} parameter(0), parameter_replication={false}
+  %reshape.2 = f32[3,3,3,2,3]{4,3,2,1,0} reshape(f32[3,3,3,2,3]{4,3,2,1,0} %arg0.1)
+  %reverse.6 = f32[3,3,3,2,3]{4,3,2,1,0} reverse(f32[3,3,3,2,3]{4,3,2,1,0} %reshape.2), dimensions={0,1,2}
+  %convolution.7 = f32[2,4,3,3,2]{4,3,2,1,0} convolution(f32[2,2,2,2,3]{4,3,2,1,0} %constant.5, f32[3,3,3,2,3]{4,3,2,1,0} %reverse.6), window={size=3x3x3 pad=2_1x1_1x1_1 lhs_dilate=2x2x2}, dim_labels=b012f_012oi->b012f, metadata={op_type="Conv3DBackpropInputV2" op_name="gradients_2/Conv3DBackpropFilterV2_1_grad/Conv3DBackpropInputV2"}
+  ROOT  %reshape.8 = f32[2,4,3,3,2]{4,3,2,1,0} reshape(f32[2,4,3,3,2]{4,3,2,1,0} %convolution.7)
+}
+)";
+
+  MatchOptimizedHlo(hlo_text,
+                    R"(
+// CHECK: {{.*(custom-call|convolution)\(}}f32[2,3,2,2,2]{4,3,2,1,0} {{[^ ]+}}, f32[3,2,3,3,3]{4,3,2,1,0} {{[^ ]+}}), window={size=3x3x3 {{(stride=2x2x2 pad=0_0x1_1x1_1|pad=2_1x1_1x1_1 lhs_dilate=2x2x2)}}
+// CHECK: {{(__cudnn\$convBackwardInput|__cudnn\$fusion)}}
+    )");
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-5, 1e-5}));
+}
+
+}  // namespace
+}  // namespace xla::gpu

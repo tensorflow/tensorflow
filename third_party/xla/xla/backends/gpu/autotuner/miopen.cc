@@ -26,7 +26,9 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/autotuning.pb.h"
 #include "xla/backends/autotuner/codegen_backend.h"
 #include "xla/comparison_util.h"
@@ -48,13 +50,11 @@ limitations under the License.
 #include "xla/stream_executor/scratch_allocator.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
-#include "xla/stream_executor/stream_executor_memory_allocator.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/protobuf/dnn.pb.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
-#include "xla/tsl/platform/status_macros.h"
 
 namespace xla {
 namespace gpu {
@@ -64,6 +64,32 @@ namespace se = ::stream_executor;
 using MIOpenBackendConfig = stream_executor::dnn::AlgorithmProto;
 
 namespace {
+
+struct OwningScratchAllocator : public se::ScratchAllocator {
+  OwningScratchAllocator(int device_ordinal,
+                         se::DeviceAddressAllocator* allocator)
+      : device_ordinal_(device_ordinal), allocator_(allocator) {}
+
+  int64_t GetMemoryLimitInBytes() override { return -1; }
+
+  absl::StatusOr<se::DeviceAddress<uint8_t>> AllocateBytes(
+      int64_t byte_size) override {
+    if (byte_size < 0) {
+      return absl::InvalidArgumentError(
+          absl::StrCat("byte_size must be non-negative, but got ", byte_size));
+    }
+    ASSIGN_OR_RETURN(se::ScopedDeviceAddress<uint8_t> buffer,
+                     allocator_->Allocate(device_ordinal_, byte_size,
+                                          /*retry_on_failure=*/false));
+    buffers_.push_back(std::move(buffer));
+    return *buffers_.back();
+  }
+
+ private:
+  int device_ordinal_;
+  se::DeviceAddressAllocator* allocator_;
+  absl::InlinedVector<se::ScopedDeviceAddress<uint8_t>, 4> buffers_;
+};
 
 bool IsCustomCallToDnnFusedConvolution(const HloInstruction& hlo) {
   if (hlo.opcode() != HloOpcode::kCustomCall) {
@@ -80,9 +106,8 @@ bool IsCustomCallToDnnFusedConvolution(const HloInstruction& hlo) {
 absl::Status ApplyConfigAndUpdateWorkspaceInOutputTuple(
     HloInstruction& instr, const MIOpenBackendConfig& config) {
   HloComputation* computation = instr.parent();
-  std::vector<Shape> new_call_element_shapes;
+  absl::InlinedVector<Shape, 2> new_call_element_shapes;
   // Add the shapes of the outputs of the convolution.
-  new_call_element_shapes.reserve(instr.shape().tuple_shapes().size() - 1);
   for (int i = 0; i < instr.shape().tuple_shapes().size() - 1; ++i) {
     new_call_element_shapes.emplace_back(instr.shape().tuple_shapes(i));
   }
@@ -95,15 +120,14 @@ absl::Status ApplyConfigAndUpdateWorkspaceInOutputTuple(
       instr.CloneWithNewOperands(new_call_shape, instr.operands()));
   new_call->SetAndSanitizeName(instr.name());
 
-  TF_ASSIGN_OR_RETURN(GpuBackendConfig gpu_backend_config,
-                      instr.backend_config<GpuBackendConfig>());
+  ASSIGN_OR_RETURN(GpuBackendConfig gpu_backend_config,
+                   instr.backend_config<GpuBackendConfig>());
   CudnnConvBackendConfig* cudnn_conv_config =
       gpu_backend_config.mutable_cudnn_conv_backend_config();
   *cudnn_conv_config->mutable_algorithm() = config;
-  TF_RETURN_IF_ERROR(new_call->set_backend_config(gpu_backend_config));
+  RETURN_IF_ERROR(new_call->set_backend_config(gpu_backend_config));
 
-  std::vector<HloInstruction*> new_tuple_elements;
-  new_tuple_elements.reserve(new_call->shape().tuple_shapes().size() - 1);
+  absl::InlinedVector<HloInstruction*, 2> new_tuple_elements;
   for (int i = 0; i < new_call->shape().tuple_shapes().size() - 1; ++i) {
     new_tuple_elements.emplace_back(
         computation->AddInstruction(HloInstruction::CreateGetTupleElement(
@@ -117,7 +141,7 @@ absl::Status ApplyConfigAndUpdateWorkspaceInOutputTuple(
   HloInstruction* new_tuple = computation->AddInstruction(
       HloInstruction::CreateTuple(new_tuple_elements));
 
-  TF_RETURN_IF_ERROR(instr.parent()->ReplaceInstruction(&instr, new_tuple));
+  RETURN_IF_ERROR(instr.parent()->ReplaceInstruction(&instr, new_tuple));
   return absl::OkStatus();
 }
 
@@ -126,12 +150,12 @@ absl::Status ApplyConfigToMIOpenCustomCall(HloInstruction& instr,
   if (config.has_workspace_size() && config.workspace_size().value() > 0) {
     return ApplyConfigAndUpdateWorkspaceInOutputTuple(instr, config);
   }
-  TF_ASSIGN_OR_RETURN(GpuBackendConfig gpu_config,
-                      instr.backend_config<GpuBackendConfig>());
+  ASSIGN_OR_RETURN(GpuBackendConfig gpu_config,
+                   instr.backend_config<GpuBackendConfig>());
   CudnnConvBackendConfig* cudnn_conv_config =
       gpu_config.mutable_cudnn_conv_backend_config();
   *cudnn_conv_config->mutable_algorithm() = config;
-  TF_RETURN_IF_ERROR(instr.set_backend_config(std::move(gpu_config)));
+  RETURN_IF_ERROR(instr.set_backend_config(std::move(gpu_config)));
   return absl::OkStatus();
 }
 
@@ -253,11 +277,9 @@ bool MIOpenBackend::IsSupported(const HloInstruction& instr) {
 absl::StatusOr<std::unique_ptr<BackendConfig>> MIOpenBackend::GetDefaultConfig(
     const HloInstruction& instr) {
   if (IsSupported(instr)) {
-    MIOpenBackendConfig config;
-    config.set_algo_id(0);
-    auto any = std::make_unique<google::protobuf::Any>();
-    any->PackFrom(config);
-    return any;
+    auto config = std::make_unique<BackendConfig>();
+    config->mutable_algorithm()->set_algo_id(0);
+    return config;
   }
   return absl::InvalidArgumentError(
       "MIOpen backend doesn't support getting a default config for this "
@@ -268,7 +290,11 @@ absl::StatusOr<std::vector<std::unique_ptr<BackendConfig>>>
 GetConvolutionCustomCallConfigs(const HloCustomCallInstruction* instr,
                                 const HloModule* module,
                                 se::StreamExecutor* stream_executor,
+                                se::DeviceAddressAllocator* allocator,
                                 se::Stream* stream) {
+  if (stream_executor == nullptr) {
+    return absl::InvalidArgumentError("Null stream executor is not supported.");
+  }
   CHECK(instr->custom_call_target() != kCudnnConvForwardGraphCallTarget);
   ASSIGN_OR_RETURN(GpuConvConfig gpu_conv_config, GetGpuConvConfig(instr));
   se::dnn::ConvolutionKind conv_kind =
@@ -279,10 +305,10 @@ GetConvolutionCustomCallConfigs(const HloCustomCallInstruction* instr,
       se::dnn::DataType output_type,
       GetDNNDataTypeFromPrimitiveType(gpu_conv_config.output_type));
   se::dnn::DnnSupport* dnn = stream_executor->AsDnn();
-  se::StreamExecutorMemoryAllocator allocator(stream_executor);
+  std::unique_ptr<se::Stream> owned_stream;
   if (stream == nullptr) {
-    TF_ASSIGN_OR_RETURN(stream,
-                        allocator.GetStream(stream_executor->device_ordinal()));
+    ASSIGN_OR_RETURN(owned_stream, stream_executor->CreateStream());
+    stream = owned_stream.get();
   }
   bool allow_tf32 = absl::c_all_of(
       instr->precision_config().operand_precision(),
@@ -291,8 +317,8 @@ GetConvolutionCustomCallConfigs(const HloCustomCallInstruction* instr,
                                          allow_tf32,
                                          /*require_command_buffer=*/false};
 
-  se::OwningScratchAllocator<> scratch_allocator(
-      stream_executor->device_ordinal(), &allocator);
+  OwningScratchAllocator scratch_allocator(stream_executor->device_ordinal(),
+                                           allocator);
 
   const auto initialize_buffer = [stream](se::DeviceAddressBase buffer) {
     // Although we don't have evidence this matters, zero out the buffers
@@ -302,8 +328,7 @@ GetConvolutionCustomCallConfigs(const HloCustomCallInstruction* instr,
     return stream->MemZero(&buffer, buffer.size());
   };
 
-  std::vector<se::DeviceAddressBase> operand_buffers;
-  operand_buffers.reserve(instr->operand_count());
+  absl::InlinedVector<se::DeviceAddressBase, 2> operand_buffers;
   for (const auto* operand : instr->operands()) {
     ASSIGN_OR_RETURN(auto buffer, scratch_allocator.AllocateBytes(
                                       ShapeUtil::ByteSizeOf(operand->shape())));
@@ -311,9 +336,8 @@ GetConvolutionCustomCallConfigs(const HloCustomCallInstruction* instr,
     operand_buffers.push_back(buffer);
   }
 
-  std::vector<se::DeviceAddressBase> result_buffers;
-  size_t result_buffers_count = instr->shape().tuple_shapes().size();
-  result_buffers.reserve(result_buffers_count);
+  absl::InlinedVector<se::DeviceAddressBase, 1> result_buffers;
+  size_t result_buffers_count = instr->shape().tuple_shapes().size() - 1;
   for (int i = 0; i < result_buffers_count; ++i) {
     ASSIGN_OR_RETURN(auto buffer,
                      scratch_allocator.AllocateBytes(ShapeUtil::ByteSizeOf(
@@ -339,11 +363,11 @@ GetConvolutionCustomCallConfigs(const HloCustomCallInstruction* instr,
   std::vector<std::unique_ptr<BackendConfig>> configs;
   configs.reserve(conv_runners.size());
   for (const auto& runner : conv_runners) {
-    auto any = std::make_unique<google::protobuf::Any>();
+    auto config = std::make_unique<BackendConfig>();
     auto desc = runner->ToAlgorithmDesc();
     CHECK_GT(desc->algo_id(), 0);
-    any->PackFrom(desc->ToProto());
-    configs.push_back(std::move(any));
+    *config->mutable_algorithm() = desc->ToProto();
+    configs.push_back(std::move(config));
   }
   return configs;
 }
@@ -351,7 +375,11 @@ GetConvolutionCustomCallConfigs(const HloCustomCallInstruction* instr,
 absl::StatusOr<std::vector<std::unique_ptr<BackendConfig>>>
 GetFusedConvolutionCustomCallConfigs(const HloCustomCallInstruction* instr,
                                      const HloModule* module,
-                                     se::StreamExecutor* stream_executor) {
+                                     se::StreamExecutor* stream_executor,
+                                     se::DeviceAddressAllocator* allocator) {
+  if (stream_executor == nullptr) {
+    return absl::InvalidArgumentError("Null stream executor is not supported.");
+  }
   ASSIGN_OR_RETURN(GpuConvConfig gpu_conv_config, GetGpuConvConfig(instr));
   ASSIGN_OR_RETURN(se::dnn::DataType input_type,
                    GetDNNDataTypeFromPrimitiveType(gpu_conv_config.input_type));
@@ -360,7 +388,7 @@ GetFusedConvolutionCustomCallConfigs(const HloCustomCallInstruction* instr,
       GetDNNDataTypeFromPrimitiveType(gpu_conv_config.output_type));
   se::dnn::DnnSupport* dnn = stream_executor->AsDnn();
 
-  TF_ASSIGN_OR_RETURN(auto owned_stream, stream_executor->CreateStream());
+  ASSIGN_OR_RETURN(auto owned_stream, stream_executor->CreateStream());
 
   std::vector<std::unique_ptr<const se::dnn::FusedConvRunner>> runners;
   RETURN_IF_ERROR(dnn->GetFusedConvolveRunners(
@@ -378,11 +406,11 @@ GetFusedConvolutionCustomCallConfigs(const HloCustomCallInstruction* instr,
     std::vector<std::unique_ptr<BackendConfig>> configs;
     configs.reserve(runners.size());
     for (const auto& runner : runners) {
-      auto any = std::make_unique<google::protobuf::Any>();
+      auto config = std::make_unique<BackendConfig>();
       auto desc = runner->ToAlgorithmDesc();
       CHECK_LT(desc->algo_id(), 0);
-      any->PackFrom(desc->ToProto());
-      configs.push_back(std::move(any));
+      *config->mutable_algorithm() = desc->ToProto();
+      configs.push_back(std::move(config));
     }
     return configs;
   }
@@ -409,39 +437,41 @@ GetFusedConvolutionCustomCallConfigs(const HloCustomCallInstruction* instr,
 
   return GetConvolutionCustomCallConfigs(
       static_cast<HloCustomCallInstruction*>(new_conv.get()), module,
-      stream_executor, owned_stream.get());
+      stream_executor, allocator, owned_stream.get());
 }
 
 absl::StatusOr<std::vector<std::unique_ptr<BackendConfig>>>
 MIOpenBackend::GetSupportedConfigs(const HloInstruction& instr) {
-  if (IsSupported(instr)) {
-    auto custom_call_instr = Cast<HloCustomCallInstruction>(&instr);
-    if (IsCustomCallToDnnFusedConvolution(*custom_call_instr)) {
-      return GetFusedConvolutionCustomCallConfigs(
-          custom_call_instr, custom_call_instr->GetModule(), stream_executor());
-    }
-
-    if (do_not_autotune_) {
-      ASSIGN_OR_RETURN(auto default_config, GetDefaultConfig(instr));
-      std::vector<std::unique_ptr<BackendConfig>> configs;
-      configs.push_back(std::move(default_config));
-      return std::move(configs);
-    }
-
-    return GetConvolutionCustomCallConfigs(
-        custom_call_instr, custom_call_instr->GetModule(), stream_executor(),
-        /* stream */ nullptr);
+  if (!IsSupported(instr)) {
+    return std::vector<std::unique_ptr<BackendConfig>>();
   }
-  return std::vector<std::unique_ptr<BackendConfig>>();
+
+  auto custom_call_instr = Cast<HloCustomCallInstruction>(&instr);
+  if (IsCustomCallToDnnFusedConvolution(*custom_call_instr)) {
+    return GetFusedConvolutionCustomCallConfigs(custom_call_instr,
+                                                custom_call_instr->GetModule(),
+                                                stream_executor(), allocator_);
+  }
+
+  if (do_not_autotune_) {
+    ASSIGN_OR_RETURN(auto default_config, GetDefaultConfig(instr));
+    std::vector<std::unique_ptr<BackendConfig>> configs;
+    configs.push_back(std::move(default_config));
+    return std::move(configs);
+  }
+
+  return GetConvolutionCustomCallConfigs(
+      custom_call_instr, custom_call_instr->GetModule(), stream_executor(),
+      allocator_, /* stream */ nullptr);
 }
 
 absl::Status MIOpenBackend::ApplyConfig(HloInstruction& instr,
                                         const BackendConfig& config) {
-  MIOpenBackendConfig algorithm_config;
-  if (!config.UnpackTo(&algorithm_config)) {
+  if (!config.has_algorithm()) {
     return absl::InvalidArgumentError(
-        "Failed to unpack MIOpenBackendConfig from Any.");
+        "Expected AlgorithmProto config for MIOpenBackend.");
   }
+  MIOpenBackendConfig algorithm_config = config.algorithm();
   if (IsSupported(instr)) {
     if (IsCustomCallToDnnFusedConvolution(instr)) {
       return ApplyConfigToFusedMIOpenCustomCall(instr, algorithm_config);

@@ -20,8 +20,10 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/cord.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/ExtensibleRTTI.h"
 #include "xla/python/ifrt/ir/sharding_param.h"
@@ -46,7 +48,7 @@ class SingleDeviceShardingSpecSerDes
     return "xla::ifrt::SingleDeviceShardingSpec";
   }
 
-  absl::StatusOr<std::string> Serialize(
+  absl::StatusOr<absl::Cord> Serialize(
       const Serializable& serializable,
       std::unique_ptr<SerializeOptions> options) override {
     const SerDesVersion version = GetRequestedSerDesVersion(options.get());
@@ -57,11 +59,11 @@ class SingleDeviceShardingSpecSerDes
     }
     SingleDeviceShardingSpecProto proto;
     proto.set_version_number(SerDesVersionNumber(0).value());
-    return proto.SerializeAsString();
+    return proto.SerializeAsCord();
   }
 
   absl::StatusOr<std::unique_ptr<Serializable>> Deserialize(
-      const std::string& serialized,
+      const absl::Cord& serialized,
       std::unique_ptr<DeserializeOptions> options) override {
     SingleDeviceShardingSpecProto proto;
     if (!proto.ParseFromString(serialized)) {
@@ -88,7 +90,7 @@ class OpaqueShardingSpecSerDes
     return "xla::ifrt::OpaqueShardingSpec";
   }
 
-  absl::StatusOr<std::string> Serialize(
+  absl::StatusOr<absl::Cord> Serialize(
       const Serializable& serializable,
       std::unique_ptr<SerializeOptions> options) override {
     const SerDesVersion version = GetRequestedSerDesVersion(options.get());
@@ -102,11 +104,11 @@ class OpaqueShardingSpecSerDes
     OpaqueShardingSpecProto proto;
     proto.set_version_number(SerDesVersionNumber(0).value());
     proto.set_num_shards(sharding_spec.num_shards());
-    return proto.SerializeAsString();
+    return proto.SerializeAsCord();
   }
 
   absl::StatusOr<std::unique_ptr<Serializable>> Deserialize(
-      const std::string& serialized,
+      const absl::Cord& serialized,
       std::unique_ptr<DeserializeOptions> options) override {
     OpaqueShardingSpecProto proto;
     if (!proto.ParseFromString(serialized)) {
@@ -133,7 +135,7 @@ class ConcreteShardingSpecSerDes
     return "xla::ifrt::ConcreteShardingSpec";
   }
 
-  absl::StatusOr<std::string> Serialize(
+  absl::StatusOr<absl::Cord> Serialize(
       const Serializable& serializable,
       std::unique_ptr<SerializeOptions> options) override {
     const SerDesVersion version = GetRequestedSerDesVersion(options.get());
@@ -164,11 +166,11 @@ class ConcreteShardingSpecSerDes
         dynamic_shape.ToProto(*proto.add_shard_dynamic_shapes(), version);
       }
     }
-    return proto.SerializeAsString();
+    return proto.SerializeAsCord();
   }
 
   absl::StatusOr<std::unique_ptr<Serializable>> Deserialize(
-      const std::string& serialized,
+      const absl::Cord& serialized,
       std::unique_ptr<DeserializeOptions> options) override {
     ConcreteShardingSpecProto proto;
     if (!proto.ParseFromString(serialized)) {
@@ -182,12 +184,11 @@ class ConcreteShardingSpecSerDes
                        " for ConcreteShardingSpec deserialization"));
     }
     if (proto.has_shape()) {
-      TF_ASSIGN_OR_RETURN(auto shape, Shape::FromProto(proto.shape()));
+      ASSIGN_OR_RETURN(auto shape, Shape::FromProto(proto.shape()));
       std::vector<Shape> shard_shapes;
       shard_shapes.reserve(proto.shard_shapes_size());
       for (const auto& shard_shape_proto : proto.shard_shapes()) {
-        TF_ASSIGN_OR_RETURN(auto shard_shape,
-                            Shape::FromProto(shard_shape_proto));
+        ASSIGN_OR_RETURN(auto shard_shape, Shape::FromProto(shard_shape_proto));
         shard_shapes.push_back(std::move(shard_shape));
       }
       return ConcreteShardingSpec::Create(std::move(shape),
@@ -197,13 +198,13 @@ class ConcreteShardingSpecSerDes
       return absl::InvalidArgumentError(
           "ConcreteShardingSpec must have Shape or DynamicShape.");
     }
-    TF_ASSIGN_OR_RETURN(auto dynamic_shape,
-                        DynamicShape::FromProto(proto.dynamic_shape()));
+    ASSIGN_OR_RETURN(auto dynamic_shape,
+                     DynamicShape::FromProto(proto.dynamic_shape()));
     std::vector<DynamicShape> shard_dynamic_shapes;
     shard_dynamic_shapes.reserve(proto.shard_dynamic_shapes_size());
     for (const auto& shard_dynamic_shape_proto : proto.shard_dynamic_shapes()) {
-      TF_ASSIGN_OR_RETURN(auto dynamic_shape,
-                          DynamicShape::FromProto(shard_dynamic_shape_proto));
+      ASSIGN_OR_RETURN(auto dynamic_shape,
+                       DynamicShape::FromProto(shard_dynamic_shape_proto));
       shard_dynamic_shapes.push_back(std::move(dynamic_shape));
     }
     return ConcreteShardingSpec::Create(std::move(dynamic_shape),
@@ -221,7 +222,7 @@ class ConcreteEvenShardingSpecSerDes
     return "xla::ifrt::ConcreteEvenShardingSpec";
   }
 
-  absl::StatusOr<std::string> Serialize(
+  absl::StatusOr<absl::Cord> Serialize(
       const Serializable& serializable,
       std::unique_ptr<SerializeOptions> options) override {
     const SerDesVersion version = GetRequestedSerDesVersion(options.get());
@@ -238,11 +239,11 @@ class ConcreteEvenShardingSpecSerDes
     sharding_spec.shape().ToProto(*proto.mutable_shape(), version);
     sharding_spec.shard_shape().ToProto(*proto.mutable_shard_shape(), version);
     proto.set_is_fully_replicated(sharding_spec.IsFullyReplicated());
-    return proto.SerializeAsString();
+    return proto.SerializeAsCord();
   }
 
   absl::StatusOr<std::unique_ptr<Serializable>> Deserialize(
-      const std::string& serialized,
+      const absl::Cord& serialized,
       std::unique_ptr<DeserializeOptions> options) override {
     ConcreteEvenShardingSpecProto proto;
     if (!proto.ParseFromString(serialized)) {
@@ -255,9 +256,8 @@ class ConcreteEvenShardingSpecSerDes
           absl::StrCat("Unsupported ", version_number,
                        " for ConcreteEvenShardingSpec deserialization"));
     }
-    TF_ASSIGN_OR_RETURN(auto shape, Shape::FromProto(proto.shape()));
-    TF_ASSIGN_OR_RETURN(auto shard_shape,
-                        Shape::FromProto(proto.shard_shape()));
+    ASSIGN_OR_RETURN(auto shape, Shape::FromProto(proto.shape()));
+    ASSIGN_OR_RETURN(auto shard_shape, Shape::FromProto(proto.shard_shape()));
     return ConcreteEvenShardingSpec::Create(
         proto.num_shards(), std::move(shape), std::move(shard_shape),
         proto.is_fully_replicated());
@@ -273,7 +273,7 @@ class ShardingParamShardingSpecSerDes
     return "xla::ifrt::ShardingParamShardingSpec";
   }
 
-  absl::StatusOr<std::string> Serialize(
+  absl::StatusOr<absl::Cord> Serialize(
       const Serializable& serializable,
       std::unique_ptr<SerializeOptions> options) override {
     const SerDesVersion version = GetRequestedSerDesVersion(options.get());
@@ -286,13 +286,13 @@ class ShardingParamShardingSpecSerDes
         llvm::cast<ShardingParamShardingSpec>(serializable);
     ShardingParamShardingSpecProto proto;
     proto.set_version_number(SerDesVersionNumber(0).value());
-    TF_RETURN_IF_ERROR(sharding_spec.sharding_param().ToProto(
+    RETURN_IF_ERROR(sharding_spec.sharding_param().ToProto(
         *proto.mutable_sharding_param(), version));
-    return proto.SerializeAsString();
+    return proto.SerializeAsCord();
   }
 
   absl::StatusOr<std::unique_ptr<Serializable>> Deserialize(
-      const std::string& serialized,
+      const absl::Cord& serialized,
       std::unique_ptr<DeserializeOptions> options) override {
     ShardingParamShardingSpecProto proto;
     if (!proto.ParseFromString(serialized)) {
@@ -305,8 +305,8 @@ class ShardingParamShardingSpecSerDes
           absl::StrCat("Unsupported ", version_number,
                        " for ShardingParamShardingSpec deserialization"));
     }
-    TF_ASSIGN_OR_RETURN(ShardingParam sharding_param,
-                        ShardingParam::FromProto(proto.sharding_param()));
+    ASSIGN_OR_RETURN(ShardingParam sharding_param,
+                     ShardingParam::FromProto(proto.sharding_param()));
     return ShardingParamShardingSpec::Create(std::move(sharding_param));
   }
 

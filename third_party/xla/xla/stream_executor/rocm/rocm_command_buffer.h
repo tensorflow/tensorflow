@@ -132,26 +132,35 @@ class RocmCommandBuffer : public GpuCommandBuffer {
 
   absl::StatusOr<GraphNodeHandle> CreateKernelNode(
       absl::Span<const GraphNodeHandle> dependencies, StreamPriority priority,
-      const ThreadDim& threads, const BlockDim& blocks, const Kernel& kernel,
+      const ThreadDim& threads, const BlockDim& blocks,
+      const std::optional<ClusterDim>& cluster_dims, const Kernel& kernel,
       const KernelArgsPackedArrayBase& args) override;
 
   absl::Status UpdateKernelNode(GraphNodeHandle node_handle,
                                 const ThreadDim& threads,
-                                const BlockDim& blocks, const Kernel& kernel,
+                                const BlockDim& blocks,
+                                const std::optional<ClusterDim>& cluster_dims,
+                                const Kernel& kernel,
                                 const KernelArgsPackedArrayBase& args) override;
 
   absl::StatusOr<GraphNodeHandle> CreateEmptyNode(
       absl::Span<const GraphNodeHandle> dependencies) override;
 
-  absl::Status Trace(Stream* stream,
-                     absl::AnyInvocable<absl::Status()> function) override;
+  absl::Status Trace(
+      Stream* stream,
+      absl::AnyInvocable<absl::Status(Stream* stream)> function) override;
 
   absl::Status LaunchGraph(Stream* stream) override;
 
   absl::StatusOr<size_t> GetNodeCount() const override;
 
   absl::Status SetPriority(StreamPriority priority) override {
-    return absl::UnimplementedError("Not implemented.");
+    // HIP does not expose an API to set per-node priority on graph kernel nodes
+    // (no equivalent of cuGraphKernelNodeSetAttribute with
+    // CU_LAUNCH_ATTRIBUTE_PRIORITY). Silently ignore priority requests so that
+    // collectives (which use StreamPriority::Highest) can be captured into HIP
+    // graphs without crashing.
+    return absl::OkStatus();
   }
 
   absl::Status PrepareFinalization() override;

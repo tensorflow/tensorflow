@@ -15,22 +15,27 @@ limitations under the License.
 
 // See docs in ../ops/parse_ops.cc.
 
-#include <algorithm>
 #include <climits>
+#include <cstddef>
+#include <cstdint>
+#include <cstring>
+#include <string>
 
 #include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/op_requires.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.h"
-#include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/lib/io/inputstream_interface.h"
 #include "tensorflow/core/lib/io/zlib_compression_options.h"
 #include "tensorflow/core/lib/io/zlib_inputstream.h"
+#include "tensorflow/core/platform/tstring.h"
 
 // NOTE: The way zstd is packaged in TF, we cannot include it as <zstd.h>.
 #define ZSTD_STATIC_LINKING_ONLY
-#include "zstd.h"
+#include "zstd.h"  // NOLINT(build/include)
 
 namespace tensorflow {
 namespace {
@@ -40,19 +45,19 @@ class MemoryInputStream : public io::InputStreamInterface {
   explicit MemoryInputStream(const char* buffer, size_t length)
       : buf_(buffer), len_(length), pos_(0) {}
 
-  ~MemoryInputStream() override {}
+  ~MemoryInputStream() override = default;
 
   absl::Status ReadNBytes(int64_t bytes_to_read, tstring* result) override {
     result->clear();
     if (bytes_to_read < 0) {
-      return errors::InvalidArgument("Can't read a negative number of bytes: ",
-                                     bytes_to_read);
+      return absl::InvalidArgumentError(absl::StrCat(
+          "Can't read a negative number of bytes: ", bytes_to_read));
     }
     int64_t bytes = bytes_to_read;
     absl::Status s = absl::OkStatus();
     if (pos_ + bytes_to_read > len_) {
       bytes = len_ - pos_;
-      s = errors::OutOfRange("reached end of file");
+      s = absl::OutOfRangeError("reached end of file");
     }
     if (bytes > 0) {
       result->resize(bytes);
@@ -89,7 +94,7 @@ class DecodeCompressedOp : public OpKernel {
     OP_REQUIRES(context,
                 (compression_type_.empty() || compression_type_ == "ZLIB" ||
                  compression_type_ == "GZIP" || compression_type_ == "ZSTD"),
-                errors::InvalidArgument(kSupportedArgs));
+                absl::InvalidArgumentError(kSupportedArgs));
   }
 
   // Do a single decompression of `input` into `output`, using the algorithm
@@ -127,7 +132,7 @@ class DecodeCompressedOp : public OpKernel {
     if (compression_type_ == "ZSTD") {
       ZSTD_DCtx* decompress_ctx = ZSTD_createDCtx();
       if (decompress_ctx == nullptr) {
-        return errors::Internal("Failed to create zstd context");
+        return absl::InternalError("Failed to create zstd context");
       }
 
       const char* data = input.data();
@@ -140,7 +145,14 @@ class DecodeCompressedOp : public OpKernel {
       if (max_decompressed_size == ZSTD_CONTENTSIZE_UNKNOWN ||
           max_decompressed_size == ZSTD_CONTENTSIZE_ERROR) {
         ZSTD_freeDCtx(decompress_ctx);
-        return errors::InvalidArgument("Failed to determine decompressed size");
+        return absl::InvalidArgumentError(
+            "Failed to determine decompressed size");
+      }
+
+      if (max_decompressed_size > 1024 * 1024 * 1024) {
+        ZSTD_freeDCtx(decompress_ctx);
+        return absl::InvalidArgumentError(
+            "Decompressed size exceeds 1GB limit");
       }
 
       // Allocate enough to maximally decompress into.
@@ -152,8 +164,9 @@ class DecodeCompressedOp : public OpKernel {
 
       if (ZSTD_isError(actual_size)) {
         ZSTD_freeDCtx(decompress_ctx);
-        return errors::InvalidArgument("Failed to decompress zstd input: ",
-                                       ZSTD_getErrorName(actual_size));
+        return absl::InvalidArgumentError(
+            absl::StrCat("Failed to decompress zstd input: ",
+                         ZSTD_getErrorName(actual_size)));
       }
 
       // Trim the output string before we're done.
@@ -164,7 +177,7 @@ class DecodeCompressedOp : public OpKernel {
 
     // We shouldn't get here, but let's just repeat our complaint about which
     // compression algorithms are allowed.
-    return errors::InvalidArgument(kSupportedArgs);
+    return absl::InvalidArgumentError(kSupportedArgs);
   }
 
   void Compute(OpKernelContext* context) override {

@@ -61,7 +61,7 @@ namespace stream_executor::gpu {
 class RocmExecutor : public GpuExecutor {
  public:
   RocmExecutor(Platform* platform, int device_ordinal)
-      : GpuExecutor(platform, device_ordinal) {}
+      : GpuExecutor(platform, device_ordinal), rocm_context_(device_ordinal) {}
   ~RocmExecutor() override;
   std::unique_ptr<ActivateContext> Activate() override;
 
@@ -91,8 +91,6 @@ class RocmExecutor : public GpuExecutor {
       Stream* stream, bool use_delay_kernel) override;
   absl::StatusOr<DeviceAddressBase> GetSymbol(
       const std::string& symbol_name, ModuleHandle module_handle) override;
-  absl::Status SynchronousMemZero(DeviceAddressBase* location,
-                                  uint64_t size) override;
   absl::Status SynchronousMemcpy(DeviceAddressBase* gpu_dst,
                                  const void* host_src, uint64_t size) override;
   absl::Status SynchronousMemcpy(void* host_dst,
@@ -100,6 +98,7 @@ class RocmExecutor : public GpuExecutor {
                                  uint64_t size) override;
   void DeallocateStream(Stream* stream) override;
   absl::Status EnablePeerAccessTo(StreamExecutor* other) override;
+  bool CanEnablePeerAccessTo(int other_device_ordinal) override;
   bool CanEnablePeerAccessTo(StreamExecutor* other) override;
   bool DeviceMemoryUsage(int64_t* free, int64_t* total) const override;
 
@@ -112,6 +111,7 @@ class RocmExecutor : public GpuExecutor {
 
   bool HostMemoryRegister(void* location, uint64_t size) override;
   bool HostMemoryUnregister(void* location) override;
+  bool IsHostMemoryPinned(const void* ptr, uint64_t size) override;
 
   absl::StatusOr<MemorySpace> GetPointerMemorySpace(const void* ptr) override;
 
@@ -203,8 +203,14 @@ class RocmExecutor : public GpuExecutor {
   // GPU ISA version for device_.
   int version_;
 
-  // RocmContext for this device.
-  RocmContext* rocm_context_;
+  // RocmContext for this device.  Owned as a value — on ROCm a "context"
+  // is just a device ordinal, so there is no heavyweight object to manage.
+  // Mutable because SetActive() (hipSetDevice) is logically const — it does
+  // not change RocmContext state, but ScopedActivateContext takes non-const.
+  mutable RocmContext rocm_context_;
+
+  // Cache of peer access capabilities. Populated during Init().
+  absl::flat_hash_map<int, bool> peer_access_cache_;
 };
 
 }  // namespace stream_executor::gpu

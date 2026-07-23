@@ -3,18 +3,22 @@ tf_class {
   is_instance: "<class \'tensorflow.python.tpu.tpu_embedding_v2_utils.CustomOptimizer\'>"
   is_instance: "<class \'tensorflow.python.tpu.tpu_embedding_v2_utils._Optimizer\'>"
   is_instance: "<class \'tensorflow.python.tpu.tpu_embedding_v2_utils._WithSlotVariables\'>"
-  is_instance: "<type \'object\'>"
+  is_instance: "<class \'object\'>"
   member {
     name: "custom_computation"
-    mtype: "<type \'property\'>"
+    mtype: "<class \'property\'>"
   }
   member {
     name: "hyperparameters"
-    mtype: "<type \'property\'>"
+    mtype: "<class \'property\'>"
   }
   member {
     name: "slot_dims"
-    mtype: "<type \'property\'>"
+    mtype: "<class \'property\'>"
+  }
+  member_method {
+    name: "__eq__"
+    argspec: "args=[\'self\', \'other\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "__init__"
