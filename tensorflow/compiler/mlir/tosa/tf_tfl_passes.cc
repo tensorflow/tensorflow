@@ -20,8 +20,6 @@ limitations under the License.
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Pass/PassRegistry.h"  // from @llvm-project
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/lite/transforms/lift_tflite_flex_ops.h"
-#include "tensorflow/compiler/mlir/lite/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tosa/transforms/passes.h"
 
 namespace mlir {
@@ -39,7 +37,7 @@ void createTFTFLtoTOSALegalizationPipeline(
   pm.addPass(mlir::createInlinerPass());
 
   // Add pass to decompose TFLite mixed quantization to non-quantized variants.
-  pm.addPass(TFL::CreateDecomposeHybridQuantizationPass());
+  pm.addPass(tosa::CreateDecomposeHybridQuantizationPass());
 
   // Now that there is only one function, run some MLIR passes on it.
   pm.addPass(mlir::createCanonicalizerPass());
@@ -51,7 +49,7 @@ void createTFTFLtoTOSALegalizationPipeline(
   //----------------------------------------------------------------------------
   // Perform main conversion.
   //----------------------------------------------------------------------------
-  pm.addPass(mlir::TFL::CreateLiftTfliteFlexOpsPass());
+  pm.addPass(mlir::tosa::CreateLiftTfliteFlexOpsPass());
   pm.addPass(mlir::tosa::createFuseBiasTFPass());
   pm.addPass(mlir::tosa::createConvertTFLUnsignedIntToSignedPass());
   if (opts.dequantize_tfl_softmax) {
