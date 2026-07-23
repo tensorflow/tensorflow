@@ -457,7 +457,7 @@ absl::StatusOr<FingerprintDef> CreateFingerprintDefCpb(
                    chunk_metadata.message(), reader, chunks_info));
   fingerprint_def.set_graph_def_program_hash(graph_def_program_hash);
 
-  // TODO(adamcogdell): HashSignatureDef relies on the signatue_def map being
+  // TODO(adamcogdell): HashSignatureDef relies on the signature_def map being
   // populated with all of its entries, which may not be the case
   TF_ASSIGN_OR_RETURN(
       uint64_t signature_def_hash,
