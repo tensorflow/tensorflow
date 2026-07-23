@@ -1510,7 +1510,9 @@ absl::StatusOr<CompileOptions> CompleteCompileOptions(
     const PreprocessingOptions& preproc_options) {
   ParameterType parameter_type = GetParameterType(hlo_module);
   compile_options.parameter_is_tupled_arguments =
-      (parameter_type == ParameterType::kOneTupleOfArrays);
+      (parameter_type == ParameterType::kOneTupleOfArrays) ||
+      (parameter_type == ParameterType::kOneListOfArrays &&
+       hlo_module.entry_computation()->num_parameters() > 100);
   if (preproc_options.force_auto_layout) {
     XlaComputation computation(hlo_module.ToProto());
     ASSIGN_OR_RETURN(ProgramShape program_shape, computation.GetProgramShape());
