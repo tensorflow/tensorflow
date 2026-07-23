@@ -291,6 +291,9 @@ struct RunningOptions {
   bool recreate_buffers_between_repeats = false;
   // This indicates whether we log the inputs and outputs to stderr.
   LogOutputMode log_input_output_mode = LogOutputMode::kNotLogOutput;
+  // Used to perform host synchronization barrier before each execution repeat,
+  // preventing profiler startup jitter from skewing collective measurements.
+  std::shared_ptr<KeyValueStoreInterface> kv_store = nullptr;
   const MultiSliceConfig* multi_slice_config = nullptr;
   ProfilerInterface* profiler = nullptr;
   // If not null, profiles will be stored for this run, one per repeat.
