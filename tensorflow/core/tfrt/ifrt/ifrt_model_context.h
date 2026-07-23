@@ -44,6 +44,10 @@ limitations under the License.
 #include "tsl/platform/protobuf.h"
 #include "tfrt/host_context/concurrent_work_queue.h"  // from @tf_runtime
 
+namespace mlir {
+class MLIRContext;
+}  // namespace mlir
+
 namespace tensorflow {
 namespace ifrt_serving {
 
@@ -108,6 +112,10 @@ class IfrtModelContext {
 
   void RegisterHandle(ServingExecutableRegistry::Handle handle) {
     handles_.push_back(std::move(handle));
+  }
+
+  void KeepAlive(std::shared_ptr<mlir::MLIRContext> context) {
+    mlir_contexts_.push_back(std::move(context));
   }
 
   std::shared_ptr<xla::ifrt::Client> GetClient() const { return client_; }
@@ -237,6 +245,7 @@ class IfrtModelContext {
   // Dedicated work queue for heavy task such as variable tensor restoration.
   tfrt::ConcurrentWorkQueue* checkpoint_loader_queue_ = nullptr;
 
+  std::vector<std::shared_ptr<mlir::MLIRContext>> mlir_contexts_;
   std::vector<ServingExecutableRegistry::Handle> handles_;
 
   DefaultSignatureInputConfig default_signature_inputs_;
