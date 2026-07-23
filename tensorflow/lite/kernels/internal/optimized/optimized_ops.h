@@ -2001,8 +2001,9 @@ inline void MulElementwise(int32_t n, const ArithmeticParams& params,
 
   // This will handle leftovers when n is not aligned to 4 elements.
   for (; i < n; ++i) {
-    out[i] = ActivationFunctionWithMinMax(lhs[i] * rhs[i], activation_min_val,
-                                          activation_max_val);
+    out[i] =
+        ActivationFunctionWithMinMax(WrappingMul<int32_t>(lhs[i], rhs[i]),
+                                     activation_min_val, activation_max_val);
   }
 }
 
@@ -4986,7 +4987,7 @@ void Col2im(const T* col_data, const int depth, const int height,
           if (ih >= 0 && ih < height && iw >= 0 && iw < width) {
             // TODO(andydavis) Vectorize this loop (if compiler does not).
             for (int i = 0; i < depth; ++i) {
-              im_patch_data[i] += col_data[i];
+              im_patch_data[i] = WrappingAdd<T>(im_patch_data[i], col_data[i]);
             }
           }
           im_patch_data += depth;
@@ -5010,7 +5011,7 @@ void BiasAdd(T* im_data, const T* bias_data, const int batch_size,
       for (int h = 0; h < height; ++h) {
         for (int w = 0; w < width; ++w) {
           for (int d = 0; d < depth; ++d) {
-            im_data[d] += bias_data[d];
+            im_data[d] = WrappingAdd<T>(im_data[d], bias_data[d]);
           }
           im_data += depth;
         }
@@ -7953,7 +7954,8 @@ void Col2im(const T* col_data, const int channel, const int planes,
               if (ip >= 0 && ip < planes && ih >= 0 && ih < height && iw >= 0 &&
                   iw < width) {
                 for (int i = 0; i < channel; ++i) {
-                  im_patch_data[i] += col_data[i];
+                  im_patch_data[i] =
+                      WrappingAdd<T>(im_patch_data[i], col_data[i]);
                 }
               }
               im_patch_data += channel;

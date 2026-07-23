@@ -17,7 +17,9 @@ limitations under the License.
 #define XLA_SERVICE_GPU_GPU_LATENCY_HIDING_SCHEDULER_H_
 
 #include <cstdint>
+#include <optional>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/hlo_cost_analysis.h"
@@ -118,6 +120,10 @@ class GpuAsyncTracker : public GpuAsyncTrackerBase {
   // this instruction.
   int64_t GetNumResourcesPerInstruction(
       int64_t resource_type, const HloInstruction& instr) const override;
+
+  // Returns a map of resource counts used by this instruction.
+  absl::flat_hash_map<int64_t, int64_t> GetNumResourcesPerInstruction(
+      const HloInstruction& instr) const override;
 };
 
 // GPU approximate latency estimator. It is a set of hardcoded heuristics

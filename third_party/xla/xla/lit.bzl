@@ -484,8 +484,8 @@ def lit_test(
     lit_name = "lit_custom_" + name.replace("/", "_")
     py_binary(
         name = lit_name,
-        main = "@llvm-project//llvm:utils/lit/lit.py",
-        srcs = ["@llvm-project//llvm:utils/lit/lit.py"],
+        main = "@llvm-project//llvm/utils/lit:lit.py",
+        srcs = ["@llvm-project//llvm/utils/lit:lit.py"],
         testonly = True,
         deps = [
             "@llvm-project//llvm:lit_lib",

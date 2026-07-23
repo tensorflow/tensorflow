@@ -212,16 +212,31 @@ NB_MODULE(_profiler, m) {
       .def(
           "stop_and_export",
           [](ProfilerSessionWrapper* sess, const std::string& tensorboard_dir) {
-            tensorflow::profiler::XSpace xspace;
-            // Disables the ProfilerSession
-            xla::ThrowIfError(sess->session->CollectData(&xspace));
-            if (sess->session_id.empty()) {
-              xla::ThrowIfError(tsl::profiler::ExportToTensorBoard(
-                  xspace, tensorboard_dir, /* also_export_trace_json= */ true));
+            if (sess->session->IsContinuousProfilingEnabled()) {
+              xla::ThrowIfError(sess->session->Stop());
+              std::vector<tensorflow::profiler::XSpace> xspaces =
+                  sess->session->SerializeChunks();
+
+              if (sess->session_id.empty()) {
+                xla::ThrowIfError(tsl::profiler::ExportToTensorBoard(
+                    tensorboard_dir, xspaces));
+              } else {
+                xla::ThrowIfError(tsl::profiler::ExportToTensorBoard(
+                    tensorboard_dir, sess->session_id, xspaces));
+              }
             } else {
-              xla::ThrowIfError(tsl::profiler::ExportToTensorBoard(
-                  xspace, tensorboard_dir, sess->session_id,
-                  /* also_export_trace_json= */ true));
+              tensorflow::profiler::XSpace xspace;
+              // Disables the ProfilerSession
+              xla::ThrowIfError(sess->session->CollectData(&xspace));
+              if (sess->session_id.empty()) {
+                xla::ThrowIfError(tsl::profiler::ExportToTensorBoard(
+                    xspace, tensorboard_dir,
+                    /* also_export_trace_json= */ true));
+              } else {
+                xla::ThrowIfError(tsl::profiler::ExportToTensorBoard(
+                    xspace, tensorboard_dir, sess->session_id,
+                    /* also_export_trace_json= */ true));
+              }
             }
           },
           nb::call_guard<nb::gil_scoped_release>())

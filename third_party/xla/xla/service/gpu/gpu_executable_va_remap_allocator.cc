@@ -40,6 +40,7 @@ limitations under the License.
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/device_address_allocator.h"
 #include "xla/stream_executor/device_address_vmm_allocator.h"
+#include "xla/stream_executor/memory_allocation.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/util.h"
 #include "xla/xla.pb.h"
@@ -47,6 +48,9 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 namespace {
+
+// Number of profiling executions before the SKIP_PROFILED transition.
+constexpr int64_t kProfileStepsLimit = 3;
 
 uint64_t RoundUpToGranularity(uint64_t size, uint64_t granularity) {
   if (granularity == 0) {
@@ -77,11 +81,10 @@ GpuExecutableVaRemapAllocator::Remapping::GetMappingSize(
   return it->second;
 }
 
-// Per-run execution scope with command buffer VA remapping active. The
-// command-buffer-referenced temp buffer allocations are backed by physical
-// VMM allocations while execution sees stable reserved VA addresses. Holds
-// the lock for the executable/executor remapping state for the whole
-// execution.
+// Per-run execution scope with command buffer VA remapping active. Selected
+// command-buffer allocations are backed by physical VMM allocations while
+// execution sees stable reserved VA addresses. Holds the lock for the
+// executable/executor remapping state for the whole execution.
 class GpuExecutableVaRemapAllocator::VaRemapExecutionScope
     : public GpuExecutableBufferAllocator::ExecutionScope {
  public:
@@ -102,11 +105,12 @@ class GpuExecutableVaRemapAllocator::VaRemapExecutionScope
 
   bool va_remap_enabled() const override { return true; }
 
-  // Builds an execution-only address table, maps caller- or allocator-owned
-  // input/output buffers into their stable reservation addresses, and passes
-  // the persistent allocation indices (constants and VA-remapped allocations)
-  // to `execute`. The owning address table remains unchanged for result
-  // handling and TearDown.
+  // In the SKIP_PROFILED profiling phase this observes allocation addresses
+  // and passes std::nullopt as the persistent allocation indices. Otherwise it
+  // builds an execution-only address table, maps selected input/output buffers
+  // into their stable reservation addresses, and passes the persistent
+  // allocation indices to `execute`. The owning address table remains
+  // unchanged for result handling and TearDown.
   absl::Status ExecuteWithBufferAllocations(
       const BufferAllocations& owning_buffer_allocations, int device_ordinal,
       absl::FunctionRef<
@@ -130,7 +134,16 @@ class GpuExecutableVaRemapAllocator::VaRemapExecutionScope
       int64_t buffer_size,
       se::DeviceAddressAllocator* memory_allocator) override;
 
+  // True when VA remapping applies to buffers of this execution. For
+  // SKIP_TEMP this is always the case; for SKIP_PROFILED it requires the
+  // profile transition to have happened.
+  bool remap_active() const;
+  // The set of allocation indices remapped for this execution.
+  const AllocationIndexSet& active_remap_set() const;
   bool ShouldRemapAllocation(BufferAllocation::Index index) const;
+  // Records addresses of profile-candidate allocations for one execution of
+  // the SKIP_PROFILED profiling phase.
+  void ObserveAllocationAddresses(const BufferAllocations& allocs);
   // Returns the reservation slice [offset, offset + size) as an address.
   se::DeviceAddressBase ReservationSlice(uint64_t offset, uint64_t size) const;
   void RecordStepAlias(int device_ordinal, uint64_t reservation_offset,
@@ -171,8 +184,28 @@ GpuExecutableVaRemapAllocator::VaRemapExecutionScope::~VaRemapExecutionScope() {
   }
 }
 
+bool GpuExecutableVaRemapAllocator::VaRemapExecutionScope::remap_active()
+    const {
+  if (owner_->update_mode_ == DebugOptions::SKIP_PROFILED) {
+    return remapping_->phase == Remapping::ProfilePhase::kActive;
+  }
+  return true;
+}
+
+const GpuExecutableVaRemapAllocator::AllocationIndexSet&
+GpuExecutableVaRemapAllocator::VaRemapExecutionScope::active_remap_set() const {
+  if (owner_->update_mode_ == DebugOptions::SKIP_PROFILED) {
+    return remapping_->profiled_va_remapped_alloc_indices;
+  }
+  return owner_->va_remapped_alloc_indices_;
+}
+
 absl::Status GpuExecutableVaRemapAllocator::VaRemapExecutionScope::Prepare(
     const ServiceExecutableRunOptions* run_options, int device_ordinal) {
+  if (!remap_active()) {
+    return absl::OkStatus();
+  }
+
   uint64_t granularity =
       vmm_allocator_->GetAllocationGranularity(run_options->stream()->parent());
   if (remapping_->va_reservation != nullptr &&
@@ -192,7 +225,7 @@ absl::Status GpuExecutableVaRemapAllocator::VaRemapExecutionScope::Prepare(
   remapping_->total_size = 0;
   remapping_->allocation_to_reservation_offset.clear();
   remapping_->allocation_to_mapping_size.clear();
-  for (BufferAllocation::Index idx : owner_->va_remapped_alloc_indices_) {
+  for (BufferAllocation::Index idx : active_remap_set()) {
     const BufferAllocation& allocation = *owner_->allocations()[idx];
     uint64_t buffer_size = allocation.size();
     uint64_t mapping_size =
@@ -215,7 +248,24 @@ absl::Status GpuExecutableVaRemapAllocator::VaRemapExecutionScope::Prepare(
 
 bool GpuExecutableVaRemapAllocator::VaRemapExecutionScope::
     ShouldRemapAllocation(BufferAllocation::Index index) const {
-  return owner_->va_remapped_alloc_indices_.contains(index);
+  return remap_active() && active_remap_set().contains(index);
+}
+
+void GpuExecutableVaRemapAllocator::VaRemapExecutionScope::
+    ObserveAllocationAddresses(const BufferAllocations& allocs) {
+  for (BufferAllocation::Index idx : owner_->profile_candidate_alloc_indices_) {
+    se::DeviceAddressBase addr = allocs.GetDeviceAddress(idx);
+    if (addr.is_null()) {
+      remapping_->unstable_alloc_indices.insert(idx);
+      continue;
+    }
+    auto [it, inserted] =
+        remapping_->last_observed_address.try_emplace(idx, addr);
+    if (!inserted && !it->second.IsSameAs(addr)) {
+      remapping_->unstable_alloc_indices.insert(idx);
+      it->second = addr;
+    }
+  }
 }
 
 se::DeviceAddressBase
@@ -268,7 +318,7 @@ absl::StatusOr<BufferAllocations> GpuExecutableVaRemapAllocator::
       owning_buffer_allocations.device_ordinal(),
       owning_buffer_allocations.memory_allocator());
 
-  for (BufferAllocation::Index index : owner_->va_remapped_alloc_indices_) {
+  for (BufferAllocation::Index index : active_remap_set()) {
     const BufferAllocation& allocation = *owner_->allocations()[index];
     if (!allocation.IsInputOrOutput()) {
       continue;
@@ -334,10 +384,35 @@ absl::Status GpuExecutableVaRemapAllocator::VaRemapExecutionScope::
             std::optional<absl::Span<const BufferAllocation::Index>>
                 persistent_alloc_indices)>
             execute) {
-  XLA_VLOG_DEVICE(3, device_ordinal) << absl::StreamFormat(
-      "VA remapping: module %s executing with %d command buffer "
-      "allocation(s)",
-      owner_->module_name(), owner_->va_remapped_alloc_indices_.size());
+  const bool profiled_mode =
+      owner_->update_mode_ == DebugOptions::SKIP_PROFILED;
+  if (profiled_mode) {
+    if (remapping_->phase == Remapping::ProfilePhase::kProfiling) {
+      // Profiling executions must pass std::nullopt: the persistent
+      // allocation indices may transition from absent to present only once,
+      // and the profiled set is not known yet.
+      RETURN_IF_ERROR(execute(owning_buffer_allocations, std::nullopt));
+      ObserveAllocationAddresses(owning_buffer_allocations);
+      ++remapping_->profiled_steps;
+      XLA_VLOG_DEVICE(3, device_ordinal) << absl::StreamFormat(
+          "VA remapping: module %s profiling execution %d of %d",
+          owner_->module_name(), remapping_->profiled_steps,
+          kProfileStepsLimit);
+      return absl::OkStatus();
+    }
+
+    DCHECK(remapping_->phase == Remapping::ProfilePhase::kActive);
+    XLA_VLOG_DEVICE(3, device_ordinal) << absl::StreamFormat(
+        "VA remapping: module %s executing with %d selected command buffer "
+        "allocation(s)",
+        owner_->module_name(),
+        remapping_->profiled_va_remapped_alloc_indices.size());
+  } else {
+    XLA_VLOG_DEVICE(3, device_ordinal) << absl::StreamFormat(
+        "VA remapping: module %s executing with %d command buffer "
+        "allocation(s)",
+        owner_->module_name(), owner_->va_remapped_alloc_indices_.size());
+  }
 
   absl::StatusOr<BufferAllocations> execution_allocations =
       GetRemappedBufferAllocations(owning_buffer_allocations, device_ordinal);
@@ -351,9 +426,12 @@ absl::Status GpuExecutableVaRemapAllocator::VaRemapExecutionScope::
     return execution_allocations.status();
   }
 
+  absl::Span<const BufferAllocation::Index> persistent_alloc_indices =
+      profiled_mode
+          ? absl::MakeConstSpan(remapping_->profiled_persistent_alloc_indices)
+          : absl::MakeConstSpan(owner_->persistent_alloc_indices());
   absl::Status execute_status =
-      execute(*execution_allocations,
-              absl::MakeConstSpan(owner_->persistent_alloc_indices()));
+      execute(*execution_allocations, persistent_alloc_indices);
   // Release per-execution aliases even when execution failed. The owning
   // address table was never modified, so result handling and TearDown continue
   // to see caller- or allocator-owned addresses.
@@ -374,13 +452,13 @@ GpuExecutableVaRemapAllocator::GpuExecutableVaRemapAllocator(
     ThunkExecutor* thunk_executor)
     : GpuExecutableBufferAllocator(module_name, allocations, result_shape,
                                    debug_options, thunk_executor) {
-  const DebugOptions::CommandBufferUpdateMode update_mode =
-      debug_options != nullptr
-          ? debug_options->xla_gpu_command_buffer_update_mode()
-          : DebugOptions::ALWAYS_UPDATE;
-  CHECK(update_mode == DebugOptions::SKIP_TEMP)
+  update_mode_ = debug_options != nullptr
+                     ? debug_options->xla_gpu_command_buffer_update_mode()
+                     : DebugOptions::ALWAYS_UPDATE;
+  CHECK(update_mode_ == DebugOptions::SKIP_TEMP ||
+        update_mode_ == DebugOptions::SKIP_PROFILED)
       << "Unsupported command buffer update mode for VA remapping: "
-      << update_mode;
+      << update_mode_;
 
   ForEachCommandBufferAllocation(
       allocations, thunk_executor,
@@ -389,8 +467,13 @@ GpuExecutableVaRemapAllocator::GpuExecutableVaRemapAllocator(
           // Collected by the base class.
           return;
         }
-        if (allocation.IsPreallocatedTempBuffer()) {
+        if ((update_mode_ == DebugOptions::SKIP_TEMP ||
+             update_mode_ == DebugOptions::SKIP_PROFILED) &&
+            allocation.IsPreallocatedTempBuffer()) {
           va_remapped_alloc_indices_.insert(index);
+        } else if (update_mode_ == DebugOptions::SKIP_PROFILED &&
+                   !allocation.is_thread_local()) {
+          profile_candidate_alloc_indices_.insert(index);
         }
       });
 
@@ -403,9 +486,11 @@ GpuExecutableVaRemapAllocator::GpuExecutableVaRemapAllocator(
 
   VLOG(3) << "Command buffer allocation policy: collected "
           << command_buffer_allocation_count()
-          << " persistent allocation indices and "
+          << " persistent allocation indices, "
           << va_remapped_alloc_indices_.size()
-          << " VA-remapped allocation indices for module "
+          << " VA-remapped allocation indices, and "
+          << profile_candidate_alloc_indices_.size()
+          << " profile candidate allocation indices for module "
           << this->module_name();
 }
 
@@ -418,6 +503,99 @@ void GpuExecutableVaRemapAllocator::AddVaRemappedAllocationForTesting(
                     va_remapped_alloc_indices_.end());
   set_persistent_alloc_indices(std::vector<BufferAllocation::Index>(
       persistent.begin(), persistent.end()));
+}
+
+void GpuExecutableVaRemapAllocator::AddProfileCandidateAllocationForTesting(
+    BufferAllocation::Index index) {
+  profile_candidate_alloc_indices_.insert(index);
+}
+
+void GpuExecutableVaRemapAllocator::TransitionProfiledRemapping(
+    Remapping* remapping, se::DeviceAddressVmmAllocator* vmm_allocator,
+    int device_ordinal) {
+  AllocationIndexSet profiled_selected;
+  // Parameter buffers are owned by the caller and can only be remapped by
+  // aliasing them with Map(), which requires the exact address to be an
+  // active allocator address of `vmm_allocator` and allows at most one alias
+  // per allocator address. Count observed parameter addresses to drop
+  // parameters that share a buffer.
+  absl::flat_hash_map<const void*, int64_t> parameter_address_count;
+
+  for (BufferAllocation::Index idx : profile_candidate_alloc_indices_) {
+    if (remapping->unstable_alloc_indices.contains(idx)) {
+      continue;
+    }
+    auto it = remapping->last_observed_address.find(idx);
+    if (it == remapping->last_observed_address.end() || it->second.is_null()) {
+      continue;
+    }
+    const BufferAllocation& allocation = *allocations()[idx];
+    if (allocation.is_entry_computation_parameter()) {
+      se::MemoryAllocation* raw =
+          vmm_allocator->GetRawAllocation(device_ordinal, it->second);
+      if (raw == nullptr) {
+        XLA_VLOG_DEVICE(2, device_ordinal) << absl::StreamFormat(
+            "VA remapping: module %s parameter allocation %d at %p is not an "
+            "exact VMM allocator address; not remapping it",
+            module_name(), idx, it->second.opaque());
+        continue;
+      }
+      ++parameter_address_count[it->second.opaque()];
+    }
+    profiled_selected.insert(idx);
+  }
+
+  // Drop parameters whose observed address backs more than one selected
+  // parameter allocation: Map() supports only one reservation alias per
+  // allocator address.
+  for (auto it = profiled_selected.begin(); it != profiled_selected.end();) {
+    const BufferAllocation& allocation = *allocations()[*it];
+    bool duplicate_parameter_address = false;
+    if (allocation.is_entry_computation_parameter()) {
+      const se::DeviceAddressBase& observed =
+          remapping->last_observed_address.at(*it);
+      duplicate_parameter_address =
+          parameter_address_count.at(observed.opaque()) > 1;
+    }
+    if (duplicate_parameter_address) {
+      XLA_VLOG_DEVICE(2, device_ordinal) << absl::StreamFormat(
+          "VA remapping: module %s parameter allocation %d shares its buffer "
+          "with another parameter; not remapping it",
+          module_name(), *it);
+      it = profiled_selected.erase(it);
+    } else {
+      ++it;
+    }
+  }
+
+  AllocationIndexSet selected(va_remapped_alloc_indices_.begin(),
+                              va_remapped_alloc_indices_.end());
+  selected.insert(profiled_selected.begin(), profiled_selected.end());
+  if (selected.empty()) {
+    remapping->phase = Remapping::ProfilePhase::kDisabled;
+    XLA_VLOG_DEVICE(1, device_ordinal) << absl::StreamFormat(
+        "VA remapping: module %s profile found no stable command buffer "
+        "allocations; passing only constants as persistent",
+        module_name());
+    return;
+  }
+
+  remapping->profiled_va_remapped_alloc_indices = std::move(selected);
+  AllocationIndexSet persistent(constant_alloc_indices().begin(),
+                                constant_alloc_indices().end());
+  persistent.insert(remapping->profiled_va_remapped_alloc_indices.begin(),
+                    remapping->profiled_va_remapped_alloc_indices.end());
+  remapping->profiled_persistent_alloc_indices.assign(persistent.begin(),
+                                                      persistent.end());
+  remapping->phase = Remapping::ProfilePhase::kActive;
+  XLA_VLOG_DEVICE(1, device_ordinal) << absl::StreamFormat(
+      "VA remapping: module %s profile selected a remapping set with %d "
+      "automatically included preallocated temp allocation(s) and %d of %d "
+      "profiled command buffer allocation(s) after %d profiling "
+      "execution(s)",
+      module_name(), va_remapped_alloc_indices_.size(),
+      profiled_selected.size(), profile_candidate_alloc_indices_.size(),
+      remapping->profiled_steps);
 }
 
 GpuExecutableVaRemapAllocator::~GpuExecutableVaRemapAllocator() {
@@ -446,7 +624,10 @@ GpuExecutableVaRemapAllocator::CreateExecutionScope(
         run_options, memory_allocator, device_ordinal);
   };
 
-  if (va_remapped_alloc_indices_.empty()) {
+  const bool profiled_mode = update_mode_ == DebugOptions::SKIP_PROFILED;
+  if (profiled_mode ? (profile_candidate_alloc_indices_.empty() &&
+                       va_remapped_alloc_indices_.empty())
+                    : va_remapped_alloc_indices_.empty()) {
     return scope_without_remapping();
   }
 
@@ -483,12 +664,30 @@ GpuExecutableVaRemapAllocator::CreateExecutionScope(
   }
   remapping->vmm_allocator = vmm_allocator;
 
+  if (profiled_mode) {
+    // The lock is held through the whole execution in the profiling phase as
+    // well, so concurrent executions cannot interleave profile observations
+    // or race the phase transition.
+    if (remapping->phase == Remapping::ProfilePhase::kInactive) {
+      remapping->phase = Remapping::ProfilePhase::kProfiling;
+    }
+    if (remapping->phase == Remapping::ProfilePhase::kProfiling &&
+        remapping->profiled_steps >= kProfileStepsLimit) {
+      TransitionProfiledRemapping(remapping, vmm_allocator, device_ordinal);
+    }
+    if (remapping->phase == Remapping::ProfilePhase::kDisabled) {
+      // Nothing to remap for this executor; behave like a scope without
+      // remapping, which passes only constants as persistent.
+      return scope_without_remapping();
+    }
+  }
+
   // Deferred deallocations and unmaps from the previous execution are left
-  // pending on purpose: Allocate() reactivates a compatible stale mapping at
-  // the same reservation VA, which keeps the same physical allocation across
-  // executions and avoids waiting for the previous execution to retire.
-  // Incompatible stale mappings are completed lazily and per-record by the
-  // fresh-mapping paths.
+  // pending on purpose: Allocate() and Map() reactivate a compatible stale
+  // mapping at the same reservation VA, which keeps the same physical
+  // allocation across executions and avoids waiting for the previous
+  // execution to retire. Incompatible stale mappings are completed lazily and
+  // per-record by the fresh-mapping paths.
   return std::make_unique<VaRemapExecutionScope>(this, remapping, vmm_allocator,
                                                  std::move(remap_lock));
 }

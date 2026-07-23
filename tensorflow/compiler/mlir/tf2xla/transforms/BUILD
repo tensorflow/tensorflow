@@ -227,8 +227,8 @@ tf_cc_test(
     name = "verify_tfxla_legalization_test",
     srcs = ["verify_tfxla_legalization_test.cc"],
     deps = [
-        ":legalize_tf",
         ":test_utils",
+        ":xla_legalize_tf",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:serialize_mlir_module_utils",
         "//tensorflow/core:test",

@@ -411,9 +411,22 @@ message DebugOptions {
   //   SKIP_TEMP: Command-buffer-referenced preallocated temp buffers
   //     use fixed VMM reservation addresses; other dynamic allocations still
   //     trigger command updates when their addresses change.
+  //   SKIP_PROFILED: For the first few executions, buffers use regular
+  //     dynamically allocated addresses. Preallocated temp buffers are
+  //     automatically selected for remapping while the runtime records which
+  //     other non-constant, non-thread-local command-buffer-referenced
+  //     allocations keep a stable address. Afterwards, the temp buffers and
+  //     stable profile candidates use fixed VMM reservation addresses during
+  //     execution. Temp buffers are allocated through the reservation;
+  //     finalized input and output addresses are aliased into it immediately
+  //     before execution.
+  //     Remapping enforces address stability, so a mispredicted profile costs
+  //     an extra VMM remap instead of correctness. Requires the VMM allocator
+  //     and assumes symmetric behavior across ranks.
   enum CommandBufferUpdateMode {
     ALWAYS_UPDATE = 0;
     SKIP_TEMP = 1;
+    SKIP_PROFILED = 2;
   }
 
   // Controls when cuDNN fusions are compiled in "deviceless" mode, i.e. driven
@@ -838,11 +851,6 @@ message DebugOptions {
   // If true, autotune all fusions with block level emitter.
   optional bool xla_gpu_experimental_all_fusions_with_triton = 444;
 
-  // Enables an Ahead-of-Time (AOT) compilation flow where the compiled binary
-  // includes the generated Thunks. In contrast, the legacy flow only compiles
-  // up to the HLO optimization stage, before Thunk generation.
-  optional bool xla_gpu_experimental_aot_compiled_thunks = 435;
-
   // Specifies the behavior of per kernel autotuning cache.
   optional AutotuneCacheMode xla_gpu_experimental_autotune_cache_mode = 324;
 
@@ -851,10 +859,9 @@ message DebugOptions {
   optional bool xla_gpu_experimental_autotune_post_fusion = 481
       [deprecated = true];
 
-  // Specifies the directory for the new structured autotuning cache.
-  // This supersedes `xla_gpu_per_fusion_autotune_cache_dir`, which uses
-  // a different cache format.
-  optional string xla_gpu_experimental_autotuner_cache_dir = 407;
+  // No-op, to be removed.
+  optional string xla_gpu_experimental_autotuner_cache_dir = 407
+      [deprecated = true];
 
   // Specifies the distance threshold in ScheduleAwareCollectiveOpsCSE
   optional int64 xla_gpu_experimental_collective_cse_distance_threshold = 374;
@@ -1252,6 +1259,10 @@ message DebugOptions {
   // This instructs the runtime whether to use memcpy for p2p communication when
   // source and target are located within a node(nvlink).
   optional bool xla_gpu_use_memcpy_local_p2p = 287;
+
+  // Whether to use the new protos for the autotune cache
+  // xla.autotuner.AutotuneCache rather than xla.AutotuneResults.
+  optional bool xla_gpu_use_new_autotune_cache_format = 515;
 
   // An option to enable using cuDNN runtime compiled fusion kernels which is
   // available and recommended for Ampere+ GPUs.
@@ -1661,7 +1672,7 @@ message DebugOptions {
   // Note: when adding a new flag, please add it to one of the hardware-specific
   // or hardware-agnostic sections at the top of this proto message.
 
-  // Next id: 515
+  // Next id: 516
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.
@@ -1732,6 +1743,7 @@ message DebugOptions {
   reserved "xla_gpu_enable_triton_softmax_priority_fusion";
   reserved "xla_gpu_enable_xla_runtime_executable";
   reserved "xla_gpu_ensure_minor_dot_contraction_dims";
+  reserved "xla_gpu_experimental_aot_compiled_thunks";
   reserved "xla_gpu_experimental_allow_unroll_factor_eight";
   reserved "xla_gpu_experimental_enable_command_buffer_on_thunks";
   reserved "xla_gpu_experimental_enable_dynamic_dot_search_space";
@@ -1788,7 +1800,7 @@ message DebugOptions {
       242, 243, 249, 263, 264, 266, 270, 271, 275, 276, 278, 279, 281, 282, 286,
       298, 299, 300, 302, 303, 309, 313, 314, 319, 320, 325, 326, 332, 346, 352,
       354, 355, 358, 361, 367, 369, 371, 385, 388, 389, 394, 396, 398, 402, 420,
-      423, 430, 443, 446, 458, 464, 477, 480;
+      423, 430, 435, 443, 446, 458, 464, 477, 480;
 }
 
 // Contains flags which affects the GPU compilation result.

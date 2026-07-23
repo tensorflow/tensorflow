@@ -18,9 +18,11 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
+#include <vector>
 
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/container/node_hash_map.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
@@ -30,6 +32,7 @@ limitations under the License.
 #include "xla/service/gpu/gpu_executable_buffer_allocator.h"
 #include "xla/service/service_executable_run_options.h"
 #include "xla/shape.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/device_address_allocator.h"
 #include "xla/stream_executor/memory_reservation.h"
 #include "xla/stream_executor/stream_executor.h"
@@ -44,16 +47,25 @@ namespace gpu {
 
 class ThunkExecutor;
 
-// GpuExecutableBufferAllocator for the SKIP_TEMP command buffer update mode:
-// command buffer VA remapping.
+// GpuExecutableBufferAllocator for the SKIP_TEMP and SKIP_PROFILED command
+// buffer update modes: command buffer VA remapping.
 //
-// When VA remapping is available for an execution, the
-// command-buffer-referenced preallocated temp buffer allocations are backed
-// by physical VMM allocations while execution sees stable reserved VA
-// addresses, so recorded command buffers can skip updating them.
+// When VA remapping is available for an execution, selected command-buffer
+// allocations are backed by physical VMM allocations while execution sees
+// stable reserved VA addresses, so recorded command buffers can skip updating
+// them:
+//  - SKIP_TEMP remaps the command-buffer-referenced preallocated temp buffer
+//    allocations, selected at construction time.
+//  - SKIP_PROFILED automatically selects command-buffer-referenced
+//    preallocated temp buffers, profiles the address stability of the other
+//    non-constant, non-thread-local allocations over the first executions,
+//    and then remaps the union of the temp buffers and stable profile
+//    candidates.
 //
-// When VA remapping is unavailable for an execution (no VMM allocator or
-// nothing to remap), executions fall back to the base-class behavior.
+// When VA remapping is unavailable for an execution (no VMM allocator,
+// nothing to remap, or SKIP_PROFILED has neither automatically selected temp
+// buffers nor stable profile candidates), executions fall back to the
+// base-class behavior.
 class GpuExecutableVaRemapAllocator : public GpuExecutableBufferAllocator {
  public:
   GpuExecutableVaRemapAllocator(
@@ -77,10 +89,30 @@ class GpuExecutableVaRemapAllocator : public GpuExecutableBufferAllocator {
   // update mode selects yet.
   void AddVaRemappedAllocationForTesting(BufferAllocation::Index index);
 
+  // Test-only: adds `index` to the SKIP_PROFILED profile candidate set, as if
+  // it had been collected from a command buffer thunk at construction time.
+  void AddProfileCandidateAllocationForTesting(BufferAllocation::Index index);
+
  private:
   // Per-executor VA remapping state, owned by the allocator and shared by the
   // execution scopes created for that executor.
   struct Remapping {
+    // SKIP_PROFILED per-executor profile state machine. The phase progresses
+    // kProfiling -> (kActive | kDisabled) exactly once, which keeps the
+    // persistent allocation indices passed to thunks consistent with the
+    // one-way absent-to-present transition required by
+    // Thunk::ExecuteParams::persistent_alloc_indices.
+    enum class ProfilePhase {
+      // Not a SKIP_PROFILED remapping (SKIP_TEMP).
+      kInactive,
+      // Observing allocation addresses; executions pass std::nullopt.
+      kProfiling,
+      // Profile transition done; the selected allocation set is VA-remapped.
+      kActive,
+      // No automatic or profiled allocations; executions pass only constants.
+      kDisabled,
+    };
+
     absl::Mutex mutex;
     uint64_t granularity = 0;
     uint64_t total_size = 0;
@@ -91,6 +123,22 @@ class GpuExecutableVaRemapAllocator : public GpuExecutableBufferAllocator {
     std::unique_ptr<se::MemoryReservation> va_reservation;
     se::DeviceAddressVmmAllocator* vmm_allocator = nullptr;
 
+    ProfilePhase phase = ProfilePhase::kInactive;
+    // Number of completed profiling observations.
+    int64_t profiled_steps = 0;
+    // Address of each profile candidate observed on the previous execution.
+    absl::flat_hash_map<BufferAllocation::Index, se::DeviceAddressBase>
+        last_observed_address;
+    // Candidates disqualified from remapping because their address changed
+    // between executions or was null.
+    absl::flat_hash_set<BufferAllocation::Index> unstable_alloc_indices;
+    // Automatic temp buffers and profile candidates selected for VA remapping
+    // by the profile transition.
+    AllocationIndexSet profiled_va_remapped_alloc_indices;
+    // Sorted union of constant allocation indices and
+    // profiled_va_remapped_alloc_indices, set by the profile transition.
+    std::vector<BufferAllocation::Index> profiled_persistent_alloc_indices;
+
     absl::StatusOr<uint64_t> GetReservationOffset(
         BufferAllocation::Index idx) const;
     absl::StatusOr<uint64_t> GetMappingSize(BufferAllocation::Index idx) const;
@@ -99,9 +147,25 @@ class GpuExecutableVaRemapAllocator : public GpuExecutableBufferAllocator {
   // The VA-remapping ExecutionScope, defined in the .cc file.
   class VaRemapExecutionScope;
 
-  // Indices of command-buffer-referenced temporary allocations assigned stable
-  // addresses through VMM remapping.
+  // Runs the SKIP_PROFILED transition for one executor: combines automatic
+  // temp buffers with profiled candidates whose addresses stayed stable,
+  // filters parameter allocations that cannot be Map()ed (not backed by
+  // `vmm_allocator` or sharing an address with another parameter), and moves
+  // the phase to kActive, or to kDisabled when nothing can be remapped.
+  void TransitionProfiledRemapping(Remapping* remapping,
+                                   se::DeviceAddressVmmAllocator* vmm_allocator,
+                                   int device_ordinal);
+
+  DebugOptions::CommandBufferUpdateMode update_mode_ = DebugOptions::SKIP_TEMP;
+
+  // SKIP_TEMP and SKIP_PROFILED: indices of command-buffer-referenced
+  // preallocated temp buffers selected for VMM remapping.
   AllocationIndexSet va_remapped_alloc_indices_;
+
+  // SKIP_PROFILED: command-buffer-referenced non-constant, non-temp
+  // allocations whose address stability is profiled during the first
+  // executions.
+  AllocationIndexSet profile_candidate_alloc_indices_;
 
   absl::Mutex remappings_mutex_;
   absl::node_hash_map<se::StreamExecutor*, Remapping> remappings_

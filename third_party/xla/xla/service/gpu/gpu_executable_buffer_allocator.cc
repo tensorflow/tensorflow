@@ -91,6 +91,7 @@ GpuExecutableBufferAllocator::Create(
           module_name, allocations, result_shape, debug_options,
           thunk_executor);
     case DebugOptions::SKIP_TEMP:
+    case DebugOptions::SKIP_PROFILED:
       return std::make_unique<GpuExecutableVaRemapAllocator>(
           module_name, allocations, result_shape, debug_options,
           thunk_executor);

@@ -16,8 +16,8 @@ limitations under the License.
 
 #include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include "absl/status/status_matchers.h"
 #include "absl/strings/str_cat.h"
 #include "xla/xla_data.pb.h"
 

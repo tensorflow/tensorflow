@@ -626,12 +626,14 @@ TEST_F(GpuBlasLtMatmulThunkTest, ThunkProtoSerializationGroupedMatmul) {
   ASSERT_TRUE(google::protobuf::TextFormat::ParseFromString(
       kCublasLtGroupedMatmulThunkProtoText, &proto));
 
+  // Allocation #4 must cover the grouped-matmul B operand (size 1302400),
+  // matching slice { size: 1302400 buffer_allocation_index: 4 } above.
   std::vector<BufferAllocation> allocations = {
       BufferAllocation(/*index=*/0, /*size=*/4, /*color=*/0),  // UNUSED
       BufferAllocation(/*index=*/1, /*size=*/4, /*color=*/0),  // UNUSED
       BufferAllocation(/*index=*/2, /*size=*/4, /*color=*/0),  // UNUSED
       BufferAllocation(/*index=*/3, /*size=*/164428, /*color=*/0),
-      BufferAllocation(/*index=*/4, /*size=*/651200, /*color=*/0),
+      BufferAllocation(/*index=*/4, /*size=*/1302400, /*color=*/0),
       BufferAllocation(/*index=*/5, /*size=*/161600, /*color=*/0),
       BufferAllocation(/*index=*/6, /*size=*/8, /*color=*/0),
   };

@@ -207,6 +207,25 @@ diff --ruN a/stablehlo/stablehlo/tests/interpret/printing.mlir b/stablehlo/stabl
 +  } : () -> (tensor<2xi32>, tensor<2xi32>)
 +  func.return
 +}
+diff --ruN a/stablehlo/stablehlo/tests/ops_sparse.mlir b/stablehlo/stablehlo/tests/ops_sparse.mlir
+--- stablehlo/stablehlo/tests/ops_sparse.mlir
++++ stablehlo/stablehlo/tests/ops_sparse.mlir
+@@ -317,15 +317,3 @@
+   %10 = stablehlo.floor %9 : (tensor<64xf64, #SV>) -> tensor<64xf64, #SV>
+   func.return %10 : tensor<64xf64, #SV>
+ }
+-
+-//
+-// Combination of quantization and sparse.
+-//
+-
+-// CHECK-LABEL: func @quantization_and_sparse(
+-//  CHECK-SAME: %[[A:.*]]: tensor<1x!quant.uniform<i8:f32, 1.000000e+00:17>, #{{.*}}>)
+-//       CHECK: return %[[A]] : tensor<1x!quant.uniform<i8:f32, 1.000000e+00:17>, #{{.*}}>
+-func.func @quantization_and_sparse(%arg0: tensor<1x!quant.uniform<i8:f32, 1.0:17>, #SV>)
+-                                       -> tensor<1x!quant.uniform<i8:f32, 1.0:17>, #SV> {
+-  func.return %arg0 : tensor<1x!quant.uniform<i8:f32, 1.0:17>, #SV>
+-}
 diff --ruN a/stablehlo/stablehlo/tests/ops_stablehlo_roundtrip.mlir b/stablehlo/stablehlo/tests/ops_stablehlo_roundtrip.mlir
 --- stablehlo/stablehlo/tests/ops_stablehlo_roundtrip.mlir
 +++ stablehlo/stablehlo/tests/ops_stablehlo_roundtrip.mlir
@@ -265,6 +284,30 @@ diff --ruN a/stablehlo/stablehlo/tests/transforms/stablehlo_convert_to_signless.
    %0 = stablehlo.add %arg0, %cst : tensor<3xui8>
    return %0 : tensor<3xui8>
  }
+diff --ruN a/stablehlo/stablehlo/tests/transforms/stablehlo_legalize_quant_to_int.mlir b/stablehlo/stablehlo/tests/transforms/stablehlo_legalize_quant_to_int.mlir
+--- stablehlo/stablehlo/tests/transforms/stablehlo_legalize_quant_to_int.mlir
++++ stablehlo/stablehlo/tests/transforms/stablehlo_legalize_quant_to_int.mlir
+@@ -90,20 +90,6 @@
+   %0 = stablehlo.uniform_quantize %arg0 : (tensor<?x?xf32, #stablehlo.bounds<4, 4>>) -> tensor<?x?x!quant.uniform<i8:f32, 1.000000e+00:3>, #stablehlo.bounds<4, 4>>
+   // CHECK: %[[DEQUANTIZED:.*]] = chlo.broadcast_multiply %[[VAL1:.*]], %[[CONST_SCALE:.*]] : (tensor<?x?xf32, #stablehlo.bounds<4, 4>>, tensor<f32>) -> tensor<?x?xf32, #stablehlo.bounds<4, 4>>
+   %1 = stablehlo.uniform_dequantize %0 : (tensor<?x?x!quant.uniform<i8:f32, 1.000000e+00:3>, #stablehlo.bounds<4, 4>>) -> tensor<?x?xf32, #stablehlo.bounds<4, 4>>
+-  return
+-}
+-
+-// -----
+-
+-#SV = #sparse_tensor.encoding<{ map = (d0) -> (d0 : compressed) }>
+-
+-// CHECK: #[[$SV:.*]] = #sparse_tensor.encoding<{ map = (d0) -> (d0 : compressed) }>
+-// CHECK-LABEL: func @uniform_quantize_and_dequantize_sparse_tensor_encoding
+-func.func @uniform_quantize_and_dequantize_sparse_tensor_encoding(%arg0: tensor<?xf32, #SV>) -> () {
+-  // CHECK: %[[QUANTIZED:.*]] = stablehlo.convert %[[VAL0:.*]] : (tensor<?xf32, #[[$SV]]>) -> tensor<?xi8, #[[$SV]]>
+-  %0 = stablehlo.uniform_quantize %arg0 : (tensor<?xf32, #SV>) -> tensor<?x!quant.uniform<i8:f32, 1.000000e+00:3>, #SV>
+-  // CHECK: %[[DEQUANTIZED:.*]] = chlo.broadcast_multiply %[[VAL1:.*]], %[[CONST_SCALE:.*]] : (tensor<?xf32, #[[$SV]]>, tensor<f32>) -> tensor<?xf32, #[[$SV]]>
+-  %1 = stablehlo.uniform_dequantize %0 : (tensor<?x!quant.uniform<i8:f32, 1.000000e+00:3>, #SV>) -> tensor<?xf32, #SV>
+   return
+ }
+ 
 diff --ruN a/stablehlo/stablehlo/transforms/ChloLegalizeToStablehlo.cpp b/stablehlo/stablehlo/transforms/ChloLegalizeToStablehlo.cpp
 --- stablehlo/stablehlo/transforms/ChloLegalizeToStablehlo.cpp
 +++ stablehlo/stablehlo/transforms/ChloLegalizeToStablehlo.cpp

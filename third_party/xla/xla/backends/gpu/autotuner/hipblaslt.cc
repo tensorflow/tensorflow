@@ -212,7 +212,14 @@ absl::StatusOr<std::vector<std::unique_ptr<BackendConfig>>>
 HipblasLtBackend::GetSupportedConfigs(const HloInstruction& instr) {
   if (!IsSupported(instr)) {
     return std::vector<std::unique_ptr<BackendConfig>>();
-  } else if (IsCublasLtMatmul(instr) || IsCublasLtMatmulF8(instr)) {
+  }
+
+  if (stream_executor() == nullptr) {
+    return absl::InvalidArgumentError(
+        "HipblasLtBackend cannot enumerate configs in deviceless mode.");
+  }
+
+  if (IsCublasLtMatmul(instr) || IsCublasLtMatmulF8(instr)) {
     ASSIGN_OR_RETURN(GpuBackendConfig gpu_config,
                      instr.backend_config<GpuBackendConfig>());
     const GemmBackendConfig& backend_config = gpu_config.gemm_backend_config();

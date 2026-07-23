@@ -206,9 +206,7 @@ cc_library(
     hdrs = ["register_common_dialects.h"],
     deps = [
         "//tensorflow/compiler/mlir/tensorflow",
-        "//tensorflow/compiler/mlir/tensorflow:mlprogram_util",
         "//tensorflow/compiler/mlir/tools/kernel_gen/ir:tf_framework_ops",
-        "//tensorflow/core/ir/types:Dialect",
         "@llvm-project//mlir:AllExtensions",
         "@llvm-project//mlir:AllPassesAndDialects",
         "@llvm-project//mlir:IR",

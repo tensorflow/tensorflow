@@ -87,7 +87,6 @@ cc_library(
         "//xla/stream_executor/rocm:roctracer_wrapper",
         "//xla/tsl/platform:env_time",
         "//xla/tsl/platform:errors",
-        "//xla/tsl/platform:status_macros",
         "//xla/tsl/profiler/backends/cpu:annotation_stack",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",

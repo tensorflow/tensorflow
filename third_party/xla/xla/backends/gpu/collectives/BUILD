@@ -945,6 +945,24 @@ cc_library(
 )
 
 cc_library(
+    name = "oneccl_errors",
+    hdrs = ["oneccl_errors.h"],
+    tags = [
+        "gpu",
+        "oneapi-only",
+    ],
+    visibility = ["//visibility:private"],
+    deps = [
+        "//xla:util",
+        "//xla/tsl/platform:logging",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/time",
+        "@oneccl//:libs",
+    ],
+)
+
+cc_library(
     name = "oneccl_collectives",
     srcs = ["oneccl_collectives.cc"],
     hdrs = ["oneccl_collectives.h"],
@@ -954,16 +972,66 @@ cc_library(
     ],
     visibility = ["//visibility:private"],
     deps = [
+        ":gpu_clique_key",
         ":gpu_collectives",
+        ":gpu_communicator",
+        ":oneccl_communicator",
+        ":oneccl_errors",
+        "//xla:status_macros",
+        "//xla:util",
         "//xla/core/collectives",
         "//xla/core/collectives:clique_id",
         "//xla/core/collectives:clique_key",
         "//xla/core/collectives:collectives_registry",
         "//xla/core/collectives:communicator",
         "//xla/core/collectives:rank_id",
+        "//xla/tsl/platform:env",
+        "//xla/tsl/platform:logging",
+        "//xla/tsl/platform:status_macros",
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/base",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/types:span",
+        "@oneccl//:libs",
+        "@tsl//tsl/platform:casts",
+    ],
+)
+
+cc_library(
+    name = "oneccl_communicator",
+    srcs = ["oneccl_communicator.cc"],
+    hdrs = ["oneccl_communicator.h"],
+    tags = [
+        "gpu",
+        "oneapi-only",
+    ],
+    visibility = ["//visibility:private"],
+    deps = [
+        ":gpu_collectives",
+        ":gpu_communicator",
+        ":oneccl_errors",
+        ":single_threaded_executor",
+        "//xla:future",
+        "//xla:xla_data_proto_cc",
+        "//xla/core/collectives:communicator",
+        "//xla/core/collectives:rank_id",
+        "//xla/core/collectives:reduction_kind",
+        "//xla/tsl/concurrency:executor",
+        "//xla/tsl/platform:env",
+        "//xla/tsl/platform:logging",
+        "//xla/tsl/platform:status_macros",
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/functional:any_invocable",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/types:span",
+        "@oneccl//:libs",
     ],
 )
 

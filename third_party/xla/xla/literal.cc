@@ -1986,8 +1986,6 @@ bool LiteralBase::Piece::EqualElements(const LiteralBase::Piece& other) const {
     int64_t size_bytes = size_bytes_dense();
     CHECK_EQ(size_bytes, other.size_bytes_dense());
     if (primitive_util::IsSubByteNonPredType(subshape().element_type())) {
-      // TODO(b/507052779): JAX CI is currently unhappy with highway, re-enable
-      // this when it's fixed.
       auto one_array = reinterpret_cast<const uint8_t*>(buffer());
       auto two_array = reinterpret_cast<const uint8_t*>(other.buffer());
       const int bits_per_element =

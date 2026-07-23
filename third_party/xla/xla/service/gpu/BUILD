@@ -719,6 +719,7 @@ cc_library(
         "//xla/stream_executor:device_address",
         "//xla/stream_executor:device_address_allocator",
         "//xla/stream_executor:device_address_vmm_allocator",
+        "//xla/stream_executor:memory_allocation",
         "//xla/stream_executor:memory_reservation",
         "//xla/stream_executor:stream",
         "//xla/stream_executor:stream_executor_h",
@@ -726,6 +727,7 @@ cc_library(
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:btree",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/container:node_hash_map",
         "@com_google_absl//absl/functional:function_ref",
         "@com_google_absl//absl/log",
@@ -763,6 +765,7 @@ xla_cc_test(
         "//xla/stream_executor:mock_stream",
         "//xla/stream_executor:mock_stream_executor",
         "//xla/stream_executor:stream_executor_h",
+        "//xla/tsl/platform:status_macros",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/types:span",
@@ -1736,7 +1739,6 @@ cc_library(
         ":ir_emitter_context",
         ":kernel_reuse_cache",
         ":launch_dimensions",
-        ":legacy_gpu_aot_compilation_result",
         ":matmul_utils",
         ":metrics",
         ":pre_scheduling_copy_insertion_pipeline",
@@ -2232,36 +2234,6 @@ cc_library(
 )
 
 cc_library(
-    name = "legacy_gpu_aot_compilation_result",
-    srcs = ["legacy_gpu_aot_compilation_result.cc"],
-    hdrs = ["legacy_gpu_aot_compilation_result.h"],
-    # Explicitly restrict the visibility since this is an internal implementation detail of the
-    # gpu_compiler.
-    visibility = [],
-    deps = [
-        ":gpu_executable_proto_cc",
-        ":ir_emission_utils",
-        "//xla:util",
-        "//xla:xla_proto_cc",
-        "//xla/hlo/ir:hlo",
-        "//xla/pjrt:compiled_memory_stats",
-        "//xla/service:buffer_assignment",
-        "//xla/service:compiled_module",
-        "//xla/service:compiler",
-        "//xla/service:executable",
-        "//xla/stream_executor:device_description",
-        "//xla/stream_executor:platform",
-        "//xla/tsl/lib/strings:proto_serialization",
-        "//xla/tsl/platform:status_macros",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings:string_view",
-        "@com_google_absl//absl/types:span",
-        "@tsl//tsl/profiler/lib:traceme",
-    ],
-)
-
-cc_library(
     name = "gpu_aot_compilation_result",
     srcs = ["gpu_aot_compilation_result.cc"],
     hdrs = ["gpu_aot_compilation_result.h"],
@@ -2636,6 +2608,7 @@ xla_cc_test(
         "//xla:xla_proto_cc",
         "//xla/backends/gpu/codegen/triton:support",
         "//xla/hlo/ir:hlo",
+        "//xla/service:compiled_module",
         "//xla/service:compiler",
         "//xla/service:executable",
         "//xla/service:gpu_plugin",
@@ -3631,11 +3604,10 @@ xla_cc_test(
         "//xla/backends/gpu/runtime:execution_stream_id",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
-        "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_matchers",
         "@com_google_absl//absl/strings:string_view",
-        "@com_google_googletest//:gtest_main",
+        "@com_google_googletest//:gtest_main",  # fixdeps: keep
     ],
 )
 
@@ -3659,6 +3631,7 @@ cc_library(
         "//xla/service:profile_guided_latency_estimator",
         "//xla/stream_executor:stream_executor_h",
         "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
@@ -3683,10 +3656,8 @@ xla_cc_test(
         "//xla/service:profile_guided_latency_estimator",
         "//xla/stream_executor:device_description",
         "//xla/tests:xla_internal_test_main",
-        "//xla/tsl/lib/core:status_test_util",
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:status_macros",
-        "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
@@ -3694,7 +3665,7 @@ xla_cc_test(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/types:span",
-        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest",  # fixdeps: keep
         "@llvm-project//mlir:IR",
     ],
 )

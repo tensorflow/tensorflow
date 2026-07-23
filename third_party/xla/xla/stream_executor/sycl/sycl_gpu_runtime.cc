@@ -27,6 +27,9 @@ namespace stream_executor::sycl {
 
 namespace {
 
+using HostPointerQueryFn = ze_result_t(ZE_APICALL*)(ze_driver_handle_t, void*,
+                                                    void**);
+
 absl::Status IsValidDeviceOrdinal(int device_ordinal,
                                   const absl::string_view& function_name) {
   ASSIGN_OR_RETURN(int device_count, SyclDevicePool::GetDeviceCount());
@@ -128,6 +131,37 @@ absl::Status MemfillDevice(::sycl::queue* stream_handle, void* dst_device,
 }
 
 }  // namespace
+
+// PJRT DmaMap uses prepare_for_device_copy to register ordinary host memory,
+// but SYCL still classifies the imported pointer as usm::alloc::unknown. Query
+// Level Zero directly so registration can be verified and copies from the
+// DmaMapped range can remain asynchronous.
+bool SyclIsHostMemoryRegistered(const ::sycl::device& device,
+                                const void* location) {
+  if (location == nullptr) {
+    return false;
+  }
+  try {
+    const ze_driver_handle_t driver =
+        ::sycl::get_native<::sycl::backend::ext_oneapi_level_zero>(
+            device.get_platform());
+    thread_local ze_driver_handle_t cached_driver = nullptr;
+    thread_local HostPointerQueryFn query = nullptr;
+    if (cached_driver != driver) {
+      query = nullptr;
+      if (zeDriverGetExtensionFunctionAddress(
+              driver, "zexDriverGetHostPointerBaseAddress",
+              reinterpret_cast<void**>(&query)) != ZE_RESULT_SUCCESS) {
+        return false;
+      }
+      cached_driver = driver;
+    }
+    return query != nullptr && query(driver, const_cast<void*>(location),
+                                     nullptr) == ZE_RESULT_SUCCESS;
+  } catch (const ::sycl::exception&) {
+    return false;
+  }
+}
 
 DevicePool SyclDevicePool::device_pool_;
 
@@ -533,7 +567,9 @@ absl::Status SyclMemcpyDeviceToHostAsync(::sycl::queue* stream_handle,
   }
   ::sycl::usm::alloc dst_alloc_type =
       ::sycl::get_pointer_type(dst_host, stream_handle->get_context());
-  bool async = (dst_alloc_type == ::sycl::usm::alloc::host);
+  bool async =
+      dst_alloc_type == ::sycl::usm::alloc::host ||
+      SyclIsHostMemoryRegistered(stream_handle->get_device(), dst_host);
   return MemcpyDeviceToHost(stream_handle, dst_host, src_device, byte_count,
                             async);
 }
@@ -553,7 +589,9 @@ absl::Status SyclMemcpyHostToDeviceAsync(::sycl::queue* stream_handle,
   }
   ::sycl::usm::alloc src_alloc_type =
       ::sycl::get_pointer_type(src_host, stream_handle->get_context());
-  bool async = (src_alloc_type == ::sycl::usm::alloc::host);
+  bool async =
+      src_alloc_type == ::sycl::usm::alloc::host ||
+      SyclIsHostMemoryRegistered(stream_handle->get_device(), src_host);
   return MemcpyHostToDevice(stream_handle, dst_device, src_host, byte_count,
                             async);
 }

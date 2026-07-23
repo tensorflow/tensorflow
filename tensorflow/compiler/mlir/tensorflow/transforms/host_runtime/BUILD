@@ -44,6 +44,7 @@ cc_library(
         "//tensorflow/compiler/mlir/tensorflow:bridge_logger",
         "//tensorflow/compiler/mlir/tensorflow:dump_mlir_util",
         "//tensorflow/compiler/mlir/tensorflow:error_util",
+        "//tensorflow/compiler/mlir/tensorflow/transforms:tensorflow_passes",  # buildcleaner: keep
         "//tensorflow/compiler/mlir/tensorflow/transforms:verify_no_outside_compilation_markers_pass",
         "//tensorflow/compiler/mlir/tensorflow/transforms/sparsecore:sparsecore_passes",
         "//tensorflow/core:framework",

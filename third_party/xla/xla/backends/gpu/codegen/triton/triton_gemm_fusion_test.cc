@@ -1678,6 +1678,34 @@ ENTRY e {
       module->entry_computation()->root_instruction(),
       GmockMatch(m::Fusion(m::Parameter(), m::Parameter())
                      .WithFusionKind(HloInstruction::FusionKind::kCustom)));
+
+  EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
+}
+
+TEST_F(TritonGemmTest, BatchMajorSlicedBatchDimensionProducesCorrectResults) {
+  constexpr absl::string_view kHloText = R"(
+ENTRY e {
+  p0 = f16[4,32,256] parameter(0)
+  p1 = f16[4,256,32] parameter(1)
+  ROOT d = f16[4,32,32] dot(p0, p1),
+    lhs_batch_dims={0}, lhs_contracting_dims={2},
+    rhs_batch_dims={0}, rhs_contracting_dims={1}
+})";
+
+  EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
+}
+
+TEST_F(TritonGemmTest, DegenerateBatchDimensionProducesCorrectResults) {
+  constexpr absl::string_view kHloText = R"(
+ENTRY e {
+  p0 = f16[1,32,256] parameter(0)
+  p1 = f16[1,256,32] parameter(1)
+  ROOT d = f16[1,32,32] dot(p0, p1),
+    lhs_batch_dims={0}, lhs_contracting_dims={2},
+    rhs_batch_dims={0}, rhs_contracting_dims={1}
+})";
+
+  EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
 }
 
 // TODO(b/393299275): this should just be a fusion test and does not need to be

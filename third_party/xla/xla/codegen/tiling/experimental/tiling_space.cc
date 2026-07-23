@@ -372,13 +372,12 @@ absl::StatusOr<std::unique_ptr<TilingSpace>> TilingSpace::Create(
         GetFirstShape(&root.instruction()).dimensions();
     llvm::SmallVector<DimTile> dim_tiles;
     dim_tiles.reserve(dims.size());
-    for (auto [index, dim] : llvm::enumerate(dims)) {
-      int64_t global_dim_id =
-          tiling_space->GetDimensionInfo(root.instruction(), index).id.value();
-      dim_tiles.push_back(GetDefaultDimTile(
-          index,
-          CreateSymbolExpr(global_dim_id, tiling_space->num_dimensions(), ctx),
-          dim));
+    for (auto [index, dim_size] : llvm::enumerate(dims)) {
+      TiledDimId dim_id =
+          tiling_space->GetDimensionInfo(root.instruction(), index).id;
+      SymbolicExpr tile_size =
+          CreateSymbolExpr(dim_id.value(), tiling_space->num_dimensions(), ctx);
+      dim_tiles.push_back(GetDefaultDimTile(dim_id, tile_size, dim_size));
     }
     Tile tile{*tiling_space, std::move(dim_tiles)};
     if (root_shape.IsTuple()) {

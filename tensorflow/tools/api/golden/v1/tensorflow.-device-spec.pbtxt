@@ -34,6 +34,7 @@ tf_class {
   member_method {
     name: "from_string"
     argspec: "args=[\'cls\', \'spec\'], varargs=None, keywords=None, defaults=None"
+    method_kind: CLASS
   }
   member_method {
     name: "make_merged_spec"

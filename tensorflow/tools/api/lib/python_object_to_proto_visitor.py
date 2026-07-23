@@ -376,7 +376,7 @@ class PythonObjectToProtoVisitor:
           new_method = proto.member_method.add()
           new_method.name = member_name
           if isinstance(parent, type):
-            raw = parent.__dict__.get(member_name)
+            raw = inspect.getattr_static(parent, member_name, None)
             if isinstance(raw, classmethod):
               new_method.method_kind = (
                   api_objects_pb2.TFAPIMethod.CLASS

@@ -40,7 +40,6 @@ limitations under the License.
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/stream_executor/trace_command_buffer_factory.h"
 #include "xla/tsl/lib/core/status_test_util.h"
-#include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/tsl/platform/test_benchmark.h"
@@ -100,7 +99,7 @@ TEST(GpuCommandBufferTest, LaunchSingleKernel) {
                           executor->CreateCommandBuffer(primary));
   TF_ASSERT_OK_AND_ASSIGN(
       auto* launch,
-      cmd_buffer->CreateLaunch(add, ThreadDim(), BlockDim(4), {}, a, b, c));
+      cmd_buffer->CreateLaunch(add, ThreadDim(), BlockDim(4), {}, {}, a, b, c));
   TF_ASSERT_OK(cmd_buffer->Finalize());
 
   TF_ASSERT_OK(cmd_buffer->Submit(stream.get()));
@@ -118,8 +117,8 @@ TEST(GpuCommandBufferTest, LaunchSingleKernel) {
 
   // Update command buffer to write into `d` buffer.
   TF_ASSERT_OK(cmd_buffer->Update());
-  TF_ASSERT_OK(
-      cmd_buffer->UpdateLaunch(launch, add, ThreadDim(), BlockDim(4), a, b, d));
+  TF_ASSERT_OK(cmd_buffer->UpdateLaunch(launch, add, ThreadDim(), BlockDim(4),
+                                        /*cluster_dims=*/{}, a, b, d));
   TF_ASSERT_OK(cmd_buffer->Finalize());
 
   TF_ASSERT_OK(cmd_buffer->Submit(stream.get()));
@@ -228,7 +227,7 @@ TEST(GpuCommandBufferTest, LaunchNestedCommandBuffer) {
   TF_ASSERT_OK_AND_ASSIGN(auto nested_cmd,
                           executor->CreateCommandBuffer(nested));
   TF_ASSERT_OK(
-      nested_cmd->CreateLaunch(add, ThreadDim(), BlockDim(4), {}, a, b, c));
+      nested_cmd->CreateLaunch(add, ThreadDim(), BlockDim(4), {}, {}, a, b, c));
   TF_ASSERT_OK_AND_ASSIGN(auto* nested_command,
                           primary_cmd->CreateChildCommand(*nested_cmd, {}));
   TF_ASSERT_OK(primary_cmd->Finalize());
@@ -250,7 +249,7 @@ TEST(GpuCommandBufferTest, LaunchNestedCommandBuffer) {
   // command buffer.
   nested_cmd = executor->CreateCommandBuffer(nested).value();
   TF_ASSERT_OK(
-      nested_cmd->CreateLaunch(add, ThreadDim(), BlockDim(4), {}, a, b, d));
+      nested_cmd->CreateLaunch(add, ThreadDim(), BlockDim(4), {}, {}, a, b, d));
   TF_ASSERT_OK(primary_cmd->Update());
   TF_ASSERT_OK(primary_cmd->UpdateChildCommand(nested_command, *nested_cmd));
   TF_ASSERT_OK(primary_cmd->Finalize());
@@ -381,7 +380,8 @@ TEST(GpuCommandBufferTest, ConditionalCaseEmptyGraph) {
 
   // if (index == 0) c = a + b
   CommandBuffer::CreateCommands branch0 = [&](CommandBuffer* b0, auto deps) {
-    return Wrap(b0->CreateLaunch(add, ThreadDim(), BlockDim(4), deps, a, b, c));
+    return Wrap(
+        b0->CreateLaunch(add, ThreadDim(), BlockDim(4), {}, deps, a, b, c));
   };
 
   // if (index == 1) <empty graph>
@@ -481,8 +481,8 @@ TEST_P(GpuCommandBufferCaseTest, ConditionalMultiCase) {
     branches[i] = [&, i](CommandBuffer* branch_cmd, auto dependencies) {
       // result = i * i;
       return Wrap(branch_cmd->CreateLaunch(mul, ThreadDim(), BlockDim(kLength),
-                                           dependencies, values[i], values[i],
-                                           results[i]));
+                                           {}, dependencies, values[i],
+                                           values[i], results[i]));
     };
   }
 
@@ -558,12 +558,14 @@ TEST(GpuCommandBufferTest, ConditionalCase) {
 
   // if (index == 0) c = a + b
   CommandBuffer::CreateCommands branch0 = [&](CommandBuffer* b0, auto deps) {
-    return Wrap(b0->CreateLaunch(add, ThreadDim(), BlockDim(4), deps, a, b, c));
+    return Wrap(
+        b0->CreateLaunch(add, ThreadDim(), BlockDim(4), {}, deps, a, b, c));
   };
 
   // if (index == 1) c = a * b
   CommandBuffer::CreateCommands branch1 = [&](CommandBuffer* b1, auto deps) {
-    return Wrap(b1->CreateLaunch(mul, ThreadDim(), BlockDim(4), deps, a, b, c));
+    return Wrap(
+        b1->CreateLaunch(mul, ThreadDim(), BlockDim(4), {}, deps, a, b, c));
   };
 
   std::vector<CommandBuffer::CreateCommands> branches;
@@ -650,14 +652,14 @@ TEST(GpuCommandBufferTest, ConditionalWhile) {
   CommandBuffer::CreateCommands create_cond = [&](CommandBuffer* cond_cmd,
                                                   auto deps) {
     return Wrap(cond_cmd->CreateLaunch(inc_and_cmp, ThreadDim(), BlockDim(), {},
-                                       loop_counter, pred, num_iters));
+                                       {}, loop_counter, pred, num_iters));
   };
 
   // Loop body: b = a + b
   CommandBuffer::CreateCommands create_body = [&](CommandBuffer* body_cmd,
                                                   auto deps) {
     return Wrap(body_cmd->CreateLaunch(add, ThreadDim(), BlockDim(length), {},
-                                       a, b, b));
+                                       {}, a, b, b));
   };
 
   // Create a command buffer with a single conditional operation.
@@ -715,14 +717,14 @@ TEST(GpuCommandBufferTest, DISABLED_WhileNestedConditional) {
       // Then body: b = a + b
       [&](CommandBuffer* then_cmd, auto deps) {
         return Wrap(then_cmd->CreateLaunch(add, ThreadDim(), BlockDim(length),
-                                           deps, a, b, b));
+                                           {}, deps, a, b, b));
       };
 
   CommandBuffer::CreateCommands create_else =
       // Else body: b = a + b
       [&](CommandBuffer* then_cmd, auto deps) {
         return Wrap(then_cmd->CreateLaunch(add, ThreadDim(), BlockDim(length),
-                                           deps, a, b, b));
+                                           {}, deps, a, b, b));
       };
 
   std::vector<CommandBuffer::CreateCommands> branches;
@@ -738,7 +740,7 @@ TEST(GpuCommandBufferTest, DISABLED_WhileNestedConditional) {
   CommandBuffer::CreateCommands create_cond = [&](CommandBuffer* cond_cmd,
                                                   auto deps) {
     return Wrap(cond_cmd->CreateLaunch(cmp_and_inc, ThreadDim(),
-                                       BlockDim(length), deps, loop_counter,
+                                       BlockDim(length), {}, deps, loop_counter,
                                        pred, num_iters));
   };
 
@@ -806,8 +808,8 @@ static void BM_CreateCommandBuffer(benchmark::State& state) {
   for (auto s : state) {
     auto cmd_buffer = executor->CreateCommandBuffer(nested).value();
     for (int i = 1; i < state.range(0); ++i) {
-      CHECK_OK(
-          cmd_buffer->CreateLaunch(add, ThreadDim(), BlockDim(4), {}, b, b, b));
+      CHECK_OK(cmd_buffer->CreateLaunch(add, ThreadDim(), BlockDim(4), {}, {},
+                                        b, b, b));
     }
     CHECK_OK(cmd_buffer->Finalize());
   }
@@ -840,10 +842,10 @@ TEST(GpuCommandBufferTest, EmptyNodeWithKernel) {
   TF_ASSERT_OK_AND_ASSIGN(auto cmd_buffer,
                           executor->CreateCommandBuffer(primary));
   TF_ASSERT_OK_AND_ASSIGN(auto* empty_cmd, cmd_buffer->CreateEmptyCmd({}));
-  TF_ASSERT_OK(
-      cmd_buffer
-          ->CreateLaunch(add, ThreadDim(), BlockDim(4), {empty_cmd}, a, b, c)
-          .status());
+  TF_ASSERT_OK(cmd_buffer
+                   ->CreateLaunch(add, ThreadDim(), BlockDim(4), {},
+                                  {empty_cmd}, a, b, c)
+                   .status());
   TF_ASSERT_OK(cmd_buffer->Finalize());
 
   TF_ASSERT_OK(cmd_buffer->Submit(stream.get()));
@@ -900,8 +902,8 @@ TEST(GpuCommandBufferTest, EmptyNodeChain) {
   TF_ASSERT_OK_AND_ASSIGN(auto* e1, cmd_buffer->CreateEmptyCmd({}));
   TF_ASSERT_OK_AND_ASSIGN(auto* e2, cmd_buffer->CreateEmptyCmd({e1}));
   TF_ASSERT_OK_AND_ASSIGN(auto* e3, cmd_buffer->CreateEmptyCmd({e2}));
-  TF_ASSERT_OK(
-      cmd_buffer->CreateLaunch(add, ThreadDim(), BlockDim(4), {e3}, a, b, c));
+  TF_ASSERT_OK(cmd_buffer->CreateLaunch(add, ThreadDim(), BlockDim(4), {}, {e3},
+                                        a, b, c));
   TF_ASSERT_OK(cmd_buffer->Finalize());
 
   TF_ASSERT_OK(cmd_buffer->Submit(stream.get()));
@@ -942,9 +944,9 @@ TEST(GpuCommandBufferTest, EmptyNodeAsDependencyBarrier) {
                           executor->CreateCommandBuffer(primary));
   TF_ASSERT_OK_AND_ASSIGN(
       auto* k1,
-      cmd_buffer->CreateLaunch(add, ThreadDim(), BlockDim(4), {}, a, b, c));
+      cmd_buffer->CreateLaunch(add, ThreadDim(), BlockDim(4), {}, {}, a, b, c));
   TF_ASSERT_OK_AND_ASSIGN(auto* barrier, cmd_buffer->CreateEmptyCmd({k1}));
-  TF_ASSERT_OK(cmd_buffer->CreateLaunch(add, ThreadDim(), BlockDim(4),
+  TF_ASSERT_OK(cmd_buffer->CreateLaunch(add, ThreadDim(), BlockDim(4), {},
                                         {barrier}, a, c, d));
   TF_ASSERT_OK(cmd_buffer->Finalize());
 
@@ -995,16 +997,16 @@ static void BM_UpdateCommandBuffer(benchmark::State& state) {
 
   auto cmd_buffer = executor->CreateCommandBuffer(primary).value();
   for (int i = 1; i < state.range(0); ++i) {
-    CHECK_OK(
-        cmd_buffer->CreateLaunch(add, ThreadDim(), BlockDim(4), {}, b, b, b));
+    CHECK_OK(cmd_buffer->CreateLaunch(add, ThreadDim(), BlockDim(4), {}, {}, b,
+                                      b, b));
   }
   CHECK_OK(cmd_buffer->Finalize());
 
   for (auto s : state) {
     CHECK_OK(cmd_buffer->Update());
     for (int i = 1; i < state.range(0); ++i) {
-      CHECK_OK(
-          cmd_buffer->CreateLaunch(add, ThreadDim(), BlockDim(4), {}, b, b, b));
+      CHECK_OK(cmd_buffer->CreateLaunch(add, ThreadDim(), BlockDim(4), {}, {},
+                                        b, b, b));
     }
     CHECK_OK(cmd_buffer->Finalize());
   }

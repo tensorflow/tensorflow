@@ -287,6 +287,9 @@ bool MakeOutputColumnMajor(MatrixLayout& lhs, MatrixLayout& rhs,
 }
 
 /*static*/ absl::StatusOr<BlasLt*> BlasLt::Get(StreamExecutor* executor) {
+  if (executor == nullptr) {
+    return absl::InternalError("BlasLt is unavailable without stream executor");
+  }
   auto blas = executor->AsBlas();
   auto blas_lt = blas != nullptr ? blas->GetBlasLt() : nullptr;
   if (blas_lt == nullptr) {

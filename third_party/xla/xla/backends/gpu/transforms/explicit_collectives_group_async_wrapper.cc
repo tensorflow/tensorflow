@@ -18,7 +18,6 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_set.h"
-#include "absl/log/log.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/tsl/platform/status_macros.h"
@@ -29,8 +28,6 @@ limitations under the License.
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/shape.h"
 #include "xla/side_effect_util.h"
-#include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 
@@ -63,9 +60,26 @@ absl::StatusOr<bool> CreateCollectivesGroupAsyncPair(HloInstruction* instr) {
           new_computation, "main"));
   HloInstruction* async_done = computation->AddInstruction(
       HloInstruction::CreateAsyncDone(instr->shape(), async_start));
-  // Forward frontend attributes to both async instructions.
+
+  // Forward instruction properties to both async instructions.
   async_start->set_frontend_attributes(instr->frontend_attributes());
   async_done->set_frontend_attributes(instr->frontend_attributes());
+  async_start->set_metadata(instr->metadata());
+  async_done->set_metadata(instr->metadata());
+  async_start->CopyBackendConfigFrom(instr);
+  async_done->CopyBackendConfigFrom(instr);
+
+  // Allow the scheduler to separate the done from the force-early start.
+  ASSIGN_OR_RETURN(GpuBackendConfig async_done_config,
+                   async_done->backend_config<GpuBackendConfig>());
+  async_done_config.set_force_earliest_schedule(false);
+  RETURN_IF_ERROR(async_done->set_backend_config(async_done_config));
+
+  // Relay control predecessors to the start and control successors from the
+  // done.
+  RETURN_IF_ERROR(instr->CopyAllControlDepsTo(async_start, async_done));
+  RETURN_IF_ERROR(instr->DropAllControlDeps());
+
   RETURN_IF_ERROR(computation->ReplaceInstruction(instr, async_done));
   return true;
 }
