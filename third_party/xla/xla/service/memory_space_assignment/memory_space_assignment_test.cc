@@ -18548,9 +18548,8 @@ ENTRY entry {
             kDefaultMemorySpace);
 }
 
-// Tests late binding with default options, verifying that the late-bound
-// operand remains in default memory while the output is placed in alternate
-// memory.
+// Tests late binding with default options, verifying that both the late-bound
+// operand and the output are placed in alternate memory.
 TEST_F(MemorySpaceAssignmentTest, AsyncUpdateLateBindingMultipleParameters) {
   absl::string_view hlo_string = R"hlo(
 HloModule module, is_scheduled=true
@@ -18577,13 +18576,14 @@ ENTRY entry {
 
   HloInstruction* async_update =
       module->entry_computation()->GetInstructionWithName("async-update");
-  // Verify the late-bound operand (tuple_shapes(0)) is in default memory space.
+  // Verify the late-bound operand (tuple_shapes(0)) is in alternate memory
+  // space.
   EXPECT_EQ(async_update->shape()
                 .tuple_shapes(0)
                 .tuple_shapes(0)
                 .layout()
                 .memory_space(),
-            kDefaultMemorySpace);
+            kAlternateMemorySpace);
   // Verify the output (tuple_shapes(1)) is in alternate memory space.
   EXPECT_EQ(async_update->shape().tuple_shapes(1).layout().memory_space(),
             kAlternateMemorySpace);
@@ -18669,26 +18669,23 @@ ENTRY entry {
   HloInstruction* async_update =
       module->entry_computation()->GetInstructionWithName("async-update-2");
   // Verify the output buffer corresponding to neg0 (first element of output
-  // tuple of async-update-2) is in default memory space.
-  // TODO(b/538345137): Update this to check for alternate memory.
+  // tuple of async-update-2) is in alternate memory space.
   EXPECT_EQ(async_update->shape()
                 .tuple_shapes(1)
                 .tuple_shapes(0)
                 .layout()
                 .memory_space(),
-            kDefaultMemorySpace);
+            kAlternateMemorySpace);
 
-  // TODO(b/538345137): Update this to check for alternate memory.
   HloInstruction* async_done =
       module->entry_computation()->GetInstructionWithName("async-done");
   EXPECT_EQ(async_done->shape().tuple_shapes(0).layout().memory_space(),
-            kDefaultMemorySpace);
+            kAlternateMemorySpace);
 }
 
 // Tests a case where some operands bound in async-start/update are allowed
 // in alternate memory while others are restricted to default memory.
-// TODO(b/538345137): Re-enable this test once b/538345137 is fixed.
-TEST_F(MemorySpaceAssignmentTest, DISABLED_AsyncUpdateMixedMemorySpaces) {
+TEST_F(MemorySpaceAssignmentTest, AsyncUpdateMixedMemorySpaces) {
   absl::string_view hlo_string = R"hlo(
 HloModule module, is_scheduled=true
 
@@ -18839,7 +18836,7 @@ ENTRY entry {
       module->entry_computation()->GetInstructionWithName("B");
   ASSERT_NE(B_inst, nullptr) << "Instruction B not found! Module:\n"
                              << module->ToString();
-  EXPECT_EQ(B_inst->shape().layout().memory_space(), kDefaultMemorySpace);
+  EXPECT_EQ(B_inst->shape().layout().memory_space(), kAlternateMemorySpace);
   HloInstruction* D_inst =
       module->entry_computation()->GetInstructionWithName("D");
   ASSERT_NE(D_inst, nullptr) << "Instruction D not found! Module:\n"
@@ -19445,7 +19442,7 @@ ENTRY main {
 
   ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
   Options options = DefaultMemorySpaceOptions();
-  options.max_size_in_bytes = 512;
+  options.max_size_in_bytes = 2048;
 
   InstructionCountPrefetchIntervalPicker prefetch_interval_picker(
       2, /*max_overlap_count=*/10000);
@@ -19561,7 +19558,6 @@ ENTRY main {
       },
       preset_assignments.get(), alias_analysis.get()));
 }
-
 TEST_F(MemorySpaceAssignmentTest, AsyncBarrierAliasingCycle) {
   absl::string_view hlo_string = R"hlo(
 HloModule sc_async_barrier_aliasing, is_scheduled=true
@@ -19612,6 +19608,59 @@ ENTRY %Comp_spmd {
   EXPECT_NO_FATAL_FAILURE(AssignMemorySpace(module.get()));
 }
 
+// Tests that static allocations (not prefetches) for async operands and their
+// corresponding parameters in the async computation can both be placed in
+// alternate memory, even though their lifetimes overlap in the schedule.
+TEST_F(MemorySpaceAssignmentTest, AsyncOp_StaticOverlapNoUpdate) {
+  absl::string_view hlo_string = R"hlo(
+HloModule module, is_scheduled=true
+
+async_computation {
+  p0 = f32[4]{0} parameter(0)
+  ROOT negate = f32[4]{0} negate(p0)
+}
+
+ENTRY entry {
+  param = f32[4]{0} parameter(0)
+  T = f32[4]{0} negate(param)
+  async-start = ((f32[4]{0}), f32[4]{0}, s32[]) async-start(T), calls=async_computation
+  async-done = f32[4]{0} async-done(async-start)
+  ROOT root = f32[4]{0} add(T, async-done)
+}
+  )hlo";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+
+  Options options = DefaultMemorySpaceOptions();
+  options.verify = true;
+  options.is_use_allowed_in_alternate_mem_fn = [](const HloUse& use) {
+    return true;
+  };
+
+  std::optional<Options> options_override = std::move(options);
+  InstructionCountPrefetchIntervalPicker prefetch_interval_picker(2, 100);
+  ASSERT_OK(AssignMemorySpaceAndReturnStatus(
+                module.get(), std::move(options_override),
+                /*buffer_interval_compare=*/std::nullopt,
+                &prefetch_interval_picker)
+                .status());
+
+  // Verify both are in alternate memory space 1.
+  HloInstruction* T_inst =
+      module->entry_computation()->GetInstructionWithName("T");
+  ASSERT_NE(T_inst, nullptr);
+  EXPECT_EQ(T_inst->shape().layout().memory_space(), kAlternateMemorySpace);
+
+  HloInstruction* async_start =
+      module->entry_computation()->GetInstructionWithName("async-start");
+  ASSERT_NE(async_start, nullptr);
+  EXPECT_EQ(async_start->shape()
+                .tuple_shapes(0)
+                .tuple_shapes(0)
+                .layout()
+                .memory_space(),
+            kAlternateMemorySpace);
+}
 }  // namespace
 
 }  // namespace memory_space_assignment

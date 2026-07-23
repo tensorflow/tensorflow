@@ -147,6 +147,12 @@ class RocmCommandBuffer : public GpuCommandBuffer {
   absl::Status UpdateClonedChildNode(GraphNodeHandle node_handle,
                                      const CommandBuffer& nested) override;
 
+  absl::StatusOr<GraphNodeHandle> CreateHostNode(
+      absl::Span<const GraphNodeHandle> dependencies,
+      absl::AnyInvocable<void()> callback) override {
+    return absl::UnimplementedError("Not implemented.");
+  }
+
   absl::StatusOr<GraphNodeHandle> CreateKernelNode(
       absl::Span<const GraphNodeHandle> dependencies, StreamPriority priority,
       const ThreadDim& threads, const BlockDim& blocks,
