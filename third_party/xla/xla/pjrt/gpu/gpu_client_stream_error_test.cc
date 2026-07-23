@@ -172,5 +172,70 @@ TEST_P(PjRtGpuClientStreamErrorTest, OOMIncludesContext) {
                                              HasSubstr("huge_alloc"))));
 }
 
+TEST_P(PjRtGpuClientStreamErrorTest, DonatedTupleBufferCleanupOnStreamError) {
+  static constexpr absl::string_view kProgram = R"(
+    HloModule tuple_illegal_access
+    ENTRY main {
+      p0 = (f32[4]) parameter(0)
+      p0.0 = f32[4] get-tuple-element(p0), index=0
+      val = f32[4] custom-call(p0.0),
+                          custom_call_target="IllegalAccess",
+                          api_version=API_VERSION_TYPED_FFI
+      ROOT result = (f32[4]) tuple(val)
+    })";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
+                          ParseAndReturnUnverifiedModule(kProgram, {}));
+  TF_ASSERT_OK(hlo_module->input_output_alias_config().SetUpAlias({0}, 0, {0}));
+  xla::XlaComputation xla_computation(hlo_module->ToProto());
+  CompileOptions compile_opts;
+  compile_opts.parameter_is_tupled_arguments = true;
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<xla::PjRtLoadedExecutable> executable,
+      client_->CompileAndLoad(xla_computation, compile_opts));
+
+  std::vector<float> input_data(4, 1.0f);
+  TF_ASSERT_OK_AND_ASSIGN(
+      PjRtMemorySpace * memory_space,
+      client_->addressable_devices()[0]->default_memory_space());
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<PjRtBuffer> input_buffer,
+      client_->BufferFromHostBuffer(
+          input_data.data(), xla::PrimitiveType::F32, {4},
+          /*byte_strides=*/std::nullopt,
+          PjRtClient::HostBufferSemantics::kImmutableUntilTransferCompletes,
+          /*on_done_with_host_buffer=*/nullptr, memory_space,
+          /*device_layout=*/nullptr));
+
+  ExecuteContext context;
+  TF_ASSERT_OK(context.ffi_context().Emplace<KernelHolder>());
+  ExecuteOptions opts;
+  opts.context = &context;
+  // input_buffer should be donated because of the alias.
+  // Execution should fail asynchronously, and the error should be reported
+  // when we synchronize on the output buffer.
+  absl::StatusOr<std::vector<std::vector<std::unique_ptr<PjRtBuffer>>>>
+      async_result = executable->Execute({{input_buffer.get()}}, opts);
+  if (!async_result.ok()) {
+    ADD_FAILURE() << "Execute failed: " << async_result.status();
+    return;
+  }
+  const std::vector<std::unique_ptr<PjRtBuffer>>& result_buffers =
+      (*async_result)[0];
+  ASSERT_EQ(result_buffers.size(), 1);
+
+  // The error should be reported when we sync on the output buffer.
+  // It will contain the error from BlockHostUntilDone that failed on the
+  // dispatch thread.
+  auto result = result_buffers[0]->ToLiteral().Await();
+  EXPECT_THAT(result.status(),
+              AllOf(StatusIs(absl::StatusCode::kInternal,
+                             HasSubstr("CUDA_ERROR_ILLEGAL_ADDRESS")),
+                    StatusHasPayload("executable_name",
+                                     HasSubstr("tuple_illegal_access"))));
+
+  input_buffer.reset();
+}
+
 }  // namespace
 }  // namespace xla
