@@ -46,6 +46,12 @@ absl::StatusOr<bool> SwapConvolutionOperandsIfBeneficial(
     return false;
   }
 
+  // Do not swap operands for non-forward convolutions.
+  if (convolution->convolution_kind() != CONVOLUTION_KIND_UNSET &&
+      convolution->convolution_kind() != CONVOLUTION_KIND_FPROP) {
+    return false;
+  }
+
   const auto& dnums = convolution->convolution_dimension_numbers();
   const auto& window_dims = convolution->window().dimensions();
   Window swapped_window;
@@ -143,14 +149,17 @@ absl::StatusOr<bool> SwapConvolutionOperandsIfBeneficial(
     ASSIGN_OR_RETURN(kernel, MakeReverseHlo(kernel, reverse_dimensions));
   }
 
-  ASSIGN_OR_RETURN(
-      HloInstruction * new_convolution,
-      MakeConvolveHlo(
-          kernel, input, /*feature_group_count=*/1,
-          /*batch_group_count=*/1, swapped_window, swapped_dnums,
-          precision_config,
-          /*preferred_element_type=*/convolution->shape().element_type(),
-          /*sparsity_config=*/convolution->sparsity_config()));
+  auto new_convolution_status_or = MakeConvolveHlo(
+      kernel, input, /*feature_group_count=*/1,
+      /*batch_group_count=*/1, swapped_window, swapped_dnums, precision_config,
+      /*preferred_element_type=*/convolution->shape().element_type(),
+      /*sparsity_config=*/convolution->sparsity_config(),
+      /*metadata=*/nullptr, /*frontend_attributes=*/nullptr,
+      convolution->convolution_kind());
+  if (!new_convolution_status_or.ok()) {
+    return false;
+  }
+  HloInstruction* new_convolution = new_convolution_status_or.value();
 
   if (conv_is_lowerable_callback &&
       !conv_is_lowerable_callback(new_convolution)) {
