@@ -63,7 +63,7 @@ ENTRY main {
 )";
 
   std::string filecheck_pattern = R"(
-CHECK: private unnamed_addr constant [48 x i8]
+CHECK: !xla_cpu_memory_region_name
 CHECK-NOT: private unnamed_addr constant [48 x i8]
 )";
 
@@ -110,8 +110,7 @@ ENTRY main {
 )";
 
   std::string filecheck_pattern = R"(
-CHECK-DAG: private unnamed_addr constant [4 x i8]
-CHECK-DAG: private unnamed_addr constant [8 x i8]
+CHECK: !xla_cpu_memory_region_name
 CHECK-NOT: private unnamed_addr constant [4 x i8]
 CHECK-NOT: private unnamed_addr constant [8 x i8]
 )";

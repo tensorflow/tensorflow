@@ -344,9 +344,21 @@ absl::StatusOr<SmallVector<Value, 1>> EmitDynamicSlice(
 }
 
 absl::StatusOr<SmallVector<Value, 1>> EmitDynamicUpdateSlice(
-    const HloInstruction* instr, ValueRange indices,
+    const HloInstruction* instr, ValueRange indices_param,
     const OperandProvider& operand_provider, ImplicitLocOpBuilder& b) {
   RETURN_IF_ERROR(ValidateDynamicIndexIsCanonical(instr));
+
+  llvm::SmallVector<Value, 3> mapped_indices;
+  if (indices_param.size() != instr->shape().dimensions().size() &&
+      indices_param.size() == 1) {
+    Shape from_shape = ShapeUtil::MakeShape(
+        instr->shape().element_type(), {ShapeUtil::ElementsIn(instr->shape())});
+    auto bitcast_map =
+        GetBitcastMap(from_shape, instr->shape(), b.getContext());
+    mapped_indices = ApplyIndexing(bitcast_map, indices_param, {}, b);
+  } else {
+    mapped_indices.append(indices_param.begin(), indices_param.end());
+  }
 
   auto result_element_type =
       PrimitiveTypeToMlirType(instr->shape().element_type(), b);
@@ -368,12 +380,13 @@ absl::StatusOr<SmallVector<Value, 1>> EmitDynamicUpdateSlice(
 
     is_in_bounds = AndIOp::create(
         b, is_in_bounds,
-        CmpIOp::create(b, CmpIPredicate::sge, indices[i], start_index));
+        CmpIOp::create(b, CmpIPredicate::sge, mapped_indices[i], start_index));
     is_in_bounds = AndIOp::create(
         b, is_in_bounds,
-        CmpIOp::create(b, CmpIPredicate::slt, indices[i], end_index));
+        CmpIOp::create(b, CmpIPredicate::slt, mapped_indices[i], end_index));
 
-    update_indices.push_back(arith::SubIOp::create(b, indices[i], start_index));
+    update_indices.push_back(
+        arith::SubIOp::create(b, mapped_indices[i], start_index));
   }
 
   auto if_op = IfOp::create(b, mlir::TypeRange{result_element_type},
@@ -385,8 +398,9 @@ absl::StatusOr<SmallVector<Value, 1>> EmitDynamicUpdateSlice(
   YieldOp::create(b, updated_value);
 
   b.setInsertionPointToStart(if_op.getBody(1));
-  ASSIGN_OR_RETURN(auto original_value,
-                   GetSingleOperandValue(operand_provider, instr, 0, indices));
+  ASSIGN_OR_RETURN(
+      auto original_value,
+      GetSingleOperandValue(operand_provider, instr, 0, mapped_indices));
   YieldOp::create(b, original_value);
 
   b.setInsertionPointAfter(if_op);

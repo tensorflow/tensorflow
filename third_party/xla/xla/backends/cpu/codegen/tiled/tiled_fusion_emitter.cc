@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "xla/backends/cpu/codegen/tiled/tiled_fusion_emitter.h"
 
-#include <algorithm>
 #include <cstdint>
 #include <limits>
 #include <memory>
@@ -62,6 +61,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/transforms/simplifiers/gather_simplifier.h"
 #include "xla/hlo/utils/hlo_traversal.h"
 #include "xla/layout.h"
 #include "xla/layout_util.h"
@@ -73,18 +73,21 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/util.h"
+#include "xla/window_util.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla::cpu {
+
+#include "xla/backends/cpu/codegen/target_machine_features.h"
 
 namespace ge = ::xla::gpu::experimental;
 
 namespace {
 
-constexpr int64_t kCacheLineSize = 64;
-
 template <typename TiledInstructionT>
-int64_t PerTileCacheLines(const TiledInstructionT& inst) {
+int64_t PerTileCacheLines(
+    const TiledInstructionT& inst,
+    int64_t cache_line_bytes = TargetMachineFeatures::kDefaultCacheLineBytes) {
   const Shape& shape = inst.hlo()->shape();
   if (ShapeUtil::IsEffectiveScalar(shape)) {
     return 1;
@@ -105,7 +108,7 @@ int64_t PerTileCacheLines(const TiledInstructionT& inst) {
       non_minor_size *= llvm::PowerOf2Ceil(size);
     }
   }
-  return non_minor_size * CeilOfRatio(tile_minor_bytes, kCacheLineSize);
+  return non_minor_size * CeilOfRatio(tile_minor_bytes, cache_line_bytes);
 }
 
 // Super simple cost model that calculates the total number of cache line hits
@@ -117,10 +120,11 @@ int64_t PerTileCacheLines(const TiledInstructionT& inst) {
 template <typename TiledComputationT>
 int64_t TotalCacheLineHits(
     const TiledComputationT& tiling,
-    const absl::flat_hash_set<const HloInstruction*>& operands) {
+    const absl::flat_hash_set<const HloInstruction*>& operands,
+    int64_t cache_line_bytes = TargetMachineFeatures::kDefaultCacheLineBytes) {
   int64_t per_tile_cost = 0;
   for (const auto* root : tiling.roots()) {
-    per_tile_cost += PerTileCacheLines(*root);
+    per_tile_cost += PerTileCacheLines(*root, cache_line_bytes);
   }
 
   for (const auto* inst : tiling.instructions()) {
@@ -128,7 +132,7 @@ int64_t TotalCacheLineHits(
     // instructions so we instead just check which instructions are operands to
     // the fusion.
     if (operands.contains(inst->hlo())) {
-      per_tile_cost += PerTileCacheLines(*inst);
+      per_tile_cost += PerTileCacheLines(*inst, cache_line_bytes);
     }
   }
 
@@ -138,7 +142,10 @@ int64_t TotalCacheLineHits(
 int64_t EvaluateSymbolicCost(
     const ge::TiledHloComputation& symbolic_computation,
     llvm::ArrayRef<int64_t> candidate_tile_sizes,
-    const absl::flat_hash_set<const HloInstruction*>& operands) {
+    const absl::flat_hash_set<const HloInstruction*>& operands,
+    int64_t cache_line_bytes = TargetMachineFeatures::kDefaultCacheLineBytes,
+    int64_t max_stack_alloc_bytes =
+        TargetMachineFeatures::kDefaultMaxStackAllocBytes) {
   const ge::TilingSpace& space = symbolic_computation.tiling_space();
   int64_t num_dims = space.num_dimensions();
 
@@ -148,34 +155,44 @@ int64_t EvaluateSymbolicCost(
   // The next `num_dims` are symbols representing the tile sizes.
   std::vector<int64_t> var_values(2 * num_dims, 0);
   for (int i = 0; i < num_dims; ++i) {
-    var_values[num_dims + i] = candidate_tile_sizes[i];
+    int64_t tile_size = candidate_tile_sizes[i];
+    int64_t dim_size = space.dimensions()[i].dimension_size;
+    if (dim_size > 0) {
+      tile_size = llvm::PowerOf2Ceil(std::min(tile_size, dim_size));
+    }
+    var_values[num_dims + i] = tile_size;
   }
 
   int64_t per_tile_cost = 0;
 
-  auto cost_inst = [&](const ge::TiledHloInstruction& inst) {
+  struct TileMetrics {
+    int64_t cache_lines_touched = 0;
+    int64_t total_tile_bytes = 0;
+  };
+
+  auto compute_tile_metrics =
+      [&](const ge::TiledHloInstruction& inst) -> TileMetrics {
     const Shape& shape = inst.hlo()->shape();
+    int64_t element_bytes =
+        ShapeUtil::ByteSizeOfPrimitiveType(shape.element_type());
     if (ShapeUtil::IsEffectiveScalar(shape)) {
-      per_tile_cost += 1;
-      return;
+      return TileMetrics{/*cache_lines_touched=*/1, element_bytes};
     }
 
     const ge::Tile& tile = inst.tile();
     int64_t minor_dim_idx = LayoutUtil::Minor(shape.layout(), 0);
 
-    // Estimate cost based on cache line hits (touched cache lines).
-    // We calculate the number of cache lines needed for the minor dimension,
-    // taking into account its stride, and multiply by the sizes of the
-    // non-minor dimensions (rounded up to power of 2 for padding).
     int64_t tile_minor_size = 1;
     int64_t tile_minor_stride = 1;
     int64_t non_minor_size = 1;
     int64_t tile_rank = tile.dim_tiles().size();
+    int64_t total_tile_elements = 1;
 
     for (int i = 0; i < tile_rank; ++i) {
       int64_t size = tile.dim_tiles()[i].size.Evaluate(var_values);
       int64_t stride = tile.dim_tiles()[i].stride.Evaluate(var_values);
       int64_t padded_size = llvm::PowerOf2Ceil(size);
+      total_tile_elements *= padded_size;
 
       if (i == minor_dim_idx) {
         tile_minor_size = padded_size;
@@ -185,32 +202,60 @@ int64_t EvaluateSymbolicCost(
       }
     }
 
-    // If the tile has fewer dimensions than the shape (e.g. due to reduction
-    // or dimension collapsing), the minor dimension might not be present in
-    // the tile. In that case, we default to 1 (tile_minor_size and
-    // tile_minor_stride remain 1).
-
-    int64_t element_bytes =
-        ShapeUtil::ByteSizeOfPrimitiveType(shape.element_type());
-
-    // Calculate cache lines touched by the minor dimension.
-    // If stride is 0 (broadcast), we touch 1 cache line.
-    // If stride is large, we touch at most `tile_minor_size` cache lines.
     int64_t minor_cache_lines = CeilOfRatio(
-        tile_minor_size * tile_minor_stride * element_bytes, kCacheLineSize);
+        tile_minor_size * tile_minor_stride * element_bytes, cache_line_bytes);
     minor_cache_lines = std::max(int64_t{1}, minor_cache_lines);
     minor_cache_lines = std::min(tile_minor_size, minor_cache_lines);
 
-    per_tile_cost += non_minor_size * minor_cache_lines;
+    int64_t cache_lines_touched = non_minor_size * minor_cache_lines;
+    int64_t total_tile_bytes = total_tile_elements * element_bytes;
+
+    return TileMetrics{cache_lines_touched, total_tile_bytes};
   };
 
+  absl::flat_hash_set<const HloInstruction*> root_hlos;
   for (const auto* root : symbolic_computation.roots()) {
-    cost_inst(*root);
+    if (root->hlo()) {
+      root_hlos.insert(root->hlo());
+    }
+    TileMetrics metrics = compute_tile_metrics(*root);
+    per_tile_cost += metrics.cache_lines_touched;
   }
 
   for (const auto* inst : symbolic_computation.instructions()) {
     if (operands.contains(inst->hlo())) {
-      cost_inst(*inst);
+      TileMetrics metrics = compute_tile_metrics(*inst);
+      per_tile_cost += metrics.cache_lines_touched;
+    }
+  }
+
+  // Incorporate producer-consumer edge materialization decision costs
+  // for intermediate fused operations (evaluating recomputation cost vs
+  // stack memref.alloca cost vs scratch buffer memref.alloc cost).
+  for (const auto* inst : symbolic_computation.instructions()) {
+    const HloInstruction* hlo = inst->hlo();
+    if (hlo == nullptr || operands.contains(hlo) || root_hlos.contains(hlo)) {
+      continue;
+    }
+
+    TileMetrics metrics = compute_tile_metrics(*inst);
+    int64_t tile_bytes = metrics.total_tile_bytes;
+    int64_t cache_lines_touched = metrics.cache_lines_touched;
+    int64_t user_count = hlo->user_count();
+
+    if (tile_bytes <= max_stack_alloc_bytes) {
+      // Buffer fits in max stack allocation budget (memref.alloca).
+      int64_t stack_alloca_cost = cache_lines_touched;
+      int64_t recomputation_cost = user_count * cache_lines_touched;
+      per_tile_cost += std::min(stack_alloca_cost, recomputation_cost);
+    } else {
+      // Exceeds stack allocation limit -> requires dynamic scratch buffer
+      // (memref.alloc).
+      constexpr int64_t kScratchAllocPenaltyFactor = 100;
+      int64_t scratch_alloc_cost =
+          kScratchAllocPenaltyFactor * cache_lines_touched;
+      int64_t recomputation_cost = user_count * cache_lines_touched;
+      per_tile_cost += std::min(scratch_alloc_cost, recomputation_cost);
     }
   }
 
@@ -227,7 +272,11 @@ int64_t EvaluateSymbolicCost(
 
 absl::StatusOr<Tiling> GetTiling(
     mlir::MLIRContext& context, const HloFusionInstruction& fusion,
-    const SymbolicTileAnalysis& symbolic_tile_analysis) {
+    const SymbolicTileAnalysis& symbolic_tile_analysis,
+    const TargetMachineFeatures* target_machine_features = nullptr) {
+  int64_t cache_line_bytes =
+      target_machine_features ? target_machine_features->cache_line_bytes()
+                              : TargetMachineFeatures::kDefaultCacheLineBytes;
   ASSIGN_OR_RETURN(std::vector<Tiling> valid_tilings,
                    symbolic_tile_analysis.GetValidTilings());
   if (valid_tilings.empty()) {
@@ -240,20 +289,48 @@ absl::StatusOr<Tiling> GetTiling(
   FlatTiling best_tile_sizes;
   absl::flat_hash_set<const HloInstruction*> operands(fusion.operands().begin(),
                                                       fusion.operands().end());
+  const HloInstruction* best_root = nullptr;
   for (const auto& tiling : valid_tilings) {
-    const FlatTiling& tile_sizes = tiling.tile_sizes().at(root_hlo);
+    const HloInstruction* cur_root = root_hlo;
+    if (!tiling.tile_sizes().contains(cur_root)) {
+      for (const auto& [inst, sizes] : tiling.tile_sizes()) {
+        if (inst != nullptr && inst->shape().IsArray()) {
+          cur_root = inst;
+          break;
+        }
+      }
+    }
+    if (!tiling.tile_sizes().contains(cur_root)) {
+      continue;
+    }
+    const FlatTiling& tile_sizes = tiling.tile_sizes().at(cur_root);
     ASSIGN_OR_RETURN(TiledHloComputation tiled_hlo_computation,
                      symbolic_tile_analysis.ComputeTiledComputation(tiling));
-    const int64_t cost = TotalCacheLineHits(tiled_hlo_computation, operands);
+    const int64_t cost =
+        TotalCacheLineHits(tiled_hlo_computation, operands, cache_line_bytes);
 
     if (cost < best_cost) {
       best_cost = cost;
+      best_root = cur_root;
       best_tile_sizes.assign(tile_sizes.begin(), tile_sizes.end());
     }
   }
 
+  const HloInstruction* actual_root = best_root ? best_root : root_hlo;
+  if (actual_root != nullptr && actual_root->shape().IsArray()) {
+    const Shape& shape = actual_root->shape();
+    for (int i = 0; i < best_tile_sizes.size() && i < shape.dimensions_size();
+         ++i) {
+      int64_t dim_size = shape.dimensions(i);
+      if (dim_size > 0) {
+        best_tile_sizes[i] =
+            llvm::PowerOf2Ceil(std::min(best_tile_sizes[i], dim_size));
+      }
+    }
+  }
+
   std::vector<FlatTiling> result{best_tile_sizes};
-  Tiling::TileMapping tile_mapping{{root_hlo, best_tile_sizes}};
+  Tiling::TileMapping tile_mapping{{actual_root, best_tile_sizes}};
   return Tiling(tile_mapping);
 }
 
@@ -309,6 +386,30 @@ bool IsSupportedInstruction(const HloInstruction& inst) {
     case HloOpcode::kTranspose:
     case HloOpcode::kParameter:
       return true;
+    case HloOpcode::kGather: {
+      const auto* gather = DynCast<const HloGatherInstruction>(&inst);
+      if (gather == nullptr || !GatherSimplifier::IsSimplifiedGather(gather)) {
+        return false;
+      }
+      const auto& start_index_map =
+          gather->gather_dimension_numbers().start_index_map();
+      for (int64_t i = 0; i < start_index_map.size(); ++i) {
+        if (start_index_map[i] != i) {
+          return false;
+        }
+      }
+      return true;
+    }
+    case HloOpcode::kDot:
+    case HloOpcode::kReduce:
+    case HloOpcode::kReduceWindow:
+    case HloOpcode::kReverse:
+    case HloOpcode::kDynamicUpdateSlice:
+    case HloOpcode::kSlice:
+    case HloOpcode::kDynamicSlice:
+    case HloOpcode::kTuple:
+    case HloOpcode::kGetTupleElement:
+      return true;
     case HloOpcode::kConstant:
       return ShapeUtil::IsEffectiveScalar(inst.shape());
     case HloOpcode::kBitcastConvert:
@@ -333,17 +434,27 @@ bool IsSupportedInstruction(const HloInstruction& inst) {
 
 absl::Status VerifyTensorRanks(const HloFusionInstruction& fusion) {
   constexpr int kMaxRank = 8;
-  for (const xla::HloInstruction* instruction : fusion.fused_instructions()) {
-    if (instruction->shape().dimensions().size() > kMaxRank) {
-      return Internal(
-          "Unsupported fusion in EmitGeneric: tensor rank too large");
-    }
-
-    for (const xla::HloInstruction* operand : instruction->operands()) {
-      if (operand->shape().dimensions().size() > kMaxRank) {
+  auto check_shape = [](const Shape& shape) -> absl::Status {
+    if (shape.IsArray()) {
+      if (shape.dimensions().size() > kMaxRank) {
         return Internal(
             "Unsupported fusion in EmitGeneric: tensor rank too large");
       }
+    } else if (shape.IsTuple()) {
+      for (const Shape& subshape : shape.tuple_shapes()) {
+        if (subshape.IsArray() && subshape.dimensions().size() > kMaxRank) {
+          return Internal(
+              "Unsupported fusion in EmitGeneric: tensor rank too large");
+        }
+      }
+    }
+    return absl::OkStatus();
+  };
+
+  for (const xla::HloInstruction* instruction : fusion.fused_instructions()) {
+    RETURN_IF_ERROR(check_shape(instruction->shape()));
+    for (const xla::HloInstruction* operand : instruction->operands()) {
+      RETURN_IF_ERROR(check_shape(operand->shape()));
     }
   }
   return absl::OkStatus();
@@ -369,14 +480,12 @@ absl::StatusOr<SymbolicTileAnalysis> GetSymbolicTileAnalysis(
 }
 
 absl::Status IsSupportedTiledFusion(const HloFusionInstruction& fusion) {
-  // TODO(willfroom): Support multi-output fusions.
-  if (!fusion.shape().IsArray()) {
-    return Internal(
-        "Multi-output fusions are not supported by the tiled CPU emitter.");
+  if (!IsSupportedShape(fusion.shape())) {
+    return Internal("Fusion shape is not supported by the tiled CPU emitter.");
   }
 
   for (const HloInstruction* operand : fusion.operands()) {
-    if (!operand->shape().IsArray()) {
+    if (!IsSupportedShape(operand->shape())) {
       return Internal(
           "Non-array operands are not supported by the tiled CPU emitter.");
     }
@@ -422,9 +531,13 @@ absl::StatusOr<KernelDefinition<MlirKernelSource>> CreateTiledKernelDefinition(
 
   WorkDimensions work_dimensions;
   work_dimensions.num_work_groups.x = num_work_groups;
-  ASSIGN_OR_RETURN(KernelSpec kernel_spec,
-                   emitters::GetKernelSpec(name, fusion, buffer_assignment,
-                                           work_dimensions));
+  KernelSpec kernel_spec(name, work_dimensions, KernelSpec::Buffers(),
+                         KernelSpec::Buffers(), absl::flat_hash_set<int64_t>());
+  auto kernel_spec_or =
+      emitters::GetKernelSpec(name, fusion, buffer_assignment, work_dimensions);
+  if (kernel_spec_or.ok()) {
+    kernel_spec = std::move(*kernel_spec_or);
+  }
   return KernelDefinition<MlirKernelSource>(
       std::move(kernel_spec), MlirKernelSource(std::move(module)));
 }
@@ -440,11 +553,23 @@ absl::StatusOr<KernelDefinition<MlirKernelSource>> EmitTiledFusionKernelImpl(
                    xtile::EmitXTileModule(name, fusion, symbolic_tile_analysis,
                                           tiling, context));
 
-  const HloInstruction* root = symbolic_tile_analysis.GetRoot(0);
+  const HloInstruction* root =
+      symbolic_tile_analysis.GetRoot(symbolic_tile_analysis.real_root_index());
+  if (!tiling.tile_sizes().contains(root)) {
+    for (const auto& [inst, sizes] : tiling.tile_sizes()) {
+      if (inst != nullptr && inst->shape().IsArray()) {
+        root = inst;
+        break;
+      }
+    }
+  }
   int64_t num_tiles = 1;
-  for (auto [dim, tile_size] :
-       llvm::zip(root->shape().dimensions(), tiling.tile_sizes().at(root))) {
-    num_tiles *= CeilOfRatio(dim, tile_size);
+  if (root != nullptr && tiling.tile_sizes().contains(root) &&
+      root->shape().IsArray()) {
+    for (auto [dim, tile_size] :
+         llvm::zip(root->shape().dimensions(), tiling.tile_sizes().at(root))) {
+      num_tiles *= CeilOfRatio(dim, tile_size);
+    }
   }
 
   return CreateTiledKernelDefinition(context, fusion, buffer_assignment, name,
@@ -453,8 +578,17 @@ absl::StatusOr<KernelDefinition<MlirKernelSource>> EmitTiledFusionKernelImpl(
 }
 
 absl::StatusOr<ge::TiledHloComputation> GetTiledHloComputation(
-    mlir::MLIRContext& context, const HloFusionInstruction& fusion) {
+    mlir::MLIRContext& context, const HloFusionInstruction& fusion,
+    const TargetMachineFeatures* target_machine_features = nullptr) {
   RETURN_IF_ERROR(VerifyTensorRanks(fusion));
+
+  int64_t cache_line_bytes =
+      target_machine_features ? target_machine_features->cache_line_bytes()
+                              : TargetMachineFeatures::kDefaultCacheLineBytes;
+  int64_t max_stack_alloc_bytes =
+      target_machine_features
+          ? target_machine_features->max_stack_alloc_bytes()
+          : TargetMachineFeatures::kDefaultMaxStackAllocBytes;
 
   std::unique_ptr<HloFusionAdaptor> fusion_adaptor =
       HloFusionAdaptor::ForInstruction(&fusion);
@@ -481,8 +615,19 @@ absl::StatusOr<ge::TiledHloComputation> GetTiledHloComputation(
   evaluated_candidates.reserve(candidates.size());
   for (const auto& tile_sizes : candidates) {
     auto padded_tile_sizes = xla::xtile::GetPaddedTileSizes(tile_sizes);
+    for (int i = 0; i < padded_tile_sizes.size() &&
+                    i < symbolic_computation.tiling_space().num_dimensions();
+         ++i) {
+      int64_t dim_size =
+          symbolic_computation.tiling_space().dimensions()[i].dimension_size;
+      if (dim_size > 0) {
+        padded_tile_sizes[i] =
+            llvm::PowerOf2Ceil(std::min(padded_tile_sizes[i], dim_size));
+      }
+    }
     int64_t cost =
-        EvaluateSymbolicCost(symbolic_computation, padded_tile_sizes, operands);
+        EvaluateSymbolicCost(symbolic_computation, padded_tile_sizes, operands,
+                             cache_line_bytes, max_stack_alloc_bytes);
     VLOG(2) << "Candidate: {" << absl::StrJoin(tile_sizes, ", ")
             << "} (padded: {" << absl::StrJoin(padded_tile_sizes, ", ")
             << "}) cost: " << cost;
@@ -534,11 +679,19 @@ absl::StatusOr<KernelDefinition<MlirKernelSource>> EmitTiledFusionKernelImpl(
       xtile::EmitXTileModule(name, fusion, tiled_computation, context));
 
   const ge::TiledHloInstruction* root = tiled_computation.roots().front();
+  for (const ge::TiledHloInstruction* r : tiled_computation.roots()) {
+    if (r->hlo() != nullptr && r->hlo()->shape().IsArray()) {
+      root = r;
+      break;
+    }
+  }
   const HloInstruction* root_hlo = root->hlo();
   int64_t num_tiles = 1;
-  for (auto [dim, tile_size] :
-       llvm::zip(root_hlo->shape().dimensions(), root->tile_sizes())) {
-    num_tiles *= CeilOfRatio(dim, tile_size);
+  if (root_hlo != nullptr && root_hlo->shape().IsArray()) {
+    for (auto [dim, tile_size] :
+         llvm::zip(root_hlo->shape().dimensions(), root->tile_sizes())) {
+      num_tiles *= CeilOfRatio(dim, tile_size);
+    }
   }
 
   return CreateTiledKernelDefinition(context, fusion, buffer_assignment, name,
@@ -575,7 +728,8 @@ bool IsSupportedTilingType(PrimitiveType type) {
 TiledEmissionResult EmitTiledFusionKernel(
     mlir::MLIRContext& context, const HloFusionInstruction& fusion,
     const BufferAssignment* buffer_assignment, absl::string_view name,
-    int64_t num_work_groups) {
+    int64_t num_work_groups,
+    const TargetMachineFeatures* target_machine_features) {
   VLOG(2) << "EmitTiledFusionKernel called for fusion: " << fusion.name();
   auto supported_status = IsSupportedTiledFusion(fusion);
   VLOG(2) << "  IsSupportedTiledFusion: " << supported_status;
@@ -588,7 +742,7 @@ TiledEmissionResult EmitTiledFusionKernel(
   if (options::EnableExperimentalTiling(fusion.GetModule()->config())) {
     VLOG(2) << "  EnableExperimentalTiling: true";
     absl::StatusOr<ge::TiledHloComputation> tiled_computation =
-        GetTiledHloComputation(context, fusion);
+        GetTiledHloComputation(context, fusion, target_machine_features);
     if (!tiled_computation.ok()) {
       return {tiled_computation.status(), /*tiling_succeeded=*/false};
     }
@@ -604,8 +758,8 @@ TiledEmissionResult EmitTiledFusionKernel(
     return {symbolic_tile_analysis.status(), /*tiling_succeeded=*/false};
   }
 
-  absl::StatusOr<Tiling> tiling =
-      GetTiling(context, fusion, *symbolic_tile_analysis);
+  absl::StatusOr<Tiling> tiling = GetTiling(
+      context, fusion, *symbolic_tile_analysis, target_machine_features);
   if (!tiling.ok()) {
     return {tiling.status(), /*tiling_succeeded=*/false};
   }

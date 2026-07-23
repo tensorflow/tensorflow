@@ -64,8 +64,9 @@ std::optional<absl::string_view> IsLegalTensorOp(mlir::Operation* op) {
   // TODO(willfroom): remove this ExtractOp & FromElementsOp once the special
   // handling of 0D tensors is removed from the emitter.
   if (auto extract = mlir::dyn_cast<mlir::tensor::ExtractOp>(op)) {
-    if (extract.getTensor().getType().getRank() != 0) {
-      return "Expected rank 0";
+    if (extract.getIndices().size() !=
+        extract.getTensor().getType().getRank()) {
+      return "Expected extract indices size to match tensor rank";
     }
     return std::nullopt;
   }
@@ -83,14 +84,17 @@ std::optional<absl::string_view> IsLegalTensorOp(mlir::Operation* op) {
 std::optional<absl::string_view> IsLegalStablehloOp(mlir::Operation* op) {
   if (mlir::isa<
           // go/keep-sorted start
-          mlir::stablehlo::AllReduceOp, mlir::stablehlo::AddOp,
+          mlir::stablehlo::AddOp, mlir::stablehlo::AllReduceOp,
           mlir::stablehlo::AndOp, mlir::stablehlo::BroadcastInDimOp,
           mlir::stablehlo::CompareOp, mlir::stablehlo::ConvertOp,
           mlir::stablehlo::DivOp, mlir::stablehlo::DotGeneralOp,
+          mlir::stablehlo::DynamicSliceOp,
+          mlir::stablehlo::DynamicUpdateSliceOp, mlir::stablehlo::GatherOp,
           mlir::stablehlo::MaxOp, mlir::stablehlo::MinOp,
-          mlir::stablehlo::MulOp, mlir::stablehlo::ReduceOp,
-          mlir::stablehlo::OrOp, mlir::stablehlo::RemOp,
+          mlir::stablehlo::MulOp, mlir::stablehlo::OrOp,
+          mlir::stablehlo::ReduceOp, mlir::stablehlo::RemOp,
           mlir::stablehlo::ReshapeOp, mlir::stablehlo::ReturnOp,
+          mlir::stablehlo::ReverseOp, mlir::stablehlo::SliceOp,
           mlir::stablehlo::SubtractOp, mlir::stablehlo::TransposeOp,
           mlir::stablehlo::XorOp
           // go/keep-sorted end

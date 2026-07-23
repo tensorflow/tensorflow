@@ -65,5 +65,17 @@ INSTANTIATE_TEST_SUITE_P(Avx512Bf16Fp16Suite, Avx512Bf16Fp16Test,
                          ::testing::ValuesIn(GetAvx512Bf16Fp16TestSpecs()),
                          Avx512Bf16Fp16Test::Name);
 
+TEST(TargetMachineFeaturesCacheTest, QueriesCacheParameters) {
+  TargetMachineFeatures features(nullptr);
+  EXPECT_EQ(features.cache_line_bytes(),
+            TargetMachineFeatures::kDefaultCacheLineBytes);
+  EXPECT_EQ(features.l1_cache_size_bytes(),
+            TargetMachineFeatures::kDefaultL1CacheSizeBytes);
+  EXPECT_EQ(features.l2_cache_size_bytes(),
+            TargetMachineFeatures::kDefaultL2CacheSizeBytes);
+  EXPECT_EQ(features.max_stack_alloc_bytes(),
+            TargetMachineFeatures::kDefaultMaxStackAllocBytes);
+}
+
 }  // namespace
 }  // namespace xla::cpu

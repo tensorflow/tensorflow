@@ -1081,8 +1081,7 @@ ENTRY main {
       Tiling({{fusion_root, FlatTiling({2})}}), default_schedule_builder_,
       /*constraints_are_known_satisfied=*/false,
       /*compute_all_tile_offset_indexing_maps=*/true);
-  ASSERT_THAT(result.status(), StatusIs(tsl::error::UNIMPLEMENTED,
-                                        HasSubstr("negative stride")));
+  EXPECT_OK(result.status());
 }
 
 TEST_F(SymbolicTileAnalysisTest, MultiOutputFusionIsNotSupported) {

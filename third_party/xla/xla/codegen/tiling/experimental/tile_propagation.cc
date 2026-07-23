@@ -1231,6 +1231,323 @@ absl::StatusOr<Tiles> PropagateTileToOutputForBitcastOp(
   return Tiles{std::move(output_tile)};
 }
 
+Tiles PropagateTileToInputForReverseOp(const HloInstruction& reverse,
+                                       const Tile& output_tile) {
+  MLIRContext* ctx = output_tile.mlir_context();
+  absl::flat_hash_set<int64_t> reverse_dims(reverse.dimensions().begin(),
+                                            reverse.dimensions().end());
+  SmallVector<DimTile> input_dim_tiles;
+  input_dim_tiles.reserve(output_tile.num_dim_tiles());
+  for (auto [dim_idx, result_dim_tile] :
+       llvm::enumerate(output_tile.dim_tiles())) {
+    if (reverse_dims.contains(dim_idx)) {
+      int64_t dim_size = reverse.shape().dimensions(dim_idx);
+      DimTile dim_tile;
+      dim_tile.offset = CreateSymbolicConstant(dim_size, ctx) -
+                        result_dim_tile.offset - result_dim_tile.size;
+      dim_tile.size = result_dim_tile.size;
+      dim_tile.stride = result_dim_tile.stride;
+      dim_tile.upper_bound = CreateSymbolicConstant(dim_size, ctx);
+      input_dim_tiles.push_back(std::move(dim_tile));
+    } else {
+      input_dim_tiles.push_back(result_dim_tile);
+    }
+  }
+  return Tiles{output_tile.CloneWithNewDims(std::move(input_dim_tiles))};
+}
+
+Tiles PropagateTileToOutputForReverseOp(const HloInstruction& reverse,
+                                        const Tile& input_tile) {
+  return PropagateTileToInputForReverseOp(reverse, input_tile);
+}
+
+Tiles PropagateTileToInputForDynamicUpdateSliceOp(
+    const TilingSpace& tiling_space, const HloInstruction& dus,
+    const Tile& output_tile) {
+  int64_t num_dim_tiles = output_tile.num_dim_tiles();
+  Tile operand_0_tile = output_tile;
+
+  SmallVector<DimTile> update_dim_tiles;
+  update_dim_tiles.reserve(num_dim_tiles);
+  for (int64_t dim = 0; dim < num_dim_tiles; ++dim) {
+    if (dim + 2 < dus.operand_count()) {
+      auto slice_offset = dus.operand(dim + 2);
+      std::optional<int64_t> offset_const = GetInt64FromConstant(*slice_offset);
+      if (offset_const.has_value()) {
+        DimTile dt = output_tile.dim_tiles()[dim];
+        dt.offset = dt.offset - *offset_const;
+        update_dim_tiles.push_back(std::move(dt));
+        continue;
+      }
+    }
+    update_dim_tiles.push_back(output_tile.dim_tiles()[dim]);
+  }
+  Tile update_tile = output_tile.CloneWithNewDims(std::move(update_dim_tiles));
+
+  Tile scalar_tile{output_tile.tiling_space(), {}, {}, {}, {}};
+  Tiles result{operand_0_tile, update_tile};
+  for (int i = 2; i < dus.operand_count(); ++i) {
+    result.push_back(scalar_tile);
+  }
+  return result;
+}
+
+Tiles PropagateTileToOutputForDynamicUpdateSliceOp(const HloInstruction& dus,
+                                                   const Tile& input_tile,
+                                                   int64_t input_index) {
+  if (input_index == 0) {
+    return Tiles{input_tile};
+  }
+  if (input_index == 1) {
+    int64_t num_dim_tiles = input_tile.num_dim_tiles();
+    SmallVector<DimTile> output_dim_tiles;
+    output_dim_tiles.reserve(num_dim_tiles);
+    for (int64_t dim = 0; dim < num_dim_tiles; ++dim) {
+      DimTile dt = input_tile.dim_tiles()[dim];
+      if (dim + 2 < dus.operand_count()) {
+        auto slice_offset = dus.operand(dim + 2);
+        std::optional<int64_t> offset_const =
+            GetInt64FromConstant(*slice_offset);
+        if (offset_const.has_value()) {
+          dt.offset = dt.offset + *offset_const;
+        }
+      }
+      output_dim_tiles.push_back(std::move(dt));
+    }
+    return Tiles{input_tile.CloneWithNewDims(std::move(output_dim_tiles))};
+  }
+  Tile scalar_tile{input_tile.tiling_space(), {}, {}, {}, {}};
+  return Tiles{scalar_tile};
+}
+
+Tiles PropagateTileToInputForReduceWindowOp(const TilingSpace& tiling_space,
+                                            const HloInstruction& reduce_window,
+                                            const Tile& output_tile) {
+  MLIRContext* ctx = output_tile.mlir_context();
+  const Window& window = reduce_window.window();
+  SmallVector<DimTile> input_dim_tiles;
+  input_dim_tiles.reserve(output_tile.num_dim_tiles());
+
+  for (auto [dim_idx, result_dim_tile] :
+       llvm::enumerate(output_tile.dim_tiles())) {
+    const WindowDimension& window_dim = window.dimensions(dim_idx);
+    int64_t stride = window_dim.stride();
+    int64_t pad_low = window_dim.padding_low();
+    int64_t win_size = window_dim.size();
+    int64_t win_dilation = window_dim.window_dilation();
+
+    DimTile dim_tile;
+    dim_tile.offset = result_dim_tile.offset * stride - pad_low;
+    dim_tile.size =
+        (result_dim_tile.size - 1) * stride + (win_size - 1) * win_dilation + 1;
+    dim_tile.stride = result_dim_tile.stride;
+    int64_t operand_dim_size =
+        reduce_window.operand(0)->shape().dimensions(dim_idx);
+    dim_tile.upper_bound = CreateSymbolicConstant(operand_dim_size, ctx);
+    input_dim_tiles.push_back(std::move(dim_tile));
+  }
+
+  Tile operand_tile = output_tile.CloneWithNewDims(std::move(input_dim_tiles));
+  Tile init_value_tile{output_tile.tiling_space(), {}, {}, {}, {}};
+
+  Tiles result;
+  result.reserve(reduce_window.operand_count());
+  int inputs_count = reduce_window.operand_count() / 2;
+  for (int i = 0; i < inputs_count; ++i) {
+    result.push_back(operand_tile);
+  }
+  for (int i = inputs_count; i < reduce_window.operand_count(); ++i) {
+    result.push_back(init_value_tile);
+  }
+  return result;
+}
+
+Tiles PropagateTileToOutputForReduceWindowOp(
+    const HloInstruction& reduce_window, const Tile& input_tile) {
+  return Tiles{input_tile};
+}
+
+Tiles PropagateTileToInputForGatherOp(const TilingSpace& tiling_space,
+                                      const HloInstruction& gather_instr,
+                                      const Tile& output_tile) {
+  MLIRContext* ctx = output_tile.mlir_context();
+  const auto* gather = Cast<HloGatherInstruction>(&gather_instr);
+  const Shape& operand_shape = gather->operand(0)->shape();
+  const Shape& indices_shape = gather->operand(1)->shape();
+  const auto& dnums = gather->gather_dimension_numbers();
+  const auto slice_sizes = gather->gather_slice_sizes();
+
+  absl::flat_hash_set<int64_t> offset_dims_set(dnums.offset_dims().begin(),
+                                               dnums.offset_dims().end());
+  SmallVector<int64_t> output_batch_dims;
+  for (int64_t out_dim = 0; out_dim < output_tile.dim_tiles().size();
+       ++out_dim) {
+    if (!offset_dims_set.contains(out_dim)) {
+      output_batch_dims.push_back(out_dim);
+    }
+  }
+
+  SmallVector<DimTile> indices_dim_tiles;
+  indices_dim_tiles.reserve(indices_shape.dimensions().size());
+  int64_t index_vector_dim = dnums.index_vector_dim();
+  int64_t next_output_batch_dim_idx = 0;
+
+  for (int64_t idx_dim = 0; idx_dim < indices_shape.dimensions().size();
+       ++idx_dim) {
+    int64_t dim_size = indices_shape.dimensions(idx_dim);
+    if (idx_dim == index_vector_dim) {
+      indices_dim_tiles.push_back(DimTile{
+          CreateSymbolicConstant(0, ctx), CreateSymbolicConstant(dim_size, ctx),
+          CreateSymbolicConstant(1, ctx),
+          CreateSymbolicConstant(dim_size, ctx)});
+    } else if (next_output_batch_dim_idx < output_batch_dims.size() &&
+               output_batch_dims[next_output_batch_dim_idx] <
+                   output_tile.dim_tiles().size()) {
+      int64_t out_dim = output_batch_dims[next_output_batch_dim_idx++];
+      indices_dim_tiles.push_back(output_tile.dim_tiles()[out_dim]);
+    } else {
+      indices_dim_tiles.push_back(DimTile{
+          CreateSymbolicConstant(0, ctx), CreateSymbolicConstant(dim_size, ctx),
+          CreateSymbolicConstant(1, ctx),
+          CreateSymbolicConstant(dim_size, ctx)});
+    }
+  }
+
+  SmallVector<DimTile> operand_dim_tiles;
+  operand_dim_tiles.reserve(operand_shape.dimensions().size());
+  absl::flat_hash_set<int64_t> collapsed_dims(
+      dnums.collapsed_slice_dims().begin(), dnums.collapsed_slice_dims().end());
+  absl::flat_hash_map<int64_t, int64_t> operand_to_output_offset_dim;
+  int offset_dim_idx = 0;
+  for (int64_t op_dim = 0; op_dim < operand_shape.dimensions().size();
+       ++op_dim) {
+    if (!collapsed_dims.contains(op_dim) &&
+        offset_dim_idx < dnums.offset_dims().size()) {
+      operand_to_output_offset_dim[op_dim] =
+          dnums.offset_dims(offset_dim_idx++);
+    }
+  }
+
+  for (int64_t op_dim = 0; op_dim < operand_shape.dimensions().size();
+       ++op_dim) {
+    auto it = operand_to_output_offset_dim.find(op_dim);
+    if (it != operand_to_output_offset_dim.end() &&
+        it->second < output_tile.dim_tiles().size()) {
+      operand_dim_tiles.push_back(output_tile.dim_tiles()[it->second]);
+    } else {
+      int64_t slice_size = slice_sizes[op_dim];
+      int64_t bound = operand_shape.dimensions(op_dim);
+      operand_dim_tiles.push_back(DimTile{
+          CreateSymbolicConstant(0, ctx),
+          CreateSymbolicConstant(slice_size, ctx),
+          CreateSymbolicConstant(1, ctx), CreateSymbolicConstant(bound, ctx)});
+    }
+  }
+
+  Tile operand_tile =
+      output_tile.CloneWithNewDims(std::move(operand_dim_tiles));
+  Tile indices_tile =
+      output_tile.CloneWithNewDims(std::move(indices_dim_tiles));
+
+  return Tiles{operand_tile, indices_tile};
+}
+
+Tiles PropagateTileToOutputForGatherOp(const HloInstruction& gather,
+                                       const Tile& input_tile,
+                                       int64_t input_index) {
+  const auto* gather_instr = Cast<HloGatherInstruction>(&gather);
+  const Shape& output_shape = gather.shape();
+  const auto& dnums = gather_instr->gather_dimension_numbers();
+  MLIRContext* ctx = input_tile.mlir_context();
+
+  SmallVector<DimTile> output_dim_tiles;
+  output_dim_tiles.reserve(output_shape.dimensions().size());
+
+  if (input_index == 0) {
+    const Shape& operand_shape = gather_instr->operand(0)->shape();
+    absl::flat_hash_set<int64_t> collapsed_dims(
+        dnums.collapsed_slice_dims().begin(),
+        dnums.collapsed_slice_dims().end());
+
+    absl::flat_hash_map<int64_t, int64_t> output_offset_dim_to_operand;
+    int offset_dim_idx = 0;
+    for (int64_t op_dim = 0; op_dim < operand_shape.dimensions().size();
+         ++op_dim) {
+      if (!collapsed_dims.contains(op_dim) &&
+          offset_dim_idx < dnums.offset_dims().size()) {
+        int64_t out_offset_dim = dnums.offset_dims(offset_dim_idx++);
+        output_offset_dim_to_operand[out_offset_dim] = op_dim;
+      }
+    }
+
+    for (int64_t out_dim = 0; out_dim < output_shape.dimensions().size();
+         ++out_dim) {
+      auto it = output_offset_dim_to_operand.find(out_dim);
+      if (it != output_offset_dim_to_operand.end() &&
+          it->second < input_tile.dim_tiles().size()) {
+        output_dim_tiles.push_back(input_tile.dim_tiles()[it->second]);
+      } else {
+        int64_t dim_size = output_shape.dimensions(out_dim);
+        output_dim_tiles.push_back(
+            DimTile{CreateSymbolicConstant(0, ctx),
+                    CreateSymbolicConstant(dim_size, ctx),
+                    CreateSymbolicConstant(1, ctx),
+                    CreateSymbolicConstant(dim_size, ctx)});
+      }
+    }
+  } else if (input_index == 1) {
+    const Shape& indices_shape = gather_instr->operand(1)->shape();
+    absl::flat_hash_set<int64_t> offset_dims_set(dnums.offset_dims().begin(),
+                                                 dnums.offset_dims().end());
+    SmallVector<int64_t> output_batch_dims;
+    for (int64_t out_dim = 0; out_dim < output_shape.dimensions().size();
+         ++out_dim) {
+      if (!offset_dims_set.contains(out_dim)) {
+        output_batch_dims.push_back(out_dim);
+      }
+    }
+
+    absl::flat_hash_map<int64_t, int64_t> output_batch_dim_to_indices;
+    int64_t index_vector_dim = dnums.index_vector_dim();
+    int64_t next_output_batch_dim_idx = 0;
+    for (int64_t idx_dim = 0; idx_dim < indices_shape.dimensions().size();
+         ++idx_dim) {
+      if (idx_dim != index_vector_dim &&
+          next_output_batch_dim_idx < output_batch_dims.size()) {
+        int64_t out_dim = output_batch_dims[next_output_batch_dim_idx++];
+        output_batch_dim_to_indices[out_dim] = idx_dim;
+      }
+    }
+
+    for (int64_t out_dim = 0; out_dim < output_shape.dimensions().size();
+         ++out_dim) {
+      auto it = output_batch_dim_to_indices.find(out_dim);
+      if (it != output_batch_dim_to_indices.end() &&
+          it->second < input_tile.dim_tiles().size()) {
+        output_dim_tiles.push_back(input_tile.dim_tiles()[it->second]);
+      } else {
+        int64_t dim_size = output_shape.dimensions(out_dim);
+        output_dim_tiles.push_back(
+            DimTile{CreateSymbolicConstant(0, ctx),
+                    CreateSymbolicConstant(dim_size, ctx),
+                    CreateSymbolicConstant(1, ctx),
+                    CreateSymbolicConstant(dim_size, ctx)});
+      }
+    }
+  } else {
+    for (int64_t out_dim = 0; out_dim < output_shape.dimensions().size();
+         ++out_dim) {
+      int64_t dim_size = output_shape.dimensions(out_dim);
+      output_dim_tiles.push_back(DimTile{
+          CreateSymbolicConstant(0, ctx), CreateSymbolicConstant(dim_size, ctx),
+          CreateSymbolicConstant(1, ctx),
+          CreateSymbolicConstant(dim_size, ctx)});
+    }
+  }
+
+  return Tiles{input_tile.CloneWithNewDims(std::move(output_dim_tiles))};
+}
+
 }  // namespace
 
 std::string ToString(const Tiles& tiles) {
@@ -1349,6 +1666,20 @@ absl::StatusOr<Tiles> PropagateTileToInput(TilingSpace& tiling_space,
   if (hlo.opcode() == HloOpcode::kGetTupleElement) {
     return PropagateTileToInputForGetTupleElementOp(hlo, output_tile);
   }
+  if (hlo.opcode() == HloOpcode::kReverse) {
+    return PropagateTileToInputForReverseOp(hlo, output_tile);
+  }
+  if (hlo.opcode() == HloOpcode::kDynamicUpdateSlice) {
+    return PropagateTileToInputForDynamicUpdateSliceOp(tiling_space, hlo,
+                                                       output_tile);
+  }
+  if (hlo.opcode() == HloOpcode::kReduceWindow) {
+    return PropagateTileToInputForReduceWindowOp(tiling_space, hlo,
+                                                 output_tile);
+  }
+  if (hlo.opcode() == HloOpcode::kGather) {
+    return PropagateTileToInputForGatherOp(tiling_space, hlo, output_tile);
+  }
   return absl::InvalidArgumentError(
       absl::StrCat("Output to input tile propagation not implemented for ",
                    HloOpcodeString(hlo.opcode())));
@@ -1398,6 +1729,24 @@ absl::StatusOr<Tiles> PropagateTileToOutput(const TilingSpace& tiling_space,
   }
   if (hlo.opcode() == HloOpcode::kGetTupleElement) {
     return PropagateTileToOutputForGetTupleElementOp(hlo, input_tile);
+  }
+  if (hlo.opcode() == HloOpcode::kReverse) {
+    return PropagateTileToOutputForReverseOp(hlo, input_tile);
+  }
+  if (hlo.opcode() == HloOpcode::kDynamicUpdateSlice) {
+    return PropagateTileToOutputForDynamicUpdateSliceOp(hlo, input_tile,
+                                                        input_index);
+  }
+  if (hlo.opcode() == HloOpcode::kReduceWindow) {
+    return PropagateTileToOutputForReduceWindowOp(hlo, input_tile);
+  }
+  if (hlo.opcode() == HloOpcode::kGather) {
+    if (input_index < 0 || input_index >= hlo.operand_count()) {
+      return absl::InvalidArgumentError(absl::StrCat(
+          "Invalid input_index ", input_index, " for Gather op with ",
+          hlo.operand_count(), " operands."));
+    }
+    return PropagateTileToOutputForGatherOp(hlo, input_tile, input_index);
   }
   return absl::InvalidArgumentError(absl::StrCat(
       "Input to output tile propagation not implemented for ", hlo.opcode()));

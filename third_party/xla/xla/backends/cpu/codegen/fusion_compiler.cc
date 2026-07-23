@@ -318,14 +318,21 @@ static void AddScalarLoweringPasses(mlir::OpPassManager& pm,
   AddGenericLoweringPasses(pm, fast_min_max);
 }
 
-static void AddBufferizationPasses(mlir::OpPassManager& pm) {
+static void AddBufferizationPasses(
+    mlir::OpPassManager& pm,
+    int64_t max_stack_alloc_bytes =
+        TargetMachineFeatures::kDefaultMaxStackAllocBytes) {
   pm.addPass(mlir::createCanonicalizerPass());
   pm.addPass(mlir::bufferization::createEmptyTensorEliminationPass());
-  pm.addPass(mlir::bufferization::createOneShotBufferizePass());
+  mlir::bufferization::OneShotBufferizePassOptions options;
+  options.allowReturnAllocsFromLoops = true;
+  pm.addPass(mlir::bufferization::createOneShotBufferizePass(options));
   pm.addPass(mlir::createCanonicalizerPass());
   pm.addPass(mlir::createCSEPass());
   pm.addNestedPass<mlir::func::FuncOp>(
       mlir::bufferization::createBufferHoistingPass());
+  pm.addNestedPass<mlir::func::FuncOp>(
+      mlir::bufferization::createBufferLoopHoistingPass());
   pm.addPass(mlir::memref::createFoldMemRefAliasOpsPass());
 
 #ifdef ABSL_HAVE_MEMORY_SANITIZER
@@ -337,8 +344,7 @@ static void AddBufferizationPasses(mlir::OpPassManager& pm) {
 
   mlir::bufferization::PromoteBuffersToStackPassOptions
       buffer_promotion_options;
-  // TODO(willfroom): Look at a more principled way to set this option.
-  buffer_promotion_options.maxAllocSizeInBytes = 4096;
+  buffer_promotion_options.maxAllocSizeInBytes = max_stack_alloc_bytes;
   pm.addNestedPass<mlir::func::FuncOp>(
       mlir::bufferization::createPromoteBuffersToStackPass(
           buffer_promotion_options));
@@ -350,7 +356,10 @@ static void AddBufferizationPasses(mlir::OpPassManager& pm) {
 // Optimizations passes for the tiled emitter.
 // This is currently very simple but will grow to include tiled optimizations
 // such as transpose hoisting and dimension reduction.
-static void AddTiledOptimizationPasses(mlir::OpPassManager& pm) {
+static void AddTiledOptimizationPasses(
+    mlir::OpPassManager& pm,
+    int64_t max_stack_alloc_bytes =
+        TargetMachineFeatures::kDefaultMaxStackAllocBytes) {
   emitters::RegisterOptimizationPasses(pm);
 
   pm.addPass(cpu::createLowerXTileEntryPass());
@@ -374,6 +383,7 @@ static void AddTiledOptimizationPasses(mlir::OpPassManager& pm) {
   pm.addNestedPass<mlir::func::FuncOp>(
       mlir::vector::createLowerVectorMultiReductionPass(
           mlir::vector::VectorMultiReductionLowering::InnerParallel));
+  pm.addPass(mlir::createInlinerPass());
   pm.addPass(cpu::createTensorOpsToBufferizablePass());
 
   mlir::stablehlo::StablehloLegalizeToLinalgPassOptions
@@ -385,7 +395,7 @@ static void AddTiledOptimizationPasses(mlir::OpPassManager& pm) {
   pm.addPass(mlir::createConvertElementwiseToLinalgPass());
   pm.addPass(cpu::createFuseElementwisePass());
 
-  AddBufferizationPasses(pm);
+  AddBufferizationPasses(pm, max_stack_alloc_bytes);
 
   pm.addPass(cpu::createLinalgElementwiseToVectorPass());
 
@@ -400,6 +410,7 @@ static void AddTiledOptimizationPasses(mlir::OpPassManager& pm) {
 static void AddTiledLoweringPasses(mlir::OpPassManager& pm, bool fast_min_max) {
   pm.addPass(cpu::createVectorToScalarPass());
   pm.addPass(cpu::createMemrefCopyToLoopsPass());
+  pm.addPass(mlir::createConvertLinalgToLoopsPass());
   pm.addPass(cpu::createLowerToLLVMPass());
   pm.addPass(mlir::createConvertVectorToSCFPass(
       mlir::VectorTransferToSCFOptions().enableFullUnroll(false)));
@@ -447,9 +458,11 @@ static void ApplyFastMathFlags(llvm::Module& llvm_module,
 }
 
 FusionCompiler::FusionCompiler(mlir::MLIRContext* context, Options options,
-                               const HloModule* hlo_module)
+                               const HloModule* hlo_module,
+                               const llvm::TargetMachine* target_machine)
     : options_(std::move(options)),
       hlo_module_(hlo_module),
+      target_machine_(target_machine),
       scalar_pass_manager_(mlir::PassManager::on<mlir::ModuleOp>(context)),
       tiled_pass_manager_(mlir::PassManager::on<mlir::ModuleOp>(context)) {
   // Only enable verifier in debug builds.
@@ -471,7 +484,8 @@ FusionCompiler::FusionCompiler(mlir::MLIRContext* context, Options options,
 
   // Tiled passes.
   tiled_pass_manager_.addPass(xtile::createVerifyLegalXTileOpsPass());
-  AddTiledOptimizationPasses(tiled_pass_manager_);
+  AddTiledOptimizationPasses(tiled_pass_manager_,
+                             options_.max_stack_alloc_bytes);
   if (should_dump_mlir_passes) {
     tiled_pass_manager_.addPass(
         std::make_unique<ModuleCallbackPass>(hlo_module_, "post-optimization"));
@@ -580,7 +594,10 @@ absl::StatusOr<std::unique_ptr<llvm::Module>> FusionCompiler::Compile(
                               mlir::cast<mlir::StringAttr>(options).str());
   }
 
-  llvm_module->setDataLayout(llvm_module->getDataLayout());
+  if (target_machine_) {
+    llvm_module->setDataLayout(target_machine_->createDataLayout());
+    llvm_module->setTargetTriple(target_machine_->getTargetTriple());
+  }
 
   if (options_.fast_math_flags.any()) {
     ApplyFastMathFlags(*llvm_module, options_.fast_math_flags);
@@ -657,9 +674,10 @@ mlir::DialectRegistry FusionCompiler::CreateDialectRegistry(
         "Test pipeline of passes up to inlining. Intended to simplify IR in "
         "tests.",
         &xla::emitters::RegisterOptimizationPasses);
-    RegisterPassPipeline("xtile-cpu-bufferization",
-                         "Run the bufferization pipeline for a tiled kernel.",
-                         &AddBufferizationPasses);
+    RegisterPassPipeline(
+        "xtile-cpu-bufferization",
+        "Run the bufferization pipeline for a tiled kernel.",
+        [](mlir::OpPassManager& pm) { AddBufferizationPasses(pm); });
   }
 
   return registry;

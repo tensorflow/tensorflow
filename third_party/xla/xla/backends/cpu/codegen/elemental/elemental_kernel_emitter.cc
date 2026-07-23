@@ -45,11 +45,11 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/primitive_util.h"
 #include "xla/runtime/work_group.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/cpu/backend_config.pb.h"
 #include "xla/service/cpu/elemental_ir_emitter.h"
-#include "xla/service/cpu/ir_emitter.h"
 #include "xla/service/cpu/parallel_loop_emitter.h"
 #include "xla/service/elemental_ir_emitter.h"
 #include "xla/service/hlo_module_config.h"
@@ -297,42 +297,118 @@ absl::StatusOr<NumWorkGroups> ElementalKernelEmitter::EmitElementalLoops(
 absl::StatusOr<CpuElementalIrEmitter::ThreadLocalCallCallback>
 ElementalKernelEmitter::ThreadLocalCallbackFactory(llvm::IRBuilderBase& builder,
                                                    llvm::Module& module) const {
-  const HloModule* hlo_module = instr_->GetModule();
-  if (hlo_module == nullptr) {
-    return nullptr;
-  }
-
-  auto ir_emitter = std::make_unique<IrEmitter>(
-      nullptr, *hlo_module, *buffer_assignment_, &module,
-      /*instruction_to_profile_idx=*/
-      absl::flat_hash_map<const HloInstruction*, int64_t>{},
-      /*computation_to_profile_idx=*/
-      absl::flat_hash_map<const HloComputation*, int64_t>{},
-      ComputationsTransitivelyContainCustomCall(instr_), target_machine_,
-      /*emit_code_for_msan=*/false);
-  IrEmitter::IRBuilderGuard builder_guard = ir_emitter->WithBuilder(builder);
-
-  RETURN_IF_ERROR(ir_emitter->EmitSmallConstantGlobals());
-
-  if (instr_->has_to_apply()) {
-    HloComputation* nested_computation = instr_->to_apply();
-    bool is_reducer = instr_->opcode() == HloOpcode::kReduce ||
-                      instr_->opcode() == HloOpcode::kReduceWindow;
-    RETURN_IF_ERROR(
-        ir_emitter
-            ->EmitNestedComputation(*nested_computation,
-                                    llvm_ir::IrName(nested_computation->name()),
-                                    is_reducer)
-            .status());
-  }
-
-  return [ir_emitter = std::move(ir_emitter), &builder](
+  return [&builder, &module](
              const HloComputation& callee,
              absl::Span<llvm::Value* const> parameters, absl::string_view name,
-             bool is_reducer) {
-    IrEmitter::IRBuilderGuard builder_guard = ir_emitter->WithBuilder(builder);
-    return ir_emitter->EmitThreadLocalCall(callee, parameters, name, is_reducer,
-                                           /*in_compute_function=*/false);
+             bool is_reducer) -> absl::StatusOr<std::vector<llvm::Value*>> {
+    CpuElementalIrEmitter::HloToElementGeneratorMap operand_to_generator;
+    CpuElementalIrEmitter sub_emitter(&module, &builder, nullptr,
+                                      /*allow_fast_math=*/false,
+                                      /*hlo_fast_math=*/false);
+    for (const HloInstruction* inst : callee.MakeInstructionPostOrder()) {
+      if (inst->opcode() == HloOpcode::kParameter) {
+        int64_t param_no = inst->parameter_number();
+        TF_RET_CHECK(param_no < parameters.size())
+            << "Parameter index " << param_no << " out of bounds ("
+            << parameters.size() << ")";
+        llvm::Value* param_val = parameters[param_no];
+        llvm::Type* elem_type = llvm_ir::PrimitiveTypeToIrType(
+            inst->shape().element_type(), module.getContext());
+        if (param_val->getType()->isPointerTy()) {
+          param_val = builder.CreateLoad(elem_type, param_val);
+        }
+        if (param_val->getType() != elem_type) {
+          if (param_val->getType()->isIntegerTy() && elem_type->isIntegerTy()) {
+            bool is_signed = primitive_util::IsSignedIntegralType(
+                inst->shape().element_type());
+            param_val = builder.CreateIntCast(param_val, elem_type, is_signed);
+          } else if (param_val->getType()->isFloatingPointTy() &&
+                     elem_type->isFloatingPointTy()) {
+            param_val = builder.CreateFPCast(param_val, elem_type);
+          } else if (param_val->getType()->isIntegerTy() &&
+                     elem_type->isFloatingPointTy()) {
+            param_val = builder.CreateSIToFP(param_val, elem_type);
+          } else if (param_val->getType()->isFloatingPointTy() &&
+                     elem_type->isIntegerTy()) {
+            param_val = builder.CreateFPToSI(param_val, elem_type);
+          }
+        }
+        operand_to_generator[inst] =
+            [param_val](const llvm_ir::IrArray::Index& idx) {
+              return param_val;
+            };
+      } else if (inst->opcode() == HloOpcode::kConstant) {
+        llvm::Type* elem_type = llvm_ir::PrimitiveTypeToIrType(
+            inst->shape().element_type(), module.getContext());
+        llvm::Constant* const_val = nullptr;
+        if (auto val_double = inst->literal().GetAsDouble({})) {
+          if (elem_type->isFloatingPointTy()) {
+            const_val = llvm::ConstantFP::get(elem_type, *val_double);
+          } else if (elem_type->isIntegerTy()) {
+            const_val = llvm::ConstantInt::get(
+                elem_type, static_cast<int64_t>(*val_double));
+          }
+        } else if (auto val_s64 = inst->literal().GetIntegralAsS64({})) {
+          if (elem_type->isIntegerTy()) {
+            const_val = llvm::ConstantInt::get(elem_type, *val_s64);
+          } else if (elem_type->isFloatingPointTy()) {
+            const_val =
+                llvm::ConstantFP::get(elem_type, static_cast<double>(*val_s64));
+          }
+        }
+
+        if (const_val != nullptr) {
+          operand_to_generator[inst] =
+              [const_val](const llvm_ir::IrArray::Index& idx) {
+                return const_val;
+              };
+        } else {
+          llvm::Constant* initializer =
+              llvm_ir::ConvertLiteralToIrConstant(inst->literal(), &module);
+          llvm::GlobalVariable* global = new llvm::GlobalVariable(
+              module, initializer->getType(), /*isConstant=*/true,
+              llvm::GlobalValue::PrivateLinkage, initializer, "");
+          global->setUnnamedAddr(llvm::GlobalVariable::UnnamedAddr::Global);
+          llvm_ir::IrArray array(global, elem_type, inst->shape());
+          operand_to_generator[inst] = [&builder, array](
+                                           const llvm_ir::IrArray::Index& idx) {
+            llvm_ir::IrArray::Index array_idx = idx;
+            if (array_idx.size() != array.GetShape().dimensions_size()) {
+              array_idx =
+                  array_idx.SourceIndexOfBitcast(array.GetShape(), &builder);
+            }
+            return array.EmitReadArrayElement(array_idx, &builder);
+          };
+        }
+      } else {
+        operand_to_generator[inst] =
+            sub_emitter.MakeElementGenerator(inst, operand_to_generator);
+      }
+    }
+    llvm_ir::IrArray::Index dummy_index(builder.getInt32Ty());
+    ASSIGN_OR_RETURN(
+        llvm::Value * result_val,
+        operand_to_generator.at(callee.root_instruction())(dummy_index));
+    llvm::Type* root_type = llvm_ir::PrimitiveTypeToIrType(
+        callee.root_instruction()->shape().element_type(), module.getContext());
+    if (result_val->getType() != root_type) {
+      if (result_val->getType()->isFloatingPointTy() &&
+          root_type->isFloatingPointTy()) {
+        result_val = builder.CreateFPCast(result_val, root_type);
+      } else if (result_val->getType()->isIntegerTy() &&
+                 root_type->isIntegerTy()) {
+        bool is_signed = primitive_util::IsSignedIntegralType(
+            callee.root_instruction()->shape().element_type());
+        result_val = builder.CreateIntCast(result_val, root_type, is_signed);
+      } else if (result_val->getType()->isIntegerTy() &&
+                 root_type->isFloatingPointTy()) {
+        result_val = builder.CreateSIToFP(result_val, root_type);
+      } else if (result_val->getType()->isFloatingPointTy() &&
+                 root_type->isIntegerTy()) {
+        result_val = builder.CreateFPToSI(result_val, root_type);
+      }
+    }
+    return std::vector<llvm::Value*>{result_val};
   };
 }
 

@@ -31,6 +31,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/Pass/PassManager.h"
+#include "xla/backends/cpu/codegen/target_machine_features.h"
 #include "xla/codegen/llvm_kernel_source.h"
 #include "xla/codegen/mlir_kernel_source.h"
 
@@ -45,10 +46,13 @@ class FusionCompiler {
     int32_t verification_level;
     bool fast_min_max;
     llvm::FastMathFlags fast_math_flags;
+    int64_t max_stack_alloc_bytes =
+        TargetMachineFeatures::kDefaultMaxStackAllocBytes;
   };
 
   FusionCompiler(mlir::MLIRContext* context, Options options,
-                 const HloModule* hlo_module = nullptr);
+                 const HloModule* hlo_module = nullptr,
+                 const llvm::TargetMachine* target_machine = nullptr);
 
   // Compile a given MLIR module to LLVM, using the provided LLVM context.
   absl::StatusOr<std::unique_ptr<llvm::Module>> Compile(
@@ -70,6 +74,7 @@ class FusionCompiler {
  private:
   Options options_;
   const HloModule* hlo_module_;
+  const llvm::TargetMachine* target_machine_ = nullptr;
   // We have 2 distinct pipelines for scalar and tiled kernels, this is
   // because they differ slightly in their semantics, ideally these would be
   // unified but this is a larger change.

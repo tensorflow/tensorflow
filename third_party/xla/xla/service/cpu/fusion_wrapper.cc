@@ -106,8 +106,9 @@ bool FusionWrapper::MustWrapInstruction(const HloInstruction& instruction) {
     case HloOpcode::kConcatenate:
     case HloOpcode::kDynamicUpdateSlice:
     case HloOpcode::kTranspose:
-    case HloOpcode::kDot:
       return false;
+    case HloOpcode::kDot:
+      return use_tiled_emitter_;
     default:
       return false;
   }

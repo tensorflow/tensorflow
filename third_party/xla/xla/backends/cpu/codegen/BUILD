@@ -205,6 +205,7 @@ cc_library(
     hdrs = ["fusion_compiler.h"],
     deps = [
         ":kernel_api_ir_builder",
+        ":target_machine_features",
         "//xla:status_macros",
         "//xla:util",
         "//xla/backends/cpu/codegen/emitters/ir:xla_cpu",
@@ -625,43 +626,6 @@ cc_library(
     ],
 )
 
-cc_library(
-    name = "computation_kernel_emitter",
-    srcs = ["computation_kernel_emitter.cc"],
-    hdrs = ["computation_kernel_emitter.h"],
-    deps = [
-        ":kernel_api_ir_builder",
-        ":target_machine_features",
-        "//xla:shape_util",
-        "//xla:util",
-        "//xla/codegen:kernel_definition",
-        "//xla/codegen:kernel_emitter",
-        "//xla/codegen:kernel_spec",
-        "//xla/codegen:llvm_kernel_source",
-        "//xla/hlo/ir:hlo",
-        "//xla/runtime:work_group",
-        "//xla/service:buffer_assignment",
-        "//xla/service/cpu:backend_config_proto_cc",
-        "//xla/service/cpu:ir_emitter",
-        "//xla/service/llvm_ir:ir_array",
-        "//xla/service/llvm_ir:llvm_util",
-        "//xla/tsl/platform:errors",
-        "//xla/tsl/platform:status_macros",
-        "//xla/tsl/platform:statusor",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/container:flat_hash_set",
-        "@com_google_absl//absl/log",
-        "@com_google_absl//absl/log:check",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/strings:string_view",
-        "@com_google_absl//absl/types:span",
-        "@llvm-project//llvm:Support",
-        "@llvm-project//llvm:ir_headers",
-    ],
-)
-
 py_test(
     name = "scatter_kernel_emitter_test",
     srcs = ["scatter_kernel_emitter_test.py"],
@@ -782,23 +746,6 @@ xla_cc_test(
 )
 
 py_test(
-    name = "computation_kernel_emitter_test",
-    srcs = ["computation_kernel_emitter_test.py"],
-    strict_deps = True,
-    tags = [
-        "no_oss",
-    ],
-    deps = [
-        "//third_party/py/numpy",
-        "//xla/backends/cpu/testlib",
-        "//xla/codegen/testlib",
-        "//xla/python:xla_extension",
-        "@absl_py//absl/testing:absltest",
-        "@absl_py//absl/testing:parameterized",
-    ],
-)
-
-py_test(
     name = "fusion_emitter_test",
     srcs = ["fusion_emitter_test.py"],
     strict_deps = True,
@@ -811,5 +758,32 @@ py_test(
         "//xla/codegen/testlib",
         "@absl_py//absl/testing:absltest",
         "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+xla_cc_test(
+    name = "m4_it3_stress_test",
+    srcs = ["m4_it3_stress_test.cc"],
+    deps = [
+        ":fusion_compiler",
+        ":ir_compiler",
+        ":target_machine_features",
+        "//xla/backends/cpu/codegen/elemental:elemental_kernel_emitter",
+        "//xla/hlo/ir:hlo",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_googletest//:gtest_main",
+        "@llvm-project//llvm:Core",
+        "@llvm-project//llvm:MC",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//llvm:Target",
+        "@llvm-project//llvm:TargetParser",
+        "@llvm-project//mlir:ArithDialect",
+        "@llvm-project//mlir:BufferizationDialect",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:MemRefDialect",
+        "@llvm-project//mlir:SCFDialect",
+        "@llvm-project//mlir:TensorDialect",
     ],
 )

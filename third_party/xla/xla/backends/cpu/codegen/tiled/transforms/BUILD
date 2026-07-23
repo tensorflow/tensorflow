@@ -52,6 +52,7 @@ cc_library(
     visibility = ["//visibility:private"],
     deps = [
         "@llvm-project//mlir:ArithDialect",
+        "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:MemRefDialect",
         "@llvm-project//mlir:Support",

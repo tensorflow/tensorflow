@@ -278,8 +278,12 @@ absl::StatusOr<bool> CanEmitFusedDynamicUpdateSliceInPlace(
       ASSIGN_OR_RETURN(BufferAllocation::Slice output_buffer,
                        get_allocation_slice(fusion, root_index));
 
+      const HloInstruction* fusion_operand = &operand.instruction();
+      if (fusion_operand->opcode() == HloOpcode::kParameter) {
+        fusion_operand = fusion->operand(fusion_operand->parameter_number());
+      }
       ASSIGN_OR_RETURN(BufferAllocation::Slice lhs_buffer,
-                       get_allocation_slice(&operand.instruction(), {}));
+                       get_allocation_slice(fusion_operand, {}));
       if (lhs_buffer != output_buffer) {
         return false;
       }

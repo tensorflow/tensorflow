@@ -533,8 +533,9 @@ HloInstructionIndexing ComputeOutputToInputDynamicUpdateSliceOpIndexing(
 
 HloInstructionIndexing ComputeOutputToInputGatherOpIndexing(
     const HloGatherInstruction* gather, MLIRContext* mlir_context) {
-  CHECK(GatherSimplifier::IsSimplifiedGather(gather))
-      << "Non-simplified HLO Gather is not supported.";
+  if (!GatherSimplifier::IsSimplifiedGather(gather)) {
+    return CreateUnknownIndexing(gather->operand_count());
+  }
   const Shape& operand_shape = gather->operand(0)->shape();
   const Shape& indices_shape = gather->operand(1)->shape();
 

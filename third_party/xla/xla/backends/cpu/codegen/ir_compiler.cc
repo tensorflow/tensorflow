@@ -310,6 +310,9 @@ llvm::Expected<std::unique_ptr<llvm::MemoryBuffer>> IrCompiler::operator()(
             target_machine.status().message()));
   }
 
+  module.setDataLayout((*target_machine)->createDataLayout());
+  module.setTargetTriple((*target_machine)->getTargetTriple());
+
   {  // Synchronize access to user-defined hooks.
     absl::MutexLock lock(mutex_);
     if (hooks_.pre_optimization) {
@@ -493,6 +496,11 @@ std::unique_ptr<llvm::MemoryBuffer> IrCompiler::EmitMachineCode(
 
   llvm::NamedMDNode* memory_region_name_md =
       module.getNamedMetadata(std::string(kMemoryRegionNameMetadataName));
+  if (memory_region_name_md == nullptr) {
+    SetModuleMemoryRegionName(module, "default");
+    memory_region_name_md =
+        module.getNamedMetadata(std::string(kMemoryRegionNameMetadataName));
+  }
   CHECK(memory_region_name_md != nullptr)
       << "Memory region name metadata not found in LLVM module.";
   CHECK_GT(memory_region_name_md->getNumOperands(), 0);

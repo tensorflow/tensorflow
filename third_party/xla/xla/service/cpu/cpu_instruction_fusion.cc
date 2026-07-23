@@ -39,12 +39,22 @@ namespace cpu {
 
 namespace {
 
+bool IsNonComplexNonBatchedMatrixVectorDot(const HloInstruction* hlo) {
+  const Shape& hlo_shape = hlo->shape();
+  return !ShapeUtil::ElementIsComplex(hlo_shape) &&
+         hlo->opcode() == HloOpcode::kDot &&
+         hlo_shape.dimensions().size() <= 1 &&
+         hlo->dot_dimension_numbers().lhs_batch_dimensions_size() == 0;
+}
+
 bool CanBeLoopFused(const HloInstruction& hlo) {
   // These are the only ones we fuse since we rely on effective elemental IR
   // generation.
   return hlo.IsElementwise() || hlo.opcode() == HloOpcode::kBitcast ||
          hlo.opcode() == HloOpcode::kBroadcast ||
          hlo.opcode() == HloOpcode::kConcatenate ||
+         (hlo.opcode() == HloOpcode::kDot &&
+          IsNonComplexNonBatchedMatrixVectorDot(&hlo)) ||
          hlo.opcode() == HloOpcode::kDynamicSlice ||
          hlo.opcode() == HloOpcode::kDynamicUpdateSlice ||
          hlo.opcode() == HloOpcode::kGather ||
@@ -54,14 +64,6 @@ bool CanBeLoopFused(const HloInstruction& hlo) {
          hlo.opcode() == HloOpcode::kReverse ||
          hlo.opcode() == HloOpcode::kSlice ||
          hlo.opcode() == HloOpcode::kTranspose;
-}
-
-bool IsNonComplexNonBatchedMatrixVectorDot(const HloInstruction* hlo) {
-  const Shape& hlo_shape = hlo->shape();
-  return !ShapeUtil::ElementIsComplex(hlo_shape) &&
-         hlo->opcode() == HloOpcode::kDot &&
-         hlo_shape.dimensions().size() <= 1 &&
-         hlo->dot_dimension_numbers().lhs_batch_dimensions_size() == 0;
 }
 
 bool HasExactlyOneUse(const HloInstruction& hlo_instr) {
@@ -444,34 +446,39 @@ FusionDecision CpuInstructionFusion::ShouldFuse(HloInstruction* consumer,
   }
 
   if (consumer->opcode() == HloOpcode::kDot) {
-    // In the general case we call out to optimized "black box" GEMM routines
-    // for Dot, which precludes fusion.  However, in very specific cases, we try
-    // to fuse Dot operations by generating an elemental dot implementation.
-    //
-    // We need to be careful and conservative here since any benefit we get from
-    // fusion can easily be overshadowed by the overhead of a naive GEMM
-    // algorithm in the IR.
-    const Shape& output_shape = consumer->shape();
-    if (output_shape.dimensions().size() <= 1) {
-      // We fuse in cases where we have a matrix*vector or vector*matrix dot and
-      // fusion can get rid of the larger tensor.  We assume that a naive
-      // traversal of a small enough (to fit in L1) column or row tensor is
-      // "good enough" from the perspective of cache management; and calling out
-      // to an optimized GEMM kernel is not a huge win.
-      if (consumer->operand(0)->shape().dimensions().size() == 1 &&
-          operand_index == 1 &&
-          ShapeUtil::ByteSizeOfElements(consumer->operand(0)->shape()) <
-              kFusionThresholdBytes) {
-        VLOG(2) << "Fusing small matrix-vector product.";
-        return FusionDecision::Allow();
-      } else if (consumer->operand(1)->shape().dimensions().size() == 1 &&
-                 operand_index == 0 &&
-                 ShapeUtil::ByteSizeOfElements(consumer->operand(1)->shape()) <
-                     kFusionThresholdBytes) {
-        VLOG(2) << "Fusing small matrix-vector product.";
+    bool is_small_dot =
+        ShapeUtil::ByteSizeOfElements(consumer->operand(0)->shape()) <
+            kFusionThresholdBytes ||
+        ShapeUtil::ByteSizeOfElements(consumer->operand(1)->shape()) <
+            kFusionThresholdBytes;
+    if (is_small_dot) {
+      if (consumer->GetModule() != nullptr &&
+          consumer->GetModule()
+              ->config()
+              .debug_options()
+              .xla_cpu_use_fusion_emitters()) {
+        VLOG(2) << "Fusing small dot operation with fusion emitters enabled.";
         return FusionDecision::Allow();
       }
+      const Shape& output_shape = consumer->shape();
+      if (output_shape.dimensions().size() <= 1) {
+        if (consumer->operand(0)->shape().dimensions().size() == 1 &&
+            operand_index == 1 &&
+            ShapeUtil::ByteSizeOfElements(consumer->operand(0)->shape()) <
+                kFusionThresholdBytes) {
+          VLOG(2) << "Fusing small matrix-vector product.";
+          return FusionDecision::Allow();
+        } else if (consumer->operand(1)->shape().dimensions().size() == 1 &&
+                   operand_index == 0 &&
+                   ShapeUtil::ByteSizeOfElements(
+                       consumer->operand(1)->shape()) < kFusionThresholdBytes) {
+          VLOG(2) << "Fusing small matrix-vector product.";
+          return FusionDecision::Allow();
+        }
+      }
     }
+    return FusionDecision::Forbid(
+        "Dot operation is too large or not fusible into consumer.");
   }
 
   if (consumer->IsLoopFusion()) {

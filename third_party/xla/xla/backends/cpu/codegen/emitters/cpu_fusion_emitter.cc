@@ -197,9 +197,11 @@ absl::StatusOr<mlir::func::FuncOp> EmitEntryFunctionApi(
   auto get_arg_attrs = [&](int index, BufferAllocation::Slice& slice,
                            bool is_result) -> absl::StatusOr<mlir::Attribute> {
     SmallVector<mlir::NamedAttribute> attrs;
-    attrs.push_back(builder.getNamedAttr(
-        "xla.slice_index",
-        builder.getIndexAttr(index + (is_result ? arguments.size() : 0))));
+    int64_t slice_idx = slice.allocation() != nullptr
+                            ? slice.index()
+                            : (index + (is_result ? arguments.size() : 0));
+    attrs.push_back(builder.getNamedAttr("xla.slice_index",
+                                         builder.getIndexAttr(slice_idx)));
     attrs.push_back(builder.getNamedAttr(
         mlir::LLVM::LLVMDialect::getDereferenceableAttrName(),
         builder.getIndexAttr(slice.size())));
@@ -216,7 +218,7 @@ absl::StatusOr<mlir::func::FuncOp> EmitEntryFunctionApi(
   for (const auto& [index, arg] : llvm::enumerate(arguments)) {
     param_types.push_back(emitters::TensorShapeToMlirType(arg.shape, builder));
     ASSIGN_OR_RETURN(arg_attrs.emplace_back(),
-                     get_arg_attrs(index - 1, arg.slice, /*is_result=*/false));
+                     get_arg_attrs(index, arg.slice, /*is_result=*/false));
   }
 
   auto result_types = emitters::ShapeToMlirTypes(fusion.shape(), builder);

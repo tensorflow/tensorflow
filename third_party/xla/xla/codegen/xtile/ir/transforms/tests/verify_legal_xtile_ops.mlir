@@ -30,3 +30,49 @@ func.func @iota_2d_fails() -> tensor<2x2xi32> {
   %0 = stablehlo.iota dim = 0 :  tensor<2x2xi32>
   return %0 : tensor<2x2xi32>
 }
+
+// -----
+
+func.func @extract_rank_mismatch_fails(%arg0: tensor<2x2xf32>, %i: index) -> f32 {
+  // expected-error @+1 {{incorrect number of indices}}
+  %0 = tensor.extract %arg0[%i] : tensor<2x2xf32>
+  return %0 : f32
+}
+
+// -----
+
+func.func @extract_0d_passes(%arg0: tensor<f32>) -> f32 {
+  %0 = tensor.extract %arg0[] : tensor<f32>
+  return %0 : f32
+}
+
+// -----
+
+func.func @extract_2d_passes(%arg0: tensor<2x2xf32>, %i: index, %j: index) -> f32 {
+  %0 = tensor.extract %arg0[%i, %j] : tensor<2x2xf32>
+  return %0 : f32
+}
+
+// -----
+
+func.func @extract_1d_passes(%arg0: tensor<4xf32>, %i: index) -> f32 {
+  %0 = tensor.extract %arg0[%i] : tensor<4xf32>
+  return %0 : f32
+}
+
+// -----
+
+func.func @extract_0d_index_mismatch_fails(%arg0: tensor<f32>, %i: index) -> f32 {
+  // expected-error @+1 {{incorrect number of indices}}
+  %0 = tensor.extract %arg0[%i] : tensor<f32>
+  return %0 : f32
+}
+
+
+
+
+
+
+
+
+

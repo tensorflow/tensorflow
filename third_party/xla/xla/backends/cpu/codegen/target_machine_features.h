@@ -69,6 +69,17 @@ class TargetMachineFeatures {
   // Returns the minimum alignment for a buffer of size size_bytes.
   virtual int64_t minimum_alignment_for_allocation(int64_t size_bytes) const;
 
+  static constexpr int64_t kDefaultCacheLineBytes = 64;
+  static constexpr int64_t kDefaultL1CacheSizeBytes = 32768;    // 32KB
+  static constexpr int64_t kDefaultL2CacheSizeBytes = 524288;   // 512KB
+  static constexpr int64_t kDefaultMaxStackAllocBytes = 16384;  // 16KB
+
+  // Query hardware cache parameters.
+  virtual int64_t cache_line_bytes(const llvm::Function* fn = nullptr) const;
+  virtual int64_t l1_cache_size_bytes(const llvm::Function* fn = nullptr) const;
+  virtual int64_t l2_cache_size_bytes(const llvm::Function* fn = nullptr) const;
+  virtual int64_t max_stack_alloc_bytes() const;
+
   virtual std::string get_target_feature_string() const;
 
   virtual bool has_avx512bf16() const { return has_avx512bf16_; }
