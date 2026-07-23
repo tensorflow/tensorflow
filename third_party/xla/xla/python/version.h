@@ -18,6 +18,7 @@ limitations under the License.
 
 // An increasing version number to protect jax code against breaking changes.
 // In JAX, reference this via jax._src.lib.ifrt_version.
-#define JAX_IFRT_VERSION_NUMBER 62  // DeserializeLoadedExecutable API change
+#define JAX_IFRT_VERSION_NUMBER \
+  63  // CustomCallProgram split_device_index_ranges
 
 #endif  // XLA_PYTHON_VERSION_H_
