@@ -24,6 +24,8 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/core/framework/variant_tensor_data.h"
+#include "tensorflow/core/kernels/sparse/sparse_matrix.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
 #include "tsl/platform/errors.h"
@@ -165,6 +167,33 @@ TEST(SparseTensorToCSRSparseMatrix, InvalidRankIllegalArgument) {
       absl_testing::StatusIs(tsl::error::Code::INVALID_ARGUMENT,
                              ::testing::ContainsRegex(
                                  "Indices must have either 2 or 3 columns.")));
+}
+
+TEST(CSRSparseMatrix, DecodeRejectsOutOfBoundsColIndices) {
+  // A valid 1 x 3 CSR matrix with a single non-zero at column 1.
+  const auto dense_shape = test::AsTensor<int64_t>({1, 3}, TensorShape({2}));
+  const auto batch_pointers = test::AsTensor<int32_t>({0, 1}, TensorShape({2}));
+  const auto row_pointers = test::AsTensor<int32_t>({0, 1}, TensorShape({2}));
+  const auto col_indices = test::AsTensor<int32_t>({1}, TensorShape({1}));
+  const auto values = test::AsTensor<float>({1.0f}, TensorShape({1}));
+
+  CSRSparseMatrix matrix;
+  TF_ASSERT_OK(CSRSparseMatrix::CreateCSRSparseMatrix(
+      DT_FLOAT, dense_shape, batch_pointers, row_pointers, col_indices, values,
+      &matrix));
+
+  VariantTensorData data;
+  matrix.Encode(&data);
+
+  // The untouched encoding round-trips.
+  CSRSparseMatrix roundtrip;
+  EXPECT_TRUE(roundtrip.Decode(data));
+
+  // Column index 3 is outside the valid range [0, num_cols = 3); the shapes are
+  // unchanged so ValidateTypesAndShapes still passes, but Decode must reject it.
+  data.tensors_[3] = test::AsTensor<int32_t>({3}, TensorShape({1}));
+  CSRSparseMatrix tampered;
+  EXPECT_FALSE(tampered.Decode(data));
 }
 
 }  // namespace

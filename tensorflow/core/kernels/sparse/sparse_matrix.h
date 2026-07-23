@@ -352,6 +352,18 @@ class CSRSparseMatrix {
                                             row_pointers, col_indices, values);
     if (s.ok() != validated) return false;
 
+    // ValidateTypesAndShapes only checks the dtypes and sizes of the index
+    // arrays, not their contents. A matrix decoded from an untrusted variant
+    // can therefore carry out-of-range col_indices or non-monotonic
+    // batch/row pointers while still reporting validated == true, which the
+    // consuming ops use directly as read/write offsets. The tensors here are
+    // always host-resident, so validate the CSR structure before accepting it.
+    if (validated) {
+      absl::Status values_status = ValidateComponentValues(
+          dense_shape, batch_pointers, row_pointers, col_indices);
+      if (!values_status.ok()) return false;
+    }
+
     // Save to this object.
     metadata_ = metadata;
     dense_shape_ = std::move(dense_shape);
@@ -423,6 +435,16 @@ class CSRSparseMatrix {
     row_pointers_vec_.reset();
     col_indices_vec_.reset();
   }
+
+  // Validates the contents (not just the shapes) of the host-resident CSR
+  // index arrays: batch_pointers and per-batch row_pointers must start at 0,
+  // be non-decreasing, and end at the batch's non-zero count, and every
+  // col_indices entry must fall in [0, num_cols). Used by Decode() to reject
+  // structurally invalid matrices coming from untrusted variants.
+  static absl::Status ValidateComponentValues(const Tensor& dense_shape,
+                                              const Tensor& batch_pointers,
+                                              const Tensor& row_pointers,
+                                              const Tensor& col_indices);
 
   static absl::Status ValidateTypesAndShapes(DataType dtype,
                                              const Tensor& dense_shape,
