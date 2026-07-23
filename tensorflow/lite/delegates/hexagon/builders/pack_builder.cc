@@ -24,8 +24,8 @@ namespace delegates {
 namespace hexagon {
 namespace {
 
-int GetAxis(int axis, const TfLiteIntArray* inputs, TfLiteContext* context) {
-  auto& input_tensor = context->tensors[inputs->data[0]];
+int GetAxis(int axis, int input_tensor_id, TfLiteContext* context) {
+  auto& input_tensor = context->tensors[input_tensor_id];
   // Handle -ve axis.
   if (axis < 0) {
     axis += input_tensor.dims->size + 1;
@@ -39,8 +39,21 @@ int GetAxis(int axis, const TfLiteIntArray* inputs, TfLiteContext* context) {
 TfLiteStatus PackOpBuilder::PopulateSubGraph(const TfLiteIntArray* inputs,
                                              const TfLiteIntArray* outputs,
                                              TfLiteContext* context) {
+  TF_LITE_ENSURE(context, inputs != nullptr);
+  TF_LITE_ENSURE(context, outputs != nullptr);
+  TF_LITE_ENSURE(context, inputs->size >= 1);
+  TF_LITE_ENSURE(context, outputs->size >= 1);
+  const int input_tensor_id = inputs->data[0];
+  TF_LITE_ENSURE(context, input_tensor_id >= 0 &&
+                              input_tensor_id < context->tensors_size);
+  TF_LITE_ENSURE(context, context->tensors[input_tensor_id].dims != nullptr);
+  const int output_tensor_id = outputs->data[0];
+  TF_LITE_ENSURE(context, output_tensor_id >= 0 &&
+                              output_tensor_id < context->tensors_size);
+  TF_LITE_ENSURE(context, context->tensors[output_tensor_id].dims != nullptr);
+
   auto* params = reinterpret_cast<TfLitePackParams*>(builtin_data_);
-  int axis = GetAxis(params->axis, inputs, context);
+  int axis = GetAxis(params->axis, input_tensor_id, context);
   // Add axis
   auto* axis_node = graph_builder_->AddConstNodeWithData(
       kScalarShape, reinterpret_cast<char*>(&axis), sizeof(axis));
@@ -79,7 +92,7 @@ TfLiteStatus PackOpBuilder::PopulateSubGraph(const TfLiteIntArray* inputs,
   int output_batch_size, output_height_size, output_width_size,
       output_depth_size;
   GetDims(&output_batch_size, &output_height_size, &output_width_size,
-          &output_depth_size, context->tensors[outputs->data[0]].dims);
+          &output_depth_size, context->tensors[output_tensor_id].dims);
 
   TensorID pack_out = AddOutput(sizeof(uint8_t), 4,
                                 {output_batch_size, output_height_size,
@@ -88,7 +101,7 @@ TfLiteStatus PackOpBuilder::PopulateSubGraph(const TfLiteIntArray* inputs,
   // Output min/max for requantization.
   float output_min, output_max;
   TF_LITE_ENSURE_STATUS(ComputeMinAndMaxQuantValues(
-      context->tensors[outputs->data[0]], &output_min, &output_max));
+      context->tensors[output_tensor_id], &output_min, &output_max));
   auto* output_min_const = graph_builder_->AddConstNodeWithData(
       kScalarShape, reinterpret_cast<char*>(&output_min), sizeof(output_min));
   auto* output_max_const = graph_builder_->AddConstNodeWithData(
@@ -116,6 +129,8 @@ TfLiteStatus PackOpBuilder::PopulateSubGraph(const TfLiteIntArray* inputs,
 
 TfLiteStatus PackOpBuilder::RegisterOutputs(const TfLiteIntArray* outputs,
                                             TfLiteContext* context) {
+  TF_LITE_ENSURE(context, outputs != nullptr);
+  TF_LITE_ENSURE(context, outputs->size >= 1);
   // Should be only 1 output.
   graph_builder_->AddTensorWithID(outputs->data[0], node_output_.first,
                                   node_output_.second);
