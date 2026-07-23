@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include <cstdint>
 
+#include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "tensorflow/compiler/tf2xla/lib/broadcast.h"
 #include "tensorflow/compiler/tf2xla/lib/util.h"
@@ -34,6 +35,37 @@ limitations under the License.
 
 namespace tensorflow {
 namespace {
+
+xla::XlaOp ConvertFloatingToUnsigned(xla::XlaOp input,
+                                     xla::PrimitiveType src_type,
+                                     xla::PrimitiveType dst_type) {
+  if (!xla::primitive_util::IsFloatingPointType(src_type) ||
+      !xla::primitive_util::IsUnsignedIntegralType(dst_type)) {
+    return xla::ConvertElementType(input, dst_type);
+  }
+
+  // XLA convert saturates negative floats to unsigned integers at zero, while
+  // TensorFlow Cast's CPU path wraps finite negative values in the destination
+  // unsigned type. NaN and Inf casts to integral types are documented as
+  // undefined, so keep them on the direct HLO convert path.
+  int dst_width = xla::primitive_util::BitWidth(dst_type);
+  int wider_width = dst_width == 64 ? 64 : dst_width * 2;
+  xla::PrimitiveType signed_type =
+      xla::primitive_util::SignedIntegralTypeForBitWidth(wider_width);
+  xla::PrimitiveType unsigned_type =
+      xla::primitive_util::UnsignedIntegralTypeForBitWidth(wider_width);
+  CHECK_NE(signed_type, xla::PRIMITIVE_TYPE_INVALID);
+  CHECK_NE(unsigned_type, xla::PRIMITIVE_TYPE_INVALID);
+
+  xla::XlaOp direct = xla::ConvertElementType(input, dst_type);
+  xla::XlaOp wrapped_negative = xla::ConvertElementType(
+      xla::ConvertElementType(xla::ConvertElementType(input, signed_type),
+                              unsigned_type),
+      dst_type);
+  xla::XlaOp finite_negative =
+      xla::And(xla::Lt(input, xla::ZerosLike(input)), xla::IsFinite(input));
+  return xla::Select(finite_negative, wrapped_negative, direct);
+}
 
 class CastOp : public XlaOpKernel {
  public:
@@ -58,7 +90,9 @@ class CastOp : public XlaOpKernel {
                !xla::primitive_util::IsComplexType(dst_type_)) {
       // As in cast_op.h, we replicate the numpy behavior of truncating the
       // imaginary part.
-      output = xla::ConvertElementType(xla::Real(input), dst_type_);
+      output = ConvertFloatingToUnsigned(
+          xla::Real(input), xla::primitive_util::ComplexComponentType(src_type_),
+          dst_type_);
     } else {
       if (use_truncation_) {
         OP_REQUIRES(ctx,
@@ -90,7 +124,7 @@ class CastOp : public XlaOpKernel {
                 ::tensorflow::IntegerLiteral(builder, same_width_int, mask)),
             src_type_);
       }
-      output = xla::ConvertElementType(input, dst_type_);
+      output = ConvertFloatingToUnsigned(input, src_type_, dst_type_);
     }
 
     ctx->SetOutput(0, output);

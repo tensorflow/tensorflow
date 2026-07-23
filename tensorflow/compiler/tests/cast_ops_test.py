@@ -16,14 +16,13 @@
 
 from tensorflow.compiler.tests import xla_test
 from tensorflow.python.eager import def_function
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_spec
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
-from tensorflow.python.ops import control_flow_ops
-from tensorflow.python.ops import image_ops
-from tensorflow.python.ops import io_ops
 from tensorflow.python.platform import test
 
 
@@ -51,6 +50,32 @@ class CastOpsTest(xla_test.XLATestCase):
 
   def testBitcastToSmaller(self):
     pass
+
+  def testBitcastAfterNegativeFloatToUnsignedIntCast(self):
+    x = constant_op.constant([-2.0, -1.0, 0.0, 1.0, 2.0], dtypes.float32)
+    unsigned_types = [
+        (dtypes.uint8, 8),
+        (dtypes.uint16, 16),
+        (dtypes.uint32, 32),
+        (dtypes.uint64, 64),
+    ]
+    for unsigned_dtype, bit_width in unsigned_types:
+      with self.subTest(unsigned_dtype=unsigned_dtype):
+
+        def f(x):
+          return array_ops.bitcast(
+              math_ops.cast(x, unsigned_dtype), dtypes.uint8)
+
+        compiled_f = def_function.function(
+            f,
+            jit_compile=True,
+            input_signature=[tensor_spec.TensorSpec([None], dtypes.float32)])
+
+        expected_cast = constant_op.constant(
+            [2**bit_width - 2, 2**bit_width - 1, 0, 1, 2], unsigned_dtype)
+        expected = array_ops.bitcast(expected_cast, dtypes.uint8)
+        with ops.device(self.device):
+          self.assertAllEqual(expected, compiled_f(x))
 
 
 if __name__ == '__main__':
