@@ -17,6 +17,7 @@ limitations under the License.
 #include <optional>
 
 #include "absl/base/attributes.h"
+#include "absl/base/const_init.h"
 #include "absl/strings/numbers.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
