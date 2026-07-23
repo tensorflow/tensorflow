@@ -17,7 +17,11 @@
 import numpy as np
 
 from tensorflow.core.framework import summary_pb2
+from tensorflow.python.eager import context
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
+from tensorflow.python.ops import gen_summary_ops
+from tensorflow.python.ops import summary_ops_v2
 from tensorflow.python.platform import test
 from tensorflow.python.summary import summary
 
@@ -61,6 +65,35 @@ class SummaryV1AudioOpTest(test.TestCase):
 
         # Check the rest of the proto
         self._CheckProto(audio_summ, sample_rate, channels, num_frames)
+
+  def _WriteAudioSummary(self, tensor):
+    """Helper to call write_audio_summary with standard test parameters."""
+    logdir = self.get_temp_dir()
+    with context.eager_mode():
+      writer = summary_ops_v2.create_file_writer_v2(logdir)
+      with writer.as_default():
+        gen_summary_ops.write_audio_summary(
+            writer=writer._resource,
+            step=0,
+            tag="audio_test",
+            tensor=tensor,
+            sample_rate=16000.0,
+            max_outputs=3)
+
+  def testWriteAudioSummaryRejectsScalarTensor(self):
+    scalar_tensor = np.float32(1.0)
+    with self.assertRaisesRegex(errors.InvalidArgumentError, "at least 2"):
+      self._WriteAudioSummary(scalar_tensor)
+
+  def testWriteAudioSummaryRejects1DTensor(self):
+    one_d_tensor = np.array([1.0, 2.0], dtype=np.float32)
+    with self.assertRaisesRegex(errors.InvalidArgumentError, "at least 2"):
+      self._WriteAudioSummary(one_d_tensor)
+
+  def testWriteAudioSummaryAccepts2DTensor(self):
+    two_d_tensor = np.zeros((1, 100), dtype=np.float32)
+    # no exception should be raised
+    self._WriteAudioSummary(two_d_tensor)
 
 
 if __name__ == "__main__":
