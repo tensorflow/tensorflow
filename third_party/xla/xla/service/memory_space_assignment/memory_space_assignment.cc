@@ -979,6 +979,9 @@ class AsyncCopyStepForCopyAllocation : public AsyncCopyStep {
   }
 
   std::optional<StartPhase> start_phase() const override {
+    if (copy_allocation_->copy_start() == nullptr) {
+      return std::nullopt;
+    }
     StartPhase phase{copy_allocation_->copy_start_schedule_after(),
                      copy_allocation_->copy_start()};
 
