@@ -95,6 +95,30 @@ static absl::Status ActualStructSizeIsGreaterOrEqual(
   return absl::OkStatus();
 }
 
+namespace {
+// This is a struct declaration for `XLA_FFI_Handler_Register_Args` in XLA:FFI
+// before the addition of `record` handler. We use this struct to detect older
+// XLA:FFI clients for backward compatibility reasons.
+// This can be removed in August 2027.
+struct XLA_FFI_Handler_Bundle_V0 {
+  XLA_FFI_Handler* instantiate;
+  XLA_FFI_Handler* prepare;
+  XLA_FFI_Handler* initialize;
+  XLA_FFI_Handler* execute;
+};
+
+struct XLA_FFI_Handler_Register_Args_V0 {
+  size_t struct_size;
+  XLA_FFI_Extension_Base* extension_start;
+  XLA_FFI_ByteSpan name;
+  XLA_FFI_ByteSpan platform;
+  XLA_FFI_Handler_Bundle_V0 bundle;
+  XLA_FFI_Handler_Traits traits;
+};
+
+XLA_FFI_DEFINE_STRUCT_TRAITS(XLA_FFI_Handler_Register_Args_V0, traits);
+}  // namespace
+
 static absl::StatusCode ToStatusCode(XLA_FFI_Error_Code errc) {
   switch (errc) {
     case XLA_FFI_Error_Code_OK:
@@ -211,13 +235,37 @@ static XLA_FFI_Error* XLA_FFI_Future_SetError(
 static XLA_FFI_Error* XLA_FFI_Handler_Register(
     XLA_FFI_Handler_Register_Args* args) {
   XLA_FFI_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
-      "XLA_FFI_Handler_Register", XLA_FFI_Handler_Register_Args_STRUCT_SIZE,
+      "XLA_FFI_Handler_Register", XLA_FFI_Handler_Register_Args_V0_STRUCT_SIZE,
       args->struct_size));
+
+  XLA_FFI_Handler_Bundle bundle = {nullptr, nullptr, nullptr, nullptr, nullptr};
+  XLA_FFI_Handler_Traits traits = 0;
+
+  if (args->struct_size == XLA_FFI_Handler_Register_Args_V0_STRUCT_SIZE) {
+    XLA_FFI_Handler_Register_Args_V0 v0{};
+    std::memcpy(&v0, args, XLA_FFI_Handler_Register_Args_V0_STRUCT_SIZE);
+    bundle.instantiate = v0.bundle.instantiate;
+    bundle.prepare = v0.bundle.prepare;
+    bundle.initialize = v0.bundle.initialize;
+    bundle.execute = v0.bundle.execute;
+    traits = v0.traits;
+  } else {
+    XLA_FFI_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
+        "XLA_FFI_Handler_Register", XLA_FFI_Handler_Register_Args_STRUCT_SIZE,
+        args->struct_size));
+
+    bundle.instantiate = args->bundle.instantiate;
+    bundle.prepare = args->bundle.prepare;
+    bundle.initialize = args->bundle.initialize;
+    bundle.execute = args->bundle.execute;
+    bundle.record = args->bundle.record;
+    traits = args->traits;
+  }
 
   if (auto status = RegisterHandler(
           GetXlaFfiApi(), absl::string_view(args->name.ptr, args->name.len),
-          absl::string_view(args->platform.ptr, args->platform.len),
-          args->bundle, args->traits);
+          absl::string_view(args->platform.ptr, args->platform.len), bundle,
+          traits);
       !status.ok()) {
     return new XLA_FFI_Error{std::move(status)};
   }
@@ -324,6 +372,8 @@ static ExecutionState* GetExecutionState(XLA_FFI_ExecutionContext* ctx,
       return ctx->state_context.prepare;
     case XLA_FFI_ExecutionStage_INITIALIZE:
       return ctx->state_context.initialize;
+    case XLA_FFI_ExecutionStage_RECORD:
+      return ctx->state_context.record;
     case XLA_FFI_ExecutionStage_EXECUTE:
       DCHECK(false) << "Execution stage doesn't have a state";
       return nullptr;

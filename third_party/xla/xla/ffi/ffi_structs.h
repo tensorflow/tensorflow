@@ -94,6 +94,7 @@ struct XLA_FFI_ExecutionContext {
     xla::ffi::ExecutionState* instantiate = nullptr;
     xla::ffi::ExecutionState* prepare = nullptr;
     xla::ffi::ExecutionState* initialize = nullptr;
+    xla::ffi::ExecutionState* record = nullptr;
   };
 
   xla::RunId run_id = xla::RunId{0};

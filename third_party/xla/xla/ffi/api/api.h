@@ -189,6 +189,8 @@ inline std::ostream& operator<<(std::ostream& os,
       return os << "initialize";
     case XLA_FFI_ExecutionStage_EXECUTE:
       return os << "execute";
+    case XLA_FFI_ExecutionStage_RECORD:
+      return os << "record";
   }
 }
 
@@ -242,6 +244,7 @@ enum class ExecutionStage : uint8_t {
   kPrepare = XLA_FFI_ExecutionStage_PREPARE,
   kInitialize = XLA_FFI_ExecutionStage_INITIALIZE,
   kExecute = XLA_FFI_ExecutionStage_EXECUTE,
+  kRecord = XLA_FFI_ExecutionStage_RECORD,
 };
 
 enum class Traits : uint32_t {
@@ -295,6 +298,9 @@ class Ffi {
 
   // Creates an empty binding for the execute stage.
   static Binding<ExecutionStage::kExecute> BindExecute();
+
+  // Creates an empty binding for the record stage.
+  static Binding<ExecutionStage::kRecord> BindRecord();
 
   // Automatic FFI binding that does binding specification inference from the
   // `fn` type signature and binds `fn` to it. This enables a more concise FFI
@@ -773,6 +779,10 @@ inline Binding<ExecutionStage::kInitialize> Ffi::BindInitialize() {
 
 inline Binding<ExecutionStage::kExecute> Ffi::BindExecute() {
   return Bind<ExecutionStage::kExecute>();
+}
+
+inline Binding<ExecutionStage::kRecord> Ffi::BindRecord() {
+  return Bind<ExecutionStage::kRecord>();
 }
 
 //===----------------------------------------------------------------------===//
@@ -1561,6 +1571,9 @@ class ContextBase {
 // FFI (`absl::StatusOr` vs `ffi::ErrorOr`).
 class RemainingArgs;
 class RemainingRets;
+class RecordContext;
+class BoundedCommandVector;
+enum class RecordAction;
 
 namespace internal {
 // A helper struct to extract the type of the handler argument.
@@ -1610,6 +1623,21 @@ struct FnArgType<internal::AttrsTag<T>> {
 template <typename T>
 struct FnArgType<internal::CtxTag<T>> {
   using Type = typename CtxDecoding<T>::Type;
+};
+
+template <>
+struct FnArgType<internal::CtxTag<RecordContext>> {
+  using Type = RecordContext;
+};
+
+template <>
+struct FnArgType<internal::CtxTag<RecordAction>> {
+  using Type = RecordAction;
+};
+
+template <>
+struct FnArgType<internal::CtxTag<BoundedCommandVector>> {
+  using Type = BoundedCommandVector;
 };
 
 // A template to detect result encodings that are state constructors. We use
@@ -1692,15 +1720,6 @@ class Handler : public Ffi {
       return PopulateMetadata(call_frame->api,
                               reinterpret_cast<XLA_FFI_Metadata_Extension*>(
                                   call_frame->extension_start));
-    }
-
-    // Check that handler is called during correct execution stage.
-    if (XLA_FFI_PREDICT_FALSE(call_frame->stage !=
-                              static_cast<XLA_FFI_ExecutionStage>(stage))) {
-      return InvalidArgument(call_frame->api,
-                             StrCat("Wrong execution stage: expected `",
-                                    static_cast<XLA_FFI_ExecutionStage>(stage),
-                                    "` but got `", call_frame->stage, "`"));
     }
 
     // Check that the number of passed arguments matches the signature. Each

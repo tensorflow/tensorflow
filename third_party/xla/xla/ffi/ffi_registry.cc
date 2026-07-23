@@ -33,7 +33,6 @@ limitations under the License.
 #include "xla/ffi/api/c_api.h"
 #include "xla/ffi/invoke.h"
 #include "xla/service/platform_util.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 
 namespace xla::ffi {
