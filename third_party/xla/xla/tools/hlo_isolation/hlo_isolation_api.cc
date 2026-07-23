@@ -586,14 +586,21 @@ absl::StatusOr<HloIsolationTestResult> RunIsolationTestOnModule(
     return options.run_module_fn(std::move(m), r, i, run_opts);
   };
 
+  auto log_failure = [](absl::string_view prefix, const absl::Status& status,
+                        absl::string_view module_name) {
+    std::string message =
+        absl::StrCat(prefix, status.ToString(), " for module: ", module_name);
+    ADD_FAILURE() << message;
+    LOG(ERROR) << message;
+  };
+
   // Run test runner.
   absl::StatusOr<Literal> test_output =
       run_module(module.Clone(""), test_runner, input_data);
   if (!test_output.ok()) {
     result.set_state(State::FAILURE);
     result.set_reason("TEST_RUNNER_FAILURE");
-    LOG(ERROR) << "Test runner failed: " << test_output.status()
-               << " for module: " << module.name();
+    log_failure("Test runner failed: ", test_output.status(), module.name());
     return result;
   }
 
@@ -605,8 +612,8 @@ absl::StatusOr<HloIsolationTestResult> RunIsolationTestOnModule(
   if (!defused_output.ok()) {
     result.set_state(State::FAILURE);
     result.set_reason("DEFUSED_TEST_RUNNER_FAILURE");
-    LOG(ERROR) << "Test runner failed for defused module: "
-               << defused_output.status() << " for module: " << module.name();
+    log_failure("Test runner failed for defused module: ",
+                defused_output.status(), module.name());
     return result;
   }
 
@@ -648,8 +655,8 @@ absl::StatusOr<HloIsolationTestResult> RunIsolationTestOnModule(
     if (!reference_output.ok()) {
       result.set_state(State::FAILURE);
       result.set_reason("REFERENCE_RUNNER_FAILURE");
-      LOG(ERROR) << "Reference runner failed: " << reference_output.status()
-                 << " for module: " << despecialized_module_name;
+      log_failure("Reference runner failed: ", reference_output.status(),
+                  despecialized_module_name);
       return result;
     }
 
@@ -693,9 +700,8 @@ absl::StatusOr<HloIsolationTestResult> RunIsolationTestOnModule(
     if (!debug_reference_output.ok()) {
       result.set_state(State::FAILURE);
       result.set_reason("REFERENCE_RUNNER_FAILURE");
-      LOG(ERROR) << "Reference runner failed: "
-                 << debug_reference_output.status()
-                 << " for module: " << debug_despecialized_module_name;
+      log_failure("Reference runner failed: ", debug_reference_output.status(),
+                  debug_despecialized_module_name);
       return result;
     }
 
@@ -717,9 +723,8 @@ absl::StatusOr<HloIsolationTestResult> RunIsolationTestOnModule(
     if (!retry_test_output.ok()) {
       result.set_state(State::FAILURE);
       result.set_reason("TEST_RUNNER_FAILURE_ON_RETRY");
-      LOG(ERROR) << "Test runner failed on retry: "
-                 << retry_test_output.status()
-                 << " for module: " << module.name();
+      log_failure("Test runner failed on retry: ", retry_test_output.status(),
+                  module.name());
       return result;
     }
   }

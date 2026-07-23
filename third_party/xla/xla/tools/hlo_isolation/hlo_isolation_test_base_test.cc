@@ -825,7 +825,10 @@ TEST_F(HloIsolationTest, TestInitIsolatorOptionsRunHloPasses) {
   options.run_hlo_passes = true;
   options.make_fake_arguments_fn =
       [](const HloModule&) -> absl::StatusOr<std::vector<Literal>> {
-    return std::vector<Literal>{};
+    std::vector<Literal> args;
+    args.push_back(LiteralUtil::CreateR0<float>(1.0f));
+    args.push_back(LiteralUtil::CreateR0<float>(2.0f));
+    return args;
   };
 
   const char* hlo_text = R"(
