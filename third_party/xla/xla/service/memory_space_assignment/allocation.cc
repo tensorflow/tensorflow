@@ -465,7 +465,7 @@ CopyAllocation::CopyAllocation(
     int64_t copy_done_schedule_before_time, int64_t end_time,
     std::optional<int64_t> cross_program_prefetch_index,
     HloInstruction* sync_mem_op, HloInstruction* async_mem_op_start,
-    HloInstruction* async_mem_op_done)
+    HloInstruction* async_mem_op_done, int64_t source_operand_index)
     : Allocation(
           /*defining_position=*/{nullptr, {}}, memory_space, chunk,
           // Allocation uses an inclusive start time
@@ -476,7 +476,8 @@ CopyAllocation::CopyAllocation(
       copy_done_schedule_before_(copy_done_schedule_before_time),
       copy_start_(async_mem_op_start),
       copy_done_(async_mem_op_done),
-      sync_mem_op_(sync_mem_op) {}
+      sync_mem_op_(sync_mem_op),
+      source_operand_index_(source_operand_index) {}
 
 int64_t CopyAllocation::earliest_available_time() const {
   return copy_done_schedule_before_;
@@ -500,9 +501,11 @@ absl::Status CopyAllocation::Process(const BitcastSplitFn& bitcast_split_fn,
   Shape shape = defining_position().shape();
   HloInstruction* producing_instruction = AddGetTupleElements();
   HloComputation* computation = producing_instruction->parent();
+  VLOG(3) << "Processing copy allocation: " << ToString();
   if (sync_mem_op_ != nullptr && sync_mem_op_->opcode() != HloOpcode::kCopy) {
     if (sync_mem_op_->opcode() == HloOpcode::kSlice ||
-        sync_mem_op_->opcode() == HloOpcode::kDynamicSlice) {
+        sync_mem_op_->opcode() == HloOpcode::kDynamicSlice ||
+        sync_mem_op_->IsCustomFusion()) {
       ASSIGN_OR_RETURN(copy_done_,
                        computation->CreateAsyncInstructions(
                            sync_mem_op_, {ShapeUtil::MakeShape(S32, {})},
@@ -515,12 +518,15 @@ absl::Status CopyAllocation::Process(const BitcastSplitFn& bitcast_split_fn,
     // shape of the producing instruction, we insert a bitcast to make them
     // compatible.
     if (!ShapeUtil::CompatibleIgnoringFpPrecision(
-            producing_instruction->shape(), copy_start_->operand(0)->shape())) {
+            producing_instruction->shape(),
+            copy_start_->operand(source_operand_index_)->shape())) {
       producing_instruction =
           computation->AddInstruction(HloInstruction::CreateBitcast(
-              copy_start_->operand(0)->shape(), producing_instruction));
+              copy_start_->operand(source_operand_index_)->shape(),
+              producing_instruction));
     }
-    RETURN_IF_ERROR(copy_start_->ReplaceOperandWith(0, producing_instruction));
+    RETURN_IF_ERROR(copy_start_->ReplaceOperandWith(source_operand_index_,
+                                                    producing_instruction));
   } else {
     Shape dest_shape = shape;
     if (memory_space() == MemorySpace::kDefault) {
