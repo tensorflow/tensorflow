@@ -323,9 +323,27 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_EQ(context, NumDimensions(output_shape), 1);
   TF_LITE_ENSURE_EQ(context, NumDimensions(input), 4);
   TF_LITE_ENSURE_EQ(context, NumDimensions(weights), 4);
+  TF_LITE_ENSURE(context, params->stride_height > 0);
+  TF_LITE_ENSURE(context, params->stride_height <= INT16_MAX);
+  TF_LITE_ENSURE(context, params->stride_width > 0);
+  TF_LITE_ENSURE(context, params->stride_width <= INT16_MAX);
+  TF_LITE_ENSURE(context, SizeOfDimension(input, 1) > 0);
+  TF_LITE_ENSURE(context, SizeOfDimension(input, 2) > 0);
+  TF_LITE_ENSURE(context, SizeOfDimension(input, 3) > 0);
+  TF_LITE_ENSURE(context, SizeOfDimension(weights, 0) > 0);
+  TF_LITE_ENSURE(context, SizeOfDimension(weights, 1) > 0);
+  TF_LITE_ENSURE(context, SizeOfDimension(weights, 2) > 0);
   TF_LITE_ENSURE(context,
                  input->type == kTfLiteFloat32 || input->type == kTfLiteUInt8 ||
                      input->type == kTfLiteInt8 || input->type == kTfLiteInt16);
+  if (input->type == kTfLiteFloat32) {
+    TF_LITE_ENSURE(context, weights->type == kTfLiteFloat32 ||
+                                weights->type == kTfLiteInt8);
+  } else if (input->type == kTfLiteUInt8) {
+    TF_LITE_ENSURE_TYPES_EQ(context, weights->type, kTfLiteUInt8);
+  } else if (input->type == kTfLiteInt8) {
+    TF_LITE_ENSURE_TYPES_EQ(context, weights->type, kTfLiteInt8);
+  }
 
   if (has_bias) {
     bias = GetOptionalInputTensor(context, node, kBiasTensor);
@@ -842,14 +860,21 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 
   // Prevent divisions by 0
   TF_LITE_ENSURE(context, params->stride_height > 0);
+  TF_LITE_ENSURE(context, params->stride_height <= INT16_MAX);
   TF_LITE_ENSURE(context, params->stride_width > 0);
+  TF_LITE_ENSURE(context, params->stride_width <= INT16_MAX);
 
   // Resize any deferred dynamic tensors
   if (IsDynamicTensor(output)) {
     TF_LITE_ENSURE_OK(context, ResizeTensor(context, output_shape, output));
   }
+  TF_LITE_ENSURE_EQ(context, NumDimensions(output), 4);
   TF_LITE_ENSURE_EQ(context, SizeOfDimension(input, 0),
                     SizeOfDimension(output, 0));
+  TF_LITE_ENSURE(context, SizeOfDimension(output, 1) > 0);
+  TF_LITE_ENSURE(context, SizeOfDimension(output, 2) > 0);
+  TF_LITE_ENSURE_EQ(context, SizeOfDimension(output, 3),
+                    SizeOfDimension(weights, 0));
   if (data->has_col2im && IsDynamicTensor(col2im)) {
     TF_LITE_ENSURE_OK(context, ResizeCol2ImTensor(context, output_shape,
                                                   weights, input, col2im));
@@ -861,11 +886,14 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   const int filter_width = SizeOfDimension(weights, 2);
   const int filter_height = SizeOfDimension(weights, 1);
 
-  int unused_output_height, unused_output_width;
-  data->padding = ComputePaddingHeightWidth(
-      params->stride_height, params->stride_width, 1, 1, height, width,
-      filter_height, filter_width, params->padding, &unused_output_height,
-      &unused_output_width);
+  int computed_input_height, computed_input_width;
+  TF_LITE_ENSURE_OK(context, ComputePaddingHeightWidthChecked(
+                                 params->stride_height, params->stride_width, 1,
+                                 1, height, width, filter_height, filter_width,
+                                 params->padding, &computed_input_height,
+                                 &computed_input_width, &data->padding));
+  TF_LITE_ENSURE_EQ(context, computed_input_height, SizeOfDimension(input, 1));
+  TF_LITE_ENSURE_EQ(context, computed_input_width, SizeOfDimension(input, 2));
 
   // Currently support float32, uint8, int8, int16.
   switch (input->type) {

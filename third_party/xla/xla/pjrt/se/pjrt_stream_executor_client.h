@@ -35,10 +35,12 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/cord.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
+#include "riegeli/bytes/reader.h"
 #include "xla/client/executable_build_options.h"
 #include "xla/client/local_client.h"
 #include "xla/executable_run_options.h"
@@ -307,11 +309,20 @@ class PjRtStreamExecutorClient : public CommonPjRtClient {
       absl::string_view serialized,
       std::optional<CompileOptions> options) override;
 
+  absl::StatusOr<std::unique_ptr<PjRtExecutable>> DeserializeExecutable(
+      const absl::Cord& serialized,
+      std::optional<CompileOptions> options) override;
+
   // For PjRtStreamExecutorClient, `options` is mandatory.
   // This function returns an InvalidArgument error if `std::nullopt` is passed.
   // TODO(b/237720161): make it actually optional
   absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>>
   LoadSerializedExecutable(absl::string_view serialized,
+                           std::optional<CompileOptions> options,
+                           const LoadOptions& load_options) override;
+
+  absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>>
+  LoadSerializedExecutable(const absl::Cord& serialized,
                            std::optional<CompileOptions> options,
                            const LoadOptions& load_options) override;
 
@@ -336,7 +347,7 @@ class PjRtStreamExecutorClient : public CommonPjRtClient {
 
   absl::Status DmaUnmap(void* data) override;
 
-  bool IsDmaMapped(const void* data_start, int64_t transfer_size);
+  bool IsHostMemoryPinned(const void* ptr, uint64_t size);
 
   LocalDeviceState& device_state(int device_ordinal) const {
     return *absl::down_cast<PjRtStreamExecutorDevice*>(
@@ -355,7 +366,7 @@ class PjRtStreamExecutorClient : public CommonPjRtClient {
     // using a staging buffer is probably worse than not using one.
     // TODO(phawkins): add chunking for transfers.
     return should_stage_host_to_device_transfers_ &&
-           size < (int64_t{1} << 30) && !IsDmaMapped(data, size);
+           size < (int64_t{1} << 30) && !IsHostMemoryPinned(data, size);
   }
 
   virtual gpu::GpuExecutableRunOptions* gpu_run_options(
@@ -417,17 +428,16 @@ class PjRtStreamExecutorClient : public CommonPjRtClient {
   CreateRawBufferChannel(PjRtMemorySpace* memory_space,
                          size_t on_device_bytes_count) override;
 
-  absl::StatusOr<PjRtDeviceEventRef> LinearizeInto(
-      const LiteralSlice& literal, const xla::Shape& device_shape,
-      HostBufferSemantics host_buffer_semantics,
-      PjRtRawBufferRef raw_buffer) override;
-
-  absl::StatusOr<PjRtDeviceEventRef> LinearizeHostBufferInto(
-      const void* data, PrimitiveType type, absl::Span<int64_t const> dims,
+  bool ShouldPerformZeroCopyLinearize(
+      const void* data, const xla::Shape& device_shape, PrimitiveType type,
+      absl::Span<int64_t const> dims,
       std::optional<absl::Span<int64_t const>> byte_strides,
-      HostBufferSemantics host_buffer_semantics,
-      absl::AnyInvocable<void() &&> on_done_with_host_buffer,
-      const xla::Shape& device_shape, PjRtRawBufferRef raw_buffer) override;
+      PjRtMemorySpace* memory_space) override;
+
+  absl::StatusOr<tsl::AsyncValueRef<PjRtStagingBuffer>> AllocateLinearizeDest(
+      bool sync, const xla::Shape& device_shape,
+      absl::Span<const int64_t> byte_strides,
+      PjRtRawBufferRef dest_buffer) override;
 
   absl::StatusOr<std::pair<PjRtDeviceEventPromiseRef, PjRtDeviceEventRef>>
   CreateLinkedEventPromise(PjRtMemorySpace* memory_space,
@@ -498,6 +508,10 @@ class PjRtStreamExecutorClient : public CommonPjRtClient {
       std::unique_ptr<LocalExecutable> local_executables,
       CompileOptions compile_options);
 
+  absl::StatusOr<std::unique_ptr<PjRtExecutable>> DeserializeExecutable(
+      std::unique_ptr<riegeli::Reader> reader,
+      std::optional<CompileOptions> options);
+
   absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> LoadInternal(
       std::shared_ptr<PjRtExecutable> executable, bool dump);
 
@@ -537,10 +551,6 @@ class PjRtStreamExecutorClient : public CommonPjRtClient {
 
   tsl::thread::ThreadPool compile_thread_pool_;
   std::unique_ptr<AsyncWorkRunner> async_work_runner_;
-
-  absl::Mutex dma_maps_mutex_;
-  // Maps dma mapped start pointers to their sizes.
-  absl::flat_hash_map<void*, size_t> dma_maps_ ABSL_GUARDED_BY(dma_maps_mutex_);
 };
 
 // Converts a 2D set of Device objects indexed by [replica][partition] into an

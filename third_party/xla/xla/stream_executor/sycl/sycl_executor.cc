@@ -17,6 +17,13 @@ limitations under the License.
 
 #include <unistd.h>
 
+// clang-format off
+
+#include <sycl/feature_test.hpp>
+#include <sycl/usm.hpp>
+
+// clang-format on
+
 #include <cstddef>
 #include <cstdint>
 #include <memory>
@@ -751,6 +758,26 @@ absl::Status SyclExecutor::SynchronousMemcpy(void* host_dst,
                                   AsSyclDevicePtr(gpu_src), size);
 }
 
+absl::StatusOr<MemorySpace> SyclExecutor::GetPointerMemorySpace(
+    const void* ptr) {
+  ASSIGN_OR_RETURN(sycl::context context, GetContext());
+  sycl::usm::alloc alloc_type = sycl::get_pointer_type(ptr, context);
+  switch (alloc_type) {
+    case sycl::usm::alloc::device:
+      return MemorySpace::kDevice;
+    case sycl::usm::alloc::host:
+      return MemorySpace::kHost;
+    case sycl::usm::alloc::shared:
+      return MemorySpace::kUnified;
+    case sycl::usm::alloc::unknown:
+    default:
+      return absl::InternalError(
+          absl::StrFormat("SyclExecutor::GetPointerMemorySpace: unknown USM "
+                          "allocation type (%d) for pointer %p",
+                          static_cast<int>(alloc_type), ptr));
+  }
+}
+
 absl::StatusOr<std::unique_ptr<DeviceDescription>>
 SyclExecutor::CreateDeviceDescription(int device_ordinal) {
   return CreateOneApiDeviceDescription(device_ordinal);
@@ -774,6 +801,50 @@ absl::StatusOr<std::unique_ptr<Event>> SyclExecutor::CreateEvent() {
 absl::StatusOr<std::unique_ptr<MemoryAllocation>>
 SyclExecutor::HostMemoryAllocate(uint64_t size) {
   return AllocateHostMemory(sycl_context_.get(), device_ordinal(), size);
+}
+
+bool SyclExecutor::HostMemoryRegister(void* location, uint64_t size) {
+  VLOG(1) << "Registering host memory at " << location << " (" << size
+          << " bytes) for SYCL DMA";
+#if defined(SYCL_EXT_ONEAPI_COPY_OPTIMIZE)
+  try {
+    const sycl::context context = sycl_context_->context();
+    sycl::ext::oneapi::experimental::prepare_for_device_copy(location, size,
+                                                             context);
+    if (SyclIsHostMemoryRegistered(device_, location)) {
+      return true;
+    }
+    sycl::ext::oneapi::experimental::release_from_device_copy(location,
+                                                              context);
+    LOG(ERROR) << "SYCL did not register host memory at " << location;
+  } catch (const sycl::exception& e) {
+    LOG(ERROR) << "Failed to register host memory at " << location << ": "
+               << e.what();
+  }
+#else
+  LOG(ERROR) << "The SYCL toolchain does not support host memory import";
+#endif
+  return false;
+}
+
+bool SyclExecutor::HostMemoryUnregister(void* location) {
+  VLOG(1) << "Unregistering host memory at " << location << " from SYCL DMA";
+#if defined(SYCL_EXT_ONEAPI_COPY_OPTIMIZE)
+  try {
+    sycl::ext::oneapi::experimental::release_from_device_copy(
+        location, sycl_context_->context());
+    if (!SyclIsHostMemoryRegistered(device_, location)) {
+      return true;
+    }
+    LOG(ERROR) << "SYCL did not unregister host memory at " << location;
+  } catch (const sycl::exception& e) {
+    LOG(ERROR) << "Failed to unregister host memory at " << location << ": "
+               << e.what();
+  }
+#else
+  LOG(ERROR) << "The SYCL toolchain does not support host memory import";
+#endif
+  return false;
 }
 
 void SyclExecutor::DeallocateStream(Stream* stream) {

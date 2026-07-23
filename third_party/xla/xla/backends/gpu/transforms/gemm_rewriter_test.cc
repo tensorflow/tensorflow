@@ -2314,6 +2314,45 @@ ENTRY AddDotsFunc {
 )");
 }
 
+TEST_F(ParameterizedGemmRewriteTest, RhsArgTransposeFoldCheck) {
+  const char* hlo_text = R"(
+HloModule RhsArgTransposeFoldGemm
+
+ENTRY AddDotsFunc {
+  x = f32[2,3] parameter(0)
+  y = f32[4,3] parameter(1)
+  y_transposed = f32[3,4] transpose(y), dimensions={1, 0}
+  ROOT dot_a = f32[2,4] dot(x, y_transposed), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+}
+
+)";
+
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-5, 1e-5}));
+  MatchOptimizedHlo(hlo_text,
+                    R"(
+; CHECK-LABEL: ENTRY %{{.*}} ({{.*}}: f32[2,3], {{.*}}: f32[4,3]) -> f32[2,4] {
+; CHECK-DAG:     [[P0:%[^ ]+]] = f32[2,3]{1,0} parameter(0)
+; CHECK-DAG:     [[P1:%[^ ]+]] = f32[4,3]{1,0} parameter(1)
+; CHECK:         [[GEMM:%[^ ]+]] = {{.*}} custom-call([[P0]], [[P1]]),
+; CHECK:           custom_call_target="__cublas$lt$matmul",
+; CHECK:           backend_config={
+; CHECK-DAG:         "alpha_real":1
+; CHECK-DAG:         "alpha_imag":0
+; CHECK-DAG:         "beta":0
+; CHECK-DAG:         "dot_dimension_numbers":{
+; CHECK-DAG:           "lhs_contracting_dimensions":["1"]
+; CHECK-DAG:           "rhs_contracting_dimensions":["1"]
+; CHECK-DAG:           "lhs_batch_dimensions":[]
+; CHECK-DAG:           "rhs_batch_dimensions":[]
+; CHECK-DAG:         }
+; CHECK-DAG:         "precision_config":{
+; CHECK-DAG:           "operand_precision":["DEFAULT","DEFAULT"]
+; CHECK-DAG:         }
+; CHECK-DAG:         "epilogue":"DEFAULT"
+; CHECK:           }
+)");
+}
+
 TEST_F(ParameterizedGemmRewriteTest, BatchedArgRowColTransposeFoldCheck) {
   const char* hlo_text = R"(
 HloModule BatchedArgRowColTransposeFoldGemm
@@ -2666,6 +2705,183 @@ ENTRY AddDotsFunc {
   k_broadcast = c64[2, 2] broadcast(k), dimensions={}
   dot_a = c64[2,2] dot(x, y), lhs_contracting_dims={1}, rhs_contracting_dims={0}
   ROOT dot_a_multiplied = c64[2, 2] multiply(dot_a, k_broadcast)
+}
+)";
+    EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-4, 1e-5}));
+  }
+}
+
+TEST_F(ParameterizedGemmRewriteTest, ComplexGemmTransposeCombinations) {
+  if (!IsRocm()) {
+    GTEST_SKIP() << "rocBLAS complex GEMM redirect is ROCm-only";
+  }
+  // Exercises all 4 transpose combinations (NN, NT, TN, TT) with non-square
+  // C64 matrices to verify the rocBLAS fallback computes transposes correctly.
+  // NN: lhs[M,K] x rhs[K,N], contracting lhs={1}, rhs={0}
+  {
+    const char* hlo_text = R"(
+HloModule ComplexGemm_NN
+
+ENTRY main {
+  lhs = c64[3,5] parameter(0)
+  rhs = c64[5,7] parameter(1)
+  ROOT dot = c64[3,7] dot(lhs, rhs), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+}
+)";
+    EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-4, 1e-5}));
+  }
+  // NT: lhs[M,K] x rhs[N,K], contracting lhs={1}, rhs={1}
+  {
+    const char* hlo_text = R"(
+HloModule ComplexGemm_NT
+
+ENTRY main {
+  lhs = c64[3,5] parameter(0)
+  rhs = c64[7,5] parameter(1)
+  ROOT dot = c64[3,7] dot(lhs, rhs), lhs_contracting_dims={1}, rhs_contracting_dims={1}
+}
+)";
+    EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-4, 1e-5}));
+  }
+  // TN: lhs[K,M] x rhs[K,N], contracting lhs={0}, rhs={0}
+  {
+    const char* hlo_text = R"(
+HloModule ComplexGemm_TN
+
+ENTRY main {
+  lhs = c64[5,3] parameter(0)
+  rhs = c64[5,7] parameter(1)
+  ROOT dot = c64[3,7] dot(lhs, rhs), lhs_contracting_dims={0}, rhs_contracting_dims={0}
+}
+)";
+    EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-4, 1e-5}));
+  }
+  // TT: lhs[K,M] x rhs[N,K], contracting lhs={0}, rhs={1}
+  {
+    const char* hlo_text = R"(
+HloModule ComplexGemm_TT
+
+ENTRY main {
+  lhs = c64[5,3] parameter(0)
+  rhs = c64[7,5] parameter(1)
+  ROOT dot = c64[3,7] dot(lhs, rhs), lhs_contracting_dims={0}, rhs_contracting_dims={1}
+}
+)";
+    EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-4, 1e-5}));
+  }
+}
+
+TEST_F(ParameterizedGemmRewriteTest, ComplexGemmTransposeCombinationsC128) {
+  if (!IsRocm()) {
+    GTEST_SKIP() << "rocBLAS complex GEMM redirect is ROCm-only";
+  }
+  // Same transpose coverage for C128 (complex double).
+  // NN
+  {
+    const char* hlo_text = R"(
+HloModule ComplexGemm128_NN
+
+ENTRY main {
+  lhs = c128[3,5] parameter(0)
+  rhs = c128[5,7] parameter(1)
+  ROOT dot = c128[3,7] dot(lhs, rhs), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+}
+)";
+    EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-12, 1e-12}));
+  }
+  // NT
+  {
+    const char* hlo_text = R"(
+HloModule ComplexGemm128_NT
+
+ENTRY main {
+  lhs = c128[3,5] parameter(0)
+  rhs = c128[7,5] parameter(1)
+  ROOT dot = c128[3,7] dot(lhs, rhs), lhs_contracting_dims={1}, rhs_contracting_dims={1}
+}
+)";
+    EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-12, 1e-12}));
+  }
+  // TN
+  {
+    const char* hlo_text = R"(
+HloModule ComplexGemm128_TN
+
+ENTRY main {
+  lhs = c128[5,3] parameter(0)
+  rhs = c128[5,7] parameter(1)
+  ROOT dot = c128[3,7] dot(lhs, rhs), lhs_contracting_dims={0}, rhs_contracting_dims={0}
+}
+)";
+    EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-12, 1e-12}));
+  }
+  // TT
+  {
+    const char* hlo_text = R"(
+HloModule ComplexGemm128_TT
+
+ENTRY main {
+  lhs = c128[5,3] parameter(0)
+  rhs = c128[7,5] parameter(1)
+  ROOT dot = c128[3,7] dot(lhs, rhs), lhs_contracting_dims={0}, rhs_contracting_dims={1}
+}
+)";
+    EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-12, 1e-12}));
+  }
+}
+
+TEST_F(ParameterizedGemmRewriteTest, ComplexGemmBatchedTranspose) {
+  if (!IsRocm()) {
+    GTEST_SKIP() << "rocBLAS complex GEMM redirect is ROCm-only";
+  }
+  // NN
+  {
+    const char* hlo_text = R"(
+HloModule ComplexGemmBatched_NN
+
+ENTRY main {
+  lhs = c64[4,3,5] parameter(0)
+  rhs = c64[4,5,7] parameter(1)
+  ROOT dot = c64[4,3,7] dot(lhs, rhs), lhs_contracting_dims={2}, rhs_contracting_dims={1}, lhs_batch_dims={0}, rhs_batch_dims={0}
+}
+)";
+    EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-4, 1e-5}));
+  }
+  // NT
+  {
+    const char* hlo_text = R"(
+HloModule ComplexGemmBatched_NT
+
+ENTRY main {
+  lhs = c64[4,3,5] parameter(0)
+  rhs = c64[4,7,5] parameter(1)
+  ROOT dot = c64[4,3,7] dot(lhs, rhs), lhs_contracting_dims={2}, rhs_contracting_dims={2}, lhs_batch_dims={0}, rhs_batch_dims={0}
+}
+)";
+    EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-4, 1e-5}));
+  }
+  // TN
+  {
+    const char* hlo_text = R"(
+HloModule ComplexGemmBatched_TN
+
+ENTRY main {
+  lhs = c64[4,5,3] parameter(0)
+  rhs = c64[4,5,7] parameter(1)
+  ROOT dot = c64[4,3,7] dot(lhs, rhs), lhs_contracting_dims={1}, rhs_contracting_dims={1}, lhs_batch_dims={0}, rhs_batch_dims={0}
+}
+)";
+    EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-4, 1e-5}));
+  }
+  // TT
+  {
+    const char* hlo_text = R"(
+HloModule ComplexGemmBatched_TT
+
+ENTRY main {
+  lhs = c64[4,5,3] parameter(0)
+  rhs = c64[4,7,5] parameter(1)
+  ROOT dot = c64[4,3,7] dot(lhs, rhs), lhs_contracting_dims={1}, rhs_contracting_dims={2}, lhs_batch_dims={0}, rhs_batch_dims={0}
 }
 )";
     EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-4, 1e-5}));

@@ -131,14 +131,22 @@ bool ContainsOnlyFormattingOps(const HloInstruction* async_op) {
   if (async_op->opcode() == HloOpcode::kAsyncDone) {
     return ContainsOnlyFormattingOps(async_op->operand(0));
   }
-  HloInstruction* call =
-      async_op->async_wrapped_computation()->root_instruction();
-  bool result = true;
-  for (HloInstruction* instr :
-       call->called_computations().front()->instructions()) {
+
+  const HloComputation* computation = async_op->async_wrapped_computation();
+
+  // Async wrappers can nest call-like instructions. Look through the root's
+  // callee so the recursive checks below continue into the nested async.
+  const HloInstruction* root = computation->root_instruction();
+  if (!root->called_computations().empty()) {
+    computation = root->called_computations().front();
+  }
+
+  for (const HloInstruction* instr : computation->instructions()) {
     if (HloPredicateIsOp<HloOpcode::kAsyncStart, HloOpcode::kAsyncDone>(
             instr)) {
-      result &= ContainsOnlyFormattingOps(instr);
+      if (!ContainsOnlyFormattingOps(instr)) {
+        return false;
+      }
     } else if (!HloPredicateIsOp<HloOpcode::kCopy, HloOpcode::kParameter>(
                    instr)) {
       return false;
@@ -495,10 +503,12 @@ bool LegalizeSchedulingAnnotations::RemoveTrivialGroups(
                                        annotated_instructions.begin(),
                                        annotated_instructions.end());
     }
-    // Remove the groups without any async operations across all computations.
+    // Remove the groups without any async operations nor TPU custom calls
+    // across all computations.
     if (absl::c_none_of(instructions_across_comps, [](HloInstruction* instr) {
           return IsSupportedAsyncOp(instr, /*supports_async_start=*/true,
-                                    /*check_sync_versions=*/true);
+                                    /*check_sync_versions=*/true) ||
+                 instr->IsCustomCall("tpu_custom_call");
         })) {
       for (HloInstruction* instr : instructions_across_comps) {
         VLOG(1) << "Removing group id: " << group_id
@@ -508,8 +518,10 @@ bool LegalizeSchedulingAnnotations::RemoveTrivialGroups(
       }
     }
     if (!deleted_instructions.empty()) {
-      for (auto& [annotation, comp_inst_vector] : annotation_to_instruction) {
-        for (auto& [comp, annotated_instructions] : comp_inst_vector) {
+      absl::erase_if(annotation_to_instruction, [&](auto& annotation_entry) {
+        auto& [annotation, comp_inst_vector] = annotation_entry;
+        absl::erase_if(comp_inst_vector, [&](auto& comp_entry) {
+          auto& [comp, annotated_instructions] = comp_entry;
           std::vector<HloInstruction*> updated_annotated_instructions;
           for (HloInstruction* instr : annotated_instructions) {
             if (!deleted_instructions.contains(instr)) {
@@ -519,15 +531,13 @@ bool LegalizeSchedulingAnnotations::RemoveTrivialGroups(
             }
           }
           if (updated_annotated_instructions.empty()) {
-            comp_inst_vector.erase(comp);
-          } else {
-            comp_inst_vector[comp] = updated_annotated_instructions;
+            return true;
           }
-        }
-        if (comp_inst_vector.empty()) {
-          annotation_to_instruction.erase(annotation);
-        }
-      }
+          annotated_instructions = std::move(updated_annotated_instructions);
+          return false;
+        });
+        return comp_inst_vector.empty();
+      });
     }
     VLOG(3) << "Retaining nontrivial group: " << group_id;
   }

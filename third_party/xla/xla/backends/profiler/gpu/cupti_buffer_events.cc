@@ -532,6 +532,11 @@ void AddMemsetActivityEvent(CuptiEventCollectorDelegate &collector,
   event.context_id = memset->contextId;
   event.stream_id = memset->streamId;
   SetEventGraphId(event, memset);
+  AnnotationMap::AnnotationInfo info =
+      collector.annotation_map.LookUp(event.device_id, event.correlation_id);
+  event.annotation = info.annotation;
+  event.nvtx_range = info.nvtx_range;
+  event.scope_range_id = info.scope_range_id;
   event.memset_info.num_bytes = memset->bytes;
   event.memset_info.mem_kind = mem_kind;
   event.memset_info.async = (memset->flags & CUPTI_ACTIVITY_FLAG_MEMSET_ASYNC);
@@ -753,7 +758,7 @@ absl::string_view AnnotationMap::Add(uint32_t device_id,
       return info.annotation;
     }
   }
-  return "";
+  return absl::string_view();
 }
 
 AnnotationMap::AnnotationInfo AnnotationMap::LookUp(

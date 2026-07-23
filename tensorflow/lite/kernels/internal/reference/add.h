@@ -204,7 +204,8 @@ inline void AddBroadcast(const T* input_data, const T* broadcast_data,
                          T activation_max) {
   for (size_t c = 0; c < size; ++c) {
     output_data[c] = ActivationFunctionWithMinMax<T>(
-        input_data[c] + broadcast_data[0], activation_min, activation_max);
+        WrappingAdd<T>(input_data[c], broadcast_data[0]), activation_min,
+        activation_max);
   }
 }
 
@@ -229,7 +230,8 @@ inline void AddBroadcast<int32_t>(const int32_t* input_data,
 #endif
   for (; c < size; ++c) {
     output_data[c] = ActivationFunctionWithMinMax<int32_t>(
-        input_data[c] + broadcast_data[0], activation_min, activation_max);
+        WrappingAdd<int32_t>(input_data[c], broadcast_data[0]), activation_min,
+        activation_max);
   }
 }
 

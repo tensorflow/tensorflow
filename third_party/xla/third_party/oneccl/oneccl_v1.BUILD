@@ -176,4 +176,5 @@ sycl_library(
         ":umf",
         "@hwloc",
     ],
+    alwayslink = True,
 )

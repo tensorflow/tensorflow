@@ -972,8 +972,7 @@ absl::Status VerifyReshapeContiguity(
   while (j >= 0) {
     auto size_val = TryGetConstantValue(multidim_side_tiles[j].size);
     if (!size_val.has_value()) {
-      return FormatError("Expect constant source tile size. Got: ",
-                         multidim_side_tiles[j].size.ToString());
+      break;
     }
     if (DimIsFullyCovered(multidim_side_tiles[j], multidim_side_dims[j])) {
       if (*size_val > 1) {

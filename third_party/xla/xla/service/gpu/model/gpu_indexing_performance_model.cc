@@ -69,8 +69,6 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/device_description.h"
-#include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 
 namespace xla {
@@ -206,7 +204,7 @@ void ForEachInstructionInTiledHloComputation(
          llvm::enumerate(instruction->hlo_regions())) {
       int64_t num_blocks_cur_region =
           GetNumBlocksForRegion(instruction, num_blocks_cur_hlo, i);
-      for (const auto& tiled_hlo : region) {
+      for (const auto& tiled_hlo : region.instructions()) {
         worklist.push_back({tiled_hlo.get(), num_blocks_cur_region});
       }
     }
@@ -609,20 +607,20 @@ int64_t GpuPerformanceModelWithIndexingAnalysis::FlopsPerElement(
     }
 
     auto operand_shape = instr->operand(0)->shape();
-    auto output_shape = instr->shape().IsArray()
-                            ? instr->shape()
-                            : instr->shape().tuple_shapes(0);
 
-    // Size of reduction dimensions.
-    int64_t reduction_factor = ShapeUtil::ElementsIn(operand_shape) /
-                               ShapeUtil::ElementsIn(output_shape);
+    // Size of reduction dimensions padded to power of 2.
+    int64_t padded_reduction_factor = 1;
+    for (int64_t dim : instr->dimensions()) {
+      padded_reduction_factor *=
+          llvm::PowerOf2Ceil(operand_shape.dimensions(dim));
+    }
 
     // The Cost Model assumes that the reduction computation is applied N-1
     // times to reduce N elements. This is not true, because emitters will
-    // generate a loop with N iterations. We don't fix it here to keep this
-    // estimate consistent with `GpuHloCostAnalysis`. This likely doesn't matter
-    // much for the application of the Cost Model.
-    return (reduction_factor - 1) * flops_per_reduce_computation;
+    // generate a loop with N iterations. Also note that this calculation now
+    // differs from `GpuHloCostAnalysis` because it accounts for power-of-two
+    // padding of the reduction dimensions.
+    return (padded_reduction_factor - 1) * flops_per_reduce_computation;
   }
 
   // Encountered unexpected instruction, call into `GpuHloCostAnalysis`.

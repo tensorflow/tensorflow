@@ -57,13 +57,19 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 
   TF_LITE_ENSURE(context, op_context.input != nullptr);
 
-  TF_LITE_ENSURE(context, op_context.input->type == kTfLiteInt2 ||
-                              op_context.input->type == kTfLiteInt4 ||
-                              op_context.input->type == kTfLiteUInt4 ||
-                              op_context.input->type == kTfLiteUInt8 ||
-                              op_context.input->type == kTfLiteInt8 ||
-                              op_context.input->type == kTfLiteInt16 ||
-                              op_context.input->type == kTfLiteFloat16);
+  TF_LITE_ENSURE(
+      context, op_context.input->type == kTfLiteInt2 ||
+                   op_context.input->type == kTfLiteInt4 ||
+                   op_context.input->type == kTfLiteUInt4 ||
+                   op_context.input->type == kTfLiteUInt8 ||
+                   op_context.input->type == kTfLiteInt8 ||
+                   op_context.input->type == kTfLiteInt16 ||
+                   op_context.input->type == kTfLiteFloat16
+#if defined(TFLITE_ENABLE_EXTRA_REFERENCE_KERNELS)
+                   || op_context.input->type == kTfLiteFloat8E4M3FN ||
+                   op_context.input->type == kTfLiteFloat8E5M2
+#endif
+  );
 
   if (op_context.input->type == kTfLiteInt16) {
     TF_LITE_ENSURE_EQ(context, op_context.input->params.zero_point, 0);

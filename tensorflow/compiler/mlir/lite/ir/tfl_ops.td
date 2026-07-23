@@ -877,14 +877,14 @@ def TFL_ConcatenationOp : TFL_Op<"concatenation",
 
   let arguments = (
     ins TFL_VariadicTensorOf<
-      [F32, F16, I64, I32, I16, QI4, I8, QI8, QUI8, UI8, UI32, I1]>:$values,
+      [F32, F16, F8E4M3FN, F8E5M2, I64, I32, I16, QI4, I8, QI8, QUI8, UI8, UI32, I1]>:$values,
     I32Attr:$axis,
     TFL_AFAttr:$fused_activation_function
   );
 
   let results = (outs
     TFL_TensorOf<
-      [F32, F16, I64, I32, I16, QI4, I8, QI8, QUI8, UI8, UI32, I1]>:$output
+      [F32, F16, F8E4M3FN, F8E5M2, I64, I32, I16, QI4, I8, QI8, QUI8, UI8, UI32, I1]>:$output
   );
 
   let hasOptions = 1;
@@ -1243,7 +1243,7 @@ def TFL_GatherOp : TFL_Op<"gather", [
   }];
 
   let arguments = (ins
-    TFL_TensorOf<[F32, I1, TFL_I4, I8, I16, I32, I64, TFL_Str, UI8, QI8, QUI8, QI16]>:$params,
+    TFL_TensorOf<[F32, F8E4M3FN, F8E5M2, I1, TFL_I4, I8, I16, I32, I64, TFL_Str, UI8, QI8, QUI8, QI16]>:$params,
     TFL_TensorOf<[I16, I32, I64]>:$indices,
     I32Attr:$axis,
     DefaultValuedOptionalAttr<I32Attr, "0">:$batch_dims
@@ -1256,7 +1256,7 @@ def TFL_GatherOp : TFL_Op<"gather", [
   ];
 
   let results = (outs
-    TFL_TensorOf<[F32, I1, TFL_I4, I8, I16, I32, I64, TFL_Str, UI8, QI8, QUI8, QI16]>:$output
+    TFL_TensorOf<[F32, F8E4M3FN, F8E5M2, I1, TFL_I4, I8, I16, I32, I64, TFL_Str, UI8, QI8, QUI8, QI16]>:$output
   );
 
   let hasOptions = 1;
@@ -1284,12 +1284,12 @@ def TFL_GatherNdOp : TFL_Op<"gather_nd", [
   }];
 
   let arguments = (ins
-    TFL_TensorOf<[F32, I1, I8, I16, I64, I32, UI8, QI8, TFL_Str]>:$params,
+    TFL_TensorOf<[F32, F8E4M3FN, F8E5M2, I1, I8, I16, I64, I32, UI8, QI8, TFL_Str]>:$params,
     TFL_TensorOf<[I16, I32, I64]>:$indices
   );
 
   let results = (outs
-    TFL_TensorOf<[F32, I1, I8, I16, I64, I32, UI8, QI8, TFL_Str]>:$output
+    TFL_TensorOf<[F32, F8E4M3FN, F8E5M2, I1, I8, I16, I64, I32, UI8, QI8, TFL_Str]>:$output
   );
 
   let hasFolder = 1;
@@ -1912,9 +1912,9 @@ def TFL_FillOp: TFL_Op<"fill", [
   }];
 
   let arguments = (ins TFL_I32OrI64Tensor:$dims,
-                   TFL_TensorOf<[F32, F16, I32, I64, I1, QI8, QI16, TFL_Str]>:$input);
+                   TFL_TensorOf<[F32, F16, F8E4M3FN, F8E5M2, I32, I64, I1, QI8, QI16, TFL_Str]>:$input);
 
-  let results = (outs TFL_TensorOf<[F32, F16, I32, I64, I1, QI8, QI16, TFL_Str]>:$result);
+  let results = (outs TFL_TensorOf<[F32, F16, F8E4M3FN, F8E5M2, I32, I64, I1, QI8, QI16, TFL_Str]>:$result);
 
   let hasOptions = 0;
 }
@@ -2776,14 +2776,14 @@ def TFL_PackOp : TFL_Op<"pack", [
   }];
 
   let arguments = (ins
-    TFL_VariadicTensorOf<[F32, I8, I16, I32, I64, UI8, UI32, QI8, QUI8, QI16, TFL_Quint8]>:$values,
+    TFL_VariadicTensorOf<[F32, F8E4M3FN, F8E5M2, I8, I16, I32, I64, UI8, UI32, QI8, QUI8, QI16, TFL_Quint8]>:$values,
 
     ConfinedAttr<I32Attr, [IntPositive]>:$values_count,
     I32Attr:$axis
   );
 
   let results = (outs
-    TFL_TensorOf<[F32, I8, I16, I32, I64, UI8, UI32, QI8, QUI8, QI16, TFL_Quint8]>:$output
+    TFL_TensorOf<[F32, F8E4M3FN, F8E5M2, I8, I16, I32, I64, UI8, UI32, QI8, QUI8, QI16, TFL_Quint8]>:$output
   );
 
   let hasVerifier = 1;
@@ -2832,10 +2832,10 @@ def TFL_PadOp : TFL_Op<"pad", [
     ```
   }];
 
-  let arguments = (ins TFL_TensorOf<[F32, I1, I32, I64, QI8, QUI8, TFL_Quint8, QI16]>:$input,
+  let arguments = (ins TFL_TensorOf<[F32, F8E4M3FN, F8E5M2, I1, I32, I64, QI8, QUI8, TFL_Quint8, QI16]>:$input,
     TFL_I32OrI64Tensor:$padding);
 
-  let results = (outs TFL_TensorOf<[F32, I1, I32, I64, QI8, QUI8, TFL_Quint8, QI16]>:$output);
+  let results = (outs TFL_TensorOf<[F32, F8E4M3FN, F8E5M2, I1, I32, I64, QI8, QUI8, TFL_Quint8, QI16]>:$output);
 
   let hasOptions = 1;
 
@@ -2889,11 +2889,11 @@ def TFL_PadV2Op : TFL_Op<"padv2", [
   }];
 
   let arguments = (
-    ins TFL_TensorOf<[F32, I1, I32, I64, UI8, QI8, QUI8, TFL_Quint8]>:$input,
+    ins TFL_TensorOf<[F32, F8E4M3FN, F8E5M2, I1, I32, I64, UI8, QI8, QUI8, TFL_Quint8]>:$input,
     TFL_I32OrI64Tensor:$padding,
-    TFL_TensorOf<[F32, I1, I32, I64, UI8, QI8, QUI8, TFL_Quint8]>:$constant_values);
+    TFL_TensorOf<[F32, F8E4M3FN, F8E5M2, I1, I32, I64, UI8, QI8, QUI8, TFL_Quint8]>:$constant_values);
 
-  let results = (outs TFL_TensorOf<[F32, I1, I32, I64, UI8, QI8, QUI8, TFL_Quint8]>:$output);
+  let results = (outs TFL_TensorOf<[F32, F8E4M3FN, F8E5M2, I1, I32, I64, UI8, QI8, QUI8, TFL_Quint8]>:$output);
 
   let hasOptions = 1;
 
@@ -3293,12 +3293,12 @@ def TFL_ReverseV2Op: TFL_Op<"reverse_v2", [
 
   let arguments = (
     ins
-    TFL_TensorOf<[F32, UI8, I16, I32, I64, QI16, QUI8, QI8, TFL_Quint8, I1]>:$input,
+    TFL_TensorOf<[F32, F8E4M3FN, F8E5M2, UI8, I16, I32, I64, QI16, QUI8, QI8, TFL_Quint8, I1]>:$input,
     TFL_I32Tensor:$axis
   );
 
   let results = (outs
-    TFL_TensorOf<[F32, UI8, I16, I32, I64, QI16, QUI8, QI8, TFL_Quint8, I1]>:$output);
+    TFL_TensorOf<[F32, F8E4M3FN, F8E5M2, UI8, I16, I32, I64, QI16, QUI8, QI8, TFL_Quint8, I1]>:$output);
 }
 
 // Select has many instances in TF models where one or more of its operands
@@ -3750,14 +3750,14 @@ def TFL_UnpackOp : TFL_Op<"unpack", [
   }];
 
   let arguments = (ins
-    TFL_TensorOf<[F32, F16, BF16, I1, I8, UI8, I32, QI8, QUI8, I16, QI16]>:$input,
+    TFL_TensorOf<[F32, F16, BF16, F8E4M3FN, F8E5M2, I1, I8, UI8, I32, QI8, QUI8, I16, QI16]>:$input,
 
     ConfinedAttr<I32Attr, [IntNonNegative]>:$num,
     I32Attr:$axis
   );
 
   let results = (outs
-    TFL_VariadicTensorOf<[F32, F16, BF16, I1, I8, UI8, I32, QI8, QUI8, I16, QI16]>:$outputs
+    TFL_VariadicTensorOf<[F32, F16, BF16, F8E4M3FN, F8E5M2, I1, I8, UI8, I32, QI8, QUI8, I16, QI16]>:$outputs
   );
 
   let extraClassDeclaration = [{
@@ -3911,12 +3911,12 @@ def TFL_SplitOp : TFL_Op<"split", [
 
   let arguments = (ins
     TFL_TensorOf<[I32]>:$split_dim,
-    TFL_TensorOf<[F32, I16, I32, I8, UI8, QI8, QUI8, QI16]>:$value,
+    TFL_TensorOf<[F32, F8E4M3FN, F8E5M2, I16, I32, I8, UI8, QI8, QUI8, QI16]>:$value,
     ConfinedAttr<I32Attr, [IntPositive]>:$num_splits
   );
 
   let results = (outs
-    TFL_VariadicTensorOf<[F32, I16, I32, I8, UI8, QI8, QUI8, QI16]>:$outputs
+    TFL_VariadicTensorOf<[F32, F8E4M3FN, F8E5M2, I16, I32, I8, UI8, QI8, QUI8, QI16]>:$outputs
   );
 
   let hasVerifier = 1;
@@ -3937,14 +3937,14 @@ def TFL_SplitVOp : TFL_Op<"split_v", [
   }];
 
   let arguments = (ins
-    TFL_TensorOf<[F32, I16, I32, I64, I8, UI8, QI8, QUI8, QI16]>:$value,
+    TFL_TensorOf<[F32, F8E4M3FN, F8E5M2, I16, I32, I64, I8, UI8, QI8, QUI8, QI16]>:$value,
     TFL_1DTensorOf<[I32], [I32]>:$size_splits,
     TFL_0DTensorOf<[I32], [I32]>:$split_dim,
     ConfinedAttr<I32Attr, [IntPositive]>:$num_splits
   );
 
   let results = (outs
-    TFL_VariadicTensorOf<[F32, I16, I32, I64, I8, UI8, QI8, QUI8, QI16]>:$outputs
+    TFL_VariadicTensorOf<[F32, F8E4M3FN, F8E5M2, I16, I32, I64, I8, UI8, QI8, QUI8, QI16]>:$outputs
   );
 
   let hasVerifier = 1;
@@ -4120,10 +4120,10 @@ def TFL_CastOp : TFL_Op<"cast", [
   }];
 
   let arguments = (ins
-    TFL_TensorOf<[F16, BF16, F32, F64, I1, TFL_I2, TFL_I4, UI<4>, I16, UI16, I32, UI32, I64, TFL_Quint8, UI8, I8, Complex<F<32>>]>:$input
+    TFL_TensorOf<[F16, BF16, F8E4M3FN, F8E5M2, F32, F64, I1, TFL_I2, TFL_I4, UI<4>, I16, UI16, I32, UI32, I64, TFL_Quint8, UI8, I8, Complex<F<32>>]>:$input
   );
 
-  let results = (outs TFL_TensorOf<[F16, BF16, F32, F64, I1, TFL_I2, TFL_I4, UI<4>, I16, UI16, I32, UI32, I64, TFL_Quint8, UI8, I8, Complex<F<32>>]>:$output);
+  let results = (outs TFL_TensorOf<[F16, BF16, F8E4M3FN, F8E5M2, F32, F64, I1, TFL_I2, TFL_I4, UI<4>, I16, UI16, I32, UI32, I64, TFL_Quint8, UI8, I8, Complex<F<32>>]>:$output);
 
   // TFLite's cast op does not utilize CastOptions, instead derives types
   // from the TfLiteTensors.
@@ -4334,7 +4334,7 @@ def TFL_DequantizeOp: TFL_Op<"dequantize", [NoMemoryEffect]> {
     quantization parameters.
   }];
 
-  let arguments = (ins TFL_TensorOf<[QI2, QI4, QUI4, QI8, QUI8, QI16, F16]>:$input);
+  let arguments = (ins TFL_TensorOf<[QI2, QI4, QUI4, QI8, QUI8, QI16, F16, F8E4M3FN, F8E5M2]>:$input);
 
   let results = (outs TFL_FpTensor:$output);
 
@@ -5623,12 +5623,12 @@ subsequent operation and then be optimized away, however.)
   }];
 
   let arguments = (ins
-    TFL_TensorOf<[F32, I32, I1, TFL_I4, I8, QI8, UI8, UI32, QUI8, I16, QI16, I64, Complex<F<32>>]>:$input,
+    TFL_TensorOf<[F32, F8E4M3FN, F8E5M2, I32, I1, TFL_I4, I8, QI8, UI8, UI32, QUI8, I16, QI16, I64, Complex<F<32>>]>:$input,
     TFL_I32OrI64Tensor:$shape
   );
 
   let results = (outs
-    TFL_TensorOf<[F32, I32, I1, TFL_I4, I8, QI8, UI8, UI32, QUI8, I16, QI16, I64, Complex<F<32>>]>:$output
+    TFL_TensorOf<[F32, F8E4M3FN, F8E5M2, I32, I1, TFL_I4, I8, QI8, UI8, UI32, QUI8, I16, QI16, I64, Complex<F<32>>]>:$output
   );
 
   let extraClassDeclaration = [{

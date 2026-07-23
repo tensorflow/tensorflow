@@ -1194,7 +1194,11 @@ absl::Status CopyInsertion::AddCopiesToResolveInterference(
             continue;
           }
 
-          instr_to_get_aliases = instruction->async_wrapped_instruction();
+          if (op_code == HloOpcode::kAsyncStart &&
+              instruction->output_operand_aliasing().empty()) {
+            instr_to_get_aliases = instruction->async_wrapped_instruction();
+          }
+
           if (op_code == HloOpcode::kAsyncUpdate) {
             CHECK_GE(instruction->operand_count(), 2);
             nr_previous_bound_operands =

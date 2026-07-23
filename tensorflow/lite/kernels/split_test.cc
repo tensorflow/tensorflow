@@ -259,5 +259,19 @@ TYPED_TEST(SplitOpTest, NegativeAxis) {
   }
 }
 
+#if defined(TFLITE_ENABLE_EXTRA_REFERENCE_KERNELS)
+void TestFloat8Split(TensorType tensor_type) {
+  Check<uint8_t>(TestType::kDynamic, /*axis=*/0, /*num_splits=*/2,
+                 /*input_shape=*/{4}, /*output_shape=*/{2},
+                 /*input_data=*/{0x00, 0x38, 0xbc, 0x7e},
+                 /*output_data=*/{{0x00, 0x38}, {0xbc, 0x7e}}, tensor_type);
+}
+
+TEST(SplitOpTest, Float8) {
+  TestFloat8Split(TensorType_FLOAT8_E4M3FN);
+  TestFloat8Split(TensorType_FLOAT8_E5M2);
+}
+#endif
+
 }  // namespace
 }  // namespace tflite

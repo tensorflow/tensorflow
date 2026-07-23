@@ -675,10 +675,9 @@ TEST(DynamicSliceFusionV2ThunkTest,
   Shape src_shape = ShapeUtil::MakeShape(S32, {4});
   Shape slice_shape = ShapeUtil::MakeShape(S32, {1});
 
-  ThunkSequence embedded_thunks;
-  embedded_thunks.push_back(std::make_unique<DeviceToDeviceCopyThunk>(
+  ThunkSequence embedded_thunks = ThunkSequence::Of<DeviceToDeviceCopyThunk>(
       Thunk::ThunkInfo(), ShapedSlice{embedded_src, slice_shape},
-      ShapedSlice{embedded_dst, slice_shape}, kSliceBytes));
+      ShapedSlice{embedded_dst, slice_shape}, kSliceBytes);
 
   CommandSequence embedded_commands;
   embedded_commands.Emplace<DeviceToDeviceCopyThunk>(
@@ -800,8 +799,7 @@ TEST(DynamicSliceFusionV2ThunkTest, SerializeDeserializeRoundTrip) {
        BufferAllocation::Slice(&buffer1, 0, 4096)},
       /*result_buffers=*/{BufferAllocation::Slice(&buffer1, 0, 4096)},
       slice_allocs,
-      ThunkSequence::Of(
-          std::make_unique<MemzeroThunk>(Thunk::ThunkInfo(), memzero_dest)));
+      ThunkSequence::Of<MemzeroThunk>(Thunk::ThunkInfo(), memzero_dest));
 
   ASSERT_OK_AND_ASSIGN(ThunkProto proto, thunk.ToProto());
   const auto& dsf = proto.dynamic_slice_fusion_thunk();
@@ -876,8 +874,8 @@ TEST(DynamicSliceFusionV2ThunkTest,
       /*result_buffers=*/
       {BufferAllocation::Slice(&parent_allocations[1], 0, 64)},
       embedded_allocations,
-      ThunkSequence::Of(std::make_unique<DeviceToDeviceCopyThunk>(
-          Thunk::ThunkInfo(), src_slice, dst_slice, 1024)));
+      ThunkSequence::Of<DeviceToDeviceCopyThunk>(Thunk::ThunkInfo(), src_slice,
+                                                 dst_slice, 1024));
 
   Thunk::PrepareParams prepare_params;
   prepare_params.buffer_allocations = &parent_buffer_allocations;

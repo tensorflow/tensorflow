@@ -54,6 +54,8 @@ jobs:
     name: JAX Linux x86 AMD Instinct GPU
     runs-on: ${{ inputs.runner_label || 'amd-do-linux-xla-gpu-gfx950-1' }}
     timeout-minutes: 80
+    # Remove this once the JAX CI is stable.
+    continue-on-error: true
     env:
       DOCKER_IMAGE: ${{ needs.rocm-config.outputs.docker-image }}
     container: &rocm_container

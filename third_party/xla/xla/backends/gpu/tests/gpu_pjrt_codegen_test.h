@@ -102,6 +102,16 @@ class GpuPjRtCodegenTest : public HloPjRtGpuTestBase {
     return "ptx_kernel";
   }
 
+  std::string GpuBarrier() const {
+    if (IsBuiltWithRocm()) {
+      return "void @llvm.amdgcn.s.barrier()";
+    }
+    if (IsBuiltWithOneAPI()) {
+      return "spir_func void @_Z7barrierj(i32 3)";
+    }
+    return "void @llvm.nvvm.barrier.cta.sync.aligned.all(i32 0)";
+  }
+
  private:
   Compiler::CompileOptions compile_options_;
   HloRunnerPropertyTag::Type runner_type_{0};

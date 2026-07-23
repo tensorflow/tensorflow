@@ -42,9 +42,7 @@ limitations under the License.
 #include "xla/service/latency_hiding_scheduler.h"
 #include "xla/service/profile_guided_latency_estimator.h"
 #include "xla/stream_executor/device_description.h"
-#include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/xla.pb.h"
 
 namespace xla::gpu {
@@ -135,8 +133,8 @@ TEST_F(GpuLatencyHidingSchedulerBaseTest,
   )";
 
   HloModuleConfig config = GetModuleConfig(kFdoProfile);
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(kHloModule, config));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHloModule, config));
 
   for (const HloInstruction* instr :
        module->entry_computation()->instructions()) {
@@ -173,8 +171,8 @@ TEST_F(GpuLatencyHidingSchedulerBaseTest,
   )";
 
   HloModuleConfig config = GetModuleConfig(kFdoProfile);
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(kHloModule, config));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHloModule, config));
 
   for (const HloInstruction* instr :
        module->entry_computation()->instructions()) {
@@ -212,8 +210,8 @@ TEST_F(GpuLatencyHidingSchedulerBaseTest,
   )";
 
   HloModuleConfig config = GetModuleConfig(kFdoProfile);
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(kHloModule, config));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHloModule, config));
 
   for (const HloInstruction* instr :
        module->entry_computation()->instructions()) {
@@ -260,8 +258,8 @@ TEST_F(GpuLatencyHidingSchedulerBaseTest,
   )";
 
   HloModuleConfig config = GetModuleConfig(kFdoProfile);
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(kHloModule, config));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHloModule, config));
 
   for (const HloInstruction* instr :
        module->entry_computation()->instructions()) {
@@ -312,8 +310,8 @@ TEST_F(GpuLatencyHidingSchedulerBaseTest,
     }
   )";
   auto config = GetModuleConfig(kFdoProfile);
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(kHloModule, config));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHloModule, config));
 
   EXPECT_THAT(ScheduleModule(module.get()),
               absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
@@ -333,8 +331,8 @@ TEST_F(GpuLatencyHidingSchedulerBaseTest,
     }
   )";
   auto config = GetModuleConfig(kFdoProfile);
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(kHloModule, config));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHloModule, config));
 
   EXPECT_THAT(ScheduleModule(module.get()),
               absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
@@ -354,10 +352,10 @@ TEST_F(GpuLatencyHidingSchedulerBaseTest,
     }
   )";
   auto config = GetModuleConfig(kFdoProfile);
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(kHloModule, config));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHloModule, config));
 
-  TF_EXPECT_OK(ScheduleModule(module.get()));
+  EXPECT_OK(ScheduleModule(module.get()));
 }
 
 TEST_F(GpuLatencyHidingSchedulerBaseTest,
@@ -392,10 +390,10 @@ TEST_F(GpuLatencyHidingSchedulerBaseTest,
   )";
 
   HloModuleConfig config = GetModuleConfig(kFdoProfile);
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(kHloModule, config));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHloModule, config));
 
-  TF_EXPECT_OK(ScheduleModule(module.get(), /*num_parallel_resources=*/2));
+  EXPECT_OK(ScheduleModule(module.get(), /*num_parallel_resources=*/2));
   const HloSchedule& schedule = module->schedule();
   std::vector<HloInstruction*> instruction_sequence =
       schedule.sequence(module->entry_computation()).instructions();
@@ -443,9 +441,9 @@ TEST_F(GpuLatencyHidingSchedulerBaseTest,
   debug_options.set_xla_gpu_enable_latency_hiding_scheduler(true);
   debug_options.set_xla_gpu_enable_analytical_sol_latency_estimator(true);
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(kHloModule, config));
-  TF_ASSERT_OK(ScheduleModule(module.get(), /*num_parallel_resources=*/1));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHloModule, config));
+  ASSERT_OK(ScheduleModule(module.get(), /*num_parallel_resources=*/1));
 
   const auto& sequence =
       module->schedule().sequence(module->entry_computation()).instructions();
@@ -490,13 +488,13 @@ TEST_F(GpuLatencyHidingSchedulerBaseTest,
   )";
 
   HloModuleConfig config = GetModuleConfig(kFdoProfile);
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(kHloModule, config));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHloModule, config));
   module->mutable_config()
       .mutable_debug_options()
       .set_xla_gpu_experimental_enable_collective_multi_streaming(true);
 
-  TF_EXPECT_OK(ScheduleModule(module.get(), /*num_parallel_resources=*/2));
+  EXPECT_OK(ScheduleModule(module.get(), /*num_parallel_resources=*/2));
   const HloSchedule& schedule = module->schedule();
   std::vector<HloInstruction*> instruction_sequence =
       schedule.sequence(module->entry_computation()).instructions();
@@ -587,10 +585,10 @@ TEST_F(GpuLatencyHidingSchedulerBaseTest, SchedulePipelinedSendRecvsLate) {
   HloModuleConfig config = GetModuleConfig(
       kFdoProfile, /*pipeline_parallelism_opt_level=*/DebugOptions::
           PIPELINE_PARALLELISM_OPT_LEVEL_ENABLE);
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(kHloModule, config));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHloModule, config));
 
-  TF_EXPECT_OK(
+  EXPECT_OK(
       ScheduleModule(module.get(), /*num_parallel_resources=*/2,
                      /*strictness=*/DebugOptions::PGLE_STRICTNESS_LEVEL_OFF));
   const HloSchedule& schedule = module->schedule();
@@ -668,11 +666,11 @@ TEST_F(GpuLatencyHidingSchedulerBaseTest,
   HloModuleConfig config = GetModuleConfig(
       kFdoProfile, /*pipeline_parallelism_opt_level=*/DebugOptions::
           PIPELINE_PARALLELISM_OPT_LEVEL_ENABLE);
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(kHloModule, config));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHloModule, config));
 
-  TF_EXPECT_OK(ScheduleModule(module.get(), /*num_parallel_resources=*/1,
-                              DebugOptions::PGLE_STRICTNESS_LEVEL_OFF));
+  EXPECT_OK(ScheduleModule(module.get(), /*num_parallel_resources=*/1,
+                           DebugOptions::PGLE_STRICTNESS_LEVEL_OFF));
   const HloSchedule& schedule = module->schedule();
 
   VLOG(3) << module->schedule().ToString();
@@ -762,11 +760,11 @@ TEST_F(GpuLatencyHidingSchedulerBaseTest, ScheduleP2PWithMultipliers) {
   HloModuleConfig config = GetModuleConfig(
       kFdoProfile, /*pipeline_parallelism_opt_level=*/DebugOptions::
           PIPELINE_PARALLELISM_OPT_LEVEL_ENABLE);
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(kHloModule, config));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHloModule, config));
 
-  TF_EXPECT_OK(ScheduleModule(module.get(), /*num_parallel_resources=*/1,
-                              DebugOptions::PGLE_STRICTNESS_LEVEL_OFF));
+  EXPECT_OK(ScheduleModule(module.get(), /*num_parallel_resources=*/1,
+                           DebugOptions::PGLE_STRICTNESS_LEVEL_OFF));
   const HloSchedule& schedule = module->schedule();
 
   VLOG(3) << module->schedule().ToString();
@@ -853,11 +851,11 @@ TEST_F(GpuLatencyHidingSchedulerBaseTest,
   HloModuleConfig config = GetModuleConfig(
       kFdoProfile, /*pipeline_parallelism_opt_level=*/DebugOptions::
           PIPELINE_PARALLELISM_OPT_LEVEL_ENABLE);
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(kHloModule, config));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHloModule, config));
 
-  TF_EXPECT_OK(ScheduleModule(module.get(), /*num_parallel_resources=*/1,
-                              DebugOptions::PGLE_STRICTNESS_LEVEL_OFF));
+  EXPECT_OK(ScheduleModule(module.get(), /*num_parallel_resources=*/1,
+                           DebugOptions::PGLE_STRICTNESS_LEVEL_OFF));
   const HloSchedule& schedule = module->schedule();
 
   VLOG(3) << module->schedule().ToString();
@@ -942,11 +940,11 @@ ENTRY main {
   HloModuleConfig config = GetModuleConfig(
       kFdoProfile, /*pipeline_parallelism_opt_level=*/DebugOptions::
           PIPELINE_PARALLELISM_OPT_LEVEL_ENABLE);
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(kHloModule, config));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHloModule, config));
 
-  TF_EXPECT_OK(ScheduleModule(module.get(), /*num_parallel_resources=*/4,
-                              DebugOptions::PGLE_STRICTNESS_LEVEL_OFF));
+  EXPECT_OK(ScheduleModule(module.get(), /*num_parallel_resources=*/4,
+                           DebugOptions::PGLE_STRICTNESS_LEVEL_OFF));
   const HloSchedule& schedule = module->schedule();
 
   HloComputation* main_computation = FindComputation(module.get(), "main");
@@ -1002,10 +1000,10 @@ ENTRY main {
 
   absl::string_view kFdoProfile = "";
   HloModuleConfig config = GetModuleConfig(kFdoProfile);
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(kHloModule, config));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHloModule, config));
 
-  TF_EXPECT_OK(ScheduleModule(module.get(), /*num_parallel_resources=*/2));
+  EXPECT_OK(ScheduleModule(module.get(), /*num_parallel_resources=*/2));
   const HloSchedule& schedule = module->schedule();
   std::vector<HloInstruction*> instruction_sequence =
       schedule.sequence(module->entry_computation()).instructions();
@@ -1048,8 +1046,8 @@ ENTRY main {
 
   absl::string_view kFdoProfile = "";
   HloModuleConfig config = GetModuleConfig(kFdoProfile);
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(kHloModule, config));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHloModule, config));
   HloComputation* comp = module->entry_computation();
   SchedulerConfig sched_config;
   GpuAsyncTracker async_tracker(sched_config);
@@ -1098,6 +1096,325 @@ ENTRY main {
   ASSERT_EQ(done_resources.size(), 1);
   EXPECT_EQ(done_resources[0].first, compute_resource);
   EXPECT_EQ(done_resources[0].second, ResourceUsageType::kResourceOccupy);
+}
+
+TEST_F(GpuLatencyHidingSchedulerBaseTest,
+       ExplicitCollectivesGroupUsesCollectiveResource) {
+  absl::string_view kHloModule = R"(
+HloModule test, is_scheduled=true
+
+comms {
+  p0 = f32[1] parameter(0)
+  ag0-start = (f32[1], f32[1]) all-gather-start(p0), dimensions={0}
+  ag1-start = (f32[1], f32[1]) all-gather-start(p0), dimensions={0}
+  ag0 = f32[1] all-gather-done(ag0-start)
+  ag1 = f32[1] all-gather-done(ag1-start)
+  ROOT result = (f32[1], f32[1]) tuple(ag0, ag1)
+}
+
+ENTRY main {
+  p0 = f32[1] parameter(0)
+  p1 = f32[1] parameter(1)
+  group-start = ((f32[1]), (f32[1], f32[1])) async-start(p0),
+    calls=comms, frontend_attributes={_collectives_group=""}
+  add = f32[1] add(p1, p1)
+  group-done = (f32[1], f32[1]) async-done(group-start)
+  ROOT result = ((f32[1], f32[1]), f32[1]) tuple(group-done, add)
+})";
+
+  HloModuleConfig config = GetModuleConfig(/*fdo_profile=*/"");
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHloModule, config));
+  HloInstruction* group_start = FindInstruction(module.get(), "group-start");
+  HloInstruction* group_done = FindInstruction(module.get(), "group-done");
+
+  SchedulerConfig sched_config;
+  GpuAsyncTracker async_tracker(sched_config);
+  EXPECT_TRUE(async_tracker.IsSupportedAsyncStart(*group_start));
+  EXPECT_FALSE(async_tracker.IsSupportedAsyncDone(*group_start));
+  EXPECT_TRUE(async_tracker.IsSupportedAsyncDone(*group_done));
+  EXPECT_FALSE(async_tracker.IsSupportedAsyncStart(*group_done));
+
+  int64_t collective_resource =
+      ResourceTypeToIndex(GpuResourceType::kGpuAsyncStreamCollectives);
+  auto start_resources =
+      async_tracker.GetResourcesFromInstruction(*group_start);
+  ASSERT_EQ(start_resources.size(), 1);
+  EXPECT_EQ(start_resources[0].first, collective_resource);
+  EXPECT_EQ(start_resources[0].second, ResourceUsageType::kResourceRelease);
+
+  auto done_resources = async_tracker.GetResourcesFromInstruction(*group_done);
+  ASSERT_EQ(done_resources.size(), 1);
+  EXPECT_EQ(done_resources[0].first, collective_resource);
+  EXPECT_EQ(done_resources[0].second, ResourceUsageType::kResourceOccupy);
+  EXPECT_EQ(async_tracker.GetNumResourcesPerInstruction(collective_resource,
+                                                        *group_start),
+            0);
+  EXPECT_EQ(async_tracker.GetNumResourcesPerInstruction(collective_resource,
+                                                        *group_done),
+            1);
+
+  auto start_resource_counts =
+      async_tracker.GetNumResourcesPerInstruction(*group_start);
+  EXPECT_TRUE(start_resource_counts.empty());
+  auto done_resource_counts =
+      async_tracker.GetNumResourcesPerInstruction(*group_done);
+  ASSERT_EQ(done_resource_counts.size(), 1);
+  EXPECT_EQ(done_resource_counts.at(collective_resource), 1);
+}
+
+TEST_F(GpuLatencyHidingSchedulerBaseTest,
+       NestedCollectivesGroupUsesOneResource) {
+  constexpr absl::string_view kHloModule = R"(
+HloModule test, is_scheduled=true
+
+comms {
+  p0 = f32[1] parameter(0)
+  ag0-start = (f32[1], f32[1]) all-gather-start(p0), dimensions={0}
+  ag1-start = (f32[1], f32[1]) all-gather-start(p0), dimensions={0}
+  ag0 = f32[1] all-gather-done(ag0-start)
+  ag1 = f32[1] all-gather-done(ag1-start)
+  ROOT result = (f32[1], f32[1]) tuple(ag0, ag1)
+}
+
+group {
+  p0 = f32[1] parameter(0)
+  group-start = ((f32[1]), (f32[1], f32[1])) async-start(p0),
+    calls=comms, frontend_attributes={_collectives_group=""}
+  ROOT group-done = (f32[1], f32[1]) async-done(group-start)
+}
+
+while_condition {
+  state = (f32[1], f32[1]) parameter(0)
+  ROOT keep-going = pred[] constant(false)
+}
+
+while_body {
+  state = (f32[1], f32[1]) parameter(0)
+  value = f32[1] get-tuple-element(state), index=0
+  ROOT group-call = (f32[1], f32[1]) call(value), to_apply=group
+}
+
+ENTRY main {
+  p0 = f32[1] parameter(0)
+  p1 = f32[1] parameter(1)
+  nested-call = (f32[1], f32[1]) call(p0), to_apply=group
+  init = (f32[1], f32[1]) tuple(p0, p1)
+  nested-while = (f32[1], f32[1]) while(init),
+    condition=while_condition, body=while_body
+  ROOT result = ((f32[1], f32[1]), (f32[1], f32[1])) tuple(
+    nested-call, nested-while)
+})";
+
+  HloModuleConfig config = GetModuleConfig(/*fdo_profile=*/"");
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHloModule, config));
+  HloInstruction* nested_call = FindInstruction(module.get(), "nested-call");
+  HloInstruction* nested_while = FindInstruction(module.get(), "nested-while");
+  ASSERT_NE(nested_call, nullptr);
+  ASSERT_NE(nested_while, nullptr);
+
+  SchedulerConfig sched_config;
+  GpuAsyncTracker async_tracker(sched_config);
+  const int64_t collective_resource =
+      ResourceTypeToIndex(GpuResourceType::kGpuAsyncStreamCollectives);
+  for (const HloInstruction* instruction : {nested_call, nested_while}) {
+    EXPECT_EQ(async_tracker.GetNumResourcesPerInstruction(collective_resource,
+                                                          *instruction),
+              1);
+    auto resource_counts =
+        async_tracker.GetNumResourcesPerInstruction(*instruction);
+    ASSERT_EQ(resource_counts.size(), 1);
+    EXPECT_EQ(resource_counts.at(collective_resource), 1);
+  }
+}
+
+TEST_F(GpuLatencyHidingSchedulerBaseTest,
+       ExplicitCollectivesGroupSerializesWithNativeCollective) {
+  absl::string_view kFdoProfile = R"pb(
+    costs { name: "add" cost_us: 100000.0 }
+  )pb";
+
+  absl::string_view kHloModule = R"(
+HloModule test, replica_count=4
+
+comms {
+  p0 = f32[1] parameter(0)
+  ag = f32[2] all-gather(p0), dimensions={0},
+    replica_groups={{0,2},{1,3}}
+  cp = f32[1] collective-permute(p0), source_target_pairs={{0,1}}
+  ROOT result = (f32[2], f32[1]) tuple(ag, cp)
+}
+
+ENTRY main {
+  p0 = f32[1] parameter(0)
+  p1 = f32[1] parameter(1)
+  group-start = ((f32[1]), (f32[2], f32[1])) async-start(p0),
+    calls=comms, frontend_attributes={_collectives_group=""}
+  native-start = (f32[1], f32[2]) all-gather-start(p0), dimensions={0},
+    replica_groups={{0,1},{2,3}}
+  add = f32[1] add(p1, p1)
+  group-done = (f32[2], f32[1]) async-done(group-start)
+  native-done = f32[2] all-gather-done(native-start)
+  ROOT result = ((f32[2], f32[1]), f32[2], f32[1])
+    tuple(group-done, native-done, add)
+})";
+
+  HloModuleConfig config = GetModuleConfig(kFdoProfile);
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHloModule, config));
+  module->mutable_config()
+      .mutable_debug_options()
+      .set_xla_gpu_experimental_enable_collective_multi_streaming(true);
+  ASSERT_OK(ScheduleModule(module.get(), /*num_parallel_resources=*/2,
+                           DebugOptions::PGLE_STRICTNESS_LEVEL_OFF));
+
+  const HloSchedule& schedule = module->schedule();
+  std::vector<HloInstruction*> instruction_sequence =
+      schedule.sequence(module->entry_computation()).instructions();
+  const int group_start_index =
+      GetIndexByName(instruction_sequence, "group-start");
+  const int group_done_index =
+      GetIndexByName(instruction_sequence, "group-done");
+  const int native_start_index =
+      GetIndexByName(instruction_sequence, "native-start");
+  const int native_done_index =
+      GetIndexByName(instruction_sequence, "native-done");
+  const int add_index = GetIndexByName(instruction_sequence, "add");
+
+  // The second collective in the group and the native collective share ranks
+  // 0 and 1, so they must not overlap.
+  EXPECT_TRUE(group_done_index < native_start_index ||
+              native_done_index < group_start_index);
+  EXPECT_TRUE(
+      (group_start_index < add_index && add_index < group_done_index) ||
+      (native_start_index < add_index && add_index < native_done_index));
+}
+
+TEST_F(GpuLatencyHidingSchedulerBaseTest,
+       ExplicitCollectivesGroupOverlapsNativeWithOneSharedRank) {
+  absl::string_view kFdoProfile = R"pb(
+    costs { name: "add" cost_us: 100000.0 }
+  )pb";
+
+  absl::string_view kHloModule = R"(
+HloModule test, replica_count=4
+
+cp {
+  p0 = f32[1] parameter(0)
+  ROOT cp = f32[1] collective-permute(p0), source_target_pairs={{0,1}}
+}
+
+comms {
+  p0 = f32[1] parameter(0)
+  cp-start = ((f32[1]), f32[1]) async-start(p0), calls=cp
+  ROOT cp-done = f32[1] async-done(cp-start)
+}
+
+ENTRY main {
+  p0 = f32[1] parameter(0)
+  p1 = f32[1] parameter(1)
+  group-start = ((f32[1]), f32[1]) async-start(p0),
+    calls=comms, frontend_attributes={_collectives_group=""}
+  native-start = (f32[1], f32[2]) all-gather-start(p0), dimensions={0},
+    replica_groups={{0,2},{1,3}}
+  add = f32[1] add(p1, p1)
+  group-done = f32[1] async-done(group-start)
+  native-done = f32[2] all-gather-done(native-start)
+  ROOT result = (f32[1], f32[2], f32[1])
+    tuple(group-done, native-done, add)
+})";
+
+  HloModuleConfig config = GetModuleConfig(kFdoProfile);
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHloModule, config));
+  module->mutable_config()
+      .mutable_debug_options()
+      .set_xla_gpu_experimental_enable_collective_multi_streaming(true);
+  ASSERT_OK(ScheduleModule(module.get(), /*num_parallel_resources=*/2,
+                           DebugOptions::PGLE_STRICTNESS_LEVEL_OFF));
+
+  const HloSchedule& schedule = module->schedule();
+  std::vector<HloInstruction*> instruction_sequence =
+      schedule.sequence(module->entry_computation()).instructions();
+  const int group_start_index =
+      GetIndexByName(instruction_sequence, "group-start");
+  const int group_done_index =
+      GetIndexByName(instruction_sequence, "group-done");
+  const int native_start_index =
+      GetIndexByName(instruction_sequence, "native-start");
+  const int native_done_index =
+      GetIndexByName(instruction_sequence, "native-done");
+  const int add_index = GetIndexByName(instruction_sequence, "add");
+
+  // Every native subgroup shares at most one rank with the group's
+  // collective-permute, so the collectives can overlap.
+  EXPECT_TRUE((group_start_index < native_start_index &&
+               native_start_index < group_done_index) ||
+              (native_start_index < group_start_index &&
+               group_start_index < native_done_index));
+  EXPECT_TRUE(
+      (group_start_index < add_index && add_index < group_done_index) ||
+      (native_start_index < add_index && add_index < native_done_index));
+}
+
+TEST_F(GpuLatencyHidingSchedulerBaseTest,
+       ExplicitCollectivesGroupWithImplicitReplicaGroupsSerializes) {
+  absl::string_view kFdoProfile = R"pb(
+    costs { name: "add" cost_us: 100000.0 }
+  )pb";
+
+  absl::string_view kHloModule = R"(
+HloModule test, replica_count=4
+
+comms {
+  p0 = f32[1] parameter(0)
+  ROOT ag = f32[4] all-gather(p0), dimensions={0}
+}
+
+ENTRY main {
+  p0 = f32[1] parameter(0)
+  p1 = f32[1] parameter(1)
+  group-start = ((f32[1]), f32[4]) async-start(p0),
+    calls=comms, frontend_attributes={_collectives_group=""}
+  native-start = (f32[1], f32[2]) all-gather-start(p0), dimensions={0},
+    replica_groups={{0,1},{2,3}}
+  add = f32[1] add(p1, p1)
+  group-done = f32[4] async-done(group-start)
+  native-done = f32[2] all-gather-done(native-start)
+  ROOT result = (f32[4], f32[2], f32[1])
+    tuple(group-done, native-done, add)
+})";
+
+  HloModuleConfig config = GetModuleConfig(kFdoProfile);
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHloModule, config));
+  module->mutable_config()
+      .mutable_debug_options()
+      .set_xla_gpu_experimental_enable_collective_multi_streaming(true);
+  ASSERT_OK(ScheduleModule(module.get(), /*num_parallel_resources=*/2,
+                           DebugOptions::PGLE_STRICTNESS_LEVEL_OFF));
+
+  const HloSchedule& schedule = module->schedule();
+  std::vector<HloInstruction*> instruction_sequence =
+      schedule.sequence(module->entry_computation()).instructions();
+  const int group_start_index =
+      GetIndexByName(instruction_sequence, "group-start");
+  const int group_done_index =
+      GetIndexByName(instruction_sequence, "group-done");
+  const int native_start_index =
+      GetIndexByName(instruction_sequence, "native-start");
+  const int native_done_index =
+      GetIndexByName(instruction_sequence, "native-done");
+  const int add_index = GetIndexByName(instruction_sequence, "add");
+
+  // Empty replica_groups means that all replicas participate. Because that
+  // implicit group cannot be materialized here, serialize conservatively.
+  EXPECT_TRUE(group_done_index < native_start_index ||
+              native_done_index < group_start_index);
+  EXPECT_TRUE(
+      (group_start_index < add_index && add_index < group_done_index) ||
+      (native_start_index < add_index && add_index < native_done_index));
 }
 
 TEST_F(GpuLatencyHidingSchedulerBaseTest,
@@ -1195,11 +1512,11 @@ TEST_F(GpuLatencyHidingSchedulerBaseTest, ParallelThreadsShouldBeScheduled) {
 
   absl::string_view kFdoProfile = "";
   HloModuleConfig config = GetModuleConfig(kFdoProfile);
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(kHloModule, config));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHloModule, config));
 
   // It should compile without any issues.
-  TF_EXPECT_OK(ScheduleModule(module.get()));
+  EXPECT_OK(ScheduleModule(module.get()));
 }
 
 TEST_F(GpuLatencyHidingSchedulerBaseTest,
@@ -1241,11 +1558,11 @@ ENTRY main {
   absl::string_view kFdoProfile = "";
 
   HloModuleConfig config = GetModuleConfig(kFdoProfile);
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(kHloModule, config));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHloModule, config));
 
-  TF_EXPECT_OK(ScheduleModule(module.get(), /*num_parallel_resources=*/16,
-                              DebugOptions::PGLE_STRICTNESS_LEVEL_ERROR, true));
+  EXPECT_OK(ScheduleModule(module.get(), /*num_parallel_resources=*/16,
+                           DebugOptions::PGLE_STRICTNESS_LEVEL_ERROR, true));
   const HloSchedule& schedule = module->schedule();
   std::vector<HloInstruction*> instruction_sequence =
       schedule.sequence(module->entry_computation()).instructions();
@@ -1346,10 +1663,10 @@ TEST_F(GpuLatencyHidingSchedulerBaseTest, DelayMoveToHostAsyncStart) {
 
   absl::string_view kFdoProfile = "";
   xla::HloModuleConfig config = GetModuleConfig(kFdoProfile);
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
-                          ParseAndReturnVerifiedModule(kHloModule, config));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
+                       ParseAndReturnVerifiedModule(kHloModule, config));
 
-  TF_EXPECT_OK(ScheduleModule(module.get()));
+  EXPECT_OK(ScheduleModule(module.get()));
   const HloSchedule& schedule = module->schedule();
   const std::vector<xla::HloInstruction*>& instruction_sequence =
       schedule.sequence(module->entry_computation()).instructions();
@@ -1395,10 +1712,10 @@ ENTRY main {
   absl::string_view kFdoProfile = "";
 
   auto config = GetModuleConfig(kFdoProfile);
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kHloModule, config));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnVerifiedModule(kHloModule, config));
 
-  TF_EXPECT_OK(ScheduleModule(module.get()));
+  EXPECT_OK(ScheduleModule(module.get()));
   auto schedule = module->schedule();
   std::vector<HloInstruction*> instruction_sequence =
       schedule.sequence(module->entry_computation()).instructions();

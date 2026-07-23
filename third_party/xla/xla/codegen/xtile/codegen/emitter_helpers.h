@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_CODEGEN_XTILE_CODEGEN_EMITTER_HELPERS_H_
 #define XLA_CODEGEN_XTILE_CODEGEN_EMITTER_HELPERS_H_
 
+#include <complex>
 #include <cstdint>
 #include <optional>
 #include <utility>
@@ -27,6 +28,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
+#include "mlir/Dialect/Complex/IR/Complex.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinAttributes.h"
@@ -145,16 +147,18 @@ class TileInfo {
       EmitterContext& ctx,
       const gpu::experimental::TiledHloInstruction& tiled_hlo);
 
-  // Tile offsets. Its size is equal to the rank of the output shape.
+  // Tile offsets in storage coordinates. Its size is equal to the rank of the
+  // output shape.
   mlir::ValueRange offsets() const { return offsets_; }
 
-  // Tile strides. Its size is equal to the rank of the output shape.
+  // Tile strides in storage coordinates. Its size is equal to the rank of the
+  // output shape.
   mlir::ArrayRef<int64_t> tile_strides() const { return tile_strides_; }
 
-  // The original shape of the tensor.
-  mlir::ArrayRef<int64_t> original_shape() const { return original_shape_; }
+  // The full tensor shape in storage coordinates.
+  mlir::ArrayRef<int64_t> storage_shape() const { return storage_shape_; }
 
-  // Tile sizes after padding to a power of 2 (Triton requirement).
+  // Tile sizes in storage coordinates after padding to a power of 2.
   mlir::ArrayRef<int64_t> padded_tile_sizes() const {
     return padded_tile_sizes_;
   }
@@ -181,7 +185,7 @@ class TileInfo {
  private:
   llvm::SmallVector<mlir::Value> offsets_;
   llvm::SmallVector<int64_t> tile_strides_;
-  llvm::SmallVector<int64_t> original_shape_;
+  llvm::SmallVector<int64_t> storage_shape_;
   llvm::SmallVector<int64_t> padded_tile_sizes_;
   llvm::SmallVector<int64_t> minor_to_major_layout_;
   mlir::Type storage_type_;
@@ -190,7 +194,7 @@ class TileInfo {
 
   TileInfo(llvm::SmallVector<mlir::Value> offsets,             //
            llvm::SmallVector<int64_t> tile_strides,            //
-           llvm::SmallVector<int64_t> original_shape,          //
+           llvm::SmallVector<int64_t> storage_shape,           //
            llvm::SmallVector<int64_t> padded_tile_sizes,       //
            llvm::SmallVector<int64_t> minor_to_major_layout,   //
            mlir::Type storage_type,                            //
@@ -199,7 +203,7 @@ class TileInfo {
            )
       : offsets_(std::move(offsets)),
         tile_strides_(std::move(tile_strides)),
-        original_shape_(std::move(original_shape)),
+        storage_shape_(std::move(storage_shape)),
         padded_tile_sizes_(std::move(padded_tile_sizes)),
         minor_to_major_layout_(std::move(minor_to_major_layout)),
         storage_type_(std::move(storage_type)),
@@ -225,6 +229,21 @@ absl::StatusOr<PrimitiveType> GetPrimitiveType(mlir::Type t);
 mlir::Type StorageType(mlir::Type t);
 mlir::Type GetSignlessType(mlir::Type t);
 
+// Triton tt.dot_scaled takes scale operands only for low-precision lhs/rhs
+// value dtypes that it interprets through a dot-scaled element-type attribute.
+// Other HLO scaled-dot operand dtypes are emitted without attaching a scale
+// operand to tt.dot_scaled.
+bool IsTritonDotScaledOperandType(PrimitiveType type);
+
+// Some Triton dot-scaled value dtypes are smaller than one byte. XTile stores
+// those logical elements inside byte-sized carrier elements, so storage shapes
+// and offsets are expressed in carrier elements rather than logical elements.
+// For these operands, Triton's k_pack attribute is derived from the HLO layout.
+bool IsPackedTritonDotScaledOperandType(PrimitiveType type);
+
+absl::StatusOr<llvm::SmallVector<int64_t>> GetStorageShape(
+    llvm::ArrayRef<int64_t> logical_shape_dims, const Shape& logical_shape);
+
 // Get the value of the scalar constant's literal in a C++ type.
 template <typename T>
 T ScalarConstantValue(const HloInstruction& instr, PrimitiveType dst_type) {
@@ -242,21 +261,35 @@ mlir::Value CreateConst(mlir::ImplicitLocOpBuilder& b, mlir::Type type,
   if (auto int_type = mlir::dyn_cast<mlir::IntegerType>(type)) {
     if (int_type.isUnsignedInteger()) {
       mlir::Type signless_type = GetSignlessType(type);
-      mlir::Value cst = b.create<mlir::arith::ConstantOp>(
-          b.getIntegerAttr(signless_type, value));
+      mlir::Value cst = mlir::arith::ConstantOp::create(
+          b, b.getIntegerAttr(signless_type, value));
       return mlir::UnrealizedConversionCastOp::create(b, b.getLoc(), type, cst)
           .getResult(0);
     }
-    return b.create<mlir::arith::ConstantOp>(b.getIntegerAttr(type, value));
+    return mlir::arith::ConstantOp::create(b, b.getIntegerAttr(type, value));
   }
 
   if (mlir::isa<mlir::IndexType>(type)) {
-    return b.create<mlir::arith::ConstantOp>(b.getIndexAttr(value));
+    return mlir::arith::ConstantOp::create(b, b.getIndexAttr(value));
   }
 
   if (mlir::isa<mlir::FloatType>(type)) {
-    return b.create<mlir::arith::ConstantOp>(
-        b.getFloatAttr(type, static_cast<double>(value)));
+    return mlir::arith::ConstantOp::create(
+        b, b.getFloatAttr(type, static_cast<double>(value)));
+  }
+  LOG(FATAL) << "Constant type not supported: " << llvm_ir::DumpToString(type);
+}
+
+template <typename T>
+mlir::Value CreateConst(mlir::ImplicitLocOpBuilder& b, mlir::Type type,
+                        std::complex<T> value) {
+  if (auto complex_type = mlir::dyn_cast<mlir::ComplexType>(type)) {
+    auto elem_type = complex_type.getElementType();
+    mlir::Value real_cst = mlir::arith::ConstantOp::create(
+        b, b.getFloatAttr(elem_type, static_cast<double>(value.real())));
+    mlir::Value imag_cst = mlir::arith::ConstantOp::create(
+        b, b.getFloatAttr(elem_type, static_cast<double>(value.imag())));
+    return mlir::complex::CreateOp::create(b, complex_type, real_cst, imag_cst);
   }
   LOG(FATAL) << "Constant type not supported: " << llvm_ir::DumpToString(type);
 }
@@ -271,27 +304,46 @@ mlir::TypedValue<mlir::RankedTensorType> CreateConst(
     if (int_type.isUnsignedInteger()) {
       auto signless_tensor_type =
           mlir::cast<mlir::ShapedType>(GetSignlessType(tensor_type));
-      mlir::Value cst =
-          b.create<mlir::arith::ConstantOp>(mlir::DenseElementsAttr::get(
-              signless_tensor_type,
-              mlir::APInt(int_type.getIntOrFloatBitWidth(), value,
-                          /*isSigned=*/false, /*implicitTrunc=*/true)));
+      mlir::Value cst = mlir::arith::ConstantOp::create(
+          b, mlir::DenseElementsAttr::get(
+                 signless_tensor_type,
+                 mlir::APInt(int_type.getIntOrFloatBitWidth(), value,
+                             /*isSigned=*/false, /*implicitTrunc=*/true)));
       mlir::Value cast_res = mlir::UnrealizedConversionCastOp::create(
                                  b, b.getLoc(), tensor_type, cst)
                                  .getResult(0);
       return mlir::cast<mlir::TypedValue<mlir::RankedTensorType>>(cast_res);
     }
-    mlir::Value result =
-        b.create<mlir::arith::ConstantOp>(mlir::DenseElementsAttr::get(
-            tensor_type,
-            mlir::APInt(int_type.getIntOrFloatBitWidth(), value,
-                        /*isSigned=*/false, /*implicitTrunc=*/true)));
+    mlir::Value result = mlir::arith::ConstantOp::create(
+        b, mlir::DenseElementsAttr::get(
+               tensor_type,
+               mlir::APInt(int_type.getIntOrFloatBitWidth(), value,
+                           /*isSigned=*/false, /*implicitTrunc=*/true)));
     return mlir::cast<mlir::TypedValue<mlir::RankedTensorType>>(result);
   }
   if (auto float_type = mlir::dyn_cast<mlir::FloatType>(type)) {
-    mlir::Value result =
-        b.create<mlir::arith::ConstantOp>(mlir::DenseElementsAttr::get(
-            tensor_type, b.getFloatAttr(type, static_cast<double>(value))));
+    mlir::Value result = mlir::arith::ConstantOp::create(
+        b, mlir::DenseElementsAttr::get(
+               tensor_type, b.getFloatAttr(type, static_cast<double>(value))));
+    return mlir::cast<mlir::TypedValue<mlir::RankedTensorType>>(result);
+  }
+  LOG(FATAL) << "Constant type not supported: " << llvm_ir::DumpToString(type);
+}
+
+template <typename T>
+mlir::TypedValue<mlir::RankedTensorType> CreateConst(
+    mlir::ImplicitLocOpBuilder& b, mlir::Type type, std::complex<T> value,
+    llvm::ArrayRef<int64_t> shape) {
+  auto tensor_type = mlir::RankedTensorType::get(shape, type);
+  if (auto complex_type = mlir::dyn_cast<mlir::ComplexType>(type)) {
+    auto elem_type = complex_type.getElementType();
+    mlir::Attribute real_attr =
+        b.getFloatAttr(elem_type, static_cast<double>(value.real()));
+    mlir::Attribute imag_attr =
+        b.getFloatAttr(elem_type, static_cast<double>(value.imag()));
+    mlir::ArrayAttr complex_attr = b.getArrayAttr({real_attr, imag_attr});
+    mlir::Value result = mlir::arith::ConstantOp::create(
+        b, mlir::DenseElementsAttr::get(tensor_type, complex_attr));
     return mlir::cast<mlir::TypedValue<mlir::RankedTensorType>>(result);
   }
   LOG(FATAL) << "Constant type not supported: " << llvm_ir::DumpToString(type);
@@ -378,7 +430,8 @@ absl::StatusOr<llvm::SmallVector<int64_t>> GetPermutationMinorToMajor(
     mlir::MemRefType memref);
 
 // Function to get a MemRefType from a Shape.
-mlir::MemRefType GetMemRefType(const Shape& shape, mlir::Type element_type);
+absl::StatusOr<mlir::MemRefType> GetMemRefType(const Shape& shape,
+                                               mlir::Type element_type);
 
 // Function to get the MLIR type from a PrimitiveType.
 absl::StatusOr<mlir::Type> GetMlirType(

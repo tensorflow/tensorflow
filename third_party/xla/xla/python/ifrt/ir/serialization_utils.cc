@@ -17,7 +17,6 @@ limitations under the License.
 
 #include <algorithm>
 #include <cstddef>
-#include <limits>
 #include <memory>
 #include <optional>
 #include <string>
@@ -95,9 +94,9 @@ absl::Status SerializeIfrtIrProgram(riegeli::CordWriter<absl::Cord*>& writer,
 
 absl::StatusOr<std::unique_ptr<IfrtIRProgram>> DeserializeIfrtIrProgram(
     const SerializedIfrtIrExecutableMetadata& metadata,
-    absl::string_view serialized_executable_payload,
+    const absl::Cord& serialized_executable_payload,
     std::unique_ptr<DeserializeIfrtIRProgramOptions> options) {
-  absl::string_view program_data = serialized_executable_payload.substr(
+  absl::Cord program_data = serialized_executable_payload.Subcord(
       metadata.ifrt_ir_program_location().offset(),
       metadata.ifrt_ir_program_location().size());
   Serialized serialized_program;
@@ -206,7 +205,7 @@ CreateXlaDeserializeExecutableOptions(
 
 absl::Status DeserializeAndRegisterAtomPrograms(
     Client* client, const SerializedIfrtIrExecutableMetadata& metadata,
-    absl::string_view serialized_executable_payload,
+    const absl::Cord& serialized_executable_payload,
     absl::Span<Device* const> device_assignments,
     IfrtIRCompileOptions* compile_options) {
   for (const auto& atom_meta : metadata.atom_program_executables()) {
@@ -214,8 +213,8 @@ absl::Status DeserializeAndRegisterAtomPrograms(
                      CreateXlaDeserializeExecutableOptions(
                          client, device_assignments, atom_meta));
 
-    absl::string_view serialized_atom_program =
-        serialized_executable_payload.substr(
+    const absl::Cord& serialized_atom_program =
+        serialized_executable_payload.Subcord(
             atom_meta.executable_location().offset(),
             atom_meta.executable_location().size());
 
@@ -281,31 +280,27 @@ absl::StatusOr<std::string> SerializeIfrtIrExecutable(
 }
 
 absl::StatusOr<DeserializedIfrtIRProgram> DeserializeIfrtIrExecutable(
-    Client* client, absl::string_view serialized,
+    Client* client, const absl::Cord& serialized,
     std::unique_ptr<DeserializeIfrtIRProgramOptions> options) {
   SerializedIfrtIrExecutableMetadata metadata;
-  // Fix the stream size to max int32 to avoid overflow when parsing the
-  // metadata proto.
-  int stream_size =
-      std::min<size_t>(serialized.size(), std::numeric_limits<int>::max());
-  tsl::protobuf::io::ArrayInputStream input_stream(serialized.data(),
-                                                   stream_size);
+  tsl::protobuf::io::CordInputStream input_stream(&serialized);
   if (!tsl::protobuf::util::ParseDelimitedFromZeroCopyStream(
           &metadata, &input_stream, nullptr)) {
     return absl::InvalidArgumentError(absl::StrCat(
         "Failed to parse SerializedIfrtIrExecutableMetadata. "
         "serialized.size(): ",
-        serialized.size(), ", stream_size: ", stream_size, ", prefix: ",
+        serialized.size(), ", prefix: ",
         absl::BytesToHexString(
-            serialized.substr(0, std::min<size_t>(serialized.size(), 16)))));
+            serialized.Subcord(0, std::min<size_t>(serialized.size(), 16))
+                .Flatten())));
   }
 
   // Extract device_assignments from the deserialize options before the options
   // unique_ptr is moved into the IfrtIRProgram
   std::vector<Device*> device_assignments(
       std::move(options->device_assignments));
-  absl::string_view serialized_executable_payload =
-      serialized.substr(input_stream.ByteCount());
+  absl::Cord serialized_executable_payload = serialized.Subcord(
+      input_stream.ByteCount(), serialized.size() - input_stream.ByteCount());
 
   ASSIGN_OR_RETURN(
       std::unique_ptr<IfrtIRProgram> program,

@@ -374,6 +374,8 @@ NB_MODULE(_hlo, m) {
       .value("U64", U64)
       .value("F16", F16)
       .value("F4E2M1FN", F4E2M1FN)
+      .value("F6E2M3FN", F6E2M3FN)
+      .value("F6E3M2FN", F6E3M2FN)
       .value("F8E3M4", F8E3M4)
       .value("F8E4M3", F8E4M3)
       .value("F8E4M3FN", F8E4M3FN)
@@ -1132,6 +1134,14 @@ NB_MODULE(_hlo, m) {
       .def("is_unreduced", &xla::HloSharding::IsUnreduced)
       .def("is_unknown", &xla::HloSharding::IsUnknown)
       .def("is_tiled", &xla::HloSharding::IsTiled)
+      .def("reduction_op",
+           [](const xla::HloSharding& self) -> int {
+             return static_cast<int>(self.reduction_op());
+           })
+      .def("set_reduction_op",
+           [](xla::HloSharding& self, int op) {
+             self.set_reduction_op(static_cast<xla::ReductionOp>(op));
+           })
       .def("is_maximal", &xla::HloSharding::IsReplicatedOrSingleDevice)
       .def("tile", [](const xla::HloSharding& self,
                       xla::Shape shape) { return self.TileShape(shape); })
@@ -1146,36 +1156,58 @@ NB_MODULE(_hlo, m) {
       .def(
           "num_devices",
           [](const xla::HloSharding& self) {
+            if (self.UseNamedShardingLeaf()) {
+              return self.named_sharding()
+                  .mesh()
+                  .device_assignment()
+                  .num_elements();
+            }
             return self.tile_assignment().num_elements();
           },
           nb::lock_self())
       .def(
           "num_dimensions",
           [](const xla::HloSharding& self) {
+            if (self.UseNamedShardingLeaf()) {
+              return self.named_sharding().num_dimensions();
+            }
             return self.tile_assignment().num_dimensions();
           },
           nb::lock_self())
       .def("is_tile_assignment_iota",
            [](const xla::HloSharding& self) {
+             if (self.UseNamedShardingLeaf()) {
+               return true;
+             }
              return self.tile_assignment().iota().has_value();
            })
       .def(
           "tile_assignment_dimensions",
           [](const xla::HloSharding& self) {
+            if (self.UseNamedShardingLeaf()) {
+              auto v2 = xla::HloSharding::V3ToV2Sharding(self);
+              auto dims = v2.tile_assignment().dimensions();
+              return std::vector<int64_t>(dims.begin(), dims.end());
+            }
             absl::Span<int64_t const> span =
                 self.tile_assignment().dimensions();
             CHECK(span.data());
-            return span;
+            return std::vector<int64_t>(span.begin(), span.end());
           },
           nb::lock_self())
       .def(
           "tile_assignment_devices",
           [](const xla::HloSharding& self) {
+            if (self.UseNamedShardingLeaf()) {
+              auto v2 = xla::HloSharding::V3ToV2Sharding(self);
+              auto devices = v2.tile_assignment().array();
+              return std::vector<int64_t>(devices.begin(), devices.end());
+            }
             auto span =
                 absl::MakeConstSpan(self.tile_assignment().array().data(),
                                     self.tile_assignment().num_elements());
             CHECK(span.data());
-            return span;
+            return std::vector<int64_t>(span.begin(), span.end());
           },
           nb::lock_self())
       .def("replicate_on_last_tile_dim",
@@ -1183,9 +1215,16 @@ NB_MODULE(_hlo, m) {
       .def("subgroup_types", &xla::HloSharding::subgroup_types)
       .def("__repr__",
            [](const xla::HloSharding& self) { return self.ToString(); })
+      .def("to_string", &xla::HloSharding::ToString,
+           nb::arg("include_metadata") = false)
       .def("to_proto", &xla::HloSharding::ToProto)
       .def("get_axis_sizes",
            [](const xla::HloSharding& self) {
+             if (self.UseNamedShardingLeaf()) {
+               absl::Span<const int64_t> sizes =
+                   self.named_sharding().mesh().axis_sizes();
+               return std::vector<int64_t>(sizes.begin(), sizes.end());
+             }
              // If returning the SmallVector, we encounter the error "unable to
              // convert function return value to a Python type!".
              mlir::SmallVector<int64_t> mesh_shape =

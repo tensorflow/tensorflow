@@ -86,6 +86,10 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   auto input_type = op_context.input->type;
   TF_LITE_ENSURE(context,
                  input_type == kTfLiteFloat32 || input_type == kTfLiteUInt8 ||
+#if defined(TFLITE_ENABLE_EXTRA_REFERENCE_KERNELS)
+                     input_type == kTfLiteFloat8E4M3FN ||
+                     input_type == kTfLiteFloat8E5M2 ||
+#endif
                      input_type == kTfLiteInt8 || input_type == kTfLiteInt16 ||
                      input_type == kTfLiteInt32 || input_type == kTfLiteInt64);
   for (int i = 0; i < NumOutputs(node); ++i) {

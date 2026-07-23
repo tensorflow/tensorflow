@@ -418,8 +418,8 @@ AsyncThunkSequence MlirKernelFusion::Emit(
                          entry->launch_dimensions.thread_counts_per_block(),
                          entry->shmem_bytes));
 
-    return ThunkSequence::Of(std::make_unique<CustomKernelThunk>(
-        thunk_info, std::move(custom_kernel), args, entry->use_pdl));
+    return ThunkSequence::Of<CustomKernelThunk>(
+        thunk_info, std::move(custom_kernel), args, entry->use_pdl);
   });
 }
 

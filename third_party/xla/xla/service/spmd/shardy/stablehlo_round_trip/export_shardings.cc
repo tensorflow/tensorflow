@@ -103,7 +103,8 @@ void exportFunc(FuncOp funcOp, const SymbolTable& symbolTable,
                 bool clearReverseOpSharding) {
   std::function<StringAttr(const HloSharding&)> getStringAttr =
       [&](const HloSharding& hloSharding) {
-        return builder.getStringAttr(hloSharding.ToString());
+        return builder.getStringAttr(
+            hloSharding.ToString(/*include_metadata=*/true));
       };
   std::function<MeshAttr(TensorShardingAttr)> getMeshAttr =
       [&](TensorShardingAttr sharding) {
@@ -448,8 +449,21 @@ NamedSharding convertToNamedSharding(
     manualAxesSharding.push_back(AxisRef(axisNameToIndex[axisName]));
   }
 
+  ReductionOp reductionOp;
+  switch (sdySharding.getReductionOp()) {
+    case mlir::sdy::ReductionOp::SUM:
+      reductionOp = ReductionOp::kSum;
+      break;
+    case mlir::sdy::ReductionOp::MAX:
+      reductionOp = ReductionOp::kMax;
+      break;
+    case mlir::sdy::ReductionOp::MIN:
+      reductionOp = ReductionOp::kMin;
+      break;
+  }
+
   return NamedSharding(mesh, dimShardings, replicatedAxes, unreducedAxes,
-                       manualAxesSharding);
+                       manualAxesSharding, /*metadata=*/{}, reductionOp);
 }
 
 }  // namespace
@@ -546,21 +560,38 @@ HloSharding convertToHloSharding(
     types.push_back(OpSharding::REPLICATED);
   }
 
+  ReductionOp reductionOp = ReductionOp::kSum;
+  switch (sdySharding.getReductionOp()) {
+    case mlir::sdy::ReductionOp::SUM:
+      reductionOp = ReductionOp::kSum;
+      break;
+    case mlir::sdy::ReductionOp::MAX:
+      reductionOp = ReductionOp::kMax;
+      break;
+    case mlir::sdy::ReductionOp::MIN:
+      reductionOp = ReductionOp::kMin;
+      break;
+  }
+
   // Handle arbitrary device ID list.
   if (!mesh.getDeviceIds().empty()) {
     Array<int64_t> deviceIdsArray(reshapeDims);
     deviceIdsArray.SetValues(mesh.getDeviceIds());
     deviceIdsArray.TransposeDimensions(transposePerm);
     deviceIdsArray.Reshape(tileAssignmentDims);
-    return HloSharding::Subgroup(
+    HloSharding res = HloSharding::Subgroup(
         TileAssignment(
             std::make_shared<const Array<int64_t>>(std::move(deviceIdsArray))),
         types);
+    res.set_reduction_op(reductionOp);
+    return res;
   }
 
-  return HloSharding::Subgroup(
+  HloSharding res = HloSharding::Subgroup(
       xla::TileAssignment(tileAssignmentDims, reshapeDims, transposePerm),
       types);
+  res.set_reduction_op(reductionOp);
+  return res;
 }
 
 void setHloShardingAttr(Operation* op, ArrayRef<TensorShardingAttr> shardings,
@@ -572,7 +603,8 @@ void setHloShardingAttr(Operation* op, ArrayRef<TensorShardingAttr> shardings,
       getHloShardingForOp(op, shardings, getMeshAttr, manualAxes,
                           enableHloShardingV3, simplifyReplicatedShardings);
   op->setAttr(kXlaShardingAttr,
-              StringAttr::get(op->getContext(), hloSharding.ToString()));
+              StringAttr::get(op->getContext(),
+                              hloSharding.ToString(/*include_metadata=*/true)));
 }
 
 std::unique_ptr<Pass> createExportStablehloShardingsPass(

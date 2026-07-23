@@ -44,7 +44,7 @@ TEST_F(DotAlgorithmRewriterTest, DefaultToBF16) {
 
   HloModuleConfig config = GetModuleConfigForTest();
   DebugOptions debug_options = config.debug_options();
-  debug_options.set_xla_gpu_default_to_alg_dot_bf16_bf16_f32(true);
+  debug_options.set_xla_gpu_match_tpu_precision(true);
   config.set_debug_options(debug_options);
 
   ASSERT_OK_AND_ASSIGN(auto module,
@@ -81,7 +81,7 @@ TEST_F(DotAlgorithmRewriterTest, NoDefaultToBF16) {
 
   HloModuleConfig config = GetModuleConfigForTest();
   DebugOptions debug_options = config.debug_options();
-  debug_options.set_xla_gpu_default_to_alg_dot_bf16_bf16_f32(false);
+  debug_options.set_xla_gpu_match_tpu_precision(false);
   config.set_debug_options(debug_options);
 
   ASSERT_OK_AND_ASSIGN(auto module,
@@ -107,7 +107,7 @@ TEST_F(DotAlgorithmRewriterTest, DefaultToBF16_NonF32Result) {
 
   HloModuleConfig config = GetModuleConfigForTest();
   DebugOptions debug_options = config.debug_options();
-  debug_options.set_xla_gpu_default_to_alg_dot_bf16_bf16_f32(true);
+  debug_options.set_xla_gpu_match_tpu_precision(true);
   config.set_debug_options(debug_options);
 
   ASSERT_OK_AND_ASSIGN(auto module,
@@ -132,7 +132,7 @@ TEST_F(DotAlgorithmRewriterTest, DefaultToBF16_NonF32Operands) {
 
   HloModuleConfig config = GetModuleConfigForTest();
   DebugOptions debug_options = config.debug_options();
-  debug_options.set_xla_gpu_default_to_alg_dot_bf16_bf16_f32(true);
+  debug_options.set_xla_gpu_match_tpu_precision(true);
   config.set_debug_options(debug_options);
 
   ASSERT_OK_AND_ASSIGN(auto module,
@@ -158,7 +158,7 @@ TEST_F(DotAlgorithmRewriterTest, DefaultToBF16_HighestPrecision) {
 
   HloModuleConfig config = GetModuleConfigForTest();
   DebugOptions debug_options = config.debug_options();
-  debug_options.set_xla_gpu_default_to_alg_dot_bf16_bf16_f32(true);
+  debug_options.set_xla_gpu_match_tpu_precision(true);
   config.set_debug_options(debug_options);
 
   ASSERT_OK_AND_ASSIGN(auto module,

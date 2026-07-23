@@ -16,6 +16,7 @@ limitations under the License.
 #include <stdint.h>
 
 #include <initializer_list>
+#include <limits>
 #include <map>
 #include <memory>
 #include <string>
@@ -319,6 +320,38 @@ TEST(ConvolutionPrepareSecurityTest, RejectsInt4FilterSizeOverflow) {
       ActivationFunctionType_NONE, /*dilation_width_factor=*/1,
       /*dilation_height_factor=*/1, /*num_threads=*/1,
       /*const_filter=*/false);
+
+  EXPECT_EQ(m.AllocateTensors(), kTfLiteError);
+}
+
+TEST(ConvolutionPrepareSecurityTest, RejectsZeroInputChannels) {
+  PrepareOnlyConvolutionOpModel<float> m(
+      ops::builtin::Register_CONVOLUTION_GENERIC_OPT(),
+      {TensorType_FLOAT32, {1, 1, 1, 0}}, {TensorType_FLOAT32, {1, 1, 1, 1}},
+      {TensorType_FLOAT32, {}},
+      /*stride_width=*/1, /*stride_height=*/1);
+
+  EXPECT_EQ(m.AllocateTensors(), kTfLiteError);
+}
+
+TEST(ConvolutionPrepareSecurityTest, RejectsInvalidGroupedOutputChannels) {
+  PrepareOnlyConvolutionOpModel<float> m(
+      ops::builtin::Register_CONVOLUTION_GENERIC_OPT(),
+      {TensorType_FLOAT32, {1, 1, 1, 4}}, {TensorType_FLOAT32, {3, 1, 1, 2}},
+      {TensorType_FLOAT32, {}},
+      /*stride_width=*/1, /*stride_height=*/1);
+
+  EXPECT_EQ(m.AllocateTensors(), kTfLiteError);
+}
+
+TEST(ConvolutionPrepareSecurityTest, RejectsPaddingOverflow) {
+  PrepareOnlyConvolutionOpModel<float> m(
+      ops::builtin::Register_CONVOLUTION_GENERIC_OPT(),
+      {TensorType_FLOAT32, {1, 1, 1, 1}}, {TensorType_FLOAT32, {1, 4, 1, 1}},
+      {TensorType_FLOAT32, {}},
+      /*stride_width=*/1, /*stride_height=*/1, Padding_SAME,
+      ActivationFunctionType_NONE, /*dilation_width_factor=*/1,
+      /*dilation_height_factor=*/std::numeric_limits<int>::max());
 
   EXPECT_EQ(m.AllocateTensors(), kTfLiteError);
 }

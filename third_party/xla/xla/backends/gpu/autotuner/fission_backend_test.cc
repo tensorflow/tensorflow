@@ -24,6 +24,7 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
@@ -268,6 +269,32 @@ TEST_P(FissionTest, GetSupportedConfigsUnsupportedFusion) {
       fission_backend_->GetSupportedConfigs(
           (*module->entry_computation()->root_instruction()));
   EXPECT_THAT(configs, IsOkAndHolds(testing::IsEmpty()));
+}
+
+TEST_P(FissionTest, GetSupportedConfigsWithNullStreamExecutor) {
+  const std::string& test_name = GetParam().test_name;
+  if (IsRocm(stream_executor_) && (test_name == "TritonFusion_CublasLt_F8" ||
+                                   test_name == "TritonFusion_CustomKernel")) {
+    GTEST_SKIP() << test_name << " is not supported on ROCm";
+  }
+
+  std::unique_ptr<GpuCodegenBackend> backend_without_stream_executor =
+      GetParam().backend_factory(/*stream_executor=*/nullptr, &debug_options_,
+                                 compiler_.get(), &target_config_);
+  std::unique_ptr<HloPassPipeline> rewriter_pipeline =
+      GetParam().pipeline_factory(device_description_);
+  FissionBackend fission_backend_without_stream_executor(
+      &debug_options_, compiler_.get(), &target_config_,
+      std::move(backend_without_stream_executor), std::move(rewriter_pipeline),
+      &alias_info_, &mlir_context_);
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(GetParam().hlo_string));
+  absl::StatusOr<std::vector<std::unique_ptr<BackendConfig>>> configs =
+      fission_backend_without_stream_executor.GetSupportedConfigs(
+          (*module->entry_computation()->root_instruction()));
+  EXPECT_TRUE(configs.ok() ||
+              configs.status().code() == absl::StatusCode::kInvalidArgument);
 }
 
 TEST_P(FissionTest, GetDefaultConfig) {

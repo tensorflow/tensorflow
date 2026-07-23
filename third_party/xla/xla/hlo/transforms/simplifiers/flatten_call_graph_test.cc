@@ -17,8 +17,10 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <string>
 
+#include "absl/algorithm/container.h"
 #include "xla/tsl/platform/status_macros.h"
 #include "xla/comparison_util.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -98,6 +100,10 @@ class FlattenCallGraphTest : public HloHardwareIndependentTestBase {
     FlattenCallGraph flatten;
     ASSIGN_OR_RETURN(bool result, flatten.Run(module));
     return result;
+  }
+
+  FlattenCallGraph CreateSkipCallsFlattenPass() {
+    return FlattenCallGraph(FlattenCallGraph::SkipCloningForCalls);
   }
 
   const Shape kScalarShape = ShapeUtil::MakeShape(F32, {});
@@ -1059,6 +1065,368 @@ ENTRY %main (a: f32[4096], b: f32[4096]) -> f32[4096] {
 
   EXPECT_TRUE(schedule.is_computation_scheduled(called_computation_0));
   EXPECT_TRUE(schedule.is_computation_scheduled(called_computation_1));
+}
+
+TEST_F(FlattenCallGraphTest, SkipCloningForCalls_NoCloningAllCallersAreKCalls) {
+  // Verify that if all callers are kCall, cloning is skipped.
+  std::string hlo_string = R"(
+HloModule AllCallersKCalls
+
+%shared_comp (param: f32[]) -> f32[] {
+  %param = f32[] parameter(0)
+  ROOT %neg = f32[] negate(%param)
+}
+
+// CHECK: ENTRY %main
+// CHECK: %call0 = f32[] call({{.*}}), to_apply=%shared_comp
+// CHECK: %call1 = f32[] call({{.*}}), to_apply=%shared_comp
+ENTRY %main (param: f32[]) -> (f32[], f32[]) {
+  %param = f32[] parameter(0)
+  %call0 = f32[] call(%param), to_apply=%shared_comp
+  %call1 = f32[] call(%param), to_apply=%shared_comp
+  ROOT %tuple = (f32[], f32[]) tuple(%call0, %call1)
+}
+  )";
+
+  // We expect no change because all callers are kCall and we configured the
+  // pass to skip cloning in this case.
+  RunAndFilecheckHloRewrite(hlo_string, CreateSkipCallsFlattenPass(),
+                            std::nullopt);
+}
+
+TEST_F(FlattenCallGraphTest, SkipCloningForCalls_MixedCallAndWhileCallers) {
+  // Verify that pathological sharing (same computation from while and calls) IS
+  // cloned for all calls when we use the custom handler that skips flattenning
+  // for calls.
+  std::string hlo_string = R"(
+HloModule MixedCallAndWhileCallers
+
+%while_cond (param: f32[]) -> pred[] {
+  %param = f32[] parameter(0)
+  %zero = f32[] constant(0.0)
+  ROOT %cmp = pred[] compare(%param, %zero), direction=GT
+}
+
+// CHECK-DAG: %shared_comp ({{.*}}) -> f32[]
+// CHECK-DAG: %shared_comp.clone ({{.*}}) -> f32[]
+// CHECK-DAG: %shared_comp.clone.1 ({{.*}}) -> f32[]
+%shared_comp (param: f32[]) -> f32[] {
+  %param = f32[] parameter(0)
+  ROOT %neg = f32[] negate(%param)
+}
+
+// CHECK: %while_caller
+// CHECK: ROOT %while = f32[] while({{.*}}), condition={{.*}}, body=%shared_comp
+%while_caller (param: f32[]) -> f32[] {
+  %param = f32[] parameter(0)
+  ROOT %while = f32[] while(%param), condition=%while_cond, body=%shared_comp
+}
+
+// CHECK: ENTRY %main
+// CHECK: %call0 = f32[] call({{.*}}), to_apply=%shared_comp.clone
+// CHECK: %call1 = f32[] call({{.*}}), to_apply=%shared_comp.clone.1
+ENTRY %main (param: f32[]) -> (f32[], f32[], f32[]) {
+  %param = f32[] parameter(0)
+  %call0 = f32[] call(%param), to_apply=%shared_comp
+  %call1 = f32[] call(%param), to_apply=%shared_comp
+  %while_res = f32[] call(%param), to_apply=%while_caller
+  ROOT %tuple = (f32[], f32[], f32[]) tuple(%call0, %call1, %while_res)
+}
+  )";
+
+  RunAndFilecheckHloRewrite(hlo_string, CreateSkipCallsFlattenPass());
+}
+
+TEST_F(FlattenCallGraphTest, SkipCloningForCalls_WhileHasSameCondAndBody) {
+  // Verify that pathological sharing (same cond and body from the same while)
+  // IS cloned for all calls when we use the custom handler that skips
+  // flattenning for calls.
+  // NOTE: It leaves the original %while_body dead. It is because when a
+  // computation is called multiple times by the same caller, the pass decides
+  // to clone it.
+  std::string hlo_string = R"(
+HloModule WhileHasSameCondAndBody
+
+// CHECK-DAG: %while_body ({{.*}}) -> pred[]
+// CHECK-DAG: %while_body.clone ({{.*}}) -> pred[]
+// CHECK-DAG: %while_body.clone.1 ({{.*}}) -> pred[]
+%while_body (param: pred[]) -> pred[] {
+  %param = pred[] parameter(0)
+  %constant = pred[] constant(false)
+  ROOT %compare = pred[] compare(%param, %constant), direction=EQ
+}
+
+// CHECK: ENTRY %main
+// CHECK: ROOT %while = pred[] while({{.*}}), condition=%while_body.clone.1, body=%while_body.clone
+ENTRY %main () -> pred[] {
+  %constant.1 = pred[] constant(false)
+  ROOT %while = pred[] while(%constant.1), condition=%while_body, body=%while_body
+}
+  )";
+
+  RunAndFilecheckHloRewrite(hlo_string, CreateSkipCallsFlattenPass());
+}
+
+TEST_F(FlattenCallGraphTest, SkipCloningForCalls_NonFlatChainOneWhile) {
+  std::string hlo_string = R"(
+HloModule NonFlatChainOneWhile
+
+%while_cond_1 (param: f32[]) -> pred[] {
+  %param = f32[] parameter(0)
+  %zero = f32[] constant(0.0)
+  ROOT %cmp = pred[] compare(%param, %zero), direction=GT
+}
+
+%while_cond_2 (param: f32[]) -> pred[] {
+  %param = f32[] parameter(0)
+  %zero = f32[] constant(0.0)
+  ROOT %cmp = pred[] compare(%param, %zero), direction=GT
+}
+
+%E (param: f32[]) -> f32[] {
+  %param = f32[] parameter(0)
+  ROOT %neg = f32[] negate(%param)
+}
+
+// CHECK: %D ({{.*}}) -> f32[]
+// CHECK: ROOT %call{{.*}} = f32[] call({{.*}}), to_apply=%E
+%D (param: f32[]) -> f32[] {
+  %param = f32[] parameter(0)
+  ROOT %call = f32[] call(%param), to_apply=%E
+}
+
+// CHECK: %C ({{.*}}) -> f32[]
+// CHECK: %call0 = f32[] call({{.*}}), to_apply=%D
+// CHECK: %call1 = f32[] call({{.*}}), to_apply=%D
+// CHECK: ROOT %add{{.*}} = f32[] add(%call0, %call1)
+// CHECK: %C.clone ({{.*}}) -> f32[]
+// CHECK: %call0{{.*}} = f32[] call({{.*}}), to_apply=%D
+// CHECK: %call1{{.*}} = f32[] call({{.*}}), to_apply=%D
+// CHECK: ROOT %add{{.*}} = f32[] add(%call0{{.*}}, %call1{{.*}})
+%C (param: f32[]) -> f32[] {
+  %param = f32[] parameter(0)
+  %call0 = f32[] call(%param), to_apply=%D
+  %call1 = f32[] call(%param), to_apply=%D
+  ROOT %add = f32[] add(%call0, %call1)
+}
+
+// CHECK: %B ({{.*}}) -> f32[]
+// CHECK: %while1 = f32[] while({{.*}}), condition=%while_cond_1, body=%C
+// CHECK: %while2 = f32[] while({{.*}}), condition=%while_cond_2, body=%C.clone
+// CHECK: ROOT %add{{.*}} = f32[] add(%while1, %while2)
+%B (param: f32[]) -> f32[] {
+  %param = f32[] parameter(0)
+  %while1 = f32[] while(%param), condition=%while_cond_1, body=%C
+  %while2 = f32[] while(%param), condition=%while_cond_2, body=%C
+  ROOT %add = f32[] add(%while1, %while2)
+}
+
+// CHECK: %A ({{.*}}) -> f32[]
+// CHECK: %call0{{.*}} = f32[] call({{.*}}), to_apply=%B
+// CHECK: %call1{{.*}} = f32[] call({{.*}}), to_apply=%B
+// CHECK: ROOT %add{{.*}} = f32[] add(%call0{{.*}}, %call1{{.*}})
+%A (param: f32[]) -> f32[] {
+  %param = f32[] parameter(0)
+  %call0 = f32[] call(%param), to_apply=%B
+  %call1 = f32[] call(%param), to_apply=%B
+  ROOT %add = f32[] add(%call0, %call1)
+}
+
+ENTRY %main (param: f32[]) -> f32[] {
+  %param = f32[] parameter(0)
+  ROOT %call = f32[] call(%param), to_apply=%A
+}
+  )";
+
+  RunAndFilecheckHloRewrite(hlo_string, CreateSkipCallsFlattenPass());
+}
+
+TEST_F(FlattenCallGraphTest, SkipCloningForCalls_NonFlatChainTwoWhiles) {
+  std::string hlo_string = R"(
+HloModule NonFlatChainTwoWhiles
+
+%while_cond_1 (param: f32[]) -> pred[] {
+  %param = f32[] parameter(0)
+  %zero = f32[] constant(0.0)
+  ROOT %cmp = pred[] compare(%param, %zero), direction=GT
+}
+
+%while_cond_2 (param: f32[]) -> pred[] {
+  %param = f32[] parameter(0)
+  %zero = f32[] constant(0.0)
+  ROOT %cmp = pred[] compare(%param, %zero), direction=GT
+}
+
+%while_cond_3 (param: f32[]) -> pred[] {
+  %param = f32[] parameter(0)
+  %zero = f32[] constant(0.0)
+  ROOT %cmp = pred[] compare(%param, %zero), direction=GT
+}
+
+%while_cond_4 (param: f32[]) -> pred[] {
+  %param = f32[] parameter(0)
+  %zero = f32[] constant(0.0)
+  ROOT %cmp = pred[] compare(%param, %zero), direction=GT
+}
+
+%E (param: f32[]) -> f32[] {
+  %param = f32[] parameter(0)
+  ROOT %neg = f32[] negate(%param)
+}
+
+
+// CHECK: %F ({{.*}}) -> f32[]
+// CHECK: ROOT %neg{{.*}} = f32[] negate({{.*}})
+// CHECK: %F.clone ({{.*}}) -> f32[]
+// CHECK: ROOT %neg{{.*}} = f32[] negate({{.*}})
+%F (param: f32[]) -> f32[] {
+  %param = f32[] parameter(0)
+  ROOT %neg = f32[] negate(%param)
+}
+
+// CHECK: %D ({{.*}}) -> f32[]
+// CHECK: %while2{{.*}} = f32[] while({{.*}}), condition=%while_cond_4, body=%F.clone
+// CHECK: %call{{.*}} = f32[] call({{.*}}), to_apply=%E
+// CHECK: %while1{{.*}} = f32[] while({{.*}}), condition=%while_cond_3, body=%F
+// CHECK: ROOT %add{{.*}} = f32[] add(%call{{.*}}, %while1{{.*}})
+%D (param: f32[]) -> f32[] {
+  %param = f32[] parameter(0)
+  %call = f32[] call(%param), to_apply=%E
+  %while1 = f32[] while(%param), condition=%while_cond_3, body=%F
+  %while2 = f32[] while(%param), condition=%while_cond_4, body=%F
+  ROOT %add = f32[] add(%call, %while1)
+}
+
+// CHECK: %C ({{.*}}) -> f32[]
+// CHECK: %call0 = f32[] call({{.*}}), to_apply=%D
+// CHECK: %call1 = f32[] call({{.*}}), to_apply=%D
+// CHECK: %C.clone ({{.*}}) -> f32[]
+// CHECK: %call0{{.*}} = f32[] call({{.*}}), to_apply=%D
+// CHECK: %call1{{.*}} = f32[] call({{.*}}), to_apply=%D
+%C (param: f32[]) -> f32[] {
+  %param = f32[] parameter(0)
+  %call0 = f32[] call(%param), to_apply=%D
+  %call1 = f32[] call(%param), to_apply=%D
+  ROOT %add = f32[] add(%call0, %call1)
+}
+
+// CHECK: %B ({{.*}}) -> f32[]
+// CHECK: %while1{{.*}} = f32[] while({{.*}}), condition=%while_cond_1, body=%C
+// CHECK: %while2{{.*}} = f32[] while({{.*}}), condition=%while_cond_2, body=%C.clone
+%B (param: f32[]) -> f32[] {
+  %param = f32[] parameter(0)
+  %while1 = f32[] while(%param), condition=%while_cond_1, body=%C
+  %while2 = f32[] while(%param), condition=%while_cond_2, body=%C
+  ROOT %add = f32[] add(%while1, %while2)
+}
+
+// CHECK: %A ({{.*}}) -> f32[]
+// CHECK: %call0{{.*}} = f32[] call({{.*}}), to_apply=%B
+// CHECK: %call1{{.*}} = f32[] call({{.*}}), to_apply=%B
+%A (param: f32[]) -> f32[] {
+  %param = f32[] parameter(0)
+  %call0 = f32[] call(%param), to_apply=%B
+  %call1 = f32[] call(%param), to_apply=%B
+  ROOT %add = f32[] add(%call0, %call1)
+}
+
+ENTRY %main (param: f32[]) -> f32[] {
+  %param = f32[] parameter(0)
+  ROOT %call = f32[] call(%param), to_apply=%A
+}
+  )";
+
+  RunAndFilecheckHloRewrite(hlo_string, CreateSkipCallsFlattenPass());
+}
+
+TEST_F(FlattenCallGraphTest,
+       SkipCloningForCalls_NonFlatChainTwoSuccessiveWhiles) {
+  std::string hlo_string = R"(
+HloModule NonFlatChainTwoSuccessiveWhiles
+
+%while_cond_b1 (param: f32[]) -> pred[] {
+  %param = f32[] parameter(0)
+  %zero = f32[] constant(0.0)
+  ROOT %cmp = pred[] compare(%param, %zero), direction=GT
+}
+
+%while_cond_b2 (param: f32[]) -> pred[] {
+  %param = f32[] parameter(0)
+  %zero = f32[] constant(0.0)
+  ROOT %cmp = pred[] compare(%param, %zero), direction=GT
+}
+
+%while_cond_c1 (param: f32[]) -> pred[] {
+  %param = f32[] parameter(0)
+  %zero = f32[] constant(0.0)
+  ROOT %cmp = pred[] compare(%param, %zero), direction=GT
+}
+
+%while_cond_c2 (param: f32[]) -> pred[] {
+  %param = f32[] parameter(0)
+  %zero = f32[] constant(0.0)
+  ROOT %cmp = pred[] compare(%param, %zero), direction=GT
+}
+
+%E (param: f32[]) -> f32[] {
+  %param = f32[] parameter(0)
+  ROOT %neg = f32[] negate(%param)
+}
+
+// CHECK: %D ({{.*}}) -> f32[]
+// CHECK: ROOT %call{{.*}} = f32[] call({{.*}}), to_apply=%E
+// CHECK: %D.clone ({{.*}}) -> f32[]
+// CHECK: ROOT %call{{.*}} = f32[] call({{.*}}), to_apply=%E
+%D (param: f32[]) -> f32[] {
+  %param = f32[] parameter(0)
+  ROOT %call = f32[] call(%param), to_apply=%E
+}
+
+// CHECK: %C ({{.*}}) -> f32[]
+// CHECK: %while1{{.*}} = f32[] while({{.*}}), condition=%while_cond_c1, body=%D
+// CHECK: %while2{{.*}} = f32[] while({{.*}}), condition=%while_cond_c2, body=%D.clone
+%C (param: f32[]) -> f32[] {
+  %param = f32[] parameter(0)
+  %while1 = f32[] while(%param), condition=%while_cond_c1, body=%D
+  %while2 = f32[] while(%param), condition=%while_cond_c2, body=%D
+  ROOT %add = f32[] add(%while1, %while2)
+}
+
+// CHECK: %D.clone.1 ({{.*}}) -> f32[]
+// CHECK: ROOT %call{{.*}} = f32[] call({{.*}}), to_apply=%E
+// CHECK: %D.clone.clone ({{.*}}) -> f32[]
+// CHECK: ROOT %call{{.*}} = f32[] call({{.*}}), to_apply=%E
+// CHECK: %C.clone ({{.*}}) -> f32[]
+// CHECK: %while1{{.*}} = f32[] while({{.*}}), condition=%while_cond_c1.clone, body=%D.clone.1
+// CHECK: %while2{{.*}} = f32[] while({{.*}}), condition=%while_cond_c2.clone, body=%D.clone.clone
+
+// CHECK: %B ({{.*}}) -> f32[]
+// CHECK: %while1{{.*}} = f32[] while({{.*}}), condition=%while_cond_b1, body=%C
+// CHECK: %while2{{.*}} = f32[] while({{.*}}), condition=%while_cond_b2, body=%C.clone
+%B (param: f32[]) -> f32[] {
+  %param = f32[] parameter(0)
+  %while1 = f32[] while(%param), condition=%while_cond_b1, body=%C
+  %while2 = f32[] while(%param), condition=%while_cond_b2, body=%C
+  ROOT %add = f32[] add(%while1, %while2)
+}
+
+// CHECK: %A ({{.*}}) -> f32[]
+// CHECK: %call0{{.*}} = f32[] call({{.*}}), to_apply=%B
+// CHECK: %call1{{.*}} = f32[] call({{.*}}), to_apply=%B
+%A (param: f32[]) -> f32[] {
+  %param = f32[] parameter(0)
+  %call0 = f32[] call(%param), to_apply=%B
+  %call1 = f32[] call(%param), to_apply=%B
+  ROOT %add = f32[] add(%call0, %call1)
+}
+
+ENTRY %main (param: f32[]) -> f32[] {
+  %param = f32[] parameter(0)
+  ROOT %call = f32[] call(%param), to_apply=%A
+}
+  )";
+
+  RunAndFilecheckHloRewrite(hlo_string, CreateSkipCallsFlattenPass());
 }
 
 }  // namespace

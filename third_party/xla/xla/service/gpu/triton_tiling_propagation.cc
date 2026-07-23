@@ -729,6 +729,19 @@ DimOrderMapOrError GetPropagatedDimOrdersForDimAlteringOp(
       for (int i = 0; i < permutation.size(); ++i) {
         dst_logical[permutation[i]] = src_logical[i];
       }
+      if (direction == TransformDirection::kOutputToInput) {
+        for (int i = 0; i < permutation.size(); ++i) {
+          if (!src_logical[i].empty() && src_logical[i][0]->slice_start() < 0) {
+            int dst_dim = permutation[i];
+            int major_most_dim = dst->shape().layout().minor_to_major().back();
+            if (dst_dim != major_most_dim) {
+              return FusionDecision::Forbid(
+                  "Transposing sliced concatenate dimension to non-major-most "
+                  "physical position.");
+            }
+          }
+        }
+      }
     } else if (hlo.opcode() == HloOpcode::kBroadcast) {
       const auto* broadcast = Cast<HloBroadcastInstruction>(&hlo);
       dst_logical.resize(broadcast->dimensions().size());
