@@ -154,7 +154,6 @@ exhaustive_xla_test(
             ":exhaustive_unary_test_f64_instantiation.cc",
         ],
     },
-    real_hardware_only = True,  # Very slow on the interpreter.
     shard_count = 50,
     tags = [
         "optonly",
