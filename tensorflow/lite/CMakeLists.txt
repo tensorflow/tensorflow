@@ -66,13 +66,17 @@ endif()
 set(TF_SOURCE_DIR "${TENSORFLOW_SOURCE_DIR}/tensorflow")
 set(TSL_SOURCE_DIR "${TENSORFLOW_SOURCE_DIR}/third_party/xla/third_party/tsl")
 set(XLA_SOURCE_DIR "${TENSORFLOW_SOURCE_DIR}/third_party/xla/")
-set(TFLITE_SOURCE_DIR "${CMAKE_CURRENT_LIST_DIR}")
+if(CMAKE_CURRENT_LIST_DIR STREQUAL "${TF_SOURCE_DIR}/lite")
+  set(TFLITE_SOURCE_DIR "${CMAKE_CURRENT_LIST_DIR}")
+else()
+  set(TFLITE_SOURCE_DIR "${TF_SOURCE_DIR}/lite")
+endif()
 set(CMAKE_MODULE_PATH
-  "${TFLITE_SOURCE_DIR}/tools/cmake/modules"
+  "${CMAKE_CURRENT_LIST_DIR}/tools/cmake/modules"
   ${CMAKE_MODULE_PATH}
 )
 set(CMAKE_PREFIX_PATH
-  "${TFLITE_SOURCE_DIR}/tools/cmake/modules"
+  "${CMAKE_CURRENT_LIST_DIR}/tools/cmake/modules"
   ${CMAKE_PREFIX_PATH}
 )
 include(GNUInstallDirs)
@@ -844,19 +848,23 @@ endif()
 set(TFLITE_GENERATED_HEADERS_DIR ${CMAKE_BINARY_DIR}/tensorflow/lite)
 
 # Add the profiling proto directory.
-add_subdirectory(${TFLITE_SOURCE_DIR}/profiling/proto)
+add_subdirectory(${TFLITE_SOURCE_DIR}/profiling/proto
+  ${CMAKE_BINARY_DIR}/profiling/proto)
 
 # Add the benchmark result proto directory.
-add_subdirectory(${TFLITE_SOURCE_DIR}/tools/benchmark/proto)
+add_subdirectory(${TFLITE_SOURCE_DIR}/tools/benchmark/proto
+  ${CMAKE_BINARY_DIR}/tools/benchmark/proto)
 
 # Add the tf example directory.
 add_subdirectory(${TF_SOURCE_DIR}/core/example ${CMAKE_BINARY_DIR}/example_proto_generated)
 
 # The benchmark tool.
-add_subdirectory(${TFLITE_SOURCE_DIR}/tools/benchmark)
+add_subdirectory(${TFLITE_SOURCE_DIR}/tools/benchmark
+  ${CMAKE_BINARY_DIR}/tools/benchmark)
 
 # The label_image example.
-add_subdirectory(${TFLITE_SOURCE_DIR}/examples/label_image)
+add_subdirectory(${TFLITE_SOURCE_DIR}/examples/label_image
+  ${CMAKE_BINARY_DIR}/examples/label_image)
 
 # Python interpreter wrapper.
 add_library(_pywrap_tensorflow_interpreter_wrapper SHARED EXCLUDE_FROM_ALL
