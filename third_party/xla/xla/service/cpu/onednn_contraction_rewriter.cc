@@ -222,6 +222,12 @@ bool IsScalar(const HloInstruction* instr) {
   return ShapeUtil::IsEffectiveScalar(instr->shape());
 }
 
+// Match pattern, optionally looking through a convert first.
+template <typename Pattern>
+auto OptionalConvertTo(Pattern pattern) {
+  return m::AnyOf<HloInstruction>(m::Convert(pattern), std::move(pattern));
+}
+
 std::optional<float> GetConstantValueAsFloat32(const HloInstruction* inst) {
   if (!IsScalar(inst)) {
     return std::nullopt;
@@ -285,6 +291,83 @@ inline auto MultiplyMultiplyAnyOrder(PatternA a, PatternB b, PatternC c) {
       m::MultiplyAnyOrder(c, m::MultiplyAnyOrder(a, b)));
 }
 
+// Broadcast of 1/sqrt(2) ≈ 0.7071. Multiple approximations are matched
+// because different precisions (F32, BF16, F16) and compiler optimizations
+// produce slightly different constant values:
+//   0.707106769 — F32 nearest representation of 1/√2
+//   0.70703125  — BF16 nearest representation
+//   0.707182348 — F16-derived approximation after convert to F32
+inline auto BcastInvSqrt2() {
+  return m::AnyOf<HloInstruction>(BcastConstScalarNear(0.707106769),
+                                  BcastConstScalarNear(0.70703125),
+                                  BcastConstScalarNear(0.707182348));
+}
+
+// Match x * (1/sqrt(2)) i.e., x * 0.707...
+inline auto ScaledByInvSqrt2(HloInstruction** src) {
+  return m::MultiplyAnyOrder(m::Op(src), BcastInvSqrt2());
+}
+
+// Match -x * (1/sqrt(2))
+inline auto NegScaledByInvSqrt2(HloInstruction* src) {
+  return m::MultiplyAnyOrder(m::Negate(m::Op().Is(src)), BcastInvSqrt2());
+}
+
+// Match 0.5 * x
+inline auto HalfX(HloInstruction** src) {
+  return m::MultiplyAnyOrder(BcastConstScalar(0.5), m::Op(src));
+}
+
+bool MatchLegalizedErfcLike(HloInstruction* instr, HloInstruction* src) {
+  // instr is expected to be the cdf-like term in:
+  //   0.5 * x * instr
+  //
+  // For current StableHLO f32 erfc legalization, the top-level form is:
+  //   select(abs(y) < 1, 1 - erf_approx(y), erfc_approx(y))
+  // where y = -x / sqrt(2)
+
+  // For FP16, the erfc polynomial runs in F32, so the pattern becomes:
+  //   convert(select(abs(convert(negate(x) * inv_sqrt2)) < 1, ...))
+  // OptionalConvertTo looks through converts at each dtype boundary.
+  HloInstruction* pred = nullptr;
+  HloInstruction* true_branch = nullptr;
+  HloInstruction* false_branch = nullptr;
+
+  if (!Match(instr,
+             OptionalConvertTo(m::Select(m::Op(&pred), m::Op(&true_branch),
+                                         m::Op(&false_branch))
+                                   .WithOneUser()))) {
+    return false;
+  }
+
+  // Predicate must be abs(y) < 1
+  HloInstruction* y = nullptr;
+  if (!Match(pred, m::Compare(m::Abs(m::Op(&y)), BcastConstScalar(1.0))
+                       .WithComparisonDirection(ComparisonDirection::kLt)
+                       .WithOneUser())) {
+    return false;
+  }
+
+  // y must be -x / sqrt(2), optionally wrapped in a convert (f16 -> f32 upcast
+  // before erfc polynomial). No WithOneUser() here because y is reused by
+  // multiple nodes within the pattern (abs(y) in the predicate, erf(y) in both
+  // branches). All users are fused together into the GELU post-op.
+  if (!Match(y, OptionalConvertTo(NegScaledByInvSqrt2(src)))) {
+    return false;
+  }
+
+  // True branch must be 1 - <something based on y>
+  if (!Match(true_branch,
+             m::Subtract(BcastConstScalar(1.0), m::Op()).WithOneUser())) {
+    return false;
+  }
+
+  // Checking the above two conditions (abs(y) < 1 and the true branch) is
+  // sufficient to confirm the pattern. We don't check for exact pattern on
+  // the false branch.
+  return true;
+}
+
 auto GELUActivation(HloInstruction* instr, HloInstruction** src) {
   // Attempt to match GELU_TANH activation or GELU_ERF activation
   // (https://arxiv.org/abs/1606.08415), where:
@@ -326,25 +409,21 @@ auto GELUActivation(HloInstruction* instr, HloInstruction** src) {
             BcastConstScalarNear(0.044715),
             m::Multiply(m::Op().Is(*src), m::Op().Is(*src)), m::Op().Is(*src)));
 
-    auto errf_apprx_pattern =
-        m::Tanh(m::MultiplyAnyOrder(
+    auto errf_apprx_pattern = OptionalConvertTo(
+        m::Tanh(OptionalConvertTo(m::MultiplyAnyOrder(
                     BcastConstScalarNear(sqrt(M_2_PI)),
-                    m::AddAnyOrder(m::Op().Is(*src), subexpr_pattern)
-                        .WithOneUser()))
-            .WithOneUser();
+                    m::AddAnyOrder(OptionalConvertTo(m::Op().Is(*src)),
+                                   subexpr_pattern)
+                        .WithOneUser())))
+            .WithOneUser());
 
     HloInstruction* erf;
-    auto errf_exact_pattern =
+    auto errf_exact_pattern = OptionalConvertTo(
         m::Op(&erf)
             .WithOpcode(HloOpcode::kErf)
-            .WithOperand(
-                0, m::MultiplyAnyOrder(m::Op(src),
-                                       m::AnyOf<HloInstruction>(
-                                           BcastConstScalarNear(0.707106769),
-                                           BcastConstScalarNear(0.70703125),
-                                           BcastConstScalarNear(0.707182348)))
-                       .WithOneUser())
-            .WithOneUser();
+            .WithOperand(0,
+                         OptionalConvertTo(ScaledByInvSqrt2(src)).WithOneUser())
+            .WithOneUser());
 
     if (Match(errf, errf_apprx_pattern)) {  // Gelu-approximate pattern.
       return OneDnnFusionConfig::GELU_TANH;
@@ -352,6 +431,23 @@ auto GELUActivation(HloInstruction* instr, HloInstruction** src) {
     if (Match(errf, errf_exact_pattern)) {  // Gelu-exact pattern.
       return OneDnnFusionConfig::GELU_ERF;
     }
+  }
+
+  // In mathematical terms, we are matching:
+  //   GELU_ERF(x) = x * cdf(x),
+  // where the CDF-like term cdf(x) is expressed via erfc as
+  //   cdf(x) = 0.5 * erfc(-x / sqrt(2)).
+  //
+  // The legalized StableHLO pattern we recognize is:
+  //   0.5 * x * select(|y| < 1,
+  //                    1 - erf_approx(y),
+  //                    erfc_approx(y)),
+  // with y = -x / sqrt(2), which numerically approximates cdf(x) above.
+  HloInstruction* cdf_like = nullptr;
+
+  if (Match(instr, m::MultiplyAnyOrder(HalfX(src), m::Op(&cdf_like))) &&
+      MatchLegalizedErfcLike(cdf_like, *src)) {
+    return OneDnnFusionConfig::GELU_ERF;
   }
   return OneDnnFusionConfig::UNDEFINED;
 }
