@@ -106,6 +106,7 @@ absl::Status InitIsolatorOptions(ModuleIsolationOptions& options) {
                                 const absl::Status& compare_status) {
       ADD_FAILURE() << compare_status.message();
       LOG(ERROR) << compare_status.message();
+      LogModifyingPassesOnMismatch(module);
       auto* env = tsl::Env::Default();
       std::string outdir;
       std::string filename;
@@ -231,6 +232,7 @@ absl::Status CompareOutputs(const HloModule& module, const Literal& test_output,
     status = absl::InternalError(
         absl::StrFormat("Value mismatch in check %s for module %s\n\n%s",
                         check_name, module.name(), status.message()));
+    LogModifyingPassesOnMismatch(module);
     options.on_mismatch_fn(module, test_output, reference_output, status);
     absl::StatusOr<std::vector<NumericMismatch>> top_mismatches =
         ExtractAndEnrichTopMismatches(std::string(status.message()), &module);
@@ -334,8 +336,9 @@ std::vector<HloOutputCallback> CreateComparisonHloOutputCallbacks(
       dynamic_cb.callback_id = hlo_id;
       dynamic_cb.num_operands = 1;
       dynamic_cb.callback =
-          [op_name, ref_op_name, module_name = original_module.name(),
-           abs_error, rel_error, result_mutex, test_result](
+          [&original_module, op_name, ref_op_name,
+           module_name = original_module.name(), abs_error, rel_error,
+           result_mutex, test_result](
               int64_t replica_id, int64_t partition_id,
               absl::Span<std::shared_ptr<const Literal> const> literals) {
             if (literals.empty() || !literals[0]) {
@@ -424,6 +427,7 @@ std::vector<HloOutputCallback> CreateComparisonHloOutputCallbacks(
                                   op_name, matched.message());
               ADD_FAILURE() << error_message;
               LOG(ERROR) << error_message;
+              LogModifyingPassesOnMismatch(original_module, op_name);
 
               absl::MutexLock lock(result_mutex.get());
               NumericCheck* numeric_check = test_result->add_numeric_checks();
@@ -510,6 +514,11 @@ absl::StatusOr<Literal> RunModule(std::unique_ptr<HloModule> module,
                                   HloRunnerInterface* runner,
                                   absl::Span<const Literal> input_data,
                                   const RunModuleOptions& options) {
+  if (options.run_hlo_passes) {
+    module->mutable_config()
+        .mutable_debug_options()
+        .set_xla_track_modifying_passes(xla::DebugOptions::FULL_PATH);
+  }
   if (!options.run_hlo_passes && !module->has_schedule()) {
     RETURN_IF_ERROR(HloTrivialScheduler().Run(module.get()).status());
   }
@@ -1198,6 +1207,70 @@ bool LiteralContainsInfOrNan(const LiteralSlice& literal) {
       },
       literal.shape().element_type());
   return contains_inf_or_nan;
+}
+
+bool ModuleContainsFusions(const HloModule& module) {
+  for (const HloComputation* computation : module.computations()) {
+    for (const HloInstruction* instruction : computation->instructions()) {
+      if (instruction->opcode() == HloOpcode::kFusion) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+bool IsBeforeOptimizations(const HloModule& module, bool run_hlo_passes) {
+  if (run_hlo_passes) return true;
+  return !module.has_schedule() && !ModuleContainsFusions(module);
+}
+
+std::string GetModifyingPassesForInstruction(
+    const HloInstruction* instruction) {
+  if (instruction == nullptr || !instruction->has_frontend_attributes()) {
+    return "";
+  }
+  const auto& attrs = instruction->frontend_attributes().map();
+  if (auto it = attrs.find("_xla_modifying_passes"); it != attrs.end()) {
+    return it->second;
+  }
+  if (auto it = attrs.find("_xla_last_modifying_pass"); it != attrs.end()) {
+    return it->second;
+  }
+  return "";
+}
+
+void LogModifyingPassesOnMismatch(const HloModule& module,
+                                  absl::string_view op_name) {
+  bool found_any = false;
+  if (!op_name.empty()) {
+    for (const HloComputation* comp : module.computations()) {
+      for (const HloInstruction* inst : comp->instructions()) {
+        if (inst->name() == op_name) {
+          std::string passes = GetModifyingPassesForInstruction(inst);
+          if (!passes.empty()) {
+            LOG(ERROR) << "Modifying passes for mismatched op " << op_name
+                       << ": " << passes;
+            found_any = true;
+          }
+          break;
+        }
+      }
+      if (found_any) break;
+    }
+  }
+
+  if (!found_any) {
+    for (const HloComputation* comp : module.computations()) {
+      for (const HloInstruction* inst : comp->instructions()) {
+        std::string passes = GetModifyingPassesForInstruction(inst);
+        if (!passes.empty()) {
+          LOG(ERROR) << "Modifying passes for op " << inst->name() << ": "
+                     << passes;
+        }
+      }
+    }
+  }
 }
 
 }  // namespace hlo_isolation
