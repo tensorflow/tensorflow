@@ -47,6 +47,7 @@ from tensorflow.python.ops import tensor_getitem_override  # pylint: disable=unu
 from tensorflow.python.ops.gen_array_ops import *
 from tensorflow.python.ops.gen_array_ops import reverse_v2 as reverse  # pylint: disable=unused-import
 from tensorflow.python.types import core
+from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import _pywrap_utils
 from tensorflow.python.util import deprecation
 from tensorflow.python.util import dispatch
@@ -4607,6 +4608,18 @@ def where_v2(condition, x=None, y=None, name=None):
           condition, preferred_dtype=dtypes.bool, name="condition")
       return gen_array_ops.where(condition=condition, name=name)
   elif x is not None and y is not None:
+    x = ops.convert_to_tensor(x, name="x")
+    y = ops.convert_to_tensor(y, name="y")
+    if record.should_record_backprop([x, y]):
+      logging.warning(
+          "tf.where is being used inside a GradientTape with floating-point "
+          "`x` and `y`. The gradients will result in None. This is expected."
+          "To have the condition differentiable rewrite the code with " 
+          "arithmetic masking:\n"
+          "    mask = tf.cast(condition, x.dtype)\n"
+          "    result = mask * x + (1 - mask) * y\n"
+          "or use @tf.custom_gradient to define the backward pass explicitly.",
+      )
     return gen_math_ops.select_v2(condition=condition, t=x, e=y, name=name)
   else:
     raise ValueError("x and y must both be non-None or both be None.")
