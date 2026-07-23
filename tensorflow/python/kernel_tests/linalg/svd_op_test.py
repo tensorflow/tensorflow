@@ -124,6 +124,7 @@ class SvdOpTest(test.TestCase):
     for i in range(0, len(val), 2):
       self.assertAllEqual(val[i], val[i + 1])
 
+  @test_util.run_in_graph_and_eager_modes(use_gpu=True)
   def testComputeUvFalseReturnsEmptyUv(self):
     # Regression test for GitHub issue 102352: with compute_uv=False the raw
     # op used to return uninitialized scalars in `u` and `v` on CPU instead

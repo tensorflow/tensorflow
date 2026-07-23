@@ -49,6 +49,7 @@ class SelfAdjointEigTest(test.TestCase):
     with self.assertRaises(ValueError):
       linalg_ops.self_adjoint_eig(vector)
 
+  @test_util.run_in_graph_and_eager_modes(use_gpu=True)
   def testComputeVFalseReturnsEmptyV(self):
     # Regression test for GitHub issue 102352: with compute_v=False the raw
     # op used to return an uninitialized scalar in `v` instead of an empty
