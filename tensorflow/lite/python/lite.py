@@ -16,7 +16,6 @@
 
 import enum
 import functools
-import gc
 import pprint
 import shutil
 import sys
@@ -1574,19 +1573,19 @@ class TFLiteSavedModelConverterV2(TFLiteConverterBaseV2):
           graph_def, input_tensors, output_tensors
       )
 
-    trackable_obj = _load(self.saved_model_dir, self._saved_model_tags)
-    if trackable_obj is None:
-      self._debug_info = _get_debug_info(
-          _build_debug_info_func(self._funcs[0].graph), graph_def
-      )
-    else:
-      self._debug_info = _get_debug_info(
-          _convert_debug_info_func(trackable_obj.graph_debug_info),
-          graph_def,
-      )
-
-    del trackable_obj
-    gc.collect()
+    # Read debug info directly from the SavedModel directory instead of loading
+    # the full model with _load(). Loading the model allocates all variable
+    # tensors (~25MB for DenseNet121) plus registers function defs in the
+    # EagerContext, and these can leak across convert() calls due to reference
+    # cycles that are slow to collect.  The debug info proto is already written
+    # to disk alongside saved_model.pb and can be read cheaply.
+    _, saved_debug_info = _parse_saved_model_with_debug_info(
+        self.saved_model_dir
+    )
+    self._debug_info = _get_debug_info(
+        _convert_debug_info_func(saved_debug_info),
+        graph_def,
+    )
     return self._convert_from_saved_model(graph_def)
 
 
