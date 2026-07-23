@@ -1705,6 +1705,7 @@ cc_library(
     hdrs = ["small_while_loop_hoisting_pass.h"],
     deps = [
         ":cpu_executable",
+        "//xla:shape_util",
         "//xla:util",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/pass:hlo_pass",
