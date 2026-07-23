@@ -22,7 +22,6 @@ limitations under the License.
 #include "tensorflow/core/framework/kernel_shape_util.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
-#include "tensorflow/core/kernels/fill_functor.h"
 
 #if GOOGLE_CUDA
 #include "third_party/gpus/cudnn/cudnn.h"
@@ -30,6 +29,7 @@ limitations under the License.
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #include "tensorflow/core/kernels/cast_op.h"
 #include "tensorflow/core/kernels/conv_2d.h"
+#include "tensorflow/core/kernels/fill_functor.h"
 #include "tensorflow/core/kernels/gpu_utils.h"
 #include "tensorflow/core/kernels/numeric_options_utils.h"
 #if TENSORFLOW_USE_ROCM
@@ -242,14 +242,14 @@ void DnnPoolingImpl(OpKernelContext* context, se::dnn::PoolingMode pooling_mode,
       context,           size,        stride,           padding,
       explicit_paddings, data_format, tensor_in.shape()};
 
-  if (params.out_height == 0 || params.out_width == 0) {
-    return;
-  }
-  
   if (!context->status().ok()) {
     return;
   }
 
+  if (params.out_height == 0 || params.out_width == 0) {
+    return;
+  }
+  
   int batch_size = params.tensor_in_batch;
   int depth = params.depth;
   int tensor_in_cols = params.tensor_in_cols;
