@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/kernels/batching_util/shared_batch_scheduler.h"
 
+#include <array>
 #include <climits>
 #include <cstddef>
 #include <cstdint>
@@ -3808,6 +3809,149 @@ TEST_P(SharedBatchSchedulerPriorityAwareTest, EvictionOfLowestPriorityTasks) {
   TF_EXPECT_OK(*status3);
   done_notification5->WaitForNotification();
   TF_EXPECT_OK(*status5);
+}
+
+TEST_P(SharedBatchSchedulerPriorityAwareTest, PriorityQueueStateReporting) {
+  using ::tsl::criticality::Criticality;
+  // Use a thread pool of 1 and a blocker task to keep tasks enqueued so that we
+  // can observe the per-criticality queue state.
+  TF_ASSERT_OK_AND_ASSIGN(std::shared_ptr<Scheduler> scheduler,
+                          CreateSharedBatchScheduler(/*num_batch_threads=*/1));
+
+  // max_queue_depth of 5 (in summed task size).
+  QueueOptions options = CreatePriorityAwareQueueOptions(
+      /*max_execution_batch_size=*/10,
+      /*batch_timeout_micros=*/1000 * 1000, /*max_queue_depth=*/5);
+
+  // Record evictions as they happen via the on_task_evicted callback. The
+  // callback fires synchronously on the thread calling Schedule(), so plain
+  // arrays (no synchronization) are sufficient here.
+  std::array<int, PriorityQueueState::kNumCriticalities> evicted_num_tasks = {};
+  std::array<int64_t, PriorityQueueState::kNumCriticalities> evicted_size = {};
+  options.on_task_evicted = [&](Criticality criticality, size_t size) {
+    const int index = static_cast<int>(criticality);
+    evicted_num_tasks[index] += 1;
+    evicted_size[index] += static_cast<int64_t>(size);
+  };
+
+  absl::Notification block_thread, thread_blocked;
+  auto callback = [&](std::unique_ptr<Batch<FakeTask>> batch) {
+    if (!thread_blocked.HasBeenNotified()) {
+      thread_blocked.Notify();
+      block_thread.WaitForNotification();
+    }
+    for (int i = 0; i < batch->num_tasks(); ++i) {
+      batch->mutable_task(i)->FinishTask(absl::OkStatus());
+    }
+  };
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<Queue> queue,
+                          CreateQueue(scheduler, options, callback));
+
+  // Initially the queue is empty.
+  {
+    std::optional<PriorityQueueState> state = queue->GetPriorityQueueState();
+    ASSERT_TRUE(state.has_value());
+    EXPECT_EQ(state->max_queue_depth, 5);
+    for (int i = 0; i < PriorityQueueState::kNumCriticalities; ++i) {
+      EXPECT_EQ(state->num_tasks[i], 0);
+      EXPECT_EQ(state->size[i], 0);
+      // No evictions yet.
+      EXPECT_EQ(evicted_num_tasks[i], 0);
+      EXPECT_EQ(evicted_size[i], 0);
+    }
+  }
+
+  // Occupy the (only) batch thread with a blocker task so subsequent tasks
+  // remain in the queue.
+  TF_EXPECT_OK(
+      ScheduleTask(/*task_size=*/1, queue.get(), Criticality::kCritical));
+  thread_blocked.WaitForNotification();
+
+  // Enqueue tasks of various criticalities (total size 4 <= max_queue_depth 5).
+  auto sheddable_done = std::make_shared<absl::Notification>();
+  auto sheddable_status = std::make_shared<absl::Status>();
+  auto sheddable_task = std::make_unique<FakeTask>(
+      /*size=*/2, Criticality::kSheddable, sheddable_done, sheddable_status);
+  TF_EXPECT_OK(queue->Schedule(&sheddable_task));
+
+  auto critical_done = std::make_shared<absl::Notification>();
+  auto critical_status = std::make_shared<absl::Status>();
+  auto critical_task = std::make_unique<FakeTask>(
+      /*size=*/1, Criticality::kCritical, critical_done, critical_status);
+  TF_EXPECT_OK(queue->Schedule(&critical_task));
+
+  // Verify per-criticality occupancy.
+  {
+    std::optional<PriorityQueueState> state = queue->GetPriorityQueueState();
+    ASSERT_TRUE(state.has_value());
+    const int sheddable = static_cast<int>(Criticality::kSheddable);
+    const int critical = static_cast<int>(Criticality::kCritical);
+    EXPECT_EQ(state->num_tasks[sheddable], 1);
+    EXPECT_EQ(state->size[sheddable], 2);
+    EXPECT_EQ(state->num_tasks[critical], 1);
+    EXPECT_EQ(state->size[critical], 1);
+    // No evictions have happened yet.
+    EXPECT_EQ(evicted_num_tasks[sheddable], 0);
+  }
+
+  // Fill the queue and force eviction of the sheddable task by submitting a
+  // higher-priority task that does not fit otherwise.
+  // Current queue size = 3 (size 2 sheddable + size 1 critical), capacity 5.
+  // Add a critical-plus task of size 3 -> total would be 6 > 5, so the lowest
+  // priority task (sheddable, size 2) is evicted.
+  auto critical_plus_done = std::make_shared<absl::Notification>();
+  auto critical_plus_status = std::make_shared<absl::Status>();
+  auto critical_plus_task = std::make_unique<FakeTask>(
+      /*size=*/3, Criticality::kCriticalPlus, critical_plus_done,
+      critical_plus_status);
+  TF_EXPECT_OK(queue->Schedule(&critical_plus_task));
+
+  // The sheddable task should have been evicted.
+  sheddable_done->WaitForNotification();
+  EXPECT_EQ(sheddable_status->code(), absl::StatusCode::kUnavailable);
+
+  {
+    std::optional<PriorityQueueState> state = queue->GetPriorityQueueState();
+    ASSERT_TRUE(state.has_value());
+    const int sheddable = static_cast<int>(Criticality::kSheddable);
+    const int critical = static_cast<int>(Criticality::kCritical);
+    const int critical_plus = static_cast<int>(Criticality::kCriticalPlus);
+    // Sheddable task evicted: no longer enqueued, and the on_task_evicted
+    // callback fired for it.
+    EXPECT_EQ(state->num_tasks[sheddable], 0);
+    EXPECT_EQ(state->size[sheddable], 0);
+    EXPECT_EQ(evicted_num_tasks[sheddable], 1);
+    EXPECT_EQ(evicted_size[sheddable], 2);
+    // Critical and critical-plus tasks remain.
+    EXPECT_EQ(state->num_tasks[critical], 1);
+    EXPECT_EQ(state->size[critical], 1);
+    EXPECT_EQ(state->num_tasks[critical_plus], 1);
+    EXPECT_EQ(state->size[critical_plus], 3);
+  }
+
+  // Unblock and let remaining tasks drain.
+  block_thread.Notify();
+  critical_done->WaitForNotification();
+  TF_EXPECT_OK(*critical_status);
+  critical_plus_done->WaitForNotification();
+  TF_EXPECT_OK(*critical_plus_status);
+}
+
+TEST(SharedBatchSchedulerNonPriorityAwareTest,
+     GetPriorityQueueStateReturnsNullopt) {
+  // When the priority aware scheduler is disabled, GetPriorityQueueState()
+  // should return nullopt so that no per-criticality metrics are exported.
+  TF_ASSERT_OK_AND_ASSIGN(std::shared_ptr<Scheduler> scheduler,
+                          CreateSharedBatchScheduler(/*num_batch_threads=*/1));
+  QueueOptions options = tensorflow::serving::CreateQueueOptions(
+      /*max_execution_batch_size=*/10, /*input_batch_size_limit=*/10,
+      /*batch_timeout_micros=*/1000, /*max_enqueued_batches=*/2,
+      /*enable_large_batch_splitting=*/false, /*split_func=*/nullptr,
+      /*enable_priority_queue=*/false);
+  std::unique_ptr<BatchScheduler<FakeTask>> queue;
+  TF_ASSERT_OK(scheduler->AddQueue(options, [](auto) {}, &queue));
+  EXPECT_FALSE(queue->GetPriorityQueueState().has_value());
 }
 
 TEST_P(SharedBatchSchedulerPriorityAwareTest,
