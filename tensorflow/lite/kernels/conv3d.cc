@@ -162,6 +162,12 @@ TfLiteStatus Prepare(KernelType kernel_type, TfLiteContext* context,
       filter_width, filter_depth, params->padding, &out_height, &out_width,
       &out_depth);
 
+  int output_spatial_elements = 0;
+  TF_LITE_ENSURE_MSG(context,
+                     CheckedNumElements({out_depth, out_height, out_width},
+                                        output_spatial_elements) == kTfLiteOk,
+                     "%s", "Conv3D output spatial dimensions overflow.");
+
   std::unique_ptr<TfLiteIntArray, void (*)(TfLiteIntArray*)> output_size(
       TfLiteIntArrayCreate(5), TfLiteIntArrayFree);
   output_size->data[0] = batches;
