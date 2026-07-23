@@ -18,8 +18,8 @@ limitations under the License.
 
 #include <vector>
 
-#include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/lib/gtl/array_slice.h"
+#include "absl/status/status.h"
+#include "absl/types/span.h"
 #include "tensorflow/core/lib/random/distribution_sampler.h"
 #include "tensorflow/core/lib/random/random_distributions.h"
 #include "tensorflow/core/lib/random/weighted_picker.h"
@@ -109,7 +109,7 @@ class AllSampler : public RangeSampler {
  public:
   explicit AllSampler(int64_t range);
 
-  ~AllSampler() override {}
+  ~AllSampler() override = default;
 
   int64_t Sample(random::SimplePhilox* rnd) const override {
     LOG(FATAL) << "Should not be called";
@@ -132,7 +132,7 @@ class UniformSampler : public RangeSampler {
  public:
   explicit UniformSampler(int64_t range);
 
-  ~UniformSampler() override {}
+  ~UniformSampler() override = default;
 
   int64_t Sample(random::SimplePhilox* rnd) const override;
 
@@ -146,7 +146,7 @@ class LogUniformSampler : public RangeSampler {
  public:
   explicit LogUniformSampler(int64_t range);
 
-  ~LogUniformSampler() override {}
+  ~LogUniformSampler() override = default;
 
   int64_t Sample(random::SimplePhilox* rnd) const override;
 
@@ -160,7 +160,7 @@ class LogUniformSampler : public RangeSampler {
 class ThreadUnsafeUnigramSampler : public RangeSampler {
  public:
   explicit ThreadUnsafeUnigramSampler(int64_t range);
-  ~ThreadUnsafeUnigramSampler() override {}
+  ~ThreadUnsafeUnigramSampler() override = default;
 
   int64_t Sample(random::SimplePhilox* rnd) const override;
 
@@ -177,7 +177,7 @@ class ThreadUnsafeUnigramSampler : public RangeSampler {
 class UnigramSampler : public RangeSampler {
  public:
   explicit UnigramSampler(int64_t range);
-  ~UnigramSampler() override {}
+  ~UnigramSampler() override = default;
 
   int64_t Sample(random::SimplePhilox* rnd) const override;
 
@@ -204,8 +204,8 @@ class UnigramSampler : public RangeSampler {
 // distribution by applying a distortion power to the weights.
 class FixedUnigramSampler : public RangeSampler {
  public:
-  FixedUnigramSampler(int64_t range, float distortion, int32_t num_reserved_ids,
-                      int32_t num_shards, int32_t shard);
+  FixedUnigramSampler(int64_t range, float distortion, int64_t num_reserved_ids,
+                      int64_t num_shards, int64_t shard);
   // The vocab_file is assumed to be a CSV, with the last entry of each row a
   // value representing the counts or probabilities for the corresponding ID.
   absl::Status SetDistributionSampler(Env* env, const std::string& vocab_file);
@@ -225,11 +225,11 @@ class FixedUnigramSampler : public RangeSampler {
   // Sharding information of the sampler. The whole vocabulary is sharded
   // into num_shards_ smaller ranges and each sampler is responsible for one
   // such smaller range, identified by the shard number.
-  int32_t num_shards_;
-  int32_t shard_;
+  int64_t num_shards_;
+  int64_t shard_;
   float distortion_;
   // Fill the sampler with the appropriate number of reserved IDs.
-  void FillReservedIds(int32_t num_reserved_ids);
+  void FillReservedIds(int64_t num_reserved_ids);
   // Load IDs to sample from a CSV file. It is assumed that the last item of
   // each row contains a count or probability for the corresponding ID.
   absl::Status LoadFromFile(Env* env, const std::string& vocab_file,

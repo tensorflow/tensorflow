@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tests for CandidateSamplerOp."""
+# ==============================================================================
 
 import numpy as np
 
@@ -22,6 +22,7 @@ from tensorflow.python.framework import errors
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import candidate_sampling_ops
+from tensorflow.python.ops import gen_candidate_sampling_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
 
@@ -89,7 +90,7 @@ class RangeSamplerOpsTest(test.TestCase):
     self.assertEqual(sampled_log_expected_count.get_shape(), [self.NUM_SAMPLED])
 
   def testAccidentalHits(self):
-    with self.cached_session() as sess:
+    with self.cached_session():
       true_classes = constant_op.constant(
           [[1, 2], [0, 4], [3, 3]], dtype=dtypes.int64)
       sampled_candidates, _, _ = candidate_sampling_ops.all_candidate_sampler(
@@ -102,7 +103,7 @@ class RangeSamplerOpsTest(test.TestCase):
     self.assertEqual(1, accidental_hits[1].get_shape().ndims)
     self.assertEqual(1, accidental_hits[2].get_shape().ndims)
     for index, id_, weight in zip(indices, ids, weights):
-      self.assertTrue(id_ in self.TRUE_LABELS[index])
+      self.assertIn(id_, self.TRUE_LABELS[index])
       self.assertLess(weight, -1.0e37)
 
   @test_util.run_deprecated_v1
@@ -138,6 +139,44 @@ class RangeSamplerOpsTest(test.TestCase):
               num_sampled=1000,
               unique=False,
               range_max=2))
+
+  def testFixedUnigramCandidateSamplerShardTruncation(self):
+    # Regression test for b/512809157
+    with self.assertRaises((ValueError, errors.InvalidArgumentError)):
+      self.evaluate(
+          gen_candidate_sampling_ops.fixed_unigram_candidate_sampler(
+              true_classes=[[1]],
+              num_true=1,
+              num_sampled=1,
+              unique=False,
+              range_max=2,
+              vocab_file="",
+              distortion=1.0,
+              num_reserved_ids=0,
+              num_shards=1,
+              shard=4294967296,
+              unigrams=[1.0, 1.0],
+          )
+      )
+
+  def testFixedUnigramCandidateSamplerNumShardsTruncation(self):
+    # Regression test for b/512809157
+    with self.assertRaises((ValueError, errors.InvalidArgumentError)):
+      self.evaluate(
+          gen_candidate_sampling_ops.fixed_unigram_candidate_sampler(
+              true_classes=[[1]],
+              num_true=1,
+              num_sampled=1,
+              unique=False,
+              range_max=2,
+              vocab_file="",
+              distortion=1.0,
+              num_reserved_ids=0,
+              num_shards=4294967296,
+              shard=0,
+              unigrams=[1.0, 1.0],
+          )
+      )
 
     with self.assertRaisesRegex((ValueError, errors.InvalidArgumentError),
                                 "out of range"):
