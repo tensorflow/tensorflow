@@ -21,6 +21,8 @@ limitations under the License.
 #include <vector>
 
 #include "absl/status/status.h"
+#include "absl/strings/string_view.h"
+#include "llvm/Support/raw_ostream.h"
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/OwningOpRef.h"  // from @llvm-project
@@ -34,8 +36,7 @@ limitations under the License.
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/types.h"
 
-namespace tensorflow {
-namespace internal {
+namespace tensorflow::internal {
 
 // Register all custom ops including user specified custom ops.
 absl::Status RegisterAllCustomOps(
@@ -64,10 +65,22 @@ absl::Status ConvertMLIRToTFLiteFlatBuffer(
     std::string* result,
     const quantization::PyFunctionLibrary* quantization_py_function_lib);
 
+// Convert slim model in directory to TfLite flatbuffer streamed directly to an
+// output stream.
+absl::Status ConvertMlirBytecodeToTFLite(
+    tflite::ConverterFlags& converter_flags, absl::string_view model_dir,
+    llvm::raw_pwrite_stream& export_stream);
+
+// Convert slim model in directory to TfLite flatbuffer streamed directly to a
+// file.
+absl::Status ConvertMlirBytecodeToTFLite(
+    tflite::ConverterFlags& converter_flags, absl::string_view model_dir,
+    absl::string_view output_file_path);
+
 // Give a warning for any unused flags that have been specified.
 void WarningUnusedFlags(const tflite::ModelFlags& model_flags,
                         const tflite::ConverterFlags& converter_flags);
-}  // namespace internal
-}  // namespace tensorflow
+
+}  // namespace tensorflow::internal
 
 #endif  // TENSORFLOW_COMPILER_MLIR_LITE_PYTHON_TF_TFL_FLATBUFFER_HELPERS_H_

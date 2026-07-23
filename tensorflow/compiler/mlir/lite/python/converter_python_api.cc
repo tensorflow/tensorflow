@@ -41,6 +41,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/python/interpreter_wrapper/python_utils.h"
 #include "tensorflow/compiler/mlir/lite/python/jax_to_tfl_flatbuffer.h"
 #include "tensorflow/compiler/mlir/lite/python/saved_model_to_tfl_flatbuffer.h"
+#include "tensorflow/compiler/mlir/lite/python/tf_tfl_flatbuffer_helpers.h"
 #include "tensorflow/compiler/mlir/lite/quantization/lite/quantize_model.h"
 #include "tensorflow/compiler/mlir/lite/schema/schema_generated.h"
 #include "tensorflow/compiler/mlir/lite/sparsity/sparsify_model.h"
@@ -50,7 +51,6 @@ limitations under the License.
 #include "tensorflow/core/framework/graph_debug_info.pb.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_def.pb.h"
-#include "tensorflow/core/framework/op_def_builder.h"
 #include "tensorflow/core/platform/status.h"
 
 namespace tflite {
@@ -435,6 +435,68 @@ std::vector<std::string> RetrieveCollectedErrors() {
 std::string FlatBufferFileToMlir(const std::string& model,
                                  bool input_is_filepath) {
   return ::tensorflow::FlatBufferFileToMlir(model, input_is_filepath);
+}
+
+PyObject* ConvertMlirBytecode(PyObject* converter_flags_proto_txt_raw,
+                              PyObject* model_dir_txt_raw,
+                              PyObject* output_file_path_raw) {
+  auto ConvertArg = [](PyObject* obj, bool* error) {
+    *error = true;
+    if (obj == Py_None) {
+      *error = false;
+      return std::string();
+    }
+    if (PyUnicode_Check(obj)) {
+      Py_ssize_t len;
+      const char* buf = PyUnicode_AsUTF8AndSize(obj, &len);
+      if (buf == nullptr) return std::string();
+      *error = false;
+      return std::string(buf, len);
+    }
+    if (PyBytes_Check(obj)) {
+      char* buf;
+      Py_ssize_t len;
+      if (PyBytes_AsStringAndSize(obj, &buf, &len) == -1) return std::string();
+      *error = false;
+      return std::string(buf, len);
+    }
+    return std::string();
+  };
+
+  bool error = false;
+  std::string converter_flags_proto_txt =
+      ConvertArg(converter_flags_proto_txt_raw, &error);
+  if (error) {
+    PyErr_SetString(PyExc_ValueError, "Converter flags proto is invalid.");
+    return nullptr;
+  }
+  tflite::ConverterFlags converter_flags;
+  if (!converter_flags.ParseFromString(converter_flags_proto_txt)) {
+    PyErr_SetString(PyExc_ValueError, "Failed to parse ConverterFlags.");
+    return nullptr;
+  }
+
+  std::string model_dir = ConvertArg(model_dir_txt_raw, &error);
+  if (error) {
+    PyErr_SetString(PyExc_ValueError, "Model directory is invalid.");
+    return nullptr;
+  }
+
+  std::string output_file_path = ConvertArg(output_file_path_raw, &error);
+  if (error) {
+    PyErr_SetString(PyExc_ValueError, "Output file path is invalid.");
+    return nullptr;
+  }
+
+  absl::Status status = tensorflow::internal::ConvertMlirBytecodeToTFLite(
+      converter_flags, model_dir, output_file_path);
+
+  if (!status.ok()) {
+    PyErr_SetString(PyExc_Exception, absl::StatusMessageAsCStr(status));
+    return nullptr;
+  }
+
+  Py_RETURN_NONE;
 }
 
 }  // namespace tflite

@@ -39,7 +39,7 @@ enum FileFormat {
 // of as properties of models, instead describing how models are to be
 // processed in the context of the present tooling job.
 //
-// Next ID to use: 71.
+// Next ID to use: 72.
 message ConverterFlags {
   reserved 54, 61;
 
@@ -386,4 +386,8 @@ message ConverterFlags {
 
   // If true, enable unsafe single batch rank reduction.
   optional bool unsafe_single_batch_rank_reduction = 70 [default = false];
+
+  // If true, fold 16-bit float (fp16/bf16) to 32-bit float (fp32) casts on
+  // large resource constants.
+  optional bool fold_fp16_resource_casts = 71 [default = true];
 }

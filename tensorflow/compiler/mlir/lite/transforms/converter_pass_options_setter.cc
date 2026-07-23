@@ -42,5 +42,8 @@ void ConverterPassOptionsSetter::SetOptions(
 
 void ConverterPassOptionsSetter::SetOptions(EmptyPassOptions& options) const {}
 
+void ConverterPassOptionsSetter::SetOptions(
+    LargeConstantFoldPassOptions& options) const {}
+
 }  // namespace TFL
 }  // namespace mlir

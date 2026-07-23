@@ -37,6 +37,19 @@ def wrapped_convert(
   )
 
 
+def wrapped_convert_mlir_bytecode(
+    converter_flags_str,
+    model_dir,
+    output_file_path,
+):
+  """Wraps ConvertMlirBytecode with lazy loader."""
+  return _pywrap_converter_api.ConvertMlirBytecode(
+      converter_flags_str,
+      model_dir,
+      output_file_path,
+  )
+
+
 def wrapped_experimental_mlir_quantize(
     input_data_str,
     disable_per_channel,
