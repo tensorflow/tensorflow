@@ -105,6 +105,49 @@ absl::StatusOr<std::vector<RepeatedFlagModifier>> ParseRepeatedEnumModifiers(
 
 }  // namespace details
 
+// This is the reverse of the `collectives_mode_setter_for` parser defined
+// below.
+template <typename Sink>
+void AbslStringify(Sink& sink, DebugOptions::CollectivesMode mode) {
+  switch (mode) {
+    case DebugOptions::COLLECTIVES_PRIVATE_MEMORY:
+      sink.Append("private");
+      break;
+    case DebugOptions::COLLECTIVES_SYMMETRIC_MEMORY:
+      sink.Append("symmetric");
+      break;
+    case DebugOptions::COLLECTIVES_PEER_MEMORY:
+      sink.Append("peer");
+      break;
+    default:
+      sink.Append("invalid");
+      break;
+  }
+}
+
+// This is the reverse of the `collective_pipelining_mode_setter_for` parser
+// defined below.
+template <typename Sink>
+void AbslStringify(Sink& sink, DebugOptions::CollectivePipeliningMode mode) {
+  switch (mode) {
+    case DebugOptions::COLLECTIVE_PIPELINING_MODE_DEFAULT:
+      sink.Append("default");
+      break;
+    case DebugOptions::COLLECTIVE_PIPELINING_MODE_OFF:
+      sink.Append("off");
+      break;
+    case DebugOptions::COLLECTIVE_PIPELINING_MODE_ON:
+      sink.Append("on");
+      break;
+    case DebugOptions::COLLECTIVE_PIPELINING_MODE_EXPLICIT:
+      sink.Append("explicit");
+      break;
+    default:
+      sink.Append("invalid");
+      break;
+  }
+}
+
 namespace {
 
 template <typename T>
@@ -335,9 +378,12 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_memory_limit_slop_factor(95);
   opts.set_xla_gpu_enable_highest_priority_async_stream(true);
 
-  opts.set_xla_gpu_enable_pipelined_all_reduce(false);
-  opts.set_xla_gpu_enable_pipelined_all_gather(false);
-  opts.set_xla_gpu_enable_pipelined_reduce_scatter(true);
+  opts.set_xla_gpu_pipeline_all_reduce(
+      DebugOptions::COLLECTIVE_PIPELINING_MODE_DEFAULT);
+  opts.set_xla_gpu_pipeline_all_gather(
+      DebugOptions::COLLECTIVE_PIPELINING_MODE_DEFAULT);
+  opts.set_xla_gpu_pipeline_reduce_scatter(
+      DebugOptions::COLLECTIVE_PIPELINING_MODE_ON);
   opts.set_xla_gpu_enable_pipelined_host_offloading(false);
   opts.set_xla_gpu_enable_pipelined_p2p(false);
 
@@ -876,6 +922,41 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
             return false;
           }
           (debug_options->*member_setter)(mode);
+          return true;
+        };
+      };
+
+  auto collective_pipelining_mode_setter_for =
+      [debug_options](void (DebugOptions::*member_setter)(
+          DebugOptions::CollectivePipeliningMode)) {
+        return [debug_options, member_setter](absl::string_view value) {
+          DebugOptions::CollectivePipeliningMode mode;
+          std::string lower = absl::AsciiStrToLower(value);
+          if (lower == "default") {
+            mode = DebugOptions::COLLECTIVE_PIPELINING_MODE_DEFAULT;
+          } else if (lower == "off") {
+            mode = DebugOptions::COLLECTIVE_PIPELINING_MODE_OFF;
+          } else if (lower == "on") {
+            mode = DebugOptions::COLLECTIVE_PIPELINING_MODE_ON;
+          } else if (lower == "explicit") {
+            mode = DebugOptions::COLLECTIVE_PIPELINING_MODE_EXPLICIT;
+          } else {
+            return false;
+          }
+          (debug_options->*member_setter)(mode);
+          return true;
+        };
+      };
+
+  // Compatibility parser for deprecated boolean collective-pipelining flags.
+  // True maps to ON and false maps to DEFAULT.
+  auto legacy_collective_pipelining_setter_for =
+      [debug_options](void (DebugOptions::*mode_member_setter)(
+          DebugOptions::CollectivePipeliningMode)) {
+        return [debug_options, mode_member_setter](bool value) {
+          (debug_options->*mode_member_setter)(
+              value ? DebugOptions::COLLECTIVE_PIPELINING_MODE_ON
+                    : DebugOptions::COLLECTIVE_PIPELINING_MODE_DEFAULT);
           return true;
         };
       };
@@ -2327,20 +2408,53 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       "Enable async stream to have the highest priority."));
   flag_list->push_back(tsl::Flag(
       "xla_gpu_enable_pipelined_all_reduce",
-      bool_setter_for(&DebugOptions::set_xla_gpu_enable_pipelined_all_reduce),
-      debug_options->xla_gpu_enable_pipelined_all_reduce(),
-      "[Stable] Enable pipelinling of all-reduce instructions."));
+      legacy_collective_pipelining_setter_for(
+          &DebugOptions::set_xla_gpu_pipeline_all_reduce),
+      /*default_value_for_display=*/false,
+      "[Deprecated] True maps to --xla_gpu_pipeline_all_reduce=on and false "
+      "maps to --xla_gpu_pipeline_all_reduce=default."));
+  flag_list->push_back(tsl::Flag(
+      "xla_gpu_pipeline_all_reduce",
+      collective_pipelining_mode_setter_for(
+          &DebugOptions::set_xla_gpu_pipeline_all_reduce),
+      absl::StrCat(debug_options->xla_gpu_pipeline_all_reduce()),
+      "[Stable] Controls all-reduce pipelining: default follows optimization "
+      "effort, off disables the pass, on considers all structurally eligible "
+      "all-reduces, and explicit considers only all-reduces carrying a "
+      "boolean-true is_pipelineable frontend attribute."));
   flag_list->push_back(tsl::Flag(
       "xla_gpu_enable_pipelined_all_gather",
-      bool_setter_for(&DebugOptions::set_xla_gpu_enable_pipelined_all_gather),
-      debug_options->xla_gpu_enable_pipelined_all_gather(),
-      "[Stable] Enable pipelinling of all-gather instructions."));
-  flag_list->push_back(
-      tsl::Flag("xla_gpu_enable_pipelined_reduce_scatter",
-                bool_setter_for(
-                    &DebugOptions::set_xla_gpu_enable_pipelined_reduce_scatter),
-                debug_options->xla_gpu_enable_pipelined_reduce_scatter(),
-                "[Stable] Enable pipelinling of reduce-scatter instructions."));
+      legacy_collective_pipelining_setter_for(
+          &DebugOptions::set_xla_gpu_pipeline_all_gather),
+      /*default_value_for_display=*/false,
+      "[Deprecated] True maps to --xla_gpu_pipeline_all_gather=on and false "
+      "maps to --xla_gpu_pipeline_all_gather=default."));
+  flag_list->push_back(tsl::Flag(
+      "xla_gpu_pipeline_all_gather",
+      collective_pipelining_mode_setter_for(
+          &DebugOptions::set_xla_gpu_pipeline_all_gather),
+      absl::StrCat(debug_options->xla_gpu_pipeline_all_gather()),
+      "[Stable] Controls all-gather pipelining: default follows optimization "
+      "effort, off disables the pass, on considers all structurally eligible "
+      "all-gathers, and explicit considers only all-gathers carrying a "
+      "boolean-true is_pipelineable frontend attribute."));
+  flag_list->push_back(tsl::Flag(
+      "xla_gpu_enable_pipelined_reduce_scatter",
+      legacy_collective_pipelining_setter_for(
+          &DebugOptions::set_xla_gpu_pipeline_reduce_scatter),
+      /*default_value_for_display=*/true,
+      "[Deprecated] True maps to --xla_gpu_pipeline_reduce_scatter=on and "
+      "false maps to --xla_gpu_pipeline_reduce_scatter=default."));
+  flag_list->push_back(tsl::Flag(
+      "xla_gpu_pipeline_reduce_scatter",
+      collective_pipelining_mode_setter_for(
+          &DebugOptions::set_xla_gpu_pipeline_reduce_scatter),
+      absl::StrCat(debug_options->xla_gpu_pipeline_reduce_scatter()),
+      "[Stable] Controls reduce-scatter pipelining: default follows "
+      "optimization effort, off disables the pass, on considers all "
+      "structurally eligible reduce-scatters, and explicit considers only "
+      "reduce-scatters carrying a boolean-true is_pipelineable frontend "
+      "attribute."));
   flag_list->push_back(tsl::Flag(
       "xla_gpu_enable_pipelined_host_offloading",
       bool_setter_for(
@@ -2713,13 +2827,13 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       tsl::Flag("xla_gpu_collective_permute_mode",
                 collectives_mode_setter_for(
                     &DebugOptions::set_xla_gpu_collective_permute_mode),
-                std::string("private"),
+                absl::StrCat(debug_options->xla_gpu_collective_permute_mode()),
                 "Memory mode for collective-permute: private, symmetric, peer. "
                 "See CollectivesMode for details."));
   flag_list->push_back(tsl::Flag(
       "xla_gpu_all_gather_mode",
       collectives_mode_setter_for(&DebugOptions::set_xla_gpu_all_gather_mode),
-      std::string("private"),
+      absl::StrCat(debug_options->xla_gpu_all_gather_mode()),
       "Memory mode for all-gather: private, symmetric, peer. "
       "See CollectivesMode for details."));
   flag_list->push_back(tsl::Flag(
@@ -3279,7 +3393,7 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       tsl::Flag("xla_gpu_ragged_all_to_all_mode",
                 collectives_mode_setter_for(
                     &DebugOptions::set_xla_gpu_ragged_all_to_all_mode),
-                std::string("private"),
+                absl::StrCat(debug_options->xla_gpu_ragged_all_to_all_mode()),
                 "Memory mode for ragged-all-to-all: private, symmetric, peer. "
                 "In symmetric mode, the put/signal path is used. "
                 "See CollectivesMode for details."));
@@ -3616,18 +3730,21 @@ FlagStatus GetFlagStatus(absl::string_view flag_name) {
           "xla_gpu_dot_merger_threshold_mb",
           "xla_gpu_enable_dynamic_slice_fusion",
           "xla_gpu_enable_latency_hiding_scheduler",
-          "xla_gpu_enable_pipelined_all_gather",
-          "xla_gpu_enable_pipelined_all_reduce",
-          "xla_gpu_enable_pipelined_reduce_scatter",
           "xla_gpu_enable_triton_gemm",
           "xla_gpu_enable_while_loop_double_buffering",
           "xla_gpu_exhaustive_tiling_search",
+          "xla_gpu_pipeline_all_gather",
+          "xla_gpu_pipeline_all_reduce",
+          "xla_gpu_pipeline_reduce_scatter",
           "xla_gpu_reduce_scatter_combine_threshold_bytes",
           // go/keep-sorted end
       });
   static const absl::NoDestructor<absl::flat_hash_set<std::string>>
       kDeprecatedFlags(absl::flat_hash_set<std::string>{
           // go/keep-sorted start
+          "xla_gpu_enable_pipelined_all_gather",
+          "xla_gpu_enable_pipelined_all_reduce",
+          "xla_gpu_enable_pipelined_reduce_scatter",
           // go/keep-sorted end
       });
   return kStableFlags->contains(flag_name)       ? FlagStatus::kStable

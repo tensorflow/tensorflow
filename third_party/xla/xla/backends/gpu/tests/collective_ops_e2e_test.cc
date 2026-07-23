@@ -2443,9 +2443,12 @@ class CollectiveOpsTestE2EPipelinedNonPipelined : public CollectiveOpsTestE2E {
     HloModuleConfig ref_config =
         GetModuleConfigForTest(kNumReplicas, kNumPartitions);
     DebugOptions& ref_opts = ref_config.mutable_debug_options();
-    ref_opts.set_xla_gpu_enable_pipelined_all_reduce(false);
-    ref_opts.set_xla_gpu_enable_pipelined_all_gather(false);
-    ref_opts.set_xla_gpu_enable_pipelined_reduce_scatter(false);
+    ref_opts.set_xla_gpu_pipeline_all_reduce(
+        DebugOptions::COLLECTIVE_PIPELINING_MODE_OFF);
+    ref_opts.set_xla_gpu_pipeline_all_gather(
+        DebugOptions::COLLECTIVE_PIPELINING_MODE_OFF);
+    ref_opts.set_xla_gpu_pipeline_reduce_scatter(
+        DebugOptions::COLLECTIVE_PIPELINING_MODE_OFF);
 
     TF_ASSERT_OK_AND_ASSIGN(
         auto ref_module, ParseAndReturnVerifiedModule(hlo_string, ref_config));

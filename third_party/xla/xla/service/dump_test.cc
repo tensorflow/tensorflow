@@ -435,6 +435,9 @@ TEST(DumpTest, GetNonDefaultDebugOptions) {
   options.clear_xla_gpu_enable_command_buffer();
   options.add_xla_gpu_enable_command_buffer(DebugOptions::CUBLAS);
   options.add_xla_gpu_enable_command_buffer(DebugOptions::FUSION);
+  // Optional enum field explicitly set to a non-default value.
+  options.set_xla_gpu_pipeline_all_reduce(
+      DebugOptions::COLLECTIVE_PIPELINING_MODE_OFF);
   // Message field
   int gpus_per_node;
   EXPECT_TRUE(absl::SimpleAtoi(
@@ -474,6 +477,9 @@ TEST(DumpTest, GetNonDefaultDebugOptions) {
               testing::HasSubstr("xla_gpu_enable_command_buffer: CUBLAS"));
   EXPECT_THAT(non_default_options,
               testing::HasSubstr("xla_gpu_enable_command_buffer: FUSION"));
+  EXPECT_THAT(non_default_options,
+              testing::HasSubstr("xla_gpu_pipeline_all_reduce: "
+                                 "COLLECTIVE_PIPELINING_MODE_OFF"));
   EXPECT_THAT(
       non_default_options,
       testing::HasSubstr("xla_gpu_analytical_latency_estimator_options: {\n"
@@ -507,6 +513,9 @@ TEST(DumpTest, GetNonDefaultDebugOptions) {
             DebugOptions::CUBLAS);
   EXPECT_EQ(parsed_options.xla_gpu_enable_command_buffer(1),
             DebugOptions::FUSION);
+  EXPECT_TRUE(parsed_options.has_xla_gpu_pipeline_all_reduce());
+  EXPECT_EQ(parsed_options.xla_gpu_pipeline_all_reduce(),
+            DebugOptions::COLLECTIVE_PIPELINING_MODE_OFF);
   EXPECT_EQ(parsed_options.xla_gpu_analytical_latency_estimator_options().at(
                 "gpus_per_node"),
             std::to_string(gpus_per_node + 1));
