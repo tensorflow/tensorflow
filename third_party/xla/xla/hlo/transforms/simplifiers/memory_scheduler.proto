@@ -1,0 +1,18 @@
+syntax = "proto3";
+
+package xla;
+
+message MemorySchedulerProto {
+  enum Value {
+    DEFAULT = 0;
+    LIST = 1;
+    DFS = 2;
+    POST_ORDER = 3;
+    BRKGA = 4;
+    BFS = 5;
+    ILP = 6;
+    BACKTRACKING = 7;
+    BRUTE_FORCE = 8;
+    LOCAL_ORDER = 9;
+  }
+}

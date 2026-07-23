@@ -1,8 +1,16 @@
 # Description:
 #   Implementation of XLA’s HLO simplifier transformations.
 
-load("//xla:xla.default.bzl", "xla_cc_test")
+load(
+    "//xla:xla.default.bzl",
+    "xla_cc_test",
+    "xla_py_proto_library",
+)
 load("//xla/tsl:tsl.bzl", "internal_visibility", "tsl_copts")
+load(
+    "//xla/tsl/platform:build_config.bzl",
+    "tf_proto_library",
+)
 load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
 load(
     "//xla/tsl/platform/default:cuda_build_defs.bzl",
@@ -357,12 +365,52 @@ xla_cc_test(
     ],
 )
 
+tf_proto_library(
+    name = "memory_scheduler_proto",
+    srcs = ["memory_scheduler.proto"],
+    make_default_target_header_only = True,
+)
+
+alias(
+    name = "memory_scheduler_cc_proto",
+    actual = ":memory_scheduler_proto_cc",
+)
+
+xla_py_proto_library(
+    name = "memory_scheduler_py_pb2",
+    visibility = internal_visibility([":friends"]),
+    deps = [":memory_scheduler_proto"],
+)
+
+tf_proto_library(
+    name = "memory_scheduler_metrics_proto",
+    srcs = ["memory_scheduler_metrics.proto"],
+    make_default_target_header_only = True,
+    deps = [
+        ":memory_scheduler_proto",
+        "@com_google_protobuf//:any_proto",
+    ],
+)
+
+alias(
+    name = "memory_scheduler_metrics_cc_proto",
+    actual = ":memory_scheduler_metrics_proto_cc",
+)
+
+xla_py_proto_library(
+    name = "memory_scheduler_metrics_py_pb2",
+    visibility = internal_visibility([":friends"]),
+    deps = [":memory_scheduler_metrics_proto"],
+)
+
 cc_library(
     name = "hlo_memory_scheduler",
     srcs = ["hlo_memory_scheduler.cc"],
     hdrs = ["hlo_memory_scheduler.h"],
     local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]),
     deps = [
+        ":memory_scheduler_metrics_proto_cc",
+        ":memory_scheduler_proto_cc",
         "//xla:shape_util",
         "//xla:util",
         "//xla/hlo/analysis:alias_info",
@@ -398,6 +446,7 @@ xla_cc_test(
     srcs = ["hlo_memory_scheduler_test.cc"],
     deps = [
         ":hlo_memory_scheduler",
+        ":memory_scheduler_metrics_cc_proto",
         "//xla:literal_util",
         "//xla:shape_util",
         "//xla:xla_data_proto_cc",
@@ -416,6 +465,7 @@ xla_cc_test(
         "@com_google_absl//absl/base:nullability",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status:status_matchers",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest_main",

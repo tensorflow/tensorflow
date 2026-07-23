@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/base/nullability.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/log/check.h"
+#include "absl/status/status_matchers.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/hlo/analysis/alias_info.h"
@@ -38,6 +39,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_schedule.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
+#include "xla/hlo/transforms/simplifiers/memory_scheduler_metrics.pb.h"
 #include "xla/literal_util.h"
 #include "xla/service/buffer_value.h"
 #include "xla/service/heap_simulator/heap_simulator.h"
@@ -191,6 +193,61 @@ ENTRY root {
                                       instructions_by_name.at("e")));
   EXPECT_EQ(PeakMemoryUseOfEntryComputation(module.get(), &size_fn),
             peak_memory);
+}
+
+TEST_F(HloSchedulingTest, DefaultSchedulerRunsThreeSchedulers) {
+  const char* module_str = R"(
+HloModule test_aliasing_module
+
+ENTRY root {
+  param = s32[1000] parameter(0)
+  p0 = s32[1000] copy(param)
+  p1 = s32[1000] copy(param)
+  t = (s32[1000], s32[1000]) tuple(p0, p1)
+  a = s32[1000] get-tuple-element(t), index=0
+  b = s32[1000] get-tuple-element(t), index=1
+  c = s32[1000] add(a, b)
+  d = s32[1000] add(c, b)
+  e = s32[1000] add(c, c)
+  f = s32[1000] add(e, e)
+  ROOT result = (s32[1000], s32[1000], s32[1000]) tuple(d, e, f)
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(module_str));
+
+  BufferValue::SizeFunction size_fn = [](const BufferValue& buffer) {
+    return ShapeUtil::ByteSizeOf(buffer.shape(), /*pointer_size=*/8);
+  };
+  module->metadata()->RecordPassStart();
+  int64_t peak_memory;
+  TF_ASSERT_OK_AND_ASSIGN(
+      HloSchedule schedule,
+      ScheduleModule(module.get(),
+                     DefaultMemoryScheduler(&alias_info_, &size_fn),
+                     /*execution_threads=*/{}, &peak_memory));
+  ASSERT_OK(module->set_schedule(schedule));
+  MemorySchedulerMetrics metrics;
+  auto metadata = module->metadata()->GetCurrentHloPassMetadata();
+  ASSERT_OK(metadata.status());
+  metadata.value()->custom_metadata().UnpackTo(&metrics);
+
+  EXPECT_EQ(metrics.schedulers_size(), 3);
+
+  auto list_metrics = metrics.schedulers(0);
+  auto dfs_metrics = metrics.schedulers(1);
+  auto post_order_metrics = metrics.schedulers(2);
+
+  EXPECT_GT(list_metrics.peak_memory(), 0);
+  EXPECT_GT(dfs_metrics.peak_memory(), 0);
+  EXPECT_GT(post_order_metrics.peak_memory(), 0);
+
+  EXPECT_TRUE(list_metrics.valid_schedule());
+  EXPECT_TRUE(dfs_metrics.valid_schedule());
+  EXPECT_TRUE(post_order_metrics.valid_schedule());
+
+  EXPECT_GE(metrics.selected_scheduler_idx(), 0);
+  EXPECT_LE(metrics.selected_scheduler_idx(), 2);
 }
 
 TEST_F(HloSchedulingTest, HostSendDoneSchedule) {
