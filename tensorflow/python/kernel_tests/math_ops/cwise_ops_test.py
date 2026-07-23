@@ -1323,6 +1323,23 @@ class PolyvalTest(test.TestCase):
       tf_val = math_ops.polyval(coeffs, x)
       self.assertAllClose(np_val, self.evaluate(tf_val))
 
+  def testSingleCoeffNanPropagation(self):
+    x = np.array([1.0, float('nan'), 3.0], dtype=np.float32)
+    coeffs = [np.float32(2.0)]
+    np_val = np.polyval(coeffs, x)
+    with self.cached_session():
+      tf_val = math_ops.polyval(coeffs, x)
+      self.assertAllClose(np_val, self.evaluate(tf_val))
+
+  def testSingleCoeffShapeBroadcast(self):
+    x = np.random.rand(3, 4).astype(np.float32)
+    coeffs = [np.float32(5.0)]
+    np_val = np.polyval(coeffs, x)
+    with self.cached_session():
+      tf_val = math_ops.polyval(coeffs, x)
+      self.assertEqual(tf_val.shape, x.shape)
+      self.assertAllClose(np_val, self.evaluate(tf_val))
+
   def test_coeffs_raise(self):
     x = np.random.rand(2, 2).astype(np.float32)
     coeffs = {}
