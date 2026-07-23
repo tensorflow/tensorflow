@@ -120,10 +120,30 @@ class DecodeCompressedOp : public OpKernel {
           /*output_buffer_bytes=*/static_cast<size_t>(kBufferSize),
           zlib_options);
 
-      absl::Status result = zlib_stream.ReadNBytes(INT_MAX, &output);
+      // Cap the decompressed output size, mirroring the 1GB limit enforced
+      // on the ZSTD branch below. Without this cap, ReadNBytes(INT_MAX, ...)
+      // would decompress an attacker-controlled, highly-compressible input
+      // (a "decompression bomb") up to ~2GiB with no compression-ratio or
+      // absolute-size check, causing unbounded memory growth / OOM.
+      //
+      // Read kMaxDecompressedBytes + 1 bytes rather than exactly the cap,
+      // so a stream that is exactly kMaxDecompressedBytes long is correctly
+      // accepted (it hits EOF at exactly the cap, returning OutOfRange with
+      // output.size() == kMaxDecompressedBytes) while a stream that is even
+      // one byte longer is correctly rejected (output.size() exceeds the
+      // cap). Reading exactly the cap would make these two cases
+      // indistinguishable.
+      constexpr int64_t kMaxDecompressedBytes = 1024LL * 1024 * 1024;  // 1GB
+      absl::Status result =
+          zlib_stream.ReadNBytes(kMaxDecompressedBytes + 1, &output);
+
+      if (static_cast<int64_t>(output.size()) > kMaxDecompressedBytes) {
+        return absl::ResourceExhaustedError(
+            "Decompressed size exceeds 1GB limit");
+      }
 
       // ReadNBytes returns OutOfRange for EOF. Swallow it and return OkStatus,
-      // since we're reading INT_MAX bytes anyway.
+      // since we're reading up to kMaxDecompressedBytes + 1 bytes anyway.
       if (absl::IsOutOfRange(result)) return absl::OkStatus();
 
       return result;
