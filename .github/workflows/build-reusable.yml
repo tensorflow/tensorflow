@@ -49,7 +49,7 @@ jobs:
     steps:
 
       - name: Checkout
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # ratchet:actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.0.0
         env:
           GIT_CONFIG_PARAMETERS: "'checkout.workers=12' 'core.featureManyFiles=true'"
         with:
