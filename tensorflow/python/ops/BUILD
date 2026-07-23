@@ -1629,6 +1629,7 @@ py_library(
     srcs = [
         "gradients_impl.py",
     ],
+    lazy_imports = True,
     strict_deps = True,
     deps = [
         ":array_grad",
