@@ -76,6 +76,7 @@ cc_library(
         "//tensorflow/python/profiler:__pkg__",
         "//tensorflow/python/kernel_tests/nn_ops:__pkg__",
         "//tensorflow/python/kernel_tests/linalg/sparse:__pkg__",
+        "//tensorflow/python/training/experimental:__pkg__",
     ]),
     deps = [
         ":xla_cpu_device",

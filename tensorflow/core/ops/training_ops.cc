@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/shape_inference.h"
 
@@ -51,7 +53,7 @@ ShapeHandle ShapeOrHandleShape<true>(InferenceContext* c, int input) {
 template <bool is_sparse, bool is_resource>
 static absl::Status HandleGradAndIndicesInputs(InferenceContext* c,
                                                int grad_idx, ShapeHandle* s) {
-  ShapeHandle grad = ShapeOrHandleShape<is_resource>(c, grad_idx);
+  ShapeHandle grad = c->input(grad_idx);
   if (!is_sparse) {
     TF_RETURN_IF_ERROR(c->Merge(*s, grad, s));
     return absl::OkStatus();
