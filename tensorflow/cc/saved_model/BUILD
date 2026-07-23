@@ -82,7 +82,11 @@ cc_library(
         ":metrics",
         ":util",
         "//tensorflow/core:protos_all_cc",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
     ] + if_google([
         "//tensorflow/tools/proto_splitter:merge",
     ]) + if_not_mobile([
@@ -109,7 +113,12 @@ tf_cc_test(
         ":tag_constants",
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
+        "//tensorflow/core/framework:graph_debug_info_proto_cc",
         "//tensorflow/core/platform:resource_loader",
+        "//tensorflow/core/protobuf:for_core_protos_cc",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+        "@com_google_googletest//:gtest",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -128,6 +137,8 @@ cc_library(
     hdrs = ["loader.h"],
     deps = [
         ":loader_lite",
+        "//tensorflow/core/protobuf:for_core_protos_cc",
+        "@com_google_absl//absl/status",
     ] + select({
         "//tensorflow:android": [],
         "//tensorflow:ios": [],
@@ -154,7 +165,10 @@ cc_library(
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
-    ]),
+    ]) + [
+        "//tensorflow/core/protobuf:for_core_protos_cc",
+        "@com_google_absl//absl/status",
+    ],
 )
 
 cc_library(
@@ -166,8 +180,13 @@ cc_library(
         ":fingerprinting",
         ":loader_util",
         ":reader",
+        "//tensorflow/core/framework:device_attributes_proto_cc",
+        "//tensorflow/core/framework:types_proto_cc",
+        "//tensorflow/core/protobuf:for_core_protos_cc",
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
     ] + if_not_mobile([
         ":metrics",
         ":util",
@@ -194,7 +213,6 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/platform:errors",
-        "//tensorflow/core/platform:strcat",
         "//tensorflow/core/platform:tstring",
         "//tensorflow/core/util/tensor_bundle",
         "//tensorflow/core/util/tensor_bundle:byteswaptensor",
@@ -212,7 +230,11 @@ cc_library(
     name = "loader_util",
     srcs = ["loader_util.cc"],
     hdrs = ["loader_util.h"],
-    deps = [":constants"] + if_not_mobile([
+    deps = [
+        ":constants",
+        "//tensorflow/core/protobuf:for_core_protos_cc",
+        "@com_google_absl//absl/status",
+    ] + if_not_mobile([
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
@@ -262,6 +284,9 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
+        "//tensorflow/core/protobuf:for_core_protos_cc",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -284,6 +309,7 @@ tf_cc_test(
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -475,6 +501,8 @@ cc_library(
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:status",
         "//tensorflow/core/protobuf:for_core_protos_cc",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
     ] + if_not_mobile(["//tensorflow/core:lib"]) + if_android(["//tensorflow/core:portable_tensorflow_lib_lite"]),
 )
 
@@ -502,6 +530,9 @@ tf_cc_test(
         "//tensorflow/core/framework:tensor_shape_proto_cc",
         "//tensorflow/core/framework:tensor_testutil",
         "//tensorflow/core/protobuf:for_core_protos_cc",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_matchers",
+        "@com_google_googletest//:gtest_main",
         "@tsl//tsl/platform:status_matchers",
     ],
 )
@@ -581,6 +612,8 @@ cc_library(
         "//tensorflow/tools/proto_splitter:chunk_proto_cc",
         "//tensorflow/tools/proto_splitter:merge",
         "//tensorflow/tools/proto_splitter/cc:util",
+        "//third_party/protobuf:protobuf_lite",
+        "//third_party/protobuf/io",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
@@ -621,6 +654,10 @@ tf_cc_test(
         "//tensorflow/tools/proto_splitter:chunk_proto_cc",
         "//tensorflow/tools/proto_splitter/cc:util",
         "//tensorflow/tools/proto_splitter/testdata:test_message_proto_cc",
+        "//third_party/protobuf",
+        "//third_party/protobuf:protobuf_lite",
+        "//third_party/protobuf/io",
+        "//third_party/protobuf/util:differencer",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
@@ -693,5 +730,6 @@ tf_cc_fuzz_test(
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:tensorflow",
+        "//tensorflow/core/protobuf:for_core_protos_cc",
     ],
 )
