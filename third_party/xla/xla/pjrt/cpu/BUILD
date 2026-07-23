@@ -49,6 +49,34 @@ xla_cc_test(
     ],
 )
 
+xla_cc_test(
+    name = "abstract_tracked_device_buffer_cpu_test",
+    srcs = ["abstract_tracked_device_buffer_cpu_test.cc"],
+    deps = [
+        ":abstract_cpu_buffer",
+        ":cpu_client",
+        ":cpu_event",
+        "//xla:literal",
+        "//xla:literal_util",
+        "//xla:shape_util",
+        "//xla:types",
+        "//xla:util",
+        "//xla/pjrt:common_pjrt_client",
+        "//xla/pjrt:device_event",
+        "//xla/pjrt:pjrt_client",
+        "//xla/tsl/concurrency:async_value",
+        "//xla/tsl/concurrency:ref_count",
+        "//xla/tsl/platform:env",
+        "//xla/tsl/platform:statusor",
+        "//xla/tsl/platform:test",
+        "//xla/tsl/platform:test_main",
+        "@com_google_absl//absl/base",
+        "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status:status_matchers",
+    ],
+)
+
 alias(
     name = "tracked_cpu_device_buffer_test",
     actual = ":cpu_device_memory_test",
