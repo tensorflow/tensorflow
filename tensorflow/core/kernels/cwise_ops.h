@@ -406,12 +406,30 @@ template <typename T, typename Enable = void>
 struct google_floor_div_real {
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE T operator()(const T& x,
                                                      const T& y) const {
-    return Eigen::numext::floor(x / y);
+    const T quotient = x / y;
+    // Python and NumPy return -1 when a nonzero finite dividend and an
+    // infinite divisor have opposite signs, while floor(x / y) returns -0.
+    if (TF_PREDICT_FALSE(Eigen::numext::isinf(y) &&
+                         Eigen::numext::isfinite(x) && x != T(0) &&
+                         ((x < T(0)) != (y < T(0))))) {
+      return T(-1);
+    }
+    return Eigen::numext::floor(quotient);
   }
   template <typename Packet>
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE Packet packetOp(const Packet& x,
                                                         const Packet& y) const {
-    return pfloor(pdiv(x, y));
+    const Packet quotient = pdiv(x, y);
+    const Packet floored = pfloor(quotient);
+    const Packet zero = pzero(x);
+    const Packet infinity = pset1<Packet>(NumTraits<T>::infinity());
+    const Packet signs_differ =
+        pxor(pcmp_lt(x, zero), pcmp_lt(y, zero));
+    Packet result =
+        pselect(signs_differ, pset1<Packet>(T(-1)), floored);
+    result = pselect(pcmp_eq(pabs(y), infinity), result, floored);
+    result = pselect(pcmp_eq(x, zero), floored, result);
+    return pselect(pcmp_lt(pabs(x), infinity), result, floored);
   }
 };
 
@@ -420,9 +438,10 @@ struct functor_traits<google_floor_div_real<Scalar>> {
   enum {
     Cost = 2 * Eigen::internal::scalar_div_cost<
                    Scalar, packet_traits<Scalar>::HasDiv>::value +
-           2 * NumTraits<Scalar>::AddCost,
-    PacketAccess =
-        packet_traits<Scalar>::HasDiv && packet_traits<Scalar>::HasRound
+           8 * NumTraits<Scalar>::AddCost,
+    PacketAccess = packet_traits<Scalar>::HasDiv &&
+                   packet_traits<Scalar>::HasRound &&
+                   packet_traits<Scalar>::HasCmp
   };
 };
 

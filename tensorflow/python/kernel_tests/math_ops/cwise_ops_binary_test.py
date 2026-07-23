@@ -883,6 +883,43 @@ class BinaryOpTest(test.TestCase):
     z = math_ops.pow(x, y)
     self.assertAllEqual(self.evaluate(z), [0, 1, 1, 1, -1])
 
+  def testFloorDivInfDenominator(self):
+    dtypes = [
+        dtypes_lib.bfloat16.as_numpy_dtype,
+        np.float16,
+        np.float32,
+        np.float64,
+    ]
+
+    for dtype in dtypes:
+      x = np.array(
+          [4, -1, 0, -0.0, 4, -1, 0, -0.0, np.inf, -np.inf, np.nan,
+           np.inf, -np.inf, np.nan],
+          dtype=dtype)
+      y = np.array(
+          [np.inf, np.inf, np.inf, np.inf, -np.inf, -np.inf, -np.inf,
+           -np.inf, np.inf, np.inf, np.inf, -np.inf, -np.inf, -np.inf],
+          dtype=dtype)
+      expected = np.array(
+          [0, -1, 0, -0.0, -1, 0, -0.0, 0, np.nan, np.nan, np.nan,
+           np.nan, np.nan, np.nan],
+          dtype=dtype)
+
+      with test_util.force_cpu():
+        cpu_result = self.evaluate(math_ops.floordiv(x, y))
+      with test_util.use_gpu():
+        gpu_result = self.evaluate(math_ops.floordiv(x, y))
+
+      self.assertAllEqual(cpu_result, expected)
+      self.assertAllEqual(gpu_result, expected)
+      zero_mask = expected == 0
+      self.assertAllEqual(
+          np.signbit(cpu_result[zero_mask]), np.signbit(expected[zero_mask])
+      )
+      self.assertAllEqual(
+          np.signbit(gpu_result[zero_mask]), np.signbit(expected[zero_mask])
+      )
+
   @test.disable_with_predicate(
       pred=test.is_built_with_rocm, skip_message="On ROCm this test fails"
   )
