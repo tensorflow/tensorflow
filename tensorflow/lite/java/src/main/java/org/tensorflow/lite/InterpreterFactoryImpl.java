@@ -26,6 +26,7 @@ import org.tensorflow.lite.nnapi.NnApiDelegateImpl;
 @UsedByReflection("InterpreterFactory.java")
 class InterpreterFactoryImpl implements InterpreterFactoryApi {
 
+  @UsedByReflection("InterpreterFactory.java")
   public InterpreterFactoryImpl() {}
 
   @Override
