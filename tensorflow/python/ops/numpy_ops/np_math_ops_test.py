@@ -413,6 +413,53 @@ class MathTest(test.TestCase, parameterized.TestCase):
     self.assertFalse(np_math_ops.isneginf(x1))
     self.assertFalse(np_math_ops.isneginf(x2))
 
+  def testKron(self):
+    operands = [
+      # baseline 1D and 2D checks
+      ([1, 2], [3, 4]),
+      ([[1.0, -2.0], [3.0, 4.0]], [[5.0, 6.0], [-7.0, 8.0]]),
+
+      # 4D vs 3D
+      (
+          np.arange(100).reshape(2, 5, 2, 5),
+          np.arange(24).reshape(2, 3, 4)
+      ),
+
+      # complex 3D vs 2D structural padding
+      ([[[0, 1], [2, 3]]], [[1, 2]]),
+
+      # extreme rank asymmetry (1D vs 4D)
+      ([2, 3], [[[[1, 2]]]]),
+
+      # dimensions containing size 1 (Broadcasting verification)
+      ([[[1]]], [[1, 2], [3, 4]]),
+
+      # scalar (Rank 0) vs N-Dimensional Array
+      (5, [[1, 2], [3, 4]]),
+      ([[1, 2], [3, 4]], 3.5),
+
+      # zero-element / Empty Tensors (Size 0 handling)
+      (
+          np.zeros((2, 0, 2), dtype=np.float32), 
+          np.ones((1, 3), dtype=np.float32)
+      ),
+      (
+          np.ones((2, 2), dtype=np.int32), 
+          np.zeros((0, 3, 4), dtype=np.int32)
+      ),
+      # scalar (Rank 0) vs Empty Tensor
+      (5, np.zeros((0, 3))),
+      # Rank 0 vs Rank 0
+      (5, np.array(3.5))
+    ]
+
+    return self._testBinaryOp(
+        np_math_ops.kron, 
+        np.kron, 
+        'kron', 
+        operands=operands,
+      )
+
 if __name__ == '__main__':
   tensor.enable_tensor_equality()
   ops.enable_eager_execution()

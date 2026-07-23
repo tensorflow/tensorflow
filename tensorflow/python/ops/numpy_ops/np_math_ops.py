@@ -438,35 +438,63 @@ def hypot(x1, x2):
 def kron(a, b):  # pylint: disable=missing-function-docstring
   # pylint: disable=protected-access,g-complex-comprehension
   a, b = np_array_ops._promote_dtype(a, b)
-  t_a = np_utils.cond(
-      a.shape.rank < b.shape.rank,
-      lambda: np_array_ops.reshape(  # pylint: disable=g-long-lambda
-          a, np_array_ops._pad_left_to(b.shape.rank, a.shape)
-      ),
-      lambda: a,
-  )
-  t_b = np_utils.cond(
-      b.shape.rank < a.shape.rank,
-      lambda: np_array_ops.reshape(  # pylint: disable=g-long-lambda
-          b, np_array_ops._pad_left_to(a.shape.rank, b.shape)
-      ),
-      lambda: b,
-  )
 
-  def _make_shape(shape, prepend):
-    ones = array_ops.ones_like(shape)
-    if prepend:
-      shapes = [ones, shape]
-    else:
-      shapes = [shape, ones]
-    return array_ops.reshape(array_ops_stack.stack(shapes, axis=1), [-1])
+  a_rank = a.shape.rank
+  b_rank = b.shape.rank
 
-  a_shape = array_ops.shape(t_a)
-  b_shape = array_ops.shape(t_b)
-  a_reshaped = np_array_ops.reshape(t_a, _make_shape(a_shape, False))
-  b_reshaped = np_array_ops.reshape(t_b, _make_shape(b_shape, True))
+  if a_rank == 0 or b_rank == 0:
+    return a * b
+
+  # rank Normalization (Static vs Dynamic Routing)
+  if a_rank is not None and b_rank is not None:
+    # static path: XLA and Graph Compiler optimization
+    a_shape = array_ops.shape(a)
+    b_shape = array_ops.shape(b)
+    nd = max(a_rank, b_rank)
+    if a_rank < nd:
+      a_pad = array_ops.ones([nd - a_rank], dtype=a_shape.dtype)
+      a_shape = array_ops.concat([a_pad, a_shape], axis=0)
+      a = np_array_ops.reshape(a, a_shape)
+    if b_rank < nd:
+      b_pad = array_ops.ones([nd - b_rank], dtype=b_shape.dtype)
+      b_shape = array_ops.concat([b_pad, b_shape], axis=0)
+      b = np_array_ops.reshape(b, b_shape)
+
+    max_rank = nd
+  else:
+    # dynamic path: Runtime evaluation for unknown ranks
+    a_shape = array_ops.shape(a)
+    b_shape = array_ops.shape(b)
+    a_rank_t = array_ops.size(a_shape)
+    b_rank_t = array_ops.size(b_shape)
+    max_rank = math_ops.maximum(a_rank_t, b_rank_t)
+
+    a_pad = array_ops.ones([max_rank - a_rank_t], dtype=a_shape.dtype)
+    a_shape = array_ops.concat([a_pad, a_shape], axis=0)
+
+    b_pad = array_ops.ones([max_rank - b_rank_t], dtype=b_shape.dtype)
+    b_shape = array_ops.concat([b_pad, b_shape], axis=0)
+
+    a = np_array_ops.reshape(a, a_shape)
+    b = np_array_ops.reshape(b, b_shape)
+
+  # outer Product Execution (Bypasses Eigen broadcasting limits)
+  a_flat = np_array_ops.reshape(a, [-1, 1])
+  b_flat = np_array_ops.reshape(b, [1, -1])
+  outer_prod = a_flat * b_flat
+
+  # memory Layout Reordering
+  combined_shape = array_ops.concat([a_shape, b_shape], axis=0)
+  nd_tensor = np_array_ops.reshape(outer_prod, combined_shape)
+
+  r1 = math_ops.range(max_rank)
+  r2 = r1 + max_rank
+  perm = np_array_ops.reshape(array_ops_stack.stack([r1, r2], axis=1), [-1])
+
+  interleaved = array_ops.transpose(nd_tensor, perm)
+
   out_shape = a_shape * b_shape
-  return np_array_ops.reshape(a_reshaped * b_reshaped, out_shape)
+  return np_array_ops.reshape(interleaved, out_shape)
 
 
 @tf_export.tf_export('experimental.numpy.outer', v1=[])
