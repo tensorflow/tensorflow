@@ -45,7 +45,7 @@ namespace tsl {
 namespace {
 
 // Set to 1 to enable verbose debug output from curl.
-constexpr uint64_t kVerboseOutput = 0;
+constexpr long kVerboseOutput = 0L;
 
 // Proxy to the real libcurl implementation.
 class LibCurlProxy : public LibCurl {
@@ -61,7 +61,7 @@ class LibCurlProxy : public LibCurl {
   CURL* curl_easy_init() override { return ::curl_easy_init(); }
 
   CURLcode curl_easy_setopt(CURL* curl, CURLoption option,
-                            uint64_t param) override {
+                            long param) override {
     return ::curl_easy_setopt(curl, option, param);
   }
 
@@ -98,8 +98,7 @@ class LibCurlProxy : public LibCurl {
     return ::curl_easy_perform(curl);
   }
 
-  CURLcode curl_easy_getinfo(CURL* curl, CURLINFO info,
-                             uint64_t* value) override {
+  CURLcode curl_easy_getinfo(CURL* curl, CURLINFO info, long* value) override {
     return ::curl_easy_getinfo(curl, info, value);
   }
 
@@ -158,8 +157,7 @@ CurlHttpRequest::CurlHttpRequest(LibCurl* libcurl, Env* env)
                                            CURL_HTTP_VERSION_1_1));
 
   // Set up the progress meter.
-  CHECK_CURL_OK(
-      libcurl_->curl_easy_setopt(curl_, CURLOPT_NOPROGRESS, uint64_t{0}));
+  CHECK_CURL_OK(libcurl_->curl_easy_setopt(curl_, CURLOPT_NOPROGRESS, 0L));
   CHECK_CURL_OK(libcurl_->curl_easy_setopt(curl_, CURLOPT_XFERINFODATA, this));
   CHECK_CURL_OK(libcurl_->curl_easy_setopt(curl_, CURLOPT_XFERINFOFUNCTION,
                                            &CurlHttpRequest::ProgressCallback));
@@ -267,7 +265,7 @@ absl::Status CurlHttpRequest::SetPutFromFile(const std::string& body_filepath,
 
   curl_headers_ = libcurl_->curl_slist_append(
       curl_headers_, absl::StrCat("Content-Length: ", size).c_str());
-  CHECK_CURL_OK(libcurl_->curl_easy_setopt(curl_, CURLOPT_PUT, 1));
+  CHECK_CURL_OK(libcurl_->curl_easy_setopt(curl_, CURLOPT_UPLOAD, 1L));
   CHECK_CURL_OK(libcurl_->curl_easy_setopt(curl_, CURLOPT_READDATA,
                                            reinterpret_cast<void*>(put_body_)));
   // Using the default CURLOPT_READFUNCTION, which is doing an fread() on the
@@ -280,7 +278,7 @@ void CurlHttpRequest::SetPutEmptyBody() {
   CheckMethodNotSet();
   is_method_set_ = true;
   method_ = RequestMethod::kPut;
-  CHECK_CURL_OK(libcurl_->curl_easy_setopt(curl_, CURLOPT_PUT, 1));
+  CHECK_CURL_OK(libcurl_->curl_easy_setopt(curl_, CURLOPT_UPLOAD, 1L));
   AddHeader("Content-Length", "0");
   AddHeader("Transfer-Encoding", "identity");
   CHECK_CURL_OK(libcurl_->curl_easy_setopt(curl_, CURLOPT_READDATA,
@@ -462,12 +460,10 @@ absl::Status CurlHttpRequest::Send() {
   const CURLcode curl_result = libcurl_->curl_easy_perform(curl_);
   RETURN_IF_ERROR(CURLcodeToStatus(curl_result, error_buffer));
 
-  double written_size = 0;
-  CHECK_CURL_OK(libcurl_->curl_easy_getinfo(curl_, CURLINFO_SIZE_DOWNLOAD,
-                                            &written_size));
-
-  CHECK_CURL_OK(libcurl_->curl_easy_getinfo(curl_, CURLINFO_RESPONSE_CODE,
-                                            &response_code_));
+  long response_code = 0;
+  CHECK_CURL_OK(
+      libcurl_->curl_easy_getinfo(curl_, CURLINFO_RESPONSE_CODE, &response_code));
+  response_code_ = static_cast<uint64_t>(response_code);
 
   auto get_error_message = [this]() -> std::string {
     std::string error_message = absl::StrCat(
@@ -657,7 +653,7 @@ absl::Status CurlHttpRequest::CURLcodeToStatus(CURLcode code,
     std::string overflow_message = strings::StrCat(
         "Received ", direct_response_.bytes_received_, " response bytes ",
         "for a ", direct_response_.buffer_size_, "-byte buffer");
-    uint64_t response_code = 0;
+    long response_code = 0;
     const CURLcode get_response_result = libcurl_->curl_easy_getinfo(
         curl_, CURLINFO_RESPONSE_CODE, &response_code);
     // Special-case 416 Range Not Satisfied responses; they sometimes have
