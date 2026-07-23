@@ -249,6 +249,15 @@ class MathTest(test.TestCase, parameterized.TestCase):
         np_math_ops.isclose(c, d, rtol=0, atol=5),
         np.isclose(c, d, rtol=0, atol=5))
 
+  def testIsCloseSignedIntegerOverflow(self):
+    # max - min overflows int8 when the true difference exceeds 127; the
+    # wrapped negative difference must not compare as close.
+    a = np.array([127, -128, -128], np.int8)
+    b = np.array([-128, -128, -127], np.int8)
+    self.match(
+        np_math_ops.isclose(a, b, rtol=0, atol=5),
+        np.isclose(a, b, rtol=0, atol=5))
+
   def testIsCloseUnsignedNoWraparound(self):
     # The difference must be computed as max - min: 1 - 2 wraps around to 255
     # in uint8 arithmetic and would defeat the tolerance comparison.

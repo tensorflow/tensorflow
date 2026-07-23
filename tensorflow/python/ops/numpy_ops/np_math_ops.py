@@ -543,14 +543,25 @@ def isclose(a, b, rtol=1e-05, atol=1e-08, equal_nan=False):  # pylint: disable=m
       diff = math_ops.maximum(a, b) - math_ops.minimum(a, b)
       if np.issubdtype(dtype.as_numpy_dtype, np.unsignedinteger):
         abs_b = b
+        no_overflow = None
       else:
         abs_b = math_ops.abs(b)
+        # Signed subtraction overflow always produces a negative value, so a
+        # negative diff means the true difference is not representable in
+        # this dtype; such pairs are treated as not close rather than
+        # compared through the wrapped value. abs(b) can also overflow for
+        # the most negative value, which conservatively shrinks rtol-scaled
+        # tolerances.
+        no_overflow = diff >= 0
       rhs = atol + rtol * abs_b
       if rhs.dtype != diff.dtype:
         # Reachable only with type promotion enabled and float tolerances,
         # where the tolerance side has been promoted to floating point.
         diff = math_ops.cast(diff, rhs.dtype)
-      return diff <= rhs
+      result = diff <= rhs
+      if no_overflow is not None:
+        result = result & no_overflow
+      return result
     else:
       return math_ops.equal(a, b)
 
