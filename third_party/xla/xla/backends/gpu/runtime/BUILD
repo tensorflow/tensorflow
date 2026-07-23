@@ -79,6 +79,19 @@ cc_library(
     ] + if_cuda_is_configured(nvtx_headers()),
 )
 
+xla_cc_test(
+    name = "annotation_test",
+    srcs = ["annotation_test.cc"],
+    deps = [
+        ":annotation",
+        "//xla:literal_util",
+        "//xla/hlo/ir:hlo",
+        "//xla/service:hlo_module_config",
+        "@com_google_absl//absl/strings",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
 #===-------------------------------------------------------------------------------------------===//
 # Command Buffer Integration
 #===-------------------------------------------------------------------------------------------===//
