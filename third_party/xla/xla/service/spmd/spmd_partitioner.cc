@@ -7187,6 +7187,23 @@ absl::Status SpmdPartitioner::PreprocessSharding(
             << hlo->ToString();
       }
 
+      // Store the original sharding of operands for xla.debug.Log before they
+      // risk losing fidelity in ConvertUnreducedSharding or other
+      // simplification passes. This is necessary for full reconstruction of
+      // logged tensors.
+      // TODO(b/449756032): When original value tracking has a better solution
+      // to store original shardings, we can remove this workaround.
+      if (hlo->opcode() == HloOpcode::kCustomCall &&
+          hlo->custom_call_target() == "xla.debug.Log") {
+        for (HloInstruction* operand : hlo->operands()) {
+          if (operand->has_sharding() &&
+              !operand->sharding().IsReplicatedOrSingleDevice()) {
+            operand->add_frontend_attribute("original_sharding",
+                                            operand->sharding().ToString());
+          }
+        }
+      }
+
       // For unassigned HLOs, annotate with replicated sharding.
       //
       // Among side-effecting ops, only Rng is allowed to omit the annotation.
