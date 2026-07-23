@@ -36,7 +36,32 @@ concurrency:
   cancel-in-progress: ${{ github.ref != 'main' }}
 
 jobs:
+  check-paths:
+    runs-on: ubuntu-latest
+    outputs:
+      should-run: ${{ steps.filter.outputs.any_changed == 'true' || github.event_name != 'pull_request' }}
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        if: github.event_name == 'pull_request'
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: tj-actions/changed-files@9426d40962ed5378910ee2e21d5f8c6fcbf2dd96 # v47.0.6
+        id: filter
+        if: github.event_name == 'pull_request'
+        with:
+          files: |
+            xla/**
+            third_party/**
+            BUILD
+            *.bzl
+            WORKSPACE*
+            MODULE.bazel
+            .github/workflows/ci.yml
+
   Tests:
+    needs: check-paths
+    if: ${{ needs.check-paths.outputs.should-run == 'true' }}
     strategy:
       # Don't fail fast - want to see results for all builds even if one fails.
       fail-fast: false
@@ -151,69 +176,14 @@ jobs:
             "$GITHUB_WORKSPACE"/openxla/xla/build_tools/ci/build.py --build="${{ matrix.job_info.name }}_github_actions"
           fi
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+  ci-status:
+    name: XLA CI Status
+    runs-on: ubuntu-latest
+    needs: [check-paths, Tests]
+    if: ${{ needs.check-paths.outputs.should-run == 'true' }}
+    steps:
+      - name: Check matrix test results
+        if: ${{ needs.Tests.result != 'success' }}
+        run: |
+          echo "Matrix tests failed with result: ${{ needs.Tests.result }}"
+          exit 1
