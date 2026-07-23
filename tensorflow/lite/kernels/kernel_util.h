@@ -343,6 +343,13 @@ bool IsMobilePlatform();
 // Returns whether there is unspecified dimension in the tensor's dim signature.
 bool HasUnspecifiedDimension(const TfLiteTensor* tensor);
 
+// Checks that input and output tensors have the same quantization parameters
+// (scale and zero_point) for quantized types. Returns kTfLiteOk if they match
+// or if the type is not quantized, otherwise returns kTfLiteError.
+TfLiteStatus CheckQuantizationParams(TfLiteContext* context,
+                                     const TfLiteTensor* input,
+                                     const TfLiteTensor* output);
+
 /**
  * Calculates the product of the given dimensions. Returns an error if any of
  * the dimensions is negative or if the product overflows.
@@ -355,31 +362,9 @@ TfLiteStatus CheckedShapeProduct(TfLiteContext* context,
                                  std::initializer_list<int> dims,
                                  const char* error_message, size_t& product);
 
-/**
- * Calculates the product of the given dimensions. Returns an error if any of
- * the dimensions is negative or if the product overflows.
- * @param context The context to use for error reporting.
- * @param dims The dimensions to multiply.
- * @param count The length of the dims array.
- * @param error_message The error message to use if an error is encountered.
- * @param product The output parameter to store the product.
- */
 TfLiteStatus CheckedShapeProduct(TfLiteContext* context, const int* dims,
                                  int count, const char* error_message,
                                  size_t& product);
-
-/**
- * Calculates the product of the given dimensions. Returns an error if any of
- * the dimensions is negative or if the product overflows. (Same as above
- * function with dims built on the fly)
- * @param context The context to use for error reporting.
- * @param dims The dimensions to multiply.
- * @param error_message The error message to use if an error is encountered.
- * @param product The output parameter to store the product.
- */
-TfLiteStatus CheckedShapeProductToInt(TfLiteContext* context,
-                                      std::initializer_list<int> dims,
-                                      const char* error_message, int& product);
 
 }  // namespace tflite
 
