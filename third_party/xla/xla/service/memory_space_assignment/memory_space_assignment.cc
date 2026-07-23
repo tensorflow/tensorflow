@@ -269,6 +269,28 @@ void TransformAllocationSequenceToSpill(AllocationSequence& allocations,
   SortAllocationSequence(allocations);
 }
 
+const Allocation* GetOriginalAllocation(const Allocation* allocation) {
+  while (allocation->is_copy_allocation() ||
+         allocation->is_sliced_copy_allocation() ||
+         allocation->is_window_prefetched_allocation() ||
+         allocation->is_mirrored_allocation()) {
+    if (allocation->is_copy_allocation()) {
+      allocation =
+          &(static_cast<const CopyAllocation*>(allocation)->prev_allocation());
+    } else if (allocation->is_sliced_copy_allocation()) {
+      allocation = &(static_cast<const SlicedCopyAllocation*>(allocation)
+                         ->prev_allocation());
+    } else if (allocation->is_window_prefetched_allocation()) {
+      allocation = &(static_cast<const WindowPrefetchedAllocation*>(allocation)
+                         ->prev_allocation());
+    } else if (allocation->is_mirrored_allocation()) {
+      allocation = &(static_cast<const MirroredAllocation*>(allocation)
+                         ->original_allocation());
+    }
+  }
+  return allocation;
+}
+
 }  // namespace
 
 absl::StatusOr<MemorySpaceAssignment::AsyncCopyStats>
@@ -337,25 +359,52 @@ MemorySpaceAssignment::Run(HloModule* module,
                                                           alias_analysis);
 }
 
-absl::Status MemorySpaceAssignment::VerifyAllocations() const {
+absl::Status MemorySpaceAssignment::VerifyAllocations(
+    const HloAliasAnalysis& alias_analysis) const {
   BufferIntervalTree interval_tree;
+
   // Checks the chunks that overlap with a given allocation in time do not
   // overlap with the allocation's chunk in the memory range. If they do, we
   // throw an error, otherwise we add the allocation's chunk to the interval
   // tree and return an OK status.
   auto add_allocation_and_verify =
       [&](const Allocation* allocation) -> absl::Status {
-    for (const HeapSimulator::Chunk& overlapping_chunk :
-         interval_tree.ChunksOverlappingInTime(allocation->start_time(),
-                                               allocation->end_time() - 1)) {
-      CHECK(!allocation->chunk().OverlapsWith(overlapping_chunk))
-          << "Chunks are overlapping at Allocation level (before fixing the "
-             "schedule): "
-          << allocation->ToString()
-          << " overlaps with allocated chunk: " << overlapping_chunk.ToString();
+    const Allocation* original_allocation = GetOriginalAllocation(allocation);
+    const HloInstruction* inst =
+        original_allocation->defining_position().instruction;
+    const ShapeIndex& index = original_allocation->defining_position().index;
+    const HloValue* value = nullptr;
+    const HloBuffer* buffer = nullptr;
+    if (inst != nullptr) {
+      buffer = &alias_analysis.GetUniqueBufferAt(inst, index);
+      value = buffer->values().at(0);
     }
+
+    absl::Status status = absl::OkStatus();
+    interval_tree.ApplyToNodesOverlappingInTime(
+        allocation->start_time(), allocation->end_time() - 1,
+        [&](const BufferIntervalTreeNode* node) {
+          if (!status.ok()) return;
+          if (node->buffer != nullptr && buffer != nullptr) {
+            const HloValue* node_value =
+                static_cast<const HloValue*>(node->buffer);
+            const HloBuffer& node_buffer =
+                alias_analysis.GetBufferContainingValue(*node_value);
+            if (node_buffer.id() == buffer->id()) {
+              return;  // Skip colocated
+            }
+          }
+          if (allocation->chunk().OverlapsWith(node->chunk)) {
+            status = absl::InternalError(absl::StrCat(
+                "Chunks are overlapping at Allocation level (before fixing the "
+                "schedule): ",
+                allocation->ToString(),
+                " overlaps with allocated chunk: ", node->chunk.ToString()));
+          }
+        });
+    RETURN_IF_ERROR(status);
     interval_tree.Add(allocation->start_time(), allocation->end_time() - 1,
-                      allocation->chunk());
+                      allocation->chunk(), value);
     return absl::OkStatus();
   };
   // Verify that all alternate memory allocations are free of overlapping
@@ -400,7 +449,7 @@ MemorySpaceAssignment::RunMemorySpaceAssignment(
 
   RETURN_IF_ERROR(Process(hlo_live_range, alias_analysis));
   if (options_.verify) {
-    RETURN_IF_ERROR(VerifyAllocations());
+    RETURN_IF_ERROR(VerifyAllocations(alias_analysis));
   }
 
   // DEBUG_LOG_ALLOCATIONS_AT
@@ -419,6 +468,10 @@ MemorySpaceAssignment::RunMemorySpaceAssignment(
   // alt_mem_bytes_occupied is used for logging in the RuntimeSimulator below.
   // We only populate it in VerifyAndExportHeapSimulatorTrace if the
   // RuntimeSimulator is present.
+  if (VLOG_IS_ON(1)) {
+    LOG(INFO) << "Module before verification: ";
+    XLA_LOG_LINES(INFO, module_->ToString());
+  }
   RETURN_IF_ERROR(VerifyAndExportHeapSimulatorTrace(
       *alias,
       runtime_simulator.has_value() ? &alt_mem_bytes_occupied : nullptr));
@@ -1381,6 +1434,7 @@ absl::Status MemorySpaceAssignment::VerifyAndExportHeapSimulatorTrace(
 
   BufferIntervalTree interval_tree;
   absl::flat_hash_set<int64_t> seen_buffers;
+
   // The key for events is: time, is_free, value_id. This is so that the events
   // are sorted first by time, then within the same time, allocations are sorted
   // earlier than frees, and finally the value id as a tie breaker.
@@ -1406,17 +1460,34 @@ absl::Status MemorySpaceAssignment::VerifyAndExportHeapSimulatorTrace(
     // really should check against end_time (inclusive) for cases where the
     // operand can't share buffer with user (see
     // HloDataflowAnalysis::CanShareOperandBufferWithUser).
-    for (const HeapSimulator::Chunk& overlapping_chunk :
-         interval_tree.ChunksOverlappingInTime(start_time, end_time - 1)) {
-      if (chunk.OverlapsWith(overlapping_chunk)) {
-        return Internal(
-            ("Value %s (%d, %d) off: %d size: %d overlaps with another chunk"
-             " off: %d size: %d"),
-            value->ToShortString(), start_time, end_time, chunk.offset,
-            chunk.size, overlapping_chunk.offset, overlapping_chunk.size);
-      }
-    }
-    interval_tree.Add(start_time, end_time - 1, chunk);
+    const HloBuffer& buffer = alias_analysis.GetBufferContainingValue(*value);
+    absl::Status status = absl::OkStatus();
+    interval_tree.ApplyToNodesOverlappingInTime(
+        start_time, end_time - 1, [&](const BufferIntervalTreeNode* node) {
+          if (!status.ok()) return;
+          if (node->buffer != nullptr) {
+            const HloValue* node_value =
+                static_cast<const HloValue*>(node->buffer);
+            const HloBuffer& node_buffer =
+                alias_analysis.GetBufferContainingValue(*node_value);
+            if (node_buffer.id() == buffer.id()) {
+              return;  // Skip colocated
+            }
+          }
+          if (chunk.OverlapsWith(node->chunk)) {
+            const HloValue* node_value =
+                static_cast<const HloValue*>(node->buffer);
+            status = Internal(
+                "Value %s (%d, %d) off: %d size: %d overlaps with another "
+                "chunk "
+                "from value %s (%d, %d) off: %d size: %d",
+                value->ToShortString(), start_time, end_time, chunk.offset,
+                chunk.size, node_value ? node_value->ToShortString() : "null",
+                node->start, node->end, node->chunk.offset, node->chunk.size);
+          }
+        });
+    RETURN_IF_ERROR(status);
+    interval_tree.Add(start_time, end_time - 1, chunk, value);
     return absl::OkStatus();
   };
 
