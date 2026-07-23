@@ -1683,10 +1683,11 @@ cc_library(
     deps = [
         ":elemental_math_emitter",
         "//xla:util",
-        "//xla/codegen/intrinsic",
         "//xla/codegen/intrinsic:exp",
         "//xla/codegen/intrinsic:rsqrt",
         "//xla/codegen/intrinsic:tanh",
+        "//xla/codegen/intrinsic:type",
+        "//xla/codegen/intrinsic/cpp:_intrinsic_declarations",
         "//xla/hlo/ir:hlo",
         "//xla/service:elemental_ir_emitter",
         "//xla/service/llvm_ir:llvm_util",

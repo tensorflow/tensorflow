@@ -26,10 +26,11 @@ limitations under the License.
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/Intrinsics.h"
 #include "llvm/IR/Value.h"
+#include "xla/codegen/intrinsic/cpp/intrinsic_declarations.h"
 #include "xla/codegen/intrinsic/exp.h"
-#include "xla/codegen/intrinsic/intrinsic.h"
 #include "xla/codegen/intrinsic/rsqrt.h"
 #include "xla/codegen/intrinsic/tanh.h"
+#include "xla/codegen/intrinsic/type.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/service/cpu/elemental_math_emitter.h"
 #include "xla/service/llvm_ir/llvm_util.h"
@@ -71,6 +72,30 @@ absl::StatusOr<llvm::Value*> CpuElementalIrEmitter::EmitTanh(
     return b()->CreateFPCast(f32_result, value->getType(), "downcast");
   }
   return xla::cpu::EmitTanh(module(), *b(), prim_type, value);
+}
+
+absl::StatusOr<llvm::Value*> CpuElementalIrEmitter::EmitSin(
+    PrimitiveType prim_type, llvm::Value* value) {
+  if (prim_type == F64) {
+    llvm::Function* sin_fn =
+        xla::codegen::intrinsics::EigenSin::GetOrInsertDeclaration(
+            module(), Type::S(prim_type));
+    return b()->CreateCall(sin_fn, value);
+  }
+  return llvm_ir::EmitCallToIntrinsic(llvm::Intrinsic::sin, {value},
+                                      {value->getType()}, b());
+}
+
+absl::StatusOr<llvm::Value*> CpuElementalIrEmitter::EmitCos(
+    PrimitiveType prim_type, llvm::Value* value) {
+  if (prim_type == F64) {
+    llvm::Function* cos_fn =
+        xla::codegen::intrinsics::EigenCos::GetOrInsertDeclaration(
+            module(), Type::S(prim_type));
+    return b()->CreateCall(cos_fn, value);
+  }
+  return llvm_ir::EmitCallToIntrinsic(llvm::Intrinsic::cos, {value},
+                                      {value->getType()}, b());
 }
 
 absl::StatusOr<llvm::Value*> CpuElementalIrEmitter::EmitAcos(

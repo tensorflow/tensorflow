@@ -42,11 +42,11 @@ typedef double Vec4d __attribute__((vector_size(32)));
 typedef double Vec8d __attribute__((vector_size(64)));
 
 // Corresponding integer types
-typedef uint32_t Vec4i __attribute__((vector_size(16)));
-typedef uint32_t Vec8i __attribute__((vector_size(32)));
-typedef uint64_t Vec2q __attribute__((vector_size(16)));
-typedef uint64_t Vec4q __attribute__((vector_size(32)));
-typedef uint64_t Vec8q __attribute__((vector_size(64)));
+typedef int32_t Vec4i __attribute__((vector_size(16)));
+typedef int32_t Vec8i __attribute__((vector_size(32)));
+typedef int64_t Vec2q __attribute__((vector_size(16)));
+typedef int64_t Vec4q __attribute__((vector_size(32)));
+typedef int64_t Vec8q __attribute__((vector_size(64)));
 
 namespace internal {
 // Helper type to select the corresponding integer vector type.
@@ -54,23 +54,23 @@ template <typename ScalarInt, size_t Width>
 struct MakeIntVec;
 
 template <>
-struct MakeIntVec<uint32_t, 4> {
+struct MakeIntVec<int32_t, 4> {
   using type = Vec4i;
 };
 template <>
-struct MakeIntVec<uint32_t, 8> {
+struct MakeIntVec<int32_t, 8> {
   using type = Vec8i;
 };
 template <>
-struct MakeIntVec<uint64_t, 2> {
+struct MakeIntVec<int64_t, 2> {
   using type = Vec2q;
 };
 template <>
-struct MakeIntVec<uint64_t, 4> {
+struct MakeIntVec<int64_t, 4> {
   using type = Vec4q;
 };
 template <>
-struct MakeIntVec<uint64_t, 8> {
+struct MakeIntVec<int64_t, 8> {
   using type = Vec8q;
 };
 
@@ -78,10 +78,10 @@ struct MakeIntVec<uint64_t, 8> {
 template <typename FloatVec>
 struct CorrespondingIntVector {
  private:
-  using ScalarFloat = decltype(FloatVec{}[0]);
+  using ScalarFloat = std::decay_t<decltype(FloatVec{}[0])>;
   static constexpr size_t kWidth = sizeof(FloatVec) / sizeof(ScalarFloat);
   using ScalarInt =
-      std::conditional_t<sizeof(ScalarFloat) == 4, uint32_t, uint64_t>;
+      std::conditional_t<sizeof(ScalarFloat) == 4, int32_t, int64_t>;
 
  public:
   using type = typename MakeIntVec<ScalarInt, kWidth>::type;
@@ -136,15 +136,17 @@ struct ArrayMap<Vec8d> {
 template <typename FloatVec>
 FloatVec BitwiseAbs(FloatVec x) {
   using IntVec = typename internal::CorrespondingIntVector<FloatVec>::type;
-  // Get the underlying scalar integer type (e.g., int from Vec4i).
-  using ScalarInt = decltype(IntVec{}[0]);
+  using ScalarInt = std::decay_t<decltype(IntVec{}[0])>;
+  constexpr size_t kWidth = sizeof(FloatVec) / sizeof(decltype(FloatVec{}[0]));
 
-  // Create a mask to clear the sign bit (e.g., 0x7FFFFFFF for int).
-  // This is a vector where every element is the mask.
-  const IntVec abs_mask =
-      IntVec{~(static_cast<ScalarInt>(1) << (sizeof(ScalarInt) * 8 - 1))};
+  using UnsignedScalarInt = std::make_unsigned_t<ScalarInt>;
+  const ScalarInt mask_val = static_cast<ScalarInt>(
+      ~(static_cast<UnsignedScalarInt>(1) << (sizeof(ScalarInt) * 8 - 1)));
+  IntVec abs_mask;
+  for (size_t i = 0; i < kWidth; ++i) {
+    abs_mask[i] = mask_val;
+  }
 
-  // Reinterpret float as int, apply the mask, and reinterpret back.
   return __builtin_bit_cast(FloatVec, __builtin_bit_cast(IntVec, x) & abs_mask);
 }
 
@@ -157,9 +159,17 @@ FloatVec BitwiseAbs(FloatVec x) {
 template <typename FloatVec>
 FloatVec BitwiseCopysign(FloatVec value, FloatVec sign_source) {
   using IntVec = typename internal::CorrespondingIntVector<FloatVec>::type;
-  using ScalarInt = decltype(IntVec{}[0]);
-  const IntVec sign_mask =
-      IntVec{static_cast<ScalarInt>(1) << (sizeof(ScalarInt) * 8 - 1)};
+  using ScalarInt = std::decay_t<decltype(IntVec{}[0])>;
+  constexpr size_t kWidth = sizeof(FloatVec) / sizeof(decltype(FloatVec{}[0]));
+
+  using UnsignedScalarInt = std::make_unsigned_t<ScalarInt>;
+  const ScalarInt mask_val = static_cast<ScalarInt>(
+      static_cast<UnsignedScalarInt>(1) << (sizeof(ScalarInt) * 8 - 1));
+  IntVec sign_mask;
+  for (size_t i = 0; i < kWidth; ++i) {
+    sign_mask[i] = mask_val;
+  }
+
   FloatVec value_abs = BitwiseAbs<FloatVec>(value);
   IntVec sign_bits = __builtin_bit_cast(IntVec, sign_source) & sign_mask;
   return __builtin_bit_cast(FloatVec,

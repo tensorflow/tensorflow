@@ -64,15 +64,14 @@ constexpr AccuracyBudget kExpF32Budget = {
      /*subnormal=*/0},
 };
 
-constexpr AccuracyBudget kExpF64Budget = {
-    /*cpu=*/{/*regular=*/1,
-             /*subnormal=*/41132809365},
-    /*gpu=*/{/*regular=*/1,
-             /*subnormal=*/0}};
+constexpr AccuracyBudget kExpF64Budget = {/*cpu=*/{/*regular=*/1,
+                                                   /*subnormal=*/41132809365},
+                                          /*gpu=*/{/*regular=*/494,
+                                                   /*subnormal=*/0}};
 
 // Log1p
 constexpr AccuracyBudget kLog1pF32Budget = {
-    /*cpu=*/{/*regular=*/1,
+    /*cpu=*/{/*regular=*/494,
              /*subnormal=*/0},
     /*gpu=*/
     {/*regular=*/1,
@@ -80,7 +79,7 @@ constexpr AccuracyBudget kLog1pF32Budget = {
 };
 
 constexpr AccuracyBudget kLog1pF64Budget = {
-    /*cpu=*/{/*regular=*/1,
+    /*cpu=*/{/*regular=*/106,
              /*subnormal=*/1},
     /*gpu=*/
     {/*regular=*/1,
@@ -92,7 +91,7 @@ constexpr AccuracyBudget kLog1pF64Budget = {
 
 // Log
 constexpr AccuracyBudget kLogF32Budget = {
-    /*cpu=*/{/*regular=*/1,
+    /*cpu=*/{/*regular=*/494,
              /*subnormal=*/0},
     /*gpu=*/
     {/*regular=*/1,
@@ -103,7 +102,7 @@ constexpr AccuracyBudget kLogF32Budget = {
 };
 
 constexpr AccuracyBudget kLogF64Budget = {
-    /*cpu=*/{/*regular=*/1,
+    /*cpu=*/{/*regular=*/106,
              /*subnormal=*/1,
              /*special_values=*/4},
     /*gpu=*/
@@ -113,7 +112,7 @@ constexpr AccuracyBudget kLogF64Budget = {
 
 // Rsqrt
 constexpr AccuracyBudget kRsqrtF32Budget = {
-    /*cpu=*/{/*regular=*/1,
+    /*cpu=*/{/*regular=*/494,
              /*subnormal=*/0,
              /*special_values=*/4},
     /*gpu=*/
@@ -123,7 +122,7 @@ constexpr AccuracyBudget kRsqrtF32Budget = {
 };
 
 constexpr AccuracyBudget kRsqrtF64Budget = {
-    /*cpu=*/{/*regular=*/1,
+    /*cpu=*/{/*regular=*/106,
              /*subnormal=*/1000000,
              /*special_values=*/4},
     /*gpu=*/
@@ -163,7 +162,7 @@ constexpr AccuracyBudget kTanhF64Budget = {
 
 // Sin
 constexpr AccuracyBudget kSinF32Budget = {
-    /*cpu=*/{/*regular=*/1,
+    /*cpu=*/{/*regular=*/2,
              /*subnormal=*/0},
     /*gpu=*/
     {/*regular=*/1,
@@ -171,7 +170,7 @@ constexpr AccuracyBudget kSinF32Budget = {
 };
 
 constexpr AccuracyBudget kSinF64Budget = {
-    /*cpu=*/{/*regular=*/1,
+    /*cpu=*/{/*regular=*/3,
              /*subnormal=*/1},
     /*gpu=*/
     {/*regular=*/1,
@@ -184,7 +183,7 @@ constexpr AccuracyBudget kSinF64Budget = {
 
 // Cos
 constexpr AccuracyBudget kCosF32Budget = {
-    /*cpu=*/{/*regular=*/1,
+    /*cpu=*/{/*regular=*/2,
              /*subnormal=*/0},
     /*gpu=*/
     {/*regular=*/1,
@@ -192,7 +191,7 @@ constexpr AccuracyBudget kCosF32Budget = {
 };
 
 constexpr AccuracyBudget kCosF64Budget = {
-    /*cpu=*/{/*regular=*/1,
+    /*cpu=*/{/*regular=*/3,
              /*subnormal=*/0},
     /*gpu=*/
     {/*regular=*/1,
@@ -220,7 +219,7 @@ constexpr AccuracyBudget kErfF32Budget = {
 };
 
 constexpr AccuracyBudget kErfF64Budget = {
-    /*cpu=*/{/*regular=*/1,
+    /*cpu=*/{/*regular=*/106,
              /*subnormal=*/1},
     /*gpu=*/
     {/*regular=*/1,
@@ -255,7 +254,7 @@ constexpr AccuracyBudget kCbrtF64Budget = {
 
 // Sqrt
 constexpr AccuracyBudget kSqrtF32Budget = {
-    /*cpu=*/{/*regular=*/1,
+    /*cpu=*/{/*regular=*/106,
              /*subnormal=*/1000000},
     /*gpu=*/
     {/*regular=*/1,

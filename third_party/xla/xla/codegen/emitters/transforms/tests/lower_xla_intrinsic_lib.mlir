@@ -309,3 +309,60 @@ module {
 // CHECK-NOT: math.atan2
 // CHECK: %[[RESULT:.*]] = call @xla.atan.v8f32(%arg0) : (vector<8xf32>) -> vector<8xf32>
 // CHECK: return %[[RESULT]] : vector<8xf32>
+
+// -----
+
+module {
+  func.func @sin_vector(%arg0: vector<2xf64>) -> vector<2xf64> {
+    %ret = math.sin %arg0 : vector<2xf64>
+    return %ret : vector<2xf64>
+  }
+}
+
+// CHECK-LABEL: @sin_vector
+// CHECK-NOT: math.sin
+// CHECK: %[[SIN_CALL:.*]] = call @xla.sin.v2f64(%arg0) : (vector<2xf64>) -> vector<2xf64>
+// CHECK: return %[[SIN_CALL]]
+
+// -----
+
+module {
+  func.func @sin_f64(%arg0: f64) -> f64 {
+    %ret = math.sin %arg0 : f64
+    return %ret : f64
+  }
+}
+
+// CHECK-LABEL: @sin_f64
+// CHECK-NOT: math.sin
+// CHECK: %[[RESULT:.*]] = call @xla.sin.f64(%arg0) : (f64) -> f64
+// CHECK: return %[[RESULT]] : f64
+
+// -----
+
+module {
+  func.func @cos_vector(%arg0: vector<2xf64>) -> vector<2xf64> {
+    %ret = math.cos %arg0 : vector<2xf64>
+    return %ret : vector<2xf64>
+  }
+}
+
+// CHECK-LABEL: @cos_vector
+// CHECK-NOT: math.cos
+// CHECK: %[[COS_CALL:.*]] = call @xla.cos.v2f64(%arg0) : (vector<2xf64>) -> vector<2xf64>
+// CHECK: return %[[COS_CALL]]
+
+// -----
+
+module {
+  func.func @cos_f64(%arg0: f64) -> f64 {
+    %ret = math.cos %arg0 : f64
+    return %ret : f64
+  }
+}
+
+// CHECK-LABEL: @cos_f64
+// CHECK-NOT: math.cos
+// CHECK: %[[RESULT:.*]] = call @xla.cos.f64(%arg0) : (f64) -> f64
+// CHECK: return %[[RESULT]] : f64
+
