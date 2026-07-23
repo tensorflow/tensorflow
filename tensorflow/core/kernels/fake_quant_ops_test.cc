@@ -13,12 +13,15 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "absl/status/status.h"
+#include "absl/strings/match.h"
 #include "tensorflow/core/framework/fake_input.h"
 #include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/kernels/ops_testutil.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
+#include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
 
@@ -2638,6 +2641,51 @@ TEST_F(QuantOpsTest, WithVarsPerChannelDim4GradientNudgedUp_4Bits_NarrowRange) {
                      grad_flat(3) + grad_flat(7) + grad_flat(11) +
                          grad_flat(15) + grad_flat(19) + grad_flat(23)});
   ExpectClose(expected_bprop_wrt_max, *output_bprop_wrt_max);
+}
+
+TEST_F(QuantOpsTest, FakeQuantWithMinMaxVarsPerChannel_InvalidRank) {
+  TF_EXPECT_OK(NodeDefBuilder("op", "FakeQuantWithMinMaxVarsPerChannel")
+                   .Input(FakeInput(DT_FLOAT))  // inputs
+                   .Input(FakeInput(DT_FLOAT))  // min
+                   .Input(FakeInput(DT_FLOAT))  // max
+                   .Attr("num_bits", 8)
+                   .Attr("narrow_range", false)
+                   .Finalize(node_def()));
+  TF_EXPECT_OK(InitOp());
+  // Downstream inputs (Scalar input, rank 0, which should fail).
+  AddInputFromArray<float>(TensorShape({}), {0.0f});
+  // Min.
+  AddInputFromArray<float>(TensorShape({1}), {-10.0f});
+  // Max.
+  AddInputFromArray<float>(TensorShape({1}), {10.0f});
+
+  absl::Status s = RunOpKernel();
+  EXPECT_EQ(s.code(), absl::StatusCode::kInvalidArgument);
+  EXPECT_TRUE(absl::StrContains(s.message(), "must be at least rank 1"));
+}
+
+TEST_F(QuantOpsTest, FakeQuantWithMinMaxVarsPerChannelGradient_InvalidRank) {
+  TF_EXPECT_OK(NodeDefBuilder("op", "FakeQuantWithMinMaxVarsPerChannelGradient")
+                   .Input(FakeInput(DT_FLOAT))  // gradients
+                   .Input(FakeInput(DT_FLOAT))  // inputs
+                   .Input(FakeInput(DT_FLOAT))  // min
+                   .Input(FakeInput(DT_FLOAT))  // max
+                   .Attr("num_bits", 8)
+                   .Attr("narrow_range", false)
+                   .Finalize(node_def()));
+  TF_EXPECT_OK(InitOp());
+  // Gradients (Scalar input, rank 0).
+  AddInputFromArray<float>(TensorShape({}), {0.0f});
+  // Inputs (Scalar input, rank 0).
+  AddInputFromArray<float>(TensorShape({}), {0.0f});
+  // Min.
+  AddInputFromArray<float>(TensorShape({1}), {-10.0f});
+  // Max.
+  AddInputFromArray<float>(TensorShape({1}), {10.0f});
+
+  absl::Status s = RunOpKernel();
+  EXPECT_EQ(s.code(), absl::StatusCode::kInvalidArgument);
+  EXPECT_TRUE(absl::StrContains(s.message(), "must be at least rank 1"));
 }
 
 }  // namespace tensorflow
