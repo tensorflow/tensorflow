@@ -1111,6 +1111,14 @@ absl::Status ShapeVerifier::HandleReverse(HloInstruction* reverse) {
                                                  reverse->dimensions()));
 }
 
+absl::Status ShapeVerifier::HandleRotate(HloInstruction* rotate) {
+  HloRotateInstruction* rotate_instr = Cast<HloRotateInstruction>(rotate);
+  return CheckShape(
+      rotate, ShapeInference::InferRotateShape(
+                  rotate_instr->operand(0)->shape(), rotate_instr->dimensions(),
+                  rotate_instr->shifts()));
+}
+
 absl::Status ShapeVerifier::HandleTopK(HloInstruction* hlo) {
   return CheckShape(
       hlo, ShapeInference::InferTopKShape(hlo->operand(0)->shape(),

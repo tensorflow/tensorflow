@@ -242,6 +242,12 @@ class ShapeInference {
   static absl::StatusOr<Shape> InferReverseShape(
       const Shape& operand_shape, absl::Span<const int64_t> dimensions);
 
+  // Infers the shape produced by a rotate operation that rotates the elements
+  // by the given shifts in the given dimensions.
+  static absl::StatusOr<Shape> InferRotateShape(
+      const Shape& operand_shape, absl::Span<const int64_t> dimensions,
+      absl::Span<const int64_t> shifts);
+
   // Infers the shape produced by a slice operation spanning from the starts to
   // the limits in the original shape's dimensions.
   //

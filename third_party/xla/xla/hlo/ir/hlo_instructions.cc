@@ -1609,6 +1609,54 @@ std::unique_ptr<HloInstruction> HloReduceInstruction::CloneWithNewOperandsImpl(
                                                 dimensions(), to_apply());
 }
 
+HloRotateInstruction::HloRotateInstruction(const Shape& shape,
+                                           HloInstruction* operand,
+                                           absl::Span<const int64_t> dimensions,
+                                           absl::Span<const int64_t> shifts)
+    : HloDimensionsInstruction(HloOpcode::kRotate, shape, dimensions),
+      shifts_(shifts.begin(), shifts.end()) {
+  AppendOperand(operand);
+}
+
+bool HloRotateInstruction::IdenticalSlowPath(
+    const HloInstruction& other,
+    absl::FunctionRef<bool(const HloComputation*, const HloComputation*)>
+        eq_computations) const {
+  const auto& casted_other = static_cast<const HloRotateInstruction&>(other);
+  // Rotation results are determined by the rotation dimension and the rotation
+  // shifts.
+  return dimensions() == casted_other.dimensions() &&
+         shifts() == casted_other.shifts();
+}
+
+std::unique_ptr<HloInstruction> HloRotateInstruction::CloneWithNewOperandsImpl(
+    const Shape& shape, absl::Span<HloInstruction* const> new_operands,
+    HloCloneContext* context) const {
+  CHECK_EQ(new_operands.size(), 1);
+  return std::make_unique<HloRotateInstruction>(shape, new_operands[0],
+                                                dimensions(), shifts());
+}
+
+void HloRotateInstruction::PrintExtraAttributesImpl(
+    AttributePrinter& printer, const HloPrintOptions& options) const {
+  HloDimensionsInstruction::PrintExtraAttributesImpl(printer, options);
+  printer.Next([this](Printer* printer) {
+    printer->Append("shifts={");
+    AppendJoin(printer, shifts(), ",");
+    printer->Append("}");
+  });
+}
+
+void HloRotateInstruction::ToProto(HloInstructionProto* proto) const {
+  HloInstruction::ToProto(proto);
+  for (int64_t dimension : dimensions_) {
+    proto->add_dimensions(dimension);
+  }
+  for (int64_t shift : shifts_) {
+    proto->add_shifts(shift);
+  }
+}
+
 HloScanInstruction::HloScanInstruction(const Shape& shape,
                                        absl::Span<HloInstruction* const> inputs,
                                        absl::Span<HloInstruction* const> inits,
