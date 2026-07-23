@@ -1131,7 +1131,8 @@ InterpreterWrapper* InterpreterWrapper::CreateWrapperCPPFromFile(
     bool default_delegate_latest_features,
     bool compress_quantization_zero_points, bool disable_delegate_node_fusion,
     bool force_delegate_node_profiling) {
-  std::unique_ptr<PythonErrorReporter> error_reporter(new PythonErrorReporter);
+  std::unique_ptr<PythonErrorReporter> error_reporter =
+      std::make_unique<PythonErrorReporter>();
   std::unique_ptr<InterpreterWrapper::Model> model =
       Model::VerifyAndBuildFromFile(model_path, /*extra_verifier=*/nullptr,
                                     error_reporter.get());
@@ -1167,7 +1168,8 @@ InterpreterWrapper* InterpreterWrapper::CreateWrapperCPPFromBuffer(
     bool force_delegate_node_profiling) {
   char* buf = nullptr;
   Py_ssize_t length;
-  std::unique_ptr<PythonErrorReporter> error_reporter(new PythonErrorReporter);
+  std::unique_ptr<PythonErrorReporter> error_reporter =
+      std::make_unique<PythonErrorReporter>();
 
   if (python_utils::ConvertFromPyString(data, &buf, &length) == -1) {
     return nullptr;
