@@ -278,7 +278,6 @@ def LegalizeBMM4dAdjY_2 : Pat<
           ConstantStrAttr<StrAttr, "tfl.bmm_4d_adj_y">, $attrs, $_, $_),
         (TFL_BatchMatMulOp $lhs, $rhs, ConstBoolAttrFalse, ConstBoolAttrTrue,
                      ConstBoolAttrFalse)>;
-
 def LegalizeCompositeMean : Pat<
         (MHLO_CompositeOp:$composite
           (variadic $input),
@@ -317,3 +316,31 @@ def LegalizeSoftmax : Pat<
           ConstantStrAttr<StrAttr, "odml.softmax">, $attrs, $_, $_),
         (TFL_SoftmaxOp $input, ConstF32Attr<"1.0">)>;
 
+// Lowering for tfl.mirror_pad composite with NCHW inputs.
+// Transposes are inserted to run the op in NHWC.
+def LegalizeNchwMirrorPadComposite: Pat<
+    (MHLO_CompositeOp:$old_val
+      (variadic $input),
+      ConstantStrAttr<StrAttr, "tfl.mirror_pad">, $attrs, $_, $_),
+    (TFL_TransposeOp
+      (TFL_MirrorPadOp
+        (TFL_TransposeOp $input,
+          (Arith_ConstantOp
+            ConstantAttr<RankedI32ElementsAttr<[4]>,"{0, 2, 3, 1}">)),
+        (Arith_ConstantOp (BuildPaddingsAttr $attrs)),
+        (GetMirrorPadMode $attrs),
+        (returnType (GetNhwcReturnTypeFromNchw $old_val))),
+      (Arith_ConstantOp
+        ConstantAttr<RankedI32ElementsAttr<[4]>,"{0, 3, 1, 2}">)),
+    [(IsNchwLayoutOp $attrs)]>;
+
+// Lowering for tfl.mirror_pad composite with NHWC inputs.
+def LegalizeNhwcMirrorPadComposite: Pat<
+    (MHLO_CompositeOp:$old_val
+      (variadic $input),
+      ConstantStrAttr<StrAttr, "tfl.mirror_pad">, $attrs, $_, $_),
+    (TFL_MirrorPadOp
+      $input,
+      (Arith_ConstantOp (BuildPaddingsAttr $attrs)),
+      (GetMirrorPadMode $attrs)),
+    [(IsNhwcLayoutOp $attrs)]>;
