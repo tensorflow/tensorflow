@@ -19,21 +19,26 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/strings/str_cat.h"
+#include "xla/tsl/platform/status_matchers.h"
 #include "xla/xla_data.pb.h"
 
 namespace tensorflow {
 namespace {
 
+using ::tsl::testing::IsOk;
+
 TEST(SetSparseCoreFrontendAttributesTest, Basic) {
   xla::FrontendAttributes attributes;
-  ASSERT_OK(SetSparseCoreFrontendAttributes(&attributes,
-                                            /*max_ids_per_partition=*/100,
-                                            /*max_unique_ids_per_partition=*/20,
-                                            /*num_sparsecores_per_device=*/4,
-                                            /*vocab_size=*/4000,
-                                            /*feature_width=*/64,
-                                            /*input_size=*/128,
-                                            /*table_name=*/"test_table"));
+  ASSERT_THAT(
+      SetSparseCoreFrontendAttributes(&attributes,
+                                      /*max_ids_per_partition=*/100,
+                                      /*max_unique_ids_per_partition=*/20,
+                                      /*num_sparsecores_per_device=*/4,
+                                      /*vocab_size=*/4000,
+                                      /*feature_width=*/64,
+                                      /*input_size=*/128,
+                                      /*table_name=*/"test_table"),
+      IsOk());
   const auto& attr_map = attributes.map();
   EXPECT_EQ(attr_map.at("_xla_compute_type"), "sparse");
   EXPECT_EQ(attr_map.at("_xla_sharding_strategy"), "mod");
@@ -48,18 +53,19 @@ TEST(SetSparseCoreFrontendAttributesTest, Basic) {
 
 TEST(SetSparseCoreFrontendAttributesTest, WithOptionals) {
   xla::FrontendAttributes attributes;
-  ASSERT_OK(SetSparseCoreFrontendAttributes(
-      &attributes, /*max_ids_per_partition=*/100,
-      /*max_unique_ids_per_partition=*/20,
-      /*num_sparsecores_per_device=*/4,
-      /*vocab_size=*/4000,
-      /*feature_width=*/64,
-      /*input_size=*/128,
-      /*table_name=*/"test_table",
-      /*max_valency=*/16,
-      /*quantization_config_low=*/-1.5f,
-      /*quantization_config_high=*/1.5f,
-      /*quantization_config_num_buckets=*/256));
+  ASSERT_THAT(SetSparseCoreFrontendAttributes(
+                  &attributes, /*max_ids_per_partition=*/100,
+                  /*max_unique_ids_per_partition=*/20,
+                  /*num_sparsecores_per_device=*/4,
+                  /*vocab_size=*/4000,
+                  /*feature_width=*/64,
+                  /*input_size=*/128,
+                  /*table_name=*/"test_table",
+                  /*max_valency=*/16,
+                  /*quantization_config_low=*/-1.5f,
+                  /*quantization_config_high=*/1.5f,
+                  /*quantization_config_num_buckets=*/256),
+              IsOk());
   const auto& attr_map = attributes.map();
   EXPECT_EQ(attr_map.at("_xla_vocab_size"), "1000");
   EXPECT_EQ(attr_map.at("_xla_feature_width"), "64");

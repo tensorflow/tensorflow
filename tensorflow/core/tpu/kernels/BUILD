@@ -958,6 +958,7 @@ tf_cc_test(
         "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest_main",
         "@xla//xla:xla_data_proto_cc",
+        "@xla//xla/tsl/platform:status_matchers",
     ],
 )
 
