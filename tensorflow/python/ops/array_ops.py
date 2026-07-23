@@ -4235,9 +4235,23 @@ def squeeze(input, axis=None, name=None, squeeze_dims=None):
 
   Raises:
     ValueError: When both `squeeze_dims` and `axis` are specified.
+    TypeError: When `axis` is a Tensor instead of an int or list of ints.
   """
   axis = deprecation.deprecated_argument_lookup("axis", axis, "squeeze_dims",
                                                 squeeze_dims)
+  # Validate that axis is not a Tensor or a list/tuple containing a Tensor.
+  # This avoids a confusing MemoryError and keeps eager and graph mode
+  # behavior consistent, since `int(tensor)` only works in eager mode.
+  if axis is not None:
+    if tensor_util.is_tf_type(axis):
+      raise TypeError(
+          "`axis` must be an integer or a list of integers, not a Tensor. "
+          f"Received: axis={axis} (type: {type(axis).__name__})")
+    if isinstance(axis, (list, tuple)) and any(
+        tensor_util.is_tf_type(x) for x in axis):
+      raise TypeError(
+          "`axis` must be an integer or a list of integers, and cannot "
+          f"contain Tensors. Received: axis={axis}")
   if np.isscalar(axis):
     axis = [axis]
   return gen_array_ops.squeeze(input, axis, name)
@@ -4314,6 +4328,7 @@ def squeeze_v2(input, axis=None, name=None):
   Raises:
     ValueError: The input cannot be converted to a tensor, or the specified
       axis cannot be squeezed.
+    TypeError: When `axis` is a Tensor instead of an int or list of ints.
   """
   # pylint: disable=redefined-builtin
   return squeeze(input, axis, name)
