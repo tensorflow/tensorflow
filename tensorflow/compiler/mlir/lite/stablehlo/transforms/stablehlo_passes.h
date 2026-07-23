@@ -65,7 +65,12 @@ std::unique_ptr<OperationPass<func::FuncOp>> CreatePrepareHloPass();
 void PopulateLegalizeHloToTfPatterns(RewritePatternSet* patterns,
                                      MLIRContext* context);
 
+// Drops vhlo/stablehlo custom calls targeting 'shape_assertion'.
+std::unique_ptr<OperationPass<ModuleOp>> CreateDropShapeAssertionsPass();
+
 #define GEN_PASS_DECL
+#include "tensorflow/compiler/mlir/lite/stablehlo/transforms/stablehlo_passes.h.inc"
+
 #define GEN_PASS_REGISTRATION
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/stablehlo_passes.h.inc"
 
