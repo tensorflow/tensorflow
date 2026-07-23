@@ -254,6 +254,56 @@ OperandsSpec GetSpec(const TiledHloInstruction& tiled_hlo,
   return spec;
 }
 
+TiledHloInstruction* DefinitionCache::FindRootDef(const HloInstruction& hlo,
+                                                  Tile tile) const {
+  auto cache_it = tiled_hlo_cache_.find(TiledHloKey{&hlo, tile});
+  if (cache_it != tiled_hlo_cache_.end()) {
+    for (TiledHloInstruction* cached_def : cache_it->second) {
+      if (cached_def->parent() == nullptr) {
+        return cached_def;
+      }
+    }
+  }
+  return nullptr;
+}
+
+// `use` can reuse existing `def` whenever it's defined in any of the regions
+// `use` is a part of.
+static bool CanReuse(const TiledHloInstruction& def,
+                     const TiledHloInstruction& use) {
+  if (&def == &use) {
+    return true;
+  }
+  if (def.parent() == nullptr) {
+    return true;
+  }
+  const TiledHloInstruction* curr = &use;
+  while (curr != nullptr) {
+    if (&def == curr) {
+      return true;
+    }
+    if (def.parent() == curr->parent() &&
+        def.parent_region_index() == curr->parent_region_index()) {
+      return true;
+    }
+    curr = curr->parent();
+  }
+  return false;
+}
+
+TiledHloInstruction* DefinitionCache::FindDef(
+    const TiledHloInstruction& use) const {
+  auto cache_it = tiled_hlo_cache_.find(TiledHloKey{use.hlo(), use.tile()});
+  if (cache_it != tiled_hlo_cache_.end()) {
+    for (TiledHloInstruction* cached_def : cache_it->second) {
+      if (CanReuse(*cached_def, use)) {
+        return cached_def;
+      }
+    }
+  }
+  return nullptr;
+}
+
 // Recursively populates `tile_names` with unique names for `tiled_hlo` and
 // all instructions within its regions.
 void PrepopulateTileNames(
