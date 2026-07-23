@@ -515,6 +515,7 @@ cc_library(
         ],
         "//conditions:default": [
             "//tensorflow/core:framework",
+            "//tensorflow/core/platform:protobuf",
         ],
     }),
     alwayslink = 1,
