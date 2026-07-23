@@ -81,8 +81,11 @@ cc_library(
         "//xla/backends/profiler/util:metadata_registry",
         "//xla/python/profiler/internal:python_hooks",
         "//xla/tsl/platform:logging",
+        "//xla/tsl/profiler/utils:xplane_schema",
+        "//xla/tsl/profiler/utils:xplane_utils",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
         "@tsl//tsl/profiler/lib:profiler_interface",
         "@tsl//tsl/profiler/protobuf:xplane_proto_cc",
     ],
@@ -149,6 +152,21 @@ xla_cc_test(
     ] + xla_internal([
         "//xla/tsl/profiler/backends/cpu:traceme_recorder_impl",
     ]),
+)
+
+xla_cc_test(
+    name = "python_tracer_test",
+    srcs = ["python_tracer_test.cc"],
+    linkopts = ["-Wl,--allow-shlib-undefined"],
+    deps = [
+        ":python_tracer_impl",
+        "//xla/tsl/platform:test",
+        "//xla/tsl/profiler/utils:xplane_schema",
+        "@com_google_absl//absl/status",
+        "@com_google_googletest//:gtest_main",
+        "@tsl//tsl/profiler/lib:profiler_interface",
+        "@tsl//tsl/profiler/protobuf:xplane_proto_cc",
+    ],
 )
 
 cc_binary(

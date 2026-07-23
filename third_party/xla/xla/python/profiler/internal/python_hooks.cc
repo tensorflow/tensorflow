@@ -15,8 +15,10 @@ limitations under the License.
 #include "xla/python/profiler/internal/python_hooks.h"
 
 #include <cstdint>
+#include <deque>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "absl/log/check.h"
 #include "absl/log/log.h"
@@ -192,6 +194,7 @@ void PythonHookContext::Start(const PythonHooksOptions& options) {
 }
 
 void PythonHookContext::Stop() {
+  stopped_ = true;
   if (!Py_IsInitialized()) {
     return;
   }
@@ -204,6 +207,99 @@ void PythonHookContext::Stop() {
       traceme_enabled = false;
     }
     PyGILState_Release(gil_state);
+  }
+}
+
+void PythonHookContext::Consume(tensorflow::profiler::XPlane* raw_plane) {
+  if (raw_plane == nullptr) {
+    return;
+  }
+  raw_plane->set_name(tsl::profiler::kPythonTracerPlaneName);
+  tsl::profiler::XPlaneBuilder plane(raw_plane);
+  uint64_t current_start_ns = start_timestamp_ns_;
+  start_timestamp_ns_ = tsl::profiler::GetCurrentTimeNanos();
+
+  struct TraceEventInfo {
+    std::string name;
+    uint64_t start_time_ns;
+    uint64_t end_time_ns;
+  };
+  struct PerThreadConsumeData {
+    int64_t thread_id;
+    std::vector<TraceEventInfo> events;
+  };
+  std::vector<PerThreadConsumeData> consumed_data;
+
+  {
+    PyGILState_STATE gil_state;
+    bool has_gil = false;
+#ifndef Py_GIL_DISABLED
+    if (Py_IsInitialized()) {
+      gil_state = PyGILState_Ensure();
+      has_gil = true;
+    }
+#endif  // Py_GIL_DISABLED
+
+    for (EntryShard& shard : entry_shards_) {
+#ifdef Py_GIL_DISABLED
+      absl::MutexLock lock(shard.mu);
+#else
+      DCHECK(PyGILState_Check());
+#endif  // Py_GIL_DISABLED
+      // NOLINTNEXTLINE
+      for (auto& it : shard.entries) {
+        int64_t thread_id = it.first;
+        PerThreadEvents& thread_events = it.second;
+        VLOG(1) << "Consuming " << thread_events.completed.size() << ":"
+                << thread_events.active.size() << " events on thread "
+                << thread_id;
+
+        PerThreadConsumeData thread_data;
+        thread_data.thread_id = thread_id;
+        thread_data.events.reserve(thread_events.completed.size());
+        for (const PythonTraceEntry& event : thread_events.completed) {
+          thread_data.events.push_back(
+              {event.Name(), event.start_time_ns, event.end_time_ns});
+        }
+        thread_events.completed.clear();
+
+        if (stopped_ && options_.include_incomplete_events) {
+          uint64_t now = tsl::profiler::GetCurrentTimeNanos();
+          while (!thread_events.active.empty()) {
+            PythonTraceEntry& event = thread_events.active.top();
+            thread_data.events.push_back(
+                {event.Name(), event.start_time_ns, now});
+            thread_events.active.pop();
+          }
+          while (!thread_events.active_c.empty()) {
+            PythonTraceEntry& event = thread_events.active_c.top();
+            thread_data.events.push_back(
+                {event.Name(), event.start_time_ns, now});
+            thread_events.active_c.pop();
+          }
+        }
+        consumed_data.push_back(std::move(thread_data));
+      }
+    }
+
+#ifndef Py_GIL_DISABLED
+    if (has_gil) {
+      PyGILState_Release(gil_state);
+    }
+#endif  // Py_GIL_DISABLED
+  }
+
+  // Populate XPlane outside of GIL and mutex locks
+  for (const PerThreadConsumeData& thread_data : consumed_data) {
+    tsl::profiler::XLineBuilder line =
+        plane.GetOrCreateLine(thread_data.thread_id);
+    line.SetTimestampNs(current_start_ns);
+    for (const TraceEventInfo& event : thread_data.events) {
+      tsl::profiler::XEventBuilder xevent =
+          line.AddEvent(*plane.GetOrCreateEventMetadata(event.name));
+      xevent.SetTimestampNs(event.start_time_ns);
+      xevent.SetEndTimestampNs(event.end_time_ns);
+    }
   }
 }
 

@@ -128,6 +128,7 @@ class PythonHookContext {
  public:
   ~PythonHookContext();
   void Finalize(tensorflow::profiler::XSpace* space);
+  void Consume(tensorflow::profiler::XPlane* raw_plane);
 
   friend class ::xla::profiler::PythonHooks;
 
@@ -162,6 +163,7 @@ class PythonHookContext {
   std::array<EntryShard, kNumEntryShards> entry_shards_;
   uint64_t start_timestamp_ns_;
   PythonHooksOptions options_;
+  bool stopped_ = false;
   // In end to end mode, Python get uninitialized before Stop()/Finalize(), we
   // need to buffer the result.
   std::optional<tensorflow::profiler::XPlane> end_to_end_xplane_;
@@ -194,6 +196,15 @@ class PythonHooks {
     std::unique_ptr<PythonHookContext> output = std::move(active_context_);
     active_context_.reset();
     return output;
+  }
+
+  void Consume(tensorflow::profiler::XPlane* raw_plane) {
+    if (!active_context_) {
+      return;
+    }
+    if (Py_IsInitialized()) {
+      active_context_->Consume(raw_plane);
+    }
   }
 
   friend class ::xla::profiler::PythonHookContext;
