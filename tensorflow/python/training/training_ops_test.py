@@ -510,28 +510,29 @@ class TrainingOpsTest(TensorFlowTestCase):
   def testResourceSparseApplyAdagradDARejectsScalarGrad(self):
     # Regression test for #94130: a scalar grad made the kernel read dimension
     # 1 and terminate the process instead of returning InvalidArgument.
-    var, grad_accum, grad_squared_accum = [
-        variables.Variable(np.zeros((10, 2), np.float32)) for _ in range(3)
-    ]
-    self.evaluate(variables.global_variables_initializer())
-    with self.assertRaisesRegex(
-        errors.InvalidArgumentError,
-        "grad must have the same number of dimensions as var",
-    ):
-      self.evaluate(
-          gen_training_ops.resource_sparse_apply_adagrad_da(
-              var.handle,
-              grad_accum.handle,
-              grad_squared_accum.handle,
-              np.float32(0.0),
-              constant_op.constant([0, 0], dtypes.int32),
-              np.float32(0.0),
-              np.float32(0.0),
-              np.float32(0.0),
-              np.int64(1),
-              use_locking=True,
-          )
-      )
+    with ops.device("/CPU:0"):
+      var, grad_accum, grad_squared_accum = [
+          variables.Variable(np.zeros((10, 2), np.float32)) for _ in range(3)
+      ]
+      self.evaluate(variables.global_variables_initializer())
+      with self.assertRaisesRegex(
+          errors.InvalidArgumentError,
+          "grad must have the same number of dimensions as var",
+      ):
+        self.evaluate(
+            gen_training_ops.resource_sparse_apply_adagrad_da(
+                var.handle,
+                grad_accum.handle,
+                grad_squared_accum.handle,
+                np.float32(0.0),
+                constant_op.constant([0, 0], dtypes.int32),
+                np.float32(0.0),
+                np.float32(0.0),
+                np.float32(0.0),
+                np.int64(1),
+                use_locking=True,
+            )
+        )
 
   def testSparseApplyOpsRejectLowerRankGrad(self):
     # Regression test for #94131: a grad of lower rank than var made the
