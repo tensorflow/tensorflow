@@ -2319,6 +2319,25 @@ StreamExecutorGpuClient::RunAsync(
 
   std::vector<tsl::AsyncValueRef<RawSEDeviceMemory>> to_be_released;
 
+  // When the device uses compute-synchronized allocation, any foreign input
+  // buffer must be explicitly kept alive until execution is complete because a
+  // foreign buffer has its own `on_delete_callback` and may not follow the
+  // compute synchronization model.
+  if (tensorflow::down_cast<PjRtStreamExecutorDevice*>(device)
+          ->local_device_state()
+          ->allocation_model() == LocalDeviceState::kComputeSynchronized) {
+    for (const auto& argument : flat_arguments) {
+      const auto& device_buffer =
+          absl::down_cast<const xla::PjRtStreamExecutorRawBuffer*>(
+              argument->down_cast<xla::PjRtStreamExecutorRawBuffer>())
+              ->device_buffer();
+      if (dynamic_cast<ForeignRawSEDeviceMemory*>(&device_buffer.get()) !=
+          nullptr) {
+        to_be_released.push_back(device_buffer);
+      }
+    }
+  }
+
   return PjRtStreamExecutorExecutionOutput({std::move(to_be_released), {}});
 #else
   return PjRtStreamExecutorClient::RunAsync(
