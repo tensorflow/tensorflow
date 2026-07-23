@@ -13,7 +13,9 @@
 # limitations under the License.
 #==============================================================================
 """Lookup operations."""
+
 import sys
+
 from tensorflow.python.data.experimental.ops.cardinality import assert_cardinality
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
