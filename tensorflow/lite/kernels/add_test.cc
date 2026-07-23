@@ -17,8 +17,10 @@ limitations under the License.
 
 #include <algorithm>
 #include <array>
+#include <limits>
 #include <numeric>
 #include <random>
+#include <type_traits>
 #include <utility>
 #include <vector>
 
@@ -734,6 +736,21 @@ TYPED_TEST(IntegerAddOpTest, Int32MultiDimBroadcast) {
   m.PopulateTensor<TypeParam>(m.input2(), {1, 4});
   ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutput<TypeParam>(), ElementsAreArray({4, 6, 7, 9}));
+}
+
+TYPED_TEST(IntegerAddOpTest, OverflowWrapping) {
+  if (std::is_same<TypeParam, int32_t>::value ||
+      std::is_same<TypeParam, int64_t>::value) {
+    IntegerAddOpModel m(GetTensorType<TypeParam>(), {1, 2}, {1, 2},
+                        ActivationFunctionType_NONE);
+    m.PopulateTensor<TypeParam>(m.input1(),
+                                {std::numeric_limits<TypeParam>::max(), 5});
+    m.PopulateTensor<TypeParam>(m.input2(), {1, 5});
+    ASSERT_EQ(m.Invoke(), kTfLiteOk);
+    EXPECT_THAT(m.GetOutput<TypeParam>(),
+                ElementsAreArray<TypeParam>(
+                    {std::numeric_limits<TypeParam>::min(), 10}));
+  }
 }
 
 template <typename QuantizedType>
