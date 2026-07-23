@@ -167,6 +167,45 @@ TEST_F(AlgebraicSimplifierTest, IsNonNegative_Op_NegativeTestCase) {
   }
 }
 
+TEST_F(AlgebraicSimplifierTest,
+       IsNonNegativeSignedIntegerOverflowNegativeTestCase) {
+  for (const auto op : {"abs(p0)", "multiply(p0, p0)", "power(p0, p0)"}) {
+    const auto kModuleStr = absl::StrFormat(R"(
+      HloModule m
+      test {
+        p0 = s8[] parameter(0)
+        ROOT y = s8[] %s
+      }
+    )",
+                                            op);
+    ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+    ASSERT_FALSE(AlgebraicSimplifierVisitor::IsNonNegative(
+        m->entry_computation()->root_instruction(), default_options_));
+  }
+}
+
+TEST_F(AlgebraicSimplifierTest, IsNonNegativeSignedIntegerIotaCanOverflow) {
+  ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(R"(
+    HloModule m
+    ENTRY test {
+      ROOT iota = s8[129] iota(), iota_dimension=0
+    }
+  )"));
+  ASSERT_FALSE(AlgebraicSimplifierVisitor::IsNonNegative(
+      m->entry_computation()->root_instruction(), default_options_));
+}
+
+TEST_F(AlgebraicSimplifierTest, IsNonNegativeSignedIntegerIotaFitsRange) {
+  ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(R"(
+    HloModule m
+    ENTRY test {
+      ROOT iota = s8[128] iota(), iota_dimension=0
+    }
+  )"));
+  ASSERT_TRUE(AlgebraicSimplifierVisitor::IsNonNegative(
+      m->entry_computation()->root_instruction(), default_options_));
+}
+
 // Test that the result of Broadcast is non-negative if its operand is
 // non-negative
 TEST_F(AlgebraicSimplifierTest, IsNonNegative_Broadcast) {
@@ -10333,18 +10372,32 @@ TEST_F(AlgebraicSimplifierTest, CompareIota) {
 }
 
 TEST_F(AlgebraicSimplifierTest, CompareAbsLtZeroBecomesFalse) {
-  // |x| < 0  ->  false
-  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(R"(
+  // Floating-point |x| < 0  ->  false.
+  ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(R"(
 m {
-  p = s32[5] parameter(0)
-  a = s32[5] abs(p)
-  z = s32[] constant(0)
-  b = s32[5] broadcast(z)
+  p = f32[5] parameter(0)
+  a = f32[5] abs(p)
+  z = f32[] constant(0)
+  b = f32[5] broadcast(z)
   ROOT r = pred[5] compare(a, b), direction=LT
 })"));
   ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).value());
   EXPECT_THAT(m->entry_computation()->root_instruction(),
               GmockMatch(m::Broadcast(m::ConstantScalar(false))));
+}
+
+TEST_F(AlgebraicSimplifierTest, DoesNotFoldSignedIntegerAbsLtZero) {
+  ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(R"(
+m {
+  p = s8[] parameter(0)
+  a = s8[] abs(p)
+  z = s8[] constant(0)
+  ROOT r = pred[] compare(a, z), direction=LT
+})"));
+  ASSERT_FALSE(AlgebraicSimplifier(default_options_).Run(m.get()).value());
+  EXPECT_THAT(m->entry_computation()->root_instruction(),
+              GmockMatch(m::Lt(m::Abs(m::Parameter(0)),
+                               m::ConstantEffectiveScalar(0))));
 }
 
 TEST_F(AlgebraicSimplifierTest, CompareLtZero) {
@@ -12079,6 +12132,30 @@ TEST_F(AlgebraicSimplifierTest, AbsEliminationIota) {
   ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).value());
   EXPECT_THAT(m->entry_computation()->root_instruction(),
               GmockMatch(m::Iota()));
+}
+
+TEST_F(AlgebraicSimplifierTest, DoesNotFoldSignedIntegerSquareAbsSelect) {
+  ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(R"(
+    HloModule m
+    ENTRY test {
+      p0 = s8[4]{0} parameter(0)
+      mul = s8[4]{0} multiply(p0, p0)
+      zero = s8[] constant(0)
+      bcast = s8[4]{0} broadcast(zero), dimensions={}
+      cmp = pred[4]{0} compare(mul, bcast), direction=LT
+      abs = s8[4]{0} abs(mul)
+      ROOT select = s8[4]{0} select(cmp, abs, mul)
+    }
+  )"));
+  ASSERT_FALSE(AlgebraicSimplifier(default_options_).Run(m.get()).value());
+
+  HloInstruction* root = m->entry_computation()->root_instruction();
+  EXPECT_EQ(root->opcode(), HloOpcode::kSelect);
+  EXPECT_EQ(root->operand(0)->opcode(), HloOpcode::kCompare);
+  EXPECT_EQ(root->operand(1)->opcode(), HloOpcode::kAbs);
+  EXPECT_EQ(root->operand(2)->opcode(), HloOpcode::kMultiply);
+  EXPECT_EQ(root->operand(0)->operand(0), root->operand(2));
+  EXPECT_EQ(root->operand(1)->operand(0), root->operand(2));
 }
 
 TEST_F(AlgebraicSimplifierTest, SimplifyRedundantBitcastConvert) {
