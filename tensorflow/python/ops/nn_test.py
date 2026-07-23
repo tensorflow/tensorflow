@@ -820,7 +820,7 @@ class ComputeSampledLogitsTest(test_lib.TestCase):
       pred = 1. / (1. + np.exp(-logits))
       eps = 0.0001
       pred = np.minimum(np.maximum(pred, eps), 1 - eps)
-      return -targets * np.log(pred) - (1. - targets) * np.log(1. - pred)
+      return 0.0 - targets * np.log(pred) - (1. - targets) * np.log(1. - pred)
 
     np.random.seed(0)
     num_classes = 5
@@ -874,7 +874,7 @@ class ComputeSampledLogitsTest(test_lib.TestCase):
       stable_exp_logits = np.exp(logits -
                                  np.amax(logits, axis=1, keepdims=True))
       pred = stable_exp_logits / np.sum(stable_exp_logits, 1, keepdims=True)
-      return -np.sum(targets * np.log(pred + 1.0e-20), axis=1)
+      return 0.0 - np.sum(targets * np.log(pred + 1.0e-20), axis=1)
 
     np.random.seed(0)
     num_classes = 5
@@ -931,7 +931,7 @@ class ComputeSampledLogitsTest(test_lib.TestCase):
       stable_exp_logits = np.exp(logits -
                                  np.amax(logits, axis=1, keepdims=True))
       pred = stable_exp_logits / np.sum(stable_exp_logits, 1, keepdims=True)
-      return -np.sum(targets * np.log(pred + 1.0e-20), axis=1)
+      return 0.0 - np.sum(targets * np.log(pred + 1.0e-20), axis=1)
 
     np.random.seed(0)
     num_classes = 5
@@ -1591,6 +1591,30 @@ class AvgPoolTest(test_lib.TestCase):
     y2 = nn_ops.avg_pool1d(x, ksize, strides, "SAME")
 
     self.assertAllEqual(self.evaluate(y1), self.evaluate(y2))
+
+  def test1DNegativeDimError(self):
+    # Tests that when W < kernel size with VALID padding, the output size is 0
+    # and tf.function does not raise a negative dimension error.
+    # NCW is GPU-only on CPU kernels; gate that path on GPU availability.
+    @def_function.function
+    def f_nwc(x):
+      return nn_ops.avg_pool1d(
+          x, ksize=4, strides=4, padding="VALID", data_format="NWC")
+
+    x_nwc = array_ops.ones((4, 3, 10))
+    out_nwc = f_nwc(x_nwc)
+    self.assertAllEqual(self.evaluate(out_nwc).shape, (4, 0, 10))
+
+    if test_util.is_gpu_available():
+      @def_function.function
+      def f_ncw(x):
+        return nn_ops.avg_pool1d(
+            x, ksize=4, strides=4, padding="VALID", data_format="NCW")
+
+      with test_util.use_gpu():
+        x_ncw = array_ops.ones((4, 10, 3))
+        out_ncw = f_ncw(x_ncw)
+        self.assertAllEqual(self.evaluate(out_ncw).shape, (4, 10, 0))
 
   def test1DNumpy(self):
     # explicitly use float32 for ROCm, as MIOpen does not yet support float64
