@@ -1303,6 +1303,14 @@ absl::StatusOr<HloModuleConfig> HloModule::CreateModuleConfigFromProto(
           std::unique_ptr<DeviceAssignment> device_assignment,
           DeviceAssignment::Deserialize(module.device_assignment()));
       config.set_static_device_assignment(*device_assignment);
+      if (config.replica_count() <= 1 &&
+          device_assignment->replica_count() > 1) {
+        config.set_replica_count(device_assignment->replica_count());
+      }
+      if (config.num_partitions() <= 1 &&
+          device_assignment->computation_count() > 1) {
+        config.set_num_partitions(device_assignment->computation_count());
+      }
     }
   }
   return config;
