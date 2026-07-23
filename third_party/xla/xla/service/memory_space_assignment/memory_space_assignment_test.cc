@@ -17883,6 +17883,54 @@ TEST_F(MemorySpaceAssignmentTest, ConditionalCommonInputAliasedOutputTest) {
       kAlternateMemorySpace);
 }
 
+TEST_F(MemorySpaceAssignmentTest, Async_MixedMemorySpaces_Param) {
+  absl::string_view hlo_string = R"hlo(
+HloModule module, is_scheduled=true
+async_computation {
+  p0 = f32[4] parameter(0)
+  p1 = f32[4] parameter(1)
+  p2 = f32[4] parameter(2)
+  p3 = f32[4] parameter(3)
+  ROOT tuple = (f32[4], f32[4], f32[4], f32[4]) tuple(p0, p1, p2, p3)
+}
+
+ENTRY entry {
+  param = f32[4] parameter(0)
+  neg0 = f32[4] negate(param)
+  neg1 = f32[4] negate(param)
+  neg2 = f32[4] negate(param)
+  neg3 = f32[4] negate(param)
+  async-start = ((f32[4], f32[4], f32[4], f32[4]), (f32[4], f32[4], f32[4], f32[4]), s32[])
+    async-start(neg0, neg1, neg2, neg3), calls=async_computation
+  async-done = (f32[4], f32[4], f32[4], f32[4]) async-done(async-start)
+  gte0 = f32[4] get-tuple-element(async-done), index=0
+  ROOT root = (f32[4], f32[4], f32[4], f32[4]) tuple(gte0, neg0, neg1, neg2)
+}
+  )hlo";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  Options options = DefaultMemorySpaceOptions();
+  options.max_size_in_bytes = 10000;
+  options.is_use_allowed_in_alternate_mem_fn = [](const HloUse& use) {
+    LOG(ERROR) << "is_use_allowed_in_alternate_mem_fn override: "
+               << use.instruction->name() << " operand " << use.operand_number;
+    if (use.instruction->opcode() == HloOpcode::kAsyncStart &&
+        (use.operand_number == 1 || use.operand_number == 2)) {
+      LOG(ERROR) << "  Restricting to default!";
+      return false;
+    }
+    return true;
+  };
+  std::optional<Options> options_override = std::move(options);
+  InstructionCountPrefetchIntervalPicker prefetch_interval_picker(2, 100);
+  ASSERT_OK(AssignMemorySpaceAndReturnStatus(
+                module.get(), std::move(options_override),
+                /*buffer_interval_compare=*/std::nullopt,
+                &prefetch_interval_picker)
+                .status());
+  LOG(ERROR) << "HLO after MSA:\n" << module->ToString();
+}
+
 }  // namespace
 }  // namespace memory_space_assignment
 }  // namespace xla
