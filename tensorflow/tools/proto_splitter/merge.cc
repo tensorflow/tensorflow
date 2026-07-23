@@ -407,8 +407,9 @@ absl::Status Merger::ProcessField(
       }
       return absl::OkStatus();
     };
-    TF_RETURN_IF_ERROR(SetRepeatedFieldElement(
-        merged_message, field_desc, field_index, chunk, message_callback));
+    TF_RETURN_IF_ERROR(SetRepeatedFieldElement(merged_message, field_desc,
+                                               field_index, std::move(chunk),
+                                               message_callback));
   } else {
     // regular field
     auto message_callback = [&reflection, &merged_message, &op, &chunks,
@@ -430,8 +431,8 @@ absl::Status Merger::ProcessField(
       }
       return absl::OkStatus();
     };
-    TF_RETURN_IF_ERROR(
-        SetFieldElement(merged_message, field_desc, chunk, message_callback));
+    TF_RETURN_IF_ERROR(SetFieldElement(merged_message, field_desc,
+                                       std::move(chunk), message_callback));
   }
 
   return absl::OkStatus();
