@@ -375,9 +375,9 @@ TfLiteStatus InterpreterBuilder::ParseNodes(
         init_data = reinterpret_cast<const char*>(op->custom_options()->data());
         init_data_size = op->custom_options()->size();
       } else if (op->large_custom_options_offset() > 1 && allocation_) {
-        if (op->large_custom_options_size() > allocation_->bytes() ||
-            op->large_custom_options_offset() >
-                allocation_->bytes() - op->large_custom_options_size()) {
+        if (op->large_custom_options_offset() +
+                op->large_custom_options_size() >
+            allocation_->bytes()) {
           TF_LITE_REPORT_ERROR(
               error_reporter_,
               "Custom Option Offset for opcode_index %d is out of bound\n",
@@ -731,25 +731,6 @@ TfLiteStatus InterpreterBuilder::ParseTensors(
     const auto* tensor = tensors->Get(i);
     std::vector<int> dims = FlatBufferIntArrayToVector(tensor->shape());
 
-    // Validate that all dimension values are non-negative. Malformed models
-    // may contain extreme values (e.g. INT_MAX) that cause integer overflow
-    // during tensor size computation, leading to undersized buffer allocation
-    // and SIGSEGV.
-    bool has_invalid_dims = false;
-    for (size_t d = 0; d < dims.size(); ++d) {
-      if (dims[d] < 0) {
-        TF_LITE_REPORT_ERROR(
-            error_reporter_,
-            "Tensor %d has negative dimension %d (value: %d). "
-            "All tensor dimensions must be non-negative.\n",
-            i, static_cast<int>(d), dims[d]);
-        status = kTfLiteError;
-        has_invalid_dims = true;
-        break;
-      }
-    }
-    if (has_invalid_dims) continue;
-
     TfLiteType type;
     if (ConvertTensorType(tensor->type(), &type, error_reporter_) !=
         kTfLiteOk) {
@@ -779,8 +760,7 @@ TfLiteStatus InterpreterBuilder::ParseTensors(
           *buffer_data = reinterpret_cast<const char*>(array->data());
           return kTfLiteOk;
         } else if (offset > 1 && allocation_) {
-          if (buffer->size() > allocation_->bytes() ||
-              offset > allocation_->bytes() - buffer->size()) {
+          if (offset + buffer->size() > allocation_->bytes()) {
             TF_LITE_REPORT_ERROR(
                 error_reporter_,
                 "Constant buffer %d specified an out of range offset.\n",

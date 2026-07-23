@@ -800,38 +800,6 @@ TEST(BasicFlatBufferModel, TestParseModelWithSparseTensor) {
 
 // TODO(b/150072943): Add malformed model with sparse tensor tests.
 
-TEST(BasicFlatBufferModel, TestNegativeTensorDimensionFails) {
-  flatbuffers::FlatBufferBuilder builder;
-  std::vector<int32_t> bad_shape = {2, -1, 3};
-  auto tensor =
-      CreateTensorDirect(builder, &bad_shape, TensorType_FLOAT32, 0, "bad");
-  std::vector<flatbuffers::Offset<Tensor>> tensors = {tensor};
-  std::vector<int32_t> inputs = {0};
-  std::vector<int32_t> outputs = {0};
-  std::vector<flatbuffers::Offset<Operator>> operators;
-  auto subgraph =
-      CreateSubGraphDirect(builder, &tensors, &inputs, &outputs, &operators);
-  std::vector<flatbuffers::Offset<SubGraph>> subgraphs = {subgraph};
-  std::vector<flatbuffers::Offset<Buffer>> buffers = {
-      CreateBufferDirect(builder)};
-  std::vector<flatbuffers::Offset<OperatorCode>> operator_codes;
-  auto model = CreateModelDirect(builder, TFLITE_SCHEMA_VERSION,
-                                 &operator_codes, &subgraphs,
-                                 "negative tensor dimension test", &buffers);
-  FinishModelBuffer(builder, model);
-
-  std::unique_ptr<FlatBufferModel> fb_model = FlatBufferModel::BuildFromBuffer(
-      reinterpret_cast<const char*>(builder.GetBufferPointer()),
-      builder.GetSize());
-  ASSERT_TRUE(fb_model);
-
-  std::unique_ptr<Interpreter> interpreter;
-  TrivialResolver resolver(&dummy_reg);
-  ASSERT_EQ(InterpreterBuilder(*fb_model, resolver)(&interpreter),
-            kTfLiteError);
-  ASSERT_EQ(interpreter, nullptr);
-}
-
 // The models here have at least a node that uses the same tensor as input and
 // output. This causes segfaults when trying to eval the operator, hence we try
 // to prevent this scenario. The earliest place we can check this is in

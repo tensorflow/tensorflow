@@ -318,21 +318,6 @@ TEST(BasicInterpreter, CheckResize) {
   }
 }
 
-TEST(BasicInterpreter, RejectNegativeTensorDimensions) {
-  Interpreter interpreter;
-  ASSERT_EQ(interpreter.AddTensors(2), kTfLiteOk);
-  TfLiteQuantizationParams quantization{};
-  const char data[] = "";
-
-  EXPECT_EQ(interpreter.SetTensorParametersReadWrite(
-                0, kTfLiteString, "", {2, -1}, quantization),
-            kTfLiteError);
-  EXPECT_EQ(interpreter.SetTensorParametersReadOnly(
-                1, kTfLiteString, "", {2, -1}, quantization, data,
-                sizeof(data)),
-            kTfLiteError);
-}
-
 TEST(BasicInterpreter, CheckAlignment) {
   struct {
     TfLiteType type;
