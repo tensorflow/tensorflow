@@ -402,6 +402,10 @@ common:windows --host_copt=-DNOGDI
 # See https://docs.microsoft.com/en-us/cpp/preprocessor/preprocessor-experimental-overview
 common:windows --copt=/Zc:preprocessor
 common:windows --host_copt=/Zc:preprocessor
+common:windows --copt=/Gy
+common:windows --host_copt=/Gy
+common:windows --copt=/Gw
+common:windows --host_copt=/Gw
 
 # Misc build options we need for windows.
 common:windows --linkopt=/DEBUG
