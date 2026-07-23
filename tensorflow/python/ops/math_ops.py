@@ -2982,6 +2982,10 @@ def reduce_min(input_tensor, axis=None, keepdims=False, name=None):
   Returns:
     The reduced tensor.
 
+  Note: When computing gradients, if multiple elements are equal to the
+    minimum value along the reduced axes, the gradient is distributed equally
+    among all such elements.
+
   @compatibility(numpy)
   Equivalent to np.min
   @end_compatibility
@@ -3103,6 +3107,10 @@ def reduce_max(input_tensor, axis=None, keepdims=False, name=None):
 
   Returns:
     The reduced tensor.
+
+  Note: When computing gradients, if multiple elements are equal to the
+    maximum value along the reduced axes, the gradient is distributed equally
+    among all such elements.
   """
   return reduce_max_with_dims(input_tensor, axis, keepdims, name,
                               _ReductionDims(input_tensor, axis))
