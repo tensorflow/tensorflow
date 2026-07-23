@@ -2243,8 +2243,7 @@ StreamExecutorGpuClient::RunAsync(
         // may alias, not buffers that must alias.
         buffers_in_result.insert(input->mem());
         return absl::OkStatus();
-      } else if (!output_info.passthrough &&
-                 !ShapeUtil::GetSubshape(gpu_exec->result_shape(), index)
+      } else if (!ShapeUtil::GetSubshape(gpu_exec->result_shape(), index)
                       .IsTuple()) {
         ASSIGN_OR_RETURN(
             result_buffer,

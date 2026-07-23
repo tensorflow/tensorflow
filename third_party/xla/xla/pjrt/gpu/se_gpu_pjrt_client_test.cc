@@ -57,6 +57,7 @@ limitations under the License.
 #include "xla/debug_options_flags.h"
 #include "xla/ffi/ffi.h"
 #include "xla/future.h"
+#include "xla/hlo/builder/xla_builder.h"
 #include "xla/hlo/builder/xla_computation.h"
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/hlo/testlib/test.h"
@@ -353,6 +354,52 @@ ENTRY %Add.6 (a.1: f32[], b.2: f32[]) -> (f32[], f32[]) {
                               result[0][0]->GetReadyFuture()));
   EXPECT_THAT(another_buffer->GetReadyFuture().Await(),
               StatusIs(input_error.code(), HasSubstr(input_error.message())));
+}
+
+TEST(StreamExecutorGpuClientTest, RuntimeDonationDenial) {
+  ASSERT_OK_AND_ASSIGN(auto client,
+                       GetStreamExecutorGpuClient(GetTestGpuClientOptions()));
+
+  Shape shape = ShapeUtil::MakeShapeWithType<float>({});
+  std::vector<float> p0_data{1.0f};
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<PjRtBuffer> param0,
+      client->BufferFromHostBuffer(
+          p0_data.data(), shape.element_type(), shape.dimensions(),
+          /*byte_strides=*/std::nullopt,
+          PjRtClient::HostBufferSemantics::kImmutableOnlyDuringCall, nullptr,
+          client->memory_spaces()[0], /*device_layout=*/nullptr));
+
+  ASSERT_OK_AND_ASSIGN(auto p0_ref, param0->AcquireExternalReference());
+  void* p0_device_buffer = p0_ref->OpaqueDeviceMemoryDataPointer();
+
+  // case 1:  i0^       ->   r0^
+  XlaBuilder builder("c");
+  auto inp_0 = Parameter(&builder, 0, shape, "i0");
+  builder.SetUpAlias({}, 0, {});
+  ASSERT_OK_AND_ASSIGN(XlaComputation computation, builder.Build(inp_0));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtLoadedExecutable> executable,
+                       client->CompileAndLoad(computation, CompileOptions()));
+
+  // Insert input index that denotes input 0 is ineligible to be donated.
+  ExecuteOptions execute_options;
+  execute_options.non_donatable_input_indices.insert(0);
+  ASSERT_OK_AND_ASSIGN(
+      std::vector<std::vector<std::unique_ptr<PjRtBuffer>>> results,
+      executable->Execute({{param0.get()}}, execute_options));
+  ASSERT_EQ(results[0].size(), 1);
+
+  std::vector<float> expected({1.0f});
+  ASSERT_OK_AND_ASSIGN(std::shared_ptr<Literal> result_literal,
+                       results[0][0]->ToLiteral().Await());
+  EXPECT_EQ(result_literal->data<float>(), expected);
+
+  // Expect input 0 buffer is not donated (and thus not deleted);
+  ASSERT_OK_AND_ASSIGN(auto result_ref,
+                       results[0][0]->AcquireExternalReference());
+  void* result_device_buffer = result_ref->OpaqueDeviceMemoryDataPointer();
+  EXPECT_FALSE(param0->IsDeleted());
+  ASSERT_NE(p0_device_buffer, result_device_buffer);
 }
 
 TEST(StreamExecutorGpuClientTest, SendRecvChunked) {
