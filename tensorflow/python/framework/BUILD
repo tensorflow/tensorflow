@@ -1908,6 +1908,7 @@ pytype_strict_library(
     srcs = ["type_spec_registry.py"],
     visibility = visibility + ["//third_party/py/tensorflow_gnn:__subpackages__"],
     deps = [
+        "//tensorflow/python/platform:tf_logging",
         "//tensorflow/python/types:internal",
     ],
 )
@@ -3382,11 +3383,4 @@ cc_library(
         "//tensorflow/core:framework",
         "@pybind11",
     ],
-)
-
-cc_library(
-    name = "python_api_parameter_converter_alwayslink",
-    visibility = ["//visibility:public"],
-    deps = [":python_api_parameter_converter"],
-    alwayslink = 1,
 )

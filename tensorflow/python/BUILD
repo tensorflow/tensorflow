@@ -1732,9 +1732,7 @@ pywrap_library(
         "//tensorflow/python/util:_tf_stack",
         "//tensorflow/python/util:fast_module_type",
         "//tensorflow/python/util:pywrap_xla_ops",
-    ] + if_windows([
-        "//tensorflow/python/framework:python_api_parameter_converter_alwayslink",
-    ]),
+    ],
 )
 
 pywrap_common_library(
