@@ -352,9 +352,16 @@ TfLiteStatus Prepare(KernelType kernel_type, TfLiteContext* context,
   // or equals (normal conv).
   auto input_channel = input->dims->data[3];
   auto filter_input_channel = filter->dims->data[3];
+  TF_LITE_ENSURE(context, input->dims->data[1] > 0);
+  TF_LITE_ENSURE(context, input->dims->data[2] > 0);
+  TF_LITE_ENSURE(context, input_channel > 0);
+  TF_LITE_ENSURE(context, filter->dims->data[1] > 0);
+  TF_LITE_ENSURE(context, filter->dims->data[2] > 0);
+  TF_LITE_ENSURE(context, filter->dims->data[0] > 0);
   TF_LITE_ENSURE(context, filter_input_channel > 0);
   TF_LITE_ENSURE_EQ(context, input_channel % filter_input_channel, 0);
   data->groups = input_channel / filter_input_channel;
+  TF_LITE_ENSURE_EQ(context, filter->dims->data[0] % data->groups, 0);
 
   // Check types. (We assume that UINT8 refers to quantized tensors)
   TfLiteType input_type = input->type;
@@ -485,11 +492,13 @@ TfLiteStatus Prepare(KernelType kernel_type, TfLiteContext* context,
   // Matching GetWindowedOutputSize in TensorFlow.
   auto padding = params->padding;
   int out_width, out_height;
-  data->padding = ComputePaddingHeightWidth(
-      params->stride_height, params->stride_width,
-      params->dilation_height_factor, params->dilation_width_factor,
-      input_height, input_width, filter_height, filter_width, padding,
-      &out_height, &out_width);
+  TF_LITE_ENSURE_OK(
+      context,
+      ComputePaddingHeightWidthChecked(
+          params->stride_height, params->stride_width,
+          params->dilation_height_factor, params->dilation_width_factor,
+          input_height, input_width, filter_height, filter_width, padding,
+          &out_height, &out_width, &data->padding));
 
   size_t im2col_type_size;
   TF_LITE_ENSURE_STATUS(GetSizeOfType(context, input->type, &im2col_type_size));

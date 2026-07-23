@@ -16,6 +16,7 @@ limitations under the License.
 
 #include <cstdint>
 #include <initializer_list>
+#include <limits>
 #include <map>
 #include <memory>
 #include <string>
@@ -158,7 +159,7 @@ class PrepareOnlyDepthwiseConvolutionOpModel : public SingleOpModel {
 
     const int input_depth = GetShape(input_)[3];
     const int output_depth = GetShape(filter_)[3];
-    const int depth_mul = output_depth / input_depth;
+    const int depth_mul = input_depth > 0 ? output_depth / input_depth : 1;
     SetBuiltinOp(
         BuiltinOperator_DEPTHWISE_CONV_2D,
         BuiltinOptions_DepthwiseConv2DOptions,
@@ -220,6 +221,42 @@ TEST(DepthwiseConvolutionPrepareSecurityTest, RejectsInt4FilterSizeOverflow) {
       {TensorType_FLOAT32, {}}, Padding_VALID);
 
   EXPECT_EQ(m.AllocateTensors(), kTfLiteError);
+}
+
+TEST(DepthwiseConvolutionPrepareSecurityTest, RejectsZeroInputChannels) {
+  PrepareOnlyDepthwiseConvolutionOpModel m(
+      ops::builtin::Register_DEPTHWISE_CONVOLUTION_GENERIC_OPT(),
+      {TensorType_FLOAT32, {1, 1, 1, 0}}, {TensorType_FLOAT32, {1, 1, 1, 1}},
+      {TensorType_FLOAT32, {}}, Padding_VALID);
+
+  EXPECT_EQ(m.AllocateTensors(), kTfLiteError);
+}
+
+TEST(DepthwiseConvolutionPrepareSecurityTest,
+     RejectsNonIntegralDepthMultiplier) {
+  PrepareOnlyDepthwiseConvolutionOpModel m(
+      ops::builtin::Register_DEPTHWISE_CONVOLUTION_GENERIC_OPT(),
+      {TensorType_FLOAT32, {1, 1, 1, 2}}, {TensorType_FLOAT32, {1, 1, 1, 3}},
+      {TensorType_FLOAT32, {}}, Padding_VALID);
+
+  EXPECT_EQ(m.AllocateTensors(), kTfLiteError);
+}
+
+TEST(DepthwiseConvolutionPrepareSecurityTest,
+     RejectsParametersOutsideInt16Range) {
+  constexpr int kTooLarge = std::numeric_limits<int16_t>::max() + 1;
+  PrepareOnlyDepthwiseConvolutionOpModel dilation_model(
+      ops::builtin::Register_DEPTHWISE_CONVOLUTION_GENERIC_OPT(),
+      {TensorType_FLOAT32, {1, 1, 1, 1}}, {TensorType_FLOAT32, {1, 1, 1, 1}},
+      {TensorType_FLOAT32, {}}, Padding_VALID, /*dilation_factor=*/kTooLarge);
+  EXPECT_EQ(dilation_model.AllocateTensors(), kTfLiteError);
+
+  PrepareOnlyDepthwiseConvolutionOpModel stride_model(
+      ops::builtin::Register_DEPTHWISE_CONVOLUTION_GENERIC_OPT(),
+      {TensorType_FLOAT32, {1, 1, 1, 1}}, {TensorType_FLOAT32, {1, 1, 1, 1}},
+      {TensorType_FLOAT32, {}}, Padding_VALID, /*dilation_factor=*/1,
+      /*stride_width=*/kTooLarge);
+  EXPECT_EQ(stride_model.AllocateTensors(), kTfLiteError);
 }
 
 TEST_P(DepthwiseConvolutionOpTest, ActivationReluTest) {
