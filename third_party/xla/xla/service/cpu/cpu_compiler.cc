@@ -194,7 +194,7 @@ limitations under the License.
 #include "xla/service/cpu/ir_emitter2.h"
 #include "xla/service/cpu/metrics.h"
 #include "xla/service/cpu/parallel_task_assignment.h"
-#include "xla/service/cpu/small_while_loop_hoisting_pass.h"
+#include "xla/service/cpu/small_region_hoisting_pass.h"
 #include "xla/service/cpu/thunk_emitter.h"
 #include "xla/service/cpu_gpu_shape_verifier.h"
 #include "xla/service/dump.h"
@@ -1144,13 +1144,20 @@ absl::Status CpuCompiler::RunHloPassesAfterLayoutAssn(
     pipeline.AddPass<CopyInsertion>(&alias_info);
   }
 
-  // The hoisting of small while loops is only useful in the context of the
-  // thunk runtime.
+  // Hoist small region-eligible runs of instructions (a small while loop is
+  // one region shape) into single kernels, recovering whole-module codegen
+  // performance for small models that the per-op thunk granularity regressed.
   {
     ASSIGN_OR_RETURN(
         int64_t byte_threshold,
         xla::cpu::options::SmallWhileLoopByteThreshold(module->config()));
-    pipeline.AddPass<SmallWhileLoopHoistingPass>(byte_threshold);
+    // Sentinel 0 disables region hoisting (A/B measurement escape hatch).
+    if (byte_threshold != 0) {
+      // Straight-line regions aggregate several ops' footprints, so gate them
+      // at the design default of 64KB rather than the 1KB single-while default.
+      pipeline.AddPass<SmallRegionHoistingPass>(
+          std::max<int64_t>(byte_threshold, int64_t{1} << 16));
+    }
   }
 
   pipeline.AddPass<PropagateCallMetadata>();

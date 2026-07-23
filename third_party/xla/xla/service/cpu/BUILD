@@ -164,6 +164,7 @@ cc_library(
         ":ir_emitter2",
         ":metrics",
         ":parallel_task_assignment",
+        ":small_region_hoisting_pass",
         ":small_while_loop_hoisting_pass",
         ":thunk_emitter",
         "//xla:debug_options_flags",
@@ -1719,6 +1720,48 @@ cc_library(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
+    ],
+)
+
+cc_library(
+    name = "small_region_hoisting_pass",
+    srcs = ["small_region_hoisting_pass.cc"],
+    hdrs = ["small_region_hoisting_pass.h"],
+    deps = [
+        ":backend_config_proto_cc",
+        ":cpu_executable",
+        "//xla:shape_util",
+        "//xla:util",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/pass:hlo_pass",
+        "//xla/service:collective_ops_utils",
+        "//xla/service:hlo_cost_analysis",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_macros",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
+    ],
+)
+
+xla_cc_test(
+    name = "small_region_hoisting_pass_test",
+    srcs = ["small_region_hoisting_pass_test.cc"],
+    deps = [
+        ":small_region_hoisting_pass",
+        "//xla:literal_util",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
+        "//xla/hlo/testlib:test",
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
