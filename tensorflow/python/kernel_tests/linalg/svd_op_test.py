@@ -24,6 +24,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import gen_linalg_ops
 from tensorflow.python.ops import gradient_checker
 from tensorflow.python.ops import gradient_checker_v2
 from tensorflow.python.ops import gradients_impl
@@ -122,6 +123,18 @@ class SvdOpTest(test.TestCase):
     val = self.evaluate(all_ops)
     for i in range(0, len(val), 2):
       self.assertAllEqual(val[i], val[i + 1])
+
+  def testComputeUvFalseReturnsEmptyUv(self):
+    # Regression test for GitHub issue 102352: with compute_uv=False the raw
+    # op used to return uninitialized scalars in `u` and `v` on CPU instead
+    # of empty tensors.
+    matrix = constant_op.constant([[1., 2.], [2., 5.]])
+    s, u, v = gen_linalg_ops.svd(matrix, compute_uv=False)
+    self.assertEqual([2], s.shape.as_list())
+    self.assertEqual([0], u.shape.as_list())
+    self.assertEqual([0], v.shape.as_list())
+    self.assertEqual(0, self.evaluate(u).size)
+    self.assertEqual(0, self.evaluate(v).size)
 
   @test_util.run_in_graph_and_eager_modes(use_gpu=True)
   def testEmptyBatches(self):
