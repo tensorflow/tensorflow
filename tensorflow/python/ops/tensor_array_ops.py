@@ -369,8 +369,21 @@ class _GraphTensorArray:
       with self._maybe_colocate_with(value):
         lengths_64 = math_ops.cast(lengths, dtypes.int64)
         if not context.executing_eagerly():
+          if value.shape.rank == 0:
+            raise ValueError(
+                "Expected value to be at least a vector, but received shape: %s"
+                % value.shape.as_list())
           clengths = tensor_util.constant_value(lengths_64)
-          if value.shape.dims is not None and clengths is not None:
+          if (value.shape.rank is not None and value.shape.rank > 0 and
+              clengths is not None):
+            sum_lengths = int(np.sum(clengths))
+            value_first_dim = value.shape.as_list()[0]
+            if value_first_dim is not None:
+              if sum_lengths != value_first_dim:
+                raise ValueError(
+                    "Expected sum of lengths to be equal to values.shape[0], "
+                    "but sum of lengths is %d and value's shape is: %s"
+                    % (sum_lengths, value.shape.as_list()))
             if clengths.shape and clengths.max() == clengths.min():
               self._check_element_shape(
                   tensor_shape.TensorShape([clengths[0]
@@ -644,8 +657,21 @@ class _GraphTensorArrayV2:
       _check_dtypes(value, self._dtype)
       lengths_64 = math_ops.cast(lengths, dtypes.int64)
       if not context.executing_eagerly():
+        if value.shape.rank == 0:
+          raise ValueError(
+              "Expected value to be at least a vector, but received shape: %s"
+              % value.shape.as_list())
         clengths = tensor_util.constant_value(lengths_64)
-        if value.shape.dims is not None and clengths is not None:
+        if (value.shape.rank is not None and value.shape.rank > 0 and
+            clengths is not None):
+          sum_lengths = int(np.sum(clengths))
+          value_first_dim = value.shape.as_list()[0]
+          if value_first_dim is not None:
+            if sum_lengths != value_first_dim:
+              raise ValueError(
+                  "Expected sum of lengths to be equal to values.shape[0], "
+                  "but sum of lengths is %d and value's shape is: %s"
+                  % (sum_lengths, value.shape.as_list()))
           if clengths.shape and clengths.max() == clengths.min():
             self._check_element_shape(
                 tensor_shape.TensorShape([clengths[0]
