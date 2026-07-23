@@ -30,6 +30,7 @@ limitations under the License.
 #include "xla/hlo/testlib/verified_hlo_module.h"
 #include "xla/hlo/utils/hlo_matchers.h"
 #include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/platform/logging.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 
@@ -456,5 +457,58 @@ ENTRY main {
   EXPECT_THAT(cond->root_instruction()->operand(1),
               op::Add(op::GetTupleElement(), op::Constant()));
 }
+
+TEST_F(WhileUtilTest, IsUpdatedBufferWriteOnly) {
+  const char* const hlo_string = R"(
+HloModule ModuleWithWriteOnly
+
+ENTRY entry {
+  p_entry_0 = f32[32,32]{1,0} parameter(0)
+  p_entry_1 = f32[32,32]{1,0} parameter(1)
+
+  zero = s32[] constant(0)
+  update_slice = f32[1,32]{1,0} constant({ {0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0} })
+
+  // Base DUS
+  dus1 = f32[32,32]{1,0} dynamic-update-slice(p_entry_0, update_slice, zero, zero)
+
+  // Chained DUS (Safe)
+  dus2 = f32[32,32]{1,0} dynamic-update-slice(dus1, update_slice, zero, zero)
+
+  // Unsafe read
+  slice1 = f32[1,32]{1,0} dynamic-slice(dus1, zero, zero), dynamic_slice_sizes={1,32}
+
+  // Unsafe usage as payload
+  dus3 = f32[32,32]{1,0} dynamic-update-slice(p_entry_1, dus1, zero, zero)
+
+  // Dead code DUS (Unsafe because update is discarded)
+  dus4 = f32[32,32]{1,0} dynamic-update-slice(p_entry_1, update_slice, zero, zero)
+
+  ROOT root = tuple(dus2, slice1, dus3)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  HloInstruction* dus1 = FindInstruction(module.get(), "dus1");
+  HloInstruction* dus2 = FindInstruction(module.get(), "dus2");
+  HloInstruction* dus4 = FindInstruction(module.get(), "dus4");
+
+  ASSERT_NE(dus1, nullptr);
+  ASSERT_NE(dus2, nullptr);
+  ASSERT_NE(dus4, nullptr);
+
+  // dus1 is NOT write-only because it feeds slice1 (a read) and dus3 (as
+  // payload)
+  EXPECT_FALSE(WhileUtil::IsUpdatedBufferWriteOnly(dus1));
+
+  // dus2 IS write-only because it ONLY feeds the root instruction
+  EXPECT_TRUE(WhileUtil::IsUpdatedBufferWriteOnly(dus2));
+
+  // dus4 is NOT write-only because it has 0 users (dead code)
+  EXPECT_FALSE(WhileUtil::IsUpdatedBufferWriteOnly(dus4));
+}
+
 }  // namespace
 }  // namespace xla
