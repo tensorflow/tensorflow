@@ -813,6 +813,39 @@ class RFFTOpsTest(BaseFFTOpsTest, parameterized.TestCase):
           use_placeholder=True,
           rtol=tol, atol=tol)
 
+  def test_raw_rfft_fft_length_greater_than_input_dim(self):
+    rffts_for_rank = {
+        1: gen_spectral_ops.rfft,
+        2: gen_spectral_ops.rfft2d,
+        3: gen_spectral_ops.rfft3d
+    }
+    for rank, rfft_fn in rffts_for_rank.items():
+      x = np.arange(np.prod([2] * rank)).reshape([2] * rank).astype(np.float32)
+      fft_length = [4] * rank
+      padded_x = np.zeros([4] * rank, dtype=np.float32)
+      padded_x[tuple(slice(0, 2) for _ in range(rank))] = x
+      expected = self._np_fft(padded_x, rank, fft_length)
+
+      with self.cached_session(use_gpu=False):
+        self.assertAllClose(self.evaluate(rfft_fn(x, fft_length)), expected)
+
+      if test.is_gpu_available(cuda_only=True):
+        with self.cached_session(use_gpu=True):
+          self.assertAllClose(
+              self.evaluate(rfft_fn(x, fft_length)), expected, atol=1e-4)
+
+  @test_util.run_gpu_only
+  def testRawRFFTNDFFTLengthGreaterThanInputDim(self):
+    x = np.arange(8).reshape([2, 2, 2]).astype(np.float32)
+    fft_length = [4, 4]
+    axes = [-2, -1]
+    expected = np.fft.rfftn(x, s=fft_length, axes=axes)
+
+    with self.cached_session(use_gpu=True):
+      actual = self.evaluate(
+          gen_spectral_ops.rfftnd(x, fft_length, axes))
+    self.assertAllClose(actual, expected, atol=1e-4)
+
   @parameterized.parameters(itertools.product(
       VALID_FFT_RANKS, range(3), (5, 6), (np.float32, np.float64)))
   def test_random(self, rank, extra_dims, size, np_rtype):
@@ -876,22 +909,13 @@ class RFFTOpsTest(BaseFFTOpsTest, parameterized.TestCase):
             ValueError, "Dimension must be .*but is {}.*".format(rank + 1)):
           self._tf_ifft(x, rank, fft_length)
 
-      # Test that calling the kernel directly without padding to fft_length
-      # produces an error.
-      rffts_for_rank = {
-          1: [gen_spectral_ops.rfft, gen_spectral_ops.irfft],
-          2: [gen_spectral_ops.rfft2d, gen_spectral_ops.irfft2d],
-          3: [gen_spectral_ops.rfft3d, gen_spectral_ops.irfft3d]
+      # IRFFT still requires an input compatible with fft_length.
+      irffts_for_rank = {
+          1: gen_spectral_ops.irfft,
+          2: gen_spectral_ops.irfft2d,
+          3: gen_spectral_ops.irfft3d
       }
-      rfft_fn, irfft_fn = rffts_for_rank[rank]
-      with self.assertRaisesWithPredicateMatch(
-          errors.InvalidArgumentError,
-          "Input dimension .* must have length of at least 6 but got: 5"):
-        x = np.zeros((5,) * rank).astype(np.float32)
-        fft_length = [6] * rank
-        with self.cached_session():
-          self.evaluate(rfft_fn(x, fft_length))
-
+      irfft_fn = irffts_for_rank[rank]
       with self.assertRaisesWithPredicateMatch(
           errors.InvalidArgumentError,
           "Input dimension .* must have length of at least .* but got: 3"):
