@@ -116,8 +116,12 @@ absl::Status LoadOpenCLOnce() {
 #ifdef __APPLE__
   static const char* kClLibName =
       "/System/Library/Frameworks/OpenCL.framework/OpenCL";
-#else
+#elif defined(TFLITE_OPENCL_LIBRARY_NAME)
+  static const char* kClLibName = TFLITE_OPENCL_LIBRARY_NAME;
+#elif defined(__ANDROID__)
   static const char* kClLibName = "libOpenCL.so";
+#else
+  static const char* kClLibName = "libOpenCL.so.1";
 #endif
 #ifdef __ANDROID__
   libopencl = AndroidDlopenSphalLibrary(kClLibName, RTLD_NOW | RTLD_LOCAL);
