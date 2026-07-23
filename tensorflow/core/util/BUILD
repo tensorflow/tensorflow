@@ -508,6 +508,8 @@ cc_library(
         ":ragged_to_dense_util_common",
         "//tensorflow/core:framework",
         "//tensorflow/core:protos_all_cc",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -625,11 +627,15 @@ cc_library(
     srcs = ["tensor_format.cc"],
     hdrs = ["tensor_format.h"],
     deps = [
+        "//tensorflow/core:lib",
         "//tensorflow/core/framework:tensor",
-        "//tensorflow/core/lib/gtl:array_slice",
-        "//tensorflow/core/lib/gtl:inlined_vector",
         "//tensorflow/core/platform:types",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/types:span",
     ],
 )
 

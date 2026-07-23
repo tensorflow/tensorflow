@@ -15,6 +15,12 @@ limitations under the License.
 
 #include "tensorflow/core/util/tensor_format.h"
 
+#include <cstdint>
+#include <string>
+
+#include "absl/log/log.h"
+#include "absl/strings/string_view.h"
+
 namespace tensorflow {
 
 std::string GetConvnetDataFormatAttrString() {
