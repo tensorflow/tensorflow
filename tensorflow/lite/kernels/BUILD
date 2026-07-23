@@ -832,6 +832,7 @@ cc_library(
     }),
     visibility = [
         "//tensorflow/lite/core/kernels:__subpackages__",
+        "//tensorflow/lite/testing/fuzzing:__pkg__",
     ],
     deps = BUILTIN_KERNEL_DEPS + [
         ":variable_op_kernels",

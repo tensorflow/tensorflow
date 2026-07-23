@@ -450,6 +450,10 @@ class Subgraph {
       int tensor_index, const TfLiteCustomAllocation& allocation,
       int64_t flags = kTfLiteCustomAllocationFlagsNone);
 
+  // Sets the allocator used for runtime-owned CPU buffers in this subgraph.
+  // The allocator is not owned by the subgraph and must outlive it.
+  TfLiteStatus SetAllocator(TfLiteAllocator* allocator);
+
   // WARNING: This is an experimental interface that is subject to change.
   // Clears all custom memory allocations for the tensors in the subgraph.
   // User should call this before resizing input tensors.
@@ -1169,6 +1173,9 @@ class Subgraph {
   std::vector<TfLiteDelegateParams> partitioning_preview_cache_;
 
   std::unique_ptr<MemoryPlanner> memory_planner_;
+
+  // Allocator used for runtime-owned CPU buffers. Not owned.
+  TfLiteAllocator* allocator_ = nullptr;
 
   // Maps tensor index to custom allocation for all applicable tensors.
   std::map<int, TfLiteCustomAllocation> custom_allocations_;

@@ -14,6 +14,7 @@
 # ==============================================================================
 
 load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("@rules_cc//cc:cc_test.bzl", "cc_test")
 load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
 load(
@@ -79,6 +80,7 @@ filegroup(
 filegroup(
     name = "tflite_internal_cc_3p_api_deps_src",
     srcs = [
+        "allocator_internal.h",
         "common.cc",
         "common.h",
     ],
@@ -371,9 +373,21 @@ cc_test(
     ],
 )
 
+cc_library(
+    name = "allocator_internal",
+    hdrs = ["allocator_internal.h"],
+    compatible_with = get_compatible_with_portable(),
+    copts = tflite_copts(),
+    visibility = ["//tensorflow/lite:__subpackages__"],
+    deps = [":common"],
+)
+
 tflite_cc_library_with_c_headers_test(
     name = "common",
-    srcs = ["common.cc"],
+    srcs = [
+        "allocator_internal.h",
+        "common.cc",
+    ],
     hdrs = [
         "builtin_op_data.h",
         "common.h",
