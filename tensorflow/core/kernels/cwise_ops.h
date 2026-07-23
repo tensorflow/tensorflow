@@ -750,6 +750,72 @@ struct functor_traits<scalar_erfinv_op<T>> {
   };
 };
 
+
+template <typename T>
+struct tensorflow_digamma_op {
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE T operator()(const T& x) const {
+    if (x == T(0.0)) {
+      return Eigen::numext::signbit(x)
+                 ? Eigen::NumTraits<T>::infinity()
+                 : -Eigen::NumTraits<T>::infinity();
+    }
+    const T min_val = std::numeric_limits<T>::min();
+    if (x > T(0.0) && x < min_val) {
+      return -Eigen::NumTraits<T>::infinity();
+    }
+    return scalar_digamma_op<T>()(x);
+  }
+
+  template <typename Packet>
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE Packet packetOp(const Packet& x) const {
+    using namespace Eigen::internal;
+    // Get the underlying scalar digamma packet result
+    Packet result = scalar_digamma_op<T>().packetOp(x);
+
+    // Mask for x == 0 (catches both +0.0 and -0.0)
+    Packet zero = pzero(x);
+    Packet is_zero = pcmp_eq(x, zero);
+
+    // Reinterpret float packet as integer packet to safely read sign bit.
+    // -0.0 has bit pattern 0x80000000; +0.0 has 0x00000000.
+    // Float pcmp_eq cannot distinguish them (IEEE 754: +0.0 == -0.0 is true).
+    using IntPacket = typename Eigen::internal::unpacket_traits<Packet>::integer_packet;
+
+    IntPacket x_as_int   = Eigen::internal::preinterpret<IntPacket>(x);
+    IntPacket sign_mask  = pset1<IntPacket>(static_cast<int32_t>(0x80000000u));
+    IntPacket has_sign   = pand(x_as_int, sign_mask);
+    // all-ones if sign bit is set (i.e. negative or -0.0), all-zeros otherwise
+    IntPacket is_sign_set = pcmp_eq(has_sign, sign_mask);
+
+    // Combine with is_zero (already computed as a Packet) via reinterpret
+    Packet is_neg_zero = pand(is_zero,
+                              Eigen::internal::preinterpret<Packet>(is_sign_set));
+    Packet is_pos_zero = pandnot(is_zero, is_neg_zero);
+
+    // Mask for positive subnormals: x > 0 && x < min_normal
+    Packet min_normal = pset1<Packet>(std::numeric_limits<T>::min());
+    Packet is_pos = pcmp_lt(zero, x);
+    Packet is_subnormal = pand(is_pos, pcmp_lt(x, min_normal));
+
+    // Apply corrections
+    Packet pos_inf = pset1<Packet>(std::numeric_limits<T>::infinity());
+    Packet neg_inf = pset1<Packet>(-std::numeric_limits<T>::infinity());
+
+    result = pselect(is_pos_zero, neg_inf, result);
+    result = pselect(is_neg_zero, pos_inf, result);
+    result = pselect(is_subnormal, neg_inf, result);
+    return result;
+  }
+};
+
+template <typename T>
+struct functor_traits<tensorflow_digamma_op<T>> {
+  enum {
+    Cost = functor_traits<scalar_digamma_op<T>>::Cost,
+    PacketAccess = functor_traits<scalar_digamma_op<T>>::PacketAccess,
+  };
+};
+
 // Specialization of erfinv for float.
 //
 // The generic implementation above evaluates erfinv(x) as
@@ -981,7 +1047,7 @@ template <typename T>
 struct lgamma : base<T, Eigen::internal::scalar_lgamma_op<T>> {};
 
 template <typename T>
-struct digamma : base<T, Eigen::internal::scalar_digamma_op<T>> {};
+struct digamma : base<T, Eigen::internal::tensorflow_digamma_op<T>> {};
 
 template <typename T>
 struct erf : base<T, Eigen::internal::scalar_erf_op<T>> {};

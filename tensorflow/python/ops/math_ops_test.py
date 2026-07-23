@@ -1526,5 +1526,45 @@ class CastTest(test_util.TensorFlowTestCase):
 
     self.assertAllEqual(self.evaluate(test_fn()), [1])
 
+
+@test_util.run_all_in_graph_and_eager_modes
+class DigammaTest(test_util.TensorFlowTestCase):
+
+  def testDigammaZeroAndSubnormal(self):
+    """Digamma must return +-inf (not NaN) at poles and subnormals.
+
+    Uses 16 elements (4 repeats of 4 values) to guarantee Eigen exercises
+    packetOp regardless of SIMD width (SSE=4, AVX=8).
+    """
+    subnormal = np.finfo(np.float32).tiny * np.float32(1e-38)
+    # Smallest positive float32 subnormal: 1.401298464324817e-45
+    subnormal = np.float32(1.401298464324817e-45)
+
+    # 4 distinct values repeated 4 times -> 16 elements total
+    pattern = [-np.float32(0.0), np.float32(0.0), subnormal, np.float32(1.0)]
+    vals = pattern * 4
+
+    x = constant_op.constant(vals, dtype=dtypes.float32)
+    result = self.evaluate(math_ops.digamma(x))
+
+    for i in range(4):
+        base = i * 4
+        self.assertTrue(
+            np.isposinf(result[base]),
+            msg=f"lane {base}: digamma(-0.0) should be +inf, got {result[base]}"
+        )
+        self.assertTrue(
+            np.isneginf(result[base + 1]),
+            msg=f"lane {base+1}: digamma(+0.0) should be -inf, got {result[base+1]}"
+        )
+        self.assertTrue(
+            np.isneginf(result[base + 2]),
+            msg=f"lane {base+2}: digamma(subnormal) should be -inf, got {result[base+2]}"
+        )
+        self.assertFalse(
+            np.isnan(result[base + 3]),
+            msg=f"lane {base+3}: digamma(1.0) should be finite, got {result[base+3]}"
+        )
+
 if __name__ == "__main__":
   googletest.main()
