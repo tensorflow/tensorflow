@@ -1,3 +1,36 @@
+diff --git a/BUILD b/BUILD
+index fe04dde..8c2d62e 100644
+--- a/BUILD
++++ b/BUILD
+@@ -1,15 +1,7 @@
+ # Ruy is not BLAS
+ 
+-load("//tools/build_defs/license:license.bzl", "license")
+-
+ package(
+-    default_applicable_licenses = [":license"],
+     licenses = ["notice"],  # Apache 2.0
+ )
+ 
+-license(
+-    name = "license",
+-    package_name = "ruy",
+-)
+-
+ exports_files(["LICENSE"])
+diff --git a/example/BUILD b/example/BUILD
+index 44a1804..e4b09ba 100644
+--- a/example/BUILD
++++ b/example/BUILD
+@@ -1,7 +1,6 @@
+-load("//third_party/bazel_rules/rules_cc/cc:cc_binary.bzl", "cc_binary")
++load("@rules_cc//cc:cc_binary.bzl", "cc_binary")
+ 
+ package(
+-    default_applicable_licenses = ["//third_party/ruy:license"],
+     licenses = ["notice"],  # Apache 2.0
+ )
+ 
 diff --git a/ruy/BUILD b/ruy/BUILD
 index e9e36cc..6b56b1b 100644
 --- a/ruy/BUILD
@@ -74,7 +107,7 @@ index 63a4cfa..00cc591 100644
  )
  
 diff --git a/ruy/ruy_test.bzl b/ruy/ruy_test.bzl
-index 8044985..1fd54f9 100644
+index 8044985..861f97c 100644
 --- a/ruy/ruy_test.bzl
 +++ b/ruy/ruy_test.bzl
 @@ -1,8 +1,8 @@
@@ -88,3 +121,12 @@ index 8044985..1fd54f9 100644
  
  def ruy_test(name, srcs, lhs_rhs_accum_dst, copts, tags = [], deps = None):
      for (lhs, rhs, accum, dst) in lhs_rhs_accum_dst:
+@@ -20,7 +20,7 @@ def ruy_test(name, srcs, lhs_rhs_accum_dst, copts, tags = [], deps = None):
+         )
+ 
+ def ruy_benchmark(name, srcs, lhs_rhs_accum_dst, copts, deps = None):
+-    tags = ["req_dep=//third_party/gemmlowp:profiler"]
++    tags = []
+     for (lhs, rhs, accum, dst) in lhs_rhs_accum_dst:
+         cc_binary(
+             name = "%s_%s_%s_%s_%s" % (name, lhs, rhs, accum, dst),
