@@ -376,6 +376,21 @@ class ForwardpropTest(test.TestCase, parameterized.TestCase):
     with self.assertRaisesRegex(ValueError, "multiple times"):
       with forwardprop.ForwardAccumulator([x, x], [1., 2.]):
         pass
+
+  def testPrimalsTangentsShapeMismatchClearError(self):
+    # Regression for https://github.com/tensorflow/tensorflow/issues/99160:
+    # passing tangents whose shape does not match the primals previously
+    # raised a confusing "Cannot reshape a tensor with N elements to
+    # shape [...]" deep inside `_jvp_helper`. The fix surfaces a
+    # ForwardAccumulator-level message at construction time.
+    primals = constant_op.constant([[1.0, 2.0, 3.0],
+                                    [4.0, 5.0, 6.0]])  # shape (2, 3)
+    tangents = constant_op.constant([0.1, 0.2, 0.3])    # shape (3,)
+    with self.assertRaisesRegex(
+        ValueError,
+        r"`primals` and `tangents` must have the same shape"):
+      with forwardprop.ForwardAccumulator(primals, tangents):
+        pass
     with forwardprop.ForwardAccumulator([x], [3.]) as acc:
       self.assertAllClose(3., acc.jvp(x))
       acc._watch(x, constant_op.constant(10.))

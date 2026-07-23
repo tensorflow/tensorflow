@@ -413,6 +413,22 @@ class ForwardAccumulator():
             logging.WARN, "The dtype of the watched primal must be "
             "floating (e.g. tf.float32), got %r", 5, primal.dtype)
       tangent = ops.convert_to_tensor(tangent, dtype=primal.dtype)
+      # Validate shape *before* handing tensors to the C++ accumulator,
+      # so users see a clear error pointing at ForwardAccumulator
+      # rather than the cryptic
+      # "Cannot reshape a tensor with N elements to shape [...]"
+      # raised deep inside `_jvp_helper` later. See #99160.
+      primal_shape = primal.shape
+      tangent_shape = tangent.shape
+      if (primal_shape.is_fully_defined()
+          and tangent_shape.is_fully_defined()
+          and primal_shape != tangent_shape):
+        raise ValueError(
+            "`primals` and `tangents` must have the same shape; got "
+            f"primal shape {primal_shape} and tangent shape "
+            f"{tangent_shape}. ForwardAccumulator interprets `tangents` "
+            "as a Jacobian-vector product, which requires elementwise "
+            "shape correspondence with `primals`.")
       if hasattr(primal, "handle"):
         # Run convert_to_tensor to get the captured handle from whichever
         # function we're running if necessary.
