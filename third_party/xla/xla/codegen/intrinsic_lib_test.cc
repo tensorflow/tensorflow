@@ -74,6 +74,44 @@ TEST(IntrinsicLibTest, AtanVectorizations) {
                            "xla.atan.f64:xla.atan.v4f64:4:_ZGV_LLVM_N4v",
                            "xla.atan.f64:xla.atan.v8f64:8:_ZGV_LLVM_N8v"));
 }
+
+TEST(IntrinsicLibTest, SinVectorizations) {
+  IntrinsicOptions options;
+  auto lib = IntrinsicFunctionLib(options);
+  std::vector<llvm::VecDesc> vec_descs = lib.Vectorizations();
+  std::vector<std::string> vec_descs_str;
+  for (const auto& vec_desc : vec_descs) {
+    if (vec_desc.getScalarFnName().starts_with("xla.sin")) {
+      vec_descs_str.push_back(ToString(vec_desc));
+    }
+  }
+
+  EXPECT_THAT(vec_descs_str, UnorderedElementsAre(
+                                 "xla.sin.f32:xla.sin.v4f32:4:_ZGV_LLVM_N4v",
+                                 "xla.sin.f32:xla.sin.v8f32:8:_ZGV_LLVM_N8v",
+                                 "xla.sin.f32:xla.sin.v16f32:16:_ZGV_LLVM_N16v",
+                                 "xla.sin.f64:xla.sin.v4f64:4:_ZGV_LLVM_N4v",
+                                 "xla.sin.f64:xla.sin.v8f64:8:_ZGV_LLVM_N8v"));
+}
+
+TEST(IntrinsicLibTest, CosVectorizations) {
+  IntrinsicOptions options;
+  auto lib = IntrinsicFunctionLib(options);
+  std::vector<llvm::VecDesc> vec_descs = lib.Vectorizations();
+  std::vector<std::string> vec_descs_str;
+  for (const auto& vec_desc : vec_descs) {
+    if (vec_desc.getScalarFnName().starts_with("xla.cos")) {
+      vec_descs_str.push_back(ToString(vec_desc));
+    }
+  }
+
+  EXPECT_THAT(vec_descs_str, UnorderedElementsAre(
+                                 "xla.cos.f32:xla.cos.v4f32:4:_ZGV_LLVM_N4v",
+                                 "xla.cos.f32:xla.cos.v8f32:8:_ZGV_LLVM_N8v",
+                                 "xla.cos.f32:xla.cos.v16f32:16:_ZGV_LLVM_N16v",
+                                 "xla.cos.f64:xla.cos.v4f64:4:_ZGV_LLVM_N4v",
+                                 "xla.cos.f64:xla.cos.v8f64:8:_ZGV_LLVM_N8v"));
+}
 }  // namespace
 
 }  // namespace xla::codegen::intrinsics
