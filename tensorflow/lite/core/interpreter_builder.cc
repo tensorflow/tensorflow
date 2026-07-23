@@ -375,9 +375,9 @@ TfLiteStatus InterpreterBuilder::ParseNodes(
         init_data = reinterpret_cast<const char*>(op->custom_options()->data());
         init_data_size = op->custom_options()->size();
       } else if (op->large_custom_options_offset() > 1 && allocation_) {
-        if (op->large_custom_options_offset() +
-                op->large_custom_options_size() >
-            allocation_->bytes()) {
+        if (op->large_custom_options_size() > allocation_->bytes() ||
+            op->large_custom_options_offset() >
+                allocation_->bytes() - op->large_custom_options_size()) {
           TF_LITE_REPORT_ERROR(
               error_reporter_,
               "Custom Option Offset for opcode_index %d is out of bound\n",
@@ -760,7 +760,8 @@ TfLiteStatus InterpreterBuilder::ParseTensors(
           *buffer_data = reinterpret_cast<const char*>(array->data());
           return kTfLiteOk;
         } else if (offset > 1 && allocation_) {
-          if (offset + buffer->size() > allocation_->bytes()) {
+          if (buffer->size() > allocation_->bytes() ||
+              offset > allocation_->bytes() - buffer->size()) {
             TF_LITE_REPORT_ERROR(
                 error_reporter_,
                 "Constant buffer %d specified an out of range offset.\n",
