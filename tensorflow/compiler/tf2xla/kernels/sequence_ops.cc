@@ -15,18 +15,16 @@ limitations under the License.
 
 // XLA-specific sequence and range Ops.
 
+#include <cmath>
 #include <cstdint>
+#include <limits>
 #include <type_traits>
 
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
-#include "xla/hlo/builder/lib/constants.h"
-#include "xla/hlo/builder/value_inference.h"
-#include "xla/hlo/builder/xla_builder.h"
-#include "xla/literal.h"
-#include "xla/primitive_util.h"
-#include "xla/xla_data.pb.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/op_requires.h"
 #include "tensorflow/core/framework/tensor_shape.h"
@@ -34,9 +32,34 @@ limitations under the License.
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/types.h"
+#include "xla/hlo/builder/lib/constants.h"
+#include "xla/hlo/builder/value_inference.h"
+#include "xla/hlo/builder/xla_builder.h"
+#include "xla/literal.h"
+#include "xla/primitive_util.h"
+#include "xla/xla_data.pb.h"
 
 namespace tensorflow {
 namespace {
+
+// Keep in sync with kMaxRangeOutputBytes in
+// tensorflow/core/kernels/sequence_ops.cc.
+constexpr int64_t kMaxRangeOutputBytes = 1LL << 40;  // 1 TiB
+
+// Reject oversized Range outputs before XLA materializes them (e.g. Iota).
+// Equivalent to the CPU check: size * sizeof(T) >= 1 TiB. Uses division so we
+// do not need MultiplyWithoutOverflow; safe for Range dtypes (sizeof 4 or 8).
+template <typename T>
+absl::Status CheckRangeOutputSize(int64_t size) {
+  if (size < 0 ||
+      size >= kMaxRangeOutputBytes / static_cast<int64_t>(sizeof(T))) {
+    return absl::InvalidArgumentError(
+        absl::StrCat("Requires Range output size in bytes to be less than ",
+                     kMaxRangeOutputBytes, ", but got size ", size,
+                     " with element size ", sizeof(T)));
+  }
+  return absl::OkStatus();
+}
 
 // The type-specific part of the implementation of Range.
 template <typename T>
@@ -49,26 +72,62 @@ absl::StatusOr<xla::XlaOp> CreateRangeTensor(
   T delta = delta_literal.Get<T>({});
 
   if (delta == 0) {
-    return errors::InvalidArgument("Requires delta != 0: ", delta);
+    return absl::InvalidArgumentError(
+        absl::StrCat("Requires delta != 0: ", delta));
   }
   if (delta > 0) {
     if (start > limit) {
-      return errors::InvalidArgument(
-          "Requires start <= limit when delta > 0: ", start, "/", limit);
+      return absl::InvalidArgumentError(absl::StrCat(
+          "Requires start <= limit when delta > 0: ", start, "/", limit));
     }
   } else {
     if (start < limit) {
-      return errors::InvalidArgument(
-          "Requires start >= limit when delta < 0: ", start, "/", limit);
+      return absl::InvalidArgumentError(absl::StrCat(
+          "Requires start >= limit when delta < 0: ", start, "/", limit));
     }
   }
-  int64_t size =
-      (std::is_integral<T>::value
-           ? static_cast<T>(
-                 limit == start
-                     ? 0
-                     : (std::abs(limit - start) - 1) / std::abs(delta) + 1)
-           : std::ceil(std::abs((limit - start) / delta)));
+  int64_t size;
+  if constexpr (std::is_integral<T>::value) {
+    if (limit == start) {
+      size = 0;
+    } else {
+      // Compute the size in unsigned arithmetic: `limit - start` can overflow
+      // the signed type, and std::abs(std::numeric_limits<T>::min()) is
+      // undefined behavior.
+      using UT = std::make_unsigned_t<T>;
+      UT range = (limit > start)
+                     ? static_cast<UT>(limit) - static_cast<UT>(start)
+                     : static_cast<UT>(start) - static_cast<UT>(limit);
+      UT abs_delta =
+          (delta > 0) ? static_cast<UT>(delta) : -static_cast<UT>(delta);
+      UT size_unsigned = (range - 1) / abs_delta + 1;
+      if (size_unsigned >
+          static_cast<uint64_t>(std::numeric_limits<int64_t>::max())) {
+        return absl::InvalidArgumentError(
+            absl::StrCat("Requires ((limit - start) / delta) <= ",
+                         std::numeric_limits<int64_t>::max()));
+      }
+      size = static_cast<int64_t>(size_unsigned);
+    }
+  } else {
+    auto size_auto = std::ceil(std::abs((limit - start) / delta));
+    // Inf/Inf (and similar) yields NaN; NaN comparisons are false, so casting
+    // NaN to int64_t is undefined behavior without this check.
+    if (std::isnan(size_auto)) {
+      return absl::InvalidArgumentError("Requires non-NaN Range size");
+    }
+    if (size_auto > std::numeric_limits<int64_t>::max()) {
+      return absl::InvalidArgumentError(
+          absl::StrCat("Requires ((limit - start) / delta) <= ",
+                       std::numeric_limits<int64_t>::max()));
+    }
+    size = static_cast<int64_t>(size_auto);
+  }
+
+  absl::Status status = CheckRangeOutputSize<T>(size);
+  if (!status.ok()) {
+    return status;
+  }
 
   return xla::ConstantR0(builder, start) +
          xla::ConstantR0(builder, delta) *

@@ -113,6 +113,8 @@ tf_gen_op_libs(
     deps = [
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/util:overflow",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
     ],
 )

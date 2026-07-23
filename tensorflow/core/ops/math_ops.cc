@@ -13,14 +13,18 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 #include <limits>
+#include <type_traits>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/framework/numeric_op.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/shape_inference.h"
+#include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/util/overflow.h"
 
 // TODO(intel-tf): Move all MKL ops in this file to a separate file,
 // mkl_math_ops.cc.
@@ -1495,6 +1499,22 @@ REGISTER_OP("Any")
 
 namespace {
 
+// Keep in sync with kMaxRangeOutputBytes in
+// tensorflow/core/kernels/sequence_ops.cc.
+constexpr int64_t kMaxRangeOutputBytes = 1LL << 40;  // 1 TiB
+
+template <typename T>
+absl::Status CheckRangeOutputSize(int64_t size) {
+  const int64_t num_bytes = MultiplyWithoutOverflow(size, sizeof(T));
+  if (num_bytes < 0 || num_bytes >= kMaxRangeOutputBytes) {
+    return absl::InvalidArgumentError(
+        absl::StrCat("Requires Range output size in bytes to be less than ",
+                     kMaxRangeOutputBytes, ", but got size ", size,
+                     " with element size ", sizeof(T)));
+  }
+  return absl::OkStatus();
+}
+
 template <typename T>
 absl::Status RangeSize(const Tensor* start_t, const Tensor* limit_t,
                        const Tensor* delta_t, InferenceContext* const c) {
@@ -1534,6 +1554,11 @@ absl::Status RangeSize(const Tensor* start_t, const Tensor* limit_t,
   } else {
     auto size_auto =
         Eigen::numext::ceil(Eigen::numext::abs((limit - start) / delta));
+    // Inf/Inf (and similar) yields NaN; NaN comparisons are false, so casting
+    // NaN to int64_t is undefined behavior without this check.
+    if (Eigen::numext::isnan(size_auto)) {
+      return absl::InvalidArgumentError("Requires non-NaN Range size");
+    }
     if (size_auto > std::numeric_limits<int64_t>::max()) {
       return absl::InvalidArgumentError(
           absl::StrCat("Requires ((limit - start) / delta) <= ",
@@ -1542,6 +1567,7 @@ absl::Status RangeSize(const Tensor* start_t, const Tensor* limit_t,
     size = static_cast<int64_t>(size_auto);
   }
 
+  TF_RETURN_IF_ERROR(CheckRangeOutputSize<T>(size));
   c->set_output(0, c->Vector(static_cast<int64_t>(size)));
   return absl::OkStatus();
 }
