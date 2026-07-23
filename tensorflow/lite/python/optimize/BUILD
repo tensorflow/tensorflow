@@ -15,7 +15,7 @@
 
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("@xla//third_party/rules_python/python:py_library.bzl", "py_library")
-load("//tensorflow:tensorflow.bzl", "py_test")
+load("//tensorflow:tensorflow.bzl", "if_oss", "py_test")
 load("//tensorflow:tensorflow.default.bzl", "pybind_extension")
 
 package(
@@ -105,6 +105,13 @@ py_test(
         ":test_data",
         "//tensorflow/lite:testdata/multi_add.bin",
     ],
+    exec_properties = if_oss(
+        None,
+        select({
+            "@bazel_tools//tools/cpp:asan_build": {"cpp_link.mem": "20g"},
+            "//conditions:default": None,
+        }),
+    ),
     strict_deps = True,
     tags = ["no_oss"],
     deps = [
