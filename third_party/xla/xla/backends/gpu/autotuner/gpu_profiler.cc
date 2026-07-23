@@ -18,6 +18,7 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -66,6 +67,55 @@ namespace xla {
 namespace gpu {
 
 namespace {
+
+// Wraps a DeviceAddressAllocator so that every buffer allocated through it
+// during the untimed warm-up run is surrounded by redzones (via an internal
+// RedzoneAllocator). This covers *all* buffers the executable allocates
+// on-demand while warming up, including both the result/output buffers and
+// any workspace/scratch buffers requested through the same allocator -- not
+// just the literal kernel output. A candidate that writes out of bounds
+// lands in the post-redzone of that allocation and is caught by
+// CheckRedzones(), causing the autotuner to reject the candidate instead of
+// letting it corrupt production memory.
+class WarmupRedzoneAllocator : public se::DeviceAddressAllocator {
+ public:
+  WarmupRedzoneAllocator(se::Stream* stream,
+                         se::DeviceAddressAllocator* underlying,
+                         int64_t redzone_size)
+      : se::DeviceAddressAllocator(underlying->platform()),
+        underlying_(underlying),
+        rz_alloc_(stream, underlying,
+                  /*memory_limit=*/static_cast<int64_t>(8) << 30,
+                  redzone_size) {}
+
+  absl::StatusOr<se::ScopedDeviceAddress<uint8_t>> Allocate(
+      int device_ordinal, uint64_t size, bool /*retry_on_failure*/,
+      int64_t /*memory_space*/) override {
+    ASSIGN_OR_RETURN(se::DeviceAddress<uint8_t> ptr,
+                     rz_alloc_.AllocateBytes(static_cast<int64_t>(size)));
+    return se::ScopedDeviceAddress<uint8_t>(ptr, device_ordinal, this);
+  }
+
+  absl::Status Deallocate(int /*device_ordinal*/,
+                          se::DeviceAddressBase /*mem*/) override {
+    // rz_alloc_ owns all memory; it is freed when this object is destroyed.
+    return absl::OkStatus();
+  }
+
+  absl::StatusOr<se::Stream*> GetStream(int device_ordinal) override {
+    return underlying_->GetStream(device_ordinal);
+  }
+
+  bool AllowsAsynchronousDeallocation() const override { return true; }
+
+  absl::StatusOr<se::RedzoneAllocator::RedzoneCheckStatus> CheckRedzones() {
+    return rz_alloc_.CheckRedzones();
+  }
+
+ private:
+  se::DeviceAddressAllocator* underlying_;
+  se::RedzoneAllocator rz_alloc_;
+};
 
 std::vector<ExecutionInput> CreateExecutionInputsFromBuffers(
     absl::Span<se::DeviceAddressBase const> buffers,
@@ -289,15 +339,37 @@ absl::StatusOr<ProfileResult> GpuProfiler::Profile(
     result.scratch_bytes = GetScratchBytes(*gpu_executable);
   }
   {
-    // Warm up run.
+    // Warm-up run: route every buffer the executable allocates on-demand
+    // (result/output buffers and workspace/scratch buffers alike) through a
+    // WarmupRedzoneAllocator, so that any out-of-bounds write lands in a
+    // mapped post-redzone rather than causing a GPU VM fault.
+    std::optional<WarmupRedzoneAllocator> warmup_rz;
+    se::DeviceAddressAllocator* warmup_alloc = allocator_;
+    if (options_.redzone_padding_bytes > 0) {
+      warmup_rz.emplace(stream_, allocator_, options_.redzone_padding_bytes);
+      warmup_alloc = &warmup_rz.value();
+    }
     std::vector<ExecutionInput> execution_inputs =
         CreateExecutionInputsFromBuffers(rz_buffers.input_buffers(),
                                          rz_buffers.input_shapes());
     RETURN_IF_ERROR(Execute(executable, std::move(execution_inputs),
-                            /*profile=*/nullptr)
+                            /*profile=*/nullptr, warmup_alloc)
                         .status());
-
     RETURN_IF_ERROR(stream_->BlockHostUntilDone());
+    if (warmup_rz.has_value()) {
+      ASSIGN_OR_RETURN(se::RedzoneAllocator::RedzoneCheckStatus rz_check,
+                       warmup_rz->CheckRedzones());
+      if (!rz_check.ok()) {
+        std::string redzone_failure_msg = rz_check.RedzoneFailureMsg();
+        VLOG(1) << "Autotuning candidate discarded: out-of-bounds write "
+                   "detected past an allocated buffer. "
+                << redzone_failure_msg;
+        return absl::InternalError(absl::StrCat(
+            "Autotuning candidate rejected: kernel wrote past its allocated "
+            "buffer. ",
+            redzone_failure_msg));
+      }
+    }
   }
 
   ExecutionProfile profile;
@@ -316,7 +388,7 @@ absl::StatusOr<ProfileResult> GpuProfiler::Profile(
 
 absl::StatusOr<ExecutionOutput> GpuProfiler::Execute(
     Executable* executable, std::vector<ExecutionInput> inputs,
-    ExecutionProfile* profile) {
+    ExecutionProfile* profile, se::DeviceAddressAllocator* allocator_override) {
   // Require exclusive GPU lock to prevent other runs during autotuning.
   GpuExecutableRunOptions gpu_opts;
   gpu_opts.set_requires_exclusive_lock_on_gpu();
@@ -324,7 +396,8 @@ absl::StatusOr<ExecutionOutput> GpuProfiler::Execute(
   ExecutableRunOptions run_options;
   run_options.set_device_ordinal(stream_executor_->device_ordinal());
   run_options.set_stream(stream_);
-  run_options.set_allocator(allocator_);
+  run_options.set_allocator(allocator_override != nullptr ? allocator_override
+                                                          : allocator_);
   run_options.set_gpu_executable_run_options(&gpu_opts);
   run_options.set_execution_profile(profile);
   ServiceExecutableRunOptions service_run_options(run_options);
