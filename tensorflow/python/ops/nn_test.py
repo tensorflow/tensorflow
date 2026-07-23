@@ -820,7 +820,7 @@ class ComputeSampledLogitsTest(test_lib.TestCase):
       pred = 1. / (1. + np.exp(-logits))
       eps = 0.0001
       pred = np.minimum(np.maximum(pred, eps), 1 - eps)
-      return -targets * np.log(pred) - (1. - targets) * np.log(1. - pred)
+      return 0.0 - targets * np.log(pred) - (1. - targets) * np.log(1. - pred)
 
     np.random.seed(0)
     num_classes = 5
@@ -874,7 +874,7 @@ class ComputeSampledLogitsTest(test_lib.TestCase):
       stable_exp_logits = np.exp(logits -
                                  np.amax(logits, axis=1, keepdims=True))
       pred = stable_exp_logits / np.sum(stable_exp_logits, 1, keepdims=True)
-      return -np.sum(targets * np.log(pred + 1.0e-20), axis=1)
+      return 0.0 - np.sum(targets * np.log(pred + 1.0e-20), axis=1)
 
     np.random.seed(0)
     num_classes = 5
@@ -931,7 +931,7 @@ class ComputeSampledLogitsTest(test_lib.TestCase):
       stable_exp_logits = np.exp(logits -
                                  np.amax(logits, axis=1, keepdims=True))
       pred = stable_exp_logits / np.sum(stable_exp_logits, 1, keepdims=True)
-      return -np.sum(targets * np.log(pred + 1.0e-20), axis=1)
+      return 0.0 - np.sum(targets * np.log(pred + 1.0e-20), axis=1)
 
     np.random.seed(0)
     num_classes = 5
