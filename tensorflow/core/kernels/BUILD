@@ -5508,6 +5508,7 @@ tf_cuda_cc_tests(
     deps = [
         ":host_constant_op",
         ":ops_testutil",
+        "//tensorflow/core/framework:fake_input",
         ":ops_util",
         ":sparse",
         ":xent_op",

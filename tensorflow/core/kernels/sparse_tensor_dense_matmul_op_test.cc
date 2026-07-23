@@ -14,10 +14,15 @@ limitations under the License.
 ==============================================================================*/
 
 #include <random>
+#include <vector>
 
+#include "absl/status/status.h"
 #include "tensorflow/core/common_runtime/kernel_benchmark_testlib.h"
+#include "tensorflow/core/framework/fake_input.h"
+#include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/graph/node_builder.h"
+#include "tensorflow/core/kernels/ops_testutil.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/test_benchmark.h"
 
@@ -67,6 +72,46 @@ static Graph* SparseTensorDenseMatmul(int nnz, int m, int k, int n,
       test::graph::Constant(g, b), adjoint_a, adjoint_b);
   return g;
 }
+
+
+namespace {
+
+using ::testing::HasSubstr;
+
+class SparseTensorDenseMatMulOpValidationTest : public OpsTestBase {
+ protected:
+  void MakeOp(bool adjoint_a = false, bool adjoint_b = false) {
+    TF_ASSERT_OK(NodeDefBuilder("sparse_tensor_dense_matmul",
+                                "SparseTensorDenseMatMul")
+                     .Input(FakeInput(DT_INT64))
+                     .Input(FakeInput(DT_FLOAT))
+                     .Input(FakeInput(DT_INT64))
+                     .Input(FakeInput(DT_FLOAT))
+                     .Attr("T", DT_FLOAT)
+                     .Attr("adjoint_a", adjoint_a)
+                     .Attr("adjoint_b", adjoint_b)
+                     .Finalize(node_def()));
+    TF_ASSERT_OK(InitOp());
+  }
+};
+
+TEST_F(SparseTensorDenseMatMulOpValidationTest,
+       RejectsNegativeDimensionsInSparseShape) {
+  MakeOp();
+  AddInputFromArray<int64_t>(TensorShape({0, 2}), std::vector<int64_t>{});
+  AddInputFromArray<float>(TensorShape({0}), std::vector<float>{});
+  AddInputFromArray<int64_t>(TensorShape({2}), {1, -1});
+  AddInputFromArray<float>(TensorShape({1, 1}), {1.0f});
+
+  const absl::Status status = RunOpKernel();
+
+  EXPECT_EQ(status.code(), absl::StatusCode::kInvalidArgument);
+  EXPECT_THAT(
+      status.message(),
+      HasSubstr("Tensor 'a_shape' cannot contain negative dimensions"));
+}
+
+}  // namespace
 
 // NOLINTBEGIN
 #define BM_SparseTensorDenseMatmulDev(NNZ, M, K, N, TA, TB, DEVICE)                  \
