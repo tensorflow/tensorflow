@@ -819,7 +819,6 @@ xla_cc_test(
         "//xla/service/gpu:hlo_fusion_analysis",
         "//xla/stream_executor:device_description",
         "//xla/tsl/platform:status_macros",
-        "//xla/tsl/platform:statusor",
         "//xla/tsl/util/proto:proto_matchers",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/memory",

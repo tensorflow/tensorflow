@@ -208,34 +208,25 @@ absl::StatusOr<AllReduceEmitterContext> CreateAllReduceEmitterContext(
   return ctx;
 }
 
-// The logic here is very naive and assumes a monotonic layout
-// where only the last dimension is used as a tiling dimension.
-absl::StatusOr<std::optional<BlockLevelFusionConfig>>
-GetBlockLevelFusionConfigForAllReduce(
+absl::StatusOr<BlockLevelFusionConfig> GetBlockLevelFusionConfigForAllReduce(
     const GpuTopology& gpu_topology, const HloAllReduceInstruction* all_reduce,
     const DeviceAssignment* device_assignment) {
   ASSIGN_OR_RETURN(GpuBackendConfig gpu_config,
                    all_reduce->backend_config<GpuBackendConfig>());
   if (!IsTritonCollectiveKernel(
           gpu_config.collective_backend_config().kernel_strategy())) {
-    VLOG(3) << "All-reduce is not annotated with Triton strategy. Skipping.";
-    return std::nullopt;
+    return absl::FailedPreconditionError(
+        "All-reduce is not annotated with Triton strategy. Skipping.");
   }
-
-  absl::StatusOr<AllReduceInfo> maybe_all_reduce_info = BuildAllReduceInfo(
-      /*is_collective_kernel_enabled=*/all_reduce->GetModule()
-          ->config()
-          .debug_options()
-          .xla_gpu_unsupported_use_all_reduce_one_shot_kernel(),
-      /*is_multimem_enabled=*/false, gpu_topology, all_reduce,
-      device_assignment);
-  if (absl::IsUnimplemented(maybe_all_reduce_info.status())) {
-    VLOG(3) << "Codegen for all-reduce is not supported: "
-            << maybe_all_reduce_info.status();
-    return std::nullopt;
-  }
-  ASSIGN_OR_RETURN(AllReduceInfo all_reduce_info,
-                   std::move(maybe_all_reduce_info));
+  ASSIGN_OR_RETURN(
+      AllReduceInfo all_reduce_info,
+      BuildAllReduceInfo(
+          /*is_collective_kernel_enabled=*/all_reduce->GetModule()
+              ->config()
+              .debug_options()
+              .xla_gpu_unsupported_use_all_reduce_one_shot_kernel(),
+          /*is_multimem_enabled=*/false, gpu_topology, all_reduce,
+          device_assignment));
   const Shape& output_shape = all_reduce->shape();
   const se::DeviceDescription& device_info =
       gpu_topology.gpu_target_config().device_description;
@@ -255,10 +246,10 @@ GetBlockLevelFusionConfigForAllReduce(
   const int64_t linear_tile_size = Product(tile_sizes);
   if (all_reduce_info.all_reduce_strategy == AllReduceStrategy::kTwoShot &&
       linear_tile_size % all_reduce_info.num_devices != 0) {
-    VLOG(3) << "Two-shot all-reduce linear_tile_size(" << linear_tile_size
-            << ") % num_devices(" << all_reduce_info.num_devices
-            << ") != 0. Codegen will not be supported.";
-    return std::nullopt;
+    return absl::FailedPreconditionError(absl::StrFormat(
+        "Two-shot all-reduce linear_tile_size(%d) %% num_devices(%d) != 0. "
+        "Codegen will not be supported.",
+        linear_tile_size, all_reduce_info.num_devices));
   }
   VLOG(3) << "Block level fusion config for " << all_reduce->name() << ": "
           << block_level_config;
@@ -999,31 +990,33 @@ llvm::SmallVector<int64_t> GreedyPowerOfTwoTiles(const Shape& output_shape,
   return tile_sizes;
 }
 
-absl::StatusOr<std::optional<BlockLevelFusionConfig>>
-GetCollectiveBlockLevelFusionConfig(const GpuTopology& gpu_topology,
-                                    const HloFusionInstruction* fusion_instr,
-                                    const DeviceAssignment* device_assignment) {
+absl::StatusOr<BlockLevelFusionConfig> GetCollectiveBlockLevelFusionConfig(
+    const GpuTopology& gpu_topology, const HloFusionInstruction* fusion_instr,
+    const DeviceAssignment* device_assignment) {
   const HloInstruction* root = fusion_instr->fused_expression_root();
   switch (root->opcode()) {
     case HloOpcode::kAllReduce:
       return GetBlockLevelFusionConfigForAllReduce(
           gpu_topology, Cast<HloAllReduceInstruction>(root), device_assignment);
     default:
-      return std::nullopt;
+      return absl::UnimplementedError(
+          absl::StrFormat("Block level fusion config creation not implemented "
+                          "for opcode: %s",
+                          HloOpcodeString(root->opcode())));
   }
 }
 
-absl::StatusOr<bool> TrySetGpuBackendConfigForCollective(
+absl::Status TrySetGpuBackendConfigForCollective(
     const GpuTopology& gpu_topology, HloFusionInstruction* fusion_instr,
     const DeviceAssignment* device_assignment) {
   ASSIGN_OR_RETURN(const std::optional<BlockLevelFusionConfig> block_config,
                    GetCollectiveBlockLevelFusionConfig(
                        gpu_topology, fusion_instr, device_assignment));
   if (!block_config.has_value()) {
-    VLOG(3) << "No block level fusion config calculated for collective: "
-            << fusion_instr->ToString()
-            << ". Not using Triton collective fusion.";
-    return false;
+    return absl::FailedPreconditionError(absl::StrFormat(
+        "No block level fusion config calculated for collective: %s. Not using "
+        "Triton collective fusion.",
+        fusion_instr->ToString()));
   }
   ASSIGN_OR_RETURN(GpuBackendConfig gpu_backend_config,
                    fusion_instr->backend_config<GpuBackendConfig>());
@@ -1033,7 +1026,7 @@ absl::StatusOr<bool> TrySetGpuBackendConfigForCollective(
        ->mutable_block_level_fusion_config() = *std::move(block_config);
   RETURN_IF_ERROR(
       fusion_instr->set_backend_config(std::move(gpu_backend_config)));
-  return true;
+  return absl::OkStatus();
 }
 
 absl::StatusOr<std::vector<Shape>> GetCollectiveUnmanagedKernelArguments(
