@@ -240,6 +240,21 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
     // If we are in a new aggregation bucket and the combiner is not the sum,
     // go back and finalize the result of the previous bucket.
     if (output_offset != current_output_offset) {
+      // The aggregation offset is derived from the untrusted sparse `indices`
+      // tensor, so a malformed model can drive it past the output buffer.
+      // Reject such inputs explicitly instead of silently skipping the
+      // aggregation (which would leave the output incomplete) or writing out
+      // of bounds.
+      if (current_output_offset < 0 ||
+          static_cast<size_t>(current_output_offset) + embedding_size.Value() >
+              output_size.Value()) {
+        TF_LITE_KERNEL_LOG(
+            context,
+            "Embedding Lookup Sparse: output offset out of bounds. Got %d, "
+            "output size is %zu.",
+            current_output_offset, output_size.Value());
+        return kTfLiteError;
+      }
       FinalizeAggregation(params->combiner, num_elements, current_total_weight,
                           current_squares_weight, embedding_size.Value(),
                           &output_ptr[current_output_offset]);
@@ -269,6 +284,16 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   }
 
   // Finalize last bucket.
+  if (current_output_offset < 0 ||
+      static_cast<size_t>(current_output_offset) + embedding_size.Value() >
+          output_size.Value()) {
+    TF_LITE_KERNEL_LOG(
+        context,
+        "Embedding Lookup Sparse: output offset out of bounds. Got %d, "
+        "output size is %zu.",
+        current_output_offset, output_size.Value());
+    return kTfLiteError;
+  }
   FinalizeAggregation(params->combiner, num_elements, current_total_weight,
                       current_squares_weight, embedding_size.Value(),
                       &GetTensorData<float>(output)[current_output_offset]);
