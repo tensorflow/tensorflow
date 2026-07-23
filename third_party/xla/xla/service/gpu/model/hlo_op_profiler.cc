@@ -33,6 +33,7 @@ limitations under the License.
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/debug_options_flags.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
@@ -265,7 +266,7 @@ absl::StatusOr<absl::Duration> HloOpProfiler::MeasureOpChainDuration(
       MakeModuleForMeasurements(op, data_type, chain_length);
   HloVerifier verifier(/*layout_sensitive=*/true,
                        /*allow_mixed_precision=*/false);
-  TF_RETURN_IF_ERROR(verifier.Run(&*module).status());
+  RETURN_IF_ERROR(verifier.Run(&*module).status());
 
   std::minstd_rand0 engine;
   // Some operations have dynamic duration that depends on the input values.
@@ -277,25 +278,24 @@ absl::StatusOr<absl::Duration> HloOpProfiler::MeasureOpChainDuration(
                                                       /*use_large_range=*/true)
                                         .value();
   const absl::Time t_compile_start = absl::Now();
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<OpaqueExecutable> ex,
-                      runner_.CreateExecutable(std::move(module),
-                                               /*run_hlo_passes=*/false));
+  ASSIGN_OR_RETURN(std::unique_ptr<OpaqueExecutable> ex,
+                   runner_.CreateExecutable(std::move(module),
+                                            /*run_hlo_passes=*/false));
   if (absl::Now() - t_compile_start > absl::Seconds(10)) {
     return ResourceExhausted("Too slow compilation");
   }
 
   // Warmup.
-  TF_RETURN_IF_ERROR(
-      runner_.ExecuteWithExecutable(ex.get(), args_small).status());
+  RETURN_IF_ERROR(runner_.ExecuteWithExecutable(ex.get(), args_small).status());
 
   std::unique_ptr<KernelTracer> kernel_tracer = GetKernelTracer();
   if (!kernel_tracer) {
     return FailedPrecondition("Not built with --config=cuda or --config=rocm");
   }
   for (int i = 0; i < 10; ++i) {  // Run a few times to reduce noise.
-    TF_RETURN_IF_ERROR(
+    RETURN_IF_ERROR(
         runner_.ExecuteWithExecutable(ex.get(), args_small).status());
-    TF_RETURN_IF_ERROR(
+    RETURN_IF_ERROR(
         runner_.ExecuteWithExecutable(ex.get(), args_large).status());
   }
 
@@ -335,14 +335,14 @@ absl::StatusOr<HloInstructionProfile> HloOpProfiler::MeasureClockCyclesPerOp(
       return FailedPrecondition("%s is too fast to measure",
                                 HloOpcodeString(op));
     }
-    TF_ASSIGN_OR_RETURN(duration,
-                        MeasureOpChainDuration(op, data_type, chain_length));
+    ASSIGN_OR_RETURN(duration,
+                     MeasureOpChainDuration(op, data_type, chain_length));
     VLOG(3) << chain_length << "\t" << duration;
     chain_length *= 2;
   } while (duration < min_duration_);
 
-  TF_ASSIGN_OR_RETURN(absl::Duration double_duration,
-                      MeasureOpChainDuration(op, data_type, chain_length));
+  ASSIGN_OR_RETURN(absl::Duration double_duration,
+                   MeasureOpChainDuration(op, data_type, chain_length));
   VLOG(3) << chain_length << "\t" << double_duration;
 
   // The difference between t_double and t corresponds to half of chain_length.

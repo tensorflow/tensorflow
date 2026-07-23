@@ -542,7 +542,7 @@ absl::Status GraphToFunctionDefHelper(
 
 absl::Status GraphToFunctionDefHelper(
     const Graph& graph, const std::string& name,
-    const std::function<absl::optional<std::string>(const Node*)>& control_ret,
+    const std::function<std::optional<std::string>(const Node*)>& control_ret,
     const std::vector<std::string>& output_names, bool allow_destructive_reads,
     FunctionDef* fdef) {
   auto add_arg_or_retval = [](Node* node,
@@ -636,7 +636,7 @@ absl::Status GraphToFunctionDef(
 
 absl::Status GraphToFunctionDef(
     const Graph& graph, const std::string& name,
-    const std::function<absl::optional<std::string>(const Node*)>& control_ret,
+    const std::function<std::optional<std::string>(const Node*)>& control_ret,
     FunctionDef* fdef) {
   return GraphToFunctionDefHelper(graph, name, control_ret,
                                   /*output_names=*/{},

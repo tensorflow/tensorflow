@@ -19,7 +19,6 @@ limitations under the License.
 #include <functional>
 #include <iterator>
 #include <memory>
-#include <numeric>
 #include <optional>
 #include <string>
 #include <utility>
@@ -27,10 +26,12 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/escaping.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/LogicalResult.h"
 #include "mlir/AsmParser/AsmParser.h"
@@ -38,6 +39,7 @@ limitations under the License.
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinOps.h"
+#include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/SymbolTable.h"
 #include "mlir/Parser/Parser.h"
 #include "mlir/Support/LLVM.h"
@@ -61,7 +63,6 @@ limitations under the License.
 #include "xla/service/spmd/shardy/utils.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 
@@ -270,7 +271,7 @@ MeshInfo ExtractSdyMeshInfo(mlir::sdy::MeshAttr mesh_attr) {
       total_size *= size;
     }
     info.device_ids.resize(total_size);
-    std::iota(info.device_ids.begin(), info.device_ids.end(), 0);
+    absl::c_iota(info.device_ids, 0);
   }
   return info;
 }
@@ -295,7 +296,7 @@ MeshInfo ExtractStablehloMeshInfo(
       total_size *= size;
     }
     info.device_ids.resize(total_size);
-    std::iota(info.device_ids.begin(), info.device_ids.end(), 0);
+    absl::c_iota(info.device_ids, 0);
   }
   return info;
 }
@@ -309,7 +310,7 @@ xla::Mesh BuildXlaMesh(const MeshInfo& info) {
   }
 
   std::vector<int64_t> iota_ids(info.device_ids.size());
-  std::iota(iota_ids.begin(), iota_ids.end(), 0);
+  absl::c_iota(iota_ids, 0);
   if (info.device_ids == iota_ids) {
     return xla::Mesh(info.axes_sizes, axes_names_sv);
   }
@@ -358,10 +359,10 @@ absl::StatusOr<std::vector<xla::AxisRef>> BuildAxisRefs(
 absl::StatusOr<std::unique_ptr<xla::CollectiveDeviceListBase>>
 ConvertMhloMeshAxes(mlir::mhlo::ReplicaGroupMeshAxesAttr attr,
                     mlir::Operation* op) {
-  TF_ASSIGN_OR_RETURN(auto mesh_attr, FindSdyMeshAttribute(attr, op));
+  ASSIGN_OR_RETURN(auto mesh_attr, FindSdyMeshAttribute(attr, op));
   auto info = ExtractSdyMeshInfo(mesh_attr);
   auto xla_mesh = BuildXlaMesh(info);
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       auto group_axes,
       (BuildAxisRefs<mlir::mhlo::ReplicaGroupMeshAxesAttr,
                      mlir::mhlo::AxisRefAttr>(attr, info.axes_names)));
@@ -372,10 +373,10 @@ ConvertMhloMeshAxes(mlir::mhlo::ReplicaGroupMeshAxesAttr attr,
 absl::StatusOr<std::unique_ptr<xla::CollectiveDeviceListBase>>
 ConvertStablehloMeshAxes(mlir::stablehlo::ReplicaGroupMeshAxesAttr attr,
                          mlir::Operation* op) {
-  TF_ASSIGN_OR_RETURN(auto mesh_attr, FindStablehloMeshAttribute(attr, op));
+  ASSIGN_OR_RETURN(auto mesh_attr, FindStablehloMeshAttribute(attr, op));
   auto info = ExtractStablehloMeshInfo(mesh_attr);
   auto xla_mesh = BuildXlaMesh(info);
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       auto group_axes,
       (BuildAxisRefs<mlir::stablehlo::ReplicaGroupMeshAxesAttr,
                      mlir::stablehlo::AxisRefAttr>(attr, info.axes_names)));
@@ -449,7 +450,9 @@ absl::StatusOr<xla::PrecisionConfig::Algorithm> ConvertDotAlgorithm(
       attr.getAccumulationType(), attr.getLhsComponentCount(),
       attr.getRhsComponentCount(), attr.getNumPrimitiveOperations(),
       attr.getAllowImpreciseAccumulation());
-  if (failed(algorithm)) return Internal("Unknown dot algorithm");
+  if (failed(algorithm)) {
+    return Internal("Unknown dot algorithm");
+  }
 
   switch (algorithm.value()) {
     case mlir::hlo::detail::KnownDotAlgorithm::ANY_F8_ANY_F8_F32:
@@ -489,7 +492,9 @@ absl::StatusOr<xla::PrecisionConfig::Algorithm> ConvertDotAlgorithm(
       attr.getAccumulationType(), attr.getLhsComponentCount(),
       attr.getRhsComponentCount(), attr.getNumPrimitiveOperations(),
       attr.getAllowImpreciseAccumulation());
-  if (failed(algorithm)) return Internal("Unknown dot algorithm");
+  if (failed(algorithm)) {
+    return Internal("Unknown dot algorithm");
+  }
 
   switch (algorithm.value()) {
     case mlir::hlo::detail::KnownDotAlgorithm::ANY_F8_ANY_F8_F32:
@@ -536,8 +541,8 @@ ConvertReplicaGroups(mlir::Attribute replica_groups, mlir::Operation* op) {
 
   if (auto dense_attr =
           mlir::dyn_cast<mlir::DenseIntElementsAttr>(replica_groups)) {
-    TF_ASSIGN_OR_RETURN(std::vector<ReplicaGroup> groups,
-                        ConvertReplicaGroups(dense_attr));
+    ASSIGN_OR_RETURN(std::vector<ReplicaGroup> groups,
+                     ConvertReplicaGroups(dense_attr));
     return std::make_unique<xla::CollectiveDeviceList>(std::move(groups));
   }
 
@@ -586,8 +591,7 @@ absl::StatusOr<std::vector<ReplicaGroup>> ConvertReplicaGroupsToV1(
           mlir::dyn_cast_or_null<mlir::DenseIntElementsAttr>(replica_groups)) {
     return ConvertReplicaGroups(dense_attr);
   }
-  TF_ASSIGN_OR_RETURN(auto device_list,
-                      ConvertReplicaGroups(replica_groups, op));
+  ASSIGN_OR_RETURN(auto device_list, ConvertReplicaGroups(replica_groups, op));
   return device_list->replica_groups();
 }
 
@@ -595,12 +599,14 @@ absl::StatusOr<std::vector<ReplicaGroup>> ConvertReplicaGroupsToV1(
 // and source-target pairs are defined in HLO.
 absl::StatusOr<std::vector<std::pair<int64_t, int64_t>>> ConvertNx2Attribute(
     std::optional<mlir::DenseIntElementsAttr> optional_attr) {
-  if (!optional_attr.has_value())
+  if (!optional_attr.has_value()) {
     return std::vector<std::pair<int64_t, int64_t>>{};
+  }
   mlir::DenseIntElementsAttr attr = *optional_attr;
   auto type = mlir::dyn_cast<mlir::RankedTensorType>(attr.getType());
-  if (!type || type.getRank() != 2 || type.getShape()[1] != 2)
+  if (!type || type.getRank() != 2 || type.getShape()[1] != 2) {
     return Internal("expected Nx2 attribute to be a tensor of shape Nx2");
+  }
   auto it = attr.getValues<int64_t>().begin();
   std::vector<std::pair<int64_t, int64_t>> out(attr.getNumElements() / 2);
   for (auto& item : out) {
@@ -617,8 +623,9 @@ absl::StatusOr<TriangularSolveOptions::Transpose> ConvertTranspose(
     llvm::StringRef transpose_string) {
   std::optional<mlir::mhlo::Transpose> transpose =
       mlir::mhlo::symbolizeTranspose(transpose_string);
-  if (!transpose)
+  if (!transpose) {
     return InvalidArgument("Unknown transpose type %s", transpose_string.str());
+  }
 
   switch (*transpose) {
     case mlir::mhlo::Transpose::NO_TRANSPOSE:
@@ -690,27 +697,72 @@ absl::StatusOr<xla::CustomCallApiVersion> ConvertCustomCallApiVersion(
 
 std::optional<xla::OpSharding> ConvertSharding(llvm::StringRef sharding) {
   xla::OpSharding sharding_proto;
-  if (sharding_proto.ParseFromString(sharding.str())) return sharding_proto;
+  if (sharding_proto.ParseFromString(sharding.str())) {
+    return sharding_proto;
+  }
   absl::StatusOr<xla::HloSharding> sharding_cpp =
       xla::ParseSharding(sharding.str());
-  if (sharding_cpp.ok()) return sharding_cpp->ToProto();
+  if (sharding_cpp.ok()) {
+    return sharding_cpp->ToProto();
+  }
   return std::nullopt;
 }
 
 std::optional<xla::OriginalValueProto> ConvertOriginalValue(
-    llvm::StringRef original_value) {
-  absl::StatusOr<std::shared_ptr<xla::OriginalValue>> hlo_original_value =
-      xla::ParseOriginalValue(
-          absl::string_view(original_value.data(), original_value.size()));
-  if (!hlo_original_value.ok()) {
+    const mlir::mhlo::OriginalValueAttr& original_value_attr) {
+  if (!original_value_attr) {
     return std::nullopt;
   }
-  return hlo_original_value.value()->ToProto();
+
+  bool is_synthetic_call = original_value_attr.getIsSyntheticCall();
+  xla::OriginalValueProto original_value;
+  original_value.set_is_synthetic_call(is_synthetic_call);
+
+  if (is_synthetic_call) {
+    if (!original_value_attr.getElements().empty()) {
+      LOG(WARNING) << "Synthetic call has original arrays.\n";
+    }
+    return original_value;
+  }
+
+  llvm::ArrayRef<mlir::mhlo::OriginalValueElementAttr>
+      original_value_element_attrs = original_value_attr.getElements();
+  if (original_value_element_attrs.empty()) {
+    LOG(WARNING) << "Empty original value.\n";
+    return original_value;
+  }
+
+  for (const auto& original_value_element_attr : original_value_element_attrs) {
+    // Skip if the element is not set. This should not happen if the original
+    // value attribute is well-formed.
+    if (!original_value_element_attr) {
+      continue;
+    }
+    OriginalValueElementProto* original_value_element =
+        original_value.add_elements();
+
+    for (const auto& i : original_value_element_attr.getShapeIndex()) {
+      original_value_element->add_shape_index(i);
+    }
+    std::optional<mlir::mhlo::OriginalArrayAttr> original_array_attr =
+        original_value_element_attr.getOriginalArray();
+    if (original_array_attr.has_value()) {
+      OriginalArray original_array = {
+          original_array_attr->getInstructionName().str(),
+          ShapeIndex(original_array_attr->getShapeIndex())};
+      *original_value_element->mutable_original_array() =
+          original_array.ToProto();
+    }
+  }
+
+  return original_value;
 }
 
 std::optional<xla::HloInputOutputAliasProto> ConvertInputOutputAlias(
     llvm::ArrayRef<mlir::Attribute> aliasing) {
-  if (aliasing.empty()) return std::nullopt;
+  if (aliasing.empty()) {
+    return std::nullopt;
+  }
 
   xla::HloInputOutputAliasProto input_output_alias_proto;
   for (auto attr : aliasing) {
@@ -732,12 +784,13 @@ std::optional<xla::HloInputOutputAliasProto> ConvertInputOutputAlias(
                                                parameter_index.end());
     mlir::StringRef kind =
         mlir::cast<mlir::StringAttr>(alias_attr.get("kind")).getValue();
-    if (kind == "may_alias")
+    if (kind == "may_alias") {
       entry.set_kind(xla::Kind::MAY_ALIAS);
-    else if (kind == "must_alias")
+    } else if (kind == "must_alias") {
       entry.set_kind(xla::Kind::MUST_ALIAS);
-    else
+    } else {
       entry.set_kind(xla::Kind::UNDEFINED_ALIAS);
+    }
     input_output_alias_proto.add_entries()->Swap(&entry);
   }
   return input_output_alias_proto;
@@ -871,6 +924,92 @@ mlir::FailureOr<xla::Shape> ExtractXlaShape(mlir::Operation* op) {
     return xla::ShapeUtil::MakeTupleShape(subshapes);
   }
   return subshapes[0];
+}
+
+std::optional<OriginalValueProto> ProjectOriginalValueProto(
+    const std::optional<OriginalValueProto>& original_value, unsigned index,
+    unsigned num_results) {
+  if (!original_value || index >= num_results) {
+    return std::nullopt;
+  }
+
+  OriginalValueProto projected;
+  projected.set_is_synthetic_call(original_value->is_synthetic_call());
+
+  if (num_results <= 1) {
+    *projected.mutable_elements() = original_value->elements();
+    return projected;
+  }
+
+  for (const auto& element : original_value->elements()) {
+    if (element.shape_index_size() > 0 && element.shape_index(0) == index) {
+      auto* new_element = projected.add_elements();
+      for (int i = 1; i < element.shape_index_size(); ++i) {
+        new_element->add_shape_index(element.shape_index(i));
+      }
+      if (element.has_original_array()) {
+        *new_element->mutable_original_array() = element.original_array();
+      }
+    }
+  }
+
+  return projected;
+}
+
+std::optional<OriginalValueProto> ComposeOriginalValueProto(
+    llvm::ArrayRef<std::optional<OriginalValueProto>> protos) {
+  if (protos.empty()) {
+    return std::nullopt;
+  }
+
+  bool has_any_value = false;
+  for (const auto& proto : protos) {
+    if (proto) {
+      has_any_value = true;
+      break;
+    }
+  }
+  if (!has_any_value) {
+    return std::nullopt;
+  }
+
+  OriginalValueProto composed;
+  composed.set_is_synthetic_call(false);
+
+  if (protos.size() == 1) {
+    return protos[0];
+  }
+
+  for (unsigned i = 0; i < protos.size(); ++i) {
+    if (!protos[i]) {
+      continue;
+    }
+    for (const auto& element : protos[i]->elements()) {
+      auto* new_element = composed.add_elements();
+      new_element->add_shape_index(i);
+      for (int64_t idx : element.shape_index()) {
+        new_element->add_shape_index(idx);
+      }
+      if (element.has_original_array()) {
+        *new_element->mutable_original_array() = element.original_array();
+      }
+    }
+  }
+
+  return composed;
+}
+
+OriginalValueProto CreateEmptyOriginalValueProto(const Shape& shape) {
+  OriginalValueProto proto;
+  proto.set_is_synthetic_call(false);
+  ShapeUtil::ForEachLeafShape(
+      shape, [&](const Shape& /*subshape*/, const ShapeIndex& index) {
+        auto* element = proto.add_elements();
+        for (int64_t idx : index) {
+          element->add_shape_index(idx);
+        }
+      });
+  return proto;
 }
 
 }  // namespace xla

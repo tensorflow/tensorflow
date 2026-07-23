@@ -23,6 +23,7 @@ limitations under the License.
 #include <utility>
 
 #include "absl/log/check.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "llvm/ADT/SmallVector.h"
 #include "xla/codegen/tiling/constraint_expression.h"
@@ -160,9 +161,8 @@ class SymbolicTile {
   static std::optional<SymbolicTile> FromIndexingMap(IndexingMap indexing_map);
 
   // For printing in tests.
-  std::string ToString() const;
-
-  void Print(std::ostream& out) const;
+  std::string ToString(absl::string_view separator = "\n  ") const;
+  void Print(std::ostream& out, absl::string_view separator = "\n  ") const;
 
   SymbolicMap offset_map() const;
   SymbolicMap size_map() const;

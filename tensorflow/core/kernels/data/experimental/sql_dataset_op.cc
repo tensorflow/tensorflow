@@ -47,14 +47,14 @@ class SqlDatasetOp : public DatasetOpKernel {
                   dt == DT_STRING || dt == DT_INT8 || dt == DT_INT16 ||
                       dt == DT_INT32 || dt == DT_INT64 || dt == DT_UINT8 ||
                       dt == DT_UINT16 || dt == DT_BOOL || dt == DT_DOUBLE,
-                  errors::InvalidArgument(
+                  absl::InvalidArgumentError(
                       "Each element of `output_types_` must be one of: "
                       "DT_STRING, DT_INT8, DT_INT16, DT_INT32, DT_INT64, "
                       "DT_UINT8, DT_UINT16, DT_BOOL, DT_DOUBLE "));
     }
     for (const PartialTensorShape& pts : output_shapes_) {
       OP_REQUIRES(ctx, pts.dims() == 0,
-                  errors::InvalidArgument(
+                  absl::InvalidArgumentError(
                       "Each element of `output_shapes_` must be a scalar."));
     }
   }
@@ -73,7 +73,7 @@ class SqlDatasetOp : public DatasetOpKernel {
     // TODO(b/64276826) Change this check when we add support for other
     // databases.
     OP_REQUIRES(ctx, driver_name == "sqlite",
-                errors::InvalidArgument(absl::StrFormat(
+                absl::InvalidArgumentError(absl::StrFormat(
                     "The database type, %s, is not supported by SqlDataset. "
                     "The set of supported databases is: {'sqlite'}.",
                     driver_name.c_str())));

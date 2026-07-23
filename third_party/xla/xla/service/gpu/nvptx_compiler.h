@@ -66,14 +66,20 @@ class NVPTXCompiler : public GpuCompiler {
       HloPassPipeline& pipeline, const DebugOptions& debug_options,
       const se::GpuComputeCapability& gpu_version) override;
 
+  bool IsScaledDotSupportedByBackend(
+      const HloInstruction* instr,
+      const GpuTargetConfig& gpu_target_config) const override;
+
   absl::Status OptimizeHloPostLayoutAssignment(
       HloModule* hlo_module, se::StreamExecutor* stream_exec,
       const CompileOptions& options, const GpuTargetConfig& gpu_target_config,
       const GpuAliasInfo* alias_info, tsl::thread::ThreadPool* thread_pool,
-      CompilationStats* compilation_stats) override;
+      CompilationStats* compilation_stats,
+      mlir::MLIRContext* mlir_context) override;
 
   absl::Status RunCudnnCompilerPasses(HloModule* module,
-                                      se::dnn::DnnSupport& dnn_support,
+                                      se::StreamExecutor* stream_exec,
+                                      const GpuTargetConfig& gpu_target_config,
                                       BinaryMap* dnn_compiled_graphs) override;
 
   std::unique_ptr<GpuAliasInfo> GetAliasInfo(

@@ -119,8 +119,8 @@ static absl::Status ValidateGraphDefForDevices(const GraphDef& gdef) {
   DeviceNameUtils::ParsedName parsed;
   for (const auto& ndef : gdef.node()) {
     if (!DeviceNameUtils::ParseFullName(ndef.device(), &parsed)) {
-      return errors::InvalidArgument("Missing device name in: ",
-                                     FormatNodeDefForError(ndef));
+      return absl::InvalidArgumentError(absl::StrCat(
+          "Missing device name in: ", FormatNodeDefForError(ndef)));
     }
   }
   return absl::OkStatus();
@@ -265,8 +265,8 @@ absl::Status GraphMgr::InitItem(const std::string& handle, const GraphDef& gdef,
     // Function library runtime.
     FunctionLibraryRuntime* lib = item->proc_flr->GetFLR(unit->device->name());
     if (lib == nullptr) {
-      return errors::InvalidArgument("Cannot find FLR for device: ",
-                                     unit->device->name());
+      return absl::InvalidArgumentError(
+          absl::StrCat("Cannot find FLR for device: ", unit->device->name()));
     }
 
     // Construct the root executor for the subgraph.
@@ -354,8 +354,9 @@ absl::Status GraphMgr::Deregister(const std::string& handle) {
     mutex_lock l(mu_);
     auto iter = table_.find(handle);
     if (iter == table_.end()) {
-      return errors::Aborted("Graph handle is not found: ", handle,
-                             ". Possibly, this worker just restarted.");
+      return absl::AbortedError(
+          absl::StrCat("Graph handle is not found: ", handle,
+                       ". Possibly, this worker just restarted."));
     }
     item = iter->second;
     table_.erase(iter);
@@ -408,8 +409,9 @@ absl::Status GraphMgr::RecvOutputs(const int64_t step_id, NamedTensors* out) {
   if (!s.ok()) {
     // Failing to fetch the outputs should not be possible, so rewrite the error
     // status to an INTERNAL error.
-    s = errors::Internal("Failed to fetch outputs for step ", step_id,
-                         ". (Original error message: ", s.message(), ")");
+    s = absl::InternalError(
+        absl::StrCat("Failed to fetch outputs for step ", step_id,
+                     ". (Original error message: ", s.message(), ")"));
   }
   size_t output_size = 0;
   for (auto& p : *out) {
@@ -473,7 +475,8 @@ void GraphMgr::ExecuteAsync(
   }
 
   if (item == nullptr) {
-    done(errors::Aborted("Graph handle is not found: ", handle));
+    done(absl::AbortedError(
+        absl::StrCat("Graph handle is not found: ", handle)));
     return;
   }
 

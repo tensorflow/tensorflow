@@ -87,8 +87,6 @@ class RocmComputeCapability {
   // hurt since they are immutable, but keeping them close to methods simplifies
   // maintanance.
   static constexpr absl::string_view kSupportedGfxVersions[]{
-      "gfx900",   // MI25
-      "gfx906",   // MI50 / MI60
       "gfx908",   // MI100
       "gfx90a",   // MI200
       "gfx942",   // MI300
@@ -183,11 +181,6 @@ class RocmComputeCapability {
     return gfx9_mi300_series() || gfx12();
   }
 
-  bool fence_before_barrier() const {
-    static constexpr absl::string_view kList[] = {"gfx900", "gfx906"};
-    return !IsThisGfxInAnyList(kList);
-  }
-
   bool has_hipblaslt() const {
     return IsThisGfxInAnyList(kMI300Series, kMI200Series, kGfx12Discrete,
                               kGfx11Discrete, kGfx11Apu) ||
@@ -205,6 +198,12 @@ class RocmComputeCapability {
   bool has_nanoo_fp8_support() const { return gfx9_mi300(); }
 
   bool has_mx_type_support() const { return gfx9_mi350() || gfx1250(); }
+
+  // Native bf16 transcendental instructions (v_exp_bf16, v_sqrt_bf16,
+  // v_rsq_bf16, v_tanh_bf16, v_log_bf16, etc.), backed by the LLVM
+  // FeatureBF16TransInsts subtarget feature. Lets us compute these bf16 ops
+  // without upcasting to f32 (currently used for log, sqrt, rsqrt, tanh).
+  bool has_bf16_transcendental_support() const { return gfx1250(); }
 
   bool has_tdm_support() const { return gfx1250(); }
 

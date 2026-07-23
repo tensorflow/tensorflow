@@ -623,9 +623,12 @@ void ApplyIndexingOp::getCanonicalizationPatterns(
 mlir::LogicalResult ApplyIndexingOp::fold(
     FoldAdaptor adaptor, llvm::SmallVectorImpl<mlir::OpFoldResult>& results) {
   auto map = getSymbolicMap();
+  mlir::ImplicitLocOpBuilder builder(getLoc(), getContext());
   for (auto expr : map.GetResults()) {
     if (expr.GetType() == SymbolicExprType::kVariable) {
       results.push_back(getOperand(expr.GetValue()));
+    } else if (expr.GetType() == SymbolicExprType::kConstant) {
+      results.push_back(builder.getIndexAttr(expr.GetValue()));
     } else {
       results.clear();
       return failure();

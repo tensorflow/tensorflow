@@ -1114,7 +1114,7 @@ TEST_F(InstructionFusionTest, DontFuseProducerIfInplaceConflict) {
   HloInstruction* add = root->mutable_operand(1);
   FusionDecision fusion_decision = InstructionFusion::ShouldFuseInPlaceOp(
       add, root, &alias_info_, std::nullopt);
-  EXPECT_FALSE(fusion_decision.CanFuse());
+  EXPECT_TRUE(fusion_decision.IsForbidden());
 }
 
 class FusionDecisionTest : public HloHardwareIndependentTestBase {};

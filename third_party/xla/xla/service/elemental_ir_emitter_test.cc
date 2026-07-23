@@ -46,7 +46,7 @@ namespace {
 using std::nullopt;
 
 class ElementalIrEmitterExecutionTest
-    : public HloPjRtInterpreterReferenceMixin<HloPjRtTestBase> {
+    : public HloInterpreterReferenceMixin<HloTestBase> {
  protected:
   void RunTest(const std::string& hlo_text, absl::Span<Literal* const> args) {
     HloModuleConfig config;
@@ -146,6 +146,32 @@ ENTRY main {
 
   Literal lhs = LiteralUtil::CreateR2<int32_t>({{1, 2}, {3, 4}});
   Literal rhs = LiteralUtil::CreateR2<int32_t>({{10, 20}, {30, 40}});
+  RunTest(hlo_text, {&lhs, &rhs});
+}
+
+TEST_F(ElementalIrEmitterExecutionTest, F16DotFusion) {
+  const char* hlo_text = R"(
+HloModule F16DotFusion
+
+fused_computation {
+  arg0 = f16[2,2]{1,0} parameter(0)
+  reshape.lhs = f16[4]{0} reshape(arg0)
+  arg1 = f16[2,2]{1,0} parameter(1)
+  reshape.rhs = f16[4]{0} reshape(arg1)
+  ROOT dot = f16[] dot(reshape.lhs, reshape.rhs), lhs_contracting_dims={0}, rhs_contracting_dims={0}
+}
+
+ENTRY main {
+  entry_arg0 = f16[2,2]{1,0} parameter(0)
+  entry_arg1 = f16[2,2]{1,0} parameter(1)
+  ROOT fusion = f16[] fusion(entry_arg0, entry_arg1), kind=kLoop, calls=fused_computation
+}
+)";
+
+  Literal lhs = LiteralUtil::CreateR2<half>(
+      {{half(1.0), half(2.0)}, {half(3.0), half(4.0)}});
+  Literal rhs = LiteralUtil::CreateR2<half>(
+      {{half(10.0), half(20.0)}, {half(30.0), half(40.0)}});
   RunTest(hlo_text, {&lhs, &rhs});
 }
 
@@ -341,6 +367,10 @@ TYPED_TEST(ElementalIrEmitterExecutionTypedTest, ConvertFloatToFloats) {
 }
 
 TYPED_TEST(ElementalIrEmitterExecutionTypedTest, ConvertFloatToSigned) {
+  if (std::is_same<TypeParam, tsl::float4_e2m1fn>()) {
+    GTEST_SKIP() << "Skipping test for type f4e2m1fn as conversion to integer "
+                    "types can overflow for the full range of values.";
+  }
   auto tname = this->TypeName();
   const auto hlo_text = absl::StrReplaceAll(R"(
     HloModule m
@@ -361,6 +391,10 @@ TYPED_TEST(ElementalIrEmitterExecutionTypedTest, ConvertFloatToSigned) {
 }
 
 TYPED_TEST(ElementalIrEmitterExecutionTypedTest, ConvertFloatToUnsigned) {
+  if (std::is_same<TypeParam, tsl::float4_e2m1fn>()) {
+    GTEST_SKIP() << "Skipping test for type f4e2m1fn as conversion to integer "
+                    "types can overflow for the full range of values.";
+  }
   auto tname = this->TypeName();
   const auto hlo_text = absl::StrReplaceAll(R"(
     HloModule m

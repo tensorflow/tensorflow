@@ -19,6 +19,7 @@ limitations under the License.
 #include <initializer_list>
 #include <memory>
 #include <string>
+#include <tuple>
 #include <utility>
 
 #include <gmock/gmock.h>
@@ -58,6 +59,7 @@ using ::testing::HasSubstr;
 using ::testing::Not;
 
 static const std::initializer_list<absl::string_view> kbf16f16{"bf16", "f16"};
+static const std::initializer_list<absl::string_view> ks32s64{"s32", "s64"};
 
 // This class performs isolated unit testing of the RaggedDotFusionRewriter
 // pass. It verifies that specific HLO patterns are correctly recognized and
@@ -72,8 +74,9 @@ class RaggedDotFusionRewriterUnitTest : public HloPjRtGpuTestBase {
   }
   stream_executor::dnn::VersionInfo GetDnnVersion() const {
     auto version = device_description().dnn_version();
-    return stream_executor::dnn::VersionInfo(version.major(), version.minor(),
-                                             version.patch());
+    return stream_executor::dnn::VersionInfo(version.major_version(),
+                                             version.minor_version(),
+                                             version.patch_version());
   }
 
   se::SemanticVersion GetToolkitVersion() const {
@@ -97,10 +100,10 @@ class RaggedDotFusionRewriterUnitTest : public HloPjRtGpuTestBase {
   }
 
   RaggedDotFusionRewriterUnitTest()
-      : HloPjRtGpuTestBase(HloPjRtTestBaseOptions{
-            /*verifier_layout_sensitive=*/false,
-            /*allow_mixed_precision_in_hlo_verifier=*/false,
-            /*instruction_can_change_layout_func=*/{}}) {}
+      : HloPjRtGpuTestBase(
+            HloTestBaseOptions{/*verifier_layout_sensitive=*/false,
+                               /*allow_mixed_precision_in_hlo_verifier=*/false,
+                               /*instruction_can_change_layout_func=*/{}}) {}
 };
 
 TEST_F(RaggedDotFusionRewriterUnitTest, TestSupportedRaggedDot) {
@@ -123,8 +126,9 @@ TEST_F(RaggedDotFusionRewriterUnitTest, TestSupportedRaggedDot) {
 // It verifies that the rewriter works correctly within the full GPU
 // optimization pipeline and produces numerically correct results on hardware.
 class RaggedDotFusionRewriterIntegrationTest
-    : public HloPjRtInterpreterReferenceMixin<HloPjRtGpuTestBase>,
-      public ::testing::WithParamInterface<absl::string_view> {
+    : public HloInterpreterReferenceMixin<HloPjRtGpuTestBase>,
+      public ::testing::WithParamInterface<
+          std::tuple<absl::string_view, absl::string_view>> {
  public:
   bool IsCuda() const {
     return device_description().gpu_compute_capability().IsCuda();
@@ -134,8 +138,9 @@ class RaggedDotFusionRewriterIntegrationTest
   }
   stream_executor::dnn::VersionInfo GetDnnVersion() const {
     auto version = device_description().dnn_version();
-    return stream_executor::dnn::VersionInfo(version.major(), version.minor(),
-                                             version.patch());
+    return stream_executor::dnn::VersionInfo(version.major_version(),
+                                             version.minor_version(),
+                                             version.patch_version());
   }
 
   stream_executor::SemanticVersion GetToolkitVersion() const {
@@ -143,11 +148,10 @@ class RaggedDotFusionRewriterIntegrationTest
   }
 
   RaggedDotFusionRewriterIntegrationTest()
-      : HloPjRtInterpreterReferenceMixin<HloPjRtGpuTestBase>(
-            HloPjRtTestBaseOptions{
-                /*verifier_layout_sensitive=*/false,
-                /*allow_mixed_precision_in_hlo_verifier=*/false,
-                /*instruction_can_change_layout_func=*/{}}) {}
+      : HloInterpreterReferenceMixin<HloPjRtGpuTestBase>(
+            HloTestBaseOptions{/*verifier_layout_sensitive=*/false,
+                               /*allow_mixed_precision_in_hlo_verifier=*/false,
+                               /*instruction_can_change_layout_func=*/{}}) {}
 
  protected:
   std::string GetOptimizedHlo(absl::string_view hlo_string) {
@@ -174,6 +178,7 @@ TEST_P(RaggedDotFusionRewriterIntegrationTest, TestRaggedDotOnly) {
     GTEST_SKIP() << "CuDNN ragged dot requires cuDNN 9.21+.";
   }
 
+  const auto& [data_type, group_type] = GetParam();
   const std::string hlo_with_new_type =
       absl::StrReplaceAll(R"(
     HloModule Test
@@ -181,11 +186,11 @@ TEST_P(RaggedDotFusionRewriterIntegrationTest, TestRaggedDotOnly) {
     ENTRY Test {
       input = TYPE[128,512]{1,0} parameter(0)
       weight = TYPE[16,512,256]{2,1,0} parameter(1)
-      group_sizes = s32[16]{0} parameter(2)
+      group_sizes = GROUP_TYPE[16]{0} constant({7,9,6,10,8,8,8,8,8,8,8,8,8,8,8,8})
       ROOT rd = TYPE[128,256]{1,0} ragged-dot(input, weight, group_sizes),
              lhs_contracting_dims={1}, rhs_contracting_dims={1}, lhs_ragged_dims={0}, rhs_group_dims={0}
     })",
-                          {{"TYPE", GetParam()}});
+                          {{"TYPE", data_type}, {"GROUP_TYPE", group_type}});
   std::string optimized_hlo_string = GetOptimizedHlo(hlo_with_new_type);
   EXPECT_THAT(optimized_hlo_string, HasSubstr(kCuDnnFusionKind));
 
@@ -199,7 +204,8 @@ TEST_P(RaggedDotFusionRewriterIntegrationTest, TestRaggedDotOnly) {
 }
 
 INSTANTIATE_TEST_SUITE_P(AllTypes, RaggedDotFusionRewriterIntegrationTest,
-                         ::testing::ValuesIn(kbf16f16));
+                         ::testing::Combine(::testing::ValuesIn(kbf16f16),
+                                            ::testing::ValuesIn(ks32s64)));
 }  // namespace
 }  // namespace gpu
 }  // namespace xla

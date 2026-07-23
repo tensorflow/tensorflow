@@ -23,6 +23,7 @@ limitations under the License.
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/service/compiler.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/stream_executor/platform.h"
 #include "xla/tests/hlo_pjrt_test_base.h"
 #include "xla/tests/hlo_runner_agnostic_test_base.h"
 
@@ -31,10 +32,10 @@ namespace xla::gpu {
 class HloPjRtGpuTestBase : public HloRunnerAgnosticTestBase,
                            public HloGpuTestBaseInterface {
  protected:
-  explicit HloPjRtGpuTestBase(HloPjRtTestBaseOptions options = {});
+  explicit HloPjRtGpuTestBase(HloTestBaseOptions options = {});
 
   explicit HloPjRtGpuTestBase(std::unique_ptr<PjRtClient> client)
-      : HloPjRtGpuTestBase(client.release(), HloPjRtTestBaseOptions()) {}
+      : HloPjRtGpuTestBase(client.release(), HloTestBaseOptions()) {}
 
   const GpuTargetConfig& gpu_target_config() const override {
     return gpu_target_config_;
@@ -49,13 +50,17 @@ class HloPjRtGpuTestBase : public HloRunnerAgnosticTestBase,
 
   Compiler* compiler() const override { return compiler_.get(); }
 
+  se::Platform::Id stream_executor_platform_id() const {
+    return compiler()->PlatformId();
+  }
+
  private:
-  HloPjRtGpuTestBase(PjRtClient* client, HloPjRtTestBaseOptions options);
+  HloPjRtGpuTestBase(PjRtClient* client, HloTestBaseOptions options);
   HloPjRtGpuTestBase(DeviceShapeRepresentationFn device_shape_representation_fn,
                      DeviceShapeSizeFn device_shape_size_fn,
                      GpuTargetConfig gpu_target_config,
                      std::unique_ptr<PjRtClient> client,
-                     HloPjRtTestBaseOptions options);
+                     HloTestBaseOptions options);
 
   GpuTargetConfig gpu_target_config_;
 

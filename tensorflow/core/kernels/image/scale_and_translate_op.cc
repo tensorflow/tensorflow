@@ -22,6 +22,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #define EIGEN_USE_THREADS
 
@@ -105,7 +106,7 @@ absl::Status ComputeSpansCore(OpKernelContext* context, const Kernel& kernel,
     span_end = Clamp(static_cast<int64_t>(0), input_size - 1, span_end) + 1;
     const int this_span_size = span_end - span_start;
     if (this_span_size > spans->span_size) {
-      return errors::Internal(absl::StrFormat(
+      return absl::InternalError(absl::StrFormat(
           "Span is too large: %d vs %d.", this_span_size, spans->span_size));
     }
     float total_weight_sum = 0.0f;
@@ -234,7 +235,7 @@ absl::Status ComputeSpans(OpKernelContext* context,
                               input_size, scale, translate, antialias, spans);
     }
     default:
-      return errors::InvalidArgument(absl::StrFormat(
+      return absl::InvalidArgumentError(absl::StrFormat(
           "Unrecognized kernel type: %d", static_cast<int>(kernel_type)));
   }
   return absl::OkStatus();
@@ -262,11 +263,11 @@ void GetValues(OpKernelContext* context, int input_index, float* v_1,
   // Tensor mutable_input(int index, False);
   const Tensor& t = context->input(input_index);
   OP_REQUIRES(context, t.dims() == 1,
-              errors::InvalidArgument("t must be 1-dimensional",
-                                      t.shape().DebugString()));
+              absl::InvalidArgumentError(absl::StrCat(
+                  "t must be 1-dimensional", t.shape().DebugString())));
   OP_REQUIRES(context, t.NumElements() == 2,
-              errors::InvalidArgument("t must have two elements",
-                                      t.shape().DebugString()));
+              absl::InvalidArgumentError(absl::StrCat(
+                  "t must have two elements", t.shape().DebugString())));
 
   auto data_vec = t.flat<float>().data();
   *v_1 = data_vec[0];
@@ -283,51 +284,55 @@ class ScaleAndTranslateOp : public OpKernel {
     OP_REQUIRES_OK(context, context->GetAttr("kernel_type", &kernel_type_str));
     kernel_type_ = functor::SamplingKernelTypeFromString(kernel_type_str);
     OP_REQUIRES(context, kernel_type_ != functor::SamplingKernelTypeEnd,
-                errors::InvalidArgument("Unrecognized kernel type: " +
-                                        kernel_type_str));
+                absl::InvalidArgumentError("Unrecognized kernel type: " +
+                                           kernel_type_str));
   }
 
   void Compute(OpKernelContext* context) override {
     const Tensor& input = context->input(0);
-    OP_REQUIRES(context, input.dims() == 4,
-                errors::InvalidArgument("input must be 4-dimensional",
-                                        input.shape().DebugString()));
+    OP_REQUIRES(
+        context, input.dims() == 4,
+        absl::InvalidArgumentError(absl::StrCat("input must be 4-dimensional",
+                                                input.shape().DebugString())));
     const Tensor& output_shape_t = context->input(1);
     OP_REQUIRES(context, output_shape_t.dims() == 1,
-                errors::InvalidArgument("output_shape_t must be 1-dimensional",
-                                        output_shape_t.shape().DebugString()));
+                absl::InvalidArgumentError(
+                    absl::StrCat("output_shape_t must be 1-dimensional",
+                                 output_shape_t.shape().DebugString())));
     OP_REQUIRES(context, output_shape_t.NumElements() == 2,
-                errors::InvalidArgument("output_shape_t must have two elements",
-                                        output_shape_t.shape().DebugString()));
+                absl::InvalidArgumentError(
+                    absl::StrCat("output_shape_t must have two elements",
+                                 output_shape_t.shape().DebugString())));
     auto output_shape_vec = output_shape_t.vec<int32_t>();
     const int64_t output_height = internal::SubtleMustCopy(output_shape_vec(0));
     const int64_t output_width = internal::SubtleMustCopy(output_shape_vec(1));
 
-    OP_REQUIRES(
-        context,
-        FastBoundsCheck(input.dim_size(1),
-                        std::numeric_limits<int32_t>::max()) &&
-            FastBoundsCheck(input.dim_size(2),
-                            std::numeric_limits<int32_t>::max()),
-        errors::InvalidArgument("input sizes must be between 0 and max int32"));
+    OP_REQUIRES(context,
+                FastBoundsCheck(input.dim_size(1),
+                                std::numeric_limits<int32_t>::max()) &&
+                    FastBoundsCheck(input.dim_size(2),
+                                    std::numeric_limits<int32_t>::max()),
+                absl::InvalidArgumentError(
+                    "input sizes must be between 0 and max int32"));
 
     const int64_t batch_size = input.dim_size(0);
     const int64_t input_height = input.dim_size(1);
     const int64_t input_width = input.dim_size(2);
     const int64_t channels = input.dim_size(3);
-    OP_REQUIRES(context, output_height > 0 && output_width > 0,
-                errors::InvalidArgument("output dimensions must be positive"));
+    OP_REQUIRES(
+        context, output_height > 0 && output_width > 0,
+        absl::InvalidArgumentError("output dimensions must be positive"));
     OP_REQUIRES(
         context, channels > 0,
-        errors::InvalidArgument("image must have at least one channel"));
+        absl::InvalidArgumentError("image must have at least one channel"));
     OP_REQUIRES(
         context, input.dim_size(1) > 0 && input.dim_size(2) > 0,
-        errors::InvalidArgument("input image must be of non-zero size"));
+        absl::InvalidArgumentError("input image must be of non-zero size"));
 
     float row_scale, col_scale;
     GetValues(context, 2, &row_scale, &col_scale);
     OP_REQUIRES(context, row_scale > 0 && col_scale > 0,
-                errors::InvalidArgument("Scale must be greater than zero."));
+                absl::InvalidArgumentError("Scale must be greater than zero."));
     float row_translation, col_translation;
     GetValues(context, 3, &row_translation, &col_translation);
 
@@ -395,26 +400,29 @@ class ScaleAndTranslateGradOp : public OpKernel {
     OP_REQUIRES_OK(context, context->GetAttr("kernel_type", &kernel_type_str));
     kernel_type_ = functor::SamplingKernelTypeFromString(kernel_type_str);
     OP_REQUIRES(context, kernel_type_ != functor::SamplingKernelTypeEnd,
-                errors::InvalidArgument("Unrecognized kernel type: " +
-                                        kernel_type_str));
+                absl::InvalidArgumentError("Unrecognized kernel type: " +
+                                           kernel_type_str));
   }
 
   void Compute(OpKernelContext* context) override {
     const Tensor& input = context->input(0);
     const Tensor& original_image = context->input(1);
 
-    OP_REQUIRES(context, input.dims() == 4,
-                errors::InvalidArgument("input_grad must be 4-dimensional",
-                                        input.shape().DebugString()));
+    OP_REQUIRES(
+        context, input.dims() == 4,
+        absl::InvalidArgumentError(absl::StrCat(
+            "input_grad must be 4-dimensional", input.shape().DebugString())));
     // Resizers always produce float images, so input gradient must
     // always be a float.
     OP_REQUIRES(context, input.dtype() == DT_FLOAT,
-                errors::InvalidArgument("input_grad must be of type float",
-                                        DataTypeString(input.dtype())));
+                absl::InvalidArgumentError(
+                    absl::StrCat("input_grad must be of type float",
+                                 DataTypeString(input.dtype()))));
 
     OP_REQUIRES(context, original_image.dims() == 4,
-                errors::InvalidArgument("original_image must be 4-dimensional",
-                                        original_image.shape().DebugString()));
+                absl::InvalidArgumentError(
+                    absl::StrCat("original_image must be 4-dimensional",
+                                 original_image.shape().DebugString())));
 
     // Allocate output and initialize to zeros.
     const int64_t batch_size = input.dim_size(0);
@@ -427,7 +435,7 @@ class ScaleAndTranslateGradOp : public OpKernel {
                                 std::numeric_limits<int32_t>::max()) &&
                     FastBoundsCheck(forward_input_width,
                                     std::numeric_limits<int32_t>::max()),
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(
                     "original sizes must be between 0 and max int32"));
     Tensor* output = nullptr;
     OP_REQUIRES_OK(context, context->allocate_output(
@@ -439,7 +447,7 @@ class ScaleAndTranslateGradOp : public OpKernel {
     float row_scale, col_scale;
     GetValues(context, 2, &row_scale, &col_scale);
     OP_REQUIRES(context, row_scale > 0 && col_scale > 0,
-                errors::InvalidArgument("Scale must be greater than zero."));
+                absl::InvalidArgumentError("Scale must be greater than zero."));
     float row_translation, col_translation;
     GetValues(context, 3, &row_translation, &col_translation);
 

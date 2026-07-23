@@ -44,9 +44,9 @@ limitations under the License.
 #include "xla/service/gpu_topology.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/hlo_runner_interface.h"
-#include "xla/service/hlo_runner_legacy.h"
 #include "xla/service/llvm_ir/llvm_command_line_options.h"
 #include "xla/service/platform_util.h"
+#include "xla/service/restricted/hlo_runner_legacy.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/tests/literal_test_util.h"
@@ -226,7 +226,6 @@ class KernelCacheTest : public HloLegacyGpuTestBase {
     DebugOptions debug_options =
         HloHardwareIndependentTestBase::GetDebugOptionsForTest();
     debug_options.set_xla_gpu_kernel_cache_file(cache_file_name_);
-    debug_options.set_xla_gpu_enable_llvm_module_compilation_parallelism(true);
     return debug_options;
   }
 
@@ -274,7 +273,7 @@ TEST_F(KernelCacheTest, NoCacheIsGeneratedWithoutCompiledKernels) {
   EXPECT_TRUE(Run(R"(
   ENTRY e {
     a = f32[5,5] parameter(0)
-    ROOT _ = f32[5,5] custom-call(a, a), custom_call_target="__cublas$gemm",
+    ROOT _ = f32[5,5] custom-call(a, a), custom_call_target="__cublas$lt$matmul",
       backend_config="{ \"gemm_backend_config\": {\"alpha_real\":1,\"beta\":0,\"dot_dimension_numbers\":{\"lhs_contracting_dimensions\":[\"1\"],\"rhs_contracting_dimensions\":[\"0\"],\"lhs_batch_dimensions\":[],\"rhs_batch_dimensions\":[]},\"alpha_imag\":0,\"precision_config\":{\"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]},\"epilogue\":\"DEFAULT\"}}"
   })",
                   /*run_hlo_passes=*/false));
@@ -402,15 +401,9 @@ class NoKernelCacheTest : public KernelCacheTest {
  public:
   DebugOptions GetDebugOptionsForTest() const override {
     DebugOptions debug_options = KernelCacheTest::GetDebugOptionsForTest();
-    debug_options.set_xla_gpu_enable_llvm_module_compilation_parallelism(false);
     return debug_options;
   }
 };
-
-TEST_F(NoKernelCacheTest, NoCacheWithoutCompilationParallelism) {
-  EXPECT_TRUE(Run(kHloText, /*run_hlo_passes=*/false));
-  EXPECT_FALSE(CacheFileExists());
-}
 
 }  // namespace
 }  // namespace gpu

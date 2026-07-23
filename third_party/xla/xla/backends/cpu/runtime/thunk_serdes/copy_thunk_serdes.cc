@@ -19,9 +19,11 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/base/casts.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/cpu/runtime/copy_thunk.h"
 #include "xla/backends/cpu/runtime/thunk.h"
 #include "xla/backends/cpu/runtime/thunk.pb.h"
@@ -40,10 +42,10 @@ static absl::Status CopyThunkToProto(const Thunk& thunk, ThunkProto& proto) {
   const auto& copy_thunk = absl::down_cast<const CopyThunk&>(thunk);
   CopyThunkProto* copy_thunk_proto = proto.mutable_copy_thunk();
 
-  TF_RETURN_IF_ERROR(SerializeSliceShapeIntoProto(
+  RETURN_IF_ERROR(SerializeSliceShapeIntoProto(
       copy_thunk.src_buffer(), copy_thunk.src_shape(),
       copy_thunk_proto->mutable_src_buffer_shape()));
-  TF_RETURN_IF_ERROR(SerializeSliceShapeIntoProto(
+  RETURN_IF_ERROR(SerializeSliceShapeIntoProto(
       copy_thunk.dst_buffer(), copy_thunk.dst_shape(),
       copy_thunk_proto->mutable_dst_buffer_shape()));
   return absl::OkStatus();
@@ -53,14 +55,14 @@ static absl::StatusOr<std::unique_ptr<Thunk>> CopyThunkFromProto(
     const ThunkProto& proto, const std::vector<BufferAllocation>& allocations,
     const HloModule* hlo_module,
     const std::vector<std::shared_ptr<Resource>>* resources) {
-  TF_ASSIGN_OR_RETURN(Thunk::Info info, ThunkInfoFromProto(proto.info()));
+  ASSIGN_OR_RETURN(Thunk::Info info, ThunkInfoFromProto(proto.info()));
 
-  TF_ASSIGN_OR_RETURN(auto src_slice_shape,
-                      DeserializeSliceShapeFromProto(
-                          proto.copy_thunk().src_buffer_shape(), allocations));
-  TF_ASSIGN_OR_RETURN(auto dst_slice_shape,
-                      DeserializeSliceShapeFromProto(
-                          proto.copy_thunk().dst_buffer_shape(), allocations));
+  ASSIGN_OR_RETURN(auto src_slice_shape,
+                   DeserializeSliceShapeFromProto(
+                       proto.copy_thunk().src_buffer_shape(), allocations));
+  ASSIGN_OR_RETURN(auto dst_slice_shape,
+                   DeserializeSliceShapeFromProto(
+                       proto.copy_thunk().dst_buffer_shape(), allocations));
 
   const auto& [src_buffer, src_shape] = src_slice_shape;
   const auto& [dst_buffer, dst_shape] = dst_slice_shape;

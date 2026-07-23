@@ -392,15 +392,10 @@ TEST_F(PjrtCApiGpuTest, CreateAndDestroyExecuteContext) {
   destroy_args.extension_start = nullptr;
   destroy_args.context = create_arg.context;
 
-  api_->PJRT_ExecuteContext_Destroy(&destroy_args);
+  EXPECT_EQ(api_->PJRT_ExecuteContext_Destroy(&destroy_args), nullptr);
 }
 
 TEST_F(PjrtCApiGpuTest, DmaMapAndUnmap) {
-// TODO(Intel-tf) : DMA map/unmap is currently not supported
-// on SYCL backend, re-enable the test once it's supported.
-#ifdef TENSORFLOW_USE_SYCL
-  GTEST_SKIP() << "DMA map/unmap not supported on SYCL backend";
-#endif
   size_t dma_size = 1024 * 1024;
   size_t alignment = 1024 * 1024;
   void* host_dma_ptr = tsl::port::AlignedMalloc(
@@ -779,7 +774,7 @@ TEST(PjrtCApiGpuAllocatorTest, InvalidAllocatorOptionsParsing) {
                   absl::StatusCode::kUnimplemented,
                   "Allocator invalid_allocator not supported for PJRT GPU "
                   "plugin. Supported allocator options are: 'default', "
-                  "'platform', 'bfc', 'cuda_async' and 'vmm'."));
+                  "'platform', 'bfc', 'cuda_async', 'vmm' and 'address'."));
 
   PJRT_Error_Destroy_Args error_destroy_args;
   error_destroy_args.struct_size = PJRT_Error_Destroy_Args_STRUCT_SIZE;
@@ -787,6 +782,77 @@ TEST(PjrtCApiGpuAllocatorTest, InvalidAllocatorOptionsParsing) {
   error_destroy_args.error = error;
 
   api->PJRT_Error_Destroy(&error_destroy_args);
+}
+
+TEST(PjrtCApiGpuMaxInflightComputationsTest, ValidOptionsParsing) {
+  auto api = GetPjrtApi();
+  absl::flat_hash_map<std::string, xla::PjRtValueType> options = {
+      {"max_inflight_computations", static_cast<int64_t>(64)},
+      {"visible_devices", xla::PjRtValueType(std::vector<int64_t>{0})},
+  };
+  ASSERT_OK_AND_ASSIGN(std::vector<PJRT_NamedValue> c_options,
+                       ::pjrt::ConvertToPjRtNamedValueList(options));
+  PJRT_Client_Create_Args create_arg;
+  create_arg.struct_size = PJRT_Client_Create_Args_STRUCT_SIZE;
+  create_arg.extension_start = nullptr;
+  create_arg.client = nullptr;
+  create_arg.create_options = c_options.data();
+  create_arg.num_options = c_options.size();
+  create_arg.kv_get_callback = nullptr;
+  create_arg.kv_get_user_arg = nullptr;
+  create_arg.kv_try_get_callback = nullptr;
+  create_arg.kv_try_get_user_arg = nullptr;
+  create_arg.kv_put_callback = nullptr;
+  create_arg.kv_put_user_arg = nullptr;
+  PJRT_Error* error = api->PJRT_Client_Create(&create_arg);
+  EXPECT_EQ(error, nullptr) << GetErrorMessage(error, api);
+
+  PJRT_Client_Destroy_Args destroy_args;
+  destroy_args.struct_size = PJRT_Client_Destroy_Args_STRUCT_SIZE;
+  destroy_args.extension_start = nullptr;
+  destroy_args.client = create_arg.client;
+
+  PJRT_Error* destroy_error = api->PJRT_Client_Destroy(&destroy_args);
+  CHECK_EQ(destroy_error, nullptr);
+}
+
+TEST(PjrtCApiGpuMaxInflightComputationsTest, InvalidOptionsParsing) {
+  auto api = GetPjrtApi();
+  std::vector<int64_t> invalid_values = {0, -1,
+                                         static_cast<int64_t>(INT32_MAX) + 1};
+  for (int64_t invalid_value : invalid_values) {
+    absl::flat_hash_map<std::string, xla::PjRtValueType> options = {
+        {"max_inflight_computations", invalid_value},
+    };
+    ASSERT_OK_AND_ASSIGN(std::vector<PJRT_NamedValue> c_options,
+                         ::pjrt::ConvertToPjRtNamedValueList(options));
+    PJRT_Client_Create_Args create_arg;
+    create_arg.struct_size = PJRT_Client_Create_Args_STRUCT_SIZE;
+    create_arg.extension_start = nullptr;
+    create_arg.client = nullptr;
+    create_arg.create_options = c_options.data();
+    create_arg.num_options = c_options.size();
+    create_arg.kv_get_callback = nullptr;
+    create_arg.kv_get_user_arg = nullptr;
+    create_arg.kv_try_get_callback = nullptr;
+    create_arg.kv_try_get_user_arg = nullptr;
+    create_arg.kv_put_callback = nullptr;
+    create_arg.kv_put_user_arg = nullptr;
+    PJRT_Error* error = api->PJRT_Client_Create(&create_arg);
+    EXPECT_NE(error, nullptr);
+    EXPECT_THAT(
+        ::pjrt::PjrtErrorToStatus(error, api),
+        absl_testing::StatusIs(
+            absl::StatusCode::kInvalidArgument,
+            HasSubstr("max_inflight_computations must be in (0, INT32_MAX]")));
+
+    PJRT_Error_Destroy_Args error_destroy_args;
+    error_destroy_args.struct_size = PJRT_Error_Destroy_Args_STRUCT_SIZE;
+    error_destroy_args.extension_start = nullptr;
+    error_destroy_args.error = error;
+
+    api->PJRT_Error_Destroy(&error_destroy_args);
+  }
 }
 
 TEST(PjrtCApiPlatformNameTest, AvailablePlatformName) {

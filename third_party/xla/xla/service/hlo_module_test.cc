@@ -31,6 +31,7 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "google/protobuf/message_lite.h"
 #include "xla/comparison_util.h"
 #include "xla/debug_options_flags.h"
 #include "xla/hlo/analysis/alias_info.h"
@@ -68,7 +69,8 @@ namespace xla {
 std::unique_ptr<tsl::protobuf::Message> ProcessNewEnv(
     std::unique_ptr<tsl::protobuf::Message> msg) {
   std::unique_ptr<test::TestCompilationEnvironment1> env(
-      absl::down_cast<test::TestCompilationEnvironment1*>(msg.release()));
+      google::protobuf::DownCastMessage<test::TestCompilationEnvironment1>(
+          msg.release()));
   if (!env) {
     env = std::make_unique<test::TestCompilationEnvironment1>();
     env->set_some_flag(100);
@@ -214,13 +216,7 @@ TEST_F(HloModuleTest, CloneHasFusion) {
   for (auto origin = post_order.begin(), copied = post_order_copied.begin();
        origin != post_order.end() && copied != post_order_copied.end();
        ++origin, ++copied) {
-    if ((*origin)->name() == "Fused") {
-      // Clone of the fused computation is handled when its fusion instruction
-      // is cloned, which always use suffix ".clone".
-      EXPECT_EQ(absl::StrCat((*origin)->name(), ".clone"), (*copied)->name());
-    } else {
-      EXPECT_EQ(absl::StrCat((*origin)->name(), ".copy"), (*copied)->name());
-    }
+    EXPECT_EQ(absl::StrCat((*origin)->name(), ".copy"), (*copied)->name());
   }
 }
 
@@ -485,10 +481,11 @@ ENTRY ReduceR3ToR2.v3 {
   EXPECT_NE(module->unique_id(), module_copy->unique_id());
 
   // Verify that the computations and instructions all have the same unique id.
-  auto computation_copy = module_copy->computations();
-  auto computation_copy_it = computation_copy.begin();
   for (const HloComputation* computation_orig : module->computations()) {
-    const HloComputation* computation_copy = *computation_copy_it++;
+    HloComputation* computation_copy =
+        module_copy->GetComputationWithName(computation_orig->name());
+    ASSERT_NE(computation_copy, nullptr)
+        << "Computation not found: " << computation_orig->name();
     EXPECT_EQ(computation_orig->unique_id(), computation_copy->unique_id())
         << absl::StrFormat(
                "ID of original computation %s != ID of deserialized "
@@ -496,10 +493,12 @@ ENTRY ReduceR3ToR2.v3 {
                computation_orig->name(), computation_copy->name(),
                computation_orig->unique_id(), computation_copy->unique_id());
 
-    auto instruction_copy_it = computation_copy->instructions().begin();
     for (const HloInstruction* instruction_orig :
          computation_orig->instructions()) {
-      const HloInstruction* instruction_copy = *instruction_copy_it++;
+      const HloInstruction* instruction_copy =
+          computation_copy->GetInstructionWithName(instruction_orig->name());
+      ASSERT_NE(instruction_copy, nullptr)
+          << "Instruction not found: " << instruction_orig->name();
       EXPECT_EQ(instruction_orig->unique_id(), instruction_copy->unique_id())
           << absl::StrFormat(
                  "ID of original instruction %s != ID of deserialized "

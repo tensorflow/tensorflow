@@ -1,0 +1,125 @@
+/* Copyright 2020 The OpenXLA Authors.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+==============================================================================*/
+
+#ifndef XLA_TPU_C_API_CONVERSIONS_H_
+#define XLA_TPU_C_API_CONVERSIONS_H_
+
+#include <array>
+#include <cstdint>
+#include <memory>
+#include <vector>
+
+#include "absl/status/statusor.h"
+#include "absl/types/span.h"
+#include "xla/hlo/ir/hlo_module.h"
+#include "xla/layout.h"
+#include "xla/literal.h"
+#include "xla/service/hlo_module_config.h"
+#include "xla/shape.h"
+#include "xla/shape_util.h"
+#include "xla/tpu/c_api_decl.h"
+#include "xla/xla_data.pb.h"
+
+// APIs for converting between internal and external versions of
+// XLA/StreamExecutor data structures.
+namespace ApiConverter {
+
+absl::Span<const float> MakeSpan(const FloatList& src_list);
+void CreateVector(absl::Span<const float> src, FloatList* dst);
+void Destroy(FloatList* float_list);
+
+absl::Span<const int64_t> MakeSpan(const Int64List& src_list);
+void CreateVector(absl::Span<const int64_t> src, Int64List* dst);
+
+absl::Span<const int> MakeSpan(const IntList& src_list);
+void CreateVector(absl::Span<const int> src, IntList* dst);
+
+absl::Span<const bool> MakeSpan(const BoolList& src_list);
+void CreateVector(absl::Span<const bool> src, BoolList* dst);
+
+void CreateVector(absl::Span<const xla::DimLevelType> src, IntList* dst);
+
+// xla::Tile
+xla::Tile FromC(const XLA_Tile* c_tile);
+void ToC(const xla::Tile& xla_tile, XLA_Tile* c_tile);
+void Destroy(XLA_Tile* c_tile);
+
+// xla::Layout
+xla::Layout FromC(const XLA_Layout* c_layout);
+void ToC(const xla::Layout& xla_layout, XLA_Layout* c_layout);
+void Destroy(XLA_Layout* c_layout);
+
+// xla::Shape
+xla::Shape FromC(const XLA_Shape* c_shape);
+void ToC(const xla::Shape& xla_shape, XLA_Shape* c_shape);
+void Destroy(XLA_Shape* c_shape);
+
+// xla::ShapeIndex
+XLA_ShapeIndex ToC(const xla::ShapeIndex& xla_shape);
+xla::ShapeIndex FromC(XLA_ShapeIndex* c_shape);
+void Destroy(XLA_ShapeIndex*);
+
+// Literal
+void ToC(const xla::LiteralSlice& literal, XLA_Literal* c_literal);
+xla::MutableBorrowingLiteral FromC(XLA_Literal* c_literal);
+void Destroy(XLA_Literal* c_literal);
+
+// Literal
+void ToC(const xla::LiteralSlice& literal, XLA_Literal* c_literal);
+xla::MutableBorrowingLiteral FromC(XLA_Literal* c_literal);
+void Destroy(XLA_Literal* c_literal);
+
+// TpuEmbeddingEngineParametersData
+struct TpuEmbeddingEngineParametersData {
+  // Backing vector for struct
+  std::array<std::vector<FloatListRef*>, 8> vectors;
+  TpuEmbeddingEngineParameters c_params;
+};
+
+std::unique_ptr<TpuEmbeddingEngineParametersData> Create(int num_tables);
+
+// HloModule
+XLA_HloModule ToC(const xla::HloModule& module);
+absl::StatusOr<std::unique_ptr<xla::HloModule>> FromC(
+    const XLA_HloModule& c_module);
+void Destroy(XLA_HloModule* c_module);
+
+// HloModuleConfig
+XLA_HloModuleConfig ToC(const xla::HloModuleConfig& config);
+xla::HloModuleConfig FromC(const XLA_HloModuleConfig& c_config);
+void Destroy(XLA_HloModuleConfig* c_config);
+
+// Helper for managing stack based C -> C++ conversions.
+template <class CType>
+struct StackHelper {
+  explicit StackHelper() {}
+
+  template <class CppType>
+  explicit StackHelper(const CppType& t) {
+    ::ApiConverter::ToC(t, &value);
+  }
+  ~StackHelper() { ::ApiConverter::Destroy(&value); }
+
+  template <class CppType>
+  CppType AsCpp() const {
+    return ::ApiConverter::FromC(&value);
+  }
+
+  mutable CType value;
+};
+
+}  // namespace ApiConverter
+
+#endif  // XLA_TPU_C_API_CONVERSIONS_H_

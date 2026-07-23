@@ -69,7 +69,7 @@ KernelFallbackCompatRequestState::KernelFallbackCompatRequestState(
     core::RefCountPtr<Rendezvous> rendezvous, OpKernelRunnerTable* runner_table,
     FallbackResourceArray* resource_array,
     tensorflow::thread::ThreadPoolInterface* user_intra_op_threadpool,
-    const absl::optional<SessionMetadata>& model_metadata,
+    const std::optional<SessionMetadata>& model_metadata,
     const tensorflow::ProcessFunctionLibraryRuntime* pflr)
     : step_id_(step_id),
       runner_(runner),
@@ -115,7 +115,7 @@ KernelFallbackCompatRequestState::KernelFallbackCompatRequestState(
     const tensorflow::DeviceMgr* device_manager, int64_t step_id,
     OpKernelRunnerTable* runner_table, FallbackResourceArray* resource_array,
     tensorflow::thread::ThreadPoolInterface* user_intra_op_threadpool,
-    const absl::optional<SessionMetadata>& model_metadata,
+    const std::optional<SessionMetadata>& model_metadata,
     const tensorflow::ProcessFunctionLibraryRuntime* pflr)
     : KernelFallbackCompatRequestState(
           runner, device_manager, step_id,
@@ -155,7 +155,7 @@ absl::Status SetUpKernelFallbackCompatRequestContext(
     tfrt_stub::OpKernelRunnerTable* runner_table,
     FallbackResourceArray* resource_array,
     tensorflow::thread::ThreadPoolInterface* user_intra_op_threadpool,
-    const absl::optional<SessionMetadata>& model_metadata,
+    const std::optional<SessionMetadata>& model_metadata,
     std::function<void(std::function<void()>)>* runner,
     tfrt_stub::CostRecorder* cost_recorder,
     tfrt::ResourceContext* client_graph_resource_context,

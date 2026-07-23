@@ -14,8 +14,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include <string>
-
+#include "absl/container/flat_hash_set.h"
+#include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 
 namespace xla {
@@ -32,6 +32,31 @@ void SetDisjointReadWriteRegionsAttr(HloInstruction* instruction);
 // Returns 'true' if in-place 'instruction' has the kXlaDisjointReadWriteRegions
 // frontend attribute set (returns false otherwise).
 bool HasDisjointReadWriteRegionsAttr(HloInstruction* instruction);
+
+// Indicates that an operation issues PDL launch.
+inline constexpr absl::string_view kXlaPdlLaunch = "xla.pdl_launch";
+
+// Indicates that an operation issues PDL launch.
+bool DoesPdlLaunch(const HloInstruction&);
+
+// Frontend attribute name for operands that should not be assumed invariant.
+// The attribute value is a comma-separated list of operand indices.
+inline constexpr absl::string_view kXlaNoInvariantOperands =
+    "xla.no_invariant_operands";
+
+// Returns a set of operand indices that should not be assumed invariant.
+absl::flat_hash_set<int> NonInvariantOperands(const HloInstruction&);
+
+// Attribute which indicates that copy insertion should avoid inserting copies
+// for while loops. Can be set as a frontend attribute on kWhile instructions,
+// via xla_backend_extra_options in DebugOptions, or via environment variable.
+inline constexpr char kXlaDisableWhileLoopCopies[] =
+    "_xla_disable_while_loop_copies";
+inline constexpr char kXlaDisableWhileLoopCopiesNoUnderscore[] =
+    "xla_disable_while_loop_copies";
+
+// Returns 'true' if while loop copies should be disabled for 'instruction'.
+bool HasDisableWhileLoopCopiesAttr(const HloInstruction* instruction);
 
 }  // namespace xla
 

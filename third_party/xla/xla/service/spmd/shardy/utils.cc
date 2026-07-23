@@ -112,20 +112,6 @@ mlir::StringAttr getStringAttribute(Attribute attr, mlir::OpBuilder& builder) {
   return builder.getStringAttr(mlir::sdy::attributeToString(attr));
 }
 
-SmallVector<NamedAttribute> getExistingFrontendAttributes(
-    DictionaryAttr frontendAttributes, StringRef excludedAttribute) {
-  SmallVector<NamedAttribute> dictEntries;
-  if (!frontendAttributes) {
-    return dictEntries;
-  }
-  for (NamedAttribute entry : frontendAttributes) {
-    if (entry.getName() != excludedAttribute) {
-      dictEntries.push_back(entry);
-    }
-  }
-  return dictEntries;
-}
-
 void setFrontendAttribute(SmallVector<NamedAttribute>& existingAttributes,
                           StringRef name, Attribute value) {
   mlir::OpBuilder builder(value.getContext());
@@ -143,28 +129,9 @@ void setFrontendAttribute(SmallVector<NamedAttribute>& existingAttributes,
   existingAttributes.emplace_back(builder.getStringAttr(name), stringValue);
 }
 
-void removeFrontendAttribute(
-    DictionaryAttr frontendAttributes, StringRef attributeName,
-    std::function<void(ArrayRef<NamedAttribute>)> setAttr,
-    std::function<void()> removeAttr) {
-  SmallVector<NamedAttribute> existingAttributes =
-      getExistingFrontendAttributes(frontendAttributes, attributeName);
-  if (!existingAttributes.empty()) {
-    setAttr(existingAttributes);
-  } else {
-    removeAttr();
-  }
-}
-
 void setFrontendAttrs(Operation* op, ArrayRef<NamedAttribute> frontendAttrs) {
   return op->setAttr(kFrontendAttributesAttr,
                      DictionaryAttr::get(op->getContext(), frontendAttrs));
-}
-
-void setFuncArgFrontendAttrs(FuncOp funcOp, unsigned int index,
-                             ArrayRef<NamedAttribute> frontendAttrs) {
-  funcOp.setArgAttr(index, kFrontendAttributesAttr,
-                    DictionaryAttr::get(funcOp.getContext(), frontendAttrs));
 }
 
 std::optional<TensorShardingAttr> adjustShardingInternal(
@@ -194,6 +161,20 @@ std::optional<TensorShardingAttr> adjustShardingInternal(
 
 }  // namespace
 
+SmallVector<NamedAttribute> getExistingFrontendAttributes(
+    DictionaryAttr frontendAttributes, StringRef excludedAttribute) {
+  SmallVector<NamedAttribute> dictEntries;
+  if (!frontendAttributes) {
+    return dictEntries;
+  }
+  for (NamedAttribute entry : frontendAttributes) {
+    if (entry.getName() != excludedAttribute) {
+      dictEntries.push_back(entry);
+    }
+  }
+  return dictEntries;
+}
+
 void setFrontendAttribute(Operation* op, StringRef name, Attribute value) {
   SmallVector<NamedAttribute> existingAttributes =
       getExistingFrontendAttributes(getFrontendAttrs(op), "");
@@ -208,6 +189,25 @@ void setFrontendAttribute(FuncOp funcOp, StringRef name, Attribute value,
                                     "");
   setFrontendAttribute(existingAttributes, name, value);
   setFuncArgFrontendAttrs(funcOp, argNum, existingAttributes);
+}
+
+void setFuncArgFrontendAttrs(FuncOp funcOp, unsigned int index,
+                             ArrayRef<NamedAttribute> frontendAttrs) {
+  funcOp.setArgAttr(index, kFrontendAttributesAttr,
+                    DictionaryAttr::get(funcOp.getContext(), frontendAttrs));
+}
+
+void removeFrontendAttribute(
+    DictionaryAttr frontendAttributes, StringRef attributeName,
+    std::function<void(ArrayRef<NamedAttribute>)> setAttr,
+    std::function<void()> removeAttr) {
+  SmallVector<NamedAttribute> existingAttributes =
+      getExistingFrontendAttributes(frontendAttributes, attributeName);
+  if (!existingAttributes.empty()) {
+    setAttr(existingAttributes);
+  } else {
+    removeAttr();
+  }
 }
 
 void removeFrontendAttribute(Operation* op, StringRef attributeName) {
@@ -273,7 +273,8 @@ CustomCallOp cloneCustomCallWithNewResultTypes(CustomCallOp op,
       op.getCallTargetNameAttr(), op.getHasSideEffectAttr(),
       op.getBackendConfigAttr(), op.getApiVersionAttr(),
       op.getCalledComputations(), op.getOperandLayoutsAttr(),
-      op.getResultLayoutsAttr(), op.getOutputOperandAliases());
+      op.getResultLayoutsAttr(), op.getOutputOperandAliases(),
+      op.getResultTilingsAttr());
   customCallOp->setDiscardableAttrs(mlir::DictionaryAttr::get(
       op->getContext(), llvm::to_vector(op->getDiscardableAttrs())));
   return customCallOp;
@@ -409,6 +410,36 @@ bool hasGspmdAttrsOrOps(mlir::ModuleOp module) {
   return false;
 }
 
+bool hasFrontendMhloShardings(mlir::ModuleOp module) {
+  for (auto func : module.getOps<mlir::func::FuncOp>()) {
+    for (unsigned int argIndex = 0; argIndex < func.getNumArguments();
+         ++argIndex) {
+      if (hasKey(sdy::getFuncArgFrontendAttrs(func, argIndex),
+                 xla::ToStringRef(HloSharding::kShardingFrontendAttrName))) {
+        return true;
+      }
+    }
+    bool hasFrontendSharding = false;
+    func->walk([&hasFrontendSharding](mlir::Operation* op) {
+      if (hasKey(sdy::getFrontendAttrs(op),
+                 xla::ToStringRef(HloSharding::kShardingFrontendAttrName))) {
+        hasFrontendSharding = true;
+        return mlir::WalkResult::interrupt();
+      }
+      return mlir::WalkResult::advance();
+    });
+    if (hasFrontendSharding) {
+      return true;
+    }
+  }
+  return false;
+}
+
+bool hasFrontendMeshes(mlir::ModuleOp module) {
+  return tryGetFrontendAttr<mlir::DictionaryAttr>(module, kMeshesRoundTripAttr)
+      .has_value();
+}
+
 bool hasShardyMesh(mlir::ModuleOp module) {
   return !module.getOps<mlir::sdy::MeshOp>().empty();
 }
@@ -475,7 +506,8 @@ mlir::sdy::TensorShardingAttr convertToSdyShardingAttr(
         << "Expected HloShardingV3 during Shardy import when "
            "'xla_enable_hlo_sharding_v3' flag is enabled, but got "
            "non-replicated HloShardingV2 <<"
-        << hloSharding;
+        << hloSharding
+        << ". Please contact OpenXLA/Shardy team if you encounter this error.";
     return nullptr;
   }
 
@@ -511,11 +543,22 @@ mlir::sdy::TensorShardingAttr convertToSdyShardingAttr(
         toSdyAxisRefAttr(axisRef, namedSharding.mesh(), context));
   }
 
-  CHECK(namedSharding.manual_axes().empty())
-      << "Manual axes should be handled by shard maps import.";
+  mlir::sdy::ReductionOp reductionOp = mlir::sdy::ReductionOp::SUM;
+  switch (namedSharding.reduction_op()) {
+    case xla::ReductionOp::kSum:
+      reductionOp = mlir::sdy::ReductionOp::SUM;
+      break;
+    case xla::ReductionOp::kMax:
+      reductionOp = mlir::sdy::ReductionOp::MAX;
+      break;
+    case xla::ReductionOp::kMin:
+      reductionOp = mlir::sdy::ReductionOp::MIN;
+      break;
+  }
 
   return mlir::sdy::TensorShardingAttr::get(context, meshAttr, dimShardings,
-                                            replicatedAxes, unreducedAxes);
+                                            replicatedAxes, unreducedAxes,
+                                            reductionOp);
 }
 
 mlir::sdy::TensorShardingPerValueAttr convertToSdySharding(
@@ -533,16 +576,13 @@ mlir::sdy::TensorShardingPerValueAttr convertToSdySharding(
       context, convertToSdyShardingAttr(hloSharding, context));
 }
 
-bool isManualComputation(CallOp callOp, bool isInlineable) {
-  return callOp.getCallee().contains(isInlineable
-                                         ? kInlineableManualComputationFuncName
-                                         : kManualComputationFuncName);
+bool isManualComputation(CallOp callOp) {
+  return isManualComputationOnName(callOp.getCallee());
 }
 
-bool isManualComputation(FuncOp funcOp, bool isInlineable) {
-  return funcOp.getName().contains(isInlineable
-                                       ? kInlineableManualComputationFuncName
-                                       : kManualComputationFuncName);
+bool isManualComputationOnName(mlir::StringRef funcName, bool isInlineable) {
+  return funcName.contains(isInlineable ? kInlineableManualComputationFuncName
+                                        : kManualComputationFuncName);
 }
 
 }  // namespace sdy

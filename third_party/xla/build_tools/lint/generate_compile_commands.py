@@ -12,18 +12,31 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ============================================================================
+
 r"""Produces a `compile_commands.json` from the output of `bazel aquery`.
 
 This tool requires that a build has been completed for all targets in the
-query (e.g., for the example usage below `bazel build //xla/...`). This is due
-to generated files like proto headers and files generated via tablegen. So if
-LSP or other tools get out of date, it may be necessary to rebuild or regenerate
+query. Generated files such as proto headers and tablegen output are
+configuration-specific, so use the same Bazel options for the build and the
+action query. If clangd gets out of date, rebuild, regenerate
 `compile_commands.json`, or both.
 
+For a debug compilation database with C/C++ assertions enabled, pass `-c dbg`
+to both commands. To keep another compilation mode while enabling assertions,
+pass `--copt=-UNDEBUG` to both commands so `NDEBUG` is undefined.
+
+Bazel can compile the same source in a target configuration (for the requested
+outputs) and an exec configuration (for tools run during the build). Exec
+configurations use tool-building flags and typically have `-exec-` in their
+`bazel-out` paths. When both exist, this tool keeps the non-exec command so
+clangd sees the flags used to compile the target code.
+
 Example usage:
-  bazel aquery "mnemonic(CppCompile, //xla/...)" --output=jsonproto | \
+  bazel build -c dbg //xla/... -k
+  bazel aquery "mnemonic(CppCompile, //xla/...)" -c dbg --output=jsonproto | \
       python3 build_tools/lint/generate_compile_commands.py
 """
+
 import dataclasses
 import json
 import logging
@@ -35,6 +48,20 @@ _JSONDict = dict[Any, Any]  # Approximates parsed JSON
 
 _DISALLOWED_ARGS = frozenset(["-fno-canonical-system-headers"])
 _XLA_SRC_ROOT = pathlib.Path(__file__).absolute().parent.parent.parent
+
+
+def _setup_external_symlink(xla_src_root: pathlib.Path) -> None:
+  """Makes Bazel external repositories visible from the source root."""
+  external = xla_src_root / "external"
+  if external.is_symlink() and not external.exists():
+    logging.info("Removing dangling external symlink %s", external)
+    external.unlink()
+
+  if not external.exists():
+    # bazel-out points to <output_base>/execroot/<workspace>/bazel-out.
+    bazel_external = xla_src_root / "bazel-out" / "../../../external"
+    logging.info("Symlinking %s to %s", external, bazel_external)
+    external.symlink_to(bazel_external)
 
 
 @dataclasses.dataclass
@@ -83,6 +110,10 @@ class CompileCommand:
     }
 
 
+def _is_exec_configuration(command: CompileCommand) -> bool:
+  return any("-exec-" in arg for arg in command.arguments)
+
+
 def extract_compile_commands(
     parsed_aquery_output: _JSONDict,
 ) -> list[CompileCommand]:
@@ -98,9 +129,22 @@ def extract_compile_commands(
   actions = parsed_aquery_output["actions"]
 
   commands = []
+  command_indices: dict[str, int] = {}
   for action in actions:
     command = CompileCommand.from_args_list(action["arguments"])
-    commands.append(command)
+    if command.file is None:
+      commands.append(command)
+      continue
+
+    index = command_indices.get(command.file)
+    if index is None:
+      command_indices[command.file] = len(commands)
+      commands.append(command)
+    elif _is_exec_configuration(commands[index]) and not _is_exec_configuration(
+        command
+    ):
+      commands[index] = command
+
   return commands
 
 
@@ -110,9 +154,7 @@ def main():
   logging.getLogger().setLevel(logging.INFO)
 
   # Setup external symlink if necessary so headers can be found in include paths
-  if not (external := _XLA_SRC_ROOT / "external").exists():
-    logging.info("Symlinking `xla/bazel-xla/external` to `xla/external`")
-    external.symlink_to(_XLA_SRC_ROOT / "bazel-xla" / "external")
+  _setup_external_symlink(_XLA_SRC_ROOT)
 
   logging.info("Reading `bazel aquery` output from stdin...")
   parsed_aquery_output = json.loads(sys.stdin.read())

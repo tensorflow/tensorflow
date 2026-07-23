@@ -177,7 +177,7 @@ absl::Status InitializeAllResources(const RevivedObjects& revived) {
 
 absl::Status TFSavedModelAPI::GetFunction(const std::string& function_path,
                                           ConcreteFunction** function) {
-  absl::optional<int> node =
+  std::optional<int> node =
       internal::FindNodeAtPath(function_path, bundle_.saved_object_graph());
   if (!node.has_value()) {
     return absl::NotFoundError(
@@ -236,7 +236,7 @@ absl::Status TFSavedModelAPI::GetSignatureDefFunction(
 
 absl::Status TFSavedModelAPI::GetVariable(const std::string& variable_path,
                                           Variable** variable) {
-  absl::optional<int> node =
+  std::optional<int> node =
       internal::FindNodeAtPath(variable_path, bundle_.saved_object_graph());
   if (!node.has_value()) {
     return absl::NotFoundError(
@@ -264,7 +264,7 @@ TFSavedModelAPI::TFSavedModelAPI(const std::string& directory,
 
 absl::Status TFSavedModelAPI::Load(
     const std::string& directory,
-    const absl::optional<std::unordered_set<std::string>>& tags,
+    const std::optional<std::unordered_set<std::string>>& tags,
     ImmediateExecutionContext* context, std::unique_ptr<TFSavedModelAPI>* out) {
   // TODO(bmzhao): Add support for loading a TF1 SavedModel.
   if (tags) {

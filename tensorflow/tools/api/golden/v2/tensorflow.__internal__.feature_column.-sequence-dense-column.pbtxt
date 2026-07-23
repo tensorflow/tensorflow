@@ -2,10 +2,10 @@ path: "tensorflow.__internal__.feature_column.SequenceDenseColumn"
 tf_class {
   is_instance: "<class \'tensorflow.python.feature_column.feature_column_v2.SequenceDenseColumn\'>"
   is_instance: "<class \'tensorflow.python.feature_column.feature_column_v2_types.FeatureColumn\'>"
-  is_instance: "<type \'object\'>"
+  is_instance: "<class \'object\'>"
   member {
     name: "TensorSequenceLengthPair"
-    mtype: "<type \'type\'>"
+    mtype: "<class \'type\'>"
   }
   member {
     name: "name"
@@ -20,7 +20,15 @@ tf_class {
     mtype: "<class \'abc.abstractproperty\'>"
   }
   member_method {
+    name: "__gt__"
+    argspec: "args=[\'self\', \'other\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
     name: "__init__"
+  }
+  member_method {
+    name: "__lt__"
+    argspec: "args=[\'self\', \'other\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "create_state"
@@ -29,6 +37,7 @@ tf_class {
   member_method {
     name: "from_config"
     argspec: "args=[\'cls\', \'config\', \'custom_objects\', \'columns_by_name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
+    method_kind: CLASS
   }
   member_method {
     name: "get_config"

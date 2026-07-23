@@ -15,10 +15,12 @@ limitations under the License.
 
 #include "xla/hlo/ir/tile_assignment.h"
 
+#include <cstdint>
 #include <memory>
 #include <vector>
 
 #include "absl/hash/hash.h"
+#include "absl/types/span.h"
 #include "xla/array3d.h"
 #include "xla/hlo/testlib/test.h"
 
@@ -84,6 +86,33 @@ TEST(TileAssignmentTest, CopyAssignment) {
   EXPECT_EQ(tile, copied);
   EXPECT_EQ(tile.iota().has_value(), copied.iota().has_value());
   EXPECT_EQ(absl::HashOf(tile), absl::HashOf(copied));
+}
+
+TEST(TileAssignmentTest, MoveConstruction) {
+  TileAssignment tile({2, 2, 4}, {2, 2, 4}, {2, 1, 0});
+  // Force materialization of internal array_ and shared_array_ pointers.
+  const Array<int64_t>& materialized = tile.array();
+  EXPECT_EQ(materialized.num_elements(), 16);
+
+  TileAssignment moved(std::move(tile));
+  std::vector<int64_t> expected_dims = {2, 2, 4};
+  EXPECT_EQ(moved.dimensions(), absl::MakeConstSpan(expected_dims));
+  EXPECT_EQ(moved.num_elements(), 16);
+  EXPECT_TRUE(moved.iota().has_value());
+}
+
+TEST(TileAssignmentTest, MoveAssignment) {
+  TileAssignment tile({2, 2, 4}, {2, 2, 4}, {2, 1, 0});
+  // Force materialization of internal array_ and shared_array_ pointers.
+  const Array<int64_t>& materialized = tile.array();
+  EXPECT_EQ(materialized.num_elements(), 16);
+
+  TileAssignment moved({1, 16});
+  moved = std::move(tile);
+  std::vector<int64_t> expected_dims = {2, 2, 4};
+  EXPECT_EQ(moved.dimensions(), absl::MakeConstSpan(expected_dims));
+  EXPECT_EQ(moved.num_elements(), 16);
+  EXPECT_TRUE(moved.iota().has_value());
 }
 
 TEST(IotaTileAssignmentTest, TransposeCase1) {

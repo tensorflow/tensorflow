@@ -31,8 +31,8 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/thunk.pb.h"
 #include "xla/core/collectives/communicator.h"
 #include "xla/hlo/ir/hlo_instructions.h"
-#include "xla/runtime/buffer_use.h"
 #include "xla/service/buffer_assignment.h"
+#include "xla/stream_executor/command_buffer.h"
 #include "xla/stream_executor/stream.h"
 
 namespace xla {
@@ -48,6 +48,10 @@ class SendThunk : public CollectiveThunk {
             absl::string_view instr_name);
 
   absl::Status Initialize(const InitializeParams& params) override;
+
+  absl::StatusOr<const se::CommandBuffer::Command*> Record(
+      const ExecuteParams& execute_params, const RecordParams& record_params,
+      RecordAction record_action, se::CommandBuffer* command_buffer) override;
 
   static absl::StatusOr<std::unique_ptr<SendThunk>> FromProto(
       ThunkInfo thunk_info, const SendThunkProto& thunk_proto,

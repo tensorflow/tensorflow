@@ -43,6 +43,7 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/utils/dump_mlir_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/serialize_mlir_module_utils.h"
+#include "tensorflow/compiler/mlir/tf2xla/api/v1/compile_mlir_util.h"
 #include "tensorflow/compiler/mlir/tf2xla/api/v2/legalize_tf.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/ifrt/ifrt_compilation.pb.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/ifrt/ifrt_constants.h"
@@ -59,6 +60,7 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/tsl/lib/strings/proto_serialization.h"
+#include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
 #include "tensorflow/core/framework/function.pb.h"
@@ -154,13 +156,13 @@ absl::Status UpdateCompileMetadata(
     absl::Span<const DtypeAndShape> inputs) {
   VLOG(3) << "TpuCompileMetadata before shape is populated " << metadata;
   if (metadata.num_replicas() < 1 || metadata.num_cores_per_replica() < 1) {
-    return absl::InternalError(
+    return absl::InvalidArgumentError(
         absl::StrCat("Number of replicas ", metadata.num_replicas(),
                      " and number of cores per replica ",
                      metadata.num_cores_per_replica(), " must be >= 1"));
   }
   if (metadata.args_size() != inputs.size()) {
-    return absl::InternalError(
+    return absl::InvalidArgumentError(
         absl::StrCat("Number of inputs mismatched! Expected ",
                      metadata.args_size(), " got ", inputs.size()));
   }
@@ -168,14 +170,14 @@ absl::Status UpdateCompileMetadata(
   for (int i = 0; i < metadata.args_size(); ++i) {
     if (metadata.args(i).kind() !=
         tensorflow::tpu::TPUCompileMetadataProto::Arg::PARAMETER) {
-      return absl::InternalError(absl::StrCat(
+      return absl::FailedPreconditionError(absl::StrCat(
           "Only support PARAMETER, but got ", metadata.args(i).kind()));
     }
 
     if (metadata.args(i).dtype() != inputs[i].dtype) {
-      return absl::InternalError(absl::StrCat("Dtype mismatched! Expected ",
-                                              metadata.args(i).dtype(), " got ",
-                                              inputs[i].dtype));
+      return absl::InvalidArgumentError(
+          absl::StrCat("Dtype mismatched! Expected ", metadata.args(i).dtype(),
+                       " got ", inputs[i].dtype));
     }
 
     // Update shape.
@@ -242,13 +244,6 @@ absl::StatusOr<Tf2HloResult> CompileTfToHlo(const Tf2HloArg& arg) {
   }
   VLOG(1) << "device_type: " << device_type;
 
-  tpu::MlirToHloArgs mlir_to_hlo_args;
-  std::string module_str = tensorflow::SerializeMlirModule(arg.module);
-  mlir_to_hlo_args.mlir_module = module_str;
-  // Use fallback bridge as other modes may get deprecated.
-  mlir_to_hlo_args.rollout_state =
-      ConfigProto::Experimental::MLIR_BRIDGE_ROLLOUT_DISABLED;
-
   TF_ASSIGN_OR_RETURN(
       auto* platform,
       stream_executor::PlatformManager::PlatformWithName("Host"));
@@ -261,6 +256,21 @@ absl::StatusOr<Tf2HloResult> CompileTfToHlo(const Tf2HloArg& arg) {
   for (const auto& input : arg.input_dtypes_and_shapes) {
     arg_shapes.push_back(input.GetShapeForCompilation());
   }
+
+  llvm::SmallVector<tensorflow::TensorOrResourceShape>
+      arg_tensor_or_resource_shapes;
+  for (const auto& shape : arg_shapes) {
+    arg_tensor_or_resource_shapes.push_back({shape});
+  }
+
+  TF_RETURN_IF_ERROR(
+      tensorflow::RefineShapes(arg_tensor_or_resource_shapes, arg.module));
+  tpu::MlirToHloArgs mlir_to_hlo_args;
+  std::string module_str = tensorflow::SerializeMlirModule(arg.module);
+  mlir_to_hlo_args.mlir_module = module_str;
+  // Use fallback bridge as other modes may get deprecated.
+  mlir_to_hlo_args.rollout_state =
+      ConfigProto::Experimental::MLIR_BRIDGE_ROLLOUT_DISABLED;
 
   bool use_tuple_args = false;
   std::vector<tpu::ShardingAndIndex> arg_core_mapping;

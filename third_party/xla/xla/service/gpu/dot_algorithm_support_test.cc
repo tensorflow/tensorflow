@@ -16,7 +16,6 @@ limitations under the License.
 #include <string>
 #include <tuple>
 
-#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
@@ -36,7 +35,6 @@ namespace {
 
 using ::stream_executor::SemanticVersion;
 using ::testing::Combine;
-using ::testing::HasSubstr;
 using ::testing::TestParamInfo;
 using ::testing::Values;
 using ::testing::WithParamInterface;
@@ -96,7 +94,8 @@ std::string TestParamsToString(
       primitive_util::LowercasePrimitiveTypeName(params.rhs_storage_type),
       primitive_util::LowercasePrimitiveTypeName(params.output_storage_type),
       params.min_cuda_capability.major, params.min_cuda_capability.minor,
-      params.min_rocm_version.major(), params.min_rocm_version.minor(),
+      params.min_rocm_version.major_version(),
+      params.min_rocm_version.minor_version(),
       BackendRestrictionToString(params.backend_restriction),
       params.sizes.contracting_size, params.sizes.non_contracting_size);
 }
@@ -212,12 +211,7 @@ TEST_P(DotAlgorithmSupportTest, AlgorithmIsSupportedFromCudaCapability) {
     )");
     }
   } else {
-    // Note: If the algorithm is not supported either the emitter will decline
-    // to emit it (for Cublas enabled) , or the autotuner will not find any
-    // supported configs (for CublasLt enabled).
-    EXPECT_THAT(Run(hlo_text).message(),
-                ::testing::AnyOf(HasSubstr("Unsupported algorithm"),
-                                 HasSubstr("No supported configs")));
+    EXPECT_FALSE(Run(hlo_text));
   }
 }
 

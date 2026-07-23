@@ -30,10 +30,10 @@ namespace xla::gpu {
 namespace {
 
 class EstimateCubScanScratchSizeTest
-    : public HloPjRtInterpreterReferenceMixin<HloPjRtTestBase> {
+    : public HloInterpreterReferenceMixin<HloTestBase> {
  public:
   void SetUp() override {
-    HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>::SetUp();
+    HloInterpreterReferenceMixin<HloTestBase>::SetUp();
     ASSERT_OK_AND_ASSIGN(test_platform_, PlatformUtil::GetPlatform("gpu"));
   }
 
@@ -58,6 +58,7 @@ TEST_F(EstimateCubScanScratchSizeTest, BasicScan) {
       %custom-call = (f32[100]{0}, u8[1]{0})
         custom-call(%input),
         custom_call_target="xla.gpu.ext.cub_scan_unassigned_scratch_size",
+        operand_layout_constraints={f32[100]{0}},
         backend_config={"vector_length":1, "row_length":1, "column_length":100, "kind":1, "is_reverse":false}
       ROOT %t = f32[100]{0} get-tuple-element(%custom-call), index=0
   })";

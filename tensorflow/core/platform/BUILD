@@ -1,3 +1,18 @@
+# Copyright 2026 The TensorFlow Authors. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
+
 # Description:
 #   TensorFlow Base libraries.
 #   This package contains the following libraries:
@@ -39,6 +54,7 @@ load(
     "//tensorflow/core/platform:build_config.bzl",
     "tf_additional_lib_hdrs",
     "tf_additional_tensor_coding_deps",
+    "tf_google_mobile_hdrs_only_runtime",
     "tf_google_mobile_srcs_only_runtime",
     "tf_platform_alias",
     "tf_platform_deps",
@@ -1579,6 +1595,15 @@ filegroup(
 filegroup(
     name = "mobile_srcs_no_runtime",
     srcs = [
+        "tensor_coding.cc",
+        "@tsl//tsl/platform:mobile_srcs_no_runtime",
+    ],
+    visibility = ["//tensorflow/core:__pkg__"],
+)
+
+filegroup(
+    name = "mobile_hdrs_no_runtime",
+    srcs = [
         "abi.h",
         "bfloat16.h",
         "blocking_counter.h",
@@ -1629,7 +1654,6 @@ filegroup(
         "strcat.h",
         "stringpiece.h",
         "stringprintf.h",
-        "tensor_coding.cc",
         "tensor_coding.h",
         "thread_annotations.h",
         "threadpool.h",
@@ -1638,21 +1662,31 @@ filegroup(
         "tstring.h",
         "types.h",
         ":ctstring",
-        "@tsl//tsl/platform:mobile_srcs_no_runtime",
-    ] + tf_platform_alias("additional_mobile_srcs_no_runtime"),
+        "@tsl//tsl/platform:mobile_hdrs_no_runtime",
+    ] + tf_platform_alias("additional_mobile_hdrs_no_runtime"),
     visibility = ["//tensorflow/core:__pkg__"],
 )
 
 filegroup(
     name = "mobile_srcs_only_runtime",
     srcs = [
-        "base64.h",
         "cpu_feature_guard.cc",
+        "platform_strings.cc",
+        "@tsl//tsl/platform:mobile_srcs_only_runtime",
+        "@xla//xla/tsl/platform/default:mobile_srcs_only_runtime",
+    ] + tf_google_mobile_srcs_only_runtime(),
+    visibility = ["//tensorflow/core:__pkg__"],
+)
+
+filegroup(
+    name = "mobile_hdrs_only_runtime",
+    srcs = [
+        "base64.h",
         "cpu_feature_guard.h",
         "error_logging.h",
         "fingerprint.h",
+        "jpeg.h",
         "notification.h",
-        "platform_strings.cc",
         "platform_strings.h",
         "platform_strings_computed.h",
         "png.h",
@@ -1664,11 +1698,11 @@ filegroup(
         "//tensorflow/core/platform/profile_utils:android_armv7a_cpu_utils_helper.h",
         "//tensorflow/core/platform/profile_utils:cpu_utils.h",
         "//tensorflow/core/platform/profile_utils:i_cpu_utils_helper.h",
-        "@tsl//tsl/platform:mobile_srcs_only_runtime",
-        "@xla//xla/tsl/platform/default:mobile_srcs_only_runtime",
+        "@tsl//tsl/platform:mobile_hdrs_only_runtime",
+        "@xla//xla/tsl/platform/default:mobile_hdrs_only_runtime",
     ] + if_not_fuchsia([
         "subprocess.h",
-    ]) + tf_google_mobile_srcs_only_runtime(),
+    ]) + tf_google_mobile_hdrs_only_runtime(),
     visibility = ["//tensorflow/core:__pkg__"],
 )
 

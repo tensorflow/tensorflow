@@ -17,12 +17,12 @@ limitations under the License.
 #define XLA_PYTHON_IFRT_COMPILER_H_
 
 #include <memory>
-#include <string>
-#include <utility>
+#include <optional>
+#include <vector>
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "absl/strings/string_view.h"
+#include "absl/strings/cord.h"
 #include "llvm/Support/ExtensibleRTTI.h"
 #include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/executable.h"
@@ -43,6 +43,12 @@ namespace ifrt {
 // TODO(hyeontaek): Make an new `LoadOptions` that is specific for loading.
 struct CompileOptions : llvm::RTTIExtends<CompileOptions, Serializable> {
   static char ID;  // NOLINT
+
+  // When executing the program with `LoadedExecutable::ExecuteBundle()`, apply
+  // `Bundle::Slice()` to the execution output. If `std::nullopt`, the output is
+  // a single `Bundle` containing all output values. The sum of the slice sizes
+  // must match the number of output values.
+  std::optional<std::vector<int>> outputs_bundle_slice_sizes;
 };
 
 // Represents a compiler that creates an `Executable` that can run a computation
@@ -90,7 +96,7 @@ class Compiler : public llvm::RTTIExtends<Compiler, llvm::RTTIRoot> {
   // use standard IFRT deserialization instead of this custom deserialization
   // function.
   virtual tsl::Future<LoadedExecutableRef> DeserializeLoadedExecutable(
-      absl::string_view serialized,
+      const absl::Cord& serialized,
       std::unique_ptr<DeserializeExecutableOptions> options) = 0;
 
   static char ID;  // NOLINT

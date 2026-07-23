@@ -51,19 +51,16 @@ class MultiOutputFusionTest : public HloHardwareIndependentTestBase {
   se::DeviceDescription device_info_{TestGpuDeviceInfo::RTXA6000DeviceInfo()};
   GpuAliasInfo alias_info_{device_info_};
   MultiOutputFusion mof_{device_info_, &alias_info_,
-                         HloCostAnalysis::DefaultShapeSize, &mlir_context_};
+                         HloCostAnalysis::DefaultShapeSize};
 
   void CheckMultiOutputFusion(absl::string_view hlo,
                               std::optional<absl::string_view> expected) {
     RunAndFilecheckHloRewrite(
         hlo,
         MultiOutputFusion{device_info_, &alias_info_,
-                          HloCostAnalysis::DefaultShapeSize, &mlir_context_},
+                          HloCostAnalysis::DefaultShapeSize},
         expected);
   }
-
- protected:
-  mlir::MLIRContext mlir_context_;
 };
 
 const char kModulePrefix[] = R"(
@@ -2155,7 +2152,7 @@ ENTRY computation {
   )");
 }
 
-TEST_F(ReduceMultiOutputFusionTest, GetTupleElementMakeTupleSequence) {
+TEST_F(ReduceMultiOutputFusionTest, SkipsDynamicSliceFusionV2Producer) {
   auto module = ParseAndReturnVerifiedModule(R"(
     HloModule test_module
 
@@ -2174,7 +2171,7 @@ TEST_F(ReduceMultiOutputFusionTest, GetTupleElementMakeTupleSequence) {
     ENTRY entry{
       p0 = s32[] parameter(0)
       bitcast = s32[32] bitcast(p0)
-      ROOT address_computation.7.0 = (bf16[], s32[32], u32[]) fusion(p0, bitcast), kind=kCustom, calls=fusion
+      ROOT dynamic_slice_fusion = (bf16[], s32[32], u32[]) fusion(p0, bitcast), kind=kCustom, calls=fusion, backend_config={"fusion_backend_config":{"kind":"__custom_fusion","custom_fusion_config":{"name":"dynamic_slice_fusion"}}}
     }
   )")
                     .value();

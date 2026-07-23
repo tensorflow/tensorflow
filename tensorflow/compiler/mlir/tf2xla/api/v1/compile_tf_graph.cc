@@ -24,6 +24,7 @@ limitations under the License.
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/log.h"
+#include "absl/log/vlog_is_on.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "llvm/ADT/DenseMap.h"
@@ -285,6 +286,14 @@ absl::Status CompileMLIRTFFunction(
       *flib_def, versions.producer(), shape_determination_funcs, arg_shapes,
       device_type, consts, func, metadata, client, arg_core_mapping,
       per_core_arg_shapes, use_tuple_args, compilation_result));
+
+  if (compilation_result != nullptr &&
+      compilation_result->computation != nullptr) {
+    if (auto module_name = mlir_module.getName()) {
+      compilation_result->computation->mutable_proto()->set_name(
+          module_name->str());
+    }
+  }
 
   return PopulateInputOutputAliasing(main_fn, compilation_result,
                                      use_tuple_args);

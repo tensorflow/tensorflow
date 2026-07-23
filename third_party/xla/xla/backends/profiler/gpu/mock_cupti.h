@@ -16,16 +16,17 @@ limitations under the License.
 #ifndef XLA_BACKENDS_PROFILER_GPU_MOCK_CUPTI_H_
 #define XLA_BACKENDS_PROFILER_GPU_MOCK_CUPTI_H_
 
-#include <stddef.h>
-#include <stdint.h>
-
+#include <cstddef>
 #include <cstdint>
 
-#include "third_party/gpus/cuda/extras/CUPTI/include/cupti.h"
+#include <gmock/gmock.h>
+#include "third_party/gpus/cuda/extras/CUPTI/include/cupti_activity.h"
+#include "third_party/gpus/cuda/extras/CUPTI/include/cupti_callbacks.h"
 #include "third_party/gpus/cuda/extras/CUPTI/include/cupti_profiler_target.h"
+#include "third_party/gpus/cuda/extras/CUPTI/include/cupti_result.h"
 #include "third_party/gpus/cuda/extras/CUPTI/include/cupti_target.h"
+#include "third_party/gpus/cuda/include/cuda.h"
 #include "xla/backends/profiler/gpu/cupti_interface.h"
-#include "tsl/platform/test.h"
 
 #if CUPTI_PM_SAMPLING_SUPPORTED  // Defined in cupti_interface.h
 #include "third_party/gpus/cuda/extras/CUPTI/include/cupti_pmsampling.h"
@@ -58,6 +59,26 @@ class MockCupti : public xla::profiler::CuptiInterface {
               (CUpti_BuffersCallbackRequestFunc func_buffer_requested,
                CUpti_BuffersCallbackCompleteFunc func_buffer_completed),
               (override));
+  MOCK_METHOD(CUptiResult, ActivityRegisterCallbacksV2,
+              (CUpti_SubscriberHandle subscriber,
+               CuptiBuffersCallbackRequestFuncV2 func_buffer_requested,
+               CuptiBuffersCallbackCompleteFuncV2 func_buffer_completed),
+              (override));
+  MOCK_METHOD(CUptiResult, ActivityEnableV2,
+              (CUpti_SubscriberHandle subscriber, CUpti_ActivityKind kind,
+               void* cfg),
+              (override));
+  MOCK_METHOD(CUptiResult, ActivityDisableV2,
+              (CUpti_SubscriberHandle subscriber, CUpti_ActivityKind kind,
+               void* cfg),
+              (override));
+  MOCK_METHOD(CUptiResult, ActivitySetAttributeV2,
+              (CUpti_SubscriberHandle subscriber, CUpti_ActivityAttribute attr,
+               size_t* valueSize, void* value),
+              (override));
+  MOCK_METHOD(CUptiResult, ActivityUseSystemThreadIdV2,
+              (CUpti_SubscriberHandle subscriber), (override));
+  MOCK_METHOD(CUptiResult, ActivityUsePerThreadBufferV2, (), (override));
   MOCK_METHOD(CUptiResult, ActivityUsePerThreadBuffer, (), (override));
   MOCK_METHOD(CUptiResult, SetActivityFlushPeriod, (uint32_t period_ms),
               (override));
@@ -74,6 +95,10 @@ class MockCupti : public xla::profiler::CuptiInterface {
                CUpti_CallbackDomain domain),
               (override));
   MOCK_METHOD(CUptiResult, Subscribe,
+              (CUpti_SubscriberHandle * subscriber, CUpti_CallbackFunc callback,
+               void* userdata),
+              (override));
+  MOCK_METHOD(CUptiResult, SubscribeV2,
               (CUpti_SubscriberHandle * subscriber, CUpti_CallbackFunc callback,
                void* userdata),
               (override));

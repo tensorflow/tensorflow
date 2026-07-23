@@ -1,7 +1,7 @@
-// RUN: hlo_to_xtileir %s | FileCheck %s
-// RUN: triton_test_correctness %s  --abs_error_bound=6e-1 --rel_error_bound=6e-1
+// RUN: hlo_to_xtileir --xla_gpu_experimental_enable_tiling_propagation=false %s | FileCheck %s
+// RUN: triton_test_correctness --xla_gpu_experimental_enable_tiling_propagation=false %s  --abs_error_bound=6e-1 --rel_error_bound=6e-1
 
-// RUN: hlo_to_xtileir %s --use_experimental_tiling | FileCheck %s
+// RUN: hlo_to_xtileir %s --xla_gpu_experimental_enable_tiling_propagation | FileCheck %s
 // RUN: triton_test_correctness %s --abs_error_bound=6e-1 --rel_error_bound=6e-1 --xla_gpu_experimental_enable_tiling_propagation
 
 fusion {
@@ -20,11 +20,10 @@ fusion {
 }
 // CHECK:     xtile.extract {{.*}} -> tensor<f32>
 // CHECK:     tt.extern_elementwise {{.*}} (f32) -> f32
-// CHECK:     arith.negf {{.*}} f32
 // CHECK:     xtile.extract {{.*}} -> tensor<f32>
 // CHECK:     tt.extern_elementwise {{.*}} (f32) -> f32
 // CHECK:     arith.negf {{.*}} f32
-// CHECK:     arith.addf {{.*}} f32
+// CHECK:     arith.subf {{.*}} f32
 // CHECK:     arith.mulf {{.*}} f32
 // CHECK:     arith.divf {{.*}} f32
 // CHECK:     arith.truncf {{.*}} f32 to bf16

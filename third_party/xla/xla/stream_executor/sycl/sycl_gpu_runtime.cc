@@ -20,15 +20,19 @@ limitations under the License.
 
 #include "absl/base/call_once.h"
 #include "absl/synchronization/mutex.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/tsl/platform/errors.h"
 
 namespace stream_executor::sycl {
 
 namespace {
 
+using HostPointerQueryFn = ze_result_t(ZE_APICALL*)(ze_driver_handle_t, void*,
+                                                    void**);
+
 absl::Status IsValidDeviceOrdinal(int device_ordinal,
                                   const absl::string_view& function_name) {
-  TF_ASSIGN_OR_RETURN(int device_count, SyclDevicePool::GetDeviceCount());
+  ASSIGN_OR_RETURN(int device_count, SyclDevicePool::GetDeviceCount());
   if (device_ordinal >= 0 && device_ordinal < device_count) {
     return absl::OkStatus();
   }
@@ -128,6 +132,37 @@ absl::Status MemfillDevice(::sycl::queue* stream_handle, void* dst_device,
 
 }  // namespace
 
+// PJRT DmaMap uses prepare_for_device_copy to register ordinary host memory,
+// but SYCL still classifies the imported pointer as usm::alloc::unknown. Query
+// Level Zero directly so registration can be verified and copies from the
+// DmaMapped range can remain asynchronous.
+bool SyclIsHostMemoryRegistered(const ::sycl::device& device,
+                                const void* location) {
+  if (location == nullptr) {
+    return false;
+  }
+  try {
+    const ze_driver_handle_t driver =
+        ::sycl::get_native<::sycl::backend::ext_oneapi_level_zero>(
+            device.get_platform());
+    thread_local ze_driver_handle_t cached_driver = nullptr;
+    thread_local HostPointerQueryFn query = nullptr;
+    if (cached_driver != driver) {
+      query = nullptr;
+      if (zeDriverGetExtensionFunctionAddress(
+              driver, "zexDriverGetHostPointerBaseAddress",
+              reinterpret_cast<void**>(&query)) != ZE_RESULT_SUCCESS) {
+        return false;
+      }
+      cached_driver = driver;
+    }
+    return query != nullptr && query(driver, const_cast<void*>(location),
+                                     nullptr) == ZE_RESULT_SUCCESS;
+  } catch (const ::sycl::exception&) {
+    return false;
+  }
+}
+
 DevicePool SyclDevicePool::device_pool_;
 
 absl::Status SyclDevicePool::InitDevicePool() {
@@ -165,20 +200,20 @@ absl::Status SyclDevicePool::InitDevicePool() {
 }
 
 absl::StatusOr<::sycl::context> SyclDevicePool::GetDeviceContext() {
-  TF_RETURN_IF_ERROR(SyclDevicePool::InitDevicePool());
+  RETURN_IF_ERROR(SyclDevicePool::InitDevicePool());
   static ::sycl::context device_context(device_pool_);
   return device_context;
 }
 
 absl::StatusOr<int> SyclDevicePool::GetDeviceCount() {
-  TF_RETURN_IF_ERROR(SyclDevicePool::InitDevicePool());
+  RETURN_IF_ERROR(SyclDevicePool::InitDevicePool());
   // Cast to int since device_ordinal is usually an int.
   return static_cast<int>(device_pool_.size());
 }
 
 absl::StatusOr<int> SyclDevicePool::GetDeviceOrdinal(
     const ::sycl::device& device) {
-  TF_RETURN_IF_ERROR(SyclDevicePool::InitDevicePool());
+  RETURN_IF_ERROR(SyclDevicePool::InitDevicePool());
   auto it = std::find(device_pool_.begin(), device_pool_.end(), device);
   if (it != device_pool_.end()) {
     return static_cast<int>(it - device_pool_.begin());
@@ -188,8 +223,8 @@ absl::StatusOr<int> SyclDevicePool::GetDeviceOrdinal(
 }
 
 absl::StatusOr<::sycl::device> SyclDevicePool::GetDevice(int device_ordinal) {
-  TF_RETURN_IF_ERROR(SyclDevicePool::InitDevicePool());
-  TF_RETURN_IF_ERROR(
+  RETURN_IF_ERROR(SyclDevicePool::InitDevicePool());
+  RETURN_IF_ERROR(
       IsValidDeviceOrdinal(device_ordinal, "SyclDevicePool::GetDevice"));
   return device_pool_[device_ordinal];
 }
@@ -223,10 +258,10 @@ absl::StatusOr<StreamPool*> SyclStreamPool::InitStreamPool(int device_ordinal) {
   // Creates a new stream pool for this device using the device and context.
   ::sycl::property_list prop_list{::sycl::property::queue::enable_profiling(),
                                   ::sycl::property::queue::in_order()};
-  TF_ASSIGN_OR_RETURN(::sycl::device sycl_device,
-                      SyclDevicePool::GetDevice(device_ordinal));
-  TF_ASSIGN_OR_RETURN(::sycl::context sycl_context,
-                      SyclDevicePool::GetDeviceContext());
+  ASSIGN_OR_RETURN(::sycl::device sycl_device,
+                   SyclDevicePool::GetDevice(device_ordinal));
+  ASSIGN_OR_RETURN(::sycl::context sycl_context,
+                   SyclDevicePool::GetDeviceContext());
 
   VLOG(2) << "Creating new stream pool for device ordinal " << device_ordinal;
   absl::MutexLock write_lock(&stream_pool_mu_);
@@ -249,10 +284,10 @@ absl::StatusOr<StreamPool*> SyclStreamPool::InitStreamPool(int device_ordinal) {
 }
 
 absl::StatusOr<StreamPtr> SyclStreamPool::GetDefaultStream(int device_ordinal) {
-  TF_RETURN_IF_ERROR(
+  RETURN_IF_ERROR(
       IsValidDeviceOrdinal(device_ordinal, "SyclStreamPool::GetDefaultStream"));
-  TF_ASSIGN_OR_RETURN(StreamPool * stream_pool,
-                      SyclStreamPool::InitStreamPool(device_ordinal));
+  ASSIGN_OR_RETURN(StreamPool * stream_pool,
+                   SyclStreamPool::InitStreamPool(device_ordinal));
   // InitStreamPool always returns a valid pointer, so no null check is needed.
   absl::ReaderMutexLock read_lock(&stream_pool_mu_);
   if (stream_pool->empty()) {
@@ -273,39 +308,31 @@ absl::StatusOr<StreamPtr> SyclStreamPool::GetOrCreateStream(
   if (!enable_multiple_streams) {
     return SyclStreamPool::GetDefaultStream(device_ordinal);
   }
-  TF_RETURN_IF_ERROR(IsValidDeviceOrdinal(device_ordinal,
-                                          "SyclStreamPool::GetOrCreateStream"));
-  TF_ASSIGN_OR_RETURN(StreamPool * stream_pool,
-                      SyclStreamPool::InitStreamPool(device_ordinal));
+  RETURN_IF_ERROR(IsValidDeviceOrdinal(device_ordinal,
+                                       "SyclStreamPool::GetOrCreateStream"));
+  ASSIGN_OR_RETURN(StreamPool * stream_pool,
+                   SyclStreamPool::InitStreamPool(device_ordinal));
   // If multiple streams are enabled, create a new stream and add it
-  // to the pool, unless the pool has reached kMaxStreamsPerDevice.
+  // to the pool.
   absl::MutexLock write_lock(&stream_pool_mu_);
-  if (stream_pool->size() >= kMaxStreamsPerDevice) {
-    VLOG(2) << "Stream pool size for device ordinal " << device_ordinal
-            << " exceeds the maximum limit of " << kMaxStreamsPerDevice;
-    return absl::ResourceExhaustedError(
-        absl::StrCat("SyclStreamPool::GetOrCreateStream: Maximum number of "
-                     "streams reached for device ordinal ",
-                     device_ordinal, "."));
-  }
   VLOG(2) << "Stream pool size for device ordinal " << device_ordinal << ": "
           << stream_pool->size();
   ::sycl::property_list prop_list{::sycl::property::queue::enable_profiling(),
                                   ::sycl::property::queue::in_order()};
-  TF_ASSIGN_OR_RETURN(::sycl::device sycl_device,
-                      SyclDevicePool::GetDevice(device_ordinal));
-  TF_ASSIGN_OR_RETURN(::sycl::context sycl_context,
-                      SyclDevicePool::GetDeviceContext());
+  ASSIGN_OR_RETURN(::sycl::device sycl_device,
+                   SyclDevicePool::GetDevice(device_ordinal));
+  ASSIGN_OR_RETURN(::sycl::context sycl_context,
+                   SyclDevicePool::GetDeviceContext());
   stream_pool->push_back(std::make_shared<::sycl::queue>(
       sycl_context, sycl_device, SyclAsyncHandler, prop_list));
   return stream_pool->back();
 }
 
 absl::Status SyclStreamPool::SynchronizeStreamPool(int device_ordinal) {
-  TF_RETURN_IF_ERROR(IsValidDeviceOrdinal(
+  RETURN_IF_ERROR(IsValidDeviceOrdinal(
       device_ordinal, "SyclStreamPool::SynchronizeStreamPool"));
-  TF_ASSIGN_OR_RETURN(StreamPool * stream_pool,
-                      SyclStreamPool::InitStreamPool(device_ordinal));
+  ASSIGN_OR_RETURN(StreamPool * stream_pool,
+                   SyclStreamPool::InitStreamPool(device_ordinal));
   absl::ReaderMutexLock read_lock(&stream_pool_mu_);
   if (stream_pool->empty()) {
     return absl::InternalError(
@@ -327,10 +354,10 @@ absl::Status SyclStreamPool::DestroyStream(int device_ordinal,
         "SyclStreamPool::DestroyStream: Attempting to destroy a null stream "
         "handle.");
   }
-  TF_RETURN_IF_ERROR(
+  RETURN_IF_ERROR(
       IsValidDeviceOrdinal(device_ordinal, "SyclStreamPool::DestroyStream"));
-  TF_ASSIGN_OR_RETURN(StreamPool * stream_pool,
-                      SyclStreamPool::InitStreamPool(device_ordinal));
+  ASSIGN_OR_RETURN(StreamPool * stream_pool,
+                   SyclStreamPool::InitStreamPool(device_ordinal));
   absl::MutexLock write_lock(&stream_pool_mu_);
   if (stream_pool->empty()) {
     return absl::InternalError(
@@ -369,10 +396,10 @@ void SyclStreamPool::Reset() {
 }
 
 absl::StatusOr<SyclTimerProperties> SyclGetTimerProperties(int device_ordinal) {
-  TF_RETURN_IF_ERROR(
+  RETURN_IF_ERROR(
       IsValidDeviceOrdinal(device_ordinal, "SyclGetTimerProperties"));
-  TF_ASSIGN_OR_RETURN(::sycl::device device,
-                      SyclDevicePool::GetDevice(device_ordinal));
+  ASSIGN_OR_RETURN(::sycl::device device,
+                   SyclDevicePool::GetDevice(device_ordinal));
   ze_device_handle_t lz_device_handle =
       ::sycl::get_native<::sycl::backend::ext_oneapi_level_zero>(device);
   ze_device_properties_t lz_device_props{
@@ -414,15 +441,21 @@ absl::Status SyclStreamSynchronize(::sycl::queue* stream_handle) {
   return absl::OkStatus();
 }
 
-absl::StatusOr<std::optional<::sycl::event>> SyclGetRecentEventFromStream(
+absl::StatusOr<::sycl::event> SyclGetRecentEventFromStream(
     ::sycl::queue* stream_handle) {
   try {
-    // Use the new DPC++/SYCL API when oneAPI version is at least 2024.2.
-    std::optional<::sycl::event> event =
-        IsOneAPIVersionAtLeast2024_2()
-            ? stream_handle->ext_oneapi_get_last_event()
-            : stream_handle->ext_oneapi_submit_barrier();
-    return event;
+    if (IsOneAPIVersionAtLeast2024_2()) {
+      // Zero overhead: Does not submit a barrier or enqueue work.
+      std::optional<::sycl::event> event =
+          stream_handle->ext_oneapi_get_last_event();
+      if (event.has_value()) {
+        return event.value();
+      }
+      // Submit a barrier if no prior event exists.
+      return stream_handle->ext_oneapi_submit_barrier();
+    }
+    // Always submit a barrier on older oneAPI versions.
+    return stream_handle->ext_oneapi_submit_barrier();
   } catch (const ::sycl::exception& e) {
     return absl::InternalError(absl::StrCat(
         "SyclGetRecentEventFromStream: Failed to get event from stream: ",
@@ -470,10 +503,10 @@ absl::Status SyclMemcpyDeviceToHost(int device_ordinal, void* dst_host,
         "SyclMemcpyDeviceToHost: Null pointer provided for destination or "
         "source.");
   }
-  TF_RETURN_IF_ERROR(
+  RETURN_IF_ERROR(
       IsValidDeviceOrdinal(device_ordinal, "SyclMemcpyDeviceToHost"));
-  TF_ASSIGN_OR_RETURN(StreamPtr stream_handle,
-                      SyclStreamPool::GetDefaultStream(device_ordinal));
+  ASSIGN_OR_RETURN(StreamPtr stream_handle,
+                   SyclStreamPool::GetDefaultStream(device_ordinal));
   return MemcpyDeviceToHost(stream_handle.get(), dst_host, src_device,
                             byte_count);
 }
@@ -490,10 +523,10 @@ absl::Status SyclMemcpyHostToDevice(int device_ordinal, void* dst_device,
         "SyclMemcpyHostToDevice: Null pointer provided for destination or "
         "source.");
   }
-  TF_RETURN_IF_ERROR(
+  RETURN_IF_ERROR(
       IsValidDeviceOrdinal(device_ordinal, "SyclMemcpyHostToDevice"));
-  TF_ASSIGN_OR_RETURN(StreamPtr stream_handle,
-                      SyclStreamPool::GetDefaultStream(device_ordinal));
+  ASSIGN_OR_RETURN(StreamPtr stream_handle,
+                   SyclStreamPool::GetDefaultStream(device_ordinal));
   return MemcpyHostToDevice(stream_handle.get(), dst_device, src_host,
                             byte_count);
 }
@@ -511,10 +544,10 @@ absl::Status SyclMemcpyDeviceToDevice(int device_ordinal, void* dst_device,
         "SyclMemcpyDeviceToDevice: Null pointer provided for destination or "
         "source.");
   }
-  TF_RETURN_IF_ERROR(
+  RETURN_IF_ERROR(
       IsValidDeviceOrdinal(device_ordinal, "SyclMemcpyDeviceToDevice"));
-  TF_ASSIGN_OR_RETURN(StreamPtr stream_handle,
-                      SyclStreamPool::GetDefaultStream(device_ordinal));
+  ASSIGN_OR_RETURN(StreamPtr stream_handle,
+                   SyclStreamPool::GetDefaultStream(device_ordinal));
   return MemcpyDeviceToDevice(stream_handle.get(), dst_device, src_device,
                               byte_count);
 }
@@ -534,7 +567,9 @@ absl::Status SyclMemcpyDeviceToHostAsync(::sycl::queue* stream_handle,
   }
   ::sycl::usm::alloc dst_alloc_type =
       ::sycl::get_pointer_type(dst_host, stream_handle->get_context());
-  bool async = (dst_alloc_type == ::sycl::usm::alloc::host);
+  bool async =
+      dst_alloc_type == ::sycl::usm::alloc::host ||
+      SyclIsHostMemoryRegistered(stream_handle->get_device(), dst_host);
   return MemcpyDeviceToHost(stream_handle, dst_host, src_device, byte_count,
                             async);
 }
@@ -554,7 +589,9 @@ absl::Status SyclMemcpyHostToDeviceAsync(::sycl::queue* stream_handle,
   }
   ::sycl::usm::alloc src_alloc_type =
       ::sycl::get_pointer_type(src_host, stream_handle->get_context());
-  bool async = (src_alloc_type == ::sycl::usm::alloc::host);
+  bool async =
+      src_alloc_type == ::sycl::usm::alloc::host ||
+      SyclIsHostMemoryRegistered(stream_handle->get_device(), src_host);
   return MemcpyHostToDevice(stream_handle, dst_device, src_host, byte_count,
                             async);
 }
@@ -588,9 +625,9 @@ absl::Status SyclMemsetDevice(int device_ordinal, void* dst_device,
     return absl::InvalidArgumentError(
         "SyclMemsetDevice: Null pointer provided for destination.");
   }
-  TF_RETURN_IF_ERROR(IsValidDeviceOrdinal(device_ordinal, "SyclMemsetDevice"));
-  TF_ASSIGN_OR_RETURN(StreamPtr stream_handle,
-                      SyclStreamPool::GetDefaultStream(device_ordinal));
+  RETURN_IF_ERROR(IsValidDeviceOrdinal(device_ordinal, "SyclMemsetDevice"));
+  ASSIGN_OR_RETURN(StreamPtr stream_handle,
+                   SyclStreamPool::GetDefaultStream(device_ordinal));
   return MemsetDevice(stream_handle.get(), dst_device, value, count);
 }
 
@@ -620,9 +657,9 @@ absl::Status SyclMemfillDevice(int device_ordinal, void* dst_device,
     return absl::InvalidArgumentError(
         "SyclMemfillDevice: Null pointer provided for destination.");
   }
-  TF_RETURN_IF_ERROR(IsValidDeviceOrdinal(device_ordinal, "SyclMemfillDevice"));
-  TF_ASSIGN_OR_RETURN(StreamPtr stream_handle,
-                      SyclStreamPool::GetDefaultStream(device_ordinal));
+  RETURN_IF_ERROR(IsValidDeviceOrdinal(device_ordinal, "SyclMemfillDevice"));
+  ASSIGN_OR_RETURN(StreamPtr stream_handle,
+                   SyclStreamPool::GetDefaultStream(device_ordinal));
   return MemfillDevice(stream_handle.get(), dst_device, value, count);
 }
 
@@ -648,9 +685,9 @@ absl::StatusOr<void*> SyclMallocDevice(int device_ordinal, size_t byte_count) {
                "returning nullptr.";
     return nullptr;
   }
-  TF_RETURN_IF_ERROR(IsValidDeviceOrdinal(device_ordinal, "SyclMallocDevice"));
-  TF_ASSIGN_OR_RETURN(StreamPtr stream_handle,
-                      SyclStreamPool::GetDefaultStream(device_ordinal));
+  RETURN_IF_ERROR(IsValidDeviceOrdinal(device_ordinal, "SyclMallocDevice"));
+  ASSIGN_OR_RETURN(StreamPtr stream_handle,
+                   SyclStreamPool::GetDefaultStream(device_ordinal));
   try {
     // Use the default stream to allocate memory
     void* ptr = ::sycl::aligned_alloc_device(/*alignment=*/64, byte_count,
@@ -669,9 +706,9 @@ absl::StatusOr<void*> SyclMallocHost(int device_ordinal, size_t byte_count) {
                "returning nullptr.";
     return nullptr;
   }
-  TF_RETURN_IF_ERROR(IsValidDeviceOrdinal(device_ordinal, "SyclMallocHost"));
-  TF_ASSIGN_OR_RETURN(StreamPtr stream_handle,
-                      SyclStreamPool::GetDefaultStream(device_ordinal));
+  RETURN_IF_ERROR(IsValidDeviceOrdinal(device_ordinal, "SyclMallocHost"));
+  ASSIGN_OR_RETURN(StreamPtr stream_handle,
+                   SyclStreamPool::GetDefaultStream(device_ordinal));
   try {
     // Use the default stream to allocate memory
     void* ptr = ::sycl::aligned_alloc_host(/*alignment=*/64, byte_count,
@@ -690,9 +727,9 @@ absl::StatusOr<void*> SyclMallocShared(int device_ordinal, size_t byte_count) {
                "returning nullptr.";
     return nullptr;
   }
-  TF_RETURN_IF_ERROR(IsValidDeviceOrdinal(device_ordinal, "SyclMallocShared"));
-  TF_ASSIGN_OR_RETURN(StreamPtr stream_handle,
-                      SyclStreamPool::GetDefaultStream(device_ordinal));
+  RETURN_IF_ERROR(IsValidDeviceOrdinal(device_ordinal, "SyclMallocShared"));
+  ASSIGN_OR_RETURN(StreamPtr stream_handle,
+                   SyclStreamPool::GetDefaultStream(device_ordinal));
   try {
     // Use the default stream to allocate memory
     void* ptr = ::sycl::aligned_alloc_shared(/*alignment=*/64, byte_count,
@@ -710,9 +747,9 @@ absl::Status SyclFree(int device_ordinal, void*& ptr) {
     return absl::InvalidArgumentError(
         "SyclFree: Attempting to free a null pointer.");
   }
-  TF_RETURN_IF_ERROR(IsValidDeviceOrdinal(device_ordinal, "SyclFree"));
-  TF_ASSIGN_OR_RETURN(StreamPtr stream_handle,
-                      SyclStreamPool::GetDefaultStream(device_ordinal));
+  RETURN_IF_ERROR(IsValidDeviceOrdinal(device_ordinal, "SyclFree"));
+  ASSIGN_OR_RETURN(StreamPtr stream_handle,
+                   SyclStreamPool::GetDefaultStream(device_ordinal));
   try {
     // Use the default stream to free memory
     ::sycl::free(ptr, *stream_handle);

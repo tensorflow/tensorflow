@@ -17,10 +17,10 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 #include <numeric>
-#include <optional>
 #include <utility>
-#include <vector>
 
+#include "mlir/Dialect/Tensor/IR/Tensor.h"
+#include "mlir/Pass/Pass.h"
 #include "triton/Dialect/Triton/IR/Dialect.h"
 // Above header needs to be included first to avoid 'major' macro collision.
 
@@ -57,9 +57,9 @@ limitations under the License.
 #include "xla/backends/gpu/codegen/triton/ir/triton_xla_ops.h"
 #include "xla/backends/gpu/codegen/triton/lowering_util.h"
 #include "xla/backends/gpu/codegen/triton/transforms/passes.h"
+#include "xla/backends/gpu/codegen/triton/transforms/tdm_lowering_util.h"
 #include "xla/codegen/emitters/ir/xla_ops.h"  // IWYU pragma: keep
 #include "xla/codegen/xtile/codegen/emitter_helpers.h"
-#include "xla/permutation_util.h"
 #include "xla/stream_executor/gpu/tma_metadata.h"
 #include "triton/Dialect/Triton/IR/Types.h"
 
@@ -228,47 +228,6 @@ void AddTmaAttributes(ImplicitLocOpBuilder& builder,
           pointer.getType().getPointeeType().getIntOrFloatBitWidth() / 8));
 }
 
-// Checks whether 'layout' is the default HLO layout in major-to-minor order,
-// i.e. iff it's [N-1, N-2, ... 1, 0].
-bool IsMajorToMinorLayout(ArrayRef<int64_t> layout) {
-  for (auto [i, value] : llvm::enumerate(layout)) {
-    if (value != layout.size() - 1 - i) {
-      return false;
-    }
-  }
-  return true;
-}
-
-// Returns 'values' in major-to-minor order given minor-to-major 'layout'.
-template <typename T>
-SmallVector<T> GetMajorToMinorOrder(ArrayRef<T> values,
-                                    ArrayRef<int64_t> layout) {
-  if (IsMajorToMinorLayout(layout)) {
-    return llvm::to_vector(values);
-  }
-
-  auto reversed_layout = llvm::to_vector(layout);
-  std::reverse(reversed_layout.begin(), reversed_layout.end());
-  std::vector<T> vector = ::xla::Permute(values, reversed_layout);
-  return SmallVector<T>(vector.begin(), vector.end());
-}
-
-// Returns 'values' in major-to-minor order given minor-to-major 'layout'.
-SmallVector<Value> GetMajorToMinorOrder(ValueRange values,
-                                        ArrayRef<int64_t> layout) {
-  return GetMajorToMinorOrder(ArrayRef<Value>(llvm::to_vector(values)), layout);
-}
-
-// Given the layout of a tensor, return the inverse permutation required to
-// transpose an already major-to-minor tensor to the original tensor.
-SmallVector<int32_t> GetInverseLayoutPermutation(ArrayRef<int64_t> layout) {
-  auto reversed_layout = llvm::to_vector(layout);
-  std::reverse(reversed_layout.begin(), reversed_layout.end());
-  auto permutation =
-      llvm::to_vector_of<int32_t>(::xla::InversePermutation(reversed_layout));
-  return SmallVector<int32_t>(permutation.begin(), permutation.end());
-}
-
 // Rewrite func.func to tt.func.
 class RewriteFuncOp : public mlir::OpRewritePattern<func::FuncOp> {
  public:
@@ -294,7 +253,7 @@ class RewriteFuncOp : public mlir::OpRewritePattern<func::FuncOp> {
       auto layout = tma_descriptor.getLayout();
       auto block_shape = tma_descriptor.getTileShape();
       SmallVector<int64_t> ordered_block_shape =
-          GetMajorToMinorOrder(block_shape, layout);
+          xtriton::GetMajorToMinorOrder(block_shape, layout);
 
       auto result_type =
           RankedTensorType::get(ordered_block_shape, element_type);
@@ -357,9 +316,11 @@ class RewriteFuncOp : public mlir::OpRewritePattern<func::FuncOp> {
 
 class RewriteExtract : public mlir::OpRewritePattern<ExtractOp> {
  public:
-  RewriteExtract(mlir::MLIRContext* context, bool allow_tma, int num_stages)
+  RewriteExtract(mlir::MLIRContext* context, bool allow_tma, bool allow_tdm,
+                 int num_stages)
       : OpRewritePattern(context),
         allow_tma_(allow_tma),
+        allow_tdm_(allow_tdm),
         num_stages_(num_stages) {}
   using OpRewritePattern::OpRewritePattern;
 
@@ -397,10 +358,10 @@ class RewriteExtract : public mlir::OpRewritePattern<ExtractOp> {
       AddTmaAttributes(builder, op.getSrc(), src_shape, src_layout, sizes,
                        strides);
 
-      auto ordered_offsets = GetMajorToMinorOrder(offsets, src_layout);
-      auto ordered_sizes = GetMajorToMinorOrder(sizes, src_layout);
+      auto ordered_offsets = xtriton::GetMajorToMinorOrder(offsets, src_layout);
+      auto ordered_sizes = xtriton::GetMajorToMinorOrder(sizes, src_layout);
       auto ordered_type =
-          tile_type.clone(GetMajorToMinorOrder(sizes, src_layout));
+          tile_type.clone(xtriton::GetMajorToMinorOrder(sizes, src_layout));
 
       // ptr -> !tt.tensordesc<tile_type>
       auto desc_type = TensorDescType::get(ordered_type.getShape(),
@@ -414,12 +375,48 @@ class RewriteExtract : public mlir::OpRewritePattern<ExtractOp> {
           xtriton::IndexCast(builder, builder.getI32Type(), ordered_offsets));
 
       // Insert a transpose if the layout is not major-to-minor.
-      if (!IsMajorToMinorLayout(src_layout)) {
-        result = TransOp::create(builder, result,
-                                 GetInverseLayoutPermutation(src_layout));
+      if (!xtriton::IsMajorToMinorLayout(src_layout)) {
+        result = TransOp::create(
+            builder, result, xtriton::GetInverseLayoutPermutation(src_layout));
       }
       // Insert a reshape if the result is rank-reduced.
       if (sizes.size() != tile_shape.size()) {
+        result = ReshapeOp::create(builder, tile_shape, result,
+                                   /*allowReorder=*/false);
+      }
+
+      rewriter.replaceOp(op, result);
+      return mlir::success();
+    }
+
+    if (TdmAllowed(
+            CanUseTdm(allow_tdm_, src_shape, sizes, strides, src_layout,
+                      tile_type.getElementType().getIntOrFloatBitWidth()))) {
+      SmallVector<int64_t> singleton_dims =
+          GetSingletonTileDims(sizes, src_layout);
+      TdmDescriptorOperands operands(op.getSrc(), src_shape, src_layout, sizes,
+                                     offsets);
+      if (!singleton_dims.empty()) {
+        operands = operands.DropSingletonTileDims(builder, singleton_dims);
+      }
+
+      auto desc = BuildTensorDescriptor(builder, operands);
+
+      auto ordered_offsets = xtriton::GetMajorToMinorOrder(
+          ValueRange(operands.offsets), operands.layout);
+      auto ordered_type = tile_type.clone(xtriton::GetMajorToMinorOrder(
+          ArrayRef<int64_t>(operands.sizes), operands.layout));
+
+      Value result = DescriptorLoadOp::create(
+          builder, ordered_type, desc.getResult(),
+          xtriton::IndexCast(builder, builder.getI32Type(), ordered_offsets));
+
+      if (!xtriton::IsMajorToMinorLayout(operands.layout)) {
+        result = TransOp::create(
+            builder, result,
+            xtriton::GetInverseLayoutPermutation(operands.layout));
+      }
+      if (ArrayRef<int64_t>(operands.sizes) != tile_shape) {
         result = ReshapeOp::create(builder, tile_shape, result,
                                    /*allowReorder=*/false);
       }
@@ -453,14 +450,17 @@ class RewriteExtract : public mlir::OpRewritePattern<ExtractOp> {
   }
 
   const bool allow_tma_;
+  const bool allow_tdm_;
   const int num_stages_;
 };
 
 class RewriteInsert : public mlir::OpRewritePattern<InsertOp> {
  public:
-  RewriteInsert(mlir::MLIRContext* context, bool allow_tma, int num_stages)
+  RewriteInsert(mlir::MLIRContext* context, bool allow_tma, bool allow_tdm,
+                int num_stages)
       : OpRewritePattern(context),
         allow_tma_(allow_tma),
+        allow_tdm_(allow_tdm),
         num_stages_(num_stages) {}
   using OpRewritePattern::OpRewritePattern;
 
@@ -508,7 +508,7 @@ class RewriteInsert : public mlir::OpRewritePattern<InsertOp> {
 
       // ptr -> !tt.tensordesc<tile_type>
       auto result_type =
-          tile_type.clone(GetMajorToMinorOrder(sizes, dst_layout));
+          tile_type.clone(xtriton::GetMajorToMinorOrder(sizes, dst_layout));
       auto desc_type = TensorDescType::get(result_type.getShape(),
                                            result_type.getElementType(),
                                            result_type.getEncoding());
@@ -521,16 +521,46 @@ class RewriteInsert : public mlir::OpRewritePattern<InsertOp> {
         src = ExpandDimsOp::create(builder, src, dim);
       }
       // Insert a transpose if the layout is not major-to-minor.
-      if (!IsMajorToMinorLayout(dst_layout)) {
+      if (!xtriton::IsMajorToMinorLayout(dst_layout)) {
         // Transpose to a major-to-minor tensor by simply reversing the layout.
         auto transpose_order = llvm::to_vector_of<int32_t>(dst_layout);
         std::reverse(transpose_order.begin(), transpose_order.end());
         src = TransOp::create(builder, src, transpose_order);
       }
 
-      auto ordered_offsets = GetMajorToMinorOrder(offsets, dst_layout);
+      auto ordered_offsets = xtriton::GetMajorToMinorOrder(offsets, dst_layout);
       DescriptorStoreOp::create(
           builder, cast_to_tensor_desc.getResult(0), src,
+          xtriton::IndexCast(builder, builder.getI32Type(), ordered_offsets));
+    } else if (TdmAllowed(CanUseTdm(
+                   allow_tdm_, dst_shape, sizes, strides, dst_layout,
+                   tile_type.getElementType().getIntOrFloatBitWidth()))) {
+      SmallVector<int64_t> singleton_dims =
+          GetSingletonTileDims(sizes, dst_layout);
+      TdmDescriptorOperands operands(op.getDst(), dst_shape, dst_layout, sizes,
+                                     offsets);
+      if (!singleton_dims.empty()) {
+        operands = operands.DropSingletonTileDims(builder, singleton_dims);
+      }
+
+      auto desc = BuildTensorDescriptor(builder, operands);
+
+      auto ordered_offsets = xtriton::GetMajorToMinorOrder(
+          ValueRange(operands.offsets), operands.layout);
+
+      Value src = op.getSrc();
+      if (ArrayRef<int64_t>(operands.sizes) != tile_shape) {
+        src = ReshapeOp::create(builder, operands.sizes, src,
+                                /*allowReorder=*/false);
+      }
+      if (!xtriton::IsMajorToMinorLayout(operands.layout)) {
+        auto transpose_order = llvm::to_vector_of<int32_t>(operands.layout);
+        std::reverse(transpose_order.begin(), transpose_order.end());
+        src = TransOp::create(builder, src, transpose_order);
+      }
+
+      DescriptorStoreOp::create(
+          builder, desc.getResult(), src,
           xtriton::IndexCast(builder, builder.getI32Type(), ordered_offsets));
     } else {
       auto [ptr, mask] = xtriton::CreateTensorOfPointersAndMask(
@@ -544,6 +574,7 @@ class RewriteInsert : public mlir::OpRewritePattern<InsertOp> {
   }
 
   const bool allow_tma_;
+  const bool allow_tdm_;
   const int num_stages_;
 };
 
@@ -606,7 +637,8 @@ class TritonXLAExtractInsertToTritonPass
     mlir::MLIRContext* mlir_context = &getContext();
     mlir::RewritePatternSet patterns(mlir_context);
     patterns.add<RewriteExtract, RewriteInsert>(
-        mlir_context, allow_tma_.getValue(), num_stages_.getValue());
+        mlir_context, allow_tma_.getValue(), allow_tdm_.getValue(),
+        num_stages_.getValue());
     patterns.add<RewriteScalarExtract, RewriteScalarInsert>(mlir_context);
     if (mlir::failed(
             mlir::applyPatternsGreedily(getOperation(), std::move(patterns)))) {
@@ -623,15 +655,5 @@ class TritonXLAExtractInsertToTritonPass
 };
 
 }  // namespace
-
-std::unique_ptr<mlir::Pass> CreateTritonXLAExtractInsertToTritonPass() {
-  return std::make_unique<TritonXLAExtractInsertToTritonPass>();
-}
-
-std::unique_ptr<mlir::Pass> CreateTritonXLAExtractInsertToTritonPass(
-    bool allow_tma, int num_stages) {
-  return std::make_unique<TritonXLAExtractInsertToTritonPass>(
-      TritonXLAExtractInsertToTritonPassOptions{allow_tma, num_stages});
-}
 
 }  // namespace mlir::triton::xla

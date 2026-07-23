@@ -13,7 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 #include <algorithm>
-#include <array>
 #include <cstdint>
 #include <cstring>
 #include <vector>
@@ -60,10 +59,6 @@ namespace builtin {
 namespace dilate {
 namespace {
 
-constexpr size_t kMaxDilateDims = 6;
-
-using Array = std::array<int32_t, kMaxDilateDims>;
-
 // Recursive implementation of the dilation.
 //
 // This is implemented as a strided copy of the input elements interleaved with
@@ -107,15 +102,14 @@ class DilationRunner {
  public:
   DilationRunner(const TfLiteIntArray& shape, const int32_t* const dilations,
                  const char* padding_value, const int element_size)
-      : size_(shape.size), element_size_(element_size) {
-    static_assert(sizeof(shape.data[0]) == sizeof(Array::value_type),
-                  "Don't use memcpy here if you change the Array type.");
-    std::memcpy(shape_.data(), shape.data, size_ * sizeof(shape.data[0]));
-    static_assert(sizeof(dilations[0]) == sizeof(Array::value_type),
-                  "Don't use memcpy here if you change the Array type.");
-    std::memcpy(dilations_.data(), dilations, size_ * sizeof(dilations[0]));
-
+      : shape_(shape.data, shape.data + shape.size),
+        dilations_(dilations, dilations + shape.size),
+        size_(shape.size),
+        element_size_(element_size) {
     MergeTrailingDilations();
+    input_strides_.resize(size_);
+    output_strides_.resize(size_);
+    output_element_sizes_.resize(size_);
     ComputeInputStrides();
     ComputeOutputStridesAndElementSizes();
     FillPaddingValueBuffer(padding_value, element_size);
@@ -124,11 +118,13 @@ class DilationRunner {
   int size() const { return size_; }
   int element_size() const { return element_size_; }
   const char* padding_values() const { return padding_value_buffer_.data(); }
-  const Array& shape() const { return shape_; }
-  const Array& dilations() const { return dilations_; }
-  const Array& input_strides() const { return input_strides_; }
-  const Array& output_strides() const { return output_strides_; }
-  const Array& output_element_sizes() const { return output_element_sizes_; }
+  const std::vector<int32_t>& shape() const { return shape_; }
+  const std::vector<int32_t>& dilations() const { return dilations_; }
+  const std::vector<int32_t>& input_strides() const { return input_strides_; }
+  const std::vector<int32_t>& output_strides() const { return output_strides_; }
+  const std::vector<int32_t>& output_element_sizes() const {
+    return output_element_sizes_;
+  }
 
   void Run(const char* const input, char* const output) const {
     DilateImpl(input, output, padding_values(), size(), shape().data(),
@@ -204,11 +200,11 @@ class DilationRunner {
     }
   }
 
-  Array shape_;
-  Array dilations_;
-  Array output_strides_;
-  Array output_element_sizes_;
-  Array input_strides_;
+  std::vector<int32_t> shape_;
+  std::vector<int32_t> dilations_;
+  std::vector<int32_t> output_strides_;
+  std::vector<int32_t> output_element_sizes_;
+  std::vector<int32_t> input_strides_;
   // Holds copies of the padding value to memcpy to the output tensor.
   std::vector<char> padding_value_buffer_;
   int size_;
@@ -263,7 +259,6 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   const DilationContext ctx(context, node);
   TF_LITE_ENSURE(context, ctx.input_tensor->dims != nullptr);
   TF_LITE_ENSURE(context, ctx.input_tensor->dims->size > 0);
-  TF_LITE_ENSURE(context, ctx.input_tensor->dims->size <= kMaxDilateDims);
   TF_LITE_ENSURE_EQ(context, ctx.input_tensor->type, ctx.output_tensor->type);
   TF_LITE_ENSURE_EQ(context, ctx.input_tensor->type,
                     ctx.padding_value_tensor->type);

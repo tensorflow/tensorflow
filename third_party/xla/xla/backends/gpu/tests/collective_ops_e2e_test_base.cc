@@ -95,16 +95,16 @@ CollectiveOpsE2ETestBase::ExecuteReplicated(
     const std::vector<std::vector<Literal*>>& arguments, bool run_hlo_passes) {
   ExecutionResult execution_result;
 
-  TF_ASSIGN_OR_RETURN(execution_result.executable,
-                      CreateExecutable(std::move(module), run_hlo_passes));
+  ASSIGN_OR_RETURN(execution_result.executable,
+                   CreateExecutable(std::move(module), run_hlo_passes));
 
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       execution_result.optimized_module,
       test_runner().HloModuleFromWrapped(execution_result.executable.get()));
 
-  TF_ASSIGN_OR_RETURN(execution_result.results,
-                      ExecuteReplicated(execution_result.executable.get(),
-                                        arguments, run_hlo_passes));
+  ASSIGN_OR_RETURN(execution_result.results,
+                   ExecuteReplicated(execution_result.executable.get(),
+                                     arguments, run_hlo_passes));
 
   return execution_result;
 }
@@ -164,7 +164,9 @@ DebugOptions CollectiveOpsWithFlagsBase::GetDebugOptionsForTest() const {
   }
 
   if (enable_symmetric_buffer_) {
-    debug_options.set_xla_gpu_experimental_enable_nccl_symmetric_buffers(true);
+    auto* filter =
+        debug_options.add_xla_enable_nccl_symmetric_buffers_for_collectives();
+    filter->set_collective(DebugOptions::ALLCOLLECTIVES);
   }
 
   debug_options.add_xla_disable_hlo_passes(
@@ -181,8 +183,8 @@ CollectiveOpsWithFlagsBase::CreateExecutable(absl::string_view hlo_string,
   HloModuleConfig config =
       GetModuleConfigForTest(/*replica_count=*/num_replicas);
 
-  TF_ASSIGN_OR_RETURN(auto module,
-                      ParseAndReturnVerifiedModule(hlo_string, config));
+  ASSIGN_OR_RETURN(auto module,
+                   ParseAndReturnVerifiedModule(hlo_string, config));
   return test_runner().CreateExecutable(std::move(module),
                                         /*run_hlo_passes=*/true);
 }

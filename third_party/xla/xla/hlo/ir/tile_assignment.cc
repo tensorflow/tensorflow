@@ -16,8 +16,10 @@ limitations under the License.
 #include "xla/hlo/ir/tile_assignment.h"
 
 #include <algorithm>
+#include <atomic>
 #include <cstdint>
 #include <cstring>
+#include <iterator>
 #include <memory>
 #include <optional>
 #include <string>
@@ -39,6 +41,7 @@ limitations under the License.
 #include "xla/array.h"
 #include "xla/printer.h"
 #include "xla/util.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 
@@ -223,6 +226,15 @@ DecanonicalizationInfo FullyDecanonicalize(
     perm_span = absl::MakeSpan(canonicalized_perm.data(), 1);
   }
   return IotaTileAssignment(dims, dims_span, perm_span);
+}
+
+/*static*/ IotaTileAssignment IotaTileAssignment::Create(
+    absl::Span<const int64_t> dims, const MeshProto::IotaTransform& transform) {
+  // This is an extra copy, but the array will typically be quite small since
+  // it scales with the number of dimensions.
+  absl::InlinedVector<int, 6> int_perm(transform.transpose_perm().begin(),
+                                       transform.transpose_perm().end());
+  return Create(dims, transform.reshape_dims(), absl::MakeSpan(int_perm));
 }
 
 // Materializes array representation of IotaTileAssignment.
@@ -501,18 +513,46 @@ int64_t IotaTileAssignment::value_at(absl::Span<const int64_t> index) const {
   return value;
 }
 
+std::vector<int64_t> IotaTileAssignment::index_for(int64_t device_index) const {
+  const auto dims = this->dims();
+  const auto reshape_dims = this->reshape_dims();
+  const auto transpose_perm = this->transpose_perm();
+  absl::InlinedVector<int64_t, 6> reshaped_index(reshape_dims.size());
+  for (int64_t i = reshape_dims.size() - 1; i >= 0; --i) {
+    const int64_t dim_size = reshape_dims[i];
+    reshaped_index[i] = device_index % dim_size;
+    device_index /= dim_size;
+  }
+  DCHECK_EQ(device_index, 0);
+  int64_t flat_index = reshaped_index[transpose_perm[0]];
+  for (int64_t i = 1; i < reshape_dims.size(); ++i) {
+    const int64_t dim = transpose_perm[i];
+    flat_index *= reshape_dims[dim];
+    flat_index += reshaped_index[dim];
+  }
+  std::vector<int64_t> tile_index(ndims_);
+  for (int64_t i = ndims_ - 1; i >= 0; --i) {
+    const int64_t dim_size = dims[i];
+    tile_index[i] = flat_index % dim_size;
+    flat_index /= dim_size;
+  }
+  DCHECK_EQ(flat_index, 0);
+  return tile_index;
+}
+
 TileAssignment::TileAssignment(const TileAssignment& other) {
   iota_ = other.iota_;
   absl::MutexLock other_lock(other.mu_);
   shared_array_ = other.shared_array_;
-  array_ = other.array_;
+  array_.store(other.array_ptr(), std::memory_order_relaxed);
 }
 
 TileAssignment::TileAssignment(TileAssignment&& other) {
   absl::MutexLock other_lock(other.mu_);
-  iota_ = other.iota_;
+  iota_ = std::move(other.iota_);
   shared_array_ = std::move(other.shared_array_);
-  array_ = other.array_;
+  array_.store(other.array_ptr(), std::memory_order_relaxed);
+  other.array_.store(nullptr, std::memory_order_relaxed);
 }
 
 TileAssignment& TileAssignment::operator=(const TileAssignment& other) {
@@ -522,26 +562,30 @@ TileAssignment& TileAssignment::operator=(const TileAssignment& other) {
   {
     absl::MutexLock other_lock(other.mu_);
     shared_array = other.shared_array_;
-    array = other.array_;
+    array = other.array_ptr();
   }
   absl::MutexLock lock(mu_);
-  shared_array_ = shared_array;
-  array_ = array;
+  shared_array_ = std::move(shared_array);
+  array_.store(array, std::memory_order_relaxed);
   return *this;
 }
 
 TileAssignment& TileAssignment::operator=(TileAssignment&& other) {
-  iota_ = other.iota_;
+  if (this == &other) {
+    return *this;
+  }
+  iota_ = std::move(other.iota_);
   std::shared_ptr<const Array<int64_t>> shared_array;
   const Array<int64_t>* array;
   {
     absl::MutexLock other_lock(other.mu_);
     shared_array = std::move(other.shared_array_);
-    array = other.array_;
+    array = other.array_ptr();
+    other.array_.store(nullptr, std::memory_order_relaxed);
   }
   absl::MutexLock lock(mu_);
-  shared_array_ = shared_array;
-  array_ = array;
+  shared_array_ = std::move(shared_array);
+  array_.store(array, std::memory_order_relaxed);
   return *this;
 }
 
@@ -553,55 +597,60 @@ bool TileAssignment::operator==(const TileAssignment& other) const {
 }
 
 int64_t TileAssignment::operator()(absl::Span<const int64_t> indexes) const {
-  absl::MutexLock lock(mu_);
-  return array_ ? (*array_)(indexes) : iota_->value_at(indexes);
+  if (const auto* arr = array_ptr(); arr != nullptr) {
+    return (*arr)(indexes);
+  }
+  return iota_->value_at(indexes);
+}
+
+std::vector<int64_t> TileAssignment::index_for(int64_t device) const {
+  if (iota_.has_value()) {
+    return iota_->index_for(device);
+  }
+
+  const Array<int64_t>& arr = array();
+  auto it = absl::c_find(arr, device);
+  CHECK_NE(it, arr.end());
+
+  int64_t flat_index = it - arr.begin();
+  std::vector<int64_t> tile_index(arr.num_dimensions());
+  for (int64_t i = arr.num_dimensions() - 1; i >= 0; --i) {
+    tile_index[i] = flat_index % arr.dim(i);
+    flat_index /= arr.dim(i);
+  }
+  DCHECK_EQ(flat_index, 0);
+  return tile_index;
 }
 
 absl::Span<const int64_t> TileAssignment::dimensions() const {
-  absl::MutexLock lock(mu_);
-  return array_ ? array_->dimensions() : iota_->dims();
+  return iota_.has_value() ? iota_->dims() : array().dimensions();
 }
 
 int64_t TileAssignment::num_dimensions() const {
-  absl::MutexLock lock(mu_);
-  return array_ ? array_->num_dimensions() : iota_->ndims();
+  return iota_.has_value() ? iota_->ndims() : array().num_dimensions();
 }
 
 int64_t TileAssignment::dim(int64_t n) const {
-  absl::MutexLock lock(mu_);
-  return array_ ? array_->dim(n) : iota_->dim(n);
+  return iota_.has_value() ? iota_->dim(n) : array().dim(n);
 }
 int64_t TileAssignment::num_elements() const {
-  absl::MutexLock lock(mu_);
-  return array_ ? array_->num_elements() : iota_->num_elements();
+  return array_ptr() != nullptr ? array().num_elements()
+                                : iota_->num_elements();
 }
 
 int64_t TileAssignment::first() const {
-  absl::MutexLock lock(mu_);
-  return array_ ? *array_->begin() : 0;
+  return array_ptr() != nullptr ? *array().begin() : 0;
 }
 
 void TileAssignment::Each(
     absl::FunctionRef<void(absl::Span<const int64_t>, int64_t)> f) const {
-  Array<int64_t> const* array;
-  {
-    absl::MutexLock lock(mu_);
-    MaybeMaterializeFullArray();
-    array = array_;
-  }
-  array->Each(f);
+  array().Each(f);
 }
 
 absl::Status TileAssignment::EachStatus(
     absl::FunctionRef<absl::Status(absl::Span<const int64_t>, int64_t)> f)
     const {
-  Array<int64_t> const* array;
-  {
-    absl::MutexLock lock(mu_);
-    MaybeMaterializeFullArray();
-    array = array_;
-  }
-  return array->EachStatus(f);
+  return array().EachStatus(f);
 }
 
 [[nodiscard]] TileAssignment TileAssignment::Reshape(
@@ -666,9 +715,19 @@ std::string TileAssignment::ToString() const {
 }
 
 const Array<int64_t>& TileAssignment::array() const {
-  absl::MutexLock lock(mu_);
-  MaybeMaterializeFullArray();
-  return *array_;
+  auto* arr = array_ptr();
+  if (arr != nullptr) {
+    return *arr;
+  }
+
+  {
+    absl::MutexLock lock(mu_);
+    MaybeMaterializeFullArray();
+  }
+
+  arr = array_ptr();
+  DCHECK_NE(arr, nullptr);
+  return *arr;
 }
 std::shared_ptr<const Array<int64_t>> TileAssignment::shared_array() const {
   absl::MutexLock lock(mu_);
@@ -677,18 +736,15 @@ std::shared_ptr<const Array<int64_t>> TileAssignment::shared_array() const {
 }
 
 std::shared_ptr<Array<int64_t>> TileAssignment::shared_array_clone() const {
-  absl::MutexLock lock(mu_);
-  MaybeMaterializeFullArray();
-  return std::make_shared<Array<int64_t>>(*array_);
+  return std::make_shared<Array<int64_t>>(array());
 }
 
 void TileAssignment::MaybeMaterializeFullArray() const {
-  if (array_ == nullptr) {
+  if (array_ptr() == nullptr) {
     DCHECK(shared_array_ == nullptr);
     DCHECK(iota_.has_value());
-    auto full = std::make_shared<Array<int64_t>>(iota_->ToArray());
-    shared_array_ = std::move(full);
-    array_ = shared_array_.get();
+    shared_array_ = std::make_shared<const Array<int64_t>>(iota_->ToArray());
+    array_.store(shared_array_.get(), std::memory_order_release);
   }
 }
 
@@ -844,8 +900,10 @@ std::optional<AnalyzeTileAssignmentResult> AnalyzeTileAssignment(
             }
           });
       if (is_iota) {
-        std::vector<int64_t> mesh(tile_assignment.dimensions().begin(),
-                                  tile_assignment.dimensions().end());
+        std::vector<int64_t> mesh;
+        mesh.reserve(sub_dims->size());
+        absl::c_transform(*sub_dims, std::back_inserter(mesh),
+                          [](const SubDimInfo& info) { return info.size; });
         return AnalyzeTileAssignmentResult{
             /* .sub_dims = */ std::move(*sub_dims),
             /* .local_mesh = */ std::move(mesh),

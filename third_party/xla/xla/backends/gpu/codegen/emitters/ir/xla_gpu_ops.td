@@ -199,4 +199,8 @@ def PdlWaitOp : XLAGPU_Op<"pdl_wait", []> {
   let summary = "Waits for upstream dependencies.";
 }
 
+def PdlLaunchDependentsOp : XLAGPU_Op<"pdl_launch_dependents", []> {
+  let summary = "Triggers programmatic dependent launch.";
+}
+
 #endif // XLA_SERVICE_GPU_FUSIONS_MLIR_OPS

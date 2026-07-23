@@ -402,7 +402,7 @@ std::vector<HloInstruction*> MakeTiledPartitionOrdinals(
     const HloSharding& sharding, HloInstruction* partition_id, SpmdBuilder* b) {
   CHECK(!sharding.IsReplicatedOrSingleDevice());
   auto dimensions = sharding.dimensions();
-  if (sharding.ReplicateOnLastTileDim()) {
+  if (!sharding.UseNamedShardingLeaf() && sharding.ReplicateOnLastTileDim()) {
     dimensions.remove_suffix(1);
   }
   auto table_shape = ShapeUtil::MakeShape(S32, dimensions);
@@ -1031,10 +1031,7 @@ std::optional<int64_t> UniqueTiledDim(const HloSharding& sharding) {
     return std::nullopt;
   }
   int64_t dim = -1;
-  int64_t rank = sharding.ReplicateOnLastTileDim()
-                     ? sharding.num_dimensions() - 1
-                     : sharding.num_dimensions();
-  for (int64_t i = 0; i < rank; ++i) {
+  for (int64_t i = 0; i < sharding.TiledDataRank(); ++i) {
     if (sharding.dimension(i) > 1) {
       if (dim != -1) {
         return std::nullopt;
@@ -2342,11 +2339,14 @@ GetReshardAllToAllSourceTargetDims(const HloSharding& source,
 
 bool CanReshardWithCollectivePermute(const HloSharding& source_input,
                                      const HloSharding& target_input) {
+  if (source_input.IsReplicatedOrSingleDevice() ||
+      target_input.IsReplicatedOrSingleDevice()) {
+    return false;
+  }
   if (source_input.UseNamedShardingLeaf() &&
       target_input.UseNamedShardingLeaf()) {
     return source_input.dimensions() == target_input.dimensions() &&
-           source_input.named_sharding().dim_shardings() !=
-               target_input.named_sharding().dim_shardings();
+           source_input.named_sharding() != target_input.named_sharding();
   }
 
   HloSharding source =
@@ -2358,9 +2358,7 @@ bool CanReshardWithCollectivePermute(const HloSharding& source_input,
           ? HloSharding::V3ToV2Sharding(target_input.named_sharding())
           : target_input;
 
-  return !source.IsReplicatedOrSingleDevice() &&
-         !target.IsReplicatedOrSingleDevice() &&
-         source.dimensions() == target.dimensions() &&
+  return source.dimensions() == target.dimensions() &&
          source.ReplicateOnLastTileDim() == target.ReplicateOnLastTileDim() &&
          source.tile_assignment() != target.tile_assignment();
 }
@@ -3150,16 +3148,19 @@ GetMeshAxesPartitionGroupsForReplication(
   if (axis_refs.empty()) {
     return std::nullopt;
   }
-  SortAndMergeAxes(axis_refs, *mesh);
+  MergeAxes(axis_refs, *mesh);
   return MeshAxesReplicaGroupList(*mesh, axis_refs);
 }
 
 std::unique_ptr<CollectiveDeviceListBase> GetPartitionGroupsForReplication(
-    const HloSharding& sharding, absl::Span<const int64_t> replication_dims) {
+    const HloSharding& sharding, absl::Span<const int64_t> replication_dims,
+    bool enable_rgv3) {
   std::unique_ptr<CollectiveDeviceListBase> partition_groups;
-  if (auto mesh_axes_groups = GetMeshAxesPartitionGroupsForReplication(
-          sharding, replication_dims)) {
-    return std::make_unique<MeshAxesReplicaGroupList>(*mesh_axes_groups);
+  if (enable_rgv3) {
+    if (auto mesh_axes_groups = GetMeshAxesPartitionGroupsForReplication(
+            sharding, replication_dims)) {
+      return std::make_unique<MeshAxesReplicaGroupList>(*mesh_axes_groups);
+    }
   }
 
   auto iota_groups =
@@ -3380,11 +3381,13 @@ GetMeshAxesPartitionGroupsAcrossTargetDims(
 
 std::unique_ptr<CollectiveDeviceListBase> GetPartitionGroupsAcrossTargetDims(
     const HloSharding& sharding, absl::Span<const int64_t> target_dims,
-    absl::Span<const int64_t> group_sizes) {
-  if (std::optional<MeshAxesReplicaGroupList> mesh_axes_groups =
-          GetMeshAxesPartitionGroupsAcrossTargetDims(sharding, target_dims,
-                                                     group_sizes)) {
-    return std::make_unique<MeshAxesReplicaGroupList>(*mesh_axes_groups);
+    absl::Span<const int64_t> group_sizes, bool enable_rgv3) {
+  if (enable_rgv3) {
+    if (std::optional<MeshAxesReplicaGroupList> mesh_axes_groups =
+            GetMeshAxesPartitionGroupsAcrossTargetDims(sharding, target_dims,
+                                                       group_sizes)) {
+      return std::make_unique<MeshAxesReplicaGroupList>(*mesh_axes_groups);
+    }
   }
   if (std::optional<IotaReplicaGroupList> iota_groups =
           GetIotaPartitionGroupsAcrossTargetDims(sharding, target_dims,
@@ -3521,11 +3524,8 @@ DynamicUpdateSliceAnalysis AnalyzeDynamicUpdateSlice(
     }
 
     if (hlo->operand(i + 2)->IsConstant()) {
-      const PrimitiveType elemType =
-          hlo->operand(i + 2)->shape().element_type();
       int64_t start_index =
-          elemType == S64 ? hlo->operand(i + 2)->literal().Get<int64_t>({})
-                          : hlo->operand(i + 2)->literal().Get<int>({});
+          hlo->operand(i + 2)->literal().GetIntegralAsS64({}).value();
       int64_t end_index = start_index + slice_size - 1;
 
       int64_t per_partition_size =

@@ -15,12 +15,16 @@ limitations under the License.
 
 #include "xla/backends/gpu/runtime/p2p_thunk_common.h"
 
+#include <optional>
+#include <vector>
+
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "xla/backends/gpu/runtime/collective_thunk.pb.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/util/proto/parse_text_proto.h"
 #include "xla/tsl/util/proto/proto_matchers.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace gpu {
@@ -49,6 +53,26 @@ TEST(P2PThunkCommonTest, SerializeDeserializePopulatedP2PConfig) {
   TF_ASSERT_OK_AND_ASSIGN(P2PConfig deserialized, P2PConfigFromProto(proto));
   P2PConfigProto round_trip_proto = P2PConfigToProto(deserialized);
   EXPECT_THAT(round_trip_proto, EqualsProto(proto));
+}
+
+TEST(P2PThunkCommonTest, GetSortedSourceTargetPairs) {
+  P2PConfig::IdToSourceTargetMap id_to_source_target = {
+      {0, {3, std::nullopt}},  // replica 0 receives from 3 (3->0)
+      {1, {std::nullopt, 2}},  // replica 1 sends to 2 (1->2)
+      {2, {1, 3}},  // replica 2 receives from 1 (1->2), 2 sends to 3 (2->3)
+      {3, {2, 0}},  // replica3 receives from 2 (2->3), 3 sends to 0 (3->0)
+  };
+
+  std::vector<SourceTarget> sorted_pairs =
+      GetSortedSourceTargetPairs(id_to_source_target);
+
+  ASSERT_EQ(sorted_pairs.size(), 3);
+  EXPECT_EQ(sorted_pairs[0].source(), 1);
+  EXPECT_EQ(sorted_pairs[0].target(), 2);
+  EXPECT_EQ(sorted_pairs[1].source(), 2);
+  EXPECT_EQ(sorted_pairs[1].target(), 3);
+  EXPECT_EQ(sorted_pairs[2].source(), 3);
+  EXPECT_EQ(sorted_pairs[2].target(), 0);
 }
 
 }  // namespace

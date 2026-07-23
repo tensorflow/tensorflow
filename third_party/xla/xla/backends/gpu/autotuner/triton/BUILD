@@ -1,3 +1,18 @@
+# Copyright 2026 The OpenXLA Authors. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
+
 # Description:
 #   Components that help with Triton autotuning.
 
@@ -5,7 +20,7 @@ load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("//xla:xla.default.bzl", "xla_cc_test")
 load("//xla/tsl:tsl.bzl", "if_google")
 load("//xla/tsl:tsl.default.bzl", "get_compatible_with_portable")
-load("//xla/util:build_defs.bzl", "embed_files")
+load("//xla/tsl/util:cc_embed_data.bzl", "cc_embed_data")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -35,7 +50,6 @@ cc_library(
         "//xla/stream_executor:device_description",
         "//xla/stream_executor/gpu:tma_metadata",
         "//xla/tsl/lib/core:bits",
-        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
@@ -78,11 +92,16 @@ exports_files(glob([
     "default_configs/*.txtpb",
 ]))
 
-embed_files(
+cc_embed_data(
     name = "embed_default_configs",
     srcs = glob(["default_configs/*.txtpb"]),
+    outs = [
+        "embed_default_configs.cc",
+        "embed_default_configs.h",
+    ],
     compatible_with = get_compatible_with_portable() + if_google(["//buildenv/target:libtpu"]),
-    cpp_namespace = "xla::gpu::configs",
+    embedopts = ["--namespace=xla::gpu::configs"],
+    flatten = True,
 )
 
 cc_library(
@@ -95,6 +114,7 @@ cc_library(
         "//xla/service/gpu:matmul_utils",
         "@com_google_absl//absl/base:no_destructor",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_protobuf//:protobuf",
@@ -118,24 +138,22 @@ cc_library(
         "//xla:xla_data_proto_cc",
         "//xla:xla_proto_cc",
         "//xla/backends/gpu/transforms:convert_triton_gemm_config",
-        "//xla/codegen/tiling:symbolic_tile_analysis",
-        "//xla/codegen/tiling:tiled_hlo_computation",
-        "//xla/codegen/tiling:tiling_specification",
         "//xla/hlo/ir:hlo",
+        "//xla/hlo/utils:hlo_query",
         "//xla/hlo/utils:hlo_traversal",
         "//xla/service:hlo_cost_analysis",
-        "//xla/service:instruction_fusion",
-        "//xla/service/gpu:launch_dimensions",
+        "//xla/service/gpu:backend_configs_cc",
         "//xla/service/gpu:matmul_utils",
         "//xla/service/gpu/model:block_level_parameters",
         "//xla/service/gpu/model:fusion_analysis_cache",
         "//xla/service/gpu/model:gpu_indexing_performance_model",
         "//xla/service/gpu/model:gpu_performance_model_base",
-        "//xla/service/gpu/model:tiling_from_block_parameters",
         "//xla/service/gpu/model:triton_emitter_constraints",
         "//xla/stream_executor:device_description",
-        "//xla/tsl/platform:statusor",
+        "//xla/tools:hlo_decomposer_lib",
+        "//xla/tsl/platform:status_macros",
         "//xla/tsl/util:sorted_range",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
@@ -152,6 +170,7 @@ xla_cc_test(
     deps = [
         ":cost_model_config_optimization",
         "//xla:autotuning_proto_cc",
+        "//xla:xla_proto_cc",
         "//xla/hlo/analysis:symbolic_map",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
@@ -160,6 +179,7 @@ xla_cc_test(
         "//xla/service/gpu:matmul_utils",
         "//xla/stream_executor:device_description",
         "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/time",
         "@com_google_googletest//:gtest_main",
         "@com_google_protobuf//:protobuf_lite",

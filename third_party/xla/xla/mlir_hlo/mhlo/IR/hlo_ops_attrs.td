@@ -264,20 +264,37 @@ def MHLO_TypeExtensions : AttrDef<MHLO_Dialect, "TypeExtensions", [
   let assemblyFormat = "`<` `bounds` `=` ` ` custom<DimSizes>($bounds) `>`";
 }
 
-// A layout attribute (1D tensor of index type)
-def MHLO_LayoutAttr : Attr<
+// Base class for a 1D tensor of index type.
+class MHLO_1DIndexTensorAttrBase : Attr<
   And<[IndexElementsAttr.predicate,
        CPred<[{mlir::cast<::mlir::DenseIntElementsAttr>($_self).getType().getRank()
                == 1}]>]>,
-  "A 1D tensor of index type (layout)"> {
+  "A 1D tensor of index type"> {
   let storageType = IndexElementsAttr.storageType;
   let returnType = IndexElementsAttr.returnType;
   let convertFromStorage = IndexElementsAttr.convertFromStorage;
 }
 
+// A 1D tensor of index type.
+def MHLO_1DIndexTensorAttr : MHLO_1DIndexTensorAttrBase;
+
+// A layout attribute (1D tensor of index type)
+def MHLO_LayoutAttr : MHLO_1DIndexTensorAttrBase {
+  let summary = "A 1D tensor of index type (layout)";
+}
+
 // An array of layout (1D tensor) attributes.
 def MHLO_ArrayOfLayoutAttr : TypedArrayAttrBase<MHLO_LayoutAttr,
     "Array of layout (1D tensor of index type) attributes">;
+
+// A tiling attribute (array of rank 1 tensors).
+// Each tile is a 1D tensor of dimensions.
+def MHLO_TilingAttr : TypedArrayAttrBase<MHLO_1DIndexTensorAttr,
+    "Tiling (array of rank 1 tensors)">;
+
+// An array of tiling attributes.
+def MHLO_ArrayOfTilingAttr : TypedArrayAttrBase<MHLO_TilingAttr,
+    "Array of tiling attributes">;
 
 // An array of FlatSymbolRef attributes that can be used as a default valued
 // attribute.
@@ -372,6 +389,64 @@ def MHLO_ReplicaGroupMeshAxes : AttrDef<MHLO_Dialect, "ReplicaGroupMeshAxes"> {
     "ArrayAttr":$axes
   );
   let assemblyFormat = "`<` struct(params) `>`";
+}
+
+def MHLO_OriginalArrayAttr : AttrDef<MHLO_Dialect, "OriginalArray"> {
+  let mnemonic = "original_array";
+  let summary = "The information of a result computed in an unoptimized module";
+  let parameters = (ins
+      "StringAttr" :$instructionName,
+      MHLO_Dims:$shapeIndex
+  );
+  let hasCustomAssemblyFormat = 1;
+  let description = [{
+    The data structure stores the information of a result computed in an
+    unoptimized module. It consists of a pair of attributes as follows:
+      - "instructionName": A StringAttr specifying the name of the instruction
+        in the unoptimized module that produces an array or a tuple that
+        includes this array.
+      - "shapeIndex": A DenseI64ArrayAttr representing the shape index of the
+        array if the instruction produces a tuple.
+  }];
+}
+
+def MHLO_OriginalValueElementAttr : AttrDef<MHLO_Dialect, "OriginalValueElement"> {
+  let mnemonic = "original_value_element";
+  let summary = "A node in the original value tuple tree";
+  let parameters = (ins
+      MHLO_Dims:$shapeIndex,
+      OptionalParameter<"std::optional<::mlir::mhlo::OriginalArrayAttr>">:$originalArray
+  );
+  let hasCustomAssemblyFormat = 1;
+  let description = [{
+    The `original_value_element` attribute stores the information of a node in the tuple tree of the original value. It includes the following attributes:
+      - "shapeIndex": A DenseI64ArrayAttr representing the shape index of the node within the tuple tree.
+      - "originalArray": The original array saved in this node.
+  }];
+}
+
+def MHLO_OriginalValueAttr : AttrDef<MHLO_Dialect, "OriginalValue"> {
+  let mnemonic = "original_value";
+  let summary = "Represents the origin of an HLO value in the unoptimized graph";
+  let parameters = (ins
+    "bool":$is_synthetic_call,
+    ArrayRefParameter<"::mlir::mhlo::OriginalValueElementAttr", "Array of original value nodes">:$elements
+  );
+
+  let description = [{
+    Models xla::OriginalValue.
+    If 'is_synthetic_call' is true, this represents a synthetic call, and
+    'elements' should be empty.
+    If 'is_synthetic_call' is false, 'elements' contains the flattened
+    representation of the TupleTree<std::optional<OriginalArray>>. Each entry in
+    'elements' is an OriginalValueElementAttr, representing a pair of
+    ShapeIndex (the key) and an optional OriginalArray (the value).
+  }];
+
+  let hasCustomAssemblyFormat = 1;
+
+  // Add a verifier to ensure 'elements' is empty when 'is_synthetic_call' is true.
+  let genVerifyDecl = 1;
 }
 
 #endif // MLIR_HLO_DIALECT_MHLO_IR_HLO_OPS_ATTRS

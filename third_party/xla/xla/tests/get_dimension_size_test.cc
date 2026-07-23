@@ -35,7 +35,7 @@ void DisableAllHloPasses(HloModule& module) {
   module.mutable_config().set_debug_options(debug_options);
 }
 
-using GetDimensionSizeTest = HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>;
+using GetDimensionSizeTest = HloPjRtInterpreterReferenceMixin<HloTestBase>;
 
 // Test that the interpreter can correctly compute get_dimension_size.
 TEST_F(GetDimensionSizeTest, CorrectComputation) {

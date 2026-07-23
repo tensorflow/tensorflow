@@ -140,7 +140,7 @@ CheckpointCallbackManager::GetCheckpointIdAndPathFromPrefix(
                             std::string(io::Dirname(path)));
     }
   }
-  return errors::NotFound(
+  return absl::NotFoundError(
       absl::StrCat("Failed to find a checkpoint id. prefix = ", prefix));
 }
 

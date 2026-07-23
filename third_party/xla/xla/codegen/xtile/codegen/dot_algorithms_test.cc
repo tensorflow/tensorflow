@@ -72,7 +72,7 @@ TEST_F(DotAlgorithmsTest, EmitSingleTileDotDefaultToBF16) {
 
   // Set the flag in debug options.
   DebugOptions debug_options = module->config().debug_options();
-  debug_options.set_xla_gpu_default_to_alg_dot_bf16_bf16_f32(true);
+  debug_options.set_xla_gpu_match_tpu_precision(true);
   module->mutable_config().set_debug_options(debug_options);
 
   // Setup operands.
@@ -104,6 +104,59 @@ TEST_F(DotAlgorithmsTest, EmitSingleTileDotDefaultToBF16) {
   EXPECT_TRUE(mlir::cast<mlir::ShapedType>(dot_op.getRhs().getType())
                   .getElementType()
                   .isBF16());
+}
+
+TEST_F(DotAlgorithmsTest, EmitSingleTileDotHighestPrecision) {
+  auto kHloText = R"hlo(
+    HloModule test
+    ENTRY test {
+      p0 = f32[32,32] parameter(0)
+      p1 = f32[32,32] parameter(1)
+      ROOT dot = f32[32,32] dot(p0, p1),
+        lhs_contracting_dims={1},
+        rhs_contracting_dims={0},
+        operand_precision={highest,highest}
+    }
+  )hlo";
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloText));
+
+  auto* dot_instr = xla::Cast<HloDotInstruction>(
+      module->entry_computation()->root_instruction());
+
+  // Set the flag in debug options.
+  DebugOptions debug_options = module->config().debug_options();
+  debug_options.set_xla_gpu_match_tpu_precision(true);
+  module->mutable_config().set_debug_options(debug_options);
+
+  // Setup operands.
+  auto type = mlir::RankedTensorType::get({32, 32}, b_.getF32Type());
+  DotOperands operands;
+  operands.lhs = b_.create<mlir::stablehlo::ConstantOp>(
+      mlir::DenseElementsAttr::get(type, 1.0f));
+  operands.rhs = b_.create<mlir::stablehlo::ConstantOp>(
+      mlir::DenseElementsAttr::get(type, 1.0f));
+  operands.accumulator = b_.create<mlir::stablehlo::ConstantOp>(
+      mlir::DenseElementsAttr::get(type, 0.0f));
+
+  TF_ASSERT_OK_AND_ASSIGN(mlir::Value result,
+                          EmitSingleTileDot(b_, *dot_instr, operands));
+
+  // The result should be an addition.
+  auto add_op = mlir::dyn_cast<mlir::arith::AddFOp>(result.getDefiningOp());
+  ASSERT_TRUE(add_op);
+
+  // One of the operands of the addition should be the dot operation.
+  auto dot_op = mlir::dyn_cast<mlir::stablehlo::DotGeneralOp>(
+      add_op.getRhs().getDefiningOp());
+  ASSERT_TRUE(dot_op);
+
+  // Verify that dot operands are F32 (highest precision respected).
+  EXPECT_TRUE(mlir::cast<mlir::ShapedType>(dot_op.getLhs().getType())
+                  .getElementType()
+                  .isF32());
+  EXPECT_TRUE(mlir::cast<mlir::ShapedType>(dot_op.getRhs().getType())
+                  .getElementType()
+                  .isF32());
 }
 
 }  // namespace

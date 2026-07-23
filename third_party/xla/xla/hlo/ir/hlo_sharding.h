@@ -57,11 +57,7 @@ class HloSharding {
 
   // Creates a trivial sharding that replicates a maximal tile across all
   // devices.
-  static HloSharding Replicate(absl::Span<const OpMetadata> metadata = {},
-                               bool use_named_sharding = false) {
-    if (use_named_sharding) {
-      return HloSharding(NamedSharding::Replicate(metadata));
-    }
+  static HloSharding Replicate(absl::Span<const OpMetadata> metadata = {}) {
     return HloSharding(/*manual=*/false, /*replicated=*/true, /*unknown=*/false,
                        /*unreduced=*/false, metadata);
   }
@@ -86,8 +82,7 @@ class HloSharding {
   // Creates a sharding that emulates device placement; a tile shape equal to
   // the input shape (one tile) assigned to a single device.
   static HloSharding SingleDevice(int64_t device_id,
-                                  absl::Span<const OpMetadata> metadata = {},
-                                  bool use_named_sharding = false);
+                                  absl::Span<const OpMetadata> metadata = {});
 
   // Creates a new sharding which splits a shape into tiles amongst the devices
   // specified by `tile_assignment`.
@@ -179,6 +174,9 @@ class HloSharding {
   // Convert NamedSharding (HloShardingV3) to HloShardingV2.
   static HloSharding V3ToV2Sharding(const NamedSharding& named_sharding);
 
+  // Convert HloShardingV3 (including tuple shardings) to HloShardingV2.
+  static HloSharding V3ToV2Sharding(const HloSharding& sharding);
+
   // Convert HloShardingV1/V2 to NamedSharding (HloShardingV3).
   static NamedSharding ToNamedSharding(const HloSharding& sharding);
 
@@ -202,6 +200,14 @@ class HloSharding {
   bool UseNamedShardingLeaf() const {
     DCHECK(!IsTuple());
     return named_sharding_.has_value();
+  }
+
+  ReductionOp reduction_op() const { return reduction_op_; }
+  void set_reduction_op(ReductionOp op) {
+    reduction_op_ = op;
+    if (named_sharding_.has_value()) {
+      named_sharding_->set_reduction_op(op);
+    }
   }
 
   // Returns true if the sharding has tuple type.
@@ -394,7 +400,12 @@ class HloSharding {
   // Returns if the sharding has partial replication and partial sharding. If
   // true, data is sharded according to other dimensions of tile_assignment(),
   // but replicated across devices along the last dimension.
-  bool ReplicateOnLastTileDim() const { return replicate_on_last_tile_dim_; }
+  bool ReplicateOnLastTileDim() const {
+    CHECK(!UseNamedShardingLeaf())
+        << "ReplicateOnLastTileDim should not be called for HloShardingV3. "
+           "Please contact OpenXLA/Shardy team if you encounter this error.";
+    return replicate_on_last_tile_dim_;
+  }
 
   // Returns whether there is any partial replication. This can be using
   // ReplicateOnLastTileDim or subgroups with REPLICATED.
@@ -530,6 +541,7 @@ class HloSharding {
              replicate_on_last_tile_dim_ == other.replicate_on_last_tile_dim_ &&
              subgroup_types_ == other.subgroup_types_ &&
              shard_group_ == other.shard_group_ &&
+             reduction_op_ == other.reduction_op_ &&
              named_sharding_ == other.named_sharding_;
     }
 
@@ -541,6 +553,7 @@ class HloSharding {
     }
     return *this == V3ToV2Sharding(*other.named_sharding_);
   }
+
   bool operator!=(const HloSharding& other) const { return !(*this == other); }
 
   template <typename H>
@@ -554,10 +567,11 @@ class HloSharding {
       return AbslHashValue(std::move(h),
                            V3ToV2Sharding(*sharding.named_sharding_));
     }
-    return H::combine(
-        std::move(h), sharding.replicated_, sharding.manual_, sharding.unknown_,
-        sharding.unreduced_, sharding.tile_assignment_.array(),
-        sharding.replicate_on_last_tile_dim_, sharding.shard_group_.ToString());
+    return H::combine(std::move(h), sharding.replicated_, sharding.manual_,
+                      sharding.unknown_, sharding.unreduced_,
+                      sharding.tile_assignment_.array(),
+                      sharding.replicate_on_last_tile_dim_,
+                      sharding.shard_group_.ToString(), sharding.reduction_op_);
   }
 
   struct HashV2Wrapper {
@@ -584,7 +598,7 @@ class HloSharding {
             sharding.manual_, sharding.unknown_, sharding.unreduced_,
             sharding.tile_assignment_.array(),
             sharding.replicate_on_last_tile_dim_, sharding.subgroup_types_,
-            sharding.shard_group_.ToString());
+            sharding.shard_group_.ToString(), sharding.reduction_op_);
       }
       CHECK(sharding.tile_assignment_.iota().has_value());
       const IotaTileAssignment& iota = *sharding.tile_assignment_.iota();
@@ -593,7 +607,7 @@ class HloSharding {
           sharding.manual_, sharding.unknown_, sharding.unreduced_, iota.dims(),
           iota.reshape_dims(), iota.transpose_perm(),
           sharding.replicate_on_last_tile_dim_, sharding.subgroup_types_,
-          sharding.shard_group_.ToString());
+          sharding.shard_group_.ToString(), sharding.reduction_op_);
     }
   };
 
@@ -609,15 +623,14 @@ class HloSharding {
 
   // Gets the tile assignment tensor.
   // REQUIRES: !IsReplicated() && !IsTuple()
-  const TileAssignment& tile_assignment() const { return tile_assignment_; }
+  const TileAssignment& tile_assignment() const {
+    CHECK(!IsTuple());
+    CHECK(!UseNamedShardingLeaf())
+        << "TileAssignment is an internal concept of HloShardingV1/V2, should "
+           "not be called for HloShardingV3. Please contact OpenXLA/Shardy "
+           "team if you encounter this error.";
 
-  // Returns the flattened list of devices used in the tile assignment.
-  // REQUIRES: !IsReplicated() && !IsTuple()
-  absl::Span<const int64_t> flattened_device_list() const {
-    const auto& array = UseNamedShardingLeaf()
-                            ? named_sharding_->device_assignment().array()
-                            : tile_assignment_.array();
-    return absl::MakeConstSpan(array.begin(), array.num_elements());
+    return tile_assignment_;
   }
 
   const NamedSharding& named_sharding() const {
@@ -661,6 +674,9 @@ class HloSharding {
   // Gets the subgroup types array.
   // REQUIRES: !IsTuple()
   const std::vector<OpSharding::Type>& subgroup_types() const {
+    CHECK(!UseNamedShardingLeaf())
+        << "subgroup_types() should not be called for HloShardingV3. Please "
+           "contact OpenXLA/Shardy team if you encounter this error.";
     return subgroup_types_;
   }
 
@@ -704,7 +720,8 @@ class HloSharding {
   int64_t SubgroupReplicationDim() const {
     CHECK(!UseNamedShardingLeaf())
         << "SubgroupReplicationDim should not be called for HloShardingV3 as "
-           "all relevant use cases are handled separately.";
+           "all relevant use cases are handled separately. Please contact "
+           "OpenXLA/Shardy team if you encounter this error.";
     auto it = absl::c_find(subgroup_types_, OpSharding::REPLICATED);
     if (it != subgroup_types_.end()) {
       return (it - subgroup_types_.begin()) + TiledDataRank();
@@ -719,7 +736,8 @@ class HloSharding {
   int64_t SubgroupManualDim() const {
     CHECK(!UseNamedShardingLeaf())
         << "SubgroupManualDim should not be called for HloShardingV3 as all "
-           "relevant use cases are handled separately.";
+           "relevant use cases are handled separately. Please contact "
+           "OpenXLA/Shardy team if you encounter this error.";
     auto it = absl::c_find(subgroup_types_, OpSharding::MANUAL);
     if (it != subgroup_types_.end()) {
       return (it - subgroup_types_.begin()) + TiledDataRank();
@@ -731,7 +749,8 @@ class HloSharding {
   int64_t SubgroupUnreducedDim() const {
     CHECK(!UseNamedShardingLeaf())
         << "SubgroupUnreducedDim should not be called for HloShardingV3 as all "
-           "relevant use cases are handled separately.";
+           "relevant use cases are handled separately. Please contact "
+           "OpenXLA/Shardy team if you encounter this error.";
     auto it = absl::c_find(subgroup_types_, OpSharding::UNREDUCED);
     if (it != subgroup_types_.end()) {
       return (it - subgroup_types_.begin()) + TiledDataRank();
@@ -834,7 +853,23 @@ class HloSharding {
         unknown_(false),
         unreduced_(false),
         replicate_on_last_tile_dim_(false),
+        reduction_op_(named_sharding.reduction_op()),
         named_sharding_(std::move(named_sharding)) {}
+
+ public:
+  void ExtractReductionOpFromMetadata() {
+    for (const auto& md : metadata_) {
+      if (md.op_type() == "sdy::reduction_op") {
+        if (md.op_name() == "MAX") {
+          reduction_op_ = ReductionOp::kMax;
+        } else if (md.op_name() == "MIN") {
+          reduction_op_ = ReductionOp::kMin;
+        } else {
+          reduction_op_ = ReductionOp::kSum;
+        }
+      }
+    }
+  }
 
  private:
   explicit HloSharding(bool manual, bool replicated, bool unknown,
@@ -847,7 +882,9 @@ class HloSharding {
         unknown_(unknown),
         unreduced_(unreduced),
         replicate_on_last_tile_dim_(false),
-        named_sharding_(std::nullopt) {}
+        named_sharding_(std::nullopt) {
+    ExtractReductionOpFromMetadata();
+  }
   // device_id values:
   // -2: magic number to mean unassigned device, used by spatial partitioning
   // -1: the id of the host
@@ -864,7 +901,9 @@ class HloSharding {
         unknown_(false),
         unreduced_(false),
         replicate_on_last_tile_dim_(false),
-        named_sharding_(std::nullopt) {}
+        named_sharding_(std::nullopt) {
+    ExtractReductionOpFromMetadata();
+  }
   explicit HloSharding(TileAssignment tile_assignment,
                        bool replicate_on_last_tile_dim,
                        absl::Span<const OpMetadata> metadata = {})
@@ -877,7 +916,9 @@ class HloSharding {
         unknown_(false),
         unreduced_(false),
         replicate_on_last_tile_dim_(replicate_on_last_tile_dim),
-        named_sharding_(std::nullopt) {}
+        named_sharding_(std::nullopt) {
+    ExtractReductionOpFromMetadata();
+  }
   explicit HloSharding(TileAssignment tile_assignment,
                        absl::Span<const OpSharding::Type> subgroup_types,
                        absl::Span<const OpMetadata> metadata = {})
@@ -891,7 +932,9 @@ class HloSharding {
         unknown_(false),
         unreduced_(false),
         replicate_on_last_tile_dim_(false),
-        named_sharding_(std::nullopt) {}
+        named_sharding_(std::nullopt) {
+    ExtractReductionOpFromMetadata();
+  }
   explicit HloSharding(std::vector<HloSharding> tuple_shardings)
       : tuple_elements_(std::move(tuple_shardings)),
         replicated_(false),
@@ -923,6 +966,8 @@ class HloSharding {
         << other.tile_assignment_.ToString();
   }
   friend class HloShardingTestHelper;
+
+  static absl::StatusOr<HloSharding> FromProtoInternal(const OpSharding& proto);
 
   // Checks that the number of elements in tuple_elements_ is consistent with
   // the argument `shape`.
@@ -970,10 +1015,10 @@ class HloSharding {
   // so that the elements in subgroup_types_ are unique.
   std::vector<OpSharding::Type> subgroup_types_;
 
-  bool replicated_ : 1;  // When non-tuple, true if the sharding is trivial.
+  bool replicated_ : 1;     // When non-tuple, true if the sharding is trivial.
   bool single_device_ : 1;  // When non-tuple, true if the tensor is on a single
                             // device.
-  bool tuple_ : 1;       // True if this is a tuple.
+  bool tuple_ : 1;          // True if this is a tuple.
   bool manual_ : 1;   // When non-tuple, true if the sharding represents manual
                       // partitioning.
   bool unknown_ : 1;  // When non-tuple, true if the sharding represents a
@@ -989,6 +1034,7 @@ class HloSharding {
   // within the same shard group (i.e. under the same shard_group_id) will be
   // sharded alike or exactly the same as each other.
   ShardGroup shard_group_ = NotShardGroup();
+  ReductionOp reduction_op_ = ReductionOp::kSum;
 
   // Optional field to migrate HloSharding to new NamedSharding representation.
   // If this field is populated, all other fields in HloSharding should be empty

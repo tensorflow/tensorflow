@@ -20,8 +20,8 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "absl/base/casts.h"
 #include "absl/container/inlined_vector.h"
-#include "absl/functional/any_invocable.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -29,18 +29,15 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/gpu/collectives/gpu_collectives.h"
-#include "xla/backends/gpu/collectives/gpu_communicator.h"
 #include "xla/core/collectives/communicator.h"
 #include "xla/core/collectives/rank_id.h"
 #include "xla/core/collectives/reduction_kind.h"
 #include "xla/future.h"
 #include "xla/primitive_util.h"
-#include "xla/shape_util.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/casts.h"
 
 namespace xla::gpu {
 
@@ -55,16 +52,16 @@ static absl::Status Memcpy(const Communicator::Executor& executor,
     return absl::OkStatus();
   }
   auto* stream =
-      tsl::down_cast<const GpuCollectives::Executor&>(executor).stream();
+      absl::down_cast<const GpuCollectives::Executor&>(executor).stream();
   return stream->MemcpyD2D(&dst, src, size);
 }
 
-LoopbackCommunicator::LoopbackCommunicator(se::StreamExecutor* executor,
+LoopbackCommunicator::LoopbackCommunicator(se::StreamExecutor* stream_executor,
                                            size_t num_ranks, size_t rank)
-    : executor_(executor), num_ranks_(num_ranks), rank_(rank) {
+    : stream_executor_(stream_executor), num_ranks_(num_ranks), rank_(rank) {
   VLOG(1) << absl::StreamFormat(
       "LoopbackCommunicator created: rank=%d/%d, executor=%p", rank_,
-      num_ranks_, executor_);
+      num_ranks_, stream_executor_);
 }
 
 absl::StatusOr<size_t> LoopbackCommunicator::NumRanks() const {
@@ -76,11 +73,6 @@ absl::StatusOr<size_t> LoopbackCommunicator::CurrentRank() { return rank_; }
 std::string LoopbackCommunicator::ToString() const {
   return absl::StrFormat("LoopbackCommunicator(rank=%d, num_ranks=%d)", rank_,
                          num_ranks_);
-}
-
-Future<> LoopbackCommunicator::GroupExecute(
-    absl::AnyInvocable<absl::Status(GpuCommunicator*)> f) {
-  return Future<>(f(this));
 }
 
 //===----------------------------------------------------------------------===//
@@ -248,7 +240,7 @@ absl::Status LoopbackCommunicator::LaunchRecv(se::DeviceAddressBase recv_buffer,
                                 rank_, peer.value(), count);
   size_t size = ByteSize(dtype, count);
   auto* stream =
-      tsl::down_cast<const GpuCollectives::Executor&>(executor).stream();
+      absl::down_cast<const GpuCollectives::Executor&>(executor).stream();
   return stream->MemZero(&recv_buffer, size);
 }
 

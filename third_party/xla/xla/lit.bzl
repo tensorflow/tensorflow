@@ -1,3 +1,18 @@
+# Copyright 2026 The OpenXLA Authors. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
+
 """Helper rules for writing LIT tests."""
 
 load("@bazel_skylib//lib:paths.bzl", "paths")
@@ -205,7 +220,7 @@ def lit_test_suite_for_gpus(
         requirement to run on a GPU.
       gpus: string list. GPU names for which a lit test suite should be
         generated. Supported GPU names are: p100, v100, a100_pcie, a6000, h100,
-        b200, mi200.
+        b200, mi200, gfx1250.
       disabled_on_gpus: string_dict. For a gpu name (key) contains a list of
         test files that should be skipped.
       **kwargs: additional keyword arguments to pass to all generated rules.
@@ -215,10 +230,13 @@ def lit_test_suite_for_gpus(
     # If there are kwargs that need to be passed to only some of the generated
     # rules, they should be extracted into separate named arguments.
 
+    rocm_gpus = ["mi200", "gfx1250"]
+
     for gpu in gpus:
+        is_rocm = gpu in rocm_gpus
         filtered_srcs = [src for src in srcs if src not in disabled_on_gpus.get(gpu, [])]
         gpu_args = args + [
-            "--param=PTX=%s" % ("GCN" if gpu == "mi200" else "PTX"),
+            "--param=PTX=%s" % ("GCN" if is_rocm else "PTX"),
             "--param=GPU=%s" % (gpu),
         ]
         gpu_data = data + [
@@ -241,7 +259,7 @@ def lit_test_suite_for_gpus(
             # We add the tag xla_h100 to avoid that the test suite is scheduled
             # on different GPU architectures. Technically these tests don't
             # need a GPU, but a build with GPU configured.
-            tags + ["rocm-only"] if gpu == "mi200" else ["cuda-only", "xla_h100"],
+            tags + ["rocm-only"] if is_rocm else ["cuda-only", "xla_h100"],
             "_%s" % (gpu),
             **kwargs
         )
@@ -466,8 +484,8 @@ def lit_test(
     lit_name = "lit_custom_" + name.replace("/", "_")
     py_binary(
         name = lit_name,
-        main = "@llvm-project//llvm:utils/lit/lit.py",
-        srcs = ["@llvm-project//llvm:utils/lit/lit.py"],
+        main = "@llvm-project//llvm/utils/lit:lit.py",
+        srcs = ["@llvm-project//llvm/utils/lit:lit.py"],
         testonly = True,
         deps = [
             "@llvm-project//llvm:lit_lib",

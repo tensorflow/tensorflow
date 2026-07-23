@@ -17,14 +17,21 @@ limitations under the License.
 
 #include <algorithm>
 #include <cmath>
+#include <cstdint>
 #include <cstring>
 #include <memory>
+#include <string>
 #include <utility>
 
+#include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
 #include "absl/synchronization/notification.h"
 #include "xla/layout_util.h"
 #include "xla/shape.h"
+#include "tensorflow/core/framework/types.pb.h"
 
 // TODO(b/282059652): Merge google internal and open-source code path once TF
 // dependency issue is resolved.

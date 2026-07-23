@@ -24,6 +24,7 @@ limitations under the License.
 
 #include "absl/base/casts.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/types/span.h"
 #include "xla/hlo/builder/xla_builder.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
@@ -35,12 +36,14 @@ limitations under the License.
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
+#include "xla/xla.pb.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace {
 
 // A test fixture is used because we need a client for our computation builder.
-class TestUtilsTest : public HloPjRtTestBase {};
+class TestUtilsTest : public HloTestBase {};
 
 TEST_F(TestUtilsTest, UnusedParam) {
   XlaBuilder builder(TestName());
@@ -530,6 +533,38 @@ ENTRY main {
   args[0].EachCell<float>([](absl::Span<int64_t const> indices, float value) {
     EXPECT_GT(value, 0.0f);
   });
+}
+
+// Probabilistic test to verify that we are randomly sampling the whole
+// range for small bitwidth floats like f4e2m1. The chance of not getting
+// all 16 possible values in 1024 trials is astronomically small.
+TEST_F(TestUtilsTest, MakeFakeArgumentsSmallBitwidthFloat) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(R"(
+HloModule Test
+
+ENTRY %module (param: f4e2m1fn[1024]) -> f4e2m1fn[1024] {
+  ROOT %param = f4e2m1fn[1024]{0} parameter(0)
+}
+  )"));
+
+  TF_ASSERT_OK_AND_ASSIGN(std::vector<Literal> args,
+                          MakeFakeArguments(module.get()));
+  ASSERT_EQ(args.size(), 1);
+  EXPECT_TRUE(
+      ShapeUtil::Equal(args[0].shape(), ShapeUtil::MakeShape(F4E2M1FN, {1024})))
+      << ShapeUtil::HumanString(args[0].shape());
+
+  TF_ASSERT_OK_AND_ASSIGN(Literal f32_arg, args[0].Convert(F32));
+
+  absl::flat_hash_set<uint32_t> values;
+  f32_arg.EachCell<float>(
+      [&](absl::Span<const int64_t> /*indices*/, float val) {
+        values.insert(absl::bit_cast<uint32_t>(val));
+      });
+
+  const int64_t num_possible_values = 16;
+  EXPECT_EQ(values.size(), num_possible_values);
 }
 
 }  // namespace

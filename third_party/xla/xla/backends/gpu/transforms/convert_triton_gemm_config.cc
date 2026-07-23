@@ -35,6 +35,9 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/IR/MLIRContext.h"
 #include "xla/backends/gpu/codegen/triton/support.h"
+#include "xla/codegen/tiling/experimental/tiled_hlo.h"
+#include "xla/codegen/tiling/experimental/tiling_space.h"
+#include "xla/codegen/tiling/experimental/tiling_space_utils.h"
 #include "xla/codegen/tiling/symbolic_tile.h"
 #include "xla/codegen/tiling/symbolic_tile_analysis.h"
 #include "xla/codegen/tiling/symbolic_tiled_hlo_instruction.h"
@@ -46,7 +49,9 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/utils/hlo_query.h"
+#include "xla/hlo/utils/hlo_traversal.h"
 #include "xla/service/call_graph.h"
+#include "xla/service/decision.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/matmul_utils.h"
@@ -73,7 +78,7 @@ absl::StatusOr<TritonGemmConfig> GetTritonGemmConfig(
   const FusionBackendConfig& backend_config =
       gpu_config.fusion_backend_config();
   if (!backend_config.has_triton_gemm_config()) {
-    return absl::InternalError(
+    return absl::NotFoundError(
         "The fusion's backend config doesn't have a triton_gemm_config.");
   }
   return TritonGemmConfig::FromProto(backend_config.triton_gemm_config());
@@ -104,10 +109,11 @@ class ConvertTritonGemmConfigVisitor : public DfsHloRewriteVisitor {
     HloFusionInstruction* fusion = Cast<HloFusionInstruction>(instruction);
     // Check if we target this fusion.
     absl::StatusOr<TritonGemmConfig> config = GetTritonGemmConfig(*fusion);
-    if (!config.ok()) {
+    if (absl::IsNotFound(config.status())) {
       VLOG(2) << "Skipping fusion as it does not have a TritonGemmConfig";
       return absl::OkStatus();
     }
+    RETURN_IF_ERROR(config.status());
     return RewriteFusion(fusion, *config);
   }
 
@@ -129,12 +135,12 @@ class ConvertTritonGemmConfigVisitor : public DfsHloRewriteVisitor {
     }
 
     // Annotate the dot with the contraction tile size.
-    ASSIGN_OR_RETURN(auto tile_sizes, dot->backend_config<Tile>());
+    ASSIGN_OR_RETURN(Tile tile_sizes, dot->backend_config<Tile>());
     tile_sizes.add_sizes(config.block_k);
     RETURN_IF_ERROR(dot->set_backend_config(tile_sizes));
 
     // Annotate the fusion itself with the block-level parameters.
-    ASSIGN_OR_RETURN(auto gpu_config,
+    ASSIGN_OR_RETURN(GpuBackendConfig gpu_config,
                      fusion->backend_config<GpuBackendConfig>());
     FusionBackendConfig& backend_config =
         *gpu_config.mutable_fusion_backend_config();
@@ -181,12 +187,147 @@ absl::StatusOr<bool> ConvertTritonGemmConfig::RunImpl(
   return changed;
 }
 
+// Finds the block-level parameters using the experimental TilingSpace
+// propagation framework.
+absl::StatusOr<BlockLevelParameters> FindBlockLevelParametersWithTilingSpace(
+    const HloInstruction* dot, const TritonGemmConfig& config,
+    MLIRContext* mlir_context,
+    const se::DeviceDescription& device_description) {
+  // M and N block sizes are defined at the fusion root output. However, because
+  // the output shape may be transposed, elementwise fused, or broadcasted, M
+  // and N can correspond to arbitrary dimensions at the root. This function
+  // loops through all pairs of output dimensions (i, j) to place `block_m` and
+  // `block_n` respectively, and maps these candidate outputs along with
+  // `block_k` to the fusion's tiling space. It verifies that all constraints
+  // are satisfied and that backward-propagating the root tile results in the
+  // expected tile sizes [1, ..., 1, block_m, block_n] at the core `dot`
+  // instruction.
+  // TODO(b/515334583): when supported, we can propagate tile from the dot
+  // directly, avoiding the need to play with the output tiles.
+  using TilingSpace = experimental::TilingSpace;
+  using DimensionSemantics = TilingSpace::DimensionSemantics;
+  using DimensionInfo = TilingSpace::DimensionInfo;
+  const HloComputation* computation = dot->parent();
+  std::unique_ptr<HloFusionAdaptor> fusion_adaptor =
+      HloFusionAdaptor::ForComputation(computation);
+
+  int64_t dot_rank = dot->shape().dimensions().size();
+  if (dot_rank < 2) {
+    return absl::InternalError(absl::StrCat(
+        "Expected dot instruction shape to have rank >= 2, got ", dot_rank));
+  }
+  llvm::SmallVector<int64_t> expected_dot_tile_sizes(dot_rank - 2, 1);
+  expected_dot_tile_sizes.append({config.block_m, config.block_n});
+  int64_t root_rank =
+      computation->root_instruction()->shape().dimensions().size();
+  if (root_rank < 2) {
+    return absl::InternalError(absl::StrCat(
+        "Expected computation root shape to have rank >= 2, got ", root_rank));
+  }
+  llvm::SmallVector<int64_t> parallel_tile_sizes(root_rank - 2, 1);
+  parallel_tile_sizes.append({config.block_m, config.block_n});
+  absl::c_sort(parallel_tile_sizes);
+
+  do {
+    ASSIGN_OR_RETURN(
+        std::unique_ptr<experimental::TilingSpace> ts,
+        experimental::TilingSpace::Create(*fusion_adaptor, mlir_context));
+    llvm::SmallVector<int64_t> tile_sizes(ts->num_dimensions(), 1);
+    for (const DimensionInfo& dim : ts->dimensions()) {
+      if (dim.type == DimensionSemantics::kParallel) {
+        if (dim.dim_position >= parallel_tile_sizes.size()) {
+          return absl::InternalError(
+              "Parallel dimension position out of bounds");
+        }
+        tile_sizes[dim.id.value()] = parallel_tile_sizes[dim.dim_position];
+      } else if (dim.type == DimensionSemantics::kSequential &&
+                 dim.hlo == dot) {
+        tile_sizes[dim.id.value()] = config.block_k;
+      }
+    }
+    absl::Status assign_status = ts->AssignTileSizes(tile_sizes);
+    if (!assign_status.ok()) {
+      VLOG(8) << "Skipping output tile sizes "
+              << absl::StrJoin(parallel_tile_sizes, ",")
+              << " as tiling assignment failed: " << assign_status.message();
+      continue;
+    }
+    absl::StatusOr<experimental::TiledHloComputation> tiled_computation =
+        experimental::TiledHloComputation::Tile(*fusion_adaptor, std::move(ts));
+    if (!tiled_computation.ok()) {
+      VLOG(8) << "Failed to tile the computation with output tile sizes "
+              << absl::StrJoin(parallel_tile_sizes, ",")
+              << " with error: " << tiled_computation.status().message();
+      continue;
+    }
+
+    Decision verification_status = experimental::VerifyTritonConstraints(
+        *tiled_computation, device_description);
+    if (!verification_status) {
+      VLOG(8) << "Candidate tiling violates Triton constraints: "
+              << verification_status.Explain();
+      continue;
+    }
+    // Finds the corresponding tiled instruction for its original HLO
+    // instruction.
+    auto tiled_dot =
+        absl::c_find_if(tiled_computation->tiled_root_region().instructions(),
+                        [&](const auto& tiled) { return tiled->hlo() == dot; });
+    // That should never happen.
+    CHECK(tiled_dot !=
+          tiled_computation->tiled_root_region().instructions().end())
+        << "Dot tiled instruction not found in tiled computation";
+    absl::StatusOr<llvm::SmallVector<int64_t>> static_tile_sizes =
+        tiled_dot->get()->tile().GetStaticTileSizes();
+    if (!static_tile_sizes.ok()) {
+      VLOG(8) << "Failed to get static tile sizes for dot instruction "
+              << dot->ToString()
+              << " with error: " << static_tile_sizes.status().message();
+      continue;
+    }
+
+    if (*static_tile_sizes != expected_dot_tile_sizes) {
+      VLOG(8) << "Skipping output tile sizes "
+              << absl::StrJoin(parallel_tile_sizes, ",")
+              << " as they don't produce expected dot tile sizes "
+              << absl::StrJoin(expected_dot_tile_sizes, ",");
+      continue;
+    }
+
+    BlockLevelParameters params;
+    params.output_tile_sizes = {std::vector<int64_t>(
+        parallel_tile_sizes.begin(), parallel_tile_sizes.end())};
+    params.num_warps = config.num_warps;
+    params.num_ctas = config.num_ctas;
+    params.num_stages = config.num_stages;
+    params.is_tma_allowed = config.is_tma_allowed;
+    params.is_warp_specialization_allowed =
+        config.is_warp_specialization_allowed;
+    params.waves_per_eu = config.waves_per_eu;
+    return params;
+  } while (absl::c_next_permutation(parallel_tile_sizes));
+
+  return absl::InternalError(
+      "Couldn't find output tile sizes that satisfy TilingSpace constraints");
+}
+
 absl::StatusOr<BlockLevelParameters> FindBlockLevelParameters(
     const HloInstruction* dot, const TritonGemmConfig& config,
     MLIRContext* mlir_context,
     const se::DeviceDescription& device_description) {
   RETURN_IF_ERROR(IsDot(*dot));
+  // This logic only works for a very narrow subset of fusions: dot is the only
+  // instruction that have a contracting dimension and all tile sizes except
+  // m, n, and k are 1.
   const HloComputation* computation = dot->parent();
+  if (dot->GetModule()
+          ->config()
+          .debug_options()
+          .xla_gpu_experimental_enable_tiling_propagation()) {
+    return FindBlockLevelParametersWithTilingSpace(dot, config, mlir_context,
+                                                   device_description);
+  }
+
   VLOG(3) << "FindOutputTileSizesForEpilogue of computation: "
           << computation->ToString();
   SymbolicTileAnalysisOrError analysis_or =

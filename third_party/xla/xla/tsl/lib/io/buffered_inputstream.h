@@ -116,9 +116,10 @@ class BufferedInputStream : public InputStreamInterface {
 
 // Explicit instantiations defined in buffered_inputstream.cc.
 #ifndef SWIG
-extern template Status BufferedInputStream::ReadAll<std::string>(
+extern template absl::Status BufferedInputStream::ReadAll<std::string>(
     std::string* result);
-extern template Status BufferedInputStream::ReadAll<tstring>(tstring* result);
+extern template absl::Status BufferedInputStream::ReadAll<tstring>(
+    tstring* result);
 #endif  // SWIG
 
 }  // namespace io

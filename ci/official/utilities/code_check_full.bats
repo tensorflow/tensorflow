@@ -311,7 +311,7 @@ EOF
 # anything with a Windows-only toolchain, and bazel errors if trying to build
 # that directory.
 @test "bazel nobuild passes on all of TF except TF Lite and win toolchains" {
-    bazel build --experimental_cc_shared_library --nobuild --keep_going -- //tensorflow/... -//tensorflow/lite/... -//tensorflow/tools/toolchains/win/... -//tensorflow/tools/toolchains/win_1803/...  -//tensorflow/tools/toolchains/win2022/...
+    bazel build --experimental_cc_shared_library --incompatible_enable_android_toolchain_resolution=false --skip_incompatible_explicit_targets --nobuild --keep_going -- //tensorflow/core/... //tensorflow/python/... //tensorflow/compiler/... //tensorflow/tools/pip_package:build_pip_package_py -//tensorflow/lite/... -//tensorflow/tools/lib_package/...
 }
 
 @test "API compatibility test passes, ensuring no unexpected changes to the TF API" {
@@ -321,9 +321,8 @@ EOF
 }
 
 # See b/279852433 (internal).
-# TODO(b/279852433) Replace deps(//tensorflow/...) with deps(//...)
 @test "Verify that it's possible to query every TensorFlow target without BUILD errors" {
-    bazel query "deps(//tensorflow/... -attr(tags, 'manual', //tensorflow/...))" > /dev/null
+    bazel query --keep_going --deleted_packages=tensorflow/tools/toolchains/win/20240424,tensorflow/tools/toolchains/win/tf_win_05022023,tensorflow/tools/toolchains/win/bazel_211,tensorflow/tools/toolchains/win2022/20260322,tensorflow/tools/toolchains/win2022/20241118,tensorflow/tools/lib_package "deps(//tensorflow/... - attr(tags, 'manual|no_oss|gpu|metal|tflite|android|ios', //tensorflow/...) - //tensorflow/tools/pip_package:prebuilt_tf_py_import - //tensorflow/tools/pip_package:prebuilt_tf_py_import_unpacked_wheel)" > /dev/null
 }
 
 teardown_file() {

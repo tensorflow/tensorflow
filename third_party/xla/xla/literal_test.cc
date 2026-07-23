@@ -55,6 +55,7 @@ limitations under the License.
 #include "xla/tsl/platform/macros.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test_benchmark.h"
+#include "xla/tsl/util/proto/parse_text_proto.h"
 #include "xla/tsl/util/safe_reinterpret_cast.h"
 #include "xla/types.h"
 #include "xla/util.h"
@@ -873,6 +874,81 @@ TEST_F(LiteralUtilTest, IsAll) {
   EXPECT_FALSE(LiteralUtil::CreateR2<uint64_t>(
                    {{uint64_max, uint64_max}, {uint64_max, uint64_max}})
                    .IsAll(-1));
+
+  // Tests for IsAll optimization (double-memcmp logic)
+  // Empty literals
+  EXPECT_TRUE(Literal::CreateFromShape(ShapeUtil::MakeShape(F32, {0}))
+                  .IsAll(LiteralUtil::CreateR0<float>(42.0f)));
+  EXPECT_TRUE(Literal::CreateFromShape(ShapeUtil::MakeShape(S32, {0}))
+                  .IsAll(LiteralUtil::CreateR0<int32_t>(42)));
+
+  // Single element
+  EXPECT_TRUE(LiteralUtil::CreateR1<float>({42.0f}).IsAll(
+      LiteralUtil::CreateR0<float>(42.0f)));
+  EXPECT_FALSE(LiteralUtil::CreateR1<float>({42.0f}).IsAll(
+      LiteralUtil::CreateR0<float>(43.0f)));
+  EXPECT_TRUE(LiteralUtil::CreateR1<int32_t>({42}).IsAll(
+      LiteralUtil::CreateR0<int32_t>(42)));
+  EXPECT_FALSE(LiteralUtil::CreateR1<int32_t>({42}).IsAll(
+      LiteralUtil::CreateR0<int32_t>(43)));
+
+  // Multi-element
+  EXPECT_TRUE(LiteralUtil::CreateR1<float>({42.0f, 42.0f, 42.0f})
+                  .IsAll(LiteralUtil::CreateR0<float>(42.0f)));
+  EXPECT_FALSE(LiteralUtil::CreateR1<float>({42.0f, 42.0f, 42.0f})
+                   .IsAll(LiteralUtil::CreateR0<float>(43.0f)));
+  EXPECT_FALSE(LiteralUtil::CreateR1<float>({42.0f, 43.0f, 42.0f})
+                   .IsAll(LiteralUtil::CreateR0<float>(42.0f)));
+  EXPECT_FALSE(LiteralUtil::CreateR1<float>({43.0f, 42.0f, 42.0f})
+                   .IsAll(LiteralUtil::CreateR0<float>(42.0f)));
+  EXPECT_FALSE(LiteralUtil::CreateR1<float>({42.0f, 42.0f, 43.0f})
+                   .IsAll(LiteralUtil::CreateR0<float>(42.0f)));
+
+  // NaNs (memcmp comparison behaves as bitwise comparison)
+  float nan_val = std::numeric_limits<float>::quiet_NaN();
+  // All elements are same NaN
+  EXPECT_TRUE(LiteralUtil::CreateR1<float>({nan_val, nan_val, nan_val})
+                  .IsAll(LiteralUtil::CreateR0<float>(nan_val)));
+  // elements are NaN but we check for non-NaN
+  EXPECT_FALSE(LiteralUtil::CreateR1<float>({nan_val, nan_val, nan_val})
+                   .IsAll(LiteralUtil::CreateR0<float>(42.0f)));
+  // Mixed elements
+  EXPECT_FALSE(LiteralUtil::CreateR1<float>({42.0f, nan_val, 42.0f})
+                   .IsAll(LiteralUtil::CreateR0<float>(42.0f)));
+  EXPECT_FALSE(LiteralUtil::CreateR1<float>({nan_val, 42.0f, nan_val})
+                   .IsAll(LiteralUtil::CreateR0<float>(nan_val)));
+}
+
+TEST_F(LiteralUtilTest, MaterializeSparseOperandValidConfigReturnsDense) {
+  absl::StatusOr<Literal> dense_or = MaterializeSparseOperand(
+      LiteralUtil::CreateR2<float>({{1.0f, 2.0f}, {3.0f, 4.0f}}),
+      LiteralUtil::CreateR2<int32_t>({{0, 2}, {1, 3}}),
+      tsl::proto_testing::ParseTextProtoOrDie<
+          SparsityConfig::TensorSparsityConfig>(
+          R"pb(
+            dimension: 1 block_size: 4 num_non_zero: 1 stride: 1
+          )pb"));
+  ASSERT_TRUE(dense_or.ok());
+  Literal dense = std::move(dense_or).value();
+  Literal expected = LiteralUtil::CreateFromDimensions(F32, {2, 8});
+  expected.PopulateWithValue(0.0f);
+  expected.Set<float>({0, 0}, 1.0f);
+  expected.Set<float>({0, 6}, 2.0f);
+  expected.Set<float>({1, 1}, 3.0f);
+  expected.Set<float>({1, 7}, 4.0f);
+  EXPECT_EQ(dense, expected);
+}
+
+TEST_F(LiteralUtilTest, MaterializeSparseOperandInvalidConfigReturnsError) {
+  EXPECT_FALSE(MaterializeSparseOperand(
+                   LiteralUtil::CreateR2<float>({{1.0f, 2.0f}, {3.0f, 4.0f}}),
+                   LiteralUtil::CreateR2<int32_t>({{0, 2}, {1, 3}}),
+                   tsl::proto_testing::ParseTextProtoOrDie<
+                       SparsityConfig::TensorSparsityConfig>(
+                       R"pb(
+                         dimension: 1 block_size: 4 num_non_zero: 2 stride: 1
+                       )pb"))
+                   .ok());
 }
 
 TEST_F(LiteralUtilTest, IsAllFloat) {
@@ -2695,6 +2771,80 @@ TEST_F(LiteralUtilTest, InvalidProtoMissingLayout) {
   EXPECT_THAT(status.message(), HasSubstr("LiteralProto has no layout"));
 }
 
+TEST_F(LiteralUtilTest, InvalidProtoDynamicSizeExceedsBound) {
+  // Regression test: dynamic_sizes that exceed the static dimension bound must
+  // be rejected by CreateFromProto.  Before the fix, the poisoned value was
+  // silently stored via Piece::SetDynamicSize (which lacked the CHECK_GE
+  // present in MutableLiteralBase::SetDynamicSize), leading to a heap OOB read
+  // in CopyElementsWithDynamicBound when ToStatic() was called.
+  LiteralProto proto;
+
+  // Shape: f32[<=4] — rank 1, 1 dynamic dim, static bound = 4.
+  ShapeProto* shape = proto.mutable_shape();
+  shape->set_element_type(F32);
+  shape->add_dimensions(4);
+  shape->add_is_dynamic_dimension(true);
+  LayoutProto* layout = shape->mutable_layout();
+  layout->add_minor_to_major(0);
+
+  // Provide exactly 4 float values (matches static bound).
+  proto.add_f32s(1.0f);
+  proto.add_f32s(2.0f);
+  proto.add_f32s(3.0f);
+  proto.add_f32s(4.0f);
+
+  // dynamic_sizes[0] = 100 — exceeds the static bound of 4.
+  proto.add_dynamic_sizes(100);
+
+  absl::Status status = Literal::CreateFromProto(proto).status();
+  ASSERT_FALSE(status.ok());
+  EXPECT_THAT(status.message(), HasSubstr("dynamic_sizes"));
+  EXPECT_THAT(status.message(), HasSubstr("out of range"));
+}
+
+TEST_F(LiteralUtilTest, InvalidProtoDynamicSizeNegative) {
+  // Negative dynamic_sizes must also be rejected.
+  LiteralProto proto;
+  ShapeProto* shape = proto.mutable_shape();
+  shape->set_element_type(F32);
+  shape->add_dimensions(4);
+  shape->add_is_dynamic_dimension(true);
+  LayoutProto* layout = shape->mutable_layout();
+  layout->add_minor_to_major(0);
+  proto.add_f32s(1.0f);
+  proto.add_f32s(2.0f);
+  proto.add_f32s(3.0f);
+  proto.add_f32s(4.0f);
+  proto.add_dynamic_sizes(-1);
+
+  absl::Status status = Literal::CreateFromProto(proto).status();
+  ASSERT_FALSE(status.ok());
+  EXPECT_THAT(status.message(), HasSubstr("dynamic_sizes"));
+  EXPECT_THAT(status.message(), HasSubstr("out of range"));
+}
+
+TEST_F(LiteralUtilTest, ValidProtoDynamicSizeWithinBound) {
+  // A dynamic_size within the static bound must still be accepted.
+  LiteralProto proto;
+  ShapeProto* shape = proto.mutable_shape();
+  shape->set_element_type(F32);
+  shape->add_dimensions(4);
+  shape->add_is_dynamic_dimension(true);
+  LayoutProto* layout = shape->mutable_layout();
+  layout->add_minor_to_major(0);
+  proto.add_f32s(1.0f);
+  proto.add_f32s(2.0f);
+  proto.add_f32s(3.0f);
+  proto.add_f32s(4.0f);
+  proto.add_dynamic_sizes(2);
+
+  TF_ASSERT_OK_AND_ASSIGN(Literal literal, Literal::CreateFromProto(proto));
+  EXPECT_EQ(literal.GetDynamicSize(0), 2);
+  auto static_literal = literal.ToStatic();
+  EXPECT_EQ(static_literal.shape(), ShapeUtil::MakeShape(F32, {2}));
+  EXPECT_TRUE(static_literal.shape().is_static());
+}
+
 TEST_F(LiteralUtilTest, InvalidProtoTooFewTupleElements) {
   // Proto has the too few tuple elements.
   LiteralProto proto;
@@ -3458,6 +3608,21 @@ BENCHMARK_POPULATE(PopulateParallel);
 BENCHMARK_POPULATE(PopulateLinear);
 BENCHMARK_POPULATE(PopulateLinearParallel);
 
+void BM_MakeFakeLiteral(::testing::benchmark::State& state) {
+  int64_t d0 = state.range(0);
+  Shape shape = ShapeUtil::MakeShape(F32, {d0, d0});
+  for (auto s : state) {
+    auto literal = MakeFakeLiteral(shape, /*pseudo_random=*/true,
+                                   /*use_large_range=*/true);
+    benchmark::DoNotOptimize(literal);
+  }
+}
+BENCHMARK(BM_MakeFakeLiteral)
+    ->MeasureProcessCPUTime()
+    ->Arg(64)
+    ->Arg(256)
+    ->Arg(1024);
+
 TEST(LiteralTest, SetShapeClearsCustomElementSizeInBitsOnTupleLeafArrays) {
   Shape leaf = ShapeUtil::MakeShape(F32, {1024});
   LayoutUtil::SetToDefaultLayout(&leaf);
@@ -3471,6 +3636,40 @@ TEST(LiteralTest, SetShapeClearsCustomElementSizeInBitsOnTupleLeafArrays) {
   ASSERT_EQ(literal.shape().tuple_shapes().size(), 1);
   ASSERT_TRUE(literal.shape().tuple_shapes(0).has_layout());
   EXPECT_EQ(literal.shape().tuple_shapes(0).layout().element_size_in_bits(), 0);
+}
+
+TEST_F(LiteralUtilTest, CopyFromProtoWithDynamicShape) {
+  // Create a literal with dynamic shape.
+  Literal literal(ShapeUtil::MakeShape(F32, {10}, {true}));
+  literal.SetDynamicSize(0, 3);
+  literal.PopulateR1<float>({1.0, 2.0, 3.0});
+
+  // Serialize it to proto.
+  LiteralProto proto = literal.ToProto();
+
+  // Deserialize it back.
+  TF_ASSERT_OK_AND_ASSIGN(Literal deserialized,
+                          Literal::CreateFromProto(proto));
+
+  // We expect the deserialized literal to have dynamic size 3.
+  EXPECT_EQ(deserialized.GetDynamicSize(0), 3);
+  EXPECT_EQ(deserialized, literal);
+}
+
+TEST_F(LiteralUtilTest, CopyFromProtoDynamicShapeMismatch) {
+  // Create a literal with dynamic shape.
+  Literal literal(ShapeUtil::MakeShape(F32, {10}, {true}));
+  literal.SetDynamicSize(0, 3);
+  literal.PopulateR1<float>({1.0, 2.0, 3.0});
+
+  // Serialize it to proto.
+  LiteralProto proto = literal.ToProto();
+
+  // Mismatch dynamic sizes size by clearing it.
+  proto.clear_dynamic_sizes();
+
+  // Deserialize it back. This should error now.
+  EXPECT_FALSE(Literal::CreateFromProto(proto).ok());
 }
 
 }  // namespace

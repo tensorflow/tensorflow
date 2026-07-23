@@ -1735,4 +1735,151 @@ ENTRY main {
                   .ok());
 }
 
+TEST_F(BFloat16PropagationTest,
+       DoNotPropagateThroughBitcastDifferentElementTypes) {
+  auto module = CreateNewVerifiedModule();
+  auto builder = HloComputation::Builder(TestName());
+  Shape u32_shape = ShapeUtil::MakeShape(U32, {4, 4});
+  Shape f32_shape = ShapeUtil::MakeShape(F32, {4, 4});
+
+  HloInstruction* param = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, u32_shape, "param"));
+  HloInstruction* bitcast =
+      builder.AddInstruction(HloInstruction::CreateBitcast(f32_shape, param));
+  auto dot = builder.AddInstruction(CreateDot(f32_shape, bitcast, bitcast));
+
+  auto computation = module->AddEntryComputation(builder.Build());
+  PropagatePrecision(module.get());
+
+  EXPECT_EQ(computation->root_instruction(), dot);
+  EXPECT_EQ(bitcast->shape().element_type(), F32);
+  EXPECT_EQ(param->shape().element_type(), U32);
+  EXPECT_FALSE(OutputsBF16(bitcast));
+  EXPECT_OK(HloVerifier(/*layout_sensitive=*/false,
+                        /*allow_mixed_precision=*/true)
+                .Run(module.get())
+                .status());
+}
+
+TEST_F(BFloat16PropagationTest, BitcastDifferentElementTypesInWhileLoop) {
+  auto module = CreateNewVerifiedModule();
+  auto builder = HloComputation::Builder(TestName());
+  Shape u32_shape = ShapeUtil::MakeShape(U32, {4, 4});
+  Shape f32_shape = ShapeUtil::MakeShape(F32, {4, 4});
+  Shape tuple_shape = ShapeUtil::MakeTupleShape({u32_shape, f32_shape});
+
+  HloInstruction* param = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, tuple_shape, "param"));
+
+  auto builder_cond = HloComputation::Builder("cond");
+  builder_cond.AddInstruction(
+      HloInstruction::CreateParameter(0, tuple_shape, "cond_param"));
+  builder_cond.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<bool>(true)));
+  auto cond = module->AddEmbeddedComputation(builder_cond.Build());
+
+  auto builder_body = HloComputation::Builder("body");
+  auto body_param = builder_body.AddInstruction(
+      HloInstruction::CreateParameter(0, tuple_shape, "body_param"));
+  auto u32_elem = builder_body.AddInstruction(
+      HloInstruction::CreateGetTupleElement(u32_shape, body_param, 0));
+  auto f32_elem = builder_body.AddInstruction(
+      HloInstruction::CreateGetTupleElement(f32_shape, body_param, 1));
+  auto bitcast = builder_body.AddInstruction(
+      HloInstruction::CreateBitcast(f32_shape, u32_elem));
+  auto body_dot =
+      builder_body.AddInstruction(CreateDot(f32_shape, bitcast, f32_elem));
+  builder_body.AddInstruction(
+      HloInstruction::CreateTuple({u32_elem, body_dot}));
+  auto body = module->AddEmbeddedComputation(builder_body.Build());
+
+  auto while_hlo = builder.AddInstruction(
+      HloInstruction::CreateWhile(tuple_shape, cond, body, param));
+
+  auto while_out_f32 = builder.AddInstruction(
+      HloInstruction::CreateGetTupleElement(f32_shape, while_hlo, 1));
+  auto entry_dot = builder.AddInstruction(
+      CreateDot(f32_shape, while_out_f32, while_out_f32));
+  auto computation = module->AddEntryComputation(builder.Build());
+
+  EXPECT_TRUE(PropagatePrecision(module.get()));
+
+  EXPECT_EQ(computation->root_instruction(), entry_dot);
+  EXPECT_EQ(bitcast->shape().element_type(), F32);
+  EXPECT_EQ(u32_elem->shape().element_type(), U32);
+  EXPECT_FALSE(OutputsBF16(bitcast));
+  EXPECT_OK(HloVerifier(/*layout_sensitive=*/false,
+                        /*allow_mixed_precision=*/true)
+                .Run(module.get())
+                .status());
+}
+
+TEST_F(BFloat16PropagationTest, BitcastDifferentElementTypesIsWhileRoot) {
+  const std::string module_str = R"(
+HloModule module
+
+cond {
+  cond_param = f32[4,4] parameter(0)
+  ROOT cond_root = pred[] constant(true)
+}
+
+body {
+  body_param = f32[4,4] parameter(0)
+  bitcast_in = u32[4,4] bitcast(body_param)
+  ROOT bitcast_out = f32[4,4] bitcast(bitcast_in)
+}
+
+ENTRY entry {
+  param = f32[4,4] parameter(0)
+  while = f32[4,4] while(param), condition=cond, body=body
+  ROOT root_dot = f32[4,4] dot(while, while),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0}
+}
+)";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(module_str));
+  EXPECT_FALSE(PropagatePrecision(module.get()));
+  auto bitcast_out = FindInstruction(module.get(), "bitcast_out");
+  ASSERT_NE(bitcast_out, nullptr);
+  EXPECT_FALSE(OutputsBF16(bitcast_out));
+  EXPECT_OK(HloVerifier(/*layout_sensitive=*/false,
+                        /*allow_mixed_precision=*/true)
+                .Run(module.get())
+                .status());
+}
+
+TEST_F(BFloat16PropagationTest, BitcastBf16ToF32InWhileLoop) {
+  const std::string module_str = R"(
+HloModule module
+
+cond {
+  cond_param = f32[4,4] parameter(0)
+  ROOT cond_root = pred[] constant(true)
+}
+
+body {
+  body_param = f32[4,4] parameter(0)
+  bitcast_in = bf16[4,4] bitcast(body_param)
+  ROOT bitcast_out = f32[4,4] bitcast(bitcast_in)
+}
+
+ENTRY entry {
+  param = f32[4,4] parameter(0)
+  while = f32[4,4] while(param), condition=cond, body=body
+  ROOT root_dot = f32[4,4] dot(while, while),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0}
+}
+)";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(module_str));
+  EXPECT_FALSE(PropagatePrecision(module.get()));
+  auto bitcast_out = FindInstruction(module.get(), "bitcast_out");
+  ASSERT_NE(bitcast_out, nullptr);
+  EXPECT_FALSE(OutputsBF16(bitcast_out));
+  EXPECT_OK(HloVerifier(/*layout_sensitive=*/false,
+                        /*allow_mixed_precision=*/true)
+                .Run(module.get())
+                .status());
+}
+
 }  // namespace xla

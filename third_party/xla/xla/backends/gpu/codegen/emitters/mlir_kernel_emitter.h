@@ -30,17 +30,18 @@ limitations under the License.
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/AffineMap.h"
 #include "mlir/IR/BuiltinOps.h"
-#include "mlir/IR/ImplicitLocOpBuilder.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/OwningOpRef.h"
 #include "mlir/IR/Value.h"
 #include "mlir/Pass/PassManager.h"
 #include "xla/backends/gpu/codegen/fusion_emitter.h"
+#include "xla/backends/gpu/codegen/kernel_compiler.h"
 #include "xla/codegen/emitters/computation_partitioner.h"
 #include "xla/codegen/emitters/ir/xla_ops.h"
 #include "xla/codegen/kernel_definition.h"
 #include "xla/codegen/llvm_kernel_source.h"
 #include "xla/codegen/mlir_kernel_source.h"
+#include "xla/future.h"
 #include "xla/hlo/analysis/indexing_map.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -182,17 +183,17 @@ class MlirKernelFusion final : public KernelFusionInterface {
     return emitter_->ComputeThreadIdToInputIndexing(root_index, ctx);
   }
 
-  absl::StatusOr<FusionEmissionResult> Emit(
-      IrEmitterContext& ir_emitter_context,
-      const HloFusionInstruction& fusion) const final;
+  AsyncThunkSequence Emit(IrEmitterContext& ir_emitter_context,
+                          const HloFusionInstruction& fusion) const final;
 
   // Visible for testing. `buffer_assignment` is optional for testing (assigns
   // a different buffer to each tensor).
-  absl::StatusOr<std::unique_ptr<llvm::Module>> CreateLLVMModule(
-      mlir::MLIRContext& mlir_context, llvm::LLVMContext& llvm_context,
+  xla::Future<LlvmKernelSource> CreateLLVMModule(
       const se::DeviceDescription& device, const HloFusionInstruction& fusion,
       const std::string& entry_function_name,
-      const BufferAssignment* buffer_assignment) const;
+      const BufferAssignment* buffer_assignment,
+      KernelCompiler* kernel_compiler,
+      BorrowedMlirContext borrowed_context) const;
 
   MlirKernelEmitter* mlir_kernel_emitter() { return emitter_.get(); }
 
@@ -200,7 +201,7 @@ class MlirKernelFusion final : public KernelFusionInterface {
   static constexpr std::array<int, 3> kIndexingMapBlockIdxDims = {3, 4, 5};
 
  private:
-  absl::StatusOr<KernelDefinition<LlvmKernelSource>> EmitLlvmModule(
+  xla::Future<KernelDefinition<LlvmKernelSource>> EmitLlvmModule(
       const HloFusionInstruction& fusion, const std::string& kernel_name,
       IrEmitterContext& parent_context) const;
   std::unique_ptr<MlirKernelEmitter> emitter_;
@@ -215,6 +216,13 @@ void AddLoopTransformationPasses(mlir::OpPassManager& pm,
 // Adds passes that lower transformed loops to LLVM.
 void AddLoweringPasses(mlir::OpPassManager& pm,
                        const se::DeviceDescription& device);
+absl::StatusOr<LlvmKernelSource> CompileMlirToLlvm(
+    const se::DeviceDescription& device, const HloModule& hlo_module,
+    const std::string& entry_function_name, int unroll_factor,
+    mlir::MLIRContext& mlir_context, MlirKernelSource source);
+
+std::unique_ptr<mlir::MLIRContext> CreateMlirContext();
+
 }  // namespace xla::gpu
 
 #endif  // XLA_BACKENDS_GPU_CODEGEN_EMITTERS_MLIR_KERNEL_EMITTER_H_

@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/tsl/lib/monitoring/collected_metrics.h"
 #include "xla/tsl/lib/monitoring/collection_registry.h"
 #include "xla/tsl/lib/monitoring/metric_def.h"
@@ -97,8 +98,8 @@ absl::StatusOr<std::vector<Point>> GetPoints(
 absl::StatusOr<Point> GetLatestPoint(const CollectedMetrics& metrics,
                                      const std::string& metric_name,
                                      const std::vector<std::string>& labels) {
-  TF_ASSIGN_OR_RETURN(std::vector<Point> points,
-                      GetPoints(metrics, metric_name, labels));
+  ASSIGN_OR_RETURN(std::vector<Point> points,
+                   GetPoints(metrics, metric_name, labels));
   if (points.empty()) {
     return absl::UnavailableError(
         absl::StrCat("No data collected for metric ", metric_name,

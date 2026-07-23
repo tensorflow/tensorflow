@@ -1,0 +1,442 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Fusion Explorer</title>
+  <style>
+    * { box-sizing: border-box; }
+    html, body {
+      height: 100%;
+      margin: 0;
+      padding: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      color: #333;
+      background-color: #fcfcfc;
+    }
+    #app_container {
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+      overflow: hidden;
+    }
+    #main_container {
+      display: flex;
+      flex-direction: column-reverse; /* Sidebar at bottom */
+      flex: 1;
+      overflow: hidden;
+      position: relative;
+    }
+    #sidebar {
+      height: 200px;
+      width: 100%;
+      border-top: 1px solid #e0e0e0;
+      background-color: #f7f7f7;
+      display: flex;
+      flex-direction: column;
+      /* No transitions */
+      min-height: 200px;
+      overflow: hidden;
+    }
+    #app_container.collapsed #sidebar {
+      height: 40px;
+      min-height: 40px;
+    }
+    #sidebar_header {
+      height: 40px;
+      padding: 0 15px;
+      border-bottom: 1px solid #e0e0e0;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      background-color: #eee;
+    }
+    #sidebar_header h3 {
+      margin: 0;
+      font-size: 16px;
+      font-weight: 600;
+    }
+    #collapsed_frame_desc {
+      display: none;
+      font-size: 14px;
+      font-weight: normal;
+      color: #555;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      flex: 1;
+      margin-left: 10px;
+    }
+    #app_container.collapsed #sidebar_title {
+      display: none;
+    }
+    #app_container.collapsed #collapsed_frame_desc {
+      display: inline-block;
+    }
+    #app_container.collapsed #frames_list {
+      display: none;
+    }
+    #frames_list {
+      list-style: none;
+      padding: 0;
+      margin: 0;
+      overflow: auto;
+      flex: 1;
+    }
+    #frames_list li {
+      border-bottom: 1px solid #eee;
+      transition: background-color 0.1s;
+    }
+    #frames_list li a {
+      display: block;
+      padding: 10px 15px;
+      color: #555;
+      text-decoration: none;
+      font-size: 14px;
+      white-space: nowrap;
+    }
+    #frames_list li:hover {
+      background-color: #eaeaea;
+    }
+    #frames_list li.selected {
+      background-color: #007acc;
+    }
+    #frames_list li.selected a {
+      color: white;
+      font-weight: bold;
+    }
+    #rendered {
+      flex: 1;
+      min-height: 0;
+      overflow: hidden;
+      background-color: white;
+      position: relative;
+    }
+    #svg_container {
+      width: 100%;
+      height: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    #rendered svg {
+      height: 100% !important;
+      width: 100% !important;
+    }
+    #toggle_sidebar {
+      background: none;
+      border: none;
+      cursor: pointer;
+      font-size: 16px;
+      color: #555;
+      padding: 5px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    #toggle_sidebar:hover {
+      color: #333;
+    }
+    #status_bar {
+      height: 30px;
+      background-color: #3c3c3c;
+      color: #ccc;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 0 15px;
+      font-size: 12px;
+      border-top: 1px solid #2d2d2d;
+      flex-shrink: 0;
+    }
+    #status_bar a {
+      color: #fff;
+    }
+    #performance_note {
+      font-weight: 500;
+    }
+    #help_info b {
+      color: #fff;
+      background-color: #555;
+      padding: 1px 5px;
+      border-radius: 3px;
+      font-family: monospace;
+    }
+  </style>
+</head>
+<body>
+  <script src="https://www.gstatic.com/external_hosted/hpcc_js_wasm/index.min.js"
+      integrity="sha384-LigJPbR3TOfU/Xbb+PjiN1dGJYPweLk7kiGnaMgmxnUmKWaCFKbb5tH6iLlyVhPZ"
+      crossorigin="anonymous"></script>
+  <script src="https://www.gstatic.com/external_hosted/svg_pan_zoom/svg-pan-zoom.js">
+  </script>
+
+  <div id="app_container">
+    <div id="main_container">
+      <div id="sidebar">
+        <div id="sidebar_header">
+          <h3 id="sidebar_title">Fusion Explorer</h3>
+          <span id="collapsed_frame_desc"></span>
+          <button id="toggle_sidebar" title="Collapse Sidebar">▼</button>
+        </div>
+        <ul id="frames_list"></ul>
+      </div>
+      <div id="rendered">
+        <div id="svg_container"><center>Loading...</center></div>
+      </div>
+    </div>
+    <div id="status_bar">
+      <span id="performance_note">Initializing...</span>
+      <span id="help_info">Use <b>j</b>/<b>k</b> for keyboard navigation</span>
+    </div>
+  </div>
+  <script>
+  <!--
+  const renderCache = {};
+  const cssregex = new RegExp('stylesheet=<([^]*)\n>\n', 'gm');
+  const hpccWasm = window["@hpcc-js/wasm"];
+  window.currentPanZoom = null;
+
+  const getIdFromHash = () => {
+    let hash = window.location.hash;
+    if (hash.indexOf('frame') == -1) {
+      return 0;
+    }
+    return parseInt(window.location.hash.substring('#frame'.length, window.location.hash.length));
+  }
+
+  window.frames = [];
+  window.graphs = {};
+  const pendingGraphRequests = new Map();
+  const getGraph = (graphId) => {
+    if (window.graphs[graphId]) {
+      return Promise.resolve(window.graphs[graphId]);
+    }
+    if (pendingGraphRequests.has(graphId)) {
+      return pendingGraphRequests.get(graphId);
+    }
+
+    const promise = fetch(`/api/graph?id=${graphId}`)
+      .then(r => {
+        if (!r.ok) throw new Error(`HTTP error! status: ${r.status}`);
+        return r.text();
+      })
+      .then(graph => {
+        window.graphs[graphId] = graph;
+        pendingGraphRequests.delete(graphId);
+        return graph;
+      })
+      .catch(err => {
+        pendingGraphRequests.delete(graphId);
+        throw err;
+      });
+
+    pendingGraphRequests.set(graphId, promise);
+    return promise;
+  };
+
+  const updateSvgAndPanZoom = (svg, cssData) => {
+    const container = document.getElementById('svg_container');
+    container.innerHTML = `${svg}<style>${cssData}</style>`;
+    if (window.currentPanZoom) {
+      window.currentPanZoom.destroy();
+    }
+    window.currentPanZoom = svgPanZoom(container.children[0], {
+        zoomEnabled: true, controlIconsEnabled: true, maxZoom: 200, });
+  };
+
+  const renderCurrentFrame = () => {
+    if (window.frames.length === 0) return;
+
+    const frames_list = document.getElementById('frames_list');
+    const currId = getIdFromHash();
+
+    for (let selected of frames_list.getElementsByClassName('selected')) {
+        selected.classList.remove('selected');
+    }
+    if (frames_list.children.length > currId) {
+      const items = frames_list.getElementsByTagName('li');
+      for (let item of items) {
+        const link = item.getElementsByTagName('a')[0];
+        if (link && link.getAttribute('href') === `#frame${currId}`) {
+          item.classList.add('selected');
+          item.scrollIntoView({ block: 'nearest' });
+          break;
+        }
+      }
+    }
+
+    const frame = window.frames[currId];
+    if (!frame) return;
+    const graphId = frame.graph_id;
+
+    const setupInteractiveFeatures = (cssData) => {
+      const toHighlight = frame.to_highlight.length ?
+        document.querySelector(`${frame.to_highlight}`) : null;
+      if (toHighlight) {
+        toHighlight.style.setProperty('fill', 'red');
+      }
+      // Change cursor.
+      let text_nodes = document.getElementsByTagName("text");
+      for (var el of text_nodes) {
+        if (title_to_id.has(el.innerHTML)) {
+          el.style.cursor = "pointer";
+        }
+      }
+    };
+
+    if (renderCache[graphId]) {
+      const cached = renderCache[graphId];
+      updateSvgAndPanZoom(cached.svg, cached.cssData);
+      setupInteractiveFeatures(cached.cssData);
+      updateCollapsedDesc(frame);
+      document.getElementById('performance_note').textContent = "Rendered from cache";
+      return;
+    }
+
+    document.getElementById('performance_note').textContent = "Retrieving data...";
+
+    getGraph(graphId).then(graph_txt => {
+      if (getIdFromHash() !== currId) return;
+      updateCollapsedDesc(frame);
+
+      let renderStart = performance.now();
+      document.getElementById('performance_note').textContent = "Rendering...";
+
+      const results = cssregex.exec(graph_txt)
+      let cssData = ''
+      if (results !== null) {
+          cssData = results[1].replace(/\s*data:.*\s*,/,'');
+          cssData = unescape(cssData);
+          graph_txt = graph_txt.replace(cssregex, '');
+      }
+
+      hpccWasm.graphviz.layout(graph_txt, "svg", "dot").then(svg => {
+        renderCache[graphId] = { svg, cssData };
+        if (getIdFromHash() !== currId) return;
+        updateSvgAndPanZoom(svg, cssData);
+        setupInteractiveFeatures(cssData);
+        document.getElementById('performance_note').textContent =
+          `Rendering took ${(performance.now() - renderStart).toFixed(2)}ms`;
+      });
+    }).catch(err => {
+      if (getIdFromHash() === currId) {
+        document.getElementById('performance_note').textContent = `Error: ${err.message}`;
+      } else {
+        console.log("Main: ignored error for non-current frame:", graphId, "error:", err.message);
+      }
+    });
+  };
+
+  const updateCollapsedDesc = (frame) => {
+    const collapsedDesc = document.getElementById('collapsed_frame_desc');
+    if (collapsedDesc) {
+      collapsedDesc.textContent = frame?.label || "Unnamed state";
+    }
+  };
+
+  const update = (delta) => {
+    let currId = getIdFromHash();
+    currId = (currId + delta + frames.length) % frames.length;
+    window.location.hash = `#frame${currId}`
+  };
+
+  const renderFrameList = () => {
+    const currId = getIdFromHash();
+    const frames_list = document.getElementById('frames_list');
+    frames_list.innerHTML = ''; // Clear if re-rendering
+    for (let i = 0; i < window.frames.length; i++) {
+      const f = window.frames[i];
+      let frameDescr = f.label || "Unnamed state";
+      const rendered = document.createElement("li");
+      rendered.innerHTML = `<a href="#frame${i}">${frameDescr}</a>`;
+      if (i == currId) {
+        rendered.classList.add('selected');
+      }
+      frames_list.appendChild(rendered);
+    }
+  };
+
+  window.addEventListener('hashchange', () => {
+    renderCurrentFrame();
+  });
+
+  window.addEventListener("keydown", (event) => {
+    if (event.defaultPrevented) {
+      return;
+    }
+    if (event.key == "j") {
+      update(1);
+    } else if (event.key == "k") {
+      update(-1);
+    } else {
+      return;
+    }
+    event.preventDefault();
+  }, true);
+
+  const init = () => {
+    document.getElementById('performance_note').textContent = "Loading metadata...";
+    fetch('/api/metadata')
+      .then(r => {
+        if (!r.ok) throw new Error(`Failed to load metadata: ${r.status}`);
+        return r.json();
+      })
+      .then(data => {
+        document.title = data.title;
+        const sidebarTitle = document.getElementById('sidebar_title');
+        if (sidebarTitle) {
+          sidebarTitle.textContent = data.title;
+          sidebarTitle.title = data.title;
+        }
+
+        window.frames = data.frames;
+        window.graphs = {};
+
+        window.title_to_id = new Map();
+        for (let i=0; i < window.frames.length; i++) {
+           title_to_id.set(window.frames[i].label, i);
+         }
+
+        renderFrameList();
+        renderCurrentFrame();
+
+        document.getElementById('performance_note').textContent = "Metadata loaded";
+      })
+      .catch(err => {
+        document.getElementById('performance_note').textContent = `Error: ${err.message}`;
+      });
+  };
+
+  document.addEventListener("DOMContentLoaded", () => {
+    init();
+
+    const toggleBtn = document.getElementById('toggle_sidebar');
+    toggleBtn.addEventListener('click', () => {
+      const app = document.getElementById('app_container');
+      app.classList.toggle('collapsed');
+      const isCollapsed = app.classList.contains('collapsed');
+      toggleBtn.innerHTML = isCollapsed ? '▲' : '▼';
+      toggleBtn.title = isCollapsed ? 'Expand Sidebar' : 'Collapse Sidebar';
+
+      requestAnimationFrame(() => {
+        if (window.currentPanZoom) {
+          window.currentPanZoom.resize();
+          window.currentPanZoom.fit();
+          window.currentPanZoom.center();
+        }
+      });
+    });
+
+    // Navigate to next elements on click.
+    document.addEventListener("click", (event) => {
+      let txt = event.target.innerHTML;
+      if (title_to_id.has(txt)) {
+        let id = title_to_id.get(txt);
+        window.location.hash = `#frame${id}`;
+      }
+    });
+  });
+  //-->
+  </script>
+</body>
+</html>

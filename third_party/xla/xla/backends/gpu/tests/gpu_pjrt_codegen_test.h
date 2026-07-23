@@ -28,6 +28,7 @@ limitations under the License.
 #include "xla/service/compiler.h"
 #include "xla/service/executable.h"
 #include "xla/service/gpu_topology.h"
+#include "xla/service/hlo_runner_interface.h"
 
 namespace xla::gpu {
 
@@ -35,8 +36,14 @@ namespace xla::gpu {
 class GpuPjRtCodegenTest : public HloPjRtGpuTestBase {
  public:
   GpuPjRtCodegenTest() {
-    is_built_with_rocm_ =
-        device_description().gpu_compute_capability().IsRocm();
+    for (auto tag : {HloRunnerPropertyTag::kUsingGpuCuda,
+                     HloRunnerPropertyTag::kUsingGpuOneAPI,
+                     HloRunnerPropertyTag::kUsingGpuRocm}) {
+      if (test_runner().HasProperty(tag)) {
+        runner_type_ = tag;
+        break;
+      }
+    }
     compile_options_.gpu_topology = GetSingleDeviceGpuTopology(
         /*platform_version=*/"", gpu_target_config());
     compile_options_.early_exit_with_layouts = false;
@@ -77,10 +84,37 @@ class GpuPjRtCodegenTest : public HloPjRtGpuTestBase {
                                   bool match_optimized_ir = false,
                                   bool run_optimization_passes = true);
 
-  bool is_built_with_rocm_{false};
+  bool IsBuiltWithRocm() const {
+    return runner_type_ == HloRunnerPropertyTag::kUsingGpuRocm;
+  }
+
+  bool IsBuiltWithOneAPI() const {
+    return runner_type_ == HloRunnerPropertyTag::kUsingGpuOneAPI;
+  }
+
+  std::string GpuKernelType() const {
+    if (IsBuiltWithRocm()) {
+      return "amdgpu_kernel";
+    }
+    if (IsBuiltWithOneAPI()) {
+      return "spir_kernel";
+    }
+    return "ptx_kernel";
+  }
+
+  std::string GpuBarrier() const {
+    if (IsBuiltWithRocm()) {
+      return "void @llvm.amdgcn.s.barrier()";
+    }
+    if (IsBuiltWithOneAPI()) {
+      return "spir_func void @_Z7barrierj(i32 3)";
+    }
+    return "void @llvm.nvvm.barrier.cta.sync.aligned.all(i32 0)";
+  }
 
  private:
   Compiler::CompileOptions compile_options_;
+  HloRunnerPropertyTag::Type runner_type_{0};
 };
 
 }  // namespace xla::gpu

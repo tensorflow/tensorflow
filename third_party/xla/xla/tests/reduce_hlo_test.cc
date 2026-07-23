@@ -59,7 +59,7 @@ std::string PrintReduceLayout(
 }
 
 class ReduceWithLayoutTest
-    : public HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>,
+    : public HloPjRtInterpreterReferenceMixin<HloTestBase>,
       public ::testing::WithParamInterface<ReduceLayout> {
  public:
   absl::StatusOr<std::unique_ptr<HloModule>> GetParsedModule() {

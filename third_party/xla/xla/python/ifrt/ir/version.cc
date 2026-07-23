@@ -75,9 +75,9 @@ Version Version::fromCompatibilityRequirement(
     case CompatibilityRequirement::NONE:
       return Version::getCurrentVersion();
     case CompatibilityRequirement::WEEK_4:
-      return Version(0, 2, 0);  // v0.2.0 - Mar 26, 2026
+      return Version(0, 4, 0);
     case CompatibilityRequirement::WEEK_12:
-      return Version(0, 2, 0);  // v0.2.0 - Mar 26, 2026
+      return Version(0, 3, 0);
     case CompatibilityRequirement::MAX:
       return Version::getMinimumVersion();
   }

@@ -46,6 +46,7 @@ struct SymbolicExprTest : public ::testing::Test {
     RegisterSymbolicExprStorage(&ctx);
     v0 = CreateSymbolicVariable(0, &ctx);
     v1 = CreateSymbolicVariable(1, &ctx);
+    c0 = CreateSymbolicConstant(0, &ctx);
     c1 = CreateSymbolicConstant(1, &ctx);
     c3 = CreateSymbolicConstant(3, &ctx);
     c2 = CreateSymbolicConstant(2, &ctx);
@@ -55,6 +56,7 @@ struct SymbolicExprTest : public ::testing::Test {
   mlir::MLIRContext ctx;
   SymbolicExpr v0;
   SymbolicExpr v1;
+  SymbolicExpr c0;
   SymbolicExpr c1;
   SymbolicExpr c3;
   SymbolicExpr c2;
@@ -65,9 +67,9 @@ TEST_F(SymbolicExprTest, CreateAndPrint) {
   SymbolicExpr expr = (((v0 + 42) * v1.min(2).max(0)) / 2).ceilDiv(2);
 
   ASSERT_NE(expr, nullptr);
-  EXPECT_THAT(expr.ToString(),
-              MatchIndexingString(
-                  "(((v0 + 42) * max(min(v1, 2), 0)) floordiv 2) ceildiv 2"));
+  EXPECT_THAT(
+      expr.ToString(),
+      MatchIndexingString("(((v0 + 42) * max(min(v1, 2), 0)) / 2) ceildiv 2"));
 }
 
 TEST_F(SymbolicExprTest, PrintWithVariableNames) {
@@ -88,8 +90,9 @@ TEST_F(SymbolicExprTest, ConstantFolding) {
   EXPECT_EQ(c2 * c3, CreateSymbolicConstant(6, &ctx));
   EXPECT_EQ(c5 / c2, c2);
   EXPECT_EQ(c5 % c2, c1);
-  EXPECT_EQ(c5.floorDiv(c2), c2);
+  EXPECT_EQ((-c2) / c5, -c1);
   EXPECT_EQ(c5.ceilDiv(c2), c3);
+  EXPECT_EQ((-c2).ceilDiv(c5), c0);
   EXPECT_EQ(c2.min(c5), c2);
   EXPECT_EQ(c5.min(c2), c2);
   EXPECT_EQ(c2.max(c5), c5);
@@ -370,16 +373,16 @@ TEST_F(SymbolicExprTest, Canonicalization_MinMax) {
 
 TEST_F(SymbolicExprTest, Canonicalization_DivMod) {
   // FloorDiv, CeilDiv, and Mod simplifications.
-  EXPECT_EQ((v0.floorDiv(1)).Canonicalize().ToString(), "v0");
+  EXPECT_EQ((v0 / 1).Canonicalize().ToString(), "v0");
   EXPECT_EQ((v0.ceilDiv(1)).Canonicalize().ToString(), "v0");
   EXPECT_EQ((v0 % 1).Canonicalize().ToString(), "0");
 
-  EXPECT_EQ(((v0 * 8).floorDiv(4)).Canonicalize().ToString(), "v0 * 2");
+  EXPECT_EQ(((v0 * 8) / 4).Canonicalize().ToString(), "v0 * 2");
   EXPECT_EQ(((v0 * 8).ceilDiv(4)).Canonicalize().ToString(), "v0 * 2");
-  EXPECT_EQ(((v0 * 8 + 3).floorDiv(4)).Canonicalize().ToString(), "v0 * 2");
+  EXPECT_EQ(((v0 * 8 + 3) / 4).Canonicalize().ToString(), "v0 * 2");
   EXPECT_EQ(((v0 * 8 + 3).ceilDiv(4)).Canonicalize().ToString(), "v0 * 2 + 1");
 
-  EXPECT_EQ(((v0 * 8 + 4).floorDiv(4)).Canonicalize().ToString(), "v0 * 2 + 1");
+  EXPECT_EQ(((v0 * 8 + 4) / 4).Canonicalize().ToString(), "v0 * 2 + 1");
   EXPECT_EQ(((v0 * 8 + 4).ceilDiv(4)).Canonicalize().ToString(), "v0 * 2 + 1");
 
   EXPECT_EQ(((v0 * 8) % 4).Canonicalize().ToString(), "0");
@@ -391,14 +394,34 @@ TEST_F(SymbolicExprTest, Canonicalization_DivMod) {
   EXPECT_EQ(((v0 % 20) % 7).Canonicalize().ToString(), "v0 mod 20 mod 7");
 
   // Pattern: (X floordiv C) * C + X mod C -> X
-  EXPECT_EQ(((v0.floorDiv(16) * 16) + (v0 % 16)).Canonicalize().ToString(),
-            "v0");
+  EXPECT_EQ(((v0 / 16 * 16) + (v0 % 16)).Canonicalize().ToString(), "v0");
 
   // Test ceilDiv with negative divisor.
   EXPECT_EQ((v0.ceilDiv(-1)).Canonicalize().ToString(), "-v0");
-  EXPECT_EQ((v0.ceilDiv(-2)).Canonicalize().ToString(), "-(v0 floordiv 2)");
-  EXPECT_EQ(((v0 * 6).floorDiv(-3)).Canonicalize().ToString(), "v0 * -2");
+  EXPECT_EQ((v0.ceilDiv(-2)).Canonicalize().ToString(), "-(v0 / 2)");
+  EXPECT_EQ(((v0 * 6) / -3).Canonicalize().ToString(), "v0 * -2");
   EXPECT_EQ(((v0 * 6).ceilDiv(-3)).Canonicalize().ToString(), "v0 * -2");
+
+  // (x + c)/d = x/d + c/d, c < gcd(x, d).
+  EXPECT_EQ(((v0 * 4 + 3) / 8).Canonicalize().ToString(), "v0 / 2");
+  // TODO: goncharov - (x * a + c * a) / b should be simplified to
+  // (x + c) * a / b.
+  EXPECT_EQ(((v0 * 4 + 4) / 8).Canonicalize().ToString(), "(v0 * 4 + 4) / 8");
+  EXPECT_EQ(((v0 * 4 + 5) / 8).Canonicalize().ToString(), "(v0 * 4 + 5) / 8");
+  // -5 % 8 == 3.
+  EXPECT_EQ(((v0 * 4 - 5) / 8).Canonicalize().ToString(), "v0 / 2 - 1");
+  EXPECT_EQ(((v0 * 4 + 3 + 8 * 3) / 8).Canonicalize().ToString(), "v0 / 2 + 3");
+  EXPECT_EQ(((v0 * 4 + 1) / 5).Canonicalize().ToString(), "(v0 * 4 + 1) / 5");
+  EXPECT_EQ((-(v0 / 2) + (v0 * 4 + 1) / 8).Canonicalize().ToString(), "0");
+  EXPECT_EQ((((v0 * 4) + (v1 * 2) + 1) / 8).Canonicalize().ToString(),
+            "(v0 * 4 + v1 * 2) / 8");
+  EXPECT_EQ((((v0 * 4) + (v1 * 2) + 2) / 8).Canonicalize().ToString(),
+            "(v0 * 4 + v1 * 2 + 2) / 8");
+  EXPECT_EQ((-(v0 / 2) + ((v0 * 4) - 5) / 8).Canonicalize().ToString(), "-1");
+  // Same for negative divisor.
+  EXPECT_EQ(((v0 * 4 - 3) / -8).Canonicalize().ToString(), "v0 / -2");
+  EXPECT_EQ(((v0 * 4 - 4) / -8).Canonicalize().ToString(), "(v0 * 4 - 4) / -8");
+  EXPECT_EQ(((v0 * 4 + 5) / -8).Canonicalize().ToString(), "v0 / -2 - 1");
 }
 
 TEST_F(SymbolicExprTest, Walk) {
@@ -424,9 +447,9 @@ TEST_F(SymbolicExprTest, IsMultipleOf) {
   EXPECT_FALSE(((v0 * 6).min(v1 * 4)).IsMultipleOf(3));
   EXPECT_TRUE(((v0 * 6).max(v1 * 4)).IsMultipleOf(2));
   EXPECT_FALSE(((v0 * 6).max(v1 * 4)).IsMultipleOf(3));
-  EXPECT_TRUE(((v0 * 10).floorDiv(5)).IsMultipleOf(2));
-  EXPECT_FALSE(((v0 * 10).floorDiv(2)).IsMultipleOf(2));
-  EXPECT_FALSE(((v0 * 10).floorDiv(v1)).IsMultipleOf(2));
+  EXPECT_TRUE(((v0 * 10) / 5).IsMultipleOf(2));
+  EXPECT_FALSE(((v0 * 10) / 2).IsMultipleOf(2));
+  EXPECT_FALSE(((v0 * 10) / v1).IsMultipleOf(2));
   EXPECT_TRUE(((v0 * 10).ceilDiv(5)).IsMultipleOf(2));
   EXPECT_FALSE(((v0 * 10).ceilDiv(2)).IsMultipleOf(2));
 }

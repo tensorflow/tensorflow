@@ -15,6 +15,7 @@ limitations under the License.
 
 #ifndef XLA_PYTHON_IFRT_IR_COMPILED_IFRT_IR_PROGRAM_H_
 #define XLA_PYTHON_IFRT_IR_COMPILED_IFRT_IR_PROGRAM_H_
+
 #include <memory>
 #include <optional>
 #include <string>

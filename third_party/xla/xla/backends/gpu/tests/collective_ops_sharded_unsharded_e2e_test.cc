@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/gpu/tests/collective_ops_e2e_test_base.h"
 #include "xla/error_spec.h"
 #include "xla/hlo/ir/hlo_sharding.h"
@@ -90,8 +91,8 @@ class CollectiveOpsTestE2EShardedUnsharded : public CollectiveOpsE2ETestBase {
     HloModuleConfig ref_config = GetModuleConfigForTest();
     ref_config.mutable_debug_options().set_xla_gpu_enable_triton_gemm(false);
 
-    TF_ASSIGN_OR_RETURN(std::unique_ptr<VerifiedHloModule> ref_module,
-                        ParseAndReturnVerifiedModule(hlo_text_ref, ref_config));
+    ASSIGN_OR_RETURN(std::unique_ptr<VerifiedHloModule> ref_module,
+                     ParseAndReturnVerifiedModule(hlo_text_ref, ref_config));
 
     ref_module->mutable_config().set_replica_count(1);
     ref_module->mutable_config().set_num_partitions(1);
@@ -118,8 +119,8 @@ class CollectiveOpsTestE2EShardedUnsharded : public CollectiveOpsE2ETestBase {
     if (enable_enzyme_comms_opt) {
       config.mutable_debug_options().set_xla_enable_enzyme_comms_opt(true);
     }
-    TF_ASSIGN_OR_RETURN(std::unique_ptr<VerifiedHloModule> module,
-                        ParseAndReturnVerifiedModule(hlo_text, config));
+    ASSIGN_OR_RETURN(std::unique_ptr<VerifiedHloModule> module,
+                     ParseAndReturnVerifiedModule(hlo_text, config));
     const int64_t num_params = module->entry_computation()->num_parameters();
 
     std::vector<std::vector<int64_t>> param_dims(num_params);
@@ -372,8 +373,8 @@ ENTRY entry {
 }
 
 TEST_F(CollectiveOpsTestE2EShardedUnsharded, BlockScaledDotBatchAndBatch) {
-  if (Capability().IsRocm()) {
-    GTEST_SKIP() << "block_scaled_dot is not supported on ROCm";
+  if (Capability().IsRocm() || Capability().IsOneAPI()) {
+    GTEST_SKIP() << "block_scaled_dot is not supported on ROCm or OneAPI";
   }
   const std::string hlo_text = R"(
 HloModule module, entry_computation_layout={(f8e4m3fn[4,16,64]{2,1,0}, f8e8m0fnu[4,16,2]{2,1,0}, f8e4m3fn[4,4,64]{2,1,0}, f8e8m0fnu[4,4,2]{2,1,0})->f32[4,16,4]{2,1,0}}, num_partitions=2
@@ -390,8 +391,8 @@ ENTRY entry {
 
 TEST_F(CollectiveOpsTestE2EShardedUnsharded,
        BlockScaledDotBatchAndNonContracting) {
-  if (Capability().IsRocm()) {
-    GTEST_SKIP() << "block_scaled_dot is not supported on ROCm";
+  if (Capability().IsRocm() || Capability().IsOneAPI()) {
+    GTEST_SKIP() << "block_scaled_dot is not supported on ROCm or OneAPI";
   }
   const std::string hlo_text = R"(
 HloModule module, entry_computation_layout={(f8e4m3fn[4,16,64]{2,1,0}, f8e8m0fnu[4,16,2]{2,1,0}, f8e4m3fn[4,4,64]{2,1,0}, f8e8m0fnu[4,4,2]{2,1,0})->f32[4,16,4]{2,1,0}}, num_partitions=2
@@ -408,8 +409,8 @@ ENTRY entry {
 
 TEST_F(CollectiveOpsTestE2EShardedUnsharded,
        BlockScaledDotContractingAndContracting) {
-  if (Capability().IsRocm()) {
-    GTEST_SKIP() << "block_scaled_dot is not supported on ROCm";
+  if (Capability().IsRocm() || Capability().IsOneAPI()) {
+    GTEST_SKIP() << "block_scaled_dot is not supported on ROCm or OneAPI";
   }
   const std::string hlo_text = R"(
 HloModule module, entry_computation_layout={(f8e4m3fn[16,64]{1,0}, f8e8m0fnu[16,2]{1,0}, f8e4m3fn[4,64]{1,0}, f8e8m0fnu[4,2]{1,0})->f32[16,4]{1,0}}, num_partitions=2
@@ -426,8 +427,8 @@ ENTRY entry {
 
 TEST_F(CollectiveOpsTestE2EShardedUnsharded,
        BlockScaledDotNonContractingAndContracting) {
-  if (Capability().IsRocm()) {
-    GTEST_SKIP() << "block_scaled_dot is not supported on ROCm";
+  if (Capability().IsRocm() || Capability().IsOneAPI()) {
+    GTEST_SKIP() << "block_scaled_dot is not supported on ROCm or OneAPI";
   }
   const std::string hlo_text = R"(
 HloModule module, entry_computation_layout={(f8e4m3fn[16,128]{1,0}, f8e8m0fnu[16,4]{1,0}, f8e4m3fn[4,128]{1,0}, f8e8m0fnu[4,4]{1,0})->f32[16,4]{1,0}}, num_partitions=2
@@ -444,8 +445,8 @@ ENTRY entry {
 
 TEST_F(CollectiveOpsTestE2EShardedUnsharded,
        BlockScaledDotContractingAndReplicated) {
-  if (Capability().IsRocm()) {
-    GTEST_SKIP() << "block_scaled_dot is not supported on ROCm";
+  if (Capability().IsRocm() || Capability().IsOneAPI()) {
+    GTEST_SKIP() << "block_scaled_dot is not supported on ROCm or OneAPI";
   }
   const std::string hlo_text = R"(
 HloModule module, entry_computation_layout={(f8e4m3fn[16,128]{1,0}, f8e8m0fnu[16,4]{1,0}, f8e4m3fn[4,128]{1,0}, f8e8m0fnu[4,4]{1,0})->f32[16,4]{1,0}}, num_partitions=2
@@ -462,8 +463,8 @@ ENTRY entry {
 
 TEST_F(CollectiveOpsTestE2EShardedUnsharded,
        BlockScaledDotReplicatedAndReplicated) {
-  if (Capability().IsRocm()) {
-    GTEST_SKIP() << "block_scaled_dot is not supported on ROCm";
+  if (Capability().IsRocm() || Capability().IsOneAPI()) {
+    GTEST_SKIP() << "block_scaled_dot is not supported on ROCm or OneAPI";
   }
   const std::string hlo_text = R"(
 HloModule module, entry_computation_layout={(f8e4m3fn[4,128]{1,0}, f8e8m0fnu[4,4], f8e4m3fn[1,128]{1,0}, f8e8m0fnu[1,4]{1,0})->f32[4,1]{1,0}}, num_partitions=2
@@ -480,8 +481,8 @@ ENTRY entry {
 
 TEST_F(CollectiveOpsTestE2EShardedUnsharded,
        BlockScaledDotContractingNonContractingAndContractingNonContracting) {
-  if (Capability().IsRocm()) {
-    GTEST_SKIP() << "block_scaled_dot is not supported on ROCm";
+  if (Capability().IsRocm() || Capability().IsOneAPI()) {
+    GTEST_SKIP() << "block_scaled_dot is not supported on ROCm or OneAPI";
   }
   const std::string hlo_text = R"(
 HloModule module, entry_computation_layout={(f8e4m3fn[8,128]{1,0}, f8e8m0fnu[8,4]{1,0}, f8e4m3fn[4,128]{1,0}, f8e8m0fnu[4,4]{1,0})->f32[8,4]{1,0}}, num_partitions=4

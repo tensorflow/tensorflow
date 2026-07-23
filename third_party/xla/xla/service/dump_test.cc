@@ -180,6 +180,46 @@ TEST(DumpHloModule, WithBufferAssignment) {
   EXPECT_TRUE(ReadFileToString(env, paths[5], &data).ok());
 }
 
+TEST(DumpHloModule, DumpRiegeli) {
+  HloModuleConfig config;
+  DebugOptions options = config.debug_options();
+  tsl::Env* env = tsl::Env::Default();
+  std::string dump_dir;
+  EXPECT_TRUE(env->LocalTempFilename(&dump_dir));
+  options.set_xla_dump_to(dump_dir);
+  options.set_xla_dump_hlo_as_riegeli(true);
+  config.set_debug_options(options);
+  const char* kModuleStr = R"(
+    HloModule m
+    test {
+      p0 = s32[11] parameter(0)
+      c = s32[11] constant({0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10})
+      ROOT x = s32[11] multiply(p0, c)
+    }
+  )";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
+                       ParseAndReturnUnverifiedModule(kModuleStr, config));
+  AliasInfo alias_info;
+  BufferAssigner::Options opts;
+  opts.allocate_buffers_for_constants = true;
+  std::unique_ptr<BufferAssignment> buffer_assignment =
+      BufferAssigner::Run(
+          /*module=*/&*m,
+          /*hlo_ordering=*/std::make_unique<DependencyHloOrdering>(&*m),
+          /*buffer_size=*/
+          [](const BufferValue& buffer) -> int64_t {
+            return ShapeUtil::ByteSizeOf(buffer.shape(), sizeof(void*));
+          },
+          &alias_info,
+          /*color_alignment=*/[](LogicalBuffer::Color) -> int64_t { return 1; },
+          /*options=*/std::move(opts))
+          .value();
+  std::string dump_name = "dump";
+  std::vector<std::string> paths =
+      DumpHloModuleIfEnabled(*m, *buffer_assignment, dump_name);
+  EXPECT_EQ(paths.size(), 2);
+}
+
 TEST(DumpTest, NoDumpingToFileWhenNotEnabled) {
   std::string filename =
       tsl::io::JoinPath(tsl::testing::TmpDir(), "disable_override");
@@ -395,6 +435,9 @@ TEST(DumpTest, GetNonDefaultDebugOptions) {
   options.clear_xla_gpu_enable_command_buffer();
   options.add_xla_gpu_enable_command_buffer(DebugOptions::CUBLAS);
   options.add_xla_gpu_enable_command_buffer(DebugOptions::FUSION);
+  // Optional enum field explicitly set to a non-default value.
+  options.set_xla_gpu_pipeline_all_reduce(
+      DebugOptions::COLLECTIVE_PIPELINING_MODE_OFF);
   // Message field
   int gpus_per_node;
   EXPECT_TRUE(absl::SimpleAtoi(
@@ -434,6 +477,9 @@ TEST(DumpTest, GetNonDefaultDebugOptions) {
               testing::HasSubstr("xla_gpu_enable_command_buffer: CUBLAS"));
   EXPECT_THAT(non_default_options,
               testing::HasSubstr("xla_gpu_enable_command_buffer: FUSION"));
+  EXPECT_THAT(non_default_options,
+              testing::HasSubstr("xla_gpu_pipeline_all_reduce: "
+                                 "COLLECTIVE_PIPELINING_MODE_OFF"));
   EXPECT_THAT(
       non_default_options,
       testing::HasSubstr("xla_gpu_analytical_latency_estimator_options: {\n"
@@ -467,6 +513,9 @@ TEST(DumpTest, GetNonDefaultDebugOptions) {
             DebugOptions::CUBLAS);
   EXPECT_EQ(parsed_options.xla_gpu_enable_command_buffer(1),
             DebugOptions::FUSION);
+  EXPECT_TRUE(parsed_options.has_xla_gpu_pipeline_all_reduce());
+  EXPECT_EQ(parsed_options.xla_gpu_pipeline_all_reduce(),
+            DebugOptions::COLLECTIVE_PIPELINING_MODE_OFF);
   EXPECT_EQ(parsed_options.xla_gpu_analytical_latency_estimator_options().at(
                 "gpus_per_node"),
             std::to_string(gpus_per_node + 1));
@@ -636,6 +685,37 @@ TEST(DumpPerModuleProtobufToFile, DumpsToSubfolder) {
   TF_ASSERT_OK(
       tsl::Env::Default()->GetMatchingPaths(pattern_filename, &matches));
   EXPECT_THAT(matches, Not(IsEmpty()));
+}
+
+TEST(DumpHloIfEnabled, CompactGte) {
+  HloModuleConfig config;
+  DebugOptions options = GetDebugOptionsFromFlags();
+  auto env = tsl::Env::Default();
+  std::string dump_dir;
+  EXPECT_TRUE(env->LocalTempFilename(&dump_dir));
+  options.set_xla_dump_to(dump_dir);
+  options.set_xla_dump_hlo_as_text(true);
+  options.set_xla_dump_compact_gte(true);
+  config.set_debug_options(options);
+  const char* kModuleStr = R"(
+    HloModule m
+    test {
+      p0 = (f32[10], f32[20]) parameter(0)
+      gte0 = f32[10] get-tuple-element(p0), index=0
+      gte1 = f32[20] get-tuple-element(p0), index=1
+      ROOT out = (f32[10], f32[20]) tuple(gte0, gte1)
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m,
+                          ParseAndReturnUnverifiedModule(kModuleStr, config));
+  std::string dump_name = "dump";
+  auto paths = DumpHloModuleIfEnabled(*m, dump_name);
+  EXPECT_EQ(paths.size(), 2);
+  std::string data;
+  EXPECT_TRUE(ReadFileToString(env, paths[0], &data).ok());
+  EXPECT_FALSE(absl::StrContains(data, "get-tuple-element"));
+  EXPECT_TRUE(absl::StrContains(data, "%p0#0"));
+  EXPECT_TRUE(absl::StrContains(data, "%p0#1"));
 }
 
 }  // namespace

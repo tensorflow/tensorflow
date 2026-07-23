@@ -32,6 +32,7 @@ limitations under the License.
 #include "xla/core/collectives/communicator.h"
 #include "xla/core/collectives/rank_id.h"
 #include "xla/runtime/device_id.h"
+#include "xla/service/platform_util.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform_manager.h"
@@ -136,7 +137,7 @@ SplitCommunicators(
 // creating communicators through CreateCommunicators.
 TEST(LoopbackCollectivesTest, CreateCommunicators) {
   ASSERT_OK_AND_ASSIGN(se::Platform * platform,
-                       se::PlatformManager::PlatformWithName("CUDA"));
+                       PlatformUtil::GetPlatform("gpu"));
 
   if (platform->VisibleDeviceCount() < 1) {
     GTEST_SKIP() << "Test requires at least 1 GPU";
@@ -156,7 +157,7 @@ TEST(LoopbackCollectivesTest, CreateCommunicators) {
 // Verifies that LoopbackCollectives can create multi-rank communicators.
 TEST(LoopbackCollectivesTest, CreateMultiRankCommunicators) {
   ASSERT_OK_AND_ASSIGN(se::Platform * platform,
-                       se::PlatformManager::PlatformWithName("CUDA"));
+                       PlatformUtil::GetPlatform("gpu"));
 
   if (platform->VisibleDeviceCount() < 2) {
     GTEST_SKIP() << "Test requires at least 2 GPUs";
@@ -178,7 +179,7 @@ TEST(LoopbackCollectivesTest, CreateMultiRankCommunicators) {
 // Verifies that LoopbackCollectives supports SplitCommunicators.
 TEST(LoopbackCollectivesTest, SplitCommunicators) {
   ASSERT_OK_AND_ASSIGN(se::Platform * platform,
-                       se::PlatformManager::PlatformWithName("CUDA"));
+                       PlatformUtil::GetPlatform("gpu"));
 
   if (platform->VisibleDeviceCount() < 2) {
     GTEST_SKIP() << "Test requires at least 2 GPUs";
@@ -201,7 +202,7 @@ TEST(LoopbackCollectivesTest, SplitCommunicators) {
 // Verifies that AllReduce copies send to recv on a single device.
 TEST(LoopbackCollectivesTest, AllReduce) {
   ASSERT_OK_AND_ASSIGN(se::Platform * platform,
-                       se::PlatformManager::PlatformWithName("CUDA"));
+                       PlatformUtil::GetPlatform("gpu"));
 
   if (platform->VisibleDeviceCount() < 1) {
     GTEST_SKIP() << "Test requires at least 1 GPU";
@@ -213,7 +214,7 @@ TEST(LoopbackCollectivesTest, AllReduce) {
   ASSERT_OK_AND_ASSIGN(auto comms,
                        CreateCommunicators(&collectives, executors, {kD0}));
 
-  TF_ASSERT_OK_AND_ASSIGN(auto stream, executors[0]->CreateStream());
+  ASSERT_OK_AND_ASSIGN(auto stream, executors[0]->CreateStream());
 
   constexpr size_t kCount = 4;
   se::DeviceAddress<float> send = executors[0]->AllocateArray<float>(kCount);
@@ -245,7 +246,7 @@ TEST(LoopbackCollectivesTest, AllReduce) {
 // Verifies that AllGather replicates input into every rank's slot.
 TEST(LoopbackCollectivesTest, AllGather) {
   ASSERT_OK_AND_ASSIGN(se::Platform * platform,
-                       se::PlatformManager::PlatformWithName("CUDA"));
+                       PlatformUtil::GetPlatform("gpu"));
 
   if (platform->VisibleDeviceCount() < 1) {
     GTEST_SKIP() << "Test requires at least 1 GPU";
@@ -262,7 +263,7 @@ TEST(LoopbackCollectivesTest, AllGather) {
   ASSERT_OK_AND_ASSIGN(auto comms2,
                        CreateCommunicators(&collectives, executors, {kD0}));
 
-  TF_ASSERT_OK_AND_ASSIGN(auto stream, executors[0]->CreateStream());
+  ASSERT_OK_AND_ASSIGN(auto stream, executors[0]->CreateStream());
 
   constexpr size_t kCount = 2;
   constexpr size_t kNumRanks = 1;
@@ -292,7 +293,7 @@ TEST(LoopbackCollectivesTest, AllGather) {
 // Verifies that CollectivePermute copies send to recv (loopback).
 TEST(LoopbackCollectivesTest, CollectivePermute) {
   ASSERT_OK_AND_ASSIGN(se::Platform * platform,
-                       se::PlatformManager::PlatformWithName("CUDA"));
+                       PlatformUtil::GetPlatform("gpu"));
 
   if (platform->VisibleDeviceCount() < 1) {
     GTEST_SKIP() << "Test requires at least 1 GPU";
@@ -304,7 +305,7 @@ TEST(LoopbackCollectivesTest, CollectivePermute) {
   ASSERT_OK_AND_ASSIGN(auto comms,
                        CreateCommunicators(&collectives, executors, {kD0}));
 
-  TF_ASSERT_OK_AND_ASSIGN(auto stream, executors[0]->CreateStream());
+  ASSERT_OK_AND_ASSIGN(auto stream, executors[0]->CreateStream());
 
   constexpr size_t kCount = 4;
   se::DeviceAddress<float> send = executors[0]->AllocateArray<float>(kCount);

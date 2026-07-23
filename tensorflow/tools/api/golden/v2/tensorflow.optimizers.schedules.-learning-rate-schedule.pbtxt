@@ -1,13 +1,18 @@
 path: "tensorflow.optimizers.schedules.LearningRateSchedule"
 tf_class {
   is_instance: "<class \'tf_keras.optimizers.schedules.learning_rate_schedule.LearningRateSchedule\'>"
-  is_instance: "<type \'object\'>"
+  is_instance: "<class \'object\'>"
+  member_method {
+    name: "__call__"
+    argspec: "args=[\'self\', \'step\'], varargs=None, keywords=None, defaults=None"
+  }
   member_method {
     name: "__init__"
   }
   member_method {
     name: "from_config"
     argspec: "args=[\'cls\', \'config\'], varargs=None, keywords=None, defaults=None"
+    method_kind: CLASS
   }
   member_method {
     name: "get_config"

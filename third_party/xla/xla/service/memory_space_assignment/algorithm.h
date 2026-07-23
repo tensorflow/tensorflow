@@ -36,6 +36,7 @@ limitations under the License.
 #endif
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/hash/hash.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
@@ -123,6 +124,18 @@ struct AllocationSegmentContext {
   // allocation, and the use will not receive a new allocation.
   bool only_extend_existing_allocation;
 };
+
+// Returns the latest schedule time at which `view` (a value colored
+// `view_color`, see Options::dus_view_color) still has its underlying storage
+// read through it: the max schedule time over the transitive closure of the
+// view's readers, following users that are themselves view colored. Exposed
+// for testing.
+//
+// REQUIRES: view->shape().IsTuple() == false.
+int64_t ViewExtendedTransitiveUseTime(
+    const HloInstruction* view, int64_t view_color,
+    const absl::flat_hash_map<const HloInstruction*, int64_t>&
+        instruction_schedule);
 
 // Compare asynchronous copies such that an earlier start time has the same or
 // earlier end time and an earlier end time has the same or earlier start time.
@@ -295,22 +308,45 @@ class AsynchronousCopyResource {
 
 // Helper class to compute a minimal fingerprint of an HloInstruction and it's
 // operand shapes for MSA.
+// Use a cache to avoid recomputing the fingerprint of the shape for the same
+// instruction more than once.
+template <typename HashType>
 class MsaInstructionFingerprint {
  public:
-  explicit MsaInstructionFingerprint(const HloInstruction* instruction)
-      : inst_(instruction) {};
+  explicit MsaInstructionFingerprint(
+      const HloInstruction* instruction,
+      absl::flat_hash_map<const HloInstruction*, HashType>*
+          instruction_shape_hash_cache = nullptr)
+      : inst_(instruction),
+        instruction_shape_hash_cache_(instruction_shape_hash_cache) {}
 
   template <typename H>
   friend H AbslHashValue(H h, const MsaInstructionFingerprint& fp) {
+    auto get_or_compute_shape_hash = [&fp](const HloInstruction* inst) {
+      if (fp.instruction_shape_hash_cache_ != nullptr) {
+        auto it = fp.instruction_shape_hash_cache_->find(inst);
+        if (it != fp.instruction_shape_hash_cache_->end()) {
+          return it->second;
+        }
+      }
+      HashType shape_hash = absl::HashOf(inst->shape());
+      if (fp.instruction_shape_hash_cache_ != nullptr) {
+        fp.instruction_shape_hash_cache_->insert({inst, shape_hash});
+      }
+      return shape_hash;
+    };
     for (const HloInstruction* operand : fp.inst_->operands()) {
-      h = H::combine(std::move(h), operand->shape());
+      h = H::combine(std::move(h), get_or_compute_shape_hash(operand));
     }
     return H::combine(std::move(h), fp.inst_->opcode(),
-                      fp.inst_->operand_count(), fp.inst_->shape());
+                      fp.inst_->operand_count(),
+                      get_or_compute_shape_hash(fp.inst_));
   }
 
  private:
   const HloInstruction* inst_;
+  absl::flat_hash_map<const HloInstruction*, HashType>*
+      instruction_shape_hash_cache_;
 };
 
 // This class inherits from GlobalDecreasingSizeBestFitHeap with a notion of
@@ -750,8 +786,8 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
   // If aliased_offset is non-null, this method adds the allocation to
   // aliased_offset. Otherwise, it creates a new AliasedOffset object and adds
   // the allocation to this new AliasedOffset.
-  void CreateOrAddToAliasedOffset(const Allocation& allocation,
-                                  AliasedOffset* aliased_offset);
+  void MaybeCreateOrAddToAliasedOffset(const Allocation& allocation,
+                                       AliasedOffset* aliased_offset);
 
   // Given an allocation sequence, returns the live allocation at time with a
   // preference towards allocations in alternate memory. Returns nullptr if no
@@ -857,6 +893,18 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
   // alternate memory or a bitwise OR of failure reasons why they couldn't
   absl::StatusOr<AllocationResult> AllocateAllocationValues(
       absl::Span<AllocationValue> allocation_values);
+
+  // Returns true if the conditional outputs should be required in the default
+  // memory. Reasons include:
+  // * There are required assignments in the default memory for the conditional
+  //   output position or any of its aliases.
+  // * At least one of the branched computation root instructions is not a tuple
+  //   instruction. This is due to a limitation of MSA, where in, an
+  //   AllocationValue can only be assigned VMem if it has at least one HloUse.
+  //   In this case, we make sure that the HloValue is not defined at the root
+  //   instruction and has at least one use - the tuple instruction.
+  bool RequireConditionalOutputsInDefaultMemory(
+      HloPosition conditional_phi_position, const HloValue* hlo_value);
 
   // Checks for a situation in which an HloValue has more than one live
   // AllocationValue at the same time, and the already processed AllocationValue
@@ -973,6 +1021,10 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
   int64_t GetCorrectedUseTime(const HloUse& use) const;
   int64_t GetCorrectedUseTime(const HloInstruction* instruction) const;
 
+  // If `use` is a view, returns the extended use time for the pointed-to
+  // allocation; otherwise returns the time of the use.
+  int64_t GetExtendedUseTimeIfUseIsView(const HloUse& use) const;
+
   // Returns the required assignment at a particular time, if available.
   std::optional<RequiredMemoryAssignment> RequiredMemoryAssignmentAt(
       const HloValue* buffer, int64_t time) const;
@@ -982,8 +1034,13 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
   std::optional<RequiredMemoryAssignment> AliasedRequiredAssignmentForUse(
       const AllocationValue::Use& use) const;
 
-  // Goes through the colocated intervals and adds any required assignment.
-  void AddRequiredAssignmentsForColocatedIntervals(
+  // Returns the required assignment for a given use.
+  std::optional<RequiredMemoryAssignment> RequiredAssignmentForUse(
+      const AllocationValue::Use& use) const;
+
+  // Adds required assignment in the default memory for conditional outputs
+  // that RequireConditionalOutputsInDefaultMemory() returns true for.
+  void AddRequiredAssignmentsForConditionalOutputsIfNecessary(
       absl::Span<const MsaBufferInterval* const> colocated_intervals);
 
   // Propagates aliased required assignment for a given position.
@@ -1473,6 +1530,7 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
 
   // Set of HloUses that are in the default memory.
   absl::flat_hash_set<HloUse> uses_in_default_memory_set_;
+
   // Vector to preserve insertion order for deterministic window prefetching
   // results.
   std::vector<HloUse> uses_in_default_memory_;

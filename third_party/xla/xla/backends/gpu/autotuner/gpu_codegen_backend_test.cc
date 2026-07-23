@@ -29,24 +29,23 @@ TEST_F(GpuCodegenBackendTest, AdjustDebugOptionsForAutotuning) {
   DebugOptions debug_options = GetDebugOptionsFromFlags();
   debug_options.set_xla_enable_dumping(true);
   debug_options.set_xla_gpu_force_compilation_parallelism(4);
-  debug_options.set_xla_gpu_enable_llvm_module_compilation_parallelism(true);
   debug_options.add_xla_gpu_enable_command_buffer(DebugOptions::FUSION);
   debug_options.set_xla_gpu_async_dot(true);
   debug_options.set_xla_embed_ir_in_executable(true);
   debug_options.set_xla_gpu_kernel_cache_file("foo.txt");
   debug_options.set_xla_gpu_filter_kernels_spilling_registers_on_autotuning(
       true);
+  debug_options.set_xla_run_hlo_passes_starting_from("dot-merger");
 
   GpuCodegenBackend::AdjustDebugOptionsForAutotuning(debug_options);
 
   EXPECT_FALSE(debug_options.xla_enable_dumping());
   EXPECT_EQ(debug_options.xla_gpu_force_compilation_parallelism(), 1);
-  EXPECT_FALSE(
-      debug_options.xla_gpu_enable_llvm_module_compilation_parallelism());
   EXPECT_TRUE(debug_options.xla_gpu_enable_command_buffer().empty());
   EXPECT_FALSE(debug_options.xla_gpu_async_dot());
   EXPECT_FALSE(debug_options.xla_embed_ir_in_executable());
   EXPECT_EQ(debug_options.xla_gpu_kernel_cache_file(), "");
+  EXPECT_EQ(debug_options.xla_run_hlo_passes_starting_from(), "");
 }
 
 }  // namespace

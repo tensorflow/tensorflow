@@ -162,7 +162,7 @@ class IteratorStateReader {
                                   absl::string_view name, absl::string_view key,
                                   Tensor* val) const = 0;
 
-  virtual ~IteratorStateReader() {}
+  virtual ~IteratorStateReader() = default;
 };
 
 // Interface for writing values to a key-value store.
@@ -197,7 +197,7 @@ class IteratorStateWriter {
                                    absl::string_view key,
                                    const Tensor& val) = 0;
 
-  virtual ~IteratorStateWriter() {}
+  virtual ~IteratorStateWriter() = default;
 
  protected:
   // Accessible only through derived concrete class's copy/move constructors
@@ -405,7 +405,7 @@ class StatsAggregator;
 // `tensorflow::data` symbol on the stack.
 class Runner {
  public:
-  virtual ~Runner() {}
+  virtual ~Runner() = default;
 
   // Runs the given function.
   virtual void Run(const std::function<void()>& f) = 0;
@@ -427,7 +427,7 @@ class Runner {
 // provided by the split provider.
 class SplitProvider {
  public:
-  virtual ~SplitProvider() {}
+  virtual ~SplitProvider() = default;
   // Stores the next split in `*split`, setting `*end_of_splits` to indicate
   // whether there were any splits left.
   virtual absl::Status GetNext(Tensor* split, bool* end_of_splits) = 0;
@@ -959,11 +959,11 @@ class IteratorContext {
       // is an instance of `thread::ThreadPoolInterface`). Notably, the
       // ownership of `params_.thread_pool` is *not* transferred onto the newly
       // created `ThreadPool` instance.
-      return absl::make_unique<thread::ThreadPool>(params_.thread_pool);
+      return std::make_unique<thread::ThreadPool>(params_.thread_pool);
     } else {
-      return absl::make_unique<thread::ThreadPool>(params_.env, ThreadOptions(),
-                                                   name, num_threads,
-                                                   /*low_latency_hint=*/false);
+      return std::make_unique<thread::ThreadPool>(params_.env, ThreadOptions(),
+                                                  name, num_threads,
+                                                  /*low_latency_hint=*/false);
     }
   }
 

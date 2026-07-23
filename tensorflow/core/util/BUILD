@@ -1,3 +1,18 @@
+# Copyright 2026 The TensorFlow Authors. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
+
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 load(
     "@local_config_rocm//rocm:build_defs.bzl",
@@ -63,78 +78,94 @@ exports_files(
 filegroup(
     name = "mobile_srcs_no_runtime",
     srcs = [
-        "overflow.h",
         "padding.cc",
-        "padding.h",
         "tensor_format.cc",
-        "tensor_format.h",
         "@xla//xla/tsl/util:mobile_srcs_no_runtime",
+    ],
+)
+
+filegroup(
+    name = "mobile_hdrs_no_runtime",
+    srcs = [
+        "overflow.h",
+        "padding.h",
+        "tensor_format.h",
+        "@xla//xla/tsl/util:mobile_hdrs_no_runtime",
     ],
 )
 
 filegroup(
     name = "mobile_srcs_only_runtime",
     srcs = [
-        "activation_mode.h",
         "batch_util.cc",
-        "batch_util.h",
         "bcast.cc",
-        "bcast.h",
-        "command_line_flags.h",
         "debug_data_dumper.cc",
-        "debug_data_dumper.h",
-        "determinism.h",
-        "device_name_utils.h",
         "dump_graph.cc",
-        "dump_graph.h",
         "einsum_op_util.cc",
-        "einsum_op_util.h",
-        "env_var.h",
         "equal_graph_def.cc",
-        "equal_graph_def.h",
         "example_proto_fast_parsing.cc",
-        "example_proto_fast_parsing.h",
         "example_proto_helper.cc",
-        "example_proto_helper.h",
         "guarded_philox_random.cc",
-        "guarded_philox_random.h",
-        "managed_stack_trace.h",
         "matmul_autotune.cc",
-        "matmul_autotune.h",
-        "matmul_bcast.h",
         "mirror_pad_mode.cc",
-        "mirror_pad_mode.h",
         "port.cc",
-        "port.h",
-        "presized_cuckoo_map.h",
         "ragged_to_dense_util.cc",
-        "ragged_to_dense_util.h",
-        "ragged_to_dense_util_common.h",
-        "reffed_status_callback.h",
         "saved_tensor_slice_util.cc",
-        "saved_tensor_slice_util.h",
         "stat_summarizer.cc",
-        "stat_summarizer.h",
         "strided_slice_op.cc",
-        "strided_slice_op.h",
-        "tensor_ops_util.h",
         "tensor_slice_reader.cc",
-        "tensor_slice_reader.h",
         "tensor_slice_reader_cache.cc",
-        "tensor_slice_reader_cache.h",
         "tensor_slice_set.cc",
-        "tensor_slice_set.h",
-        "tensor_slice_util.h",
         "tensor_slice_writer.cc",
-        "tensor_slice_writer.h",
-        "use_cudnn.h",
         "util.cc",
-        "util.h",
         "work_sharder.cc",
-        "work_sharder.h",
         "//tensorflow/core/config:mobile_srcs_only_runtime",
         "//tensorflow/core/util/quantization:mobile_srcs_only_runtime",
         "@xla//xla/tsl/util:mobile_srcs_only_runtime",
+    ],
+)
+
+filegroup(
+    name = "mobile_hdrs_only_runtime",
+    srcs = [
+        "activation_mode.h",
+        "batch_util.h",
+        "bcast.h",
+        "command_line_flags.h",
+        "debug_data_dumper.h",
+        "determinism.h",
+        "device_name_utils.h",
+        "dump_graph.h",
+        "einsum_op_util.h",
+        "env_var.h",
+        "equal_graph_def.h",
+        "example_proto_fast_parsing.h",
+        "example_proto_helper.h",
+        "guarded_philox_random.h",
+        "managed_stack_trace.h",
+        "matmul_autotune.h",
+        "matmul_bcast.h",
+        "mirror_pad_mode.h",
+        "port.h",
+        "presized_cuckoo_map.h",
+        "ragged_to_dense_util.h",
+        "ragged_to_dense_util_common.h",
+        "reffed_status_callback.h",
+        "saved_tensor_slice_util.h",
+        "stat_summarizer.h",
+        "strided_slice_op.h",
+        "tensor_ops_util.h",
+        "tensor_slice_reader.h",
+        "tensor_slice_reader_cache.h",
+        "tensor_slice_set.h",
+        "tensor_slice_util.h",
+        "tensor_slice_writer.h",
+        "use_cudnn.h",
+        "util.h",
+        "work_sharder.h",
+        "//tensorflow/core/config:mobile_hdrs_only_runtime",
+        "//tensorflow/core/util/quantization:mobile_hdrs_only_runtime",
+        "@xla//xla/tsl/util:mobile_hdrs_only_runtime",
     ],
 )
 

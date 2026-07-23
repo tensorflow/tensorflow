@@ -93,7 +93,7 @@ std::pair<std::vector<T>, std::vector<T>> AllSignedPairs(
 template <typename T>
 void AddNegativeValuesMaybeRemoveZero(std::vector<T>& values) {
   values.reserve(values.size() * 2);
-  if (!has_zero_v<T>) {
+  if (!has_positive_or_negative_zero_v<T>) {
     values.erase(values.begin());
   }
   for (size_t i = 0, n = values.size(); i < n; ++i) {
@@ -106,7 +106,7 @@ void AddNegativeValuesMaybeRemoveZero(std::vector<T>& values) {
 
 class ArrayElementwiseOpTest
     : public ClientLibraryTestRunnerMixin<
-          HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>> {
+          HloPjRtInterpreterReferenceMixin<HloTestBase>> {
  public:
   static constexpr float kEpsF32 = std::numeric_limits<float>::epsilon();
   static constexpr double kEpsF64 = std::numeric_limits<double>::epsilon();
@@ -1342,7 +1342,7 @@ TEST_F(ArrayElementwiseOpTest, CompareEqF32s) {
 
 template <typename T>
 class TotalOrderTest : public ClientLibraryTestRunnerMixin<
-                           HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>> {
+                           HloPjRtInterpreterReferenceMixin<HloTestBase>> {
  public:
   void DoIt(ComparisonDirection direction) {
     this->SetFastMathDisabled(true);
@@ -1415,13 +1415,6 @@ class TotalOrderTest : public ClientLibraryTestRunnerMixin<
 
  protected:
   void SetUp() override {
-    if ((std::is_same_v<T, tsl::float4_e2m1fn> ||
-         std::is_same_v<T, tsl::float8_e8m0fnu>) &&
-        test::DeviceTypeIs(test::kTpu)) {
-      // TODO(b/385004399): Run tests on these types on TPU.
-      GTEST_SKIP();
-    }
-
     if (std::is_same_v<T, double> && !test::BackendSupportsFloat64()) {
       GTEST_SKIP();
     }

@@ -34,8 +34,8 @@ limitations under the License.
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_device_description.h"
 #include "xla/pjrt/pjrt_device_dimensions.h"
-#include "xla/pjrt/pjrt_stream_executor_device_description.h"
 #include "xla/pjrt/proto/topology_description.pb.h"
+#include "xla/pjrt/se/pjrt_stream_executor_device_description.h"
 #include "xla/primitive_util.h"
 #include "xla/runtime/device_id.h"
 #include "xla/service/gpu_topology.h"
@@ -197,6 +197,71 @@ absl::StatusOr<Layout> StreamExecutorGpuTopologyDescription::GetDefaultLayout(
     layout.set_element_size_in_bits(primitive_util::BitWidth(element_type));
   }
   return layout;
+}
+
+absl::StatusOr<xla::Shape>
+StreamExecutorGpuTopologyDescription::MakeCanonicalShapeForMemorySpace(
+    int memory_space_kind_id, xla::Shape shape,
+    const xla::Layout* layout) const {
+  if (shape.IsToken()) {
+    return shape;
+  }
+
+  if (layout != nullptr) {
+    *shape.mutable_layout() = *layout;
+    if (primitive_util::IsSubByteNonPredType(shape.element_type())) {
+      ASSIGN_OR_RETURN(
+          Layout default_layout,
+          GetDefaultLayout(shape.element_type(), shape.dimensions()));
+      if (default_layout.element_size_in_bits() !=
+          shape.layout().element_size_in_bits()) {
+        return InvalidArgument(
+            "Device buffers require %d bits per element for an element type "
+            "%s, but got layout %s for shape %s",
+            default_layout.element_size_in_bits(),
+            PrimitiveType_Name(shape.element_type()), layout->ToString(),
+            shape.ToString());
+      }
+    }
+  } else {
+    ASSIGN_OR_RETURN(
+        *shape.mutable_layout(),
+        GetDefaultLayout(shape.element_type(), shape.dimensions()));
+  }
+
+  shape = ShapeUtil::DeviceShapeToHostShape(shape);
+  if (primitive_util::IsSubByteNonPredType(shape.element_type())) {
+    shape.mutable_layout()->set_element_size_in_bits(
+        primitive_util::BitWidth(shape.element_type()));
+  }
+
+  static const int kPinnedHostMemorySpaceKindId =
+      static_cast<int>(tsl::Fingerprint32("pinned_host"));
+  static const int kDeviceMemorySpaceKindId =
+      static_cast<int>(tsl::Fingerprint32("device"));
+
+  // Only allow pinned host memory or device memory.
+  if (memory_space_kind_id == kPinnedHostMemorySpaceKindId) {
+    shape.mutable_layout()->set_memory_space(Layout::kHostMemorySpace);
+  } else if (memory_space_kind_id == kDeviceMemorySpaceKindId) {
+    if (shape.has_layout()) {
+      shape.mutable_layout()->set_memory_space(Layout::kDefaultMemorySpace);
+    }
+  } else {
+    return absl::InvalidArgumentError(absl::StrCat(
+        "MakeCanonicalShapeForMemorySpace: invalid memory space kind ID: ",
+        memory_space_kind_id));
+  }
+
+  return shape;
+}
+
+absl::Span<const int>
+StreamExecutorGpuTopologyDescription::GetMemorySpaceKindIds() const {
+  static const int kGpuMemorySpaceKindIds[] = {
+      static_cast<int>(tsl::Fingerprint32("device")),
+      static_cast<int>(tsl::Fingerprint32("pinned_host"))};
+  return absl::MakeConstSpan(kGpuMemorySpaceKindIds);
 }
 
 absl::StatusOr<PjRtDeviceDimensions>

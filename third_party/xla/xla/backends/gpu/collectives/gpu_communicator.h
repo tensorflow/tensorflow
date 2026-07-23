@@ -21,21 +21,30 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <string>
+#include <utility>
 
 #include "absl/container/inlined_vector.h"
 #include "absl/functional/any_invocable.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
+#include "xla/backends/gpu/collectives/gxl_communicator.h"
 #include "xla/core/collectives/communicator.h"
 #include "xla/core/collectives/rank_id.h"
 #include "xla/core/collectives/reduction_kind.h"
+#include "xla/core/collectives/registered_memory.h"
 #include "xla/core/collectives/symmetric_memory.h"
 #include "xla/future.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/kernel_args.h"
+#include "xla/stream_executor/memory_allocation.h"
+#include "xla/tsl/util/tied_ref.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
+
+namespace stream_executor {
+class StreamExecutor;
+}  // namespace stream_executor
 
 namespace xla::gpu {
 
@@ -131,15 +140,33 @@ class GpuCommunicator : public Communicator {
   // Returns true iff communicator supports device-initiated communication.
   virtual bool SupportsDeviceComm() const { return false; }
 
-  // Returns true iff one-sided RMA operations (PutSignal, Signal, WaitSignal)
-  // are supported by this communicator. Implementations may query the
-  // underlying communicator properties to determine topology-dependent support.
-  virtual bool SupportsOneSidedComm() const { return false; }
+  // Returns the StreamExecutor (and thus the device) this communicator runs on,
+  // or nullptr if not backed by a StreamExecutor.
+  virtual stream_executor::StreamExecutor* stream_executor() const {
+    return nullptr;
+  }
+
+  // Returns GXL communicator if supported.
+  virtual GxlCommunicator* gxl_communicator() const { return nullptr; }
+
+  // Sets GXL communicator.
+  virtual void set_gxl_communicator(
+      std::unique_ptr<GxlCommunicator> gxl_communicator) {}
 
   // Creates a new device communicator linked to *this GPU communicator object.
   virtual absl::StatusOr<std::unique_ptr<GpuDeviceCommunicator>>
   CreateDeviceComm(const GpuDeviceCommunicator::Requirements& requirements) {
     return Unimplemented("Device communicator is not implementing");
+  }
+
+  // Registers an existing device address range with this communicator for
+  // accelerated ("zero-copy") collectives. Unlike CreateSymmetricMemory this
+  // makes no symmetry assumption about the buffer's address across ranks and is
+  // NOT a collective operation -- each rank may register independently. Returns
+  // an RAII handle; destroying it deregisters the range from this communicator.
+  virtual absl::StatusOr<std::unique_ptr<RegisteredMemory>>
+  CreateRegisteredMemory(se::DeviceAddressBase addr) {
+    return Unimplemented("Registered memory is not implemented");
   }
 
   // Creates a symmetric memory from the existing device address range. This is
@@ -154,10 +181,12 @@ class GpuCommunicator : public Communicator {
   // Host-side collective communication APIs
   //===--------------------------------------------------------------------===//
 
-  // Executes f in a group. f should invoke synchronous collective methods like
-  // LaunchAllReduce and not asynchronous collective methods like AllReduce.
-  virtual Future<> GroupExecute(
-      absl::AnyInvocable<absl::Status(GpuCommunicator*)> f) = 0;
+  // Executes a group of collective launches on this communicator. All
+  // collective operations in the `group` must use only *this communicator,
+  // otherwise behavior is undefined.
+  virtual Future<> GroupExecute(absl::AnyInvocable<absl::Status() &&> group) {
+    return Future<>(std::move(group)());
+  }
 
   virtual absl::Status LaunchAllReduce(se::DeviceAddressBase send_buffer,
                                        se::DeviceAddressBase recv_buffer,
@@ -216,6 +245,28 @@ class GpuCommunicator : public Communicator {
                                         const SignalDesc& signal_desc,
                                         const Executor& executor) {
     return Unimplemented("LaunchWaitSignal is not implemented");
+  }
+
+  virtual absl::Status LaunchWaitSignals(
+      absl::Span<const PeerWaitDesc> peer_wait_descs,
+      const Executor& executor) {
+    return Unimplemented("LaunchWaitSignals is not implemented");
+  }
+
+  virtual absl::Status LaunchMultiGpuBarrier(const Executor& executor) {
+    return Unimplemented("LaunchMultiGpuBarrier is not implemented");
+  }
+
+  virtual void InitializeCrossDeviceBarrier(
+      tsl::TiedRef<se::MemoryAllocation> tied_signal_value,
+      tsl::TiedRef<se::MemoryAllocation> tied_signal,
+      tsl::TiedRef<SymmetricMemory> tied_symmetric_memory) {}
+
+  virtual bool IsCrossDeviceBarrierInitiated() const { return false; }
+
+  template <typename Sink>
+  friend void AbslStringify(Sink& sink, const GpuCommunicator& comm) {
+    absl::Format(&sink, "%s", comm.ToString());
   }
 };
 

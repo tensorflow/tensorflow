@@ -22,10 +22,10 @@ limitations under the License.
 #include "absl/container/inlined_vector.h"
 #include "absl/status/statusor.h"
 #include "mlir/IR/MLIRContext.h"
+#include "xla/codegen/tiling/experimental/tiled_hlo.h"
 #include "xla/codegen/tiling/tiled_hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/utils/hlo_traversal.h"
-#include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/gpu/model/block_level_parameters.h"
 #include "xla/service/gpu/model/fusion_analysis_cache.h"
 #include "xla/service/gpu/model/gpu_hlo_cost_analysis.h"
@@ -33,7 +33,6 @@ limitations under the License.
 #include "xla/service/gpu/model/hlo_op_profiles.h"
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/service/instruction_fusion.h"
-#include "xla/shape.h"
 #include "xla/stream_executor/device_description.h"
 
 namespace xla {
@@ -58,7 +57,7 @@ class GpuPerformanceModelWithIndexingAnalysis : public GpuPerformanceModelBase {
       const se::DeviceDescription* device_info,
       HloFusionAnalysisCache* fusion_analysis_cache,
       HloCostAnalysis::ShapeSizeFunction shape_size,
-      mlir::MLIRContext* mlir_context)
+      mlir::MLIRContext* mlir_context, bool use_experimental_tiling)
       : hlo_op_profile_(&HloOpProfiles::Singleton().GetProfile(*device_info)),
         device_info_(device_info),
         fusion_analysis_cache_(fusion_analysis_cache),
@@ -69,17 +68,21 @@ class GpuPerformanceModelWithIndexingAnalysis : public GpuPerformanceModelBase {
                                         /*min_latencies_seconds=*/{},
                                         /*count_multiple_input_accesses=*/true},
             *device_info_),
-        mlir_context_(mlir_context) {}
+        mlir_context_(mlir_context),
+        use_experimental_tiling_(use_experimental_tiling) {}
 
-  // Returns the launch dimensions for the given tiled HLO computation.
-  static LaunchDimensions GetLaunchDimensionsForTiledFusion(
-      const TiledHloComputation& tiled_hlo_computation,
-      const se::DeviceDescription& device_info);
+  // Returns the number of warps for the given tiled HLO computation.
+  static int64_t EstimateNumWarps(
+      const TiledHloComputation& tiled_hlo_computation);
+
+  // Returns the number of warps for the given tiled HLO computation.
+  static int64_t EstimateNumWarps(
+      const experimental::TiledHloComputation& tiled_hlo_computation);
 
   absl::StatusOr<EstimateRunTimeData> EstimateRunTimeForTiledHloComputation(
       const HloFusionAdaptor& fusion_adaptor,
       const TiledHloComputation& tiled_hlo_computation,
-      const LaunchDimensions& launch_dimensions);
+      const BlockLevelParameters& block_level_parameters);
 
   // Estimate the run time of the fusion with the given launch dimensions and
   // output tile sizes.
@@ -89,13 +92,13 @@ class GpuPerformanceModelWithIndexingAnalysis : public GpuPerformanceModelBase {
   // access and computation.
   absl::StatusOr<EstimateRunTimeData> EstimateRunTimeForTiledFusion(
       const HloFusionAdaptor& fusion_adaptor,
-      const LaunchDimensions& launch_dimensions,
       const BlockLevelParameters& block_level_parameters);
 
   // Estimate the run time of an Hlo instruction assuming it is emitted by
   // Triton.
   absl::StatusOr<EstimateRunTimeData> EstimateRunTimeForTriton(
-      const HloInstruction* instr);
+      const HloInstruction* instr,
+      const BlockLevelParameters* block_level_parameters = nullptr);
 
   // Estimates the best tile sizes for the given fusion. Iterates over all the
   // good tile sizes provided by SymbolicTileAnalysis, estimates the run time
@@ -118,14 +121,13 @@ class GpuPerformanceModelWithIndexingAnalysis : public GpuPerformanceModelBase {
   int64_t FlopsPerElement(const HloInstruction* instr);
 
  private:
-  int64_t GetShapeSizeRecursive(const Shape& shape) const;
-
   const HloOpProfiles::HloOpProfile* hlo_op_profile_;
   const se::DeviceDescription* device_info_;
   HloFusionAnalysisCache* fusion_analysis_cache_;
   HloCostAnalysis::ShapeSizeFunction shape_size_;
   GpuHloCostAnalysis cost_analysis_;
   mlir::MLIRContext* mlir_context_;
+  bool use_experimental_tiling_;
 };
 
 }  // namespace gpu

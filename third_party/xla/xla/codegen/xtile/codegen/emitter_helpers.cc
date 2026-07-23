@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
@@ -40,6 +41,7 @@ limitations under the License.
 #include "mlir/Dialect/Arith/Utils/Utils.h"
 #include "mlir/Dialect/Math/IR/Math.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
+#include "mlir/Dialect/Utils/StaticValueUtils.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinOps.h"
@@ -59,7 +61,6 @@ limitations under the License.
 #include "xla/codegen/xtile/ir/xtile_ops.h"
 #include "xla/comparison_util.h"
 #include "xla/hlo/analysis/indexing_map.h"
-#include "xla/hlo/analysis/indexing_map_serialization.h"
 #include "xla/hlo/analysis/interval.h"
 #include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/analysis/symbolic_map.h"
@@ -71,13 +72,12 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_print_options.h"
 #include "xla/layout_util.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
-#include "xla/mlir_hlo/mhlo/transforms/map_mhlo_to_scalar_op.h"
 #include "xla/mlir_hlo/mhlo/transforms/transformation_helpers.h"
 #include "xla/primitive_util.h"
-#include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/shape.h"
 #include "xla/status_macros.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/types.h"
 #include "xla/util.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
@@ -187,9 +187,58 @@ mlir::Value OnesLike(mlir::ImplicitLocOpBuilder& b, mlir::Type type) {
   mlir::Type element_type = mlir::getElementTypeOrSelf(type);
   CHECK(element_type.isInteger()) << "OnesLike only supports integer types.";
 
+  mlir::Type const_type = GetSignlessType(type);
+
   int64_t width = element_type.getIntOrFloatBitWidth();
   mlir::APInt all_ones = mlir::APInt::getAllOnes(width);
-  return mlir::createScalarOrSplatConstant(b, b.getLoc(), type, all_ones);
+  mlir::Value cst =
+      mlir::createScalarOrSplatConstant(b, b.getLoc(), const_type, all_ones);
+  if (element_type.isUnsignedInteger()) {
+    cst = mlir::UnrealizedConversionCastOp::create(b, b.getLoc(), type, cst)
+              .getResult(0);
+  }
+  return cst;
+}
+
+Value ReducePrecision(mlir::ImplicitLocOpBuilder& b, const HloInstruction& hlo,
+                      Value value) {
+  // Check if it's a no-op.
+  auto elem_type =
+      GetPrimitiveType(mlir::getElementTypeOrSelf(value.getType()));
+  if (elem_type.ok() && primitive_util::IsFloatingPointType(*elem_type)) {
+    if (hlo.exponent_bits() == primitive_util::ExponentWidth(*elem_type) &&
+        hlo.mantissa_bits() + 1 ==
+            primitive_util::SignificandWidth(*elem_type)) {
+      return value;
+    }
+  }
+  return mh::reducePrecision<mlir::tensor::BitcastOp>(
+      b.getLoc(), value, hlo.exponent_bits(), hlo.mantissa_bits(), &b);
+}
+
+absl::StatusOr<int64_t> PackedElementsPerByte(PrimitiveType type) {
+  if (!primitive_util::IsSubByteNonPredType(type)) {
+    return absl::InvalidArgumentError(absl::StrCat(
+        "Packed storage requires a sub-byte non-predicate type, got ",
+        primitive_util::LowercasePrimitiveTypeName(type), "."));
+  }
+
+  const int64_t storage_bit_width = primitive_util::BitWidth(U8);
+  const int64_t element_bit_width = primitive_util::BitWidth(type);
+  if (storage_bit_width % element_bit_width != 0) {
+    return absl::InvalidArgumentError(
+        absl::StrCat("Packed storage bit width ", storage_bit_width,
+                     " must be divisible by element bit width ",
+                     element_bit_width, " for primitive type ",
+                     primitive_util::LowercasePrimitiveTypeName(type), "."));
+  }
+  return storage_bit_width / element_bit_width;
+}
+
+Value DivideBy(mlir::ImplicitLocOpBuilder& b, Value value,
+               int64_t elements_per_byte) {
+  return ma::DivSIOp::create(
+      b, value, CreateConst(b, value.getType(), elements_per_byte));
 }
 
 }  // namespace
@@ -198,9 +247,100 @@ SmallVector<int64_t> GetPaddedTileSizes(ArrayRef<int64_t> tile_sizes) {
   SmallVector<int64_t> result;
   result.reserve(tile_sizes.size());
   for (int64_t value : tile_sizes) {
-    result.push_back(llvm::PowerOf2Ceil(value));
+    // If tile size is 0, treat it as 1 to avoid crash and empty tensors.
+    result.push_back(value == 0 ? 1 : llvm::PowerOf2Ceil(value));
   }
   return result;
+}
+
+bool IsTritonDotScaledOperandType(PrimitiveType type) {
+  return type == F4E2M1FN || type == F8E4M3FN || type == F8E5M2;
+}
+
+bool IsPackedTritonDotScaledOperandType(PrimitiveType type) {
+  return IsTritonDotScaledOperandType(type) &&
+         primitive_util::IsSubByteNonPredType(type);
+}
+
+absl::StatusOr<SmallVector<int64_t>> GetStorageShape(
+    ArrayRef<int64_t> logical_shape_dims, const Shape& logical_shape) {
+  SmallVector<int64_t> storage_shape(logical_shape_dims.begin(),
+                                     logical_shape_dims.end());
+  if (!IsPackedTritonDotScaledOperandType(logical_shape.element_type()) ||
+      storage_shape.empty()) {
+    return storage_shape;
+  }
+
+  int64_t packed_dim = LayoutUtil::MinorToMajor(logical_shape).front();
+  if (packed_dim < 0 ||
+      packed_dim >= static_cast<int64_t>(storage_shape.size())) {
+    return absl::InvalidArgumentError(
+        absl::StrCat("Packed storage dimension is out of bounds for shape ",
+                     logical_shape.ToString()));
+  }
+  ASSIGN_OR_RETURN(int64_t elements_per_byte,
+                   PackedElementsPerByte(logical_shape.element_type()));
+  if (storage_shape[packed_dim] % elements_per_byte != 0) {
+    return absl::InvalidArgumentError(
+        absl::StrCat("Packed storage dimension must be divisible by ",
+                     elements_per_byte, ", got ", storage_shape[packed_dim],
+                     " for shape ", logical_shape.ToString()));
+  }
+  storage_shape[packed_dim] /= elements_per_byte;
+  return storage_shape;
+}
+
+absl::StatusOr<SmallVector<Value>> GetStorageOffsets(
+    mlir::ImplicitLocOpBuilder& b, const Shape& logical_shape,
+    ArrayRef<SymbolicExpr> logical_tile_offsets,
+    SmallVector<Value> logical_offsets) {
+  SmallVector<Value> storage_offsets = std::move(logical_offsets);
+  if (!IsPackedTritonDotScaledOperandType(logical_shape.element_type()) ||
+      LayoutUtil::MinorToMajor(logical_shape).empty()) {
+    return storage_offsets;
+  }
+  int64_t packed_dim = LayoutUtil::MinorToMajor(logical_shape).front();
+  if (packed_dim < 0 ||
+      packed_dim >= static_cast<int64_t>(logical_tile_offsets.size())) {
+    return absl::InvalidArgumentError(
+        absl::StrCat("Packed storage dimension is out of bounds for shape ",
+                     logical_shape.ToString()));
+  }
+  ASSIGN_OR_RETURN(int64_t elements_per_byte,
+                   PackedElementsPerByte(logical_shape.element_type()));
+  // Packed storage is byte-addressed along the layout-minor dimension, so the
+  // logical offset must be aligned before converting it to a byte offset.
+  if (!logical_tile_offsets[packed_dim].IsMultipleOf(elements_per_byte)) {
+    return absl::InvalidArgumentError(
+        absl::StrCat("Packed storage requires offset in dimension ", packed_dim,
+                     " to be divisible by ", elements_per_byte, " for shape ",
+                     logical_shape.ToString(), ", got ",
+                     logical_tile_offsets[packed_dim].ToString()));
+  }
+  storage_offsets[packed_dim] =
+      DivideBy(b, storage_offsets[packed_dim], elements_per_byte);
+  return storage_offsets;
+}
+
+absl::StatusOr<SmallVector<int64_t>> GetStorageTileStrides(
+    ArrayRef<int64_t> logical_tile_strides, const Shape& logical_shape) {
+  if (IsPackedTritonDotScaledOperandType(logical_shape.element_type()) &&
+      !LayoutUtil::MinorToMajor(logical_shape).empty()) {
+    int64_t packed_dim = LayoutUtil::MinorToMajor(logical_shape).front();
+    if (packed_dim < 0 ||
+        packed_dim >= static_cast<int64_t>(logical_tile_strides.size())) {
+      return absl::InvalidArgumentError(
+          absl::StrCat("Packed storage dimension is out of bounds for shape ",
+                       logical_shape.ToString()));
+    }
+    if (logical_tile_strides[packed_dim] != 1) {
+      return absl::InvalidArgumentError(
+          absl::StrCat("Packed storage requires unit stride in dimension ",
+                       packed_dim, " for shape ", logical_shape.ToString()));
+    }
+  }
+  return SmallVector<int64_t>(logical_tile_strides.begin(),
+                              logical_tile_strides.end());
 }
 
 Value EmitClampedRTVar(mlir::ImplicitLocOpBuilder& b,
@@ -215,17 +355,40 @@ Value EmitClampedRTVar(mlir::ImplicitLocOpBuilder& b,
 }
 
 // Evaluates tiling parameters for the given affine expressions, e.g. offsets.
-// This function only supports pid and does not support runtime values including
-// the induction variables yet.
 absl::StatusOr<SmallVector<Value>> EmitterContext::EvaluateTilingParameters(
     ArrayRef<SymbolicExpr> exprs) {
+  // We expect expressions to use:
+  // - some parallel and sequential dimensions of tiling space d0, d1, ..
+  // - some runtime variables s0, s1, .., represented as symbols.
+  // To evaluate them we create first `offset_indexing_map`
+  //   (pid, tid)[<sequential dims k_0, k_1, ...>, <runtime vars rt_0, rt_1>]
+  //     -> (<tiling space dims>)[<runtime variables>]
+  // Note that sequential dimensions are moved from dimensions to symbols.
+  // Then plug in pid, sequential and runtime values.
+
   MLIRContext* mlir_context = tiled_computation_.GetMLIRContext();
   const ge::TilingSpace& tiling_space = tiled_computation_.tiling_space();
+  int64_t num_dimensions = tiling_space.num_dimensions();
+  int64_t num_parallel_dimensions = tiling_space.num_parallel_dimensions();
   // Get all dimension and symbol IDs from all of the expressions.
-  UsedParameters used_parameters =
-      GetUsedParameters(exprs, tiling_space.num_dimensions());
-  const auto& dim_ids = used_parameters.dimension_ids;
-  const auto& symbol_ids = used_parameters.symbol_ids;
+  UsedParameters used_parameters = GetUsedParameters(exprs, num_dimensions);
+  const llvm::SmallVector<int64_t>& dim_ids = used_parameters.dimension_ids;
+  const llvm::SmallVector<int64_t>& symbol_ids = used_parameters.symbol_ids;
+
+  SmallVector<Value> dim_values{Cast(b_, pid_, pid_.getType()),
+                                Cast(b_, tid_, tid_.getType())};
+  int64_t num_tiles_per_pid = schedule_.GetNumTilesPerPid();
+  std::vector<IndexingMap::Variable> dim_variables{
+      IndexingMap::Variable(0, schedule_.num_pids - 1, "pid"),
+      IndexingMap::Variable(0, num_tiles_per_pid - 1, "tid")};
+  SmallVector<std::pair<SymbolicExpr, Interval>> constraints;
+  if (num_tiles_per_pid > 1) {
+    SymbolicExpr pid_expr = CreateDimExpr(0, mlir_context);
+    SymbolicExpr tid_expr = CreateDimExpr(1, mlir_context);
+    SymbolicExpr global_tile_id_expr = pid_expr * num_tiles_per_pid + tid_expr;
+    constraints.push_back(std::make_pair(global_tile_id_expr,
+                                         Interval{0, schedule_.num_tiles - 1}));
+  }
 
   int64_t symbol_count = 0;
   SmallVector<Value> symbol_values;
@@ -237,28 +400,26 @@ absl::StatusOr<SmallVector<Value>> EmitterContext::EvaluateTilingParameters(
   // errors when trying to print uninitialized SymbolicExprs.
   SymbolicExpr default_replacement = CreateSymbolicConstant(-1, mlir_context);
 
-  // Remap parallel dimensions.
-  SmallVector<SymbolicExpr> dim_replacements(1, default_replacement);
-  if (!dim_ids.empty()) {
-    dim_replacements.resize(dim_ids.back() + 1, default_replacement);
-    for (int64_t dim : dim_ids) {
-      switch (tiling_space.dimensions()[dim].type) {
-        case ge::TilingSpace::DimensionSemantics::kParallel: {
-          dim_replacements[dim] = schedule_.GetPidExpr(dim);
-          break;
-        }
-        case ge::TilingSpace::DimensionSemantics::kSequential: {
-          dim_replacements[dim] =
-              CreateSymbolExpr(symbol_count++, /*num_dims=*/1, mlir_context);
-          auto [value, range] = GetSequentialDimValue(ge::TiledDimId(dim));
-          symbol_values.push_back(value);
-          symbol_variables.push_back(
-              IndexingMap::Variable{range, absl::StrCat("k_", dim)});
-          break;
-        }
-        default:
-          return absl::InvalidArgumentError("Unsupported dimension semantics.");
+  // Create replacements for all tiling space dims, but replace only ones that
+  // are used in the expressions.
+  SmallVector<SymbolicExpr> dim_replacements(num_dimensions,
+                                             default_replacement);
+  for (const int64_t dim : dim_ids) {
+    switch (tiling_space.dimensions()[dim].type) {
+      case ge::TilingSpace::DimensionSemantics::kParallel:
+        dim_replacements[dim] = schedule_.GetPidExpr(dim);
+        break;
+      case ge::TilingSpace::DimensionSemantics::kSequential: {
+        dim_replacements[dim] =
+            CreateSymbolExpr(symbol_count++, dim_values.size(), mlir_context);
+        auto [value, range] = GetSequentialDimValue(ge::TiledDimId(dim));
+        symbol_values.push_back(value);
+        symbol_variables.push_back(IndexingMap::Variable{
+            range, absl::StrCat("k_", dim - num_parallel_dimensions)});
+        break;
       }
+      default:
+        return absl::InvalidArgumentError("Unsupported dimension semantics.");
     }
   }
 
@@ -268,14 +429,14 @@ absl::StatusOr<SmallVector<Value>> EmitterContext::EvaluateTilingParameters(
     symbol_replacements.resize(symbol_ids.back() + 1, default_replacement);
     const auto& rt_symbol_to_tiled_hlo =
         tiled_computation_.rt_symbol_to_tiled_hlo();
-    for (const auto& symbol_id : symbol_ids) {
+    for (const int64_t symbol_id : symbol_ids) {
       auto it = rt_symbol_to_tiled_hlo.find(symbol_id);
       TF_RET_CHECK(it != rt_symbol_to_tiled_hlo.end());
       const auto& [tiled_hlo, bounds] = it->second;
       TensorValue tensor_value = TiledHloToTensorValue(*tiled_hlo);
       symbol_values.push_back(EmitClampedRTVar(b_, tensor_value, bounds));
       symbol_replacements[symbol_id] =
-          CreateSymbolExpr(symbol_count++, /*num_dims=*/1, mlir_context);
+          CreateSymbolExpr(symbol_count++, dim_values.size(), mlir_context);
       symbol_variables.push_back(
           IndexingMap::Variable{bounds, absl::StrCat("rt_", symbol_id)});
     }
@@ -283,18 +444,19 @@ absl::StatusOr<SmallVector<Value>> EmitterContext::EvaluateTilingParameters(
 
   // Update the expressions with the remapped dimensions and symbols.
   SmallVector<SymbolicExpr> updated_exprs;
-  for (const auto& expr : exprs) {
+  updated_exprs.reserve(exprs.size());
+  for (const SymbolicExpr& expr : exprs) {
     updated_exprs.push_back(
         expr.ReplaceDimsAndSymbols(dim_replacements, symbol_replacements));
   }
   IndexingMap offset_indexing_map(
-      SymbolicMap::Get(mlir_context, /*num_dimensions=*/1, symbol_count,
+      SymbolicMap::Get(mlir_context, dim_values.size(), symbol_count,
                        updated_exprs),
-      {IndexingMap::Variable(schedule_.pid_bounds, "pid")},
-      std::move(symbol_variables), {});
-  SmallVector<Value> dims{Cast(b_, pid_, pid_.getType())};
-  return emitters::ApplyIndexing(offset_indexing_map, /*dims=*/dims,
-                                 /*symbols=*/symbol_values, b_);
+      std::move(dim_variables), std::move(symbol_variables), /*rt_vars=*/{},
+      constraints);
+
+  return emitters::ApplyIndexing(offset_indexing_map, dim_values, symbol_values,
+                                 b_);
 }
 
 absl::StatusOr<Type> PrimitiveTypeToMlirType(
@@ -351,6 +513,10 @@ absl::StatusOr<Type> PrimitiveTypeToMlirType(
             "F8E4M3FNUZ is not supported on this GPU.");
       }
       return b.getType<mlir::Float8E4M3FNUZType>();
+    case C64:
+      return mlir::ComplexType::get(b.getF32Type());
+    case C128:
+      return mlir::ComplexType::get(b.getF64Type());
     default:
       return absl::UnimplementedError(
           absl::StrCat("This type is not supported yet: ",
@@ -370,6 +536,14 @@ absl::StatusOr<PrimitiveType> GetPrimitiveType(Type t) {
   if (t.isInteger(8)) return t.isSignedInteger() ? S8 : U8;
   if (t.isInteger(4)) return t.isSignedInteger() ? S4 : U4;
   if (t.isInteger(1)) return PRED;
+  if (auto complex_type = mlir::dyn_cast<mlir::ComplexType>(t)) {
+    if (complex_type.getElementType().isF32()) {
+      return C64;
+    }
+    if (complex_type.getElementType().isF64()) {
+      return C128;
+    }
+  }
   if (mlir::isa<mlir::Float8E5M2Type>(t)) return F8E5M2;
   if (mlir::isa<mlir::Float8E4M3FNType>(t)) return F8E4M3FN;
   if (mlir::isa<mlir::Float8E8M0FNUType>(t)) return F8E8M0FNU;
@@ -382,6 +556,25 @@ absl::StatusOr<PrimitiveType> GetPrimitiveType(Type t) {
 Type StorageType(Type t) {
   if (auto i = mlir::dyn_cast<mlir::IntegerType>(t); i && i.getWidth() == 1) {
     return i.get(i.getContext(), 8, i.getSignedness());
+  }
+  if (mlir::isa<mlir::Float4E2M1FNType>(t)) {
+    return mlir::IntegerType::get(t.getContext(), 8);
+  }
+  return t;
+}
+
+Type GetSignlessType(Type t) {
+  Type elem_type = mlir::getElementTypeOrSelf(t);
+  if (auto int_type = mlir::dyn_cast<mlir::IntegerType>(elem_type)) {
+    if (int_type.isUnsignedInteger()) {
+      Type signless_elem = mlir::IntegerType::get(
+          t.getContext(), int_type.getWidth(),
+          mlir::IntegerType::SignednessSemantics::Signless);
+      if (auto shaped_type = mlir::dyn_cast<mlir::ShapedType>(t)) {
+        return shaped_type.clone(signless_elem);
+      }
+      return signless_elem;
+    }
   }
   return t;
 }
@@ -447,10 +640,7 @@ absl::StatusOr<Value> EmitElementwise(mlir::ImplicitLocOpBuilder& b,
       // Dimension transformations are taken care of separately.
       return inputs[0];
     case HloOpcode::kAbs:
-      if (is_integer) {
-        return mm::AbsIOp::create(b, inputs[0]);
-      }
-      return mm::AbsFOp::create(b, inputs[0]);
+      return mlir::stablehlo::AbsOp::create(b, inputs[0]);
     case HloOpcode::kCeil:
       return mm::CeilOp::create(b, inputs[0]);
     case HloOpcode::kFloor:
@@ -461,10 +651,7 @@ absl::StatusOr<Value> EmitElementwise(mlir::ImplicitLocOpBuilder& b,
       return mlir::stablehlo::XorOp::create(b, inputs[0],
                                             OnesLike(b, inputs[0].getType()));
     case HloOpcode::kNegate:
-      if (is_integer) {
-        return Subtract(b, {ZerosLike(b, inputs[0]), inputs[0]});
-      }
-      return ma::NegFOp::create(b, inputs[0]);
+      return mlir::stablehlo::NegOp::create(b, inputs[0]);
     case HloOpcode::kConvert: {
       ASSIGN_OR_RETURN(Type dst_ty,
                        PrimitiveTypeToMlirType(b, hlo.shape().element_type()));
@@ -510,8 +697,7 @@ absl::StatusOr<Value> EmitElementwise(mlir::ImplicitLocOpBuilder& b,
                   mlir::stablehlo::ComparisonDirection::NE),
           inputs[1], inputs[2]);
     case HloOpcode::kReducePrecision:
-      return mh::reducePrecision<mlir::tensor::BitcastOp>(
-          b.getLoc(), inputs[0], hlo.exponent_bits(), hlo.mantissa_bits(), &b);
+      return ReducePrecision(b, hlo, inputs[0]);
     case HloOpcode::kAcos:
       return mm::AcosOp::create(b, inputs[0]);
     case HloOpcode::kAcosh:
@@ -539,10 +725,7 @@ absl::StatusOr<Value> EmitElementwise(mlir::ImplicitLocOpBuilder& b,
     case HloOpcode::kLog1p:
       return mm::Log1pOp::create(b, inputs[0]);
     case HloOpcode::kPower:
-      if (is_integer) {
-        return mm::IPowIOp::create(b, inputs[0], inputs[1]);
-      }
-      return mm::PowFOp::create(b, inputs[0], inputs[1]);
+      return mlir::stablehlo::PowOp::create(b, inputs[0], inputs[1]);
     case HloOpcode::kRemainder:
       return mlir::stablehlo::RemOp::create(b, inputs[0], inputs[1]);
     case HloOpcode::kRsqrt:
@@ -561,6 +744,12 @@ absl::StatusOr<Value> EmitElementwise(mlir::ImplicitLocOpBuilder& b,
       return mm::CbrtOp::create(b, inputs[0]);
     case HloOpcode::kIsFinite:
       return mm::IsFiniteOp::create(b, inputs[0]);
+    case HloOpcode::kComplex:
+      return mlir::stablehlo::ComplexOp::create(b, inputs[0], inputs[1]);
+    case HloOpcode::kReal:
+      return mlir::stablehlo::RealOp::create(b, inputs[0]);
+    case HloOpcode::kImag:
+      return mlir::stablehlo::ImagOp::create(b, inputs[0]);
     default:
       return absl::InvalidArgumentError(
           absl::StrCat("Unsupported elementwise operation ", hlo.ToString()));
@@ -568,11 +757,17 @@ absl::StatusOr<Value> EmitElementwise(mlir::ImplicitLocOpBuilder& b,
 }
 
 absl::StatusOr<mlir::TypedValue<mlir::RankedTensorType>> EmitConstant(
-    mlir::ImplicitLocOpBuilder& b, const HloInstruction& constant) {
+    mlir::ImplicitLocOpBuilder& b, const HloInstruction& constant,
+    std::optional<llvm::ArrayRef<int64_t>> tile_shape) {
   ASSIGN_OR_RETURN(Type ty,
                    PrimitiveTypeToMlirType(b, constant.shape().element_type()));
-  llvm::SmallVector<int64_t> shape{constant.shape().dimensions().begin(),
-                                   constant.shape().dimensions().end()};
+  llvm::SmallVector<int64_t> shape;
+  if (tile_shape.has_value()) {
+    shape.assign(tile_shape->begin(), tile_shape->end());
+  } else {
+    shape.assign(constant.shape().dimensions().begin(),
+                 constant.shape().dimensions().end());
+  }
 
   if (constant.shape().AreAllLeavesIntegers()) {
     if (constant.shape().element_type() == U64) {
@@ -580,6 +775,10 @@ absl::StatusOr<mlir::TypedValue<mlir::RankedTensorType>> EmitConstant(
                          shape);
     }
     return CreateConst(b, ty, ScalarConstantValue<int64_t>(constant, S64),
+                       shape);
+  }
+  if (primitive_util::IsComplexType(constant.shape().element_type())) {
+    return CreateConst(b, ty, ScalarConstantValue<complex128>(constant, C128),
                        shape);
   }
   return CreateConst(b, ty, ScalarConstantValue<double>(constant, F64), shape);
@@ -594,62 +793,147 @@ Value Bitcast(mlir::ImplicitLocOpBuilder& b, Value value, Type type) {
 /*static */ absl::StatusOr<TileInfo> TileInfo::Construct(
     mlir::ImplicitLocOpBuilder& b, Value pid, ValueRange runtime_values,
     const TiledHloInstruction& tiled_hlo) {
-  ASSIGN_OR_RETURN(SmallVector<Value> offsets,
+  const Shape& logical_shape = tiled_hlo.hlo()->shape();
+  auto logical_tile_strides = tiled_hlo.tile_strides();
+  ASSIGN_OR_RETURN(SmallVector<int64_t> storage_tile_strides,
+                   GetStorageTileStrides(logical_tile_strides, logical_shape));
+  ASSIGN_OR_RETURN(IndexingMap logical_tile_offsets_indexing,
+                   tiled_hlo.tile_offsets_indexing());
+  auto logical_tile_offsets =
+      logical_tile_offsets_indexing.GetSymbolicMap().GetResults();
+  ASSIGN_OR_RETURN(SmallVector<Value> logical_offsets,
                    ComputeOffsetsForTile(b, pid, runtime_values, tiled_hlo));
+  ASSIGN_OR_RETURN(SmallVector<Value> storage_offsets,
+                   GetStorageOffsets(b, logical_shape, logical_tile_offsets,
+                                     std::move(logical_offsets)));
 
   // Triton requires that all block dimensions are a power of 2.
-  auto padded_tile_sizes = GetPaddedTileSizes(tiled_hlo.tile_sizes());
-  const Shape& shape = tiled_hlo.hlo()->shape();
-  SmallVector<int64_t> original_shape;
-  original_shape.assign(shape.dimensions().begin(), shape.dimensions().end());
+  SmallVector<int64_t> padded_logical_tile_sizes =
+      GetPaddedTileSizes(tiled_hlo.tile_sizes());
+  SmallVector<int64_t> logical_shape_dims(logical_shape.dimensions().begin(),
+                                          logical_shape.dimensions().end());
+  ASSIGN_OR_RETURN(SmallVector<int64_t> storage_shape,
+                   GetStorageShape(logical_shape_dims, logical_shape));
+  ASSIGN_OR_RETURN(SmallVector<int64_t> padded_storage_tile_sizes,
+                   GetStorageShape(padded_logical_tile_sizes, logical_shape));
 
   ASSIGN_OR_RETURN(Type expected_element_type,
-                   PrimitiveTypeToMlirType(b, shape.element_type()));
+                   PrimitiveTypeToMlirType(b, logical_shape.element_type()));
   auto storage_type = StorageType(expected_element_type);
 
-  auto tile_strides = tiled_hlo.tile_strides();
-  auto minor_to_major_layout = llvm::to_vector(LayoutUtil::MinorToMajor(shape));
-
-  return TileInfo(offsets, tile_strides, original_shape, padded_tile_sizes,
-                  minor_to_major_layout, storage_type);
+  auto minor_to_major_layout =
+      llvm::to_vector(LayoutUtil::MinorToMajor(logical_shape));
+  // Replica id is only supported for ge::TiledHloInstruction.
+  return TileInfo(storage_offsets, storage_tile_strides, storage_shape,
+                  padded_storage_tile_sizes, minor_to_major_layout,
+                  storage_type,
+                  /*replica_id_offsets=*/{}, /*replica_id_bounds=*/{});
 }
 
 /*static */ absl::StatusOr<TileInfo> TileInfo::Construct(
     EmitterContext& emitter_ctx, const ge::TiledHloInstruction& tiled_hlo) {
+  const Shape& logical_shape = tiled_hlo.hlo()->shape();
+  ASSIGN_OR_RETURN(SmallVector<int64_t> logical_tile_strides,
+                   tiled_hlo.tile().GetStaticTileStrides());
+  ASSIGN_OR_RETURN(SmallVector<int64_t> storage_tile_strides,
+                   GetStorageTileStrides(logical_tile_strides, logical_shape));
   ASSIGN_OR_RETURN(
-      SmallVector<Value> offsets,
+      SmallVector<Value> logical_offsets,
       emitter_ctx.EvaluateTilingParameters(tiled_hlo.tile().offsets()));
+  ASSIGN_OR_RETURN(SmallVector<Value> storage_offsets,
+                   GetStorageOffsets(emitter_ctx.b(), logical_shape,
+                                     tiled_hlo.tile().offsets(),
+                                     std::move(logical_offsets)));
 
   // Triton requires that all block dimensions are a power of 2.
-  ASSIGN_OR_RETURN(SmallVector<int64_t> tile_sizes,
+  ASSIGN_OR_RETURN(SmallVector<int64_t> logical_tile_sizes,
                    tiled_hlo.tile().GetStaticTileSizes());
-  ASSIGN_OR_RETURN(SmallVector<int64_t> tile_strides,
-                   tiled_hlo.tile().GetStaticTileStrides());
-  DCHECK(ArePowersOfTwo(tile_sizes)) << "Tile sizes must be a power of 2.";
+  DCHECK(ArePowersOfTwo(logical_tile_sizes))
+      << "Tile sizes must be a power of 2.";
 
-  const Shape& shape = tiled_hlo.hlo()->shape();
-  SmallVector<int64_t> original_shape;
-  original_shape.assign(shape.dimensions().begin(), shape.dimensions().end());
+  SmallVector<int64_t> logical_shape_dims(logical_shape.dimensions().begin(),
+                                          logical_shape.dimensions().end());
+  ASSIGN_OR_RETURN(SmallVector<int64_t> storage_shape,
+                   GetStorageShape(logical_shape_dims, logical_shape));
+  ASSIGN_OR_RETURN(SmallVector<int64_t> storage_tile_sizes,
+                   GetStorageShape(logical_tile_sizes, logical_shape));
 
   ASSIGN_OR_RETURN(
       Type expected_element_type,
-      PrimitiveTypeToMlirType(emitter_ctx.b(), shape.element_type()));
+      PrimitiveTypeToMlirType(emitter_ctx.b(), logical_shape.element_type()));
   auto storage_type = StorageType(expected_element_type);
 
-  auto minor_to_major_layout = llvm::to_vector(LayoutUtil::MinorToMajor(shape));
-
-  return TileInfo(offsets, tile_strides, original_shape, tile_sizes,
-                  minor_to_major_layout, storage_type);
+  auto minor_to_major_layout =
+      llvm::to_vector(LayoutUtil::MinorToMajor(logical_shape));
+  SmallVector<Value> replica_id_offsets;
+  SmallVector<Value> replica_id_bounds;
+  if (!tiled_hlo.tile().replica_ids().empty()) {
+    llvm::SmallVector<SymbolicExpr> offset_exprs;
+    llvm::SmallVector<SymbolicExpr> bound_exprs;
+    offset_exprs.reserve(tiled_hlo.tile().replica_ids().size());
+    bound_exprs.reserve(tiled_hlo.tile().replica_ids().size());
+    for (const auto& replica_id : tiled_hlo.tile().replica_ids()) {
+      offset_exprs.push_back(replica_id.offset);
+      bound_exprs.push_back(replica_id.upper_bound);
+    }
+    ASSIGN_OR_RETURN(mlir::SmallVector<mlir::Value> evaluated_offsets,
+                     emitter_ctx.EvaluateTilingParameters(offset_exprs));
+    ASSIGN_OR_RETURN(mlir::SmallVector<mlir::Value> evaluated_bounds,
+                     emitter_ctx.EvaluateTilingParameters(bound_exprs));
+    replica_id_offsets = std::move(evaluated_offsets);
+    replica_id_bounds = std::move(evaluated_bounds);
+  }
+  return TileInfo(std::move(storage_offsets), std::move(storage_tile_strides),
+                  std::move(storage_shape), std::move(storage_tile_sizes),
+                  std::move(minor_to_major_layout), storage_type,
+                  std::move(replica_id_offsets), std::move(replica_id_bounds));
 }
 
-TensorValue EmitParameterExtract(mlir::ImplicitLocOpBuilder& b,
-                                 const TileInfo& tile_info, Value arg) {
+absl::StatusOr<int64_t> GetConstantIntValue(mlir::Value value) {
+  if (std::optional<int64_t> int_value = mlir::getConstantIntValue(value);
+      int_value.has_value()) {
+    return int_value.value();
+  }
+  return absl::InternalError(absl::StrFormat(
+      "Expected constant integer value for replica ID bound, but got: %v",
+      value));
+}
+
+absl::StatusOr<TensorValue> EmitParameterExtract(mlir::ImplicitLocOpBuilder& b,
+                                                 const TileInfo& tile_info,
+                                                 Value arg) {
   auto tensor_type = mlir::RankedTensorType::get(tile_info.padded_tile_sizes(),
                                                  tile_info.storage_type());
-
+  mlir::Value source_buffer = arg;
+  if (!tile_info.replica_id_offsets().empty()) {
+    const auto& replica_id_offsets = tile_info.replica_id_offsets();
+    const auto& replica_id_bounds = tile_info.replica_id_bounds();
+    CHECK_EQ(replica_id_offsets.size(), replica_id_bounds.size());
+    const int num_replica_dims = replica_id_offsets.size();
+    for (int i = 0; i < num_replica_dims - 1; ++i) {
+      mlir::Value replica_id = replica_id_offsets[i];
+      ASSIGN_OR_RETURN(int64_t next_bound,
+                       GetConstantIntValue(replica_id_bounds[i + 1]));
+      mlir::Type next_buffer_type =
+          mlir::MemRefType::get({next_bound}, b.getI64Type());
+      source_buffer = b.create<xtile::SelectBufferOp>(
+          next_buffer_type, source_buffer, replica_id);
+    }
+    // Final selection to obtain the spatial buffer
+    mlir::Value replica_id = replica_id_offsets.back();
+    ASSIGN_OR_RETURN(PrimitiveType element_type,
+                     GetPrimitiveType(tile_info.storage_type()));
+    xla::Shape spatial_shape = xla::ShapeUtil::MakeShapeWithDenseLayout(
+        element_type, tile_info.storage_shape(),
+        tile_info.minor_to_major_layout());
+    ASSIGN_OR_RETURN(mlir::MemRefType spatial_memref_type,
+                     GetMemRefType(spatial_shape, tile_info.storage_type()));
+    source_buffer = b.create<xtile::SelectBufferOp>(spatial_memref_type,
+                                                    source_buffer, replica_id);
+  }
   return xla::xtile::ExtractTileOp::create(
-      b, tensor_type, arg, tile_info.offsets(), tile_info.padded_tile_sizes(),
-      tile_info.tile_strides());
+      b, tensor_type, source_buffer, tile_info.offsets(),
+      tile_info.padded_tile_sizes(), tile_info.tile_strides());
 }
 
 absl::StatusOr<TensorValue> EmitScope(
@@ -678,7 +962,8 @@ absl::StatusOr<TensorValue> EmitScope(
           "Broadcast is not yet supported in EmitScope().");
     }
     if (hlo->opcode() == HloOpcode::kConstant) {
-      ASSIGN_OR_RETURN(result, EmitConstant(b, *hlo));
+      ASSIGN_OR_RETURN(result,
+                       EmitConstant(b, *hlo, /*tile_shape=*/std::nullopt));
     } else if (HloInstruction::IsOpElementwise(hlo->opcode())) {
       std::vector<Value> operands;
       operands.reserve(hlo->operands().size());
@@ -736,8 +1021,7 @@ TensorValue Splat(mlir::ImplicitLocOpBuilder& b, Value value,
 
 Value UnsignedIntegerToSignlessInteger(mlir::OpBuilder& builder, Value value) {
   CHECK(getElementTypeOrSelf(value.getType()).isUnsignedInteger())
-      << "Expected unsigned integer element type, got: "
-      << ::xla::xtile::MlirToString(value.getType());
+      << "Expected unsigned integer element type, got: " << value.getType();
   Type signless_integer_type_type = mlir::IntegerType::get(
       builder.getContext(),
       getElementTypeOrSelf(value.getType()).getIntOrFloatBitWidth(),
@@ -796,29 +1080,31 @@ absl::StatusOr<llvm::SmallVector<int64_t>> GetPermutationMinorToMajor(
   return permutation;
 }
 
-mlir::MemRefType GetMemRefType(const Shape& shape, mlir::Type element_type) {
+absl::StatusOr<mlir::MemRefType> GetMemRefType(const Shape& shape,
+                                               mlir::Type element_type) {
   mlir::MLIRContext* context = element_type.getContext();
   mlir::Type storage_type = StorageType(element_type);
+  SmallVector<int64_t> logical_shape(shape.dimensions().begin(),
+                                     shape.dimensions().end());
+  ASSIGN_OR_RETURN(SmallVector<int64_t> storage_shape,
+                   GetStorageShape(logical_shape, shape));
 
   // Don't add any attribute for default layouts as it adds a lot of noise to
   // the printed IR.
   if (LayoutUtil::IsMonotonicWithDim0Major(shape.layout())) {
-    return mlir::MemRefType::get(shape.dimensions(), storage_type);
+    return mlir::MemRefType::get(storage_shape, storage_type);
   }
 
   auto minor_to_major_attr =
       mlir::DenseI64ArrayAttr::get(context, shape.layout().minor_to_major());
   auto layout = xtile::LayoutAttr::get(context, minor_to_major_attr);
 
-  return mlir::MemRefType::get(shape.dimensions(), storage_type, layout);
+  return mlir::MemRefType::get(storage_shape, storage_type, layout);
 }
 
 absl::StatusOr<Type> GetMlirType(
     mlir::ImplicitLocOpBuilder& b, PrimitiveType type,
     const std::optional<GpuComputeCapability>& gpu_cc) {
-  if (type == U16) {
-    return b.getI16Type();
-  }
   if (type == S4) {
     return b.getI4Type();
   }
@@ -828,7 +1114,8 @@ absl::StatusOr<Type> GetMlirType(
 absl::StatusOr<SmallVector<Type>> GetFnArgTypes(
     mlir::ImplicitLocOpBuilder& b, const HloFusionInstruction& fusion,
     absl::Span<mlir::Type> opaque_args_types,
-    const std::optional<GpuComputeCapability>& gpu_cc) {
+    const std::optional<GpuComputeCapability>& gpu_cc,
+    const DefaultTileRequirementsVisitor& tile_requirements_visitor) {
   SmallVector<Type> fn_arg_types;
 
   auto hlo_computation = fusion.fused_instructions_computation();
@@ -836,14 +1123,29 @@ absl::StatusOr<SmallVector<Type>> GetFnArgTypes(
   for (HloInstruction* p : hlo_computation->parameter_instructions()) {
     ASSIGN_OR_RETURN(Type ir_type,
                      GetMlirType(b, p->shape().element_type(), gpu_cc));
-    fn_arg_types.push_back(GetMemRefType(p->shape(), ir_type));
+    ASSIGN_OR_RETURN(SmallVector<int64_t> replica_id_bounds,
+                     tile_requirements_visitor.RequiredReplicaIdBounds(*p));
+    if (!replica_id_bounds.empty()) {
+      // Nested pointer schema for replica dimensions.
+      // R x S x <type> where R is the number of replica dimensions and S is
+      // the shape on the local device. In total we have R pointers to
+      // S-dimensional tensors.
+      fn_arg_types.push_back(
+          mlir::MemRefType::get({replica_id_bounds.front()}, b.getI64Type()));
+    } else {
+      ASSIGN_OR_RETURN(mlir::MemRefType memref_type,
+                       GetMemRefType(p->shape(), ir_type));
+      fn_arg_types.push_back(memref_type);
+    }
   }
 
   // Add result types.
   for (const auto& [index, shape] : ShapeUtil::GetLeafShapes(fusion.shape())) {
     ASSIGN_OR_RETURN(Type ir_type,
                      PrimitiveTypeToMlirType(b, shape.element_type(), gpu_cc));
-    fn_arg_types.push_back(GetMemRefType(shape, ir_type));
+    ASSIGN_OR_RETURN(mlir::MemRefType memref_type,
+                     GetMemRefType(shape, ir_type));
+    fn_arg_types.push_back(memref_type);
   }
 
   // Add opaque arguments.
@@ -856,6 +1158,10 @@ absl::StatusOr<SmallVector<Type>> GetFnArgTypes(
 
 absl::Status CheckConcatenateOperands(
     const HloConcatenateInstruction& hlo_concat, int64_t concat_dim_tile_size) {
+  if (concat_dim_tile_size <= 0) {
+    return absl::InternalError(absl::StrCat(
+        "Invalid tile size for concatenate dimension: ", concat_dim_tile_size));
+  }
   int64_t concatenate_dimension = hlo_concat.concatenate_dimension();
   int64_t num_operands = hlo_concat.operands().size();
   for (const auto [index, operand] : llvm::enumerate(hlo_concat.operands())) {
@@ -876,53 +1182,6 @@ absl::Status CheckConcatenateOperands(
     }
   }
   return absl::OkStatus();
-}
-
-std::pair<SmallVector<int64_t>, SmallVector<int64_t>> CollapseUnitDims(
-    llvm::ArrayRef<int64_t> shape, llvm::ArrayRef<int64_t> counterpart_shape) {
-  SmallVector<int64_t> shape_without_unit_dims;
-  SmallVector<int64_t> non_unit_dims_indices;
-  for (auto [i, size] : llvm::enumerate(shape)) {
-    if (size != 1 || size != counterpart_shape[i]) {
-      shape_without_unit_dims.push_back(size);
-      non_unit_dims_indices.push_back(i);
-    }
-  }
-  return {std::move(shape_without_unit_dims), std::move(non_unit_dims_indices)};
-}
-
-absl::StatusOr<TensorValue> CanonicalizeDotOperand(
-    mlir::ImplicitLocOpBuilder& b, TensorValue operand,
-    int64_t contracting_dim_idx, DotOperandSide side,
-    TensorValue counterpart_operand) {
-  llvm::ArrayRef<int64_t> shape = operand.getType().getShape();
-  llvm::ArrayRef<int64_t> counterpart_shape =
-      counterpart_operand == nullptr ? shape
-                                     : counterpart_operand.getType().getShape();
-
-  auto [shape_without_unit_dims, non_unit_dims_indices] =
-      CollapseUnitDims(shape, counterpart_shape);
-
-  if (shape_without_unit_dims.size() != 2) {
-    return absl::FailedPreconditionError(
-        "Expected dot operand tile to have exactly two non-unit tile sizes");
-  }
-  if (shape.size() != shape_without_unit_dims.size()) {
-    ASSIGN_OR_RETURN(operand,
-                     EmitTiledReshape(b, shape_without_unit_dims, operand));
-  }
-  int expected_contracting_dim_position = side == DotOperandSide::kLhs ? 1 : 0;
-  bool is_transposed =
-      non_unit_dims_indices[expected_contracting_dim_position] !=
-      contracting_dim_idx;
-
-  if (is_transposed) {
-    SmallVector<int64_t, 2> transposed_shape{shape_without_unit_dims[1],
-                                             shape_without_unit_dims[0]};
-    operand =
-        EmitTiledTranspose(b, transposed_shape, /*dimensions=*/{1, 0}, operand);
-  }
-  return operand;
 }
 
 absl::StatusOr<TensorValue> EmitTiledReshape(mlir::ImplicitLocOpBuilder& b,

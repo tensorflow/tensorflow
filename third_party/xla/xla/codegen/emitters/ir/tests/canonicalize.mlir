@@ -1,3 +1,17 @@
+// Copyright 2026 The OpenXLA Authors. All Rights Reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// ==============================================================================
 // RUN: emitters_opt %s --split-input-file -canonicalize | FileCheck %s
 
 #map0 = #xla.indexing_map<"()[s0, s1] -> (1 + s0 + s1 mod 3 - s1, s0 mod 2), domain: s0 in [-10, 10], s1 in [0, 2]">
@@ -139,7 +153,7 @@ func.func @fold_sequence_sym(%arg0: index, %arg1: index) -> index {
 #indexing_map1 = #xla.indexing_map<"(d0, d1) -> (d1 * 2 + d0 + 8512),"
   "domain: d0 in [0, 1], d1 in [0, 607]">
 #indexing_map2 = #xla.indexing_map<"(d0, d1, d2) -> ("
-  "((d1 floordiv 32 + 1) mod 3) * 64 + (d1 mod 32) * 2 + (d0 floordiv 192) * 192 + d2),"
+  "((d1 / 32 + 1) mod 3) * 64 + (d1 mod 32) * 2 + (d0 / 192) * 192 + d2),"
   "domain: d0 in [0, 9407], d1 in [0, 607], d2 in [0, 1]">
 
 func.func @fold_sequence_no_simplification_needed(%i: index) -> index {
@@ -155,9 +169,9 @@ func.func @fold_sequence_no_simplification_needed(%i: index) -> index {
 
 #indexing_map1 = #xla.indexing_map<
   "(d0) -> (3 * d0), domain: d0 in [0, 9407]">
-#indexing_map2 = #xla.indexing_map<"(d0, d1, d2) -> (d0 floordiv 32 + 1),"
+#indexing_map2 = #xla.indexing_map<"(d0, d1, d2) -> (d0 / 32 + 1),"
   "domain: d0 in [0, 9407], d1 in [0, 607], d2 in [0, 1]">
-#indexing_map3 = #xla.indexing_map<"(d0, d1, d2) -> (d0 floordiv 32 + 2),"
+#indexing_map3 = #xla.indexing_map<"(d0, d1, d2) -> (d0 / 32 + 2),"
   "domain: d0 in [0, 9407], d1 in [0, 607], d2 in [0, 1]">
 
 func.func @no_fold_when_producer_has_two_users(%i: index) -> (index, index) {
@@ -282,7 +296,7 @@ func.func @loop_of_apply_indexing_with_syms(%dim0: index, %sym0: index, %input: 
 // -----
 
 #map = #xla.indexing_map<"(th_x, th_y, th_z, bl_x, bl_y, bl_z, p1, p2, p3)[idx]"
-"-> ((th_x floordiv 64) * 100 + bl_x * 200 + idx + th_x + th_y + th_z + bl_x + bl_y + bl_z + p1 + p2 + p3),"
+"-> ((th_x / 64) * 100 + bl_x * 200 + idx + th_x + th_y + th_z + bl_x + bl_y + bl_z + p1 + p2 + p3),"
 "domain:"
 "th_x in [0, 127], th_y in [0, 0], th_z in [0, 10],"
 "bl_x in [0, 174], bl_y in [2, 2], bl_z in [3, 3], p1 in [1, 5], p2 in [1, 5], p3 in [0,1000],"
@@ -312,7 +326,7 @@ func.func @fold_constant_dimensions(%input: tensor<350xf32>, %a1 : index) -> (te
 }
 
 // CHECK:      #[[$MAP:.*]] = #xla.indexing_map<"(th_x, bl_x, p2, p3)[idx] -> (
-// CHECK-SAME:   (th_x floordiv 64) * 100 + bl_x * 201 + th_x + p2 + p3 + idx + 10)
+// CHECK-SAME:   (th_x / 64) * 100 + bl_x * 201 + th_x + p2 + p3 + idx + 10)
 // CHECK-SAME:   domain: th_x in [0, 127], bl_x in [0, 174],
 // CHECK-SAME:   p2 in [1, 5], p3 in [0, 1000], idx in [0, 99],
 // CHECK-SAME:   p2 + p3 in [-4, 6], th_x + idx in [-2, 199]">

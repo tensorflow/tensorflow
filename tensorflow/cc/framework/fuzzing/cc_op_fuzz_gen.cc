@@ -15,15 +15,16 @@ limitations under the License.
 
 #include "tensorflow/cc/framework/fuzzing/cc_op_fuzz_gen.h"
 
-#include <iostream>
-#include <set>
+#include <numeric>
 #include <string>
-#include <unordered_map>
 #include <utility>
 #include <vector>
 
+#include "absl/base/no_destructor.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/log/log.h"
+#include "absl/strings/escaping.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
@@ -33,9 +34,6 @@ limitations under the License.
 #include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/framework/op_def_util.h"
 #include "tensorflow/core/framework/types.pb.h"
-#include "tensorflow/core/platform/hash.h"
-#include "tensorflow/core/platform/strcat.h"
-#include "tensorflow/core/platform/stringpiece.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/public/version.h"
 
@@ -43,38 +41,37 @@ namespace tensorflow {
 namespace cc_op {
 namespace {
 
-std::string DefaultValue(OpDef_AttrDef attr) {
-  static const auto* attr_default_value_map =
-      new absl::flat_hash_map<absl::string_view, absl::string_view,
-                              StringPieceHasher>{
-          {"int", "0"},
-          {"string", "\"\""},
-          {"list(int)", "{ 0, 1 }"},
-          {"list(float)", "{0.0, 1.0}"},
-          {"type", "DT_UINT8"},
-          {"shape",
-           "mediapipe::ParseTextProtoOrDie<TensorShapeProto>("
-           "\"dim:[] unknown_rank:true\")"}};
+std::string DefaultValue(const OpDef_AttrDef& attr) {
+  static const absl::NoDestructor<
+      absl::flat_hash_map<absl::string_view, absl::string_view>>
+      kAttrDefaultValueMap({{"int", "0"},
+                            {"string", "\"\""},
+                            {"list(int)", "{ 0, 1 }"},
+                            {"list(float)", "{0.0, 1.0}"},
+                            {"type", "DT_UINT8"},
+                            {"shape",
+                             "mediapipe::ParseTextProtoOrDie<TensorShapeProto>("
+                             "\"dim:[] unknown_rank:true\")"}});
 
   if (attr.has_minimum()) {
     if (attr.type() == "int") {
       return absl::StrCat(attr.minimum());
     } else if (attr.type() == "list(int)") {
       std::vector<int> v(attr.minimum());
-      for (int i = 0; i < v.size(); ++i) v[i] = i;
-      std::string s = absl::StrCat("{", absl::StrJoin(v, ","), "}");
-      return s;
+      std::iota(v.begin(), v.end(), 0);
+      return absl::StrCat("{", absl::StrJoin(v, ","), "}");
     }
   }
   if (attr.has_allowed_values()) {
     if (!attr.allowed_values().list().s().empty()) {
-      return absl::StrCat("\"", attr.allowed_values().list().s(0), "\"");
+      return absl::StrCat(
+          "\"", absl::CEscape(attr.allowed_values().list().s(0)), "\"");
     } else if (!attr.allowed_values().list().type().empty()) {
       return DataType_Name(attr.allowed_values().list().type(0));
     }
   }
-  auto entry = attr_default_value_map->find(attr.type());
-  if (entry == attr_default_value_map->end()) {
+  auto entry = kAttrDefaultValueMap->find(attr.type());
+  if (entry == kAttrDefaultValueMap->end()) {
     LOG(ERROR) << "Unsupported Attr type: " << attr.type();
     return "";
   }
@@ -85,7 +82,7 @@ std::string WriteClassFuzzDef(const OpInfo& op_info) {
   std::string class_signature_str = absl::Substitute(
       "class Fuzz$0 : public FuzzSession<$1> {\n", op_info.op_name,
       absl::StrJoin(op_info.graph_op_def.input_arg(), ", ",
-                    [](std::string* out, const auto arg) {
+                    [](std::string* out, const auto& arg) {
                       absl::StrAppend(out, "Tensor");
                       if (ArgIsList(arg)) absl::StrAppend(out, ", Tensor");
                     }));
@@ -93,50 +90,50 @@ std::string WriteClassFuzzDef(const OpInfo& op_info) {
   std::string build_graph_body = absl::StrCat(
       absl::StrJoin(
           op_info.graph_op_def.input_arg(), "",
-          [op_info](std::string* out, const OpDef_ArgDef arg) {
+          [&op_info](std::string* out, const OpDef_ArgDef& arg) {
             std::string type = "DT_UINT8";
 
             if (arg.type() != DT_INVALID) {
               type = DataType_Name(arg.type());
             } else if (!arg.type_attr().empty()) {
-              OpDef_AttrDef attr =
-                  *FindAttr(arg.type_attr(), op_info.graph_op_def);
-              if (attr.has_default_value() &&
-                  attr.default_value().value_case() == AttrValue::kType) {
-                type = DataType_Name(attr.default_value().type());
-              } else if (attr.has_allowed_values() &&
-                         attr.allowed_values().value_case() ==
+              const OpDef_AttrDef* attr =
+                  FindAttr(arg.type_attr(), op_info.graph_op_def);
+              if (attr != nullptr && attr->has_default_value() &&
+                  attr->default_value().value_case() == AttrValue::kType) {
+                type = DataType_Name(attr->default_value().type());
+              } else if (attr != nullptr && attr->has_allowed_values() &&
+                         attr->allowed_values().value_case() ==
                              AttrValue::kList &&
-                         !attr.allowed_values().list().type().empty()) {
-                type = DataType_Name(attr.allowed_values().list().type(0));
+                         !attr->allowed_values().list().type().empty()) {
+                type = DataType_Name(attr->allowed_values().list().type(0));
               }
             }
             if (ArgIsList(arg)) {
-              strings::StrAppend(
+              absl::StrAppend(
                   out, "    Input ", arg.name(),
                   "_0 = ", "tensorflow::ops::Placeholder(scope.WithOpName(\"",
-                  arg.name(), "\"), ", type, ");\n");
-              strings::StrAppend(
+                  absl::CEscape(arg.name()), "\"), ", type, ");\n");
+              absl::StrAppend(
                   out, "    Input ", arg.name(),
                   "_1 = ", "tensorflow::ops::Placeholder(scope.WithOpName(\"",
-                  arg.name(), "\"), ", type, ");\n");
+                  absl::CEscape(arg.name()), "\"), ", type, ");\n");
               absl::StrAppend(
                   out, absl::Substitute("    InputList $0({$0_0, $0_1});\n",
                                         arg.name()));
             } else {
-              strings::StrAppend(
+              absl::StrAppend(
                   out, "    auto ", arg.name(), " = ",
                   "tensorflow::ops::Placeholder(scope.WithOpName(\"",
-                  arg.name(), "\"), ", type, ");\n");
+                  absl::CEscape(arg.name()), "\"), ", type, ");\n");
             }
           }),
       absl::StrJoin(op_info.graph_op_def.attr(), "",
-                    [op_info](std::string* out, const OpDef_AttrDef attr) {
+                    [&op_info](std::string* out, const OpDef_AttrDef& attr) {
                       if (op_info.inferred_input_attrs.count(attr.name()) ==
                               0 &&
                           !attr.has_default_value()) {
-                        strings::StrAppend(out, "    auto ", attr.name(), " = ",
-                                           DefaultValue(attr), ";\n");
+                        absl::StrAppend(out, "    auto ", attr.name(), " = ",
+                                        DefaultValue(attr), ";\n");
                       }
                     }));
 
@@ -146,16 +143,16 @@ std::string WriteClassFuzzDef(const OpInfo& op_info) {
       absl::StrCat(
           op_info.api_def.arg_order().empty()
               ? absl::StrJoin(op_info.api_def.in_arg(), "",
-                              [](std::string* out, const auto api_def_arg) {
-                                strings::StrAppend(out, ", ",
-                                                   api_def_arg.name());
+                              [](std::string* out, const auto& api_def_arg) {
+                                absl::StrAppend(out, ", ", api_def_arg.name());
                               })
               : absl::StrJoin(op_info.api_def.arg_order(), "",
-                              [](std::string* out, const auto name) {
-                                strings::StrAppend(out, ", ", name);
+                              [](std::string* out, const auto& name) {
+                                absl::StrAppend(out, ", ", name);
                               }),
           absl::StrJoin(op_info.graph_op_def.attr(), "",
-                        [op_info](std::string* out, const OpDef_AttrDef attr) {
+                        [&op_info](std::string* out,
+                                   const OpDef_AttrDef& attr) {
                           if (op_info.inferred_input_attrs.count(attr.name()) ==
                                   0 &&
                               !attr.has_default_value()) {
@@ -165,29 +162,30 @@ std::string WriteClassFuzzDef(const OpInfo& op_info) {
 
   std::string fuzz_impl_signature_str = absl::Substitute(
       "  void FuzzImpl($0) final {\n",
-      absl::StrJoin(
-          op_info.graph_op_def.input_arg(), ", ",
-          [](std::string* out, const auto arg) {
-            strings::StrAppend(out, "const Tensor& ", arg.name(), "_0");
-            if (ArgIsList(arg))
-              strings::StrAppend(out, ", const Tensor& ", arg.name(), "_1");
-          }));
+      absl::StrJoin(op_info.graph_op_def.input_arg(), ", ",
+                    [](std::string* out, const auto& arg) {
+                      absl::StrAppend(out, "const Tensor& ", arg.name(), "_0");
+                      if (ArgIsList(arg))
+                        absl::StrAppend(out, ", const Tensor& ", arg.name(),
+                                        "_1");
+                    }));
 
   std::string run_inputs_str = absl::Substitute(
       "    RunInputs({$0});\n",
       absl::StrJoin(op_info.graph_op_def.input_arg(), ", ",
-                    [](std::string* out, const auto arg) {
+                    [](std::string* out, const auto& arg) {
                       if (ArgIsList(arg)) {
-                        strings::StrAppend(
-                            out, "{\"", arg.name(), "\", ", arg.name(), "_0}, ",
-                            "{\"", arg.name(), "\", ", arg.name(), "_1}");
+                        absl::StrAppend(out, "{\"", absl::CEscape(arg.name()),
+                                        "\", ", arg.name(), "_0}, ", "{\"",
+                                        absl::CEscape(arg.name()), "\", ",
+                                        arg.name(), "_1}");
                       } else {
-                        strings::StrAppend(out, "{\"", arg.name(), "\", ",
-                                           arg.name(), "_0}");
+                        absl::StrAppend(out, "{\"", absl::CEscape(arg.name()),
+                                        "\", ", arg.name(), "_0}");
                       }
                     }));
 
-  std::string fuzz_class_def = strings::StrCat(
+  std::string fuzz_class_def = absl::StrCat(
       class_signature_str, "  void BuildGraph(const Scope& scope) override {\n",
       build_graph_body, constructor_call_str, "  }\n", fuzz_impl_signature_str,
       run_inputs_str, "  }\n", "};\n");
@@ -199,39 +197,36 @@ std::string WriteFuzzTest(const OpInfo& op_info) {
   return absl::Substitute(
       "FUZZ_TEST_F(Fuzz$0, Fuzz).WithDomains($1);\n", op_info.op_name,
       absl::StrJoin(op_info.graph_op_def.input_arg(), ", ",
-                    [](std::string* out, const auto arg) {
+                    [](std::string* out, const auto& arg) {
                       absl::StrAppend(out, "AnyTensor()");
                       if (ArgIsList(arg)) absl::StrAppend(out, ", AnyTensor()");
                     }));
 }
 
 std::string FuzzerFileStart() {
-  const std::string fuzz_namespace_begin = R"namespace(
+  constexpr absl::string_view kFuzzNamespaceBegin = R"namespace(
 namespace tensorflow {
 namespace fuzzing {
 
 )namespace";
 
-  const std::string fuzz_header =
-      absl::StrCat(R"include(// This file is MACHINE GENERATED! Do not edit.
+  return absl::StrCat(R"include(// This file is MACHINE GENERATED! Do not edit.
 
 #include "tensorflow/cc/ops/const_op.h"
 #include "tensorflow/cc/ops/standard_ops.h"
 #include "tensorflow/security/fuzzing/cc/fuzz_session.h"
 #include "third_party/mediapipe/framework/port/parse_text_proto.h"
 )include",
-                   fuzz_namespace_begin);
-
-  return fuzz_header;
+                      kFuzzNamespaceBegin);
 }
 
 std::string FuzzerFileEnd() {
-  const std::string fuzz_footer = R"footer(
+  constexpr absl::string_view kFuzzFooter = R"footer(
 }  // namespace fuzzing
 }  // namespace tensorflow
 )footer";
 
-  return fuzz_footer;
+  return std::string(kFuzzFooter);
 }
 
 }  // namespace
@@ -240,92 +235,86 @@ bool OpFuzzingIsOk(const OpInfo& op_info) {
   // Skip deprecated ops.
   if (op_info.graph_op_def.has_deprecation() &&
       op_info.graph_op_def.deprecation().version() <= TF_GRAPH_DEF_VERSION) {
-    std::cout << "NOT fuzzing: " << op_info.graph_op_def.name()
-              << " is deprecated.\n";
+    LOG(INFO) << "NOT fuzzing: " << op_info.graph_op_def.name()
+              << " is deprecated.";
     return false;
   }
 
   // TODO(unda, b/249347507): should we hide fuzzers for hidden ops?
   if (op_info.api_def.visibility() == ApiDef::HIDDEN) {
-    std::cout << "NOT fuzzing: " << op_info.graph_op_def.name()
-              << " is hidden.\n";
+    LOG(INFO) << "NOT fuzzing: " << op_info.graph_op_def.name()
+              << " is hidden.";
     return false;
   }
 
   if (op_info.api_def.visibility() == ApiDef::SKIP) {
-    std::cout << "NOT fuzzing: " << op_info.graph_op_def.name()
-              << " is skipped.\n";
+    LOG(INFO) << "NOT fuzzing: " << op_info.graph_op_def.name()
+              << " is skipped.";
     return false;
   }
 
-  // TODO(unda) : zero input ops
-  std::set<std::string> zero_input_ops = {"Placeholder", "ImmutableConst"};
-  if (zero_input_ops.find(op_info.op_name) != zero_input_ops.end()) {
-    std::cout << "NOT fuzzing: " << op_info.graph_op_def.name()
-              << " takes zero inputs.\n";
+  // TODO(unda, b/253431636): zero input ops
+  static const absl::NoDestructor<absl::flat_hash_set<absl::string_view>>
+      kZeroInputOps({"Placeholder", "ImmutableConst"});
+  if (kZeroInputOps->contains(op_info.op_name)) {
+    LOG(INFO) << "NOT fuzzing: " << op_info.graph_op_def.name()
+              << " takes zero inputs.";
     return false;
   }
 
-  // TODO(unda, 253431636): constrained kernel
-  std::set<std::string> constrained_kernel = {"Diag",
-                                              "DiagPart",
-                                              "GatherNd",
-                                              "GatherV2",
-                                              "QuantizeAndDequantizeV2",
-                                              "QuantizeAndDequantizeV3",
-                                              "QuantizeAndDequantizeV4",
-                                              "QuantizeAndDequantizeV4Grad",
-                                              "QuantizedConcat",
-                                              "QuantizedInstanceNorm",
-                                              "QuantizedReshape",
-                                              "ScatterNd",
-                                              "TensorScatterUpdate"};
+  static const absl::NoDestructor<absl::flat_hash_set<absl::string_view>>
+      kConstrainedKernel({"Diag", "DiagPart", "GatherNd", "GatherV2",
+                          "QuantizeAndDequantizeV2", "QuantizeAndDequantizeV3",
+                          "QuantizeAndDequantizeV4",
+                          "QuantizeAndDequantizeV4Grad", "QuantizedConcat",
+                          "QuantizedInstanceNorm", "QuantizedReshape",
+                          "ScatterNd", "TensorScatterUpdate"});
 
   // TODO(unda, b/253431636): constrained kernel
-  if (constrained_kernel.find(op_info.op_name) != constrained_kernel.end()) {
-    std::cout << "NOT fuzzing: " << op_info.graph_op_def.name()
-              << " has a constrained kernel.\n";
+  if (kConstrainedKernel->contains(op_info.op_name)) {
+    LOG(INFO) << "NOT fuzzing: " << op_info.graph_op_def.name()
+              << " has a constrained kernel.";
     return false;
   }
 
   for (int i = 0; i < op_info.graph_op_def.input_arg_size(); ++i) {
-    const auto& arg(op_info.graph_op_def.input_arg(i));
+    const auto& arg = op_info.graph_op_def.input_arg(i);
     // TODO(unda, b/249298521): deal with inputs that are required to be refs
     if (arg.is_ref()) {
-      std::cout << "NOT fuzzing: " << op_info.graph_op_def.name()
-                << " requires a ref argument.\n";
+      LOG(INFO) << "NOT fuzzing: " << op_info.graph_op_def.name()
+                << " requires a ref argument.";
       return false;
     }
   }
 
-  std::set<std::string> unhandled_attr_types = {
-      "list(type)",   "func",         "float",      "bool",
-      "tensor",       "list(string)", "list(bool)", "list(shape)",
-      "list(tensor)", "list(attr)"};
+  static const absl::NoDestructor<absl::flat_hash_set<absl::string_view>>
+      kUnhandledAttrTypes({"list(type)", "func", "float", "bool", "tensor",
+                           "list(string)", "list(bool)", "list(shape)",
+                           "list(tensor)", "list(attr)"});
   for (int i = 0; i < op_info.graph_op_def.attr_size(); ++i) {
-    const auto& attr(op_info.graph_op_def.attr(i));
-    const auto& api_def_attr(op_info.api_def.attr(i));
+    const auto& attr = op_info.graph_op_def.attr(i);
+    const auto& api_def_attr = op_info.api_def.attr(i);
     // Skip inferred arguments
     if (op_info.inferred_input_attrs.count(attr.name()) > 0) continue;
     // Skip if it has default value (TODO(unda, b/249345399): add our custom
     // values)
     if (api_def_attr.has_default_value()) continue;
     // TODO(unda, b/253432797): handle unimplemented input attribute types
-    if (unhandled_attr_types.find(attr.type()) != unhandled_attr_types.end()) {
-      std::cout << "NOT fuzzing: " << op_info.graph_op_def.name()
-                << " requires an unhandled attr type (" << attr.type()
-                << ").\n";
+    if (kUnhandledAttrTypes->contains(attr.type())) {
+      LOG(INFO) << "NOT fuzzing: " << op_info.graph_op_def.name()
+                << " requires an unhandled attr type (" << attr.type() << ").";
       return false;
     }
   }
-  std::cout << "fuzzing: " << op_info.graph_op_def.name() << "\n";
+  LOG(INFO) << "fuzzing: " << op_info.graph_op_def.name();
   return true;
 }
 
 std::string WriteSingleFuzzer(const OpInfo& op_info, bool is_fuzzable) {
-  return absl::StrCat(
-      FuzzerFileStart(), is_fuzzable ? WriteClassFuzzDef(op_info) : "",
-      is_fuzzable ? WriteFuzzTest(op_info) : "", FuzzerFileEnd());
+  return absl::StrCat(FuzzerFileStart(),
+                      is_fuzzable ? WriteClassFuzzDef(op_info) : std::string(),
+                      is_fuzzable ? WriteFuzzTest(op_info) : std::string(),
+                      FuzzerFileEnd());
 }
 
 }  // namespace cc_op

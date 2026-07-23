@@ -39,13 +39,14 @@ limitations under the License.
 #include "xla/core/collectives/rank_id.h"
 #include "xla/core/collectives/symmetric_memory.h"
 #include "xla/hlo/ir/hlo_instructions.h"
-#include "xla/runtime/buffer_use.h"
 #include "xla/service/buffer_assignment.h"
+#include "xla/stream_executor/command_buffer.h"
 #include "xla/stream_executor/device_address.h"
-#include "xla/stream_executor/device_address_handle.h"
+#include "xla/stream_executor/device_address_allocator.h"
 #include "xla/stream_executor/memory_allocation.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/tsl/util/tied_ref.h"
+#include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -66,7 +67,10 @@ struct RaggedAllToAllConfig {
   // multiple hosts connected via a fast interconnect (e.g., MNNVL).
   bool use_multi_gpu_barrier_with_nccl_in_one_shot_kernel = false;
 
-  // If set, the will be used to determine if optimized kernels that assume a
+  CollectiveThunk::CollectivesMode collectives_mode =
+      DebugOptions::COLLECTIVES_PRIVATE_MEMORY;
+
+  // If set, this will be used to determine if optimized kernels that assume a
   // fast interconnect can be used.
   std::optional<int64_t> fast_interconnect_slice_size_override = std::nullopt;
 };
@@ -96,7 +100,7 @@ struct RaggedAllToAllStreamState {
       host_buffer_allocs;
 
   // Device memory buffer for output offsets.
-  se::DeviceAddressHandle output_offsets_device_buffer;
+  se::ScopedDeviceAddress<uint8_t> output_offsets_device_buffer;
 
   // MultiGpuBarrier: Device memory buffer for signal values (one per peer).
   // Peers write specific slots in this array to signal this device.
@@ -112,12 +116,6 @@ struct RaggedAllToAllStreamState {
   // Device memory buffer to store the output buffer pointers.
   std::unique_ptr<se::MemoryAllocation> output_buffer_ptr_storage;
 
-  // Reference to the symmetric memory handler for the pointer storage.
-  tsl::TiedRef<xla::SymmetricMemory> output_buffer_ptr_storage_symmetric_memory;
-
-  // Reference to the symmetric memory for the output buffers.
-  std::shared_ptr<xla::SymmetricMemory> output_temporary_symmetric_memory;
-
   // Contains the output buffer pointers and barrier signal buffers for all
   // peers.
   std::shared_ptr<std::vector<RaggedAllToAllRendezvousValue>> participants;
@@ -128,10 +126,6 @@ struct RaggedAllToAllStreamState {
         rank(rank),
         clique_key(std::move(clique_key)) {}
 };
-
-// Returns true if all replicas in every replica group of the collective
-// are located on the same host (node).
-bool IsAllReplicasLocal(int64_t device_count, const CollectiveConfig& config);
 
 // Thunk that performs a NCCL-based Ragged-All-to-All among CUDA GPU-based
 // replicas.
@@ -154,12 +148,18 @@ class RaggedAllToAllThunk : public CollectiveThunk {
 
   absl::Status Initialize(const InitializeParams& params) override;
 
+  absl::StatusOr<const se::CommandBuffer::Command*> Record(
+      const ExecuteParams& execute_params, const RecordParams& record_params,
+      RecordAction record_action, se::CommandBuffer* command_buffer) override;
+
   static absl::string_view GetHloOpName() { return "ragged-all-to-all-start"; }
 
   static CollectiveOpGroupMode GetGroupMode(
       const HloRaggedAllToAllInstruction* instr);
 
   const CollectiveConfig& config() const override { return config_.config; }
+
+  bool CanUseSymmetricBuffer() const override { return true; }
 
   const RaggedAllToAllConfig& ragged_all_to_all_config() const {
     return config_;
@@ -197,9 +197,7 @@ class RaggedAllToAllThunk : public CollectiveThunk {
                              Communicator& comm) override;
 
  private:
-  bool is_local(int device_count) const {
-    return IsAllReplicasLocal(device_count, config_.config);
-  }
+  bool is_local(int device_count) const;
 
   const RaggedAllToAllConfig config_;
 
@@ -241,7 +239,9 @@ absl::Status RunRaggedAllToAll(
     const std::vector<DeviceBufferPair>& original_buffers, se::Stream& stream,
     Communicator& comm, absl::Span<int64_t* const> ragged_metadata_allocs,
     const se::DeviceAddressBase& output_offsets_device_buffer,
-    bool use_symmetric_buffer);
+    CollectiveThunk::CollectivesMode collectives_mode,
+    SymmetricMemory* output_symmetric_memory = nullptr,
+    size_t output_base_offset = 0, int64_t rank = 0);
 
 // Executes an optimized "One-Shot" Ragged All-to-All collective.
 //
@@ -268,9 +268,9 @@ absl::Status RunOneShotRaggedAllToAllWithNccl(
     const GpuCliqueKey& clique_key, se::Stream& stream, RankId rank,
     std::shared_ptr<xla::SymmetricMemory> barrier_signal_symmetric_memory,
     const se::DeviceAddressBase& barrier_signal_value,
-    std::shared_ptr<xla::SymmetricMemory> output_temporary_symmetric_memory,
-    size_t output_sym_offset, int64_t num_total_updates, int64_t num_input_rows,
-    int64_t num_row_elements, absl::Span<DeviceBufferPair const> buffers);
+    SymmetricMemory* output_sym_mem, size_t output_sym_offset,
+    int64_t num_total_updates, int64_t num_input_rows, int64_t num_row_elements,
+    absl::Span<DeviceBufferPair const> buffers);
 
 }  // namespace gpu
 }  // namespace xla

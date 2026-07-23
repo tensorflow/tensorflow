@@ -75,6 +75,7 @@ limitations under the License.
 namespace xla {
 namespace {
 
+using ::absl_testing::StatusIs;
 using ::testing::Each;
 using ::testing::ElementsAre;
 using ::testing::ElementsAreArray;
@@ -629,6 +630,44 @@ TEST(PjRtCpuClientTest, CopyToMemorySpace) {
   TF_ASSERT_OK_AND_ASSIGN(auto received_literal, buffer->ToLiteral().Await());
   EXPECT_THAT(received_literal->data<int32_t>(),
               ElementsAreArray(literal.data<int32_t>()));
+}
+
+TEST(PjRtCpuClientTest, CopyTokenToDevice) {
+  TF_ASSERT_OK_AND_ASSIGN(auto client, GetPjRtCpuClient(CpuClientOptions()));
+  ASSERT_GE(client->addressable_devices().size(), 1);
+
+  auto* device = client->addressable_devices()[0];
+
+  xla::Literal literal = xla::LiteralUtil::CreateToken();
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto src_buffer,
+      client->BufferFromHostLiteral(literal, *device->default_memory_space()));
+
+  TF_ASSERT_OK_AND_ASSIGN(auto dst_buffer, src_buffer->CopyToMemorySpace(
+                                               src_buffer->memory_space()));
+
+  xla::Literal received_literal = xla::LiteralUtil::CreateToken();
+  TF_ASSERT_OK(dst_buffer->ToLiteral(&received_literal).Await());
+  EXPECT_TRUE(received_literal.shape().IsToken());
+}
+
+TEST(PjRtCpuClientTest, CopyErrorTokenToDevice) {
+  TF_ASSERT_OK_AND_ASSIGN(auto client, GetPjRtCpuClient(CpuClientOptions()));
+  ASSERT_GE(client->addressable_devices().size(), 1);
+
+  auto* device = client->addressable_devices()[0];
+
+  xla::Shape shape = ShapeUtil::MakeTokenShape();
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto src_buffer,
+      client->CreateErrorBuffer(absl::InternalError("token error"), shape,
+                                *device->default_memory_space()));
+
+  TF_ASSERT_OK_AND_ASSIGN(auto dst_buffer, src_buffer->CopyToMemorySpace(
+                                               src_buffer->memory_space()));
+
+  EXPECT_THAT(dst_buffer->ToLiteral().Await(),
+              StatusIs(absl::StatusCode::kInternal, HasSubstr("token error")));
 }
 
 TEST(PjRtCpuClientTest, AsyncTransferCallsOnDone) {
@@ -1207,6 +1246,57 @@ TEST(PjRtCpuClientTest, SerializeYnnFusions) {
                           result->at(0).at(0)->ToLiteral().Await());
   EXPECT_TRUE(LiteralTestUtil::Equal(
       LiteralUtil::CreateR1<float>(literal_data_x2_squared), *result_literal));
+}
+
+TEST(PjRtCpuClientTest, TupleInputWithErrorBuffer) {
+  static constexpr char kProgram[] = R"(
+    HloModule TupleInput
+    ENTRY TupleInput {
+      t = (f32[2], f32[2]) parameter(0)
+      p0 = f32[2] get-tuple-element(t), index=0
+      p1 = f32[2] get-tuple-element(t), index=1
+      ROOT add = f32[2] add(p0, p1)
+    })";
+
+  ASSERT_OK_AND_ASSIGN(auto client, GetPjRtCpuClient(CpuClientOptions()));
+  ASSERT_OK_AND_ASSIGN(auto hlo_module,
+                       ParseAndReturnUnverifiedModule(kProgram, {}));
+
+  XlaComputation xla_computation(hlo_module->ToProto());
+  CompileOptions compile_options;
+  compile_options.parameter_is_tupled_arguments = true;
+  ASSERT_OK_AND_ASSIGN(
+      auto pjrt_executable,
+      client->CompileAndLoad(xla_computation, compile_options));
+
+  std::vector<float> data(2, 1.0f);
+  Shape shape = ShapeUtil::MakeShape(F32, {2});
+  ASSERT_OK_AND_ASSIGN(
+      auto normal_buffer,
+      client->BufferFromHostBuffer(
+          data.data(), shape.element_type(), shape.dimensions(),
+          /*byte_strides=*/std::nullopt,
+          PjRtClient::HostBufferSemantics::kImmutableOnlyDuringCall, nullptr,
+          client->memory_spaces()[0], /*device_layout=*/nullptr));
+
+  ASSERT_OK_AND_ASSIGN(
+      auto error_buffer,
+      client->CreateErrorBuffer(absl::InternalError("forced error"), shape,
+                                client->memory_spaces()[0]));
+
+  // The executable expects a single tuple parameter which we supply as
+  // independent leaf buffers.
+  // One of the leaf buffers is an error buffer.
+  auto result = pjrt_executable->Execute(
+      /*argument_handles=*/{{normal_buffer.get(), error_buffer.get()}},
+      /*options=*/{});
+
+  ASSERT_THAT(result, absl_testing::StatusIs(tsl::error::OK));
+  ASSERT_EQ(result->size(), 1);
+  ASSERT_EQ(result->at(0).size(), 1);
+  EXPECT_THAT(
+      result->at(0).at(0)->ToLiteral().Await(),
+      absl_testing::StatusIs(tsl::error::INTERNAL, HasSubstr("forced error")));
 }
 
 }  // namespace

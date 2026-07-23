@@ -1,7 +1,7 @@
-// RUN: hlo_to_xtileir %s | FileCheck %s --check-prefixes=CHECK,CHECK-OLD
-// RUN: triton_test_correctness %s
+// RUN: hlo_to_xtileir --xla_gpu_experimental_enable_tiling_propagation=false %s | FileCheck %s --check-prefixes=CHECK,CHECK-OLD
+// RUN: triton_test_correctness --xla_gpu_experimental_enable_tiling_propagation=false %s
 
-// RUN: hlo_to_xtileir %s --use_experimental_tiling | FileCheck %s --check-prefixes=CHECK,CHECK-NEW
+// RUN: hlo_to_xtileir %s --xla_gpu_experimental_enable_tiling_propagation | FileCheck %s --check-prefixes=CHECK,CHECK-NEW
 // RUN: triton_test_correctness %s --xla_gpu_experimental_enable_tiling_propagation
 
 fusion {
@@ -9,14 +9,14 @@ fusion {
   ROOT bitcast = f32[8,3,16] bitcast(p)
 }
 
-// CHECK-OLD: #[[$ATTR_0:.+]] = #xla.indexing_map<"(pid_0) -> ((pid_0 floordiv 6) * 2), domain: pid_0 in [0, 23]">
-// CHECK-OLD: #[[$ATTR_1:.+]] = #xla.indexing_map<"(pid_0) -> (((pid_0 floordiv 2) mod 3) * 16 + (pid_0 mod 2) * 8), domain: pid_0 in [0, 23]">
-// CHECK-OLD: #[[$ATTR_2:.+]] = #xla.indexing_map<"(pid_0) -> ((pid_0 floordiv 2) mod 3), domain: pid_0 in [0, 23]">
+// CHECK-OLD: #[[$ATTR_0:.+]] = #xla.indexing_map<"(pid_0) -> ((pid_0 / 6) * 2), domain: pid_0 in [0, 23]">
+// CHECK-OLD: #[[$ATTR_1:.+]] = #xla.indexing_map<"(pid_0) -> (((pid_0 / 2) mod 3) * 16 + (pid_0 mod 2) * 8), domain: pid_0 in [0, 23]">
+// CHECK-OLD: #[[$ATTR_2:.+]] = #xla.indexing_map<"(pid_0) -> ((pid_0 / 2) mod 3), domain: pid_0 in [0, 23]">
 // CHECK-OLD: #[[$ATTR_3:.+]] = #xla.indexing_map<"(pid_0) -> ((pid_0 mod 2) * 8), domain: pid_0 in [0, 23]">
 
-// CHECK-NEW: #[[$ATTR_0:.+]] = #xla.indexing_map<"(pid) -> ((pid floordiv 6) * 2), domain: pid in [0, 23]">
+// CHECK-NEW: #[[$ATTR_0:.+]] = #xla.indexing_map<"(pid) -> ((pid / 6) * 2), domain: pid in [0, 23]">
 // CHECK-NEW: #[[$ATTR_1:.+]] = #xla.indexing_map<"(pid) -> ((pid mod 6) * 8), domain: pid in [0, 23]">
-// CHECK-NEW: #[[$ATTR_2:.+]] = #xla.indexing_map<"(pid) -> ((pid floordiv 2) mod 3), domain: pid in [0, 23]">
+// CHECK-NEW: #[[$ATTR_2:.+]] = #xla.indexing_map<"(pid) -> ((pid / 2) mod 3), domain: pid in [0, 23]">
 // CHECK-NEW: #[[$ATTR_3:.+]] = #xla.indexing_map<"(pid) -> ((pid mod 2) * 8), domain: pid in [0, 23]">
 
 // CHECK-LABEL:   xtile.entry_func @triton_fn(

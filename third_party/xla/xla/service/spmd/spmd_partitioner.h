@@ -84,6 +84,10 @@ struct SpmdPartitionerOptions {
   // Whether the entry computations' signature could change after partitioning.
   bool allow_module_signature_change = false;
 
+  // Whether the entry computations' layout signature could change after
+  // partitioning.
+  bool allow_module_layout_signature_change = false;
+
   // If true, keep and reuse the all-gather results at the cost of memory
   // pressure. If false, insert all-gather repeatedly to increase memory
   // efficiency. Then ScheduleAwareCollectiveOpsCSE can be used to remove
@@ -338,6 +342,7 @@ class SpmdPartitioner : public HloModulePass {
 
   int64_t num_partitions() const { return num_partitions_; }
   int64_t num_replicas() const { return num_replicas_; }
+  bool enable_rgv3() const { return enable_rgv3_; }
 
  protected:
   absl::StatusOr<bool> RunImpl(
@@ -411,6 +416,7 @@ class SpmdPartitioner : public HloModulePass {
   SpmdPartitionerOptions options_;
   SPMDCollectiveOpsCreator collective_ops_creator_;
   absl::flat_hash_set<absl::string_view> execution_threads_;
+  bool enable_rgv3_ = true;
 };
 
 // Class describes partition state of the data represented by an HLO created
@@ -508,6 +514,13 @@ class PartitionedHlo {
   // Returns the sharding of the SPMD instruction.
   const HloSharding& sharding() const { return hlo_->sharding(); }
 
+  // Converts the sharding to V2 if it is a NamedSharding leaf.
+  void set_sharding_may_convert_to_v2() const {
+    if (hlo_->has_sharding() && hlo_->sharding().UseNamedShardingLeaf()) {
+      hlo_->set_sharding(HloSharding::V3ToV2Sharding(hlo_->sharding()));
+    }
+  }
+
   void set_sharding(const HloSharding& sharding) {
     hlo_->set_sharding(sharding);
   }
@@ -518,6 +531,8 @@ class PartitionedHlo {
   }
 
   int64_t NewChannel() const { return (*state_.next_channel_id)++; }
+
+  bool enable_rgv3() const { return state_.partitioner->enable_rgv3(); }
 
   // Reshards the HLO to a usable partitioned input for a windowed user. Could
   // only modify the reshard cache.
@@ -584,6 +599,11 @@ class PartitionedHlo {
   std::optional<PartitionedHlo> ReshardPartialReplicateWithAllToAll(
       const HloSharding& target) const;
 
+  // Helper function to reshard when manual subgroup status differs between
+  // source and target.
+  std::optional<PartitionedHlo> TryReshardWithManualSubgroup(
+      const HloSharding& target) const;
+
   // SPMD instruction.
   HloInstruction* hlo_;
 
@@ -628,6 +648,11 @@ class PartitionedHloMX {
   PartitionedHlo scale() const { return scale_; }
 
   const HloSharding& sharding() const { return operand_.sharding(); }
+
+  void set_sharding_may_convert_to_v2() const {
+    operand_.set_sharding_may_convert_to_v2();
+    scale_.set_sharding_may_convert_to_v2();
+  }
 
   void set_sharding(const HloSharding& sharding) {
     operand_.set_sharding(sharding);
@@ -718,6 +743,7 @@ class SpmdPartitioningVisitor : public DfsHloVisitorWithDefault {
   absl::Status HandleReshape(HloInstruction* hlo) override;
   absl::Status HandleReverse(HloInstruction* hlo) override;
   absl::Status HandleRng(HloInstruction* hlo) override;
+  absl::Status HandleScan(HloInstruction* hlo) override;
   absl::Status HandleScatter(HloInstruction* hlo) override;
   absl::Status HandleSelectAndScatter(HloInstruction* hlo) override;
   absl::Status HandleSlice(HloInstruction* hlo) override;
@@ -837,6 +863,15 @@ class SpmdPartitioningVisitor : public DfsHloVisitorWithDefault {
   absl::Status Preprocess(HloInstruction* hlo) override;
   absl::Status Postprocess(HloInstruction* hlo) override;
 
+  // Partitions an associative scan whose sharding tiles the scan dimension
+  // with a distributed parallel prefix: shard-local scans, an all-gather of
+  // the carry-sized shard totals, and a local combine of each shard's
+  // exclusive prefix. Returns false (without partitioning) when the scan
+  // does not fit this scheme; the caller then falls back to moving the
+  // sharding off the scan dimension.
+  absl::StatusOr<bool> TryPartitionScanAlongScanDimension(
+      HloInstruction* hlo, const HloSharding& output_sharding);
+
   // Performs code motion for windowed dot-general loops in
   // windowed_dot_general_loops_. Invoked after the visitor finishes traversing
   // the graph.
@@ -900,6 +935,17 @@ class SpmdPartitioningVisitor : public DfsHloVisitorWithDefault {
   absl::Status HandleDUSAllPartitionedSliceDimsHaveConstantIndices(
       HloInstruction* hlo, const HloInstruction* input_tensor,
       const HloInstruction* update_tensor);
+
+  absl::StatusOr<HloInstruction*> ProcessUpdatePiece(
+      HloInstruction* hlo, const HloInstruction* input_tensor,
+      const HloInstruction* piece_update_tensor,
+      std::vector<int64_t> piece_dus_starts, HloInstruction* current_input);
+
+  absl::StatusOr<HloInstruction*> ProcessUpdatePieceExtractOperand(
+      HloInstruction* hlo, const HloInstruction* input_tensor,
+      const HloInstruction* piece_update_tensor,
+      std::vector<int64_t> piece_dus_starts, HloInstruction* current_input,
+      HloInstruction* zeroElemOp);
 
   // Handler for operations with no conflicts.
   // go/keep-sorted start

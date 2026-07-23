@@ -1,3 +1,18 @@
+# Copyright 2026 The TensorFlow Authors. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
+
 # Description:
 #   Utilities for splitting and joining large protos > 2GB.
 
@@ -188,11 +203,9 @@ cc_library(
     name = "merge",
     hdrs = ["merge.h"],
     visibility = [
-        "//platforms/darwinn/contrib/waymo:__subpackages__",
         "//tensorflow:internal",
         "//tensorflow/cc/experimental/tf2:__subpackages__",
         "//tensorflow/cc/saved_model/image_format:__subpackages__",
-        "//waymo/onboard/ml/chauffeur_net/utils:__subpackages__",
     ],
     deps = [
         ":chunk_proto_cc",

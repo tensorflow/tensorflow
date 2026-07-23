@@ -19,14 +19,20 @@ limitations under the License.
 #include <cmath>
 #include <cstdint>
 #include <optional>
+#include <string>
 #include <utility>
 #include <vector>
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
+#include "xla/backends/gpu/libraries/cub/cub_scratch_size_deviceless_lookup.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -39,9 +45,12 @@ limitations under the License.
 #include "xla/service/pattern_matcher.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/status_macros.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/stream_executor/semantic_version.h"
 #include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/logging.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
@@ -580,10 +589,73 @@ bool IsCubSortFasterOnA100(int bitwidth, int batch_size, int num_elements,
   }
 }
 
+bool IsCubSortFasterOnBlackwell(int bitwidth, int batch_size, int num_elements,
+                                int sm_count, bool has_values) {
+  // TODO(b/527496803): Run a full set of benchmarks to determine the optimal
+  // heuristic, similar to A100 and H100. The heuristic should be independent
+  // and not fallback to H100.
+
+  // Blackwell-tuned heuristics based on systematic sweeps.
+
+  // For small elements, Bitonic sort is always faster due to low overhead.
+  if (num_elements <= 1024) {
+    return false;
+  }
+
+  if (bitwidth == 16) {
+    // For 16-bit keys, CUB is faster starting at 4096 for all configurations.
+    return num_elements >= 4096;
+  }
+
+  if (bitwidth == 32) {
+    // For batch size 1, CUB is much faster starting at 4096.
+    if (batch_size == 1) {
+      return num_elements >= 4096;
+    }
+
+    // For batched sorts, CUB segmented sort can regress for small batches.
+    // Use Hopper-style batch-size thresholds.
+    if (num_elements >= 131072) {  // 1 << 17
+      return batch_size > 26;
+    }
+    if (num_elements >= 65536) {  // 1 << 16
+      return batch_size > 31;
+    }
+    if (num_elements >= 32768) {  // 1 << 15
+      return batch_size > 38;
+    }
+    if (num_elements >= 16384) {  // 1 << 14
+      return batch_size > 44;
+    }
+    if (num_elements >= 8192) {  // 1 << 13
+      return batch_size > 52;
+    }
+    if (num_elements >= 4096) {  // 1 << 12
+      return batch_size > 88 && batch_size < 128;
+    }
+    return false;
+  }
+
+  if (bitwidth == 64) {
+    if (has_values) {
+      // For 64-bit key-value sort (e.g. argsort with 64-bit indices), CUB
+      // offers no speedup over Bitonic on Blackwell even for large sizes,
+      // and can regress.
+      return false;
+    }
+    // For 64-bit key-only sort, CUB is much faster for size >= 16384.
+    return num_elements >= 16384;
+  }
+
+  // Fallback to H100 heuristics for other bitwidths (e.g. 8-bit).
+  return IsCubSortFasterOnH100(bitwidth, batch_size, num_elements, sm_count);
+}
+
 // Returns whether a compatible sort should be rewritten based on the current
 // sort mode and possibly a heuristic.
-bool ShouldRewriteCompatibleSort(se::DeviceDescription device_description,
-                                 const HloSortInstruction* sort_op) {
+bool ShouldRewriteCompatibleSort(
+    const se::DeviceDescription& device_description,
+    const HloSortInstruction* sort_op) {
   if (SortRewriter::SortMode() == SortRewriter::Mode::kAlways) {
     return true;
   }
@@ -601,10 +673,9 @@ bool ShouldRewriteCompatibleSort(se::DeviceDescription device_description,
       int batch_size = Product(operand_shape.dimensions()) / num_elements;
 
       if (cuda_cc->IsBlackwell()) {
-        // TODO(b/410480351): Verify that the H100 heuristic also works well for
-        // Blackwell or implement a custom heuristic.
-        return IsCubSortFasterOnH100(bitwidth, batch_size, num_elements,
-                                     device_description.core_count());
+        return IsCubSortFasterOnBlackwell(bitwidth, batch_size, num_elements,
+                                          device_description.core_count(),
+                                          sort_op->operand_count() == 2);
       }
       if (cuda_cc->IsHopper()) {
         return IsCubSortFasterOnH100(bitwidth, batch_size, num_elements,
@@ -620,6 +691,63 @@ bool ShouldRewriteCompatibleSort(se::DeviceDescription device_description,
   // TODO(b/410480351): The default heuristic below is pretty bad in the general
   // case. Run benchmarks on different devices and add a heuristic per device.
   return Product(operand_shape.dimensions()) > 16384;
+}
+
+struct DevicelessLookupParams {
+  std::string device_name;
+  se::SemanticVersion cub_version;
+  int32_t key_type_size;
+  std::optional<int32_t> value_type_size;
+  int64_t num_items;
+  int64_t batch_size;
+
+  std::string ToString() const {
+    std::string value_size_str =
+        value_type_size.has_value() ? absl::StrCat(*value_type_size) : "none";
+    return absl::StrFormat(
+        "device=%s, cub_version=%s, key_type_size=%d, value_type_size=%s, "
+        "num_items=%d, batch_size=%d",
+        device_name, cub_version.ToString(), key_type_size, value_size_str,
+        num_items, batch_size);
+  }
+};
+
+absl::StatusOr<DevicelessLookupParams> GetDevicelessLookupParams(
+    const se::DeviceDescription& device_description,
+    const HloSortInstruction& sort_op) {
+  std::optional<SortComputationAnalysis> sort_analysis = AnalyzeSortOp(sort_op);
+  // IsCubCompatibleSort already verified this will have a value.
+  TF_RET_CHECK(sort_analysis.has_value());
+
+  int32_t key_type_size =
+      ShapeUtil::ByteSizeOfPrimitiveType(sort_analysis->key_type);
+  std::optional<int32_t> value_type_size;
+  if (sort_analysis->value_type.has_value()) {
+    value_type_size =
+        ShapeUtil::ByteSizeOfPrimitiveType(*sort_analysis->value_type);
+  }
+
+  const Shape& key_shape = sort_op.operand(sort_analysis->key_operand)->shape();
+  int64_t num_items = Product(key_shape.dimensions());
+  int64_t back_dim = key_shape.dimensions().back();
+  TF_RET_CHECK(back_dim != 0);
+  int64_t batch_size = num_items / back_dim;
+
+  return DevicelessLookupParams{device_description.name(),
+                                device_description.cub_version(),
+                                key_type_size,
+                                value_type_size,
+                                num_items,
+                                batch_size};
+}
+
+absl::StatusOr<bool> DevicelessTableHasDataForSort(
+    const DevicelessLookupParams& params) {
+  ASSIGN_OR_RETURN(const CubScratchSizeDevicelessLookup& lookup,
+                   CubScratchSizeDevicelessLookup::GetInstance());
+  return lookup.CanLookup(params.cub_version, params.device_name,
+                          params.key_type_size, params.value_type_size,
+                          params.num_items, params.batch_size);
 }
 
 bool IsCubCompatibleSort(const se::DeviceDescription& device_description,
@@ -663,6 +791,74 @@ bool IsCubCompatibleSort(const se::DeviceDescription& device_description,
   }
   VLOG(2) << "Sort operation is compatible";
   return true;
+}
+
+absl::StatusOr<bool> ShouldRewriteSort(
+    const se::DeviceDescription& device_description,
+    const HloSortInstruction& sort, bool is_deviceless,
+    bool is_early_exit_with_layouts,
+    DebugOptions::DevicelessCubMode deviceless_cub_mode) {
+  if (!IsCubCompatibleSort(device_description, &sort)) {
+    return false;
+  }
+
+  // When compiling CUB sorts we need to determine the scratch size needed. The
+  // CUB API to do so requires a device, so we need to differentiate between
+  // deviceless and non-deviceless compilation here.
+  ASSIGN_OR_RETURN(DevicelessLookupParams lookup_params,
+                   GetDevicelessLookupParams(device_description, sort));
+
+  if (deviceless_cub_mode ==
+      DebugOptions::DEVICELESS_CUB_FORCE_ON_NO_FALLBACK) {
+    ASSIGN_OR_RETURN(bool has_deviceless_data,
+                     DevicelessTableHasDataForSort(lookup_params));
+    if (!has_deviceless_data) {
+      return absl::NotFoundError(absl::StrFormat(
+          "Missing deviceless CUB scratch size data for sort. Lookup "
+          "parameters: %s",
+          lookup_params.ToString()));
+    }
+    return true;
+  }
+
+  // If we have a device we can always query the scratch space needed, so we can
+  // always use CUB.
+  if (!is_deviceless) {
+    return true;
+  }
+  // Early exit compilations will exit before we need to determine the scratch
+  // space, so its fine to re-write to CUB even without a device.
+  if (is_early_exit_with_layouts) {
+    return true;
+  }
+
+  if (deviceless_cub_mode == DebugOptions::DEVICELESS_CUB_DISABLED) {
+    return false;
+  }
+
+  ASSIGN_OR_RETURN(bool has_deviceless_data,
+                   DevicelessTableHasDataForSort(lookup_params));
+  if (has_deviceless_data) {
+    return true;
+  }
+
+  if (deviceless_cub_mode == DebugOptions::DEVICELESS_CUB_NO_FALLBACK) {
+    return absl::NotFoundError(absl::StrFormat(
+        "Missing deviceless CUB scratch size data for sort. Lookup "
+        "parameters: %s",
+        lookup_params.ToString()));
+  }
+
+  TF_RET_CHECK(deviceless_cub_mode ==
+               DebugOptions::DEVICELESS_CUB_WITH_FALLBACK);
+  LOG_EVERY_N_SEC(WARNING, 60)
+      << "Missing deviceless CUB scratch size data for sort. Using "
+         "fallback sort algorithm rather than SortRewriter, "
+         "which will be slower at runtime. \n"
+         "To avoid this, compile with a GPU present, or add the "
+         "deviceless CUB data for your device and CUB version to "
+         "xla/backends/gpu/libraries/cub/data";
+  return false;
 }
 
 }  // namespace
@@ -730,7 +926,7 @@ absl::StatusOr<bool> SortRewriter::RunOnInstruction(
   // MLIR dictionary attributes when rewriting to the final FFI target.
   SortOptions sort_options;
   sort_options.set_descending(sort_analysis.descending);
-  TF_RETURN_IF_ERROR(custom_call->set_backend_config(sort_options));
+  RETURN_IF_ERROR(custom_call->set_backend_config(sort_options));
 
   // Build the replacement instruction.
   HloInstruction* replacement;
@@ -753,24 +949,32 @@ absl::StatusOr<bool> SortRewriter::RunOnInstruction(
   }
 
   // Replace sort operation with custom call followed by GTE.
-  TF_RETURN_IF_ERROR(
-      sort_op->parent()->ReplaceInstruction(sort_op, replacement));
+  RETURN_IF_ERROR(sort_op->parent()->ReplaceInstruction(sort_op, replacement));
   return true;
 }
 
 // Rewrites the sorts in the given computation into calls to CUB.
 absl::StatusOr<bool> SortRewriter::RunOnComputation(
-    HloComputation* computation) {
+    HloComputation* computation,
+    DebugOptions::DevicelessCubMode deviceless_cub_mode) {
   std::vector<HloSortInstruction*> sort_ops;
   for (auto* inst : computation->instructions()) {
     HloSortInstruction* sort = DynCast<HloSortInstruction>(inst);
-    if (sort != nullptr && IsCubCompatibleSort(device_description_, sort)) {
+    if (sort == nullptr) {
+      continue;
+    }
+    ASSIGN_OR_RETURN(
+        bool should_rewrite,
+        ShouldRewriteSort(device_description_, *sort, is_deviceless_,
+                          is_early_exit_with_layouts_, deviceless_cub_mode));
+    if (should_rewrite) {
       sort_ops.push_back(sort);
     }
   }
+
   bool changed = false;
   for (auto* sort : sort_ops) {
-    TF_ASSIGN_OR_RETURN(bool result, RunOnInstruction(sort));
+    ASSIGN_OR_RETURN(bool result, RunOnInstruction(sort));
     changed |= result;
   }
   return changed;
@@ -780,11 +984,20 @@ absl::StatusOr<bool> SortRewriter::RunOnComputation(
 absl::StatusOr<bool> SortRewriter::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
+  auto deviceless_cub_mode =
+      module->config().debug_options().xla_gpu_deviceless_cub_mode();
+  if (is_deviceless_ && !is_early_exit_with_layouts_ &&
+      deviceless_cub_mode == DebugOptions::DEVICELESS_CUB_DISABLED) {
+    LOG(WARNING) << "Using fallback sort algorithm rather than SortRewriter, "
+                    "which will be slower at runtime. To avoid this, "
+                    "compile with a GPU present.";
+  }
   XLA_VLOG_LINES(3, "SortRewriter::RunImpl(), before:\n" + module->ToString());
   bool changed = false;
   for (HloComputation* computation :
        module->MakeNonfusionComputations(execution_threads)) {
-    TF_ASSIGN_OR_RETURN(bool result, RunOnComputation(computation));
+    ASSIGN_OR_RETURN(bool result,
+                     RunOnComputation(computation, deviceless_cub_mode));
     changed |= result;
   }
   XLA_VLOG_LINES(3, "SortRewriter::RunImpl(), after:\n" + module->ToString());

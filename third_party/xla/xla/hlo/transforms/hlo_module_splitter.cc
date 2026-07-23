@@ -41,14 +41,6 @@ namespace xla {
 
 namespace {
 
-bool FrontendAttributesAllowInlining(const HloInstruction* instruction) {
-  auto it = instruction->frontend_attributes().map().find("inlineable");
-  if (it != instruction->frontend_attributes().map().end()) {
-    return it->second == "true";
-  }
-  return true;
-}
-
 absl::StatusOr<HloInstruction*> CreateBoundaryCopy(HloComputation* comp,
                                                    HloInstruction* inst) {
   if (inst->shape().IsToken()) {
@@ -87,45 +79,50 @@ absl::StatusOr<bool> HloModuleSplitter::RunImpl(
     std::vector<HloInstruction*> instructions =
         comp->MakeInstructionPostOrder();
     for (HloInstruction* inst : instructions) {
-      if (inst->opcode() == HloOpcode::kCall &&
-          !FrontendAttributesAllowInlining(inst)) {
-        HloComputation* callee = inst->to_apply();
+      if (inst->opcode() == HloOpcode::kCall) {
+        auto it = inst->frontend_attributes().map().find("compilation_unit");
+        if (it != inst->frontend_attributes().map().end()) {
+          HloComputation* callee = inst->to_apply();
 
-        if (!extracted_modules.contains(callee)) {
-          std::string name = name_uniquer.GetUniqueName(callee->name());
+          if (!extracted_modules.contains(callee)) {
+            std::string base_name =
+                !it->second.empty() ? it->second : std::string(callee->name());
+            std::string name = name_uniquer.GetUniqueName(base_name);
 
-          auto sub_module = std::make_unique<HloModule>(name, module->config());
-          HloCloneContext context(sub_module.get());
-          HloComputation* cloned_callee =
-              sub_module->DeepCloneComputation(callee, &context);
-          sub_module->ReplaceEntryComputation(cloned_callee);
-          extracted_modules[callee] = sub_module.get();
-          submodules_.push_back(std::move(sub_module));
+            auto sub_module =
+                std::make_unique<HloModule>(name, module->config());
+            HloCloneContext context(sub_module.get());
+            HloComputation* cloned_callee =
+                sub_module->DeepCloneComputation(callee, &context);
+            sub_module->ReplaceEntryComputation(cloned_callee);
+            extracted_modules[callee] = sub_module.get();
+            submodules_.push_back(std::move(sub_module));
+          }
+
+          // Replace call with custom-call.
+          std::vector<HloInstruction*> operands;
+          for (HloInstruction* operand : inst->operands()) {
+            ASSIGN_OR_RETURN(HloInstruction * copy,
+                             CreateBoundaryCopy(comp, operand));
+            operands.push_back(copy);
+          }
+
+          auto* custom_call = Cast<HloCustomCallInstruction>(
+              comp->AddInstruction(HloInstruction::CreateCustomCall(
+                  inst->shape(), operands, kMultiModuleCustomCallTarget,
+                  /*opaque=*/"",
+                  CustomCallApiVersion::API_VERSION_STATUS_RETURNING_UNIFIED)));
+          custom_call->set_raw_backend_config_string(
+              extracted_modules[callee]->name());
+
+          if (callee->HasSideEffect()) {
+            custom_call->set_custom_call_has_side_effect(true);
+          }
+          custom_call->set_frontend_attributes(inst->frontend_attributes());
+
+          RETURN_IF_ERROR(comp->ReplaceInstruction(inst, custom_call));
+          changed = true;
         }
-
-        // Replace call with custom-call.
-        std::vector<HloInstruction*> operands;
-        for (HloInstruction* operand : inst->operands()) {
-          ASSIGN_OR_RETURN(HloInstruction * copy,
-                           CreateBoundaryCopy(comp, operand));
-          operands.push_back(copy);
-        }
-
-        auto* custom_call = Cast<HloCustomCallInstruction>(
-            comp->AddInstruction(HloInstruction::CreateCustomCall(
-                inst->shape(), operands, kMultiModuleCustomCallTarget,
-                /*opaque=*/"",
-                CustomCallApiVersion::API_VERSION_STATUS_RETURNING_UNIFIED)));
-        custom_call->set_raw_backend_config_string(
-            extracted_modules[callee]->name());
-
-        if (callee->HasSideEffect()) {
-          custom_call->set_custom_call_has_side_effect(true);
-        }
-        custom_call->set_frontend_attributes(inst->frontend_attributes());
-
-        RETURN_IF_ERROR(comp->ReplaceInstruction(inst, custom_call));
-        changed = true;
       }
     }
   }

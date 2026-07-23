@@ -136,6 +136,10 @@ struct LowerDotGeneral : mlir::OpRewritePattern<mlir::stablehlo::DotGeneralOp> {
   mlir::LogicalResult matchAndRewrite(
       mlir::stablehlo::DotGeneralOp op,
       mlir::PatternRewriter& rewriter) const override {
+    if (mlir::isa<mlir::ComplexType>(op.getType().getElementType())) {
+      return rewriter.notifyMatchFailure(
+          op, "complex types are not supported by vector operations");
+    }
     auto lhs_vector = ReadTensorToVector(rewriter, op.getLhs());
     auto lhs_rank = lhs_vector.getType().getRank();
 
@@ -212,6 +216,10 @@ struct LowerTranspose : mlir::OpRewritePattern<mlir::stablehlo::TransposeOp> {
   mlir::LogicalResult matchAndRewrite(
       mlir::stablehlo::TransposeOp op,
       mlir::PatternRewriter& rewriter) const override {
+    if (mlir::isa<mlir::ComplexType>(op.getType().getElementType())) {
+      return rewriter.notifyMatchFailure(
+          op, "complex types are not supported by vector operations");
+    }
     mlir::Value source_vector = ReadTensorToVector(rewriter, op.getOperand());
 
     mlir::TypedValue<mlir::VectorType> dest_vector =
@@ -238,6 +246,11 @@ struct LowerReduce : mlir::OpRewritePattern<mlir::stablehlo::ReduceOp> {
 
     auto source_tensor = mlir::cast<mlir::TypedValue<mlir::RankedTensorType>>(
         op.getInputs().front());
+    if (mlir::isa<mlir::ComplexType>(
+            source_tensor.getType().getElementType())) {
+      return rewriter.notifyMatchFailure(
+          op, "complex types are not supported by vector operations");
+    }
     mlir::Value result_tensor = op.getResult(0);
     auto result_type =
         mlir::cast<mlir::RankedTensorType>(result_tensor.getType());
@@ -268,6 +281,10 @@ struct LowerBroadcastInDim
   mlir::LogicalResult matchAndRewrite(
       mlir::stablehlo::BroadcastInDimOp op,
       mlir::PatternRewriter& rewriter) const override {
+    if (mlir::isa<mlir::ComplexType>(op.getType().getElementType())) {
+      return rewriter.notifyMatchFailure(
+          op, "complex types are not supported by vector operations");
+    }
     auto source_vector = ReadTensorToVector(rewriter, op.getOperand());
     auto result_vector_type = GetVectorType(op.getType());
 
@@ -303,6 +320,10 @@ struct LowerIota : mlir::OpRewritePattern<mlir::stablehlo::IotaOp> {
   mlir::LogicalResult matchAndRewrite(
       mlir::stablehlo::IotaOp op,
       mlir::PatternRewriter& rewriter) const override {
+    if (mlir::isa<mlir::ComplexType>(op.getType().getElementType())) {
+      return rewriter.notifyMatchFailure(
+          op, "complex types are not supported by vector operations");
+    }
     if (op.getType().getRank() != 1) {
       return rewriter.notifyMatchFailure(
           op, "iota op with rank != 1 is not supported");
@@ -344,9 +365,4 @@ class ShloToVectorPass : public impl::ShloToVectorPassBase<ShloToVectorPass> {
 };
 
 }  // namespace
-
-std::unique_ptr<mlir::Pass> CreateShloToVectorPass() {
-  return std::make_unique<ShloToVectorPass>();
-}
-
 }  // namespace xla::cpu

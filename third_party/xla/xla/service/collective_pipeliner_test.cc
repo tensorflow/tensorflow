@@ -20,7 +20,6 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <queue>
-#include <set>
 #include <string>
 #include <vector>
 
@@ -61,11 +60,13 @@ limitations under the License.
 #include "xla/tsl/platform/logging.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace {
 
 using ::testing::_;
+using ::testing::UnorderedElementsAre;
 namespace op = xla::testing::opcode_matchers;
 
 class CollectivePipelinerTest : public HloHardwareIndependentTestBase {
@@ -220,6 +221,60 @@ ENTRY entry {
   EXPECT_EQ(get_tuple_index->opcode(), HloOpcode::kGetTupleElement);
   EXPECT_EQ(get_tuple_value->tuple_index(), 1);
   EXPECT_EQ(get_tuple_index->tuple_index(), 3);
+}
+
+TEST_F(CollectivePipelinerTest, SinkableFrontendAttributeBypassesCheck) {
+  constexpr absl::string_view hlo_string = R"(
+HloModule module
+
+add {
+  lhs = bf16[] parameter(0)
+  rhs = bf16[] parameter(1)
+  ROOT add = bf16[] add(lhs, rhs)
+}
+
+while_cond {
+  param = (s32[], bf16[3,8,128], bf16[3,8,128]) parameter(0)
+  gte = s32[] get-tuple-element(param), index=0
+  constant.1 = s32[] constant(3)
+  ROOT cmp = pred[] compare(gte, constant.1), direction=LT
+}
+
+while_body {
+  param = (s32[], bf16[3,8,128], bf16[3,8,128]) parameter(0)
+  get-tuple-element.394 = s32[] get-tuple-element(param), index=0
+  get-tuple-element.5 = bf16[3,8,128] get-tuple-element(param), index=2
+  constant.2557 = s32[] constant(1)
+  add.230 = s32[] add(get-tuple-element.394, constant.2557)
+  constant.2559 = s32[] constant(3)
+  subtract.139 = s32[] subtract(constant.2559, get-tuple-element.394)
+  constant.2560 = s32[] constant(-1)
+  add.231 = s32[] add(subtract.139, constant.2560)
+  constant.2561 = s32[] constant(0)
+  compare.747 = pred[] compare(add.231, constant.2561), direction=LT
+  constant.2562 = s32[] constant(2)
+  add.232 = s32[] add(subtract.139, constant.2562)
+  select.1348 = s32[] select(compare.747, add.232, add.231)
+  dynamic-slice.99 = bf16[1,8,128] dynamic-slice(get-tuple-element.5, select.1348, constant.2561, constant.2561), dynamic_slice_sizes={1,8,128}
+  mul = bf16[1,8,128] multiply(dynamic-slice.99, dynamic-slice.99)
+  ar.1 = bf16[1,8,128] all-reduce(mul), replica_groups={}, to_apply=add, channel_id=1
+  constant.broadcast.value = bf16[] constant(0)
+  constant.395 = bf16[3,8,128] broadcast(constant.broadcast.value), dimensions={}
+  ar.1.annotated = bf16[1,8,128] custom-call(ar.1), custom_call_target="annotate"
+  dynamic-update-slice.35 = bf16[3,8,128] dynamic-update-slice(constant.395, ar.1.annotated, select.1348, constant.2561, constant.2561), frontend_attributes={always_sink="1"}
+  ROOT tuple = (s32[], bf16[3,8,128], bf16[3,8,128]) tuple(add.230, dynamic-update-slice.35, get-tuple-element.5)
+}
+
+ENTRY entry {
+  c0 = s32[] constant(0)
+  p0 = bf16[3,8,128] parameter(0)
+  tuple = (s32[], bf16[3,8,128], bf16[3,8,128]) tuple(c0, p0, p0)
+  while = (s32[], bf16[3,8,128], bf16[3,8,128]) while(tuple), condition=while_cond, body=while_body
+  ROOT gte1 = bf16[3,8,128] get-tuple-element(while), index=1
+}
+)";
+  auto module = ParseAndReturnUnverifiedModule(hlo_string, config_).value();
+  EXPECT_TRUE(RunOptimizer(module.get(), /*last_run=*/true).value());
 }
 
 TEST_F(CollectivePipelinerTest, MinimalCaseWithoutDefaultLayouts) {
@@ -2043,7 +2098,6 @@ ENTRY entry {
                    collective_pipeliner_utils::PipeliningDirection::kBackward,
                    /*should_process=*/IsAllGather)
           .value());
-  XLA_VLOG_LINES(1, module->ToString());
   EXPECT_TRUE(*RunFileCheck(module->ToString(), R"(
   // CHECK: %while_body
   // CHECK: %[[cp:.+]] = {{.+}} collective-permute({{.+}})
@@ -2051,8 +2105,7 @@ ENTRY entry {
   // CHECK: ROOT {{.+}} = {{.+}} tuple({{.*}}%[[dus]], {{.*}})
   // CHECK: ENTRY %entry
   // CHECK: %[[while:.+]] = {{.+}} while({{.*}})
-  // CHECK: %[[gte:.+]] = {{.+}} get-tuple-element({{.*}}%[[while]]), index=1
-  // CHECK: %[[cp2:.+]] = {{.+}} collective-permute({{.*}}%[[gte]])
+  // CHECK: %[[cp2:.+]] = {{.+}} collective-permute({{.*}}%[[while]]#1)
   // CHECK: %[[dus:.+]] = {{.+}} dynamic-update-slice({{.*}}%[[cp2]], {{.*}})
   // CHECK: %[[tuple:.+]] = {{.+}} tuple({{.*}}%[[dus]], {{.*}})
   // CHECK: ROOT {{.+}} = {{.+}} get-tuple-element({{.*}}%[[tuple]]), index=1
@@ -2121,7 +2174,6 @@ ENTRY entry {
                    collective_pipeliner_utils::PipeliningDirection::kBackward,
                    /*should_process=*/IsAllGather)
           .value());
-  XLA_VLOG_LINES(1, module->ToString());
   EXPECT_TRUE(*RunFileCheck(module->ToString(), R"(
   // CHECK: %while_body
   // CHECK: %[[cp:.+]] = {{.+}} collective-permute({{.+}})
@@ -2129,8 +2181,7 @@ ENTRY entry {
   // CHECK: ROOT {{.+}} = {{.+}} tuple({{.*}}%[[dus]], {{.*}})
   // CHECK: ENTRY %entry
   // CHECK: %[[while:.+]] = {{.+}} while({{.+}})
-  // CHECK: %[[gte:.+]] = {{.+}} get-tuple-element({{.*}}%[[while]]), index=1
-  // CHECK: %[[cp2:.+]] = {{.+}} collective-permute({{.*}}%[[gte]])
+  // CHECK: %[[cp2:.+]] = {{.+}} collective-permute({{.*}}%[[while]]#1)
   // CHECK: %[[dus:.+]] = {{.+}} dynamic-update-slice({{.*}}%[[cp2]], {{.*}})
   // CHECK: %[[tuple:.+]] = {{.+}} tuple({{.*}}%[[dus]], {{.*}})
   // CHECK: ROOT {{.+}} = {{.+}} get-tuple-element({{.*}}%[[tuple]]), index=1
@@ -2978,10 +3029,14 @@ TEST_F(CollectivePipelinerTest, TransformRecvSendBackwards) {
   )";
 
   auto should_pipeline = [](const HloInstruction* instruction) {
-    if (!HloPredicateIsOp<HloOpcode::kRecvDone>(instruction)) return false;
+    if (!HloPredicateIsOp<HloOpcode::kRecvDone>(instruction)) {
+      return false;
+    }
     const HloRecvDoneInstruction* recv_done =
         DynCast<const HloRecvDoneInstruction>(instruction);
-    if (recv_done->is_host_transfer()) return false;
+    if (recv_done->is_host_transfer()) {
+      return false;
+    }
     // Check that the recv-done is used for non-trivial computation, which can
     // also help avoid repeatedly pipelining a loop.
     return (recv_done->user_count() == 1 && recv_done->parent() != nullptr &&
@@ -3075,8 +3130,9 @@ TEST_F(CollectivePipelinerTest,
 
   auto should_pipeline = [](const HloInstruction* instr) {
     if (!HloPredicateIsOp<HloOpcode::kRecv>(instr) &&
-        !HloPredicateIsOp<HloOpcode::kSend>(instr))
+        !HloPredicateIsOp<HloOpcode::kSend>(instr)) {
       return false;
+    }
     const HloSendRecvInstruction* send_recv =
         DynCast<const HloSendRecvInstruction>(instr);
     // Check that the Send or Recv is used for non-trivial computation, which
@@ -5700,9 +5756,7 @@ ENTRY %main.117 (Arg_0.1: f32[10,1000,8000], Arg_1.2: f32[10,8000,1000], Arg_2.3
           /*postprocess_backward_peeled_trailing=*/{},
           /*should_add_loop_invariant_op_in_chain=*/false,
           /*collective_size_threshold_to_delay_sinking=*/INT64_MAX,
-          /*unique_channel_id=*/true,
-          /*postprocess_transformed_while_loop=*/
-          host_offload_utils::MarkDynamicVariables)
+          /*unique_channel_id=*/true)
           .value());
 
   std::vector<HloInstruction*> while_loops;
@@ -5719,13 +5773,12 @@ ENTRY %main.117 (Arg_0.1: f32[10,1000,8000], Arg_1.2: f32[10,8000,1000], Arg_2.3
   TF_ASSERT_OK_AND_ASSIGN(
       WhileLoopBackendConfig config,
       while_loops[0]->backend_config<WhileLoopBackendConfig>());
+  EXPECT_EQ(config.dynamic_variables_size(), 0)
+      << "CollectivePipeliner must not write dynamic_variables.";
 
-  std::set<int64_t> dynamic_indices(
-      config.dynamic_variable_tuple_indices().begin(),
-      config.dynamic_variable_tuple_indices().end());
-
-  std::set<int64_t> expected_indices = {0, 5};
-  EXPECT_EQ(dynamic_indices, expected_indices);
+  EXPECT_THAT(
+      host_offload_utils::CollectDynamicVariableTupleIndices(while_loops[0]),
+      UnorderedElementsAre(0, 5));
 }
 
 TEST_F(CollectivePipelinerTest, HostOffloadingBackward) {
@@ -5809,9 +5862,7 @@ ENTRY %main.117 (Arg_0.1: f32[10,1000,8000], Arg_1.2: f32[10,8000,1000], Arg_2.3
           /*postprocess_backward_peeled_trailing=*/{},
           /*should_add_loop_invariant_op_in_chain=*/false,
           /*collective_size_threshold_to_delay_sinking=*/INT64_MAX,
-          /*unique_channel_id=*/true,
-          /*postprocess_transformed_while_loop=*/
-          host_offload_utils::MarkDynamicVariables)
+          /*unique_channel_id=*/true)
           .value());
 
   std::vector<HloInstruction*> while_loops;
@@ -5828,13 +5879,12 @@ ENTRY %main.117 (Arg_0.1: f32[10,1000,8000], Arg_1.2: f32[10,8000,1000], Arg_2.3
   TF_ASSERT_OK_AND_ASSIGN(
       WhileLoopBackendConfig config,
       while_loops[0]->backend_config<WhileLoopBackendConfig>());
+  EXPECT_EQ(config.dynamic_variables_size(), 0)
+      << "CollectivePipeliner must not write dynamic_variables.";
 
-  std::set<int64_t> dynamic_indices(
-      config.dynamic_variable_tuple_indices().begin(),
-      config.dynamic_variable_tuple_indices().end());
-
-  std::set<int64_t> expected_indices = {0, 8};
-  EXPECT_EQ(dynamic_indices, expected_indices);
+  EXPECT_THAT(
+      host_offload_utils::CollectDynamicVariableTupleIndices(while_loops[0]),
+      UnorderedElementsAre(0, 8));
 }
 
 TEST_F(CollectivePipelinerTest, ForwardSubtractIndexWithGTELeaf) {
@@ -6705,6 +6755,128 @@ ENTRY entry {
   // In kForward mode the all-reduce is peeled and the output is a DUS.
   const HloInstruction* root = module->entry_computation()->root_instruction();
   EXPECT_THAT(root, op::DynamicUpdateSlice(_, op::AllReduce(), _, _, _));
+}
+TEST_F(CollectivePipelinerTest, ForwardSinkLayoutConstraintAsFormattingOp) {
+  constexpr absl::string_view hlo_string = R"(
+HloModule module
+
+add {
+  lhs = bf16[] parameter(0)
+  rhs = bf16[] parameter(1)
+  ROOT add = bf16[] add(lhs, rhs)
+}
+
+while_cond {
+  param = (s32[], bf16[3,8,128], bf16[3,8,128]) parameter(0)
+  gte = s32[] get-tuple-element(param), index=0
+  constant.1 = s32[] constant(3)
+  ROOT cmp = pred[] compare(gte, constant.1), direction=LT
+}
+
+while_body {
+  param = (s32[], bf16[3,8,128], bf16[3,8,128]) parameter(0)
+  get-tuple-element.394 = s32[] get-tuple-element(param), index=0
+  get-tuple-element.395 = bf16[3,8,128] get-tuple-element(param), index=1
+  get-tuple-element.35 = bf16[3,8,128] get-tuple-element(param), index=2
+  constant.2557 = s32[] constant(1)
+  add.230 = s32[] add(get-tuple-element.394, constant.2557)
+  constant.2559 = s32[] constant(3)
+  subtract.139 = s32[] subtract(constant.2559, get-tuple-element.394)
+  constant.2560 = s32[] constant(-1)
+  add.231 = s32[] add(subtract.139, constant.2560)
+  constant.2561 = s32[] constant(0)
+  compare.747 = pred[] compare(add.231, constant.2561), direction=LT
+  constant.2562 = s32[] constant(2)
+  add.232 = s32[] add(subtract.139, constant.2562)
+  select.1348 = s32[] select(compare.747, add.232, add.231)
+  dynamic-slice.99 = bf16[1,8,128] dynamic-slice(get-tuple-element.35, select.1348, constant.2561, constant.2561), dynamic_slice_sizes={1,8,128}
+  mul = bf16[1,8,128] multiply(dynamic-slice.99, dynamic-slice.99)
+  ar.1 = bf16[1,8,128] all-reduce(mul), replica_groups={}, to_apply=add, channel_id=1
+  layout_constraint = bf16[1,8,128]{2,1,0} custom-call(ar.1), custom_call_target="LayoutConstraint", operand_layout_constraints={bf16[1,8,128]{0,1,2}}
+  dynamic-update-slice.35 = bf16[3,8,128] dynamic-update-slice(get-tuple-element.395, layout_constraint, select.1348, constant.2561, constant.2561)
+  ROOT tuple = (s32[], bf16[3,8,128], bf16[3,8,128]) tuple(add.230, dynamic-update-slice.35, get-tuple-element.35)
+}
+
+ENTRY entry {
+  c0 = s32[] constant(0)
+  p0 = bf16[3,8,128] parameter(0)
+  tuple = (s32[], bf16[3,8,128], bf16[3,8,128]) tuple(c0, p0, p0)
+  while = (s32[], bf16[3,8,128], bf16[3,8,128]) while(tuple), condition=while_cond, body=while_body
+  ROOT gte1 = bf16[3,8,128] get-tuple-element(while), index=1
+}
+)";
+  auto module = ParseAndReturnUnverifiedModule(hlo_string, config_).value();
+  EXPECT_TRUE(RunOptimizer(
+                  module.get(), /*last_run=*/true,
+                  /*level_to_operate_on=*/0,
+                  /*pipeline_use_tree=*/true,
+                  /*process_different_sized_ops=*/true,
+                  collective_pipeliner_utils::PipeliningDirection::kForwardSink)
+                  .value());
+  // Let's find the LayoutConstraint custom call.
+  const HloInstruction* custom_call =
+      FindInstruction(module.get(), HloOpcode::kCustomCall);
+  ASSERT_NE(custom_call, nullptr);
+  EXPECT_EQ(custom_call->custom_call_target(), "LayoutConstraint");
+  const auto* custom_call_instr = Cast<HloCustomCallInstruction>(custom_call);
+  ASSERT_EQ(custom_call_instr->operand_shapes_with_layout().size(), 1);
+  const Shape& constraint_shape =
+      custom_call_instr->operand_shapes_with_layout()[0];
+  EXPECT_EQ(constraint_shape.dimensions(0), 3);
+  EXPECT_EQ(constraint_shape.dimensions(1), 1);
+  EXPECT_EQ(constraint_shape.dimensions(2), 8);
+  EXPECT_EQ(constraint_shape.dimensions(3), 128);
+  EXPECT_EQ(constraint_shape.layout().minor_to_major(0), 1);
+  EXPECT_EQ(constraint_shape.layout().minor_to_major(1), 2);
+  EXPECT_EQ(constraint_shape.layout().minor_to_major(2), 3);
+  EXPECT_EQ(constraint_shape.layout().minor_to_major(3), 0);
+}
+
+TEST_F(CollectivePipelinerTest, PipelineableFrontendAttributePredicate) {
+  constexpr absl::string_view hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  p0 = f32[1] parameter(0)
+  ag_one = f32[2] all-gather(p0), dimensions={0}, replica_groups={{0,1}},
+    frontend_attributes={is_pipelineable="1"}
+  ag_true = f32[2] all-gather(p0), dimensions={0}, replica_groups={{0,1}},
+    frontend_attributes={is_pipelineable="true"}
+  ag_false = f32[2] all-gather(p0), dimensions={0}, replica_groups={{0,1}},
+    frontend_attributes={is_pipelineable="false"}
+  ag_invalid = f32[2] all-gather(p0), dimensions={0}, replica_groups={{0,1}},
+    frontend_attributes={is_pipelineable="invalid"}
+  ag_unmarked = f32[2] all-gather(p0), dimensions={0},
+    replica_groups={{0,1}}
+  annotated_add = f32[1] add(p0, p0),
+    frontend_attributes={is_pipelineable="1"}
+  ROOT tuple = (f32[2], f32[2], f32[2], f32[2], f32[2], f32[1])
+    tuple(ag_one, ag_true, ag_false, ag_invalid, ag_unmarked, annotated_add)
+}
+)";
+  auto module = ParseAndReturnUnverifiedModule(hlo_string, config_).value();
+  HloPredicate predicate =
+      HloPredicateIsPipelineableOp<HloOpcode::kAllGather>();
+
+  HloInstruction* ag_one = FindInstruction(module.get(), "ag_one");
+  HloInstruction* ag_true = FindInstruction(module.get(), "ag_true");
+  HloInstruction* ag_false = FindInstruction(module.get(), "ag_false");
+  HloInstruction* ag_invalid = FindInstruction(module.get(), "ag_invalid");
+  HloInstruction* ag_unmarked = FindInstruction(module.get(), "ag_unmarked");
+  HloInstruction* annotated_add =
+      FindInstruction(module.get(), "annotated_add");
+  ASSERT_NE(ag_one, nullptr);
+  ASSERT_NE(ag_true, nullptr);
+  ASSERT_NE(ag_false, nullptr);
+  ASSERT_NE(ag_invalid, nullptr);
+  ASSERT_NE(ag_unmarked, nullptr);
+  ASSERT_NE(annotated_add, nullptr);
+  EXPECT_TRUE(predicate(ag_one));
+  EXPECT_TRUE(predicate(ag_true));
+  EXPECT_FALSE(predicate(ag_false));
+  EXPECT_FALSE(predicate(ag_invalid));
+  EXPECT_FALSE(predicate(ag_unmarked));
+  EXPECT_FALSE(predicate(annotated_add));
 }
 
 }  // namespace

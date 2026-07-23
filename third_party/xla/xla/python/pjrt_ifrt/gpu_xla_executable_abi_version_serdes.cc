@@ -21,6 +21,7 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/cord.h"
 #include "absl/strings/string_view.h"
 #include "xla/tsl/platform/status_macros.h"
 #include "llvm/Support/Casting.h"
@@ -29,12 +30,14 @@ limitations under the License.
 #include "xla/pjrt/pjrt_abi_version.h"
 #include "xla/pjrt/pjrt_api.h"
 #include "xla/pjrt/plugin/plugin_names.h"
+#include "xla/pjrt/proto/pjrt_abi_version.pb.h"
 #include "xla/python/ifrt/serdes.h"
 #include "xla/python/pjrt_ifrt/gpu_xla_executable_abi_version.h"
 #include "xla/python/pjrt_ifrt/xla_executable_abi_version.h"
 
 namespace xla {
-absl::StatusOr<std::string> GpuXlaExecutableAbiVersionSerDes::Serialize(
+
+absl::StatusOr<absl::Cord> GpuXlaExecutableAbiVersionSerDes::Serialize(
     const xla::ifrt::Serializable& serializable,
     std::unique_ptr<xla::ifrt::SerializeOptions> options) {
   const auto& version =
@@ -42,16 +45,17 @@ absl::StatusOr<std::string> GpuXlaExecutableAbiVersionSerDes::Serialize(
 
   ASSIGN_OR_RETURN(xla::PjRtExecutableAbiVersionProto proto,
                    version.ExecutableAbiVersion().ToProto());
-  std::string executable_abi_version;
+  absl::Cord executable_abi_version;
   if (!proto.SerializeToString(&executable_abi_version)) {
     return absl::InternalError(
         "Failed to serialize PjRtExecutableAbiVersion to string.");
   }
   return executable_abi_version;
 }
+
 absl::StatusOr<std::unique_ptr<xla::ifrt::Serializable>>
 GpuXlaExecutableAbiVersionSerDes::Deserialize(
-    const std::string& serialized,
+    const absl::Cord& serialized,
     std::unique_ptr<xla::ifrt::DeserializeOptions> options) {
   xla::PjRtExecutableAbiVersionProto proto;
   if (!proto.ParseFromString(serialized)) {

@@ -148,6 +148,10 @@ class HostSendDoneThunk : public HostAsyncThunk {
 
   absl::Status ExecuteOnStream(const ExecuteParams& params) override;
 
+  // TODO(b/527907619): Implement this properly once we have figured out how
+  // buffer uses should look like for async thunks.
+  BufferUses buffer_uses() const override { return {}; }
+
   absl::StatusOr<ThunkProto> ToProto() const override;
 
   std::optional<AsyncEventsUniqueId> GetAsyncEventsUniqueId() const override;
@@ -219,6 +223,10 @@ class HostRecvDoneThunk : public HostAsyncThunk {
                     std::optional<GlobalDeviceId> device_constraint);
 
   absl::Status ExecuteOnStream(const ExecuteParams& params) override;
+
+  // TODO(b/527907619): Implement this properly once we have figured out how
+  // buffer uses should look like for async thunks.
+  BufferUses buffer_uses() const override { return {}; }
 
   absl::StatusOr<ThunkProto> ToProto() const override;
 

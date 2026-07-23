@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "google/protobuf/text_format.h"
 #include "xla/backends/cpu/target_machine_options.h"
 #include "xla/backends/profiler/plugin/plugin_tracer_impl.h"
@@ -51,6 +52,8 @@ limitations under the License.
 #include "xla/pjrt/c/pjrt_c_api_triton_extension.h"
 #include "xla/pjrt/c/pjrt_c_api_triton_internal.h"
 #include "xla/pjrt/c/pjrt_c_api_wrapper_impl.h"
+#include "xla/pjrt/c/pjrt_c_api_xla_transform_extension.h"
+#include "xla/pjrt/c/pjrt_c_api_xla_transform_internal.h"
 #include "xla/pjrt/extensions/abi_version/gpu_abi_version_extension.h"
 #include "xla/pjrt/extensions/cross_host_transfers/pjrt_c_api_cross_host_transfers_extension.h"
 #include "xla/pjrt/gpu/gpu_helpers.h"
@@ -87,6 +90,8 @@ namespace gpu_plugin {
 #define PJRT_GPU_PLUGIN_PLATFORM_NAME "CUDA"
 #endif
 
+const PJRT_Api* GetGpuPjrtApi();
+
 PJRT_Error* PJRT_Client_Create(PJRT_Client_Create_Args* args) {
   PJRT_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
       "PJRT_Client_Create_Args", PJRT_Client_Create_Args_STRUCT_SIZE,
@@ -114,6 +119,8 @@ PJRT_Error* PJRT_Client_Create(PJRT_Client_Create_Args* args) {
           {"enable_mock_nccl", PJRT_NamedValue_Type::PJRT_NamedValue_kBool},
           {"mock_gpu_topology", PJRT_NamedValue_Type::PJRT_NamedValue_kString},
           {"partition_index", PJRT_NamedValue_Type::PJRT_NamedValue_kInt64},
+          {"max_inflight_computations",
+           PJRT_NamedValue_Type::PJRT_NamedValue_kInt64},
       });
   PJRT_RETURN_IF_ERROR(
       ValidateCreateOptions(create_options, kExpectedOptionNameAndTypes));
@@ -128,7 +135,7 @@ PJRT_Error* PJRT_Client_Create(PJRT_Client_Create_Args* args) {
     auto allocator_name = std::get<std::string>(it->second);
     if (allocator_name == "default") {
       allocator_config.kind = xla::GpuAllocatorConfig::Kind::kDefault;
-    } else if (allocator_name == "platform") {
+    } else if (allocator_name == "platform" || allocator_name == "address") {
       allocator_config.kind = xla::GpuAllocatorConfig::Kind::kPlatform;
     } else if (allocator_name == "bfc") {
       allocator_config.kind = xla::GpuAllocatorConfig::Kind::kBFC;
@@ -140,7 +147,8 @@ PJRT_Error* PJRT_Client_Create(PJRT_Client_Create_Args* args) {
       return StatusToPjRtError(absl::UnimplementedError(absl::StrFormat(
           "Allocator %s not supported for PJRT GPU plugin. Supported "
           "allocator "
-          "options are: 'default', 'platform', 'bfc', 'cuda_async' and 'vmm'.",
+          "options are: 'default', 'platform', 'bfc', 'cuda_async', 'vmm' and "
+          "'address'.",
           allocator_name)));
     }
   }
@@ -200,6 +208,11 @@ PJRT_Error* PJRT_Client_Create(PJRT_Client_Create_Args* args) {
       it != create_options.end()) {
     partition_index = std::get<int64_t>(it->second);
   }
+  std::optional<int64_t> max_inflight_computations;
+  if (auto it = create_options.find("max_inflight_computations");
+      it != create_options.end()) {
+    max_inflight_computations = std::get<int64_t>(it->second);
+  }
 
   xla::GpuClientOptions options;
   options.allocator_config = allocator_config;
@@ -217,9 +230,17 @@ PJRT_Error* PJRT_Client_Create(PJRT_Client_Create_Args* args) {
   options.enable_mock_nccl = enable_mock_nccl;
   options.mock_gpu_topology = mock_gpu_topology;
   options.partition_index = partition_index;
+  if (max_inflight_computations.has_value()) {
+    int64_t v = *max_inflight_computations;
+    if (v <= 0 || v > INT32_MAX) {
+      return StatusToPjRtError(absl::InvalidArgumentError(absl::StrFormat(
+          "max_inflight_computations must be in (0, INT32_MAX], got %d", v)));
+    }
+    options.max_inflight_computations = static_cast<int>(v);
+  }
   PJRT_ASSIGN_OR_RETURN(std::unique_ptr<xla::PjRtClient> client,
                         xla::GetXlaPjrtGpuClient(options));
-  args->client = pjrt::CreateWrapperClient(std::move(client));
+  args->client = pjrt::CreateWrapperClient(GetGpuPjrtApi(), std::move(client));
   return nullptr;
 }
 
@@ -282,9 +303,9 @@ absl::StatusOr<TargetConfigAndDevices> GetTargetConfigFromOptions(
   if (target_config_proto.has_value()) {
     return {{*target_config_proto, *host_target_machine_options, {}}};
   }
-  TF_ASSIGN_OR_RETURN(xla::LocalClient * xla_client,
-                      xla::GetGpuXlaClient(/*platform_name=*/std::nullopt,
-                                           /*allowed_devices=*/std::nullopt));
+  ASSIGN_OR_RETURN(xla::LocalClient * xla_client,
+                   xla::GetGpuXlaClient(/*platform_name=*/std::nullopt,
+                                        /*allowed_devices=*/std::nullopt));
   stream_executor::StreamExecutor* executor =
       xla_client->backend().default_stream_executor();
   std::vector<int> device_ids;
@@ -585,8 +606,11 @@ const PJRT_Api* GetGpuPjrtApi() {
   static PJRT_Shardings_Extension shardings_extension =
       pjrt::CreateShardingsExtension(&cross_host_transfers_extension.base);
 
+  static PJRT_Xla_Transform_Extension xla_transform_extension =
+      pjrt::CreateXlaTransformExtension(&shardings_extension.base);
+
   static PJRT_AbiVersion_Extension abi_version_extension =
-      pjrt::CreateGpuAbiVersionExtension(&shardings_extension.base);
+      pjrt::CreateGpuAbiVersionExtension(&xla_transform_extension.base);
 
   static const PJRT_Api pjrt_api = pjrt::CreatePjrtApi(
       pjrt::gpu_plugin::PJRT_Client_Create,

@@ -16,13 +16,15 @@ limitations under the License.
 #include "xla/backends/gpu/autotuner/triton/cost_model_config_optimization.h"
 
 #include <cstdint>
+#include <memory>
 #include <optional>
 #include <set>
 #include <string>
+#include <tuple>
 #include <utility>
-#include <variant>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
@@ -30,27 +32,25 @@ limitations under the License.
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
 #include "absl/time/time.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "mlir/IR/MLIRContext.h"
 #include "xla/backends/gpu/transforms/convert_triton_gemm_config.h"
-#include "xla/codegen/tiling/symbolic_tile_analysis.h"
-#include "xla/codegen/tiling/tiled_hlo_computation.h"
-#include "xla/codegen/tiling/tiling_specification.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/utils/hlo_query.h"
 #include "xla/hlo/utils/hlo_traversal.h"
-#include "xla/service/gpu/launch_dimensions.h"
+#include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/matmul_utils.h"
 #include "xla/service/gpu/model/block_level_parameters.h"
 #include "xla/service/gpu/model/fusion_analysis_cache.h"
 #include "xla/service/gpu/model/gpu_indexing_performance_model.h"
 #include "xla/service/gpu/model/gpu_performance_model_base.h"
-#include "xla/service/gpu/model/tiling_from_block_parameters.h"
 #include "xla/service/gpu/model/triton_emitter_constraints.h"
 #include "xla/service/hlo_cost_analysis.h"
-#include "xla/service/instruction_fusion.h"
 #include "xla/stream_executor/device_description.h"
-#include "xla/tsl/platform/statusor.h"
+#include "xla/tools/hlo_decomposer.h"
 #include "xla/tsl/util/sorted_range.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
@@ -61,38 +61,36 @@ namespace cost_model_config_optimization_detail {
 // Helper struct for fields always used together.
 struct EstimationContext {
   // Fusion that contains the dot.
-  const HloFusionInstruction* fusion = nullptr;
-  const HloDotInstruction* dot = nullptr;
+  HloFusionInstruction* fusion = nullptr;
+  HloDotInstruction* dot = nullptr;
   const se::DeviceDescription& device_description;
 };
 
 absl::StatusOr<absl::Duration> EstimateRunTimeWithConfig(
-    const SymbolicTileAnalysis& analysis,
-    const HloFusionAdaptor& fusion_adaptor, const EstimationContext& context,
-    const TritonGemmConfig& config,
+    const EstimationContext& context, const TritonGemmConfig& config,
     GpuPerformanceModelWithIndexingAnalysis& cost_model,
     mlir::MLIRContext* mlir_context) {
-  TF_ASSIGN_OR_RETURN(
-      BlockLevelParameters block_params,
-      FindBlockLevelParameters(context.dot, config, mlir_context,
-                               context.device_description));
+  // Save the old backend config to restore later.
+  ASSIGN_OR_RETURN(Tile old_backend_config,
+                   context.dot->backend_config<Tile>());
 
-  Tile dot_tiling;
-  dot_tiling.add_sizes(config.block_k);
+  // Set the contracting dimension tile size.
+  Tile tile_config;
+  tile_config.add_sizes(config.block_k);
+  RETURN_IF_ERROR(context.dot->set_backend_config(tile_config));
 
-  TF_ASSIGN_OR_RETURN(Tiling tiling, TilingFromAnnotatedFusion(
-                                         analysis, block_params, &dot_tiling));
+  ASSIGN_OR_RETURN(BlockLevelParameters block_params,
+                   FindBlockLevelParameters(context.dot, config, mlir_context,
+                                            context.device_description));
 
-  TF_ASSIGN_OR_RETURN(TiledHloComputation tiled_hlo_computation,
-                      analysis.ComputeTiledComputation(tiling));
+  auto fusion_adaptor = HloFusionAdaptor::ForInstruction(context.fusion);
 
-  LaunchDimensions launch_dims = GpuPerformanceModelWithIndexingAnalysis::
-      GetLaunchDimensionsForTiledFusion(tiled_hlo_computation,
-                                        context.device_description);
+  ASSIGN_OR_RETURN(
+      EstimateRunTimeData estimate,
+      cost_model.EstimateRunTimeForTiledFusion(*fusion_adaptor, block_params));
 
-  TF_ASSIGN_OR_RETURN(EstimateRunTimeData estimate,
-                      cost_model.EstimateRunTimeForTiledHloComputation(
-                          fusion_adaptor, tiled_hlo_computation, launch_dims));
+  // Restore the old backend config.
+  RETURN_IF_ERROR(context.dot->set_backend_config(old_backend_config));
 
   return estimate.exec_time;
 }
@@ -100,32 +98,16 @@ absl::StatusOr<absl::Duration> EstimateRunTimeWithConfig(
 absl::StatusOr<OrderedEstimatesAndConfigs> EstimateConfigs(
     const EstimationContext& context,
     const std::vector<TritonGemmConfig>& configs,
-    mlir::MLIRContext* mlir_context) {
+    mlir::MLIRContext* mlir_context, bool use_experimental_tiling) {
   HloFusionAnalysisCache fusion_analysis_cache{context.device_description};
   GpuPerformanceModelWithIndexingAnalysis cost_model{
       &context.device_description, &fusion_analysis_cache,
-      HloCostAnalysis::DefaultShapeSize, mlir_context};
-
-  auto fusion_adaptor = HloFusionAdaptor::ForInstruction(context.fusion);
-
-  SymbolicTileAnalysisOrError analysis_or_error =
-      SymbolicTileAnalysis::AnalyzeFusion(
-          *fusion_adaptor, mlir_context,
-          TritonEmitterConstraints::GetBuilder(context.device_description));
-
-  if (const auto* fusion_decision =
-          std::get_if<FusionDecision>(&analysis_or_error)) {
-    return absl::InternalError(absl::StrCat("SymbolicTileAnalysis failed: ",
-                                            fusion_decision->Explain()));
-  }
-
-  SymbolicTileAnalysis analysis =
-      std::get<SymbolicTileAnalysis>(std::move(analysis_or_error));
+      HloCostAnalysis::DefaultShapeSize, mlir_context, use_experimental_tiling};
 
   OrderedEstimatesAndConfigs estimates_and_confs;
   for (const TritonGemmConfig& config : configs) {
-    absl::StatusOr<absl::Duration> estimate = EstimateRunTimeWithConfig(
-        analysis, *fusion_adaptor, context, config, cost_model, mlir_context);
+    absl::StatusOr<absl::Duration> estimate =
+        EstimateRunTimeWithConfig(context, config, cost_model, mlir_context);
     if (estimate.ok()) {
       VLOG(10) << "Estimated cost for config: " << config.ToString() << " is "
                << *estimate;
@@ -140,12 +122,25 @@ absl::StatusOr<OrderedEstimatesAndConfigs> EstimateConfigs(
 
 OrderedEstimatesAndConfigs GetTopEstimatedConfigs(
     const OrderedEstimatesAndConfigs& estimates_and_confs, int64_t n,
-    const OrderedEstimatesAndConfigs* configs_to_skip) {
+    const OrderedEstimatesAndConfigs* configs_to_skip,
+    std::optional<int> max_same_mnk, bool only_faster_than_skip) {
   absl::flat_hash_set<TritonGemmConfig> exclude_set;
+  absl::flat_hash_map<std::tuple<int, int, int>, int> mnk_counts;
+
+  std::optional<absl::Duration> limit_time;
+
   if (configs_to_skip) {
     VLOG(5) << "Skipping " << configs_to_skip->size() << " provided configs.";
     for (const auto& pair : *configs_to_skip) {
       exclude_set.insert(pair.second);
+      if (max_same_mnk.has_value()) {
+        ++mnk_counts[{pair.second.block_m, pair.second.block_n,
+                      pair.second.block_k}];
+      }
+    }
+    if (only_faster_than_skip && !configs_to_skip->empty()) {
+      limit_time = configs_to_skip->begin()->first;
+      VLOG(5) << "Mixin configs must be faster than: " << *limit_time;
     }
   }
 
@@ -156,6 +151,23 @@ OrderedEstimatesAndConfigs GetTopEstimatedConfigs(
     }
     if (exclude_set.contains(pair.second)) {
       continue;
+    }
+    if (limit_time.has_value() && pair.first >= *limit_time) {
+      VLOG(5) << "Stopping config selection because subsequent configs are not "
+                 "faster than the base set: "
+              << pair.second.ToString() << " (" << pair.first
+              << " >= " << *limit_time << ")";
+      break;
+    }
+    if (max_same_mnk.has_value()) {
+      std::tuple<int, int, int> mnk = {pair.second.block_m, pair.second.block_n,
+                                       pair.second.block_k};
+      if (mnk_counts[mnk] >= *max_same_mnk) {
+        VLOG(5) << "Skipping config due to max_same_mnk limit: "
+                << pair.second.ToString();
+        continue;
+      }
+      ++mnk_counts[mnk];
     }
     VLOG(5) << "Top config #" << top_configs.size() << ": "
             << pair.second.ToString() << " with estimate: " << pair.first;
@@ -194,6 +206,10 @@ std::string CostModelGemmTilingOptions::ToString() const {
   }
   if (mixin.has_value()) {
     absl::StrAppend(&s, " mixin: ", *mixin);
+    if (mixin_max_same_mnk.has_value()) {
+      absl::StrAppend(&s, " mixin_max_same_mnk: ", *mixin_max_same_mnk);
+    }
+    absl::StrAppend(&s, " mixin_only_faster: ", mixin_only_faster);
   }
   if (filter.has_value()) {
     absl::StrAppend(&s, " filter: ", *filter);
@@ -230,6 +246,22 @@ absl::StatusOr<CostModelGemmTilingOptions> ParseCostModelGemmTilingOptions(
         return absl::InvalidArgumentError(
             absl::StrCat("Could not parse 'mixin' value: ", value));
       }
+    } else if (key == "mixin_max_same_mnk") {
+      int val = 0;
+      if (absl::SimpleAtoi(value, &val)) {
+        parsed_options.mixin_max_same_mnk = val;
+      } else {
+        return absl::InvalidArgumentError(absl::StrCat(
+            "Could not parse 'mixin_max_same_mnk' value: ", value));
+      }
+    } else if (key == "mixin_only_faster") {
+      int val = 0;
+      if (absl::SimpleAtoi(value, &val)) {
+        parsed_options.mixin_only_faster = (val != 0);
+      } else {
+        return absl::InvalidArgumentError(
+            absl::StrCat("Could not parse 'mixin_only_faster' value: ", value));
+      }
     } else if (key == "filter") {
       float val = 0.f;
       if (absl::SimpleAtof(value, &val)) {
@@ -253,12 +285,23 @@ absl::StatusOr<std::vector<TritonGemmConfig>> OptimizeConfigsWithCostModel(
     const DebugOptions& debug_options, mlir::MLIRContext* mlir_context) {
   namespace detail = cost_model_config_optimization_detail;
 
-  const HloFusionInstruction* fusion =
-      Cast<HloFusionInstruction>(dot->parent()->FusionInstruction());
+  const bool use_experimental_tiling =
+      debug_options.xla_gpu_experimental_enable_tiling_propagation();
 
-  detail::EstimationContext context{fusion, dot, device_description};
+  std::unique_ptr<HloModule> module =
+      ExtractInstructionIntoNewModule(*dot->parent()->FusionInstruction());
+  module->mutable_config().set_debug_options(debug_options);
 
-  TF_ASSIGN_OR_RETURN(
+  auto extracted_fusion = Cast<HloFusionInstruction>(
+      module->entry_computation()->root_instruction());
+  HloDotInstruction* extracted_dot =
+      Cast<HloDotInstruction>(hlo_query::FindInstruction(
+          extracted_fusion->fused_instructions_computation(), HloOpcode::kDot));
+
+  detail::EstimationContext context{extracted_fusion, extracted_dot,
+                                    device_description};
+
+  ASSIGN_OR_RETURN(
       detail::CostModelGemmTilingOptions options,
       detail::ParseCostModelGemmTilingOptions(
           debug_options.xla_gpu_experimental_cost_model_gemm_tiling_options()));
@@ -272,21 +315,27 @@ absl::StatusOr<std::vector<TritonGemmConfig>> OptimizeConfigsWithCostModel(
   auto get_estimated_all_configs =
       [&]() -> const absl::StatusOr<detail::OrderedEstimatesAndConfigs>& {
     if (!estimated_all_configs.has_value()) {
-      estimated_all_configs =
-          detail::EstimateConfigs(context, all_configs, mlir_context);
+      estimated_all_configs = detail::EstimateConfigs(
+          context, all_configs, mlir_context, use_experimental_tiling);
     }
     return *estimated_all_configs;
   };
+
+  // If true, original optimized configs that could not be estimated are kept in
+  // the results.
+  // Steps that filter or replace the original set would set this flag to false.
+  bool must_keep_original_configs = true;
 
   detail::OrderedEstimatesAndConfigs current_set;
 
   // Create the base set by either picking the top configs or estimating the
   // existing set.
   if (options.top.has_value()) {
-    TF_ASSIGN_OR_RETURN(
+    ASSIGN_OR_RETURN(
         detail::OrderedEstimatesAndConfigs base_config_set,
         options.top_from_default
-            ? EstimateConfigs(context, optimized_configs, mlir_context)
+            ? EstimateConfigs(context, optimized_configs, mlir_context,
+                              use_experimental_tiling)
             : get_estimated_all_configs());
 
     VLOG(1) << "Cost Model: Selecting top " << *options.top << " configs from "
@@ -294,11 +343,14 @@ absl::StatusOr<std::vector<TritonGemmConfig>> OptimizeConfigsWithCostModel(
 
     current_set =
         detail::GetTopEstimatedConfigs(base_config_set, *options.top, nullptr);
+
+    // We're overriding the original set, so we can drop original configs.
+    must_keep_original_configs = false;
   } else {
     VLOG(1) << "Cost Model: Using default set";
-    TF_ASSIGN_OR_RETURN(
-        detail::OrderedEstimatesAndConfigs base_config_set,
-        EstimateConfigs(context, optimized_configs, mlir_context));
+    ASSIGN_OR_RETURN(detail::OrderedEstimatesAndConfigs base_config_set,
+                     EstimateConfigs(context, optimized_configs, mlir_context,
+                                     use_experimental_tiling));
     current_set = std::move(base_config_set);
   }
 
@@ -306,11 +358,13 @@ absl::StatusOr<std::vector<TritonGemmConfig>> OptimizeConfigsWithCostModel(
   if (options.mixin.has_value()) {
     VLOG(1) << "Cost Model: Mixing in top " << *options.mixin << " configs";
 
-    TF_ASSIGN_OR_RETURN(const detail::OrderedEstimatesAndConfigs& all,
-                        get_estimated_all_configs());
+    ASSIGN_OR_RETURN(const detail::OrderedEstimatesAndConfigs& all,
+                     get_estimated_all_configs());
 
     detail::OrderedEstimatesAndConfigs top_non_present =
-        detail::GetTopEstimatedConfigs(all, *options.mixin, &current_set);
+        detail::GetTopEstimatedConfigs(all, *options.mixin, &current_set,
+                                       options.mixin_max_same_mnk,
+                                       options.mixin_only_faster);
 
     current_set.insert(top_non_present.begin(), top_non_present.end());
   }
@@ -320,6 +374,9 @@ absl::StatusOr<std::vector<TritonGemmConfig>> OptimizeConfigsWithCostModel(
     VLOG(1) << "Cost Model: Filtering with threshold " << *options.filter;
     current_set =
         detail::FilterConfigsByRatioVsFastest(current_set, *options.filter);
+
+    // We're filtering the set, so we can drop the original configs.
+    must_keep_original_configs = false;
   }
 
   if (!current_set.empty()) {
@@ -336,6 +393,20 @@ absl::StatusOr<std::vector<TritonGemmConfig>> OptimizeConfigsWithCostModel(
   for (const auto& pair : current_set) {
     result.push_back(pair.second);
   }
+
+  if (must_keep_original_configs) {
+    // Add configs from the original optimized set if they are missing.
+    // They might have been omitted from the estimates if they e.g. could not
+    // be estimated by the model or do not satisfy the tiling constraints.
+    absl::flat_hash_set<TritonGemmConfig> result_set(result.begin(),
+                                                     result.end());
+    for (const TritonGemmConfig& config : optimized_configs) {
+      if (result_set.insert(config).second) {
+        result.push_back(config);
+      }
+    }
+  }
+
   VLOG(1) << "Returning " << result.size() << " processed configs";
   return result;
 }

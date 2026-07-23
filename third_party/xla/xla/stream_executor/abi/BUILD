@@ -1,3 +1,18 @@
+# Copyright 2026 The OpenXLA Authors. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
+
 load("//xla:xla.default.bzl", "xla_cc_test")
 load("//xla/stream_executor:build_defs.bzl", "stream_executor_friends")
 load("//xla/tsl:tsl.bzl", "internal_visibility")
@@ -38,6 +53,7 @@ xla_cc_test(
     srcs = ["executable_abi_version_test.cc"],
     deps = [
         ":executable_abi_version",
+        ":executable_abi_version_proto_cc",
         "//xla/stream_executor:device_description",
         "//xla/stream_executor:semantic_version",
         "//xla/stream_executor/cuda:cuda_compute_capability",
@@ -82,6 +98,7 @@ cc_library(
     hdrs = ["runtime_abi_version_manager.h"],
     deps = [
         ":runtime_abi_version",
+        ":runtime_abi_version_proto_cc",
         ":runtime_abi_version_resolver",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/base:no_destructor",
@@ -100,6 +117,7 @@ xla_cc_test(
     srcs = ["runtime_abi_version_manager_test.cc"],
     deps = [
         ":runtime_abi_version_manager",
+        ":runtime_abi_version_proto_cc",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_matchers",
         "@com_google_absl//absl/strings:string_view",

@@ -333,11 +333,11 @@ absl::Status FlattenSignature(
   }
 }
 
-absl::optional<int> FindNodeAtPath(absl::string_view path,
-                                   const SavedObjectGraph& object_graph) {
+std::optional<int> FindNodeAtPath(absl::string_view path,
+                                  const SavedObjectGraph& object_graph) {
   const auto& nodes = object_graph.nodes();
   if (nodes.empty()) {
-    return absl::nullopt;
+    return std::nullopt;
   }
 
   // Starting from the root, iterate through the saved object graph, matching
@@ -353,7 +353,7 @@ absl::optional<int> FindNodeAtPath(absl::string_view path,
           return object_name == obj.local_name();
         });
     if (child_node_iter == current_node->children().end()) {
-      return absl::nullopt;
+      return std::nullopt;
     }
 
     node_id = child_node_iter->node_id();

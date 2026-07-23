@@ -14,14 +14,14 @@ limitations under the License.
 ==============================================================================*/
 
 #include <gtest/gtest.h>
-#include "xla/backends/gpu/tests/gpu_codegen_test.h"
+#include "absl/status/status_matchers.h"
+#include "xla/backends/gpu/tests/gpu_pjrt_codegen_test.h"
 #include "tsl/platform/test.h"
 
-namespace xla {
-namespace gpu {
+namespace xla::gpu {
 namespace {
 
-class GpuAlignmentTest : public GpuCodegenTest {};
+class GpuAlignmentTest : public GpuPjRtCodegenTest {};
 
 TEST_F(GpuAlignmentTest, Test) {
   const char* hlo_string = R"(
@@ -39,12 +39,11 @@ ENTRY main {
 }
 )";
 
-  CompileAndVerifyIr(
+  EXPECT_OK(CompileAndVerifyIr(
       hlo_string,
       "CHECK: {{.*}}align 256 dereferenceable(800) %{{.*}}align 16 "
-      "dereferenceable(400) %{{.*}}align 256 dereferenceable(600) %");
+      "dereferenceable(400) %{{.*}}align 256 dereferenceable(600) %"));
 }
 
 }  // namespace
-}  // namespace gpu
-}  // namespace xla
+}  // namespace xla::gpu

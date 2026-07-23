@@ -55,6 +55,7 @@ tensorflow/tools/toolchains/win2022/20260322/BUILD:
 tensorflow/tools/toolchains/win2022/BUILD:
 tensorflow/tools/toolchains/win_1803/py38/BUILD:
 tensorflow/tools/toolchains/win_1803/py39/BUILD:
+xla/build_tools/rocm/BUILD:
 xla/third_party/absl/com_google_absl.BUILD:
 xla/third_party/clang_toolchain/cc_configure_clang.bzl:
 xla/third_party/clang_toolchain/download_clang.bzl:
@@ -120,6 +121,7 @@ xla/third_party/hwloc/BUILD.system:
 xla/third_party/hwloc/static-components.h:
 xla/third_party/implib_so/get_symbols.py:
 xla/third_party/implib_so/make_stub.py:
+xla/third_party/libdrm/BUILD:
 xla/third_party/llvm/run_lit.sh:
 xla/third_party/llvm_openmp/cmake_vars.bzl:
 xla/third_party/llvm_openmp/expand_cmake_vars.py:
@@ -142,12 +144,14 @@ xla/third_party/nvshmem/hermetic/nvshmem_redist_init_repository.bzl:
 xla/third_party/nvshmem/nvshmem.BUILD:
 xla/third_party/nvshmem/workspace.bzl:
 xla/third_party/nvtx/LICENSE:
+xla/third_party/oneccl/LICENSE:
 xla/third_party/ortools/glpk.BUILD:
 xla/third_party/ortools/ortools.patch:
 xla/third_party/pybind11.BUILD:
 xla/third_party/six.BUILD:
 xla/third_party/snappy.BUILD:
 xla/third_party/spirv_llvm_translator/spirv_llvm_translator.BUILD:
+xla/third_party/sqlite/BUILD:
 xla/third_party/tensorrt/BUILD.tpl:
 xla/third_party/tensorrt/LICENSE:
 xla/third_party/tensorrt/build_defs.bzl.tpl:

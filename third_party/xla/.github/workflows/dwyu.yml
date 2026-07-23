@@ -24,7 +24,7 @@ on:
 env:
   GOBIN: "/usr/local/bin"
   PYTHONPATH: "."
-  BANT_VERSION: "0.2.6"
+  BANT_VERSION: "0.2.8"
 
 jobs:
   dwyu:
@@ -36,7 +36,7 @@ jobs:
     continue-on-error: true
     steps:
       - name: "Checking out repository"
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           fetch-depth: '0'
           persist-credentials: false
@@ -46,7 +46,7 @@ jobs:
         run: |
           curl -fSL "https://github.com/hzeller/bant/releases/download/v${BANT_VERSION}/bant-v${BANT_VERSION}-linux-static-x86_64.tar.gz" -o /tmp/bant.tar.gz
           tar xzf /tmp/bant.tar.gz -C /tmp
-          sudo install /tmp/bant-v${BANT_VERSION}-linux-static-x86_64/bin/bant /usr/local/bin/bant
+          sudo install "/tmp/bant-v${BANT_VERSION}-linux-static-x86_64/bin/bant" /usr/local/bin/bant
       - name: "Install bazelisk"
         run: parallel --ungroup --retries 3 --delay 15 --nonall -- go install github.com/bazelbuild/bazelisk@24651ab # v1.20.0
       - name: "Run bazel build --nobuild //xla/... with retries"

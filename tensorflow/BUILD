@@ -117,7 +117,7 @@ PACKAGE_STATIC_DEPS = [
     "@nccl_archive//:__subpackages__",
     "@net_zstd//:__subpackages__",
     "@nvtx_archive//:__subpackages__",
-    "@onednn//:__subpackages__",
+    "@onednn_async//:__subpackages__",
     "@org_sqlite//:__subpackages__",
     "@platforms//:__subpackages__",
     "@snappy//:__subpackages__",
@@ -190,7 +190,10 @@ package(
 #         "notsan",
 #         "noubsan",
 #     ],
-#     deps = [":copybara_config"],
+#     deps = [
+#         ":copybara_config",
+#         "//third_party/xla:leakr_badwords.dic",
+#     ],
 # )
 #
 # action_config_test(
@@ -1035,9 +1038,6 @@ package_group(
         "//learning/pathways/...",
         "//learning/serving/contrib/tfrt/mlir/canonical_ops/...",
         "//learning/serving/experimental/remote_predict/...",
-        "//perftools/accelerators/xprof/convert/...",
-        "//perftools/accelerators/xprof/integration_tests/...",
-        "//smartass/brain/...",
         "//tensorflow/...",
         "//tensorflow_decision_forests/...",
         "//tensorflow_federated/...",
@@ -1052,9 +1052,6 @@ package_group(
         "//third_party/py/keras/...",
         "//third_party/py/tf_keras/...",
         "//third_party/yggdrasil_decision_forests/...",
-        "//waymo/accelerator/...",
-        "//waymo/ml/cn/...",
-        "//waymo/ml/models/...",
     ],
 )
 
@@ -1259,7 +1256,7 @@ pywrap_aware_tf_cc_shared_object(
         "//tensorflow:windows": [
         ],
         # copybara:uncomment_begin(google-only)
-        # "//tools/cpp:asan_build": [
+        # "@bazel_tools//tools/cpp:asan_build": [
         # "-Wl,--version-script,$(location //tensorflow/c:version_script.lds)",
         # ],
         # "//tools/cpp:hwasan_build": [

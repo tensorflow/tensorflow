@@ -22,7 +22,9 @@ limitations under the License.
 
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/autotuning.pb.h"
 #include "xla/backends/autotuner/codegen_backend.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -37,9 +39,6 @@ limitations under the License.
 #include "xla/stream_executor/blas.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/gpu/gpu_blas_lt.h"
-#include "xla/stream_executor/stream.h"
-#include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 
@@ -89,24 +88,27 @@ CublasLtBackend::GetSupportedConfigs(const HloInstruction& instr) {
     return std::vector<std::unique_ptr<BackendConfig>>();
   }
 
+  if (stream_executor() == nullptr) {
+    return absl::InvalidArgumentError(
+        "CublasLtBackend cannot enumerate configs in deviceless mode.");
+  }
+
   GpuBackendConfig gpu_config =
       instr.backend_config<GpuBackendConfig>().value();
   const GemmBackendConfig& backend_config = gpu_config.gemm_backend_config();
 
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       GemmConfig gemm_config,
       GemmConfig::For(
           &instr, target_config().device_description.gpu_compute_capability()));
 
-  TF_ASSIGN_OR_RETURN(BlasLt::Epilogue epilogue,
-                      AsBlasLtEpilogue(backend_config.epilogue()));
+  ASSIGN_OR_RETURN(BlasLt::Epilogue epilogue,
+                   AsBlasLtEpilogue(backend_config.epilogue()));
 
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<se::Stream> stream,
-                      stream_executor()->CreateStream());
+  ASSIGN_OR_RETURN(BlasLt * blas_lt, se::gpu::BlasLt::Get(stream_executor()));
 
-  TF_ASSIGN_OR_RETURN(
-      std::unique_ptr<BlasLt::MatmulPlan> plan,
-      se::gpu::BlasLt::GetMatmulPlan(stream.get(), gemm_config, epilogue));
+  ASSIGN_OR_RETURN(std::unique_ptr<BlasLt::MatmulPlan> plan,
+                   blas_lt->GetMatmulPlan(gemm_config, epilogue));
 
   const Shape& output_shape = instr.shape();
   if (!output_shape.IsTuple() || output_shape.tuple_shapes().empty()) {
@@ -117,20 +119,18 @@ CublasLtBackend::GetSupportedConfigs(const HloInstruction& instr) {
   const int64_t workspace_size =
       ShapeUtil::ByteSizeOf(output_shape.tuple_shapes().back());
 
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       std::vector<BlasLt::MatmulAlgorithm> algorithms,
-      plan->GetAlgorithms(stream.get(), GemmConfig::kNumAlgorithms,
-                          workspace_size));
+      plan->GetAlgorithms(GemmConfig::kNumAlgorithms, workspace_size));
   int num_algorithms = algorithms.size();
   std::vector<std::unique_ptr<BackendConfig>> configs;
   configs.reserve(num_algorithms);
   for (int i = 0; i < num_algorithms; ++i) {
-    CublasLtBackendConfig gemm_key;
-    gemm_key.set_algorithm(i);
-    gemm_key.set_autotune_workspace_size(workspace_size);
-    auto any = std::make_unique<google::protobuf::Any>();
-    any->PackFrom(gemm_key);
-    configs.push_back(std::move(any));
+    auto config = std::make_unique<BackendConfig>();
+    auto* gemm_key = config->mutable_gemm();
+    gemm_key->set_algorithm(i);
+    gemm_key->set_autotune_workspace_size(workspace_size);
+    configs.push_back(std::move(config));
   }
 
   return configs;
@@ -143,30 +143,29 @@ CublasLtBackend::GetDefaultConfig(const HloInstruction& instr) {
         "Not a CublasLt custom call instruction.");
   }
 
-  AutotuneResult::GemmKey gemm_key;
-  gemm_key.set_algorithm(0);
+  auto config = std::make_unique<BackendConfig>();
+  auto* gemm_key = config->mutable_gemm();
+  gemm_key->set_algorithm(0);
   // We don't know the workspace size in advance, so we pick a reasonably large
   // value that is likely to be sufficient.
-  gemm_key.set_autotune_workspace_size(4194304);  // 4MiB
-  auto any = std::make_unique<google::protobuf::Any>();
-  any->PackFrom(gemm_key);
-  return any;
+  gemm_key->set_autotune_workspace_size(4194304);  // 4MiB
+  return config;
 }
 
 absl::Status CublasLtBackend::ApplyConfig(HloInstruction& instr,
                                           const BackendConfig& config) {
-  CublasLtBackendConfig gemm_key;
-  if (!config.UnpackTo(&gemm_key)) {
+  if (!config.has_gemm()) {
     return absl::InvalidArgumentError(
-        "Failed to unpack CublasLtBackendConfig from Any.");
+        "Expected GemmKey config for CublasLtBackend.");
   }
-  TF_ASSIGN_OR_RETURN(GpuBackendConfig gpu_config,
-                      instr.backend_config<GpuBackendConfig>());
+  const AutotuneResult::GemmKey& gemm_key = config.gemm();
+  ASSIGN_OR_RETURN(GpuBackendConfig gpu_config,
+                   instr.backend_config<GpuBackendConfig>());
   GemmBackendConfig& backend_config = *gpu_config.mutable_gemm_backend_config();
   backend_config.set_selected_algorithm(gemm_key.algorithm());
   backend_config.set_autotune_workspace_size(
       gemm_key.autotune_workspace_size());
-  TF_RETURN_IF_ERROR(instr.set_backend_config(std::move(gpu_config)));
+  RETURN_IF_ERROR(instr.set_backend_config(std::move(gpu_config)));
 
   if (instr.shape().IsTuple() && !instr.shape().tuple_shapes().empty()) {
     Shape* workspace_shape = instr.mutable_shape()->mutable_tuple_shapes(

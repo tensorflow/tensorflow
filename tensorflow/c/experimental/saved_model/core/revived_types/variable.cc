@@ -16,13 +16,13 @@ limitations under the License.
 #include "tensorflow/c/experimental/saved_model/core/revived_types/variable.h"
 
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
 
 #include "absl/log/log.h"
 #include "absl/status/status.h"
-#include "absl/types/optional.h"
 #include "tensorflow/c/eager/immediate_execution_context.h"
 #include "tensorflow/c/eager/immediate_execution_tensor_handle.h"
 #include "tensorflow/c/experimental/saved_model/core/ops/variable_ops.h"
@@ -40,7 +40,7 @@ limitations under the License.
 namespace tensorflow {
 
 Variable::Variable(ImmediateExecutionContext* ctx, DataType dtype,
-                   TensorShape shape, absl::optional<std::string> name,
+                   TensorShape shape, std::optional<std::string> name,
                    ImmediateTensorHandlePtr handle)
     : TensorHandleConvertible(std::move(handle)),
       name_(name.has_value() ? *name : "Variable"),
@@ -76,7 +76,7 @@ absl::Status Variable::ReadValue(ImmediateTensorHandlePtr* out) {
 
 absl::Status Variable::CreateUninitialized(
     ImmediateExecutionContext* ctx, DataType dtype, TensorShape shape,
-    absl::optional<std::string> name, const char* raw_device_name,
+    std::optional<std::string> name, const char* raw_device_name,
     const std::vector<std::string>& component_devices,
     std::unique_ptr<Variable>* output) {
   ImmediateTensorHandlePtr handle;

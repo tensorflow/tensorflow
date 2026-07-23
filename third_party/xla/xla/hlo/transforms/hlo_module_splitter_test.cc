@@ -70,7 +70,7 @@ callee {
 ENTRY entry {
   p0 = f32[] parameter(0)
   p1 = f32[] parameter(1)
-  ROOT call = f32[] call(p0, p1), to_apply=callee, frontend_attributes={inlineable="false"}
+  ROOT call = f32[] call(p0, p1), to_apply=callee, frontend_attributes={compilation_unit="my_callee"}
 }
 )";
 
@@ -80,7 +80,7 @@ ENTRY entry {
 
   const char* expected_hlo = R"(
 CHECK: ENTRY %entry
-CHECK:   ROOT {{.*}} custom-call({{.*}}), custom_call_target="_xla_multi_module_call",{{.*}}backend_config="callee"
+CHECK:   ROOT {{.*}} custom-call({{.*}}), custom_call_target="_xla_multi_module_call",{{.*}}backend_config="my_callee"
 )";
 
   ASSERT_OK_AND_ASSIGN(bool filecheck_ok,
@@ -114,11 +114,11 @@ inner {
 }
 outer {
   p0 = f32[] parameter(0)
-  ROOT call = f32[] call(p0), to_apply=inner, frontend_attributes={inlineable="false"}
+  ROOT call = f32[] call(p0), to_apply=inner, frontend_attributes={compilation_unit="my_inner"}
 }
 ENTRY entry {
   p0 = f32[] parameter(0)
-  ROOT call = f32[] call(p0), to_apply=outer, frontend_attributes={inlineable="false"}
+  ROOT call = f32[] call(p0), to_apply=outer, frontend_attributes={compilation_unit="my_outer"}
 }
 )";
 
@@ -131,7 +131,7 @@ ENTRY entry {
 
   const char* expected_hlo = R"(
 CHECK: ENTRY %entry
-CHECK:   ROOT {{.*}} custom-call({{.*}}), custom_call_target="_xla_multi_module_call",{{.*}}backend_config="outer"
+CHECK:   ROOT {{.*}} custom-call({{.*}}), custom_call_target="_xla_multi_module_call",{{.*}}backend_config="my_outer"
 )";
 
   ASSERT_OK_AND_ASSIGN(bool filecheck_ok,
@@ -140,7 +140,7 @@ CHECK:   ROOT {{.*}} custom-call({{.*}}), custom_call_target="_xla_multi_module_
 
   HloModule* outer_mod = nullptr;
   for (const auto& m : submodules) {
-    if (m->name() == "outer") {
+    if (m->name() == "my_outer") {
       outer_mod = m.get();
     }
   }
@@ -148,7 +148,7 @@ CHECK:   ROOT {{.*}} custom-call({{.*}}), custom_call_target="_xla_multi_module_
 
   const char* expected_outer_hlo = R"(
 CHECK: ENTRY %outer
-CHECK:   ROOT {{.*}} custom-call({{.*}}), custom_call_target="_xla_multi_module_call",{{.*}}backend_config="inner"
+CHECK:   ROOT {{.*}} custom-call({{.*}}), custom_call_target="_xla_multi_module_call",{{.*}}backend_config="my_inner"
 )";
 
   ASSERT_OK_AND_ASSIGN(bool outer_filecheck_ok,
@@ -170,7 +170,7 @@ callee {
 }
 ENTRY entry {
   p0 = f32[] parameter(0)
-  ROOT call = token[] call(p0), to_apply=callee, frontend_attributes={inlineable="false"}
+  ROOT call = token[] call(p0), to_apply=callee, frontend_attributes={compilation_unit="my_callee"}
 }
 )";
 
@@ -180,7 +180,7 @@ ENTRY entry {
 
   const char* expected_hlo = R"(
 CHECK: ENTRY %entry
-CHECK:   ROOT {{.*}} custom-call({{.*}}), custom_call_target="_xla_multi_module_call",{{.*}}custom_call_has_side_effect=true,{{.*}}backend_config="callee"
+CHECK:   ROOT {{.*}} custom-call({{.*}}), custom_call_target="_xla_multi_module_call",{{.*}}custom_call_has_side_effect=true,{{.*}}backend_config="my_callee"
 )";
 
   ASSERT_OK_AND_ASSIGN(bool filecheck_ok,
@@ -208,7 +208,7 @@ callee {
 }
 ENTRY entry {
   p0 = f32[10] parameter(0)
-  ROOT call = f32[] call(p0), to_apply=callee, frontend_attributes={inlineable="false"}
+  ROOT call = f32[] call(p0), to_apply=callee, frontend_attributes={compilation_unit="my_callee"}
 }
 )";
 
@@ -218,7 +218,7 @@ ENTRY entry {
 
   const char* expected_hlo = R"(
 CHECK: ENTRY %entry
-CHECK:   ROOT {{.*}} custom-call({{.*}}), custom_call_target="_xla_multi_module_call",{{.*}}backend_config="callee"
+CHECK:   ROOT {{.*}} custom-call({{.*}}), custom_call_target="_xla_multi_module_call",{{.*}}backend_config="my_callee"
 )";
 
   ASSERT_OK_AND_ASSIGN(bool filecheck_ok,
@@ -235,7 +235,7 @@ callee {
 }
 ENTRY entry {
   p0 = f32[] parameter(0)
-  ROOT call = f32[] call(p0), to_apply=callee, frontend_attributes={inlineable="false"}
+  ROOT call = f32[] call(p0), to_apply=callee, frontend_attributes={compilation_unit="my_callee"}
 }
 )";
 
@@ -260,7 +260,7 @@ HloModule module
 ENTRY entry {
   p0 = f32[] parameter(0)
   p1 = f32[] parameter(1)
-  ROOT add = f32[] add(p0, p1), frontend_attributes={inlineable="false"}
+  ROOT add = f32[] add(p0, p1), frontend_attributes={compilation_unit="add"}
 }
 )";
 
@@ -270,6 +270,30 @@ ENTRY entry {
   ASSERT_OK_AND_ASSIGN(bool changed, splitter.Run(module.get()));
 
   // Verify that the splitter ignored the non-kCall instruction.
+  EXPECT_FALSE(changed);
+  EXPECT_TRUE(splitter.submodules().empty());
+}
+
+TEST_F(HloModuleSplitterTest, IgnoreCallWithInlineableFalseOnly) {
+  const char* hlo_string = R"(
+HloModule module
+callee {
+  p0 = f32[] parameter(0)
+  ROOT neg = f32[] negate(p0)
+}
+ENTRY entry {
+  p0 = f32[] parameter(0)
+  ROOT call = f32[] call(p0), to_apply=callee, frontend_attributes={inlineable="false"}
+}
+)";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+
+  HloModuleSplitter splitter;
+  ASSERT_OK_AND_ASSIGN(bool changed, splitter.Run(module.get()));
+
+  // Verify that the splitter ignored the call because it only has
+  // inlineable="false" (no compilation_unit)
   EXPECT_FALSE(changed);
   EXPECT_TRUE(splitter.submodules().empty());
 }

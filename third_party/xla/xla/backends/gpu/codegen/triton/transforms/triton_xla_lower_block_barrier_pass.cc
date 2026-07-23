@@ -14,7 +14,6 @@ limitations under the License.
 ==============================================================================*/
 
 #include <cstdint>
-#include <memory>
 #include <utility>
 
 #include "mlir/Dialect/Arith/IR/Arith.h"
@@ -206,9 +205,5 @@ class TritonXLALowerBlockBarrierPass
 };
 
 }  // namespace
-
-std::unique_ptr<Pass> CreateTritonXLALowerBlockBarrierPass() {
-  return std::make_unique<TritonXLALowerBlockBarrierPass>();
-}
 
 }  // namespace mlir::triton::xla

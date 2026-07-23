@@ -14,20 +14,23 @@ limitations under the License.
 ==============================================================================*/
 
 #include <memory>
+#include <string>
 #include <utility>
 
 #include <gtest/gtest.h>
-#include "xla/backends/gpu/tests/gpu_codegen_test.h"
+#include "absl/status/status_matchers.h"
+#include "absl/strings/str_cat.h"
+#include "xla/backends/gpu/tests/gpu_pjrt_codegen_test.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/shape_util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/test.h"
 
-namespace xla {
-namespace gpu {
+namespace xla::gpu {
+namespace {
 
-class GpuNoAliasTest : public GpuCodegenTest {};
+class GpuNoAliasTest : public GpuPjRtCodegenTest {};
 
 TEST_F(GpuNoAliasTest, Concat) {
   HloComputation::Builder builder(TestName());
@@ -51,21 +54,13 @@ TEST_F(GpuNoAliasTest, Concat) {
   // - After optimizations we have "concatenate(x, y, x)".
   // - We only pass the same parameters once, so the kernel will have these
   // parameters: (x, y, output), and all of them will be noalias.
-  const char* expected_ir;
-  if (is_built_with_rocm_) {
-    expected_ir = R"(
-CHECK: define amdgpu_kernel void @{{[a-zA-Z0-9_]+}}(ptr noalias align 16 dereferenceable(16) %{{[a-zA-Z0-9_]+}}, ptr noalias align 16 dereferenceable(16) %{{[a-zA-Z0-9_]+}}, ptr noalias align 256 dereferenceable(48) %{{[a-zA-Z0-9_]+}}) #0
-  )";
-  } else if (is_built_with_sycl_) {
-    expected_ir = R"(CHECK: define spir_kernel {{.*}})";
-  } else {
-    expected_ir = R"(
-CHECK: define ptx_kernel void @{{[a-zA-Z0-9_]+}}(ptr noalias align 16 dereferenceable(16) %{{[a-zA-Z0-9_]+}}, ptr noalias align 16 dereferenceable(16) %{{[a-zA-Z0-9_]+}}, ptr noalias align 256 dereferenceable(48) %{{[a-zA-Z0-9_]+}})
-  )";
-  }
-  CompileAndVerifyIr(std::move(hlo_module), expected_ir,
-                     /*match_optimized_ir=*/false);
+  const std::string expected_ir = absl::StrCat(
+      "CHECK: define ", GpuKernelType(),
+      R"( void @{{[a-zA-Z0-9_]+}}(ptr noalias align 16 dereferenceable(16) %{{[a-zA-Z0-9_]+}}, ptr noalias align 16 dereferenceable(16) %{{[a-zA-Z0-9_]+}}, ptr noalias align 256 dereferenceable(48) %{{[a-zA-Z0-9_]+}}) )",
+      IsBuiltWithRocm() ? "#0" : "");
+  EXPECT_OK(CompileAndVerifyIr(std::move(hlo_module), expected_ir,
+                               /*match_optimized_ir=*/false));
 }
 
-}  // namespace gpu
-}  // namespace xla
+}  // namespace
+}  // namespace xla::gpu

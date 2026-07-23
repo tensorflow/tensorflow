@@ -21,12 +21,14 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/strings/substitute.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/TargetParser/Triple.h"
 #include "mlir/IR/MLIRContext.h"
@@ -34,7 +36,7 @@ limitations under the License.
 #include "xla/autotuning.pb.h"
 #include "xla/backends/gpu/codegen/triton/test_utils.h"
 #include "xla/backends/gpu/codegen/triton/xtile_compiler.h"
-#include "xla/backends/gpu/tests/gpu_codegen_test.h"
+#include "xla/backends/gpu/tests/gpu_pjrt_codegen_test.h"
 #include "xla/backends/gpu/transforms/convert_triton_gemm_config.h"
 #include "xla/backends/gpu/transforms/hoist_fused_bitcasts.h"
 #include "xla/error_spec.h"
@@ -52,20 +54,18 @@ limitations under the License.
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
 #include "xla/service/gpu/model/block_level_parameters.h"
 #include "xla/service/gpu/target_constants.h"
+#include "xla/service/hlo_module_config.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
-#include "xla/tsl/lib/core/status_test_util.h"
-#include "xla/tsl/platform/env.h"
+#include "xla/tests/hlo_pjrt_interpreter_reference_mixin.h"
 #include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/path.h"
 
-namespace xla {
-namespace gpu {
+namespace xla::gpu {
 namespace {
 
 namespace m = ::xla::match;
@@ -87,24 +87,21 @@ HloInstruction* GetNonBitcastRoot(const HloComputation* computation) {
   return root;
 }
 
-class TritonTest : public GpuCodegenTest {
+class TritonTest : public HloInterpreterReferenceMixin<GpuPjRtCodegenTest> {
  public:
-  TritonTest() { RegisterSymbolicExprStorage(&mlir_context_); }
+  TritonTest() = default;
   DebugOptions GetDebugOptionsForTest() const override {
-    DebugOptions debug_options = GpuCodegenTest::GetDebugOptionsForTest();
+    DebugOptions debug_options = GpuPjRtCodegenTest::GetDebugOptionsForTest();
     debug_options.set_xla_gpu_autotune_level(0);
     return debug_options;
   }
 
   stream_executor::CudaComputeCapability GetCudaComputeCapability() {
-    return backend()
-        .default_stream_executor()
-        ->GetDeviceDescription()
-        .cuda_compute_capability();
+    return device_description().cuda_compute_capability();
   }
 
   const stream_executor::GpuComputeCapability& GpuComputeCapability() {
-    return device_desc().gpu_compute_capability();
+    return device_description().gpu_compute_capability();
   }
 
   // Returns the module, its fusion computation and associated block level
@@ -112,12 +109,12 @@ class TritonTest : public GpuCodegenTest {
   // single GEMM fusion.
   absl::StatusOr<ModuleAndNestedFusionMetadata>
   GetModuleAndNestedFusionMetadata(absl::string_view hlo_text) {
-    TF_ASSIGN_OR_RETURN(std::unique_ptr<VerifiedHloModule> module,
-                        ParseAndReturnVerifiedModule(hlo_text));
-    TF_RETURN_IF_ERROR(HoistFusedBitcasts().Run(module.get()).status());
-    TF_ASSIGN_OR_RETURN(bool converted,
-                        ConvertTritonGemmConfig(device_desc(), &mlir_context_)
-                            .Run(module.get()));
+    ASSIGN_OR_RETURN(std::unique_ptr<VerifiedHloModule> module,
+                     ParseAndReturnVerifiedModule(hlo_text));
+    RETURN_IF_ERROR(HoistFusedBitcasts().Run(module.get()).status());
+    ASSIGN_OR_RETURN(bool converted, ConvertTritonGemmConfig(
+                                         device_description(), &mlir_context_)
+                                         .Run(module.get()));
     if (!converted) {
       return absl::InternalError("Failed to convert the GEMM fusion.");
     }
@@ -135,10 +132,6 @@ class TritonTest : public GpuCodegenTest {
   }
 
  protected:
-  const stream_executor::DeviceDescription& device_desc() {
-    return backend().default_stream_executor()->GetDeviceDescription();
-  }
-
   mlir::MLIRContext mlir_context_;
 };
 
@@ -160,8 +153,8 @@ class TritonGemmTest : public TritonTest {
   }
 
   void MatchHloModule(HloModule& module, absl::string_view pattern) {
-    TF_ASSERT_OK_AND_ASSIGN(bool filecheck_result,
-                            RunFileCheck(module.ToString(), pattern));
+    ASSERT_OK_AND_ASSIGN(bool filecheck_result,
+                         RunFileCheck(module.ToString(), pattern));
     EXPECT_TRUE(filecheck_result);
   }
 };
@@ -187,9 +180,9 @@ ENTRY e {
                          "num_stages":1,"num_warps":2,
                          "num_ctas":1}}}
 })";
-  TF_ASSERT_OK_AND_ASSIGN(ModuleAndNestedFusionMetadata module_and_metadata,
-                          GetModuleAndNestedFusionMetadata(kHloText));
-  TF_EXPECT_OK(
+  ASSERT_OK_AND_ASSIGN(ModuleAndNestedFusionMetadata module_and_metadata,
+                       GetModuleAndNestedFusionMetadata(kHloText));
+  EXPECT_OK(
       CreateTritonIrAndFileCheck(*module_and_metadata.computation,
                                  module_and_metadata.block_level_parameters,
                                  R"(
@@ -229,9 +222,9 @@ ENTRY e {
       }
     }
 })";
-  TF_ASSERT_OK_AND_ASSIGN(ModuleAndNestedFusionMetadata module_and_metadata,
-                          GetModuleAndNestedFusionMetadata(kHloText));
-  TF_EXPECT_OK(
+  ASSERT_OK_AND_ASSIGN(ModuleAndNestedFusionMetadata module_and_metadata,
+                       GetModuleAndNestedFusionMetadata(kHloText));
+  EXPECT_OK(
       CreateTritonIrAndFileCheck(*module_and_metadata.computation,
                                  module_and_metadata.block_level_parameters,
                                  R"(
@@ -267,9 +260,9 @@ ENTRY e {
                          "num_ctas":1}}}
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(ModuleAndNestedFusionMetadata module_and_metadata,
-                          GetModuleAndNestedFusionMetadata(kHloText));
-  TF_EXPECT_OK(
+  ASSERT_OK_AND_ASSIGN(ModuleAndNestedFusionMetadata module_and_metadata,
+                       GetModuleAndNestedFusionMetadata(kHloText));
+  EXPECT_OK(
       CreateTritonIrAndFileCheck(*module_and_metadata.computation,
                                  module_and_metadata.block_level_parameters, R"(
 CHECK: scf.if {{.*}} -> (tensor<1x32x64xf32>)
@@ -312,12 +305,12 @@ ENTRY e {
              "block_m":"32","block_n":"32","block_k":"32",
              "num_stages":"1","num_warps":"1","num_ctas":"1"}}}
 })";
-  TF_ASSERT_OK_AND_ASSIGN(ModuleAndNestedFusionMetadata module_and_metadata,
-                          GetModuleAndNestedFusionMetadata(kHloText));
+  ASSERT_OK_AND_ASSIGN(ModuleAndNestedFusionMetadata module_and_metadata,
+                       GetModuleAndNestedFusionMetadata(kHloText));
   EXPECT_TRUE(
       RunAndCompareNoHloPasses(module_and_metadata.module->ToString(),
                                ErrorSpec{/*aabs=*/1e-4, /*arel=*/1e-6}));
-  TF_EXPECT_OK(
+  EXPECT_OK(
       CreateTritonIrAndFileCheck(*module_and_metadata.computation,
                                  module_and_metadata.block_level_parameters, R"(
     CHECK: func.func @triton_fn(%[[ARG0:.*]]: tensor<2x4xf32>, %[[ARG1:.*]]: tensor<4x5x2xf32>, %[[ARG2:.*]]: tensor<i32>, %[[ARG3:.*]]: tensor<i32>, %[[ARG4:.*]]: tensor<i32>, %[[ARG5:.*]]: tensor<4x5xf32>) -> tensor<4x5xf32> {
@@ -333,7 +326,37 @@ ENTRY e {
   )"));
 }
 
-TEST_F(TritonGemmTest, DoNotUseTensorCoresWithNonDefaultPrecision) {
+TEST_F(TritonGemmTest, DoNotUseTensorCoresWithHighestPrecision) {
+  constexpr absl::string_view kHloText = R"(
+triton_gemm_r {
+  parameter_0 = s8[80,15]{1,0} parameter(0)
+  convert.3 = f32[80,15]{1,0} convert(parameter_0)
+  parameter_1 = f32[16,15]{1,0} parameter(1)
+  ROOT r.1 = f32[80,16]{1,0} dot(convert.3, parameter_1),
+    lhs_contracting_dims={1}, rhs_contracting_dims={1},
+    operand_precision={HIGHEST, HIGHEST}
+}
+
+ENTRY e {
+  p1 = f32[16,15]{1,0} parameter(1)
+  p0 = s8[80,15]{1,0} parameter(0)
+  ROOT triton_gemm_r = f32[80,16]{1,0} fusion(p0, p1), kind=kCustom,
+    calls=triton_gemm_r,
+    backend_config={"fusion_backend_config": {kind: "__triton_gemm", triton_gemm_config:
+      {"block_m":32,"block_n":32,"block_k":32,
+       "num_stages":1,"num_warps":2,
+       "num_ctas":1}}}
+})";
+  ASSERT_OK_AND_ASSIGN(ModuleAndNestedFusionMetadata module_and_metadata,
+                       GetModuleAndNestedFusionMetadata(kHloText));
+
+  CompileAndOptionallyVerifyPtx(std::move(module_and_metadata.module),
+                                R"(
+CHECK-NOT: mma
+)");
+}
+
+TEST_F(TritonGemmTest, UseTensorCoresWithHighPrecision) {
   constexpr absl::string_view kHloText = R"(
 triton_gemm_r {
   parameter_0 = s8[80,15]{1,0} parameter(0)
@@ -354,12 +377,12 @@ ENTRY e {
        "num_stages":1,"num_warps":2,
        "num_ctas":1}}}
 })";
-  TF_ASSERT_OK_AND_ASSIGN(ModuleAndNestedFusionMetadata module_and_metadata,
-                          GetModuleAndNestedFusionMetadata(kHloText));
+  ASSERT_OK_AND_ASSIGN(ModuleAndNestedFusionMetadata module_and_metadata,
+                       GetModuleAndNestedFusionMetadata(kHloText));
 
   CompileAndOptionallyVerifyPtx(std::move(module_and_metadata.module),
                                 R"(
-CHECK-NOT: mma
+CHECK: mma
 )");
 }
 
@@ -372,8 +395,8 @@ ENTRY e {
   ROOT _ = f16[30,30] dot(p0, cp1),
     lhs_contracting_dims={0}, rhs_contracting_dims={1}
 })";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> verified_module,
-                          ParseAndReturnVerifiedModule(kHloText));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> verified_module,
+                       ParseAndReturnVerifiedModule(kHloText));
   std::string output_directory;
   if (!tsl::io::GetTestUndeclaredOutputsDir(&output_directory)) {
     output_directory = tsl::testing::TmpDir();
@@ -420,8 +443,8 @@ ENTRY main {
   p2 = bf16[64,256]{0,1} parameter(2)
   ROOT gemm_fusion_dot.0 = bf16[512,256]{1,0} fusion(p0, p1, p2), kind=kCustom, calls=triton_dot, backend_config={"fusion_backend_config":{"kind":"__triton_gemm","triton_gemm_config":{"block_m":"64","block_n":"128","block_k":"32","num_stages":"4","num_warps":"4","num_ctas":"1"}}}
 })";
-  TF_ASSERT_OK_AND_ASSIGN(ModuleAndNestedFusionMetadata module_and_metadata,
-                          GetModuleAndNestedFusionMetadata(kHloText));
+  ASSERT_OK_AND_ASSIGN(ModuleAndNestedFusionMetadata module_and_metadata,
+                       GetModuleAndNestedFusionMetadata(kHloText));
   EXPECT_TRUE(
       RunAndCompareNoHloPasses(module_and_metadata.module->ToString(),
                                ErrorSpec{/*aabs=*/1e-4, /*arel=*/1e-6}));
@@ -447,8 +470,8 @@ ENTRY e {
       "num_stages":1,"num_warps":2,
       "num_ctas":1}}}
 })";
-  TF_ASSERT_OK_AND_ASSIGN(ModuleAndNestedFusionMetadata module_and_metadata,
-                          GetModuleAndNestedFusionMetadata(kHloText));
+  ASSERT_OK_AND_ASSIGN(ModuleAndNestedFusionMetadata module_and_metadata,
+                       GetModuleAndNestedFusionMetadata(kHloText));
   CompileAndOptionallyVerifyPtx(std::move(module_and_metadata.module),
                                 R"(
 CHECK: mma
@@ -484,16 +507,16 @@ ENTRY entry {
       "num_stages":$3,"num_warps":4,
       "num_ctas":1}}}
 })";
-  TF_ASSERT_OK_AND_ASSIGN(ModuleAndNestedFusionMetadata module1_and_metadata,
-                          GetModuleAndNestedFusionMetadata(absl::Substitute(
-                              kHloTextTemplate, 256, 256, 256, 8)));
+  ASSERT_OK_AND_ASSIGN(ModuleAndNestedFusionMetadata module1_and_metadata,
+                       GetModuleAndNestedFusionMetadata(absl::Substitute(
+                           kHloTextTemplate, 256, 256, 256, 8)));
 
   const HloFusionInstruction* fusion1 = Cast<HloFusionInstruction>(
       module1_and_metadata.computation->FusionInstruction());
   EXPECT_THAT(
       TritonWrapper("test_fn", *fusion1, se::GpuComputeCapability{cc},
                     device_info, module1_and_metadata.block_level_parameters,
-                    target_triple, data_layout, llvm_ctx, mlir_context_),
+                    target_triple, data_layout, mlir_context_),
       absl_testing::StatusIs(
           tsl::error::RESOURCE_EXHAUSTED,
           ::testing::HasSubstr("Shared memory size limit exceeded")));
@@ -509,7 +532,7 @@ ENTRY entry {
       const auto result,
       TritonWrapper("test_fn", *fusion2, se::GpuComputeCapability{cc},
                     device_info, module2_and_metadata.block_level_parameters,
-                    target_triple, data_layout, llvm_ctx, mlir_context_));
+                    target_triple, data_layout, mlir_context_));
   // Use optin shared memory which is > shared_memory_per_block.
   EXPECT_GT(result.shmem_bytes, device_info.shared_memory_per_block());
 }
@@ -549,13 +572,12 @@ ENTRY e {
         rhs_batch_dims={0}, rhs_contracting_dims={1}
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> verified_module,
-                          ParseAndReturnVerifiedModule(kHloText));
-  DebugOptions debug_options = verified_module->config().debug_options();
+  HloModuleConfig config = GetModuleConfigForTest();
+  DebugOptions debug_options = config.debug_options();
   debug_options.clear_xla_disable_hlo_passes();
-  verified_module->mutable_config().set_debug_options(debug_options);
+  config.set_debug_options(debug_options);
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          GetOptimizedModule(std::move(verified_module)));
+                          GetOptimizedModule(kHloText, config));
   const HloInstruction* instr = module->entry_computation()->root_instruction();
   EXPECT_THAT(
       instr,
@@ -885,7 +907,7 @@ ENTRY entry {
   EXPECT_THAT(
       TritonWrapper("test_fn", *fusion1, se::GpuComputeCapability{cc},
                     device_info, module1_and_metadata.block_level_parameters,
-                    target_triple, data_layout, llvm_ctx, mlir_context_),
+                    target_triple, data_layout, mlir_context_),
       absl_testing::StatusIs(tsl::error::RESOURCE_EXHAUSTED,
                              "Tiling complexity heuristic exceeded"));
 
@@ -897,11 +919,11 @@ ENTRY entry {
   const HloFusionInstruction* fusion2 = Cast<HloFusionInstruction>(
       module1_and_metadata.computation->FusionInstruction());
 
-  TF_EXPECT_OK(
-      TritonWrapper("test_fn", *fusion2, se::GpuComputeCapability{cc},
-                    device_info, module2_and_metadata.block_level_parameters,
-                    target_triple, data_layout, llvm_ctx, mlir_context_)
-          .status());
+  TF_EXPECT_OK(TritonWrapper("test_fn", *fusion2, se::GpuComputeCapability{cc},
+                             device_info,
+                             module2_and_metadata.block_level_parameters,
+                             target_triple, data_layout, mlir_context_)
+                   .status());
 }
 
 // TODO(b/393299275): this test may have some value while Triton tiling
@@ -1332,8 +1354,7 @@ ENTRY e {
                           GetOptimizedModule(kHloText));
   EXPECT_THAT(
       module->entry_computation()->root_instruction(),
-      GmockMatch(m::Fusion(m::Parameter(), m::Bitcast(m::Parameter()),
-                           m::Bitcast(m::Parameter()))
+      GmockMatch(m::Fusion(m::Parameter(), m::Parameter(), m::Parameter())
                      .WithFusionKind(HloInstruction::FusionKind::kCustom)));
 }
 
@@ -1657,6 +1678,34 @@ ENTRY e {
       module->entry_computation()->root_instruction(),
       GmockMatch(m::Fusion(m::Parameter(), m::Parameter())
                      .WithFusionKind(HloInstruction::FusionKind::kCustom)));
+
+  EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
+}
+
+TEST_F(TritonGemmTest, BatchMajorSlicedBatchDimensionProducesCorrectResults) {
+  constexpr absl::string_view kHloText = R"(
+ENTRY e {
+  p0 = f16[4,32,256] parameter(0)
+  p1 = f16[4,256,32] parameter(1)
+  ROOT d = f16[4,32,32] dot(p0, p1),
+    lhs_batch_dims={0}, lhs_contracting_dims={2},
+    rhs_batch_dims={0}, rhs_contracting_dims={1}
+})";
+
+  EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
+}
+
+TEST_F(TritonGemmTest, DegenerateBatchDimensionProducesCorrectResults) {
+  constexpr absl::string_view kHloText = R"(
+ENTRY e {
+  p0 = f16[1,32,256] parameter(0)
+  p1 = f16[1,256,32] parameter(1)
+  ROOT d = f16[1,32,32] dot(p0, p1),
+    lhs_batch_dims={0}, lhs_contracting_dims={2},
+    rhs_batch_dims={0}, rhs_contracting_dims={1}
+})";
+
+  EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
 }
 
 // TODO(b/393299275): this should just be a fusion test and does not need to be
@@ -1958,8 +2007,7 @@ TEST_F(CompareTest, UsingOptinSharedMemoryProducesSameResult) {
   if (GpuComputeCapability().IsRocm()) {
     GTEST_SKIP() << "No Optin Shared Memory on AMD.";
   }
-  const se::DeviceDescription dev_info =
-      backend().default_stream_executor()->GetDeviceDescription();
+  const se::DeviceDescription dev_info = device_description();
   // TODO(b/353484968): pin this test to a specific device type to ensure
   // correct expectations.
   //
@@ -2010,7 +2058,7 @@ ENTRY e {
       TritonWrapper("test_fn", *triton_dot_fusion, GpuComputeCapability(),
                     dev_info,
                     optin_shmem_module_and_metadata.block_level_parameters,
-                    target_triple, data_layout, llvm_ctx, mlir_context_));
+                    target_triple, data_layout, mlir_context_));
   // The config is chosen so that the used memory size is slightly above the
   // 48 kB boundary of standard / opt-in shared memory so that any GPU that
   // has the opt-in one should be able to execute the test.
@@ -2748,5 +2796,4 @@ ENTRY e {
 }
 
 }  // namespace
-}  // namespace gpu
-}  // namespace xla
+}  // namespace xla::gpu

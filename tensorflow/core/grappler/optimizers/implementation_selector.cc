@@ -17,8 +17,10 @@ limitations under the License.
 
 #include <string>
 
+#include "absl/status/status.h"
 #include "absl/strings/match.h"
 #include "absl/strings/numbers.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/str_split.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/op.h"
@@ -145,6 +147,7 @@ void UpdateForwardIdentityNodeDtype(utils::MutableNodeView* forward_node,
 }
 
 absl::Status UpdateNodeDef(utils::MutableNodeView* node_view,
+                           const std::string& attr_name,
                            const std::string& funcName,
                            const FunctionApiInfo& apiInfo) {
   NodeDef* node_def = node_view->node();
@@ -152,21 +155,30 @@ absl::Status UpdateNodeDef(utils::MutableNodeView* node_view,
   VLOG(3) << "Node def before swap is: " << node_def->DebugString();
 
   // For step 1 above.
-  node_def->mutable_attr()->find("f")->second.mutable_func()->set_name(
-      funcName);
+  auto f_attr = node_def->mutable_attr()->find(attr_name);
+  if (f_attr != node_def->mutable_attr()->end()) {
+    f_attr->second.mutable_func()->set_name(funcName);
+  } else {
+    return absl::InvalidArgumentError(absl::StrCat(
+        "Missing attribute '", attr_name, "' in node ", node_def->name()));
+  }
 
   // For step 2 above.
   auto tin = node_def->mutable_attr()->find("Tin");
-  tin->second.mutable_list()->clear_type();
-  for (const auto& tin_dtype : apiInfo.input_arg_dtypes()) {
-    tin->second.mutable_list()->add_type(tin_dtype);
+  if (tin != node_def->mutable_attr()->end()) {
+    tin->second.mutable_list()->clear_type();
+    for (const auto& tin_dtype : apiInfo.input_arg_dtypes()) {
+      tin->second.mutable_list()->add_type(tin_dtype);
+    }
   }
 
   // For step 3 above.
   auto tout = node_def->mutable_attr()->find("Tout");
-  tout->second.mutable_list()->clear_type();
-  for (const auto& tout_dtype : apiInfo.output_arg_dtypes()) {
-    tout->second.mutable_list()->add_type(tout_dtype);
+  if (tout != node_def->mutable_attr()->end()) {
+    tout->second.mutable_list()->clear_type();
+    for (const auto& tout_dtype : apiInfo.output_arg_dtypes()) {
+      tout->second.mutable_list()->add_type(tout_dtype);
+    }
   }
 
   if (apiInfo.function_type() == FunctionApiInfo::BACKWARD) {
@@ -282,7 +294,8 @@ absl::Status ImplementationSelector::MaybeOptimizeFunctionCall(
       const auto& func_api_info = lib_info_->GetApiInfo(func_name);
       if (func_api_info->preferred_device() == parsed_name.type) {
         VLOG(2) << "Swapping: " << function_name << " TO: " << func_name;
-        TF_RETURN_IF_ERROR(UpdateNodeDef(node_view, func_name, *func_api_info));
+        TF_RETURN_IF_ERROR(
+            UpdateNodeDef(node_view, attr_name, func_name, *func_api_info));
         break;
       }
     }

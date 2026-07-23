@@ -33,7 +33,7 @@ namespace xla {
 namespace gpu {
 
 absl::StatusOr<std::unique_ptr<EmitterData>> GetEmitter(
-    const HloModule& module, mlir::MLIRContext& mlir_context) {
+    const HloModule& module) {
   auto data = std::make_unique<EmitterData>();
   {
     auto* inst = module.entry_computation()->root_instruction();
@@ -48,7 +48,7 @@ absl::StatusOr<std::unique_ptr<EmitterData>> GetEmitter(
   data->analysis.emplace(
       HloFusionAnalysis::Create(*data->fusion, data->device.value()));
   PreBufferAssignmentFusionInfo info(data->analysis.value());
-  auto fusion_emitter = GetFusionEmitter(info, &mlir_context);
+  auto fusion_emitter = GetFusionEmitter(info);
 
   auto emitter = dynamic_cast<MlirKernelFusion*>(fusion_emitter.get());
   TF_RET_CHECK(emitter != nullptr) << "Expected emitter to be an EmitterBase";

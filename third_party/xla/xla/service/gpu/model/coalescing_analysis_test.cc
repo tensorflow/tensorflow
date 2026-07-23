@@ -22,14 +22,16 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/log/check.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "mlir/IR/MLIRContext.h"
 #include "xla/backends/gpu/codegen/fusion_emitter.h"
 #include "xla/backends/gpu/codegen/fusions.h"
+#include "xla/codegen/tiling/experimental/tiled_hlo.h"
+#include "xla/codegen/tiling/experimental/tiling_space.h"
 #include "xla/codegen/tiling/symbolic_tile_analysis.h"
 #include "xla/codegen/tiling/tiled_hlo_computation.h"
-#include "xla/codegen/tiling/tiled_hlo_instruction.h"
 #include "xla/codegen/tiling/tiled_hlo_schedule.h"
 #include "xla/codegen/tiling/tiling_specification.h"
 #include "xla/hlo/analysis/symbolic_expr.h"
@@ -63,8 +65,7 @@ class CoalescingTest : public HloHardwareIndependentTestBase {
   std::vector<bool> IsReadCoalescedPerOperand(const HloInstruction* root) {
     auto fusion_adaptor = HloFusionAdaptor::ForInstruction(root);
     auto analysis = HloFusionAnalysis::Create(*root, device_info_);
-    auto emitter = GetFusionEmitter(PreBufferAssignmentFusionInfo{analysis},
-                                    &mlir_context_);
+    auto emitter = GetFusionEmitter(PreBufferAssignmentFusionInfo{analysis});
     auto fusion = dynamic_cast<KernelFusionInterface*>(emitter.get());
     EXPECT_NE(fusion, nullptr);
 
@@ -585,39 +586,74 @@ TEST_F(CoalescingTest, Param) {
   EXPECT_THAT(IsReadCoalescedPerOperand(ir), ElementsAre(true, true, true));
 }
 
-class CoalescingForTiledHloTest : public CoalescingTest {
+class CoalescingForTiledHloTest : public CoalescingTest,
+                                  public ::testing::WithParamInterface<bool> {
  public:
-  std::vector<double> EffectiveBandwidthUtilizationRatePerOperand(
-      const HloInstruction* root, absl::Span<int64_t const> tile_sizes) {
-    auto fusion_adaptor = HloFusionAdaptor::ForInstruction(root);
+  bool use_experimental_tiling() const { return GetParam(); }
 
-    SymbolicTileAnalysis symbolic_tile_analysis =
-        std::get<SymbolicTileAnalysis>(SymbolicTileAnalysis::AnalyzeFusion(
-            *fusion_adaptor, &mlir_context_));
-
-    TiledHloComputation tiled_hlo_computation =
-        *symbolic_tile_analysis.ComputeTiledComputation(
-            Tiling({{root, FlatTiling(tile_sizes.begin(), tile_sizes.end())}}),
-            CreateMajorToMinorTiledHloSchedule,
-            /*constraints_are_known_satisfied=*/true,
-            /*compute_all_tile_offset_indexing_maps=*/true);
-
-    const TiledHloInstruction* tiled_hlo_root =
-        tiled_hlo_computation.GetRoots()[0];
+  template <typename TiledHloInstructionType>
+  std::vector<double> EffectiveBandwidthUtilizationRatePerOperandImpl(
+      const TiledHloInstructionType* tiled_hlo_root) {
     std::vector<double> result;
-    for (const TiledHloInstruction* operand : tiled_hlo_root->operands()) {
+    for (const TiledHloInstructionType* operand : tiled_hlo_root->operands()) {
       result.push_back(BandwidthUtilizationRateHeuristicForTiledMemoryAccess(
           *operand, device_info_));
     }
     return result;
   }
+
+  std::vector<double> EffectiveBandwidthUtilizationRatePerOperand(
+      const HloInstruction* root, absl::Span<int64_t const> tile_sizes) {
+    auto fusion_adaptor = HloFusionAdaptor::ForInstruction(root);
+
+    if (use_experimental_tiling()) {
+      auto tiling_space_or =
+          experimental::TilingSpace::Create(*fusion_adaptor, &mlir_context_);
+      CHECK_OK(tiling_space_or);
+      auto tiling_space = std::move(tiling_space_or.value());
+      CHECK_OK(tiling_space->AssignTileSizes(tile_sizes));
+
+      absl::StatusOr<experimental::TiledHloComputation> tiled_hlo_computation =
+          experimental::TiledHloComputation::Tile(*fusion_adaptor,
+                                                  std::move(tiling_space));
+      CHECK_OK(tiled_hlo_computation);
+
+      return EffectiveBandwidthUtilizationRatePerOperandImpl(
+          tiled_hlo_computation->roots()[0]);
+    }
+
+    SymbolicTileAnalysis symbolic_tile_analysis =
+        std::get<SymbolicTileAnalysis>(SymbolicTileAnalysis::AnalyzeFusion(
+            *fusion_adaptor, &mlir_context_));
+
+    absl::StatusOr<TiledHloComputation> tiled_hlo_computation =
+        symbolic_tile_analysis.ComputeTiledComputation(
+            Tiling({{root, FlatTiling(tile_sizes.begin(), tile_sizes.end())}}),
+            CreateMajorToMinorTiledHloSchedule,
+            /*constraints_are_known_satisfied=*/true,
+            /*compute_all_tile_offset_indexing_maps=*/true);
+    CHECK_OK(tiled_hlo_computation);
+
+    return EffectiveBandwidthUtilizationRatePerOperandImpl(
+        tiled_hlo_computation->roots()[0]);
+  }
+
+  DebugOptions GetDebugOptionsForTest() const override {
+    DebugOptions debug_options =
+        HloHardwareIndependentTestBase::GetDebugOptionsForTest();
+    debug_options.set_xla_gpu_experimental_enable_tiling_propagation(
+        use_experimental_tiling());
+    return debug_options;
+  }
 };
 
+INSTANTIATE_TEST_SUITE_P(CoalescingForTiledHloTest, CoalescingForTiledHloTest,
+                         testing::Bool());
 
-TEST_F(
+TEST_P(
     CoalescingForTiledHloTest,
     EffectiveBandwidthUtilizationRateIsComputedCorrectlyForTiledMemoryAccess) {  // NOLINT(whitespace/line_length)
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
 HloModule m
 
 ENTRY main {

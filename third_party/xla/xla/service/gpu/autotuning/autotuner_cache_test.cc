@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/status/status_matchers.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "google/protobuf/text_format.h"
 #include "xla/autotune_results.pb.h"
 #include "xla/autotuning.pb.h"
@@ -42,7 +43,7 @@ limitations under the License.
 #include "xla/stream_executor/device_description.pb.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform_manager.h"
-#include "xla/tests/hlo_test_base.h"
+#include "xla/tests/restricted/hlo_test_base_legacy.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/errors.h"
@@ -93,7 +94,7 @@ static constexpr absl::string_view kDotFusionHloText = R"hlo(
     }
   )hlo";
 
-class AutotunerCacheTest : public HloTestBase {
+class AutotunerCacheTest : public HloTestBaseLegacy {
  protected:
   static constexpr absl::string_view kHloText = R"(
 HloModule t
@@ -151,7 +152,7 @@ ENTRY e {
 
   absl::Status PopulateResultCache() {
     EXPECT_TRUE(AutotunerCache::ResultCacheIsEmpty());
-    TF_RETURN_IF_ERROR(AutotunerCache::LoadAutotuneResults(kResultText, true));
+    RETURN_IF_ERROR(AutotunerCache::LoadAutotuneResults(kResultText, true));
     EXPECT_FALSE(AutotunerCache::ResultCacheIsEmpty());
     return absl::OkStatus();
   }

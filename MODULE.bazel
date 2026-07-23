@@ -6,7 +6,7 @@ module(
 )
 
 bazel_dep(name = "bazel_features", version = "1.36.0")
-bazel_dep(name = "abseil-cpp", version = "20250814.1", repo_name = "com_google_absl")
+bazel_dep(name = "abseil-cpp", version = "20260526.0", repo_name = "com_google_absl")
 single_version_override(
     module_name = "abseil-cpp",
     patch_strip = 1,

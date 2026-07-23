@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "riegeli/bytes/string_reader.h"
 #include "xla/backends/gpu/codegen/kernels/custom_kernel.h"
 #include "xla/backends/gpu/runtime/custom_kernel_thunk.h"
@@ -59,10 +60,10 @@ limitations under the License.
 #include "xla/stream_executor/semantic_version.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/lib/core/status_test_util.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/util/proto/parse_text_proto.h"
 #include "xla/tsl/util/proto/proto_matchers.h"
 #include "xla/util/split_proto/split_proto_reader.h"
+#include "xla/xla.pb.h"
 
 namespace xla::gpu {
 namespace {
@@ -108,12 +109,12 @@ class GpuAotCompilationResultTest : public ::testing::Test {
     thunk_info.thunk_id = 123;
 
     ThunkSequence thunk_sequence;
-    thunk_sequence.push_back(std::make_unique<KernelThunk>(
+    thunk_sequence.Emplace<KernelThunk>(
         thunk_info,
         /*kernel_name=*/"test_kernel", emitters::KernelArguments({}),
         LaunchDimensions(),
         /*cluster_dim=*/std::nullopt,
-        /*shmem_bytes=*/0, ::stream_executor::gpu::TmaMetadata()));
+        /*shmem_bytes=*/0, ::stream_executor::gpu::TmaMetadata());
     CustomKernel custom_kernel{
         "custom_kernel_name",
         stream_executor::KernelLoaderSpec::
@@ -122,8 +123,8 @@ class GpuAotCompilationResultTest : public ::testing::Test {
                 /*arity=*/42),
         stream_executor::BlockDim(), stream_executor::ThreadDim(),
         /*shared_memory_bytes=*/23};
-    thunk_sequence.push_back(std::make_unique<CustomKernelThunk>(
-        thunk_info, custom_kernel, emitters::KernelArguments({})));
+    thunk_sequence.Emplace<CustomKernelThunk>(thunk_info, custom_kernel,
+                                              emitters::KernelArguments({}));
 
     auto hlo_module = std::make_unique<HloModule>("test_module_with_shape",
                                                   HloModuleConfig());
@@ -134,7 +135,6 @@ class GpuAotCompilationResultTest : public ::testing::Test {
 
     GpuExecutable::Params params;
     params.debug_module = std::move(hlo_module);
-    params.asm_text = "test_asm_text";
     params.binary = {1, 2, 3};
     params.dnn_compiled_graphs = {{"test_dnn_compiled_graph", "test_json"}};
 
@@ -145,7 +145,7 @@ class GpuAotCompilationResultTest : public ::testing::Test {
 
     params.module_name = "test_module";
     params.enable_debug_info_manager = false;
-    params.mlir_allocations = {BufferAllocation(0, 1024, 0)};
+    params.allocations = {BufferAllocation(0, 1024, 0)};
     ASSIGN_OR_RETURN(
         params.executable_abi_version,
         stream_executor::ExecutableAbiVersion::FromDeviceDescription(
@@ -160,6 +160,7 @@ class GpuAotCompilationResultTest : public ::testing::Test {
             events { kind: FREE }
           }
         )pb");
+    params.buffer_allocations_debug_summary = "dummy_summary";
 
     ASSIGN_OR_RETURN(std::unique_ptr<GpuExecutable> executable,
                      GpuExecutable::Create(std::move(params)));

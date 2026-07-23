@@ -51,9 +51,15 @@ using OrderedEstimatesAndConfigs =
 
 // Retrieves the top `n` estimated configurations.
 // If `configs_to_skip` is passed, skips these configs in the result.
+// If `max_same_mnk` is set, includes at most `max_same_mnk` configs with the
+// same M N K block sizes.
+// If `only_faster_than_skip` is set, only configs faster than the fastest one
+// in the skip list will be included.
 OrderedEstimatesAndConfigs GetTopEstimatedConfigs(
     const OrderedEstimatesAndConfigs& estimates_and_confs, int64_t n,
-    const OrderedEstimatesAndConfigs* configs_to_skip);
+    const OrderedEstimatesAndConfigs* configs_to_skip,
+    std::optional<int> max_same_mnk = std::nullopt,
+    bool only_faster_than_skip = false);
 
 // Filters configurations slower than `fastest_time * (1.0 + filter_threshold)`.
 OrderedEstimatesAndConfigs FilterConfigsByRatioVsFastest(
@@ -69,6 +75,10 @@ struct CostModelGemmTilingOptions {
   std::optional<int> mixin;
   // The threshold ratio failing vs best estimated runtime to filter out.
   std::optional<float> filter;
+  // Maximum number of configs with the same M N K block sizes in mixin.
+  std::optional<int> mixin_max_same_mnk;
+  // If true, mixin configs must be faster than all configs in the base set.
+  bool mixin_only_faster = false;
 
   std::string ToString() const;
 };

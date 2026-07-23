@@ -21,11 +21,6 @@ limitations under the License.
 
 #include "xla/stream_executor/gpu/ragged_all_to_all_kernel.h"
 
-#if NCCL_VERSION_CODE >= 22800
-// Device initiated collective operations were added in NCCL 2.28.0.
-#include "third_party/nccl/nccl_device.h"
-#endif  // NCCL_VERSION_CODE >= 22800
-
 namespace stream_executor::gpu {
 
 // A helper structure to load and store data of fixed number of bytes.
@@ -98,45 +93,17 @@ __device__ void TransferDataToLsaPeer(
   }
 }
 
-template <typename PtrStorage, int64_t kVectorSize>
-__global__ void __launch_bounds__(128)
-    RaggedAllToAllKernelImpl(const void* __restrict__ input_ptr,
-                             PtrStorage output_ptrs,
-                             const int64_t* __restrict__ input_offsets_ptr,
-                             const int64_t* __restrict__ send_sizes_ptr,
-                             const int64_t* __restrict__ output_offsets_ptr,
-                             int64_t num_updates_per_replica,
-                             int64_t num_row_elements) {
+template <int64_t kVectorSize>
+__global__ void __launch_bounds__(128) RaggedAllToAllKernelImpl(
+    const void* __restrict__ input_ptr,
+    stream_executor::gpu::RaggedAllToAllOutputPtrs output_ptrs,
+    const int64_t* __restrict__ input_offsets_ptr,
+    const int64_t* __restrict__ send_sizes_ptr,
+    const int64_t* __restrict__ output_offsets_ptr,
+    int64_t num_updates_per_replica, int64_t num_row_elements) {
   using T = Vec<kVectorSize>;
   const T* typed_input_ptr = static_cast<const T* __restrict__>(input_ptr);
   T* output_ptr = static_cast<T* __restrict__>(output_ptrs[blockIdx.x]);
-
-  TransferDataToLsaPeer(typed_input_ptr, output_ptr, input_offsets_ptr,
-                        send_sizes_ptr, output_offsets_ptr,
-                        num_updates_per_replica, num_row_elements);
-}
-
-template <int64_t kVectorSize>
-__global__ void __launch_bounds__(128)
-    RaggedAllToAllWithSymmetricMemoryKernelImpl(
-        const void* __restrict__ input_ptr, void* output_ptrs_symmetric_memory,
-        size_t output_sym_offset, const int64_t* __restrict__ input_offsets_ptr,
-        const int64_t* __restrict__ send_sizes_ptr,
-        const int64_t* __restrict__ output_offsets_ptr,
-        int64_t num_updates_per_replica, int64_t num_row_elements) {
-  using T = Vec<kVectorSize>;
-  const T* typed_input_ptr = static_cast<const T* __restrict__>(input_ptr);
-
-  T* output_ptr = nullptr;
-
-#if NCCL_VERSION_CODE >= 22800
-  output_ptr = static_cast<T* __restrict__>(
-      ncclGetLsaPointer((ncclWindow_t)output_ptrs_symmetric_memory,
-                        output_sym_offset, blockIdx.x));
-#else
-  assert(false &&
-         "Can not use the LSA feature with NCCL version less than 2.28.0.");
-#endif  // NCCL_VERSION_CODE >= 22800
 
   TransferDataToLsaPeer(typed_input_ptr, output_ptr, input_offsets_ptr,
                         send_sizes_ptr, output_offsets_ptr,

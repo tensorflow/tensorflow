@@ -18,6 +18,7 @@ limitations under the License.
 #include <algorithm>
 #include <cstdint>
 #include <optional>
+#include <string>
 #include <vector>
 
 #include "absl/algorithm/container.h"
@@ -25,6 +26,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/time/time.h"
 #include "tensorflow/core/kernels/batching_util/batch_stats.h"
+#include "tensorflow/core/lib/monitoring/counter.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
 
@@ -154,5 +156,24 @@ int ApplyBatchPaddingPolicy(int candidate_size,
   return batch_down_size;
 }
 
+namespace internal {
+
+void RecordLazyCancelledTaskMetrics(int64_t size, absl::string_view reason) {
+  static auto* count_cell = tensorflow::monitoring::Counter<1>::New(
+      "/tensorflow/serving/batching/lazy_cancelled_task_count",
+      "Tracks the number of tasks cancelled due to deadline exceeded or RPC "
+      "cancellation before batch formation.",
+      "reason");
+  count_cell->GetCell(std::string(reason))->IncrementBy(1);
+
+  static auto* size_cell = tensorflow::monitoring::Counter<1>::New(
+      "/tensorflow/serving/batching/lazy_cancelled_task_size",
+      "Tracks the sum of task sizes dropped due to deadline exceeded or RPC "
+      "cancellation before batch formation.",
+      "reason");
+  size_cell->GetCell(std::string(reason))->IncrementBy(size);
+}
+
+}  // namespace internal
 }  // namespace serving
 }  // namespace tensorflow

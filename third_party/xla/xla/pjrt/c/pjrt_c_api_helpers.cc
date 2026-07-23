@@ -36,6 +36,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "stablehlo/dialect/Version.h"
 #include "xla/future.h"
 #include "xla/layout.h"
@@ -210,6 +211,10 @@ PJRT_Buffer_Type ConvertToPjRtBufferType(xla::PrimitiveType type) {
       return PJRT_Buffer_Type::PJRT_Buffer_Type_F64;
     case xla::PrimitiveType::F4E2M1FN:
       return PJRT_Buffer_Type::PJRT_Buffer_Type_F4E2M1FN;
+    case xla::PrimitiveType::F6E2M3FN:
+      return PJRT_Buffer_Type::PJRT_Buffer_Type_F6E2M3FN;
+    case xla::PrimitiveType::F6E3M2FN:
+      return PJRT_Buffer_Type::PJRT_Buffer_Type_F6E3M2FN;
     case xla::PrimitiveType::F8E5M2:
       return PJRT_Buffer_Type::PJRT_Buffer_Type_F8E5M2;
     case xla::PrimitiveType::F8E4M3:
@@ -285,6 +290,10 @@ xla::PrimitiveType ConvertFromPjRtBufferType(PJRT_Buffer_Type type) {
       return xla::PrimitiveType::C128;
     case PJRT_Buffer_Type::PJRT_Buffer_Type_F4E2M1FN:
       return xla::PrimitiveType::F4E2M1FN;
+    case PJRT_Buffer_Type::PJRT_Buffer_Type_F6E2M3FN:
+      return xla::PrimitiveType::F6E2M3FN;
+    case PJRT_Buffer_Type::PJRT_Buffer_Type_F6E3M2FN:
+      return xla::PrimitiveType::F6E3M2FN;
     case PJRT_Buffer_Type::PJRT_Buffer_Type_F8E5M2:
       return xla::PrimitiveType::F8E5M2;
     case PJRT_Buffer_Type::PJRT_Buffer_Type_F8E4M3:
@@ -301,7 +310,7 @@ xla::PrimitiveType ConvertFromPjRtBufferType(PJRT_Buffer_Type type) {
       return xla::PrimitiveType::F8E3M4;
     case PJRT_Buffer_Type::PJRT_Buffer_Type_F8E8M0FNU:
       return xla::PrimitiveType::F8E8M0FNU;
-    case PJRT_Buffer_Type::PJRT_Buffer_Type_INVALID:
+    default:
       CHECK(false) << "Buffer type is not supported in C API layer.";
   }
 }
@@ -437,8 +446,8 @@ absl::StatusOr<std::vector<PJRT_NamedValue>> ConvertToPjRtNamedValueList(
   std::vector<PJRT_NamedValue> c_value_list;
   c_value_list.reserve(cpp_value_map.size());
   for (const auto& [name, value] : cpp_value_map) {
-    TF_ASSIGN_OR_RETURN(PJRT_NamedValue c_value,
-                        ConvertToPjRtNamedValue(name, value));
+    ASSIGN_OR_RETURN(PJRT_NamedValue c_value,
+                     ConvertToPjRtNamedValue(name, value));
     c_value_list.push_back(c_value);
   }
   return c_value_list;
@@ -517,8 +526,7 @@ absl::Status ValidateCreateOptions(
       return absl::InvalidArgumentError(absl::StrCat(
           "Unexpected option name passed to PJRT_Client_Create: ", name));
     }
-    TF_ASSIGN_OR_RETURN(PJRT_NamedValue_Type type,
-                        GetPjrtNamedValueType(value));
+    ASSIGN_OR_RETURN(PJRT_NamedValue_Type type, GetPjrtNamedValueType(value));
     if (type != it->second) {
       return absl::InvalidArgumentError(
           absl::StrCat("Option passed to PJRT_Client_Create with name ", name,
@@ -960,29 +968,31 @@ absl::StatusOr<xla::Shape> BuildXlaShapeFromC(
   } else {
     shape = xla::ShapeUtil::MakeShape(
         cpp_element_type, absl::Span<const int64_t>(dims, num_dims));
-  }
-  xla::Layout cpp_layout;
-  if (layout != nullptr) {
-    switch (layout->type) {
-      case PJRT_Buffer_MemoryLayout_Type::PJRT_Buffer_MemoryLayout_Type_Tiled: {
-        TF_ASSIGN_OR_RETURN(cpp_layout, ConvertToLayout(layout->tiled));
-        break;
+    if (layout != nullptr) {
+      xla::Layout cpp_layout;
+      switch (layout->type) {
+        case PJRT_Buffer_MemoryLayout_Type::
+            PJRT_Buffer_MemoryLayout_Type_Tiled: {
+          ASSIGN_OR_RETURN(cpp_layout, ConvertToLayout(layout->tiled));
+          break;
+        }
+        case PJRT_Buffer_MemoryLayout_Type::
+            PJRT_Buffer_MemoryLayout_Type_Strides: {
+          RETURN_IF_ERROR(absl::InvalidArgumentError(
+              "PJRT_Buffer_MemoryLayout_Type_Strides is not supported to be "
+              "converted to a xla::Shape"));
+          break;
+        }
+        default: {
+          RETURN_IF_ERROR(absl::InvalidArgumentError(
+              absl::StrCat("Unexpected PJRT_Buffer_MemoryLayout_Type type: ",
+                           layout->type)));
+        }
       }
-      case PJRT_Buffer_MemoryLayout_Type::
-          PJRT_Buffer_MemoryLayout_Type_Strides: {
-        TF_RETURN_IF_ERROR(absl::InvalidArgumentError(
-            "PJRT_Buffer_MemoryLayout_Type_Strides is not supported to be "
-            "converted to a xla::Shape"));
-        break;
-      }
-      default: {
-        TF_RETURN_IF_ERROR(absl::InvalidArgumentError(absl::StrCat(
-            "Unexpected PJRT_Buffer_MemoryLayout_Type type: ", layout->type)));
-      }
+      *shape.mutable_layout() = cpp_layout;
+    } else {
+      shape.clear_layout();
     }
-    *shape.mutable_layout() = cpp_layout;
-  } else {
-    shape.clear_layout();
   }
   return shape;
 }

@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/IR/MLIRContext.h"
 #include "xla/hlo/analysis/indexing_map.h"
@@ -53,8 +54,7 @@ TEST_F(TiledHloInstructionTest, TileSizesAndStridesShouldMatchHloShapeRank) {
       ShapeUtil::MakeShape(PrimitiveType::F32, {32, 64}), "p0");
 
   IndexingMap tile_offsets_indexing = IndexingMap::FromTensorSizes(
-      ParseSymbolicMap("(d0) -> (d0 floordiv 16, (d0 mod 16) * 16)",
-                       &mlir_context_),
+      ParseSymbolicMap("(d0) -> (d0 / 16, (d0 mod 16) * 16)", &mlir_context_),
       /*dim_upper_bounds=*/{8},
       /*symbol_upper_bounds=*/{});
 
@@ -168,17 +168,16 @@ TEST_F(TiledHloInstructionTest, ToString) {
         /*parameter_number=*/number,
         ShapeUtil::MakeShape(PrimitiveType::F32, {4}),
         absl::StrCat("p", number));
-    TF_ASSIGN_OR_RETURN(
-        std::unique_ptr<TiledHloInstruction> tiled_hlo,
-        TiledHloInstruction::Create(
-            hlo.get(), /*operands=*/{},
-            /*runtime_variables=*/{},
-            /*tile_sizes=*/{4},
-            /*tile_strides=*/{1},
-            IndexingMap::FromTensorSizes(
-                ParseSymbolicMap("(d0) -> (d0)", &mlir_context_),
-                /*dim_upper_bounds=*/{0},
-                /*symbol_upper_bounds=*/{})));
+    ASSIGN_OR_RETURN(std::unique_ptr<TiledHloInstruction> tiled_hlo,
+                     TiledHloInstruction::Create(
+                         hlo.get(), /*operands=*/{},
+                         /*runtime_variables=*/{},
+                         /*tile_sizes=*/{4},
+                         /*tile_strides=*/{1},
+                         IndexingMap::FromTensorSizes(
+                             ParseSymbolicMap("(d0) -> (d0)", &mlir_context_),
+                             /*dim_upper_bounds=*/{0},
+                             /*symbol_upper_bounds=*/{})));
     return std::make_pair(std::move(hlo), std::move(tiled_hlo));
   };
   TF_ASSERT_OK_AND_ASSIGN(auto p0, create_simple_tiled_hlo(0));
@@ -195,9 +194,10 @@ TEST_F(TiledHloInstructionTest, ToString) {
       /*range_vars=*/{},
       /*rt_vars=*/{IndexingMap::Variable{0, 3}});
 
-  std::vector<std::unique_ptr<TiledHloInstruction>> region;
-  region.push_back(std::move(tiled_p2));
-  llvm::SmallVector<std::vector<std::unique_ptr<TiledHloInstruction>>> regions;
+  std::vector<std::unique_ptr<TiledHloInstruction>> instructions;
+  instructions.push_back(std::move(tiled_p2));
+  TiledHloRegion region(std::move(instructions));
+  llvm::SmallVector<TiledHloRegion> regions;
   regions.push_back(std::move(region));
   std::unique_ptr<HloInstruction> p3_hlo = HloInstruction::CreateParameter(
       /*parameter_number=*/3, ShapeUtil::MakeShape(PrimitiveType::F32, {32}),

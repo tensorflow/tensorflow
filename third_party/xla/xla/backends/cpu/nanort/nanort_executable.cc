@@ -22,12 +22,14 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/base/casts.h"
 #include "absl/base/optimization.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/memory/memory.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_format.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/cpu/runtime/buffer_allocations.h"
 #include "xla/backends/cpu/runtime/function_library.h"
 #include "xla/backends/cpu/runtime/thread_pool_task_runner.h"
@@ -138,7 +140,7 @@ static absl::StatusOr<std::vector<size_t>> ResolveResultMapping(
 
   std::vector<size_t> result_to_allocation_index(executable_res_index.size());
 
-  TF_RETURN_IF_ERROR(ShapeUtil::ForEachLeafShapeWithStatus(
+  RETURN_IF_ERROR(ShapeUtil::ForEachLeafShapeWithStatus(
       entry_layout.result_shape(),
       [&](const Shape&, const ShapeIndex& index) -> absl::Status {
         // Skip buffer allocations assigned to non-leaf results (tuples).
@@ -154,9 +156,9 @@ static absl::StatusOr<std::vector<size_t>> ResolveResultMapping(
         }
 
         const HloValue* value = sources.values().front();
-        TF_ASSIGN_OR_RETURN(const BufferAllocation::Slice slice,
-                            buffer_assignment.GetUniqueSlice(
-                                value->instruction(), value->index()));
+        ASSIGN_OR_RETURN(const BufferAllocation::Slice slice,
+                         buffer_assignment.GetUniqueSlice(value->instruction(),
+                                                          value->index()));
 
         DCHECK_EQ(slice.size(), slice.allocation()->size())
             << "Result slice size must match result allocation size";
@@ -265,14 +267,14 @@ absl::StatusOr<std::unique_ptr<NanoRtExecutable>> NanoRtExecutable::Create(
   }
 
   // Mappings from argument/result index to buffer allocation index.
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       std::vector<size_t> argument_to_allocation_index,
       ResolveArgumentsMapping(module, cpu_executable->buffer_assignment()));
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       std::vector<size_t> result_to_allocation_index,
       ResolveResultMapping(module, cpu_executable->buffer_assignment()));
 
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       std::optional<size_t> temp_allocation_index,
       ResolveTempAllocationIndex(cpu_executable->buffer_assignment()));
 
@@ -294,7 +296,7 @@ absl::StatusOr<std::unique_ptr<NanoRtExecutable>> NanoRtExecutable::Create(
 absl::StatusOr<std::unique_ptr<NanoRtExecutable>> NanoRtExecutable::Create(
     CompilationResultProto aot_compilation_result,
     std::optional<ProgramShape> program_shape) {
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       std::unique_ptr<Executable> executable,
       CpuAotLoader::LoadExecutable(std::move(aot_compilation_result)));
   return Create(std::move(executable), program_shape);

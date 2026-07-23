@@ -16,8 +16,12 @@ limitations under the License.
 #include "xla/backends/gpu/codegen/triton/transforms/lowering_utils.h"
 
 #include <cstdint>
+#include <utility>
 
+#include "absl/log/check.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "llvm/ADT/STLExtras.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
@@ -37,6 +41,71 @@ limitations under the License.
 namespace mlir::triton::xla {
 
 namespace ttir = ::mlir::triton;
+
+namespace {
+
+// Returns `shape` without all its unit dimensions, as well as the index of the
+// remaining dimensions in the original `shape`.
+std::pair<llvm::SmallVector<int64_t>, llvm::SmallVector<int64_t>>
+CollapseUnitDims(llvm::ArrayRef<int64_t> shape,
+                 llvm::ArrayRef<int64_t> counterpart_shape) {
+  CHECK_EQ(shape.size(), counterpart_shape.size())
+      << "CollapseUnitDims requires aligned ranks for operand and counterpart.";
+  llvm::SmallVector<int64_t> shape_without_unit_dims;
+  llvm::SmallVector<int64_t> non_unit_dims_indices;
+  for (auto [i, size] : llvm::enumerate(shape)) {
+    if (size != 1 || size != counterpart_shape[i]) {
+      shape_without_unit_dims.push_back(size);
+      non_unit_dims_indices.push_back(i);
+    }
+  }
+  return {std::move(shape_without_unit_dims), std::move(non_unit_dims_indices)};
+}
+
+// Canonicalizes the given operand of a dot operation, i.e. make it a 2D tensor,
+// and make sure that the contracting dimension is where we expect it to be for
+// the given side (the second dimension for LHS, the first dimension for the
+// RHS).
+//
+// If it is a scaled-dot scale operand then we drop the extra dims only
+// when they equal to 1  and are matching with the corresponding operand.
+//
+// Returns an error if canonicalization is not possible.
+absl::StatusOr<TensorValue> CanonicalizeDotOperand(
+    mlir::ImplicitLocOpBuilder& b, TensorValue operand,
+    int64_t contracting_dim_idx, DotOperandSide side,
+    TensorValue counterpart_operand = nullptr) {
+  llvm::ArrayRef<int64_t> shape = operand.getType().getShape();
+  llvm::ArrayRef<int64_t> counterpart_shape =
+      counterpart_operand == nullptr ? shape
+                                     : counterpart_operand.getType().getShape();
+
+  auto [shape_without_unit_dims, non_unit_dims_indices] =
+      CollapseUnitDims(shape, counterpart_shape);
+
+  if (shape_without_unit_dims.size() != 2) {
+    return absl::FailedPreconditionError(
+        "Expected dot operand tile to have exactly two non-unit tile sizes");
+  }
+  if (shape.size() != shape_without_unit_dims.size()) {
+    ASSIGN_OR_RETURN(operand, ::xla::xtile::EmitTiledReshape(
+                                  b, shape_without_unit_dims, operand));
+  }
+  int expected_contracting_dim_position = side == DotOperandSide::kLhs ? 1 : 0;
+  bool is_transposed =
+      non_unit_dims_indices[expected_contracting_dim_position] !=
+      contracting_dim_idx;
+
+  if (is_transposed) {
+    llvm::SmallVector<int64_t, 2> transposed_shape{shape_without_unit_dims[1],
+                                                   shape_without_unit_dims[0]};
+    operand = ::xla::xtile::EmitTiledTranspose(b, transposed_shape,
+                                               /*dimensions=*/{1, 0}, operand);
+  }
+  return operand;
+}
+
+}  // namespace
 
 mlir::LogicalResult GetFusedAddUnit(mlir::Operation* op,
                                     mlir::PatternRewriter& rewriter,
@@ -65,11 +134,10 @@ mlir::LogicalResult GetFusedAddUnit(mlir::Operation* op,
 mlir::LogicalResult CanonicalizeOperand(mlir::ImplicitLocOpBuilder& b,
                                         mlir::Value& operand,
                                         int64_t contracting_dim_idx,
-                                        ::xla::xtile::DotOperandSide side) {
-  auto operand_tensor = mlir::cast<::xla::xtile::TensorValue>(operand);
-  absl::StatusOr<::xla::xtile::TensorValue> canonical =
-      ::xla::xtile::CanonicalizeDotOperand(b, operand_tensor,
-                                           contracting_dim_idx, side);
+                                        DotOperandSide side) {
+  auto operand_tensor = mlir::cast<TensorValue>(operand);
+  absl::StatusOr<TensorValue> canonical =
+      CanonicalizeDotOperand(b, operand_tensor, contracting_dim_idx, side);
   if (!canonical.ok()) {
     return mlir::failure();
   }
@@ -90,9 +158,8 @@ mlir::LogicalResult CanonicalizeFusedAddUnit(mlir::Operation* add_op,
   mlir::ImplicitLocOpBuilder builder(op_loc, rewriter);
 
   absl::StatusOr<::xla::xtile::TensorValue> acc_canonical =
-      ::xla::xtile::EmitTiledReshape(
-          builder, new_result_type.getShape(),
-          mlir::cast<::xla::xtile::TensorValue>(accumulator));
+      ::xla::xtile::EmitTiledReshape(builder, new_result_type.getShape(),
+                                     mlir::cast<TensorValue>(accumulator));
   if (!acc_canonical.ok()) {
     return rewriter.notifyMatchFailure(op_loc,
                                        "Failed to canonicalize accumulator.");
@@ -108,9 +175,8 @@ mlir::LogicalResult CanonicalizeFusedAddUnit(mlir::Operation* add_op,
   llvm::ArrayRef<int64_t> result_shape =
       mlir::cast<mlir::ShapedType>(add_op->getResult(0).getType()).getShape();
   absl::StatusOr<::xla::xtile::TensorValue> reshaped_result =
-      ::xla::xtile::EmitTiledReshape(
-          builder, result_shape,
-          mlir::cast<::xla::xtile::TensorValue>(new_add));
+      ::xla::xtile::EmitTiledReshape(builder, result_shape,
+                                     mlir::cast<TensorValue>(new_add));
   if (!reshaped_result.ok()) {
     return rewriter.notifyMatchFailure(op_loc, "Failed to reshape result.");
   }
@@ -151,6 +217,15 @@ mlir::LogicalResult LowerReshape::matchAndRewrite(
   bool allow_reorder = false;
   rewriter.replaceOpWithNewOp<ttir::ReshapeOp>(op, op.getResult().getType(),
                                                op.getOperand(), allow_reorder);
+  return mlir::success();
+}
+
+mlir::LogicalResult LowerTranspose::matchAndRewrite(
+    stablehlo::TransposeOp op, mlir::PatternRewriter& rewriter) const {
+  SmallVector<int32_t> permutation =
+      llvm::to_vector_of<int32_t>(op.getPermutation());
+  rewriter.replaceOpWithNewOp<ttir::TransOp>(op, op.getResult().getType(),
+                                             op.getOperand(), permutation);
   return mlir::success();
 }
 

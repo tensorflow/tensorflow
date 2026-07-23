@@ -18,14 +18,14 @@ limitations under the License.
 #include <stdlib.h>
 #include <string.h>
 
-#include <fstream>
-#include <iterator>
+#include <map>
 #include <memory>
 #include <string>
 #include <utility>
 #include <vector>
 
 #include <gtest/gtest.h>
+#include "flatbuffers/flatbuffer_builder.h"  // from @flatbuffers
 #include "flatbuffers/verifier.h"  // from @flatbuffers
 #include "tensorflow/compiler/mlir/lite/allocation.h"
 #include "tensorflow/lite/core/api/error_reporter.h"
@@ -39,6 +39,7 @@ limitations under the License.
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/string_util.h"
 #include "tensorflow/lite/testing/util.h"
+#include "tensorflow/lite/version.h"
 
 // Comparison for TfLiteRegistration. Since TfLiteRegistration is a C object,
 // we must declare this in global namespace, so argument-dependent operator
@@ -80,6 +81,50 @@ class TrivialResolver : public OpResolver {
  private:
   TfLiteRegistration* constant_return_;
 };
+
+namespace {
+
+std::string BuildMultiAxisQuantizationModelBuffer(
+    int32_t scales, int32_t zero_points,
+    const std::vector<int32_t>& quantized_dimensions, int32_t block_size = 32) {
+  flatbuffers::FlatBufferBuilder builder;
+
+  std::vector<int32_t> scale_shape = {2, 3};
+  auto scale_tensor = CreateTensorDirect(builder, &scale_shape,
+                                         TensorType_FLOAT32, 0, "scales");
+  std::vector<int32_t> zero_point_shape = {2, 3};
+  auto zero_point_tensor = CreateTensorDirect(
+      builder, &zero_point_shape, TensorType_INT32, 0, "zero_points");
+  auto multi_axis_quantization = CreateMultiAxisQuantizationDirect(
+      builder, scales, zero_points, block_size, &quantized_dimensions);
+  auto quantization = CreateQuantizationParameters(
+      builder, /*min=*/0, /*max=*/0, /*scale=*/0, /*zero_point=*/0,
+      QuantizationDetails_MultiAxisQuantization,
+      multi_axis_quantization.Union(), /*quantized_dimension=*/0);
+  std::vector<int32_t> weight_shape = {2, 4, 3};
+  auto weight_tensor = CreateTensorDirect(
+      builder, &weight_shape, TensorType_INT8, 0, "moe_weight", quantization);
+
+  std::vector<flatbuffers::Offset<Tensor>> tensors = {
+      scale_tensor, zero_point_tensor, weight_tensor};
+  std::vector<int32_t> inputs = {2};
+  std::vector<int32_t> outputs = {2};
+  std::vector<flatbuffers::Offset<Operator>> operators;
+  auto subgraph =
+      CreateSubGraphDirect(builder, &tensors, &inputs, &outputs, &operators);
+  std::vector<flatbuffers::Offset<SubGraph>> subgraphs = {subgraph};
+  std::vector<flatbuffers::Offset<Buffer>> buffers = {
+      CreateBufferDirect(builder)};
+  std::vector<flatbuffers::Offset<OperatorCode>> operator_codes;
+  auto model =
+      CreateModelDirect(builder, TFLITE_SCHEMA_VERSION, &operator_codes,
+                        &subgraphs, "multi-axis quantization test", &buffers);
+  FinishModelBuffer(builder, model);
+  return std::string(reinterpret_cast<const char*>(builder.GetBufferPointer()),
+                     builder.GetSize());
+}
+
+}  // namespace
 
 TEST(BasicFlatBufferModel, TestNonExistentFiles) {
   ASSERT_TRUE(!FlatBufferModel::BuildFromFile("/tmp/tflite_model_1234"));
@@ -134,6 +179,50 @@ TEST(BasicFlatBufferModel, TestEmptyModels) {
   ASSERT_NE(interpreter, nullptr);
 }
 
+TEST(BasicFlatBufferModel, TestMultiAxisQuantizationInInterpreter) {
+  std::string model_buffer = BuildMultiAxisQuantizationModelBuffer(
+      /*scales=*/0, /*zero_points=*/1, /*quantized_dimensions=*/{0, 2});
+  auto model = FlatBufferModel::BuildFromBuffer(model_buffer.data(),
+                                                model_buffer.size());
+  ASSERT_TRUE(model);
+
+  std::unique_ptr<Interpreter> interpreter;
+  ASSERT_EQ(InterpreterBuilder(*model, TrivialResolver())(&interpreter),
+            kTfLiteOk);
+  ASSERT_NE(interpreter, nullptr);
+
+  ASSERT_EQ(interpreter->tensors_size(), 3);
+  TfLiteTensor* tensor = interpreter->tensor(2);
+  ASSERT_NE(tensor, nullptr);
+  EXPECT_EQ(tensor->quantization.type, kTfLiteMultiAxisQuantization);
+  ASSERT_NE(tensor->quantization.params, nullptr);
+  auto* quantization = reinterpret_cast<TfLiteMultiAxisQuantization*>(
+      tensor->quantization.params);
+  EXPECT_EQ(quantization->scales, 0);
+  EXPECT_EQ(quantization->zero_points, 1);
+  EXPECT_EQ(quantization->blocksize, 32);
+  TfLiteIntArray* expected_quantized_dimensions = TfLiteIntArrayCreate(2);
+  expected_quantized_dimensions->data[0] = 0;
+  expected_quantized_dimensions->data[1] = 2;
+  EXPECT_TRUE(TfLiteIntArrayEqual(quantization->quantized_dimensions,
+                                  expected_quantized_dimensions));
+  TfLiteIntArrayFree(expected_quantized_dimensions);
+}
+
+TEST(BasicFlatBufferModel,
+     TestRejectsMultiAxisQuantizationOutOfRangeZeroPointTensor) {
+  std::string model_buffer = BuildMultiAxisQuantizationModelBuffer(
+      /*scales=*/0, /*zero_points=*/3, /*quantized_dimensions=*/{0, 2});
+  auto model = FlatBufferModel::BuildFromBuffer(model_buffer.data(),
+                                                model_buffer.size());
+  ASSERT_TRUE(model);
+
+  std::unique_ptr<Interpreter> interpreter;
+  EXPECT_NE(InterpreterBuilder(*model, TrivialResolver())(&interpreter),
+            kTfLiteOk);
+  EXPECT_EQ(interpreter, nullptr);
+}
+
 TEST(BasicFlatBufferModel, TestNullDestination) {
   auto model = FlatBufferModel::BuildFromFile(
       "tensorflow/lite/testdata/empty_model.bin");
@@ -179,7 +268,7 @@ TEST(BasicFlatBufferModel, TestModelWithoutNullRegistrations) {
       "tensorflow/lite/testdata/test_model.bin");
   ASSERT_TRUE(model);
   // Check that we get an error code and interpreter pointer is reset.
-  std::unique_ptr<Interpreter> interpreter(new Interpreter);
+  auto interpreter = std::make_unique<Interpreter>();
   ASSERT_NE(InterpreterBuilder(*model, TrivialResolver(nullptr))(&interpreter),
             kTfLiteOk);
   ASSERT_EQ(interpreter, nullptr);
@@ -191,7 +280,7 @@ TEST(BasicFlatBufferModel, TestModelInInterpreter) {
       "tensorflow/lite/testdata/test_model.bin");
   ASSERT_TRUE(model);
   // Check that we get an error code and interpreter pointer is reset.
-  std::unique_ptr<Interpreter> interpreter(new Interpreter);
+  auto interpreter = std::make_unique<Interpreter>();
   ASSERT_EQ(
       InterpreterBuilder(*model, TrivialResolver(&dummy_reg))(&interpreter),
       kTfLiteOk);
@@ -262,6 +351,41 @@ TEST(BasicFlatBufferModel, TestModelInInterpreter) {
     TfLiteIntArrayFree(desired_outputs);
     ASSERT_EQ(reg1, dummy_reg);
   }
+}
+
+TEST(BasicFlatBufferModel, TestInvalidBlockwiseQuantizationDetails) {
+  flatbuffers::FlatBufferBuilder builder;
+  auto q = ::tflite::CreateQuantizationParameters(
+      builder,
+      /*min=*/0,
+      /*max=*/0,
+      /*scale=*/0,
+      /*zero_point=*/0,
+      /*details_type=*/tflite::QuantizationDetails_BlockwiseQuantization,
+      /*details=*/0);
+  auto tensor = ::tflite::CreateTensorDirect(builder, /*shape=*/nullptr,
+                                             tflite::TensorType_FLOAT32,
+                                             /*buffer=*/0, "tensor_one", q);
+  std::vector<flatbuffers::Offset<::tflite::Tensor>> tensors = {tensor};
+  auto subgraph = ::tflite::CreateSubGraphDirect(
+      builder, &tensors, /*inputs=*/nullptr, /*outputs=*/nullptr,
+      /*operators=*/nullptr, "subgraph");
+  std::vector<flatbuffers::Offset<::tflite::SubGraph>> subgraphs = {subgraph};
+  std::vector<uint8_t> buffer_data = {};
+  auto buf = ::tflite::CreateBuffer(builder, builder.CreateVector(buffer_data));
+  std::vector<flatbuffers::Offset<::tflite::Buffer>> buffers = {buf};
+  auto model = ::tflite::CreateModelDirect(builder, TFLITE_SCHEMA_VERSION,
+                                           /*operator_codes=*/nullptr,
+                                           &subgraphs, "model", &buffers);
+  ::tflite::FinishModelBuffer(builder, model);
+  auto fb_model = FlatBufferModel::BuildFromBuffer(
+      reinterpret_cast<const char*>(builder.GetBufferPointer()),
+      builder.GetSize());
+  ASSERT_TRUE(fb_model);
+  std::unique_ptr<Interpreter> interpreter;
+  TrivialResolver resolver;
+  ASSERT_EQ(InterpreterBuilder(*fb_model, resolver)(&interpreter),
+            kTfLiteError);
 }
 
 TEST(BasicFlatBufferModel, TestWithNumThreads) {
@@ -382,7 +506,7 @@ TEST(BasicFlatBufferModel, TestBrokenMmap) {
 
 TEST(BasicFlatBufferModel, TestNullModel) {
   // Check that we get an error code and interpreter pointer is reset.
-  std::unique_ptr<Interpreter> interpreter(new Interpreter);
+  auto interpreter = std::make_unique<Interpreter>();
   ASSERT_NE(
       InterpreterBuilder(nullptr, TrivialResolver(&dummy_reg))(&interpreter),
       kTfLiteOk);
@@ -491,19 +615,43 @@ TEST(BasicFlatBufferModel, TestBuildFromNullAllocation) {
   TestErrorReporter reporter;
   std::unique_ptr<Allocation> model_allocation;
 
-  auto model =
-      FlatBufferModel::BuildFromAllocation(std::move(model_allocation));
-  ASSERT_FALSE(model);
+  std::unique_ptr<FlatBufferModel> model = FlatBufferModel::BuildFromAllocation(
+      std::move(model_allocation), &reporter);
+  EXPECT_FALSE(model);
+  EXPECT_EQ(reporter.num_calls(), 1);
+  EXPECT_PRED_FORMAT2(testing::IsSubstring,
+                      "The model allocation is null/empty",
+                      reporter.error_messages());
 }
 
 TEST(BasicFlatBufferModel, TestBuildFromInvalidAllocation) {
   TestErrorReporter reporter;
-  std::unique_ptr<Allocation> model_allocation(
-      new MemoryAllocation(nullptr, 0, nullptr));
+  auto model_allocation =
+      std::make_unique<MemoryAllocation>(nullptr, 0, &reporter);
 
-  auto model =
-      FlatBufferModel::BuildFromAllocation(std::move(model_allocation));
-  ASSERT_FALSE(model);
+  std::unique_ptr<FlatBufferModel> model = FlatBufferModel::BuildFromAllocation(
+      std::move(model_allocation), &reporter);
+  EXPECT_FALSE(model);
+  EXPECT_EQ(reporter.num_calls(), 1);
+  EXPECT_PRED_FORMAT2(testing::IsSubstring,
+                      "The model allocation is null/empty",
+                      reporter.error_messages());
+}
+
+TEST(BasicFlatBufferModel, TestBuildFromCorruptedAllocation) {
+  TestErrorReporter reporter;
+  alignas(16)
+      const char corrupted_data[] = {0, 0, 0, 0, 'T', 'F', 'L', '3', 0, 0};
+  auto model_allocation = std::make_unique<MemoryAllocation>(
+      corrupted_data, sizeof(corrupted_data), &reporter);
+
+  std::unique_ptr<FlatBufferModel> model = FlatBufferModel::BuildFromAllocation(
+      std::move(model_allocation), &reporter);
+  EXPECT_FALSE(model);
+  EXPECT_EQ(reporter.num_calls(), 1);
+  EXPECT_PRED_FORMAT2(testing::IsSubstring,
+                      "The model is not a valid Flatbuffer buffer",
+                      reporter.error_messages());
 }
 
 // Test reading the minimum runtime string from metadata in a Model flatbuffer.
@@ -591,7 +739,7 @@ TEST(BasicFlatBufferModel, TestParseModelWithSparseTensor) {
       "tensorflow/lite/testdata/sparse_tensor.bin");
   ASSERT_TRUE(model);
 
-  std::unique_ptr<Interpreter> interpreter(new Interpreter);
+  auto interpreter = std::make_unique<Interpreter>();
   ASSERT_EQ(InterpreterBuilder(*model, TrivialResolver())(&interpreter),
             kTfLiteOk);
   ASSERT_NE(interpreter, nullptr);
@@ -719,8 +867,7 @@ TEST(TestAddDelegateOwnership, AddDelegateDoesNotTakeOwnership) {
   bool destroyed = false;
   bool prepared = false;
   {
-    std::unique_ptr<TestDelegate> delegate(
-        new TestDelegate(&destroyed, &prepared));
+    auto delegate = std::make_unique<TestDelegate>(&destroyed, &prepared);
     {
       // Load a model.
       auto model = FlatBufferModel::BuildFromFile(

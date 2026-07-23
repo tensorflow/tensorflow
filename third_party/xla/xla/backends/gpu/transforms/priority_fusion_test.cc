@@ -1071,6 +1071,12 @@ ENTRY main {
 
 TEST_F(PriorityFusionTest,
        FuseTritonProducerWithTwoConsumersUsingMultiOutputFusion) {
+  if (GetDebugOptionsForTest()
+          .xla_gpu_experimental_enable_tiling_propagation()) {
+    // TODO(b/530092114): support multi-output fusions.
+    GTEST_SKIP()
+        << "Multi-output fusions are not supported with block-level emitter";
+  }
   const std::string kHloText = R"(
 HloModule t
 
@@ -1125,6 +1131,11 @@ ENTRY main {
 
 TEST_F(PriorityFusionTest,
        FuseProducerWithTritonConsumerUsingMultiOutputFusion) {
+  if (GetDebugOptionsForTest()
+          .xla_gpu_experimental_enable_tiling_propagation()) {
+    GTEST_SKIP()
+        << "Multi-output fusions are not supported with block-level emitter";
+  }
   const std::string kHloText = R"(
 HloModule t
 
@@ -1173,6 +1184,11 @@ ENTRY main {
 }
 
 TEST_F(PriorityFusionTest, FuseTritonFusionBothEndsUsingMultiOutputFusion) {
+  if (GetDebugOptionsForTest()
+          .xla_gpu_experimental_enable_tiling_propagation()) {
+    GTEST_SKIP()
+        << "Multi-output fusions are not supported with block-level emitter";
+  }
   // Here, we fuse `fusion` first into `exp` and `sqrt`. When we try to fuse
   // `log` into the two fusions resulting from the previous step using
   // multi-output fusion, we currently don't allow that, as we would need to
@@ -1484,6 +1500,11 @@ TEST_F(PriorityFusionWithTritonEnabledTest, LimitNumberOfParameters) {
 
 TEST_F(PriorityFusionWithTritonEnabledTest,
        MultipleMultiOutputFusionCandidates) {
+  if (GetDebugOptionsForTest()
+          .xla_gpu_experimental_enable_tiling_propagation()) {
+    GTEST_SKIP()
+        << "Multi-output fusions are not supported with block-level emitter";
+  }
   auto module = *ParseAndReturnVerifiedModule(R"(
     HloModule test_module
 
@@ -1503,6 +1524,9 @@ TEST_F(PriorityFusionWithTritonEnabledTest,
   PriorityFusion priority_fusion_with_thread_pool{/*thread_pool=*/&pool,
                                                   device_info_, &alias_info_,
                                                   options, &mlir_context_};
+  module->mutable_config()
+      .mutable_debug_options()
+      .set_xla_gpu_unsupported_enable_triton_multi_output_fusion(true);
   EXPECT_THAT(priority_fusion_with_thread_pool.Run(module.get()),
               absl_testing::IsOkAndHolds(true));
   HloInstruction* root = module->entry_computation()->root_instruction();

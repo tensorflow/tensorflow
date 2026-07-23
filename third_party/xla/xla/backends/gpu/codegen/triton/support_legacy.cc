@@ -217,7 +217,7 @@ bool IsTritonSupportedElementwiseUpToFloatNormalization(
 CodegenDecision CanTritonHandleElementwise(
     const HloInstruction& instr, const se::GpuComputeCapability& gpu_version) {
   if (auto decision = IsInstructionSupportsDataTypes(instr, gpu_version);
-      !decision.CanFuse()) {
+      decision.IsForbidden()) {
     return decision;
   }
   if (instr.opcode() == HloOpcode::kConstant) {
@@ -339,7 +339,7 @@ CodegenDecision CanTritonHandleGEMM(
 
   if (auto decision =
           AreDotInputAndOutputTypesSupportedAndCompatible(dot, gpu_version);
-      !decision.CanFuse()) {
+      decision.IsForbidden()) {
     return decision;
   }
 

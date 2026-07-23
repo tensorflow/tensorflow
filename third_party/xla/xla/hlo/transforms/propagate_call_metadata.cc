@@ -15,10 +15,10 @@ limitations under the License.
 
 #include "xla/hlo/transforms/propagate_call_metadata.h"
 
-#include <algorithm>
 #include <string>
 #include <utility>
 
+#include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/match.h"
@@ -142,7 +142,7 @@ absl::StatusOr<bool> PropagateCallMetadata::RunImpl(
   bool changed = false;
 
   auto computations = module->MakeNonfusionComputations(execution_threads);
-  std::reverse(computations.begin(), computations.end());
+  absl::c_reverse(computations);
 
   for (HloComputation* computation : computations) {
     for (HloInstruction* instr : computation->MakeInstructionPostOrder()) {

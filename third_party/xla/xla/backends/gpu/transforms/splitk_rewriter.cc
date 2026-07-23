@@ -31,6 +31,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -332,34 +333,34 @@ absl::StatusOr<HloInstruction*> SplitKDimensionOfDot(HloDotInstruction* src_dot,
 
   // Update the dot's dimension numbers accordingly (shifting right all the
   // dimensions starting from the K dimension and inserting new batch dims).
-  TF_ASSIGN_OR_RETURN(auto dims, DotOperandDims::FromDot(src_dot));
+  ASSIGN_OR_RETURN(auto dims, DotOperandDims::FromDot(src_dot));
   // We need to insert the dimension at the same index in both operands.
   // InsertDimension inserts at "natural" location by default which may be
   // different for lhs and rhs. Therefore, we take the index from the lhs and
   // insert at the same index in the rhs.
   std::optional<int64_t> insertion_idx = std::nullopt;
   for (size_t i : {0, 1}) {
-    TF_ASSIGN_OR_RETURN(insertion_idx, dims[i].InsertDimension(
-                                           DotOperandDims::kBatch, k_incices[i],
-                                           split_k, insertion_idx));
-    TF_RETURN_IF_ERROR(dims[i].UpdateShape(operands[i]->shape()));
+    ASSIGN_OR_RETURN(insertion_idx, dims[i].InsertDimension(
+                                        DotOperandDims::kBatch, k_incices[i],
+                                        split_k, insertion_idx));
+    RETURN_IF_ERROR(dims[i].SetShape(operands[i]->shape()));
   }
 
-  TF_ASSIGN_OR_RETURN(DotDimensionNumbers new_dnums,
-                      DotOperandDims::CreateDotDimensionNumbers(dims));
-  TF_ASSIGN_OR_RETURN(HloInstruction * new_dot,
-                      MakeDotHlo(operands[0], operands[1], new_dnums,
-                                 src_dot->precision_config(), accumulator_type,
-                                 &src_dot->metadata()));
+  ASSIGN_OR_RETURN(DotDimensionNumbers new_dnums,
+                   DotOperandDims::CreateDotDimensionNumbers(dims));
+  ASSIGN_OR_RETURN(HloInstruction * new_dot,
+                   MakeDotHlo(operands[0], operands[1], new_dnums,
+                              src_dot->precision_config(), accumulator_type,
+                              &src_dot->metadata()));
 
   // Reduce along the new batch dimension. Batch dimensions are first in the dot
   // result, so we use index within the batch category to get it.
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       int64_t splitk_dim_idx,
       dims[0].IndexWithinCategory(DotOperandDims::kBatch, k_incices[0]));
 
-  TF_ASSIGN_OR_RETURN(HloInstruction * splitk_root,
-                      ReduceDimension(new_dot, splitk_dim_idx));
+  ASSIGN_OR_RETURN(HloInstruction * splitk_root,
+                   ReduceDimension(new_dot, splitk_dim_idx));
   *splitk_root->mutable_shape()->mutable_layout() = src_dot->shape().layout();
   if (output_type != accumulator_type) {
     splitk_root = MakeConvertToHlo(splitk_root, output_type);
@@ -398,9 +399,9 @@ class SplitkRewriterVisitor : public DfsHloRewriteVisitor {
     if (split_k == 1) {
       return absl::OkStatus();
     }
-    TF_ASSIGN_OR_RETURN(HloInstruction * new_dot,
-                        SplitKDimensionOfDot(dot, split_k));
-    TF_RETURN_IF_ERROR(ReplaceInstruction(instr, new_dot));
+    ASSIGN_OR_RETURN(HloInstruction * new_dot,
+                     SplitKDimensionOfDot(dot, split_k));
+    RETURN_IF_ERROR(ReplaceInstruction(instr, new_dot));
     return absl::OkStatus();
   }
 
@@ -416,7 +417,7 @@ absl::StatusOr<bool> SplitkRewriter::RunImpl(
   for (HloComputation* computation :
        module->MakeNonfusionComputations(execution_threads)) {
     SplitkRewriterVisitor visitor(device_description_);
-    TF_RETURN_IF_ERROR(computation->Accept(&visitor));
+    RETURN_IF_ERROR(computation->Accept(&visitor));
     changed |= visitor.changed();
   }
   return changed;

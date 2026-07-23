@@ -1,7 +1,6 @@
-// RUN: hlo_to_xtileir %s --use_experimental_tiling 2>&1 | FileCheck %s --check-prefix=CHECK-ERROR
+// RUN: hlo_to_xtileir %s --xla_gpu_experimental_enable_tiling_propagation 2>&1 | FileCheck %s
 
-// CHECK-ERROR: FAILED_PRECONDITION: Tiling propagation rejected for Concatenate: The tile offset expression 'v0 * 49 + v1 * 8' must be a clean multiple of its tile size 8 to prevent correctness bugs from tiles covering multiple concat operands.
-
+// CHECK: FAILED_PRECONDITION:{{.*}}The variable step expression 'v0 * 49 + v1 * 8' must be a clean multiple of its tile size 8
 fusion {
   p0 = f32[96] parameter(0)
   p1 = f32[100] parameter(1)

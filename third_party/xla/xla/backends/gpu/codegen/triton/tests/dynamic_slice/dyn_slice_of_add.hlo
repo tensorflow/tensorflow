@@ -1,7 +1,7 @@
-// RUN: hlo_to_xtileir %s | FileCheck %s
-// RUN: triton_test_correctness %s
+// RUN: hlo_to_xtileir --xla_gpu_experimental_enable_tiling_propagation=false %s | FileCheck %s
+// RUN: triton_test_correctness --xla_gpu_experimental_enable_tiling_propagation=false %s
 
-// RUN: hlo_to_xtileir %s --use_experimental_tiling | FileCheck %s
+// RUN: hlo_to_xtileir %s --xla_gpu_experimental_enable_tiling_propagation | FileCheck %s
 // RUN: triton_test_correctness %s --xla_gpu_experimental_enable_tiling_propagation
 
 fusion {
@@ -11,11 +11,15 @@ fusion {
   add = s32[] add(c7, c13)
   ROOT r = s32[10] dynamic-slice(p0, add), dynamic_slice_sizes={10}
 }
-// CHECK-DAG:   %[[C0:.*]] = arith.constant 0 : index
-// CHECK-DAG:   %[[C20:.*]] = arith.constant 20 : index
-// CHECK:       %[[EXTRACT:.*]] = xtile.extract %{{.*}}[%[[C20]]] [32] [1]
-// CHECK-SAME:    : memref<64xi32> -> tensor<32xi32>
-// CHECK: xtile.insert
+// CHECK-LABEL: xtile.entry_func @triton_fn(
+// CHECK-SAME:    %[[ARG0:.*]]: memref<64xi32>,
+// CHECK-SAME:    %[[ARG1:.*]]: memref<10xi32>,
+// CHECK-SAME:    %[[ARG2:.*]]: index)
+// CHECK-DAG:     %[[C0:.*]] = arith.constant 0 : index
+// CHECK-DAG:     %[[C20:.*]] = arith.constant 20 : index
+// CHECK:         %[[EXTRACT:.*]] = xtile.extract %[[ARG0]][%[[C20]]] [32] [1] : memref<64xi32> -> tensor<32xi32>
+// CHECK:         xtile.insert %[[EXTRACT]] into %[[ARG1]][%[[C0]]] [32] [1] : tensor<32xi32> -> memref<10xi32>
+// CHECK:         xtile.return
 
 ENTRY main {
   p0 = s32[64] parameter(0)

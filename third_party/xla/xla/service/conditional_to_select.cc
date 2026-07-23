@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/service/conditional_to_select.h"
 
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
@@ -95,12 +96,12 @@ static absl::StatusOr<bool> DoConditionalToSelect(HloInstruction* conditional) {
         ShapeUtil::ChangeElementType(condition->shape(), PrimitiveType::PRED),
         condition));
   }
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       HloInstruction * select_op,
       MakeSelectHlo(condition, if_call_op, else_call_op, conditional));
-  TF_RETURN_IF_ERROR(computation->ReplaceInstruction(conditional, select_op));
-  TF_RETURN_IF_ERROR(CallInliner::Inline(if_call_op).status());
-  TF_RETURN_IF_ERROR(CallInliner::Inline(else_call_op).status());
+  RETURN_IF_ERROR(computation->ReplaceInstruction(conditional, select_op));
+  RETURN_IF_ERROR(CallInliner::Inline(if_call_op).status());
+  RETURN_IF_ERROR(CallInliner::Inline(else_call_op).status());
   return true;
 }
 
@@ -110,7 +111,7 @@ absl::StatusOr<bool> ConditionalToSelect::RunImpl(
   std::unique_ptr<CallGraph> call_graph = CallGraph::Build(module);
   bool did_mutate = false;
   VLOG(1) << "Running conditional-to-select pass";
-  TF_RETURN_IF_ERROR(
+  RETURN_IF_ERROR(
       call_graph->VisitNodes([&](const CallGraphNode& node) -> absl::Status {
         std::vector<HloInstruction*> ToInline;
         if (node.context() != CallContext::kEmbedded) {
@@ -120,8 +121,7 @@ absl::StatusOr<bool> ConditionalToSelect::RunImpl(
           if (callsite.instruction()->opcode() == HloOpcode::kConditional) {
             VLOG(1) << "Visiting conditional: " << callsite.ToString();
             HloInstruction* conditional = callsite.instruction();
-            TF_ASSIGN_OR_RETURN(bool result,
-                                DoConditionalToSelect(conditional));
+            ASSIGN_OR_RETURN(bool result, DoConditionalToSelect(conditional));
             did_mutate |= result;
           }
         }

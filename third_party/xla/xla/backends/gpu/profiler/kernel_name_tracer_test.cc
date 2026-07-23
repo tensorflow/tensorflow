@@ -29,6 +29,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/ascii.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/gpu/runtime/command.h"
 #include "xla/backends/gpu/runtime/command_buffer_thunk.h"
 #include "xla/backends/gpu/runtime/command_executor.h"
@@ -64,8 +65,8 @@ using ::testing::ElementsAre;
 using ::testing::IsEmpty;
 
 absl::StatusOr<stream_executor::Platform*> GetPlatform() {
-  TF_ASSIGN_OR_RETURN(std::string name,
-                      PlatformUtil::CanonicalPlatformName("gpu"));
+  ASSIGN_OR_RETURN(std::string name,
+                   PlatformUtil::CanonicalPlatformName("gpu"));
   return stream_executor::PlatformManager::PlatformWithName(
       absl::AsciiStrToUpper(name));
 }

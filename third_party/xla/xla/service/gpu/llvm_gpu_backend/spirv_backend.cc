@@ -20,12 +20,16 @@ limitations under the License.
 #include <vector>
 
 #include "absl/base/no_destructor.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "llvm/Analysis/TargetLibraryInfo.h"
 #include "llvm/CodeGen/MachineModuleInfo.h"
 #include "llvm/IR/Constants.h"
 #include "llvm/IR/GlobalVariable.h"
 #include "llvm/IR/IRBuilder.h"
+#include "llvm/IR/IntrinsicInst.h"
+#include "llvm/IR/Intrinsics.h"
 #include "llvm/IR/LegacyPassManager.h"
+#include "llvm/Support/CodeGen.h"
 #include "llvm/Support/TargetSelect.h"
 #include "llvm/Target/TargetLoweringObjectFile.h"
 #include "llvm/Transforms/Scalar.h"
@@ -45,6 +49,11 @@ namespace {
 
 // Default inline threshold value to use in llvm.
 const int kDefaultInlineThreshold = 1100;
+
+// SPIR-V LLVM representation address spaces used by this backend.
+// https://github.com/KhronosGroup/SPIRV-LLVM-Translator/blob/main/docs/SPIRVRepresentationInLLVM.rst#address-spaces
+constexpr unsigned kSpirvLlvmDefaultAddressSpace = 0;
+constexpr unsigned kSpirvLlvmCrossWorkgroupAddressSpace = 1;
 
 void SPIRVBackendInit() {
   LLVMInitializeSPIRVTargetInfo();
@@ -72,11 +81,18 @@ std::string EmitModuleToSPIRV(llvm::Module* module,
   // Unlike other GPU backends like NVTPTX and AMDGPU, SPIRV does not have
   // address inference pass in the TargetPassConfig. So we do it here
   // explicitly.
-  pm.add(llvm::createInferAddressSpacesPass(0));
+  pm.add(llvm::createInferAddressSpacesPass(kSpirvLlvmDefaultAddressSpace));
   pm.add(new llvm::TargetLibraryInfoWrapperPass(
       llvm::Triple(module->getTargetTriple())));
   std::unique_ptr<llvm::MachineModuleInfoWrapperPass> mmiwp(
       new llvm::MachineModuleInfoWrapperPass(target_machine));
+  // Force CodeGen opt level to None to match the previously used
+  // SPIRVTranslateModule API (see llvm/lib/Target/SPIRV/SPIRVAPI.cpp), which
+  // defaulted to None. The current default is O2, which triggered accuracy
+  // regressions in the SPIR-V backend, so we pin it back to None here.
+  // TODO(intel-tf): Revisit this once the SPIR-V backend is fixed to support
+  // O2.
+  target_machine->setOptLevel(llvm::CodeGenOptLevel::None);
   target_machine->getObjFileLowering()->Initialize(mmiwp->getMMI().getContext(),
                                                    *target_machine);
   target_machine->addPassesToEmitFile(pm, buffered_stream, nullptr,
@@ -84,6 +100,49 @@ std::string EmitModuleToSPIRV(llvm::Module* module,
 
   pm.run(*module);
   return spirv_binary;
+}
+
+llvm::IntegerType* GetSubByteElementType(llvm::Type* call_type) {
+  llvm::Type* scalar = call_type->getScalarType();
+  if (auto* type = llvm::dyn_cast<llvm::IntegerType>(scalar)) {
+    return type->getBitWidth() < 8 ? type : nullptr;
+  }
+  return nullptr;
+}
+
+// Expand sub-byte integer llvm bitreverse intrinsic calls because SPIR-V has no
+// native support for such integer types.
+void ExpandSubByteBitReverse(llvm::Module* module) {
+  llvm::SmallVector<llvm::CallInst*> calls;
+  for (auto& func : *module) {
+    for (auto& bb : func) {
+      for (auto& inst : bb) {
+        llvm::IntrinsicInst* call = llvm::dyn_cast<llvm::IntrinsicInst>(&inst);
+        if (call && call->getIntrinsicID() == llvm::Intrinsic::bitreverse &&
+            GetSubByteElementType(call->getType())) {
+          calls.push_back(call);
+        }
+      }
+    }
+  }
+  for (llvm::CallInst* call : calls) {
+    llvm::IRBuilder<> builder(call);
+    llvm::Type* type = call->getType();
+    llvm::Type* wide_type = llvm::Type::getInt32Ty(module->getContext());
+    if (auto* vec_type = llvm::dyn_cast<llvm::FixedVectorType>(type)) {
+      wide_type = llvm::FixedVectorType::get(builder.getInt32Ty(),
+                                             vec_type->getNumElements());
+    }
+    llvm::Value* zext = builder.CreateZExt(call->getArgOperand(0), wide_type);
+    llvm::Function* bitrev = llvm::Intrinsic::getOrInsertDeclaration(
+        module, llvm::Intrinsic::bitreverse, {wide_type});
+    llvm::Value* rev = builder.CreateCall(bitrev, {zext});
+    llvm::Value* shr = builder.CreateLShr(
+        rev, 32 - GetSubByteElementType(type)->getBitWidth());
+    llvm::Value* result = builder.CreateTrunc(shr, type);
+    call->replaceAllUsesWith(result);
+    call->eraseFromParent();
+  }
 }
 
 }  // namespace
@@ -122,10 +181,10 @@ absl::StatusOr<std::string> CompileToSPIRV(
   auto llvm_opts = GetSPIRVBackendOptions(debug_options);
   llvm_ir::LLVMCommandLineOptionsLock llvm_lock(llvm_opts);
 
-  // SPIRV Kernel functions expect their arguments' address spaces to be global,
-  // i.e., addrspace(1). Here we only change kernel argument's address space if
-  // it is addrspace(0). Then an address space cast to original is applied so
-  // that users still have old address space.
+  // Preserve the existing rewrite of SPIR-V kernel pointer arguments in the
+  // default LLVM address space to CrossWorkgroup. Kernel signatures can also
+  // contain scalar arguments, so only pointer arguments participate in the
+  // rewrite.
   llvm::LLVMContext& context = module->getContext();
   llvm::SmallVector<llvm::Function*> kernel_funcs;
   for (auto& func : *module) {
@@ -136,15 +195,22 @@ absl::StatusOr<std::string> CompileToSPIRV(
   for (auto old_func : kernel_funcs) {
     if (old_func->getCallingConv() == llvm::CallingConv::SPIR_KERNEL) {
       std::vector<llvm::Type*> new_arg_types;
+      bool needs_rewrite = false;
       for (auto& old_arg : old_func->args()) {
         llvm::Type* old_arg_type = old_arg.getType();
         auto ptr_type = llvm::dyn_cast<llvm::PointerType>(old_arg_type);
-        if (ptr_type->getAddressSpace() == 0) {
-          auto new_arg_type = llvm::PointerType::get(context, 1);
+        if (ptr_type &&
+            ptr_type->getAddressSpace() == kSpirvLlvmDefaultAddressSpace) {
+          auto new_arg_type = llvm::PointerType::get(
+              context, kSpirvLlvmCrossWorkgroupAddressSpace);
           new_arg_types.push_back(new_arg_type);
+          needs_rewrite = true;
         } else {
           new_arg_types.push_back(old_arg_type);
         }
+      }
+      if (!needs_rewrite) {
+        continue;
       }
       auto new_func_type = llvm::FunctionType::get(
           old_func->getReturnType(), new_arg_types, old_func->isVarArg());
@@ -171,6 +237,8 @@ absl::StatusOr<std::string> CompileToSPIRV(
                 llvm::dyn_cast<llvm::PointerType>(old_arg_it->getType())) {
           auto cast = builder.CreateAddrSpaceCast(new_arg_it, old_ptr_type);
           old_arg_it->replaceAllUsesWith(cast);
+        } else {
+          old_arg_it->replaceAllUsesWith(&*new_arg_it);
         }
       }
       // TODO: Update kernel function's uses. Currently, we are assuming that
@@ -191,9 +259,11 @@ absl::StatusOr<std::string> CompileToSPIRV(
   const_cast<llvm::SPIRVSubtarget*>(sub_target->getSubtargetImpl())
       ->initAvailableExtensions(common_spirv_extensions);
 
-  TF_RETURN_IF_ERROR(LinkAndOptimizeModule(
+  RETURN_IF_ERROR(LinkAndOptimizeModule(
       module, gpu_version, debug_options, "", SPIRVTargetModuleLinker,
       default_target_triple, target_machine.get(), kDefaultInlineThreshold));
+
+  ExpandSubByteBitReverse(module);
 
   // The LLVM SPIR-V backend removes unused globals during its passes for
   // translation to SPIR-V. To prevent this, we create a fake use of those
@@ -214,7 +284,8 @@ absl::StatusOr<std::string> CompileToSPIRV(
         arr_type, /*isConstant=*/false, llvm::GlobalValue::AppendingLinkage,
         /*Initializer=*/arr_init, "global_ptr_list",
         /*ThreadLocalMode=*/llvm::GlobalValue::NotThreadLocal,
-        /*AddressSpace=*/1, /*isExternallyInitialized=*/false);
+        /*AddressSpace=*/kSpirvLlvmCrossWorkgroupAddressSpace,
+        /*isExternallyInitialized=*/false);
     global_ptr_arr->setAlignment(llvm::Align(kConstantBufferAlignBytes));
     module->insertGlobalVariable(global_ptr_arr);
 

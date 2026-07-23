@@ -16,16 +16,21 @@ limitations under the License.
 #ifndef XLA_HLO_IR_BACKEND_CONFIG_H_
 #define XLA_HLO_IR_BACKEND_CONFIG_H_
 
+#include <cstdint>
 #include <functional>
 #include <memory>
 #include <string>
+#include <type_traits>
 #include <utility>
+#include <vector>
 
 #include "absl/base/thread_annotations.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
+#include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "google/protobuf/message.h"
 #include "tsl/platform/human_readable_json.h"
 #include "tsl/platform/protobuf.h"
@@ -42,7 +47,7 @@ using EnableIfProto = typename std::enable_if_t<
 // This is morally equivalent to:
 //
 //   HloInstruction instr;
-//   TF_RETURN_IF_ERROR(instr.set_backend_config(proto));
+//   RETURN_IF_ERROR(instr.set_backend_config(proto));
 //   return instr.raw_backend_config_string();
 //
 absl::StatusOr<std::string> BackendConfigToRawString(
@@ -168,6 +173,24 @@ class BackendConfigWrapper {
       ABSL_GUARDED_BY(mutex_);
   mutable std::string raw_string_ ABSL_GUARDED_BY(mutex_);
 };
+
+class HloInstruction;
+
+class CoreAssignmentHandler {
+ public:
+  virtual ~CoreAssignmentHandler() = default;
+  virtual absl::Status SetCoreAssignment(
+      HloInstruction* inst, absl::Span<const int64_t> core_ids) = 0;
+  virtual absl::StatusOr<std::vector<int64_t>> GetCoreAssignment(
+      const HloInstruction* inst) = 0;
+};
+
+void RegisterCoreAssignmentHandler(CoreAssignmentHandler* handler);
+
+absl::Status SetCoreAssignment(HloInstruction* inst,
+                               absl::Span<const int64_t> core_ids);
+absl::StatusOr<std::vector<int64_t>> GetCoreAssignment(
+    const HloInstruction* inst);
 
 }  // namespace xla
 

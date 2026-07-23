@@ -23,9 +23,9 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
-#include "absl/strings/substitute.h"
 #include "xla/autotuning.pb.h"
 #include "xla/backends/autotuner/codegen_backend.h"
+#include "xla/debug_options_flags.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/service/compiler.h"
@@ -48,12 +48,11 @@ using ::tsl::proto_testing::EqualsProto;
 
 // Checks if any config has is_tma_allowed set to true.
 bool AnyTmaAllowed(const std::vector<std::unique_ptr<BackendConfig>>& configs) {
-  return std::any_of(configs.begin(), configs.end(), [](auto& config) {
-    BlockLevelFusionConfig actual_config;
-    if (!config->UnpackTo(&actual_config)) {
+  return std::any_of(configs.begin(), configs.end(), [](const auto& config) {
+    if (!config->has_block_level()) {
       return false;
     }
-    return actual_config.is_tma_allowed();
+    return config->block_level().is_tma_allowed();
   });
 }
 
@@ -66,7 +65,8 @@ class TritonBlockLevelFusionEmitterBackendTest
     : public HloHardwareIndependentTestBase {
  protected:
   TritonBlockLevelFusionEmitterBackendTest()
-      : stream_executor_(PlatformUtil::GetDefaultPlatform()
+      : debug_options_(GetDebugOptionsFromFlags()),
+        stream_executor_(PlatformUtil::GetDefaultPlatform()
                              .value()
                              ->ExecutorForDevice(0)
                              .value()),
@@ -121,8 +121,8 @@ ENTRY %main {
       backend_.GetDefaultConfig(
           *(module->entry_computation()->root_instruction())));
   // Verify that the returned config is indeed a BlockLevelFusionConfig.
-  BlockLevelFusionConfig block_level_fusion_config;
-  ASSERT_TRUE(config->UnpackTo(&block_level_fusion_config));
+  ASSERT_TRUE(config->has_block_level());
+  BlockLevelFusionConfig block_level_fusion_config = config->block_level();
   // Check that the config matches the proto embedded in the instruction.
   EXPECT_THAT(block_level_fusion_config, EqualsProto(R"pb(
                 output_tiles { sizes: 4 sizes: 16 }
@@ -161,8 +161,8 @@ ENTRY %main {
       backend_.GetDefaultConfig(
           *(module->entry_computation()->root_instruction())));
   // Verify that the returned config is indeed a BlockLevelFusionConfig.
-  BlockLevelFusionConfig block_level_fusion_config;
-  ASSERT_TRUE(config->UnpackTo(&block_level_fusion_config));
+  ASSERT_TRUE(config->has_block_level());
+  BlockLevelFusionConfig block_level_fusion_config = config->block_level();
   // Verify the config is reasonable.
   EXPECT_GE(block_level_fusion_config.output_tiles_size(), 1);
   EXPECT_GE(block_level_fusion_config.num_warps(), 1);
@@ -198,8 +198,8 @@ ENTRY %main {
       backend_.GetDefaultConfig(
           *(module->entry_computation()->root_instruction())));
   // Verify that the returned config is indeed a BlockLevelFusionConfig.
-  BlockLevelFusionConfig block_level_fusion_config;
-  ASSERT_TRUE(config->UnpackTo(&block_level_fusion_config));
+  ASSERT_TRUE(config->has_block_level());
+  BlockLevelFusionConfig block_level_fusion_config = config->block_level();
 
   // Apply the generated config to the fusion instruction.
   EXPECT_THAT(backend_.ApplyConfig(*instr, *config), absl_testing::IsOk());
@@ -283,6 +283,10 @@ ENTRY %main {
       *(module->entry_computation()->root_instruction()), *config);
   // Verify that compilation succeeded and returned a valid executable.
   EXPECT_THAT(executable, absl_testing::IsOk());
+}
+
+TEST_F(TritonBlockLevelFusionEmitterBackendTest, Version) {
+  EXPECT_NE(backend_.version(), "");
 }
 
 }  // namespace gpu

@@ -127,6 +127,7 @@ struct PriorityTestParams {
   absl::flat_hash_map<int, int> expected_batch_size_count;
   // The expected sum of padding sizes for each allowed batch size.
   absl::flat_hash_map<int, int> expected_batch_size_padding_sum;
+  bool enable_batching_task_lazy_cancellation = false;
 };
 
 class TestBatchResourceBase : public BatchResourceBase {
@@ -309,7 +310,9 @@ TEST_P(BatchResourceBaseWithPriorityTest, BatchingWithMixedPriorityPolicy) {
           /*mixed_priority_batching_policy=*/
           GetParam().mixed_priority_batching_policy,
           /*enable_priority_aware_batch_scheduler=*/false,
-          /*enable_priority_aware_batch_scheduler_resplit=*/false);
+          /*enable_priority_aware_batch_scheduler_resplit=*/false,
+          /*enable_batching_task_lazy_cancellation=*/
+          GetParam().enable_batching_task_lazy_cancellation);
   tsl::core::RefCountPtr<BatchResourceBase> batch_resource(
       new TestBatchResourceBase(true, batcher, queue_options,
                                 allowed_batch_sizes));
@@ -347,9 +350,9 @@ TEST_P(BatchResourceBaseWithPriorityTest, BatchingWithMixedPriorityPolicy) {
   TF_ASSERT_OK_AND_ASSIGN(absl::string_view policy_str,
                           GetMixedPriorityBatchingPolicyString(
                               GetParam().mixed_priority_batching_policy));
-  EXPECT_EQ(
-      mixed_priority_policy_reader_->Read("my_model_name", "my_batch_node"),
-      policy_str);
+  EXPECT_EQ(mixed_priority_policy_reader_->Read("my_model_name",
+                                                "my_batch_node", "true"),
+            policy_str);
 
   for (const auto& [batch_size, expected_count] :
        GetParam().expected_batch_size_count) {
@@ -457,11 +460,48 @@ INSTANTIATE_TEST_SUITE_P(
             /*expected_batch_size_padding_sum=*/
             {{4, 0}, {8, 2}, {12, 0}, {16, 0}},
         },
+        // Same as padding_with_max_batch_size but with lazy cancellation
+        // enabled. Verifies that the flag is accepted and does not change
+        // batching behavior (since priority-aware scheduler is disabled in
+        // this test).
+        {
+            "padding_with_max_batch_size_lazy_cancellation",
+            /*enable_large_batch_splitting=*/true,
+            MixedPriorityBatchingPolicy::kLowPriorityPaddingWithMaxBatchSize,
+            /*expected_batch_size_count=*/
+            {{4, 1}, {8, 0}, {12, 0}, {16, 1}},
+            /*expected_batch_size_padding_sum=*/
+            {{4, 1}, {8, 0}, {12, 0}, {16, 1}},
+            /*enable_batching_task_lazy_cancellation=*/true,
+        },
     }),
     [](const ::testing::TestParamInfo<
         BatchResourceBaseWithPriorityTest::ParamType>& info) {
       return info.param.test_name;
     });
+
+TEST(GetBatcherQueueOptionsTest,
+     LazyCancellationEnabled_PropagatedToSchedulerOptions) {
+  std::vector<int32_t> allowed_batch_sizes = {4, 8};
+  BatchResourceBase::BatcherT::QueueOptions queue_options =
+      TestBatchResourceBase::GetBatcherQueueOptions(
+          /*num_batch_threads=*/1, /*max_batch_size=*/8,
+          /*batch_timeout_micros=*/1000,
+          /*max_enqueued_batches=*/10, allowed_batch_sizes,
+          /*enable_large_batch_splitting=*/true,
+          /*disable_padding=*/false, kPadUpPolicy,
+          /*low_priority_max_batch_size=*/8,
+          /*low_priority_batch_timeout_micros=*/1000,
+          /*low_priority_max_enqueued_batches=*/10,
+          /*low_priority_allowed_batch_sizes=*/allowed_batch_sizes,
+          /*mixed_priority_batching_policy=*/
+          MixedPriorityBatchingPolicy::kLowPriorityPaddingWithMaxBatchSize,
+          /*enable_priority_aware_batch_scheduler=*/true,
+          /*enable_priority_aware_batch_scheduler_resplit=*/false,
+          /*enable_batching_task_lazy_cancellation=*/true);
+  EXPECT_TRUE(queue_options.priority_aware_scheduler_options
+                  .enable_lazy_cancellation_filtering);
+}
 #endif
 
 // Regression test for b/466418871: When SplitInputTask creates subtasks with
@@ -1310,6 +1350,41 @@ TEST(RecordBatchDelayMetricsTest,
       UnorderedElementsAre(Pair("batching_delay_msecs", 0),
                            Pair("batch_queueing_delay_msecs",
                                 absl::ToDoubleMilliseconds(queueing_delay))));
+}
+
+TEST(RecordBatchDelayMetricsTest, StreamzBatchAndQueueingDelayUsV2) {
+  auto batch_delay_v2_reader = std::make_unique<CellReader<Histogram>>(
+      "/tensorflow/serving/batching/batch_delay_us_v2");
+  auto queueing_delay_v2_reader = std::make_unique<CellReader<Histogram>>(
+      "/tensorflow/serving/batching/queueing_delay_us_v2");
+
+  const absl::Duration batch_timeout = absl::Seconds(1);
+  const absl::Duration queueing_delay = absl::Seconds(5);
+  const absl::Time task_start_time = absl::Now();
+  const absl::Time batch_schedule_time =
+      task_start_time + batch_timeout + queueing_delay;
+  const int64_t processed_size = 20;
+
+  BatchResourceBase::BatchT batch;
+  RequestCost cost;
+  batch.AddTask(MakeBatchTask(/*task_size=*/1, &cost, task_start_time));
+  batch.Close();
+
+  BatchResourceBase::RecordBatchDelayMetrics(
+      batch, "model_name", "op_name", processed_size, batch_schedule_time,
+      batch_timeout);
+
+  const std::string criticality_str = absl::StrCat(batch.task(0).criticality());
+  EXPECT_GT(batch_delay_v2_reader
+                ->Delta("model_name", "op_name", std::to_string(processed_size),
+                        criticality_str)
+                .num(),
+            0);
+  EXPECT_GT(queueing_delay_v2_reader
+                ->Delta("model_name", "op_name", std::to_string(processed_size),
+                        criticality_str)
+                .num(),
+            0);
 }
 
 class BatchResourceBaseTest : public ::testing::Test {

@@ -76,6 +76,7 @@ using ::tensorflow::test::AsTensor;
 using ::tensorflow::test::TensorEq;
 using ::testing::_;
 using ::testing::ElementsAre;
+using ::testing::HasSubstr;
 using ::testing::NiceMock;
 using ::testing::Return;
 
@@ -294,6 +295,51 @@ TEST_P(IfrtServingExecutableTest, ReturnFailOnUncompiledShapeAfterFrozen) {
               absl_testing::StatusIs(absl::StatusCode::kFailedPrecondition));
 }
 
+TEST_P(IfrtServingExecutableTest,
+       FrozenErrorMessageContainsRequestedAndCachedShapes) {
+  int64_t program_id = 123456;
+  SetUpMockDeviceReservation(selector_, program_id, helper_->num_cores());
+  auto executable =
+      helper_->MakeExecutable(program_id, GetMlirModulePath("executable.mlir"));
+
+  // Warm up with shape {1, 3} x {3, 1}.
+  auto x1 = AsTensor<int32_t>({1, 2, 3}, tensorflow::TensorShape({1, 3}));
+  auto y1 = AsTensor<int32_t>({1, 2, 3}, tensorflow::TensorShape({3, 1}));
+  std::vector<tensorflow::Tensor> inputs1{x1, y1};
+  for (int i = 0; i < helper_->num_cores(); i++) {
+    TF_ASSERT_OK_AND_ASSIGN(
+        auto result, Execute(executable.get(), absl::MakeSpan(inputs1), {}));
+  }
+
+  // Freeze the model.
+  executable->Freeze();
+
+  // Try to execute with a new, uncompiled shape {1, 4} x {4, 1}.
+  auto x2 = AsTensor<int32_t>({1, 2, 3, 4}, tensorflow::TensorShape({1, 4}));
+  auto y2 = AsTensor<int32_t>({1, 2, 3, 4}, tensorflow::TensorShape({4, 1}));
+  std::vector<tensorflow::Tensor> inputs2{x2, y2};
+
+  auto status = Execute(executable.get(), absl::MakeSpan(inputs2), {});
+
+  ASSERT_THAT(status,
+              absl_testing::StatusIs(absl::StatusCode::kFailedPrecondition));
+
+  // Verify the error message contains the requested (offending) input shapes.
+  std::string error_message(status.status().message());
+  EXPECT_THAT(error_message, HasSubstr("Requested input shapes:"));
+  EXPECT_THAT(error_message, HasSubstr("[1,4]"));
+  EXPECT_THAT(error_message, HasSubstr("[4,1]"));
+
+  // Verify the error message contains the count of cached shape sets.
+  EXPECT_THAT(error_message,
+              HasSubstr("Number of already compiled shape sets: 1"));
+
+  // Verify the error message contains the already compiled shapes.
+  EXPECT_THAT(error_message, HasSubstr("Already compiled:"));
+  EXPECT_THAT(error_message, HasSubstr("[1,3]"));
+  EXPECT_THAT(error_message, HasSubstr("[3,1]"));
+}
+
 TEST_P(IfrtServingExecutableTest, Spmd) {
   int64_t program_id = 111111;
   EXPECT_CALL(selector_, ReserveDevice(absl::StrCat(program_id))).Times(0);
@@ -432,6 +478,41 @@ TEST_P(IfrtServingExecutableTest, NoReturn) {
       auto result, Execute(executable.get(), absl::MakeSpan(inputs), {}));
 
   ASSERT_EQ(result.size(), 0);
+}
+
+TEST_P(IfrtServingExecutableTest, CompilationFailureFulfillsPromise) {
+  int64_t program_id = 999999;
+  SetUpMockDeviceReservation(selector_, program_id, helper_->num_cores());
+  auto executable =
+      helper_->MakeExecutable(program_id, GetMlirModulePath("executable.mlir"));
+
+  EXPECT_EQ(executable->num_executables(), 0);
+
+  // Pass FLOAT tensors to an MLIR module expecting INT32 (executable.mlir has
+  // %arg0: tensor<*xi32>, %arg1: tensor<*xi32>), causing compilation
+  // (UpdateCompileMetadata inside LookUpOrCreateExecutable) to fail cleanly.
+  auto x = AsTensor<float>({1.0f, 2.0f, 3.0f}, tensorflow::TensorShape({1, 3}));
+  auto y = AsTensor<float>({1.0f, 2.0f, 3.0f}, tensorflow::TensorShape({3, 1}));
+  std::vector<tensorflow::Tensor> inputs{x, y};
+
+  auto result = Execute(executable.get(), absl::MakeSpan(inputs), {});
+
+  // 1. Verify that the compilation error status is returned cleanly (and NOT
+  // "Promise destroyed without being set").
+  EXPECT_THAT(result, absl_testing::StatusIs(
+                          absl::StatusCode::kInvalidArgument,
+                          ::testing::HasSubstr("Dtype mismatched!")));
+
+  // 2. Verify that the failed compilation future remains cached.
+  EXPECT_EQ(executable->num_executables(), 1);
+
+  // 3. Verify that subsequent execution attempts immediately return the cleanly
+  // cached error status (and NOT "Promise destroyed without being set").
+  auto second_result = Execute(executable.get(), absl::MakeSpan(inputs), {});
+  EXPECT_THAT(second_result, absl_testing::StatusIs(
+                                 absl::StatusCode::kInvalidArgument,
+                                 ::testing::HasSubstr("Dtype mismatched!")));
+  EXPECT_EQ(executable->num_executables(), 1);
 }
 
 TEST_P(IfrtServingExecutableTest, StaticShape) {

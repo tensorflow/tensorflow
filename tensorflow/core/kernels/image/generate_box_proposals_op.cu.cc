@@ -19,6 +19,7 @@ limitations under the License.
 
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/core/framework/types.pb.h"
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #define EIGEN_USE_GPU
@@ -296,7 +297,7 @@ class GenerateBoundingBoxProposals : public tensorflow::OpKernel {
       : OpKernel(context) {
     OP_REQUIRES_OK(context, context->GetAttr("post_nms_topn", &post_nms_topn_));
     OP_REQUIRES(context, post_nms_topn_ > 0,
-                errors::InvalidArgument("post_nms_topn can't be 0 or less"));
+                absl::InvalidArgumentError("post_nms_topn can't be 0 or less"));
     bbox_xform_clip_default_ = log(1000.0 / 16.);
   }
 
@@ -304,9 +305,9 @@ class GenerateBoundingBoxProposals : public tensorflow::OpKernel {
   absl::Status GetScalarValue(OpKernelContext* context, int input, T* value) {
     const Tensor& scalar_tensor = context->input(input);
     if (!TensorShapeUtils::IsScalar(scalar_tensor.shape())) {
-      return errors::InvalidArgument("Expected a scalar in input ", input,
-                                     "but got shape ",
-                                     scalar_tensor.shape().DebugString());
+      return absl::InvalidArgumentError(
+          absl::StrCat("Expected a scalar in input ", input, "but got shape ",
+                       scalar_tensor.shape().DebugString()));
     }
     *value = scalar_tensor.scalar<T>()();
     return absl::OkStatus();
@@ -320,19 +321,19 @@ class GenerateBoundingBoxProposals : public tensorflow::OpKernel {
     const auto anchors = context->input(3);
 
     OP_REQUIRES(context, scores.dims() == 4,
-                errors::InvalidArgument("`scores` must be rank 4 but is rank ",
-                                        scores.dims()));
+                absl::InvalidArgumentError(absl::StrCat(
+                    "`scores` must be rank 4 but is rank ", scores.dims())));
     OP_REQUIRES(
         context, bbox_deltas.dims() == 4,
-        errors::InvalidArgument("`bbox_deltas` must be rank 4 but is rank ",
-                                bbox_deltas.dims()));
+        absl::InvalidArgumentError(absl::StrCat(
+            "`bbox_deltas` must be rank 4 but is rank ", bbox_deltas.dims())));
     OP_REQUIRES(
         context, image_info.dims() == 2,
-        errors::InvalidArgument("`image_info` must be rank 2 but is rank ",
-                                image_info.dims()));
+        absl::InvalidArgumentError(absl::StrCat(
+            "`image_info` must be rank 2 but is rank ", image_info.dims())));
     OP_REQUIRES(context, anchors.dims() == 3,
-                errors::InvalidArgument("`anchors` must be rank 3 but is rank ",
-                                        anchors.dims()));
+                absl::InvalidArgumentError(absl::StrCat(
+                    "`anchors` must be rank 3 but is rank ", anchors.dims())));
 
     const auto num_images = scores.dim_size(0);
     const auto num_anchors = scores.dim_size(3);
@@ -340,7 +341,7 @@ class GenerateBoundingBoxProposals : public tensorflow::OpKernel {
     const auto width = scores.dim_size(2);
     const auto box_dim = anchors.dim_size(2) / num_anchors;
     OP_REQUIRES(context, box_dim == 4,
-                errors::OutOfRange("Box dimensions need to be 4"));
+                absl::OutOfRangeError("Box dimensions need to be 4"));
     // TODO(skama): make sure that inputs are ok.
     const int image_stride = height * width;
     const int conv_layer_nboxes =
@@ -354,14 +355,14 @@ class GenerateBoundingBoxProposals : public tensorflow::OpKernel {
     float min_size;
     OP_REQUIRES_OK(context, GetScalarValue(context, 4, &nms_threshold));
     if (nms_threshold < 0 || nms_threshold > 1.0) {
-      context->SetStatus(errors::InvalidArgument(
-          "nms_threshold should be between 0 and 1. Got ", nms_threshold));
+      context->SetStatus(absl::InvalidArgumentError(absl::StrCat(
+          "nms_threshold should be between 0 and 1. Got ", nms_threshold)));
       return;
     }
     OP_REQUIRES_OK(context, GetScalarValue(context, 5, &pre_nms_topn));
     if (pre_nms_topn <= 0) {
-      context->SetStatus(errors::InvalidArgument(
-          "pre_nms_topn should be greater than 0", pre_nms_topn));
+      context->SetStatus(absl::InvalidArgumentError(
+          absl::StrCat("pre_nms_topn should be greater than 0", pre_nms_topn)));
       return;
     }
     OP_REQUIRES_OK(context, GetScalarValue(context, 6, &min_size));

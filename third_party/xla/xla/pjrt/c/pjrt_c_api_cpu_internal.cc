@@ -34,6 +34,8 @@ limitations under the License.
 #include "xla/pjrt/c/pjrt_c_api_shardings_extension.h"
 #include "xla/pjrt/c/pjrt_c_api_status_utils.h"
 #include "xla/pjrt/c/pjrt_c_api_wrapper_impl.h"
+#include "xla/pjrt/c/pjrt_c_api_xla_transform_extension.h"
+#include "xla/pjrt/c/pjrt_c_api_xla_transform_internal.h"
 #include "xla/pjrt/cpu/cpu_client.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_common.h"
@@ -42,6 +44,8 @@ limitations under the License.
 
 namespace pjrt {
 namespace cpu_plugin {
+
+const PJRT_Api* GetCpuPjrtApi();
 
 PJRT_Error* PJRT_Client_Create(PJRT_Client_Create_Args* args) {
   PJRT_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
@@ -54,18 +58,40 @@ PJRT_Error* PJRT_Client_Create(PJRT_Client_Create_Args* args) {
   if (args->create_options != nullptr) {
     absl::flat_hash_map<std::string, xla::PjRtValueType> create_options =
         ConvertFromPjRtNamedValueList(args->create_options, args->num_options);
-    if (create_options.contains("cpu_device_count")) {
-      int64_t device_count_option =
-          std::get<int64_t>(create_options["cpu_device_count"]);
+    const auto kExpectedOptionNameAndTypes =
+        absl::flat_hash_map<std::string, PJRT_NamedValue_Type>({
+            {"cpu_device_count", PJRT_NamedValue_Type::PJRT_NamedValue_kInt64},
+            {"asynchronous", PJRT_NamedValue_Type::PJRT_NamedValue_kBool},
+            {"process_id", PJRT_NamedValue_Type::PJRT_NamedValue_kInt64},
+        });
+    PJRT_RETURN_IF_ERROR(
+        ValidateCreateOptions(create_options, kExpectedOptionNameAndTypes));
+
+    if (auto it = create_options.find("cpu_device_count");
+        it != create_options.end()) {
+      int64_t device_count_option = std::get<int64_t>(it->second);
       options.cpu_device_count = device_count_option;
       LOG(INFO) << "cpu_device_count set via create_options: "
                 << device_count_option;
+    }
+    if (auto it = create_options.find("asynchronous");
+        it != create_options.end()) {
+      bool asynchronous_option = std::get<bool>(it->second);
+      options.asynchronous = asynchronous_option;
+      LOG(INFO) << "asynchronous set via create_options: "
+                << asynchronous_option;
+    }
+    if (auto it = create_options.find("process_id");
+        it != create_options.end()) {
+      int64_t process_id_option = std::get<int64_t>(it->second);
+      options.process_id = process_id_option;
+      LOG(INFO) << "process_id set via create_options: " << process_id_option;
     }
   }
 
   PJRT_ASSIGN_OR_RETURN(std::unique_ptr<xla::PjRtClient> client,
                         xla::GetPjRtCpuClient(std::move(options)));
-  args->client = pjrt::CreateWrapperClient(std::move(client));
+  args->client = pjrt::CreateWrapperClient(GetCpuPjrtApi(), std::move(client));
   return nullptr;
 }
 
@@ -102,11 +128,14 @@ const PJRT_Api* GetCpuPjrtApi() {
   static PJRT_Shardings_Extension shardings_extension =
       pjrt::CreateShardingsExtension(&phase_compile_extension.base);
 
+  static PJRT_Xla_Transform_Extension xla_transform_extension =
+      pjrt::CreateXlaTransformExtension(&shardings_extension.base);
+
   static const PJRT_Api pjrt_api = pjrt::CreatePjrtApi(
       pjrt::cpu_plugin::PJRT_Client_Create,
       pjrt::cpu_plugin::PJRT_ExecuteContext_Create,
       pjrt::cpu_plugin::PJRT_CpuDeviceTopology_Create,
-      pjrt::PJRT_Plugin_Initialize_NoOp, &shardings_extension.base,
+      pjrt::PJRT_Plugin_Initialize_NoOp, &xla_transform_extension.base,
       pjrt::PJRT_Plugin_Attributes_Xla);
 
   return &pjrt_api;

@@ -221,32 +221,34 @@ bool MMapHandle::UnlockMemory() {
 }
 
 bool MarkMemoryNotNeeded(void* data, size_t size) {
-  // We don't mark memory chunks that are too small.
-  constexpr const size_t size_threshold = 1024 * 1024;
 #if defined(_WIN32)
   SYSTEM_INFO sysInfo;
   GetSystemInfo(&sysInfo);
   DWORD page_size = sysInfo.dwPageSize;
+  // We don't mark memory chunks that are too small.
+  // TODO: b/510899567 - This threshold should be re-evaluated on Windows.
+  constexpr const size_t size_threshold = 1024 * 1024;
+  if (size <= size_threshold) {
+    return true;
+  }
 #else
   size_t page_size = getpagesize();
 #endif
 
-  if (size > size_threshold) {
-    // We align the data buffer to the next page boundary and the size to be a
-    // multiple of the page size.
-    //
-    // - Windows will unlock all pages that contain at least a byte of the given
-    // range, which we want to avoid.
-    // - Linux requires the address to be on a page boundary.
-    void* aligned_data = std::align(page_size, page_size, data, size);
-    size -= size % page_size;
-    if (aligned_data) {
+  // We align the data buffer to the next page boundary and the size to be a
+  // multiple of the page size.
+  //
+  // - Windows will unlock all pages that contain at least a byte of the given
+  // range, which we want to avoid.
+  // - Linux requires the address to be on a page boundary.
+  void* aligned_data = std::align(page_size, page_size, data, size);
+  size -= size % page_size;
+  if (aligned_data) {
 #if defined(_WIN32)
-      return VirtualUnlock(aligned_data, size);
+    return VirtualUnlock(aligned_data, size);
 #elif defined(__ANDROID__) || defined(__linux__)
-      return madvise(aligned_data, size, MADV_PAGEOUT) == 0;
+    return madvise(aligned_data, size, MADV_PAGEOUT) == 0;
 #endif
-    }
   }
   return true;
 }

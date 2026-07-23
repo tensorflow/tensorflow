@@ -22,6 +22,8 @@ limitations under the License.
 #include <type_traits>
 #include <vector>
 
+#include "xla/tsl/platform/status_macros.h"
+
 #define EIGEN_USE_THREADS
 
 #include "absl/algorithm/container.h"
@@ -220,6 +222,12 @@ bool IsScalar(const HloInstruction* instr) {
   return ShapeUtil::IsEffectiveScalar(instr->shape());
 }
 
+// Match pattern, optionally looking through a convert first.
+template <typename Pattern>
+auto OptionalConvertTo(Pattern pattern) {
+  return m::AnyOf<HloInstruction>(m::Convert(pattern), std::move(pattern));
+}
+
 std::optional<float> GetConstantValueAsFloat32(const HloInstruction* inst) {
   if (!IsScalar(inst)) {
     return std::nullopt;
@@ -283,6 +291,83 @@ inline auto MultiplyMultiplyAnyOrder(PatternA a, PatternB b, PatternC c) {
       m::MultiplyAnyOrder(c, m::MultiplyAnyOrder(a, b)));
 }
 
+// Broadcast of 1/sqrt(2) ≈ 0.7071. Multiple approximations are matched
+// because different precisions (F32, BF16, F16) and compiler optimizations
+// produce slightly different constant values:
+//   0.707106769 — F32 nearest representation of 1/√2
+//   0.70703125  — BF16 nearest representation
+//   0.707182348 — F16-derived approximation after convert to F32
+inline auto BcastInvSqrt2() {
+  return m::AnyOf<HloInstruction>(BcastConstScalarNear(0.707106769),
+                                  BcastConstScalarNear(0.70703125),
+                                  BcastConstScalarNear(0.707182348));
+}
+
+// Match x * (1/sqrt(2)) i.e., x * 0.707...
+inline auto ScaledByInvSqrt2(HloInstruction** src) {
+  return m::MultiplyAnyOrder(m::Op(src), BcastInvSqrt2());
+}
+
+// Match -x * (1/sqrt(2))
+inline auto NegScaledByInvSqrt2(HloInstruction* src) {
+  return m::MultiplyAnyOrder(m::Negate(m::Op().Is(src)), BcastInvSqrt2());
+}
+
+// Match 0.5 * x
+inline auto HalfX(HloInstruction** src) {
+  return m::MultiplyAnyOrder(BcastConstScalar(0.5), m::Op(src));
+}
+
+bool MatchLegalizedErfcLike(HloInstruction* instr, HloInstruction* src) {
+  // instr is expected to be the cdf-like term in:
+  //   0.5 * x * instr
+  //
+  // For current StableHLO f32 erfc legalization, the top-level form is:
+  //   select(abs(y) < 1, 1 - erf_approx(y), erfc_approx(y))
+  // where y = -x / sqrt(2)
+
+  // For FP16, the erfc polynomial runs in F32, so the pattern becomes:
+  //   convert(select(abs(convert(negate(x) * inv_sqrt2)) < 1, ...))
+  // OptionalConvertTo looks through converts at each dtype boundary.
+  HloInstruction* pred = nullptr;
+  HloInstruction* true_branch = nullptr;
+  HloInstruction* false_branch = nullptr;
+
+  if (!Match(instr,
+             OptionalConvertTo(m::Select(m::Op(&pred), m::Op(&true_branch),
+                                         m::Op(&false_branch))
+                                   .WithOneUser()))) {
+    return false;
+  }
+
+  // Predicate must be abs(y) < 1
+  HloInstruction* y = nullptr;
+  if (!Match(pred, m::Compare(m::Abs(m::Op(&y)), BcastConstScalar(1.0))
+                       .WithComparisonDirection(ComparisonDirection::kLt)
+                       .WithOneUser())) {
+    return false;
+  }
+
+  // y must be -x / sqrt(2), optionally wrapped in a convert (f16 -> f32 upcast
+  // before erfc polynomial). No WithOneUser() here because y is reused by
+  // multiple nodes within the pattern (abs(y) in the predicate, erf(y) in both
+  // branches). All users are fused together into the GELU post-op.
+  if (!Match(y, OptionalConvertTo(NegScaledByInvSqrt2(src)))) {
+    return false;
+  }
+
+  // True branch must be 1 - <something based on y>
+  if (!Match(true_branch,
+             m::Subtract(BcastConstScalar(1.0), m::Op()).WithOneUser())) {
+    return false;
+  }
+
+  // Checking the above two conditions (abs(y) < 1 and the true branch) is
+  // sufficient to confirm the pattern. We don't check for exact pattern on
+  // the false branch.
+  return true;
+}
+
 auto GELUActivation(HloInstruction* instr, HloInstruction** src) {
   // Attempt to match GELU_TANH activation or GELU_ERF activation
   // (https://arxiv.org/abs/1606.08415), where:
@@ -324,25 +409,21 @@ auto GELUActivation(HloInstruction* instr, HloInstruction** src) {
             BcastConstScalarNear(0.044715),
             m::Multiply(m::Op().Is(*src), m::Op().Is(*src)), m::Op().Is(*src)));
 
-    auto errf_apprx_pattern =
-        m::Tanh(m::MultiplyAnyOrder(
+    auto errf_apprx_pattern = OptionalConvertTo(
+        m::Tanh(OptionalConvertTo(m::MultiplyAnyOrder(
                     BcastConstScalarNear(sqrt(M_2_PI)),
-                    m::AddAnyOrder(m::Op().Is(*src), subexpr_pattern)
-                        .WithOneUser()))
-            .WithOneUser();
+                    m::AddAnyOrder(OptionalConvertTo(m::Op().Is(*src)),
+                                   subexpr_pattern)
+                        .WithOneUser())))
+            .WithOneUser());
 
     HloInstruction* erf;
-    auto errf_exact_pattern =
+    auto errf_exact_pattern = OptionalConvertTo(
         m::Op(&erf)
             .WithOpcode(HloOpcode::kErf)
-            .WithOperand(
-                0, m::MultiplyAnyOrder(m::Op(src),
-                                       m::AnyOf<HloInstruction>(
-                                           BcastConstScalarNear(0.707106769),
-                                           BcastConstScalarNear(0.70703125),
-                                           BcastConstScalarNear(0.707182348)))
-                       .WithOneUser())
-            .WithOneUser();
+            .WithOperand(0,
+                         OptionalConvertTo(ScaledByInvSqrt2(src)).WithOneUser())
+            .WithOneUser());
 
     if (Match(errf, errf_apprx_pattern)) {  // Gelu-approximate pattern.
       return OneDnnFusionConfig::GELU_TANH;
@@ -350,6 +431,23 @@ auto GELUActivation(HloInstruction* instr, HloInstruction** src) {
     if (Match(errf, errf_exact_pattern)) {  // Gelu-exact pattern.
       return OneDnnFusionConfig::GELU_ERF;
     }
+  }
+
+  // In mathematical terms, we are matching:
+  //   GELU_ERF(x) = x * cdf(x),
+  // where the CDF-like term cdf(x) is expressed via erfc as
+  //   cdf(x) = 0.5 * erfc(-x / sqrt(2)).
+  //
+  // The legalized StableHLO pattern we recognize is:
+  //   0.5 * x * select(|y| < 1,
+  //                    1 - erf_approx(y),
+  //                    erfc_approx(y)),
+  // with y = -x / sqrt(2), which numerically approximates cdf(x) above.
+  HloInstruction* cdf_like = nullptr;
+
+  if (Match(instr, m::MultiplyAnyOrder(HalfX(src), m::Op(&cdf_like))) &&
+      MatchLegalizedErfcLike(cdf_like, *src)) {
+    return OneDnnFusionConfig::GELU_ERF;
   }
   return OneDnnFusionConfig::UNDEFINED;
 }
@@ -464,7 +562,7 @@ inline bool IsOperandFusible(HloInstruction* operand, HloInstruction* instr) {
 }
 
 inline bool CanPrepackWeights(HloInstruction* custom_call) {
-  return (custom_call->operand(1)->shape().dimensions_size() == 2 &&
+  return (custom_call->operand(1)->shape().dimensions().size() == 2 &&
           IsOneDnnMatmulInstr(custom_call)) ||
          IsOneDnnConvolutionInstr(custom_call);
 }
@@ -619,13 +717,13 @@ class OneDnnContractionRewriteVisitor : public DfsHloRewriteVisitor {
       return absl::OkStatus();
     }
 
-    TF_RETURN_IF_ERROR(
+    RETURN_IF_ERROR(
         ValidateDotDimensionNumbers(dot_instr->dot_dimension_numbers()));
     if (!OneDnnContractionRewriter::ShouldRewriteDot(dot_instr)) {
-      TF_RETURN_IF_ERROR(UpcastDotToF32(dot_instr));
+      RETURN_IF_ERROR(UpcastDotToF32(dot_instr));
       return absl::OkStatus();
     }
-    TF_ASSIGN_OR_RETURN(dot_instr, ReconfigureDotDimensions(dot_instr));
+    ASSIGN_OR_RETURN(dot_instr, ReconfigureDotDimensions(dot_instr));
     auto dot_dim_numbers = dot_instr->dot_dimension_numbers();
     const Shape& lhs_shape = dot_instr->operand(0)->shape();
     const Shape& rhs_shape = dot_instr->operand(1)->shape();
@@ -648,8 +746,8 @@ class OneDnnContractionRewriteVisitor : public DfsHloRewriteVisitor {
     bool transpose_b = (rhs_dim_k + 2 != rhs_shape.dimensions().size());
     matmul_config->set_transpose_a(transpose_a);
     matmul_config->set_transpose_b(transpose_b);
-    TF_RETURN_IF_ERROR(matmul_call->set_backend_config(backend_config));
-    TF_RETURN_IF_ERROR(ReplaceInstruction(dot_instr, matmul_call));
+    RETURN_IF_ERROR(matmul_call->set_backend_config(backend_config));
+    RETURN_IF_ERROR(ReplaceInstruction(dot_instr, matmul_call));
     return absl::OkStatus();
   }
 
@@ -716,8 +814,8 @@ class OneDnnContractionRewriteVisitor : public DfsHloRewriteVisitor {
             output_shape, {conv->mutable_operand(0), conv->mutable_operand(1)},
             "__onednn$convolution"));
 
-    TF_RETURN_IF_ERROR(custom_call->set_backend_config(backend_config));
-    TF_RETURN_IF_ERROR(ReplaceInstruction(conv, custom_call));
+    RETURN_IF_ERROR(custom_call->set_backend_config(backend_config));
+    RETURN_IF_ERROR(ReplaceInstruction(conv, custom_call));
     return absl::OkStatus();
   }
 
@@ -872,8 +970,11 @@ class OneDnnContractionRewriteVisitor : public DfsHloRewriteVisitor {
       // implementation for broadcasted add across all dimensions.
       OneDnnFusionConfig_FusionKind kind =
           (ShapeUtil::TrueNumDimensions(addend->shape()) == 1)
-              ? (fusions_config->ops().empty() ? OneDnnFusionConfig::BIAS
-                                               : OneDnnFusionConfig::UNDEFINED)
+              ? (fusions_config->ops().empty()
+                     ? (addend->shape().dimensions().back() != 1
+                            ? OneDnnFusionConfig::BIAS
+                            : OneDnnFusionConfig::BINARY_ADD)
+                     : OneDnnFusionConfig::UNDEFINED)
           : can_fuse_sum ? OneDnnFusionConfig::SUM
                          : OneDnnFusionConfig::BINARY_ADD;
       if (kind == OneDnnFusionConfig::UNDEFINED) return absl::OkStatus();
@@ -888,7 +989,7 @@ class OneDnnContractionRewriteVisitor : public DfsHloRewriteVisitor {
       if (optional_addend_broadcast) {
         optimization_config->set_bias_broadcast(true);
       }
-      TF_RETURN_IF_ERROR(custom_call->set_backend_config(*backend_config));
+      RETURN_IF_ERROR(custom_call->set_backend_config(*backend_config));
 
       HloInstruction* new_instr;
       // If matched pattern has custom-call -> bitcast -> add, then we need to
@@ -926,7 +1027,7 @@ class OneDnnContractionRewriteVisitor : public DfsHloRewriteVisitor {
           new_instr = custom_call;
         }
       }
-      TF_RETURN_IF_ERROR(ReplaceInstruction(instr, new_instr));
+      RETURN_IF_ERROR(ReplaceInstruction(instr, new_instr));
     }
     return absl::OkStatus();
   }
@@ -1080,7 +1181,7 @@ class OneDnnContractionRewriteVisitor : public DfsHloRewriteVisitor {
       auto fusions_config = GetFusionsConfig(&backend_config);
       fusions_config->add_ops(OneDnnFusionConfig::LINEAR);
       fusions_config->add_alpha(constant_value.value());
-      TF_RETURN_IF_ERROR(custom_call->set_backend_config(*backend_config));
+      RETURN_IF_ERROR(custom_call->set_backend_config(*backend_config));
       HloInstruction* new_instr;
       if (optional_convert != nullptr &&
           optional_convert->opcode() == HloOpcode::kConvert) {
@@ -1092,7 +1193,7 @@ class OneDnnContractionRewriteVisitor : public DfsHloRewriteVisitor {
         new_instr = custom_call;
       }
 
-      TF_RETURN_IF_ERROR(ReplaceInstruction(instr, new_instr));
+      RETURN_IF_ERROR(ReplaceInstruction(instr, new_instr));
     }
     return absl::OkStatus();
   }
@@ -1140,8 +1241,8 @@ class OneDnnContractionRewriteVisitor : public DfsHloRewriteVisitor {
       auto matmul_call = Cast<HloCustomCallInstruction>(
           custom_call->AddInstruction(custom_call->CloneWithNewOperands(
               copy->shape(), custom_call->mutable_operands())));
-      TF_RETURN_IF_ERROR(matmul_call->set_backend_config(*backend_config));
-      TF_RETURN_IF_ERROR(ReplaceInstruction(copy, matmul_call));
+      RETURN_IF_ERROR(matmul_call->set_backend_config(*backend_config));
+      RETURN_IF_ERROR(ReplaceInstruction(copy, matmul_call));
     }
     return absl::OkStatus();
   }
@@ -1154,7 +1255,7 @@ class OneDnnContractionRewriteVisitor : public DfsHloRewriteVisitor {
     auto backend_config = contraction->backend_config<BackendConfig>();
     auto fusions_config = GetFusionsConfig(&backend_config);
     fusions_config->add_ops(kind);
-    TF_RETURN_IF_ERROR(contraction->set_backend_config(*backend_config));
+    RETURN_IF_ERROR(contraction->set_backend_config(*backend_config));
     std::unique_ptr<HloInstruction> output = contraction->Clone();
     if (optional_bitcast != nullptr &&
         optional_bitcast->opcode() == HloOpcode::kBitcast) {
@@ -1256,7 +1357,7 @@ class OneDnnContractionRewriteVisitor : public DfsHloRewriteVisitor {
     HloInstruction* replacement_instr = adjusted_dot->AddInstruction(
         HloInstruction::CreateBitcast(dot_instr->shape(), adjusted_dot));
 
-    TF_RETURN_IF_ERROR(ReplaceInstruction(dot_instr, replacement_instr));
+    RETURN_IF_ERROR(ReplaceInstruction(dot_instr, replacement_instr));
     return adjusted_dot;
   }
 
@@ -1284,7 +1385,7 @@ class OneDnnContractionRewriteVisitor : public DfsHloRewriteVisitor {
         f32_dot->AddInstruction(HloInstruction::CreateConvert(
             ShapeUtil::ChangeElementType(f32_dot->shape(), BF16), f32_dot));
 
-    TF_RETURN_IF_ERROR(ReplaceInstruction(dot_instr, replacement_instr));
+    RETURN_IF_ERROR(ReplaceInstruction(dot_instr, replacement_instr));
     return absl::OkStatus();
   }
 
@@ -1347,8 +1448,8 @@ class OneDnnPostRewriteVisitor : public DfsHloRewriteVisitor {
       auto matmul_call = Cast<HloCustomCallInstruction>(
           contraction->AddInstruction(contraction->CloneWithNewOperands(
               contraction->shape(), new_ops)));
-      TF_RETURN_IF_ERROR(matmul_call->set_backend_config(*backend_config));
-      TF_RETURN_IF_ERROR(ReplaceInstruction(contraction, matmul_call));
+      RETURN_IF_ERROR(matmul_call->set_backend_config(*backend_config));
+      RETURN_IF_ERROR(ReplaceInstruction(contraction, matmul_call));
       return HandleCustomCallInternal<kOnednnMatmulConfig>(matmul_call);
     } else if (Match(custom_call, OneDnnConvolutionInstr(&contraction))) {
       return HandleCustomCallInternal<kOnednnConvConfig>(custom_call);
@@ -1392,7 +1493,7 @@ class OneDnnPostRewriteVisitor : public DfsHloRewriteVisitor {
     if (GetUserScratch(custom_call)) {
       return custom_call;
     }
-    TF_RETURN_IF_ERROR(SetUserScratch(custom_call, true));
+    RETURN_IF_ERROR(SetUserScratch(custom_call, true));
     auto prim_desc = CreateOneDnnPrimDesc<config>(custom_call);
     int64_t scratch_size = prim_desc->scratchpad_desc().get_size();
     Shape scratch_shape = ShapeUtil::MakeShape(U8, {scratch_size});
@@ -1405,7 +1506,7 @@ class OneDnnPostRewriteVisitor : public DfsHloRewriteVisitor {
             custom_call->shape(), new_custom_call, 0));
     auto status = ReplaceInstruction(custom_call, gte);
     if (!status.ok()) {
-      TF_RETURN_IF_ERROR(SetUserScratch(custom_call, false));
+      RETURN_IF_ERROR(SetUserScratch(custom_call, false));
       return absl::CancelledError("Adding scratch is unsuccessful.");
     }
     return new_custom_call;
@@ -1426,7 +1527,7 @@ class OneDnnPostRewriteVisitor : public DfsHloRewriteVisitor {
     }
     dnnl::memory::desc plain_weights_md =
         GetSrcWeightMemDesc<config>(custom_call, weights_shape);
-    TF_RETURN_IF_ERROR(SetWeightsPrepack(custom_call, true));
+    RETURN_IF_ERROR(SetWeightsPrepack(custom_call, true));
     auto prim_desc = CreateOneDnnPrimDesc<config>(custom_call);
     auto packed_weights_md = prim_desc->weights_desc();
     auto packed_weights_shape = MemDescToXlaShapeFlattened(packed_weights_md);
@@ -1438,7 +1539,7 @@ class OneDnnPostRewriteVisitor : public DfsHloRewriteVisitor {
     auto status =
         custom_call->ReplaceOperandWithDifferentShape(1, reordered_weight);
     if (!status.ok()) {
-      TF_RETURN_IF_ERROR(SetWeightsPrepack(custom_call, false));
+      RETURN_IF_ERROR(SetWeightsPrepack(custom_call, false));
       return absl::CancelledError(
           "Cannot replace plain weights with prepacked weights.");
     } else {
@@ -1508,13 +1609,12 @@ absl::StatusOr<bool> OneDnnContractionRewriter::RunImpl(
   XLA_VLOG_LINES(3, "OneDnnContractionRewriter::RunImpl(), before:\n" +
                         module->ToString());
   OneDnnContractionRewriteVisitor visitor(graph_enabled_);
-  TF_ASSIGN_OR_RETURN(auto result,
-                      visitor.RunOnModule(module, execution_threads));
+  ASSIGN_OR_RETURN(auto result, visitor.RunOnModule(module, execution_threads));
 
   OneDnnPostRewriteVisitor reorder_visitor(intra_op_parallelism_,
                                            compile_threadpool_);
-  TF_ASSIGN_OR_RETURN(auto result2,
-                      reorder_visitor.RunOnModule(module, execution_threads));
+  ASSIGN_OR_RETURN(auto result2,
+                   reorder_visitor.RunOnModule(module, execution_threads));
   XLA_VLOG_LINES(
       3, "OneDnnContractionRewriter::RunImpl(), after:\n" + module->ToString());
   return {result || result2};

@@ -15,12 +15,14 @@ limitations under the License.
 
 #include "xla/core/host_offloading/host_compute_asyncifier.h"
 
+#include "absl/base/casts.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/core/host_offloading/hlo_host_device_type_call_wrapper.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -81,11 +83,11 @@ absl::StatusOr<bool> HostComputeAsyncifier::RunImpl(
           absl::down_cast<HloCallInstruction*>(call);
       CHECK_NE(call_instr, nullptr);
 
-      TF_ASSIGN_OR_RETURN(
+      ASSIGN_OR_RETURN(
           HloCallInstruction * call_instr_no_tuple_operands,
           HloHostDeviceTypeCallWrapper::RemoveTupleParameters(call_instr));
-      TF_RETURN_IF_ERROR(TupleSimplifier().Run(module).status());
-      TF_ASSIGN_OR_RETURN(
+      RETURN_IF_ERROR(TupleSimplifier().Run(module).status());
+      ASSIGN_OR_RETURN(
           HloInstruction * call_instr_no_constants,
           HloHostDeviceTypeCallWrapper::MaterializeConstantsOnHostComputation(
               call_instr_no_tuple_operands));
@@ -105,7 +107,7 @@ absl::StatusOr<bool> HostComputeAsyncifier::RunImpl(
              "corresponding "
              "host call.";
 
-      TF_ASSIGN_OR_RETURN(
+      ASSIGN_OR_RETURN(
           HloInstruction * async_done,
           parent_computation->CreateAsyncInstructions(
               call_instr_no_constants, {ShapeUtil::MakeScalarShape(U32)},
@@ -123,8 +125,7 @@ absl::StatusOr<bool> HostComputeAsyncifier::RunImpl(
 
       VLOG(1) << "Replacing" << call_instr_no_constants->name() << " with "
               << async_done->name();
-      TF_RETURN_IF_ERROR(
-          call_instr_no_constants->ReplaceAllUsesWith(async_done));
+      RETURN_IF_ERROR(call_instr_no_constants->ReplaceAllUsesWith(async_done));
 
       RemoveTilesAndMemorySpaces(host_computation);
 
@@ -133,10 +134,10 @@ absl::StatusOr<bool> HostComputeAsyncifier::RunImpl(
   }
 
   if (modified) {
-    TF_RETURN_IF_ERROR(HloDCE().Run(module).status());
+    RETURN_IF_ERROR(HloDCE().Run(module).status());
 
     if (module->has_schedule()) {
-      TF_RETURN_IF_ERROR(module->schedule().Update());
+      RETURN_IF_ERROR(module->schedule().Update());
     }
   }
   return modified;

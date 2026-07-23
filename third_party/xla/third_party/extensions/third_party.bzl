@@ -39,13 +39,13 @@ load("//third_party/rocm_device_libs:workspace.bzl", rocm_device_libs = "repo")
 load("//third_party/shardy:workspace.bzl", shardy = "repo")
 load("//third_party/slinky:workspace.bzl", slinky = "repo")
 load("//third_party/spdlog:workspace.bzl", spdlog = "repo")
+load("//third_party/sqlite:workspace.bzl", sqlite = "repo")
 load("//third_party/stablehlo:workspace.bzl", stablehlo = "repo")
 load("//third_party/tensorrt:workspace.bzl", tensorrt = "repo")
 load("//third_party/transformer_engine:workspace.bzl", transformer_engine = "repo")
 load("//third_party/triton:workspace.bzl", triton = "repo")
 load("//third_party/uv:workspace.bzl", uv = "repo")
 load("//third_party/xnnpack:workspace.bzl", xnnpack = "repo")
-load("//third_party/xxd:workspace.bzl", xxd = "repo")
 
 def _third_party_ext_impl(mctx):  # @unused
     # go/keep-sorted start
@@ -88,13 +88,13 @@ def _third_party_ext_impl(mctx):  # @unused
     shardy()
     slinky()
     spdlog()
+    sqlite()
     stablehlo()
     tensorrt()
     transformer_engine()
     triton()
     uv()
     xnnpack()
-    xxd()
     # go/keep-sorted end
 
 third_party_ext = module_extension(

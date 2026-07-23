@@ -16,15 +16,16 @@ limitations under the License.
 #include "xla/hlo/builder/lib/tridiagonal.h"
 
 #include <cstdint>
-#include <numeric>
 #include <string>
 #include <utility>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/builder/lib/constants.h"
 #include "xla/hlo/builder/lib/loops.h"
 #include "xla/hlo/builder/lib/slicing.h"
@@ -33,8 +34,6 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace tridiagonal {
@@ -61,13 +60,12 @@ absl::StatusOr<int64_t> CheckSystemAndReturnNumEquations(XlaOp lower_diagonal,
                                                          XlaOp rhs) {
   XlaBuilder* builder = lower_diagonal.builder();
 
-  TF_ASSIGN_OR_RETURN(Shape lower_diagonal_shape,
-                      builder->GetShape(lower_diagonal));
-  TF_ASSIGN_OR_RETURN(Shape main_diagonal_shape,
-                      builder->GetShape(main_diagonal));
-  TF_ASSIGN_OR_RETURN(Shape upper_diagonal_shape,
-                      builder->GetShape(upper_diagonal));
-  TF_ASSIGN_OR_RETURN(Shape rhs_shape, builder->GetShape(rhs));
+  ASSIGN_OR_RETURN(Shape lower_diagonal_shape,
+                   builder->GetShape(lower_diagonal));
+  ASSIGN_OR_RETURN(Shape main_diagonal_shape, builder->GetShape(main_diagonal));
+  ASSIGN_OR_RETURN(Shape upper_diagonal_shape,
+                   builder->GetShape(upper_diagonal));
+  ASSIGN_OR_RETURN(Shape rhs_shape, builder->GetShape(rhs));
 
   const auto lower_diagonal_rank = lower_diagonal_shape.dimensions().size();
   const auto main_diagonal_rank = main_diagonal_shape.dimensions().size();
@@ -106,12 +104,12 @@ absl::StatusOr<int64_t> CheckSystemAndReturnNumEquations(XlaOp lower_diagonal,
   }
   const auto num_equations = lower_diagonal_num_eqs;
 
-  TF_RETURN_IF_ERROR(CheckSecondToLastDimension(lower_diagonal_shape, rank, 1,
-                                                "lower diagonal"));
-  TF_RETURN_IF_ERROR(
+  RETURN_IF_ERROR(CheckSecondToLastDimension(lower_diagonal_shape, rank, 1,
+                                             "lower diagonal"));
+  RETURN_IF_ERROR(
       CheckSecondToLastDimension(main_diagonal_shape, rank, 1, "diagonal"));
-  TF_RETURN_IF_ERROR(CheckSecondToLastDimension(upper_diagonal_shape, rank, 1,
-                                                "upper diagonal"));
+  RETURN_IF_ERROR(CheckSecondToLastDimension(upper_diagonal_shape, rank, 1,
+                                             "upper diagonal"));
 
   return num_equations;
 }
@@ -170,25 +168,25 @@ CheckMatMulSystemAndReturnShapeParams(XlaOp upper_diagonal, XlaOp main_diagonal,
                                       XlaOp lower_diagonal, XlaOp rhs) {
   XlaBuilder* builder = upper_diagonal.builder();
 
-  TF_ASSIGN_OR_RETURN(const Shape upper_diagonal_shape,
-                      builder->GetShape(upper_diagonal));
-  TF_ASSIGN_OR_RETURN(const Shape main_diagonal_shape,
-                      builder->GetShape(main_diagonal));
-  TF_ASSIGN_OR_RETURN(const Shape lower_diagonal_shape,
-                      builder->GetShape(lower_diagonal));
-  TF_ASSIGN_OR_RETURN(const Shape rhs_shape, builder->GetShape(rhs));
+  ASSIGN_OR_RETURN(const Shape upper_diagonal_shape,
+                   builder->GetShape(upper_diagonal));
+  ASSIGN_OR_RETURN(const Shape main_diagonal_shape,
+                   builder->GetShape(main_diagonal));
+  ASSIGN_OR_RETURN(const Shape lower_diagonal_shape,
+                   builder->GetShape(lower_diagonal));
+  ASSIGN_OR_RETURN(const Shape rhs_shape, builder->GetShape(rhs));
 
   const int64_t rank = rhs_shape.dimensions().size();
   if (rank < 2) {
     return InvalidArgument("Input must have rank >= 2, but got %d.", rank);
   }
 
-  TF_RETURN_IF_ERROR(ValidateTridiagonalMatMulDiagonal(upper_diagonal_shape,
-                                                       "superdiag", rhs_shape));
-  TF_RETURN_IF_ERROR(ValidateTridiagonalMatMulDiagonal(main_diagonal_shape,
-                                                       "maindiag", rhs_shape));
-  TF_RETURN_IF_ERROR(ValidateTridiagonalMatMulDiagonal(lower_diagonal_shape,
-                                                       "subdiag", rhs_shape));
+  RETURN_IF_ERROR(ValidateTridiagonalMatMulDiagonal(upper_diagonal_shape,
+                                                    "superdiag", rhs_shape));
+  RETURN_IF_ERROR(ValidateTridiagonalMatMulDiagonal(main_diagonal_shape,
+                                                    "maindiag", rhs_shape));
+  RETURN_IF_ERROR(ValidateTridiagonalMatMulDiagonal(lower_diagonal_shape,
+                                                    "subdiag", rhs_shape));
 
   const int64_t rhs_height = ShapeUtil::GetDimension(rhs_shape, rank - 2);
   const int64_t rhs_width = ShapeUtil::GetDimension(rhs_shape, rank - 1);
@@ -245,9 +243,9 @@ absl::StatusOr<XlaOp> TridiagonalSolverImpl<kThomas>(XlaOp lower_diagonal,
                                                      XlaOp rhs) {
   XlaBuilder* builder = lower_diagonal.builder();
 
-  TF_ASSIGN_OR_RETURN(int64_t num_eqs,
-                      CheckSystemAndReturnNumEquations(
-                          lower_diagonal, main_diagonal, upper_diagonal, rhs));
+  ASSIGN_OR_RETURN(int64_t num_eqs,
+                   CheckSystemAndReturnNumEquations(
+                       lower_diagonal, main_diagonal, upper_diagonal, rhs));
 
   XlaOp main_diag_after_elimination = ZerosLike(main_diagonal);
   XlaOp rhs_after_elimination = ZerosLike(rhs);
@@ -272,10 +270,10 @@ absl::StatusOr<XlaOp> TridiagonalSolverImpl<kThomas>(XlaOp lower_diagonal,
         UpdateEq(upper_diagonal_coeffs, i, Coefficient(upper_diagonal, i));
     return std::vector<XlaOp>{upper_diagonal_coeffs, upper_diagonal};
   };
-  TF_ASSIGN_OR_RETURN(auto values_after_preparation,
-                      ForEachIndex(num_eqs - 1, S32, preparation_body_fn,
-                                   {upper_diagonal_coeffs, upper_diagonal},
-                                   "preparation", builder));
+  ASSIGN_OR_RETURN(auto values_after_preparation,
+                   ForEachIndex(num_eqs - 1, S32, preparation_body_fn,
+                                {upper_diagonal_coeffs, upper_diagonal},
+                                "preparation", builder));
   upper_diagonal_coeffs = values_after_preparation[0];
 
   // Forward transformation.
@@ -316,13 +314,12 @@ absl::StatusOr<XlaOp> TridiagonalSolverImpl<kThomas>(XlaOp lower_diagonal,
                               upper_diagonal_coeffs,
                               rhs_after_elimination};
   };
-  TF_ASSIGN_OR_RETURN(
-      auto values_after_fwd_transformation,
-      ForEachIndex(
-          num_eqs - 1, S32, forward_transformation_fn,
-          {lower_diagonal, main_diagonal, rhs, main_diag_after_elimination,
-           upper_diagonal_coeffs, rhs_after_elimination},
-          "forward_transformation", builder));
+  ASSIGN_OR_RETURN(auto values_after_fwd_transformation,
+                   ForEachIndex(num_eqs - 1, S32, forward_transformation_fn,
+                                {lower_diagonal, main_diagonal, rhs,
+                                 main_diag_after_elimination,
+                                 upper_diagonal_coeffs, rhs_after_elimination},
+                                "forward_transformation", builder));
   lower_diagonal = values_after_fwd_transformation[0];
   main_diagonal = values_after_fwd_transformation[1];
   rhs = values_after_fwd_transformation[2];
@@ -361,7 +358,7 @@ absl::StatusOr<XlaOp> TridiagonalSolverImpl<kThomas>(XlaOp lower_diagonal,
                               main_diag_after_elimination};
   };
 
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       auto values_after_bwd_reduction,
       ForEachIndex(num_eqs - 1, S32, bwd_reduction_fn,
                    {x_coeffs, rhs_after_elimination, upper_diagonal_coeffs,
@@ -404,7 +401,7 @@ absl::StatusOr<XlaOp> TridiagonalSolver(SolverAlgorithm algo,
 absl::StatusOr<XlaOp> TridiagonalSolver(SolverAlgorithm algo, XlaOp diagonals,
                                         XlaOp rhs) {
   XlaBuilder* builder = diagonals.builder();
-  TF_ASSIGN_OR_RETURN(Shape diagonals_shape, builder->GetShape(diagonals));
+  ASSIGN_OR_RETURN(Shape diagonals_shape, builder->GetShape(diagonals));
   const int64_t rank = diagonals_shape.dimensions().size();
 
   auto upper_diagonal =
@@ -419,7 +416,7 @@ absl::StatusOr<XlaOp> TridiagonalSolver(SolverAlgorithm algo, XlaOp diagonals,
 
   // TODO(belletti): Get rid of the transposes here.
   std::vector<int64_t> transpose_order(rank);
-  std::iota(transpose_order.begin(), transpose_order.end(), 0);
+  absl::c_iota(transpose_order, 0);
   transpose_order[rank - 2] = rank - 1;
   transpose_order[rank - 1] = rank - 2;
   // Swap the last two dimensions.
@@ -427,7 +424,7 @@ absl::StatusOr<XlaOp> TridiagonalSolver(SolverAlgorithm algo, XlaOp diagonals,
 
   switch (algo) {
     case kThomas: {
-      TF_ASSIGN_OR_RETURN(
+      ASSIGN_OR_RETURN(
           XlaOp x, TridiagonalSolverImpl<kThomas>(lower_diagonal, main_diagonal,
                                                   upper_diagonal, rhs));
       return Transpose(x, transpose_order);
@@ -450,13 +447,13 @@ absl::StatusOr<XlaOp> TridiagonalSolver(SolverAlgorithm algo, XlaOp diagonals,
 absl::StatusOr<XlaOp> TridiagonalMatMul(XlaOp upper_diagonal,
                                         XlaOp main_diagonal,
                                         XlaOp lower_diagonal, XlaOp rhs) {
-  TF_ASSIGN_OR_RETURN(const TridiagonalMatMulShapeParams shape_params,
-                      CheckMatMulSystemAndReturnShapeParams(
-                          upper_diagonal, main_diagonal, lower_diagonal, rhs));
+  ASSIGN_OR_RETURN(const TridiagonalMatMulShapeParams shape_params,
+                   CheckMatMulSystemAndReturnShapeParams(
+                       upper_diagonal, main_diagonal, lower_diagonal, rhs));
   XlaBuilder* builder = main_diagonal.builder();
 
   std::vector<int64_t> broadcasted_dims(shape_params.rank);
-  std::iota(broadcasted_dims.begin(), broadcasted_dims.end(), 0);
+  absl::c_iota(broadcasted_dims, 0);
   std::vector<int64_t> transpose_dims = broadcasted_dims;
   std::swap(transpose_dims[shape_params.rank - 2],
             transpose_dims[shape_params.rank - 1]);

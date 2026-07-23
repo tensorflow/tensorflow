@@ -24,13 +24,20 @@ limitations under the License.
 
 #include "absl/functional/any_invocable.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "llvm/IR/Module.h"
+#include "llvm/TargetParser/Triple.h"
 #include "xla/backends/gpu/codegen/kernel_compiler.h"
+#include "xla/backends/gpu/codegen/triton/triton_kernel_source.h"
+#include "xla/backends/gpu/codegen/triton/xtile_compiler.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/codegen/emitters/kernel_arguments.h"
 #include "xla/codegen/llvm_kernel_source.h"
+#include "xla/codegen/mlir_kernel_source.h"
 #include "xla/future.h"
+#include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/gpu/launch_dimensions.h"
+#include "xla/service/gpu/model/block_level_parameters.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/tsl/platform/threadpool.h"
 #include "xla/xla.pb.h"
@@ -51,7 +58,7 @@ using LlvmIrCompiler = absl::AnyInvocable<absl::StatusOr<std::vector<uint8_t>>(
 // If threadpool is not provided, the compilation happens
 // fully within this call, and the result is returned as an immediately ready
 // Future.
-class CubinCustomKernelCompiler : public KernelCompiler {
+class CubinCustomKernelCompiler final : public KernelCompiler {
  public:
   CubinCustomKernelCompiler(LlvmIrCompiler compiler,
                             const se::DeviceDescription& gpu_device_info,
@@ -68,11 +75,24 @@ class CubinCustomKernelCompiler : public KernelCompiler {
       const emitters::KernelArguments& kernel_arguments,
       const LaunchDimensions& launch_dimensions) override;
 
-  xla::Future<std::vector<uint8_t>> CompileToPtx(
+  xla::Future<LlvmKernelSource> CompileMlirToLlvm(
+      const se::DeviceDescription& device, const HloModule& hlo_module,
+      const std::string& entry_function_name, int unroll_factor,
+      MlirKernelSource source, BorrowedMlirContext borrowed_context) override;
+
+  xla::Future<std::vector<uint8_t>> CompileToTargetBinary(
       LlvmKernelSource kernel_source) override;
 
+  xla::Future<TritonWrapperResult> CompileTritonToLlvm(
+      absl::string_view kernel_name, const HloModule& hlo_module,
+      const se::DeviceDescription& device_info,
+      const BlockLevelParameters& block_level_parameters,
+      const llvm::Triple& target_triple, const std::string& data_layout,
+      TritonKernelSource triton_source, BorrowedMlirContext borrowed_context,
+      bool is_xla_fusion) override;
+
  private:
-  absl::StatusOr<std::vector<uint8_t>> CompileToPtxImpl(
+  absl::StatusOr<std::vector<uint8_t>> CompileToCubinImpl(
       LlvmKernelSource kernel_source);
 
   absl::StatusOr<std::unique_ptr<Thunk>> CompileImpl(

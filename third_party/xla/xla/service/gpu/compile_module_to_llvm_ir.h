@@ -28,6 +28,7 @@ limitations under the License.
 #include "llvm/IR/Module.h"
 #include "xla/backends/gpu/codegen/kernel_compiler.h"
 #include "xla/backends/gpu/runtime/sequential_thunk.h"
+#include "xla/codegen/llvm_kernel_source.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/buffer_value.h"
@@ -41,29 +42,21 @@ limitations under the License.
 #include "xla/service/llvm_ir/llvm_command_line_options.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/util.h"
 
 namespace xla::gpu {
 
 struct CompileModuleResults {
-  std::vector<std::unique_ptr<llvm::Module>> llvm_modules;
-  std::unique_ptr<llvm::Module> llvm_module_constants;
+  std::vector<uint8_t> constants_binary;
   std::unique_ptr<BufferAssignment> buffer_assignment;
   std::unique_ptr<ExecutionStreamAssignment> execution_stream_assignment;
-  std::vector<BufferAllocation> allocations;
   std::unique_ptr<SequentialThunk> executable;
   std::vector<GpuExecutable::ConstantInfo> constants;
   absl::flat_hash_map<ShapeIndex, GpuExecutable::OutputInfo> output_info;
   Shape output_shape;
   std::string module_name;
   CompilationCacheProto kernel_compilation_cache;
-
-  // If true, the compiled module uses buffer allocations owned by
-  // buffer_assignment. Otherwise the compiled module uses buffer allocations
-  // stored in allocations.
-  bool use_original_allocations;
 };
 
 absl::Status LoadCache(IrEmitterContext& ir_emitter_context,
@@ -77,14 +70,14 @@ absl::StatusOr<CompileModuleResults> CompileModuleToLlvmIr(
     BufferValue::SizeFunction buffer_size_bytes_function,
     llvm_ir::LLVMCommandLineOptionsReleasableLock& llvm_options_lock,
     KernelCompiler* compiler,
-    xla::cpu::TargetMachineOptions cpu_target_machine_options);
+    xla::cpu::TargetMachineOptions cpu_target_machine_options,
+    ObjectPool<std::unique_ptr<mlir::MLIRContext>>* mlir_context_pool);
 
 void LinkLlvmModulesInPlace(
     std::vector<std::unique_ptr<llvm::Module>>& llvm_modules);
 
 std::unique_ptr<llvm::Module> CopyToContext(const llvm::Module& module,
                                             llvm::LLVMContext& context);
-
 }  // namespace xla::gpu
 
 #endif  // XLA_SERVICE_GPU_COMPILE_MODULE_TO_LLVM_IR_H_

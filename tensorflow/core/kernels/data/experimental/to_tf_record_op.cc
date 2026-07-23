@@ -17,6 +17,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/core/data/dataset_utils.h"
 #include "tensorflow/core/data/root_dataset.h"
@@ -24,6 +25,7 @@ limitations under the License.
 #include "tensorflow/core/framework/function_handle_cache.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/resource_mgr.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/kernels/ops_util.h"
@@ -122,6 +124,12 @@ class ToTFRecordOp : public AsyncOpKernel {
           iterator->GetNext(&iter_ctx, &components, &end_of_sequence));
 
       if (!end_of_sequence) {
+        if (!TensorShapeUtils::IsScalar(components[0].shape())) {
+          return absl::InvalidArgumentError(absl::StrCat(
+              "ToTFRecordOp currently only supports scalar elements, but got "
+              "shape: ",
+              components[0].shape().DebugString()));
+        }
         TF_RETURN_IF_ERROR(
             writer->WriteRecord(components[0].scalar<tstring>()()));
       }

@@ -98,6 +98,7 @@ class RocmExecutor : public GpuExecutor {
                                  uint64_t size) override;
   void DeallocateStream(Stream* stream) override;
   absl::Status EnablePeerAccessTo(StreamExecutor* other) override;
+  bool CanEnablePeerAccessTo(int other_device_ordinal) override;
   bool CanEnablePeerAccessTo(StreamExecutor* other) override;
   bool DeviceMemoryUsage(int64_t* free, int64_t* total) const override;
 
@@ -110,6 +111,7 @@ class RocmExecutor : public GpuExecutor {
 
   bool HostMemoryRegister(void* location, uint64_t size) override;
   bool HostMemoryUnregister(void* location) override;
+  bool IsHostMemoryPinned(const void* ptr, uint64_t size) override;
 
   absl::StatusOr<MemorySpace> GetPointerMemorySpace(const void* ptr) override;
 
@@ -206,6 +208,9 @@ class RocmExecutor : public GpuExecutor {
   // Mutable because SetActive() (hipSetDevice) is logically const — it does
   // not change RocmContext state, but ScopedActivateContext takes non-const.
   mutable RocmContext rocm_context_;
+
+  // Cache of peer access capabilities. Populated during Init().
+  absl::flat_hash_map<int, bool> peer_access_cache_;
 };
 
 }  // namespace stream_executor::gpu

@@ -17,6 +17,7 @@ limitations under the License.
 #define XLA_SERVICE_SPMD_SHARDY_UTILS_H_
 
 #include <cstdint>
+#include <functional>
 #include <optional>
 #include <string>
 
@@ -54,6 +55,11 @@ mlir::DictionaryAttr getFrontendAttrs(mlir::Operation* op);
 mlir::DictionaryAttr getFuncArgFrontendAttrs(mlir::func::FuncOp funcOp,
                                              unsigned int index);
 
+// Returns a vector of attributes from `frontendAttributes` dict excluding
+// `excludedAttribute` one.
+llvm::SmallVector<mlir::NamedAttribute> getExistingFrontendAttributes(
+    mlir::DictionaryAttr frontendAttributes, mlir::StringRef excludedAttribute);
+
 // Adds `name` into the frontend attributes of `op` with value `value`. If
 // `name` already exists, it will be overwritten. Note that `value` will be
 // turned into a `StringAttr`.
@@ -65,6 +71,17 @@ void setFrontendAttribute(mlir::Operation* op, mlir::StringRef name,
 // that `value` will be turned into a `StringAttr`.
 void setFrontendAttribute(mlir::func::FuncOp funcOp, mlir::StringRef name,
                           mlir::Attribute value, int64_t argNum);
+
+// Sets `funcOp` argument at `index` w/ frontend attributes to `frontendAttrs`.
+void setFuncArgFrontendAttrs(
+    mlir::func::FuncOp funcOp, unsigned int index,
+    llvm::ArrayRef<mlir::NamedAttribute> frontendAttrs);
+
+// Remove `attributeName` from `frontendAttributes`.
+void removeFrontendAttribute(
+    mlir::DictionaryAttr frontendAttributes, mlir::StringRef attributeName,
+    std::function<void(llvm::ArrayRef<mlir::NamedAttribute>)> setAttr,
+    std::function<void()> removeAttr);
 
 // Remove `attributeName` from the frontend attributes of `op`.
 void removeFrontendAttribute(mlir::Operation* op,
@@ -156,6 +173,12 @@ absl::StatusOr<std::string> duplicateShardingsAtIndices(
 // TODO(b/420837831): delete this once we don't fall back to GSPMD.
 bool hasGspmdAttrsOrOps(mlir::ModuleOp module);
 
+// Returns true if the module has frontend_attributes containing mhlo.sharding.
+bool hasFrontendMhloShardings(mlir::ModuleOp module);
+
+// Returns true if the module has frontend_attributes containing xla.sdy.meshes.
+bool hasFrontendMeshes(mlir::ModuleOp module);
+
 // Check if the module has any sort of Shardy mesh:
 // - `mesh`
 // - `maximal_mesh_{X}`
@@ -179,14 +202,13 @@ mlir::sdy::TensorShardingAttr convertToSdyShardingAttr(
 mlir::sdy::TensorShardingPerValueAttr convertToSdySharding(
     const HloSharding& hloSharding, mlir::MLIRContext* context);
 
-// Returns whether the call is on a manual computation. Returns false for an
-// 'inlineable' manual computation if `isInlineable` is false. Returns whether
-// the call is on an 'inlineable' manual computation if `isInlineable` is true.
-bool isManualComputation(mlir::func::CallOp callOp, bool isInlineable = false);
-// Returns whether the func is a manual computation. Returns false for an
+// Returns whether the call is on a manual computation.
+bool isManualComputation(mlir::func::CallOp callOp);
+// Returns whether the `funcName` is a manual computation. Returns false for an
 // 'inlineable' manual computation if `isInlineable` is false. Returns whether
 // the func is an 'inlineable' manual computation if `isInlineable` is true.
-bool isManualComputation(mlir::func::FuncOp funcOp, bool isInlineable = false);
+bool isManualComputationOnName(mlir::StringRef funcName,
+                               bool isInlineable = false);
 
 }  // namespace sdy
 }  // namespace xla

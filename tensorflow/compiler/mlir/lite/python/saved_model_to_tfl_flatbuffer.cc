@@ -220,6 +220,9 @@ absl::Status ConvertSavedModelToTFLiteFlatBuffer(
   pass_config.unsafe_fuse_dynamic_shaped_broadcast =
       converter_flags.unsafe_fuse_dynamic_shaped_broadcast();
 
+  pass_config.unsafe_single_batch_rank_reduction =
+      converter_flags.unsafe_single_batch_rank_reduction();
+
   if (converter_flags.strict_qdq_mode()) {
     pass_config.quant_specs.qdq_conversion_mode =
         mlir::TFL::QDQConversionMode::kQDQStrict;

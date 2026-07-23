@@ -50,6 +50,8 @@ XLA_ELEMENT_TYPE_TO_DTYPE = {
     PrimitiveType.U32: np.dtype('uint32'),
     PrimitiveType.U64: np.dtype('uint64'),
     PrimitiveType.F4E2M1FN: np.dtype(ml_dtypes.float4_e2m1fn),
+    PrimitiveType.F6E2M3FN: np.dtype(ml_dtypes.float6_e2m3fn),
+    PrimitiveType.F6E3M2FN: np.dtype(ml_dtypes.float6_e3m2fn),
     PrimitiveType.F8E3M4: np.dtype(ml_dtypes.float8_e3m4),
     PrimitiveType.F8E4M3: np.dtype(ml_dtypes.float8_e4m3),
     PrimitiveType.F8E4M3FN: np.dtype(ml_dtypes.float8_e4m3fn),
@@ -487,3 +489,10 @@ def get_backend_config_string(instruction_proto, module_proto=None) -> str:
       if isinstance(instruction_proto.backend_config, bytes)
       else instruction_proto.backend_config
   )
+
+
+# Expose hlo submodule.
+if hasattr(_xla, 'hlo_module_from_text'):
+  hlo = _xla
+else:
+  from . import _hlo as hlo  # pylint: disable=g-import-not-at-top

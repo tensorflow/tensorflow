@@ -134,8 +134,7 @@ void RecordGpuCompilerStacktrace() {
 }
 
 int GetGpuCompilerStacktraceCount(absl::string_view stacktrace) {
-  return gpu_compiler_stacktrace_count->GetCell(std::string(stacktrace))
-      ->value();
+  return gpu_compiler_stacktrace_count->GetCell(stacktrace)->value();
 }
 
 }  // namespace xla

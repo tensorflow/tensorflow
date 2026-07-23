@@ -110,10 +110,8 @@ class KernelReuseCache {
 // Add kernels to the cache file. Binaries are taken from binaries_to_cache,
 // all other kernel properties are taken from current_cache.
 // do_append makes an existing file be loaded first.
-absl::Status UpdateDiskKernelCache(
-    absl::string_view path, bool do_append,
-    const CompilationCacheProto& current_cache,
-    absl::Span<const KernelReuseCache::NamedBinary> binaries_to_cache);
+absl::Status UpdateDiskKernelCache(absl::string_view path, bool do_append,
+                                   const CompilationCacheProto& current_cache);
 
 }  // namespace xla::gpu
 

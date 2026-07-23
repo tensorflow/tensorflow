@@ -339,6 +339,8 @@ class Stream {
   }
 
  private:
+  friend class StreamTest;
+
   // We use ResourceTypeId to distinguish between different resource types.
   TSL_LIB_GTL_DEFINE_INT_TYPE(ResourceTypeId, int64_t);
 

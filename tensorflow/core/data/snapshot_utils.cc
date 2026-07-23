@@ -130,8 +130,8 @@ absl::Status Writer::Create(Env* env, const std::string& filename,
           std::make_unique<TFRecordWriter>(filename, compression_type);
       break;
     default:
-      return errors::InvalidArgument("Snapshot writer version: ", version,
-                                     " is not supported.");
+      return absl::InvalidArgumentError(absl::StrCat(
+          "Snapshot writer version: ", version, " is not supported."));
   }
 
   return (*out_writer)->Initialize(env);
@@ -161,7 +161,8 @@ absl::Status TFRecordWriter::WriteTensors(const std::vector<Tensor>& tensors) {
     auto* proto_buffer = new std::string();
     if (!proto.SerializeToString(proto_buffer)) {
       delete proto_buffer;
-      return errors::DataLoss(ProtoSerializationErrorMessage(proto, filename_));
+      return absl::DataLossError(
+          ProtoSerializationErrorMessage(proto, filename_));
     }
     absl::Cord proto_serialized = absl::MakeCordFromExternal(
         *proto_buffer,
@@ -308,7 +309,7 @@ absl::Status CustomWriter::WriteTensors(const std::vector<Tensor>& tensors) {
 
   std::string output;
   if (!tsl::port::Snappy_Compress(uncompressed.data(), total_size, &output)) {
-    return errors::Internal("Failed to compress using snappy.");
+    return absl::InternalError("Failed to compress using snappy.");
   }
 
 #if defined(TF_CORD_SUPPORT)
@@ -380,8 +381,8 @@ absl::Status Reader::Create(Env* env, const std::string& filename,
           std::make_unique<TFRecordReader>(filename, compression_type, dtypes);
       break;
     default:
-      return errors::InvalidArgument("Snapshot reader version: ", version,
-                                     " is not supported.");
+      return absl::InvalidArgumentError(absl::StrCat(
+          "Snapshot reader version: ", version, " is not supported."));
   }
 
   return (*out_reader)->Initialize(env);
@@ -785,16 +786,16 @@ absl::StatusOr<std::vector<Tensor>> TFRecordReaderImpl::GetTensors() {
 absl::StatusOr<Tensor> TFRecordReaderImpl::Parse(const tstring& record) {
   TensorProto proto;
   if (!proto.ParseFromString(absl::string_view(record.data(), record.size()))) {
-    return errors::DataLoss(
+    return absl::DataLossError(absl::StrCat(
         "Unable to parse tensor from stored proto in file: ", filename_,
-        ", record ", offset_, ". Serialized proto: ", record);
+        ", record ", offset_, ". Serialized proto: ", record));
   }
 
   Tensor tensor;
   if (!tensor.FromProto(proto)) {
-    return errors::DataLoss(
+    return absl::DataLossError(absl::StrCat(
         "Unable to parse tensor from stored proto in file: ", filename_,
-        ", record ", offset_, ". TensorProto: ", proto.ShortDebugString());
+        ", record ", offset_, ". TensorProto: ", proto.ShortDebugString()));
   }
   return tensor;
 }
@@ -867,11 +868,12 @@ absl::Status CustomReader::ReadTensors(std::vector<Tensor>* read_tensors) {
     return ReadTensorsV0(read_tensors);
   }
   if (version_ != 1) {
-    return errors::InvalidArgument("Version: ", version_, " is not supported.");
+    return absl::InvalidArgumentError(
+        absl::StrCat("Version: ", version_, " is not supported."));
   }
   if (compression_type_ != io::compression::kSnappy) {
-    return errors::InvalidArgument("Compression ", compression_type_,
-                                   " is not supported.");
+    return absl::InvalidArgumentError(
+        absl::StrCat("Compression ", compression_type_, " is not supported."));
   }
 
   experimental::SnapshotTensorMetadata metadata;
@@ -879,7 +881,7 @@ absl::Status CustomReader::ReadTensors(std::vector<Tensor>* read_tensors) {
   TF_RETURN_IF_ERROR(ReadRecord(&metadata_str));
   if (!metadata.ParseFromString(
           absl::string_view(metadata_str.data(), metadata_str.size()))) {
-    return errors::DataLoss("Could not parse SnapshotTensorMetadata");
+    return absl::DataLossError("Could not parse SnapshotTensorMetadata");
   }
   read_tensors->reserve(metadata.tensor_metadata_size());
 
@@ -902,11 +904,11 @@ absl::Status CustomReader::ReadTensors(std::vector<Tensor>* read_tensors) {
       TensorProto tp;
       if (!tp.ParseFromString(
               absl::string_view(tensor_proto_str.get(), tensor_proto_size))) {
-        return errors::Internal("Could not parse TensorProto");
+        return absl::InternalError("Could not parse TensorProto");
       }
       Tensor t;
       if (!t.FromProto(tp)) {
-        return errors::Internal("Could not parse Tensor");
+        return absl::InternalError("Could not parse Tensor");
       }
       read_tensors->push_back(std::move(t));
       complex_index++;
@@ -930,7 +932,7 @@ absl::Status CustomReader::ReadTensorsV0(std::vector<Tensor>* read_tensors) {
   for (int i = 0; i < record.tensor_size(); ++i) {
     read_tensors->emplace_back();
     if (!read_tensors->back().FromProto(record.tensor(i))) {
-      return errors::DataLoss("Unable to parse tensor from proto.");
+      return absl::DataLossError("Unable to parse tensor from proto.");
     }
   }
   return absl::OkStatus();
@@ -946,7 +948,7 @@ absl::Status CustomReader::SnappyUncompress(
   size_t size;
   if (!tsl::port::Snappy_GetUncompressedLength(compressed.data(),
                                                compressed.size(), &size)) {
-    return errors::Internal("Could not get snappy uncompressed length");
+    return absl::InternalError("Could not get snappy uncompressed length");
   }
 
   if (metadata->tensor_metadata_size() != simple_tensor_mask_.size()) {
@@ -992,13 +994,13 @@ absl::Status CustomReader::SnappyUncompress(
   }
   const int64_t size_int = size;
   if (size_int != total_size) {
-    return errors::Internal("Uncompressed size mismatch. Snappy expects ", size,
-                            " whereas the tensor metadata suggests ",
-                            total_size);
+    return absl::InternalError(
+        absl::StrCat("Uncompressed size mismatch. Snappy expects ", size,
+                     " whereas the tensor metadata suggests ", total_size));
   }
   if (!tsl::port::Snappy_UncompressToIOVec(compressed.data(), compressed.size(),
                                            iov.data(), num_tensors)) {
-    return errors::Internal("Failed to perform snappy decompression.");
+    return absl::InternalError("Failed to perform snappy decompression.");
   }
   return absl::OkStatus();
 }
@@ -1096,7 +1098,7 @@ absl::Status DetermineOpState(
   if (mode_string == kModeRead) {
     // In read mode, we should expect a metadata file is written.
     if (!file_exists) {
-      return errors::NotFound("Metadata file does not exist.");
+      return absl::NotFoundError("Metadata file does not exist.");
     }
     LOG(INFO) << "Overriding mode to reader.";
     *mode = READER;

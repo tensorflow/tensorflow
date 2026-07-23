@@ -37,9 +37,6 @@ int main(int argc, char** argv) {
       // TODO(b/282757875): Enable the test once IFRT implements
       // `ShardingParamShardingSerDes`.
       "ArrayImplTest.AssembleAndDisassembleArray",
-
-      // IFRT Proxy does not support tokens yet.
-      "ArrayMemoryKindTest.HostBufferTokens",
   };
 
   const std::string filter = absl::StrCat("-", absl::StrJoin(disabled, ":"));

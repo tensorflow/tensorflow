@@ -53,7 +53,7 @@ namespace {
 
 namespace m = ::xla::match;
 
-using GemmRewriteTest = HloPjRtInterpreterReferenceMixin<GemmRewriteTestBase>;
+using GemmRewriteTest = HloInterpreterReferenceMixin<GemmRewriteTestBase>;
 
 TEST_F(GemmRewriteTest, CheckCustomCallTarget) {
   if (SkipGpuBlasLtTest()) {
@@ -385,11 +385,11 @@ TEST_F(GemmRewriteTest, DotWithoutBias) {
 }
 
 using ParameterizedGemmRewriteTest =
-    HloPjRtInterpreterReferenceMixin<ParameterizedGemmRewriteTestBase>;
+    HloInterpreterReferenceMixin<ParameterizedGemmRewriteTestBase>;
 
 // A test fixture class for tests which are specific to cublasLt
 class CublasLtGemmRewriteTest
-    : public HloPjRtInterpreterReferenceMixin<GemmRewriteTestBase> {
+    : public HloInterpreterReferenceMixin<GemmRewriteTestBase> {
  public:
   DebugOptions GetDebugOptionsForTest() const override {
     DebugOptions debug_options = GemmRewriteTestBase::GetDebugOptionsForTest();
@@ -822,7 +822,8 @@ ENTRY test {
 ; CHECK-DAG:         "epilogue":"BIAS"
 ; CHECK:           }
 ; CHECK-NEXT:    [[GETTUPLE:%[^ ]+]] = f32[4,4]{1,0} get-tuple-element([[MATMUL]]), index=0
-; CHECK:    ROOT [[OUT:%[^ ]+]] = f32[2,3]{1,0} fusion([[GETTUPLE]]), kind=kLoop
+; CHECK:    ROOT [[OUT:%[^ ]+]] = f32[2,3]{1,0} fusion([[GETTUPLE]])
+; CHECK-SAME:      NATIVE_EMITTER
       )");
 }
 
@@ -1205,7 +1206,8 @@ ENTRY test {
 ; CHECK-DAG:         "epilogue":"RELU"
 ; CHECK:           }
 ; CHECK:         [[MATMUL:%[^ ]+]] = f32[2,4]{1,0} get-tuple-element([[MATMUL_TUPLE]]), index=0
-; CHECK:    ROOT [[OUT:%[^ ]+]] = f32[2,2]{1,0} fusion([[MATMUL]]), kind=kLoop
+; CHECK:    ROOT [[OUT:%[^ ]+]] = f32[2,2]{1,0} fusion([[MATMUL]])
+; CHECK-SAME:      NATIVE_EMITTER
       )");
 }
 
@@ -1677,7 +1679,6 @@ ENTRY test (x: bf16[49152,11008], y: bf16[11008,11008]) -> (bf16[12,4096,11008],
                           ParseAndReturnVerifiedModule(hlo_text, config));
 
   GemmRewriterOptions options;
-  options.enable_cublaslt = true;
   GemmRewriter pass(Capability(), GetToolkitVersion(), options);
 
   TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHloPass(&pass, module.get()));
@@ -1855,7 +1856,6 @@ ENTRY test {
 )";
 
   GemmRewriterOptions options;
-  options.enable_cublaslt = true;
   GemmRewriter pass(Capability(), GetToolkitVersion(), options);
   RunAndFilecheckHloRewrite(hlo_text, std::move(pass),
                             R"(
@@ -1924,7 +1924,6 @@ ENTRY test {
 )";
 
   GemmRewriterOptions options;
-  options.enable_cublaslt = true;
   GemmRewriter pass(Capability(), GetToolkitVersion(), options);
   RunAndFilecheckHloRewrite(hlo_text, std::move(pass),
                             R"(
@@ -2101,7 +2100,6 @@ ENTRY test {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(hlo_text));
   GemmRewriterOptions options;
-  options.enable_cublaslt = true;
   GemmRewriter pass(Capability(), GetToolkitVersion(), options);
   TF_ASSERT_OK_AND_ASSIGN(bool changed, this->RunHloPass(&pass, module.get()));
   EXPECT_TRUE(changed);
@@ -2316,6 +2314,45 @@ ENTRY AddDotsFunc {
 )");
 }
 
+TEST_F(ParameterizedGemmRewriteTest, RhsArgTransposeFoldCheck) {
+  const char* hlo_text = R"(
+HloModule RhsArgTransposeFoldGemm
+
+ENTRY AddDotsFunc {
+  x = f32[2,3] parameter(0)
+  y = f32[4,3] parameter(1)
+  y_transposed = f32[3,4] transpose(y), dimensions={1, 0}
+  ROOT dot_a = f32[2,4] dot(x, y_transposed), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+}
+
+)";
+
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-5, 1e-5}));
+  MatchOptimizedHlo(hlo_text,
+                    R"(
+; CHECK-LABEL: ENTRY %{{.*}} ({{.*}}: f32[2,3], {{.*}}: f32[4,3]) -> f32[2,4] {
+; CHECK-DAG:     [[P0:%[^ ]+]] = f32[2,3]{1,0} parameter(0)
+; CHECK-DAG:     [[P1:%[^ ]+]] = f32[4,3]{1,0} parameter(1)
+; CHECK:         [[GEMM:%[^ ]+]] = {{.*}} custom-call([[P0]], [[P1]]),
+; CHECK:           custom_call_target="__cublas$lt$matmul",
+; CHECK:           backend_config={
+; CHECK-DAG:         "alpha_real":1
+; CHECK-DAG:         "alpha_imag":0
+; CHECK-DAG:         "beta":0
+; CHECK-DAG:         "dot_dimension_numbers":{
+; CHECK-DAG:           "lhs_contracting_dimensions":["1"]
+; CHECK-DAG:           "rhs_contracting_dimensions":["1"]
+; CHECK-DAG:           "lhs_batch_dimensions":[]
+; CHECK-DAG:           "rhs_batch_dimensions":[]
+; CHECK-DAG:         }
+; CHECK-DAG:         "precision_config":{
+; CHECK-DAG:           "operand_precision":["DEFAULT","DEFAULT"]
+; CHECK-DAG:         }
+; CHECK-DAG:         "epilogue":"DEFAULT"
+; CHECK:           }
+)");
+}
+
 TEST_F(ParameterizedGemmRewriteTest, BatchedArgRowColTransposeFoldCheck) {
   const char* hlo_text = R"(
 HloModule BatchedArgRowColTransposeFoldGemm
@@ -2430,6 +2467,49 @@ ENTRY AddDotsFunc {
 ; CHECK-DAG:         }
 ; CHECK-DAG:         "epilogue":"DEFAULT"
 ; CHECK:           }
+)");
+}
+
+TEST_F(ParameterizedGemmRewriteTest, LargeBatch) {
+  const char* hlo_text = R"(
+HloModule BatchedArgRowColTransposeFoldGemm
+
+ENTRY AddDotsFunc {
+  x = f32[20000,4,3,2] parameter(0)
+  y = f32[20000,4,3,4] parameter(1)
+  ROOT dot_a = f32[20000,4,2,4] dot(x, y), lhs_contracting_dims={2}, rhs_contracting_dims={2}, lhs_batch_dims={0,1}, rhs_batch_dims={0,1}
+}
+
+)";
+
+  // Batch sizes larger than 2^16-1 are not supported by cublasLt. Ensure that
+  // the custom_call_target is __cublas$gemm.
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-3, 1e-3}));
+  MatchOptimizedHlo(hlo_text,
+                    R"(
+; CHECK-LABEL: ENTRY %{{.*}} ({{.*}}: f32[20000,4,3,2], {{.*}}: f32[20000,4,3,4]) -> f32[20000,4,2,4] {
+; CHECK-DAG:     [[P0:%[^ ]+]] = f32[20000,4,3,2]{3,2,1,0} parameter(0)
+; CHECK-DAG:     [[BC0:%[^ ]+]] = f32[80000,3,2]{2,1,0} bitcast([[P0]])
+; CHECK-DAG:     [[P1:%[^ ]+]] = f32[20000,4,3,4]{3,2,1,0} parameter(1)
+; CHECK-DAG:     [[BC1:%[^ ]+]] = f32[80000,3,4]{2,1,0} bitcast([[P1]])
+; CHECK:         [[GEMM:%[^ ]+]] = (f32[80000,2,4]{2,1,0}, s8[{{[0-9]+}}]{0}) custom-call([[BC0]], [[BC1]]),
+; CHECK:           custom_call_target="__cublas$lt$matmul",
+; CHECK:           backend_config={
+; CHECK-DAG:         "alpha_real":1
+; CHECK-DAG:         "alpha_imag":0
+; CHECK-DAG:         "beta":0
+; CHECK-DAG:         "dot_dimension_numbers":{
+; CHECK-DAG:           "lhs_contracting_dimensions":["1"]
+; CHECK-DAG:           "rhs_contracting_dimensions":["1"]
+; CHECK-DAG:           "lhs_batch_dimensions":["0"]
+; CHECK-DAG:           "rhs_batch_dimensions":["0"]
+; CHECK-DAG:         }
+; CHECK-DAG:         "precision_config":{
+; CHECK-DAG:           "operand_precision":["DEFAULT","DEFAULT"]
+; CHECK-DAG:         }
+; CHECK:           }
+; CHECK:   [[OUT:%[^ ]+]] = f32[80000,2,4]{2,1,0} get-tuple-element([[GEMM]]), index=0
+; CHECK:   ROOT {{[^ ]+}} = f32[20000,4,2,4]{3,2,1,0} bitcast([[OUT]])
 )");
 }
 
@@ -2594,6 +2674,9 @@ ENTRY AddDotsFunc {
 }
 
 TEST_F(ParameterizedGemmRewriteTest, F64C64_CublasLtSupportTest) {
+  if (IsRocm()) {
+    GTEST_SKIP() << " hipblaslt doesn't support c64 c128 types";
+  }
   // This test should fail if gemm rewriter does not correctly rewrite
   // F64/C64 dots to cublas-lt or legacy cublas calls
   {
@@ -2622,6 +2705,183 @@ ENTRY AddDotsFunc {
   k_broadcast = c64[2, 2] broadcast(k), dimensions={}
   dot_a = c64[2,2] dot(x, y), lhs_contracting_dims={1}, rhs_contracting_dims={0}
   ROOT dot_a_multiplied = c64[2, 2] multiply(dot_a, k_broadcast)
+}
+)";
+    EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-4, 1e-5}));
+  }
+}
+
+TEST_F(ParameterizedGemmRewriteTest, ComplexGemmTransposeCombinations) {
+  if (!IsRocm()) {
+    GTEST_SKIP() << "rocBLAS complex GEMM redirect is ROCm-only";
+  }
+  // Exercises all 4 transpose combinations (NN, NT, TN, TT) with non-square
+  // C64 matrices to verify the rocBLAS fallback computes transposes correctly.
+  // NN: lhs[M,K] x rhs[K,N], contracting lhs={1}, rhs={0}
+  {
+    const char* hlo_text = R"(
+HloModule ComplexGemm_NN
+
+ENTRY main {
+  lhs = c64[3,5] parameter(0)
+  rhs = c64[5,7] parameter(1)
+  ROOT dot = c64[3,7] dot(lhs, rhs), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+}
+)";
+    EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-4, 1e-5}));
+  }
+  // NT: lhs[M,K] x rhs[N,K], contracting lhs={1}, rhs={1}
+  {
+    const char* hlo_text = R"(
+HloModule ComplexGemm_NT
+
+ENTRY main {
+  lhs = c64[3,5] parameter(0)
+  rhs = c64[7,5] parameter(1)
+  ROOT dot = c64[3,7] dot(lhs, rhs), lhs_contracting_dims={1}, rhs_contracting_dims={1}
+}
+)";
+    EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-4, 1e-5}));
+  }
+  // TN: lhs[K,M] x rhs[K,N], contracting lhs={0}, rhs={0}
+  {
+    const char* hlo_text = R"(
+HloModule ComplexGemm_TN
+
+ENTRY main {
+  lhs = c64[5,3] parameter(0)
+  rhs = c64[5,7] parameter(1)
+  ROOT dot = c64[3,7] dot(lhs, rhs), lhs_contracting_dims={0}, rhs_contracting_dims={0}
+}
+)";
+    EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-4, 1e-5}));
+  }
+  // TT: lhs[K,M] x rhs[N,K], contracting lhs={0}, rhs={1}
+  {
+    const char* hlo_text = R"(
+HloModule ComplexGemm_TT
+
+ENTRY main {
+  lhs = c64[5,3] parameter(0)
+  rhs = c64[7,5] parameter(1)
+  ROOT dot = c64[3,7] dot(lhs, rhs), lhs_contracting_dims={0}, rhs_contracting_dims={1}
+}
+)";
+    EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-4, 1e-5}));
+  }
+}
+
+TEST_F(ParameterizedGemmRewriteTest, ComplexGemmTransposeCombinationsC128) {
+  if (!IsRocm()) {
+    GTEST_SKIP() << "rocBLAS complex GEMM redirect is ROCm-only";
+  }
+  // Same transpose coverage for C128 (complex double).
+  // NN
+  {
+    const char* hlo_text = R"(
+HloModule ComplexGemm128_NN
+
+ENTRY main {
+  lhs = c128[3,5] parameter(0)
+  rhs = c128[5,7] parameter(1)
+  ROOT dot = c128[3,7] dot(lhs, rhs), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+}
+)";
+    EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-12, 1e-12}));
+  }
+  // NT
+  {
+    const char* hlo_text = R"(
+HloModule ComplexGemm128_NT
+
+ENTRY main {
+  lhs = c128[3,5] parameter(0)
+  rhs = c128[7,5] parameter(1)
+  ROOT dot = c128[3,7] dot(lhs, rhs), lhs_contracting_dims={1}, rhs_contracting_dims={1}
+}
+)";
+    EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-12, 1e-12}));
+  }
+  // TN
+  {
+    const char* hlo_text = R"(
+HloModule ComplexGemm128_TN
+
+ENTRY main {
+  lhs = c128[5,3] parameter(0)
+  rhs = c128[5,7] parameter(1)
+  ROOT dot = c128[3,7] dot(lhs, rhs), lhs_contracting_dims={0}, rhs_contracting_dims={0}
+}
+)";
+    EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-12, 1e-12}));
+  }
+  // TT
+  {
+    const char* hlo_text = R"(
+HloModule ComplexGemm128_TT
+
+ENTRY main {
+  lhs = c128[5,3] parameter(0)
+  rhs = c128[7,5] parameter(1)
+  ROOT dot = c128[3,7] dot(lhs, rhs), lhs_contracting_dims={0}, rhs_contracting_dims={1}
+}
+)";
+    EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-12, 1e-12}));
+  }
+}
+
+TEST_F(ParameterizedGemmRewriteTest, ComplexGemmBatchedTranspose) {
+  if (!IsRocm()) {
+    GTEST_SKIP() << "rocBLAS complex GEMM redirect is ROCm-only";
+  }
+  // NN
+  {
+    const char* hlo_text = R"(
+HloModule ComplexGemmBatched_NN
+
+ENTRY main {
+  lhs = c64[4,3,5] parameter(0)
+  rhs = c64[4,5,7] parameter(1)
+  ROOT dot = c64[4,3,7] dot(lhs, rhs), lhs_contracting_dims={2}, rhs_contracting_dims={1}, lhs_batch_dims={0}, rhs_batch_dims={0}
+}
+)";
+    EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-4, 1e-5}));
+  }
+  // NT
+  {
+    const char* hlo_text = R"(
+HloModule ComplexGemmBatched_NT
+
+ENTRY main {
+  lhs = c64[4,3,5] parameter(0)
+  rhs = c64[4,7,5] parameter(1)
+  ROOT dot = c64[4,3,7] dot(lhs, rhs), lhs_contracting_dims={2}, rhs_contracting_dims={2}, lhs_batch_dims={0}, rhs_batch_dims={0}
+}
+)";
+    EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-4, 1e-5}));
+  }
+  // TN
+  {
+    const char* hlo_text = R"(
+HloModule ComplexGemmBatched_TN
+
+ENTRY main {
+  lhs = c64[4,5,3] parameter(0)
+  rhs = c64[4,5,7] parameter(1)
+  ROOT dot = c64[4,3,7] dot(lhs, rhs), lhs_contracting_dims={1}, rhs_contracting_dims={1}, lhs_batch_dims={0}, rhs_batch_dims={0}
+}
+)";
+    EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-4, 1e-5}));
+  }
+  // TT
+  {
+    const char* hlo_text = R"(
+HloModule ComplexGemmBatched_TT
+
+ENTRY main {
+  lhs = c64[4,5,3] parameter(0)
+  rhs = c64[4,7,5] parameter(1)
+  ROOT dot = c64[4,3,7] dot(lhs, rhs), lhs_contracting_dims={1}, rhs_contracting_dims={2}, lhs_batch_dims={0}, rhs_batch_dims={0}
 }
 )";
     EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-4, 1e-5}));
@@ -3006,8 +3266,6 @@ TEST_F(ParameterizedGemmRewriteTest, GemmTypeCombinationCheck) {
                            {"f16", "f16", true},
                            {"f32", "f32", true},
                            {"f64", "f64", true},
-                           {"c64", "c64", true},
-                           {"c128", "c128", true},
                            // mix type gemm
                            {"s8", "s32", true},
                            {"f16", "f32", true},
@@ -3029,26 +3287,30 @@ TEST_F(ParameterizedGemmRewriteTest, GemmTypeCombinationCheck) {
     std::vector<std::tuple<absl::string_view, absl::string_view, bool>>
         more_type_combinations = {
             {"s8", "bf16", false},  {"s8", "f16", false},
-            {"s8", "f64", false},   {"s8", "c64", false},
-            {"s8", "c128", false},
-
-            {"s32", "f32", false},  {"s32", "f64", false},
-            {"s32", "c64", false},  {"s32", "c128", false},
-
-            {"f16", "bf16", false}, {"f16", "f64", false},
-            {"f16", "c64", false},  {"f16", "c128", false},
-
-            {"bf16", "f16", false}, {"bf16", "f64", false},
-            {"bf16", "c64", false}, {"bf16", "c128", false},
-
-            {"f32", "f64", false},  {"f32", "c64", false},
-            {"f32", "c128", false},
-
-            {"f64", "c64", false},  {"f64", "c128", false},
+            {"s8", "f64", false},   {"s32", "f32", false},
+            {"s32", "f64", false},  {"f16", "bf16", false},
+            {"f16", "f64", false},  {"bf16", "f16", false},
+            {"bf16", "f64", false}, {"f32", "f64", false},
+            // Not suported in hipblaslt
+            // {"s8", "c64", false},
+            // {"s8", "c128", false},
+            // {"s32", "c64", false},
+            // {"s32", "c128", false},
+            // {"f16", "c64", false},
+            // {"f16", "c128", false},
+            // {"bf16", "c64", false},
+            // {"bf16", "c128", false},
+            // {"f32", "c64", false},
+            // {"f32", "c128", false},
+            // {"f64", "c64", false},
+            // {"f64", "c128", false},
         };
     type_combinations.insert(type_combinations.end(),
                              more_type_combinations.begin(),
                              more_type_combinations.end());
+  } else {
+    type_combinations.push_back({"c64", "c64", true});
+    type_combinations.push_back({"c128", "c128", true});
   }
 
   for (const auto& type_combination : type_combinations) {
@@ -3091,7 +3353,6 @@ ENTRY main {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(hlo_text));
   GemmRewriterOptions options;
-  options.enable_cublaslt = true;
   GemmRewriter pass(Capability(), GetToolkitVersion(), options);
   TF_ASSERT_OK_AND_ASSIGN(bool changed, this->RunHloPass(&pass, module.get()));
   EXPECT_TRUE(changed);
@@ -3121,7 +3382,6 @@ ENTRY main {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(hlo_text));
   GemmRewriterOptions options;
-  options.enable_cublaslt = true;
   GemmRewriter pass(Capability(), GetToolkitVersion(), options);
   TF_ASSERT_OK_AND_ASSIGN(bool changed, this->RunHloPass(&pass, module.get()));
   EXPECT_TRUE(changed);
@@ -3153,7 +3413,6 @@ ENTRY main {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(hlo_text));
   GemmRewriterOptions options;
-  options.enable_cublaslt = true;
   GemmRewriter pass(Capability(), GetToolkitVersion(), options);
   TF_ASSERT_OK_AND_ASSIGN(bool changed, this->RunHloPass(&pass, module.get()));
   EXPECT_TRUE(changed);
@@ -3191,7 +3450,8 @@ ENTRY DotFunc {
 ; CHECK-LABEL: ENTRY %{{.*}} ({{.*}}: f32[3,3], {{.*}}: f32[3,3]) -> f32[3,3] {
 ; CHECK-DAG:     [[P0:%[^ ]+]] = f32[3,3]{1,0} parameter(0)
 ; CHECK-DAG:     [[P1:%[^ ]+]] = f32[3,3]{1,0} parameter(1)
-; CHECK:         ROOT {{[^ ]+}} = f32[3,3]{1,0} fusion([[P0]], [[P1]]), kind=kLoop
+; CHECK:         ROOT {{[^ ]+}} = f32[3,3]{1,0} fusion([[P0]], [[P1]])
+; CHECK-SAME:      NATIVE_EMITTER
 )");
 }
 

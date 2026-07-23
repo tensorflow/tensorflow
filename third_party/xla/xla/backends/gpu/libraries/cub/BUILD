@@ -44,6 +44,7 @@ cc_library(
         "//xla/stream_executor:semantic_version",
         "//xla/tsl/util:file_toc",
         "@com_google_absl//absl/base:no_destructor",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
@@ -63,6 +64,7 @@ cc_library(
         "//xla:shape_util",
         "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
+        "//xla/service:hlo_proto_cc",
         "//xla/tsl/platform:status_macros",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
@@ -93,6 +95,7 @@ xla_cc_test(
         ":cub_sort_utils",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/parser:hlo_parser",
+        "//xla/service:hlo_proto_cc",
         "@com_google_absl//absl/status:status_matchers",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest_main",
@@ -159,7 +162,7 @@ text_to_binary_proto(
     src = "cub_scratch_size_lookup_table.textproto",
     out = "cub_scratch_size_lookup_table.binarypb",
     # copybara:uncomment compatible_with = ["//buildenv/target:non_prod"],
-    proto_file = ":scratch_space_lookup_table.proto",
+    proto_deps = [":scratch_space_lookup_table_proto"],
     proto_name = "xla.gpu.CubScratchSizeLookupTable",
 )
 

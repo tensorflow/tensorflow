@@ -30,7 +30,7 @@ def CreateTFCastOpI32 : NativeCodeCall<
     "CreateTFCastOpI32(&$_builder, $_loc, $0, $1)">;
 
 // Convert to std constant for statically shaped, non-opaque constants.
-def ConvertTfConst : Pat<(TF_ConstOp:$res DenseElementsAttr:$value), (Arith_ConstantOp $value),
+def ConvertTfConst : Pat<(TF_ConstOp:$res DenseElementsAttr:$value), (TFL_ConstOp $value),
           [(AnyStaticShapeTensor $res)]>;
 
 // Convert the legacy BatchNormWithGlobalNormalization to other ops.

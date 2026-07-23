@@ -108,6 +108,16 @@ class HistogramFixedWidthTest(test.TestCase):
         "Requires nbins > 0|should be a positive number"):
       self.evaluate(
           histogram_ops.histogram_fixed_width(values, [1.0, 5.0], nbins=-5))
+    with self.assertRaisesRegex(
+        (errors.InvalidArgumentError, ValueError),
+        "Requires nbins < 2147483647|nbins \\+ 1 must not exceed the maximum"
+        " value of int32_t",
+    ):
+      self.evaluate(
+          histogram_ops.histogram_fixed_width(
+              values, [1.0, 5.0], nbins=2147483647
+          )
+      )
 
   def test_empty_input_gives_all_zero_counts(self):
     # Bins will be:
@@ -194,6 +204,17 @@ class HistogramFixedWidthTest(test.TestCase):
         nbins=2,
     )
     self.assertAllEqual(hist, [1, 1])
+
+  def test_invalid_step_precision_loss(self):
+    values = [2**60, 2**60 + 1]
+    value_range = [2**60, 2**60 + 1]
+    with self.assertRaisesRegex(
+        (errors.InvalidArgumentError, ValueError),
+        "Step size in histogram computation must be positive",
+    ):
+      self.evaluate(
+          histogram_ops.histogram_fixed_width(values, value_range, nbins=2)
+      )
 
 
 if __name__ == '__main__':

@@ -66,12 +66,12 @@ namespace xla {
 
 absl::StatusOr<se::StreamExecutor*> CompiledOptProvider::GetExecutor() {
   DebugOptions debug_opts = GetDebugOptionsFromFlags();
-  TF_ASSIGN_OR_RETURN(se::Platform * platform,
-                      PlatformUtil::GetPlatform(GetPlatformName()));
+  ASSIGN_OR_RETURN(se::Platform * platform,
+                   PlatformUtil::GetPlatform(GetPlatformName()));
   if (debug_opts.xla_gpu_target_config_filename().empty()) {
-    TF_ASSIGN_OR_RETURN(std::vector<se::StreamExecutor*> stream_executors,
-                        PlatformUtil::GetStreamExecutors(
-                            platform, /*allowed_devices=*/std::nullopt));
+    ASSIGN_OR_RETURN(std::vector<se::StreamExecutor*> stream_executors,
+                     PlatformUtil::GetStreamExecutors(
+                         platform, /*allowed_devices=*/std::nullopt));
     return stream_executors[0];
   }
   return nullptr;
@@ -80,17 +80,17 @@ absl::StatusOr<se::StreamExecutor*> CompiledOptProvider::GetExecutor() {
 absl::StatusOr<std::optional<std::string>> CompiledOptProvider::GenerateStage(
     std::unique_ptr<HloModule> module, absl::string_view stage) {
   if (stage == "hlo") {
-    TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> optimized_module,
-                        GetOptimizedHlo(std::move(module)));
+    ASSIGN_OR_RETURN(std::unique_ptr<HloModule> optimized_module,
+                     GetOptimizedHlo(std::move(module)));
     return optimized_module->ToString();
   } else if (stage == "html") {
-    TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> optimized_module,
-                        GetOptimizedHlo(std::move(module)));
-    TF_ASSIGN_OR_RETURN(std::string cmps,
-                        RenderAllComputationsToHtml(*optimized_module));
+    ASSIGN_OR_RETURN(std::unique_ptr<HloModule> optimized_module,
+                     GetOptimizedHlo(std::move(module)));
+    ASSIGN_OR_RETURN(std::string cmps,
+                     RenderAllComputationsToHtml(*optimized_module));
     return cmps;
   } else if (stage == "hlo-backend") {
-    TF_ASSIGN_OR_RETURN(auto executable, GetExecutable(std::move(module)));
+    ASSIGN_OR_RETURN(auto executable, GetExecutable(std::move(module)));
     return executable->module().ToString();
   }
 
@@ -98,21 +98,21 @@ absl::StatusOr<std::optional<std::string>> CompiledOptProvider::GenerateStage(
 }
 
 absl::StatusOr<std::unique_ptr<Compiler>> CompiledOptProvider::GetCompiler() {
-  TF_ASSIGN_OR_RETURN(se::Platform * platform,
-                      PlatformUtil::GetPlatform(GetPlatformName()));
+  ASSIGN_OR_RETURN(se::Platform * platform,
+                   PlatformUtil::GetPlatform(GetPlatformName()));
 
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<Compiler> compiler,
-                      Compiler::GetForPlatform(platform->id()));
+  ASSIGN_OR_RETURN(std::unique_ptr<Compiler> compiler,
+                   Compiler::GetForPlatform(platform->id()));
   return compiler;
 }
 
 absl::StatusOr<std::unique_ptr<HloModule>> CompiledOptProvider::GetOptimizedHlo(
     std::unique_ptr<HloModule> input_module) {
-  TF_ASSIGN_OR_RETURN(se::StreamExecutor * executor, GetExecutor());
+  ASSIGN_OR_RETURN(se::StreamExecutor * executor, GetExecutor());
 
   DebugOptions debug_opts = GetDebugOptionsFromFlags();
   Compiler::CompileOptions opts;
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<Compiler> compiler, GetCompiler());
+  ASSIGN_OR_RETURN(std::unique_ptr<Compiler> compiler, GetCompiler());
   DebugOptions d = input_module->config().debug_options();
   d.set_xla_embed_ir_in_executable(true);
   input_module->mutable_config().set_debug_options(d);
@@ -122,7 +122,7 @@ absl::StatusOr<std::unique_ptr<HloModule>> CompiledOptProvider::GetOptimizedHlo(
   }
 
   // But run-hlo-passes does not actually run the scheduling.
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       std::unique_ptr<HloModule> optimized_module,
       compiler->RunHloPasses(std::move(input_module), executor, opts));
 

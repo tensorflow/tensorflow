@@ -220,16 +220,14 @@ absl::Status EncodeAudioAsS16LEWav(const float* audio, size_t sample_rate,
   return absl::OkStatus();
 }
 
-template Status EncodeAudioAsS16LEWav<std::string>(const float* audio,
-                                                   size_t sample_rate,
-                                                   size_t num_channels,
-                                                   size_t num_frames,
-                                                   std::string* wav_string);
-template Status EncodeAudioAsS16LEWav<tstring>(const float* audio,
-                                               size_t sample_rate,
-                                               size_t num_channels,
-                                               size_t num_frames,
-                                               tstring* wav_string);
+template absl::Status EncodeAudioAsS16LEWav<std::string>(
+    const float* audio, size_t sample_rate, size_t num_channels,
+    size_t num_frames, std::string* wav_string);
+template absl::Status EncodeAudioAsS16LEWav<tstring>(const float* audio,
+                                                     size_t sample_rate,
+                                                     size_t num_channels,
+                                                     size_t num_frames,
+                                                     tstring* wav_string);
 
 absl::Status DecodeLin16WaveAsFloatVector(const std::string& wav_string,
                                           std::vector<float>* float_values,

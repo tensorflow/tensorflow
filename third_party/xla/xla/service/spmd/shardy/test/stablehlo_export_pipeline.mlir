@@ -1,3 +1,17 @@
+// Copyright 2026 The OpenXLA Authors. All Rights Reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// ==============================================================================
 // RUN: sdy_opt %s -split-input-file -xla-sdy-stablehlo-export-pipeline 2>&1 | FileCheck %s --check-prefixes=CHECK,CHECK-V2
 // RUN: sdy_opt %s -split-input-file -xla-sdy-stablehlo-export-pipeline='enable-hlo-sharding-v3=true' 2>&1 | FileCheck %s --check-prefixes=CHECK,CHECK-V3
 
@@ -538,10 +552,10 @@ func.func @all_reduce_input_no_unreduced_axes(%arg0: tensor<8x8xf32> {sdy.shardi
 }
 
 // CHECK-LABEL: func @all_reduce_input_with_unreduced_axes
-// CHECK-V2-SAME:  (%arg0: tensor<8x8xf32> {mhlo.sharding = "{devices=[2,1,2]<=[2,2]T(1,0) last_tile_dims={unreduced}}"}) -> tensor<8x8xf32> {
+// CHECK-V2-SAME:  (%arg0: tensor<8x8xf32> {mhlo.sharding = "{devices=[2,1,2]<=[2,2]T(1,0) last_tile_dims={unreduced} metadata={op_type=\22sdy::reduction_op\22 op_name=\22SUM\22}}"}) -> tensor<8x8xf32> {
 // CHECK-V3-SAME:  (%arg0: tensor<8x8xf32> {mhlo.sharding = "{mesh['i'=2,'j'=2], [{'j'}, {}], unreduced={'i'}}"}) -> tensor<8x8xf32> {
 func.func @all_reduce_input_with_unreduced_axes(%arg0: tensor<8x8xf32> {sdy.sharding = #sdy.sharding<@mesh_5, [{"j"}, {}], unreduced={"i"}>}) -> tensor<8x8xf32> {
-  // CHECK-V2-NEXT: %[[COPY_0:.*]] = mhlo.copy %arg0 {mhlo.sharding = "{devices=[2,1,2]<=[2,2]T(1,0) last_tile_dims={unreduced}}"}
+  // CHECK-V2-NEXT: %[[COPY_0:.*]] = mhlo.copy %arg0 {mhlo.sharding = "{devices=[2,1,2]<=[2,2]T(1,0) last_tile_dims={unreduced} metadata={op_type=\22sdy::reduction_op\22 op_name=\22SUM\22}}"}
   // CHECK-V2-NEXT: %[[FULL_TO_SHARD:.*]] = stablehlo.custom_call @SPMDFullToShardShape(%[[COPY_0]]) {mhlo.sharding = "{manual}"}
   // CHECK-V2-NEXT: %[[CALL:.*]] = call @xla.sdy.inlinable_manual_computation_body_4(%[[FULL_TO_SHARD]]) {mhlo.sharding = "{manual}"} : (tensor<4x8xf32>) -> tensor<4x8xf32>
   // CHECK-V2-NEXT: %[[COPY_1:.*]] = mhlo.copy %[[CALL]] {mhlo.sharding = "{manual}"}
@@ -561,7 +575,7 @@ func.func @all_reduce_input_with_unreduced_axes(%arg0: tensor<8x8xf32> {sdy.shar
 //===----------------------------------------------------------------------===//
 
 // CHECK-LABEL: func @unreduced_func_input
-// CHECK-V2-SAME:  (%arg0: tensor<4x8xf32> {mhlo.sharding = "{devices=[2,1,2]<=[4] last_tile_dims={unreduced}}"}, %arg1: tensor<4x8xf32>) -> tensor<4x8xf32> {
+// CHECK-V2-SAME:  (%arg0: tensor<4x8xf32> {mhlo.sharding = "{devices=[2,1,2]<=[4] last_tile_dims={unreduced} metadata={op_type=\22sdy::reduction_op\22 op_name=\22SUM\22}}"}, %arg1: tensor<4x8xf32>) -> tensor<4x8xf32> {
 // CHECK-V3-SAME:  (%arg0: tensor<4x8xf32> {mhlo.sharding = "{mesh['i'=2,'j'=2], [{'i'}, {}], unreduced={'j'}}"}, %arg1: tensor<4x8xf32>) -> tensor<4x8xf32> {
 func.func @unreduced_func_input(%arg0: tensor<4x8xf32> {sdy.sharding = #sdy.sharding<@mesh_5, [{"i"}, {}], unreduced={"j"}>}, %arg1: tensor<4x8xf32>) -> tensor<4x8xf32> {
   // CHECK-NEXT: %[[MUL:.*]] = stablehlo.multiply %arg0, %arg1
@@ -573,9 +587,9 @@ func.func @unreduced_func_input(%arg0: tensor<4x8xf32> {sdy.sharding = #sdy.shar
 
 // CHECK-LABEL: func @unreduced_op
 func.func @unreduced_op(%arg0: tensor<4x64x16xf32> {sdy.sharding = #sdy.sharding<@mesh_5, [{}, {"i", "j"}, {}]>}) -> tensor<4x16xf32> {
-  // CHECK-V2:      %[[REDUCE:.*]] = stablehlo.reduce(%arg0 init: %cst) applies stablehlo.add across dimensions = [1] {mhlo.sharding = "{devices=[2,1,2]<=[2,2]T(1,0) last_tile_dims={unreduced}}"}
-  // CHECK-V2-NEXT: %[[ADD:.*]] = stablehlo.add %[[REDUCE]], %[[REDUCE]] {mhlo.sharding = "{devices=[2,1,2]<=[2,2]T(1,0) last_tile_dims={unreduced}}"}
-  // CHECK-V2-NEXT: %[[COPY:.*]] = mhlo.copy %[[ADD]] {mhlo.sharding = "{devices=[2,1,2]<=[2,2]T(1,0) last_tile_dims={unreduced}}"} : tensor<4x16xf32>
+  // CHECK-V2:      %[[REDUCE:.*]] = stablehlo.reduce(%arg0 init: %cst) applies stablehlo.add across dimensions = [1] {mhlo.sharding = "{devices=[2,1,2]<=[2,2]T(1,0) last_tile_dims={unreduced} metadata={op_type=\22sdy::reduction_op\22 op_name=\22SUM\22}}"}
+  // CHECK-V2-NEXT: %[[ADD:.*]] = stablehlo.add %[[REDUCE]], %[[REDUCE]] {mhlo.sharding = "{devices=[2,1,2]<=[2,2]T(1,0) last_tile_dims={unreduced} metadata={op_type=\22sdy::reduction_op\22 op_name=\22SUM\22}}"}
+  // CHECK-V2-NEXT: %[[COPY:.*]] = mhlo.copy %[[ADD]] {mhlo.sharding = "{devices=[2,1,2]<=[2,2]T(1,0) last_tile_dims={unreduced} metadata={op_type=\22sdy::reduction_op\22 op_name=\22SUM\22}}"} : tensor<4x16xf32>
   // CHECK-V2-NEXT: %[[FULL_TO_SHARD:.*]] = stablehlo.custom_call @SPMDFullToShardShape(%[[COPY]]) {mhlo.sharding = "{manual}"} : (tensor<4x16xf32>) -> tensor<2x16xf32>
   // CHECK-V2-NEXT: %[[CALL:.*]] = call @xla.sdy.inlinable_manual_computation_body_5(%[[FULL_TO_SHARD]]) {mhlo.sharding = "{manual}"} : (tensor<2x16xf32>) -> tensor<2x16xf32>
   // CHECK-V2-NEXT: %[[COPY_1:.*]] = mhlo.copy %[[CALL]] {mhlo.sharding = "{manual}"} : tensor<2x16xf32>
@@ -612,11 +626,11 @@ func.func @no_unreduced_op(%arg0: tensor<4x64x16xf32> {sdy.sharding = #sdy.shard
 func.func @both_results_unreduced(%arg0: tensor<4x64x16xf32> {sdy.sharding = #sdy.sharding<@mesh_5, [{}, {"i", "j"}, {}]>}, %arg1: tensor<4x64x16xf32> {sdy.sharding = #sdy.sharding<@mesh_5, [{}, {"i", "j"}, {}]>}) -> (tensor<4x16xf32>, tensor<4x16xf32>) {
   // CHECK:      %cst = stablehlo.constant
   // CHECK-NEXT: %[[REDUCE:.*]]:2 = stablehlo.reduce(%arg0 init: %cst), (%arg1 init: %cst) across dimensions = [1]
-  // CHECK-V2-SAME{LITERAL}: {mhlo.sharding = "{{unreduced}, {unreduced}}"}
+  // CHECK-V2-SAME{LITERAL}: {mhlo.sharding = "{{unreduced metadata={op_type=\22sdy::reduction_op\22 op_name=\22SUM\22}}, {unreduced metadata={op_type=\22sdy::reduction_op\22 op_name=\22SUM\22}}}"}
   // CHECK-V3-SAME{LITERAL}: {mhlo.sharding = "{{mesh['i'=2,'j'=2], [{}, {}], unreduced={'i', 'j'}}, {mesh['i'=2,'j'=2], [{}, {}], unreduced={'i', 'j'}}}"}
   // CHECK-SAME:  : (tensor<4x64x16xf32>, tensor<4x64x16xf32>, tensor<f32>, tensor<f32>) -> (tensor<4x16xf32>, tensor<4x16xf32>)
-  // CHECK-V2: %[[ADD0:.*]] = stablehlo.add %[[REDUCE]]#0, %[[REDUCE]]#0 {mhlo.sharding = "{unreduced}"}
-  // CHECK-V2-NEXT: %[[ADD1:.*]] = stablehlo.add %[[REDUCE]]#1, %[[REDUCE]]#1 {mhlo.sharding = "{unreduced}"}
+  // CHECK-V2: %[[ADD0:.*]] = stablehlo.add %[[REDUCE]]#0, %[[REDUCE]]#0 {mhlo.sharding = "{unreduced metadata={op_type=\22sdy::reduction_op\22 op_name=\22SUM\22}}"}
+  // CHECK-V2-NEXT: %[[ADD1:.*]] = stablehlo.add %[[REDUCE]]#1, %[[REDUCE]]#1 {mhlo.sharding = "{unreduced metadata={op_type=\22sdy::reduction_op\22 op_name=\22SUM\22}}"}
   // CHECK-V3: %[[ADD0:.*]] = stablehlo.add %[[REDUCE]]#0, %[[REDUCE]]#0 {mhlo.sharding = "{mesh['i'=2,'j'=2], [{}, {}], unreduced={'i', 'j'}}"}
   // CHECK-V3-NEXT: %[[ADD1:.*]] = stablehlo.add %[[REDUCE]]#1, %[[REDUCE]]#1 {mhlo.sharding = "{mesh['i'=2,'j'=2], [{}, {}], unreduced={'i', 'j'}}"}
   // CHECK-NEXT: return %[[ADD0]], %[[ADD1]]
@@ -635,7 +649,7 @@ func.func @both_results_unreduced(%arg0: tensor<4x64x16xf32> {sdy.sharding = #sd
 func.func @unreduced_sub_axis(%arg0: tensor<4x64x16xf32> {sdy.sharding = #sdy.sharding<@mesh_2, [{}, {"x", "y"}, {}]>}) -> tensor<4x16xf32> {
   %0 = stablehlo.constant dense<0.000000e+00> : tensor<f32>
   // CHECK:      %[[REDUCE:.*]] = stablehlo.reduce(%arg0 init: %cst) applies stablehlo.add across dimensions = [1]
-  // CHECK-V2-SAME{LITERAL}: {mhlo.sharding = "{devices=[4,1,2,4]<=[8,4]T(1,0) last_tile_dims={unreduced, replicated}}"}
+  // CHECK-V2-SAME{LITERAL}: {mhlo.sharding = "{devices=[4,1,2,4]<=[8,4]T(1,0) last_tile_dims={unreduced, replicated} metadata={op_type=\22sdy::reduction_op\22 op_name=\22SUM\22}}"}
   // CHECK-V3-SAME{LITERAL}: {mhlo.sharding = "{mesh['x'=8,'y'=4], [{'y'}, {}], unreduced={'x':(1)2}}"}
   %1 = stablehlo.reduce(%arg0 init: %0) applies stablehlo.add across dimensions = [1] {sdy.sharding = #sdy.sharding_per_value<[<@mesh_2, [{"y"}, {}], unreduced={"x":(1)2}>]>} : (tensor<4x64x16xf32>, tensor<f32>) -> tensor<4x16xf32>
   return %1 : tensor<4x16xf32>
@@ -644,7 +658,7 @@ func.func @unreduced_sub_axis(%arg0: tensor<4x64x16xf32> {sdy.sharding = #sdy.sh
 func.func @unreduced_canonicalization(%arg0: tensor<4x64x16xf32> {sdy.sharding = #sdy.sharding<@mesh_2, [{}, {"x"}, {}]>}) -> tensor<4x16xf32> {
   %0 = stablehlo.constant dense<0.000000e+00> : tensor<f32>
   // CHECK:      %[[REDUCE:.*]] = stablehlo.reduce(%arg0 init: %cst) applies stablehlo.add across dimensions = [1]
-  // CHECK-V2-SAME{LITERAL}: {mhlo.sharding = "{devices=[1,1,8,4]<=[2,4,4]T(0,2,1) last_tile_dims={unreduced, replicated}}"}
+  // CHECK-V2-SAME{LITERAL}: {mhlo.sharding = "{devices=[1,1,8,4]<=[2,4,4]T(0,2,1) last_tile_dims={unreduced, replicated} metadata={op_type=\22sdy::reduction_op\22 op_name=\22SUM\22}}"}
   // CHECK-V3-SAME{LITERAL}: {mhlo.sharding = "{mesh['x'=8,'y'=4], [{}, {}], unreduced={'x':(1)2, 'y'}}"}
   %1 = stablehlo.reduce(%arg0 init: %0) applies stablehlo.add across dimensions = [1] {sdy.sharding = #sdy.sharding_per_value<[<@mesh_2, [{}, {}], unreduced={"x":(1)2, "y"}>]>} : (tensor<4x64x16xf32>, tensor<f32>) -> tensor<4x16xf32>
   return %1 : tensor<4x16xf32>

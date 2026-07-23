@@ -16,33 +16,38 @@ limitations under the License.
 #include "xla/service/gpu/gpu_memory_space_assignment.h"
 
 #include <cstdint>
+#include <optional>
 #include <utility>
 #include <vector>
 
 #include "absl/base/no_destructor.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/container/inlined_vector.h"
 #include "absl/functional/function_ref.h"
 #include "absl/log/die_if_null.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/ascii.h"
 #include "absl/strings/numbers.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
 #include "absl/strings/strip.h"
 #include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/analysis/hlo_alias_analysis.h"
+#include "xla/hlo/analysis/hlo_dataflow_analysis.h"
 #include "xla/hlo/analysis/hlo_ordering.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/buffer_value.h"
+#include "xla/service/collective_ops_utils.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/ir_emission_utils.h"
-#include "xla/service/gpu_topology.h"
+#include "xla/service/hlo_buffer.h"
 #include "xla/service/hlo_value.h"
 #include "xla/shape_util.h"
-#include "xla/status_macros.h"
 #include "xla/util.h"
 #include "xla/xla.pb.h"
 
@@ -63,6 +68,7 @@ const absl::NoDestructor<absl::flat_hash_set<HloOpcode>>
         HloOpcode::kCollectivePermuteStart,
         HloOpcode::kCollectivePermuteDone,
         HloOpcode::kAllToAll,
+        HloOpcode::kRaggedAllToAll,
     });
 
 absl::StatusOr<MemorySpaceColor> AsMemorySpaceColor(int64_t memory_space) {
@@ -110,21 +116,6 @@ ParseIndexMemorySpacePairs(absl::string_view str) {
   return result;
 }
 
-bool IsNvshmemInstruction(const HloInstruction* inst) {
-  bool is_nvshmem_collective = false;
-  if (inst->has_backend_config()) {
-    auto gpu_config = inst->backend_config<GpuBackendConfig>();
-    if (!gpu_config.ok()) {
-      return false;
-    }
-    const CollectiveBackendConfig& backend_config =
-        gpu_config.value().collective_backend_config();
-    is_nvshmem_collective =
-        backend_config.backend() == CollectiveBackendConfig::NVSHMEM;
-  }
-  return is_nvshmem_collective;
-}
-
 // Returns true if the instruction's collectives mode requires symmetric
 // (collective) memory. Device-initiated and one-sided collectives need all
 // buffers registered with the collective runtime ahead of time.
@@ -148,8 +139,17 @@ bool IsCollectiveMemoryInstruction(const HloInstruction* inst) {
           kSupportedCollectiveOpcodes->contains(inst->async_wrapped_opcode()));
 }
 
+bool IsNcclSymmetricOrUserBuffersEnabledForInstruction(
+    const HloInstruction* inst, const DebugOptions& option) {
+  if (!IsCollectiveMemoryInstruction(inst)) {
+    return false;
+  }
+  return option.xla_gpu_enable_nccl_user_buffers() ||
+         IsNcclSymmetricBuffersEnabledForCollective(inst, option);
+}
+
 bool HasCollectiveMemoryInstruction(const HloValue& input_alias,
-                                    bool require_nvshmem = false) {
+                                    const DebugOptions& option) {
   // Tuple-shaped values are pointer containers and never hold data that needs
   // to live in collective memory. Only array sub-elements do.
   if (input_alias.shape().IsTuple()) {
@@ -158,13 +158,13 @@ bool HasCollectiveMemoryInstruction(const HloValue& input_alias,
   // If any use is a collective instruction, we must color the value to use
   // collective memory space.
   for (const HloUse& use : input_alias.GetUses()) {
-    if (IsCollectiveMemoryInstruction(use.instruction) &&
-        (!require_nvshmem || IsNvshmemInstruction(use.instruction))) {
+    if (IsNcclSymmetricOrUserBuffersEnabledForInstruction(use.instruction,
+                                                          option)) {
       return true;
     }
   }
-  return IsCollectiveMemoryInstruction(input_alias.instruction()) &&
-         (!require_nvshmem || IsNvshmemInstruction(input_alias.instruction()));
+  return IsNcclSymmetricOrUserBuffersEnabledForInstruction(
+      input_alias.instruction(), option);
 }
 
 bool HasSymmetricMemoryInstruction(const HloValue& input_alias) {
@@ -197,16 +197,8 @@ bool HasMosaicInstruction(const HloValue& input_alias,
   return predicate(*ABSL_DIE_IF_NULL(input_alias.instruction()));
 }
 
-bool HasMosaicWithNvshmemInstruction(const HloValue& input_alias) {
-  return HasMosaicInstruction(input_alias, IsMosaicWithNvshmem);
-}
-
 bool HasMosaicWithMultimemInstruction(const HloValue& input_alias) {
   return HasMosaicInstruction(input_alias, IsMosaicWithMultimem);
-}
-
-bool HasMosaicWithCollectiveMetadataInstruction(const HloValue& input_alias) {
-  return HasMosaicInstruction(input_alias, IsMosaicWithCollectiveMetadata);
 }
 
 // Returns the memory space requested for the given custom call use, or
@@ -232,6 +224,29 @@ static absl::StatusOr<MemorySpaceColor> GetCustomCallOperandMemorySpace(
   }
 
   return MemorySpaceColor::kDefault;
+}
+
+// Returns true if the value is
+// 1. Used by a RaggedAllToAll as Operand(1)
+// 2. RaggedAllToAll result
+bool IsRaggedAllToAllCollectiveOperandOrResult(const HloValue& value) {
+  if (value.shape().IsTuple()) {
+    return false;
+  }
+
+  // Check if the value is DEFINED by an RA2A (the result)
+  if (IsRaggedAllToAllOrAsyncDoneRaggedAllToAll(value.defining_instruction())) {
+    return true;
+  }
+
+  // Check if the value is USED by an RA2A as the destination (Operand 1)
+  for (const HloUse& use : value.GetUses()) {
+    if (IsRaggedAllToAllOrAsyncStartRaggedAllToAll(use.instruction) &&
+        use.operand_number == 1) {
+      return true;
+    }
+  }
+  return false;
 }
 
 // Returns the memory space requested for a custom call result value, or
@@ -260,25 +275,24 @@ static absl::StatusOr<MemorySpaceColor> GetCustomCallResultMemorySpace(
   return MemorySpaceColor::kDefault;
 }
 
-// Set memory space to MemorySpaceColor::kCollective for all allocations used by
-// all-reduce, all-gather, and reduce-scatter. This memory space maps to
-// collective memory using ncclMemAlloc in the runtime.
-//
-// Also assigns memory space colors for custom call operands and results based
-// on `operands_memory_spaces` and `results_memory_spaces` frontend attributes.
-absl::Status AssignColors(bool use_collective_memory, bool use_nvshmem,
-                          HloAliasAnalysis* alias_analysis,
-                          const GpuTopology& gpu_topology) {
-  for (HloValue* value : alias_analysis->dataflow_analysis().values()) {
+namespace {
+// Determines the memory space color for the given HLO buffer
+absl::StatusOr<BufferValue::Color> DetermineBufferColor(
+    const HloBuffer& buffer, const DebugOptions& option) {
+  // Is one-shot RaggedAllToAll with NCCL feature is enabled.
+  const bool is_one_shot_ra2a_with_nccl =
+      IsOneShotRaggedAllToAllWithNcclEnabled(option);
+  // Collect Color Candidates
+  absl::InlinedVector<BufferValue::Color, 4> candidates;
+  for (const HloValue* value : buffer.values()) {
     // If the value has a layout with non-default memory space, use the memory
     // space from the layout.
     const HloPosition& defining_position = value->defining_position();
     if (defining_position.shape().has_layout()) {
-      const int64_t memory_space =
+      const BufferValue::Color memory_space =
           defining_position.shape().layout().memory_space();
       if (memory_space != 0) {
-        value->set_color(BufferValue::Color(memory_space));
-        continue;
+        candidates.push_back(memory_space);
       }
     }
 
@@ -287,72 +301,91 @@ absl::Status AssignColors(bool use_collective_memory, bool use_nvshmem,
     ASSIGN_OR_RETURN(MemorySpaceColor result_ms,
                      GetCustomCallResultMemorySpace(*value));
     if (result_ms != MemorySpaceColor::kDefault) {
-      value->set_color(static_cast<int>(result_ms));
-      continue;
+      candidates.push_back(static_cast<BufferValue::Color>(result_ms));
     }
 
-    for (const xla::HloValue* alias :
-         alias_analysis->GetBufferContainingValue(*value).values()) {
-      TF_RET_CHECK(alias != nullptr);
-
-      // Check if any use of this alias is a custom call operand with a
-      // requested memory space.
-      for (const HloUse& use : alias->GetUses()) {
-        ASSIGN_OR_RETURN(MemorySpaceColor operand_ms,
-                         GetCustomCallOperandMemorySpace(use));
-        if (operand_ms != MemorySpaceColor::kDefault) {
-          value->set_color(static_cast<int>(operand_ms));
-        }
-      }
-      if (value->has_color()) {
-        break;
-      }
-
-      // TODO(479768130): Mark only buffers used with multimem instructions
-      // instead of marking all buffers.
-      // TODO(508106498): We need to start to respect replica groups once
-      // mosaic will support them.
-      if ((HasMosaicWithNvshmemInstruction(*alias) && use_nvshmem) ||
-          HasMosaicWithMultimemInstruction(*alias) ||
-          (HasMosaicWithCollectiveMetadataInstruction(*alias) &&
-           gpu_topology.number_of_hosts() > 1)) {
-        // This is a temporary solution until a separate BFC allocator will be
-        // added for the symmetric memory space.
-        value->set_color((int)MemorySpaceColor::kCollective);
-      } else if (HasSymmetricMemoryInstruction(*alias)) {
-        // Device-initiated and one-sided collectives require symmetric memory.
-        value->set_color((int)MemorySpaceColor::kCollective);
-      } else if (((use_collective_memory &&
-                   HasCollectiveMemoryInstruction(*alias)) ||
-                  (use_nvshmem && HasCollectiveMemoryInstruction(
-                                      *alias, /*require_nvshmem=*/true)))) {
-        value->set_color((int)MemorySpaceColor::kCollective);
+    // Check if any use of this alias is a custom call operand with a
+    // requested memory space.
+    for (const HloUse& use : value->GetUses()) {
+      ASSIGN_OR_RETURN(MemorySpaceColor operand_ms,
+                       GetCustomCallOperandMemorySpace(use));
+      if (operand_ms != MemorySpaceColor::kDefault) {
+        candidates.push_back(static_cast<BufferValue::Color>(operand_ms));
       }
     }
 
-    // Fall back to default memory space if no alias required special coloring.
-    if (!value->has_color()) {
-      value->set_color((int)MemorySpaceColor::kDefault);
+    // Collective/Mosaic Candidates
+    // TODO(479768130): Mark only buffers used with multimem instructions
+    // instead of marking all buffers.
+    // TODO(508106498): We need to start to respect replica groups once
+    // mosaic will support them.
+    const bool is_mosaic_with_multimem =
+        HasMosaicWithMultimemInstruction(*value);
+
+    if (is_mosaic_with_multimem) {
+      VLOG(1) << "Assigning color kCollective to value of instruction "
+              << value->instruction()->ToShortString()
+              << " is_mosaic_with_multimem " << is_mosaic_with_multimem;
+      // This is a temporary solution until a separate BFC
+      // allocator will be added for the symmetric memory space.
+      candidates.push_back(
+          static_cast<BufferValue::Color>(MemorySpaceColor::kCollective));
+    } else if (is_one_shot_ra2a_with_nccl &&
+               IsRaggedAllToAllCollectiveOperandOrResult(*value)) {
+      // One-shot RaggedAllToAll with NCCL requires collective memory for
+      // both operand 1 and the result.
+      candidates.push_back(
+          static_cast<BufferValue::Color>(MemorySpaceColor::kCollective));
+    } else if (HasSymmetricMemoryInstruction(*value)) {
+      // Device-initiated and one-sided collectives require symmetric memory.
+      candidates.push_back(
+          static_cast<BufferValue::Color>(MemorySpaceColor::kCollective));
+    } else if (HasCollectiveMemoryInstruction(*value, option)) {
+      candidates.push_back(
+          static_cast<BufferValue::Color>(MemorySpaceColor::kCollective));
+    }
+  }
+
+  if (candidates.empty()) {
+    return static_cast<BufferValue::Color>(MemorySpaceColor::kDefault);
+  }
+  BufferValue::Color color = candidates[0];
+  // Check for color conflicts.
+  for (BufferValue::Color candidate : candidates) {
+    if (color != candidate) {
+      return absl::InternalError(absl::StrCat(
+          "Memory space conflict detected in HloBuffer ", buffer.id(),
+          ". Conflicting colors: ", color, " and ", candidate));
+    }
+  }
+  return color;
+}
+}  // namespace
+
+// Assigns memory space colors to all HloBuffers in the module.
+//
+// Relies on DetermineBufferColor to aggregate memory space constraints from
+// the HloValues in the buffer. If a valid, conflict-free color is found, it
+// is uniformly applied to all HloValues within the buffer.
+absl::Status AssignColors(const DebugOptions& option,
+                          HloAliasAnalysis* alias_analysis) {
+  HloDataflowAnalysis& dataflow_analysis = alias_analysis->dataflow_analysis();
+  for (const HloBuffer& buffer : alias_analysis->buffers()) {
+    ASSIGN_OR_RETURN(BufferValue::Color color,
+                     DetermineBufferColor(buffer, option));
+    // Apply buffer color to all values in the buffer.
+    for (const HloValue* const_value : buffer.values()) {
+      HloValue& mutable_value = dataflow_analysis.GetValue(const_value->id());
+      mutable_value.set_color(color);
     }
   }
 
   return absl::OkStatus();
 }
 
-BufferAssigner::Colorer CreateColorer(const DebugOptions& option,
-                                      const GpuTopology& gpu_topology) {
-  // NCCL old registered buffers.
-  bool nccl_user_buffers = option.xla_gpu_enable_nccl_user_buffers();
-  bool nccl_symmetric_buffers =
-      option.xla_gpu_experimental_enable_nccl_symmetric_buffers();
-  bool use_nvshmem = option.xla_gpu_experimental_enable_nvshmem();
-
-  bool use_collective_memory = nccl_user_buffers || nccl_symmetric_buffers;
-
-  return [use_collective_memory, use_nvshmem, gpu_topology](
-             HloAliasAnalysis* alias_analysis, const HloOrdering&) {
-    return AssignColors(use_collective_memory, use_nvshmem, alias_analysis,
-                        gpu_topology);
+BufferAssigner::Colorer CreateColorer(const DebugOptions& option) {
+  return [&](HloAliasAnalysis* alias_analysis, const HloOrdering&) {
+    return AssignColors(option, alias_analysis);
   };
 }
 }  // namespace xla::gpu

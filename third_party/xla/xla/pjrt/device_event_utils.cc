@@ -18,8 +18,11 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/base/optimization.h"
 #include "absl/functional/any_invocable.h"
+#include "absl/log/check.h"
 #include "absl/status/status.h"
+#include "absl/synchronization/notification.h"
 #include "absl/types/span.h"
 #include "xla/pjrt/device_event.h"
 #include "xla/tsl/concurrency/async_value.h"
@@ -73,6 +76,34 @@ void ScopedLauncher::AddDependency(PjRtDeviceEventPtr dependency) {
   dependency.DeleteWhenReady(state_);
 }
 
+void ScopedLauncher::AddDependency(tsl::AsyncValue* dependency) {
+  if (!dependency) {
+    return;
+  }
+  if (dependency->IsAvailable()) {
+    return;
+  }
+  if (state_ == nullptr) {
+    state_ = tsl::MakeRef<Callee>(std::move(task_), executor_);
+  }
+  dependency->AndThen([state = state_]() {});
+}
+
+void ScopedLauncher::AddDependency(
+    absl::Span<const PjRtDeviceEventRef> dependencies) {
+  for (const auto& dep : dependencies) {
+    if (dep) {
+      AddDependency(dep.ptr());
+    }
+  }
+}
+
+void ScopedLauncher::AddDependency(PjRtDeviceEventSpan dependencies) {
+  for (size_t i = 0; i < dependencies.size(); ++i) {
+    AddDependency(dependencies[i]);
+  }
+}
+
 absl::Status GetErrors(absl::Span<const PjRtDeviceEventRef> events) {
   absl::Status status;
   for (const auto& ev : events) {
@@ -83,6 +114,33 @@ absl::Status GetErrors(absl::Span<const PjRtDeviceEventRef> events) {
     }
   }
   return status;
+}
+
+absl::Status GetErrors(PjRtDeviceEventSpan events) {
+  absl::Status status;
+  for (size_t i = 0; i < events.size(); ++i) {
+    const auto& ev = events[i];
+    if (ev) {
+      if (auto err = ev.GetErrorIfPresent()) {
+        status.Update(*err);
+      }
+    }
+  }
+  return status;
+}
+
+void BlockUntilReady(PjRtDeviceEventPtr event) {
+  DCHECK(event);
+  auto state = event.state();
+  if (ABSL_PREDICT_TRUE(state == PJRT_DeviceEvent_State_Ready)) {
+    return;
+  } else if (state == PJRT_DeviceEvent_State_Error) {
+    return;
+  }
+
+  absl::Notification notification;
+  event.AndThen([&notification] { notification.Notify(); });
+  notification.WaitForNotification();
 }
 
 }  // namespace xla

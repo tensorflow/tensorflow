@@ -26,7 +26,6 @@ limitations under the License.
 #include <vector>
 
 #include "absl/hash/hash.h"
-#include "absl/log/log.h"
 #include "absl/memory/memory.h"
 #include "absl/strings/match.h"
 #include "absl/strings/string_view.h"
@@ -35,6 +34,7 @@ limitations under the License.
 #include "xla/tsl/profiler/utils/xplane_builder.h"
 #include "xla/tsl/profiler/utils/xplane_mutators.h"
 #include "xla/tsl/profiler/utils/xplane_schema.h"
+#include "xla/tsl/profiler/utils/xplane_utils.h"
 #include "tsl/profiler/lib/context_types.h"
 #include "tsl/profiler/protobuf/xplane.pb.h"
 
@@ -529,10 +529,11 @@ class ThreadpoolLineMutatorFactory : public XplaneEventMutatorFactory {
         XEventBuilder region = line.AddEvent(*thread_pool_metadata_);
         region.SetTimestampPs(event_metadata.start_region_timestamp_ps);
         region.SetEndTimestampPs(event_metadata.end_region_timestamp_ps);
-        region.SetOrAddStatValue(*consumer_, event_metadata.region_id);
-        region.SetOrAddStatValue(
-            *consumer_type_,
-            static_cast<int64_t>(ContextType::kThreadpoolEvent));
+        // TODO: b/510930307 - Set consumer stat value for the region event and
+        // properly address the grouping issue described above.
+      }
+      if (!event_metadata.empty()) {
+        SortXLine(line.GetLine());
       }
     }
 

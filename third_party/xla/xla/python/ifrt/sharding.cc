@@ -33,6 +33,7 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/Casting.h"
@@ -723,14 +724,14 @@ absl::StatusOr<std::vector<IndexDomain>> ConcreteEvenSharding::IndexDomains(
     const Shape& shape,
     SingleDeviceShardSemantics single_device_shard_semantics) const {
   DCHECK(this);
-  if (devices_->devices().size() == 1 && is_fully_replicated_ &&
-      shape_ == shard_shape_ && shape_ == shape) {
+  if (is_fully_replicated_ && shape_ == shard_shape_ && shape_ == shape) {
     std::vector<IndexDomain> result;
     if (single_device_shard_semantics ==
-            SingleDeviceShardSemantics::kAllShards ||
-        devices_->devices().front()->IsAddressable()) {
-      result.reserve(1);
-      result.push_back(IndexDomain(shape));
+        SingleDeviceShardSemantics::kAllShards) {
+      result.resize(devices_->size(), IndexDomain(shape));
+    } else {
+      result.resize(devices_->AddressableDeviceList()->size(),
+                    IndexDomain(shape));
     }
     return result;
   }
@@ -782,7 +783,7 @@ ShardingParamSharding::Disassemble(
     const Shape& shape,
     SingleDeviceShardSemantics single_device_shard_semantics) const {
   DCHECK(this);
-  TF_ASSIGN_OR_RETURN(Shape local_shape, GetShardShape(shape));
+  ASSIGN_OR_RETURN(Shape local_shape, GetShardShape(shape));
 
   std::vector<std::pair<Shape, ShardingRef>> result;
   if (single_device_shard_semantics == SingleDeviceShardSemantics::kAllShards) {
@@ -883,7 +884,7 @@ absl::StatusOr<std::vector<IndexDomain>> ShardingParamSharding::IndexDomains(
   }
 
   // Calculate the origins of tiles, ignoring device assignments.
-  TF_ASSIGN_OR_RETURN(Shape local_shape, GetShardShape(shape));
+  ASSIGN_OR_RETURN(Shape local_shape, GetShardShape(shape));
   std::vector<Index> tile_indices =
       GetTileIndices(sharding_param_.dim_shards());
   std::vector<Index> origins;

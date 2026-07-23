@@ -130,7 +130,8 @@ class TfrtSessionInterOpThreadPools {
 
   absl::StatusOr<ThreadPoolInterfaceWrapper*> GetThreadPool(int index) {
     if (index < 0 || index >= thread_pools_.size())
-      return errors::InvalidArgument("Invalid thread pool index ", index);
+      return absl::InvalidArgumentError(
+          absl::StrCat("Invalid thread pool index ", index));
     return thread_pools_[index];
   }
 
@@ -188,7 +189,7 @@ class TfrtSession : public tensorflow::Session {
       return absl::OkStatus();
     }
     if (session_state_ == SessionState::kCreated) {
-      return errors::AlreadyExists(
+      return absl::AlreadyExistsError(
           "A Graph has already been created for this session.");
     }
     TF_RETURN_IF_ERROR(CheckNotClosedLocked());
@@ -303,7 +304,7 @@ class TfrtSession : public tensorflow::Session {
     {
       absl::MutexLock lock(session_state_lock_);
       if (session_state_ == SessionState::kInitialized) {
-        return errors::Unavailable("Session not created yet.");
+        return absl::UnavailableError("Session not created yet.");
       }
       TF_RETURN_IF_ERROR(CheckNotClosedLocked());
     }
@@ -441,11 +442,12 @@ class TfrtSession : public tensorflow::Session {
       absl::MutexLock lock(callables_lock_);
       auto it = callables_.find(handle);
       if (it == callables_.end())
-        return errors::InvalidArgument("No such callable handle: ", handle);
+        return absl::InvalidArgumentError(
+            absl::StrCat("No such callable handle: ", handle));
       callable = it->second;
     }
     if (callable.callable_options.feed_size() != feed_tensors.size())
-      return errors::InvalidArgument("Invalid number of feed tensors");
+      return absl::InvalidArgumentError("Invalid number of feed tensors");
 
     std::vector<std::pair<std::string, Tensor>> inputs;
     for (const auto& it :
@@ -471,7 +473,8 @@ class TfrtSession : public tensorflow::Session {
     absl::MutexLock lock(callables_lock_);
     auto it = callables_.find(handle);
     if (it == callables_.end())
-      return errors::InvalidArgument("No such callable handle: ", handle);
+      return absl::InvalidArgumentError(
+          absl::StrCat("No such callable handle: ", handle));
     callables_.erase(it);
     return absl::OkStatus();
   }
@@ -482,7 +485,8 @@ class TfrtSession : public tensorflow::Session {
     return absl::OkStatus();
   }
   absl::Status ListDevices(std::vector<DeviceAttributes>* response) override {
-    return errors::Unimplemented("TfrtSession::ListDevices is Unimplemented.");
+    return absl::UnimplementedError(
+        "TfrtSession::ListDevices is Unimplemented.");
   }
   absl::Status LocalDeviceManager(const DeviceMgr** output) override {
     *output = device_manager_.get();
@@ -543,7 +547,7 @@ class TfrtSession : public tensorflow::Session {
   absl::Status CheckNotClosedLocked() const
       TF_EXCLUSIVE_LOCKS_REQUIRED(session_state_lock_) {
     if (session_state_ == SessionState::kClosed) {
-      return errors::Cancelled("Session has been closed.");
+      return absl::CancelledError("Session has been closed.");
     }
     return absl::OkStatus();
   }
@@ -635,7 +639,7 @@ class TfrtSessionFactory::ThreadPoolManager {
                       "inter_op_parallelism_threads for now";
     }
     if (options.config.use_per_session_threads()) {
-      return errors::InvalidArgument(
+      return absl::InvalidArgumentError(
           "TFRT session does not yet support use_per_session_threads()");
     }
 
@@ -677,7 +681,7 @@ class TfrtSessionFactory::ThreadPoolManager {
       session_thread_pool_options.SetThreadPool(0, GlobalThreadPool(options));
       return session_thread_pool_options;
     } else {
-      return errors::InvalidArgument(
+      return absl::InvalidArgumentError(
           "session_inter_op_thread_pool_size must be >= 0");
     }
   }
@@ -725,7 +729,7 @@ class TfrtSessionFactory::ThreadPoolManager {
 
     const std::string& name = pool_options.global_name();
     if (name.empty()) {
-      return errors::InvalidArgument(
+      return absl::InvalidArgumentError(
           "TFRT session does not yet support session local thread pool");
     }
 
@@ -735,11 +739,11 @@ class TfrtSessionFactory::ThreadPoolManager {
     // The thread pool with the given name already exists.
     if (it != named_thread_pools_.end()) {
       if (it->second->num_threads() != num_threads) {
-        return errors::InvalidArgument(
+        return absl::InvalidArgumentError(absl::StrCat(
             "TfrtSession thread pool ", name,
             " configured previously with num_threads=",
             it->second->num_threads(),
-            "; cannot re-configure with num_threads=", num_threads);
+            "; cannot re-configure with num_threads=", num_threads));
       }
       return it->second->thread_pool_interface_wrapper();
     }

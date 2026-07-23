@@ -26,12 +26,11 @@ limitations under the License.
 #include "xla/backends/cpu/alignment.h"
 #include "xla/layout_util.h"
 #include "xla/literal.h"
-#include "xla/pjrt/abstract_tracked_device_buffer.h"
 #include "xla/pjrt/async_work_runner.h"
 #include "xla/pjrt/common_pjrt_client.h"
+#include "xla/pjrt/cpu/cpu_device_memory.h"
 #include "xla/pjrt/cpu/cpu_event.h"
 #include "xla/pjrt/cpu/raw_buffer.h"
-#include "xla/pjrt/cpu/tracked_cpu_device_buffer.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/transpose.h"
 #include "xla/pjrt/utils.h"
@@ -80,6 +79,10 @@ void PackOrCopy(PrimitiveType element_type, const LiteralSlice& literal,
                 void* data, int64_t size) {
   if (primitive_util::IsSubByteNonPredType(element_type)) {
     const int bit_width = primitive_util::BitWidth(element_type);
+    const int64_t expected_packed_size =
+        CeilOfRatio<int64_t>(literal.size_bytes(), 8 / bit_width);
+    CHECK_EQ(expected_packed_size, size)
+        << "Mismatched packed target size in PackOrCopy";
     absl::Span<const char> src_data_span(
         static_cast<const char*>(literal.untyped_data()), literal.size_bytes());
     absl::Span<char> dst_data_span(static_cast<char*>(data), size);

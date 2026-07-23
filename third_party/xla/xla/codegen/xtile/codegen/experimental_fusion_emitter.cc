@@ -21,6 +21,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
@@ -51,6 +52,7 @@ limitations under the License.
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Support/LLVM.h"
 #include "stablehlo/dialect/StablehloOps.h"
+#include "xla/codegen/tiling/experimental/reshape_analysis.h"
 #include "xla/codegen/tiling/experimental/scheduling.h"
 #include "xla/codegen/tiling/experimental/tiled_hlo.h"
 #include "xla/codegen/tiling/experimental/tiling_space.h"
@@ -60,6 +62,7 @@ limitations under the License.
 #include "xla/codegen/xtile/ir/xtile_ops.h"
 #include "xla/hlo/analysis/indexing_map_serialization.h"  // IWYU pragma: keep
 #include "xla/hlo/analysis/interval.h"
+#include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -76,7 +79,6 @@ limitations under the License.
 #include "xla/stream_executor/device_description.h"
 #include "xla/tools/hlo_decomposer.h"
 #include "xla/tsl/framework/mlir/status_scoped_diagnostic_handler.h"
-#include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/logging.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
@@ -174,7 +176,7 @@ absl::StatusOr<TensorValue> EmitBroadcast(
   if (input_tile_shape.empty() && output_tile_shape.empty()) {
     return input;
   }
-  CHECK(!output_tile_shape.empty());
+  TF_RET_CHECK(!output_tile_shape.empty());
 
   return xtile::BroadcastInDims(
       b, input, output_tile_shape,
@@ -198,11 +200,11 @@ absl::StatusOr<TensorValue> EmitConcatenate(
 
   ASSIGN_OR_RETURN(TileInfo tile_info,
                    TileInfo::Construct(emitter_ctx, tiled_concat));
-  TF_RETURN_IF_ERROR(
-      CheckConcatenateOperands(*hlo_concat, concat_dim_tile_size));
-  Type result_type =
-      mlir::RankedTensorType::get(tile_sizes, tile_info.storage_type());
-
+  RETURN_IF_ERROR(CheckConcatenateOperands(*hlo_concat, concat_dim_tile_size));
+  ASSIGN_OR_RETURN(
+      auto element_type,
+      xtile::PrimitiveTypeToMlirType(b, hlo_concat->shape().element_type()));
+  Type result_type = mlir::RankedTensorType::get(tile_sizes, element_type);
   // We will load and compute from a single operand, so we need to figure out
   // which one by looking at the offset within the concatenation dimension.
   Value concatenate_dimension_offset =
@@ -240,9 +242,13 @@ absl::StatusOr<TensorValue> EmitConcatenate(
       if_ops.push_back(if_op);
     }
     const auto& region = tiled_concat.hlo_regions()[i];
-    const ge::TiledHloInstruction* const region_root = region.back().get();
-    ASSIGN_OR_RETURN(auto results,
-                     EmitTiledComputation(emitter_ctx, region, {region_root}));
+    ASSIGN_OR_RETURN(std::vector<TensorValue> results,
+                     EmitTiledComputation(emitter_ctx, region, region.roots()));
+    TF_RET_CHECK(results.size() == 1)
+        << "Concatenation region must have exactly one result"
+        << results.size();
+    TF_RET_CHECK(results[0].getType() == result_type)
+        << "Region result type must match the concatenate result type";
     mlir::scf::YieldOp::create(b, results.back());
   }
   b.setInsertionPointAfter(if_ops.front());
@@ -366,13 +372,14 @@ absl::StatusOr<SmallVector<int64_t>> GetSequentialLoopIterationCounts(
   for (int64_t dim_id : sequential_dim_ids) {
     const ge::TilingSpace::DimensionInfo& dim_info =
         tiling_space.GetDimensionInfo(hlo, output_rank++);
-    CHECK(dim_info.type == ge::TilingSpace::DimensionSemantics::kSequential)
+    TF_RET_CHECK(dim_info.type ==
+                 ge::TilingSpace::DimensionSemantics::kSequential)
         << "Expected a sequential dimension info for contracting dimension "
         << dim_id << " in op " << hlo.ToString();
-    CHECK(dim_info.IsTileSizeSet())
+    TF_RET_CHECK(dim_info.tile_size.has_value())
         << "Tile size is not set for contracting dimension ";
     loop_iteration_counts.push_back(
-        CeilOfRatio(dim_info.dimension_size, dim_info.tile_size));
+        CeilOfRatio(dim_info.dimension_size, *dim_info.tile_size));
   }
   return loop_iteration_counts;
 }
@@ -410,7 +417,7 @@ absl::StatusOr<TensorValue> EmitDot(EmitterContext& emitter_ctx,
   ASSIGN_OR_RETURN(
       SmallVector<int64_t> loop_iteration_count,
       GetSequentialLoopIterationCounts(tiled_dot, sequential_dim_ids));
-  CHECK(loop_iteration_count.size() == 1)
+  TF_RET_CHECK(loop_iteration_count.size() == 1)
       << "Expected exactly one loop iteration count for dot";
 
   auto for_op = mlir::scf::ForOp::create(
@@ -424,9 +431,11 @@ absl::StatusOr<TensorValue> EmitDot(EmitterContext& emitter_ctx,
     b.setInsertionPointToStart(for_op.getBody());
     Value iv = for_op.getInductionVar();
     Value iv_i32 = Cast(b, for_op.getInductionVar(), b.getI32Type());
-    CHECK(emitter_ctx.MapSymbolIdToSequentialDimValue(
-        ge::TiledDimId(sequential_dim_ids.front()), iv,
-        Interval{0, loop_iteration_count.front() - 1}));
+    const ge::TilingSpace::DimensionInfo& dim_info =
+        tiled_dot.tile().tiling_space().GetDimensionInfo(
+            *tiled_dot.hlo(), sequential_dim_ids.front());
+    TF_RET_CHECK(emitter_ctx.MapSymbolIdToSequentialDimValue(
+        dim_info.id, iv, Interval{0, loop_iteration_count.front() - 1}));
 
     // Emit the dot region.
     const ge::TiledHloInstruction* lhs_operand = tiled_dot.operand(0);
@@ -496,7 +505,7 @@ absl::StatusOr<TensorValue> EmitScaledDot(
   ASSIGN_OR_RETURN(
       SmallVector<int64_t> loop_iteration_counts,
       GetSequentialLoopIterationCounts(tiled_scaled_dot, sequential_dim_ids));
-  CHECK(loop_iteration_counts.size() == 1)
+  TF_RET_CHECK(loop_iteration_counts.size() == 1)
       << "Expected exactly one loop iteration count for scaled dot";
 
   auto for_op = mlir::scf::ForOp::create(
@@ -509,22 +518,16 @@ absl::StatusOr<TensorValue> EmitScaledDot(
     mlir::OpBuilder::InsertionGuard g(b);
     b.setInsertionPointToStart(for_op.getBody());
     Value iv = for_op.getInductionVar();
-    CHECK(emitter_ctx.MapSymbolIdToSequentialDimValue(
-        ge::TiledDimId(sequential_dim_ids.front()), iv,
-        Interval{0, loop_iteration_counts.front() - 1}));
+    const ge::TilingSpace::DimensionInfo& dim_info =
+        tiled_scaled_dot.tile().tiling_space().GetDimensionInfo(
+            *tiled_scaled_dot.hlo(), sequential_dim_ids.front());
+    TF_RET_CHECK(emitter_ctx.MapSymbolIdToSequentialDimValue(
+        dim_info.id, iv, Interval{0, loop_iteration_counts.front() - 1}));
 
     // Emit the dot region.
-    const ge::TiledHloInstruction* lhs_operand = tiled_scaled_dot.operand(0);
-    const ge::TiledHloInstruction* rhs_operand = tiled_scaled_dot.operand(1);
-    const ge::TiledHloInstruction* lhs_scale_operand =
-        tiled_scaled_dot.operand(2);
-    const ge::TiledHloInstruction* rhs_scale_operand =
-        tiled_scaled_dot.operand(3);
-    ASSIGN_OR_RETURN(
-        auto results,
-        EmitTiledComputation(
-            emitter_ctx, tiled_scaled_dot.hlo_regions().front(),
-            {lhs_operand, rhs_operand, lhs_scale_operand, rhs_scale_operand}));
+    const ge::TiledHloRegion& region = tiled_scaled_dot.hlo_regions().front();
+    ASSIGN_OR_RETURN(auto results,
+                     EmitTiledComputation(emitter_ctx, region, region.roots()));
 
     // Emit the partial dot.
     Value acc = for_op.getRegionIterArgs().front();
@@ -580,9 +583,10 @@ absl::StatusOr<TensorValue> EmitIota(
   // Then, add the base offset to the iota components.
   range = arith::AddIOp::create(
       b, range, xtile::Splat(b, iota_dim_offset, padded_tile_sizes[iota_dim]));
-
-  // Cast the result to the targeted type.
-  range = Cast(b, range, tile_info.storage_type());
+  ASSIGN_OR_RETURN(
+      Type iota_element_type,
+      PrimitiveTypeToMlirType(b, hlo_iota->shape().element_type()));
+  range = Cast(b, range, iota_element_type);
 
   // And finally, produce a broadcast along the non-iota dimensions in order to
   // produce the whole iota tile.
@@ -670,6 +674,31 @@ absl::StatusOr<TensorValue> EmitPad(EmitterContext& emitter_ctx,
           .getResult());
 }
 
+// Trivial dimensions in output might be tiled with tile size > 1 and a
+// simple reshape op will fail as tile size of input and output are
+// different. For example:
+// f32[1,8] result = reshape(f32[2,4] operand)
+// where `result` has tile sizes [2,8]. Simple reshape will fail as we go from
+// 8 to 16 elements in a tile.
+// But if we represent this as a reshape followed by a broadcast
+//   [2,4] - reshape -> [8] - broadcast -> [1,8]
+// Broadcast handles the expansion of the tile size.
+absl::StatusOr<TensorValue> EmitTiledBroadcastedReshape(
+    mlir::ImplicitLocOpBuilder& b, const Shape& output_shape,
+    llvm::ArrayRef<int64_t> output_tile_sizes, TensorValue input) {
+  SmallVector<int64_t> dim_positions =
+      ge::PositionsOfNonTrivialDims(output_shape.dimensions());
+  SmallVector<int64_t> reshape_tile_sizes;
+  reshape_tile_sizes.reserve(dim_positions.size());
+  for (int64_t dim : dim_positions) {
+    reshape_tile_sizes.push_back(output_tile_sizes[dim]);
+  }
+  ASSIGN_OR_RETURN(TensorValue re,
+                   EmitTiledReshape(b, reshape_tile_sizes, input));
+  // Instead of expand we create broadcast as some tile sizes might be > 1.
+  return xtile::BroadcastInDims(b, re, output_tile_sizes, dim_positions);
+}
+
 absl::StatusOr<TensorValue> EmitBitcast(
     EmitterContext& emitter_ctx, const ge::TiledHloInstruction& tiled_bitcast,
     TensorValue input) {
@@ -681,10 +710,14 @@ absl::StatusOr<TensorValue> EmitBitcast(
   auto& b = emitter_ctx.b();
   ASSIGN_OR_RETURN(Type output_element_type,
                    PrimitiveTypeToMlirType(b, output_primitive_type));
-  ASSIGN_OR_RETURN(SmallVector<int64_t> operand_tile_sizes,
+  ASSIGN_OR_RETURN(SmallVector<int64_t> operand_logical_tile_sizes,
                    tiled_bitcast.operand(0)->tile().GetStaticTileSizes());
-  ASSIGN_OR_RETURN(SmallVector<int64_t> output_tile_sizes,
+  ASSIGN_OR_RETURN(SmallVector<int64_t> output_logical_tile_sizes,
                    tiled_bitcast.tile().GetStaticTileSizes());
+  ASSIGN_OR_RETURN(SmallVector<int64_t> operand_storage_tile_sizes,
+                   GetStorageShape(operand_logical_tile_sizes, input_shape));
+  ASSIGN_OR_RETURN(SmallVector<int64_t> output_storage_tile_sizes,
+                   GetStorageShape(output_logical_tile_sizes, output_shape));
 
   // If the bitcast changes the element type to an element type of the same
   // bitwidth, we need to emit a ttir::BitcastOp.
@@ -695,8 +728,8 @@ absl::StatusOr<TensorValue> EmitBitcast(
           "Bitcast with different bitwidth for operand and output shape "
           "element type is not yet supported.");
     }
-    auto output_type =
-        mlir::RankedTensorType::get(operand_tile_sizes, output_element_type);
+    auto output_type = mlir::RankedTensorType::get(operand_storage_tile_sizes,
+                                                   output_element_type);
     input = mlir::cast<TensorValue>(
         mlir::tensor::BitcastOp::create(b, output_type, input).getResult());
     input_shape.set_element_type(output_shape.element_type());
@@ -707,7 +740,7 @@ absl::StatusOr<TensorValue> EmitBitcast(
     if (std::optional<std::vector<int64_t>> transpose_dims =
             ShapeUtil::DeduceTransposeDimensionsForBitcast(input_shape,
                                                            output_shape)) {
-      return EmitTiledTranspose(b, output_tile_sizes,
+      return EmitTiledTranspose(b, output_storage_tile_sizes,
                                 llvm::to_vector(*transpose_dims), input);
     }
   }
@@ -715,7 +748,8 @@ absl::StatusOr<TensorValue> EmitBitcast(
   // Bitcast is reshape.
   if (ShapeUtil::ReshapeIsBitcast(input_shape, output_shape,
                                   /*ignore_element_type=*/true)) {
-    return EmitTiledReshape(b, output_tile_sizes, input);
+    return EmitTiledBroadcastedReshape(b, output_shape,
+                                       output_storage_tile_sizes, input);
   }
 
   // Bitcast is decomposable to a transpose+reshape+transpose.
@@ -736,7 +770,7 @@ absl::StatusOr<TensorValue> EmitBitcast(
   // different, even in rank, compared to the tile sizes of the final shape of
   // the bitcast, so it's not possible to easily propagate them from the output.
   std::vector<int64_t> transpose1_tile_sizes =
-      Permute(operand_tile_sizes, trt->transpose1_dims);
+      Permute(operand_storage_tile_sizes, trt->transpose1_dims);
   TensorValue normalized_input =
       trt->IsTranspose1Identity()
           ? input
@@ -749,22 +783,166 @@ absl::StatusOr<TensorValue> EmitBitcast(
   // the tile sizes of the reshape, we compute the tile sizes backwards, taking
   // the inverse permutation.
   std::vector<int64_t> reshape_tile_sizes =
-      PermuteInverse(output_tile_sizes, trt->transpose2_dims);
+      PermuteInverse(output_storage_tile_sizes, trt->transpose2_dims);
   TensorValue normalized_reshape;
   if (ShapeUtil::Equal(trt->transpose1_shape, trt->reshape_shape)) {
     normalized_reshape = normalized_input;
   } else {
-    ASSIGN_OR_RETURN(normalized_reshape,
-                     EmitTiledReshape(b, reshape_tile_sizes, normalized_input));
+    ASSIGN_OR_RETURN(
+        normalized_reshape,
+        EmitTiledBroadcastedReshape(b, trt->reshape_shape, reshape_tile_sizes,
+                                    normalized_input));
   }
 
   // The final transpose simply uses the tile sizes computed for the original
   // bitcast by the tiling analysis.
   return trt->IsTranspose2Identity()
              ? normalized_reshape
-             : EmitTiledTranspose(b, output_tile_sizes,
+             : EmitTiledTranspose(b, output_storage_tile_sizes,
                                   llvm::to_vector(trt->transpose2_dims),
                                   normalized_reshape);
+}
+
+absl::Status EmitScanComputation(mlir::ImplicitLocOpBuilder& b,
+                                 const HloInstruction* hlo_scan,
+                                 const HloComputation* scan_computation,
+                                 mlir::Operation* scan) {
+  const auto* scan_instr = ::xla::Cast<HloScanInstruction>(hlo_scan);
+  int num_operands = scan_instr->inputs().size();
+  SmallVector<Type> result_tys;
+  SmallVector<mlir::Location> locs;
+
+  // The arguments to the scan combiner are (in_1, ..., in_N, acc_1, ...,
+  // acc_N). First, add types for the inputs.
+  for (int i = 0; i < num_operands; ++i) {
+    const HloInstruction* input_hlo = hlo_scan->operand(i);
+    ASSIGN_OR_RETURN(
+        Type input_elem_type,
+        PrimitiveTypeToMlirType(b, input_hlo->shape().element_type()));
+    Type input_tensor_type = mlir::RankedTensorType::get({}, input_elem_type);
+    result_tys.push_back(input_tensor_type);
+    locs.push_back(b.getLoc());
+  }
+
+  // Next, add types for the accumulators (initial values).
+  for (int i = 0; i < num_operands; ++i) {
+    const HloInstruction* init_hlo = hlo_scan->operand(num_operands + i);
+    ASSIGN_OR_RETURN(
+        Type init_elem_type,
+        PrimitiveTypeToMlirType(b, init_hlo->shape().element_type()));
+    Type init_tensor_type = mlir::RankedTensorType::get({}, init_elem_type);
+    result_tys.push_back(init_tensor_type);
+    locs.push_back(b.getLoc());
+  }
+
+  mlir::Block* scanner =
+      b.createBlock(&scan->getRegion(0), {}, result_tys, locs);
+  b.setInsertionPointToStart(scanner);
+
+  std::vector<const HloInstruction*> to_emit;
+  absl::flat_hash_map<const HloInstruction*, TensorValue> region_values;
+  for (const HloInstruction* instr :
+       scan_computation->MakeInstructionPostOrder()) {
+    if (instr->opcode() == HloOpcode::kParameter) {
+      int parameter_number = instr->parameter_number();
+      TF_RET_CHECK(parameter_number < num_operands * 2);
+      auto argument =
+          mlir::cast<TensorValue>(scanner->getArgument(parameter_number));
+
+      if (!argument) {
+        return Internal("Expected scanner argument to be a tensor.");
+      }
+      TF_RET_CHECK(region_values.insert({instr, argument}).second);
+    } else {
+      to_emit.push_back(instr);
+    }
+  }
+  TF_RET_CHECK(!to_emit.empty());
+
+  const HloInstruction* root_instr = scan_computation->root_instruction();
+  if (root_instr->opcode() == HloOpcode::kTuple) {
+    TF_RET_CHECK(to_emit.back() == root_instr);
+    to_emit.pop_back();
+  }
+
+  auto status_or_result = EmitScope(b, to_emit, region_values);
+  if (!status_or_result.ok()) {
+    return status_or_result.status();
+  }
+  mlir::Value result = *status_or_result;
+
+  SmallVector<Value> yielded_results;
+  if (root_instr->opcode() == HloOpcode::kTuple) {
+    for (const HloInstruction* operand : root_instr->operands()) {
+      yielded_results.push_back(region_values[operand]);
+    }
+  } else {
+    yielded_results.push_back(result);
+    yielded_results.push_back(result);
+  }
+
+  stablehlo::ReturnOp::create(b, yielded_results);
+  b.setInsertionPointAfter(scan);
+  return absl::OkStatus();
+}
+
+absl::StatusOr<std::vector<TensorValue>> EmitScan(
+    EmitterContext& emitter_ctx,
+    const ge::TiledHloInstruction& tiled_hlo_scan) {
+  auto& b = emitter_ctx.b();
+  const HloScanInstruction& hlo_scan =
+      *::xla::Cast<HloScanInstruction>(tiled_hlo_scan.hlo());
+
+  int num_operands = hlo_scan.inputs().size();
+  SmallVector<Value> inputs;
+  SmallVector<Value> inits;
+  SmallVector<Type> carry_types;
+  SmallVector<Type> output_types;
+
+  ASSIGN_OR_RETURN(SmallVector<int64_t> unpadded_tile_sizes,
+                   tiled_hlo_scan.operand(0)->tile().GetStaticTileSizes());
+
+  for (int i = 0; i < num_operands; ++i) {
+    const ge::TiledHloInstruction* input_operand = tiled_hlo_scan.operand(i);
+
+    TensorValue input = emitter_ctx.TiledHloToTensorValue(*input_operand);
+
+    llvm::SmallVector<int64_t> mask_dim_bounds;
+    mask_dim_bounds.reserve(unpadded_tile_sizes.size());
+    for (auto [idx, dim_size] : llvm::enumerate(unpadded_tile_sizes)) {
+      if (idx == hlo_scan.scan_dimension()) {
+        mask_dim_bounds.push_back(dim_size);
+      } else {
+        mask_dim_bounds.push_back(input.getType().getDimSize(idx));
+      }
+    }
+    mlir::Value neutral_value = mlir::tensor::ExtractOp::create(
+        b, emitter_ctx.TiledHloToTensorValue(
+               *tiled_hlo_scan.operand(num_operands + i)));
+
+    input = mlir::cast<TensorValue>(
+        b.createOrFold<xtile::MaskOp>(input, mask_dim_bounds, neutral_value));
+
+    TensorValue init = emitter_ctx.TiledHloToTensorValue(
+        *tiled_hlo_scan.operand(num_operands + i));
+
+    inputs.push_back(input);
+    inits.push_back(init);
+    carry_types.push_back(init.getType());
+    output_types.push_back(input.getType());
+  }
+
+  auto scan = xtile::ScanOp::create(
+      b, output_types, carry_types, inputs, inits, hlo_scan.scan_dimension(),
+      unpadded_tile_sizes[hlo_scan.scan_dimension()], hlo_scan.is_reverse());
+
+  RETURN_IF_ERROR(EmitScanComputation(b, &hlo_scan, hlo_scan.to_apply(), scan));
+
+  std::vector<TensorValue> results;
+  for (auto output : scan.getOutputs()) {
+    results.push_back(mlir::cast<TensorValue>(output));
+  }
+  return results;
 }
 
 absl::StatusOr<TensorValue> EmitReduce(
@@ -825,8 +1003,10 @@ absl::StatusOr<TensorValue> EmitTiledHloInstruction(
     }
     ASSIGN_OR_RETURN(TileInfo tile_info,
                      TileInfo::Construct(emitter_ctx, tiled_hlo));
-    TensorValue parameter = EmitParameterExtract(
-        b, tile_info, emitter_ctx.entry_func().getArgument(arg_index));
+    ASSIGN_OR_RETURN(
+        TensorValue parameter,
+        EmitParameterExtract(b, tile_info,
+                             emitter_ctx.entry_func().getArgument(arg_index)));
 
     // Workaround(i1_to_i8_workaround)
     // Some types are stored using different types, e.g. i1 is stored in memory
@@ -846,8 +1026,10 @@ absl::StatusOr<TensorValue> EmitTiledHloInstruction(
             "while lowering ",
             fusion.called_computation()->ToString()));
       }
-      parameter =
-          mlir::cast<TensorValue>(Cast(b, parameter, expected_element_type));
+      if (!IsPackedTritonDotScaledOperandType(hlo->shape().element_type())) {
+        parameter =
+            mlir::cast<TensorValue>(Cast(b, parameter, expected_element_type));
+      }
     }
     return parameter;
   }
@@ -860,6 +1042,14 @@ absl::StatusOr<TensorValue> EmitTiledHloInstruction(
   if (hlo->opcode() == HloOpcode::kConcatenate) {
     return EmitConcatenate(emitter_ctx, tiled_hlo);
   }
+  if (hlo->opcode() == HloOpcode::kGetTupleElement) {
+    int64_t index = hlo->tuple_index();
+    if (index == 0) {
+      return emitter_ctx.TiledHloToTensorValue(*tiled_hlo.operand(0));
+    }
+    return absl::UnimplementedError(
+        absl::StrCat("Unsupported get-tuple-element index ", index));
+  }
   std::vector<Value> operands;
   operands.reserve(hlo->operands().size());
   for (const ge::TiledHloInstruction* operand : tiled_hlo.operands()) {
@@ -867,19 +1057,17 @@ absl::StatusOr<TensorValue> EmitTiledHloInstruction(
   }
   // Please keep the cases in alphabetical order.
   switch (hlo->opcode()) {
-    case (HloOpcode::kAllReduceStart): {
+    case HloOpcode::kAllGather: {
+      // AllGather is a no-op. Tile extraction handles the data movement.
+      return emitter_ctx.TiledHloToTensorValue(*tiled_hlo.operand(0));
+    }
+    case HloOpcode::kAllReduce: {
       const HloComputation* computation =
           fusion.fused_instructions_computation();
       const HloInstruction* root_instruction = computation->root_instruction();
-      if (root_instruction->opcode() == HloOpcode::kAllReduceDone) {
-        root_instruction = root_instruction->operand(0);
-      }
       return EmitAllReduce(emitter_ctx,
                            xla::Cast<HloAllReduceInstruction>(root_instruction),
                            tiled_hlo, operands);
-    }
-    case (HloOpcode::kAllReduceDone): {
-      return emitter_ctx.TiledHloToTensorValue(*tiled_hlo.operand(0));
     }
     case HloOpcode::kBitcast: {
       return EmitBitcast(emitter_ctx, tiled_hlo,
@@ -890,7 +1078,9 @@ absl::StatusOr<TensorValue> EmitTiledHloInstruction(
     }
     case HloOpcode::kConstant: {
       if (ShapeUtil::IsEffectiveScalar(hlo->shape())) {
-        return EmitConstant(b, *hlo);
+        ASSIGN_OR_RETURN(auto tile_sizes,
+                         tiled_hlo.tile().GetStaticTileSizes());
+        return EmitConstant(b, *hlo, GetPaddedTileSizes(tile_sizes));
       }
       return absl::UnimplementedError(
           absl::StrCat("Unsupported non-scalar constant ", hlo->ToString()));
@@ -905,21 +1095,31 @@ absl::StatusOr<TensorValue> EmitTiledHloInstruction(
       return EmitPad(emitter_ctx, tiled_hlo);
     }
     case HloOpcode::kReshape: {
-      ASSIGN_OR_RETURN(auto tile_sizes, tiled_hlo.tile().GetStaticTileSizes());
+      ASSIGN_OR_RETURN(auto logical_tile_sizes,
+                       tiled_hlo.tile().GetStaticTileSizes());
+      ASSIGN_OR_RETURN(auto storage_tile_sizes,
+                       GetStorageShape(logical_tile_sizes, hlo->shape()));
       return EmitTiledReshape(
-          emitter_ctx.b(), tile_sizes,
+          emitter_ctx.b(), storage_tile_sizes,
           emitter_ctx.TiledHloToTensorValue(*tiled_hlo.operand(0)));
     }
     case HloOpcode::kSlice: {
       return emitter_ctx.TiledHloToTensorValue(*tiled_hlo.operand(0));
     }
     case HloOpcode::kTranspose: {
-      ASSIGN_OR_RETURN(auto tile_sizes, tiled_hlo.tile().GetStaticTileSizes());
-      return EmitTranspose(b, tile_sizes, hlo->dimensions(),
+      ASSIGN_OR_RETURN(auto logical_tile_sizes,
+                       tiled_hlo.tile().GetStaticTileSizes());
+      ASSIGN_OR_RETURN(auto storage_tile_sizes,
+                       GetStorageShape(logical_tile_sizes, hlo->shape()));
+      return EmitTranspose(b, storage_tile_sizes, hlo->dimensions(),
                            mlir::cast<TensorValue>(operands[0]));
     }
     case HloOpcode::kReduce: {
       return EmitReduce(emitter_ctx, tiled_hlo);
+    }
+    case HloOpcode::kScan: {
+      ASSIGN_OR_RETURN(auto result, EmitScan(emitter_ctx, tiled_hlo));
+      return result.front();
     }
     default:
       break;
@@ -935,7 +1135,7 @@ absl::StatusOr<TensorValue> EmitTiledHloInstruction(
 absl::StatusOr<std::vector<TensorValue>> EmitTiledComputation(
     EmitterContext& emitter_ctx, const ge::TiledHloRegion& region,
     absl::Span<const ge::TiledHloInstruction* const> roots) {
-  for (const auto& tiled_hlo : region) {
+  for (const auto& tiled_hlo : region.instructions()) {
     const HloInstruction* hlo = tiled_hlo->hlo();
     VLOG(8) << "Emitting " << hlo->ToString(HloPrintOptions::ShortParsable());
     ASSIGN_OR_RETURN(TensorValue result,
@@ -983,13 +1183,13 @@ void EmitFullyTiledSequentialDimensions(
     QCHECK(dim_info.hlo != nullptr) << "Sequential dimension " << dim_id
                                     << " does not have a corresponding "
                                        "HLO.";
-    QCHECK(dim_info.IsTileSizeSet()) << "Sequential dimension " << dim_id
-                                     << " does not have a tile size set.";
+    QCHECK(dim_info.tile_size.has_value()) << "Sequential dimension " << dim_id
+                                           << " does not have a tile size set.";
     if (dim_info.hlo->opcode() == HloOpcode::kReduce &&
-        dim_info.tile_size >= dim_info.dimension_size) {
+        *dim_info.tile_size >= dim_info.dimension_size) {
       VLOG(2) << "Mapping reduce sequential dimension " << dim_id << " of size "
               << dim_info.dimension_size << " with tile size "
-              << dim_info.tile_size << " for hlo " << dim_info.hlo->name()
+              << *dim_info.tile_size << " for hlo " << dim_info.hlo->name()
               << " to a new value 0";
       emitter_ctx.MapSymbolIdToSequentialDimValue(
           ge::TiledDimId(dim_id), MakeIndex(b, 0), Interval{0, 0});
@@ -1007,16 +1207,39 @@ absl::Status EmitGeneric(ImplicitLocOpBuilder& b,
             << ExtractInstructionIntoNewModule(fusion)->ToString();
     VLOG(6) << "Tiled computation: \n" << tiled_computation.ToString();
   }
-  Value tile_id = fn.getTileId();
-  EmitterContext emitter_ctx{b,        &fusion, tile_id,
+  Value program_id = fn.getProgramId();
+  Value tile_id = program_id;
+
+  // If there are more than one tile per pid, we need to add a scf.for loop to
+  // iterate through the tiles.
+  int64_t num_tiles_per_pid = schedule.GetNumTilesPerPid();
+  if (num_tiles_per_pid > 1) {
+    Value zero = arith::ConstantIndexOp::create(b, 0);
+    Value one = arith::ConstantIndexOp::create(b, 1);
+    Value num_tiles_per_pid_val =
+        arith::ConstantIndexOp::create(b, num_tiles_per_pid);
+
+    // Loop ub = min(num_tiles_per_pid, num_tiles - pid * num_tiles_per_pid).
+    Value upper_bound = arith::SubIOp::create(
+        b, arith::ConstantIndexOp::create(b, schedule.num_tiles),
+        arith::MulIOp::create(b, program_id, num_tiles_per_pid_val));
+    upper_bound = arith::MinUIOp::create(b, upper_bound, num_tiles_per_pid_val);
+    auto for_op = mlir::scf::ForOp::create(b, zero, num_tiles_per_pid_val, one);
+
+    tile_id = arith::AddIOp::create(
+        b, arith::MulIOp::create(b, program_id, num_tiles_per_pid_val),
+        for_op.getInductionVar());
+    b.setInsertionPointToStart(for_op.getBody());
+  }
+  EmitterContext emitter_ctx{b,        &fusion, program_id,       tile_id,
                              schedule, fn,      tiled_computation};
 
   VLOG(2) << "EmitTiledComputation: " << tiled_computation.ToString();
   EmitFullyTiledSequentialDimensions(b, emitter_ctx, tiled_computation);
-  ASSIGN_OR_RETURN(auto results,
-                   EmitTiledComputation(
-                       emitter_ctx, tiled_computation.tiled_hlo_instructions(),
-                       tiled_computation.roots()));
+  ASSIGN_OR_RETURN(
+      auto results,
+      EmitTiledComputation(emitter_ctx, tiled_computation.tiled_root_region(),
+                           tiled_computation.roots()));
   const HloComputation* computation = fusion.fused_instructions_computation();
   for (const auto& [root, result, arg] :
        llvm::zip(tiled_computation.roots(), results,
@@ -1042,6 +1265,69 @@ absl::Status EmitGeneric(ImplicitLocOpBuilder& b,
   return absl::OkStatus();
 }
 
+// Implementation for the experimental tiling space.
+class TileRequirementsVisitor : public DefaultTileRequirementsVisitor {
+ public:
+  explicit TileRequirementsVisitor(const ge::TiledHloComputation& computation) {
+    for (const ge::TiledHloInstruction* tiled_hlo :
+         computation.instructions()) {
+      PopulateMap(tiled_hlo);
+    }
+  }
+
+  absl::StatusOr<llvm::SmallVector<int64_t>> RequiredReplicaIdBounds(
+      const HloInstruction& instr) const override {
+    ASSIGN_OR_RETURN(auto tiled_hlo, LookupTiledHlo(&instr));
+    llvm::SmallVector<int64_t> bounds;
+    bounds.reserve(tiled_hlo->tile().replica_ids().size());
+    for (const auto& replica_id : tiled_hlo->tile().replica_ids()) {
+      SymbolicExpr upper_bound = replica_id.upper_bound.Canonicalize();
+      if (upper_bound.GetType() != SymbolicExprType::kConstant) {
+        return absl::InternalError(
+            absl::StrCat("Replica ID bound expression is not a constant: ",
+                         upper_bound.ToString()));
+      }
+      bounds.push_back(upper_bound.GetValue());
+    }
+    return bounds;
+  }
+
+ private:
+  // Look up the instruction in the tiled HLO map.
+  // For parameters to nested fusions, we walk up the parameter chain to find
+  // the outermost operand index.
+  absl::StatusOr<const ge::TiledHloInstruction*> LookupTiledHlo(
+      const HloInstruction* original_instr) const {
+    auto it = hlo_to_tiled_.find(original_instr);
+    if (it != hlo_to_tiled_.end()) {
+      return it->second;
+    }
+    if (original_instr->opcode() == HloOpcode::kParameter) {
+      if (auto* fusion = original_instr->parent()->FusionInstruction()) {
+        const HloInstruction* resolved_instr =
+            fusion->operand(original_instr->parameter_number());
+        return LookupTiledHlo(resolved_instr);
+      }
+    }
+    return absl::InternalError(absl::StrCat(
+        "InternalError: HLO instruction not found in tiled HLO map: ",
+        original_instr->ToString()));
+  }
+
+  void PopulateMap(const ge::TiledHloInstruction* tiled_hlo) {
+    hlo_to_tiled_[tiled_hlo->hlo()] = tiled_hlo;
+    for (const auto& region : tiled_hlo->hlo_regions()) {
+      for (const auto& region_instruction : region.instructions()) {
+        PopulateMap(region_instruction.get());
+      }
+    }
+  }
+
+  absl::flat_hash_map<const HloInstruction*,
+                      const xla::gpu::experimental::TiledHloInstruction*>
+      hlo_to_tiled_;
+};
+
 }  // namespace
 
 // TODO(b/447133106): Contrary to the name, this function still does a lot of
@@ -1065,7 +1351,8 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> EmitXTileModule(
 
   // Compute function argument types.
   ASSIGN_OR_RETURN(SmallVector<Type> fn_arg_types,
-                   GetFnArgTypes(b, fusion, opaque_args_types, gpu_cc));
+                   GetFnArgTypes(b, fusion, opaque_args_types, gpu_cc,
+                                 TileRequirementsVisitor(tiled_computation)));
   // Metadata arguments are opaque to the tiling infra.
   llvm::SmallVector<mlir::NamedAttribute> named_attributes{b.getNamedAttr(
       "num_opaque_args", b.getI32IntegerAttr(opaque_args_types.size()))};
@@ -1076,7 +1363,7 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> EmitXTileModule(
   b.setInsertionPointToStart(&fn.front());
 
   ASSIGN_OR_RETURN(auto schedule, GetSchedule(tiled_computation));
-  TF_RETURN_IF_ERROR(
+  RETURN_IF_ERROR(
       EmitGeneric(b, fusion, tiled_computation, schedule, fn, &mlir_context));
 
   b.create<xtile::EntryFuncReturnOp>();
@@ -1093,7 +1380,7 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> EmitXTileModule(
     mlir::PassManager pm(&mlir_context);
     pm.addPass(xtile::createVerifyLegalXTileOpsPass());
     tsl::StatusScopedDiagnosticHandler diagnostic_handler(&mlir_context);
-    TF_RETURN_IF_ERROR(diagnostic_handler.consumeStatus(pm.run(*xtile_module)));
+    RETURN_IF_ERROR(diagnostic_handler.consumeStatus(pm.run(*xtile_module)));
   }
   return xtile_module;
 }

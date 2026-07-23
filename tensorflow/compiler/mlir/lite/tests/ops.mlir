@@ -1,6 +1,20 @@
+// Copyright 2026 The TensorFlow Authors. All Rights Reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// ==============================================================================
 // RUN: litert-opt -split-input-file -verify-diagnostics -tfl-runtime-verify %s | FileCheck %s
 
-// Unary math ops
+// Unary math operations
 // -----
 
 // CHECK-LABEL: testCos
@@ -16,7 +30,7 @@ func.func @testCos(tensor<? x f32>) -> tensor<? x f32> {
 // test invalid Cos input
 func.func @testCosWithWrongInputType(tensor<?xi32>) -> tensor<?xi32> {
 ^bb0(%arg0: tensor<?xi32>):
-  // expected-error @+1 {{tfl.cos' op operand #0 must be tensor of 32-bit float values}}
+  // expected-error @+1 {{tfl.cos' op operand #0 must be tensor of 32-bit float or 16-bit float values}}
   %0 = "tfl.cos"(%arg0): (tensor<?xi32>) -> tensor<?xi32>
   func.return %0#0 : tensor<?xi32>
 }
@@ -204,7 +218,7 @@ func.func @testSin(tensor<? x f32>) -> tensor<? x f32> {
 // test invalid Sin input
 func.func @testSinWithWrongInputType(tensor<?xi32>) -> tensor<?xi32> {
 ^bb0(%arg0: tensor<?xi32>):
-  // expected-error @+1 {{tfl.sin' op operand #0 must be tensor of 32-bit float values}}
+  // expected-error @+1 {{tfl.sin' op operand #0 must be tensor of 32-bit float or 16-bit float values}}
   %0 = "tfl.sin"(%arg0): (tensor<?xi32>) -> tensor<?xi32>
   func.return %0#0 : tensor<?xi32>
 }
@@ -616,7 +630,7 @@ func.func @testConv2DNoBias(%arg0: tensor<256x32x32x3xf32>, %arg1: tensor<16x3x3
 
 func.func @testConv2D4DBias(tensor<256x32x32x3xf32>, tensor<16x3x3x3xf32>, tensor<1x1x1x16xf32>) -> tensor<256x32x32x16xf32> {
 ^bb0(%arg0: tensor<256x32x32x3xf32>, %arg1: tensor<16x3x3x3xf32>, %arg2: tensor<1x1x1x16xf32>):
-  // expected-error @+1 {{'tfl.conv_2d' op operand #2 must be 1D tensor of any type values or none type, but got 'tensor<1x1x1x16xf32>'}}
+  // expected-error-re @+1 {{'tfl.conv_2d' op operand #2 must be 1D tensor of any {{(non-token )?}}type values or none type, but got 'tensor<1x1x1x16xf32>'}}
   %0 = "tfl.conv_2d"(%arg0, %arg1, %arg2) {dilation_h_factor = 1 : i32, dilation_w_factor = 1 : i32, padding = "SAME", stride_h = 1 : i32, stride_w = 1 : i32, fused_activation_function = "RELU6"} : (tensor<256x32x32x3xf32>, tensor<16x3x3x3xf32>, tensor<1x1x1x16xf32>) -> tensor<256x32x32x16xf32>
   func.return %0 : tensor<256x32x32x16xf32>
 }
@@ -1646,7 +1660,7 @@ func.func @testBatchMatmulHybridQuant(%arg0 : tensor<1x4x384x32xf32>, %arg1 : te
 // -----
 
 func.func @testBatchMatmulHybridBf16F32(%arg0 : tensor<1x4x384x32xbf16>, %arg1 : tensor<1x4x384x32xbf16>) -> tensor<1x4x384x384xf32> {
-  // expected-error @+1 {{'tfl.batch_matmul' op operand #0 must be tensor of 32-bit float or QI8 type or QI16 type or 8-bit signless integer values}}
+  // expected-error @+1 {{'tfl.batch_matmul' op operand #0 must be tensor of 32-bit float or 16-bit float or QI8 type or QI16 type or 8-bit signless integer values}}
   %0 = "tfl.batch_matmul"(%arg0, %arg1) {adj_x = false, adj_y = true} : (tensor<1x4x384x32xbf16>, tensor<1x4x384x32xbf16>) -> tensor<1x4x384x384xf32>
   func.return %0 : tensor<1x4x384x384xf32>
 }
@@ -1748,18 +1762,34 @@ func.func @testConcatBenignDynamicDimSizeOperand(%arg0: tensor<1x?xi32>, %arg1: 
 // -----
 
 // CHECK-LABEL: testResizeBilinear
-func.func @testResizeBilinear(%arg0 : tensor<1x100x100x3xf32>, %arg1 : tensor<4xi32>) -> tensor<?xf32> {
+func.func @testResizeBilinear(%arg0 : tensor<1x100x100x3xf32>, %arg1 : tensor<2xi32>) -> tensor<?xf32> {
   // CHECK: "tfl.resize_bilinear"(%arg0, %arg1) <{align_corners = false, half_pixel_centers = false}>
-  %0 = "tfl.resize_bilinear"(%arg0, %arg1) {align_corners = false, half_pixel_centers = false} : (tensor<1x100x100x3xf32>, tensor<4xi32>) -> tensor<?xf32>
+  %0 = "tfl.resize_bilinear"(%arg0, %arg1) {align_corners = false, half_pixel_centers = false} : (tensor<1x100x100x3xf32>, tensor<2xi32>) -> tensor<?xf32>
   func.return %0 : tensor<?xf32>
 }
 
 // -----
 
-func.func @testResizeBilinearInvalidOutputType(%arg0 : tensor<1x100x100x3xf32>, %arg1 : tensor<4xi32>) -> tensor<?xi32> {
+func.func @testResizeBilinearInvalidOutputType(%arg0 : tensor<1x100x100x3xf32>, %arg1 : tensor<2xi32>) -> tensor<?xi32> {
   // expected-error @+1 {{'tfl.resize_bilinear' op failed to verify that input and output must have same element type}}
-  %0 = "tfl.resize_bilinear"(%arg0, %arg1) {align_corners = false} : (tensor<1x100x100x3xf32>, tensor<4xi32>) -> tensor<?xi32>
+  %0 = "tfl.resize_bilinear"(%arg0, %arg1) {align_corners = false} : (tensor<1x100x100x3xf32>, tensor<2xi32>) -> tensor<?xi32>
   func.return %0 : tensor<?xi32>
+}
+
+// -----
+
+func.func @testResizeBilinearInvalidSize(%arg0 : tensor<1x100x100x3xf32>, %arg1 : tensor<4xi32>) -> tensor<?xf32> {
+  // expected-error @+1 {{'tfl.resize_bilinear' op failed to verify that operand 1's dimension 0 is dynamic or equals 2}}
+  %0 = "tfl.resize_bilinear"(%arg0, %arg1) {align_corners = false} : (tensor<1x100x100x3xf32>, tensor<4xi32>) -> tensor<?xf32>
+  func.return %0 : tensor<?xf32>
+}
+
+// -----
+
+func.func @testResizeNearestNeighborInvalidSize(%arg0 : tensor<1x100x100x3xf32>, %arg1 : tensor<4xi32>) -> tensor<?xf32> {
+  // expected-error @+1 {{'tfl.resize_nearest_neighbor' op failed to verify that operand 1's dimension 0 is dynamic or equals 2}}
+  %0 = "tfl.resize_nearest_neighbor"(%arg0, %arg1) {align_corners = false, half_pixel_centers = false} : (tensor<1x100x100x3xf32>, tensor<4xi32>) -> tensor<?xf32>
+  func.return %0 : tensor<?xf32>
 }
 
 // -----
@@ -3167,7 +3197,7 @@ func.func @select_v2_with_dynamic_shape_not_from_broadcast_args(%arg0: tensor<8x
 func.func @depthwise_conv_2D_invalid_bias(%arg0: tensor<1x224x224x3xf32>) -> tensor<1x112x112x32xf32> {
   %w = arith.constant dense<127.0> : tensor<32x3x3x3xf32>
   %b = arith.constant dense<0.0> : tensor<32x1xf32>
-  // expected-error @+1 {{'tfl.depthwise_conv_2d' op operand #2 must be 1D tensor of any type values or none type, but got 'tensor<32x1xf32>'}}
+  // expected-error-re @+1 {{'tfl.depthwise_conv_2d' op operand #2 must be 1D tensor of any {{(non-token )?}}type values or none type, but got 'tensor<32x1xf32>'}}
   %dc = "tfl.depthwise_conv_2d"(%arg0, %w, %b) {depth_multiplier = 4 : i32, dilation_h_factor = 1 : i32, dilation_w_factor = 1 : i32, fused_activation_function = "NONE", padding = "VALID", stride_h = 4 : i32, stride_w = 5 : i32} : (tensor<1x224x224x3xf32>, tensor<32x3x3x3xf32>, tensor<32x1xf32>) -> tensor<1x112x112x32xf32>
   func.return %dc : tensor<1x112x112x32xf32>
 }
@@ -3337,4 +3367,83 @@ func.func @testDilate(%arg0: tensor<3x4x5xf32>) -> tensor<5x7x9xf32> {
   %0 = "tfl.dilate"(%arg0, %cst, %cst_0) : (tensor<3x4x5xf32>, tensor<3xi32>, tensor<f32>) -> tensor<5x7x9xf32>
   func.return %0 : tensor<5x7x9xf32>
   // CHECK: return %0 : tensor<5x7x9xf32>
+}
+
+// -----
+
+// CHECK-LABEL: testFloat8RuntimeTypes
+func.func @testFloat8RuntimeTypes(
+    %e4: tensor<2x2xf8E4M3FN>,
+    %e5: tensor<2x2xf8E5M2>,
+    %e4_scalar: tensor<f8E4M3FN>,
+    %e5_scalar: tensor<f8E5M2>,
+    %axis: tensor<i32>,
+    %indices: tensor<1xi32>,
+    %gather_nd_indices: tensor<1x1xi32>,
+    %shape: tensor<2xi32>,
+    %padding: tensor<2x2xi32>,
+    %size_splits: tensor<2xi32>) {
+  %cast_e4 = "tfl.cast"(%e4) : (tensor<2x2xf8E4M3FN>) -> tensor<2x2xf8E5M2>
+  %cast_e5 = "tfl.cast"(%e5) : (tensor<2x2xf8E5M2>) -> tensor<2x2xf8E4M3FN>
+  %dequantize_e4 = "tfl.dequantize"(%e4) : (tensor<2x2xf8E4M3FN>) -> tensor<2x2xf32>
+  %dequantize_e5 = "tfl.dequantize"(%e5) : (tensor<2x2xf8E5M2>) -> tensor<2x2xf32>
+
+  %gather_e4 = "tfl.gather"(%e4, %indices) {axis = 0 : i32} :
+      (tensor<2x2xf8E4M3FN>, tensor<1xi32>) -> tensor<1x2xf8E4M3FN>
+  %gather_e5 = "tfl.gather"(%e5, %indices) {axis = 0 : i32} :
+      (tensor<2x2xf8E5M2>, tensor<1xi32>) -> tensor<1x2xf8E5M2>
+  %gather_nd_e4 = "tfl.gather_nd"(%e4, %gather_nd_indices) :
+      (tensor<2x2xf8E4M3FN>, tensor<1x1xi32>) -> tensor<1x2xf8E4M3FN>
+  %gather_nd_e5 = "tfl.gather_nd"(%e5, %gather_nd_indices) :
+      (tensor<2x2xf8E5M2>, tensor<1x1xi32>) -> tensor<1x2xf8E5M2>
+
+  %split_e4:2 = "tfl.split"(%axis, %e4) {num_splits = 2 : i32} :
+      (tensor<i32>, tensor<2x2xf8E4M3FN>) ->
+      (tensor<1x2xf8E4M3FN>, tensor<1x2xf8E4M3FN>)
+  %split_e5:2 = "tfl.split"(%axis, %e5) {num_splits = 2 : i32} :
+      (tensor<i32>, tensor<2x2xf8E5M2>) ->
+      (tensor<1x2xf8E5M2>, tensor<1x2xf8E5M2>)
+  %split_v_e4:2 = "tfl.split_v"(%e4, %size_splits, %axis) {num_splits = 2 : i32} :
+      (tensor<2x2xf8E4M3FN>, tensor<2xi32>, tensor<i32>) ->
+      (tensor<1x2xf8E4M3FN>, tensor<1x2xf8E4M3FN>)
+  %split_v_e5:2 = "tfl.split_v"(%e5, %size_splits, %axis) {num_splits = 2 : i32} :
+      (tensor<2x2xf8E5M2>, tensor<2xi32>, tensor<i32>) ->
+      (tensor<1x2xf8E5M2>, tensor<1x2xf8E5M2>)
+
+  %pack_e4 = "tfl.pack"(%e4, %e4) {axis = 0 : i32, values_count = 2 : i32} :
+      (tensor<2x2xf8E4M3FN>, tensor<2x2xf8E4M3FN>) -> tensor<2x2x2xf8E4M3FN>
+  %pack_e5 = "tfl.pack"(%e5, %e5) {axis = 0 : i32, values_count = 2 : i32} :
+      (tensor<2x2xf8E5M2>, tensor<2x2xf8E5M2>) -> tensor<2x2x2xf8E5M2>
+  %unpack_e4:2 = "tfl.unpack"(%e4) {axis = 0 : i32, num = 2 : i32} :
+      (tensor<2x2xf8E4M3FN>) -> (tensor<2xf8E4M3FN>, tensor<2xf8E4M3FN>)
+  %unpack_e5:2 = "tfl.unpack"(%e5) {axis = 0 : i32, num = 2 : i32} :
+      (tensor<2x2xf8E5M2>) -> (tensor<2xf8E5M2>, tensor<2xf8E5M2>)
+  %concat_e4 = "tfl.concatenation"(%e4, %e4) {axis = 0 : i32, fused_activation_function = "NONE"} :
+      (tensor<2x2xf8E4M3FN>, tensor<2x2xf8E4M3FN>) -> tensor<4x2xf8E4M3FN>
+  %concat_e5 = "tfl.concatenation"(%e5, %e5) {axis = 0 : i32, fused_activation_function = "NONE"} :
+      (tensor<2x2xf8E5M2>, tensor<2x2xf8E5M2>) -> tensor<4x2xf8E5M2>
+
+  %reverse_e4 = "tfl.reverse_v2"(%e4, %indices) :
+      (tensor<2x2xf8E4M3FN>, tensor<1xi32>) -> tensor<2x2xf8E4M3FN>
+  %reverse_e5 = "tfl.reverse_v2"(%e5, %indices) :
+      (tensor<2x2xf8E5M2>, tensor<1xi32>) -> tensor<2x2xf8E5M2>
+  %fill_e4 = "tfl.fill"(%shape, %e4_scalar) :
+      (tensor<2xi32>, tensor<f8E4M3FN>) -> tensor<2x2xf8E4M3FN>
+  %fill_e5 = "tfl.fill"(%shape, %e5_scalar) :
+      (tensor<2xi32>, tensor<f8E5M2>) -> tensor<2x2xf8E5M2>
+  %pad_e4 = "tfl.pad"(%e4, %padding) :
+      (tensor<2x2xf8E4M3FN>, tensor<2x2xi32>) -> tensor<?x?xf8E4M3FN>
+  %pad_e5 = "tfl.pad"(%e5, %padding) :
+      (tensor<2x2xf8E5M2>, tensor<2x2xi32>) -> tensor<?x?xf8E5M2>
+  %padv2_e4 = "tfl.padv2"(%e4, %padding, %e4_scalar) :
+      (tensor<2x2xf8E4M3FN>, tensor<2x2xi32>, tensor<f8E4M3FN>) -> tensor<?x?xf8E4M3FN>
+  %padv2_e5 = "tfl.padv2"(%e5, %padding, %e5_scalar) :
+      (tensor<2x2xf8E5M2>, tensor<2x2xi32>, tensor<f8E5M2>) -> tensor<?x?xf8E5M2>
+  %broadcast_e4 = "tfl.broadcast_to"(%e4, %shape) :
+      (tensor<2x2xf8E4M3FN>, tensor<2xi32>) -> tensor<?x?xf8E4M3FN>
+  %broadcast_e5 = "tfl.broadcast_to"(%e5, %shape) :
+      (tensor<2x2xf8E5M2>, tensor<2xi32>) -> tensor<?x?xf8E5M2>
+
+  // CHECK: "tfl.broadcast_to"
+  func.return
 }

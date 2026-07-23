@@ -41,7 +41,6 @@ limitations under the License.
 #include "xla/layout.h"
 #include "xla/layout_util.h"
 #include "xla/map_util.h"
-#include "xla/service/call_graph.h"
 #include "xla/service/computation_layout.h"
 #include "xla/service/logical_buffer.h"
 #include "xla/shape.h"
@@ -75,7 +74,7 @@ class LayoutConstraint {
   // Return the priority of the current constraint. When conflicting constraints
   // are encountered, the higher priority one should win.
   int64_t priority() const { return priority_; }
-  bool IsDefaultLayout() const { return priority_ == kDefaultPriority; }
+  bool IsDefaultPriority() const { return priority_ == kDefaultPriority; }
 
   // The priority of all default layouts when not set explicitly.
   static constexpr int64_t kDefaultPriority = -2;
@@ -726,9 +725,6 @@ class LayoutAssignment : public HloModulePass {
   absl::flat_hash_set<const HloInstruction*> unconstrained_layout_instructions_;
 
   HloPredicate instruction_can_change_layout_func_;
-
-  // CallGraph of the module, used to track callsites of each computation.
-  std::unique_ptr<CallGraph> call_graph_;
 
   std::string ToString(const LayoutConstraints& constraints) const;
 
