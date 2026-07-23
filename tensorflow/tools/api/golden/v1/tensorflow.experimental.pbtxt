@@ -105,6 +105,10 @@ tf_module {
     argspec: "args=[], varargs=None, keywords=None, defaults=None"
   }
   member_method {
+    name: "fold"
+    argspec: "args=[\'patches\', \'output_size\', \'sizes\', \'strides\', \'padding\', \'rates\', \'reduction\'], varargs=None, keywords=None, defaults=[\'VALID\', \'1\', \'sum\'], "
+  }
+  member_method {
     name: "function_executor_type"
     argspec: "args=[\'executor_type\'], varargs=None, keywords=None, defaults=None"
   }
