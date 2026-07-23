@@ -132,24 +132,42 @@ static optional<absl::flat_hash_set<int64_t>> GetGTEOperandIndices(
 // This function returns true if the operation is a simple scalar operation.
 // While loop analysis can execute such an operation at compile time without
 // incurring huge overheads.
-static bool IsScalarOp(const HloInstruction* op) {
-  if (IsCollective(op)) return false;
+static bool IsScalarOp(const HloInstruction* op,
+                       absl::flat_hash_map<const HloInstruction*, bool>& memo,
+                       absl::flat_hash_set<const HloInstruction*>& visiting) {
+  auto it = memo.find(op);
+  if (it != memo.end()) {
+    return it->second;
+  }
+  if (!visiting.insert(op).second) {
+    return false;  // Cycle detected, assume false to be safe
+  }
+  auto save = [&](bool res) {
+    visiting.erase(op);
+    memo[op] = res;
+    return res;
+  };
+  if (IsCollective(op)) {
+    return save(false);
+  }
   switch (op->opcode()) {
     case HloOpcode::kSend:
     case HloOpcode::kSendDone:
     case HloOpcode::kRecv:
     case HloOpcode::kRecvDone:
     case HloOpcode::kCustomCall:
-      return false;
+      return save(false);
     default:
       break;
   }
   for (const HloComputation* computation : op->called_computations()) {
     for (const HloInstruction* instruction : computation->instructions()) {
-      if (!IsScalarOp(instruction)) return false;
+      if (!IsScalarOp(instruction, memo, visiting)) {
+        return save(false);
+      }
     }
   }
-  return ShapeUtil::IsScalar(op->shape());
+  return save(ShapeUtil::IsScalar(op->shape()));
 }
 
 // If `out` is a function of a some values in the tuple `in` and has no other
@@ -175,64 +193,107 @@ static std::optional<absl::flat_hash_set<int64_t>> GetGTEDependenceIndices(
     return std::nullopt;
   }
 
-  // Extracts the instruction `out` as a function of the instruction `in`.
-  // HloModule extracted
-  // ENTRY main {
-  //   in = parameter(0)
-  //   //... some calculations
-  //   ROOT out = ...
-  // }
-  std::unique_ptr<HloModule> extracted = ExtractModule(
-      /*instruction=*/out, /*height=*/-1, /*extract_selector=*/
-      [in](const HloInstruction* inst) -> bool { return inst != in; },
-      /*replace_type_selector=*/
-      [](const HloInstruction* inst) -> ReplaceType {
-        return ReplaceType::kReplaceParam;
-      },
-      /*cross_computation=*/false, /*inline_calls_and_fusions=*/true,
-      /*run_verifier=*/false);
-  HloComputation* entry = extracted->entry_computation();
+  using VisitKey = std::pair<const HloInstruction*, std::optional<int64_t>>;
 
-  // Check that the extracted module takes nothing but `in` as input. If `out`
-  // does not depend on in, the extracted module will have some other shape for
-  // input.
-  if (entry->num_parameters() != 1 ||
-      entry->parameter_instruction(0)->shape() != in->shape()) {
-    return std::nullopt;
+  struct DfsState {
+    const HloInstruction* in;
+    absl::flat_hash_map<VisitKey, std::optional<absl::flat_hash_set<int64_t>>>
+        memo;
+    absl::flat_hash_map<const HloInstruction*, bool> scalar_op_memo;
+    absl::flat_hash_set<const HloInstruction*> scalar_op_visiting;
+    absl::flat_hash_set<VisitKey> visiting;
+
+    std::optional<absl::flat_hash_set<int64_t>> Visit(
+        const HloInstruction* curr, std::optional<int64_t> tuple_index) {
+      VisitKey key{curr, tuple_index};
+      auto it = memo.find(key);
+      if (it != memo.end()) {
+        return it->second;
+      }
+
+      if (!visiting.insert(key).second) {
+        return std::nullopt;  // Cycle detected
+      }
+
+      auto insert_memo = [&](std::optional<absl::flat_hash_set<int64_t>> res) {
+        visiting.erase(key);
+        memo[key] = res;
+        return res;
+      };
+
+      if (curr->opcode() == HloOpcode::kGetTupleElement) {
+        if (tuple_index.has_value() ||
+            !IsScalarOp(curr, scalar_op_memo, scalar_op_visiting)) {
+          return insert_memo(std::nullopt);
+        }
+        return insert_memo(Visit(curr->operand(0), curr->tuple_index()));
+      }
+
+      if (curr->opcode() == HloOpcode::kTuple) {
+        if (!tuple_index.has_value()) {
+          return insert_memo(std::nullopt);
+        }
+        return insert_memo(Visit(curr->operand(*tuple_index), std::nullopt));
+      }
+
+      if (curr->opcode() == HloOpcode::kCopy) {
+        if (!tuple_index.has_value() &&
+            !IsScalarOp(curr, scalar_op_memo, scalar_op_visiting)) {
+          return insert_memo(std::nullopt);
+        }
+        return insert_memo(Visit(curr->operand(0), tuple_index));
+      }
+
+      if (curr->opcode() == HloOpcode::kParameter) {
+        if (curr->parent()->FusionInstruction() != nullptr) {
+          return insert_memo(Visit(curr->parent()->FusionInstruction()->operand(
+                                       curr->parameter_number()),
+                                   tuple_index));
+        }
+        if (curr == in) {
+          if (tuple_index.has_value()) {
+            return insert_memo(absl::flat_hash_set<int64_t>{*tuple_index});
+          }
+          return insert_memo(std::nullopt);
+        }
+        return insert_memo(std::nullopt);
+      }
+
+      if (curr->opcode() == HloOpcode::kConstant) {
+        if (!tuple_index.has_value() &&
+            !IsScalarOp(curr, scalar_op_memo, scalar_op_visiting)) {
+          return insert_memo(std::nullopt);
+        }
+        return insert_memo(absl::flat_hash_set<int64_t>{});
+      }
+
+      if (curr->opcode() == HloOpcode::kFusion) {
+        return insert_memo(Visit(curr->fused_expression_root(), tuple_index));
+      }
+
+      if (tuple_index.has_value() ||
+          !IsScalarOp(curr, scalar_op_memo, scalar_op_visiting)) {
+        return insert_memo(std::nullopt);
+      }
+
+      absl::flat_hash_set<int64_t> accumulated_indices;
+      for (const HloInstruction* operand : curr->operands()) {
+        auto operand_res = Visit(operand, std::nullopt);
+        if (!operand_res.has_value()) {
+          return insert_memo(std::nullopt);
+        }
+        accumulated_indices.insert(operand_res->begin(), operand_res->end());
+      }
+      return insert_memo(accumulated_indices);
+    }
+  };
+
+  DfsState state{in};
+  auto final_res = state.Visit(out, std::nullopt);
+  if (final_res.has_value() && !final_res->empty()) {
+    return final_res;
   }
-  HloInstruction* param = entry->parameter_instruction(0);
-
-  // If there are no users for the input `in`, it would mean that `out` does not
-  // depend on a get-tuple-element of `in`.
-  if (param->user_count() == 0) {
-    return nullopt;
-  }
-
-  // If any of the users of the input `in` is not a get-tuple-element
-  // instruction, then that would mean that the output does not depend uniquely
-  // on a get-tuple-element of on `in`, instead it depends on some other
-  // calculations on `in`.
-  if (absl::c_any_of(param->users(), [](const HloInstruction* inst) -> bool {
-        return inst->opcode() != HloOpcode::kGetTupleElement;
-      })) {
-    return std::nullopt;
-  }
-
-  // At this point we already know that the all the users are get-tuple-elements
-  // and that there is at least one user. Now, extract all indices of the users.
-  absl::flat_hash_set<int64_t> candidate_indices;
-  for (const HloInstruction* user : param->users()) {
-    candidate_indices.insert(user->tuple_index());
-  }
-
-  if (absl::c_any_of(
-          entry->instructions(), [](const HloInstruction* inst) -> bool {
-            return inst->opcode() != HloOpcode::kParameter && !IsScalarOp(inst);
-          })) {
-    return std::nullopt;
-  }
-
-  return candidate_indices;
+  return std::nullopt;
 }
 
 // If `out` is a function of a single value in the tuple `in` and has no other

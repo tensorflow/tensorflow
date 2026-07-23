@@ -1167,5 +1167,118 @@ ENTRY entry {
   EXPECT_TRUE(range->step().has_value());
   EXPECT_EQ(range->step().value().GetSignedValue(), 1);
 }
+
+TEST_F(WhileLoopAnalysisTest,
+       MatchLoopInductionVarWithComplexScalarConditionAndBody) {
+  absl::string_view hlo = R"(
+  HloModule test
+  body {
+    param.1 = (s32[], f32[8,8]) parameter(0)
+    iter.1 = s32[] get-tuple-element(param.1), index=0
+    c.1 = s32[] constant(1)
+    add.1 = s32[] add(iter.1, c.1)
+    c.2 = s32[] constant(2)
+    add.2 = s32[] add(add.1, c.2)
+    c.3 = s32[] constant(-3)
+    add.3 = s32[] add(add.2, c.3)
+    data.1 = f32[8,8] get-tuple-element(param.1), index=1
+    ROOT tuple = (s32[], f32[8,8]) tuple(add.3, data.1)
+  }
+  condition {
+    param = (s32[], f32[8,8]) parameter(0)
+    iter = s32[] get-tuple-element(param), index=0
+    c.5 = s32[] constant(5)
+    add.5 = s32[] add(iter, c.5)
+    c.10 = s32[] constant(10)
+    ROOT compare = pred[] compare(add.5, c.10), direction=LT
+  }
+  ENTRY main {
+    c.0 = s32[] constant(0)
+    data = f32[8,8] parameter(0)
+    tuple = tuple(c.0, data)
+    ROOT while = while(tuple), body=body, condition=condition
+  })";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  HloInstruction* while_op = module->entry_computation()->root_instruction();
+  std::optional<int64_t> indvar_idx = GetLoopInductionVarTupleIdx(while_op);
+  ASSERT_NE(indvar_idx, std::nullopt);
+  EXPECT_EQ(*indvar_idx, 0);
+}
+
+TEST_F(WhileLoopAnalysisTest,
+       MatchLoopInductionVarWithScalarFusionConditionAndBody) {
+  absl::string_view hlo = R"(
+  HloModule test
+  fused_cond_add {
+    p_cond_fuse = (s32[], f32[8,8]) parameter(0)
+    iter_cond_fuse = s32[] get-tuple-element(p_cond_fuse), index=0
+    c.5_fuse = s32[] constant(5)
+    ROOT add.5_fuse = s32[] add(iter_cond_fuse, c.5_fuse)
+  }
+  fused_body_add {
+    p_body_fuse = (s32[], f32[8,8]) parameter(0)
+    iter_body_fuse = s32[] get-tuple-element(p_body_fuse), index=0
+    c.1_fuse = s32[] constant(1)
+    ROOT add.1_fuse = s32[] add(iter_body_fuse, c.1_fuse)
+  }
+  body {
+    param.1 = (s32[], f32[8,8]) parameter(0)
+    add_fuse = s32[] fusion(param.1), kind=kLoop, calls=fused_body_add
+    data.1 = f32[8,8] get-tuple-element(param.1), index=1
+    ROOT tuple = (s32[], f32[8,8]) tuple(add_fuse, data.1)
+  }
+  condition {
+    param = (s32[], f32[8,8]) parameter(0)
+    cond_fuse = s32[] fusion(param), kind=kLoop, calls=fused_cond_add
+    c.10 = s32[] constant(10)
+    ROOT compare = pred[] compare(cond_fuse, c.10), direction=LT
+  }
+  ENTRY main {
+    c.0 = s32[] constant(0)
+    data = f32[8,8] parameter(0)
+    tuple = tuple(c.0, data)
+    ROOT while = while(tuple), body=body, condition=condition
+  })";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  HloInstruction* while_op = module->entry_computation()->root_instruction();
+  std::optional<int64_t> indvar_idx = GetLoopInductionVarTupleIdx(while_op);
+  ASSERT_NE(indvar_idx, std::nullopt);
+  EXPECT_EQ(*indvar_idx, 0);
+}
+
+TEST_F(WhileLoopAnalysisTest,
+       GetIndvarIndexShouldWorkWithScalarOpsOnInductionVar) {
+  absl::string_view hlo_string = R"(
+  HloModule test
+  body {
+    param.1 = (s32[], s32[]) parameter(0)
+    iter.1 = s32[] get-tuple-element(param.1), index=0
+    c.1 = s32[] constant(1)
+    mul.1 = s32[] multiply(iter.1, c.1)
+    add.1 = s32[] add(mul.1, c.1)
+    data.1 = s32[] get-tuple-element(param.1), index=1
+    ROOT tuple = (s32[], s32[]) tuple(add.1, data.1)
+  }
+  condition {
+    param = (s32[], s32[]) parameter(0)
+    iter = s32[] get-tuple-element(param), index=0
+    c.10 = s32[] constant(10)
+    ROOT compare = pred[] compare(iter, c.10), direction=LT
+  }
+  ENTRY main {
+    c0 = s32[] constant(0)
+    data = s32[] parameter(0)
+    tuple = (s32[], s32[]) tuple(c0, data)
+    ROOT while = (s32[], s32[]) while(tuple), body=body, condition=condition
+  }
+  )";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
+                       ParseAndReturnVerifiedModule(hlo_string));
+  HloInstruction* while_op = m->entry_computation()->root_instruction();
+  ASSERT_EQ(while_op->opcode(), HloOpcode::kWhile);
+  EXPECT_EQ(GetLoopInductionVarTupleIdx(while_op), 0);
+}
+
 }  // namespace
 }  // namespace xla
