@@ -193,6 +193,12 @@ class ConstraintState {
     return !interval_.IsEmpty();
   }
 
+  // Returns true if adding 'constraint' results in a non-empty interval,
+  // without mutating this state.
+  bool CanAddConstraint(const ConstraintInterval& constraint) const {
+    return !interval_.Intersect(constraint).IsEmpty();
+  }
+
   void MergeStructural(const StructuralConstraints& struct_cons) {
     structure_.Merge(struct_cons);
   }
