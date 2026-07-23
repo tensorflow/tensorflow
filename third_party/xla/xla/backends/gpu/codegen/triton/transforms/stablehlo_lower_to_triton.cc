@@ -74,22 +74,6 @@ namespace ttir = ::mlir::triton;
 
 namespace {
 
-class LowerTranspose : public mlir::OpRewritePattern<stablehlo::TransposeOp> {
- public:
-  using OpRewritePattern::OpRewritePattern;
-
- private:
-  mlir::LogicalResult matchAndRewrite(
-      stablehlo::TransposeOp op,
-      mlir::PatternRewriter& rewriter) const override {
-    SmallVector<int32_t> permutation =
-        llvm::to_vector_of<int32_t>(op.getPermutation());
-    rewriter.replaceOpWithNewOp<ttir::TransOp>(op, op.getResult().getType(),
-                                               op.getOperand(), permutation);
-    return mlir::success();
-  }
-};
-
 class LowerIotaToMakeRange : public mlir::OpRewritePattern<stablehlo::IotaOp> {
  public:
   using OpRewritePattern::OpRewritePattern;

@@ -2795,6 +2795,50 @@ TEST_P(TritonScaledDotTest, DISABLED_Fp4Succeeds) {
       std::move(optimized_module), ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
 }
 
+TEST_P(TritonScaledDotTest, Mxfp4KPackedRhsBlackwellLowersWithTranspose) {
+  if (!GetCudaComputeCapability().IsAtLeastBlackwell()) {
+    GTEST_SKIP() << "Requires Blackwell+.";
+  }
+  constexpr absl::string_view kHloText = R"hlo(
+HloModule m
+fusion__ {
+  parameter_0 = f4e2m1fn[128,256]{1,0:E(4)} parameter(0)
+  parameter_1 = f4e2m1fn[128,256]{1,0:E(4)} parameter(1)
+  parameter_2 = f8e8m0fnu[128,8]{1,0} parameter(2)
+  parameter_3 = f8e8m0fnu[128,8]{1,0} parameter(3)
+  ROOT _.1 = bf16[128,128] scaled-dot(parameter_0, parameter_1, parameter_2, parameter_3),
+    lhs_contracting_dims={1}, rhs_contracting_dims={1},
+    backend_config={"sizes":["64"]}
+}
+ENTRY e {
+  lhs = f4e2m1fn[128,256]{1,0:E(4)} parameter(0)
+  rhs = f4e2m1fn[128,256]{1,0:E(4)} parameter(1)
+  lhs_scale = f8e8m0fnu[128,8]{1,0} parameter(2)
+  rhs_scale = f8e8m0fnu[128,8]{1,0} parameter(3)
+  ROOT fusion = bf16[128,128] fusion(lhs, rhs, lhs_scale, rhs_scale),
+    kind=kCustom, calls=fusion__,
+    backend_config={"fusion_backend_config":{"kind":"__triton_nested_gemm_fusion",
+      "block_level_fusion_config":{
+        "output_tiles":[{"sizes":["128","128"]}],
+        "num_warps":"4","num_ctas":"1","num_stages":"1"}}}
+}
+)hlo";
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloText));
+  HloComputation* scaled_dot_computation =
+      GetFirstComputationWithInstruction(*module, HloOpcode::kScaledDot);
+  EXPECT_THAT(CreateTritonIrAndFileCheckForDot(*scaled_dot_computation, R"(
+      CHECK: tt.trans
+      CHECK: tensor<128x32xi8> -> tensor<32x128xi8>
+      CHECK-NOT: unrealized_conversion_cast
+      CHECK: tt.dot_scaled
+      CHECK: tensor<128x32xi8>, tensor<128x2xi8> * tensor<32x128xi8>, tensor<128x2xi8>
+  )"),
+              IsOk())
+      << "We expect to see tt.trans and the follow up dot_scaled";
+  EXPECT_TRUE(RunAndCompareNoHloPasses(
+      std::move(module), ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
+}
+
 TEST_P(TritonScaledDotTest, GlobalScalerSucceeds) {
   if (!GetCudaComputeCapability().IsAtLeastHopper()) {
     GTEST_SKIP() << "Scaled dot isn't supported by Triton for pre-Hopper GPUs.";
