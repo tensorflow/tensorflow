@@ -292,3 +292,14 @@ py_library(
         "//tensorflow/python/util:tf_export",
     ],
 )
+
+tf_py_test(
+    name = "convolutional_transpose_validation_test",
+    size = "small",
+    srcs = ["convolutional_transpose_validation_test.py"],
+    deps = [
+        "//tensorflow/python/keras:testing_utils",
+        "//tensorflow/python/keras/layers:convolutional",
+        "//tensorflow/python/platform:client_testlib",
+    ],
+)

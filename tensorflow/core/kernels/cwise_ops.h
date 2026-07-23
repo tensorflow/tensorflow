@@ -729,10 +729,19 @@ template <typename T>
 struct scalar_erfinv_op {
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE T operator()(const T& x) const {
     constexpr T half = T(0.5);
-    T y = numext::ndtri(half * x + half);
+
+    T p = half * x + half;
+
+    if (x < T(1) && p >= T(1)) {
+      p = Eigen::numext::nextafter(T(1), T(0));
+    }
+
+    T y = numext::ndtri(p);
+
     constexpr T half_sqrt = T(M_SQRT1_2);
     return y * half_sqrt;
   }
+};
   template <typename Packet>
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE Packet packetOp(const Packet& x) const {
     Packet half = pset1<Packet>(T(0.5));

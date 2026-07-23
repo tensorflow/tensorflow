@@ -1025,8 +1025,9 @@ def _get_strides_and_dilation_rate(num_spatial_dims, strides, dilation_rate):
 
   if np.any(strides > 1) and np.any(dilation_rate > 1):
     raise ValueError(
-        "`strides > 1` not supported in conjunction with `dilation_rate > 1`. "
-        f"Received: strides={strides} and dilation_rate={dilation_rate}")
+        "if any value of `strides` is > 1, then all values of `dilation_rate` "
+        f"must be 1. Received: strides={strides}, dilation_rate={dilation_rate}"
+    )
   return strides, dilation_rate
 
 
