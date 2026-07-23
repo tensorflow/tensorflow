@@ -2490,6 +2490,10 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
         return nullptr;
       }
       // If the is_host_transfer attribute is not present then default to false.
+      if (!shape->IsTuple() || shape->tuple_shapes().empty()) {
+        TokenError("recv must have a non-empty tuple shape");
+        return nullptr;
+      }
       return builder->AddInstruction(HloInstruction::CreateRecv(
           shape->tuple_shapes(0), operands[0], channel_id, *is_host_transfer));
     }
@@ -2612,6 +2616,10 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
       if (operands.size() % 2) {
         TokenError(StrCat("expects an even number of operands, but has ",
                           operands.size(), " operands"));
+        return nullptr;
+      }
+      if (operands.empty()) {
+        TokenError("reduce-window expects at least one input and init operand");
         return nullptr;
       }
       if (!maybe_infer_shape([&] {
@@ -3260,7 +3268,8 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
       optional<RandomAlgorithm> algorithm;
       attrs["algorithm"] = {/*required=*/true, AttrTy::kRandomAlgorithm,
                             &algorithm};
-      if ((!preset_operands && !ParseOperands(&operands, builder)) ||
+      if ((!preset_operands &&
+           !ParseOperands(&operands, builder, /*expected_size=*/1)) ||
           !ParseAttributes(attrs, allow_attributes, shape)) {
         return nullptr;
       }
@@ -3288,6 +3297,10 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
       optional<HloComputation*> false_computation;
       optional<std::vector<HloComputation*>> branch_computations;
       if (!preset_operands && !ParseOperands(&operands, builder)) {
+        return nullptr;
+      }
+      if (operands.empty()) {
+        TokenError("conditional requires at least one operand");
         return nullptr;
       }
       if (!ShapeUtil::IsScalar(operands[0]->shape())) {
