@@ -38,6 +38,7 @@ limitations under the License.
 #include "google/protobuf/descriptor.h"
 #include "xla/client/executable_build_options.h"
 #include "xla/debug_options_flags.h"
+#include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/layout.h"
 #include "xla/pjrt/pjrt_common.h"
 #include "xla/pjrt/pjrt_layout.h"
@@ -318,7 +319,9 @@ std::optional<std::vector<OpSharding>> PjRtExecutable::GetOutputShardings()
   }
 
   std::vector<OpSharding> out;
-  GetOpSharding(out, (*modules)[0]->spmd_output_sharding().ToProto());
+  xla::HloSharding sharding = (*modules)[0]->spmd_output_sharding();
+  sharding = xla::HloSharding::V3ToV2Sharding(sharding);
+  GetOpSharding(out, sharding.ToProto());
   return out;
 }
 
@@ -332,7 +335,8 @@ std::optional<std::vector<OpSharding>> PjRtExecutable::GetParameterShardings()
 
   std::vector<OpSharding> out;
   for (const auto& s : (*modules)[0]->spmd_parameters_shardings()) {
-    GetOpSharding(out, s.ToProto());
+    xla::HloSharding sharding = xla::HloSharding::V3ToV2Sharding(s);
+    GetOpSharding(out, sharding.ToProto());
   }
   return out;
 }
