@@ -25,7 +25,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
-#include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/platform/test.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/platform/path.h"
 #include "tensorflow/core/protobuf/meta_graph.pb.h"
@@ -33,10 +33,7 @@ limitations under the License.
 #include "tensorflow/tools/proto_splitter/cc/util.h"
 #include "tensorflow/tools/proto_splitter/chunk.pb.h"
 #include "tensorflow/tools/proto_splitter/testdata/test_message.pb.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/status_matchers.h"
-#include "tsl/platform/statusor.h"
-#include "tsl/platform/test.h"
+#include "tsl/platform/protobuf.h"
 // IWYU pragma: no_include "third_party/protobuf/io/zero_copy_stream_impl_lite.h"
 // IWYU pragma: no_include "third_party/protobuf/util/message_differencer.h"
 
@@ -66,7 +63,6 @@ using ::tensorflow::protobuf::io::ArrayInputStream;
 using ::tensorflow::protobuf::util::MessageDifferencer;
 using tools::proto_splitter::GetChunkMetadata;
 using tools::proto_splitter::GetRiegeliReader;
-using tsl::testing::IsOkAndHolds;
 using tsl::testing::TensorFlowSrcRoot;
 
 absl::Status ParseTextProto(absl::string_view text_proto,
@@ -85,18 +81,18 @@ absl::Status ParseTextProto(absl::string_view text_proto,
 absl::StatusOr<RepeatedPtrField<::tensorflow::proto_splitter::FieldIndex>>
 ExtractFieldTags(absl::string_view chunked_field_text_proto) {
   ChunkedField chunked_field;
-  TF_RETURN_IF_ERROR(ParseTextProto(chunked_field_text_proto, &chunked_field));
+  RETURN_IF_ERROR(ParseTextProto(chunked_field_text_proto, &chunked_field));
   return chunked_field.field_tag();
 }
 
 TEST(FingerprintingTest, TestFieldTagMatchesInitialSubsequence) {
-  TF_ASSERT_OK_AND_ASSIGN(RepeatedPtrField<FieldIndex> field_tags,
-                          ExtractFieldTags(R"pb(
-                            field_tag { field: 2 }
-                            field_tag { index: 1505 }
-                            field_tag { field: 5 }
-                            field_tag { map_key { ui32: 123 } }
-                          )pb"));
+  ASSERT_OK_AND_ASSIGN(RepeatedPtrField<FieldIndex> field_tags,
+                       ExtractFieldTags(R"pb(
+                         field_tag { field: 2 }
+                         field_tag { index: 1505 }
+                         field_tag { field: 5 }
+                         field_tag { map_key { ui32: 123 } }
+                       )pb"));
   RepeatedPtrField<FieldIndex> field_tags_sub;
   field_tags_sub.CopyFrom(field_tags);
   field_tags_sub.DeleteSubrange(2, 2);
@@ -106,13 +102,13 @@ TEST(FingerprintingTest, TestFieldTagMatchesInitialSubsequence) {
 }
 
 TEST(FingerprintingTest, TestFieldTagMatchesNoninitialSubsequence) {
-  TF_ASSERT_OK_AND_ASSIGN(RepeatedPtrField<FieldIndex> field_tags,
-                          ExtractFieldTags(R"pb(
-                            field_tag { field: 2 }
-                            field_tag { index: 1505 }
-                            field_tag { field: 5 }
-                            field_tag { map_key { ui32: 123 } }
-                          )pb"));
+  ASSERT_OK_AND_ASSIGN(RepeatedPtrField<FieldIndex> field_tags,
+                       ExtractFieldTags(R"pb(
+                         field_tag { field: 2 }
+                         field_tag { index: 1505 }
+                         field_tag { field: 5 }
+                         field_tag { map_key { ui32: 123 } }
+                       )pb"));
   RepeatedPtrField<FieldIndex> field_tags_sub;
   field_tags_sub.CopyFrom(field_tags);
   field_tags_sub.DeleteSubrange(0, 2);
@@ -122,13 +118,13 @@ TEST(FingerprintingTest, TestFieldTagMatchesNoninitialSubsequence) {
 }
 
 TEST(FingerprintingTest, TestFieldTagMatchesIdenticalSubsequence) {
-  TF_ASSERT_OK_AND_ASSIGN(RepeatedPtrField<FieldIndex> field_tags,
-                          ExtractFieldTags(R"pb(
-                            field_tag { field: 2 }
-                            field_tag { index: 1505 }
-                            field_tag { field: 5 }
-                            field_tag { map_key { ui32: 123 } }
-                          )pb"));
+  ASSERT_OK_AND_ASSIGN(RepeatedPtrField<FieldIndex> field_tags,
+                       ExtractFieldTags(R"pb(
+                         field_tag { field: 2 }
+                         field_tag { index: 1505 }
+                         field_tag { field: 5 }
+                         field_tag { map_key { ui32: 123 } }
+                       )pb"));
   RepeatedPtrField<FieldIndex> field_tags_sub;
   field_tags_sub.CopyFrom(field_tags);
 
@@ -137,13 +133,13 @@ TEST(FingerprintingTest, TestFieldTagMatchesIdenticalSubsequence) {
 }
 
 TEST(FingerprintingTest, TestFieldTagMatchesSuperSubsequence) {
-  TF_ASSERT_OK_AND_ASSIGN(RepeatedPtrField<FieldIndex> field_tags,
-                          ExtractFieldTags(R"pb(
-                            field_tag { field: 2 }
-                            field_tag { index: 1505 }
-                            field_tag { field: 5 }
-                            field_tag { map_key { ui32: 123 } }
-                          )pb"));
+  ASSERT_OK_AND_ASSIGN(RepeatedPtrField<FieldIndex> field_tags,
+                       ExtractFieldTags(R"pb(
+                         field_tag { field: 2 }
+                         field_tag { index: 1505 }
+                         field_tag { field: 5 }
+                         field_tag { map_key { ui32: 123 } }
+                       )pb"));
   RepeatedPtrField<FieldIndex> field_tags_sub;
   field_tags_sub.CopyFrom(field_tags);
   field_tags_sub.Add()->set_field(6);
@@ -155,12 +151,12 @@ TEST(FingerprintingTest, TestFieldTagMatchesSuperSubsequence) {
 TEST(FingerprintingTest, TestPruneChunkedMessageSingleTarget) {
   std::string cpb_file = io::JoinPath(
       TensorFlowSrcRoot(), "tools/proto_splitter/testdata", "many-field.cpb");
-  TF_ASSERT_OK_AND_ASSIGN(auto reader, GetRiegeliReader(cpb_file));
+  ASSERT_OK_AND_ASSIGN(auto reader, GetRiegeliReader(cpb_file));
 
   auto read_metadata = GetChunkMetadata(reader);
   if (!read_metadata.ok()) {
     reader.Close();
-    TF_ASSERT_OK(read_metadata.status());
+    ASSERT_OK(read_metadata.status());
   }
   ChunkMetadata chunk_metadata = read_metadata.value();
 
@@ -179,10 +175,9 @@ TEST(FingerprintingTest, TestPruneChunkedMessageSingleTarget) {
   target_field_tags.Add(FieldIndex(repeated_field_index_field_tag));
 
   ChunkedMessage pruned_chunked_message;
-  TF_ASSERT_OK_AND_ASSIGN(
-      pruned_chunked_message,
-      PruneChunkedMessage(chunk_metadata.message(), reader, chunks_info,
-                          {target_field_tags}));
+  ASSERT_OK_AND_ASSIGN(pruned_chunked_message,
+                       PruneChunkedMessage(chunk_metadata.message(), reader,
+                                           chunks_info, {target_field_tags}));
 
   std::string expected_pruned_chunked_message_text_proto = R"pb(
     chunk_index: 0
@@ -192,8 +187,8 @@ TEST(FingerprintingTest, TestPruneChunkedMessageSingleTarget) {
     }
   )pb";
   ChunkedMessage expected_pruned_chunked_message;
-  TF_ASSERT_OK(ParseTextProto(expected_pruned_chunked_message_text_proto,
-                              &expected_pruned_chunked_message));
+  ASSERT_OK(ParseTextProto(expected_pruned_chunked_message_text_proto,
+                           &expected_pruned_chunked_message));
   ASSERT_TRUE(MessageDifferencer::Equals(pruned_chunked_message,
                                          expected_pruned_chunked_message));
 }
@@ -201,12 +196,12 @@ TEST(FingerprintingTest, TestPruneChunkedMessageSingleTarget) {
 TEST(FingerprintingTest, TestPruneChunkedMessageMultiTarget) {
   std::string cpb_file = io::JoinPath(
       TensorFlowSrcRoot(), "tools/proto_splitter/testdata", "many-field.cpb");
-  TF_ASSERT_OK_AND_ASSIGN(auto reader, GetRiegeliReader(cpb_file));
+  ASSERT_OK_AND_ASSIGN(auto reader, GetRiegeliReader(cpb_file));
 
   auto read_metadata = GetChunkMetadata(reader);
   if (!read_metadata.ok()) {
     reader.Close();
-    TF_ASSERT_OK(read_metadata.status());
+    ASSERT_OK(read_metadata.status());
   }
   ChunkMetadata chunk_metadata = read_metadata.value();
 
@@ -238,7 +233,7 @@ TEST(FingerprintingTest, TestPruneChunkedMessageMultiTarget) {
   target_two_field_tags.Add(FieldIndex(string_field_field_tag));
 
   ChunkedMessage pruned_chunked_message;
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       pruned_chunked_message,
       PruneChunkedMessage(chunk_metadata.message(), reader, chunks_info,
                           {target_one_field_tags, target_two_field_tags}));
@@ -256,8 +251,8 @@ TEST(FingerprintingTest, TestPruneChunkedMessageMultiTarget) {
     }
   )pb";
   ChunkedMessage expected_pruned_chunked_message;
-  TF_ASSERT_OK(ParseTextProto(expected_pruned_chunked_message_text_proto,
-                              &expected_pruned_chunked_message));
+  ASSERT_OK(ParseTextProto(expected_pruned_chunked_message_text_proto,
+                           &expected_pruned_chunked_message));
   ASSERT_TRUE(MessageDifferencer::Equals(pruned_chunked_message,
                                          expected_pruned_chunked_message));
 }
@@ -265,12 +260,12 @@ TEST(FingerprintingTest, TestPruneChunkedMessageMultiTarget) {
 TEST(FingerprintingTest, TestPruneChunkedMessageNoTarget) {
   std::string cpb_file = io::JoinPath(
       TensorFlowSrcRoot(), "tools/proto_splitter/testdata", "many-field.cpb");
-  TF_ASSERT_OK_AND_ASSIGN(auto reader, GetRiegeliReader(cpb_file));
+  ASSERT_OK_AND_ASSIGN(auto reader, GetRiegeliReader(cpb_file));
 
   auto read_metadata = GetChunkMetadata(reader);
   if (!read_metadata.ok()) {
     reader.Close();
-    TF_ASSERT_OK(read_metadata.status());
+    ASSERT_OK(read_metadata.status());
   }
   ChunkMetadata chunk_metadata = read_metadata.value();
 
@@ -278,7 +273,7 @@ TEST(FingerprintingTest, TestPruneChunkedMessageNoTarget) {
       chunk_metadata.chunks().begin(), chunk_metadata.chunks().end());
 
   ChunkedMessage pruned_chunked_message;
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       pruned_chunked_message,
       PruneChunkedMessage(chunk_metadata.message(), reader, chunks_info, {}));
 
@@ -286,8 +281,8 @@ TEST(FingerprintingTest, TestPruneChunkedMessageNoTarget) {
     chunk_index: 0
   )pb";
   ChunkedMessage expected_pruned_chunked_message;
-  TF_ASSERT_OK(ParseTextProto(expected_pruned_chunked_message_text_proto,
-                              &expected_pruned_chunked_message));
+  ASSERT_OK(ParseTextProto(expected_pruned_chunked_message_text_proto,
+                           &expected_pruned_chunked_message));
   ASSERT_TRUE(MessageDifferencer::Equals(pruned_chunked_message,
                                          expected_pruned_chunked_message));
 }
@@ -297,19 +292,19 @@ TEST(FingerprintingTest, TestSerializeProto) {
     string_field: "abc123"
   )pb";
   ManyFields many_fields;
-  TF_ASSERT_OK(ParseTextProto(many_fields_text_proto, &many_fields));
+  ASSERT_OK(ParseTextProto(many_fields_text_proto, &many_fields));
   ASSERT_EQ(SerializeProto(many_fields), many_fields.SerializeAsString());
 }
 
 TEST(FingerprintingTest, TestHashFieldsV2) {
   std::string cpb_file = io::JoinPath(
       TensorFlowSrcRoot(), "tools/proto_splitter/testdata", "many-field.cpb");
-  TF_ASSERT_OK_AND_ASSIGN(auto reader, GetRiegeliReader(cpb_file));
+  ASSERT_OK_AND_ASSIGN(auto reader, GetRiegeliReader(cpb_file));
 
   auto read_metadata = GetChunkMetadata(reader);
   if (!read_metadata.ok()) {
     reader.Close();
-    TF_ASSERT_OK(read_metadata.status());
+    ASSERT_OK(read_metadata.status());
   }
   ChunkMetadata chunk_metadata = read_metadata.value();
 
@@ -317,9 +312,9 @@ TEST(FingerprintingTest, TestHashFieldsV2) {
       chunk_metadata.chunks().begin(), chunk_metadata.chunks().end());
 
   ManyFields many_fields;
-  TF_ASSERT_OK_AND_ASSIGN(uint64_t many_fields_hash,
-                          HashFields(chunk_metadata.message(), reader,
-                                     chunks_info, {}, &many_fields));
+  ASSERT_OK_AND_ASSIGN(uint64_t many_fields_hash,
+                       HashFields(chunk_metadata.message(), reader, chunks_info,
+                                  {}, &many_fields));
   ASSERT_EQ(many_fields_hash, 14850154939410192811U);
 }
 
@@ -327,12 +322,12 @@ TEST(FingerprintingTest, TestHashGraphDef) {
   std::string cpb_file =
       io::JoinPath(TensorFlowSrcRoot(), "tools/proto_splitter/testdata",
                    "split-standard.cpb");
-  TF_ASSERT_OK_AND_ASSIGN(auto reader, GetRiegeliReader(cpb_file));
+  ASSERT_OK_AND_ASSIGN(auto reader, GetRiegeliReader(cpb_file));
 
   auto read_metadata = GetChunkMetadata(reader);
   if (!read_metadata.ok()) {
     reader.Close();
-    TF_ASSERT_OK(read_metadata.status());
+    ASSERT_OK(read_metadata.status());
   }
   ChunkMetadata chunk_metadata = read_metadata.value();
 
@@ -349,12 +344,12 @@ TEST(FingerprintingTest, TestHashSignatureDef) {
   std::string cpb_file =
       io::JoinPath(TensorFlowSrcRoot(), "tools/proto_splitter/testdata",
                    "split-standard.cpb");
-  TF_ASSERT_OK_AND_ASSIGN(auto reader, GetRiegeliReader(cpb_file));
+  ASSERT_OK_AND_ASSIGN(auto reader, GetRiegeliReader(cpb_file));
 
   auto read_metadata = GetChunkMetadata(reader);
   if (!read_metadata.ok()) {
     reader.Close();
-    TF_ASSERT_OK(read_metadata.status());
+    ASSERT_OK(read_metadata.status());
   }
   ChunkMetadata chunk_metadata = read_metadata.value();
 
@@ -372,12 +367,12 @@ TEST(FingerprintingTest, TestHashSavedObjectGraph) {
   std::string cpb_file =
       io::JoinPath(TensorFlowSrcRoot(), "tools/proto_splitter/testdata",
                    "split-standard.cpb");
-  TF_ASSERT_OK_AND_ASSIGN(auto reader, GetRiegeliReader(cpb_file));
+  ASSERT_OK_AND_ASSIGN(auto reader, GetRiegeliReader(cpb_file));
 
   auto read_metadata = GetChunkMetadata(reader);
   if (!read_metadata.ok()) {
     reader.Close();
-    TF_ASSERT_OK(read_metadata.status());
+    ASSERT_OK(read_metadata.status());
   }
   ChunkMetadata chunk_metadata = read_metadata.value();
 
@@ -392,5 +387,106 @@ TEST(FingerprintingTest, TestHashSavedObjectGraph) {
 }
 
 }  // namespace
+
+TEST(FingerprintingTest, TestHashFieldsThirdBranchSingularCovered) {
+  const std::string export_dir = io::JoinPath(
+      TensorFlowSrcRoot(), "tools/proto_splitter/testdata", "many-field.cpb");
+  ASSERT_OK_AND_ASSIGN(auto reader, GetRiegeliReader(export_dir));
+  auto read_metadata = GetChunkMetadata(reader);
+  if (!read_metadata.ok()) {
+    reader.Close();
+    ASSERT_OK(read_metadata.status());
+  }
+  ChunkMetadata chunk_metadata = read_metadata.value();
+
+  std::vector<ChunkInfo> chunks_info = std::vector<ChunkInfo>(
+      chunk_metadata.chunks().begin(), chunk_metadata.chunks().end());
+
+  // Modify metadata to add a synthetic cf.
+  // In ManyFields, field 1 is field_one (singular).
+  auto* cf = chunk_metadata.mutable_message()->add_chunked_fields();
+  cf->add_field_tag()->set_field(1);          // field_one
+  cf->mutable_message()->set_chunk_index(1);  // valid chunk index
+
+  // Now call HashFields with field_tags that are LONGER.
+  ::tensorflow::protobuf::RepeatedPtrField<FieldIndex> field_tags;
+  field_tags.Add()->set_field(1);
+  field_tags.Add()->set_field(1);  // longer tag
+
+  ManyFields many_fields;
+  // It should hit third branch, see singular field, and call MutableMessage.
+  auto hash_or = fingerprinting_utils_internal::HashFields(
+      chunk_metadata.message(), reader, chunks_info, field_tags, &many_fields);
+  EXPECT_OK(hash_or.status());
+}
+
+TEST(FingerprintingTest, TestHashFieldsRepeatedMissingIndexInFile) {
+  const std::string export_dir = io::JoinPath(
+      TensorFlowSrcRoot(), "tools/proto_splitter/testdata", "many-field.cpb");
+  ASSERT_OK_AND_ASSIGN(auto reader, GetRiegeliReader(export_dir));
+  auto read_metadata = GetChunkMetadata(reader);
+  if (!read_metadata.ok()) {
+    reader.Close();
+    ASSERT_OK(read_metadata.status());
+  }
+  ChunkMetadata chunk_metadata = read_metadata.value();
+
+  std::vector<ChunkInfo> chunks_info = std::vector<ChunkInfo>(
+      chunk_metadata.chunks().begin(), chunk_metadata.chunks().end());
+
+  // Modify metadata to add a synthetic cf.
+  // In ManyFields, field 2 is repeated_field.
+  auto* cf = chunk_metadata.mutable_message()->add_chunked_fields();
+  cf->add_field_tag()->set_field(2);          // repeated_field (missing index)
+  cf->mutable_message()->set_chunk_index(1);  // valid chunk index
+
+  // Now call HashFields with field_tags that are LONGER.
+  ::tensorflow::protobuf::RepeatedPtrField<FieldIndex> field_tags;
+  field_tags.Add()->set_field(2);
+  field_tags.Add()->set_index(0);  // longer tag
+
+  ManyFields many_fields;
+  // It should hit third branch, see missing index, and break.
+  auto hash_or = fingerprinting_utils_internal::HashFields(
+      chunk_metadata.message(), reader, chunks_info, field_tags, &many_fields);
+  EXPECT_OK(hash_or.status());
+}
+
+TEST(FingerprintingTest, TestHashFieldsThirdBranchCovered) {
+  const std::string export_dir = io::JoinPath(
+      TensorFlowSrcRoot(), "tools/proto_splitter/testdata", "many-field.cpb");
+  ASSERT_OK_AND_ASSIGN(auto reader, GetRiegeliReader(export_dir));
+  auto read_metadata = GetChunkMetadata(reader);
+  if (!read_metadata.ok()) {
+    reader.Close();
+    ASSERT_OK(read_metadata.status());
+  }
+  ChunkMetadata chunk_metadata = read_metadata.value();
+
+  std::vector<ChunkInfo> chunks_info = std::vector<ChunkInfo>(
+      chunk_metadata.chunks().begin(), chunk_metadata.chunks().end());
+
+  // Modify metadata to add a synthetic cf.
+  // In ManyFields, field 2 is repeated_field.
+  auto* cf = chunk_metadata.mutable_message()->add_chunked_fields();
+  cf->add_field_tag()->set_field(2);          // repeated_field
+  cf->add_field_tag()->set_index(0);          // index 0
+  cf->mutable_message()->set_chunk_index(1);  // valid chunk index
+
+  // Now call HashFields with field_tags that are LONGER.
+  ::tensorflow::protobuf::RepeatedPtrField<FieldIndex> field_tags;
+  field_tags.Add()->set_field(2);
+  field_tags.Add()->set_index(0);
+  field_tags.Add()->set_field(
+      1);  // longer tag (field 1 is singular ManyFields)
+
+  ManyFields many_fields;
+  many_fields.add_repeated_field();
+  // It should hit third branch, see valid index, and call
+  // MutableRepeatedMessage.
+  auto hash_or = fingerprinting_utils_internal::HashFields(
+      chunk_metadata.message(), reader, chunks_info, field_tags, &many_fields);
+  EXPECT_OK(hash_or.status());
+}
 
 }  // namespace tensorflow::saved_model::fingerprinting
