@@ -39,7 +39,7 @@ jobs:
         with:
           go-version: 'stable'
       - name: "Run license check"
-        uses: google-ml-infra/actions/ci_check_license@432d36c6ac62d76fa99b3679758ccfbc10140fb6
+        uses: google-ml-infra/actions/ci_check_license@432d36c6ac62d76fa99b3679758ccfbc10140fb6 # v1.0.0
         with:
           copyright-holder: 'The TensorFlow Authors'
           license-type: 'apache'
