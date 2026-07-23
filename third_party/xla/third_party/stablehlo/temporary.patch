@@ -344,3 +344,39 @@ diff --ruN a/stablehlo/stablehlo/transforms/optimization/StablehloAggressiveSimp
        }
        mergedAttrs.set("mhlo.frontend_attributes",
 
+diff --ruN a/stablehlo/stablehlo/transforms/ChloLegalizeToStablehlo.cpp b/stablehlo/stablehlo/transforms/ChloLegalizeToStablehlo.cpp
+--- stablehlo/stablehlo/transforms/ChloLegalizeToStablehlo.cpp
++++ stablehlo/stablehlo/transforms/ChloLegalizeToStablehlo.cpp
+@@ -1632,18 +1632,24 @@
+   digamma = mlir::stablehlo::SelectOp::create(rewriter, loc, needToReflect,
+                                               reflection, digamma);
+ 
+-  // Digamma has poles at negative integers and zero; return nan for those.
+-  Value isLeZero = mlir::stablehlo::CompareOp::create(
+-      rewriter, loc, x, zero, mlir::stablehlo::ComparisonDirection::LE);
++  // Digamma has poles at negative integers and zero; return nan for
++  // negative integers, and -inf for zero.
++  Value isZero = mlir::stablehlo::CompareOp::create(
++      rewriter, loc, x, zero, mlir::stablehlo::ComparisonDirection::EQ);
++  Value isLtZero = mlir::stablehlo::CompareOp::create(
++      rewriter, loc, x, zero, mlir::stablehlo::ComparisonDirection::LT);
+   Value isInt = mlir::stablehlo::CompareOp::create(
+       rewriter, loc, x, mlir::stablehlo::FloorOp::create(rewriter, loc, x),
+       mlir::stablehlo::ComparisonDirection::EQ);
+-  Value isPole = mlir::stablehlo::AndOp::create(rewriter, loc, isLeZero, isInt);
+-  return mlir::stablehlo::SelectOp::create(
+-      rewriter, loc, isPole,
+-      getConstantLike(rewriter, loc, std::numeric_limits<double>::quiet_NaN(),
+-                      x),
++  Value isNegativeInteger = mlir::stablehlo::AndOp::create(rewriter, loc, isLtZero, isInt);
++  Value resultWithNan = mlir::stablehlo::SelectOp::create(
++      rewriter, loc, isNegativeInteger,
++      getConstantLike(rewriter, loc, std::numeric_limits<double>::quiet_NaN(), x),
+       digamma);
++  return mlir::stablehlo::SelectOp::create(
++      rewriter, loc, isZero,
++      getConstantLike(rewriter, loc, -std::numeric_limits<double>::infinity(), x),
++      resultWithNan);
+ }
+ 
+ namespace {
