@@ -1193,6 +1193,12 @@ class HloInstruction {
       const Shape& shape, HloInstruction* operand,
       absl::Span<const int64_t> dimensions);
 
+  // Creates a rotate instruction, which rotates the elements
+  // by the given shifts in the specified dimensions.
+  static std::unique_ptr<HloInstruction> CreateRotate(
+      const Shape& shape, HloInstruction* operand,
+      absl::Span<const int64_t> dimensions, absl::Span<const int64_t> shifts);
+
   // Creates a Afterall instruction used for joining or creating new values of
   // token type which thread through side-effecting operations. Operands must
   // all be tokens, calls without operands generates a token.

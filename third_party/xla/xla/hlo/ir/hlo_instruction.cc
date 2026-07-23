@@ -551,6 +551,13 @@ absl::StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
                         std::vector<int64_t>(proto.dimensions().begin(),
                                              proto.dimensions().end()));
       break;
+    case HloOpcode::kRotate:
+      instruction = CreateRotate(
+          shape, operands(0),
+          std::vector<int64_t>(proto.dimensions().begin(),
+                               proto.dimensions().end()),
+          std::vector<int64_t>(proto.shifts().begin(), proto.shifts().end()));
+      break;
     case HloOpcode::kConcatenate:
       TF_RET_CHECK(proto.dimensions().size() == 1)
           << "Concatenate instruction should have 1 dimension but sees "
@@ -2069,6 +2076,13 @@ HloInstruction::CreateCollectivePermuteStart(
   return std::make_unique<HloReverseInstruction>(shape, operand, dimensions);
 }
 
+/* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateRotate(
+    const Shape& shape, HloInstruction* operand,
+    absl::Span<const int64_t> dimensions, absl::Span<const int64_t> shifts) {
+  return std::make_unique<HloRotateInstruction>(shape, operand, dimensions,
+                                                shifts);
+}
+
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateAfterAll(
     absl::Span<HloInstruction* const> operands) {
   CHECK(!operands.empty());
@@ -2760,6 +2774,7 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
     case HloOpcode::kRecv:
     case HloOpcode::kRecvDone:
     case HloOpcode::kReverse:
+    case HloOpcode::kRotate:
     case HloOpcode::kConcatenate:
     case HloOpcode::kReduce:
     case HloOpcode::kTranspose:
@@ -3473,6 +3488,7 @@ bool HloInstruction::IdenticalSlowPath(
     case HloOpcode::kTriangularSolve:
     case HloOpcode::kCholesky:
     case HloOpcode::kTopK:
+    case HloOpcode::kRotate:
       LOG(FATAL) << "Base class impl called for opcode with subclass: "
                  << opcode();
   }
@@ -4964,6 +4980,8 @@ absl::Status HloInstruction::Visit(
         return visitor->HandleTranspose(this);
       case HloOpcode::kReverse:
         return visitor->HandleReverse(this);
+      case HloOpcode::kRotate:
+        return visitor->HandleRotate(this);
       case HloOpcode::kReducePrecision:
         return visitor->HandleReducePrecision(this);
       case HloOpcode::kSlice:
