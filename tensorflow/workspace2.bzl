@@ -196,6 +196,12 @@ def _tf_toolchains():
 def _tf_repositories():
     """All external dependencies for TF builds."""
 
+    native.new_local_repository(
+        name = "release_or_nightly",
+        path = ".",
+        build_file_content = "package(default_visibility = ['//visibility:public'])\ncc_library(name = 'tensorflow_libtensorflow_framework')\ncc_library(name = 'tensorflow_tf_header_lib')",
+    )
+
     # To update any of the dependencies below:
     # a) update URL and strip_prefix to the new git commit hash
     # b) get the sha256 hash of the commit by running:
@@ -229,6 +235,29 @@ def _tf_repositories():
         sha256 = "ba28a077e5099f72cf9e8efab2ced729214ab745a26cc21a1cebb81defd6c2d0",
         strip_prefix = "cppitertools-2.0",
         urls = tf_mirror_urls("https://github.com/ryanhaining/cppitertools/archive/v2.0.tar.gz"),
+    )
+
+    tf_http_archive(
+        name = "tensorflow_text",
+        # force refetch and repatch of external repository in CaaS Copybara CI (v9)
+        patch_file = [
+            "//:third_party/tensorflow_text/add_build_file.patch",
+            "//:third_party/tensorflow_text/add_tftext.patch",
+            "//:third_party/tensorflow_text/add_root_build.patch",
+        ],
+        patch_cmds = [
+            # Force Bazel cache invalidation by executing a fresh command
+            "echo 'Cache bust 20260519_v9' > cache_bust.txt",
+        ],
+        sha256 = "652257dd57769824da88a41074f53df11a68f484a98ebe569279e06e94750bad",
+        strip_prefix = "text-2.19.0/tensorflow_text",
+        repo_mapping = {
+            "@release_or_nightly": "@org_tensorflow",
+        },
+        urls = tf_mirror_urls("https://github.com/tensorflow/text/archive/v2.19.0.zip") + [
+            # dummy URL to force Bazel cache invalidation in CaaS Copybara CI
+            "https://github.com/tensorflow/text/archive/v2.19.0.zip?cache_bust=20260519_v9",
+        ],
     )
 
     xnnpack()

@@ -76,7 +76,7 @@ index 378aaa0..1557a07 100644
  #include "normalization_rule.h"
  #include "normalizer.h"
 -#include "third_party/darts_clone/darts.h"
-+#include "include/darts.h"
++#include "darts_clone/include/darts.h"
  #include "util.h"
  
  namespace sentencepiece {
@@ -246,7 +246,7 @@ index aef5b53..fc14257 100644
 -#include "third_party/darts_clone/darts.h"
 +#include "absl/container/flat_hash_map.h"
 +#include "absl/strings/string_view.h"
-+#include "include/darts.h"
++#include "darts_clone/include/darts.h"
  #include "util.h"
  
  namespace sentencepiece {
@@ -280,7 +280,7 @@ index 100b875..1791bd1 100644
 +#include "absl/strings/match.h"
 +#include "absl/strings/string_view.h"
 +#include "absl/strings/strip.h"
-+#include "include/darts.h"
++#include "darts_clone/include/darts.h"
  #include "util.h"
  
  namespace sentencepiece {
@@ -295,7 +295,7 @@ index 622bbd2..1326102 100644
 -#include "third_party/absl/strings/string_view.h"
 -#include "third_party/darts_clone/darts.h"
 +#include "absl/strings/string_view.h"
-+#include "include/darts.h"
++#include "darts_clone/include/darts.h"
  #include "util.h"
  
  namespace sentencepiece {
@@ -688,7 +688,7 @@ index 448e489..9062f12 100644
  #include "model_interface.h"
  #include "sentencepiece_model.pb.h"
 -#include "third_party/darts_clone/darts.h"
-+#include "include/darts.h"
++#include "darts_clone/include/darts.h"
  
  namespace sentencepiece {
  namespace unigram {

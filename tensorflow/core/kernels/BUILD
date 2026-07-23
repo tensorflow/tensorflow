@@ -8024,17 +8024,10 @@ tf_cc_test(
     srcs = ["quantized_instance_norm_test.cc"],
     tags = ["no_mac_arm64"],
     deps = [
-        ":ops_testutil",
-        ":ops_util",
         ":quantized_ops",
         "//tensorflow/cc:cc_ops",
         "//tensorflow/cc:client_session",
-        "//tensorflow/core:core_cpu",
         "//tensorflow/core:direct_session",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core:test",
         "//tensorflow/core:testlib",
     ],
 )

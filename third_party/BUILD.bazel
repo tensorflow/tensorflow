@@ -3,4 +3,5 @@ licenses(["notice"])  # Apache 2.0
 exports_files([
     "darts_clone.BUILD",
     "cppitertools.BUILD",
+    "tensorflow_text.BUILD",
 ])
