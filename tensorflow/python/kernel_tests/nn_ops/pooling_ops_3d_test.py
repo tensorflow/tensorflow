@@ -292,6 +292,25 @@ class PoolingTest(test.TestCase):
     values = self.evaluate(max_pool_3d)
     self.assertEqual(values.shape, (0, 56, 56, 56, 64))
 
+  @test_util.run_deprecated_v1
+  def testMaxPool3DOutputWithZeroDim(self):
+    """Verifies the output shape of the max pooling function
+    which has one 0 dimension.
+    Args: none
+    """
+    with self.session() as sess:
+      input_data = np.ones([1, 6, 7, 4, 4], dtype=np.float32)
+      input_placeholder = array_ops.placeholder(
+          dtypes.float32, shape=[1, 6, 7, None, 4])
+      max_pool_3d = nn_ops.max_pool3d(
+          input=input_placeholder,
+          ksize=[1, 4, 5, 5, 1],
+          strides=[1, 3, 2, 1, 1],
+          padding="VALID",
+          data_format="NDHWC")
+      values = sess.run(max_pool_3d, feed_dict={input_placeholder: input_data})
+      self.assertEqual(values.shape, (1, 1, 2, 0, 4))
+
   # TODO(penporn): Determine if we will allow input_sizes[3] < ksize[3].
   def DISABLED_testAvgPool3dEmptyOutTensor(self):
     input_sizes = [30, 19, 4, 19, 17]
