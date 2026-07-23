@@ -246,6 +246,9 @@ struct ConvertStatsToQDQs : public OpRewritePattern<quantfork::StatisticsOp> {
           rmin = -rmax;
         }
         TensorRangeSanityCheck(op, rmin, rmax);
+        // Avoid quantization crashes from scales evaluating to infinity when
+        // JAX bounding values like `-jnp.inf` get captured in DRQ export ops.
+        if (!std::isfinite(rmin) || !std::isfinite(rmax)) return failure();
         mins.push_back(rmin);
         maxs.push_back(rmax);
       }
@@ -275,6 +278,7 @@ struct ConvertStatsToQDQs : public OpRewritePattern<quantfork::StatisticsOp> {
         rmin = -rmax;
       }
       TensorRangeSanityCheck(op, rmin, rmax);
+      if (!std::isfinite(rmin) || !std::isfinite(rmax)) return failure();
       quant_type =
           quantfork::fakeQuantAttrsToType(op.getLoc(), num_bits, rmin, rmax,
                                           narrow_range, expressed, is_signed);
