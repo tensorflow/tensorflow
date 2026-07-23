@@ -32,6 +32,7 @@ limitations under the License.
 #include "xla/literal_util.h"
 #include "xla/service/cpu/cpu_aot_compilation_result.h"
 #include "xla/service/cpu/cpu_aot_loader.h"
+#include "xla/service/cpu/executable.pb.h"
 #include "xla/service/platform_util.h"
 #include "xla/service/shaped_buffer.h"
 #include "xla/tsl/lib/core/status_test_util.h"
