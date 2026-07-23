@@ -17,12 +17,15 @@ limitations under the License.
 
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <memory>
+#include <numeric>
 #include <utility>
 #include <variant>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/algorithm/container.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/strings/string_view.h"
 #include "absl/time/time.h"
@@ -497,6 +500,78 @@ ENTRY entry_computation {
   EXPECT_THAT(tiled_runtime_data.block_level_parameters.output_tile_sizes[1],
               ElementsAre(16));
   EXPECT_EQ(tiled_runtime_data.block_level_parameters.num_warps, 1);
+}
+
+TEST_P(GpuIndexingPerformanceModelTest,
+       EstimateBestTiling_LoopPad_MaximizesTileSize) {
+  if (!use_experimental_tiling()) {
+    GTEST_SKIP() << "Symbolic tiling does not support pad.";
+  }
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+HloModule m
+
+fused_computation {
+  p0 = f32[3,4,599960]{2,1,0} parameter(0)
+  c = f32[] constant(0)
+  ROOT pad = f32[3,4,600064]{2,1,0} pad(p0, c), padding=0_0x0_0x0_104
+}
+
+ENTRY main {
+  p0 = f32[3,4,599960]{2,1,0} parameter(0)
+  ROOT fusion = f32[3,4,600064]{2,1,0} fusion(p0), kind=kLoop, calls=fused_computation
+}
+)"));
+  auto fusion_adaptor = HloFusionAdaptor::ForInstruction(
+      module->entry_computation()->root_instruction());
+
+  ASSERT_OK_AND_ASSIGN(
+      auto tiling_result,
+      indexing_cost_model_.TryFindBestTilingForFusion(*fusion_adaptor));
+  ASSERT_TRUE(std::holds_alternative<TiledRunTimeData>(tiling_result));
+  auto tiled_runtime_data = std::get<TiledRunTimeData>(tiling_result);
+
+  EXPECT_EQ(tiled_runtime_data.block_level_parameters.output_tile_sizes.size(),
+            1);
+  EXPECT_THAT(tiled_runtime_data.block_level_parameters.output_tile_sizes[0],
+              ::testing::AnyOf(ElementsAre(1, 4, 2048), ElementsAre(4, 4, 1024),
+                               ElementsAre(4, 2, 2048)));
+}
+
+TEST_P(GpuIndexingPerformanceModelTest,
+       EstimateBestTiling_PenalizesOversizedTiles) {
+  if (!use_experimental_tiling()) {
+    GTEST_SKIP() << "Symbolic tiling does not support pad.";
+  }
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+HloModule m
+
+fused_computation {
+  p0 = f32[1,3,2]{2,1,0} parameter(0)
+  c = f32[] constant(0)
+  ROOT pad = f32[4,3,2]{2,1,0} pad(p0, c), padding=0_3x0_0x0_0
+}
+
+ENTRY main {
+  p0 = f32[1,3,2]{2,1,0} parameter(0)
+  ROOT fusion = f32[4,3,2]{2,1,0} fusion(p0), kind=kLoop, calls=fused_computation
+}
+)"));
+  auto fusion_adaptor = HloFusionAdaptor::ForInstruction(
+      module->entry_computation()->root_instruction());
+
+  ASSERT_OK_AND_ASSIGN(
+      auto tiling_result,
+      indexing_cost_model_.TryFindBestTilingForFusion(*fusion_adaptor));
+  ASSERT_TRUE(std::holds_alternative<TiledRunTimeData>(tiling_result));
+  auto tiled_runtime_data = std::get<TiledRunTimeData>(tiling_result);
+
+  EXPECT_EQ(tiled_runtime_data.block_level_parameters.output_tile_sizes.size(),
+            1);
+  // We should not pick a tile size that's larger than necessary.
+  EXPECT_THAT(tiled_runtime_data.block_level_parameters.output_tile_sizes[0],
+              ElementsAre(4, 4, 2));
 }
 
 TEST_P(GpuIndexingPerformanceModelTest,
