@@ -359,7 +359,7 @@ GpuExecutableVaRemapAllocator::VaRemapExecutionScope::AllocateBuffer(
   return vmm_allocator_->Allocate(
       device_ordinal, mapping_size, /*retry_on_failure=*/true,
       /*memory_space=*/allocation.color(), remapping_->va_reservation.get(),
-      va_offset, mapping_size, /*return_reservation_address=*/true);
+      va_offset, mapping_size);
 }
 
 absl::StatusOr<se::DeviceAddressBase>

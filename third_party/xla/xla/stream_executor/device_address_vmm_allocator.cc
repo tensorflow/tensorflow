@@ -86,10 +86,9 @@ DeviceAddressVmmAllocator::AllocationRecord::AllocationRecord(
   CHECK_GT(raw_allocation_->address().size(), 0);
   switch (kind_) {
     case Kind::kAllocate:
-    case Kind::kAllocateAndMapReturnNewAddr:
       CHECK(allocator_address_reservation_ != nullptr);
       break;
-    case Kind::kAllocateAndMapReturnMapAddr:
+    case Kind::kAllocateAndMap:
       CHECK(allocator_address_reservation_ == nullptr);
       break;
   }
@@ -314,9 +313,9 @@ MemoryAllocation* DeviceAddressVmmAllocator::GetRawAllocation(
     return allocation_it->second->raw_allocation();
   }
 
-  // Reservation aliases created by Map() or by Allocate(...,
-  // return_reservation_address=false) share one index. Only active aliases are
-  // exposed; stale or already-unmapped aliases intentionally return nullptr.
+  // Reservation aliases created by Map() share one index. Only active aliases
+  // are exposed; stale or already-unmapped aliases intentionally return
+  // nullptr.
   auto reservation_it = state->reservation_records.find(addr.opaque());
   if (reservation_it != state->reservation_records.end() &&
       reservation_it->second->reservation_active() &&
@@ -413,35 +412,17 @@ DeviceAddressVmmAllocator::TrackAllocatorAddressMappedAllocation(
 std::optional<DeviceAddressBase>
 DeviceAddressVmmAllocator::TryReuseMappedAllocation(
     PerDeviceState& state, const MappedAllocateRequest& request) {
-  const bool separate_address =
-      request.mode == MappedAddressMode::kSeparateAllocatorAddress;
-  AllocationRecord* record;
-  if (separate_address) {
-    auto record_it =
-        state.reservation_records.find(request.reservation_address.opaque());
-    if (record_it == state.reservation_records.end()) {
-      return std::nullopt;
-    }
-    record = record_it->second;
-  } else {
-    auto record_it = state.records_by_allocator_address.find(
-        request.reservation_address.opaque());
-    if (record_it == state.records_by_allocator_address.end()) {
-      return std::nullopt;
-    }
-    record = record_it->second.get();
+  auto record_it = state.records_by_allocator_address.find(
+      request.reservation_address.opaque());
+  if (record_it == state.records_by_allocator_address.end()) {
+    return std::nullopt;
   }
+  AllocationRecord* record = record_it->second.get();
 
-  AllocationRecord::Kind expected_kind =
-      separate_address ? AllocationRecord::Kind::kAllocateAndMapReturnNewAddr
-                       : AllocationRecord::Kind::kAllocateAndMapReturnMapAddr;
-  bool address_matches =
-      separate_address
-          ? record->reservation_matches(request.reservation_address)
-          : record->allocator_matches(request.reservation_address);
-  if (record->kind() != expected_kind || !record->allocator_stale() ||
-      record->multi_device() != request.multi_device || !address_matches ||
-      (separate_address && !record->reservation_stale())) {
+  if (record->kind() != AllocationRecord::Kind::kAllocateAndMap ||
+      !record->allocator_stale() ||
+      record->multi_device() != request.multi_device ||
+      !record->allocator_matches(request.reservation_address)) {
     return std::nullopt;
   }
 
@@ -458,14 +439,7 @@ DeviceAddressVmmAllocator::TryReuseMappedAllocation(
 
   DeviceAddressBase reused_mem(record->allocator_key(), request.size);
   MoveAllocatorRecordToActive(state, *record, request.size);
-  if (separate_address) {
-    record->ReactivateReservation();
-  }
   ErasePendingDeallocationAt(state, pending_it);
-  if (separate_address) {
-    ErasePendingDeallocation(state, PendingDeallocationKind::kMap,
-                             request.reservation_address);
-  }
   return reused_mem;
 }
 
@@ -530,47 +504,18 @@ DeviceAddressVmmAllocator::CreateMappedAllocation(
   ASSIGN_OR_RETURN(auto raw_alloc, AllocatePhysicalWithinBudget(
                                        state, request.size, physical_size));
 
-  const bool separate_address =
-      request.mode == MappedAddressMode::kSeparateAllocatorAddress;
-  AllocationRecord::Kind kind =
-      AllocationRecord::Kind::kAllocateAndMapReturnMapAddr;
-  DeviceAddressBase allocator_address = request.reservation_address;
-  std::unique_ptr<MemoryReservation> allocator_address_reservation;
-  MemoryReservation::ScopedMapping allocator_address_mapping;
-
-  if (separate_address) {
-    kind = AllocationRecord::Kind::kAllocateAndMapReturnNewAddr;
-    ASSIGN_OR_RETURN(allocator_address_reservation,
-                     CreateReservation(state.executor, request.size));
-    allocator_address = DeviceAddressBase(
-        allocator_address_reservation->address().opaque(), request.size);
-    ASSIGN_OR_RETURN(allocator_address_mapping,
-                     allocator_address_reservation->MapTo(
-                         /*reservation_offset=*/0, /*allocation_offset=*/0,
-                         physical_size, *raw_alloc));
-  }
-
-  ASSIGN_OR_RETURN(auto reservation_address_mapping,
+  ASSIGN_OR_RETURN(auto allocator_address_mapping,
                    request.reservation->MapTo(request.reservation_offset,
                                               /*allocation_offset=*/0,
                                               request.size, *raw_alloc));
 
-  if (!separate_address) {
-    allocator_address_mapping = std::move(reservation_address_mapping);
-    reservation_address_mapping = MemoryReservation::ScopedMapping();
-  }
-  AllocationRecord& record = TrackAllocatorAddressMappedAllocation(
-      state, kind, allocator_address, std::move(raw_alloc),
-      std::move(allocator_address_reservation),
-      std::move(allocator_address_mapping), request.multi_device);
-  if (separate_address) {
-    record.AddActiveReservationAlias(std::move(reservation_address_mapping));
-    auto reservation_insert = state.reservation_records.emplace(
-        request.reservation_address.opaque(), &record);
-    CHECK(reservation_insert.second);
-  }
+  TrackAllocatorAddressMappedAllocation(
+      state, AllocationRecord::Kind::kAllocateAndMap,
+      request.reservation_address, std::move(raw_alloc),
+      /*reservation=*/nullptr, std::move(allocator_address_mapping),
+      request.multi_device);
 
-  return allocator_address;
+  return request.reservation_address;
 }
 
 // Reuses compatible pending state before trying a fresh allocation. On a
@@ -742,8 +687,7 @@ absl::StatusOr<ScopedDeviceAddress<uint8_t>>
 DeviceAddressVmmAllocator::Allocate(
     int device_ordinal, uint64_t allocation_size, bool /*retry_on_failure*/,
     int64_t /*memory_space*/, MemoryReservation* reservation,
-    uint64_t reservation_offset, uint64_t mapping_size,
-    bool return_reservation_address) {
+    uint64_t reservation_offset, uint64_t mapping_size) {
   if (allocation_size != mapping_size) {
     return absl::InvalidArgumentError(
         "allocation_size must equal mapping_size for mapped Allocate");
@@ -765,12 +709,9 @@ DeviceAddressVmmAllocator::Allocate(
       DeviceAddressBase reservation_address,
       ValidateReservationRange(reservation, reservation_offset, mapping_size));
 
-  const MappedAddressMode mode =
-      return_reservation_address ? MappedAddressMode::kReservationAddress
-                                 : MappedAddressMode::kSeparateAllocatorAddress;
-  const MappedAllocateRequest request{reservation,     reservation_address,
+  const MappedAllocateRequest request{reservation, reservation_address,
                                       allocation_size, reservation_offset,
-                                      multi_device,    mode};
+                                      multi_device};
 
   absl::MutexLock lock(state->mu);
   // Clang cannot propagate TryWithPendingReclaim's state.mu lock requirement
@@ -793,9 +734,8 @@ DeviceAddressVmmAllocator::Allocate(
       DeviceAddressBase result,
       TryWithPendingReclaim(*state, allocation_size, try_reuse, try_fresh));
 
-  // For return_reservation_address=true this is `reservation_address`; for
-  // return_reservation_address=false it is the allocator-owned address paired
-  // with the reservation mapping.
+  // `result` is the reservation slice, which acts as the allocator address for
+  // this allocation.
   return ScopedDeviceAddress<uint8_t>(result, device_ordinal, this);
 }
 
@@ -1235,24 +1175,22 @@ absl::Status DeviceAddressVmmAllocator::UnMap(int device_ordinal,
     return absl::OkStatus();
   }
 
-  // Map() and Allocate(..., return_reservation_address=false) record
-  // reservation mappings by the mapped reservation VA. Reconstruct the same
-  // reservation slice here so callers do not need to hold a ScopedMapping.
+  // Map() records reservation mappings by the mapped reservation VA.
+  // Reconstruct the same reservation slice here so callers do not need to hold
+  // a ScopedMapping.
   ASSIGN_OR_RETURN(
       DeviceAddressBase reservation_address,
       ValidateReservationRange(reservation, reservation_offset, size));
 
   absl::MutexLock lock(state->mu);
   // UnMap() only accepts the exact active reservation range previously created
-  // by Map() or Allocate(..., return_reservation_address=false). Allocator
-  // addresses and subranges are not valid UnMap() inputs.
+  // by Map(). Allocator addresses and subranges are not valid UnMap() inputs.
   auto reservation_it =
       state->reservation_records.find(reservation_address.opaque());
   if (reservation_it == state->reservation_records.end()) {
     return absl::NotFoundError(absl::StrFormat(
-        "UnMap() requires an exact active reservation range created by Map() "
-        "or Allocate(..., return_reservation_address=false): virtual address "
-        "%p (%uB)",
+        "UnMap() requires an exact active reservation range created by Map(): "
+        "virtual address %p (%uB)",
         reservation_address.opaque(), reservation_address.size()));
   }
   AllocationRecord* record = reservation_it->second;
@@ -1265,9 +1203,8 @@ absl::Status DeviceAddressVmmAllocator::UnMap(int device_ordinal,
           reservation_address.opaque(), reservation_address.size()));
     }
     return absl::NotFoundError(absl::StrFormat(
-        "UnMap() requires an exact active reservation range created by Map() "
-        "or Allocate(..., return_reservation_address=false): virtual address "
-        "%p (%uB)",
+        "UnMap() requires an exact active reservation range created by Map(): "
+        "virtual address %p (%uB)",
         reservation_address.opaque(), reservation_address.size()));
   }
   CHECK(record->reservation_active());
