@@ -438,22 +438,7 @@ BuildIdToLogicalBufferMap(
 }
 
 std::string GetMemorySpaceName(int color) {
-  switch (color) {
-    case 0:
-      return "default";
-    case 1:
-      return "vmem";
-    case 2:
-      return "smem";
-    case 3:
-      return "hbm";
-    case 4:
-      return "host";
-    case 5:
-      return "cmem";
-    default:
-      return absl::StrCat("color_", color);
-  }
+  return absl::StrCat("color_", color);
 }
 
 }  // namespace
