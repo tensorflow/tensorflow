@@ -254,22 +254,30 @@ AsyncThunkSequence ThunkEmitter::EmitCollectiveKernelThunk(
       NewModuleWithFusion(instr, HloInstruction::FusionKind::kLoop);
   HloFusionInstruction* fusion_instr = Cast<HloFusionInstruction>(
       fused_module->entry_computation()->root_instruction());
-  static constexpr bool kMultimemDisabled = false;
-  const bool should_flatten = [&](const HloInstruction* instr) {
+  // For both AllReduce and AllGather the kernel strategy is determined by the
+  // annotation written by CollectiveKernelStrategyAnnotator before scheduling.
+  // Reading the annotation uniformly avoids direct flag checks in the emitter.
+  const HloOpcode opcode = instr->opcode();
+  bool should_flatten = false;
+  bool is_collective_kernel_enabled = false;
+  if (auto gpu_config = instr->backend_config<GpuBackendConfig>();
+      gpu_config.ok()) {
+    is_collective_kernel_enabled = IsTritonCollectiveKernel(
+        gpu_config->collective_backend_config().kernel_strategy());
+  }
+  // For AllReduce two-shot, the fused module must be flattened to 1-D so
+  // Triton can assign contiguous subtiles to each rank.
+  if (opcode == HloOpcode::kAllReduce && is_collective_kernel_enabled) {
+    static constexpr bool kMultimemDisabled = false;
     const int64_t size_bytes =
         ShapeUtil::ElementsIn(instr->shape()) *
         primitive_util::ByteWidth(instr->shape().element_type());
     const bool has_rank_higher_than_1 =
         instr->shape().IsArray() && instr->shape().dimensions().size() > 1;
-    return has_rank_higher_than_1 &&
-           GetAllReduceStrategy(size_bytes, kMultimemDisabled) ==
-               se::gpu::AllReduceStrategy::kTwoShot;
-  }(instr);
-  bool is_collective_kernel_enabled =
-      instr->GetModule()
-          ->config()
-          .debug_options()
-          .xla_gpu_unsupported_use_all_reduce_one_shot_kernel();
+    should_flatten = has_rank_higher_than_1 &&
+                     GetAllReduceStrategy(size_bytes, kMultimemDisabled) ==
+                         se::gpu::AllReduceStrategy::kTwoShot;
+  }
   if (is_collective_kernel_enabled && should_flatten) {
     RETURN_IF_ERROR(FlattenCollectiveFusion(fusion_instr));
   }
@@ -2068,6 +2076,10 @@ AsyncThunkSequence ThunkEmitter::EmitCollectiveThunk(
     use_triton = IsTritonCollectiveKernel(
         gpu_config_status->collective_backend_config().kernel_strategy());
   }
+  // For AllGather the strategy is now determined by the annotation written
+  // by CollectiveKernelStrategyAnnotator.
+  // `use_triton` was already set above by reading the backend_config
+  // annotation.
   if (use_triton) {
     CollectiveConfig collective_config =
         GetCollectiveConfig(inst, use_global_device_ids);
