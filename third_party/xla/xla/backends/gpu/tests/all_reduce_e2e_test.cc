@@ -434,8 +434,11 @@ class AllReduceTest
  protected:
   DebugOptions GetDebugOptionsForTest() const override {
     DebugOptions opts = CollectiveOpsWithFlagsBase::GetDebugOptionsForTest();
-    opts.set_xla_gpu_unsupported_use_all_reduce_one_shot_kernel(
-        GetParam().use_all_reduce_one_shot_kernel);
+    opts.clear_xla_gpu_experimental_use_collective_kernels();
+    if (GetParam().use_all_reduce_one_shot_kernel) {
+      opts.add_xla_gpu_experimental_use_collective_kernels(
+          DebugOptions::COLLECTIVE_KERNEL_ALL_REDUCE);
+    }
     return opts;
   }
 };
@@ -450,8 +453,11 @@ class AllReduceTypesTest
  protected:
   DebugOptions GetDebugOptionsForTest() const override {
     DebugOptions opts = CollectiveOpsWithFlagsBase::GetDebugOptionsForTest();
-    opts.set_xla_gpu_unsupported_use_all_reduce_one_shot_kernel(
-        GetParam().use_all_reduce_one_shot_kernel);
+    opts.clear_xla_gpu_experimental_use_collective_kernels();
+    if (GetParam().use_all_reduce_one_shot_kernel) {
+      opts.add_xla_gpu_experimental_use_collective_kernels(
+          DebugOptions::COLLECTIVE_KERNEL_ALL_REDUCE);
+    }
     return opts;
   }
 };
@@ -495,7 +501,9 @@ class AllReduceLayoutAwareTest
  protected:
   DebugOptions GetDebugOptionsForTest() const override {
     DebugOptions opts = CollectiveOpsWithFlagsBase::GetDebugOptionsForTest();
-    opts.set_xla_gpu_unsupported_use_all_reduce_one_shot_kernel(true);
+    opts.clear_xla_gpu_experimental_use_collective_kernels();
+    opts.add_xla_gpu_experimental_use_collective_kernels(
+        DebugOptions::COLLECTIVE_KERNEL_ALL_REDUCE);
     return opts;
   }
 };

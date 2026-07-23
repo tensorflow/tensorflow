@@ -26,16 +26,22 @@ namespace xla {
 class GpuTopology;
 namespace gpu {
 
-// Annotates AllReduce / AllReduceStart instructions with the kernel strategy
-// that will be used at runtime (Triton one-shot, Triton two-shot, or NCCL
-// default), writing the result into
-// CollectiveBackendConfig::kernel_strategy.
+// Annotates collective instructions with the kernel strategy that will be used
+// at runtime, writing the result into CollectiveBackendConfig::kernel_strategy.
+//
+// Currently annotated opcodes:
+//   - AllReduce / AllReduceStart : Triton one-shot, Triton two-shot, or NCCL
+//     default depending on the shape and device topology.
+//   - AllGather                  : Triton one-shot when eligible, NCCL
+//     default otherwise.
 //
 // This pass must run BEFORE the latency-hiding scheduler so that
 // SolLatencyEstimator can apply the correct cost model for each collective.
 //
-// Only called when xla_gpu_unsupported_use_all_reduce_one_shot_kernel is true;
-// when the flag is off all AllReduces will keep the default NCCL annotation.
+// The pass is a no-op for a collective type unless the corresponding entry is
+// present in xla_gpu_experimental_use_collective_kernels (e.g.
+// COLLECTIVE_KERNEL_ALL_REDUCE for AllReduce,
+// COLLECTIVE_KERNEL_ALL_GATHER for AllGather).
 class CollectiveKernelStrategyAnnotator : public HloModulePass {
  public:
   // `gpu_topology`        : GpuTopology instance for which the compilation is
