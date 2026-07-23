@@ -75,9 +75,15 @@ constexpr char kCacheDataset[] = "CacheDataset";
 constexpr char kIncompleteCacheErrorMessage[] =
     "The calling iterator did not fully read the dataset being cached. In "
     "order to avoid unexpected truncation of the dataset, the partially cached "
-    "contents of the dataset  will be discarded. This can happen if you have "
-    "an input pipeline similar to `dataset.cache().take(k).repeat()`. You "
-    "should use `dataset.take(k).cache().repeat()` instead.";
+    "contents of the dataset will be discarded. This can happen if you have "
+    "an input pipeline similar to `dataset.cache().take(k).repeat()`, or if "
+    "downstream operations drop elements (e.g. `batch(drop_remainder=True)`). "
+    "You should use `dataset.take(k).cache().repeat()` instead, or ensure the "
+    "dataset size is a multiple of the batch size before caching. Another "
+    "common workaround is to place the `.cache()` operation after the "
+    "operation that drops elements (like `.batch(...)`), if caching the "
+    "transformed data is acceptable.";
+constexpr size_t kMaxItems = 10000000;  // 10 million
 }  // namespace
 
 class DatasetRandomAccessCache {
@@ -89,6 +95,10 @@ class DatasetRandomAccessCache {
   // out_tensors with the element at that index.
   absl::Status Get(OpKernelContext* ctx, int64_t index,
                    std::vector<Tensor>* out_tensors) {
+    if (index < 0) {
+      return absl::InvalidArgumentError(
+          absl::StrCat("Expected index >= 0; Received index: ", index));
+    }
     if (!iter_resource_) {
       TF_ASSIGN_OR_RETURN(iter_resource_,
                           GetIteratorResourceFromDataset(ctx, input_));
@@ -96,10 +106,6 @@ class DatasetRandomAccessCache {
     }
     if (index >= cache_.size()) {
       TF_RETURN_IF_ERROR(ExtendTempCacheToIndex(index, ctx));
-    }
-    if (index < 0) {
-      return absl::InvalidArgumentError(
-          absl::StrCat("Expected index >= 0; Received index: ", index));
     }
     *out_tensors = cache_.at(index);
     return absl::OkStatus();
@@ -153,9 +159,21 @@ class IteratorRandomAccessCache {
 
   absl::Status Get(AnyContext ctx, size_t element_position,
                    std::vector<Tensor>* out_tensors) {
+    if (element_position == std::numeric_limits<size_t>::max() ||
+        element_position >= cache_.max_size()) {
+      return absl::InvalidArgumentError(
+          absl::StrCat("Element position too large or invalid."));
+    }
+
     if (element_position < cache_.size() && !cache_[element_position].empty()) {
       *out_tensors = cache_[element_position];
       return absl::OkStatus();
+    }
+
+    if (element_position >= kMaxItems) {
+      return absl::InvalidArgumentError(
+          absl::StrCat("Requested element_position ", element_position, 
+                       " exceeds the maximum allowed cache size of ", kMaxItems));
     }
 
     TF_RETURN_IF_ERROR(input_->Get(ctx, element_position, out_tensors));
@@ -714,7 +732,6 @@ class CacheDatasetOp::FileDatasetBase : public DatasetBase {
   Env* const env_;
   const size_t num_tensors_;
   const size_t tensor_index_padding_size_;
-  static constexpr size_t kMaxItems = 10000000;  // 10 million
   const size_t item_index_padding_size_;
 };  // FileDatasetBase
 
