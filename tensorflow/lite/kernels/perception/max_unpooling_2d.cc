@@ -33,14 +33,24 @@ constexpr int kOutputTensor = 0;
 
 // TODO(b/175003241): Move this logic to lite/kernels/internal when promoting
 // this op to a builtin op.
-inline void MaxUnpooling(const RuntimeShape& input_shape,
-                         const float* input_data, const int32_t* indices_data,
-                         const RuntimeShape& output_shape, float* output_data) {
+inline TfLiteStatus MaxUnpooling(TfLiteContext* context,
+                                 const RuntimeShape& input_shape,
+                                 const float* input_data,
+                                 const int32_t* indices_data,
+                                 const RuntimeShape& output_shape,
+                                 float* output_data) {
   std::memset(output_data, 0, output_shape.FlatSize() * sizeof(float));
   const int batches = MatchingDim(input_shape, 0, output_shape, 0);
   const int depth = MatchingDim(input_shape, 3, output_shape, 3);
   const int batch_stride =
       output_shape.Dims(1) * output_shape.Dims(2) * output_shape.Dims(3);
+  const int input_count = input_shape.FlatSize();
+  for (int i = 0; i < input_count; ++i) {
+    const int32_t idx = indices_data[i];
+    TF_LITE_ENSURE_MSG(context, idx >= 0 && idx < batch_stride,
+                       "Invalid MaxUnpooling2D index.");
+  }
+
   for (int batch = 0; batch < batches; ++batch) {
     for (int in_y = 0; in_y < input_shape.Dims(1); ++in_y) {
       for (int in_x = 0; in_x < input_shape.Dims(2); ++in_x) {
@@ -53,6 +63,7 @@ inline void MaxUnpooling(const RuntimeShape& input_shape,
       }
     }
   }
+  return kTfLiteOk;
 }
 
 TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
@@ -115,10 +126,10 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   const TfLiteTensor* indices = GetInput(context, node, kIndicesTensor);
   TF_LITE_ENSURE(context, indices != nullptr);
 
-  MaxUnpooling(GetTensorShape(input), GetTensorData<float>(input),
-               GetTensorData<int32_t>(indices), GetTensorShape(output),
-               GetTensorData<float>(output));
-  return kTfLiteOk;
+  return MaxUnpooling(context, GetTensorShape(input),
+                      GetTensorData<float>(input),
+                      GetTensorData<int32_t>(indices), GetTensorShape(output),
+                      GetTensorData<float>(output));
 }
 
 }  // namespace max_unpooling_2d
