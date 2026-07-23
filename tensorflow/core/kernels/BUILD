@@ -6135,10 +6135,13 @@ tf_kernel_library(
     prefix = "parameterized_truncated_normal_op",
     deps = [
         ":stateless_random_ops",
-        "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+        "@eigen_archive//:eigen3",
     ],
 )
 
@@ -6148,13 +6151,14 @@ tf_cuda_cc_test(
     srcs = ["parameterized_truncated_normal_op_test.cc"],
     deps = [
         ":host_constant_op",
-        ":ops_util",
         ":parameterized_truncated_normal_op",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
+        "@com_google_absl//absl/status",
+        "@xla//xla/tsl/platform:status",
     ],
 )
 
