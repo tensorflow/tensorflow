@@ -152,7 +152,7 @@ class DatasetInitializerTest(test.TestCase):
     ds = dataset_ops.Dataset.from_tensor_slices(
         ["apple", "banana", "orange"])
     with self.assertRaisesRegex(
-        ValueError, "vocab_size"):
+        ValueError, "is larger than the known dataset cardinality"):
       lookup_ops.index_table_from_dataset(ds, vocab_size=1000)
 
   def test_table_from_dataset_oversized_vocab_size(self):
@@ -160,7 +160,7 @@ class DatasetInitializerTest(test.TestCase):
     values = dataset_ops.Dataset.from_tensor_slices(["two", "three", "four"])
     ds = dataset_ops.Dataset.zip((keys, values))
     with self.assertRaisesRegex(
-        ValueError, "vocab_size"):
+        ValueError, "is larger than the known dataset cardinality"):
       lookup_ops.table_from_dataset(
           ds, vocab_size=1000, default_value="n/a", key_dtype=dtypes.int64)
 
@@ -168,7 +168,8 @@ class DatasetInitializerTest(test.TestCase):
     keys = dataset_ops.Dataset.from_tensor_slices([2, 3, 4])
     values = dataset_ops.Dataset.from_tensor_slices(["two", "three", "four"])
     ds = dataset_ops.Dataset.zip((keys, values))
-    with self.assertRaisesRegex(ValueError, "vocab_size"):
+    with self.assertRaisesRegex(
+        ValueError, "exceeds the maximum safe value"):
       lookup_ops.table_from_dataset(
           ds, vocab_size=sys.maxsize, default_value="n/a",
           key_dtype=dtypes.int64)
@@ -179,7 +180,8 @@ class DatasetInitializerTest(test.TestCase):
     values = dataset_ops.Dataset.from_tensor_slices(
         ["two", "three", "four"]).filter(lambda x: True)
     ds = dataset_ops.Dataset.zip((keys, values))
-    with self.assertRaisesRegex(ValueError, "vocab_size"):
+    with self.assertRaisesRegex(
+        ValueError, "exceeds the maximum safe value"):
       lookup_ops.table_from_dataset(
           ds, vocab_size=sys.maxsize, default_value="n/a",
           key_dtype=dtypes.int64)
