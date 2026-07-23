@@ -467,7 +467,6 @@ def lit_test(
         lib_dir = lib_dir,
         deps = if_cuda_is_configured([
             "//xla/stream_executor/cuda:all_runtime",
-            "//xla/tsl/cuda:nvshmem_stub",
         ]) + if_nccl([
             "//xla/tsl/cuda:nccl",
         ]),
