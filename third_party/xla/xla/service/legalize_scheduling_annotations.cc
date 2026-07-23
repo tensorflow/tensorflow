@@ -503,10 +503,12 @@ bool LegalizeSchedulingAnnotations::RemoveTrivialGroups(
                                        annotated_instructions.begin(),
                                        annotated_instructions.end());
     }
-    // Remove the groups without any async operations across all computations.
+    // Remove the groups without any async operations nor TPU custom calls
+    // across all computations.
     if (absl::c_none_of(instructions_across_comps, [](HloInstruction* instr) {
           return IsSupportedAsyncOp(instr, /*supports_async_start=*/true,
-                                    /*check_sync_versions=*/true);
+                                    /*check_sync_versions=*/true) ||
+                 instr->IsCustomCall("tpu_custom_call");
         })) {
       for (HloInstruction* instr : instructions_across_comps) {
         VLOG(1) << "Removing group id: " << group_id

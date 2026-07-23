@@ -1105,6 +1105,32 @@ HloModule module, is_scheduled=true
 
 ENTRY %main.1 {
   %Arg_0.1 = f32[8,128]{1,0} parameter(0)
+  %add.1 = f32[8,128]{1,0} add(%Arg_0.1, %Arg_0.1), frontend_attributes={_scheduling_group_id="0"}
+  ROOT %mul.1 = f32[8,128]{1,0} multiply(%add.1, %Arg_0.1), frontend_attributes={_scheduling_group_id="0"}
+}
+)";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
+                       ParseAndReturnVerifiedModule(hlo_string));
+  LegalizeSchedulingAnnotations::Config config;
+  config.keep_sync_annotation = [](const HloInstruction* instr) {
+    return false;
+  };
+
+  auto result = LegalizeSchedulingAnnotations(config).Run(hlo_module.get());
+  EXPECT_OK(result);
+  VLOG(1) << "module after: " << hlo_module->ToString();
+  HloInstruction* add = FindInstruction(hlo_module.get(), "add.1");
+  HloInstruction* mul = FindInstruction(hlo_module.get(), "mul.1");
+  EXPECT_FALSE(GetSchedulingAnnotation(add).value());
+  EXPECT_FALSE(GetSchedulingAnnotation(mul).value());
+}
+
+TEST_F(LegalizeSchedulingAnnotationsTest, RetainTpuCustomCallGroups) {
+  absl::string_view hlo_string = R"(
+HloModule module, is_scheduled=true
+
+ENTRY %main.1 {
+  %Arg_0.1 = f32[8,128]{1,0} parameter(0)
   %custom-call.2 = f32[8,128]{1,0} custom-call(%Arg_0.1), custom_call_target="tpu_custom_call", frontend_attributes={_scheduling_group_id="0"}
   %add.1 = f32[8,128]{1,0} add(%custom-call.2, %custom-call.2), frontend_attributes={_scheduling_group_id="0"}
   ROOT %custom-call.3 = f32[8,128]{1,0} custom-call(%add.1), custom_call_target="tpu_custom_call", frontend_attributes={_scheduling_group_id="0"}
@@ -1113,17 +1139,17 @@ ENTRY %main.1 {
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
                        ParseAndReturnVerifiedModule(hlo_string));
   LegalizeSchedulingAnnotations::Config config;
-  config.keep_sync_annotation = [](const HloInstruction* instr) {
-    return instr->opcode() == HloOpcode::kCustomCall;
-  };
+  config.propagate_annotation = true;
 
   auto result = LegalizeSchedulingAnnotations(config).Run(hlo_module.get());
-  EXPECT_IS_OK(result);
+  EXPECT_OK(result);
   VLOG(1) << "module after: " << hlo_module->ToString();
   HloInstruction* cc1 = FindInstruction(hlo_module.get(), "custom-call.2");
+  HloInstruction* add = FindInstruction(hlo_module.get(), "add.1");
   HloInstruction* cc2 = FindInstruction(hlo_module.get(), "custom-call.3");
-  EXPECT_FALSE(GetSchedulingAnnotation(cc1).value());
-  EXPECT_FALSE(GetSchedulingAnnotation(cc2).value());
+  EXPECT_TRUE(GetSchedulingAnnotation(cc1).value());
+  EXPECT_TRUE(GetSchedulingAnnotation(add).value());
+  EXPECT_TRUE(GetSchedulingAnnotation(cc2).value());
 }
 }  // namespace
 }  // namespace xla
