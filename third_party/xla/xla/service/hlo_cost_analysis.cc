@@ -16,6 +16,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <cmath>
+#include <cstddef>
 #include <cstdint>
 #include <functional>
 #include <limits>
@@ -23,13 +24,18 @@ limitations under the License.
 #include <optional>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/hash/hash.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/match.h"
+#include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
+#include "absl/strings/strip.h"
 #include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -191,6 +197,16 @@ absl::Status HloCostAnalysis::HandleElementwiseOp(
     current_properties_[kFlopsKey] = computation_count;
   }
   return absl::OkStatus();
+}
+
+/*static*/ float HloCostAnalysis::GetPropertyForHlo(
+    const HloInstruction& hlo, const PropertyKey& key,
+    const HloToProperties& hlo_to_properties) {
+  auto it = hlo_to_properties.find(&hlo);
+  if (it == hlo_to_properties.end()) {
+    return 0.0f;
+  }
+  return it->second[key];
 }
 
 /*static*/ float HloCostAnalysis::GetPropertyForHlo(
@@ -1542,17 +1558,17 @@ constexpr T saturate_cast(U f) {
 
 int64_t HloCostAnalysis::flop_count(const HloInstruction& hlo) const {
   return saturate_cast<int64_t>(
-      GetPropertyForHlo(hlo, kFlopsKey, hlo_properties_));
+      GetPropertyForHlo(hlo, {kFlops}, hlo_properties_));
 }
 
 int64_t HloCostAnalysis::transcendental_count(const HloInstruction& hlo) const {
   return saturate_cast<int64_t>(
-      GetPropertyForHlo(hlo, kTranscendentalsKey, hlo_properties_));
+      GetPropertyForHlo(hlo, {kTranscendentals}, hlo_properties_));
 }
 
 int64_t HloCostAnalysis::bytes_accessed(const HloInstruction& hlo) const {
   return saturate_cast<int64_t>(
-      GetPropertyForHlo(hlo, kBytesAccessedKey, hlo_properties_));
+      GetPropertyForHlo(hlo, {kBytesAccessed}, hlo_properties_));
 }
 
 int64_t HloCostAnalysis::operand_bytes_accessed(const HloInstruction& hlo,
@@ -1576,7 +1592,7 @@ int64_t HloCostAnalysis::output_bytes_accessed(const HloInstruction& hlo,
 }
 
 float HloCostAnalysis::optimal_seconds(const HloInstruction& hlo) const {
-  return GetPropertyForHlo(hlo, kOptimalSecondsKey, hlo_properties_);
+  return GetPropertyForHlo(hlo, {kOptimalSeconds}, hlo_properties_);
 }
 
 int64_t HloCostAnalysis::GetBytesRead(
@@ -1634,19 +1650,172 @@ std::unique_ptr<HloCostAnalysis> HloCostAnalysis::CreateNestedCostAnalysis() {
   return std::make_unique<HloCostAnalysis>(options_);
 }
 
-/*static*/ std::string HloCostAnalysis::GetOperandBytesAccessedKey(
-    int64_t operand_num, const ShapeIndex& index) {
-  return absl::StrCat(kBytesAccessedKey, operand_num, index.ToString());
+/*static*/ HloCostAnalysis::PropertyKey
+HloCostAnalysis::GetOperandBytesAccessedKey(int64_t operand_num,
+                                            const ShapeIndex& index) {
+  PropertyKey key;
+  key.push_back(static_cast<int32_t>(kOperandBytesAccessed));
+  key.push_back(static_cast<int32_t>(operand_num));
+  for (int64_t val : index) {
+    key.push_back(static_cast<int32_t>(val));
+  }
+  return key;
 }
 
-/*static*/ std::string HloCostAnalysis::GetOperandUtilizationKey(
-    int64_t operand_num, const ShapeIndex& index) {
-  return absl::StrCat(kUtilizationKey, operand_num, index.ToString());
+/*static*/ HloCostAnalysis::PropertyKey
+HloCostAnalysis::GetOperandUtilizationKey(int64_t operand_num,
+                                          const ShapeIndex& index) {
+  PropertyKey key;
+  key.push_back(static_cast<int32_t>(kOperandUtilization));
+  key.push_back(static_cast<int32_t>(operand_num));
+  for (int64_t val : index) {
+    key.push_back(static_cast<int32_t>(val));
+  }
+  return key;
 }
 
-/*static*/ std::string HloCostAnalysis::GetOutputBytesAccessedKey(
-    const ShapeIndex& index) {
-  return absl::StrCat(kBytesAccessedKey, "out", index.ToString());
+/*static*/ HloCostAnalysis::PropertyKey
+HloCostAnalysis::GetOutputBytesAccessedKey(const ShapeIndex& index) {
+  PropertyKey key;
+  key.push_back(static_cast<int32_t>(kOutputBytesAccessed));
+  for (int64_t val : index) {
+    key.push_back(static_cast<int32_t>(val));
+  }
+  return key;
+}
+
+bool ParseOperandKey(absl::string_view property, absl::string_view prefix,
+                     int64_t& operand, ShapeIndex& index) {
+  if (!absl::ConsumePrefix(&property, prefix)) {
+    return false;
+  }
+  if (absl::ConsumePrefix(&property, "out")) {
+    operand = -1;
+  } else {
+    size_t brace_pos = property.find('{');
+    if (brace_pos == absl::string_view::npos) {
+      return false;
+    }
+    if (!absl::SimpleAtoi(property.substr(0, brace_pos), &operand)) {
+      return false;
+    }
+    property.remove_prefix(brace_pos);
+  }
+  if (!absl::ConsumePrefix(&property, "{") ||
+      !absl::ConsumeSuffix(&property, "}")) {
+    return false;
+  }
+  index.clear();
+  if (property.empty()) {
+    return true;
+  }
+  std::vector<absl::string_view> parts = absl::StrSplit(property, ',');
+  for (absl::string_view part : parts) {
+    int64_t val;
+    if (!absl::SimpleAtoi(part, &val)) {
+      return false;
+    }
+    index.push_back(val);
+  }
+  return true;
+}
+
+HloCostAnalysis::PropertyKey ToPropertyKey(absl::string_view property) {
+  if (property == HloCostAnalysis::kFlopsKey) {
+    return {HloCostAnalysis::kFlops};
+  }
+  if (property == HloCostAnalysis::kTranscendentalsKey) {
+    return {HloCostAnalysis::kTranscendentals};
+  }
+  if (property == HloCostAnalysis::kBytesAccessedKey) {
+    return {HloCostAnalysis::kBytesAccessed};
+  }
+  if (property == HloCostAnalysis::kOptimalSecondsKey) {
+    return {HloCostAnalysis::kOptimalSeconds};
+  }
+  if (property == HloCostAnalysis::kUtilizationKey) {
+    return {HloCostAnalysis::kUtilization};
+  }
+
+  int64_t operand = -1;
+  ShapeIndex index;
+  if (ParseOperandKey(property, "bytes accessed", operand, index)) {
+    if (operand == -1) {
+      return HloCostAnalysis::GetOutputBytesAccessedKey(index);
+    }
+    return HloCostAnalysis::GetOperandBytesAccessedKey(operand, index);
+  }
+  if (ParseOperandKey(property, "utilization", operand, index)) {
+    return HloCostAnalysis::GetOperandUtilizationKey(operand, index);
+  }
+
+  // For custom keys, use a hash of the string.
+  // Note: In theory, this does not prevent collisions, but makes them highly
+  // unlikely (as there are very few non-adversarially chosen strings).
+  uint64_t hash = absl::HashOf(property);
+  return {HloCostAnalysis::kCustomKey, static_cast<int32_t>(hash & 0xFFFFFFFF),
+          static_cast<int32_t>((hash >> 32) & 0xFFFFFFFF)};
+}
+
+std::string HloCostAnalysis::Properties::PropertyKeyToString(
+    const HloCostAnalysis::PropertyKey& key) {
+  if (key.empty()) {
+    return "";
+  }
+  switch (key[0]) {
+    case HloCostAnalysis::kFlops:
+      return std::string(HloCostAnalysis::kFlopsKey);
+    case HloCostAnalysis::kTranscendentals:
+      return std::string(HloCostAnalysis::kTranscendentalsKey);
+    case HloCostAnalysis::kBytesAccessed:
+      return std::string(HloCostAnalysis::kBytesAccessedKey);
+    case HloCostAnalysis::kOptimalSeconds:
+      return std::string(HloCostAnalysis::kOptimalSecondsKey);
+    case HloCostAnalysis::kUtilization:
+      return std::string(HloCostAnalysis::kUtilizationKey);
+    case HloCostAnalysis::kOperandUtilization: {
+      ShapeIndex idx;
+      for (size_t i = 2; i < key.size(); ++i) {
+        idx.push_back(static_cast<int64_t>(key[i]));
+      }
+      return absl::StrCat(HloCostAnalysis::kUtilizationKey, key[1],
+                          idx.ToString());
+    }
+    case HloCostAnalysis::kOperandBytesAccessed: {
+      ShapeIndex idx;
+      for (size_t i = 2; i < key.size(); ++i) {
+        idx.push_back(static_cast<int64_t>(key[i]));
+      }
+      return absl::StrCat(HloCostAnalysis::kBytesAccessedKey, key[1],
+                          idx.ToString());
+    }
+    case HloCostAnalysis::kOutputBytesAccessed: {
+      ShapeIndex idx;
+      for (size_t i = 1; i < key.size(); ++i) {
+        idx.push_back(static_cast<int64_t>(key[i]));
+      }
+      return absl::StrCat(HloCostAnalysis::kBytesAccessedKey, "out",
+                          idx.ToString());
+    }
+    case HloCostAnalysis::kReserved0:
+      return std::string(HloCostAnalysis::kReserved0Key);
+    default:
+      return "";
+  }
+}
+
+float& HloCostAnalysis::Properties::GetPropertySlow(
+    absl::string_view property) {
+  return named_props_[ToPropertyKey(property)];
+}
+
+float HloCostAnalysis::Properties::GetPropertySlow(
+    absl::string_view property) const {
+  auto it = named_props_.find(ToPropertyKey(property));
+  if (it != named_props_.end()) {
+    return it->second;
+  }
+  return 0;
 }
 
 bool HloCostAnalysis::KeyToCopyFromSubcomputation(absl::string_view key) const {

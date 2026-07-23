@@ -23,9 +23,11 @@ limitations under the License.
 #include <string>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/inlined_vector.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
+#include "absl/strings/string_view.h"
 #include "xla/hlo/ir/dfs_hlo_visitor.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -41,6 +43,23 @@ namespace xla {
 // operations separately from transcendental operations.
 class HloCostAnalysis : public ConstDfsHloVisitor {
  public:
+  // ShapeIndex uses int64_t, but its indices should fit in int32_t. For
+  // compile time performance, we use int32_t here.
+  using PropertyKey = absl::InlinedVector<int32_t, 4>;
+
+  enum PropertyKind : int32_t {
+    kFlops = 0,
+    kTranscendentals = 1,
+    kBytesAccessed = 2,
+    kOptimalSeconds = 3,
+    kUtilization = 4,
+    kOperandUtilization = 5,
+    kOperandBytesAccessed = 6,
+    kOutputBytesAccessed = 7,
+    kReserved0 = 8,
+    kCustomKey = 9
+  };
+
   static inline constexpr absl::string_view kFlopsKey = "flops";
   static inline constexpr absl::string_view kTranscendentalsKey =
       "transcendentals";
@@ -101,13 +120,7 @@ class HloCostAnalysis : public ConstDfsHloVisitor {
           operand0_bytes_accessed_(0),
           operand1_bytes_accessed_(0),
           output_root_bytes_accessed_(0),
-          reserved0_(0) {
-      DCHECK_EQ(kOperand0UtilizationKey, GetOperandUtilizationKey(0, {}));
-      DCHECK_EQ(kOperand1UtilizationKey, GetOperandUtilizationKey(1, {}));
-      DCHECK_EQ(kOperand0BytesAccessedKey, GetOperandBytesAccessedKey(0, {}));
-      DCHECK_EQ(kOperand1BytesAccessedKey, GetOperandBytesAccessedKey(1, {}));
-      DCHECK_EQ(kOutputRootBytesAccessedKey, GetOutputBytesAccessedKey({}));
-    }
+          reserved0_(0) {}
 
     float& operator[](absl::string_view property) {
       if (property == kFlopsKey) {
@@ -144,10 +157,7 @@ class HloCostAnalysis : public ConstDfsHloVisitor {
         return reserved0_;
       }
 
-      auto it = named_props_.lazy_emplace(property, [&](const auto& ctor) {
-        ctor(std::string(property), 0.f);
-      });
-      return it->second;
+      return GetPropertySlow(property);
     }
 
     float operator[](absl::string_view property) const {
@@ -185,11 +195,66 @@ class HloCostAnalysis : public ConstDfsHloVisitor {
         return reserved0_;
       }
 
-      auto it = named_props_.find(property);
+      return GetPropertySlow(property);
+    }
+
+   private:
+    template <typename Self>
+    static auto* GetPropertyAddress(Self& self, const PropertyKey& key) {
+      if (key.size() == 1) {
+        switch (key[0]) {
+          case kFlops:
+            return &self.flops_;
+          case kTranscendentals:
+            return &self.transcendentals_;
+          case kBytesAccessed:
+            return &self.bytes_accessed_;
+          case kOptimalSeconds:
+            return &self.optimal_seconds_;
+          case kUtilization:
+            return &self.utilization_;
+          case kOutputBytesAccessed:
+            return &self.output_root_bytes_accessed_;
+          case kReserved0:
+            return &self.reserved0_;
+        }
+      } else if (key.size() == 2) {
+        if (key[0] == kOperandBytesAccessed) {
+          if (key[1] == 0) {
+            return &self.operand0_bytes_accessed_;
+          }
+          if (key[1] == 1) {
+            return &self.operand1_bytes_accessed_;
+          }
+        } else if (key[0] == kOperandUtilization) {
+          if (key[1] == 0) {
+            return &self.operand0_utilization_;
+          }
+          if (key[1] == 1) {
+            return &self.operand1_utilization_;
+          }
+        }
+      }
+      return static_cast<decltype(&self.flops_)>(nullptr);
+    }
+
+   public:
+    float& operator[](const PropertyKey& key) {
+      if (float* ptr = GetPropertyAddress(*this, key)) {
+        return *ptr;
+      }
+      return named_props_[key];
+    }
+
+    float operator[](const PropertyKey& key) const {
+      if (const float* ptr = GetPropertyAddress(*this, key)) {
+        return *ptr;
+      }
+      auto it = named_props_.find(key);
       if (it != named_props_.end()) {
         return it->second;
       }
-      return 0;
+      return 0.f;
     }
 
     template <typename Fn>
@@ -229,7 +294,7 @@ class HloCostAnalysis : public ConstDfsHloVisitor {
       }
       for (const auto& [k, v] : named_props_) {
         if (v != 0) {
-          fn(k, v);
+          fn(PropertyKeyToString(k), v);
         }
       }
     }
@@ -240,7 +305,7 @@ class HloCostAnalysis : public ConstDfsHloVisitor {
     // Getters/setters for more complex properties like operand utilization,
     // where we have a fastpath, e.g., operand 0/1 + shape_index {}.
     float operand_utilization(int64_t operand,
-                              const ShapeIndex& shape_index = {}) {
+                              const ShapeIndex& shape_index = {}) const {
       if (operand == 0 && shape_index.empty()) {
         return operand0_utilization_;
       }
@@ -270,7 +335,7 @@ class HloCostAnalysis : public ConstDfsHloVisitor {
     }
 
     float operand_bytes_accessed(int64_t operand,
-                                 const ShapeIndex& shape_index = {}) {
+                                 const ShapeIndex& shape_index = {}) const {
       if (operand == 0 && shape_index.empty()) {
         return operand0_bytes_accessed_;
       }
@@ -300,7 +365,7 @@ class HloCostAnalysis : public ConstDfsHloVisitor {
       }
     }
 
-    float output_bytes_accessed(const ShapeIndex& shape_index = {}) {
+    float output_bytes_accessed(const ShapeIndex& shape_index = {}) const {
       if (shape_index.empty()) {
         return output_root_bytes_accessed_;
       }
@@ -341,12 +406,17 @@ class HloCostAnalysis : public ConstDfsHloVisitor {
           output_root_bytes_accessed_, reserved0_);
       if (print_named_properties) {
         for (const auto& [k, v] : named_props_) {
-          absl::StrAppend(&string, absl::StrFormat(" %s: %f\n", k, v));
+          absl::StrAppend(
+              &string, absl::StrFormat(" %s: %f\n", PropertyKeyToString(k), v));
         }
       }
       absl::StrAppend(&string, "}");
       return string;
     }
+
+    float& GetPropertySlow(absl::string_view property);
+    float GetPropertySlow(absl::string_view property) const;
+    static std::string PropertyKeyToString(const PropertyKey& key);
 
    private:
     // These must match GetOperandUtilizationKey(0, {}) etc.
@@ -378,7 +448,7 @@ class HloCostAnalysis : public ConstDfsHloVisitor {
     // Field reserved for use by subclasses.
     float reserved0_;
 
-    absl::flat_hash_map<std::string, float> named_props_;
+    absl::flat_hash_map<PropertyKey, float> named_props_;
   };
 
   // shape_size is a function which returns the size in bytes of the top-level
@@ -619,11 +689,11 @@ class HloCostAnalysis : public ConstDfsHloVisitor {
 
   // Return the key that is used to index into Properties for the specified
   // input/output at the shape index.
-  static std::string GetOperandBytesAccessedKey(int64_t operand_num,
+  static PropertyKey GetOperandBytesAccessedKey(int64_t operand_num,
                                                 const ShapeIndex& index = {});
-  static std::string GetOperandUtilizationKey(int64_t operand_num,
+  static PropertyKey GetOperandUtilizationKey(int64_t operand_num,
                                               const ShapeIndex& index = {});
-  static std::string GetOutputBytesAccessedKey(const ShapeIndex& index = {});
+  static PropertyKey GetOutputBytesAccessedKey(const ShapeIndex& index = {});
 
   // Returns the estimated convolution flops.
   virtual int64_t GetConvolutionFlops(const HloInstruction* convolution);
@@ -696,6 +766,9 @@ class HloCostAnalysis : public ConstDfsHloVisitor {
   // Returns 0.0f if the hlo is not present in hlo_to_properties or if the key
   // is not present in hlo_to_properties[hlo]. Otherwise, returns the value that
   // the key maps to in the properties of the given hlo.
+  static float GetPropertyForHlo(const HloInstruction& hlo,
+                                 const PropertyKey& key,
+                                 const HloToProperties& hlo_to_properties);
   static float GetPropertyForHlo(const HloInstruction& hlo,
                                  absl::string_view key,
                                  const HloToProperties& hlo_to_properties);
