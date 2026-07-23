@@ -793,7 +793,6 @@ BUILTIN_KERNEL_DEPS = [
     "//tensorflow/lite/kernels/internal:common",
     "//tensorflow/lite/kernels/internal:compatibility",
     "//tensorflow/lite/kernels/internal:cpu_check",
-    "//tensorflow/lite/kernels/internal:float8",
     "//tensorflow/lite/kernels/internal:kernel_utils",
     "//tensorflow/lite/kernels/internal:optimized_base",
     "//tensorflow/lite/kernels/internal:portable_tensor_utils",
