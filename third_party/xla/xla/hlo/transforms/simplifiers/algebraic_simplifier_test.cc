@@ -3213,7 +3213,8 @@ TEST_F(AlgebraicSimplifierTest, ZeroSizedConvolution) {
   dim->set_window_reversal(false);
   // Create add computation.
   builder.AddInstruction(HloInstruction::CreateConvolve(
-      ShapeUtil::MakeShape(F32, {3, 3, 3}), lhs, rhs, /*feature_group_count=*/1,
+      ShapeUtil::MakeShape(F32, {3, 3, 3}), {lhs, rhs},
+      /*feature_group_count=*/1,
       /*batch_group_count=*/1, window, dnums, DefaultPrecisionConfig(2),
       SparsityConfig()));
   m->AddEntryComputationWithLayouts(builder.Build());
@@ -6210,7 +6211,7 @@ TEST_P(ConvInputPaddingTest, DoTest) {
           /*sparsity_config=*/SparsityConfig(),
           /*preferred_element_type=*/std::nullopt)
           .value(),
-      lhs_pad, filter, /*feature_group_count=*/1, /*batch_group_count=*/1,
+      {lhs_pad, filter}, /*feature_group_count=*/1, /*batch_group_count=*/1,
       window, dnums, DefaultPrecisionConfig(2), SparsityConfig()));
   auto module = CreateNewVerifiedModule();
   module->AddEntryComputationWithLayouts(builder.Build());
@@ -6329,7 +6330,7 @@ TEST_P(ConvFilterPaddingTest, DoIt) {
           /*sparsity_config=*/SparsityConfig(),
           /*preferred_element_type=*/std::nullopt)
           .value(),
-      input, rhs_pad, /*feature_group_count=*/1, /*batch_group_count=*/1,
+      {input, rhs_pad}, /*feature_group_count=*/1, /*batch_group_count=*/1,
       window, dnums, precision_config));
 
   auto module = CreateNewVerifiedModule();
@@ -6482,7 +6483,7 @@ TEST_F(AlgebraicSimplifierTest, ConvertConvToMatmul) {
     }
 
     b.AddInstruction(HloInstruction::CreateConvolve(
-        out_shape, input, filter,
+        out_shape, {input, filter},
         /*feature_group_count=*/1, /*batch_group_count=*/1, window, dnums,
         DefaultPrecisionConfig(2)));
 
@@ -6683,7 +6684,7 @@ struct ConvTestOptions {
     HloInstruction* kernel = b.AddInstruction(
         HloInstruction::CreateParameter(1, kernel_shape, "kernel"));
     b.AddInstruction(HloInstruction::CreateConvolve(
-        inferred_shape, input, kernel, feature_group_count,
+        inferred_shape, {input, kernel}, feature_group_count,
         /*batch_group_count=*/1, window, dnums,
         HloHardwareIndependentTestBase::DefaultPrecisionConfig(2)));
     return b.Build();

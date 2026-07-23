@@ -90,7 +90,7 @@ namespace xla {
   V(kConditional, "conditional", kHloOpcodeIsVariadic)                         \
   V(kConstant, "constant", 0)                                                  \
   V(kConvert, "convert", 1)                                                    \
-  V(kConvolution, "convolution", 2)                                            \
+  V(kConvolution, "convolution", kHloOpcodeIsVariadic)                         \
   V(kCopy, "copy", 1)                                                          \
   V(kCopyDone, "copy-done", 1)                                                 \
   V(kCopyStart, "copy-start", 1)                                               \

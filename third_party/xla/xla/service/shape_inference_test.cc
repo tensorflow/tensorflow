@@ -738,8 +738,7 @@ TEST_F(ShapeInferenceTest, ConvolveWithBaseDilation) {
       ShapeInference::InferConvolveShape(
           lhs_shape, rhs_shape, /*feature_group_count=*/1,
           /*batch_group_count=*/1, window, dnums,
-          /*sparsity_config=*/SparsityConfig(),
-          /*preferred_element_type=*/std::nullopt);
+          /*sparsity_config=*/{}, /*preferred_element_type=*/std::nullopt);
   ASSERT_IS_OK(inferred_shape.status());
   ASSERT_TRUE(ShapeUtil::Equal(ShapeUtil::MakeShape(F32, {10, 12, 4, 9}),
                                *inferred_shape));
@@ -778,8 +777,8 @@ TEST_F(ShapeInferenceTest, ConvolveDimensionNumbersOverlapError) {
   const absl::StatusOr<Shape> inferred_shape =
       ShapeInference::InferConvolveShape(
           lhs_shape, rhs_shape, /*feature_group_count=*/1,
-          /*batch_group_count=*/1, window, dnums, SparsityConfig(),
-          /*preferred_element_type=*/std::nullopt);
+          /*batch_group_count=*/1, window, dnums,
+          /*sparsity_config=*/{}, /*preferred_element_type=*/std::nullopt);
   ASSERT_FALSE(inferred_shape.ok());
   ASSERT_THAT(inferred_shape.status().message(),
               HasSubstr("each dimension exactly once"));
@@ -817,8 +816,8 @@ TEST_F(ShapeInferenceTest, ConvolveBatchGroupCountUnequalOutputFeature) {
   const absl::StatusOr<Shape> inferred_shape =
       ShapeInference::InferConvolveShape(
           lhs_shape, rhs_shape, /*feature_group_count=*/1,
-          /*batch_group_count=*/6, window, dnums, SparsityConfig(),
-          /*preferred_element_type=*/std::nullopt);
+          /*batch_group_count=*/6, window, dnums,
+          /*sparsity_config=*/{}, /*preferred_element_type=*/std::nullopt);
   ASSERT_FALSE(inferred_shape.ok());
   ASSERT_THAT(inferred_shape.status().message(),
               HasSubstr("to be a multiple of batch group count"));
@@ -876,8 +875,8 @@ TEST_F(ShapeInferenceTest, ConvolveWithBF16_F16) {
       const Shape inferred_shape,
       ShapeInference::InferConvolveShape(
           args.lhs_shape, args.rhs_shape, /*feature_group_count=*/1,
-          /*batch_group_count=*/1, args.window, args.dnums, SparsityConfig(),
-          /*preferred_element_type=*/std::nullopt));
+          /*batch_group_count=*/1, args.window, args.dnums,
+          /*sparsity_config=*/{}, /*preferred_element_type=*/std::nullopt));
   ASSERT_TRUE(ShapeUtil::Equal(ShapeUtil::MakeShape(BF16, {10, 12, 2, 3}),
                                inferred_shape));
 }
@@ -888,8 +887,8 @@ TEST_F(ShapeInferenceTest, ConvolveWithF16_BF16) {
       const Shape inferred_shape,
       ShapeInference::InferConvolveShape(
           args.lhs_shape, args.rhs_shape, /*feature_group_count=*/1,
-          /*batch_group_count=*/1, args.window, args.dnums, SparsityConfig(),
-          /*preferred_element_type=*/std::nullopt));
+          /*batch_group_count=*/1, args.window, args.dnums,
+          /*sparsity_config=*/{}, /*preferred_element_type=*/std::nullopt));
   ASSERT_TRUE(ShapeUtil::Equal(ShapeUtil::MakeShape(BF16, {10, 12, 2, 3}),
                                inferred_shape));
 }
@@ -900,8 +899,8 @@ TEST_F(ShapeInferenceTest, ConvolveWithS32_U32) {
       const Shape inferred_shape,
       ShapeInference::InferConvolveShape(
           args.lhs_shape, args.rhs_shape, /*feature_group_count=*/1,
-          /*batch_group_count=*/1, args.window, args.dnums, SparsityConfig(),
-          /*preferred_element_type=*/std::nullopt));
+          /*batch_group_count=*/1, args.window, args.dnums,
+          /*sparsity_config=*/{}, /*preferred_element_type=*/std::nullopt));
   ASSERT_TRUE(ShapeUtil::Equal(ShapeUtil::MakeShape(S32, {10, 12, 2, 3}),
                                inferred_shape));
 }
@@ -912,8 +911,8 @@ TEST_F(ShapeInferenceTest, ConvolveWithU32_S32) {
       const Shape inferred_shape,
       ShapeInference::InferConvolveShape(
           args.lhs_shape, args.rhs_shape, /*feature_group_count=*/1,
-          /*batch_group_count=*/1, args.window, args.dnums, SparsityConfig(),
-          /*preferred_element_type=*/std::nullopt));
+          /*batch_group_count=*/1, args.window, args.dnums,
+          /*sparsity_config=*/{}, /*preferred_element_type=*/std::nullopt));
   ASSERT_TRUE(ShapeUtil::Equal(ShapeUtil::MakeShape(S32, {10, 12, 2, 3}),
                                inferred_shape));
 }
@@ -924,8 +923,8 @@ TEST_F(ShapeInferenceTest, ConvolveWithPreferredElementType) {
       const Shape inferred_shape,
       ShapeInference::InferConvolveShape(
           args.lhs_shape, args.rhs_shape, /*feature_group_count=*/1,
-          /*batch_group_count=*/1, args.window, args.dnums, SparsityConfig(),
-          /*preferred_element_type=*/S16));
+          /*batch_group_count=*/1, args.window, args.dnums,
+          /*sparsity_config=*/{}, /*preferred_element_type=*/S16));
   ASSERT_TRUE(ShapeUtil::Equal(ShapeUtil::MakeShape(S16, {10, 12, 2, 3}),
                                inferred_shape));
 }
@@ -936,8 +935,8 @@ TEST_F(ShapeInferenceTest, ConvolveWithPreferredElementTypeSameAsInferredType) {
       const Shape inferred_shape,
       ShapeInference::InferConvolveShape(
           args.lhs_shape, args.rhs_shape, /*feature_group_count=*/1,
-          /*batch_group_count=*/1, args.window, args.dnums, SparsityConfig(),
-          /*preferred_element_type=*/S32));
+          /*batch_group_count=*/1, args.window, args.dnums,
+          /*sparsity_config=*/{}, /*preferred_element_type=*/S32));
   ASSERT_TRUE(ShapeUtil::Equal(ShapeUtil::MakeShape(S32, {10, 12, 2, 3}),
                                inferred_shape));
 }
@@ -949,8 +948,8 @@ TEST_F(ShapeInferenceTest,
       const Shape inferred_shape,
       ShapeInference::InferConvolveShape(
           args.lhs_shape, args.rhs_shape, /*feature_group_count=*/1,
-          /*batch_group_count=*/1, args.window, args.dnums, SparsityConfig(),
-          /*preferred_element_type=*/BF16));
+          /*batch_group_count=*/1, args.window, args.dnums,
+          /*sparsity_config=*/{}, /*preferred_element_type=*/BF16));
   ASSERT_TRUE(ShapeUtil::Equal(ShapeUtil::MakeShape(BF16, {10, 12, 2, 3}),
                                inferred_shape));
 }
@@ -962,8 +961,8 @@ TEST_F(ShapeInferenceTest,
       const Shape inferred_shape,
       ShapeInference::InferConvolveShape(
           args.lhs_shape, args.rhs_shape, /*feature_group_count=*/1,
-          /*batch_group_count=*/1, args.window, args.dnums, SparsityConfig(),
-          /*preferred_element_type=*/S32));
+          /*batch_group_count=*/1, args.window, args.dnums,
+          /*sparsity_config=*/{}, /*preferred_element_type=*/S32));
   ASSERT_TRUE(ShapeUtil::Equal(ShapeUtil::MakeShape(S32, {10, 12, 2, 3}),
                                inferred_shape));
 }
@@ -975,8 +974,8 @@ TEST_F(ShapeInferenceTest,
       const Shape inferred_shape,
       ShapeInference::InferConvolveShape(
           args.lhs_shape, args.rhs_shape, /*feature_group_count=*/1,
-          /*batch_group_count=*/1, args.window, args.dnums, SparsityConfig(),
-          /*preferred_element_type=*/F32));
+          /*batch_group_count=*/1, args.window, args.dnums,
+          /*sparsity_config=*/{}, /*preferred_element_type=*/F32));
   ASSERT_TRUE(ShapeUtil::Equal(ShapeUtil::MakeShape(F32, {10, 12, 2, 3}),
                                inferred_shape));
 }
@@ -988,8 +987,8 @@ TEST_F(ShapeInferenceTest,
       const Shape inferred_shape,
       ShapeInference::InferConvolveShape(
           args.lhs_shape, args.rhs_shape, /*feature_group_count=*/1,
-          /*batch_group_count=*/1, args.window, args.dnums, SparsityConfig(),
-          /*preferred_element_type=*/U32));
+          /*batch_group_count=*/1, args.window, args.dnums,
+          /*sparsity_config=*/{}, /*preferred_element_type=*/U32));
   ASSERT_TRUE(ShapeUtil::Equal(ShapeUtil::MakeShape(U32, {10, 12, 2, 3}),
                                inferred_shape));
 }
@@ -1000,8 +999,8 @@ TEST_F(ShapeInferenceTest, ConvolveWithNarrowerPreferredElementType) {
       const Shape inferred_shape,
       ShapeInference::InferConvolveShape(
           args.lhs_shape, args.rhs_shape, /*feature_group_count=*/1,
-          /*batch_group_count=*/1, args.window, args.dnums, SparsityConfig(),
-          /*preferred_element_type=*/S8));
+          /*batch_group_count=*/1, args.window, args.dnums,
+          /*sparsity_config=*/{}, /*preferred_element_type=*/S8));
   ASSERT_TRUE(ShapeUtil::Equal(ShapeUtil::MakeShape(S8, {10, 12, 2, 3}),
                                inferred_shape));
 }
@@ -5231,8 +5230,8 @@ TEST_F(ShapeInferenceTest, UnboundedConvolution) {
       const Shape inferred_shape,
       ShapeInference::InferConvolveShape(
           lhs, rhs, /*feature_group_count=*/1,
-          /*batch_group_count=*/1, window, dnums, SparsityConfig(),
-          /*preferred_element_type=*/std::nullopt));
+          /*batch_group_count=*/1, window, dnums,
+          /*sparsity_config=*/{}, /*preferred_element_type=*/std::nullopt));
   EXPECT_TRUE(ShapeUtil::Equal(inferred_shape, expected))
       << "inferred: " << ShapeUtil::HumanString(inferred_shape)
       << " expected: " << ShapeUtil::HumanString(expected);

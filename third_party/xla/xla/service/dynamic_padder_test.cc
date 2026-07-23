@@ -395,7 +395,7 @@ TEST_F(DynamicPadderTest, ConvolutionTest) {
       xy_shape_dynamic, a_param, size_param, 1));
 
   auto* conv = builder.AddInstruction(HloInstruction::CreateConvolve(
-      zx_shape, a_param, b_param, /*feature_group_count=*/1,
+      zx_shape, {a_param, b_param}, /*feature_group_count=*/1,
       /*batch_group_count=*/1, window, dnums, DefaultPrecisionConfig(2)));
 
   module_->AddEntryComputation(builder.Build());
@@ -437,7 +437,7 @@ TEST_F(DynamicPadderTest, ConvolutionNoPad) {
   Window window;
 
   auto* conv = builder.AddInstruction(HloInstruction::CreateConvolve(
-      zx_shape, a_param, b_param, /*feature_group_count=*/1,
+      zx_shape, {a_param, b_param}, /*feature_group_count=*/1,
       /*batch_group_count=*/1, window, dnums, DefaultPrecisionConfig(2)));
 
   module_->AddEntryComputation(builder.Build());

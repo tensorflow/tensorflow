@@ -900,6 +900,8 @@ message SparsityConfig {
     // - If it is k, every N elements with distance k (i.e., 0,k,2k,...,(N-1)k)
     //   are a sparsity block.
     int64 stride = 4;
+    // The operand index for the indices argument.
+    int32 idx = 5;
   }
   // Sparsity config for the LHS operand.
   TensorSparsityConfig lhs = 1;
