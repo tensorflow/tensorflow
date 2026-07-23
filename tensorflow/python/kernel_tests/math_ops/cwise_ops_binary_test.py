@@ -885,7 +885,7 @@ class BinaryOpTest(test.TestCase):
 
   def testFloorDivInfDenominator(self):
     dtypes = [
-        dtypes_lib.bfloat16.as_numpy_dtype,
+        dtypes.bfloat16.as_numpy_dtype,
         np.float16,
         np.float32,
         np.float64,
