@@ -415,7 +415,8 @@ absl::StatusOr<bool> RaggedDotRewriter::RunImpl(
           .debug_options()
           .xla_gpu_experimental_use_ragged_dot_fusion() &&
       cudnn_version_ >= kMinCudnnVersionForRaggedDotFusion &&
-      cuda_cc != nullptr && cuda_cc->IsAtLeastAmpere();
+      cuda_cc != nullptr && cuda_cc->IsAtLeastAmpere() &&
+      !cuda_cc->IsBlackwell();
 
   // Gather all Ragged Dot operations.
   std::vector<HloRaggedDotInstruction*> ragged_dots;
