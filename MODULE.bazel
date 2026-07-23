@@ -86,9 +86,9 @@ bazel_dep(name = "libprotobuf-mutator", version = "1.3", repo_name = "libprotobu
 bazel_dep(name = "rules_ml_toolchain")
 archive_override(
     module_name = "rules_ml_toolchain",
-    integrity = "sha256-C0L2k6YMYFDYfbHgoOrrhKs/VBkfzglNhjNPrtyAfaA=",
-    strip_prefix = "rules_ml_toolchain-398d613aea7a4c294da49b79a6d6f3f8732bd84c",
-    urls = ["https://github.com/google-ml-infra/rules_ml_toolchain/archive/398d613aea7a4c294da49b79a6d6f3f8732bd84c.tar.gz"],
+    integrity = "sha256-xr3/TmW7lYN43hHGxqfwvQLUABsdSyNU/Xl7URfn6po=",
+    strip_prefix = "rules_ml_toolchain-3c30effb62a397c8b107bf035e5564e8a6fe575d",
+    urls = ["https://github.com/yuriivcs/rules_ml_toolchain/archive/3c30effb62a397c8b107bf035e5564e8a6fe575d.tar.gz"],
 )
 
 bazel_dep(name = "xla", repo_name = "xla")
@@ -291,6 +291,8 @@ use_repo(
     "cuda_nvtx",
 )
 
+register_toolchains("@rules_ml_toolchain//cc:darwin_aarch64_darwin_aarch64")
+
 register_toolchains("@rules_ml_toolchain//cc:linux_x86_64_linux_x86_64")
 
 register_toolchains("@rules_ml_toolchain//cc:linux_x86_64_linux_x86_64_cuda")
@@ -298,6 +300,8 @@ register_toolchains("@rules_ml_toolchain//cc:linux_x86_64_linux_x86_64_cuda")
 register_toolchains("@rules_ml_toolchain//cc:linux_aarch64_linux_aarch64")
 
 register_toolchains("@rules_ml_toolchain//cc:linux_aarch64_linux_aarch64_cuda")
+
+register_toolchains("@rules_ml_toolchain//cc:linux_x86_64_darwin_aarch64")
 
 ### Other local config repos
 rocm_configure = use_extension("@xla//third_party/extensions:rocm_configure.bzl", "rocm_configure_ext")

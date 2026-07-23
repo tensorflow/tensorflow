@@ -74,6 +74,7 @@
 # The generated version suffix is used in
 # third_party/tensorflow/core/public/release_version.h and
 # third_party/tensorflow/tools/pip_package/setup.oss.py.tpl
+common --toolchain_resolution_debug=.*
 common --repo_env=ML_WHEEL_TYPE="snapshot"
 common --repo_env=ML_WHEEL_BUILD_DATE=""
 common --repo_env=ML_WHEEL_VERSION_SUFFIX=""
@@ -225,19 +226,11 @@ common:macos --linkopt=-Wl,-undefined,dynamic_lookup
 common:macos --host_linkopt=-Wl,-undefined,dynamic_lookup
 
 # Use the old Apple toolchain for MacOS builds.
-common:macos --config=clang_local
-common:macos --config=apple-toolchain
-
-# Use cc toolchains from apple_support for Apple builds (ios, macos, etc).
-# https://github.com/bazelbuild/apple_support/tree/master?tab=readme-ov-file#bazel-6-setup
-common:apple-toolchain --apple_crosstool_top=@local_config_apple_cc//:toolchain
-common:apple-toolchain --crosstool_top=@local_config_apple_cc//:toolchain
-common:apple-toolchain --host_crosstool_top=@local_config_apple_cc//:toolchain
+# common:macos --config=apple-toolchain
 
 # Settings for MacOS on ARM CPUs.
 common:macos_arm64 --cpu=darwin_arm64
 common:macos_arm64 --macos_minimum_os=11.0
-common:macos_arm64 --config=clang_local
 common:macos_arm64 --platforms=@build_bazel_apple_support//platforms:darwin_arm64
 
 # iOS configs for each architecture and the fat binary builds.
@@ -820,7 +813,6 @@ test:release_arm64_linux_clang_local --flaky_test_attempts=3
 common:release_cpu_macos --config=avx_linux
 
 # Base build configs for macOS
-common:release_macos_base --config=clang_local
 common:release_macos_base --action_env  DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer
 common:release_macos_base --define=no_nccl_support=true --output_filter=^$
 

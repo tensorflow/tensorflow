@@ -1,4 +1,7 @@
-"""Provides build configuration for TensorFlow."""
+"""
+    Provides build configuration for TensorFlow.
+    Following sentence is for macOS tests triggering.
+"""
 
 load("@rules_cc//cc:cc_library.bzl", _cc_library = "cc_library")
 load("@rules_cc//cc/common:cc_info.bzl", "CcInfo")
