@@ -395,7 +395,37 @@ class RaggedConstOpTest(test_util.TensorFlowTestCase,
       self.assertEqual(
           ragged.ragged_factory_ops._default_inner_shape_for_pylist(
               pylist, ragged_rank), inner_shape)
+  def testUniformOuterDimensionDetection(self):
+    """Tests that uniform outer dimensions are detected in static shape."""
+    # Case 1: 3D ragged with uniform outer dimensions (2, 3) and ragged last dim.
+    pylist1 = [[[1], [2, 3], [4]], [[5, 6], [], [7]]]
+    rt1 = ragged_factory_ops.constant(pylist1)
+    self.assertEqual(rt1.shape.as_list(), [2, 3, None])
+    self.assertAllEqual(rt1, pylist1)
 
+    # Case 2: 4D ragged with uniform outer dimensions (2, 2) and ragged inner.
+    pylist2 = [[[[1, 2], [3]], [[4]]], [[[5]], [[6, 7], [8]]]]
+    rt2 = ragged_factory_ops.constant(pylist2)
+    self.assertEqual(rt2.shape.as_list(), [2, 2, None, None])
+    self.assertAllEqual(rt2, pylist2)
+
+    # Case 3: Uniform outer but with empty lists at deeper levels.
+    pylist3 = [[[1], [2], []], [[3], [4], [5]]]
+    rt3 = ragged_factory_ops.constant(pylist3)
+    self.assertEqual(rt3.shape.as_list(), [2, 3, None])
+    self.assertAllEqual(rt3, pylist3)
+
+    # Case 4: No uniform outer dimensions (all ragged).
+    pylist4 = [[[1], [2, 3]], [[4, 5, 6]], [[7]]]
+    rt4 = ragged_factory_ops.constant(pylist4)
+    self.assertEqual(rt4.shape.as_list(), [3, None, None])
+    self.assertAllEqual(rt4, pylist4)
+
+    # Case 5: Uniform outer but with explicit ragged_rank and inner_shape.
+    pylist5 = [[[1, 2], [3, 4]], [[5, 6], [7, 8]]]
+    rt5 = ragged_factory_ops.constant(pylist5, ragged_rank=1, inner_shape=(2,))
+    self.assertEqual(rt5.shape.as_list(), [2, None, 2])
+    self.assertAllEqual(rt5, pylist5)
 
 def _normalize_pylist(item):
   """Convert all (possibly nested) np.arrays contained in item to list."""
