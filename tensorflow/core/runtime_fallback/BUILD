@@ -77,6 +77,7 @@ cc_library(
     hdrs = ["bef_executor_flags.h"],
     visibility = ["//visibility:private"],
     deps = [
+        "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/flags:flag",
         "@com_google_absl//absl/strings",
         "@tf_runtime//:bef_executor_driver",
