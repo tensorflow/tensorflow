@@ -166,8 +166,10 @@ class OrderedTiledHloPtrSet {
 };
 
 // Sorts tiled hlo instructions in def-before-use order, starting from
-// `roots_with_no_users`. If instruction is not reachable from the root then it
-// might be put in an arbitrary position.
+// `roots_with_no_users`.
+//
+// Precondition: all `tiled_hlo_instructions` are reachable from
+// `roots_with_no_users`.
 void SortTiledHloInstructionsInPostOrder(
     std::vector<std::unique_ptr<TiledHloInstruction>>& tiled_hlo_instructions,
     ArrayRef<const TiledHloInstruction*> roots_with_no_users) {
@@ -191,16 +193,17 @@ void SortTiledHloInstructionsInPostOrder(
   for (const TiledHloInstruction* root_with_no_user : roots_with_no_users) {
     visit_instruction(root_with_no_user);
   }
-  absl::c_sort(
-      tiled_hlo_instructions,
-      [&](const std::unique_ptr<TiledHloInstruction>& t1,
-          const std::unique_ptr<TiledHloInstruction>& t2) {
-        auto it1 = topological_order.find(t1.get());
-        auto it2 = topological_order.find(t2.get());
-        int64_t order1 = (it1 != topological_order.end()) ? it1->second : -1;
-        int64_t order2 = (it2 != topological_order.end()) ? it2->second : -1;
-        return order1 < order2;
-      });
+  absl::c_sort(tiled_hlo_instructions,
+               [&](const std::unique_ptr<TiledHloInstruction>& t1,
+                   const std::unique_ptr<TiledHloInstruction>& t2) {
+                 auto it1 = topological_order.find(t1.get());
+                 auto it2 = topological_order.find(t2.get());
+                 CHECK(it1 != topological_order.end())
+                     << "Unexpected stray instruction: " << t1->ToString();
+                 CHECK(it2 != topological_order.end())
+                     << "Unexpected stray instruction: " << t2->ToString();
+                 return it1->second < it2->second;
+               });
 
   VLOG(4) << "Sorted symbolic tiled HLO instructions in def-before-use order:\n"
           << absl::StrJoin(
