@@ -303,11 +303,11 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> TileAndEmitXTileModule(
     ASSIGN_OR_RETURN(std::unique_ptr<TilingSpace> tiling_space,
                      TilingSpace::Create(*fusion_adaptor, &mlir_context));
 
-    VLOG(6) << "fusion instruction: " << fusion.ToString() << "\n";
-    VLOG(6) << "tiling space: " << tiling_space->ToString();
-    if (VLOG_IS_ON(7)) {
+    VLOG(3) << "fusion instruction: " << fusion.ToString() << "\n";
+    VLOG(3) << "tiling space: " << tiling_space->ToString();
+    if (VLOG_IS_ON(4)) {
       XLA_VLOG_LINES(
-          7, absl::StrCat("HLO module to reproduce:\n",
+          4, absl::StrCat("HLO module to reproduce:\n",
                           ExtractInstructionIntoNewModule(fusion)->ToString(
                               HloPrintOptions::ShortParsable())));
     }
@@ -329,7 +329,7 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> TileAndEmitXTileModule(
           absl::StrCat("Triton constraints violated during codegen: ",
                        constraints.Explain()));
     }
-    VLOG(6) << "tiled computation: " << tiled_computation.ToString();
+    VLOG(4) << "tiled computation: " << tiled_computation.ToString();
     return xtile::EmitXTileModule(
         fn_name, fusion, tiled_computation, mlir_context,
         absl::MakeSpan(opaque_args_types),
@@ -443,7 +443,7 @@ absl::StatusOr<TritonKernelSource> CreateTritonModule(
       triton_module.get(), mlir_context, fusion, device_info,
       block_level_parameters));
 
-  VLOG(6) << GetModuleIrString(triton_module.get());
+  VLOG(5) << GetModuleIrString(triton_module.get());
   if (DumpingEnabledForHloModule(*hlo_computation->parent()) &&
       DumpingEnabledForEmitter("triton-fusion", debug_options)) {
     std::string suffix = absl::StrCat(fusion.name(), ".ttir.txt");
@@ -510,11 +510,11 @@ absl::StatusOr<TritonWrapperResult> CompileTritonToLLVM(
   should_verify = true;
 #endif
 
-  mlir_context.printOpOnDiagnostic(should_verify || VLOG_IS_ON(1));
+  mlir_context.printOpOnDiagnostic(should_verify || VLOG_IS_ON(5));
   std::optional<mlir::ScopedDiagnosticHandler> diag_handler;
-  if (VLOG_IS_ON(1)) {
+  if (VLOG_IS_ON(5)) {
     diag_handler.emplace(&mlir_context, [](mlir::Diagnostic& diag) {
-      VLOG(1) << "MLIR Diagnostic: " << diag.str();
+      VLOG(5) << "MLIR Diagnostic: " << diag.str();
       return mlir::failure();
     });
   }

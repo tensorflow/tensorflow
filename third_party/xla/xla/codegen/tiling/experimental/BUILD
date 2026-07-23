@@ -61,6 +61,7 @@ xla_cc_test(
         "//xla/hlo/analysis:symbolic_map",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
         "//xla/tests:xla_internal_test_main",
+        "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest",
         "@llvm-project//mlir:IR",
     ],

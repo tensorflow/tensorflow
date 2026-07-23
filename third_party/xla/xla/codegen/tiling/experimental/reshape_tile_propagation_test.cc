@@ -623,5 +623,38 @@ INSTANTIATE_TEST_SUITE_P(
     [](const ::testing::TestParamInfo<ReshapeTilePropagationTest::ParamType>&
            info) { return info.param.name; });
 
+TEST_F(HloHardwareIndependentTestBase, UnsupportedReshapeErrorFormat) {
+  mlir::MLIRContext mlir_context;
+  Shape input_shape = ShapeUtil::MakeShape(F32, {12});
+  Shape output_shape = ShapeUtil::MakeShape(F32, {3, 4});
+
+  HloComputation::Builder builder("entry");
+  HloInstruction* p0 = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, input_shape, "p0"));
+  HloInstruction* reshape =
+      builder.AddInstruction(HloInstruction::CreateReshape(output_shape, p0));
+
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<TilingSpace> tiling_space,
+      TilingSpace::Create(*HloFusionAdaptor::ForInstruction(p0),
+                          &mlir_context));
+  ASSERT_OK(tiling_space->AssignTileSizes({5}));
+  SmallVector<DimTile> input_dim_tiles =
+      llvm::to_vector(tiling_space->tiled_roots()[0].dim_tiles());
+  input_dim_tiles[0].stride = CreateSymbolicConstant(1, &mlir_context);
+  Tile input_tile = Tile(*tiling_space, std::move(input_dim_tiles));
+  auto output_tiles =
+      PropagateTileToOutput(*tiling_space, *reshape, input_tile, 0);
+
+  ASSERT_FALSE(output_tiles.ok());
+  EXPECT_THAT(output_tiles.status(), MatchString(R"(
+  UNIMPLEMENTED: Reshape is non-contiguous [12] -> [3, 4], tiling
+  offset [v0 * 5], size [5], stride [1], upper bound [12] ->
+  offset [(v0 * 5) / 4], size [2], stride [1], upper bound [(v0 * 5) / 4 + 2];
+  offset [(v0 * 5) mod 4], size [1], stride [1], upper bound [(v0 * 5) mod 4 + 1]:
+  Multiple dimensions are partially tiled
+  )"));
+}
+
 }  // namespace
 }  // namespace xla::gpu::experimental

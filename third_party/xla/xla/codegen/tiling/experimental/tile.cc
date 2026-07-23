@@ -89,6 +89,12 @@ bool DimTile::operator==(const DimTile& other) const {
          stride == other.stride && upper_bound == other.upper_bound;
 }
 
+std::string DimTile::ToString() const {
+  return absl::StrCat("offset [", offset.ToString(), "], size [",
+                      size.ToString(), "], stride [", stride.ToString(),
+                      "], upper bound [", upper_bound.ToString(), "]");
+}
+
 Tile::Tile(const TilingSpace& tiling_space, ArrayRef<SymbolicExpr> offsets,
            ArrayRef<SymbolicExpr> sizes, ArrayRef<SymbolicExpr> strides,
            ArrayRef<SymbolicExpr> upper_bounds)

@@ -127,6 +127,13 @@ struct DimTile {
   // Simplify expressions inside the DimTile using the actual dimension and
   // symbol bounds.
   void Simplify(const TilingSpace& space);
+
+  std::string ToString() const;
+
+  template <typename Sink>
+  friend void AbslStringify(Sink& sink, const DimTile& dim_tile) {
+    sink.Append(dim_tile.ToString());
+  }
 };
 
 template <typename H>
