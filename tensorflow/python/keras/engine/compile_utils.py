@@ -503,6 +503,16 @@ class MetricsContainer(Container):
     if str(metric).lower() not in ['accuracy', 'acc', 'crossentropy', 'ce']:
       metric_obj = metrics_mod.get(metric)
     else:
+      if y_t.shape.rank is None or y_p.shape.rank is None:
+        raise ValueError(
+            'Unable to auto-select a metric for inputs with unknown shapes. '
+            'The label shape is %s and the prediction shape is %s. '
+            'When using `tf.numpy_function` or other ops that produce '
+            'tensors with unknown shapes, you must set the shape using '
+            '`tensor.set_shape()` or `tf.ensure_shape()` before passing '
+            'the dataset to `model.fit()`. Alternatively, pass an '
+            'explicit metric object instead of a string like "accuracy".'
+            % (y_t.shape, y_p.shape))
       y_t_rank = len(y_t.shape.as_list())
       y_p_rank = len(y_p.shape.as_list())
       y_t_last_dim = y_t.shape.as_list()[-1]

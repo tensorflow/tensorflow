@@ -17,6 +17,7 @@
 #   Contains the Keras engine API (internal TensorFlow version).
 
 load("@xla//third_party/rules_python/python:defs.bzl", "py_library")
+load("//tensorflow:tensorflow.bzl", "tf_py_test")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -286,5 +287,19 @@ py_library(
         "//tensorflow/python/keras/utils:tf_utils",
         "//tensorflow/python/util:nest",
         "//third_party/py/numpy",
+    ],
+)
+
+tf_py_test(
+    name = "compile_utils_test",
+    size = "medium",
+    srcs = ["compile_utils_test.py"],
+    python_version = "PY3",
+    deps = [
+        ":engine",
+        ":input_spec",
+        "//tensorflow:tensorflow_py",
+        "//tensorflow/python/framework:tensor_shape",
+        "//tensorflow/python/platform:client_testlib",
     ],
 )
