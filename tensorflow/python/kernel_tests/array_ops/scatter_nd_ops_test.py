@@ -893,6 +893,18 @@ class ScatterNdTensorTest(test.TestCase):
       self.assertAllEqual(max_result,
                           constant_op.constant([1, 1, 1, 2, 1, 1, 1, 2]))
 
+  def testUpdateMinUpdatesRankTooLow(self):
+    # Regression test for #94132: updates with fewer dimensions than
+    # indices' outer dimensions used to hit a fatal CHECK instead of
+    # raising InvalidArgumentError.
+    t = array_ops.ones([1, 10, 4], dtypes.float32)
+    indices = constant_op.constant([[[0]]], dtypes.int64)
+    updates = constant_op.constant([0.0], dtypes.float32)
+    with self.assertRaisesWithPredicateMatch(
+        (errors.InvalidArgumentError, ValueError),
+        r"Updates must have rank of at least"):
+      self.evaluate(array_ops.tensor_scatter_min(t, indices, updates))
+
   def testUpdateMinMaxGradients(self):
 
     # Loop body as a function to avoid go/gpylint-faq#cell-var-from-loop.
