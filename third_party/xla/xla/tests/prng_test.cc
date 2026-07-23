@@ -13,7 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <array>
 #include <cmath>
 #include <cstdint>
 #include <limits>
@@ -323,12 +322,6 @@ absl::StatusOr<Literal> FirstResult(
 //   fixed (i.e., there is a single output for a given seed);
 // * If no seed is passed in then the output of every call can be different;
 TEST_F(PrngTest, PassInGlobalRngSeed) {
-  // TODO: b/497009921 - Re-enable once CPU/GPU can configure seeds at runtime.
-  if (test::DeviceTypeIsOneOf({test::kCpu, test::kGpu})) {
-    GTEST_SKIP()
-        << "CPU and GPU cannot configure seeds at runtime (b/497009921).";
-  }
-
   // Build a U[0,1) computation.
   XlaBuilder builder(TestName());
   RngUniform(ConstantR0<float>(&builder, 0), ConstantR0<float>(&builder, 1),
@@ -435,6 +428,61 @@ TEST_F(PrngTest, RngUniformCrash) {
              ShapeUtil::MakeShape(S32, {}));
   SetSeed(0);
   EXPECT_OK(ExecuteAndTransfer(&builder, /*arguments=*/{}));
+}
+
+TEST_F(PrngTest, MultiComputationConsistency) {
+  if (!test::DeviceTypeIsOneOf({test::kCpu, test::kGpu})) {
+    GTEST_SKIP();
+  }
+  // Tests that calling GetRngSeed from different computations in the same
+  // execution produces identical seed base values.
+  const char* const hlo_string = R"(
+    HloModule test
+    SubComp {
+      ROOT scall = u64[] custom-call(), custom_call_target="GetRngSeed"
+    }
+    ENTRY entry {
+      call1 = u64[] custom-call(), custom_call_target="GetRngSeed"
+      call2 = u64[] call(), to_apply=SubComp
+      ROOT tuple = (u64[], u64[]) tuple(call1, call2)
+    })";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  HloRunnerInterface::ReplicatedExecuteOptions options;
+  options.seed = 42;
+  options.run_hlo_passes = true;
+  ASSERT_OK_AND_ASSIGN(
+      Literal result,
+      FirstResult(test_runner().ExecuteReplicated(std::move(module), options)));
+  auto results = std::move(result).DecomposeTuple();
+  EXPECT_TRUE(LiteralTestUtil::Equal(results[0], results[1]));
+}
+
+TEST_F(PrngTest, MultiDeviceCollision) {
+  if (test::DeviceTypeIsOneOf({test::kInterpreter})) {
+    GTEST_SKIP() << "Multi-device not supported on Interpreter.";
+  }
+  if (test_runner().device_count() < 2) {
+    GTEST_SKIP() << "Test requires at least 2 devices.";
+  }
+
+  XlaBuilder builder(TestName());
+  RngUniform(ConstantR0<float>(&builder, 0), ConstantR0<float>(&builder, 1),
+             ShapeUtil::MakeShape(F32, {10}));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       HloModuleFromXlaBuilder(&builder, execution_options()));
+  module->mutable_config().set_replica_count(2);
+
+  HloRunnerInterface::ReplicatedExecuteOptions options;
+  options.num_devices = 2;
+  options.run_hlo_passes = true;
+  options.seed = 42;
+
+  ASSERT_OK_AND_ASSIGN(
+      std::vector<Literal> results,
+      test_runner().ExecuteReplicated(std::move(module), options));
+  ASSERT_EQ(results.size(), 2);
+  // Replicas SHOULD be different despite having the same global seed!
+  EXPECT_FALSE(LiteralTestUtil::Equal(results[0], results[1]));
 }
 
 }  // namespace

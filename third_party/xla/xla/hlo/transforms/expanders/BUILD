@@ -581,12 +581,15 @@ cc_library(
     hdrs = ["rng_expander.h"],
     deps = [
         ":op_expander_pass",
-        "//xla:literal_util",
         "//xla:shape_util",
+        "//xla:side_effect_util",
         "//xla:xla_data_proto_cc",
         "//xla/hlo/builder:xla_builder",
+        "//xla/hlo/builder:xla_computation",
         "//xla/hlo/builder/lib:prng",
+        "//xla/hlo/ir:hlo",
         "//xla/service:hlo_creation_utils",
+        "//xla/service:hlo_module_config",
         "//xla/tsl/platform:status_macros",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -594,7 +597,21 @@ cc_library(
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:string_view",
-        "@com_google_absl//absl/synchronization",
+    ],
+)
+
+xla_cc_test(
+    name = "rng_expander_test",
+    srcs = ["rng_expander_test.cc"],
+    deps = [
+        ":rng_expander",
+        "//xla:side_effect_util",
+        "//xla:xla_data_proto_cc",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/parser:hlo_parser",
+        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
+        "//xla/tsl/platform:test",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
