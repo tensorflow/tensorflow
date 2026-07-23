@@ -3386,6 +3386,7 @@ cc_library(
 
 cc_library(
     name = "python_api_parameter_converter_alwayslink",
+    visibility = ["//visibility:public"],
     deps = [":python_api_parameter_converter"],
     alwayslink = 1,
 )
