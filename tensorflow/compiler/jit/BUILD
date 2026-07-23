@@ -1,3 +1,4 @@
+load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm")
 load("@xla//xla/stream_executor:build_defs.bzl", "if_cuda_or_rocm")
@@ -2113,4 +2114,11 @@ tf_cuda_cc_test(
         "@xla//xla/pjrt/plugin/xla_cpu:xla_cpu_pjrt_client",
         "@xla//xla/tsl/platform:statusor",
     ],
+)
+
+bzl_library(
+    name = "package_groups_bzl",
+    srcs = ["package_groups.bzl"],
+    # copybara:uncomment parse_tests = False,
+    visibility = ["//visibility:private"],
 )
