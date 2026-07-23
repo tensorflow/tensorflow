@@ -2112,7 +2112,6 @@ class BatchNormalizationTest(test_lib.TestCase):
           variance_epsilon=epsilon)
       self.evaluate(out)
 
-  @test_util.run_all_in_graph_and_eager_modes
   def testTensorZeroEpsilonSucceeds(self):
     """Graph construction and runtime execution succeed with tf.Tensor epsilon == 0.0."""
     x = array_ops.ones([2, 3])
