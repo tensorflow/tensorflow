@@ -9,9 +9,5 @@ package(
 # The LICENSE from this package is used during pip package generation.
 exports_files([
     "LICENSE",
-    "ruy_BUILD",
-    "ruy_profiler_BUILD",
-    "ruy_test.oss.bzl",
-    "build_defs.oss_override.bzl",
-    "build_defs_oss.oss_override.bzl",
+    "ruy.patch",
 ])

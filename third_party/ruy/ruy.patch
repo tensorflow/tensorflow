@@ -1,0 +1,90 @@
+diff --git a/ruy/BUILD b/ruy/BUILD
+index e9e36cc..6b56b1b 100644
+--- a/ruy/BUILD
++++ b/ruy/BUILD
+@@ -2,15 +2,14 @@
+ 
+ load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
+ load("@bazel_skylib//lib:selects.bzl", "selects")
+-load("//third_party/bazel_rules/rules_cc/cc:cc_library.bzl", "cc_library")
+-load("//third_party/bazel_rules/rules_cc/cc:cc_test.bzl", "cc_test")
++load("@rules_cc//cc:cc_library.bzl", "cc_library")
++load("@rules_cc//cc:cc_test.bzl", "cc_test")
+ load(":build_defs.bzl", "ruy_copts", "ruy_copts_avx", "ruy_copts_avx2_fma", "ruy_copts_avx512")
+ load(":build_defs.oss.bzl", "ruy_linkopts_thread_standard_library")
+ load(":ruy_test.bzl", "ruy_benchmark", "ruy_test")
+ load(":ruy_test_ext.oss.bzl", "ruy_test_ext_defines", "ruy_test_ext_deps")
+ 
+ package(
+-    default_applicable_licenses = ["//third_party/ruy:license"],
+     licenses = ["notice"],  # Apache 2.0
+ )
+ 
+@@ -51,9 +50,6 @@ config_setting(
+     constraint_values = [
+         "@platforms//os:windows",
+     ],
+-    flag_values = {
+-        "//tools/cpp:compiler": "msvc",
+-    },
+ )
+ 
+ config_setting(
+diff --git a/ruy/build_defs.bzl b/ruy/build_defs.bzl
+index 28600a7..9dbefdf 100644
+--- a/ruy/build_defs.bzl
++++ b/ruy/build_defs.bzl
+@@ -4,7 +4,7 @@
+ # Returns warnings flags to use for all ruy code.
+ def ruy_copts_warnings():
+     return select({
+-        "//tools/cc_target_os:windows": [
++        "@platforms//os:windows": [
+             # We run into trouble on Windows toolchains with warning flags,
+             # as mentioned in the comments below on each flag.
+             # We could be more aggressive in enabling supported warnings on each
+diff --git a/ruy/build_defs.oss.bzl b/ruy/build_defs.oss.bzl
+index 6d34ba6..a1481cd 100644
+--- a/ruy/build_defs.oss.bzl
++++ b/ruy/build_defs.oss.bzl
+@@ -10,6 +10,6 @@ def ruy_linkopts_thread_standard_library():
+     # with Bazel. Instead we do the following, which is copied from
+     # https://github.com/abseil/abseil-cpp/blob/1112609635037a32435de7aa70a9188dcb591458/absl/base/BUILD.bazel#L155
+     return select({
+-        "//tools/cc_target_os:windows": [],
++        "@platforms//os:windows": [],
+         "//conditions:default": ["-pthread"],
+     })
+diff --git a/ruy/profiler/BUILD b/ruy/profiler/BUILD
+index 63a4cfa..00cc591 100644
+--- a/ruy/profiler/BUILD
++++ b/ruy/profiler/BUILD
+@@ -1,11 +1,10 @@
+ # A minimalistic profiler sampling pseudo-stacks
+ 
+ load("//ruy:build_defs.oss.bzl", "ruy_linkopts_thread_standard_library")
+-load("//third_party/bazel_rules/rules_cc/cc:cc_library.bzl", "cc_library")
+-load("//third_party/bazel_rules/rules_cc/cc:cc_test.bzl", "cc_test")
++load("@rules_cc//cc:cc_library.bzl", "cc_library")
++load("@rules_cc//cc:cc_test.bzl", "cc_test")
+ 
+ package(
+-    default_applicable_licenses = ["//third_party/ruy:license"],
+     licenses = ["notice"],  # Apache 2.0
+ )
+ 
+diff --git a/ruy/ruy_test.bzl b/ruy/ruy_test.bzl
+index 8044985..1fd54f9 100644
+--- a/ruy/ruy_test.bzl
++++ b/ruy/ruy_test.bzl
+@@ -1,8 +1,8 @@
+ # Provides the ruy_test macro for type-parametrized tests.
+ """ruy_test is a macro for building a test with multiple paths corresponding to tuples of types for LHS, RHS, accumulator and destination."""
+ 
+-load("//third_party/bazel_rules/rules_cc/cc:cc_binary.bzl", "cc_binary")
+-load("//third_party/bazel_rules/rules_cc/cc:cc_test.bzl", "cc_test")
++load("@rules_cc//cc:cc_binary.bzl", "cc_binary")
++load("@rules_cc//cc:cc_test.bzl", "cc_test")
+ 
+ def ruy_test(name, srcs, lhs_rhs_accum_dst, copts, tags = [], deps = None):
+     for (lhs, rhs, accum, dst) in lhs_rhs_accum_dst:
