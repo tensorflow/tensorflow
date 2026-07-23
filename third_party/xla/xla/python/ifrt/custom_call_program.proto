@@ -30,6 +30,13 @@ message CustomCallProgramProto {
   // support on all platforms.
   bytes serialized_program_text = 3;
   DeviceListProto devices = 4;
+
+  message IndexRangeProto {
+    int32 start = 1;
+    int32 end = 2;
+  }
+  repeated IndexRangeProto split_device_index_ranges = 8;
+
   repeated ArraySpecProto input_specs = 5;
   repeated ArraySpecProto output_specs = 6;
 }
