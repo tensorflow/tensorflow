@@ -569,3 +569,15 @@ tf_cuda_cc_test(
         "//tensorflow/core/protobuf:master_proto_cc",
     ],
 )
+
+tf_cc_test(
+    name = "grpc_server_lib_test",
+    size = "small",
+    srcs = ["grpc_server_lib_test.cc"],
+    deps = [
+        ":grpc_server_lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+    ] + tf_grpc_cc_dependencies() + tf_grpc_dependencies(),
+)
