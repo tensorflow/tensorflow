@@ -40,7 +40,7 @@ namespace stream_executor::gpu {
 namespace {
 using ::testing::Gt;
 
-class RocmTimerTest : public ::testing::Test {
+class RocmTimerTest : public ::testing::TestWithParam<RocmTimer::TimerType> {
  public:
   void LaunchSomeKernel(StreamExecutor* executor, Stream* stream) {
     TF_ASSERT_OK_AND_ASSIGN(auto add, LoadAddI32TestKernel(executor));
@@ -74,9 +74,9 @@ class RocmTimerTest : public ::testing::Test {
   }
 };
 
-TEST_F(RocmTimerTest, Create) {
-  TF_ASSERT_OK_AND_ASSIGN(RocmTimer timer,
-                          RocmTimer::Create(executor_, stream_.get()));
+TEST_P(RocmTimerTest, Create) {
+  TF_ASSERT_OK_AND_ASSIGN(
+      RocmTimer timer, RocmTimer::Create(executor_, stream_.get(), GetParam()));
 
   // We don't really care what kernel we launch here as long as it takes a
   // non-zero amount of time.
@@ -88,6 +88,10 @@ TEST_F(RocmTimerTest, Create) {
   EXPECT_THAT(timer.GetElapsedDuration(),
               absl_testing::StatusIs(absl::StatusCode::kFailedPrecondition));
 }
+
+INSTANTIATE_TEST_SUITE_P(RocmTimerTest, RocmTimerTest,
+                         ::testing::Values(RocmTimer::TimerType::kEventBased,
+                                           RocmTimer::TimerType::kDelayKernel));
 
 }  // namespace
 }  // namespace stream_executor::gpu
