@@ -16,6 +16,7 @@
 #ifdef INTEL_MKL
 #define EIGEN_USE_THREADS
 
+#include "absl/algorithm/container.h"
 #include "dnnl.hpp"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/framework/common_shape_fns.h"
@@ -358,6 +359,12 @@ class MklAvgPoolingGradOp : public MklPoolingBackwardOpBase<T> {
 
       memory::dims output_dims_mkl_order;
       this->GetOutputDims(pool_params, &output_dims_mkl_order);
+
+      // Check if there is any 0-dimension in output.
+      if (absl::c_any_of(output_dims_mkl_order,
+                         [](dnnl_dim_t dim) { return dim == 0; })) {
+        return;
+      }
 
       // get src memory::desc
       memory::desc src_md =

@@ -189,6 +189,36 @@ class PoolingTest(test.TestCase):
           )
           self.evaluate(t)
 
+  def testAvgPool3dGradOutputWithZeroDim(self):
+    for data_format, use_gpu in GetTestConfigs():
+      with self.cached_session(use_gpu=use_gpu):
+        orig_input_shape = [1, 10, 7, 1, 9]
+        ksize = [1, 2, 2, 2, 1]
+        strides = [1, 1, 1, 1, 1]
+        grad_shape = [1, 9, 6, 0, 9]
+
+        if data_format == "NCDHW":
+          orig_input_shape = test_util.NHWCToNCHW(orig_input_shape)
+          ksize = test_util.NHWCToNCHW(ksize)
+          strides = test_util.NHWCToNCHW(strides)
+          grad_shape = test_util.NHWCToNCHW(list(grad_shape))
+
+        orig_input_shape_tensor = constant_op.constant(
+            orig_input_shape, dtype=dtypes.int32
+        )
+        grad_data = np.full(grad_shape, 0.1, dtype=np.float32)
+        grad = constant_op.constant(grad_data, dtype=dtypes.float32)
+        t = gen_nn_ops.AvgPool3DGrad(
+            orig_input_shape=orig_input_shape_tensor,
+            grad=grad,
+            ksize=ksize,
+            strides=strides,
+            padding="VALID",
+            data_format=data_format,
+        )
+        values = self.evaluate(t)
+        self.assertEqual(values.shape, tuple(orig_input_shape))
+
   def testMaxPool3dValidPadding(self):
     expected_output = [40.0, 41.0, 42.0]
     self._VerifyValues(
