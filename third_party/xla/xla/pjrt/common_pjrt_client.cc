@@ -1802,9 +1802,8 @@ CommonPjRtClient::CrossHostReceiveBuffers(
 
 static std::unique_ptr<PjRtBuffer> CreateOutputLeafBuffer(
     std::shared_ptr<const Shape> output_leaf_shape,
-    PjRtDeviceEventRef definition_event, bool is_predetermined_error,
-    CommonPjRtClient* client, PjRtDevice* device, PjRtRawBufferRef leaf_buffer,
-    int kind_id) {
+    PjRtDeviceEventRef definition_event, CommonPjRtClient* client,
+    PjRtDevice* device, PjRtRawBufferRef leaf_buffer, int kind_id) {
   PjRtMemorySpace* memory_space = nullptr;
   if (leaf_buffer) {
     memory_space = leaf_buffer->memory_space();
@@ -1845,23 +1844,21 @@ std::vector<std::unique_ptr<PjRtBuffer>> CommonPjRtClient::CreateOutputs(
       auto leaf_shape =
           std::shared_ptr<const Shape>(output_device_shape, &tuple_shapes[i]);
       res.push_back(CreateOutputLeafBuffer(
-          std::move(leaf_shape), definition_event, is_predetermined_error, this,
-          device, get_buffer(i), output_memory_space_kind_ids[i]));
+          std::move(leaf_shape), definition_event, this, device, get_buffer(i),
+          output_memory_space_kind_ids[i]));
     }
   } else if (!output_device_shape->IsTuple() &&
              output_leaf_buffers.size() == 1) {
     // Share the shape directly from the executable.
     res.push_back(CreateOutputLeafBuffer(
-        output_device_shape, std::move(definition_event),
-        is_predetermined_error, this, device, std::move(output_leaf_buffers[0]),
-        output_memory_space_kind_ids[0]));
+        output_device_shape, std::move(definition_event), this, device,
+        std::move(output_leaf_buffers[0]), output_memory_space_kind_ids[0]));
   } else {
     CHECK(is_predetermined_error)
         << "Nontuple results must have a single result buffer.";
-    res.push_back(CreateOutputLeafBuffer(output_device_shape,
-                                         std::move(definition_event),
-                                         is_predetermined_error, this, device,
-                                         {}, output_memory_space_kind_ids[0]));
+    res.push_back(CreateOutputLeafBuffer(
+        output_device_shape, std::move(definition_event), this, device, {},
+        output_memory_space_kind_ids[0]));
   }
   return res;
 }
