@@ -343,7 +343,8 @@ namespace {
 // efficiently scheduled such that they are not in the critical path and appear
 // to take no time.
 bool ExcludeInstructionFromElapsed(const HloInstruction& instruction) {
-  return instruction.opcode() == HloOpcode::kAllGatherStart ||
+  return !instruction.parent()->IsMainThread() ||
+         instruction.opcode() == HloOpcode::kAllGatherStart ||
          instruction.opcode() == HloOpcode::kAllGatherDone ||
          instruction.opcode() == HloOpcode::kAllReduceStart ||
          instruction.opcode() == HloOpcode::kAllReduceDone ||
