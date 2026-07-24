@@ -52,7 +52,7 @@ __global__ void SparseToDenseKernel(const Index* __restrict__ indices,
 
     if (valid) {
       int64_t output_idx = indices[thread_idx * ndims + ndims - 1];
-      Index strides = 1;
+      int64_t strides = 1;  // int64 to avoid overflow for narrow Index types
       for (int i = ndims - 2; i >= 0; i--) {
         strides *= dims[i + 1];
         output_idx += indices[thread_idx * ndims + i] * strides;
@@ -262,9 +262,10 @@ void LaunchSparseToDense<T, Index>::operator()(
 
 }  // namespace functor
 
-#define DEFINE_GPU_SPEC(T)                                \
-  template struct functor::LaunchSparseToDense<T, int64>; \
-  template struct functor::LaunchSparseToDense<T, int32>;
+#define DEFINE_GPU_SPEC(T)                                  \
+  template struct functor::LaunchSparseToDense<T, int64>;   \
+  template struct functor::LaunchSparseToDense<T, int32>;   \
+  template struct functor::LaunchSparseToDense<T, int16_t>;
 
 TF_CALL_GPU_NUMBER_TYPES(DEFINE_GPU_SPEC);
 TF_CALL_INTEGRAL_TYPES(DEFINE_GPU_SPEC);

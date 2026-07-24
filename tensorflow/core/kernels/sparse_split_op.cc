@@ -100,13 +100,19 @@ void SparseSplitOpImpl(OpKernelContext* context, int num_split,
                         "Input shape should be a vector but received shape ",
                         input_shape.shape().DebugString())),
                     done);
-  OP_REQUIRES_OK_ASYNC(context,
-                       sparse_utils::ValidateSparseTensor<int64_t>(
-                           input_indices, input_values, input_shape,
-                           std::is_same_v<Device, CPUDevice>
+  {
+    const auto index_val = std::is_same_v<Device, CPUDevice>
                                ? sparse_utils::IndexValidation::kUnordered
-                               : sparse_utils::IndexValidation::kNone),
-                       done);
+                               : sparse_utils::IndexValidation::kNone;
+    OP_REQUIRES_OK_ASYNC(
+        context,
+        sparse::DispatchIndexDtype(
+            input_indices.dtype(), [&](auto Tidx) -> absl::Status {
+              return sparse_utils::ValidateSparseTensor<decltype(Tidx)>(
+                  input_indices, input_values, input_shape, index_val);
+            }),
+        done);
+  }
 
   const int64_t axis_input = input_axis.scalar<int64_t>()();
   const int64_t input_rank = input_shape.vec<int64_t>().size();
@@ -156,9 +162,21 @@ class SparseSplitOp : public OpKernel {
 };
 
 #define REGISTER_KERNELS(type)                                          \
-  REGISTER_KERNEL_BUILDER(                                              \
-      Name("SparseSplit").Device(DEVICE_CPU).TypeConstraint<type>("T"), \
-      SparseSplitOp<type>)
+  REGISTER_KERNEL_BUILDER(Name("SparseSplit")                           \
+                              .Device(DEVICE_CPU)                      \
+                              .TypeConstraint<type>("T")               \
+                              .TypeConstraint<int64_t>("Tindices"),    \
+                          SparseSplitOp<type>)                         \
+  REGISTER_KERNEL_BUILDER(Name("SparseSplit")                           \
+                              .Device(DEVICE_CPU)                      \
+                              .TypeConstraint<type>("T")               \
+                              .TypeConstraint<int32_t>("Tindices"),    \
+                          SparseSplitOp<type>)                         \
+  REGISTER_KERNEL_BUILDER(Name("SparseSplit")                           \
+                              .Device(DEVICE_CPU)                      \
+                              .TypeConstraint<type>("T")               \
+                              .TypeConstraint<int16_t>("Tindices"),    \
+                          SparseSplitOp<type>)
 
 TF_CALL_ALL_TYPES(REGISTER_KERNELS);
 #undef REGISTER_KERNELS
@@ -186,13 +204,30 @@ class SparseSplitGPUOp : public AsyncOpKernel {
   int num_split_;
 };
 
-#define REGISTER_KERNELS(type)                            \
-  REGISTER_KERNEL_BUILDER(Name("SparseSplit")             \
-                              .Device(DEVICE_GPU)         \
-                              .HostMemory("split_dim")    \
-                              .HostMemory("shape")        \
-                              .HostMemory("output_shape") \
-                              .TypeConstraint<type>("T"), \
+#define REGISTER_KERNELS(type)                                      \
+  REGISTER_KERNEL_BUILDER(Name("SparseSplit")                        \
+                              .Device(DEVICE_GPU)                   \
+                              .HostMemory("split_dim")              \
+                              .HostMemory("shape")                  \
+                              .HostMemory("output_shape")           \
+                              .TypeConstraint<type>("T")            \
+                              .TypeConstraint<int64_t>("Tindices"), \
+                          SparseSplitGPUOp<type>)                   \
+  REGISTER_KERNEL_BUILDER(Name("SparseSplit")                        \
+                              .Device(DEVICE_GPU)                   \
+                              .HostMemory("split_dim")              \
+                              .HostMemory("shape")                  \
+                              .HostMemory("output_shape")           \
+                              .TypeConstraint<type>("T")            \
+                              .TypeConstraint<int32_t>("Tindices"), \
+                          SparseSplitGPUOp<type>)                   \
+  REGISTER_KERNEL_BUILDER(Name("SparseSplit")                        \
+                              .Device(DEVICE_GPU)                   \
+                              .HostMemory("split_dim")              \
+                              .HostMemory("shape")                  \
+                              .HostMemory("output_shape")           \
+                              .TypeConstraint<type>("T")            \
+                              .TypeConstraint<int16_t>("Tindices"), \
                           SparseSplitGPUOp<type>)
 TF_CALL_POD_TYPES(REGISTER_KERNELS);
 #undef REGISTER_KERNELS

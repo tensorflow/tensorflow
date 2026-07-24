@@ -52,15 +52,37 @@ class SparseReshapeOp : public OpKernel {
   }
 };
 
-REGISTER_KERNEL_BUILDER(Name("SparseReshape").Device(DEVICE_CPU),
-                        SparseReshapeOp<CPUDevice>)
+REGISTER_KERNEL_BUILDER(
+    Name("SparseReshape").Device(DEVICE_CPU).TypeConstraint<int64_t>("Tindices"),
+    SparseReshapeOp<CPUDevice>)
+REGISTER_KERNEL_BUILDER(
+    Name("SparseReshape").Device(DEVICE_CPU).TypeConstraint<int32_t>("Tindices"),
+    SparseReshapeOp<CPUDevice>)
+REGISTER_KERNEL_BUILDER(
+    Name("SparseReshape").Device(DEVICE_CPU).TypeConstraint<int16_t>("Tindices"),
+    SparseReshapeOp<CPUDevice>)
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 REGISTER_KERNEL_BUILDER(Name("SparseReshape")
                             .Device(DEVICE_GPU)
                             .HostMemory("input_shape")
                             .HostMemory("new_shape")
-                            .HostMemory("output_shape"),
+                            .HostMemory("output_shape")
+                            .TypeConstraint<int64_t>("Tindices"),
+                        SparseReshapeOp<GPUDevice>)
+REGISTER_KERNEL_BUILDER(Name("SparseReshape")
+                            .Device(DEVICE_GPU)
+                            .HostMemory("input_shape")
+                            .HostMemory("new_shape")
+                            .HostMemory("output_shape")
+                            .TypeConstraint<int32_t>("Tindices"),
+                        SparseReshapeOp<GPUDevice>)
+REGISTER_KERNEL_BUILDER(Name("SparseReshape")
+                            .Device(DEVICE_GPU)
+                            .HostMemory("input_shape")
+                            .HostMemory("new_shape")
+                            .HostMemory("output_shape")
+                            .TypeConstraint<int16_t>("Tindices"),
                         SparseReshapeOp<GPUDevice>)
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 

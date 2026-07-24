@@ -292,7 +292,7 @@ class AddManySparseToTensorsMapOp : public SparseTensorAccessingOp {
 
     // Get groups by minibatch dimension
     std::unordered_set<int64_t> visited;
-    sparse::GroupIterable minibatch = input_st.group({0});
+    sparse::GroupIterable<int64_t> minibatch = input_st.group({0});
     for (const auto& subset : minibatch) {
       const int64_t b = subset.group()[0];
       visited.insert(b);

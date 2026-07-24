@@ -112,7 +112,11 @@ class SparseToDense : public OpKernel {
     const int64_t num_elems = indices.dims() > 0 ? indices.dim_size(0) : 1;
     const int64_t num_dims = indices.dims() > 1 ? indices.dim_size(1) : 1;
 
-    auto output_shape_vec = output_shape.flat<Index>();
+    auto output_shape_flat = output_shape.flat<Index>();
+    absl::InlinedVector<int64_t, 8> output_shape_vec(output_shape_flat.size());
+    for (int i = 0; i < static_cast<int>(output_shape_flat.size()); ++i) {
+      output_shape_vec[i] = static_cast<int64_t>(output_shape_flat(i));
+    }
     TensorShape output_tensor_shape;
     OP_REQUIRES_OK(c, TensorShapeUtils::MakeShape(output_shape_vec.data(),
                                                   output_shape_vec.size(),
@@ -182,6 +186,7 @@ class SparseToDense : public OpKernel {
                           SparseToDense<type, index_type>);
 
 #define REGISTER_KERNELS_ALL(type) \
+  REGISTER_KERNELS(type, int16);   \
   REGISTER_KERNELS(type, int32);   \
   REGISTER_KERNELS(type, int64_t);
 
@@ -222,7 +227,11 @@ class SparseToDenseGPU : public AsyncOpKernel {
                                                   sparse_values, default_value),
                          done);
 
-    auto output_shape_vec = output_shape.flat<Index>();
+    auto output_shape_flat = output_shape.flat<Index>();
+    absl::InlinedVector<int64_t, 8> output_shape_vec(output_shape_flat.size());
+    for (int i = 0; i < static_cast<int>(output_shape_flat.size()); ++i) {
+      output_shape_vec[i] = static_cast<int64_t>(output_shape_flat(i));
+    }
     TensorShape output_tensor_shape;
     OP_REQUIRES_OK_ASYNC(c,
                          TensorShapeUtils::MakeShape(output_shape_vec.data(),
@@ -237,7 +246,8 @@ class SparseToDenseGPU : public AsyncOpKernel {
     OP_REQUIRES_OK_ASYNC(
         c,
         c->allocate_temp(DataTypeToEnum<Index>::value,
-                         {output_shape_vec.size()}, &output_shape_tensor),
+                         {static_cast<int64_t>(output_shape_vec.size())},
+                         &output_shape_tensor),
         done);
     auto output_shape_data =
         AsDeviceMemory(output_shape_tensor.template flat<Index>().data(),
@@ -269,6 +279,7 @@ class SparseToDenseGPU : public AsyncOpKernel {
                           SparseToDenseGPU<type, index_type>);
 
 #define REGISTER_GPU_KERNELS_ALL(type) \
+  REGISTER_GPU_KERNELS(type, int16);   \
   REGISTER_GPU_KERNELS(type, int32);   \
   REGISTER_GPU_KERNELS(type, int64_t);
 

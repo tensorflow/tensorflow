@@ -147,7 +147,7 @@ struct SerializeGroups {};
 
 template <typename T>
 struct SerializeGroups<T, tstring> {
-  absl::Status operator()(sparse::GroupIterable* minibatch,
+  absl::Status operator()(sparse::GroupIterable<int64_t>* minibatch,
                           const Tensor& output_shape, int64_t N, int rank,
                           Tensor* serialized_sparse) {
     auto serialized_sparse_t = serialized_sparse->matrix<tstring>();
@@ -251,7 +251,7 @@ void CopyValues<Eigen::half>(const Eigen::half* src, Eigen::half* dest,
 
 template <typename T>
 struct SerializeGroups<T, Variant> {
-  absl::Status operator()(sparse::GroupIterable* minibatch,
+  absl::Status operator()(sparse::GroupIterable<int64_t>* minibatch,
                           const Tensor& output_shape, int64_t N, int rank,
                           Tensor* serialized_sparse) {
     auto serialized_sparse_t = serialized_sparse->template matrix<Variant>();
@@ -392,7 +392,7 @@ class SerializeManySparseOp : public OpKernel {
     for (int d = 1; d < rank; d++) output_shape_t(d - 1) = input_shape_t(d);
 
     // Get groups by minibatch dimension
-    sparse::GroupIterable minibatch = input_st.group({0});
+    sparse::GroupIterable<int64_t> minibatch = input_st.group({0});
 
     OP_REQUIRES_OK(context, SerializeGroups<T, U>()(&minibatch, output_shape, N,
                                                     rank, serialized_sparse));

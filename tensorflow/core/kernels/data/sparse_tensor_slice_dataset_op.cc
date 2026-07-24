@@ -222,8 +222,8 @@ class Dataset : public DatasetBase {
     Tensor dense_shape_;
 
     mutex mu_;
-    sparse::GroupIterable group_iterable_ TF_GUARDED_BY(mu_);
-    sparse::GroupIterable::IteratorStep iter_ TF_GUARDED_BY(mu_);
+    sparse::GroupIterable<int64_t> group_iterable_ TF_GUARDED_BY(mu_);
+    sparse::GroupIterable<int64_t>::IteratorStep iter_ TF_GUARDED_BY(mu_);
     int64_t i_ TF_GUARDED_BY(mu_) = 0;
     const int64_t kNextNonEmptyUnknown = -1;
     int64_t next_non_empty_i_ TF_GUARDED_BY(mu_) = kNextNonEmptyUnknown;

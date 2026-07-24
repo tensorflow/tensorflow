@@ -42,9 +42,11 @@ absl::Status GetDimsFromIx(const Tensor& ix, int* result) {
                                                const VarDimArray shape,
                                                const VarDimArray order,
                                                SparseTensor* result) {
-  if (ix.dtype() != DT_INT64) {
+  if (ix.dtype() != DT_INT64 && ix.dtype() != DT_INT32 &&
+      ix.dtype() != DT_INT16) {
     return absl::InvalidArgumentError(
-        absl::StrCat("indices must be type int64 but got: ", ix.dtype()));
+        absl::StrCat("indices must be type int64, int32, or int16 but got: ",
+                     ix.dtype()));
   }
   if (!TensorShapeUtils::IsVector(vals.shape())) {
     return absl::InvalidArgumentError(absl::StrCat(
@@ -103,8 +105,9 @@ SparseTensor::SparseTensor(Tensor ix, Tensor vals, const VarDimArray shape,
       shape_(shape.begin(), shape.end()),
       order_(order.begin(), order.end()),
       dims_(UnsafeGetDimsFromIx(ix_)) {
-  DCHECK_EQ(ix_.dtype(), DT_INT64)
-      << "indices must be type int64 but got: " << ix_.dtype();
+  DCHECK(ix_.dtype() == DT_INT64 || ix_.dtype() == DT_INT32 ||
+         ix_.dtype() == DT_INT16)
+      << "indices must be type int64, int32, or int16 but got: " << ix_.dtype();
   DCHECK(TensorShapeUtils::IsVector(vals_.shape()))
       << "vals must be a vec, but got: " << vals_.shape().DebugString();
   DCHECK_EQ(ix_.shape().dim_size(0), vals_.shape().dim_size(0))
@@ -222,9 +225,9 @@ bool SparseTensor::IndicesValidMatrix32BitFastPath() const {
          col_in_range_valid & order_valid;
 }
 
-template <bool standard_order>
+template <bool standard_order, typename Tindices>
 absl::Status SparseTensor::IndicesValidHelper() const {
-  const auto ix_t = ix_.matrix<int64_t>();
+  const auto ix_t = ix_.matrix<Tindices>();
   const int64_t* const shape_ptr = shape_.data();
 
   for (std::size_t n = 0; n < num_entries(); ++n) {
@@ -245,7 +248,8 @@ absl::Status SparseTensor::IndicesValidHelper() const {
         } else {
           ordered_dim = order_[di];
         }
-        int64_t diff = ix_t(n, ordered_dim) - ix_t(n - 1, ordered_dim);
+        auto diff = static_cast<int64_t>(ix_t(n, ordered_dim)) -
+                    static_cast<int64_t>(ix_t(n - 1, ordered_dim));
         if (diff > 0) different = true;
         if (!different && diff < 0) increasing = false;
       }
@@ -277,10 +281,6 @@ absl::Status SparseTensor::IndicesValidHelper() const {
 }
 
 absl::Status SparseTensor::IndicesValid() const {
-  if (shape_.size() == 1 && IndicesValidVectorFastPath()) {
-    return absl::OkStatus();
-  }
-
   bool standard_order = true;
   for (size_t i = 0; i < order_.size(); ++i) {
     if (order_[i] < 0) {
@@ -289,6 +289,15 @@ absl::Status SparseTensor::IndicesValid() const {
           "construction time or run ReorderInPlace");
     }
     standard_order = standard_order && order_[i] == i;
+  }
+
+  if (ix_.dtype() == DT_INT16) {
+    return standard_order ? IndicesValidHelper<true, int16_t>()
+                          : IndicesValidHelper<false, int16_t>();
+  }
+  if (ix_.dtype() == DT_INT32) {
+    return standard_order ? IndicesValidHelper<true, int32_t>()
+                          : IndicesValidHelper<false, int32_t>();
   }
 
   if (standard_order) {
@@ -303,11 +312,21 @@ absl::Status SparseTensor::IndicesValid() const {
         return absl::OkStatus();
       }
     }
-    return IndicesValidHelper<true>();
+    return IndicesValidHelper<true, int64_t>();
   } else {
-    return IndicesValidHelper<false>();
+    return IndicesValidHelper<false, int64_t>();
   }
 }
+
+// Explicit instantiations for IndicesValidHelper.
+// KEEP IN SYNC with the index dtypes handled in DispatchIndexDtype()
+// (sparse_tensor.h). Adding a new dtype there requires a matching pair here.
+template absl::Status SparseTensor::IndicesValidHelper<true, int64_t>() const;
+template absl::Status SparseTensor::IndicesValidHelper<false, int64_t>() const;
+template absl::Status SparseTensor::IndicesValidHelper<true, int32_t>() const;
+template absl::Status SparseTensor::IndicesValidHelper<false, int32_t>() const;
+template absl::Status SparseTensor::IndicesValidHelper<true, int16_t>() const;
+template absl::Status SparseTensor::IndicesValidHelper<false, int16_t>() const;
 
 }  // namespace sparse
 }  // namespace tensorflow

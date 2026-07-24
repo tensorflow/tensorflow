@@ -36,13 +36,13 @@ void ReshapeSparseTensor(OpKernelContext *context,
 
 namespace functor {
 
-template <typename Device>
+template <typename Device, typename Tindices = int64_t>
 struct ReshapeSparseTensorFunctor {
   absl::Status operator()(
       OpKernelContext *context, const TensorShape &input_shape,
       const TensorShape &output_shape,
-      typename TTypes<int64_t>::ConstMatrix input_indices,
-      typename TTypes<int64_t>::Matrix output_indices) const;
+      typename TTypes<Tindices>::ConstMatrix input_indices,
+      typename TTypes<Tindices>::Matrix output_indices) const;
 };
 
 }  // namespace functor

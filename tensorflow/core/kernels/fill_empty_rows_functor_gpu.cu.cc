@@ -173,11 +173,24 @@ struct FillEmptyRows<GPUDevice, T, Tindex, RaggedOperands> {
     const auto default_value = default_value_t.scalar<T>();
     const auto indices = indices_t.tensor<Tindex, IndicesRank>();
     const auto values = values_t.vec<T>();
-    const auto dense_shape = dense_shape_t.tensor<Tindex, IndicesRank - 1>();
 
     const Tindex N = indices_t.shape().dim_size(0);
     const int rank = IndicesRank == 1 ? 1 : indices_t.shape().dim_size(1);
-    const Tindex dense_rows = dense_shape(0);  // Must be on the host
+    // dense_shape_t is always int64 per op spec; read it correctly.
+    if (dense_shape_t.NumElements() == 0) {
+      return errors::InvalidArgument("dense_shape cannot be empty.");
+    }
+    const int64_t dense_rows_64 = dense_shape_t.flat<int64_t>()(0);
+    if (dense_rows_64 < 0 ||
+        dense_rows_64 >
+            static_cast<int64_t>(std::numeric_limits<Tindex>::max())) {
+      return errors::InvalidArgument(
+          "dense_shape[0] (", dense_rows_64,
+          ") is invalid or exceeds the maximum value representable by index "
+          "type (",
+          std::numeric_limits<Tindex>::max(), ")");
+    }
+    const Tindex dense_rows = static_cast<Tindex>(dense_rows_64);
     DataType index_type = DataTypeToEnum<Tindex>::value;
     const GPUDevice& device = context->eigen_device<GPUDevice>();
     se::Stream* stream = context->op_device_context()->stream();
@@ -479,17 +492,19 @@ struct FillEmptyRows<GPUDevice, T, Tindex, RaggedOperands> {
 
 }  // namespace functor
 
-#define DEFINE_INT64(T)                                       \
-  template struct functor::FillEmptyRows<GPUDevice, T, int64, \
-                                         /*RaggedOperands=*/true>;
-TF_CALL_POD_TYPES(DEFINE_INT64)
-#undef DEFINE_INT64
-
-#define DEFINE_INT64(T)                                       \
-  template struct functor::FillEmptyRows<GPUDevice, T, int64, \
-                                         /*RaggedOperands=*/false>;
-TF_CALL_POD_TYPES(DEFINE_INT64)
-#undef DEFINE_INT64
+#define DEFINE_FILL_EMPTY_ROWS(T, Tindex, RaggedOperands)               \
+  template struct functor::FillEmptyRows<GPUDevice, T, Tindex,          \
+                                         /*RaggedOperands=*/RaggedOperands>;
+// int16_t omitted: CountElementsPerRowKernel calls GpuAtomicAdd(Tindex*, 1),
+// and CUDA's atomicAdd does not support int16_t. CPU kernels handle int16_t.
+#define DEFINE_FOR_TYPE(T)           \
+  DEFINE_FILL_EMPTY_ROWS(T, int64, true)  \
+  DEFINE_FILL_EMPTY_ROWS(T, int64, false) \
+  DEFINE_FILL_EMPTY_ROWS(T, int32, true)  \
+  DEFINE_FILL_EMPTY_ROWS(T, int32, false)
+TF_CALL_POD_TYPES(DEFINE_FOR_TYPE)
+#undef DEFINE_FOR_TYPE
+#undef DEFINE_FILL_EMPTY_ROWS
 
 namespace {
 
@@ -598,10 +613,15 @@ struct FillEmptyRowsGrad<GPUDevice, T, Tindex> {
 
 }  // namespace functor
 
-#define DEFINE_INT64(T) \
-  template struct functor::FillEmptyRowsGrad<GPUDevice, T, int64>;
-TF_CALL_REAL_NUMBER_TYPES(DEFINE_INT64);
-#undef DEFINE_INT64
+#define DEFINE_FILL_EMPTY_ROWS_GRAD(T, Tindex) \
+  template struct functor::FillEmptyRowsGrad<GPUDevice, T, Tindex>;
+// int16_t omitted: same atomicAdd constraint as DEFINE_FOR_TYPE above.
+#define DEFINE_GRAD_FOR_TYPE(T)        \
+  DEFINE_FILL_EMPTY_ROWS_GRAD(T, int64) \
+  DEFINE_FILL_EMPTY_ROWS_GRAD(T, int32)
+TF_CALL_REAL_NUMBER_TYPES(DEFINE_GRAD_FOR_TYPE);
+#undef DEFINE_GRAD_FOR_TYPE
+#undef DEFINE_FILL_EMPTY_ROWS_GRAD
 
 }  // namespace tensorflow
 

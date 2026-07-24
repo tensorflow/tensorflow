@@ -119,14 +119,18 @@ class SparseFillEmptyRowsOp : public OpKernel {
   }
 };
 
-#define REGISTER_KERNELS(D, T, Tindex)                   \
-  REGISTER_KERNEL_BUILDER(Name("SparseFillEmptyRows")    \
-                              .Device(DEVICE_##D)        \
-                              .HostMemory("dense_shape") \
-                              .TypeConstraint<T>("T"),   \
+#define REGISTER_KERNELS(D, T, Tindex)                              \
+  REGISTER_KERNEL_BUILDER(Name("SparseFillEmptyRows")               \
+                              .Device(DEVICE_##D)                   \
+                              .HostMemory("dense_shape")            \
+                              .TypeConstraint<T>("T")               \
+                              .TypeConstraint<Tindex>("Tindices"),  \
                           SparseFillEmptyRowsOp<D##Device, T, Tindex>)
 
-#define REGISTER_CPU_KERNELS(T) REGISTER_KERNELS(CPU, T, int64)
+#define REGISTER_CPU_KERNELS(T)    \
+  REGISTER_KERNELS(CPU, T, int64); \
+  REGISTER_KERNELS(CPU, T, int32); \
+  REGISTER_KERNELS(CPU, T, int16)
 TF_CALL_ALL_TYPES(REGISTER_CPU_KERNELS);
 #undef REGISTER_CPU_KERNELS
 
@@ -148,15 +152,20 @@ class SparseFillEmptyRowsGPUOp : public AsyncOpKernel {
   }
 };
 
-#define REGISTER_KERNELS(T, Tindex)                      \
-  REGISTER_KERNEL_BUILDER(Name("SparseFillEmptyRows")    \
-                              .Device(DEVICE_GPU)        \
-                              .HostMemory("dense_shape") \
-                              .TypeConstraint<T>("T"),   \
+#define REGISTER_KERNELS(T, Tindex)                                 \
+  REGISTER_KERNEL_BUILDER(Name("SparseFillEmptyRows")               \
+                              .Device(DEVICE_GPU)                   \
+                              .HostMemory("dense_shape")            \
+                              .TypeConstraint<T>("T")               \
+                              .TypeConstraint<Tindex>("Tindices"),  \
                           SparseFillEmptyRowsGPUOp<T, Tindex>)
 
 
-#define REGISTER_KERNELS_TINDEX(T) REGISTER_KERNELS(T, int64)
+// int16_t omitted: the GPU functor uses GpuAtomicAdd(Tindex*,...) which CUDA
+// does not support for int16_t. The CPU int16_t kernel handles that case.
+#define REGISTER_KERNELS_TINDEX(T)   \
+  REGISTER_KERNELS(T, int64);         \
+  REGISTER_KERNELS(T, int32)
 TF_CALL_POD_TYPES(REGISTER_KERNELS_TINDEX)
 #undef REGISTER_KERNELS_TINDEX
 
@@ -209,19 +218,26 @@ class SparseFillEmptyRowsGradOp : public OpKernel {
   }
 };
 
-#define REGISTER_KERNELS(D, T, Tindex)                    \
-  REGISTER_KERNEL_BUILDER(Name("SparseFillEmptyRowsGrad") \
-                              .Device(DEVICE_##D)         \
-                              .TypeConstraint<T>("T"),    \
+#define REGISTER_KERNELS(D, T, Tindex)                              \
+  REGISTER_KERNEL_BUILDER(Name("SparseFillEmptyRowsGrad")           \
+                              .Device(DEVICE_##D)                   \
+                              .TypeConstraint<T>("T")               \
+                              .TypeConstraint<Tindex>("Tindices"),  \
                           SparseFillEmptyRowsGradOp<D##Device, T, Tindex>)
 
-#define REGISTER_CPU_KERNELS(T) REGISTER_KERNELS(CPU, T, int64)
+#define REGISTER_CPU_KERNELS(T)    \
+  REGISTER_KERNELS(CPU, T, int64); \
+  REGISTER_KERNELS(CPU, T, int32); \
+  REGISTER_KERNELS(CPU, T, int16)
 TF_CALL_NUMBER_TYPES(REGISTER_CPU_KERNELS);
 #undef REGISTER_CPU_KERNELS
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
-#define REGISTER_GPU_KERNELS(T) REGISTER_KERNELS(GPU, T, int64)
+// int16_t omitted: same GpuAtomicAdd constraint as GPU forward kernel above.
+#define REGISTER_GPU_KERNELS(T)    \
+  REGISTER_KERNELS(GPU, T, int64); \
+  REGISTER_KERNELS(GPU, T, int32)
 TF_CALL_REAL_NUMBER_TYPES(REGISTER_GPU_KERNELS);
 #undef REGISTER_GPU_KERNELS
 

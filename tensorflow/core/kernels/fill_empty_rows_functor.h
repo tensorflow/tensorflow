@@ -16,8 +16,11 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_KERNELS_FILL_EMPTY_ROWS_OP_H_
 #define TENSORFLOW_CORE_KERNELS_FILL_EMPTY_ROWS_OP_H_
 
+#include <limits>
+
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor_types.h"
+#include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
 
 using CPUDevice = Eigen::ThreadPoolDevice;
@@ -54,10 +57,22 @@ struct FillEmptyRows<CPUDevice, T, Tindex, RaggedOperands> {
     const T& default_value = default_value_t.scalar<T>()();
     const auto indices = indices_t.tensor<Tindex, IndicesRank>();
     const auto values = values_t.vec<T>();
-    const auto dense_shape = dense_shape_t.tensor<Tindex, IndicesRank - 1>();
 
     const Tindex N = indices_t.shape().dim_size(0);
-    const Tindex dense_rows = dense_shape(0);
+    if (dense_shape_t.NumElements() == 0) {
+      return errors::InvalidArgument("dense_shape cannot be empty.");
+    }
+    const int64_t dense_rows_64 = dense_shape_t.flat<int64_t>()(0);
+    if (dense_rows_64 < 0 ||
+        dense_rows_64 >
+            static_cast<int64_t>(std::numeric_limits<Tindex>::max())) {
+      return errors::InvalidArgument(
+          "dense_shape[0] (", dense_rows_64,
+          ") is invalid or exceeds the maximum value representable by index "
+          "type (",
+          std::numeric_limits<Tindex>::max(), ")");
+    }
+    const Tindex dense_rows = static_cast<Tindex>(dense_rows_64);
 
     bool* empty_row_indicator = nullptr;
     if (context->output_required(kEmptyRowIndicatorOutput)) {

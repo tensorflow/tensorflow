@@ -83,6 +83,7 @@ cc_library(
         "dim_comparator.h",
         "sparse_tensor.h",
     ],
+    visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_lite",

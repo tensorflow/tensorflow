@@ -20,11 +20,12 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_util.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/util/sparse/dim_comparator.h"
 #include "tensorflow/core/util/sparse/sparse_tensor.h"
 
 namespace tensorflow {
 
-template <typename T>
+template <typename T, typename Tindices = int64_t>
 class SparseAddGradOp : public OpKernel {
  public:
   explicit SparseAddGradOp(OpKernelConstruction *ctx) : OpKernel(ctx) {}
@@ -72,9 +73,9 @@ class SparseAddGradOp : public OpKernel {
     const int64_t b_nnz = b_indices->dim_size(0);
     const int64_t sum_nnz = backprop_val_grad->NumElements();
 
-    const auto a_indices_mat = a_indices->matrix<int64_t>();
-    const auto b_indices_mat = b_indices->matrix<int64_t>();
-    const auto sum_indices_mat = sum_indices->matrix<int64_t>();
+    const auto a_indices_mat = a_indices->matrix<Tindices>();
+    const auto b_indices_mat = b_indices->matrix<Tindices>();
+    const auto sum_indices_mat = sum_indices->matrix<Tindices>();
 
     Tensor *a_val_grad, *b_val_grad;
     OP_REQUIRES_OK(ctx,
@@ -88,19 +89,19 @@ class SparseAddGradOp : public OpKernel {
     memset(a_val_grad_flat, 0, sizeof(T) * a_nnz);
     memset(b_val_grad_flat, 0, sizeof(T) * b_nnz);
 
-#define COMPARE(a_or_b, idx)                                                \
-  switch (sparse::DimComparator::cmp(a_or_b##_indices_mat, sum_indices_mat, \
-                                     idx, k, num_dims)) {                   \
-    case 0:                                                                 \
-      a_or_b##_val_grad_flat[idx] = backprop_val_grad_flat[k];              \
-      ++idx;                                                                \
-      break;                                                                \
-    case -1:                                                                \
-      ++idx;                                                                \
-      a_or_b##_idx_geq = false;                                             \
-      break;                                                                \
-    case 1:                                                                 \
-      break;                                                                \
+#define COMPARE(a_or_b, idx)                                                         \
+  switch (sparse::DimComparator<Tindices>::cmp(a_or_b##_indices_mat, sum_indices_mat,\
+                                               idx, k, num_dims)) {                  \
+    case 0:                                                                          \
+      a_or_b##_val_grad_flat[idx] = backprop_val_grad_flat[k];                       \
+      ++idx;                                                                         \
+      break;                                                                         \
+    case -1:                                                                         \
+      ++idx;                                                                         \
+      a_or_b##_idx_geq = false;                                                      \
+      break;                                                                         \
+    case 1:                                                                          \
+      break;                                                                         \
   }
 
     // Set-intersect the indices; fill in grads for positions in the
@@ -131,10 +132,22 @@ class SparseAddGradOp : public OpKernel {
   }
 };
 
-#define REGISTER_KERNELS(type)                                            \
-  REGISTER_KERNEL_BUILDER(                                                \
-      Name("SparseAddGrad").Device(DEVICE_CPU).TypeConstraint<type>("T"), \
-      SparseAddGradOp<type>)
+#define REGISTER_KERNELS(type)                                                        \
+  REGISTER_KERNEL_BUILDER(Name("SparseAddGrad")                                       \
+                              .Device(DEVICE_CPU)                                     \
+                              .TypeConstraint<type>("T")                              \
+                              .TypeConstraint<int64_t>("Tindices"),                   \
+                          SparseAddGradOp<type, int64_t>)                             \
+  REGISTER_KERNEL_BUILDER(Name("SparseAddGrad")                                       \
+                              .Device(DEVICE_CPU)                                     \
+                              .TypeConstraint<type>("T")                              \
+                              .TypeConstraint<int32_t>("Tindices"),                   \
+                          SparseAddGradOp<type, int32_t>)                             \
+  REGISTER_KERNEL_BUILDER(Name("SparseAddGrad")                                       \
+                              .Device(DEVICE_CPU)                                     \
+                              .TypeConstraint<type>("T")                              \
+                              .TypeConstraint<int16_t>("Tindices"),                   \
+                          SparseAddGradOp<type, int16_t>)
 
 // This op should work for any T that SparseAdd is registered with.
 REGISTER_KERNELS(float);

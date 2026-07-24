@@ -87,18 +87,34 @@ class SparseReorderOp : public OpKernel {
     const Tensor& input_shape_in = context->input(2);
     // Indices aren't used, and some ops use -1 as a placeholder for missing
     // values.
-    OP_REQUIRES_OK(context, (sparse_utils::ValidateSparseTensor<int64_t>(
-                                input_ind, input_val, input_shape_in,
-                                sparse_utils::IndexValidation::kNone)));
+    OP_REQUIRES_OK(context,
+                   sparse::DispatchIndexDtype(
+                       input_ind.dtype(), [&](auto Tidx) -> absl::Status {
+                         return sparse_utils::ValidateSparseTensor<decltype(Tidx)>(
+                             input_ind, input_val, input_shape_in,
+                             sparse_utils::IndexValidation::kNone);
+                       }));
     functor::SparseReorderFunctor<Device, T>()(context, input_ind, input_val,
                                                input_shape_in);
   }
 };
 
 #define REGISTER_KERNELS(type)                                            \
-  REGISTER_KERNEL_BUILDER(                                                \
-      Name("SparseReorder").Device(DEVICE_CPU).TypeConstraint<type>("T"), \
-      SparseReorderOp<CPUDevice, type>)
+  REGISTER_KERNEL_BUILDER(Name("SparseReorder")                           \
+                              .Device(DEVICE_CPU)                        \
+                              .TypeConstraint<type>("T")                 \
+                              .TypeConstraint<int64_t>("Tindices"),      \
+                          SparseReorderOp<CPUDevice, type>)              \
+  REGISTER_KERNEL_BUILDER(Name("SparseReorder")                           \
+                              .Device(DEVICE_CPU)                        \
+                              .TypeConstraint<type>("T")                 \
+                              .TypeConstraint<int32_t>("Tindices"),      \
+                          SparseReorderOp<CPUDevice, type>)              \
+  REGISTER_KERNEL_BUILDER(Name("SparseReorder")                           \
+                              .Device(DEVICE_CPU)                        \
+                              .TypeConstraint<type>("T")                 \
+                              .TypeConstraint<int16_t>("Tindices"),      \
+                          SparseReorderOp<CPUDevice, type>)
 
 TF_CALL_ALL_TYPES(REGISTER_KERNELS);
 #undef REGISTER_KERNELS
@@ -106,9 +122,21 @@ TF_CALL_ALL_TYPES(REGISTER_KERNELS);
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #define REGISTER_GPU_KERNELS(type)                                        \
-  REGISTER_KERNEL_BUILDER(                                                \
-      Name("SparseReorder").Device(DEVICE_GPU).TypeConstraint<type>("T"), \
-      SparseReorderOp<GPUDevice, type>)
+  REGISTER_KERNEL_BUILDER(Name("SparseReorder")                           \
+                              .Device(DEVICE_GPU)                        \
+                              .TypeConstraint<type>("T")                 \
+                              .TypeConstraint<int64_t>("Tindices"),      \
+                          SparseReorderOp<GPUDevice, type>)              \
+  REGISTER_KERNEL_BUILDER(Name("SparseReorder")                           \
+                              .Device(DEVICE_GPU)                        \
+                              .TypeConstraint<type>("T")                 \
+                              .TypeConstraint<int32_t>("Tindices"),      \
+                          SparseReorderOp<GPUDevice, type>)              \
+  REGISTER_KERNEL_BUILDER(Name("SparseReorder")                           \
+                              .Device(DEVICE_GPU)                        \
+                              .TypeConstraint<type>("T")                 \
+                              .TypeConstraint<int16_t>("Tindices"),      \
+                          SparseReorderOp<GPUDevice, type>)
 
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU_KERNELS);
 TF_CALL_INTEGRAL_TYPES(REGISTER_GPU_KERNELS);

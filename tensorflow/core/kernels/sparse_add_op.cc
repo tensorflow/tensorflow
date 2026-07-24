@@ -23,7 +23,7 @@ limitations under the License.
 
 namespace tensorflow {
 
-template <typename T, typename Treal>
+template <typename T, typename Treal, typename Tindices = int64_t>
 class SparseAddOp : public OpKernel {
  public:
   explicit SparseAddOp(OpKernelConstruction *ctx) : OpKernel(ctx) {}
@@ -107,8 +107,8 @@ class SparseAddOp : public OpKernel {
     const Treal thresh = thresh_t->scalar<Treal>()();
 
     // (1) do a pass over inputs, and append values and indices to vectors
-    auto a_indices_mat = a_indices->matrix<int64_t>();
-    auto b_indices_mat = b_indices->matrix<int64_t>();
+    auto a_indices_mat = a_indices->matrix<Tindices>();
+    auto b_indices_mat = b_indices->matrix<Tindices>();
     std::vector<std::pair<bool, int64_t>> entries_to_copy;  // from_a?, idx
     entries_to_copy.reserve(a_nnz + b_nnz);
     std::vector<T> out_values;
@@ -118,8 +118,8 @@ class SparseAddOp : public OpKernel {
     int64_t i = 0, j = 0;
     T s;
     while (i < a_nnz && j < b_nnz) {
-      switch (sparse::DimComparator::cmp(a_indices_mat, b_indices_mat, i, j,
-                                         num_dims)) {
+      switch (sparse::DimComparator<Tindices>::cmp(a_indices_mat, b_indices_mat,
+                                                    i, j, num_dims)) {
         case -1:
           entries_to_copy.emplace_back(true, i);
           out_values.push_back(a_values(i));
@@ -162,14 +162,15 @@ class SparseAddOp : public OpKernel {
                                         &out_indices_t));
     OP_REQUIRES_OK(
         ctx, ctx->allocate_output(1, TensorShape({sum_nnz}), &out_values_t));
-    auto out_indices_mat = out_indices_t->matrix<int64_t>();
+    auto out_indices_mat = out_indices_t->matrix<Tindices>();
     auto out_values_flat = out_values_t->vec<T>();
 
     for (i = 0; i < sum_nnz; ++i) {
       const bool from_a = entries_to_copy[i].first;
       const int64_t idx = entries_to_copy[i].second;
-      out_indices_mat.chip<0>(i) =
-          from_a ? a_indices_mat.chip<0>(idx) : b_indices_mat.chip<0>(idx);
+      out_indices_mat.template chip<0>(i) =
+          from_a ? a_indices_mat.template chip<0>(idx)
+                 : b_indices_mat.template chip<0>(idx);
     }
     if (sum_nnz > 0) {
       std::copy_n(out_values.begin(), sum_nnz, &out_values_flat(0));
@@ -178,10 +179,22 @@ class SparseAddOp : public OpKernel {
   }
 };
 
-#define REGISTER_KERNELS(type, thresh_type)                           \
-  REGISTER_KERNEL_BUILDER(                                            \
-      Name("SparseAdd").Device(DEVICE_CPU).TypeConstraint<type>("T"), \
-      SparseAddOp<type, thresh_type>)
+#define REGISTER_KERNELS(type, thresh_type)                                   \
+  REGISTER_KERNEL_BUILDER(Name("SparseAdd")                                    \
+                              .Device(DEVICE_CPU)                              \
+                              .TypeConstraint<type>("T")                       \
+                              .TypeConstraint<int64_t>("Tindices"),            \
+                          SparseAddOp<type, thresh_type, int64_t>)             \
+  REGISTER_KERNEL_BUILDER(Name("SparseAdd")                                    \
+                              .Device(DEVICE_CPU)                              \
+                              .TypeConstraint<type>("T")                       \
+                              .TypeConstraint<int32_t>("Tindices"),            \
+                          SparseAddOp<type, thresh_type, int32_t>)             \
+  REGISTER_KERNEL_BUILDER(Name("SparseAdd")                                    \
+                              .Device(DEVICE_CPU)                              \
+                              .TypeConstraint<type>("T")                       \
+                              .TypeConstraint<int16_t>("Tindices"),            \
+                          SparseAddOp<type, thresh_type, int16_t>)
 
 // The list below is equivalent to TF_CALL_REAL_NUMBER_TYPES, minus uint8.  This
 // is because std::abs() on uint8 does not compile.

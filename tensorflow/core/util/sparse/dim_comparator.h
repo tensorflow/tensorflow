@@ -43,12 +43,13 @@ namespace sparse {
 //
 // This can be used to sort a vector of row indices into IX according to
 // the values in IX in particular columns (dimensions) of interest.
+template <typename Tindices = int64_t>
 class DimComparator {
  public:
   typedef absl::Span<const int64_t> VarDimArray;
 
-  DimComparator(const TTypes<int64_t>::Matrix& ix, const VarDimArray& order,
-                const VarDimArray& shape)
+  DimComparator(const typename TTypes<Tindices>::Matrix& ix,
+                const VarDimArray& order, const VarDimArray& shape)
       : ix_(ix), order_(order), dims_(shape.size()) {
     DCHECK_GT(order.size(), size_t{0}) << "Must order using at least one index";
     DCHECK_LE(order.size(), shape.size()) << "Can only sort up to dims";
@@ -70,13 +71,13 @@ class DimComparator {
   // Compares two indices taken from corresponding index matrices, using the
   // standard, row-major (or lexicographic) order.  Useful for cases that need
   // to distinguish between all three orderings (<, ==, >).
-  inline static int cmp(const TTypes<int64_t>::ConstMatrix& a_idx,
-                        const TTypes<int64_t>::ConstMatrix& b_idx,
+  inline static int cmp(const typename TTypes<Tindices>::ConstMatrix& a_idx,
+                        const typename TTypes<Tindices>::ConstMatrix& b_idx,
                         const int64_t a_row, const int64_t b_row,
                         const int dims) {
     for (int d = 0; d < dims; ++d) {
-      const int64_t a = a_idx(a_row, d);
-      const int64_t b = b_idx(b_row, d);
+      const Tindices a = a_idx(a_row, d);
+      const Tindices b = b_idx(b_row, d);
       if (a < b) {
         return -1;
       } else if (a > b) {
@@ -87,29 +88,30 @@ class DimComparator {
   }
 
  protected:
-  const TTypes<int64_t>::Matrix ix_;
+  const typename TTypes<Tindices>::Matrix ix_;
   const VarDimArray order_;
   const int dims_;
   const std::vector<int64_t>* ix_order_;
 };
 
-template <int ORDER_DIM>
-class FixedDimComparator : DimComparator {
+template <int ORDER_DIM, typename Tindices = int64_t>
+class FixedDimComparator : DimComparator<Tindices> {
  public:
-  FixedDimComparator(const TTypes<int64_t>::Matrix& ix,
-                     const VarDimArray& order, const VarDimArray& shape)
-      : DimComparator(ix, order, shape) {
+  FixedDimComparator(const typename TTypes<Tindices>::Matrix& ix,
+                     const typename DimComparator<Tindices>::VarDimArray& order,
+                     const typename DimComparator<Tindices>::VarDimArray& shape)
+      : DimComparator<Tindices>(ix, order, shape) {
     DCHECK_EQ(order.size(), ORDER_DIM);
   }
   inline bool operator()(const int64_t i, const int64_t j) const {
     bool value = false;
     for (int di = 0; di < ORDER_DIM; ++di) {
-      const int64_t d = order_[di];
-      if (ix_(i, d) < ix_(j, d)) {
+      const int64_t d = this->order_[di];
+      if (this->ix_(i, d) < this->ix_(j, d)) {
         value = true;
         break;
       }
-      if (ix_(i, d) > ix_(j, d)) break;
+      if (this->ix_(i, d) > this->ix_(j, d)) break;
     }
     return value;
   }

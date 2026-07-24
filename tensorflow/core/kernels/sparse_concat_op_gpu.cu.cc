@@ -38,17 +38,17 @@ namespace functor {
 
 namespace {
 
-template <typename T>
+template <typename T, typename Tindices>
 __global__ void SparseConcatKernel(
     int64_t output_nnz, int rank, int concat_dim, bool need_to_sort,
-    GpuDeviceArrayStruct<const int64_t*> ind_ptrs_data,
+    GpuDeviceArrayStruct<const Tindices*> ind_ptrs_data,
     GpuDeviceArrayStruct<const T*> val_ptrs_data,
     GpuDeviceArrayStruct<int64_t> nnz_scan_data,
     GpuDeviceArrayStruct<int64_t> concat_size_scan_data,
     GpuDeviceArrayStruct<int64_t> output_shape_data,
-    int64_t* __restrict__ output_inds, T* __restrict__ output_vals,
+    Tindices* __restrict__ output_inds, T* __restrict__ output_vals,
     int64_t* __restrict__ output_flat_inds) {
-  const int64_t* __restrict__* __restrict__ ind_ptrs =
+  const Tindices* __restrict__* __restrict__ ind_ptrs =
       GetGpuDeviceArrayOnDevice(&ind_ptrs_data);
   const T* __restrict__* __restrict__ val_ptrs =
       GetGpuDeviceArrayOnDevice(&val_ptrs_data);
@@ -73,7 +73,7 @@ __global__ void SparseConcatKernel(
       const int64_t output_ind = ind_ptrs[input_num][input_nz * rank + j] +
                                  (j == concat_dim ? ind_offset : 0);
       if (!need_to_sort) {
-        output_inds[nz * rank + j] = output_ind;
+        output_inds[nz * rank + j] = static_cast<Tindices>(output_ind);
       } else {
         flat_ind = flat_ind * output_shape[j] + output_ind;
         output_flat_inds[nz] = flat_ind;
@@ -82,13 +82,13 @@ __global__ void SparseConcatKernel(
   }
 }
 
-template <typename T>
+template <typename T, typename Tindices>
 __global__ void SparseConcatPermuteKernel(
     int64_t output_nnz, int rank, GpuDeviceArrayStruct<const T*> val_ptrs_data,
     GpuDeviceArrayStruct<int64_t> nnz_scan_data,
     GpuDeviceArrayStruct<int64_t> output_shape_data,
     const int64_t* __restrict__ output_flat_inds,
-    const int64_t* __restrict__ permutation, int64_t* __restrict__ output_inds,
+    const int64_t* __restrict__ permutation, Tindices* __restrict__ output_inds,
     T* __restrict__ output_vals) {
   const T* __restrict__* __restrict__ val_ptrs =
       GetGpuDeviceArrayOnDevice(&val_ptrs_data);
@@ -107,7 +107,7 @@ __global__ void SparseConcatPermuteKernel(
     int64_t output_flat_ind = output_flat_inds[permuted_nz];
     for (int j = rank - 1; j >= 0; --j) {
       const int64_t output_dim_size = output_shape[j];
-      output_inds[nz * rank + j] = output_flat_ind % output_dim_size;
+      output_inds[nz * rank + j] = static_cast<Tindices>(output_flat_ind % output_dim_size);
       output_flat_ind /= output_dim_size;
     }
   }
@@ -115,8 +115,8 @@ __global__ void SparseConcatPermuteKernel(
 
 }  // namespace
 
-template <typename T>
-struct SparseConcatFunctor<GPUDevice, T> {
+template <typename T, typename Tindices>
+struct SparseConcatFunctor<GPUDevice, T, Tindices> {
   void operator()(OpKernelContext* context, const OpInputList& inds,
                   const OpInputList& vals, const OpInputList& shapes,
                   int concat_dim) {
@@ -132,7 +132,7 @@ struct SparseConcatFunctor<GPUDevice, T> {
     // these to obtain the required permutation, and finally gather the permuted
     // input values.
 
-    GpuDeviceArrayOnHost<const int64_t*> ind_ptrs(context, N);
+    GpuDeviceArrayOnHost<const Tindices*> ind_ptrs(context, N);
     GpuDeviceArrayOnHost<const T*> val_ptrs(context, N);
     GpuDeviceArrayOnHost<int64_t> nnz_scan(context, N + 1);
     GpuDeviceArrayOnHost<int64_t> concat_size_scan(context, N + 1);
@@ -145,7 +145,7 @@ struct SparseConcatFunctor<GPUDevice, T> {
     nnz_scan.Set(0, nnz_sum);
     concat_size_scan.Set(0, concat_size_sum);
     for (int i = 0; i < N; ++i) {
-      ind_ptrs.Set(i, inds[i].matrix<int64_t>().data());
+      ind_ptrs.Set(i, inds[i].matrix<Tindices>().data());
       val_ptrs.Set(i, vals[i].vec<T>().data());
       int64_t next_nnz_sum = AddWithoutOverflow(nnz_sum, inds[i].dim_size(0));
       OP_REQUIRES(context, next_nnz_sum >= 0,
@@ -187,7 +187,7 @@ struct SparseConcatFunctor<GPUDevice, T> {
       OP_REQUIRES_OK(context, output_shape.Finalize());
     }
 
-    int64_t* output_inds_ptr = nullptr;
+    Tindices* output_inds_ptr = nullptr;
     T* output_vals_ptr = nullptr;
     int64_t* output_flat_inds_ptr = nullptr;
     Tensor output_flat_inds;
@@ -206,11 +206,11 @@ struct SparseConcatFunctor<GPUDevice, T> {
     const GPUDevice& device = context->eigen_gpu_device();
 
     GpuLaunchConfig config = GetGpuLaunchConfig(
-        output_nnz, device, &SparseConcatKernel<T>,
+        output_nnz, device, &SparseConcatKernel<T, Tindices>,
         /*dynamic_shared_memory_size=*/0, /*block_size_limit=*/0);
     OP_REQUIRES_OK(
         context, GpuLaunchKernel(
-                     SparseConcatKernel<T>, config.block_count,
+                     SparseConcatKernel<T, Tindices>, config.block_count,
                      config.thread_per_block, 0, device.stream(), output_nnz,
                      rank, concat_dim, need_to_sort, ind_ptrs.data(),
                      val_ptrs.data(), nnz_scan.data(), concat_size_scan.data(),
@@ -239,25 +239,26 @@ struct SparseConcatFunctor<GPUDevice, T> {
                      /*num_bits=*/Log2Ceiling64(output_dense_elements)));
 
     config = GetGpuLaunchConfig(
-        output_nnz, device, &SparseConcatPermuteKernel<T>,
+        output_nnz, device, &SparseConcatPermuteKernel<T, Tindices>,
         /*dynamic_shared_memory_size=*/0, /*block_size_limit=*/0);
     OP_REQUIRES_OK(
         context,
-        GpuLaunchKernel(SparseConcatPermuteKernel<T>, config.block_count,
-                        config.thread_per_block, 0, device.stream(), output_nnz,
-                        rank, val_ptrs.data(), nnz_scan.data(),
-                        output_shape.data(), output_flat_inds_ptr,
-                        permutation_ptr, output_inds_ptr, output_vals_ptr));
+        GpuLaunchKernel(SparseConcatPermuteKernel<T, Tindices>,
+                        config.block_count, config.thread_per_block, 0,
+                        device.stream(), output_nnz, rank, val_ptrs.data(),
+                        nnz_scan.data(), output_shape.data(),
+                        output_flat_inds_ptr, permutation_ptr, output_inds_ptr,
+                        output_vals_ptr));
   }
 
  private:
   absl::Status allocate_outputs(OpKernelContext* context, int rank,
-                                int64_t output_nnz, int64_t** output_inds_ptr,
+                                int64_t output_nnz, Tindices** output_inds_ptr,
                                 T** output_vals_ptr) const {
     Tensor* output_inds = nullptr;
     TF_RETURN_IF_ERROR(context->allocate_output(
         0, TensorShape({output_nnz, rank}), &output_inds));
-    *output_inds_ptr = output_inds->matrix<int64_t>().data();
+    *output_inds_ptr = output_inds->matrix<Tindices>().data();
     Tensor* output_vals = nullptr;
     TF_RETURN_IF_ERROR(
         context->allocate_output(1, TensorShape({output_nnz}), &output_vals));
@@ -266,8 +267,10 @@ struct SparseConcatFunctor<GPUDevice, T> {
   }
 };
 
-#define DEFINE_SPARSE_CONCAT_FUNCTOR(T) \
-  template struct SparseConcatFunctor<GPUDevice, T>;
+#define DEFINE_SPARSE_CONCAT_FUNCTOR(T)                        \
+  template struct SparseConcatFunctor<GPUDevice, T, int64_t>;  \
+  template struct SparseConcatFunctor<GPUDevice, T, int32_t>;  \
+  template struct SparseConcatFunctor<GPUDevice, T, int16_t>;
 TF_CALL_POD_TYPES(DEFINE_SPARSE_CONCAT_FUNCTOR);
 
 #undef DEFINE_SPARSE_CONCAT_FUNCTOR

@@ -20,6 +20,7 @@ import numpy as np
 from tensorflow.core.framework import full_type_pb2
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
@@ -106,6 +107,59 @@ class SparseTensorTest(test_util.TensorFlowTestCase):
     # ensure new value's shape is checked
     with self.assertRaises((errors.InvalidArgumentError, ValueError)):
       source.with_values([[5.0, 1.0]])
+
+  def testInt32Indices(self):
+    indices_int32 = constant_op.constant([[0, 0], [1, 2]], dtype=dtypes.int32)
+    sp = sparse_tensor.SparseTensor(
+        indices=indices_int32, values=[1, 2], dense_shape=[3, 4])
+    self.assertEqual(sp.indices.dtype, dtypes.int32)
+
+  def testNumpyInt32Indices(self):
+    indices_np = np.array([[0, 0], [1, 2]], dtype=np.int32)
+    sp = sparse_tensor.SparseTensor(
+        indices=indices_np, values=[1, 2], dense_shape=[3, 4])
+    self.assertEqual(sp.indices.dtype, dtypes.int32)
+
+  def testInt16Indices(self):
+    indices_int16 = constant_op.constant([[0, 0], [1, 2]], dtype=dtypes.int16)
+    sp = sparse_tensor.SparseTensor(
+        indices=indices_int16, values=[1, 2], dense_shape=[3, 4])
+    self.assertEqual(sp.indices.dtype, dtypes.int16)
+
+  def testNumpyInt16Indices(self):
+    indices_np = np.array([[0, 0], [1, 2]], dtype=np.int16)
+    sp = sparse_tensor.SparseTensor(
+        indices=indices_np, values=[1, 2], dense_shape=[3, 4])
+    self.assertEqual(sp.indices.dtype, dtypes.int16)
+
+  def testPythonListIndicesDefaultToInt64(self):
+    sp = sparse_tensor.SparseTensor(
+        indices=[[0, 0], [1, 2]], values=[1, 2], dense_shape=[3, 4])
+    self.assertEqual(sp.indices.dtype, dtypes.int64)
+
+  def testFloatIndicesRaisesTypeError(self):
+    with self.assertRaises((TypeError, errors.InvalidArgumentError)):
+      sparse_tensor.SparseTensor(
+          indices=constant_op.constant([[0.0, 0.0]], dtype=dtypes.float32),
+          values=[1],
+          dense_shape=[3, 4])
+
+  def testTypeSpecReflectsIndicesDtype(self):
+    sp16 = sparse_tensor.SparseTensor(
+        indices=constant_op.constant([[0, 0]], dtype=dtypes.int16),
+        values=[1],
+        dense_shape=[3, 4])
+    sp32 = sparse_tensor.SparseTensor(
+        indices=constant_op.constant([[0, 0]], dtype=dtypes.int32),
+        values=[1],
+        dense_shape=[3, 4])
+    sp64 = sparse_tensor.SparseTensor(
+        indices=[[0, 0]], values=[1], dense_shape=[3, 4])
+    self.assertEqual(sp16._type_spec.indices_dtype, dtypes.int16)
+    self.assertEqual(sp32._type_spec.indices_dtype, dtypes.int32)
+    self.assertEqual(sp64._type_spec.indices_dtype, dtypes.int64)
+    self.assertNotEqual(sp16._type_spec, sp32._type_spec)
+    self.assertNotEqual(sp32._type_spec, sp64._type_spec)
 
   @test_util.run_in_graph_and_eager_modes
   def testIsEager(self):
@@ -240,10 +294,20 @@ class SparseTensorSpecTest(test_util.TensorFlowTestCase,
     spec1 = sparse_tensor.SparseTensorSpec()
     self.assertEqual(spec1.shape.rank, None)
     self.assertEqual(spec1.dtype, dtypes.float32)
+    self.assertEqual(spec1.indices_dtype, dtypes.int64)
 
     spec2 = sparse_tensor.SparseTensorSpec([None, None], dtypes.string)
     self.assertEqual(spec2.shape.as_list(), [None, None])
     self.assertEqual(spec2.dtype, dtypes.string)
+    self.assertEqual(spec2.indices_dtype, dtypes.int64)
+
+    spec3 = sparse_tensor.SparseTensorSpec(
+        [None, None], dtypes.float32, indices_dtype=dtypes.int32)
+    self.assertEqual(spec3.indices_dtype, dtypes.int32)
+
+    spec4 = sparse_tensor.SparseTensorSpec(
+        [None, None], dtypes.float32, indices_dtype=dtypes.int16)
+    self.assertEqual(spec4.indices_dtype, dtypes.int16)
 
   def testValueType(self):
     spec1 = sparse_tensor.SparseTensorSpec()
@@ -256,6 +320,17 @@ class SparseTensorSpecTest(test_util.TensorFlowTestCase,
        (tensor_shape.TensorShape([5, None, None]), dtypes.float32)),
       (sparse_tensor.SparseTensorSpec(dtype=dtypes.int32),
        (tensor_shape.TensorShape(None), dtypes.int32)),
+      # int64 indices_dtype is the default, so serialization stays as 2-tuple
+      (sparse_tensor.SparseTensorSpec(dtype=dtypes.float32,
+                                      indices_dtype=dtypes.int64),
+       (tensor_shape.TensorShape(None), dtypes.float32)),
+      # non-default indices_dtype appears as 3-tuple
+      (sparse_tensor.SparseTensorSpec(dtype=dtypes.float32,
+                                      indices_dtype=dtypes.int32),
+       (tensor_shape.TensorShape(None), dtypes.float32, dtypes.int32)),
+      (sparse_tensor.SparseTensorSpec(dtype=dtypes.float32,
+                                      indices_dtype=dtypes.int16),
+       (tensor_shape.TensorShape(None), dtypes.float32, dtypes.int16)),
   ])  # pyformat: disable
   def testSerialize(self, st_spec, expected):
     serialization = st_spec._serialize()
@@ -263,6 +338,22 @@ class SparseTensorSpecTest(test_util.TensorFlowTestCase,
     # assertEqual directly here.  But repr() is deterministic and lossless for
     # the expected values, so we can use that instead.
     self.assertEqual(repr(serialization), repr(expected))
+
+  def testSerializeDeserializeRoundtrip(self):
+    spec = sparse_tensor.SparseTensorSpec(
+        [3, 4], dtypes.float32, indices_dtype=dtypes.int32)
+    reconstructed = sparse_tensor.SparseTensorSpec._deserialize(
+        spec._serialize())
+    self.assertEqual(reconstructed, spec)
+    self.assertEqual(reconstructed.indices_dtype, dtypes.int32)
+
+  def testSerializeDeserializeRoundtripInt16(self):
+    spec = sparse_tensor.SparseTensorSpec(
+        [3, 4], dtypes.float32, indices_dtype=dtypes.int16)
+    reconstructed = sparse_tensor.SparseTensorSpec._deserialize(
+        spec._serialize())
+    self.assertEqual(reconstructed, spec)
+    self.assertEqual(reconstructed.indices_dtype, dtypes.int16)
 
   @parameterized.parameters([
       (sparse_tensor.SparseTensorSpec(dtype=dtypes.string), [
@@ -272,6 +363,12 @@ class SparseTensorSpecTest(test_util.TensorFlowTestCase,
       ]),
       (sparse_tensor.SparseTensorSpec(shape=[5, None, None]), [
           tensor_lib.TensorSpec([None, 3], dtypes.int64),
+          tensor_lib.TensorSpec([None], dtypes.float32),
+          tensor_lib.TensorSpec([3], dtypes.int64)
+      ]),
+      (sparse_tensor.SparseTensorSpec(shape=[5, None, None],
+                                      indices_dtype=dtypes.int32), [
+          tensor_lib.TensorSpec([None, 3], dtypes.int32),
           tensor_lib.TensorSpec([None], dtypes.float32),
           tensor_lib.TensorSpec([3], dtypes.int64)
       ]),

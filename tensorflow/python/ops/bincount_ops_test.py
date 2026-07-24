@@ -55,7 +55,8 @@ class TestDenseBincount(test.TestCase, parameterized.TestCase):
     size = 1000
     n_elems = 128
     inp_indices = np.random.randint(0, num_rows, (n_elems, 1))
-    inp_indices = np.concatenate([inp_indices, np.zeros((n_elems, 1))], axis=1)
+    inp_indices = np.concatenate([inp_indices, np.zeros_like(inp_indices)],
+                                 axis=1)
     inp_vals = np.random.randint(0, size, (n_elems,), dtype=dtype)
     sparse_inp = sparse_tensor.SparseTensor(inp_indices, inp_vals,
                                             [num_rows, 1])
@@ -80,7 +81,8 @@ class TestDenseBincount(test.TestCase, parameterized.TestCase):
     size = 1000
     n_elems = 128
     inp_indices = np.random.randint(0, num_rows, (n_elems, 1))
-    inp_indices = np.concatenate([inp_indices, np.zeros((n_elems, 1))], axis=1)
+    inp_indices = np.concatenate([inp_indices, np.zeros_like(inp_indices)],
+                                 axis=1)
     inp_vals = np.random.randint(0, size, (n_elems-1,), dtype=dtype)
     # Add an element with value `size-1` to input so bincount output has `size`
     # elements.
@@ -108,7 +110,8 @@ class TestDenseBincount(test.TestCase, parameterized.TestCase):
     size = 10
     n_elems = 128
     inp_indices = np.random.randint(0, num_rows, (n_elems, 1))
-    inp_indices = np.concatenate([inp_indices, np.zeros((n_elems, 1))], axis=1)
+    inp_indices = np.concatenate([inp_indices, np.zeros_like(inp_indices)],
+                                 axis=1)
     inp_vals = np.random.randint(0, size, (n_elems,), dtype=dtype)
     sparse_inp = sparse_tensor.SparseTensor(inp_indices, inp_vals,
                                             [num_rows, 1])

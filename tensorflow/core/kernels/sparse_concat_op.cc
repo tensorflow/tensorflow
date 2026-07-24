@@ -17,6 +17,8 @@ limitations under the License.
 
 #include "tensorflow/core/kernels/sparse_concat_op.h"
 
+#include <algorithm>
+#include <limits>
 #include <numeric>
 #include <utility>
 #include <vector>
@@ -40,8 +42,8 @@ typedef Eigen::ThreadPoolDevice CPUDevice;
 
 namespace functor {
 
-template <typename T>
-struct SparseConcatFunctor<CPUDevice, T> {
+template <typename T, typename Tindices>
+struct SparseConcatFunctor<CPUDevice, T, Tindices> {
   void operator()(OpKernelContext* context, const OpInputList& inds,
                   const OpInputList& vals, const OpInputList& shapes,
                   int concat_dim) {
@@ -91,7 +93,7 @@ struct SparseConcatFunctor<CPUDevice, T> {
 
 }  // namespace functor
 
-template <typename Device, typename T>
+template <typename Device, typename T, typename Tindices = int64_t>
 class SparseConcatOp : public OpKernel {
  public:
   explicit SparseConcatOp(OpKernelConstruction* context) : OpKernel(context) {
@@ -210,6 +212,19 @@ class SparseConcatOp : public OpKernel {
       }
     }
 
+    if constexpr (!std::is_same_v<Tindices, int64_t>) {
+      for (int j = 0; j < output_shape.dims(); ++j) {
+        OP_REQUIRES(
+            context,
+            output_shape.dim_size(j) <=
+                static_cast<int64_t>(std::numeric_limits<Tindices>::max()),
+            absl::InvalidArgumentError(absl::StrCat(
+                "Output shape dimension ", j, " (", output_shape.dim_size(j),
+                ") exceeds the maximum index value for the chosen index type (",
+                std::numeric_limits<Tindices>::max(), ")")));
+      }
+    }
+
     Tensor* output_shape_out = nullptr;
     OP_REQUIRES_OK(
         context, context->allocate_output(2, TensorShape({output_shape.dims()}),
@@ -238,8 +253,8 @@ class SparseConcatOp : public OpKernel {
       return;  // No work to do
     }
 
-    functor::SparseConcatFunctor<Device, T>()(context, inds, vals, shapes,
-                                              concat_dim);
+    functor::SparseConcatFunctor<Device, T, Tindices>()(context, inds, vals,
+                                                        shapes, concat_dim);
   }
 
  private:
@@ -247,9 +262,21 @@ class SparseConcatOp : public OpKernel {
 };
 
 #define REGISTER_KERNELS(type)                                           \
-  REGISTER_KERNEL_BUILDER(                                               \
-      Name("SparseConcat").Device(DEVICE_CPU).TypeConstraint<type>("T"), \
-      SparseConcatOp<CPUDevice, type>)
+  REGISTER_KERNEL_BUILDER(Name("SparseConcat")                           \
+                              .Device(DEVICE_CPU)                        \
+                              .TypeConstraint<type>("T")                 \
+                              .TypeConstraint<int64_t>("Tindices"),      \
+                          SparseConcatOp<CPUDevice, type, int64_t>)      \
+  REGISTER_KERNEL_BUILDER(Name("SparseConcat")                           \
+                              .Device(DEVICE_CPU)                        \
+                              .TypeConstraint<type>("T")                 \
+                              .TypeConstraint<int32_t>("Tindices"),      \
+                          SparseConcatOp<CPUDevice, type, int32_t>)      \
+  REGISTER_KERNEL_BUILDER(Name("SparseConcat")                           \
+                              .Device(DEVICE_CPU)                        \
+                              .TypeConstraint<type>("T")                 \
+                              .TypeConstraint<int16_t>("Tindices"),      \
+                          SparseConcatOp<CPUDevice, type, int16_t>)
 
 TF_CALL_ALL_TYPES(REGISTER_KERNELS);
 #undef REGISTER_KERNELS
@@ -258,13 +285,28 @@ TF_CALL_ALL_TYPES(REGISTER_KERNELS);
 
 typedef Eigen::GpuDevice GPUDevice;
 
-#define REGISTER_KERNELS(type)                            \
-  REGISTER_KERNEL_BUILDER(Name("SparseConcat")            \
-                              .Device(DEVICE_GPU)         \
-                              .HostMemory("shapes")       \
-                              .HostMemory("output_shape") \
-                              .TypeConstraint<type>("T"), \
-                          SparseConcatOp<GPUDevice, type>)
+#define REGISTER_KERNELS(type)                                              \
+  REGISTER_KERNEL_BUILDER(Name("SparseConcat")                              \
+                              .Device(DEVICE_GPU)                           \
+                              .HostMemory("shapes")                         \
+                              .HostMemory("output_shape")                   \
+                              .TypeConstraint<type>("T")                    \
+                              .TypeConstraint<int64_t>("Tindices"),         \
+                          SparseConcatOp<GPUDevice, type, int64_t>)         \
+  REGISTER_KERNEL_BUILDER(Name("SparseConcat")                              \
+                              .Device(DEVICE_GPU)                           \
+                              .HostMemory("shapes")                         \
+                              .HostMemory("output_shape")                   \
+                              .TypeConstraint<type>("T")                    \
+                              .TypeConstraint<int32_t>("Tindices"),         \
+                          SparseConcatOp<GPUDevice, type, int32_t>)         \
+  REGISTER_KERNEL_BUILDER(Name("SparseConcat")                              \
+                              .Device(DEVICE_GPU)                           \
+                              .HostMemory("shapes")                         \
+                              .HostMemory("output_shape")                   \
+                              .TypeConstraint<type>("T")                    \
+                              .TypeConstraint<int16_t>("Tindices"),         \
+                          SparseConcatOp<GPUDevice, type, int16_t>)
 TF_CALL_POD_TYPES(REGISTER_KERNELS);
 #undef REGISTER_KERNELS
 

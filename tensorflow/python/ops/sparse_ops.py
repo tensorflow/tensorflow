@@ -521,6 +521,48 @@ def sparse_add(a, b, threshold=None, thresh=None):
   return sparse_add_v2(a, b, threshold)
 
 
+def _cast_dense_shape_to_index_dtype(dense_shape, index_dtype):
+  """Casts dense_shape to index_dtype with overflow validation.
+
+  SparseTensor ops that declare `shape: Tindices` require the shape tensor to
+  match the index dtype.  dense_shape is always int64, so we must cast — but
+  only after verifying that no dimension exceeds the target dtype's max value.
+  """
+  dtype = dtypes.as_dtype(index_dtype)
+  if dtype == dtypes.int64:
+    return math_ops.cast(dense_shape, dtypes.int64)
+  max_val = np.iinfo(dtype.as_numpy_dtype).max
+  shape_t = ops.convert_to_tensor(dense_shape, dtype=dtypes.int64)
+
+  # Try static validation first — avoids adding runtime assertion ops to graph.
+  const_shape = tensor_util.constant_value(shape_t)
+  if const_shape is not None:
+    if np.any(const_shape > max_val):
+      raise ValueError(
+          "SparseTensor dense_shape has a dimension that exceeds the maximum "
+          f"value representable by the index dtype {dtype.name} ({max_val}). "
+          "Use int64 indices for large tensors."
+      )
+    return math_ops.cast(shape_t, dtype)
+
+  # reduce_max fails on an empty tensor; append 0 so reduction always has at
+  # least one element. 0 < max_val for any valid index dtype, so it never
+  # spuriously triggers the assertion.
+  non_empty_shape_t = array_ops.concat(
+      [shape_t, constant_op.constant([0], dtype=dtypes.int64)], axis=0)
+  check = check_ops.assert_less_equal(
+      math_ops.reduce_max(non_empty_shape_t),
+      constant_op.constant(max_val, dtype=dtypes.int64),
+      message=(
+          "SparseTensor dense_shape has a dimension that exceeds the maximum "
+          f"value representable by the index dtype {dtype.name} ({max_val}). "
+          "Use int64 indices for large tensors."
+      ),
+  )
+  with ops.control_dependencies([check]):
+    return math_ops.cast(shape_t, dtype)
+
+
 @tf_export("sparse.add", v1=[])
 def sparse_add_v2(a, b, threshold=0):
   """Adds two tensors, at least one of each is a `SparseTensor`.
@@ -601,8 +643,11 @@ def sparse_add_v2(a, b, threshold=0):
     # swap to make `a` the SparseTensor.
     if isinstance(b, sparse_classes):
       a, b = b, a
+    # SparseTensorValue may carry list indices (no .dtype); convert first.
+    a = _convert_to_sparse_tensor(a)
+    a_shape = _cast_dense_shape_to_index_dtype(a.dense_shape, a.indices.dtype)
     return gen_sparse_ops.sparse_tensor_dense_add(a.indices, a.values,
-                                                  a.dense_shape, b)
+                                                  a_shape, b)
 
 
 @tf_export("sparse.cross")
@@ -1725,9 +1770,11 @@ def sparse_tensor_to_dense(sp_input,
   if default_value is None:
     default_value = array_ops.zeros([], dtype=sp_input.dtype)
 
+  output_shape = _cast_dense_shape_to_index_dtype(
+      sp_input.dense_shape, sp_input.indices.dtype)
   return gen_sparse_ops.sparse_to_dense(
       sp_input.indices,
-      sp_input.dense_shape,
+      output_shape,
       sp_input.values,
       default_value=default_value,
       validate_indices=validate_indices,

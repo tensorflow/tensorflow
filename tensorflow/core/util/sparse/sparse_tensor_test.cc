@@ -102,7 +102,7 @@ TEST(SparseTensorTest, DimComparatorSorts) {
 TEST(SparseTensorTest, SparseTensorInvalidIndicesType) {
   int N = 5;
   const int NDIM = 3;
-  Tensor ix(DT_INT32, TensorShape({N, NDIM}));
+  Tensor ix(DT_FLOAT, TensorShape({N, NDIM}));
   Tensor vals(DT_STRING, TensorShape({N}));
   SparseTensor result;
 
@@ -752,6 +752,73 @@ TEST(SparseTensorTest, Dim0SparseTensorToDenseTensor) {
   st.ToDense<int32_t>(&dense);
 
   EXPECT_EQ(dense.scalar<int32_t>()(), 5);
+}
+
+TEST(SparseTensorTest, Int16IndexTypeRoundtrip) {
+  const int N = 4;
+  const int NDIM = 2;
+
+  Tensor ix(DT_INT16, TensorShape({N, NDIM}));
+  Tensor vals(DT_FLOAT, TensorShape({N}));
+  auto ix_t = ix.matrix<int16_t>();
+  auto vals_t = vals.vec<float>();
+
+  // Unsorted input
+  ix_t(0, 0) = 3; ix_t(0, 1) = 0;
+  ix_t(1, 0) = 0; ix_t(1, 1) = 1;
+  ix_t(2, 0) = 1; ix_t(2, 1) = 2;
+  ix_t(3, 0) = 0; ix_t(3, 1) = 0;
+  vals_t(0) = 4.0f; vals_t(1) = 2.0f; vals_t(2) = 3.0f; vals_t(3) = 1.0f;
+
+  TensorShape shape({4, 4});
+  std::vector<int64_t> order{0, 1};
+  SparseTensor st;
+  TF_ASSERT_OK(SparseTensor::Create(ix, vals, shape, order, &st));
+
+  // Unsorted: IndicesValid should fail
+  EXPECT_FALSE(st.IndicesValid().ok());
+
+  // Reorder and validate
+  st.Reorder<float>(order);
+  TF_EXPECT_OK(st.IndicesValid());
+
+  // After reorder indices should be in lexicographic order
+  auto sorted_ix = st.indices().matrix<int16_t>();
+  EXPECT_EQ(sorted_ix(0, 0), 0); EXPECT_EQ(sorted_ix(0, 1), 0);
+  EXPECT_EQ(sorted_ix(1, 0), 0); EXPECT_EQ(sorted_ix(1, 1), 1);
+  EXPECT_EQ(sorted_ix(2, 0), 1); EXPECT_EQ(sorted_ix(2, 1), 2);
+  EXPECT_EQ(sorted_ix(3, 0), 3); EXPECT_EQ(sorted_ix(3, 1), 0);
+
+  // ToDense
+  Tensor dense(DT_FLOAT, shape);
+  st.ToDense<float>(&dense);
+  auto d = dense.matrix<float>();
+  EXPECT_EQ(d(0, 0), 1.0f);
+  EXPECT_EQ(d(0, 1), 2.0f);
+  EXPECT_EQ(d(1, 2), 3.0f);
+  EXPECT_EQ(d(3, 0), 4.0f);
+  EXPECT_EQ(d(0, 2), 0.0f);  // unset
+
+  // Concat: two copies along dim 0
+  SparseTensor concatted = SparseTensor::Concat<float>({st, st});
+  EXPECT_EQ(concatted.num_entries(), 2 * N);
+  EXPECT_EQ(concatted.indices().dtype(), DT_INT16);
+  absl::InlinedVector<int64_t, 8UL> expected_shape{8, 4};
+  EXPECT_EQ(concatted.shape(), expected_shape);
+
+  // Split back into 2
+  std::vector<SparseTensor> splits;
+  TF_ASSERT_OK(SparseTensor::Split<float>(concatted, 0, 2, &splits));
+  EXPECT_EQ(splits.size(), 2);
+  EXPECT_EQ(splits[0].indices().dtype(), DT_INT16);
+  EXPECT_EQ(splits[0].num_entries(), N);
+
+  // Slice
+  absl::StatusOr<SparseTensor> sliced =
+      SparseTensor::Slice<float>(st, {0, 0}, {2, 4});
+  TF_ASSERT_OK(sliced.status());
+  EXPECT_EQ(sliced->indices().dtype(), DT_INT16);
+  EXPECT_EQ(sliced->num_entries(), 3);  // (0,0), (0,1), (1,2) within rows [0,2)
 }
 
 static void BM_SparseReorderFloat(::testing::benchmark::State& state) {

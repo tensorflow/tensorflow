@@ -47,6 +47,19 @@ limitations under the License.
 namespace tensorflow {
 namespace sparse {
 
+// Dispatches fn(int16_t{}) / fn(int32_t{}) / fn(int64_t{}) based on dtype.
+template <typename Fn>
+decltype(auto) DispatchIndexDtype(DataType dtype, Fn&& fn) {
+  switch (dtype) {
+    case DT_INT16: return std::forward<Fn>(fn)(int16_t{});
+    case DT_INT32: return std::forward<Fn>(fn)(int32_t{});
+    case DT_INT64: return std::forward<Fn>(fn)(int64_t{});
+    default:
+      LOG(FATAL) << "Unsupported index dtype: " << dtype;
+      return std::forward<Fn>(fn)(int64_t{});  // unreachable
+  }
+}
+
 class SparseTensor {
  public:
   typedef absl::Span<const int64_t> VarDimArray;
@@ -137,7 +150,8 @@ class SparseTensor {
   // Precondition: order()[0..group_ix.size()] == group_ix.
   //
   // See the README.md in this directory for more usage information.
-  GroupIterable group(const VarDimArray& group_ix) const {
+  template <typename Tindices = int64_t>
+  GroupIterable<Tindices> group(const VarDimArray& group_ix) const {
     DCHECK_LE(group_ix.size(), dims_);
     for (std::size_t di = 0; di < group_ix.size(); ++di) {
       DCHECK_GE(group_ix[di], 0) << "Group dimension out of range";
@@ -145,7 +159,7 @@ class SparseTensor {
       DCHECK_EQ(group_ix[di], order_[di])
           << "Group dimension does not match sorted order";
     }
-    return GroupIterable(ix_, vals_, dims_, group_ix);
+    return GroupIterable<Tindices>(ix_, vals_, dims_, group_ix);
   }
 
   // Stores the sparse indices into the dense tensor out.
@@ -220,12 +234,32 @@ class SparseTensor {
   // REQUIRES: `shape_.size() == 2`.
   bool IndicesValidMatrix32BitFastPath() const;
 
-  template <bool standard_order>
+  template <bool standard_order, typename Tindices>
   absl::Status IndicesValidHelper() const;
 
   // Helper for ToDense<T>()
   template <typename T>
   bool ValidateAndInitializeToDense(Tensor* out, bool initialize);
+
+  template <typename T, typename Tindices>
+  void ReorderImpl(const VarDimArray& order);
+
+  template <typename T, typename Tindices>
+  bool ToDenseImpl(Tensor* out, bool initialize);
+
+  template <typename T, typename Tindices>
+  static SparseTensor ConcatImpl(
+      const absl::Span<const SparseTensor>& tensors);
+
+  template <typename T, typename Tindices>
+  static absl::Status SplitImpl(const SparseTensor& tensor,
+                                const int split_dim, const int num_split,
+                                std::vector<SparseTensor>* result);
+
+  template <typename T, typename Tindices>
+  static absl::StatusOr<SparseTensor> SliceImpl(
+      const SparseTensor& tensor, const absl::Span<const int64_t> start,
+      const absl::Span<const int64_t> size);
 
   // Helper for Split() that returns the slice index.
   static inline int GetSliceIndex(const int dim, const int split_size,
@@ -280,10 +314,17 @@ class SparseTensor {
 // temporary space.
 template <typename T>
 inline void SparseTensor::Reorder(const VarDimArray& order) {
+  DispatchIndexDtype(ix_.dtype(), [&](auto Tidx) {
+    ReorderImpl<T, decltype(Tidx)>(order);
+  });
+}
+
+template <typename T, typename Tindices>
+inline void SparseTensor::ReorderImpl(const VarDimArray& order) {
   DCHECK_EQ(DataTypeToEnum<T>::v(), dtype())
       << "Reorder requested with the wrong datatype";
   DCHECK_EQ(order.size(), dims_) << "Order length must be SparseTensor rank";
-  auto ix_t = ix_.matrix<int64_t>();
+  auto ix_t = ix_.matrix<Tindices>();
   auto vals_t = vals_.vec<T>();
 
   std::vector<int64_t> reorder(num_entries());
@@ -291,11 +332,11 @@ inline void SparseTensor::Reorder(const VarDimArray& order) {
 
   // Sort to get order of indices
   switch (order.size()) {
-#define CASE_SORT(ORDER_SIZE)                                    \
-  case ORDER_SIZE: {                                             \
-    FixedDimComparator<ORDER_SIZE> sorter(ix_t, order, shape()); \
-    std::sort(reorder.begin(), reorder.end(), sorter);           \
-    break;                                                       \
+#define CASE_SORT(ORDER_SIZE)                                              \
+  case ORDER_SIZE: {                                                       \
+    FixedDimComparator<ORDER_SIZE, Tindices> sorter(ix_t, order, shape()); \
+    std::sort(reorder.begin(), reorder.end(), sorter);                     \
+    break;                                                                 \
   }
     CASE_SORT(0);
     CASE_SORT(1);
@@ -305,7 +346,7 @@ inline void SparseTensor::Reorder(const VarDimArray& order) {
     CASE_SORT(5);
 #undef CASE_SORT
     default: {
-      DimComparator sorter(ix_t, order, shape());
+      DimComparator<Tindices> sorter(ix_t, order, shape());
       std::sort(reorder.begin(), reorder.end(), sorter);
     }
   }
@@ -368,18 +409,26 @@ inline bool SparseTensor::ValidateAndInitializeToDense(Tensor* out,
 
 template <typename T>
 inline bool SparseTensor::ToDense(Tensor* out, bool initialize) {
+  return DispatchIndexDtype(ix_.dtype(), [&](auto Tidx) {
+    return ToDenseImpl<T, decltype(Tidx)>(out, initialize);
+  });
+}
+
+template <typename T, typename Tindices>
+inline bool SparseTensor::ToDenseImpl(Tensor* out, bool initialize) {
   if (!ValidateAndInitializeToDense<T>(out, initialize)) return false;
 
   auto out_t = out->flat<T>();
   auto vals_t = vals_.vec<T>();
-  auto ix_t = ix_.matrix<int64_t>();
-  const int64_t* const ix_ptr = ix_t.data();
+  auto ix_t = ix_.matrix<Tindices>();
+  const Tindices* const ix_ptr = ix_t.data();
 
   if (dims_ == 1) {
     // Fast path for sparse vectors.
     const int64_t out_length = out->shape().dim_size(0);
     for (int n = 0; n < vals_t.dimension(0); ++n) {
-      const int64_t index = internal::SubtleMustCopy(ix_ptr[n]);
+      const int64_t index =
+          static_cast<int64_t>(internal::SubtleMustCopy(ix_ptr[n]));
       if (!FastBoundsCheck(index, out_length)) return false;
       out_t(index) = vals_t(n);
     }
@@ -390,8 +439,10 @@ inline bool SparseTensor::ToDense(Tensor* out, bool initialize) {
     const int64_t out_rows = out_shape.dim_size(0);
     const int64_t out_cols = out_shape.dim_size(1);
     for (int n = 0; n < vals_t.dimension(0); ++n) {
-      const int64_t row_index = internal::SubtleMustCopy(ix_ptr[n * 2]);
-      const int64_t col_index = internal::SubtleMustCopy(ix_ptr[n * 2 + 1]);
+      const int64_t row_index =
+          static_cast<int64_t>(internal::SubtleMustCopy(ix_ptr[n * 2]));
+      const int64_t col_index =
+          static_cast<int64_t>(internal::SubtleMustCopy(ix_ptr[n * 2 + 1]));
       if (!(FastBoundsCheck(row_index, out_rows) &&
             FastBoundsCheck(col_index, out_cols))) {
         return false;
@@ -414,7 +465,8 @@ inline bool SparseTensor::ToDense(Tensor* out, bool initialize) {
       bool invalid_dims = false;
       int64_t ix = 0;
       for (int d = 0; d < dims_; ++d) {
-        const int64_t ix_n_d = internal::SubtleMustCopy(ix_ptr[n * dims_ + d]);
+        const int64_t ix_n_d = static_cast<int64_t>(
+            internal::SubtleMustCopy(ix_ptr[n * dims_ + d]));
         if (!FastBoundsCheck(ix_n_d, out_shape[d])) {
           invalid_dims = true;
         }
@@ -429,6 +481,16 @@ inline bool SparseTensor::ToDense(Tensor* out, bool initialize) {
 
 template <typename T>
 inline SparseTensor SparseTensor::Concat(
+    const absl::Span<const SparseTensor>& tensors) {
+  // Determine index type from the first tensor.
+  return DispatchIndexDtype(
+      tensors.empty() ? DT_INT64 : tensors[0].ix_.dtype(), [&](auto Tidx) {
+        return ConcatImpl<T, decltype(Tidx)>(tensors);
+      });
+}
+
+template <typename T, typename Tindices>
+inline SparseTensor SparseTensor::ConcatImpl(
     const absl::Span<const SparseTensor>& tensors) {
   DCHECK_GE(tensors.size(), size_t{1}) << "Cannot concat 0 SparseTensors";
   const int dims = tensors[0].dims_;
@@ -445,6 +507,8 @@ inline SparseTensor SparseTensor::Concat(
     DCHECK_EQ(st.dims_, dims) << "All SparseTensors must have the same rank.";
     DCHECK_EQ(DataTypeToEnum<T>::v(), st.dtype())
         << "Concat requested with the wrong data type";
+    DCHECK_EQ(st.ix_.dtype(), tensors[0].ix_.dtype())
+        << "All SparseTensors must have the same index dtype.";
     DCHECK_GE(st.order()[0], 0) << "SparseTensor must be ordered";
     DCHECK_EQ(st.order()[0], primary_dim)
         << "All SparseTensors' order[0] must match.  This is the concat dim.";
@@ -472,10 +536,11 @@ inline SparseTensor SparseTensor::Concat(
     final_order = UndefinedOrder(final_shape);
   }
 
-  Tensor output_ix(DT_INT64, TensorShape({num_entries, dims}));
+  Tensor output_ix(DataTypeToEnum<Tindices>::v(),
+                   TensorShape({num_entries, dims}));
   Tensor output_vals(DataTypeToEnum<T>::v(), TensorShape({num_entries}));
 
-  TTypes<int64_t>::Matrix ix_t = output_ix.matrix<int64_t>();
+  typename TTypes<Tindices>::Matrix ix_t = output_ix.matrix<Tindices>();
   typename TTypes<T>::Vec vals_t = output_vals.vec<T>();
 
   Eigen::DenseIndex offset = 0;
@@ -487,10 +552,21 @@ inline SparseTensor SparseTensor::Concat(
     if (st_num_entries > 0) {
       std::copy_n(&st.vals_.vec<T>()(0), st_num_entries, &vals_t(offset));
 
-      const auto* st_ix = &st.ix_.matrix<int64_t>()(0, 0);
+      // Precondition: the caller (SparseConcatOp) validates all output shape
+      // dimensions against numeric_limits<Tindices>::max() before reaching
+      // here, so this CHECK fires only on API misuse bypassing the op. Since
+      // ConcatImpl returns SparseTensor (not Status), CHECK is the only
+      // available signalling mechanism; a future refactor to
+      // absl::StatusOr<SparseTensor> would allow returning a proper error.
+      CHECK_LE(shape_offset + st.shape()[primary_dim],
+               static_cast<int64_t>(std::numeric_limits<Tindices>::max()))
+          << "Concatenated dimension size overflows Tindices";
+      const Tindices T_shape_offset = static_cast<Tindices>(shape_offset);
+      const auto* st_ix = &st.ix_.matrix<Tindices>()(0, 0);
       auto* ix_out = &ix_t(offset, 0);
       for (std::size_t i = 0; i < st_num_entries * dims; ++i) {
-        *ix_out++ = *st_ix++ + ((i % dims == primary_dim) ? shape_offset : 0);
+        *ix_out++ =
+            *st_ix++ + ((i % dims == primary_dim) ? T_shape_offset : 0);
       }
     }
 
@@ -506,6 +582,17 @@ inline absl::Status SparseTensor::Split(const SparseTensor& input_tensor,
                                         const int split_dim,
                                         const int num_split,
                                         std::vector<SparseTensor>* result) {
+  return DispatchIndexDtype(input_tensor.ix_.dtype(), [&](auto Tidx) {
+    return SplitImpl<T, decltype(Tidx)>(input_tensor, split_dim, num_split,
+                                        result);
+  });
+}
+
+template <typename T, typename Tindices>
+inline absl::Status SparseTensor::SplitImpl(const SparseTensor& input_tensor,
+                                            const int split_dim,
+                                            const int num_split,
+                                            std::vector<SparseTensor>* result) {
   std::vector<Tensor> output_indices;
   std::vector<Tensor> output_values;
   std::vector<TensorShape> output_shapes;
@@ -513,12 +600,12 @@ inline absl::Status SparseTensor::Split(const SparseTensor& input_tensor,
   output_values.reserve(num_split);
   output_shapes.reserve(num_split);
 
-  std::vector<typename TTypes<int64_t>::Matrix> output_indices_t;
+  std::vector<typename TTypes<Tindices>::Matrix> output_indices_t;
   std::vector<typename TTypes<T>::Vec> output_values_t;
   output_indices_t.reserve(num_split);
   output_values_t.reserve(num_split);
   auto input_values_t = input_tensor.values().vec<T>();
-  auto input_indices_t = input_tensor.indices().matrix<int64_t>();
+  auto input_indices_t = input_tensor.indices().matrix<Tindices>();
 
   std::vector<int> num_values(num_split, 0);
   const int num_dim = input_tensor.shape().size();
@@ -547,12 +634,12 @@ inline absl::Status SparseTensor::Split(const SparseTensor& input_tensor,
 
   for (int i = 0; i < num_split; ++i) {
     // TODO(ataei): Pass an allocator to avoid allocating large memory buffer.
-    output_indices.emplace_back(DT_INT64,
+    output_indices.emplace_back(DataTypeToEnum<Tindices>::v(),
                                 TensorShape({num_values[i], num_dim}));
     output_values.emplace_back(DataTypeToEnum<T>::v(),
                                TensorShape({num_values[i]}));
     output_shapes.emplace_back(input_tensor.shape());
-    output_indices_t.emplace_back(output_indices[i].matrix<int64_t>());
+    output_indices_t.emplace_back(output_indices[i].matrix<Tindices>());
     output_values_t.emplace_back(output_values[i].vec<T>());
     const int size = GetSliceShape(i, split_size, residual);
     output_shapes[i].set_dim(split_dim, size);
@@ -565,10 +652,11 @@ inline absl::Status SparseTensor::Split(const SparseTensor& input_tensor,
     const int slice_dim = values_inserted_in_slice[slice_index]++;
     output_values_t[slice_index](slice_dim) = input_values_t(i);
     for (int j = 0; j < num_dim; ++j) {
-      const int64_t original_dim = input_indices_t(i, j);
+      const Tindices original_dim = input_indices_t(i, j);
       output_indices_t[slice_index](slice_dim, j) =
           (j == split_dim)
-              ? GetDimensionInSlice(original_dim, split_size, residual)
+              ? static_cast<Tindices>(
+                    GetDimensionInSlice(original_dim, split_size, residual))
               : original_dim;
     }
   }
@@ -589,6 +677,15 @@ inline absl::Status SparseTensor::Split(const SparseTensor& input_tensor,
 
 template <typename T>
 inline absl::StatusOr<SparseTensor> SparseTensor::Slice(
+    const SparseTensor& input_tensor, const absl::Span<const int64_t> start,
+    const absl::Span<const int64_t> size) {
+  return DispatchIndexDtype(input_tensor.ix_.dtype(), [&](auto Tidx) {
+    return SliceImpl<T, decltype(Tidx)>(input_tensor, start, size);
+  });
+}
+
+template <typename T, typename Tindices>
+inline absl::StatusOr<SparseTensor> SparseTensor::SliceImpl(
     const SparseTensor& input_tensor, const absl::Span<const int64_t> start,
     const absl::Span<const int64_t> size) {
   TensorShape output_shape(input_tensor.shape());
@@ -615,7 +712,7 @@ inline absl::StatusOr<SparseTensor> SparseTensor::Slice(
     }
   }
 
-  auto input_indices_t = input_tensor.indices().matrix<int64_t>();
+  auto input_indices_t = input_tensor.indices().matrix<Tindices>();
   auto input_values_t = input_tensor.values().vec<T>();
 
   // Find the number of indices that fall inside start and size.
@@ -643,10 +740,11 @@ inline absl::StatusOr<SparseTensor> SparseTensor::Slice(
   }
 
   Tensor output_values(DataTypeToEnum<T>::v(), TensorShape({count}));
-  Tensor output_indices(DT_INT64, TensorShape({count, dims}));
+  Tensor output_indices(DataTypeToEnum<Tindices>::v(),
+                        TensorShape({count, dims}));
 
   auto output_values_t = output_values.vec<T>();
-  auto output_indices_t = output_indices.matrix<int64_t>();
+  auto output_indices_t = output_indices.matrix<Tindices>();
 
   // Obtain the output indices that fall inside start and size.
   int index = 0;
@@ -668,7 +766,10 @@ inline absl::StatusOr<SparseTensor> SparseTensor::Slice(
     }
     output_values_t(index) = input_values_t(i);
     for (int dim = 0; dim < dims; dim++) {
-      output_indices_t(index, dim) = input_indices_t(i, dim) - start[dim];
+      const int64_t idx_val =
+          static_cast<int64_t>(input_indices_t(i, dim)) - start[dim];
+      DCHECK_GE(idx_val, 0);
+      output_indices_t(index, dim) = static_cast<Tindices>(idx_val);
     }
     index++;
   }

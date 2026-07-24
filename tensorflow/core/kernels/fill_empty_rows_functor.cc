@@ -41,8 +41,11 @@ namespace functor {
       const Tensor& dense_shape_t, typename AsyncOpKernel::DoneCallback done); \
   extern template struct FillEmptyRows<GPUDevice, T, Tindex, true>;
 #define DECLARE_GPU_SPEC_INT64(T) DECLARE_GPU_SPEC(T, int64_t)
+#define DECLARE_GPU_SPEC_INT32(T) DECLARE_GPU_SPEC(T, int32_t)
 TF_CALL_POD_TYPES(DECLARE_GPU_SPEC_INT64)
+TF_CALL_POD_TYPES(DECLARE_GPU_SPEC_INT32)
 #undef DECLARE_GPU_SPEC_INT64
+#undef DECLARE_GPU_SPEC_INT32
 #undef DECLARE_GPU_SPEC
 
 // Forward declarations of the functor specializations for GPU.
@@ -56,8 +59,11 @@ TF_CALL_POD_TYPES(DECLARE_GPU_SPEC_INT64)
       typename TTypes<T>::Scalar d_default_value);            \
   extern template struct FillEmptyRowsGrad<GPUDevice, T, Tindex>;
 #define DECLARE_GPU_SPEC_INT64(T) DECLARE_GPU_SPEC(T, int64_t)
+#define DECLARE_GPU_SPEC_INT32(T) DECLARE_GPU_SPEC(T, int32_t)
 TF_CALL_REAL_NUMBER_TYPES(DECLARE_GPU_SPEC_INT64);
+TF_CALL_REAL_NUMBER_TYPES(DECLARE_GPU_SPEC_INT32);
 #undef DECLARE_GPU_SPEC_INT64
+#undef DECLARE_GPU_SPEC_INT32
 #undef DECLARE_GPU_SPEC
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 

@@ -13,61 +13,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+// All GroupIterable and Group implementations have been moved to
+// group_iterator.h to support template specialization on Tindices.
 #include "tensorflow/core/util/sparse/group_iterator.h"
 
-#include <cstdint>
-#include <vector>
-
-#include "absl/log/check.h"
 namespace tensorflow {
 namespace sparse {
-
-void GroupIterable::IteratorStep::UpdateEndOfGroup() {
-  ++next_loc_;
-  const auto& ix_t = iter_->ix_matrix_;
-  const int64_t N = ix_t.dimension(0);
-  while (next_loc_ < N && iter_->GroupMatches(ix_t, loc_, next_loc_)) {
-    ++next_loc_;
-  }
-}
-
-bool GroupIterable::IteratorStep::operator!=(const IteratorStep& rhs) const {
-  CHECK_EQ(rhs.iter_, iter_) << "Can't compare steps from different iterators";
-  return (rhs.loc_ != loc_);
-}
-
-bool GroupIterable::IteratorStep::operator==(const IteratorStep& rhs) const {
-  CHECK_EQ(rhs.iter_, iter_) << "Can't compare steps from different iterators";
-  return (rhs.loc_ == loc_);
-}
-
-GroupIterable::IteratorStep& GroupIterable::IteratorStep::
-operator++() {  // prefix ++
-  loc_ = next_loc_;
-  UpdateEndOfGroup();
-  return *this;
-}
-
-GroupIterable::IteratorStep GroupIterable::IteratorStep::operator++(
-    int) {  // postfix ++
-  IteratorStep lhs(*this);
-  ++(*this);
-  return lhs;
-}
-
-std::vector<int64_t> Group::group() const {
-  std::vector<int64_t> g;
-  const auto& ix_t = iter_->ix_matrix_;
-  for (const int d : iter_->group_dims_) {
-    g.push_back(ix_t(loc_, d));
-  }
-  return g;
-}
-
-TTypes<int64_t>::UnalignedConstMatrix Group::indices() const {
-  return TTypes<int64_t>::UnalignedConstMatrix(&(iter_->ix_matrix_(loc_, 0)),
-                                               next_loc_ - loc_, iter_->dims_);
-}
 
 }  // namespace sparse
 }  // namespace tensorflow

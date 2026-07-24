@@ -103,7 +103,7 @@ absl::Status SparseTensorFromContext(OpKernelContext* ctx,
 // `sparse_tensor_shape` is the shape of the `SparseTensor` from which group
 // was created, and is used to validate the indices in `group'.
 template <typename T>
-absl::Status CheckGroup(const sparse::Group& group,
+absl::Status CheckGroup(const sparse::Group<int64_t>& group,
                         const VarDimArray& sparse_tensor_shape) {
   const auto& indices = group.indices();
   const auto& values = group.values<T>();
@@ -253,7 +253,7 @@ void PopulateFromDenseGroup(OpKernelContext* ctx, const Tensor& input_tensor,
 // `SparseTensor` from which group was created, and is used to sanity check the
 // indices in `group'.
 template <typename T>
-absl::Status PopulateFromSparseGroup(const sparse::Group& group,
+absl::Status PopulateFromSparseGroup(const sparse::Group<int64_t>& group,
                                      const VarDimArray& sparse_tensor_shape,
                                      absl::flat_hash_set<T>* result) {
   TF_RETURN_IF_ERROR(CheckGroup<T>(group, sparse_tensor_shape));

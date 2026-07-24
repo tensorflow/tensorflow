@@ -728,7 +728,7 @@ class SparseFillEmptyRowsTest(test_util.TensorFlowTestCase):
   def testEmptyIndicesTensor(self):
     with test_util.use_gpu():
       sp_input = sparse_tensor.SparseTensor(
-          indices=np.ones([0, 2]),
+          indices=np.ones([0, 2], dtype=np.int64),
           values=np.ones([0]),
           dense_shape=np.array([2, 5]))
       sp_output, empty_row_indicator = (
@@ -745,7 +745,7 @@ class SparseFillEmptyRowsTest(test_util.TensorFlowTestCase):
   def testEmptyOutput(self):
     with test_util.use_gpu():
       sp_input = sparse_tensor.SparseTensor(
-          indices=np.ones([0, 2]),
+          indices=np.ones([0, 2], dtype=np.int64),
           values=np.ones([0]),
           dense_shape=np.array([0, 3]))
       sp_output, empty_row_indicator = (
@@ -769,6 +769,30 @@ class SparseFillEmptyRowsTest(test_util.TensorFlowTestCase):
       with self.assertRaisesRegex(errors.InvalidArgumentError,
                                   r"indices\(2, 0\) is invalid"):
         self.evaluate(sparse_ops.sparse_fill_empty_rows(sp_input, -1))
+
+  def testFillNarrowIndexTypes(self):
+    with test_util.use_gpu():
+      for idx_dtype in (dtypes.int32, dtypes.int16):
+        sp_input = sparse_tensor.SparseTensor(
+            indices=constant_op.constant(
+                [[0, 0], [1, 0], [1, 3], [1, 4], [3, 2], [3, 3]],
+                dtype=idx_dtype),
+            values=constant_op.constant([0, 10, 13, 14, 32, 33]),
+            dense_shape=constant_op.constant([5, 6], dtype=dtypes.int64))
+        sp_output, empty_row_indicator = (
+            sparse_ops.sparse_fill_empty_rows(sp_input, -1))
+
+        output, empty_row_indicator_out = self.evaluate(
+            [sp_output, empty_row_indicator])
+
+        self.assertAllEqual(
+            output.indices,
+            [[0, 0], [1, 0], [1, 3], [1, 4], [2, 0], [3, 2], [3, 3], [4, 0]])
+        self.assertAllEqual(output.values, [0, 10, 13, 14, -1, 32, 33, -1])
+        self.assertAllEqual(output.dense_shape, [5, 6])
+        self.assertAllEqual(empty_row_indicator_out,
+                            np.array([0, 0, 1, 0, 1]).astype(np.bool_))
+        self.assertEqual(sp_output.indices.dtype, idx_dtype)
 
 
 class SparseAddTest(test_util.TensorFlowTestCase):

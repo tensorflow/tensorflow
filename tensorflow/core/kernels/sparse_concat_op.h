@@ -22,7 +22,7 @@ namespace tensorflow {
 
 namespace functor {
 
-template <typename Device, typename T>
+template <typename Device, typename T, typename Tindices = int64_t>
 struct SparseConcatFunctor {
   void operator()(OpKernelContext* context, const OpInputList& inds,
                   const OpInputList& vals, const OpInputList& shapes,
