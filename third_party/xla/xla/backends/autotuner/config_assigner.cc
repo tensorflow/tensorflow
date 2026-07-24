@@ -31,6 +31,8 @@ limitations under the License.
 #include "absl/log/vlog_is_on.h"
 #include "absl/memory/memory.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/escaping.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
@@ -166,7 +168,7 @@ absl::Status ConfigAssigner::AssignConfigs(
     MultiProcessKeyValueStore& sharding_kv_store) {
   // Sharding the instructions only makes sense if we can have different
   // configs for different shards, which only happens due to online tuning.
-  if (options_.select_first_config || options_.use_default_config) {
+  if (options_.select_first_config) {
     VLOG(1) << "Falling back to non-sharded config assignment as online "
                "tuning is disabled.";
     return AssignConfigs(module, should_assign_config);
@@ -321,25 +323,32 @@ tsl::Future<ConfigAssigner::Config> ConfigAssigner::GetConfig(
 
   // TODO (b/446870267): Improve the cache fallback logic as we move to offline
   // autotuning.
-  if (options_.use_default_config) {
-    ASSIGN_OR_RETURN(Config default_config,
-                     orchestrator_->GetDefaultConfig(*instr));
-    VLOG(1) << "Using default config: " << default_config.ToString();
-    return default_config;
-  }
-
   if (options_.select_first_config) {
-    ASSIGN_OR_RETURN(std::vector<Config> supported_configs,
-                     orchestrator_->GetSupportedConfigs(*instr));
-    for (Config& config : supported_configs) {
-      auto executable = orchestrator_->Compile(*instr, config);
-      if (executable.ok()) {
-        VLOG(1) << "Using first compilable config: " << config.ToString();
-        return std::move(config);
+    absl::StatusOr<std::vector<Config>> supported_configs =
+        orchestrator_->GetSupportedConfigs(*instr);
+
+    if (supported_configs.ok()) {
+      for (Config& config : *supported_configs) {
+        auto executable = orchestrator_->Compile(*instr, config);
+        if (executable.ok()) {
+          VLOG(1) << "Using first compilable config: " << config.ToString();
+          return std::move(config);
+        }
       }
     }
-    return absl::InternalError(
-        absl::StrCat("No supported config found for HLO: ", instr->ToString()));
+
+    absl::StatusOr<Config> default_config =
+        orchestrator_->GetDefaultConfig(*instr);
+    if (default_config.ok()) {
+      VLOG(1) << "Using default config: " << default_config->ToString();
+      return default_config;
+    }
+
+    VLOG(1) << "Failed to get default config: " << default_config.status();
+    return absl::InternalError(absl::StrCat(
+        "No supported config found for HLO: ", instr->ToString(),
+        ". Supported configs status: ", supported_configs.status().ToString(),
+        "; Default config status: ", default_config.status().ToString()));
   }
 
   TF_RET_CHECK(config_runner_ != nullptr)
@@ -571,13 +580,11 @@ std::string ConfigAssigner::Options::ToString() const {
   "expect_all_instructions_in_cache": %v,
   "dump_logs_to": "%s",
   "select_first_config": %v,
-  "use_default_config": %v,
   "dump_hlos": %v
 })json",
       check_buffers, relative_tolerance, crash_on_check_failure,
       scratch_bytes_window_size_us, expect_all_instructions_in_cache,
-      absl::CEscape(dump_logs_to), select_first_config, use_default_config,
-      dump_hlos);
+      absl::CEscape(dump_logs_to), select_first_config, dump_hlos);
 }
 
 AutotunerCacheInterface::CacheStats ConfigAssigner::GetCacheStats() const {

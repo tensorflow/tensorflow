@@ -96,11 +96,19 @@ absl::Status CompileAndVerifyIr(LLVMCompiler* compiler,
                                 absl::string_view pattern,
                                 bool match_optimized_ir,
                                 bool run_optimization_passes) {
+  if (run_optimization_passes) {
+    // Run optimization passes before we set the hook so that we don't capture
+    // intermediate compilations from autotuner.
+    ASSIGN_OR_RETURN(hlo_module, compiler->RunHloPasses(std::move(hlo_module),
+                                                        /*executor=*/nullptr,
+                                                        compile_options));
+  }
+
   ScopedHookHandler hook_handler(compiler, match_optimized_ir);
 
-  RETURN_IF_ERROR(CompileToExecutable(compiler, compile_options,
-                                      std::move(hlo_module),
-                                      run_optimization_passes)
+  RETURN_IF_ERROR(compiler
+                      ->RunBackend(std::move(hlo_module), /*executor=*/nullptr,
+                                   compile_options)
                       .status());
 
   ASSIGN_OR_RETURN(bool succeeded,

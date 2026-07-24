@@ -35,7 +35,6 @@ limitations under the License.
 #include "xla/service/platform_util.h"
 #include "xla/stream_executor/device_description.pb.h"
 #include "xla/stream_executor/stream_executor.h"
-#include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/protobuf/dnn.pb.h"
 #include "xla/tsl/util/proto/proto_matchers.h"
@@ -268,19 +267,6 @@ TEST_F(CudnnBackendTest,
               absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
 }
 
-TEST_F(CudnnBackendTest, GetDefaultConfigFromCudnnFusion) {
-  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
-                       ParseAndReturnVerifiedModule(kCudnnFusionHlo));
-
-  absl::StatusOr<std::unique_ptr<BackendConfig>> config =
-      backend_->GetDefaultConfig(
-          (*hlo_module->entry_computation()->root_instruction()));
-  ASSERT_OK(config);
-  ASSERT_TRUE((*config)->has_algorithm());
-  CudnnBackendConfig algorithm_config = (*config)->algorithm();
-  EXPECT_GE(algorithm_config.algo_id(), 0);
-}
-
 TEST_F(CudnnBackendTest, GetDefaultConfigFromCudnnCustomCall) {
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
                        ParseAndReturnVerifiedModule(kCudnnCustomCallHlo));
@@ -293,17 +279,12 @@ TEST_F(CudnnBackendTest, GetDefaultConfigFromCudnnCustomCall) {
   EXPECT_EQ(algorithm_config.algo_id(), -1);
 }
 
-TEST_F(CudnnBackendTest, GetDefaultConfigFailsWithNullStreamExecutor) {
-  CudnnBackend backend_without_stream_executor(nullptr, &debug_options_,
-                                               &compiler_, &target_config_);
-  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
+TEST_F(CudnnBackendTest, GetDefaultConfigUnimplementedForCudnnFusion) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                        ParseAndReturnVerifiedModule(kCudnnFusionHlo));
-
-  absl::StatusOr<std::unique_ptr<BackendConfig>> config =
-      backend_without_stream_executor.GetDefaultConfig(
-          (*hlo_module->entry_computation()->root_instruction()));
-  EXPECT_THAT(config,
-              absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(backend_->GetDefaultConfig(*root),
+              absl_testing::StatusIs(absl::StatusCode::kUnimplemented));
 }
 
 TEST_F(CudnnBackendTest, ApplyConfigToCudnnFusion) {
