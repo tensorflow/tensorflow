@@ -533,6 +533,17 @@ class UnaryOpTest(test.TestCase):
     self._compareCpu(x, np.square, math_ops.square)
     self._compareBothSparse(x, np.square, math_ops.square)
 
+  def testRoundIntIsIdentity(self):
+    # Rounding an integer tensor must be the identity. Regression test for
+    # https://github.com/tensorflow/tensorflow/issues/74789, where the CPU
+    # Round kernel returned all zeros for integer inputs. gen_math_ops.round
+    # is used directly because math_ops.round short-circuits integer dtypes in
+    # Python and would not exercise the kernel.
+    for dtype in (np.int32, np.int64):
+      x = np.array([[-3, -2, -1], [0, 1, 2]], dtype=dtype)
+      with test_util.force_cpu():
+        self.assertAllEqual(x, self.evaluate(gen_math_ops.round(x)))
+
   def testUInt64Basic(self):
     x = np.arange(6).reshape(1, 3, 2).astype(np.uint64)
     self._compareBoth(x, np.square, math_ops.square)
