@@ -55,14 +55,4 @@ def DPadToPad: Pat<
             (GetI64DenseElementsAttr (CastIntElementsAttr $edge_padding_high)),
             (GetI64DenseElementsAttr (CastIntElementsAttr $interior_padding)))>;
 
-// Convert RealDynamicSliceOp to SliceOp if start_indices, limit_indices and
-// strides are constant.
-def RealDSliceToSlice: Pat<
-          (MHLO_RealDynamicSliceOp $operand,
-            (ConstantLikeMatcher AnyIntElementsAttr:$start_indices),
-            (ConstantLikeMatcher AnyIntElementsAttr:$limit_indices),
-            (ConstantLikeMatcher AnyIntElementsAttr:$strides)),
-          (MHLO_SliceOp $operand,
-            (GetI64DenseElementsAttr (CastIntElementsAttr $start_indices)),
-            (GetI64DenseElementsAttr (CastIntElementsAttr $limit_indices)),
-            (GetI64DenseElementsAttr (CastIntElementsAttr $strides)))>;
+
