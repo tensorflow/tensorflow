@@ -82,7 +82,9 @@ class TestQueue {
   // has been called.
   ~TestQueue() {
     absl::MutexLock l(mu_);
-    if (!allow_non_empty_destruction_) CHECK(queue_.empty()) << " " << this;
+    if (!allow_non_empty_destruction_) {
+      CHECK(queue_.empty()) << " " << this;
+    }
   }
 
  private:
