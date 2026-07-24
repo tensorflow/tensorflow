@@ -333,7 +333,8 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> TileAndEmitXTileModule(
     return xtile::EmitXTileModule(
         fn_name, fusion, tiled_computation, mlir_context,
         absl::MakeSpan(opaque_args_types),
-        std::make_optional(device_info.gpu_compute_capability()));
+        std::make_optional(device_info.gpu_compute_capability()),
+        block_level_parameters.num_tiles_per_pid);
   }
   SymbolicTileAnalysisOrError symbolic_tile_analysis_or =
       SymbolicTileAnalysis::AnalyzeComputation(

@@ -52,6 +52,7 @@ limitations under the License.
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Support/LLVM.h"
 #include "stablehlo/dialect/StablehloOps.h"
+#include "xla/codegen/emitters/ir/xla_ops.h"
 #include "xla/codegen/tiling/experimental/reshape_analysis.h"
 #include "xla/codegen/tiling/experimental/scheduling.h"
 #include "xla/codegen/tiling/experimental/tiled_hlo.h"
@@ -60,9 +61,11 @@ limitations under the License.
 #include "xla/codegen/xtile/codegen/emitter_helpers.h"
 #include "xla/codegen/xtile/ir/transforms/passes.h"
 #include "xla/codegen/xtile/ir/xtile_ops.h"
+#include "xla/hlo/analysis/indexing_map.h"
 #include "xla/hlo/analysis/indexing_map_serialization.h"  // IWYU pragma: keep
 #include "xla/hlo/analysis/interval.h"
 #include "xla/hlo/analysis/symbolic_expr.h"
+#include "xla/hlo/analysis/symbolic_map.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -1207,6 +1210,7 @@ absl::Status EmitGeneric(ImplicitLocOpBuilder& b,
             << ExtractInstructionIntoNewModule(fusion)->ToString();
     VLOG(6) << "Tiled computation: \n" << tiled_computation.ToString();
   }
+  b.setInsertionPointToStart(&fn.front());
   Value program_id = fn.getProgramId();
   Value tile_id = program_id;
 
@@ -1216,19 +1220,23 @@ absl::Status EmitGeneric(ImplicitLocOpBuilder& b,
   if (num_tiles_per_pid > 1) {
     Value zero = arith::ConstantIndexOp::create(b, 0);
     Value one = arith::ConstantIndexOp::create(b, 1);
-    Value num_tiles_per_pid_val =
-        arith::ConstantIndexOp::create(b, num_tiles_per_pid);
+    SymbolicExpr pid_dim = CreateDimExpr(0, mlir_context);
+    SymbolicExpr num_tiles_expr =
+        CreateSymbolicConstant(schedule.num_tiles, mlir_context);
+    SymbolicExpr upper_bound_expr =
+        (num_tiles_expr - pid_dim * num_tiles_per_pid).min(num_tiles_per_pid);
+    SymbolicMap symbolic_map =
+        SymbolicMap::Get(mlir_context, /*num_dimensions=*/1, /*num_symbols=*/0,
+                         {upper_bound_expr});
+    Value upper_bound =
+        xla::ApplyIndexingOp::create(
+            b, ValueRange{program_id}, symbolic_map,
+            {IndexingMap::Variable{{0, schedule.num_pids - 1}, "pid"}},
+            /*range_vars=*/{})
+            .getResult(0);
+    auto for_op = mlir::scf::ForOp::create(b, zero, upper_bound, one);
 
-    // Loop ub = min(num_tiles_per_pid, num_tiles - pid * num_tiles_per_pid).
-    Value upper_bound = arith::SubIOp::create(
-        b, arith::ConstantIndexOp::create(b, schedule.num_tiles),
-        arith::MulIOp::create(b, program_id, num_tiles_per_pid_val));
-    upper_bound = arith::MinUIOp::create(b, upper_bound, num_tiles_per_pid_val);
-    auto for_op = mlir::scf::ForOp::create(b, zero, num_tiles_per_pid_val, one);
-
-    tile_id = arith::AddIOp::create(
-        b, arith::MulIOp::create(b, program_id, num_tiles_per_pid_val),
-        for_op.getInductionVar());
+    tile_id = for_op.getInductionVar();
     b.setInsertionPointToStart(for_op.getBody());
   }
   EmitterContext emitter_ctx{b,        &fusion, program_id,       tile_id,
@@ -1261,7 +1269,8 @@ absl::Status EmitGeneric(ImplicitLocOpBuilder& b,
                                 tile_info.padded_tile_sizes(),
                                 tile_info.tile_strides());
   }
-
+  b.setInsertionPointToEnd(&fn.front());
+  b.create<xtile::EntryFuncReturnOp>();
   return absl::OkStatus();
 }
 
@@ -1337,7 +1346,7 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> EmitXTileModule(
     absl::string_view fn_name, const HloFusionInstruction& fusion,
     const ::xla::gpu::experimental::TiledHloComputation& tiled_computation,
     MLIRContext& mlir_context, absl::Span<mlir::Type> opaque_args_types,
-    const std::optional<GpuComputeCapability>& gpu_cc) {
+    const std::optional<GpuComputeCapability>& gpu_cc, int num_tiles_per_pid) {
   const HloComputation* hlo_computation =
       fusion.fused_instructions_computation();
 
@@ -1360,13 +1369,11 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> EmitXTileModule(
   auto fn = xtile::EntryFuncOp::create(b, fn_name, fn_arg_types,
                                        named_attributes, {});
   fn.addEntryBlock();
-  b.setInsertionPointToStart(&fn.front());
 
-  ASSIGN_OR_RETURN(auto schedule, GetSchedule(tiled_computation));
+  ASSIGN_OR_RETURN(auto schedule,
+                   GetSchedule(tiled_computation, num_tiles_per_pid));
   RETURN_IF_ERROR(
       EmitGeneric(b, fusion, tiled_computation, schedule, fn, &mlir_context));
-
-  b.create<xtile::EntryFuncReturnOp>();
   if (VLOG_IS_ON(8)) {
     std::string s;
     llvm::raw_string_ostream os(s);

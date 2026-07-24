@@ -1,0 +1,44 @@
+// RUN: hlo_to_xtileir %s --xla_gpu_experimental_enable_tiling_propagation | FileCheck %s
+// RUN: triton_test_correctness %s --xla_gpu_experimental_enable_tiling_propagation
+// RUN: triton_test_correctness %s --xla_gpu_experimental_enable_tiling_propagation=false
+
+fusion {
+  p0 = f32[8,4] parameter(0)
+  p1 = f32[8,4] parameter(1)
+  ROOT minimum = f32[8,4] minimum(p0, p1)
+}
+
+ENTRY main {
+  p0 = f32[8,4] parameter(0)
+  p1 = f32[8,4] parameter(1)
+  ROOT fusion = f32[8,4] fusion(p0, p1), kind=kCustom, calls=fusion,
+    backend_config={
+      "fusion_backend_config":{
+        "kind":"__triton",
+        "block_level_fusion_config":{
+          "output_tiles":[{"sizes":["1", "4"]}],
+          "num_tiles_per_pid":"2",
+          "num_warps":"1",
+          "num_ctas":"1",
+          "num_stages":"1"}}}
+}
+
+// CHECK: #[[$TILE_ID_MAP:.+]] = #xla.indexing_map<"(pid, tid) -> (pid * 2 + tid), domain: pid in [0, 3], tid in [0, 1]">
+
+// CHECK-LABEL: xtile.entry_func @triton_fn(
+// CHECK-SAME:    %[[LHS:[a-zA-Z0-9]*]]: memref<8x4xf32>,
+// CHECK-SAME:    %[[RHS:[a-zA-Z0-9]*]]: memref<8x4xf32>,
+// CHECK-SAME:    %[[OUT:[a-zA-Z0-9]*]]: memref<8x4xf32>,
+// CHECK-SAME:    %[[PID:[a-zA-Z0-9]*]]: index)
+
+// CHECK-DAG: %[[C0:.*]] = arith.constant 0 : index
+// CHECK-DAG: %[[C1:.*]] = arith.constant 1 : index
+// CHECK-DAG: %[[C2:.*]] = arith.constant 2 : index
+
+// CHECK: scf.for %[[TID:.*]] = %[[C0]] to %[[C2]] step %[[C1]] {
+// CHECK:   %[[GLOB_TID:.*]] = xla.apply_indexing #[[$TILE_ID_MAP]](%[[PID]], %[[TID]])
+// CHECK:   %[[LHS_TILE:.*]] = xtile.extract %[[LHS]][%[[GLOB_TID]], %[[C0]]] [1, 4] [1, 1] : memref<8x4xf32> -> tensor<1x4xf32>
+// CHECK:   %[[RHS_TILE:.*]] = xtile.extract %[[RHS]][%[[GLOB_TID]], %[[C0]]] [1, 4] [1, 1] : memref<8x4xf32> -> tensor<1x4xf32>
+// CHECK:   %[[MIN:.*]] = arith.minimumf %[[LHS_TILE]], %[[RHS_TILE]] : tensor<1x4xf32>
+// CHECK:   xtile.insert %[[MIN]] into %[[OUT]][%[[GLOB_TID]], %[[C0]]] [1, 4] [1, 1] : tensor<1x4xf32> -> memref<8x4xf32>
+// CHECK: xtile.return
