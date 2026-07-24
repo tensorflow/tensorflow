@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/lite/core/c/builtin_op_data.h"
 #include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/delegates/coreml/builders/op_factory.h"
+#include "tensorflow/lite/delegates/coreml/builders/util.h"
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 
@@ -102,29 +103,39 @@ bool IsPadOpSupported(const TfLiteRegistration* registration,
   // padding is d x 2 tensor, where d is the dimension of input.
   const TfLiteTensor* padding;
   TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, 1, &padding));
+  // `padding` and its name may be null in TFLite; use a safe placeholder for
+  // logging so neither is dereferenced before the checks below.
+  const char* padding_name =
+      (padding != nullptr && padding->name != nullptr) ? padding->name
+                                                       : "(unnamed)";
   if (!IsConstantTensor(padding)) {
     TF_LITE_KERNEL_LOG(context,
                        "%s: Only constant padding is supported for PAD.",
-                       padding->name);
+                       padding_name);
+    return false;
+  }
+  if (!TensorHasRank(padding, 2)) {
+    TF_LITE_KERNEL_LOG(context, "%s: PAD padding tensor must be 2D.",
+                       padding_name);
     return false;
   }
   if (padding->dims->data[0] != 4 || padding->dims->data[1] != 2) {
     TF_LITE_KERNEL_LOG(context, "%s: Only 4D inputs are supported for PAD.",
-                       padding->name);
+                       padding_name);
     return false;
   }
   const int32_t* padding_data = GetTensorData<int32_t>(padding);
   if (!(padding_data[0] == 0 && padding_data[1] == 0)) {
     TF_LITE_KERNEL_LOG(
         context, "%s: Padding for batch dimension is not supported in PAD.",
-        padding->name);
+        padding_name);
     return false;
   }
 
   if (!(padding_data[6] == 0 && padding_data[7] == 0)) {
     TF_LITE_KERNEL_LOG(
         context, "%s: Padding for channel dimension is not supported in PAD.",
-        padding->name);
+        padding_name);
     return false;
   }
   return true;
