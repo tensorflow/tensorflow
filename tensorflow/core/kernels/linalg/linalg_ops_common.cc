@@ -199,7 +199,11 @@ void LinearAlgebraOp<InputScalar, OutputScalar>::PrepareOutputs(
     unused_inputs.insert(input_idx);
   }
   for (int output_idx = 0; output_idx < context->num_outputs(); ++output_idx) {
-    TensorShape output_tensor_shape({});
+    // Outputs the derived class does not produce (e.g. `v` for
+    // SelfAdjointEigV2 with compute_v=False) are allocated as empty tensors
+    // of shape [0], matching the op's shape function, so they never expose
+    // uninitialized memory.
+    TensorShape output_tensor_shape({0});
     if (output_idx < num_outputs) {
       // This output is used, set up output shape and allocate it.
       const TensorShape& output_matrix_shape =

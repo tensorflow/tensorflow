@@ -69,8 +69,11 @@ class SelfAdjointEigV2OpGpu : public AsyncOpKernel {
         context, context->allocate_output(0, eigenvalues_shape, &eigenvalues),
         done);
     Tensor* eigenvectors;
+    // When compute_v is false, allocate `v` as an empty tensor of shape [0],
+    // matching the op's shape function, so it never exposes uninitialized
+    // memory.
     TensorShape eigenvectors_shape =
-        compute_v_ ? input.shape() : TensorShape({});
+        compute_v_ ? input.shape() : TensorShape({0});
     OP_REQUIRES_OK_ASYNC(
         context, context->allocate_output(1, eigenvectors_shape, &eigenvectors),
         done);
