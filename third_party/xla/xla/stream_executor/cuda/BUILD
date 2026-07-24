@@ -21,10 +21,6 @@ load(
     "xla_cc_test",
 )
 load(
-    "//xla/service/gpu:build_defs.bzl",
-    "get_cub_sort_kernel_types",
-)
-load(
     "//xla/stream_executor:build_defs.bzl",
     "stream_executor_friends",
     "tf_additional_cuda_platform_deps",
@@ -2950,34 +2946,10 @@ cuda_library(
     alwayslink = 1,
 )
 
-# NVCC from CUDA 12.4 and below doesn't get along with Abseil which gets
-# transitively included via the XLA FFI headers. That's why we split
-# the logic into 2 targets - the `*_impl_*` target which contains the CUDA
-# C++ code and the non-impl target which contains the FFI handle registration.
-# This can be merged into a single compilation unit when we don't care about
-# compiling with NVCC below version 12.4.1 anymore.
-[cuda_library(
-    name = "cub_sort_kernel_cuda_type_{}".format(typename),
-    srcs = [
-        "cub_sort_kernel_cuda.h",
-        "cub_sort_kernel_cuda_impl.cu.cc",
-    ],
-    # copybara:uncomment compatible_with = ["//buildenv/target:non_prod"],
-    local_defines = ["CUB_TYPE_" + typename.upper()],
-    tags = [
-        "cuda-only",
-        "gpu",
-    ],
-    deps = [
-        "@local_config_cuda//cuda:cub_headers",
-        "@local_config_cuda//cuda:cuda_headers",
-    ],
-) for typename in get_cub_sort_kernel_types()]
-
-cc_library(
+cuda_library(
     name = "cub_sort_kernel_cuda",
     srcs = [
-        "cub_sort_kernel_cuda.cc",
+        "cub_sort_kernel_cuda.cu.cc",
         "cub_sort_kernel_cuda.h",
     ],
     # copybara:uncomment compatible_with = ["//buildenv/target:non_prod"],
@@ -2998,20 +2970,16 @@ cc_library(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
+        "@local_config_cuda//cuda:cub_headers",
         "@local_config_cuda//cuda:cuda_headers",
-    ] + [
-        ":cub_sort_kernel_cuda_type_{}".format(typename)
-        for typename in get_cub_sort_kernel_types()
     ],
     alwayslink = 1,
 )
 
 cuda_library(
-    name = "cub_scan_kernel_cuda_impl",
-    srcs = [
-        "cub_scan_kernel_cuda.h",
-        "cub_scan_kernel_cuda_impl.cu.cc",
-    ],
+    name = "cub_scan_kernel_cuda",
+    srcs = ["cub_scan_kernel_cuda.cu.cc"],
+    hdrs = ["cub_scan_kernel_cuda.h"],
     # copybara:uncomment compatible_with = ["//buildenv/target:non_prod"],
     tags = [
         "cuda-only",
@@ -3020,34 +2988,15 @@ cuda_library(
     deps = [
         ":cuda_status",
         "//xla:xla_data_proto_cc",
+        "//xla/backends/gpu:ffi",
+        "//xla/ffi",
+        "//xla/service/gpu:cublas_cudnn",
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:status_macros",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@local_config_cuda//cuda:cub_headers",
-        "@local_config_cuda//cuda:cuda_headers",
-    ],
-)
-
-cc_library(
-    name = "cub_scan_kernel_cuda",
-    srcs = ["cub_scan_kernel_cuda.cc"],
-    hdrs = ["cub_scan_kernel_cuda.h"],
-    # copybara:uncomment compatible_with = ["//buildenv/target:non_prod"],
-    tags = [
-        "cuda-only",
-        "gpu",
-    ],
-    deps = [
-        ":cub_scan_kernel_cuda_impl",
-        "//xla:xla_data_proto_cc",
-        "//xla/backends/gpu:ffi",
-        "//xla/ffi",
-        "//xla/service/gpu:cublas_cudnn",
-        "//xla/tsl/platform:status_macros",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:statusor",
         "@local_config_cuda//cuda:cuda_headers",
     ],
     alwayslink = 1,

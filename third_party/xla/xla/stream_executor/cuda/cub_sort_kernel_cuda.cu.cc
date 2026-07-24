@@ -20,6 +20,8 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
+#include "cub/device/device_radix_sort.cuh"
+#include "cub/device/device_segmented_radix_sort.cuh"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
@@ -38,9 +40,116 @@ limitations under the License.
 #include "xla/stream_executor/cuda/cuda_status.h"
 #include "xla/xla_data.pb.h"
 
+// Clang can't always unroll all loops, and it's not clear yet why.
+// Silence the warning for now to avoid build breaks with -Werror.
+#pragma clang diagnostic ignored "-Wpass-failed"
+
 namespace stream_executor {
 namespace cuda {
 namespace {
+
+template <typename KeyT>
+cudaError_t CubSortKeysUnbatched(void* d_temp_storage, size_t& temp_bytes,
+                                 const void* d_keys_in, void* d_keys_out,
+                                 size_t num_items, bool descending,
+                                 CUstream stream) {
+  return descending
+             ? cub::DeviceRadixSort::SortKeysDescending<KeyT>(
+                   d_temp_storage, temp_bytes,
+                   static_cast<const KeyT*>(d_keys_in),
+                   static_cast<KeyT*>(d_keys_out), num_items, /*begin_bit=*/0,
+                   /*end_bit=*/sizeof(KeyT) * 8, stream)
+             : cub::DeviceRadixSort::SortKeys<KeyT>(
+                   d_temp_storage, temp_bytes,
+                   static_cast<const KeyT*>(d_keys_in),
+                   static_cast<KeyT*>(d_keys_out), num_items, /*begin_bit=*/0,
+                   /*end_bit=*/sizeof(KeyT) * 8, stream);
+}
+
+template <typename KeyT>
+cudaError_t CubSortKeys(void* d_temp_storage, size_t& temp_bytes,
+                        const void* d_keys_in, void* d_keys_out,
+                        size_t num_items, bool descending, size_t batch_size,
+                        CUstream stream) {
+  if (batch_size == 1) {
+    return CubSortKeysUnbatched<KeyT>(d_temp_storage, temp_bytes, d_keys_in,
+                                      d_keys_out, num_items, descending,
+                                      stream);
+  }
+  void* d_offsets = static_cast<char*>(d_temp_storage) + temp_bytes;
+  int* start_offsets =
+      d_temp_storage != nullptr ? static_cast<int*>(d_offsets) : nullptr;
+  int* end_offsets = start_offsets != nullptr ? start_offsets + 1 : nullptr;
+  return descending ? cub::DeviceSegmentedRadixSort::SortKeysDescending<KeyT>(
+                          d_temp_storage, temp_bytes,
+                          static_cast<const KeyT*>(d_keys_in),
+                          static_cast<KeyT*>(d_keys_out), num_items, batch_size,
+                          start_offsets, end_offsets, /*begin_bit=*/0,
+                          /*end_bit=*/sizeof(KeyT) * 8, stream)
+                    : cub::DeviceSegmentedRadixSort::SortKeys<KeyT>(
+                          d_temp_storage, temp_bytes,
+                          static_cast<const KeyT*>(d_keys_in),
+                          static_cast<KeyT*>(d_keys_out), num_items, batch_size,
+                          start_offsets, end_offsets, /*begin_bit=*/0,
+                          /*end_bit=*/sizeof(KeyT) * 8, stream);
+}
+
+template <typename KeyT, typename ValT>
+cudaError_t CubSortPairsUnbatched(void* d_temp_storage, size_t& temp_bytes,
+                                  const void* d_keys_in, void* d_keys_out,
+                                  const void* d_values_in, void* d_values_out,
+                                  size_t num_items, bool descending,
+                                  CUstream stream) {
+  return descending
+             ? cub::DeviceRadixSort::SortPairsDescending<KeyT, ValT>(
+                   d_temp_storage, temp_bytes,
+                   static_cast<const KeyT*>(d_keys_in),
+                   static_cast<KeyT*>(d_keys_out),
+                   static_cast<const ValT*>(d_values_in),
+                   static_cast<ValT*>(d_values_out), num_items, /*begin_bit=*/0,
+                   /*end_bit=*/sizeof(KeyT) * 8, stream)
+             : cub::DeviceRadixSort::SortPairs<KeyT, ValT>(
+                   d_temp_storage, temp_bytes,
+                   static_cast<const KeyT*>(d_keys_in),
+                   static_cast<KeyT*>(d_keys_out),
+                   static_cast<const ValT*>(d_values_in),
+                   static_cast<ValT*>(d_values_out), num_items, /*begin_bit=*/0,
+                   /*end_bit=*/sizeof(KeyT) * 8, stream);
+}
+
+template <typename KeyT, typename ValT>
+cudaError_t CubSortPairs(void* d_temp_storage, size_t& temp_bytes,
+                         const void* d_keys_in, void* d_keys_out,
+                         const void* d_values_in, void* d_values_out,
+                         size_t num_items, bool descending, size_t batch_size,
+                         CUstream stream) {
+  if (batch_size == 1) {
+    return CubSortPairsUnbatched<KeyT, ValT>(
+        d_temp_storage, temp_bytes, d_keys_in, d_keys_out, d_values_in,
+        d_values_out, num_items, descending, stream);
+  }
+  void* d_offsets = static_cast<char*>(d_temp_storage) + temp_bytes;
+  int* start_offsets =
+      d_temp_storage != nullptr ? static_cast<int*>(d_offsets) : nullptr;
+  int* end_offsets = start_offsets != nullptr ? start_offsets + 1 : nullptr;
+  return descending
+             ? cub::DeviceSegmentedRadixSort::SortPairsDescending<KeyT, ValT>(
+                   d_temp_storage, temp_bytes,
+                   static_cast<const KeyT*>(d_keys_in),
+                   static_cast<KeyT*>(d_keys_out),
+                   static_cast<const ValT*>(d_values_in),
+                   static_cast<ValT*>(d_values_out), num_items, batch_size,
+                   start_offsets, end_offsets, /*begin_bit=*/0,
+                   /*end_bit=*/sizeof(KeyT) * 8, stream)
+             : cub::DeviceSegmentedRadixSort::SortPairs<KeyT, ValT>(
+                   d_temp_storage, temp_bytes,
+                   static_cast<const KeyT*>(d_keys_in),
+                   static_cast<KeyT*>(d_keys_out),
+                   static_cast<const ValT*>(d_values_in),
+                   static_cast<ValT*>(d_values_out), num_items, batch_size,
+                   start_offsets, end_offsets, /*begin_bit=*/0,
+                   /*end_bit=*/sizeof(KeyT) * 8, stream);
+}
 
 using SortKeysFn = cudaError_t (*)(void* d_temp_storage, size_t& temp_bytes,
                                    const void* d_keys_in, void* d_keys_out,
@@ -304,6 +413,63 @@ XLA_FFI_REGISTER_HANDLER(xla::ffi::GetXlaFfiApi(),
                           /* .prepare = */ nullptr,
                           /* .initialize = */ nullptr,
                           /* .execute = */ kCubSortPairsExecute});
+
+#define XLA_CUB_DEFINE_SORT_KEYS(type)                                       \
+  template cudaError_t CubSortKeys<type>(void*, size_t&, const void*, void*, \
+                                         size_t, bool, size_t, CUstream);
+
+#define XLA_CUB_DEFINE_SORT_PAIRS(type1, type2)                             \
+  template cudaError_t CubSortPairs<type1, type2>(                          \
+      void*, size_t&, const void*, void*, const void*, void*, size_t, bool, \
+      size_t, CUstream);
+
+// Floating point types.
+XLA_CUB_DEFINE_SORT_KEYS(__nv_bfloat16)
+XLA_CUB_DEFINE_SORT_KEYS(__half)
+XLA_CUB_DEFINE_SORT_KEYS(float)
+XLA_CUB_DEFINE_SORT_KEYS(double)
+
+// Signed integer types.
+XLA_CUB_DEFINE_SORT_KEYS(int8_t)
+XLA_CUB_DEFINE_SORT_KEYS(int16_t)
+XLA_CUB_DEFINE_SORT_KEYS(int32_t)
+XLA_CUB_DEFINE_SORT_KEYS(int64_t)
+
+// Unsigned integer types.
+XLA_CUB_DEFINE_SORT_KEYS(uint8_t)
+XLA_CUB_DEFINE_SORT_KEYS(uint16_t)
+XLA_CUB_DEFINE_SORT_KEYS(uint32_t)
+XLA_CUB_DEFINE_SORT_KEYS(uint64_t)
+
+// Pairs with 8-bit key.
+XLA_CUB_DEFINE_SORT_PAIRS(uint8_t, uint16_t)
+XLA_CUB_DEFINE_SORT_PAIRS(uint8_t, uint32_t)
+XLA_CUB_DEFINE_SORT_PAIRS(uint8_t, uint64_t)
+
+// Pairs with 16-bit key.
+XLA_CUB_DEFINE_SORT_PAIRS(uint16_t, uint16_t)
+XLA_CUB_DEFINE_SORT_PAIRS(uint16_t, uint32_t)
+XLA_CUB_DEFINE_SORT_PAIRS(uint16_t, uint64_t)
+
+// Pairs with signed 32-bit key.
+XLA_CUB_DEFINE_SORT_PAIRS(int32_t, uint16_t)
+XLA_CUB_DEFINE_SORT_PAIRS(int32_t, uint32_t)
+XLA_CUB_DEFINE_SORT_PAIRS(int32_t, uint64_t)
+
+// Pairs with unsigned 32-bit key.
+XLA_CUB_DEFINE_SORT_PAIRS(uint32_t, uint16_t)
+XLA_CUB_DEFINE_SORT_PAIRS(uint32_t, uint32_t)
+XLA_CUB_DEFINE_SORT_PAIRS(uint32_t, uint64_t)
+
+// Pairs with 64-bit key.
+XLA_CUB_DEFINE_SORT_PAIRS(uint64_t, uint16_t)
+XLA_CUB_DEFINE_SORT_PAIRS(uint64_t, uint32_t)
+XLA_CUB_DEFINE_SORT_PAIRS(uint64_t, uint64_t)
+
+// Pairs with f32 key.
+XLA_CUB_DEFINE_SORT_PAIRS(float, uint16_t)
+XLA_CUB_DEFINE_SORT_PAIRS(float, uint32_t)
+XLA_CUB_DEFINE_SORT_PAIRS(float, uint64_t)
 
 }  // namespace
 }  // namespace cuda
