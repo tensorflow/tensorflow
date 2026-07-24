@@ -16,6 +16,7 @@
 
 import numpy as np
 
+from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
@@ -58,6 +59,64 @@ class NormOpTest(test_lib.TestCase):
                       "integers")
       with self.assertRaisesRegex(ValueError, error_prefix):
         linalg_ops.norm(matrix, axis=axis_)
+
+  @test_util.run_v2_only
+  def testMatrixNormOrd2MultiAxisXlaCompile(self):
+    """Regression test for GitHub issue #122865.
+
+    tf.norm with ord=2 over two axes previously lowered to a ListDiff op
+    whose output shape depends on a runtime value (array_ops.rank), which
+    XLA cannot compile even when the axes and tensor rank are statically
+    known. When the rank is static, the remaining axes should be computed
+    in pure Python so no dynamically-shaped op reaches XLA.
+    """
+    if not test_lib.is_built_with_xla():
+      self.skipTest("Test only applicable when running with XLA support")
+
+    rng = np.random.RandomState(0)
+    matrix = rng.randn(3, 16, 32, 24).astype(np.float32)
+    tensor = constant_op.constant(matrix)
+
+    def norm_fn(t):
+      return linalg_ops.norm(t, ord=2, axis=[1, 2], keepdims=True)
+
+    eager_result = norm_fn(tensor)
+    xla_result = def_function.function(norm_fn, jit_compile=True)(tensor)
+    self.assertAllClose(eager_result, xla_result, rtol=1e-5, atol=1e-5)
+
+  @test_util.run_v2_only
+  def testMatrixNormOrd2MultiAxisNegativeAxisXlaCompile(self):
+    """Regression test for GitHub issue #122865, negative axis variant."""
+    if not test_lib.is_built_with_xla():
+      self.skipTest("Test only applicable when running with XLA support")
+
+    rng = np.random.RandomState(1)
+    matrix = rng.randn(3, 16, 32, 24).astype(np.float32)
+    tensor = constant_op.constant(matrix)
+
+    def norm_fn(t):
+      return linalg_ops.norm(t, ord=2, axis=[-3, -2], keepdims=True)
+
+    eager_result = norm_fn(tensor)
+    xla_result = def_function.function(norm_fn, jit_compile=True)(tensor)
+    self.assertAllClose(eager_result, xla_result, rtol=1e-5, atol=1e-5)
+
+  @test_util.run_v2_only
+  def testMatrixNormOrd2MultiAxisXlaCompileNoKeepdims(self):
+    """Regression test for GitHub issue #122865, keepdims=False variant."""
+    if not test_lib.is_built_with_xla():
+      self.skipTest("Test only applicable when running with XLA support")
+
+    rng = np.random.RandomState(2)
+    matrix = rng.randn(3, 16, 32, 24).astype(np.float32)
+    tensor = constant_op.constant(matrix)
+
+    def norm_fn(t):
+      return linalg_ops.norm(t, ord=2, axis=[1, 2], keepdims=False)
+
+    eager_result = norm_fn(tensor)
+    xla_result = def_function.function(norm_fn, jit_compile=True)(tensor)
+    self.assertAllClose(eager_result, xla_result, rtol=1e-5, atol=1e-5)
 
 
 def _GetNormOpTest(dtype_, shape_, ord_, axis_, keep_dims_, use_static_shape_):
