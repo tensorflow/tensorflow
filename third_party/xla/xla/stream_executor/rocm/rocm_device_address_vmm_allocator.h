@@ -50,7 +50,8 @@ class RocmDeviceAddressVmmAllocator : public DeviceAddressVmmAllocator {
   //
   // Precondition: all entries in `devices` have distinct device ordinals.
   static absl::StatusOr<std::unique_ptr<RocmDeviceAddressVmmAllocator>> Create(
-      const Platform* platform, absl::Span<const DeviceConfig> devices);
+      const Platform* platform, absl::Span<const DeviceConfig> devices,
+      std::optional<int64_t> reclaim_exempt_memory_space = std::nullopt);
 
   // Creates an allocator supporting multiple devices, computing the pa_budget
   // for each device by querying DeviceMemoryUsage and applying memory_fraction.
@@ -60,7 +61,8 @@ class RocmDeviceAddressVmmAllocator : public DeviceAddressVmmAllocator {
   static absl::StatusOr<std::unique_ptr<RocmDeviceAddressVmmAllocator>> Create(
       const Platform* platform, double memory_fraction,
       std::optional<int64_t> gpu_system_memory_size,
-      absl::Span<const std::pair<StreamExecutor*, Stream*>> devices);
+      absl::Span<const std::pair<StreamExecutor*, Stream*>> devices,
+      std::optional<int64_t> reclaim_exempt_memory_space = std::nullopt);
 
   // Creates an allocator for a single device.
   //
@@ -71,8 +73,8 @@ class RocmDeviceAddressVmmAllocator : public DeviceAddressVmmAllocator {
   //   pa_budget: Maximum bytes of physical memory that may be simultaneously
   //              allocated on this device. Defaults to unlimited.
   static absl::StatusOr<std::unique_ptr<RocmDeviceAddressVmmAllocator>> Create(
-      StreamExecutor* executor, Stream* stream,
-      uint64_t pa_budget = UINT64_MAX);
+      StreamExecutor* executor, Stream* stream, uint64_t pa_budget = UINT64_MAX,
+      std::optional<int64_t> reclaim_exempt_memory_space = std::nullopt);
 
  protected:
   // Allocates signal memory via hipExtMallocWithFlags(hipMallocSignalMemory)
@@ -94,7 +96,9 @@ class RocmDeviceAddressVmmAllocator : public DeviceAddressVmmAllocator {
                                            uint64_t seqno) override;
 
  private:
-  explicit RocmDeviceAddressVmmAllocator(const Platform* platform);
+  explicit RocmDeviceAddressVmmAllocator(
+      const Platform* platform,
+      std::optional<int64_t> reclaim_exempt_memory_space = std::nullopt);
 };
 
 }  // namespace stream_executor::gpu

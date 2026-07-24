@@ -2793,6 +2793,79 @@ TEST_F(VmmTest, CommandBufferSkipProfiledFallsBackWithoutVmmAllocator) {
   mock_log.StopCapturingLogs();
 }
 
+// Records the result address of each invocation so tests can assert stability.
+std::vector<void*>& RecordedBufferAddresses() {
+  static auto* addresses = new std::vector<void*>();
+  return *addresses;
+}
+
+absl::Status RecordBufferAddressCustomCall(ffi::AnyBuffer,
+                                           ffi::Result<ffi::AnyBuffer> result) {
+  RecordedBufferAddresses().push_back(result->untyped_data());
+  return absl::OkStatus();
+}
+
+XLA_FFI_DEFINE_HANDLER(
+    kRecordBufferAddressCustomCall, RecordBufferAddressCustomCall,
+    ffi::Ffi::Bind().Arg<ffi::AnyBuffer>().Ret<ffi::AnyBuffer>());
+
+XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "RecordBufferAddress", "CUDA",
+                         kRecordBufferAddressCustomCall);
+
+XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "RecordBufferAddress", "ROCM",
+                         kRecordBufferAddressCustomCall);
+
+// s is placed in the collective memory space by the results_memory_spaces
+// attribute alone. Run i yields 2*i*i.
+constexpr char kAttrPlacedModule[] = R"(
+  HloModule attr_placed_stable_buffer
+  ENTRY e {
+    p0 = f32[512,1024] parameter(0)
+    t = f32[512,1024] multiply(p0, p0)
+    s = f32[512,1024] custom-call(t), custom_call_target="RecordBufferAddress",
+      api_version=API_VERSION_TYPED_FFI,
+      output_to_operand_aliasing={{}: (0, {})},
+      frontend_attributes={results_memory_spaces="{0:1}"}
+    ROOT r = f32[512,1024] add(s, s)
+  })";
+
+TEST_F(VmmTest, CollectiveSpacePlacementKeepsAddressStableAcrossExecutions) {
+  RecordedBufferAddresses().clear();
+  ASSERT_OK_AND_ASSIGN(auto client,
+                       GetStreamExecutorGpuClient(VmmClientOptions()));
+  // SKIP_TEMP command buffers are enabled but the custom call is not captured
+  // so the recorder observes the address the runtime passes on every execution.
+  CompileOptions opts;
+  auto* dbg = opts.executable_build_options.mutable_debug_options();
+  dbg->set_xla_gpu_command_buffer_update_mode(DebugOptions::SKIP_TEMP);
+  dbg->set_xla_gpu_graph_min_graph_size(1);
+  dbg->add_xla_gpu_enable_command_buffer(DebugOptions::FUSION);
+  ASSERT_OK_AND_ASSIGN(auto executable,
+                       CompileExecutable(kAttrPlacedModule, *client, opts));
+  ASSERT_OK_AND_ASSIGN(
+      auto* mem, client->addressable_devices()[0]->default_memory_space());
+  // The first execution records the command buffer and the second replays it.
+  constexpr int kIters = 2;
+  for (int i = 1; i <= kIters; ++i) {
+    float v = static_cast<float>(i);
+    Literal input =
+        LiteralUtil::CreateFullWithDescendingLayout<float>({512, 1024}, v);
+    ASSERT_OK_AND_ASSIGN(auto in_buf,
+                         client->BufferFromHostLiteral(input, mem));
+    auto result = executable->Execute({{in_buf.get()}}, {});
+    ASSERT_OK_AND_ASSIGN(auto result_lit, ExtractSingleResult(result));
+    Literal expected = LiteralUtil::CreateFullWithDescendingLayout<float>(
+        {512, 1024}, 2 * v * v);
+    EXPECT_TRUE(LiteralTestUtil::Equal(expected, *result_lit))
+        << "Mismatch on run " << i;
+  }
+  ASSERT_EQ(RecordedBufferAddresses().size(), kIters);
+  for (int i = 1; i < kIters; ++i) {
+    EXPECT_EQ(RecordedBufferAddresses()[i], RecordedBufferAddresses()[0])
+        << "Address changed on run " << i + 1;
+  }
+}
+
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 TEST(StreamExecutorGpuClientTest, MemoryRegistrationDisabledByDefault) {
