@@ -387,6 +387,67 @@ absl::StatusOr<SmallVector<int64_t>> GetSequentialLoopIterationCounts(
   return loop_iteration_counts;
 }
 
+namespace {
+int64_t CalculateKWrappingFactorForDot(const HloDotInstruction& dot) {
+  if (!dot.GetModule()
+           ->config()
+           .debug_options()
+           .xla_gpu_experimental_enable_narrow_dot_kwrapping()) {
+    return 1;
+  }
+  const Shape& lhs_shape = dot.operand(0)->shape();
+  const Shape& rhs_shape = dot.operand(1)->shape();
+  if (!lhs_shape.is_static() || !rhs_shape.is_static()) return 1;
+
+  const DotDimensionNumbers& dnums = dot.dot_dimension_numbers();
+  if (dnums.lhs_contracting_dimensions_size() != 1 ||
+      dnums.rhs_contracting_dimensions_size() != 1) {
+    return 1;
+  }
+
+  int64_t lhs_k_dim = dnums.lhs_contracting_dimensions(0);
+  int64_t rhs_k_dim = dnums.rhs_contracting_dimensions(0);
+  int64_t k = lhs_shape.dimensions(lhs_k_dim);
+  if (k < 16 || k % 4 != 0) return 1;
+
+  int64_t m = 1;
+  for (int64_t i = 0; i < lhs_shape.dimensions_size(); ++i) {
+    if (i != lhs_k_dim &&
+        !absl::c_linear_search(dnums.lhs_batch_dimensions(), i)) {
+      m *= lhs_shape.dimensions(i);
+    }
+  }
+
+  int64_t n = 1;
+  for (int64_t i = 0; i < rhs_shape.dimensions_size(); ++i) {
+    if (i != rhs_k_dim &&
+        !absl::c_linear_search(dnums.rhs_batch_dimensions(), i)) {
+      n *= rhs_shape.dimensions(i);
+    }
+  }
+
+  if (m <= 4 && m > 0) {
+    int64_t max_r = 16 / m;
+    int64_t r = 1;
+    while (r * 2 <= max_r && (k / r) % 2 == 0) {
+      r *= 2;
+    }
+    return r;
+  }
+
+  if (n <= 4 && n > 0) {
+    int64_t max_r = 16 / n;
+    int64_t r = 1;
+    while (r * 2 <= max_r && (k / r) % 2 == 0) {
+      r *= 2;
+    }
+    return r;
+  }
+
+  return 1;
+}
+}  // namespace
+
 // Emits dot instruction that has LHS and RHS as part of its region.
 // Tiling analysis identifies instructions that belong to the dot and puts them
 // inside of the dot's regions.
@@ -402,12 +463,16 @@ absl::StatusOr<SmallVector<int64_t>> GetSequentialLoopIterationCounts(
 // c = acc
 absl::StatusOr<TensorValue> EmitDot(EmitterContext& emitter_ctx,
                                     const ge::TiledHloInstruction& tiled_dot) {
-  TF_RET_CHECK(tiled_dot.hlo_regions().size() == 1);
-  ASSIGN_OR_RETURN(SmallVector<int64_t> padded_tile_sizes,
-                   tiled_dot.tile().GetStaticTileSizes());
-
   auto& b = emitter_ctx.b();
   const auto& dot = *::xla::Cast<HloDotInstruction>(tiled_dot.hlo());
+  int64_t r = CalculateKWrappingFactorForDot(dot);
+
+  ASSIGN_OR_RETURN(SmallVector<int64_t> padded_tile_sizes,
+                   tiled_dot.tile().GetStaticTileSizes());
+  if (r > 1) {
+    padded_tile_sizes[0] = 1;
+  }
+
   // The specific accumulator type to use may not correspond to the output type
   // of the dot. In particular, that is the case when an algorithm is specified
   // and the dot's output type does not match its expectations.
@@ -418,15 +483,17 @@ absl::StatusOr<TensorValue> EmitDot(EmitterContext& emitter_ctx,
   SmallVector<int64_t> sequential_dim_ids =
       GetSequentialDimIds(*tiled_dot.hlo());
   ASSIGN_OR_RETURN(
-      SmallVector<int64_t> loop_iteration_count,
+      SmallVector<int64_t> loop_iteration_count_vec,
       GetSequentialLoopIterationCounts(tiled_dot, sequential_dim_ids));
-  TF_RET_CHECK(loop_iteration_count.size() == 1)
+  TF_RET_CHECK(loop_iteration_count_vec.size() == 1)
       << "Expected exactly one loop iteration count for dot";
+
+  int64_t loop_iteration_count = loop_iteration_count_vec.front();
 
   auto for_op = mlir::scf::ForOp::create(
       b,
       /*lowerBound=*/MakeIndex(b, 0),
-      /*upperBound=*/MakeIndex(b, loop_iteration_count.front()),
+      /*upperBound=*/MakeIndex(b, loop_iteration_count),
       /*step=*/MakeIndex(b, 1), accumulator);
 
   {  // Loop body.
@@ -438,7 +505,7 @@ absl::StatusOr<TensorValue> EmitDot(EmitterContext& emitter_ctx,
         tiled_dot.tile().tiling_space().GetDimensionInfo(
             *tiled_dot.hlo(), sequential_dim_ids.front());
     TF_RET_CHECK(emitter_ctx.MapSymbolIdToSequentialDimValue(
-        dim_info.id, iv, Interval{0, loop_iteration_count.front() - 1}));
+        dim_info.id, iv, Interval{0, loop_iteration_count - 1}));
 
     // Emit the dot region.
     const ge::TiledHloInstruction* lhs_operand = tiled_dot.operand(0);
@@ -466,10 +533,45 @@ absl::StatusOr<TensorValue> EmitDot(EmitterContext& emitter_ctx,
 
     // Emit the partial dot.
     Value acc = for_op.getRegionIterArgs().front();
-    ASSIGN_OR_RETURN(
-        Value acc_next,
-        xtile::EmitSingleTileDot(
-            b, dot, xtile::DotOperands{lhs_tensor, rhs_tensor, acc}));
+    Value acc_next;
+    if (r > 1) {
+      int64_t tile_n = rhs_operand->tile_sizes().back();
+
+      Value acc_wrapped = CreateConst(b, accumulator_type, 0.0f, {r, tile_n});
+
+      ASSIGN_OR_RETURN(
+          Value dot_wrapped,
+          xtile::EmitSingleTileDot(
+              b, dot, xtile::DotOperands{lhs_tensor, rhs_tensor, acc_wrapped}));
+
+      Value init = CreateConst(b, accumulator_type, 0.0f, {});
+      auto reduce_type =
+          mlir::RankedTensorType::get({tile_n}, accumulator_type);
+      auto reduce_op = mlir::stablehlo::ReduceOp::create(
+          b, reduce_type, dot_wrapped, init, SmallVector<int64_t>{0});
+
+      auto scalar_tensor_type =
+          mlir::RankedTensorType::get({}, accumulator_type);
+      auto& region = reduce_op.getRegion();
+      auto* block = b.createBlock(&region, region.end(),
+                                  {scalar_tensor_type, scalar_tensor_type},
+                                  {b.getUnknownLoc(), b.getUnknownLoc()});
+      b.setInsertionPointToStart(block);
+      auto add = mlir::stablehlo::AddOp::create(b, block->getArgument(0),
+                                                block->getArgument(1));
+      mlir::stablehlo::ReturnOp::create(b, ValueRange{add});
+      b.setInsertionPointAfter(reduce_op);
+
+      Value reduced = reduce_op.getResult(0);
+      auto type_2d = mlir::RankedTensorType::get({1, tile_n}, accumulator_type);
+      Value sum_2d = mlir::stablehlo::ReshapeOp::create(b, type_2d, reduced);
+      acc_next = b.create<mlir::arith::AddFOp>(acc, sum_2d);
+    } else {
+      ASSIGN_OR_RETURN(
+          acc_next,
+          xtile::EmitSingleTileDot(
+              b, dot, xtile::DotOperands{lhs_tensor, rhs_tensor, acc}));
+    }
     mlir::scf::YieldOp::create(b, acc_next);
   }
 
@@ -479,6 +581,43 @@ absl::StatusOr<TensorValue> EmitDot(EmitterContext& emitter_ctx,
                    PrimitiveTypeToMlirType(b, dot.shape().element_type()));
 
   Value result = for_op.getResult(0);
+  if (r > 1) {
+    auto res_type = mlir::cast<mlir::ShapedType>(result.getType());
+    Type elem_type = res_type.getElementType();
+    int64_t tile_n = res_type.getDimSize(1);
+    int64_t orig_m = 1;
+    const Shape& lhs_shape = dot.operand(0)->shape();
+    const DotDimensionNumbers& dnums = dot.dot_dimension_numbers();
+    int64_t lhs_k_dim = dnums.lhs_contracting_dimensions(0);
+    for (int64_t i = 0; i < lhs_shape.dimensions_size(); ++i) {
+      if (i != lhs_k_dim &&
+          !absl::c_linear_search(dnums.lhs_batch_dimensions(), i)) {
+        orig_m *= lhs_shape.dimensions(i);
+      }
+    }
+    if (orig_m == 1 && r > 1) {
+      Value init = CreateConst(b, elem_type, 0.0f, {});
+      auto reduce_type = mlir::RankedTensorType::get({tile_n}, elem_type);
+      auto reduce_op = mlir::stablehlo::ReduceOp::create(
+          b, reduce_type, result, init, SmallVector<int64_t>{0});
+
+      auto scalar_tensor_type = mlir::RankedTensorType::get({}, elem_type);
+      auto& region = reduce_op.getRegion();
+      auto* block = b.createBlock(&region, region.end(),
+                                  {scalar_tensor_type, scalar_tensor_type},
+                                  {b.getUnknownLoc(), b.getUnknownLoc()});
+      b.setInsertionPointToStart(block);
+      auto add = mlir::stablehlo::AddOp::create(b, block->getArgument(0),
+                                                block->getArgument(1));
+      mlir::stablehlo::ReturnOp::create(b, ValueRange{add});
+      b.setInsertionPointAfter(reduce_op);
+
+      Value reduced = reduce_op.getResult(0);
+      auto type_2d = mlir::RankedTensorType::get({1, tile_n}, elem_type);
+      result = mlir::stablehlo::ReshapeOp::create(b, type_2d, reduced);
+    }
+  }
+
   if (dot_output_type != accumulator_type) {
     result = Cast(b, result, dot_output_type);
   }
@@ -1265,8 +1404,17 @@ absl::Status EmitGeneric(ImplicitLocOpBuilder& b,
 
     ASSIGN_OR_RETURN(auto tile_info, TileInfo::Construct(emitter_ctx, *root));
 
-    xtile::InsertTileOp::create(b, result, arg, tile_info.offsets(),
-                                tile_info.padded_tile_sizes(),
+    SmallVector<int64_t> tile_sizes(tile_info.padded_tile_sizes().begin(),
+                                    tile_info.padded_tile_sizes().end());
+    if (root->hlo()->opcode() == HloOpcode::kDot) {
+      const auto& dot = *::xla::Cast<HloDotInstruction>(root->hlo());
+      int64_t r = CalculateKWrappingFactorForDot(dot);
+      if (r > 1) {
+        tile_sizes[0] = 1;
+      }
+    }
+
+    xtile::InsertTileOp::create(b, result, arg, tile_info.offsets(), tile_sizes,
                                 tile_info.tile_strides());
   }
   b.setInsertionPointToEnd(&fn.front());

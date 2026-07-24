@@ -298,6 +298,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_cpu_enable_fast_min_max(true);
 
   opts.set_xla_gpu_enable_cublaslt(true);
+  opts.set_xla_gpu_experimental_enable_narrow_dot_kwrapping(false);
 
   opts.add_xla_gpu_enable_command_buffer(DebugOptions::CONDITIONAL);
   opts.add_xla_gpu_enable_command_buffer(DebugOptions::CUBLAS);
@@ -2977,6 +2978,13 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
                 debug_options->xla_gpu_async_dot(),
                 "Wrap `dot` operations into async computations in an effort to "
                 "parallelize matrix operations."));
+  flag_list->push_back(tsl::Flag(
+      "xla_gpu_experimental_enable_narrow_dot_kwrapping",
+      bool_setter_for(
+          &DebugOptions::set_xla_gpu_experimental_enable_narrow_dot_kwrapping),
+      debug_options->xla_gpu_experimental_enable_narrow_dot_kwrapping(),
+      "Enable K-wrapping optimization for narrow matrix multiplications "
+      "in Triton."));
   flag_list->push_back(tsl::Flag(
       "xla_step_marker_location", setter_for_xla_step_marker_location,
       DebugOptions::StepMarkerLocation_Name(
