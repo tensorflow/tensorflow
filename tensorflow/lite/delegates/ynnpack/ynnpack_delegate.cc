@@ -72,6 +72,22 @@ class YNNPackDelegateKernel : public SimpleDelegateKernelInterface {
     outputs_.clear();
     dummy_inputs_.clear();
     input_shapes_.clear();
+    dynamic_sequence_inputs_.clear();
+
+    int num_dynamic_sequence_inputs = 0;
+    for (const auto& node : nodes_info_) {
+      if (IsScaledDotProductAttention(context, node.node_index)) {
+        for (size_t i = 3; i < node.inputs.size(); ++i) {
+          if (node.inputs[i] >= 0) {
+            const TfLiteTensor& t = context->tensors[node.inputs[i]];
+            if (t.type == kTfLiteInt32 || t.type == kTfLiteInt64) {
+              num_dynamic_sequence_inputs += 1;
+              break;
+            }
+          }
+        }
+      }
+    }
 
     int num_dummy_inputs = 0;
     for (const auto& node : nodes_info_) {
@@ -81,7 +97,9 @@ class YNNPackDelegateKernel : public SimpleDelegateKernelInterface {
     }
 
     int external_value_ids = input_tensor_indices_.size() +
-                             output_tensor_indices_.size() + num_dummy_inputs;
+                             output_tensor_indices_.size() +
+                             num_dynamic_sequence_inputs + num_dummy_inputs;
+
     uint32_t subgraph_flags = 0;
     if (options_.fast_math) {
       subgraph_flags |= YNN_FLAG_FAST_MATH;
@@ -248,6 +266,10 @@ class YNNPackDelegateKernel : public SimpleDelegateKernelInterface {
       } else if (node.builtin_code == kTfLiteBuiltinDequantize) {
         TF_LITE_ENSURE_STATUS(DefineDequantizeNode(context, subgraph_,
                                                    tensor_to_value_id_, node));
+      } else if (IsScaledDotProductAttention(context, node.node_index)) {
+        TF_LITE_ENSURE_STATUS(DefineScaledDotProductAttentionNode(
+            context, subgraph_, tensor_to_value_id_, next_external_id,
+            dynamic_sequence_inputs_, node));
       } else {
         TF_LITE_ENSURE_MSG(context, false, "Unsupported op: %d",
                            node.builtin_code);
@@ -332,6 +354,12 @@ class YNNPackDelegateKernel : public SimpleDelegateKernelInterface {
           runtime_, dummy.dummy_val_id, dummy.rank, dummy.full_dims));
     }
 
+    for (const auto& seq_info : dynamic_sequence_inputs_) {
+      TF_LITE_ENSURE_YNN_STATUS(
+          ynn_set_external_value_shape(runtime_, seq_info.dynamic_seq_val_id,
+                                       seq_info.rank, seq_info.full_dims));
+    }
+
     TF_LITE_ENSURE_YNN_STATUS(ynn_reshape_runtime(runtime_));
 
     // Query output shapes from YNNPACK and resize TFLite tensors.
@@ -393,6 +421,44 @@ class YNNPackDelegateKernel : public SimpleDelegateKernelInterface {
       TF_LITE_ENSURE_YNN_STATUS(ynn_reshape_runtime(runtime_));
     }
 
+    if (!dynamic_sequence_inputs_.empty()) {
+      for (const auto& seq_info : dynamic_sequence_inputs_) {
+        const TfLiteTensor& param_tensor =
+            context->tensors[seq_info.param_tensor_index];
+        size_t dims[YNN_MAX_TENSOR_RANK];
+        std::copy_n(seq_info.full_dims, seq_info.rank, dims);
+        size_t num_elements = 1;
+        for (int i = 0; i < param_tensor.dims->size; ++i) {
+          num_elements *= param_tensor.dims->data[i];
+        }
+        if (num_elements > 0) {
+          int64_t active_tokens = 0;
+          size_t index = (num_elements >= 2) ? 1 : 0;
+          if (param_tensor.type == kTfLiteInt32 &&
+              param_tensor.data.raw != nullptr &&
+              param_tensor.bytes >= (index + 1) * sizeof(int32_t)) {
+            const int32_t* i32_data =
+                reinterpret_cast<const int32_t*>(param_tensor.data.raw);
+            active_tokens = i32_data[index];
+          } else if (param_tensor.type == kTfLiteInt64 &&
+                     param_tensor.data.raw != nullptr &&
+                     param_tensor.bytes >= (index + 1) * sizeof(int64_t)) {
+            const int64_t* i64_data =
+                reinterpret_cast<const int64_t*>(param_tensor.data.raw);
+            active_tokens = i64_data[index];
+          }
+          if (active_tokens > 0) {
+            dims[seq_info.seq_axis] = std::min<size_t>(
+                static_cast<size_t>(active_tokens), dims[seq_info.seq_axis]);
+          }
+        }
+        TF_LITE_ENSURE_YNN_STATUS(ynn_set_external_value_shape(
+            runtime_, seq_info.dynamic_seq_val_id, seq_info.rank, dims));
+      }
+
+      TF_LITE_ENSURE_YNN_STATUS(ynn_reshape_runtime(runtime_));
+    }
+
     // Set input buffers.
     for (const auto& input : inputs_) {
       TfLiteTensor& tensor = context->tensors[input.tensor_index];
@@ -430,6 +496,7 @@ class YNNPackDelegateKernel : public SimpleDelegateKernelInterface {
   std::vector<std::vector<size_t>> input_shapes_;
   TensorToValueIdMap tensor_to_value_id_;
   std::vector<DummyInputInfo> dummy_inputs_;
+  std::vector<DynamicSequenceInputInfo> dynamic_sequence_inputs_;
 };
 
 class YNNPackDelegate : public SimpleDelegateInterface {
@@ -504,6 +571,9 @@ class YNNPackDelegate : public SimpleDelegateInterface {
     } else if (IsRuntimeBmm(registration, node)) {
       return IsRuntimeBatchedMatMulSupported(registration, node, context) ==
              kTfLiteOk;
+    } else if (IsScaledDotProductAttention(registration, node)) {
+      return IsScaledDotProductAttentionSupported(registration, node,
+                                                  context) == kTfLiteOk;
     }
     return false;
   }

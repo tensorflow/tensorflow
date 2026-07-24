@@ -48,7 +48,8 @@ TfLiteStatus DefineBatchMatMulNode(TfLiteContext* context,
 TfLiteStatus DefineRuntimeBatchedMatMulNode(
     TfLiteContext* context, ynn_subgraph_t subgraph,
     TensorToValueIdMap& tensor_to_value_id, uint32_t& next_external_id,
-    std::vector<DummyInputInfo>& dummy_inputs, const NodeInfo& node);
+    std::vector<DynamicSequenceInputInfo>& dynamic_sequence_inputs,
+    const NodeInfo& node);
 
 TfLiteStatus DefineFullyConnectedNode(TfLiteContext* context,
                                       ynn_subgraph_t subgraph,
@@ -70,6 +71,20 @@ TfLiteStatus DefineDepthwiseConvNode(TfLiteContext* context,
                                      ynn_subgraph_t subgraph,
                                      TensorToValueIdMap& tensor_to_value_id,
                                      const NodeInfo& node);
+
+bool IsScaledDotProductAttention(const TfLiteRegistration* registration,
+                                 const TfLiteNode* node);
+bool IsScaledDotProductAttention(TfLiteContext* context, int node_index);
+
+TfLiteStatus IsScaledDotProductAttentionSupported(
+    const TfLiteRegistration* registration, const TfLiteNode* node,
+    TfLiteContext* context);
+
+TfLiteStatus DefineScaledDotProductAttentionNode(
+    TfLiteContext* context, ynn_subgraph_t subgraph,
+    TensorToValueIdMap& tensor_to_value_id, uint32_t& next_external_id,
+    std::vector<DynamicSequenceInputInfo>& dynamic_sequence_inputs,
+    const NodeInfo& node);
 
 }  // namespace ynnpack
 }  // namespace tflite
