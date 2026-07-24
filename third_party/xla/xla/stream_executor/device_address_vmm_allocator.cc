@@ -74,11 +74,12 @@ DeviceAddressVmmAllocator::AllocationRecord::AllocationRecord(
     std::unique_ptr<MemoryAllocation> raw_allocation,
     std::unique_ptr<MemoryReservation> allocator_address_reservation,
     MemoryReservation::ScopedMapping allocator_address_mapping,
-    bool multi_device)
+    int64_t memory_space, bool multi_device)
     : kind_(kind),
       allocator_address_(allocator_address),
       raw_allocation_(std::move(raw_allocation)),
       multi_device_(multi_device),
+      memory_space_(memory_space),
       allocator_address_reservation_(std::move(allocator_address_reservation)),
       allocator_address_mapping_(std::move(allocator_address_mapping)) {
   CHECK(raw_allocation_ != nullptr);
@@ -186,8 +187,11 @@ static bool AddressRangesOverlap(DeviceAddressBase lhs, DeviceAddressBase rhs) {
          AddressStart(rhs) < AddressEnd(lhs);
 }
 
-DeviceAddressVmmAllocator::DeviceAddressVmmAllocator(const Platform* platform)
-    : DeviceAddressAllocator(platform) {}
+DeviceAddressVmmAllocator::DeviceAddressVmmAllocator(
+    const Platform* platform,
+    std::optional<int64_t> reclaim_exempt_memory_space)
+    : DeviceAddressAllocator(platform),
+      reclaim_exempt_memory_space_(reclaim_exempt_memory_space) {}
 
 absl::Status DeviceAddressVmmAllocator::PopulateDevices(
     DeviceAddressVmmAllocator* allocator,
@@ -394,13 +398,14 @@ DeviceAddressVmmAllocator::TrackAllocatorAddressMappedAllocation(
     DeviceAddressBase allocator_address,
     std::unique_ptr<MemoryAllocation> raw_allocation,
     std::unique_ptr<MemoryReservation> reservation,
-    MemoryReservation::ScopedMapping mapping, bool multi_device) {
+    MemoryReservation::ScopedMapping mapping, int64_t memory_space,
+    bool multi_device) {
   void* va_ptr = allocator_address.opaque();
   CHECK(raw_allocation != nullptr);
   uint64_t physical_size = raw_allocation->address().size();
   auto record = std::make_unique<AllocationRecord>(
       kind, allocator_address, std::move(raw_allocation),
-      std::move(reservation), std::move(mapping), multi_device);
+      std::move(reservation), std::move(mapping), memory_space, multi_device);
   AllocationRecord* record_ptr = record.get();
   auto insert_result =
       state.records_by_allocator_address.emplace(va_ptr, std::move(record));
@@ -422,6 +427,7 @@ DeviceAddressVmmAllocator::TryReuseMappedAllocation(
   if (record->kind() != AllocationRecord::Kind::kAllocateAndMap ||
       !record->allocator_stale() ||
       record->multi_device() != request.multi_device ||
+      record->memory_space() != request.memory_space ||
       !record->allocator_matches(request.reservation_address)) {
     return std::nullopt;
   }
@@ -513,7 +519,7 @@ DeviceAddressVmmAllocator::CreateMappedAllocation(
       state, AllocationRecord::Kind::kAllocateAndMap,
       request.reservation_address, std::move(raw_alloc),
       /*reservation=*/nullptr, std::move(allocator_address_mapping),
-      request.multi_device);
+      request.memory_space, request.multi_device);
 
   return request.reservation_address;
 }
@@ -525,6 +531,7 @@ template <typename TryReuseFn, typename TryFreshFn>
 absl::StatusOr<DeviceAddressBase>
 DeviceAddressVmmAllocator::TryWithPendingReclaim(PerDeviceState& state,
                                                  uint64_t reclaim_size,
+                                                 int64_t memory_space,
                                                  TryReuseFn try_reuse,
                                                  TryFreshFn try_fresh) {
   // First try to reactivate a compatible pending deallocation without waiting.
@@ -545,7 +552,7 @@ DeviceAddressVmmAllocator::TryWithPendingReclaim(PerDeviceState& state,
     // deallocations first, without blocking for later pending work and without
     // destroying unrelated stale reservation mappings that may be reused.
     CompleteReadyAllocatorDeallocationsForReclaim(
-        state, LoadTimeline(state.pinned_timeline));
+        state, LoadTimeline(state.pinned_timeline), memory_space);
     result = try_fresh();
   }
 
@@ -573,6 +580,10 @@ DeviceAddressVmmAllocator::TryWithPendingReclaim(PerDeviceState& state,
           state.records_by_allocator_address.find(pending.addr.opaque());
       CHECK(record_it != state.records_by_allocator_address.end());
       CHECK(record_it->second->allocator_stale());
+      if (record_it->second->memory_space() == reclaim_exempt_memory_space_ ||
+          record_it->second->memory_space() == memory_space) {
+        continue;
+      }
       uint64_t reclaimable_bytes =
           record_it->second->raw_allocation()->address().size();
       CHECK_GT(reclaimable_bytes, 0);
@@ -601,7 +612,7 @@ DeviceAddressVmmAllocator::TryWithPendingReclaim(PerDeviceState& state,
 absl::StatusOr<ScopedDeviceAddress<uint8_t>>
 DeviceAddressVmmAllocator::Allocate(int device_ordinal, uint64_t size,
                                     bool /*retry_on_failure*/,
-                                    int64_t /*memory_space*/) {
+                                    int64_t memory_space) {
   if (size == 0) {
     return ScopedDeviceAddress<uint8_t>(DeviceAddressBase(), device_ordinal,
                                         this);
@@ -632,6 +643,10 @@ DeviceAddressVmmAllocator::Allocate(int device_ordinal, uint64_t size,
         continue;
       }
       if (record.multi_device() != multi_device) {
+        continue;
+      }
+      // A reused record keeps its reclaim tag and must not serve another space.
+      if (record.memory_space() != memory_space) {
         continue;
       }
       if (RoundUpToGranularity(*state, record.allocator_address().size()) !=
@@ -666,13 +681,14 @@ DeviceAddressVmmAllocator::Allocate(int device_ordinal, uint64_t size,
     TrackAllocatorAddressMappedAllocation(
         *state, AllocationRecord::Kind::kAllocate, allocator_address,
         std::move(raw_alloc), std::move(reservation), std::move(scoped_mapping),
-        multi_device);
+        memory_space, multi_device);
     // Return the original requested size, not the padded size.
     return absl::StatusOr<DeviceAddressBase>(allocator_address);
   };
 
-  ASSIGN_OR_RETURN(DeviceAddressBase result,
-                   TryWithPendingReclaim(*state, size, try_reuse, try_fresh));
+  ASSIGN_OR_RETURN(
+      DeviceAddressBase result,
+      TryWithPendingReclaim(*state, size, memory_space, try_reuse, try_fresh));
 
   VLOG(3) << absl::StreamFormat(
       "Allocated virtual address %p (%uB) on device ordinal %d",
@@ -686,7 +702,7 @@ DeviceAddressVmmAllocator::Allocate(int device_ordinal, uint64_t size,
 absl::StatusOr<ScopedDeviceAddress<uint8_t>>
 DeviceAddressVmmAllocator::Allocate(
     int device_ordinal, uint64_t allocation_size, bool /*retry_on_failure*/,
-    int64_t /*memory_space*/, MemoryReservation* reservation,
+    int64_t memory_space, MemoryReservation* reservation,
     uint64_t reservation_offset, uint64_t mapping_size) {
   if (allocation_size != mapping_size) {
     return absl::InvalidArgumentError(
@@ -709,9 +725,9 @@ DeviceAddressVmmAllocator::Allocate(
       DeviceAddressBase reservation_address,
       ValidateReservationRange(reservation, reservation_offset, mapping_size));
 
-  const MappedAllocateRequest request{reservation, reservation_address,
+  const MappedAllocateRequest request{reservation,     reservation_address,
                                       allocation_size, reservation_offset,
-                                      multi_device};
+                                      memory_space,    multi_device};
 
   absl::MutexLock lock(state->mu);
   // Clang cannot propagate TryWithPendingReclaim's state.mu lock requirement
@@ -730,9 +746,9 @@ DeviceAddressVmmAllocator::Allocate(
   // The shared retry helper handles PA-budget pressure: try reuse, try fresh,
   // complete already-finished pending work on ResourceExhausted, and finally
   // wait for enough pending deallocations only if necessary.
-  ASSIGN_OR_RETURN(
-      DeviceAddressBase result,
-      TryWithPendingReclaim(*state, allocation_size, try_reuse, try_fresh));
+  ASSIGN_OR_RETURN(DeviceAddressBase result,
+                   TryWithPendingReclaim(*state, allocation_size, memory_space,
+                                         try_reuse, try_fresh));
 
   // `result` is the reservation slice, which acts as the allocator address for
   // this allocation.
@@ -1100,11 +1116,18 @@ void DeviceAddressVmmAllocator::WaitUntilSeqno(PerDeviceState& state,
 }
 
 void DeviceAddressVmmAllocator::CompleteReadyAllocatorDeallocationsForReclaim(
-    PerDeviceState& state, uint64_t completed_seqno) {
+    PerDeviceState& state, uint64_t completed_seqno, int64_t memory_space) {
   std::vector<uint64_t> selected;
   for (const PendingDeallocation& pending : state.pending_deallocations) {
     if (pending.seqno > completed_seqno ||
         pending.kind == PendingDeallocationKind::kMap) {
+      continue;
+    }
+    auto record_it =
+        state.records_by_allocator_address.find(pending.addr.opaque());
+    if (record_it != state.records_by_allocator_address.end() &&
+        (record_it->second->memory_space() == reclaim_exempt_memory_space_ ||
+         record_it->second->memory_space() == memory_space)) {
       continue;
     }
     selected.push_back(pending.seqno);

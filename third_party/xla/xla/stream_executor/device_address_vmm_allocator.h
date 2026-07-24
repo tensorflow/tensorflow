@@ -308,7 +308,7 @@ class DeviceAddressVmmAllocator : public DeviceAddressAllocator {
         std::unique_ptr<MemoryAllocation> raw_allocation,
         std::unique_ptr<MemoryReservation> allocator_address_reservation,
         MemoryReservation::ScopedMapping allocator_address_mapping,
-        bool multi_device);
+        int64_t memory_space, bool multi_device);
     AllocationRecord(const AllocationRecord&) = delete;
     AllocationRecord& operator=(const AllocationRecord&) = delete;
 
@@ -322,6 +322,7 @@ class DeviceAddressVmmAllocator : public DeviceAddressAllocator {
     }
     uint64_t allocator_stale_seqno() const { return allocator_stale_seqno_; }
     bool multi_device() const { return multi_device_; }
+    int64_t memory_space() const { return memory_space_; }
     MemoryAllocation* raw_allocation() const { return raw_allocation_.get(); }
     MemoryReservation* allocator_address_reservation() const {
       return allocator_address_reservation_.get();
@@ -363,6 +364,7 @@ class DeviceAddressVmmAllocator : public DeviceAddressAllocator {
     DeviceAddressBase allocator_address_;
     std::unique_ptr<MemoryAllocation> raw_allocation_;
     bool multi_device_;
+    int64_t memory_space_ = 0;
 
     // Present for Allocate(); the mapped Allocate() overload returns a
     // caller-reservation address and owns no reservation.
@@ -435,7 +437,9 @@ class DeviceAddressVmmAllocator : public DeviceAddressAllocator {
         ABSL_GUARDED_BY(mu);
   };
 
-  explicit DeviceAddressVmmAllocator(const Platform* platform);
+  explicit DeviceAddressVmmAllocator(
+      const Platform* platform,
+      std::optional<int64_t> reclaim_exempt_memory_space = std::nullopt);
 
   // Validates no duplicate ordinals in `devices`, then iterates over each
   // device config, constructs a PerDeviceState (setting executor, stream,
@@ -496,14 +500,15 @@ class DeviceAddressVmmAllocator : public DeviceAddressAllocator {
       DeviceAddressBase allocator_address,
       std::unique_ptr<MemoryAllocation> raw_allocation,
       std::unique_ptr<MemoryReservation> reservation,
-      MemoryReservation::ScopedMapping mapping, bool multi_device)
-      ABSL_EXCLUSIVE_LOCKS_REQUIRED(state.mu);
+      MemoryReservation::ScopedMapping mapping, int64_t memory_space,
+      bool multi_device) ABSL_EXCLUSIVE_LOCKS_REQUIRED(state.mu);
 
   struct MappedAllocateRequest {
     MemoryReservation* reservation;
     DeviceAddressBase reservation_address;
     uint64_t size;
     uint64_t reservation_offset;
+    int64_t memory_space;
     bool multi_device;
   };
 
@@ -532,6 +537,7 @@ class DeviceAddressVmmAllocator : public DeviceAddressAllocator {
   template <typename TryReuseFn, typename TryFreshFn>
   absl::StatusOr<DeviceAddressBase> TryWithPendingReclaim(PerDeviceState& state,
                                                           uint64_t reclaim_size,
+                                                          int64_t memory_space,
                                                           TryReuseFn try_reuse,
                                                           TryFreshFn try_fresh)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(state.mu);
@@ -616,7 +622,8 @@ class DeviceAddressVmmAllocator : public DeviceAddressAllocator {
   // Completes ready allocator-address deallocations for PA reclaim while
   // leaving unrelated kMap entries stale and reusable.
   void CompleteReadyAllocatorDeallocationsForReclaim(PerDeviceState& state,
-                                                     uint64_t completed_seqno)
+                                                     uint64_t completed_seqno,
+                                                     int64_t memory_space)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(state.mu);
 
   // Completes a pending operation whose stream sequence has passed by dropping
@@ -639,6 +646,9 @@ class DeviceAddressVmmAllocator : public DeviceAddressAllocator {
   // without an allocator-wide lock. Each PerDeviceState owns its own mutex for
   // mutable allocation and pending-deallocation state.
   absl::flat_hash_map<int, std::unique_ptr<PerDeviceState>> per_device_;
+
+  // This space is never reclaimed and is freed only at executable destruction.
+  const std::optional<int64_t> reclaim_exempt_memory_space_;
 };
 
 }  // namespace stream_executor
