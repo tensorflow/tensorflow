@@ -271,18 +271,6 @@ bool IsSupportedShape(const Shape& shape) {
   return is_supported;
 }
 
-bool HasComplexType(const HloInstruction& inst) {
-  if (primitive_util::IsComplexType(inst.shape().element_type())) {
-    return true;
-  }
-  for (const HloInstruction* operand : inst.operands()) {
-    if (primitive_util::IsComplexType(operand->shape().element_type())) {
-      return true;
-    }
-  }
-  return false;
-}
-
 bool IsSupportedInstruction(const HloInstruction& inst) {
   HloOpcode opcode = inst.opcode();
   switch (opcode) {
@@ -326,6 +314,8 @@ bool IsSupportedInstruction(const HloInstruction& inst) {
     case HloOpcode::kBitcastConvert:
     case HloOpcode::kMap:
     case HloOpcode::kPopulationCount:
+    case HloOpcode::kReal:
+    case HloOpcode::kImag:
     case HloOpcode::kSign:
     case HloOpcode::kRoundNearestAfz:
     case HloOpcode::kRoundNearestEven:
@@ -337,29 +327,7 @@ bool IsSupportedInstruction(const HloInstruction& inst) {
       return false;
       break;
     default:
-      if (inst.IsElementwise()) {
-        if (HasComplexType(inst)) {
-          switch (opcode) {
-            case HloOpcode::kAdd:
-            case HloOpcode::kSubtract:
-            case HloOpcode::kMultiply:
-            case HloOpcode::kDivide:
-            case HloOpcode::kPower:
-            case HloOpcode::kAbs:
-            case HloOpcode::kNegate:
-            case HloOpcode::kComplex:
-            case HloOpcode::kReal:
-            case HloOpcode::kImag:
-            case HloOpcode::kSelect:
-            case HloOpcode::kCompare:
-              return true;
-            default:
-              return false;
-          }
-        }
-        return true;
-      }
-      return false;
+      return inst.IsElementwise();
   }
 }
 
@@ -587,6 +555,10 @@ bool IsSupportedTilingType(PrimitiveType type) {
   }
 
   if (primitive_util::BitWidth(type) < 8) {
+    return false;
+  }
+
+  if (primitive_util::IsComplexType(type)) {
     return false;
   }
 
