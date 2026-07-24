@@ -40,7 +40,7 @@ namespace xla {
 namespace {
 
 using SortingTest =
-    ClientLibraryTestRunnerMixin<HloPjRtInterpreterReferenceMixin<HloTestBase>>;
+    ClientLibraryTestRunnerMixin<HloInterpreterReferenceMixin<HloTestBase>>;
 
 TEST_F(SortingTest, TopK3From8Values) {
   XlaBuilder builder(TestName());
