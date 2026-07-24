@@ -643,6 +643,25 @@ bool VerifyTensors(const Model& model, ErrorReporter* error_reporter) {
       continue;
     }
     for (const auto* tensor : *subgraph->tensors()) {
+      if (tensor->shape()) {
+        std::vector<int> positive_dims;
+        positive_dims.reserve(tensor->shape()->size());
+        // Collect fixed dimensions (> 1) to validate that sub-dimension /
+        // spatial element products do not overflow 32-bit int32_t, even when
+        // batch size is 0 or 1.
+        for (int dim : *tensor->shape()) {
+          if (dim > 1) {
+            positive_dims.push_back(dim);
+          }
+        }
+        int num_elements = 0;
+        if (CheckedNumElements(positive_dims, num_elements) != kTfLiteOk) {
+          ReportError(error_reporter, "Tensor %s dimension overflow",
+                      NameOrEmptyString(tensor->name()));
+          return false;
+        }
+      }
+
       if (!tensor->buffer()) {
         continue;
       }
