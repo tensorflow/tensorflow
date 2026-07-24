@@ -1766,6 +1766,20 @@ absl::StatusOr<std::unique_ptr<BufferAssignment>> BufferAssignment::FromProto(
     for (const auto& assignee : alloc_proto.assigned()) {
       HloValue::Id logical_buffer_id = assignee.logical_buffer_id();
       const auto& buffer_val = id_to_logical_buffer[logical_buffer_id];
+      // Validate that offset and size from the proto are non-negative before
+      // passing to AddAssignment. The CHECK_LE guards inside AddAssignment are
+      // bypassed by negative int64 values (e.g. -1 <= 1024 is true for any
+      // real allocation), allowing a malformed proto to store a negative offset
+      // that is later used in LLVM IR pointer arithmetic as:
+      //   base_ptr + slice.offset()  (ir_emitter.cc)
+      // producing an out-of-bounds address. This mirrors the check added to
+      // Slice::FromProto in PR #44653.
+      if (assignee.offset() < 0 || assignee.size() < 0) {
+        return absl::OutOfRangeError(absl::StrCat(
+            "BufferAssignment proto contains an assigned buffer with negative ",
+            "offset or size: logical_buffer_id=", logical_buffer_id,
+            " offset=", assignee.offset(), " size=", assignee.size()));
+      }
       RETURN_IF_ERROR(buffer_assignment->AddAssignment(
           allocation, *buffer_val, assignee.offset(), assignee.size()));
     }
