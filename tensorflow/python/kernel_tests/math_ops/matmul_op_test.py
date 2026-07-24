@@ -255,7 +255,7 @@ class MatMulInfixOperatorTest(test_lib.TestCase):
       )
       self.assertIn("rank 1", msg, "Error message should mention 'rank 1'")
 
-    # The message should suggest tf.expand_dims and tf.reshape for `a`.
+    # The message should suggest tf.expand_dims or tf.reshape for `a`.
     try:
       math_ops.matmul(
           ops.convert_to_tensor([1.0, 2.0]),
