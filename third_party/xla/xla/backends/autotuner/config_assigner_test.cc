@@ -1172,9 +1172,8 @@ TEST_F(ConfigAssignerTest, SelectFirstConfig) {
 
 TEST_F(ConfigAssignerTest, ConfigsWithRegisterSpillingAreAllowed) {
   CodegenOrchestrator::Options orchestrator_options;
-  orchestrator_options.allow_reg_spills_fn = [](const HloInstruction&) {
-    return true;
-  };
+  orchestrator_options.allow_reg_spills_fn =
+      [](const HloInstruction&, autotuner::Backend) { return true; };
 
   std::vector<std::unique_ptr<BackendConfig>> configs;
   configs.push_back(GetTestConfig("test_config_1"));
@@ -1213,9 +1212,8 @@ TEST_F(ConfigAssignerTest, ConfigsWithRegisterSpillingAreAllowed) {
 
 TEST_F(ConfigAssignerTest, ConfigsWithRegisterSpillingAreFiltered) {
   CodegenOrchestrator::Options orchestrator_options;
-  orchestrator_options.allow_reg_spills_fn = [](const HloInstruction&) {
-    return false;
-  };
+  orchestrator_options.allow_reg_spills_fn =
+      [](const HloInstruction&, autotuner::Backend) { return false; };
 
   std::vector<std::unique_ptr<BackendConfig>> configs;
   configs.push_back(GetTestConfig("test_config_1"));
