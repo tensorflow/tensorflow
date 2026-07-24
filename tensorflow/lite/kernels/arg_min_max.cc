@@ -16,7 +16,7 @@ limitations under the License.
 
 #include <stdint.h>
 
-#include <functional>
+#include <memory>
 
 #include "tensorflow/lite/core/c/builtin_op_data.h"
 #include "tensorflow/lite/core/c/c_api_types.h"
@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/tensor.h"
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
+#include "tensorflow/lite/util.h"
 
 namespace tflite {
 namespace ops {
@@ -36,24 +37,91 @@ constexpr int kInputTensor = 0;
 constexpr int kAxis = 1;
 constexpr int kOutputTensor = 0;
 
-TfLiteStatus ResizeOutput(TfLiteContext* context, const TfLiteTensor* input,
-                          const TfLiteTensor* axis, TfLiteTensor* output) {
-  int axis_value;
+TfLiteStatus ReadAndNormalizeAxis(TfLiteContext* context,
+                                  const TfLiteTensor* input,
+                                  const TfLiteTensor* axis,
+                                  int* normalized_axis) {
+  TF_LITE_ENSURE(context, normalized_axis != nullptr);
+  const int rank = NumDimensions(input);
+  int64_t axis_value = 0;
   // Retrieve all 8 bytes when axis type is kTfLiteInt64 to avoid data loss.
   if (axis->type == kTfLiteInt64) {
-    axis_value = static_cast<int>(*GetTensorData<int64_t>(axis));
+    axis_value = *GetTensorData<int64_t>(axis);
   } else {
-    axis_value = *GetTensorData<int>(axis);
-  }
-  if (axis_value < 0) {
-    axis_value += NumDimensions(input);
+    axis_value = *GetTensorData<int32_t>(axis);
   }
 
-  TF_LITE_ENSURE(context, axis_value >= 0);
-  TF_LITE_ENSURE(context, axis_value < NumDimensions(input));
+  if (axis_value < 0) {
+    axis_value += rank;
+  }
+  TF_LITE_ENSURE_MSG(context, axis_value >= 0 && axis_value < rank,
+                     "Invalid axis value.");
+  *normalized_axis = static_cast<int>(axis_value);
+  return kTfLiteOk;
+}
+
+TfLiteStatus CheckedDimensionProduct(TfLiteContext* context,
+                                     const TfLiteTensor* tensor, int begin,
+                                     int end, int* product) {
+  TF_LITE_ENSURE(context, tensor != nullptr);
+  TF_LITE_ENSURE(context, product != nullptr);
+  TF_LITE_ENSURE(context, begin >= 0);
+  TF_LITE_ENSURE(context, end >= begin);
+  TF_LITE_ENSURE(context, end <= NumDimensions(tensor));
+
+  CheckedInt<int> checked_product = 1;
+  for (int i = begin; i < end; ++i) {
+    const int dim = SizeOfDimension(tensor, i);
+    TF_LITE_ENSURE(context, dim >= 0);
+    checked_product *= dim;
+    TF_LITE_ENSURE_MSG(context, !checked_product.Overflow(),
+                       "Dimension product overflows int.");
+  }
+  *product = checked_product.Value();
+  return kTfLiteOk;
+}
+
+TfLiteStatus ValidateArgMinMaxTensorData(TfLiteContext* context,
+                                         const TfLiteTensor* input,
+                                         int axis_value,
+                                         const TfLiteTensor* output) {
+  int input_elements = 0;
+  TF_LITE_ENSURE_MSG(context,
+                     CheckedNumElements(input, input_elements) == kTfLiteOk,
+                     "Input element count overflows int.");
+
+  const int axis_size = SizeOfDimension(input, axis_value);
+  TF_LITE_ENSURE_MSG(context, axis_size > 0,
+                     "Cannot compute ArgMin/ArgMax over an empty axis.");
+
+  int outer_size = 0;
+  TF_LITE_ENSURE_OK(context, CheckedDimensionProduct(context, input, 0,
+                                                     axis_value, &outer_size));
+  int inner_size = 0;
+  TF_LITE_ENSURE_OK(context,
+                    CheckedDimensionProduct(context, input, axis_value + 1,
+                                            NumDimensions(input), &inner_size));
+
+  if (output != nullptr) {
+    int output_elements = 0;
+    TF_LITE_ENSURE_MSG(context,
+                       CheckedNumElements(output, output_elements) == kTfLiteOk,
+                       "Output element count overflows int.");
+  }
+  return kTfLiteOk;
+}
+
+TfLiteStatus ResizeOutput(TfLiteContext* context, const TfLiteTensor* input,
+                          const TfLiteTensor* axis, TfLiteTensor* output) {
+  int axis_value = 0;
+  TF_LITE_ENSURE_OK(context,
+                    ReadAndNormalizeAxis(context, input, axis, &axis_value));
+  TF_LITE_ENSURE_OK(context, ValidateArgMinMaxTensorData(context, input,
+                                                         axis_value, nullptr));
 
   // Copy the input dimensions to output except the axis dimension.
-  TfLiteIntArray* output_dims = TfLiteIntArrayCreate(NumDimensions(input) - 1);
+  std::unique_ptr<TfLiteIntArray, decltype(&TfLiteIntArrayFree)> output_dims(
+      TfLiteIntArrayCreate(NumDimensions(input) - 1), TfLiteIntArrayFree);
   int j = 0;
   for (int i = 0; i < NumDimensions(input); ++i) {
     if (i != axis_value) {
@@ -61,7 +129,12 @@ TfLiteStatus ResizeOutput(TfLiteContext* context, const TfLiteTensor* input,
       ++j;
     }
   }
-  return context->ResizeTensor(context, output, output_dims);
+  int output_elements = 0;
+  TF_LITE_ENSURE_MSG(
+      context,
+      CheckedNumElements(output_dims.get(), output_elements) == kTfLiteOk,
+      "Output element count overflows int.");
+  return context->ResizeTensor(context, output, output_dims.release());
 }
 
 TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
@@ -134,6 +207,18 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node, bool is_arg_max) {
                     GetOutputSafe(context, node, kOutputTensor, &output));
   if (IsDynamicTensor(output)) {
     TF_LITE_ENSURE_STATUS(ResizeOutput(context, input, axis, output));
+  }
+  int axis_value = 0;
+  TF_LITE_ENSURE_OK(context,
+                    ReadAndNormalizeAxis(context, input, axis, &axis_value));
+  TF_LITE_ENSURE_OK(
+      context, ValidateArgMinMaxTensorData(context, input, axis_value, output));
+  int output_elements = 0;
+  TF_LITE_ENSURE_MSG(context,
+                     CheckedNumElements(output, output_elements) == kTfLiteOk,
+                     "Output element count overflows int.");
+  if (output_elements == 0) {
+    return kTfLiteOk;
   }
 
 #define TF_LITE_ARG_MIN_MAX(data_type, axis_type, output_type) \

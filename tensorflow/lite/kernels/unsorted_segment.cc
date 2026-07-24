@@ -17,11 +17,14 @@ limitations under the License.
 
 #include <algorithm>
 #include <functional>
+#include <memory>
 
 #include "tensorflow/lite/core/c/common.h"
+#include "tensorflow/lite/kernels/internal/common.h"
 #include "tensorflow/lite/kernels/internal/reference/reference_ops.h"
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
+#include "tensorflow/lite/util.h"
 
 namespace tflite {
 namespace ops {
@@ -40,6 +43,55 @@ static const int kInputSegmentIdsTensor = 1;
 static const int kInputNumSegmentsTensor = 2;
 static const int kOutputTensor = 0;
 
+TfLiteStatus CheckedDimensionProduct(TfLiteContext* context,
+                                     const TfLiteTensor* tensor, int begin,
+                                     int end, int* product) {
+  TF_LITE_ENSURE(context, tensor != nullptr);
+  TF_LITE_ENSURE(context, product != nullptr);
+  TF_LITE_ENSURE(context, begin >= 0);
+  TF_LITE_ENSURE(context, end >= begin);
+  TF_LITE_ENSURE(context, end <= NumDimensions(tensor));
+
+  CheckedInt<int> checked_product = 1;
+  for (int i = begin; i < end; ++i) {
+    const int dim = SizeOfDimension(tensor, i);
+    TF_LITE_ENSURE(context, dim >= 0);
+    checked_product *= dim;
+    TF_LITE_ENSURE_MSG(context, !checked_product.Overflow(),
+                       "Dimension product overflows int.");
+  }
+  *product = checked_product.Value();
+  return kTfLiteOk;
+}
+
+TfLiteStatus ValidateSegmentIdsShapeIsDataPrefix(
+    TfLiteContext* context, const TfLiteTensor* data,
+    const TfLiteTensor* segment_ids) {
+  const int segment_ids_rank = NumDimensions(segment_ids);
+  const int data_rank = NumDimensions(data);
+  TF_LITE_ENSURE(context, segment_ids_rank <= data_rank);
+  for (int i = 0; i < segment_ids_rank; ++i) {
+    TF_LITE_ENSURE_EQ(context, SizeOfDimension(segment_ids, i),
+                      SizeOfDimension(data, i));
+  }
+  return kTfLiteOk;
+}
+
+TfLiteStatus CheckedTensorElementsAndData(TfLiteContext* context,
+                                          const TfLiteTensor* tensor,
+                                          const char* tensor_name,
+                                          int* element_count) {
+  TF_LITE_ENSURE(context, tensor != nullptr);
+  TF_LITE_ENSURE(context, element_count != nullptr);
+  TF_LITE_ENSURE_MSG(context,
+                     CheckedNumElements(tensor, *element_count) == kTfLiteOk,
+                     "%s element count overflows int.", tensor_name);
+  TF_LITE_ENSURE_MSG(context,
+                     *element_count == 0 || tensor->data.raw != nullptr,
+                     "%s data is null.", tensor_name);
+  return kTfLiteOk;
+}
+
 TfLiteStatus ResizeOutputTensor(TfLiteContext* context,
                                 const TfLiteTensor* data,
                                 const TfLiteTensor* segment_ids,
@@ -54,20 +106,26 @@ TfLiteStatus ResizeOutputTensor(TfLiteContext* context,
   // supports higher dimensional segment_ids as described.
   const int segment_ids_rank = NumDimensions(segment_ids);
   const int data_rank = NumDimensions(data);
-  TF_LITE_ENSURE(context, segment_ids_rank <= data_rank);
-  for (int i = 0; i < segment_ids_rank; ++i) {
-    // segment_ids shape must be prefix of data shape.
-    TF_LITE_ENSURE_EQ(context, segment_ids->dims->data[i], data->dims->data[i]);
-  }
+  TF_LITE_ENSURE_OK(
+      context, ValidateSegmentIdsShapeIsDataPrefix(context, data, segment_ids));
   TF_LITE_ENSURE(context, (num_segments->dims->size == 1 &&
                            num_segments->dims->data[0] == 1) ||
                               num_segments->dims->size == 0);
+  int num_segments_elements = 0;
+  TF_LITE_ENSURE_OK(context, CheckedTensorElementsAndData(
+                                 context, num_segments, "num_segments",
+                                 &num_segments_elements));
+  TF_LITE_ENSURE_EQ(context, num_segments_elements, 1);
   // num_segments can be thought of as number of buckets (segments) in output,
   // where each segment is the reduction of all elements mapped to that
   // segment_ids. The shape of said elements is the respective
   // suffix of the data shape.
   int32_t num_segments_ = GetTensorData<int32_t>(num_segments)[0];
-  const int num_segment_ids = NumElements(segment_ids);
+  TF_LITE_ENSURE(context, num_segments_ >= 0);
+  int num_segment_ids = 0;
+  TF_LITE_ENSURE_OK(
+      context, CheckedTensorElementsAndData(context, segment_ids, "segment_ids",
+                                            &num_segment_ids));
   int max_index = -1;
   for (int i = 0; i < num_segment_ids; i++) {
     max_index = std::max(GetTensorData<int32_t>(segment_ids)[i], max_index);
@@ -76,13 +134,19 @@ TfLiteStatus ResizeOutputTensor(TfLiteContext* context,
   // to non existent output segments.
   TF_LITE_ENSURE(context, max_index < num_segments_);
   const int output_rank = data_rank - segment_ids_rank + 1;
-  TfLiteIntArray* output_shape = TfLiteIntArrayCreate(output_rank);
+  std::unique_ptr<TfLiteIntArray, decltype(&TfLiteIntArrayFree)> output_shape(
+      TfLiteIntArrayCreate(output_rank), TfLiteIntArrayFree);
   output_shape->data[0] = num_segments_;
   // output_shape[1:] should be data_shape[Rank(segment_ids):]
   for (int i = segment_ids_rank; i < data_rank; ++i) {
     output_shape->data[i - segment_ids_rank + 1] = data->dims->data[i];
   }
-  return context->ResizeTensor(context, output, output_shape);
+  int output_elements = 0;
+  TF_LITE_ENSURE_MSG(
+      context,
+      CheckedNumElements(output_shape.get(), output_elements) == kTfLiteOk,
+      "Output element count overflows int.");
+  return context->ResizeTensor(context, output, output_shape.release());
 }
 
 TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
@@ -116,27 +180,57 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 
 template <typename T>
 struct SegmenMax {
-  inline T operator()(const T& a, const T& b) const { return std::max(a, b); }
+  T operator()(const T& a, const T& b) const { return std::max(a, b); }
   static constexpr T kInitialValue = std::numeric_limits<T>::lowest();
 };
 
 template <typename T>
 struct SegmenMin {
-  inline T operator()(const T& a, const T& b) const { return std::min(a, b); }
+  T operator()(const T& a, const T& b) const { return std::min(a, b); }
   static constexpr T kInitialValue = std::numeric_limits<T>::max();
 };
 
 template <typename T>
 struct SegmenProd {
-  inline T operator()(const T& a, const T& b) const { return a * b; }
+  T operator()(const T& a, const T& b) const { return WrappingMul<T>(a, b); }
   static constexpr T kInitialValue = T(1);
 };
 
 template <typename T>
 struct SegmenSum {
-  inline T operator()(const T& a, const T& b) const { return a + b; }
+  T operator()(const T& a, const T& b) const { return WrappingAdd<T>(a, b); }
   static constexpr T kInitialValue = T(0);
 };
+
+TfLiteStatus ValidateUnsortedSegmentEval(TfLiteContext* context,
+                                         const TfLiteTensor* data,
+                                         const TfLiteTensor* segment_ids,
+                                         const TfLiteTensor* output) {
+  TF_LITE_ENSURE_OK(
+      context, ValidateSegmentIdsShapeIsDataPrefix(context, data, segment_ids));
+  int data_elements = 0;
+  TF_LITE_ENSURE_OK(context, CheckedTensorElementsAndData(context, data, "data",
+                                                          &data_elements));
+  int output_elements = 0;
+  TF_LITE_ENSURE_OK(context, CheckedTensorElementsAndData(
+                                 context, output, "output", &output_elements));
+  int segment_ids_elements = 0;
+  TF_LITE_ENSURE_OK(
+      context, CheckedTensorElementsAndData(context, segment_ids, "segment_ids",
+                                            &segment_ids_elements));
+  int segment_flat_size = 0;
+  TF_LITE_ENSURE_OK(context, CheckedDimensionProduct(context, output, 1,
+                                                     NumDimensions(output),
+                                                     &segment_flat_size));
+
+  const int output_segment_count = SizeOfDimension(output, 0);
+  for (int i = 0; i < segment_ids_elements; ++i) {
+    const int output_index = GetTensorData<int32_t>(segment_ids)[i];
+    if (output_index < 0) continue;
+    TF_LITE_ENSURE(context, output_index < output_segment_count);
+  }
+  return kTfLiteOk;
+}
 
 template <typename T>
 TfLiteStatus EvalType(TfLiteContext* context, const RuntimeShape& input_shape,
@@ -194,8 +288,8 @@ TfLiteStatus EvalGeneric(TfLiteContext* context, TfLiteNode* node,
     TF_LITE_ENSURE_OK(context, ResizeOutputTensor(context, data, segment_ids,
                                                   num_segments, output));
   }
-  TF_LITE_ENSURE_EQ(context, GetTensorShape(data).Dims(0),
-                    GetTensorShape(segment_ids).Dims(0));
+  TF_LITE_ENSURE_OK(
+      context, ValidateUnsortedSegmentEval(context, data, segment_ids, output));
 
 #define TF_LITE_UNSORTED_SEGMENT(dtype)                                        \
   EvalType<dtype>(context, GetTensorShape(data), GetTensorData<dtype>(data),   \
