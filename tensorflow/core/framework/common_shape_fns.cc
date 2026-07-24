@@ -64,6 +64,10 @@ absl::Status GetWindowedOutputSizeFromDimsV2(
     case Padding::EXPLICIT:
       TF_RETURN_IF_ERROR(
           c->Add(input_size, padding_before + padding_after, &input_size));
+      // Add the stride before subtracting the filter, like the kernels do in
+      // GetWindowedOutputSizeVerbose: a filter overhanging the input by at most
+      // `stride` is valid and gives a zero-sized output (b/195689143).
+      TF_RETURN_IF_ERROR(c->Add(input_size, stride, &input_size));
       if (dilation_rate > 1) {
         DimensionHandle window_size;
         TF_RETURN_IF_ERROR(
@@ -75,7 +79,6 @@ absl::Status GetWindowedOutputSizeFromDimsV2(
       } else {
         TF_RETURN_IF_ERROR(c->Subtract(input_size, filter_size, output_size));
       }
-      TF_RETURN_IF_ERROR(c->Add(*output_size, stride, output_size));
       TF_RETURN_IF_ERROR(c->Divide(*output_size, stride,
                                    /*evenly_divisible=*/false, output_size));
       break;
