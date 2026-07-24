@@ -151,13 +151,6 @@ class StreamExecutorGpuClient : public xla::PjRtStreamExecutorClient {
 
   void RecordMemoryStats();
 
-  absl::StatusOr<PjRtStreamExecutorExecutionOutput> RunAsync(
-      LocalExecutable& exec, PjRtDevice* device,
-      absl::Span<const PjRtRawBufferRef> flat_arguments,
-      absl::Span<const PjRtRawBufferRef> results,
-      ExecutableRunOptions run_options_inp, bool parameter_is_tupled_arguments,
-      absl::Span<const Shape> executable_parameter_shapes) override;
-
   absl::Status UpdateCompileOptionsInternal(
       CompileOptions* options, ExecutableExtras* returned_extras,
       bool lookup_addressable_devices) override;

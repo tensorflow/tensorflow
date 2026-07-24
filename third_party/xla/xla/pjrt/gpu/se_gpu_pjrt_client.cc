@@ -1987,15 +1987,15 @@ absl::Status ExchangeEmptyStreamExecutorGpuTopology(
       &global_topology, /*assign_global_device_ids=*/true);
 }
 
-absl::StatusOr<PjRtStreamExecutorExecutionOutput>
-StreamExecutorGpuClient::RunAsync(
+#if defined(GOOGLE_CUDA) || defined(TENSORFLOW_USE_ROCM) || \
+    defined(TENSORFLOW_USE_SYCL)
+
+static absl::StatusOr<PjRtStreamExecutorExecutionOutput> RunGpuAsync(
     LocalExecutable& exec, PjRtDevice* device,
     absl::Span<const PjRtRawBufferRef> flat_arguments,
     absl::Span<const PjRtRawBufferRef> results,
     ExecutableRunOptions run_options_inp, bool parameter_is_tupled_arguments,
     absl::Span<const Shape> executable_parameter_shapes) {
-#if defined(GOOGLE_CUDA) || defined(TENSORFLOW_USE_ROCM) || \
-    defined(TENSORFLOW_USE_SYCL)
   std::vector<const Shape*> argument_shapes;
   argument_shapes.reserve(flat_arguments.size());
   for (const Shape& arg_shape : executable_parameter_shapes) {
@@ -2185,12 +2185,15 @@ StreamExecutorGpuClient::RunAsync(
   std::vector<tsl::AsyncValueRef<RawSEDeviceMemory>> to_be_released;
 
   return PjRtStreamExecutorExecutionOutput({std::move(to_be_released), {}});
-#else
-  return PjRtStreamExecutorClient::RunAsync(
-      exec, device, flat_arguments, results, std::move(run_options_inp),
-      parameter_is_tupled_arguments, executable_parameter_shapes);
-#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM || TENSORFLOW_USE_SYCL
 }
+
+static bool register_gpu_run_async = []() {
+  xla::RegisterRunAsyncHandler(std::type_index(typeid(xla::gpu::GpuExecutable)),
+                               &RunGpuAsync);
+  return true;
+}();
+
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM || TENSORFLOW_USE_SYCL
 
 absl::StatusOr<std::unique_ptr<PjRtRuntimeAbiVersion>>
 StreamExecutorGpuClient::RuntimeAbiVersion() const {

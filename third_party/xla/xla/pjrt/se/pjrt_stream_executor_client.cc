@@ -75,6 +75,7 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <string>
+#include <typeindex>
 #include <utility>
 #include <vector>
 
@@ -1373,17 +1374,46 @@ WrapInputsInShapeTree(PjRtStreamExecutorClient* client,
   return results;
 }
 
-absl::StatusOr<PjRtStreamExecutorExecutionOutput>
-PjRtStreamExecutorClient::RunAsync(
+static auto& RunAsyncRegistry() {
+  static auto* registry =
+      new absl::flat_hash_map<std::type_index, RunAsyncHandlerFn>();
+  return *registry;
+}
+
+void RegisterRunAsyncHandler(std::type_index executable_type,
+                             RunAsyncHandlerFn handler) {
+  RunAsyncRegistry()[executable_type] = handler;
+}
+
+static RunAsyncHandlerFn GetRunAsyncHandler(std::type_index executable_type) {
+  auto it = RunAsyncRegistry().find(executable_type);
+  if (it != RunAsyncRegistry().end()) {
+    return it->second;
+  }
+  return nullptr;
+}
+
+static absl::StatusOr<PjRtStreamExecutorExecutionOutput> RunAsync(
     LocalExecutable& exec, PjRtDevice* device,
     absl::Span<const PjRtRawBufferRef> flat_arguments,
     absl::Span<const PjRtRawBufferRef> results,
     ExecutableRunOptions run_options, bool parameter_is_tupled_arguments,
     absl::Span<const Shape> executable_parameter_shapes) {
+  if (exec.executable() != nullptr) {
+    auto handler =
+        GetRunAsyncHandler(std::type_index(typeid(*exec.executable())));
+    if (handler != nullptr) {
+      return handler(exec, device, flat_arguments, results,
+                     std::move(run_options), parameter_is_tupled_arguments,
+                     executable_parameter_shapes);
+    }
+  }
+  auto* client =
+      tensorflow::down_cast<PjRtStreamExecutorClient*>(device->client());
   ASSIGN_OR_RETURN(
       auto arguments,
       WrapInputsInShapeTree(
-          this, &device_state(run_options.device_ordinal()),
+          client, &client->device_state(run_options.device_ordinal()),
           parameter_is_tupled_arguments, executable_parameter_shapes,
           std::move(flat_arguments), run_options.device_ordinal()));
 
@@ -1709,9 +1739,9 @@ PjRtStreamExecutorRawLoadedExecutable::Execute(
     absl::StatusOr<PjRtStreamExecutorExecutionOutput> result_buffer_or_status;
     if (predetermined_error.ok()) {
       result_buffer_or_status =
-          client->RunAsync(*executable, device, inputs, results, run_options,
-                           parameter_is_tupled_arguments,
-                           *on_device_executable_parameter_shapes);
+          RunAsync(*executable, device, inputs, results, run_options,
+                   parameter_is_tupled_arguments,
+                   *on_device_executable_parameter_shapes);
     } else {
       result_buffer_or_status = predetermined_error;
     }

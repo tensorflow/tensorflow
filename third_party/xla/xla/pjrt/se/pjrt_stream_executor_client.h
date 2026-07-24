@@ -23,6 +23,7 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <string>
+#include <typeindex>
 #include <utility>
 #include <vector>
 
@@ -83,14 +84,6 @@ limitations under the License.
 #include "tsl/platform/casts.h"
 
 namespace xla {
-
-struct PjRtStreamExecutorExecutionOutput {
-  // Donated inputs which must be freed.
-  std::vector<tsl::AsyncValueRef<RawSEDeviceMemory>> to_be_released;
-  // For PjRtStreamExecutorClient implementations that
-  // use ScopedDeviceAddress for donated inputs.
-  std::vector<se::ScopedDeviceAddress<uint8_t>> se_to_be_released;
-};
 
 class PjRtStreamExecutorDevice : public PjRtDevice {
  public:
@@ -375,13 +368,6 @@ class PjRtStreamExecutorClient : public CommonPjRtClient {
     return gpu_run_options_.get();
   }
 
-  virtual absl::StatusOr<PjRtStreamExecutorExecutionOutput> RunAsync(
-      LocalExecutable& exec, PjRtDevice* device,
-      absl::Span<const PjRtRawBufferRef> flat_arguments,
-      absl::Span<const PjRtRawBufferRef> results,
-      ExecutableRunOptions run_options, bool parameter_is_tupled_arguments,
-      absl::Span<const Shape> executable_parameter_shapes);
-
   void ThenRecordEvent(BufferSequencingEventRef event,
                        LocalDeviceState* local_device,
                        EventPool::Handle device_event, se::Stream* stream);
@@ -580,6 +566,24 @@ class PjRtStreamExecutorClient : public CommonPjRtClient {
   tsl::thread::ThreadPool compile_thread_pool_;
   std::unique_ptr<AsyncWorkRunner> async_work_runner_;
 };
+
+struct PjRtStreamExecutorExecutionOutput {
+  // Donated inputs which must be freed.
+  std::vector<tsl::AsyncValueRef<RawSEDeviceMemory>> to_be_released;
+  // For PjRtStreamExecutorClient implementations that
+  // use ScopedDeviceAddress for donated inputs.
+  std::vector<se::ScopedDeviceAddress<uint8_t>> se_to_be_released;
+};
+
+using RunAsyncHandlerFn = absl::StatusOr<PjRtStreamExecutorExecutionOutput> (*)(
+    LocalExecutable& exec, PjRtDevice* device,
+    absl::Span<const PjRtRawBufferRef> flat_arguments,
+    absl::Span<const PjRtRawBufferRef> results,
+    ExecutableRunOptions run_options, bool parameter_is_tupled_arguments,
+    absl::Span<const Shape> executable_parameter_shapes);
+
+void RegisterRunAsyncHandler(std::type_index executable_type,
+                             RunAsyncHandlerFn handler);
 
 // Converts a 2D set of Device objects indexed by [replica][partition] into an
 // xla::DeviceAssignment.
