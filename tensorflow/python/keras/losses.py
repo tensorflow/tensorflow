@@ -674,6 +674,9 @@ class CategoricalCrossentropy(LossFunctionWrapper):
       name: Optional name for the instance.
         Defaults to 'categorical_crossentropy'.
     """
+    if not 0 <= label_smoothing <= 1:
+      raise ValueError(
+          f'`label_smoothing` must be in [0, 1], got {label_smoothing}')
     super().__init__(
         categorical_crossentropy,
         name=name,
