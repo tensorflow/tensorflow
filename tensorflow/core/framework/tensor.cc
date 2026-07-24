@@ -841,6 +841,9 @@ TensorBuffer* FromProtoField<Variant>(Allocator* a, const TensorProto& in,
                    << data[i].TypeName()
                    << "\".  Perhaps you forgot to register a "
                       "decoder via REGISTER_UNARY_VARIANT_DECODE_FUNCTION?";
+        for (int64_t j = 0; j <= i; ++j) {
+          data[j].clear();
+        }
         buf->Unref();
         return nullptr;
       }
