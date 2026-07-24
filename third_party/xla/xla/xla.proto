@@ -676,6 +676,10 @@ message DebugOptions {
   // faster.
   optional bool xla_gpu_cublas_fallback = 247;
 
+  // Enables K-wrapping optimization for narrow matrix multiplications in
+  // Triton.
+  optional bool xla_gpu_experimental_enable_narrow_dot_kwrapping = 998;
+
   // Path to directory with cuda/ptx tools and libraries.
   optional string xla_gpu_cuda_data_dir = 61;
 
