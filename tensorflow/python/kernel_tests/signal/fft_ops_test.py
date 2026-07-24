@@ -939,16 +939,23 @@ class RFFTOpsTest(BaseFFTOpsTest, parameterized.TestCase):
         rtol=tol, atol=tol)
 
   def test_invalid_args(self):
-    # Test case for GitHub issue 55263
+    # Test cases for GitHub issues 55263 and 123399.
     a = np.empty([6, 0])
     b = np.array([1, -1])
     with self.assertRaisesRegex(
         (ValueError, errors.InvalidArgumentError),
-        "(.*must be greater or equal to.*)|(must >= 0)",
+        "(.*must be greater or equal to.*)|(must be >= 1)",
     ):
       with self.session():
         v = fft_ops.rfft2d(input_tensor=a, fft_length=b)
         self.evaluate(v)
+
+    with self.assertRaisesRegex(
+        errors.InvalidArgumentError,
+        r"fft_length\[0\] must be >= 1, but got: 0",
+    ):
+      with self.session():
+        self.evaluate(gen_spectral_ops.rfft(np.ones([3, 3, 31]), [0]))
 
 
 @test_util.run_all_in_graph_and_eager_modes
