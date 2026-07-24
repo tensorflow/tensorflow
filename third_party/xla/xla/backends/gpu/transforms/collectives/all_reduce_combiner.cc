@@ -47,7 +47,7 @@ std::optional<AllReduceCombiner::GroupKey> DefaultCombinerKey(
     absl::StrAppend(&AllReduceCombiner::GetGroupKeyExtraArgs(*key),
                     " pipelined=true");
   }
-  AppendCombinerKeyFromFrontendAttr(
+  AppendFrontendAttributesToCombinerKey(
       instruction, AllReduceCombiner::GetGroupKeyExtraArgs(*key));
   return key;
 }
@@ -65,14 +65,14 @@ std::optional<AllReduceCombiner::GroupKey> CustomCombinerKey(
   if (IsPipelinedCollective(*instruction)) {
     absl::StrAppend(&AllReduceCombiner::GetGroupKeyExtraArgs(*key),
                     " pipelined=true");
-    AppendCombinerKeyFromFrontendAttr(
+    AppendFrontendAttributesToCombinerKey(
         instruction, AllReduceCombiner::GetGroupKeyExtraArgs(*key));
     return key;
   }
   if (IsCombinableSyncCollective(*instruction)) {
     absl::StrAppend(&AllReduceCombiner::GetGroupKeyExtraArgs(*key),
                     " sync=true");
-    AppendCombinerKeyFromFrontendAttr(
+    AppendFrontendAttributesToCombinerKey(
         instruction, AllReduceCombiner::GetGroupKeyExtraArgs(*key));
     return key;
   }

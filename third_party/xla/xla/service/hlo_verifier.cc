@@ -3687,7 +3687,7 @@ bool IsCollectivesGroupComputation(HloComputation* computation) {
     return false;
   }
   return (*maybe_caller)
-      ->get_frontend_attribute(kCollectivesGroupAttr)
+      ->get_frontend_attribute(kCollectiveGroupMarkerAttr)
       .has_value();
 }
 

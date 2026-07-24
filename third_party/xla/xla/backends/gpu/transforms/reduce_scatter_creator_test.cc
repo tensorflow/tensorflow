@@ -38,6 +38,7 @@ limitations under the License.
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/pattern_matcher.h"
+#include "xla/side_effect_util.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
@@ -614,7 +615,7 @@ ROOT %add = f32[] add(%a, %b)
 ENTRY %AllReduce {
 %param = f32[32,8,128]{2,1,0} parameter(0)
 %all-reduce = f32[32,8,128]{2,1,0} all-reduce(%param),
-replica_groups={}, to_apply=%sum, backend_config={"collective_backend_config":{"is_pipelined":true}}
+replica_groups={}, to_apply=%sum, frontend_attributes={collective_group_key="g0"}, backend_config={"collective_backend_config":{"is_pipelined":true}}
 %table = s32[8]{0} constant({0,1,2,3,4,5,6,7})
 %rid = u32[] replica-id()
 %id = s32[1] dynamic-slice(%table, %rid), dynamic_slice_sizes={1}
@@ -636,6 +637,7 @@ dynamic_slice_sizes={4,8,128}
               GmockMatch(m::ReduceScatter(m::Parameter(0))));
   const auto* rs = Cast<HloReduceScatterInstruction>(
       module->entry_computation()->root_instruction());
+  EXPECT_EQ(rs->get_frontend_attribute(kCollectiveGroupKeyAttr), "g0");
   EXPECT_TRUE(rs->backend_config<GpuBackendConfig>()
                   ->collective_backend_config()
                   .is_pipelined());

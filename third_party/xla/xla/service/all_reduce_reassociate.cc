@@ -76,7 +76,7 @@ bool AreCompatible(const HloAllReduceInstruction* ar0,
   // AllReduceKey tuple except the element_type
   return key0 && key1 && kind0 &&
          AreAllreduceKeysEqual(*key0, *key1, ignore_element_type) &&
-         kind0 == op_kind;
+         kind0 == op_kind && HaveCompatibleCollectiveGroupKeys(*ar0, *ar1);
 }
 
 // Look-through some formatting operations that might be in front of the
