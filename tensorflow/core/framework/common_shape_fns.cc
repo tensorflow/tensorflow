@@ -1677,6 +1677,16 @@ absl::Status MatrixDiagV2Shape(shape_inference::InferenceContext* c) {
   // Checks if the number of diagonals provided matches what we imply from
   // lower_diag_index and upper_diag_index.
   const int32_t input_rank = c->Rank(input_shape);
+  // A band range k=(low, high) with low != high needs a diagonal-count
+  // dimension, so the diagonal must be at least 2-dim. Reject a rank-1 diagonal
+  // here at graph-construction time; otherwise `input_rank - 2` underflows below
+  // and yields a confusing (or crashing) shape error. See GitHub issue #110796.
+  if (lower_diag_index < upper_diag_index && input_rank < 2) {
+    return errors::InvalidArgument(
+        "diagonal must be at least 2-dim when a band range k=(low, high) "
+        "with low != high is given, but received shape: ",
+        c->DebugString(input_shape));
+  }
   if (lower_diag_index < upper_diag_index) {
     const int32_t num_diags = c->Value(c->Dim(input_shape, input_rank - 2));
     const int32_t other_dim = c->Value(c->Dim(input_shape, input_rank - 1));
