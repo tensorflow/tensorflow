@@ -2751,6 +2751,44 @@ ENTRY e {
       std::move(optimized_module), ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
 }
 
+TEST_P(TritonScaledDotTest, Mxfp8ScaledDotSmallBlockKAndNExecutes) {
+  if (!GetCudaComputeCapability().IsAtLeastHopper()) {
+    GTEST_SKIP() << "Requires Hopper+.";
+  }
+  constexpr absl::string_view kHloText = R"hlo(
+HloModule m
+
+fusion__ {
+  parameter_0 = f8e4m3fn[128,256]{1,0} parameter(0)
+  parameter_1 = f8e4m3fn[256,128]{1,0} parameter(1)
+  parameter_2 = f8e8m0fnu[128,8]{1,0} parameter(2)
+  parameter_3 = f8e8m0fnu[8,128]{1,0} parameter(3)
+  ROOT _.1 = bf16[128,128]{1,0} scaled-dot(
+      parameter_0, parameter_1, parameter_2, parameter_3),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0},
+    backend_config={"sizes":["64"]}
+}
+
+ENTRY e {
+  lhs = f8e4m3fn[128,256]{1,0} parameter(0)
+  rhs = f8e4m3fn[256,128]{1,0} parameter(1)
+  lhs_scale = f8e8m0fnu[128,8]{1,0} parameter(2)
+  rhs_scale = f8e8m0fnu[8,128]{1,0} parameter(3)
+  ROOT fusion = bf16[128,128]{1,0} fusion(
+      lhs, rhs, lhs_scale, rhs_scale),
+    kind=kCustom, calls=fusion__,
+    backend_config={"fusion_backend_config":{
+      "kind":"__triton_nested_gemm_fusion",
+      "block_level_fusion_config":{
+        "output_tiles":[{"sizes":["128","16"]}],
+        "num_warps":"4","num_ctas":"1","num_stages":"1"}}}
+}
+)hlo";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloText));
+  EXPECT_TRUE(RunAndCompareNoHloPasses(
+      std::move(module), ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
+}
+
 // TODO(b/522845225): After fixing random fp4 generation (before it was only 0s,
 // after it's generating uniformly from all fp4 values), we get a small amount
 // of mismatches in the output of this test (~0.2%). It is not clear if this is

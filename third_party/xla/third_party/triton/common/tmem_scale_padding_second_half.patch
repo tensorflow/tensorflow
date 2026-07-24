@@ -1,0 +1,48 @@
+https://github.com/triton-lang/triton/pull/10321 fixes the second-half alignment
+of unpacked 16-row TMEM scale stores. The fix is present in XLA's Triton pin,
+but tmemfix.patch reverts it because XLA uses CUDA 12.8, where ptxas fails with
+a zero second-half offset. This patch applies an alternative fix that works
+with CUDA 12.8. It can be removed once the upstream Triton fix is enabled in
+XLA.
+
+diff --git a/lib/Dialect/TritonNvidiaGPU/IR/Dialect.cpp b/lib/Dialect/TritonNvidiaGPU/IR/Dialect.cpp
+index e40a1bcd2c3f..4f337df50658 100644
+--- a/lib/Dialect/TritonNvidiaGPU/IR/Dialect.cpp
++++ b/lib/Dialect/TritonNvidiaGPU/IR/Dialect.cpp
+@@ -84,6 +84,10 @@ TMemAllocation getTmemAllocSizes(MemDescType memDescType) {
+   if (ll.getBasis(kRow, llvm::Log2_32(16)) == ArrayRef{0, 0}) {
+     nRow /= 2;
+   }
++  // Scale stores may need a padded half when lowered to 16-row TMEM messages.
++  // Unpacked store further doubles the padding requirement.
++  if (isa<TensorMemoryScalesEncodingAttr>(memDescType.getEncoding()))
++    nCol = std::max(nCol, 4);
+   // If multibuffering is present, we need to allocate more cols
+   if (memDescType.getRank() > 2) {
+     assert(memDescType.getRank() == 3);
+diff --git a/lib/Dialect/TritonNvidiaGPU/IR/TensorMemoryUtils.cpp b/lib/Dialect/TritonNvidiaGPU/IR/TensorMemoryUtils.cpp
+index b4bf8e13c3d3..3a6d247b7dca 100644
+--- a/lib/Dialect/TritonNvidiaGPU/IR/TensorMemoryUtils.cpp
++++ b/lib/Dialect/TritonNvidiaGPU/IR/TensorMemoryUtils.cpp
+@@ -238,8 +238,10 @@ lowerTMemLdSt(const LinearLayout &cvt, int maxnreg, int bitwidth, bool isScales,
+       secondHalfOffset = (row << 16) | col;
+       if (*secondHalfOffset == 0) {
+         // Workaround for ptxas bug, we cannot use secondHalfOffset = 0 to write
+-        // only 16 elements. We use secondHalfOffset = 1 instead and we pad the
+-        // allocation.
++        // only 16 elements. For unpacked scale stores, each source register
++        // spans two TMEM columns, so place the padded half at the next
++        // two-column group. Scale TMEM allocations reserve at least four
++        // columns for this padding.
+         if (!isScales) {
+           if (emitError) {
+             emitError()
+@@ -247,7 +249,7 @@ lowerTMemLdSt(const LinearLayout &cvt, int maxnreg, int bitwidth, bool isScales,
+           }
+           return failure();
+         }
+-        secondHalfOffset = 1;
++        secondHalfOffset = unpacked ? 2 : 1;
+       }
+       // We "quotient it out", meaning we remove the last basis from reps
+       auto basis = reps.getBases();

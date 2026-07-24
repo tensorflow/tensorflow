@@ -30,6 +30,7 @@ common_patch_list = [
     "//third_party/triton:common/silence_matchAndRewrite_failures.patch",
     "//third_party/triton:common/check_null_encoding.patch",
     "//third_party/triton:common/tmemfix.patch",
+    "//third_party/triton:common/tmem_scale_padding_second_half.patch",
     "//third_party/triton:common/test_cache_determinism_fix.patch",
     "//third_party/triton:common/mig_limits_pytests.patch",
     "//third_party/triton:common/llvm_cl930478990.patch",
