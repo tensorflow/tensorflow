@@ -15,7 +15,10 @@ limitations under the License.
 
 #include "tensorflow/lite/examples/label_image/label_image.h"
 
+#include <algorithm>
 #include <cstdint>
+#include <fstream>
+#include <limits>
 #include <string>
 #include <utility>
 #include <vector>
@@ -27,6 +30,45 @@ limitations under the License.
 
 namespace tflite {
 namespace label_image {
+namespace {
+
+std::string WriteTestBmp(const std::vector<uint8_t>& bytes,
+                         const std::string& name) {
+  const testing::TestInfo* test_info =
+      testing::UnitTest::GetInstance()->current_test_info();
+  const std::string filename =
+      ::testing::TempDir() + test_info->test_suite_name() + "_" +
+      test_info->name() + "_" + name + ".bmp";
+  std::ofstream file(filename, std::ios::binary);
+  file.write(reinterpret_cast<const char*>(bytes.data()), bytes.size());
+  return filename;
+}
+
+std::vector<uint8_t> ValidBmpHeader(int32_t pixel_offset, int32_t width,
+                                    int32_t height, uint16_t bpp) {
+  std::vector<uint8_t> bytes(
+      std::max<size_t>(pixel_offset < 0 ? 30 : pixel_offset, 30), 0);
+  bytes[0] = 'B';
+  bytes[1] = 'M';
+  auto write_le16 = [&bytes](size_t offset, uint16_t value) {
+    bytes[offset] = value & 0xff;
+    bytes[offset + 1] = value >> 8;
+  };
+  auto write_le32 = [&bytes](size_t offset, int32_t value) {
+    const uint32_t unsigned_value = static_cast<uint32_t>(value);
+    bytes[offset] = unsigned_value & 0xff;
+    bytes[offset + 1] = (unsigned_value >> 8) & 0xff;
+    bytes[offset + 2] = (unsigned_value >> 16) & 0xff;
+    bytes[offset + 3] = (unsigned_value >> 24) & 0xff;
+  };
+  write_le32(10, pixel_offset);
+  write_le32(18, width);
+  write_le32(22, height);
+  write_le16(28, bpp);
+  return bytes;
+}
+
+}  // namespace
 
 TEST(LabelImageTest, GraceHopper) {
   std::string lena_file =
@@ -45,6 +87,43 @@ TEST(LabelImageTest, GraceHopper) {
   resize<uint8_t>(output.data(), input.data(), 606, 517, 3, 214, 214, 3, &s);
   ASSERT_EQ(output[0], 0x15);
   ASSERT_EQ(output[214 * 214 * 3 - 1], 0x11);
+}
+
+TEST(LabelImageTest, RejectsTruncatedBmpHeader) {
+  const std::string filename = WriteTestBmp({'B', 'M'}, "truncated_header");
+  int height, width, channels;
+  Settings s;
+  auto result = read_bmp(filename, &width, &height, &channels, &s);
+  EXPECT_TRUE(result.empty());
+}
+
+TEST(LabelImageTest, RejectsPixelDataOutsideFile) {
+  std::vector<uint8_t> bytes = ValidBmpHeader(128, 1, 1, 24);
+  const std::string filename = WriteTestBmp(bytes, "bad_pixel_offset");
+  int height, width, channels;
+  Settings s;
+  auto result = read_bmp(filename, &width, &height, &channels, &s);
+  EXPECT_TRUE(result.empty());
+}
+
+TEST(LabelImageTest, RejectsShortPixelData) {
+  std::vector<uint8_t> bytes = ValidBmpHeader(54, 2, 2, 24);
+  bytes.resize(54 + 8);
+  const std::string filename = WriteTestBmp(bytes, "short_pixel_data");
+  int height, width, channels;
+  Settings s;
+  auto result = read_bmp(filename, &width, &height, &channels, &s);
+  EXPECT_TRUE(result.empty());
+}
+
+TEST(LabelImageTest, RejectsRowSizeOverflow) {
+  std::vector<uint8_t> bytes =
+      ValidBmpHeader(54, std::numeric_limits<int32_t>::max(), 1, 32);
+  const std::string filename = WriteTestBmp(bytes, "row_size_overflow");
+  int height, width, channels;
+  Settings s;
+  auto result = read_bmp(filename, &width, &height, &channels, &s);
+  EXPECT_TRUE(result.empty());
 }
 
 TEST(LabelImageTest, GetTopN) {
