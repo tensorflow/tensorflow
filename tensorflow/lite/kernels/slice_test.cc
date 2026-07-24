@@ -50,7 +50,8 @@ class SliceOpModel : public SingleOpModel {
                std::initializer_list<index_type> size_data,
                TensorType tensor_index_type, TensorType tensor_input_type,
                TestType input_tensor_types,
-               std::initializer_list<int> output_shape = {}) {
+               std::initializer_list<int> output_shape = {},
+               bool bypass_default_delegates = false) {
     input_ = AddInput(tensor_input_type);
     if (input_tensor_types == TestType::kDynamic) {
       begin_ = AddInput(tensor_index_type);
@@ -63,7 +64,14 @@ class SliceOpModel : public SingleOpModel {
     output_ = AddOutput(TensorData(tensor_input_type, output_shape));
     SetBuiltinOp(BuiltinOperator_SLICE, BuiltinOptions_SliceOptions,
                  CreateSliceOptions(builder_).Union());
-    BuildInterpreter({input_shape, begin_shape, size_shape});
+    if (bypass_default_delegates) {
+      SetBypassDefaultDelegates();
+    }
+    BuildInterpreter({input_shape, begin_shape, size_shape},
+                     /*num_threads=*/-1,
+                     /*allow_fp32_relax_to_fp16=*/false,
+                     /*apply_delegate=*/!bypass_default_delegates,
+                     /*allocate_and_delegate=*/true);
 
     if (input_tensor_types == TestType::kDynamic) {
       PopulateTensor<index_type>(begin_, begin_data);
@@ -406,6 +414,46 @@ TEST_P(SliceOpTest, BeginNonZeroSizeMinus1Axis1BFloat16) {
   EXPECT_THAT(m.GetOutput(),
               ElementsAreArray({Eigen::bfloat16(5), Eigen::bfloat16(6),
                                 Eigen::bfloat16(8), Eigen::bfloat16(9)}));
+}
+
+TEST(SliceOpValidationTest, NegativeBeginIsRejected) {
+  SliceOpModel<float, int32_t> m({4, 1, 1, 1}, {4}, {-1, 0, 0, 0}, {4},
+                                 {1, 1, 1, 1}, TensorType_INT32,
+                                 TensorType_FLOAT32, TestType::kDynamic,
+                                 /*output_shape=*/{},
+                                 /*bypass_default_delegates=*/true);
+  m.SetInput({1, 2, 3, 4});
+  EXPECT_EQ(m.Invoke(), kTfLiteError);
+}
+
+TEST(SliceOpValidationTest, BeginPlusSizeOutOfBoundsIsRejected) {
+  SliceOpModel<float, int32_t> m({4, 1, 1, 1}, {4}, {2, 0, 0, 0}, {4},
+                                 {3, 1, 1, 1}, TensorType_INT32,
+                                 TensorType_FLOAT32, TestType::kDynamic,
+                                 /*output_shape=*/{},
+                                 /*bypass_default_delegates=*/true);
+  m.SetInput({1, 2, 3, 4});
+  EXPECT_EQ(m.Invoke(), kTfLiteError);
+}
+
+TEST(SliceOpValidationTest, Int64SizeOverflowIsRejected) {
+  SliceOpModel<float, int64_t> m({4, 1, 1, 1}, {4}, {1, 0, 0, 0}, {4},
+                                 {INT64_MAX, 1, 1, 1}, TensorType_INT64,
+                                 TensorType_FLOAT32, TestType::kDynamic,
+                                 /*output_shape=*/{},
+                                 /*bypass_default_delegates=*/true);
+  m.SetInput({1, 2, 3, 4});
+  EXPECT_EQ(m.Invoke(), kTfLiteError);
+}
+
+TEST(SliceOpValidationTest, StaticOutputShapeRejectsOutOfRangeBegin) {
+  SliceOpModel<float, int32_t> m({4, 1, 1, 1}, {4}, {5, 0, 0, 0}, {4},
+                                 {1, 1, 1, 1}, TensorType_INT32,
+                                 TensorType_FLOAT32, TestType::kConst,
+                                 {1, 1, 1, 1},
+                                 /*bypass_default_delegates=*/true);
+  m.SetInput({1, 2, 3, 4});
+  EXPECT_EQ(m.Invoke(), kTfLiteError);
 }
 
 INSTANTIATE_TEST_SUITE_P(SliceOpTest, SliceOpTest,

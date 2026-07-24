@@ -52,6 +52,42 @@ constexpr int kOutputTensor = 0;
 // runtime-rank reference path.
 const int kMaxDim = 5;
 
+// Validates begin/size for one dimension and returns them as ints. begin is
+// constrained to [0, input_dim] first so the size bound check
+// (size_value > input_dim - begin_value) cannot overflow; size == -1 selects
+// to the end of the dimension.
+template <typename T>
+TfLiteStatus ValidateSliceParams(TfLiteContext* context,
+                                 const TfLiteTensor* input,
+                                 const TfLiteTensor* begin,
+                                 const TfLiteTensor* size, int idx,
+                                 int* begin_value_out, int* size_value_out) {
+  const int input_dim = SizeOfDimension(input, idx);
+  const T begin_value = GetTensorData<T>(begin)[idx];
+  if (begin_value < 0 || begin_value > input_dim) {
+    TF_LITE_KERNEL_LOG(context, "Slice: begin value out of range at dim %d",
+                       idx);
+    return kTfLiteError;
+  }
+  *begin_value_out = static_cast<int>(begin_value);
+
+  const T size_value = GetTensorData<T>(size)[idx];
+  if (size_value < 0) {
+    if (size_value != -1) {
+      TF_LITE_KERNEL_LOG(context, "Invalid size.");
+      return kTfLiteError;
+    }
+    *size_value_out = input_dim - *begin_value_out;
+  } else {
+    if (size_value > input_dim - *begin_value_out) {
+      TF_LITE_KERNEL_LOG(context, "Invalid begin and size.");
+      return kTfLiteError;
+    }
+    *size_value_out = static_cast<int>(size_value);
+  }
+  return kTfLiteOk;
+}
+
 template <typename T>
 TfLiteStatus CalculateOutputShapeVector(TfLiteContext* context,
                                         const TfLiteTensor* input,
@@ -59,33 +95,31 @@ TfLiteStatus CalculateOutputShapeVector(TfLiteContext* context,
                                         const TfLiteTensor* size,
                                         std::vector<int>* output_shape_vector) {
   for (int idx = 0; idx < NumDimensions(input); ++idx) {
-    T size_value = GetTensorData<T>(size)[idx];
-    if (size_value < 0) {
-      if (size_value != -1) {
-        TF_LITE_KERNEL_LOG(context, "Invalid size.");
-        return kTfLiteError;
-      }
-      size_value = SizeOfDimension(input, idx) - GetTensorData<T>(begin)[idx];
-    } else {
-      if (SizeOfDimension(input, idx) <
-          GetTensorData<T>(begin)[idx] + size_value) {
-        TF_LITE_KERNEL_LOG(context, "Invalid begin and size.");
-        return kTfLiteError;
-      }
-    }
-    output_shape_vector->push_back(static_cast<int>(size_value));
+    int begin_value;
+    int size_value;
+    TF_LITE_ENSURE_STATUS(ValidateSliceParams<T>(
+        context, input, begin, size, idx, &begin_value, &size_value));
+    output_shape_vector->push_back(size_value);
   }
   return kTfLiteOk;
 }
 
 template <typename T>
-void GetBeginAndSizeVectors(int dimensions, const TfLiteTensor* begin,
-                            const TfLiteTensor* size, std::vector<int>* begins,
-                            std::vector<int>* sizes) {
-  for (int idx = 0; idx < dimensions; ++idx) {
-    begins->push_back(GetTensorData<T>(begin)[idx]);
-    sizes->push_back(GetTensorData<T>(size)[idx]);
+TfLiteStatus GetBeginAndSizeVectors(TfLiteContext* context,
+                                    const TfLiteTensor* input,
+                                    const TfLiteTensor* begin,
+                                    const TfLiteTensor* size,
+                                    std::vector<int>* begins,
+                                    std::vector<int>* sizes) {
+  for (int idx = 0; idx < NumDimensions(input); ++idx) {
+    int begin_value;
+    int size_value;
+    TF_LITE_ENSURE_STATUS(ValidateSliceParams<T>(
+        context, input, begin, size, idx, &begin_value, &size_value));
+    begins->push_back(begin_value);
+    sizes->push_back(size_value);
   }
+  return kTfLiteOk;
 }
 
 TfLiteStatus ResizeOutputShape(TfLiteContext* context,
@@ -93,6 +127,7 @@ TfLiteStatus ResizeOutputShape(TfLiteContext* context,
                                const TfLiteTensor* begin,
                                const TfLiteTensor* size, TfLiteTensor* output) {
   std::vector<int> output_shape_vector;
+  output_shape_vector.reserve(NumDimensions(input));
 
   if (begin->type == kTfLiteInt32) {
     TF_LITE_ENSURE_STATUS(CalculateOutputShapeVector<int32_t>(
@@ -143,6 +178,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_EQ(context, NumDimensions(begin), 1);
   TF_LITE_ENSURE_EQ(context, NumDimensions(size), 1);
   TF_LITE_ENSURE_EQ(context, NumElements(begin), NumElements(size));
+  TF_LITE_ENSURE_EQ(context, NumElements(begin), NumDimensions(input));
   // If the shape of output is fully specified then resize even if
   // the input shape is not staticly defined.
   if (!HasUnspecifiedDimension(output) && ShapeHasRank(output->dims)) {
@@ -184,11 +220,11 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   sizes.reserve(input_dims);
 
   if (begin->type == kTfLiteInt32) {
-    GetBeginAndSizeVectors<int32_t>(NumDimensions(input), begin, size, &begins,
-                                    &sizes);
+    TF_LITE_ENSURE_STATUS(GetBeginAndSizeVectors<int32_t>(
+        context, input, begin, size, &begins, &sizes));
   } else if (begin->type == kTfLiteInt64) {
-    GetBeginAndSizeVectors<int64_t>(NumDimensions(input), begin, size, &begins,
-                                    &sizes);
+    TF_LITE_ENSURE_STATUS(GetBeginAndSizeVectors<int64_t>(
+        context, input, begin, size, &begins, &sizes));
   } else {
     TF_LITE_KERNEL_LOG(context, "Type %d is currently not supported by Slice.",
                        begin->type);
