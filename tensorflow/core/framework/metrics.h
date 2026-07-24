@@ -543,7 +543,9 @@ monitoring::Counter<2>* GetGraphOptimizationCounter();
 void UpdateTpuVariableDistributionTime(const uint64_t distribution_time_usecs);
 
 // Updates the metrics stored about time XLA spents compiling graphs.
-void UpdateXlaCompilationTime(const uint64_t compilation_time_usecs);
+void UpdateXlaCompilationTime(const uint64_t compilation_time_usecs,
+                              const uint64_t compile_end_us = 0);
+void UpdateXlaCompilationStartTime(const uint64_t compilation_start_time_us);
 
 // Increments (by 1) a simple integer counter that is exposed for testing.
 void IncrementTestCounter(const std::string& name, const std::string& label);

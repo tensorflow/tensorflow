@@ -445,6 +445,14 @@ auto* xla_compilation_time_usecs = tsl::monitoring::Counter<0>::New(
     "/tensorflow/core/xla_compilation_time_usecs",
     "The total time spent on compiling XLA graphs in microseconds.");
 
+auto* xla_compilation_start_time = tsl::monitoring::Gauge<int64_t, 0>::New(
+    "/tensorflow/core/xla_compilation_start_time",
+    "Timestamp of when the most recent XLA compilation started.");
+
+auto* xla_compilation_end_time = tsl::monitoring::Gauge<int64_t, 0>::New(
+    "/tensorflow/core/xla_compilation_end_time",
+    "Timestamp of when the most recent XLA compilation ended.");
+
 auto* xla_tpu_spmd_cores_per_replica = tsl::monitoring::Counter<1>::New(
     "/tensorflow/tpu/xla_spmd_cores_per_replica",
     "The number of cores used by XLA SPMD-replicated models.", "cores");
@@ -972,7 +980,12 @@ void UpdateTpuVariableDistributionTime(const uint64_t distribution_time_usecs) {
   }
 }
 
-void UpdateXlaCompilationTime(const uint64_t compilation_time_usecs) {
+void UpdateXlaCompilationStartTime(const uint64_t compilation_start_time_us) {
+  xla_compilation_start_time->GetCell()->Set(compilation_start_time_us);
+}
+
+void UpdateXlaCompilationTime(const uint64_t compilation_time_usecs,
+                              const uint64_t compile_end_us) {
   if (compilation_time_usecs > 0) {
     static auto* xla_compilations_cell = xla_compilations->GetCell();
     static auto* xla_compilation_time_usecs_cell =
@@ -980,6 +993,9 @@ void UpdateXlaCompilationTime(const uint64_t compilation_time_usecs) {
     xla_compilations_cell->IncrementBy(1);
     xla_compilation_time_usecs_cell->IncrementBy(compilation_time_usecs);
   }
+  uint64_t final_end_us =
+      (compile_end_us > 0) ? compile_end_us : Env::Default()->NowMicros();
+  xla_compilation_end_time->GetCell()->Set(final_end_us);
 }
 
 void RecordUnusedOutput(const std::string& op_name) {
