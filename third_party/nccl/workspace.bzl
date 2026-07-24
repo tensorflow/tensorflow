@@ -7,7 +7,7 @@ def repo():
         name = "nccl_archive",
         build_file = "@xla//third_party/nccl:archive.BUILD",
         patch_file = ["@xla//third_party/nccl:archive.patch"],
-        sha256 = "e67239212c395bfdb398a7519491840d06fdf6b599c299f97c7ed0109777bba1",
-        strip_prefix = "nccl-2.29.7-1",
-        urls = tf_mirror_urls("https://github.com/NVIDIA/nccl/archive/refs/tags/v2.29.7-1.tar.gz"),
+        sha256 = "292a7f7a27b6754acaf46b5506a60758ca7b18cc1dfbd3d1d4e1e229d0863b4e",
+        strip_prefix = "nccl-2.30.7-1",
+        urls = tf_mirror_urls("https://github.com/NVIDIA/nccl/archive/refs/tags/v2.30.7-1.tar.gz"),
     )

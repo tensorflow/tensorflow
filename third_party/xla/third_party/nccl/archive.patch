@@ -1,47 +1,92 @@
-diff --git a/src/device/common.cu b/src/device/common.cu.cc
-similarity index 100%
-rename from src/device/common.cu
-rename to src/device/common.cu.cc
-diff --git a/src/device/onerank.cu b/src/device/onerank.cu.cc
-similarity index 100%
-rename from src/device/onerank.cu
-rename to src/device/onerank.cu.cc
-diff --git a/src/device/common.h b/src/device/common.h
---- a/src/device/common.h
-+++ b/src/device/common.h
-@@ -24,7 +24,7 @@
- #endif
-
- typedef void(*ncclDevFuncPtr_t)();
+diff -urN a/src/device/common.cu b/src/device/common.cu
+--- a/src/device/common.cu	2026-07-16 10:29:45.442126031 +0000
++++ b/src/device/common.cu	1970-01-01 00:00:00.000000000 +0000
+@@ -1,27 +0,0 @@
+-/*************************************************************************
+- * SPDX-FileCopyrightText: Copyright (c) 2015-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+- * SPDX-License-Identifier: Apache-2.0
+- *
+- * See LICENSE.txt for more license information
+- *************************************************************************/
+-
+-#include "device.h"
+-#include "collectives.h"
+-#include "common.h"
+-#include "nccl_device.h"
+-#include "comm.h"
+-
+-__shared__ ncclShmemData ncclShmem;
+-#if __CUDA_ARCH__ < 700
+-__shared__ ulong2 ncclShmemPerWarp[ncclShmemScratchWarpSize() * (NCCL_MAX_NTHREADS / WARP_SIZE) / sizeof(ulong2)];
+-#endif
+-
+-struct RunWorkNop {
+-  __device__ void run() {}
+-};
+-
+-__global__ void ncclDevKernel_Generic(ncclDevKernelArgs4K NCCL_GRID_CONSTANT const args4K) {
+-  ncclKernelMain<-1, RunWorkNop>(&args4K.args);
+-}
+-
+-__device__ void ncclDevFunc_Nop() {}
+diff -urN a/src/device/common.cu.cc b/src/device/common.cu.cc
+--- a/src/device/common.cu.cc	1970-01-01 00:00:00.000000000 +0000
++++ b/src/device/common.cu.cc	2026-06-04 22:28:21.000000000 +0000
+@@ -0,0 +1,27 @@
++/*************************************************************************
++ * SPDX-FileCopyrightText: Copyright (c) 2015-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
++ * SPDX-License-Identifier: Apache-2.0
++ *
++ * See LICENSE.txt for more license information
++ *************************************************************************/
++
++#include "device.h"
++#include "collectives.h"
++#include "common.h"
++#include "nccl_device.h"
++#include "comm.h"
++
++__shared__ ncclShmemData ncclShmem;
++#if __CUDA_ARCH__ < 700
++__shared__ ulong2 ncclShmemPerWarp[ncclShmemScratchWarpSize() * (NCCL_MAX_NTHREADS / WARP_SIZE) / sizeof(ulong2)];
++#endif
++
++struct RunWorkNop {
++  __device__ void run() {}
++};
++
++__global__ void ncclDevKernel_Generic(ncclDevKernelArgs4K NCCL_GRID_CONSTANT const args4K) {
++  ncclKernelMain<-1, RunWorkNop>(&args4K.args);
++}
++
++__device__ void ncclDevFunc_Nop() {}
+diff -urN a/src/device/common.h b/src/device/common.h
+--- a/src/device/common.h	2026-07-16 10:29:45.442391683 +0000
++++ b/src/device/common.h	2026-07-16 10:30:21.357719854 +0000
+@@ -28,7 +28,7 @@
+ /* MSVC C2133: extern array of unknown size needs a complete type; use pointer instead. */
+ extern __device__ ncclDevFuncPtr_t const* ncclDevFuncTable;
+ #else
 -extern __device__ ncclDevFuncPtr_t const ncclDevFuncTable[];
 +extern __device__ ncclDevFuncPtr_t ncclDevFuncTable[];
-
+ #endif
+ 
  struct ncclShmemGroup {
-   ncclConnInfo *recvConns[NCCL_MAX_ARITY];
-diff --git a/src/device/generate.py b/src/device/generate.py
---- a/src/device/generate.py
-+++ b/src/device/generate.py
-@@ -209,8 +209,8 @@ kernel_funcs = sorted(set(best_kernel(*fn) for fn in primary_funcs))
-
+diff -urN a/src/device/generate.py b/src/device/generate.py
+--- a/src/device/generate.py	2026-07-16 10:29:45.443031365 +0000
++++ b/src/device/generate.py	2026-07-16 10:30:21.358511394 +0000
+@@ -207,8 +207,8 @@
+ 
  ################################################################################
-
+ 
 -# Generate <gensrc>/device_table.cu
 -with open(os.path.join(gensrc, "device_table.cu"), "w") as f:
-+# Generate <gensrc>/device_table.cu.cc
++# Generate <gensrc>/device_table.cu.cc.cc
 +with open(os.path.join(gensrc, "device_table.cu.cc"), "w") as f:
    out = f.write
    out('#include "common.h"\n')
    out("\n")
-@@ -225,7 +225,7 @@ with open(os.path.join(gensrc, "device_table.cu"), "w") as f:
-       out("#endif\n")
-   out("\n")
-
--  out("__device__ ncclDevFuncPtr_t const ncclDevFuncTable[] = {\n");
-+  out("__device__ ncclDevFuncPtr_t ncclDevFuncTable[] = {\n");
-   index = 0
-   for fn in primary_funcs:
-     sym = paste("_", "ncclDevFunc", *fn)
-@@ -283,8 +283,16 @@ with open(os.path.join(gensrc, "host_table.cc"), "w") as f:
+@@ -292,8 +292,16 @@
      cudart, _ = required_cuda(*kfn)
      sym = paste("_", "ncclDevKernel", *kfn)
      if cudart != 0: out("#if CUDART_VERSION >= %d\n" % cudart)
@@ -60,9 +105,9 @@ diff --git a/src/device/generate.py b/src/device/generate.py
      index += 1
    out("nullptr};\n")
    out("\n")
-@@ -298,15 +306,23 @@ with open(os.path.join(gensrc, "host_table.cc"), "w") as f:
+@@ -307,15 +315,23 @@
    out("\n")
-
+ 
    # Maps primary id to kernel function pointer.
 -  out("extern void* const ncclDevKernelForFunc[] = {\n")
    index = 0
@@ -87,16 +132,16 @@ diff --git a/src/device/generate.py b/src/device/generate.py
      index += 1
    out("nullptr};\n")
    out("\n")
-@@ -325,7 +341,7 @@ with open(os.path.join(gensrc, "host_table.cc"), "w") as f:
+@@ -334,7 +350,7 @@
  # "coll" is reflected in the name: formally that no two funcs having different
  # coll's map to the same filename.
  def impl_filename(coll, redop, ty, algo, proto):
 -  return "%s.cu" % paste("_", coll_camel_to_lower[coll], redop and redop.lower(), ty)
 +  return "%s.cu.cc" % paste("_", coll_camel_to_lower[coll], redop and redop.lower(), ty)
-
+ 
  # Partition the functions and kernels to the .cu filenames. The partition is
  # a dictionary mapping filename to (coll, func-tuple list)
-@@ -357,7 +373,7 @@ if os.environ.get("NCCL_USE_CMAKE", "0") != "1":
+@@ -366,7 +382,7 @@
    with open(os.path.join(gensrc, "rules.mk"), "w") as f:
      out = f.write
      impl_names = sorted(name_to_funcs.keys())
@@ -105,66 +150,295 @@ diff --git a/src/device/generate.py b/src/device/generate.py
      out("LIB_OBJS_GEN = $(patsubst %,$(OBJDIR)/genobj/%.o,{names})\n"
          .format(names=" ".join(names)))
      out("\n")
-
-diff --git a/src/include/nccl_common.h b/src/include/nccl_common.h
---- a/src/include/nccl_common.h
-+++ b/src/include/nccl_common.h
-@@ -9,7 +9,9 @@
- #define NCCL_DEBUG_H_
-
- // Workaround for libstdc++ trying to force public visibility of std:: symbols.  We don't want to do that in libnccl.so.
+diff -urN a/src/device/onerank.cu b/src/device/onerank.cu
+--- a/src/device/onerank.cu	2026-07-16 10:29:45.444435394 +0000
++++ b/src/device/onerank.cu	1970-01-01 00:00:00.000000000 +0000
+@@ -1,110 +0,0 @@
+-/*************************************************************************
+- * SPDX-FileCopyrightText: Copyright (c) 2023-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+- * SPDX-License-Identifier: Apache-2.0
+- *
+- * See LICENSE.txt for more license information
+- *************************************************************************/
+-
+-#include "alloc.h"
+-#include "collectives.h"
+-#include "common_kernel.h"
+-#include "common.h"
+-#include <cuda_runtime.h>
+-
+-namespace {
+-template <typename RedOp>
+-__global__ __launch_bounds__(512, 1) void oneRankReduce(void* dst, void* src, size_t nElts, uint64_t redOpArg,
+-                                                        bool redOpArgIsPtr) {
+-  using T = typename RedOp::EltType;
+-  int tid = threadIdx.x;
+-  int tn = blockDim.x;
+-  int bid = blockIdx.x;
+-  int bn = gridDim.x;
+-
+-  // each block/channel gets a roughly equal segment of 16 byte packs
+-  constexpr int EltPerPack = 16 / sizeof(T);
+-  intptr_t i0 = (bid + 0) * alignUp(divUp(nElts, bn), EltPerPack);
+-  intptr_t i1 = (bid + 1) * alignUp(divUp(nElts, bn), EltPerPack);
+-  i0 = min(i0, nElts);
+-  i1 = min(i1, nElts);
+-  src = (T*)src + i0;
+-  dst = (T*)dst + i0;
+-
+-  if (redOpArgIsPtr) {
+-    if (redOpArg % 2 != 0) {
+-      redOpArg = *reinterpret_cast<uint8_t*>(redOpArg);
+-    } else if (redOpArg % 4 != 0) {
+-      redOpArg = *reinterpret_cast<uint16_t*>(redOpArg);
+-    } else if (redOpArg % 8 != 0) {
+-      redOpArg = *reinterpret_cast<uint32_t*>(redOpArg);
+-    } else {
+-      redOpArg = *reinterpret_cast<uint64_t*>(redOpArg);
+-    }
+-  }
+-  reduceCopy<COLL_UNROLL, RedOp, T, 0, 1, 1, 0, 1, 1, /*PreOpSrcs=*/1>(tid, tn, redOpArg, true, 1, &src, 1, &dst,
+-                                                                       i1 - i0);
+-}
+-} // namespace
+-
+-ncclResult_t ncclLaunchOneRank(void* dst, void const* src, size_t nElts, struct ncclDevRedOpFull redOp,
+-                               ncclDataType_t eltType, cudaStream_t stream) {
+-  size_t eltSize = ncclTypeSize(eltType);
+-  if (redOp.op != ncclDevPreMulSum) {
+-    if (dst != src) {
+-      NCCLCHECK(ncclCudaMemcpyAsync((char*)dst, (char*)src, nElts * eltSize, stream));
+-    }
+-    return ncclSuccess;
+-  }
+-
+-  void const* kernel;
+-  switch (eltType) {
+-  case ncclInt8:
+-    kernel = (void const*)&oneRankReduce<FuncPreMulSum<int8_t>>;
+-    break;
+-  case ncclUint8:
+-    kernel = (void const*)&oneRankReduce<FuncPreMulSum<uint8_t>>;
+-    break;
+-  case ncclInt32:
+-    kernel = (void const*)&oneRankReduce<FuncPreMulSum<int32_t>>;
+-    break;
+-  case ncclUint32:
+-    kernel = (void const*)&oneRankReduce<FuncPreMulSum<uint32_t>>;
+-    break;
+-  case ncclInt64:
+-    kernel = (void const*)&oneRankReduce<FuncPreMulSum<int64_t>>;
+-    break;
+-  case ncclUint64:
+-    kernel = (void const*)&oneRankReduce<FuncPreMulSum<uint64_t>>;
+-    break;
+-#if defined(__CUDA_FP8_TYPES_EXIST__) && __CUDA_ARCH__ >= 900
+-  case ncclFloat8e4m3:
+-    kernel = (void const*)&oneRankReduce<FuncPreMulSum<__nv_fp8_e4m3>>;
+-    break;
+-  case ncclFloat8e5m2:
+-    kernel = (void const*)&oneRankReduce<FuncPreMulSum<__nv_fp8_e5m2>>;
+-    break;
+-#endif
+-  case ncclFloat16:
+-    kernel = (void const*)&oneRankReduce<FuncPreMulSum<half>>;
+-    break;
+-#if defined(__CUDA_BF16_TYPES_EXIST__)
+-  case ncclBfloat16:
+-    kernel = (void const*)&oneRankReduce<FuncPreMulSum<__nv_bfloat16>>;
+-    break;
+-#endif
+-  case ncclFloat32:
+-    kernel = (void const*)&oneRankReduce<FuncPreMulSum<float>>;
+-    break;
+-  case ncclFloat64:
+-    kernel = (void const*)&oneRankReduce<FuncPreMulSum<double>>;
+-    break;
+-  default:
+-    return ncclInvalidArgument;
+-  }
+-  dim3 grid = {0, 1, 1};
+-  grid.x = std::min(32, (int)divUp(nElts * eltSize, 16 << 10));
+-  dim3 block = {512, 1, 1};
+-  void* args[5] = {&dst, &src, &nElts, &redOp.scalarArg, &redOp.scalarArgIsPtr};
+-  CUDACHECK(cudaLaunchKernel(kernel, grid, block, args, 0, stream));
+-  return ncclSuccess;
+-}
+diff -urN a/src/device/onerank.cu.cc b/src/device/onerank.cu.cc
+--- a/src/device/onerank.cu.cc	1970-01-01 00:00:00.000000000 +0000
++++ b/src/device/onerank.cu.cc	2026-06-04 22:28:21.000000000 +0000
+@@ -0,0 +1,110 @@
++/*************************************************************************
++ * SPDX-FileCopyrightText: Copyright (c) 2023-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
++ * SPDX-License-Identifier: Apache-2.0
++ *
++ * See LICENSE.txt for more license information
++ *************************************************************************/
++
++#include "alloc.h"
++#include "collectives.h"
++#include "common_kernel.h"
++#include "common.h"
++#include <cuda_runtime.h>
++
++namespace {
++template <typename RedOp>
++__global__ __launch_bounds__(512, 1) void oneRankReduce(void* dst, void* src, size_t nElts, uint64_t redOpArg,
++                                                        bool redOpArgIsPtr) {
++  using T = typename RedOp::EltType;
++  int tid = threadIdx.x;
++  int tn = blockDim.x;
++  int bid = blockIdx.x;
++  int bn = gridDim.x;
++
++  // each block/channel gets a roughly equal segment of 16 byte packs
++  constexpr int EltPerPack = 16 / sizeof(T);
++  intptr_t i0 = (bid + 0) * alignUp(divUp(nElts, bn), EltPerPack);
++  intptr_t i1 = (bid + 1) * alignUp(divUp(nElts, bn), EltPerPack);
++  i0 = min(i0, nElts);
++  i1 = min(i1, nElts);
++  src = (T*)src + i0;
++  dst = (T*)dst + i0;
++
++  if (redOpArgIsPtr) {
++    if (redOpArg % 2 != 0) {
++      redOpArg = *reinterpret_cast<uint8_t*>(redOpArg);
++    } else if (redOpArg % 4 != 0) {
++      redOpArg = *reinterpret_cast<uint16_t*>(redOpArg);
++    } else if (redOpArg % 8 != 0) {
++      redOpArg = *reinterpret_cast<uint32_t*>(redOpArg);
++    } else {
++      redOpArg = *reinterpret_cast<uint64_t*>(redOpArg);
++    }
++  }
++  reduceCopy<COLL_UNROLL, RedOp, T, 0, 1, 1, 0, 1, 1, /*PreOpSrcs=*/1>(tid, tn, redOpArg, true, 1, &src, 1, &dst,
++                                                                       i1 - i0);
++}
++} // namespace
++
++ncclResult_t ncclLaunchOneRank(void* dst, void const* src, size_t nElts, struct ncclDevRedOpFull redOp,
++                               ncclDataType_t eltType, cudaStream_t stream) {
++  size_t eltSize = ncclTypeSize(eltType);
++  if (redOp.op != ncclDevPreMulSum) {
++    if (dst != src) {
++      NCCLCHECK(ncclCudaMemcpyAsync((char*)dst, (char*)src, nElts * eltSize, stream));
++    }
++    return ncclSuccess;
++  }
++
++  void const* kernel;
++  switch (eltType) {
++  case ncclInt8:
++    kernel = (void const*)&oneRankReduce<FuncPreMulSum<int8_t>>;
++    break;
++  case ncclUint8:
++    kernel = (void const*)&oneRankReduce<FuncPreMulSum<uint8_t>>;
++    break;
++  case ncclInt32:
++    kernel = (void const*)&oneRankReduce<FuncPreMulSum<int32_t>>;
++    break;
++  case ncclUint32:
++    kernel = (void const*)&oneRankReduce<FuncPreMulSum<uint32_t>>;
++    break;
++  case ncclInt64:
++    kernel = (void const*)&oneRankReduce<FuncPreMulSum<int64_t>>;
++    break;
++  case ncclUint64:
++    kernel = (void const*)&oneRankReduce<FuncPreMulSum<uint64_t>>;
++    break;
++#if defined(__CUDA_FP8_TYPES_EXIST__) && __CUDA_ARCH__ >= 900
++  case ncclFloat8e4m3:
++    kernel = (void const*)&oneRankReduce<FuncPreMulSum<__nv_fp8_e4m3>>;
++    break;
++  case ncclFloat8e5m2:
++    kernel = (void const*)&oneRankReduce<FuncPreMulSum<__nv_fp8_e5m2>>;
++    break;
++#endif
++  case ncclFloat16:
++    kernel = (void const*)&oneRankReduce<FuncPreMulSum<half>>;
++    break;
++#if defined(__CUDA_BF16_TYPES_EXIST__)
++  case ncclBfloat16:
++    kernel = (void const*)&oneRankReduce<FuncPreMulSum<__nv_bfloat16>>;
++    break;
++#endif
++  case ncclFloat32:
++    kernel = (void const*)&oneRankReduce<FuncPreMulSum<float>>;
++    break;
++  case ncclFloat64:
++    kernel = (void const*)&oneRankReduce<FuncPreMulSum<double>>;
++    break;
++  default:
++    return ncclInvalidArgument;
++  }
++  dim3 grid = {0, 1, 1};
++  grid.x = std::min(32, (int)divUp(nElts * eltSize, 16 << 10));
++  dim3 block = {512, 1, 1};
++  void* args[5] = {&dst, &src, &nElts, &redOp.scalarArg, &redOp.scalarArgIsPtr};
++  CUDACHECK(cudaLaunchKernel(kernel, grid, block, args, 0, stream));
++  return ncclSuccess;
++}
+diff -urN a/src/device/symmetric/data_ops.cuh b/src/device/symmetric/data_ops.cuh
+--- a/src/device/symmetric/data_ops.cuh	2026-07-16 10:29:45.447270192 +0000
++++ b/src/device/symmetric/data_ops.cuh	2026-07-16 10:30:21.361973742 +0000
+@@ -41,7 +41,7 @@
+     for (int i = 0; i < sizeof(T) / 4; i++) u32[i] = __ldcs((uint32_t*)p + i);
+     break;
+   case 8:
+-    for (int i = 0; i < sizeof(T) / 8; i++) u64[i] = __ldcs((uint64_t*)p + i);
++    for (int i = 0; i < sizeof(T) / 8; i++) u64[i] = __ldcs((unsigned long long*)p + i);
+     break;
+   case 16:
+     for (int i = 0; i < sizeof(T) / 16; i++) u32v4[i] = __ldcs((uint4*)p + i);
+@@ -89,7 +89,7 @@
+     for (int i = 0; i < sizeof(T) / 4; i++) __stcs((uint32_t*)p + i, u32[i]);
+     break;
+   case 8:
+-    for (int i = 0; i < sizeof(T) / 8; i++) __stcs((uint64_t*)p + i, u64[i]);
++    for (int i = 0; i < sizeof(T) / 8; i++) __stcs((unsigned long long*)p + i, u64[i]);
+     break;
+   case 16:
+     for (int i = 0; i < sizeof(T) / 16; i++) __stcs((uint4*)p + i, u32v4[i]);
+diff -urN a/src/include/nccl_common.h b/src/include/nccl_common.h
+--- a/src/include/nccl_common.h	2026-07-16 10:29:45.466464072 +0000
++++ b/src/include/nccl_common.h	2026-07-16 10:30:21.359142997 +0000
+@@ -11,7 +11,11 @@
+ #ifdef NCCL_OS_LINUX
+   // Workaround for libstdc++ trying to force public visibility of std:: symbols.  We don't want to do that in
+   // libnccl.so.
 +#if defined(__GLIBCXX__)
  #include <bits/c++config.h>
 +#endif
  #undef _GLIBCXX_VISIBILITY
  #define _GLIBCXX_VISIBILITY(V)
-
-diff --git a/src/include/nccl_device/gin/proxy/gin_proxy.h b/src/include/nccl_device/gin/proxy/gin_proxy.h
---- a/src/include/nccl_device/gin/proxy/gin_proxy.h
-+++ b/src/include/nccl_device/gin/proxy/gin_proxy.h
-@@ -55,7 +55,7 @@ NCCL_DEVICE_INLINE void postGfd(Coop coop, ncclGinProxyGpuCtx_t* proxyCtx, ncclG
--// 4x16 byte store with the write-through cache hint
-+// 16x4 byte store with the write-through cache hint
- #pragma unroll
--    for (uint8_t i = 0; i < 4; i++) {
--      __stwt((uint4*)&q[idx] + i, ((uint4*)gfd)[i]);
-+    for (uint8_t i = 0; i < 16; i++) {
-+      __stwt((__half2*)&q[idx] + i, ((__half2*)gfd)[i]);
+ #endif
+diff -urN a/src/include/nccl_device/gin/proxy/gin_proxy.h b/src/include/nccl_device/gin/proxy/gin_proxy.h
+--- a/src/include/nccl_device/gin/proxy/gin_proxy.h	2026-07-16 10:29:45.470674982 +0000
++++ b/src/include/nccl_device/gin/proxy/gin_proxy.h	2026-07-16 10:30:21.359863239 +0000
+@@ -84,9 +84,11 @@
+     // through (uint4*), which emits v4.b32 PTX requiring 16-byte alignment.
+     // ncclGinProxyGfd_t is declared __attribute__((packed, aligned(16))) in
+     // gin_proxy_device_host_common.h; static_asserts there enforce the contract.
+-    NVCC_PRAGMA_UNROLL_AUTO
+-    for (uint8_t i = 0; i < sizeof(ncclGinProxyGfd_t) / sizeof(uint4); i++) {
+-      __stwt((uint4*)&q[gfdIdx] + i, ((uint4*)gfd)[i]);
++    // 4-byte vector stores with the write-through cache hint.
++    // Use __half2 to avoid alignment issues if any.
++    #pragma unroll
++    for (uint8_t i = 0; i < sizeof(ncclGinProxyGfd_t) / sizeof(__half2); i++) {
++      __stwt((__half2*)&q[gfdIdx] + i, ((__half2*)gfd)[i]);
      }
-   }
- }
-diff --git a/src/include/nccl_device/utility.h b/src/include/nccl_device/utility.h
---- a/src/include/nccl_device/utility.h
-+++ b/src/include/nccl_device/utility.h
+     if (isGet) {
+       // Atomic max with rolling logic.
+diff -urN a/src/include/nccl_device/utility.h b/src/include/nccl_device/utility.h
+--- a/src/include/nccl_device/utility.h	2026-07-16 10:29:45.479597157 +0000
++++ b/src/include/nccl_device/utility.h	2026-07-16 10:30:21.361122417 +0000
 @@ -17,7 +17,7 @@
-             #define NCCL_CHECK_CUDACC 0
-         #endif
-     #else
--        #if __CUDACC__
-+        #ifdef __CUDACC__
-             #define NCCL_CHECK_CUDACC 1
-         #else
-             #define NCCL_CHECK_CUDACC 0
-        #endif
-
-diff --git a/src/device/symmetric/data_ops.cuh b/src/device/symmetric/data_ops.cuh
---- a/src/device/symmetric/data_ops.cuh
-+++ b/src/device/symmetric/data_ops.cuh
-@@ -26,7 +26,7 @@
-   case 1: for (int i=0; i < sizeof(T)/1; i++) u8[i] = __ldcs((uint8_t*)p + i); break;
-   case 2: for (int i=0; i < sizeof(T)/2; i++) u16[i] = __ldcs((uint16_t*)p + i); break;
-   case 4: for (int i=0; i < sizeof(T)/4; i++) u32[i] = __ldcs((uint32_t*)p + i); break;
--  case 8: for (int i=0; i < sizeof(T)/8; i++) u64[i] = __ldcs((uint64_t*)p + i); break;
-+  case 8: for (int i=0; i < sizeof(T)/8; i++) u64[i] = __ldcs((unsigned long long*)p + i); break;
-   case 16: for (int i=0; i < sizeof(T)/16; i++) u32v4[i] = __ldcs((uint4*)p + i); break;
-   default: __builtin_unreachable();
-   }
-@@ -62,7 +62,7 @@
-   case 1: for (int i=0; i < sizeof(T)/1; i++) __stcs((uint8_t*)p + i, u8[i]); break;
-   case 2: for (int i=0; i < sizeof(T)/2; i++) __stcs((uint16_t*)p + i, u16[i]); break;
-   case 4: for (int i=0; i < sizeof(T)/4; i++) __stcs((uint32_t*)p + i, u32[i]); break;
--  case 8: for (int i=0; i < sizeof(T)/8; i++) __stcs((uint64_t*)p + i, u64[i]); break;
-+  case 8: for (int i=0; i < sizeof(T)/8; i++) __stcs((unsigned long long*)p + i, u64[i]); break;
-   case 16: for (int i=0; i < sizeof(T)/16; i++) __stcs((uint4*)p + i, u32v4[i]); break;
-   default: __builtin_unreachable();
-   }
+ #define NCCL_CHECK_CUDACC 0
+ #endif
+ #else
+-#if __CUDACC__
++#ifdef __CUDACC__
+ #define NCCL_CHECK_CUDACC 1
+ #else
+ #define NCCL_CHECK_CUDACC 0
