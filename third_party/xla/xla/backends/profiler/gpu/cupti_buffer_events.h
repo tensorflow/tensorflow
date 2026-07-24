@@ -32,6 +32,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
+#include "third_party/gpus/cuda/extras/CUPTI/include/cupti_callbacks.h"
 #include "xla/tsl/profiler/utils/buffer_pool.h"
 #include "xla/tsl/profiler/utils/lock_free_queue.h"
 #include "tsl/platform/thread_annotations.h"
@@ -333,16 +334,34 @@ struct CuptiEventCollectorDelegate {
 // A tree of scope range ids which map child_id ==> parent_id
 typedef absl::flat_hash_map<int64_t, int64_t> ScopeRangeIdTree;
 
+// Manages the fixed size raw buffers that CUPTI fills with activity records.
+// A tracing session can have multiple buffers in flight. The manager allocates
+// or reuses empty buffers and holds completed buffers until they are parsed.
 class CuptiActivityBufferManager {
  public:
+  // Owns one raw CUPTI buffer and records how many bytes contain valid activity
+  // records. A buffer can contain multiple records.
   struct ActivityBufferAndSize {
     std::unique_ptr<uint8_t, std::function<void(uint8_t*)>> buffer;
     size_t size;  // size in bytes for the events filled by CUPTI.
     explicit ActivityBufferAndSize(uint8_t* p = nullptr, size_t sz = 0);
   };
 
-  explicit CuptiActivityBufferManager(size_t buffer_size_in_bytes)
-      : buffer_pool_(buffer_size_in_bytes) {}
+  // A batch detached from the manager for periodic flushing or final trace
+  // shutdown. All buffers in a batch come from the same tracing session, so
+  // they share one subscriber and one activity record API version.
+  struct CachedActivityBufferBatch {
+    std::list<ActivityBufferAndSize> buffers;
+    CUpti_SubscriberHandle subscriber = nullptr;
+    bool use_v2_records = false;
+  };
+
+  explicit CuptiActivityBufferManager(
+      size_t buffer_size_in_bytes, CUpti_SubscriberHandle subscriber = nullptr,
+      bool use_v2_records = false)
+      : buffer_pool_(buffer_size_in_bytes),
+        subscriber_(subscriber),
+        use_v2_records_(use_v2_records) {}
 
   size_t GetBufferSizeInBytes() { return buffer_pool_.GetBufferSizeInBytes(); }
 
@@ -355,22 +374,30 @@ class CuptiActivityBufferManager {
     cached_buffers_.emplace_back(p, sz);
   }
 
-  std::list<ActivityBufferAndSize> PopCachedBuffers() {
-    std::list<ActivityBufferAndSize> result;
+  // Atomically removes and returns all currently cached buffers. The manager is
+  // left empty and can collect more buffers. This is used for periodic flushing
+  // and final trace shutdown.
+  CachedActivityBufferBatch PopCachedBuffers() {
+    CachedActivityBufferBatch result;
+    result.subscriber = subscriber_;
+    result.use_v2_records = use_v2_records_;
     absl::MutexLock lock(buffer_mutex_);
-    std::swap(result, cached_buffers_);
+    std::swap(result.buffers, cached_buffers_);
     return result;
   }
 
  private:
   tsl::profiler::BufferPool buffer_pool_;
+  // Fixed for the tracing session represented by this manager.
+  CUpti_SubscriberHandle subscriber_;
+  bool use_v2_records_;
   absl::Mutex buffer_mutex_;
   std::list<ActivityBufferAndSize> cached_buffers_ TF_GUARDED_BY(buffer_mutex_);
 };
 
 void AddActivityBufferListEventsTo(
-    CuptiEventCollectorDelegate& receiver,
-    std::list<CuptiActivityBufferManager::ActivityBufferAndSize>& buffer_list,
+    CuptiEventCollectorDelegate& collector,
+    CuptiActivityBufferManager::CachedActivityBufferBatch& cached_buffers,
     size_t max_activity_event_count, size_t& dropped_activity_event_count);
 
 class CallbackAnnotationsAndEvents {

@@ -1037,15 +1037,16 @@ class CuptiDriverApiHookWithActivityApi : public CuptiDriverApiHook {
                                 CUpti_CallbackId cbid,
                                 const CUpti_CallbackData* cbdata) override {
     // Stash away the current Cupti timestamp into cbdata.
-    *cbdata->correlationData =
-        option_.required_callback_api_events ? CuptiTracer::GetTimestamp() : 0;
+    *cbdata->correlationData = option_.required_callback_api_events
+                                   ? tracer_->GetTimestampForSubscriber()
+                                   : 0;
     return absl::OkStatus();
   }
   absl::Status OnDriverApiExit(int device_id, CUpti_CallbackDomain domain,
                                CUpti_CallbackId cbid,
                                const CUpti_CallbackData* cbdata) override {
     // Grab timestamp for API exit. API entry timestamp saved in cbdata.
-    uint64_t end_tsc = CuptiTracer::GetTimestamp();
+    uint64_t end_tsc = tracer_->GetTimestampForSubscriber();
     uint64_t start_tsc = *cbdata->correlationData;
     TrackContext(cbid, cbdata->context);
     return AddDriverApiCallbackEvent(tracer_, cupti_interface_, device_id,
@@ -1170,20 +1171,38 @@ absl::Status CuptiTracer::Enable(
   cupti_driver_api_hook_ = std::make_unique<CuptiDriverApiHookWithActivityApi>(
       *option_, cupti_interface_, this);
 
+  absl::Cleanup api_tracing_cleanup = [&] {
+    if (cupti_interface_->Disabled()) {
+      api_tracing_enabled_ = false;
+      // A subscriber created by this session is owned by the error manager
+      // undo stack and has already been unsubscribed.
+      ClearSubscriberState();
+    } else {
+      DisableApiTracing(/*unsubscribe=*/true).IgnoreError();
+    }
+    using_v2_subscriber_api_ = false;
+    cupti_interface_->CleanUp();
+  };
+
   tsl::profiler::AnnotationStack::Enable(true);
-
-  absl::Status status = EnableApiTracing();
-  need_root_access_ |= status.code() == tsl::error::PERMISSION_DENIED;
-  if (!status.ok()) {
+  absl::Cleanup annotation_cleanup = [] {
     tsl::profiler::AnnotationStack::Enable(false);
-    return status;
-  }
+  };
 
-  absl::Status activity_status = EnableActivityTracing();
-  if (!activity_status.ok()) {
-    tsl::profiler::AnnotationStack::Enable(false);
-    return activity_status;
-  }
+  absl::Status api_status = EnableApiTracing();
+  need_root_access_ |= api_status.code() == tsl::error::PERMISSION_DENIED;
+  RETURN_IF_ERROR(api_status);
+
+  absl::Cleanup activity_tracing_cleanup = [&] {
+    if (cupti_interface_->Disabled()) {
+      // The error manager already disabled activity tracing; only reset the
+      // local state.
+      activity_tracing_enabled_ = false;
+    } else {
+      DisableActivityTracing().IgnoreError();
+    }
+  };
+  RETURN_IF_ERROR(EnableActivityTracing());
 
   int num_gpus_requested = xplanes.size();
   // Enable PM Sampling after CUPTI is initialized.
@@ -1209,16 +1228,21 @@ absl::Status CuptiTracer::Enable(
           samples->PopulateCounterLine(&xplane_builder,
                                        collector_->GetProfileStartTimeNs());
         };
-    // Creates PM sampler object.
     ASSIGN_OR_RETURN(
         cupti_pm_sampler_,
         CreatePmSampler(num_gpus_requested, option_->pm_sampler_options));
-
+    absl::Cleanup pm_sampler_cleanup = [&] {
+      cupti_pm_sampler_->Deinitialize().IgnoreError();
+    };
     RETURN_IF_ERROR(cupti_pm_sampler_->StartSampler());
     pm_sampling_enabled_ = true;
+    std::move(pm_sampler_cleanup).Cancel();
   }
 
-  return status;
+  std::move(annotation_cleanup).Cancel();
+  std::move(activity_tracing_cleanup).Cancel();
+  std::move(api_tracing_cleanup).Cancel();
+  return absl::OkStatus();
 }
 
 void CuptiTracer::Disable() {
@@ -1234,33 +1258,64 @@ void CuptiTracer::Disable() {
     pm_sampling_enabled_ = false;
   }
 
-  // ActivityDisableV2 needs the subscriber handle still valid; disable
-  // activities before API tracing (which calls Unsubscribe) only in the V2
-  // subscriber path.
   if (using_v2_subscriber_api_) {
+    // Preserve a best effort end timestamp in case teardown disables CUPTI
+    // before the final timestamp can be read.
+    uint64_t tracing_end_time_ns = GetTimestampForSubscriber();
+    // The subsequent ActivityDisableV2 and ActivityGetNextRecordV2 calls still
+    // need the subscriber handle.
+    DisableApiTracing(/*unsubscribe=*/false).IgnoreError();
     DisableActivityTracing().IgnoreError();
-    DisableApiTracing().IgnoreError();
+    cupti_driver_api_hook_->SyncAndFlush().IgnoreError();
+    if (!cupti_interface_->Disabled()) {
+      // Prefer the timestamp taken after synchronization.
+      uint64_t final_timestamp_ns = GetTimestampForSubscriber();
+      if (!cupti_interface_->Disabled()) {
+        tracing_end_time_ns = final_timestamp_ns;
+      }
+    }
+    collector_->SetTracingEndTimeNs(tracing_end_time_ns);
+
+    // Process callback events first because they populate AnnotationMap.
+    // Activity events then use that map to attach annotations to GPU events.
+    collector_->OnTracerCollectedCallbackData(
+        GatherCallbackAnnotationsAndEvents(/*stop_recording=*/true),
+        IsCallbackApiEventsRequired());
+
+    if (cupti_interface_->Disabled()) {
+      // A fatal teardown error runs CuptiErrorManager's undo stack, which
+      // already unsubscribed this session's subscriber.
+      api_tracing_enabled_ = false;
+      activity_tracing_enabled_ = false;
+      activity_buffers_.reset();
+      ClearSubscriberState();
+    } else {
+      if (activity_buffers_) {
+        auto cached_buffers = activity_buffers_->PopCachedBuffers();
+        activity_buffers_.reset();
+        collector_->OnTracerCachedActivityBuffers(std::move(cached_buffers));
+      }
+      DisableApiTracing(/*unsubscribe=*/true).IgnoreError();
+    }
+    cupti_interface_->CleanUp();
+    Finalize().IgnoreError();
   } else {
-    DisableApiTracing().IgnoreError();
+    DisableApiTracing(/*unsubscribe=*/true).IgnoreError();
     DisableActivityTracing().IgnoreError();
-  }
-  cupti_interface_->CleanUp();
-  Finalize().IgnoreError();
-  cupti_driver_api_hook_->SyncAndFlush().IgnoreError();
+    cupti_interface_->CleanUp();
+    Finalize().IgnoreError();
+    cupti_driver_api_hook_->SyncAndFlush().IgnoreError();
+    collector_->SetTracingEndTimeNs(GetTimestamp());
 
-  collector_->SetTracingEndTimeNs(GetTimestamp());
+    collector_->OnTracerCollectedCallbackData(
+        GatherCallbackAnnotationsAndEvents(/*stop_recording=*/true),
+        IsCallbackApiEventsRequired());
 
-  // The callback API events must be processed before activity API buffers
-  // because the AnnotationMap is populated from the callback API events and
-  // queried by the activity API events.
-  collector_->OnTracerCollectedCallbackData(
-      GatherCallbackAnnotationsAndEvents(/*stop_recording=*/true),
-      IsCallbackApiEventsRequired());
-
-  if (activity_buffers_) {
-    auto cached_buffers = activity_buffers_->PopCachedBuffers();
-    activity_buffers_.reset();
-    collector_->OnTracerCachedActivityBuffers(std::move(cached_buffers));
+    if (activity_buffers_) {
+      auto cached_buffers = activity_buffers_->PopCachedBuffers();
+      activity_buffers_.reset();
+      collector_->OnTracerCachedActivityBuffers(std::move(cached_buffers));
+    }
   }
 
   if (cupti_dropped_activity_event_count_ > 0) {
@@ -1277,6 +1332,7 @@ void CuptiTracer::Disable() {
   option_.reset();
   cupti_driver_api_hook_.reset();
   using_v2_subscriber_api_ = false;
+  subscriber_prepared_for_current_session_ = false;
   tsl::profiler::AnnotationStack::Enable(false);
 }
 
@@ -1383,7 +1439,7 @@ absl::Status CuptiTracer::FlushEventsToCollector() {
 
   // Need get the cached activity buffers first, but send to collector after
   // the callback events are processed.
-  std::list<CuptiActivityBufferManager::ActivityBufferAndSize> cached_buffers;
+  CuptiActivityBufferManager::CachedActivityBufferBatch cached_buffers;
   if (activity_tracing_enabled_) {
     cached_buffers = activity_buffers_->PopCachedBuffers();
   }
@@ -1412,32 +1468,64 @@ absl::Status CuptiTracer::FlushActivityBuffers() {
   return absl::OkStatus();
 }
 
-// Need to trace graph ids from creation and instantiation.
-absl::Status CuptiTracer::EnableApiTracing() {
-  if (api_tracing_enabled_) {
+absl::Status CuptiTracer::PrepareForProfilerStart(
+    const CuptiTracerOptions& option) {
+  return PrepareSubscriberForSession(option);
+}
+
+absl::Status CuptiTracer::PrepareSubscriberForSession(
+    const CuptiTracerOptions& option) {
+  if (subscriber_prepared_for_current_session_) {
     return absl::OkStatus();
   }
 
-  PrepareCallbackStart();
-  using_v2_subscriber_api_ = false;
-
-  VLOG(1) << "Enable subscriber";
+  VLOG(1) << "Prepare subscriber";
   // Subscribe can return CUPTI_ERROR_MAX_LIMIT_REACHED.
   // The application which calls CUPTI APIs cannot be used with Nvidia tools
   // like nvprof, Nvidia Visual Profiler, Nsight Compute, Nsight Systems.
   CUptiResult subscribe_status = CUPTI_ERROR_NOT_SUPPORTED;
-  if (option_->prefer_cupti_v2) {
+  bool use_v2_subscriber = false;
+  if (option.prefer_cupti_v2) {
     subscribe_status = cupti_interface_->SubscribeV2(
         &subscriber_, (CUpti_CallbackFunc)ApiCallback, this);
     if (subscribe_status == CUPTI_SUCCESS) {
-      using_v2_subscriber_api_ = true;
+      subscriber_is_v2_ = true;
+    }
+    if (subscribe_status == CUPTI_SUCCESS) {
+      use_v2_subscriber = true;
+      // Validate V2 timestamps before enabling subscriber-scoped tracing.
+      uint64_t unused_timestamp = 0;
+      CUptiResult timestamp_status =
+          cupti_interface_->GetTimestampV2(subscriber_, &unused_timestamp);
+      if (timestamp_status != CUPTI_SUCCESS) {
+        if (cupti_interface_->Disabled()) {
+          // Clear local state after the error manager unsubscribed V2.
+          ClearSubscriberState();
+          cupti_interface_->CleanUp();
+          return absl::InternalError(
+              "CUPTI V2 subscriber timestamp is unavailable");
+        }
+        LOG(INFO) << "CUPTI V2 subscriber timestamp is unavailable with status "
+                  << timestamp_status
+                  << "; falling back to legacy CUPTI subscriber.";
+        // Unsubscribe V2 because GetTimestampV2() is unavailable.
+        RETURN_IF_ERROR(UnsubscribeAndClearSubscriber());
+        // Remove the stale V2 unsubscribe callback from the undo stack.
+        cupti_interface_->CleanUp();
+        // Prepare to retry with the legacy V1 subscriber API.
+        use_v2_subscriber = false;
+        subscribe_status = CUPTI_ERROR_NOT_SUPPORTED;
+      }
     }
   }
-  if (!using_v2_subscriber_api_) {
+  if (!use_v2_subscriber) {
     if (subscribe_status == CUPTI_ERROR_NOT_SUPPORTED ||
         subscribe_status == CUPTI_ERROR_UNKNOWN) {
       subscribe_status = cupti_interface_->Subscribe(
           &subscriber_, (CUpti_CallbackFunc)ApiCallback, this);
+      if (subscribe_status == CUPTI_SUCCESS) {
+        subscriber_is_v2_ = false;
+      }
     }
   }
   if (ABSL_PREDICT_FALSE(subscribe_status != CUPTI_SUCCESS)) {
@@ -1449,6 +1537,20 @@ absl::Status CuptiTracer::EnableApiTracing() {
     }
     return absl::InternalError(absl::StrCat("CUPTI call error: ", errstr));
   }
+  subscriber_prepared_for_current_session_ = true;
+  return absl::OkStatus();
+}
+
+// Need to trace graph ids from creation and instantiation.
+absl::Status CuptiTracer::EnableApiTracing() {
+  if (api_tracing_enabled_) {
+    return absl::OkStatus();
+  }
+
+  PrepareCallbackStart();
+  using_v2_subscriber_api_ = false;
+  RETURN_IF_ERROR(PrepareSubscriberForSession(*option_));
+  using_v2_subscriber_api_ = subscriber_is_v2_;
   api_tracing_enabled_ = true;
 
   absl::Span<const CUpti_CallbackIdResource> res_cbids =
@@ -1475,32 +1577,31 @@ absl::Status CuptiTracer::EnableApiTracing() {
   return absl::OkStatus();
 }
 
-absl::Status CuptiTracer::DisableApiTracing() {
-  if (!api_tracing_enabled_) {
-    return absl::OkStatus();
-  }
+absl::Status CuptiTracer::DisableApiTracing(bool unsubscribe) {
+  if (api_tracing_enabled_) {
+    api_tracing_enabled_ = false;
 
-  api_tracing_enabled_ = false;
+    absl::Span<const CUpti_CallbackIdResource> res_cbids =
+        cuda_versions::GetCudaGraphTracingResourceCbids();
+    for (auto cbid : res_cbids) {
+      RETURN_IF_CUPTI_ERROR(EnableCallback(0 /* DISABLE */, subscriber_,
+                                           CUPTI_CB_DOMAIN_RESOURCE, cbid));
+    }
 
-  absl::Span<const CUpti_CallbackIdResource> res_cbids =
-      cuda_versions::GetCudaGraphTracingResourceCbids();
-  for (auto cbid : res_cbids) {
-    RETURN_IF_CUPTI_ERROR(EnableCallback(0 /* DISABLE */, subscriber_,
-                                         CUPTI_CB_DOMAIN_RESOURCE, cbid));
-  }
-
-  if (!option_->cbids_selected.empty()) {
+    if (option_->cbids_selected.empty()) {
+      RETURN_IF_CUPTI_ERROR(EnableDomain(0 /* DISABLE */, subscriber_,
+                                         CUPTI_CB_DOMAIN_DRIVER_API));
+    }
     for (auto cbid : option_->cbids_selected) {
       RETURN_IF_CUPTI_ERROR(EnableCallback(0 /* DISABLE */, subscriber_,
                                            CUPTI_CB_DOMAIN_DRIVER_API, cbid));
     }
-  } else {
-    RETURN_IF_CUPTI_ERROR(
-        EnableDomain(0 /* DISABLE */, subscriber_, CUPTI_CB_DOMAIN_DRIVER_API));
   }
 
-  VLOG(1) << "Disable subscriber";
-  RETURN_IF_CUPTI_ERROR(Unsubscribe(subscriber_));
+  if (unsubscribe) {
+    VLOG(1) << "Disable subscriber";
+    RETURN_IF_ERROR(UnsubscribeAndClearSubscriber());
+  }
   return absl::OkStatus();
 }
 
@@ -1646,6 +1747,20 @@ absl::Status CuptiTracer::Finalize() {
   return absl::OkStatus();
 }
 
+void CuptiTracer::ClearSubscriberState() {
+  subscriber_ = nullptr;
+  subscriber_is_v2_ = false;
+  subscriber_prepared_for_current_session_ = false;
+}
+
+absl::Status CuptiTracer::UnsubscribeAndClearSubscriber() {
+  if (subscriber_ != nullptr) {
+    RETURN_IF_CUPTI_ERROR(Unsubscribe(subscriber_));
+  }
+  ClearSubscriberState();
+  return absl::OkStatus();
+}
+
 /*static*/ uint64_t CuptiTracer::GetTimestamp() {
   uint64_t tsc;
   CuptiInterface* cupti_interface = GetCuptiInterface();
@@ -1654,6 +1769,26 @@ absl::Status CuptiTracer::Finalize() {
   }
   // Return 0 on error. If an activity timestamp is 0, the activity will be
   // dropped during time normalization.
+  return 0;
+}
+
+uint64_t CuptiTracer::GetTimestampForSubscriber() const {
+  if (!subscriber_is_v2_) {
+    return CuptiTracer::GetTimestamp();
+  }
+  DCHECK_NE(subscriber_, nullptr);
+  DCHECK_NE(cupti_interface_, nullptr);
+
+  uint64_t tsc;
+  CUptiResult timestamp_status =
+      cupti_interface_->GetTimestampV2(subscriber_, &tsc);
+  if (timestamp_status == CUPTI_SUCCESS) {
+    return tsc;
+  }
+  LOG_FIRST_N(WARNING, 1) << "CUPTI V2 GetTimestamp failed for the subscriber; "
+                             "returning timestamp 0.";
+  // Return 0 for an unavailable V2 timestamp; dependent events may be dropped
+  // during time normalization.
   return 0;
 }
 
@@ -1813,7 +1948,9 @@ void CuptiTracer::RequestActivityBuffer(uint8_t** buffer, size_t* size) {
   *size = activity_buffers_->GetBufferSizeInBytes();
 }
 
-static size_t CountCuptiActivityEvent(uint8_t* buffer, size_t size) {
+static size_t CountCuptiActivityEvent(uint8_t* buffer, size_t size,
+                                      CUpti_SubscriberHandle subscriber,
+                                      bool use_v2_records) {
   size_t total_event_count = 0;
   if (size == 0 || buffer == nullptr) {
     return total_event_count;
@@ -1821,8 +1958,12 @@ static size_t CountCuptiActivityEvent(uint8_t* buffer, size_t size) {
   CuptiInterface* cupti_interface = GetCuptiInterface();
   CUpti_Activity* record = nullptr;
   while (true) {
-    if (cupti_interface->ActivityGetNextRecord(buffer, size, &record) ==
-        CUPTI_SUCCESS) {
+    CUptiResult status =
+        use_v2_records
+            ? cupti_interface->ActivityGetNextRecordV2(subscriber, buffer, size,
+                                                       &record)
+            : cupti_interface->ActivityGetNextRecord(buffer, size, &record);
+    if (status == CUPTI_SUCCESS) {
       ++total_event_count;
     } else {
       break;
@@ -1861,7 +2002,8 @@ absl::Status CuptiTracer::ProcessActivityBuffer(CUcontext context,
     }
   }
 
-  size_t event_count_in_buffer = CountCuptiActivityEvent(buffer, size);
+  size_t event_count_in_buffer = CountCuptiActivityEvent(
+      buffer, size, subscriber_, using_v2_subscriber_api_);
   auto max_activity_event_count =
       collector_->GetOptions().max_activity_api_events;
   if (max_activity_event_count > 0 &&
@@ -1891,13 +2033,10 @@ absl::Status CuptiTracer::ProcessActivityBuffer(CUcontext context,
   if (CuptiTracer::NumGpus() == 0) {
     return ErrorWithHostname("No GPU detected.");
   }
-  if (CuptiTracer::GetCuptiTracerSingleton()->NeedRootAccess()) {
+  CuptiTracer* cupti_tracer = CuptiTracer::GetCuptiTracerSingleton();
+  if (cupti_tracer->NeedRootAccess()) {
     return ErrorWithHostname(
         "Insufficient privilege to run libcupti (you need root permission).");
-  }
-  if (CuptiTracer::GetTimestamp() == 0) {
-    return ErrorWithHostname(
-        "Failed to load libcupti (is it installed and accessible?)");
   }
   return "";
 }
@@ -1930,8 +2069,8 @@ void CuptiTracer::PrepareCallbackStart() {
 }
 
 void CuptiTracer::PrepareActivityStart() {
-  activity_buffers_ =
-      std::make_unique<CuptiActivityBufferManager>(kBufferSizeInBytes);
+  activity_buffers_ = std::make_unique<CuptiActivityBufferManager>(
+      kBufferSizeInBytes, subscriber_, using_v2_subscriber_api_);
   cupti_dropped_activity_event_count_ = 0;
   num_activity_events_in_cached_buffer_ = 0;
   num_activity_events_in_dropped_buffer_ = 0;
