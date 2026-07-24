@@ -557,6 +557,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_keep_shardings_after_spmd(false);
   opts.set_xla_enable_hlo_sharding_v3(false);
   opts.set_xla_enable_rgv3_materialization(true);
+  opts.set_xla_spmd_enable_dynamic_slice_collective_broadcast(false);
   opts.set_xla_sdy_export_all_reduce_scatter(false);
   opts.set_xla_gpu_experimental_enable_checksum_tracing_on_thunks(false);
   opts.set_xla_gpu_experimental_enable_buffer_saver_on_thunks(false);
@@ -3469,6 +3470,15 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       "If true, opportunistically materialize MeshAxesReplicaGroupList "
       "(RGV3) in SPMD partitioner. If false, fallback to legacy V1/V2 "
       "representations."));
+  flag_list->push_back(tsl::Flag(
+      "xla_spmd_enable_dynamic_slice_collective_broadcast",
+      bool_setter_for(
+          &DebugOptions::
+              set_xla_spmd_enable_dynamic_slice_collective_broadcast),
+      debug_options->xla_spmd_enable_dynamic_slice_collective_broadcast(),
+      "If true, enable the GPU SPMD lowering that broadcasts a single dynamic "
+      "slice from its sharded owner instead of all-gathering the full "
+      "operand."));
   flag_list->push_back(tsl::Flag(
       "xla_sdy_export_all_reduce_scatter",
       bool_setter_for(&DebugOptions::set_xla_sdy_export_all_reduce_scatter),

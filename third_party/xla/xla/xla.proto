@@ -1722,10 +1722,18 @@ message DebugOptions {
   // MeshAxesReplicaGroupList (RGV3).
   optional bool xla_enable_rgv3_materialization = 479;
 
+  // If true, enables the SPMD dynamic-slice collective-broadcast lowering.
+  // When a replicated dynamic-slice result is sliced from an operand tiled
+  // only along the sliced dimension, the partitioner emits a per-owner
+  // collective-broadcast inside a conditional instead of all-gathering the
+  // full operand first.  Disabled by default; GPU-only (requires
+  // kCollectiveBroadcast hardware support).
+  optional bool xla_spmd_enable_dynamic_slice_collective_broadcast = 520;
+
   // Note: when adding a new flag, please add it to one of the hardware-specific
   // or hardware-agnostic sections at the top of this proto message.
 
-  // Next id: 520
+  // Next id: 521
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.
