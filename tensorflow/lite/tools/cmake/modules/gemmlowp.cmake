@@ -48,6 +48,7 @@ set(GEMMLOWP_SOURCE_DIR "${gemmlowp_SOURCE_DIR}" CACHE PATH "Source directory")
 add_subdirectory(
   "${gemmlowp_SOURCE_DIR}/contrib"
   "${gemmlowp_BINARY_DIR}"
+  EXCLUDE_FROM_ALL
 )
 
 set(BUILD_TESTING ${BUILD_TESTING_TMP})
