@@ -309,6 +309,13 @@ class Conv2DCustomBackpropFilterOp : public OpKernel {
       return;
     }
 
+    // If input or out_backprop is empty, set gradients to zero.
+    if (input.NumElements() == 0 || out_backprop.NumElements() == 0) {
+      functor::SetZeroFunctor<Device, T> f;
+      f(context->eigen_device<Device>(), filter_backprop->flat<T>());
+      return;
+    }
+
     int64_t pad_top, pad_bottom;
     int64_t pad_left, pad_right;
     if (padding_ == Padding::EXPLICIT) {
