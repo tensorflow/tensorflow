@@ -1450,6 +1450,29 @@ PjRtStreamExecutorClient::RunAsync(
       output_args.emplace(&*buf);
       return absl::OkStatus();
     }
+    auto alias = get_alias(i);
+    if (alias) {
+      auto& input = *arguments[alias->parameter_number].mutable_element(
+          alias->parameter_index);
+      if (alias->must_alias() && !input.is_donated) {
+        return absl::InvalidArgumentError(absl::StrFormat(
+            "An input was configured to be must-alias at compile time but not "
+            "donated at runtime for output %d",
+            i));
+      }
+      if (!input.is_donated) {
+        ASSIGN_OR_RETURN(
+            se::ScopedDeviceAddress<uint8_t> allocated_buffer,
+            allocator->Allocate(device->local_device_id().value(), mem.size(),
+                                /*retry_on_failure=*/true));
+        se::DeviceAddressBase result_buffer = allocated_buffer.Release();
+        if (run_options.stream() != nullptr) {
+          RETURN_IF_ERROR(
+              run_options.stream()->MemcpyD2D(&result_buffer, mem, mem.size()));
+        }
+        mem = result_buffer;
+      }
+    }
     RawSEDeviceMemory::ConstructDelayed(
         std::move(buf), mem,
         tensorflow::down_cast<PjRtStreamExecutorDevice*>(device)
