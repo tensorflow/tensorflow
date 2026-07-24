@@ -1,0 +1,14 @@
+syntax = "proto2";
+
+package tensorflow.text;
+
+// Protocol buffer for serializing a single icu::Edits object
+// represented by a sequence of edit changes pairs: (old_length, new_length)
+message EditChanges {
+  message Change {
+    optional int32 old_length = 1;
+    optional int32 new_length = 2;
+  }
+
+  repeated Change change = 1;
+}

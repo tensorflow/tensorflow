@@ -95,5 +95,6 @@ cc_library(
     name = "nfkc",
     deps = [
         ":common",
+        "@org_tensorflow//third_party/icu/data:conversion_data",
     ],
 )

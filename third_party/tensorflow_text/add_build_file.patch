@@ -1,0 +1,19 @@
+--- /dev/null
++++ b/tensorflow_text/BUILD.bazel
+@@ -0,0 +16 @@
++package(default_visibility = ["//visibility:public"])
++exports_files(["tftext.bzl", "core/ops/wordpiece_op.cc", "python/ops/test_data/phrase_tokenizer_model.fb", "python/ops/test_data/fast_wordpiece_tokenizer_model.fb", "python/ops/test_data/fast_wordpiece_tokenizer_model_ver_15_1.fb", "python/ops/test_data/fast_wordpiece_tokenizer_model_ver_16_0.fb"])
++
++cc_library(
++    name = "ngrams_op_cc",
++    srcs = ["core/ops/ngrams_op.cc"],
++    deps = ["@org_tensorflow//tensorflow/core:framework"],
++    alwayslink = True,
++)
++
++cc_library(
++    name = "constrained_sequence_op_cc",
++    srcs = ["core/ops/constrained_sequence_op.cc"],
++    deps = ["@org_tensorflow//tensorflow/core:framework"],
++    alwayslink = True,
++)

@@ -16,6 +16,7 @@ tf_staging/tensorflow/compiler/mlir/quantization/stablehlo/internal_visibility_a
 tf_staging/tensorflow/compiler/mlir/quantization/tensorflow/internal_visibility_allowlist.bzl:
 tf_staging/tensorflow/compiler/mlir/tfrt/transforms/tpu_passes.h:
 tf_staging/tensorflow/core/example/BUILD:
+tf_staging/tensorflow/core/kernels/text/sentencepiece/native.bzl:
 tf_staging/tensorflow/core/platform/default/build_config/BUILD:
 tf_staging/tensorflow/core/platform/distribute:.bzl
 tf_staging/tensorflow/core/tfrt/mla/mla_test_utils.h:
