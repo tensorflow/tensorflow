@@ -16,7 +16,6 @@ limitations under the License.
 #ifndef XLA_CODEGEN_XTILE_CODEGEN_EMITTER_HELPERS_H_
 #define XLA_CODEGEN_XTILE_CODEGEN_EMITTER_HELPERS_H_
 
-#include <complex>
 #include <cstdint>
 #include <optional>
 #include <utility>
@@ -28,7 +27,6 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
-#include "mlir/Dialect/Complex/IR/Complex.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinAttributes.h"
@@ -261,35 +259,21 @@ mlir::Value CreateConst(mlir::ImplicitLocOpBuilder& b, mlir::Type type,
   if (auto int_type = mlir::dyn_cast<mlir::IntegerType>(type)) {
     if (int_type.isUnsignedInteger()) {
       mlir::Type signless_type = GetSignlessType(type);
-      mlir::Value cst = mlir::arith::ConstantOp::create(
-          b, b.getIntegerAttr(signless_type, value));
+      mlir::Value cst = b.create<mlir::arith::ConstantOp>(
+          b.getIntegerAttr(signless_type, value));
       return mlir::UnrealizedConversionCastOp::create(b, b.getLoc(), type, cst)
           .getResult(0);
     }
-    return mlir::arith::ConstantOp::create(b, b.getIntegerAttr(type, value));
+    return b.create<mlir::arith::ConstantOp>(b.getIntegerAttr(type, value));
   }
 
   if (mlir::isa<mlir::IndexType>(type)) {
-    return mlir::arith::ConstantOp::create(b, b.getIndexAttr(value));
+    return b.create<mlir::arith::ConstantOp>(b.getIndexAttr(value));
   }
 
   if (mlir::isa<mlir::FloatType>(type)) {
-    return mlir::arith::ConstantOp::create(
-        b, b.getFloatAttr(type, static_cast<double>(value)));
-  }
-  LOG(FATAL) << "Constant type not supported: " << llvm_ir::DumpToString(type);
-}
-
-template <typename T>
-mlir::Value CreateConst(mlir::ImplicitLocOpBuilder& b, mlir::Type type,
-                        std::complex<T> value) {
-  if (auto complex_type = mlir::dyn_cast<mlir::ComplexType>(type)) {
-    auto elem_type = complex_type.getElementType();
-    mlir::Value real_cst = mlir::arith::ConstantOp::create(
-        b, b.getFloatAttr(elem_type, static_cast<double>(value.real())));
-    mlir::Value imag_cst = mlir::arith::ConstantOp::create(
-        b, b.getFloatAttr(elem_type, static_cast<double>(value.imag())));
-    return mlir::complex::CreateOp::create(b, complex_type, real_cst, imag_cst);
+    return b.create<mlir::arith::ConstantOp>(
+        b.getFloatAttr(type, static_cast<double>(value)));
   }
   LOG(FATAL) << "Constant type not supported: " << llvm_ir::DumpToString(type);
 }
@@ -304,46 +288,27 @@ mlir::TypedValue<mlir::RankedTensorType> CreateConst(
     if (int_type.isUnsignedInteger()) {
       auto signless_tensor_type =
           mlir::cast<mlir::ShapedType>(GetSignlessType(tensor_type));
-      mlir::Value cst = mlir::arith::ConstantOp::create(
-          b, mlir::DenseElementsAttr::get(
-                 signless_tensor_type,
-                 mlir::APInt(int_type.getIntOrFloatBitWidth(), value,
-                             /*isSigned=*/false, /*implicitTrunc=*/true)));
+      mlir::Value cst =
+          b.create<mlir::arith::ConstantOp>(mlir::DenseElementsAttr::get(
+              signless_tensor_type,
+              mlir::APInt(int_type.getIntOrFloatBitWidth(), value,
+                          /*isSigned=*/false, /*implicitTrunc=*/true)));
       mlir::Value cast_res = mlir::UnrealizedConversionCastOp::create(
                                  b, b.getLoc(), tensor_type, cst)
                                  .getResult(0);
       return mlir::cast<mlir::TypedValue<mlir::RankedTensorType>>(cast_res);
     }
-    mlir::Value result = mlir::arith::ConstantOp::create(
-        b, mlir::DenseElementsAttr::get(
-               tensor_type,
-               mlir::APInt(int_type.getIntOrFloatBitWidth(), value,
-                           /*isSigned=*/false, /*implicitTrunc=*/true)));
+    mlir::Value result =
+        b.create<mlir::arith::ConstantOp>(mlir::DenseElementsAttr::get(
+            tensor_type,
+            mlir::APInt(int_type.getIntOrFloatBitWidth(), value,
+                        /*isSigned=*/false, /*implicitTrunc=*/true)));
     return mlir::cast<mlir::TypedValue<mlir::RankedTensorType>>(result);
   }
   if (auto float_type = mlir::dyn_cast<mlir::FloatType>(type)) {
-    mlir::Value result = mlir::arith::ConstantOp::create(
-        b, mlir::DenseElementsAttr::get(
-               tensor_type, b.getFloatAttr(type, static_cast<double>(value))));
-    return mlir::cast<mlir::TypedValue<mlir::RankedTensorType>>(result);
-  }
-  LOG(FATAL) << "Constant type not supported: " << llvm_ir::DumpToString(type);
-}
-
-template <typename T>
-mlir::TypedValue<mlir::RankedTensorType> CreateConst(
-    mlir::ImplicitLocOpBuilder& b, mlir::Type type, std::complex<T> value,
-    llvm::ArrayRef<int64_t> shape) {
-  auto tensor_type = mlir::RankedTensorType::get(shape, type);
-  if (auto complex_type = mlir::dyn_cast<mlir::ComplexType>(type)) {
-    auto elem_type = complex_type.getElementType();
-    mlir::Attribute real_attr =
-        b.getFloatAttr(elem_type, static_cast<double>(value.real()));
-    mlir::Attribute imag_attr =
-        b.getFloatAttr(elem_type, static_cast<double>(value.imag()));
-    mlir::ArrayAttr complex_attr = b.getArrayAttr({real_attr, imag_attr});
-    mlir::Value result = mlir::arith::ConstantOp::create(
-        b, mlir::DenseElementsAttr::get(tensor_type, complex_attr));
+    mlir::Value result =
+        b.create<mlir::arith::ConstantOp>(mlir::DenseElementsAttr::get(
+            tensor_type, b.getFloatAttr(type, static_cast<double>(value))));
     return mlir::cast<mlir::TypedValue<mlir::RankedTensorType>>(result);
   }
   LOG(FATAL) << "Constant type not supported: " << llvm_ir::DumpToString(type);

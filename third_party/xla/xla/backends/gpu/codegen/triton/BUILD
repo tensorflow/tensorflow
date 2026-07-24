@@ -231,7 +231,6 @@ cc_library(
         ":triton_kernel_source",
         ":triton_wrapper_result",
         "//xla:autotuning_proto_cc",
-        "//xla:comparison_util",
         "//xla:frontend_attributes",
         "//xla:util",
         "//xla:xla_data_proto_cc",
