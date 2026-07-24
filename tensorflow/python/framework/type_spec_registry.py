@@ -18,6 +18,7 @@ import re
 
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.types import internal
+from tensorflow.python.platform import tf_logging as logging
 
 _TYPE_SPEC_TO_NAME = {}
 _NAME_TO_TYPE_SPEC = {}
@@ -62,10 +63,10 @@ def register(name):
     # inconsistent with each other.
     if cls in _TYPE_SPEC_TO_NAME and _TYPE_SPEC_TO_NAME[cls] != name:
       raise ValueError(
-          "Class %s.%s has already been registered with name %s."
-          % (cls.__module__, cls.__name__, _TYPE_SPEC_TO_NAME[cls])
+          "Class %s.%s has already been registered with name %s." 
+        % (cls.__module__, cls.__name__, _TYPE_SPEC_TO_NAME[cls])
       )
-
+      
     if name in _NAME_TO_TYPE_SPEC:
       existing_cls = _NAME_TO_TYPE_SPEC[name]
       if existing_cls is cls:
