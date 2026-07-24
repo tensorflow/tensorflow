@@ -51,13 +51,15 @@ class XlaResource {
   // Creates a new TensorArray resource.
   static std::unique_ptr<XlaResource> CreateTensorArray(
       std::string name, DataType type, TensorShape shape,
-      xla::XlaOp initial_value, int64_t max_array_size);
+      xla::XlaOp initial_value, int64_t max_array_size,
+      bool dynamic_size = false);
 
   XlaResource(Kind kind, int arg_num, std::string name, DataType type,
               TensorShape shape, xla::XlaOp initial_value,
               int64_t max_array_size,
               const std::set<std::string>& tensor_array_gradients,
               bool tensor_array_multiple_writes_aggregate,
+              bool tensor_array_dynamic_size = false,
               const std::optional<ManagedStackTrace>& definition_stack_trace =
                   std::nullopt);
 
@@ -160,6 +162,10 @@ class XlaResource {
     return tensor_array_multiple_writes_aggregate_;
   }
 
+  bool tensor_array_dynamic_size() const {
+    return tensor_array_dynamic_size_;
+  }
+
   // 'tensor_array_gradient' is a map from TensorArrayGradV3 'source' attributes
   // to an XlaResource containing the gradient TensorArrays. We store a pointer
   // here since there should only be one gradient TensorArray per 'source'
@@ -187,6 +193,7 @@ class XlaResource {
 
   int64_t max_array_size_ = -1;
   bool tensor_array_multiple_writes_aggregate_ = false;
+  bool tensor_array_dynamic_size_ = false;
 
   std::map<std::string, std::unique_ptr<XlaResource>> tensor_array_gradients_;
   bool is_overwritten_ = false;

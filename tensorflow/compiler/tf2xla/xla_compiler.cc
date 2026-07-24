@@ -1119,6 +1119,7 @@ absl::Status XlaCompiler::BuildArguments(
                 /*max_array_size=*/arg.max_array_size,
                 /*tensor_array_gradients=*/arg.tensor_array_gradients,
                 /*tensor_array_multiple_writes_aggregate=*/true,
+                /*tensor_array_dynamic_size=*/false,
                 arg.definition_stack_trace));
         arg_expression =
             arg.kind == XlaCompiler::Argument::kResource
