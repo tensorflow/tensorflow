@@ -220,8 +220,7 @@ static bool IsLogicalReduceScatter(const HloModule& module,
           ar.shape(), ar.operands(), ar.to_apply(),
           std::make_shared<CollectiveDeviceList>(
               spec.replica_groups.first_ar_replica_groups),
-          ar.constrain_layout(), hlo_query::NextChannelId(module),
-          ar.use_global_device_ids()));
+          ar.constrain_layout(), ar.channel_id(), ar.use_global_device_ids()));
 
   HloInstruction* ds = ar.users()[0];
   auto* old_operand = ds->mutable_operand(0);
@@ -370,8 +369,6 @@ static RewriteDecision CanRewrite(const HloModule& module,
 static absl::StatusOr<bool> SplitAllReduce(const HloModuleConfig& config,
                                            AllReduceRewriteSpec spec,
                                            HloComputation& computation) {
-  int64_t next_channel_id =
-      hlo_query::NextChannelId(*spec.all_reduce->GetModule());
   VLOG(1) << "AR splitting spec: " << spec.ToString();
   // Create first AR.
   int num_partitions = config.num_partitions();
@@ -385,21 +382,19 @@ static absl::StatusOr<bool> SplitAllReduce(const HloModuleConfig& config,
 
   const auto& [first_ar_replica_groups, second_ar_replica_groups] =
       spec.replica_groups;
-  int channel_id = next_channel_id++;
   HloInstruction* first_ar =
       computation.AddInstruction(HloInstruction::CreateAllReduce(
           ar.shape(), ar.operands(), ar.to_apply(),
           std::make_shared<CollectiveDeviceList>(first_ar_replica_groups),
-          ar.constrain_layout(), channel_id, ar.use_global_device_ids()));
+          ar.constrain_layout(), ar.channel_id(), ar.use_global_device_ids()));
   ar.SetupDerivedInstruction(first_ar);
 
   // Create second AR.
-  channel_id = next_channel_id++;
   HloInstruction* second_ar =
       computation.AddInstruction(HloInstruction::CreateAllReduce(
           ds.shape(), {&ds}, ar.to_apply(),
           std::make_shared<CollectiveDeviceList>(second_ar_replica_groups),
-          ar.constrain_layout(), channel_id, ar.use_global_device_ids()));
+          ar.constrain_layout(), ar.channel_id(), ar.use_global_device_ids()));
 
   // Rewire.
   RETURN_IF_ERROR(computation.ReplaceInstruction(&ar, first_ar));
