@@ -271,6 +271,9 @@ use_repo(nccl_configure, "local_config_nccl")
 sycl_configure = use_extension("@rules_ml_toolchain//extensions:sycl_configure.bzl", "sycl_configure_ext")
 use_repo(sycl_configure, "local_config_sycl")
 
+local_clang_configure = use_extension("@rules_ml_toolchain//extensions:local_clang_configure.bzl", "local_clang_configure_ext")
+use_repo(local_clang_configure, "local_config_clang")
+
 cuda_redist_init_ext = use_extension("@rules_ml_toolchain//extensions:cuda_redist_init.bzl", "cuda_redist_init_ext")
 use_repo(
     cuda_redist_init_ext,
