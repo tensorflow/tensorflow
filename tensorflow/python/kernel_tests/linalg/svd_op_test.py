@@ -66,7 +66,8 @@ class SvdOpTest(test.TestCase):
       if test_util.is_gpu_available(cuda_only=True):
         with self.assertRaisesRegex(
             errors_impl.UnimplementedError,
-            "Determinism is not yet supported for SVD of matrices with 1 column."
+            "Determinism is not yet supported for SVD of matrices with 1"
+            " column.",
         ):
           self.evaluate(linalg_ops.svd(matrix))
 
