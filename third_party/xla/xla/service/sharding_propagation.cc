@@ -246,6 +246,7 @@ const HloInstruction* PickRepresentativeOperand(
     case HloOpcode::kCollectivePermute:
     case HloOpcode::kDivide:
     case HloOpcode::kErf:
+    case HloOpcode::kErfc:
     case HloOpcode::kExp:
     case HloOpcode::kExpm1:
     case HloOpcode::kFloor:

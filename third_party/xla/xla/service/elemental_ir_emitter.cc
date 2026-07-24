@@ -1048,6 +1048,8 @@ absl::StatusOr<llvm::Value*> ElementalIrEmitter::EmitFloatUnaryOp(
     }
     case HloOpcode::kErf:
       return EmitErf(op->shape().element_type(), operand_value);
+    case HloOpcode::kErfc:
+      return EmitErfc(op->shape().element_type(), operand_value);
     case HloOpcode::kExp:
       return EmitExp(op->shape().element_type(), operand_value, "");
     case HloOpcode::kExpm1:
@@ -2317,6 +2319,11 @@ absl::StatusOr<llvm::Value*> ElementalIrEmitter::EmitErf(
   return Unimplemented("erf");
 }
 
+absl::StatusOr<llvm::Value*> ElementalIrEmitter::EmitErfc(
+    PrimitiveType prim_type, llvm::Value* value) {
+  return Unimplemented("erfc");
+}
+
 absl::StatusOr<llvm::Value*> ElementalIrEmitter::EmitTan(
     PrimitiveType prim_type, llvm::Value* value) {
   auto sin_x = llvm_ir::EmitCallToIntrinsic(llvm::Intrinsic::sin, {value},
@@ -3328,6 +3335,7 @@ llvm_ir::ElementGenerator ElementalIrEmitter::MakeElementGenerator(
     case HloOpcode::kCos:
     case HloOpcode::kCosh:
     case HloOpcode::kErf:
+    case HloOpcode::kErfc:
     case HloOpcode::kExp:
     case HloOpcode::kExpm1:
     case HloOpcode::kFloor:

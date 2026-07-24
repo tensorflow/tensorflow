@@ -317,6 +317,18 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
     return UnsupportedTypeError(erf);
   }
 
+  absl::Status HandleErfc(const HloInstruction* erfc) override {
+    if constexpr (!is_complex_v<ReturnT>) {
+      ASSIGN_OR_RETURN(Literal literal,
+                       ElementWiseUnaryOp(erfc, [](ElementwiseT elem_operand) {
+                         return std::erfc(elem_operand);
+                       }));
+      parent_->SetEvaluatedLiteralFor(erfc, std::move(literal));
+      return absl::OkStatus();
+    }
+    return UnsupportedTypeError(erfc);
+  }
+
   absl::Status HandleExp(const HloInstruction* exp) override {
     ASSIGN_OR_RETURN(Literal literal,
                      ElementWiseUnaryOp(exp, [](ElementwiseT elem_operand) {
