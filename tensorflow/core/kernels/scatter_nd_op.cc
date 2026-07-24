@@ -142,6 +142,14 @@ class ScatterNdOp : public ScatterOpBase<Device> {
 
     const int64_t outer_dims = indices.shape().dims() - 1;
 
+    OP_REQUIRES(c, updates.shape().dims() >= outer_dims,
+                absl::InvalidArgumentError(absl::StrCat(
+                    "Updates shape must have rank at least the number of "
+                    "outer dimensions of indices (", outer_dims,
+                    "). Found: updates shape=",
+                    updates.shape().DebugString(),
+                    ", indices shape=", indices.shape().DebugString())));
+
     for (int i = 0; i < outer_dims; ++i) {
       OP_REQUIRES(
           c, indices.shape().dim_size(i) == updates.shape().dim_size(i),
@@ -215,6 +223,14 @@ class TensorScatterOp : public ScatterOpBase<Device> {
                     "Indices and updates specified for empty output shape"));
 
     const int64_t outer_dims = indices.shape().dims() - 1;
+
+    OP_REQUIRES(c, updates.shape().dims() >= outer_dims,
+                absl::InvalidArgumentError(absl::StrCat(
+                    "Updates shape must have rank at least the number of "
+                    "outer dimensions of indices (", outer_dims,
+                    "). Found: updates shape=",
+                    updates.shape().DebugString(),
+                    ", indices shape=", indices.shape().DebugString())));
 
     for (int i = 0; i < outer_dims; ++i) {
       OP_REQUIRES(c, indices.shape().dim_size(i) == updates.shape().dim_size(i),
