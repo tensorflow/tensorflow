@@ -1763,6 +1763,8 @@ class EarlyStopping(Callback):
     super(EarlyStopping, self).__init__()
 
     self.monitor = monitor
+    if patience < 0:
+      raise ValueError(f'`patience` must be >= 0, got {patience}')
     self.patience = patience
     self.verbose = verbose
     self.baseline = baseline
@@ -1815,6 +1817,7 @@ class EarlyStopping(Callback):
       # Only restart wait if we beat both the baseline and our previous best.
       if self.baseline is None or self._is_improvement(current, self.baseline):
         self.wait = 0
+      return  # Do not stop training if the model improved.
 
     if self.wait >= self.patience:
       self.stopped_epoch = epoch
