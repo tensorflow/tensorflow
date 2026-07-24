@@ -475,11 +475,53 @@ def set_cc_opt_flags(environ_cp):
     write_to_bazelrc('build:opt --host_copt=%s' % opt)
 
 
-def set_tf_cuda_clang(environ_cp):
+def cuda_compute_capability_version(capability):
+  """Return (major, minor) for a CUDA compute capability string, or None.
+
+  Accepts forms used by configure / Bazel hermetic CUDA, including:
+  "7.5", "sm_80", "compute_90", "sm_120", "12.0".
+  """
+  capability = capability.strip()
+  if not capability:
+    return None
+  decimal = re.match(r'^([0-9]+)\.([0-9]+)$', capability)
+  if decimal:
+    return int(decimal.group(1)), int(decimal.group(2))
+  # Optional trailing letter: sm_90a, sm_100f (architecture-accelerated / family).
+  sm_compute = re.match(r'^(?:sm|compute)_?([0-9]{2,})[a-zA-Z]?$', capability)
+  if sm_compute:
+    digits = sm_compute.group(1)
+    # sm_90 -> (9, 0), sm_100 -> (10, 0), sm_120 -> (12, 0)
+    if len(digits) == 2:
+      return int(digits[0]), int(digits[1])
+    if len(digits) == 3:
+      return int(digits[:2]), int(digits[2])
+    if len(digits) == 4:
+      return int(digits[:2]), int(digits[2:])
+  return None
+
+
+def compute_capabilities_require_nvcc(capabilities_csv):
+  """True if any capability needs nvcc (Blackwell sm_100 / sm_120 family).
+
+  The hermetic cuda_clang toolchain rejects sm_100 and sm_120 with
+  "unsupported CUDA gpu architecture". CUDA 13 + nvcc supports them.
+  """
+  if not capabilities_csv:
+    return False
+  for part in capabilities_csv.replace(' ', '').split(','):
+    version = cuda_compute_capability_version(part)
+    if version is not None and version >= (10, 0):
+      return True
+  return False
+
+
+def set_tf_cuda_clang(environ_cp, enabled_by_default=True):
   """set TF_CUDA_CLANG action_env.
 
   Args:
     environ_cp: copy of the os.environ.
+    enabled_by_default: whether clang is the default CUDA compiler choice.
   """
   question = 'Do you want to use clang as CUDA compiler?'
   yes_reply = 'Clang will be used as CUDA compiler.'
@@ -488,7 +530,7 @@ def set_tf_cuda_clang(environ_cp):
       environ_cp,
       'TF_CUDA_CLANG',
       None,
-      True,
+      enabled_by_default,
       question=question,
       yes_reply=yes_reply,
       no_reply=no_reply,
@@ -1293,7 +1335,19 @@ def main():
       write_action_env_to_bazelrc('LD_LIBRARY_PATH',
                                   environ_cp.get('LD_LIBRARY_PATH'))
 
-    set_tf_cuda_clang(environ_cp)
+    # Hermetic cuda_clang does not support Blackwell architectures
+    # (sm_100 / sm_120). Default to nvcc when those capabilities are selected.
+    caps = environ_cp.get('HERMETIC_CUDA_COMPUTE_CAPABILITIES', '')
+    clang_default = True
+    if compute_capabilities_require_nvcc(caps):
+      clang_default = False
+      print(
+          '\nNOTE: Selected CUDA compute capabilities include sm_100+ '
+          '(Blackwell). Hermetic clang does not support these architectures; '
+          'defaulting the CUDA compiler to nvcc. Use --config=cuda13_nvcc '
+          '(CUDA 13) or --config=cuda_nvcc when building.\n'
+      )
+    set_tf_cuda_clang(environ_cp, enabled_by_default=clang_default)
     if environ_cp.get('TF_CUDA_CLANG') == '1':
       # Set up which clang we should use as the cuda / host compiler.
       clang_cuda_compiler_path = set_clang_cuda_compiler_path(environ_cp)
@@ -1360,10 +1414,25 @@ def main():
       'dynamic_kernels',
       '(Experimental) Build kernels into separate shared objects.')
   config_info_line('v1', 'Build with TensorFlow 1 API instead of TF 2 API.')
+  config_info_line(
+      'cuda13_nvcc',
+      'CUDA 13 + nvcc (recommended for Blackwell sm_100 / sm_120).')
+  config_info_line(
+      'cuda_wheel',
+      'Build GPU pip wheels without embedding CUDA shared libraries.')
 
   print('Preconfigured Bazel build configs to DISABLE default on features:')
   config_info_line('nogcp', 'Disable GCP support.')
   config_info_line('nonccl', 'Disable NVIDIA NCCL support.')
+
+  if environ_cp.get('TF_NEED_CUDA') == '1':
+    print(
+        '\nGPU pip wheel tip: build with --config=cuda_wheel, for example:\n'
+        '  bazel build --config=cuda13_nvcc --config=cuda_wheel \\\n'
+        '    //tensorflow/tools/pip_package:wheel\n'
+        'At runtime install matching nvidia-* pip packages (or system '
+        'CUDA/cuDNN) so libraries such as libcudnn.so.9 are findable.\n'
+    )
 
 
 if __name__ == '__main__':
