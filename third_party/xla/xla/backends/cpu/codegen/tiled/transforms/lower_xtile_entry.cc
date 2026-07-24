@@ -46,6 +46,7 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"
 #include "mlir/Support/WalkResult.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
+#include "xla/backends/cpu/alignment.h"
 #include "xla/backends/cpu/codegen/emitters/ir/xla_cpu_ops.h"
 #include "xla/backends/cpu/codegen/emitters/ir/xla_cpu_types.h"
 #include "xla/backends/cpu/codegen/tiled/transforms/passes.h"
@@ -163,8 +164,33 @@ class LowerXTileEntryPass
       llvm::SmallVector<mlir::Value> call_args;
       for (const auto& [idx, arg] :
            llvm::enumerate(entry_func.getBufferArgs())) {
+        llvm::SmallVector<mlir::NamedAttribute> attrs;
+        attrs.push_back(
+            builder.getNamedAttr(mlir::LLVM::LLVMDialect::getAlignAttrName(),
+                                 builder.getIndexAttr(MinAlign())));
+        if (auto memref_type =
+                mlir::dyn_cast<mlir::MemRefType>(arg.getType())) {
+          if (memref_type.hasStaticShape()) {
+            int64_t byte_size = memref_type.getNumElements() *
+                                memref_type.getElementTypeBitWidth() / 8;
+            attrs.push_back(builder.getNamedAttr(
+                mlir::LLVM::LLVMDialect::getDereferenceableAttrName(),
+                builder.getIndexAttr(byte_size)));
+          }
+        }
+
+        // For buffer args, create a load op from the call frame.
         LoadOp load = LoadOp::create(builder, arg.getType(), call_frame, idx);
+        // Set alignment and dereferenceable on the LoadOp.
         call_args.push_back(load);
+        for (auto& attr : attrs) {
+          load->setAttr(attr.getName(), attr.getValue());
+        }
+        // Preserve existing func arg attrs
+        if (auto existing = entry_func.getArgAttrDict(idx)) {
+          attrs.append(existing.begin(), existing.end());
+        }
+        entry_func.setArgAttrs(idx, builder.getDictionaryAttr(attrs));
       }
 
       auto tile_info = entry_func->getAttrOfType<xla::xtile::TilingInfoAttr>(

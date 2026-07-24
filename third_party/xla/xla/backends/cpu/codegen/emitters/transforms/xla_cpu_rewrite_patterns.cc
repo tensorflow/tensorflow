@@ -117,6 +117,11 @@ struct LowerLoadOp : public mlir::OpRewritePattern<LoadOp> {
               dereferenceable.getInt(), false));
     }
 
+    if (auto align_attr = op->getAttrOfType<mlir::IntegerAttr>(
+            mlir::LLVM::LLVMDialect::getAlignAttrName())) {
+      arg_ptr.setAlignment(align_attr.getInt());
+    }
+
     if (auto memref_type = mlir::dyn_cast<mlir::MemRefType>(op.getType())) {
       mlir::LLVMTypeConverter converter(rewriter.getContext());
       mlir::Value memref_desc = mlir::MemRefDescriptor::fromStaticShape(
