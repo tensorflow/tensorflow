@@ -212,6 +212,33 @@ XlaOp XlaBuilderFriend::BuildAsyncStart(XlaBuilder* builder,
   return start_op;
 }
 
+XlaOp XlaBuilderFriend::BuildAsyncStart(
+    XlaBuilder* builder, absl::Span<const XlaOp> operands,
+    std::string execution_thread, XlaComputationId called_computation,
+    const Shape& shape,
+    absl::Span<const std::pair<ShapeIndex, std::pair<int64_t, ShapeIndex>>>
+        output_operand_aliasing) {
+  auto start_op = builder->ReportErrorOrReturn([&]() -> absl::StatusOr<XlaOp> {
+    HloInstructionProto instr;
+    *instr.mutable_shape() = shape.ToProto();
+    instr.set_async_execution_thread(execution_thread);
+    ABSL_RETURN_IF_ERROR(builder->AddCalledComputation(called_computation, instr));
+    for (const auto& pair : output_operand_aliasing) {
+      auto aliasing = instr.add_output_operand_aliasing();
+      aliasing->set_operand_index(pair.second.first);
+      for (int64_t index : pair.second.second) {
+        aliasing->add_operand_shape_index(index);
+      }
+      for (int64_t index : pair.first) {
+        aliasing->add_output_shape_index(index);
+      }
+    }
+    return builder->AddInstruction(std::move(instr), HloOpcode::kAsyncStart,
+                                   operands);
+  });
+  return start_op;
+}
+
 XlaOp XlaBuilderFriend::BuildAsyncUpdate(XlaBuilder* builder,
                                          const XlaOp operand,
                                          const Shape& shape) {
