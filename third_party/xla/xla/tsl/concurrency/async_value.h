@@ -805,6 +805,13 @@ class IndirectAsyncValue : public AsyncValue {
   // This method must be called at most once.
   void ForwardTo(RCReference<AsyncValue> value);
 
+  // Mark this IndirectAsyncValue as concrete with a value owned by a
+  // std::shared_ptr.
+  template <typename T>
+  void emplace(std::shared_ptr<T> value) {
+    SetConcrete(value.get(), std::move(value), GetTypeId<T>());
+  }
+
   static bool classof(const AsyncValue* v) {
     return v->kind() == AsyncValue::Kind::kIndirect;
   }
@@ -826,14 +833,19 @@ class IndirectAsyncValue : public AsyncValue {
   ~IndirectAsyncValue() { Destroy(); }
 
  private:
+  void SetConcrete(void* interior_pointer, std::shared_ptr<void> owner,
+                   uint16_t type_id);
+
   void Destroy() {
     if (value_) {
       value_->DropRef();
       value_ = nullptr;
     }
+    pointer_ = nullptr;
   }
 
   AsyncValue* value_ = nullptr;
+  void* pointer_ = nullptr;
 };
 
 // TypedIndirectAsyncValue represents an indirect async value of a particular
@@ -982,9 +994,11 @@ T& AsyncValue::get() const {
                    << (IsError() ? GetError().message() : "None");
       }
 #endif  // NDEBUG
-      auto* iv_value = static_cast<const IndirectAsyncValue*>(this)->value_;
-      DCHECK(iv_value) << "Indirect value not resolved";
-      return iv_value->get<T>();
+      auto* iv = static_cast<const IndirectAsyncValue*>(this);
+      DCHECK(iv->value_) << "Indirect value not resolved";
+      DCHECK(iv->pointer_) << "Indirect value pointer not set";
+      DCHECK(IsTypeIdCompatible<T>()) << "Incorrect accessor";
+      return *reinterpret_cast<T*>(iv->pointer_);
   }
 }
 
