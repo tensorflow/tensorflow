@@ -53,6 +53,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/printer.h"
 #include "xla/runtime/large_hlo_snapshot_serialization/serialization.h"
 #include "xla/service/dump_options.h"
 #include "xla/service/hlo.pb.h"
@@ -65,8 +66,10 @@ limitations under the License.
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/file_system.h"
 #include "xla/tsl/platform/file_system_helper.h"
+#include "xla/tsl/platform/threadpool.h"
 #include "xla/util.h"
 #include "xla/util/split_proto/split_hlo_writer.h"
+#include "tsl/platform/cpu_info.h"
 #include "tsl/platform/path.h"
 #include "tsl/platform/platform.h"
 #include "tsl/platform/protobuf.h"
@@ -81,31 +84,16 @@ namespace xla {
 
 static absl::Mutex mu(absl::kConstInit);
 
-// Maps a module's unique ID to a counter indicating how many times we've dumped
-// this module during the compilation pipeline.  This lets us keep the filenames
-// ordered nicely.
-//
-// Entries added here leak forever; we have no way to GC them when a module
-// dies.  But we only add an entry if dumping is enabled for this module, and
-// dumping a module leaks buffer space in stdout or bytes on disk *way* faster
-// than this hashtable leaks memory.
-static auto& module_id_to_step_number ABSL_GUARDED_BY(mu) =
-    *new absl::flat_hash_map<int64_t, int64_t>();
+// Set of module unique IDs that have been dumped. Used to enforce
+// xla_dump_max_hlo_modules limit.
+static auto& dumped_module_ids ABSL_GUARDED_BY(mu) =
+    *new absl::flat_hash_set<int64_t>();
 
-// Maps a module's unique ID to a timestamp indicating when we've first dumped
-// this module during the compilation pipeline and when we first started
-// compiling this module.  This lets us keep the filenames ordered nicely.
-//
-// Entries added here leak forever; we have no way to GC them when a module
-// dies.  But we only add an entry if dumping is enabled for this module, and
-// dumping a module leaks buffer space in stdout or bytes on disk *way* faster
-// than this hashtable leaks memory.
-static auto& module_id_to_timestamp ABSL_GUARDED_BY(mu) =
-    *new absl::flat_hash_map<int64_t, uint64_t>();
+static absl::Mutex pending_async_dumps_mu(absl::kConstInit);
+static int pending_async_dumps ABSL_GUARDED_BY(pending_async_dumps_mu) = 0;
 
-int64_t StepNumberForModule(const HloModule& module) {
-  absl::MutexLock lock(mu);
-  return module_id_to_step_number[module.unique_id()]++;
+static int64_t StepNumberForModule(const HloModule& module) {
+  return module.NextDumpStepNumber();
 }
 
 absl::Status CreateDirIfNeeded(absl::string_view dir, tsl::Env* env) {
@@ -243,8 +231,8 @@ static std::optional<std::string> GetDumpFilePath(string_view filename,
   // Make sure we are not going to dump more modules than the user has asked.
   if (opts.dump_max_hlo_modules > 0) {
     absl::MutexLock lock(mu);
-    if (module_id_to_timestamp.size() >= opts.dump_max_hlo_modules) {
-      LOG(ERROR) << "Have already dumped " << module_id_to_timestamp.size()
+    if (dumped_module_ids.size() >= opts.dump_max_hlo_modules) {
+      LOG(ERROR) << "Have already dumped " << dumped_module_ids.size()
                  << " modules, more than the limit of "
                  << opts.dump_max_hlo_modules;
       return std::nullopt;
@@ -275,19 +263,17 @@ static std::optional<std::string> DumpToFileInDirImpl(string_view filename,
 }
 
 static std::optional<std::string> DumpHloModuleRiegeli(
-    string_view filename, const HloModule& module, const DumpOptions& opts) {
+    string_view filename, HloProto proto, const DumpOptions& opts) {
   auto file_path = GetDumpFilePath(filename, opts);
   if (!file_path) {
     return std::nullopt;
   }
-
   std::unique_ptr<riegeli::Writer> writer = CreateRiegeliFileWriter(*file_path);
   if (writer == nullptr) {
     return std::nullopt;
   }
 
-  absl::Status status =
-      WriteSplitHloProto(MakeHloProto(module), std::move(writer));
+  absl::Status status = WriteSplitHloProto(std::move(proto), std::move(writer));
   if (!status.ok()) {
     LOG(ERROR) << "Could not write XLA debug data to " << *file_path << ": "
                << status;
@@ -362,6 +348,125 @@ static bool IsTrivial(const HloComputation& computation) {
 }
 
 // Returns full file paths of all dumps of the module.
+std::vector<std::string> GetDumpFilenames(const HloModule& module,
+                                          const BufferAssignment* buffer_assn,
+                                          absl::string_view prefix,
+                                          absl::string_view suffix,
+                                          const DumpOptions& opts,
+                                          const DebugOptions& debug_options) {
+  std::vector<std::string> filenames;
+  std::string filename = FilenameFor(module, prefix, suffix);
+  std::string dir = opts.dump_to;
+  auto get_abs_path = [&](string_view rel_fn) {
+    return tsl::io::JoinPath(dir, SanitizeFileName(std::string(rel_fn)));
+  };
+
+  if (opts.dump_as_text) {
+    filenames.push_back(get_abs_path(StrCat(filename, ".txt")));
+    if (buffer_assn) {
+      filenames.push_back(
+          get_abs_path(StrCat(filename, "-buffer-assignment.txt")));
+      if (debug_options.xla_dump_buffer_assignment_analysis()) {
+        filenames.push_back(
+            get_abs_path(StrCat(filename, "-buffer-assignment-values.txt")));
+        filenames.push_back(get_abs_path(StrCat(filename, "-live-range.txt")));
+      }
+      filenames.push_back(
+          get_abs_path(StrCat(filename, "-memory-usage-report.txt")));
+    }
+  }
+
+  if (opts.dump_as_proto) {
+    std::string proto_suffix =
+        opts.dump_compress_protos ? ".hlo.pb.gz" : ".hlo.pb";
+    filenames.push_back(get_abs_path(StrCat(filename, proto_suffix)));
+    if (buffer_assn) {
+      std::string report_suffix = opts.dump_compress_protos
+                                      ? "-memory-usage-report.pb.gz"
+                                      : "-memory-usage-report.pb";
+      filenames.push_back(get_abs_path(StrCat(filename, report_suffix)));
+    }
+  }
+
+  if (opts.dump_as_riegeli) {
+    filenames.push_back(get_abs_path(StrCat(filename, ".riegeli")));
+  }
+
+  if (opts.dump_as_dot) {
+    filenames.push_back(get_abs_path(StrFormat("%s.dot", filename)));
+  }
+
+  if (opts.dump_as_html) {
+    filenames.push_back(get_abs_path(StrFormat("%s.html", filename)));
+    if (absl::StrContains(filename, kAfterOptimizationsDumpName)) {
+      filenames.push_back(
+          get_abs_path(StrFormat("%s.top_level.html", filename)));
+    }
+  }
+
+  if (opts.dump_fusion_visualization) {
+    for (const HloComputation* computation :
+         module.MakeNonfusionComputations()) {
+      if (IsTrivial(*computation)) {
+        continue;
+      }
+      std::string fusion_filename =
+          FilenameFor(module, computation->name(), "_fusion.html");
+      filenames.push_back(get_abs_path(fusion_filename));
+    }
+  }
+
+  if (opts.dump_fdo_profiles) {
+    filenames.push_back(get_abs_path(StrFormat("%s.fdo_profile", filename)));
+  }
+
+  if (opts.dump_as_url) {
+    if (!opts.dumping_to_stdout()) {
+      filenames.push_back(get_abs_path(StrFormat("%s.url", filename)));
+    }
+  }
+  return filenames;
+}
+
+tsl::thread::ThreadPool* GetDumpThreadPool(const DebugOptions& debug_options) {
+  static auto* const thread_pool = [](const DebugOptions& opts) {
+    int num_threads = 4;
+    if (opts.has_xla_async_hlo_dump_max_threads()) {
+      num_threads = opts.xla_async_hlo_dump_max_threads();
+    } else {
+      num_threads = std::max(4, std::min(32, tsl::port::MaxParallelism() / 4));
+    }
+    num_threads = std::max(1, num_threads);
+    return new tsl::thread::ThreadPool(tsl::Env::Default(), "hlo_async_dump",
+                                       num_threads);
+  }(debug_options);
+  return thread_pool;
+}
+
+void IncrementPendingAsyncDumps() {
+  absl::MutexLock lock(&pending_async_dumps_mu);
+  pending_async_dumps++;
+}
+
+void DecrementPendingAsyncDumps() {
+  absl::MutexLock lock(&pending_async_dumps_mu);
+  pending_async_dumps--;
+}
+
+int GetPendingAsyncDumps() {
+  absl::MutexLock lock(&pending_async_dumps_mu);
+  return pending_async_dumps;
+}
+
+void WaitForPendingAsyncDumpsLessThan(int limit) {
+  absl::MutexLock lock(&pending_async_dumps_mu);
+  pending_async_dumps_mu.Await(absl::Condition(
+      +[](int* limit_ptr) ABSL_SHARED_LOCKS_REQUIRED(pending_async_dumps_mu) {
+        return pending_async_dumps < *limit_ptr;
+      },
+      &limit));
+}
+
 static std::vector<std::string> DumpHloModuleImpl(
     const HloModule& module, const BufferAssignment* buffer_assn,
     string_view prefix, string_view suffix, const DumpOptions& opts,
@@ -370,54 +475,98 @@ static std::vector<std::string> DumpHloModuleImpl(
     return absl::StrFormat("XlaDumpHloModule:#module=%s,program_id=%d#",
                            module.name(), module.unique_id());
   });
+
+  if (!opts.should_dump_module(module.name())) {
+    return {};
+  }
+
+  if (opts.dump_max_hlo_modules > 0) {
+    absl::MutexLock lock(&mu);
+    dumped_module_ids.insert(module.unique_id());
+  }
+
+  std::vector<std::string> written_paths;
   std::string filename = FilenameFor(module, prefix, suffix);
 
-  std::vector<std::optional<std::string>> file_paths;
+  HloPrintOptions print_options = debug_options.xla_dump_hlo_as_long_text()
+                                      ? HloPrintOptions::Default()
+                                      : HloPrintOptions::ShortParsable();
+  print_options.set_print_large_constants(
+      debug_options.xla_dump_large_constants());
+  print_options.set_print_metadata(!debug_options.xla_dump_disable_metadata());
+  print_options.set_syntax_sugar_async_ops(
+      debug_options.xla_syntax_sugar_async_ops());
+  print_options.set_print_inline_stack_frames(
+      debug_options.xla_hlo_print_inline_stack_frames());
+  print_options.set_compact_gte(debug_options.xla_dump_compact_gte());
 
   if (opts.dump_as_text) {
-    file_paths.push_back(DumpToFileInDirOrStdoutImpl(StrCat(filename, ".txt"),
-                                                     module.ToString(), opts));
-    if (buffer_assn) {
-      DataProducer buffer_assignment;
-      buffer_assignment.Append([&] { return buffer_assn->ToString(); });
-      file_paths.push_back(DumpToFileInDirOrStdoutImpl(
-          StrCat(filename, "-buffer-assignment.txt"), buffer_assignment, opts));
-      DataProducer buffer_assignment_values;
-      DataProducer live_range;
-      if (debug_options.xla_dump_buffer_assignment_analysis()) {
-        buffer_assignment_values.Append(
-            [&] { return buffer_assn->ValuesToString(); });
-        file_paths.push_back(DumpToFileInDirOrStdoutImpl(
-            StrCat(filename, "-buffer-assignment-values.txt"),
-            buffer_assignment_values, opts));
-        live_range.Append([&] {
-          if (buffer_assn->HasHloLiveRange()) {
-            return buffer_assn->hlo_live_range().ToString();
-          }
-          return std::string(
-              "HloLiveRange not available (finalized or constructed from "
-              "proto)");
-        });
-        file_paths.push_back(DumpToFileInDirOrStdoutImpl(
-            StrCat(filename, "-live-range.txt"), live_range, opts));
+    auto path = DumpToFileInDirOrStdoutImpl(
+        StrCat(filename, ".txt"), module.ToString(print_options), opts);
+    bool printed = opts.dumping_to_stdout() || path.has_value();
+    if (path.has_value()) {
+      written_paths.push_back(*path);
+    }
+
+    if (printed && buffer_assn) {
+      auto ba_path = DumpToFileInDirOrStdoutImpl(
+          StrCat(filename, "-buffer-assignment.txt"), buffer_assn->ToString(),
+          opts);
+      if (ba_path.has_value()) {
+        written_paths.push_back(*ba_path);
       }
-      DataProducer summary_report;
-      summary_report.Append([&] { return buffer_assn->MemoryUsageReport(); });
-      file_paths.push_back(DumpToFileInDirOrStdoutImpl(
-          StrCat(filename, "-memory-usage-report.txt"), summary_report, opts));
+
+      if (debug_options.xla_dump_buffer_assignment_analysis()) {
+        auto bav_path = DumpToFileInDirOrStdoutImpl(
+            StrCat(filename, "-buffer-assignment-values.txt"),
+            buffer_assn->ValuesToString(), opts);
+        if (bav_path.has_value()) {
+          written_paths.push_back(*bav_path);
+        }
+
+        std::string live_range_str =
+            buffer_assn->HasHloLiveRange()
+                ? buffer_assn->hlo_live_range().ToString()
+                : "HloLiveRange not available (finalized or constructed from "
+                  "proto)";
+        auto lr_path = DumpToFileInDirOrStdoutImpl(
+            StrCat(filename, "-live-range.txt"), live_range_str, opts);
+        if (lr_path.has_value()) {
+          written_paths.push_back(*lr_path);
+        }
+      }
+
+      auto mr_path = DumpToFileInDirOrStdoutImpl(
+          StrCat(filename, "-memory-usage-report.txt"),
+          buffer_assn->MemoryUsageReport(), opts);
+      if (mr_path.has_value()) {
+        written_paths.push_back(*mr_path);
+      }
     }
   }
 
-  if (opts.dump_as_proto) {
-    HloProto module_proto =
+  HloProto module_proto;
+  bool target_proto_created = false;
+  auto init_module_proto = [&]() {
+    if (target_proto_created) return;
+    module_proto =
         buffer_assn ? MakeHloProto(module, *buffer_assn) : MakeHloProto(module);
+    target_proto_created = true;
+  };
+
+  if (opts.dump_as_proto) {
+    init_module_proto();
     std::string pb;
     if (!tsl::SerializeToStringDeterministic(module_proto, &pb)) {
       pb = "Failed to serialize HLO module proto.";
     }
-    file_paths.push_back(DumpToFileInDirImpl(
-        StrCat(filename, opts.dump_compress_protos ? ".hlo.pb.gz" : ".hlo.pb"),
-        pb, opts, opts.dump_compress_protos));
+    std::string proto_suffix =
+        opts.dump_compress_protos ? ".hlo.pb.gz" : ".hlo.pb";
+    auto proto_path = DumpToFileInDirImpl(StrCat(filename, proto_suffix), pb,
+                                          opts, opts.dump_compress_protos);
+    if (proto_path.has_value()) {
+      written_paths.push_back(*proto_path);
+    }
 
     if (buffer_assn) {
       MemoryUsageReportProto memory_report_proto =
@@ -427,39 +576,56 @@ static std::vector<std::string> DumpHloModuleImpl(
                                                &memory_report_pb)) {
         memory_report_pb = "Failed to serialize memory usage report proto.";
       }
-      file_paths.push_back(DumpToFileInDirImpl(
-          StrCat(filename, opts.dump_compress_protos
-                               ? "-memory-usage-report.pb.gz"
-                               : "-memory-usage-report.pb"),
-          memory_report_pb, opts, opts.dump_compress_protos));
+      std::string report_suffix = opts.dump_compress_protos
+                                      ? "-memory-usage-report.pb.gz"
+                                      : "-memory-usage-report.pb";
+      auto report_path =
+          DumpToFileInDirImpl(StrCat(filename, report_suffix), memory_report_pb,
+                              opts, opts.dump_compress_protos);
+      if (report_path.has_value()) {
+        written_paths.push_back(*report_path);
+      }
     }
   }
 
   if (opts.dump_as_riegeli) {
-    file_paths.push_back(
-        DumpHloModuleRiegeli(StrCat(filename, ".riegeli"), module, opts));
+    init_module_proto();
+    auto path = DumpHloModuleRiegeli(StrCat(filename, ".riegeli"),
+                                     std::move(module_proto), opts);
+    if (path.has_value()) {
+      written_paths.push_back(*path);
+    }
   }
 
   if (opts.dump_as_dot) {
-    file_paths.push_back(DumpToFileInDirImpl(
-        StrFormat("%s.dot", filename),
+    auto path = DumpToFileInDirImpl(
+        StrCat(filename, ".dot"),
         RenderGraph(filename, module, RenderedGraphFormat::kDot,
                     /*show_fusion_subcomputations=*/true, &debug_options),
-        opts));
+        opts);
+    if (path.has_value()) {
+      written_paths.push_back(*path);
+    }
   }
 
   if (opts.dump_as_html) {
-    file_paths.push_back(DumpToFileInDirImpl(
-        StrFormat("%s.html", filename),
+    auto path = DumpToFileInDirImpl(
+        StrCat(filename, ".html"),
         RenderGraph(filename, module, RenderedGraphFormat::kHtml,
                     /*show_fusion_subcomputations=*/true, &debug_options),
-        opts));
+        opts);
+    if (path.has_value()) {
+      written_paths.push_back(*path);
+    }
     if (absl::StrContains(filename, kAfterOptimizationsDumpName)) {
-      file_paths.push_back(DumpToFileInDirImpl(
-          StrFormat("%s.top_level.html", filename),
+      auto tl_path = DumpToFileInDirImpl(
+          StrCat(filename, ".top_level.html"),
           RenderGraph(filename, module, RenderedGraphFormat::kHtml,
                       /*show_fusion_subcomputations=*/false, &debug_options),
-          opts));
+          opts);
+      if (tl_path.has_value()) {
+        written_paths.push_back(*tl_path);
+      }
     }
   }
 
@@ -467,62 +633,49 @@ static std::vector<std::string> DumpHloModuleImpl(
     for (const HloComputation* computation :
          module.MakeNonfusionComputations()) {
       if (IsTrivial(*computation)) {
-        VLOG(1) << "Skipping computation " << computation->name()
-                << " as trivial";
         continue;
       }
-
       absl::StatusOr<std::string> rendered_graph =
           WrapFusionExplorer(*computation);
       if (!rendered_graph.ok()) {
-        VLOG(1) << "Skipping fusion visualization"
-                << " for computation " << computation->name()
-                << " due to: " << rendered_graph.status();
         continue;
       }
-      file_paths.push_back(DumpToFileInDirImpl(
+      auto path = DumpToFileInDirImpl(
           FilenameFor(module, computation->name(), "_fusion.pyz"),
-          *rendered_graph, opts));
+          *rendered_graph, opts);
+      if (path.has_value()) {
+        written_paths.push_back(*path);
+      }
     }
   }
 
   if (opts.dump_fdo_profiles) {
-    file_paths.push_back(
-        DumpToFileInDirImpl(StrFormat("%s.fdo_profile", filename),
-                            module.config().fdo_profile(), opts));
+    auto path =
+        DumpToFileInDirImpl(StrCat(filename, ".fdo_profile"),
+                            std::string(module.config().fdo_profile()), opts);
+    if (path.has_value()) {
+      written_paths.push_back(*path);
+    }
   }
 
-  // Special case for rendering graphs as URLs.  We'll dump them to a file
-  // because why not, but we always log them to stdout as well.
   if (opts.dump_as_url) {
     std::string url =
         RenderGraph(filename, module, RenderedGraphFormat::kUrl,
                     /*show_fusion_subcomputations=*/true, &debug_options);
-    std::cout << filename << " --> " << url << std::endl;
-    if (!opts.dumping_to_stdout()) {
-      file_paths.push_back(
-          DumpToFileInDirImpl(StrFormat("%s.url", filename), url, opts));
+    auto path =
+        DumpToFileInDirOrStdoutImpl(StrCat(filename, ".url"), url, opts);
+    if (path.has_value()) {
+      std::cout << *path << " --> " << url << std::endl;
+      written_paths.push_back(*path);
     }
   }
 
-  std::vector<std::string> dumped_file_paths;
-  for (const std::optional<std::string>& path : file_paths) {
-    if (path.has_value()) {
-      dumped_file_paths.push_back(*path);
-    }
-  }
-  if (!dumped_file_paths.empty()) {
+  if (!written_paths.empty()) {
     LOG_FIRST_N(INFO, 1) << "HloModule dump enabled with path prefix: "
                          << prefix << ", suffix: " << suffix;
-    if (opts.dump_max_hlo_modules > 0) {
-      absl::MutexLock lock(mu);
-      // Try to record the time we dumped this module to keep track of total
-      // module count.
-      module_id_to_timestamp.try_emplace(module.unique_id(),
-                                         tsl::Env::Default()->NowMicros());
-    }
   }
-  return dumped_file_paths;
+
+  return written_paths;
 }
 
 static void DumpHloModuleMetadata(
@@ -542,7 +695,7 @@ static void DumpHloModuleMetadata(
   }
 }
 
-std::vector<std::string> DumpHloModuleIfEnabledImpl(
+static std::vector<std::string> DumpHloModuleIfEnabledImpl(
     const HloModule& module, const BufferAssignment* buffer_assn,
     const DebugOptions* maybe_dump_options, string_view name) {
   const DebugOptions& dump_options = maybe_dump_options
@@ -576,10 +729,7 @@ std::string TimestampFor(const HloModule& module,
   if (!opts.xla_dump_include_timestamp()) {
     return "";
   }
-  absl::MutexLock lock(mu);
-  auto timestamp_emplace = module_id_to_timestamp.try_emplace(
-      module.unique_id(), tsl::Env::Default()->NowMicros());
-  return std::to_string(timestamp_emplace.first->second);
+  return std::to_string(module.GetDumpTimestamp());
 }
 
 std::string FilenameFor(int unique_id, string_view module_name,
@@ -719,13 +869,7 @@ void DumpPerExecutionProtobufToFile(
     absl::AnyInvocable<
         absl::StatusOr<std::string>(tsl::Env*, const tsl::protobuf::Message&)>
         text_formatter) {
-  int64_t execution_count = 0;
-  {
-    static auto& module_id_to_execution_count ABSL_GUARDED_BY(mu) =
-        *new absl::flat_hash_map<int64_t, int64_t>();
-    absl::MutexLock lock(mu);
-    execution_count = module_id_to_execution_count[module.unique_id()]++;
-  }
+  int64_t execution_count = module.NextDumpExecutionCount();
 
   const std::string filename = FilenameFor(
       module, name, absl::StrFormat("execution_%04d", execution_count));
@@ -969,32 +1113,94 @@ bool DumpingToStdout(const DebugOptions& opts) {
   return DumpOptions::Build(opts).dumping_to_stdout();
 }
 
-std::vector<std::string> DumpHloModuleBetweenPassesIfEnabled(
-    string_view pipeline_name, string_view before_pass_name,
-    string_view after_pass_name, const HloModule& module) {
+static bool ShouldDumpHloModuleBetweenPasses(absl::string_view pipeline_name,
+                                             absl::string_view before_pass_name,
+                                             absl::string_view after_pass_name,
+                                             const HloModule& module) {
   DumpOptions opts = GetDumpOptions(module);
   if (!opts.should_dump_module(module.name())) {
-    return {};
+    return false;
   }
 
   if (!opts.should_dump_pass(before_pass_name) &&
       !opts.should_dump_pass(after_pass_name)) {
-    return {};
+    return false;
   }
 
   if (!opts.should_dump_pipeline(pipeline_name)) {
+    return false;
+  }
+  return true;
+}
+
+static std::vector<std::string> GetDumpFilenamesBetweenPasses(
+    absl::string_view pipeline_name, absl::string_view before_pass_name,
+    absl::string_view after_pass_name, const HloModule& module,
+    int64_t step_number) {
+  if (!ShouldDumpHloModuleBetweenPasses(pipeline_name, before_pass_name,
+                                        after_pass_name, module)) {
     return {};
   }
-
-  int64_t step_number = StepNumberForModule(module);
+  DumpOptions opts = GetDumpOptions(module);
   std::string timestamp = TimestampFor(module);
-
   std::string filename_suffix =
       StrFormat("%04d.%s.after_%s.before_%s", step_number, pipeline_name,
                 after_pass_name, before_pass_name);
-  return DumpHloModuleImpl(module, /*buffer_assn=*/nullptr, timestamp,
-                           filename_suffix, opts,
-                           module.config().debug_options());
+  return GetDumpFilenames(module, /*buffer_assn=*/nullptr, timestamp,
+                          filename_suffix, opts,
+                          module.config().debug_options());
+}
+
+std::vector<std::string> DumpHloModuleBetweenPassesIfEnabled(
+    absl::string_view pipeline_name, absl::string_view before_pass_name,
+    absl::string_view after_pass_name, const HloModule& module) {
+  if (!ShouldDumpHloModuleBetweenPasses(pipeline_name, before_pass_name,
+                                        after_pass_name, module)) {
+    return {};
+  }
+
+  const DebugOptions& debug_options = module.config().debug_options();
+  int64_t step_number = StepNumberForModule(module);
+
+  std::string timestamp = TimestampFor(module);
+  std::string filename_suffix =
+      StrFormat("%04d.%s.after_%s.before_%s", step_number, pipeline_name,
+                after_pass_name, before_pass_name);
+  DumpOptions opts = GetDumpOptions(module);
+
+  if (debug_options.xla_async_hlo_dump()) {
+    std::vector<std::string> filenames = GetDumpFilenamesBetweenPasses(
+        pipeline_name, before_pass_name, after_pass_name, module, step_number);
+    if (filenames.empty()) {
+      return {};
+    }
+
+    int limit = debug_options.xla_async_hlo_dump_max_pending();
+    if (limit <= 0) {
+      limit = 20;
+    }
+    WaitForPendingAsyncDumpsLessThan(limit);
+
+    auto clone = module.Clone("");
+    clone->set_unique_id(module.unique_id());
+    clone->metadata()->set_canonical_module_id(
+        module.metadata().proto().canonical_module_id());
+
+    IncrementPendingAsyncDumps();
+    GetDumpThreadPool(debug_options)
+        ->AsExecutor()
+        ->Execute([clone = std::move(clone), timestamp = std::move(timestamp),
+                   filename_suffix = std::move(filename_suffix),
+                   opts = std::move(opts), debug_options]() {
+          DumpHloModuleImpl(*clone, /*buffer_assn=*/nullptr, timestamp,
+                            filename_suffix, opts, debug_options);
+          DecrementPendingAsyncDumps();
+        });
+    return filenames;
+  } else {
+    return DumpHloModuleImpl(module, /*buffer_assn=*/nullptr, timestamp,
+                             filename_suffix, opts, debug_options);
+  }
 }
 
 void DumpHloModuleDuringPassIfEnabled(string_view pass_name,
@@ -1021,16 +1227,11 @@ void DumpHloSnapshotIfEnabled(const HloModule& module,
   if (!opts.should_dump_module(module.name()) || !opts.dump_snapshots) {
     return;
   }
-  int64_t execution_count;
-  uint64_t timestamp;
-  {
-    static auto& module_id_to_execution_count ABSL_GUARDED_BY(mu) =
-        *new absl::flat_hash_map<int64_t, int64_t>();
+  int64_t execution_count = module.NextDumpExecutionCount();
+  uint64_t timestamp = module.GetDumpTimestamp();
+  if (opts.dump_max_hlo_modules > 0) {
     absl::MutexLock lock(mu);
-    execution_count = module_id_to_execution_count[module.unique_id()]++;
-    auto timestamp_emplace = module_id_to_timestamp.try_emplace(
-        module.unique_id(), tsl::Env::Default()->NowMicros());
-    timestamp = timestamp_emplace.first->second;
+    dumped_module_ids.insert(module.unique_id());
   }
   std::string filename =
       StrCat(FilenameFor(module, std::to_string(timestamp),
@@ -1169,6 +1370,15 @@ absl::Status DumpProtoToDirectory(const tsl::protobuf::Message& message,
   }
   *full_path = tsl::io::JoinPath(directory, safe_file_name);
   return tsl::WriteBinaryProto(env, *full_path, message);
+}
+
+void WaitForAllAsyncDumps() {
+  absl::MutexLock lock(&pending_async_dumps_mu);
+  pending_async_dumps_mu.Await(absl::Condition(
+      +[](void*) ABSL_SHARED_LOCKS_REQUIRED(pending_async_dumps_mu) {
+        return pending_async_dumps == 0;
+      },
+      nullptr));
 }
 
 }  // namespace xla

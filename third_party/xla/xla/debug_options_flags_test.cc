@@ -322,5 +322,21 @@ TEST(DebugOptions, CollectiveKernelsFlagNoDuplicates) {
               ElementsAre(DebugOptions::COLLECTIVE_KERNEL_ALL_REDUCE));
 }
 
+TEST(DebugOptions, AsyncHloDumpFlags) {
+  int* pargc;
+  std::vector<char*>* pargv;
+  ResetFlagsFromEnvForTesting("XLA_FLAGS", &pargc, &pargv);
+
+  DebugOptions empty_options;
+  tsl::setenv("XLA_FLAGS",
+              "--xla_async_hlo_dump_max_pending=42 "
+              "--xla_async_hlo_dump_max_threads=24",
+              1);
+
+  DebugOptions options = GetDebugOptionsFromProtoAndFlags(&empty_options);
+  EXPECT_EQ(options.xla_async_hlo_dump_max_pending(), 42);
+  EXPECT_EQ(options.xla_async_hlo_dump_max_threads(), 24);
+  tsl::unsetenv("XLA_FLAGS");
+}
 }  // namespace
 }  // namespace xla
