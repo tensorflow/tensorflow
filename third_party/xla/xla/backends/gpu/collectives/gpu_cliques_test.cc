@@ -252,7 +252,7 @@ TEST(GpuCliquesTest, SplitCliquesKeepsReorderedRanksOnCorrectExecutors) {
   auto cleanup = absl::MakeCleanup([] { internal::DestroyAcquiredCliques(); });
 
   ASSERT_OK_AND_ASSIGN(se::Platform * platform,
-                       PlatformUtil::GetPlatform("CUDA"));
+                       PlatformUtil::GetPlatform("gpu"));
 
   if (platform->VisibleDeviceCount() < 2) {
     GTEST_SKIP() << "Test requires at least 2 GPUs";
