@@ -1630,6 +1630,7 @@ def categorical_crossentropy(y_true,
     Categorical crossentropy loss value.
   """
   if (label_smoothing is not None and
+      isinstance(label_smoothing, (int, float)) and
       not tensor_util.is_tf_type(label_smoothing) and
       not 0 <= label_smoothing <= 1):
     raise ValueError(
