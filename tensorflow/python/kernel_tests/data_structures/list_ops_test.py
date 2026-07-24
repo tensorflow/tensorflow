@@ -547,6 +547,22 @@ class ListOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
           c0, [1, 3], list_ops._build_element_shape([]), num_elements=3)
       self.evaluate(l)
 
+  def testScatterIntoExistingListFailsWithNegativeIndex(self):
+    # Regression test: a negative scatter index reaches the Scatter() helper's
+    # std::swap(list->tensors()[i], aligned) with i < 0, which indexes the
+    # backing std::vector before its buffer (out-of-bounds heap access). It must
+    # raise InvalidArgumentError, matching the sibling TensorListScatter.
+    l = list_ops.tensor_list_reserve(
+        element_dtype=dtypes.float32, element_shape=[], num_elements=3)
+    with self.assertRaisesRegex(
+        errors.InvalidArgumentError,
+        "Indices in TensorListScatterIntoExistingList must all be "
+        "non-negative"):
+      self.evaluate(
+          list_ops.tensor_list_scatter(
+              tensor=[2.0, 3.0], indices=[-1, 2], element_shape=[],
+              input_handle=l))
+
   def testScatterFailsWithInvalidNumElements(self):
     c0 = constant_op.constant([1.0, 2.0])
     with self.assertRaisesRegex(
