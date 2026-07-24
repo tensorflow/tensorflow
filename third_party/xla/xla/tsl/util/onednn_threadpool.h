@@ -94,14 +94,15 @@ class OneDnnThreadPool : public threadpool_iface {
   bool get_in_parallel() const override {
     return (eigen_interface_->CurrentThreadId() != -1) ? true : false;
   }
-#ifdef ENABLE_ONEDNN_ASYNC
-  // Return 0 for synchronous execution; caller handles synchronization.
-  uint64_t get_flags() const override { return 0; }
+
   // wait() method for synchronous execution is basically a no-op.
   // But we need to implement it to satisfy the interface.
   // This is the requirement of the new experimental async runtime support
   // in oneDNN.
   virtual void wait() override {}
+#ifdef ENABLE_ONEDNN_ASYNC
+  // Return 0 for synchronous execution; caller handles synchronization.
+  uint64_t get_flags() const override { return 0; }
 #else
   // Return ASYNCHRONOUS to work with current onednn version.
   // TODO(intel-tf): remove this ifdefing block after making oneDNN v3.11 (async
