@@ -195,6 +195,8 @@ def xla_test(
             if not use_legacy_runtime:
                 backend_deps.append("//xla/tests:pjrt_cpu_client_registry")
         elif backend in NVIDIA_GPU_BACKENDS + AMD_GPU_DEFAULT_BACKENDS + INTEL_GPU_DEFAULT_BACKENDS:
+            if "size" not in this_backend_kwargs:
+                this_backend_kwargs["size"] = "medium"
             device_type_for_env = "gpu"
             backend_deps.append(
                 "//xla/service:gpu_plugin",

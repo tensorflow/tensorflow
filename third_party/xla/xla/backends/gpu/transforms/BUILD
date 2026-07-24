@@ -3356,6 +3356,7 @@ xla_test(
     name = "topk_specializer_test",
     srcs = ["topk_specializer_test.cc"],
     backends = ["gpu"],
+    shard_count = 20,
     deps = [
         ":topk_specializer",
         "//xla:shape_util",
