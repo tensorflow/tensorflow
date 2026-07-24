@@ -1113,7 +1113,8 @@ WindowPrefetchedAllocation::WindowPrefetchedAllocation(
       use_(use),
       prefetch_start_schedule_after_(prefetch_start_schedule_after_time),
       prefetch_done_schedule_before_(prefetch_done_schedule_before_time),
-      bytes_(chunk.size) {}
+      bytes_(chunk.size),
+      prev_allocation_(prev_allocation) {}
 
 HloPosition WindowPrefetchedAllocation::defining_position() const {
   if (defining_position_.instruction != nullptr) {

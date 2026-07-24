@@ -17883,6 +17883,59 @@ TEST_F(MemorySpaceAssignmentTest, ConditionalCommonInputAliasedOutputTest) {
       kAlternateMemorySpace);
 }
 
+// Tests that static allocations (not prefetches) for async operands and their
+// corresponding parameters in the async computation can both be placed in
+// alternate memory, even though their lifetimes overlap in the schedule.
+TEST_F(MemorySpaceAssignmentTest, AsyncOp_StaticOverlapNoUpdate) {
+  absl::string_view hlo_string = R"hlo(
+HloModule module, is_scheduled=true
+
+async_computation {
+  p0 = f32[4]{0} parameter(0)
+  ROOT negate = f32[4]{0} negate(p0)
+}
+
+ENTRY entry {
+  param = f32[4]{0} parameter(0)
+  T = f32[4]{0} negate(param)
+  async-start = ((f32[4]{0}), f32[4]{0}, s32[]) async-start(T), calls=async_computation
+  async-done = f32[4]{0} async-done(async-start)
+  ROOT root = f32[4]{0} add(T, async-done)
+}
+  )hlo";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+
+  Options options = DefaultMemorySpaceOptions();
+  options.verify = true;
+  options.is_use_allowed_in_alternate_mem_fn = [](const HloUse& use) {
+    return true;
+  };
+
+  std::optional<Options> options_override = std::move(options);
+  InstructionCountPrefetchIntervalPicker prefetch_interval_picker(2, 100);
+  ASSERT_OK(AssignMemorySpaceAndReturnStatus(
+                module.get(), std::move(options_override),
+                /*buffer_interval_compare=*/std::nullopt,
+                &prefetch_interval_picker)
+                .status());
+
+  // Verify both are in alternate memory space 1.
+  HloInstruction* T_inst =
+      module->entry_computation()->GetInstructionWithName("T");
+  ASSERT_NE(T_inst, nullptr);
+  EXPECT_EQ(T_inst->shape().layout().memory_space(), kAlternateMemorySpace);
+
+  HloInstruction* async_start =
+      module->entry_computation()->GetInstructionWithName("async-start");
+  ASSERT_NE(async_start, nullptr);
+  EXPECT_EQ(async_start->shape()
+                .tuple_shapes(0)
+                .tuple_shapes(0)
+                .layout()
+                .memory_space(),
+            kAlternateMemorySpace);
+}
 }  // namespace
 }  // namespace memory_space_assignment
 }  // namespace xla
