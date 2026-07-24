@@ -29,16 +29,13 @@ common_patch_list = [
     "//third_party/triton:common/assert_fail.patch",
     "//third_party/triton:common/silence_matchAndRewrite_failures.patch",
     "//third_party/triton:common/check_null_encoding.patch",
-    "//third_party/triton:common/tmemfix.patch",
     "//third_party/triton:common/test_cache_determinism_fix.patch",
     "//third_party/triton:common/mig_limits_pytests.patch",
-    "//third_party/triton:common/llvm_cl930478990.patch",
-    "//third_party/triton:common/llvm_cl933453789.patch",
-    "//third_party/triton:common/amdbufferopsemitter.patch",
     "//third_party/triton:common/allocator.patch",
     "//third_party/triton:common/llvm_cl943393061.patch",
     "//third_party/triton:common/convert_layout_heuristic.patch",
     "//third_party/triton:common/llvm_cl947230825.patch",
     "//third_party/triton:common/llvm_cl948082775.patch",
+    "//third_party/triton:common/tmemfix.patch",
     # Add new patches just above this line
 ]
