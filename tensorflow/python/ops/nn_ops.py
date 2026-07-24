@@ -3696,6 +3696,9 @@ def leaky_relu(features, alpha=0.2, name=None):
       features = math_ops.cast(features, dtypes.float32)
     if isinstance(alpha, np.ndarray):
       alpha = alpha.item()
+    if not tensor_util.is_tf_type(alpha) and alpha < 0:
+      raise ValueError(
+          f"alpha must be non-negative, got {alpha}")
     return gen_nn_ops.leaky_relu(features, alpha=alpha, name=name)
 
 

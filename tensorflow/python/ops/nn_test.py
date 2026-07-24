@@ -1051,6 +1051,19 @@ class LeakyReluTest(test_lib.TestCase):
     self.assertEqual(outputs_without_name_set.name, "LeakyRelu:0")
 
 
+class LeakyReluValidationTest(test_lib.TestCase):
+
+  def testNegativeScalarAlpha(self):
+    x = constant_op.constant([-1.0, 1.0])
+    with self.assertRaises(ValueError):
+      nn_ops.leaky_relu(x, alpha=-0.1)
+
+  def testNegativeNumpyAlpha(self):
+    x = constant_op.constant([-1.0, 1.0])
+    with self.assertRaises(ValueError):
+      nn_ops.leaky_relu(x, alpha=np.array(-0.1))
+
+
 class GeluTest(test_lib.TestCase):
 
   def test(self):
