@@ -404,7 +404,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_triton_gemm_any(true);
   opts.set_xla_gpu_experimental_gemm_fusion_v2(false);
   opts.set_xla_gpu_verify_triton_fusion_numerics(false);
-  opts.set_xla_gpu_experimental_enable_tiling_propagation(false);
+  opts.set_xla_gpu_experimental_enable_tiling_propagation(true);
 
   // Moving reduce-scatter out of while loops can increase memory footprint, so
   // turning it off by default.
