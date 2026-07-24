@@ -4176,11 +4176,14 @@ def sequence_mask(lengths, maxlen=None, dtype=dtypes.bool, name=None):
     # to length as a matrix with 1 column: [[1], [3], [2]].
     # Because of broadcasting on both arguments this comparison results
     # in a matrix of size (len(lengths), maxlen)
+    if not maxlen.dtype.is_integer:
+      maxlen = gen_math_ops.cast(maxlen, dtypes.int64)
+    maxlen_dtype = maxlen.dtype
     row_vector = gen_math_ops._range(
-        constant(0, maxlen.dtype), maxlen, constant(1, maxlen.dtype))
-    # Since maxlen >= max(lengths), it is safe to use maxlen as a cast
-    # authoritative type. Whenever maxlen fits into tf.int32, so do the lengths.
-    matrix = gen_math_ops.cast(expand_dims(lengths, -1), maxlen.dtype)
+        constant(0, maxlen_dtype), maxlen, constant(1, maxlen_dtype))
+    # Since maxlen >= max(lengths), it is safe to use maxlen_dtype as the
+    # authoritative type for the matrix cast.
+    matrix = gen_math_ops.cast(expand_dims(lengths, -1), maxlen_dtype)
     result = row_vector < matrix
     if dtype is None or result.dtype.is_compatible_with(dtype):
       return result
