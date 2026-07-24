@@ -163,7 +163,8 @@ class MaybeEnsureCuda13ForBlackwellTest(unittest.TestCase):
         'HERMETIC_CUDA_VERSION': '13.0.0',
     }
     with mock.patch.object(configure, 'write_repo_env_to_bazelrc') as write_env:
-      pinned = configure.maybe_ensure_cuda13_for_blackwell(environ)
+      with mock.patch('builtins.print') as mock_print:
+        pinned = configure.maybe_ensure_cuda13_for_blackwell(environ)
     self.assertTrue(pinned)
     self.assertEqual(environ['HERMETIC_CUDA_VERSION'], '13.0.0')
     self.assertEqual(
@@ -175,6 +176,21 @@ class MaybeEnsureCuda13ForBlackwellTest(unittest.TestCase):
         'HERMETIC_CUDNN_VERSION',
         configure._BLACKWELL_HERMETIC_CUDNN_VERSION,
     )
+    # Message must mention only what was pinned (cuDNN), not CUDA.
+    printed = ' '.join(str(c.args[0]) for c in mock_print.call_args_list if c.args)
+    self.assertIn('HERMETIC_CUDNN_VERSION=', printed)
+    self.assertNotIn('HERMETIC_CUDA_VERSION=', printed)
+
+  def test_pin_message_lists_both_when_both_unset(self):
+    environ = {
+        'HERMETIC_CUDA_COMPUTE_CAPABILITIES': 'sm_120',
+    }
+    with mock.patch.object(configure, 'write_repo_env_to_bazelrc'):
+      with mock.patch('builtins.print') as mock_print:
+        configure.maybe_ensure_cuda13_for_blackwell(environ)
+    printed = ' '.join(str(c.args[0]) for c in mock_print.call_args_list if c.args)
+    self.assertIn('HERMETIC_CUDA_VERSION=', printed)
+    self.assertIn('HERMETIC_CUDNN_VERSION=', printed)
 
 
 class SetOtherCudaVarsTest(unittest.TestCase):

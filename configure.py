@@ -500,13 +500,8 @@ def cuda_compute_capability_version(capability):
   sm_compute = re.match(r'^(?:sm|compute)_?([0-9]{2,})[a-zA-Z]?$', capability)
   if sm_compute:
     digits = sm_compute.group(1)
-    # sm_90 -> (9, 0), sm_100 -> (10, 0), sm_120 -> (12, 0)
-    if len(digits) == 2:
-      return int(digits[0]), int(digits[1])
-    if len(digits) == 3:
-      return int(digits[:2]), int(digits[2])
-    if len(digits) == 4:
-      return int(digits[:2]), int(digits[2:])
+    # Minor version is always the last digit: sm_90 -> (9, 0), sm_100 -> (10, 0).
+    return int(digits[:-1]), int(digits[-1])
   return None
 
 
@@ -542,29 +537,39 @@ def maybe_ensure_cuda13_for_blackwell(environ_cp):
   if not compute_capabilities_require_nvcc(caps):
     return False
 
-  pinned = False
+  pinned_cuda = False
+  pinned_cudnn = False
   if not environ_cp.get('HERMETIC_CUDA_VERSION'):
     environ_cp['HERMETIC_CUDA_VERSION'] = _BLACKWELL_HERMETIC_CUDA_VERSION
     write_repo_env_to_bazelrc(
         'cuda', 'HERMETIC_CUDA_VERSION', _BLACKWELL_HERMETIC_CUDA_VERSION
     )
-    pinned = True
+    pinned_cuda = True
   if not environ_cp.get('HERMETIC_CUDNN_VERSION'):
     environ_cp['HERMETIC_CUDNN_VERSION'] = _BLACKWELL_HERMETIC_CUDNN_VERSION
     write_repo_env_to_bazelrc(
         'cuda', 'HERMETIC_CUDNN_VERSION', _BLACKWELL_HERMETIC_CUDNN_VERSION
     )
-    pinned = True
+    pinned_cudnn = True
 
-  if pinned:
+  if pinned_cuda or pinned_cudnn:
+    pins = []
+    if pinned_cuda:
+      pins.append(
+          'HERMETIC_CUDA_VERSION=%s' % _BLACKWELL_HERMETIC_CUDA_VERSION
+      )
+    if pinned_cudnn:
+      pins.append(
+          'HERMETIC_CUDNN_VERSION=%s' % _BLACKWELL_HERMETIC_CUDNN_VERSION
+      )
     print(
         '\nNOTE: Blackwell compute capabilities (sm_100+) selected without an '
-        'explicit hermetic CUDA version. Pinning HERMETIC_CUDA_VERSION=%s and '
-        'HERMETIC_CUDNN_VERSION=%s (same as --config=cuda13_version). '
+        'explicit hermetic CUDA/cuDNN version. Pinning %s '
+        '(same as --config=cuda13_version). '
         'Default --config=cuda remains CUDA 12 for other builds.\n'
-        % (_BLACKWELL_HERMETIC_CUDA_VERSION, _BLACKWELL_HERMETIC_CUDNN_VERSION)
+        % ' and '.join(pins)
     )
-  return pinned
+  return pinned_cuda or pinned_cudnn
 
 
 def recommended_gpu_wheel_bazel_flags(environ_cp):
