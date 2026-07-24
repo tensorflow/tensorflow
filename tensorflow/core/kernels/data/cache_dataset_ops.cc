@@ -75,9 +75,11 @@ constexpr char kCacheDataset[] = "CacheDataset";
 constexpr char kIncompleteCacheErrorMessage[] =
     "The calling iterator did not fully read the dataset being cached. In "
     "order to avoid unexpected truncation of the dataset, the partially cached "
-    "contents of the dataset  will be discarded. This can happen if you have "
-    "an input pipeline similar to `dataset.cache().take(k).repeat()`. You "
-    "should use `dataset.take(k).cache().repeat()` instead.";
+    "contents of the dataset will be discarded. This can happen if you have "
+    "an input pipeline similar to `dataset.cache().take(k).repeat()`, or if "
+    "downstream operations drop elements (e.g., `batch(drop_remainder=True)`). "
+    "You should use `dataset.take(k).cache().repeat()` instead, or place the "
+    "cache after the batching operation (e.g., `dataset.batch(...).cache()`).";
 }  // namespace
 
 class DatasetRandomAccessCache {
@@ -331,7 +333,9 @@ class CacheDatasetOp::FileDatasetBase : public DatasetBase {
             iteration_completed_(false) {}
 
       ~FileWriterIterator() override {
-        if (!dataset()->env_->FileExists(MetaFilename(filename_)).ok()) {
+        mutex_lock l(mu_);
+        if (!iteration_completed_ &&
+            !dataset()->env_->FileExists(MetaFilename(filename_)).ok()) {
           LOG(WARNING) << kIncompleteCacheErrorMessage;
           std::vector<std::string> cache_files;
           absl::Status s = dataset()->env_->GetMatchingPaths(
