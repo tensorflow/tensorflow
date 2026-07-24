@@ -123,6 +123,148 @@ class BaseDetectionPostprocessOpModel : public SingleOpModel {
   int output4_;
 };
 
+// Builds the op but stops short of allocating tensors, so a Prepare() failure
+// can be observed via AllocateTensors() instead of crashing during model
+// construction.
+class PrepareOnlyDetectionPostprocessOpModel : public SingleOpModel {
+ public:
+  PrepareOnlyDetectionPostprocessOpModel(int max_detections,
+                                         int max_classes_per_detection,
+                                         float scale = 10.0,
+                                         int num_class_predictions = 2,
+                                         int num_boxes = 1, int num_anchors = 1,
+                                         int num_class_boxes = 1,
+                                         int detections_per_class = 100) {
+    input1_ = AddInput({TensorType_FLOAT32, {1, num_boxes, 4}});
+    input2_ =
+        AddInput({TensorType_FLOAT32, {1, num_class_boxes, num_class_predictions}});
+    input3_ = AddInput({TensorType_FLOAT32, {num_anchors, 4}});
+    AddOutput({TensorType_FLOAT32, {}});
+    AddOutput({TensorType_FLOAT32, {}});
+    AddOutput({TensorType_FLOAT32, {}});
+    AddOutput({TensorType_FLOAT32, {}});
+
+    flexbuffers::Builder fbb;
+    fbb.Map([&]() {
+      fbb.Int("max_detections", max_detections);
+      fbb.Int("max_classes_per_detection", max_classes_per_detection);
+      fbb.Int("detections_per_class", detections_per_class);
+      fbb.Float("nms_score_threshold", 0.0);
+      fbb.Float("nms_iou_threshold", 0.5);
+      fbb.Int("num_classes", 1);
+      fbb.Float("y_scale", scale);
+      fbb.Float("x_scale", scale);
+      fbb.Float("h_scale", scale);
+      fbb.Float("w_scale", scale);
+    });
+    fbb.Finish();
+    SetCustomOp("TFLite_Detection_PostProcess", fbb.GetBuffer(),
+                Register_DETECTION_POSTPROCESS);
+    BuildInterpreter({GetShape(input1_), GetShape(input2_), GetShape(input3_)},
+                     /*num_threads=*/1, /*allow_fp32_relax_to_fp16=*/false,
+                     /*apply_delegate=*/false,
+                     /*allocate_and_delegate=*/false);
+  }
+
+ private:
+  int input1_;
+  int input2_;
+  int input3_;
+};
+
+// max_detections * max_classes_per_detection overflows int and used to wrap to
+// a non-positive output dimension, producing undersized output tensors that the
+// kernel then wrote past. Prepare() must reject it instead.
+TEST(DetectionPostprocessOpTest, RejectsDetectedBoxesOverflow) {
+  PrepareOnlyDetectionPostprocessOpModel m(/*max_detections=*/1 << 29,
+                                           /*max_classes_per_detection=*/8);
+  EXPECT_EQ(m.AllocateTensors(), kTfLiteError);
+}
+
+TEST(DetectionPostprocessOpTest, RejectsNegativeMaxDetections) {
+  PrepareOnlyDetectionPostprocessOpModel m(/*max_detections=*/-1,
+                                           /*max_classes_per_detection=*/1);
+  EXPECT_EQ(m.AllocateTensors(), kTfLiteError);
+}
+
+TEST(DetectionPostprocessOpTest, RejectsNegativeMaxClassesPerDetection) {
+  PrepareOnlyDetectionPostprocessOpModel m(/*max_detections=*/1,
+                                           /*max_classes_per_detection=*/-1);
+  EXPECT_EQ(m.AllocateTensors(), kTfLiteError);
+}
+
+// A zero max_classes_per_detection leaves the outputs zero-sized while the
+// regular NMS path still writes up to max_detections results, so Prepare() must
+// reject it.
+TEST(DetectionPostprocessOpTest, RejectsZeroMaxClassesPerDetection) {
+  PrepareOnlyDetectionPostprocessOpModel m(/*max_detections=*/1,
+                                           /*max_classes_per_detection=*/0);
+  EXPECT_EQ(m.AllocateTensors(), kTfLiteError);
+}
+
+// A zero scale value would divide by zero while decoding boxes.
+TEST(DetectionPostprocessOpTest, RejectsZeroScale) {
+  PrepareOnlyDetectionPostprocessOpModel m(/*max_detections=*/1,
+                                           /*max_classes_per_detection=*/1,
+                                           /*scale=*/0.0);
+  EXPECT_EQ(m.AllocateTensors(), kTfLiteError);
+}
+
+// A zero class dimension on the predictions input leaves the score reads and
+// writes in Eval out of bounds.
+TEST(DetectionPostprocessOpTest, RejectsZeroClassDimension) {
+  PrepareOnlyDetectionPostprocessOpModel m(/*max_detections=*/1,
+                                           /*max_classes_per_detection=*/1,
+                                           /*scale=*/10.0,
+                                           /*num_class_predictions=*/0);
+  EXPECT_EQ(m.AllocateTensors(), kTfLiteError);
+}
+
+// A zero max_detections collapses num_detections_per_class to zero, which the
+// regular NMS path rejects during Eval, so Prepare() rejects it up front.
+TEST(DetectionPostprocessOpTest, RejectsZeroMaxDetections) {
+  PrepareOnlyDetectionPostprocessOpModel m(/*max_detections=*/0,
+                                           /*max_classes_per_detection=*/1);
+  EXPECT_EQ(m.AllocateTensors(), kTfLiteError);
+}
+
+// A negative detections_per_class otherwise only fails later in the regular NMS
+// path, so Prepare() rejects it early.
+TEST(DetectionPostprocessOpTest, RejectsNegativeDetectionsPerClass) {
+  PrepareOnlyDetectionPostprocessOpModel m(/*max_detections=*/1,
+                                           /*max_classes_per_detection=*/1,
+                                           /*scale=*/10.0,
+                                           /*num_class_predictions=*/2,
+                                           /*num_boxes=*/1, /*num_anchors=*/1,
+                                           /*num_class_boxes=*/1,
+                                           /*detections_per_class=*/-1);
+  EXPECT_EQ(m.AllocateTensors(), kTfLiteError);
+}
+
+// Fewer anchors than box encodings would read past the anchors buffer while
+// decoding, so Prepare() must reject the mismatch.
+TEST(DetectionPostprocessOpTest, RejectsAnchorCountMismatch) {
+  PrepareOnlyDetectionPostprocessOpModel m(/*max_detections=*/1,
+                                           /*max_classes_per_detection=*/1,
+                                           /*scale=*/10.0,
+                                           /*num_class_predictions=*/2,
+                                           /*num_boxes=*/2, /*num_anchors=*/1,
+                                           /*num_class_boxes=*/2);
+  EXPECT_EQ(m.AllocateTensors(), kTfLiteError);
+}
+
+// Fewer class prediction rows than box encodings would read past the scores
+// buffer, so Prepare() must reject the mismatch.
+TEST(DetectionPostprocessOpTest, RejectsClassPredictionCountMismatch) {
+  PrepareOnlyDetectionPostprocessOpModel m(/*max_detections=*/1,
+                                           /*max_classes_per_detection=*/1,
+                                           /*scale=*/10.0,
+                                           /*num_class_predictions=*/2,
+                                           /*num_boxes=*/2, /*num_anchors=*/2,
+                                           /*num_class_boxes=*/1);
+  EXPECT_EQ(m.AllocateTensors(), kTfLiteError);
+}
+
 TEST(DetectionPostprocessOpTest, FloatTest) {
   BaseDetectionPostprocessOpModel m(
       {TensorType_FLOAT32, {1, 6, 4}}, {TensorType_FLOAT32, {1, 6, 3}},
