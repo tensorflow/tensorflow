@@ -14,10 +14,13 @@
 #==============================================================================
 """Lookup operations."""
 
+import sys
+
 from tensorflow.python.data.experimental.ops.cardinality import assert_cardinality
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor
+from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import gen_experimental_dataset_ops as ged_ops
 from tensorflow.python.ops import lookup_ops
 from tensorflow.python.ops import math_ops
@@ -166,6 +169,18 @@ def table_from_dataset(dataset=None,
   if (not isinstance(vocab_size, tensor.Tensor) and vocab_size is not None and
       vocab_size < 1):
     raise ValueError(f"`vocab_size` must be greater than 0, got {vocab_size}.")
+  if not isinstance(vocab_size, tensor.Tensor) and vocab_size is not None:
+    max_safe_vocab_size = min(sys.maxsize, dtypes.int64.max)
+    if vocab_size >= max_safe_vocab_size:
+      raise ValueError(
+          f"`vocab_size` ({vocab_size}) exceeds the maximum safe value "
+          f"({max_safe_vocab_size}).")
+    known_cardinality = tensor_util.constant_value(dataset.cardinality())
+    if (known_cardinality is not None and
+        known_cardinality >= 0 and vocab_size > known_cardinality):
+      raise ValueError(
+          f"`vocab_size` ({vocab_size}) is larger than the known dataset "
+          f"cardinality ({known_cardinality}).")
   if (not key_dtype.is_integer) and (dtypes.string != key_dtype.base_dtype):
     raise TypeError("`key_dtype` must be either an integer or string type, "
                     f"but got {key_dtype}")

@@ -15,6 +15,7 @@
 """Tests for tensorflow.python.data.experimental.ops.lookup_ops."""
 
 import os
+import sys
 
 from tensorflow.python import tf2
 from tensorflow.python.data.experimental.ops import lookup_ops
@@ -147,6 +148,43 @@ class DatasetInitializerTest(test.TestCase):
     result = self.evaluate(output)
     self.assertAllEqual([0, 1, 2], result)
 
+  def test_index_table_from_dataset_oversized_vocab_size(self):
+    ds = dataset_ops.Dataset.from_tensor_slices(
+        ["apple", "banana", "orange"])
+    with self.assertRaisesRegex(
+        ValueError, "is larger than the known dataset cardinality"):
+      lookup_ops.index_table_from_dataset(ds, vocab_size=1000)
+
+  def test_table_from_dataset_oversized_vocab_size(self):
+    keys = dataset_ops.Dataset.from_tensor_slices([2, 3, 4])
+    values = dataset_ops.Dataset.from_tensor_slices(["two", "three", "four"])
+    ds = dataset_ops.Dataset.zip((keys, values))
+    with self.assertRaisesRegex(
+        ValueError, "is larger than the known dataset cardinality"):
+      lookup_ops.table_from_dataset(
+          ds, vocab_size=1000, default_value="n/a", key_dtype=dtypes.int64)
+
+  def test_table_from_dataset_extreme_vocab_size(self):
+    keys = dataset_ops.Dataset.from_tensor_slices([2, 3, 4])
+    values = dataset_ops.Dataset.from_tensor_slices(["two", "three", "four"])
+    ds = dataset_ops.Dataset.zip((keys, values))
+    with self.assertRaisesRegex(
+        ValueError, "exceeds the maximum safe value"):
+      lookup_ops.table_from_dataset(
+          ds, vocab_size=sys.maxsize, default_value="n/a",
+          key_dtype=dtypes.int64)
+
+  def test_table_from_dataset_unknown_cardinality_oversized_vocab_size(self):
+    keys = dataset_ops.Dataset.from_tensor_slices([2, 3, 4]).filter(
+        lambda x: True)
+    values = dataset_ops.Dataset.from_tensor_slices(
+        ["two", "three", "four"]).filter(lambda x: True)
+    ds = dataset_ops.Dataset.zip((keys, values))
+    with self.assertRaisesRegex(
+        ValueError, "exceeds the maximum safe value"):
+      lookup_ops.table_from_dataset(
+          ds, vocab_size=sys.maxsize, default_value="n/a",
+          key_dtype=dtypes.int64)
 
 if __name__ == "__main__":
   test.main()
