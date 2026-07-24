@@ -145,17 +145,6 @@ class FullyConnectedTester : public ModelCache<FullyConnectedTester> {
     return *this;
   }
 
-  FullyConnectedTester& RelativeTolerance(float relative_tolerance) {
-    relative_tolerance_ = relative_tolerance;
-    return *this;
-  }
-
-  FullyConnectedTester& ExpectFp16Precision(bool fp16_precision = true) {
-    yield_fp16_precision_ = fp16_precision;
-    return *this;
-  }
-  bool ExpectFp16Precision() const { return yield_fp16_precision_; }
-
   void Test(TfLiteDelegate* delegate);
 
  private:
@@ -182,9 +171,7 @@ class FullyConnectedTester : public ModelCache<FullyConnectedTester> {
   enum BiasType bias_type_ { BiasType::kFP32 };
   ::tflite::ActivationFunctionType activation_ =
       ::tflite::ActivationFunctionType_NONE;
-  float relative_tolerance_ = 0.0f;
   TfLiteXNNPackDelegateWeightsCache* weights_cache_ = nullptr;
-  bool yield_fp16_precision_ = false;
 };
 
 }  // namespace xnnpack
