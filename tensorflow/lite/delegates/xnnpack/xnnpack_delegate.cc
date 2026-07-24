@@ -456,7 +456,7 @@ TfLiteStatus DelegatePrepare(TfLiteContext* context, TfLiteDelegate* delegate);
 
 // hash_combine from smhasher/boost.
 template <typename T>
-inline void hash_combine(size_t seed, T v) {
+inline void hash_combine(size_t& seed, T v) {
   seed ^= std::hash<T>{}(v) + 0x9e3779b9U + (seed << 6) + (seed >> 2);
 }
 
@@ -465,6 +465,15 @@ struct PairHash {
     size_t seed = 0;
     hash_combine(seed, s.first);
     hash_combine(seed, s.second);
+    return seed;
+  }
+};
+
+struct IntSizePairHash {
+  std::size_t operator()(const std::pair<int, size_t>& p) const {
+    size_t seed = 0;
+    hash_combine(seed, p.first);
+    hash_combine(seed, p.second);
     return seed;
   }
 };
@@ -874,6 +883,26 @@ class Delegate {
     }
   }
 
+  // Temporary storage for expanded scales allocated during subgraph preparation
+  // when multiple BatchMatMul ops share the same weight tensor.
+  std::vector<std::vector<float>>* GetTempAllocatedScales() {
+    return &temp_allocated_scales_;
+  }
+  std::unordered_map<std::pair<int, size_t>, const float*, IntSizePairHash>*
+  GetTempTensorToExpandedScales() {
+    return &temp_tensor_to_expanded_scales_;
+  }
+  // Transfers ownership of temporary allocated scales to the Subgraph being
+  // created, and clears the scale deduplication map for the next subgraph.
+  std::vector<std::vector<float>> TransferTempAllocatedScales() {
+    temp_tensor_to_expanded_scales_.clear();
+    return std::move(temp_allocated_scales_);
+  }
+  void ClearTempScales() {
+    temp_allocated_scales_.clear();
+    temp_tensor_to_expanded_scales_.clear();
+  }
+
  private:
   TfLiteDelegate delegate_ = {
       reinterpret_cast<void*>(this),  // .data_
@@ -923,6 +952,15 @@ class Delegate {
   // Uniquely identify var handles
   std::unordered_map<std::pair<std::string, std::string>, int, PairHash>
       var_handles_;
+
+  // Temporary storage for expanded scale vectors allocated during subgraph
+  // build. Transferred to Subgraph ownership upon construction to match runtime
+  // lifetime.
+  std::vector<std::vector<float>> temp_allocated_scales_;
+  // Deduplication map keying (tensor index, required scale size) -> expanded
+  // scale array.
+  std::unordered_map<std::pair<int, size_t>, const float*, IntSizePairHash>
+      temp_tensor_to_expanded_scales_;
 };
 
 // Prepare/invoke for VarHandle that also returns the resource_id. We can't use
@@ -3523,7 +3561,7 @@ class Subgraph {
   }
 
   static TfLiteStatus VisitBatchMatMulNode(
-      xnn_subgraph_t subgraph, const Delegate& delegate,
+      xnn_subgraph_t subgraph, Delegate& delegate,
       TfLiteContext* logging_context, int node_index, TfLiteNode* node,
       const TfLiteTensor* tensors, const TfLiteBatchMatMulParams* params,
       const std::unordered_map<int, uint32_t>& input_output_tensors) {
@@ -3667,39 +3705,50 @@ class Subgraph {
             reinterpret_cast<TfLiteAffineQuantization*>(
                 input_b.quantization.params);
         const int num_quant_params = quant_params_b->scale->size;
-        float* scale_b = quant_params_b->scale->data;
+        const float* scale_b = quant_params_b->scale->data;
         const int zero_point_b = num_quant_params > 1
                                      ? quant_params_b->zero_point->data[0]
                                      : input_b.params.zero_point;
-        int32_t quantized_dimension = quant_params_b->quantized_dimension;
-        if (quant_params_b->scale->size != batch_size_b * n) {
-          if ((batch_size_b * n) % num_quant_params) {
-            TF_LITE_MAYBE_KERNEL_LOG(
-                logging_context,
-                "failed to delegate %s node #%d. unexpected number of "
-                "quantizations scales (expected a divisor of %d, got %d)",
-                EnumNameBuiltinOperator(BuiltinOperator_BATCH_MATMUL),
-                node_index, batch_size_b * n, num_quant_params);
-            return kTfLiteError;
-          }
-          TfLiteFloatArray* new_scale_b =
-              TfLiteFloatArrayCreate(num_quant_params + batch_size_b * n);
-          if (num_quant_params == 1) {
-            std::fill_n(new_scale_b->data, new_scale_b->size,
-                        input_b.params.scale);
-          } else {
-            std::copy_n(quant_params_b->scale->data, num_quant_params,
-                        new_scale_b->data);
-            for (int k = 0; k < batch_size_b * n; k++) {
-              new_scale_b->data[num_quant_params + k] =
-                  quant_params_b->scale->data[k % num_quant_params];
+        const int tensor_b_index = node->inputs->data[1];
+        const size_t required_scale_size = batch_size_b * n;
+        const std::pair<int, size_t> key = {tensor_b_index,
+                                            required_scale_size};
+        auto* temp_tensor_to_expanded_scales =
+            delegate.GetTempTensorToExpandedScales();
+        auto* temp_allocated_scales = delegate.GetTempAllocatedScales();
+
+        const auto it = temp_tensor_to_expanded_scales->find(key);
+        if (it != temp_tensor_to_expanded_scales->end()) {
+          // Reuse the already expanded scale array for this tensor and size.
+          scale_b = it->second;
+        } else {
+          if (quant_params_b->scale->size != required_scale_size) {
+            if (required_scale_size % num_quant_params) {
+              TF_LITE_MAYBE_KERNEL_LOG(
+                  logging_context,
+                  "failed to delegate %s node #%d. unexpected number of "
+                  "quantizations scales (expected a divisor of %d, got %d)",
+                  EnumNameBuiltinOperator(BuiltinOperator_BATCH_MATMUL),
+                  node_index, required_scale_size, num_quant_params);
+              return kTfLiteError;
             }
+            std::vector<float> expanded_scales(required_scale_size);
+            if (num_quant_params == 1) {
+              std::fill_n(expanded_scales.data(), required_scale_size,
+                          input_b.params.scale);
+            } else {
+              for (int k = 0; k < required_scale_size; k++) {
+                expanded_scales[k] =
+                    quant_params_b->scale->data[k % num_quant_params];
+              }
+            }
+            temp_allocated_scales->push_back(std::move(expanded_scales));
+            scale_b = temp_allocated_scales->back().data();
+            (*temp_tensor_to_expanded_scales)[key] = scale_b;
+          } else {
+            scale_b = quant_params_b->scale->data;
+            (*temp_tensor_to_expanded_scales)[key] = scale_b;
           }
-          TfLiteFloatArrayFree(quant_params_b->scale);
-          new_scale_b->size = num_quant_params;
-          quant_params_b->scale = new_scale_b;
-          scale_b = new_scale_b->data + num_quant_params;
-          quantized_dimension = params->adj_y ? num_dims_b - 2 : num_dims_b - 1;
         }
 
         // Create the quantized input_b.
@@ -7044,6 +7093,7 @@ class Subgraph {
         tflite_tensor_to_xnnpack_(std::move(tflite_tensor_to_xnnpack)),
         resources_(delegate.local_id_to_resources_),
         enable_subgraph_reshaping_(delegate.enable_subgraph_reshaping()),
+        allocated_scales_(delegate.TransferTempAllocatedScales()),
         delegate_(&delegate) {
     for (int t : externals) {
       externals_[t] = nullptr;
@@ -7084,6 +7134,8 @@ class Subgraph {
   // data pointer to nullptr, and XNNPACK requires valid data pointers.
   char dummy_data_{0};
   bool enable_subgraph_reshaping_ = false;
+  // Keep track of expanded scales for shared tensors to manage their lifetime.
+  std::vector<std::vector<float>> allocated_scales_;
   Delegate* delegate_;
 };
 
@@ -7109,6 +7161,7 @@ TfLiteIntArray* Delegate::PrepareOpsToDelegate(
   static_sparse_weights_.clear();
   f16_input_tensor_for_dequant_f32_tensor_.clear();
   local_id_to_resources_.clear();
+  ClearTempScales();
 
   TfLiteIntArray* execution_plan = nullptr;
   if (context->GetExecutionPlan(context, &execution_plan) != kTfLiteOk) {
