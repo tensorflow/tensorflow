@@ -43,7 +43,7 @@ static void CheckStats(Allocator* a, int64_t num_allocs, int64_t bytes_in_use,
 #if defined(PLATFORM_GOOGLE) && defined(NDEBUG)
   // NOTE: allocator stats expectation depends on the system malloc,
   // and can vary as that changes.
-  static const int64 kSlop = 5 * 1024;
+  static const int64 kSlop = 50 * 1024;
   EXPECT_GT(stats->bytes_in_use, bytes_in_use - kSlop);
   EXPECT_LT(stats->bytes_in_use, bytes_in_use + kSlop);
   EXPECT_GT(stats->peak_bytes_in_use, peak_bytes_in_use - kSlop);

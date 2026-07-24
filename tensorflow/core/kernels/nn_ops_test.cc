@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <utility>
 #define EIGEN_USE_THREADS
 
 #if (defined(GOOGLE_CUDA) && GOOGLE_CUDA) || \
@@ -1554,8 +1555,23 @@ TEST_F(MaxPoolingTest, MaxPoolGradGradWithArgmaxOutOfBounds) {
   if (!IsGoogleCudaEnabled()) {
     return;
   }
-  SetDevice(DEVICE_GPU,
-            DeviceFactory::NewDevice("GPU", {}, "/job:a/replica:0/task:0"));
+  auto device_factory = DeviceFactory::GetFactory("GPU");
+  if (!device_factory) {
+    GTEST_SKIP()
+        << "Skipping GPU test because no GPU device factory was found.";
+    return;
+  }
+  SessionOptions opt;
+  (*opt.config.mutable_device_count())["GPU"] = 1;
+  std::vector<std::unique_ptr<Device>> devices;
+  if (!device_factory->CreateDevices(opt, "/job:a/replica:0/task:0", &devices)
+           .ok() ||
+      devices.empty()) {
+    GTEST_SKIP() << "Skipping GPU test because no physical GPU devices could "
+                    "be successfully created.";
+    return;
+  }
+  SetDevice(DEVICE_GPU, std::move(devices[0]));
   DataType dtype = DT_FLOAT;
   TF_ASSERT_OK(NodeDefBuilder("maxpoolgradgradwithargmax_op",
                               "MaxPoolGradGradWithArgmax")
