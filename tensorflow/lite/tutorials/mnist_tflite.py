@@ -18,7 +18,7 @@ import numpy as np
 import tensorflow as tf  # pylint: disable=g-bad-import-order
 from tensorflow.lite.python import lite
 from tensorflow.lite.tutorials import dataset
-flags = tf.app.flags
+flags = tf.compat.v1.app.flags
 
 flags.DEFINE_string('data_dir', '/tmp/data_dir',
                     'Directory where data is stored.')
@@ -66,6 +66,16 @@ def run_eval(interpreter, input_image):
   return output
 
 
+def predicted_label(output):
+  if np.size(output) == 0:
+    raise ValueError('Output must not be empty.')
+  return int(np.argmax(output))
+
+
+def is_correct_prediction(output, label):
+  return predicted_label(output) == int(label)
+
+
 def main(_):
   interpreter = lite.Interpreter(model_path=flags.model_file)
   interpreter.allocate_tensors()
@@ -73,7 +83,7 @@ def main(_):
   for input_data in test_image_generator():
     output = run_eval(interpreter, input_data[0])
     total += 1
-    if output == input_data[1]:
+    if is_correct_prediction(output, input_data[1]):
       num_correct += 1
     if total % 500 == 0:
       print('Accuracy after %i images: %f' %
@@ -81,5 +91,5 @@ def main(_):
 
 
 if __name__ == '__main__':
-  tf.logging.set_verbosity(tf.logging.INFO)
+  tf.compat.v1.logging.set_verbosity(tf.compat.v1.logging.INFO)
   tf.compat.v1.app.run(main)
