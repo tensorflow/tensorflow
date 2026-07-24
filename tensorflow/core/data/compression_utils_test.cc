@@ -44,6 +44,27 @@ TEST(CompressionUtilsTest, Exceeds4GB) {
                              HasSubstr("exceeding the 4GB Snappy limit")));
 }
 
+TEST(CompressionUtilsTest, ZeroElementNonMemcpyableComponent) {
+  // Compressing an empty element yields a `data` field holding zero
+  // uncompressed bytes, so the size reconciliation against the (empty) iovec
+  // succeeds and the third pass is reached.
+  std::vector<Tensor> empty_element;
+  CompressedElement compressed;
+  TF_ASSERT_OK(CompressElement(empty_element, &compressed));
+
+  CompressedComponentMetadata* metadata =
+      compressed.mutable_component_metadata()->Add();
+  metadata->set_dtype(DT_VARIANT);
+  TensorShape empty_shape({0});
+  empty_shape.AsProto(metadata->mutable_tensor_shape());
+  metadata->add_uncompressed_bytes(65536);
+
+  std::vector<Tensor> element;
+  EXPECT_THAT(UncompressElement(compressed, &element),
+              absl_testing::StatusIs(error::INVALID_ARGUMENT,
+                                     HasSubstr("Zero-element component")));
+}
+
 std::vector<std::vector<Tensor>> TestCases() {
   return {
       // Single int64.
