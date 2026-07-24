@@ -32,6 +32,23 @@ limitations under the License.
 
 namespace tensorflow {
 
+absl::Status CheckPositiveFeatureListDenseShapes(
+    const std::vector<TensorShape>& feature_list_dense_shapes) {
+  for (size_t i = 0; i < feature_list_dense_shapes.size(); ++i) {
+    const TensorShape& shape = feature_list_dense_shapes[i];
+    for (int d = 0; d < shape.dims(); ++d) {
+      if (shape.dim_size(d) <= 0) {
+        return absl::InvalidArgumentError(absl::StrCat(
+            "feature_list_dense_shapes[", i,
+            "] must have all dimensions greater than 0, but got shape ",
+            shape.DebugString(), " with dimension ", d,
+            " == ", shape.dim_size(d)));
+      }
+    }
+  }
+  return absl::OkStatus();
+}
+
 absl::Status CheckValidType(const DataType& dtype) {
   switch (dtype) {
     case DT_INT64:
@@ -580,6 +597,8 @@ absl::Status ParseSequenceExampleAttrs::FinishInit(int op_version) {
         ") and feature_list_ragged_split_types (",
         feature_list_ragged_split_types.size(), ")"));
   }
+  TF_RETURN_IF_ERROR(
+      CheckPositiveFeatureListDenseShapes(feature_list_dense_shapes));
   for (const DataType& type : context_dense_types) {
     TF_RETURN_IF_ERROR(CheckValidType(type));
   }
@@ -638,6 +657,8 @@ absl::Status ParseSingleSequenceExampleAttrs::FinishInit() {
         "len(feature_list_dense_keys) != "
         "len(feature_list_dense_types)");
   }
+  TF_RETURN_IF_ERROR(
+      CheckPositiveFeatureListDenseShapes(feature_list_dense_shapes));
   for (const DataType& type : context_dense_types) {
     TF_RETURN_IF_ERROR(CheckValidType(type));
   }
