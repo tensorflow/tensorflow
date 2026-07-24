@@ -127,7 +127,7 @@ TEST_F(CollectivePermuteCycleDecomposerTest, ForwardCycle) {
     // CHECK-DAG:   %[[cp1:.+]] = u32[8,8] collective-permute(%{{.+}}), channel_id=1,
     // CHECK-SAME{LITERAL}: source_target_pairs={{3,0}}, metadata={op_name="op1/op2/add" source_file="foo/bar/mysource.py" source_line=35}
 
-    // CHECK-DAG:   %[[cp2:.+]] = u32[8,8] collective-permute(%{{.+}}), channel_id=2,
+    // CHECK-DAG:   %[[cp2:.+]] = u32[8,8] collective-permute(%{{.+}}), channel_id=1,
     // CHECK-SAME{LITERAL}: source_target_pairs={{0,1},{1,2},{2,3}}, metadata={op_name="op1/op2/add" source_file="foo/bar/mysource.py" source_line=35}
 
     // CHECK-DAG:   ROOT %{{.+}} = u32[8,8] select(%[[compare]], %[[cp1]], %[[cp2]])
@@ -269,7 +269,7 @@ TEST_F(CollectivePermuteCycleDecomposerTest, BackwardCycle) {
     // CHECK-DAG:   %[[cp1:.+]] = u32[8,8] collective-permute(%{{.+}}), channel_id=1, source_target_pairs=
     // CHECK-SAME{LITERAL}: {{0,3}}, metadata={op_name="op1/op2/add" source_file="foo/bar/mysource.py" source_line=35}
 
-    // CHECK-DAG:   %[[cp2:.+]] = u32[8,8] collective-permute(%{{.+}}), channel_id=2, source_target_pairs=
+    // CHECK-DAG:   %[[cp2:.+]] = u32[8,8] collective-permute(%{{.+}}), channel_id=1, source_target_pairs=
     // CHECK-SAME{LITERAL}: {{1,0},{2,1},{3,2}}, metadata={op_name="op1/op2/add" source_file="foo/bar/mysource.py" source_line=35}
 
     // CHECK-DAG:   ROOT %{{.+}} = u32[8,8] select(%[[compare]], %[[cp1]], %[[cp2]])
