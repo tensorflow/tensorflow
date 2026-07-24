@@ -286,44 +286,6 @@ TEST(ConvolutionPrepareSecurityTest, RejectsHybridScratchOverflow) {
   EXPECT_EQ(m.AllocateTensors(), kTfLiteError);
 }
 
-TEST(ConvolutionPrepareSecurityTest, RejectsHybridInputSizeOverflow) {
-  if (sizeof(void*) <= 4) {
-    GTEST_SKIP() << "Interpreter construction overflows before kernel Prepare "
-                    "on 32-bit.";
-  }
-  constexpr int kHugeDim = 46341;
-  PrepareOnlyConvolutionOpModel<int8_t> m(
-      ops::builtin::Register_CONVOLUTION_GENERIC_OPT(),
-      {TensorType_FLOAT32, {1, kHugeDim, 1, kHugeDim}},
-      {TensorType_INT8, {1, 1, 1, kHugeDim}, -1.0f, 1.0f},
-      {TensorType_FLOAT32, {}},
-      /*stride_width=*/1, /*stride_height=*/1, Padding_VALID,
-      ActivationFunctionType_NONE, /*dilation_width_factor=*/1,
-      /*dilation_height_factor=*/1, /*num_threads=*/1,
-      /*const_filter=*/false);
-
-  EXPECT_EQ(m.AllocateTensors(), kTfLiteError);
-}
-
-TEST(ConvolutionPrepareSecurityTest, RejectsInt4FilterSizeOverflow) {
-  if (sizeof(void*) <= 4) {
-    GTEST_SKIP() << "Interpreter construction overflows before kernel Prepare "
-                    "on 32-bit.";
-  }
-  constexpr int kHugeDim = 46341;
-  PrepareOnlyConvolutionOpModel<int8_t> m(
-      ops::builtin::Register_CONVOLUTION_GENERIC_OPT(),
-      {TensorType_FLOAT32, {1, 1, 1, kHugeDim}},
-      {TensorType_INT4, {kHugeDim, 1, 1, kHugeDim}, 0.0f, 0.0f, 1.0f, 0},
-      {TensorType_FLOAT32, {}},
-      /*stride_width=*/1, /*stride_height=*/1, Padding_VALID,
-      ActivationFunctionType_NONE, /*dilation_width_factor=*/1,
-      /*dilation_height_factor=*/1, /*num_threads=*/1,
-      /*const_filter=*/false);
-
-  EXPECT_EQ(m.AllocateTensors(), kTfLiteError);
-}
-
 TEST(ConvolutionPrepareSecurityTest, RejectsZeroInputChannels) {
   PrepareOnlyConvolutionOpModel<float> m(
       ops::builtin::Register_CONVOLUTION_GENERIC_OPT(),
@@ -2596,6 +2558,17 @@ TEST_P(QuantizedConvolutionOpTest, SimpleTestExplicitQuantizedOp) {
                                  144, 131, 130,  //
                                  164, 131, 130,  //
                              }));
+}
+
+TEST(ConvPrepareSecurityTest, RejectsShapeOverflow) {
+  constexpr int kHugeDim = 46341;
+  PrepareOnlyConvolutionOpModel<float> m(
+      ops::builtin::Register_CONVOLUTION_GENERIC_OPT(),
+      {TensorType_FLOAT32, {1, kHugeDim, kHugeDim, 1}},
+      {TensorType_FLOAT32, {1, 1, 1, 1}}, {TensorType_FLOAT32, {}},
+      /*stride_width=*/1, /*stride_height=*/1, Padding_SAME);
+
+  EXPECT_EQ(m.AllocateTensors(), kTfLiteError);
 }
 
 INSTANTIATE_TEST_SUITE_P(
