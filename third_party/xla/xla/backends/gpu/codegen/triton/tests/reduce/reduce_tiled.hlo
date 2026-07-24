@@ -1,0 +1,48 @@
+// RUN: hlo_to_xtileir --xla_gpu_experimental_enable_tiling_propagation %s | FileCheck %s
+// RUN: triton_test_correctness --xla_gpu_experimental_enable_tiling_propagation --abs_error_bound=1e-7 --rel_error_bound=1e-7 %s
+
+region {
+  p0 = f32[] parameter(0)
+  p1 = f32[] parameter(1)
+  ROOT add = f32[] add(p0, p1)
+}
+
+fusion {
+  p = f32[8,16] parameter(0)
+  c = f32[] constant(0)
+  ROOT reduce = f32[8] reduce(p, c), dimensions={1}, to_apply=region,
+    backend_config={sizes:[4]}
+}
+
+ENTRY main {
+  p = f32[8,16] parameter(0)
+  ROOT fusion = f32[8] fusion(p), kind=kCustom, calls=fusion,
+    backend_config={
+      "fusion_backend_config":{
+        "kind":"__triton",
+        "block_level_fusion_config":{
+          "output_tiles":[{"sizes":["4"]}],
+          "num_warps":"1",
+          "num_ctas":"1",
+          "num_stages":"1"}}}
+}
+
+// CHECK-DAG:  %[[C0:.*]] = arith.constant 0 : index
+// CHECK-DAG:  %[[C4:.*]] = arith.constant 4 : index
+// CHECK-DAG:  %[[C1:.*]] = arith.constant 1 : index
+// CHECK-DAG:  %[[INIT:.*]] = arith.constant dense<0.000000e+00> : tensor<4x4xf32>
+
+// CHECK: %[[FOR:.*]] = scf.for %[[IV:.*]] = %[[C0]] to %[[C4]] step %[[C1]]
+// CHECK-SAME: iter_args(%[[ACC:.*]] = %[[INIT]]) -> (tensor<4x4xf32>) {
+
+// CHECK:   %[[OFFSET_P:.*]] = xla.apply_indexing
+// CHECK:   %[[OFFSET_R:.*]] = xla.apply_indexing
+// CHECK:   %[[EXTRACT:.*]] = xtile.extract %{{.*}}[%[[OFFSET_P]], %[[OFFSET_R]]] [4, 4]
+// CHECK:   %[[COMBINE:.*]] = arith.addf %[[ACC]], %[[EXTRACT]] : tensor<4x4xf32>
+// CHECK:   scf.yield %[[COMBINE]] : tensor<4x4xf32>
+// CHECK: }
+// CHECK: %[[REDUCE:.*]] = "tt.reduce"(%[[FOR]]) <{axis = 1 : i32}> ({
+// CHECK: ^bb0(%[[ARG0:.*]]: f32, %[[ARG1:.*]]: f32):
+// CHECK:   %[[SUM:.*]] = arith.addf %[[ARG0]], %[[ARG1]] : f32
+// CHECK:   tt.reduce.return %[[SUM]] : f32
+// CHECK: }) : (tensor<4x4xf32>) -> tensor<4xf32>
