@@ -959,6 +959,38 @@ struct log1p : base<T, Eigen::internal::scalar_log1p_op<T>> {};
 template <typename T>
 struct sign : base<T, Eigen::internal::scalar_sign_op<T>> {};
 
+// Specialization of sign for complex types to avoid underflow in |z|^2.
+// Eigen's scalar_sign_op computes |z|^2 = re^2 + im^2 as a float32
+// intermediate. When |z| < sqrt(float32_tiny) ~= 1.08e-19, this underflows
+// to 0, causing sign(z) to incorrectly return 0. We fix this by checking
+// whether the input is nonzero directly, and using std::abs() (which uses
+// hypot internally) to avoid intermediate underflow/overflow.
+template <typename RealType>
+struct safe_complex_sign_op {
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE std::complex<RealType> operator()(
+      const std::complex<RealType>& z) const {
+    const RealType re = z.real();
+    const RealType im = z.imag();
+    if (re == RealType(0) && im == RealType(0)) {
+      return std::complex<RealType>(0, 0);
+    }
+    // Use hypot directly to avoid intermediate underflow/overflow.
+    // std::abs(complex) may compute sqrt(re*re + im*im) which underflows
+    // when FTZ is enabled and |re|^2 or |im|^2 is subnormal.
+    const RealType mag = std::hypot(re, im);
+    return std::complex<RealType>(re / mag, im / mag);
+  }
+};
+
+template <>
+struct sign<complex64>
+    : base<complex64, safe_complex_sign_op<float>> {};
+
+template <>
+struct sign<complex128>
+    : base<complex128, safe_complex_sign_op<double>> {};
+
+
 template <typename T>
 struct sinh : base<T, Eigen::internal::scalar_sinh_op<T>> {};
 
