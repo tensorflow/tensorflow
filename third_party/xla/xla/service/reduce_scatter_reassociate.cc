@@ -72,8 +72,6 @@ absl::StatusOr<bool> ReduceScatterReassociate::RunImpl(
     return false;
   }
 
-  int64_t next_channel_id = hlo_query::NextChannelId(*module);
-
   bool changed = false;
   for (auto computation : module->computations(execution_threads)) {
     for (HloInstruction* inst : computation->MakeInstructionPostOrder()) {
@@ -115,11 +113,6 @@ absl::StatusOr<bool> ReduceScatterReassociate::RunImpl(
       // delete the potential annotation.
       if (rs0_annotation.has_value() ^ rs1_annotation.has_value()) {
         RemoveSchedulingAnnotation(new_rs);
-      }
-
-      // Do not reuse channel_id from the existing instruction.
-      if (new_rs->channel_id()) {
-        new_rs->set_channel_id(next_channel_id++);
       }
 
       RETURN_IF_ERROR(inst->ReplaceAllUsesWith(new_rs));
