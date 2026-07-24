@@ -655,10 +655,22 @@ cc_library(
     hdrs = ["triton_call.h"],
     deps = [
         "@com_google_absl//absl/strings:string_view",
+        "@llvm-project//llvm:Support",
         "@llvm-project//mlir:AsmParser",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Parser",
         "@llvm-project//mlir:Support",
+    ],
+)
+
+xla_cc_test(
+    name = "triton_call_test",
+    srcs = ["triton_call_test.cc"],
+    deps = [
+        ":triton_call",
+        "//xla/tests:xla_internal_test_main",
+        "@com_google_googletest//:gtest",
+        "@llvm-project//mlir:IR",
     ],
 )
 

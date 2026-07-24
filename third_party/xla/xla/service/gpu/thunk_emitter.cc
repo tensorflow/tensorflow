@@ -1324,6 +1324,7 @@ AsyncThunkSequence ThunkEmitter::EmitTritonCustomCall(
     block_level_parameters.global_scratch_memory_size =
         call.global_scratch_memory_size;
     block_level_parameters.is_tma_allowed = call.is_tma_allowed;
+    block_level_parameters.waves_per_eu = call.waves_per_eu;
 
     return ir_emitter_context_->kernel_compiler()
         ->CompileTritonToLlvm(
