@@ -962,4 +962,65 @@ TEST(BasicFlatBufferModel, TestHandleZeroSizeConstant) {
 // These tests will occur with the evaluation tests of individual operators,
 // not here.
 
+
+// Regression test for the uint64 overflow in interpreter_builder.cc's
+// external-offset bounds checks. A Buffer with (offset, size) chosen so
+// that their uint64_t sum wraps below allocation_->bytes() must be
+// rejected. Prior to the fix the check `offset + size > bytes` wraps
+// silently and the runtime proceeds to dereference a wild pointer.
+TEST(BasicFlatBufferModel, TestBufferOffsetOverflowRejected) {
+  flatbuffers::FlatBufferBuilder fbb;
+
+  // Buffer 0: empty (required by schema).
+  std::vector<flatbuffers::Offset<Buffer>> buffers_vec;
+  buffers_vec.push_back(CreateBuffer(fbb));
+
+  // Buffer 1: malicious. offset = 2**64 - 0x100, size = 0x100. Their
+  // uint64_t sum wraps to 0, which the legacy check would accept.
+  BufferBuilder bb(fbb);
+  bb.add_offset(0xFFFFFFFFFFFFFF00ULL);
+  bb.add_size(0x100ULL);
+  buffers_vec.push_back(bb.Finish());
+  auto buffers = fbb.CreateVector(buffers_vec);
+
+  // Minimal tensor referencing buffer 1.
+  auto shape = fbb.CreateVector<int32_t>({1, 8});
+  auto tname = fbb.CreateString("mal");
+  TensorBuilder tb(fbb);
+  tb.add_shape(shape);
+  tb.add_type(TensorType_FLOAT32);
+  tb.add_buffer(1);
+  tb.add_name(tname);
+  auto tensor = tb.Finish();
+  auto tensors = fbb.CreateVector(std::vector<flatbuffers::Offset<Tensor>>{tensor});
+  auto inputs_outputs = fbb.CreateVector<int32_t>({0});
+
+  SubGraphBuilder sgb(fbb);
+  sgb.add_tensors(tensors);
+  sgb.add_inputs(inputs_outputs);
+  sgb.add_outputs(inputs_outputs);
+  auto subgraph = sgb.Finish();
+  auto subgraphs = fbb.CreateVector(
+      std::vector<flatbuffers::Offset<SubGraph>>{subgraph});
+
+  auto desc = fbb.CreateString("overflow-test");
+  ModelBuilder mb(fbb);
+  mb.add_version(TFLITE_SCHEMA_VERSION);
+  mb.add_subgraphs(subgraphs);
+  mb.add_description(desc);
+  mb.add_buffers(buffers);
+  FinishModelBuffer(fbb, mb.Finish());
+
+  auto model = FlatBufferModel::BuildFromBuffer(
+      reinterpret_cast<const char*>(fbb.GetBufferPointer()), fbb.GetSize());
+  ASSERT_NE(model, nullptr);
+
+  ops::builtin::BuiltinOpResolver resolver;
+  std::unique_ptr<Interpreter> interpreter;
+  TfLiteStatus status = InterpreterBuilder(*model, resolver)(&interpreter);
+  EXPECT_NE(status, kTfLiteOk)
+      << "InterpreterBuilder must reject a Buffer with (offset, size) "
+         "that overflows when added as uint64_t";
+}
+
 }  // namespace tflite
