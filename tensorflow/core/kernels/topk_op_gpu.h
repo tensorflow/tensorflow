@@ -562,7 +562,7 @@ namespace functor {
 
 template <typename T, typename Tidx>
 struct TopKFunctor<GPUDevice, T, Tidx> {
-  static EIGEN_ALWAYS_INLINE Status Compute(
+  static EIGEN_ALWAYS_INLINE absl::Status Compute(
       OpKernelContext* context, bool sorted, int k,
       const typename TTypes<T, 2>::ConstTensor& input, const int64_t num_rows,
       const int64_t num_cols, typename TTypes<T, 2>::Tensor values,
