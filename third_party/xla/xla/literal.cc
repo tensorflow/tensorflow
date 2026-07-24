@@ -1986,8 +1986,6 @@ bool LiteralBase::Piece::EqualElements(const LiteralBase::Piece& other) const {
     int64_t size_bytes = size_bytes_dense();
     CHECK_EQ(size_bytes, other.size_bytes_dense());
     if (primitive_util::IsSubByteNonPredType(subshape().element_type())) {
-      // TODO(b/507052779): JAX CI is currently unhappy with highway, re-enable
-      // this when it's fixed.
       auto one_array = reinterpret_cast<const uint8_t*>(buffer());
       auto two_array = reinterpret_cast<const uint8_t*>(other.buffer());
       const int bits_per_element =
@@ -2091,15 +2089,104 @@ static bool EqualIncludingNan(std::complex<T> a, std::complex<T> b) {
          EqualIncludingNan(a.imag(), b.imag());
 }
 
+template <class T>
+inline constexpr bool is_padding_free_v =
+    std::is_trivially_copyable_v<T> &&
+    (std::has_unique_object_representations_v<T> ||
+     (std::is_floating_point_v<T> && !std::is_same_v<T, long double>));
+
+// std::complex<T> is guaranteed layout-compatible with T[2]
+template <class U>
+inline constexpr bool is_padding_free_v<std::complex<U>> = is_padding_free_v<U>;
+
+// Specializations for custom float types that don't have unique object
+// representations (e.g. because they wrap compiler float types or have
+// NaN/signed zero semantics) or where the compiler might be conservative
+// (e.g. MSVC on Windows).
+template <>
+inline constexpr bool is_padding_free_v<Eigen::half> = true;
+template <>
+inline constexpr bool is_padding_free_v<Eigen::bfloat16> = true;
+
+template <>
+inline constexpr bool is_padding_free_v<tsl::float4_e2m1fn> = true;
+template <>
+inline constexpr bool is_padding_free_v<tsl::float6_e3m2fn> = true;
+template <>
+inline constexpr bool is_padding_free_v<tsl::float6_e2m3fn> = true;
+template <>
+inline constexpr bool is_padding_free_v<tsl::float8_e5m2> = true;
+template <>
+inline constexpr bool is_padding_free_v<tsl::float8_e4m3> = true;
+template <>
+inline constexpr bool is_padding_free_v<tsl::float8_e4m3fn> = true;
+template <>
+inline constexpr bool is_padding_free_v<tsl::float8_e4m3b11fnuz> = true;
+template <>
+inline constexpr bool is_padding_free_v<tsl::float8_e5m2fnuz> = true;
+template <>
+inline constexpr bool is_padding_free_v<tsl::float8_e4m3fnuz> = true;
+template <>
+inline constexpr bool is_padding_free_v<tsl::float8_e3m4> = true;
+template <>
+inline constexpr bool is_padding_free_v<tsl::float8_e8m0fnu> = true;
+
+template <>
+inline constexpr bool is_padding_free_v<s1> = true;
+template <>
+inline constexpr bool is_padding_free_v<u1> = true;
+template <>
+inline constexpr bool is_padding_free_v<s2> = true;
+template <>
+inline constexpr bool is_padding_free_v<u2> = true;
+template <>
+inline constexpr bool is_padding_free_v<s4> = true;
+template <>
+inline constexpr bool is_padding_free_v<u4> = true;
+
+template <>
+inline constexpr bool is_padding_free_v<float> = true;
+template <>
+inline constexpr bool is_padding_free_v<double> = true;
+template <>
+inline constexpr bool is_padding_free_v<int8_t> = true;
+template <>
+inline constexpr bool is_padding_free_v<uint8_t> = true;
+template <>
+inline constexpr bool is_padding_free_v<int16_t> = true;
+template <>
+inline constexpr bool is_padding_free_v<uint16_t> = true;
+template <>
+inline constexpr bool is_padding_free_v<int32_t> = true;
+template <>
+inline constexpr bool is_padding_free_v<uint32_t> = true;
+template <>
+inline constexpr bool is_padding_free_v<int64_t> = true;
+template <>
+inline constexpr bool is_padding_free_v<uint64_t> = true;
+
+template <>
+inline constexpr bool is_padding_free_v<complex64> = true;
+template <>
+inline constexpr bool is_padding_free_v<complex128> = true;
+
+template <>
+inline constexpr bool is_padding_free_v<bool> = true;
+
 template <typename NativeT>
 static bool AllElementsEqualValue(absl::Span<const NativeT> data,
                                   NativeT value) {
-  for (int64_t i = 0; i < data.size(); ++i) {
-    if (memcmp(&data[i], &value, sizeof value)) {
-      return false;
-    }
+  static_assert(is_padding_free_v<NativeT>, "NativeT must be padding-free");
+  if (data.empty()) {
+    return true;
   }
-  return true;
+  if (memcmp(&data[0], &value, sizeof(NativeT)) != 0) {
+    return false;
+  }
+  if (data.size() == 1) {
+    return true;
+  }
+  return memcmp(&data[0], &data[1], (data.size() - 1) * sizeof(NativeT)) == 0;
 }
 
 bool Literal::Piece::IsAll(const Literal& scalar) const {

@@ -23,6 +23,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/base/nullability.h"
 #include "absl/functional/any_invocable.h"
 #include "absl/log/check.h"
@@ -223,10 +224,12 @@ GetBlockLevelFusionConfigForAllReduce(
   }
 
   absl::StatusOr<AllReduceInfo> maybe_all_reduce_info = BuildAllReduceInfo(
-      /*is_collective_kernel_enabled=*/all_reduce->GetModule()
-          ->config()
-          .debug_options()
-          .xla_gpu_unsupported_use_all_reduce_one_shot_kernel(),
+      /*is_collective_kernel_enabled=*/absl::c_linear_search(
+          all_reduce->GetModule()
+              ->config()
+              .debug_options()
+              .xla_gpu_experimental_use_collective_kernels(),
+          static_cast<int>(DebugOptions::COLLECTIVE_KERNEL_ALL_REDUCE)),
       /*is_multimem_enabled=*/false, gpu_topology, all_reduce,
       device_assignment);
   if (absl::IsUnimplemented(maybe_all_reduce_info.status())) {
@@ -237,11 +240,11 @@ GetBlockLevelFusionConfigForAllReduce(
   ASSIGN_OR_RETURN(AllReduceInfo all_reduce_info,
                    std::move(maybe_all_reduce_info));
   const Shape& output_shape = all_reduce->shape();
-  const LaunchDimensions launch_dims = AllReduceLaunchDimensions(
-      all_reduce_info.num_elements, all_reduce_info.num_devices,
-      all_reduce_info.all_reduce_strategy);
   const se::DeviceDescription& device_info =
       gpu_topology.gpu_target_config().device_description;
+  const LaunchDimensions launch_dims = AllReduceLaunchDimensions(
+      all_reduce_info.num_elements, all_reduce_info.num_devices,
+      all_reduce_info.all_reduce_strategy, device_info);
   BlockLevelFusionConfig block_level_config;
   block_level_config.set_num_warps(xla::CeilOfRatio(
       static_cast<int64_t>(launch_dims.num_threads_per_block()),

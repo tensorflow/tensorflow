@@ -186,11 +186,6 @@ struct LegalizeTrigonometricToApproximationPass
 
 }  // anonymous namespace
 
-std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
-createLegalizeTrigonometricToApproximationPass() {
-  return std::make_unique<LegalizeTrigonometricToApproximationPass>();
-}
-
 void populateTrigonometricToApproximationPatterns(mlir::MLIRContext *context,
                                                   RewritePatternSet *patterns) {
   // clang-format off

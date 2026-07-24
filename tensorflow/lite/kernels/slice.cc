@@ -48,8 +48,8 @@ constexpr int kBeginTensor = 1;
 constexpr int kSizeTensor = 2;
 constexpr int kOutputTensor = 0;
 
-// This Op only supports 1-5D cases and since we use the optimized ops 5D
-// implementation, the 1-4D tensors are mapped to 5D.
+// The optimized helper supports up to 5D. Higher-rank tensors use the
+// runtime-rank reference path.
 const int kMaxDim = 5;
 
 template <typename T>
@@ -143,9 +143,6 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_EQ(context, NumDimensions(begin), 1);
   TF_LITE_ENSURE_EQ(context, NumDimensions(size), 1);
   TF_LITE_ENSURE_EQ(context, NumElements(begin), NumElements(size));
-  TF_LITE_ENSURE_MSG(context, NumDimensions(input) <= kMaxDim,
-                     "Slice op only supports 1D-5D input arrays.");
-
   // If the shape of output is fully specified then resize even if
   // the input shape is not staticly defined.
   if (!HasUnspecifiedDimension(output) && ShapeHasRank(output->dims)) {
@@ -180,15 +177,11 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
                       ResizeOutputShape(context, input, begin, size, output));
   }
 
+  const int input_dims = NumDimensions(input);
   std::vector<int> begins;
-  begins.reserve(kMaxDim);
+  begins.reserve(input_dims);
   std::vector<int> sizes;
-  sizes.reserve(kMaxDim);
-
-  for (int i = NumDimensions(input); i < kMaxDim; ++i) {
-    begins.push_back(0);
-    sizes.push_back(1);
-  }
+  sizes.reserve(input_dims);
 
   if (begin->type == kTfLiteInt32) {
     GetBeginAndSizeVectors<int32_t>(NumDimensions(input), begin, size, &begins,
@@ -202,22 +195,66 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
     return kTfLiteError;
   }
 
-  // The Slice op implementation only accepts 5-D sizes. That constraint is, for
-  // the present, maintained here.
-  //
-  // The dimensions in the kernel used to be in reverse-order, and TFLite
-  // arranged the begins and sizes vectors accordingly. This macro incorporates
-  // the needed reversing.
+  if (input_dims > kMaxDim) {
+    if (input->type == kTfLiteString) {
+      reference_ops::Slice<string>(begins, GetTensorShape(input), input,
+                                   GetTensorShape(output), output);
+      return kTfLiteOk;
+    } else if (input->type == kTfLiteInt4) {
+      reference_ops::SliceInt4(begins, GetTensorShape(input), input,
+                               GetTensorShape(output), output);
+      return kTfLiteOk;
+    }
+
+#define TF_LITE_SLICE_DYNAMIC(data_type)                                  \
+  {                                                                       \
+    reference_ops::Slice<data_type>(begins, GetTensorShape(input), input, \
+                                    GetTensorShape(output), output);      \
+  }
+    switch (TfLiteTypeGetSizeBits(output->type)) {
+      case 8:
+        TF_LITE_SLICE_DYNAMIC(int8_t);
+        break;
+      case 16:
+        TF_LITE_SLICE_DYNAMIC(int16_t);
+        break;
+      case 32:
+        TF_LITE_SLICE_DYNAMIC(int32_t);
+        break;
+      case 64:
+        TF_LITE_SLICE_DYNAMIC(int64_t);
+        break;
+      default:
+        TF_LITE_KERNEL_LOG(context,
+                           "Type %d is currently not supported by Slice.",
+                           input->type);
+        return kTfLiteError;
+    }
+#undef TF_LITE_SLICE_DYNAMIC
+    return kTfLiteOk;
+  }
+
+  std::vector<int> padded_begins;
+  padded_begins.reserve(kMaxDim);
+  std::vector<int> padded_sizes;
+  padded_sizes.reserve(kMaxDim);
+  for (int i = input_dims; i < kMaxDim; ++i) {
+    padded_begins.push_back(0);
+    padded_sizes.push_back(1);
+  }
+  padded_begins.insert(padded_begins.end(), begins.begin(), begins.end());
+  padded_sizes.insert(padded_sizes.end(), sizes.begin(), sizes.end());
+
 #define TF_LITE_SLICE_INT4()                                            \
   {                                                                     \
-    TF_LITE_ENSURE_EQ(context, begins.size(), kMaxDim);                 \
-    TF_LITE_ENSURE_EQ(context, sizes.size(), kMaxDim);                  \
+    TF_LITE_ENSURE_EQ(context, padded_begins.size(), kMaxDim);          \
+    TF_LITE_ENSURE_EQ(context, padded_sizes.size(), kMaxDim);           \
     tflite::SliceParams op_params;                                      \
     op_params.begin_count = kMaxDim;                                    \
     op_params.size_count = kMaxDim;                                     \
     for (int i = 0; i < kMaxDim; ++i) {                                 \
-      op_params.begin[i] = begins[i];                                   \
-      op_params.size[i] = sizes[i];                                     \
+      op_params.begin[i] = padded_begins[i];                            \
+      op_params.size[i] = padded_sizes[i];                              \
     }                                                                   \
                                                                         \
     if (kernel_type == kGenericOptimized) {                             \
@@ -231,14 +268,14 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 
 #define TF_LITE_SLICE(data_type)                                               \
   {                                                                            \
-    TF_LITE_ENSURE_EQ(context, begins.size(), kMaxDim);                        \
-    TF_LITE_ENSURE_EQ(context, sizes.size(), kMaxDim);                         \
+    TF_LITE_ENSURE_EQ(context, padded_begins.size(), kMaxDim);                 \
+    TF_LITE_ENSURE_EQ(context, padded_sizes.size(), kMaxDim);                  \
     tflite::SliceParams op_params;                                             \
     op_params.begin_count = kMaxDim;                                           \
     op_params.size_count = kMaxDim;                                            \
     for (int i = 0; i < kMaxDim; ++i) {                                        \
-      op_params.begin[i] = begins[i];                                          \
-      op_params.size[i] = sizes[i];                                            \
+      op_params.begin[i] = padded_begins[i];                                   \
+      op_params.size[i] = padded_sizes[i];                                     \
     }                                                                          \
                                                                                \
     if (kernel_type == kGenericOptimized) {                                    \

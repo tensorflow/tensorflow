@@ -1170,14 +1170,20 @@ absl::Status CuptiTracer::Enable(
   cupti_driver_api_hook_ = std::make_unique<CuptiDriverApiHookWithActivityApi>(
       *option_, cupti_interface_, this);
 
+  tsl::profiler::AnnotationStack::Enable(true);
+
   absl::Status status = EnableApiTracing();
   need_root_access_ |= status.code() == tsl::error::PERMISSION_DENIED;
   if (!status.ok()) {
+    tsl::profiler::AnnotationStack::Enable(false);
     return status;
   }
 
-  RETURN_IF_ERROR(EnableActivityTracing());
-  tsl::profiler::AnnotationStack::Enable(true);
+  absl::Status activity_status = EnableActivityTracing();
+  if (!activity_status.ok()) {
+    tsl::profiler::AnnotationStack::Enable(false);
+    return activity_status;
+  }
 
   int num_gpus_requested = xplanes.size();
   // Enable PM Sampling after CUPTI is initialized.

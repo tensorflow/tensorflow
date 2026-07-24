@@ -1015,10 +1015,8 @@ bool NcclSymmetricBuffersSpec::IsEnabled(const HloInstruction& inst) const {
   }
   DebugOptions::CollectiveOpType op_type = *op_type_opt;
 
-  size_t size_in_bytes = 0;
-  for (const auto* operand : collective->operands()) {
-    size_in_bytes += ShapeUtil::ByteSizeOf(operand->shape());
-  }
+  const size_t size_in_bytes =
+      ShapeUtil::ByteSizeOfElementsRecursive(collective->shape());
 
   std::optional<PrimitiveType> operand_type;
   if (collective->operand_count() > 0) {

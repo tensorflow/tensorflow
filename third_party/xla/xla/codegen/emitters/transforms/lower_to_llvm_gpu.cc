@@ -71,8 +71,8 @@ namespace {
 
 namespace se = ::stream_executor;
 
-// log2(e), used to express exp(x) = exp2(x * log2(e)).
-constexpr double kLog2E = 1.4426950408889634;
+// ln(2), used to express log(x) = log2(x) * ln(2).
+constexpr double kLn2 = 0.6931471805599453;
 
 // Lowers a scalar bf16 unary `math` op to the matching native gfx1250 bf16
 // transcendental instruction (v_exp_bf16, v_sqrt_bf16, v_rsq_bf16, v_tanh_bf16,
@@ -106,30 +106,32 @@ struct TranscendentalBF16ToAMDGPU : public mlir::ConvertOpToLLVMPattern<OpTy> {
   llvm::StringRef intrinsic;
 };
 
-// Lowers a scalar bf16 `math.exp` to the native gfx1250 `v_exp_bf16`
-// instruction by rewriting exp(x) = exp2(x * log2(e)) and emitting the
-// `llvm.amdgcn.exp2` intrinsic. See TranscendentalBF16ToAMDGPU for the
+// Lowers a scalar bf16 `math.log` to the native gfx1250 `v_log_bf16`
+// instruction by rewriting log(x) = log2(x) * ln(2) and emitting the
+// `llvm.amdgcn.log` intrinsic. See TranscendentalBF16ToAMDGPU for the
 // rationale.
-struct ExpBF16ToAMDGPU
-    : public mlir::ConvertOpToLLVMPattern<mlir::math::ExpOp> {
+struct LogBF16ToAMDGPU
+    : public mlir::ConvertOpToLLVMPattern<mlir::math::LogOp> {
   using ConvertOpToLLVMPattern::ConvertOpToLLVMPattern;
 
   mlir::LogicalResult matchAndRewrite(
-      mlir::math::ExpOp op, OpAdaptor adaptor,
+      mlir::math::LogOp op, OpAdaptor adaptor,
       mlir::ConversionPatternRewriter& rewriter) const override {
     if (!op.getType().isBF16()) {
-      return rewriter.notifyMatchFailure(op, "not a scalar bf16 exp");
+      return rewriter.notifyMatchFailure(op, "not a scalar bf16 log");
     }
     mlir::Location loc = op.getLoc();
     mlir::Value operand = adaptor.getOperands().front();
     mlir::Type bf16 = operand.getType();
-    mlir::Value log2e = rewriter.create<mlir::LLVM::ConstantOp>(
-        loc, bf16, rewriter.getFloatAttr(bf16, kLog2E));
-    mlir::Value scaled =
-        rewriter.create<mlir::LLVM::FMulOp>(loc, operand, log2e);
-    rewriter.replaceOpWithNewOp<mlir::LLVM::CallIntrinsicOp>(
-        op, /*resultType=*/bf16, rewriter.getStringAttr("llvm.amdgcn.exp2"),
-        mlir::ValueRange{scaled});
+    mlir::Value log2x = rewriter
+                            .create<mlir::LLVM::CallIntrinsicOp>(
+                                loc, /*resultType=*/bf16,
+                                rewriter.getStringAttr("llvm.amdgcn.log"),
+                                mlir::ValueRange{operand})
+                            .getResults();
+    mlir::Value ln2 = rewriter.create<mlir::LLVM::ConstantOp>(
+        loc, bf16, rewriter.getFloatAttr(bf16, kLn2));
+    rewriter.replaceOpWithNewOp<mlir::LLVM::FMulOp>(op, log2x, ln2);
     return mlir::success();
   }
 };
@@ -184,7 +186,7 @@ class LowerToLLVMGPUPass
                 .rocm_compute_capability()
                 .has_bf16_transcendental_support()) {
           mlir::PatternBenefit benefit(2);
-          patterns.add<ExpBF16ToAMDGPU>(converter, benefit);
+          patterns.add<LogBF16ToAMDGPU>(converter, benefit);
           patterns.add<TranscendentalBF16ToAMDGPU<mlir::math::Exp2Op>>(
               converter, "llvm.amdgcn.exp2", benefit);
           patterns.add<TranscendentalBF16ToAMDGPU<mlir::math::SqrtOp>>(

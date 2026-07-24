@@ -179,16 +179,17 @@ bool IsValidMxScaledDot(const HloInstruction* scaled_dot) {
   return true;
 }
 
-bool IsScaledDotFusion(const HloInstruction& instr) {
-  if (instr.opcode() != HloOpcode::kFusion) return false;
+// Returns the scaled-dot instruction inside a Triton GEMM fusion, or nullptr
+// if `instr` is not such a fusion.
+const HloInstruction* GetScaledDotFromFusion(const HloInstruction& instr) {
+  if (instr.opcode() != HloOpcode::kFusion) return nullptr;
   auto gpu_config = instr.backend_config<GpuBackendConfig>();
-  if (!gpu_config.ok()) return false;
+  if (!gpu_config.ok()) return nullptr;
   if (gpu_config->fusion_backend_config().kind() != kTritonGemmFusionKind) {
-    return false;
+    return nullptr;
   }
   return hlo_query::GetFirstInstructionWithOpcode(
-             *instr.fused_instructions_computation(), HloOpcode::kScaledDot) !=
-         nullptr;
+      *instr.fused_instructions_computation(), HloOpcode::kScaledDot);
 }
 
 }  // namespace
@@ -198,7 +199,7 @@ bool HipblasLtBackend::IsSupported(const HloInstruction& instr) {
       IsCublasLtGroupedMatmul(instr)) {
     return true;
   }
-  if (IsScaledDotFusion(instr)) {
+  if (GetScaledDotFromFusion(instr) != nullptr) {
     const auto& gpu_cc =
         target_config().device_description.gpu_compute_capability();
     const auto* rocm_cc = gpu_cc.rocm_compute_capability();
@@ -211,7 +212,14 @@ absl::StatusOr<std::vector<std::unique_ptr<BackendConfig>>>
 HipblasLtBackend::GetSupportedConfigs(const HloInstruction& instr) {
   if (!IsSupported(instr)) {
     return std::vector<std::unique_ptr<BackendConfig>>();
-  } else if (IsCublasLtMatmul(instr) || IsCublasLtMatmulF8(instr)) {
+  }
+
+  if (stream_executor() == nullptr) {
+    return absl::InvalidArgumentError(
+        "HipblasLtBackend cannot enumerate configs in deviceless mode.");
+  }
+
+  if (IsCublasLtMatmul(instr) || IsCublasLtMatmulF8(instr)) {
     ASSIGN_OR_RETURN(GpuBackendConfig gpu_config,
                      instr.backend_config<GpuBackendConfig>());
     const GemmBackendConfig& backend_config = gpu_config.gemm_backend_config();
@@ -253,12 +261,11 @@ HipblasLtBackend::GetSupportedConfigs(const HloInstruction& instr) {
       configs.push_back(std::move(config));
     }
     return configs;
-  } else if (IsScaledDotFusion(instr)) {
-    const HloInstruction* scaled_dot = hlo_query::GetFirstInstructionWithOpcode(
-        *instr.fused_instructions_computation(), HloOpcode::kScaledDot);
-    TF_RET_CHECK(scaled_dot != nullptr);
+  }
 
+  if (const auto* scaled_dot = GetScaledDotFromFusion(instr)) {
     if (!IsValidMxScaledDot(scaled_dot)) {
+      LOG(WARNING) << "hipBLASLt MX: IsValidMxScaledDot failed";
       return std::vector<std::unique_ptr<BackendConfig>>();
     }
 
@@ -278,8 +285,8 @@ HipblasLtBackend::GetSupportedConfigs(const HloInstruction& instr) {
         /*grad_y=*/false, /*scale_mode=*/se::gpu::ScaleMode::kBlockScaling,
         target_config().device_description.gpu_compute_capability());
     if (!gemm_config_or.ok()) {
-      VLOG(2) << "hipBLASLt MX: GemmConfig::For failed: "
-              << gemm_config_or.status();
+      LOG(WARNING) << "hipBLASLt MX: GemmConfig::For failed: "
+                   << gemm_config_or.status();
       return std::vector<std::unique_ptr<BackendConfig>>();
     }
 
@@ -287,7 +294,8 @@ HipblasLtBackend::GetSupportedConfigs(const HloInstruction& instr) {
     auto plan_or =
         blas_lt->GetMatmulPlan(*gemm_config_or, BlasLt::Epilogue::kDefault);
     if (!plan_or.ok()) {
-      VLOG(2) << "hipBLASLt MX: GetMatmulPlan failed: " << plan_or.status();
+      LOG(WARNING) << "hipBLASLt MX: GetMatmulPlan failed: "
+                   << plan_or.status();
       return std::vector<std::unique_ptr<BackendConfig>>();
     }
 
@@ -296,7 +304,7 @@ HipblasLtBackend::GetSupportedConfigs(const HloInstruction& instr) {
         std::vector<BlasLt::MatmulAlgorithm> algorithms,
         (*plan_or)->GetAlgorithms(GemmConfig::kNumAlgorithms, workspace_size));
     if (algorithms.empty()) {
-      VLOG(2) << "hipBLASLt MX: no algorithms found for scaled dot.";
+      LOG(WARNING) << "hipBLASLt MX: no algorithms found for scaled dot.";
       return std::vector<std::unique_ptr<BackendConfig>>();
     }
 
@@ -407,18 +415,56 @@ absl::Status HipblasLtBackend::ApplyConfig(HloInstruction& instr,
       }
     }
     return absl::OkStatus();
-  } else if (IsScaledDotFusion(instr)) {
-    const HloInstruction* scaled_dot = hlo_query::GetFirstInstructionWithOpcode(
-        *instr.fused_instructions_computation(), HloOpcode::kScaledDot);
-    TF_RET_CHECK(scaled_dot != nullptr);
+  }
+
+  if (const auto* scaled_dot = GetScaledDotFromFusion(instr)) {
+    HloComputation* fused = instr.fused_instructions_computation();
     HloComputation* parent = instr.parent();
 
     TF_RET_CHECK(instr.operand_count() == 4);
-    HloInstruction* lhs = instr.mutable_operand(0);
-    HloInstruction* rhs = instr.mutable_operand(1);
-    HloInstruction* lhs_scale = instr.mutable_operand(2);
-    HloInstruction* rhs_scale = instr.mutable_operand(3);
+    // The scaled-dot must be the root of the fusion, otherwise we would drop
+    // any instructions that consume the scaled-dot result.
+    TF_RET_CHECK(scaled_dot == fused->root_instruction())
+        << "Scaled-dot is not the root of the fusion; lowering to hipBLASLt "
+           "matmul would drop instructions: "
+        << fused->root_instruction()->ToString();
 
+    // Walk forward from each fusion parameter to the scaled-dot operand it
+    // feeds. The fusion's external operands may have a different rank than the
+    // scaled-dot operands: when quantization happens in-graph the operand is in
+    // block-scaled [..., K/block, block] form and is only flattened to [..., K]
+    // by a bitcast/reshape inside the fusion. Only such trivial rank-changing
+    // ops are allowed on the path.
+    absl::InlinedVector<HloInstruction*, 4> operands(4, nullptr);
+    for (HloInstruction* param : fused->parameter_instructions()) {
+      const HloInstruction* cur = param;
+      while (cur->user_count() == 1 && cur->users()[0] != scaled_dot) {
+        HloInstruction* user = cur->users()[0];
+        TF_RET_CHECK(user->opcode() == HloOpcode::kBitcast ||
+                     user->opcode() == HloOpcode::kReshape)
+            << "Unexpected op between fusion parameter and scaled-dot: "
+            << user->ToString();
+        cur = user;
+      }
+      TF_RET_CHECK(cur->user_count() == 1 && cur->users()[0] == scaled_dot)
+          << "Fusion parameter " << param->parameter_number()
+          << " does not feed directly into the scaled-dot.";
+
+      int64_t dot_index = scaled_dot->operand_index(cur);
+      const Shape& inner_shape = scaled_dot->operand(dot_index)->shape();
+      HloInstruction* ext = instr.mutable_operand(param->parameter_number());
+      if (!ShapeUtil::Equal(ext->shape(), inner_shape)) {
+        ext = parent->AddInstruction(
+            HloInstruction::CreateBitcast(inner_shape, ext));
+      }
+      TF_RET_CHECK(operands[dot_index] == nullptr)
+          << "Multiple fusion parameters feed scaled-dot operand " << dot_index;
+      operands[dot_index] = ext;
+    }  // for
+    for (HloInstruction* op : operands) {
+      TF_RET_CHECK(op != nullptr)
+          << "Not all scaled-dot operands are fed by a fusion parameter.";
+    }
     const Shape& result_shape = scaled_dot->shape();
     int64_t workspace_size = gemm_key.autotune_workspace_size();
     Shape workspace_shape = ShapeUtil::MakeShape(S8, {workspace_size});
@@ -440,8 +486,7 @@ absl::Status HipblasLtBackend::ApplyConfig(HloInstruction& instr,
 
     HloInstruction* custom_call =
         parent->AddInstruction(HloInstruction::CreateCustomCall(
-            output_shape, {lhs, rhs, lhs_scale, rhs_scale},
-            kCublasLtMatmulMxCallTarget));
+            output_shape, operands, kCublasLtMatmulMxCallTarget));
     RETURN_IF_ERROR(custom_call->set_backend_config(gpu_backend_config));
     HloInstruction* gte = parent->AddInstruction(
         HloInstruction::CreateGetTupleElement(result_shape, custom_call, 0));

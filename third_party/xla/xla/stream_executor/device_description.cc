@@ -163,6 +163,8 @@ absl::StatusOr<DeviceDescription> DeviceDescription::FromProto(
       device_description.interconnect_info_,
       DeviceInterconnectInfo::FromProto(proto.device_interconnect_info()));
 
+  device_description.collective_memory_granularity_ =
+      proto.collective_memory_granularity();
   return device_description;
 }
 
@@ -241,6 +243,7 @@ GpuDeviceInfoProto DeviceDescription::ToProto() const {
   if (interconnect_info_ != DeviceInterconnectInfo{}) {
     *proto.mutable_device_interconnect_info() = interconnect_info_.ToProto();
   }
+  proto.set_collective_memory_granularity(collective_memory_granularity_);
   return proto;
 }
 

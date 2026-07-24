@@ -138,6 +138,30 @@ func.func @dot_scaled(%lhs: tensor<128x128xf32>, %lhs_scale: tensor<128x4xi8>, %
   return %0 : tensor<128x256xf32>
 }
 
+// -----
+
+func.func @invalid_dot_scaled_scale_type(%lhs: tensor<128x128xf32>, %lhs_scale: tensor<128x4xbf16>, %rhs: tensor<128x256xf32>, %rhs_scale: tensor<256x4xi8>) -> tensor<128x256xf32> {
+  // expected-error@+1 {{LHS scale element type 'bf16' is not supported}}
+  %0 = xtile.dot_scaled %lhs scale %lhs_scale, %rhs scale %rhs_scale {fastMath = true, lhs_elem_type = f32, rhs_elem_type = f32} : tensor<128x128xf32>, tensor<128x4xbf16> * tensor<128x256xf32>, tensor<256x4xi8> -> tensor<128x256xf32>
+  return %0 : tensor<128x256xf32>
+}
+
+// -----
+
+func.func @invalid_dot_scaled_operand_type(%lhs: tensor<128x128xi32>, %lhs_scale: tensor<128x4xi8>, %rhs: tensor<128x256xf32>, %rhs_scale: tensor<256x4xi8>) -> tensor<128x256xf32> {
+  // expected-error@+1 {{'xtile.dot_scaled' op operand #0 must be ranked tensor of floating-point or 8-bit signless integer values, but got 'tensor<128x128xi32>'}}
+  %0 = xtile.dot_scaled %lhs scale %lhs_scale, %rhs scale %rhs_scale {fastMath = true, lhs_elem_type = f32, rhs_elem_type = f32} : tensor<128x128xi32>, tensor<128x4xi8> * tensor<128x256xf32>, tensor<256x4xi8> -> tensor<128x256xf32>
+  return %0 : tensor<128x256xf32>
+}
+
+// -----
+
+func.func @invalid_dot_scaled_logical_elem_type(%lhs: tensor<128x128xf32>, %lhs_scale: tensor<128x4xi8>, %rhs: tensor<128x256xf32>, %rhs_scale: tensor<256x4xi8>) -> tensor<128x256xf32> {
+  // expected-error@+1 {{LHS logical element type 'i32' is not supported}}
+  %0 = xtile.dot_scaled %lhs scale %lhs_scale, %rhs scale %rhs_scale {fastMath = true, lhs_elem_type = i32, rhs_elem_type = f32} : tensor<128x128xf32>, tensor<128x4xi8> * tensor<128x256xf32>, tensor<256x4xi8> -> tensor<128x256xf32>
+  return %0 : tensor<128x256xf32>
+}
+
 
 // -----
 

@@ -1,3 +1,18 @@
+# Copyright 2026 The OpenXLA Authors. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
+
 # Description:
 #   SYCL-platform specific StreamExecutor support code.
 
@@ -90,6 +105,7 @@ cc_library(
     deps = if_sycl_is_configured([
         ":sycl_platform",
         ":sycl_blas_lt_plugin",
+        ":sycl_dnn",
     ]),
     alwayslink = 1,
 )
@@ -511,8 +527,10 @@ sycl_library(
     ],
     deps = [
         ":oneapi_compute_capability",
+        ":sycl_dnn",
         ":sycl_gpu_runtime",
         "//xla/stream_executor:device_description",
+        "//xla/stream_executor:dnn",
         "//xla/stream_executor/gpu:read_numa_node",
         "//xla/tsl/platform:status_macros",
         "//xla/tsl/platform:statusor",
@@ -558,6 +576,54 @@ cc_library(
         "//xla/stream_executor:stream_executor_h",
         "//xla/stream_executor/gpu:gpu_blas_lt",
         "//xla/stream_executor/platform:initialize",
+    ],
+    alwayslink = True,
+)
+
+cc_library(
+    name = "onednn_util",
+    srcs = ["onednn_util.cc"],
+    hdrs = ["onednn_util.h"],
+    tags = [
+        "gpu",
+        "oneapi-only",
+    ],
+    deps = [
+        "//xla/tsl/mkl:onednn",
+        "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:logging",
+        "//xla/tsl/util:env_var",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/synchronization",
+        "@tsl//tsl/platform:logging",
+        "@tsl//tsl/platform:str_util",
+    ],
+)
+
+cc_library(
+    name = "sycl_dnn",
+    srcs = ["sycl_dnn.cc"],
+    hdrs = ["sycl_dnn.h"],
+    tags = [
+        "gpu",
+        "oneapi-only",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":sycl_platform_id",
+        "//xla/service/gpu:gpu_conv_runner",
+        "//xla/stream_executor:device_memory",
+        "//xla/stream_executor:dnn",
+        "//xla/stream_executor:plugin_registry",
+        "//xla/stream_executor:scratch_allocator",
+        "//xla/stream_executor:stream",
+        "//xla/stream_executor:stream_executor_h",
+        "//xla/stream_executor/platform:initialize",
+        "//xla/tsl/mkl:onednn",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/types:span",
     ],
     alwayslink = True,
 )

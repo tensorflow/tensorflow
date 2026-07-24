@@ -2098,7 +2098,6 @@ ENTRY entry {
                    collective_pipeliner_utils::PipeliningDirection::kBackward,
                    /*should_process=*/IsAllGather)
           .value());
-  XLA_VLOG_LINES(1, module->ToString());
   EXPECT_TRUE(*RunFileCheck(module->ToString(), R"(
   // CHECK: %while_body
   // CHECK: %[[cp:.+]] = {{.+}} collective-permute({{.+}})
@@ -2106,8 +2105,7 @@ ENTRY entry {
   // CHECK: ROOT {{.+}} = {{.+}} tuple({{.*}}%[[dus]], {{.*}})
   // CHECK: ENTRY %entry
   // CHECK: %[[while:.+]] = {{.+}} while({{.*}})
-  // CHECK: %[[gte:.+]] = {{.+}} get-tuple-element({{.*}}%[[while]]), index=1
-  // CHECK: %[[cp2:.+]] = {{.+}} collective-permute({{.*}}%[[gte]])
+  // CHECK: %[[cp2:.+]] = {{.+}} collective-permute({{.*}}%[[while]]#1)
   // CHECK: %[[dus:.+]] = {{.+}} dynamic-update-slice({{.*}}%[[cp2]], {{.*}})
   // CHECK: %[[tuple:.+]] = {{.+}} tuple({{.*}}%[[dus]], {{.*}})
   // CHECK: ROOT {{.+}} = {{.+}} get-tuple-element({{.*}}%[[tuple]]), index=1
@@ -2176,7 +2174,6 @@ ENTRY entry {
                    collective_pipeliner_utils::PipeliningDirection::kBackward,
                    /*should_process=*/IsAllGather)
           .value());
-  XLA_VLOG_LINES(1, module->ToString());
   EXPECT_TRUE(*RunFileCheck(module->ToString(), R"(
   // CHECK: %while_body
   // CHECK: %[[cp:.+]] = {{.+}} collective-permute({{.+}})
@@ -2184,8 +2181,7 @@ ENTRY entry {
   // CHECK: ROOT {{.+}} = {{.+}} tuple({{.*}}%[[dus]], {{.*}})
   // CHECK: ENTRY %entry
   // CHECK: %[[while:.+]] = {{.+}} while({{.+}})
-  // CHECK: %[[gte:.+]] = {{.+}} get-tuple-element({{.*}}%[[while]]), index=1
-  // CHECK: %[[cp2:.+]] = {{.+}} collective-permute({{.*}}%[[gte]])
+  // CHECK: %[[cp2:.+]] = {{.+}} collective-permute({{.*}}%[[while]]#1)
   // CHECK: %[[dus:.+]] = {{.+}} dynamic-update-slice({{.*}}%[[cp2]], {{.*}})
   // CHECK: %[[tuple:.+]] = {{.+}} tuple({{.*}}%[[dus]], {{.*}})
   // CHECK: ROOT {{.+}} = {{.+}} get-tuple-element({{.*}}%[[tuple]]), index=1
@@ -6834,6 +6830,53 @@ ENTRY entry {
   EXPECT_EQ(constraint_shape.layout().minor_to_major(1), 2);
   EXPECT_EQ(constraint_shape.layout().minor_to_major(2), 3);
   EXPECT_EQ(constraint_shape.layout().minor_to_major(3), 0);
+}
+
+TEST_F(CollectivePipelinerTest, PipelineableFrontendAttributePredicate) {
+  constexpr absl::string_view hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  p0 = f32[1] parameter(0)
+  ag_one = f32[2] all-gather(p0), dimensions={0}, replica_groups={{0,1}},
+    frontend_attributes={is_pipelineable="1"}
+  ag_true = f32[2] all-gather(p0), dimensions={0}, replica_groups={{0,1}},
+    frontend_attributes={is_pipelineable="true"}
+  ag_false = f32[2] all-gather(p0), dimensions={0}, replica_groups={{0,1}},
+    frontend_attributes={is_pipelineable="false"}
+  ag_invalid = f32[2] all-gather(p0), dimensions={0}, replica_groups={{0,1}},
+    frontend_attributes={is_pipelineable="invalid"}
+  ag_unmarked = f32[2] all-gather(p0), dimensions={0},
+    replica_groups={{0,1}}
+  annotated_add = f32[1] add(p0, p0),
+    frontend_attributes={is_pipelineable="1"}
+  ROOT tuple = (f32[2], f32[2], f32[2], f32[2], f32[2], f32[1])
+    tuple(ag_one, ag_true, ag_false, ag_invalid, ag_unmarked, annotated_add)
+}
+)";
+  auto module = ParseAndReturnUnverifiedModule(hlo_string, config_).value();
+  HloPredicate predicate =
+      HloPredicateIsPipelineableOp<HloOpcode::kAllGather>();
+
+  HloInstruction* ag_one = FindInstruction(module.get(), "ag_one");
+  HloInstruction* ag_true = FindInstruction(module.get(), "ag_true");
+  HloInstruction* ag_false = FindInstruction(module.get(), "ag_false");
+  HloInstruction* ag_invalid = FindInstruction(module.get(), "ag_invalid");
+  HloInstruction* ag_unmarked = FindInstruction(module.get(), "ag_unmarked");
+  HloInstruction* annotated_add =
+      FindInstruction(module.get(), "annotated_add");
+  ASSERT_NE(ag_one, nullptr);
+  ASSERT_NE(ag_true, nullptr);
+  ASSERT_NE(ag_false, nullptr);
+  ASSERT_NE(ag_invalid, nullptr);
+  ASSERT_NE(ag_unmarked, nullptr);
+  ASSERT_NE(annotated_add, nullptr);
+  EXPECT_TRUE(predicate(ag_one));
+  EXPECT_TRUE(predicate(ag_true));
+  EXPECT_FALSE(predicate(ag_false));
+  EXPECT_FALSE(predicate(ag_invalid));
+  EXPECT_FALSE(predicate(ag_unmarked));
+  EXPECT_FALSE(predicate(annotated_add));
 }
 
 }  // namespace

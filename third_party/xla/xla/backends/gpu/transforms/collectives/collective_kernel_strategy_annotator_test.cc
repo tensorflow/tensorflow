@@ -34,6 +34,7 @@ limitations under the License.
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
 #include "xla/service/gpu_topology.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/stream_executor/device_description.pb.h"
 
 namespace xla {
 namespace gpu {
@@ -78,11 +79,30 @@ class CollectiveKernelStrategyAnnotatorTest
         /*num_devices_per_host=*/16, target_config);
   }
 
+  // Builds a GpuTopology suitable for AllGather tests with `num_replicas`
+  // devices all on a single host (making the collective local).
+  absl::StatusOr<std::unique_ptr<GpuTopology>> MakeLocalGpuTopology(
+      int num_replicas) {
+    se::DeviceDescription device_info = TestGpuDeviceInfo::H100SXMDeviceInfo();
+    stream_executor::GpuTargetConfigProto target_config_proto;
+    *target_config_proto.mutable_gpu_device_info() = device_info.ToProto();
+    target_config_proto.mutable_gpu_device_info()
+        ->mutable_device_interconnect_info()
+        ->set_active_links(1);
+    target_config_proto.set_platform_name("CUDA");
+    ASSIGN_OR_RETURN(gpu::GpuTargetConfig target_config,
+                     gpu::GpuTargetConfig::FromProto(target_config_proto));
+    return std::make_unique<GpuTopology>(
+        "platform_version", /*num_partitions=*/1,
+        /*num_hosts_per_partition=*/1,
+        /*num_devices_per_host=*/num_replicas, target_config);
+  }
+
   absl::StatusOr<CollectiveBackendConfig::CollectiveKernelStrategy>
-  GetKernelStrategy(HloModule* module) {
+  GetKernelStrategy(HloModule* module, HloOpcode opcode) {
     for (HloComputation* comp : module->computations()) {
       for (HloInstruction* instr : comp->instructions()) {
-        if (instr->opcode() == HloOpcode::kAllReduce) {
+        if (instr->opcode() == opcode) {
           ASSIGN_OR_RETURN(GpuBackendConfig cfg,
                            instr->backend_config<GpuBackendConfig>());
           return cfg.collective_backend_config().kernel_strategy();
@@ -90,6 +110,12 @@ class CollectiveKernelStrategyAnnotatorTest
       }
     }
     return CollectiveBackendConfig::KERNEL_STRATEGY_DEFAULT;
+  }
+
+  // Overload for backward compatibility with existing AllReduce tests.
+  absl::StatusOr<CollectiveBackendConfig::CollectiveKernelStrategy>
+  GetKernelStrategy(HloModule* module) {
+    return GetKernelStrategy(module, HloOpcode::kAllReduce);
   }
 
   se::DeviceDescription device_info_;
@@ -147,6 +173,135 @@ TEST_F(CollectiveKernelStrategyAnnotatorTest,
 
   ASSERT_OK_AND_ASSIGN(auto strategy_default, GetKernelStrategy(module.get()));
   EXPECT_EQ(strategy_default, CollectiveBackendConfig::KERNEL_STRATEGY_DEFAULT);
+}
+
+// ---- AllGather annotator tests -------------------------------------------
+
+// HLO template for AllGather: input is f32[num_elements], output is
+// f32[num_elements * num_replicas] gathered along dimension 0.
+constexpr absl::string_view kAllGatherHloTemplate = R"(
+  HloModule all_gather_test
+
+  ENTRY e {
+    p0 = f32[%1$d] parameter(0)
+    ROOT all-gather = f32[%2$d] all-gather(p0),
+        dimensions={0},
+        replica_groups={{%3$s}}
+  }
+)";
+
+// 4096 F32 elements per replica (16 KB) with 8 replicas → output 32768
+// elements. 4096 * 4 = 16384 bytes, aligned to 128 bits (16 bytes) → eligible →
+// KERNEL_STRATEGY_TRITON_ONE_SHOT.
+TEST_F(CollectiveKernelStrategyAnnotatorTest,
+       EligibleAllGatherIsAnnotatedOneShot) {
+  constexpr int kNumReplicas = 8;
+  constexpr int64_t kInputElements = 4096;
+  constexpr int64_t kOutputElements = kInputElements * kNumReplicas;
+  std::string replica_groups_str = "0,1,2,3,4,5,6,7";
+  std::string hlo = absl::StrFormat(kAllGatherHloTemplate, kInputElements,
+                                    kOutputElements, replica_groups_str);
+
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnVerifiedModule(hlo, kNumReplicas));
+  module->mutable_config()
+      .mutable_debug_options()
+      .add_xla_gpu_experimental_use_collective_kernels(
+          DebugOptions::COLLECTIVE_KERNEL_ALL_GATHER);
+  ASSERT_OK_AND_ASSIGN(auto local_topology, MakeLocalGpuTopology(kNumReplicas));
+
+  CollectiveKernelStrategyAnnotator annotator(*local_topology,
+                                              /*is_multimem_enabled=*/false);
+  ASSERT_OK(annotator.Run(module.get()).status());
+
+  ASSERT_OK_AND_ASSIGN(auto strategy,
+                       GetKernelStrategy(module.get(), HloOpcode::kAllGather));
+  EXPECT_EQ(strategy, CollectiveBackendConfig::KERNEL_STRATEGY_TRITON_ONE_SHOT);
+}
+
+// 3 F32 elements per replica: 3 * 32 bits = 96 bits, not aligned to 128 bits
+// → ineligible → KERNEL_STRATEGY_DEFAULT (falls back to NCCL).
+TEST_F(CollectiveKernelStrategyAnnotatorTest,
+       IneligibleAllGatherKeepsDefaultStrategy) {
+  constexpr int kNumReplicas = 8;
+  // 3 F32 elements → 3 * 4 = 12 bytes, not aligned to 16 bytes → ineligible.
+  constexpr int64_t kInputElements = 3;
+  constexpr int64_t kOutputElements = kInputElements * kNumReplicas;
+  std::string replica_groups_str = "0,1,2,3,4,5,6,7";
+  std::string hlo = absl::StrFormat(kAllGatherHloTemplate, kInputElements,
+                                    kOutputElements, replica_groups_str);
+
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnVerifiedModule(hlo, kNumReplicas));
+  // Flag is set so that the ineligibility comes from shape (not from the flag).
+  module->mutable_config()
+      .mutable_debug_options()
+      .add_xla_gpu_experimental_use_collective_kernels(
+          DebugOptions::COLLECTIVE_KERNEL_ALL_GATHER);
+  ASSERT_OK_AND_ASSIGN(auto local_topology, MakeLocalGpuTopology(kNumReplicas));
+
+  CollectiveKernelStrategyAnnotator annotator(*local_topology,
+                                              /*is_multimem_enabled=*/false);
+  ASSERT_OK(annotator.Run(module.get()).status());
+
+  ASSERT_OK_AND_ASSIGN(auto strategy,
+                       GetKernelStrategy(module.get(), HloOpcode::kAllGather));
+  EXPECT_EQ(strategy, CollectiveBackendConfig::KERNEL_STRATEGY_DEFAULT);
+}
+
+// Module with both AllReduce and AllGather: both should be annotated in a
+// single pass.
+TEST_F(CollectiveKernelStrategyAnnotatorTest,
+       BothAllReduceAndAllGatherAnnotatedInSameModule) {
+  constexpr int kNumReplicas = 8;
+  // Use 32768 elements for AllReduce (eligible one-shot), 4096 for AllGather.
+  constexpr absl::string_view kCombinedHlo = R"(
+    HloModule combined_test
+
+    add {
+      p0 = f32[] parameter(0)
+      p1 = f32[] parameter(1)
+      ROOT r = f32[] add(p0, p1)
+    }
+
+    ENTRY e {
+      p0 = f32[32768] parameter(0)
+      p1 = f32[4096] parameter(1)
+      all-reduce = f32[32768] all-reduce(p0),
+          replica_groups={{0,1,2,3,4,5,6,7}},
+          to_apply=add
+      all-gather = f32[32768] all-gather(p1),
+          dimensions={0},
+          replica_groups={{0,1,2,3,4,5,6,7}}
+      ROOT t = (f32[32768], f32[32768]) tuple(all-reduce, all-gather)
+    }
+  )";
+
+  ASSERT_OK_AND_ASSIGN(
+      auto module, ParseAndReturnVerifiedModule(kCombinedHlo, kNumReplicas));
+  module->mutable_config()
+      .mutable_debug_options()
+      .add_xla_gpu_experimental_use_collective_kernels(
+          DebugOptions::COLLECTIVE_KERNEL_ALL_REDUCE);
+  module->mutable_config()
+      .mutable_debug_options()
+      .add_xla_gpu_experimental_use_collective_kernels(
+          DebugOptions::COLLECTIVE_KERNEL_ALL_GATHER);
+  ASSERT_OK_AND_ASSIGN(auto local_topology, MakeLocalGpuTopology(kNumReplicas));
+
+  CollectiveKernelStrategyAnnotator annotator(*local_topology,
+                                              /*is_multimem_enabled=*/false);
+  ASSERT_OK(annotator.Run(module.get()).status());
+
+  ASSERT_OK_AND_ASSIGN(auto ar_strategy,
+                       GetKernelStrategy(module.get(), HloOpcode::kAllReduce));
+  EXPECT_EQ(ar_strategy,
+            CollectiveBackendConfig::KERNEL_STRATEGY_TRITON_ONE_SHOT);
+
+  ASSERT_OK_AND_ASSIGN(auto ag_strategy,
+                       GetKernelStrategy(module.get(), HloOpcode::kAllGather));
+  EXPECT_EQ(ag_strategy,
+            CollectiveBackendConfig::KERNEL_STRATEGY_TRITON_ONE_SHOT);
 }
 
 }  // namespace

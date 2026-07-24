@@ -17,12 +17,15 @@ limitations under the License.
 #define XLA_BACKENDS_AUTOTUNER_PERSISTENT_CACHE_H_
 
 #include <optional>
+#include <string>
 #include <vector>
 
 #include "absl/base/thread_annotations.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
+#include "absl/types/span.h"
 #include "xla/backends/autotuner/autotuner_cache_interface.h"
 #include "xla/backends/autotuner/autotuning.pb.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -40,6 +43,10 @@ class PersistentCache : public AutotunerCacheInterface {
 
   absl::Status Insert(const HloInstruction* instr,
                       const Config& config) override;
+
+  absl::StatusOr<std::string> Serialize(absl::Span<const HloInstruction* const>
+                                            instructions_to_serialize) override;
+  absl::Status Deserialize(absl::string_view serialized_cache) override;
 
   CacheStats GetCacheStats() const override;
   CacheMode GetMode() const override { return mode_; }

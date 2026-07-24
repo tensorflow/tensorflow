@@ -271,10 +271,51 @@ bool IsSupportedShape(const Shape& shape) {
   return is_supported;
 }
 
+bool HasComplexType(const HloInstruction& inst) {
+  if (primitive_util::IsComplexType(inst.shape().element_type())) {
+    return true;
+  }
+  for (const HloInstruction* operand : inst.operands()) {
+    if (primitive_util::IsComplexType(operand->shape().element_type())) {
+      return true;
+    }
+  }
+  return false;
+}
+
 bool IsSupportedInstruction(const HloInstruction& inst) {
   HloOpcode opcode = inst.opcode();
   switch (opcode) {
-    case HloOpcode::kBitcast:
+    case HloOpcode::kConvert: {
+      PrimitiveType operand_type = inst.operand(0)->shape().element_type();
+      PrimitiveType result_type = inst.shape().element_type();
+      // TODO(b/480995909): Remove this once JAX does not rely on convert from
+      // PRED to U8 not clamping the value to the [0, 1] range. This lowering
+      // would actually do (correct) clamping, but JAX has a test that
+      // essentially checks that PRED storage is 8 bit, and it uses (broken)
+      // Convert semantics instead of BitcastConvert, because BitcastConvert
+      // with PRED types (assuming 8 bit storage for PRED) is not completely
+      // supported on all backends yet.
+      if (operand_type == PRED && result_type == U8) {
+        return false;
+      }
+      return true;
+    }
+    case HloOpcode::kBitcast: {
+      if (ShapeUtil::ElementsIn(inst.operand(0)->shape()) !=
+          ShapeUtil::ElementsIn(inst.shape())) {
+        return false;
+      }
+      PrimitiveType operand_type = inst.operand(0)->shape().element_type();
+      PrimitiveType result_type = inst.shape().element_type();
+      // TiledFusionEmitter uses i1 type for PRED, whereas the BitcastConvert
+      // semantics for PRED types require 8 bit storage.
+      if (result_type != operand_type &&
+          (result_type == PRED || operand_type == PRED)) {
+        return false;
+      }
+      return true;
+    }
     case HloOpcode::kIota:
     case HloOpcode::kReshape:
     case HloOpcode::kTranspose:
@@ -285,8 +326,6 @@ bool IsSupportedInstruction(const HloInstruction& inst) {
     case HloOpcode::kBitcastConvert:
     case HloOpcode::kMap:
     case HloOpcode::kPopulationCount:
-    case HloOpcode::kReal:
-    case HloOpcode::kImag:
     case HloOpcode::kSign:
     case HloOpcode::kRoundNearestAfz:
     case HloOpcode::kRoundNearestEven:
@@ -294,10 +333,33 @@ bool IsSupportedInstruction(const HloInstruction& inst) {
     case HloOpcode::kShiftRightArithmetic:
     case HloOpcode::kShiftRightLogical:
     case HloOpcode::kClz:
+    case HloOpcode::kMulhi:
       return false;
       break;
     default:
-      return inst.IsElementwise();
+      if (inst.IsElementwise()) {
+        if (HasComplexType(inst)) {
+          switch (opcode) {
+            case HloOpcode::kAdd:
+            case HloOpcode::kSubtract:
+            case HloOpcode::kMultiply:
+            case HloOpcode::kDivide:
+            case HloOpcode::kPower:
+            case HloOpcode::kAbs:
+            case HloOpcode::kNegate:
+            case HloOpcode::kComplex:
+            case HloOpcode::kReal:
+            case HloOpcode::kImag:
+            case HloOpcode::kSelect:
+            case HloOpcode::kCompare:
+              return true;
+            default:
+              return false;
+          }
+        }
+        return true;
+      }
+      return false;
   }
 }
 
@@ -483,6 +545,8 @@ absl::StatusOr<ge::TiledHloComputation> GetTiledHloComputation(
     auto tiled_computation = ge::TiledHloComputation::Tile(
         *fusion_adaptor, std::move(winning_tiling_space));
     if (tiled_computation.ok()) {
+      tiled_computation->Simplify();
+      tiled_computation->SortInstructionsPostOrder();
       VLOG(2) << "  Tiling succeeded! Winner picked.";
       return std::move(*tiled_computation);
     }
@@ -523,14 +587,6 @@ bool IsSupportedTilingType(PrimitiveType type) {
   }
 
   if (primitive_util::BitWidth(type) < 8) {
-    return false;
-  }
-
-  if (primitive_util::IsUnsignedIntegralType(type)) {
-    return false;
-  }
-
-  if (primitive_util::IsComplexType(type)) {
     return false;
   }
 

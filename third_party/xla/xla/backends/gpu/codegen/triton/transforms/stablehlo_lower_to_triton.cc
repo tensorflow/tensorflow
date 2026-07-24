@@ -15,7 +15,6 @@ limitations under the License.
 
 #include <cstdint>
 #include <limits>
-#include <memory>
 #include <optional>
 #include <string>
 #include <utility>
@@ -74,22 +73,6 @@ namespace ttir = ::mlir::triton;
 #include "xla/backends/gpu/codegen/triton/transforms/passes.h.inc"
 
 namespace {
-
-class LowerTranspose : public mlir::OpRewritePattern<stablehlo::TransposeOp> {
- public:
-  using OpRewritePattern::OpRewritePattern;
-
- private:
-  mlir::LogicalResult matchAndRewrite(
-      stablehlo::TransposeOp op,
-      mlir::PatternRewriter& rewriter) const override {
-    SmallVector<int32_t> permutation =
-        llvm::to_vector_of<int32_t>(op.getPermutation());
-    rewriter.replaceOpWithNewOp<ttir::TransOp>(op, op.getResult().getType(),
-                                               op.getOperand(), permutation);
-    return mlir::success();
-  }
-};
 
 class LowerIotaToMakeRange : public mlir::OpRewritePattern<stablehlo::IotaOp> {
  public:
@@ -596,13 +579,15 @@ absl::StatusOr<AlgorithmEmitter> GetAlgorithmEmitter(
 
 bool IsTf32Allowed(const ::xla::xtile::PrecisionSpec& precision_spec) {
   if (precision_spec.algorithm == ::xla::PrecisionConfig::ALG_UNSET) {
-    return tsl::tensor_float_32_execution_enabled() &&
-           StableHloPrecisionToXlaPrecision(
-               precision_spec.lhs_operand_precision) ==
-               ::xla::PrecisionConfig::DEFAULT &&
-           StableHloPrecisionToXlaPrecision(
-               precision_spec.rhs_operand_precision) ==
-               ::xla::PrecisionConfig::DEFAULT;
+    if (!tsl::tensor_float_32_execution_enabled()) {
+      return false;
+    }
+    ::xla::PrecisionConfig::Precision lhs_precision =
+        StableHloPrecisionToXlaPrecision(precision_spec.lhs_operand_precision);
+    ::xla::PrecisionConfig::Precision rhs_precision =
+        StableHloPrecisionToXlaPrecision(precision_spec.rhs_operand_precision);
+    return lhs_precision <= ::xla::PrecisionConfig::HIGH &&
+           rhs_precision <= ::xla::PrecisionConfig::HIGH;
   }
   return ::xla::algorithm_util::HasTf32InputType(precision_spec.algorithm);
 }

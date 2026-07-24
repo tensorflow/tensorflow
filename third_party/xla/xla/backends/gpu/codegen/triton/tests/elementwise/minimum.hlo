@@ -1,6 +1,3 @@
-// RUN: hlo_to_xtileir --xla_gpu_experimental_enable_tiling_propagation=false %s | FileCheck %s
-// RUN: triton_test_correctness --xla_gpu_experimental_enable_tiling_propagation=false %s
-
 // RUN: hlo_to_xtileir %s --xla_gpu_experimental_enable_tiling_propagation | FileCheck %s
 // RUN: triton_test_correctness %s --xla_gpu_experimental_enable_tiling_propagation
 
@@ -22,5 +19,6 @@ ENTRY main {
           "output_tiles":[{"sizes":["1", "4"]}],
           "num_warps":"1",
           "num_ctas":"1",
+          "num_tiles_per_pid":"2",
           "num_stages":"1"}}}
 }

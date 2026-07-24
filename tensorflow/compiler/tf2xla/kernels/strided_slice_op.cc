@@ -298,6 +298,14 @@ class StridedSliceOp : public XlaOpKernel {
                           "shape for strided slice: ",
                           partial_final_shape.DebugString(),
                           ", output shape must be a compile-time constant"));
+
+      if (final_shape.num_elements() == 0) {
+        xla::XlaOp zero = xla::Zero(ctx->builder(), ctx->input_xla_type(0));
+        xla::XlaOp slice = xla::Broadcast(zero, final_shape.dim_sizes());
+        ctx->SetOutput(0, slice);
+        return;
+      }
+
       absl::InlinedVector<int64_t, 4> dimensions_to_reverse;
       absl::InlinedVector<int64_t, 4> slice_begin, slice_end, slice_strides;
       for (int i = 0; i < begin.size(); ++i) {

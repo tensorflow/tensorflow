@@ -20,7 +20,6 @@ limitations under the License.
 
 #include "google/protobuf/descriptor.pb.h"
 #include <gmock/gmock.h>
-#include "absl/base/casts.h"
 #include "absl/cleanup/cleanup.h"
 #include "absl/status/status.h"
 #include "absl/status/status_matchers.h"

@@ -199,7 +199,7 @@ class LRUCache {
   std::unique_ptr<Node> EvictNode(Node& node) {
     // We return the node, rather than just removing it, to extend its lifetime
     // and avoid calling a destructor that calls back into this code.
-    RemoveNode(node);
+    node.container->RemoveNode(node);
     auto bucket_it = node.container->buckets_.find(node.hash);
     auto& [unused, bucket] = *bucket_it;
     CHECK(bucket_it != node.container->buckets_.end());

@@ -1,0 +1,19 @@
+HloModule jit_mean_axis, entry_computation_layout={(bf16[1,4096,1024]{2,1,0})->bf16[1,4096]{1,0}}
+
+region_0.1 {
+  reduce_sum.3 = f32[] parameter(0)
+  reduce_sum.4 = f32[] parameter(1)
+  ROOT reduce_sum.5 = f32[] add(reduce_sum.3, reduce_sum.4)
+}
+
+ENTRY main.2 {
+  x.1 = bf16[1,4096,1024]{2,1,0} parameter(0)
+  convert_element_type.2 = f32[1,4096,1024]{2,1,0} convert(x.1)
+  constant.3 = f32[] constant(0)
+  reduce_sum.7 = f32[1,4096]{1,0} reduce(convert_element_type.2, constant.3), dimensions={2}, to_apply=region_0.1
+  constant.2 = f32[] constant(1024)
+  div.2 = f32[1,4096]{1,0} broadcast(constant.2), dimensions={}
+  div.3 = f32[1,4096]{1,0} divide(reduce_sum.7, div.2)
+  ROOT convert_element_type.3 = bf16[1,4096]{1,0} convert(div.3)
+}
+

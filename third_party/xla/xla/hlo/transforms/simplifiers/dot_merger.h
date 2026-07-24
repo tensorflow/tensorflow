@@ -47,15 +47,6 @@ namespace xla {
 // z whose live range is the union of x and y's live ranges, so can lead to
 // increased memory pressure.  You probably only want to do this optimization on
 // "small" dots which cannot saturate your device when run alone.
-//
-// We thus allow backends to set a max size above which an op will not be
-// merged.  The input+output bytes of at least one dot must be below the
-// threshold otherwise we won't merge.  (We don't require that both dots be
-// below the threshold because backends likely want to allow merging a "small"
-// dot into a "large" dot while preventing two large dots from being merged.)
-//
-// Will skip gemms with more than one non-contracting dimension in the dot
-// operands to be concatenated.
 class DotMerger : public HloModulePass {
  public:
   explicit DotMerger(

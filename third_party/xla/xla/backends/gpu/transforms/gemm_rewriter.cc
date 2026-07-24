@@ -899,7 +899,9 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
         return absl::OkStatus();
       }
 
-      if (config.beta() == 0.0 && existing_gemm->user_count() == 1) {
+      if (config.beta() == 0.0 &&
+          config.epilogue() == GemmBackendConfig::DEFAULT &&
+          existing_gemm->user_count() == 1) {
         complex128 prev_alpha = {config.alpha_real(), config.alpha_imag()};
         complex128 new_alpha =
             *alpha->literal().GetAsComplex128({}) * prev_alpha;

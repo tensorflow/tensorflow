@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/pjrt/se/stream_executor_executable.h"
 
 #include <cstdint>
+#include <limits>
 #include <memory>
 #include <optional>
 #include <string>
@@ -26,8 +27,14 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
+#include "absl/strings/cord.h"
 #include "absl/strings/string_view.h"
 #include "xla/tsl/platform/status_macros.h"
+#include "riegeli/base/maker.h"
+#include "riegeli/bytes/cord_reader.h"
+#include "riegeli/bytes/string_reader.h"
+#include "riegeli/bytes/string_writer.h"
+#include "riegeli/messages/parse_message.h"
 #include "xla/client/local_client.h"
 #include "xla/layout.h"
 #include "xla/pjrt/compiled_memory_stats.h"
@@ -45,12 +52,13 @@ limitations under the License.
 #include "xla/service/computation_layout.h"
 #include "xla/service/executable.h"
 #include "xla/service/hlo.pb.h"
+#include "xla/service/hlo_cost_analysis.h"
 #include "xla/shape.h"
 #include "xla/stream_executor/abi/executable_abi_version.h"
-#include "xla/tsl/lib/strings/proto_serialization.h"
 #include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
+#include "xla/util/split_proto/split_executable_and_options_writer.h"
+#include "xla/util/split_proto/split_proto_reader.h"
 
 namespace xla {
 
@@ -61,10 +69,8 @@ absl::StatusOr<std::string> StreamExecutorExecutable::SerializeExecutable()
     ASSIGN_OR_RETURN(*proto.mutable_compile_options(),
                      compile_options_.ToProto());
     std::string result;
-    if (!tsl::SerializeToStringDeterministic(proto, &result)) {
-      return absl::InternalError(
-          "Failed to serialize ExecutableAndOptionsProto");
-    }
+    RETURN_IF_ERROR(WriteSplitExecutableAndOptions(
+        proto, riegeli::Maker<riegeli::StringWriter>(&result)));
     return result;
   }
   std::string serialized;
@@ -103,9 +109,8 @@ absl::StatusOr<std::string> StreamExecutorExecutable::SerializeExecutable()
   ASSIGN_OR_RETURN(*proto.mutable_compile_options(),
                    compile_options_.ToProto());
   std::string result;
-  if (!tsl::SerializeToStringDeterministic(proto, &result)) {
-    return absl::InternalError("Failed to serialize ExecutableAndOptionsProto");
-  }
+  RETURN_IF_ERROR(WriteSplitExecutableAndOptions(
+      proto, riegeli::Maker<riegeli::StringWriter>(&result)));
   return result;
 }
 
@@ -396,6 +401,36 @@ StreamExecutorExecutable::GetAbiVersion() const {
                    ExtractExecutableAbiVersion());
   return std::make_unique<StreamExecutorPjRtExecutableAbiVersion>(
       platform_id_, std::move(executable_abi_version));
+}
+
+absl::StatusOr<ExecutableAndOptionsProto> SerializedGpuExecutableFromReader(
+    std::unique_ptr<riegeli::Reader> reader) {
+  ExecutableAndOptionsProto proto;
+  // The serialized string may be of the new SplitProto format (which allows
+  // executables larger than 2GB) or the legacy format which is just a regular
+  // proto.
+  ASSIGN_OR_RETURN(bool is_split_proto, IsSplitProto(*reader));
+  if (is_split_proto) {
+    TF_RETURN_WITH_CONTEXT_IF_ERROR(
+        ReadSplitProto(std::move(reader), proto),
+        "Failed to read serialized StreamExecutorExecutable");
+    return proto;
+  }
+
+  RETURN_IF_ERROR(riegeli::ParseMessage(std::move(reader), proto));
+  return proto;
+}
+
+absl::StatusOr<ExecutableAndOptionsProto> SerializedGpuExecutableFromString(
+    absl::string_view serialized) {
+  return SerializedGpuExecutableFromReader(
+      std::make_unique<riegeli::StringReader<>>(serialized));
+}
+
+absl::StatusOr<ExecutableAndOptionsProto> SerializedGpuExecutableFromString(
+    const absl::Cord& serialized) {
+  return SerializedGpuExecutableFromReader(
+      std::make_unique<riegeli::CordReader<>>(&serialized));
 }
 
 }  // namespace xla

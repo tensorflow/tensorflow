@@ -25,6 +25,7 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/hash/hash_testing.h"
 #include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
 #include "absl/strings/str_cat.h"
@@ -738,6 +739,73 @@ TEST_P(RemapPlanTest, InvalidInputDevicesForOutputMap) {
                                        std::move(output_specs),
                                        std::move(mappings))
                 .status());
+}
+
+TEST_P(RemapPlanTest, Hash) {
+  std::vector<RemapPlan> plans;
+  plans.push_back(RemapPlan());
+  {
+    std::vector<ArraySpec> input_specs;
+    input_specs.push_back(
+        ArraySpec{/*dtype=*/DType(DType::kS32),
+                  /*shape=*/Shape({2, 3}),
+                  /*sharding=*/
+                  ConcreteEvenSharding::Create(GetDevices({0}), MemoryKind(),
+                                               /*shape=*/Shape({2, 3}),
+                                               /*shard_shape=*/Shape({2, 3}))});
+    input_specs.push_back(
+        ArraySpec{/*dtype=*/DType(DType::kF32),  // dtype differs
+                  /*shape=*/Shape({2, 3}),
+                  /*sharding=*/
+                  ConcreteEvenSharding::Create(GetDevices({0}), MemoryKind(),
+                                               /*shape=*/Shape({2, 3}),
+                                               /*shard_shape=*/Shape({2, 3}))});
+
+    plans.push_back(
+        RemapPlan(input_specs, /*output_specs=*/{}, /*mappings=*/{}));
+  }
+  {
+    ArraySpec array_spec_s32{
+        /*dtype=*/DType(DType::kS32),
+        /*shape=*/Shape({2, 3}),
+        /*sharding=*/
+        ConcreteEvenSharding::Create(GetDevices({0}), MemoryKind(),
+                                     /*shape=*/Shape({2, 3}),
+                                     /*shard_shape=*/Shape({2, 3}))};
+    ArraySpec array_spec_f32{
+        /*dtype=*/DType(DType::kF32),
+        /*shape=*/Shape({2, 3}),
+        /*sharding=*/
+        ConcreteEvenSharding::Create(GetDevices({0}), MemoryKind(),
+                                     /*shape=*/Shape({2, 3}),
+                                     /*shard_shape=*/Shape({2, 3}))};
+
+    std::vector<ArraySpec> input_specs;
+    input_specs.push_back(array_spec_s32);
+    input_specs.push_back(array_spec_f32);
+    std::vector<ArraySpec> output_specs;
+    output_specs.push_back(array_spec_f32);
+    output_specs.push_back(array_spec_s32);
+
+    std::vector<RemapPlan::Mapping> mappings;
+    mappings.push_back(
+        RemapPlan::Mapping{/*in_array=*/0,
+                           /*out_array=*/1,
+                           /*from=*/{RemapPlan::Interval{0, 1, 1}},
+                           /*to=*/{RemapPlan::Interval{0, 1, 1}}});
+    mappings.push_back(
+        RemapPlan::Mapping{/*in_array=*/1,
+                           /*out_array=*/0,
+                           /*from=*/{RemapPlan::Interval{0, 1, 1}},
+                           /*to=*/{RemapPlan::Interval{0, 1, 1}}});
+
+    plans.push_back(RemapPlan(input_specs, output_specs, mappings));
+    ASSERT_OK_AND_ASSIGN(plans.emplace_back(),
+                         RemapPlan::CreateOptimized(client(), input_specs,
+                                                    output_specs, mappings));
+  }
+
+  EXPECT_TRUE(absl::VerifyTypeImplementsAbslHashCorrectly(plans));
 }
 
 INSTANTIATE_TEST_SUITE_P(NumDevices, RemapPlanTest,

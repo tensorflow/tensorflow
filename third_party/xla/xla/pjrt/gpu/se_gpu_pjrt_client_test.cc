@@ -57,6 +57,7 @@ limitations under the License.
 #include "xla/debug_options_flags.h"
 #include "xla/ffi/ffi.h"
 #include "xla/future.h"
+#include "xla/hlo/builder/xla_builder.h"
 #include "xla/hlo/builder/xla_computation.h"
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/hlo/testlib/test.h"
@@ -82,6 +83,7 @@ limitations under the License.
 #include "xla/pjrt/raw_buffer.h"
 #include "xla/pjrt/se/local_device_state.h"
 #include "xla/pjrt/se/pjrt_stream_executor_client.h"
+#include "xla/pjrt/se/stream_executor_executable.h"
 #include "xla/runtime/device_id.h"
 #include "xla/service/gpu_topology.h"
 #include "xla/service/gpu_topology.pb.h"
@@ -118,6 +120,7 @@ limitations under the License.
 namespace xla {
 namespace {
 
+using ::absl_testing::IsOkAndHolds;
 using ::absl_testing::StatusIs;
 using ::testing::_;
 using ::testing::Contains;
@@ -128,6 +131,7 @@ using ::testing::FloatEq;
 using ::testing::Ge;
 using ::testing::Gt;
 using ::testing::HasSubstr;
+using ::testing::IsEmpty;
 using ::testing::Pair;
 using ::testing::SizeIs;
 
@@ -350,6 +354,52 @@ ENTRY %Add.6 (a.1: f32[], b.2: f32[]) -> (f32[], f32[]) {
                               result[0][0]->GetReadyFuture()));
   EXPECT_THAT(another_buffer->GetReadyFuture().Await(),
               StatusIs(input_error.code(), HasSubstr(input_error.message())));
+}
+
+TEST(StreamExecutorGpuClientTest, RuntimeDonationDenial) {
+  ASSERT_OK_AND_ASSIGN(auto client,
+                       GetStreamExecutorGpuClient(GetTestGpuClientOptions()));
+
+  Shape shape = ShapeUtil::MakeShapeWithType<float>({});
+  std::vector<float> p0_data{1.0f};
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<PjRtBuffer> param0,
+      client->BufferFromHostBuffer(
+          p0_data.data(), shape.element_type(), shape.dimensions(),
+          /*byte_strides=*/std::nullopt,
+          PjRtClient::HostBufferSemantics::kImmutableOnlyDuringCall, nullptr,
+          client->memory_spaces()[0], /*device_layout=*/nullptr));
+
+  ASSERT_OK_AND_ASSIGN(auto p0_ref, param0->AcquireExternalReference());
+  void* p0_device_buffer = p0_ref->OpaqueDeviceMemoryDataPointer();
+
+  // case 1:  i0^       ->   r0^
+  XlaBuilder builder("c");
+  auto inp_0 = Parameter(&builder, 0, shape, "i0");
+  builder.SetUpAlias({}, 0, {});
+  ASSERT_OK_AND_ASSIGN(XlaComputation computation, builder.Build(inp_0));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtLoadedExecutable> executable,
+                       client->CompileAndLoad(computation, CompileOptions()));
+
+  // Insert input index that denotes input 0 is ineligible to be donated.
+  ExecuteOptions execute_options;
+  execute_options.non_donatable_input_indices.insert(0);
+  ASSERT_OK_AND_ASSIGN(
+      std::vector<std::vector<std::unique_ptr<PjRtBuffer>>> results,
+      executable->Execute({{param0.get()}}, execute_options));
+  ASSERT_EQ(results[0].size(), 1);
+
+  std::vector<float> expected({1.0f});
+  ASSERT_OK_AND_ASSIGN(std::shared_ptr<Literal> result_literal,
+                       results[0][0]->ToLiteral().Await());
+  EXPECT_EQ(result_literal->data<float>(), expected);
+
+  // Expect input 0 buffer is not donated (and thus not deleted);
+  ASSERT_OK_AND_ASSIGN(auto result_ref,
+                       results[0][0]->AcquireExternalReference());
+  void* result_device_buffer = result_ref->OpaqueDeviceMemoryDataPointer();
+  EXPECT_FALSE(param0->IsDeleted());
+  ASSERT_NE(p0_device_buffer, result_device_buffer);
 }
 
 TEST(StreamExecutorGpuClientTest, SendRecvChunked) {
@@ -1810,6 +1860,98 @@ ENTRY %Add.6 (a.1: f32[], b.2: f32[]) -> (f32[], f32[]) {
                             "executable: SomeGpuClient")));
 }
 
+TEST(StreamExecutorGpuClientTest,
+     SerializeStreamExecutorExecutableSplitProtoAndDeserialize) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
+                       GetStreamExecutorGpuClient(GpuClientOptions()));
+  static constexpr absl::string_view kAddProgram =
+      R"hlo(
+      HloModule Add, entry_computation_layout={(f32[], f32[])->(f32[], f32[])}
+
+      ENTRY %Add (a: f32[], b: f32[]) -> (f32[], f32[]) {
+        %a = f32[] parameter(0)
+        %b = f32[] parameter(1)
+        %add = f32[] add(f32[] %a, f32[] %b)
+        ROOT %tuple = (f32[], f32[]) tuple(f32[] %add, f32[] %add)
+      }
+)hlo";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtLoadedExecutable> executable,
+                       CompileExecutable(kAddProgram, *client));
+  PjRtExecutable* se_exe = executable->GetExecutable();
+  ASSERT_OK_AND_ASSIGN(std::string serialized, se_exe->SerializeExecutable());
+
+  {
+    // Check that the executable is a serialized as a split proto, meaning it
+    // supports executables larger than 2GB.
+    auto reader = std::make_unique<riegeli::StringReader<>>(serialized);
+    ASSERT_THAT(IsSplitProto(*reader), IsOkAndHolds(true));
+  }
+
+  ASSERT_OK(client->DeserializeExecutable(serialized, std::nullopt));
+}
+
+TEST(StreamExecutorGpuClientTest,
+     ReadSerializedExecutableAndOptionsFromString) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
+                       GetStreamExecutorGpuClient(GpuClientOptions()));
+  static constexpr absl::string_view kAddProgram =
+      R"hlo(
+      HloModule Add, entry_computation_layout={(f32[], f32[])->(f32[], f32[])}
+
+      ENTRY %Add (a: f32[], b: f32[]) -> (f32[], f32[]) {
+        %a = f32[] parameter(0)
+        %b = f32[] parameter(1)
+        %add = f32[] add(f32[] %a, f32[] %b)
+        ROOT %tuple = (f32[], f32[]) tuple(f32[] %add, f32[] %add)
+      }
+)hlo";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtLoadedExecutable> executable,
+                       CompileExecutable(kAddProgram, *client));
+  PjRtExecutable* se_exe = executable->GetExecutable();
+  ASSERT_OK_AND_ASSIGN(std::string serialized, se_exe->SerializeExecutable());
+
+  ASSERT_OK_AND_ASSIGN(ExecutableAndOptionsProto proto,
+                       SerializedGpuExecutableFromString(serialized));
+  EXPECT_THAT(proto.serialized_executable(), Not(IsEmpty()));
+}
+
+TEST(StreamExecutorGpuClientTest, DeserializeExecutableWithOptionsOverrides) {
+  ASSERT_OK_AND_ASSIGN(auto client,
+                       GetStreamExecutorGpuClient(GpuClientOptions()));
+
+  static constexpr absl::string_view kAddProgram = R"(
+    HloModule Add.6, entry_computation_layout={(f32[], f32[])->(f32[], f32[])}
+    ENTRY %add.6 (a.1: f32[], b.2: f32[]) -> (f32[], f32[]) {
+      %a.1 = f32[] parameter(0)
+      %b.2 = f32[] parameter(1)
+      %add.3 = f32[] add(f32[] %a.1, f32[] %b.2)
+      %add.4 = f32[] add(f32[] %add.3, f32[] %add.3)
+      ROOT %tuple.5 = (f32[], f32[]) tuple(f32[] %add.3, f32[] %add.4)
+    }
+  )";
+
+  CompileOptions compile_options;
+  // Use a debug option override
+  compile_options.env_option_overrides.push_back(
+      {"xla_gpu_graph_min_graph_size", int64_t{42}});
+  ASSERT_OK_AND_ASSIGN(auto executable, CompileExecutable(kAddProgram, *client,
+                                                          compile_options));
+  auto gpu_exe =
+      static_cast<PjRtStreamExecutorLoadedExecutable*>(executable.get());
+  ASSERT_OK_AND_ASSIGN(std::string serialized, gpu_exe->SerializeExecutable());
+  // Reload without passing explicit CompileOptions (so it deserializes from
+  // proto)
+  ASSERT_OK_AND_ASSIGN(auto reloaded_executable,
+                       client->DeserializeExecutable(serialized, std::nullopt));
+
+  // Verify the override has been applied after deserialization
+  ASSERT_OK_AND_ASSIGN(CompileOptions reloaded_options,
+                       reloaded_executable->GetCompileOptions());
+  EXPECT_EQ(reloaded_options.executable_build_options.debug_options()
+                .xla_gpu_graph_min_graph_size(),
+            42);
+}
+
 TEST(StreamExecutorGpuClientTest, MlirParameterLayoutIsSetInHlo) {
   constexpr char kMlirWithParameterLayout[] =
       R"(
@@ -2005,11 +2147,17 @@ TEST(StreamExecutorGpuClientTest, DmaMapUnmap) {
                                     static_cast<std::align_val_t>(alignment));
       });
   TF_EXPECT_OK(client->DmaMap(host_dma_ptr, dma_size));
-  EXPECT_TRUE(client->IsDmaMapped(host_dma_ptr, dma_size));
-  EXPECT_FALSE(
-      client->IsDmaMapped(reinterpret_cast<char*>(host_dma_ptr) + 5, dma_size));
+  EXPECT_TRUE(client->IsHostMemoryPinned(host_dma_ptr, dma_size));
+  if (client->platform_name() != xla::RocmName()) {
+    // Some ROCm driver versions report page-granularity range size (4096) for
+    // hipDrvPointerGetAttributes, so querying host_dma_ptr + 5 (size 1024)
+    // stays within the 4KB pinned page and returns true on those ROCm runners.
+    // Only CUDA consistently enforces exact byte-length range bounds.
+    EXPECT_FALSE(client->IsHostMemoryPinned(
+        reinterpret_cast<char*>(host_dma_ptr) + 5, dma_size));
+  }
   TF_EXPECT_OK(client->DmaUnmap(host_dma_ptr));
-  EXPECT_FALSE(client->IsDmaMapped(host_dma_ptr, dma_size));
+  EXPECT_FALSE(client->IsHostMemoryPinned(host_dma_ptr, dma_size));
 }
 
 TEST(StreamExecutorGpuClientTest, RawBuffer) {
@@ -2307,22 +2455,18 @@ TEST(StreamExecutorGpuClientTest,
       se_topology->gpu_topology().host_target_machine_options().has_value());
 }
 
-// The "address" allocator must give a dedicated synchronous passthrough
-// StreamExecutorAddressAllocator at the PJRT level and bypass the BFC allocator
-// (MultiDeviceAdapter) entirely.
-TEST(StreamExecutorGpuClientTest, AddressAllocatorIsSynchronousPassthrough) {
+// The "platform" allocator must return a MultiDeviceAdapter wrapping
+// synchronous StreamExecutorMemoryAllocator instances at the PJRT level.
+TEST(StreamExecutorGpuClientTest, PlatformAllocatorIsSynchronousPassthrough) {
   GpuClientOptions options;
-  options.allocator_config.kind = GpuAllocatorConfig::Kind::kAddress;
+  options.allocator_config.kind = GpuAllocatorConfig::Kind::kPlatform;
   options.allowed_devices = {0};
 
-  TF_ASSERT_OK_AND_ASSIGN(auto client, GetStreamExecutorGpuClient(options));
+  ASSERT_OK_AND_ASSIGN(auto client, GetStreamExecutorGpuClient(options));
 
   auto* pjrt_se_client =
       absl::down_cast<PjRtStreamExecutorClient*>(client.get());
-  EXPECT_NE(dynamic_cast<se::StreamExecutorAddressAllocator*>(
-                pjrt_se_client->allocator()),
-            nullptr);
-  EXPECT_EQ(dynamic_cast<se::MultiDeviceAdapter*>(pjrt_se_client->allocator()),
+  EXPECT_NE(dynamic_cast<se::MultiDeviceAdapter*>(pjrt_se_client->allocator()),
             nullptr);
 }
 
@@ -2429,567 +2573,225 @@ GpuClientOptions VmmClientOptions() {
   return options;
 }
 
-// Creates CompileOptions enabling command buffer VA remapping and all command
-// buffer types. Sets xla_gpu_graph_min_graph_size=1 so even small computations
-// are wrapped in command buffers.
-CompileOptions CmdBufVaRemappingOptions() {
-  CompileOptions opts;
-  auto* dbg = opts.executable_build_options.mutable_debug_options();
-  dbg->set_xla_gpu_command_buffer_update_mode(DebugOptions::NEVER_UPDATE);
-  dbg->set_xla_gpu_graph_min_graph_size(1);
-  dbg->add_xla_gpu_enable_command_buffer(DebugOptions::FUSION);
-  dbg->add_xla_gpu_enable_command_buffer(DebugOptions::CUBLAS);
-  dbg->add_xla_gpu_enable_command_buffer(DebugOptions::CUBLASLT);
-  dbg->add_xla_gpu_enable_command_buffer(DebugOptions::CONDITIONAL);
-  dbg->add_xla_gpu_enable_command_buffer(DebugOptions::WHILE);
-  dbg->add_xla_gpu_enable_command_buffer(DebugOptions::DYNAMIC_SLICE_FUSION);
-  return opts;
+CompileOptions SkipTempCommandBufferOptions() {
+  CompileOptions options;
+  auto* debug_options =
+      options.executable_build_options.mutable_debug_options();
+  debug_options->set_xla_gpu_command_buffer_update_mode(
+      DebugOptions::SKIP_TEMP);
+  debug_options->set_xla_gpu_graph_min_graph_size(1);
+  debug_options->add_xla_gpu_enable_command_buffer(DebugOptions::FUSION);
+  debug_options->add_xla_gpu_enable_command_buffer(DebugOptions::CUBLAS);
+  debug_options->add_xla_gpu_enable_command_buffer(DebugOptions::CUBLASLT);
+  debug_options->set_xla_gpu_gemm_rewrite_size_threshold(0);
+  debug_options->set_xla_gpu_enable_triton_gemm(false);
+  return options;
 }
 
-class ScopedVaRemappingVLog {
- public:
-  ScopedVaRemappingVLog()
-      : old_gpu_executable_(absl::SetVLogLevel("gpu_executable", 3)),
-        old_buffer_allocator_(
-            absl::SetVLogLevel("gpu_executable_buffer_allocator", 3)) {}
+CompileOptions SkipProfiledCommandBufferOptions() {
+  CompileOptions options = SkipTempCommandBufferOptions();
+  options.executable_build_options.mutable_debug_options()
+      ->set_xla_gpu_command_buffer_update_mode(DebugOptions::SKIP_PROFILED);
+  return options;
+}
 
-  ~ScopedVaRemappingVLog() {
-    absl::SetVLogLevel("gpu_executable", old_gpu_executable_);
-    absl::SetVLogLevel("gpu_executable_buffer_allocator",
-                       old_buffer_allocator_);
+Literal DiagonalMatrix(float diagonal) {
+  return LiteralUtil::CreateR2<float>({{diagonal, 0, 0, 0},
+                                       {0, diagonal, 0, 0},
+                                       {0, 0, diagonal, 0},
+                                       {0, 0, 0, diagonal}});
+}
+
+void RunTwoGemmCommandBuffer(PjRtClient& client) {
+  static constexpr char kHlo[] = R"(
+    HloModule skip_temp_command_buffer_test
+    ENTRY main {
+      lhs = f32[4,4] parameter(0)
+      rhs0 = f32[4,4] parameter(1)
+      rhs1 = f32[4,4] parameter(2)
+      temp = f32[4,4] dot(lhs, rhs0),
+        lhs_contracting_dims={1}, rhs_contracting_dims={0}
+      ROOT output = f32[4,4] dot(temp, rhs1),
+        lhs_contracting_dims={1}, rhs_contracting_dims={0}
+    })";
+
+  ASSERT_OK_AND_ASSIGN(
+      auto executable,
+      CompileExecutable(kHlo, client, SkipTempCommandBufferOptions()));
+  ASSERT_OK_AND_ASSIGN(auto* memory_space,
+                       client.addressable_devices()[0]->default_memory_space());
+
+  const Literal rhs0 = DiagonalMatrix(2.0f);
+  const Literal rhs1 = DiagonalMatrix(3.0f);
+  for (int run = 0; run < 3; ++run) {
+    float scale = static_cast<float>(run + 1);
+    Literal lhs = DiagonalMatrix(scale);
+    ASSERT_OK_AND_ASSIGN(auto lhs_buffer,
+                         client.BufferFromHostLiteral(lhs, memory_space));
+    ASSERT_OK_AND_ASSIGN(auto rhs0_buffer,
+                         client.BufferFromHostLiteral(rhs0, memory_space));
+    ASSERT_OK_AND_ASSIGN(auto rhs1_buffer,
+                         client.BufferFromHostLiteral(rhs1, memory_space));
+
+    auto result = executable->Execute(
+        {{lhs_buffer.get(), rhs0_buffer.get(), rhs1_buffer.get()}}, {});
+    ASSERT_OK_AND_ASSIGN(auto result_literal, ExtractSingleResult(result));
+    EXPECT_TRUE(LiteralTestUtil::Near(DiagonalMatrix(6.0f * scale),
+                                      *result_literal, ErrorSpec{1e-5}))
+        << "Mismatch on run " << run;
+  }
+}
+
+// Runs a two-GEMM command buffer in SKIP_PROFILED mode across enough
+// executions to cover the profiling phase (3 executions), the
+// profile transition, and several remapped executions. Input buffers are
+// created once and reused so parameter addresses stay stable and get selected
+// for VA remapping; the output buffer is freed after each execution so its
+// physical allocation is reused across executions.
+void RunTwoGemmCommandBufferProfiled(PjRtClient& client) {
+  static constexpr char kHlo[] = R"(
+    HloModule skip_profiled_command_buffer_test
+    ENTRY main {
+      lhs = f32[4,4] parameter(0)
+      rhs0 = f32[4,4] parameter(1)
+      rhs1 = f32[4,4] parameter(2)
+      temp = f32[4,4] dot(lhs, rhs0),
+        lhs_contracting_dims={1}, rhs_contracting_dims={0}
+      ROOT output = f32[4,4] dot(temp, rhs1),
+        lhs_contracting_dims={1}, rhs_contracting_dims={0}
+    })";
+
+  ASSERT_OK_AND_ASSIGN(
+      auto executable,
+      CompileExecutable(kHlo, client, SkipProfiledCommandBufferOptions()));
+  ASSERT_OK_AND_ASSIGN(auto* memory_space,
+                       client.addressable_devices()[0]->default_memory_space());
+
+  const Literal lhs = DiagonalMatrix(1.0f);
+  const Literal rhs0 = DiagonalMatrix(2.0f);
+  const Literal rhs1 = DiagonalMatrix(3.0f);
+  ASSERT_OK_AND_ASSIGN(auto lhs_buffer,
+                       client.BufferFromHostLiteral(lhs, memory_space));
+  ASSERT_OK_AND_ASSIGN(auto rhs0_buffer,
+                       client.BufferFromHostLiteral(rhs0, memory_space));
+  ASSERT_OK_AND_ASSIGN(auto rhs1_buffer,
+                       client.BufferFromHostLiteral(rhs1, memory_space));
+
+  for (int run = 0; run < 6; ++run) {
+    auto result = executable->Execute(
+        {{lhs_buffer.get(), rhs0_buffer.get(), rhs1_buffer.get()}}, {});
+    ASSERT_OK_AND_ASSIGN(auto result_literal, ExtractSingleResult(result));
+    EXPECT_TRUE(LiteralTestUtil::Near(DiagonalMatrix(6.0f), *result_literal,
+                                      ErrorSpec{1e-5}))
+        << "Mismatch on run " << run;
+  }
+}
+
+class ScopedBufferAllocatorVLog {
+ public:
+  ScopedBufferAllocatorVLog()
+      : old_vlog_level_(
+            absl::SetVLogLevel("gpu_executable_buffer_allocator", 3)),
+        old_va_remap_vlog_level_(
+            absl::SetVLogLevel("gpu_executable_va_remap_allocator", 3)) {}
+
+  ~ScopedBufferAllocatorVLog() {
+    absl::SetVLogLevel("gpu_executable_va_remap_allocator",
+                       old_va_remap_vlog_level_);
+    absl::SetVLogLevel("gpu_executable_buffer_allocator", old_vlog_level_);
   }
 
-  ScopedVaRemappingVLog(const ScopedVaRemappingVLog&) = delete;
-  ScopedVaRemappingVLog& operator=(const ScopedVaRemappingVLog&) = delete;
+  ScopedBufferAllocatorVLog(const ScopedBufferAllocatorVLog&) = delete;
+  ScopedBufferAllocatorVLog& operator=(const ScopedBufferAllocatorVLog&) =
+      delete;
 
  private:
-  int old_gpu_executable_;
-  int old_buffer_allocator_;
+  int old_vlog_level_;
+  int old_va_remap_vlog_level_;
 };
 
-// Tests that element-wise fusion operations (FUSION command type) produce
-// correct results under command buffer VA remapping across multiple runs,
-// reusing one VA reservation.
-TEST_F(VmmTest, CommandBufferVaRemappingFusionOps) {
-  TF_ASSERT_OK_AND_ASSIGN(auto client,
-                          GetStreamExecutorGpuClient(VmmClientOptions()));
+TEST_F(VmmTest, CommandBufferSkipTempTwoGemmChain) {
+  ASSERT_OK_AND_ASSIGN(auto client,
+                       GetStreamExecutorGpuClient(VmmClientOptions()));
 
-  static constexpr char kHlo[] = R"(
-    HloModule fusion_va_remapping_test
-    ENTRY main {
-      x = f32[8] parameter(0)
-      y = f32[8] parameter(1)
-      ROOT add = f32[8] add(x, y)
-    })";
-
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto executable,
-      CompileExecutable(kHlo, *client, CmdBufVaRemappingOptions()));
-
-  auto* device = client->addressable_devices()[0];
-  TF_ASSERT_OK_AND_ASSIGN(auto* mem, device->default_memory_space());
-
-  // 3 runs reuse the same VA reservation with different physical allocations.
-  ScopedVaRemappingVLog vlog;
+  ScopedBufferAllocatorVLog vlog;
   absl::ScopedMockLog mock_log(absl::MockLogDefault::kIgnoreUnexpected);
-  EXPECT_CALL(mock_log, Log(absl::LogSeverity::kInfo, ::testing::_,
-                            ::testing::HasSubstr("VA remapping: Mapped")))
-      .Times(::testing::AtLeast(1));
+  EXPECT_CALL(
+      mock_log,
+      Log(absl::LogSeverity::kInfo, ::testing::_,
+          ::testing::HasSubstr(
+              "reserved range for module skip_temp_command_buffer_test")))
+      .Times(1);
   mock_log.StartCapturingLogs();
-  for (int run = 0; run < 3; ++run) {
-    float base = static_cast<float>(run * 10);
-    auto x_lit =
-        LiteralUtil::CreateR1<float>({base + 1, base + 2, base + 3, base + 4,
-                                      base + 5, base + 6, base + 7, base + 8});
-    auto y_lit = LiteralUtil::CreateR1<float>({1, 2, 3, 4, 5, 6, 7, 8});
-
-    TF_ASSERT_OK_AND_ASSIGN(auto x_buf,
-                            client->BufferFromHostLiteral(x_lit, mem));
-    TF_ASSERT_OK_AND_ASSIGN(auto y_buf,
-                            client->BufferFromHostLiteral(y_lit, mem));
-
-    auto result = executable->Execute({{x_buf.get(), y_buf.get()}}, {});
-    TF_ASSERT_OK_AND_ASSIGN(auto result_lit, ExtractSingleResult(result));
-
-    EXPECT_TRUE(LiteralTestUtil::Equal(
-        LiteralUtil::CreateR1<float>({base + 2, base + 4, base + 6, base + 8,
-                                      base + 10, base + 12, base + 14,
-                                      base + 16}),
-        *result_lit))
-        << "Mismatch on run " << run;
-  }
+  RunTwoGemmCommandBuffer(*client);
   mock_log.StopCapturingLogs();
 }
 
-// Tests that GEMM operations (CUBLAS/CUBLASLT command type) produce correct
-// results under command buffer VA remapping.
-TEST_F(VmmTest, CommandBufferVaRemappingGemmOps) {
-  TF_ASSERT_OK_AND_ASSIGN(auto client,
-                          GetStreamExecutorGpuClient(VmmClientOptions()));
+TEST_F(VmmTest, CommandBufferSkipTempFallsBackWithoutVmmAllocator) {
+  GpuClientOptions options;
+  options.allowed_devices = {0};
+  options.allocator_config.kind = GpuAllocatorConfig::Kind::kPlatform;
+  ASSERT_OK_AND_ASSIGN(auto client, GetStreamExecutorGpuClient(options));
 
-  static constexpr char kHlo[] = R"(
-    HloModule gemm_va_remapping_test
-    ENTRY main {
-      lhs = f32[4,4] parameter(0)
-      rhs = f32[4,4] parameter(1)
-      ROOT dot = f32[4,4] dot(lhs, rhs),
-        lhs_contracting_dims={1}, rhs_contracting_dims={0}
-    })";
-
-  CompileOptions opts = CmdBufVaRemappingOptions();
-  // Force CUBLAS routing even for small matrices.
-  opts.executable_build_options.mutable_debug_options()
-      ->set_xla_gpu_gemm_rewrite_size_threshold(0);
-
-  TF_ASSERT_OK_AND_ASSIGN(auto executable,
-                          CompileExecutable(kHlo, *client, opts));
-
-  auto* device = client->addressable_devices()[0];
-  TF_ASSERT_OK_AND_ASSIGN(auto* mem, device->default_memory_space());
-
-  // rhs = identity matrix → lhs * identity == lhs.
-  auto identity = LiteralUtil::CreateR2<float>(
-      {{1, 0, 0, 0}, {0, 1, 0, 0}, {0, 0, 1, 0}, {0, 0, 0, 1}});
-
-  ScopedVaRemappingVLog vlog;
+  ScopedBufferAllocatorVLog vlog;
   absl::ScopedMockLog mock_log(absl::MockLogDefault::kIgnoreUnexpected);
-  EXPECT_CALL(mock_log, Log(absl::LogSeverity::kInfo, ::testing::_,
-                            ::testing::HasSubstr("VA remapping: Mapped")))
-      .Times(::testing::AtLeast(1));
+  EXPECT_CALL(
+      mock_log,
+      Log(absl::LogSeverity::kInfo, ::testing::_,
+          ::testing::HasSubstr(
+              "reserved range for module skip_temp_command_buffer_test")))
+      .Times(0);
   mock_log.StartCapturingLogs();
-  for (int run = 0; run < 3; ++run) {
-    float s = static_cast<float>(run + 1);
-    // lhs = s * identity.
-    auto lhs = LiteralUtil::CreateR2<float>(
-        {{s, 0, 0, 0}, {0, s, 0, 0}, {0, 0, s, 0}, {0, 0, 0, s}});
-
-    TF_ASSERT_OK_AND_ASSIGN(auto lhs_buf,
-                            client->BufferFromHostLiteral(lhs, mem));
-    TF_ASSERT_OK_AND_ASSIGN(auto rhs_buf,
-                            client->BufferFromHostLiteral(identity, mem));
-
-    auto result = executable->Execute({{lhs_buf.get(), rhs_buf.get()}}, {});
-    TF_ASSERT_OK_AND_ASSIGN(auto result_lit, ExtractSingleResult(result));
-
-    EXPECT_TRUE(LiteralTestUtil::Near(lhs, *result_lit, ErrorSpec{1e-5}))
-        << "Mismatch on run " << run;
-  }
+  RunTwoGemmCommandBuffer(*client);
   mock_log.StopCapturingLogs();
 }
 
-// Tests that conditional operations (CONDITIONAL command type) produce correct
-// results under command buffer VA remapping.
-TEST_F(VmmTest, CommandBufferVaRemappingConditional) {
-  TF_ASSERT_OK_AND_ASSIGN(auto client,
-                          GetStreamExecutorGpuClient(VmmClientOptions()));
+TEST_F(VmmTest, CommandBufferSkipProfiledTwoGemmChain) {
+  ASSERT_OK_AND_ASSIGN(auto client,
+                       GetStreamExecutorGpuClient(VmmClientOptions()));
 
-  static constexpr char kHlo[] = R"(
-    HloModule conditional_va_remapping_test
-    true_branch {
-      p = f32[] parameter(0)
-      c = f32[] constant(10.0)
-      ROOT r = f32[] add(p, c)
-    }
-    false_branch {
-      p = f32[] parameter(0)
-      c = f32[] constant(20.0)
-      ROOT r = f32[] add(p, c)
-    }
-    ENTRY main {
-      cond = pred[] parameter(0)
-      val = f32[] parameter(1)
-      ROOT result = f32[] conditional(cond, val, val),
-        true_computation=true_branch, false_computation=false_branch
-    })";
-
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto executable,
-      CompileExecutable(kHlo, *client, CmdBufVaRemappingOptions()));
-
-  auto* device = client->addressable_devices()[0];
-  TF_ASSERT_OK_AND_ASSIGN(auto* mem, device->default_memory_space());
-
-  // Alternate true/false to exercise repeated VA remapping.
-  struct RunConfig {
-    bool cond;
-    float val;
-    float expected;
-  };
-  std::vector<RunConfig> runs = {
-      {true, 5.0f, 15.0f}, {false, 5.0f, 25.0f}, {true, 7.0f, 17.0f}};
-
-  ScopedVaRemappingVLog vlog;
+  ScopedBufferAllocatorVLog vlog;
   absl::ScopedMockLog mock_log(absl::MockLogDefault::kIgnoreUnexpected);
+  // The profile transition happens exactly once, combining the automatically
+  // selected temp buffer with stable parameter buffers, after which the VA
+  // reservation is created.
   EXPECT_CALL(mock_log, Log(absl::LogSeverity::kInfo, ::testing::_,
-                            ::testing::HasSubstr("VA remapping: Mapped")))
-      .Times(::testing::AtLeast(1));
+                            ::testing::HasSubstr("profile selected")))
+      .Times(1);
+  EXPECT_CALL(
+      mock_log,
+      Log(absl::LogSeverity::kInfo, ::testing::_,
+          ::testing::HasSubstr(
+              "reserved range for module skip_profiled_command_buffer_test")))
+      .Times(1);
+  // Output buffers handed to the caller must be allocator-owned addresses,
+  // not per-execution reservation addresses, so releasing them never fails.
+  EXPECT_CALL(mock_log, Log(absl::LogSeverity::kError, ::testing::_,
+                            ::testing::HasSubstr("Buffer deallocation failed")))
+      .Times(0);
   mock_log.StartCapturingLogs();
-  for (const auto& cfg : runs) {
-    auto cond_lit = LiteralUtil::CreateR0<bool>(cfg.cond);
-    auto val_lit = LiteralUtil::CreateR0<float>(cfg.val);
-
-    TF_ASSERT_OK_AND_ASSIGN(auto cond_buf,
-                            client->BufferFromHostLiteral(cond_lit, mem));
-    TF_ASSERT_OK_AND_ASSIGN(auto val_buf,
-                            client->BufferFromHostLiteral(val_lit, mem));
-
-    auto result = executable->Execute({{cond_buf.get(), val_buf.get()}}, {});
-    TF_ASSERT_OK_AND_ASSIGN(auto result_lit, ExtractSingleResult(result));
-
-    EXPECT_TRUE(LiteralTestUtil::Equal(
-        LiteralUtil::CreateR0<float>(cfg.expected), *result_lit));
-  }
+  RunTwoGemmCommandBufferProfiled(*client);
   mock_log.StopCapturingLogs();
 }
 
-// Tests that while-loop operations (WHILE command type) produce correct results
-// under command buffer VA remapping.
-TEST_F(VmmTest, CommandBufferVaRemappingWhileLoop) {
-  TF_ASSERT_OK_AND_ASSIGN(auto client,
-                          GetStreamExecutorGpuClient(VmmClientOptions()));
+TEST_F(VmmTest, CommandBufferSkipProfiledFallsBackWithoutVmmAllocator) {
+  GpuClientOptions options;
+  options.allowed_devices = {0};
+  options.allocator_config.kind = GpuAllocatorConfig::Kind::kPlatform;
+  ASSERT_OK_AND_ASSIGN(auto client, GetStreamExecutorGpuClient(options));
 
-  // Loop runs 4 iterations, adding 1.0 each time: result = init_val + 4.
-  static constexpr char kHlo[] = R"(
-    HloModule while_va_remapping_test
-    cond {
-      state = (s32[], f32[]) parameter(0)
-      i = s32[] get-tuple-element(state), index=0
-      limit = s32[] constant(4)
-      ROOT lt = pred[] compare(i, limit), direction=LT
-    }
-    body {
-      state = (s32[], f32[]) parameter(0)
-      i = s32[] get-tuple-element(state), index=0
-      val = f32[] get-tuple-element(state), index=1
-      one_i = s32[] constant(1)
-      one_f = f32[] constant(1.0)
-      i1 = s32[] add(i, one_i)
-      val1 = f32[] add(val, one_f)
-      ROOT next = (s32[], f32[]) tuple(i1, val1)
-    }
-    ENTRY main {
-      init_val = f32[] parameter(0)
-      init_i = s32[] constant(0)
-      init = (s32[], f32[]) tuple(init_i, init_val)
-      loop = (s32[], f32[]) while(init), condition=cond, body=body
-      ROOT result = f32[] get-tuple-element(loop), index=1
-    })";
-
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto executable,
-      CompileExecutable(kHlo, *client, CmdBufVaRemappingOptions()));
-
-  auto* device = client->addressable_devices()[0];
-  TF_ASSERT_OK_AND_ASSIGN(auto* mem, device->default_memory_space());
-
-  ScopedVaRemappingVLog vlog;
+  ScopedBufferAllocatorVLog vlog;
   absl::ScopedMockLog mock_log(absl::MockLogDefault::kIgnoreUnexpected);
-  EXPECT_CALL(mock_log, Log(absl::LogSeverity::kInfo, ::testing::_,
-                            ::testing::HasSubstr("VA remapping: Mapped")))
-      .Times(::testing::AtLeast(1));
+  EXPECT_CALL(
+      mock_log,
+      Log(absl::LogSeverity::kInfo, ::testing::_,
+          ::testing::HasSubstr(
+              "reserved range for module skip_profiled_command_buffer_test")))
+      .Times(0);
   mock_log.StartCapturingLogs();
-  for (int run = 0; run < 3; ++run) {
-    float init_val = static_cast<float>(run);
-    auto init_lit = LiteralUtil::CreateR0<float>(init_val);
-    TF_ASSERT_OK_AND_ASSIGN(auto init_buf,
-                            client->BufferFromHostLiteral(init_lit, mem));
-
-    auto result = executable->Execute({{init_buf.get()}}, {});
-    TF_ASSERT_OK_AND_ASSIGN(auto result_lit, ExtractSingleResult(result));
-
-    EXPECT_TRUE(LiteralTestUtil::Equal(
-        LiteralUtil::CreateR0<float>(init_val + 4.0f), *result_lit))
-        << "Mismatch on run " << run;
-  }
+  RunTwoGemmCommandBufferProfiled(*client);
   mock_log.StopCapturingLogs();
 }
-
-// Tests that dynamic-slice fusion operations (DYNAMIC_SLICE_FUSION command
-// type) produce correct results under command buffer VA remapping.
-// Pattern: dynamic-slice → element-wise op → dynamic-update-slice.
-TEST_F(VmmTest, CommandBufferVaRemappingDynamicSliceFusion) {
-  TF_ASSERT_OK_AND_ASSIGN(auto client,
-                          GetStreamExecutorGpuClient(VmmClientOptions()));
-
-  static constexpr char kHlo[] = R"(
-    HloModule ds_fusion_va_remapping_test
-    ENTRY main {
-      src = f32[8] parameter(0)
-      offset = s32[] parameter(1)
-      slice = f32[4] dynamic-slice(src, offset), dynamic_slice_sizes={4}
-      doubled = f32[4] add(slice, slice)
-      ROOT result = f32[8] dynamic-update-slice(src, doubled, offset)
-    })";
-
-  CompileOptions opts = CmdBufVaRemappingOptions();
-  opts.executable_build_options.mutable_debug_options()
-      ->set_xla_gpu_enable_dynamic_slice_fusion(true);
-
-  TF_ASSERT_OK_AND_ASSIGN(auto executable,
-                          CompileExecutable(kHlo, *client, opts));
-
-  auto* device = client->addressable_devices()[0];
-  TF_ASSERT_OK_AND_ASSIGN(auto* mem, device->default_memory_space());
-
-  struct RunConfig {
-    int32_t offset;
-    std::vector<float> expected;
-  };
-  // For each run: src={1,2,3,4,5,6,7,8}, slice src[offset:offset+4], double
-  // it, write back. Expected differs by offset.
-  std::vector<RunConfig> runs = {
-      {0, {2, 4, 6, 8, 5, 6, 7, 8}},
-      {2, {1, 2, 6, 8, 10, 12, 7, 8}},
-      {4, {1, 2, 3, 4, 10, 12, 14, 16}},
-  };
-
-  ScopedVaRemappingVLog vlog;
-  absl::ScopedMockLog mock_log(absl::MockLogDefault::kIgnoreUnexpected);
-  EXPECT_CALL(mock_log, Log(absl::LogSeverity::kInfo, ::testing::_,
-                            ::testing::HasSubstr("VA remapping: Mapped")))
-      .Times(::testing::AtLeast(1));
-  mock_log.StartCapturingLogs();
-  for (const auto& cfg : runs) {
-    auto src_lit = LiteralUtil::CreateR1<float>({1, 2, 3, 4, 5, 6, 7, 8});
-    auto offset_lit = LiteralUtil::CreateR0<int32_t>(cfg.offset);
-
-    TF_ASSERT_OK_AND_ASSIGN(auto src_buf,
-                            client->BufferFromHostLiteral(src_lit, mem));
-    TF_ASSERT_OK_AND_ASSIGN(auto off_buf,
-                            client->BufferFromHostLiteral(offset_lit, mem));
-
-    auto result = executable->Execute({{src_buf.get(), off_buf.get()}}, {});
-    TF_ASSERT_OK_AND_ASSIGN(auto result_lit, ExtractSingleResult(result));
-
-    EXPECT_TRUE(LiteralTestUtil::Equal(
-        LiteralUtil::CreateR1<float>(cfg.expected), *result_lit))
-        << "Mismatch at offset " << cfg.offset;
-  }
-  mock_log.StopCapturingLogs();
-}
-
-// Tests repeated reuse of the single command-buffer VA range across multiple
-// executions. Verifies no memory corruption from remapping new physical
-// allocations into the same reserved VA addresses.
-TEST_F(VmmTest, CommandBufferVaRemappingSingleRangeReuse) {
-  TF_ASSERT_OK_AND_ASSIGN(auto client,
-                          GetStreamExecutorGpuClient(VmmClientOptions()));
-
-  // add-constant: expected = input + {1,2,3,4}.
-  static constexpr char kHlo[] = R"(
-    HloModule single_range_va_remapping_test
-    ENTRY main {
-      x = f32[4] parameter(0)
-      c = f32[4] constant({1.0, 2.0, 3.0, 4.0})
-      ROOT add = f32[4] add(x, c)
-    })";
-
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto executable,
-      CompileExecutable(kHlo, *client, CmdBufVaRemappingOptions()));
-
-  auto* device = client->addressable_devices()[0];
-  TF_ASSERT_OK_AND_ASSIGN(auto* mem, device->default_memory_space());
-
-  // Reuse the same VA range across multiple remaps.
-  ScopedVaRemappingVLog vlog;
-  absl::ScopedMockLog mock_log(absl::MockLogDefault::kIgnoreUnexpected);
-  EXPECT_CALL(mock_log, Log(absl::LogSeverity::kInfo, ::testing::_,
-                            ::testing::HasSubstr("VA remapping: Mapped")))
-      .Times(::testing::AtLeast(1));
-  mock_log.StartCapturingLogs();
-  for (int run = 0; run < 6; ++run) {
-    float base = static_cast<float>(run * 10);
-    auto x_lit = LiteralUtil::CreateR1<float>({base, base, base, base});
-    TF_ASSERT_OK_AND_ASSIGN(auto x_buf,
-                            client->BufferFromHostLiteral(x_lit, mem));
-
-    auto result = executable->Execute({{x_buf.get()}}, {});
-    TF_ASSERT_OK_AND_ASSIGN(auto result_lit, ExtractSingleResult(result));
-
-    EXPECT_TRUE(LiteralTestUtil::Equal(
-        LiteralUtil::CreateR1<float>({base + 1, base + 2, base + 3, base + 4}),
-        *result_lit))
-        << "Mismatch on run " << run;
-  }
-  mock_log.StopCapturingLogs();
-}
-
-#if GOOGLE_CUDA
-
-// Tests that CAPTURE_CMD_NEVER_UPDATE mode produces correct results across
-// multiple runs. The GEMM is routed through cuBLAS (GemmCmd/CublasLtCmd), which
-// are traced commands. In CAPTURE_CMD_NEVER_UPDATE mode only traced commands
-// populate the persistent allocation index set and activate VA remapping so
-// that traced commands skip command buffer updates across single-range remaps.
-TEST_F(VmmTest, CommandBufferVaRemappingCustomLibraryUpdateFree) {
-  TF_ASSERT_OK_AND_ASSIGN(auto client,
-                          GetStreamExecutorGpuClient(VmmClientOptions()));
-
-  // Pure GEMM: lhs * rhs. With Triton disabled the dot is lowered to a
-  // GemmCmd/CublasLtCmd (TracedCommandBufferCmd subclass), so its allocations
-  // populate the persistent and VA-remapped allocation index sets under
-  // CAPTURE_CMD_NEVER_UPDATE.
-  static constexpr char kHlo[] = R"(
-    HloModule custom_lib_update_free_test
-    ENTRY main {
-      lhs = f32[4,4] parameter(0)
-      rhs = f32[4,4] parameter(1)
-      ROOT dot = f32[4,4] dot(lhs, rhs),
-        lhs_contracting_dims={1}, rhs_contracting_dims={0}
-    })";
-
-  CompileOptions opts;
-  auto* dbg = opts.executable_build_options.mutable_debug_options();
-  dbg->set_xla_gpu_command_buffer_update_mode(
-      DebugOptions::CAPTURE_CMD_NEVER_UPDATE);
-  dbg->set_xla_gpu_graph_min_graph_size(1);
-  dbg->add_xla_gpu_enable_command_buffer(DebugOptions::FUSION);
-  dbg->add_xla_gpu_enable_command_buffer(DebugOptions::CUBLAS);
-  dbg->add_xla_gpu_enable_command_buffer(DebugOptions::CUBLASLT);
-  // Force CUBLAS routing even for small matrices.
-  dbg->set_xla_gpu_gemm_rewrite_size_threshold(0);
-  // Disable Triton GEMM fusion so the dot is lowered to a cuBLAS GemmCmd
-  // (a TracedCommandBufferCmd subclass) rather than a non-traced KernelCmd.
-  dbg->set_xla_gpu_enable_triton_gemm(false);
-
-  TF_ASSERT_OK_AND_ASSIGN(auto executable,
-                          CompileExecutable(kHlo, *client, opts));
-
-  auto* device = client->addressable_devices()[0];
-  TF_ASSERT_OK_AND_ASSIGN(auto* mem, device->default_memory_space());
-
-  // rhs = identity → lhs * identity = lhs.
-  auto identity = LiteralUtil::CreateR2<float>(
-      {{1, 0, 0, 0}, {0, 1, 0, 0}, {0, 0, 1, 0}, {0, 0, 0, 1}});
-
-  // Verify VA remapping is active for traced GEMM allocations.
-  ScopedVaRemappingVLog vlog;
-  absl::ScopedMockLog mock_log(absl::MockLogDefault::kIgnoreUnexpected);
-  EXPECT_CALL(mock_log, Log(absl::LogSeverity::kInfo, ::testing::_,
-                            ::testing::HasSubstr("VA remapping: Mapped")))
-      .Times(::testing::AtLeast(1));
-  mock_log.StartCapturingLogs();
-
-  // 3 runs reuse the same VA reservation with different physical allocations.
-  for (int run = 0; run < 3; ++run) {
-    float s = static_cast<float>(run + 1);
-    // lhs = s * identity → s * identity * identity = s * identity.
-    auto lhs = LiteralUtil::CreateR2<float>(
-        {{s, 0, 0, 0}, {0, s, 0, 0}, {0, 0, s, 0}, {0, 0, 0, s}});
-
-    ASSERT_OK_AND_ASSIGN(auto lhs_buf, client->BufferFromHostLiteral(lhs, mem));
-    ASSERT_OK_AND_ASSIGN(auto rhs_buf,
-                         client->BufferFromHostLiteral(identity, mem));
-
-    auto result = executable->Execute({{lhs_buf.get(), rhs_buf.get()}}, {});
-    ASSERT_OK_AND_ASSIGN(auto result_lit, ExtractSingleResult(result));
-
-    EXPECT_TRUE(LiteralTestUtil::Near(lhs, *result_lit, ErrorSpec{1e-5}))
-        << "Mismatch on run " << run;
-  }
-  mock_log.StopCapturingLogs();
-}
-
-// Tests that two different executables using NEVER_UPDATE can coexist and
-// interleave executions without interfering with each other's VA range.
-// Each executable maintains its own per-executor VA reservation, so remapping
-// in one does not corrupt the other.
-TEST_F(VmmTest, CommandBufferVaRemappingTwoExecutables) {
-  TF_ASSERT_OK_AND_ASSIGN(auto client,
-                          GetStreamExecutorGpuClient(VmmClientOptions()));
-
-  // exec1: element-wise add.
-  static constexpr char kHlo1[] = R"(
-    HloModule exec1_va_remapping
-    ENTRY main {
-      x = f32[8] parameter(0)
-      y = f32[8] parameter(1)
-      ROOT add = f32[8] add(x, y)
-    })";
-
-  // exec2: element-wise multiply.
-  static constexpr char kHlo2[] = R"(
-    HloModule exec2_va_remapping
-    ENTRY main {
-      a = f32[8] parameter(0)
-      b = f32[8] parameter(1)
-      ROOT mul = f32[8] multiply(a, b)
-    })";
-
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto exec1,
-      CompileExecutable(kHlo1, *client, CmdBufVaRemappingOptions()));
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto exec2,
-      CompileExecutable(kHlo2, *client, CmdBufVaRemappingOptions()));
-
-  auto* device = client->addressable_devices()[0];
-  TF_ASSERT_OK_AND_ASSIGN(auto* mem, device->default_memory_space());
-
-  auto ones = LiteralUtil::CreateR1<float>({1, 1, 1, 1, 1, 1, 1, 1});
-  auto twos = LiteralUtil::CreateR1<float>({2, 2, 2, 2, 2, 2, 2, 2});
-
-  // Each executable owns one VA range and one command buffer per executor.
-  // Repeated executions remap new physical allocations into the same VA range
-  // and reuse the same command buffer after warmup.
-  ScopedVaRemappingVLog vlog;
-  int old_vlog_cbt = absl::SetVLogLevel("command_buffer_thunk", 3);
-  absl::ScopedMockLog mock_log(absl::MockLogDefault::kIgnoreUnexpected);
-
-  EXPECT_CALL(mock_log, Log(absl::LogSeverity::kInfo, ::testing::_,
-                            AllOf(HasSubstr("exec1_va_remapping"),
-                                  HasSubstr("VA remapping: module"))))
-      .Times(::testing::AtLeast(1));
-
-  EXPECT_CALL(mock_log, Log(absl::LogSeverity::kInfo, ::testing::_,
-                            AllOf(HasSubstr("exec2_va_remapping"),
-                                  HasSubstr("VA remapping: module"))))
-      .Times(::testing::AtLeast(1));
-
-  // Initialization fires once per executable after warmup.
-  EXPECT_CALL(mock_log, Log(absl::LogSeverity::kInfo, ::testing::_,
-                            HasSubstr("Initialize command buffer on device")))
-      .Times(2);
-
-  mock_log.StartCapturingLogs();
-
-  // Interleaving stresses that the two executables' VA ranges do not alias or
-  // corrupt each other.
-  for (int run = 0; run < 5; ++run) {
-    float base = static_cast<float>(run + 1);
-    auto x = LiteralUtil::CreateR1<float>(
-        {base, base, base, base, base, base, base, base});
-
-    TF_ASSERT_OK_AND_ASSIGN(auto x_buf, client->BufferFromHostLiteral(x, mem));
-    TF_ASSERT_OK_AND_ASSIGN(auto ones_buf,
-                            client->BufferFromHostLiteral(ones, mem));
-    TF_ASSERT_OK_AND_ASSIGN(auto twos_buf,
-                            client->BufferFromHostLiteral(twos, mem));
-
-    // exec1: x + ones = base + 1.
-    auto res1 = exec1->Execute({{x_buf.get(), ones_buf.get()}}, {});
-    TF_ASSERT_OK_AND_ASSIGN(auto lit1, ExtractSingleResult(res1));
-    EXPECT_TRUE(LiteralTestUtil::Equal(
-        LiteralUtil::CreateR1<float>({base + 1, base + 1, base + 1, base + 1,
-                                      base + 1, base + 1, base + 1, base + 1}),
-        *lit1))
-        << "exec1 mismatch on run " << run;
-
-    // exec2: x * twos = base * 2.
-    auto res2 = exec2->Execute({{x_buf.get(), twos_buf.get()}}, {});
-    TF_ASSERT_OK_AND_ASSIGN(auto lit2, ExtractSingleResult(res2));
-    EXPECT_TRUE(LiteralTestUtil::Equal(
-        LiteralUtil::CreateR1<float>({base * 2, base * 2, base * 2, base * 2,
-                                      base * 2, base * 2, base * 2, base * 2}),
-        *lit2))
-        << "exec2 mismatch on run " << run;
-  }
-  mock_log.StopCapturingLogs();
-  absl::SetVLogLevel("command_buffer_thunk", old_vlog_cbt);
-}
-
-#endif  // GOOGLE_CUDA
 
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 

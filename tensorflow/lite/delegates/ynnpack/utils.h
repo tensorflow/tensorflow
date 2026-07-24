@@ -41,6 +41,14 @@ struct NodeInfo {
   TfLiteFusedActivation activation;
 };
 
+struct DummyInputInfo {
+  int param_tensor_index;
+  uint32_t dummy_val_id;
+  int seq_axis;
+  size_t full_dims[YNN_MAX_TENSOR_RANK];
+  size_t rank;
+};
+
 // Generic helpers
 ynn_type GetYnnType(TfLiteType type);
 size_t YnnTypeElementCount(ynn_type type);
@@ -89,6 +97,11 @@ TfLiteStatus ApplyActivation(TfLiteContext* context, ynn_subgraph_t subgraph,
                              TfLiteFusedActivation activation,
                              uint32_t input_id, uint32_t& output_id,
                              int output_tensor_index, ynn_type internal_type);
+
+TfLiteStatus ApplyClamp(TfLiteContext* context, ynn_subgraph_t subgraph,
+                        double min_val, double max_val, uint32_t input_id,
+                        uint32_t& output_id, int output_tensor_index,
+                        ynn_type internal_type);
 
 TfLiteStatus DequantizeIfNeeded(TfLiteContext* context, ynn_subgraph_t subgraph,
                                 TensorToValueIdMap& tensor_to_value_id,

@@ -18,21 +18,6 @@ module {
 
 // -----
 
-// A plain bf16 exp is rewritten to exp2(x * log2(e)) on gfx1250 so it also uses
-// the native instruction.
-module {
-  func.func @exp_bf16(%arg0: bf16) -> bf16 {
-    %0 = math.exp %arg0 : bf16
-    return %0 : bf16
-  }
-}
-
-// CHECK-LABEL: llvm.func @exp_bf16
-// CHECK: llvm.fmul
-// CHECK: llvm.call_intrinsic "llvm.amdgcn.exp2"({{.*}}) : (bf16) -> bf16
-
-// -----
-
 // gfx1250 has a native bf16 sqrt instruction (v_sqrt_bf16), reached via the
 // llvm.amdgcn.sqrt intrinsic.
 module {
@@ -89,4 +74,20 @@ module {
 
 // CHECK-LABEL: llvm.func @log2_bf16
 // CHECK: llvm.call_intrinsic "llvm.amdgcn.log"({{.*}}) : (bf16) -> bf16
+// CHECK-NOT: __ocml
+
+// -----
+
+// A plain bf16 log is rewritten to log2(x) * ln(2) on gfx1250 so it also uses
+// the native instruction.
+module {
+  func.func @log_bf16(%arg0: bf16) -> bf16 {
+    %0 = math.log %arg0 : bf16
+    return %0 : bf16
+  }
+}
+
+// CHECK-LABEL: llvm.func @log_bf16
+// CHECK: llvm.call_intrinsic "llvm.amdgcn.log"({{.*}}) : (bf16) -> bf16
+// CHECK: llvm.fmul
 // CHECK-NOT: __ocml

@@ -140,10 +140,10 @@ AsyncThunkSequence TritonFusion::Emit(
                     result.entry.launch_dimensions.block_counts(),
                     result.entry.launch_dimensions.thread_counts_per_block(),
                     result.entry.shmem_bytes));
-            return ThunkSequence::Of(std::make_unique<CustomKernelThunk>(
+            return ThunkSequence::Of<CustomKernelThunk>(
                 thunk_info, std::move(custom_kernel), result.kernel_arguments,
                 result.entry.use_pdl, std::vector<int64_t>{},
-                result.entry.tma_metadata));
+                result.entry.tma_metadata);
           });
 }
 
@@ -179,12 +179,13 @@ xla::Future<TritonFusion::EmitResult> TritonFusion::Emit(
                ir_emitter_context.kernel_compiler())
         .Map([analysis = &analysis_,
               kernel_compiler = ir_emitter_context.kernel_compiler(),
-              gpu_device_info = ir_emitter_context.gpu_device_info(),
+              &gpu_device_info = ir_emitter_context.gpu_device_info(),
               fusion = &fusion, sanitized_kernel_name,
               sanitized_kernel_impl_name =
                   ir_emitter_context.GetSanitizedUniqueName(
                       sanitized_kernel_name + "_impl"),
-              kernel_arguments](TritonWrapperResult triton_wrapper_result)
+              kernel_arguments](
+                 TritonWrapperResult triton_wrapper_result) mutable
                  -> xla::Future<KernelReuseCache::Entry> {
           auto local_module = std::move(triton_wrapper_result.kernel_source)
                                   .thread_safe_module();
@@ -244,13 +245,13 @@ xla::Future<TritonFusion::EmitResult> TritonFusion::Emit(
 
           return kernel_compiler
               ->CompileToTargetBinary(LlvmKernelSource{std::move(local_module)})
-              .Map([kernel_name = sanitized_kernel_name,
+              .Map([kernel_name = std::move(sanitized_kernel_name),
                     launch_dims = std::move(launch_dimensions),
                     tma_metadata = triton_wrapper_result.tma_metadata,
                     shmem_bytes = triton_wrapper_result.shmem_bytes,
                     use_pdl = triton_wrapper_result.use_pdl](
-                       const std::vector<uint8_t>& cubin) {
-                return KernelReuseCache::Entry{kernel_name,
+                       const std::vector<uint8_t>& cubin) mutable {
+                return KernelReuseCache::Entry{std::move(kernel_name),
                                                launch_dims,
                                                /*cluster_dim=*/std::nullopt,
                                                shmem_bytes,
@@ -265,11 +266,11 @@ xla::Future<TritonFusion::EmitResult> TritonFusion::Emit(
       ir_emitter_context.kernel_cache().GetWithStatus(
           hlo_computation, kernel_arguments.args(),
           /*discriminator=*/"TritonFusion", generate);
-  return status_or_entry.Map(
-      [kernel_arguments = std::move(kernel_arguments)](
-          const KernelReuseCache::Entry* entry) -> absl::StatusOr<EmitResult> {
-        return EmitResult{*entry, kernel_arguments};
-      });
+  return status_or_entry.Map([kernel_arguments = std::move(kernel_arguments)](
+                                 const KernelReuseCache::Entry* entry) mutable
+                                 -> absl::StatusOr<EmitResult> {
+    return EmitResult{*entry, std::move(kernel_arguments)};
+  });
 }
 
 namespace {

@@ -54,7 +54,8 @@ TfLiteStatus IsUnaryOpSupported(const TfLiteRegistration* registration,
                         builtin_code == kTfLiteBuiltinHardSwish ||
                         builtin_code == kTfLiteBuiltinRelu ||
                         builtin_code == kTfLiteBuiltinRelu6 ||
-                        builtin_code == kTfLiteBuiltinReluN1To1);
+                        builtin_code == kTfLiteBuiltinReluN1To1 ||
+                        builtin_code == kTfLiteBuiltinRelu0To1);
   TF_LITE_ENSURE(context, op != ynn_unary_invalid || is_decomposed);
 
   if (op != ynn_unary_convert) {
@@ -142,6 +143,9 @@ TfLiteStatus DefineUnaryNode(TfLiteContext* context, ynn_subgraph_t subgraph,
             TF_LITE_ENSURE_YNN_STATUS(
                 ynn::define_hardswish(subgraph, input_id, output_id));
             return kTfLiteOk;
+          case kTfLiteBuiltinRelu0To1:
+            return ApplyClamp(context, subgraph, 0.0, 1.0, input_id, output_id,
+                              node.outputs[0], ynn_type_fp32);
           case kTfLiteBuiltinRelu:
           case kTfLiteBuiltinRelu6:
           case kTfLiteBuiltinReluN1To1: {

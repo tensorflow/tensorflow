@@ -58,6 +58,10 @@ ProfileOptions GetProfileOptions(
     const DebugOptions& debug_options,
     const ConfigAssigner::Options& config_assigner_options);
 
+InstructionFilterFn GetShouldAutotuneInstructionFn(
+    const DebugOptions& debug_options,
+    const se::GpuComputeCapability& gpu_version);
+
 // HloModulePass that runs the autotuner.
 class AutotunerPass : public HloModulePass {
  public:

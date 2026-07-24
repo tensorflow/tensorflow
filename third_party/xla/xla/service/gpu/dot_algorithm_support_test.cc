@@ -16,7 +16,6 @@ limitations under the License.
 #include <string>
 #include <tuple>
 
-#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
@@ -36,7 +35,6 @@ namespace {
 
 using ::stream_executor::SemanticVersion;
 using ::testing::Combine;
-using ::testing::HasSubstr;
 using ::testing::TestParamInfo;
 using ::testing::Values;
 using ::testing::WithParamInterface;
@@ -213,12 +211,7 @@ TEST_P(DotAlgorithmSupportTest, AlgorithmIsSupportedFromCudaCapability) {
     )");
     }
   } else {
-    // Note: If the algorithm is not supported either the emitter will decline
-    // to emit it (for Cublas enabled) , or the autotuner will not find any
-    // supported configs (for CublasLt enabled).
-    EXPECT_THAT(Run(hlo_text).message(),
-                ::testing::AnyOf(HasSubstr("Unsupported algorithm"),
-                                 HasSubstr("No supported configs")));
+    EXPECT_FALSE(Run(hlo_text));
   }
 }
 

@@ -47,7 +47,8 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> EmitXTileModule(
     const ::xla::gpu::experimental::TiledHloComputation& tiled_computation,
     mlir::MLIRContext& mlir_context,
     absl::Span<mlir::Type> opaque_args_types = {},
-    const std::optional<stream_executor::GpuComputeCapability>& gpu_cc = {});
+    const std::optional<stream_executor::GpuComputeCapability>& gpu_cc = {},
+    int num_tiles_per_pid = 1);
 
 }  // namespace xla::xtile
 

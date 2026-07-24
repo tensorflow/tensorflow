@@ -64,6 +64,24 @@ std::string HloPtrToString(const HloInstruction* hlo) {
 
 }  // namespace
 
+llvm::DenseMap<SymbolicExpr, SymbolicExpr> GetTileSizeReplacementMap(
+    const TilingSpace& tiling_space, absl::Span<const int64_t> tile_sizes) {
+  CHECK_EQ(tile_sizes.size(), tiling_space.dimensions().size());
+  mlir::MLIRContext* ctx = tiling_space.mlir_context();
+  llvm::DenseMap<SymbolicExpr, SymbolicExpr> replacement_map;
+  for (const auto& [index, dim] : llvm::enumerate(tiling_space.dimensions())) {
+    replacement_map[CreateSymbolExpr(dim.id.value(), tile_sizes.size(), ctx)] =
+        CreateSymbolicConstant(tile_sizes[index], ctx);
+    // If the tile size is greater than or equal to the dimension size, then
+    // the dimension is trivial and can be replaced with 0.
+    if (dim.dimension_size <= tile_sizes[index]) {
+      replacement_map[CreateDimExpr(dim.id.value(), ctx)] =
+          CreateSymbolicConstant(0, ctx);
+    }
+  }
+  return replacement_map;
+}
+
 std::string TilingSpace::DimensionInfo::ToString() const {
   std::stringstream ss;
   ss << id << " type: "
@@ -257,20 +275,12 @@ absl::Status TilingSpace::AssignTileSizes(
   CHECK_EQ(tile_sizes.size(), dimensions_.size());
   is_symbolic_ = false;
 
-  llvm::DenseMap<SymbolicExpr, SymbolicExpr> replacement_map;
-  for (const auto& [index, dim] : llvm::enumerate(dimensions_)) {
-    dim.tile_size = tile_sizes[index];
-    replacement_map[CreateSymbolExpr(dim.id.value(), dimensions_.size(),
-                                     mlir_context_)] =
-        CreateSymbolicConstant(tile_sizes[index], mlir_context_);
-
-    // If the tile size is greater than or equal to the dimension size, then
-    // the dimension is trivial and can be replaced with 0.
-    if (dim.dimension_size <= tile_sizes[index]) {
-      replacement_map[CreateDimExpr(dim.id.value(), mlir_context_)] =
-          CreateSymbolicConstant(0, mlir_context_);
-    }
+  for (const auto& [index, size] : llvm::enumerate(tile_sizes)) {
+    dimensions_[index].tile_size = size;
   }
+
+  llvm::DenseMap<SymbolicExpr, SymbolicExpr> replacement_map =
+      GetTileSizeReplacementMap(*this, tile_sizes);
 
   if (!constraint_.IsSatisfiedBy(tile_sizes)) {
     return absl::InvalidArgumentError(absl::StrFormat(
@@ -362,13 +372,12 @@ absl::StatusOr<std::unique_ptr<TilingSpace>> TilingSpace::Create(
         GetFirstShape(&root.instruction()).dimensions();
     llvm::SmallVector<DimTile> dim_tiles;
     dim_tiles.reserve(dims.size());
-    for (auto [index, dim] : llvm::enumerate(dims)) {
-      int64_t global_dim_id =
-          tiling_space->GetDimensionInfo(root.instruction(), index).id.value();
-      dim_tiles.push_back(GetDefaultDimTile(
-          index,
-          CreateSymbolExpr(global_dim_id, tiling_space->num_dimensions(), ctx),
-          dim));
+    for (auto [index, dim_size] : llvm::enumerate(dims)) {
+      TiledDimId dim_id =
+          tiling_space->GetDimensionInfo(root.instruction(), index).id;
+      SymbolicExpr tile_size =
+          CreateSymbolExpr(dim_id.value(), tiling_space->num_dimensions(), ctx);
+      dim_tiles.push_back(GetDefaultDimTile(dim_id, tile_size, dim_size));
     }
     Tile tile{*tiling_space, std::move(dim_tiles)};
     if (root_shape.IsTuple()) {

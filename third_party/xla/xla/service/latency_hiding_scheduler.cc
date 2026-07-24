@@ -743,13 +743,13 @@ AsyncTracker::RecursivelyComputeResourceMapForScheduledComputation(
         --inflight_resource_usage[resource.first];
       }
     }
-    for (const HloComputation* called_comp : inst->called_computations()) {
-      for (const auto& [type, usage] :
-           RecursivelyComputeResourceMap(called_comp)) {
-        int64_t current_usage = inflight_resource_usage[type] + usage;
-        int64_t& max_usage = res_map[type];
-        max_usage = std::max(max_usage, current_usage);
-      }
+    if (inst->called_computations().empty()) {
+      continue;
+    }
+    for (const auto& [type, usage] : GetNumResourcesPerInstruction(*inst)) {
+      int64_t current_usage = inflight_resource_usage[type] + usage;
+      int64_t& max_usage = res_map[type];
+      max_usage = std::max(max_usage, current_usage);
     }
   }
   return res_map;
@@ -998,29 +998,13 @@ BufferInfoTracker::BufferInfoTracker(
   process_computation(module->entry_computation(), {});
 }
 
-void ModulePressureState::InitializePressureStates(
-    std::shared_ptr<absl::flat_hash_map<const HloComputation*,
-                                        std::shared_ptr<MemoryPressureTracker>>>
-        pressure_trackers) {
-  // If no pointer is passed, create a temporary dictionary to store the
-  // pressure trackers.
-  if (pressure_trackers == nullptr) {
-    pressure_trackers = std::make_shared<absl::flat_hash_map<
-        const HloComputation*, std::shared_ptr<MemoryPressureTracker>>>();
-  } else {
-    pressure_trackers->clear();
-  }
-  ResetPressureStates(pressure_trackers);
-}
+void ModulePressureState::InitializePressureStates() { ResetPressureStates(); }
 
-void ModulePressureState::ResetPressureStates(
-    std::shared_ptr<absl::flat_hash_map<const HloComputation*,
-                                        std::shared_ptr<MemoryPressureTracker>>>
-        pressure_trackers) {
+void ModulePressureState::ResetPressureStates() {
   memory_pressure_states_.clear();
   std::function<void(HloComputation*,
                      const MemoryPressureTracker::LiveBufferSet&)>
-      process_computation = [this, &process_computation, pressure_trackers](
+      process_computation = [this, &process_computation](
                                 HloComputation* computation,
                                 const MemoryPressureTracker::LiveBufferSet&
                                     initial_live_buffers) {
@@ -1033,17 +1017,10 @@ void ModulePressureState::ResetPressureStates(
         }
         const HloInstructionSequence& sequence =
             module_->schedule().sequence(computation);
-        std::shared_ptr<MemoryPressureTracker> tracker;
-        auto [it, inserted] = pressure_trackers->try_emplace(
-            computation, std::make_shared<MemoryPressureTracker>(
-                             hlo_alias_analysis_, buffer_tracker_,
-                             memory_pressure_states_, top_down_scheduling_));
-        tracker = it->second;
-        if (inserted) {
-          tracker->Initialize(computation, initial_live_buffers);
-        } else {
-          tracker->Reset(computation, initial_live_buffers);
-        }
+        auto tracker = std::make_unique<MemoryPressureTracker>(
+            hlo_alias_analysis_, buffer_tracker_, memory_pressure_states_,
+            top_down_scheduling_);
+        tracker->Initialize(computation, initial_live_buffers);
         VLOG(6) << "Pressure at " << (top_down_scheduling_ ? "top" : "bottom")
                 << " for " << computation->name() << ": "
                 << tracker->memory_usage();
@@ -1919,9 +1896,11 @@ bool ReadySetLt::MaybeUpdate(DefaultSchedulerCore::ScheduleCandidate& a,
                              DefaultSchedulerCore::ScheduleCandidate& b,
                              const char** reason) const {
   bool result = AIsBetterThanB(a, b, reason);
-  if (a.node->IsSupportedAsyncStart() || a.node->IsSupportedAsyncDone() ||
-      b.node->IsSupportedAsyncStart() || b.node->IsSupportedAsyncDone() ||
-      IsCollective(&a.node->GetInstr()) || IsCollective(&b.node->GetInstr())) {
+  if (VLOG_IS_ON(1) &&
+      (a.node->IsSupportedAsyncStart() || a.node->IsSupportedAsyncDone() ||
+       b.node->IsSupportedAsyncStart() || b.node->IsSupportedAsyncDone() ||
+       IsCollective(&a.node->GetInstr()) ||
+       IsCollective(&b.node->GetInstr()))) {
     VLOG(1) << "Async comparison: a: " << a.node->GetInstr().name()
             << " b: " << b.node->GetInstr().name() << " result: " << result
             << " reason: " << *reason;
@@ -3454,9 +3433,7 @@ absl::Status DefaultSchedulerCore::InitializeScheduler(
       module, scheduling_context_->GetAliasAnalysis().get(),
       scheduling_context_->GetShapeSizeBytes(), top_down_scheduling_);
   // Initialize the pressure states for all computations in the module.
-  pressure_trackers_ = std::make_shared<absl::flat_hash_map<
-      const HloComputation*, std::shared_ptr<MemoryPressureTracker>>>();
-  module_pressure_state_->InitializePressureStates(pressure_trackers_);
+  module_pressure_state_->InitializePressureStates();
   module_pressure_state_->SetMemoryPeak(0);
   if (top_down_scheduling_) {
     // We preprocess the annotations in two aspects:
@@ -3696,15 +3673,24 @@ absl::StatusOr<std::shared_ptr<SchedulerCore::SchedulingState>>
 DefaultSchedulerCore::MakeSchedulingState(const HloComputation* computation) {
   const HloSchedule& module_schedule = computation->parent()->schedule();
 
-  CHECK_NE(pressure_trackers_, nullptr)
+  CHECK_NE(module_pressure_state_, nullptr)
       << "Call InitializeScheduler before MakeSchedulingState.";
+
   auto graph =
       CreateScheduleGraph(&module_schedule.sequence(computation).instructions(),
                           scheduling_context_);
+  const MemoryPressureTracker::MemoryPressureState& pressure_state =
+      module_pressure_state_->GetPressureStateForComputation(computation);
+  std::shared_ptr<MemoryPressureTracker> tracker =
+      std::make_shared<MemoryPressureTracker>(
+          scheduling_context_->GetAliasAnalysis().get(),
+          module_pressure_state_->buffer_tracker(),
+          module_pressure_state_->pressure_state_cache(), top_down_scheduling_);
+  tracker->Initialize(computation, pressure_state.live_ids_at_bottom);
   std::shared_ptr<SchedulingState> sched_state =
-      std::make_shared<SchedulingState>(
-          &module_schedule.sequence(computation), scheduling_context_,
-          pressure_trackers_->at(computation), config_, std::move(graph));
+      std::make_shared<SchedulingState>(&module_schedule.sequence(computation),
+                                        scheduling_context_, std::move(tracker),
+                                        config_, std::move(graph));
   sched_state->sched_graph->InitializeGraphAnalysis();
   return sched_state;
 }

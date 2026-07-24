@@ -64,6 +64,17 @@ namespace {
 
 namespace m = match;
 
+// Returns true if the pair of FP8 operand types can be rewritten by
+// gemm_rewriter.cc into an FP8 GEMM. At most one of the inputs can be F8E5M2.
+bool AreValidF8InputTypes(PrimitiveType lhs, PrimitiveType rhs) {
+  return (lhs == F8E4M3FN && rhs == F8E4M3FN) ||
+         (lhs == F8E4M3FN && rhs == F8E5M2) ||
+         (lhs == F8E5M2 && rhs == F8E4M3FN) ||
+         (lhs == F8E4M3FNUZ && rhs == F8E4M3FNUZ) ||
+         (lhs == F8E4M3FNUZ && rhs == F8E5M2FNUZ) ||
+         (lhs == F8E5M2FNUZ && rhs == F8E4M3FNUZ);
+}
+
 // Enables the creation of FP8 GEMM Custom Calls for all-gather and
 // reduce-scatter windowed einsums in gemm_rewriter.cc by moving the scalings
 // and type conversions of FP8 operands into the bodies of their while loops,
@@ -119,9 +130,7 @@ absl::StatusOr<HloInstruction*> ShiftDequantizationF8(
   // one of the inputs can be F8E5M2.
   std::array<PrimitiveType, 2> operand_types{
       operands[0]->shape().element_type(), operands[1]->shape().element_type()};
-  if (!((operand_types[0] == F8E4M3FN && operand_types[1] == F8E4M3FN) ||
-        (operand_types[0] == F8E4M3FN && operand_types[1] == F8E5M2) ||
-        (operand_types[0] == F8E5M2 && operand_types[1] == F8E4M3FN))) {
+  if (!AreValidF8InputTypes(operand_types[0], operand_types[1])) {
     VLOG(5) << "Unsupported types.";
     return nullptr;
   }
@@ -881,8 +890,10 @@ class WindowedEinsumVisitor : public DfsHloRewriteVisitor {
         }
 
         // The element type of windowed_lhs must be a supported FP8 type.
-        if (windowed_lhs->shape().element_type() != F8E4M3FN &&
-            windowed_lhs->shape().element_type() != F8E5M2) {
+        PrimitiveType windowed_lhs_type = windowed_lhs->shape().element_type();
+        if (windowed_lhs_type != F8E4M3FN && windowed_lhs_type != F8E5M2 &&
+            windowed_lhs_type != F8E4M3FNUZ &&
+            windowed_lhs_type != F8E5M2FNUZ) {
           continue;
         }
 

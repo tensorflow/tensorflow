@@ -22,10 +22,10 @@ index 9affa75801b7..2f681c82c298 100644
 +    ],
 +)
 +
-+py_library(
++alias(
 +    name = "lit_lib",
++    actual = "//llvm/utils/lit:lit",
 +    testonly = True,
-+    srcs = ["utils/lit/lit.py"] + glob(["utils/lit/lit/**/*.py"]),
 +)
 +
 +config_setting(

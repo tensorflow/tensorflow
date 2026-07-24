@@ -167,9 +167,44 @@ class CommonPjRtClient : public PjRtClient {
   // for when the linearization is complete.
   virtual absl::StatusOr<PjRtDeviceEventRef> LinearizeInto(
       const LiteralSlice& literal, const xla::Shape& device_shape,
-      HostBufferSemantics host_buffer_semantics, PjRtRawBufferRef raw_buffer) {
-    return absl::UnimplementedError("LinearizeInto is not supported");
+      HostBufferSemantics host_buffer_semantics, PjRtRawBufferRef raw_buffer);
+
+  // Tests if a buffer is eligible for zero copy linearization.
+  virtual bool ShouldPerformZeroCopyLinearize(
+      const void* data, const xla::Shape& device_shape, PrimitiveType type,
+      absl::Span<int64_t const> dims,
+      std::optional<absl::Span<int64_t const>> byte_strides,
+      PjRtMemorySpace* memory_space) {
+    return false;
   }
+
+  // Creates a staging buffer directly from host data for zero copy.
+  virtual tsl::AsyncValueRef<PjRtStagingBuffer>
+  CreateStagingForZeroCopyLinearize(
+      const void* data, const xla::Shape& device_shape,
+      PjRtMemorySpace* memory_space,
+      absl::AnyInvocable<void() &&> on_done_with_host_buffer);
+
+  // Allocates a destination buffer for linearizing into.
+  virtual absl::StatusOr<tsl::AsyncValueRef<PjRtStagingBuffer>>
+  AllocateLinearizeDest(bool sync, const xla::Shape& device_shape,
+                        absl::Span<const int64_t> byte_strides,
+                        PjRtRawBufferRef dest_buffer);
+
+  // Linearizes data into dest.
+  virtual absl::Status Linearize(absl::Span<uint8_t> dest, const void* data,
+                                 absl::Span<const int64_t> byte_strides,
+                                 const Shape& device_shape,
+                                 absl::Span<const uint32_t> dynamic_sizes,
+                                 PjRtMemorySpace* memory_space);
+
+  absl::StatusOr<PjRtDeviceEventRef> LinearizeIntoImpl(
+      const void* data, PrimitiveType type, absl::Span<int64_t const> dims,
+      std::optional<absl::Span<int64_t const>> byte_strides,
+      HostBufferSemantics host_buffer_semantics,
+      absl::AnyInvocable<void() &&> on_done_with_host_buffer,
+      const xla::Shape& device_shape, absl::Span<const uint32_t> dynamic_sizes,
+      PjRtRawBufferRef raw_buffer);
 
   // Defines a pjrt buffer from a shape, raw_buffer and definition events.
   virtual absl::StatusOr<std::unique_ptr<PjRtBuffer>> DefineBuffer(
@@ -185,6 +220,12 @@ class CommonPjRtClient : public PjRtClient {
         std::make_shared<const Shape>(std::move(on_device_shape)), memory_space,
         std::move(raw_buffer), std::move(definition_device_events));
   }
+
+  // Turns an existing buffer into an undonatable buffer. Consumes the input
+  // buffer and returns an equivalent hold-free buffer aliasing the same device
+  // memory.
+  absl::StatusOr<std::unique_ptr<PjRtBuffer>> MakeUndonatable(
+      std::unique_ptr<PjRtBuffer> buffer);
 
   // When calling APIs that take extra debug information, we may want
   // to omit this debug information if it is not going to be used.
@@ -318,9 +359,7 @@ class CommonPjRtClient : public PjRtClient {
       std::optional<absl::Span<int64_t const>> byte_strides,
       HostBufferSemantics host_buffer_semantics,
       absl::AnyInvocable<void() &&> on_done_with_host_buffer,
-      const xla::Shape& device_shape, PjRtRawBufferRef raw_buffer) {
-    return absl::UnimplementedError("LinearizeHostBufferInto is not supported");
-  }
+      const xla::Shape& device_shape, PjRtRawBufferRef raw_buffer);
 
   absl::StatusOr<std::shared_ptr<TransposePlan>> GetTransposePlan(
       const TransposePlan::Options& options);
@@ -429,6 +468,12 @@ class CommonPjRtClient : public PjRtClient {
   virtual absl::Status WaitOnStream(PjRtMemorySpace* memory_space,
                                     PjRtDeviceEventRef event,
                                     std::intptr_t stream);
+
+  absl::StatusOr<std::unique_ptr<PjRtClient::AsyncHostToDeviceTransferManager>>
+  CreateBuffersForAsyncHostToDevice(
+      absl::Span<const PjRtClient::ShapeSpec> shape_specs,
+      std::optional<absl::Span<const std::optional<Layout>>> device_layouts,
+      PjRtMemorySpace* memory_space) override;
 
  protected:
   // Returns the required alignment for device memory addresses when slicing.

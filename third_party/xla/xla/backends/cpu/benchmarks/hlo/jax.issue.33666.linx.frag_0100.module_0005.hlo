@@ -1,0 +1,167 @@
+HloModule jit__threefry_split, entry_computation_layout={(u32[2]{0})->u32[20,2]{1,0}}, allow_spmd_sharding_propagation_to_parameters={true}, allow_spmd_sharding_propagation_to_output={true}
+
+FileNames
+1 "/pscratch/sd/c/carag/LINX/scripts/frag_mwe_short.py"
+
+FunctionNames
+1 "<module>"
+
+FileLocations
+1 {file_name_id=1 function_name_id=1 line=9 end_line=9 column=25 end_column=74}
+
+StackFrames
+1 {file_location_id=1 parent_frame_id=1}
+
+
+%closed_call.1 (Arg_0.1: s32[], Arg_1.1: u32[20], Arg_2.1: u32[20], Arg_3.1: u32[], Arg_4.1: u32[], Arg_5.1: u32[], Arg_6.1: u32[4], Arg_7.1: u32[4]) -> (s32[], u32[20], u32[20], u32[], u32[], /*index=5*/u32[], u32[4], u32[4]) {
+  %Arg_0.1 = s32[] parameter(0)
+  %constant.9 = s32[] constant(1)
+  %add.16 = s32[] add(%Arg_0.1, %constant.9), metadata={op_name="add"}
+  %Arg_1.1 = u32[20]{0} parameter(1)
+  %Arg_2.1 = u32[20]{0} parameter(2)
+  %add.17 = u32[20]{0} add(%Arg_1.1, %Arg_2.1), metadata={op_name="add"}
+  %Arg_6.1 = u32[4]{0} parameter(6)
+  %slice.6 = u32[1]{0} slice(%Arg_6.1), slice={[0:1]}, metadata={op_name="slice"}
+  %squeeze.6 = u32[] reshape(%slice.6), metadata={op_name="squeeze"}
+  %shift_left.8 = u32[20]{0} broadcast(%squeeze.6), dimensions={}, metadata={op_name="shift_left"}
+  %shift_left.9 = u32[20]{0} shift-left(%Arg_2.1, %shift_left.8), metadata={op_name="shift_left"}
+  %constant.8 = u32[] constant(32)
+  %sub.4 = u32[] subtract(%constant.8, %squeeze.6), metadata={op_name="sub"}
+  %shift_right_logical.8 = u32[20]{0} broadcast(%sub.4), dimensions={}, metadata={op_name="shift_right_logical"}
+  %shift_right_logical.9 = u32[20]{0} shift-right-logical(%Arg_2.1, %shift_right_logical.8), metadata={op_name="shift_right_logical"}
+  %or.4 = u32[20]{0} or(%shift_left.9, %shift_right_logical.9), metadata={op_name="or"}
+  %xor.6 = u32[20]{0} xor(%add.17, %or.4), metadata={op_name="xor"}
+  %add.18 = u32[20]{0} add(%add.17, %xor.6), metadata={op_name="add"}
+  %slice.7 = u32[1]{0} slice(%Arg_6.1), slice={[1:2]}, metadata={op_name="slice"}
+  %squeeze.7 = u32[] reshape(%slice.7), metadata={op_name="squeeze"}
+  %shift_left.10 = u32[20]{0} broadcast(%squeeze.7), dimensions={}, metadata={op_name="shift_left"}
+  %shift_left.11 = u32[20]{0} shift-left(%xor.6, %shift_left.10), metadata={op_name="shift_left"}
+  %sub.5 = u32[] subtract(%constant.8, %squeeze.7), metadata={op_name="sub"}
+  %shift_right_logical.10 = u32[20]{0} broadcast(%sub.5), dimensions={}, metadata={op_name="shift_right_logical"}
+  %shift_right_logical.11 = u32[20]{0} shift-right-logical(%xor.6, %shift_right_logical.10), metadata={op_name="shift_right_logical"}
+  %or.5 = u32[20]{0} or(%shift_left.11, %shift_right_logical.11), metadata={op_name="or"}
+  %xor.7 = u32[20]{0} xor(%add.18, %or.5), metadata={op_name="xor"}
+  %add.19 = u32[20]{0} add(%add.18, %xor.7), metadata={op_name="add"}
+  %slice.8 = u32[1]{0} slice(%Arg_6.1), slice={[2:3]}, metadata={op_name="slice"}
+  %squeeze.8 = u32[] reshape(%slice.8), metadata={op_name="squeeze"}
+  %shift_left.12 = u32[20]{0} broadcast(%squeeze.8), dimensions={}, metadata={op_name="shift_left"}
+  %shift_left.13 = u32[20]{0} shift-left(%xor.7, %shift_left.12), metadata={op_name="shift_left"}
+  %sub.6 = u32[] subtract(%constant.8, %squeeze.8), metadata={op_name="sub"}
+  %shift_right_logical.12 = u32[20]{0} broadcast(%sub.6), dimensions={}, metadata={op_name="shift_right_logical"}
+  %shift_right_logical.13 = u32[20]{0} shift-right-logical(%xor.7, %shift_right_logical.12), metadata={op_name="shift_right_logical"}
+  %or.6 = u32[20]{0} or(%shift_left.13, %shift_right_logical.13), metadata={op_name="or"}
+  %xor.8 = u32[20]{0} xor(%add.19, %or.6), metadata={op_name="xor"}
+  %add.20 = u32[20]{0} add(%add.19, %xor.8), metadata={op_name="add"}
+  %Arg_3.1 = u32[] parameter(3)
+  %add.21 = u32[20]{0} broadcast(%Arg_3.1), dimensions={}, metadata={op_name="add"}
+  %add.22 = u32[20]{0} add(%add.20, %add.21), metadata={op_name="add"}
+  %slice.9 = u32[1]{0} slice(%Arg_6.1), slice={[3:4]}, metadata={op_name="slice"}
+  %squeeze.9 = u32[] reshape(%slice.9), metadata={op_name="squeeze"}
+  %shift_left.14 = u32[20]{0} broadcast(%squeeze.9), dimensions={}, metadata={op_name="shift_left"}
+  %shift_left.15 = u32[20]{0} shift-left(%xor.8, %shift_left.14), metadata={op_name="shift_left"}
+  %sub.7 = u32[] subtract(%constant.8, %squeeze.9), metadata={op_name="sub"}
+  %shift_right_logical.14 = u32[20]{0} broadcast(%sub.7), dimensions={}, metadata={op_name="shift_right_logical"}
+  %shift_right_logical.15 = u32[20]{0} shift-right-logical(%xor.8, %shift_right_logical.14), metadata={op_name="shift_right_logical"}
+  %or.7 = u32[20]{0} or(%shift_left.15, %shift_right_logical.15), metadata={op_name="or"}
+  %xor.9 = u32[20]{0} xor(%add.20, %or.7), metadata={op_name="xor"}
+  %Arg_4.1 = u32[] parameter(4)
+  %add.23 = u32[20]{0} broadcast(%Arg_4.1), dimensions={}, metadata={op_name="add"}
+  %add.24 = u32[20]{0} add(%xor.9, %add.23), metadata={op_name="add"}
+  %add.25 = s32[] add(%Arg_0.1, %constant.9), metadata={op_name="add"}
+  %convert_element_type.1 = u32[] convert(%add.25), metadata={op_name="convert_element_type"}
+  %add.26 = u32[20]{0} broadcast(%convert_element_type.1), dimensions={}, metadata={op_name="add"}
+  %add.27 = u32[20]{0} add(%add.24, %add.26), metadata={op_name="add"}
+  %Arg_5.1 = u32[] parameter(5)
+  %Arg_7.1 = u32[4]{0} parameter(7)
+  ROOT %tuple.1 = (s32[], u32[20]{0}, u32[20]{0}, u32[], u32[], /*index=5*/u32[], u32[4]{0}, u32[4]{0}) tuple(%add.16, %add.22, %add.27, %Arg_4.1, %Arg_5.1, /*index=5*/%Arg_3.1, %Arg_7.1, %Arg_6.1)
+}
+
+%region_0.2 (arg_tuple.1: (s32[], s32[], u32[20], u32[20], u32[], /*index=5*/u32[], u32[], u32[4], u32[4])) -> (s32[], s32[], u32[20], u32[20], u32[], /*index=5*/u32[], u32[], u32[4], u32[4]) {
+  %arg_tuple.1 = (s32[], s32[], u32[20]{0}, u32[20]{0}, u32[], /*index=5*/u32[], u32[], u32[4]{0}, u32[4]{0}) parameter(0)
+  %get-tuple-element.9 = s32[] get-tuple-element(%arg_tuple.1), index=0
+  %constant.10 = s32[] constant(1)
+  %add.29 = s32[] add(%get-tuple-element.9, %constant.10), metadata={op_name="while/body/add"}
+  %get-tuple-element.10 = s32[] get-tuple-element(%arg_tuple.1), index=1
+  %get-tuple-element.11 = u32[20]{0} get-tuple-element(%arg_tuple.1), index=2
+  %get-tuple-element.12 = u32[20]{0} get-tuple-element(%arg_tuple.1), index=3
+  %get-tuple-element.13 = u32[] get-tuple-element(%arg_tuple.1), index=4
+  %get-tuple-element.14 = u32[] get-tuple-element(%arg_tuple.1), index=5
+  %get-tuple-element.15 = u32[] get-tuple-element(%arg_tuple.1), index=6
+  %get-tuple-element.16 = u32[4]{0} get-tuple-element(%arg_tuple.1), index=7
+  %get-tuple-element.17 = u32[4]{0} get-tuple-element(%arg_tuple.1), index=8
+  %closed_call.9 = (s32[], u32[20]{0}, u32[20]{0}, u32[], u32[], /*index=5*/u32[], u32[4]{0}, u32[4]{0}) call(%get-tuple-element.10, %get-tuple-element.11, %get-tuple-element.12, %get-tuple-element.13, %get-tuple-element.14, /*index=5*/%get-tuple-element.15, %get-tuple-element.16, %get-tuple-element.17), to_apply=%closed_call.1, metadata={op_name="while/body/closed_call"}
+  %closed_call.10 = s32[] get-tuple-element(%closed_call.9), index=0, metadata={op_name="while/body/closed_call"}
+  %closed_call.11 = u32[20]{0} get-tuple-element(%closed_call.9), index=1, metadata={op_name="while/body/closed_call"}
+  %closed_call.12 = u32[20]{0} get-tuple-element(%closed_call.9), index=2, metadata={op_name="while/body/closed_call"}
+  %closed_call.13 = u32[] get-tuple-element(%closed_call.9), index=3, metadata={op_name="while/body/closed_call"}
+  %closed_call.14 = u32[] get-tuple-element(%closed_call.9), index=4, metadata={op_name="while/body/closed_call"}
+  %closed_call.15 = u32[] get-tuple-element(%closed_call.9), index=5, metadata={op_name="while/body/closed_call"}
+  %closed_call.16 = u32[4]{0} get-tuple-element(%closed_call.9), index=6, metadata={op_name="while/body/closed_call"}
+  %closed_call.17 = u32[4]{0} get-tuple-element(%closed_call.9), index=7, metadata={op_name="while/body/closed_call"}
+  ROOT %tuple.3 = (s32[], s32[], u32[20]{0}, u32[20]{0}, u32[], /*index=5*/u32[], u32[], u32[4]{0}, u32[4]{0}) tuple(%add.29, %closed_call.10, %closed_call.11, %closed_call.12, %closed_call.13, /*index=5*/%closed_call.14, %closed_call.15, %closed_call.16, %closed_call.17)
+}
+
+%region_1.3 (arg_tuple.3: (s32[], s32[], u32[20], u32[20], u32[], /*index=5*/u32[], u32[], u32[4], u32[4])) -> pred[] {
+  %arg_tuple.3 = (s32[], s32[], u32[20]{0}, u32[20]{0}, u32[], /*index=5*/u32[], u32[], u32[4]{0}, u32[4]{0}) parameter(0)
+  %get-tuple-element.28 = s32[] get-tuple-element(%arg_tuple.3), index=1
+  %get-tuple-element.29 = u32[20]{0} get-tuple-element(%arg_tuple.3), index=2
+  %get-tuple-element.30 = u32[20]{0} get-tuple-element(%arg_tuple.3), index=3
+  %get-tuple-element.31 = u32[] get-tuple-element(%arg_tuple.3), index=4
+  %get-tuple-element.32 = u32[] get-tuple-element(%arg_tuple.3), index=5
+  %get-tuple-element.33 = u32[] get-tuple-element(%arg_tuple.3), index=6
+  %get-tuple-element.34 = u32[4]{0} get-tuple-element(%arg_tuple.3), index=7
+  %get-tuple-element.35 = u32[4]{0} get-tuple-element(%arg_tuple.3), index=8
+  %get-tuple-element.27 = s32[] get-tuple-element(%arg_tuple.3), index=0
+  %constant.12 = s32[] constant(5)
+  ROOT %lt.1 = pred[] compare(%get-tuple-element.27, %constant.12), direction=LT, metadata={op_name="while/cond/lt"}
+}
+
+%threefry2x32.4 (jit__threefry_split_.4: u32[], jit__threefry_split_.5: u32[], jit__threefry_split_.6: u32[20], jit__threefry_split_.7: u32[20]) -> (u32[20], u32[20]) {
+  %constant.13 = s32[] constant(0)
+  %jit__threefry_split_.6 = u32[20]{0} parameter(2), metadata={op_name="jit(_threefry_split)"}
+  %jit__threefry_split_.4 = u32[] parameter(0), metadata={op_name="jit(_threefry_split)"}
+  %add.30 = u32[20]{0} broadcast(%jit__threefry_split_.4), dimensions={}, metadata={op_name="add"}
+  %add.31 = u32[20]{0} add(%jit__threefry_split_.6, %add.30), metadata={op_name="add"}
+  %jit__threefry_split_.7 = u32[20]{0} parameter(3), metadata={op_name="jit(_threefry_split)"}
+  %jit__threefry_split_.5 = u32[] parameter(1), metadata={op_name="jit(_threefry_split)"}
+  %add.32 = u32[20]{0} broadcast(%jit__threefry_split_.5), dimensions={}, metadata={op_name="add"}
+  %add.33 = u32[20]{0} add(%jit__threefry_split_.7, %add.32), metadata={op_name="add"}
+  %xor.10 = u32[] xor(%jit__threefry_split_.4, %jit__threefry_split_.5), metadata={op_name="xor"}
+  %constant.14 = u32[] constant(466688986)
+  %xor.11 = u32[] xor(%xor.10, %constant.14), metadata={op_name="xor"}
+  %constant.15 = u32[4]{0} constant({13, 15, 26, 6})
+  %constant.16 = u32[4]{0} constant({17, 29, 16, 24})
+  %while.11 = (s32[], s32[], u32[20]{0}, u32[20]{0}, u32[], /*index=5*/u32[], u32[], u32[4]{0}, u32[4]{0}) tuple(%constant.13, %constant.13, %add.31, %add.33, %jit__threefry_split_.5, /*index=5*/%xor.11, %jit__threefry_split_.4, %constant.15, %constant.16), metadata={op_name="while"}
+  %while.12 = (s32[], s32[], u32[20]{0}, u32[20]{0}, u32[], /*index=5*/u32[], u32[], u32[4]{0}, u32[4]{0}) while(%while.11), condition=%region_1.3, body=%region_0.2, metadata={op_name="while"}
+  %while.13 = s32[] get-tuple-element(%while.12), index=0, metadata={op_name="while"}
+  %while.14 = s32[] get-tuple-element(%while.12), index=1, metadata={op_name="while"}
+  %while.17 = u32[] get-tuple-element(%while.12), index=4, metadata={op_name="while"}
+  %while.18 = u32[] get-tuple-element(%while.12), index=5, metadata={op_name="while"}
+  %while.19 = u32[] get-tuple-element(%while.12), index=6, metadata={op_name="while"}
+  %while.20 = u32[4]{0} get-tuple-element(%while.12), index=7, metadata={op_name="while"}
+  %while.21 = u32[4]{0} get-tuple-element(%while.12), index=8, metadata={op_name="while"}
+  %while.15 = u32[20]{0} get-tuple-element(%while.12), index=2, metadata={op_name="while"}
+  %while.16 = u32[20]{0} get-tuple-element(%while.12), index=3, metadata={op_name="while"}
+  ROOT %tuple.5 = (u32[20]{0}, u32[20]{0}) tuple(%while.15, %while.16)
+}
+
+ENTRY %main.5 (key.1: u32[2]) -> u32[20,2] {
+  %key.1 = u32[2]{0} parameter(0), metadata={op_name="key"}
+  %slice.10 = u32[1]{0} slice(%key.1), slice={[0:1]}, metadata={op_name="jit(_threefry_split)/slice" stack_frame_id=1}
+  %squeeze.10 = u32[] reshape(%slice.10), metadata={op_name="jit(_threefry_split)/squeeze" stack_frame_id=1}
+  %slice.11 = u32[1]{0} slice(%key.1), slice={[1:2]}, metadata={op_name="jit(_threefry_split)/slice" stack_frame_id=1}
+  %squeeze.11 = u32[] reshape(%slice.11), metadata={op_name="jit(_threefry_split)/squeeze" stack_frame_id=1}
+  %iota_2x32_shape.4 = u64[20]{0} iota(), iota_dimension=0, metadata={op_name="jit(_threefry_split)/iota_2x32_shape" stack_frame_id=1}
+  %constant.17 = u64[] constant(32)
+  %broadcast.1 = u64[20]{0} broadcast(%constant.17), dimensions={}
+  %iota_2x32_shape.5 = u64[20]{0} shift-right-logical(%iota_2x32_shape.4, %broadcast.1), metadata={op_name="jit(_threefry_split)/iota_2x32_shape" stack_frame_id=1}
+  %iota_2x32_shape.7 = u32[20]{0} convert(%iota_2x32_shape.5), metadata={op_name="jit(_threefry_split)/iota_2x32_shape" stack_frame_id=1}
+  %iota_2x32_shape.6 = u32[20]{0} convert(%iota_2x32_shape.4), metadata={op_name="jit(_threefry_split)/iota_2x32_shape" stack_frame_id=1}
+  %jit__threefry_split_.11 = (u32[20]{0}, u32[20]{0}) call(%squeeze.10, %squeeze.11, %iota_2x32_shape.7, %iota_2x32_shape.6), to_apply=%threefry2x32.4, metadata={op_name="jit(_threefry_split)" stack_frame_id=1}
+  %jit__threefry_split_.12 = u32[20]{0} get-tuple-element(%jit__threefry_split_.11), index=0, metadata={op_name="jit(_threefry_split)" stack_frame_id=1}
+  %broadcast_in_dim.2 = u32[20,1]{1,0} reshape(%jit__threefry_split_.12), metadata={op_name="jit(_threefry_split)/broadcast_in_dim" stack_frame_id=1}
+  %jit__threefry_split_.13 = u32[20]{0} get-tuple-element(%jit__threefry_split_.11), index=1, metadata={op_name="jit(_threefry_split)" stack_frame_id=1}
+  %broadcast_in_dim.3 = u32[20,1]{1,0} reshape(%jit__threefry_split_.13), metadata={op_name="jit(_threefry_split)/broadcast_in_dim" stack_frame_id=1}
+  ROOT %concatenate.1 = u32[20,2]{1,0} concatenate(%broadcast_in_dim.2, %broadcast_in_dim.3), dimensions={1}, metadata={op_name="jit(_threefry_split)/concatenate" stack_frame_id=1}
+}
+

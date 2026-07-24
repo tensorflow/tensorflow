@@ -18,6 +18,9 @@ def repo_v2():
     tf_http_archive(
         name = "oneccl",
         build_file = "//third_party/oneccl:oneccl_v2.BUILD",
+        patch_file = [
+            "//third_party/oneccl:load_plugin.patch",
+        ],
         sha256 = "f57ea65a4477003bce367cbed57c06195868d8a3993633a499b38cd0ea165350",
         strip_prefix = "oneCCL-master-v2",
         urls = tf_mirror_urls("https://github.com/uxlfoundation/oneCCL/archive/refs/heads/master-v2.tar.gz"),

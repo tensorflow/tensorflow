@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/pjrt/se/pjrt_stream_executor_client.h"
 
+#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <numeric>
@@ -31,8 +32,10 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
 #include "xla/tsl/platform/status_macros.h"
+#include "xla/backends/cpu/target_machine_options.h"
 #include "xla/client/client_library.h"
 #include "xla/client/local_client.h"
+#include "xla/debug_options_flags.h"
 #include "xla/future.h"
 #include "xla/hlo/builder/xla_builder.h"
 #include "xla/hlo/testlib/test.h"
@@ -41,7 +44,10 @@ limitations under the License.
 #include "xla/literal_util.h"
 #include "xla/pjrt/abstract_tracked_device_buffer.h"
 #include "xla/pjrt/pjrt_client.h"
+#include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_executable.h"
+#include "xla/pjrt/plugin/xla_cpu/cpu_topology.h"
+#include "xla/pjrt/plugin/xla_cpu/cpu_topology_description.h"
 #include "xla/pjrt/se/local_device_state.h"
 #include "xla/service/platform_util.h"
 #include "xla/shape.h"
@@ -60,6 +66,20 @@ namespace xla {
 namespace {
 
 using ::testing::HasSubstr;
+
+std::shared_ptr<const xla::PjRtTopologyDescription>
+CreateCpuTopologyDescription(size_t cpu_device_count) {
+  std::vector<CpuTopology::CpuDevice> cpu_topology_devices;
+  cpu_topology_devices.reserve(cpu_device_count);
+  for (int i = 0; i < cpu_device_count; ++i) {
+    cpu_topology_devices.push_back(CpuTopology::CpuDevice{0, i});
+  }
+
+  return std::make_shared<CpuTopologyDescription>(
+      xla::CpuPlatformId(), xla::CpuPlatformName(), xla::CpuPlatformVersion(),
+      CpuTopology(cpu_topology_devices,
+                  cpu::TargetMachineOptions(GetDebugOptionsFromFlags())));
+}
 
 absl::StatusOr<std::unique_ptr<PjRtStreamExecutorClient>> GetClient() {
   LocalClient* local_client = xla::ClientLibrary::LocalClientOrDie();
@@ -80,9 +100,11 @@ absl::StatusOr<std::unique_ptr<PjRtStreamExecutorClient>> GetClient() {
       0, devices.back().get(), "cpu", 0));
   devices.back()->AttachMemorySpace(memory_spaces.back().get(),
                                     /*is_default=*/true);
+  auto topology = CreateCpuTopologyDescription(devices.size());
   return std::make_unique<PjRtStreamExecutorClient>(
       "cpu", local_client, std::move(devices),
-      /*process_index=*/0, std::move(memory_spaces), /*allocator=*/nullptr,
+      /*process_index=*/0, std::move(memory_spaces),
+      /*topology=*/std::move(topology), /*allocator=*/nullptr,
       /*host_memory_allocator=*/nullptr,
       /*should_stage_host_to_device_transfers=*/false,
       /*gpu_run_options=*/nullptr);

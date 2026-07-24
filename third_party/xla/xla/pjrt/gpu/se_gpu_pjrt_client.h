@@ -111,8 +111,6 @@ class StreamExecutorGpuHbmMemorySpace : public PjRtStreamExecutorMemorySpace {
 // A custom PjRtClient that overrides the device assignment method.
 class StreamExecutorGpuClient : public xla::PjRtStreamExecutorClient {
  public:
-  using xla::PjRtStreamExecutorClient::PjRtStreamExecutorClient;
-
   StreamExecutorGpuClient(
       std::string platform_name, LocalClient* client,
       std::vector<std::unique_ptr<PjRtStreamExecutorDevice>> devices,
@@ -122,18 +120,10 @@ class StreamExecutorGpuClient : public xla::PjRtStreamExecutorClient {
       std::unique_ptr<gpu::GpuExecutableRunOptions> gpu_run_options,
       std::shared_ptr<KeyValueStoreInterface> kv_store,
       bool abort_collectives_on_failure,
-      std::shared_ptr<const GpuTopology> gpu_topology,
+      std::shared_ptr<xla::StreamExecutorGpuTopologyDescription> topology,
       std::optional<int> num_processes,
       std::shared_ptr<gpu::AllocatorMemoryRegistration> memory_registration =
           nullptr);
-
-  std::optional<std::shared_ptr<KeyValueStoreInterface>> key_value_store()
-      const override {
-    return kv_store_;
-  }
-
-  gpu::GpuExecutableRunOptions* gpu_run_options(
-      const ExecuteOptions& options) override;
 
   absl::StatusOr<xla::DeviceAssignment> GetDefaultDeviceAssignment(
       int num_replicas, int num_partitions) const override;
@@ -141,17 +131,9 @@ class StreamExecutorGpuClient : public xla::PjRtStreamExecutorClient {
   absl::string_view platform_version() const override;
 
   std::optional<PjRtPluginAttributes> plugin_attributes() const override;
-  bool use_stream_based_compaction() const override { return true; }
 
   void UpdateGlobalProcessInfo(
       absl::Span<xla::coordination::TaskInfo> infos) override;
-
-  using PjRtStreamExecutorClient::CreateBuffersForAsyncHostToDevice;
-  absl::StatusOr<std::unique_ptr<PjRtClient::AsyncHostToDeviceTransferManager>>
-  CreateBuffersForAsyncHostToDevice(
-      absl::Span<const PjRtClient::ShapeSpec> shape_specs,
-      std::optional<absl::Span<const std::optional<Layout>>> device_layouts,
-      PjRtMemorySpace* memory_space) override;
 
   // ScheduleRemoteSend and MakeCrossHostReceiveBuffers are methods implemented
   // to support the legacy cross-host transfers API.
@@ -167,25 +149,7 @@ class StreamExecutorGpuClient : public xla::PjRtStreamExecutorClient {
                               PjRtDevice* device,
                               PjRtCrossHostRecvNotifier notifier) override;
 
-  absl::StatusOr<const xla::PjRtTopologyDescription*> GetTopologyDescription()
-      const override;
-
-  absl::StatusOr<Layout> GetDefaultLayout(
-      PrimitiveType element_type, absl::Span<const int64_t> dims) override;
-
-  absl::StatusOr<xla::Shape> GetCopyDestinationShape(
-      const xla::Shape& shape, PjRtMemorySpace* src_memory_space,
-      PjRtMemorySpace* dst_memory_space) override;
-
-  absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> LoadSerialized(
-      absl::string_view serialized, std::optional<CompileOptions> options,
-      const LoadOptions& load_options);
-
-  absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> CompileAndLoad(
-      const XlaComputation& computation, CompileOptions options) override;
-
-  absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> CompileAndLoad(
-      MaybeOwningMlirModule module, CompileOptions options) override;
+  void RecordMemoryStats();
 
   absl::StatusOr<PjRtStreamExecutorExecutionOutput> RunAsync(
       LocalExecutable& exec, PjRtDevice* device,
@@ -198,25 +162,12 @@ class StreamExecutorGpuClient : public xla::PjRtStreamExecutorClient {
       CompileOptions* options, ExecutableExtras* returned_extras,
       bool lookup_addressable_devices) override;
 
-  HostMemoryAllocator* GetHostMemoryAllocator() const override {
-    return host_memory_allocator_.get();
-  }
-
   absl::StatusOr<std::unique_ptr<PjRtRuntimeAbiVersion>> RuntimeAbiVersion()
       const override;
 
  private:
-  absl::flat_hash_map<GlobalDeviceId, IncarnationId> GetLatestIncarnations(
-      const ExecuteOptions& options);
-
-  std::optional<int> num_nodes_;
   const bool abort_collectives_on_failure_ = false;
-  std::optional<xla::StreamExecutorGpuTopologyDescription> topology_;
   std::shared_ptr<gpu::AllocatorMemoryRegistration> memory_registration_;
-  std::shared_ptr<KeyValueStoreInterface> kv_store_;
-
-  // Helpers for cross host transfers.
-  absl::Duration cross_host_transfer_timeout_ = absl::Minutes(3);
 
   absl::StatusOr<PjRtDeviceEventRefVector> CrossHostTransferBuffers(
       PjRtDeviceEventRefVector transfer_dependencies,
@@ -240,29 +191,26 @@ class StreamExecutorGpuClient : public xla::PjRtStreamExecutorClient {
       PjRtDevice* device, Shape shape);
 };
 
-std::vector<std::unique_ptr<PjRtStreamExecutorDevice>> BuildLocalDevices(
-    std::map<int, std::unique_ptr<LocalDeviceState>> local_device_states,
-    int process_id);
-
-std::string MakeComputeCapabilityString(const se::DeviceDescription* desc);
-
-absl::StatusOr<DeviceTopologyPair> BuildDistributedDevices(
-    absl::string_view platform_name,
-    std::map<int, std::unique_ptr<LocalDeviceState>> local_device_states,
-    int process_id, int num_nodes,
-    gpu::GpuExecutableRunOptions* gpu_executable_run_options,
-    std::shared_ptr<KeyValueStoreInterface> kv_store, bool enable_mock_nccl,
-    std::optional<absl::string_view> mock_gpu_topology = std::nullopt,
-    std::optional<int> partition_index = std::nullopt,
-    absl::Duration get_local_topology_timeout = absl::Minutes(2),
-    absl::Duration get_global_topology_timeout = absl::Minutes(5));
-
 absl::StatusOr<std::unique_ptr<PjRtClient>> GetStreamExecutorGpuClient(
     const GpuClientOptions& options);
 
-// Get the fabric info of a local device ordinal in the format of
-// "clusterUuid/cliqueId". Empty on SM90 or lower.
-absl::StatusOr<std::string> GetDeviceFabricInfo(int device_ordinal);
+// Constructs a StreamExecutorGpuClient which is intended to be used by
+// tensorflow. Don't use this for anything because it has tensorflow specific
+// quirks.
+absl::StatusOr<std::unique_ptr<PjRtClient>> GetSharedStreamExecutorGpuClient(
+    const GpuClientOptions& options, LocalClient* local_client,
+    std::map<int, std::unique_ptr<LocalDeviceState>> local_device_states,
+    std::unique_ptr<se::DeviceAddressAllocator> allocator,
+    std::unique_ptr<HostMemoryAllocator> host_memory_allocator);
+
+// Tensorflow specific API for exchanging an empty topology. Tensorflow
+// has some processes which don't have any hardware on them but still exchanges
+// topologies for these devices for some reason.
+absl::Status ExchangeEmptyStreamExecutorGpuTopology(
+    int process_id, int num_nodes,
+    std::shared_ptr<KeyValueStoreInterface> kv_store,
+    absl::Duration get_local_topology_timeout = absl::Minutes(2),
+    absl::Duration get_global_topology_timeout = absl::Minutes(5));
 
 // Creates allocator memory registration and adds the required suballocator
 // visitors to `allocator_config`.

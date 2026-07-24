@@ -2675,6 +2675,24 @@ TEST_P(SharedBatchSchedulerPriorityAwareTest, InvalidOptions) {
     auto status = scheduler->AddQueue(options, [](auto) {}, &queue);
     EXPECT_FALSE(status.ok());
   }
+
+  // Test negative criticality_batch_timeout_micros
+  {
+    QueueOptions options = CreatePriorityAwareQueueOptions(
+        /*max_execution_batch_size=*/10, /*batch_timeout_micros=*/1000,
+        /*max_queue_depth=*/2);
+    options.priority_aware_scheduler_options
+        .criticality_batch_timeout_micros = {
+        {tsl::criticality::Criticality::kCriticalPlus, 1000},
+        {tsl::criticality::Criticality::kCritical, -2000}};  // Negative element
+
+    std::unique_ptr<BatchScheduler<FakeTask>> queue;
+    auto status = scheduler->AddQueue(options, [](auto) {}, &queue);
+    EXPECT_FALSE(status.ok());
+    EXPECT_THAT(status.message(),
+                HasSubstr("criticality_batch_timeout_micros must contain "
+                          "nonnegative values"));
+  }
 }
 
 TEST_P(SharedBatchSchedulerPriorityAwareTest, ValidOptions) {
@@ -2878,6 +2896,137 @@ TEST_P(SharedBatchSchedulerPriorityAwareTest, SchedulingAtTimeout) {
   }
   // Notify stop_teardown to stop the thread.
   stop_teardown.Notify();
+}
+
+TEST_P(SharedBatchSchedulerPriorityAwareTest, PerCriticalityTimeout) {
+  // Part 1: C+ triggers timeout after hitting C+ specific batch timeout.
+  {
+    test_util::FakeClockEnv env(Env::Default());
+    absl::Notification start_teardown, stop_teardown;
+    std::unique_ptr<Thread> teardown_thread =
+        CreateFakeClockAdvancerThread(&env, &start_teardown, &stop_teardown);
+
+    {
+      absl::Notification processed;
+      auto callback = [&](std::unique_ptr<Batch<FakeTask>> batch) {
+        EXPECT_TRUE(batch->IsClosed());
+        EXPECT_EQ(2, batch->num_tasks());
+        EXPECT_EQ(tsl::criticality::Criticality::kCriticalPlus,
+                  batch->task(0).criticality());
+        EXPECT_EQ(tsl::criticality::Criticality::kSheddable,
+                  batch->task(1).criticality());
+        processed.Notify();
+      };
+
+      TF_ASSERT_OK_AND_ASSIGN(
+          std::shared_ptr<Scheduler> scheduler,
+          CreateSharedBatchScheduler(/*num_batch_threads=*/1, &env));
+
+      QueueOptions options = CreatePriorityAwareQueueOptions(
+          /*max_execution_batch_size=*/10,
+          /*batch_timeout_micros=*/120, /*max_queue_depth=*/10);
+
+      // Set per-criticality timeouts. kCriticalPlus has a very small timeout.
+      options.priority_aware_scheduler_options
+          .criticality_batch_timeout_micros = {
+          {tsl::criticality::Criticality::kCriticalPlus, 100},
+          {tsl::criticality::Criticality::kCritical, 5000},
+          {tsl::criticality::Criticality::kSheddablePlus, 5000},
+          {tsl::criticality::Criticality::kSheddable, 5000}};
+
+      TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<Queue> queue,
+                              CreateQueue(scheduler, options, callback));
+
+      // Schedule an S task (starts at time 0).
+      TF_ASSERT_OK(ScheduleTask(/*task_size=*/5, queue.get(),
+                                tsl::criticality::Criticality::kSheddable));
+
+      // Advance time by slightly less than 100.
+      env.AdvanceByMicroseconds(99);
+
+      // Schedule a C+ task (starts at time 99).
+      TF_ASSERT_OK(ScheduleTask(/*task_size=*/4, queue.get(),
+                                tsl::criticality::Criticality::kCriticalPlus));
+
+      // Advance time by 50. Total time 149.
+      // S age: 149. C+ age: 50.
+      env.AdvanceByMicroseconds(50);
+
+      // Should NOT have timed out yet; the S request has crossed the default
+      // timeout, but has not hit the S specific timeout.
+      EXPECT_FALSE(
+          processed.WaitForNotificationWithTimeout(absl::Milliseconds(100)));
+
+      // Advance time by 51. Total time 200.
+      // Sheddable age: 200. CriticalPlus age: 101.
+      env.AdvanceByMicroseconds(51);
+
+      // C+ request has hit the timeout. The scheduler should fire a batch.
+      EXPECT_TRUE(processed.WaitForNotificationWithTimeout(absl::Seconds(5)));
+
+      start_teardown.Notify();
+    }
+    stop_teardown.Notify();
+  }
+
+  // Part 2: S triggers timeout only after hitting S specific batch timeout.
+  {
+    test_util::FakeClockEnv env(Env::Default());
+    absl::Notification start_teardown, stop_teardown;
+    std::unique_ptr<Thread> teardown_thread =
+        CreateFakeClockAdvancerThread(&env, &start_teardown, &stop_teardown);
+
+    {
+      absl::Notification processed;
+      auto callback = [&](std::unique_ptr<Batch<FakeTask>> batch) {
+        EXPECT_TRUE(batch->IsClosed());
+        EXPECT_EQ(1, batch->num_tasks());
+        EXPECT_EQ(tsl::criticality::Criticality::kSheddable,
+                  batch->task(0).criticality());
+        processed.Notify();
+      };
+
+      TF_ASSERT_OK_AND_ASSIGN(
+          std::shared_ptr<Scheduler> scheduler,
+          CreateSharedBatchScheduler(/*num_batch_threads=*/1, &env));
+
+      QueueOptions options = CreatePriorityAwareQueueOptions(
+          /*max_execution_batch_size=*/10,
+          /*batch_timeout_micros=*/1000, /*max_queue_depth=*/10);
+
+      // Set per-criticality timeouts.
+      options.priority_aware_scheduler_options
+          .criticality_batch_timeout_micros = {
+          {tsl::criticality::Criticality::kCriticalPlus, 1000},
+          {tsl::criticality::Criticality::kCritical, 1000},
+          {tsl::criticality::Criticality::kSheddablePlus, 1000},
+          {tsl::criticality::Criticality::kSheddable, 5000}};
+
+      TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<Queue> queue,
+                              CreateQueue(scheduler, options, callback));
+
+      // Schedule a Sheddable task (starts at time 0).
+      TF_ASSERT_OK(ScheduleTask(/*task_size=*/5, queue.get(),
+                                tsl::criticality::Criticality::kSheddable));
+
+      // Advance time by 1001. Total time 1001.
+      env.AdvanceByMicroseconds(1001);
+
+      // Should NOT have timed out yet; C/C+ and default timeout is 1000us,
+      // but S timeout is 5000us.
+      EXPECT_FALSE(
+          processed.WaitForNotificationWithTimeout(absl::Milliseconds(100)));
+
+      // Advance time by 4000. Total time 5001.
+      env.AdvanceByMicroseconds(4000);
+
+      // S request has hit the timeout. The scheduler should fire a batch.
+      EXPECT_TRUE(processed.WaitForNotificationWithTimeout(absl::Seconds(5)));
+
+      start_teardown.Notify();
+    }
+    stop_teardown.Notify();
+  }
 }
 
 TEST_P(SharedBatchSchedulerPriorityAwareTest, MixedPriorityBatching) {

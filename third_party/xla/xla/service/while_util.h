@@ -154,6 +154,13 @@ class WhileUtil {
   // Requires loop body to be incrementing the induction variable by exactly 1.
   static absl::Status IncrementWhileLoopTripCount(
       const HloInstruction& while_instruction, int32_t increment);
+
+  // Ensure that the output of an in-place update operation (like a DUS) is not
+  // read before being returned from its computation. It must only feed the
+  // computation root or another valid in-place update operation. This is used
+  // to verify that state updates are strictly write-only.
+  // TODO(b/533496522): Use AliasAnalysis to handle complex aliasing chains.
+  static bool IsUpdatedBufferWriteOnly(const HloInstruction* instr);
 };
 
 // This is a helper function to update the original value after some

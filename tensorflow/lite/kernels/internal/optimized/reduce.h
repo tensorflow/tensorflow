@@ -261,50 +261,50 @@ inline void Mean(const tflite::MeanParams& op_params,
 
 template <typename T>
 struct SumOp {
-  inline T operator()(const T& a) const { return a; }
-  inline T operator()(const T& a, const T& b) const { return a + b; }
+  T operator()(const T& a) const { return a; }
+  T operator()(const T& a, const T& b) const { return WrappingAdd<T>(a, b); }
   static constexpr T kNeutralElement = T(0);
 };
 
 template <typename T, typename U>
 struct CastSumOp {
-  inline U operator()(const T& a) const { return static_cast<U>(a); }
-  inline U operator()(const U& a, const T& b) const {
-    return a + static_cast<U>(b);
+  U operator()(const T& a) const { return static_cast<U>(a); }
+  U operator()(const U& a, const T& b) const {
+    return WrappingAdd<U>(a, static_cast<U>(b));
   }
   static constexpr U kNeutralElement = U(0);
 };
 
 template <typename T>
 struct ProdOp {
-  inline T operator()(const T& a) const { return a; }
-  inline T operator()(const T& a, const T& b) const { return a * b; }
+  T operator()(const T& a) const { return a; }
+  T operator()(const T& a, const T& b) const { return WrappingMul<T>(a, b); }
   static constexpr T kNeutralElement = T(1);
 };
 
 template <typename T>
 struct MaxOp {
-  inline T operator()(const T& a) const { return a; }
-  inline T operator()(const T& a, const T& b) const { return (a > b) ? a : b; }
+  T operator()(const T& a) const { return a; }
+  T operator()(const T& a, const T& b) const { return (a > b) ? a : b; }
   static constexpr T kNeutralElement = std::numeric_limits<T>::lowest();
 };
 
 template <typename T>
 struct MinOp {
-  inline T operator()(const T& a) const { return a; }
-  inline T operator()(const T& a, const T& b) const { return (a < b) ? a : b; }
+  T operator()(const T& a) const { return a; }
+  T operator()(const T& a, const T& b) const { return (a < b) ? a : b; }
   static constexpr T kNeutralElement = std::numeric_limits<T>::max();
 };
 
 struct AndOp {
-  inline bool operator()(bool a) const { return a; }
-  inline bool operator()(bool a, bool b) const { return a && b; }
+  bool operator()(bool a) const { return a; }
+  bool operator()(bool a, bool b) const { return a && b; }
   static constexpr bool kNeutralElement = true;
 };
 
 struct OrOp {
-  inline bool operator()(bool a) const { return a; }
-  inline bool operator()(bool a, bool b) const { return a || b; }
+  bool operator()(bool a) const { return a; }
+  bool operator()(bool a, bool b) const { return a || b; }
   static constexpr bool kNeutralElement = false;
 };
 

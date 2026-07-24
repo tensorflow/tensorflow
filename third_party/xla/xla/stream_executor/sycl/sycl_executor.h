@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "xla/stream_executor/dnn.h"
 #include "xla/stream_executor/gpu/gpu_executor.h"
+#include "xla/stream_executor/memory_space.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/sycl/sycl_kernel.h"
 #include "xla/stream_executor/sycl/sycl_stream.h"
@@ -105,7 +106,8 @@ class SyclExecutor : public gpu::GpuExecutor {
                                  const DeviceMemoryBase& gpu_src,
                                  uint64_t size) override;
 
-  // TODO(intel-tf): Implement GetPointerMemorySpace for SYCL.
+  absl::StatusOr<MemorySpace> GetPointerMemorySpace(const void* ptr) override;
+
   // Returns the Stream for the given raw GPU stream pointer, or nullptr if
   // not found.
   Stream* FindAllocatedStream(void* gpu_stream) override {
@@ -143,6 +145,9 @@ class SyclExecutor : public gpu::GpuExecutor {
   // Returns a unique_ptr to the allocation or an error on failure.
   absl::StatusOr<std::unique_ptr<MemoryAllocation>> HostMemoryAllocate(
       uint64_t size) override;
+
+  bool HostMemoryRegister(void* location, uint64_t size) override;
+  bool HostMemoryUnregister(void* location) override;
 
   // Deallocates the given stream.
   void DeallocateStream(Stream* stream) override;
@@ -243,6 +248,7 @@ class SyclExecutor : public gpu::GpuExecutor {
   // Mutex for blas, dnn, and fft.
   absl::Mutex mu_;
   std::unique_ptr<blas::BlasSupport> blas_ ABSL_GUARDED_BY(mu_);
+  std::unique_ptr<dnn::DnnSupport> dnn_ ABSL_GUARDED_BY(mu_);
   absl::Status InitBlas();
 };
 

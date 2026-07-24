@@ -134,6 +134,19 @@ struct Options {
   // Backend-specific integer value that describes the alternate memory.
   int64_t alternate_memory_space = 0;
 
+  // Color of "view" values. Views are zero-copy, possibly sub-region aliases
+  // into another allocation. We identify them by their color. MSA extends the
+  // pointed-to buffer's allocation to account for the live range of views to
+  // it. Pair with an is_allowed_in_alternate_mem_fn that rejects view colored
+  // values. std::nullopt disables views.
+  std::optional<int64_t> dus_view_color;
+
+  // When true, a view's source buffer is kept in default memory instead of
+  // being considered for alternate memory. Set this to avoid the superlinear
+  // compile time growth that can occur when views extend the live ranges of
+  // while loop carried buffers. Only meaningful when dus_view_color is set.
+  bool view_source_default_memory_only = false;
+
   // Maximum size of the alternate memory space.
   int64_t max_size_in_bytes = 0;
 

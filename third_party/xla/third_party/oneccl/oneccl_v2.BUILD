@@ -19,6 +19,7 @@ sycl_library(
     deps = [
         "@oneccl_v1",
     ],
+    alwayslink = True,
 )
 
 sycl_library(
@@ -38,6 +39,7 @@ sycl_library(
         "@oneccl_v1",
         "@oneccl_v1//:mpi",
     ],
+    alwayslink = True,
 )
 
 sycl_library(
@@ -47,4 +49,5 @@ sycl_library(
         ":ccl_legacy",
         ":oneccl",
     ],
+    alwayslink = True,
 )

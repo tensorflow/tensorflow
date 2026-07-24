@@ -69,6 +69,10 @@ void ResetIrHook(LLVMCompiler* llvm_compiler) {
   llvm_compiler->RemovePostOptimizationHook();
 }
 
+std::string FileCheckInput(const std::string& ir) {
+  return ir.empty() ? ";\n" : ir;
+}
+
 class ScopedHookHandler final {
  public:
   ScopedHookHandler(LLVMCompiler* compiler, bool match_optimized_ir)
@@ -99,7 +103,8 @@ absl::Status CompileAndVerifyIr(LLVMCompiler* compiler,
                                       run_optimization_passes)
                       .status());
 
-  ASSIGN_OR_RETURN(bool succeeded, RunFileCheck(hook_handler.ir(), pattern));
+  ASSIGN_OR_RETURN(bool succeeded,
+                   RunFileCheck(FileCheckInput(hook_handler.ir()), pattern));
   if (!succeeded) {
     return absl::InternalError(
         absl::StrCat("FileCheck failed. Full IR: ", hook_handler.ir()));
@@ -117,7 +122,8 @@ absl::Status CompileAheadOfTimeAndVerifyIr(
       compiler->CompileAheadOfTime(std::move(hlo_module), aot_options)
           .status());
 
-  ASSIGN_OR_RETURN(bool succeeded, RunFileCheck(hook_handler.ir(), pattern));
+  ASSIGN_OR_RETURN(bool succeeded,
+                   RunFileCheck(FileCheckInput(hook_handler.ir()), pattern));
   if (!succeeded) {
     return absl::InternalError(
         absl::StrCat("FileCheck failed. Full IR: ", hook_handler.ir()));

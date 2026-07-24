@@ -121,12 +121,8 @@ CommandBufferConfig GetCommandBufferConfig(
   }
 
   CommandBufferConfig config{
-      std::move(commands),
-      std::move(enabled_collectives),
-      device_info,
-      debug_options.xla_gpu_command_buffer_update_mode(),
-      debug_options.xla_gpu_command_buffer_unroll_loops(),
-      num_local_devices};
+      std::move(commands), std::move(enabled_collectives), device_info,
+      debug_options.xla_gpu_command_buffer_unroll_loops(), num_local_devices};
 
   // Erase command buffer cmd types that are not supported by the gpu runtime.
   static constexpr auto kRequireConditionals = {DebugOptions::CONDITIONAL,
@@ -367,13 +363,6 @@ static bool IsConvertible(
                "buffers because runtime offset verification is enabled";
     return false;
   }
-  if (config.update_mode == DebugOptions::NEVER_UPDATE &&
-      dynamic_slice_fusion_thunk.HasLoopDependentOffsets()) {
-    VLOG(2) << "DynamicSliceFusionV2Thunk is not convertible in NEVER_UPDATE "
-               "command-buffer mode because its offsets depend on loop "
-               "iteration";
-    return false;
-  }
   return ThunkSequenceIsConvertible(dynamic_slice_fusion_thunk.thunks(),
                                     config);
 }
@@ -411,30 +400,6 @@ bool IsConvertible(const Thunk& thunk, const CommandBufferConfig& config) {
   }
 
   if (*cmd_type == DebugOptions::COLLECTIVES) {
-    // ROCm correctness gate: under the VMM VA-remapping update modes
-    // (NEVER_UPDATE / CAPTURE_CMD_NEVER_UPDATE) a collective is traced into the
-    // command buffer exactly once and then replayed. The traced RCCL collective
-    // binds its buffers at trace time and does NOT follow the per-step physical
-    // remap (or copy-into-shadow refresh) that keeps ordinary kernels correct,
-    // so on every replayed step it reads STALE buffer contents. This silently
-    // corrupts results whenever the collective's buffers churn across steps
-    // (e.g. TP training). Ordinary (non-traced) kernels dereference the fixed
-    // VA and the MMU redirects to the current physical page, so they are safe;
-    // only traced collectives are affected. Keep collectives out of command
-    // buffers on ROCm in these modes and run them eagerly. ALWAYS_UPDATE
-    // re-records the collective each step and is unaffected. NVIDIA/CUDA
-    // behaviour is unchanged.
-    if (config.device_description.gpu_compute_capability().IsRocm() &&
-        (config.update_mode == DebugOptions::NEVER_UPDATE ||
-         config.update_mode == DebugOptions::CAPTURE_CMD_NEVER_UPDATE)) {
-      VLOG(1)
-          << "ROCm: not converting collective thunk "
-          << Thunk::KindToString(thunk.kind())
-          << " to a command buffer under VMM update mode "
-          << DebugOptions::CommandBufferUpdateMode_Name(config.update_mode)
-          << " (captured collectives replay stale buffers); running eagerly";
-      return false;
-    }
     if (!config.enabled_collectives.test(DebugOptions::ALLCOLLECTIVES)) {
       auto op_type = GetCollectiveOpType(thunk.kind());
       if (op_type.has_value() && !config.enabled_collectives.test(*op_type)) {
@@ -579,13 +544,11 @@ ConvertThunksToCommandBuffer(
     CommandExecutor::SynchronizationMode synchronization_mode,
     const DebugOptions& debug_options) {
   bool enable_loop_unroll = debug_options.xla_gpu_command_buffer_unroll_loops();
-  DebugOptions::CommandBufferUpdateMode update_mode =
-      debug_options.xla_gpu_command_buffer_update_mode();
-  ASSIGN_OR_RETURN(CommandExecutor cmd_executor,
-                   ConvertToCommands(thunks_to_convert,
-                                     ConvertToCommandsOptions{
-                                         synchronization_mode,
-                                         enable_loop_unroll, update_mode}));
+  ASSIGN_OR_RETURN(
+      CommandExecutor cmd_executor,
+      ConvertToCommands(
+          thunks_to_convert,
+          ConvertToCommandsOptions{synchronization_mode, enable_loop_unroll}));
 
   std::string command_buffer_profile_annotation = absl::StrCat(
       "command_buffer",

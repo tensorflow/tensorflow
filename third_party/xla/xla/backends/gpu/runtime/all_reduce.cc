@@ -44,6 +44,7 @@ limitations under the License.
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/computation_placer.h"
 #include "xla/service/gpu/gpu_constants.h"
+#include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/gpu_topology.h"
 #include "xla/shape_util.h"
@@ -94,7 +95,6 @@ static constexpr auto kOrPredTags = TagRegistry<bool, ReductionKind::MAX>{};
 // of 2 from a higher dimension to a lower dimension.
 static constexpr int64_t kMaxBlocksPerGrid = 32;
 static constexpr uint64_t kMaxThreadsPerBlock = 512;
-static constexpr int64_t kWarpSize = 32;
 
 template <typename TagType>
 absl::Status LaunchTypedKernel(
@@ -209,18 +209,20 @@ int64_t GetMaxSupportedAllReduceSizeBytes(AllReduceStrategy strategy) {
   }
 }
 
-LaunchDimensions AllReduceLaunchDimensions(int64_t elements, int64_t num_ranks,
-                                           AllReduceStrategy strategy) {
+LaunchDimensions AllReduceLaunchDimensions(
+    int64_t elements, int64_t num_ranks, AllReduceStrategy strategy,
+    const se::DeviceDescription& device_info) {
   int64_t threads_per_block;
   int64_t blocks_per_grid;
+  const int64_t warp_size = WarpSize(device_info);
   const int64_t elements_per_rank =
       elements / (strategy == AllReduceStrategy::kTwoShot ? num_ranks : 1);
   // Maximum number of threads such that each thread has elements to process.
   const int64_t total_threads =
       RoundUpTo(CeilOfRatio(elements_per_rank, se::gpu::kNumElementsPerThread),
-                kWarpSize);
+                warp_size);
   // Triton expects power of 2 for threads_per_block / threads_per_warp.
-  // Since threads_per_warp is 32 for all NVIDIA GPUs, power of 2 is guaranteed.
+  // Since threads_per_warp is always a power of 2, this is guaranteed.
   threads_per_block =
       std::min(kMaxThreadsPerBlock,
                llvm::bit_ceil(static_cast<uint64_t>(total_threads)));
@@ -287,6 +289,17 @@ absl::Status IsAllReduceKernelSupported(
   if (replica_groups.empty()) {
     return absl::UnimplementedError(
         "Replica groups must be explicitly provided for collective kernels.");
+  }
+  // The kernel bakes world_size (from the first replica group) at codegen and
+  // sizes its buffers the same way, so it cannot serve cliques of different
+  // sizes. Fall back to the library collective for non-uniform replica groups.
+  for (const ReplicaGroup& group : replica_groups) {
+    if (group.replica_ids_size() != num_devices) {
+      return absl::UnimplementedError(absl::StrCat(
+          "Collective kernel requires all replica groups to have the same "
+          "size. Got a group of size ",
+          group.replica_ids_size(), " but expected ", num_devices, "."));
+    }
   }
   if (!reduction_kind.has_value()) {
     return absl::UnimplementedError("Could not match reduction computation.");

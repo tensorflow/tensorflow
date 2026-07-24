@@ -74,7 +74,7 @@ typedef enum {
   PJRT_Extension_Type_CrossHostTransfers,
   PJRT_Extension_Type_ExecutableMetadata,
   PJRT_Extension_Type_Callback,
-  PJRT_Extension_Type_HostAllocator,  // Experimental.
+  PJRT_Extension_Type_HostAllocator,  // Deprecated.
   PJRT_Extension_Type_TpuTopology,
   PJRT_Extension_Type_TpuExecutable,
   PJRT_Extension_Type_Megascale,
@@ -118,7 +118,7 @@ PJRT_DEFINE_STRUCT_TRAITS(PJRT_Extension_Base, next);
 // Changes include:
 // * Adding a new field to the PJRT_Api or argument structs
 // * Renaming a method or argument (doesn't affect ABI)
-#define PJRT_API_MINOR 113
+#define PJRT_API_MINOR 114
 
 // The plugin should set the major_version and minor_version of
 // PJRT_Api.pjrt_api_version to be the `PJRT_API_MAJOR` and `PJRT_API_MINOR` in
@@ -993,6 +993,10 @@ typedef enum {
   // 1-bit integer types
   PJRT_Buffer_Type_S1,
   PJRT_Buffer_Type_U1,
+
+  // 6-bit MX floating-point formats.
+  PJRT_Buffer_Type_F6E2M3FN,
+  PJRT_Buffer_Type_F6E3M2FN,
 } PJRT_Buffer_Type;
 
 typedef enum {

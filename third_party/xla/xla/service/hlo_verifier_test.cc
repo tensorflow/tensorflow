@@ -187,7 +187,8 @@ TEST_F(HloVerifierTest, ResetsShapeVerifierState) {
 }
 
 TEST_F(HloVerifierTest, IsShapePrefix) {
-  ShapeVerifier verifier(HloVerifierOpts{});
+  HloVerifierOpts opts;
+  ShapeVerifier verifier(opts);
 
   Shape f32_scalar = ShapeUtil::MakeShape(F32, {});
   Shape s32_scalar = ShapeUtil::MakeShape(S32, {});

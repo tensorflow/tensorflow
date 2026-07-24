@@ -133,6 +133,8 @@ XTileTestBase::CreateXTileIrAndFileCheck(
     ASSIGN_OR_RETURN(ge::TiledHloComputation tiled_computation,
                      ge::TiledHloComputation::Tile(*fusion_adaptor,
                                                    std::move(tiling_space)));
+    tiled_computation.Simplify();
+    tiled_computation.SortInstructionsPostOrder();
     if (Decision constraints = ge::VerifyTritonConstraints(
             tiled_computation, TestGpuDeviceInfo::RTXA6000DeviceInfo());
         !constraints) {

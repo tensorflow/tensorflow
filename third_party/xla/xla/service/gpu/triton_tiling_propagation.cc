@@ -729,6 +729,19 @@ DimOrderMapOrError GetPropagatedDimOrdersForDimAlteringOp(
       for (int i = 0; i < permutation.size(); ++i) {
         dst_logical[permutation[i]] = src_logical[i];
       }
+      if (direction == TransformDirection::kOutputToInput) {
+        for (int i = 0; i < permutation.size(); ++i) {
+          if (!src_logical[i].empty() && src_logical[i][0]->slice_start() < 0) {
+            int dst_dim = permutation[i];
+            int major_most_dim = dst->shape().layout().minor_to_major().back();
+            if (dst_dim != major_most_dim) {
+              return FusionDecision::Forbid(
+                  "Transposing sliced concatenate dimension to non-major-most "
+                  "physical position.");
+            }
+          }
+        }
+      }
     } else if (hlo.opcode() == HloOpcode::kBroadcast) {
       const auto* broadcast = Cast<HloBroadcastInstruction>(&hlo);
       dst_logical.resize(broadcast->dimensions().size());
@@ -1022,6 +1035,25 @@ bool AllUsersAreSlicesWithSameShape(const HloInstruction& operand,
   return true;
 }
 
+// Returns true if every user of `hlo` is a slice.
+bool AllUsersAreSlices(const HloInstruction& hlo) {
+  return absl::c_all_of(hlo.users(), [](const HloInstruction* user) {
+    return user->opcode() == HloOpcode::kSlice;
+  });
+}
+
+// Whether giving each consumer of `hlo` its own copy is cheap. True when `hlo`
+// is cheap to recompute (a parameter/constant read, or an elementwise op that
+// recomputes only the needed tile), or when every user only slices it, so each
+// reads a sub-region of the one materialized result without re-running `hlo`.
+// Anything else is conservatively assumed to redo its full computation per
+// consumer.
+bool IsCheapToDuplicate(const HloInstruction& hlo) {
+  return hlo.opcode() == HloOpcode::kParameter ||
+         hlo.opcode() == HloOpcode::kConstant || hlo.IsElementwise() ||
+         AllUsersAreSlices(hlo);
+}
+
 }  // namespace
 
 // Tells that fusing an instruction as an input is efficient.
@@ -1046,9 +1078,20 @@ bool IsInputWorthFusing(const HloInstruction& hlo) {
   //   the slice can be fused into the producer instead of here.
   // * AllUsersAreSlicesWithSameShape - slices of the same shape can be
   //   fused into the producer by the multi output fusion pass.
-  if (hlo.opcode() == HloOpcode::kSlice && hlo.operand(0)->user_count() > 1 &&
-      !AllUsersAreSlicesWithSameShape(*hlo.operand(0), hlo.shape())) {
-    return true;
+  // * IsCheapToDuplicate - fusing the slice duplicates the shared operand into
+  //   each consumer, so only do it when that duplication is cheap.
+  if (hlo.opcode() == HloOpcode::kSlice) {
+    const HloInstruction* operand = hlo.operand(0);
+    while (HloPredicateIsOp<HloOpcode::kBitcast, HloOpcode::kTranspose,
+                            HloOpcode::kReshape>(operand) &&
+           operand->user_count() == 1) {
+      operand = operand->operand(0);
+    }
+    if (operand->user_count() > 1 &&
+        !AllUsersAreSlicesWithSameShape(*operand, hlo.shape()) &&
+        IsCheapToDuplicate(*operand)) {
+      return true;
+    }
   }
 
   const bool enable_subchannel_dequantisation_fusion =

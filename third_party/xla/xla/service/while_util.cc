@@ -49,8 +49,6 @@ limitations under the License.
 #include "xla/service/tuple_util.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -679,6 +677,33 @@ void AppendToWhileLoopOriginalValue(
   append_to_original_value(while_instr, next_index);
   append_to_original_value(while_instr->while_body()->root_instruction(),
                            next_index);
+}
+
+bool WhileUtil::IsUpdatedBufferWriteOnly(const HloInstruction* instr) {
+  const HloComputation* computation = instr->parent();
+  if (instr == computation->root_instruction()) {
+    return true;
+  }
+  if (instr->user_count() == 0) {
+    return false;
+  }
+  for (const HloInstruction* user : instr->users()) {
+    if (user == computation->root_instruction()) {
+      continue;
+    }
+    // If it feeds another DUS as the base buffer, recursively check that DUS.
+    if (user->opcode() == HloOpcode::kDynamicUpdateSlice &&
+        user->operand(0) == instr) {
+      if (!IsUpdatedBufferWriteOnly(user)) {
+        return false;
+      }
+    } else {
+      // Any other user (e.g., a read, or being the update payload of a DUS) is
+      // unsafe.
+      return false;
+    }
+  }
+  return true;
 }
 
 }  // namespace xla

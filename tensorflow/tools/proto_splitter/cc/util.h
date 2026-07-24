@@ -65,15 +65,14 @@ absl::StatusOr<const std::vector<Field>> GetFieldTypes(
 absl::Status SetRepeatedFieldElement(
     tsl::protobuf::Message* message,
     const tsl::protobuf::FieldDescriptor* field_desc, uint64_t field_index,
-    const std::string& chunk,
-    std::function<absl::Status(void)> message_callback);
+    std::string chunk, std::function<absl::Status(void)> message_callback);
 
 // Sets message.field_desc to the data contained in chunk, according to the
 // (cpp) type described by field_desc. Uses message_callback (instead of simply
 // assigning) when field_desc describes a message.
 absl::Status SetFieldElement(
     tsl::protobuf::Message* message,
-    const tsl::protobuf::FieldDescriptor* field_desc, const std::string& chunk,
+    const tsl::protobuf::FieldDescriptor* field_desc, std::string chunk,
     std::function<absl::Status(void)> message_callback);
 
 // Adds a new map entry (repeated message element with key/value fields) to

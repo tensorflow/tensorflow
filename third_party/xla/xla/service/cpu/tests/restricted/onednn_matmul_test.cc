@@ -1906,6 +1906,131 @@ TEST_F(MatmulTest, MulTanhMul) {
   )");
 }
 
+TEST_F(MatmulTest, BiasAndLegalizedErfcGELUTestF32) {
+  // This test exercises the legalized StableHLO erfc-based GELU_ERF pattern:
+  //   0.5 * x * select(|y| < 1, 1 - erf_approx(y), erfc_approx(y))
+  // where y = -x / sqrt(2).
+  //
+  // We use a simplified erfc approximation for the test: the exact functional
+  // form doesn't matter as long as the top-level select structure matches.
+  const char* matmul_module_str = R"(
+  HloModule matmul.test.f32
+  ENTRY matmul.test.f32 {
+    arg.0 = f32[6304,768] parameter(0), parameter_replication={false}
+    arg.1 = f32[768,3072] parameter(1), parameter_replication={false}
+    dot.0 = f32[6304,3072] dot(arg.0, arg.1), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+    reshape.0 = f32[32,197,3072] reshape(dot.0)
+    constant.bias = f32[3072] constant(0.3)
+    broadcast.bias = f32[32,197,3072] broadcast(constant.bias), dimensions={2}
+    add.bias = f32[32,197,3072] add(reshape.0, broadcast.bias)
+
+    // Compute y = -x / sqrt(2) = negate(x) * (1/sqrt(2))
+    negate.0 = f32[32,197,3072] negate(add.bias)
+    constant.inv_sqrt2 = f32[] constant(0.707106769)
+    broadcast.inv_sqrt2 = f32[32,197,3072] broadcast(constant.inv_sqrt2), dimensions={}
+    y.0 = f32[32,197,3072] multiply(negate.0, broadcast.inv_sqrt2)
+
+    // Compute predicate: |y| < 1
+    abs.y = f32[32,197,3072] abs(y.0)
+    constant.one_pred = f32[] constant(1)
+    broadcast.one_pred = f32[32,197,3072] broadcast(constant.one_pred), dimensions={}
+    pred.0 = pred[32,197,3072] compare(abs.y, broadcast.one_pred), direction=LT
+
+    // True branch: 1 - erf_approx(y)
+    // Use erf(y) as a stand-in for the polynomial erf approximation
+    erf.y = f32[32,197,3072] erf(y.0)
+    constant.one_true = f32[] constant(1)
+    broadcast.one_true = f32[32,197,3072] broadcast(constant.one_true), dimensions={}
+    true_branch.0 = f32[32,197,3072] subtract(broadcast.one_true, erf.y)
+
+    // False branch: erfc_approx(y)
+    // Use (1 - erf(y)) as a stand-in for the erfc polynomial approximation
+    constant.one_false = f32[] constant(1)
+    broadcast.one_false = f32[32,197,3072] broadcast(constant.one_false), dimensions={}
+    erf.y2 = f32[32,197,3072] erf(y.0)
+    false_branch.0 = f32[32,197,3072] subtract(broadcast.one_false, erf.y2)
+
+    // select(|y| < 1, 1 - erf_approx(y), erfc_approx(y))
+    select.0 = f32[32,197,3072] select(pred.0, true_branch.0, false_branch.0)
+
+    // 0.5 * x
+    constant.half = f32[] constant(0.5)
+    broadcast.half = f32[32,197,3072] broadcast(constant.half), dimensions={}
+    half_x.0 = f32[32,197,3072] multiply(broadcast.half, add.bias)
+
+    // 0.5 * x * select(...)
+    ROOT out = f32[32,197,3072] multiply(half_x.0, select.0)
+  })";
+
+  EXPECT_TRUE(RunAndCompare(matmul_module_str, ErrorSpec{1e-4, 1e-4}));
+  MatchOptimizedHlo(matmul_module_str, fused_matmul_bias_gelu_erf_);
+}
+
+TEST_F(MatmulTest, BiasAndLegalizedErfcGELUTestF16) {
+  // FP16 uses erfc-legalized GELU because FP16's narrow exponent range (5 bits)
+  // causes underflow in erfc for moderate inputs. JAX/StableHLO legalizes erfc
+  // into a piecewise polynomial computed in F32, with f16<->f32 converts at the
+  // boundaries.
+  // Pattern: 0.5 * x * convert(select(|convert(y)| < 1, 1 - erf(y_f32),
+  // erfc_approx(y_f32))) where y = negate(x) * inv_sqrt2 in f16, and the select
+  // internals are in f32.
+  const char* matmul_module_str = R"(
+  HloModule matmul.test.f16
+  ENTRY matmul.test.f16 {
+    arg.0 = f16[6304,768] parameter(0), parameter_replication={false}
+    arg.1 = f16[768,3072] parameter(1), parameter_replication={false}
+    dot.0 = f16[6304,3072] dot(arg.0, arg.1), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+    reshape.0 = f16[32,197,3072] reshape(dot.0)
+    constant.bias = f16[3072] constant(0.3)
+    broadcast.bias = f16[32,197,3072] broadcast(constant.bias), dimensions={2}
+    add.bias = f16[32,197,3072] add(reshape.0, broadcast.bias)
+
+    // Compute y = -x / sqrt(2) in f16
+    negate.0 = f16[32,197,3072] negate(add.bias)
+    constant.inv_sqrt2 = f16[] constant(0.707106769)
+    broadcast.inv_sqrt2 = f16[32,197,3072] broadcast(constant.inv_sqrt2), dimensions={}
+    y.0 = f16[32,197,3072] multiply(negate.0, broadcast.inv_sqrt2)
+
+    // Convert f16 -> f32 before erfc polynomial
+    y.f32 = f32[32,197,3072] convert(y.0)
+
+    // Compute predicate: |y| < 1 (in f32)
+    abs.y = f32[32,197,3072] abs(y.f32)
+    constant.one_pred = f32[] constant(1)
+    broadcast.one_pred = f32[32,197,3072] broadcast(constant.one_pred), dimensions={}
+    pred.0 = pred[32,197,3072] compare(abs.y, broadcast.one_pred), direction=LT
+
+    // True branch: 1 - erf_approx(y) (in f32)
+    erf.y = f32[32,197,3072] erf(y.f32)
+    constant.one_true = f32[] constant(1)
+    broadcast.one_true = f32[32,197,3072] broadcast(constant.one_true), dimensions={}
+    true_branch.0 = f32[32,197,3072] subtract(broadcast.one_true, erf.y)
+
+    // False branch: erfc_approx(y) (in f32, simplified stand-in)
+    constant.one_false = f32[] constant(1)
+    broadcast.one_false = f32[32,197,3072] broadcast(constant.one_false), dimensions={}
+    erf.y2 = f32[32,197,3072] erf(y.f32)
+    false_branch.0 = f32[32,197,3072] subtract(broadcast.one_false, erf.y2)
+
+    // select(|y| < 1, 1 - erf_approx(y), erfc_approx(y)) in f32
+    select.0 = f32[32,197,3072] select(pred.0, true_branch.0, false_branch.0)
+
+    // Convert f32 -> f16 after erfc polynomial
+    select.f16 = f16[32,197,3072] convert(select.0)
+
+    // 0.5 * x (in f16)
+    constant.half = f16[] constant(0.5)
+    broadcast.half = f16[32,197,3072] broadcast(constant.half), dimensions={}
+    half_x.0 = f16[32,197,3072] multiply(broadcast.half, add.bias)
+
+    // 0.5 * x * cdf(x)
+    ROOT out = f16[32,197,3072] multiply(half_x.0, select.f16)
+  })";
+
+  EXPECT_TRUE(RunAndCompare(matmul_module_str, ErrorSpec{0.1, 0.1}));
+  MatchOptimizedHlo(matmul_module_str, fused_matmul_bias_gelu_erf_);
+}
+
 TEST_F(MatmulTest, BiasAlongNonLastDimShouldNotFuseAsBias) {
   // When a 1D addend is broadcast along a non-last dimension
   // (e.g., M dimension instead of N), it should be fused as BINARY_ADD, not

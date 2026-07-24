@@ -31,6 +31,10 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
+namespace {
+constexpr absl::string_view kCuDnnFusionKind = "__cudnn$fusion";
+}  // namespace
+
 bool IsCublasLtGemm(const HloInstruction& hlo) {
   return IsCublasLtMatmul(hlo) || IsCublasLtMatmulF8(hlo) ||
          IsCublasLtMatmulMx(hlo) || IsCublasLtGroupedMatmul(hlo);
@@ -82,9 +86,21 @@ bool IsTriangularSolve(const HloInstruction& hlo) {
          hlo.custom_call_target() == kTriangularSolveCallTarget;
 }
 
-// fMHA forward call targets.
+bool IsConvFusion(const HloInstruction& hlo) {
+  if (hlo.opcode() != HloOpcode::kFusion) {
+    return false;
+  }
 
-// fMHA backward call targets.
+  if (hlo.fusion_kind() != HloInstruction::FusionKind::kCustom) {
+    return false;
+  }
+
+  auto gpu_config = hlo.backend_config<GpuBackendConfig>();
+  if (gpu_config.ok()) {
+    return gpu_config->fusion_backend_config().kind() == kCuDnnFusionKind;
+  }
+  return false;
+}
 
 bool IsCustomCallToDnnConvolution(const HloInstruction& hlo) {
   if (hlo.opcode() != HloOpcode::kCustomCall) {

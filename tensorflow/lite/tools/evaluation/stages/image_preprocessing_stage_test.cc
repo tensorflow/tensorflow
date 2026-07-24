@@ -358,6 +358,23 @@ TEST(ImagePreprocessingStage, TestInvalidRawImageSize) {
   EXPECT_EQ(stage.Run(), kTfLiteError);
 }
 
+TEST(ImagePreprocessingStage, TestRawImageSizeMismatchWithCroppingTarget) {
+  std::string image_path = testing::TempDir() + "/mismatch.rgb8";
+  std::ofstream stream(image_path, std::ios::out | std::ios::binary);
+  // 6 bytes = 2 pixels (if 3 channels)
+  stream.write("123456", 6);
+  stream.close();
+
+  ImagePreprocessingConfigBuilder builder(
+      std::string(kImagePreprocessingStageName), kTfLiteFloat32);
+  // Target size 2x2 = 4 pixels = 12 bytes.
+  builder.AddCroppingStep(/*width=*/2U, /*height=*/2U);
+  ImagePreprocessingStage stage(builder.build());
+  EXPECT_EQ(stage.Init(), kTfLiteOk);
+  stage.SetImagePath(&image_path);
+  EXPECT_EQ(stage.Run(), kTfLiteError);
+}
+
 }  // namespace
 }  // namespace evaluation
 }  // namespace tflite

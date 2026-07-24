@@ -74,7 +74,7 @@ class LayoutConstraint {
   // Return the priority of the current constraint. When conflicting constraints
   // are encountered, the higher priority one should win.
   int64_t priority() const { return priority_; }
-  bool IsDefaultLayout() const { return priority_ == kDefaultPriority; }
+  bool IsDefaultPriority() const { return priority_ == kDefaultPriority; }
 
   // The priority of all default layouts when not set explicitly.
   static constexpr int64_t kDefaultPriority = -2;

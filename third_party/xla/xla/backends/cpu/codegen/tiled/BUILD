@@ -20,6 +20,7 @@ py_test(
         "//xla/backends/cpu/testlib",
         "//xla/codegen/testlib",
         "@absl_py//absl/testing:absltest",
+        "@absl_py//absl/testing:parameterized",
     ],
 )
 

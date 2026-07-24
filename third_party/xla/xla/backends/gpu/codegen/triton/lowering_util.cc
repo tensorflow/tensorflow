@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/backends/gpu/codegen/triton/lowering_util.h"
 
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <string>
@@ -46,6 +47,7 @@ limitations under the License.
 #include "xla/hlo/analysis/indexing_map.h"
 #include "xla/hlo/analysis/interval.h"
 #include "xla/hlo/analysis/symbolic_map.h"
+#include "xla/permutation_util.h"
 #include "xla/stream_executor/gpu/tma_metadata.h"
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/tsl/platform/statusor.h"
@@ -170,6 +172,30 @@ llvm::SmallVector<int64_t> ComputeStrides(llvm::ArrayRef<int64_t> shape,
     stride *= shape[dim];
   }
   return result;
+}
+
+bool IsMajorToMinorLayout(llvm::ArrayRef<int64_t> layout) {
+  for (auto [i, value] : llvm::enumerate(layout)) {
+    if (value != layout.size() - 1 - i) {
+      return false;
+    }
+  }
+  return true;
+}
+
+llvm::SmallVector<mlir::Value> GetMajorToMinorOrder(
+    mlir::ValueRange values, llvm::ArrayRef<int64_t> layout) {
+  return GetMajorToMinorOrder(
+      llvm::ArrayRef<mlir::Value>(llvm::to_vector(values)), layout);
+}
+
+llvm::SmallVector<int32_t> GetInverseLayoutPermutation(
+    llvm::ArrayRef<int64_t> layout) {
+  auto reversed_layout = llvm::to_vector(layout);
+  std::reverse(reversed_layout.begin(), reversed_layout.end());
+  auto permutation =
+      llvm::to_vector_of<int32_t>(::xla::InversePermutation(reversed_layout));
+  return llvm::SmallVector<int32_t>(permutation.begin(), permutation.end());
 }
 
 llvm::SmallVector<unsigned> GetRetainedDims(
@@ -303,8 +329,17 @@ std::pair<mlir::Value, mlir::Value> CreateTensorOfPointersAndMask(
       upper_bound =
           arith::SubIOp::create(builder, upper_bound, cast_offsets[dim]);
       upper_bound = ttir::SplatOp::create(builder, i64_tile_type, upper_bound);
-      mlir::Value mask = arith::CmpIOp::create(
+      mlir::Value mask_right = arith::CmpIOp::create(
           builder, arith::CmpIPredicate::slt, range, upper_bound);
+
+      mlir::Value lower_bound =
+          arith::ConstantIntOp::create(builder, i64_type, 0);
+      lower_bound =
+          arith::SubIOp::create(builder, lower_bound, cast_offsets[dim]);
+      lower_bound = ttir::SplatOp::create(builder, i64_tile_type, lower_bound);
+      mlir::Value mask_left = arith::CmpIOp::create(
+          builder, arith::CmpIPredicate::sge, range, lower_bound);
+      mlir::Value mask = arith::AndIOp::create(builder, mask_left, mask_right);
 
       // Combine mask with previous iteration.
       mask_tile = add_if(arith::AndIOp(), mask, mask_tile);

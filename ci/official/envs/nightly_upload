@@ -15,7 +15,7 @@
 # IMPORTANT: trailing slash is required on GCS URIs, as it tells gcloud to
 # pretend the path is a directory.
 # 1. Upload nightlies
-TFCI_ARTIFACT_FINAL_GAR_ARGS="--repository-url https://us-python.pkg.dev/ml-oss-artifacts-transient/tf-nightly-testing-registry/ --verbose"
+TFCI_ARTIFACT_FINAL_GAR_ARGS="--repository-url https://us-python.pkg.dev/ml-oss-artifacts-published/tf-public-nightly-artifacts-registry/ --verbose"
 TFCI_ARTIFACT_FINAL_GCS_ENABLE=1
 TFCI_ARTIFACT_FINAL_GCS_SA_PATH="${KOKORO_KEYSTORE_DIR}/73361_tensorflow_release_binary_uploader_service_account"
 TFCI_ARTIFACT_FINAL_GCS_URI="gs://tensorflow/nightly/"

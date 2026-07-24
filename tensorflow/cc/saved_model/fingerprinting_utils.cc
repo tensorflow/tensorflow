@@ -451,6 +451,11 @@ absl::StatusOr<FingerprintDef> CreateFingerprintDefCpb(
       saved_model,
       PrunedSavedModel(export_dir, reader, chunks_info, chunk_metadata));
 
+  if (saved_model.meta_graphs_size() == 0) {
+    return absl::InvalidArgumentError(
+        "SavedModel (.cpb) contains no MetaGraphs.");
+  }
+
   TF_ASSIGN_OR_RETURN(
       uint64_t graph_def_program_hash,
       HashGraphDef(saved_model.mutable_meta_graphs(0)->mutable_graph_def(),

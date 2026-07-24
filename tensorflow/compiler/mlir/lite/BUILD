@@ -1,3 +1,18 @@
+# Copyright 2026 The TensorFlow Authors. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
+
 load("@bazel_skylib//lib:selects.bzl", "selects")
 load("@bazel_skylib//rules:build_test.bzl", "build_test")
 load("@bazel_skylib//rules:common_settings.bzl", "bool_flag")
@@ -2177,7 +2192,7 @@ cc_library(
     srcs = [
         "allocation.cc",
     ] + select({
-        ":tflite_mmap_disabled": [
+        ":tflite_file_mmap_disabled": [
             "mmap_allocation_disabled.cc",
         ],
         "//conditions:default": [
@@ -2272,6 +2287,19 @@ selects.config_setting_group(
     ],
 )
 # LINT.ThenChange(//tensorflow/lite/BUILD)
+
+# Governs selection of the file-backed mmap allocation implementation only.
+# Unlike ":tflite_mmap_disabled" (which also drives the -DTFLITE_MMAP_DISABLED
+# define used for anonymous scratch mmap in e.g. fully_connected_4bit.h), this
+# group intentionally excludes Windows, which now supports file-backed mmap via
+# CreateFileMapping/MapViewOfFile in mmap_allocation.cc.
+selects.config_setting_group(
+    name = "tflite_file_mmap_disabled",
+    match_any = [
+        ":fuchsia_mmap_disabled",
+        ":tflite_mmap_disabled_true",
+    ],
+)
 
 # LINT.IfChange(version)
 cc_library(

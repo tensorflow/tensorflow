@@ -61,7 +61,7 @@ inline void Mul(const ArithmeticParams& params,
       MatchingExtendedShapeFlatSize(input1_shape, input2_shape, output_shape);
   for (int i = 0; i < flat_size; ++i) {
     output_data[i] = ActivationFunctionWithMinMax<T>(
-        input1_data[i] * input2_data[i], output_activation_min,
+        WrappingMul<T>(input1_data[i], input2_data[i]), output_activation_min,
         output_activation_max);
   }
 }
@@ -132,8 +132,8 @@ BroadcastMul6DSlow(const ArithmeticParams& params,
   T output_activation_max;
   GetActivationParams(params, &output_activation_min, &output_activation_max);
   auto op = [output_activation_min, output_activation_max](T a, T b) {
-    return ActivationFunctionWithMinMax<T>(a * b, output_activation_min,
-                                           output_activation_max);
+    return ActivationFunctionWithMinMax<T>(
+        WrappingMul<T>(a, b), output_activation_min, output_activation_max);
   };
   BroadcastBinaryOpSimple(unextended_input1_shape, input1_data,
                           unextended_input2_shape, input2_data,

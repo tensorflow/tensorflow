@@ -317,6 +317,7 @@ cc_library(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
+        "@com_google_absl//absl/types:span",
         "@tsl//tsl/platform:fingerprint",
         "@tsl//tsl/platform:path",
     ],
@@ -341,6 +342,81 @@ xla_cc_test(
         "@com_google_absl//absl/status:statusor",
         "@com_google_googletest//:gtest_main",
         "@tsl//tsl/platform:protobuf",
+    ],
+)
+
+cc_library(
+    name = "autotune_cache_store",
+    hdrs = ["autotune_cache_store.h"],
+    deps = [
+        ":autotuner_cache_interface",
+        ":autotuning_proto_cc",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+    ],
+)
+
+cc_library(
+    name = "in_memory_store",
+    srcs = ["in_memory_store.cc"],
+    hdrs = ["in_memory_store.h"],
+    deps = [
+        ":autotune_cache_store",
+        ":autotuning_proto_cc",
+        "//xla/tsl/util:sorted_range",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/base:no_destructor",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/synchronization",
+    ],
+)
+
+xla_cc_test(
+    name = "in_memory_store_test",
+    srcs = ["in_memory_store_test.cc"],
+    deps = [
+        ":autotuning_proto_cc",
+        ":backends_proto_cc",
+        ":in_memory_store",
+        "//xla/tsl/platform:test",
+        "@com_google_absl//absl/status:status_matchers",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
+    name = "directory_store",
+    srcs = ["directory_store.cc"],
+    hdrs = ["directory_store.h"],
+    deps = [
+        ":autotune_cache_store",
+        ":autotuner_cache_interface",
+        ":autotuning_proto_cc",
+        "//xla/tsl/platform:env",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_macros",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/time",
+        "@tsl//tsl/platform:path",
+    ],
+)
+
+xla_cc_test(
+    name = "directory_store_test",
+    srcs = ["directory_store_test.cc"],
+    deps = [
+        ":autotuner_cache_interface",
+        ":autotuning_proto_cc",
+        ":backends_proto_cc",
+        ":directory_store",
+        "//xla/tsl/platform:test",
+        "//xla/tsl/testing:temporary_directory",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_matchers",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -454,9 +530,13 @@ xla_cc_test(
     deps = [
         ":autotuner_cache_interface",
         ":backends_proto_cc",
+        ":codegen_backend",
+        ":fake_codegen_backend",
         ":local_cache",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
+        "//xla/stream_executor:device_description",
+        "//xla/stream_executor/cuda:cuda_compute_capability",
         "//xla/tsl/platform:test",
         "@com_google_googletest//:gtest_main",
     ],

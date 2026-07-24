@@ -854,24 +854,34 @@ NonTrivialDimInfo GetNonTrivialDimInfo(
 //   * UNSUPPORTED:
 //     - Linear tile has stride 2.
 //
-absl::Status VerifyReshapeContiguity(
-    const MinimalReshape& minimal_reshape,
-    absl::Span<const DimTile> linear_side_tiles,
-    absl::Span<const DimTile> multidim_side_tiles,
-    absl::Span<const int64_t> multidim_side_dims) {
-  const MinimalReshapeCategory& category = minimal_reshape.category;
-  CHECK(category == MinimalReshapeCategory::kCollapseShape ||
-        category == MinimalReshapeCategory::kExpandShape);
-  const bool is_collapse = category == MinimalReshapeCategory::kCollapseShape;
+absl::Status VerifyReshapeContiguity(absl::Span<const int64_t> source_dims,
+                                     absl::Span<const DimTile> source_tiles,
+                                     absl::Span<const int64_t> target_dims,
+                                     absl::Span<const DimTile> target_tiles) {
+  const bool is_collapse = target_tiles.size() < source_tiles.size();
+
+  absl::Span<const int64_t> multidim_side_dims =
+      is_collapse ? source_dims : target_dims;
+  absl::Span<const DimTile> multidim_side_tiles =
+      is_collapse ? source_tiles : target_tiles;
+  absl::Span<const DimTile> linear_side_tiles =
+      is_collapse ? target_tiles : source_tiles;
+
   auto FormatError = [&](auto... args) {
-    return absl::UnimplementedError(absl::StrCat("Unsupported minimal reshape ",
-                                                 minimal_reshape.ToString(),
-                                                 ": ", args...));
+    return absl::UnimplementedError(absl::StrCat(
+        "Reshape is non-contiguous [", absl::StrJoin(source_dims, ", "),
+        "] -> [", absl::StrJoin(target_dims, ", "), "], tiling ",
+        absl::StrJoin(source_tiles, "; "), " -> ",
+        absl::StrJoin(target_tiles, "; "), ": ", args...));
   };
 
-  CHECK(linear_side_tiles.size() == 1 && !multidim_side_tiles.empty())
-      << "Invalid minimal reshape dimensions for " << minimal_reshape.ToString()
-      << ".";
+  if (linear_side_tiles.size() != 1) {
+    return FormatError("Expected linear side to have 1 tile, got ",
+                       linear_side_tiles.size(), ".");
+  }
+  if (multidim_side_tiles.empty()) {
+    return FormatError("Expected multidim side to be non-empty.");
+  }
 
   // ===========================================================================
   // 1. Stride Verification & Strided Dimension Identification
@@ -972,8 +982,7 @@ absl::Status VerifyReshapeContiguity(
   while (j >= 0) {
     auto size_val = TryGetConstantValue(multidim_side_tiles[j].size);
     if (!size_val.has_value()) {
-      return FormatError("Expect constant source tile size. Got: ",
-                         multidim_side_tiles[j].size.ToString());
+      break;
     }
     if (DimIsFullyCovered(multidim_side_tiles[j], multidim_side_dims[j])) {
       if (*size_val > 1) {
@@ -992,13 +1001,7 @@ absl::Status VerifyReshapeContiguity(
   // All dimensions before i are size 1 and all dimensions after j are full.
   // If i >= j, then only index k=i=j potentially partially tiled.
   if (i < j) {
-    return FormatError(
-        "Multiple dimensions are partially tiled: tile_size [",
-        absl::StrJoin(multidim_side_tiles, ", ",
-                      [](std::string* out, const DimTile& tile) {
-                        absl::StrAppend(out, tile.size.ToString());
-                      }),
-        "], dims [", absl::StrJoin(multidim_side_dims, ", "), "]");
+    return FormatError("Multiple dimensions are partially tiled");
   }
 
   return absl::OkStatus();
@@ -1071,8 +1074,8 @@ absl::Status PropagateTileThroughMinimalReshape(
       }
 
       return VerifyReshapeContiguity(
-          minimal_reshape, absl::MakeSpan(&target_dim_tiles[target_id], 1),
-          source_info.tiles, source_info.dims);
+          source_info.dims, source_info.tiles, target_info.dims,
+          absl::MakeSpan(&target_dim_tiles[target_id], 1));
     }
     case MinimalReshapeCategory::kExpandShape: {
       const DimTile& source_dt = source_info.tiles[0];
@@ -1101,8 +1104,8 @@ absl::Status PropagateTileThroughMinimalReshape(
         return absl::OkStatus();
       }
 
-      return VerifyReshapeContiguity(minimal_reshape, source_info.tiles,
-                                     target_info.tiles, target_info.dims);
+      return VerifyReshapeContiguity(source_info.dims, source_info.tiles,
+                                     target_info.dims, target_info.tiles);
     }
     // m-to-n mapping of the "significant" dimensions (size > 1).
     case MinimalReshapeCategory::kGeneric:

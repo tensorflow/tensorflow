@@ -140,6 +140,21 @@ struct GatherOpTest : public testing::TestWithParam<bool> {};
 
 INSTANTIATE_TEST_SUITE_P(ConstantTensor, GatherOpTest, testing::Bool());
 
+#if defined(TFLITE_ENABLE_EXTRA_REFERENCE_KERNELS)
+void TestFloat8Gather(TensorType tensor_type) {
+  GatherOpModel<uint8_t, int32_t> model(
+      {tensor_type, {2, 2}}, {TensorType_INT32, {2}},
+      /*constant_tensor=*/false, {0x00, 0x38, 0xbc, 0x7e}, {1, 0});
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
+  EXPECT_THAT(model.GetOutput(), ElementsAreArray({0xbc, 0x7e, 0x00, 0x38}));
+}
+
+TEST(GatherOpTest, Float8) {
+  TestFloat8Gather(TensorType_FLOAT8_E4M3FN);
+  TestFloat8Gather(TensorType_FLOAT8_E5M2);
+}
+#endif
+
 TEST_P(GatherOpTest, Shuffle) {
   bool constant_tensor = GetParam();
   GatherOpModel<float, int32_t> m({TensorType_FLOAT32, {2, 2}},

@@ -57,6 +57,14 @@ class GpuCostModelStatsCollectionTest
       &mlir_context_, use_experimental_tiling()};
 
  protected:
+  DebugOptions GetDebugOptionsForTest() const override {
+    DebugOptions debug_options =
+        HloHardwareIndependentTestBase::GetDebugOptionsForTest();
+    debug_options.set_xla_gpu_experimental_enable_tiling_propagation(
+        use_experimental_tiling());
+    return debug_options;
+  }
+
   mlir::MLIRContext mlir_context_;
 };
 

@@ -694,7 +694,8 @@ inline TfLiteStatus ScatterNd(const RuntimeShape& indices_shape,
       return kTfLiteError;
     }
     for (int j = 0; j < slice_size; j++) {
-      output_data[to_pos + j] += updates_data[i * slice_size + j];
+      output_data[to_pos + j] = WrappingAdd<UpdatesT>(
+          output_data[to_pos + j], updates_data[i * slice_size + j]);
     }
   }
   return kTfLiteOk;

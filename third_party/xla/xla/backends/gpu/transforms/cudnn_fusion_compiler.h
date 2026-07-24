@@ -43,9 +43,10 @@ class CuDnnFusionCompiler : public HloModulePass {
 
   absl::string_view name() const override { return "cudnn-fusion-compiler"; }
 
-  static int GetAvailablePlanCount(se::StreamExecutor* stream_exec,
-                                   const se::DeviceDescription& gpu_device_info,
-                                   const HloFusionInstruction& hlo);
+  static absl::StatusOr<int> GetAvailablePlanCount(
+      se::StreamExecutor* stream_exec,
+      const se::DeviceDescription& gpu_device_info,
+      const HloFusionInstruction& hlo);
 
  protected:
   absl::StatusOr<bool> RunImpl(

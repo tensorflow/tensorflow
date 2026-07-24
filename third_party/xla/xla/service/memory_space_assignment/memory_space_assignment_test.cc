@@ -658,6 +658,59 @@ TEST_F(MemorySpaceAssignmentTest, SyncSliceReplacementAfterPrefetch) {
   EXPECT_THAT(concat->operand(1), op::AsyncDone(op::AsyncStart(p0)));
 }
 
+TEST_F(MemorySpaceAssignmentTest, ViewExtendedUseTimeWalksTransitiveReaders) {
+  // A view (dus_view_color colored custom call) aliases its operand's storage
+  // without owning any, and the read side rewrite reattaches a view colored
+  // bitcast ON the view, so the real consumer reads the source THROUGH the
+  // bitcast.
+  absl::string_view hlo_string = R"hlo(
+  HloModule module, is_scheduled=true
+
+  ENTRY entry {
+    p0 = f32[4,4]{1,0} parameter(0)
+    p1 = f32[100]{0} parameter(1)
+    p3 = f32[16]{0} parameter(2)
+    source = f32[4,4]{1,0} negate(p0)
+    view = f32[4,4]{1,0:S(5)} custom-call(source), custom_call_target="tpu_get_view"
+    viewbc = f32[16]{0:S(5)} bitcast(view)
+    negate0 = f32[100]{0} negate(p1)
+    negate1 = f32[100]{0} negate(negate0)
+    negate2 = f32[100]{0} negate(negate1)
+    negate3 = f32[100]{0} negate(negate2)
+    consumer = f32[16]{0} add(viewbc, p3)
+    ROOT tuple = (f32[16]{0}, f32[100]{0}) tuple(consumer, negate3)
+  }
+  )hlo";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  absl::flat_hash_map<const HloInstruction*, int64_t> schedule;
+  int64_t time = 0;
+  for (const HloInstruction* instruction :
+       module->schedule()
+           .sequence(module->entry_computation())
+           .instructions()) {
+    schedule[instruction] = time++;
+  }
+  const HloInstruction* view = FindInstruction(module.get(), "view");
+  const HloInstruction* viewbc = FindInstruction(module.get(), "viewbc");
+  const HloInstruction* consumer = FindInstruction(module.get(), "consumer");
+  ASSERT_NE(view, nullptr);
+  ASSERT_NE(viewbc, nullptr);
+  ASSERT_NE(consumer, nullptr);
+  // The transitive walk must reach `consumer` through the view colored
+  // bitcast, well past the bitcast's own (early) schedule position.
+  EXPECT_GT(schedule.at(consumer), schedule.at(viewbc) + 1);
+  EXPECT_EQ(ViewExtendedTransitiveUseTime(view, /*view_color=*/5, schedule),
+            schedule.at(consumer));
+  // Readers missing from the schedule are ignored; a view whose readers are
+  // all unscheduled keeps its own time.
+  absl::flat_hash_map<const HloInstruction*, int64_t> only_viewbc = {
+      {viewbc, schedule.at(viewbc)}};
+  EXPECT_EQ(
+      ViewExtendedTransitiveUseTime(viewbc, /*view_color=*/5, only_viewbc),
+      schedule.at(viewbc));
+}
+
 TEST_F(MemorySpaceAssignmentTest,
        SyncDynamicSliceReplacementWithLateIndexOperand) {
   absl::string_view hlo_string = R"hlo(
@@ -6594,7 +6647,7 @@ TEST_F(MemorySpaceAssignmentTest, EvictionsShouldntBeDelayed) {
       continue;
     }
 
-    HloLiveRange::TimeBound time_bound =
+    HloLiveRange::LiveRangeBounds time_bound =
         hlo_live_range->buffer_live_ranges().at(value);
     for (int i = time_bound.start; i <= time_bound.end; ++i) {
       ++num_live_buffers_in_alternate_mem[i];
@@ -16722,7 +16775,7 @@ ENTRY entry {
   gte_param0_0 = f32[2,3]{1,0} get-tuple-element(prefetch_start_param0), index=0
   gte_param0_1 = s32[]{:T(128)S(2)} get-tuple-element(prefetch_start_param0), index=1
   prefetch_done_param0 = f32[2,3]{1,0} custom-call(p0, gte_param0_0, gte_param0_1), custom_call_target="tpu_custom_call", output_to_operand_aliasing={{}: (1, {})}
-  
+
   negate0 = f32[2,3]{1,0} negate(prefetch_done_param0)
   negate1 = f32[2,3]{1,0} negate(negate0)
   negate2 = f32[2,3]{1,0} negate(negate1)
