@@ -38,6 +38,7 @@ limitations under the License.
 #include "xla/hlo/utils/hlo_query.h"
 #include "xla/service/all_reduce_key.h"
 #include "xla/service/collective_combiner_utils.h"
+#include "xla/service/collective_ops_utils.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -222,6 +223,23 @@ absl::StatusOr<bool> AllReduceFolder::RunImpl(
       std::vector<HloInstruction*> folded_all_reduces = {ar0, ar1};
       new_ar->set_frontend_attributes(
           MergeFrontendAttributes(folded_all_reduces));
+
+      // Folding a serial chain does not combine independent collective
+      // buffers, so group keys do not gate this optimization. Preserve the key
+      // when it has one unambiguous representative; otherwise
+      // drop it instead of creating a synthetic comma-separated key.
+      const bool ar0_is_keyed = HasCollectiveGroupKey(*ar0);
+      const bool ar1_is_keyed = HasCollectiveGroupKey(*ar1);
+      if (ar0_is_keyed && !ar1_is_keyed) {
+        CopyCollectiveGroupKey(*ar0, *new_ar);
+      } else if (!ar0_is_keyed && ar1_is_keyed) {
+        CopyCollectiveGroupKey(*ar1, *new_ar);
+      } else if (ar0_is_keyed &&
+                 HaveCompatibleCollectiveGroupKeys(*ar0, *ar1)) {
+        CopyCollectiveGroupKey(*ar0, *new_ar);
+      } else if (ar0_is_keyed) {
+        ClearCollectiveGroupKey(*new_ar);
+      }
 
       RETURN_IF_ERROR(ar1->ReplaceAllUsesWith(new_ar));
       RETURN_IF_ERROR(computation->RemoveInstruction(ar1));

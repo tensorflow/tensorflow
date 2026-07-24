@@ -176,7 +176,7 @@ bool IsDynamicSliceCopyFusionAsyncOp(const HloInstruction& hlo) {
 
 bool IsCollectivesGroupAsyncStartOp(const HloInstruction& hlo) {
   return HloPredicateIsOp<HloOpcode::kAsyncStart>(&hlo) &&
-         hlo.frontend_attributes().map().contains(kCollectivesGroupAttr);
+         hlo.frontend_attributes().map().contains(kCollectiveGroupMarkerAttr);
 }
 
 bool IsCollectivesGroupAsyncDoneOp(const HloInstruction& hlo) {

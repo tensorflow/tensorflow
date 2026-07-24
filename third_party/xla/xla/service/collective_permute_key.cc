@@ -26,6 +26,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/service/collective_ops_utils.h"
 #include "xla/side_effect_util.h"
 #include "xla/xla_data.pb.h"
 
@@ -61,7 +62,13 @@ std::optional<CollectivePermuteKey> GetCollectivePermuteKey(
     }
   }
 
-  return CollectivePermuteKey{source_target_pairs, combiner_key};
+  std::string collective_group_key;
+  if (auto group_key = GetCollectiveGroupKey(*instruction)) {
+    collective_group_key = *group_key;
+  }
+
+  return CollectivePermuteKey{source_target_pairs, combiner_key,
+                              collective_group_key};
 }
 
 }  // namespace xla

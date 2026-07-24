@@ -30,6 +30,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/service/collective_ops_utils.h"
 #include "xla/service/collective_opt_utils.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/pattern_matcher.h"
@@ -83,7 +84,10 @@ AllGatherDynamicSlicePermutedOffsetSimplifierVisitor::HandleDynamicSlice(
         dynamic_slice->AddInstruction(HloInstruction::CreateCollectivePermute(
             dynamic_slice->shape(), all_gather->mutable_operand(0),
             offset_spec->permutation_pairs, all_gather->channel_id()));
-    return ReplaceInstruction(dynamic_slice, cp);
+    dynamic_slice->SetupDerivedInstruction(cp);
+    CopyCollectiveGroupKey(*all_gather, *cp);
+    return ReplaceInstruction(dynamic_slice, cp,
+                              /*preserve_frontend_attributes=*/false);
   }
 
   return absl::OkStatus();

@@ -124,7 +124,7 @@ std::optional<ExecutionScopeKind> IsExecutionScopeStart(
   if (auto* start = DynCast<HloAsyncStartInstruction>(hlo)) {
     return IsWrappedCollective(start) || IsCustomCollectiveOp(start) ||
                    start->frontend_attributes().map().contains(
-                       kCollectivesGroupAttr)
+                       kCollectiveGroupMarkerAttr)
                ? ExecutionScopeKind::kCommunication
                : ExecutionScopeKind::kCompute;
   }

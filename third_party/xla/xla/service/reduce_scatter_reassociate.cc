@@ -15,9 +15,15 @@ limitations under the License.
 
 #include "xla/service/reduce_scatter_reassociate.h"
 
+#include <cstdint>
 #include <optional>
 
+#include "absl/container/flat_hash_set.h"
+#include "absl/log/log.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "xla/tsl/platform/status_macros.h"
+#include "xla/core/collectives/reduction_kind.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -50,7 +56,7 @@ bool AreCompatible(const HloReduceScatterInstruction* rs0,
   auto kind0 = MatchReductionComputation(rs0->to_apply());
   auto dims_match = rs0->scatter_dimension() == rs1->scatter_dimension();
   return key0 && key1 && kind0 && *key0 == *key1 && kind0 == op_kind &&
-         dims_match;
+         dims_match && HaveCompatibleCollectiveGroupKeys(*rs0, *rs1);
 }
 
 }  // namespace
