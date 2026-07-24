@@ -27,7 +27,9 @@ from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
+from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
+from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import tensor_array_ops
@@ -257,12 +259,42 @@ class PyBuiltinsTest(test.TestCase):
       r = py_builtins.range_(2, 0, constant_op.constant(-1))
       self.assertAllEqual(self.evaluate(r), [2, 1])
 
+  def test_range_tensor_static_invalid_python_range_values(self):
+    r = py_builtins.range_(array_ops.identity(constant_op.constant(0.5)))
+    self.assertTrue(tensor_util.is_tf_type(r))
+    self.assertEqual(
+        py_builtins._tf_type_to_py_index(  # pylint: disable=protected-access
+            array_ops.identity(constant_op.constant([3]))), 3)
+
+  def test_range_symbolic_tensor_static_value(self):
+    @def_function.function(autograph=False)
+    def test_fn(x):
+      return constant_op.constant(
+          list(py_builtins.range_(array_ops.identity(constant_op.constant(3)))))
+
+    self.assertAllEqual(
+        self.evaluate(test_fn(constant_op.constant([1, 2, 3]))), [0, 1, 2])
+
   def test_range_tensor_empty_range(self):
     with self.session() as sess:
       r = py_builtins.range_(constant_op.constant(-3))
       self.assertAllEqual(self.evaluate(r), [])
       r = py_builtins.range_(5, constant_op.constant(2))
       self.assertAllEqual(self.evaluate(r), [])
+
+  def test_range_nested_static_outer_dynamic_inner(self):
+    @def_function.function(
+        input_signature=[tensor_spec.TensorSpec(shape=[None])])
+    def test_fn(x):
+      total = constant_op.constant(0, dtype=dtypes.int32)
+      for _ in py_builtins.range_(3):  # static outer -> Python range path
+        # dynamic inner -> tf.range path
+        inner = py_builtins.range_(array_ops.shape(x)[0])
+        total = total + math_ops.reduce_sum(inner)
+      return total
+
+    self.assertAllEqual(
+        self.evaluate(test_fn(constant_op.constant([0.0, 0.0, 0.0, 0.0]))), 18)
 
   def test_enumerate(self):
     self.assertListEqual(
