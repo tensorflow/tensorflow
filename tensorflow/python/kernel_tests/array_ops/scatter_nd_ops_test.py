@@ -650,6 +650,7 @@ class ScatterNdTest(test.TestCase, parameterized.TestCase):
         r"Dimensions \[\d\,\d\) of input\[shape="):
       self.scatter_nd(indices, updates, shape)
 
+  @test_util.run_in_graph_and_eager_modes
   def testUpdatesRankSmallerThanIndicesOuterDimsInvalid(self):
     # Regression test for
     # https://github.com/tensorflow/tensorflow/issues/93680: updates with
@@ -658,9 +659,12 @@ class ScatterNdTest(test.TestCase, parameterized.TestCase):
     indices = array_ops.zeros([4, 1, 1], dtypes.int32)
     updates = array_ops.zeros([4], dtypes.int32)
     shape = np.array([8])
+    # The message differs per path: the CPU/GPU kernel reports "rank at
+    # least", graph-mode shape inference reports "must match", and the
+    # tf2xla lowering reports "Must have updates.shape = ...".
     with self.assertRaisesWithPredicateMatch(
         (errors.InvalidArgumentError, ValueError),
-        r"rank at least|must match"):
+        r"rank at least|must match|Must have updates\.shape"):
       self.scatter_nd(indices, updates, shape)
 
   @parameterized.parameters(set((True, context.executing_eagerly())))
@@ -852,9 +856,12 @@ class ScatterNdTensorTest(test.TestCase):
     indices = constant_op.constant([[[4]], [[3]], [[1]], [[7]]])
     updates = constant_op.constant([9, 10, 11, 12])
     t = array_ops.ones([8], dtype=dtypes.int32)
+    # The message differs per path: the CPU/GPU kernel reports "rank at
+    # least", graph-mode shape inference reports "must match", and the
+    # tf2xla lowering reports "Must have updates.shape = ...".
     with self.assertRaisesWithPredicateMatch(
         (errors.InvalidArgumentError, ValueError),
-        r"rank at least|must match"):
+        r"rank at least|must match|Must have updates\.shape"):
       self.evaluate(array_ops.tensor_scatter_update(t, indices, updates))
 
   @test_util.run_in_graph_and_eager_modes
