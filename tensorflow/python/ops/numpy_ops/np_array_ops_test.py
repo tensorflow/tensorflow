@@ -616,6 +616,56 @@ class ArrayMethodsTest(test.TestCase):
     run_test([False, True], [[1, 2], [3, 4]], axis=0)
     run_test([False, True], [[1, 2], [3, 4]], axis=-1)
     run_test([False, True], [[1, 2], [3, 4]], axis=-2)
+    # Condition shorter than the compressed axis: `np.compress` ignores the
+    # trailing entries of `a`. Exercises the sliced (tightened-bound) path.
+    run_test([True, False, True], [1, 2, 3, 4, 5])
+    run_test([True], [1, 2, 3])
+    run_test([True, False], [[1, 2, 3], [4, 5, 6]], axis=1)
+    run_test([True], [[1, 2], [3, 4], [5, 6]], axis=0)
+
+  def testCompressJitCompile(self):
+    # Regression test for #122055: `compress` produced a dynamic size bounded by
+    # `a.shape[axis]` rather than `len(condition)`, so feeding its result into an
+    # op requiring a smaller static extent failed to compile under XLA even
+    # though eager execution succeeded. The condition is derived from the input
+    # so its selected count is data-dependent (not constant-folded away).
+    def f(x):
+      condition = x[:3] > 0.0  # data-dependent, static length 3
+      compressed = np_array_ops.compress(condition, x)  # bounded by len 3, not 5
+      return array_ops.broadcast_to(compressed, [3])
+
+    x = np_array_ops.array([10.0, 20.0, 30.0, 40.0, 50.0])
+    expected = f(x)
+    got = def_function.function(f, jit_compile=True)(x)
+    self.assertAllEqual(got, expected)
+
+  def testCompressDynamicShape(self):
+    # #122563: under `@tf.function` with dynamic (`None`) dimensions,
+    # `condition.shape[0]` / `a.shape[axis]` are `None` and cannot be compared
+    # in Python. Tracing with an unknown-length signature must succeed (no
+    # `None` comparison error) and, from a single trace, match `np.compress`
+    # across equal, shorter, and longer condition lengths.
+    @def_function.function(input_signature=[
+        tensor_spec.TensorSpec(shape=[None], dtype=dtypes.bool),
+        tensor_spec.TensorSpec(shape=[None], dtype=dtypes.float32),
+    ])
+    def f(condition, a):
+      return np_array_ops.compress(condition, a)
+
+    a = np.array([1., 2., 3., 4.], np.float32)
+    # Equal length.
+    self.assertAllEqual(
+        f(np.array([True, False, True, False]), a),
+        np.compress([True, False, True, False], a))
+    # Condition shorter than `a`: trailing entries of `a` are dropped.
+    self.assertAllEqual(
+        f(np.array([True, False]), a), np.compress([True, False], a))
+    # Condition longer than `a` (extra entry is False, so still valid in numpy):
+    # the old code hit `boolean_mask`'s "Dimensions must be equal" error here.
+    a3 = np.array([1., 2., 3.], np.float32)
+    self.assertAllEqual(
+        f(np.array([True, False, True, False]), a3),
+        np.compress([True, False, True, False], a3))
 
   def testCopy(self):
 
