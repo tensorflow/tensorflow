@@ -238,7 +238,10 @@ void DnnPoolingImpl(OpKernelContext* context, se::dnn::PoolingMode pooling_mode,
                     TensorFormat data_format, const Tensor& tensor_in,
                     const TensorShape& tensor_out_shape, bool propagate_nans,
                     Tensor* tensor_out) {
-  if (tensor_in.shape().num_elements() == 0) {
+  // cuDNN rejects a zero-sized window descriptor, and there is nothing to
+  // compute for an empty input or an empty output anyway.
+  if (tensor_in.shape().num_elements() == 0 ||
+      tensor_out_shape.num_elements() == 0) {
     return;
   }
 

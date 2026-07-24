@@ -764,6 +764,50 @@ TEST(CommonShapeFnsTest, Conv2DFormatsTest) {
   INFER_OK(op, "[1,1,4,4,32];[32,1,2,1,32]", "[d0_0,1,3,2,d0_4]");
 }
 
+// A filter overhanging the input by at most `stride` gives a zero-sized output
+// in the kernels, so shape inference must not reject it (b/195689143).
+TEST(CommonShapeFnsTest, Conv2DFilterLargerThanInputTest) {
+  ShapeInferenceTestOp op("Conv2D");
+  auto set_op = [&op](const std::vector<int32_t>& strides,
+                      const std::vector<int32_t>& dilations = {1, 1, 1, 1},
+                      const std::string& padding = "VALID",
+                      const std::vector<int32_t>& explicit_paddings = {}) {
+    TF_CHECK_OK(NodeDefBuilder("test", op.name)
+                    .Input("input", 0, DT_FLOAT)
+                    .Input("filter", 0, DT_FLOAT)
+                    .Attr("strides", strides)
+                    .Attr("dilations", dilations)
+                    .Attr("padding", padding)
+                    .Attr("explicit_paddings", explicit_paddings)
+                    .Attr("data_format", "NHWC")
+                    .Finalize(&op.node_def));
+  };
+
+  // 6x6 input, 7x7 filter, 1x1 stride.
+  set_op(/*strides=*/{{1, 1, 1, 1}});
+  INFER_OK(op, "[4,6,6,64];[7,7,64,128]", "[d0_0,0,0,d1_3]");
+  INFER_OK(op, "[32,20,20,3];[20,21,3,2]", "[d0_0,1,0,d1_3]");
+  INFER_OK(op, "[32,20,20,3];[21,20,3,2]", "[d0_0,0,1,d1_3]");
+  INFER_ERROR("Negative dimension size", op, "[4,6,6,64];[8,8,64,128]");
+
+  // An overhang of exactly `stride` is the last valid one.
+  set_op(/*strides=*/{{1, 4, 4, 1}});
+  INFER_OK(op, "[4,4,4,3];[8,8,3,2]", "[d0_0,0,0,d1_3]");
+  INFER_ERROR("Negative dimension size", op, "[4,4,4,3];[9,9,3,2]");
+
+  // Dilation is applied before the filter is compared to the input.
+  set_op(/*strides=*/{{1, 1, 1, 1}}, /*dilations=*/{{1, 2, 2, 1}});
+  INFER_OK(op, "[4,6,6,3];[4,4,3,2]", "[d0_0,0,0,d1_3]");
+  INFER_ERROR("Negative dimension size", op, "[4,6,6,3];[5,5,3,2]");
+
+  // Explicit padding is counted towards the input size.
+  set_op(/*strides=*/{{1, 1, 1, 1}}, /*dilations=*/{{1, 1, 1, 1}},
+         /*padding=*/"EXPLICIT",
+         /*explicit_paddings=*/{0, 0, 2, 2, 2, 2, 0, 0});
+  INFER_OK(op, "[32,20,20,3];[24,25,3,2]", "[d0_0,1,0,d1_3]");
+  INFER_ERROR("Negative dimension size", op, "[32,20,20,3];[24,26,3,2]");
+}
+
 class Conv2DShapeTest : public ::testing::TestWithParam<std::string> {};
 
 TEST_P(Conv2DShapeTest, Conv2DShapeTest) {

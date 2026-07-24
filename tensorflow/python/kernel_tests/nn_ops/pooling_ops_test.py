@@ -802,7 +802,7 @@ class PoolingTest(test.TestCase, parameterized.TestCase):
           (errors_impl.InvalidArgumentError, ValueError),
           "Negative dimension size"):
         t = self.evaluate(
-            nn_ops.max_pool(t, ksize=[1, 1, 2, 1], strides=1, padding="VALID"))
+            nn_ops.max_pool(t, ksize=[1, 1, 3, 1], strides=1, padding="VALID"))
 
   @test_util.run_in_graph_and_eager_modes
   def testMaxPoolWithArgmaxKsizeOverflow(self):
@@ -2416,13 +2416,13 @@ class PoolingTest(test.TestCase, parameterized.TestCase):
           sess.run(
               pool_func(
                   array_ops.placeholder(dtypes.float32, shape=[32, 20, 20, 3]),
-                  ksize=[1, 20, 21, 1],
+                  ksize=[1, 20, 22, 1],
                   strides=[1, 1, 1, 1],
                   padding="VALID"))
         with self.assertRaisesRegex(ValueError, "Negative dimension size"):
           pool_func(
               array_ops.placeholder(dtypes.float32, shape=[32, 20, 20, 3]),
-              ksize=[1, 21, 20, 1],
+              ksize=[1, 22, 20, 1],
               strides=[1, 1, 1, 1],
               padding="VALID")
 
