@@ -17,6 +17,7 @@ limitations under the License.
 #include <algorithm>
 #include <tuple>
 
+#include "absl/strings/match.h"
 #include "tensorflow/cc/ops/standard_ops.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -143,7 +144,7 @@ TEST(ImmutableConstantOpTest, ExecutionError) {
   // Check that the run returned error.
   EXPECT_EQ(
       session->Run({}, {result.node()->name() + ":0"}, {}, &outputs).code(),
-      error::INTERNAL);
+      absl::StatusCode::kInvalidArgument);
 }
 
 absl::Status CreateTempFileFloat(Env* env, float value, uint64_t size,
@@ -224,6 +225,43 @@ TEST(ImmutableConstantOpTest, FromFileStringUnimplmented) {
   EXPECT_EQ(
       session->Run({}, {result.node()->name() + ":0"}, {}, &outputs).code(),
       error::UNIMPLEMENTED);
+}
+
+TEST(ImmutableConstantOpTest, LargeShapeDimensionsOverflow) {
+  // Test that large shape dimensions that would overflow are caught
+  // and reported as an error rather than causing a segfault
+  Env* env = Env::Default();
+  auto root = Scope::DisabledShapeInferenceScope().ExitOnError();
+
+  // Create a small dummy file
+  std::string dummy_file;
+  TF_ASSERT_OK(CreateTempFileBadString(env, '\x00', 1, "overflow_test", 
+                                       &dummy_file));
+
+  // These dimensions multiply to 4611681483743124083 elements, which still
+  // fits in int64. The overflow is triggered later in the kernel, when that
+  // element count is multiplied by the 8-byte element size of DT_DOUBLE, so
+  // this exercises the byte-size overflow check. Note we can't pick dimensions
+  // whose product itself overflows int64: TensorShape construction rejects
+  // those (via TF_CHECK_OK), which would abort before the op ever runs.
+  const TensorShape kOverflowShape({2147482841, 2147485163});
+  
+  auto result = ops::ImmutableConst(root, DT_DOUBLE, kOverflowShape, 
+                                    dummy_file);
+  GraphDef graph_def;
+  TF_ASSERT_OK(root.ToGraphDef(&graph_def));
+  SessionOptions session_options;
+  session_options.env = Env::Default();
+  std::unique_ptr<Session> session(NewSession(session_options));
+  ASSERT_TRUE(session != nullptr) << "Failed to create session";
+  TF_ASSERT_OK(session->Create(graph_def)) << "Can't create test graph";
+  std::vector<Tensor> outputs;
+  
+  // Check that the run returns an InvalidArgument error, not a segfault
+  auto status = session->Run({}, {result.node()->name() + ":0"}, {}, &outputs);
+  EXPECT_EQ(status.code(), error::INVALID_ARGUMENT);
+  EXPECT_TRUE(absl::StrContains(status.message(), "overflow") ||
+              absl::StrContains(status.message(), "does not match"));
 }
 
 }  // namespace
