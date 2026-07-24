@@ -5249,6 +5249,18 @@ TEST(HloParserSingleOpTest, ConvolutionWithKind) {
   EXPECT_EQ(convolution->convolution_kind(), CONVOLUTION_KIND_FPROP);
 }
 
+TEST(HloParserSingleOpTest, ConvolutionWithAlgorithm) {
+  const std::string text =
+      R"(%convolution = f32[1,2,1]{2,0,1} convolution(f32[1,2,1]{2,0,1} %copy, f32[1,1,1]{2,1,0} %filter), window={size=1}, dim_labels=b0f_0io->b0f, algorithm=dot_bf16_bf16_f32)";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(text));
+  const HloComputation* computation = module->entry_computation();
+  ASSERT_NE(computation, nullptr);
+  auto* convolution =
+      Cast<HloConvolutionInstruction>(computation->root_instruction());
+  EXPECT_EQ(convolution->precision_config().algorithm(),
+            PrecisionConfig::ALG_DOT_BF16_BF16_F32);
+}
+
 TEST(HloParserSingleOpTest, MultipleOpsProducesError) {
   const std::string text = R"(
     param = f32[2,5,1,3] parameter(0)
