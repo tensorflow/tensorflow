@@ -740,7 +740,7 @@ void ExecutorState<PropagatorStateType>::Process(const TaggedNode& tagged_node,
 template <class PropagatorStateType>
 void ExecutorState<PropagatorStateType>::ProcessInline(
     TaggedNodeReadyQueue* inline_ready, int64_t scheduled_nsec) {
-  WithContext wc(context_);
+  WithContext wc(std::move(context_));
   TaggedNodeSeq ready;
 
   // Parameters passed to OpKernel::Compute.
