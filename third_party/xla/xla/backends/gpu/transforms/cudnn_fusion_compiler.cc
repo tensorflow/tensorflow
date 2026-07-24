@@ -514,11 +514,12 @@ class ConvDimensionAdapter {
     if (ShapeUtil::IsScalar(hlo.shape())) {
       Result result;
       // cuDNN convolution tensors have a batch and a feature dimension in
-      // addition to spatial dimensions.
-      result.sizes =
-          std::vector<int64_t>(dums_.input_spatial_dimensions_size() + 2, 1);
-      result.strides =
-          std::vector<int64_t>(dums_.input_spatial_dimensions_size() + 2, 1);
+      // addition to spatial dimensions (at least 2 spatial dimensions for
+      // cuDNN).
+      int64_t spatial_dims =
+          std::max<int64_t>(2, dums_.input_spatial_dimensions_size());
+      result.sizes = std::vector<int64_t>(spatial_dims + 2, 1);
+      result.strides = std::vector<int64_t>(spatial_dims + 2, 1);
       return result;
     }
     // Placeholder FP32 data type here, it is not used.
@@ -541,6 +542,11 @@ class ConvDimensionAdapter {
       result.sizes.push_back(logical_dims[dums_.input_spatial_dimensions(i)]);
       result.strides.push_back(
           logical_strides[dums_.input_spatial_dimensions(i)]);
+    }
+    // cuDNN frontend expects tensor rank to be at least 4 (2 spatial dims).
+    while (result.sizes.size() < 4) {
+      result.sizes.push_back(1);
+      result.strides.push_back(1);
     }
     return result;
   }
@@ -939,6 +945,14 @@ absl::StatusOr<se::gpu::CudnnGraph> HloFusionToCuDnnGraph(
         post_padding.push_back(dim.padding_high());
         stride.push_back(dim.stride());
         dilation.push_back(dim.window_dilation());
+      }
+      // cuDNN frontend expects at least 2 spatial dimensions for conv
+      // operations.
+      while (pre_padding.size() < 2) {
+        pre_padding.push_back(0);
+        post_padding.push_back(0);
+        stride.push_back(1);
+        dilation.push_back(1);
       }
       const auto compute_dtype =
           GetComputeDataType(hlo->shape().element_type());
