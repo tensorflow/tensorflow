@@ -659,10 +659,25 @@ xla_cc_test(
 )
 
 cc_library(
+    name = "cudnn_fusion_utils",
+    srcs = ["cudnn_fusion_utils.cc"],
+    hdrs = ["cudnn_fusion_utils.h"],
+    deps = [
+        "//xla:shape_util",
+        "//xla/hlo/analysis:hlo_reachability",
+        "//xla/hlo/ir:hlo",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/functional:function_ref",
+        "@com_google_absl//absl/log:check",
+    ],
+)
+
+cc_library(
     name = "conv_fusion_rewriter",
     srcs = ["conv_fusion_rewriter.cc"],
     hdrs = ["conv_fusion_rewriter.h"],
     deps = [
+        ":cudnn_fusion_utils",
         "//xla:shape_util",
         "//xla:util",
         "//xla:xla_data_proto_cc",
