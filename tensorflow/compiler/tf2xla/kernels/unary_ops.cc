@@ -27,6 +27,7 @@ limitations under the License.
 #include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/types.h"
 
 namespace tensorflow {
 namespace {
@@ -83,7 +84,21 @@ XLAJIT_MAKE_UNARY(PopulationCount,
 XLAJIT_MAKE_UNARY(Neg, -x);
 
 XLAJIT_MAKE_UNARY(Rint, xla::RoundToEven(x));
-XLAJIT_MAKE_UNARY(Round, xla::RoundToEven(x));
+
+class RoundOp : public XlaOpKernel {
+ public:
+  explicit RoundOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {}
+  void Compile(XlaOpKernelContext* ctx) override {
+    xla::XlaOp x = ctx->Input(0);
+    // Round on integers is a no-op; xla::RoundToEven rejects non-float types.
+    if (DataTypeIsInteger(ctx->input_type(0))) {
+      ctx->SetOutput(0, x);
+    } else {
+      ctx->SetOutput(0, xla::RoundToEven(x));
+    }
+  }
+};
+REGISTER_XLA_OP(Name("Round"), RoundOp);
 
 REGISTER_XLA_OP(Name("Rsqrt"), MlirXlaOpKernel);
 

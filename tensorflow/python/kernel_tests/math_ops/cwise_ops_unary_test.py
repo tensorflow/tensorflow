@@ -681,5 +681,13 @@ class UnaryOpTest(test.TestCase):
     self.assertLess(err, 1e-3)
 
 
+  @test_util.run_in_graph_and_eager_modes
+  def testRoundInt(self):
+    for dtype in [dtypes_lib.int32, dtypes_lib.int64]:
+      inputs = constant_op.constant([-3, 1, 0, -1], dtype=dtype)
+      outputs = gen_math_ops.round(x=inputs)
+      self.assertAllEqual([-3, 1, 0, -1], self.evaluate(outputs))
+
+
 if __name__ == "__main__":
   test.main()
