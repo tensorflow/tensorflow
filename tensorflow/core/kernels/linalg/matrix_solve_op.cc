@@ -247,6 +247,25 @@ class MatrixSolveOpGpu : public AsyncOpKernel {
           solver->GetrfBatched(n, input_copy_ptrs_base, n, pivots_mat.data(),
                                &dev_info.back(), batch_size),
           done);
+      // Check for singularity before proceeding to the solve step.
+      // GetrfBatched writes per-batch info to device memory; copy it to
+      // host and verify that all info values are <= 0 (info > 0 indicates
+      // a singular matrix).
+      {
+        bool copy_ok = true;
+        auto host_getrf_info = dev_info.back().CopyToHost(&copy_ok);
+        OP_REQUIRES_ASYNC(
+            context, copy_ok,
+            errors::Internal("Failed to copy getrfBatched info to host"),
+            done);
+        auto* stream = context->op_device_context()->stream();
+        OP_REQUIRES_ASYNC(context, stream->BlockHostUntilDone().ok(),
+                          errors::Internal("Failed to sync stream"), done);
+        for (int i = 0; i < batch_size; ++i) {
+          OP_REQUIRES_ASYNC(context, host_getrf_info(i) <= 0,
+                            errors::InvalidArgument(kErrMsg), done);
+        }
+      }
     } else {
       // For small batch sizes or large matrices, we use the non-batched
       // interface from cuSolver, which is much faster for large matrices.
