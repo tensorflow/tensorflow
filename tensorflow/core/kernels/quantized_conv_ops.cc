@@ -581,10 +581,13 @@ class QuantizedConv2DOp : public OpKernel {
     OP_REQUIRES_OK(context, GetWindowedOutputSize(
                                 input_cols, filter_cols, /*dilation_rate=*/1,
                                 stride, padding_, &out_cols, &pad_cols));
-    CHECK_GT(batch, 0);
-    CHECK_GT(out_rows, 0);
-    CHECK_GT(out_cols, 0);
-    CHECK_GT(out_depth, 0);
+    // This kernel has no empty-output path, so reject instead of aborting the
+    // process: a filter larger than the input gives out_rows/out_cols == 0.
+    OP_REQUIRES(
+        context, batch > 0 && out_rows > 0 && out_cols > 0 && out_depth > 0,
+        absl::InvalidArgumentError(absl::StrCat(
+            "QuantizedConv2D requires a non-empty output, but got [", batch, ",",
+            out_rows, ",", out_cols, ",", out_depth, "]")));
     TensorShape out_shape({batch, out_rows, out_cols, out_depth});
 
     // Output tensor is of the following dimensions:

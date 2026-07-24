@@ -963,6 +963,7 @@ cc_library(
         ":tensor",
         ":tensor_shape",
         "//tensorflow/core/lib/core:errors",
+        "//tensorflow/core/lib/math:math_util",
         "//tensorflow/core/platform:status",
         "//tensorflow/core/util:padding",
     ],

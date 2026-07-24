@@ -18,8 +18,10 @@ limitations under the License.
 #include <array>
 
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/lib/math/math_util.h"
 
 namespace tensorflow {
+
 absl::Status GetWindowedOutputSizeVerbose(
     int64_t input_size, int64_t filter_size, int64_t dilation_rate,
     int64_t stride, Padding padding_type, int64_t* output_size,
@@ -37,13 +39,16 @@ absl::Status GetWindowedOutputSizeVerbose(
   int64_t effective_filter_size = (filter_size - 1) * dilation_rate + 1;
   switch (padding_type) {
     case Padding::VALID:
-      *output_size = (input_size - effective_filter_size + stride) / stride;
+      // Floor, not truncation, so a too-large filter stays negative below.
+      *output_size = MathUtil::FloorOfRatio(
+          input_size - effective_filter_size + stride, stride);
       *padding_before = *padding_after = 0;
       break;
     case Padding::EXPLICIT:
-      *output_size = (input_size + *padding_before + *padding_after -
-                      effective_filter_size + stride) /
-                     stride;
+      *output_size = MathUtil::FloorOfRatio(
+          input_size + *padding_before + *padding_after -
+              effective_filter_size + stride,
+          stride);
       break;
     case Padding::SAME:
       *output_size = (input_size + stride - 1) / stride;
