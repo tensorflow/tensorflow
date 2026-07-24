@@ -5002,11 +5002,17 @@ TEST_F(LatencyHidingSchedulerTest, ValidScheduleWithRandomPreferences) {
   TF_ASSERT_OK_AND_ASSIGN(
       auto sched_state,
       scheduler_core->MakeSchedulingState(hlo_module->entry_computation()));
-  auto result = scheduler->ScheduleWithPreferences(
-      hlo_module.get(), random_preferences, computation, sched_state);
+  sched_state->graph_processing_hook =
+      [&random_preferences](HloScheduleGraph* graph) -> absl::Status {
+    graph->SetPreferences(random_preferences);
+    return absl::OkStatus();
+  };
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto new_schedule,
+      scheduler_core->ScheduleComputation(computation, sched_state));
 
   // Set the new schedule.
-  hlo_module->schedule().set_sequence(computation, result->first);
+  hlo_module->schedule().set_sequence(computation, new_schedule);
 
   // Even with random preferences values LHS will always produce a valid
   // schedule.
@@ -5068,21 +5074,49 @@ TEST_F(LatencyHidingSchedulerTest, MultipleAttemptsConsistentResults) {
   TF_ASSERT_OK_AND_ASSIGN(auto sched_state,
                           scheduler_core->MakeSchedulingState(computation));
 
+  auto set_preferences =
+      [&random_preferences](HloScheduleGraph* graph) -> absl::Status {
+    graph->SetPreferences(random_preferences);
+    return absl::OkStatus();
+  };
+
   // First attempt
-  auto result1 = scheduler->ScheduleWithPreferences(
-      hlo_module.get(), random_preferences, computation, sched_state);
-  TF_ASSERT_OK(result1.status());
+  sched_state->graph_processing_hook = set_preferences;
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto new_schedule1,
+      scheduler_core->ScheduleComputation(computation, sched_state));
+
+  DefaultSchedulerCore::SchedulingState* default_sched_state =
+      dynamic_cast<DefaultSchedulerCore::SchedulingState*>(sched_state.get());
+  DefaultSchedulerCore* default_scheduler_core =
+      dynamic_cast<DefaultSchedulerCore*>(scheduler_core.get());
+
+  auto stats1 = LatencyHidingScheduler::LatencyHidingStatistics(
+      computation, new_schedule1, scheduler->scheduling_context(),
+      default_scheduler_core ? default_scheduler_core->GetModulePressureState()
+                             : nullptr,
+      default_sched_state ? &default_sched_state->memory_pressure_tracker
+                          : nullptr,
+      sched_state);
 
   // Second attempt with the SAME preferences and SAME sched_state
-  auto result2 = scheduler->ScheduleWithPreferences(
-      hlo_module.get(), random_preferences, computation, sched_state);
-  TF_ASSERT_OK(result2.status());
+  sched_state->graph_processing_hook = set_preferences;
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto new_schedule2,
+      scheduler_core->ScheduleComputation(computation, sched_state));
+
+  auto stats2 = LatencyHidingScheduler::LatencyHidingStatistics(
+      computation, new_schedule2, scheduler->scheduling_context(),
+      default_scheduler_core ? default_scheduler_core->GetModulePressureState()
+                             : nullptr,
+      default_sched_state ? &default_sched_state->memory_pressure_tracker
+                          : nullptr,
+      sched_state);
 
   // Verify that both attempts produced identical schedules
-  EXPECT_EQ(result1->first, result2->first);
-  EXPECT_EQ(result1->second.peak_memory, result2->second.peak_memory);
-  EXPECT_EQ(result1->second.total_wasted_cycles,
-            result2->second.total_wasted_cycles);
+  EXPECT_EQ(new_schedule1, new_schedule2);
+  EXPECT_EQ(stats1.memory_pressure_peak, stats2.memory_pressure_peak);
+  EXPECT_EQ(stats1.GetTotalWastedCycles(), stats2.GetTotalWastedCycles());
 }
 
 // Check that "keep_original_sequence_order_in_group" frontend attribute takes
