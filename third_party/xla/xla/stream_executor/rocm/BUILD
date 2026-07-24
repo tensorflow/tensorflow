@@ -150,6 +150,8 @@ cc_library(
         ":rocm_timer",
         ":rocm_version_parser",
         ":rocm_xgmi_topology",
+        "//xla:util",
+        "//xla/backends/gpu/collectives:gpu_collectives",
         "//xla/stream_executor:activate_context",
         "//xla/stream_executor:blas",
         "//xla/stream_executor:command_buffer",
@@ -201,6 +203,7 @@ cc_library(
         "@com_google_absl//absl/types:span",
         "@local_config_rocm//rocm:hip",  # buildcleaner: keep
         "@local_config_rocm//rocm:rocm_headers",
+        "@tsl//tsl/platform:casts",
         "@tsl//tsl/platform:fingerprint",
         "@tsl//tsl/platform:numbers",
         "@tsl//tsl/platform:platform_port",

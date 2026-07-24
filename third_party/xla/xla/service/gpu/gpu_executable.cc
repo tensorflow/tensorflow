@@ -731,20 +731,12 @@ absl::Status GpuExecutable::ExecuteThunksImpl(
   // A state container for this execution.
   Thunk::ExecutionScopedState execution_scoped_state;
 
-  // Parameters for executing collective operations.
-  std::optional<std::string> collectives_impl_name;
-  if (debug_options &&
-      !debug_options->xla_gpu_collectives_implementation().empty()) {
-    collectives_impl_name = debug_options->xla_gpu_collectives_implementation();
-  }
-
-  ASSIGN_OR_RETURN(
-      CollectiveParams collective_params,
-      CollectiveParams::Create(
-          *run_options, communication_streams.streams,
-          LocalDeviceId(main_stream->parent()->device_ordinal()),
-          std::move(collectives_impl_name), collective_max_nchannels,
-          p2p_max_nchannels, collective_use_minimal_resource));
+  ASSIGN_OR_RETURN(CollectiveParams collective_params,
+                   CollectiveParams::Create(
+                       *run_options, communication_streams.streams,
+                       LocalDeviceId(main_stream->parent()->device_ordinal()),
+                       collective_max_nchannels, p2p_max_nchannels,
+                       collective_use_minimal_resource));
 
   CollectiveCliqueRequests collective_clique_requests;
   CollectiveMemoryRequests collective_memory_requests(buffer_allocations);
