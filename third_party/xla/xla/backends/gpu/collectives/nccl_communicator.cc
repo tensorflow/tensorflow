@@ -84,10 +84,22 @@ se::Stream* ToStream(const Communicator::Executor& executor) {
   return absl::down_cast<const GpuCollectives::Executor&>(executor).stream();
 }
 
+void SetDevCommGinConnection(ncclDevCommRequirements& reqs, bool use_gin,
+                             bool gin_connection_full) {
+#if NCCL_VERSION_CODE >= 22907
+  reqs.ginConnectionType = (use_gin && gin_connection_full)
+                               ? NCCL_GIN_CONNECTION_FULL
+                               : NCCL_GIN_CONNECTION_NONE;
+#elif NCCL_VERSION_CODE >= 22900
+  reqs.ginForceEnable = use_gin && gin_connection_full;
+#endif
+}
+
 NcclCapabilities GetCapabilities(std::shared_ptr<NcclCommState> comm_state) {
 #if NCCL_VERSION_CODE >= 22907
   bool support_device_comm = false;
   bool support_one_sided_comm = false;
+  bool support_gin = false;
   std::string one_sided_comm_unsupported_reason = "";
 
   ncclCommProperties_t props = NCCL_COMM_PROPERTIES_INITIALIZER;
@@ -98,6 +110,7 @@ NcclCapabilities GetCapabilities(std::shared_ptr<NcclCommState> comm_state) {
       return {
           /*supports_device_comm=*/false,
           /*supports_one_sided_comm=*/false,
+          /*supports_gin=*/false,
           /*one_sided_comm_unsupported_reason=*/
           absl::StrFormat("NCCL failed to query communicator properties: %s",
                           ncclGetErrorString(status)),
@@ -121,15 +134,23 @@ NcclCapabilities GetCapabilities(std::shared_ptr<NcclCommState> comm_state) {
     support_device_comm = true;
   }
 
+  // ginType reports FULL any-to-any GIN; rail-only support lives in
+  // railedGinType, which we skip since our kernels need full connectivity.
+  if (props.ginType != NCCL_GIN_TYPE_NONE) {
+    support_gin = true;
+  }
+
   return {
       /*supports_device_comm=*/support_device_comm,
       /*supports_one_sided_comm=*/support_one_sided_comm,
+      /*supports_gin=*/support_gin,
       /*one_sided_comm_unsupported_reason=*/one_sided_comm_unsupported_reason,
   };
 #elif NCCL_VERSION_CODE >= 22900
   return {
       /*supports_device_comm=*/true,
       /*supports_one_sided_comm=*/false,
+      /*supports_gin=*/false,
       /*one_sided_comm_unsupported_reason=*/
       absl::StrFormat("NCCL >= 2.29.7 is required (current: %d)",
                       NCCL_VERSION_CODE),
@@ -138,6 +159,7 @@ NcclCapabilities GetCapabilities(std::shared_ptr<NcclCommState> comm_state) {
   return {
       /*supports_device_comm=*/true,
       /*supports_one_sided_comm=*/false,
+      /*supports_gin=*/false,
       /*one_sided_comm_unsupported_reason=*/
       absl::StrFormat("NCCL >= 2.29.0 is required (current: %d)",
                       NCCL_VERSION_CODE),
@@ -146,6 +168,7 @@ NcclCapabilities GetCapabilities(std::shared_ptr<NcclCommState> comm_state) {
   return {
       /*supports_device_comm=*/false,
       /*supports_one_sided_comm=*/false,
+      /*supports_gin=*/false,
       /*one_sided_comm_unsupported_reason=*/
       absl::StrFormat("NCCL >= 2.29.0 is required (current: %d)",
                       NCCL_VERSION_CODE),
@@ -175,11 +198,16 @@ NcclCommunicator::NcclCommunicator(se::StreamExecutor* stream_executor,
       cancel_(std::move(cancel)) {
   capabilities_ = GetCapabilities(comm_);
   XLA_VLOG_DEVICE(1, stream_executor_->device_ordinal())
-      << absl::StreamFormat("Created NCCL communicator %v", *this);
+      << absl::StreamFormat("Created NCCL communicator %v (gin=%d)", *this,
+                            capabilities_.supports_gin);
 }
 
 bool NcclCommunicator::SupportsDeviceComm() const {
   return capabilities_.supports_device_comm;
+}
+
+bool NcclCommunicator::SupportsGin() const {
+  return capabilities_.supports_gin;
 }
 
 absl::StatusOr<std::unique_ptr<GpuDeviceCommunicator>>
@@ -1152,10 +1180,32 @@ NcclDeviceCommunicator::CreateFrom(const NcclCommunicator& comm,
 
   auto activation = comm.stream_executor()->Activate();
 
+  const bool gin_requested = requirements.gin_connection_full ||
+                             requirements.gin_signal_count > 0 ||
+                             requirements.rail_gin_barrier_count > 0;
+  const bool use_gin = gin_requested && comm.SupportsGin();
+  if (gin_requested && !use_gin) {
+    return Internal(
+        "Device communicator requested GIN resources (%v) on %s but the NCCL "
+        "communicator does not support GIN. Callers must gate GIN-using device "
+        "kernels on NcclCommunicator::SupportsGin().",
+        requirements, comm.ToString());
+  }
+
   ncclDevCommRequirements reqs{};
   memset(&reqs, 0, sizeof(reqs));
 #if NCCL_VERSION_CODE >= 22900
-  reqs = NCCL_DEV_COMM_REQUIREMENTS_INITIALIZER;
+  if (use_gin) {
+    reqs = NCCL_DEV_COMM_REQUIREMENTS_INITIALIZER;
+    reqs.barrierCount = requirements.barrier_count;
+    reqs.railGinBarrierCount = requirements.rail_gin_barrier_count;
+    reqs.ginSignalCount = requirements.gin_signal_count;
+    SetDevCommGinConnection(reqs, use_gin, requirements.gin_connection_full);
+  } else {
+    reqs.size = sizeof(reqs);
+    reqs.magic = NCCL_API_MAGIC;
+    reqs.version = NCCL_VERSION_CODE;
+  }
 #endif
   reqs.lsaBarrierCount = requirements.lsa_barrier_count;
 

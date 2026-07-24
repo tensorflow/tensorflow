@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_BACKENDS_GPU_RUNTIME_RAGGED_ALL_TO_ALL_THUNK_H_
 #define XLA_BACKENDS_GPU_RUNTIME_RAGGED_ALL_TO_ALL_THUNK_H_
 
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <memory>
@@ -69,6 +70,10 @@ struct RaggedAllToAllConfig {
 
   CollectiveThunk::CollectivesMode collectives_mode =
       DebugOptions::COLLECTIVES_PRIVATE_MEMORY;
+
+  // If true, the thunk will use the device-initiated (NCCL GIN + LSA) kernel
+  // for ragged-all-to-all when symmetric buffers are available.
+  bool use_device_kernel = false;
 
   // If set, this will be used to determine if optimized kernels that assume a
   // fast interconnect can be used.
@@ -173,6 +178,50 @@ class RaggedAllToAllThunk : public CollectiveThunk {
     return config_.use_multi_gpu_barrier_with_nccl_in_one_shot_kernel;
   }
 
+  bool UsesDeviceKernel() const {
+    return config_.use_device_kernel && config_.config.use_symmetric_buffer;
+  }
+
+  // Number of per-CTA barrier/signal slots reserved when creating the device
+  // communicator. The kernel indexes its cooperative barrier by blockIdx.x, so
+  // registration must cover the largest grid we might launch. It is a compile
+  // time constant so every rank reserves identical resources, independent of
+  // the executor (which is not available at clique-requirement time).
+  static constexpr int32_t device_kernel_barrier_count() {
+    return kMaxDeviceKernelCtaCount;
+  }
+
+  // Launch grid for the device kernel. Scales with the device SM count and the
+  // amount of copy work, clamped to [kMin, kMax]. All inputs are identical
+  // across ranks (collective config + homogeneous GPUs), so every rank launches
+  // the same grid, which the cross-rank cooperative barriers require.
+  static int32_t DeviceKernelLaunchCtaCount(int core_count,
+                                            int64_t num_active_updates) {
+    int64_t work_cap = std::max<int64_t>(kMinDeviceKernelCtaCount,
+                                         num_active_updates * kCtasPerUpdate);
+    int64_t grid = std::min<int64_t>(core_count, work_cap);
+    grid = std::clamp<int64_t>(grid, kMinDeviceKernelCtaCount,
+                               kMaxDeviceKernelCtaCount);
+    return static_cast<int32_t>(grid);
+  }
+
+  GpuDeviceCommunicator::Requirements DeviceKernelLsaDevCommRequirements()
+      const {
+    GpuDeviceCommunicator::Requirements requirements;
+    requirements.lsa_barrier_count = device_kernel_barrier_count();
+    return requirements;
+  }
+
+  GpuDeviceCommunicator::Requirements DeviceKernelDevCommRequirements() const {
+    GpuDeviceCommunicator::Requirements requirements;
+    requirements.barrier_count = device_kernel_barrier_count();
+    requirements.lsa_barrier_count = device_kernel_barrier_count();
+    requirements.rail_gin_barrier_count = device_kernel_barrier_count();
+    requirements.gin_signal_count = device_kernel_barrier_count();
+    requirements.gin_connection_full = true;
+    return requirements;
+  }
+
   // Returns true if one shot kernel is supported
   bool IsOneShotKernelSupported() const;
 
@@ -200,6 +249,15 @@ class RaggedAllToAllThunk : public CollectiveThunk {
   bool is_local(int device_count) const;
 
   const RaggedAllToAllConfig config_;
+
+  // Upper bound on the device-kernel launch grid and the number of barrier
+  static constexpr int32_t kMaxDeviceKernelCtaCount = 64;
+  // Floor on the launch grid so small shapes still get some parallelism.
+  static constexpr int32_t kMinDeviceKernelCtaCount = 8;
+  // Target number of CTAs per (peer, update) copy unit before the grid
+  // saturates at the SM count. Gives each update several CTAs of row-copy
+  // bandwidth.
+  static constexpr int32_t kCtasPerUpdate = 4;
 
   mutable absl::Mutex mutex_;
   absl::flat_hash_map<se::StreamExecutor*,
