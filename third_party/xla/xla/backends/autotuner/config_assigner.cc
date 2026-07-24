@@ -136,11 +136,11 @@ absl::Status ConfigAssigner::AssignConfigs(
   std::vector<EquivalentInstructions> instruction_groups =
       ExtractEquivalentInstructions(*module, should_assign_config);
   if (instruction_groups.empty()) {
-    VLOG(1) << "No instructions to autotune.";
+    LOG(INFO) << "No instructions to autotune.";
     return absl::OkStatus();
   }
-  VLOG(1) << "Finding configs for " << instruction_groups.size()
-          << " unique instructions.";
+  LOG(INFO) << "Finding configs for " << instruction_groups.size()
+            << " unique instructions.";
 
   ASSIGN_OR_RETURN(std::vector<Config> configs,
                    GetConfigsForAll(instruction_groups));
@@ -167,8 +167,8 @@ absl::Status ConfigAssigner::AssignConfigs(
   // Sharding the instructions only makes sense if we can have different
   // configs for different shards, which only happens due to online tuning.
   if (options_.select_first_config || options_.use_default_config) {
-    VLOG(1) << "Falling back to non-sharded config assignment as online "
-               "tuning is disabled.";
+    LOG(INFO) << "Falling back to non-sharded config assignment as online "
+                 "tuning is disabled.";
     return AssignConfigs(module, should_assign_config);
   }
 
@@ -179,7 +179,7 @@ absl::Status ConfigAssigner::AssignConfigs(
   std::vector<EquivalentInstructions> all_instruction_groups =
       ExtractEquivalentInstructions(*module, should_assign_config);
   if (all_instruction_groups.empty()) {
-    VLOG(1) << "No instructions to autotune.";
+    LOG(INFO) << "No instructions to autotune.";
     return absl::OkStatus();
   }
 
@@ -198,9 +198,9 @@ absl::Status ConfigAssigner::AssignConfigs(
 
   // 3. Autotune instructions for this shard. Use cached configs if available,
   // otherwise get and cache the best config.
-  VLOG(1) << "Shard " << my_shard_index << "/" << total_shards
-          << ": finding configs for " << instruction_groups.size() << "/"
-          << all_instruction_groups.size() << " unique instructions ";
+  LOG(INFO) << "Shard " << my_shard_index << "/" << total_shards
+            << ": finding configs for " << instruction_groups.size() << "/"
+            << all_instruction_groups.size() << " unique instructions ";
 
   ASSIGN_OR_RETURN(std::vector<Config> configs,
                    GetConfigsForAll(instruction_groups));
@@ -225,21 +225,22 @@ absl::Status ConfigAssigner::AssignConfigs(
   }
   absl::StatusOr<std::string> stored_result = kv_store.TryGet(local_key);
   if (stored_result.status().code() == absl::StatusCode::kNotFound) {
-    VLOG(2) << "Storing results for " << local_key;
+    LOG(INFO) << "Storing results for " << local_key;
     absl::Status set_result = kv_store.Set(local_key, local_results);
     if (absl::IsAlreadyExists(set_result)) {
-      VLOG(2) << "Shard " << my_shard_index << " tried to store results at "
-              << local_key << " but lost a race to do so";
+      LOG(INFO) << "Shard " << my_shard_index << " tried to store results at "
+                << local_key << " but lost a race to do so";
     } else if (!set_result.ok()) {
       return set_result;
     } else {
-      VLOG(2) << "Shard " << my_shard_index << " stored results at "
-              << local_key;
+      LOG(INFO) << "Shard " << my_shard_index << " stored results at "
+                << local_key;
     }
   } else if (!stored_result.ok()) {
     return stored_result.status();
   } else {
-    VLOG(2) << "Results already exist for " << local_key << ", skipping store.";
+    LOG(INFO) << "Results already exist for " << local_key
+              << ", skipping store.";
   }
 
   // 5. Load the autotune results of other shards from the KV store and update
@@ -250,8 +251,9 @@ absl::Status ConfigAssigner::AssignConfigs(
     }
     const std::string remote_key =
         GetKvStoreKey(module, i, orchestrator_->codegen_backends());
-    VLOG(2) << "Shard " << my_shard_index << ": waiting for results from shard "
-            << i << " / " << total_shards << " at " << remote_key;
+    LOG(INFO) << "Shard " << my_shard_index
+              << ": waiting for results from shard " << i << " / "
+              << total_shards << " at " << remote_key;
     // TODO(b/361009609): reset to infinite duration once issue with MPI is
     // fixed. https://github.com/google/jax/issues/22995.
     ASSIGN_OR_RETURN(std::string remote_results,
@@ -297,17 +299,17 @@ absl::Status ConfigAssigner::AssignConfig(HloInstruction* instr) {
 
 tsl::Future<ConfigAssigner::Config> ConfigAssigner::GetConfig(
     const HloInstruction* instr) {
-  if (VLOG_IS_ON(1)) {
+  if (true) {
     HloPrintOptions print_options;
-    if (VLOG_IS_ON(4)) {
+    if (true) {
       print_options.set_print_subcomputation_mode(
           HloPrintOptions::PrintSubcomputationMode::kFullBodies);
     }
-    VLOG(1) << "Getting config for HLO: " << instr->ToString(print_options);
+    LOG(INFO) << "Getting config for HLO: " << instr->ToString(print_options);
   }
   std::optional<Config> cached_config = LookUp(instr);
   if (cached_config.has_value()) {
-    VLOG(1) << "Using cached config: " << cached_config->ToString();
+    LOG(INFO) << "Using cached config: " << cached_config->ToString();
     return std::move(cached_config.value());
   }
 
@@ -334,7 +336,7 @@ tsl::Future<ConfigAssigner::Config> ConfigAssigner::GetConfig(
     for (Config& config : supported_configs) {
       auto executable = orchestrator_->Compile(*instr, config);
       if (executable.ok()) {
-        VLOG(1) << "Using first compilable config: " << config.ToString();
+        LOG(INFO) << "Using first compilable config: " << config.ToString();
         return std::move(config);
       }
     }
@@ -345,7 +347,7 @@ tsl::Future<ConfigAssigner::Config> ConfigAssigner::GetConfig(
   TF_RET_CHECK(config_runner_ != nullptr)
       << "Cannot autotune HLO: " << instr->ToString()
       << ". ConfigRunner is not initialized.";
-  VLOG(1) << "Getting tuned config for HLO: " << instr->ToString();
+  LOG(INFO) << "Getting tuned config for HLO: " << instr->ToString();
   return GetTunedConfig(instr).Map(
       [this, instr](Config config) -> absl::StatusOr<Config> {
         RETURN_IF_ERROR(Insert(instr, config));
@@ -365,13 +367,13 @@ tsl::Future<ConfigAssigner::Config> ConfigAssigner::GetTunedConfig(
       << ". No supported configs found for this instruction.";
 
   if (supported_configs.size() == 1) {
-    VLOG(1) << "Found only one supported config: "
-            << supported_configs[0].ToString();
+    LOG(INFO) << "Found only one supported config: "
+              << supported_configs[0].ToString();
     return std::move(supported_configs[0]);
   }
 
-  VLOG(1) << "Found total of " << supported_configs.size()
-          << " supported configs.";
+  LOG(INFO) << "Found total of " << supported_configs.size()
+            << " supported configs.";
 
   tsl::Future<std::vector<CodegenOrchestrator::MaybeExecutableCandidate>>
       maybe_candidates =
@@ -389,9 +391,9 @@ tsl::Future<ConfigAssigner::Config> ConfigAssigner::GetTunedConfig(
                 {std::move(maybe_candidate.config),
                  std::move(maybe_candidate.executable.value())});
           } else {
-            VLOG(3) << "Failed to compile config: "
-                    << maybe_candidate.config.ToString()
-                    << " with status: " << maybe_candidate.executable.status();
+            LOG(INFO) << "Failed to compile config: "
+                      << maybe_candidate.config.ToString() << " with status: "
+                      << maybe_candidate.executable.status();
             compilation_failures.push_back(
                 {std::move(maybe_candidate.config),
                  ConfigRunner::Failure{
@@ -404,11 +406,12 @@ tsl::Future<ConfigAssigner::Config> ConfigAssigner::GetTunedConfig(
             << "Autotuning failed for HLO: " << instr->ToString()
             << ". No configs could be compiled.";
 
-        VLOG(1) << "Successfully compiled " << candidates.size() << " configs.";
+        LOG(INFO) << "Successfully compiled " << candidates.size()
+                  << " configs.";
 
         if (candidates.size() == 1) {
-          VLOG(1) << "Using the only compilable config: "
-                  << candidates[0].config.ToString();
+          LOG(INFO) << "Using the only compilable config: "
+                    << candidates[0].config.ToString();
           return std::move(candidates[0].config);
         }
 
@@ -434,7 +437,7 @@ std::optional<ConfigAssigner::Config> ConfigAssigner::LookUp(
   if (!cached_config.has_value()) {
     return std::nullopt;
   }
-  VLOG(1) << "Found cached config for HLO: " << instr->ToString();
+  LOG(INFO) << "Found cached config for HLO: " << instr->ToString();
   for (const auto& codegen_backend : orchestrator_->codegen_backends()) {
     if (codegen_backend->backend() == cached_config->codegen_backend) {
       auto backend_config =
@@ -527,10 +530,10 @@ void ConfigAssigner::LogConfigProfiles(
     absl::Span<const ConfigRunner::ConfigProfile> profiles,
     absl::Span<const ConfigRunner::ConfigProfile> failed_configs) {
   for (const ConfigRunner::ConfigProfile& profile : profiles) {
-    VLOG(2) << profile.ToString(/*verbose=*/VLOG_IS_ON(3));
+    LOG(INFO) << profile.ToString(/*verbose=*/true);
   }
   for (const ConfigRunner::ConfigProfile& result : failed_configs) {
-    VLOG(2) << result.ToString(/*verbose=*/VLOG_IS_ON(3));
+    LOG(INFO) << result.ToString(/*verbose=*/true);
   }
   if (options_.dump_logs_to.empty()) {
     return;
@@ -556,7 +559,7 @@ absl::Status ConfigAssigner::DumpTuningLogs() {
 
   RETURN_IF_ERROR(tsl::AppendStringToFile(tsl::Env::Default(),
                                           options_.dump_logs_to, textproto));
-  VLOG(1) << "Autotune logs appended to file: " << options_.dump_logs_to;
+  LOG(INFO) << "Autotune logs appended to file: " << options_.dump_logs_to;
   logs_.Clear();
   return absl::OkStatus();
 }

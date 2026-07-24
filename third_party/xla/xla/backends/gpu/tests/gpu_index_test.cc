@@ -107,6 +107,7 @@ TEST_F(GpuIndexTest, CompatibleUseLinearIndexWithReshapeAndBroadcast) {
 ; CHECK: getelementptr inbounds{{( nuw)?}} [4 x i8], ptr{{( addrspace\(1\))?}} %[[alloc:.*]], i64 %[[idx1]]
       )",
                                /*match_optimized_ir=*/true));
+  ASSERT_TRUE(false) << "pass but fail to get logs";
 }
 
 TEST_F(GpuIndexTest, CompatibleUseLinearIndexWithSizeOneDimensions) {
