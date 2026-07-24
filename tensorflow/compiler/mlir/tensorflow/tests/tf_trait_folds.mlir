@@ -52,24 +52,42 @@ func.func @testSingleReciprocal(%arg0: tensor<i32>) -> tensor<i32> {
   func.return %0: tensor<i32>
 }
 
+// Reciprocal is not an exact involution (1 / (1 / x) rounds in floating
+// point and truncates to zero for integer |x| > 1), so a Reciprocal pair
+// must not fold away.
 // CHECK-LABEL: func @testDoubleReciprocal
 // CHECK-SAME:  ([[ARG0:%.+]]: tensor<i32>)
 func.func @testDoubleReciprocal(%arg0: tensor<i32>) -> tensor<i32> {
+  // CHECK: [[RECIPROCAL0:%.+]] = "tf.Reciprocal"([[ARG0]])
   %0 = "tf.Reciprocal"(%arg0) : (tensor<i32>) -> tensor<i32>
+  // CHECK: [[RECIPROCAL1:%.+]] = "tf.Reciprocal"([[RECIPROCAL0]])
   %1 = "tf.Reciprocal"(%0) : (tensor<i32>) -> tensor<i32>
-  // CHECK: return [[ARG0]]
+  // CHECK: return [[RECIPROCAL1]]
   func.return %1: tensor<i32>
 }
 
 // CHECK-LABEL: func @testTripleReciprocal
 // CHECK-SAME:  ([[ARG0:%.+]]: tensor<i32>)
 func.func @testTripleReciprocal(%arg0: tensor<i32>) -> tensor<i32> {
-  // CHECK: [[RECIPROCAL:%.+]] = "tf.Reciprocal"([[ARG0]])
+  // CHECK: [[RECIPROCAL0:%.+]] = "tf.Reciprocal"([[ARG0]])
   %0 = "tf.Reciprocal"(%arg0) : (tensor<i32>) -> tensor<i32>
+  // CHECK: [[RECIPROCAL1:%.+]] = "tf.Reciprocal"([[RECIPROCAL0]])
   %1 = "tf.Reciprocal"(%0) : (tensor<i32>) -> tensor<i32>
+  // CHECK: [[RECIPROCAL2:%.+]] = "tf.Reciprocal"([[RECIPROCAL1]])
   %2 = "tf.Reciprocal"(%1) : (tensor<i32>) -> tensor<i32>
-  // CHECK: return [[RECIPROCAL]]
+  // CHECK: return [[RECIPROCAL2]]
   func.return %2: tensor<i32>
+}
+
+// CHECK-LABEL: func @testDoubleReciprocalFloat
+// CHECK-SAME:  ([[ARG0:%.+]]: tensor<f32>)
+func.func @testDoubleReciprocalFloat(%arg0: tensor<f32>) -> tensor<f32> {
+  // CHECK: [[RECIPROCAL0:%.+]] = "tf.Reciprocal"([[ARG0]])
+  %0 = "tf.Reciprocal"(%arg0) : (tensor<f32>) -> tensor<f32>
+  // CHECK: [[RECIPROCAL1:%.+]] = "tf.Reciprocal"([[RECIPROCAL0]])
+  %1 = "tf.Reciprocal"(%0) : (tensor<f32>) -> tensor<f32>
+  // CHECK: return [[RECIPROCAL1]]
+  func.return %1: tensor<f32>
 }
 
 // CHECK-LABEL: func @testSingleInvert
