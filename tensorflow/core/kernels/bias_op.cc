@@ -260,6 +260,25 @@ class BiasOp<GPUDevice, T> : public BinaryOp<T> {
     int32_t batch, height, width, depth, channel;
     GetBiasValueDims(input, data_format_, &batch, &height, &width, &depth,
                      &channel);
+    // GetBiasValueDims truncates each dim to int32, so a dim above int32 max
+    // wraps to a negative value. Require all dims to be non-negative up front
+    // so a truncated shape is rejected before it reaches the GPU kernels.
+    OP_REQUIRES(
+        context,
+        batch >= 0 && height >= 0 && width >= 0 && depth >= 0 && channel >= 0,
+        errors::InvalidArgument(
+            "BiasAdd: dimension values must be non-negative. Got batch=", batch,
+            ", height=", height, ", width=", width, ", depth=", depth,
+            ", channel=", channel));
+    OP_REQUIRES(
+        context,
+        static_cast<int64_t>(batch) * height * width * depth * channel ==
+            input.NumElements(),
+        errors::InvalidArgument(
+            "BiasAdd: dimension values overflow int32. Got batch=", batch,
+            ", height=", height, ", width=", width, ", depth=", depth,
+            ", channel=", channel, " but tensor has ", input.NumElements(),
+            " elements"));
     OP_REQUIRES(context, bias.shape().dim_size(0) == channel,
                 absl::InvalidArgumentError(absl::StrCat(
                     "Must provide as many biases as the channel dimension "
@@ -411,9 +430,21 @@ class BiasGradOp<GPUDevice, T> : public OpKernel {
                             const Tensor& output_backprop, int32_t batch,
                             int32_t width, int32_t height, int32_t depth,
                             int32_t channel, Tensor* output) {
+    // Upper bound for FastBoundsCheck: value < kInt32Limit iff value <=
+    // INT32_MAX.
+    constexpr int64_t kInt32Limit =
+        static_cast<int64_t>(std::numeric_limits<int32_t>::max()) + 1;
     if (data_format_ == FORMAT_NCHW) {
-      int32_t row_count = batch * channel;
-      int32_t col_count = height * width * depth;
+      int64_t row_count = static_cast<int64_t>(batch) * channel;
+      int64_t col_count = static_cast<int64_t>(height) * width * depth;
+      OP_REQUIRES(
+          context,
+          FastBoundsCheck(row_count, kInt32Limit) &&
+              FastBoundsCheck(col_count, kInt32Limit),
+          errors::InvalidArgument(
+              "BiasAddGrad ReduceSum path requires row_count and col_count "
+              "<= int32 max. Got row_count=",
+              row_count, ", col_count=", col_count));
       Tensor temp_grad_outputs;
       // For 'NCHW' format, we perform reduction twice: first HW, then N.
       TensorShape temp_grad_output_shape{row_count, col_count};
@@ -422,21 +453,26 @@ class BiasGradOp<GPUDevice, T> : public OpKernel {
                                                      &temp_grad_outputs));
       BiasGradGPU<T>::DoRowReduction(
           context, temp_grad_outputs.flat<T>().data(),
-          output_backprop.template flat<T>().data(), row_count, col_count);
+          output_backprop.template flat<T>().data(),
+          static_cast<int>(row_count), static_cast<int>(col_count));
 
-      row_count = batch;
-      col_count = channel;
       BiasGradGPU<T>::DoColReduction(context, output->flat<T>().data(),
-                                     temp_grad_outputs.flat<T>().data(),
-                                     row_count, col_count);
+                                     temp_grad_outputs.flat<T>().data(), batch,
+                                     channel);
     } else {
       // For 'NHWC', we simply apply reduction once on NHW.
-      int32_t row_count = batch * height * width * depth;
+      int64_t row_count = static_cast<int64_t>(batch) * height * width * depth;
+      OP_REQUIRES(
+          context, FastBoundsCheck(row_count, kInt32Limit),
+          errors::InvalidArgument(
+              "BiasAddGrad ReduceSum path requires row_count <= int32 max. "
+              "Got row_count=",
+              row_count));
       int32_t col_count = channel;
       BiasGradGPU<T>::DoColReduction(
           context, const_cast<T*>(output->flat<T>().data()),
           reinterpret_cast<const T*>(output_backprop.template flat<T>().data()),
-          row_count, col_count);
+          static_cast<int>(row_count), col_count);
     }
   }
 
@@ -451,6 +487,25 @@ class BiasGradOp<GPUDevice, T> : public OpKernel {
     int32_t batch, height, width, depth, channel;
     GetBiasValueDims(output_backprop, data_format_, &batch, &height, &width,
                      &depth, &channel);
+    // GetBiasValueDims truncates each dim to int32, so a dim above int32 max
+    // wraps to a negative value. Require all dims to be non-negative up front
+    // so a truncated shape is rejected before it reaches the GPU kernels.
+    OP_REQUIRES(
+        context,
+        batch >= 0 && height >= 0 && width >= 0 && depth >= 0 && channel >= 0,
+        errors::InvalidArgument(
+            "BiasAddGrad: dimension values must be non-negative. Got batch=",
+            batch, ", height=", height, ", width=", width, ", depth=", depth,
+            ", channel=", channel));
+    OP_REQUIRES(
+        context,
+        static_cast<int64_t>(batch) * height * width * depth * channel ==
+            output_backprop.NumElements(),
+        errors::InvalidArgument(
+            "BiasAddGrad: dimension values overflow int32. Got batch=", batch,
+            ", height=", height, ", width=", width, ", depth=", depth,
+            ", channel=", channel, " but tensor has ",
+            output_backprop.NumElements(), " elements"));
     Tensor* output = nullptr;
     TensorShape output_shape{channel};
     OP_REQUIRES_OK(context, context->allocate_output(0, output_shape, &output));
@@ -473,7 +528,7 @@ class BiasGradOp<GPUDevice, T> : public OpKernel {
     int device_id = stream->parent()->device_ordinal();
     DataType dtype = output_backprop.dtype();
     BiasAddParams bias_parameters = {
-        {batch, height * width * depth, channel},
+        {batch, static_cast<int64_t>(height) * width * depth, channel},
         data_format_,
         dtype,
         device_id,
@@ -514,7 +569,7 @@ class BiasGradOp<GPUDevice, T> : public OpKernel {
           reduction_timer.value()->GetElapsedDuration();
       OP_REQUIRES_OK(context, reduction_duration.status());
 
-      elapsed_microseconds += absl::ToInt64Microseconds(*reduction_duration);
+      elapsed_microseconds = absl::ToInt64Microseconds(*reduction_duration);
       VLOG(1) << "BiasAddGrad " << bias_parameters.ToString()
               << " Reduction algo latency: " << elapsed_microseconds;
       if (elapsed_microseconds < best_result.elapsed_time()) {
