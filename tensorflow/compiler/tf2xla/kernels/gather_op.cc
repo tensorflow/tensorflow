@@ -236,17 +236,90 @@ absl::Status XlaGatherWithBatchDimsOpImpl(XlaOpKernelContext* context,
     return absl::InvalidArgumentError("indices must be int16, int32, or int64");
   }
 
+  xla::XlaBuilder* builder = context->builder();
+  const int64_t gather_dim_size = input_shape.dim_size(*axis);
+
+  // Clamp indices to valid range [0, gather_dim_size) to prevent XLA from
+  // reading out-of-bounds memory. We then mask OOB results to zero below.
+  // Use Max(gather_dim_size, 1) - 1 as upper bound to handle dim_size <= 1.
+  const int64_t clamp_upper = gather_dim_size > 0 ? gather_dim_size - 1 : 0;
+  xla::XlaOp clamped_indices = xla::Clamp(
+      XlaHelpers::Zero(builder, index_type), indices,
+      XlaHelpers::IntegerLiteral(builder, index_type, clamp_upper));
+
   xla::XlaOp gather;
   if (batch_dims > 0) {
-    *gather_output = xla::TorchIndexSelect(input, indices, *axis, batch_dims);
+    gather = xla::TorchIndexSelect(input, clamped_indices, *axis, batch_dims);
   } else {
     // XlaGather() manages degenerate cases, like empty-indices, which are
     // error conditions and caught above if batch_dims is not 0.
     TF_RETURN_IF_ERROR(
-        XlaGather(input, input_shape, indices, indices_shape, *axis,
+        XlaGather(input, input_shape, clamped_indices, indices_shape, *axis,
                   /*indices_are_nd=*/false, context->expected_output_dtype(0),
-                  index_type, context->builder(), gather_output));
+                  index_type, builder, &gather));
   }
+
+  // Build a validity mask to zero out results from out-of-bounds indices.
+  // This matches the "IGNORE" bad_indices_policy behavior in GatherNdOp and
+  // prevents silent data corruption from OOB index reads.
+  xla::XlaOp ge_zero = xla::Ge(indices, XlaHelpers::Zero(builder, index_type));
+  xla::XlaOp lt_limit = xla::Lt(
+      indices, XlaHelpers::IntegerLiteral(builder, index_type, gather_dim_size));
+  xla::XlaOp valid_mask = xla::And(ge_zero, lt_limit);
+
+  // Broadcast the validity mask to match the gather output shape.
+  auto gather_shape_status = builder->GetShape(gather);
+  TF_RETURN_IF_ERROR(gather_shape_status.status());
+  auto gather_shape = gather_shape_status.value();
+
+  // Determine how many dimensions the indices contribute to the output.
+  // For a gather along axis with num_index_dims=1:
+  //   output_rank = input_rank - 1 + indices_rank
+  // The indices dims replace the gather dim in the output.
+  int64_t indices_rank = indices_shape.dims();
+  int64_t output_rank = gather_shape.dimensions().size();
+
+  // Reshape valid_mask to have the same rank as the gather output, with
+  // dimensions aligned to where the indices appear in the output.
+  // When batch_dims > 0, the first batch_dims dimensions of indices occupy
+  // the first batch_dims output dimensions. The remaining non-batch indices
+  // dimensions replace the gather dimension at axis.
+  std::vector<bool> is_offset_dim(output_rank, false);
+  for (int64_t i = 0; i < input_shape.dims(); ++i) {
+    if (i < batch_dims || i == *axis) {
+      continue;
+    }
+    int64_t output_dim = i;
+    if (i > *axis) {
+      output_dim = i + indices_rank - (1 + batch_dims);
+    }
+    is_offset_dim[output_dim] = true;
+  }
+
+  std::vector<int64_t> mask_dims(output_rank, 1);
+  int64_t indices_dim_idx = 0;
+  for (int64_t d = 0; d < output_rank; ++d) {
+    if (!is_offset_dim[d]) {
+      mask_dims[d] = indices_shape.dim_size(indices_dim_idx);
+      indices_dim_idx++;
+    }
+  }
+
+  xla::XlaOp reshaped_mask = xla::Reshape(valid_mask, mask_dims);
+
+  // Broadcast the mask to the full gather output shape.
+  std::vector<int64_t> broadcast_dims(output_rank);
+  for (int64_t i = 0; i < output_rank; ++i) {
+    broadcast_dims[i] = i;
+  }
+  xla::XlaOp broadcast_mask =
+      xla::BroadcastInDim(reshaped_mask, gather_shape.dimensions(), broadcast_dims);
+
+  // Zero out OOB results.
+  *gather_output = xla::Select(
+      broadcast_mask, gather,
+      xla::Broadcast(XlaHelpers::Zero(builder, context->expected_output_dtype(0)),
+                     gather_shape.dimensions()));
   return absl::OkStatus();
 }
 class GatherOp : public XlaOpKernel {
