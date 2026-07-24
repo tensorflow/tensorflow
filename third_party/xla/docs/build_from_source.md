@@ -100,10 +100,10 @@ docker exec xla_gpu ./configure.py --backend=CUDA \
 
 **Blackwell (sm_100 / sm_120):** The hermetic CUDA-clang toolchain does not
 support these architectures yet (`unsupported CUDA gpu architecture`). Prefer
-**nvcc** as the device compiler (for example TensorFlow's
-`--config=cuda_nvcc` or `--config=cuda13_nvcc`) and CUDA 13 when building for
-Blackwell GPUs such as B100/B200 (`sm_100`) or GeForce RTX 50-series
-(`sm_120`).
+**nvcc** as the device compiler (TensorFlow: `--config=cuda_nvcc`) and CUDA 13
+(`--config=cuda13_version`, without changing the default CUDA 12
+`--config=cuda` pin) when building for Blackwell GPUs such as B100/B200
+(`sm_100`) or GeForce RTX 50-series (`sm_120`).
 
 For more details regarding
 [TensorFlow's GPU docker images you can check out this document.](https://www.tensorflow.org/install/source#gpu_support_2)

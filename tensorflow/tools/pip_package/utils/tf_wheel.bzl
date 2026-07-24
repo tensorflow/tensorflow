@@ -86,10 +86,10 @@ def _tf_wheel_impl(ctx):
     override_include_cuda_libs = ctx.attr.override_include_cuda_libs[BuildSettingInfo].value
     if include_cuda_libs and not override_include_cuda_libs:
         fail("TF wheel shouldn't be built with CUDA dependencies." +
-             " Please provide `--config=cuda_wheel` for bazel build command" +
-             " (optionally with `--config=cuda13_nvcc` for CUDA 13 /" +
-             " Blackwell). If you absolutely need to add CUDA dependencies," +
-             " provide" +
+             " Please provide `--config=cuda_wheel` for bazel build command." +
+             " For CUDA 13 / Blackwell also pass `--config=cuda13_version`" +
+             " and `--config=cuda_nvcc`. If you absolutely need to add CUDA" +
+             " dependencies, provide" +
              " `--@local_config_cuda//cuda:override_include_cuda_libs=true`.")
     executable = ctx.executable.wheel_binary
 

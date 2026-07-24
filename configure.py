@@ -475,12 +475,21 @@ def set_cc_opt_flags(environ_cp):
     write_to_bazelrc('build:opt --host_copt=%s' % opt)
 
 
+# Hermetic CUDA 13 pins used when configure selects Blackwell compute
+# capabilities and the user did not set HERMETIC_CUDA_VERSION explicitly.
+# Keep in sync with .bazelrc common:cuda13_version.
+_BLACKWELL_HERMETIC_CUDA_VERSION = '13.0.0'
+_BLACKWELL_HERMETIC_CUDNN_VERSION = '9.12.0'
+
+
 def cuda_compute_capability_version(capability):
   """Return (major, minor) for a CUDA compute capability string, or None.
 
   Accepts forms used by configure / Bazel hermetic CUDA, including:
   "7.5", "sm_80", "compute_90", "sm_120", "12.0".
   """
+  if capability is None:
+    return None
   capability = capability.strip()
   if not capability:
     return None
@@ -510,10 +519,67 @@ def compute_capabilities_require_nvcc(capabilities_csv):
   if not capabilities_csv:
     return False
   for part in capabilities_csv.replace(' ', '').split(','):
+    if not part:
+      continue
     version = cuda_compute_capability_version(part)
     if version is not None and version >= (10, 0):
       return True
   return False
+
+
+def clang_cuda_compiler_default(capabilities_csv):
+  """Whether TF_CUDA_CLANG should default to enabled for the given SMs."""
+  return not compute_capabilities_require_nvcc(capabilities_csv)
+
+
+def maybe_ensure_cuda13_for_blackwell(environ_cp):
+  """Pin hermetic CUDA 13 when Blackwell SMs are selected and version unset.
+
+  Does not override an explicit HERMETIC_CUDA_VERSION / HERMETIC_CUDNN_VERSION.
+  Leaves pre-Blackwell configures on the default CUDA 12 bazelrc pins.
+  """
+  caps = environ_cp.get('HERMETIC_CUDA_COMPUTE_CAPABILITIES', '')
+  if not compute_capabilities_require_nvcc(caps):
+    return False
+
+  pinned = False
+  if not environ_cp.get('HERMETIC_CUDA_VERSION'):
+    environ_cp['HERMETIC_CUDA_VERSION'] = _BLACKWELL_HERMETIC_CUDA_VERSION
+    write_repo_env_to_bazelrc(
+        'cuda', 'HERMETIC_CUDA_VERSION', _BLACKWELL_HERMETIC_CUDA_VERSION
+    )
+    pinned = True
+  if not environ_cp.get('HERMETIC_CUDNN_VERSION'):
+    environ_cp['HERMETIC_CUDNN_VERSION'] = _BLACKWELL_HERMETIC_CUDNN_VERSION
+    write_repo_env_to_bazelrc(
+        'cuda', 'HERMETIC_CUDNN_VERSION', _BLACKWELL_HERMETIC_CUDNN_VERSION
+    )
+    pinned = True
+
+  if pinned:
+    print(
+        '\nNOTE: Blackwell compute capabilities (sm_100+) selected without an '
+        'explicit hermetic CUDA version. Pinning HERMETIC_CUDA_VERSION=%s and '
+        'HERMETIC_CUDNN_VERSION=%s (same as --config=cuda13_version). '
+        'Default --config=cuda remains CUDA 12 for other builds.\n'
+        % (_BLACKWELL_HERMETIC_CUDA_VERSION, _BLACKWELL_HERMETIC_CUDNN_VERSION)
+    )
+  return pinned
+
+
+def recommended_gpu_wheel_bazel_flags(environ_cp):
+  """Return suggested bazel --config flags for a GPU pip wheel build."""
+  flags = ['--config=cuda', '--config=cuda_wheel']
+  caps = environ_cp.get('HERMETIC_CUDA_COMPUTE_CAPABILITIES', '')
+  if compute_capabilities_require_nvcc(caps):
+    # Explicit nvcc + CUDA 13 opt-in for Blackwell; safe even if configure
+    # already wrote HERMETIC_CUDA_VERSION into .tf_configure.bazelrc.
+    flags.extend(['--config=cuda13_version', '--config=cuda_nvcc'])
+  elif environ_cp.get('TF_CUDA_CLANG') == '1':
+    flags.append('--config=cuda_clang')
+  else:
+    flags.append('--config=cuda_nvcc')
+  return flags
 
 
 def set_tf_cuda_clang(environ_cp, enabled_by_default=True):
@@ -1109,6 +1175,12 @@ def set_other_cuda_vars(environ_cp):
   # If CUDA is enabled, always use GPU during build and test.
   if environ_cp.get('TF_CUDA_CLANG') == '1':
     write_to_bazelrc('build --config=cuda_clang')
+  elif compute_capabilities_require_nvcc(
+      environ_cp.get('HERMETIC_CUDA_COMPUTE_CAPABILITIES', '')
+  ):
+    # Explicit nvcc for Blackwell. Pre-Blackwell non-clang keeps --config=cuda
+    # only (cuda_compiler defaults to nvcc) to preserve existing behavior.
+    write_to_bazelrc('build --config=cuda_nvcc')
   else:
     write_to_bazelrc('build --config=cuda')
 
@@ -1336,16 +1408,17 @@ def main():
                                   environ_cp.get('LD_LIBRARY_PATH'))
 
     # Hermetic cuda_clang does not support Blackwell architectures
-    # (sm_100 / sm_120). Default to nvcc when those capabilities are selected.
+    # (sm_100 / sm_120). Default to nvcc and pin CUDA 13 when needed.
     caps = environ_cp.get('HERMETIC_CUDA_COMPUTE_CAPABILITIES', '')
-    clang_default = True
-    if compute_capabilities_require_nvcc(caps):
-      clang_default = False
+    maybe_ensure_cuda13_for_blackwell(environ_cp)
+    clang_default = clang_cuda_compiler_default(caps)
+    if not clang_default:
       print(
           '\nNOTE: Selected CUDA compute capabilities include sm_100+ '
           '(Blackwell). Hermetic clang does not support these architectures; '
-          'defaulting the CUDA compiler to nvcc. Use --config=cuda13_nvcc '
-          '(CUDA 13) or --config=cuda_nvcc when building.\n'
+          'defaulting the CUDA compiler to nvcc. Build with '
+          '--config=cuda13_version --config=cuda_nvcc (or rely on the '
+          'HERMETIC_CUDA_* pins written into .tf_configure.bazelrc).\n'
       )
     set_tf_cuda_clang(environ_cp, enabled_by_default=clang_default)
     if environ_cp.get('TF_CUDA_CLANG') == '1':
@@ -1415,8 +1488,11 @@ def main():
       '(Experimental) Build kernels into separate shared objects.')
   config_info_line('v1', 'Build with TensorFlow 1 API instead of TF 2 API.')
   config_info_line(
-      'cuda13_nvcc',
-      'CUDA 13 + nvcc (recommended for Blackwell sm_100 / sm_120).')
+      'cuda13_version',
+      'Hermetic CUDA 13.x (use with --config=cuda_nvcc for Blackwell).')
+  config_info_line(
+      'cuda_nvcc',
+      'Build CUDA kernels with nvcc (required for sm_100 / sm_120).')
   config_info_line(
       'cuda_wheel',
       'Build GPU pip wheels without embedding CUDA shared libraries.')
@@ -1426,12 +1502,14 @@ def main():
   config_info_line('nonccl', 'Disable NVIDIA NCCL support.')
 
   if environ_cp.get('TF_NEED_CUDA') == '1':
+    flag_str = ' '.join(recommended_gpu_wheel_bazel_flags(environ_cp))
     print(
         '\nGPU pip wheel tip: build with --config=cuda_wheel, for example:\n'
-        '  bazel build --config=cuda13_nvcc --config=cuda_wheel \\\n'
+        '  bazel build %s \\\n'
         '    //tensorflow/tools/pip_package:wheel\n'
         'At runtime install matching nvidia-* pip packages (or system '
         'CUDA/cuDNN) so libraries such as libcudnn.so.9 are findable.\n'
+        % flag_str
     )
 
 

@@ -37,15 +37,20 @@
 # Feature and Third party library support options:
 #     xla:          Build TF with XLA
 #     tpu:          Build TF with TPU support
-#     cuda:         Build with CUDA support.
-#     cuda_clang:   Build with CUDA Clang support (pre-Blackwell SMs).
-#     cuda_nvcc:    Build CUDA kernels with nvcc (needed for sm_100/sm_120).
-#     cuda12_version / cuda13_version: Hermetic CUDA toolkit pins.
-#     cuda13_nvcc:  CUDA 13 + nvcc (recommended for Blackwell / sm_100+).
+#     cuda:         Build with CUDA support (default hermetic CUDA 12).
+#     cuda_clang:   Build with CUDA Clang (SMs through compute_90 only).
+#     cuda_nvcc:    Build CUDA kernels with nvcc (required for sm_100/sm_120).
+#     cuda12_version / cuda13_version: Hermetic CUDA 12.x / 13.x toolkit pins.
 #     cuda_wheel:   Build pip wheels without embedding CUDA shared libs.
 #     rocm:         Build with AMD GPU support (rocm)
 #     nogcp:        Disable GCS support.
 #     nonccl:       Disable nccl support.
+#
+# Blackwell (sm_100 / sm_120) local builds: use existing configs, e.g.
+#   bazel build --config=cuda --config=cuda13_version --config=cuda_nvcc \
+#     --config=cuda_wheel //tensorflow/tools/pip_package:wheel
+# Do not add sm_100/sm_120 to cuda_clang; hermetic clang rejects those arches.
+# Default --config=cuda remains CUDA 12 (cuda_version -> cuda12_version).
 #
 #
 # Remote build execution options (only configured to work with TF team projects for now.)
@@ -297,8 +302,9 @@ common:cuda13_version --repo_env=HERMETIC_CUDNN_VERSION="9.12.0"
 common:cuda13_version --repo_env=HERMETIC_NVSHMEM_VERSION="3.3.20"
 common:cuda13_version --repo_env=HERMETIC_NCCL_VERSION="2.29.7"
 # Includes Blackwell: sm_100 (datacenter) and compute_120 (consumer, e.g. RTX 50).
-# Pair with --config=cuda_nvcc (or --config=cuda13_nvcc). Hermetic cuda_clang does
-# not currently support sm_100 / sm_120 ("unsupported CUDA gpu architecture").
+# Pair with --config=cuda_nvcc. Hermetic cuda_clang does not support sm_100/sm_120
+# ("unsupported CUDA gpu architecture"). Default --config=cuda stays on
+# cuda12_version; opt into CUDA 13 with --config=cuda13_version.
 common:cuda13_version --repo_env=HERMETIC_CUDA_COMPUTE_CAPABILITIES="sm_75,sm_80,sm_90,sm_100,compute_120"
 
 common:cuda_version --config=cuda12_version
@@ -330,8 +336,9 @@ common:cuda_clang --copt=-Qunused-arguments
 # release while SASS is only forward compatible inside the current
 # major release. Example: sm_80 kernels can run on sm_89 GPUs but
 # not on sm_90 GPUs. compute_80 kernels though can also run on sm_90 GPUs.
-# NOTE: Do not add sm_100 / sm_120 here until hermetic cuda_clang supports them.
-# For Blackwell builds use --config=cuda_nvcc or --config=cuda13_nvcc.
+# NOTE: Keep this list free of sm_100 / sm_120 until hermetic cuda_clang
+# supports them. For Blackwell use --config=cuda_nvcc and CUDA 13
+# (--config=cuda13_version or HERMETIC_CUDA_VERSION from ./configure).
 common:cuda_clang --repo_env=HERMETIC_CUDA_COMPUTE_CAPABILITIES="sm_60,sm_70,sm_80,sm_89,compute_90"
 # Permit newer CUDA versions than Clang is aware of
 common:cuda_clang --copt="-Wno-unknown-cuda-version"
@@ -351,14 +358,6 @@ common:cuda_nvcc --action_env=TF_NVCC_CLANG="1"
 common:cuda_nvcc --@local_config_cuda//:cuda_compiler=nvcc
 # Old config for backward compatibility
 common:nvcc_clang --config=cuda_nvcc
-
-# Convenience: CUDA 13 hermetic toolkit + nvcc device compiler.
-# Use this for local builds targeting Blackwell GPUs (sm_100 / sm_120), e.g.:
-#   bazel build --config=cuda13_nvcc --config=cuda_wheel \
-#     //tensorflow/tools/pip_package:wheel
-common:cuda13_nvcc --config=cuda
-common:cuda13_nvcc --config=cuda13_version
-common:cuda13_nvcc --config=cuda_nvcc
 
 # Debug config
 common:dbg -c dbg
