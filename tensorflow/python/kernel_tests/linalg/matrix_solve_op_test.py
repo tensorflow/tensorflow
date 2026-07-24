@@ -142,7 +142,8 @@ class MatrixSolveOpTest(test.TestCase):
       # All rows of the matrix below add to zero
       matrix = constant_op.constant([[1., 0., -1.], [-1., 1., 0.],
                                      [0., -1., 1.]])
-      self.evaluate(linalg_ops.matrix_solve(matrix, matrix))
+      with self.assertRaisesOpError("Input matrix is not invertible."):
+        self.evaluate(linalg_ops.matrix_solve(matrix, matrix))
 
   @test_util.run_in_graph_and_eager_modes(use_gpu=True)
   def testConcurrent(self):
