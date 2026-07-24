@@ -495,13 +495,6 @@ GpuExecutable::GpuExecutable(
       buffer_allocations_debug_summary_(
           std::move(buffer_allocations_debug_summary)),
       collective_use_minimal_resource_(collective_use_minimal_resource) {
-  if (gpu_version_.IsRocm()) {
-    // ROCm uses hsaco hashes to distinguish between modules.
-    // Bad things happen if multiple modules with identical code are loaded.
-    binary_.resize(binary_.size() + 16);
-    *(uint64_t*)(&binary_[binary_.size() - 16]) = tsl::EnvTime::NowNanos();
-    *(uint64_t*)(&binary_[binary_.size() - 8]) = tsl::random::New64();
-  }
   if (has_module() && enable_debug_info_manager_) {
     XlaDebugInfoManager::Get()->RegisterModule(shared_module(),
                                                buffer_assignment_proto_);

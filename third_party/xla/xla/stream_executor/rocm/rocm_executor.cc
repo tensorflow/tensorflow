@@ -93,7 +93,6 @@ limitations under the License.
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/logging.h"
 #include "xla/tsl/platform/statusor.h"
-#include "xla/tsl/platform/threadpool.h"
 #include "tsl/platform/fingerprint.h"
 #include "tsl/platform/numa.h"
 #include "tsl/platform/numbers.h"
@@ -122,42 +121,16 @@ absl::uint128 Fingerprint128(const absl::string_view s) {
   return absl::MakeUint128(fp.high64, fp.low64);
 }
 
-// ROCM driver routines may require a large amount of stack (particularly
-// hipModuleLoadDataEx, in our experience). To avoid stack overflow when using
-// stack-limited threads (such as those spawned by a default-argument
-// thread::ThreadPool on some platforms), we run certain routines in this pool
-// and wait for completion.
-tsl::thread::ThreadPool* GetDriverExecutor() {
-  static tsl::thread::ThreadPool* const thread_pool =
-      new tsl::thread::ThreadPool(tsl::Env::Default(), tsl::ThreadOptions(),
-                                  "rocm_driver", 1);
-  return thread_pool;
-}
-
 // Loads HSACO with the ROCM runtime and stores the resulting handle in
 // "module". Any error logs that are produced are logged internally.
 absl::StatusOr<hipModule_t> LoadHsaco(Context* context,
                                       const char* hsaco_contents) {
-  absl::Notification notification;
-  absl::Status returned_status = absl::OkStatus();
   hipModule_t module;
-  GetDriverExecutor()->Schedule(
-      [context, hsaco_contents, &module, &returned_status, &notification]() {
-        ScopedActivateContext activation(context);
-        hipError_t res = hipModuleLoadData(&module, hsaco_contents);
+  ScopedActivateContext activated(context);
+  RETURN_IF_ERROR(ToStatus(hipModuleLoadData(&module, hsaco_contents),
+                           "Failed to load HSACO"));
+  CHECK(module != nullptr);
 
-        if (res != hipSuccess) {
-          returned_status = absl::InternalError(
-              absl::StrCat("Failed to load HSACO: ", ToString(res)));
-          notification.Notify();
-        }
-
-        CHECK(module != nullptr);
-        notification.Notify();
-      });
-  notification.WaitForNotification();
-
-  RETURN_IF_ERROR(returned_status);
   return module;
 }
 
