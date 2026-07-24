@@ -4457,9 +4457,19 @@ def cumulative_logsumexp(x, axis=0, exclusive=False, reverse=False, name=None):
   """
   with ops.name_scope(name, "CumulativeLogsumexp", [x]) as name:
     x = ops.convert_to_tensor(x, name="x")
-    return gen_math_ops.cumulative_logsumexp(
+    # 1. تشغيل العملية الأصلية باستخدام الـ C++ Kernel
+    result = gen_math_ops.cumulative_logsumexp(
         x, axis, exclusive=exclusive, reverse=reverse, name=name)
-
+    
+    # 2. إضافة حماية (Guard): 
+    # لو النتيجة NaN والمدخل الأصلي كان Inf، رجع الـ Inf (اللي هو x)
+    return array_ops.where(
+        gen_math_ops.is_nan(result) & gen_math_ops.is_inf(x), 
+        x, 
+        result
+    )
+   
+    
 
 @tf_export("math.conj", v1=["math.conj", "conj"])
 @dispatch.register_unary_elementwise_api
