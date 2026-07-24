@@ -4764,10 +4764,19 @@ genrule(
     compatible_with = get_compatible_with_portable(),
 )
 
+genrule(
+    name = "simple_viewer_html_h",
+    srcs = ["fusion_explorer/simple_viewer.html"],
+    outs = ["simple_viewer_html.h"],
+    cmd = "echo 'inline const char* kSimpleViewerHtmlCode = R\"html(' > $@ && cat $< >> $@ && echo ')html\";' >> $@",
+    compatible_with = get_compatible_with_portable(),
+)
+
 cc_library(
     name = "hlo_graph_dumper",
     srcs = [
         "hlo_graph_dumper.cc",
+        ":simple_viewer_html_h",
         ":viewer_html_h",
         ":viewer_server_h",
     ],
