@@ -27,6 +27,7 @@ from tensorflow.python.ops import gradients
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import rnn_grad  # pylint: disable=unused-import
 from tensorflow.python.platform import test
+from tensorflow.python.framework import errors
 
 
 class RNNGradTest(test.TestCase):
@@ -130,6 +131,109 @@ class RNNGradTest(test.TestCase):
         b=b,
         use_peephole=False)
     return all_cs, all_h
+
+  def testBlockLSTMGradV2TimeDimValidation(self):
+    seq_len_max = 3
+    batch_size = 2
+    input_size = 4
+    num_units = 5
+
+    x = array_ops.constant(
+      np.random.randn(
+        seq_len_max - 1, batch_size, input_size
+      ).astype(np.float32)
+    ) # x: (2,2,4), seq_len_max:3
+    cs_prev = array_ops.constant(
+        np.random.randn(batch_size, num_units).astype(np.float32)
+    )
+    h_prev = array_ops.constant(
+      np.random.randn(
+          batch_size, num_units
+      ).astype(np.float32)
+    )
+    w = array_ops.constant(
+      np.random.randn(
+          input_size + num_units, 4 * num_units
+        ).astype(np.float32)
+    )
+    wci = array_ops.constant(
+      np.random.randn(
+        num_units
+      ).astype(np.float32)
+    )
+    wcf = array_ops.constant(np.random.randn(num_units).astype(np.float32))
+    wco = array_ops.constant(np.random.randn(num_units).astype(np.float32))
+    b = array_ops.constant(np.random.randn(4 * num_units).astype(np.float32))
+    i = array_ops.constant(
+      np.random.randn(
+        seq_len_max - 1, batch_size, num_units
+      ).astype(np.float32)
+    )
+    cs = array_ops.constant(
+      np.random.randn(
+        seq_len_max - 1, batch_size, num_units
+      ).astype(np.float32)
+    )
+    f = array_ops.constant(
+      np.random.randn(
+        seq_len_max - 1, batch_size, num_units
+      ).astype(np.float32)
+    )
+    o = array_ops.constant(
+      np.random.randn(
+        seq_len_max - 1, batch_size, num_units
+      ).astype(np.float32)
+    )
+    ci = array_ops.constant(
+      np.random.randn(
+        seq_len_max - 1, batch_size, num_units
+      ).astype(np.float32)
+    )
+    co = array_ops.constant(
+      np.random.randn(
+        seq_len_max - 1, batch_size, num_units
+      ).astype(np.float32)
+    )
+    h = array_ops.constant(
+      np.random.randn(
+        seq_len_max - 1, batch_size, num_units
+      ).astype(np.float32)
+    )
+    cs_grad = array_ops.constant(
+      np.random.randn(
+        seq_len_max - 1, batch_size, num_units
+      ).astype(np.float32)
+    )
+    h_grad = array_ops.constant(
+      np.random.randn(
+        seq_len_max - 1, batch_size, num_units
+      ).astype(np.float32)
+    )
+    use_peephole = True
+
+    with self.assertRaisesRegex(
+                                errors.InvalidArgumentError, "time dimension"):
+      result = gen_rnn_ops.block_lstm_grad_v2(
+            seq_len_max=seq_len_max, # seq_len_max:3
+            x=x, #  x: (2,2,4)
+            cs_prev=cs_prev,
+            h_prev=h_prev,
+            w=w,
+            wci=wci,
+            wcf=wcf,
+            wco=wco,
+            b=b,
+            i=i,
+            cs=cs,
+            f=f,
+            o=o,
+            ci=ci,
+            co=co,
+            h=h,
+            cs_grad=cs_grad,
+            h_grad=h_grad,
+            use_peephole=use_peephole
+        )
 
 
 def deterministic_random_uniform(shape):
