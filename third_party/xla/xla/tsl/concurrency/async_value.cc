@@ -99,21 +99,30 @@ void IndirectAsyncValue::ForwardTo(RCReference<AsyncValue> value) {
   if (s == State::kConcrete || s == State::kError) {
     DCHECK(!value_) << "IndirectAsyncValue::ForwardTo is called more than once";
     auto* concrete_value = value.release();
+    uint16_t target_type_id = concrete_value->type_id_;
     if (concrete_value->kind() == Kind::kIndirect) {
       auto* indirect_value = static_cast<IndirectAsyncValue*>(concrete_value);
+      pointer_ = s == State::kConcrete ? indirect_value->pointer_ : nullptr;
+      target_type_id = indirect_value->type_id_;
       concrete_value = indirect_value->value_;
       DCHECK(concrete_value != nullptr);
       DCHECK(concrete_value->kind() == Kind::kConcrete);
       concrete_value->AddRef();
       indirect_value->DropRef();
+    } else if (s == State::kConcrete) {
+      pointer_ =
+          reinterpret_cast<void*>(reinterpret_cast<uintptr_t>(concrete_value) +
+                                  AsyncValue::kDataOffset);
+    } else {
+      pointer_ = nullptr;
     }
     // If indirect async value was created for any particular type id, check
     // that forwarded to value has exactly the same type id or an error.
-    DCHECK(type_id_ == kUnknownTypeId || type_id_ == concrete_value->type_id_ ||
+    DCHECK(type_id_ == kUnknownTypeId || type_id_ == target_type_id ||
            concrete_value->IsType<DummyValueForErrorAsyncValue>())
         << "IndirectAsyncValue::ForwardTo value has an unexpected type id";
     value_ = concrete_value;
-    type_id_ = concrete_value->type_id_;
+    type_id_ = target_type_id;
     NotifyAvailable(s);
   } else {
     AsyncValue* av = value.get();
@@ -121,6 +130,22 @@ void IndirectAsyncValue::ForwardTo(RCReference<AsyncValue> value) {
       self->ForwardTo(std::move(value));
     });
   }
+}
+
+void IndirectAsyncValue::SetConcrete(void* interior_pointer,
+                                     std::shared_ptr<void> owner,
+                                     uint16_t type_id) {
+  DCHECK(IsUnavailable());
+  DCHECK(!value_) << "IndirectAsyncValue::SetConcrete is called more than once";
+  DCHECK(type_id_ == kUnknownTypeId || type_id_ == type_id)
+      << "IndirectAsyncValue::SetConcrete value has an unexpected type id";
+
+  auto owner_av =
+      MakeAvailableAsyncValueRef<std::shared_ptr<void>>(std::move(owner));
+  value_ = owner_av.release();
+  pointer_ = interior_pointer;
+  type_id_ = type_id;
+  NotifyAvailable(State::kConcrete);
 }
 
 //===----------------------------------------------------------------------===//

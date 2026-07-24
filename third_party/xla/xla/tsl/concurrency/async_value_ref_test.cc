@@ -1022,6 +1022,54 @@ TEST(AsyncValueRefTest, ScopedAsyncValueDestroyed) {
   EXPECT_EQ(foo_counter, 0);
 }
 
+TEST(AsyncValueRefTest, IndirectAsyncValueSharedPtrOwner) {
+  static int destructor_count = 0;
+  struct Payload {
+    int value = 42;
+    ~Payload() { destructor_count++; }
+  };
+
+  destructor_count = 0;
+  {
+    auto shared_payload = std::make_shared<Payload>();
+    auto indirect = MakeIndirectAsyncValue<Payload>();
+
+    EXPECT_FALSE(indirect->IsConcrete());
+
+    indirect->emplace(shared_payload);
+
+    EXPECT_TRUE(indirect->IsConcrete());
+    EXPECT_EQ(indirect->get<Payload>().value, 42);
+
+    AsyncValueRef<Payload> ref(indirect);
+    EXPECT_EQ(ref.get().value, 42);
+
+    shared_payload.reset();
+    EXPECT_EQ(destructor_count, 0);
+    EXPECT_EQ(ref.get().value, 42);
+  }
+  EXPECT_EQ(destructor_count, 1);
+
+  destructor_count = 0;
+  {
+    auto shared_payload = std::make_shared<Payload>();
+    auto indirect1 = MakeIndirectAsyncValue();
+    auto indirect2 = MakeIndirectAsyncValue<Payload>();
+
+    indirect1->emplace(shared_payload);
+    indirect2->ForwardTo(FormRef(indirect1.get()));
+
+    EXPECT_TRUE(indirect2->IsConcrete());
+    EXPECT_EQ(indirect2->get<Payload>().value, 42);
+
+    shared_payload.reset();
+    indirect1.reset();
+    EXPECT_EQ(destructor_count, 0);
+    EXPECT_EQ(indirect2->get<Payload>().value, 42);
+  }
+  EXPECT_EQ(destructor_count, 1);
+}
+
 //===----------------------------------------------------------------------===//
 // Performance benchmarks below
 //===----------------------------------------------------------------------===//
