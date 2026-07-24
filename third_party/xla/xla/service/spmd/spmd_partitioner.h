@@ -903,8 +903,9 @@ class SpmdPartitioningVisitor : public DfsHloVisitorWithDefault {
   SpmdLogger* logger_;
   const SpmdPartitionerOptions options_;
   SpmdPartitioner* partitioner_;
-  std::vector<HloSharding> visiting_hlo_operand_shardings_;
-  std::optional<HloSharding> visiting_hlo_sharding_;
+  std::vector<std::shared_ptr<const HloSharding>>
+      visiting_hlo_operand_shardings_;
+  std::shared_ptr<const HloSharding> visiting_hlo_sharding_;
   std::optional<int64_t> visiting_num_partitions_;
   std::optional<SPMDCollectiveOpsCreator> visiting_collective_ops_creator_;
   std::optional<HloInstruction*> visiting_partition_id_;
