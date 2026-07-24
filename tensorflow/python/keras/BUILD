@@ -2,6 +2,7 @@
 #   Contains the Keras API (internal TensorFlow version).
 
 load("@xla//third_party/rules_python/python:defs.bzl", "py_library")
+load("//tensorflow:tensorflow.bzl", "py_test")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
