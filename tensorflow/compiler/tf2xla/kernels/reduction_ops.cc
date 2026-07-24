@@ -25,7 +25,9 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "xla/hlo/builder/lib/constants.h"
+#include "xla/hlo/builder/lib/math.h"
 #include "xla/hlo/builder/xla_builder.h"
+#include "xla/primitive_util.h"
 #include "xla/shape.h"
 #include "xla/xla_data.pb.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -35,6 +37,19 @@ limitations under the License.
 
 namespace tensorflow {
 namespace {
+
+xla::XlaOp MinMaxWithNanPropagation(xla::PrimitiveType type, bool is_max,
+                                    const xla::XlaOp& scalar_lhs,
+                                    const xla::XlaOp& scalar_rhs) {
+  xla::XlaOp result =
+      is_max ? xla::Max(scalar_lhs, scalar_rhs)
+             : xla::Min(scalar_lhs, scalar_rhs);
+  if (!xla::primitive_util::IsFloatingPointType(type)) {
+    return result;
+  }
+  return xla::Select(xla::IsNan(scalar_lhs), scalar_lhs,
+                     xla::Select(xla::IsNan(scalar_rhs), scalar_rhs, result));
+}
 
 class SumOp : public XlaReductionOp {
  public:
@@ -83,7 +98,8 @@ class MinOp : public XlaReductionOp {
 
   void BuildReducer(xla::XlaBuilder* builder, const xla::XlaOp& scalar_lhs,
                     const xla::XlaOp& scalar_rhs) override {
-    xla::Min(scalar_lhs, scalar_rhs);
+    MinMaxWithNanPropagation(xla_reduction_type_, /*is_max=*/false, scalar_lhs,
+                             scalar_rhs);
   }
 };
 
@@ -116,7 +132,8 @@ class MaxOp : public XlaReductionOp {
 
   void BuildReducer(xla::XlaBuilder* builder, const xla::XlaOp& scalar_lhs,
                     const xla::XlaOp& scalar_rhs) override {
-    xla::Max(scalar_lhs, scalar_rhs);
+    MinMaxWithNanPropagation(xla_reduction_type_, /*is_max=*/true, scalar_lhs,
+                             scalar_rhs);
   }
 };
 
