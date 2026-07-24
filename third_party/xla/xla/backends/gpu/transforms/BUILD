@@ -2475,7 +2475,6 @@ cc_library(
         "//xla:status_macros",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/pass:hlo_pass",
-        "//xla/hlo/utils:hlo_query",
         "//xla/service:collective_opt_utils",
         "//xla/service:hlo_module_config",
         "//xla/service/gpu:backend_configs_cc",
