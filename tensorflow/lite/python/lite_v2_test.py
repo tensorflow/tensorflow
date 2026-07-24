@@ -3143,6 +3143,46 @@ class FromSavedModelTest(lite_v2_test_util.ModelTest):
       model = converter.convert()
       self.assertIsNotNone(model)
 
+  @test_util.run_v2_only
+  def testConvertDoesNotCallLoad(self):
+    """Regression test for https://github.com/tensorflow/tensorflow/issues/122598.
+
+    TFLiteSavedModelConverterV2.convert() used to call _load() internally just
+    to obtain graph_debug_info. For large models like DenseNet121, _load()
+    allocates ~25 MB of variable tensors and registers function defs in TF's
+    EagerContext. Reference cycles in the loaded object caused this memory to
+    leak across convert() calls (~22 MB/iter). The fix reads debug info directly
+    from the SavedModel directory via _parse_saved_model_with_debug_info()
+    instead of loading the full model.
+    """
+    from unittest import mock
+
+    root = autotrackable.AutoTrackable()
+    root.f = tf.function(lambda x: x * 2.0)
+    root.f.get_concrete_function(tf.TensorSpec([10], tf.float32))
+    save_dir = os.path.join(self.get_temp_dir(), 'saved_model_no_load')
+    save.save(root, save_dir)
+
+    converter = lite.TFLiteConverterV2.from_saved_model(save_dir)
+    # Patch _load at the lite module level to detect if it's called during
+    # convert(). The converter should NOT call _load() — it should read debug
+    # info directly from disk instead.
+    with mock.patch.object(lite, '_load', wraps=lite._load) as mock_load:
+      tflite_model = converter.convert()
+      mock_load.assert_not_called()
+
+    self.assertIsNotNone(tflite_model)
+    # Verify the converted model is runnable.
+    interp = interpreter.Interpreter(model_content=tflite_model)
+    interp.allocate_tensors()
+    input_details = interp.get_input_details()
+    output_details = interp.get_output_details()
+    interp.set_tensor(input_details[0]['index'],
+                      np.ones([10], dtype=np.float32))
+    interp.invoke()
+    output = interp.get_tensor(output_details[0]['index'])
+    np.testing.assert_array_almost_equal(output, np.full([10], 2.0))
+
 
 class FromKerasModelTest(lite_v2_test_util.ModelTest):
 
