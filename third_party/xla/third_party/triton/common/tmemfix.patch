@@ -1,11 +1,8 @@
-#
-#This bridges the gap between Google CUDA 12.8 and upstream CUDA 13.2 
-#and reverts 0914a04af03c8345d15fa41af6f2fab618f07b43 
-#and 3de9d0473881f16a2749211bcedee79f491dcbb1
-#
+This patch allows to use CUDA 12.8 with PTXAS 8.7 instead of CUDA 13.2 
+
 --- a/lib/Analysis/Utility.cpp
 +++ b/lib/Analysis/Utility.cpp
-@@ -1197,7 +1197,7 @@ bool supportMMA(triton::DotOp op, int version) {
+@@ -1197,7 +1197,7 @@
      if (k < 256 / aElemTy.getIntOrFloatBitWidth())
        return false;
      if (!(retShapePerCTA[rank - 2] % 64 == 0 &&
@@ -14,7 +11,7 @@
        return false;
      if (aElemTy.isF64() || bElemTy.isF64() ||
          retType.getElementType().isF64()) {
-@@ -1222,7 +1222,7 @@ bool supportMMA(triton::DotOp op, int version) {
+@@ -1222,7 +1222,7 @@
      if (rank == 3)
        return false;
      if (!(numWarps % 4 == 0 && retShapePerCTA[rank - 2] % 64 == 0 &&
@@ -26,16 +23,7 @@
 
 --- a/lib/Dialect/TritonNvidiaGPU/IR/Dialect.cpp
 +++ b/lib/Dialect/TritonNvidiaGPU/IR/Dialect.cpp
-@@ -76,7 +76,7 @@ TMemAllocation getTmemAllocSizes(MemDescType memDescType) {
-   auto ll = toLinearLayout(shape, memDescType.getEncoding());
-   auto bitwidth = memDescType.getElementTypeBitWidth();
-   int nRow = ll.getInDimSize(kRow);
--  int nCol = ll.getInDimSize(kCol) / (32 / bitwidth);
-+  int nCol = llvm::divideCeil(ll.getInDimSize(kCol), 32 / bitwidth);
-   // If we have just one 16xcol block per warp, we don't allocate 128 rows
-   // we use 64 rows instead.
-   // We could generalise this to when we have more zeros in the layout, but
-@@ -166,13 +166,21 @@ getDistributedLayoutForTmemLdSt(const LinearLayout &ll, TMemAccessAtom atom,
+@@ -184,13 +184,21 @@
      auto kReg = StringAttr::get(ctx, "register");
      LinearLayout quot;
      int bestContig = 1;
@@ -57,7 +45,7 @@
      }
  
      // Pack contiguous elements
-@@ -182,7 +190,7 @@ getDistributedLayoutForTmemLdSt(const LinearLayout &ll, TMemAccessAtom atom,
+@@ -200,7 +208,7 @@
                                                   bitwidth * bestContig);
        if (!ret)
          return ret;
@@ -66,7 +54,7 @@
        return castbbitwidth * ret.value();
      }
      if (auto maybeQuot = divideLeft(
-@@ -223,10 +231,7 @@ getDistributedLayoutForTmemLdSt(const LinearLayout &ll, TMemAccessAtom atom,
+@@ -241,10 +249,7 @@
  
    auto nColsTile = tile.getOutDimSize(rowColDims[1]);
    auto nColsLL = ll.getInDimSize(rowColDims[1]);
@@ -78,7 +66,7 @@
    auto kReg = StringAttr::get(ctx, "register");
    auto kLane = StringAttr::get(ctx, "lane");
    auto kWarp = StringAttr::get(ctx, "warp");
-@@ -243,7 +248,9 @@ getDistributedLayoutForTmemLdSt(const LinearLayout &ll, TMemAccessAtom atom,
+@@ -261,7 +266,9 @@
    // basis as that would disallow the resulting layout to be left-divisible by
    // the tile
    auto trivialBlock = LinearLayout::identity1D(1, kBlock, kBlock);
@@ -89,7 +77,7 @@
                    .compose(ll)
                    .sublayout({kReg, kLane}, to_vector(ll.getOutDimNames()));
    if (instr32Rows) {
-@@ -251,7 +258,7 @@ getDistributedLayoutForTmemLdSt(const LinearLayout &ll, TMemAccessAtom atom,
+@@ -269,7 +276,7 @@
      // basis
      comp = comp.resizeInDim(kLane, comp.getInDimSize(kLane) / 2);
    }
@@ -98,7 +86,7 @@
      return std::nullopt;
  
    // Fit the warp bases either tiling on the RHS or in row=16
-@@ -306,9 +313,8 @@ getDistributedLayoutForTmemLdSt(const LinearLayout &ll, TMemAccessAtom atom,
+@@ -324,9 +331,8 @@
    // Add CTAs as a trivial map
    auto nCTAs = ll.getInDimSize(kBlock);
    tile *= LinearLayout::identity1D(nCTAs, kBlock, kBlock);
@@ -110,7 +98,7 @@
    return ret;
  }
  
-@@ -331,6 +337,18 @@ DistributedEncodingTrait getDefaultLayoutForTmemLdSt(gpu::MemDescType memType,
+@@ -349,6 +355,18 @@
    auto *ctx = memType.getContext();
    auto layout = getDistributedLayoutForTmemLdSt(
        memType, TMemAccessAtom::I32x32b, numWarps);
@@ -129,7 +117,7 @@
    assert(layout);
    return LinearEncodingAttr::get(ctx, std::move(*layout));
  }
-@@ -404,6 +422,10 @@ getTmemCompatibleLayouts(Operation *op, RankedTensorType tensorType,
+@@ -422,6 +440,10 @@
  bool isDistributedLayoutTMemCompatible(Operation *op,
                                         RankedTensorType tensorType,
                                         gpu::MemDescType memType) {
@@ -143,7 +131,7 @@
 
 --- a/lib/Dialect/TritonNvidiaGPU/IR/TensorMemoryUtils.cpp
 +++ b/lib/Dialect/TritonNvidiaGPU/IR/TensorMemoryUtils.cpp
-@@ -117,7 +117,7 @@ int getContextualMaxNReg(Operation *op) {
+@@ -117,7 +117,7 @@
  }
  
  FailureOr<TMemLdStEncodingInfo>
@@ -152,17 +140,16 @@
                std::function<InFlightDiagnostic()> emitError,
                bool unpacked = false) {
    // We will fill in the returned value recursively (if it exists)
-@@ -126,7 +126,8 @@ lowerTMemLdSt(const LinearLayout &cvt, int maxnreg, int bitwidth,
+@@ -126,7 +126,7 @@
    auto removeBroadcastSrc = actionRemoveBroadcastedRegs(cvt);
-   if (!removeBroadcastSrc.isIdentity()) {
-     auto prmtCvt = removeBroadcastSrc.apply(cvt);
--    auto info = lowerTMemLdSt(prmtCvt, maxnreg, bitwidth, emitError, unpacked);
-+    auto info = lowerTMemLdSt(prmtCvt, maxnreg, bitwidth, isScales, emitError,
-+                              unpacked);
-     if (failed(info))
-       return failure();
-     info->broadcast = std::move(removeBroadcastSrc);
-@@ -144,6 +145,9 @@ lowerTMemLdSt(const LinearLayout &cvt, int maxnreg, int bitwidth,
+   if (!removeBroadcastSrc.isIdentity())
+     return lowerTMemLdSt(removeBroadcastSrc.apply(cvt), maxnreg, bitwidth,
+-                         emitError, unpacked);
++                         isScales, emitError, unpacked);
+   auto *ctx = cvt.getInDimNames().begin()->getContext();
+   auto S = [ctx](StringRef str) { return StringAttr::get(ctx, str); };
+   auto kReg = S("register");
+@@ -139,6 +139,9 @@
      for (int contig = 1; bitwidth * contig <= 32; contig *= 2) {
        auto maybeQuot =
            divideLeft(cvt, LinearLayout::identity1D(contig, kReg, kCol));
@@ -172,7 +159,7 @@
        if (!maybeQuot)
          break;
        quot = *maybeQuot;
-@@ -185,7 +189,8 @@ lowerTMemLdSt(const LinearLayout &cvt, int maxnreg, int bitwidth,
+@@ -182,7 +185,8 @@
      if (unpacked) {
        quot = LinearLayout::zeros1D(1, kReg, kCol, 32 / bitwidth) * quot;
      }
@@ -182,7 +169,7 @@
      if (failed(info))
        return failure();
      if (bestContig > 1) {
-@@ -234,6 +239,19 @@ lowerTMemLdSt(const LinearLayout &cvt, int maxnreg, int bitwidth,
+@@ -231,6 +235,19 @@
        auto row = reps.getBasis(kLane, 4, kRow);
        auto col = reps.getBasis(kLane, 4, kCol);
        secondHalfOffset = (row << 16) | col;
@@ -202,7 +189,7 @@
        // We "quotient it out", meaning we remove the last basis from reps
        auto basis = reps.getBases();
        basis[kLane][4] = {0, 0};
-@@ -298,8 +316,9 @@ computeTMemLdStEncodingInfo(RankedTensorType regTy, MemDescType memTy,
+@@ -295,8 +312,9 @@
    cvt = LinearLayout(std::move(bases), cvt.getOutDims(),
                       /*isSurjective=*/cvt.isSurjective());
  
@@ -212,11 +199,11 @@
 +  return lowerTMemLdSt(cvt, maxnreg, bitwidth, isScales, emitError);
  }
  
- } // namespace mlir::triton::nvidia_gpu
+ bool supportsTMemLoadReduce(RankedTensorType regTy, MemDescType memTy,
 
 --- a/python/test/gluon/test_fpsan.py
 +++ b/python/test/gluon/test_fpsan.py
-@@ -1792,6 +1792,8 @@ _WMMA_DOT_CASES = [
+@@ -1870,6 +1870,8 @@
  
  
  def _native_mma_k(type_a: str) -> int:
@@ -226,9 +213,21 @@
  
  
 
+--- a/python/test/unit/language/test_compile_only.py
++++ b/python/test/unit/language/test_compile_only.py
+@@ -213,7 +213,7 @@
+     assert re.search(pattern, str(ttgir)), "The TTGIR does not match the expected pattern."
+ 
+     ptx = k.asm["ptx"]
+-    pattern = (r"tcgen05.mma.cta_group::1.kind::mxf8f6f4.block_scale.block32")
++    pattern = (r"tcgen05.mma.cta_group::1.kind::mxf8f6f4.block_scale.scale_vec::1X")
+     assert re.search(pattern, str(ptx)), "The PTX does not match the expected pattern."
+     assert k.asm["cubin"] != b""
+ 
+
 --- a/python/test/unit/language/test_core.py
 +++ b/python/test/unit/language/test_core.py
-@@ -3595,10 +3595,7 @@ def get_test_small_dots_cases():
+@@ -3673,10 +3673,7 @@
      if not is_cuda():
          return []
      return [(2, 4, 32, 1, False, False, 'None', 'ieee', 'float16', 'float32', 1, None),
@@ -240,7 +239,7 @@
  
  
  @pytest.mark.interpreter
-@@ -3833,21 +3830,19 @@ def test_dot(M, N, K, num_warps, col_a, col_b, epilogue, input_precision, in_dty
+@@ -3911,21 +3908,19 @@
      # make sure ld/st are vectorized
      ptx = pgm.asm['ptx']
  
@@ -278,19 +277,19 @@
 
 --- a/python/test/unit/language/test_matmul.py
 +++ b/python/test/unit/language/test_matmul.py
-@@ -402,6 +402,8 @@ def test_mxfp(BLOCK_M, BLOCK_N, BLOCK_K, NUM_STAGES, nonKDim, NUM_WARPS, device)
+@@ -402,6 +402,8 @@
              pytest.skip(f"CDNA4 does not support {BLOCK_K=} for scaled mfma {nonKDim=} variants")
          if (BLOCK_M == 256 or BLOCK_N == 256) and BLOCK_K == 256:
              pytest.skip("Config requires too much shared memory")
 +    if is_cuda() and torch.cuda.get_device_capability()[0] >= 10 and BLOCK_N < 32:
 +        pytest.skip("Blackwell TMEM scaling instructions require aligned BLOCK_N >= 32")
  
-     if BLOCK_N == 256 and BLOCK_K == 256:
+     if not is_rubin() and BLOCK_N == 256 and BLOCK_K == 256:
          NUM_STAGES = min(NUM_STAGES, 2)
 
 --- a/python/tutorials/09-persistent-matmul.py
 +++ b/python/tutorials/09-persistent-matmul.py
-@@ -61,7 +61,7 @@ def supports_tma():
+@@ -62,7 +62,7 @@
  
  
  def is_hopper():
@@ -302,7 +301,70 @@
 
 --- a/test/Conversion/tritongpu_to_llvm_blackwell.mlir
 +++ b/test/Conversion/tritongpu_to_llvm_blackwell.mlir
-@@ -1076,7 +1076,7 @@ module attributes {"ttg.num-warps" = 8 : i32} {
+@@ -302,7 +302,7 @@
+   // CHECK-LABEL: @tc_gen5_mma_scaled_a_tmem
+   // CHECK: %[[TMEM_BASE:.+]] = llvm.ptrtoint %arg2 : !llvm.ptr<3> to i32
+   // CHECK: %[[A_BASE:.+]] = llvm.ptrtoint %arg0 : !llvm.ptr<3> to i32
+-  // CHECK: @$7 tcgen05.mma.cta_group::1.kind::mxf8f6f4.block_scale.block32 [ $0 + 0 ], [ $1 + 0 ], $2, $3, [ $4 + 0 ], [ $5 + 0 ], $6;", "r,r,l,r,r,r,b,b" %[[TMEM_BASE]], %[[A_BASE]]
++  // CHECK: @$7 tcgen05.mma.cta_group::1.kind::mxf8f6f4.block_scale.scale_vec::1X [ $0 + 0 ], [ $1 + 0 ], $2, $3, [ $4 + 0 ], [ $5 + 0 ], $6;", "r,r,l,r,r,r,b,b" %[[TMEM_BASE]], %[[A_BASE]]
+   tt.func @tc_gen5_mma_scaled_a_tmem(
+       %a: !ttg.memdesc<128x256xf8E5M2, #tmem, #ttng.tensor_memory>,
+       %b: !ttg.memdesc<256x64xf8E5M2, #shared, #ttg.shared_memory>,
+@@ -337,10 +337,10 @@
+   // CHECK: %[[P1:.+]] = llvm.and %{{.*}}, %[[P0]]  : i1
+   // CHECK: llvm.cond_br %[[P1]]
+   // CHECK: %[[DESC0:.+]] = llvm.mlir.constant(144708608 : i32) : i32
+-  // CHECK: @$7 tcgen05.mma.cta_group::1.kind::mxf8f6f4.block_scale.block32 [ $0 + 0 ], $1, $2, $3, [ $4 + 0 ], [ $5 + 0 ], $6;", "r,l,l,r,r,r,b,b" %[[TMEM_BASE]], %{{.+}}, %{{.+}}, %[[DESC0]], %{{.+}}, %{{.+}}, %arg5
++  // CHECK: @$7 tcgen05.mma.cta_group::1.kind::mxf8f6f4.block_scale.scale_vec::1X [ $0 + 0 ], $1, $2, $3, [ $4 + 0 ], [ $5 + 0 ], $6;", "r,l,l,r,r,r,b,b" %[[TMEM_BASE]], %{{.+}}, %{{.+}}, %[[DESC0]], %{{.+}}, %{{.+}}, %arg5
+   // CHECK: %[[TRUE:.+]] = llvm.mlir.constant(true) : i1
+   // CHECK: %[[DESC1:.+]] = llvm.mlir.constant(681579536 : i32) : i32
+-  // CHECK: @$7 tcgen05.mma.cta_group::1.kind::mxf8f6f4.block_scale.block32 [ $0 + 0 ], $1, $2, $3, [ $4 + 0 ], [ $5 + 0 ], $6;", "r,l,l,r,r,r,b,b" %[[TMEM_BASE]], %{{.+}}, %{{.+}}, %[[DESC1]], %{{.+}}, %{{.+}}, %[[TRUE]]
++  // CHECK: @$7 tcgen05.mma.cta_group::1.kind::mxf8f6f4.block_scale.scale_vec::1X [ $0 + 0 ], $1, $2, $3, [ $4 + 0 ], [ $5 + 0 ], $6;", "r,l,l,r,r,r,b,b" %[[TMEM_BASE]], %{{.+}}, %{{.+}}, %[[DESC1]], %{{.+}}, %{{.+}}, %[[TRUE]]
+   tt.func @tc_gen5_mma_block_scale(%a: !ttg.memdesc<128x64xf8E4M3FN, #shared, #ttg.shared_memory>,
+                        %b: !ttg.memdesc<32x128xi8, #shared1, #ttg.shared_memory>,
+                        %c: !ttg.memdesc<128x128xf32, #tmem, #ttng.tensor_memory, mutable>,
+@@ -371,13 +371,13 @@
+ module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 4 : i32} {
+   // CHECK-LABEL: @tc_gen5_mma_block_scale_fp4_a
+   // CHECK: %[[DESC0:.+]] = llvm.mlir.constant(144769664 : i32) : i32
+-  // CHECK: @$7 tcgen05.mma.cta_group::1.kind::mxf8f6f4.block_scale.block32 [ $0 + 0 ], $1, $2, $3, [ $4 + 0 ], [ $5 + 0 ], $6;", "r,l,l,r,r,r,b,b" %{{.+}}, %{{.+}}, %{{.+}}, %[[DESC0]]
++  // CHECK: @$7 tcgen05.mma.cta_group::1.kind::mxf8f6f4.block_scale.scale_vec::1X [ $0 + 0 ], $1, $2, $3, [ $4 + 0 ], [ $5 + 0 ], $6;", "r,l,l,r,r,r,b,b" %{{.+}}, %{{.+}}, %{{.+}}, %[[DESC0]]
+   // CHECK: %[[DESC1:.+]] = llvm.mlir.constant(681640592 : i32) : i32
+-  // CHECK: @$7 tcgen05.mma.cta_group::1.kind::mxf8f6f4.block_scale.block32 [ $0 + 0 ], $1, $2, $3, [ $4 + 0 ], [ $5 + 0 ], $6;", "r,l,l,r,r,r,b,b" %{{.+}}, %{{.+}}, %{{.+}}, %[[DESC1]]
++  // CHECK: @$7 tcgen05.mma.cta_group::1.kind::mxf8f6f4.block_scale.scale_vec::1X [ $0 + 0 ], $1, $2, $3, [ $4 + 0 ], [ $5 + 0 ], $6;", "r,l,l,r,r,r,b,b" %{{.+}}, %{{.+}}, %{{.+}}, %[[DESC1]]
+   // CHECK: %[[DESC2:.+]] = llvm.mlir.constant(1218511520 : i32) : i32
+-  // CHECK: @$7 tcgen05.mma.cta_group::1.kind::mxf8f6f4.block_scale.block32 [ $0 + 0 ], $1, $2, $3, [ $4 + 0 ], [ $5 + 0 ], $6;", "r,l,l,r,r,r,b,b" %{{.+}}, %{{.+}}, %{{.+}}, %[[DESC2]]
++  // CHECK: @$7 tcgen05.mma.cta_group::1.kind::mxf8f6f4.block_scale.scale_vec::1X [ $0 + 0 ], $1, $2, $3, [ $4 + 0 ], [ $5 + 0 ], $6;", "r,l,l,r,r,r,b,b" %{{.+}}, %{{.+}}, %{{.+}}, %[[DESC2]]
+   // CHECK: %[[DESC3:.+]] = llvm.mlir.constant(1755382448 : i32) : i32
+-  // CHECK: @$7 tcgen05.mma.cta_group::1.kind::mxf8f6f4.block_scale.block32 [ $0 + 0 ], $1, $2, $3, [ $4 + 0 ], [ $5 + 0 ], $6;", "r,l,l,r,r,r,b,b" %{{.+}}, %{{.+}}, %{{.+}}, %[[DESC3]]
++  // CHECK: @$7 tcgen05.mma.cta_group::1.kind::mxf8f6f4.block_scale.scale_vec::1X [ $0 + 0 ], $1, $2, $3, [ $4 + 0 ], [ $5 + 0 ], $6;", "r,l,l,r,r,r,b,b" %{{.+}}, %{{.+}}, %{{.+}}, %[[DESC3]]
+   tt.func @tc_gen5_mma_block_scale_fp4_a(%a: !ttg.memdesc<128x64xi8, #shared1, #ttg.shared_memory>,
+                        %b: !ttg.memdesc<128x128xi8, #shared, #ttg.shared_memory>,
+                        %c: !ttg.memdesc<128x128xf32, #tmem, #ttng.tensor_memory, mutable>,
+@@ -540,8 +540,8 @@
+   // CHECK-LABEL: @tc_gen5_mma_block_scale_nvfp4
+   // CHECK: %[[TMEM_BASE:.+]] = llvm.ptrtoint %{{.*}} : !llvm.ptr<3> to i32
+   // CHECK: %[[DESC0:.+]] = llvm.mlir.constant(138413184 : i32) : i32
+-  // CHECK: @$7 tcgen05.mma.cta_group::1.kind::mxf4nvf4.block_scale.block16 [ $0 + 0 ], $1, $2, $3, [ $4 + 0 ], [ $5 + 0 ], $6;", "r,l,l,r,r,r,b,b" %[[TMEM_BASE]], %{{.+}}, %{{.+}}, %[[DESC0]]
+-  // CHECK: @$7 tcgen05.mma.cta_group::1.kind::mxf4nvf4.block_scale.block16 [ $0 + 0 ], $1, $2, $3, [ $4 + 0 ], [ $5 + 0 ], $6;", "r,l,l,r,r,r,b,b" %[[TMEM_BASE]], %{{.+}}, %{{.+}}, %[[DESC0]]
++  // CHECK: @$7 tcgen05.mma.cta_group::1.kind::mxf4nvf4.block_scale.scale_vec::4X [ $0 + 0 ], $1, $2, $3, [ $4 + 0 ], [ $5 + 0 ], $6;", "r,l,l,r,r,r,b,b" %[[TMEM_BASE]], %{{.+}}, %{{.+}}, %[[DESC0]]
++  // CHECK: @$7 tcgen05.mma.cta_group::1.kind::mxf4nvf4.block_scale.scale_vec::4X [ $0 + 0 ], $1, $2, $3, [ $4 + 0 ], [ $5 + 0 ], $6;", "r,l,l,r,r,r,b,b" %[[TMEM_BASE]], %{{.+}}, %{{.+}}, %[[DESC0]]
+   tt.func @tc_gen5_mma_block_scale_nvfp4(%a: !ttg.memdesc<128x64xi8, #shared, #ttg.shared_memory>,
+                        %b: !ttg.memdesc<64x256xi8, #shared1, #ttg.shared_memory>,
+                        %c: !ttg.memdesc<128x256xf32, #tmem, #ttng.tensor_memory, mutable>,
+@@ -573,9 +573,9 @@
+   // CHECK-LABEL: @tc_gen5_mma_block_scale_mxfp4
+   // CHECK-DAG: %[[TMEM_BASE:.+]] = llvm.ptrtoint %{{.*}} : !llvm.ptr<3> to i32
+   // CHECK: %[[DESC0:.+]] = llvm.mlir.constant(146801792 : i32) : i32
+-  // CHECK: @$7 tcgen05.mma.cta_group::1.kind::mxf4.block_scale.block32 [ $0 + 0 ], $1, $2, $3, [ $4 + 0 ], [ $5 + 0 ], $6;", "r,l,l,r,r,r,b,b" %[[TMEM_BASE]], %{{.+}}, %{{.+}}, %[[DESC0]]
++  // CHECK: @$7 tcgen05.mma.cta_group::1.kind::mxf4.block_scale.scale_vec::2X [ $0 + 0 ], $1, $2, $3, [ $4 + 0 ], [ $5 + 0 ], $6;", "r,l,l,r,r,r,b,b" %[[TMEM_BASE]], %{{.+}}, %{{.+}}, %[[DESC0]]
+   // CHECK: %[[DESC1:.+]] = llvm.mlir.constant(1220543648 : i32) : i32
+-  // CHECK: @$7 tcgen05.mma.cta_group::1.kind::mxf4.block_scale.block32 [ $0 + 0 ], $1, $2, $3, [ $4 + 0 ], [ $5 + 0 ], $6;", "r,l,l,r,r,r,b,b" %[[TMEM_BASE]], %{{.+}}, %{{.+}}, %[[DESC1]]
++  // CHECK: @$7 tcgen05.mma.cta_group::1.kind::mxf4.block_scale.scale_vec::2X [ $0 + 0 ], $1, $2, $3, [ $4 + 0 ], [ $5 + 0 ], $6;", "r,l,l,r,r,r,b,b" %[[TMEM_BASE]], %{{.+}}, %{{.+}}, %[[DESC1]]
+   tt.func @tc_gen5_mma_block_scale_mxfp4(%a: !ttg.memdesc<128x64xi8, #shared, #ttg.shared_memory>,
+                        %b: !ttg.memdesc<64x256xi8, #shared1, #ttg.shared_memory>,
+                        %c: !ttg.memdesc<128x256xf32, #tmem, #ttng.tensor_memory, mutable>,
+@@ -1099,7 +1099,7 @@
  // CHECK-LABEL: @load_store_16x32bx1_broadcast
  tt.func private @load_store_16x32bx1_broadcast(%arg0: !ttg.memdesc<16x8xi8, #tmem_scales, #ttng.tensor_memory, mutable>, %arg1: tensor<16x8xi8, #linear>) {
    %true = arith.constant true
@@ -311,24 +373,139 @@
    ttng.tmem_store %arg1, %arg0, %true : tensor<16x8xi8, #linear> -> !ttg.memdesc<16x8xi8, #tmem_scales, #ttng.tensor_memory, mutable>
    tt.return
  }
-@@ -1091,7 +1091,7 @@ module attributes {"ttg.num-warps" = 4 : i32} {
+@@ -1114,7 +1114,7 @@
  // CHECK-LABEL: @load_store_16x2_scales_uses_zero_second_half
  tt.func private @load_store_16x2_scales_uses_zero_second_half(%arg0: !ttg.memdesc<16x2xi8, #tmem_scales, #ttng.tensor_memory, mutable>, %arg1: tensor<16x2xi8, #linear>) {
    %true = arith.constant true
--  // CHECK: @$0 tcgen05.st.sync.aligned.16x32bx2.x1.unpack::16b.b32 [$1 + 0], 0, {$2}
-+  // CHECK: @$0 tcgen05.st.sync.aligned.16x32bx2.x1.unpack::16b.b32 [$1 + 0], 1, {$2}
+-  // CHECK: @$0 tcgen05.st.sync.aligned.16x32bx2.x1.b32 [$1 + 0], 0, {$2}
++  // CHECK: @$0 tcgen05.st.sync.aligned.16x32bx2.x1.b32 [$1 + 0], 1, {$2}
    // CHECK: llvm.return
    ttng.tmem_store %arg1, %arg0, %true : tensor<16x2xi8, #linear> -> !ttg.memdesc<16x2xi8, #tmem_scales, #ttng.tensor_memory, mutable>
    tt.return
+@@ -1178,22 +1178,22 @@
+       %pred: i1) {
+     // CHECK: %[[ACC_BASE:.+]] = llvm.ptrtoint %arg4 : !llvm.ptr<3> to i32
+     // CHECK: %[[A_E4M3_BASE:.+]] = llvm.ptrtoint %arg0 : !llvm.ptr<3> to i32
+-    // CHECK: tcgen05.mma.cta_group::1.kind::mxf8f6f4.block_scale.block32 [ $0 + 0 ], [ $1 + 0 ], $2
++    // CHECK: tcgen05.mma.cta_group::1.kind::mxf8f6f4.block_scale.scale_vec::1X [ $0 + 0 ], [ $1 + 0 ], $2
+     // CHECK-SAME: %[[ACC_BASE]], %[[A_E4M3_BASE]]
+-    // CHECK: tcgen05.mma.cta_group::1.kind::mxf8f6f4.block_scale.block32 [ $0 + 0 ], [ $1 + 8 ], $2
++    // CHECK: tcgen05.mma.cta_group::1.kind::mxf8f6f4.block_scale.scale_vec::1X [ $0 + 0 ], [ $1 + 8 ], $2
+     // CHECK-SAME: %[[ACC_BASE]], %[[A_E4M3_BASE]]
+-    // CHECK: tcgen05.mma.cta_group::1.kind::mxf8f6f4.block_scale.block32 [ $0 + 0 ], [ $1 + 16 ], $2
++    // CHECK: tcgen05.mma.cta_group::1.kind::mxf8f6f4.block_scale.scale_vec::1X [ $0 + 0 ], [ $1 + 16 ], $2
+     // CHECK-SAME: %[[ACC_BASE]], %[[A_E4M3_BASE]]
+-    // CHECK: tcgen05.mma.cta_group::1.kind::mxf8f6f4.block_scale.block32 [ $0 + 0 ], [ $1 + 24 ], $2
++    // CHECK: tcgen05.mma.cta_group::1.kind::mxf8f6f4.block_scale.scale_vec::1X [ $0 + 0 ], [ $1 + 24 ], $2
+     // CHECK-SAME: %[[ACC_BASE]], %[[A_E4M3_BASE]]
+     // CHECK: %[[A_E5M2_BASE:.+]] = llvm.ptrtoint %arg1 : !llvm.ptr<3> to i32
+-    // CHECK: tcgen05.mma.cta_group::1.kind::mxf8f6f4.block_scale.block32 [ $0 + 0 ], [ $1 + 0 ], $2
++    // CHECK: tcgen05.mma.cta_group::1.kind::mxf8f6f4.block_scale.scale_vec::1X [ $0 + 0 ], [ $1 + 0 ], $2
+     // CHECK-SAME: %[[ACC_BASE]], %[[A_E5M2_BASE]]
+-    // CHECK: tcgen05.mma.cta_group::1.kind::mxf8f6f4.block_scale.block32 [ $0 + 0 ], [ $1 + 8 ], $2
++    // CHECK: tcgen05.mma.cta_group::1.kind::mxf8f6f4.block_scale.scale_vec::1X [ $0 + 0 ], [ $1 + 8 ], $2
+     // CHECK-SAME: %[[ACC_BASE]], %[[A_E5M2_BASE]]
+-    // CHECK: tcgen05.mma.cta_group::1.kind::mxf8f6f4.block_scale.block32 [ $0 + 0 ], [ $1 + 16 ], $2
++    // CHECK: tcgen05.mma.cta_group::1.kind::mxf8f6f4.block_scale.scale_vec::1X [ $0 + 0 ], [ $1 + 16 ], $2
+     // CHECK-SAME: %[[ACC_BASE]], %[[A_E5M2_BASE]]
+-    // CHECK: tcgen05.mma.cta_group::1.kind::mxf8f6f4.block_scale.block32 [ $0 + 0 ], [ $1 + 24 ], $2
++    // CHECK: tcgen05.mma.cta_group::1.kind::mxf8f6f4.block_scale.scale_vec::1X [ $0 + 0 ], [ $1 + 24 ], $2
+     // CHECK-SAME: %[[ACC_BASE]], %[[A_E5M2_BASE]]
+     ttng.tc_gen5_mma_scaled %a_e4m3, %b_e5m2, %c, %scale_a, %scale_b, %useAcc, %pred lhs = e4m3 rhs = e5m2 :
+        !ttg.memdesc<128x128xf8E4M3FN, #tmem_fp8_lhs, #ttng.tensor_memory>,
+@@ -1221,13 +1221,13 @@
+       %pred: i1) {
+     // CHECK-DAG: %[[ACC_BASE:.+]] = llvm.ptrtoint %arg2 : !llvm.ptr<3> to i32
+     // CHECK-DAG: %[[A_BASE:.+]] = llvm.ptrtoint %arg0 : !llvm.ptr<3> to i32
+-    // CHECK: tcgen05.mma.cta_group::1.kind::mxf8f6f4.block_scale.block32 [ $0 + 0 ], [ $1 + 0 ], $2
++    // CHECK: tcgen05.mma.cta_group::1.kind::mxf8f6f4.block_scale.scale_vec::1X [ $0 + 0 ], [ $1 + 0 ], $2
+     // CHECK-SAME: %[[ACC_BASE]], %[[A_BASE]]
+-    // CHECK: tcgen05.mma.cta_group::1.kind::mxf8f6f4.block_scale.block32 [ $0 + 0 ], [ $1 + 8 ], $2
++    // CHECK: tcgen05.mma.cta_group::1.kind::mxf8f6f4.block_scale.scale_vec::1X [ $0 + 0 ], [ $1 + 8 ], $2
+     // CHECK-SAME: %[[ACC_BASE]], %[[A_BASE]]
+-    // CHECK: tcgen05.mma.cta_group::1.kind::mxf8f6f4.block_scale.block32 [ $0 + 0 ], [ $1 + 16 ], $2
++    // CHECK: tcgen05.mma.cta_group::1.kind::mxf8f6f4.block_scale.scale_vec::1X [ $0 + 0 ], [ $1 + 16 ], $2
+     // CHECK-SAME: %[[ACC_BASE]], %[[A_BASE]]
+-    // CHECK: tcgen05.mma.cta_group::1.kind::mxf8f6f4.block_scale.block32 [ $0 + 0 ], [ $1 + 24 ], $2
++    // CHECK: tcgen05.mma.cta_group::1.kind::mxf8f6f4.block_scale.scale_vec::1X [ $0 + 0 ], [ $1 + 24 ], $2
+     // CHECK-SAME: %[[ACC_BASE]], %[[A_BASE]]
+     ttng.tc_gen5_mma_scaled %a, %b, %c, %scale_a, %scale_b, %useAcc, %pred lhs = e2m1 rhs = e5m2 :
+        !ttg.memdesc<128x64xi8, #tmem_fp4_padded_lhs, #ttng.tensor_memory>,
+@@ -1257,13 +1257,13 @@
+       %pred: i1) {
+     // CHECK-DAG: %[[ACC_BASE:.+]] = llvm.ptrtoint %arg2 : !llvm.ptr<3> to i32
+     // CHECK-DAG: %[[A_BASE:.+]] = llvm.ptrtoint %arg0 : !llvm.ptr<3> to i32
+-    // CHECK: tcgen05.mma.cta_group::1.kind::mxf4.block_scale.block32 [ $0 + 0 ], [ $1 + 0 ], $2
++    // CHECK: tcgen05.mma.cta_group::1.kind::mxf4.block_scale.scale_vec::2X [ $0 + 0 ], [ $1 + 0 ], $2
+     // CHECK-SAME: %[[ACC_BASE]], %[[A_BASE]]
+-    // CHECK: tcgen05.mma.cta_group::1.kind::mxf4.block_scale.block32 [ $0 + 0 ], [ $1 + 8 ], $2
++    // CHECK: tcgen05.mma.cta_group::1.kind::mxf4.block_scale.scale_vec::2X [ $0 + 0 ], [ $1 + 8 ], $2
+     // CHECK-SAME: %[[ACC_BASE]], %[[A_BASE]]
+-    // CHECK: tcgen05.mma.cta_group::1.kind::mxf4.block_scale.block32 [ $0 + 0 ], [ $1 + 16 ], $2
++    // CHECK: tcgen05.mma.cta_group::1.kind::mxf4.block_scale.scale_vec::2X [ $0 + 0 ], [ $1 + 16 ], $2
+     // CHECK-SAME: %[[ACC_BASE]], %[[A_BASE]]
+-    // CHECK: tcgen05.mma.cta_group::1.kind::mxf4.block_scale.block32 [ $0 + 0 ], [ $1 + 24 ], $2
++    // CHECK: tcgen05.mma.cta_group::1.kind::mxf4.block_scale.scale_vec::2X [ $0 + 0 ], [ $1 + 24 ], $2
+     // CHECK-SAME: %[[ACC_BASE]], %[[A_BASE]]
+     ttng.tc_gen5_mma_scaled %a, %b, %c, %scale_a, %scale_b, %useAcc, %pred lhs = e2m1 rhs = e2m1 :
+        !ttg.memdesc<128x128xi8, #tmem_fp4_dense_lhs, #ttng.tensor_memory>,
+
+--- a/test/Conversion/tritongpu_to_llvm_rubin.mlir
++++ b/test/Conversion/tritongpu_to_llvm_rubin.mlir
+@@ -8,7 +8,7 @@
+ module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 4 : i32, ttg.target = "cuda:107"} {
+   // CHECK-LABEL: @tc_gen5_mma_block_scale_fp8_sm107
+   // CHECK: %[[TMEM_BASE:.+]] = llvm.ptrtoint %arg2 : !llvm.ptr<3> to i32
+-  // CHECK-COUNT-2: tcgen05.mma.cta_group::1.kind::mxf8f6f4.block_scale.block32
++  // CHECK-COUNT-2: tcgen05.mma.cta_group::1.kind::mxf8f6f4.block_scale.scale_vec::1X
+   // CHECK-NOT: tcgen05.mma
+   tt.func @tc_gen5_mma_block_scale_fp8_sm107(%a: !ttg.memdesc<128x128xf8E4M3FN, #shared, #ttg.shared_memory>,
+                        %b: !ttg.memdesc<64x128xi8, #shared1, #ttg.shared_memory>,
+@@ -41,7 +41,7 @@
+ module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 4 : i32, ttg.target = "cuda:107"} {
+   // CHECK-LABEL: @tc_gen5_mma_block_scale_nvfp4_sm107_m256
+   // CHECK: %[[DESC:.+]] = llvm.mlir.constant(136316040 : i32) : i32
+-  // CHECK-COUNT-4: tcgen05.mma.cta_group::1.kind::mxf4nvf4.block_scale.block32
++  // CHECK-COUNT-4: tcgen05.mma.cta_group::1.kind::mxf4nvf4.block_scale.scale_vec::2X
+   // CHECK-NOT: tcgen05.mma
+   tt.func @tc_gen5_mma_block_scale_nvfp4_sm107_m256(%a: !ttg.memdesc<256x128xi8, #shared, #ttg.shared_memory>,
+                        %b: !ttg.memdesc<128x128xi8, #shared1, #ttg.shared_memory>,
+@@ -103,7 +103,7 @@
+ #tmem_scales1 = #ttng.tensor_memory_scales_encoding<CGALayout = [[1, 0]]>
+ module attributes {"ttg.num-ctas" = 2 : i32, "ttg.num-warps" = 4 : i32, ttg.target = "cuda:107", "ttg.threads-per-warp" = 32 : i32, "ttng.two-ctas" = true} {
+   // CHECK-LABEL: @tc_gen5_mma_scaled_fp4_padded_shared_linear_a
+-  // CHECK-COUNT-4: tcgen05.mma.cta_group::2.kind::mxf8f6f4.block_scale.block32
++  // CHECK-COUNT-4: tcgen05.mma.cta_group::2.kind::mxf8f6f4.block_scale.scale_vec::1X
+   // CHECK-NOT: tcgen05.mma
+   tt.func @tc_gen5_mma_scaled_fp4_padded_shared_linear_a(
+       %a: !ttg.memdesc<256x64xi8, #shared_fp4_padded_sl, #smem, mutable>,
+@@ -158,8 +158,8 @@
+ #tmem_scales = #ttng.tensor_memory_scales_encoding<>
+ module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 4 : i32, ttg.target = "cuda:107"} {
+   // CHECK-LABEL: @tc_gen5_mma_block_scale_breuse
+-  // CHECK: tcgen05.mma.cta_group::1.kind::mxf8f6f4.block_scale.block32.collector::b::fill
+-  // CHECK: tcgen05.mma.cta_group::1.kind::mxf8f6f4.block_scale.block32.collector::b::lastuse
++  // CHECK: tcgen05.mma.cta_group::1.kind::mxf8f6f4.block_scale.scale_vec::1X.collector::b::fill
++  // CHECK: tcgen05.mma.cta_group::1.kind::mxf8f6f4.block_scale.scale_vec::1X.collector::b::lastuse
+   tt.func @tc_gen5_mma_block_scale_breuse(%a: !ttg.memdesc<256x64xf8E4M3FN, #shared, #ttg.shared_memory>,
+                        %b: !ttg.memdesc<32x128xi8, #shared1, #ttg.shared_memory>,
+                        %c: !ttg.memdesc<256x128xf32, #tmem, #ttng.tensor_memory, mutable>,
+@@ -195,7 +195,7 @@
+   // scale kind in the descriptor for both K=128 sub-instructions of a
+   // logical BLOCK_K=256 tile.
+   // CHECK: %[[DESC:.+]] = llvm.mlir.constant(153093256 : i32) : i32
+-  // CHECK-COUNT-2: tcgen05.mma.cta_group::1.kind::mxf4nvf4.block_scale.block16
++  // CHECK-COUNT-2: tcgen05.mma.cta_group::1.kind::mxf4nvf4.block_scale.scale_vec::4X
+   // CHECK-NOT: tcgen05.mma
+   tt.func @tc_gen5_mma_block_scale_nvfp4_ue5m3_sm107(%a: !ttg.memdesc<128x128xi8, #shared, #ttg.shared_memory>,
+                        %b: !ttg.memdesc<128x128xi8, #shared1, #ttg.shared_memory>,
 
 --- a/test/TritonGPU/accelerate-matmul.mlir
 +++ b/test/TritonGPU/accelerate-matmul.mlir
-@@ -1001,36 +1001,3 @@ module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 4 : i32, ttg.targ
-   }
- }
+@@ -1052,40 +1052,6 @@
  
--// -----
--
+ // -----
+ 
 -// Verify TF32 dot with N=8, K=8 (native WGMMA tile) selects MMAv3 on sm90.
 -// CHECK: #[[$MMA:.+]] = #ttg.nvidia_mma<{versionMajor = 3, versionMinor = 0, warpsPerCTA = [4, 1], instrShape = [16, 8, 8]}>
 -#blocked_tf32_n8 = #ttg.blocked<{sizePerThread = [2, 2], threadsPerWarp = [8, 4], warpsPerCTA = [4, 1], order = [1, 0]}>
@@ -360,10 +537,16 @@
 -    tt.return %d : tensor<64x8xf32, #blocked_fp16_n8>
 -  }
 -}
+-
+-// -----
+-
+ #blocked = #ttg.blocked<{sizePerThread = [1, 1], threadsPerWarp = [32, 1], warpsPerCTA = [4, 1], order = [0, 1]}>
+ #blocked1 = #ttg.blocked<{sizePerThread = [1, 1], threadsPerWarp = [16, 2], warpsPerCTA = [4, 1], order = [1, 0]}>
+ #blocked2 = #ttg.blocked<{sizePerThread = [1, 1], threadsPerWarp = [2, 16], warpsPerCTA = [4, 1], order = [1, 0]}>
 
 --- a/third_party/nvidia/backend/compiler.py
 +++ b/third_party/nvidia/backend/compiler.py
-@@ -27,8 +27,6 @@ def min_dot_size(target: GPUTarget):
+@@ -29,8 +29,6 @@
              return (1, 1, 32)
          elif lhs_bitwidth == 64:
              return (1, 1, 4)
@@ -375,26 +558,43 @@
 
 --- a/third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/DotOpToLLVM/MMAv5.cpp
 +++ b/third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/DotOpToLLVM/MMAv5.cpp
-@@ -683,15 +683,18 @@ LogicalResult convertScaledDot(const LLVMTypeConverter &typeConverter,
-                           int k) {
-     auto [numRepM, numRepN, numRepK] = desc.repShape;
-     int scaleFactorColsPerSet = getScaleFactorColsPerSet(mxfpInstKind);
+@@ -398,12 +398,12 @@
+   std::string opcode =
+       "tcgen05.mma.cta_group::" + std::to_string(twoCTAs ? 2 : 1) + ".kind::";
+   if (mxfpInstKind == mxfpKind::mxf8f6f4) {
+-    opcode += "mxf8f6f4.block_scale.block32";
++    opcode += "mxf8f6f4.block_scale.scale_vec::1X";
+   } else if (mxfpInstKind == mxfpKind::mxf4) {
+-    opcode += "mxf4.block_scale.block32";
++    opcode += "mxf4.block_scale.scale_vec::2X";
+   } else if (mxfpInstKind == mxfpKind::mxf4nvf4) {
+-    opcode += getScaleVecSize(op) == 32 ? "mxf4nvf4.block_scale.block32"
+-                                        : "mxf4nvf4.block_scale.block16";
++    opcode += getScaleVecSize(op) == 32 ? "mxf4nvf4.block_scale.scale_vec::2X"
++                                        : "mxf4nvf4.block_scale.scale_vec::4X";
+   } else {
+     assert(0 && "Unsupported mxfp kind.");
+   }
+@@ -881,15 +881,18 @@
+     int scaleFactorColsPerSet =
+         getScaleFactorColsPerSet(mxfpInstKind, op, dot.mmaSizeK);
+     int numRepKWords = ceil<int>(numRepK, 4 / scaleFactorColsPerSet);
 +    int aMultibuffers = cast<MemDescType>(op.getAScale().getType()).getRank() > 2 ? cast<MemDescType>(op.getAScale().getType()).getDimSize(0) : 1;
 +    int bMultibuffers = cast<MemDescType>(op.getBScale().getType()).getRank() > 2 ? cast<MemDescType>(op.getBScale().getType()).getDimSize(0) : 1;
      int numColPerScaleBlockA = ceil<int>(
          ttng::getTmemAllocSizes(cast<MemDescType>(op.getAScale().getType()))
 -            .numCols,
 +            .numCols / aMultibuffers,
-         numRepM * (ceil<int>(numRepK, 4 / scaleFactorColsPerSet)));
+         numRepM * numRepKWords);
      int numColPerScaleBlockB = ceil<int>(
          ttng::getTmemAllocSizes(cast<MemDescType>(op.getBScale().getType()))
 -            .numCols,
 +            .numCols / bMultibuffers,
-         numRepN * (ceil<int>(numRepK, 4 / scaleFactorColsPerSet)));
+         numRepN * numRepKWords);
 -    numColPerScaleBlockB = std::max(numColPerScaleBlockB, 2);
 +    if (desc.mmaSizeN >= 32)
 +      numColPerScaleBlockB = std::max(numColPerScaleBlockB, 2);
      int subWordIdx = k % (4 / scaleFactorColsPerSet);
      int wordIdx = k / (4 / scaleFactorColsPerSet);
-     Value scaleA = tb.add(
+     int scaleIdxA = linearizeScaleBlockIdx(op.getAScale(), m, wordIdx, numRepM,
 
