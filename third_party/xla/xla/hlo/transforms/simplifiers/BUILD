@@ -70,6 +70,7 @@ cc_library(
         "//xla/hlo/utils:hlo_query",
         "//xla/service:all_reduce_key",
         "//xla/service:collective_combiner_utils",
+        "//xla/service:collective_ops_utils",
         "//xla/tsl/platform:status_macros",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -92,6 +93,7 @@ xla_cc_test(
         "//xla/hlo/utils:hlo_matchers",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest",
         "@com_google_googletest//:gtest_main",  # build_cleaner: keep
     ],
 )
@@ -1846,6 +1848,7 @@ cc_library(
         "//xla:shape_util",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/pass:hlo_pass",
+        "//xla/service:collective_ops_utils",
         "//xla/service:collective_opt_utils",
         "//xla/service:hlo_module_config",
         "//xla/service:pattern_matcher",
@@ -1864,6 +1867,7 @@ xla_cc_test(
     srcs = ["all_gather_permuted_ds_simplifier_test.cc"],
     deps = [
         ":all_gather_permuted_ds_simplifier",
+        "//xla:side_effect_util",
         "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
@@ -1914,6 +1918,7 @@ xla_cc_test(
         ":all_gather_pad_ds_simplifier",
         "//xla:literal_util",
         "//xla:shape_util",
+        "//xla:side_effect_util",
         "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",

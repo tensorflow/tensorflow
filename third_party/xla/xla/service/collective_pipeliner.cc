@@ -2478,6 +2478,7 @@ absl::Status TransformFormattingOp(
             all_gather_instruction->constrain_layout(),
             all_gather_instruction->channel_id(),
             all_gather_instruction->use_global_device_ids()));
+    CopyCollectiveGroupKey(*formatting_op, *expanded_all_gather);
     pipelined_map[formatting_op] = expanded_all_gather;
     return absl::OkStatus();
   }

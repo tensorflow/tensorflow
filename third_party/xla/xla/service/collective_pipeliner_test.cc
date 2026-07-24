@@ -57,6 +57,7 @@ limitations under the License.
 #include "xla/service/legalize_scheduling_annotations.h"
 #include "xla/service/memory_annotations.h"
 #include "xla/service/scheduling_annotations_util.h"
+#include "xla/side_effect_util.h"
 #include "xla/tsl/platform/logging.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
@@ -4902,7 +4903,9 @@ while_body {
   mul = bf16[1,8,128] multiply(dynamic-slice.99, dynamic-slice.99)
   rs.1 = bf16[1,1,128] reduce-scatter(mul), replica_groups={}, dimensions={1}, to_apply=add, channel_id=2
   ar.1 = bf16[1,1,128] all-reduce(rs.1), replica_groups={}, to_apply=add, channel_id=1
-  ag.1 = bf16[1,8,128] all-gather(ar.1), replica_groups={}, dimensions={1}, channel_id=3
+  ag.1 = bf16[1,8,128] all-gather(ar.1), replica_groups={},
+    dimensions={1}, channel_id=3,
+    frontend_attributes={collective_group_key="g0"}
   dynamic-update-slice.35 = bf16[3,8,128] dynamic-update-slice(get-tuple-element.395, ag.1, select.1348, constant.2561, constant.2561)
   ROOT tuple = (s32[], bf16[3,8,128], bf16[3,8,128]) tuple(add.230, dynamic-update-slice.35, get-tuple-element.5)
 }
@@ -4929,6 +4932,9 @@ ENTRY entry {
                                      op::AllGather(op::AllReduce()),
                                      op::GetTupleElement(op::While()),
                                      op::Constant(), op::Constant()));
+  const HloInstruction* all_gather =
+      module->entry_computation()->root_instruction()->operand(1);
+  EXPECT_EQ(all_gather->get_frontend_attribute(kCollectiveGroupKeyAttr), "g0");
 }
 
 TEST_F(CollectivePipelinerTest, PipelinedSchedulingAnnotationsForward) {

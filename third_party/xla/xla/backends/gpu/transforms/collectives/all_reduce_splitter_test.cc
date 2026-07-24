@@ -196,6 +196,63 @@ ENTRY main {
   EXPECT_EQ(AllReduceCount(*module), 1);
 }
 
+TEST_F(AllReduceSplitterTest, PreservesGroupIdentityWhenSplittingAllReduce) {
+  constexpr absl::string_view kHloString = R"(
+HloModule m
+
+sum {
+  a = bf16[] parameter(0)
+  b = bf16[] parameter(1)
+  ROOT _ = bf16[] add(a,b)
+}
+
+ENTRY main {
+  p = bf16[2,4096,4096] parameter(0)
+  first.ar = bf16[2,4096,4096] all-reduce(p),
+    replica_groups={{0,1,2,3},{4,5,6,7}}, to_apply=sum,
+    use_global_device_ids=true, channel_id=1
+  zero = bf16[] constant(0)
+  reduce = bf16[4096] reduce(first.ar, zero), dimensions={0,1}, to_apply=sum
+  all-reduce = bf16[4096] all-reduce(reduce),
+    replica_groups={{0,1,2,3,4,5,6,7}}, to_apply=sum,
+    use_global_device_ids=true, channel_id=2,
+    frontend_attributes={collective_group_key="g0"}
+  table = s32[8]{0} constant({0,1,2,3,0,1,2,3})
+  pid = u32[] partition-id()
+  id = s32[1] dynamic-slice(table, pid), dynamic_slice_sizes={1}
+  reshape = s32[] reshape(id)
+  slice_size = s32[] constant(1024)
+  offset = s32[] multiply(reshape, slice_size)
+  ROOT _ = bf16[1024] dynamic-slice(all-reduce, offset),
+    dynamic_slice_sizes={1024}
+}
+)";
+
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<HloModule> module,
+      PrepareModule(kHloString, /*num_replicas=*/1, /*num_partitions=*/8));
+
+  EXPECT_THAT(AllReduceSplitter().Run(module.get()),
+              absl_testing::IsOkAndHolds(true));
+  EXPECT_EQ(AllReduceCount(*module), 3);
+
+  const auto instrs = module->entry_computation()->instructions();
+  auto is_grouped_all_reduce = [](const HloInstruction* instr) {
+    const auto group_key =
+        instr->get_frontend_attribute("collective_group_key");
+    return HloPredicateIsOp<HloOpcode::kAllReduce>(instr) &&
+           group_key.has_value() && !group_key->empty();
+  };
+  EXPECT_EQ(absl::c_count_if(instrs, is_grouped_all_reduce), 1);
+  auto grouped_it = absl::c_find_if(instrs, is_grouped_all_reduce);
+  ASSERT_NE(grouped_it, instrs.end());
+  const HloInstruction* grouped_all_reduce = *grouped_it;
+  EXPECT_TRUE(
+      HloPredicateIsOp<HloOpcode::kReduce>(grouped_all_reduce->operand(0)));
+  EXPECT_EQ(grouped_all_reduce->get_frontend_attribute("collective_group_key"),
+            "g0");
+}
+
 TEST_F(
     AllReduceSplitterFilecheckTest,
     MatchBasicPatternIfDynamicSliceIsNotRootAndThereExistsAllReduceWithSameReplicaGroups) {  // NOLINT

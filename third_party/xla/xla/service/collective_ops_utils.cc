@@ -52,12 +52,47 @@ limitations under the License.
 #include "xla/service/pattern_matcher.h"
 #include "xla/service/source_target_pairs.h"
 #include "xla/shape_util.h"
+#include "xla/side_effect_util.h"
 #include "xla/status_macros.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
 using CycleType = collective_permute_cycle::CycleType;
+
+std::optional<absl::string_view> GetCollectiveGroupKey(
+    const HloInstruction& instruction) {
+  const auto& attributes = instruction.frontend_attributes().map();
+  auto it = attributes.find(kCollectiveGroupKeyAttr);
+  if (it == attributes.end() || it->second.empty()) {
+    return std::nullopt;
+  }
+  return it->second;
+}
+
+bool HasCollectiveGroupKey(const HloInstruction& instruction) {
+  return GetCollectiveGroupKey(instruction).has_value();
+}
+
+bool HaveCompatibleCollectiveGroupKeys(const HloInstruction& lhs,
+                                       const HloInstruction& rhs) {
+  return GetCollectiveGroupKey(lhs) == GetCollectiveGroupKey(rhs);
+}
+
+void CopyCollectiveGroupKey(const HloInstruction& source,
+                            HloInstruction& destination) {
+  std::optional<std::string> value =
+      source.get_frontend_attribute(kCollectiveGroupKeyAttr);
+  if (value.has_value()) {
+    destination.set_frontend_attribute(kCollectiveGroupKeyAttr, *value);
+  } else {
+    destination.erase_frontend_attribute(kCollectiveGroupKeyAttr);
+  }
+}
+
+void ClearCollectiveGroupKey(HloInstruction& instruction) {
+  instruction.erase_frontend_attribute(kCollectiveGroupKeyAttr);
+}
 
 std::optional<ReductionKind> OpcodeToReductionKind(HloOpcode hlo_opcode,
                                                    PrimitiveType type) {

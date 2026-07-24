@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/tsl/platform/status_macros.h"
+#include "xla/core/collectives/reduction_kind.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -37,8 +38,6 @@ limitations under the License.
 #include "xla/service/shape_inference.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -123,6 +122,7 @@ static absl::StatusOr<bool> DecomposeAllReduce(HloInstruction* hlo,
           all_gather_shape, {reshape}, /*all_gather_dimension=*/0,
           all_reduce->device_list(), all_reduce->constrain_layout(),
           all_reduce->channel_id(), all_reduce->use_global_device_ids()));
+  all_gather->set_frontend_attributes(all_reduce->frontend_attributes());
 
   HloInstruction* init = computation->AddInstruction(
       HloInstruction::CreateConstant(*std::move(reduction_init_literal)));

@@ -21,6 +21,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -30,6 +31,7 @@ limitations under the License.
 #include "xla/literal_util.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/side_effect_util.h"
 #include "xla/tsl/platform/logging.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
@@ -533,6 +535,43 @@ ENTRY %Deduplicate () -> (f32[256], f32[256]) {
   ASSERT_EQ(combined->opcode(), HloOpcode::kCollectivePermute);
   EXPECT_EQ(combined->operand_count(), 1);
   EXPECT_TRUE(combined->shape().IsArray());
+}
+
+TEST_F(CollectivePermuteCombinerTest, CollectiveGroupKeyConstrainsCombining) {
+  const char* const hlo_string = R"(
+HloModule CollectiveGroupKey
+
+ENTRY main {
+  p0 = f32[8] parameter(0)
+  p1 = f32[8] parameter(1)
+  p2 = f32[8] parameter(2)
+  p3 = f32[8] parameter(3)
+  p4 = f32[8] parameter(4)
+  cp0 = f32[8] collective-permute(p0), source_target_pairs={{0,1}},
+    frontend_attributes={collective_group_key="g0"}
+  cp1 = f32[8] collective-permute(p1), source_target_pairs={{0,1}},
+    frontend_attributes={collective_group_key="g0"}
+  cp2 = f32[8] collective-permute(p2), source_target_pairs={{0,1}},
+    frontend_attributes={collective_group_key="g1"}
+  cp3 = f32[8] collective-permute(p3), source_target_pairs={{0,1}}
+  cp4 = f32[8] collective-permute(p4), source_target_pairs={{0,1}},
+    frontend_attributes={collective_group_key="g0"}
+  ROOT tuple = (f32[8], f32[8], f32[8], f32[8], f32[8])
+    tuple(cp0, cp1, cp2, cp3, cp4)
+})";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+
+  CollectivePermuteCombiner combine(1024 * 1024, kMaxCombineCount);
+  ASSERT_EQ(CollectivePermuteCount(*module), 5);
+  ASSERT_OK_AND_ASSIGN(bool changed, combine.Run(module.get()));
+  EXPECT_TRUE(changed);
+  EXPECT_EQ(CollectivePermuteCount(*module), 3);
+
+  const HloInstruction* root = module->entry_computation()->root_instruction();
+  const HloInstruction* combined = root->operand(0)->operand(0);
+  ASSERT_EQ(combined->opcode(), HloOpcode::kCollectivePermute);
+  EXPECT_EQ(combined->operand_count(), 3);
+  EXPECT_EQ(combined->get_frontend_attribute(kCollectiveGroupKeyAttr), "g0");
 }
 
 TEST_F(CollectivePermuteCombinerTest,
