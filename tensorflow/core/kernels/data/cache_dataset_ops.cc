@@ -94,14 +94,14 @@ class DatasetRandomAccessCache {
                           GetIteratorResourceFromDataset(ctx, input_));
       TF_RETURN_IF_ERROR(iter_resource_->SetIteratorFromDataset(ctx, input_));
     }
-    if (index >= cache_.size()) {
-      TF_RETURN_IF_ERROR(ExtendTempCacheToIndex(index, ctx));
-    }
     if (index < 0) {
       return absl::InvalidArgumentError(
           absl::StrCat("Expected index >= 0; Received index: ", index));
     }
-    *out_tensors = cache_.at(index);
+    if (static_cast<size_t>(index) >= cache_.size()) {
+      TF_RETURN_IF_ERROR(ExtendTempCacheToIndex(index, ctx));
+    }
+    *out_tensors = cache_.at(static_cast<size_t>(index));
     return absl::OkStatus();
   }
 
@@ -111,7 +111,7 @@ class DatasetRandomAccessCache {
  private:
   absl::Status ExtendTempCacheToIndex(int64_t index, OpKernelContext* ctx) {
     bool end_of_sequence;
-    while (cache_.size() <= index) {
+    while (cache_.size() <= static_cast<size_t>(index)) {
       std::vector<Tensor> out_tensors;
       TF_RETURN_IF_ERROR(
           iter_resource_->GetNext(ctx, &out_tensors, &end_of_sequence));
@@ -151,18 +151,24 @@ class IteratorRandomAccessCache {
   explicit IteratorRandomAccessCache(const DatasetBase* input)
       : input_(input) {}
 
-  absl::Status Get(AnyContext ctx, size_t element_position,
+  absl::Status Get(AnyContext ctx, int64_t element_position,
                    std::vector<Tensor>* out_tensors) {
-    if (element_position < cache_.size() && !cache_[element_position].empty()) {
-      *out_tensors = cache_[element_position];
+    if (element_position < 0) {
+      return absl::InvalidArgumentError(
+          absl::StrCat("Element position must be non-negative; Received: ",
+                       element_position));
+    }
+
+    if (static_cast<size_t>(element_position) < cache_.size() && !cache_[static_cast<size_t>(element_position)].empty()) {
+      *out_tensors = cache_[static_cast<size_t>(element_position)];
       return absl::OkStatus();
     }
 
     TF_RETURN_IF_ERROR(input_->Get(ctx, element_position, out_tensors));
-    if (element_position >= cache_.size()) {
-      cache_.resize(element_position + 1);
+    if (static_cast<size_t>(element_position) >= cache_.size()) {
+      cache_.resize(static_cast<size_t>(element_position) + 1);
     }
-    cache_[element_position] = *out_tensors;
+    cache_[static_cast<size_t>(element_position)] = *out_tensors;
     return absl::OkStatus();
   }
 
