@@ -2342,6 +2342,16 @@ CommonPjRtLoadedExecutable::Execute(
                   --launching;
                   return;
                 }
+              } else {
+                // Non-two-phase clients have no barrier to participate in, but
+                // the Prepare status must still be checked before Launch:
+                // launch_args.executable is only populated on Prepare success.
+                if (!launch_status.ok()) {
+                  results[i] = launch_status;
+                  absl::MutexLock lock(mu);
+                  --launching;
+                  return;
+                }
               }
 
               // Phase 2: Launch. It cannot fail.

@@ -1299,6 +1299,65 @@ TEST(PjRtCpuClientTest, TupleInputWithErrorBuffer) {
       absl_testing::StatusIs(tsl::error::INTERNAL, HasSubstr("forced error")));
 }
 
+// Regression test: CpuClient has supports_two_phase_launch()==false, so the
+// multi-device Execute path does not take the two-phase barrier. A Prepare
+// failure on any device must still propagate as an error rather than fall
+// through to ExecuteLaunch with an unpopulated launch_args (null executable).
+TEST(PjRtCpuClientTest, MultiDevicePrepareFailurePropagatesError) {
+  constexpr int kNumDevices = 2;
+  CpuClientOptions cpu_options;
+  cpu_options.cpu_device_count = kNumDevices;
+  ASSERT_OK_AND_ASSIGN(auto client,
+                       GetXlaPjrtCpuClient(std::move(cpu_options)));
+  ASSERT_EQ(client->addressable_devices().size(), kNumDevices);
+
+  static constexpr char kProgram[] = R"(
+    HloModule m
+    ENTRY e {
+      ROOT p = f32[] parameter(0)
+    })";
+  ASSERT_OK_AND_ASSIGN(auto hlo_module,
+                       ParseAndReturnUnverifiedModule(kProgram, {}));
+  XlaComputation xla_computation(hlo_module->ToProto());
+  CompileOptions compile_options;
+  compile_options.executable_build_options.set_num_replicas(kNumDevices);
+  ASSERT_OK_AND_ASSIGN(
+      auto executable,
+      client->CompileAndLoad(xla_computation, std::move(compile_options)));
+  ASSERT_EQ(executable->addressable_devices().size(), kNumDevices);
+
+  // Device 0 gets a correctly-shaped scalar; device 1 gets a wrong-size
+  // buffer so ExecutePrepare fails in CheckBufferCompatibilities before
+  // launch_args.executable is populated.
+  std::vector<float> scalar = {1.0f};
+  std::vector<float> vec = {1.0f, 2.0f};
+  ASSERT_OK_AND_ASSIGN(
+      auto ok_buf,
+      client->BufferFromHostBuffer(
+          scalar.data(), F32, /*dims=*/{}, /*byte_strides=*/std::nullopt,
+          PjRtClient::HostBufferSemantics::kImmutableOnlyDuringCall, nullptr,
+          *client->addressable_devices()[0]->default_memory_space(),
+          /*device_layout=*/nullptr));
+  ASSERT_OK_AND_ASSIGN(
+      auto wrong_buf,
+      client->BufferFromHostBuffer(
+          vec.data(), F32, /*dims=*/{2}, /*byte_strides=*/std::nullopt,
+          PjRtClient::HostBufferSemantics::kImmutableOnlyDuringCall, nullptr,
+          *client->addressable_devices()[1]->default_memory_space(),
+          /*device_layout=*/nullptr));
+
+  auto result = executable->Execute(
+      /*argument_handles=*/{{ok_buf.get()}, {wrong_buf.get()}},
+      /*options=*/{});
+  // Without the fix this crashes (null unique_ptr deref in ExecuteLaunch);
+  // with it, the Prepare status propagates.
+  ASSERT_FALSE(result.ok());
+  // Asserting the specific Prepare-path rejection guards against the test
+  // going vacuous if a future top-level validation rejects the arguments
+  // before the per-device Prepare runs.
+  EXPECT_THAT(result.status().message(), HasSubstr("incompatible size"));
+}
+
 }  // namespace
 
 //===----------------------------------------------------------------------===//
