@@ -14,12 +14,18 @@ limitations under the License.
 ==============================================================================*/
 #include "xla/backends/profiler/cpu/python_tracer.h"
 
+#include <any>
+#include <cstddef>
 #include <memory>
+#include <utility>
 
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "xla/python/profiler/internal/python_hooks.h"
 #include "xla/tsl/platform/logging.h"
+#include "xla/tsl/profiler/utils/xplane_schema.h"
+#include "xla/tsl/profiler/utils/xplane_utils.h"
 #include "tsl/profiler/lib/profiler_interface.h"
 #include "tsl/profiler/protobuf/xplane.pb.h"
 
@@ -40,6 +46,11 @@ class PythonTracer : public tsl::profiler::ProfilerInterface {
 
   absl::Status CollectData(  // TENSORFLOW_STATUS_OK
       tensorflow::profiler::XSpace* space) override;
+
+  absl::StatusOr<tsl::profiler::ConsumeResult> Consume() override;
+
+  absl::Status Serialize(std::any data,
+                         tensorflow::profiler::XSpace* space) override;
 
  private:
   bool recording_ = false;
@@ -79,6 +90,53 @@ absl::Status PythonTracer::CollectData(  // TENSORFLOW_STATUS_OK
     context_->Finalize(space);
     context_.reset();
   }
+  return absl::OkStatus();
+}
+
+absl::StatusOr<tsl::profiler::ConsumeResult> PythonTracer::Consume() {
+  VLOG(1) << "PythonTracer::Consume called, recording=" << recording_;
+  PythonTracerChunk chunk;
+  if (recording_) {
+    PythonHooks::GetSingleton()->Consume(&chunk.plane);
+  } else if (context_) {
+    if (Py_IsInitialized()) {
+      PyGILState_STATE gil_state = PyGILState_Ensure();
+      context_->Consume(&chunk.plane);
+      PyGILState_Release(gil_state);
+    }
+  }
+
+  size_t estimated_size = chunk.plane.ByteSizeLong();
+  VLOG(1) << "PythonTracer::Consume: consumed plane with "
+          << chunk.plane.lines_size() << " lines, estimated size "
+          << estimated_size << " bytes.";
+
+  tsl::profiler::ConsumeResult result;
+  result.data = std::make_any<PythonTracerChunk>(std::move(chunk));
+  result.estimated_size_bytes = estimated_size;
+  return result;
+}
+
+absl::Status PythonTracer::Serialize(std::any data,
+                                     tensorflow::profiler::XSpace* space) {
+  VLOG(1) << "PythonTracer::Serialize called";
+  if (space == nullptr) {
+    return absl::InvalidArgumentError("XSpace pointer cannot be null.");
+  }
+  PythonTracerChunk* chunk = std::any_cast<PythonTracerChunk>(&data);
+  if (chunk == nullptr) {
+    return absl::InvalidArgumentError("Invalid data type passed to Serialize.");
+  }
+  if (chunk->plane.lines_size() == 0) {
+    VLOG(1) << "PythonTracer::Serialize: plane has no lines, doing nothing";
+    return absl::OkStatus();
+  }
+
+  tensorflow::profiler::XPlane* plane =
+      tsl::profiler::FindOrAddMutablePlaneWithName(
+          space, tsl::profiler::kPythonTracerPlaneName);
+  tsl::profiler::MergePlanes(chunk->plane, plane);
+  chunk->plane.Clear();
   return absl::OkStatus();
 }
 

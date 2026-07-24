@@ -18,9 +18,14 @@ limitations under the License.
 #include <memory>
 
 #include "tsl/profiler/lib/profiler_interface.h"
+#include "tsl/profiler/protobuf/xplane.pb.h"
 
 namespace xla {
 namespace profiler {
+
+struct PythonTracerChunk {
+  tensorflow::profiler::XPlane plane;
+};
 
 struct PythonTracerOptions {
   // Whether to enable python function calls tracing.
