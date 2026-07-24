@@ -23,21 +23,30 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "llvm/ADT/DenseMap.h"
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/ADT/StringRef.h"
 #include "mlir/IR/MLIRContext.h"
 #include "xla/codegen/tiling/experimental/test_utils.h"
 #include "xla/codegen/tiling/experimental/tile.h"
 #include "xla/codegen/tiling/experimental/tile_propagation.h"
 #include "xla/codegen/tiling/experimental/tiling_space.h"
 #include "xla/hlo/analysis/symbolic_expr.h"
+#include "xla/hlo/analysis/symbolic_map.h"
+#include "xla/hlo/analysis/symbolic_map_serialization.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/verified_hlo_module.h"
 #include "xla/hlo/utils/hlo_traversal.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/status_macros.h"
 
 namespace xla::gpu::experimental {
 namespace {
@@ -47,20 +56,112 @@ using ::mlir::MLIRContext;
 
 struct ReshapeTestCase {
   std::string name;
-  std::vector<int64_t> input_shape;
-  std::vector<int64_t> input_tile_sizes;  // Empty means remain symbolic.
-  std::vector<int64_t> input_tile_strides;
-  std::vector<int64_t> input_tile_offsets;
-  std::vector<int64_t> output_shape;
-  std::string expected_output;
-  // TODO(b/477615292) - Add checks for upper bounds.
+  std::vector<int64_t> shape;
+  std::vector<int64_t> to_shape;
+  std::vector<int64_t> tile_sizes;
+  std::vector<std::string> offsets;
+  std::vector<int64_t> strides;
+  std::vector<std::string> upper_bounds;
+  std::string expected_error;
 };
 
-class ReshapeTilePropagationTest
+struct TestTileInfo {
+  std::vector<int64_t> sizes;
+  std::vector<std::string> offsets;
+  std::vector<int64_t> strides;
+  std::vector<std::string> upper_bounds;
+};
+
+absl::StatusOr<Tile> CreateTileFromTestTileInfo(
+    const TestTileInfo& input_tile_info, const TilingSpace& tiling_space) {
+  llvm::SmallVector<DimTile> input_dim_tiles =
+      llvm::to_vector(tiling_space.tiled_roots()[0].dim_tiles());
+
+  mlir::MLIRContext* mlir_context = tiling_space.mlir_context();
+
+  llvm::DenseMap<llvm::StringRef, SymbolicExpr> variable_map;
+  std::vector<std::string> ts_strings(tiling_space.num_dimensions());
+  std::vector<std::string> tid_strings(tiling_space.num_dimensions());
+  for (auto [index, dim] : llvm::enumerate(tiling_space.dimensions())) {
+    ts_strings[index] = absl::StrCat("ts_", dim.id.value());
+    tid_strings[index] = absl::StrCat("tid_", dim.id.value());
+    if (tiling_space.IsSymbolic()) {
+      variable_map[ts_strings[index]] = CreateSymbolExpr(
+          dim.id.value(), tiling_space.num_dimensions(), mlir_context);
+    } else {
+      variable_map[ts_strings[index]] =
+          CreateSymbolicConstant(dim.tile_size.value(), mlir_context);
+    }
+    variable_map[tid_strings[index]] =
+        CreateDimExpr(dim.id.value(), mlir_context);
+  }
+
+  for (int i = 0; i < input_dim_tiles.size(); ++i) {
+    absl::string_view offset_str = input_tile_info.offsets[i];
+    input_dim_tiles[i].offset =
+        ParseSymbolicExprAndAdvance(&offset_str, mlir_context, variable_map);
+    if (!input_dim_tiles[i].offset) {
+      return absl::InvalidArgumentError(
+          absl::StrCat("Failed to parse offset: ", input_tile_info.offsets[i]));
+    }
+    input_dim_tiles[i].stride =
+        CreateSymbolicConstant(input_tile_info.strides[i], mlir_context);
+    absl::string_view ub_str = input_tile_info.upper_bounds[i];
+    input_dim_tiles[i].upper_bound =
+        ParseSymbolicExprAndAdvance(&ub_str, mlir_context, variable_map);
+    if (!input_dim_tiles[i].upper_bound) {
+      return absl::InvalidArgumentError(absl::StrCat(
+          "Failed to parse upper bound: ", input_tile_info.upper_bounds[i]));
+    }
+  }
+
+  return Tile(tiling_space, std::move(input_dim_tiles));
+}
+
+absl::StatusOr<Tile> RunPropagation(
+    const Shape& shape, const Shape& to_shape,
+    const TestTileInfo& input_tile_info, mlir::MLIRContext* mlir_context,
+    std::unique_ptr<TilingSpace>* out_tiling_space = nullptr) {
+  HloComputation::Builder builder("entry");
+  HloInstruction* p0 =
+      builder.AddInstruction(HloInstruction::CreateParameter(0, shape, "p0"));
+  HloInstruction* reshape =
+      builder.AddInstruction(HloInstruction::CreateReshape(to_shape, p0));
+
+  ASSIGN_OR_RETURN(
+      std::unique_ptr<TilingSpace> tiling_space_local,
+      TilingSpace::Create(*HloFusionAdaptor::ForInstruction(p0), mlir_context));
+  TilingSpace* tiling_space = tiling_space_local.get();
+
+  if (!input_tile_info.sizes.empty()) {
+    TF_RET_CHECK(input_tile_info.sizes.size() ==
+                 tiling_space->num_dimensions());
+    RETURN_IF_ERROR(tiling_space->AssignTileSizes(input_tile_info.sizes));
+  }
+
+  TF_RET_CHECK(input_tile_info.offsets.size() ==
+               tiling_space->num_dimensions());
+  TF_RET_CHECK(input_tile_info.upper_bounds.size() ==
+               tiling_space->num_dimensions());
+  ASSIGN_OR_RETURN(Tile input_tile,
+                   CreateTileFromTestTileInfo(input_tile_info, *tiling_space));
+  ASSIGN_OR_RETURN(
+      Tiles output_tiles,
+      PropagateTileToOutput(*tiling_space, *reshape, input_tile, 0));
+  TF_RET_CHECK(output_tiles.size() == 1)
+      << "Expected exactly one output tile, got " << output_tiles.size();
+
+  if (out_tiling_space) {
+    *out_tiling_space = std::move(tiling_space_local);
+  }
+  return std::move(output_tiles[0]);
+}
+
+class ReshapeExamplesTilePropagationTest
     : public HloHardwareIndependentTestBase,
       public ::testing::WithParamInterface<ReshapeTestCase> {
  public:
-  ReshapeTilePropagationTest() = default;
+  ReshapeExamplesTilePropagationTest() = default;
 
   HloInstruction* ParseAndGetRoot(absl::string_view hlo_string) {
     auto module_or = ParseAndReturnVerifiedModule(hlo_string);
@@ -73,557 +174,319 @@ class ReshapeTilePropagationTest
   std::unique_ptr<VerifiedHloModule> module_;
 };
 
-TEST_P(ReshapeTilePropagationTest, PropagateReshape) {
+TEST_P(ReshapeExamplesTilePropagationTest, PropagateReshape) {
   const auto& param = GetParam();
-  Shape input_shape = ShapeUtil::MakeShape(F32, param.input_shape);
-  Shape output_shape = ShapeUtil::MakeShape(F32, param.output_shape);
+  Shape shape = ShapeUtil::MakeShape(F32, param.shape);
+  Shape to_shape = ShapeUtil::MakeShape(F32, param.to_shape);
 
-  HloComputation::Builder builder("entry");
-  HloInstruction* p0 = builder.AddInstruction(
-      HloInstruction::CreateParameter(0, input_shape, "p0"));
-  HloInstruction* reshape =
-      builder.AddInstruction(HloInstruction::CreateReshape(output_shape, p0));
+  TestTileInfo input_tile_info;
+  input_tile_info.sizes = param.tile_sizes;
+  input_tile_info.strides = param.strides;
+  input_tile_info.offsets = param.offsets;
+  input_tile_info.upper_bounds = param.upper_bounds;
 
-  ASSERT_OK_AND_ASSIGN(
-      std::unique_ptr<TilingSpace> tiling_space,
-      TilingSpace::Create(*HloFusionAdaptor::ForInstruction(p0),
-                          &mlir_context_));
-  if (!param.input_tile_sizes.empty()) {
-    CHECK_EQ(param.input_tile_sizes.size(), tiling_space->num_dimensions());
-    ASSERT_OK(tiling_space->AssignTileSizes(param.input_tile_sizes));
-  }
-  SmallVector<DimTile> input_dim_tiles =
-      llvm::to_vector(tiling_space->tiled_roots()[0].dim_tiles());
-  CHECK_EQ(param.input_tile_strides.size(), tiling_space->num_dimensions());
-  bool has_offsets = input_dim_tiles.size() == param.input_tile_offsets.size();
-  for (int i = 0; i < input_dim_tiles.size(); ++i) {
-    if (has_offsets) {
-      input_dim_tiles[i].offset =
-          CreateSymbolicConstant(param.input_tile_offsets[i], &mlir_context_);
-    }
-    input_dim_tiles[i].stride =
-        CreateSymbolicConstant(param.input_tile_strides[i], &mlir_context_);
-  }
-  Tile input_tile = Tile(*tiling_space, std::move(input_dim_tiles));
-  auto output_tiles =
-      PropagateTileToOutput(*tiling_space, *reshape, input_tile, 0);
+  std::unique_ptr<TilingSpace> tiling_space;
+  auto output_tile = RunPropagation(shape, to_shape, input_tile_info,
+                                    &mlir_context_, &tiling_space);
 
-  input_tile.Simplify();
-  if (output_tiles.ok()) {
-    ASSERT_EQ(output_tiles->size(), 1);
-    auto output_tile = output_tiles.value()[0];
-    output_tile.Simplify();
-    ASSERT_OK(VerifyTileEquivalence(input_tile, input_shape, output_tile,
-                                    output_shape, tiling_space.get()));
-  }
-  if (param.expected_output.empty()) {
-    ASSERT_FALSE(output_tiles.ok());
+  if (!param.expected_error.empty()) {
+    ASSERT_FALSE(output_tile.ok());
+    EXPECT_THAT(output_tile.status(),
+                absl_testing::StatusIs(
+                    testing::_, testing::HasSubstr(param.expected_error)));
   } else {
-    ASSERT_TRUE(output_tiles.ok())
-        << "Failed for " << param.name << ": " << output_tiles.status();
-    EXPECT_THAT(output_tiles.value(), MatchToString(param.expected_output));
+    ASSERT_OK(output_tile) << "Failed for " << param.name << ": "
+                           << output_tile.status();
+    output_tile->Simplify();
+
+    ASSERT_OK_AND_ASSIGN(
+        Tile input_tile_obj,
+        CreateTileFromTestTileInfo(input_tile_info, *tiling_space));
+    input_tile_obj.Simplify();
+
+    ASSERT_OK(VerifyTileEquivalence(input_tile_obj, shape, *output_tile,
+                                    to_shape, tiling_space.get()));
   }
 }
 
 INSTANTIATE_TEST_SUITE_P(
-    ReshapeTilePropagationTests, ReshapeTilePropagationTest,
+    ReshapeTilePropagationTests, ReshapeExamplesTilePropagationTest,
     ::testing::ValuesIn<ReshapeTestCase>({
-        // =====================================================================
-        // General / Other Reshapes
-        // =====================================================================
-        {"Identity",
-         /*input_shape=*/{10, 20},
-         /*input_tile_sizes=*/{},
-         /*input_tile_strides=*/{1, 2},
-         /*input_tile_offsets=*/{},
-         /*output_shape=*/{10, 20},
-         /*expected_output=*/R"(
-    0) (tid_0, tid_1)
-      -> offsets [tid_0 * ts_0, tid_1 * ts_1]
-         sizes [ts_0, ts_1]
-         strides [1, 2]
-         upper bounds [10, 20]
-  )"},
         {"IdentityConcrete",
-         /*input_shape=*/{10, 20},
-         /*input_tile_sizes=*/{2, 2},
-         /*input_tile_strides=*/{1, 1},
-         /*input_tile_offsets=*/{},
-         /*output_shape=*/{10, 20},
-         /*expected_output=*/R"(
-    0) (tid_0, tid_1)
-      -> offsets [tid_0 * 2, tid_1 * 2]
-         sizes [2, 2]
-         strides [1, 1]
-         upper bounds [10, 20]
-  )"},
-        {"IncreaseRank",
-         /*input_shape=*/{10},
-         /*input_tile_sizes=*/{},
-         /*input_tile_strides=*/{1},
-         /*input_tile_offsets=*/{},
-         /*output_shape=*/{1, 10, 1},
-         /*expected_output=*/R"(
-    0) (tid_0)
-      -> offsets [0, tid_0 * ts_0, 0]
-         sizes [1, ts_0, 1]
-         strides [1, 1, 1]
-         upper bounds [1, 10, 1]
-  )"},
-        {"DecreaseRank",
-         /*input_shape=*/{1, 10, 1},
-         /*input_tile_sizes=*/{},
-         /*input_tile_strides=*/{1, 2, 3},
-         /*input_tile_offsets=*/{},
-         /*output_shape=*/{10},
-         /*expected_output=*/R"(
-    0) (tid_0, tid_1, tid_2)
-      -> offsets [tid_1 * ts_1]
-         sizes [ts_1]
-         strides [2]
-         upper bounds [10]
-  )"},
-        {"Generic",
-         /*input_shape=*/{2, 5, 7},
-         /*input_tile_sizes=*/{},
-         /*input_tile_strides=*/{1, 2, 3},
-         /*input_tile_offsets=*/{},
-         /*output_shape=*/{7, 5, 2},
-         /*expected_output=*/""},
-        {"SupportedMultiSegment",
-         /*input_shape=*/{12, 1, 8},
-         /*input_tile_sizes=*/{},
-         /*input_tile_strides=*/{1, 2, 3},
-         /*input_tile_offsets=*/{},
-         /*output_shape=*/{1, 12, 8},
-         /*expected_output=*/R"(
-    0) (tid_0, tid_1, tid_2)
-      -> offsets [0, tid_0 * ts_0, tid_2 * ts_2]
-         sizes [1, ts_0, ts_2]
-         strides [1, 1, 3]
-         upper bounds [1, 12, 8]
-  )"},
-        {"UnsupportedMultiSegment",
-         /*input_shape=*/{12, 2, 5, 7},
-         /*input_tile_sizes=*/{},
-         /*input_tile_strides=*/{1, 2, 3, 4},
-         /*input_tile_offsets=*/{},
-         /*output_shape=*/{1, 12, 7, 5, 2},
-         /*expected_output=*/""},
-
-        // =====================================================================
-        // CollapseShapeContiguous
-        // =====================================================================
-        // Example (tid_0, tid_1) -> (offset, upper bound):
-        // (0, 0) -> (0,  3), (0, 1) -> ( 3,  4)
-        // (1, 0) -> (4,  7), (1, 1) -> ( 7,  8)
-        // (2, 0) -> (8, 11), (2, 1) -> (11, 12)
+         /*shape=*/{10, 20},
+         /*to_shape=*/{10, 20},
+         /*tile_sizes=*/{2, 2},
+         /*offsets=*/{"ts_0 * tid_0", "ts_1 * tid_1"},
+         /*strides=*/{1, 1},
+         /*upper_bounds=*/{"10", "20"},
+         /*expected_error=*/""},
         {"CollapseShapeContiguous_Stride1_LastDimPartialTiled",
-         /*input_shape=*/{3, 4},
-         /*input_tile_sizes=*/{1, 3},
-         /*input_tile_strides=*/{1, 1},
-         /*input_tile_offsets=*/{},
-         /*output_shape=*/{12},
-         /*expected_output=*/R"(
-    0) (tid_0, tid_1)
-      -> offsets [tid_0 * 4 + tid_1 * 3]
-         sizes [3]
-         strides [1]
-         upper bounds [min(tid_0, 2) * 4 + min(tid_1 * 3 + 2, 3) + 1]
-  )"},
+         /*shape=*/{3, 4},
+         /*to_shape=*/{12},
+         /*tile_sizes=*/{1, 3},
+         /*offsets=*/{"ts_0 * tid_0", "ts_1 * tid_1"},
+         /*strides=*/{1, 1},
+         /*upper_bounds=*/{"3", "4"},
+         /*expected_error=*/""},
         {"CollapseShapeContiguous_Stride1_LastDimFullTiled",
-         /*input_shape=*/{3, 4},
-         /*input_tile_sizes=*/{2, 4},
-         /*input_tile_strides=*/{1, 1},
-         /*input_tile_offsets=*/{},
-         /*output_shape=*/{12},
-         /*expected_output=*/R"(
-    0) (tid_0, tid_1)
-      -> offsets [tid_0 * 8]
-         sizes [8]
-         strides [1]
-         upper bounds [min(tid_0 * 2 + 1, 2) * 4 + 4]
-  )"},
+         /*shape=*/{3, 4},
+         /*to_shape=*/{12},
+         /*tile_sizes=*/{2, 4},
+         /*offsets=*/{"ts_0 * tid_0", "ts_1 * tid_1"},
+         /*strides=*/{1, 1},
+         /*upper_bounds=*/{"3", "4"},
+         /*expected_error=*/""},
         {"CollapseShapeContiguous_10x4_1x4",
-         /*input_shape=*/{10, 4},
-         /*input_tile_sizes=*/{1, 4},
-         /*input_tile_strides=*/{1, 1},
-         /*input_tile_offsets=*/{},
-         /*output_shape=*/{40},
-         /*expected_output=*/R"(
-    0) (tid_0, tid_1)
-      -> offsets [tid_0 * 4]
-         sizes [4]
-         strides [1]
-         upper bounds [min(tid_0, 9) * 4 + 4]
-  )"},
-        // Example (tid_0, tid_1) -> (offset, upper bound):
-        // (0, 0) -> (0,  4), (0, 1) -> ( 3,  4)
-        // (1, 0) -> (4,  8), (1, 1) -> ( 7,  8)
-        // (2, 0) -> (8, 12), (2, 1) -> (11, 12)
+         /*shape=*/{10, 4},
+         /*to_shape=*/{40},
+         /*tile_sizes=*/{1, 4},
+         /*offsets=*/{"ts_0 * tid_0", "ts_1 * tid_1"},
+         /*strides=*/{1, 1},
+         /*upper_bounds=*/{"10", "4"},
+         /*expected_error=*/""},
         {"CollapseShapeContiguous_StrideNot1_LastDimPartialTiled",
-         /*input_shape=*/{3, 4},
-         /*input_tile_sizes=*/{1, 3},
-         /*input_tile_strides=*/{1, 2},
-         /*input_tile_offsets=*/{},
-         /*output_shape=*/{12},
-         /*expected_output=*/R"(
-    0) (tid_0, tid_1)
-      -> offsets [tid_0 * 4 + tid_1 * 3]
-         sizes [3]
-         strides [2]
-         upper bounds [min(tid_0, 2) * 4 + min(tid_1 * 3 + 4, 3) + 1]
-  )"},
+         /*shape=*/{3, 4},
+         /*to_shape=*/{12},
+         /*tile_sizes=*/{1, 3},
+         /*offsets=*/{"ts_0 * tid_0", "ts_1 * tid_1"},
+         /*strides=*/{1, 2},
+         /*upper_bounds=*/{"3", "4"},
+         /*expected_error=*/""},
         {"CollapseShapeContiguous_WithLeadingOneInOutput",
-         /*input_shape=*/{3, 4},
-         /*input_tile_sizes=*/{1, 3},
-         /*input_tile_strides=*/{1, 1},
-         /*input_tile_offsets=*/{},
-         /*output_shape=*/{1, 12},
-         /*expected_output=*/R"(
-    0) (tid_0, tid_1)
-      -> offsets [0, tid_0 * 4 + tid_1 * 3]
-         sizes [1, 3]
-         strides [1, 1]
-         upper bounds [1, min(tid_0, 2) * 4 + min(tid_1 * 3 + 2, 3) + 1]
-  )"},
+         /*shape=*/{3, 4},
+         /*to_shape=*/{1, 12},
+         /*tile_sizes=*/{1, 3},
+         /*offsets=*/{"ts_0 * tid_0", "ts_1 * tid_1"},
+         /*strides=*/{1, 1},
+         /*upper_bounds=*/{"3", "4"},
+         /*expected_error=*/""},
         {"CollapseShapeContiguous_WithTrailingOneInOutput",
-         /*input_shape=*/{3, 4},
-         /*input_tile_sizes=*/{1, 3},
-         /*input_tile_strides=*/{1, 1},
-         /*input_tile_offsets=*/{},
-         /*output_shape=*/{12, 1},
-         /*expected_output=*/R"(
-    0) (tid_0, tid_1)
-      -> offsets [tid_0 * 4 + tid_1 * 3, 0]
-         sizes [3, 1]
-         strides [1, 1]
-         upper bounds [min(tid_0, 2) * 4 + min(tid_1 * 3 + 2, 3) + 1, 1]
-  )"},
+         /*shape=*/{3, 4},
+         /*to_shape=*/{12, 1},
+         /*tile_sizes=*/{1, 3},
+         /*offsets=*/{"ts_0 * tid_0", "ts_1 * tid_1"},
+         /*strides=*/{1, 1},
+         /*upper_bounds=*/{"3", "4"},
+         /*expected_error=*/""},
         {"CollapseShapeContiguous_WithMiddleOneInInput",
-         /*input_shape=*/{3, 1, 4},
-         /*input_tile_sizes=*/{1, 1, 3},
-         /*input_tile_strides=*/{1, 1, 1},
-         /*input_tile_offsets=*/{},
-         /*output_shape=*/{12},
-         /*expected_output=*/R"(
-    0) (tid_0, tid_1, tid_2)
-      -> offsets [tid_0 * 4 + tid_2 * 3]
-         sizes [3]
-         strides [1]
-         upper bounds [min(tid_0, 2) * 4 + min(tid_2 * 3 + 2, 3) + 1]
-  )"},
+         /*shape=*/{3, 1, 4},
+         /*to_shape=*/{12},
+         /*tile_sizes=*/{1, 1, 3},
+         /*offsets=*/
+         {"ts_0 * tid_0", "ts_1 * tid_1", "ts_2 * tid_2"},
+         /*strides=*/{1, 1, 1},
+         /*upper_bounds=*/{"3", "1", "4"},
+         /*expected_error=*/""},
         {"CollapseShapeContiguous_3DCollapseWithTrivialInnerDim",
-         /*input_shape=*/{2, 32, 128},
-         /*input_tile_sizes=*/{1, 16, 1},
-         /*input_tile_strides=*/{1, 1, 1},
-         /*input_tile_offsets=*/{},
-         /*output_shape=*/{8192},
-         /*expected_output=*/R"(
-      0) (tid_0, tid_1, tid_2)
-        -> offsets [tid_0 * 4096 + tid_1 * 2048 + tid_2]
-           sizes [16]
-           strides [128]
-           upper bounds [min(tid_1 * 16 + 15, 31) * 128 + min(tid_0, 1) * 4096 + min(tid_2, 127) + 1]
-    )"},
+         /*shape=*/{2, 32, 128},
+         /*to_shape=*/{8192},
+         /*tile_sizes=*/{1, 16, 1},
+         /*offsets=*/
+         {"ts_0 * tid_0", "ts_1 * tid_1", "ts_2 * tid_2"},
+         /*strides=*/{1, 1, 1},
+         /*upper_bounds=*/{"2", "32", "128"},
+         /*expected_error=*/""},
         {"CollapseShapeContiguous_3DCollapseWithTrivialInnerDim_Strided",
-         /*input_shape=*/{2, 32, 128},
-         /*input_tile_sizes=*/{1, 16, 1},
-         /*input_tile_strides=*/{1, 1, 2},
-         /*input_tile_offsets=*/{},
-         /*output_shape=*/{8192},
-         /*expected_output=*/R"(
-      0) (tid_0, tid_1, tid_2)
-        -> offsets [tid_0 * 4096 + tid_1 * 2048 + tid_2]
-           sizes [16]
-           strides [128]
-           upper bounds [min(tid_1 * 16 + 15, 31) * 128 + min(tid_0, 1) * 4096 + min(tid_2, 127) + 1]
-    )"},
-        {"CollaseShapeNonContinousTile1",
-         /*input_shape=*/{17, 2, 4},
-         /*input_tile_sizes=*/{4, 1, 4},
-         /*input_tile_strides=*/{1, 1, 1},
-         /*input_tile_offsets=*/{0, 0, 0},
-         /*output_shape=*/{136},
-         /*expected_output=*/""},
+         /*shape=*/{2, 32, 128},
+         /*to_shape=*/{8192},
+         /*tile_sizes=*/{1, 16, 1},
+         /*offsets=*/
+         {"ts_0 * tid_0", "ts_1 * tid_1", "ts_2 * tid_2"},
+         /*strides=*/{1, 1, 2},
+         /*upper_bounds=*/{"2", "32", "128"},
+         /*expected_error=*/""},
+        {"CollapseShapeNonContinousTile1",
+         /*shape=*/{17, 2, 4},
+         /*to_shape=*/{136},
+         /*tile_sizes=*/{4, 1, 4},
+         /*offsets=*/{"0", "0", "0"},
+         /*strides=*/{1, 1, 1},
+         /*upper_bounds=*/{"17", "2", "4"},
+         /*expected_error=*/"Multiple dimensions are partially tiled"},
         {"CollapseShapeContiguous_FullySpannedInnermost",
-         /*input_shape=*/{3, 4},
-         /*input_tile_sizes=*/{3, 2},
-         /*input_tile_strides=*/{1, 2},
-         /*input_tile_offsets=*/{0, 0},
-         /*output_shape=*/{12},
-         /*expected_output=*/R"(
-    0) (tid_0, tid_1)
-      -> offsets [0]
-         sizes [6]
-         strides [2]
-         upper bounds [11]
-  )"},
+         /*shape=*/{3, 4},
+         /*to_shape=*/{12},
+         /*tile_sizes=*/{3, 2},
+         /*offsets=*/{"0", "0"},
+         /*strides=*/{1, 2},
+         /*upper_bounds=*/{"3", "4"},
+         /*expected_error=*/""},
         {"CollapseShapeContiguous_PreserveInnermostStride",
-         /*input_shape=*/{3, 4},
-         /*input_tile_sizes=*/{1, 2},
-         /*input_tile_strides=*/{1, 2},
-         /*input_tile_offsets=*/{1, 0},
-         /*output_shape=*/{12},
-         /*expected_output=*/R"(
-    0) (tid_0, tid_1)
-      -> offsets [4]
-         sizes [2]
-         strides [2]
-         upper bounds [7]
-  )"},
-
-        // =====================================================================
-        // CollapseShapeNonContiguous
-        // =====================================================================
+         /*shape=*/{3, 4},
+         /*to_shape=*/{12},
+         /*tile_sizes=*/{1, 2},
+         /*offsets=*/{"1", "0"},
+         /*strides=*/{1, 2},
+         /*upper_bounds=*/{"3", "4"},
+         /*expected_error=*/""},
         {"CollapseShapeNonContiguous_SteppedOuterDimension",
-         /*input_shape=*/{3, 4},
-         /*input_tile_sizes=*/{2, 1},
-         /*input_tile_strides=*/{2, 1},
-         /*input_tile_offsets=*/{0, 0},
-         /*output_shape=*/{12},
-         /*expected_output=*/R"(
-    0) (tid_0, tid_1)
-      -> offsets [0]
-         sizes [2]
-         strides [8]
-         upper bounds [9]
-  )"},
+         /*shape=*/{3, 4},
+         /*to_shape=*/{12},
+         /*tile_sizes=*/{2, 1},
+         /*offsets=*/{"0", "0"},
+         /*strides=*/{2, 1},
+         /*upper_bounds=*/{"3", "4"},
+         /*expected_error=*/""},
         {"CollapseShapeNonContiguous_MultipleSteppedOuterDimensions",
-         /*input_shape=*/{3, 4, 5},
-         /*input_tile_sizes=*/{2, 2, 1},
-         /*input_tile_strides=*/{2, 2, 1},
-         /*input_tile_offsets=*/{0, 0, 0},
-         /*output_shape=*/{60},
-         /*expected_output=*/""},
+         /*shape=*/{3, 4, 5},
+         /*to_shape=*/{60},
+         /*tile_sizes=*/{2, 2, 1},
+         /*offsets=*/{"0", "0", "0"},
+         /*strides=*/{2, 2, 1},
+         /*upper_bounds=*/{"3", "4", "5"},
+         /*expected_error=*/"At most one dimension can have stride >1"},
         {"CollapseShapeNonContiguous_SteppedOuterDimensionAndAnotherTiled",
-         /*input_shape=*/{3, 4},
-         /*input_tile_sizes=*/{2, 2},
-         /*input_tile_strides=*/{2, 1},
-         /*input_tile_offsets=*/{0, 0},
-         /*output_shape=*/{12},
-         /*expected_output=*/""},
-        {"CollapseShapeNonContiguous_SteppedOuterAndInnermostStrideNot1_"
-         "InnermostSize1",
-         /*input_shape=*/{3, 4},
-         /*input_tile_sizes=*/{2, 1},
-         /*input_tile_strides=*/{2, 2},
-         /*input_tile_offsets=*/{0, 0},
-         /*output_shape=*/{12},
-         /*expected_output=*/R"(
-    0) (tid_0, tid_1)
-      -> offsets [0]
-         sizes [2]
-         strides [8]
-         upper bounds [9]
-  )"},
-        {"CollapseShapeNonContiguous_SteppedOuterAndInnermostStrideNot1_"
-         "BothTiled",
-         /*input_shape=*/{3, 4},
-         /*input_tile_sizes=*/{2, 2},
-         /*input_tile_strides=*/{2, 2},
-         /*input_tile_offsets=*/{0, 0},
-         /*output_shape=*/{12},
-         /*expected_output=*/""},
+         /*shape=*/{3, 4},
+         /*to_shape=*/{12},
+         /*tile_sizes=*/{2, 2},
+         /*offsets=*/{"0", "0"},
+         /*strides=*/{2, 1},
+         /*upper_bounds=*/{"3", "4"},
+         /*expected_error=*/
+         "only the strided dimension 0 can have size > 1"},
         {"CollapseShapeNonContiguous_ZeroStride",
-         /*input_shape=*/{3, 4},
-         /*input_tile_sizes=*/{1, 3},
-         /*input_tile_strides=*/{0, 1},
-         /*input_tile_offsets=*/{},
-         /*output_shape=*/{12},
-         /*expected_output=*/""},
+         /*shape=*/{3, 4},
+         /*to_shape=*/{12},
+         /*tile_sizes=*/{1, 3},
+         /*offsets=*/{"ts_0 * tid_0", "ts_1 * tid_1"},
+         /*strides=*/{0, 1},
+         /*upper_bounds=*/{"3", "4"},
+         /*expected_error=*/
+         "Expect constant positive source tile stride. Got: 0"},
         {"CollapseShapeNonContiguous_NegativeStride",
-         /*input_shape=*/{3, 4},
-         /*input_tile_sizes=*/{1, 3},
-         /*input_tile_strides=*/{-1, 1},
-         /*input_tile_offsets=*/{},
-         /*output_shape=*/{12},
-         /*expected_output=*/""},
+         /*shape=*/{3, 4},
+         /*to_shape=*/{12},
+         /*tile_sizes=*/{1, 3},
+         /*offsets=*/{"ts_0 * tid_0", "ts_1 * tid_1"},
+         /*strides=*/{-1, 1},
+         /*upper_bounds=*/{"3", "4"},
+         /*expected_error=*/
+         "Expect constant positive source tile stride. Got: -1"},
         {"CollapseShapeTrivialTiledDim",
-         /*input_shape=*/{1, 4},
-         /*input_tile_sizes=*/{2, 2},
-         /*input_tile_strides=*/{1, 1},
-         /*input_tile_offsets=*/{},
-         /*output_shape=*/{4},
-         /*expected_output=*/R"(
-         0) (tid_0, tid_1) ->
-          offsets [tid_1 * 2] sizes [2] strides [1] upper bounds [4] )"},
+         /*shape=*/{1, 4},
+         /*to_shape=*/{4},
+         /*tile_sizes=*/{2, 2},
+         /*offsets=*/{"ts_0 * tid_0", "ts_1 * tid_1"},
+         /*strides=*/{1, 1},
+         /*upper_bounds=*/{"1", "4"},
+         /*expected_error=*/""},
         {"CollapseShapeWithTrivialTiledDimInGroup",
-         /*input_shape=*/{2, 1, 2},
-         /*input_tile_sizes=*/{2, 2, 2},
-         /*input_tile_strides=*/{1, 2, 1},
-         /*input_tile_offsets=*/{},
-         /*output_shape=*/{4},
-         /*expected_output=*/R"(
-         0) (tid_0, tid_1, tid_2) ->
-          offsets [0] sizes [4] strides [1] upper bounds [4]
-        )"},
+         /*shape=*/{2, 1, 2},
+         /*to_shape=*/{4},
+         /*tile_sizes=*/{2, 2, 2},
+         /*offsets=*/
+         {"ts_0 * tid_0", "ts_1 * tid_1", "ts_2 * tid_2"},
+         /*strides=*/{1, 2, 1},
+         /*upper_bounds=*/{"2", "1", "2"},
+         /*expected_error=*/""},
         {"CollapseToSingleElement",
-         /*input_shape=*/{1, 1, 1},
-         /*input_tile_sizes=*/{1, 1, 1},
-         /*input_tile_strides=*/{1, 1, 1},
-         /*input_tile_offsets=*/{},
-         /*output_shape=*/{1},
-         /*expected_output=*/R"(
-         0) (tid_0, tid_1, tid_2) ->
-          offsets [0] sizes [1] strides [1] upper bounds [1]
-        )"},
+         /*shape=*/{1, 1, 1},
+         /*to_shape=*/{1},
+         /*tile_sizes=*/{1, 1, 1},
+         /*offsets=*/
+         {"ts_0 * tid_0", "ts_1 * tid_1", "ts_2 * tid_2"},
+         /*strides=*/{1, 1, 1},
+         /*upper_bounds=*/{"1", "1", "1"},
+         /*expected_error=*/""},
         {"CollapseToSingleElementTiled",
-         /*input_shape=*/{1, 1, 1},
-         /*input_tile_sizes=*/{2, 1, 1},
-         /*input_tile_strides=*/{1, 1, 1},
-         /*input_tile_offsets=*/{},
-         /*output_shape=*/{1},
-         /*expected_output=*/R"(
-         0) (tid_0, tid_1, tid_2) ->
-          offsets [0] sizes [1] strides [1] upper bounds [1]
-        )"},
+         /*shape=*/{1, 1, 1},
+         /*to_shape=*/{1},
+         /*tile_sizes=*/{2, 1, 1},
+         /*offsets=*/
+         {"ts_0 * tid_0", "ts_1 * tid_1", "ts_2 * tid_2"},
+         /*strides=*/{1, 1, 1},
+         /*upper_bounds=*/{"1", "1", "1"},
+         /*expected_error=*/""},
         {"CollapseToScalar",
-         /*input_shape=*/{1, 1, 1},
-         /*input_tile_sizes=*/{2, 2, 2},
-         /*input_tile_strides=*/{1, 1, 1},
-         /*input_tile_offsets=*/{},
-         /*output_shape=*/{},
-         /*expected_output=*/R"(
-         0) (tid_0, tid_1, tid_2) ->
-          offsets [] sizes [] strides [] upper bounds []
-        )"},
-        // =====================================================================
-        // ExpandShapeContiguous
-        // =====================================================================
+         /*shape=*/{1, 1, 1},
+         /*to_shape=*/{},
+         /*tile_sizes=*/{2, 2, 2},
+         /*offsets=*/
+         {"ts_0 * tid_0", "ts_1 * tid_1", "ts_2 * tid_2"},
+         /*strides=*/{1, 1, 1},
+         /*upper_bounds=*/{"1", "1", "1"},
+         /*expected_error=*/""},
         {"ExpandShapeContiguous_FullTargetInnerDim",
-         /*input_shape=*/{12},
-         /*input_tile_sizes=*/{4},
-         /*input_tile_strides=*/{1},
-         /*input_tile_offsets=*/{},
-         /*output_shape=*/{3, 4},
-         /*expected_output=*/R"(
-    0) (tid_0)
-      -> offsets [tid_0, 0]
-         sizes [1, 4]
-         strides [1, 1]
-         upper bounds [tid_0 + 1, 4]
-  )"},
+         /*shape=*/{12},
+         /*to_shape=*/{3, 4},
+         /*tile_sizes=*/{4},
+         /*offsets=*/{"ts_0 * tid_0"},
+         /*strides=*/{1},
+         /*upper_bounds=*/{"12"},
+         /*expected_error=*/""},
         {"ExpandShapeContiguous_PartialTargetInnerDim",
-         /*input_shape=*/{12},
-         /*input_tile_sizes=*/{2},
-         /*input_tile_strides=*/{1},
-         /*input_tile_offsets=*/{1},
-         /*output_shape=*/{3, 4},
-         /*expected_output=*/R"(
-    0) (tid_0)
-      -> offsets [0, 1]
-         sizes [1, 2]
-         strides [1, 1]
-         upper bounds [1, 3]
-  )"},
+         /*shape=*/{12},
+         /*to_shape=*/{3, 4},
+         /*tile_sizes=*/{2},
+         /*offsets=*/{"1"},
+         /*strides=*/{1},
+         /*upper_bounds=*/{"12"},
+         /*expected_error=*/""},
         {"ExpandShapeContiguous_MultipleTargetInnerDims",
-         /*input_shape=*/{12},
-         /*input_tile_sizes=*/{8},
-         /*input_tile_strides=*/{1},
-         /*input_tile_offsets=*/{4},
-         /*output_shape=*/{3, 4},
-         /*expected_output=*/R"(
-    0) (tid_0)
-      -> offsets [1, 0]
-         sizes [2, 4]
-         strides [1, 1]
-         upper bounds [3, 4]
-  )"},
+         /*shape=*/{12},
+         /*to_shape=*/{3, 4},
+         /*tile_sizes=*/{8},
+         /*offsets=*/{"4"},
+         /*strides=*/{1},
+         /*upper_bounds=*/{"12"},
+         /*expected_error=*/""},
         {"ExpandShapeContiguous_Unsupported_NonBox",
-         /*input_shape=*/{12},
-         /*input_tile_sizes=*/{5},
-         /*input_tile_strides=*/{1},
-         /*input_tile_offsets=*/{0},
-         /*output_shape=*/{3, 4},
-         /*expected_output=*/""},
+         /*shape=*/{12},
+         /*to_shape=*/{3, 4},
+         /*tile_sizes=*/{5},
+         /*offsets=*/{"0"},
+         /*strides=*/{1},
+         /*upper_bounds=*/{"12"},
+         /*expected_error=*/"Multiple dimensions are partially tiled"},
         {"ExpandShapeContiguous_WithUnitDim",
-         /*input_shape=*/{12},
-         /*input_tile_sizes=*/{4},
-         /*input_tile_strides=*/{1},
-         /*input_tile_offsets=*/{},
-         /*output_shape=*/{3, 1, 4},
-         /*expected_output=*/R"(
-    0) (tid_0)
-      -> offsets [tid_0, 0, 0]
-         sizes [1, 1, 4]
-         strides [1, 1, 1]
-         upper bounds [tid_0 + 1, 1, 4]
-  )"},
+         /*shape=*/{12},
+         /*to_shape=*/{3, 1, 4},
+         /*tile_sizes=*/{4},
+         /*offsets=*/{"ts_0 * tid_0"},
+         /*strides=*/{1},
+         /*upper_bounds=*/{"12"},
+         /*expected_error=*/""},
         {"ExpandShapeContiguous_To1DIdentity",
-         /*input_shape=*/{12},
-         /*input_tile_sizes=*/{4},
-         /*input_tile_strides=*/{1},
-         /*input_tile_offsets=*/{4},
-         /*output_shape=*/{1, 12},
-         /*expected_output=*/R"(
-    0) (tid_0)
-      -> offsets [0, 4]
-         sizes [1, 4]
-         strides [1, 1]
-         upper bounds [1, 12]
-  )"},
+         /*shape=*/{12},
+         /*to_shape=*/{1, 12},
+         /*tile_sizes=*/{4},
+         /*offsets=*/{"4"},
+         /*strides=*/{1},
+         /*upper_bounds=*/{"12"},
+         /*expected_error=*/""},
         {"ExpandSingleElement",
-         /*input_shape=*/{1},
-         /*input_tile_sizes=*/{1},
-         /*input_tile_strides=*/{1},
-         /*input_tile_offsets=*/{},
-         /*output_shape=*/{1, 1, 1},
-         /*expected_output=*/R"(
-         0) (tid_0) ->
-          offsets [0, 0, 0]
-          sizes [1, 1, 1]
-          strides [1, 1, 1]
-          upper bounds [1, 1, 1]
-        )"},
+         /*shape=*/{1},
+         /*to_shape=*/{1, 1, 1},
+         /*tile_sizes=*/{1},
+         /*offsets=*/{"ts_0 * tid_0"},
+         /*strides=*/{1},
+         /*upper_bounds=*/{"1"},
+         /*expected_error=*/""},
         {"ExpandSingleTiledElement",
-         /*input_shape=*/{1},
-         /*input_tile_sizes=*/{1},
-         /*input_tile_strides=*/{1},
-         /*input_tile_offsets=*/{},
-         /*output_shape=*/{1, 1, 1},
-         /*expected_output=*/R"(
-         0) (tid_0) ->
-          offsets [0, 0, 0]
-          sizes [1, 1, 1]
-          strides [1, 1, 1]
-          upper bounds [1, 1, 1]
-        )"},
-        {"ExpandScalar",
-         /*input_shape=*/{},
-         /*input_tile_sizes=*/{},
-         /*input_tile_strides=*/{},
-         /*input_tile_offsets=*/{},
-         /*output_shape=*/{1, 1, 1},
-         /*expected_output=*/R"(
-         0) () ->
-          offsets [0, 0, 0]
-          sizes [1, 1, 1]
-          strides [1, 1, 1]
-          upper bounds [1, 1, 1]
-        )"},
-
-        // =====================================================================
-        // ExpandShapeNonContiguous
-        // =====================================================================
+         /*shape=*/{1},
+         /*to_shape=*/{1, 1, 1},
+         /*tile_sizes=*/{1},
+         /*offsets=*/{"ts_0 * tid_0"},
+         /*strides=*/{1},
+         /*upper_bounds=*/{"1"},
+         /*expected_error=*/""},
         {"ExpandShapeNonContiguous_SteppedSource",
-         /*input_shape=*/{128},
-         /*input_tile_sizes=*/{2},
-         /*input_tile_strides=*/{64},
-         /*input_tile_offsets=*/{0},
-         /*output_shape=*/{1, 2, 64},
-         /*expected_output=*/R"(
-    0) (tid_0)
-      -> offsets [0, 0, 0]
-         sizes [1, 2, 1]
-         strides [1, 1, 1]
-         upper bounds [1, 2, 1]
-  )"},
+         /*shape=*/{128},
+         /*to_shape=*/{1, 2, 64},
+         /*tile_sizes=*/{2},
+         /*offsets=*/{"0"},
+         /*strides=*/{64},
+         /*upper_bounds=*/{"128"},
+         /*expected_error=*/""},
     }),
-    [](const ::testing::TestParamInfo<ReshapeTilePropagationTest::ParamType>&
-           info) { return info.param.name; });
+    [](const ::testing::TestParamInfo<
+        ReshapeExamplesTilePropagationTest::ParamType>& info) {
+      return info.param.name;
+    });
 
-TEST_F(HloHardwareIndependentTestBase, UnsupportedReshapeErrorFormat) {
+class ReshapeTilePropagationTest : public HloHardwareIndependentTestBase {};
+
+TEST_F(ReshapeTilePropagationTest, UnsupportedReshapeErrorFormat) {
   mlir::MLIRContext mlir_context;
   Shape input_shape = ShapeUtil::MakeShape(F32, {12});
   Shape output_shape = ShapeUtil::MakeShape(F32, {3, 4});

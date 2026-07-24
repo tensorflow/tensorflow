@@ -292,10 +292,10 @@ void ProcessReshape(const Shape& from_shape, const Shape& to_shape,
 
   std::cout << absl::StrCat(
       "Total configs tested: ", stats.total_tested, "\n",
-      "Supported: ", stats.true_positives, " (",
+      "Supported (True Positives): ", stats.true_positives, " (",
       (stats.total_tested ? (stats.true_positives * 100 / stats.total_tested)
                           : 0),
-      "%)\n", "Unsupported: ", stats.true_negatives, " (",
+      "%)\n", "Unsupported (True Negatives): ", stats.true_negatives, " (",
       (stats.total_tested ? (stats.true_negatives * 100 / stats.total_tested)
                           : 0),
       "%)\n", "False Positives: ", stats.false_positives, " (",
