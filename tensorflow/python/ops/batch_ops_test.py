@@ -242,7 +242,7 @@ class BatchOpsTest(test.TestCase):
       batched_tensor = constant_op.constant(
           value=np.random.random(size=(3, 3, 1)), dtype=dtypes.float64)
       batched_index = constant_op.constant(
-          value=np.random.randint(0, 100, size=(3, 3, 1)), dtype=dtypes.int64)
+          value=np.random.randint(0, 100, size=(3, 3)), dtype=dtypes.int64)
       arg_id = constant_op.constant(
           value=np.random.randint(0, 100, size=(3, 3, 1)), dtype=dtypes.int64)
 
@@ -255,6 +255,26 @@ class BatchOpsTest(test.TestCase):
             timeout_micros=50,
             container="",
             shared_name="")
+
+  def testUnbatchInvalidIndexRank(self):
+    # Regression test for GitHub issue 104846: a batch_index tensor that is
+    # not a rank-2 matrix used to crash the process with a fatal CHECK
+    # failure instead of raising InvalidArgumentError.
+    if context.executing_eagerly():
+      for bad_index in (
+          constant_op.constant([0], dtype=dtypes.int64),
+          constant_op.constant(0, dtype=dtypes.int64),
+      ):
+        with self.assertRaisesRegex(
+            errors.InvalidArgumentError,
+            r"Expected a matrix of shape \[batch_size, 3\]"):
+          batch_ops.unbatch(
+              batched_tensor=constant_op.constant([1], dtype=dtypes.int32),
+              batch_index=bad_index,
+              id=constant_op.constant(0, dtype=dtypes.int64),
+              timeout_micros=0,
+              container="",
+              shared_name="")
 
   def testBatchDecoratedWithCapturedInput(self):
     """Tests that the batch_function decorator works."""
