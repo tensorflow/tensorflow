@@ -388,39 +388,24 @@ absl::StatusOr<std::unique_ptr<MemoryAllocation>> AllocateHostMemory(
 
 }  // namespace
 
-class OneDnnSupport : public dnn::DnnSupport {
- public:
-  absl::Status Init() override { return absl::OkStatus(); }
-
-  absl::StatusOr<dnn::VersionInfo> GetVersion() override {
-    // Return a default version since it will be implemented later.
-    return dnn::VersionInfo(0, 0, 0);
+dnn::DnnSupport* SyclExecutor::AsDnn() {
+  absl::MutexLock lock(mu_);
+  if (dnn_ != nullptr) {
+    return dnn_.get();
   }
-
-  absl::Status DoPoolForward(dnn::DataType element_type, Stream* stream,
-                             const dnn::PoolingDescriptor& pooling_dimensions,
-                             const dnn::BatchDescriptor& input_dimensions,
-                             DeviceMemoryBase input_data,
-                             const dnn::BatchDescriptor& output_dimensions,
-                             DeviceMemoryBase output_data,
-                             ScratchAllocator* workspace_allocator) override {
-    return absl::UnimplementedError(
-        "OneDnnSupport::DoPoolForward is not implemented for SYCL");
+  PluginRegistry* registry = PluginRegistry::Instance();
+  absl::StatusOr<PluginRegistry::DnnFactory> status =
+      registry->GetFactory<PluginRegistry::DnnFactory>(
+          stream_executor::sycl::kSyclPlatformId);
+  if (!status.ok()) {
+    LOG(ERROR) << "Unable to retrieve DNN factory: "
+               << status.status().message();
+    return nullptr;
   }
-
-  absl::Status DoPoolBackward(dnn::DataType element_type, Stream* stream,
-                              const dnn::PoolingDescriptor& pooling_dimensions,
-                              const dnn::BatchDescriptor& input_dimensions,
-                              DeviceMemoryBase input_data,
-                              const dnn::BatchDescriptor& output_dimensions,
-                              DeviceMemoryBase output_data,
-                              DeviceMemoryBase input_diff_data,
-                              DeviceMemoryBase output_diff_data,
-                              ScratchAllocator* workspace_allocator) override {
-    return absl::UnimplementedError(
-        "OneDnnSupport::DoPoolBackward is not implemented for SYCL");
-  }
-};
+  auto dnn = status.value()(this);
+  dnn_.reset(dnn);
+  return dnn_.get();
+}
 
 SyclExecutor::~SyclExecutor() {
   for (auto& it : in_memory_modules_) {
@@ -436,12 +421,6 @@ absl::Status SyclExecutor::Init() {
   ASSIGN_OR_RETURN(sycl_context_, SyclContext::Create(device_ordinal()));
 
   return InitBlas();
-}
-
-dnn::DnnSupport* SyclExecutor::AsDnn() {
-  static std::unique_ptr<dnn::DnnSupport> dnn =
-      std::make_unique<OneDnnSupport>();
-  return dnn.get();
 }
 
 absl::StatusOr<std::unique_ptr<Kernel>> SyclExecutor::LoadKernel(

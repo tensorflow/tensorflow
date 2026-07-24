@@ -248,6 +248,7 @@ class SyclExecutor : public gpu::GpuExecutor {
   // Mutex for blas, dnn, and fft.
   absl::Mutex mu_;
   std::unique_ptr<blas::BlasSupport> blas_ ABSL_GUARDED_BY(mu_);
+  std::unique_ptr<dnn::DnnSupport> dnn_ ABSL_GUARDED_BY(mu_);
   absl::Status InitBlas();
 };
 

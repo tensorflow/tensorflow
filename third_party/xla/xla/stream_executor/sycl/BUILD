@@ -105,6 +105,7 @@ cc_library(
     deps = if_sycl_is_configured([
         ":sycl_platform",
         ":sycl_blas_lt_plugin",
+        ":sycl_dnn",
     ]),
     alwayslink = 1,
 )
@@ -526,8 +527,10 @@ sycl_library(
     ],
     deps = [
         ":oneapi_compute_capability",
+        ":sycl_dnn",
         ":sycl_gpu_runtime",
         "//xla/stream_executor:device_description",
+        "//xla/stream_executor:dnn",
         "//xla/stream_executor/gpu:read_numa_node",
         "//xla/tsl/platform:status_macros",
         "//xla/tsl/platform:statusor",
@@ -595,4 +598,32 @@ cc_library(
         "@tsl//tsl/platform:logging",
         "@tsl//tsl/platform:str_util",
     ],
+)
+
+cc_library(
+    name = "sycl_dnn",
+    srcs = ["sycl_dnn.cc"],
+    hdrs = ["sycl_dnn.h"],
+    tags = [
+        "gpu",
+        "oneapi-only",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":sycl_platform_id",
+        "//xla/service/gpu:gpu_conv_runner",
+        "//xla/stream_executor:device_memory",
+        "//xla/stream_executor:dnn",
+        "//xla/stream_executor:plugin_registry",
+        "//xla/stream_executor:scratch_allocator",
+        "//xla/stream_executor:stream",
+        "//xla/stream_executor:stream_executor_h",
+        "//xla/stream_executor/platform:initialize",
+        "//xla/tsl/mkl:onednn",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/types:span",
+    ],
+    alwayslink = True,
 )
