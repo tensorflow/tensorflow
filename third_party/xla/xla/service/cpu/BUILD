@@ -1887,6 +1887,7 @@ xla_cc_test(
     deps = [
         ":cpu_compiler_pure",
         ":cpu_options",
+        ":thunk_emitter",
         "//xla/backends/cpu/codegen/emitters:cpu_fusion_emitter_config",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",

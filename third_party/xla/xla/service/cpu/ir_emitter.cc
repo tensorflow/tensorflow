@@ -2152,17 +2152,7 @@ absl::Status IrEmitter::HandlePad(HloInstruction* pad,
 
 absl::Status IrEmitter::HandleFusion(HloInstruction* fusion) {
   auto* root = fusion->fused_expression_root();
-  if (llvm_ir::CanEmitFusedDynamicUpdateSliceInPlace(fusion, assignment_)) {
-    VLOG(3) << "HandleFusion FusedDynamicUpdateSliceInPlace";
-    CpuElementalIrEmitter elemental_emitter = ElementalIrEmmiterFactory();
-    FusedIrEmitter fused_emitter(elemental_emitter);
-    BindFusionArguments(fusion, &fused_emitter);
-
-    RETURN_IF_ERROR(EmitTargetAddressForOp(fusion));
-    // Delegate to common implementation of fused in-place dynamic-update-slice.
-    return llvm_ir::EmitFusedDynamicUpdateSliceInPlace(
-        fusion, GetIrArrayFor(fusion), &fused_emitter, b());
-  } else if (fusion->IsLoopFusion()) {
+  if (fusion->IsLoopFusion()) {
     VLOG(3) << "HandleFusion kLoop";
     CpuElementalIrEmitter elemental_emitter = ElementalIrEmmiterFactory();
     FusedIrEmitter fused_emitter(elemental_emitter);

@@ -230,20 +230,6 @@ absl::StatusOr<IrEmitter2::KernelInfo> IrEmitter2::EmitFusionHostKernel(
         });
   }
 
-  // Check if the fusion can be emitted in-place and skip expensive loop for
-  // all elements in the output array.
-  if (llvm_ir::CanEmitFusedDynamicUpdateSliceInPlace(
-          const_cast<HloFusionInstruction*>(fusion),
-          nested_ir_emitter_->assignment())) {
-    // Delegate to common implementation of fused in-place dynamic-update-slice.
-    RETURN_IF_ERROR(llvm_ir::EmitFusedDynamicUpdateSliceInPlace(
-        const_cast<HloFusionInstruction*>(fusion), kernel_prototype.results[0],
-        &fused_emitter, &b));
-
-    return kernels_.emplace_back(KernelInfo(std::move(kernel_prototype),
-                                            se::BlockDim(), se::ThreadDim()));
-  }
-
   // Emit plain elemental loops for the fusion operation.
   ASSIGN_OR_RETURN(
       auto element_generator,
@@ -348,26 +334,6 @@ absl::StatusOr<IrEmitter2::KernelInfo> IrEmitter2::EmitSliceToDynamicHostKernel(
       KernelInfo(std::move(kernel_prototype), se::BlockDim(), se::ThreadDim()));
 }
 
-absl::StatusOr<IrEmitter2::KernelInfo>
-IrEmitter2::EmitDynamicUpdateSliceHostKernel(const HloInstruction* instr) {
-  DCHECK(CanUpdateDynamicSliceInPlace(instr));
-
-  VLOG(2) << "Emit in-place dynamic-update-slice kernel: " << instr->name();
-
-  ASSIGN_OR_RETURN(KernelPrototype kernel_prototype,
-                   EmitKernelPrototype(instr));
-
-  llvm::IRBuilder<> b(module_->getContext());
-  b.SetInsertPoint(kernel_prototype.function->getEntryBlock().getTerminator());
-
-  RETURN_IF_ERROR(llvm_ir::EmitDynamicUpdateSliceInPlace(
-      kernel_prototype.arguments, kernel_prototype.results.front(),
-      llvm_ir::IrName(instr, "in_place"), &b));
-
-  return kernels_.emplace_back(
-      KernelInfo(std::move(kernel_prototype), se::BlockDim(), se::ThreadDim()));
-}
-
 absl::StatusOr<IrEmitter2::ComparatorInfo> IrEmitter2::EmitSortComparator(
     HloComputation* comparator) {
   std::string comparator_name(comparator->name().data(),
@@ -431,12 +397,6 @@ std::optional<IrEmitter2::ParallelConfig> IrEmitter2::GetParallelConfig(
       backend_config->outer_dimension_partitions().end());
 
   return config;
-}
-
-bool IrEmitter2::CanUpdateDynamicSliceInPlace(
-    const HloInstruction* update) const {
-  return llvm_ir::CanUpdateDynamicSliceInPlace(
-      const_cast<HloInstruction*>(update), nested_ir_emitter_->assignment());
 }
 
 IrEmitter2::ParallelPartitionBounds IrEmitter2::EmitParallelPartitionBounds(
