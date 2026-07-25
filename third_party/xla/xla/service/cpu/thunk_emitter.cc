@@ -843,8 +843,7 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitFusionKernelThunk(
 
   // We currently only support loop fusion & the dot implementation is currently
   // not efficient compared to the legacy emitter.
-  if (hlo_module_config_.debug_options().xla_cpu_use_fusion_emitters() &&
-      options::UseExperimentalLoopFusion(hlo_module_config_) &&
+  if (options::UseExperimentalLoopFusion(hlo_module_config_) &&
       fusion->fusion_kind() == HloFusionInstruction::FusionKind::kLoop &&
       fusion->fused_expression_root()->opcode() != HloOpcode::kDot) {
     ASSIGN_OR_RETURN(std::string fingerprint,

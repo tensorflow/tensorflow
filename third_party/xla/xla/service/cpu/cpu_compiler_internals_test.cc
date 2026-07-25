@@ -81,7 +81,7 @@ std::optional<std::string> GetXlaBackendExtraOptions(
   return GetMetadataString(md);
 }
 
-static constexpr absl::string_view kAddScatterHlo = R"(
+static constexpr absl::string_view kAddExponentialOfScatterHlo = R"(
   add {
     %lhs = f32[] parameter(0)
     %rhs = f32[] parameter(1)
@@ -94,24 +94,23 @@ static constexpr absl::string_view kAddScatterHlo = R"(
     %operand = f32[50,64,8] add(%a, %b)
     %indices = s32[500,1]{1,0} parameter(2)
     %updates = f32[500,1,64,8] parameter(3)
-    ROOT %scatter = f32[50,64,8] scatter(%operand, %indices, %updates),
+    %scatter = f32[50,64,8] scatter(%operand, %indices, %updates),
       update_window_dims={1,2,3},
       inserted_window_dims={},
       scatter_dims_to_operand_dims={0},
       index_vector_dim=1,
       to_apply=add
+    ROOT %exp = f32[50,64,8] exponential(%scatter)
   }
 )";
 
 TEST_F(CpuCompilerInternalsTest, DylibWithThunks) {
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> hlo_module,
-                          ParseAndReturnVerifiedModule(kAddScatterHlo));
-  DebugOptions& debug_options =
-      hlo_module->mutable_config().mutable_debug_options();
-  debug_options.set_xla_cpu_use_fusion_emitters(false);
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<VerifiedHloModule> hlo_module,
+      ParseAndReturnVerifiedModule(kAddExponentialOfScatterHlo));
 
   CpuCompiler compiler;
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<HloModule> optimized_module,
       compiler.RunHloPasses(std::move(hlo_module), /*stream_exec=*/nullptr,
                             /*options=*/{}));
@@ -125,25 +124,25 @@ TEST_F(CpuCompilerInternalsTest, DylibWithThunks) {
   };
 
   compiler.SetPreOptimizationHook(pre_opt_hook);
-  TF_ASSERT_OK(compiler.RunBackend(std::move(optimized_module),
-                                   /*stream_exec=*/nullptr,
-                                   /*options=*/{}));
+  ASSERT_OK(compiler.RunBackend(std::move(optimized_module),
+                                /*stream_exec=*/nullptr,
+                                /*options=*/{}));
   compiler.RemovePreOptimizationHook();
 
-  EXPECT_GT(max_seen, 0) << "max dylib_index(" << max_seen << ") too low; "
+  EXPECT_GT(max_seen, 1) << "max dylib_index(" << max_seen << ") too low; "
                          << "expected to use more dylibs.";
 }
 
 TEST_F(CpuCompilerInternalsTest, JustOneDylibWithThunks) {
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> hlo_module,
-                          ParseAndReturnVerifiedModule(kAddScatterHlo));
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<VerifiedHloModule> hlo_module,
+      ParseAndReturnVerifiedModule(kAddExponentialOfScatterHlo));
   DebugOptions& debug_options =
       hlo_module->mutable_config().mutable_debug_options();
-  debug_options.set_xla_cpu_use_fusion_emitters(false);
   debug_options.set_xla_cpu_parallel_codegen_split_count(1);
 
   CpuCompiler compiler;
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<HloModule> optimized_module,
       compiler.RunHloPasses(std::move(hlo_module), /*stream_exec=*/nullptr,
                             /*options=*/{}));
@@ -157,8 +156,8 @@ TEST_F(CpuCompilerInternalsTest, JustOneDylibWithThunks) {
   };
 
   compiler.SetPreOptimizationHook(pre_opt_hook);
-  TF_ASSERT_OK(compiler.RunBackend(std::move(optimized_module),
-                                   /*stream_exec=*/nullptr, /*options=*/{}));
+  ASSERT_OK(compiler.RunBackend(std::move(optimized_module),
+                                /*stream_exec=*/nullptr, /*options=*/{}));
   compiler.RemovePreOptimizationHook();
 
   EXPECT_EQ(max_seen, 0) << "max dylib_index(" << max_seen

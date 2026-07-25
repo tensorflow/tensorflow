@@ -135,9 +135,6 @@ bool IrEmitter2::fast_min_max() const {
 
 bool IrEmitter2::IsSupportedByFusionEmitter(
     const HloFusionInstruction* fusion) const {
-  if (!hlo_module_.config().debug_options().xla_cpu_use_fusion_emitters()) {
-    return false;
-  }
   FusionEmitterKind fusion_emitter_kind = AnalyzeHloFusion(fusion);
   switch (fusion_emitter_kind) {
     case FusionEmitterKind::kScatter:

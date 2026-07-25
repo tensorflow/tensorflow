@@ -348,9 +348,6 @@ message DebugOptions {
   // Sets XLA:CPU's scheduler type.
   optional CpuSchedulerType xla_cpu_scheduler_type = 448;
 
-  // If set, XLA:CPU uses "fusion emitters" for codegen.
-  optional bool xla_cpu_use_fusion_emitters = 376;
-
   // When true, XLA:CPU uses XNNPACK to execute supported operations.
   optional bool xla_cpu_use_xnnpack = 359;
 
@@ -1756,6 +1753,7 @@ message DebugOptions {
   reserved "xla_cpu_matmul_tiling_m_dim";
   reserved "xla_cpu_matmul_tiling_n_dim";
   reserved "xla_cpu_sparse_cuda_threads";
+  reserved "xla_cpu_use_fusion_emitters";
   reserved "xla_cpu_use_thunk_runtime";
   reserved "xla_cpu_use_xla_runtime";
   reserved "xla_detailed_logging_and_dumping";
@@ -1868,8 +1866,8 @@ message DebugOptions {
       204, 206, 207, 211, 214, 217, 218, 220, 221, 226, 227, 229, 230, 231, 233,
       234, 238, 239, 241, 242, 243, 249, 263, 264, 266, 270, 271, 275, 276, 278,
       279, 281, 282, 286, 298, 299, 300, 302, 303, 309, 313, 314, 319, 320, 325,
-      326, 332, 346, 352, 354, 355, 358, 361, 367, 369, 371, 385, 388, 389, 394,
-      396, 398, 402, 420, 423, 430, 435, 443, 446, 458, 464, 477, 480;
+      326, 332, 346, 352, 354, 355, 358, 361, 367, 369, 371, 376, 385, 388, 389,
+      394, 396, 398, 402, 420, 423, 430, 435, 443, 446, 458, 464, 477, 480;
 }
 
 // Contains flags which affects the GPU compilation result.
