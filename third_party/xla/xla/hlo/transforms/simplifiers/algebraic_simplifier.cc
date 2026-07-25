@@ -5132,7 +5132,12 @@ absl::Status AlgebraicSimplifierVisitor::HandleMultiply(
 
   VLOG(10) << "trying to transform exp(LHS) * exp(RHS) => exp(LHS+RHS) "
            << multiply->ToString();
-  if (Match(multiply, m::Multiply(m::Exp(m::Op(&lhs)), m::Exp(m::Op(&rhs))))) {
+  // This transformation is not numerically equivalent at overflow/underflow
+  // boundaries: exp(LHS) * exp(RHS) can evaluate to NaN (e.g. Inf * 0) while
+  // exp(LHS + RHS) evaluates to a finite value (e.g. exp(0) = 1). Only apply
+  // it when the caller has opted into fast-math semantics.
+  if (options_.enable_fast_math() &&
+      Match(multiply, m::Multiply(m::Exp(m::Op(&lhs)), m::Exp(m::Op(&rhs))))) {
     auto add = multiply->AddInstruction(HloInstruction::CreateBinary(
         multiply->shape(), HloOpcode::kAdd, lhs, rhs));
     return ReplaceWithNewInstruction(
