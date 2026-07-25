@@ -19,6 +19,7 @@ workspace(name = "org_tensorflow")
 
 # buildifier: disable=load-on-top
 
+load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
 load("//third_party:repo.bzl", "tf_http_archive", "tf_mirror_urls")
 
 tf_http_archive(
@@ -28,6 +29,15 @@ tf_http_archive(
     urls = tf_mirror_urls(
         "https://github.com/bazelbuild/rules_shell/releases/download/v0.4.1/rules_shell-v0.4.1.tar.gz",
     ),
+)
+
+http_archive(
+    name = "rules_ml_toolchain",
+    sha256 = "11b28a58ec7ea2ed0edd53733dd66cef6382b6801348b67ac5a180f606d65b3e",
+    strip_prefix = "rules_ml_toolchain-cb96c4faa01ce98c38f857c1b85c1ec6938ee201",
+    urls = [
+        "https://github.com/yuriivcs/rules_ml_toolchain/archive/cb96c4faa01ce98c38f857c1b85c1ec6938ee201.tar.gz",
+    ],
 )
 
 # Initialize the TensorFlow repository and all dependencies.

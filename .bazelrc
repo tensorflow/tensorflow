@@ -74,6 +74,18 @@
 # The generated version suffix is used in
 # third_party/tensorflow/core/public/release_version.h and
 # third_party/tensorflow/tools/pip_package/setup.oss.py.tpl
+common --features=-cpp_modules
+common --features=-cpp20_module_compile_flags
+common --features=-cpp_module_modmap_file
+common --features=-layering_check
+common --features=-external_include_paths
+
+common --host_features=-cpp_modules
+common --host_features=-cpp20_module_compile_flags
+common --host_features=-cpp_module_modmap_file
+common --host_features=-layering_check
+common --host_features=-external_include_paths
+
 common --repo_env=ML_WHEEL_TYPE="snapshot"
 common --repo_env=ML_WHEEL_BUILD_DATE=""
 common --repo_env=ML_WHEEL_VERSION_SUFFIX=""
