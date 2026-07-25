@@ -16,8 +16,12 @@ limitations under the License.
 #include "tensorflow/core/grappler/verifiers/structure_verifier.h"
 
 #include <memory>
+#include <string>
 
+#include "absl/log/check.h"
+#include "absl/status/status.h"
 #include "absl/strings/match.h"
+#include "third_party/protobuf/text_format.h"
 #include "tensorflow/cc/ops/parsing_ops.h"
 #include "tensorflow/cc/ops/standard_ops.h"
 #include "tensorflow/core/framework/graph.pb.h"
