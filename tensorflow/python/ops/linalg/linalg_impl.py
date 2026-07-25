@@ -94,7 +94,7 @@ def logdet(matrix, name=None):
   # Uses slogdet which handles singular matrices correctly.
   # For a singular matrix, returns -inf instead of NaN.
   with ops.name_scope(name, 'logdet', [matrix]):
-    sign, log_abs_det = gen_linalg_ops.log_matrix_determinant(matrix)
+    _, log_abs_det = gen_linalg_ops.log_matrix_determinant(matrix)
     return log_abs_det
 
 
