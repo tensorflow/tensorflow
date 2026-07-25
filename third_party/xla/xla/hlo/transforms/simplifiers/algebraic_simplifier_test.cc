@@ -2834,7 +2834,9 @@ TEST_F(AlgebraicSimplifierTest, ExpMul) {
   // By default (fast-math disabled), the rewrite must not fire, since it
   // would change NaN results (from overflow*underflow) into finite ones.
   AlgebraicSimplifier default_simplifier(default_options_);
-  ASSERT_FALSE(default_simplifier.Run(m.get()).value());
+  TF_ASSERT_OK_AND_ASSIGN(bool changed_default,
+                           default_simplifier.Run(m.get()));
+  EXPECT_FALSE(changed_default);
   EXPECT_THAT(computation->root_instruction(),
               GmockMatch(m::Multiply(m::Exp(m::Parameter(0)),
                                      m::Exp(m::Parameter(1)))));
@@ -2843,7 +2845,9 @@ TEST_F(AlgebraicSimplifierTest, ExpMul) {
   AlgebraicSimplifierOptions fast_math_options = default_options_;
   fast_math_options.set_enable_fast_math(true);
   AlgebraicSimplifier fast_math_simplifier(fast_math_options);
-  ASSERT_TRUE(fast_math_simplifier.Run(m.get()).value());
+  TF_ASSERT_OK_AND_ASSIGN(bool changed_fast_math,
+                           fast_math_simplifier.Run(m.get()));
+  EXPECT_TRUE(changed_fast_math);
 
   EXPECT_THAT(computation->root_instruction(),
               GmockMatch(m::Exp(m::Add(m::Parameter(0), m::Parameter(1)))));
@@ -2871,7 +2875,9 @@ TEST_F(AlgebraicSimplifierTest, ExpMulOverflowUnderflowPreservesNanByDefault) {
   // rewrite must not apply, preserving the original NaN-producing
   // computation.
   AlgebraicSimplifier default_simplifier(default_options_);
-  TF_ASSERT_OK(default_simplifier.Run(m.get()).status());
+  TF_ASSERT_OK_AND_ASSIGN(bool changed_default,
+                           default_simplifier.Run(m.get()));
+  EXPECT_FALSE(changed_default);
   EXPECT_THAT(m->entry_computation()->root_instruction(),
               GmockMatch(m::Multiply(m::Exp(m::Constant()),
                                      m::Exp(m::Constant()))));
@@ -2881,7 +2887,9 @@ TEST_F(AlgebraicSimplifierTest, ExpMulOverflowUnderflowPreservesNanByDefault) {
   AlgebraicSimplifierOptions fast_math_options = default_options_;
   fast_math_options.set_enable_fast_math(true);
   AlgebraicSimplifier fast_math_simplifier(fast_math_options);
-  ASSERT_TRUE(fast_math_simplifier.Run(m.get()).value());
+  TF_ASSERT_OK_AND_ASSIGN(bool changed_fast_math,
+                           fast_math_simplifier.Run(m.get()));
+  EXPECT_TRUE(changed_fast_math);
   EXPECT_THAT(m->entry_computation()->root_instruction(),
               GmockMatch(m::Exp(m::Add(m::Constant(), m::Constant()))));
 }
