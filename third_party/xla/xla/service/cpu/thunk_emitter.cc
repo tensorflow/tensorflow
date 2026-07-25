@@ -43,7 +43,6 @@ limitations under the License.
 #include "xla/backends/cpu/codegen/dot/dot_kernel_emitter.h"
 #include "xla/backends/cpu/codegen/elemental/concatenate_kernel_emitter.h"
 #include "xla/backends/cpu/codegen/elemental/elemental_kernel_emitter.h"
-#include "xla/backends/cpu/codegen/emitters/cpu_scatter_emitter.h"
 #include "xla/backends/cpu/codegen/fusion_compiler.h"
 #include "xla/backends/cpu/codegen/fusion_emitter.h"
 #include "xla/backends/cpu/codegen/ir_compiler.h"
@@ -818,27 +817,6 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitFusionKernelThunk(
     const HloInstruction* instruction) {
   auto* fusion = Cast<HloFusionInstruction>(instruction);
 
-  if (ir_emitter_.IsSupportedByFusionEmitter(fusion) &&
-      fusion->fused_expression_root()->opcode() == HloOpcode::kScatter) {
-    auto kernel_emitter = std::make_unique<CpuScatterFusion>(
-        buffer_assignment_, fusion, mlir_context_.get());
-
-    ASSIGN_OR_RETURN(KernelDefinition kernel_definition,
-                     kernel_emitter->EmitKernelDefinition());
-
-    auto kernel_spec = kernel_definition.spec();
-    auto kernel_source = std::move(kernel_definition).TakeSource();
-
-    ASSIGN_OR_RETURN(LlvmKernelSource llvm_kernel_source,
-                     fusion_compiler_.Compile(std::move(kernel_source)));
-
-    kernels_.push_back({kernel_spec.name(),
-                        std::move(llvm_kernel_source).thread_safe_module()});
-
-    return MakeKernelThunkSequence(instruction, std::move(kernel_spec),
-                                   /*min_alignment=*/MinAlign());
-  }
-
   if (FusionRoutesToMlirEmitter(hlo_module_config_, fusion)) {
     ASSIGN_OR_RETURN(std::string fingerprint,
                      GetFusionFingerprint(*fusion, buffer_assignment_,
@@ -866,12 +844,6 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitFusionKernelThunk(
                                    /*min_alignment=*/MinAlign());
   }
 
-  // Deprecation probe: this branch routes to the legacy LLVM loop emitter.
-  // Log enough to attribute every remaining use during corpus scans.
-  VLOG(1) << "Fusion routed to legacy emitter: " << fusion->name()
-          << " kind=" << ToString(fusion->fusion_kind())
-          << " root=" << fusion->fused_expression_root()->opcode();
-
   ASSIGN_OR_RETURN(auto kernel, ir_emitter_.EmitFusionHostKernel(fusion));
   ASSIGN_OR_RETURN(auto buffers, GetHostKernelAllocationSlices(instruction));
 
@@ -881,7 +853,9 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitFusionKernelThunk(
 
 bool FusionRoutesToMlirEmitter(const HloModuleConfig& config,
                                const HloFusionInstruction* fusion) {
-  // The MLIR fusion emitters only support loop fusions.
+  if (fusion->fused_expression_root()->opcode() == HloOpcode::kScatter) {
+    return true;
+  }
   return options::UseExperimentalLoopFusion(config) &&
          fusion->fusion_kind() == HloFusionInstruction::FusionKind::kLoop;
 }

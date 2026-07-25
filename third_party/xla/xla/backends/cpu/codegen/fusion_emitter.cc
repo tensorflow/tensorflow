@@ -35,6 +35,7 @@ limitations under the License.
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/MLIRContext.h"
 #include "xla/backends/cpu/alignment.h"
+#include "xla/backends/cpu/codegen/emitters/cpu_scatter_emitter.h"
 #include "xla/backends/cpu/codegen/kernel_api_ir_builder.h"
 #include "xla/backends/cpu/codegen/symbol_name_util.h"
 #include "xla/backends/cpu/codegen/tiled/tiled_fusion_emitter.h"
@@ -61,6 +62,7 @@ limitations under the License.
 #include "xla/service/cpu/backend_config.pb.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/status_macros.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 
@@ -301,6 +303,12 @@ absl::StatusOr<KernelDefinition<MlirKernelSource>> EmitFusionKernel(
 
     VLOG(2) << "Tiled emitter failed due to tiling failure: "
             << result.kernel.status() << ", falling back to loop emitter.";
+  }
+
+  if (fusion.fused_expression_root()->opcode() == HloOpcode::kScatter) {
+    TF_RET_CHECK(buffer_assignment != nullptr);
+    CpuScatterFusion kernel_emitter(*buffer_assignment, &fusion, &mlir_context);
+    return kernel_emitter.EmitKernelDefinition();
   }
 
   if (fusion.fusion_kind() == HloFusionInstruction::FusionKind::kLoop) {
