@@ -660,7 +660,8 @@ class UnsortedSegmentTest(SegmentReductionHelper, parameterized.TestCase):
       unsorted = math_ops.unsorted_segment_sum(
           np.ones((3)), segment_ids=898042203, num_segments=num_segments)
       with self.assertRaisesOpError(
-          "Encountered overflow when multiplying | must not be negative | is too large"
+          "Encountered overflow when multiplying | must not be negative | "
+          "is too large"
       ):
         self.evaluate(unsorted)
 
@@ -741,12 +742,17 @@ class UnsortedSegmentTest(SegmentReductionHelper, parameterized.TestCase):
           data=data, segment_ids=segment_ids, num_segments=num_segments))
 
   def testNumSegmentsOverflow_Int32Index(self):
-    """Regression test: num_segments > 2G must raise InvalidArgumentError even with int32 index.
+    """num_segments == 2^31 must be rejected when the index type is int32.
+
+    With a signed int32 index the largest representable segment count is
+    kint32max (2^31 - 1), so exactly 2^31 must be flagged as too large
+    rather than silently overflowing the cast to Index. See #117549.
     """
     data = constant_op.constant([1, 2, 3, 4], dtype=dtypes_lib.int32)
     segment_ids = constant_op.constant([0, 1, 0, 1], dtype=dtypes_lib.int32)
-    # Just above the 2G limit (2^31 + 1).
-    num_segments = constant_op.constant((1 << 31) + 1, dtype=dtypes_lib.int64)
+    # Exactly the 2G boundary (2^31): valid for an int64 index but out of
+    # range for a signed int32 index.
+    num_segments = constant_op.constant(1 << 31, dtype=dtypes_lib.int64)
     with self.assertRaisesRegex(errors_impl.InvalidArgumentError,
                                 "is too large"):
       self.evaluate(math_ops.unsorted_segment_sum(

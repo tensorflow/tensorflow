@@ -527,8 +527,13 @@ class UnsortedSegmentReductionOp : public OpKernel {
                                         " must not be negative."));
     // Guard against excessively large num_segments that would cause integer
     // overflow in output tensor size calculations, leading to illegal memory
-    // access or process abort (see #117549).
-    const int64_t kMaxSegments = static_cast<int64_t>(1) << 31;  // 2G
+    // access or process abort (see #117549). For 32-bit Index types the
+    // effective limit is the largest value representable by Index (kint32max),
+    // since a larger value would overflow the static_cast<Index> below; cap
+    // kMaxSegments accordingly.
+    const int64_t kMaxSegments = std::min<int64_t>(
+        static_cast<int64_t>(1) << 31,  // 2G
+        static_cast<int64_t>(std::numeric_limits<Index>::max()));
     OP_REQUIRES(context, num_segments_val <= kMaxSegments,
                 errors::InvalidArgument(
                     "Input num_segments == ", num_segments_val,
