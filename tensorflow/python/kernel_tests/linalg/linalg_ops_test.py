@@ -104,7 +104,7 @@ class LogdetTest(test.TestCase):
         with self.session():
           logdet_tf = linalg.logdet(matrix)
           result = self.evaluate(logdet_tf)
-          # Match NumPy's behavior (-inf for singular matrix)          
+          # Match NumPy's behavior(-inf for singular matrix)          
           self.assertEqual(result, logdet_np)
           self.assertEqual(result, -np.inf)
 
