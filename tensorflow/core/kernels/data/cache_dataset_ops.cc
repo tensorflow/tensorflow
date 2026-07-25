@@ -98,10 +98,10 @@ class DatasetRandomAccessCache {
       return absl::InvalidArgumentError(
           absl::StrCat("Expected index >= 0; Received index: ", index));
     }
-    if (static_cast<size_t>(index) >= cache_.size()) {
+    if (index >= static_cast<int64_t>(cache_.size())) {
       TF_RETURN_IF_ERROR(ExtendTempCacheToIndex(index, ctx));
     }
-    *out_tensors = cache_.at(static_cast<size_t>(index));
+    *out_tensors = cache_.at(index);
     return absl::OkStatus();
   }
 
@@ -111,7 +111,7 @@ class DatasetRandomAccessCache {
  private:
   absl::Status ExtendTempCacheToIndex(int64_t index, OpKernelContext* ctx) {
     bool end_of_sequence;
-    while (cache_.size() <= static_cast<size_t>(index)) {
+    while (static_cast<int64_t>(cache_.size()) <= index) {
       std::vector<Tensor> out_tensors;
       TF_RETURN_IF_ERROR(
           iter_resource_->GetNext(ctx, &out_tensors, &end_of_sequence));
@@ -159,16 +159,16 @@ class IteratorRandomAccessCache {
                        element_position));
     }
 
-    if (static_cast<size_t>(element_position) < cache_.size() && !cache_[static_cast<size_t>(element_position)].empty()) {
-      *out_tensors = cache_[static_cast<size_t>(element_position)];
+    if (element_position < static_cast<int64_t>(cache_.size()) && !cache_[element_position].empty()) {
+      *out_tensors = cache_[element_position];
       return absl::OkStatus();
     }
 
     TF_RETURN_IF_ERROR(input_->Get(ctx, element_position, out_tensors));
-    if (static_cast<size_t>(element_position) >= cache_.size()) {
-      cache_.resize(static_cast<size_t>(element_position) + 1);
+    if (element_position >= static_cast<int64_t>(cache_.size())) {
+      cache_.resize(element_position + 1);
     }
-    cache_[static_cast<size_t>(element_position)] = *out_tensors;
+    cache_[element_position] = *out_tensors;
     return absl::OkStatus();
   }
 
