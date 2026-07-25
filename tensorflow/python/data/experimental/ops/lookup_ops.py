@@ -153,6 +153,8 @@ def table_from_dataset(dataset=None,
         with `default_value`
       * `num_oov_buckets` is negative
       * `vocab_size` is not greater than zero
+      * `vocab_size` is larger than the known dataset cardinality
+      * `vocab_size` exceeds the maximum safe value
       * The `key_dtype` is not integer or string
   """
   elem_spec = dataset.element_spec
@@ -166,10 +168,10 @@ def table_from_dataset(dataset=None,
   if num_oov_buckets < 0:
     raise ValueError("`num_oov_buckets` must be greater than or equal to 0, "
                      f"got {num_oov_buckets}.")
-  if (not isinstance(vocab_size, tensor.Tensor) and vocab_size is not None and
-      vocab_size < 1):
-    raise ValueError(f"`vocab_size` must be greater than 0, got {vocab_size}.")
   if not isinstance(vocab_size, tensor.Tensor) and vocab_size is not None:
+    if vocab_size < 1:
+      raise ValueError(
+          f"`vocab_size` must be greater than 0, got {vocab_size}.")
     max_safe_vocab_size = min(sys.maxsize, dtypes.int64.max)
     if vocab_size >= max_safe_vocab_size:
       raise ValueError(
@@ -246,6 +248,8 @@ def index_table_from_dataset(dataset=None,
     ValueError: If
       * `num_oov_buckets` is negative
       * `vocab_size` is not greater than zero
+      * `vocab_size` is larger than the known dataset cardinality
+      * `vocab_size` exceeds the maximum safe value
       * The `key_dtype` is not integer or string
   """
   return table_from_dataset(dataset.enumerate().map(lambda v, k: (k, v)),
