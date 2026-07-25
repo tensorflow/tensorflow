@@ -567,7 +567,10 @@ bool AlgebraicSimplifierVisitor::IsNonNegative(
       return dim_size <= (1LL << (bit_width - 1));
     }
     case HloOpcode::kAbs: {
-      return !HasSignedIntegralElementType(hlo);
+      if (!HasSignedIntegralElementType(hlo)) {
+        return true;
+      }
+      return IsNonNegative(hlo->operand(0), options);
     }
     case HloOpcode::kBroadcast: {
       return IsNonNegative(hlo->operand(0), options);

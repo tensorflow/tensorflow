@@ -206,6 +206,19 @@ TEST_F(AlgebraicSimplifierTest, IsNonNegativeSignedIntegerIotaFitsRange) {
       m->entry_computation()->root_instruction(), default_options_));
 }
 
+TEST_F(AlgebraicSimplifierTest,
+       IsNonNegativeSignedIntegerAbsOfNonNegativeOperand) {
+  ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(R"(
+    HloModule m
+    ENTRY test {
+      iota = s8[128] iota(), iota_dimension=0
+      ROOT abs = s8[128] abs(iota)
+    }
+  )"));
+  ASSERT_TRUE(AlgebraicSimplifierVisitor::IsNonNegative(
+      m->entry_computation()->root_instruction(), default_options_));
+}
+
 // Test that the result of Broadcast is non-negative if its operand is
 // non-negative
 TEST_F(AlgebraicSimplifierTest, IsNonNegative_Broadcast) {
