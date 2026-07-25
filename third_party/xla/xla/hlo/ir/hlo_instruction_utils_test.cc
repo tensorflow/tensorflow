@@ -33,6 +33,7 @@ limitations under the License.
 #include "xla/hlo/utils/hlo_query.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/platform/statusor.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 
