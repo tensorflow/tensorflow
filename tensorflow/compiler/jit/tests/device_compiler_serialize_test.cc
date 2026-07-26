@@ -13,9 +13,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <gtest/gtest.h>
+#include "absl/strings/match.h"
 #include "tensorflow/compiler/jit/flags.h"
 #include "tensorflow/compiler/jit/mark_for_compilation_pass.h"
 #include "tensorflow/compiler/jit/tests/device_compiler_test_helper.h"
+#include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 
 namespace tensorflow {
