@@ -390,9 +390,6 @@ void AddXtileToVectorPasses(mlir::OpPassManager& pm) {
   AddBufferizationPasses(pm);
 
   pm.addPass(cpu::createLinalgElementwiseToVectorPass());
-  // For lowering of complex loops.
-  pm.addPass(mlir::createConvertLinalgToLoopsPass());
-  pm.addPass(mlir::createConvertComplexToStandardPass());
 
   pm.addPass(mlir::memref::createFoldMemRefAliasOpsPass());
   pm.addPass(mlir::createCanonicalizerPass());

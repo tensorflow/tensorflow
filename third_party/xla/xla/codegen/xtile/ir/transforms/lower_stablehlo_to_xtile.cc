@@ -20,7 +20,6 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "llvm/Support/MathExtras.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
@@ -150,52 +149,6 @@ class LowerConvertOp
     if (src_fp_element_ty && dst_int_element_ty) {
       return LowerFloatToIntConvert(builder, loc, value, src_fp_element_ty,
                                     dst_int_element_ty, src_ty, dst_ty);
-    }
-    auto GetRealType = [](Type type, Type element_type) -> Type {
-      if (auto shaped_ty = mlir::dyn_cast<ShapedType>(type)) {
-        return shaped_ty.clone(element_type);
-      }
-      return element_type;
-    };
-
-    // => complex
-    auto dst_complex_element_ty =
-        mlir::dyn_cast<mlir::ComplexType>(dst_element_ty);
-    if (dst_complex_element_ty) {
-      Type real_ty =
-          GetRealType(dst_ty, dst_complex_element_ty.getElementType());
-      if (auto src_complex_elem_ty =
-              mlir::dyn_cast<mlir::ComplexType>(src_element_ty)) {
-        Type real_src_ty =
-            GetRealType(src_ty, src_complex_elem_ty.getElementType());
-        Value real_input =
-            mlir::stablehlo::RealOp::create(builder, loc, real_src_ty, value);
-        Value imag_input =
-            mlir::stablehlo::ImagOp::create(builder, loc, real_src_ty, value);
-        ASSIGN_OR_RETURN(Value real_part, LowerConvert(builder, loc, real_input,
-                                                       real_src_ty, real_ty));
-        ASSIGN_OR_RETURN(Value imag_part, LowerConvert(builder, loc, imag_input,
-                                                       real_src_ty, real_ty));
-        return mlir::stablehlo::ComplexOp::create(builder, loc, dst_ty,
-                                                  real_part, imag_part)
-            .getResult();
-      }
-      ASSIGN_OR_RETURN(Value real_part,
-                       LowerConvert(builder, loc, value, src_ty, real_ty));
-      Value imag_part = ZerosLike(builder, real_part);
-      return mlir::stablehlo::ComplexOp::create(builder, loc, dst_ty, real_part,
-                                                imag_part)
-          .getResult();
-    }
-    // complex => non-complex
-    auto src_complex_element_ty =
-        mlir::dyn_cast<mlir::ComplexType>(src_element_ty);
-    if (src_complex_element_ty) {
-      Type real_ty =
-          GetRealType(src_ty, src_complex_element_ty.getElementType());
-      Value real_part =
-          mlir::stablehlo::RealOp::create(builder, loc, real_ty, value);
-      return LowerConvert(builder, loc, real_part, real_ty, dst_ty);
     }
 
     return absl::UnimplementedError(absl::StrCat(
@@ -353,11 +306,6 @@ class LowerCompareOp
   mlir::LogicalResult matchAndRewrite(
       mlir::stablehlo::CompareOp op,
       mlir::PatternRewriter& rewriter) const override {
-    const Type element_type = mlir::getElementTypeOrSelf(op.getLhs());
-    if (mlir::isa<mlir::ComplexType>(element_type)) {
-      return rewriter.notifyMatchFailure(
-          op, "complex types are legalized by StablehloLegalizeToLinalg");
-    }
     Value compare_result = GetCompareOp(rewriter, op);
 
     rewriter.replaceOp(op, compare_result);
