@@ -49,7 +49,6 @@ limitations under the License.
 #include "xla/codegen/tiling/experimental/tile.h"
 #include "xla/codegen/tiling/experimental/tiled_hlo.h"
 #include "xla/codegen/tiling/experimental/tiling_space.h"
-#include "xla/codegen/tiling/symbolic_tile_analysis.h"
 #include "xla/codegen/tiling/tiled_hlo_computation.h"
 #include "xla/codegen/tiling/tiling_specification.h"
 #include "xla/codegen/xtile/codegen/emitter_helpers.h"
@@ -207,13 +206,11 @@ int64_t EvaluateSymbolicCost(
   for (const auto* root : symbolic_computation.roots()) {
     cost_inst(*root);
   }
-
   for (const auto* inst : symbolic_computation.instructions()) {
     if (operands.contains(inst->hlo())) {
       cost_inst(*inst);
     }
   }
-
   int64_t num_output_tiles = 1;
   for (auto [index, dim] : llvm::enumerate(space.dimensions())) {
     if (dim.type == ge::TilingSpace::DimensionSemantics::kParallel) {
@@ -221,40 +218,7 @@ int64_t EvaluateSymbolicCost(
       num_output_tiles *= CeilOfRatio(dim.dimension_size, val);
     }
   }
-
   return per_tile_cost * num_output_tiles;
-}
-
-absl::StatusOr<Tiling> GetTiling(
-    mlir::MLIRContext& context, const HloFusionInstruction& fusion,
-    const SymbolicTileAnalysis& symbolic_tile_analysis) {
-  ASSIGN_OR_RETURN(std::vector<Tiling> valid_tilings,
-                   symbolic_tile_analysis.GetValidTilings());
-  if (valid_tilings.empty()) {
-    return Internal("No valid tilings found for fusion: %s", fusion.name());
-  }
-
-  const HloInstruction* root_hlo =
-      fusion.fused_instructions_computation()->root_instruction();
-  int64_t best_cost = std::numeric_limits<int64_t>::max();
-  FlatTiling best_tile_sizes;
-  absl::flat_hash_set<const HloInstruction*> operands(fusion.operands().begin(),
-                                                      fusion.operands().end());
-  for (const auto& tiling : valid_tilings) {
-    const FlatTiling& tile_sizes = tiling.tile_sizes().at(root_hlo);
-    ASSIGN_OR_RETURN(TiledHloComputation tiled_hlo_computation,
-                     symbolic_tile_analysis.ComputeTiledComputation(tiling));
-    const int64_t cost = TotalCacheLineHits(tiled_hlo_computation, operands);
-
-    if (cost < best_cost) {
-      best_cost = cost;
-      best_tile_sizes.assign(tile_sizes.begin(), tile_sizes.end());
-    }
-  }
-
-  std::vector<FlatTiling> result{best_tile_sizes};
-  Tiling::TileMapping tile_mapping{{root_hlo, best_tile_sizes}};
-  return Tiling(tile_mapping);
 }
 
 bool IsSupportedShape(const Shape& shape) {
@@ -370,7 +334,6 @@ absl::Status VerifyTensorRanks(const HloFusionInstruction& fusion) {
       return Internal(
           "Unsupported fusion in EmitGeneric: tensor rank too large");
     }
-
     for (const xla::HloInstruction* operand : instruction->operands()) {
       if (operand->shape().dimensions().size() > kMaxRank) {
         return Internal(
@@ -381,39 +344,18 @@ absl::Status VerifyTensorRanks(const HloFusionInstruction& fusion) {
   return absl::OkStatus();
 }
 
-absl::StatusOr<SymbolicTileAnalysis> GetSymbolicTileAnalysis(
-    mlir::MLIRContext& context, const HloFusionInstruction& fusion) {
-  RETURN_IF_ERROR(VerifyTensorRanks(fusion));
-
-  EmitterSpecificConstraintsBuilder constraints_builder =
-      TiledEmitterConstraints::GetBuilder();
-  SymbolicTileAnalysisOrError symbolic_tile_analysis_or =
-      SymbolicTileAnalysis::AnalyzeComputation(
-          *fusion.fused_instructions_computation(), &context,
-          constraints_builder);
-  if (std::holds_alternative<FusionDecision>(symbolic_tile_analysis_or)) {
-    return Internal(
-        "Unsupported fusion in EmitGeneric: %s",
-        std::get<FusionDecision>(symbolic_tile_analysis_or).Explain());
-  }
-
-  return std::get<SymbolicTileAnalysis>(std::move(symbolic_tile_analysis_or));
-}
-
 absl::Status IsSupportedTiledFusion(const HloFusionInstruction& fusion) {
   // TODO(willfroom): Support multi-output fusions.
   if (!fusion.shape().IsArray()) {
     return Internal(
         "Multi-output fusions are not supported by the tiled CPU emitter.");
   }
-
   for (const HloInstruction* operand : fusion.operands()) {
     if (!operand->shape().IsArray()) {
       return Internal(
           "Non-array operands are not supported by the tiled CPU emitter.");
     }
   }
-
   for (const HloInstruction* inst : fusion.fused_instructions()) {
     if (!IsSupportedShape(inst->shape())) {
       return Internal(
@@ -421,14 +363,12 @@ absl::Status IsSupportedTiledFusion(const HloFusionInstruction& fusion) {
           "tiled CPU emitter.",
           inst->ToString());
     }
-
     if (!IsSupportedInstruction(*inst)) {
       return Internal(
           "Instruction %s is not supported by the tiled CPU emitter.",
           inst->ToString());
     }
   }
-
   return absl::OkStatus();
 }
 
@@ -596,7 +536,6 @@ bool IsSupportedTilingType(PrimitiveType type) {
       primitive_util::IsMXType(type)) {
     return false;
   }
-
   return true;
 }
 
@@ -612,35 +551,13 @@ TiledEmissionResult EmitTiledFusionKernel(
                 "Fusion is not supported by the tiled CPU emitter."),
             /*tiling_succeeded=*/false};
   }
-
-  if (options::EnableExperimentalTiling(fusion.GetModule()->config())) {
-    VLOG(2) << "  EnableExperimentalTiling: true";
-    absl::StatusOr<ge::TiledHloComputation> tiled_computation =
-        GetTiledHloComputation(context, fusion);
-    if (!tiled_computation.ok()) {
-      return {tiled_computation.status(), /*tiling_succeeded=*/false};
-    }
-
-    return {EmitTiledFusionKernelImpl(context, fusion, buffer_assignment, name,
-                                      num_work_groups, *tiled_computation),
-            /*tiling_succeeded=*/true};
+  absl::StatusOr<ge::TiledHloComputation> tiled_computation =
+      GetTiledHloComputation(context, fusion);
+  if (!tiled_computation.ok()) {
+    return {tiled_computation.status(), /*tiling_succeeded=*/false};
   }
-
-  absl::StatusOr<SymbolicTileAnalysis> symbolic_tile_analysis =
-      GetSymbolicTileAnalysis(context, fusion);
-  if (!symbolic_tile_analysis.ok()) {
-    return {symbolic_tile_analysis.status(), /*tiling_succeeded=*/false};
-  }
-
-  absl::StatusOr<Tiling> tiling =
-      GetTiling(context, fusion, *symbolic_tile_analysis);
-  if (!tiling.ok()) {
-    return {tiling.status(), /*tiling_succeeded=*/false};
-  }
-
   return {EmitTiledFusionKernelImpl(context, fusion, buffer_assignment, name,
-                                    num_work_groups, *symbolic_tile_analysis,
-                                    *tiling),
+                                    num_work_groups, *tiled_computation),
           /*tiling_succeeded=*/true};
 }
 

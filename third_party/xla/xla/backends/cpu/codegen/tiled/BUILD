@@ -42,7 +42,6 @@ cc_library(
         "//xla/codegen:mlir_kernel_source",
         "//xla/codegen/emitters:kernel_api_builder",
         "//xla/codegen/emitters/ir:xla",
-        "//xla/codegen/tiling:symbolic_tile_analysis",
         "//xla/codegen/tiling:tiled_hlo_computation",
         "//xla/codegen/tiling:tiling_specification",
         "//xla/codegen/tiling/experimental:tile",
