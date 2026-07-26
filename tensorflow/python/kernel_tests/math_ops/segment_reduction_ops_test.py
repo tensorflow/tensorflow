@@ -758,6 +758,7 @@ class UnsortedSegmentTest(SegmentReductionHelper, parameterized.TestCase):
       self.evaluate(math_ops.unsorted_segment_sum(
           data=data, segment_ids=segment_ids, num_segments=num_segments))
 
+
 class SparseSegmentReductionHelper(SegmentReductionHelper):
 
   def _sparse_input(self, input_shape, num_indices, dtype=dtypes_lib.int32):
