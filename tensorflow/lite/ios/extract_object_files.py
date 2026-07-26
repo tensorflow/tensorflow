@@ -67,7 +67,7 @@ def extract_object_files(archive_file: io.BufferedIOBase,
 
   # Keep the extracted file names and their content hash values, in order to
   # handle duplicate names correctly.
-  extracted_files = dict()
+  extracted_files = {}
 
   for name, file_content in _extract_next_file(archive_file):
     digest = hashlib.sha256(file_content).digest()
@@ -84,7 +84,7 @@ def extract_object_files(archive_file: io.BufferedIOBase,
         break
 
       # Skip writing this file if the same file was already extracted.
-      elif extracted_files[final_name] == digest:
+      if extracted_files[final_name] == digest:
         break
 
 
@@ -119,11 +119,9 @@ def _check_archive_signature(archive_file: io.BufferedIOBase) -> None:
   Raises:
     RuntimeError: The archive signature is invalid.
   """
-  # Ensure we start from beginning.
   try:
     archive_file.seek(0)
   except (OSError, IOError):
-    # If the file-like object doesn't support seek, proceed (read will consume).
     pass
 
   signature = archive_file.read(8)
@@ -159,8 +157,8 @@ def _extract_next_file(
     # For the details of the file header format, see:
     # https://en.wikipedia.org/wiki/Ar_(Unix)#File_header
     # We only need the file name and the size values.
-    name_raw, _, _, _, _, size_bytes, end = struct.unpack('=16s12s6s6s8s10s2s',
-                                                          header)
+    name_raw, _, _, _, _, size_bytes, end = struct.unpack(
+        '=16s12s6s6s8s10s2s', header)
     if end != b'`\n':
       raise RuntimeError('Invalid file header format.')
 
@@ -176,7 +174,6 @@ def _extract_next_file(
     # filename in the bytes immediately following the header.
     name = None
     if name_raw.startswith(b'#1/'):
-      # parse the number after '#1/'
       try:
         filename_size = int(name_raw[3:].decode('ascii').strip())
       except ValueError:
@@ -185,12 +182,10 @@ def _extract_next_file(
       raw_name_bytes = archive_file.read(filename_size)
       if len(raw_name_bytes) < filename_size:
         raise RuntimeError('Unexpected end of archive while reading filename.')
-      # Remove trailing NULs and spaces.
       name = raw_name_bytes.decode('utf-8', errors='replace').rstrip('\x00 ')
       size -= filename_size
     else:
-      # Regular name field: decode and strip trailing spaces. Some variants
-      # append a trailing '/' — strip that as well.
+      # Regular name field: decode and strip trailing slashes and spaces.
       name = name_raw.decode('utf-8', errors='replace').rstrip()
       if name.endswith('/'):
         name = name[:-1]
@@ -198,7 +193,8 @@ def _extract_next_file(
     # Read the file content.
     file_content = archive_file.read(size)
     if len(file_content) < size:
-      raise RuntimeError('Unexpected end of archive while reading file content.')
+      raise RuntimeError(
+          'Unexpected end of archive while reading file content.')
 
     # The file contents are always 2 byte aligned, and 1 byte is padded at the
     # end in case the size is odd.
