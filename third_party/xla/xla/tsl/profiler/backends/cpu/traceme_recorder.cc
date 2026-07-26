@@ -170,7 +170,7 @@ static SplitEventTracker* split_event_tracker
 // This method is performance critical and should be kept fast. It is called
 // when tracing starts.
 /* static */ void TraceMeRecorder::Clear() {
-  absl::MutexLock lock(&split_event_tracker_mu);
+  absl::MutexLock lock(split_event_tracker_mu);
   split_event_tracker->Clear();
   auto recorders = PerThread<ThreadLocalRecorder>::StartRecording();
   for (auto& recorder : recorders) {
@@ -182,7 +182,7 @@ static SplitEventTracker* split_event_tracker
 // when tracing stops.
 /* static */ TraceMeRecorder::Events TraceMeRecorder::Consume() {
   TraceMeRecorder::Events result;
-  absl::MutexLock lock(&split_event_tracker_mu);
+  absl::MutexLock lock(split_event_tracker_mu);
   auto recorders = PerThread<ThreadLocalRecorder>::StopRecording();
   result.reserve(recorders.size());
   for (auto& recorder : recorders) {
@@ -197,7 +197,7 @@ static SplitEventTracker* split_event_tracker
 }
 
 /* static */ TraceMeRecorder::Events TraceMeRecorder::Flush() {
-  absl::MutexLock lock(&split_event_tracker_mu);
+  absl::MutexLock lock(split_event_tracker_mu);
   auto recorders = PerThread<ThreadLocalRecorder>::FlushRecording();
   TraceMeRecorder::Events result;
   result.reserve(recorders.size());
