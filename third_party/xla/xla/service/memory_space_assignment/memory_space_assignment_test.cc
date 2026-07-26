@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <cstdint>
+#include <cstdlib>
 #include <functional>
 #include <iterator>
 #include <limits>
@@ -17881,6 +17882,61 @@ TEST_F(MemorySpaceAssignmentTest, ConditionalCommonInputAliasedOutputTest) {
   CheckMemorySpaceForInstructionNames(
       module.get(), {"negate0", "custom_call2", "custom_call0", "custom_call1"},
       kAlternateMemorySpace);
+}
+
+TEST_F(MemorySpaceAssignmentTest, WindowPrefetchHloValuePointerStability) {
+  absl::string_view hlo_string = R"hlo(
+HloModule module, is_scheduled=true
+
+%fused_computation {
+  %p0 = bf16[64,8]{1,0:T(8,128)(2,1)} parameter(0)
+  %p1 = bf16[64,8]{1,0:T(8,128)(2,1)} parameter(1)
+  %p2 = bf16[64,8]{1,0:T(8,128)(2,1)} parameter(2)
+  %add0 = bf16[64,8]{1,0:T(8,128)(2,1)} add(%p0, %p1)
+  ROOT %add1 = bf16[64,8]{1,0:T(8,128)(2,1)} add(%add0, %p2)
+}
+
+entry {
+  %p0 = bf16[64,8]{1,0:T(8,128)(2,1)} parameter(0)
+  %p1 = bf16[64,8]{1,0:T(8,128)(2,1)} parameter(1)
+  %p2 = bf16[64,8]{1,0:T(8,128)(2,1)} parameter(2)
+  ROOT fusion = bf16[64,8]{1,0:T(8,128)(2,1)} fusion(%p0, %p1, %p2), kind=kLoop, calls=%fused_computation
+}
+)hlo";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  Options options = DefaultMemorySpaceOptions();
+  options.enable_window_prefetch = true;
+  options.op_span_size_fn =
+      [&](HloInstruction* original_hlo, HloInstruction* cloned_hlo,
+          int64_t operand_index) -> int64_t { return 32; };
+  options.window_prefetch_min_span_size = 2;
+
+  std::unique_ptr<PresetAssignments> preset_assignments =
+      AssignMemorySpace(module.get(), std::move(options),
+                        /*max_prefetch_interval=*/10,
+                        /*min_prefetch_interval=*/0);
+
+  absl::flat_hash_set<const HloInstruction*> valid_instructions;
+  for (const HloComputation* comp : module->computations()) {
+    for (const HloInstruction* inst : comp->instructions()) {
+      valid_instructions.insert(inst);
+    }
+  }
+
+  // Iterate over all chunks in preset_assignments. If a dangling stack pointer
+  // was used to populate the chunks (via HloValue->defining_position()),
+  // the instruction pointer stored in HloPosition will be garbage memory or
+  // not in the module.
+  for (const auto& chunk_pair : preset_assignments->chunks()) {
+    const HloInstruction* inst = chunk_pair.first.instruction;
+    EXPECT_TRUE(valid_instructions.contains(inst))
+        << "Found a dangling / invalid HloInstruction pointer in preset "
+           "assignment chunks: "
+        << inst << ". This indicates a dangling HloValue was accessed.";
+  }
 }
 
 }  // namespace
