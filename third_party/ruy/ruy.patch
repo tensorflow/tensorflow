@@ -1,41 +1,18 @@
-diff --git a/BUILD b/BUILD
-index fe04dde..8c2d62e 100644
---- a/BUILD
-+++ b/BUILD
-@@ -1,15 +1,7 @@
- # Ruy is not BLAS
- 
--load("//tools/build_defs/license:license.bzl", "license")
--
- package(
--    default_applicable_licenses = [":license"],
-     licenses = ["notice"],  # Apache 2.0
- )
- 
--license(
--    name = "license",
--    package_name = "ruy",
--)
--
- exports_files(["LICENSE"])
 diff --git a/example/BUILD b/example/BUILD
-index 44a1804..e4b09ba 100644
+index 44a1804fb85..fdb3aa47aec 100644
 --- a/example/BUILD
 +++ b/example/BUILD
-@@ -1,7 +1,6 @@
+@@ -1,4 +1,4 @@
 -load("//third_party/bazel_rules/rules_cc/cc:cc_binary.bzl", "cc_binary")
 +load("@rules_cc//cc:cc_binary.bzl", "cc_binary")
  
  package(
--    default_applicable_licenses = ["//third_party/ruy:license"],
-     licenses = ["notice"],  # Apache 2.0
- )
- 
+     default_applicable_licenses = ["//third_party/ruy:license"],
 diff --git a/ruy/BUILD b/ruy/BUILD
-index e9e36cc..6b56b1b 100644
+index e9e36cc870d..50d55902937 100644
 --- a/ruy/BUILD
 +++ b/ruy/BUILD
-@@ -2,15 +2,14 @@
+@@ -2,8 +2,8 @@
  
  load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
  load("@bazel_skylib//lib:selects.bzl", "selects")
@@ -46,14 +23,7 @@ index e9e36cc..6b56b1b 100644
  load(":build_defs.bzl", "ruy_copts", "ruy_copts_avx", "ruy_copts_avx2_fma", "ruy_copts_avx512")
  load(":build_defs.oss.bzl", "ruy_linkopts_thread_standard_library")
  load(":ruy_test.bzl", "ruy_benchmark", "ruy_test")
- load(":ruy_test_ext.oss.bzl", "ruy_test_ext_defines", "ruy_test_ext_deps")
- 
- package(
--    default_applicable_licenses = ["//third_party/ruy:license"],
-     licenses = ["notice"],  # Apache 2.0
- )
- 
-@@ -51,9 +50,6 @@ config_setting(
+@@ -51,9 +51,6 @@ config_setting(
      constraint_values = [
          "@platforms//os:windows",
      ],
@@ -64,7 +34,7 @@ index e9e36cc..6b56b1b 100644
  
  config_setting(
 diff --git a/ruy/build_defs.bzl b/ruy/build_defs.bzl
-index 28600a7..9dbefdf 100644
+index 28600a7cc3a..9dbefdf794d 100644
 --- a/ruy/build_defs.bzl
 +++ b/ruy/build_defs.bzl
 @@ -4,7 +4,7 @@
@@ -77,7 +47,7 @@ index 28600a7..9dbefdf 100644
              # as mentioned in the comments below on each flag.
              # We could be more aggressive in enabling supported warnings on each
 diff --git a/ruy/build_defs.oss.bzl b/ruy/build_defs.oss.bzl
-index 6d34ba6..a1481cd 100644
+index 6d34ba61f1b..a1481cd3dcb 100644
 --- a/ruy/build_defs.oss.bzl
 +++ b/ruy/build_defs.oss.bzl
 @@ -10,6 +10,6 @@ def ruy_linkopts_thread_standard_library():
@@ -89,10 +59,10 @@ index 6d34ba6..a1481cd 100644
          "//conditions:default": ["-pthread"],
      })
 diff --git a/ruy/profiler/BUILD b/ruy/profiler/BUILD
-index 63a4cfa..00cc591 100644
+index 63a4cfa3dc6..ed515926834 100644
 --- a/ruy/profiler/BUILD
 +++ b/ruy/profiler/BUILD
-@@ -1,11 +1,10 @@
+@@ -1,8 +1,8 @@
  # A minimalistic profiler sampling pseudo-stacks
  
  load("//ruy:build_defs.oss.bzl", "ruy_linkopts_thread_standard_library")
@@ -102,12 +72,9 @@ index 63a4cfa..00cc591 100644
 +load("@rules_cc//cc:cc_test.bzl", "cc_test")
  
  package(
--    default_applicable_licenses = ["//third_party/ruy:license"],
-     licenses = ["notice"],  # Apache 2.0
- )
- 
+     default_applicable_licenses = ["//third_party/ruy:license"],
 diff --git a/ruy/ruy_test.bzl b/ruy/ruy_test.bzl
-index 8044985..861f97c 100644
+index 8044985f000..861f97c4215 100644
 --- a/ruy/ruy_test.bzl
 +++ b/ruy/ruy_test.bzl
 @@ -1,8 +1,8 @@
