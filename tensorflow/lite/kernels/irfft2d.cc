@@ -41,13 +41,13 @@ constexpr int kFftLengthTensor = 1;
 constexpr int kOutputTensor = 0;
 constexpr int kFftIntegerWorkingAreaTensor = 0;
 constexpr int kFftDoubleWorkingAreaTensor = 1;
+constexpr int kFftInputOutputRowsTensor = 2;
+constexpr int kFftInputOutputDataTensor = 3;
+constexpr int kTemporaryTensorCount = 4;
 constexpr int kTensorNotAllocated = -1;
 
 struct OpData {
-  // IDs are the arbitrary identifiers used by TF Lite to identify and access
-  // memory buffers.
-  int fft_integer_working_area_id = kTensorNotAllocated;
-  int fft_double_working_area_id = kTensorNotAllocated;
+  int first_temporary_tensor_id = kTensorNotAllocated;
 };
 
 bool IsPowerOfTwo(uint32_t v) { return v && !(v & (v - 1)); }
@@ -57,20 +57,17 @@ static TfLiteStatus InitTemporaryTensors(TfLiteContext* context,
   OpData* data = reinterpret_cast<OpData*>(node->user_data);
   // The prepare function may be executed multiple times. But temporary tensors
   // only need to be initiated once.
-  if (data->fft_integer_working_area_id != kTensorNotAllocated &&
-      data->fft_double_working_area_id != kTensorNotAllocated) {
+  if (data->first_temporary_tensor_id != kTensorNotAllocated) {
     return kTfLiteOk;
   }
 
   TfLiteIntArrayFree(node->temporaries);
-  // Create two temporary tensors.
-  node->temporaries = TfLiteIntArrayCreate(2);
-  int first_new_index;
-  TF_LITE_ENSURE_STATUS(context->AddTensors(context, 2, &first_new_index));
-  node->temporaries->data[kFftIntegerWorkingAreaTensor] = first_new_index;
-  data->fft_integer_working_area_id = first_new_index;
-  node->temporaries->data[kFftDoubleWorkingAreaTensor] = first_new_index + 1;
-  data->fft_double_working_area_id = first_new_index + 1;
+  node->temporaries = TfLiteIntArrayCreate(kTemporaryTensorCount);
+  TF_LITE_ENSURE_STATUS(context->AddTensors(
+      context, kTemporaryTensorCount, &data->first_temporary_tensor_id));
+  for (int i = 0; i < kTemporaryTensorCount; ++i) {
+    node->temporaries->data[i] = data->first_temporary_tensor_id + i;
+  }
 
   // Set up FFT integer working area buffer.
   TfLiteTensor* fft_integer_working_area;
@@ -98,6 +95,13 @@ static TfLiteStatus InitTemporaryTensors(TfLiteContext* context,
   // If fft_length is not a constant tensor, fft_double_working_area will be
   // set to dynamic later in Prepare.
   fft_double_working_area->allocation_type = kTfLiteArenaRw;
+
+  for (int i = kFftInputOutputRowsTensor; i < kTemporaryTensorCount; ++i) {
+    TfLiteTensor* tensor;
+    TF_LITE_ENSURE_OK(context, GetTemporarySafe(context, node, i, &tensor));
+    tensor->type = kTfLiteInt64;
+    tensor->allocation_type = kTfLiteArenaRw;
+  }
 
   return kTfLiteOk;
 }
@@ -152,6 +156,25 @@ TfLiteStatus ResizeOutputandTemporaryTensors(TfLiteContext* context,
       half_fft_working_length + fft_width / 4;
   TF_LITE_ENSURE_STATUS(context->ResizeTensor(context, fft_double_working_area,
                                               fft_double_working_area_shape));
+
+  TfLiteTensor* fft_input_output_rows;
+  TF_LITE_ENSURE_OK(
+      context, GetTemporarySafe(context, node, kFftInputOutputRowsTensor,
+                                &fft_input_output_rows));
+  TfLiteIntArray* fft_input_output_rows_shape = TfLiteIntArrayCreate(1);
+  fft_input_output_rows_shape->data[0] = fft_height;
+  TF_LITE_ENSURE_STATUS(context->ResizeTensor(
+      context, fft_input_output_rows, fft_input_output_rows_shape));
+
+  TfLiteTensor* fft_input_output_data;
+  TF_LITE_ENSURE_OK(
+      context, GetTemporarySafe(context, node, kFftInputOutputDataTensor,
+                                &fft_input_output_data));
+  TfLiteIntArray* fft_input_output_data_shape = TfLiteIntArrayCreate(2);
+  fft_input_output_data_shape->data[0] = fft_height;
+  fft_input_output_data_shape->data[1] = fft_width + 2;
+  TF_LITE_ENSURE_STATUS(context->ResizeTensor(
+      context, fft_input_output_data, fft_input_output_data_shape));
 
   return kTfLiteOk;
 }
@@ -208,16 +231,11 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   // temporary tensors to dynamic, so that their tensor sizes can be determined
   // in Eval.
   if (!IsConstantOrPersistentTensor(fft_length)) {
-    TfLiteTensor* fft_integer_working_area;
-    TF_LITE_ENSURE_OK(
-        context, GetTemporarySafe(context, node, kFftIntegerWorkingAreaTensor,
-                                  &fft_integer_working_area));
-    TfLiteTensor* fft_double_working_area;
-    TF_LITE_ENSURE_OK(
-        context, GetTemporarySafe(context, node, kFftDoubleWorkingAreaTensor,
-                                  &fft_double_working_area));
-    SetTensorToDynamic(fft_integer_working_area);
-    SetTensorToDynamic(fft_double_working_area);
+    for (int i = 0; i < kTemporaryTensorCount; ++i) {
+      TfLiteTensor* tensor;
+      TF_LITE_ENSURE_OK(context, GetTemporarySafe(context, node, i, &tensor));
+      SetTensorToDynamic(tensor);
+    }
     SetTensorToDynamic(output);
     return kTfLiteOk;
   }
@@ -326,12 +344,6 @@ TfLiteStatus Irfft2dHelper(TfLiteContext* context, TfLiteNode* node) {
   int input_slice_size = input_height * input_width;
   int output_slice_size = fft_height * fft_width;
 
-  // Create input/output buffer for FFT
-  double** fft_input_output = new double*[fft_height];
-  for (int i = 0; i < fft_height; ++i) {
-    fft_input_output[i] = new double[fft_width + 2];
-  }
-
   // Get buffer for integer working area.
   TfLiteTensor* fft_integer_working_area;
   TF_LITE_ENSURE_OK(
@@ -349,6 +361,23 @@ TfLiteStatus Irfft2dHelper(TfLiteContext* context, TfLiteNode* node) {
   double* fft_double_working_area_data = reinterpret_cast<double*>(
       GetTensorData<int64_t>(fft_double_working_area));
 
+  TfLiteTensor* fft_input_output_rows;
+  TF_LITE_ENSURE_OK(
+      context, GetTemporarySafe(context, node, kFftInputOutputRowsTensor,
+                                &fft_input_output_rows));
+  double** fft_input_output = reinterpret_cast<double**>(
+      GetTensorData<int64_t>(fft_input_output_rows));
+  TfLiteTensor* fft_input_output_data;
+  TF_LITE_ENSURE_OK(
+      context, GetTemporarySafe(context, node, kFftInputOutputDataTensor,
+                                &fft_input_output_data));
+  double* fft_input_output_data_ptr =
+      reinterpret_cast<double*>(GetTensorData<int64_t>(fft_input_output_data));
+  for (int i = 0; i < fft_height; ++i) {
+    fft_input_output[i] =
+        fft_input_output_data_ptr + i * (fft_width + 2);
+  }
+
   // Process every slice in the input buffer
   for (int i = 0; i < num_slices; ++i) {
     PrepareInputBuffer(input_data, input_height, input_width, fft_height,
@@ -361,12 +390,6 @@ TfLiteStatus Irfft2dHelper(TfLiteContext* context, TfLiteNode* node) {
     input_data += input_slice_size;
     output_data += output_slice_size;
   }
-
-  // Delete the input buffer
-  for (int i = 0; i < fft_height; ++i) {
-    delete[] fft_input_output[i];
-  }
-  delete[] fft_input_output;
 
   return kTfLiteOk;
 }
