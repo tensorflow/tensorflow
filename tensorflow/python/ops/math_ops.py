@@ -993,8 +993,8 @@ def round(x, name=None):  # pylint: disable=redefined-builtin
   x = ops.convert_to_tensor(x, name="x")
   if x.dtype.is_complex:
     raise TypeError(
-        f"tf.math.round does not support complex dtypes (received {x.dtype}). "
-        "To round complex numbers, apply tf.round separately to the real and "
+        f"tf.math.round does not support complex dtypes (received {x.dtype.name}). "
+        "To round complex numbers, apply tf.math.round separately to the real and "
         "imaginary components using tf.math.real() and tf.math.imag().")
   if x.dtype.is_integer:
     return x
