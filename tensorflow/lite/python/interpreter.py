@@ -739,6 +739,10 @@ class Interpreter:
   def get_input_details(self):
     """Gets model input tensor details.
 
+    The list order may differ from the argument order of the original
+    TensorFlow function. For models with signatures, use
+    `get_signature_runner()` to provide inputs by name.
+
     Returns:
       A list in which each item is a dictionary with details about
       an input tensor. Each dictionary contains the following fields
