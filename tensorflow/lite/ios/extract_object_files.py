@@ -168,6 +168,10 @@ def _extract_next_file(
     except ValueError:
       raise RuntimeError('Invalid file size in header.')
 
+    # Harden against corrupted or malicious archives with negative sizes.
+    if size < 0:
+      raise RuntimeError('Invalid file size in header.')
+
     odd_size = (size % 2) == 1
 
     # Handle the extended filename scheme (#1/<len>), which stores the real
@@ -179,11 +183,19 @@ def _extract_next_file(
       except ValueError:
         raise RuntimeError('Invalid extended filename size in header.')
 
+      # Reject negative filename sizes from corrupted archives.
+      if filename_size < 0:
+        raise RuntimeError('Invalid extended filename size in header.')
+
       raw_name_bytes = archive_file.read(filename_size)
       if len(raw_name_bytes) < filename_size:
         raise RuntimeError('Unexpected end of archive while reading filename.')
       name = raw_name_bytes.decode('utf-8', errors='replace').rstrip('\x00 ')
       size -= filename_size
+
+      # Reject archives where the filename consumes more bytes than declared.
+      if size < 0:
+        raise RuntimeError('Invalid file size in header.')
     else:
       # Regular name field: decode and strip trailing slashes and spaces.
       name = name_raw.decode('utf-8', errors='replace').rstrip()
