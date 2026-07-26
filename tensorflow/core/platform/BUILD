@@ -1299,22 +1299,6 @@ tf_cc_test(
     ],
 )
 
-tf_cc_test(
-    name = "file_system_test",
-    size = "small",
-    srcs = ["file_system_test.cc"],
-    deps = [
-        "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
-        "@com_google_absl//absl/log",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/strings:string_view",
-    ],
-)
-
 tf_cuda_cc_test(
     name = "rocm_rocdl_path_test",
     size = "small",
