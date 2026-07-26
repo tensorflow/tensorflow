@@ -1,0 +1,55 @@
+<!--
+Copyright 2026 The OpenXLA Authors.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+==============================================================================
+-->
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>{{DUMP_NAME}}</title>
+<style>
+{{HLO_DUMP_STYLE_CSS}}
+{{BACKGROUND_STYLES}}
+</style>
+<script>{{HLO_DUMP_UI_JS}}</script>
+</head>
+<body>
+<div id="graph-container">
+{{GRAPH_CONTENT}}
+</div>
+<div id="splitter-graph"></div>
+<div id="histogram-container">
+{{STATS_BOX}}
+</div>
+<div id="splitter-histogram"></div>
+<div id="hlo-container">
+<pre><code>{{HLO_CONTENT}}</code></pre>
+</div>
+<div id="stack-trace-dynamic-tooltip" class="stack-trace-tooltip"></div>
+<div id="general-dynamic-tooltip" class="tooltiptext"></div>
+
+<!-- Data Injections -->
+<script>
+{{DATA_INJECTION_SCRIPT}}
+</script>
+
+<!-- Initialization -->
+<script>
+  if (window.initHloDumpUI) {
+    window.initHloDumpUI();
+  }
+</script>
+</body>
+</html>
