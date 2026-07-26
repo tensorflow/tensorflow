@@ -15,11 +15,11 @@ limitations under the License.
 
 #include <cassert>
 #include <cstdint>
-#include <memory>
 #include <string>
 #include <utility>
 
 #include "absl/algorithm/container.h"
+#include "absl/log/check.h"
 #include "absl/strings/str_cat.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
@@ -40,9 +40,9 @@ limitations under the License.
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/IR/TypeRange.h"
 #include "mlir/IR/Value.h"
+#include "mlir/IR/ValueRange.h"
 #include "mlir/IR/Visitors.h"
 #include "mlir/Interfaces/DataLayoutInterfaces.h"
-#include "mlir/Pass/Pass.h"
 #include "mlir/Support/LLVM.h"
 #include "mlir/Support/WalkResult.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
@@ -53,6 +53,10 @@ limitations under the License.
 #include "xla/codegen/xtile/ir/xtile_attrs.h"
 #include "xla/codegen/xtile/ir/xtile_dialect.h"  // IWYU pragma: keep
 #include "xla/codegen/xtile/ir/xtile_ops.h"
+#include "xla/hlo/analysis/indexing_map.h"
+#include "xla/hlo/analysis/symbolic_expr.h"
+#include "xla/hlo/analysis/symbolic_map.h"
+#include "xla/util.h"
 
 namespace xla::cpu {
 
@@ -61,6 +65,35 @@ namespace xla::cpu {
 #include "xla/backends/cpu/codegen/tiled/transforms/passes.h.inc"
 
 namespace {
+
+std::pair<mlir::Value, mlir::Value> GetStartAndEndTileId(
+    mlir::ImplicitLocOpBuilder& builder, mlir::Value call_frame,
+    const xtile::TilingInfoAttr& tile_info) {
+  int32_t tile_count = tile_info.getTileCount();
+  CHECK_GT(tile_count, 0) << "Tile_count must be positive";
+  int32_t tiles_per_workgroup = tile_info.getTilesPerWorkgroup();
+
+  mlir::Value workgroup_id = ExtractWorkgroupIdOp::create(
+      builder, builder.getIndexType(), call_frame, WorkGroupDimension::x);
+
+  mlir::MLIRContext* context = builder.getContext();
+  SymbolicExpr bounded_wg_id = CreateSymbolicVariable(0, context);
+  SymbolicExpr start_tile_id = bounded_wg_id * tiles_per_workgroup;
+  SymbolicExpr bounded_start_tile_id_expr = start_tile_id.min(tile_count);
+  SymbolicExpr bounded_end_tile_id_expr =
+      (start_tile_id + tiles_per_workgroup).min(tile_count);
+
+  auto symbolic_map =
+      SymbolicMap::Get(context, /*num_dimensions=*/1, /*num_symbols=*/0,
+                       {bounded_start_tile_id_expr, bounded_end_tile_id_expr});
+  int64_t max_workgroup_id = CeilOfRatio(tile_count, tiles_per_workgroup) - 1;
+  auto apply_indexing_op = xla::ApplyIndexingOp::create(
+      builder, mlir::ValueRange{workgroup_id}, symbolic_map,
+      {IndexingMap::Variable{{0, max_workgroup_id}, "workgroup_id"}},
+      /*range_vars=*/{});
+  return std::make_pair(apply_indexing_op.getResult(0),
+                        apply_indexing_op.getResult(1));
+}
 
 struct LowerXtileEntry : mlir::OpRewritePattern<xtile::EntryFuncOp> {
   using OpRewritePattern::OpRewritePattern;
@@ -174,36 +207,9 @@ class LowerXTileEntryPass
         entry_func->emitError() << "missing tiling info.";
         return mlir::failure();
       }
-      int32_t tile_count = tile_info.getTileCount();
-      int32_t tiles_per_workgroup = tile_info.getTilesPerWorkgroup();
 
-      mlir::Value tile_count_value =
-          mlir::arith::ConstantIndexOp::create(builder, tile_count);
-      mlir::Value tiles_per_workgroup_value =
-          mlir::arith::ConstantIndexOp::create(builder, tiles_per_workgroup);
-      mlir::Value workgroup_id = ExtractWorkgroupIdOp::create(
-          builder, builder.getIndexType(), call_frame, WorkGroupDimension::x);
-
-      auto flags = mlir::arith::IntegerOverflowFlags::nsw |
-                   mlir::arith::IntegerOverflowFlags::nuw;
-
-      // This isn't needed for correctness as the workgroup id passed from the
-      // runtime will always be in bounds but it constrains the range which LLVM
-      // can then take advantage of.
-      mlir::Value bounded_workgroup_id = mlir::arith::MaxSIOp::create(
-          builder, workgroup_id,
-          mlir::arith::ConstantIndexOp::create(builder, 0));
-
-      mlir::Value start_tile_id = mlir::arith::MulIOp::create(
-          builder, bounded_workgroup_id, tiles_per_workgroup_value, flags);
-      mlir::Value bounded_start_tile_id = mlir::arith::MinSIOp::create(
-          builder, start_tile_id, tile_count_value);
-
-      mlir::Value end_tile_id = mlir::arith::AddIOp::create(
-          builder, start_tile_id, tiles_per_workgroup_value, flags);
-      mlir::Value bounded_end_tile_id =
-          mlir::arith::MinSIOp::create(builder, end_tile_id, tile_count_value);
-
+      auto [bounded_start_tile_id, bounded_end_tile_id] =
+          GetStartAndEndTileId(builder, call_frame, tile_info);
       mlir::Value step = mlir::arith::ConstantIndexOp::create(builder, 1);
 
       auto for_op = mlir::scf::ForOp::create(builder, bounded_start_tile_id,
@@ -218,11 +224,9 @@ class LowerXTileEntryPass
         mlir::func::CallOp::create(body_builder, kernel_impl_name,
                                    mlir::TypeRange(), call_args);
       }
-
       auto error = cpu::SuccessOp::create(builder, error_type);
       mlir::func::ReturnOp::create(builder, error.getResult());
     }
-
     return mlir::success();
   }
 };
