@@ -1,4 +1,8 @@
 // RUN: fusion_to_xtile %s | FileCheck %s
+// RUN: fusion_to_xtile %s | fusion_compiler_opt --xtile-cpu-xtile-to-vector \
+// RUN:   | FileCheck %s --check-prefix=CHECK-VECTOR
+// RUN: fusion_to_xtile %s | fusion_compiler_opt --xtile-cpu-xtile-to-vector \
+// RUN:   --xtile-cpu-vector-to-llvm | FileCheck %s --check-prefix=CHECK-LLVM
 
 fusion {
   p0 = f32[128,256] parameter(0)
@@ -28,6 +32,9 @@ fusion {
 // CHECK:  %[[IDX_5:.*]] = xla.apply_indexing #indexing_map1(%[[PID]], %[[PID]])
 // CHECK:  xtile.insert %[[MIN]] into %[[OUT]][%[[IDX_4]], %[[IDX_5]]] [1, 4] [1, 1]
 // CHECK:  xtile.return
+
+// CHECK-VECTOR: vector.transfer_write
+// CHECK-LLVM: llvm.intr.memcpy
 
 ENTRY main {
   p0 = f32[128,256] parameter(0)
