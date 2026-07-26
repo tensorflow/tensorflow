@@ -1,0 +1,44 @@
+// RUN: fusion_to_xtile %s | FileCheck %s
+
+fusion {
+  p0 = f32[128,256] parameter(0)
+  p1 = f32[128,256] parameter(1)
+  ROOT minimum = f32[128,256] minimum(p0, p1)
+}
+// CHECK:      #indexing_map = #xla.indexing_map<"(pid, tid) -> (pid / 64), domain: pid in [0, 8191], tid in [0, 0]">
+// CHECK:      #indexing_map1 = #xla.indexing_map<"(pid, tid) -> ((pid mod 64) * 4), domain: pid in [0, 8191], tid in [0, 0]">
+
+// CHECK:        xtile.entry_func @wrapped_fusion(
+// CHECK-SAME:     %[[LHS:[^:]+]]: memref<128x256xf32>,
+// CHECK-SAME:     %[[RHS:[^:]+]]: memref<128x256xf32>,
+// CHECK-SAME:     %[[OUT:[^:]+]]: memref<128x256xf32>,
+// CHECK-SAME:     %[[PID:[^:]+]]: index)
+// CHECK-SAME:     attributes {{{.*}}xtile.tiling_info =
+// CHECK-SAME:       #xtile.tiling_info<tile_count : 8192,
+// CHECK-SAME:       tiles_per_workgroup : 2048>}
+
+// CHECK:  %[[IDX_0:.*]] = xla.apply_indexing #indexing_map(%[[PID]], %[[PID]])
+// CHECK:  %[[IDX_1:.*]] = xla.apply_indexing #indexing_map1(%[[PID]], %[[PID]])
+// CHECK:  %[[T_0:.*]] = xtile.extract %[[LHS]][%[[IDX_0]], %[[IDX_1]]] [1, 4] [1, 1]
+// CHECK:  %[[IDX_2:.*]] = xla.apply_indexing #indexing_map(%[[PID]], %[[PID]])
+// CHECK:  %[[IDX_3:.*]] = xla.apply_indexing #indexing_map1(%[[PID]], %[[PID]])
+// CHECK:  %[[T_1:.*]] = xtile.extract %[[RHS]][%[[IDX_2]], %[[IDX_3]]] [1, 4] [1, 1]
+// CHECK:  %[[MIN:.*]] = stablehlo.minimum %[[T_0]], %[[T_1]] : tensor<1x4xf32>
+// CHECK:  %[[IDX_4:.*]] = xla.apply_indexing #indexing_map(%[[PID]], %[[PID]])
+// CHECK:  %[[IDX_5:.*]] = xla.apply_indexing #indexing_map1(%[[PID]], %[[PID]])
+// CHECK:  xtile.insert %[[MIN]] into %[[OUT]][%[[IDX_4]], %[[IDX_5]]] [1, 4] [1, 1]
+// CHECK:  xtile.return
+
+ENTRY main {
+  p0 = f32[128,256] parameter(0)
+  p1 = f32[128,256] parameter(1)
+  ROOT fusion = f32[128,256] fusion(p0, p1), kind=kCustom, calls=fusion,
+    backend_config={
+      "fusion_backend_config":{
+        "block_level_fusion_config":{
+          "output_tiles":[{"sizes":["1", "4"]}],
+          "num_ctas":"4"
+        }
+      }
+    }
+}

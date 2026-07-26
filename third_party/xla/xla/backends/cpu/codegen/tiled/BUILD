@@ -30,6 +30,7 @@ cc_library(
     hdrs = ["tiled_fusion_emitter.h"],
     visibility = [
         "//xla/backends/cpu/codegen:__pkg__",
+        "//xla/backends/cpu/codegen/tiled/tools:__pkg__",
         "//xla/service/cpu:__pkg__",
     ],
     deps = [
@@ -42,6 +43,7 @@ cc_library(
         "//xla/codegen:mlir_kernel_source",
         "//xla/codegen/emitters:kernel_api_builder",
         "//xla/codegen/emitters/ir:xla",
+        "//xla/codegen/tiling:symbolic_tile_analysis",
         "//xla/codegen/tiling:tiled_hlo_computation",
         "//xla/codegen/tiling:tiling_specification",
         "//xla/codegen/tiling/experimental:tile",
@@ -65,6 +67,7 @@ cc_library(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/types:span",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
     ],

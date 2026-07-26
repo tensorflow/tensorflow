@@ -19,6 +19,7 @@ limitations under the License.
 #include <cstdint>
 #include <limits>
 #include <memory>
+#include <optional>
 #include <utility>
 #include <variant>
 #include <vector>
@@ -31,6 +32,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "xla/tsl/platform/status_macros.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/STLExtras.h"
@@ -49,6 +51,7 @@ limitations under the License.
 #include "xla/codegen/tiling/experimental/tile.h"
 #include "xla/codegen/tiling/experimental/tiled_hlo.h"
 #include "xla/codegen/tiling/experimental/tiling_space.h"
+#include "xla/codegen/tiling/symbolic_tile_analysis.h"
 #include "xla/codegen/tiling/tiled_hlo_computation.h"
 #include "xla/codegen/tiling/tiling_specification.h"
 #include "xla/codegen/xtile/codegen/emitter_helpers.h"
@@ -75,10 +78,10 @@ limitations under the License.
 #include "xla/xla_data.pb.h"
 
 namespace xla::cpu {
-
-namespace ge = ::xla::gpu::experimental;
-
 namespace {
+
+using llvm::SmallVector;
+namespace ge = ::xla::gpu::experimental;
 
 constexpr int64_t kCacheLineSize = 64;
 
@@ -425,15 +428,22 @@ absl::StatusOr<KernelDefinition<MlirKernelSource>> EmitTiledFusionKernelImpl(
 }
 
 absl::StatusOr<ge::TiledHloComputation> GetTiledHloComputation(
-    mlir::MLIRContext& context, const HloFusionInstruction& fusion) {
+    mlir::MLIRContext& context, const HloFusionInstruction& fusion,
+    std::optional<absl::Span<const int64_t>> tile_sizes) {
   RETURN_IF_ERROR(VerifyTensorRanks(fusion));
 
   std::unique_ptr<HloFusionAdaptor> fusion_adaptor =
       HloFusionAdaptor::ForInstruction(&fusion);
   ASSIGN_OR_RETURN(std::unique_ptr<ge::TilingSpace> tiling_space,
                    ge::TilingSpace::Create(*fusion_adaptor, &context));
-  using ValidTilings = std::vector<llvm::SmallVector<int64_t, 4>>;
-  ASSIGN_OR_RETURN(ValidTilings candidates, tiling_space->GetValidTilings());
+  using ValidTilings = std::vector<SmallVector<int64_t, 4>>;
+  ValidTilings candidates;
+  if (tile_sizes.has_value()) {
+    candidates.push_back(
+        SmallVector<int64_t, 4>(tile_sizes->begin(), tile_sizes->end()));
+  } else {
+    ASSIGN_OR_RETURN(candidates, tiling_space->GetValidTilings());
+  }
 
   // 1. Construct the Symbolic Graph EXACTLY ONCE on the stack/heap.
   ASSIGN_OR_RETURN(
@@ -446,7 +456,7 @@ absl::StatusOr<ge::TiledHloComputation> GetTiledHloComputation(
   // 2. Evaluate all candidates by substituting concrete tile sizes into the
   // symbolic tiles of roots and operands.
   struct Candidate {
-    llvm::SmallVector<int64_t, 4> padded_tile_sizes;
+    SmallVector<int64_t, 4> padded_tile_sizes;
     int64_t cost;
   };
   std::vector<Candidate> evaluated_candidates;
@@ -542,7 +552,8 @@ bool IsSupportedTilingType(PrimitiveType type) {
 TiledEmissionResult EmitTiledFusionKernel(
     mlir::MLIRContext& context, const HloFusionInstruction& fusion,
     const BufferAssignment* buffer_assignment, absl::string_view name,
-    int64_t num_work_groups) {
+    int64_t num_work_groups,
+    std::optional<absl::Span<const int64_t>> tile_sizes) {
   VLOG(2) << "EmitTiledFusionKernel called for fusion: " << fusion.name();
   auto supported_status = IsSupportedTiledFusion(fusion);
   VLOG(2) << "  IsSupportedTiledFusion: " << supported_status;
@@ -552,7 +563,7 @@ TiledEmissionResult EmitTiledFusionKernel(
             /*tiling_succeeded=*/false};
   }
   absl::StatusOr<ge::TiledHloComputation> tiled_computation =
-      GetTiledHloComputation(context, fusion);
+      GetTiledHloComputation(context, fusion, tile_sizes);
   if (!tiled_computation.ok()) {
     return {tiled_computation.status(), /*tiling_succeeded=*/false};
   }

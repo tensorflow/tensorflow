@@ -17,9 +17,11 @@ limitations under the License.
 #define XLA_BACKENDS_CPU_CODEGEN_TILED_TILED_FUSION_EMITTER_H_
 
 #include <cstdint>
+#include <optional>
 
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "mlir/IR/MLIRContext.h"
 #include "xla/codegen/kernel_definition.h"
 #include "xla/codegen/mlir_kernel_source.h"
@@ -39,7 +41,8 @@ struct TiledEmissionResult {
 TiledEmissionResult EmitTiledFusionKernel(
     mlir::MLIRContext& context, const HloFusionInstruction& fusion,
     const BufferAssignment* buffer_assignment, absl::string_view name,
-    int64_t num_work_groups);
+    int64_t num_work_groups,
+    std::optional<absl::Span<const int64_t>> tile_sizes = std::nullopt);
 
 }  // namespace xla::cpu
 
