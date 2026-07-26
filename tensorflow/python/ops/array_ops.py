@@ -1516,26 +1516,28 @@ def boolean_mask(tensor, mask, name="boolean_mask", axis=None):
           " are None.  E.g. shape=[None] is ok, but shape=None is not.")
     axis = 0 if axis is None else axis
     axis_value = tensor_util.constant_value(axis)
+    flattened_shape = None
     if axis_value is not None:
       axis = axis_value
       shape_tensor[axis:axis + ndims_mask].assert_is_compatible_with(shape_mask)
-
-    leading_size = gen_math_ops.prod(shape(tensor)[axis:axis + ndims_mask], [0])
-    tensor = reshape(
-        tensor,
-        concat([
-            shape(tensor)[:axis], [leading_size],
-            shape(tensor)[axis + ndims_mask:]
-        ], 0))
-    # TODO(yongtang): tf.reshape in C++ kernel might have set the shape
-    # correctly, so the following may not be needed? It still might be possible
-    # that there are some edge case where tensor_util.constant_value resolves
-    # more cases than ShapeInference of tf.reshape in C++ kernel.
-    if axis_value is not None:
       first_dim = shape_tensor[axis:axis + ndims_mask].num_elements()
-      tensor.set_shape(
-          tensor_shape.as_shape(shape_tensor[:axis]).concatenate(
-              [first_dim]).concatenate(shape_tensor[axis + ndims_mask:]))
+      flattened_shape = shape_tensor[:axis].concatenate(
+          [first_dim]).concatenate(shape_tensor[axis + ndims_mask:])
+
+    if flattened_shape is not None and flattened_shape.is_fully_defined():
+      tensor = reshape(tensor, flattened_shape)
+    else:
+      leading_size = gen_math_ops.prod(
+          shape(tensor)[axis:axis + ndims_mask], [0]
+      )
+      tensor = reshape(
+          tensor,
+          concat([
+              shape(tensor)[:axis], [leading_size],
+              shape(tensor)[axis + ndims_mask:]
+          ], 0))
+    if flattened_shape is not None:
+      tensor.set_shape(flattened_shape)
 
     mask = reshape(mask, [-1])
     return _apply_mask_1d(tensor, mask, axis)
