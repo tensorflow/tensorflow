@@ -970,14 +970,32 @@ def round(x, name=None):  # pylint: disable=redefined-builtin
   tf.round(x)  # [ 1.0, 2.0, 2.0, 2.0, -4.0 ]
   ```
 
+  Note: This operation does not support complex dtypes. If you need to round
+  complex numbers, apply this operation separately to the real and imaginary
+  components:
+
+  ```python
+  x = tf.constant([1.4+2.6j, 3.2+4.8j])
+  rounded = tf.complex(tf.round(tf.math.real(x)), tf.round(tf.math.imag(x)))
+  ```
+
   Args:
-    x: A `Tensor` of type `float16`, `float32`, `float64`, `int32`, or `int64`.
+    x: A `Tensor` of type `bfloat16`, `float16`, `float32`, `float64`, `int32`,
+      or `int64`.
     name: A name for the operation (optional).
 
   Returns:
     A `Tensor` of same shape and type as `x`.
+
+  Raises:
+    TypeError: If `x` is a complex dtype (`complex64`, `complex128`).
   """
   x = ops.convert_to_tensor(x, name="x")
+  if x.dtype.is_complex:
+    raise TypeError(
+        f"tf.math.round does not support complex dtypes (received {x.dtype}). "
+        "To round complex numbers, apply tf.round separately to the real and "
+        "imaginary components using tf.math.real() and tf.math.imag().")
   if x.dtype.is_integer:
     return x
   else:
