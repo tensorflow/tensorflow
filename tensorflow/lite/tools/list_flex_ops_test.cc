@@ -16,11 +16,13 @@ limitations under the License.
 #include "tensorflow/lite/tools/list_flex_ops.h"
 
 #include <cstdint>
+#include <memory>
 #include <string>
+#include <vector>
 
-#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "flatbuffers/flexbuffers.h"  // from @flatbuffers
+#include "third_party/protobuf/text_format.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/resource_loader.h"
