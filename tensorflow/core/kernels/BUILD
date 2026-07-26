@@ -1053,13 +1053,19 @@ tf_kernel_library(
 tf_kernel_library(
     name = "diag_op",
     prefix = "diag_op",
-    deps = ARRAY_DEPS,
+    deps = ARRAY_DEPS + [
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+    ],
 )
 
 tf_kernel_library(
     name = "edit_distance_op",
     prefix = "edit_distance_op",
-    deps = ARRAY_DEPS,
+    deps = ARRAY_DEPS + [
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+    ],
 )
 
 tf_kernel_library(
@@ -4928,7 +4934,10 @@ tf_kernel_library(
 tf_kernel_library(
     name = "decode_raw_op",
     prefix = "decode_raw_op",
-    deps = PARSING_DEPS,
+    deps = PARSING_DEPS + [
+        "//tensorflow/core/framework:types_proto_cc",
+        "@com_google_absl//absl/log:check",
+    ],
 )
 
 tf_kernel_library(
@@ -4949,7 +4958,17 @@ tf_kernel_library(
 tf_kernel_library(
     name = "example_parsing_ops",
     prefix = "example_parsing_ops",
-    deps = PARSING_DEPS,
+    deps = PARSING_DEPS + [
+        "//tensorflow/core/framework:types_proto_cc",
+        "//third_party/protobuf",
+        "//third_party/protobuf:arena",
+        "//third_party/protobuf/io",
+        "//third_party/protobuf/util:json_util",
+        "//third_party/protobuf/util:type_resolver",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/types:span",
+    ],
 )
 
 tf_kernel_library(
