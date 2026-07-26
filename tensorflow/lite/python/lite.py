@@ -1610,6 +1610,7 @@ class TFLiteKerasModelConverterV2(TFLiteConverterBaseV2):
     self._keras_model = keras_model
     self._trackable_obj = trackable_obj
     self.experimental_lower_to_saved_model = True
+    self._saved_model_export_error = None
 
   @convert_phase(
       Component.PREPARE_TF_MODEL, SubComponent.CONVERT_KERAS_TO_SAVED_MODEL
@@ -1625,6 +1626,7 @@ class TFLiteKerasModelConverterV2(TFLiteConverterBaseV2):
       input_tensors: List of input tensors.
       output_tensors: List of output tensors.
     """
+    self._saved_model_export_error = None
     try:
 
       def _is_keras_3():
@@ -1678,9 +1680,10 @@ class TFLiteKerasModelConverterV2(TFLiteConverterBaseV2):
             output_dir,
             options=_save_options.SaveOptions(save_debug_info=True),
         )
-    except Exception:  # pylint: disable=broad-except
+    except Exception as error:  # pylint: disable=broad-except
       # When storing the given keras model to a saved model is failed, let's
       # use original keras model conversion pipeline.
+      self._saved_model_export_error = error
       return None, None, None
     self.saved_model_dir = output_dir
     self._saved_model_tags = set([_tag_constants.SERVING])
@@ -1776,9 +1779,15 @@ class TFLiteKerasModelConverterV2(TFLiteConverterBaseV2):
     if saved_model_convert_result:
       return saved_model_convert_result
 
+    saved_model_export_error = self._saved_model_export_error
+    self._saved_model_export_error = None
     graph_def, input_tensors, output_tensors, frozen_func = (
         self._freeze_keras_model()
     )
+    if not output_tensors:
+      if saved_model_export_error is not None:
+        raise saved_model_export_error
+      raise ValueError("The Keras model has no outputs after tracing.")
 
     graph_def = self._optimize_tf_model(
         graph_def, input_tensors, output_tensors, frozen_func

@@ -19,6 +19,7 @@ import functools
 import itertools
 import os
 import sys
+from unittest import mock
 
 from absl.testing import parameterized
 import numpy as np
@@ -3145,6 +3146,23 @@ class FromSavedModelTest(lite_v2_test_util.ModelTest):
 
 
 class FromKerasModelTest(lite_v2_test_util.ModelTest):
+
+  @test_util.run_v2_only
+  def testSavedModelTracingErrorIsNotSwallowed(self):
+    model = tf.keras.Sequential([tf.keras.layers.Input(shape=(1,))])
+    converter = lite.TFLiteConverterV2.from_keras_model(model)
+    converter._saved_model_export_error = TypeError('tracing failed')
+
+    with mock.patch.object(
+        converter, '_convert_as_saved_model', return_value=None
+    ), mock.patch.object(
+        converter,
+        '_freeze_keras_model',
+        return_value=(None, [], [], None),
+    ):
+      with self.assertRaisesRegex(TypeError, 'tracing failed'):
+        converter.convert()
+    self.assertIsNone(converter._saved_model_export_error)
 
   @parameterized.named_parameters(
       ('EnableMlirVariableQuantizationNumState1', True, 1),
