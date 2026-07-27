@@ -1096,6 +1096,16 @@ absl::StatusOr<se::gpu::CudnnGraph> PrepareGraph(
     se::dnn::DnnSupport* dnn_support,
     const se::DeviceDescription& gpu_device_info,
     const HloFusionInstruction& hlo) {
+  if (dnn_support == nullptr &&
+      hlo_query::GetFirstInstructionWithOpcode(
+          *hlo.fused_instructions_computation(), HloOpcode::kConvolution) !=
+          nullptr &&
+      !se::gpu::SupportsDevicelessConvGraphs(gpu_device_info)) {
+    return absl::FailedPreconditionError(
+        "Deviceless cuDNN preparation of convolution graphs targeting "
+        "Blackwell-generation GPUs requires cuDNN >= 9.19; older runtimes "
+        "crash inside the deviceless heuristics query.");
+  }
   ASSIGN_OR_RETURN(se::gpu::CudnnGraph graph, HloFusionToCuDnnGraph(hlo));
   RETURN_IF_ERROR(graph.Prepare(
       dnn_support, gpu_device_info,
@@ -1298,6 +1308,25 @@ absl::StatusOr<int> CuDnnFusionCompiler::GetAvailablePlanCount(
   return std::min(
       static_cast<int32_t>(graph.Graph().get_execution_plan_count()),
       hlo.GetModule()->config().debug_options().xla_gpu_cudnn_gemm_max_plans());
+}
+
+CuDnnFusionCompiler::DevicelessFusionSupport
+CuDnnFusionCompiler::SupportsFusionDeviceless(
+    const se::DeviceDescription& gpu_device_info,
+    const HloFusionInstruction& hlo) {
+  absl::StatusOr<se::gpu::CudnnGraph> graph =
+      PrepareGraph(/*dnn_support=*/nullptr, gpu_device_info, hlo);
+  if (absl::IsNotFound(graph.status())) {
+    return DevicelessFusionSupport::kUnsupported;
+  }
+  if (!graph.ok()) {
+    VLOG(1) << "Deviceless cuDNN support probe of " << hlo.name()
+            << " delivered no verdict: " << graph.status();
+    return DevicelessFusionSupport::kUnknown;
+  }
+  return graph->Graph().get_execution_plan_count() >= 1
+             ? DevicelessFusionSupport::kSupported
+             : DevicelessFusionSupport::kUnsupported;
 }
 
 }  // namespace gpu

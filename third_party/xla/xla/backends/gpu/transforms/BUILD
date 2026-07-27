@@ -1041,6 +1041,49 @@ xla_test(
     ],
 )
 
+xla_test(
+    name = "cudnn_fusion_compiler_deviceless_test",
+    srcs = ["cudnn_fusion_compiler_deviceless_test.cc"],
+    # All NVIDIA GPUs: the parity test checks the deviceless verdict against
+    # live plan enumeration on each generation. The deviceless cases open no
+    # GPU, but they need a loadable cuDNN >= 9.8 runtime and a CUDA driver
+    # (cuDNN's deviceless heuristics abort without one), so GPU machines only.
+    backends = ["gpu"],
+    tags = [
+        "cuda-only",
+        "no_mac",
+    ],
+    deps = [
+        ":conv_fusion_rewriter",
+        ":conv_kind_assignment",
+        ":cudnn_fusion_compiler",
+        "//xla/backends/gpu/target_config",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
+        "//xla/hlo/testlib:verified_hlo_module",
+        "//xla/service:hlo_proto_cc",
+        "//xla/service/gpu:backend_configs_cc",
+        "//xla/service/gpu:ir_emission_utils",
+        "//xla/stream_executor:device_description",
+        "//xla/stream_executor:device_description_proto_cc",
+        "//xla/stream_executor:dnn",
+        "//xla/stream_executor:platform",
+        "//xla/stream_executor:platform_manager",
+        "//xla/stream_executor:semantic_version",
+        "//xla/stream_executor:stream_executor_h",
+        "//xla/stream_executor/cuda:cuda_platform",
+        "//xla/stream_executor/cuda:cudnn_plugin",
+        "//xla/tsl/cuda:cudart",  # build_cleaner: keep
+        "//xla/tsl/cuda:cudnn",  # build_cleaner: keep
+        "//xla/tsl/platform:status_macros",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
 cc_library(
     name = "cudnn_norm_rewriter",
     srcs = ["cudnn_norm_rewriter.cc"],
