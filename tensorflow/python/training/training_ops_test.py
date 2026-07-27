@@ -576,6 +576,35 @@ class TrainingOpsTest(TensorFlowTestCase):
       with self.assertRaises(errors.InvalidArgumentError):
         self.evaluate(apply_op())
 
+  def testResourceApplyOpsRejectDtypeMismatch(self):
+    # Regression test for #113074 and #113145: the op's `T` attr is inferred
+    # from the value inputs and is independent of the variable's dtype, so a
+    # float32 op can be paired with a float64 variable. Both the dense and the
+    # sparse path then read the variable as `T` through Tensor::flat<T>(),
+    # which CHECK-fails and aborts the process.
+    var, accum = [
+        variables.Variable(np.ones((4, 2), np.float64)) for _ in range(2)
+    ]
+    self.evaluate(variables.global_variables_initializer())
+    s = np.float32(0.1)
+    grad = np.zeros((4, 2), np.float32)
+    sparse_grad = np.zeros((1, 2), np.float32)
+    idx = constant_op.constant([0], dtypes.int32)
+    g = gen_training_ops
+    cases = [
+        lambda: g.resource_apply_gradient_descent(var.handle, s, grad),
+        lambda: g.resource_apply_adagrad(var.handle, accum.handle, s, grad),
+        lambda: g.resource_sparse_apply_adagrad(
+            var.handle, accum.handle, s, sparse_grad, idx
+        ),
+        lambda: g.resource_sparse_apply_momentum(
+            var.handle, accum.handle, s, sparse_grad, idx, s
+        ),
+    ]
+    for apply_op in cases:
+      with self.assertRaises(errors.InvalidArgumentError):
+        self.evaluate(apply_op())
+
 
 if __name__ == '__main__':
   googletest.main()
