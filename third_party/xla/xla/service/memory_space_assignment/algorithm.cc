@@ -47,6 +47,7 @@ limitations under the License.
 #include "absl/log/vlog_is_on.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
@@ -58,9 +59,12 @@ limitations under the License.
 #include "xla/hlo/analysis/hlo_alias_analysis.h"
 #include "xla/hlo/analysis/hlo_dataflow_analysis.h"
 #include "xla/hlo/analysis/hlo_operand_index.h"
+#include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_input_output_alias_config.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_instruction_utils.h"
+#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_schedule.h"
 #include "xla/hlo/transforms/memory_space_propagation.h"
@@ -601,19 +605,26 @@ void MsaAlgorithm::CreateAllocationValues(
   for (const HloUse& use : uses) {
     int64_t use_time = instruction_schedule.at(use.instruction);
     HloComputation* use_computation = use.instruction->parent();
+    HloInstruction* use_instruction = use.instruction;
 
     AllocationValue* last_allocation_value = nullptr;
     for (int i = beginning_idx; i < allocation_values.size(); ++i) {
       AllocationValue* allocation_value = &allocation_values.at(i);
-      if (HloDataflowAnalysis::IsAsynchronousOperationDone(
-              use.instruction->opcode())) {
-        if (allocation_value->defining_instruction() ==
-                use.instruction->operand(0) &&
+      const HloInstruction* defining_instruction =
+          allocation_value->defining_instruction();
+
+      if ((HloDataflowAnalysis::IsAsynchronousOperationDone(
+               use_instruction->opcode()) ||
+           (use_instruction->opcode() == HloOpcode::kAsyncUpdate)) &&
+          use.operand_number == 0) {
+        // Don't break the def-use of the async chain.
+        if (defining_instruction == use_instruction->operand(0) &&
             use.operand_index == allocation_value->defining_position().index) {
           last_allocation_value = allocation_value;
         }
       } else if (!HloDataflowAnalysis::IsAsynchronousOperationStart(
-                     allocation_value->defining_instruction()->opcode()) &&
+                     defining_instruction->opcode()) &&
+                 defining_instruction->opcode() != HloOpcode::kAsyncUpdate &&
                  allocation_value->computation() == use_computation &&
                  instruction_schedule.at(
                      allocation_value->defining_position().instruction) <
@@ -621,20 +632,42 @@ void MsaAlgorithm::CreateAllocationValues(
         last_allocation_value = allocation_value;
       }
     }
-    CHECK(last_allocation_value != nullptr);
+    CHECK(last_allocation_value != nullptr)
+        << "Failed to find AllocationValue for use: " << use.ToString();
     last_allocation_value->AddUse(use, use_time);
   }
 
+  // This loop marks allocation values as contiguous if they are part of async
+  // operations and logs all created allocation values.
   for (int i = beginning_idx; i < allocation_values.size(); ++i) {
     AllocationValue& allocation_value = allocation_values.at(i);
+    const HloInstruction* defining_instruction =
+        allocation_value.defining_instruction();
     if (HloDataflowAnalysis::IsAsynchronousOperationStart(
-            allocation_value.defining_instruction()->opcode())) {
+            defining_instruction->opcode()) ||
+        defining_instruction->opcode() == HloOpcode::kAsyncUpdate) {
       CHECK_EQ(allocation_value.uses().size(), 1);
-      CHECK(HloDataflowAnalysis::IsAsynchronousOperationDone(
-          allocation_value.uses().at(0).hlo_use.instruction->opcode()));
+      const AllocationValue::Use& use = allocation_value.uses().at(0);
+      HloInstruction* use_instruction = use.hlo_use.instruction;
+      CHECK(use_instruction->opcode() == HloOpcode::kAsyncUpdate ||
+            HloDataflowAnalysis::IsAsynchronousOperationDone(
+                use_instruction->opcode()));
       VLOG(3) << "Mark " << allocation_value.ToShortString()
               << " to require contiguous allocation because it is an async "
-                 "start operation.";
+                 "start or async update operation.";
+      allocation_value.set_requires_contiguous_allocation(true);
+    } else if (defining_instruction->parent()->IsAsyncComputation()) {
+      // This ensures that buffers representing inputs and outputs to the
+      // `async_computation` maintain temporal contiguity (preventing MSA from
+      // evicting them to default memory).
+      //
+      // However, this does not guarantee temporal contiguousness for temporary
+      // buffers created *inside* the async computation. Such buffers must be
+      // allocated outside the async operation and passed in as `kParameter`s to
+      // ensure they are handled correctly.
+      VLOG(3) << "Mark " << allocation_value.ToShortString()
+              << " to require contiguous allocation because it is inside an "
+                 "async computation.";
       allocation_value.set_requires_contiguous_allocation(true);
     } else if (options_.position_requires_contiguous_allocation_fn(
                    allocation_value.defining_position())) {
@@ -672,24 +705,55 @@ void MsaAlgorithm::FindAliases(
 
   for (AllocationValue& value : *allocation_values) {
     for (AllocationValue::Use& use : value.uses()) {
+      HloInstruction* use_instruction = use.hlo_use.instruction;
+
       // Find any aliases with the instruction itself (operand and output must
       // alias).
-      maybe_add_alias_with_instruction(use.hlo_use.instruction, &use);
+      maybe_add_alias_with_instruction(use_instruction, &use);
 
       // Find any aliases with the parameters of called computations.
-      for (const HloComputation* called_computation :
-           use.hlo_use.instruction->called_computations()) {
-        for (const HloInstruction* parameter_instruction :
-             called_computation->parameter_instructions()) {
-          maybe_add_alias_with_instruction(parameter_instruction, &use);
+      if (use_instruction->IsAsynchronous()) {
+        HloComputation* wrapped_computation =
+            use_instruction->async_wrapped_computation();
+        if (use_instruction->opcode() == HloOpcode::kAsyncStart &&
+            use_instruction->operand_count() > 0) {
+          // Operands bound with async-start map directly to the initial
+          // parameters of the wrapped computation.
+          for (int i = 0; i < use_instruction->operand_count(); ++i) {
+            maybe_add_alias_with_instruction(
+                wrapped_computation->parameter_instruction(i), &use);
+          }
+        } else if (use_instruction->opcode() == HloOpcode::kAsyncUpdate &&
+                   use_instruction->operand_count() > 1) {
+          // Operands bound with async-update map to parameters of the
+          // wrapped computation offset by the number of operands
+          // that were bound by previous instructions.
+          auto previously_bound_operands =
+              hlo_instruction_utils::async::GetAsyncBoundOperands(
+                  Cast<HloAsyncInstruction>(use_instruction->operand(0)));
+          int previously_bound_operand_count = previously_bound_operands.size();
+          for (int i = 1; i < use_instruction->operand_count(); ++i) {
+            maybe_add_alias_with_instruction(
+                wrapped_computation->parameter_instruction(
+                    i - 1 + previously_bound_operand_count),
+                &use);
+          }
+        }
+      } else {
+        for (const HloComputation* called_computation :
+             use_instruction->called_computations()) {
+          for (const HloInstruction* parameter_instruction :
+               called_computation->parameter_instructions()) {
+            maybe_add_alias_with_instruction(parameter_instruction, &use);
+          }
         }
       }
 
       // Special case for kWhile: the root of the body computation must alias as
       // well.
-      if (use.hlo_use.instruction->opcode() == HloOpcode::kWhile) {
+      if (use_instruction->opcode() == HloOpcode::kWhile) {
         HloPosition root_alias{
-            use.hlo_use.instruction->while_body()->root_instruction(),
+            use_instruction->while_body()->root_instruction(),
             use.hlo_use.operand_index};
         VLOG(3) << "Adding while body root aliasing for use "
                 << use.hlo_use.ToString() << " to " << root_alias;
@@ -699,9 +763,9 @@ void MsaAlgorithm::FindAliases(
       // Special case for conditionals - the output of a conditional op must
       // alias with the branch computation outputs.
       HloInstruction* conditional_instruction =
-          GetConditionalForBranchRoot(use.hlo_use.instruction);
+          GetConditionalForBranchRoot(use_instruction);
       if (conditional_instruction != nullptr &&
-          use.hlo_use.instruction->opcode() == HloOpcode::kTuple) {
+          use_instruction->opcode() == HloOpcode::kTuple) {
         // We only need to add a use alias if the branch root is a tuple,
         // because a tuple is a use and any other instruction would be a
         // definition or a position.
@@ -910,16 +974,36 @@ bool MsaAlgorithm::IsWhileLoopUseBeneficialInAlternateMemory(
     return true;
   }
   HloComputation* while_body = use.instruction->while_body();
+  HloInstruction* parameter = while_body->parameter_instruction(0);
 
-  // We don't want to allocate this buffer in alternate memory if it will be
-  // evicted anyway. Find out if it has an early use or a late definition that
-  // would make sense to keep it in the alternate memory.
+  const HloBuffer& buffer =
+      alias_analysis_.GetUniqueBufferAt(use.instruction, use.operand_index);
+
+  bool beneficial = false;
+  ShapeUtil::ForEachSubshape(
+      parameter->shape(), [&](const Shape& subshape, const ShapeIndex& index) {
+        if (!subshape.IsArray()) {
+          return;
+        }
+        const HloBuffer& other_buffer =
+            alias_analysis_.GetUniqueBufferAt(parameter, index);
+        if (buffer.id() == other_buffer.id()) {
+          if (IsWhileLoopParameterIndexBeneficial(parameter, index)) {
+            beneficial = true;
+          }
+        }
+      });
+
+  return beneficial;
+}
+
+bool MsaAlgorithm::IsWhileLoopParameterIndexBeneficial(
+    const HloInstruction* parameter, const ShapeIndex& index) const {
+  const HloComputation* while_body = parameter->parent();
   HloValue* parameter_value =
-      &alias_analysis_.dataflow_analysis().GetUniqueValueAt(
-          while_body->parameter_instruction(0), use.operand_index);
+      &alias_analysis_.dataflow_analysis().GetUniqueValueAt(parameter, index);
   const auto& instruction_schedule = hlo_live_range_.instruction_schedule();
-  int64_t parameter_time =
-      instruction_schedule.at(while_body->parameter_instruction(0));
+  int64_t parameter_time = instruction_schedule.at(parameter);
   int64_t root_time = instruction_schedule.at(while_body->root_instruction());
   int64_t min_use_time = root_time;
   for (const HloUse& parameter_use : parameter_value->GetUses()) {
@@ -931,20 +1015,18 @@ bool MsaAlgorithm::IsWhileLoopUseBeneficialInAlternateMemory(
       min_use_time = std::min(min_use_time, use_time);
     }
   }
-  // If there is no use of this buffer inside the while loop, there is no need
-  // to allocate it in the loop.
   if (min_use_time == root_time) {
-    VLOG(4) << "While allocation not allowed in alternate memory. "
+    VLOG(4) << "While allocation index " << index.ToString()
+            << " not allowed in alternate memory. "
             << "use time = " << min_use_time << ", root time = " << root_time;
     return false;
   }
   const Shape& shape = parameter_value->shape();
-  // Allow the buffer in alternate memory if the buffer has a short live range
-  // either at the beginning or end of the while loop body.
   int64_t shape_size = GetShapeSizeBytes(options_.cost_analysis, shape);
   if (!options_.prefetch_interval_picker->CanAllocateInAlternateMemoryNoCopy(
           shape_size, parameter_time, min_use_time)) {
-    VLOG(4) << "While allocation not allowed in alternate memory. "
+    VLOG(4) << "While allocation index " << index.ToString()
+            << " not allowed in alternate memory. "
             << "use time = " << min_use_time << ", root time = " << root_time;
     return false;
   }
@@ -1943,8 +2025,9 @@ void FixAllocationSequenceAfterPostAllocationTransformation(
     if (!uses_to_update.empty()) {
       for (const HloUse& old_use : uses_to_update) {
         const HloUse& new_use = transformation_info.update_use_map.at(old_use);
+        HloPosition producer = allocation->GetProducerForUse(old_use);
         allocation->RemoveUse(old_use);
-        allocation->AddUse(new_use);
+        allocation->AddUse(new_use, producer);
       }
     }
   }
@@ -2975,7 +3058,10 @@ absl::Status MsaAlgorithm::CreateNewBlockPrefetches(
     const HloBuffer& buffer = alias_analysis_.GetBufferContainingValue(*value);
     bool buffer_use_not_permitted_in_alt_memory =
         absl::c_any_of(buffer.values(), [&](const HloValue* alias) {
+          VLOG(1) << "JetskiDebug: checking alias " << alias->ToShortString()
+                  << " with " << alias->GetUses().size() << " uses";
           return absl::c_any_of(alias->GetUses(), [&](const HloUse& use) {
+            VLOG(1) << "JetskiDebug: checking use " << use.ToString();
             return !IsUseAllowedInAlternateMemory(use);
           });
         });
@@ -4221,19 +4307,73 @@ void MsaAlgorithm::AddRequiredAssignmentsForConditionalOutputsIfNecessary(
 void MsaAlgorithm::CreateAllocationValuesFromColocatedIntervals(
     absl::Span<const MsaBufferInterval* const> colocated_intervals,
     std::vector<AllocationValue>& allocation_values) {
+  if (colocated_intervals.empty()) {
+    return;
+  }
+
   std::vector<AllocationValue> new_allocation_values;
-  // Create AllocationValues for all the colocated intervals.
   for (const auto& colocated_interval : colocated_intervals) {
     CreateAllocationValues(*colocated_interval, new_allocation_values);
   }
-  // Go through the AllocationValues and delete the ones that have the identical
-  // defining instruction and use instructions. This is useful for async
-  // operations that can read and write to the same buffer, e.g., in-place
-  // asynchronous collective permute. The AllocationValues that corresponds to
-  // collective-permute-start{0} (the input) and collective-permute-start{1}
-  // (the output) refer to the same buffer by definition (since they are created
-  // from colocated intervals). If we don't delete one of these buffers, then
-  // when we try to allocate the AllocationValue, we would think they overlap.
+
+  // Group by async root.
+  absl::flat_hash_map<const HloValue*, std::vector<int>> async_groups;
+  std::vector<int> non_async_indices;
+
+  for (int i = 0; i < new_allocation_values.size(); ++i) {
+    const AllocationValue& av = new_allocation_values[i];
+    const HloValue* async_root = GetAsyncRoot(av.value());
+    if (async_root != nullptr) {
+      async_groups[async_root].push_back(i);
+    } else {
+      non_async_indices.push_back(i);
+    }
+  }
+
+  std::vector<AllocationValue> merged_allocation_values;
+
+  for (auto& [root, indices] : async_groups) {
+    if (indices.empty()) continue;
+
+    std::sort(indices.begin(), indices.end(), [&](int a, int b) {
+      const HloInstruction* inst_a =
+          new_allocation_values[a].defining_instruction();
+      const HloInstruction* inst_b =
+          new_allocation_values[b].defining_instruction();
+      bool is_entry_a = inst_a->parent() == module_->entry_computation();
+      bool is_entry_b = inst_b->parent() == module_->entry_computation();
+      if (is_entry_a != is_entry_b) {
+        return is_entry_a;
+      }
+      return hlo_live_range_.instruction_schedule().at(inst_a) <
+             hlo_live_range_.instruction_schedule().at(inst_b);
+    });
+
+    int base_idx = indices[0];
+    AllocationValue base_val = std::move(new_allocation_values[base_idx]);
+    bool requires_contiguous = base_val.requires_contiguous_allocation();
+
+    for (size_t i = 1; i < indices.size(); ++i) {
+      int idx = indices[i];
+      const AllocationValue& fwd_val = new_allocation_values[idx];
+      requires_contiguous |= fwd_val.requires_contiguous_allocation();
+      for (const auto& use : fwd_val.uses()) {
+        base_val.AddUse(use.hlo_use, use.time, fwd_val.defining_position());
+      }
+    }
+    base_val.set_requires_contiguous_allocation(requires_contiguous);
+    std::sort(base_val.uses().begin(), base_val.uses().end(),
+              [](const AllocationValue::Use& a, const AllocationValue::Use& b) {
+                return a.time < b.time;
+              });
+    merged_allocation_values.push_back(std::move(base_val));
+  }
+
+  for (int idx : non_async_indices) {
+    merged_allocation_values.push_back(std::move(new_allocation_values[idx]));
+  }
+
+  // Deduplication logic for remaining values.
   auto create_instruction_vector = [](const AllocationValue& allocation_value) {
     std::vector<const HloInstruction*> instruction_vector;
     instruction_vector.push_back(allocation_value.defining_instruction());
@@ -4242,23 +4382,194 @@ void MsaAlgorithm::CreateAllocationValuesFromColocatedIntervals(
     }
     return instruction_vector;
   };
-  for (int i = 0; i < new_allocation_values.size() - 1; ++i) {
-    for (int j = i + 1; j < new_allocation_values.size(); ++j) {
-      const AllocationValue& allocation_value_1 = new_allocation_values[i];
-      const AllocationValue& allocation_value_2 = new_allocation_values[j];
+  for (int i = 0; i < merged_allocation_values.size() - 1; ++i) {
+    for (int j = i + 1; j < merged_allocation_values.size(); ++j) {
+      const AllocationValue& allocation_value_1 = merged_allocation_values[i];
+      const AllocationValue& allocation_value_2 = merged_allocation_values[j];
       if (create_instruction_vector(allocation_value_1) ==
           create_instruction_vector(allocation_value_2)) {
         VLOG(3) << "Allocation values " << allocation_value_1.ToShortString()
                 << " and " << allocation_value_2.ToShortString()
                 << " are equivalent, deleting the second one.";
-        new_allocation_values.erase(new_allocation_values.begin() + j);
+        merged_allocation_values.erase(merged_allocation_values.begin() + j);
         --j;
       }
     }
   }
 
-  FindAliases(&new_allocation_values);
-  absl::c_move(new_allocation_values, std::back_inserter(allocation_values));
+  FindAliases(&merged_allocation_values);
+  absl::c_move(merged_allocation_values, std::back_inserter(allocation_values));
+}
+
+namespace {
+bool IsAsyncStart(const HloInstruction* inst) {
+  if (inst->opcode() == HloOpcode::kAsyncStart) {
+    return true;
+  }
+  return inst->opcode() == HloOpcode::kCustomCall &&
+         inst->custom_call_target() == "AllocateBuffer" &&
+         absl::StrContains(inst->raw_backend_config_string(),
+                           "\"replaces_opcode\":\"async-start\"");
+}
+
+bool IsAsyncDone(const HloInstruction* inst) {
+  if (inst->opcode() == HloOpcode::kAsyncDone) {
+    return true;
+  }
+  return inst->opcode() == HloOpcode::kCustomCall &&
+         inst->custom_call_target() == "AllocateBuffer" &&
+         absl::StrContains(inst->raw_backend_config_string(),
+                           "\"replaces_opcode\":\"async-done\"");
+}
+
+bool IsAsyncUpdate(const HloInstruction* inst) {
+  if (inst->opcode() == HloOpcode::kAsyncUpdate) {
+    return true;
+  }
+  return inst->opcode() == HloOpcode::kCustomCall &&
+         inst->custom_call_target() == "AllocateBuffer" &&
+         absl::StrContains(inst->raw_backend_config_string(),
+                           "\"replaces_opcode\":\"async-update\"");
+}
+
+const HloValue* TryGetUniqueValueAt(const HloInstruction* inst,
+                                    const ShapeIndex& index,
+                                    const HloDataflowAnalysis& dataflow) {
+  const HloValueSet& value_set = dataflow.GetValueSet(inst, index);
+  if (value_set.values().size() == 1) {
+    return value_set.values().front();
+  }
+  return nullptr;
+}
+}  // namespace
+
+const HloValue* MsaAlgorithm::TraceAsyncChainRoot(const HloValue* value) const {
+  const HloValue* current = value;
+  const HloDataflowAnalysis& dataflow = alias_analysis_.dataflow_analysis();
+  while (current != nullptr) {
+    const HloInstruction* inst = current->defining_instruction();
+    const ShapeIndex& index = current->defining_position().index;
+    const HloComputation* comp = inst->parent();
+
+    const HloValue* parent = nullptr;
+
+    if (IsAsyncDone(inst)) {
+      VLOG(1) << "  matched kAsyncDone";
+      const HloInstruction* context_inst = inst->operand(0);
+      parent = TryGetUniqueValueAt(context_inst, {1}, dataflow);
+    } else if (IsAsyncUpdate(inst)) {
+      VLOG(1) << "  matched kAsyncUpdate";
+      if (index == ShapeIndex{1}) {
+        const HloInstruction* context_inst = inst->operand(0);
+        parent = TryGetUniqueValueAt(context_inst, {1}, dataflow);
+      } else if (!index.empty() && index[0] == 0) {
+        int64_t i = index[1];
+        const HloInstruction* context_inst = inst->operand(0);
+        const Shape& parent_context_shape = context_inst->shape();
+        const Shape& parent_fwd_tuple_shape =
+            parent_context_shape.tuple_shapes(0);
+        if (i < parent_fwd_tuple_shape.tuple_shapes_size()) {
+          parent = TryGetUniqueValueAt(context_inst, index, dataflow);
+        } else {
+          int64_t N = parent_fwd_tuple_shape.tuple_shapes_size();
+          const HloInstruction* operand_inst = inst->operand(1 + i - N);
+          parent = TryGetUniqueValueAt(operand_inst, {}, dataflow);
+        }
+      }
+    } else if (IsAsyncStart(inst)) {
+      break;
+    } else if (inst->opcode() == HloOpcode::kParameter) {
+      VLOG(1) << "  matched kParameter";
+      if (comp->IsAsyncComputation()) {
+        auto callers = comp->caller_instructions();
+        HloInstruction* binding_caller = nullptr;
+        int64_t param_num = inst->parameter_number();
+
+        HloInstruction* async_start = nullptr;
+        std::vector<HloInstruction*> async_updates;
+        for (HloInstruction* caller : callers) {
+          if (IsAsyncStart(caller)) {
+            async_start = caller;
+          } else if (IsAsyncUpdate(caller)) {
+            async_updates.push_back(caller);
+          }
+        }
+
+        if (async_start != nullptr) {
+          if (param_num < async_start->operand_count()) {
+            binding_caller = async_start;
+          } else {
+            const auto& instruction_schedule =
+                hlo_live_range_.instruction_schedule();
+            std::sort(async_updates.begin(), async_updates.end(),
+                      [&](const HloInstruction* a, const HloInstruction* b) {
+                        return instruction_schedule.at(a) <
+                               instruction_schedule.at(b);
+                      });
+            int64_t current_param_offset = async_start->operand_count();
+            for (HloInstruction* update : async_updates) {
+              int64_t new_ops_count = update->operand_count() - 1;
+              if (param_num >= current_param_offset &&
+                  param_num < current_param_offset + new_ops_count) {
+                binding_caller = update;
+                break;
+              }
+              current_param_offset += new_ops_count;
+            }
+          }
+        }
+
+        if (binding_caller != nullptr) {
+          if (IsAsyncStart(binding_caller)) {
+            const HloInstruction* operand_inst =
+                binding_caller->operand(param_num);
+            parent = TryGetUniqueValueAt(operand_inst, {}, dataflow);
+          } else if (IsAsyncUpdate(binding_caller)) {
+            int64_t current_param_offset = async_start->operand_count();
+            for (HloInstruction* update : async_updates) {
+              if (update == binding_caller) {
+                break;
+              }
+              current_param_offset += update->operand_count() - 1;
+            }
+            int64_t operand_idx = 1 + (param_num - current_param_offset);
+            const HloInstruction* operand_inst =
+                binding_caller->operand(operand_idx);
+            parent = TryGetUniqueValueAt(operand_inst, {}, dataflow);
+          }
+        }
+      }
+    } else if (comp->IsAsyncComputation() && inst == comp->root_instruction()) {
+      VLOG(1) << "  matched root of async computation";
+      auto caller_opt = comp->GetUniqueCaller(HloOpcode::kAsyncStart);
+      if (caller_opt.has_value()) {
+        HloInstruction* async_start = *caller_opt;
+        parent = TryGetUniqueValueAt(async_start, {1}, dataflow);
+      }
+    }
+
+    if (parent != nullptr && parent != current) {
+      VLOG(1) << "    found parent: " << parent->ToShortString();
+      current = parent;
+    } else {
+      VLOG(1) << "    no parent found, stopping";
+      break;
+    }
+  }
+  return current;
+}
+
+const HloValue* MsaAlgorithm::GetAsyncRoot(const HloValue* value) const {
+  if (value == nullptr) return nullptr;
+  const HloValue* root = TraceAsyncChainRoot(value);
+  if (root == nullptr) return nullptr;
+  if (root == value) {
+    if (IsAsyncStart(root->defining_instruction())) {
+      return root;
+    }
+    return nullptr;
+  }
+  return root;
 }
 
 void MsaAlgorithm::MaybeSplitAllocationValues(
@@ -4477,6 +4788,8 @@ void MsaAlgorithm::AddOperandToAlternateMemoryMap(
 
 absl::StatusOr<AllocationResult> MsaAlgorithm::AllocateAllocationValues(
     absl::Span<AllocationValue> allocation_values) {
+  VLOG(3) << "AllocateAllocationValues: allocation_values.size() = "
+          << allocation_values.size();
   const auto& instruction_schedule = hlo_live_range_.instruction_schedule();
   absl::flat_hash_map<const HloInstruction*, std::vector<size_t>>
       value_indices_by_sync_inst;
@@ -4545,6 +4858,7 @@ absl::StatusOr<AllocationResult> MsaAlgorithm::AllocateAllocationValues(
 
     // Iterate over the uses.
     for (auto& entry : uses_work_list) {
+      Allocation* allocated_or_extended_alloc = nullptr;
       const AllocationValue::Use& use = entry.uses->at(entry.use_idx);
       AllocationValue& allocation_value_to_update =
           allocation_values.at(entry.allocation_value_to_update_idx);
@@ -4602,83 +4916,152 @@ absl::StatusOr<AllocationResult> MsaAlgorithm::AllocateAllocationValues(
               use.hlo_use.instruction->parent()->root_instruction()) {
         UpdateRequestWithAlternateMemoryColoringRequirements(request);
         UpdateRequestWithDefaultMemoryColoringRequirements(request);
-        AllocationResult allocate_segment_result = AllocateSegment(request);
-        VLOG(2) << "AllocateSegment result: "
-                << ResultToString(allocate_segment_result);
-        result_mark(allocate_segment_result, result);
-        if (options_.allocation_result_modifier_testing_fn) {
-          options_.allocation_result_modifier_testing_fn(
-              request, result,
-              options_.prefetch_interval_picker->retry_number());
-        }
-        if (request.require_copy_allocation) {
-          auto allocation_sequence =
-              allocation_value_to_update.mutable_allocation_sequence();
-          auto it = std::find_if(
-              allocation_sequence->begin(), allocation_sequence->end(),
-              [&](const std::unique_ptr<
-                  xla::memory_space_assignment::Allocation>& allocation_ptr) {
-                if (allocation_ptr->is_copy_allocation()) {
-                  auto copy_allocation =
-                      dynamic_cast<const CopyAllocation*>(allocation_ptr.get());
-                  return copy_allocation &&
-                         (copy_allocation->copy_done_schedule_before() <=
-                          request.required_copy_allocation_latest_time) &&
-                         (copy_allocation->sync_mem_op() ==
-                          request.required_copy_allocation_for) &&
-                         (!request.required_copy_for_slice ||
-                          (request.required_copy_for_slice &&
-                           !copy_allocation->cross_program_prefetch_index()
-                                .has_value()));
-                }
-                if (allocation_ptr->is_sliced_copy_allocation()) {
-                  auto sliced_copy_allocation =
-                      dynamic_cast<const SlicedCopyAllocation*>(
-                          allocation_ptr.get());
-                  return sliced_copy_allocation &&
-                         (sliced_copy_allocation->earliest_available_time() <=
-                          request.required_copy_allocation_latest_time) &&
-                         (sliced_copy_allocation->sync_mem_op() ==
-                          request.required_copy_allocation_for) &&
-                         !request.required_copy_for_slice;
-                }
-                return false;
-              });
-
-          if (result_requires_uncommit(result) ||
-              it == allocation_sequence->end()) {
-            VLOG(3) << "No async copy allocation found by the end of "
-                       "segment allocation. "
-                       "Sync copy replacement has failed. Fall back to the "
-                       "normal mode.";
-            failed_async_conversions_[request.required_copy_allocation_for] =
-                AsyncConversionResult::kFailedSatisfyingConstraints;
-            result_mark(AllocationResult::kFailSyncDataMoveReplacement, result);
-            result_mark(AllocationResult::kFailRequiresUncommit, result);
-          } else {
-            bool has_correct_use = false;
-            for (auto& alloc_use : (*it)->uses()) {
-              if (alloc_use == request.use->hlo_use) {
-                has_correct_use = true;
+        AllocationResult allocate_segment_result;
+        allocated_or_extended_alloc =
+            TryExtendAliasedAllocation(request, allocate_segment_result);
+        if (allocated_or_extended_alloc != nullptr) {
+          VLOG(2)
+              << "Extended aliased allocation instead of allocating segment.";
+          result_mark(allocate_segment_result, result);
+        } else {
+          allocate_segment_result = AllocateSegment(request);
+          VLOG(2) << "AllocateSegment result: "
+                  << ResultToString(allocate_segment_result);
+          result_mark(allocate_segment_result, result);
+          if (allocate_segment_result == AllocationResult::kSuccess) {
+            VLOG(3) << "Allocation sequence for "
+                    << allocation_value.ToShortString()
+                    << " after AllocateSegment:";
+            for (const auto& alloc : *allocation_value.allocation_sequence()) {
+              VLOG(3) << "  " << alloc->ToString();
+            }
+            if (allocation_value_to_update.defining_position() !=
+                allocation_value.defining_position()) {
+              VLOG(3) << "Allocation sequence for "
+                      << allocation_value_to_update.ToShortString()
+                      << " after AllocateSegment:";
+              for (const auto& alloc :
+                   *allocation_value_to_update.allocation_sequence()) {
+                VLOG(3) << "  " << alloc->ToString();
+              }
+            }
+            for (const auto& alloc :
+                 *allocation_value_to_update.allocation_sequence()) {
+              if (absl::c_linear_search(alloc->uses(), use.hlo_use)) {
+                allocated_or_extended_alloc = alloc.get();
                 break;
               }
             }
-            if (!has_correct_use) {
+            if (allocated_or_extended_alloc == nullptr) {
+              for (const auto& alloc :
+                   *allocation_value.allocation_sequence()) {
+                if (absl::c_linear_search(alloc->uses(), use.hlo_use)) {
+                  allocated_or_extended_alloc = alloc.get();
+                  break;
+                }
+              }
+            }
+            if (allocated_or_extended_alloc == nullptr &&
+                entry.only_extend_existing_allocation) {
+              for (const auto& alloc :
+                   *allocation_value_to_update.allocation_sequence()) {
+                if (alloc->start_time() <= request.end_time &&
+                    request.end_time <= alloc->end_time()) {
+                  allocated_or_extended_alloc = alloc.get();
+                  break;
+                }
+              }
+              if (allocated_or_extended_alloc == nullptr) {
+                for (const auto& alloc :
+                     *allocation_value.allocation_sequence()) {
+                  if (alloc->start_time() <= request.end_time &&
+                      request.end_time <= alloc->end_time()) {
+                    allocated_or_extended_alloc = alloc.get();
+                    break;
+                  }
+                }
+              }
+            }
+            CHECK(allocated_or_extended_alloc != nullptr)
+                << "Could not find allocation for use "
+                << use.hlo_use.ToString();
+          }
+          if (options_.allocation_result_modifier_testing_fn) {
+            options_.allocation_result_modifier_testing_fn(
+                request, result,
+                options_.prefetch_interval_picker->retry_number());
+          }
+          if (request.require_copy_allocation) {
+            auto allocation_sequence =
+                allocation_value_to_update.mutable_allocation_sequence();
+            auto it = std::find_if(
+                allocation_sequence->begin(), allocation_sequence->end(),
+                [&](const std::unique_ptr<
+                    xla::memory_space_assignment::Allocation>& allocation_ptr) {
+                  if (allocation_ptr->is_copy_allocation()) {
+                    auto copy_allocation = dynamic_cast<const CopyAllocation*>(
+                        allocation_ptr.get());
+                    return copy_allocation &&
+                           (copy_allocation->copy_done_schedule_before() <=
+                            request.required_copy_allocation_latest_time) &&
+                           (copy_allocation->sync_mem_op() ==
+                            request.required_copy_allocation_for) &&
+                           (!request.required_copy_for_slice ||
+                            (request.required_copy_for_slice &&
+                             !copy_allocation->cross_program_prefetch_index()
+                                  .has_value()));
+                  }
+                  if (allocation_ptr->is_sliced_copy_allocation()) {
+                    auto sliced_copy_allocation =
+                        dynamic_cast<const SlicedCopyAllocation*>(
+                            allocation_ptr.get());
+                    return sliced_copy_allocation &&
+                           (sliced_copy_allocation->earliest_available_time() <=
+                            request.required_copy_allocation_latest_time) &&
+                           (sliced_copy_allocation->sync_mem_op() ==
+                            request.required_copy_allocation_for) &&
+                           !request.required_copy_for_slice;
+                  }
+                  return false;
+                });
+
+            if (result_requires_uncommit(result) ||
+                it == allocation_sequence->end()) {
               VLOG(3) << "No async copy allocation found by the end of "
-                         "segment allocation with the correct use. "
+                         "segment allocation. "
                          "Sync copy replacement has failed. Fall back to the "
                          "normal mode.";
               failed_async_conversions_[request.required_copy_allocation_for] =
-                  AsyncConversionResult::kFailedPrecondition;
+                  AsyncConversionResult::kFailedSatisfyingConstraints;
               result_mark(AllocationResult::kFailSyncDataMoveReplacement,
                           result);
               result_mark(AllocationResult::kFailRequiresUncommit, result);
             } else {
-              not_finalized_async_conversions_.push_back(
-                  request.required_copy_allocation_for);
-              VLOG(3) << "Replacing "
-                      << request.required_copy_allocation_for->ToShortString()
-                      << " with " << (*it)->ToString();
+              bool has_correct_use = false;
+              for (auto& alloc_use : (*it)->uses()) {
+                if (alloc_use == request.use->hlo_use) {
+                  has_correct_use = true;
+                  break;
+                }
+              }
+              if (!has_correct_use) {
+                VLOG(3) << "No async copy allocation found by the end of "
+                           "segment allocation with the correct use. "
+                           "Sync copy replacement has failed. Fall back to the "
+                           "normal mode.";
+                failed_async_conversions_[request
+                                              .required_copy_allocation_for] =
+                    AsyncConversionResult::kFailedPrecondition;
+                result_mark(AllocationResult::kFailSyncDataMoveReplacement,
+                            result);
+                result_mark(AllocationResult::kFailRequiresUncommit, result);
+              } else {
+                not_finalized_async_conversions_.push_back(
+                    request.required_copy_allocation_for);
+                VLOG(3) << "Replacing "
+                        << request.required_copy_allocation_for->ToShortString()
+                        << " with " << (*it)->ToString();
+              }
             }
           }
         }
@@ -4710,8 +5093,8 @@ absl::StatusOr<AllocationResult> MsaAlgorithm::AllocateAllocationValues(
         continue;
       }
       const auto use_time = request.end_time;
-      UpdateAllocationRequirementForUseAliases(allocation_value_to_update, use,
-                                               use_time);
+      UpdateAllocationRequirementForUseAliases(allocated_or_extended_alloc,
+                                               use);
       MaybeCreateMirroredParentAllocationForWhileUse(
           allocation_value_to_update, use, use_time, allocation_values,
           preferred_offset_for_computation);
@@ -5085,17 +5468,10 @@ AllocationRequest MsaAlgorithm::CreateAllocationRequest(
 }
 
 void MsaAlgorithm::UpdateAllocationRequirementForUseAliases(
-    const AllocationValue& allocation_value, const AllocationValue::Use& use,
-    int64_t use_time) {
-  Allocation* aliased_allocation =
-      GetLiveAllocationAt(*allocation_value.allocation_sequence(), use_time);
-  VLOG(4) << "Aliased allocation at time " << use_time << ": "
+    const Allocation* aliased_allocation, const AllocationValue::Use& use) {
+  VLOG(4) << "Propagating allocation requirement to aliases from: "
           << (aliased_allocation ? aliased_allocation->ToString()
-                                 : "couldn't find the aliased allocation");
-
-  if (!aliased_allocation) {
-    return;
-  }
+                                 : "null allocation");
 
   for (const HloPosition& aliased_position : use.aliases) {
     AddAliasedRequiredAssignment(aliased_position.instruction,
@@ -5927,22 +6303,59 @@ int64_t MsaAlgorithm::GetExtendedUseTimeIfUseIsView(const HloUse& use) const {
 }
 
 std::optional<MsaAlgorithm::RequiredMemoryAssignment>
-MsaAlgorithm::RequiredMemoryAssignmentAt(const HloValue* buffer,
+MsaAlgorithm::RequiredMemoryAssignmentAt(const HloValue* value,
                                          int64_t time) const {
-  auto required_assignment_it = required_assignments_.find(buffer);
+  const HloBuffer& hlo_buffer = alias_analysis_.GetUniqueBufferAt(
+      value->defining_instruction(), value->defining_position().index);
+  VLOG(4) << "RequiredMemoryAssignmentAt: value = " << value->ToShortString()
+          << " time = " << time << " buffer = " << hlo_buffer.id();
   std::optional<RequiredMemoryAssignment> required_assignment_at_time;
-  if (required_assignment_it != required_assignments_.end()) {
-    for (const RequiredMemoryAssignment& required_assignment :
-         required_assignment_it->second) {
-      if (required_assignment.time == time) {
-        // Sanity check that there is only one required at time.
-        CHECK(!required_assignment_at_time)
-            << buffer->ToShortString() << " at time " << time;
-        required_assignment_at_time = required_assignment;
+  for (const HloValue* val : hlo_buffer.values()) {
+    auto required_assignment_it = required_assignments_.find(val);
+    if (required_assignment_it != required_assignments_.end()) {
+      for (const RequiredMemoryAssignment& required_assignment :
+           required_assignment_it->second) {
+        VLOG(4) << "  found req for " << val->ToShortString() << ": "
+                << required_assignment.ToString();
+        if (required_assignment.time == time) {
+          if (required_assignment_at_time) {
+            CHECK(required_assignment.memory_space_and_offset_equal(
+                *required_assignment_at_time))
+                << "Conflicting required assignments for buffer "
+                << hlo_buffer.id() << " at time " << time;
+          } else {
+            required_assignment_at_time = required_assignment;
+          }
+        }
       }
     }
   }
   return required_assignment_at_time;
+}
+
+bool MsaAlgorithm::HasConflictingRequiredAssignment(
+    const HloValue* value, int64_t start_time, int64_t end_time,
+    MemorySpace memory_space, AliasedOffset* offset) const {
+  const HloBuffer& hlo_buffer = alias_analysis_.GetUniqueBufferAt(
+      value->defining_instruction(), value->defining_position().index);
+  for (const HloValue* val : hlo_buffer.values()) {
+    auto it = required_assignments_.find(val);
+    if (it != required_assignments_.end()) {
+      for (const RequiredMemoryAssignment& req : it->second) {
+        if (req.time >= start_time && req.time <= end_time) {
+          if (req.memory_space != memory_space) {
+            return true;
+          }
+          if (memory_space == MemorySpace::kAlternate &&
+              req.offset != nullptr && offset != nullptr &&
+              req.offset->offset != offset->offset) {
+            return true;
+          }
+        }
+      }
+    }
+  }
+  return false;
 }
 
 std::optional<MsaAlgorithm::RequiredMemoryAssignment>
@@ -5983,10 +6396,14 @@ void MsaAlgorithm::AddAliasedRequiredAssignment(
     const Allocation* aliased_allocation,
     RequiredMemoryAssignment::Source required_assignment_source) {
   AliasedOffset* offset = nullptr;
-  if (aliased_allocation->memory_space() == MemorySpace::kAlternate) {
-    offset = GetAliasedOffset(*aliased_allocation);
+  MemorySpace memory_space = MemorySpace::kDefault;
+  if (aliased_allocation != nullptr) {
+    memory_space = aliased_allocation->memory_space();
+    if (memory_space == MemorySpace::kAlternate) {
+      offset = GetAliasedOffset(*aliased_allocation);
+    }
   }
-  AddRequiredAssignment(instruction, index, aliased_allocation->memory_space(),
+  AddRequiredAssignment(instruction, index, memory_space,
                         required_assignment_source, offset);
 }
 
@@ -6791,6 +7208,198 @@ void MsaAlgorithm::CheckAndUpdateForDualLiveAllocationValues(
           << chunk_start_time;
 }
 
+Allocation* MsaAlgorithm::TryExtendAliasedAllocation(
+    const AllocationRequest& request, AllocationResult& result) {
+  const HloBuffer& buffer = alias_analysis_.GetUniqueBufferAt(
+      request.allocation_value_to_update->defining_instruction(),
+      request.allocation_value_to_update->defining_position().index);
+
+  Allocation* aliased_alloc = nullptr;
+
+  auto find_match = [&](const AllocationValue& val) -> Allocation* {
+    const HloBuffer& other_buffer = alias_analysis_.GetUniqueBufferAt(
+        val.defining_position().instruction, val.defining_position().index);
+    if (buffer.id() == other_buffer.id()) {
+      for (const std::unique_ptr<Allocation>& allocation :
+           *val.allocation_sequence()) {
+        if (allocation->is_in_alternate_mem() &&
+            allocation->start_time() <= request.inclusive_start_time &&
+            request.inclusive_start_time <= allocation->end_time()) {
+          return allocation.get();
+        }
+      }
+    }
+    return nullptr;
+  };
+
+  if (request.allocation_value != request.allocation_value_to_update) {
+    aliased_alloc = find_match(*request.allocation_value);
+  }
+
+  if (aliased_alloc == nullptr) {
+    for (const AllocationValue& processed_val :
+         request.processed_allocation_values) {
+      aliased_alloc = find_match(processed_val);
+      if (aliased_alloc != nullptr) {
+        break;
+      }
+    }
+  }
+
+  if (aliased_alloc == nullptr) {
+    return nullptr;
+  }
+
+  if (HasConflictingRequiredAssignment(
+          request.allocation_value_to_update->value(),
+          request.inclusive_start_time, request.end_time,
+          MemorySpace::kAlternate, GetAliasedOffset(*aliased_alloc))) {
+    VLOG(3)
+        << "Cannot extend/mirror because of conflicting required assignment.";
+    return nullptr;
+  }
+
+  VLOG(3) << "Found aliased allocation to extend: "
+          << aliased_alloc->ToString();
+
+  int64_t use_time = request.end_time;
+  if (!options_.prefetch_interval_picker->CanAllocateInAlternateMemoryNoCopy(
+          request.size, aliased_alloc->GetRootAllocation()->start_time(),
+          use_time)) {
+    VLOG(3)
+        << "Cannot extend/mirror because the extended live range is too long: "
+        << aliased_alloc->GetRootAllocation()->start_time() << " to "
+        << use_time;
+    return nullptr;
+  }
+
+  bool need_mirror = (request.allocation_value_to_update->defining_position() !=
+                      aliased_alloc->defining_position());
+
+  int64_t max_existing_use_time = GetMaxUseTime(*aliased_alloc);
+  if (need_mirror && max_existing_use_time > request.inclusive_start_time) {
+    if (request.allocation_value_to_update->defining_instruction()
+            ->parent()
+            ->IsAsyncComputation() ||
+        aliased_alloc->defining_position()
+            .instruction->parent()
+            ->IsAsyncComputation()) {
+      VLOG(3) << "Allowing extension/mirror because of async computation.";
+    } else {
+      VLOG(3)
+          << "Cannot extend/mirror because of overlap: max_existing_use_time="
+          << max_existing_use_time
+          << " > inclusive_start_time=" << request.inclusive_start_time;
+      return nullptr;
+    }
+  }
+
+  if (need_mirror) {
+    AllocationSequence* b_sequence =
+        request.allocation_value_to_update->mutable_allocation_sequence();
+    MirroredAllocation* existing_mirror = nullptr;
+    for (const auto& alloc : *b_sequence) {
+      if (alloc->is_mirrored_allocation()) {
+        MirroredAllocation* mirror =
+            static_cast<MirroredAllocation*>(alloc.get());
+        if (&mirror->original_allocation() == aliased_alloc &&
+            mirror->start_time() <= request.inclusive_start_time &&
+            use_time <= mirror->end_time()) {
+          existing_mirror = mirror;
+          break;
+        }
+      }
+    }
+
+    if (existing_mirror != nullptr) {
+      VLOG(3) << "Found existing mirrored allocation: "
+              << existing_mirror->ToString();
+      existing_mirror->AddUse(
+          request.use->hlo_use,
+          request.allocation_value_to_update->defining_position());
+      result = AllocationResult::kSuccess;
+      return existing_mirror;
+    }
+  }
+
+  if (use_time <= aliased_alloc->end_time()) {
+    VLOG(3) << "Aliased allocation already covers use time " << use_time;
+    if (need_mirror) {
+      auto mirror = std::make_unique<MirroredAllocation>(
+          request.allocation_value_to_update->defining_position(),
+          *aliased_alloc, request.inclusive_start_time, use_time);
+      MirroredAllocation* mirror_ptr = mirror.get();
+      mirror_ptr->AddUse(
+          request.use->hlo_use,
+          request.allocation_value_to_update->defining_position());
+      request.allocation_value_to_update->mutable_allocation_sequence()
+          ->push_back(std::move(mirror));
+      result = AllocationResult::kSuccess;
+      return mirror_ptr;
+    } else {
+      aliased_alloc->AddUse(
+          request.use->hlo_use,
+          request.allocation_value_to_update->defining_position());
+      result = AllocationResult::kSuccess;
+      return aliased_alloc;
+    }
+  }
+
+  int64_t extension_start = aliased_alloc->end_time() + 1;
+  int64_t extension_end = use_time;
+
+  MsaBufferInterval extension_interval;
+  extension_interval.buffer = request.allocation_value_to_update->value();
+  extension_interval.size = request.size;
+  extension_interval.start = extension_start;
+  extension_interval.end = extension_end;
+
+  const SlicedBufferInterval sliced_extension_interval =
+      SlicedBufferInterval::CreateConstInterval(extension_interval);
+  std::vector<Chunk> candidates = FindChunkCandidates(
+      sliced_extension_interval, aliased_alloc->chunk().offset);
+  if (candidates.empty() ||
+      candidates[0].offset != aliased_alloc->chunk().offset) {
+    VLOG(3) << "Chunk " << aliased_alloc->chunk().offset
+            << " is not available for extension [" << extension_start << ", "
+            << extension_end << "]";
+    return nullptr;
+  }
+
+  VLOG(3) << "Extending aliased allocation to " << use_time;
+  aliased_alloc->Extend(use_time);
+  AddToPendingChunks(extension_interval, aliased_alloc->chunk());
+
+  if (need_mirror) {
+    auto mirror = std::make_unique<MirroredAllocation>(
+        request.allocation_value_to_update->defining_position(), *aliased_alloc,
+        request.inclusive_start_time, use_time);
+    MirroredAllocation* mirror_ptr = mirror.get();
+    mirror_ptr->AddUse(request.use->hlo_use,
+                       request.allocation_value_to_update->defining_position());
+    request.allocation_value_to_update->mutable_allocation_sequence()
+        ->push_back(std::move(mirror));
+    result = AllocationResult::kSuccess;
+    return mirror_ptr;
+  } else {
+    aliased_alloc->AddUse(
+        request.use->hlo_use,
+        request.allocation_value_to_update->defining_position());
+    result = AllocationResult::kSuccess;
+    return aliased_alloc;
+  }
+}
+
+int64_t MsaAlgorithm::GetMaxUseTime(const Allocation& allocation) const {
+  int64_t max_use_time = allocation.start_time();
+  const auto& instruction_schedule = hlo_live_range_.instruction_schedule();
+  for (const HloUse& use : allocation.uses()) {
+    max_use_time =
+        std::max(max_use_time, instruction_schedule.at(use.instruction));
+  }
+  return max_use_time;
+}
+
 void MsaAlgorithm::ReleaseReservedAllocationForAlternateMemoryColorings(
     ReservedAllocation* reserved_allocation) {
   if (!reserved_allocation->is_chunk_reserved_in_interval_tree()) {
@@ -6925,7 +7534,7 @@ AllocationResult MsaAlgorithm::AllocateSegment(AllocationRequest& request) {
         *request.allocation_value_to_update->mutable_allocation_sequence(),
         request.end_time);
     CHECK_NE(allocation, nullptr);
-    allocation->AddUse(request.use->hlo_use);
+    allocation->AddUse(request.use->hlo_use, request.use->producer_position);
     return AllocationResult::kSuccess;
   }
 
@@ -7133,7 +7742,17 @@ AllocationResult MsaAlgorithm::AllocateSegment(AllocationRequest& request) {
                    [&](const auto& allocation) {
                      return allocation->memory_space() == MemorySpace::kDefault;
                    });
-
+  VLOG(3) << "AllocateSegment: value = "
+          << request.allocation_value->ToShortString() << ", value_to_update = "
+          << request.allocation_value_to_update->ToShortString()
+          << ", defining_position = " << defining_position.ToString();
+  if (prev_allocation_it != allocation_sequence->rend()) {
+    VLOG(3) << "  prev_allocation: " << (*prev_allocation_it)->ToString();
+  }
+  if (prev_allocation_in_default_mem_it != allocation_sequence->rend()) {
+    VLOG(3) << "  prev_default: "
+            << (*prev_allocation_in_default_mem_it)->ToString();
+  }
   if (!request.allocation_value->requires_contiguous_allocation()) {
     if (prev_allocation_in_default_mem_it == allocation_sequence->rend() &&
         prev_allocation_it != allocation_sequence->rend() &&
@@ -7306,7 +7925,8 @@ AllocationResult MsaAlgorithm::AllocateSegment(AllocationRequest& request) {
   // If a copy wasn't inserted, then add this use to the latest allocation in
   // default memory.
   (*prev_allocation_in_default_mem_it)->Extend(request.end_time);
-  (*prev_allocation_in_default_mem_it)->AddUse(request.use->hlo_use);
+  (*prev_allocation_in_default_mem_it)
+      ->AddUse(request.use->hlo_use, request.use->producer_position);
   if (uses_in_default_memory_set_.insert(request.use->hlo_use).second) {
     uses_in_default_memory_.push_back(request.use->hlo_use);
   }
@@ -7640,7 +8260,7 @@ AllocationResult MsaAlgorithm::AllocateInAlternateMemoryNoCopy(
     }
     if (!request.only_extend_existing_allocation) {
       request.allocation_value->allocation_sequence()->back()->AddUse(
-          request.use->hlo_use);
+          request.use->hlo_use, request.use->producer_position);
     }
     return AllocationResult::kSuccess;
   }
@@ -8128,7 +8748,7 @@ AllocationResult MsaAlgorithm::Prefetch(
       /*cross_program_prefetch_index=*/std::nullopt,
       request.required_copy_allocation_for);
   request.allocation_value->allocation_sequence()->back()->AddUse(
-      request.use->hlo_use);
+      request.use->hlo_use, request.use->producer_position);
   return AllocationResult::kSuccess;
 }
 
@@ -8266,7 +8886,8 @@ AllocationResult MsaAlgorithm::PrefetchWithResourceConstraints(
         context.request->required_copy_allocation_for);
     context.request->allocation_value_to_update->allocation_sequence()
         ->back()
-        ->AddUse(context.request->use->hlo_use);
+        ->AddUse(context.request->use->hlo_use,
+                 context.request->use->producer_position);
     return AllocationResult::kSuccess;
   }
   if (context.unsliced_solution) {
@@ -8311,7 +8932,7 @@ AllocationResult MsaAlgorithm::PrefetchWithResourceConstraints(
     }
 
     request.allocation_value_to_update->allocation_sequence()->back()->AddUse(
-        request.use->hlo_use);
+        request.use->hlo_use, request.use->producer_position);
     return AllocationResult::kSuccess;
   }
 
