@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/service/gpu/gpu_latency_hiding_scheduler.h"
 
 #include <algorithm>
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <limits>
@@ -174,6 +175,23 @@ bool IsDynamicSliceCopyFusionAsyncOp(const HloInstruction& hlo) {
          IsDynamicSliceCopyFusion(hlo.async_wrapped_instruction());
 }
 
+bool IsDeviceToDeviceCopyAsyncOp(const HloInstruction& hlo) {
+  const HloInstruction* copy_start = nullptr;
+  if (hlo.opcode() == HloOpcode::kCopyStart) {
+    copy_start = &hlo;
+  } else if (hlo.opcode() == HloOpcode::kCopyDone &&
+             hlo.operand(0)->opcode() == HloOpcode::kCopyStart) {
+    copy_start = hlo.operand(0);
+  } else {
+    return false;
+  }
+
+  const Shape& shape = copy_start->shape();
+  return shape.IsTuple() && shape.tuple_shapes_size() >= 2 &&
+         !ShapeHasHostMemorySpace(shape.tuple_shapes(0)) &&
+         !ShapeHasHostMemorySpace(shape.tuple_shapes(1));
+}
+
 bool IsCollectivesGroupAsyncStartOp(const HloInstruction& hlo) {
   return HloPredicateIsOp<HloOpcode::kAsyncStart>(&hlo) &&
          hlo.frontend_attributes().map().contains(kCollectiveGroupMarkerAttr);
@@ -301,6 +319,60 @@ bool IsAsyncPair(const HloInstruction& from, const HloInstruction& target) {
   return IsGpuAsyncStart(from) && IsGpuAsyncDone(target);
 }
 
+std::optional<bool> IsMemoryBoundFromCostModel(const HloInstruction& hlo) {
+  if (!hlo.has_backend_config()) {
+    return std::nullopt;
+  }
+  auto gpu_config = hlo.backend_config<GpuBackendConfig>();
+  if (!gpu_config.ok()) {
+    return std::nullopt;
+  }
+  for (const ReificationCost& cost : gpu_config->reification_cost()) {
+    const double compute_time = cost.compute_time_us();
+    const double memory_access_time = cost.memory_access_time_us();
+    if (!std::isfinite(compute_time) || !std::isfinite(memory_access_time) ||
+        compute_time < 0.0 || memory_access_time < 0.0 ||
+        (compute_time == 0.0 && memory_access_time == 0.0)) {
+      continue;
+    }
+    return memory_access_time > compute_time;
+  }
+  return std::nullopt;
+}
+
+// Classifies kernels that are dominated by HBM bandwidth rather than compute.
+// Overlapping an async D2D memcpy with such a kernel provides little latency
+// hiding because both contend for memory bandwidth.
+bool IsMemoryBoundKernel(const HloInstruction& hlo) {
+  if (std::optional<bool> memory_bound = IsMemoryBoundFromCostModel(hlo)) {
+    return *memory_bound;
+  }
+
+  // These instructions are scheduling structure rather than synchronous GPU
+  // kernels. Preserve them as valuable when no analytical model is available.
+  if (IsNopInstruction(hlo) || IsGpuAsyncStart(hlo) || IsGpuAsyncDone(hlo)) {
+    return false;
+  }
+  switch (hlo.opcode()) {
+    case HloOpcode::kWhile:
+    case HloOpcode::kConditional:
+    case HloOpcode::kCall:
+      return false;
+    case HloOpcode::kFusion:
+      return !IsConvFusion(hlo) &&
+             !hlo_query::ContainsInstrWithOpcode(
+                 hlo.fused_instructions_computation(),
+                 {HloOpcode::kDot, HloOpcode::kConvolution});
+    case HloOpcode::kDot:
+    case HloOpcode::kConvolution:
+      return false;
+    case HloOpcode::kCustomCall:
+      return !IsCublasGemm(hlo) && !IsCustomCallToDnnConvolution(hlo);
+    default:
+      return true;
+  }
+}
+
 }  // namespace
 
 HloCostAnalysis::ShapeSizeFunction ShapeSizeBytesFunction(
@@ -425,6 +497,36 @@ bool GpuScheduleCrossesOverlapLimit(
   return false;
 }
 
+bool IsGpuD2DOverlapWindowOpen(
+    const DefaultSchedulerCore::SchedulingState& sched_state) {
+  if (!sched_state.config.enable_selective_resources ||
+      sched_state.async_tracker == nullptr) {
+    return false;
+  }
+  const int64_t memcpy_resource =
+      ResourceTypeToIndex(GpuResourceType::kGpuAsyncStreamMemcpy);
+  auto current = sched_state.max_concurrent_resource.find(memcpy_resource);
+  if (current == sched_state.max_concurrent_resource.end()) {
+    return false;
+  }
+  return current->second !=
+         sched_state.async_tracker->GetNumAvailableResources(memcpy_resource);
+}
+
+std::optional<DefaultSchedulerCore::CandidateResult>
+GpuD2DOverlapSchedulingRule(DefaultSchedulerCore::ScheduleCandidate& a,
+                            DefaultSchedulerCore::ScheduleCandidate& b) {
+  if (a.node == nullptr || b.node == nullptr || a.scheduling_state == nullptr ||
+      a.scheduling_state != b.scheduling_state ||
+      !IsGpuD2DOverlapWindowOpen(*a.scheduling_state)) {
+    return std::nullopt;
+  }
+  return DefaultSchedulerCore::ChooseBestCandidate(
+      a.node->GetValuableForSelectiveOverlap(), a,
+      b.node->GetValuableForSelectiveOverlap(), b,
+      "kPreferComputeForD2DMemcpyOverlap");
+}
+
 //===----------------------------------------------------------------------===//
 // GpuAsyncTrackerBase
 //===----------------------------------------------------------------------===//
@@ -504,6 +606,17 @@ void GpuAsyncTrackerBase::PostProcessScheduleGraph(
         VLOG(5) << "Setting force delay for instruction: " << inst->ToString();
       }
     }
+
+    if (config_.enable_selective_resources) {
+      HloGraphNode& node = schedule_graph->GetNode(inst);
+      const bool memory_bound = IsMemoryBoundKernel(*inst);
+      node.SetValuableForSelectiveOverlap(!memory_bound);
+      if (memory_bound) {
+        VLOG(5) << "Marking instruction as not valuable for selective "
+                   "D2D memcpy overlap: "
+                << inst->ToString();
+      }
+    }
   }
 }
 
@@ -532,14 +645,20 @@ ResourcesVector GpuAsyncTracker::GetResourcesFromInstructionImpl(
     ResourceUsageType usage;
     GpuResourceType resource;
 
-    // Keep existing copy-start/copy-done and host-memory slicing fusions on the
-    // async-compute resource path. Only dynamic-slice memcpy async wrappers use
-    // the dedicated memcpy resource added for D2D copy overlap.
-    if (IsDynamicSliceCopyFusionAsyncOp(instr)) {
+    // Use the dedicated memcpy resource for dynamic-slice memcpy wrappers and
+    // device-only copy-start/copy-done pairs when selective D2D overlap is
+    // enabled. Keep host transfers on the async-compute resource path.
+    if (IsDynamicSliceCopyFusionAsyncOp(instr) ||
+        (config_.enable_selective_resources &&
+         IsDeviceToDeviceCopyAsyncOp(instr))) {
       resource = GpuResourceType::kGpuAsyncStreamMemcpy;
       usage = op.outer == HloOpcode::kAsyncStart
-                  ? ResourceUsageType::kResourceRelease
-                  : ResourceUsageType::kResourceOccupy;
+                  ? (config_.top_down_scheduling
+                         ? ResourceUsageType::kResourceOccupy
+                         : ResourceUsageType::kResourceRelease)
+                  : (config_.top_down_scheduling
+                         ? ResourceUsageType::kResourceRelease
+                         : ResourceUsageType::kResourceOccupy);
     } else if (IsAnnotatedForGpuAsyncStreamCollectivesP2P(instr)) {
       resource = GpuResourceType::kGpuAsyncStreamCollectivesP2P;
       usage = op.outer == HloOpcode::kAsyncStart
@@ -674,6 +793,11 @@ ResourceHazardType GpuAsyncTracker::GetResourceHazardType(
            ResourceTypeToIndex(GpuResourceType::kGpuResourceTypeEnd));
   if (resource_type < GetTargetDefinedResourceTypeBegin()) {
     return GpuAsyncTrackerBase::GetResourceHazardType(resource_type);
+  }
+  if (config_.enable_selective_resources &&
+      resource_type ==
+          ResourceTypeToIndex(GpuResourceType::kGpuAsyncStreamMemcpy)) {
+    return ResourceHazardType::kSelective;
   }
   return ResourceHazardType::kUnshareable;
 }
