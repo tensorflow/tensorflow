@@ -1823,6 +1823,7 @@ cc_library(
         "//xla/backends/gpu/transforms:hoist_fused_bitcasts",
         "//xla/backends/gpu/transforms:layout_assignment",
         "//xla/backends/gpu/transforms:move_copy_to_users",
+        "//xla/backends/gpu/transforms:narrow_dot_kwrapping_rewriter",
         "//xla/backends/gpu/transforms:pdl_launch_annotation",
         "//xla/backends/gpu/transforms:ragged_all_to_all_canonicalizer",
         "//xla/backends/gpu/transforms:ragged_all_to_all_decomposer",
