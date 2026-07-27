@@ -13,11 +13,13 @@
 # limitations under the License.
 # ==============================================================================
 
+load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("//xla:xla.default.bzl", "xla_cc_test")
 load("//xla/tests:build_defs.bzl", "xla_test")
 load("//xla/tsl:tsl.bzl", "if_google", "internal_visibility")
 load("//xla/tsl:tsl.default.bzl", "get_compatible_with_portable")
+load("//xla/tsl/testing:build_defs.bzl", "tsl_text_proto_test_suite")
 load("//xla/tsl/util:cc_embed_data.bzl", "cc_embed_data")
 
 package(
@@ -31,6 +33,13 @@ package(
 filegroup(
     name = "all_gpu_specs",
     data = glob(["specs/*.txtpb"]),
+)
+
+tsl_text_proto_test_suite(
+    name = "target_config_specs_test",
+    srcs = glob(["specs/*.txtpb"]),
+    message = "stream_executor.GpuTargetConfigProto",
+    deps = ["//xla/stream_executor:device_description_proto"],
 )
 
 exports_files(glob([
@@ -226,4 +235,11 @@ xla_test(
         "@tsl//tsl/platform:path",
         "@tsl//tsl/platform:protobuf",
     ],
+)
+
+bzl_library(
+    name = "target_config_map_bzl",
+    srcs = ["target_config_map.bzl"],
+    visibility = ["//visibility:private"],
+    deps = ["//xla/tsl:package_groups_bzl"],
 )

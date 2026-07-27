@@ -15,6 +15,9 @@
 # Values are placeholders copied from existing gfx1201.
 # TODO: reconfirm and fix them once real gfx1250 hardware or its published
 # spec is available.
+# proto-file: third_party/tensorflow/compiler/xla/stream_executor/device_description.proto
+# proto-message: stream_executor.GpuTargetConfigProto
+
 gpu_device_info {
   threads_per_block_limit: 1024
   threads_per_warp: 32
