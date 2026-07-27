@@ -3661,6 +3661,7 @@ xla_cc_test(
     srcs = ["gpu_latency_hiding_scheduler_test.cc"],
     deps = [
         ":alias_info",
+        ":backend_configs_cc",
         ":gpu_device_info_for_tests",
         ":gpu_hlo_schedule",
         ":gpu_latency_hiding_scheduler",
