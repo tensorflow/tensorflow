@@ -609,6 +609,15 @@ class LSTMBlockCellGradOp : public OpKernel {
                 absl::InvalidArgumentError(
                     absl::StrCat("cs_prev_tensor must be rank 2 but is rank ",
                                  cs_prev_tensor->dims(), ".")));
+    // An empty cs_prev yields a zero-sized GPU launch configuration in
+    // LSTMBlockCellBpropWithCUDA, which aborts via TF_CHECK_OK. The forward
+    // op rejects this for the same reason; see #58270.
+    OP_REQUIRES(
+        ctx, cs_prev_tensor->dim_size(0) > 0 && cs_prev_tensor->dim_size(1) > 0,
+        absl::InvalidArgumentError(
+            absl::StrCat("cs_prev_tensor is empty, has shape: (",
+                         cs_prev_tensor->dim_size(0), ",",
+                         cs_prev_tensor->dim_size(1), ").")));
     OP_REQUIRES(ctx, h_prev_tensor->dims() == 2,
                 absl::InvalidArgumentError(
                     absl::StrCat("h_prev_tensor must be rank 2 but is rank ",
@@ -617,6 +626,21 @@ class LSTMBlockCellGradOp : public OpKernel {
         ctx, w_tensor->dims() == 2,
         absl::InvalidArgumentError(absl::StrCat(
             "w_tensor must be rank 2 but is rank ", w_tensor->dims(), ".")));
+    // wci/wcf/wco reach the functor as vec<T>(), which CHECK-fails unless
+    // they are rank 1. This is not gated on use_peephole: the accessors run
+    // at the call site regardless.
+    OP_REQUIRES(ctx, wci_tensor->dims() == 1,
+                absl::InvalidArgumentError(
+                    absl::StrCat("wci_tensor must be rank 1 but is rank ",
+                                 wci_tensor->dims(), ".")));
+    OP_REQUIRES(ctx, wcf_tensor->dims() == 1,
+                absl::InvalidArgumentError(
+                    absl::StrCat("wcf_tensor must be rank 1 but is rank ",
+                                 wcf_tensor->dims(), ".")));
+    OP_REQUIRES(ctx, wco_tensor->dims() == 1,
+                absl::InvalidArgumentError(
+                    absl::StrCat("wco_tensor must be rank 1 but is rank ",
+                                 wco_tensor->dims(), ".")));
     OP_REQUIRES(
         ctx, b_tensor->dims() == 1,
         absl::InvalidArgumentError(absl::StrCat(

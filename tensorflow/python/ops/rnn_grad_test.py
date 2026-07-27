@@ -192,6 +192,85 @@ class RNNGradTest(test.TestCase):
               h_grad=h_grad,
               use_peephole=False))
 
+  def testLSTMBlockCellGradInvalidPeepholeRank(self):
+    """Regression test for a CHECK failure on invalid-rank peephole weights.
+
+    wci/wcf/wco reach the functor as `vec<T>()`, which CHECK-fails unless the
+    tensor is rank 1, regardless of `use_peephole`.
+    """
+    batch_size = 2
+    input_size = 2
+    hidden_size = 2
+    w = deterministic_random_uniform(
+        [input_size + hidden_size, 4 * hidden_size])
+    b = deterministic_random_uniform([4 * hidden_size])
+    x = deterministic_random_uniform([batch_size, input_size])
+    cs_prev = h_prev = deterministic_random_uniform([batch_size, hidden_size])
+    # rank 2, must be rank 1.
+    bad_peephole = deterministic_random_uniform([1, hidden_size])
+    gate = deterministic_random_uniform([batch_size, hidden_size])
+
+    with self.assertRaisesRegex(
+        (ValueError, errors.InvalidArgumentError), "must be rank 1"):
+      self.evaluate(
+          gen_rnn_ops.lstm_block_cell_grad(
+              x=x,
+              cs_prev=cs_prev,
+              h_prev=h_prev,
+              w=w,
+              wci=bad_peephole,
+              wcf=bad_peephole,
+              wco=bad_peephole,
+              b=b,
+              i=gate,
+              cs=gate,
+              f=gate,
+              o=gate,
+              ci=gate,
+              co=gate,
+              cs_grad=gate,
+              h_grad=gate,
+              use_peephole=False))
+
+  def testLSTMBlockCellGradEmptyCsPrev(self):
+    """An empty cs_prev must be rejected rather than abort on GPU.
+
+    A zero-sized dimension produces an invalid GPU launch configuration in
+    LSTMBlockCellBpropWithCUDA, which aborts via TF_CHECK_OK. The forward op
+    already rejects this; see #58270.
+    """
+    batch_size = 2
+    input_size = 2
+    hidden_size = 0  # empty cs_prev
+    w = deterministic_random_uniform([input_size, 4 * hidden_size])
+    b = deterministic_random_uniform([4 * hidden_size])
+    x = deterministic_random_uniform([batch_size, input_size])
+    cs_prev = h_prev = deterministic_random_uniform([batch_size, hidden_size])
+    w_peephole = array_ops.zeros([hidden_size], dtype=w.dtype)
+    gate = deterministic_random_uniform([batch_size, hidden_size])
+
+    with self.assertRaisesRegex(
+        (ValueError, errors.InvalidArgumentError), "empty"):
+      self.evaluate(
+          gen_rnn_ops.lstm_block_cell_grad(
+              x=x,
+              cs_prev=cs_prev,
+              h_prev=h_prev,
+              w=w,
+              wci=w_peephole,
+              wcf=w_peephole,
+              wco=w_peephole,
+              b=b,
+              i=gate,
+              cs=gate,
+              f=gate,
+              o=gate,
+              ci=gate,
+              co=gate,
+              cs_grad=gate,
+              h_grad=gate,
+              use_peephole=False))
+
   def _lstm_block(self, op, w, b, x, cs_prev, h_prev):
     w_peephole = array_ops.zeros(cs_prev.shape[1:], dtype=w.dtype)
     _, all_cs, _, _, _, _, all_h = op(
