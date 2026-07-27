@@ -337,7 +337,8 @@ MemorySpaceAssignment::Run(HloModule* module,
                                                           alias_analysis);
 }
 
-absl::Status MemorySpaceAssignment::VerifyAllocations() const {
+absl::Status MemorySpaceAssignment::VerifyAllocations(
+    const HloAliasAnalysis& alias_analysis) const {
   BufferIntervalTree interval_tree;
   // Checks the chunks that overlap with a given allocation in time do not
   // overlap with the allocation's chunk in the memory range. If they do, we
@@ -348,11 +349,39 @@ absl::Status MemorySpaceAssignment::VerifyAllocations() const {
     for (const HeapSimulator::Chunk& overlapping_chunk :
          interval_tree.ChunksOverlappingInTime(allocation->start_time(),
                                                allocation->end_time() - 1)) {
-      CHECK(!allocation->chunk().OverlapsWith(overlapping_chunk))
-          << "Chunks are overlapping at Allocation level (before fixing the "
-             "schedule): "
-          << allocation->ToString()
-          << " overlaps with allocated chunk: " << overlapping_chunk.ToString();
+      if (allocation->chunk().OverlapsWith(overlapping_chunk)) {
+        // If the chunks overlap, check if there is an overlapping allocation
+        // that belongs to the same HloBuffer and has the same chunk.
+        bool is_aliased_overlap = false;
+        for (const auto& other_allocation : allocations_) {
+          if (other_allocation->memory_space() == MemorySpace::kAlternate &&
+              !other_allocation->is_mirrored_allocation() &&
+              other_allocation.get() != allocation &&
+              other_allocation->chunk() == overlapping_chunk) {
+            int64_t overlap_start = std::max(allocation->start_time(),
+                                             other_allocation->start_time());
+            int64_t overlap_end = std::min(allocation->end_time() - 1,
+                                           other_allocation->end_time() - 1);
+            if (overlap_start <= overlap_end) {
+              const HloBuffer& buf1 = alias_analysis.GetUniqueBufferAt(
+                  allocation->defining_position().instruction,
+                  allocation->defining_position().index);
+              const HloBuffer& buf2 = alias_analysis.GetUniqueBufferAt(
+                  other_allocation->defining_position().instruction,
+                  other_allocation->defining_position().index);
+              if (buf1.id() == buf2.id()) {
+                is_aliased_overlap = true;
+                break;
+              }
+            }
+          }
+        }
+        CHECK(is_aliased_overlap)
+            << "Chunks are overlapping at Allocation level (before fixing the "
+               "schedule): "
+            << allocation->ToString() << " overlaps with allocated chunk: "
+            << overlapping_chunk.ToString();
+      }
     }
     interval_tree.Add(allocation->start_time(), allocation->end_time() - 1,
                       allocation->chunk());
@@ -400,7 +429,7 @@ MemorySpaceAssignment::RunMemorySpaceAssignment(
 
   RETURN_IF_ERROR(Process(hlo_live_range, alias_analysis));
   if (options_.verify) {
-    RETURN_IF_ERROR(VerifyAllocations());
+    RETURN_IF_ERROR(VerifyAllocations(alias_analysis));
   }
 
   // DEBUG_LOG_ALLOCATIONS_AT
