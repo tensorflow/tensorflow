@@ -86,11 +86,11 @@ int64_t GetSizeInBytes(mlir::Type type);
 
 // Performs an integer divide and checks that the remainder is zero.
 // It supports int64 version as well.
-template <typename Integer,
-          typename = std::enable_if_t<std::is_same<int32_t, Integer>::value ||
-                                      std::is_same<uint32_t, Integer>::value ||
-                                      std::is_same<int64_t, Integer>::value ||
-                                      std::is_same<uint64_t, Integer>::value>>
+template <
+    typename Integer,
+    typename = std::enable_if_t<
+        std::is_same_v<int32_t, Integer> || std::is_same_v<uint32_t, Integer> ||
+        std::is_same_v<int64_t, Integer> || std::is_same_v<uint64_t, Integer>>>
 ABSL_ATTRIBUTE_ALWAYS_INLINE Integer ExactIntegerDivide(Integer numerator,
                                                         int64_t denominator) {
   const Integer ratio = numerator / denominator;
@@ -99,9 +99,9 @@ ABSL_ATTRIBUTE_ALWAYS_INLINE Integer ExactIntegerDivide(Integer numerator,
 }
 
 template <typename IntType,
-          std::enable_if_t<!std::is_unsigned<IntType>::value, int> = 0>
+          std::enable_if_t<!std::is_unsigned_v<IntType>, int> = 0>
 ABSL_ATTRIBUTE_ALWAYS_INLINE bool IsPowerOfTwo(IntType n) {
-  static_assert(std::is_integral<IntType>::value, "");
+  static_assert(std::is_integral_v<IntType>, "");
   return n > 0 && (n & (n - 1)) == 0;
 }
 
