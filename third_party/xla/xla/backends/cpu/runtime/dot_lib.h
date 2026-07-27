@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <array>
 #include <cstdint>
+#include <type_traits>
 #include <utility>
 
 #include "absl/base/optimization.h"
@@ -78,12 +79,28 @@ void MatMul(const Eigen::ThreadPoolDevice* device, OutType* out, LhsType* lhs,
 
   std::array<DimPair, 1> dims({DimPair(lhs_contract_dim, rhs_contract_dim)});
 
-  if (device != nullptr) {
-    c.device(*device, std::move(done)) =
-        a.contract(b, dims).template cast<OutType>();
+  auto compute_and_done = [&](const auto& expression) {
+    if (device != nullptr) {
+      c.device(*device, std::move(done)) = expression;
+    } else {
+      c = expression;
+      done();
+    }
+  };
+
+  if constexpr (std::is_same_v<LhsType, OutType> &&
+                std::is_same_v<RhsType, OutType>) {
+    // Uniform-precision dot: operands already have the output element type, so
+    // Eigen accumulates in `OutType`. Keep the original formulation so codegen
+    // for these instantiations is byte-identical.
+    compute_and_done(a.contract(b, dims).template cast<OutType>());
   } else {
-    c = a.contract(b, dims).template cast<OutType>();
-    done();
+    // Mixed-precision dot (e.g. s8 x s8 -> s32): HLO semantics require the sum
+    // of products to accumulate in the (wider) output type. Contracting the raw
+    // operands would accumulate in the promoted operand type and wrap/overflow,
+    // so cast the inputs to `OutType` before contracting.
+    compute_and_done(
+        a.template cast<OutType>().contract(b.template cast<OutType>(), dims));
   }
 }
 
