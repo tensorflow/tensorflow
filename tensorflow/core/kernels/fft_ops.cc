@@ -177,10 +177,10 @@ class FFTBase : public OpKernel {
 
       auto fft_length_as_vec = fft_length.vec<int32_t>();
       for (int i = 0; i < fft_rank; ++i) {
-        OP_REQUIRES(ctx, fft_length_as_vec(i) > 0,
+        OP_REQUIRES(ctx, fft_length_as_vec(i) >= 0,
                     absl::InvalidArgumentError(absl::StrCat(
                         "fft_length[", i,
-                        "] must be >= 1, but got: ", fft_length_as_vec(i))));
+                        "] must >= 0, but got: ", fft_length_as_vec(i))));
         fft_shape[i] = fft_length_as_vec(i);
         // Each input dimension must have length of at least fft_shape[i]. For
         // IRFFTs, the inner-most input dimension must have length of at least
@@ -239,8 +239,8 @@ class FFTBase : public OpKernel {
               "Wrong types for FFT: in=", in.dtype(), " out=", out->dtype())));
     }
 
-    if (input_shape.num_elements() == 0) {
-      DCHECK_EQ(0, output_shape.num_elements());
+    if (input_shape.num_elements() == 0 ||
+        output_shape.num_elements() == 0) {
       return;
     }
 
@@ -307,10 +307,10 @@ class FFTNBase : public OpKernel {
                     "], but got: ", fft_length.shape().dim_size(0), ".")));
     auto fft_length_as_vec = fft_length.vec<int32_t>();
     for (int i = 0; i < fft_rank; ++i) {
-      OP_REQUIRES(ctx, fft_length_as_vec(i) > 0,
+      OP_REQUIRES(ctx, fft_length_as_vec(i) >= 0,
                   absl::InvalidArgumentError(absl::StrCat(
                       "fft_length[", i,
-                      "] must be >= 1, but got: ", fft_length_as_vec(i))));
+                      "] must >= 0, but got: ", fft_length_as_vec(i))));
       fft_shape[i] = fft_length_as_vec(i);
       if (IsReal()) {
         bool inner_most = (i == fft_rank - 1);
@@ -364,8 +364,8 @@ class FFTNBase : public OpKernel {
               "Wrong types for FFT: in=", in.dtype(), " out=", out->dtype())));
     }
 
-    if (input_shape.num_elements() == 0) {
-      DCHECK_EQ(0, output_shape.num_elements());
+    if (input_shape.num_elements() == 0 ||
+        output_shape.num_elements() == 0) {
       return;
     }
     DoFFTN(ctx, in, fft_shape.data(), axes_shape.data(), out);
