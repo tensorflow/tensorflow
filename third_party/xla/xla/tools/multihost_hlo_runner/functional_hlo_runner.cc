@@ -41,6 +41,9 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/tsl/platform/status_macros.h"
 #include "mlir/Dialect/Func/Extensions/AllExtensions.h"
+#include "mlir/IR/BuiltinOps.h"
+#include "mlir/IR/MLIRContext.h"
+#include "mlir/IR/OwningOpRef.h"
 #include "xla/client/executable_build_options.h"
 #include "xla/debug_options_flags.h"
 #include "xla/future.h"
@@ -60,6 +63,7 @@ limitations under the License.
 #include "xla/pjrt/distributed/key_value_store_interface.h"
 #include "xla/pjrt/host_memory_spaces.h"
 #include "xla/pjrt/maybe_owning_mlir_module.h"
+#include "xla/pjrt/mlir_to_hlo.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_executable.h"
@@ -306,6 +310,18 @@ ReadModuleFromUnoptimizedSnapshotTextProtoFile(absl::string_view hlo_file) {
     }
   }
   return hlo_module_and_arguments;
+}
+
+absl::StatusOr<std::unique_ptr<HloModule>> ReadStableHloModule(
+    absl::string_view stablehlo_file) {
+  std::string contents;
+  RETURN_IF_ERROR(
+      tsl::ReadFileToString(tsl::Env::Default(), stablehlo_file, &contents));
+
+  mlir::MLIRContext ctx;
+  ASSIGN_OR_RETURN(mlir::OwningOpRef<mlir::ModuleOp> module,
+                   ParseMlirModuleString(contents, ctx));
+  return ConvertStablehloToHlo(*std::move(module));
 }
 
 ReplicasAndPartitions GetReplicasAndPartitionsInternal(
@@ -1292,6 +1308,11 @@ absl::StatusOr<HloModuleAndArguments> LoadHloModuleAndArguments(
       LOG(INFO) << "Skipping loading HLO module and arguments for serialized "
                    "PjRtExecutable.";
       return hlo_module_and_arguments;
+      break;
+    }
+    case InputFormat::kStableHlo: {
+      ASSIGN_OR_RETURN(hlo_module_and_arguments.hlo_module,
+                       ReadStableHloModule(hlo_file));
       break;
     }
     default:
