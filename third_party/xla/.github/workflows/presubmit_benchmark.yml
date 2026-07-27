@@ -39,6 +39,31 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  check-paths:
+    runs-on: ubuntu-latest
+    outputs:
+      should-run: ${{ steps.filter.outputs.any_changed == 'true' || github.event_name != 'pull_request' }}
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        if: github.event_name == 'pull_request'
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: tj-actions/changed-files@9426d40962ed5378910ee2e21d5f8c6fcbf2dd96 # v47.0.6
+        id: filter
+        if: github.event_name == 'pull_request'
+        with:
+          files: |
+            xla/**
+            third_party/**
+            BUILD
+            *.bzl
+            WORKSPACE*
+            MODULE.bazel
+            .github/workflows/presubmit_benchmark.yml
+            .github/workflows/generate_benchmark_matrix.yml
+            .github/workflows/benchmarks/**
+
   # ================================================================
   # Job 1: Generate the matrix specifically for PRESUBMIT benchmarks
   # ================================================================
@@ -52,7 +77,7 @@ jobs:
 
   run_benchmarks:
     name: Run Benchmark (${{ matrix.benchmark_entry.config_id }}) # Use the full config_id: {name}_{hw-short}_{topo}_{workflow} e.g., gemma3_1b_flax_call_l4_1h1d_presubmit
-    needs: generate_matrix
+    needs: [generate_matrix, check-paths]
     # Also check if the generate_matrix job itself was skipped due to its `if` condition
     if: success() && needs.generate_matrix.result != 'skipped' && needs.generate_matrix.outputs.matrix_include_json != '[]' && needs.generate_matrix.outputs.matrix_include_json != ''
 
@@ -61,8 +86,8 @@ jobs:
       matrix:
         benchmark_entry: ${{ fromJson(needs.generate_matrix.outputs.matrix_include_json || '[]') }}
 
-    runs-on: ${{ matrix.benchmark_entry.runner_label }}
-    container: ${{ matrix.benchmark_entry.container_image }}
+    runs-on: ${{ needs.check-paths.outputs.should-run != 'false' && matrix.benchmark_entry.runner_label || 'ubuntu-latest' }}
+    container: ${{ needs.check-paths.outputs.should-run != 'false' && matrix.benchmark_entry.container_image || null }}  # zizmor: ignore[unpinned-images]
 
     defaults:
       run:
@@ -96,11 +121,13 @@ jobs:
 
     steps:
       - name: "Wait For Connection"
+        if: ${{ needs.check-paths.outputs.should-run != 'false' }}
         uses: google-ml-infra/actions/ci_connection@7f5ca0c263a81ed09ea276524c1b9192f1304e3c
         with:
           halt-dispatch-input: ${{ inputs.halt-for-connection }}
 
       - name: Print Job Info & Set Full Paths in ENV
+        if: ${{ needs.check-paths.outputs.should-run != 'false' }}
         run: |
           FULL_OUTPUT_DIR_PATH="${GITHUB_WORKSPACE}/${OUTPUT_DIR_NAME}"
           RESOLVED_SCRIPT_DIR_PATH="${GITHUB_WORKSPACE}/${SCRIPT_DIR_RELATIVE}"
@@ -141,12 +168,14 @@ jobs:
           fi
 
       - name: Checkout OpenXLA Repository
+        if: ${{ needs.check-paths.outputs.should-run != 'false' }}
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           ref: ${{ env.CHECKOUT_REF }}
           persist-credentials: false
 
       - name: Build Binaries
+        if: ${{ needs.check-paths.outputs.should-run != 'false' }}
         id: build_binaries
         # Use the RESOLVED_SCRIPT_DIR and RESOLVED_OUTPUT_DIR from GITHUB_ENV
         run: |
@@ -155,6 +184,7 @@ jobs:
           OUTPUT_DIR: ${{ env.RESOLVED_OUTPUT_DIR }}
 
       - name: Prepare Benchmark Artifact
+        if: ${{ needs.check-paths.outputs.should-run != 'false' }}
         id: prep_artifact
         run: |
           bash "${RESOLVED_SCRIPT_DIR}/prepare_artifact.sh"
@@ -162,6 +192,7 @@ jobs:
           OUTPUT_DIR: ${{ env.RESOLVED_OUTPUT_DIR }}
 
       - name: Run Benchmark and Generate Stats
+        if: ${{ needs.check-paths.outputs.should-run != 'false' }}
         id: run_hlo
         env:
           RUNNER_BINARY: "${{ steps.build_binaries.outputs.runner_binary }}"
@@ -193,7 +224,7 @@ jobs:
           echo "---------------------------------------------"
 
       - name: Compare Results to Baseline
-        if: (steps.run_hlo.outcome == 'success' || (steps.run_hlo.outcome == 'failure' && (hashFiles(format('{0}/results.json', env.RESOLVED_OUTPUT_DIR)) != '' || hashFiles(format('{0}/results.json.txt', env.RESOLVED_OUTPUT_DIR)) != ''))) && env.skip_comparison_due_to_yaml_install_failure != 'true'
+        if: needs.check-paths.outputs.should-run != 'false' && (steps.run_hlo.outcome == 'success' || (steps.run_hlo.outcome == 'failure' && (hashFiles(format('{0}/results.json', env.RESOLVED_OUTPUT_DIR)) != '' || hashFiles(format('{0}/results.json.txt', env.RESOLVED_OUTPUT_DIR)) != ''))) && env.skip_comparison_due_to_yaml_install_failure != 'true'
         run: |
           echo "Starting baseline comparison..."
           bash "$RESOLVED_RUN_COMPARISON_SCRIPT"
@@ -201,7 +232,7 @@ jobs:
           echo "---------------------------------------------"
 
       - name: Upload Benchmark Artifacts
-        if: always()
+        if: always() && needs.check-paths.outputs.should-run != 'false'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: results-${{ env.CONFIG_ID }}

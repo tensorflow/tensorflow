@@ -36,7 +36,31 @@ concurrency:
   cancel-in-progress: ${{ github.ref != 'main' }}
 
 jobs:
+  check-paths:
+    runs-on: ubuntu-latest
+    outputs:
+      should-run: ${{ steps.filter.outputs.any_changed == 'true' || github.event_name != 'pull_request' }}
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        if: github.event_name == 'pull_request'
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: tj-actions/changed-files@9426d40962ed5378910ee2e21d5f8c6fcbf2dd96 # v47.0.6
+        id: filter
+        if: github.event_name == 'pull_request'
+        with:
+          files: |
+            xla/**
+            third_party/**
+            BUILD
+            *.bzl
+            WORKSPACE*
+            MODULE.bazel
+            .github/workflows/ci.yml
+
   Tests:
+    needs: check-paths
     strategy:
       # Don't fail fast - want to see results for all builds even if one fails.
       fail-fast: false
@@ -116,29 +140,32 @@ jobs:
           },
         ]
     name: ${{ matrix.job_info.name }}
-    runs-on: ${{ matrix.job_info.pool }}
-    container: ${{ matrix.job_info.container }} # zizmor: ignore[unpinned-images]
+    runs-on: ${{ needs.check-paths.outputs.should-run != 'false' && matrix.job_info.pool || 'ubuntu-latest' }}
+    container: ${{ needs.check-paths.outputs.should-run != 'false' && matrix.job_info.container || null }} # zizmor: ignore[unpinned-images]
     defaults:
       run:
         shell: bash
     steps:
       - name: "Checking out openxla/xla"
+        if: ${{ needs.check-paths.outputs.should-run != 'false' }}
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           path: "openxla/xla"
           persist-credentials: false
       - name: Checking out ${{ matrix.job_info.repo }}
-        if: ${{ matrix.job_info.repo != 'openxla/xla' }}
+        if: ${{ needs.check-paths.outputs.should-run != 'false' && matrix.job_info.repo != 'openxla/xla' }}
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           repository: ${{ matrix.job_info.repo }}
           path: ${{ matrix.job_info.repo }}
           persist-credentials: false
       - name: "Wait For Connection"
+        if: ${{ needs.check-paths.outputs.should-run != 'false' }}
         uses: google-ml-infra/actions/ci_connection@7f5ca0c263a81ed09ea276524c1b9192f1304e3c
         with:
           halt-dispatch-input: ${{ inputs.halt-for-connection }}
       - name: "Run build.py"
+        if: ${{ needs.check-paths.outputs.should-run != 'false' }}
         working-directory: ${{ matrix.job_info.repo }}
         timeout-minutes: 60
         run: |
@@ -150,70 +177,3 @@ jobs:
           else
             "$GITHUB_WORKSPACE"/openxla/xla/build_tools/ci/build.py --build="${{ matrix.job_info.name }}_github_actions"
           fi
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
