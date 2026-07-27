@@ -258,6 +258,26 @@ class MathTest(test.TestCase, parameterized.TestCase):
         np_math_ops.isclose(a, b, rtol=0, atol=5),
         np.isclose(a, b, rtol=0, atol=5))
 
+  def testIsCloseMinIntIdenticalValues(self):
+    # Identical values are always close, even for the most negative value,
+    # where abs(b) overflows and wraps the rtol-scaled tolerance negative.
+    a = np.array([-128], np.int8)
+    b = np.array([-128], np.int8)
+    self.match(
+        np_math_ops.isclose(a, b, rtol=5, atol=0),
+        np.isclose(a, b, rtol=5, atol=0))
+
+  def testIsCloseMinIntNeighborDivergesFromNumPy(self):
+    # Documented divergence from NumPy: for values close to the most negative
+    # value but not identical, abs(b) overflow makes the wrapped rtol-scaled
+    # tolerance impossible to satisfy in integer arithmetic, so this reports
+    # not close where NumPy, computing in floating point, reports close.
+    # Enabling type promotion with float tolerances gives the NumPy result.
+    a = np.array([-127], np.int8)
+    b = np.array([-128], np.int8)
+    self.assertTrue(np.isclose(a, b, rtol=5, atol=0)[0])
+    self.assertAllEqual([False], np_math_ops.isclose(a, b, rtol=5, atol=0))
+
   def testIsCloseUnsignedNoWraparound(self):
     # The difference must be computed as max - min: 1 - 2 wraps around to 255
     # in uint8 arithmetic and would defeat the tolerance comparison.

@@ -550,8 +550,12 @@ def isclose(a, b, rtol=1e-05, atol=1e-08, equal_nan=False):  # pylint: disable=m
         # negative diff means the true difference is not representable in
         # this dtype; such pairs are treated as not close rather than
         # compared through the wrapped value. abs(b) can also overflow for
-        # the most negative value, which conservatively shrinks rtol-scaled
-        # tolerances.
+        # the most negative value, which flips the sign of rtol-scaled
+        # tolerances and makes the comparison impossible to satisfy: values
+        # near the minimum are then reported as not close where NumPy,
+        # computing in floating point, reports them close. Identical values
+        # are protected by the equality fallback below; for the rest,
+        # enabling type promotion with float tolerances gives NumPy results.
         no_overflow = diff >= 0
       rhs = atol + rtol * abs_b
       if rhs.dtype != diff.dtype:
@@ -559,6 +563,8 @@ def isclose(a, b, rtol=1e-05, atol=1e-08, equal_nan=False):  # pylint: disable=m
         # where the tolerance side has been promoted to floating point.
         diff = math_ops.cast(diff, rhs.dtype)
       result = diff <= rhs
+      # Identical values are always close, regardless of tolerance overflow.
+      result = result | math_ops.equal(a, b)
       if no_overflow is not None:
         result = result & no_overflow
       return result
