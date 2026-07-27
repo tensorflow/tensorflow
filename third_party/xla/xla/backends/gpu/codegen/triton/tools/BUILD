@@ -26,8 +26,8 @@ package(
 )
 
 xla_cc_binary(
-    name = "hlo_to_xtileir",
-    srcs = ["hlo_to_xtileir.cc"],
+    name = "fusion_to_triton",
+    srcs = ["fusion_to_triton.cc"],
     # We want to use this tool for lit tests. Due to hermetic cuda, we need to
     # set linkopts in such a way that dynamic libraries are found, which are
     # symlinked from the lit_lib directory.

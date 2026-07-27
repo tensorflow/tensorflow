@@ -79,7 +79,7 @@ lit_test_suite(
     srcs = deviceless_tests,
     cfg = "//xla:lit.cfg.py",
     tools = [
-        "//xla/backends/gpu/codegen/triton/tools:hlo_to_xtileir",
+        "//xla/backends/gpu/codegen/triton/tools:fusion_to_triton",
         "@llvm-project//llvm:FileCheck",
     ],
 )
@@ -111,7 +111,7 @@ lit_device_test(
     },
     tools = [
         ":triton_test_correctness",
-        "//xla/backends/gpu/codegen/triton/tools:hlo_to_xtileir",
+        "//xla/backends/gpu/codegen/triton/tools:fusion_to_triton",
         "//xla/tools:hlo-opt",
         "@llvm-project//llvm:FileCheck",
     ],
