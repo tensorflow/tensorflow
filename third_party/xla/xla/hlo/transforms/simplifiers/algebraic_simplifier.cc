@@ -135,11 +135,6 @@ bool IsAnyOperandComplex(const HloInstruction* hlo) {
   return false;
 }
 
-bool HasSignedIntegralElementType(const HloInstruction* hlo) {
-  return ShapeUtil::ElementIsIntegral(hlo->shape()) &&
-         ShapeUtil::ElementIsSigned(hlo->shape());
-}
-
 bool IsPositive(const HloInstruction* hlo,
                 const AlgebraicSimplifierOptions& options) {
   // Utility only handles real types.
@@ -161,7 +156,7 @@ bool IsPositive(const HloInstruction* hlo,
       }
     }
     case HloOpcode::kPower:
-      if (HasSignedIntegralElementType(hlo)) {
+      if (primitive_util::IsSignedIntegralType(hlo->shape().element_type())) {
         return false;
       }
       return IsPositive(hlo->operand(0), options);
@@ -171,7 +166,7 @@ bool IsPositive(const HloInstruction* hlo,
       return IsPositive(hlo->operand(0), options);
 
     case HloOpcode::kMultiply: {
-      if (HasSignedIntegralElementType(hlo)) {
+      if (primitive_util::IsSignedIntegralType(hlo->shape().element_type())) {
         return false;
       }
       return hlo->operand(0) == hlo->operand(1) &&
@@ -547,27 +542,30 @@ bool AlgebraicSimplifierVisitor::IsNonNegative(
   switch (hlo->opcode()) {
     case HloOpcode::kMultiply: {
       return hlo->operand(0) == hlo->operand(1) &&
-             !HasSignedIntegralElementType(hlo);
+             !primitive_util::IsSignedIntegralType(hlo->shape().element_type());
     }
     case HloOpcode::kExp: {
       return true;
     }
     case HloOpcode::kIota: {
-      if (!HasSignedIntegralElementType(hlo)) {
+      if (!primitive_util::IsSignedIntegralType(hlo->shape().element_type())) {
         return true;
       }
       const auto* iota = Cast<HloIotaInstruction>(hlo);
-      const int64_t dim_size =
-          iota->shape().dimensions(iota->iota_dimension());
+      const int64_t dim_size = iota->shape().dimensions(iota->iota_dimension());
       const int bit_width =
           primitive_util::BitWidth(hlo->shape().element_type());
       if (bit_width >= 64) {
         return true;
       }
-      return dim_size <= (1LL << (bit_width - 1));
+      // A signed b-bit iota can represent 2^(b-1) non-negative values. The
+      // 64-bit case is handled above, so this shift is at most 62 bits.
+      const uint64_t max_nonnegative_dimension_size = uint64_t{1}
+                                                      << (bit_width - 1);
+      return static_cast<uint64_t>(dim_size) <= max_nonnegative_dimension_size;
     }
     case HloOpcode::kAbs: {
-      if (!HasSignedIntegralElementType(hlo)) {
+      if (!primitive_util::IsSignedIntegralType(hlo->shape().element_type())) {
         return true;
       }
       return IsNonNegative(hlo->operand(0), options);
@@ -591,7 +589,8 @@ bool AlgebraicSimplifierVisitor::IsNonNegative(
              IsNonNegative(hlo->operand(1), options);
     }
     case HloOpcode::kPower: {
-      return !HasSignedIntegralElementType(hlo) &&
+      return !primitive_util::IsSignedIntegralType(
+                 hlo->shape().element_type()) &&
              IsNonNegative(hlo->operand(0), options);
     }
     case HloOpcode::kSelect: {
