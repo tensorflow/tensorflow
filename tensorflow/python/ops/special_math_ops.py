@@ -590,9 +590,16 @@ def _resolve_xla_einsum_ellipsis(equation, input0_shape, input1_shape):
   (see https://github.com/tensorflow/tensorflow/issues/122274). Replacing '...'
   with explicit axis labels allows XLA to apply its standard matmul lowering.
 
+  Handles broadcasting cases by aligning ellipsis dimensions from the right
+  (standard NumPy broadcasting rules). Strips whitespace from the equation
+  before processing to avoid incorrect label counts.
+
   Returns the equation with '...' replaced by concrete labels, or the original
   equation unchanged if no ellipsis is present or shapes are not static.
   """
+  # Remove spaces to ensure correct length calculations (e.g. '...ab, bc->...ac').
+  equation = equation.replace(' ', '')
+
   if '...' not in equation:
     return equation
 
@@ -615,8 +622,7 @@ def _resolve_xla_einsum_ellipsis(equation, input0_shape, input1_shape):
 
   batch0 = rank0 - len(left_explicit)
   batch1 = rank1 - len(right_explicit)
-  if '...' in left and '...' in right and batch0 != batch1:
-    return equation
+
   # The ellipsis covers the maximum batch dims across operands (broadcasting).
   batch_ndims = max(batch0, batch1)
 
@@ -624,8 +630,10 @@ def _resolve_xla_einsum_ellipsis(equation, input0_shape, input1_shape):
     # No actual batch dims: simply strip the ellipsis.
     return '{},{}->{}'.format(left_explicit, right_explicit, output_explicit)
 
-  # Pick fresh single-char labels for the batch dims. Use letters
-  # that do not already appear in the equation.
+  # Pick fresh single-char labels for the batch dims. Use letters (both lower
+  # and upper case) that do not already appear in the equation. Including
+  # uppercase letters prevents running out of labels for equations with many
+  # existing lowercase labels.
   used = set(left_explicit + right_explicit + output_explicit)
   all_labels = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ'
   available = [c for c in all_labels if c not in used]
@@ -634,8 +642,14 @@ def _resolve_xla_einsum_ellipsis(equation, input0_shape, input1_shape):
     return equation
 
   batch_labels = ''.join(available[:batch_ndims])
-  resolved_left = left.replace('...', batch_labels)
-  resolved_right = right.replace('...', batch_labels)
+
+  # Align broadcasting from the right (standard broadcasting rules).
+  # An operand with fewer batch dims gets a suffix of the full batch_labels.
+  left_labels = batch_labels[-batch0:] if batch0 > 0 else ''
+  right_labels = batch_labels[-batch1:] if batch1 > 0 else ''
+
+  resolved_left = left.replace('...', left_labels)
+  resolved_right = right.replace('...', right_labels)
   resolved_output = output.replace('...', batch_labels)
   return '{},{}->{}'.format(resolved_left, resolved_right, resolved_output)
 

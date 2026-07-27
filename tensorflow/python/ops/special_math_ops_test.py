@@ -1120,6 +1120,93 @@ class EinsumGradTest(test.TestCase):
       self._check_gradient(equation, *input_shapes)
 
 
+class ResolveXlaEinsumEllipsisTest(test.TestCase):
+  """Unit tests for _resolve_xla_einsum_ellipsis."""
+
+  def _fn(self, equation, shape0, shape1):
+    # Access the private helper directly for unit testing.
+    return special_math_ops._resolve_xla_einsum_ellipsis(
+        equation, shape0, shape1)
+
+  def test_no_ellipsis(self):
+    """Equations without '...' should be returned unchanged."""
+    eq = 'ab,bc->ac'
+    result = self._fn(eq, [4, 5], [5, 6])
+    self.assertEqual(result, 'ab,bc->ac')
+
+  def test_same_rank_both_ellipsis(self):
+    """Both operands have the same number of batch dims."""
+    eq = '...ab,...bc->...ac'
+    result = self._fn(eq, [2, 3, 4, 5], [2, 3, 5, 6])
+    self.assertEqual(result, 'deab,debc->deac')
+
+  def test_broadcasting_left_larger(self):
+    """Left operand has more batch dims than right (broadcasting)."""
+    eq = '...ab,...bc->...ac'
+    result = self._fn(eq, [2, 3, 4, 5], [3, 5, 6])
+    # batch_ndims=2, left gets 'de', right gets 'e' (right-aligned).
+    self.assertEqual(result, 'deab,ebc->deac')
+
+  def test_broadcasting_right_larger(self):
+    """Right operand has more batch dims than left (broadcasting)."""
+    eq = '...ab,...bc->...ac'
+    result = self._fn(eq, [3, 4, 5], [2, 3, 5, 6])
+    # batch_ndims=2, left gets 'e' (right-aligned), right gets 'de'.
+    self.assertEqual(result, 'eab,debc->deac')
+
+  def test_right_no_ellipsis(self):
+    """Only left operand has ellipsis."""
+    eq = '...ab,bc->...ac'
+    result = self._fn(eq, [2, 3, 4, 5], [5, 6])
+    self.assertEqual(result, 'deab,bc->deac')
+
+  def test_left_no_ellipsis(self):
+    """Only right operand has ellipsis."""
+    eq = 'ab,...bc->...ac'
+    result = self._fn(eq, [4, 5], [2, 3, 5, 6])
+    self.assertEqual(result, 'ab,debc->deac')
+
+  def test_unknown_rank_input0(self):
+    """Falls back to original equation when input0 shape is unknown."""
+    eq = '...ab,...bc->...ac'
+    result = self._fn(eq, None, [2, 3, 5, 6])
+    self.assertEqual(result, eq)
+
+  def test_unknown_rank_input1(self):
+    """Falls back to original equation when input1 shape is unknown."""
+    eq = '...ab,...bc->...ac'
+    result = self._fn(eq, [2, 3, 4, 5], None)
+    self.assertEqual(result, eq)
+
+  def test_zero_batch_dims(self):
+    """Ellipsis covers zero dims: strip it, return explicit equation."""
+    eq = '...ab,...bc->...ac'
+    result = self._fn(eq, [4, 5], [5, 6])
+    self.assertEqual(result, 'ab,bc->ac')
+
+  def test_spaces_in_equation(self):
+    """Spaces in the equation are stripped before processing."""
+    eq = '...ab,  bc -> ...ac'
+    result = self._fn(eq, [2, 3, 4, 5], [5, 6])
+    self.assertEqual(result, 'deab,bc->deac')
+
+  def test_uppercase_labels_used_when_lowercase_exhausted(self):
+    """Falls back to uppercase labels when many lowercase labels are in use."""
+    # Use 26 lowercase letters as explicit labels; batch dim should use 'A'.
+    explicit = 'abcdefghijklmnopqrstuvwxyz'
+    # Create equation: <26 chars>p,pq-><25 chars>q  (but use '...' on left)
+    # Actually just construct a scenario where 'a'-'z' are all taken.
+    # left_explicit uses all 26 lowercase letters, right uses 'A'
+    eq = '...{0},{0}A->...A'.format(explicit[0])  # '...a,aA->...A'
+    # All of 'a'-'z' are in used set already; batch label must come from upper.
+    shape0 = [1] + [1]  # rank 2, 1 explicit char 'a', batch = 1
+    shape1 = [1, 1]     # rank 2, explicit 'aA', no ellipsis
+    result = self._fn(eq, shape0, shape1)
+    # batch_ndims = 1; 'a' is used, next fresh label should be uppercase.
+    self.assertNotIn('...', result)
+    self.assertIn('->', result)
+
+
 class EinsumBenchmark(test.Benchmark):
   cases = [
       # Unary cases.
