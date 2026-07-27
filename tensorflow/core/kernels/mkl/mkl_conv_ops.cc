@@ -2114,16 +2114,18 @@ class MklQuantizedConvOp
     // The oneDNN path reads the input range with Tensor::scalar(). Validate
     // its shape before delegating to the base implementation, which may invoke
     // ExtendConvFwdParams and read the range while constructing a primitive.
-    const Tensor& min_input = context->input(min_input_idx_);
-    const Tensor& max_input = context->input(max_input_idx_);
+    const Tensor& min_input_tensor = context->input(min_input_idx_);
+    const Tensor& max_input_tensor = context->input(max_input_idx_);
     OP_REQUIRES(
-        context, TensorShapeUtils::IsScalar(min_input.shape()),
+        context, TensorShapeUtils::IsScalar(min_input_tensor.shape()),
         absl::InvalidArgumentError(absl::StrCat(
-            "`min_input` must be rank 0 but is rank ", min_input.dims())));
+            "`min_input` must be rank 0 but is rank ",
+            min_input_tensor.dims())));
     OP_REQUIRES(
-        context, TensorShapeUtils::IsScalar(max_input.shape()),
+        context, TensorShapeUtils::IsScalar(max_input_tensor.shape()),
         absl::InvalidArgumentError(absl::StrCat(
-            "`max_input` must be rank 0 but is rank ", max_input.dims())));
+            "`max_input` must be rank 0 but is rank ",
+            max_input_tensor.dims())));
 
     // Compute int32 output tensor
     MklConvOp<Device, Tinput, /*Tfilter*/ qint8, Tbias, Toutput, Ttemp_output,
