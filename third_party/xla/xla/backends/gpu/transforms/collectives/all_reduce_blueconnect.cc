@@ -282,20 +282,12 @@ static absl::StatusOr<bool> TryDecomposeAllReduce(
   ASSIGN_OR_RETURN(auto reduce_scatter_shape,
                    ShapeUtil::MakeValidatedMaybeTupleShape(scattered_shapes));
 
-  int64_t next_channel_id = hlo_query::NextChannelId(*computation.parent());
-  auto get_channel_id = [&]() -> std::optional<int64_t> {
-    if (all_reduce->channel_id().has_value()) {
-      return next_channel_id++;
-    }
-    return std::nullopt;
-  };
-
   HloInstruction* reduce_scatter =
       computation.AddInstruction(HloInstruction::CreateReduceScatter(
           reduce_scatter_shape, flat_operands, all_reduce->to_apply(),
           std::make_shared<CollectiveDeviceList>(
               decomposed_groups->scatter_gather_groups),
-          /*constrain_layout=*/false, get_channel_id(),
+          /*constrain_layout=*/false, all_reduce->channel_id(),
           all_reduce->use_global_device_ids(),
           /*scatter_dimension=*/0));
 
@@ -316,7 +308,7 @@ static absl::StatusOr<bool> TryDecomposeAllReduce(
           /*all_gather_dimension=*/0,
           std::make_shared<CollectiveDeviceList>(
               decomposed_groups->scatter_gather_groups),
-          /*constrain_layout=*/false, get_channel_id(),
+          /*constrain_layout=*/false, all_reduce->channel_id(),
           all_reduce->use_global_device_ids()));
 
   // Bitcast back to the original shapes and replace all-reduce with decomposed
