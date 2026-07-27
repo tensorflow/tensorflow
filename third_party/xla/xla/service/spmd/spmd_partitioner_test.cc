@@ -18637,6 +18637,27 @@ ENTRY entry {
                         op::Reshape(op::Reshape(op::Parameter(0)))))))));
 }
 
+TEST_F(SpmdPartitioningV3Test,
+       ReshardPartialReplicateToFullReplicateNamedSharding) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  %param = f32[1] parameter(0), sharding={mesh['x'=2,'y'=2] [{'x'}]}
+  ROOT %copy = f32[1] copy(%param), sharding={mesh['x'=2,'y'=2] replicated}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/4));
+
+  const HloInstruction* all_reduce =
+      FindInstruction(module.get(), HloOpcode::kAllReduce);
+  ASSERT_NE(all_reduce, nullptr);
+  EXPECT_EQ(all_reduce->replica_groups().size(), 2);
+  EXPECT_THAT(all_reduce->replica_groups()[0].replica_ids(), ElementsAre(0, 2));
+  EXPECT_THAT(all_reduce->replica_groups()[1].replica_ids(), ElementsAre(1, 3));
+}
+
 TEST_F(SpmdPartitioningV3Test, ReshardPartialReplicateWithAllToAllMultiAxis) {
   absl::string_view hlo_string = R"(
 HloModule module

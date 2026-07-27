@@ -1452,15 +1452,19 @@ HloInstruction* PartitionedHlo::ReplicatePartial(
 
   HloInstruction* broadcast = hlo_;
   if (!broadcast_dims.empty()) {
+    HloSharding v2_sharding =
+        sharding().UseNamedShardingLeaf()
+            ? HloSharding::V3ToV2Sharding(sharding().named_sharding())
+            : sharding();
     std::vector<int64_t> other_dims;
-    for (int64_t i = 0; i < sharding().num_dimensions(); ++i) {
+    for (int64_t i = 0; i < v2_sharding.num_dimensions(); ++i) {
       if (!absl::c_linear_search(broadcast_dims, i)) {
         other_dims.push_back(i);
       }
     }
     HloSharding original_sharding = sharding();
     auto grouped =
-        hlo_sharding_util::GroupShardingOnDims(original_sharding, other_dims);
+        hlo_sharding_util::GroupShardingOnDims(v2_sharding, other_dims);
     std::vector<int64_t> dev_indices(grouped.sharding.num_dimensions(), 0);
     // TODO(b/476984041): Update tile_assignment() use case once GroupedSharding
     // supports HloShardingV3
