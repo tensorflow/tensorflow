@@ -90,6 +90,8 @@ class Allocation {
   // --------------------------------------------------------------------------
   // Returns the defining position for this allocation.
   virtual HloPosition defining_position() const = 0;
+  virtual const Allocation* GetRootAllocation() const { return this; }
+  virtual Allocation* GetRootAllocation() { return this; }
   // Returns the cross-program prefetch index for this allocation.
   std::optional<int64_t> cross_program_prefetch_index() const;
 
@@ -131,15 +133,23 @@ class Allocation {
   // Use methods
   // --------------------------------------------------------------------------
   const std::vector<HloUse>& uses() const { return uses_; }
-  void clear_uses() { uses_.clear(); }
+  void clear_uses() {
+    uses_.clear();
+    use_producers_.clear();
+  }
   bool has_no_uses() const { return uses_.empty(); }
   // Adds a use to this allocation.
   void AddUse(HloUse use);
+  void AddUse(HloUse use, HloPosition producer_position);
   void RemoveUse(HloUse use);
+  HloPosition GetProducerForUse(HloUse use) const;
   // Replaces all uses of the allocation with the copy_complete instruction.
   absl::Status UpdateUses(HloComputation* computation,
                           HloInstruction* producing_instruction,
                           const BitcastSplitFn& bitcast_split_fn,
+                          const HloLiveRange& hlo_live_range,
+                          const HloAliasAnalysis& alias_analysis);
+  absl::Status UpdateUses(const BitcastSplitFn& bitcast_split_fn,
                           const HloLiveRange& hlo_live_range,
                           const HloAliasAnalysis& alias_analysis);
 
@@ -199,12 +209,19 @@ class Allocation {
   bool base_is_equal(const Allocation& other) const;
 
  private:
+  absl::Status UpdateUse(const HloUse& use,
+                         HloInstruction* producing_instruction,
+                         const BitcastSplitFn& bitcast_split_fn,
+                         const HloLiveRange& hlo_live_range,
+                         const HloAliasAnalysis& alias_analysis);
+
   HloPosition original_defining_position_;
   MemorySpace memory_space_;
   std::optional<HeapSimulator::Chunk> chunk_;
   int64_t start_time_;
   int64_t end_time_;
   std::vector<HloUse> uses_;
+  std::vector<HloPosition> use_producers_;
   std::optional<int64_t> cross_program_prefetch_index_;
   // If present, indicates the newly split shape.
   std::optional<Shape> split_shape_;
@@ -620,6 +637,12 @@ class MirroredAllocation final : public Allocation {
   // New non-virtual methods
   bool operator==(const MirroredAllocation& other) const;
   const Allocation& original_allocation() const { return original_allocation_; }
+  const Allocation* GetRootAllocation() const override {
+    return original_allocation_.GetRootAllocation();
+  }
+  Allocation* GetRootAllocation() override {
+    return const_cast<Allocation*>(original_allocation_.GetRootAllocation());
+  }
 
   HeapSimulator::Chunk chunk() const { return original_allocation_.chunk(); }
   std::optional<HeapSimulator::Chunk> maybe_chunk() const {

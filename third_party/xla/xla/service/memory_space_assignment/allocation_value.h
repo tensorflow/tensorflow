@@ -114,15 +114,20 @@ class AllocationValue {
     // TODO(mehrdadk): extend this to support multiple sync data movement
     // operands.
     HloInstruction* sync_mem_op_operand = nullptr;
+    // The position that produces the value for this use. If not set, defaults
+    // to the defining position of the AllocationValue.
+    HloPosition producer_position;
 
     bool operator==(const Use& other) const {
       return hlo_use == other.hlo_use && time == other.time &&
-             aliases == other.aliases;
+             aliases == other.aliases &&
+             producer_position == other.producer_position;
     }
 
     template <typename H>
     friend H AbslHashValue(H h, const Use& s) {
-      return H::combine(std::move(h), s.hlo_use, s.time, s.aliases);
+      return H::combine(std::move(h), s.hlo_use, s.time, s.aliases,
+                        s.producer_position);
     }
   };
 
@@ -162,8 +167,9 @@ class AllocationValue {
     requires_contiguous_allocation_ = requires_contiguous_allocation;
   }
 
-  void AddUse(const HloUse& use, int64_t use_time) {
-    uses_.push_back({use, use_time, {}});
+  void AddUse(const HloUse& use, int64_t use_time,
+              HloPosition producer_position = {}) {
+    uses_.push_back({use, use_time, {}, nullptr, producer_position});
   }
 
   void set_split_shape(const Shape& split_shape) { split_shape_ = split_shape; }

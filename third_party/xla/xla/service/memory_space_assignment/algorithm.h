@@ -491,6 +491,14 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
       absl::Span<const MsaBufferInterval* const> colocated_intervals,
       std::vector<AllocationValue>& allocation_values);
 
+  // Traces back the root HloValue in the async chain for the given value.
+  // Returns the root HloValue, or the value itself if it is not forwarded.
+  const HloValue* TraceAsyncChainRoot(const HloValue* value) const;
+
+  // Returns the async chain root of the value if it is part of an async chain,
+  // otherwise returns nullptr.
+  const HloValue* GetAsyncRoot(const HloValue* value) const;
+
   // Go through all the uses in the AllocationValues and find the aliasing
   // positions.
   void FindAliases(std::vector<AllocationValue>* allocation_values) const;
@@ -805,6 +813,8 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
   // Returns true if it is beneficial to have the while loop use in alternate
   // memory.
   bool IsWhileLoopUseBeneficialInAlternateMemory(const HloUse& use) const;
+  bool IsWhileLoopParameterIndexBeneficial(const HloInstruction* parameter,
+                                           const ShapeIndex& index) const;
 
   // Returns true if it is beneficial to have the conditional use in alternate
   // memory.
@@ -821,8 +831,7 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
   // Propagate the allocation at the use time to any aliases that this use might
   // have had.
   void UpdateAllocationRequirementForUseAliases(
-      const AllocationValue& allocation_value, const AllocationValue::Use& use,
-      int64_t use_time);
+      const Allocation* aliased_allocation, const AllocationValue::Use& use);
 
   // For while uses that are allocated in the alternate memory space, if
   // they also have an allocation in the default memory space in their
@@ -1012,6 +1021,14 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
       const AllocationRequest& request, const AliasedOffset* preferred_offset,
       SlicedBufferInterval* alternate_mem_interval) const;
 
+  // Try to extend an aliased allocation instead of creating a new one.
+  // Returns true if successful.
+  Allocation* TryExtendAliasedAllocation(const AllocationRequest& request,
+                                         AllocationResult& result);
+
+  // Returns the maximum use time of an allocation.
+  int64_t GetMaxUseTime(const Allocation& allocation) const;
+
   // Returns the corrected schedule time of an HloUse. The corrected time is
   // equivalent to the actual time of the use instructions for all instructions
   // except for while and conditional instructions. For while instructions, the
@@ -1027,7 +1044,12 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
 
   // Returns the required assignment at a particular time, if available.
   std::optional<RequiredMemoryAssignment> RequiredMemoryAssignmentAt(
-      const HloValue* buffer, int64_t time) const;
+      const HloValue* value, int64_t time) const;
+
+  bool HasConflictingRequiredAssignment(const HloValue* value,
+                                        int64_t start_time, int64_t end_time,
+                                        MemorySpace memory_space,
+                                        AliasedOffset* offset) const;
 
   // Searches for aliases in the use for a required assignment, and returns it
   // if found.
