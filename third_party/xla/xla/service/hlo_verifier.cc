@@ -4431,13 +4431,11 @@ absl::StatusOr<bool> HloVerifier::RunImpl(
     for (auto* computation : module->computations(execution_threads)) {
       RETURN_IF_ERROR(computation->Accept(shape_verifier.get()));
       RETURN_IF_ERROR(computation->Accept(&instruction_verifier));
-      // Verify that async computations contain a single instruction or a
-      // collection of send/recv instructions. This is needed to represent NCCL
-      // groups on GPU.
+      // Verify that async computations contain a single instruction unless
+      // they are explicitly marked as a collectives group or async barrier.
       if (computation->IsAsyncComputation() &&
           computation->execution_thread() ==
               HloInstruction::kMainExecutionThread &&
-          !computation->OnlyContainsSendRecv() &&
           !IsCollectivesGroupComputation(computation) &&
           !IsAsyncBarrierComputation(computation)) {
         RETURN_IF_ERROR(VerifyAsyncComputation(computation));

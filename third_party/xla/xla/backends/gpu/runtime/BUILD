@@ -3252,6 +3252,7 @@ cc_library(
     deps = [
         ":collective_cliques",
         ":collective_thunk",
+        ":device_to_device_copy_thunk",
         ":thunk",
         ":thunk_executor",
         ":thunk_proto_cc",
@@ -3263,7 +3264,6 @@ cc_library(
         "//xla/service:buffer_assignment",
         "//xla/tsl/platform:status_macros",
         "@com_google_absl//absl/algorithm:container",
-        "@com_google_absl//absl/base",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
@@ -3605,6 +3605,7 @@ cc_library(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/types:span",
     ],
 )
