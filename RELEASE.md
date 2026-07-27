@@ -50,6 +50,13 @@ In `tensorflow/c/experimental/filesystem/filesystem_interface.h`, removed `TF_Tr
         [#118340](https://github.com/tensorflow/tensorflow/issues/118340) and
         [#118345](https://github.com/tensorflow/tensorflow/issues/118345).
 
+*   `tf.image.non_max_suppression`
+
+    *   Fixes a segmentation fault under `jit_compile=True` when `boxes` and
+        `scores` are empty. The XLA lowering now returns an empty selection,
+        matching the non-XLA kernels. Fixes
+        [#117245](https://github.com/tensorflow/tensorflow/issues/117245).
+
 * <SIMILAR TO ABOVE SECTION, BUT FOR OTHER IMPORTANT CHANGES / BUG FIXES>
 * <IF A CHANGE CLOSES A GITHUB ISSUE, IT SHOULD BE DOCUMENTED HERE>
 * <NOTES SHOULD BE GROUPED PER AREA>
