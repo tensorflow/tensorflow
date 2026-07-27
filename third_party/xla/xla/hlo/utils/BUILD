@@ -329,6 +329,29 @@ cc_library(
 )
 
 cc_library(
+    name = "hlo_original_value_analysis",
+    srcs = ["hlo_original_value_analysis.cc"],
+    hdrs = ["hlo_original_value_analysis.h"],
+    compatible_with = get_compatible_with_portable(),
+    deps = [
+        ":hlo_original_value_analyzer_utils",
+        "//xla:shape_util",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/ir:hlo_sharding",
+        "//xla/tsl/util:sorted_range",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+cc_library(
     name = "hlo_sharding_reconstruction_util",
     srcs = ["hlo_sharding_reconstruction_util.cc"],
     hdrs = ["hlo_sharding_reconstruction_util.h"],
@@ -383,6 +406,22 @@ xla_cc_test(
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/types:span",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+xla_cc_test(
+    name = "hlo_original_value_analysis_test",
+    srcs = ["hlo_original_value_analysis_test.cc"],
+    deps = [
+        ":hlo_original_value_analysis",
+        ":hlo_original_value_analyzer_utils",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/ir:hlo_sharding",
+        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
+        "//xla/tsl/platform:test",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest_main",
     ],
 )
