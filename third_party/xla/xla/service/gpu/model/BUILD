@@ -670,6 +670,7 @@ cc_library(
     hdrs = [
         "tiling_from_block_parameters.h",
     ],
+    compatible_with = get_compatible_with_portable(),
     deps = [
         ":block_level_parameters",
         "//xla:util",

@@ -71,6 +71,8 @@ limitations under the License.
 #include "xla/runtime/work_dimensions.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/cpu/cpu_options.h"
+#include "xla/service/gpu/model/block_level_parameters.h"
+#include "xla/service/gpu/model/tiling_from_block_parameters.h"
 #include "xla/service/instruction_fusion.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
@@ -397,7 +399,7 @@ absl::StatusOr<KernelDefinition<MlirKernelSource>> EmitTiledFusionKernelImpl(
 
 absl::StatusOr<ge::TiledHloComputation> GetTiledHloComputation(
     mlir::MLIRContext& context, const HloFusionInstruction& fusion,
-    std::optional<absl::Span<const int64_t>> tile_sizes) {
+    std::optional<gpu::BlockLevelParameters> block_level_parameters) {
   RETURN_IF_ERROR(VerifyTensorRanks(fusion));
 
   std::unique_ptr<HloFusionAdaptor> fusion_adaptor =
@@ -406,9 +408,12 @@ absl::StatusOr<ge::TiledHloComputation> GetTiledHloComputation(
                    ge::TilingSpace::Create(*fusion_adaptor, &context));
   using ValidTilings = std::vector<SmallVector<int64_t, 4>>;
   ValidTilings candidates;
-  if (tile_sizes.has_value()) {
+  if (block_level_parameters.has_value()) {
+    ASSIGN_OR_RETURN(llvm::SmallVector<int64_t> tile_sizes,
+                     gpu::GetTilingSpaceConcreteSizes(*tiling_space,
+                                                      *block_level_parameters));
     candidates.push_back(
-        SmallVector<int64_t, 4>(tile_sizes->begin(), tile_sizes->end()));
+        SmallVector<int64_t, 4>(tile_sizes.begin(), tile_sizes.end()));
   } else {
     ASSIGN_OR_RETURN(candidates, tiling_space->GetValidTilings());
   }
@@ -525,7 +530,7 @@ TiledEmissionResult EmitTiledFusionKernel(
     mlir::MLIRContext& context, const HloFusionInstruction& fusion,
     const BufferAssignment* buffer_assignment, absl::string_view name,
     int64_t num_work_groups,
-    std::optional<absl::Span<const int64_t>> tile_sizes) {
+    std::optional<gpu::BlockLevelParameters> block_level_parameters) {
   VLOG(2) << "EmitTiledFusionKernel called for fusion: " << fusion.name();
   auto supported_status = IsSupportedTiledFusion(fusion);
   VLOG(2) << "  IsSupportedTiledFusion: " << supported_status;
@@ -535,7 +540,7 @@ TiledEmissionResult EmitTiledFusionKernel(
             /*tiling_succeeded=*/false};
   }
   absl::StatusOr<ge::TiledHloComputation> tiled_computation =
-      GetTiledHloComputation(context, fusion, tile_sizes);
+      GetTiledHloComputation(context, fusion, block_level_parameters);
   if (!tiled_computation.ok()) {
     return {tiled_computation.status(), /*tiling_succeeded=*/false};
   }

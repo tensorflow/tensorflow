@@ -23,21 +23,15 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/string_view.h"
-#include "xla/tsl/platform/status_macros.h"
-#include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/raw_ostream.h"
 #include "xla/backends/cpu/codegen/fusion_compiler.h"
 #include "xla/backends/cpu/codegen/tiled/tiled_fusion_emitter.h"
-#include "xla/codegen/tiling/experimental/tiled_hlo.h"
-#include "xla/codegen/tiling/experimental/tiling_space.h"
 #include "xla/debug_options_flags.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instructions.h"
-#include "xla/hlo/utils/hlo_traversal.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/model/block_level_parameters.h"
-#include "xla/service/gpu/model/tiling_from_block_parameters.h"
 #include "xla/tools/hlo_module_loader.h"
 #include "xla/tsl/platform/logging.h"
 #include "xla/tsl/util/command_line_flags.h"
@@ -49,21 +43,12 @@ limitations under the License.
 namespace xla::gpu {
 namespace {
 
-using experimental::TilingSpace;
-
 absl::Status RealMain(absl::string_view input_file) {
   ASSIGN_OR_RETURN(std::unique_ptr<HloModule> hlo_module,
                    xla::LoadModuleFromFile(std::string(input_file)));
 
   const HloInstruction& fusion =
       *hlo_module->entry_computation()->root_instruction();
-  if (!fusion.IsCustomFusion()) {
-    return absl::InvalidArgumentError(
-        "Root instruction is not a custom fusion.");
-  }
-
-  // TODO(b/538986250): After the new proto config for the XTile emitter is
-  // created, this should be updated.
   ASSIGN_OR_RETURN(auto gpu_config, fusion.backend_config<GpuBackendConfig>());
   const HloFusionInstruction* fusion_instr =
       Cast<HloFusionInstruction>(&fusion);
@@ -77,21 +62,14 @@ absl::Status RealMain(absl::string_view input_file) {
       BlockLevelParameters::FromBlockLevelFusionConfig(
           backend_config.block_level_fusion_config());
 
-  auto fusion_adaptor = HloFusionAdaptor::ForInstruction(&fusion);
-
   auto mlir_context = cpu::FusionCompiler::CreateContext();
-  ASSIGN_OR_RETURN(std::unique_ptr<TilingSpace> tiling_space,
-                   TilingSpace::Create(*fusion_adaptor, mlir_context.get()));
 
   VLOG(1) << "fusion instruction: " << fusion.ToString() << "\n";
-  ASSIGN_OR_RETURN(
-      llvm::SmallVector<int64_t> tile_sizes,
-      GetTilingSpaceConcreteSizes(*tiling_space, block_level_parameters));
 
   cpu::TiledEmissionResult result = cpu::EmitTiledFusionKernel(
       *mlir_context, *fusion_instr, /*buffer_assignment=*/nullptr,
       "wrapped_fusion", /*num_work_groups=*/block_level_parameters.num_ctas,
-      tile_sizes);
+      block_level_parameters);
   if (!result.kernel.ok()) {
     return result.kernel.status();
   }

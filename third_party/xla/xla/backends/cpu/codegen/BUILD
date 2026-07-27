@@ -756,6 +756,8 @@ cc_library(
         "//xla/runtime:work_tile_size",
         "//xla/service:buffer_assignment",
         "//xla/service/cpu:backend_config_proto_cc",
+        "//xla/service/gpu:backend_configs_cc",
+        "//xla/service/gpu/model:block_level_parameters",
         "//xla/tsl/platform:status_macros",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/algorithm:container",

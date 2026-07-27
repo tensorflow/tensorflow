@@ -59,6 +59,8 @@ cc_library(
         "//xla/service:buffer_assignment",
         "//xla/service:instruction_fusion",
         "//xla/service/cpu:cpu_options",
+        "//xla/service/gpu/model:block_level_parameters",
+        "//xla/service/gpu/model:tiling_from_block_parameters",
         "//xla/tsl/platform:status_macros",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/log",

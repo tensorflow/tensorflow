@@ -21,12 +21,12 @@ limitations under the License.
 
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
-#include "absl/types/span.h"
 #include "mlir/IR/MLIRContext.h"
 #include "xla/codegen/kernel_definition.h"
 #include "xla/codegen/mlir_kernel_source.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/buffer_assignment.h"
+#include "xla/service/gpu/model/block_level_parameters.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla::cpu {
@@ -38,11 +38,13 @@ struct TiledEmissionResult {
   bool tiling_succeeded = true;
 };
 
+// TODO(b/538986250): Move BlockLevelParams to a common location.
 TiledEmissionResult EmitTiledFusionKernel(
     mlir::MLIRContext& context, const HloFusionInstruction& fusion,
     const BufferAssignment* buffer_assignment, absl::string_view name,
     int64_t num_work_groups,
-    std::optional<absl::Span<const int64_t>> tile_sizes = std::nullopt);
+    std::optional<gpu::BlockLevelParameters> block_level_parameters =
+        std::nullopt);
 
 }  // namespace xla::cpu
 

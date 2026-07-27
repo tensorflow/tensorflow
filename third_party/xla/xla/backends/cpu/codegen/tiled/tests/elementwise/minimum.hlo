@@ -3,6 +3,7 @@
 // RUN:   | FileCheck %s --check-prefix=CHECK-VECTOR
 // RUN: fusion_to_xtile %s | fusion_compiler_opt --xtile-cpu-xtile-to-vector \
 // RUN:   --xtile-cpu-vector-to-llvm | FileCheck %s --check-prefix=CHECK-LLVM
+// RUN: test_correctness %s
 
 fusion {
   p0 = f32[128,256] parameter(0)
@@ -39,7 +40,7 @@ fusion {
 ENTRY main {
   p0 = f32[128,256] parameter(0)
   p1 = f32[128,256] parameter(1)
-  ROOT fusion = f32[128,256] fusion(p0, p1), kind=kCustom, calls=fusion,
+  ROOT fusion = f32[128,256] fusion(p0, p1), kind=kLoop, calls=fusion,
     backend_config={
       "fusion_backend_config":{
         "block_level_fusion_config":{

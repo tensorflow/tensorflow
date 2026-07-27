@@ -29,6 +29,7 @@ lit_test_suite(
     cfg = "//xla:lit.cfg.py",
     tools = [
         "//xla/backends/cpu/codegen/tiled/tools:fusion_to_xtile",
+        "//xla/backends/cpu/codegen/tiled/tools:test_correctness",
         "//xla/backends/cpu/codegen/tools:fusion_compiler_opt",
         "@llvm-project//llvm:FileCheck",
     ],
