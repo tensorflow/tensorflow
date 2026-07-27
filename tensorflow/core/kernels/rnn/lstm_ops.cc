@@ -335,6 +335,48 @@ class LSTMBlockCellOp : public OpKernel {
     const Tensor* b_tensor = nullptr;
     OP_REQUIRES_OK(ctx, ctx->input("b", &b_tensor));
 
+    // Sanity check that each of the input tensors has the required NDIMS.
+    // This must happen before any dim_size() call below, since dim_size()
+    // CHECK-fails (aborting the process) when the index is out of range.
+    OP_REQUIRES(
+        ctx, x_tensor->dims() == 2,
+        absl::InvalidArgumentError(absl::StrCat(
+            "x_tensor must be rank 2 but is rank ", x_tensor->dims(), ".")));
+    OP_REQUIRES(ctx, cs_prev_tensor->dims() == 2,
+                absl::InvalidArgumentError(
+                    absl::StrCat("cs_prev_tensor must be rank 2 but is rank ",
+                                 cs_prev_tensor->dims(), ".")));
+    OP_REQUIRES(
+        ctx, cs_prev_tensor->dim_size(0) > 0 && cs_prev_tensor->dim_size(1) > 0,
+        absl::InvalidArgumentError(
+            absl::StrCat("cs_prev_tensor is empty, has shape: (",
+                         cs_prev_tensor->dim_size(0), ",",
+                         cs_prev_tensor->dim_size(1), ").")));
+    OP_REQUIRES(ctx, h_prev_tensor->dims() == 2,
+                absl::InvalidArgumentError(
+                    absl::StrCat("h_prev_tensor must be rank 2 but is rank ",
+                                 h_prev_tensor->dims(), ".")));
+    OP_REQUIRES(
+        ctx, w_tensor->dims() == 2,
+        absl::InvalidArgumentError(absl::StrCat(
+            "w_tensor must be rank 2 but is rank ", w_tensor->dims(), ".")));
+    OP_REQUIRES(ctx, wci_tensor->dims() == 1,
+                absl::InvalidArgumentError(
+                    absl::StrCat("wci_tensor must be rank 1 but is rank ",
+                                 wci_tensor->dims(), ".")));
+    OP_REQUIRES(ctx, wcf_tensor->dims() == 1,
+                absl::InvalidArgumentError(
+                    absl::StrCat("wcf_tensor must be rank 1 but is rank ",
+                                 wcf_tensor->dims(), ".")));
+    OP_REQUIRES(ctx, wco_tensor->dims() == 1,
+                absl::InvalidArgumentError(
+                    absl::StrCat("wco_tensor must be rank 1 but is rank ",
+                                 wco_tensor->dims(), ".")));
+    OP_REQUIRES(
+        ctx, b_tensor->dims() == 1,
+        absl::InvalidArgumentError(absl::StrCat(
+            "b_tensor must be rank 1 but is rank ", b_tensor->dims(), ".")));
+
     const int64_t batch_size = x_tensor->dim_size(0);
     const int64_t input_size = x_tensor->dim_size(1);
     const int64_t cell_size = cs_prev_tensor->dim_size(1);
@@ -423,45 +465,8 @@ class LSTMBlockCellOp : public OpKernel {
 
     const Device& device = ctx->eigen_device<Device>();
 
-    // Sanity check that each of the tensors have the required NDIMS.
-    OP_REQUIRES(
-        ctx, x_tensor->dims() == 2,
-        absl::InvalidArgumentError(absl::StrCat(
-            "x_tensor must be rank 2 but is rank ", x_tensor->dims(), ".")));
-    OP_REQUIRES(ctx, cs_prev_tensor->dims() == 2,
-                absl::InvalidArgumentError(
-                    absl::StrCat("cs_prev_tensor must be rank 2 but is rank ",
-                                 cs_prev_tensor->dims(), ".")));
-    OP_REQUIRES(
-        ctx, cs_prev_tensor->dim_size(0) > 0 && cs_prev_tensor->dim_size(1) > 0,
-        absl::InvalidArgumentError(
-            absl::StrCat("cs_prev_tensor is empty, has shape: (",
-                         cs_prev_tensor->dim_size(0), ",",
-                         cs_prev_tensor->dim_size(1), ").")));
-    OP_REQUIRES(ctx, h_prev_tensor->dims() == 2,
-                absl::InvalidArgumentError(
-                    absl::StrCat("h_prev_tensor must be rank 2 but is rank ",
-                                 h_prev_tensor->dims(), ".")));
-    OP_REQUIRES(
-        ctx, w_tensor->dims() == 2,
-        absl::InvalidArgumentError(absl::StrCat(
-            "w_tensor must be rank 2 but is rank ", w_tensor->dims(), ".")));
-    OP_REQUIRES(ctx, wci_tensor->dims() == 1,
-                absl::InvalidArgumentError(
-                    absl::StrCat("wci_tensor must be rank 1 but is rank ",
-                                 wci_tensor->dims(), ".")));
-    OP_REQUIRES(ctx, wcf_tensor->dims() == 1,
-                absl::InvalidArgumentError(
-                    absl::StrCat("wcf_tensor must be rank 1 but is rank ",
-                                 wcf_tensor->dims(), ".")));
-    OP_REQUIRES(ctx, wco_tensor->dims() == 1,
-                absl::InvalidArgumentError(
-                    absl::StrCat("wco_tensor must be rank 1 but is rank ",
-                                 wco_tensor->dims(), ".")));
-    OP_REQUIRES(
-        ctx, b_tensor->dims() == 1,
-        absl::InvalidArgumentError(absl::StrCat(
-            "b_tensor must be rank 1 but is rank ", b_tensor->dims(), ".")));
+    // Sanity check that each of the allocated tensors have the required NDIMS.
+    // The input tensors are checked above, before their dims are read.
     OP_REQUIRES(
         ctx, xh_tensor.dims() == 2,
         absl::InvalidArgumentError(absl::StrCat(
@@ -592,6 +597,62 @@ class LSTMBlockCellGradOp : public OpKernel {
 
     const Tensor* h_grad_tensor = nullptr;
     OP_REQUIRES_OK(ctx, ctx->input("h_grad", &h_grad_tensor));
+
+    // Sanity check that each of the input tensors has the required NDIMS.
+    // This must happen before any dim_size() call below, since dim_size()
+    // CHECK-fails (aborting the process) when the index is out of range.
+    OP_REQUIRES(
+        ctx, x_tensor->dims() == 2,
+        absl::InvalidArgumentError(absl::StrCat(
+            "x_tensor must be rank 2 but is rank ", x_tensor->dims(), ".")));
+    OP_REQUIRES(ctx, cs_prev_tensor->dims() == 2,
+                absl::InvalidArgumentError(
+                    absl::StrCat("cs_prev_tensor must be rank 2 but is rank ",
+                                 cs_prev_tensor->dims(), ".")));
+    OP_REQUIRES(ctx, h_prev_tensor->dims() == 2,
+                absl::InvalidArgumentError(
+                    absl::StrCat("h_prev_tensor must be rank 2 but is rank ",
+                                 h_prev_tensor->dims(), ".")));
+    OP_REQUIRES(
+        ctx, w_tensor->dims() == 2,
+        absl::InvalidArgumentError(absl::StrCat(
+            "w_tensor must be rank 2 but is rank ", w_tensor->dims(), ".")));
+    OP_REQUIRES(
+        ctx, b_tensor->dims() == 1,
+        absl::InvalidArgumentError(absl::StrCat(
+            "b_tensor must be rank 1 but is rank ", b_tensor->dims(), ".")));
+    OP_REQUIRES(
+        ctx, i_tensor->dims() == 2,
+        absl::InvalidArgumentError(absl::StrCat(
+            "i_tensor must be rank 2 but is rank ", i_tensor->dims(), ".")));
+    OP_REQUIRES(
+        ctx, cs_tensor->dims() == 2,
+        absl::InvalidArgumentError(absl::StrCat(
+            "cs_tensor must be rank 2 but is rank ", cs_tensor->dims(), ".")));
+    OP_REQUIRES(
+        ctx, f_tensor->dims() == 2,
+        absl::InvalidArgumentError(absl::StrCat(
+            "f_tensor must be rank 2 but is rank ", f_tensor->dims(), ".")));
+    OP_REQUIRES(
+        ctx, o_tensor->dims() == 2,
+        absl::InvalidArgumentError(absl::StrCat(
+            "o_tensor must be rank 2 but is rank ", o_tensor->dims(), ".")));
+    OP_REQUIRES(
+        ctx, ci_tensor->dims() == 2,
+        absl::InvalidArgumentError(absl::StrCat(
+            "ci_tensor must be rank 2 but is rank ", ci_tensor->dims(), ".")));
+    OP_REQUIRES(
+        ctx, co_tensor->dims() == 2,
+        absl::InvalidArgumentError(absl::StrCat(
+            "co_tensor must be rank 2 but is rank ", co_tensor->dims(), ".")));
+    OP_REQUIRES(ctx, cs_grad_tensor->dims() == 2,
+                absl::InvalidArgumentError(
+                    absl::StrCat("cs_grad_tensor must be rank 2 but is rank ",
+                                 cs_grad_tensor->dims(), ".")));
+    OP_REQUIRES(ctx, h_grad_tensor->dims() == 2,
+                absl::InvalidArgumentError(
+                    absl::StrCat("h_grad_tensor must be rank 2 but is rank ",
+                                 h_grad_tensor->dims(), ".")));
 
     const int64_t batch_size = x_tensor->dim_size(0);
     const int64_t input_size = x_tensor->dim_size(1);
