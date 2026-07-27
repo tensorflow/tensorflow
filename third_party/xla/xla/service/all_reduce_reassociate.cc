@@ -190,8 +190,6 @@ absl::StatusOr<bool> AllReduceReassociate::RunImpl(
     return false;
   }
 
-  int64_t next_channel_id = hlo_query::NextChannelId(*module);
-
   bool changed = false;
   for (auto computation : module->computations(execution_threads)) {
     for (HloInstruction* inst : computation->MakeInstructionPostOrder()) {
@@ -331,10 +329,6 @@ absl::StatusOr<bool> AllReduceReassociate::RunImpl(
 
       HloInstruction* new_ar = computation->AddInstruction(
           ar0->CloneWithNewOperands(new_ar_out_shape, {new_op}));
-      // Do not reuse channel_id from the existing instruction.
-      if (new_ar->channel_id()) {
-        new_ar->set_channel_id(next_channel_id++);
-      }
 
       if (should_promote_ar) {
         HloComputation* to_apply = new_ar->to_apply();

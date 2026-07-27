@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <cstddef>
 #include <memory>
+#include <optional>
 #include <utility>
 
 #include <gmock/gmock.h>
@@ -85,6 +86,8 @@ ENTRY main {
                           RunPass(hlo_string, /*expect_change=*/true));
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               m::AllReduce(m::Add(m::Parameter(0), m::Parameter(1))));
+  EXPECT_EQ(module->entry_computation()->root_instruction()->channel_id(),
+            std::nullopt);
   EXPECT_EQ(AllReduceCount(module), 1);
 }
 
@@ -110,6 +113,7 @@ ENTRY main {
                           RunPass(hlo_string, /*expect_change=*/true));
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               m::AllReduce(m::Add(m::Parameter(0), m::Parameter(1))));
+  EXPECT_EQ(module->entry_computation()->root_instruction()->channel_id(), 1);
   EXPECT_EQ(AllReduceCount(module), 1);
 }
 
