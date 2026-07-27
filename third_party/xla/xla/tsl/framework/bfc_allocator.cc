@@ -1578,7 +1578,7 @@ MemoryDump BFCAllocator::RecordMemoryMapInternal() {
 #ifdef TENSORFLOW_MEM_DEBUG
   // Record the recent size history
   int history_len = static_cast<int>(std::min(
-      action_counter_, static_cast<int64>(MEM_DEBUG_SIZE_HISTORY_SIZE)));
+      action_counter_, static_cast<int64_t>(MEM_DEBUG_SIZE_HISTORY_SIZE)));
   for (int i = action_counter_ - history_len; i < action_counter_; ++i) {
     tensorflow::SnapShot* ss = md.add_snap_shot();
     ss->set_action_count(i);
