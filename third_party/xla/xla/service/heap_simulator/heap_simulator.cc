@@ -829,9 +829,10 @@ void GlobalDecreasingSizeBestFitHeap<BufferType>::Free(const BufferType* buffer,
 
 using Chunk = HeapSimulator::Chunk;
 
-void BufferIntervalTree::Add(int64_t start, int64_t end, const Chunk& chunk) {
+void BufferIntervalTree::Add(int64_t start, int64_t end, const Chunk& chunk,
+                             const void* buffer) {
   node_storage_.emplace_back(BufferIntervalTreeNode{
-      start, end, end, chunk,
+      start, end, end, chunk, buffer,
       /*left=*/nullptr, /*right=*/nullptr, /*parent=*/nullptr});
   if (root_ == nullptr) {
     root_ = &node_storage_.back();
@@ -860,12 +861,13 @@ void BufferIntervalTree::Add(int64_t start, int64_t end, const Chunk& chunk) {
   }
 }
 
-bool BufferIntervalTree::Remove(int64_t start, int64_t end,
-                                const Chunk& chunk) {
+bool BufferIntervalTree::Remove(int64_t start, int64_t end, const Chunk& chunk,
+                                const void* buffer) {
   BufferIntervalTreeNode* to_delete = root_;
   while (to_delete != nullptr) {
     if (to_delete->start == start && to_delete->end == end &&
-        to_delete->chunk.offset == chunk.offset) {
+        to_delete->chunk.offset == chunk.offset &&
+        (buffer == nullptr || to_delete->buffer == buffer)) {
       break;
     }
     if (start < to_delete->start) {
@@ -2489,10 +2491,19 @@ GlobalDecreasingSizeBestFitHeap<BufferType>::MakeFreeChunks(
     const BufferInterval& buffer_interval, int64_t max_colocation_size) const {
   used_chunks_.clear();
 
+  absl::flat_hash_set<const BufferType*> colocations =
+      GetTransitiveColocations(buffer_interval);
+  colocations.insert(buffer_interval.buffer);
+
   // Collect chunks that are in use.
   interval_tree_.ApplyToNodesOverlappingInTime(
       buffer_interval.start, buffer_interval.end,
       [&](const BufferIntervalTreeNode* node) {
+        if (node->buffer != nullptr &&
+            colocations.contains(
+                static_cast<const BufferType*>(node->buffer))) {
+          return;
+        }
         used_chunks_.push_back(node->chunk);
       });
 
@@ -2503,6 +2514,11 @@ GlobalDecreasingSizeBestFitHeap<BufferType>::MakeFreeChunks(
             << ", end " << interval.end << " " << interval.buffer->ToString();
     interval_tree_.ApplyToNodesOverlappingInTime(
         interval.start, interval.end, [&](const BufferIntervalTreeNode* node) {
+          if (node->buffer != nullptr &&
+              colocations.contains(
+                  static_cast<const BufferType*>(node->buffer))) {
+            return;
+          }
           used_chunks_.push_back(node->chunk);
         });
   }
@@ -2699,14 +2715,14 @@ void GlobalDecreasingSizeBestFitHeap<BufferType>::CommitChunkAndInterval(
   const int64_t max_colocation_size = GetMaxColocationSize(buffer_interval);
   Chunk max_size_chunk =
       Chunk::FromOffsetSize(chunk.offset, max_colocation_size);
-  interval_tree_.Add(buffer_interval.start, buffer_interval.end,
-                     max_size_chunk);
+  interval_tree_.Add(buffer_interval.start, buffer_interval.end, max_size_chunk,
+                     buffer_interval.buffer);
   // NOLINTNEXTLINE
   for (auto colocation : GetTransitiveColocations(buffer_interval)) {
     auto colocation_interval = buffer_intervals_[colocation];
-    interval_tree_.Add(
-        colocation_interval.start, colocation_interval.end,
-        Chunk::FromOffsetSize(chunk.offset, max_colocation_size));
+    interval_tree_.Add(colocation_interval.start, colocation_interval.end,
+                       Chunk::FromOffsetSize(chunk.offset, max_colocation_size),
+                       colocation);
   }
 }
 

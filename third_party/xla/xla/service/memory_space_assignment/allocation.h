@@ -356,7 +356,7 @@ class CopyAllocation final : public Allocation {
   const HloInstruction* sync_mem_op() const { return sync_mem_op_; }
   bool operator==(const CopyAllocation& other) const;
 
-  const Allocation& prev_allocation() { return prev_allocation_; }
+  const Allocation& prev_allocation() const { return prev_allocation_; }
   Allocation& mutable_prev_allocation() { return prev_allocation_; }
 
   HloInstruction* copy_start() const { return copy_start_; }
@@ -471,6 +471,8 @@ class SlicedCopyAllocation final : public Allocation {
   const HloInstruction* sync_mem_op() const { return sync_mem_op_; }
   bool operator==(const SlicedCopyAllocation& other) const;
 
+  const Allocation& prev_allocation() const { return prev_allocation_; }
+
   std::vector<int64_t> SliceOffsetsSortedByStartTime() const;
   void AddDiffToAllSliceOffsets(int64_t diff);
   // Used to update offsets and start times after repacking.
@@ -547,6 +549,7 @@ class WindowPrefetchedAllocation final : public Allocation {
   std::string ToString() const override;
   bool operator==(const WindowPrefetchedAllocation& other) const;
   bool operator==(const Allocation& other) const override;
+  const Allocation& prev_allocation() const { return prev_allocation_; }
   int64_t bytes() const { return bytes_; }
   int64_t prefetch_start_schedule_after() const {
     return prefetch_start_schedule_after_;
@@ -571,6 +574,7 @@ class WindowPrefetchedAllocation final : public Allocation {
   int64_t prefetch_start_schedule_after_;
   int64_t prefetch_done_schedule_before_;
   int64_t bytes_;
+  const Allocation& prev_allocation_;
 };
 
 // An allocation that mirrors/duplicates another Allocation but does not reserve

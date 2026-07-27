@@ -2636,12 +2636,13 @@ absl::Status MsaAlgorithm::AllocateAndScheduleExistingBlockPrefetches(
     }
 
     int64_t start_time = optional_start_time.value();
-    MsaBufferInterval interval = MsaBufferInterval{/*buffer=*/original_value,
-                                                   /*size=*/buffer_size,
-                                                   /*start=*/start_time,
-                                                   /*end=*/end_time,
-                                                   /*colocations=*/{},
-                                                   /*need_allocation=*/true};
+    MsaBufferInterval interval =
+        MsaBufferInterval{/*buffer=*/prefetch_done_value,
+                          /*size=*/buffer_size,
+                          /*start=*/start_time,
+                          /*end=*/end_time,
+                          /*colocations=*/{},
+                          /*need_allocation=*/true};
     Chunk chunk_candidate = FindChunkCandidate(interval);
 
     // The chunk candidate should always be within the block prefetched values
@@ -3090,12 +3091,13 @@ absl::Status MsaAlgorithm::CreateNewBlockPrefetches(
     }
 
     int64_t start_time = optional_start_time.value();
-    MsaBufferInterval interval = MsaBufferInterval{/*buffer=*/original_value,
-                                                   /*size=*/buffer_size,
-                                                   /*start=*/start_time,
-                                                   /*end=*/end_time,
-                                                   /*colocations=*/{},
-                                                   /*need_allocation=*/true};
+    MsaBufferInterval interval =
+        MsaBufferInterval{/*buffer=*/maybe_sliced_value,
+                          /*size=*/buffer_size,
+                          /*start=*/start_time,
+                          /*end=*/end_time,
+                          /*colocations=*/{},
+                          /*need_allocation=*/true};
     Chunk chunk_candidate = FindChunkCandidate(interval);
     // The chunk candidate should always be within the block prefetched values
     // limit, otherwise we would have returned earlier.
@@ -6362,9 +6364,13 @@ void MsaAlgorithm::ImportRepackedNonSlicedAllocation(
   allocation->set_offset(repacked_offset);
   block.initial_offset = repacked_offset;
   block.offset = -1;
+  const HloValue& value = alias_analysis_.dataflow_analysis().GetUniqueValueAt(
+      allocation->defining_position().instruction,
+      allocation->defining_position().index);
   interval_tree_.Add(
       block.inclusive_start_time, block.end_time,
-      HeapSimulator::Chunk::FromOffsetSize(repacked_offset, block.size));
+      HeapSimulator::Chunk::FromOffsetSize(repacked_offset, block.size),
+      &value);
 
   VLOG(3) << "Repacking move. offset: " << original_offset << " -> "
           << repacked_offset << "; size: " << block.size
@@ -6401,12 +6407,15 @@ void MsaAlgorithm::ImportRepackedSlicedAllocation(
   // Doing so was for the benefit of MsaAlgorithm::pending_chunks_. However,
   // pending_chunks_ are cleared before repacking, when UncommitPendingWork()
   // is called. Thus, we don't need to worry about modifying the chunks here.
+  const HloValue& value = alias_analysis_.dataflow_analysis().GetUniqueValueAt(
+      allocation->defining_position().instruction,
+      allocation->defining_position().index);
   for (const SliceDetail& slice_detail :
        allocation->slice_details_sorted_by_start_time()) {
     interval_tree_.Add(
         /*start=*/
         ExclusiveToInclusiveStartTime(slice_detail.copy_start_after_time),
-        block.end_time, slice_detail.slice_decision.chunk);
+        block.end_time, slice_detail.slice_decision.chunk, &value);
   }
 
   VLOG(3) << "Repacking move. offset: " << original_offset << " -> "
@@ -6479,19 +6488,77 @@ bool MsaAlgorithm::UncommitChunkAndUpdatePeakMemory(
   VLOG(3) << "Uncommitting: [" << interval.start << ", " << interval.end
           << "] off = " << chunk.offset << " size = " << chunk.size;
   for (int i = interval.start; i <= interval.end; ++i) {
-    peak_memory_usage_[i] -= chunk.size;
+    int64_t max_size_with_all = 0;
+    int64_t max_size_without_current = 0;
+    if (interval.buffer != nullptr) {
+      interval_tree_.ApplyToNodesOverlappingInTime(
+          i, i, [&](const BufferIntervalTreeNode* node) {
+            if (node->buffer == nullptr) {
+              return;
+            }
+            const HloValue* node_value =
+                static_cast<const HloValue*>(node->buffer);
+            const HloValue* current_value = interval.buffer;
+            if (IsWindowPrefetchValue(node_value) ||
+                IsWindowPrefetchValue(current_value)) {
+              return;
+            }
+            if (alias_analysis_.GetBufferContainingValue(*node_value).id() ==
+                alias_analysis_.GetBufferContainingValue(*current_value).id()) {
+              if (node->chunk.offset == chunk.offset) {
+                max_size_with_all =
+                    std::max(max_size_with_all, node->chunk.size);
+                if (node_value != current_value) {
+                  max_size_without_current =
+                      std::max(max_size_without_current, node->chunk.size);
+                }
+              }
+            }
+          });
+    }
+    int64_t subtracted_size = max_size_with_all - max_size_without_current;
+    if (interval.buffer == nullptr) {
+      subtracted_size = chunk.size;
+    }
+    peak_memory_usage_[i] -= subtracted_size;
     CHECK_GE(peak_memory_usage_[i], 0)
         << "Peak memory usage at " << i << " is below zero after uncommitting. "
         << interval.start << "-" << interval.end << " : [" << chunk.offset
         << ", " << chunk.size << "]";
   }
-  return interval_tree_.Remove(interval.start, interval.end, chunk);
+  return interval_tree_.Remove(interval.start, interval.end, chunk,
+                               interval.buffer);
 }
 
 void MsaAlgorithm::CommitChunkAndUpdatePeakMemory(
     const MsaBufferInterval& buffer_interval, const Chunk& chunk) {
   for (int i = buffer_interval.start; i <= buffer_interval.end; ++i) {
-    peak_memory_usage_[i] += chunk.size;
+    int64_t max_committed_coloc_size = 0;
+    if (buffer_interval.buffer != nullptr) {
+      interval_tree_.ApplyToNodesOverlappingInTime(
+          i, i, [&](const BufferIntervalTreeNode* node) {
+            if (node->buffer == nullptr) {
+              return;
+            }
+            const HloValue* node_value =
+                static_cast<const HloValue*>(node->buffer);
+            const HloValue* current_value = buffer_interval.buffer;
+            if (IsWindowPrefetchValue(node_value) ||
+                IsWindowPrefetchValue(current_value)) {
+              return;
+            }
+            if (alias_analysis_.GetBufferContainingValue(*node_value).id() ==
+                alias_analysis_.GetBufferContainingValue(*current_value).id()) {
+              if (node->chunk.offset == chunk.offset) {
+                max_committed_coloc_size =
+                    std::max(max_committed_coloc_size, node->chunk.size);
+              }
+            }
+          });
+    }
+    int64_t added_size = std::max(max_committed_coloc_size, chunk.size) -
+                         max_committed_coloc_size;
+    peak_memory_usage_[i] += added_size;
     CHECK_LE(peak_memory_usage_[i], options_.max_size_in_bytes)
         << "Peak memory usage at " << i
         << " exceeds the max size of alternate memory. "
@@ -7000,6 +7067,29 @@ AllocationResult MsaAlgorithm::AllocateSegment(AllocationRequest& request) {
     required_memory_space_at_end = required_assignment_at_end->memory_space;
   }
 
+  bool is_in_async_comp =
+      request.use->hlo_use.instruction->parent()->IsAsyncComputation();
+  MemorySpace current_memory_space = MemorySpace::kDefault;
+  if (!allocation_sequence->empty()) {
+    current_memory_space = allocation_sequence->back()->memory_space();
+  } else if (required_memory_space_at_start.has_value()) {
+    current_memory_space = *required_memory_space_at_start;
+  } else {
+    current_memory_space = (defining_position.shape().has_layout() &&
+                            defining_position.shape().layout().memory_space() ==
+                                options_.alternate_memory_space)
+                               ? MemorySpace::kAlternate
+                               : MemorySpace::kDefault;
+  }
+
+  if (is_in_async_comp) {
+    if (current_memory_space == MemorySpace::kDefault) {
+      required_memory_space_at_end = MemorySpace::kDefault;
+    } else {
+      required_memory_space_at_end = MemorySpace::kAlternate;
+    }
+  }
+
   CHECK(!required_memory_space_at_end.has_value() ||
         required_memory_space_at_end != MemorySpace::kAlternate ||
         !request.require_end_colored_in_default_memory)
@@ -7095,6 +7185,12 @@ AllocationResult MsaAlgorithm::AllocateSegment(AllocationRequest& request) {
     if (request.require_no_copy_alternate_mem_allocation) {
       return allocation_result;
     }
+  }
+
+  if (is_in_async_comp && current_memory_space == MemorySpace::kAlternate) {
+    VLOG(2) << "Alternate memory allocation failed inside async computation, "
+               "and eviction is not allowed.";
+    return AllocationResult::kFailOutOfMemory;
   }
 
   CHECK(!request.require_no_copy_alternate_mem_allocation);
@@ -7879,14 +7975,17 @@ void MsaAlgorithm::WindowPrefetchOperand(const HloUse& use, int64_t bytes) {
 
   // Create a new HloValue for the window buffer.
   HloValue::Id new_value_id = alias_analysis_.dataflow_analysis().NewValueId();
-  HloValue hlo_value(new_value_id, operand, shape_index);
+  window_prefetch_values_.push_back(
+      std::make_unique<HloValue>(new_value_id, operand, shape_index));
+  const HloValue* hlo_value = window_prefetch_values_.back().get();
+  window_prefetch_values_set_.insert(hlo_value);
   int64_t start_time = hlo_live_range_.instruction_schedule().at(operand);
   int64_t end_time = hlo_live_range_.instruction_schedule().at(instruction);
 
   // Create a buffer interval, which has the same start and end time as the
   // operand. The hlo value is the operand.
   MsaBufferInterval buffer_interval;
-  buffer_interval.buffer = &hlo_value;
+  buffer_interval.buffer = hlo_value;
   buffer_interval.size = bytes;
   buffer_interval.start = start_time;
   buffer_interval.end = end_time;
@@ -7894,7 +7993,7 @@ void MsaAlgorithm::WindowPrefetchOperand(const HloUse& use, int64_t bytes) {
 
   // Create an allocation_values using the buffer interval.
   std::vector<AllocationValue> allocation_values;
-  allocation_values.emplace_back(&hlo_value, hlo_value.defining_position(),
+  allocation_values.emplace_back(hlo_value, hlo_value->defining_position(),
                                  bytes);
   allocation_values[0].AddUse(use, end_time);
 

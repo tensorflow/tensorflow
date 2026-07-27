@@ -363,7 +363,8 @@ class BestFitRepacker
         result_.heap_size = result_.UpdatedHeapSize(chunk);
         VLOG(3) << "Adding sliced chunk " << chunk.ToString() << " at ["
                 << start_time << ", " << allocation_block->end_time << "]";
-        interval_tree_.Add(start_time, allocation_block->end_time, chunk);
+        interval_tree_.Add(start_time, allocation_block->end_time, chunk,
+                           allocation_block);
         new_offset = (new_offset == -1 ? chunk.offset
                                        : std::min(new_offset, chunk.offset));
         repacked_slice_data->slices_sorted_by_offset.push_back(
@@ -381,7 +382,8 @@ class BestFitRepacker
               << " at [" << allocation_block->inclusive_start_time << ", "
               << allocation_block->end_time << ")";
       interval_tree_.Add(allocation_block->inclusive_start_time,
-                         allocation_block->end_time, chunks.front());
+                         allocation_block->end_time, chunks.front(),
+                         allocation_block);
     }
 
     CHECK_NE(new_offset, -1);
