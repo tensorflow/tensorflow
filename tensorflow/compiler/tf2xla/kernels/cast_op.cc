@@ -147,9 +147,16 @@ class BitcastOp : public XlaOpKernel {
       const int64_t component_bit_width =
           xla::primitive_util::BitWidth(component);
       const int64_t dst_bit_width = xla::primitive_util::BitWidth(dst_type_);
-      OP_REQUIRES(ctx,
-                  dst_bit_width % component_bit_width == 0 ||
-                      component_bit_width % dst_bit_width == 0,
+      // Each component is bitcast independently below, so a destination
+      // wider than a single component (e.g. complex64 -> int64) cannot be
+      // handled this way: the real and imaginary halves would need to be
+      // combined into one destination element, which this decomposition
+      // does not do. Reject it explicitly rather than emit a wrong shape.
+      OP_REQUIRES(ctx, component_bit_width >= dst_bit_width,
+                  absl::UnimplementedError(
+                      "Bitcast from a complex source to a destination type "
+                      "wider than each component is not supported."));
+      OP_REQUIRES(ctx, component_bit_width % dst_bit_width == 0,
                   absl::InvalidArgumentError(
                       "Neither bit width is a multiple of the other."));
 

@@ -17,6 +17,7 @@
 from tensorflow.compiler.tests import xla_test
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
@@ -70,6 +71,49 @@ class CastOpsTest(xla_test.XLATestCase):
           # Bitcast only moves bytes, so the compiled result must match the
           # eager reference exactly.
           self.assertAllEqual(out, compiled_out)
+
+  def testBitcastComplexToFloat(self):
+    # complex64/complex128's real+imag components are exactly as wide as
+    # float32/float64, so this always hits the equal-width path in
+    # BitcastOp -- verifies the complex -> float generalization dmiltr3
+    # asked about on #122567 is already handled, not just complex -> int.
+    for ctype, dst_ftype in ((dtypes.complex64, dtypes.float32),
+                              (dtypes.complex128, dtypes.float64)):
+      with ops.device('device:{}:0'.format(self.device)):
+
+        def f(x):
+          return array_ops.bitcast(x, dst_ftype)
+
+        compiled_f = def_function.function(f, jit_compile=True)
+
+        src_ftype = (
+            dtypes.float32 if ctype == dtypes.complex64 else dtypes.float64)
+        x = math_ops.complex(
+            random_ops.random_normal([4, 3], dtype=src_ftype),
+            random_ops.random_normal([4, 3], dtype=src_ftype))
+        with ops.device(self.device):
+          out = f(x)
+          compiled_out = compiled_f(x)
+          self.assertAllEqual(out, compiled_out)
+
+  def testBitcastComplexWideningUnsupported(self):
+    # complex64's components (float32, 32 bits) are narrower than int64
+    # (64 bits): BitcastOp bitcasts each component independently, so a
+    # destination wider than a component can't be produced this way and
+    # must be rejected explicitly rather than emit a wrong shape.
+    with ops.device('device:{}:0'.format(self.device)):
+
+      def f(x):
+        return array_ops.bitcast(x, dtypes.int64)
+
+      compiled_f = def_function.function(f, jit_compile=True)
+
+      x = math_ops.complex(
+          random_ops.random_normal([4, 3], dtype=dtypes.float32),
+          random_ops.random_normal([4, 3], dtype=dtypes.float32))
+      with ops.device(self.device):
+        with self.assertRaises(errors.UnimplementedError):
+          compiled_f(x)
 
   def testBitcastToSmaller(self):
     pass
