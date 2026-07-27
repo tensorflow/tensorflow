@@ -161,7 +161,7 @@ jobs:
             --bes_keywords=xla \
             --bes_keywords=upstream \
             --bes_keywords=gpu \
-            --bes_keywords=pull_request
+            --bes_keywords=pull_request \
       - name: Test XLA [rocm_cpu]
         timeout-minutes: 80
         run: |
