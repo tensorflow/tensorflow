@@ -373,6 +373,34 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "hlo_original_value_analyzer",
+    srcs = ["hlo_original_value_analyzer.cc"],
+    hdrs = ["hlo_original_value_analyzer.h"],
+    deps = [
+        ":hlo_original_value_analysis",
+        ":hlo_original_value_analyzer_utils",
+        "//xla/hlo/ir:hlo",
+        "@com_google_absl//absl/container:flat_hash_set",
+    ],
+)
+
+xla_cc_test(
+    name = "hlo_original_value_analyzer_test",
+    srcs = ["hlo_original_value_analyzer_test.cc"],
+    deps = [
+        ":hlo_original_value_analysis",
+        ":hlo_original_value_analyzer",
+        ":hlo_original_value_analyzer_utils",
+        "//xla:shape_util",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
+        "//xla/hlo/testlib:test",
+        "//xla/tsl/platform:statusor",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
 xla_cc_test(
     name = "hlo_traversal_test",
     srcs = ["hlo_traversal_test.cc"],
