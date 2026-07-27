@@ -128,23 +128,26 @@ class DecodeCompressedOp : public OpKernel {
       //
       // Read kMaxDecompressedBytes + 1 bytes rather than exactly the cap,
       // so a stream that is exactly kMaxDecompressedBytes long is correctly
-      // accepted (it hits EOF at exactly the cap, returning OutOfRange with
-      // output.size() == kMaxDecompressedBytes) while a stream that is even
-      // one byte longer is correctly rejected (output.size() exceeds the
-      // cap). Reading exactly the cap would make these two cases
+      // accepted and one that is even one byte longer is correctly
+      // rejected - reading exactly the cap would make these two cases
       // indistinguishable.
       constexpr int64_t kMaxDecompressedBytes = 1024LL * 1024 * 1024;  // 1GB
       absl::Status result =
           zlib_stream.ReadNBytes(kMaxDecompressedBytes + 1, &output);
 
-      if (static_cast<int64_t>(output.size()) > kMaxDecompressedBytes) {
-        return absl::ResourceExhaustedError(
-            "Decompressed size exceeds 1GB limit");
+      if (absl::IsOutOfRange(result)) {
+        // Stream ended before or exactly at the limit. ReadNBytes swallows
+        // EOF only if it read up to the requested amount; here it failed to
+        // read limit + 1, so the true size is <= 1GB.
+        return absl::OkStatus();
       }
 
-      // ReadNBytes returns OutOfRange for EOF. Swallow it and return OkStatus,
-      // since we're reading up to kMaxDecompressedBytes + 1 bytes anyway.
-      if (absl::IsOutOfRange(result)) return absl::OkStatus();
+      if (result.ok()) {
+        // Read exactly limit + 1 bytes, meaning the stream is larger than
+        // 1GB.
+        return absl::InvalidArgumentError(
+            "Decompressed size exceeds 1GB limit");
+      }
 
       return result;
     }
