@@ -730,4 +730,29 @@ std::vector<HloInstructionAdaptor> HloFindUseChain(HloInstructionAdaptor parent,
   return result;
 }
 
+std::vector<std::vector<HloInstructionAdaptor>> HloFindAllUseChains(
+    HloInstructionAdaptor parent, HloInstructionAdaptor root) {
+  std::vector<std::vector<HloInstructionAdaptor>> result;
+  std::vector<HloInstructionAdaptor> current_path;
+
+  std::function<void(HloInstructionAdaptor)> dfs =
+      [&](HloInstructionAdaptor node) {
+        current_path.push_back(node);
+        if (node == root) {
+          result.push_back(current_path);
+        } else {
+          for (const auto& user : node.GetUsers()) {
+            if (absl::c_linear_search(current_path, user)) {
+              continue;
+            }
+            dfs(user);
+          }
+        }
+        current_path.pop_back();
+      };
+
+  dfs(parent);
+  return result;
+}
+
 }  // namespace xla

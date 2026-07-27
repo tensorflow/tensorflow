@@ -209,6 +209,9 @@ bool HloAnyOf(const HloFusionAdaptor& fusion, Pred&& pred) {
 std::vector<HloInstructionAdaptor> HloFindUseChain(HloInstructionAdaptor parent,
                                                    HloInstructionAdaptor root);
 
+std::vector<std::vector<HloInstructionAdaptor>> HloFindAllUseChains(
+    HloInstructionAdaptor parent, HloInstructionAdaptor root);
+
 }  // namespace xla
 
 #endif  // XLA_HLO_UTILS_HLO_TRAVERSAL_H_
