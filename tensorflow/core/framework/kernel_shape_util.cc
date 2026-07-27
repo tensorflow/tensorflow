@@ -35,15 +35,20 @@ absl::Status GetWindowedOutputSizeVerbose(
 
   // See also the parallel implementation in GetWindowedOutputSizeFromDimsV2.
   int64_t effective_filter_size = (filter_size - 1) * dilation_rate + 1;
+  auto floor_div = [](int64_t a, int64_t b) {
+    return a >= 0 ? a / b : (a + 1) / b - 1;
+  };
   switch (padding_type) {
     case Padding::VALID:
-      *output_size = (input_size - effective_filter_size + stride) / stride;
+      // Floor, not truncation, so a too-large filter stays negative below.
+      *output_size =
+          floor_div(input_size - effective_filter_size + stride, stride);
       *padding_before = *padding_after = 0;
       break;
     case Padding::EXPLICIT:
-      *output_size = (input_size + *padding_before + *padding_after -
-                      effective_filter_size + stride) /
-                     stride;
+      *output_size = floor_div(input_size + *padding_before + *padding_after -
+                                   effective_filter_size + stride,
+                               stride);
       break;
     case Padding::SAME:
       *output_size = (input_size + stride - 1) / stride;
