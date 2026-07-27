@@ -1024,6 +1024,39 @@ class NonMaxSuppressionTest(xla_test.XLATestCase):
 
       self.assertEqual(indices_tf.size, 0)
 
+  def testNMSV4EmptyInput(self):
+    # As above, but covering the pad_to_max_output_size path. The non-XLA
+    # kernel pads the selection with zeros and reports valid_outputs == 0.
+    boxes_np = np.zeros([0, 4], dtype=np.float32)
+    scores_np = np.zeros([0], dtype=np.float32)
+    iou_threshold_np = np.array(0.5, dtype=np.float32)
+    max_output_size = 5
+    with self.session() as sess:
+      boxes = array_ops.placeholder(boxes_np.dtype, shape=boxes_np.shape)
+      scores = array_ops.placeholder(scores_np.dtype, shape=scores_np.shape)
+      iou_threshold = array_ops.placeholder(iou_threshold_np.dtype,
+                                            iou_threshold_np.shape)
+      with self.test_scope():
+        selected_indices, valid_outputs = (
+            gen_image_ops.non_max_suppression_v4(
+                boxes=boxes,
+                scores=scores,
+                max_output_size=max_output_size,
+                iou_threshold=iou_threshold,
+                score_threshold=float("-inf"),
+                pad_to_max_output_size=True))
+      inputs_feed = {
+          boxes: boxes_np,
+          scores: scores_np,
+          iou_threshold: iou_threshold_np
+      }
+      indices_tf, valid_outputs_tf = sess.run([selected_indices, valid_outputs],
+                                              feed_dict=inputs_feed)
+
+      self.assertEqual(indices_tf.size, max_output_size)
+      self.assertAllEqual(indices_tf, np.zeros([max_output_size], np.int32))
+      self.assertEqual(valid_outputs_tf, 0)
+
   def testNMS128From1024(self):
     num_boxes = 1024
     boxes_np = np.random.normal(50, 10, (num_boxes, 4)).astype("f4")
