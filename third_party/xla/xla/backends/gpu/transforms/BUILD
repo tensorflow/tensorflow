@@ -53,6 +53,40 @@ xla_cc_test(
 )
 
 cc_library(
+    name = "narrow_dot_kwrapping_rewriter",
+    srcs = ["narrow_dot_kwrapping_rewriter.cc"],
+    hdrs = ["narrow_dot_kwrapping_rewriter.h"],
+    deps = [
+        "//xla:comparison_util",
+        "//xla:literal_util",
+        "//xla:shape_util",
+        "//xla:util",
+        "//xla:xla_data_proto_cc",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/pass:hlo_pass",
+        "//xla/tsl/platform:status_macros",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
+    ],
+)
+
+xla_cc_test(
+    name = "narrow_dot_kwrapping_rewriter_test",
+    srcs = ["narrow_dot_kwrapping_rewriter_test.cc"],
+    deps = [
+        ":narrow_dot_kwrapping_rewriter",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/parser:hlo_parser",
+        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
+        "//xla/tests/restricted:hlo_test_base_legacy",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
     name = "algebraic_simplifier",
     srcs = [
         "algebraic_simplifier.cc",

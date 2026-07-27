@@ -506,6 +506,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   // TODO(b/366475196): Create XLA GPU without cuDNN, cuBLAS.
   opts.set_xla_gpu_experimental_disable_binary_libraries(false);
   opts.set_xla_gpu_experimental_enable_conv_fusion(false);
+  opts.set_xla_gpu_experimental_enable_narrow_dot_kwrapping(false);
   opts.set_xla_gpu_dot_merger_threshold_mb(64);
   opts.set_xla_enable_fast_math(false);
   opts.set_xla_gpu_experimental_parallel_collective_overlap_limit(1);
@@ -3063,6 +3064,12 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
                 debug_options->xla_gpu_experimental_enable_conv_fusion(),
                 "enable experimental XLA GPU passes that rewrite conv as hlo "
                 "fusion instead of custom call."));
+  flag_list->push_back(tsl::Flag(
+      "xla_gpu_experimental_enable_narrow_dot_kwrapping",
+      bool_setter_for(
+          &DebugOptions::set_xla_gpu_experimental_enable_narrow_dot_kwrapping),
+      debug_options->xla_gpu_experimental_enable_narrow_dot_kwrapping(),
+      "Enable K-wrapping optimization for narrow dots (M or N <= 4)."));
   flag_list->push_back(tsl::Flag(
       "xla_gpu_dot_merger_threshold_mb",
       int32_setter_for(&DebugOptions::set_xla_gpu_dot_merger_threshold_mb),
