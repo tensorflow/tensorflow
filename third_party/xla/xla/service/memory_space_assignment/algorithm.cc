@@ -4751,18 +4751,14 @@ AliasedOffset* MsaAlgorithm::CheckOrUpdatePreferredOffsetForUse(
       AliasedRequiredAssignmentForUse(use);
   if (required_assignment.has_value() &&
       required_assignment.value().memory_space == MemorySpace::kAlternate) {
-    if (preferred_offset) {
-      CHECK_EQ(preferred_offset->offset,
-               required_assignment.value().offset->offset)
-          << "required assignment " << required_assignment.value().ToString()
-          << " is not equal to preferred offset " << preferred_offset->offset
-          << " for use:\n"
-          << use.hlo_use.ToString();
-    } else {
-      preferred_offset = required_assignment->offset;
-      VLOG(3) << "Setting preferred offset due to required assignment for use: "
-              << preferred_offset->offset;
+    if (preferred_offset && preferred_offset->offset !=
+                                required_assignment.value().offset->offset) {
+      VLOG(2) << "Overriding preferred offset " << preferred_offset->offset
+              << " with required assignment offset "
+              << required_assignment.value().offset->offset << " for use:\n"
+              << use.hlo_use.ToString();
     }
+    preferred_offset = required_assignment->offset;
   }
   return preferred_offset;
 }

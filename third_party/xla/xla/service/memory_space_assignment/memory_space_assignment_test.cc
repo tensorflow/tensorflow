@@ -17883,6 +17883,70 @@ TEST_F(MemorySpaceAssignmentTest, ConditionalCommonInputAliasedOutputTest) {
       kAlternateMemorySpace);
 }
 
+// Tests that when an allocation value in a computation inherits a non-zero
+// computation-level preferred offset, but a specific use (e.g., an aliased
+// custom-call output) has a RequiredMemoryAssignment at offset 0, MSA
+// successfully overrides the preferred offset with the required assignment's
+// offset instead of failing a CHECK_EQ assertion.
+TEST_F(MemorySpaceAssignmentTest,
+       OverridePreferredOffsetWithRequiredAssignmentOffset) {
+  absl::string_view hlo_string = R"hlo(
+  HloModule bug, is_scheduled=true
+
+  computation0 {
+    param0 = (f32[2,2]{1,0}) parameter(0)
+    gte0 = f32[2,2]{1,0} get-tuple-element(param0), index=0
+    negate0 = f32[2,2]{1,0} negate(gte0)
+    custom_call0 = f32[2,2]{1,0} custom-call(gte0, negate0), custom_call_target="tpu_custom_call", output_to_operand_aliasing={{}: (0, {})}
+    ROOT tuple0 = (f32[2,2]) tuple(custom_call0)
+  }
+
+  computation1 {
+    param1 = (f32[2,2]{1,0}) parameter(0)
+    gte1 = f32[2,2]{1,0} get-tuple-element(param1), index=0
+    negate1 = f32[2,2]{1,0} negate(gte1)
+    custom_call1 = f32[2,2]{1,0} custom-call(gte1, negate1), custom_call_target="tpu_custom_call", output_to_operand_aliasing={{}: (0, {})}
+    ROOT tuple1 = (f32[2,2]) tuple(custom_call1)
+  }
+
+  ENTRY entry {
+    p0 = pred[] parameter(0)
+    p1 = f32[2,2] parameter(1)
+    negate_entry = f32[2,2]{1,0} negate(p1)
+    tuple_entry = (f32[2,2]{1,0}) tuple(negate_entry)
+    conditional = (f32[2,2]) conditional(p0, tuple_entry, tuple_entry), true_computation=computation0, false_computation=computation1
+    gte_entry = f32[2,2]{1,0} get-tuple-element(conditional), index=0
+    custom_call_entry = f32[2,2]{1,0} custom-call(gte_entry), custom_call_target="tpu_custom_call", output_to_operand_aliasing={{}: (0, {})}
+    ROOT negate_out = f32[2,2]{1,0} negate(custom_call_entry)
+  }
+  )hlo";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  Options memory_space_options = DefaultMemorySpaceOptions();
+  memory_space_options.max_size_in_bytes = 1000;
+  memory_space_options.max_outstanding_prefetches = 0;
+  MsaBufferIntervalCompare buffer_interval_compare =
+      [](const MsaBufferInterval& lhs, const MsaBufferInterval& rhs) {
+        auto lookup = [](const MsaBufferInterval& x) {
+          int priority = 100;
+          if (x.buffer->instruction()->name() == "custom_call_entry") {
+            priority = 1;
+          }
+          return std::make_tuple(priority, x.buffer->instruction()->name());
+        };
+
+        return lookup(lhs) < lookup(rhs);
+      };
+  InstructionCountPrefetchIntervalPicker prefetch_interval_picker(0, 1000);
+  AssignMemorySpace(module.get(), std::move(memory_space_options),
+                    buffer_interval_compare, &prefetch_interval_picker);
+
+  CheckMemorySpaceForInstructionNames(
+      module.get(),
+      {"negate_entry", "custom_call_entry", "custom_call0", "custom_call1"},
+      kAlternateMemorySpace);
+}
+
 }  // namespace
 }  // namespace memory_space_assignment
 }  // namespace xla
