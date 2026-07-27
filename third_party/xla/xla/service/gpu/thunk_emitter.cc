@@ -2355,10 +2355,11 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitCopyStartThunk(
                    ShapeHasHostMemorySpace(shape, 0, host_memory_space));
   ASSIGN_OR_RETURN(bool is_src_host_memory,
                    ShapeHasHostMemorySpace(shape, 1, host_memory_space));
-  if (is_dst_host_memory == is_src_host_memory) {
+  // H2H is not a supported copy-start variant.
+  if (is_dst_host_memory && is_src_host_memory) {
     return absl::InternalError(
-        absl::StrFormat("Copy-start %s doesn't have correct host memory space "
-                        "color S(%d)",
+        absl::StrFormat("Copy-start %s has host memory space S(%d) on both "
+                        "source and destination, which is unsupported",
                         copy_start_instr->ToString(),
                         static_cast<int>(stream_executor::MemorySpace::kHost)));
   }
@@ -2367,8 +2368,21 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitCopyStartThunk(
   Thunk::ThunkInfo copy_thunk_info = Thunk::ThunkInfo::WithProfileAnnotation(
       copy_start_instr, ir_emitter_context_->GetNextThunkId());
 
-  std::unique_ptr<CopyThunk> copy_thunk;
-  if (is_dst_host_memory) {
+  std::unique_ptr<Thunk> copy_thunk;
+  if (!is_dst_host_memory && !is_src_host_memory) {
+    // D2D async copy: both source and destination reside in device memory.
+    // The thunk is a raw memcpy, so source and destination layouts must
+    // match; layout-changing copies must not reach this path.
+    TF_RET_CHECK(LayoutUtil::LayoutsInShapesEqual(
+        shape.tuple_shapes(0), input_shape, Layout::Equal().MinorToMajorOnly()))
+        << "Copy-start " << copy_start_instr->ToString()
+        << " has mismatched source/destination layouts";
+    copy_thunk = std::make_unique<DeviceToDeviceCopyThunk>(
+        copy_thunk_info,
+        /*source_buffer=*/ShapedSlice{src_buffer, input_shape},
+        /*destination_buffer=*/ShapedSlice{dst_buffer, input_shape},
+        /*mem_size=*/ShapeUtil::ByteSizeOf(input_shape));
+  } else if (is_dst_host_memory) {
     copy_thunk = std::make_unique<DeviceToHostCopyThunk>(
         copy_thunk_info,
         /*source_buffer=*/ShapedSlice{src_buffer, input_shape},

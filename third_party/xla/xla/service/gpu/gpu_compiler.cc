@@ -116,6 +116,7 @@ limitations under the License.
 #include "xla/backends/gpu/transforms/gemm_fusion.h"
 #include "xla/backends/gpu/transforms/gemm_fusion_swap_operands.h"
 #include "xla/backends/gpu/transforms/gemm_rewriter.h"
+#include "xla/backends/gpu/transforms/gpu_copy_async_wrapper.h"
 #include "xla/backends/gpu/transforms/hoist_fused_bitcasts.h"
 #include "xla/backends/gpu/transforms/layout_assignment.h"
 #include "xla/backends/gpu/transforms/move_copy_to_users.h"
@@ -3128,6 +3129,8 @@ absl::Status GpuCompiler::RunPreSchedulingPasses(
   if (cuda_cc != nullptr && cuda_cc->IsAtLeastAmpere()) {
     pipeline.AddPass<DynamicSliceCopyFusionAsyncWrapper>();
   }
+  // GpuCopyAsyncWrapper is disabled when xla_gpu_async_copy_min_bytes is -1.
+  pipeline.AddPass<GpuCopyAsyncWrapper>();
   if (module->config().debug_options().xla_gpu_collect_cost_model_stats()) {
     GpuHloCostAnalysis::Options cost_analysis_options{
         ShapeSizeBytesFunction(),

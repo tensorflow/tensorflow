@@ -297,6 +297,36 @@ xla_cc_test(
     ],
 )
 
+cc_library(
+    name = "gpu_copy_async_wrapper",
+    srcs = ["gpu_copy_async_wrapper.cc"],
+    hdrs = ["gpu_copy_async_wrapper.h"],
+    deps = [
+        "//xla:shape_util",
+        "//xla:xla_data_proto_cc",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/pass:hlo_pass",
+        "//xla/stream_executor:memory_space",
+        "//xla/tsl/platform:status_macros",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
+    ],
+)
+
+xla_cc_test(
+    name = "gpu_copy_async_wrapper_test",
+    srcs = ["gpu_copy_async_wrapper_test.cc"],
+    deps = [
+        ":gpu_copy_async_wrapper",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/testlib:filecheck",
+        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
+        "@com_google_absl//absl/status:status_matchers",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
 xla_cc_test(
     name = "dynamic_slice_copy_test",
     srcs = ["dynamic_slice_copy_test.cc"],
