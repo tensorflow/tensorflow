@@ -944,7 +944,7 @@ class RFFTOpsTest(BaseFFTOpsTest, parameterized.TestCase):
     b = np.array([1, -1])
     with self.assertRaisesRegex(
         (ValueError, errors.InvalidArgumentError),
-        "(.*must be greater or equal to.*)|(must >= 0)",
+        "(.*must be greater or equal to.*)|(must >= 0)|(must be non-negative)",
     ):
       with self.session():
         v = fft_ops.rfft2d(input_tensor=a, fft_length=b)
