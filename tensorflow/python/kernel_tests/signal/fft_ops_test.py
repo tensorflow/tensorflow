@@ -939,7 +939,7 @@ class RFFTOpsTest(BaseFFTOpsTest, parameterized.TestCase):
         rtol=tol, atol=tol)
 
   def test_invalid_args(self):
-    # Test case for GitHub issue 55263
+    # Test cases for GitHub issues 55263 and 123399.
     a = np.empty([6, 0])
     b = np.array([1, -1])
     with self.assertRaisesRegex(
@@ -949,6 +949,23 @@ class RFFTOpsTest(BaseFFTOpsTest, parameterized.TestCase):
       with self.session():
         v = fft_ops.rfft2d(input_tensor=a, fft_length=b)
         self.evaluate(v)
+
+  @test_util.run_all_in_graph_and_eager_modes
+  def test_zero_fft_length_returns_empty(self):
+    # fft_length=[0] on non-empty input should return empty tensor, not crash.
+    # Regression test for GitHub issue 123399.
+    x = np.ones([3, 3, 31], dtype=np.float32)
+    y = fft_ops.rfft(x, fft_length=[0])
+    self.assertEqual(y.shape[0], 3)
+    self.assertEqual(y.shape[1], 3)
+    self.assertEqual(y.shape[2], 0)
+
+  @test_util.run_all_in_graph_and_eager_modes
+  def test_zero_fft_length_empty_input_returns_empty(self):
+    # Explicit zero fft_length on an empty tensor should be forwarded safely.
+    x = np.zeros([3, 0, 31], dtype=np.float32)
+    y = fft_ops.rfft(x, fft_length=[0])
+    self.assertEqual(y.shape, (3, 0, 0))
 
 
 @test_util.run_all_in_graph_and_eager_modes
