@@ -27,6 +27,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
@@ -291,7 +292,9 @@ class LatencyHidingSchedulerTest : public HloHardwareIndependentTestBase {
                  SchedulerConfig sched_config = GetDefaultSchedConfig(),
                  std::unique_ptr<LatencyEstimator> latency_estimator =
                      std::make_unique<ApproximateLatencyEstimator>(),
-                 std::unique_ptr<AsyncTracker> async_tracker = nullptr) {
+                 std::unique_ptr<AsyncTracker> async_tracker = nullptr,
+                 DefaultSchedulerCore::TargetSchedulingRule
+                     target_scheduling_rule = nullptr) {
     AsyncCollectiveCreator::CollectiveCreatorConfig config{
         /*convert_all_reduce=*/HloPredicateTrue,
         /*convert_all_gather=*/HloPredicateTrue,
@@ -311,7 +314,7 @@ class LatencyHidingSchedulerTest : public HloHardwareIndependentTestBase {
             module, std::move(latency_estimator), std::move(async_tracker),
             &alias_info_, ShapeSizeBytes);
     auto scheduler_core = std::make_shared<DefaultSchedulerCore>(
-        scheduling_context, sched_config);
+        scheduling_context, sched_config, std::move(target_scheduling_rule));
     auto scheduler = std::make_unique<LatencyHidingScheduler>(
         scheduling_context, scheduler_core);
     return std::make_pair(std::move(scheduler), std::move(scheduler_core));
@@ -329,6 +332,107 @@ class DirectionalLatencyHidingSchedulerTest
 INSTANTIATE_TEST_SUITE_P(DirectionalTests,
                          DirectionalLatencyHidingSchedulerTest,
                          ::testing::Bool());
+
+TEST_F(LatencyHidingSchedulerTest,
+       TargetSchedulingRuleReceivesLiveSchedulingState) {
+  constexpr absl::string_view hlo_string = R"(
+HloModule module, is_scheduled=true
+
+ENTRY main {
+  p0 = f32[8] parameter(0)
+  p1 = f32[8] parameter(1)
+  a = f32[8] negate(p0)
+  b = f32[8] negate(p1)
+  ROOT result = (f32[8], f32[8]) tuple(a, b)
+}
+)";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseHloText(hlo_string));
+
+  const DefaultSchedulerCore::SchedulingState* expected_state = nullptr;
+  int target_rule_invocations = 0;
+  auto target_rule = [&](DefaultSchedulerCore::ScheduleCandidate& a,
+                         DefaultSchedulerCore::ScheduleCandidate& b)
+      -> std::optional<DefaultSchedulerCore::CandidateResult> {
+    ++target_rule_invocations;
+    EXPECT_NE(a.scheduling_state, nullptr);
+    EXPECT_EQ(a.scheduling_state, b.scheduling_state);
+    EXPECT_EQ(a.scheduling_state, expected_state);
+    EXPECT_NE(a.scheduling_state->sched_graph, nullptr);
+    EXPECT_GT(a.scheduling_state->scheduled_count, 0);
+    return std::nullopt;
+  };
+
+  ASSERT_OK_AND_ASSIGN(
+      auto setup,
+      SetupScheduler(module.get(), GetDefaultSchedConfig(),
+                     std::make_unique<ApproximateLatencyEstimator>(), nullptr,
+                     std::move(target_rule)));
+  std::shared_ptr<SchedulerCore> scheduler_core = std::move(setup.second);
+  ASSERT_OK(scheduler_core->InitializeScheduler(module.get()));
+  ASSERT_OK_AND_ASSIGN(
+      std::shared_ptr<SchedulerCore::SchedulingState> state,
+      scheduler_core->MakeSchedulingState(module->entry_computation()));
+  expected_state =
+      dynamic_cast<DefaultSchedulerCore::SchedulingState*>(state.get());
+  ASSERT_NE(expected_state, nullptr);
+
+  ASSERT_OK_AND_ASSIGN(
+      std::vector<HloInstruction*> sequence,
+      scheduler_core->ScheduleComputation(module->entry_computation(), state));
+  EXPECT_FALSE(sequence.empty());
+  EXPECT_GT(target_rule_invocations, 0);
+}
+
+TEST_F(LatencyHidingSchedulerTest,
+       MemoryPressureTakesPriorityOverTargetSchedulingRule) {
+  constexpr absl::string_view hlo_string = R"(
+HloModule module, is_scheduled=true
+
+ENTRY main {
+  p0 = f32[100] parameter(0)
+  large = f32[100] negate(p0)
+  small = f32[1] slice(p0), slice={[0:1]}
+  ROOT result = (f32[100], f32[1]) tuple(large, small)
+}
+)";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseHloText(hlo_string));
+
+  bool target_rule_saw_large_small = false;
+  auto target_rule = [&](DefaultSchedulerCore::ScheduleCandidate& a,
+                         DefaultSchedulerCore::ScheduleCandidate& b)
+      -> std::optional<DefaultSchedulerCore::CandidateResult> {
+    const bool a_is_small = a.node->GetInstr().name() == "small";
+    const bool b_is_small = b.node->GetInstr().name() == "small";
+    const bool compares_large_and_small =
+        (a_is_small && b.node->GetInstr().name() == "large") ||
+        (b_is_small && a.node->GetInstr().name() == "large");
+    if (!compares_large_and_small) {
+      return std::nullopt;
+    }
+    target_rule_saw_large_small = true;
+    return DefaultSchedulerCore::ChooseBestCandidate(a_is_small, a, b_is_small,
+                                                     b, "kPreferSmallForTest");
+  };
+
+  SchedulerConfig sched_config = GetDefaultSchedConfig();
+  sched_config.memory_limit = 1;
+  ASSERT_OK_AND_ASSIGN(
+      auto setup,
+      SetupScheduler(module.get(), sched_config,
+                     std::make_unique<ApproximateLatencyEstimator>(), nullptr,
+                     std::move(target_rule)));
+  std::shared_ptr<SchedulerCore> scheduler_core = std::move(setup.second);
+  ASSERT_OK(scheduler_core->InitializeScheduler(module.get()));
+  ASSERT_OK_AND_ASSIGN(
+      std::shared_ptr<SchedulerCore::SchedulingState> state,
+      scheduler_core->MakeSchedulingState(module->entry_computation()));
+  ASSERT_OK_AND_ASSIGN(
+      std::vector<HloInstruction*> sequence,
+      scheduler_core->ScheduleComputation(module->entry_computation(), state));
+
+  EXPECT_FALSE(target_rule_saw_large_small);
+  EXPECT_LT(GetIndex(sequence, "small"), GetIndex(sequence, "large"));
+}
 
 TEST_F(LatencyHidingSchedulerTest, AllGatherAsyncSimple) {
   absl::string_view hlo_string = R"(
