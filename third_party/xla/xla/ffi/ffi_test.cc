@@ -65,6 +65,14 @@ namespace xla::ffi {
 
 static const XLA_FFI_Api* Api() { return GetXlaFfiApi(); }
 
+template <typename T>
+static XLA_FFI_Buffer MakeBuffer(PrimitiveType dtype, absl::Span<T> storage,
+                                 absl::Span<int64_t> dims) {
+  return {XLA_FFI_Buffer_STRUCT_SIZE,           nullptr,
+          static_cast<XLA_FFI_DataType>(dtype), storage.data(),
+          static_cast<int64_t>(dims.size()),    dims.data()};
+}
+
 struct PairOfI32AndF32 {
   int32_t i32;
   float f32;
@@ -91,6 +99,7 @@ XLA_FFI_REGISTER_STRUCT_ATTR_DECODING(
 namespace xla::ffi {
 
 using ::testing::_;
+using ::testing::AllOf;
 using ::testing::HasSubstr;
 using ::testing::Pair;
 using ::testing::UnorderedElementsAre;
@@ -644,6 +653,196 @@ TEST(FfiTest, TypedAndRankedBufferArgument) {
     auto status = Invoke(Api(), *handler, call_frame);
     TF_ASSERT_OK(status);
   }
+}
+
+TEST(FfiTest, BufferMatchingComposesPatterns) {
+  namespace m = ::xla::ffi::match;
+
+  std::vector<float> input_storage(4, 0.0f);
+  int64_t input_dims[] = {2, 2};
+  XLA_FFI_Buffer input_buffer = MakeBuffer(F32, absl::MakeSpan(input_storage),
+                                           absl::MakeSpan(input_dims));
+
+  AnyBuffer rank_two(&input_buffer);
+  ASSERT_OK(Verify("rank_two", rank_two, m::Buffer().WithRank<2>()));
+  EXPECT_EQ(rank_two.dimensions().size(), 2);
+
+  int64_t rows = -1;
+  ASSERT_OK_AND_ASSIGN(BufferR2<F32> input,
+                       Match("input", AnyBuffer(&input_buffer),
+                             m::Buffer<F32>().WithDims(&rows, 2)));
+  EXPECT_EQ(rows, 2);
+  EXPECT_EQ(input.typed_data(), input_storage.data());
+
+  std::vector<float> output_storage(4, 0.0f);
+  int64_t output_dims[] = {1, 2, 2};
+  XLA_FFI_Buffer output_buffer = MakeBuffer(F32, absl::MakeSpan(output_storage),
+                                            absl::MakeSpan(output_dims));
+  Result<AnyBuffer> output_result{AnyBuffer(&output_buffer)};
+
+  ASSERT_OK_AND_ASSIGN(
+      Result<BufferR3<F32>> output,
+      Match("output", output_result,
+            m::Buffer().WithDType<F32>().WithDims(1, rows, 2)));
+  EXPECT_EQ(output->typed_data(), output_storage.data());
+
+  ASSERT_OK(
+      Verify("typed_input", input, m::Buffer<F32, 2>().WithDims(rows, 2)));
+  EXPECT_THAT(
+      Verify("typed_input", input, m::Buffer<S32, 2>()),
+      absl_testing::StatusIs(absl::StatusCode::kInvalidArgument,
+                             HasSubstr("expected dtype s32 but got f32")));
+}
+
+TEST(FfiTest, BufferMatchingUnifiesDimensionCaptures) {
+  namespace m = ::xla::ffi::match;
+
+  std::vector<float> storage(6, 0.0f);
+  int64_t square_dims[] = {2, 2};
+  XLA_FFI_Buffer square_buffer =
+      MakeBuffer(F32, absl::MakeSpan(storage), absl::MakeSpan(square_dims));
+
+  int64_t n = -1;
+  auto square_pattern = m::Buffer<F32>().WithDims(&n, &n);
+
+  ASSERT_OK_AND_ASSIGN(
+      BufferR2<F32> square,
+      Match("square", AnyBuffer(&square_buffer), square_pattern));
+  EXPECT_EQ(n, 2);
+  EXPECT_EQ(square.typed_data(), storage.data());
+
+  n = 7;
+  int64_t nonsquare_dims[] = {2, 3};
+  XLA_FFI_Buffer nonsquare_buffer =
+      MakeBuffer(F32, absl::MakeSpan(storage), absl::MakeSpan(nonsquare_dims));
+  absl::StatusOr<BufferR2<F32>> nonsquare =
+      Match("nonsquare", AnyBuffer(&nonsquare_buffer), square_pattern);
+
+  EXPECT_THAT(nonsquare.status(),
+              absl_testing::StatusIs(
+                  absl::StatusCode::kInvalidArgument,
+                  HasSubstr("expected dimension 1 to be 2 but got 3")));
+  EXPECT_EQ(n, 7);
+}
+
+TEST(FfiTest, BufferMatchingVerifiesDTypeSet) {
+  namespace m = ::xla::ffi::match;
+
+  std::vector<int64_t> storage(4, 0);
+  int64_t dims[] = {4};
+  XLA_FFI_Buffer s32_buffer =
+      MakeBuffer(S32, absl::MakeSpan(storage), absl::MakeSpan(dims));
+
+  auto index_pattern = m::Buffer().WithDType<S32, S64>().WithRank<1>();
+
+  ASSERT_OK(Verify("indices", AnyBuffer(&s32_buffer), index_pattern));
+
+  XLA_FFI_Buffer s64_buffer =
+      MakeBuffer(S64, absl::MakeSpan(storage), absl::MakeSpan(dims));
+  ASSERT_OK(Verify("indices", AnyBuffer(&s64_buffer), index_pattern));
+
+  XLA_FFI_Buffer f32_buffer =
+      MakeBuffer(F32, absl::MakeSpan(storage), absl::MakeSpan(dims));
+  EXPECT_THAT(Verify("indices", AnyBuffer(&f32_buffer), index_pattern),
+              absl_testing::StatusIs(
+                  absl::StatusCode::kInvalidArgument,
+                  HasSubstr("expected dtype to be one of [s32, s64]")));
+}
+
+TEST(FfiTest, BufferMatchingVerifiesRankSet) {
+  namespace m = ::xla::ffi::match;
+
+  std::vector<float> storage(4, 0.0f);
+  int64_t dims[] = {2, 2};
+  XLA_FFI_Buffer rank2_buffer =
+      MakeBuffer(F32, absl::MakeSpan(storage), absl::MakeSpan(dims));
+
+  auto rank_pattern = m::Buffer<F32>().WithRank<1, 2>();
+
+  ASSERT_OK(Verify("input", AnyBuffer(&rank2_buffer), rank_pattern));
+  ASSERT_OK(Verify("input", AnyBuffer(&rank2_buffer),
+                   rank_pattern.WithDim<1>(m::Dim())));
+
+  int64_t rank3_dims[] = {1, 2, 2};
+  XLA_FFI_Buffer rank3_buffer =
+      MakeBuffer(F32, absl::MakeSpan(storage), absl::MakeSpan(rank3_dims));
+
+  EXPECT_THAT(
+      Verify("input", AnyBuffer(&rank3_buffer), rank_pattern),
+      absl_testing::StatusIs(absl::StatusCode::kInvalidArgument,
+                             HasSubstr("expected rank to be one of [1, 2]")));
+}
+
+TEST(FfiTest, BufferMatchingCompositionIsOrderIndependent) {
+  namespace m = ::xla::ffi::match;
+
+  std::vector<float> storage(7, 0.0f);
+  int64_t dims[] = {1, 1, 1, 7};
+  XLA_FFI_Buffer buffer =
+      MakeBuffer(F32, absl::MakeSpan(storage), absl::MakeSpan(dims));
+
+  auto dim_then_rank = m::Buffer<F32, 2>().WithDim<3>(7).WithRank<4>();
+  auto rank_then_dim = m::Buffer<F32, 2>().WithRank<4>().WithDim<3>(7);
+
+  ASSERT_OK(Verify("input", AnyBuffer(&buffer), dim_then_rank));
+  ASSERT_OK(Verify("input", AnyBuffer(&buffer), rank_then_dim));
+}
+
+TEST(FfiTest, BufferMatchingReturnsError) {
+  namespace m = ::xla::ffi::match;
+
+  std::vector<float> storage(4, 0.0f);
+  int64_t dims[] = {2, 2};
+  XLA_FFI_Buffer buffer =
+      MakeBuffer(F32, absl::MakeSpan(storage), absl::MakeSpan(dims));
+
+  absl::StatusOr<BufferR2<F32>> matched =
+      Match("input", AnyBuffer(&buffer),
+            m::Buffer().WithDType<F32>().WithRank<2>().WithDim<1>(3));
+  EXPECT_THAT(matched.status(),
+              absl_testing::StatusIs(
+                  absl::StatusCode::kInvalidArgument,
+                  AllOf(HasSubstr("Buffer 'input' failed to match"),
+                        HasSubstr("expected dimension 1 to be 3 but got 2"))));
+
+  XLA_FFI_Buffer s32_buffer =
+      MakeBuffer(S32, absl::MakeSpan(storage), absl::MakeSpan(dims));
+  absl::StatusOr<BufferR2<F32>> wrong_dtype =
+      Match("input", AnyBuffer(&s32_buffer),
+            m::Buffer().WithDType<F32>().WithRank<2>());
+  EXPECT_THAT(
+      wrong_dtype.status(),
+      absl_testing::StatusIs(absl::StatusCode::kInvalidArgument,
+                             HasSubstr("expected dtype f32 but got s32")));
+}
+
+TEST(FfiTest, BufferMatchingRejectsInvalidDimensions) {
+  namespace m = ::xla::ffi::match;
+
+  std::vector<float> storage(4, 0.0f);
+  int64_t rank2_dims[] = {2, 2};
+  XLA_FFI_Buffer rank2_buffer =
+      MakeBuffer(F32, absl::MakeSpan(storage), absl::MakeSpan(rank2_dims));
+
+  auto pattern = m::Buffer<F32, 2>().WithDims(m::Dim(), m::Dim(), m::Dim());
+
+  absl::StatusOr<BufferR3<F32>> rank2 =
+      Match("input", AnyBuffer(&rank2_buffer), pattern);
+  EXPECT_THAT(rank2.status(),
+              absl_testing::StatusIs(absl::StatusCode::kInvalidArgument,
+                                     HasSubstr("expected rank 3 but got 2")));
+
+  EXPECT_THAT(Verify("input", AnyBuffer(&rank2_buffer),
+                     m::Buffer<F32, 2>().WithDim<3>(m::Dim())),
+              absl_testing::StatusIs(
+                  absl::StatusCode::kInvalidArgument,
+                  HasSubstr("expected dimension 3 but buffer rank is 2")));
+
+  EXPECT_THAT(Verify("input", AnyBuffer(&rank2_buffer),
+                     m::Buffer<F32>().WithDim<1>(3).WithDim<0>(2)),
+              absl_testing::StatusIs(
+                  absl::StatusCode::kInvalidArgument,
+                  HasSubstr("expected dimension 1 to be 3 but got 2")));
 }
 
 TEST(FfiTest, ComplexBufferArgument) {
@@ -1423,5 +1622,53 @@ void BM_TupleOfI32Attrs(benchmark::State& state) {
 }
 
 BENCHMARK(BM_TupleOfI32Attrs);
+
+//===----------------------------------------------------------------------===//
+// BM_MatchPrebuiltAnyBuffer
+//===----------------------------------------------------------------------===//
+
+void BM_MatchPrebuiltAnyBuffer(benchmark::State& state) {
+  namespace m = ::xla::ffi::match;
+
+  std::vector<float> storage(1, 0.0f);
+  int64_t dims[] = {1, 1, 1, 1};
+  XLA_FFI_Buffer c_buffer =
+      MakeBuffer(F32, absl::MakeSpan(storage), absl::MakeSpan(dims));
+  AnyBuffer buffer(&c_buffer);
+  auto pattern = m::Buffer<F32>().WithDims(1, 1, 1, 1);
+
+  CHECK_OK(Match("buffer", buffer, pattern).status());
+  for (auto _ : state) {
+    absl::StatusOr<BufferR4<F32>> matched = Match("buffer", buffer, pattern);
+    benchmark::DoNotOptimize(matched);
+  }
+}
+
+BENCHMARK(BM_MatchPrebuiltAnyBuffer);
+
+//===----------------------------------------------------------------------===//
+// BM_MatchAnyBuffer
+//===----------------------------------------------------------------------===//
+
+void BM_MatchAnyBuffer(benchmark::State& state) {
+  namespace m = ::xla::ffi::match;
+
+  std::vector<float> storage(1, 0.0f);
+  int64_t dims[] = {1, 1, 1, 1};
+  XLA_FFI_Buffer c_buffer =
+      MakeBuffer(F32, absl::MakeSpan(storage), absl::MakeSpan(dims));
+  AnyBuffer buffer(&c_buffer);
+
+  CHECK_OK(
+      Match("buffer", buffer, m::Buffer<F32>().WithDims(1, 1, 1, 1)).status());
+  for (auto _ : state) {
+    auto pattern = m::Buffer<F32>().WithDims(1, 1, 1, 1);
+    benchmark::DoNotOptimize(pattern);
+    absl::StatusOr<BufferR4<F32>> matched = Match("buffer", buffer, pattern);
+    benchmark::DoNotOptimize(matched);
+  }
+}
+
+BENCHMARK(BM_MatchAnyBuffer);
 
 }  // namespace xla::ffi

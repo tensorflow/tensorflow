@@ -30,7 +30,6 @@ limitations under the License.
 #include <cstdlib>
 #include <functional>
 #include <iostream>
-#include <limits>
 #include <memory>
 #include <mutex>  // NOLINT
 #include <numeric>
@@ -612,6 +611,8 @@ class AnyBuffer {
   }
 
  private:
+  friend struct match::internal::BufferCast;
+
   const XLA_FFI_Buffer* buf_;
 };
 
@@ -651,8 +652,6 @@ XLA_FFI_REGISTER_DATATYPE_MAPPING(DataType::C128, std::complex<double>);
 XLA_FFI_REGISTER_DATATYPE_MAPPING(DataType::TOKEN, void);
 
 #undef XLA_FFI_REGISTER_DATATYPE_MAPPING
-
-inline constexpr size_t kDynamicRank = std::numeric_limits<size_t>::max();
 
 }  // namespace internal
 
@@ -714,7 +713,7 @@ static_assert(!IsComplexType<DataType::F32>());
 //
 // The dtype and rank are checked at decoding time. If rank is not specified,
 // any rank is accepted.
-template <DataType dtype, size_t rank = internal::kDynamicRank>
+template <DataType dtype, size_t rank = kDynamicRank>
 class Buffer {
  public:
   using Dimensions = AnyBuffer::Dimensions;
@@ -726,8 +725,7 @@ class Buffer {
   DataType element_type() const { return dtype; }
 
   Dimensions dimensions() const {
-    return Dimensions(buf_->dims,
-                      rank == internal::kDynamicRank ? buf_->rank : rank);
+    return Dimensions(buf_->dims, rank == kDynamicRank ? buf_->rank : rank);
   }
 
   XLA_FFI_ATTRIBUTE_ALWAYS_INLINE size_t size_bytes() const {
@@ -747,6 +745,8 @@ class Buffer {
   }
 
  private:
+  friend struct match::internal::BufferCast;
+
   const XLA_FFI_Buffer* buf_;
 };
 
@@ -765,7 +765,7 @@ namespace internal {
 template <DataType dtype, size_t rank>
 XLA_FFI_ATTRIBUTE_ALWAYS_INLINE bool IsaBuffer(XLA_FFI_Buffer* buf) {
   return static_cast<DataType>(buf->dtype) == dtype &&
-         (rank == internal::kDynamicRank || buf->rank == rank);
+         (rank == kDynamicRank || buf->rank == rank);
 }
 
 template <DataType dtype, size_t rank>
@@ -777,7 +777,7 @@ XLA_FFI_ATTRIBUTE_ALWAYS_INLINE std::optional<Buffer<dtype, rank>> DecodeBuffer(
            << dtype << " but got " << buf_dtype;
   }
 
-  if constexpr (rank != internal::kDynamicRank) {
+  if constexpr (rank != kDynamicRank) {
     if (XLA_FFI_PREDICT_FALSE(buf->rank != rank)) {
       return diagnostic.Emit("Wrong buffer rank: expected ")
              << rank << " but got " << buf->rank;
@@ -789,7 +789,7 @@ XLA_FFI_ATTRIBUTE_ALWAYS_INLINE std::optional<Buffer<dtype, rank>> DecodeBuffer(
 
 }  // namespace internal
 
-template <DataType dtype, size_t rank = internal::kDynamicRank>
+template <DataType dtype, size_t rank = kDynamicRank>
 using ResultBuffer = Result<Buffer<dtype, rank>>;
 
 // clang-format off
@@ -799,6 +799,89 @@ template <DataType dtype> using ResultBufferR2 = ResultBuffer<dtype, 2>;
 template <DataType dtype> using ResultBufferR3 = ResultBuffer<dtype, 3>;
 template <DataType dtype> using ResultBufferR4 = ResultBuffer<dtype, 4>;
 // clang-format on
+
+//===----------------------------------------------------------------------===//
+// Buffer Matching
+//===----------------------------------------------------------------------===//
+
+namespace match {
+namespace internal {
+
+struct BufferCast {
+  template <typename To, typename From>
+  static To Cast(const From& buffer) {
+    return To(buffer.buf_);
+  }
+};
+
+}  // namespace internal
+
+// A buffer-matching pattern specialized to the external `DataType` enum.
+template <typename DTypes = DTypeSet<DataType>, typename Ranks = RankSet<>>
+using BufferPattern = internal::BufferPatternBase<DTypes, Ranks>;
+
+template <DataType dtype, size_t rank = kDynamicRank>
+auto Buffer() {
+  if constexpr (rank == kDynamicRank) {
+    return BufferPattern<DTypeSet<DataType, dtype>>();
+  } else {
+    return BufferPattern<DTypeSet<DataType, dtype>, RankSet<rank>>();
+  }
+}
+
+inline BufferPattern<> Buffer() { return {}; }
+
+}  // namespace match
+
+template <typename BufferType, typename DTypes, typename Ranks>
+Error Verify(std::string_view name, BufferType buffer,
+             const match::BufferPattern<DTypes, Ranks>& pattern) {
+  if (auto error = internal::MatchBuffer(name, buffer, pattern)) {
+    return Error::InvalidArgument(std::move(*error));
+  }
+  return Error::Success();
+}
+
+// Matches an AnyBuffer and returns the concrete buffer type specified by a
+// pattern with exactly one dtype and one rank.
+template <DataType dtype, size_t rank>
+ErrorOr<Buffer<dtype, rank>> Match(
+    std::string_view name, AnyBuffer buffer,
+    const match::BufferPattern<match::DTypeSet<DataType, dtype>,
+                               match::RankSet<rank>>& pattern) {
+  if (auto error = internal::MatchBuffer(name, buffer, pattern)) {
+    return Unexpected(Error::InvalidArgument(std::move(*error)));
+  }
+  return match::internal::BufferCast::Cast<Buffer<dtype, rank>>(buffer);
+}
+
+template <DataType dtype, size_t rank, typename DTypes, typename Ranks>
+ErrorOr<Buffer<dtype, rank>> Match(
+    std::string_view name, Buffer<dtype, rank> buffer,
+    const match::BufferPattern<DTypes, Ranks>& pattern) {
+  if (Error error = Verify(name, buffer, pattern); error.failure()) {
+    return Unexpected(std::move(error));
+  }
+  return buffer;
+}
+
+namespace internal {
+
+template <typename Buffer>
+ErrorOr<Result<Buffer>> WrapResult(ErrorOr<Buffer> buffer) {
+  if (buffer.has_error()) {
+    return Unexpected(std::move(buffer).error());
+  }
+  return Result<Buffer>(std::move(buffer).value());
+}
+
+}  // namespace internal
+
+template <typename BufferType, typename DTypes, typename Ranks>
+auto Match(std::string_view name, Result<BufferType> buffer,
+           const match::BufferPattern<DTypes, Ranks>& pattern) {
+  return internal::WrapResult(Match(name, *buffer, pattern));
+}
 
 //===----------------------------------------------------------------------===//
 // Arguments binding
