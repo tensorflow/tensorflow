@@ -238,6 +238,7 @@ bool CanInferShape(HloOpcode code) {
     case HloOpcode::kDynamicSlice:
     case HloOpcode::kDynamicUpdateSlice:
     case HloOpcode::kRaggedAllToAll:
+    case HloOpcode::kCollectiveReduce:
     case HloOpcode::kRecv:
     case HloOpcode::kRecvDone:
     case HloOpcode::kReduceScatter:
@@ -1952,6 +1953,35 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
           *shape, operands, dimensions->at(0), std::move(device_list),
           constrain_layout ? *constrain_layout : false, channel_id,
           use_global_device_ids ? *use_global_device_ids : false));
+    }
+    case HloOpcode::kCollectiveReduce: {
+      std::unique_ptr<CollectiveDeviceListBase> device_list =
+          std::make_unique<CollectiveDeviceList>(std::vector<ReplicaGroup>{});
+      optional<HloComputation*> to_apply;
+      optional<int64_t> channel_id;
+      optional<bool> constrain_layout;
+      optional<bool> use_global_device_ids;
+      optional<bool> has_dynamic_root;
+      attrs["to_apply"] = {/*required=*/true, AttrTy::kHloComputation,
+                           &to_apply};
+      attrs["replica_groups"] = {
+          /*required=*/false, AttrTy::kCollectiveDeviceListBase, &device_list};
+      attrs["channel_id"] = {/*required=*/false, AttrTy::kInt64, &channel_id};
+      attrs["constrain_layout"] = {/*required=*/false, AttrTy::kBool,
+                                   &constrain_layout};
+      attrs["use_global_device_ids"] = {/*required=*/false, AttrTy::kBool,
+                                        &use_global_device_ids};
+      attrs["has_dynamic_root"] = {/*required=*/false, AttrTy::kBool,
+                                   &has_dynamic_root};
+      if ((!preset_operands && !ParseOperands(&operands, builder)) ||
+          !ParseAttributes(attrs, allow_attributes, shape)) {
+        return nullptr;
+      }
+      return builder->AddInstruction(HloInstruction::CreateCollectiveReduce(
+          *shape, operands, *to_apply, std::move(device_list),
+          constrain_layout.value_or(false), channel_id,
+          use_global_device_ids.value_or(false),
+          has_dynamic_root.value_or(false)));
     }
     case HloOpcode::kAllReduce:
     case HloOpcode::kAllReduceStart:

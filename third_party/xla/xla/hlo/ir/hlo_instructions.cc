@@ -1282,6 +1282,64 @@ HloReduceScatterInstruction::CloneWithNewOperandsImpl(
       channel_id(), use_global_device_ids(), scatter_dimension());
 }
 
+HloCollectiveReduceInstruction::HloCollectiveReduceInstruction(
+    const Shape& shape, absl::Span<HloInstruction* const> operands,
+    HloComputation* reduce_computation,
+    std::shared_ptr<CollectiveDeviceListBase> device_list,
+    bool constrain_layout, const std::optional<int64_t>& channel_id,
+    bool use_global_device_ids, bool has_dynamic_root)
+    : HloAllReduceInstructionBase(HloOpcode::kCollectiveReduce, shape, operands,
+                                  reduce_computation, std::move(device_list),
+                                  constrain_layout, channel_id,
+                                  use_global_device_ids),
+      has_dynamic_root_(has_dynamic_root) {}
+
+HloCollectiveReduceInstruction::HloCollectiveReduceInstruction(
+    const Shape& shape, absl::Span<HloInstruction* const> operands,
+    HloComputation* reduce_computation,
+    absl::Span<const ReplicaGroup> replica_groups, bool constrain_layout,
+    const std::optional<int64_t>& channel_id, bool use_global_device_ids,
+    bool has_dynamic_root)
+    : HloCollectiveReduceInstruction(
+          shape, operands, reduce_computation,
+          std::make_shared<CollectiveDeviceList>(replica_groups),
+          constrain_layout, channel_id, use_global_device_ids,
+          has_dynamic_root) {}
+
+void HloCollectiveReduceInstruction::PrintExtraAttributesImpl(
+    AttributePrinter& printer, const HloPrintOptions& options) const {
+  HloAllReduceInstructionBase::PrintExtraAttributesImpl(printer, options);
+  printer.Next([this](Printer* printer) {
+    printer->Append("has_dynamic_root=");
+    printer->Append(has_dynamic_root_ ? "true" : "false");
+  });
+}
+
+void HloCollectiveReduceInstruction::ToProto(HloInstructionProto* proto) const {
+  HloAllReduceInstructionBase::ToProto(proto);
+  proto->set_has_dynamic_root(has_dynamic_root_);
+}
+
+bool HloCollectiveReduceInstruction::IdenticalSlowPathIgnoringChannelIdValues(
+    const HloInstruction& other,
+    absl::FunctionRef<bool(const HloComputation*, const HloComputation*)>
+        eq_computations) const {
+  const auto& casted_other =
+      static_cast<const HloCollectiveReduceInstruction&>(other);
+  return HloAllReduceInstructionBase::IdenticalSlowPathIgnoringChannelIdValues(
+             other, eq_computations) &&
+         has_dynamic_root_ == casted_other.has_dynamic_root();
+}
+
+std::unique_ptr<HloInstruction>
+HloCollectiveReduceInstruction::CloneWithNewOperandsImpl(
+    const Shape& shape, absl::Span<HloInstruction* const> new_operands,
+    HloCloneContext* /*context*/) const {
+  return std::make_unique<HloCollectiveReduceInstruction>(
+      shape, new_operands, to_apply(), device_list(), constrain_layout(),
+      channel_id(), use_global_device_ids(), has_dynamic_root_);
+}
+
 HloAllToAllInstruction::HloAllToAllInstruction(
     const Shape& shape, absl::Span<HloInstruction* const> operands,
     std::shared_ptr<CollectiveDeviceListBase> device_list,

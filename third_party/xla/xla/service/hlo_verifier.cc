@@ -910,6 +910,23 @@ absl::Status ShapeVerifier::HandleCollectiveBroadcast(HloInstruction* hlo) {
       hlo, ShapeInference::InferCollectiveBroadcastShape(operand_shapes));
 }
 
+absl::Status ShapeVerifier::HandleCollectiveReduce(HloInstruction* hlo) {
+  auto* cr = Cast<HloCollectiveReduceInstruction>(hlo);
+  if (opts_.ShouldCheckReplicaGroups()) {
+    ASSIGN_OR_RETURN(CollectiveOpGroupMode group_mode,
+                     GetCollectiveOpGroupMode(cr->channel_id().has_value(),
+                                              cr->use_global_device_ids()));
+    RETURN_IF_ERROR(CheckReplicaGroups(cr, group_mode,
+                                       /*uniform_replica_group_size=*/false));
+  }
+  std::vector<const Shape*> operand_shapes;
+  for (const HloInstruction* operand : hlo->operands()) {
+    operand_shapes.push_back(&operand->shape());
+  }
+  return CheckShape(hlo, ShapeInference::InferCollectiveReduceShape(
+                             operand_shapes, cr->has_dynamic_root()));
+}
+
 absl::Status ShapeVerifier::HandleCollectivePermute(HloInstruction* hlo) {
   HloCollectivePermuteInstruction* collective_permute =
       Cast<HloCollectivePermuteInstruction>(hlo);

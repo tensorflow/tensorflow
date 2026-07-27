@@ -2336,6 +2336,79 @@ TEST_F(HloVerifierTest, AllReduce_FlattenedID_Valid) {
   ASSERT_OK(verifier().Run(module.get()).status());
 }
 
+absl::StatusOr<std::unique_ptr<HloModule>> MakeCollectiveReduceComputation(
+    std::vector<std::vector<int64_t>> replica_groups,
+    std::optional<int64_t> replica_count = std::nullopt,
+    std::optional<int64_t> num_partitions = std::nullopt,
+    absl::string_view other_attributes = "") {
+  const char* kTemplate = R"(
+  HloModule test
+  add {
+    x = f32[] parameter(0)
+    y = f32[] parameter(1)
+    ROOT add = f32[] add(x, y)
+  }
+  ENTRY entry {
+    p = f32[128]{0} parameter(0)
+    cr = f32[128]{0} collective-reduce(p), to_apply=add, replica_groups=REPLICA_GROUPS
+                                           OTHER_ATTRIBUTES
+  })";
+  return MakeCollectiveCommOpComputation(replica_groups, replica_count,
+                                         num_partitions, other_attributes,
+                                         kTemplate);
+}
+
+TEST_F(HloVerifierTest, CollectiveReduce_NoReplicaGroupsOK) {
+  ASSERT_OK_AND_ASSIGN(auto module, MakeCollectiveReduceComputation({}));
+  ASSERT_OK(verifier().Run(module.get()).status());
+}
+
+TEST_F(HloVerifierTest, CollectiveReduce_EmptyReplicaGroup) {
+  ASSERT_OK_AND_ASSIGN(auto module, MakeCollectiveReduceComputation({{0}, {}}));
+  EXPECT_THAT(verifier().Run(module.get()).status().message(),
+              HasSubstr("empty replica group"));
+}
+
+TEST_F(HloVerifierTest, CollectiveReduce_RepeatedReplicaId) {
+  ASSERT_OK_AND_ASSIGN(
+      auto module, MakeCollectiveReduceComputation({{0, 1}, {2, 3}, {4, 0}}));
+  EXPECT_THAT(verifier().Run(module.get()).status().message(),
+              HasSubstr("Replica 0 is repeated"));
+}
+
+TEST_F(HloVerifierTest, CollectiveReduce_CrossReplicaAndPartition_Valid) {
+  ASSERT_OK_AND_ASSIGN(
+      auto module,
+      MakeCollectiveReduceComputation({{0, 1}, {2, 3}}, 4, 1, "channel_id=1"));
+  ASSERT_OK(verifier().Run(module.get()).status());
+}
+
+TEST_F(HloVerifierTest, CollectiveReduce_FlattenedID_Valid) {
+  ASSERT_OK_AND_ASSIGN(
+      auto module,
+      MakeCollectiveReduceComputation(
+          {{0, 1}, {2, 3}}, 2, 2, "channel_id=1, use_global_device_ids=true"));
+  ASSERT_OK(verifier().Run(module.get()).status());
+}
+
+TEST_F(HloVerifierTest, CollectiveReduce_DynamicRootValid) {
+  const char* const kModuleStr = R"(
+  HloModule test
+  add {
+    x = f32[] parameter(0)
+    y = f32[] parameter(1)
+    ROOT add = f32[] add(x, y)
+  }
+  ENTRY entry {
+    p0 = f32[128]{0} parameter(0)
+    roots = s32[1]{0} parameter(1)
+    ROOT cr = f32[128]{0} collective-reduce(p0, roots), replica_groups={},
+                          has_dynamic_root=true, to_apply=add
+  })";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(kModuleStr));
+  ASSERT_OK(verifier().Run(module.get()).status());
+}
+
 TEST_F(HloVerifierTest, AllReduceStartAndDone) {
   const char* const kModuleStr = R"(
   HloModule test

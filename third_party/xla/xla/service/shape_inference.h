@@ -189,6 +189,11 @@ class ShapeInference {
       absl::Span<const Shape* const> operand_shapes,
       bool has_dynamic_root = false);
 
+  // Infers the shape of a collective reduce operation.
+  static absl::StatusOr<Shape> InferCollectiveReduceShape(
+      absl::Span<const Shape* const> operand_shapes,
+      bool has_dynamic_root = false);
+
   // Infers the shape of a collective permute operation.
   static absl::StatusOr<Shape> InferCollectivePermuteShape(
       absl::Span<const Shape* const> operand_shapes, bool inplace);

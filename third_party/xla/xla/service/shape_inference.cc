@@ -2986,6 +2986,38 @@ ShapeInference::InferCollectiveBroadcastShape(
   return *(operand_shapes[0]);
 }
 
+/* static */ absl::StatusOr<Shape> ShapeInference::InferCollectiveReduceShape(
+    absl::Span<const Shape* const> operand_shapes, bool has_dynamic_root) {
+  if (has_dynamic_root) {
+    TF_RET_CHECK(operand_shapes.size() > 1);
+    const Shape& root_shape = *operand_shapes.back();
+    TF_RET_CHECK(root_shape ==
+                 ShapeUtil::MakeShape(
+                     S32, {static_cast<int64_t>(operand_shapes.size() - 1)}))
+        << "The last operand of collective-reduce with has_dynamic_root=true "
+           "must be a 1-D array of S32 with the same number of elements as "
+           "the number of data operands, but got "
+        << ShapeUtil::HumanString(root_shape);
+    absl::Span<const Shape* const> data_shapes =
+        operand_shapes.first(operand_shapes.size() - 1);
+    for (const Shape* s : data_shapes) {
+      RETURN_IF_ERROR(ExpectArray(*s, "operand of collective-reduce"));
+    }
+    if (data_shapes.size() == 1) {
+      return *data_shapes[0];
+    }
+    return ShapeUtil::MakeTupleShapeWithPtrs(data_shapes);
+  }
+  for (const Shape* operand_shape : operand_shapes) {
+    RETURN_IF_ERROR(
+        ExpectArray(*operand_shape, "operand of collective-reduce"));
+  }
+  if (operand_shapes.size() == 1) {
+    return *operand_shapes[0];
+  }
+  return ShapeUtil::MakeTupleShapeWithPtrs(operand_shapes);
+}
+
 /* static */ absl::StatusOr<Shape> ShapeInference::InferCollectivePermuteShape(
     absl::Span<const Shape* const> operand_shapes, bool inplace) {
   if (!inplace) {
