@@ -104,6 +104,7 @@ bool DecodeUnaryVariant(Variant* variant) {
     LOG(ERROR) << "DecodeUnaryVariant: Maximum recursion depth ("
                << kMaxVariantDecodeDepth
                << ") exceeded for type: " << variant->TypeName();
+    variant->clear();
     return false;
   }
 
@@ -111,6 +112,7 @@ bool DecodeUnaryVariant(Variant* variant) {
     VariantTensorDataProto* t = variant->get<VariantTensorDataProto>();
     if (t == nullptr || !t->metadata().empty() || !t->tensors().empty()) {
       // Malformed variant.
+      variant->clear();
       return false;
     } else {
       // Serialization of an empty Variant.
@@ -122,6 +124,7 @@ bool DecodeUnaryVariant(Variant* variant) {
   UnaryVariantOpRegistry::VariantDecodeFn* decode_fn =
       UnaryVariantOpRegistry::Global()->GetDecodeFn(variant->TypeName());
   if (decode_fn == nullptr) {
+    variant->clear();
     return false;
   }
   const std::string type_name = variant->TypeName();
