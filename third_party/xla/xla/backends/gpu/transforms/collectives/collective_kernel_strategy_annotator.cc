@@ -35,6 +35,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu_topology.h"
+#include "xla/side_effect_util.h"
 #include "xla/status_macros.h"
 #include "xla/stream_executor/gpu/all_reduce_kernel.h"
 #include "xla/xla.pb.h"
@@ -62,6 +63,11 @@ CollectiveBackendConfig::CollectiveKernelStrategy ToProtoStrategy(
     default:
       return CollectiveBackendConfig::KERNEL_STRATEGY_DEFAULT;
   }
+}
+
+bool HasCollectivesGroupAttribute(const HloInstruction* instruction) {
+  return instruction->frontend_attributes().map().contains(
+      kCollectiveGroupMarkerAttr);
 }
 
 // Tries to determine the Triton kernel strategy for `instr` (which must be an
@@ -168,6 +174,14 @@ absl::StatusOr<bool> CollectiveKernelStrategyAnnotator::RunImpl(
   bool changed = false;
   for (HloComputation* computation :
        module->MakeNonfusionComputations(execution_threads)) {
+    // A computation called by an operation with `_collectives_group` lowers to
+    // a CollectiveGroupThunk. We do not yet support grouping of collective
+    // kernels and always fall back on default collective implementation.
+    if (absl::c_any_of(computation->caller_instructions(),
+                       HasCollectivesGroupAttribute)) {
+      continue;
+    }
+
     for (HloInstruction* instr : computation->instructions()) {
       if (instr->opcode() == HloOpcode::kAllReduce) {
         ASSIGN_OR_RETURN(

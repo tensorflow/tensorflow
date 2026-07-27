@@ -2033,7 +2033,7 @@ TEST_F(HloVerifierTest, AsyncOpComputationNotTrivial) {
           "expected to contain only the root and parameter instructions"));
 }
 
-TEST_F(HloVerifierTest, AsyncMultiOpComputationSendRecvOnly) {
+TEST_F(HloVerifierTest, RejectsUnannotatedAsyncMultiOpComputationSendRecvOnly) {
   const char* const hlo_string = R"(
   wrapped_send_recv_1 {
     param0 = f32[] parameter(0)
@@ -2080,10 +2080,12 @@ TEST_F(HloVerifierTest, AsyncMultiOpComputationSendRecvOnly) {
     gte.3 = token[] get-tuple-element(gte.2), index=2
   }
 )";
-  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
-
-  auto status = verifier().Run(module.get()).status();
-  ASSERT_TRUE(status.ok());
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo_string));
+  EXPECT_THAT(
+      verifier().Run(module.get()).status(),
+      StatusIs(absl::StatusCode::kFailedPrecondition,
+               HasSubstr("expected to contain only the root and parameter "
+                         "instructions")));
 }
 
 TEST_F(HloVerifierTest, IotaNonArrayResult) {
@@ -5301,7 +5303,8 @@ ENTRY main {
   async-comp-start = ((f32[], token[], f32[], token[], token[], token[]),
     ((f32[], u32[], token[]), (f32[], u32[], token[]), (f32[], u32[], token[]),
     (f32[], u32[], token[])), s32[]) async-start(data1, after-all1,
-    data2, after-all2, after-all1, after-all2), calls=wrapped_send_recv
+    data2, after-all2, after-all1, after-all2), calls=wrapped_send_recv,
+    frontend_attributes={_collectives_group=""}
   async-comp-done = ((f32[], u32[], token[]), (f32[], u32[], token[]),
     (f32[], u32[], token[]), (f32[], u32[], token[])) async-done(async-comp-start)
   unpack-recv-done1 = (f32[], u32[], token[]) get-tuple-element(async-comp-done), index=2
@@ -5366,7 +5369,8 @@ ENTRY main {
   async-comp-start = ((f32[], token[], f32[], token[], token[], token[]),
     ((f32[], u32[], token[]), (f32[], u32[], token[]), (f32[], u32[], token[]),
     (f32[], u32[], token[])), s32[]) async-start(data1, after-all1,
-    data2, after-all2, after-all1, after-all2), calls=wrapped_send_recv
+    data2, after-all2, after-all1, after-all2), calls=wrapped_send_recv,
+    frontend_attributes={_collectives_group=""}
   async-comp-done = ((f32[], u32[], token[]), (f32[], u32[], token[]),
     (f32[], u32[], token[]), (f32[], u32[], token[])) async-done(async-comp-start)
   bwd_recv = (f32[], u32[], token[]) recv(after-all3), channel_id=0,
