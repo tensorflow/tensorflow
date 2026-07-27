@@ -1320,7 +1320,9 @@ GetStreamExecutorGpuDeviceAllocator(
       }
       return se::gpu::CudaDeviceAddressVmmAllocator::Create(
           platform, allocator_config.memory_fraction,
-          allocator_config.gpu_system_memory_size, executor_streams);
+          allocator_config.gpu_system_memory_size, executor_streams,
+          /*reclaim_exempt_memory_space=*/
+          static_cast<int64_t>(gpu::MemorySpaceColor::kCollective));
 #elif TENSORFLOW_USE_ROCM
       std::vector<std::pair<se::StreamExecutor*, se::Stream*>> executor_streams;
       executor_streams.reserve(addressable_devices.size());
@@ -1330,7 +1332,9 @@ GetStreamExecutorGpuDeviceAllocator(
       }
       return se::gpu::RocmDeviceAddressVmmAllocator::Create(
           platform, allocator_config.memory_fraction,
-          allocator_config.gpu_system_memory_size, executor_streams);
+          allocator_config.gpu_system_memory_size, executor_streams,
+          /*reclaim_exempt_memory_space=*/
+          static_cast<int64_t>(gpu::MemorySpaceColor::kCollective));
 #else
       return absl::UnimplementedError(
           "VMM allocator is only supported with CUDA or ROCm.");
