@@ -41,11 +41,14 @@ See all the [mailing lists](https://www.tensorflow.org/community/forums).
 
 ## Install
 
-See the [TensorFlow install guide](https://www.tensorflow.org/install) for the
+See the 
+[TensorFlow install guide](https://www.tensorflow.org/install) for the
 [pip package](https://www.tensorflow.org/install/pip), to
 [enable GPU support](https://www.tensorflow.org/install/gpu), use a
 [Docker container](https://www.tensorflow.org/install/docker), and
 [build from source](https://www.tensorflow.org/install/source).
+
+#formated the see the and links separetely
 
 To install the current release, which includes support for
 [CUDA-enabled GPU cards](https://www.tensorflow.org/install/gpu) *(Ubuntu and

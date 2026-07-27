@@ -659,8 +659,7 @@ def shape_v2(input, out_type=None, name=None):
     name: A name for the operation (optional).
 
   Returns:
-    A `Tensor` of type `out_type`.
-  """
+    A `Tensor` of type `out_type`."""
   if out_type is None:
     if flags.config().tf_shape_default_int64.value():
       out_type = dtypes.int64
@@ -691,8 +690,7 @@ def shape(input, name=None, out_type=None):
     or `int64`). Defaults to `tf.int32`.
 
   Returns:
-    A `Tensor` of type `out_type`.
-  """
+    A `Tensor` of type `out_type`."""
   if out_type is None:
     if flags.config().tf_shape_default_int64.value():
       out_type = dtypes.int64
