@@ -516,6 +516,7 @@ class Dictionary;
 
 // Context gives run time access to the execution context. Concrete
 // implementation is provided by the `ffi.h` header.
+template <ExecutionStage stage = ExecutionStage::kExecute>
 class Context;
 
 namespace internal {
@@ -559,7 +560,7 @@ struct AttrTag {};
 template <typename T>
 struct AttrsTag {};
 
-// A type tag to distinguish parameter extracted from an execution context.
+// A type tag to distinguish a parameter extracted from an execution context.
 template <typename T>
 struct CtxTag {};
 
@@ -711,7 +712,7 @@ class Binding {
     return {std::move(*this)};
   }
 
-  Binding<stage, Ts..., internal::CtxTag<Context>> Ctx() && {
+  Binding<stage, Ts..., internal::CtxTag<Context<stage>>> Ctx() && {
     return {std::move(*this)};
   }
 
@@ -1468,13 +1469,15 @@ struct AttrDecoding;
 // Example: decoding for the `MyType` context
 //
 //   template <>
-//   struct CtxDecoding<MyType> {
+//   struct CtxDecoding<ExecutionStage::kExecute, MyType> {
 //    using Type = <handler argument type for context type MyType>;
 //    static std::optional<Type> Decode(const XLA_FFI_Api* api,
 //                                      XLA_FFI_ExecutionContext* ctx);
 //   }
 //
-template <typename T>
+// Context decoding is execution stage specific because some context values are
+// available only at a particular stage.
+template <ExecutionStage stage, typename T>
 struct CtxDecoding;
 
 //===----------------------------------------------------------------------===//
@@ -1596,11 +1599,11 @@ struct DecodingContext {
   const std::size_t* attrs_idx;    // not owned
 };
 
-template <typename T>
+template <ExecutionStage stage, typename T>
 struct Decode;
 
-template <typename T>
-struct Decode<ArgTag<T>> {
+template <ExecutionStage stage, typename T>
+struct Decode<stage, ArgTag<T>> {
   XLA_FFI_ATTRIBUTE_ALWAYS_INLINE
   static std::optional<T> call(DecodingOffsets& offsets, DecodingContext& ctx,
                                DiagnosticEngine& diagnostic) {
@@ -1610,8 +1613,8 @@ struct Decode<ArgTag<T>> {
   }
 };
 
-template <typename T>
-struct Decode<OptionalArgTag<T>> {
+template <ExecutionStage stage, typename T>
+struct Decode<stage, OptionalArgTag<T>> {
   XLA_FFI_ATTRIBUTE_ALWAYS_INLINE
   static std::optional<std::optional<T>> call(DecodingOffsets& offsets,
                                               DecodingContext& ctx,
@@ -1619,12 +1622,12 @@ struct Decode<OptionalArgTag<T>> {
     if (XLA_FFI_PREDICT_FALSE(offsets.args >= ctx.call_frame->args.size)) {
       return std::optional<T>(std::nullopt);
     }
-    return Decode<ArgTag<T>>::call(offsets, ctx, diagnostic);
+    return Decode<stage, ArgTag<T>>::call(offsets, ctx, diagnostic);
   }
 };
 
-template <typename T>
-struct Decode<RetTag<T>> {
+template <ExecutionStage stage, typename T>
+struct Decode<stage, RetTag<T>> {
   XLA_FFI_ATTRIBUTE_ALWAYS_INLINE
   static std::optional<Result<T>> call(DecodingOffsets& offsets,
                                        DecodingContext& ctx,
@@ -1635,8 +1638,8 @@ struct Decode<RetTag<T>> {
   }
 };
 
-template <typename T>
-struct Decode<OptionalRetTag<T>> {
+template <ExecutionStage stage, typename T>
+struct Decode<stage, OptionalRetTag<T>> {
   XLA_FFI_ATTRIBUTE_ALWAYS_INLINE
   static std::optional<std::optional<Result<T>>> call(
       DecodingOffsets& offsets, DecodingContext& ctx,
@@ -1644,12 +1647,12 @@ struct Decode<OptionalRetTag<T>> {
     if (XLA_FFI_PREDICT_FALSE(offsets.rets >= ctx.call_frame->rets.size)) {
       return std::optional<Result<T>>(std::nullopt);
     }
-    return Decode<RetTag<T>>::call(offsets, ctx, diagnostic);
+    return Decode<stage, RetTag<T>>::call(offsets, ctx, diagnostic);
   }
 };
 
-template <typename T>
-struct Decode<AttrTag<T>> {
+template <ExecutionStage stage, typename T>
+struct Decode<stage, AttrTag<T>> {
   using R = typename AttrDecoding<T>::Type;
 
   XLA_FFI_ATTRIBUTE_ALWAYS_INLINE
@@ -1694,15 +1697,15 @@ struct Decode<AttrTag<T>> {
   }
 };
 
-template <typename T>
-struct Decode<CtxTag<T>> {
-  using R = typename CtxDecoding<T>::Type;
+template <ExecutionStage stage, typename T>
+struct Decode<stage, CtxTag<T>> {
+  using R = typename CtxDecoding<stage, T>::Type;
 
   XLA_FFI_ATTRIBUTE_ALWAYS_INLINE
   static std::optional<R> call(DecodingOffsets& offsets, DecodingContext& ctx,
                                DiagnosticEngine& diagnostic) {
-    return CtxDecoding<T>::Decode(ctx.call_frame->api, ctx.call_frame->ctx,
-                                  diagnostic);
+    return CtxDecoding<stage, T>::Decode(ctx.call_frame->api,
+                                         ctx.call_frame->ctx, diagnostic);
   }
 };
 
@@ -1901,8 +1904,8 @@ class DictionaryBase {
 //===----------------------------------------------------------------------===//
 
 // Decode `AttrsTag` into a type `T` relying on struct decoding defined below.
-template <typename T>
-struct internal::Decode<internal::AttrsTag<T>> {
+template <ExecutionStage stage, typename T>
+struct internal::Decode<stage, internal::AttrsTag<T>> {
   static std::optional<T> call(DecodingOffsets& offsets, DecodingContext& ctx,
                                DiagnosticEngine& diagnostic) {
     return AttrDecoding<T>::Decode(XLA_FFI_AttrType_DICTIONARY,
@@ -1916,6 +1919,7 @@ struct internal::Decode<internal::AttrsTag<T>> {
 
 namespace internal {
 
+template <ExecutionStage stage>
 class ContextBase {
  public:
   ContextBase(const XLA_FFI_Api* api, XLA_FFI_ExecutionContext* ctx)
@@ -1926,9 +1930,9 @@ class ContextBase {
 
  protected:
   template <typename T>
-  std::optional<typename CtxDecoding<T>::Type> get(
+  std::optional<typename CtxDecoding<stage, T>::Type> get(
       DiagnosticEngine& diagnostic) const {
-    return CtxDecoding<T>::Decode(api_, ctx_, diagnostic);
+    return CtxDecoding<stage, T>::Decode(api_, ctx_, diagnostic);
   }
 
  private:
@@ -1951,52 +1955,52 @@ class RemainingRets;
 
 namespace internal {
 // A helper struct to extract the type of the handler argument.
-template <typename T>
+template <ExecutionStage stage, typename T>
 struct FnArgType;
 
-template <typename T>
-struct FnArgType<internal::ArgTag<T>> {
+template <ExecutionStage stage, typename T>
+struct FnArgType<stage, internal::ArgTag<T>> {
   using Type = T;
 };
 
-template <typename T>
-struct FnArgType<internal::OptionalArgTag<T>> {
+template <ExecutionStage stage, typename T>
+struct FnArgType<stage, internal::OptionalArgTag<T>> {
   using Type = std::optional<T>;
 };
 
-template <>
-struct FnArgType<internal::RemainingArgsTag> {
+template <ExecutionStage stage>
+struct FnArgType<stage, internal::RemainingArgsTag> {
   using Type = RemainingArgs;
 };
 
-template <typename T>
-struct FnArgType<internal::RetTag<T>> {
+template <ExecutionStage stage, typename T>
+struct FnArgType<stage, internal::RetTag<T>> {
   using Type = Result<T>;
 };
 
-template <typename T>
-struct FnArgType<internal::OptionalRetTag<T>> {
+template <ExecutionStage stage, typename T>
+struct FnArgType<stage, internal::OptionalRetTag<T>> {
   using Type = std::optional<Result<T>>;
 };
 
-template <>
-struct FnArgType<internal::RemainingRetsTag> {
+template <ExecutionStage stage>
+struct FnArgType<stage, internal::RemainingRetsTag> {
   using Type = RemainingRets;
 };
 
-template <typename T>
-struct FnArgType<internal::AttrTag<T>> {
+template <ExecutionStage stage, typename T>
+struct FnArgType<stage, internal::AttrTag<T>> {
   using Type = typename AttrDecoding<T>::Type;
 };
 
-template <typename T>
-struct FnArgType<internal::AttrsTag<T>> {
+template <ExecutionStage stage, typename T>
+struct FnArgType<stage, internal::AttrsTag<T>> {
   using Type = T;
 };
 
-template <typename T>
-struct FnArgType<internal::CtxTag<T>> {
-  using Type = typename CtxDecoding<T>::Type;
+template <ExecutionStage stage, typename T>
+struct FnArgType<stage, internal::CtxTag<T>> {
+  using Type = typename CtxDecoding<stage, T>::Type;
 };
 
 // A template to detect result encodings that are state constructors. We use
@@ -2050,7 +2054,7 @@ class Handler : public Ffi {
                 "dictionary attributes can't be mixed with regular ones");
 
   template <typename T>
-  using FnArgType = typename internal::FnArgType<T>::Type;
+  using FnArgType = typename internal::FnArgType<stage, T>::Type;
 
   static_assert(std::is_invocable_v<Fn, FnArgType<Ts>...>,
                 "FFI binding signature is not compatible with a function type");
@@ -2258,7 +2262,7 @@ class Handler : public Ffi {
     DiagnosticEngine diagnostic;
 
     std::tuple<std::optional<FnArgType<Ts>>...> args = {
-        internal::Decode<Ts>::call(offsets, ctx, diagnostic)...};
+        internal::Decode<stage, Ts>::call(offsets, ctx, diagnostic)...};
 
     if constexpr (sizeof...(Ts) > 0) {
       // We intentionally use `&`, as it generates fewer branch instructions.

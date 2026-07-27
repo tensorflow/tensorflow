@@ -47,6 +47,44 @@ XLA FFI customization points implemented as template specializations, and
 users can define how to decode their custom types, i.e., it is possible
 to define custom decoding for user-defined `enum class` types.
 
+### Context Arguments
+
+Context arguments pass values supplied by the XLA runtime or backend instead of
+values present in the custom call's explicit arguments. Bind them with
+`Ctx<T>()`; for example, GPU handlers commonly bind a platform stream.
+
+Context decoding is specific to an execution stage. A context type that is
+available only while preparing a custom call can define only a prepare-stage
+decoder:
+
+```c++
+struct MyContext {};
+
+template <>
+struct CtxDecoding<ExecutionStage::kPrepare, MyContext> {
+  using Type = MyContext*;
+
+  static std::optional<Type> Decode(
+      const XLA_FFI_Api* api, XLA_FFI_ExecutionContext* ctx,
+      DiagnosticEngine& diagnostic) {
+    return GetMyContext(api, ctx, diagnostic);
+  }
+};
+
+auto handler = Ffi::BindPrepare()
+                   .Ctx<MyContext>()
+                   .To([](MyContext* context) {
+                     // Use the context available during preparation.
+                     return Error::Success();
+                   });
+```
+
+Specialize `CtxDecoding<stage, T>` for each stage where `T` is available. If a
+context is available at every stage, the specialization can itself be templated
+on `stage`. A catch-all `Context<stage>` is also stage typed, and its
+`context.get<T>()` method uses the same stage without allowing callers to
+override it.
+
 ### Returning Errors From Custom Calls
 
 Custom call implementations must return `xla::ffi::Error` value to signal

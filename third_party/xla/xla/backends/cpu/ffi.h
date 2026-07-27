@@ -38,8 +38,8 @@ struct IntraOpThreadPool {};  // binds `const Eigen::ThreadPoolDevice*`
 // Context decoding
 //===----------------------------------------------------------------------===//
 
-template <>
-struct CtxDecoding<IntraOpThreadPool> {
+template <ExecutionStage stage>
+struct CtxDecoding<stage, IntraOpThreadPool> {
   using Type = const Eigen::ThreadPoolDevice*;
 
   static std::optional<Type> Decode(const XLA_FFI_Api* api,

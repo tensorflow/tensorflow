@@ -87,8 +87,8 @@ std::optional<std::array<se::Stream*, n>> OptionalStreamsToArray(
 
 }  // namespace internal
 
-template <>
-struct CtxDecoding<Stream> {
+template <ExecutionStage stage>
+struct CtxDecoding<stage, Stream> {
   using Type = se::Stream*;
 
   static std::optional<Type> Decode(const XLA_FFI_Api* api,
@@ -100,15 +100,16 @@ struct CtxDecoding<Stream> {
   }
 };
 
-template <typename T>
-struct CtxDecoding<PlatformStream<T>> {
+template <ExecutionStage stage, typename T>
+struct CtxDecoding<stage, PlatformStream<T>> {
   using Type = T;
   static_assert(std::is_pointer_v<T>, "platform stream type must be a pointer");
 
   static std::optional<Type> Decode(const XLA_FFI_Api* api,
                                     XLA_FFI_ExecutionContext* ctx,
                                     DiagnosticEngine& diagnostic) {
-    if (auto stream = CtxDecoding<Stream>::Decode(api, ctx, diagnostic)) {
+    if (auto stream =
+            CtxDecoding<stage, Stream>::Decode(api, ctx, diagnostic)) {
       return reinterpret_cast<Type>(
           stream.value()->platform_specific_handle().stream);
     }
@@ -116,8 +117,8 @@ struct CtxDecoding<PlatformStream<T>> {
   }
 };
 
-template <size_t id>
-struct CtxDecoding<ComputationStream<id>> {
+template <ExecutionStage stage, size_t id>
+struct CtxDecoding<stage, ComputationStream<id>> {
   using Type = se::Stream*;
 
   static std::optional<Type> Decode(const XLA_FFI_Api* api,
@@ -137,12 +138,12 @@ struct CtxDecoding<ComputationStream<id>> {
   }
 };
 
-template <size_t id0, size_t id1, size_t... ids>
-struct CtxDecoding<ComputationStream<id0, id1, ids...>> {
+template <ExecutionStage stage, size_t id0, size_t id1, size_t... ids>
+struct CtxDecoding<stage, ComputationStream<id0, id1, ids...>> {
   using Type = std::array<se::Stream*, 2 + sizeof...(ids)>;
 
   template <size_t stream_id>
-  using StreamDecoding = CtxDecoding<ComputationStream<stream_id>>;
+  using StreamDecoding = CtxDecoding<stage, ComputationStream<stream_id>>;
 
   static std::optional<Type> Decode(const XLA_FFI_Api* api,
                                     XLA_FFI_ExecutionContext* ctx,
@@ -155,8 +156,8 @@ struct CtxDecoding<ComputationStream<id0, id1, ids...>> {
   }
 };
 
-template <size_t id>
-struct CtxDecoding<CommunicationStream<id>> {
+template <ExecutionStage stage, size_t id>
+struct CtxDecoding<stage, CommunicationStream<id>> {
   using Type = se::Stream*;
 
   static std::optional<Type> Decode(const XLA_FFI_Api* api,
@@ -176,12 +177,12 @@ struct CtxDecoding<CommunicationStream<id>> {
   }
 };
 
-template <size_t id0, size_t id1, size_t... ids>
-struct CtxDecoding<CommunicationStream<id0, id1, ids...>> {
+template <ExecutionStage stage, size_t id0, size_t id1, size_t... ids>
+struct CtxDecoding<stage, CommunicationStream<id0, id1, ids...>> {
   using Type = std::array<se::Stream*, 2 + sizeof...(ids)>;
 
   template <size_t stream_id>
-  using StreamDecoding = CtxDecoding<CommunicationStream<stream_id>>;
+  using StreamDecoding = CtxDecoding<stage, CommunicationStream<stream_id>>;
 
   static std::optional<Type> Decode(const XLA_FFI_Api* api,
                                     XLA_FFI_ExecutionContext* ctx,
@@ -194,8 +195,8 @@ struct CtxDecoding<CommunicationStream<id0, id1, ids...>> {
   }
 };
 
-template <>
-struct CtxDecoding<Allocator> {
+template <ExecutionStage stage>
+struct CtxDecoding<stage, Allocator> {
   using Type = se::DeviceAddressAllocator*;
 
   static std::optional<Type> Decode(const XLA_FFI_Api* api,
@@ -208,8 +209,8 @@ struct CtxDecoding<Allocator> {
   }
 };
 
-template <>
-struct CtxDecoding<ScratchAllocator> {
+template <ExecutionStage stage>
+struct CtxDecoding<stage, ScratchAllocator> {
   using Type = se::OwningScratchAllocator<>;
 
   static std::optional<Type> Decode(const XLA_FFI_Api* api,
@@ -219,7 +220,7 @@ struct CtxDecoding<ScratchAllocator> {
         api->internal_api->XLA_FFI_INTERNAL_DeviceOrdinal_Get(ctx);
 
     auto device_allocator =
-        CtxDecoding<Allocator>::Decode(api, ctx, diagnostic);
+        CtxDecoding<stage, Allocator>::Decode(api, ctx, diagnostic);
     if (ABSL_PREDICT_FALSE(!device_allocator)) {
       return std::nullopt;
     }
@@ -228,8 +229,8 @@ struct CtxDecoding<ScratchAllocator> {
   }
 };
 
-template <>
-struct CtxDecoding<CollectiveParams> {
+template <ExecutionStage stage>
+struct CtxDecoding<stage, CollectiveParams> {
   using Type = const xla::gpu::CollectiveParams*;
 
   static std::optional<Type> Decode(const XLA_FFI_Api* api,
@@ -242,8 +243,8 @@ struct CtxDecoding<CollectiveParams> {
   }
 };
 
-template <>
-struct CtxDecoding<CollectiveCliqueRequests> {
+template <ExecutionStage stage>
+struct CtxDecoding<stage, CollectiveCliqueRequests> {
   using Type = xla::gpu::CollectiveCliqueRequests*;
 
   static std::optional<Type> Decode(const XLA_FFI_Api* api,
@@ -256,8 +257,8 @@ struct CtxDecoding<CollectiveCliqueRequests> {
   }
 };
 
-template <>
-struct CtxDecoding<CollectiveMemoryRequests> {
+template <ExecutionStage stage>
+struct CtxDecoding<stage, CollectiveMemoryRequests> {
   using Type = xla::gpu::CollectiveMemoryRequests*;
 
   static std::optional<Type> Decode(const XLA_FFI_Api* api,
@@ -270,8 +271,8 @@ struct CtxDecoding<CollectiveMemoryRequests> {
   }
 };
 
-template <>
-struct CtxDecoding<CollectiveCliques> {
+template <ExecutionStage stage>
+struct CtxDecoding<stage, CollectiveCliques> {
   using Type = xla::gpu::CollectiveCliques*;
 
   static std::optional<Type> Decode(const XLA_FFI_Api* api,
@@ -284,8 +285,8 @@ struct CtxDecoding<CollectiveCliques> {
   }
 };
 
-template <>
-struct CtxDecoding<CollectiveMemory> {
+template <ExecutionStage stage>
+struct CtxDecoding<stage, CollectiveMemory> {
   using Type = xla::gpu::CollectiveMemory*;
 
   static std::optional<Type> Decode(const XLA_FFI_Api* api,
@@ -298,8 +299,8 @@ struct CtxDecoding<CollectiveMemory> {
   }
 };
 
-template <>
-struct CtxDecoding<TargetGpuComputeCapability> {
+template <ExecutionStage stage>
+struct CtxDecoding<stage, TargetGpuComputeCapability> {
   using Type = const se::GpuComputeCapability*;
 
   static std::optional<Type> Decode(const XLA_FFI_Api* api,
@@ -312,8 +313,8 @@ struct CtxDecoding<TargetGpuComputeCapability> {
   }
 };
 
-template <>
-struct CtxDecoding<CpuTargetMachineOptions> {
+template <ExecutionStage stage>
+struct CtxDecoding<stage, CpuTargetMachineOptions> {
   using Type = const xla::cpu::TargetMachineOptions*;
 
   static std::optional<Type> Decode(const XLA_FFI_Api* api,

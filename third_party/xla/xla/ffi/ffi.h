@@ -445,8 +445,8 @@ class RemainingArgs : public internal::RemainingArgsBase {
   }
 };
 
-template <>
-struct internal::Decode<internal::RemainingArgsTag> {
+template <ExecutionStage stage>
+struct internal::Decode<stage, internal::RemainingArgsTag> {
   static std::optional<RemainingArgs> call(DecodingOffsets& offsets,
                                            DecodingContext& ctx,
                                            DiagnosticEngine& diagnostic) {
@@ -513,8 +513,8 @@ class RemainingRets : public internal::RemainingRetsBase {
   }
 };
 
-template <>
-struct internal::Decode<internal::RemainingRetsTag> {
+template <ExecutionStage stage>
+struct internal::Decode<stage, internal::RemainingRetsTag> {
   static std::optional<RemainingRets> call(DecodingOffsets& offsets,
                                            DecodingContext& ctx,
                                            DiagnosticEngine& diagnostic) {
@@ -616,8 +616,8 @@ class Dictionary : public internal::DictionaryBase {
 };
 
 // Decode `AttrsTag` (all attributes) into a `Dictionary`.
-template <>
-struct internal::Decode<internal::AttrsTag<Dictionary>> {
+template <ExecutionStage stage>
+struct internal::Decode<stage, internal::AttrsTag<Dictionary>> {
   static std::optional<Dictionary> call(DecodingOffsets& offsets,
                                         DecodingContext& ctx,
                                         DiagnosticEngine& diagnostic) {
@@ -643,14 +643,15 @@ struct AttrDecoding<Dictionary> {
 // Type-safe wrapper for accessing context.
 //===----------------------------------------------------------------------===//
 
-class Context : public internal::ContextBase {
+template <ExecutionStage stage>
+class Context : public internal::ContextBase<stage> {
  public:
-  using internal::ContextBase::ContextBase;
+  using internal::ContextBase<stage>::ContextBase;
 
   template <typename T>
-  absl::StatusOr<typename CtxDecoding<T>::Type> get() const {
+  absl::StatusOr<typename CtxDecoding<stage, T>::Type> get() const {
     DiagnosticEngine diagnostic;
-    auto value = internal::ContextBase::get<T>(diagnostic);
+    auto value = internal::ContextBase<stage>::template get<T>(diagnostic);
     if (ABSL_PREDICT_FALSE(!value.has_value())) {
       return Internal("%s", diagnostic.Result());
     }
@@ -659,15 +660,15 @@ class Context : public internal::ContextBase {
 };
 
 // Context decoding for catch-all `Context` type.
-template <>
-struct CtxDecoding<Context> {
-  using Type = Context;
+template <ExecutionStage stage>
+struct CtxDecoding<stage, Context<stage>> {
+  using Type = Context<stage>;
 
   XLA_FFI_ATTRIBUTE_ALWAYS_INLINE
-  static std::optional<Context> Decode(const XLA_FFI_Api* api,
-                                       XLA_FFI_ExecutionContext* ctx,
-                                       DiagnosticEngine&) {
-    return Context(api, ctx);
+  static std::optional<Type> Decode(const XLA_FFI_Api* api,
+                                    XLA_FFI_ExecutionContext* ctx,
+                                    DiagnosticEngine&) {
+    return Context<stage>(api, ctx);
   }
 };
 
@@ -696,8 +697,8 @@ static std::optional<T> DecodeInternalCtx(const XLA_FFI_Api* api,
 
 }  // namespace internal
 
-template <>
-struct CtxDecoding<DeviceOrdinal> {
+template <ExecutionStage stage>
+struct CtxDecoding<stage, DeviceOrdinal> {
   using Type = int32_t;
 
   static std::optional<Type> Decode(const XLA_FFI_Api* api,
@@ -707,8 +708,8 @@ struct CtxDecoding<DeviceOrdinal> {
   }
 };
 
-template <>
-struct CtxDecoding<CalledComputation> {
+template <ExecutionStage stage>
+struct CtxDecoding<stage, CalledComputation> {
   using Type = const HloComputation*;
 
   static std::optional<Type> Decode(const XLA_FFI_Api* api,
@@ -719,8 +720,8 @@ struct CtxDecoding<CalledComputation> {
   }
 };
 
-template <>
-struct CtxDecoding<RunId> {
+template <ExecutionStage stage>
+struct CtxDecoding<stage, RunId> {
   using Type = RunId;
 
   static std::optional<Type> Decode(const XLA_FFI_Api* api,
@@ -738,8 +739,8 @@ struct CtxDecoding<RunId> {
 template <typename T>
 struct UserData {};
 
-template <typename T>
-struct CtxDecoding<UserData<T>> {
+template <ExecutionStage stage, typename T>
+struct CtxDecoding<stage, UserData<T>> {
   using Type = T*;
 
   static std::optional<Type> Decode(const XLA_FFI_Api* api,
@@ -777,8 +778,8 @@ using Prepared = State<T, ExecutionStage::kPrepare>;
 template <typename T>
 using Initialized = State<T, ExecutionStage::kInitialize>;
 
-template <typename T, ExecutionStage stage>
-struct CtxDecoding<State<T, stage>> {
+template <ExecutionStage stage, typename T, ExecutionStage state_stage>
+struct CtxDecoding<stage, State<T, state_stage>> {
   using Type = T*;
 
   static std::optional<Type> Decode(const XLA_FFI_Api* api,
@@ -786,7 +787,7 @@ struct CtxDecoding<State<T, stage>> {
                                     DiagnosticEngine& diagnostic) {
     auto* execution_state = reinterpret_cast<const ExecutionState*>(
         api->internal_api->XLA_FFI_INTERNAL_ExecutionState_Get(
-            ctx, static_cast<XLA_FFI_ExecutionStage>(stage)));
+            ctx, static_cast<XLA_FFI_ExecutionStage>(state_stage)));
 
     if (execution_state == nullptr) {
       return diagnostic.Emit(
