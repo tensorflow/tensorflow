@@ -610,6 +610,26 @@ func.func @fuseMulIntoFollowingFullyConnected(%arg0: tensor<4x2xf32>) -> tensor<
 // CHECK-NEXT: return %[[fc]] : tensor<4x2xf32>
 }
 
+// CHECK-LABEL: @DontFuseExpandingMulIntoFollowingFullyConnected
+// Regression test for https://github.com/tensorflow/tensorflow/issues/124103:
+// Mul that expands the feature dim (e.g. [...,1]*[K] -> [...,K]) must not be
+// folded into a following FullyConnected filter.
+func.func @DontFuseExpandingMulIntoFollowingFullyConnected(%arg0: tensor<4x4x1xf32>) -> tensor<4x4x4xf32> {
+  %scale = arith.constant dense<[3.0, 4.0]> : tensor<2xf32>
+  %0 = "tfl.mul"(%arg0, %scale) {fused_activation_function = "NONE"} : (tensor<4x4x1xf32>, tensor<2xf32>) -> tensor<4x4x2xf32>
+  %filter = arith.constant dense<[[1.0, 2.0], [3.0, 4.0], [5.0, 6.0], [7.0, 8.0]]> : tensor<4x2xf32>
+  %bias = "tfl.no_value"() {value} : () -> none
+  %1 = "tfl.fully_connected"(%0, %filter, %bias) {fused_activation_function = "NONE", keep_num_dims = true, weights_format = "DEFAULT"} : (tensor<4x4x2xf32>, tensor<4x2xf32>, none) -> tensor<4x4x4xf32>
+  func.return %1 : tensor<4x4x4xf32>
+
+// CHECK-DAG: %[[SCALE:.*]] = arith.constant dense<[3.000000e+00, 4.000000e+00]> : tensor<2xf32>
+// CHECK-DAG: %[[MUL:.*]] = "tfl.mul"(%arg0, %[[SCALE]])
+// CHECK-DAG: %[[FILTER:.*]] = arith.constant dense<{{\[}}[1.000000e+00, 2.000000e+00], [3.000000e+00, 4.000000e+00], [5.000000e+00, 6.000000e+00], [7.000000e+00, 8.000000e+00]]> : tensor<4x2xf32>
+// CHECK-DAG: %[[BIAS:.*]] = "tfl.no_value"()
+// CHECK: %[[FC:.*]] = "tfl.fully_connected"(%[[MUL]], %[[FILTER]], %[[BIAS]])
+// CHECK: return %[[FC]]
+}
+
 // CHECK-LABEL: @DontFuseRhsNonConstMulIntoFollowingFullyConnected
 func.func @DontFuseRhsNonConstMulIntoFollowingFullyConnected(%arg0: tensor<4x2xf32>, %arg1: tensor<2xf32>) -> tensor<4x2xf32> {
   %mul = "tfl.mul"(%arg0, %arg1) <{fused_activation_function = "NONE"}> : (tensor<4x2xf32>, tensor<2xf32>) -> tensor<4x2xf32>
