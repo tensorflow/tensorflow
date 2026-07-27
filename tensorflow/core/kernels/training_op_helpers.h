@@ -25,10 +25,12 @@ limitations under the License.
 #include <vector>
 
 #include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "xla/tsl/framework/allocator.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/variant.h"
 #include "tensorflow/core/framework/variant_op_registry.h"
 #include "tensorflow/core/kernels/dense_update_functor.h"
@@ -74,6 +76,15 @@ absl::Status EnsureSparseVariableAccess(OpKernelContext* ctx, Var* var) {
   if (var->tensor()->RefCountIsOne()) {
     var->copy_on_read_mode.store(true);
     return absl::OkStatus();
+  }
+  // The copy below reads the variable as `T`, which CHECK-fails if the
+  // variable was created with a different dtype. The caller ignores this
+  // status; GetInputTensorFromVariable reports the mismatch to the user.
+  if (var->tensor()->dtype() != DataTypeToEnum<T>::v()) {
+    return absl::InvalidArgumentError(
+        absl::StrCat("Trying to read a resource variable of dtype ",
+                     DataTypeString(var->tensor()->dtype()), " as ",
+                     DataTypeString(DataTypeToEnum<T>::v()), "."));
   }
   Tensor tmp;
   if (std::is_same<T, Variant>::value) {
@@ -285,6 +296,17 @@ absl::Status GetInputTensorFromVariable(OpKernelContext* ctx, int input,
     ResourceHandle handle;
     TF_RETURN_IF_ERROR(HandleFromInput(ctx, input, &handle));
     TF_RETURN_IF_ERROR(LookupResource(ctx, handle, &var));
+    // The op's `T` attr and the variable's dtype are independent: a graph can
+    // pair, say, a bfloat16 variable with a float32 training op. Both this
+    // function and every caller read the underlying tensor as `T`, and
+    // Tensor::flat<T>() CHECK-fails on a dtype mismatch, so reject the
+    // mismatch here rather than aborting the process.
+    if (var->tensor()->dtype() != DataTypeToEnum<T>::v()) {
+      return absl::InvalidArgumentError(
+          absl::StrCat("Trying to read a resource variable of dtype ",
+                       DataTypeString(var->tensor()->dtype()), " as ",
+                       DataTypeString(DataTypeToEnum<T>::v()), "."));
+    }
     if (sparse) {
       var->mu()->assert_held_shared();
       *out = *var->tensor();
