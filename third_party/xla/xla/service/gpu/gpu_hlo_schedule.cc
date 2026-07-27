@@ -657,6 +657,12 @@ absl::Status RunLatencyHidingSchedulerPasses(
       memory_limit,
       options.xla_gpu_experimental_parallel_collective_overlap_limit(),
       options.xla_gpu_experimental_parallel_async_compute_limit());
+  const bool enable_selective_memcpy_overlap =
+      options.xla_gpu_experimental_enable_selective_memcpy_overlap();
+  if (enable_selective_memcpy_overlap) {
+    config.enable_selective_resources = true;
+    config.max_hops_to_closest_selective_overlap = 1;
+  }
 
   auto shape_size_in_bytes = ShapeSizeBytesFunction(pointer_size);
 
@@ -685,6 +691,13 @@ absl::Status RunLatencyHidingSchedulerPasses(
           DefaultSchedulerCore::ScheduleCandidate& a,
           DefaultSchedulerCore::ScheduleCandidate& b)
       -> std::optional<DefaultSchedulerCore::CandidateResult> {
+    // Its priority relative to memory pressure follows
+    // force_delay_over_memory_pressure, and it always precedes generic
+    // async-window heuristics.
+    if (auto result = GpuD2DOverlapSchedulingRule(a, b)) {
+      return result;
+    }
+
     if (config.aggressive_scheduling_policies &&
         prioritize_compute_over_async_start) {
       HloGraphNode* a_node = a.node;
