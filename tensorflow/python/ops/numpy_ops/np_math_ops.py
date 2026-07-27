@@ -540,15 +540,15 @@ def isclose(a, b, rtol=1e-05, atol=1e-08, equal_nan=False):  # pylint: disable=m
       # promotion opt-in. The difference is computed as max - min so that
       # unsigned inputs cannot wrap around, and tf.abs does not support
       # unsigned dtypes.
-      diff = math_ops.maximum(a, b) - math_ops.minimum(a, b)
+      diff_val = math_ops.maximum(a, b) - math_ops.minimum(a, b)
       if np.issubdtype(dtype.as_numpy_dtype, np.unsignedinteger):
         abs_b = b
         no_overflow = None
       else:
         abs_b = math_ops.abs(b)
         # Signed subtraction overflow always produces a negative value, so a
-        # negative diff means the true difference is not representable in
-        # this dtype; such pairs are treated as not close rather than
+        # negative difference means the true difference is not representable
+        # in this dtype; such pairs are treated as not close rather than
         # compared through the wrapped value. abs(b) can also overflow for
         # the most negative value, which flips the sign of rtol-scaled
         # tolerances and makes the comparison impossible to satisfy: values
@@ -556,13 +556,13 @@ def isclose(a, b, rtol=1e-05, atol=1e-08, equal_nan=False):  # pylint: disable=m
         # computing in floating point, reports them close. Identical values
         # are protected by the equality fallback below; for the rest,
         # enabling type promotion with float tolerances gives NumPy results.
-        no_overflow = diff >= 0
+        no_overflow = diff_val >= 0
       rhs = atol + rtol * abs_b
-      if rhs.dtype != diff.dtype:
+      if rhs.dtype != diff_val.dtype:
         # Reachable only with type promotion enabled and float tolerances,
         # where the tolerance side has been promoted to floating point.
-        diff = math_ops.cast(diff, rhs.dtype)
-      result = diff <= rhs
+        diff_val = math_ops.cast(diff_val, rhs.dtype)
+      result = diff_val <= rhs
       # Identical values are always close, regardless of tolerance overflow.
       result = result | math_ops.equal(a, b)
       if no_overflow is not None:
