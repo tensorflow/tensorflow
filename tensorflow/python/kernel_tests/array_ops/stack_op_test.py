@@ -96,6 +96,21 @@ class StackOpTest(test.TestCase):
     ):
       f()
 
+  def testParallelConcatShapeOverflow(self):
+    # Regression test for GitHub issue 108663: a shape whose element count
+    # overflows int64 used to abort the process with a fatal CHECK failure
+    # in the ParallelConcat rewrite pass instead of raising a catchable
+    # error. Only the eager path reaches the rewrite pass with the invalid
+    # shape; graph construction already rejects it at op-creation time.
+    if not context.executing_eagerly():
+      self.skipTest("Exercises the eager function-optimization path.")
+    with self.assertRaisesRegex(
+        errors.InvalidArgumentError, r"too large \(more than 2\*\*63 - 1"
+    ):
+      gen_array_ops.parallel_concat(
+          values=[array_ops.zeros([17, 5, 14], dtype=dtypes.int64)],
+          shape=[3037000500, 3037000500])
+
   def testSimpleParallelGPU(self):
     # tf.parallel_stack is only supported in graph mode.
     with ops.Graph().as_default():
