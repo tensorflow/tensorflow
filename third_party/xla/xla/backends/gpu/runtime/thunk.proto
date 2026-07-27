@@ -456,6 +456,9 @@ message CollectiveBroadcastThunkProto {
   reserved 1;  // Was async_events_unique_id.
   repeated CollectiveBufferProto buffers = 2;
   CollectiveConfigProto collective_config = 3;
+  // When true, the last buffer holds the runtime-selected root rank per
+  // broadcast and is not itself broadcast.
+  bool has_dynamic_root = 4;
 }
 
 message CollectiveGroupThunkProto {
