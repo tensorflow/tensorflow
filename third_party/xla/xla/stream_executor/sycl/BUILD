@@ -150,9 +150,8 @@ cc_library(
     hdrs = ["oneapi_compute_capability.h"],
     deps = [
         ":oneapi_compute_capability_proto_cc",
-        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/utility",
+        "@com_google_absl//absl/strings:string_view",
     ],
 )
 
