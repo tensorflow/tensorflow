@@ -72,6 +72,7 @@ limitations under the License.
 #include "xla/service/collective_combiner_utils.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/computation_layout.h"
+#include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_cse.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/shape_inference.h"
