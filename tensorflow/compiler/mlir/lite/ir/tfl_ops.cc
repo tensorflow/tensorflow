@@ -6238,7 +6238,16 @@ OpFoldResult BitcastOp::fold(FoldAdaptor adaptor) {
 //===----------------------------------------------------------------------===//
 
 OpFoldResult DynamicUpdateSliceOp::fold(FoldAdaptor) {
-  // Check if update replaces the whole tensor, meaning operand and update has
+  // Do not fold if operand 0 is from graph input and return value is to graph
+  // output.
+  if (llvm::isa<mlir::BlockArgument>(getOperand()) &&
+      llvm::any_of(getResult().getUsers(), [](Operation* user) {
+        return llvm::isa<mlir::func::ReturnOp>(user);
+      })) {
+    return {};
+  }
+
+  // Checkg if update replaces the whole tensor, meaning operand and update has
   // the same shape and all start indices are zero.
   DenseIntElementsAttr indices_attr;
   if (matchPattern(getStartIndices(), m_Constant(&indices_attr)) &&
