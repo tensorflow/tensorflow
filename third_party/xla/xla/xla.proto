@@ -618,6 +618,13 @@ message DebugOptions {
   // solutions.
   optional int64 xla_gpu_autotune_max_solutions = 288 [deprecated = true];
 
+  // Maximum number of BLAS library algorithms to evaluate during autotuning.
+  // Setting this to a lower value (e.g., 16 or 32) speeds up compilation at the
+  // cost of potentially missing the optimal algorithm. Setting to 0 uses the
+  // default (128 for most BLAS libraries).
+  // Default: 0 (use library default).
+  optional int64 xla_gpu_blas_max_algorithms = 522;
+
   // If true, each fusion instruction will have a cost model runtime estimate in
   // backend config after compilation.
   optional bool xla_gpu_collect_cost_model_stats = 240;
@@ -1734,7 +1741,7 @@ message DebugOptions {
   // Note: when adding a new flag, please add it to one of the hardware-specific
   // or hardware-agnostic sections at the top of this proto message.
 
-  // Next id: 522
+  // Next id: 523
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.
