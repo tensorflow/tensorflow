@@ -4176,7 +4176,7 @@ def sequence_mask(lengths, maxlen=None, dtype=dtypes.bool, name=None):
     # to length as a matrix with 1 column: [[1], [3], [2]].
     # Because of broadcasting on both arguments this comparison results
     # in a matrix of size (len(lengths), maxlen)
-    if not maxlen.dtype.is_integer:
+    if not maxlen.dtype.is_integer or maxlen.dtype == dtypes.uint8:
       maxlen = gen_math_ops.cast(maxlen, dtypes.int64)
     maxlen_dtype = maxlen.dtype
     row_vector = gen_math_ops._range(
