@@ -3823,6 +3823,9 @@ FlagStatus GetFlagStatus(absl::string_view flag_name) {
 
 void ResetThreadLocalFuel() {
   absl::call_once(flags_init, &AllocateFlags, nullptr);
+  if (initial_fuel->empty()) {
+    return;
+  }
 
   thread_fuel = std::make_unique<
       absl::node_hash_map<std::string, std::atomic<int64_t>>>();
@@ -3834,6 +3837,9 @@ void ResetThreadLocalFuel() {
 
 bool PassFuelIsSet(absl::string_view pass) {
   absl::call_once(flags_init, &AllocateFlags, nullptr);
+  if (initial_fuel->empty()) {
+    return false;
+  }
   auto* fuel_pool = thread_fuel ? thread_fuel.get() : global_fuel;
   auto it = fuel_pool->find(pass);
   return it != fuel_pool->end();
@@ -3843,6 +3849,9 @@ bool ConsumeFuel(absl::string_view pass, bool* just_ran_out) {
   absl::call_once(flags_init, &AllocateFlags, nullptr);
   if (just_ran_out != nullptr) {
     *just_ran_out = false;
+  }
+  if (initial_fuel->empty()) {
+    return true;
   }
   auto* fuel_pool = thread_fuel ? thread_fuel.get() : global_fuel;
   if (fuel_pool->empty()) {
