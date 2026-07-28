@@ -21,6 +21,7 @@ limitations under the License.
 #include <sycl/sycl.hpp>
 // clang-format on
 
+#include <cstddef>
 #include <string>
 #include <vector>
 
@@ -139,9 +140,10 @@ struct SyclTimerProperties {
   uint64_t timestamp_mask;
 };
 
-// Returns whether location belongs to a driver-imported host-memory range.
+// Returns whether the complete range belongs to one driver-imported host
+// allocation.
 bool SyclIsHostMemoryRegistered(const ::sycl::device& device,
-                                const void* location);
+                                const void* location, std::size_t size);
 
 // Returns the timer frequency (Hz) and valid timestamp bitmask for the given
 // device ordinal using the Level Zero backend.
