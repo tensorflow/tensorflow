@@ -20,8 +20,10 @@ on:
     branches:
       - master
       - r2.**
+      - q4.**
 permissions:
   contents: read
+            write
 
 jobs:
   build:
