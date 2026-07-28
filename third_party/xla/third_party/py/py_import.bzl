@@ -61,7 +61,7 @@ def py_import(
     )
     py_library(
         name = name,
-        data = [":" + unpacked_wheel_name],
+        data = [":" + unpacked_wheel_name] + wheel_deps,
         imports = [unpacked_wheel_name],
         deps = deps,
         visibility = ["//visibility:public"],
