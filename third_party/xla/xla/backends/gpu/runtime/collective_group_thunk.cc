@@ -21,7 +21,6 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
-#include "absl/base/casts.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
@@ -31,6 +30,7 @@ limitations under the License.
 #include "xla/backends/gpu/collectives/gpu_communicator.h"
 #include "xla/backends/gpu/runtime/collective_cliques.h"
 #include "xla/backends/gpu/runtime/collective_thunk.h"
+#include "xla/backends/gpu/runtime/device_to_device_copy_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
 #include "xla/backends/gpu/runtime/thunk_executor.h"
@@ -62,10 +62,23 @@ absl::Status CollectiveGroupThunk::ExecuteOnStream(
     const Thunk::ExecuteParams& params) {
   GlobalDeviceId global_device_id = params.collective_params->global_device_id;
 
-  // Collect all communicators used by nested thunks.
+  // Collect all communicators used by non-degenerate collective thunks.
+  // Degenerate collectives are emitted as device-to-device copies.
   std::vector<GpuCommunicator*> comms;
   for (const std::unique_ptr<Thunk>& thunk : executor_.thunks()) {
-    auto* collective_thunk = absl::down_cast<CollectiveThunk*>(thunk.get());
+    auto* collective_thunk = dynamic_cast<CollectiveThunk*>(thunk.get());
+
+    if (collective_thunk == nullptr) {
+      if (dynamic_cast<DeviceToDeviceCopyThunk*>(thunk.get()) != nullptr) {
+        continue;
+      }
+
+      return InvalidArgument(
+          "Unexpected thunk in collective group; expected a collective or "
+          "device-to-device copy thunk, got %v",
+          thunk->kind());
+    }
+
     ASSIGN_OR_RETURN(auto clique_key, collective_thunk->GetCliqueKey(params));
     ASSIGN_OR_RETURN(GpuCommunicator * comm, params.collective_cliques->GetComm(
                                                  clique_key, global_device_id));
@@ -74,10 +87,9 @@ absl::Status CollectiveGroupThunk::ExecuteOnStream(
     }
   }
 
-  // It is a bug if collective group was formed with no collective ops.
+  // No communicator means every nested thunk is a plain device-to-device copy.
   if (comms.empty()) {
-    return InvalidArgument(
-        "Collective group must have at least one nested collective thunk");
+    return executor_.ExecuteOnStream(params);
   }
 
   // If nested thunks use a single comm, use it directly to execute the group.
