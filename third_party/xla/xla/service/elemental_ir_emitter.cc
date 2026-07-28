@@ -2740,7 +2740,7 @@ absl::StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalConcatenate(
 
     // Create the terminator of the block before calling operand generators,
     // because they require non-degenerate basic blocks.
-    b_->SetInsertPoint(llvm::BranchInst::Create(
+    b_->SetInsertPoint(llvm::UncondBrInst::Create(
         exit_block, /*InsertAtEnd=*/emit_operand_blocks[operand_id]));
     llvm_ir::IrArray::Index operand_index(source_index.GetType());
     // If we are concatenating the fastest varying dimension, we can reuse the
