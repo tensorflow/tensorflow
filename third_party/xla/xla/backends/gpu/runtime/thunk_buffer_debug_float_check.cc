@@ -162,9 +162,9 @@ absl::Status BackupBuffers(size_t num_buffers, se::Stream* stream,
     if (active_buf.size_bytes() != backup_buf.size_bytes()) {
       return absl::InternalError("Backup buffer size mismatch");
     }
-    se::DeviceMemoryBase active_ptr(
+    stream_executor::DeviceAddressBase active_ptr(
         const_cast<void*>(active_buf.untyped_data()), active_buf.size_bytes());
-    se::DeviceMemoryBase backup_ptr(
+    stream_executor::DeviceAddressBase backup_ptr(
         const_cast<void*>(backup_buf.untyped_data()), backup_buf.size_bytes());
     RETURN_IF_ERROR(
         stream->Memcpy(&backup_ptr, active_ptr, active_buf.size_bytes()));
@@ -233,13 +233,13 @@ absl::Status DumpHloSnapshot(
               if (backup_buf.size_bytes() < any_buf.size_bytes()) {
                 return absl::InternalError("Backup buffer size mismatch");
               }
-              se::DeviceMemoryBase backup_ptr(
+              stream_executor::DeviceAddressBase backup_ptr(
                   const_cast<void*>(backup_buf.untyped_data()),
                   backup_buf.size_bytes());
               RETURN_IF_ERROR(stream->Memcpy(literal.untyped_data(index),
                                              backup_ptr, any_buf.size_bytes()));
             } else {
-              se::DeviceMemoryBase active_ptr(
+              stream_executor::DeviceAddressBase active_ptr(
                   const_cast<void*>(any_buf.untyped_data()),
                   any_buf.size_bytes());
               RETURN_IF_ERROR(stream->Memcpy(literal.untyped_data(index),
