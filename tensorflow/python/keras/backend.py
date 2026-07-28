@@ -4776,9 +4776,10 @@ def categorical_crossentropy(target, output, from_logits=False, axis=-1):
         labels=target, logits=output, axis=axis)
 
   # scale preds so that the class probas of each sample sum to 1
-  output = output / math_ops.reduce_sum(output, axis, True)
-  # Compute cross entropy from probabilities.
   epsilon_ = _constant_to_tensor(epsilon(), output.dtype.base_dtype)
+  sum_output = math_ops.reduce_sum(output, axis, True)
+  output = output / math_ops.maximum(sum_output, epsilon_)
+  # Compute cross entropy from probabilities.
   output = clip_ops.clip_by_value(output, epsilon_, 1. - epsilon_)
   return -math_ops.reduce_sum(target * math_ops.log(output), axis)
 
