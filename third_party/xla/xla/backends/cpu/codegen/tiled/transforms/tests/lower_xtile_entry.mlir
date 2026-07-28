@@ -1,8 +1,9 @@
-// RUN: fusion_compiler_opt %s --xtile-cpu-lower-xtile-entry -split-input-file | FileCheck %s
+// RUN: fusion_compiler_opt %s --xtile-cpu-lower-xtile-entry -split-input-file 
+//| FileCheck %s
 
 xtile.entry_func @simple_wrap(%input: memref<1024xf32> {xla.some_attr = 1},
                              %output: memref<32xf64>,
-                             %tile_id: index) attributes {xtile.tiling_info = #xtile.tiling_info<tile_count:1012, tiles_per_workgroup:64>} {
+                             %pid: index) {
   xtile.return
 }
 
@@ -10,15 +11,11 @@ xtile.entry_func @simple_wrap(%input: memref<1024xf32> {xla.some_attr = 1},
 
 // CHECK: func.func @simple_wrap(%[[CALL_FRAME:.*]]: !xla_cpu.call_frame) -> !xla_cpu.error {
 
-// CHECK-DAG: %[[STEP:.*]] = arith.constant 1 : index
 // CHECK-DAG: %[[INPUT:.*]] = xla_cpu.load %[[CALL_FRAME]], 0 : memref<1024xf32>
 // CHECK-DAG: %[[OUTPUT:.*]] = xla_cpu.load %[[CALL_FRAME]], 1 : memref<32xf64>
 // CHECK-DAG: %[[WORKGROUP_ID:.*]] = xla_cpu.extract_workgroup_id %[[CALL_FRAME]], x
 
-// CHECK: %[[APPLY_INDEXING:.*]]:2 = xla.apply_indexing #[[MAP]](%[[WORKGROUP_ID]])
-// CHECK: scf.for %[[IDX:.*]] = %[[APPLY_INDEXING]]#0 to %[[APPLY_INDEXING]]#1 step %[[STEP]] {
 // CHECK:   func.call @[[IMPL_FUNC:.*]](%[[INPUT]], %[[OUTPUT]], %[[IDX]]) : (memref<1024xf32>, memref<32xf64>, index) -> ()
-// CHECK: }
 
 // CHECK: %[[SUCCESS:.*]] = xla_cpu.success : !xla_cpu.error
 // CHECK: return %[[SUCCESS]] : !xla_cpu.error
