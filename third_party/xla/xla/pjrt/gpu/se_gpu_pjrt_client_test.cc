@@ -310,11 +310,10 @@ ENTRY %Add.6 (a.1: f32[], b.2: f32[]) -> (f32[], f32[]) {
   }
 }
 
-// TODO(b/372735047): Fix and reenable.
-TEST(StreamExecutorGpuClientTest, DISABLED_DonateWithControlDependency) {
+TEST(StreamExecutorGpuClientTest, DonateWithControlDependency) {
   TF_ASSERT_OK_AND_ASSIGN(
       auto client, GetStreamExecutorGpuClient(GetTestGpuClientOptions()));
-  auto shape = xla::ShapeUtil::MakeScalarShape(xla::F32);
+  Shape shape = xla::ShapeUtil::MakeScalarShape(xla::F32);
   absl::Status input_error = absl::InvalidArgumentError("input error");
   TF_ASSERT_OK_AND_ASSIGN(
       auto buffer,
@@ -322,7 +321,7 @@ TEST(StreamExecutorGpuClientTest, DISABLED_DonateWithControlDependency) {
           input_error, shape,
           *client->addressable_devices()[0]->default_memory_space()));
 
-  static constexpr char const* kAddProgram =
+  static constexpr absl::string_view kAddProgram =
       R"(
 HloModule Add.6, entry_computation_layout={(f32[], f32[])->(f32[], f32[])}
 
@@ -337,12 +336,12 @@ ENTRY %Add.6 (a.1: f32[], b.2: f32[]) -> (f32[], f32[]) {
   TF_ASSERT_OK_AND_ASSIGN(auto executable,
                           CompileExecutable(kAddProgram, *client));
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto result,
+  ASSERT_OK_AND_ASSIGN(
+      std::vector<std::vector<std::unique_ptr<PjRtBuffer>>> result,
       executable->Execute({{buffer.get(), buffer.get()}}, /*options=*/{}));
 
   ASSERT_EQ(result.size(), 1);
-  ASSERT_EQ(result[0].size(), 1);
+  ASSERT_EQ(result[0].size(), 2);
 
   TF_ASSERT_OK_AND_ASSIGN(
       auto another_buffer,
