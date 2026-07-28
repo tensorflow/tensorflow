@@ -248,9 +248,15 @@ bool LayoutAssignment::AnyOperandBufferForwarded(
   PointsToSet::BufferSet* output_buffers = GetBufferSet(instruction);
   PointsToSet::BufferSet* operand_buffers =
       GetBufferSet(instruction->operand(operand_no));
-  return absl::c_any_of(*output_buffers, [&](const LogicalBuffer* b) {
-    return operand_buffers->count(b) > 0;
-  });
+  // Probe the larger set with elements of the smaller one; intersection
+  // emptiness is symmetric.
+  PointsToSet::BufferSet* small = output_buffers;
+  PointsToSet::BufferSet* large = operand_buffers;
+  if (small->size() > large->size()) {
+    std::swap(small, large);
+  }
+  return absl::c_any_of(
+      *small, [&](const LogicalBuffer* b) { return large->count(b) > 0; });
 }
 
 bool LayoutAssignment::AllOperandBuffersForwarded(
@@ -287,8 +293,16 @@ absl::Status LayoutAssignment::SetBufferLayout(const Layout& layout,
   }
   RETURN_IF_ERROR(LayoutUtil::ValidateLayoutForShape(layout, buffer.shape()));
 
-  auto& buffer_constraint = buffer_constraints_[&buffer];
-  if (buffer_constraint == nullptr) {
+  const size_t buffer_slot = static_cast<size_t>(buffer.id());
+  if (buffer_slot >= buffer_constraints_.size()) {
+    buffer_constraints_.resize(buffer_slot + 1);
+    buffer_constraint_generations_.resize(buffer_slot + 1, 0);
+  }
+  auto& buffer_constraint = buffer_constraints_[buffer_slot];
+  if (buffer_constraint_generations_[buffer_slot] !=
+      buffer_constraint_generation_) {
+    // Stale (or never-populated) slot: equivalent to an absent map entry.
+    buffer_constraint_generations_[buffer_slot] = buffer_constraint_generation_;
     buffer_constraint = std::make_unique<BufferLayoutConstraint>(
         layout, buffer, mandatory, dfs, priority);
   } else {
@@ -519,8 +533,13 @@ absl::Status LayoutAssignment::SetInstructionLayout(
 
 const BufferLayoutConstraint* LayoutAssignment::GetBufferLayoutConstraint(
     const LogicalBuffer& buffer) const {
-  auto it = buffer_constraints_.find(&buffer);
-  return it == buffer_constraints_.end() ? nullptr : it->second.get();
+  const size_t buffer_slot = static_cast<size_t>(buffer.id());
+  if (buffer_slot >= buffer_constraints_.size() ||
+      buffer_constraint_generations_[buffer_slot] !=
+          buffer_constraint_generation_) {
+    return nullptr;
+  }
+  return buffer_constraints_[buffer_slot].get();
 }
 
 const ShapeLayout* LayoutAssignment::LayoutConstraints::OperandLayout(
@@ -2918,6 +2937,12 @@ absl::StatusOr<bool> LayoutAssignment::RunImpl(
   // will be then made mandatory by the second pass.
   ASSIGN_OR_RETURN(auto points_to_analysis, TuplePointsToAnalysis::Run(module));
   points_to_analysis_ = std::move(points_to_analysis);
+  // The buffer-set cache memoizes pure derivations of points_to_analysis_, so
+  // it must be dropped exactly when the analysis is replaced (stale entries
+  // would reference buffers of the destroyed analysis). It intentionally
+  // survives across the constraint propagation rounds below, which never
+  // rebuild the analysis.
+  buffer_sets_cache_.clear();
   auto computations_to_work =
       module->MakeNonfusionComputations(execution_threads);
   // If the reverse_comptation_order_ flag is set, reverse the ordering of
@@ -3225,8 +3250,12 @@ absl::Status LayoutAssignment::ClearPreviousPassSideEffects(
   }
   unconstrained_layout_instructions_.clear();
   unconstrained_buffer_ids_.clear();
-  buffer_constraints_.clear();
-  buffer_sets_cache_.clear();
+  // Invalidate all buffer constraints in O(1) by bumping the generation
+  // (slots with a stale generation read as absent).
+  ++buffer_constraint_generation_;
+  // Note: buffer_sets_cache_ is NOT cleared here. Its entries are pure
+  // functions of points_to_analysis_, which is unchanged across propagation
+  // rounds; the cache is cleared in RunImpl when the analysis is rebuilt.
   return absl::OkStatus();
 }
 absl::Status LayoutAssignment::AddCopyForOperand(HloInstruction* instruction,

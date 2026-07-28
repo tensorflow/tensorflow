@@ -24,6 +24,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/container/btree_set.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
@@ -758,17 +759,26 @@ class LayoutAssignment : public HloModulePass {
   // host.
   ChannelLayoutConstraints host_channel_constraints_;
 
-  // Array-shaped buffers which have not yet been constrained.
-  std::set<LogicalBuffer::Id> unconstrained_buffer_ids_;
+  // Array-shaped buffers which have not yet been constrained. Kept sorted by
+  // id (ascending) because callers deterministically pick *begin() and
+  // iterate in id order; a btree keeps that exact order with far less
+  // per-node allocation churn than std::set.
+  absl::btree_set<LogicalBuffer::Id> unconstrained_buffer_ids_;
 
   mutable absl::flat_hash_map<const HloInstruction*,
                               std::unique_ptr<PointsToSet::BufferSet>>
       buffer_sets_cache_;
 
-  // The set of BufferLayoutConstraints applied to the computation.
-  absl::flat_hash_map<const LogicalBuffer*,
-                      std::unique_ptr<BufferLayoutConstraint>>
-      buffer_constraints_;
+  // The set of BufferLayoutConstraints applied to the computation, stored
+  // densely by LogicalBuffer::Id (ids are assigned sequentially by the
+  // points-to analysis). A slot is live only when its generation matches
+  // buffer_constraint_generation_; bumping the generation (see
+  // ClearPreviousPassSideEffects) invalidates all constraints in O(1)
+  // instead of destroying and re-allocating a large hash map every
+  // propagation round.
+  std::vector<std::unique_ptr<BufferLayoutConstraint>> buffer_constraints_;
+  std::vector<uint32_t> buffer_constraint_generations_;
+  uint32_t buffer_constraint_generation_ = 1;
 
   // A vector which holds constraints as they are added. Can be cleared with
   // ClearAddedConstraints.
