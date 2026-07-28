@@ -626,3 +626,21 @@ cc_library(
     ],
     alwayslink = True,
 )
+
+cc_library(
+    name = "sycl_matmul_utils",
+    srcs = ["sycl_matmul_utils.cc"],
+    hdrs = ["sycl_matmul_utils.h"],
+    tags = [
+        "gpu",
+        "oneapi-only",
+    ],
+    deps = [
+        ":onednn_util",
+        "//xla/service/gpu:matmul_utils",
+        "//xla/stream_executor:device_memory",
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+    ],
+)
