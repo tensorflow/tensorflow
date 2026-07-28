@@ -258,10 +258,14 @@ std::vector<HloOutputCallback> CreateDumpHloOutputCallbacks(
       hlo_cb.callback_id = hlo_id;
       hlo_cb.num_operands = 1;
       hlo_cb.callback =
-          [hlo_name = std::string(instruction->name()), eval_literal_mutator](
+          [hlo_name = std::string(instruction->name()),
+           module_name = std::string(module->name()), eval_literal_mutator](
               int64_t replica_id, int64_t partition_id,
               absl::Span<std::shared_ptr<const Literal> const> literals) {
             if (literals.empty() || !literals[0]) {
+              LOG(ERROR) << "HloOutputCallback called with empty or null "
+                            "literals for op "
+                         << hlo_name << " within fusion " << module_name;
               return;
             }
             Literal mutated_literal = literals[0]->Clone();
@@ -274,8 +278,10 @@ std::vector<HloOutputCallback> CreateDumpHloOutputCallbacks(
             auto status = tsl::WriteStringToFile(
                 env, filepath, mutated_literal.ToProto().SerializeAsString());
             if (!status.ok()) {
-              LOG(ERROR) << "Failed to write literal to Sponge artifacts: "
-                         << status;
+              LOG(ERROR)
+                  << "Failed to write literal to Sponge artifacts for op "
+                  << hlo_name << " within fusion " << module_name << ": "
+                  << status;
             }
           };
       reference_callbacks.push_back(std::move(hlo_cb));
@@ -341,7 +347,8 @@ std::vector<HloOutputCallback> CreateComparisonHloOutputCallbacks(
             if (literals.empty() || !literals[0]) {
               LOG(ERROR)
                   << "HloOutputCallback called with empty or null literals for "
-                  << op_name;
+                     "op "
+                  << op_name << " within fusion " << module_name;
               return;
             }
 
@@ -369,7 +376,8 @@ std::vector<HloOutputCallback> CreateComparisonHloOutputCallbacks(
               LOG(WARNING)
                   << "No reference literal matches the shape of the current "
                      "actual literal "
-                  << literals[0]->shape().ToString() << " for op " << op_name;
+                  << literals[0]->shape().ToString() << " for op " << op_name
+                  << " within fusion " << module_name;
               return;
             }
 
@@ -378,8 +386,9 @@ std::vector<HloOutputCallback> CreateComparisonHloOutputCallbacks(
               absl::StatusOr<Literal> converted_literal_status =
                   expected_literal.Convert(literals[0]->shape().element_type());
               if (!converted_literal_status.ok()) {
-                LOG(ERROR) << "Failed to convert expected literal type: "
-                           << converted_literal_status.status();
+                LOG(ERROR) << "Failed to convert expected literal type for op "
+                           << op_name << " within fusion " << module_name
+                           << ": " << converted_literal_status.status();
                 return;
               }
               expected_literal = std::move(*converted_literal_status);
@@ -419,9 +428,10 @@ std::vector<HloOutputCallback> CreateComparisonHloOutputCallbacks(
                 /*miscompare_callback=*/on_miscompare);
 
             if (!matched.ok()) {
-              std::string error_message =
-                  absl::StrFormat("FusionDebugger: Mismatch found in op %s\n%s",
-                                  op_name, matched.message());
+              std::string error_message = absl::StrFormat(
+                  "FusionDebugger: Mismatch found in op %s within fusion "
+                  "%s\n%s",
+                  op_name, module_name, matched.message());
               ADD_FAILURE() << error_message;
               LOG(ERROR) << error_message;
 
@@ -700,7 +710,8 @@ absl::StatusOr<HloIsolationTestResult> RunIsolationTestOnModule(
     if (!debug_reference_output.ok()) {
       result.set_state(State::FAILURE);
       result.set_reason("REFERENCE_RUNNER_FAILURE");
-      log_failure("Reference runner failed: ", debug_reference_output.status(),
+      log_failure("Reference runner failed (with fusion debugger enabled): ",
+                  debug_reference_output.status(),
                   debug_despecialized_module_name);
       return result;
     }
@@ -723,8 +734,8 @@ absl::StatusOr<HloIsolationTestResult> RunIsolationTestOnModule(
     if (!retry_test_output.ok()) {
       result.set_state(State::FAILURE);
       result.set_reason("TEST_RUNNER_FAILURE_ON_RETRY");
-      log_failure("Test runner failed on retry: ", retry_test_output.status(),
-                  module.name());
+      log_failure("Test runner failed on retry (with fusion debugger): ",
+                  retry_test_output.status(), module.name());
       return result;
     }
   }
