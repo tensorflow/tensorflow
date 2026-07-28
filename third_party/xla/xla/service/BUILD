@@ -6765,6 +6765,47 @@ xla_cc_test(
 )
 
 cc_library(
+    name = "scheduler_memory_fencing",
+    srcs = ["scheduler_memory_fencing.cc"],
+    hdrs = ["scheduler_memory_fencing.h"],
+    deps = [
+        ":hlo_buffer",
+        ":hlo_cost_analysis",
+        ":hlo_value",
+        "//xla:status_macros",
+        "//xla/hlo/analysis:alias_info",
+        "//xla/hlo/analysis:hlo_alias_analysis",
+        "//xla/hlo/analysis:hlo_dataflow_analysis",
+        "//xla/hlo/analysis:hlo_reachability",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/pass:hlo_pass",
+        "//xla/tsl/platform:status_macros",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
+    ],
+)
+
+xla_cc_test(
+    name = "scheduler_memory_fencing_test",
+    srcs = ["scheduler_memory_fencing_test.cc"],
+    deps = [
+        ":scheduler_memory_fencing",
+        "//xla:shape_util",
+        "//xla/hlo/analysis:alias_info",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
     name = "schedule_config",
     srcs = ["schedule_config.cc"],
     hdrs = ["schedule_config.h"],

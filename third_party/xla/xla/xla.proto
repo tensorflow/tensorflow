@@ -1028,6 +1028,23 @@ message DebugOptions {
   // with other computations, resulting in improved performance.
   optional int32 xla_gpu_experimental_parallel_async_compute_limit = 465;
 
+  // Controls SchedulerMemoryFencing before the latency-hiding scheduler.
+  // Negative values disable the pass. 0 derives the threshold automatically
+  // as 1% of the scheduler memory limit. Positive values fence buffers of at
+  // least the specified size in bytes, capped at the scheduler memory limit.
+  // The pass adds control dependencies from every user of a large buffer to a
+  // later async operation start so LHS cannot defer those users across many
+  // async windows and inflate peak memory.
+  optional int64 xla_gpu_experimental_scheduler_memory_fencing_threshold_bytes =
+      526;
+
+  // How many async operation windows a fenced buffer's users may be deferred
+  // past the buffer's last-use window in the pre-LHS schedule. Larger values
+  // give the latency-hiding scheduler more reordering freedom at the cost of a
+  // higher peak-memory bound.
+  optional int32 xla_gpu_experimental_scheduler_memory_fencing_slack_windows =
+      527;
+
   // This controls how many in-flight collectives latency hiding scheduler
   // can schedule. Example usage:
   // With xla_gpu_experimental_parallel_collective_overlap_limit = 1:
@@ -1756,7 +1773,7 @@ message DebugOptions {
   // Note: when adding a new flag, please add it to one of the hardware-specific
   // or hardware-agnostic sections at the top of this proto message.
 
-  // Next id: 526
+  // Next id: 528
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.
