@@ -150,6 +150,8 @@ void RegisterBenchmarks() {
         absl::StrCat("BM_HloModule/", tsl::io::BasenamePrefix(path)),
         BM_HloModule, path)
         ->MeasureProcessCPUTime();
+  }
+  for (const std::string& path : hlo_paths) {
     benchmark::RegisterBenchmark(
         absl::StrCat("BM_CompileHloModule/", tsl::io::BasenamePrefix(path)),
         BM_CompileHloModule, path)
