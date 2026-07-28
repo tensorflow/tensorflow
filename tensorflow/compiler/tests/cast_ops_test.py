@@ -18,6 +18,7 @@ from tensorflow.compiler.tests import xla_test
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.ops import array_ops
@@ -47,6 +48,93 @@ class CastOpsTest(xla_test.XLATestCase):
 
       hlo = compiled_f.experimental_get_compiler_ir(x)(stage='hlo')
       self.assertIn('f32[10,10]{1,0} bitcast-convert(f16[10,10,2]{2,1,0}', hlo)
+
+  def testBitcastComplexToInteger(self):
+    # Regression test for
+    # https://github.com/tensorflow/tensorflow/issues/122051 : tf.bitcast on a
+    # complex source raised "Complex types not supported." under jit_compile.
+    for ctype, itype in (
+        (dtypes.complex64, dtypes.int32),
+        (dtypes.complex128, dtypes.int32),
+        (dtypes.complex64, dtypes.int16),
+    ):
+      if self.device.upper() == 'TPU' and ctype == dtypes.complex128:
+        # complex128 is not supported on TPU.
+        continue
+      with ops.device('device:{}:0'.format(self.device)):
+
+        def f(x):
+          return array_ops.bitcast(x, itype)
+
+        compiled_f = def_function.function(f, jit_compile=True)
+
+        ftype = dtypes.float32 if ctype == dtypes.complex64 else dtypes.float64
+        # Deterministic, fixed values: a bitcast test only needs the eager
+        # and compiled paths to agree on whatever input they're given, so
+        # random generation buys no extra coverage here and array_ops.ones
+        # avoids random_ops.random_normal's 64-bit generation failing during
+        # HLO rewriting on some backends.
+        x = math_ops.complex(
+            array_ops.ones([4, 3], dtype=ftype),
+            array_ops.ones([4, 3], dtype=ftype) * 2,
+        )
+        with ops.device(self.device):
+          out = f(x)
+          compiled_out = compiled_f(x)
+          # Bitcast only moves bytes, so the compiled result must match the
+          # eager reference exactly.
+          self.assertAllEqual(out, compiled_out)
+
+  def testBitcastComplexToFloat(self):
+    # complex64/complex128's real+imag components are exactly as wide as
+    # float32/float64, so this always hits the equal-width path in
+    # BitcastOp -- verifies the complex -> float generalization dmiltr3
+    # asked about on #122567 is already handled, not just complex -> int.
+    for ctype, dst_ftype in (
+        (dtypes.complex64, dtypes.float32),
+        (dtypes.complex128, dtypes.float64),
+    ):
+      if self.device.upper() == 'TPU' and ctype == dtypes.complex128:
+        # complex128 is not supported on TPU.
+        continue
+      with ops.device('device:{}:0'.format(self.device)):
+
+        def f(x):
+          return array_ops.bitcast(x, dst_ftype)
+
+        compiled_f = def_function.function(f, jit_compile=True)
+
+        src_ftype = (
+            dtypes.float32 if ctype == dtypes.complex64 else dtypes.float64
+        )
+        x = math_ops.complex(
+            array_ops.ones([4, 3], dtype=src_ftype),
+            array_ops.ones([4, 3], dtype=src_ftype) * 2,
+        )
+        with ops.device(self.device):
+          out = f(x)
+          compiled_out = compiled_f(x)
+          self.assertAllEqual(out, compiled_out)
+
+  def testBitcastComplexWideningUnsupported(self):
+    # complex64's components (float32, 32 bits) are narrower than int64
+    # (64 bits): BitcastOp bitcasts each component independently, so a
+    # destination wider than a component can't be produced this way and
+    # must be rejected explicitly rather than emit a wrong shape.
+    with ops.device('device:{}:0'.format(self.device)):
+
+      def f(x):
+        return array_ops.bitcast(x, dtypes.int64)
+
+      compiled_f = def_function.function(f, jit_compile=True)
+
+      x = math_ops.complex(
+          array_ops.ones([4, 3], dtype=dtypes.float32),
+          array_ops.ones([4, 3], dtype=dtypes.float32) * 2,
+      )
+      with ops.device(self.device):
+        with self.assertRaises(errors.UnimplementedError):
+          compiled_f(x)
 
   def testBitcastToSmaller(self):
     pass
