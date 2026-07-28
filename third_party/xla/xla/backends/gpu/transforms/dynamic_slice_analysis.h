@@ -20,6 +20,7 @@ limitations under the License.
 #include <optional>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/status/statusor.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -133,6 +134,34 @@ absl::StatusOr<DynamicSliceChain> FindDynamicSliceChain(
 // Returns nullopt if any DUS cannot be analyzed (e.g. non-linear offsets or
 // missing loop metadata).
 std::optional<bool> IsNonOverlapping(const DynamicSliceChain& chain);
+
+//===-----------------------------------------------------------------------===/
+// InductionVariableFunctionalDependency
+//===-----------------------------------------------------------------------===/
+
+struct InductionVariableFunctionalDependency {
+  // The dependency may be via multiple levels of intermediate calls. At each
+  // level, we need to know which parameters to evaluate, since not all of them
+  // may be relevant. The while loop's body is not included here, since the
+  // induction variable is implicitly the only dependency that is allowed.
+  // The size of the value is always the same as the number of parameters in the
+  // computation.
+  absl::flat_hash_map<const HloComputation*, std::vector<bool>>
+      required_parameters;
+
+  // The loop and its induction variable that the value depends on.
+  const HloInstruction* loop;
+  const HloInstruction* induction_var;
+};
+
+// Checks if `instr`'s value is a pure function of a while loop's induction
+// variable. This supports instructions that are inside call, async or fusion
+// instructions. The dependency can be through arbitrary non-side-effecting
+// instructions. Currently, this does not support nested while loops. Only
+// dependencies on the inner-most while loop will successfully be analyzed.
+// Requires `while_loop_trip_count_annotator` to have been run on the loop.
+std::optional<InductionVariableFunctionalDependency>
+ResolveFunctionalDependencyOnInductionVariable(const HloInstruction* instr);
 
 }  // namespace xla::gpu
 
