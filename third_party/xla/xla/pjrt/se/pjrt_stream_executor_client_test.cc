@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/pjrt/se/pjrt_stream_executor_client.h"
 
+#include <atomic>
 #include <cstddef>
 #include <cstdint>
 #include <memory>
@@ -30,7 +31,10 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_format.h"
 #include "absl/synchronization/mutex.h"
+#include "absl/synchronization/notification.h"
+#include "absl/time/time.h"
 #include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/cpu/target_machine_options.h"
 #include "xla/client/client_library.h"
@@ -43,12 +47,14 @@ limitations under the License.
 #include "xla/literal_comparison.h"
 #include "xla/literal_util.h"
 #include "xla/pjrt/abstract_tracked_device_buffer.h"
+#include "xla/pjrt/common_pjrt_client.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/plugin/xla_cpu/cpu_topology.h"
 #include "xla/pjrt/plugin/xla_cpu/cpu_topology_description.h"
 #include "xla/pjrt/se/local_device_state.h"
+#include "xla/service/computation_placer.h"
 #include "xla/service/platform_util.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
@@ -60,6 +66,7 @@ limitations under the License.
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
+#include "tsl/platform/casts.h"
 #include "tsl/platform/path.h"
 
 namespace xla {
@@ -104,6 +111,53 @@ absl::StatusOr<std::unique_ptr<PjRtStreamExecutorClient>> GetClient() {
   return std::make_unique<PjRtStreamExecutorClient>(
       "cpu", local_client, std::move(devices),
       /*process_index=*/0, std::move(memory_spaces),
+      /*topology=*/std::move(topology), /*allocator=*/nullptr,
+      /*host_memory_allocator=*/nullptr,
+      /*should_stage_host_to_device_transfers=*/false,
+      /*gpu_run_options=*/nullptr);
+}
+
+// Variant of GetClient() that creates `num_devices` Host-platform devices, so
+// multi-device code paths in CommonPjRtLoadedExecutable::Execute can be
+// exercised without accelerator hardware. The client's allocator is
+// `local_client->backend().memory_allocator()`, which only knows the
+// device ordinals PlatformUtil enumerated for the LocalClient's Backend —
+// on Host that is `xla_force_host_platform_device_count` (set via XLA_FLAGS
+// on this test target), not VisibleDeviceCount().
+absl::StatusOr<std::unique_ptr<PjRtStreamExecutorClient>> GetClientWithDevices(
+    int num_devices) {
+  LocalClient* local_client = xla::ClientLibrary::LocalClientOrDie();
+  ASSIGN_OR_RETURN(se::Platform * platform, PlatformUtil::GetPlatform("Host"));
+  if (local_client->device_count() < num_devices) {
+    return absl::FailedPreconditionError(absl::StrFormat(
+        "LocalClient has %d Host devices, need %d; set "
+        "--xla_force_host_platform_device_count=%d",
+        local_client->device_count(), num_devices, num_devices));
+  }
+  std::vector<std::unique_ptr<PjRtStreamExecutorDevice>> devices;
+  devices.reserve(num_devices);
+  std::vector<std::unique_ptr<PjRtMemorySpace>> memory_spaces;
+  memory_spaces.reserve(num_devices);
+  for (int i = 0; i < num_devices; ++i) {
+    ASSIGN_OR_RETURN(se::StreamExecutor * executor,
+                     platform->ExecutorForDevice(i));
+    auto device_state = std::make_unique<LocalDeviceState>(
+        executor, local_client, LocalDeviceState::kSynchronous,
+        /*max_inflight_computations=*/32,
+        /*allow_event_reuse=*/false, /*use_callback_stream=*/false);
+    int local_device_id = device_state->local_device_id().value();
+    devices.emplace_back(std::make_unique<PjRtStreamExecutorDevice>(
+        i, std::move(device_state), local_device_id, /*process_index=*/0,
+        /*process_index_in_partition=*/0, /*partition_index=*/0, "cpu"));
+    memory_spaces.emplace_back(std::make_unique<PjRtStreamExecutorMemorySpace>(
+        i, devices.back().get(), "cpu", 0));
+    devices.back()->AttachMemorySpace(memory_spaces.back().get(),
+                                      /*is_default=*/true);
+  }
+  auto topology = CreateCpuTopologyDescription(devices.size());
+  return std::make_unique<PjRtStreamExecutorClient>(
+      "cpu", local_client, std::move(devices), /*process_index=*/0,
+      std::move(memory_spaces),
       /*topology=*/std::move(topology), /*allocator=*/nullptr,
       /*host_memory_allocator=*/nullptr,
       /*should_stage_host_to_device_transfers=*/false,
@@ -369,6 +423,104 @@ TEST(PjRtStreamExecutorClientTest, MakeAllocationReadyEventAsync) {
   if (auto* error = slice_ready_event.async_value()->GetErrorIfPresent()) {
     ASSERT_OK(*error);
   }
+}
+
+// Regression test for the two-phase launch barrier: when any device's Prepare
+// fails, no device may proceed to ExecuteLaunch. Before the fix, a device
+// whose Prepare succeeded could observe `failed == 0` (because a failing peer
+// had passed the preparing==0 barrier but not yet written `failed`) and enter
+// ExecuteLaunch; with a real cross-device collective that device then hangs
+// at the rendezvous waiting for a peer that never arrives. The test asserts
+// the invariant directly (zero ExecuteLaunch calls) rather than via a hang,
+// so it needs no collective. PjRtStreamExecutorClient is the production
+// client with supports_two_phase_launch()==true, so Host-backed SE devices
+// exercise the real barrier path without accelerator hardware.
+TEST(PjRtStreamExecutorClientTest, TwoPhaseExecutePrepareFailureSkipsLaunch) {
+  constexpr int kNumDevices = 2;
+  // The pre-fix race is schedule-dependent (it fires only when a succeeding
+  // device is last to the barrier), so repeat with the failing device
+  // alternating. On Host-SE each iteration is microseconds.
+  constexpr int kIterations = 50;
+
+  ASSERT_OK_AND_ASSIGN(auto client, GetClientWithDevices(kNumDevices));
+  ASSERT_TRUE(client->supports_two_phase_launch());
+
+  Shape shape = ShapeUtil::MakeScalarShape(F32);
+  // CheckBufferCompatibilities rejects this on the failing device — different
+  // on-device size from the compiled scalar parameter.
+  Shape wrong_shape = ShapeUtil::MakeShape(F32, {2});
+
+  CompileOptions compile_options;
+  compile_options.executable_build_options.set_num_replicas(kNumDevices);
+  DeviceAssignment assignment(kNumDevices, /*computation_count=*/1);
+  for (int i = 0; i < kNumDevices; ++i) {
+    assignment(i, 0) = i;
+  }
+  compile_options.executable_build_options.set_device_assignment(assignment);
+  ASSERT_OK_AND_ASSIGN(
+      auto executable,
+      ToyExecutable(*client, shape, [](XlaBuilder&) {}, compile_options));
+  ASSERT_EQ(executable->addressable_devices().size(), kNumDevices);
+
+  std::atomic<int> launch_calls{0};
+  tensorflow::down_cast<CommonPjRtLoadedExecutable*>(executable.get())
+      ->SetExecuteLaunchHookForTesting([&](PjRtDevice*) {
+        launch_calls.fetch_add(1, std::memory_order_relaxed);
+      });
+
+  std::vector<std::unique_ptr<PjRtBuffer>> ok_bufs(kNumDevices);
+  std::vector<std::unique_ptr<PjRtBuffer>> wrong_bufs(kNumDevices);
+  for (int d = 0; d < kNumDevices; ++d) {
+    ASSERT_OK_AND_ASSIGN(
+        PjRtMemorySpace * mem,
+        client->addressable_devices()[d]->default_memory_space());
+    ASSERT_OK_AND_ASSIGN(ok_bufs[d],
+                         client->CreateUninitializedBuffer(shape, mem));
+    ASSERT_OK_AND_ASSIGN(wrong_bufs[d],
+                         client->CreateUninitializedBuffer(wrong_shape, mem));
+  }
+
+  absl::Notification done;
+  absl::Status last_result;
+  std::unique_ptr<tsl::Thread> t(tsl::Env::Default()->StartThread(
+      tsl::ThreadOptions(), "TwoPhaseExecute", [&] {
+        for (int i = 0; i < kIterations; ++i) {
+          int failing = i % kNumDevices;
+          std::vector<std::vector<PjRtBuffer*>> args(kNumDevices);
+          for (int d = 0; d < kNumDevices; ++d) {
+            PjRtBuffer* b =
+                (d == failing) ? wrong_bufs[d].get() : ok_bufs[d].get();
+            args[d] = {b, b};
+          }
+          ExecuteOptions options;
+          last_result = executable->Execute(args, options).status();
+          if (last_result.ok()) {
+            break;
+          }
+        }
+        done.Notify();
+      }));
+  if (!done.WaitForNotificationWithTimeout(absl::Seconds(60))) {
+    // Leak the tsl::Thread rather than block in its join-on-destruct
+    // destructor. Use LOG(FATAL) to immediately terminate the process on
+    // timeout rather than returning via FAIL(). This prevents returning from
+    // the test function and unwinding the stack frame, which would cause a
+    // stack use-after-free when the detached background thread accesses local
+    // stack variables.
+    (void)t.release();
+    LOG(FATAL)
+        << "Execute() did not return within 60s with one device's Prepare "
+           "failing; two-phase barrier exit path is wedged.";
+  }
+  t.reset();
+  EXPECT_FALSE(last_result.ok()) << last_result;
+  // The load-bearing assertion: with any Prepare failure, no device reaches
+  // phase 2. On a regressed barrier this count is nonzero for some schedule.
+  EXPECT_EQ(launch_calls.load(), 0)
+      << "ExecuteLaunch was reached on " << launch_calls.load()
+      << " device(s) across " << kIterations
+      << " iterations despite a peer Prepare failure; the two-phase barrier "
+         "let a succeeding device past before the failure was recorded.";
 }
 
 }  // namespace
