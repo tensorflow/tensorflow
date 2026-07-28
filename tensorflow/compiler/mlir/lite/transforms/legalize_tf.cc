@@ -156,7 +156,7 @@ Value GetShape(Value input, Location loc, PatternRewriter& rewriter) {
   // If the shape is not static, create a new ShapeOp.
   BoolAttr false_attr = rewriter.getBoolAttr(false);
   return TF::ShapeOp::create(rewriter, loc, input,
-                             /*use_32bit=*/false_attr)
+                             /*use32Bit=*/false_attr)
       .getOutput();
 }
 
