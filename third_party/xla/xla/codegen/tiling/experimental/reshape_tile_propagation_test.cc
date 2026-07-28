@@ -155,6 +155,10 @@ TEST_P(ReshapeExamplesTilePropagationTest, PropagateReshape) {
       builder.AddInstruction(HloInstruction::CreateParameter(0, shape, "p0"));
   HloInstruction* reshape =
       builder.AddInstruction(HloInstruction::CreateReshape(to_shape, p0));
+
+  module_ = CreateNewVerifiedModule();
+  module_->AddEntryComputation(builder.Build());
+
   auto tiling_space_statusor = TilingSpace::Create(
       *HloFusionAdaptor::ForInstruction(p0), &mlir_context_);
   ASSERT_OK(tiling_space_statusor.status());
@@ -474,6 +478,9 @@ TEST_F(ReshapeTilePropagationTest, UnsupportedReshapeErrorFormat) {
       HloInstruction::CreateParameter(0, input_shape, "p0"));
   HloInstruction* reshape =
       builder.AddInstruction(HloInstruction::CreateReshape(output_shape, p0));
+
+  std::unique_ptr<HloModule> module = CreateNewVerifiedModule();
+  module->AddEntryComputation(builder.Build());
 
   ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<TilingSpace> tiling_space,
