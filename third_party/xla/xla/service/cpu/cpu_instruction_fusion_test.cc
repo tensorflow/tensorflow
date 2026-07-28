@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/service/cpu/cpu_instruction_fusion.h"
 
+#include <cstdint>
 #include <memory>
 #include <set>
 #include <string>
@@ -23,6 +24,7 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/algorithm/container.h"
+#include "absl/status/status_matchers.h"  // IWYU pragma: keep
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
@@ -1131,6 +1133,241 @@ TEST_F(InstructionFusionTest, SkipReduceComputationsIfFusionEmitters) {
   ASSERT_OK_AND_ASSIGN(bool changed,
                        CpuInstructionFusion(&alias_info_).Run(module.get()));
   EXPECT_FALSE(changed);
+}
+
+bool FusionComputesShiftValueForReduce(const HloInstruction* fusion) {
+  if (fusion->opcode() != HloOpcode::kFusion) {
+    return false;
+  }
+  for (const HloInstruction* instr : fusion->fused_instructions()) {
+    if (instr->opcode() != HloOpcode::kReduce) {
+      continue;
+    }
+    // A split fusion recomputes the elementwise shift value inside the
+    // reduce kernel, so the reduce's operand is the elementwise producer
+    // (multiply, add, ...) rather than a fused parameter.
+    if (instr->operand(0)->IsElementwise()) {
+      return true;
+    }
+  }
+  return false;
+}
+
+bool FusionRecomputesShiftValueForExpShift(const HloInstruction* fusion,
+                                           const HloInstruction* dot) {
+  if (fusion->opcode() != HloOpcode::kFusion) {
+    return false;
+  }
+  const HloInstruction* subtract = nullptr;
+  for (const HloInstruction* instr : fusion->fused_instructions()) {
+    if (instr->opcode() == HloOpcode::kSubtract) {
+      subtract = instr;
+      break;
+    }
+  }
+  if (subtract == nullptr) {
+    return false;
+  }
+  // The shift value is the elementwise producer (multiply, add, ...) feeding
+  // the exp-shift subtract.
+  const HloInstruction* shift_value = subtract->operand(0);
+  if (!shift_value->IsElementwise()) {
+    return false;
+  }
+  const HloComputation* fused_computation =
+      fusion->fused_instructions_computation();
+  const HloInstruction* fusion_instr = fused_computation->FusionInstruction();
+  for (int64_t i = 0; i < fusion_instr->operand_count(); ++i) {
+    if (fusion_instr->operand(i) != dot) {
+      continue;
+    }
+    const HloInstruction* param = fusion->fused_parameter(i);
+    if (absl::c_linear_search(shift_value->operands(), param)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+bool HasSplitCoupledReductionShiftExpFusion(const HloModule& module) {
+  const HloComputation* entry = module.entry_computation();
+  const HloInstruction* dot = nullptr;
+  for (const HloInstruction* instr : entry->instructions()) {
+    if (instr->opcode() == HloOpcode::kDot) {
+      dot = instr;
+      break;
+    }
+  }
+  if (dot == nullptr) {
+    return false;
+  }
+
+  const HloInstruction* reduce_fusion = nullptr;
+  const HloInstruction* shift_fusion = nullptr;
+  for (const HloInstruction* instr : entry->instructions()) {
+    if (!instr->IsLoopFusion()) {
+      continue;
+    }
+    if (FusionComputesShiftValueForReduce(instr)) {
+      reduce_fusion = instr;
+    }
+    if (FusionRecomputesShiftValueForExpShift(instr, dot)) {
+      shift_fusion = instr;
+    }
+  }
+  return reduce_fusion != nullptr && shift_fusion != nullptr;
+}
+
+// Returns true if a bare instruction with the given opcode is still present in
+// the entry computation (i.e. it was not fused/duplicated into consumers).
+bool EntryHasStandaloneOp(const HloModule& module, HloOpcode opcode) {
+  return absl::c_any_of(module.entry_computation()->instructions(),
+                        [opcode](const HloInstruction* instr) {
+                          return instr->opcode() == opcode;
+                        });
+}
+
+TEST_F(InstructionFusionTest, AvoidSplitCoupledReductionShiftExpFusions) {
+  absl::string_view module_string = R"(
+HloModule module
+
+%max (p0: f32[], p1: f32[]) -> f32[] {
+  %p0 = f32[] parameter(0)
+  %p1 = f32[] parameter(1)
+  ROOT %m = f32[] maximum(%p0, %p1)
+}
+
+ENTRY main {
+  %lhs = f32[5,5] parameter(0)
+  %rhs = f32[5,5] parameter(1)
+  %dot = f32[5,5] dot(%lhs, %rhs), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  %scale = f32[] constant(0.44721359)
+  %broadcast_scale = f32[5,5] broadcast(%scale), dimensions={}
+  %multiply = f32[5,5] multiply(%dot, %broadcast_scale)
+  %neg_inf = f32[] constant(-inf)
+  %reduce_max = f32[5] reduce(%multiply, %neg_inf), dimensions={1}, to_apply=%max
+  %broadcast_max = f32[5,5] broadcast(%reduce_max), dimensions={0}
+  %subtract = f32[5,5] subtract(%multiply, %broadcast_max)
+  ROOT %exp = f32[5,5] exponential(%subtract)
+}
+)";
+
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnVerifiedModule(module_string));
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       CpuInstructionFusion(&alias_info_).Run(module.get()));
+  EXPECT_TRUE(changed);
+  EXPECT_FALSE(HasSplitCoupledReductionShiftExpFusion(*module));
+}
+
+// Conservatively treat any elementwise shift value as coupled. Multiply is
+// the case with a known divergence mechanism (FMA contraction); other
+// elementwise ops are included defensively.
+TEST_F(InstructionFusionTest,
+       AvoidSplitCoupledReductionShiftExpFusionsAddBias) {
+  absl::string_view module_string = R"(
+HloModule module
+
+%max (p0: f32[], p1: f32[]) -> f32[] {
+  %p0 = f32[] parameter(0)
+  %p1 = f32[] parameter(1)
+  ROOT %m = f32[] maximum(%p0, %p1)
+}
+
+ENTRY main {
+  %lhs = f32[5,5] parameter(0)
+  %rhs = f32[5,5] parameter(1)
+  %bias = f32[5,5] parameter(2)
+  %dot = f32[5,5] dot(%lhs, %rhs), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  %add = f32[5,5] add(%dot, %bias)
+  %neg_inf = f32[] constant(-inf)
+  %reduce_max = f32[5] reduce(%add, %neg_inf), dimensions={1}, to_apply=%max
+  %broadcast_max = f32[5,5] broadcast(%reduce_max), dimensions={0}
+  %subtract = f32[5,5] subtract(%add, %broadcast_max)
+  ROOT %exp = f32[5,5] exponential(%subtract)
+}
+)";
+
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnVerifiedModule(module_string));
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       CpuInstructionFusion(&alias_info_).Run(module.get()));
+  EXPECT_TRUE(changed);
+  EXPECT_FALSE(HasSplitCoupledReductionShiftExpFusion(*module));
+}
+
+// Discrimination check: the shift value multiply feeds a *sum* reduce (not a
+// max reduce), so it is not the numerically coupled stable-softmax pattern and
+// the multiply should still be fused/duplicated normally, leaving no
+// standalone multiply in the entry computation.
+TEST_F(InstructionFusionTest, StillFusesMultiplyWithSumReduce) {
+  absl::string_view module_string = R"(
+HloModule module
+
+%add (p0: f32[], p1: f32[]) -> f32[] {
+  %p0 = f32[] parameter(0)
+  %p1 = f32[] parameter(1)
+  ROOT %a = f32[] add(%p0, %p1)
+}
+
+ENTRY main {
+  %lhs = f32[5,5] parameter(0)
+  %rhs = f32[5,5] parameter(1)
+  %dot = f32[5,5] dot(%lhs, %rhs), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  %scale = f32[] constant(0.44721359)
+  %broadcast_scale = f32[5,5] broadcast(%scale), dimensions={}
+  %multiply = f32[5,5] multiply(%dot, %broadcast_scale)
+  %zero = f32[] constant(0)
+  %reduce_sum = f32[5] reduce(%multiply, %zero), dimensions={1}, to_apply=%add
+  %broadcast_sum = f32[5,5] broadcast(%reduce_sum), dimensions={0}
+  %subtract = f32[5,5] subtract(%multiply, %broadcast_sum)
+  ROOT %exp = f32[5,5] exponential(%subtract)
+}
+)";
+
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnVerifiedModule(module_string));
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       CpuInstructionFusion(&alias_info_).Run(module.get()));
+  EXPECT_TRUE(changed);
+  EXPECT_FALSE(EntryHasStandaloneOp(*module, HloOpcode::kMultiply));
+}
+
+// Discrimination check: the multiply feeds a max reduce, but the subtract does
+// not feed an exponential, so it is not the coupled stable-softmax pattern and
+// the multiply should still be fused/duplicated normally, leaving no
+// standalone multiply in the entry computation.
+TEST_F(InstructionFusionTest, StillFusesMultiplyWhenSubtractDoesNotFeedExp) {
+  absl::string_view module_string = R"(
+HloModule module
+
+%max (p0: f32[], p1: f32[]) -> f32[] {
+  %p0 = f32[] parameter(0)
+  %p1 = f32[] parameter(1)
+  ROOT %m = f32[] maximum(%p0, %p1)
+}
+
+ENTRY main {
+  %lhs = f32[5,5] parameter(0)
+  %rhs = f32[5,5] parameter(1)
+  %dot = f32[5,5] dot(%lhs, %rhs), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  %scale = f32[] constant(0.44721359)
+  %broadcast_scale = f32[5,5] broadcast(%scale), dimensions={}
+  %multiply = f32[5,5] multiply(%dot, %broadcast_scale)
+  %neg_inf = f32[] constant(-inf)
+  %reduce_max = f32[5] reduce(%multiply, %neg_inf), dimensions={1}, to_apply=%max
+  %broadcast_max = f32[5,5] broadcast(%reduce_max), dimensions={0}
+  %subtract = f32[5,5] subtract(%multiply, %broadcast_max)
+  ROOT %negate = f32[5,5] negate(%subtract)
+}
+)";
+
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnVerifiedModule(module_string));
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       CpuInstructionFusion(&alias_info_).Run(module.get()));
+  EXPECT_TRUE(changed);
+  EXPECT_FALSE(EntryHasStandaloneOp(*module, HloOpcode::kMultiply));
 }
 
 }  // namespace
