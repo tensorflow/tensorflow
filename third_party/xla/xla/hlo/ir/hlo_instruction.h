@@ -2586,16 +2586,18 @@ class HloInstruction {
     }
     RemoveAllOperands();
   }
-  void RemoveAllOperands() { operands_.clear(); }
+  // Defined out-of-line because it invalidates the parent computation's
+  // instruction post-order cache.
+  void RemoveAllOperands();
 
  protected:
   // Internal constructor for a given opcode/shape, other fields must be
   // filled by factory methods.
   HloInstruction(HloOpcode opcode, const Shape& shape);
 
-  void RemoveOperandAt(int index) {
-    operands_.erase(operands_.begin() + index);
-  }
+  // Defined out-of-line because it invalidates the parent computation's
+  // instruction post-order cache.
+  void RemoveOperandAt(int index);
 
   // Removes a list of operands with the given indices in ascending order.
   void RemoveOperandsAtAscendingIndices(
@@ -2670,11 +2672,13 @@ class HloInstruction {
       const Shape& shape, HloOpcode opcode,
       absl::Span<HloInstruction* const> operands);
 
-  // Adds a user for this instruction.
-  void AddUser(HloInstruction* user) { users_.AddUser(user); }
+  // Adds a user for this instruction. Defined out-of-line because it
+  // invalidates the parent computation's instruction post-order cache.
+  void AddUser(HloInstruction* user);
 
-  // Removes a user for this instruction.
-  void RemoveUser(HloInstruction* user) { users_.RemoveUser(user); }
+  // Removes a user for this instruction. Defined out-of-line because it
+  // invalidates the parent computation's instruction post-order cache.
+  void RemoveUser(HloInstruction* user);
 
   // Helper for implementing backend_config().  Parses backend_config_ into the
   // given proto.

@@ -307,6 +307,9 @@ void HloComputation::CopyLocalIdsFromComputation(
 
   instructions_ = std::move(cloned_instructions);
   next_instruction_unique_id_ = instructions_.size();
+  // Reordering instructions_ changes the DFS-root iteration order that
+  // MakeInstructionPostOrder uses.
+  InvalidateInstructionPostOrderCache();
 }
 
 static void IncrementCount(
@@ -399,6 +402,7 @@ absl::flat_hash_map<HloInstruction*, int>* const HloComputation::GetCallersMap()
 
 HloInstruction* HloComputation::AddInstructionInternal(
     std::unique_ptr<HloInstruction> instruction, bool preserve_unique_id) {
+  InvalidateInstructionPostOrderCache();
   if (parent() != nullptr) {
     instruction->UniquifyName(parent());
   }
@@ -800,6 +804,7 @@ absl::Status HloComputation::ForceRemoveInstruction(
 
 absl::Status HloComputation::RemoveInstructionImpl(HloInstruction* instruction,
                                                    bool ignore_safety_check) {
+  InvalidateInstructionPostOrderCache();
   VLOG(2) << "Removing instruction " << instruction << " "
           << instruction->name() << " from computation " << name();
   TF_RET_CHECK(ignore_safety_check || IsSafelyRemovable(instruction))
@@ -880,6 +885,9 @@ void HloComputation::Cleanup() {
 void HloComputation::CanonicalizeLocalIds() {
   Cleanup();
   auto post_order = MakeInstructionPostOrder();
+  // Reordering instructions_ changes the DFS-root iteration order that
+  // MakeInstructionPostOrder uses, so the cached order must be dropped.
+  InvalidateInstructionPostOrderCache();
   std::vector<HloInstructionInfo> new_instructions;
   new_instructions.reserve(post_order.size());
 
@@ -898,6 +906,7 @@ void HloComputation::CanonicalizeLocalIds() {
 
 void HloComputation::set_root_instruction(HloInstruction* new_root_instruction,
                                           bool accept_different_shape) {
+  InvalidateInstructionPostOrderCache();
   // The shape of the root (ignoring layout) is an invariant of the computation
   // for non-fusion cases.
   if (!IsFusionComputation() && !accept_different_shape) {
@@ -998,7 +1007,8 @@ std::vector<HloInstruction*> HloComputation::MakeInstructionPostOrderFrom(
   return post_order;
 }
 
-std::vector<HloInstruction*> HloComputation::MakeInstructionPostOrder() const {
+std::vector<HloInstruction*> HloComputation::MakeInstructionPostOrderUncached()
+    const {
   std::vector<HloInstruction*> post_order;
   post_order.reserve(instruction_count());
   VisitMap visited(instructions_.size());
@@ -1018,6 +1028,26 @@ std::vector<HloInstruction*> HloComputation::MakeInstructionPostOrder() const {
   }
   CHECK_EQ(instruction_count(), post_order.size())
       << "number of instructions does not match post order size";
+  return post_order;
+}
+
+std::vector<HloInstruction*> HloComputation::MakeInstructionPostOrder() const {
+  {
+    absl::MutexLock lock(&post_order_cache_mutex_);
+    if (post_order_cache_ != nullptr) {
+      // In debug builds, verify that no graph mutation slipped past the
+      // invalidation hooks: a cache hit must be identical to a fresh walk.
+      DCHECK(*post_order_cache_ == MakeInstructionPostOrderUncached())
+          << "Stale instruction post-order cache for computation " << name();
+      return *post_order_cache_;
+    }
+  }
+  std::vector<HloInstruction*> post_order = MakeInstructionPostOrderUncached();
+  {
+    absl::MutexLock lock(&post_order_cache_mutex_);
+    post_order_cache_ =
+        std::make_shared<const std::vector<HloInstruction*>>(post_order);
+  }
   return post_order;
 }
 
@@ -1086,6 +1116,23 @@ HloComputation::MakeInstructionPostOrderWithReshapeFirst() const {
 
 void HloComputation::ForEachInstructionPostOrder(
     absl::FunctionRef<void(HloInstruction*)> func) const {
+  // Serve from the post-order cache when available. The snapshot shared_ptr
+  // keeps the vector alive even if `func` mutates the graph (and thereby
+  // invalidates the cache) mid-iteration; that matches the semantics of
+  // iterating over a MakeInstructionPostOrder copy.
+  std::shared_ptr<const std::vector<HloInstruction*>> cached;
+  {
+    absl::MutexLock lock(&post_order_cache_mutex_);
+    cached = post_order_cache_;
+  }
+  if (cached != nullptr) {
+    DCHECK(*cached == MakeInstructionPostOrderUncached())
+        << "Stale instruction post-order cache for computation " << name();
+    for (HloInstruction* instruction : *cached) {
+      func(instruction);
+    }
+    return;
+  }
   VisitMap visited(instructions_.size());
   std::vector<HloInstruction*> dfs_stack_scratch;
   dfs_stack_scratch.reserve(instruction_count());
