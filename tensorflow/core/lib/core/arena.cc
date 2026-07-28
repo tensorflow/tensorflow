@@ -26,8 +26,11 @@ limitations under the License.
 #include <assert.h>
 
 #include <algorithm>
+#include <cstddef>
+#include <cstdint>
 #include <vector>
 
+#include "absl/log/check.h"
 #include "tensorflow/core/lib/math/math_util.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
