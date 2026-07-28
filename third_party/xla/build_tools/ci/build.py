@@ -37,6 +37,7 @@ from typing import Any, ClassVar, Dict, List, Tuple
 _DEFAULT_BAZEL_OPTIONS = dict(
     color="yes",
     test_output="errors",
+    test_summary="terse",
     verbose_failures=True,
     keep_going=True,
     nobuild_tests_only=True,
@@ -927,6 +928,7 @@ Build(
     options=dict(
         verbose_failures=True,
         test_output="errors",
+        test_summary="terse",
         profile="profile.json.gz",
         test_lang_filters="cc,py",
         color="yes",
@@ -964,6 +966,7 @@ Build(
     options=dict(
         verbose_failures=True,
         test_output="errors",
+        test_summary="terse",
         profile="profile.json.gz",
         test_lang_filters="cc,py",
         color="yes",
@@ -1010,8 +1013,13 @@ def main():
     dump_all_build_commands()
     return
   else:
-    for cmd in Build.all_builds()[args.build].commands():
-      sh(cmd)
+    build = Build.all_builds()[args.build]
+    try:
+      for cmd in build.commands():
+        sh(cmd)
+    except subprocess.CalledProcessError as e:
+      logging.error("Command failed with exit code %s", e.returncode)
+      sys.exit(1)
 
 
 if __name__ == "__main__":
