@@ -17,8 +17,11 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
+#include <string>
 #include <utility>
+#include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
 #include "absl/strings/match.h"
@@ -27,12 +30,15 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_print_options.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
+#include "xla/literal_util.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace {
+
+using ::testing::ElementsAre;
 
 using HLOComputationTest = HloHardwareIndependentTestBase;
 
@@ -176,6 +182,124 @@ ENTRY entry {
   // Verify that MakeInstructionPostOrder() is idempotent.
   auto post_order_2 = module->entry_computation()->MakeInstructionPostOrder();
   EXPECT_EQ(post_order, post_order_2);
+}
+
+// Mutates the graph through every kind of mutation the post-order depends on
+// and checks the (cached) post-order against the expected order after each
+// step. Every order-changing step expects an order that differs from the
+// previous one, so a stale cache fails this test in every build mode; debug
+// builds additionally cross-check each cache hit against a fresh walk.
+TEST_F(HLOComputationTest, InstructionPostOrderCacheInvalidation) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  p0 = f32[100] parameter(0)
+  p1 = f32[100] parameter(1)
+  add0 = f32[100] add(p0, p1)
+  neg0 = f32[100] negate(add0)
+  neg1 = f32[100] negate(p1)
+  ROOT tuple0 = (f32[100], f32[100]) tuple(neg0, neg1)
+})";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  HloComputation* computation = module->entry_computation();
+  // Returns the instruction names in post-order. Queries the order several
+  // times so that both the recomputation and the cache hit paths (including
+  // ForEachInstructionPostOrder) are covered after every mutation.
+  auto post_order_names = [&]() {
+    std::vector<HloInstruction*> post_order =
+        computation->MakeInstructionPostOrder();
+    EXPECT_EQ(post_order, computation->MakeInstructionPostOrder());
+    EXPECT_EQ(post_order.size(), computation->instruction_count());
+    std::vector<HloInstruction*> for_each_order;
+    computation->ForEachInstructionPostOrder([&](HloInstruction* instruction) {
+      for_each_order.push_back(instruction);
+    });
+    EXPECT_EQ(post_order, for_each_order);
+    std::vector<std::string> names;
+    for (const HloInstruction* instruction : post_order) {
+      names.push_back(std::string(instruction->name()));
+    }
+    return names;
+  };
+  EXPECT_THAT(post_order_names(),
+              ElementsAre("p0", "p1", "add0", "neg0", "neg1", "tuple0"));
+
+  HloInstruction* p0 = computation->parameter_instruction(0);
+  HloInstruction* add0 = FindInstruction(module.get(), "add0");
+  HloInstruction* neg0 = FindInstruction(module.get(), "neg0");
+  HloInstruction* neg1 = FindInstruction(module.get(), "neg1");
+  HloInstruction* tuple0 = FindInstruction(module.get(), "tuple0");
+
+  // Adding an operand-less instruction only touches the instruction list.
+  HloInstruction* c0 = computation->AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1.0f)), "c0");
+  EXPECT_THAT(post_order_names(),
+              ElementsAre("p0", "p1", "add0", "neg0", "neg1", "tuple0", "c0"));
+
+  // Control predecessors are DFS edges: neg1's chain is now visited from add0.
+  ASSERT_OK(neg1->AddControlDependencyTo(add0));
+  EXPECT_THAT(post_order_names(),
+              ElementsAre("p1", "neg1", "p0", "add0", "neg0", "tuple0", "c0"));
+  ASSERT_OK(neg1->RemoveControlDependencyTo(add0));
+  EXPECT_THAT(post_order_names(),
+              ElementsAre("p0", "p1", "add0", "neg0", "neg1", "tuple0", "c0"));
+  ASSERT_OK(neg1->AddControlDependencyTo(add0));
+  EXPECT_THAT(post_order_names(),
+              ElementsAre("p1", "neg1", "p0", "add0", "neg0", "tuple0", "c0"));
+  ASSERT_OK(neg1->DropAllControlDeps());
+  EXPECT_THAT(post_order_names(),
+              ElementsAre("p0", "p1", "add0", "neg0", "neg1", "tuple0", "c0"));
+
+  // Operand rewiring. ReplaceOperandWith makes neg1 user-less, i.e. a DFS
+  // root that precedes tuple0 in the instruction list.
+  ASSERT_OK(tuple0->ReplaceOperandWith(1, p0));
+  EXPECT_THAT(post_order_names(),
+              ElementsAre("p1", "neg1", "p0", "add0", "neg0", "tuple0", "c0"));
+  // ReplaceAllUsesWith makes add0 a DFS root as well.
+  ASSERT_OK(add0->ReplaceAllUsesWith(p0));
+  EXPECT_THAT(post_order_names(),
+              ElementsAre("p0", "p1", "add0", "neg1", "neg0", "tuple0", "c0"));
+  // ReplaceUseWith reattaches neg1 to tuple0.
+  ASSERT_OK(p0->ReplaceUseWith(tuple0, neg1));
+  EXPECT_THAT(post_order_names(),
+              ElementsAre("p0", "p1", "add0", "neg0", "neg1", "tuple0", "c0"));
+
+  // The root instruction is not part of the post-order definition: DFS roots
+  // are the instructions without users.
+  computation->set_root_instruction(neg0, /*accept_different_shape=*/true);
+  EXPECT_THAT(post_order_names(),
+              ElementsAre("p0", "p1", "add0", "neg0", "neg1", "tuple0", "c0"));
+  computation->set_root_instruction(tuple0, /*accept_different_shape=*/true);
+
+  // Removal (add0 is dead after ReplaceAllUsesWith).
+  ASSERT_OK(computation->RemoveInstruction(add0));
+  EXPECT_THAT(post_order_names(),
+              ElementsAre("p0", "neg0", "p1", "neg1", "tuple0", "c0"));
+
+  // Rewriting the instruction list in post-order keeps the relative order of
+  // the DFS roots, and thereby the post-order.
+  computation->CanonicalizeLocalIds();
+  EXPECT_THAT(post_order_names(),
+              ElementsAre("p0", "neg0", "p1", "neg1", "tuple0", "c0"));
+
+  // A user outside any computation does not stop c0 from being a DFS root;
+  // adding that user to the computation does.
+  std::unique_ptr<HloInstruction> detached =
+      HloInstruction::CreateUnary(c0->shape(), HloOpcode::kNegate, c0);
+  EXPECT_THAT(post_order_names(),
+              ElementsAre("p0", "neg0", "p1", "neg1", "tuple0", "c0"));
+  HloInstruction* neg2 =
+      computation->AddInstruction(std::move(detached), "neg2");
+  EXPECT_THAT(post_order_names(),
+              ElementsAre("p0", "neg0", "p1", "neg1", "tuple0", "c0", "neg2"));
+
+  // Removal followed by compaction of the instruction list.
+  ASSERT_OK(computation->RemoveInstruction(neg2));
+  computation->Cleanup();
+  EXPECT_THAT(post_order_names(),
+              ElementsAre("p0", "neg0", "p1", "neg1", "tuple0", "c0"));
 }
 
 // Test AddCallee
