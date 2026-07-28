@@ -1311,7 +1311,7 @@ TEST(StreamExecutorGpuClientTest, ShouldStageHostToDeviceTransfersSetToTrue) {
   [[deprecated("remove after absl upgrade")]] auto* staging_client =
       absl::down_cast<StreamExecutorGpuClient*>(client_staging.get());
 
-  EXPECT_TRUE(staging_client->ShouldStageHostToDeviceTransfers(
+  EXPECT_TRUE(staging_client->raw_client()->ShouldStageHostToDeviceTransfers(
       data.data(), sizeof(float) * data.size()));
 
   TF_ASSERT_OK_AND_ASSIGN(
@@ -1342,8 +1342,9 @@ TEST(StreamExecutorGpuClientTest, ShouldStageHostToDeviceTransfersSetToFalse) {
   [[deprecated("remove after absl upgrade")]] auto* no_staging_client =
       absl::down_cast<StreamExecutorGpuClient*>(client_no_staging.get());
 
-  EXPECT_FALSE(no_staging_client->ShouldStageHostToDeviceTransfers(
-      data.data(), sizeof(float) * data.size()));
+  EXPECT_FALSE(
+      no_staging_client->raw_client()->ShouldStageHostToDeviceTransfers(
+          data.data(), sizeof(float) * data.size()));
 
   TF_ASSERT_OK_AND_ASSIGN(
       auto buffer,

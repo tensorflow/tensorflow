@@ -970,7 +970,7 @@ TEST(PjrtCApiGpuExtensionTest,
   xla::PjRtClient* cpp_client = create_arg.client->client.get();
   auto* gpu_client = absl::down_cast<xla::StreamExecutorGpuClient*>(cpp_client);
   std::vector<float> data(4, 0.0f);
-  EXPECT_TRUE(gpu_client->ShouldStageHostToDeviceTransfers(
+  EXPECT_TRUE(gpu_client->raw_client()->ShouldStageHostToDeviceTransfers(
       data.data(), sizeof(float) * data.size()));
 
   PJRT_Client_Destroy_Args destroy_args;
@@ -1010,7 +1010,7 @@ TEST(PjrtCApiGpuExtensionTest,
   xla::PjRtClient* cpp_client = create_arg.client->client.get();
   auto* gpu_client = absl::down_cast<xla::StreamExecutorGpuClient*>(cpp_client);
   std::vector<float> data(4, 0.0f);
-  EXPECT_FALSE(gpu_client->ShouldStageHostToDeviceTransfers(
+  EXPECT_FALSE(gpu_client->raw_client()->ShouldStageHostToDeviceTransfers(
       data.data(), sizeof(float) * data.size()));
 
   PJRT_Client_Destroy_Args destroy_args;

@@ -229,6 +229,87 @@ class PjRtStreamExecutorMemorySpace : public PjRtMemorySpace {
   PjRtMemorySpaceCApiDelegator capi_delegator_{this};
 };
 
+class PjRtStreamExecutorRawClient {
+ public:
+  explicit PjRtStreamExecutorRawClient(
+      std::unique_ptr<HostMemoryAllocator> host_memory_allocator,
+      bool should_stage_host_to_device_transfers,
+      std::unique_ptr<AsyncWorkRunner> async_work_runner,
+      se::StreamExecutor* executor = nullptr);
+  ~PjRtStreamExecutorRawClient() = default;
+
+  AsyncWorkRunner* async_work_runner() const {
+    return async_work_runner_.get();
+  }
+
+  HostMemoryAllocator* GetHostMemoryAllocator() const {
+    return host_memory_allocator_.get();
+  }
+
+  bool should_stage_host_to_device_transfers() const {
+    return should_stage_host_to_device_transfers_;
+  }
+
+  se::StreamExecutor* executor() const { return executor_; }
+
+  bool ShouldStageHostToDeviceTransfers(const void* data, int64_t size) const {
+    // Allocating multi-gigabyte pinned buffers can be very slow. In that case,
+    // using a staging buffer is probably worse than not using one.
+    // TODO(phawkins): add chunking for transfers.
+    return should_stage_host_to_device_transfers_ &&
+           size < (int64_t{1} << 30) &&
+           (executor_ == nullptr || !executor_->IsHostMemoryPinned(data, size));
+  }
+
+  void ThenRecordEvent(BufferSequencingEventRef event,
+                       LocalDeviceState* local_device,
+                       EventPool::Handle device_event, se::Stream* stream);
+
+  absl::Status AllocateAndRecordEvent(
+      BufferSequencingEventRef event, LocalDeviceState* local_device,
+      se::Stream* stream, absl::string_view tag = "",
+      absl::AnyInvocable<void() &&> cleanup = {});
+
+  void SetEventAsError(BufferSequencingEventRef event, absl::Status s);
+
+  absl::Status WaitForAllocation(se::Stream* stream,
+                                 const PjRtRawBufferInterface& raw_buffer);
+
+  static bool IsOnCpu(PjRtMemorySpace* memory_space);
+
+  absl::StatusOr<PjRtRawBufferRef> AllocateRawBuffer(
+      PjRtMemorySpace* memory_space, size_t on_device_bytes_count,
+      bool retry_on_oom, tsl::AsyncValueRef<bool> allocate_after,
+      se::DeviceAddressAllocator* allocator, LocalClient* client);
+
+  absl::StatusOr<PjRtRawBufferRef> AllocateRawBufferForExecute(
+      PjRtMemorySpace* memory_space, size_t on_device_bytes_count,
+      bool retry_on_oom);
+
+  absl::StatusOr<std::pair<PjRtRawBufferRef,
+                           CommonPjRtClient::PjRtFulfillAliasRawBufferCallback>>
+  CreateRawBufferChannel(PjRtMemorySpace* memory_space,
+                         size_t on_device_bytes_count);
+
+  absl::StatusOr<std::pair<PjRtDeviceEventPromiseRef, PjRtDeviceEventRef>>
+  CreateLinkedEventPromise(PjRtMemorySpace* memory_space,
+                           absl::string_view debug_info);
+
+  void Stop() { async_work_runner_.reset(); }
+
+ private:
+  // Allocator to be used for staging memory transfers to devices.
+  std::unique_ptr<HostMemoryAllocator> host_memory_allocator_;
+
+  // Should we always prefer to stage host-to-device transfers via memory
+  // allocated on host_memory_allocator_? True only on GPU, where we prefer to
+  // transfer via pinned memory.
+  bool should_stage_host_to_device_transfers_;
+
+  std::unique_ptr<AsyncWorkRunner> async_work_runner_;
+  se::StreamExecutor* executor_;
+};
+
 class PjRtStreamExecutorClient : public CommonPjRtClient {
  public:
   // `allocator` may null, in which case the platform default allocator is used.
@@ -244,6 +325,8 @@ class PjRtStreamExecutorClient : public CommonPjRtClient {
       std::unique_ptr<gpu::GpuExecutableRunOptions> gpu_run_options = nullptr,
       std::shared_ptr<KeyValueStoreInterface> kv_store = nullptr);
   ~PjRtStreamExecutorClient() override;
+
+  PjRtStreamExecutorRawClient* raw_client() const { return raw_client_.get(); }
 
   int process_index() const override { return process_index_; }
 
@@ -342,7 +425,7 @@ class PjRtStreamExecutorClient : public CommonPjRtClient {
 
   absl::Status DmaUnmap(void* data) override;
 
-  bool IsHostMemoryPinned(const void* ptr, uint64_t size);
+  bool IsHostMemoryPinned(const void* ptr, uint64_t size) const;
 
   LocalDeviceState& device_state(int device_ordinal) const {
     return *absl::down_cast<PjRtStreamExecutorDevice*>(
@@ -353,38 +436,23 @@ class PjRtStreamExecutorClient : public CommonPjRtClient {
   LocalClient* client() const { return client_; }
   se::DeviceAddressAllocator* allocator() const { return allocator_; }
   HostMemoryAllocator* GetHostMemoryAllocator() const override {
-    return host_memory_allocator_.get();
-  }
-
-  bool ShouldStageHostToDeviceTransfers(const void* data, int64_t size) {
-    // Allocating multi-gigabyte pinned buffers can be very slow. In that case,
-    // using a staging buffer is probably worse than not using one.
-    // TODO(phawkins): add chunking for transfers.
-    return should_stage_host_to_device_transfers_ &&
-           size < (int64_t{1} << 30) && !IsHostMemoryPinned(data, size);
+    return raw_client_->GetHostMemoryAllocator();
   }
 
   gpu::GpuExecutableRunOptions* gpu_run_options() const {
     return gpu_run_options_.get();
   }
 
-  void ThenRecordEvent(BufferSequencingEventRef event,
-                       LocalDeviceState* local_device,
-                       EventPool::Handle device_event, se::Stream* stream);
 
-  absl::Status AllocateAndRecordEvent(
-      BufferSequencingEventRef event, LocalDeviceState* local_device,
-      se::Stream* stream, absl::string_view tag = "",
-      absl::AnyInvocable<void() &&> cleanup = {});
 
   PjRtDeviceEventRef CreateErrorDeviceEvent(absl::Status error);
 
-  void SetEventAsError(BufferSequencingEventRef event, absl::Status s);
-
-  bool IsOnCpu(PjRtMemorySpace* memory_space);
+  bool IsOnCpu(PjRtMemorySpace* memory_space) override {
+    return PjRtStreamExecutorRawClient::IsOnCpu(memory_space);
+  }
 
   AsyncWorkRunner* async_work_runner() const override {
-    return async_work_runner_.get();
+    return raw_client_->async_work_runner();
   }
 
   bool allows_recursion() const override { return false; }
@@ -406,15 +474,25 @@ class PjRtStreamExecutorClient : public CommonPjRtClient {
 
   absl::StatusOr<PjRtRawBufferRef> AllocateRawBuffer(
       PjRtMemorySpace* memory_space, size_t on_device_bytes_count,
-      bool retry_on_oom, tsl::AsyncValueRef<bool> allocate_after) override;
+      bool retry_on_oom, tsl::AsyncValueRef<bool> allocate_after) override {
+    return raw_client_->AllocateRawBuffer(memory_space, on_device_bytes_count,
+                                          retry_on_oom, allocate_after,
+                                          allocator(), client_);
+  }
 
   absl::StatusOr<PjRtRawBufferRef> AllocateRawBufferForExecute(
       PjRtMemorySpace* memory_space, size_t on_device_bytes_count,
-      bool retry_on_oom) override;
+      bool retry_on_oom) override {
+    return raw_client_->AllocateRawBufferForExecute(
+        memory_space, on_device_bytes_count, retry_on_oom);
+  }
 
   absl::StatusOr<std::pair<PjRtRawBufferRef, PjRtFulfillAliasRawBufferCallback>>
   CreateRawBufferChannel(PjRtMemorySpace* memory_space,
-                         size_t on_device_bytes_count) override;
+                         size_t on_device_bytes_count) override {
+    return raw_client_->CreateRawBufferChannel(memory_space,
+                                               on_device_bytes_count);
+  }
 
   bool ShouldPerformZeroCopyLinearize(
       const void* data, const xla::Shape& device_shape, PrimitiveType type,
@@ -429,7 +507,9 @@ class PjRtStreamExecutorClient : public CommonPjRtClient {
 
   absl::StatusOr<std::pair<PjRtDeviceEventPromiseRef, PjRtDeviceEventRef>>
   CreateLinkedEventPromise(PjRtMemorySpace* memory_space,
-                           absl::string_view debug_info) override;
+                           absl::string_view debug_info) override {
+    return raw_client_->CreateLinkedEventPromise(memory_space, debug_info);
+  }
 
   absl::StatusOr<PjRtDeviceEventRef> CreateDeviceEvent(
       PjRtMemorySpace* memory_space, Future<> dependency) override;
@@ -444,9 +524,6 @@ class PjRtStreamExecutorClient : public CommonPjRtClient {
 
   tsl::AsyncValueRef<PjRtStagingBuffer> AllocateForDelinearizationAsync(
       size_t size, PjRtMemorySpace* memory_space) override;
-
-  absl::Status WaitForAllocation(se::Stream* stream,
-                                 const PjRtRawBufferInterface& raw_buffer);
 
   void LaunchOnDevice(PjRtDevice* device,
                       absl::AnyInvocable<void()> execute_fn) const override;
@@ -532,8 +609,7 @@ class PjRtStreamExecutorClient : public CommonPjRtClient {
   LocalClient* client_;
   std::shared_ptr<const xla::PjRtTopologyDescription> topology_;
 
-  // Allocator to be used for staging memory transfers to devices.
-  std::unique_ptr<HostMemoryAllocator> host_memory_allocator_;
+  std::unique_ptr<PjRtStreamExecutorRawClient> raw_client_;
 
   // Device memory allocator. If owned, the allocator must outlive the devices,
   // because it is the device destructor that waits for any outstanding work to
@@ -555,16 +631,10 @@ class PjRtStreamExecutorClient : public CommonPjRtClient {
   // Pointers to `owned_memory_spaces_`.
   std::vector<PjRtMemorySpace*> memory_spaces_;
 
-  // Should we always prefer to stage host-to-device transfers via memory
-  // allocated on host_memory_allocator_? True only on GPU, where we prefer to
-  // transfer via pinned memory.
-  bool should_stage_host_to_device_transfers_;
-
   std::unique_ptr<gpu::GpuExecutableRunOptions> gpu_run_options_;
   std::shared_ptr<KeyValueStoreInterface> kv_store_;
 
   tsl::thread::ThreadPool compile_thread_pool_;
-  std::unique_ptr<AsyncWorkRunner> async_work_runner_;
 };
 
 struct PjRtStreamExecutorExecutionOutput {
