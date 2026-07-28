@@ -378,7 +378,7 @@ tsl::thread::ThreadPool* GetGpuCompilationThreadPool() {
   return GetCompilationThreadPool();
 }
 
-using MaybeOwningThreadPool = MaybeOwning<tsl::thread::ThreadPool>;
+using MaybeOwningThreadPool = tsl::MaybeOwning<tsl::thread::ThreadPool>;
 
 MaybeOwningThreadPool CreateMaybeOwningThreadPool(
     int parallelism, tsl::thread::ThreadPool* default_thread_pool,
