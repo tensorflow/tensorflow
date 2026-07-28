@@ -218,7 +218,7 @@ xla_cc_test(
         "//xla/tsl/platform:status_macros",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest",
         "@tsl//tsl/platform:statusor",
     ],
@@ -365,6 +365,7 @@ cc_library(
     srcs = ["collective_permute_key.cc"],
     hdrs = ["collective_permute_key.h"],
     deps = [
+        ":collective_ops_utils",
         ":hlo_domain_map",
         "//xla:side_effect_util",
         "//xla:xla_data_proto_cc",
@@ -467,6 +468,7 @@ cc_library(
         "//xla:literal",
         "//xla:literal_util",
         "//xla:shape_util",
+        "//xla:side_effect_util",
         "//xla:util",
         "//xla:xla_data_proto_cc",
         "//xla/hlo/analysis:hlo_dataflow_analysis",
@@ -492,6 +494,7 @@ cc_library(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/types:span",
         "@tsl//tsl/platform:errors",
         "@tsl//tsl/platform:statusor",
@@ -511,6 +514,7 @@ xla_cc_test(
         ":memory_annotations_hdr",
         ":scheduling_annotations_util",
         "//xla:literal_util",
+        "//xla:side_effect_util",
         "//xla:util",
         "//xla:xla_data_proto_cc",
         "//xla/hlo/analysis:hlo_reachability",
@@ -2979,12 +2983,16 @@ cc_library(
         ":collective_ops_utils",
         ":hlo_domain_map",
         ":scheduling_annotations_util",
+        "//xla/core/collectives:reduction_kind",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/pass:hlo_pass",
         "//xla/hlo/utils:hlo_query",
         "//xla/tsl/platform:status_macros",
         "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
         "@tsl//tsl/platform:errors",
     ],
 )
@@ -3001,6 +3009,7 @@ xla_cc_test(
         "//xla/hlo/utils:hlo_matchers",
         "//xla/tests:xla_internal_test_main",
         "//xla/tsl/platform:status_macros",
+        "@com_google_googletest//:gtest",
     ],
 )
 
@@ -3243,9 +3252,8 @@ cc_library(
         "//xla/hlo/transforms/simplifiers:hlo_dce",
         "//xla/hlo/transforms/simplifiers:tuple_simplifier",
         "//xla/hlo/utils:hlo_query",
-        "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:logging",
         "//xla/tsl/platform:status_macros",
-        "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
@@ -4763,10 +4771,19 @@ genrule(
     compatible_with = get_compatible_with_portable(),
 )
 
+genrule(
+    name = "simple_viewer_html_h",
+    srcs = ["fusion_explorer/simple_viewer.html"],
+    outs = ["simple_viewer_html.h"],
+    cmd = "echo 'inline const char* kSimpleViewerHtmlCode = R\"html(' > $@ && cat $< >> $@ && echo ')html\";' >> $@",
+    compatible_with = get_compatible_with_portable(),
+)
+
 cc_library(
     name = "hlo_graph_dumper",
     srcs = [
         "hlo_graph_dumper.cc",
+        ":simple_viewer_html_h",
         ":viewer_html_h",
         ":viewer_server_h",
     ],
@@ -4885,9 +4902,11 @@ cc_library(
         "//xla/stream_executor:platform",
         "//xla/stream_executor:stream",
         "//xla/stream_executor:stream_executor_h",
+        "//xla/tsl/platform:status_macros",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/synchronization",
     ],
@@ -5173,9 +5192,7 @@ cc_library(
         "//xla:shape_util",
         "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
-        "//xla/tsl/platform:errors",
         "//xla/tsl/platform:status_macros",
-        "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:inlined_vector",
@@ -5202,6 +5219,7 @@ xla_cc_test(
         "//xla/hlo/utils:hlo_matchers",
         "//xla/tests:xla_internal_test_main",
         "//xla/tsl/lib/core:status_test_util",
+        "//xla/tsl/platform:logging",
         "//xla/tsl/platform:status_macros",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/algorithm:container",
@@ -5256,6 +5274,7 @@ xla_cc_test(
     deps = [
         ":hlo_verifier",
         ":while_loop_all_reduce_code_motion",
+        "//xla:side_effect_util",
         "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:filecheck",
@@ -5268,6 +5287,7 @@ xla_cc_test(
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/status:status_matchers",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest",
     ],
 )
@@ -5752,6 +5772,7 @@ cc_library(
         "//xla:literal",
         "//xla:literal_util",
         "//xla:shape_util",
+        "//xla:side_effect_util",
         "//xla:status_macros",
         "//xla:util",
         "//xla:xla_data_proto_cc",
@@ -5787,6 +5808,7 @@ xla_cc_test(
         "//xla:literal",
         "//xla:literal_util",
         "//xla:shape_util",
+        "//xla:side_effect_util",
         "//xla:xla_data_proto_cc",
         "//xla:xla_proto_cc",
         "//xla/hlo/ir:hlo",
@@ -6739,6 +6761,47 @@ xla_cc_test(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest_main",  # fixdeps: keep
+    ],
+)
+
+cc_library(
+    name = "scheduler_memory_fencing",
+    srcs = ["scheduler_memory_fencing.cc"],
+    hdrs = ["scheduler_memory_fencing.h"],
+    deps = [
+        ":hlo_buffer",
+        ":hlo_cost_analysis",
+        ":hlo_value",
+        "//xla:status_macros",
+        "//xla/hlo/analysis:alias_info",
+        "//xla/hlo/analysis:hlo_alias_analysis",
+        "//xla/hlo/analysis:hlo_dataflow_analysis",
+        "//xla/hlo/analysis:hlo_reachability",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/pass:hlo_pass",
+        "//xla/tsl/platform:status_macros",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
+    ],
+)
+
+xla_cc_test(
+    name = "scheduler_memory_fencing_test",
+    srcs = ["scheduler_memory_fencing_test.cc"],
+    deps = [
+        ":scheduler_memory_fencing",
+        "//xla:shape_util",
+        "//xla/hlo/analysis:alias_info",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 

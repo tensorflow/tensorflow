@@ -60,6 +60,7 @@ limitations under the License.
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/cublas_cudnn.h"
 #include "xla/service/pattern_matcher.h"
+#include "xla/service/simple_viewer_html.h"
 #include "xla/service/viewer_html.h"
 #include "xla/service/viewer_server.h"
 #include "xla/shape.h"
@@ -72,6 +73,7 @@ limitations under the License.
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/file_system.h"
 #include "xla/util.h"
+#include "tsl/platform/base64.h"
 #include "tsl/platform/path.h"
 #include "tsl/platform/thread_annotations.h"
 
@@ -2193,11 +2195,33 @@ absl::StatusOr<std::string> WrapFusionExplorer(
   return WrapFusionExplorer(visualizer_progress, GraphTitle(computation));
 }
 
+static std::string EscapeJSONString(absl::string_view raw) {
+  return absl::StrCat(
+      "\"",
+      absl::StrReplaceAll(raw, {{"\n", "\\n"}, {"\"", "\\\""}, {"\\", "\\\\"}}),
+      "\"");
+}
+
+static absl::StatusOr<std::string> EncodeBase64(absl::string_view input) {
+  std::string encoded;
+  RETURN_IF_ERROR(tsl::Base64Encode(input, &encoded));
+  return absl::StrReplaceAll(encoded, {{"_", "/"}, {"-", "+"}});
+}
+
 static absl::StatusOr<std::string> WrapDotInHtml(absl::string_view dot,
                                                  absl::string_view title) {
-  FusionVisualizerProgress progress;
-  progress.AddState(dot, title, std::nullopt);
-  return WrapFusionExplorer(progress, title);
+  std::string dot_graph = absl::StrFormat("[%s]", EscapeJSONString(dot));
+  std::string frames = absl::StrFormat("[0, %s, %s]", EscapeJSONString(title),
+                                       EscapeJSONString(""));
+  ASSIGN_OR_RETURN(std::string compressed_dot_graph, Compress(dot_graph));
+  ASSIGN_OR_RETURN(std::string encoded_dot_graph,
+                   EncodeBase64(compressed_dot_graph));
+  return absl::StrReplaceAll(kSimpleViewerHtmlCode,
+                             {
+                                 {"$TITLE", title},
+                                 {"$DOTS", encoded_dot_graph},
+                                 {"$FRAMES", frames},
+                             });
 }
 
 // Precondition: (url_renderer != nullptr || format != kUrl).

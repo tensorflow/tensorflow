@@ -220,4 +220,13 @@ mlir::LogicalResult LowerReshape::matchAndRewrite(
   return mlir::success();
 }
 
+mlir::LogicalResult LowerTranspose::matchAndRewrite(
+    stablehlo::TransposeOp op, mlir::PatternRewriter& rewriter) const {
+  SmallVector<int32_t> permutation =
+      llvm::to_vector_of<int32_t>(op.getPermutation());
+  rewriter.replaceOpWithNewOp<ttir::TransOp>(op, op.getResult().getType(),
+                                             op.getOperand(), permutation);
+  return mlir::success();
+}
+
 }  // namespace mlir::triton::xla

@@ -111,8 +111,6 @@ class StreamExecutorGpuHbmMemorySpace : public PjRtStreamExecutorMemorySpace {
 // A custom PjRtClient that overrides the device assignment method.
 class StreamExecutorGpuClient : public xla::PjRtStreamExecutorClient {
  public:
-  using xla::PjRtStreamExecutorClient::PjRtStreamExecutorClient;
-
   StreamExecutorGpuClient(
       std::string platform_name, LocalClient* client,
       std::vector<std::unique_ptr<PjRtStreamExecutorDevice>> devices,
@@ -122,18 +120,10 @@ class StreamExecutorGpuClient : public xla::PjRtStreamExecutorClient {
       std::unique_ptr<gpu::GpuExecutableRunOptions> gpu_run_options,
       std::shared_ptr<KeyValueStoreInterface> kv_store,
       bool abort_collectives_on_failure,
-      std::shared_ptr<const GpuTopology> gpu_topology,
+      std::shared_ptr<xla::StreamExecutorGpuTopologyDescription> topology,
       std::optional<int> num_processes,
       std::shared_ptr<gpu::AllocatorMemoryRegistration> memory_registration =
           nullptr);
-
-  std::optional<std::shared_ptr<KeyValueStoreInterface>> key_value_store()
-      const override {
-    return kv_store_;
-  }
-
-  gpu::GpuExecutableRunOptions* gpu_run_options(
-      const ExecuteOptions& options) override;
 
   absl::StatusOr<xla::DeviceAssignment> GetDefaultDeviceAssignment(
       int num_replicas, int num_partitions) const override;
@@ -141,17 +131,9 @@ class StreamExecutorGpuClient : public xla::PjRtStreamExecutorClient {
   absl::string_view platform_version() const override;
 
   std::optional<PjRtPluginAttributes> plugin_attributes() const override;
-  bool use_stream_based_compaction() const override { return true; }
 
   void UpdateGlobalProcessInfo(
       absl::Span<xla::coordination::TaskInfo> infos) override;
-
-  using PjRtStreamExecutorClient::CreateBuffersForAsyncHostToDevice;
-  absl::StatusOr<std::unique_ptr<PjRtClient::AsyncHostToDeviceTransferManager>>
-  CreateBuffersForAsyncHostToDevice(
-      absl::Span<const PjRtClient::ShapeSpec> shape_specs,
-      std::optional<absl::Span<const std::optional<Layout>>> device_layouts,
-      PjRtMemorySpace* memory_space) override;
 
   // ScheduleRemoteSend and MakeCrossHostReceiveBuffers are methods implemented
   // to support the legacy cross-host transfers API.
@@ -167,56 +149,18 @@ class StreamExecutorGpuClient : public xla::PjRtStreamExecutorClient {
                               PjRtDevice* device,
                               PjRtCrossHostRecvNotifier notifier) override;
 
-  absl::StatusOr<const xla::PjRtTopologyDescription*> GetTopologyDescription()
-      const override;
-
-  absl::StatusOr<Layout> GetDefaultLayout(
-      PrimitiveType element_type, absl::Span<const int64_t> dims) override;
-
-  absl::StatusOr<xla::Shape> GetCopyDestinationShape(
-      const xla::Shape& shape, PjRtMemorySpace* src_memory_space,
-      PjRtMemorySpace* dst_memory_space) override;
-
-  absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> LoadSerialized(
-      absl::string_view serialized, std::optional<CompileOptions> options,
-      const LoadOptions& load_options);
-
-  absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> CompileAndLoad(
-      const XlaComputation& computation, CompileOptions options) override;
-
-  absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> CompileAndLoad(
-      MaybeOwningMlirModule module, CompileOptions options) override;
-
-  absl::StatusOr<PjRtStreamExecutorExecutionOutput> RunAsync(
-      LocalExecutable& exec, PjRtDevice* device,
-      absl::Span<const PjRtRawBufferRef> flat_arguments,
-      absl::Span<const PjRtRawBufferRef> results,
-      ExecutableRunOptions run_options_inp, bool parameter_is_tupled_arguments,
-      absl::Span<const Shape> executable_parameter_shapes) override;
+  void RecordMemoryStats();
 
   absl::Status UpdateCompileOptionsInternal(
       CompileOptions* options, ExecutableExtras* returned_extras,
       bool lookup_addressable_devices) override;
 
-  HostMemoryAllocator* GetHostMemoryAllocator() const override {
-    return host_memory_allocator_.get();
-  }
-
   absl::StatusOr<std::unique_ptr<PjRtRuntimeAbiVersion>> RuntimeAbiVersion()
       const override;
 
  private:
-  absl::flat_hash_map<GlobalDeviceId, IncarnationId> GetLatestIncarnations(
-      const ExecuteOptions& options);
-
-  std::optional<int> num_nodes_;
   const bool abort_collectives_on_failure_ = false;
-  std::optional<xla::StreamExecutorGpuTopologyDescription> topology_;
   std::shared_ptr<gpu::AllocatorMemoryRegistration> memory_registration_;
-  std::shared_ptr<KeyValueStoreInterface> kv_store_;
-
-  // Helpers for cross host transfers.
-  absl::Duration cross_host_transfer_timeout_ = absl::Minutes(3);
 
   absl::StatusOr<PjRtDeviceEventRefVector> CrossHostTransferBuffers(
       PjRtDeviceEventRefVector transfer_dependencies,

@@ -21,6 +21,7 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/gpu/transforms/collectives/collective_ops_utils.h"
@@ -119,14 +120,29 @@ absl::Status MergeCollectiveBackendConfig(
   return combined->set_backend_config(config);
 }
 
-void AppendCombinerKeyFromFrontendAttr(const HloInstruction* instruction,
-                                       std::string& extra_args) {
-  if (instruction->has_frontend_attributes()) {
-    auto it = instruction->frontend_attributes().map().find(kCombinerKeyAttr);
-    if (it != instruction->frontend_attributes().map().end()) {
-      absl::StrAppend(&extra_args, " combiner_key=", it->second);
-    }
+void AppendFrontendAttributesToCombinerKey(const HloInstruction* instruction,
+                                           std::string& extra_args) {
+  if (!instruction->has_frontend_attributes()) {
+    return;
   }
+
+  const auto& attributes = instruction->frontend_attributes().map();
+  auto append_attribute = [&](absl::string_view name, absl::string_view value) {
+    absl::StrAppend(&extra_args, " frontend_attribute=", name.size(), ":", name,
+                    value.size(), ":", value);
+  };
+
+  auto combiner_key = attributes.find(kCombinerKeyAttr);
+  if (combiner_key != attributes.end()) {
+    append_attribute(combiner_key->first, combiner_key->second);
+  }
+
+  auto collective_group_key = attributes.find(kCollectiveGroupKeyAttr);
+  if (collective_group_key == attributes.end() ||
+      collective_group_key->second.empty()) {
+    return;
+  }
+  append_attribute(collective_group_key->first, collective_group_key->second);
 }
 
 }  // namespace xla::gpu

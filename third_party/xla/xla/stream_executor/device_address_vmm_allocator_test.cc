@@ -234,8 +234,7 @@ TEST_F(DeviceAddressVmmAllocatorTest,
       allocator->Allocate(
           /*device_ordinal=*/0, /*allocation_size=*/2 * kGranularity,
           /*retry_on_failure=*/false, /*memory_space=*/0, reservation.get(),
-          /*reservation_offset=*/0, /*mapping_size=*/2 * kGranularity,
-          /*return_reservation_address=*/true));
+          /*reservation_offset=*/0, /*mapping_size=*/2 * kGranularity));
   EXPECT_EQ(reservation->active_mapping_count(), 1);
   EXPECT_EQ(allocator->allocation_count(), 2);
 }

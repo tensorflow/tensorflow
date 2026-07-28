@@ -43,6 +43,8 @@ namespace internal {
 template <typename T>
 class ConcreteAsyncValue;
 
+class SharedPtrAsyncValue;
+
 template <typename T>
 constexpr bool kMaybeBase = std::is_class<T>::value && !std::is_final<T>::value;
 
@@ -190,8 +192,9 @@ class AsyncValue {
   // We make this an unsigned type so that loading the enum from the bitfield
   // does not sign extend.
   enum class Kind : uint8_t {
-    kConcrete = 0,  // ConcreteAsyncValue
-    kIndirect = 1,  // IndirectAsyncValue
+    kConcrete = 0,   // ConcreteAsyncValue
+    kIndirect = 1,   // IndirectAsyncValue
+    kSharedPtr = 2,  // SharedPtrAsyncValue
   };
 
   // Return the kind of this AsyncValue.
@@ -261,6 +264,7 @@ class AsyncValue {
 
  protected:
   friend class IndirectAsyncValue;
+  friend class internal::SharedPtrAsyncValue;
 
   struct WaiterListNode;
 
@@ -769,6 +773,32 @@ class ConcreteAsyncValue : public AsyncValue {
   }
 };
 
+// Subclass for storing payload owned by a std::shared_ptr.
+class SharedPtrAsyncValue : public AsyncValue {
+ public:
+  template <typename T>
+  explicit SharedPtrAsyncValue(std::shared_ptr<T> value)
+      : AsyncValue(Kind::kSharedPtr, State::kConcrete,
+                   /*is_refcounted=*/true, TypeTag<T>()),
+        ptr_(value.get()),
+        owner_(std::move(value)) {
+    DCHECK(ptr_ != nullptr);
+  }
+
+  ~SharedPtrAsyncValue() = default;
+
+  void* ptr() const { return ptr_; }
+  bool IsUnique() const { return owner_.use_count() == 1; }
+
+  static bool classof(const AsyncValue* v) {
+    return v->kind() == AsyncValue::Kind::kSharedPtr;
+  }
+
+ private:
+  void* ptr_;
+  std::shared_ptr<const void> owner_;
+};
+
 }  // namespace internal
 
 struct DummyValueForErrorAsyncValue {};
@@ -973,7 +1003,7 @@ T& AsyncValue::get() const {
       }
 #endif  // NDEBUG
       return GetConcreteValue<T>();
-    case Kind::kIndirect:
+    case Kind::kIndirect: {
 #ifndef NDEBUG
       if (s != State::kConcrete) {
         LOG(FATAL) << "Cannot call get() when IndirectAsyncValue"
@@ -985,6 +1015,17 @@ T& AsyncValue::get() const {
       auto* iv_value = static_cast<const IndirectAsyncValue*>(this)->value_;
       DCHECK(iv_value) << "Indirect value not resolved";
       return iv_value->get<T>();
+    }
+    case Kind::kSharedPtr:
+#ifndef NDEBUG
+      if (s != State::kConcrete) {
+        LOG(FATAL) << "Cannot call get() when SharedPtrAsyncValue"
+                   << " isn't concrete; state: " << s.DebugString();
+      }
+#endif  // NDEBUG
+      DCHECK(IsTypeIdCompatible<T>()) << "Incorrect accessor";
+      return *reinterpret_cast<T*>(
+          static_cast<const internal::SharedPtrAsyncValue*>(this)->ptr());
   }
 }
 
@@ -1021,6 +1062,8 @@ inline const absl::Status* AsyncValue::GetErrorIfPresent() const {
       DCHECK(iv_value->kind() != Kind::kIndirect);
       return iv_value->GetErrorIfPresent();
     }
+    case Kind::kSharedPtr:
+      return nullptr;
   }
 }
 
@@ -1144,6 +1187,21 @@ inline void AsyncValue::Destroy() {
     return;
   }
 
+  if (ABSL_PREDICT_FALSE(kind() == Kind::kSharedPtr)) {
+    static_cast<internal::SharedPtrAsyncValue*>(this)->~SharedPtrAsyncValue();
+    if (was_ref_counted) {
+#if defined(__cpp_sized_deallocation)
+      ::operator delete(
+          this, sizeof(internal::SharedPtrAsyncValue),
+          std::align_val_t{alignof(internal::SharedPtrAsyncValue)});
+#else   // defined(__cpp_sized_deallocation)
+      ::operator delete(
+          this, std::align_val_t{alignof(internal::SharedPtrAsyncValue)});
+#endif  // defined(__cpp_sized_deallocation)
+    }
+    return;
+  }
+
   auto [size, alignment] = GetTypeInfo().destructor(this);
   if (was_ref_counted) {
 #if defined(__cpp_sized_deallocation)
@@ -1155,13 +1213,18 @@ inline void AsyncValue::Destroy() {
 }
 
 inline bool AsyncValue::IsUnique() const {
-  if (kind() != Kind::kIndirect) {
-    return NumRef() == 1;
+  switch (kind()) {
+    case Kind::kConcrete:
+      return NumRef() == 1;
+    case Kind::kIndirect:
+      // If it is an IndirectAsyncValue, we also need to check the refcount of
+      // the underlying value.
+      return static_cast<const IndirectAsyncValue*>(this)->IsUnique();
+    case Kind::kSharedPtr:
+      return NumRef() == 1 &&
+             static_cast<const internal::SharedPtrAsyncValue*>(this)
+                 ->IsUnique();
   }
-
-  // If it is an IndirectAsyncValue, we also need to check the refcount of the
-  // underlying value.
-  return static_cast<const IndirectAsyncValue*>(this)->IsUnique();
 }
 
 }  // namespace tsl

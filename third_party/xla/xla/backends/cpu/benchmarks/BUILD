@@ -13,8 +13,23 @@
 # limitations under the License.
 # ==============================================================================
 
+load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
 load("//xla:xla.default.bzl", "xla_cc_test")
-load("//xla/tsl:tsl.bzl", "tsl_copts")
+load(
+    "//xla/backends/cpu/benchmarks:hlo_test_suite.bzl",
+    "hlo_test_suite",
+)
+load(
+    "//xla/backends/cpu/benchmarks/hlo:hlo_files.bzl",
+    "MEMORY_INTENSIVE_HLO_FILES",
+    "REGULAR_HLO_FILES",
+    "SLOW_HLO_FILES",
+)
+load(
+    "//xla/backends/cpu/benchmarks/huge_hlo:hlo_files.bzl",
+    "HUGE_HLO_FILES",
+)
+load("//xla/tsl:tsl.bzl", "if_google", "tsl_copts")
 load("//xla/tsl/mkl:graph.bzl", "onednn_cc_test")
 load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
 
@@ -292,6 +307,52 @@ xla_cc_test(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/types:span",
+    ],
+)
+
+filegroup(
+    name = "hlo_files",
+    srcs = [
+        "//xla/backends/cpu/benchmarks/hlo:memory_intensive_hlo_files",
+        "//xla/backends/cpu/benchmarks/hlo:regular_hlo_files",
+        "//xla/backends/cpu/benchmarks/hlo:slow_hlo_files",
+    ],
+)
+
+cc_library(
+    name = "hlo_benchmark_test_lib",
+    testonly = True,
+    srcs = ["hlo_benchmark_test.cc"],
+    deps = [
+        "//xla:literal",
+        "//xla/backends/cpu/benchmarks:aot_benchmark_helper",
+        "//xla/backends/cpu/benchmarks:hlo_benchmark_runner",
+        "//xla/hlo/ir:hlo",
+        "//xla/service:hlo_proto_cc",
+        "//xla/tsl/platform:env",
+        "//xla/tsl/platform:statusor",
+        "//xla/tsl/platform:test",
+        "@com_google_absl//absl/base:nullability",
+        "@com_google_absl//absl/flags:flag",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_benchmark//:benchmark",
+        "@tsl//tsl/platform:path",
+        "@tsl//tsl/platform:stacktrace_handler",
+    ],
+    alwayslink = True,
+)
+
+xla_cc_test(
+    name = "hlo_benchmark_test",
+    data = [
+        ":hlo_files",
+    ],
+    fail_if_no_test_linked = False,  # NOLINT=This contains benchmarks only, no tests.
+    fail_if_no_test_selected = False,  # NOLINT=This contains benchmarks only, no tests.
+    deps = [
+        ":hlo_benchmark_test_lib",
     ],
 )
 
@@ -749,4 +810,43 @@ xla_cc_test(
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/types:span",
     ],
+)
+
+bzl_library(
+    name = "hlo_test_suite_bzl",
+    srcs = ["hlo_test_suite.bzl"],
+    # copybara:uncomment parse_tests = False,
+    visibility = ["//xla:friends"],
+    deps = [
+        "//xla:xla_bzl",
+    ],
+)
+
+hlo_test_suite(
+    name = "regular_hlo_tests",
+    hlo_files = REGULAR_HLO_FILES,
+)
+
+hlo_test_suite(
+    name = "slow_hlo_tests",
+    timeout = "long",
+    hlo_files = SLOW_HLO_FILES,
+)
+
+hlo_test_suite(
+    name = "memory_intensive_hlo_tests",
+    hlo_files = MEMORY_INTENSIVE_HLO_FILES,
+    tags = if_google([
+        "requires-mem:24g",
+    ]),
+)
+
+hlo_test_suite(
+    name = "huge_hlo_tests",
+    hlo_files = HUGE_HLO_FILES,
+    pkg = "//xla/backends/cpu/benchmarks/huge_hlo",
+    tags = if_google([
+        "notap",
+        "requires-mem:32g",
+    ]),
 )

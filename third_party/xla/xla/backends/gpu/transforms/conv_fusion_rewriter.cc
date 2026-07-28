@@ -32,6 +32,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/tsl/platform/status_macros.h"
+#include "xla/backends/gpu/transforms/cudnn_fusion_utils.h"
 #include "xla/hlo/analysis/hlo_reachability.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -70,237 +71,15 @@ bool IsNCHW(const HloInstruction* absl_nullable conv) {
   return minor_to_major[0] != dnums.output_feature_dimension();
 }
 
-bool IsOperationSupportedByCuDNN(const HloInstruction& hlo,
-                                 bool can_fuse_reduce,
-                                 bool is_nchw_convolution) {
-  if (is_nchw_convolution) {
-    // cuDNN does not support epilogue fusions for NCHW layouts.
+bool IsConvFusionOutputsValid(const std::vector<HloInstruction*>& outputs) {
+  if (outputs.size() > 2) {
     return false;
   }
-
-  const HloOpcode opcode = hlo.opcode();
-  // Layout of all tensors in conv fusion must be the same, only allow pointwise
-  // op in the fusion for now.
-  switch (opcode) {
-    // Pointwise
-    case HloOpcode::kAbs:
-    case HloOpcode::kAdd:
-    case HloOpcode::kCeil:
-    case HloOpcode::kCompare:
-    case HloOpcode::kConvert:
-    case HloOpcode::kCos:
-    case HloOpcode::kDivide:
-    case HloOpcode::kExp:
-    case HloOpcode::kExpm1:
-    case HloOpcode::kFloor:
-    case HloOpcode::kLog:
-    case HloOpcode::kMaximum:
-    case HloOpcode::kMinimum:
-    case HloOpcode::kMultiply:
-    case HloOpcode::kNegate:
-    case HloOpcode::kPower:
-    case HloOpcode::kRsqrt:
-    case HloOpcode::kSelect:
-    case HloOpcode::kSin:
-    case HloOpcode::kSqrt:
-    case HloOpcode::kSubtract:
-    case HloOpcode::kTan:
-    case HloOpcode::kTanh:
-    // clamp = max(lower, min(value, upper));
-    case HloOpcode::kClamp:
-      return true;
-    // hlo normalization adds bitcast to group reduction dimensions, only
-    // fuse such bitcast
-    case HloOpcode::kBitcast:
-      return hlo.user_count() == 1 &&
-             hlo.users()[0]->opcode() == HloOpcode::kReduce &&
-             IsOperationSupportedByCuDNN(*hlo.users()[0], can_fuse_reduce,
-                                         is_nchw_convolution);
-    // Broadcast with scalar is allowed
-    case HloOpcode::kBroadcast:
-      return ShapeUtil::IsScalar(hlo.operand(0)->shape());
-    // Only support scalar
-    case HloOpcode::kConstant:
-      return ShapeUtil::IsScalar(hlo.shape());
-    case HloOpcode::kReduce:
-      // one reduction to scalar in the end is allowed, useful for fp8 conv amax
-      return can_fuse_reduce && ShapeUtil::IsScalar(hlo.shape());
-    default:
-      return false;
-  }
-}
-
-HloInstruction* FuseTowardOperand(
-    HloInstruction* hlo, HloComputation::Builder& builder,
-    std::vector<HloInstruction*>& fusion_params,
-    absl::flat_hash_map<HloInstruction*, HloInstruction*>& fused_hlo_map,
-    bool is_nchw_convolution) {
-  if (auto it = fused_hlo_map.find(hlo); it != fused_hlo_map.end()) {
-    // Check if hlo is already fused
-    return it->second;
-  }
-  HloInstruction* fused_hlo;
-  // Don't fuse reduction in the prologue
-  if (IsOperationSupportedByCuDNN(*hlo, false, is_nchw_convolution) &&
-      hlo->user_count() == 1) {
-    HloInstruction::InstructionVector new_operands;
-    for (int i = 0; i < hlo->operand_count(); ++i) {
-      HloInstruction* operand = hlo->mutable_operand(i);
-      new_operands.push_back(FuseTowardOperand(
-          operand, builder, fusion_params, fused_hlo_map, is_nchw_convolution));
-    }
-    fused_hlo = builder.AddInstruction(
-        hlo->CloneWithNewOperands(hlo->shape(), new_operands));
-  } else {
-    // Not supported by cudnn, make it parameter
-    fusion_params.push_back(hlo);
-    fused_hlo = builder.AddInstruction(HloInstruction::CreateParameter(
-        fusion_params.size() - 1, hlo->shape(), hlo->name()));
-  }
-  CHECK(fused_hlo_map.insert({hlo, fused_hlo}).second);
-  return fused_hlo;
-}
-
-// FusionState manages the growth of the fusion subgraph. It relies on the
-// property that HloInstructions are only ever appended to fusible_users and
-// fusion_outputs, allowing RestoreSnapshot to work by simply resizing the
-// vectors.
-struct FusionState {
-  std::vector<HloInstruction*>& fusible_users;
-  std::vector<HloInstruction*>& fusion_outputs;
-  bool& can_fuse_reduce;
-
-  struct Snapshot {
-    int fusible_users_size;
-    int fusion_outputs_size;
-    bool can_fuse_reduce;
-  };
-
-  Snapshot TakeSnapshot() const {
-    return {static_cast<int>(fusible_users.size()),
-            static_cast<int>(fusion_outputs.size()), can_fuse_reduce};
-  }
-
-  void RestoreSnapshot(const Snapshot& snapshot) {
-    fusible_users.resize(snapshot.fusible_users_size);
-    fusion_outputs.resize(snapshot.fusion_outputs_size);
-    can_fuse_reduce = snapshot.can_fuse_reduce;
-  }
-};
-
-bool ShouldKeepFusingUsers(HloInstruction* hlo, bool& can_fuse_reduce,
-                           bool is_nchw_convolution) {
-  // Shouldn't fuse anything after reduction.
-  if (hlo->user_count() == 0 || hlo->opcode() == HloOpcode::kReduce) {
-    return false;
-  }
-
-  // Only keep fusing if all users are fusible.
-  bool cached_can_fuse_reduce = can_fuse_reduce;
-  for (HloInstruction* user : hlo->users()) {
-    if (!IsOperationSupportedByCuDNN(*user, can_fuse_reduce,
-                                     is_nchw_convolution)) {
-      can_fuse_reduce = cached_can_fuse_reduce;
-      return false;
-    }
-    can_fuse_reduce = can_fuse_reduce && user->opcode() != HloOpcode::kReduce;
-  }
-  return true;
-}
-
-// Grows fusion through users of fusion
-void FuseTowardUsers(
-    HloComputation::Builder& builder,
-    std::vector<HloInstruction*>& fusion_params,
-    std::vector<HloInstruction*>& fusible_users,
-    absl::flat_hash_map<HloInstruction*, HloInstruction*>& fused_hlo_map,
-    bool is_nchw_convolution) {
-  // reverse post order of all fusible users
-  for (auto user : fusible_users) {
-    HloInstruction::InstructionVector new_operands;
-    for (int i = 0; i < user->operand_count(); ++i) {
-      HloInstruction* operand = user->mutable_operand(i);
-      HloInstruction* fused_operand = FuseTowardOperand(
-          operand, builder, fusion_params, fused_hlo_map, is_nchw_convolution);
-      new_operands.push_back(fused_operand);
-    }
-
-    HloInstruction* fused_user = builder.AddInstruction(
-        user->CloneWithNewOperands(user->shape(), new_operands));
-    CHECK(fused_hlo_map.insert({user, fused_user}).second);
-  }
-}
-
-bool IsConvFusionOutputsValid(std::vector<HloInstruction*>& fusion_outputs) {
-  // at most 2 outputs and at least 1 reduce if there are 2 outputs
-  if (fusion_outputs.size() > 2) {
-    return false;
-  }
-  if (fusion_outputs.size() == 2 &&
-      (fusion_outputs[0]->opcode() == HloOpcode::kReduce) ==
-          (fusion_outputs[1]->opcode() == HloOpcode::kReduce)) {
+  if (outputs.size() == 2 && (outputs[0]->opcode() == HloOpcode::kReduce) ==
+                                 (outputs[1]->opcode() == HloOpcode::kReduce)) {
     return false;
   }
   return true;
-}
-
-bool DFS(HloInstruction* hlo, HloReachabilityMap* reachability,
-         FusionState& state,
-         absl::flat_hash_map<HloInstruction*, bool>& fusible_cache,
-         bool is_nchw_convolution) {
-  if (fusible_cache.contains(hlo)) {
-    return fusible_cache[hlo];
-  }
-
-  const auto snapshot = state.TakeSnapshot();
-
-  bool is_endpoint =
-      !ShouldKeepFusingUsers(hlo, state.can_fuse_reduce, is_nchw_convolution);
-  bool is_subgraph_valid = true;
-  if (!is_endpoint) {
-    for (HloInstruction* user : hlo->users()) {
-      if (!DFS(user, reachability, state, fusible_cache, is_nchw_convolution)) {
-        // If a consumer branch fails, we stop here and treat this node as an
-        // output.
-        is_subgraph_valid = false;
-        is_endpoint = true;
-        break;
-      }
-    }
-  }
-
-  if (!is_subgraph_valid) {
-    state.RestoreSnapshot(snapshot);
-  }
-
-  if (is_endpoint) {
-    state.fusion_outputs.push_back(hlo);
-  }
-
-  bool is_valid = IsConvFusionOutputsValid(state.fusion_outputs);
-  if (is_valid && is_endpoint) {
-    // New outputs must not reach instructions already inside the fusion.
-    is_valid =
-        std::none_of(state.fusible_users.begin(), state.fusible_users.end(),
-                     [&reachability, hlo](HloInstruction* user) {
-                       return reachability->IsReachable(hlo, user);
-                     });
-  }
-  if (is_valid) {
-    // Existing outputs must not reach the new internal instruction 'hlo'.
-    // If 'hlo' is an endpoint, it was just added to state.fusion_outputs,
-    // so we skip the last element to avoid checking hlo reachability to itself.
-    is_valid = std::none_of(state.fusion_outputs.begin(),
-                            state.fusion_outputs.end() - (is_endpoint ? 1 : 0),
-                            [&reachability, hlo](HloInstruction* output) {
-                              return reachability->IsReachable(output, hlo);
-                            });
-  }
-
-  if (is_valid) {
-    state.fusible_users.push_back(hlo);
-  }
-  return fusible_cache[hlo] = is_valid;
 }
 
 std::vector<HloInstruction*> GetAllReachableAndFusible(
@@ -317,8 +96,8 @@ std::vector<HloInstruction*> GetAllReachableAndFusible(
   bool can_fuse_reduce = true;
 
   FusionState state{fusible_users, fusion_outputs, can_fuse_reduce};
-  DFS(convolution, reachability.get(), state, fusible_cache,
-      IsNCHW(convolution));
+  GrowFusionDFS(convolution, reachability.get(), state, fusible_cache,
+                IsNCHW(convolution), IsConvFusionOutputsValid);
 
   // Remove convolution from the users.
   fusible_users.pop_back();

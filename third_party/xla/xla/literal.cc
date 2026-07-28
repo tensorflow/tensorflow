@@ -60,6 +60,7 @@ limitations under the License.
 #include "xla/tsl/platform/logging.h"  // IWYU pragma: keep
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/util/byte_swap_array.h"
+#include "xla/tsl/util/maybe_owning.h"
 #include "xla/tsl/util/safe_reinterpret_cast.h"
 #include "xla/types.h"
 #include "xla/util.h"
@@ -230,7 +231,7 @@ std::ostream& operator<<(std::ostream& out, const Literal& literal) {
 Shape* MutableLiteralBase::mutable_shape_do_not_use() {
   const Shape* const_shape = shape_.get();
   if (!shape_.OwnsPtr()) {
-    shape_ = MaybeOwningShapePtr(std::make_unique<Shape>(*shape_));
+    shape_ = tsl::MaybeOwning<Shape>(std::make_unique<Shape>(*shape_));
   }
   Shape* shape = shape_.get_mutable();
 
@@ -854,7 +855,7 @@ absl::Status Literal::MoveFrom(Literal&& src_literal,
         dest_piece.MoveDataFrom(*src_piece);
       });
 
-  src_literal.shape_ = MaybeOwningShapePtr(&NilShape());
+  src_literal.shape_ = tsl::MaybeOwning<Shape>(&NilShape());
   src_literal.root_piece_ = Piece();
   src_literal.root_piece_.set_subshape(src_literal.shape_.get());
 

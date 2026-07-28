@@ -614,9 +614,18 @@ absl::Status BufferAllocation::AddAssignment(const HloValue& buffer,
   CHECK(!assigned_buffers_.contains(&buffer))
       << "LogicalBuffer " << buffer << " already assigned to allocation "
       << index_;
-  CHECK_LE(offset, size_) << "LogicalBuffer " << buffer
-                          << " offset out of range";
-  CHECK_LE(offset + size, size_)
+  // TF_RET_CHECK (rather than CHECK_LE) so that a malformed offset/size --
+  // e.g. deserialized from an untrusted BufferAssignmentProto -- returns an
+  // error instead of crashing the process. Negative values are checked
+  // explicitly: a bare `offset <= size_` check does not catch a negative
+  // offset, since -1 <= size_ is true for any non-negative allocation size.
+  TF_RET_CHECK(offset >= 0)
+      << "LogicalBuffer " << buffer << " has a negative offset: " << offset;
+  TF_RET_CHECK(size >= 0) << "LogicalBuffer " << buffer
+                          << " has a negative size: " << size;
+  TF_RET_CHECK(offset <= size_)
+      << "LogicalBuffer " << buffer << " offset out of range";
+  TF_RET_CHECK(offset + size <= size_)
       << "LogicalBuffer " << buffer
       << " size out of range at offset: " << offset << " with size: " << size;
   if (IsInputOrOutput()) {

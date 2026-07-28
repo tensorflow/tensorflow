@@ -666,7 +666,19 @@ cc_library(
 cc_library(
     name = "maybe_owning",
     hdrs = ["maybe_owning.h"],
-    deps = [":safe_reinterpret_cast"],
+    deps = [
+        ":safe_reinterpret_cast",
+        "//xla/tsl/platform:logging",
+    ],
+)
+
+tsl_cc_test(
+    name = "maybe_owning_test",
+    srcs = ["maybe_owning_test.cc"],
+    deps = [
+        ":maybe_owning",
+        "@com_google_googletest//:gtest_main",
+    ],
 )
 
 tsl_cc_test(

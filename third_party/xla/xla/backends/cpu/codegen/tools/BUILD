@@ -129,6 +129,7 @@ xla_cc_binary(
         "@llvm-project//mlir:FuncExtensions",
         "@llvm-project//mlir:LLVMIRTransforms",
         "@llvm-project//mlir:MlirOptLib",
+        "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:RegisterAllPasses",  # buildcleaner: keep
         "@llvm-project//mlir:Support",
         "@stablehlo//:linalg_passes",

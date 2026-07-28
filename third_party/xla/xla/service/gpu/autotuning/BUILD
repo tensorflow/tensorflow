@@ -48,6 +48,7 @@ xla_test(
         ":autotuner_pass",
         "//xla:shape_util",
         "//xla:xla_proto_cc",
+        "//xla/backends/autotuner:backends_proto_cc",
         "//xla/backends/autotuner:codegen_backend",
         "//xla/backends/autotuner:config_assigner",
         "//xla/backends/autotuner:profiler",

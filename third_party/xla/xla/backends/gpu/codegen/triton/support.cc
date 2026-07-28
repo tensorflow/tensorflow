@@ -99,10 +99,6 @@ CodegenDecision IsTritonSupportedDataType(
 // Set of unary elementwise ops that are genuinely supported by Triton.
 absl::flat_hash_set<HloOpcode> TritonSupportedUnaryElementwiseOps(
     PrimitiveType element_type, const se::GpuComputeCapability& gpu_version) {
-  if (primitive_util::IsComplexType(element_type)) {
-    return {};
-  }
-
   if (element_type == PrimitiveType::PRED) {
     return {HloOpcode::kNot, HloOpcode::kCopy};
   }
@@ -233,9 +229,6 @@ CodegenDecision IsTritonSupportedConversion(
 // Set of binary element-wise ops that are genuinely supported by Triton.
 absl::flat_hash_set<HloOpcode> TritonSupportedBinaryElementwiseOps(
     PrimitiveType element_type, const se::GpuComputeCapability& gpu_version) {
-  if (primitive_util::IsComplexType(element_type)) {
-    return {};
-  }
   if (element_type == PrimitiveType::S4 || element_type == PrimitiveType::U16 ||
       element_type == PrimitiveType::F8E5M2 ||
       element_type == PrimitiveType::F8E4M3FN ||
@@ -286,9 +279,6 @@ absl::flat_hash_set<HloOpcode> TritonSupportedBinaryElementwiseOps(
 // Set of ternary elementwise ops that are genuinely supported by Triton.
 absl::flat_hash_set<HloOpcode> TritonSupportedTernaryElementwiseOps(
     PrimitiveType element_type, const se::GpuComputeCapability& gpu_version) {
-  if (primitive_util::IsComplexType(element_type)) {
-    return {};
-  }
   if (element_type == PrimitiveType::S4 || element_type == PrimitiveType::U16) {
     return {};
   }

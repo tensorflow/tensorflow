@@ -514,11 +514,12 @@ class ConvDimensionAdapter {
     if (ShapeUtil::IsScalar(hlo.shape())) {
       Result result;
       // cuDNN convolution tensors have a batch and a feature dimension in
-      // addition to spatial dimensions.
-      result.sizes =
-          std::vector<int64_t>(dums_.input_spatial_dimensions_size() + 2, 1);
-      result.strides =
-          std::vector<int64_t>(dums_.input_spatial_dimensions_size() + 2, 1);
+      // addition to spatial dimensions (at least 2 spatial dimensions for
+      // cuDNN).
+      int64_t spatial_dims =
+          std::max<int64_t>(2, dums_.input_spatial_dimensions_size());
+      result.sizes = std::vector<int64_t>(spatial_dims + 2, 1);
+      result.strides = std::vector<int64_t>(spatial_dims + 2, 1);
       return result;
     }
     // Placeholder FP32 data type here, it is not used.
@@ -541,6 +542,11 @@ class ConvDimensionAdapter {
       result.sizes.push_back(logical_dims[dums_.input_spatial_dimensions(i)]);
       result.strides.push_back(
           logical_strides[dums_.input_spatial_dimensions(i)]);
+    }
+    // cuDNN frontend expects tensor rank to be at least 4 (2 spatial dims).
+    while (result.sizes.size() < 4) {
+      result.sizes.push_back(1);
+      result.strides.push_back(1);
     }
     return result;
   }
@@ -940,6 +946,14 @@ absl::StatusOr<se::gpu::CudnnGraph> HloFusionToCuDnnGraph(
         stride.push_back(dim.stride());
         dilation.push_back(dim.window_dilation());
       }
+      // cuDNN frontend expects at least 2 spatial dimensions for conv
+      // operations.
+      while (pre_padding.size() < 2) {
+        pre_padding.push_back(0);
+        post_padding.push_back(0);
+        stride.push_back(1);
+        dilation.push_back(1);
+      }
       const auto compute_dtype =
           GetComputeDataType(hlo->shape().element_type());
       if (!compute_dtype.has_value()) {
@@ -1082,6 +1096,16 @@ absl::StatusOr<se::gpu::CudnnGraph> PrepareGraph(
     se::dnn::DnnSupport* dnn_support,
     const se::DeviceDescription& gpu_device_info,
     const HloFusionInstruction& hlo) {
+  if (dnn_support == nullptr &&
+      hlo_query::GetFirstInstructionWithOpcode(
+          *hlo.fused_instructions_computation(), HloOpcode::kConvolution) !=
+          nullptr &&
+      !se::gpu::SupportsDevicelessConvGraphs(gpu_device_info)) {
+    return absl::FailedPreconditionError(
+        "Deviceless cuDNN preparation of convolution graphs targeting "
+        "Blackwell-generation GPUs requires cuDNN >= 9.19; older runtimes "
+        "crash inside the deviceless heuristics query.");
+  }
   ASSIGN_OR_RETURN(se::gpu::CudnnGraph graph, HloFusionToCuDnnGraph(hlo));
   RETURN_IF_ERROR(graph.Prepare(
       dnn_support, gpu_device_info,
@@ -1284,6 +1308,25 @@ absl::StatusOr<int> CuDnnFusionCompiler::GetAvailablePlanCount(
   return std::min(
       static_cast<int32_t>(graph.Graph().get_execution_plan_count()),
       hlo.GetModule()->config().debug_options().xla_gpu_cudnn_gemm_max_plans());
+}
+
+CuDnnFusionCompiler::DevicelessFusionSupport
+CuDnnFusionCompiler::SupportsFusionDeviceless(
+    const se::DeviceDescription& gpu_device_info,
+    const HloFusionInstruction& hlo) {
+  absl::StatusOr<se::gpu::CudnnGraph> graph =
+      PrepareGraph(/*dnn_support=*/nullptr, gpu_device_info, hlo);
+  if (absl::IsNotFound(graph.status())) {
+    return DevicelessFusionSupport::kUnsupported;
+  }
+  if (!graph.ok()) {
+    VLOG(1) << "Deviceless cuDNN support probe of " << hlo.name()
+            << " delivered no verdict: " << graph.status();
+    return DevicelessFusionSupport::kUnknown;
+  }
+  return graph->Graph().get_execution_plan_count() >= 1
+             ? DevicelessFusionSupport::kSupported
+             : DevicelessFusionSupport::kUnsupported;
 }
 
 }  // namespace gpu

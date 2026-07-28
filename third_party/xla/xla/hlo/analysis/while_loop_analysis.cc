@@ -152,29 +152,9 @@ static bool IsScalarOp(const HloInstruction* op) {
   return ShapeUtil::IsScalar(op->shape());
 }
 
-// If `out` is a function of a some values in the tuple `in` and has no other
-// dependence, i.e. if `out=f(gte1(in), gte2(in),...)`, then this function will
-// return the all the get-tuple-element indices for the dependence.
-//
-// For example, in the following HLO, this function will return `1`:
-//   in = (s32[], s32[], s32[]) tuple(a,b,c)
-//   gte.1 = get-tuple-element(in), index=1
-//   out = fusion(gte.1), ...
-// Also checks whether all ops on the path from `in` to `out` are ops with a
-// scalar shape.
-static std::optional<absl::flat_hash_set<int64_t>> GetGTEDependenceIndices(
-    const HloInstruction* out, const HloInstruction* in) {
-  // Fast path : pattern matching.
-  std::optional<absl::flat_hash_set<int64_t>> tuple_idxs =
-      GetGTEOperandIndices(out, in);
-  if (tuple_idxs.has_value()) {
-    return tuple_idxs;
-  }
-
-  if (out->parent() != in->parent() || !in->shape().IsTuple()) {
-    return std::nullopt;
-  }
-
+static std::optional<absl::flat_hash_set<int64_t>>
+GetGTEDependenceIndicesSlowPath(const HloInstruction* out,
+                                const HloInstruction* in) {
   // Extracts the instruction `out` as a function of the instruction `in`.
   // HloModule extracted
   // ENTRY main {
@@ -232,6 +212,105 @@ static std::optional<absl::flat_hash_set<int64_t>> GetGTEDependenceIndices(
     return std::nullopt;
   }
 
+  return candidate_indices;
+}
+
+// If `out` is a function of a some values in the tuple `in` and has no other
+// dependence, i.e. if `out=f(gte1(in), gte2(in),...)`, then this function will
+// return the all the get-tuple-element indices for the dependence.
+//
+// For example, in the following HLO, this function will return `1`:
+//   in = (s32[], s32[], s32[]) tuple(a,b,c)
+//   gte.1 = get-tuple-element(in), index=1
+//   out = fusion(gte.1), ...
+// Also checks whether all ops on the path from `in` to `out` are ops with a
+// scalar shape.
+static std::optional<absl::flat_hash_set<int64_t>> GetGTEDependenceIndices(
+    const HloInstruction* out, const HloInstruction* in) {
+  // Fast path : pattern matching.
+  std::optional<absl::flat_hash_set<int64_t>> tuple_idxs =
+      GetGTEOperandIndices(out, in);
+  if (tuple_idxs.has_value()) {
+    return tuple_idxs;
+  }
+
+  if (out->parent() != in->parent() || !in->shape().IsTuple()) {
+    return std::nullopt;
+  }
+
+  // Compute reachability map for the parent computation. We do not propagate
+  // through `in` itself, since we don't care what happens "above" it.
+  const auto add_dependencies = [&in](const HloInstruction* hlo,
+                                      std::vector<HloInstruction*>* inputs) {
+    if (hlo != in) {
+      for (HloInstruction* operand : hlo->operands()) {
+        inputs->push_back(operand);
+      }
+    }
+  };
+
+  std::unique_ptr<HloReachabilityMap> reachability_map =
+      HloReachabilityMap::BuildWithRestrictions(
+          in->parent(),
+          absl::FunctionRef<void(const HloInstruction* hlo,
+                                 std::vector<HloInstruction*>* inputs)>(
+              add_dependencies));
+
+  // If there's a tuple-shaped fusion or call that's reachable from `in` and
+  // reached `out`, use the slow extractor path.
+  for (const HloInstruction* inst : in->parent()->instructions()) {
+    if ((inst->opcode() == HloOpcode::kFusion ||
+         inst->opcode() == HloOpcode::kCall) &&
+        inst->shape().IsTuple() && reachability_map->IsReachable(in, inst) &&
+        reachability_map->IsReachable(inst, out)) {
+      return GetGTEDependenceIndicesSlowPath(out, in);
+    }
+  }
+
+  // `out` must be reachable from `in`.
+  if (!reachability_map->IsReachable(in, out)) {
+    return std::nullopt;
+  }
+
+  // `out` may not be reachable from anything except "regular" scalar ops, with
+  // the exception of `in` itself.
+  for (HloInstruction* inst : out->parent()->instructions()) {
+    if (inst == in) {
+      continue;
+    }
+    if (!IsScalarOp(inst) && reachability_map->IsReachable(inst, out)) {
+      return std::nullopt;
+    }
+  }
+
+  // `out` may not be reachable from any parameter of `in->parent()` except
+  // possibly `in` itself.
+  for (HloInstruction* param : in->parent()->parameter_instructions()) {
+    if (param != in && reachability_map->IsReachable(param, out)) {
+      return std::nullopt;
+    }
+  }
+
+  // Categorize the users of `in` in two categories:
+  // 1. "Good" users: get-tuple-element instructions.
+  // 2. "Bad" users: all other instructions.
+  // We want to make sure that `out` is reachable from at least one "good" user,
+  // but no "bad" users, and collect the indices of the reachable "good" users.
+  absl::flat_hash_set<int64_t> candidate_indices;
+  for (HloInstruction* user : in->users()) {
+    if (!reachability_map->IsReachable(user, out)) {
+      continue;
+    }
+    if (user->opcode() == HloOpcode::kGetTupleElement) {
+      candidate_indices.insert(user->tuple_index());
+    } else {
+      return std::nullopt;
+    }
+  }
+
+  if (candidate_indices.empty()) {
+    return std::nullopt;
+  }
   return candidate_indices;
 }
 

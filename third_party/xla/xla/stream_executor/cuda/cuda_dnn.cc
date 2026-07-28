@@ -87,6 +87,8 @@ limitations under the License.
 #include "third_party/gpus/cudnn/cudnn_graph.h"
 
 #include "third_party/cudnn_frontend/include/cudnn_frontend.h"
+#include "third_party/cudnn_frontend/include/cudnn_frontend/graph_helpers.h"
+#include "third_party/cudnn_frontend/include/cudnn_frontend_shim.h"
 #include "third_party/cudnn_frontend/include/cudnn_frontend_utils.h"
 #include "third_party/cudnn_frontend/include/cudnn_frontend_EngineConfig.h"
 #include "third_party/cudnn_frontend/include/cudnn_frontend_Errata.h"
@@ -6813,12 +6815,61 @@ absl::StatusOr<std::unique_ptr<dnn::DnnGraph>> CudnnSupport::DeserializeGraph(
   return std::make_unique<CudnnGraph>(std::move(graph));
 }
 
+bool SupportsDevicelessDeviceProperties() {
+  return cudnn_frontend::detail::get_backend_version() >= 90800;
+}
+
+bool SupportsDevicelessConvGraphs(const DeviceDescription& gpu_device_info) {
+  const auto* cc =
+      gpu_device_info.gpu_compute_capability().cuda_compute_capability();
+  return cc == nullptr || cc->major < 10 ||
+         cudnn_frontend::detail::get_backend_version() >= 91900;
+}
+
+namespace {
+
+// Converts a cudnn frontend plan enumeration / support check status to an
+// absl::Status. In deviceless mode, "no engine supports this graph" codes map
+// to NotFound so support probes can tell a negative verdict from other
+// failures; all other errors (and every error when !deviceless) are Internal.
+// (error_t by value: its accessors are not const-qualified.)
+absl::Status PlanEnumerationStatus(bool deviceless,
+                                   cudnn_frontend::error_t result,
+                                   absl::string_view stage) {
+  if (result.is_good()) {
+    return absl::OkStatus();
+  }
+  if (deviceless) {
+    switch (result.get_code()) {
+      // No engine config passed check_support().
+      case cudnn_frontend::error_code_t::GRAPH_EXECUTION_PLAN_CREATION_FAILED:
+      // Frontend-side "graph pattern not supported" verdict.
+      case cudnn_frontend::error_code_t::GRAPH_NOT_SUPPORTED:
+      // No heuristic mode returned engines; how cuDNN reports unsupported
+      // problems (e.g. FP8 on pre-Ada GPUs).
+      case cudnn_frontend::error_code_t::HEURISTIC_QUERY_FAILED:
+        return absl::NotFoundError(
+            absl::StrCat("cuDNN reports no supported engine for the graph (",
+                         stage, "): ", result.get_message()));
+      default:
+        break;
+    }
+  }
+  return absl::InternalError(absl::StrCat("cuDNN frontend error (", stage,
+                                          "): ", result.get_message()));
+}
+
+}  // namespace
+
 absl::Status CudnnGraph::Prepare(dnn::DnnSupport* dnn_support,
                                  const DeviceDescription& gpu_device_info,
                                  const EngineOptions& engine_options) {
+  const bool deviceless = dnn_support == nullptr;
   auto create_and_filter_plans = [&]() -> absl::Status {
-    RETURN_IF_CUDNN_FRONTEND_ERROR(
-        graph_.create_execution_plans({cudnn_frontend::HeurMode_t::A}));
+    RETURN_IF_ERROR(PlanEnumerationStatus(
+        deviceless,
+        graph_.create_execution_plans({cudnn_frontend::HeurMode_t::A}),
+        "create_execution_plans"));
     if (engine_options.require_determinism) {
       graph_.deselect_numeric_notes(
           {cudnn_frontend::NumericalNote_t::NONDETERMINISTIC});
@@ -6840,14 +6891,16 @@ absl::Status CudnnGraph::Prepare(dnn::DnnSupport* dnn_support,
     RETURN_IF_ERROR(create_and_filter_plans());
     RETURN_CUDNN_FRONTEND_STATUS(graph_.check_support(cudnn_handle));
   } else {
-    // deviceless mode
+    // Deviceless mode. No cuDNN version guard needed: DeviceProperties
+    // deserialization inside BuildDeviceProperties rejects runtimes < 9.8.
     ASSIGN_OR_RETURN(auto device_props,
                      xla::gpu::BuildDeviceProperties(gpu_device_info));
     graph_.set_device_properties(device_props);
     RETURN_IF_CUDNN_FRONTEND_ERROR(graph_.validate());
     RETURN_IF_CUDNN_FRONTEND_ERROR(graph_.build_operation_graph());
     RETURN_IF_ERROR(create_and_filter_plans());
-    RETURN_CUDNN_FRONTEND_STATUS(graph_.check_support());
+    return PlanEnumerationStatus(deviceless, graph_.check_support(),
+                                 "check_support");
   }
 }
 

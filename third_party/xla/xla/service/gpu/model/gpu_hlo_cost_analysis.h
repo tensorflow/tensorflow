@@ -141,6 +141,12 @@ class GpuHloCostAnalysis : public HloCostAnalysis {
   // Contains a map from (opcode, element_type) to FLOPs per element estimate
   // for elementwise instructions.
   const HloOpProfiles::HloOpProfile& hlo_elementwise_op_profile_;
+
+ private:
+  // Extracts custom cost estimates from the backend config (either structured
+  // proto or raw JSON string) and applies them to current_properties_.
+  // Falls back to shape-based heuristics if estimates are missing or invalid.
+  void ExtractAndApplyCustomCallCostEstimate(const HloInstruction* custom_call);
 };
 
 }  // namespace gpu

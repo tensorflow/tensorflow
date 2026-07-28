@@ -47,6 +47,7 @@ limitations under the License.
 #include "xla/service/source_target_pairs.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/side_effect_util.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/xla.pb.h"
@@ -56,6 +57,52 @@ namespace xla {
 namespace {
 
 using CycleType = collective_permute_cycle::CycleType;
+
+std::unique_ptr<HloInstruction> MakeTestInstruction(absl::string_view name) {
+  return HloInstruction::CreateParameter(
+      /*parameter_number=*/0, ShapeUtil::MakeShape(F32, {1}), name);
+}
+
+TEST(CollectiveOpsUtilsTest, GetCollectiveGroupKey) {
+  std::unique_ptr<HloInstruction> instruction =
+      MakeTestInstruction("instruction");
+  EXPECT_EQ(GetCollectiveGroupKey(*instruction), std::nullopt);
+  EXPECT_FALSE(HasCollectiveGroupKey(*instruction));
+
+  instruction->set_frontend_attribute(kCollectiveGroupKeyAttr, "");
+  EXPECT_EQ(GetCollectiveGroupKey(*instruction), std::nullopt);
+  EXPECT_FALSE(HasCollectiveGroupKey(*instruction));
+
+  instruction->set_frontend_attribute(kCollectiveGroupKeyAttr, "g0");
+  EXPECT_EQ(GetCollectiveGroupKey(*instruction), "g0");
+  EXPECT_TRUE(HasCollectiveGroupKey(*instruction));
+}
+
+TEST(CollectiveOpsUtilsTest, ClearCollectiveGroupKey) {
+  std::unique_ptr<HloInstruction> instruction =
+      MakeTestInstruction("instruction");
+  instruction->set_frontend_attribute(kCollectiveGroupKeyAttr, "g0");
+  instruction->set_frontend_attribute("other", "preserved");
+
+  ClearCollectiveGroupKey(*instruction);
+
+  EXPECT_FALSE(HasCollectiveGroupKey(*instruction));
+  EXPECT_EQ(instruction->get_frontend_attribute("other"), "preserved");
+}
+
+TEST(CollectiveOpsUtilsTest, CollectiveGroupCompatibilityRequiresMatchingKey) {
+  std::unique_ptr<HloInstruction> lhs = MakeTestInstruction("lhs");
+  std::unique_ptr<HloInstruction> rhs = MakeTestInstruction("rhs");
+  lhs->set_frontend_attribute(kCollectiveGroupKeyAttr, "g0");
+
+  EXPECT_FALSE(HaveCompatibleCollectiveGroupKeys(*lhs, *rhs));
+
+  rhs->set_frontend_attribute(kCollectiveGroupKeyAttr, "other");
+  EXPECT_FALSE(HaveCompatibleCollectiveGroupKeys(*lhs, *rhs));
+
+  rhs->set_frontend_attribute(kCollectiveGroupKeyAttr, "g0");
+  EXPECT_TRUE(HaveCompatibleCollectiveGroupKeys(*lhs, *rhs));
+}
 
 // Creates a container of ReplicaGroups.
 std::vector<ReplicaGroup> CreateReplicaGroups(

@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_MODEL_BLOCK_LEVEL_PARAMETERS_H_
 #define XLA_SERVICE_GPU_MODEL_BLOCK_LEVEL_PARAMETERS_H_
 
+#include <algorithm>
 #include <cstdint>
 #include <vector>
 
@@ -36,6 +37,7 @@ struct BlockLevelParameters {
   int64_t global_scratch_memory_size = 0;
   bool is_tma_allowed = false;
   bool is_warp_specialization_allowed = false;
+  int num_tiles_per_pid = 1;
   int waves_per_eu = 0;
 
   // Returns a BlockLevelParameters struct from a BlockLevelFusionConfig proto.
@@ -48,6 +50,7 @@ struct BlockLevelParameters {
     result.is_tma_allowed = config.is_tma_allowed();
     result.is_warp_specialization_allowed =
         config.is_warp_specialization_allowed();
+    result.num_tiles_per_pid = std::max(1, config.num_tiles_per_pid());
     result.waves_per_eu = config.waves_per_eu();
     result.output_tile_sizes.reserve(config.output_tiles_size());
     for (const auto& tile : config.output_tiles()) {
@@ -71,6 +74,9 @@ struct BlockLevelParameters {
     config.set_is_tma_allowed(is_tma_allowed);
     config.set_is_warp_specialization_allowed(is_warp_specialization_allowed);
     config.set_waves_per_eu(waves_per_eu);
+    if (num_tiles_per_pid > 1) {
+      config.set_num_tiles_per_pid(num_tiles_per_pid);
+    }
     return config;
   }
 };

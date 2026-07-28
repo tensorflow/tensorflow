@@ -79,6 +79,19 @@ cc_library(
     ] + if_cuda_is_configured(nvtx_headers()),
 )
 
+xla_cc_test(
+    name = "annotation_test",
+    srcs = ["annotation_test.cc"],
+    deps = [
+        ":annotation",
+        "//xla:literal_util",
+        "//xla/hlo/ir:hlo",
+        "//xla/service:hlo_module_config",
+        "@com_google_absl//absl/strings",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
 #===-------------------------------------------------------------------------------------------===//
 # Command Buffer Integration
 #===-------------------------------------------------------------------------------------------===//
@@ -2331,6 +2344,7 @@ cc_library(
     hdrs = ["ragged_all_to_all_thunk.h"],
     deps = [
         ":collective_clique_requests",
+        ":collective_cliques",
         ":collective_kernel_api",
         ":collective_memory",
         ":collective_memory_requests",
@@ -2360,6 +2374,7 @@ cc_library(
         "//xla/stream_executor:command_buffer",
         "//xla/stream_executor:device_address",
         "//xla/stream_executor:device_address_allocator",
+        "//xla/stream_executor:device_description",
         "//xla/stream_executor:memory_allocation",
         "//xla/stream_executor:memory_allocator",
         "//xla/stream_executor:memory_space",
@@ -2503,12 +2518,16 @@ cc_library(
         "//xla/runtime:buffer_use",
         "//xla/service:buffer_assignment",
         "//xla/stream_executor:device_address",
+        "//xla/stream_executor:memory_allocation",
         "//xla/stream_executor:stream",
         "//xla/tsl/platform:status_macros",
         "@com_google_absl//absl/base",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:span",
     ],
 )
@@ -4302,11 +4321,13 @@ cc_library(
         "//xla:types",
         "//xla:util",
         "//xla:xla_data_proto_cc",
+        "//xla/backends/gpu/collectives:gpu_communicator",
         "//xla/core/collectives:symmetric_memory",
         "//xla/stream_executor:device_address",
         "//xla/stream_executor:launch_dim",
         "//xla/stream_executor:stream",
         "//xla/stream_executor/gpu:gpu_kernel_registry",
+        "//xla/stream_executor/gpu:ragged_all_to_all_device_kernel",
         "//xla/stream_executor/gpu:ragged_all_to_all_kernel",
         "//xla/tsl/platform:status_macros",
         "@com_google_absl//absl/log",

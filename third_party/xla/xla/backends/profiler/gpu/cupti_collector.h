@@ -108,8 +108,7 @@ class CuptiTraceCollector {
   // Default behavior is direct process those cached activity events and
   // add it into this class by calling AddEvent().
   virtual void OnTracerCachedActivityBuffers(
-      std::list<CuptiActivityBufferManager::ActivityBufferAndSize>
-          activity_buffers);
+      CuptiActivityBufferManager::CachedActivityBufferBatch activity_buffers);
 
   // Consumer side functions (i.e. called by GPU tracer);
   virtual bool Export(tensorflow::profiler::XSpace* space,

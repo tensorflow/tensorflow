@@ -42,6 +42,7 @@ limitations under the License.
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/utils/hlo_matchers.h"
 #include "xla/service/hlo_verifier.h"
+#include "xla/side_effect_util.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
@@ -2933,6 +2934,64 @@ TEST_F(WhileLoopAllReduceCodeMotionTest, PreserveFrontendAttributes) {
   HloInstruction* transformed_while = find_op<HloOpcode::kWhile>(entry);
   ASSERT_THAT(transformed_while, NotNull());
   EXPECT_EQ(transformed_while->frontend_attributes().map().at("foo"), "bar");
+}
+
+TEST_F(WhileLoopAllReduceCodeMotionTest, MovesKeyedAllReduce) {
+  constexpr absl::string_view kHloModule = R"(
+HloModule keyed_all_reduce
+
+reduction {
+  x = f32[] parameter(0)
+  y = f32[] parameter(1)
+  ROOT add = f32[] add(x, y)
+}
+
+condition {
+  param = (s32[], s32[], f32[8], f32[8]) parameter(0)
+  iteration = s32[] get-tuple-element(param), index=0
+  limit = s32[] get-tuple-element(param), index=1
+  ROOT result = pred[] compare(iteration, limit), direction=LT
+}
+
+body {
+  param = (s32[], s32[], f32[8], f32[8]) parameter(0)
+  iteration = s32[] get-tuple-element(param), index=0
+  limit = s32[] get-tuple-element(param), index=1
+  input = f32[8] get-tuple-element(param), index=2
+  accumulator = f32[8] get-tuple-element(param), index=3
+  all-reduce = f32[8] all-reduce(input), replica_groups={{0,1,2,3}},
+    to_apply=reduction, frontend_attributes={collective_group_key="g0"}
+  accumulation = f32[8] add(all-reduce, accumulator)
+  one = s32[] constant(1)
+  next_iteration = s32[] add(iteration, one)
+  ROOT result = (s32[], s32[], f32[8], f32[8])
+    tuple(next_iteration, limit, input, accumulation)
+}
+
+ENTRY main {
+  limit = s32[] parameter(0)
+  input = f32[8] parameter(1)
+  one = s32[] constant(1)
+  zero = f32[] constant(0)
+  accumulator = f32[8] broadcast(zero), dimensions={}
+  init = (s32[], s32[], f32[8], f32[8])
+    tuple(one, limit, input, accumulator)
+  ROOT while = (s32[], s32[], f32[8], f32[8])
+    while(init), condition=condition, body=body
+}
+)";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHloModule));
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       WhileLoopAllReduceCodeMotion{}.Run(module.get()));
+  EXPECT_TRUE(changed);
+  const HloInstruction* moved =
+      find_op<HloOpcode::kAllReduce>(module->entry_computation());
+  EXPECT_EQ(moved->get_frontend_attribute(kCollectiveGroupKeyAttr), "g0");
+  EXPECT_TRUE(
+      absl::c_none_of(module->GetComputationWithName("body")->instructions(),
+                      HloPredicateIsOp<HloOpcode::kAllReduce>));
 }
 
 }  // namespace

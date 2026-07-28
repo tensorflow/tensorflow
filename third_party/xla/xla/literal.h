@@ -1497,11 +1497,8 @@ class MutableLiteralBase : public LiteralBase {
 
   // The literal may or may not own the storage of the shape. Creating/copying a
   // shape can incur significant overhead which in many case we'd like to avoid,
-  // esp. for small literals.
-  using MaybeOwningShapePtr = MaybeOwning<Shape>;
-
-  // The parent class borrows this shape.
-  MaybeOwningShapePtr shape_;
+  // esp. for small literals. The parent class borrows this shape.
+  tsl::MaybeOwning<Shape> shape_;
 
   // We do not add static type checking for internal generators as these
   // functions are not part of the public API and we construct generators from

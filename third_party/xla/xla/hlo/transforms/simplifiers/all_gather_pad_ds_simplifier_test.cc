@@ -38,6 +38,7 @@ limitations under the License.
 #include "xla/service/collective_opt_utils.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/shape_util.h"
+#include "xla/side_effect_util.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
 
@@ -83,7 +84,8 @@ TEST_F(AllGatherPadDsSimplifierTest, MultiReplicaGenericCaseLowPad) {
       const.24 = s32[1]{0} constant({24})
 
       all-gather = f64[1,8,40]{2,1,0} all-gather(param), channel_id=4,
-        replica_groups=[2,4]<=[8], dimensions={1}, use_global_device_ids=true
+        replica_groups=[2,4]<=[8], dimensions={1}, use_global_device_ids=true,
+        frontend_attributes={collective_group_key="g0"}
 
       // Pad the all-gather result.
       pad = f64[1,96,40]{2,1,0} pad(all-gather, zero), padding=0_0x0_88x0_0
@@ -96,7 +98,8 @@ TEST_F(AllGatherPadDsSimplifierTest, MultiReplicaGenericCaseLowPad) {
       reshape.15 = s32[] reshape(dynamic-slice)
 
       ROOT ds = f64[1,24,40]{2,1,0} dynamic-slice(pad, zero_idx, reshape.15,
-        zero_idx), dynamic_slice_sizes={1,24,40}
+        zero_idx), dynamic_slice_sizes={1,24,40},
+        frontend_attributes={collective_group_key="stale_group"}
     }
 )";
   TF_ASSERT_OK_AND_ASSIGN(auto module, RunPass(hlo_string,
@@ -104,6 +107,8 @@ TEST_F(AllGatherPadDsSimplifierTest, MultiReplicaGenericCaseLowPad) {
                                                /*num_partitions=*/8,
                                                /*expect_change=*/true));
   HloInstruction* root = module->entry_computation()->root_instruction();
+  EXPECT_EQ(root->get_frontend_attribute(kCollectiveGroupKeyAttr),
+            std::nullopt);
   EXPECT_THAT(
       root, op::Select(op::Compare(op::Reshape(op::DynamicSlice(
                                        op::Constant(), op::PartitionId())),
@@ -134,6 +139,11 @@ TEST_F(AllGatherPadDsSimplifierTest, MultiReplicaGenericCaseLowPad) {
               ElementsAre(Pair(6, 4), Pair(2, 0)));
   EXPECT_THAT(concate->operand(3)->source_target_pairs(),
               ElementsAre(Pair(7, 4), Pair(3, 0)));
+  for (int64_t i = 1; i <= 3; ++i) {
+    EXPECT_EQ(
+        concate->operand(i)->get_frontend_attribute(kCollectiveGroupKeyAttr),
+        "g0");
+  }
 }
 
 TEST_F(AllGatherPadDsSimplifierTest,

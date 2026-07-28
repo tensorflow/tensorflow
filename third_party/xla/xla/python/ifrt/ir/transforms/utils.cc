@@ -282,6 +282,9 @@ absl::StatusOr<DType> ToIfrtDType(mlir::Type type) {
   if (llvm::isa<IfrtTokenType>(type)) {
     return ToDType(xla::PrimitiveType::TOKEN);
   }
+  if (llvm::isa<IfrtStringType>(type)) {
+    return DType(DType::kString);
+  }
   xla::PrimitiveType primitive_type = xla::ConvertMlirTypeToPrimitiveType(type);
   return ToDType(primitive_type);
 }

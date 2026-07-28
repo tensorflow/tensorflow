@@ -16,7 +16,10 @@ limitations under the License.
 #include "xla/stream_executor/sycl/sycl_gpu_runtime.h"
 
 #include <cassert>
+#include <cstdint>
 #include <iostream>
+#include <limits>
+#include <vector>
 
 #include "absl/base/call_once.h"
 #include "absl/synchronization/mutex.h"
@@ -136,9 +139,16 @@ absl::Status MemfillDevice(::sycl::queue* stream_handle, void* dst_device,
 // but SYCL still classifies the imported pointer as usm::alloc::unknown. Query
 // Level Zero directly so registration can be verified and copies from the
 // DmaMapped range can remain asynchronous.
+// TODO(intel-tf): Remove this helper once HostMemoryRegister uses
+// sycl_ext_oneapi_register_host_memory, which makes registered ranges visible
+// to standard SYCL USM pointer queries.
 bool SyclIsHostMemoryRegistered(const ::sycl::device& device,
-                                const void* location) {
-  if (location == nullptr) {
+                                const void* location, std::size_t size) {
+  if (location == nullptr || size == 0) {
+    return false;
+  }
+  const std::uintptr_t start = reinterpret_cast<std::uintptr_t>(location);
+  if (size - 1 > std::numeric_limits<std::uintptr_t>::max() - start) {
     return false;
   }
   try {
@@ -156,8 +166,21 @@ bool SyclIsHostMemoryRegistered(const ::sycl::device& device,
       }
       cached_driver = driver;
     }
-    return query != nullptr && query(driver, const_cast<void*>(location),
-                                     nullptr) == ZE_RESULT_SUCCESS;
+    if (query == nullptr) {
+      return false;
+    }
+    // The extension exposes range membership and the imported base, but not
+    // the range size. Imported ranges are contiguous and non-overlapping, so
+    // both endpoints resolving to the same base proves that the complete
+    // half-open range belongs to one import. This mirrors NEO's own
+    // HostPointerManager range-coverage check.
+    void* start_base = nullptr;
+    void* end_base = nullptr;
+    return query(driver, const_cast<void*>(location), &start_base) ==
+               ZE_RESULT_SUCCESS &&
+           query(driver, reinterpret_cast<void*>(start + size - 1),
+                 &end_base) == ZE_RESULT_SUCCESS &&
+           start_base == end_base;
   } catch (const ::sycl::exception&) {
     return false;
   }
@@ -567,9 +590,9 @@ absl::Status SyclMemcpyDeviceToHostAsync(::sycl::queue* stream_handle,
   }
   ::sycl::usm::alloc dst_alloc_type =
       ::sycl::get_pointer_type(dst_host, stream_handle->get_context());
-  bool async =
-      dst_alloc_type == ::sycl::usm::alloc::host ||
-      SyclIsHostMemoryRegistered(stream_handle->get_device(), dst_host);
+  bool async = dst_alloc_type == ::sycl::usm::alloc::host ||
+               SyclIsHostMemoryRegistered(stream_handle->get_device(), dst_host,
+                                          byte_count);
   return MemcpyDeviceToHost(stream_handle, dst_host, src_device, byte_count,
                             async);
 }
@@ -589,9 +612,9 @@ absl::Status SyclMemcpyHostToDeviceAsync(::sycl::queue* stream_handle,
   }
   ::sycl::usm::alloc src_alloc_type =
       ::sycl::get_pointer_type(src_host, stream_handle->get_context());
-  bool async =
-      src_alloc_type == ::sycl::usm::alloc::host ||
-      SyclIsHostMemoryRegistered(stream_handle->get_device(), src_host);
+  bool async = src_alloc_type == ::sycl::usm::alloc::host ||
+               SyclIsHostMemoryRegistered(stream_handle->get_device(), src_host,
+                                          byte_count);
   return MemcpyHostToDevice(stream_handle, dst_device, src_host, byte_count,
                             async);
 }

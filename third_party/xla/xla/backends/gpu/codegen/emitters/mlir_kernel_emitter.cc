@@ -331,7 +331,7 @@ MlirKernelFusion::EmitLlvmModule(const HloFusionInstruction& fusion,
                           parent_context.BorrowMlirContext())
       .Map([target_triple = parent_context.target_triple(),
             buffer_assignment = &parent_context.buffer_assignment(),
-            gpu_device_info = parent_context.gpu_device_info(), kernel_name,
+            &gpu_device_info = parent_context.gpu_device_info(), kernel_name,
             launch_dims = launch_dimensions(),
             data_layout = parent_context.data_layout(),
             fusion = &fusion](LlvmKernelSource source)
@@ -376,7 +376,8 @@ AsyncThunkSequence MlirKernelFusion::Emit(
             std::string(fusion.name()));
         return EmitLlvmModule(fusion, kernel_name, ir_emitter_context)
             .Map([&ir_emitter_context, &fusion,
-                  kernel_name](KernelDefinition<LlvmKernelSource> kernel_def)
+                  kernel_name = std::move(kernel_name)](
+                     KernelDefinition<LlvmKernelSource> kernel_def) mutable
                      -> xla::Future<KernelReuseCache::Entry> {
               KernelSpec spec = kernel_def.spec();
               ASSIGN_OR_RETURN(
@@ -391,7 +392,7 @@ AsyncThunkSequence MlirKernelFusion::Emit(
                   ->CompileToTargetBinary(std::move(kernel_def).TakeSource())
                   .Map([kernel_name = std::move(kernel_name),
                         launch_dims = std::move(launch_dims),
-                        use_pdl](const std::vector<uint8_t>& cubin) {
+                        use_pdl](const std::vector<uint8_t>& cubin) mutable {
                     KernelReuseCache::Entry entry{kernel_name, launch_dims,
                                                   std::nullopt,
                                                   /*shmem_bytes=*/0, cubin};
@@ -405,8 +406,8 @@ AsyncThunkSequence MlirKernelFusion::Emit(
       &fusion, ir_emitter_context.GetNextThunkId());
   bool kernel_cached = cached;
   return future_entry.Map([&fusion, thunk_info = std::move(thunk_info),
-                           args = std::move(args),
-                           kernel_cached](const KernelReuseCache::Entry* entry)
+                           args = std::move(args), kernel_cached](
+                              const KernelReuseCache::Entry* entry) mutable
                               -> absl::StatusOr<ThunkSequence> {
     if (kernel_cached) {
       VLOG(3) << "Reuse: " << fusion.name() << " -> " << entry->kernel_name;
@@ -658,7 +659,6 @@ absl::StatusOr<LlvmKernelSource> CompileMlirToLlvm(
     const std::string& entry_function_name, int unroll_factor,
     mlir::MLIRContext& mlir_context, MlirKernelSource source) {
   auto llvm_context = std::make_unique<llvm::LLVMContext>();
-
   mlir::OwningOpRef<mlir::ModuleOp> module = std::move(source).TakeModule();
 
   mlir::PassManager pm(module->getContext());

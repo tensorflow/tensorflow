@@ -27,6 +27,7 @@ limitations under the License.
 #include <initializer_list>
 #include <iostream>
 #include <iterator>
+#include <limits>
 #include <memory>
 #include <optional>
 #include <ostream>
@@ -980,7 +981,9 @@ class Result {
  public:
   Result(T value) : value_(value) {}  // NOLINT
   T& operator*() { return value_; }
+  const T& operator*() const { return value_; }
   T* operator->() { return &value_; }
+  const T* operator->() const { return &value_; }
 
  private:
   T value_;
@@ -998,6 +1001,443 @@ class Attr {
  private:
   T value_;
 };
+
+//===----------------------------------------------------------------------===//
+// Buffers
+//===----------------------------------------------------------------------===//
+
+// Sentinel rank for buffers whose rank is not statically known; a dynamic-rank
+// buffer (or pattern) accepts any rank.
+inline constexpr size_t kDynamicRank = std::numeric_limits<size_t>::max();
+
+template <size_t rank, size_t... ranks>
+constexpr bool IsDynamicRank() {
+  return rank == kDynamicRank || ((ranks == kDynamicRank) || ...);
+}
+
+//===----------------------------------------------------------------------===//
+// Buffer Matching
+//===----------------------------------------------------------------------===//
+
+namespace match {
+namespace internal {
+
+// Unlike std::integer_sequence, this sequence also supports enum values.
+template <typename T, T... values>
+struct ValueSequence {
+  using ValueType = T;
+  static constexpr size_t size() { return sizeof...(values); }
+};
+
+}  // namespace internal
+
+// Type-level set of the unique dtype constraints on a pattern. The dtype enum
+// type is fixed per header (DataType or PrimitiveType), so the type system
+// enforces that all dtypes share one enum type.
+template <typename DType, DType... dtypes>
+using DTypeSet = internal::ValueSequence<DType, dtypes...>;
+
+// Type-level set of the unique rank constraints on a pattern.
+template <size_t... ranks>
+using RankSet = internal::ValueSequence<size_t, ranks...>;
+
+namespace internal {
+
+// Reinterprets a buffer as a concrete `Buffer<dtype, rank>` without any checks.
+// Defined by each FFI header as a friend of its buffer types, and only safe to
+// call once a successful match has confirmed the buffer's dtype and rank.
+struct BufferCast;
+
+// Prints a single constraint value into a diagnostic. The default uses
+// `operator<<`; FFI headers specialize it for dtype enums that lack a symbolic
+// `operator<<` (see `PrimitiveType` in `xla/ffi/ffi.h`).
+template <typename T>
+struct ValuePrinter {
+  friend std::ostream& operator<<(std::ostream& os, ValuePrinter printer) {
+    return os << printer.value;
+  }
+  T value;
+};
+
+// Discards diagnostics in the successful hot path. The matcher is rerun with
+// an output stream only when it fails.
+class NoOpDiagnostic {
+ public:
+  template <typename T>
+  NoOpDiagnostic& operator<<(T&&) {
+    return *this;
+  }
+};
+
+inline constexpr char kDType[] = "dtype";
+inline constexpr char kRank[] = "rank";
+
+template <const char* name, typename Values>
+class ValueSet;
+
+template <const char* name, typename T, T... values>
+class ValueSet<name, ValueSequence<T, values...>> {
+  using Values = ValueSequence<T, values...>;
+
+ public:
+  template <typename Diagnostic>
+  static bool Match(T value, Diagnostic& os) {
+    if (empty() ||
+        std::find(kValues.begin(), kValues.end(), value) != kValues.end()) {
+      return true;
+    }
+
+    os << "expected " << name;
+    if (kValues.size() == 1) {
+      os << " " << ValuePrinter<T>{kValues.front()} << " but got "
+         << ValuePrinter<T>{value};
+      return false;
+    }
+
+    os << " to be one of [" << ValuePrinter<T>{kValues.front()};
+    for (size_t i = 1; i < kValues.size(); ++i) {
+      os << ", " << ValuePrinter<T>{kValues[i]};
+    }
+    os << "] but got " << ValuePrinter<T>{value};
+    return false;
+  }
+
+  static void DescribeTo(std::ostream& os) {
+    if (kValues.empty()) {
+      return;
+    }
+    os << name;
+    if (kValues.size() == 1) {
+      os << " " << ValuePrinter<T>{kValues.front()};
+      return;
+    }
+
+    os << " in [" << ValuePrinter<T>{kValues.front()};
+    for (size_t i = 1; i < kValues.size(); ++i) {
+      os << ", " << ValuePrinter<T>{kValues[i]};
+    }
+    os << "]";
+  }
+
+  static constexpr bool empty() { return Values::size() == 0; }
+
+ private:
+  static constexpr std::array<T, Values::size()> kValues = {values...};
+};
+
+template <typename Values>
+using DTypeValues =
+    ValueSet<kDType, Values>;  // NOLINT(readability-identifier-naming): alias
+                               // for internal matcher value sets
+
+template <typename Values>
+using RankValues =
+    ValueSet<kRank, Values>;  // NOLINT(readability-identifier-naming): alias
+                              // for internal matcher value sets
+
+template <typename DTypes, typename Ranks>
+class BufferPatternBase;
+
+}  // namespace internal
+
+// Matches one buffer dimension. A dimension can be unconstrained, fixed, or
+// captured.
+class DimPattern {
+ public:
+  DimPattern() = default;
+
+  template <typename T, typename = std::enable_if_t<std::is_integral_v<T>>>
+  // NOLINTNEXTLINE(google-explicit-constructor,runtime/explicit)
+  DimPattern(T value) : value_(static_cast<int64_t>(value)) {
+    static_assert(sizeof(T) <= sizeof(int64_t),
+                  "Integral dimension value must fit in 64-bit integer.");
+  }
+
+  // Intentionally implicit so that capture pointers (e.g. &rows) can be passed
+  // directly to WithDims and WithDim.
+  // NOLINTNEXTLINE(google-explicit-constructor,runtime/explicit)
+  DimPattern(int64_t* value) : value_(value) {
+    assert(value != nullptr && "dimension capture must be non-null");
+  }
+
+  template <typename Diagnostic>
+  bool Match(int64_t value, size_t index, Diagnostic& os) const {
+    const int64_t* expected = std::get_if<int64_t>(&value_);
+    if (expected == nullptr || value == *expected) {
+      return true;
+    }
+
+    os << "expected dimension " << index << " to be " << *expected
+       << " but got " << value;
+    return false;
+  }
+
+  void Capture(int64_t value) const {
+    if (auto capture = std::get_if<int64_t*>(&value_)) {
+      **capture = value;
+    }
+  }
+
+  void DescribeTo(std::ostream& os) const {
+    if (auto value = std::get_if<int64_t>(&value_)) {
+      os << *value;
+    } else if (std::holds_alternative<int64_t*>(value_)) {
+      os << "any dimension (captured)";
+    } else {
+      os << "any dimension";
+    }
+  }
+
+ private:
+  template <typename, typename>
+  friend class internal::BufferPatternBase;
+
+  int64_t* capture() const {
+    auto capture = std::get_if<int64_t*>(&value_);
+    return capture == nullptr ? nullptr : *capture;
+  }
+
+  // Unconstrained dimension is represented by monostate, a fixed dimension size
+  // by an int64_t value, and a captured dimension by an int64_t* pointer.
+  std::variant<std::monostate, int64_t, int64_t*> value_;
+};
+
+namespace internal {
+
+// An immutable pattern for matching buffer metadata. Dtype and rank
+// constraints remain encoded in the pattern type so Match can refine an
+// AnyBuffer when both identify exactly one concrete buffer type. Patterns with
+// alternative constraints can still be used with Verify or when matching an
+// already typed Buffer.
+//
+// The concrete dtype enum (`DataType` or `PrimitiveType`) is carried by
+// `DTypes`; each FFI header exposes the pattern as its `BufferPattern` alias.
+template <typename DTypes, typename Ranks>
+class BufferPatternBase {
+  using DType = typename DTypes::ValueType;
+
+ public:
+  BufferPatternBase() = default;
+
+  template <size_t rank, size_t... ranks>
+  auto WithRank() const {
+    static_assert(!IsDynamicRank<rank, ranks...>(),
+                  "dynamic rank is represented by an empty rank set");
+    using WithRankSet = RankSet<rank, ranks...>;
+    return BufferPatternBase<DTypes, WithRankSet>(*this);
+  }
+
+  template <DType dtype, DType... dtypes>
+  auto WithDType() const {
+    using WithDTypeSet = DTypeSet<DType, dtype, dtypes...>;
+    return BufferPatternBase<WithDTypeSet, Ranks>(*this);
+  }
+
+  // Constrains the complete shape to match `buffer`.
+  template <typename Buffer>
+  auto WithShapeOf(Buffer buffer) const {
+    using Pattern = BufferPatternBase<DTypes, RankSet<>>;
+    Pattern pattern(*this);
+    auto dimensions = buffer.dimensions();
+    pattern.rank_ = dimensions.size();
+    pattern.dimensions_.assign(dimensions.begin(), dimensions.end());
+    return pattern;
+  }
+
+  // Constrains the dtype and complete shape to match `buffer`.
+  template <typename Buffer>
+  auto Like(Buffer buffer) const {
+    auto shape = WithShapeOf(buffer);
+    using Pattern = BufferPatternBase<DTypeSet<DType>, RankSet<>>;
+    Pattern pattern(shape);
+    pattern.dtype_ = buffer.element_type();
+    return pattern;
+  }
+
+  // Constrains every dimension positionally and deduces the type-level rank
+  // from the number of arguments.
+  template <typename... Args,
+            typename = std::enable_if_t<
+                (std::is_convertible_v<Args, DimPattern> && ...)>>
+  XLA_FFI_ATTRIBUTE_ALWAYS_INLINE auto WithDims(Args&&... dimensions) const {
+    using WithRank = RankSet<sizeof...(Args)>;
+    BufferPatternBase<DTypes, WithRank> pattern(*this);
+    pattern.dimensions_ = {std::forward<Args>(dimensions)...};
+    return pattern;
+  }
+
+  // Constrains a single dimension, leaving the rest (and the rank) free.
+  BufferPatternBase WithDim(size_t index, DimPattern dimension) const {
+    BufferPatternBase pattern(*this);
+    auto& dimensions = pattern.dimensions_;
+    dimensions.resize(std::max(dimensions.size(), index + 1));
+    dimensions[index] = std::move(dimension);
+    return pattern;
+  }
+
+  template <size_t index>
+  BufferPatternBase WithDim(DimPattern dimension) const {
+    return WithDim(index, std::move(dimension));
+  }
+
+  template <typename Buffer, typename Diagnostic>
+  XLA_FFI_ATTRIBUTE_ALWAYS_INLINE bool Match(Buffer buffer,
+                                             Diagnostic& os) const {
+    if (!DTypeValues<DTypes>::Match(buffer.element_type(), os)) {
+      return false;
+    }
+
+    if (dtype_.has_value() && buffer.element_type() != *dtype_) {
+      os << "expected dtype " << ValuePrinter<DType>{*dtype_} << " but got "
+         << ValuePrinter<DType>{buffer.element_type()};
+      return false;
+    }
+
+    auto dimensions = buffer.dimensions();
+    if (!RankValues<Ranks>::Match(dimensions.size(), os)) {
+      return false;
+    }
+
+    if (rank_.has_value() && dimensions.size() != *rank_) {
+      os << "expected rank " << *rank_ << " but got " << dimensions.size();
+      return false;
+    }
+
+    if (dimensions_.size() > dimensions.size()) {
+      os << "expected dimension " << dimensions_.size() - 1
+         << " but buffer rank is " << dimensions.size();
+      return false;
+    }
+
+    size_t count = dimensions_.size();
+    for (size_t i = 0; i < count; ++i) {
+      const DimPattern& dimension = dimensions_[i];
+      if (!dimension.Match(dimensions[i], i, os)) {
+        return false;
+      }
+
+      int64_t* capture = dimension.capture();
+      if (capture == nullptr) {
+        continue;
+      }
+      for (size_t j = 0; j < i; ++j) {
+        if (dimensions_[j].capture() != capture) {
+          continue;
+        }
+        if (dimensions[i] == dimensions[j]) {
+          break;
+        }
+        os << "expected dimension " << i << " to be " << dimensions[j]
+           << " but got " << dimensions[i];
+        return false;
+      }
+    }
+
+    return true;
+  }
+
+  template <typename Buffer>
+  void Capture(Buffer buffer) const {
+    auto dimensions = buffer.dimensions();
+    size_t count = std::min(dimensions_.size(), dimensions.size());
+    for (size_t i = 0; i < count; ++i) {
+      dimensions_[i].Capture(dimensions[i]);
+    }
+  }
+
+  void DescribeTo(std::ostream& os) const {
+    os << "a buffer";
+    if (!DTypeValues<DTypes>::empty()) {
+      os << " with ";
+      DTypeValues<DTypes>::DescribeTo(os);
+    }
+    if (dtype_.has_value()) {
+      os << " with dtype " << ValuePrinter<DType>{*dtype_};
+    }
+    if (!RankValues<Ranks>::empty()) {
+      os << " with ";
+      RankValues<Ranks>::DescribeTo(os);
+    }
+    if (rank_.has_value()) {
+      os << " with rank " << *rank_;
+    }
+    if (!dimensions_.empty()) {
+      os << " with dimensions [";
+      for (size_t i = 0; i < dimensions_.size(); ++i) {
+        if (i != 0) {
+          os << ", ";
+        }
+        dimensions_[i].DescribeTo(os);
+      }
+      os << "]";
+    }
+  }
+
+ private:
+  template <typename, typename>
+  friend class BufferPatternBase;
+
+  template <typename OtherDTypes, typename OtherRanks>
+  explicit BufferPatternBase(
+      const BufferPatternBase<OtherDTypes, OtherRanks>& other)
+      : dtype_(other.dtype_),
+        rank_(other.rank_),
+        dimensions_(other.dimensions_) {
+    // A constraint has either a type-level or runtime representation, never
+    // both. Type-changing modifiers replace the corresponding runtime value.
+    if constexpr (DTypes::size() != 0) {
+      dtype_.reset();
+    }
+    if constexpr (Ranks::size() != 0) {
+      rank_.reset();
+    }
+  }
+
+  // Runtime constraints copied from another buffer. Each is present only when
+  // the corresponding type-level set is empty.
+  std::optional<DType> dtype_;
+  std::optional<size_t> rank_;
+  // Positional dimension constraints. Unconstrained positions (the gaps left by
+  // WithDim) hold a catch-all DimPattern that matches any extent.
+  std::vector<DimPattern> dimensions_;
+};
+
+}  // namespace internal
+
+inline DimPattern Dim() { return DimPattern(); }
+
+template <typename T, typename = std::enable_if_t<std::is_integral_v<T>>>
+inline DimPattern Dim(T value) {
+  return DimPattern(value);
+}
+inline DimPattern Dim(int64_t* value) { return DimPattern(value); }
+
+}  // namespace match
+
+namespace internal {
+
+// Matches buffer metadata and returns an error message on failure. Captures
+// are applied only after a capture-free pass succeeds.
+template <typename Buffer, typename Pattern>
+XLA_FFI_ATTRIBUTE_ALWAYS_INLINE std::optional<std::string> MatchBuffer(
+    std::string_view name, Buffer buffer, const Pattern& pattern) {
+  match::internal::NoOpDiagnostic diagnostic;
+  if (pattern.Match(buffer, diagnostic)) {
+    pattern.Capture(buffer);
+    return std::nullopt;
+  }
+
+  std::ostringstream explanation;
+  pattern.Match(buffer, explanation);
+
+  std::ostringstream error;
+  error << "Buffer '" << name << "' failed to match ";
+  pattern.DescribeTo(error);
+  error << ": " << explanation.str();
+  return error.str();
+}
+
+}  // namespace internal
 
 //===----------------------------------------------------------------------===//
 // Attributes bindings
