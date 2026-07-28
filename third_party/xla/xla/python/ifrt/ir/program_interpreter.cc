@@ -62,6 +62,7 @@ limitations under the License.
 #include "xla/python/ifrt/remap_plan.h"
 #include "xla/python/ifrt/remap_plan.pb.h"
 #include "xla/python/ifrt/sharding.h"
+#include "xla/python/ifrt/user_context.h"
 #include "xla/python/ifrt/value.h"
 #include "xla/status_macros.h"
 #include "xla/tsl/concurrency/future.h"
@@ -139,12 +140,15 @@ struct Environment {
   // Contains a future for each ifrt.CallOp that is a leaf (i.e., has no outputs
   // or all its outputs are returned from the program).
   std::vector<tsl::Future<>> leaf_call_op_futures;
+  // If true, the interpreter will create a new user context around each op,
+  // otherwise the outer user context will be used when interpreting each op.
+  bool set_op_user_contexts = false;
 };
 
 absl::StatusOr<std::unique_ptr<ProgramInterpreter>> ProgramInterpreter::Create(
     Client* client, absl::string_view program_name, mlir::ModuleOp mlir_module,
     std::shared_ptr<AtomExecutableMap> atom_program_executables,
-    DeviceListRef devices) {
+    DeviceListRef devices, bool set_op_user_contexts) {
   mlir::func::FuncOp main_func = GetMainFunction(mlir_module);
   if (!IsIfrtFunction(main_func)) {
     return absl::InvalidArgumentError(
@@ -153,7 +157,7 @@ absl::StatusOr<std::unique_ptr<ProgramInterpreter>> ProgramInterpreter::Create(
   }
   return std::unique_ptr<ProgramInterpreter>(new ProgramInterpreter(
       client, program_name, mlir_module, std::move(atom_program_executables),
-      std::move(devices), mlir::Liveness(main_func)));
+      std::move(devices), mlir::Liveness(main_func), set_op_user_contexts));
 }
 
 namespace {
@@ -161,6 +165,7 @@ namespace {
 struct ProgramInterpreterState {
   Client* client;
   std::string program_name;
+  bool set_op_user_contexts;
 
   std::vector<ArrayHandle> input_handles;
   absl::flat_hash_set<int> donated_input_indices;
@@ -193,6 +198,7 @@ struct ProgramInterpreterState {
     }
 
     Environment env;
+    env.set_op_user_contexts = set_op_user_contexts;
     env.client = client;
     // TODO(icgog): Set default fill status to kFillLeafOps instead of kFillNone
     // when  options.fill_status is set.
@@ -265,6 +271,7 @@ ProgramInterpreter::BuildExecuteFn() {
   tsl::profiler::TraceMe traceme("ProgramInterpreter::BuildExecuteFn");
 
   ProgramInterpreterState state;
+  state.set_op_user_contexts = set_op_user_contexts_;
   state.client = client_;
   state.program_name = program_name_;
 
@@ -345,6 +352,11 @@ struct CallLoadedExecutableOpState {
                            });
     });
     VLOG(3) << pretty_print;
+
+    ifrt::UserContextRef new_context =
+        env.set_op_user_contexts ? ifrt::BasicUserContext::Create("Execute")
+                                 : ifrt::UserContextScope::current();
+    ifrt::UserContextScope context_scope(std::move(new_context));
 
     ExecuteOptions options = execute_options;
     if (env.program_fill_status == ProgramFillStatus::kFillAll ||
@@ -543,6 +555,11 @@ struct RemapArraysOpState {
     });
     VLOG(3) << pretty_print;
 
+    ifrt::UserContextRef new_context =
+        env.set_op_user_contexts ? ifrt::BasicUserContext::Create("RemapArrays")
+                                 : ifrt::UserContextScope::current();
+    ifrt::UserContextScope context_scope(std::move(new_context));
+
     std::vector<ArrayRef> inputs;
     inputs.reserve(remap_plan.input_specs().size());
 
@@ -710,6 +727,12 @@ struct BitcastArraysOpState {
     });
     VLOG(3) << pretty_print;
 
+    ifrt::UserContextRef new_context =
+        env.set_op_user_contexts
+            ? ifrt::BasicUserContext::Create("BitcastArrays")
+            : ifrt::UserContextScope::current();
+    ifrt::UserContextScope context_scope(std::move(new_context));
+
     std::vector<ArrayRef> inputs;
     inputs.reserve(input_handles.size());
 
@@ -835,6 +858,11 @@ struct CopyArraysOpState {
                            {{"ifrt_ir_program", env.program_name}});
     });
     VLOG(3) << pretty_print;
+
+    ifrt::UserContextRef new_context =
+        env.set_op_user_contexts ? ifrt::BasicUserContext::Create("CopyArrays")
+                                 : ifrt::UserContextScope::current();
+    ifrt::UserContextScope context_scope(std::move(new_context));
 
     std::vector<ArrayRef> inputs;
     inputs.reserve(input_handles.size());
