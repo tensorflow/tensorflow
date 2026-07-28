@@ -522,6 +522,7 @@ cc_library(
         ":maybe_owning_mlir_module",
         ":pjrt_abi_version",
         ":pjrt_common",
+        ":pjrt_compiler_variant",
         ":pjrt_device_description",
         ":pjrt_device_dimensions",
         ":pjrt_executable",
@@ -556,6 +557,7 @@ xla_cc_test(
         ":pjrt_client",
         ":pjrt_common",
         ":pjrt_compiler",
+        ":pjrt_compiler_variant",
         ":pjrt_device_description",
         ":pjrt_executable",
         "//xla:shape_util",
@@ -570,6 +572,7 @@ xla_cc_test(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest_main",
+        "@tsl//tsl/platform:fingerprint",
     ],
 )
 

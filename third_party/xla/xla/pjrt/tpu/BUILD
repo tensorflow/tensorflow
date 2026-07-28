@@ -27,7 +27,9 @@ cc_library(
     hdrs = ["tpu_compiler_variant.h"],
     visibility = ["//visibility:public"],
     deps = [
+        "//xla/pjrt:pjrt_compiler",
         "//xla/pjrt:pjrt_compiler_variant",
+        "//xla/tsl/platform:status_macros",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/status:statusor",
     ],
