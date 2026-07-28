@@ -160,8 +160,10 @@ class BitcastOp : public XlaOpKernel {
                   absl::InvalidArgumentError(
                       "Neither bit width is a multiple of the other."));
 
-      xla::XlaOp real_bits = xla::BitcastConvertType(xla::Real(input), dst_type_);
-      xla::XlaOp imag_bits = xla::BitcastConvertType(xla::Imag(input), dst_type_);
+      xla::XlaOp real_bits =
+          xla::BitcastConvertType(xla::Real(input), dst_type_);
+      xla::XlaOp imag_bits =
+          xla::BitcastConvertType(xla::Imag(input), dst_type_);
 
       const TensorShape input_shape = ctx->InputShape(0);
       const int64_t rank = input_shape.dims();

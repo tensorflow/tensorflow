@@ -54,6 +54,9 @@ class CastOpsTest(xla_test.XLATestCase):
     for ctype, itype in ((dtypes.complex64, dtypes.int32),
                          (dtypes.complex128, dtypes.int32),
                          (dtypes.complex64, dtypes.int16)):
+      if self.device.upper() == 'TPU' and ctype == dtypes.complex128:
+        # complex128 is not supported on TPU.
+        continue
       with ops.device('device:{}:0'.format(self.device)):
 
         def f(x):
@@ -62,9 +65,14 @@ class CastOpsTest(xla_test.XLATestCase):
         compiled_f = def_function.function(f, jit_compile=True)
 
         ftype = dtypes.float32 if ctype == dtypes.complex64 else dtypes.float64
+        # Deterministic, fixed values: a bitcast test only needs the eager
+        # and compiled paths to agree on whatever input they're given, so
+        # random generation buys no extra coverage here and array_ops.ones
+        # avoids random_ops.random_normal's 64-bit generation failing during
+        # HLO rewriting on some backends.
         x = math_ops.complex(
-            random_ops.random_normal([4, 3], dtype=ftype),
-            random_ops.random_normal([4, 3], dtype=ftype))
+            array_ops.ones([4, 3], dtype=ftype),
+            array_ops.ones([4, 3], dtype=ftype) * 2)
         with ops.device(self.device):
           out = f(x)
           compiled_out = compiled_f(x)
@@ -79,6 +87,9 @@ class CastOpsTest(xla_test.XLATestCase):
     # asked about on #122567 is already handled, not just complex -> int.
     for ctype, dst_ftype in ((dtypes.complex64, dtypes.float32),
                               (dtypes.complex128, dtypes.float64)):
+      if self.device.upper() == 'TPU' and ctype == dtypes.complex128:
+        # complex128 is not supported on TPU.
+        continue
       with ops.device('device:{}:0'.format(self.device)):
 
         def f(x):
@@ -89,8 +100,8 @@ class CastOpsTest(xla_test.XLATestCase):
         src_ftype = (
             dtypes.float32 if ctype == dtypes.complex64 else dtypes.float64)
         x = math_ops.complex(
-            random_ops.random_normal([4, 3], dtype=src_ftype),
-            random_ops.random_normal([4, 3], dtype=src_ftype))
+            array_ops.ones([4, 3], dtype=src_ftype),
+            array_ops.ones([4, 3], dtype=src_ftype) * 2)
         with ops.device(self.device):
           out = f(x)
           compiled_out = compiled_f(x)
@@ -109,8 +120,8 @@ class CastOpsTest(xla_test.XLATestCase):
       compiled_f = def_function.function(f, jit_compile=True)
 
       x = math_ops.complex(
-          random_ops.random_normal([4, 3], dtype=dtypes.float32),
-          random_ops.random_normal([4, 3], dtype=dtypes.float32))
+          array_ops.ones([4, 3], dtype=dtypes.float32),
+          array_ops.ones([4, 3], dtype=dtypes.float32) * 2)
       with ops.device(self.device):
         with self.assertRaises(errors.UnimplementedError):
           compiled_f(x)
