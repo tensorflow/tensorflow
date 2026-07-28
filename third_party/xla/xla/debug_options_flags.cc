@@ -263,6 +263,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_cpu_use_acl(true);
 #endif
   opts.set_xla_cpu_use_xnnpack(true);
+  opts.set_xla_cpu_use_new_xtile_lowering(false);
   opts.set_xla_cpu_experimental_xnn_graph_fusion_mode(
       DebugOptions::XNN_GRAPH_FUSION_MODE_DISABLED);
   opts.add_xla_cpu_experimental_ynn_fusion_type(
@@ -1555,6 +1556,11 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
                 bool_setter_for(&DebugOptions::set_xla_cpu_use_xnnpack),
                 debug_options->xla_cpu_use_xnnpack(),
                 "Use XNNPACK for supported operations."));
+  flag_list->push_back(tsl::Flag(
+      "xla_cpu_use_new_xtile_lowering",
+      bool_setter_for(&DebugOptions::set_xla_cpu_use_new_xtile_lowering),
+      debug_options->xla_cpu_use_new_xtile_lowering(),
+      "Use new xtile lowering."));
   flag_list->push_back(tsl::Flag(
       "xla_cpu_experimental_xnn_fusion_type",
       SetterForRepeatedEnum<DebugOptions::LibraryFusionType>(

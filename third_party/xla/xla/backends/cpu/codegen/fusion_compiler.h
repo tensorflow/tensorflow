@@ -45,6 +45,7 @@ class FusionCompiler {
     int32_t verification_level;
     bool fast_min_max;
     llvm::FastMathFlags fast_math_flags;
+    bool use_new_xtile_lowering = false;
   };
 
   FusionCompiler(mlir::MLIRContext* context, Options options,
@@ -80,6 +81,7 @@ class FusionCompiler {
 // Xtile to the vector dialect, the second is the conversion from the vector
 // dialect to LLVM.
 void AddXtileToVectorPasses(mlir::OpPassManager& pm);
+void AddXtileToVectorPassesNoBufferization(mlir::OpPassManager& pm);
 void AddVectorToLLVMPasses(mlir::OpPassManager& pm, bool fast_min_max);
 
 }  // namespace xla::cpu

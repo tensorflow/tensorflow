@@ -314,6 +314,7 @@ void AddBufferizationPasses(mlir::OpPassManager& pm) {
 
   mlir::bufferization::buildBufferDeallocationPipeline(
       pm, mlir::bufferization::BufferDeallocationPipelineOptions());
+  pm.addNestedPass<mlir::func::FuncOp>(cpu::createHoistAllocaPass());
 }
 
 }  //  namespace
@@ -396,6 +397,31 @@ void AddXtileToVectorPasses(mlir::OpPassManager& pm) {
   pm.addPass(mlir::createCSEPass());
 }
 
+// Optimizations passes for the tiled emitter.
+void AddXtileToVectorPassesNoBufferization(mlir::OpPassManager& pm) {
+  pm.addPass(xtile::createVerifyLegalXTileOpsPass());
+
+  emitters::RegisterOptimizationPasses(pm);
+
+  pm.addPass(xtile::createStablehloLowerToArithPass());
+  pm.addPass(cpu::createVectorizeXTilePass());
+
+  pm.addPass(cpu::createLowerXTileEntryPass());
+
+  pm.addNestedPass<mlir::func::FuncOp>(
+      mlir::stablehlo::createStablehloTargetIndependentOptimizationPass());
+
+  pm.addPass(mlir::createCanonicalizerPass());
+  pm.addNestedPass<mlir::func::FuncOp>(
+      mlir::vector::createLowerVectorMultiReductionPass(
+          mlir::vector::VectorMultiReductionLowering::InnerParallel));
+
+  pm.addPass(xtile::createConvertElementwise0DTensorToScalarPass());
+
+  pm.addPass(mlir::createCanonicalizerPass());
+  pm.addPass(mlir::createCSEPass());
+}
+
 // Lowering passes for the tiled emitter.
 // The input IR is from the xtile dialect which uses tensors that are converted
 // first to the vector dialect and then to LLVM.
@@ -449,7 +475,12 @@ FusionCompiler::FusionCompiler(mlir::MLIRContext* context, Options options,
       std::make_unique<TraceInstrumentation>());
 
   // Tiled passes.
-  AddXtileToVectorPasses(tiled_pass_manager_);
+
+  if (options_.use_new_xtile_lowering) {
+    AddXtileToVectorPassesNoBufferization(tiled_pass_manager_);
+  } else {
+    AddXtileToVectorPasses(tiled_pass_manager_);
+  }
   if (should_dump_mlir_passes) {
     tiled_pass_manager_.addPass(
         std::make_unique<ModuleCallbackPass>(hlo_module_, "post-optimization"));

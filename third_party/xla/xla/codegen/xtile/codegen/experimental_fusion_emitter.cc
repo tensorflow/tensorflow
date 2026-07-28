@@ -1472,6 +1472,9 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> EmitXTileModule(
     const std::optional<GpuComputeCapability>& gpu_cc, int num_tiles_per_pid) {
   const HloComputation* hlo_computation =
       fusion.fused_instructions_computation();
+  VLOG(8) << "EmitXTileModule for  fusion " << fusion.ToString();
+  VLOG(8) << "with computation " << hlo_computation->ToString();
+  VLOG(8) << "num_tiles_per_pid: " << num_tiles_per_pid;
 
   Location loc = mlir::NameLoc::get(
       mlir::StringAttr::get(&mlir_context, hlo_computation->name()));
