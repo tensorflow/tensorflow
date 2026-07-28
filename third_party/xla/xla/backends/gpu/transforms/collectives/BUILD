@@ -465,7 +465,7 @@ xla_cc_test(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest",
-        "@com_google_googletest//:gtest_main",
+        "@com_google_googletest//:gtest_main",  # fixdeps: keep
         "@tsl//tsl/platform:statusor",
     ],
 )
@@ -703,6 +703,8 @@ cc_library(
     hdrs = ["collective_send_recv_combiner.h"],
     deps = [
         "//xla:shape_util",
+        "//xla:side_effect_util",
+        "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/pass:hlo_pass",
         "//xla/tsl/platform:status_macros",
@@ -712,7 +714,6 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/types:span",
-        "@tsl//tsl/platform:errors",
     ],
 )
 
@@ -725,7 +726,7 @@ xla_cc_test(
         "//xla/hlo/testlib:filecheck",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
         "@com_google_absl//absl/strings:string_view",
-        "@com_google_googletest//:gtest_main",
+        "@com_google_googletest//:gtest_main",  # fixdeps: keep
         "@tsl//tsl/platform:statusor",
     ],
 )
@@ -754,6 +755,7 @@ cc_library(
     srcs = ["collective_kernel_strategy_annotator.cc"],
     hdrs = ["collective_kernel_strategy_annotator.h"],
     deps = [
+        "//xla:side_effect_util",
         "//xla:status_macros",
         "//xla:xla_proto_cc",
         "//xla/backends/gpu/runtime:all_gather",
