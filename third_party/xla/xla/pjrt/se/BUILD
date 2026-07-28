@@ -304,6 +304,9 @@ cc_library(
 xla_cc_test(
     name = "pjrt_stream_executor_client_test",
     srcs = ["pjrt_stream_executor_client_test.cc"],
+    # TwoPhaseExecutePrepareFailureSkipsLaunch needs a two-device Host backend;
+    # PlatformUtil caps Host device_count at this flag (default 1).
+    env = {"XLA_FLAGS": "--xla_force_host_platform_device_count=2"},
     deps = [
         ":local_device_state",
         ":pjrt_stream_executor_client",
@@ -326,6 +329,7 @@ xla_cc_test(
         "//xla/pjrt:pjrt_executable",
         "//xla/pjrt/plugin/xla_cpu:cpu_topology",
         "//xla/pjrt/plugin/xla_cpu:cpu_topology_description",
+        "//xla/service:computation_placer_hdr",
         "//xla/service:cpu_plugin",
         "//xla/service:platform_util",
         "//xla/stream_executor:platform",
@@ -339,8 +343,11 @@ xla_cc_test(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_matchers",
         "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/synchronization",
+        "@com_google_absl//absl/time",
         "@com_google_googletest//:gtest_main",
+        "@tsl//tsl/platform:casts",
         "@tsl//tsl/platform:path",
     ],
 )
