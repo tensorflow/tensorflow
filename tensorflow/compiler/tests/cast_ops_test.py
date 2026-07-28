@@ -86,7 +86,7 @@ class CastOpsTest(xla_test.XLATestCase):
     # BitcastOp -- verifies the complex -> float generalization dmiltr3
     # asked about on #122567 is already handled, not just complex -> int.
     for ctype, dst_ftype in ((dtypes.complex64, dtypes.float32),
-                              (dtypes.complex128, dtypes.float64)):
+                             (dtypes.complex128, dtypes.float64)):
       if self.device.upper() == 'TPU' and ctype == dtypes.complex128:
         # complex128 is not supported on TPU.
         continue
