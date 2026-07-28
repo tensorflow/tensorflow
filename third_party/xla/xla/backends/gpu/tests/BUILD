@@ -453,6 +453,7 @@ xla_test(
         ":hlo_pjrt_gpu_test_base",
         "//xla:literal",
         "//xla:literal_util",
+        "//xla:shape_util",
         "//xla:xla_data_proto_cc",
         "//xla:xla_proto_cc",
         "//xla/backends/gpu:ffi",

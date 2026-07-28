@@ -30,6 +30,7 @@ limitations under the License.
 #include "xla/ffi/ffi.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
+#include "xla/shape_util.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/tests/literal_test_util.h"
@@ -518,6 +519,80 @@ TEST_F(DynamicSliceFusionV2Test, AsyncSingleOutputOneDUS) {
                                                    {2.0f, 2.0f, 2.0f, 2.0f},
                                                    {3.0f, 3.0f, 3.0f, 3.0f}});
 
+  ASSERT_OK_AND_ASSIGN(
+      Literal result, Execute(std::move(*ParseAndReturnVerifiedModule(hlo)), {},
+                              /*run_hlo_passes=*/false));
+  EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
+}
+
+TEST_F(DynamicSliceFusionV2Test,
+       AsyncSingleOutputOneDUSWithCallerOffsetExpression) {
+  const char* hlo = R"(
+    HloModule test, is_scheduled=true
+
+    %dsf_computation {
+      %p_input = f32[4,8,8] parameter(0)
+      %p_index = s32[] parameter(1)
+      %p_zero = s32[] parameter(2)
+      %fill = f32[8,8] custom-call(%p_input),
+        custom_call_target="__xla_test$$scaled_memset",
+        api_version=API_VERSION_TYPED_FFI,
+        backend_config="{scales = array<f32: 1.0>}"
+      %fill_3d = f32[1,8,8] bitcast(%fill)
+      ROOT %dus = f32[4,8,8] dynamic-update-slice(
+        %p_input, %fill_3d, %p_index, %p_zero, %p_zero),
+        backend_config={"dynamic_slice_config":
+          {"loop_index":0,"byte_offset":768,"byte_stride":-256}}
+    }
+
+    %async_computation {
+      %p_input = f32[4,8,8] parameter(0)
+      %p_index = s32[] parameter(1)
+      %p_zero = s32[] parameter(2)
+      ROOT %fusion = f32[4,8,8] fusion(%p_input, %p_index, %p_zero),
+        kind=kCustom, calls=%dsf_computation,
+        backend_config={"fusion_backend_config":{
+          "kind":"__custom_fusion",
+          "custom_fusion_config":
+            {"name":"dynamic_slice_fusion"}}}
+    }
+
+    body {
+      param = (s32[], f32[4,8,8]) parameter(0)
+      i = s32[] get-tuple-element(param), index=0
+      buf = f32[4,8,8] get-tuple-element(param), index=1
+      zero = s32[] constant(0)
+      three = s32[] constant(3)
+      reversed = s32[] subtract(three, i)
+      start = ((f32[4,8,8], s32[], s32[]), f32[4,8,8], u32[])
+        async-start(buf, reversed, zero), calls=%async_computation
+      updated = f32[4,8,8] async-done(start)
+      one = s32[] constant(1)
+      next_i = s32[] add(i, one)
+      ROOT tuple = (s32[], f32[4,8,8]) tuple(next_i, updated)
+    }
+
+    cond {
+      param = (s32[], f32[4,8,8]) parameter(0)
+      i = s32[] get-tuple-element(param), index=0
+      limit = s32[] constant(4)
+      ROOT cmp = pred[] compare(i, limit), direction=LT
+    }
+
+    ENTRY main {
+      zero = s32[] constant(0)
+      init_buf = f32[4,8,8] broadcast(f32[] constant(-1)), dimensions={}
+      init = (s32[], f32[4,8,8]) tuple(zero, init_buf)
+      while = (s32[], f32[4,8,8])
+        while(init), condition=cond, body=body
+      ROOT result = f32[4,8,8] get-tuple-element(while), index=1
+    }
+  )";
+
+  ASSERT_OK_AND_ASSIGN(
+      Literal expected,
+      LiteralUtil::CreateR1<float>({3.0f, 2.0f, 1.0f, 0.0f})
+          .Broadcast(ShapeUtil::MakeShape(F32, {4, 8, 8}), {0}));
   ASSERT_OK_AND_ASSIGN(
       Literal result, Execute(std::move(*ParseAndReturnVerifiedModule(hlo)), {},
                               /*run_hlo_passes=*/false));
