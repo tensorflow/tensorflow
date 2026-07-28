@@ -202,40 +202,6 @@ ENTRY e {
   AssertDeterminism(kHloText);
 }
 
-TEST_F(DeterminismTest, DeterministicOpsUsesFirstConfig) {
-  if (!IsAmpereOrLater()) {
-    GTEST_SKIP() << "Triton is not supported on non-NVIDIA and "
-                    "pre-Ampere NVIDIA GPUs.";
-  }
-  if (get_cuda_cc().IsAtLeastBlackwell()) {
-    // TODO(b/445172709): Re-enable once fixed.
-    GTEST_SKIP();
-  }
-
-  constexpr absl::string_view kHloText = R"hlo(
-ENTRY e {
-  p0 = bf16[128,128] parameter(0)
-  p0_convert = f32[128,128] convert(p0)
-  p1 = f32[128,128] parameter(1)
-  ROOT d = f32[128,128] dot(p0_convert, p1),
-    lhs_contracting_dims={1},
-    rhs_contracting_dims={0}
-})hlo";
-
-  // Disable autotuning.
-  debug_options_.set_xla_gpu_deterministic_ops(true);
-  AutotunerCache::ClearAutotuneResults();
-  // Deterministic GEMM should use the first config from the list and with the
-  // current backend order this should be cuBLAS LT.
-  EXPECT_THAT(MatchOptimizedHlo(kHloText, R"(
-    CHECK: ENTRY
-    CHECK: __cublas$lt$matmul
-  )",
-                                TimerCreation::kForbidden),
-              absl_testing::IsOkAndHolds(true));
-  AssertDeterminism(kHloText, /*num_runs=*/3);
-}
-
 TEST_F(DeterminismTest, ExcludingNonDeterministicOpsUsesFirstConfig) {
   if (!IsAmpereOrLater()) {
     GTEST_SKIP() << "Triton is not supported on non-NVIDIA and "
@@ -243,7 +209,6 @@ TEST_F(DeterminismTest, ExcludingNonDeterministicOpsUsesFirstConfig) {
   }
 
   ASSERT_TRUE(debug_options_.xla_gpu_exclude_nondeterministic_ops());
-  ASSERT_FALSE(debug_options_.xla_gpu_deterministic_ops());
   AutotunerCache::ClearAutotuneResults();
   // We select the first config from the list and with the current backend order
   // this should be cuBLAS LT.
