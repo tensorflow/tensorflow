@@ -529,6 +529,9 @@ class ThunkSequence : public std::vector<std::unique_ptr<Thunk>> {
   ThunkSequence(ThunkSequence&&) = default;
   ThunkSequence& operator=(ThunkSequence&&) = default;
 
+  // Returns an empty thunk sequence.
+  static ThunkSequence Empty() { return ThunkSequence(); }
+
   // Appends a thunk to this sequence.
   void Append(std::unique_ptr<Thunk> thunk);
 
