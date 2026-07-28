@@ -15,20 +15,33 @@ limitations under the License.
 
 #include "xla/service/cpu/fusion_wrapper.h"
 
+#include <cstdint>
 #include <memory>
+#include <string>
 
 #include <gtest/gtest.h>
+#include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
+#include "xla/backends/cpu/codegen/target_machine_features.h"
+#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
-#include "xla/tsl/platform/statusor.h"
+#include "xla/service/cpu/ir_emission_utils.h"
+#include "xla/service/cpu/target_machine_features_stub.h"
+#include "xla/shape_util.h"
+#include "xla/tsl/platform/status_matchers.h"
 
 namespace xla {
 namespace cpu {
 namespace {
 
-class FusionWrapperTest : public HloHardwareIndependentTestBase {};
+class FusionWrapperTest : public HloHardwareIndependentTestBase {
+ protected:
+  TargetMachineFeaturesStub target_machine_features_{[](int64_t size) {
+    return TargetMachineFeatures::kEigenExpectedTensorAlignment;
+  }};
+};
 
 TEST_F(FusionWrapperTest, Scatter) {
   static constexpr absl::string_view hlo_string = R"(
@@ -57,7 +70,7 @@ TEST_F(FusionWrapperTest, Scatter) {
   )";
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
                        ParseAndReturnVerifiedModule(hlo_string));
-  FusionWrapper wrapper(false, false);
+  FusionWrapper wrapper(&target_machine_features_);
   ASSERT_OK_AND_ASSIGN(bool changed, wrapper.Run(m.get()));
   EXPECT_TRUE(changed);
 
@@ -78,8 +91,7 @@ TEST_F(FusionWrapperTest, TransposeWrappedWithNewFusionEmitters) {
   )";
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
                        ParseAndReturnVerifiedModule(hlo_string));
-  FusionWrapper wrapper(/*using_new_fusion_emitter=*/true,
-                        /*use_tiled_emitter=*/false);
+  FusionWrapper wrapper(&target_machine_features_);
   ASSERT_OK_AND_ASSIGN(bool changed, wrapper.Run(m.get()));
   EXPECT_TRUE(changed);
   EXPECT_EQ(m->entry_computation()->root_instruction()->opcode(),
@@ -102,12 +114,163 @@ TEST_F(FusionWrapperTest, DynamicUpdateSliceWrappedWithNewFusionEmitters) {
   )";
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
                        ParseAndReturnVerifiedModule(hlo_string));
-  FusionWrapper wrapper(/*using_new_fusion_emitter=*/true,
-                        /*use_tiled_emitter=*/false);
+  FusionWrapper wrapper(&target_machine_features_);
   ASSERT_OK_AND_ASSIGN(bool changed, wrapper.Run(m.get()));
   EXPECT_TRUE(changed);
   EXPECT_EQ(m->entry_computation()->root_instruction()->opcode(),
             HloOpcode::kFusion);
+}
+
+TEST_F(FusionWrapperTest, MissingElementalOpcodesWrappedWithNewFusionEmitters) {
+  static constexpr absl::string_view kUnaryOpcodes[] = {
+      "acos", "acosh", "asin", "asinh", "atanh", "cosh", "sinh"};
+  for (absl::string_view op : kUnaryOpcodes) {
+    std::string hlo_string = absl::StrFormat(R"(
+    HloModule m
+      ENTRY e {
+        p0 = f32[64,32] parameter(0)
+        ROOT r = f32[64,32] %s(p0)
+      }
+    )",
+                                             op);
+    ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
+                         ParseAndReturnVerifiedModule(hlo_string));
+    FusionWrapper wrapper(&target_machine_features_);
+    ASSERT_OK_AND_ASSIGN(bool changed, wrapper.Run(m.get()));
+    EXPECT_TRUE(changed) << "Failed for opcode: " << op;
+    EXPECT_EQ(m->entry_computation()->root_instruction()->opcode(),
+              HloOpcode::kFusion)
+        << "Failed for opcode: " << op;
+  }
+
+  {
+    static constexpr absl::string_view hlo_string = R"(
+    HloModule m
+      ENTRY e {
+        p0 = s32[64,32] parameter(0)
+        p1 = s32[64,32] parameter(1)
+        ROOT r = s32[64,32] mulhi(p0, p1)
+      }
+    )";
+    ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
+                         ParseAndReturnVerifiedModule(hlo_string));
+    FusionWrapper wrapper(&target_machine_features_);
+    ASSERT_OK_AND_ASSIGN(bool changed, wrapper.Run(m.get()));
+    EXPECT_TRUE(changed) << "Failed for opcode: mulhi";
+    EXPECT_EQ(m->entry_computation()->root_instruction()->opcode(),
+              HloOpcode::kFusion);
+  }
+}
+
+TEST_F(FusionWrapperTest, SpecialOpcodesNotElemental) {
+  EXPECT_FALSE(IsElementalKernelOpcode(HloOpcode::kCopy));
+  EXPECT_FALSE(IsElementalKernelOpcode(HloOpcode::kConcatenate));
+  EXPECT_FALSE(IsElementalKernelOpcode(HloOpcode::kConvolution));
+  EXPECT_FALSE(IsElementalKernelOpcode(HloOpcode::kDot));
+  EXPECT_FALSE(IsElementalKernelOpcode(HloOpcode::kScatter));
+}
+
+TEST_F(FusionWrapperTest,
+       CopyWithMismatchedLayoutsWrappedWithNewFusionEmitters) {
+  static constexpr absl::string_view hlo_string = R"(
+  HloModule m
+    ENTRY e {
+      p0 = f32[64,32]{0,1} parameter(0)
+      ROOT copy = f32[64,32]{1,0} copy(p0)
+    }
+  )";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
+                       ParseAndReturnVerifiedModule(hlo_string));
+  FusionWrapper wrapper(&target_machine_features_);
+  EXPECT_TRUE(
+      wrapper.MustWrapInstruction(*m->entry_computation()->root_instruction()));
+}
+
+TEST_F(FusionWrapperTest,
+       ConcatenateWithMismatchedLayoutsWrappedWithNewFusionEmitters) {
+  static constexpr absl::string_view hlo_string = R"(
+  HloModule m
+    ENTRY e {
+      p0 = f32[64,32]{0,1} parameter(0)
+      p1 = f32[64,32]{0,1} parameter(1)
+      ROOT c = f32[128,32]{1,0} concatenate(p0, p1), dimensions={0}
+    }
+  )";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
+                       ParseAndReturnVerifiedModule(hlo_string));
+  FusionWrapper wrapper(&target_machine_features_);
+  EXPECT_TRUE(
+      wrapper.MustWrapInstruction(*m->entry_computation()->root_instruction()));
+}
+
+TEST_F(FusionWrapperTest, ConcatenateWithMatchingLayoutsNotWrapped) {
+  static constexpr absl::string_view hlo_string = R"(
+  HloModule m
+    ENTRY e {
+      p0 = f32[64,32]{0,1} parameter(0)
+      p1 = f32[64,32]{0,1} parameter(1)
+      ROOT c = f32[128,32]{0,1} concatenate(p0, p1), dimensions={0}
+    }
+  )";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
+                       ParseAndReturnVerifiedModule(hlo_string));
+  FusionWrapper wrapper(&target_machine_features_);
+  EXPECT_FALSE(
+      wrapper.MustWrapInstruction(*m->entry_computation()->root_instruction()));
+}
+
+TEST_F(FusionWrapperTest, NonEigenConvolutionWrappedWithNewFusionEmitters) {
+  static constexpr absl::string_view hlo_string = R"(
+  HloModule m
+    ENTRY e {
+      p0 = f32[1,8,8,3]{0,1,2,3} parameter(0)
+      p1 = f32[3,3,3,16]{3,2,1,0} parameter(1)
+      ROOT conv = f32[1,8,8,16]{3,2,1,0} convolution(p0, p1),
+        window={size=3x3 pad=1_1x1_1},
+        dim_labels=b01f_01io->b01f
+    }
+  )";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
+                       ParseAndReturnVerifiedModule(hlo_string));
+  FusionWrapper wrapper(&target_machine_features_);
+  EXPECT_TRUE(
+      wrapper.MustWrapInstruction(*m->entry_computation()->root_instruction()));
+}
+
+TEST_F(FusionWrapperTest, EigenConvolutionNotWrapped) {
+  static constexpr absl::string_view hlo_string = R"(
+  HloModule m
+    ENTRY e {
+      p0 = f32[1,8,8,3]{3,2,1,0} parameter(0)
+      p1 = f32[3,3,3,16]{3,2,1,0} parameter(1)
+      ROOT conv = f32[1,8,8,16]{3,2,1,0} convolution(p0, p1),
+        window={size=3x3 pad=1_1x1_1},
+        dim_labels=b01f_01io->b01f
+    }
+  )";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
+                       ParseAndReturnVerifiedModule(hlo_string));
+  FusionWrapper wrapper(&target_machine_features_);
+  EXPECT_FALSE(
+      wrapper.MustWrapInstruction(*m->entry_computation()->root_instruction()));
+}
+
+TEST_F(FusionWrapperTest, NonEigenConvolutionWrapped) {
+  static constexpr absl::string_view hlo_string = R"(
+  HloModule m
+    ENTRY e {
+      p0 = f32[3,3,64,64]{3,2,1,0} parameter(0)
+      p1 = f32[672,7,7,64]{3,2,1,0} parameter(1)
+      ROOT conv = f32[672,9,9,64]{3,2,1,0} convolution(p0, p1),
+        window={size=7x7 pad=6_6x6_6},
+        dim_labels=01bf_o01i->f01b
+    }
+  )";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
+                       ParseAndReturnVerifiedModule(hlo_string));
+  FusionWrapper wrapper(&target_machine_features_);
+  EXPECT_TRUE(
+      wrapper.MustWrapInstruction(*m->entry_computation()->root_instruction()));
 }
 
 }  // namespace

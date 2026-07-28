@@ -85,8 +85,12 @@ class ConcatenateKernelRunnerTest(parameterized.TestCase):
     emitter = cpu_testlib.ConcatenateKernelEmitter(
         hlo_module.get_root_instruction(),
         buffer_assignment,
-        jit_compiler.get_target_machine(),
     )
+
+    if cycle_layout:
+      with self.assertRaises(RuntimeError):
+        emitter.emit_kernel_definition()
+      return
 
     kernel_definition = emitter.emit_kernel_definition()
     self.assertIsNotNone(kernel_definition)

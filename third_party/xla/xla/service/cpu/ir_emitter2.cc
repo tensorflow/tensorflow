@@ -68,7 +68,6 @@ limitations under the License.
 #include "xla/service/cpu/dot_op_emitter.h"
 #include "xla/service/cpu/elemental_ir_emitter.h"
 #include "xla/service/cpu/ir_emitter.h"
-#include "xla/service/cpu/parallel_loop_emitter.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/llvm_ir/dynamic_update_slice_util.h"
 #include "xla/service/llvm_ir/fused_ir_emitter.h"
@@ -178,9 +177,7 @@ absl::StatusOr<IrEmitter2::KernelInfo> IrEmitter2::EmitPadHostKernel(
   auto builder_overwrite = nested_ir_emitter_->WithBuilder(b);
 
   nested_ir_emitter_->PushComputeFunction(
-      &b, module_,
-      /*num_dynamic_loop_bounds=*/0, kernel_prototype.function,
-      /*dynamic_loop_bounds_arg=*/nullptr, kernel_prototype.return_block);
+      &b, module_, kernel_prototype.function, kernel_prototype.return_block);
 
   RETURN_IF_ERROR(nested_ir_emitter_->HandlePad(
       const_cast<HloInstruction*>(pad), operand_array, padvalue_array,
@@ -190,57 +187,6 @@ absl::StatusOr<IrEmitter2::KernelInfo> IrEmitter2::EmitPadHostKernel(
 
   return kernels_.emplace_back(
       KernelInfo(std::move(kernel_prototype), se::BlockDim(), se::ThreadDim()));
-}
-
-absl::StatusOr<IrEmitter2::KernelInfo> IrEmitter2::EmitFusionHostKernel(
-    const HloFusionInstruction* fusion) {
-  VLOG(2) << "Emit fusion host kernel: " << fusion->name();
-
-  // In XLA:CPU output fusion can only be a fusion into dot operation.
-  if (fusion->fusion_kind() == HloInstruction::FusionKind::kOutput) {
-    return EmitDotFusionHostKernel(fusion);
-  }
-
-  if (fusion->fusion_kind() != HloInstruction::FusionKind::kLoop) {
-    return Internal("Unsupported fusion kind for instruction: %s",
-                    fusion->ToString());
-  }
-
-  ASSIGN_OR_RETURN(KernelPrototype kernel_prototype,
-                   EmitKernelPrototype(fusion));
-
-  llvm::IRBuilder<> b(module_->getContext());
-  b.SetInsertPoint(kernel_prototype.function->getEntryBlock().getTerminator());
-
-  IrEmitter::IRBuilderGuard builder_guard = nested_ir_emitter_->WithBuilder(b);
-
-  HloComputation* nested_computation = fusion->fused_instructions_computation();
-  RETURN_IF_ERROR(nested_ir_emitter_
-                      ->EmitNestedComputation(*nested_computation,
-                                              llvm_ir::IrName(fusion), false)
-                      .status());
-
-  CpuElementalIrEmitter elemental_emitter = ElementalIrEmmiterFactory(&b);
-
-  FusedIrEmitter fused_emitter(elemental_emitter);
-  for (int i = 0; i < fusion->operand_count(); i++) {
-    fused_emitter.BindGenerator(
-        *fusion->fused_parameter(i), [&, i](llvm_ir::IrArray::Index idx) {
-          return kernel_prototype.arguments[i].EmitReadArrayElement(idx, &b);
-        });
-  }
-
-  // Emit plain elemental loops for the fusion operation.
-  ASSIGN_OR_RETURN(
-      auto element_generator,
-      fused_emitter.GetGenerator(*fusion->fused_expression_root()));
-
-  ASSIGN_OR_RETURN(
-      se::ThreadDim thread_dims,
-      EmitElementalLoops(b, fusion, kernel_prototype, element_generator));
-
-  return kernels_.emplace_back(
-      KernelInfo(std::move(kernel_prototype), se::BlockDim(), thread_dims));
 }
 
 // Dot (fusion) host kernel only supports strategies that emit LLVM IR.
@@ -380,139 +326,6 @@ absl::StatusOr<IrEmitter2::KernelPrototype> IrEmitter2::EmitKernelPrototype(
     const HloInstruction* instr) {
   return kernel_api_ir_builder_.EmitKernelPrototype(
       *module_, instr, &nested_ir_emitter_->assignment(), "ir_emitter2");
-}
-
-std::optional<IrEmitter2::ParallelConfig> IrEmitter2::GetParallelConfig(
-    const HloInstruction* instr) {
-  // Check if the instruction is marked for parallel execution.
-  auto backend_config = instr->backend_config<BackendConfig>();
-  if (!backend_config.ok() ||
-      backend_config->outer_dimension_partitions().empty()) {
-    return std::nullopt;
-  }
-
-  ParallelConfig config;
-  config.outer_dimension_partitions.assign(
-      backend_config->outer_dimension_partitions().begin(),
-      backend_config->outer_dimension_partitions().end());
-
-  return config;
-}
-
-IrEmitter2::ParallelPartitionBounds IrEmitter2::EmitParallelPartitionBounds(
-    llvm::IRBuilderBase& b, const KernelPrototype& kernel_prototype,
-    const ParallelConfig& parallel_config, const Shape& shape,
-    absl::string_view name) {
-  ShapePartitionIterator it(shape, parallel_config.outer_dimension_partitions);
-
-  size_t num_parallel_dimensions =
-      parallel_config.outer_dimension_partitions.size();
-
-  // Create a constant array of all partition bounds. We will be indexing into
-  // this array using block and thread dimension indices passed in a call frame.
-  //
-  // Type: [#partitions x [#outer_dimensions x [lower_bound, upper_bound]]]
-  //
-  llvm::ArrayType* dim_bounds_ty = llvm::ArrayType::get(b.getInt64Ty(), 2);
-  llvm::ArrayType* partition_bounds_ty =
-      llvm::ArrayType::get(dim_bounds_ty, num_parallel_dimensions);
-  llvm::ArrayType* parallel_bounds_ty =
-      llvm::ArrayType::get(partition_bounds_ty, it.GetTotalPartitionCount());
-
-  // Build a nested array of partition bounds from shape partition iterator.
-  std::vector<llvm::Constant*> partition_bounds;
-  for (int64_t i = 0; i < it.GetTotalPartitionCount(); ++i) {
-    std::vector<llvm::Constant*> dim_counts;
-    for (auto [lower, size] : it.GetPartition(i)) {
-      dim_counts.push_back(llvm::ConstantArray::get(
-          dim_bounds_ty, {b.getInt64(lower), b.getInt64(lower + size)}));
-    }
-    partition_bounds.push_back(
-        llvm::ConstantArray::get(partition_bounds_ty, dim_counts));
-  }
-
-  llvm::Constant* parallel_bounds =
-      llvm::ConstantArray::get(parallel_bounds_ty, partition_bounds);
-
-  llvm::Module* module = b.GetInsertBlock()->getParent()->getParent();
-  llvm::GlobalVariable* parallel_bounds_global = new llvm::GlobalVariable(
-      /*M=*/*module,
-      /*Ty=*/parallel_bounds_ty,
-      /*isConstant=*/true,
-      /*Linkage=*/llvm::GlobalValue::PrivateLinkage,
-      /*Initializer=*/parallel_bounds,
-      /*Name=*/absl::StrCat(name, "_parallel_bounds"));
-
-  // Construct IR to load bounds for all parallel dimensions.
-  ParallelPartitionBounds bounds;
-  for (size_t i = 0; i < num_parallel_dimensions; ++i) {
-    llvm::Value* partition = kernel_prototype.workgroup_id.x;
-    llvm::Value* parallel_dim = b.getInt32(i);
-
-    llvm::Value* lower_gep = b.CreateInBoundsGEP(
-        parallel_bounds_ty, parallel_bounds_global,
-        {b.getInt32(0), partition, parallel_dim, b.getInt32(0)},
-        absl::StrCat("lo_dim_", i, "_gep"));
-
-    llvm::Value* upper_gep = b.CreateInBoundsGEP(
-        parallel_bounds_ty, parallel_bounds_global,
-        {b.getInt32(0), partition, parallel_dim, b.getInt32(1)},
-        absl::StrCat("up_dim_", i, "_gep"));
-
-    bounds.emplace_back(
-        b.CreateLoad(b.getInt64Ty(), lower_gep, absl::StrCat("lo_dim_", i)),
-        b.CreateLoad(b.getInt64Ty(), upper_gep, absl::StrCat("up_dim_", i)));
-  }
-
-  return bounds;
-}
-
-absl::StatusOr<se::ThreadDim> IrEmitter2::EmitElementalLoops(
-    llvm::IRBuilderBase& b, const HloInstruction* instr,
-    const KernelPrototype& kernel_prototype,
-    const llvm_ir::ElementGenerator& element_generator) {
-  // We can emit loops for instruction with multiple results only if it is a
-  // fusion, reduce or reduce window.
-  bool multiple_results = kernel_prototype.results.size() > 1;
-  bool support_multiple_results = instr->opcode() == HloOpcode::kFusion ||
-                                  instr->opcode() == HloOpcode::kReduce ||
-                                  instr->opcode() == HloOpcode::kReduceWindow;
-
-  auto parallel_config = GetParallelConfig(instr);
-  bool has_parallel_config = parallel_config.has_value();
-
-  if (multiple_results && !support_multiple_results) {
-    return Internal(
-        "Multi-output host kernels are not supported for %s instruction",
-        HloOpcodeString(instr->opcode()));
-  }
-
-  // TODO(ezhulenev): Support multiple results for parallel loops.
-  if (multiple_results) {
-    RETURN_IF_ERROR(
-        llvm_ir::LoopEmitter(element_generator, kernel_prototype.results, &b)
-            .EmitLoop(llvm_ir::IrName(instr)));
-    return se::ThreadDim();
-  }
-
-  const llvm_ir::IrArray& result = kernel_prototype.results.front();
-
-  // Emit a loop for a single parallel partition with dynamic bounds computed
-  // from thread index.
-  if (has_parallel_config) {
-    ParallelPartitionBounds parallel_bounds = EmitParallelPartitionBounds(
-        b, kernel_prototype, *parallel_config, instr->shape(), instr->name());
-    RETURN_IF_ERROR(
-        ParallelLoopEmitter(element_generator, result, &parallel_bounds, &b)
-            .EmitLoop(llvm_ir::IrName(instr)));
-    return se::ThreadDim(ShapePartitionAssigner::GetTotalPartitionCount(
-        parallel_config->outer_dimension_partitions));
-  }
-
-  // Emit a whole loop for the instruction.
-  RETURN_IF_ERROR(llvm_ir::LoopEmitter(element_generator, result, &b)
-                      .EmitLoop(llvm_ir::IrName(instr)));
-  return se::ThreadDim();
 }
 
 // This is a convenience function taken from IrEmitter, it uses module_ class

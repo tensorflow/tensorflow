@@ -142,12 +142,11 @@ TEST_F(IrEmitterTest, ComputeFuncStack) {
   const auto linkagetype = llvm::GlobalValue::LinkageTypes::ExternalLinkage;
   const HloModuleConfig module_config;
   ir_emitter.PushComputeFunction(funcname, linkagetype, module_config,
-                                 module.get(), 0);
+                                 module.get());
   ASSERT_EQ(ir_emitter.compute_function()->function()->getName().str(),
             funcname);
 
-  ir_emitter.PushComputeFunction(b, module.get(), 0, function, nullptr,
-                                 return_block);
+  ir_emitter.PushComputeFunction(b, module.get(), function, return_block);
   ASSERT_EQ(ir_emitter.compute_function()->function(), function);
 
   ir_emitter.PopComputeFunction();

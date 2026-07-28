@@ -65,9 +65,7 @@ TEST_F(CpuCompilerInternalsTest, DotRootedLoopFusionRoutesToMlirEmitter) {
   )";
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> hlo_module,
                        ParseAndReturnVerifiedModule(kDotFusionHlo));
-  if (!options::UseExperimentalLoopFusion(hlo_module->config())) {
-    GTEST_SKIP() << "Test covers the new-fusion-emitter configuration.";
-  }
+
   const auto* fusion = Cast<HloFusionInstruction>(
       hlo_module->entry_computation()->root_instruction());
   EXPECT_TRUE(FusionRoutesToMlirEmitter(hlo_module->config(), fusion));
@@ -87,9 +85,7 @@ TEST_F(CpuCompilerInternalsTest, LoopFusionRoutesToMlirEmitter) {
   )";
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> hlo_module,
                        ParseAndReturnVerifiedModule(kLoopFusionHlo));
-  if (!options::UseExperimentalLoopFusion(hlo_module->config())) {
-    GTEST_SKIP() << "Test covers the new-fusion-emitter configuration.";
-  }
+
   const auto* fusion = Cast<HloFusionInstruction>(
       hlo_module->entry_computation()->root_instruction());
   EXPECT_TRUE(FusionRoutesToMlirEmitter(hlo_module->config(), fusion));

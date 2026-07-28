@@ -23,11 +23,20 @@ limitations under the License.
 #include "llvm/IR/Value.h"
 #include "xla/backends/cpu/codegen/target_machine_features.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 
 namespace xla {
 namespace cpu {
 
+// Returns true if the opcode is implemented primarily via an elemental kernel
+// loop.
+bool IsElementalKernelOpcode(HloOpcode opcode);
+
 bool PotentiallyImplementedAsEigenConvolution(
+    const HloInstruction& convolution,
+    const TargetMachineFeatures& target_machine_features);
+
+bool CanUseEigenConvolution(
     const HloInstruction& convolution,
     const TargetMachineFeatures& target_machine_features);
 
@@ -35,18 +44,6 @@ bool PotentiallyImplementedAsEigenConvolution(
 // the target machine.
 int64_t GetMinimumAlignmentForArray(
     const Shape& shape, const TargetMachineFeatures& target_machine_features);
-
-// Dynamic loop bounds are specified as an array of dimension index
-// [start, limit) pairs of ir values (one for each partitioned outer dimension).
-//
-// EX: Let 'shape' = [8, 16, 32], with the loop bounds of the two-most major
-//     dimensions dynamic. Then 'dynamic_loop_bounds' will contain the
-//     following ir values for the two most-major dimensions:
-//       [dim0_index_start_ir_value, dim0_index_limit_ir_value]
-//       [dim1_index_start_ir_value, dim1_index_limit_ir_value]
-//
-// See IrFunction and ParallelLoopEmitter for details.
-using DynamicLoopBounds = std::vector<std::pair<llvm::Value*, llvm::Value*>>;
 
 }  // namespace cpu
 }  // namespace xla

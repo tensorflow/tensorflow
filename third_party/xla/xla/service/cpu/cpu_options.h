@@ -44,8 +44,6 @@ inline constexpr absl::string_view kFoldAllConstants =
     "xla_cpu_fold_all_constants";
 inline constexpr absl::string_view kSmallWhileLoopByteThreshold =
     "xla_cpu_small_while_loop_byte_threshold";
-inline constexpr absl::string_view kDisableNewFusionEmitters =
-    "xla_cpu_disable_new_fusion_emitters";
 inline constexpr absl::string_view kFlattenAfterFusion =
     "xla_cpu_flatten_after_fusion";
 inline constexpr absl::string_view kUseMultiOutputFusion =
@@ -69,7 +67,6 @@ std::optional<std::tuple<int64_t, int64_t, int64_t>> LlvmIrGemmTileSize(
     const HloModuleConfig& config);
 absl::StatusOr<int64_t> SmallWhileLoopByteThreshold(
     const HloModuleConfig& config);
-bool UseExperimentalLoopFusion(const HloModuleConfig& config);
 bool FlattenAfterFusion(const HloModuleConfig& config);
 bool UseMultiOutputFusion(const HloModuleConfig& config);
 bool EnableTiledEmitter(const HloModuleConfig& config);

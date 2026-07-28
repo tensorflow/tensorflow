@@ -237,11 +237,25 @@ Shape GetShape(Value value) {
                                       new_num_dims, num_symbols)] = val;
   }
 
+  SmallVector<bool> window_reversal;
+  if (conv.getWindowReversal().has_value()) {
+    for (bool val : *conv.getWindowReversal()) {
+      window_reversal.push_back(val);
+    }
+  } else {
+    window_reversal.assign(spatial_rank, false);
+  }
+
   // Build symbolic expressions for kernel spatial and output dimensions.
   llvm::SmallVector<SymbolicExpr> kernel_exprs(rank);
   for (int i = 0; i < spatial_rank; ++i) {
-    kernel_exprs[dnums.getKernelSpatialDimensions()[i]] =
-        CreateSymbolExpr(i, rank, context);
+    SymbolicExpr kernel_index = CreateSymbolExpr(i, rank, context);
+    if (window_reversal[i]) {
+      kernel_index =
+          CreateSymbolicConstant(kernel_spatial_sizes[i] - 1, context) -
+          kernel_index;
+    }
+    kernel_exprs[dnums.getKernelSpatialDimensions()[i]] = kernel_index;
   }
   SymbolicExpr dim_expr =
       CreateDimExpr(dnums.getOutputFeatureDimension(), context);
