@@ -1,4 +1,3 @@
-#include "absl/container/linked_hash_map.h"
 /* Copyright 2024 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -20,6 +19,7 @@ limitations under the License.
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
+#include <limits>
 #include <list>
 #include <map>
 #include <memory>
@@ -36,10 +36,10 @@ limitations under the License.
 #endif
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/container/linked_hash_map.h"
 #include "absl/hash/hash.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/hlo/analysis/alias_info.h"
@@ -47,6 +47,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/utils/hlo_live_range.h"
 #include "xla/service/call_graph.h"
+#include "xla/service/decision.h"
 #include "xla/service/heap_simulator/allocation_block.h"
 #include "xla/service/heap_simulator/heap_simulator.h"
 #include "xla/service/hlo.pb.h"
@@ -54,6 +55,7 @@ limitations under the License.
 #include "xla/service/hlo_value.h"
 #include "xla/service/memory_space_assignment/allocation.h"
 #include "xla/service/memory_space_assignment/allocation_value.h"
+#include "xla/service/memory_space_assignment/live_range_util.h"
 #include "xla/service/memory_space_assignment/memory_space_assignment.pb.h"
 #include "xla/service/memory_space_assignment/options.h"
 #include "xla/service/memory_space_assignment/slice.h"
@@ -416,24 +418,13 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
   absl::Status AllocateAndScheduleExistingBlockPrefetches(
       int64_t block_prefetching_starting_offset);
 
-  // Create, allocate and schedule new block prefetches.
+  // Create, allocate and schedule new block prefetches, by adding async copies
+  // or asyncifying DMA ops like slice, dynamic-slice.
   //
   // REQUIRED: Scoped vmem must be allocated at offset 0 at the time this method
   //           is called.
   absl::Status CreateNewBlockPrefetches(
       int64_t block_prefetching_starting_offset);
-
-  // Creates colocated allocations for values aliased to the new block
-  // prefetches and finalizes them.
-  void ColocateAndFinalizeValuesAliasedToNewBlockPrefetches(
-      const HloValue* maybe_sliced_value, const HloBuffer& buffer,
-      const Chunk& chunk_candidate, int64_t buffer_size,
-      AllocationBlock* first_colocated_repack_allocation,
-      const absl::flat_hash_map<const HloInstruction*, int64_t>&
-          instruction_schedule,
-      const absl::flat_hash_map<const HloValue*, UseInterval>&
-          value_to_use_intervals,
-      std::vector<int64_t>& prefetch_end_times);
 
   // Creates colocated allocations for values aliased to existing block
   // prefetches and finalizes them.
@@ -470,6 +461,15 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
       int64_t max_in_flight_prefetches_allowed,
       std::vector<int64_t>& copy_done_schedule_before_times,
       std::vector<int64_t>& block_prefetch_allocation_end_times);
+
+  // Calculates the latest schedule time of the non-constant source operands of
+  // an instruction, ensuring prefetching does not start before inputs are
+  // available. Returns std::nullopt if there are no non-constant source
+  // operands.
+  std::optional<int64_t> GetLatestSourceOperandScheduleTime(
+      HloInstruction* instruction,
+      const absl::flat_hash_map<const HloInstruction*, int64_t>&
+          instruction_schedule) const;
 
  protected:
   // Given a buffer interval, returns the colocated intervals. Unlike the
@@ -560,6 +560,187 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
     std::string ToString() const;
     static std::string SourceToString(Source source);
   };
+
+  enum class BlockPrefetchCategory {
+    // Buffer must be pinned to default memory.
+    kPinToDefaultMemory,
+    // Buffer will be block prefetched only (no asyncification, e.g. program
+    // input).
+    kBlockPrefetchOnly,
+    // Buffer will be block prefetching and asyncified.
+    kAsyncConversionCandidate,
+  };
+
+  // Metadata associated with a block prefetching async conversion candidate.
+  struct AsyncConversionMetadata {
+    // The source HloBuffer of the async conversion candidate instruction.
+    const HloBuffer* source_buffer = nullptr;
+    // The non-trivial HloPosition corresponding to the source buffer operand.
+    HloPosition non_trivial_source_position;
+  };
+
+  // Encapsulates the results of analyzing all candidate positions for block
+  // prefetching. This analysis is a subcomponent of the BlockPrefetchContext.
+  // See BuildBlockPrefetchingContext() for more details.
+  struct BlockPrefetchCandidateAnalysis {
+    // Map from buffer to its block prefetch category.
+    absl::flat_hash_map<const HloBuffer*, BlockPrefetchCategory>
+        buffer_categories;
+    // Map from candidate buffer to its async conversion metadata.
+    absl::flat_hash_map<const HloBuffer*, AsyncConversionMetadata>
+        async_candidate_metadata;
+    // Map from buffer to its earliest defining HloValue.
+    absl::flat_hash_map<const HloBuffer*, const HloValue*>
+        buffer_to_first_defining_value;
+  };
+
+  // This context contains initial block prefetching candidate analysis, and
+  // some other data structures used during the implementation of block
+  // prefetching.
+  struct BlockPrefetchContext {
+    // Initial analysis and categorization of candidate positions.
+    const BlockPrefetchCandidateAnalysis initial_analysis;
+    // List of candidate buffers sorted by their first use time and ID.
+    std::vector<const HloBuffer*> block_prefetched_buffers_list;
+    // Map from candidate buffer to its earliest use time in the schedule.
+    absl::flat_hash_map<const HloBuffer*, int64_t> buffer_to_first_use_time;
+    // Set of instructions that are async conversion candidates.
+    absl::flat_hash_set<const HloInstruction*>
+        async_conv_candidate_instructions;
+  };
+
+  // Struct representing the result of analyzing uses for a block prefetch
+  // candidate.
+  struct BlockPrefetchCandidateUseAnalysis {
+    int64_t first_use_time = std::numeric_limits<int64_t>::max();
+    bool all_uses_allowed_in_alternate_memory = true;
+  };
+
+  // Encapsulates the block prefetch scheduling state that is maintained across
+  // iterations during CreateNewBlockPrefetches.
+  struct BlockPrefetchSchedulingState {
+    // Map from a buffer's defining source position (or async candidate
+    // position) to its pinned allocation in default memory, serving as the
+    // parent allocation for copies.
+    absl::flat_hash_map<HloPosition, Allocation*>
+        buffer_defining_source_position_to_pinned_allocation;
+    // Sorted list of end times of currently active block prefetches, used to
+    // compute outstanding prefetches.
+    std::vector<int64_t> buffer_end_times;
+    // List of target times by which outstanding prefetches must complete.
+    std::vector<int64_t> prefetch_done_schedule_before_times;
+    // The start time of the previously scheduled prefetch, used to enforce
+    // FIFO ordering.
+    int64_t previous_start_time = -1;
+  };
+
+  // Builds the BlockPrefetchContext by running a 4-stage pipeline that
+  // categorizes block prefetching candidates and builds necessary data
+  // structures for executing on block prefetching.
+  //
+  // Stage 1: InitializeBlockPrefetchCandidateAnalysis()
+  //   Identifies candidate buffers from options_.block_prefetched_positions,
+  //   categorizes them (BlockPrefetchCategory), and extracts initial metadata.
+  // Stage 2: FilterAsyncConversionCandidates()
+  //   Evaluates async conversion candidate buffers against source/destination
+  //   DMA constraints to prevent alternate-memory to alternate-memory copies.
+  //   Demotes failing candidates to kPinToDefaultMemory. May also impose
+  //   kPinToDefaultMemory on sources to the async conversion candidates.
+  // Stage 3: FilterBlockPrefetchCandidatesByUseConstraints()
+  //   Evaluates candidate buffers against alternate memory use compatibility
+  //   and middle data movement positions. Demotes non-compliant candidates to
+  //   kPinToDefaultMemory.
+  // Stage 4: BuildBlockPrefetchingContextHelper()
+  //   Collects all non-demoted candidate buffers, computes their earliest use
+  //   times, sorts them by (first_use_time, buffer_id) for deterministic
+  //   scheduling order, and constructs the final BlockPrefetchContext.
+  const BlockPrefetchContext BuildBlockPrefetchingContext(
+      const absl::flat_hash_map<const HloInstruction*, int64_t>&
+          instruction_schedule) const;
+  BlockPrefetchCandidateAnalysis InitializeBlockPrefetchCandidateAnalysis(
+      const absl::flat_hash_map<const HloInstruction*, int64_t>&
+          instruction_schedule) const;
+  void FilterAsyncConversionCandidates(
+      BlockPrefetchCandidateAnalysis& initial_analysis) const;
+  void FilterBlockPrefetchCandidatesByUseConstraints(
+      BlockPrefetchCandidateAnalysis& initial_analysis,
+      const absl::flat_hash_map<const HloInstruction*, int64_t>&
+          instruction_schedule) const;
+  BlockPrefetchContext BuildBlockPrefetchingContextHelper(
+      BlockPrefetchCandidateAnalysis initial_analysis,
+      const absl::flat_hash_map<const HloInstruction*, int64_t>&
+          instruction_schedule) const;
+
+  const HloBuffer* GetScheduledBuffer(
+      const HloPosition& position,
+      const absl::flat_hash_map<const HloInstruction*, int64_t>&
+          instruction_schedule) const;
+
+  BlockPrefetchCategory ClassifyBlockPrefetchBuffer(
+      const HloBuffer* buffer, const HloValue* first_defining_value) const;
+
+  AsyncConversionMetadata ComputeBlockPrefetchingAsyncConversionMetadata(
+      HloInstruction* first_instruction,
+      const absl::flat_hash_map<const HloInstruction*, int64_t>&
+          instruction_schedule) const;
+
+  BlockPrefetchCandidateUseAnalysis ComputeBlockPrefetchCandidateUseAnalysis(
+      const HloBuffer* buffer,
+      const absl::flat_hash_map<const HloInstruction*, int64_t>&
+          instruction_schedule,
+      const absl::flat_hash_set<const HloInstruction*>&
+          async_conv_candidate_instructions) const;
+
+  bool HasDataMovementPositionsInMiddle(
+      const HloBuffer* buffer, const HloInstruction* first_instruction) const;
+
+  // Attempts to allocate and schedule a block prefetch for a single buffer.
+  absl::StatusOr<Decision> BlockPrefetchBuffer(
+      const HloBuffer* buffer, const HloValue* first_defining_value,
+      bool is_async_conversion_candidate,
+      std::optional<HloPosition> async_non_trivial_source_position,
+      int64_t first_use_time,
+      const absl::flat_hash_map<const HloInstruction*, int64_t>&
+          instruction_schedule,
+      int64_t block_prefetching_limit_bytes,
+      int64_t max_in_flight_prefetches_allowed,
+      const absl::flat_hash_set<const HloInstruction*>&
+          async_conv_candidate_instructions,
+      BlockPrefetchSchedulingState& scheduling_state);
+
+  // Helper method for BlockPrefetchBuffer() to create or extend a pinned
+  // allocation in default memory for an HloPosition.
+  Allocation* CreatePinnedAllocationInDefaultMemory(
+      HloPosition position, int64_t first_use_time,
+      const absl::flat_hash_map<const HloInstruction*, int64_t>&
+          instruction_schedule,
+      BlockPrefetchSchedulingState& scheduling_state,
+      AllocationSequence& allocations);
+
+  // Helper method for BlockPrefetchBuffer() to create pinned allocations in
+  // alternate memory for HloPositions.
+  void CreatePinnedAllocationsInAltMemoryForPositions(
+      absl::Span<const HloPosition> positions, const Chunk& chunk_candidate,
+      const absl::flat_hash_map<HloPosition, LiveRange>& position_to_live_range,
+      const absl::flat_hash_map<HloPosition, std::vector<const HloUse*>>&
+          position_to_uses,
+      const absl::flat_hash_set<const HloInstruction*>&
+          async_conv_candidate_instructions,
+      AllocationSequence& allocations,
+      std::vector<AllocationBlock*>& colocations);
+
+  // Helper method for BlockPrefetchBuffer() to create mirrored allocations in
+  // alternate memory for HloPositions.
+  void CreateMirroredAllocationsInAlternateMemory(
+      absl::Span<const HloPosition> positions,
+      const LiveRangeCalculator& calculator,
+      const absl::flat_hash_map<const HloInstruction*, int64_t>&
+          instruction_schedule,
+      const absl::flat_hash_map<HloPosition, std::vector<const HloUse*>>&
+          position_to_uses,
+      const absl::flat_hash_set<const HloInstruction*>&
+          async_conv_candidate_instructions,
+      AllocationSequence& allocations);
 
   // A struct that contains a pointer to loop-optimized allocation along with
   // essential data about the loop itself.
@@ -766,7 +947,11 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
     kFailedNotProcessed = 16,
     kFailedGaveUp = 32,
     kAsyncConversionNotAllowedForColoredBuffer = 64,
+    kSourceBufferInAlternateMemory = 128,
   };
+
+  AsyncConversionResult IsAsyncCustomFusionConversionCandidate(
+      const HloInstruction* instruction) const;
 
   AsyncConversionResult IsAsyncConversionSliceCandidate(
       const HloInstruction* instruction) const;
@@ -1181,7 +1366,8 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
       std::optional<int> cross_program_prefetch_index = std::nullopt,
       HloInstruction* sync_mem_op = nullptr,
       HloInstruction* async_mem_op_start = nullptr,
-      HloInstruction* async_mem_op_done = nullptr);
+      HloInstruction* async_mem_op_done = nullptr,
+      int64_t source_operand_index = 0);
 
   // For prefetching, adds a SlicedCopyAllocation to allocations. Also updates
   // asynchronous copy data structures, prefetch_interval_tree_, and aliasing
@@ -1314,6 +1500,16 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
   bool IsIntervalPinnedToAlternateMemory(
       const MsaBufferInterval& interval) const;
 
+  // Returns true if the buffer is aliased to the program output. If so, we
+  // cannot prefetch the buffer into Vmem.
+  bool IsBufferAliasedToProgramOutput(const HloBuffer* buffer) const;
+
+  // Returns true if the value has at least one use which is not an async
+  // conversion candidate. In other words, a false return value implies there
+  // are no uses that would benefit from a copy of the HloValue in Vmem.
+  bool DoesValueHaveNonAsyncConversionCandidateUses(
+      const HloValue* value) const;
+
   // A convenience debugging method that returns true if the prefetch context
   // matches the described producer and consumer.
   bool MatchesPrefetchContext(const PrefetchContext& context,
@@ -1422,6 +1618,8 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
   bool IsValueFinalized(const HloValue* value) const {
     return finalized_values_.contains(value);
   }
+
+  bool IsBlockPrefetchingEnabled() const;
 
   HloModule* module_ = nullptr;
   AllocationSequence* allocations_;
