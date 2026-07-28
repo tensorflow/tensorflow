@@ -1233,6 +1233,27 @@ class BufferPatternBase {
     return BufferPatternBase<WithDTypeSet, Ranks>(*this);
   }
 
+  // Constrains the complete shape to match `buffer`.
+  template <typename Buffer>
+  auto WithShapeOf(Buffer buffer) const {
+    using Pattern = BufferPatternBase<DTypes, RankSet<>>;
+    Pattern pattern(*this);
+    auto dimensions = buffer.dimensions();
+    pattern.rank_ = dimensions.size();
+    pattern.dimensions_.assign(dimensions.begin(), dimensions.end());
+    return pattern;
+  }
+
+  // Constrains the dtype and complete shape to match `buffer`.
+  template <typename Buffer>
+  auto Like(Buffer buffer) const {
+    auto shape = WithShapeOf(buffer);
+    using Pattern = BufferPatternBase<DTypeSet<DType>, RankSet<>>;
+    Pattern pattern(shape);
+    pattern.dtype_ = buffer.element_type();
+    return pattern;
+  }
+
   // Constrains every dimension positionally and deduces the type-level rank
   // from the number of arguments.
   template <typename... Args,
@@ -1266,8 +1287,19 @@ class BufferPatternBase {
       return false;
     }
 
+    if (dtype_.has_value() && buffer.element_type() != *dtype_) {
+      os << "expected dtype " << ValuePrinter<DType>{*dtype_} << " but got "
+         << ValuePrinter<DType>{buffer.element_type()};
+      return false;
+    }
+
     auto dimensions = buffer.dimensions();
     if (!RankValues<Ranks>::Match(dimensions.size(), os)) {
+      return false;
+    }
+
+    if (rank_.has_value() && dimensions.size() != *rank_) {
+      os << "expected rank " << *rank_ << " but got " << dimensions.size();
       return false;
     }
 
@@ -1319,9 +1351,15 @@ class BufferPatternBase {
       os << " with ";
       DTypeValues<DTypes>::DescribeTo(os);
     }
+    if (dtype_.has_value()) {
+      os << " with dtype " << ValuePrinter<DType>{*dtype_};
+    }
     if (!RankValues<Ranks>::empty()) {
       os << " with ";
       RankValues<Ranks>::DescribeTo(os);
+    }
+    if (rank_.has_value()) {
+      os << " with rank " << *rank_;
     }
     if (!dimensions_.empty()) {
       os << " with dimensions [";
@@ -1342,8 +1380,23 @@ class BufferPatternBase {
   template <typename OtherDTypes, typename OtherRanks>
   explicit BufferPatternBase(
       const BufferPatternBase<OtherDTypes, OtherRanks>& other)
-      : dimensions_(other.dimensions_) {}
+      : dtype_(other.dtype_),
+        rank_(other.rank_),
+        dimensions_(other.dimensions_) {
+    // A constraint has either a type-level or runtime representation, never
+    // both. Type-changing modifiers replace the corresponding runtime value.
+    if constexpr (DTypes::size() != 0) {
+      dtype_.reset();
+    }
+    if constexpr (Ranks::size() != 0) {
+      rank_.reset();
+    }
+  }
 
+  // Runtime constraints copied from another buffer. Each is present only when
+  // the corresponding type-level set is empty.
+  std::optional<DType> dtype_;
+  std::optional<size_t> rank_;
   // Positional dimension constraints. Unconstrained positions (the gaps left by
   // WithDim) hold a catch-all DimPattern that matches any extent.
   std::vector<DimPattern> dimensions_;

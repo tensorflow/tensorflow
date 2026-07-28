@@ -154,14 +154,15 @@ absl::Status BackupBuffers(size_t num_buffers, se::Stream* stream,
     return absl::InternalError("Mismatch in backup buffer count");
   }
   for (size_t i = 0; i < num_buffers; ++i) {
-    ASSIGN_OR_RETURN(auto active_buf,
-                     remaining_args.get<xla::ffi::AnyBuffer>(i));
+    ASSIGN_OR_RETURN(auto active_buf, remaining_args.get<ffi::BufferR1<U8>>(i));
     ASSIGN_OR_RETURN(auto backup_buf,
-                     remaining_args.get<xla::ffi::AnyBuffer>(num_buffers + i));
+                     remaining_args.get<ffi::BufferR1<U8>>(num_buffers + i));
+
+    RETURN_IF_ERROR(
+        xla::ffi::Verify("backup", backup_buf,
+                         xla::ffi::match::Buffer().WithShapeOf(active_buf)));
+
     if (active_buf.size_bytes() == 0) continue;
-    if (active_buf.size_bytes() != backup_buf.size_bytes()) {
-      return absl::InternalError("Backup buffer size mismatch");
-    }
     se::DeviceMemoryBase active_ptr(
         const_cast<void*>(active_buf.untyped_data()), active_buf.size_bytes());
     se::DeviceMemoryBase backup_ptr(
@@ -229,7 +230,7 @@ absl::Status DumpHloSnapshot(
               size_t backup_arg_index = it->second;
               ASSIGN_OR_RETURN(
                   auto backup_buf,
-                  remaining_args.get<xla::ffi::AnyBuffer>(backup_arg_index));
+                  remaining_args.get<ffi::BufferR1<U8>>(backup_arg_index));
               if (backup_buf.size_bytes() < any_buf.size_bytes()) {
                 return absl::InternalError("Backup buffer size mismatch");
               }
@@ -299,8 +300,7 @@ absl::Status FloatCheckCrashDump(
         backup_index_map,
     const HloInstruction* absl_nonnull instr,
     std::vector<BufferAllocation::Slice> operand_slices, se::Stream* stream,
-    xla::ffi::Buffer<PrimitiveType::U8> log_buffer,
-    xla::ffi::RemainingArgs remaining_args) {
+    ffi::BufferR1<U8> log_buffer, xla::ffi::RemainingArgs remaining_args) {
   auto buffer_debug_log = se::gpu::BufferDebugLog<BufferDebugFloatCheckEntry>::
       FromDeviceAddressUnchecked(log_buffer.device_memory());
   ASSIGN_OR_RETURN(std::vector<BufferDebugFloatCheckEntry> entries,
@@ -478,7 +478,7 @@ absl::StatusOr<std::unique_ptr<Thunk>> WrapWithSyncDumpThunk(
   dump_bundle.execute =
       xla::ffi::Ffi::Bind()
           .Ctx<xla::ffi::Stream>()
-          .Arg<xla::ffi::Buffer<PrimitiveType::U8>>()
+          .Arg<ffi::BufferR1<U8>>()
           .RemainingArgs()
           .To(absl::bind_front(FloatCheckCrashDump, profile_annotation,
                                std::move(backup_index_map), instr,
@@ -682,7 +682,7 @@ EnabledChecks GetEnabledChecks(const HloModule* absl_nonnull hlo_module) {
 absl::Status BufferDebugFloatCheck(
     std::shared_ptr<BufferDebugLogEntryMetadataStore> metadata_store,
     se::Stream* stream, const HloComputation* absl_nonnull hlo_computation,
-    xla::ffi::Buffer<PrimitiveType::U8> log_buffer) {
+    ffi::BufferR1<U8> log_buffer) {
   VLOG(1) << "HLO computation ptr: " << hlo_computation;
   const HloModule* hlo_module = hlo_computation->parent();
   VLOG(1) << "HLO module ptr: " << hlo_module;
@@ -741,15 +741,12 @@ absl::Status BufferDebugFloatCheck(
 
 XLA_FFI_DEFINE_HANDLER_SYMBOL(
     kBufferDebugFloatCheckLogInitHandler,
-    [](se::Stream* absl_nonnull stream,
-       xla::ffi::Buffer<PrimitiveType::U8> log_buffer) {
+    [](se::Stream* absl_nonnull stream, ffi::BufferR1<U8> log_buffer) {
       return se::gpu::BufferDebugLog<xla::gpu::BufferDebugFloatCheckEntry>::
           CreateOnDevice(*stream, log_buffer.device_memory())
               .status();
     },
-    xla::ffi::Ffi::Bind()
-        .Ctx<xla::ffi::Stream>()
-        .Arg<xla::ffi::Buffer<PrimitiveType::U8>>());
+    xla::ffi::Ffi::Bind().Ctx<xla::ffi::Stream>().Arg<ffi::BufferR1<U8>>());
 
 absl::StatusOr<std::unique_ptr<CustomCallThunk>> CreateDebugInitThunk(
     BufferAllocation::Slice log_slice,
@@ -783,7 +780,7 @@ CreateBufferDebugFloatCheckThunk(
       xla::ffi::Ffi::Bind()
           .Ctx<xla::ffi::Stream>()
           .Ctx<xla::ffi::CalledComputation>()
-          .Arg<xla::ffi::Buffer<PrimitiveType::U8>>()
+          .Arg<ffi::BufferR1<U8>>()
           .To(absl::bind_front(BufferDebugFloatCheck, metadata_store));
   return CustomCallThunk::Create(
       Thunk::ThunkInfo(), "xla_gpu_buffer_debug_float_check",

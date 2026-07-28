@@ -233,6 +233,29 @@ dimensions must have the same size. The `Match` call above therefore accepts
 only square matrices. Dimension captures are written only after the complete
 pattern succeeds and are unchanged on failure.
 
+Whole-buffer relationships do not require capturing every dimension.
+`WithShapeOf` matches the complete runtime shape of another buffer while
+allowing a different dtype. `Like` also requires the same dtype:
+
+```c++
+Error VerifySortBuffers(AnyBuffer keys, AnyBuffer values,
+                        Result<AnyBuffer> keys_output) {
+  Error error =
+      Verify("values", values, m::Buffer().WithShapeOf(keys));
+  if (error.failure()) {
+    return error;
+  }
+
+  return Verify("keys output", *keys_output, m::Buffer().Like(keys));
+}
+```
+
+Both modifiers copy the reference buffer's metadata when the pattern is built;
+the pattern does not retain a reference to the buffer. Because these are runtime
+constraints, they do not refine an `AnyBuffer` to a concrete return type. They
+are primarily useful with `Verify`, or with `Match` when the input buffer
+already has a concrete type.
+
 Use `Verify` when the buffer should keep its existing type, or when a pattern
 accepts more than one data type or rank. For example, an index buffer can accept
 either `S32` or `S64` and dispatch on its data type after verification:

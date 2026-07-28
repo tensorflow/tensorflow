@@ -773,6 +773,69 @@ TEST(FfiTest, BufferMatchingVerifiesRankSet) {
                              HasSubstr("expected rank to be one of [1, 2]")));
 }
 
+TEST(FfiTest, BufferMatchingMatchesShapeAndDTypeOfBuffer) {
+  namespace m = ::xla::ffi::match;
+
+  std::vector<float> reference_storage(6, 0.0f);
+  int64_t reference_dims[] = {2, 3};
+  XLA_FFI_Buffer reference_buffer = MakeBuffer(
+      F32, absl::MakeSpan(reference_storage), absl::MakeSpan(reference_dims));
+  AnyBuffer reference(&reference_buffer);
+
+  std::vector<float> matching_storage(6, 0.0f);
+  int64_t matching_dims[] = {2, 3};
+  XLA_FFI_Buffer matching_buffer = MakeBuffer(
+      F32, absl::MakeSpan(matching_storage), absl::MakeSpan(matching_dims));
+
+  auto like_reference = m::Buffer<S32, 1>().Like(reference).WithRank<2>();
+  ASSERT_OK(Verify("matching", AnyBuffer(&matching_buffer), like_reference));
+
+  ASSERT_OK(Verify("static_rank_replaced", AnyBuffer(&matching_buffer),
+                   m::Buffer<F32, 1>().WithShapeOf(reference)));
+
+  std::vector<int32_t> s32_storage(6, 0);
+  XLA_FFI_Buffer s32_buffer = MakeBuffer(S32, absl::MakeSpan(s32_storage),
+                                         absl::MakeSpan(matching_dims));
+  ASSERT_OK(Verify("same_shape", AnyBuffer(&s32_buffer),
+                   m::Buffer().WithShapeOf(reference)));
+
+  ASSERT_OK(Verify("runtime_dtype_replaced", AnyBuffer(&s32_buffer),
+                   m::Buffer().Like(reference).WithDType<S32>()));
+
+  int64_t rank_one_dims[] = {2};
+  XLA_FFI_Buffer rank_one_buffer = MakeBuffer(
+      F32, absl::MakeSpan(matching_storage), absl::MakeSpan(rank_one_dims));
+  ASSERT_OK(Verify(
+      "runtime_rank_replaced", AnyBuffer(&matching_buffer),
+      m::Buffer().WithShapeOf(AnyBuffer(&rank_one_buffer)).WithRank<2>()));
+
+  EXPECT_THAT(
+      Verify("wrong_dtype", AnyBuffer(&s32_buffer), like_reference),
+      absl_testing::StatusIs(absl::StatusCode::kInvalidArgument,
+                             HasSubstr("expected dtype f32 but got s32")));
+
+  int64_t wrong_rank_dims[] = {6};
+  XLA_FFI_Buffer wrong_rank_buffer = MakeBuffer(
+      F32, absl::MakeSpan(matching_storage), absl::MakeSpan(wrong_rank_dims));
+  ASSERT_OK(Verify("runtime_rank_replaced_by_dims",
+                   AnyBuffer(&wrong_rank_buffer),
+                   m::Buffer().WithShapeOf(reference).WithDims(6)));
+
+  EXPECT_THAT(
+      Verify("wrong_rank", AnyBuffer(&wrong_rank_buffer), like_reference),
+      absl_testing::StatusIs(absl::StatusCode::kInvalidArgument,
+                             HasSubstr("expected rank 2 but got 1")));
+
+  int64_t wrong_shape_dims[] = {3, 2};
+  XLA_FFI_Buffer wrong_shape_buffer = MakeBuffer(
+      F32, absl::MakeSpan(matching_storage), absl::MakeSpan(wrong_shape_dims));
+  EXPECT_THAT(
+      Verify("wrong_shape", AnyBuffer(&wrong_shape_buffer), like_reference),
+      absl_testing::StatusIs(
+          absl::StatusCode::kInvalidArgument,
+          HasSubstr("expected dimension 0 to be 2 but got 3")));
+}
+
 TEST(FfiTest, BufferMatchingCompositionIsOrderIndependent) {
   namespace m = ::xla::ffi::match;
 
@@ -1645,6 +1708,30 @@ void BM_MatchPrebuiltAnyBuffer(benchmark::State& state) {
 }
 
 BENCHMARK(BM_MatchPrebuiltAnyBuffer);
+
+//===----------------------------------------------------------------------===//
+// BM_VerifyLikeAnyBuffer
+//===----------------------------------------------------------------------===//
+
+void BM_VerifyLikeAnyBuffer(benchmark::State& state) {
+  namespace m = ::xla::ffi::match;
+
+  std::vector<float> storage(1, 0.0f);
+  int64_t dims[] = {1, 1, 1, 1};
+  XLA_FFI_Buffer c_buffer =
+      MakeBuffer(F32, absl::MakeSpan(storage), absl::MakeSpan(dims));
+  AnyBuffer buffer(&c_buffer);
+
+  CHECK_OK(Verify("buffer", buffer, m::Buffer().Like(buffer)));
+  for (auto _ : state) {
+    auto pattern = m::Buffer().Like(buffer);
+    benchmark::DoNotOptimize(pattern);
+    absl::Status status = Verify("buffer", buffer, pattern);
+    benchmark::DoNotOptimize(status);
+  }
+}
+
+BENCHMARK(BM_VerifyLikeAnyBuffer);
 
 //===----------------------------------------------------------------------===//
 // BM_MatchAnyBuffer

@@ -140,7 +140,7 @@ std::unique_ptr<Thunk> WrapWithChecksumThunk(
 absl::Status DumpBufferDebugChecksumLog(
     std::shared_ptr<BufferDebugLogEntryMetadataStore> metadata_store,
     se::Stream* stream, const HloComputation* absl_nonnull hlo_computation,
-    xla::ffi::Buffer<U8> log_buffer) {
+    ffi::BufferR1<U8> log_buffer) {
   VLOG(1) << "HLO computation ptr: " << hlo_computation;
   const HloModule* hlo_module = hlo_computation->parent();
   VLOG(1) << "HLO module ptr: " << hlo_module;
@@ -164,12 +164,12 @@ absl::Status DumpBufferDebugChecksumLog(
 
 XLA_FFI_DEFINE_HANDLER_SYMBOL(
     kBufferDebugChecksumLogInitHandler,
-    [](se::Stream* absl_nonnull stream, xla::ffi::Buffer<U8> log_buffer) {
+    [](se::Stream* absl_nonnull stream, ffi::BufferR1<U8> log_buffer) {
       return se::gpu::BufferDebugLog<BufferDebugLogEntry>::CreateOnDevice(
                  *stream, log_buffer.device_memory())
           .status();
     },
-    xla::ffi::Ffi::Bind().Ctx<xla::ffi::Stream>().Arg<xla::ffi::Buffer<U8>>());
+    xla::ffi::Ffi::Bind().Ctx<xla::ffi::Stream>().Arg<ffi::BufferR1<U8>>());
 
 absl::StatusOr<std::unique_ptr<CustomCallThunk>> CreateDebugInitThunk(
     BufferAllocation::Slice log_slice,
@@ -202,7 +202,7 @@ absl::StatusOr<std::unique_ptr<CustomCallThunk>> CreateBufferDebugDumpThunk(
       xla::ffi::Ffi::Bind()
           .Ctx<xla::ffi::Stream>()
           .Ctx<xla::ffi::CalledComputation>()
-          .Arg<xla::ffi::Buffer<U8>>()
+          .Arg<ffi::BufferR1<U8>>()
           .To(absl::bind_front(DumpBufferDebugChecksumLog, metadata_store));
   return CustomCallThunk::Create(
       Thunk::ThunkInfo(), "xla_gpu_buffer_debug_log_dump",
