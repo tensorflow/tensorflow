@@ -2300,6 +2300,22 @@ class ParseSequenceExampleTest(test.TestCase):
             # Message for batch=false in eager mode:
             "|Incompatible shapes|required broadcastable shapes"))
 
+  def testFixedLenSequenceFeatureZeroDimDoesNotCrash(self):
+    # Regression test for https://github.com/tensorflow/tensorflow/issues/123476
+    # ParseSequenceDenseFeatures divided by row_shape.num_elements() without
+    # guarding against the zero case, causing a SIGFPE when shape=[0].
+    serialized = sequence_example().SerializeToString()
+    self._testBoth(
+        dict(
+            serialized=ops.convert_to_tensor(serialized),
+            sequence_features={
+                "k": parsing_ops.FixedLenSequenceFeature(
+                    shape=[0], dtype=dtypes.float32, allow_missing=True)
+            }),
+        expected_feat_list_values={
+            "k": np.empty(shape=(0, 0), dtype=np.float32)
+        })
+
 
 @test_util.run_all_in_graph_and_eager_modes
 class DecodeRawTest(test.TestCase):

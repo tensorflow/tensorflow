@@ -2534,10 +2534,14 @@ absl::Status ParseSequenceDenseFeatures(
     TensorShape dense_shape, row_shape;
     DataType dtype = c.dtype;
     const size_t expected_max_elements = feature.length;
-    if (!c.shape.AsTensorShape(&row_shape) ||
-        expected_max_elements !=
-            (expected_max_elements / row_shape.num_elements()) *
-                row_shape.num_elements()) {
+    const int64_t row_num_elements =
+        c.shape.AsTensorShape(&row_shape) ? row_shape.num_elements() : -1;
+    // Guard against division by zero when any shape dimension is 0.  When
+    // row_num_elements==0, the only consistent state is zero total elements;
+    // any positive count would be impossible to fit into zero-element rows.
+    if (row_num_elements < 0 ||
+        (row_num_elements == 0 ? expected_max_elements != 0
+                               : expected_max_elements % row_num_elements != 0)) {
       PartialTensorShape total_shape = row_shape;
       total_shape.InsertDim(0, -1);
       return errors::InvalidArgument(
@@ -2547,7 +2551,7 @@ absl::Status ParseSequenceDenseFeatures(
           " is not consistent with output shape: ", total_shape.DebugString());
     }
     int64_t expected_max_rows =
-        expected_max_elements / row_shape.num_elements();
+        row_num_elements == 0 ? 0 : expected_max_elements / row_num_elements;
     if (is_batch) {
       dense_shape.AddDim(num_examples);
     }
