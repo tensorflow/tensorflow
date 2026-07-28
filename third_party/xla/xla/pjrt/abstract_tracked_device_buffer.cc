@@ -42,8 +42,7 @@ limitations under the License.
 #include "xla/tsl/concurrency/async_value.h"
 #include "xla/tsl/concurrency/future.h"
 #include "xla/tsl/concurrency/ref_count.h"
-#include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/util/maybe_owning.h"
 #include "xla/util.h"
 #include "tsl/profiler/lib/traceme.h"
 
@@ -299,9 +298,9 @@ absl::Status CommonPjRtBuffer::ScopedHold::status() const {
 void CommonPjRtBuffer::ScopedHold::DropHold() {
   if (ok()) {
     if (type_ == kDonation) {
-      parent_->DropDonationHold(std::move(buffer_));
+      parent_->DropDonationHold(buffer_.ReleaseOwning());
     } else {
-      parent_->DropUsageOrExternalHold(type_, buffer_ptr_);
+      parent_->DropUsageOrExternalHold(type_, buffer_.get_mutable());
     }
   }
 }
@@ -316,7 +315,6 @@ CommonPjRtBuffer::ScopedHold::ScopedHold(ScopedHold&& other)
       type_(other.type_),
       state_(other.state_),
       status_(std::move(other.status_)),
-      buffer_ptr_(other.buffer_ptr_),
       buffer_(std::move(other.buffer_)) {
   // Preserve the invariant that status is invalid if buffer == nullptr.
   other.SetState(kMoved);
@@ -326,34 +324,31 @@ void CommonPjRtBuffer::ScopedHold::AcquireDonation(
     absl::StatusOr<std::unique_ptr<AbstractTrackedDeviceBuffer>> buffer_or) {
   CHECK(!ok());
   if (buffer_or.ok()) {
-    buffer_ = std::move(buffer_or).value();
-    buffer_ptr_ = buffer_.get();
+    buffer_ = tsl::MaybeOwning<AbstractTrackedDeviceBuffer>(
+        std::move(buffer_or).value());
     SetState(kValid);
   } else {
     status_ = std::move(buffer_or).status();
     buffer_ = nullptr;
-    buffer_ptr_ = nullptr;
     SetState(kError);
   }
   // Check the invariant holds.
-  CHECK(!ok() || buffer_ptr_ != nullptr);
+  CHECK(!ok() || buffer_.get() != nullptr);
 }
 
 void CommonPjRtBuffer::ScopedHold::AcquireUsageOrExternalReference(
     absl::StatusOr<AbstractTrackedDeviceBuffer*> buffer_or) {
   CHECK(!ok());
   if (buffer_or.ok()) {
-    buffer_.reset();
-    buffer_ptr_ = buffer_or.value();
+    buffer_ = buffer_or.value();
     SetState(kValid);
   } else {
     status_ = std::move(buffer_or).status();
-    buffer_.reset();
     buffer_ = nullptr;
     SetState(kError);
   }
   // Check the invariant holds.
-  CHECK(!ok() || buffer_ptr_ != nullptr);
+  CHECK(!ok() || buffer_.get() != nullptr);
 }
 
 void CommonPjRtBuffer::ScopedHold::ConfirmDonation() {
