@@ -1076,11 +1076,10 @@ void HloCollectiveInstruction::PrintExtraAttributesImpl(
     AttributePrinter& printer, const HloPrintOptions& options) const {
   HloChannelInstruction::PrintExtraAttributesImpl(printer, options);
   printer.Next([this, &options](Printer* printer) {
-    VLOG(4) << name() << " replica_groups="
-            << device_list_->ToString(options.print_full_replica_group_list());
+    VLOG(4) << name() << " replica_groups=" << device_list_->ToString(options);
 
     printer->Append("replica_groups=");
-    device_list_->Print(printer, options.print_full_replica_group_list());
+    device_list_->Print(printer, options);
   });
   if (constrain_layout_) {
     printer.Next(
