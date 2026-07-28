@@ -21,6 +21,7 @@ limitations under the License.
 #include <cstdint>
 #include <functional>
 #include <iosfwd>
+#include <limits>
 #include <memory>
 #include <optional>
 #include <set>
@@ -1163,8 +1164,85 @@ class BufferAssigner {
       absl::Span<const HloComputation* const> private_stack_computations,
       const CallGraph& call_graph) const;
 
+  // Returns the live range bounds for `value` from `hlo_live_range`, serving
+  // from a dense HloValue-id-indexed cache. Purely a lookup accelerator for
+  // the hot interference loops in MaybeAssignBuffer; results are identical to
+  // hlo_live_range.buffer_live_ranges().find(value). Returns nullptr when the
+  // value has no live range entry.
+  const HloLiveRange::LiveRangeBounds* GetCachedLiveRangeBounds(
+      const HloLiveRange& hlo_live_range, const HloValue* value);
+
+  // Per-allocation index over the assigned buffers' live ranges, used by
+  // MaybeAssignBuffer to enumerate only the assigned buffers whose live
+  // ranges can overlap a candidate's (the pure interval test in
+  // LiveRangeInterferes returns false for every other pair, so skipping them
+  // cannot change the assignment decision).
+  struct AllocationLiveRangeIndex {
+    struct Entry {
+      int64_t start;
+      int64_t end;
+      const HloValue* value;
+      const HloLiveRange::LiveRangeBounds* bounds;
+    };
+    // Number of assigned buffers reflected in this index; compared against
+    // allocation->assigned_buffers().size() to detect staleness (assigned
+    // buffer sets only ever grow).
+    size_t version = 0;
+    // Sorted by (start, end, value id).
+    std::vector<Entry> entries;
+    // prefix_max_end[i] = max end over entries[0..i]. Lets overlap queries
+    // walking backwards from the last candidate stop as soon as no earlier
+    // entry can still overlap.
+    std::vector<int64_t> prefix_max_end;
+    // Instructions appearing in any assigned value's positions, for the
+    // kCopy operand check.
+    absl::flat_hash_set<const HloInstruction*> position_instructions;
+
+    // Orders entries by (start, end, value id).
+    static bool EntryLess(const Entry& a, const Entry& b) {
+      if (a.start != b.start) {
+        return a.start < b.start;
+      }
+      if (a.end != b.end) {
+        return a.end < b.end;
+      }
+      return a.value->id() < b.value->id();
+    }
+
+    // Recomputes prefix_max_end[i] = max(entries[0..i].end) for i >= from.
+    void FixPrefixMaxEnd(size_t from) {
+      prefix_max_end.resize(entries.size());
+      for (size_t i = from; i < entries.size(); ++i) {
+        const int64_t prev = i == 0 ? std::numeric_limits<int64_t>::min()
+                                    : prefix_max_end[i - 1];
+        prefix_max_end[i] = std::max(prev, entries[i].end);
+      }
+    }
+  };
+
+  // Returns the up-to-date index for `allocation`, rebuilding it if stale.
+  const AllocationLiveRangeIndex& GetAllocationLiveRangeIndex(
+      const BufferAllocation* allocation, const HloLiveRange& hlo_live_range);
+
+  // Incrementally reflects `hlo_buffer`'s values (just assigned to
+  // `allocation`) in the allocation's index, keeping it up to date on the
+  // hot assignment path without a full rebuild.
+  void AddToAllocationLiveRangeIndex(const BufferAllocation* allocation,
+                                     const HloBuffer& hlo_buffer,
+                                     const HloLiveRange& hlo_live_range);
+
   const AliasInfo* alias_info_;
   Options opts_;
+
+  // Dense cache of live range bounds indexed by HloValue::id(), rebuilt when
+  // a different HloLiveRange instance is seen (one per assignment run).
+  const HloLiveRange* live_range_cache_source_ = nullptr;
+  std::vector<const HloLiveRange::LiveRangeBounds*> live_range_by_value_id_;
+
+  // See AllocationLiveRangeIndex. Cleared when live_range_cache_source_
+  // changes (allocations are per-assignment objects).
+  absl::flat_hash_map<const BufferAllocation*, AllocationLiveRangeIndex>
+      allocation_live_range_indexes_;
 
   BufferAssigner(const BufferAssigner&) = delete;
   BufferAssigner& operator=(const BufferAssigner&) = delete;
