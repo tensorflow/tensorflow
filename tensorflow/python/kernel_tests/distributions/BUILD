@@ -321,6 +321,15 @@ cuda_py_strict_test(
     name = "special_math_test",
     size = "medium",
     srcs = ["special_math_test.py"],
+    env = {
+        "TF_FORCE_GPU_ALLOW_GROWTH": "true",
+        "XLA_PYTHON_CLIENT_PREALLOCATE": "false",
+    },
+    shard_count = 5,
+    tags = [
+        "exclusive-if-local",
+    ],
+    xla_enable_strict_auto_jit = False,
     deps = [
         "//tensorflow/python/eager:backprop",
         "//tensorflow/python/eager:context",
