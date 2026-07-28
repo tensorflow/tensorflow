@@ -1191,7 +1191,7 @@ class ResolveXlaEinsumEllipsisTest(test.TestCase):
     self.assertEqual(result, 'deab,bc->deac')
 
   def test_uppercase_labels_used_when_lowercase_exhausted(self):
-    """Batch label is uppercase when all lowercase letters are already in use."""
+    """Batch label is uppercase when all lowercase letters are in use."""
     # Use all 26 lowercase letters as explicit labels so that the helper must
     # fall back to uppercase letters for the single batch dimension.
     explicit = 'abcdefghijklmnopqrstuvwxyz'
@@ -1211,7 +1211,8 @@ class ResolveXlaEinsumEllipsisTest(test.TestCase):
     batch_label = resolved_left[0]   # first char of left subscript is batch
     self.assertTrue(
         batch_label.isupper(),
-        msg=f'Expected an uppercase batch label, got {batch_label!r} in {result!r}')
+        msg=(f'Expected an uppercase batch label, '
+             f'got {batch_label!r} in {result!r}'))
 
 
 class EinsumBenchmark(test.Benchmark):

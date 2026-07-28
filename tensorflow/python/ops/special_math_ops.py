@@ -597,7 +597,8 @@ def _resolve_xla_einsum_ellipsis(equation, input0_shape, input1_shape):
   Returns the equation with '...' replaced by concrete labels, or the original
   equation unchanged if no ellipsis is present or shapes are not static.
   """
-  # Remove spaces to ensure correct length calculations (e.g. '...ab, bc->...ac').
+  # Remove spaces to ensure correct length calculations
+  # (e.g. '...ab, bc->...ac').
   equation = equation.replace(' ', '')
 
   if '...' not in equation:
