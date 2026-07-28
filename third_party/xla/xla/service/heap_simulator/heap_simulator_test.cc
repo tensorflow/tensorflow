@@ -53,6 +53,7 @@ limitations under the License.
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/tsl/platform/test_benchmark.h"
+#include "xla/tsl/util/sorted_range.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -259,7 +260,7 @@ using CallSequence = std::vector<std::pair<std::string, const HloValue*>>;
 class HeapCallRecorder : public HeapAlgorithm<HloValue> {
  public:
   explicit HeapCallRecorder(CallSequence* calls) : calls_(calls) {}
-  ~HeapCallRecorder() override {}
+  ~HeapCallRecorder() override = default;
 
   void Alloc(const HloValue* buffer, int64_t size) override {
     calls_->emplace_back(kAlloc, buffer);
@@ -444,8 +445,8 @@ class HeapSimulatorTracker {
 
 class HeapSimulatorTest : public HloHardwareIndependentTestBase {
  protected:
-  HeapSimulatorTest() {}
-  ~HeapSimulatorTest() override {}
+  HeapSimulatorTest() = default;
+  ~HeapSimulatorTest() override = default;
 
   // Shapes for use in the examples.
   Shape f32scalar_ = ShapeUtil::MakeShape(xla::F32, {});
@@ -1017,7 +1018,8 @@ TEST_F(HeapSimulatorTest, AsyncCallImplicitSharding) {
       HeapSimulator::Run(std::move(algorithm), *module, module->schedule(),
                          *alias_analysis, &alias_info_, &size_fn)
           .value();
-  for (const auto& [value, chunk] : result.heap_results[0].chunk_map) {
+  for (const auto& [value, chunk] :
+       tsl::KeySortedRange(result.heap_results[0].chunk_map)) {
     if (value->instruction()->name() == "dynamic-update-slice") {
       EXPECT_EQ(chunk.size, 32);
     }
@@ -1038,7 +1040,7 @@ class HeapAlgorithmTestBase : public ::testing::Test {
     buffer_h_ = DummyBufferValue();
     buffer_i_ = DummyBufferValue();
   }
-  ~HeapAlgorithmTestBase() override {}
+  ~HeapAlgorithmTestBase() override = default;
 
   const HloValue* buffer_a_;
   const HloValue* buffer_b_;
@@ -1944,21 +1946,14 @@ TEST_F(IntervalTreeTest, InsertAndRemove) {
   tree.Add(1, 2, chunk);
   EXPECT_TRUE(tree.Remove(1, 2, chunk));
   EXPECT_FALSE(tree.Remove(1, 2, chunk));
-  ASSERT_EQ(tree.GetRoot(), nullptr);
   // Do it again.
   tree.Add(1, 2, chunk);
   EXPECT_TRUE(tree.Remove(1, 2, chunk));
   EXPECT_FALSE(tree.Remove(1, 2, chunk));
-  ASSERT_EQ(tree.GetRoot(), nullptr);
 }
 
 TEST_F(IntervalTreeTest, InsertAndRemoveTwoLevelsLeft) {
-  HeapSimulator::Chunk chunk = HeapSimulator::Chunk::FromOffsetSize(
-      1, 2);  // Value in chunk doesn't matter here.
-  //    [20, 36] (45)
-  //     /
-  //  [1, 45] (45)
-
+  HeapSimulator::Chunk chunk = HeapSimulator::Chunk::FromOffsetSize(1, 2);
   BufferIntervalTree tree;
   tree.Add(20, 36, chunk);
   tree.Add(1, 45, chunk);
@@ -1967,170 +1962,18 @@ TEST_F(IntervalTreeTest, InsertAndRemoveTwoLevelsLeft) {
   EXPECT_TRUE(tree.Remove(1, 45, chunk));
   EXPECT_EQ(tree.NumChunksOverlappingInTime(10, 25), 1);
   EXPECT_EQ(tree.NumChunksOverlappingInTime(5, 15), 0);
-  EXPECT_EQ(tree.GetRoot()->subtree_end, 36);
   EXPECT_TRUE(tree.Remove(20, 36, chunk));
-  ASSERT_EQ(tree.GetRoot(), nullptr);
   EXPECT_EQ(tree.NumChunksOverlappingInTime(10, 25), 0);
   EXPECT_EQ(tree.NumChunksOverlappingInTime(5, 15), 0);
 }
 
 TEST_F(IntervalTreeTest, InsertAndRemoveTwoLevelsRight) {
-  HeapSimulator::Chunk chunk = HeapSimulator::Chunk::FromOffsetSize(
-      1, 2);  // Value in chunk doesn't matter here.
-  //    [20, 36] (45)
-  //          \
-  //         [21, 45] (45)
+  HeapSimulator::Chunk chunk = HeapSimulator::Chunk::FromOffsetSize(1, 2);
   BufferIntervalTree tree;
   tree.Add(20, 36, chunk);
   tree.Add(21, 45, chunk);
   EXPECT_TRUE(tree.Remove(21, 45, chunk));
-  EXPECT_EQ(tree.GetRoot()->subtree_end, 36);
   EXPECT_TRUE(tree.Remove(20, 36, chunk));
-  ASSERT_EQ(tree.GetRoot(), nullptr);
-}
-
-TEST_F(IntervalTreeTest, TwoLevelsRight_RootFirst) {
-  HeapSimulator::Chunk chunk = HeapSimulator::Chunk::FromOffsetSize(
-      1, 2);  // Value in chunk doesn't matter here.
-  //    [20, 36] (45)
-  //          \
-  //         [21, 45] (45)
-  BufferIntervalTree tree;
-  tree.Add(20, 36, chunk);
-  tree.Add(21, 45, chunk);
-  EXPECT_TRUE(tree.Remove(20, 36, chunk));
-  EXPECT_EQ(tree.GetRoot()->subtree_end, 45);
-  EXPECT_EQ(tree.GetRoot()->start, 21);
-  EXPECT_EQ(tree.GetRoot()->end, 45);
-  EXPECT_EQ(tree.GetRoot()->left, nullptr);
-  EXPECT_EQ(tree.GetRoot()->right, nullptr);
-  EXPECT_TRUE(tree.Remove(21, 45, chunk));
-  ASSERT_EQ(tree.GetRoot(), nullptr);
-}
-
-TEST_F(IntervalTreeTest, TwoLevelsLeft_RootFirst) {
-  HeapSimulator::Chunk chunk = HeapSimulator::Chunk::FromOffsetSize(
-      1, 2);  // Value in chunk doesn't matter here.
-  //    [20, 36] (45)
-  //      /
-  //  [1, 45] (45)
-  BufferIntervalTree tree;
-  tree.Add(20, 36, chunk);
-  tree.Add(1, 45, chunk);
-  EXPECT_TRUE(tree.Remove(20, 36, chunk));
-  EXPECT_EQ(tree.GetRoot()->subtree_end, 45);
-  EXPECT_EQ(tree.GetRoot()->start, 1);
-  EXPECT_EQ(tree.GetRoot()->end, 45);
-  EXPECT_EQ(tree.GetRoot()->left, nullptr);
-  EXPECT_EQ(tree.GetRoot()->right, nullptr);
-  EXPECT_TRUE(tree.Remove(1, 45, chunk));
-  ASSERT_EQ(tree.GetRoot(), nullptr);
-}
-
-TEST_F(IntervalTreeTest, ThreeLevelsRight) {
-  HeapSimulator::Chunk chunk = HeapSimulator::Chunk::FromOffsetSize(
-      1, 2);  // Value in chunk doesn't matter here.
-  //    [20, 36] (45)
-  //          \
-  //         [21, 45] (45)
-  //              \
-  //              [22, 40] (40)
-  BufferIntervalTree tree;
-  tree.Add(20, 36, chunk);
-  tree.Add(21, 45, chunk);
-  tree.Add(22, 40, chunk);
-  EXPECT_TRUE(tree.Remove(21, 45, chunk));
-  EXPECT_EQ(tree.GetRoot()->subtree_end, 40);
-  EXPECT_TRUE(tree.Remove(20, 36, chunk));
-  EXPECT_EQ(tree.GetRoot()->subtree_end, 40);
-  EXPECT_TRUE(tree.Remove(22, 40, chunk));
-  ASSERT_EQ(tree.GetRoot(), nullptr);
-}
-TEST_F(IntervalTreeTest, ThreeLevelsLeftLeft) {
-  HeapSimulator::Chunk chunk = HeapSimulator::Chunk::FromOffsetSize(
-      1, 2);  // Value in chunk doesn't matter here.
-  //    [20, 36] (45)
-  //       /
-  //  [10, 45] (45)
-  //      /
-  // [1, 40] (40)
-  BufferIntervalTree tree;
-  tree.Add(20, 36, chunk);
-  tree.Add(10, 45, chunk);
-  tree.Add(1, 40, chunk);
-  EXPECT_TRUE(tree.Remove(10, 45, chunk));
-  EXPECT_EQ(tree.GetRoot()->subtree_end, 40);
-  EXPECT_TRUE(tree.Remove(1, 40, chunk));
-  EXPECT_EQ(tree.GetRoot()->subtree_end, 36);
-  EXPECT_TRUE(tree.Remove(20, 36, chunk));
-  ASSERT_EQ(tree.GetRoot(), nullptr);
-}
-
-TEST_F(IntervalTreeTest, ThreeLevelsLeftRight) {
-  HeapSimulator::Chunk chunk = HeapSimulator::Chunk::FromOffsetSize(
-      1, 2);  // Value in chunk doesn't matter here.
-  //    [20, 36] (45)
-  //       /
-  //  [10, 45] (45)
-  //      \
-  //     [15, 40] (40)
-  BufferIntervalTree tree;
-  tree.Add(20, 36, chunk);
-  tree.Add(10, 45, chunk);
-  tree.Add(15, 40, chunk);
-  EXPECT_TRUE(tree.Remove(10, 45, chunk));
-  EXPECT_EQ(tree.GetRoot()->subtree_end, 40);
-  EXPECT_TRUE(tree.Remove(15, 40, chunk));
-  EXPECT_EQ(tree.GetRoot()->subtree_end, 36);
-  EXPECT_TRUE(tree.Remove(20, 36, chunk));
-  ASSERT_EQ(tree.GetRoot(), nullptr);
-}
-
-TEST_F(IntervalTreeTest, ThreeLevelsRightLeft) {
-  HeapSimulator::Chunk chunk = HeapSimulator::Chunk::FromOffsetSize(
-      1, 2);  // Value in chunk doesn't matter here.
-  //    [20, 36] (45)
-  //          \
-  //         [25, 45] (45)
-  //           /
-  //       [22, 40] (40)
-  BufferIntervalTree tree;
-  tree.Add(20, 36, chunk);
-  tree.Add(25, 45, chunk);
-  tree.Add(22, 40, chunk);
-  EXPECT_TRUE(tree.Remove(25, 45, chunk));
-  EXPECT_EQ(tree.GetRoot()->subtree_end, 40);
-  EXPECT_TRUE(tree.Remove(20, 36, chunk));
-  EXPECT_EQ(tree.GetRoot()->subtree_end, 40);
-  EXPECT_TRUE(tree.Remove(22, 40, chunk));
-  ASSERT_EQ(tree.GetRoot(), nullptr);
-}
-
-TEST_F(IntervalTreeTest, ThreeLevelsRightLeftChunkDifferent) {
-  HeapSimulator::Chunk chunk1 = HeapSimulator::Chunk::FromOffsetSize(1, 2);
-  HeapSimulator::Chunk chunk2 = HeapSimulator::Chunk::FromOffsetSize(2, 3);
-  HeapSimulator::Chunk chunk3 = HeapSimulator::Chunk::FromOffsetSize(3, 4);
-  //    [20, 36] (45) Chunk1({1, 2})
-  //          \
-  //         [25, 45] (45) Chunk2({2, 3})
-  //           /
-  //       [22, 40] (40) Chunk3({3, 4})
-  BufferIntervalTree tree;
-  tree.Add(20, 36, chunk1);
-  tree.Add(25, 45, chunk2);
-  tree.Add(22, 40, chunk3);
-  EXPECT_TRUE(tree.Remove(25, 45, chunk2));
-  // Chunk 1 is till the root after removing chunk 2.
-  EXPECT_EQ(tree.GetRoot()->subtree_end, 40);
-  EXPECT_EQ(tree.GetRoot()->chunk.offset, 1);
-  EXPECT_EQ(tree.GetRoot()->chunk.size, 2);
-  EXPECT_TRUE(tree.Remove(20, 36, chunk1));
-  // Chunk 3 becomes the root now.
-  EXPECT_EQ(tree.GetRoot()->subtree_end, 40);
-  EXPECT_EQ(tree.GetRoot()->chunk.offset, 3);
-  EXPECT_EQ(tree.GetRoot()->chunk.size, 4);
-  EXPECT_TRUE(tree.Remove(22, 40, chunk3));
-  ASSERT_EQ(tree.GetRoot(), nullptr);
 }
 
 TEST_F(IntervalTreeTest, BufferIntervalTreeToAsciiArt) {

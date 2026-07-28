@@ -63,11 +63,10 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
-#include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/platform/logging.h"
+#include "xla/tsl/util/sorted_range.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/casts.h"
 
 namespace xla {
 namespace memory_space_assignment {
@@ -96,7 +95,7 @@ std::string InstructionScheduleToString(const HloLiveRange& hlo_live_range) {
       instruction_schedule = hlo_live_range.instruction_schedule();
   std::vector<std::pair<int64_t, const HloInstruction*>> instructions;
   instructions.reserve(instruction_schedule.size());
-  for (const auto& instruction : instruction_schedule) {
+  for (const auto& instruction : tsl::KeySortedRange(instruction_schedule)) {
     instructions.push_back({instruction.second, instruction.first});
   }
   std::string instruction_schedule_str = "\n";
@@ -200,7 +199,7 @@ void ProcessBuffersProducedInAlternateMemory(
   absl::flat_hash_map<Allocation*, CopyAllocation*> evictions_map =
       GetEvictionsMap(allocations_in_raw_pointers);
   // Make all such evictions immediate.
-  for (auto& [_, eviction] : evictions_map) {
+  for (auto& [_, eviction] : tsl::KeySortedRange(evictions_map)) {
     MakeEvictionImmediate(eviction);
   }
   if (VLOG_IS_ON(2)) {
@@ -1199,8 +1198,8 @@ absl::Status MemorySpaceAssignment::SetSchedule() {
   // instruction itself is scheduled relative to another instruction, we skip
   // it when iterating over the original schedule.
   absl::flat_hash_set<HloInstruction*> pass_over_instructions;
-  for (const auto& [_, custom_call_prefetch_details] :
-       options_.hlo_position_to_custom_call_prefetch_details) {
+  for (const auto& [_, custom_call_prefetch_details] : tsl::KeySortedRange(
+           options_.hlo_position_to_custom_call_prefetch_details)) {
     for (const auto& custom_call_prefetch_detail :
          custom_call_prefetch_details) {
       pass_over_instructions.insert(custom_call_prefetch_detail.prefetch_start);
@@ -1292,7 +1291,7 @@ absl::Status MemorySpaceAssignment::SetSchedule() {
     }
   }
 
-  for (auto& [computation, stats] : computation_to_stats) {
+  for (auto& [computation, stats] : tsl::KeySortedRange(computation_to_stats)) {
     // Parallel computations aren't in the schedule and don't need to be
     // modified.
     VLOG(4) << "Scheduling: " << computation->ToString();
@@ -1400,23 +1399,25 @@ absl::Status MemorySpaceAssignment::VerifyAndExportHeapSimulatorTrace(
     events[std::make_tuple(end_time, /*is_free=*/true, value->id())] =
         std::make_tuple(value, chunk, HeapSimulatorTrace::Event::FREE);
 
-    // Get the chunks overlapping in time and search if they overlap in space
-    // as well.
-    // TODO(berkin): For now checking against end_time - 1 (exclusive), but we
-    // really should check against end_time (inclusive) for cases where the
-    // operand can't share buffer with user (see
-    // HloDataflowAnalysis::CanShareOperandBufferWithUser).
-    for (const HeapSimulator::Chunk& overlapping_chunk :
-         interval_tree.ChunksOverlappingInTime(start_time, end_time - 1)) {
-      if (chunk.OverlapsWith(overlapping_chunk)) {
-        return Internal(
-            ("Value %s (%d, %d) off: %d size: %d overlaps with another chunk"
-             " off: %d size: %d"),
-            value->ToShortString(), start_time, end_time, chunk.offset,
-            chunk.size, overlapping_chunk.offset, overlapping_chunk.size);
+    if (start_time <= end_time - 1) {
+      // Get the chunks overlapping in time and search if they overlap in space
+      // as well.
+      // TODO(berkin): For now checking against end_time - 1 (exclusive), but we
+      // really should check against end_time (inclusive) for cases where the
+      // operand can't share buffer with user (see
+      // HloDataflowAnalysis::CanShareOperandBufferWithUser).
+      for (const HeapSimulator::Chunk& overlapping_chunk :
+           interval_tree.ChunksOverlappingInTime(start_time, end_time - 1)) {
+        if (chunk.OverlapsWith(overlapping_chunk)) {
+          return Internal(
+              ("Value %s (%d, %d) off: %d size: %d overlaps with another chunk"
+               " off: %d size: %d"),
+              value->ToShortString(), start_time, end_time, chunk.offset,
+              chunk.size, overlapping_chunk.offset, overlapping_chunk.size);
+        }
       }
+      interval_tree.Add(start_time, end_time - 1, chunk);
     }
-    interval_tree.Add(start_time, end_time - 1, chunk);
     return absl::OkStatus();
   };
 
