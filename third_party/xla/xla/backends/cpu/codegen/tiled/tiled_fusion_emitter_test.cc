@@ -99,6 +99,77 @@ TEST_F(TiledFusionEmitterTest, EvaluatesMultipleCandidates) {
   EXPECT_GT(candidates.size(), 1);
 }
 
+TEST_F(TiledFusionEmitterTest, CompilesToLlvmWithBothLowerings) {
+  constexpr absl::string_view kReshapeHlo = R"(
+    res_computation {
+      p0 = f32[36] parameter(0)
+      ROOT reshape = f32[6,6] bitcast(p0)
+    }
+
+    ENTRY main {
+      p0 = f32[36] parameter(0)
+      ROOT wrapped_reshape = f32[6,6] fusion(p0), kind=kLoop, calls=res_computation
+    }
+  )";
+  ASSERT_OK_AND_ASSIGN(auto hlo_module,
+                       ParseAndReturnVerifiedModule(kReshapeHlo));
+  auto& debug_options = hlo_module->mutable_config().mutable_debug_options();
+  debug_options.set_xla_cpu_experimental_enable_tiling_propagation(true);
+
+  ASSERT_OK_AND_ASSIGN(auto buffer_assignment,
+                       RunBufferAssignment(*hlo_module));
+  auto fusion = Cast<HloFusionInstruction>(
+      hlo_module->entry_computation()->root_instruction());
+
+  auto mlir_context = FusionCompiler::CreateContext();
+
+  TiledEmissionResult result =
+      EmitTiledFusionKernel(*mlir_context, *fusion, buffer_assignment.get(),
+                            "wrapped_reshape", /*num_work_groups=*/1);
+
+  ASSERT_TRUE(result.tiling_succeeded);
+  ASSERT_OK(result.kernel.status());
+
+  ASSERT_OK_AND_ASSIGN(auto kernel_def, std::move(result.kernel));
+  MlirKernelSource mlir_source = std::move(kernel_def).TakeSource();
+  mlir::OwningOpRef<mlir::ModuleOp> module =
+      std::move(mlir_source).TakeModule();
+
+  // Compile with use_new_xtile_lowering = false
+  {
+    FusionCompiler::Options options;
+    options.vector_width = 256;
+    options.verification_level = 1;
+    options.fast_min_max = true;
+    options.use_new_xtile_lowering = false;
+
+    mlir::OwningOpRef<mlir::ModuleOp> cloned_module(
+        mlir::cast<mlir::ModuleOp>(module.get()->clone()));
+
+    FusionCompiler compiler(mlir_context.get(), options);
+    auto llvm_context = std::make_unique<llvm::LLVMContext>();
+    EXPECT_OK(compiler.Compile(*llvm_context, *cloned_module).status());
+  }
+
+  // Compile with use_new_xtile_lowering = true
+  {
+    FusionCompiler::Options options;
+    options.vector_width = 256;
+    options.verification_level = 1;
+    options.fast_min_max = true;
+    options.use_new_xtile_lowering = true;
+
+    mlir::OwningOpRef<mlir::ModuleOp> cloned_module(
+        mlir::cast<mlir::ModuleOp>(module.get()->clone()));
+
+    FusionCompiler compiler(mlir_context.get(), options);
+    auto llvm_context = std::make_unique<llvm::LLVMContext>();
+    // Currently this is expected to fail because
+    // AddXtileToVectorPassesNoBufferization does not lower xtile.extract.
+    EXPECT_FALSE(compiler.Compile(*llvm_context, *cloned_module).ok());
+  }
+}
+
 }  // namespace
 }  // namespace cpu
 }  // namespace xla
