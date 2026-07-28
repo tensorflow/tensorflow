@@ -21,6 +21,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/hash/hash.h"
 #include "absl/status/status.h"
@@ -29,7 +30,10 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "xla/tsl/platform/status_macros.h"
+#include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/pass/hlo_pass_interface.h"
+#include "xla/hlo/tools/hlo_diff/hlo_diff_result.h"
+#include "xla/hlo/tools/hlo_diff/hlo_gumgraph_diff.h"
 #include "xla/service/dump.h"
 #include "xla/status_macros.h"
 #include "xla/tsl/platform/env.h"
@@ -132,6 +136,65 @@ static void VerifyPassChangedReport(const HloT hlo, bool pass_changed,
   }
 }
 
+absl::Status TrackModifyingPasses(HloModule& hlo,
+                                  const HloModule& before_module,
+                                  const DebugOptions& debug_options,
+                                  absl::string_view pass_name) {
+  ASSIGN_OR_RETURN(hlo_diff::HloGumgraphDiffResults diff_results,
+                   hlo_diff::ComputeDiff(before_module, hlo));
+  if (!diff_results.diff_result) {
+    return absl::OkStatus();
+  }
+
+  DebugOptions::ModifyingPassTrackMode track_mode =
+      debug_options.xla_track_modifying_passes();
+  absl::flat_hash_map<const HloInstruction*, const HloInstruction*>
+      right_to_left;
+  if (track_mode == DebugOptions::FULL_PATH) {
+    for (const auto& [left, right] :
+         diff_results.diff_result->changed_instructions) {  // NOLINT
+      right_to_left[right] = left;
+    }
+  }
+
+  for (const auto& [inst_const, diff_type] :
+       diff_results.diff_result->right_diff_codes) {  // NOLINT
+    if (diff_type != hlo_diff::DiffType::kChanged &&
+        diff_type != hlo_diff::DiffType::kUnmatched) {
+      continue;
+    }
+
+    HloComputation* comp =
+        hlo.GetComputationWithName(inst_const->parent()->name());
+    if (comp == nullptr) {
+      continue;
+    }
+    HloInstruction* inst = comp->GetInstructionWithName(inst_const->name());
+    if (inst == nullptr) {
+      continue;
+    }
+
+    if (track_mode == DebugOptions::LAST_PASS) {
+      inst->set_frontend_attribute("_xla_last_modifying_pass", pass_name);
+      continue;
+    }
+
+    std::optional<std::string> attr;
+    if (auto it = right_to_left.find(inst_const);
+        diff_type == hlo_diff::DiffType::kChanged &&
+        it != right_to_left.end()) {
+      attr = it->second->get_frontend_attribute("_xla_modifying_passes");
+    } else {
+      attr = inst_const->get_frontend_attribute("_xla_modifying_passes");
+    }
+
+    inst->set_frontend_attribute(
+        "_xla_modifying_passes",
+        attr ? absl::StrCat(*attr, ",", pass_name) : pass_name);
+  }
+  return absl::OkStatus();
+}
+
 }  // namespace
 
 template <typename HloT>
@@ -190,6 +253,12 @@ absl::StatusOr<bool> HloPassPipeline::RunPassesInternal(
       compilation_stats_->StartPass(pass_name);
     }
     RecordPassStartMetadata(*hlo, pass_name, pipeline_name);
+    std::unique_ptr<HloModule> before_module;
+    if (debug_options.xla_track_modifying_passes() !=
+        DebugOptions::TRACK_NONE) {
+      before_module = hlo->Clone(absl::StrCat("before_", pass_name));
+    }
+
     auto status_or_changed = RunHelper<HloT>(pass, hlo, execution_threads);
     if (auto status = status_or_changed.status(); !status.ok()) {
       compilation_stats_->RecordPassError(
@@ -199,6 +268,10 @@ absl::StatusOr<bool> HloPassPipeline::RunPassesInternal(
     if (verify_pass_changed_report) {
       VerifyPassChangedReport<HloT>(hlo, pass_changed, debug_options, pass_name,
                                     pipeline_name, hash_before.value());
+    }
+    if (pass_changed && before_module) {
+      RETURN_IF_ERROR(
+          TrackModifyingPasses(*hlo, *before_module, debug_options, pass_name));
     }
     if (!dump_regex.empty() && (pass_changed || dump_regex != ".*")) {
       MaybeDumpHloAndSaveFilenames(*hlo,

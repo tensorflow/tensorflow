@@ -123,6 +123,11 @@ bool ModuleContainsLargeKeyValueSort(const HloModule& module);
 bool ModuleTestsFloatsForEquality(const HloModule& module);
 bool ComputationHasRng(const HloComputation* computation);
 bool LiteralContainsInfOrNan(const LiteralSlice& literal);
+bool ModuleContainsFusions(const HloModule& module);
+bool IsBeforeOptimizations(const HloModule& module, bool run_hlo_passes);
+std::string GetModifyingPassesForInstruction(const HloInstruction* instruction);
+void LogModifyingPassesOnMismatch(const HloModule& module,
+                                  absl::string_view op_name = "");
 
 std::string GetFusionDebuggerDir();
 std::string GetFusionDebuggerFilePath(absl::string_view op_name);
