@@ -18121,6 +18121,30 @@ ENTRY entry {
       R"("a)" + std::string(kOriginalValuePlaceholderDelimiter) + R"(0")");
 }
 
+TEST_P(SpmdPartitioningTest, OriginalValueWithManualSubgroupSharding) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  %param.1 = f32[8,1024,1024] parameter(0), sharding={devices=[2,1,1,2,2]<=[8] last_tile_dims={manual, replicated}}
+  %param.2 = f32[8,1024,1024] parameter(1), sharding={devices=[2,1,1,2,2]<=[8] last_tile_dims={manual, replicated}}
+  ROOT %add = f32[8,1024,1024]{2,1,0} add(%param.1, %param.2), sharding={devices=[2,1,1,2,2]<=[8] last_tile_dims={manual, replicated}}, origin={{"broadcast.443"}}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/8));
+  EXPECT_EQ(module->original_value_recovery_table().size(), 1);
+  const HloComputation* recovery_computation =
+      module->original_value_recovery_table()
+          .begin()
+          ->second.second->entry_computation();
+  const HloInstruction* param_instruction =
+      recovery_computation->parameter_instruction(0);
+  EXPECT_TRUE(param_instruction->has_sharding());
+  EXPECT_TRUE(param_instruction->sharding().IsManualSubgroup());
+  std::cerr << "module: " << module->ToString() << "\n";
+}
+
 TEST_P(SpmdPartitioningTest, ShardingPreprocessOrderWhile) {
   absl::string_view hlo_string = R"(
 HloModule module
