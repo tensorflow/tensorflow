@@ -1191,20 +1191,27 @@ class ResolveXlaEinsumEllipsisTest(test.TestCase):
     self.assertEqual(result, 'deab,bc->deac')
 
   def test_uppercase_labels_used_when_lowercase_exhausted(self):
-    """Falls back to uppercase labels when many lowercase labels are in use."""
-    # Use 26 lowercase letters as explicit labels; batch dim should use 'A'.
+    """Batch label is uppercase when all lowercase letters are already in use."""
+    # Use all 26 lowercase letters as explicit labels so that the helper must
+    # fall back to uppercase letters for the single batch dimension.
     explicit = 'abcdefghijklmnopqrstuvwxyz'
-    # Create equation: <26 chars>p,pq-><25 chars>q  (but use '...' on left)
-    # Actually just construct a scenario where 'a'-'z' are all taken.
-    # left_explicit uses all 26 lowercase letters, right uses 'A'
-    eq = '...{0},{0}A->...A'.format(explicit[0])  # '...a,aA->...A'
-    # All of 'a'-'z' are in used set already; batch label must come from upper.
-    shape0 = [1] + [1]  # rank 2, 1 explicit char 'a', batch = 1
-    shape1 = [1, 1]     # rank 2, explicit 'aA', no ellipsis
+    # Equation: '...<26 lower>,<26 lower>A->...A'
+    # left_explicit  = 26 chars  -> rank 27 -> batch0 = 1
+    # right_explicit = 27 chars  -> rank 28 -> batch1 = 1  (no ellipsis)
+    eq = '...{0},{0}A->...A'.format(explicit)
+    shape0 = [1] * 27   # rank 27: 1 batch dim + 26 explicit dims
+    shape1 = [1] * 28   # rank 28: 27 explicit dims (no ellipsis in right)
     result = self._fn(eq, shape0, shape1)
-    # batch_ndims = 1; 'a' is used, next fresh label should be uppercase.
+    # The ellipsis must have been resolved (no '...' remaining).
     self.assertNotIn('...', result)
     self.assertIn('->', result)
+    # The resolved batch label must be an uppercase letter ('A' is in 'used'
+    # via the 'A' in explicit right subscript and output, so expect 'B').
+    resolved_left = result.split('->')[0].split(',')[0]
+    batch_label = resolved_left[0]   # first char of left subscript is batch
+    self.assertTrue(
+        batch_label.isupper(),
+        msg=f'Expected an uppercase batch label, got {batch_label!r} in {result!r}')
 
 
 class EinsumBenchmark(test.Benchmark):
