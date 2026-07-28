@@ -348,17 +348,9 @@ absl::Status IsSupportedTiledFusion(const HloFusionInstruction& fusion) {
 absl::StatusOr<KernelDefinition<MlirKernelSource>> CreateTiledKernelDefinition(
     mlir::MLIRContext& context, const HloFusionInstruction& fusion,
     const BufferAssignment* buffer_assignment, absl::string_view name,
-    int64_t num_work_groups, int64_t num_tiles,
-    mlir::OwningOpRef<mlir::ModuleOp> module) {
+    int64_t num_work_groups, mlir::OwningOpRef<mlir::ModuleOp> module) {
+  VLOG(8) << "num_work_groups: " << num_work_groups;
   module->setName(absl::StrCat("__compute_module", "_", name));
-
-  int64_t tiles_per_workgroup =
-      CeilOfRatio<int64_t>(num_tiles, num_work_groups);
-  module->walk([&](xtile::EntryFuncOp op) {
-    xtile::TilingInfoAttr info = xtile::TilingInfoAttr::get(
-        op->getContext(), num_tiles, tiles_per_workgroup);
-    op->setAttr("xtile.tiling_info", info);
-  });
 
   module->getOperation()->setAttr(
       xla::CpuMemoryRegionNameAttr::name,
@@ -372,29 +364,6 @@ absl::StatusOr<KernelDefinition<MlirKernelSource>> CreateTiledKernelDefinition(
                                            work_dimensions));
   return KernelDefinition<MlirKernelSource>(
       std::move(kernel_spec), MlirKernelSource(std::move(module)));
-}
-
-absl::StatusOr<KernelDefinition<MlirKernelSource>> EmitTiledFusionKernelImpl(
-    mlir::MLIRContext& context, const HloFusionInstruction& fusion,
-    const BufferAssignment* buffer_assignment, absl::string_view name,
-    int64_t num_work_groups, const SymbolicTileAnalysis& symbolic_tile_analysis,
-    const Tiling& tiling) {
-  EmitterSpecificConstraintsBuilder constraints_builder =
-      TiledEmitterConstraints::GetBuilder();
-  ASSIGN_OR_RETURN(mlir::OwningOpRef<mlir::ModuleOp> module,
-                   xtile::EmitXTileModule(name, fusion, symbolic_tile_analysis,
-                                          tiling, context));
-
-  const HloInstruction* root = symbolic_tile_analysis.GetRoot(0);
-  int64_t num_tiles = 1;
-  for (auto [dim, tile_size] :
-       llvm::zip(root->shape().dimensions(), tiling.tile_sizes().at(root))) {
-    num_tiles *= CeilOfRatio(dim, tile_size);
-  }
-
-  return CreateTiledKernelDefinition(context, fusion, buffer_assignment, name,
-                                     num_work_groups, num_tiles,
-                                     std::move(module));
 }
 
 absl::StatusOr<ge::TiledHloComputation> GetTiledHloComputation(
@@ -484,21 +453,25 @@ absl::StatusOr<KernelDefinition<MlirKernelSource>> EmitTiledFusionKernelImpl(
     mlir::MLIRContext& context, const HloFusionInstruction& fusion,
     const BufferAssignment* buffer_assignment, absl::string_view name,
     int64_t num_work_groups, const ge::TiledHloComputation& tiled_computation) {
+  const ge::TilingSpace& tiling_space = tiled_computation.tiling_space();
+  int64_t num_parallel_tiles = 1;
+  for (const auto& dim : tiling_space.dimensions()) {
+    if (dim.type == ge::TilingSpace::DimensionSemantics::kParallel) {
+      CHECK(dim.tile_size.has_value());
+      num_parallel_tiles *= CeilOfRatio(dim.dimension_size, *dim.tile_size);
+    }
+  }
+  VLOG(2) << "num_parallel_tiles: " << num_parallel_tiles;
+  VLOG(2) << "num_work_groups: " << num_work_groups;
   ASSIGN_OR_RETURN(
       mlir::OwningOpRef<mlir::ModuleOp> module,
-      xtile::EmitXTileModule(name, fusion, tiled_computation, context));
-
-  const ge::TiledHloInstruction* root = tiled_computation.roots().front();
-  const HloInstruction* root_hlo = root->hlo();
-  int64_t num_tiles = 1;
-  for (auto [dim, tile_size] :
-       llvm::zip(root_hlo->shape().dimensions(), root->tile_sizes())) {
-    num_tiles *= CeilOfRatio(dim, tile_size);
-  }
-
+      xtile::EmitXTileModule(name, fusion, tiled_computation, context,
+                             /*opaque_args_types=*/{},
+                             /*gpu_cc=*/std::nullopt,
+                             /*num_tiles_per_pid=*/
+                             CeilOfRatio(num_parallel_tiles, num_work_groups)));
   return CreateTiledKernelDefinition(context, fusion, buffer_assignment, name,
-                                     num_work_groups, num_tiles,
-                                     std::move(module));
+                                     num_work_groups, std::move(module));
 }
 
 }  // namespace

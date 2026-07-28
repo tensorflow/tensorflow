@@ -314,6 +314,7 @@ void AddBufferizationPasses(mlir::OpPassManager& pm) {
 
   mlir::bufferization::buildBufferDeallocationPipeline(
       pm, mlir::bufferization::BufferDeallocationPipelineOptions());
+  pm.addNestedPass<mlir::func::FuncOp>(cpu::createHoistAllocaPass());
 }
 
 }  //  namespace

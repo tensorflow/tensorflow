@@ -138,3 +138,11 @@ def InitializeAllocsPass : Pass<"xtile-cpu-initialize-allocs"> {
     "::mlir::LLVM::LLVMDialect",
   ];
 }
+
+def HoistAllocaPass : Pass<"xtile-cpu-hoist-alloca", "mlir::func::FuncOp"> {
+  let summary = "Hoist memref.alloca ops to the entry block of the function.";
+  let dependentDialects = [
+    "::mlir::memref::MemRefDialect"
+  ];
+}
+
