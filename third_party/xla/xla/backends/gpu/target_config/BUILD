@@ -81,6 +81,7 @@ xla_cc_test(
     deps = [
         ":target_config",
         "//xla/stream_executor:device_description_proto_cc",
+        "//xla/stream_executor:semantic_version",
         "//xla/tsl/lib/core:status_test_util",
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:status_matchers",
