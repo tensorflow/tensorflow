@@ -1517,4 +1517,82 @@ TEST_F(IsNcclSymmetricBuffersEnabledForCollectiveTest,
   EXPECT_TRUE(IsNcclSymmetricBuffersEnabledForCollective(ar_f32_2048_, opts));
 }
 
+TEST(CollectiveOpsUtilsTest, ParseAndSerializeAsyncCollectiveConfig) {
+  // Test case 1: Full config
+  std::string json_str1 = R"({
+    "replica_groups": [[0, 1], [2, 3]],
+    "channel_id": 42,
+    "use_global_device_ids": true,
+    "permutation": [[0, 1], [1, 0]],
+    "all_gather_dimension": 2,
+    "scatter_dimension": 3,
+    "tiled": true,
+    "split_dimension": 0,
+    "concat_dimension": 1,
+    "split_count": 4
+  })";
+
+  ASSERT_OK_AND_ASSIGN(AsyncCollectiveConfig config1,
+                       ParseAsyncCollectiveConfig(json_str1));
+
+  EXPECT_EQ(config1.replica_groups.size(), 2);
+  EXPECT_THAT(config1.replica_groups[0].replica_ids(),
+              testing::ElementsAre(0, 1));
+  EXPECT_THAT(config1.replica_groups[1].replica_ids(),
+              testing::ElementsAre(2, 3));
+  EXPECT_EQ(config1.channel_id, 42);
+  EXPECT_TRUE(config1.use_global_device_ids);
+  EXPECT_EQ(config1.permutation.size(), 2);
+  EXPECT_EQ(config1.permutation[0], std::make_pair(int64_t{0}, int64_t{1}));
+  EXPECT_EQ(config1.permutation[1], std::make_pair(int64_t{1}, int64_t{0}));
+  EXPECT_EQ(config1.all_gather_dimension, 2);
+  EXPECT_EQ(config1.scatter_dimension, 3);
+  EXPECT_TRUE(*config1.tiled);
+  EXPECT_EQ(config1.split_dimension, 0);
+  EXPECT_EQ(config1.concat_dimension, 1);
+  EXPECT_EQ(config1.split_count, 4);
+
+  // Serialize back and parse again to check round-trip
+  std::string serialized1 = SerializeAsyncCollectiveConfig(config1);
+  ASSERT_OK_AND_ASSIGN(AsyncCollectiveConfig config1_rt,
+                       ParseAsyncCollectiveConfig(serialized1));
+
+  EXPECT_EQ(config1_rt.replica_groups.size(), 2);
+  EXPECT_THAT(config1_rt.replica_groups[0].replica_ids(),
+              testing::ElementsAre(0, 1));
+  EXPECT_THAT(config1_rt.replica_groups[1].replica_ids(),
+              testing::ElementsAre(2, 3));
+  EXPECT_EQ(config1_rt.channel_id, 42);
+  EXPECT_TRUE(config1_rt.use_global_device_ids);
+  EXPECT_EQ(config1_rt.permutation.size(), 2);
+  EXPECT_EQ(config1_rt.permutation[0], std::make_pair(int64_t{0}, int64_t{1}));
+  EXPECT_EQ(config1_rt.permutation[1], std::make_pair(int64_t{1}, int64_t{0}));
+  EXPECT_EQ(config1_rt.all_gather_dimension, 2);
+  EXPECT_EQ(config1_rt.scatter_dimension, 3);
+  EXPECT_TRUE(*config1_rt.tiled);
+  EXPECT_EQ(config1_rt.split_dimension, 0);
+  EXPECT_EQ(config1_rt.concat_dimension, 1);
+  EXPECT_EQ(config1_rt.split_count, 4);
+
+  // Test case 2: Empty config
+  std::string json_str2 = "{}";
+  ASSERT_OK_AND_ASSIGN(AsyncCollectiveConfig config2,
+                       ParseAsyncCollectiveConfig(json_str2));
+  EXPECT_TRUE(config2.replica_groups.empty());
+  EXPECT_FALSE(config2.channel_id.has_value());
+  EXPECT_FALSE(config2.use_global_device_ids);
+  EXPECT_TRUE(config2.permutation.empty());
+  EXPECT_FALSE(config2.all_gather_dimension.has_value());
+  EXPECT_FALSE(config2.scatter_dimension.has_value());
+  EXPECT_FALSE(config2.tiled.has_value());
+  EXPECT_FALSE(config2.split_dimension.has_value());
+  EXPECT_FALSE(config2.concat_dimension.has_value());
+  EXPECT_FALSE(config2.split_count.has_value());
+
+  // Test case 3: Invalid JSON
+  std::string json_str3 = "{invalid";
+  auto status3 = ParseAsyncCollectiveConfig(json_str3).status();
+  EXPECT_FALSE(status3.ok());
+}
+
 }  // namespace xla

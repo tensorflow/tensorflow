@@ -373,6 +373,24 @@ class NcclSymmetricBuffersSpec {
 bool IsNcclSymmetricBuffersEnabledForCollective(
     const HloInstruction* instruction, const DebugOptions& opts);
 
+struct AsyncCollectiveConfig {
+  std::vector<ReplicaGroup> replica_groups;
+  std::optional<int64_t> channel_id;
+  bool use_global_device_ids = false;
+  std::vector<std::pair<int64_t, int64_t>> permutation;
+  std::optional<int64_t> all_gather_dimension;
+  std::optional<int64_t> scatter_dimension;
+  std::optional<bool> tiled;
+  std::optional<int64_t> split_dimension;
+  std::optional<int64_t> concat_dimension;
+  std::optional<int64_t> split_count;
+};
+
+absl::StatusOr<AsyncCollectiveConfig> ParseAsyncCollectiveConfig(
+    absl::string_view config_json_str);
+
+std::string SerializeAsyncCollectiveConfig(const AsyncCollectiveConfig& config);
+
 }  // end namespace xla
 
 #endif  // XLA_SERVICE_COLLECTIVE_OPS_UTILS_H_

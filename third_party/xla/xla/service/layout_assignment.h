@@ -672,8 +672,8 @@ class LayoutAssignment : public HloModulePass {
   // buffers of its operands and would return true for each of its operands.
   bool AnyOperandBufferForwarded(const HloInstruction* instruction,
                                  int64_t operand_no) const;
-  absl::StatusOr<Layout> InferArrayLayout(const HloInstruction* instruction,
-                                          const ShapeIndex& index);
+  virtual absl::StatusOr<Layout> InferArrayLayout(
+      const HloInstruction* instruction, const ShapeIndex& index);
 
   // Propagates a buffer layout constraint into the operands that use it.
   absl::Status PropagateBufferConstraintToUses(
