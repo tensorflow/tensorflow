@@ -91,13 +91,12 @@ def _validate_nonnegative_fft_length(fft_length):
   fft_length_static = _tensor_util.constant_value(fft_length)
   if fft_length_static is None:
     return None
-  fft_length_static_array = np.atleast_1d(fft_length_static)
-  for fft_length_i in fft_length_static_array:
+  for fft_length_i in np.asarray(fft_length_static).flat:
     if int(fft_length_i) < 0:
       raise ValueError(
           f'`fft_length` must be non-negative, got {fft_length_i}.'
       )
-  return fft_length_static_array
+  return fft_length_static
 
 
 def _maybe_pad_for_rfft(input_tensor, fft_rank, fft_length, is_reverse=False):
