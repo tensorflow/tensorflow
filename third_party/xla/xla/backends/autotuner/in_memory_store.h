@@ -20,6 +20,7 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "xla/backends/autotuner/autotune_cache_store.h"
 #include "xla/backends/autotuner/autotuning.pb.h"
 
@@ -43,6 +44,12 @@ class InMemoryStore : public AutotuneCacheStore {
 
   // Clears the process-wide in-memory cache. Used to isolate unit tests.
   static void Clear();
+
+  // Loads entries from a file into the process-wide in-memory cache.
+  static absl::Status LoadFromFile(absl::string_view file_path);
+
+  // Dumps all process-wide in-memory cache entries to a file.
+  static absl::Status DumpToFile(absl::string_view file_path);
 };
 
 }  // namespace xla

@@ -57,7 +57,9 @@ limitations under the License.
 #include "google/protobuf/text_format.h"
 #include "riegeli/bytes/string_reader.h"
 #include "riegeli/bytes/string_writer.h"
+#include "xla/backends/autotuner/autotuning.pb.h"
 #include "xla/backends/autotuner/codegen_backend.h"
+#include "xla/backends/autotuner/in_memory_store.h"
 #include "xla/backends/cpu/nanort/nanort_client.h"
 #include "xla/backends/cpu/nanort/nanort_executable.h"
 #include "xla/backends/cpu/target_machine_options.h"
@@ -3337,10 +3339,26 @@ absl::Status GpuCompiler::LoadAutotuneResultsFromFile(
   if (absl::string_view file_path =
           debug_options.xla_gpu_load_autotune_results_from();
       !file_path.empty()) {
+    bool use_new_format = debug_options.xla_gpu_use_new_autotune_cache_format();
     static absl::once_flag once;
     absl::Status status = absl::OkStatus();
-    absl::call_once(once, [&file_path, &status] {
-      status = AutotunerCache::LoadAutotuneResultsFromFile(file_path);
+    absl::call_once(once, [file_path, use_new_format, &status] {
+      if (use_new_format) {
+        std::string resolved_path;
+        if (!tsl::io::ResolveTestPrefixes(file_path, resolved_path)) {
+          status = absl::FailedPreconditionError(
+              absl::StrCat("File path can not be resolved: ", file_path));
+          return;
+        }
+        if (!tsl::Env::Default()->FileExists(resolved_path).ok()) {
+          status = absl::FailedPreconditionError(absl::StrCat(
+              "Autotune results file does not exist: ", resolved_path));
+          return;
+        }
+        status = InMemoryStore::LoadFromFile(resolved_path);
+      } else {
+        status = AutotunerCache::LoadAutotuneResultsFromFile(file_path);
+      }
     });
     RETURN_IF_ERROR(status);
   }
@@ -3355,7 +3373,17 @@ absl::Status GpuCompiler::SerializeAutotuneResultsToFile(
       !file_path.empty()) {
     // Warning: This writes the autotune results at every compilation,
     // possibly multiple times per process.
-    RETURN_IF_ERROR(AutotunerCache::SerializeAutotuneResultsToFile(file_path));
+    if (debug_options.xla_gpu_use_new_autotune_cache_format()) {
+      std::string resolved_path;
+      if (!tsl::io::ResolveTestPrefixes(file_path, resolved_path)) {
+        return absl::FailedPreconditionError(
+            absl::StrCat("File path can not be resolved: ", file_path));
+      }
+      RETURN_IF_ERROR(InMemoryStore::DumpToFile(resolved_path));
+    } else {
+      RETURN_IF_ERROR(
+          AutotunerCache::SerializeAutotuneResultsToFile(file_path));
+    }
   }
   return absl::OkStatus();
 }

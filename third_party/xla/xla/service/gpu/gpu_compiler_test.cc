@@ -42,7 +42,9 @@ limitations under the License.
 #include "xla/tsl/platform/status_macros.h"
 #include "google/protobuf/text_format.h"
 #include "xla/autotune_results.pb.h"
+#include "xla/backends/autotuner/autotuning.pb.h"
 #include "xla/backends/autotuner/backends.pb.h"
+#include "xla/backends/autotuner/in_memory_store.h"
 #include "xla/backends/gpu/ffi.h"
 #include "xla/backends/gpu/runtime/async_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
@@ -361,14 +363,19 @@ ENTRY e {
   EXPECT_THAT(entry_root, GmockMatch(m::Fusion()));
 }
 
-class PersistedAutotuningTest : public HloTestBase {
+class PersistedAutotuningTest : public HloTestBase,
+                                public ::testing::WithParamInterface<bool> {
  protected:
   void SetUp() override {
     AutotunerCache::ClearAutotuneResults();
+    InMemoryStore::Clear();
     xla_gpu_dump_autotune_results_to_ = GetUniqueTempFilePath(".txt");
   }
 
-  void TearDown() override { AutotunerCache::ClearAutotuneResults(); }
+  void TearDown() override {
+    AutotunerCache::ClearAutotuneResults();
+    InMemoryStore::Clear();
+  }
 
   static constexpr absl::string_view kHloText = R"(
 HloModule t
@@ -395,14 +402,30 @@ ENTRY e {
         xla_gpu_dump_autotune_results_to_);
     options.set_xla_gpu_load_autotune_results_from(
         xla_gpu_load_autotune_results_from_);
+    options.set_xla_gpu_use_new_autotune_cache_format(GetParam());
     return options;
+  }
+
+  void ExpectValidAutotuneResults(absl::string_view autotune_results_str,
+                                  bool use_new_format) {
+    if (use_new_format) {
+      autotuner::AutotuneCache results;
+      EXPECT_TRUE(tsl::protobuf::TextFormat::ParseFromString(
+          autotune_results_str, &results));
+      EXPECT_FALSE(results.entries().empty());
+    } else {
+      AutotuneResults results;
+      EXPECT_TRUE(tsl::protobuf::TextFormat::ParseFromString(
+          autotune_results_str, &results));
+      EXPECT_FALSE(results.results().empty());
+    }
   }
 
   std::string xla_gpu_dump_autotune_results_to_;
   std::string xla_gpu_load_autotune_results_from_;
 };
 
-TEST_F(PersistedAutotuningTest, WriteResultsOnEachCompilation) {
+TEST_P(PersistedAutotuningTest, WriteResultsOnEachCompilation) {
   constexpr absl::string_view kInvalidTextProto = "Invalid!";
 
   HloModuleConfig config = GetModuleConfigForTest();
@@ -411,9 +434,7 @@ TEST_F(PersistedAutotuningTest, WriteResultsOnEachCompilation) {
   {
     ASSERT_OK_AND_ASSIGN(std::string autotune_results_str,
                          ReadNonEmptyFile(xla_gpu_dump_autotune_results_to_));
-    AutotuneResults results;
-    EXPECT_TRUE(tsl::protobuf::TextFormat::ParseFromString(autotune_results_str,
-                                                           &results));
+    ExpectValidAutotuneResults(autotune_results_str, GetParam());
   }
 
   // Overwrite results with an invalid textproto.
@@ -426,13 +447,11 @@ TEST_F(PersistedAutotuningTest, WriteResultsOnEachCompilation) {
   {
     ASSERT_OK_AND_ASSIGN(std::string autotune_results_str,
                          ReadNonEmptyFile(xla_gpu_dump_autotune_results_to_));
-    AutotuneResults results;
-    EXPECT_TRUE(tsl::protobuf::TextFormat::ParseFromString(autotune_results_str,
-                                                           &results));
+    ExpectValidAutotuneResults(autotune_results_str, GetParam());
   }
 }
 
-TEST_F(PersistedAutotuningTest, SingleOperationGetsAutotuned) {
+TEST_P(PersistedAutotuningTest, SingleOperationGetsAutotuned) {
   TF_EXPECT_OK(GetOptimizedModuleForExecutable(R"(
 e {
   a = f32[64,128] parameter(0)
@@ -443,11 +462,11 @@ e {
 
   ASSERT_OK_AND_ASSIGN(std::string autotune_results_str,
                        ReadNonEmptyFile(xla_gpu_dump_autotune_results_to_));
-  AutotuneResults results;
-  EXPECT_TRUE(tsl::protobuf::TextFormat::ParseFromString(autotune_results_str,
-                                                         &results));
-  EXPECT_THAT(results.results(), Not(IsEmpty()));
+  ExpectValidAutotuneResults(autotune_results_str, GetParam());
 }
+
+INSTANTIATE_TEST_SUITE_P(PersistedAutotuningTestInstantiation,
+                         PersistedAutotuningTest, ::testing::Bool());
 
 int64_t CountCopies(const HloComputation& computation) {
   int64_t count = 0;
