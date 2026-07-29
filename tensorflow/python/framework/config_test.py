@@ -922,6 +922,10 @@ class TensorFloat32Test(test.TestCase):
       config.set_intra_op_parallelism_threads('4')
     with self.assertRaisesRegex(TypeError, 'must be an integer'):
       config.set_intra_op_parallelism_threads(None)
+    with self.assertRaisesRegex(TypeError, 'must be an integer'):
+      config.set_intra_op_parallelism_threads(True)
+    with self.assertRaisesRegex(TypeError, 'must be an integer'):
+      config.set_intra_op_parallelism_threads(False)
 
     # Test ValueError for negative
     with self.assertRaisesRegex(ValueError, 'must be non-negative'):
@@ -951,6 +955,10 @@ class TensorFloat32Test(test.TestCase):
       config.set_inter_op_parallelism_threads('4')
     with self.assertRaisesRegex(TypeError, 'must be an integer'):
       config.set_inter_op_parallelism_threads(None)
+    with self.assertRaisesRegex(TypeError, 'must be an integer'):
+      config.set_inter_op_parallelism_threads(True)
+    with self.assertRaisesRegex(TypeError, 'must be an integer'):
+      config.set_inter_op_parallelism_threads(False)
 
     # Test ValueError for negative
     with self.assertRaisesRegex(ValueError, 'must be non-negative'):
