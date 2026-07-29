@@ -1700,8 +1700,8 @@ CHECK:      {{.*}} = scf.for %{{.*}} = %[[C0]] to %[[C4]] step %[[C1]]
 CHECK-SAME: iter_args({{.*}}) -> (tensor<16x64xf32>) {
 CHECK-DAG:  xtile.extract %[[ARG0]]
 CHECK-DAG:  xtile.extract %[[ARG1]]
-CHECK-DAG:  arith.negf {{.*}} : tensor<16x32xf32>
-CHECK-DAG:  math.absf {{.*}} : tensor<32x64xf32>
+CHECK-DAG:  stablehlo.negate {{.*}} : tensor<16x32xf32>
+CHECK-DAG:  stablehlo.abs {{.*}} : tensor<32x64xf32>
 CHECK:      stablehlo.dot_general {{.*}} (tensor<16x32xf32>, tensor<32x64xf32>) -> tensor<16x64xf32>
 CHECK:      arith.addf {{.*}}
 CHECK:      scf.yield {{.*}} : tensor<16x64xf32>
