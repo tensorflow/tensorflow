@@ -24,23 +24,25 @@ from tensorflow.python.platform import test as test_lib
 class CategoricalCrossentropyValidationTest(test_lib.TestCase):
 
   def testValidLabelSmoothing(self):
-    y_true = np.array([[0., 1., 0.], [0., 0., 1.]], dtype=np.float32)
-    y_pred = np.array([[0.05, 0.95, 0.], [0.1, 0.8, 0.1]], dtype=np.float32)
-    loss = losses.categorical_crossentropy(
-        y_true, y_pred, label_smoothing=0.5)
-    self.assertIsNotNone(loss)
+    y_true = np.array([[0, 1, 0], [0, 0, 1]], dtype=np.float32)
+    y_pred = np.array([[0.05, 0.95, 0], [0.1, 0.8, 0.1]], dtype=np.float32)
 
-  def testInvalidLabelSmoothingNegative(self):
-    y_true = np.array([[0., 1., 0.], [0., 0., 1.]], dtype=np.float32)
-    y_pred = np.array([[0.05, 0.95, 0.], [0.1, 0.8, 0.1]], dtype=np.float32)
-    with self.assertRaisesRegex(ValueError, r'label_smoothing.*must be in'):
+    # Valid values should not raise
+    losses.categorical_crossentropy(y_true, y_pred, label_smoothing=0.0)
+    losses.categorical_crossentropy(y_true, y_pred, label_smoothing=0.5)
+    losses.categorical_crossentropy(y_true, y_pred, label_smoothing=1.0)
+    losses.categorical_crossentropy(
+        y_true, y_pred, label_smoothing=constant_op.constant(0.5))
+
+  def testInvalidLabelSmoothingRaisesValueError(self):
+    y_true = np.array([[0, 1, 0], [0, 0, 1]], dtype=np.float32)
+    y_pred = np.array([[0.05, 0.95, 0], [0.1, 0.8, 0.1]], dtype=np.float32)
+
+    with self.assertRaises(ValueError):
       losses.categorical_crossentropy(
           y_true, y_pred, label_smoothing=-0.1)
 
-  def testInvalidLabelSmoothingTooLarge(self):
-    y_true = np.array([[0., 1., 0.], [0., 0., 1.]], dtype=np.float32)
-    y_pred = np.array([[0.05, 0.95, 0.], [0.1, 0.8, 0.1]], dtype=np.float32)
-    with self.assertRaisesRegex(ValueError, r'label_smoothing.*must be in'):
+    with self.assertRaises(ValueError):
       losses.categorical_crossentropy(
           y_true, y_pred, label_smoothing=1.1)
 
@@ -50,6 +52,41 @@ class CategoricalCrossentropyValidationTest(test_lib.TestCase):
     # Tensor label_smoothing bypasses static validation
     label_smoothing = constant_op.constant(1.5)
     loss = losses.categorical_crossentropy(
+        y_true, y_pred, label_smoothing=label_smoothing)
+    self.assertIsNotNone(loss)
+
+
+class BinaryCrossentropyValidationTest(test_lib.TestCase):
+
+  def testValidLabelSmoothing(self):
+    y_true = np.array([[0, 1], [0, 0]], dtype=np.float32)
+    y_pred = np.array([[0.6, 0.4], [0.4, 0.6]], dtype=np.float32)
+
+    # Valid values should not raise
+    losses.binary_crossentropy(y_true, y_pred, label_smoothing=0.0)
+    losses.binary_crossentropy(y_true, y_pred, label_smoothing=0.5)
+    losses.binary_crossentropy(y_true, y_pred, label_smoothing=1.0)
+    losses.binary_crossentropy(
+        y_true, y_pred, label_smoothing=constant_op.constant(0.5))
+
+  def testInvalidLabelSmoothingRaisesValueError(self):
+    y_true = np.array([[0, 1], [0, 0]], dtype=np.float32)
+    y_pred = np.array([[0.6, 0.4], [0.4, 0.6]], dtype=np.float32)
+
+    with self.assertRaises(ValueError):
+      losses.binary_crossentropy(
+          y_true, y_pred, label_smoothing=-0.1)
+
+    with self.assertRaises(ValueError):
+      losses.binary_crossentropy(
+          y_true, y_pred, label_smoothing=1.1)
+
+  def testTensorLabelSmoothingSkipped(self):
+    y_true = np.array([[0., 1.], [0., 0.]], dtype=np.float32)
+    y_pred = np.array([[0.6, 0.4], [0.4, 0.6]], dtype=np.float32)
+    # Tensor label_smoothing bypasses static validation
+    label_smoothing = constant_op.constant(1.5)
+    loss = losses.binary_crossentropy(
         y_true, y_pred, label_smoothing=label_smoothing)
     self.assertIsNotNone(loss)
 

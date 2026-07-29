@@ -1629,9 +1629,7 @@ def categorical_crossentropy(y_true,
   Returns:
     Categorical crossentropy loss value.
   """
-  if (label_smoothing is not None and
-      isinstance(label_smoothing, (int, float)) and
-      not tensor_util.is_tf_type(label_smoothing) and
+  if (isinstance(label_smoothing, (int, float)) and
       not 0 <= label_smoothing <= 1):
     raise ValueError(
         f'`label_smoothing` must be in [0, 1], got {label_smoothing}')
@@ -1776,6 +1774,10 @@ def binary_crossentropy(y_true,
   Returns:
     Binary crossentropy loss value. shape = `[batch_size, d0, .. dN-1]`.
   """
+  if (isinstance(label_smoothing, (int, float)) and
+      not 0 <= label_smoothing <= 1):
+    raise ValueError(
+        f'`label_smoothing` must be in [0, 1], got {label_smoothing}')
   y_pred = tensor_conversion.convert_to_tensor_v2_with_dispatch(y_pred)
   y_true = math_ops.cast(y_true, y_pred.dtype)
   label_smoothing = tensor_conversion.convert_to_tensor_v2_with_dispatch(
