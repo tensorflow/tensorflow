@@ -28,6 +28,7 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "absl/base/config.h"  // IWYU pragma: keep
 #include "absl/base/no_destructor.h"
 #include "absl/container/flat_hash_map.h"
 #include "llvm/ADT/StringRef.h"
@@ -41,6 +42,23 @@ limitations under the License.
 #include "llvm/Support/Error.h"
 #include "xla/backends/cpu/codegen/builtin_fp16.h"
 #include "xla/backends/cpu/codegen/builtin_pow.h"
+#include "xla/backends/cpu/runtime/msan_emulated_tls.h"
+#include "xla/service/cpu/cpu_runtime.h"
+
+#ifdef ABSL_HAVE_MEMORY_SANITIZER
+extern "C" {
+void __msan_init();
+void __msan_warning();
+void __msan_warning_noreturn();
+void __msan_warning_with_origin(uint32_t);
+void __msan_warning_with_origin_noreturn(uint32_t);
+uint32_t __msan_chain_origin(uint32_t);
+void __msan_set_alloca_origin_with_descr(void*, size_t, const char*);
+void* __msan_memcpy(void*, const void*, size_t);
+void* __msan_memset(void*, int, size_t);
+void* __msan_memmove(void*, const void*, size_t);
+}
+#endif
 
 namespace xla::cpu {
 
@@ -264,8 +282,23 @@ static Registry CreateRegistry() {
 
 #endif
 
-#ifdef MEMORY_SANITIZER
+  registry[runtime::kMsanEmutlsGetAddressBridgeSymbolName] =
+      SymbolDef(__xla_cpu_runtime_emutls_get_address);
+#ifdef ABSL_HAVE_MEMORY_SANITIZER
   registry["__msan_unpoison"] = SymbolDef(__msan_unpoison);
+  registry["__msan_init"] = SymbolDef(__msan_init);
+  registry["__msan_warning"] = SymbolDef(__msan_warning);
+  registry["__msan_warning_noreturn"] = SymbolDef(__msan_warning_noreturn);
+  registry["__msan_warning_with_origin"] =
+      SymbolDef(__msan_warning_with_origin);
+  registry["__msan_warning_with_origin_noreturn"] =
+      SymbolDef(__msan_warning_with_origin_noreturn);
+  registry["__msan_chain_origin"] = SymbolDef(__msan_chain_origin);
+  registry["__msan_set_alloca_origin_with_descr"] =
+      SymbolDef(__msan_set_alloca_origin_with_descr);
+  registry["__msan_memcpy"] = SymbolDef(__msan_memcpy);
+  registry["__msan_memset"] = SymbolDef(__msan_memset);
+  registry["__msan_memmove"] = SymbolDef(__msan_memmove);
 #endif
 
   return registry;

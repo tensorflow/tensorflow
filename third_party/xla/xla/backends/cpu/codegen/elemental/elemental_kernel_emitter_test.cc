@@ -88,7 +88,7 @@ TEST_F(ElementalKernelEmitterTest, EmitElementalKernel) {
                            buffer_assignment.get()));
 
   ASSERT_TRUE(*RunFileCheck(kernel_definition.source().ToString(), R"(
-    CHECK: define ptr @convert_kernel(ptr %0) #0 {
+    CHECK: define ptr @convert_kernel(ptr noundef nonnull %0) #0 {
     CHECK:   fptosi float {{.*}} to i32
     CHECK: }
   )"));
@@ -116,7 +116,7 @@ TEST_F(ElementalKernelEmitterTest, EmitParallelKernel) {
   ASSERT_TRUE(*RunFileCheck(kernel_definition.source().ToString(), R"(
     CHECK: @convert_parallel_bounds = private constant [8 x [4 x [2 x i64]]]
 
-    CHECK: define ptr @convert_kernel(ptr %0) #0 {
+    CHECK: define ptr @convert_kernel(ptr noundef nonnull %0) #0 {
     CHECK:   %[[X:.*]] = load i64, ptr %workgroup_id_x_gep, align 4
     CHECK:   %lo_dim_0_gep = getelementptr{{.*}} i32 0, i64 %[[X]], i32 0, i32 0
     CHECK:   %up_dim_0_gep = getelementptr{{.*}} i32 0, i64 %[[X]], i32 0, i32 1
@@ -164,7 +164,7 @@ TEST_F(ElementalKernelEmitterTest, EmitFastIntrinsic) {
                            buffer_assignment.get()));
 
   ASSERT_TRUE(*RunFileCheck(kernel_definition.source().ToString(), R"(
-    CHECK: define ptr @log_kernel(ptr %0) #0 {
+    CHECK: define ptr @log_kernel(ptr noundef nonnull %0) #0 {
     CHECK:   call fast float @llvm.log.f32(float {{.*}})
     CHECK: }
   )"));

@@ -280,6 +280,10 @@ TEST(IrCompilerTest, TargetMachineOptionsAreCorrectlySet) {
 }
 
 TEST(IrCompilerTest, EmitIntrinsicCall) {
+#if defined(ABSL_HAVE_MEMORY_SANITIZER)
+  GTEST_SKIP() << "MSan intercepts @llvm.memcpy with @__msan_memcpy, which is "
+                  "not lowered to a tail call.";
+#endif
   constexpr absl::string_view kModuleName = "test_module";
   constexpr absl::string_view kMemcpyCall = R"(
   define void @memcpy_call(ptr noalias %a, ptr noalias %b, i64 %n) #0 {
