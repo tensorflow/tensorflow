@@ -106,13 +106,19 @@ namespace {
 bool IsTrivialPosition(HloPosition position) {
   return position.instruction->opcode() == HloOpcode::kGetTupleElement ||
          position.instruction->opcode() == HloOpcode::kTuple ||
-         position.instruction->opcode() == HloOpcode::kBitcast;
+         position.instruction->opcode() == HloOpcode::kBitcast ||
+         (position.instruction->opcode() == HloOpcode::kAsyncStart &&
+          !position.index.empty() && position.index.front() == 0);
+}
+
+bool IsPositionMirroredOnly(const HloPosition& position) {
+  return position.instruction->parent()->IsAsyncComputation() ||
+         (position.instruction->opcode() == HloOpcode::kAsyncStart &&
+          !position.index.empty() && position.index.front() == 0);
 }
 
 HloPosition GetNonTrivialSourcePosition(HloPosition position) {
-  while (position.instruction->opcode() == HloOpcode::kGetTupleElement ||
-         position.instruction->opcode() == HloOpcode::kTuple ||
-         position.instruction->opcode() == HloOpcode::kBitcast) {
+  while (IsTrivialPosition(position)) {
     if (position.instruction->opcode() == HloOpcode::kGetTupleElement) {
       int64_t tuple_index = position.instruction->tuple_index();
       position.instruction = position.instruction->mutable_operand(0);
@@ -126,6 +132,16 @@ HloPosition GetNonTrivialSourcePosition(HloPosition position) {
       position.instruction = position.instruction->mutable_operand(tuple_index);
     } else if (position.instruction->opcode() == HloOpcode::kBitcast) {
       position.instruction = position.instruction->mutable_operand(0);
+    } else if (position.instruction->opcode() == HloOpcode::kAsyncStart &&
+               !position.index.empty() && position.index.front() == 0) {
+      position.index.pop_front();
+      if (position.index.empty()) {
+        position.instruction = position.instruction->mutable_operand(0);
+      } else {
+        position.instruction =
+            position.instruction->mutable_operand(position.index.front());
+        position.index.pop_front();
+      }
     }
   }
   return position;
@@ -3649,7 +3665,8 @@ absl::StatusOr<Decision> MsaAlgorithm::BlockPrefetchBuffer(
       CHECK(!position_to_live_range.contains(position));
       continue;
     }
-    if (position_to_live_range.contains(position)) {
+    if (position_to_live_range.contains(position) &&
+        !IsPositionMirroredOnly(position)) {
       non_trivial_positions_for_real_allocations.push_back(position);
     } else {
       non_trivial_positions_for_mirrored_allocations.push_back(position);
@@ -4218,7 +4235,8 @@ absl::Status MsaAlgorithm::PinScalarBufferInAlternateMemory(
       continue;
     }
 
-    if (outer_positions_to_live_range.contains(position)) {
+    if (outer_positions_to_live_range.contains(position) &&
+        !IsPositionMirroredOnly(position)) {
       non_trivial_positions_for_real_allocations.push_back(position);
     } else {
       non_trivial_positions_for_mirrored_allocations.push_back(position);
@@ -5486,6 +5504,8 @@ absl::StatusOr<AllocationResult> MsaAlgorithm::AllocateAllocationValues(
       MaybeCreateMirroredParentAllocationForWhileUse(
           allocation_value_to_update, use, use_time, allocation_values,
           preferred_offset_for_computation);
+      MaybeCreateMirroredAllocationForAsyncUse(allocation_value_to_update, use,
+                                               use_time, allocation_values);
     }
   }
 
@@ -6280,6 +6300,43 @@ bool MsaAlgorithm::IsEvictionRequiredForPreviousUseAtConditional(
   return false;
 }
 
+void MsaAlgorithm::MaybeCreateMirroredAllocationForAsyncUse(
+    const AllocationValue& allocation_value, const AllocationValue::Use& use,
+    int64_t use_time, absl::Span<AllocationValue> allocation_values) {
+  const HloUse& hlo_use = use.hlo_use;
+  if (hlo_use.instruction->opcode() != HloOpcode::kAsyncStart) {
+    return;
+  }
+  Allocation* aliased_allocation =
+      GetLiveAllocationAt(*allocation_value.allocation_sequence(), use_time);
+  if (!aliased_allocation ||
+      aliased_allocation->memory_space() != MemorySpace::kAlternate) {
+    return;
+  }
+  const auto& instruction_schedule = hlo_live_range_.instruction_schedule();
+  for (AllocationValue& val : allocation_values) {
+    if (val.value() != allocation_value.value()) {
+      continue;
+    }
+    if ((val.defining_instruction() == hlo_use.instruction &&
+         !val.defining_position().index.empty() &&
+         val.defining_position().index.front() == 0) ||
+        val.computation() == hlo_use.instruction->async_wrapped_computation()) {
+      if (val.allocation_sequence()->empty()) {
+        int64_t time = instruction_schedule.at(val.defining_instruction());
+        val.mutable_allocation_sequence()->push_back(
+            std::make_unique<MirroredAllocation>(
+                val.defining_position(), *aliased_allocation, time, time));
+        for (const AllocationValue::Use& val_use : val.uses()) {
+          val.allocation_sequence()->back()->AddUse(val_use.hlo_use);
+        }
+        VLOG(3) << "Created MirroredAllocation for async use: "
+                << val.allocation_sequence()->back()->ToString();
+      }
+    }
+  }
+}
+
 bool operator<(const AsynchronousCopy& a, const AsynchronousCopy& b) {
   return a.AsTuple() < b.AsTuple();
 }
@@ -6977,16 +7034,24 @@ int64_t MsaAlgorithm::GetCorrectedUseTime(
     // uses within the while loop body.
     return schedule.at(while_body->parameter_instruction(0));
   }
-  if (instruction->opcode() == HloOpcode::kConditional) {
+  // All the ops in "GetInstructionCallContext" under kControlFlow, ie Call,
+  // AsyncStart, AsyncUpdate and AsyncDone.
+  if (GetInstructionCallContext(instruction->opcode()) ==
+      CallContext::kControlFlow) {
     // The corrected use time is the earliest parameter of the called
-    // computations.
+    // computations, which has been flattened into the schedule.
     int64_t use_time = std::numeric_limits<int64_t>::max();
     for (const HloComputation* called_computation :
          instruction->called_computations()) {
-      use_time = std::min(
-          use_time, schedule.at(called_computation->parameter_instruction(0)));
+      if (called_computation->num_parameters() > 0) {
+        use_time =
+            std::min(use_time,
+                     schedule.at(called_computation->parameter_instruction(0)));
+      }
     }
-    return use_time;
+    if (use_time != std::numeric_limits<int64_t>::max()) {
+      return use_time;
+    }
   }
   // Otherwise, just return the time of the use instruction.
   return hlo_live_range_.instruction_schedule().at(instruction);

@@ -3908,6 +3908,510 @@ TEST_F(MemorySpaceAssignmentTest, ConditionalShouldBeAllocatedInAlternateMem) {
             kAlternateMemorySpace);
 }
 
+TEST_F(MemorySpaceAssignmentTest,
+       AsyncStartOperandShouldBeAllocatedInAlternateMem) {
+  // Checks that operands of async-start get alternate memory allocations
+  // without overlapping with the called computation's parameter allocations.
+  absl::string_view hlo_string = R"hlo(
+  HloModule AsyncAllocation, is_scheduled=true
+
+  fusion_computation {
+    fusion_p0 = f32[3]{0} parameter(0)
+    fusion_p1 = f32[3]{0} parameter(1)
+    fusion_p2 = f32[3]{0} parameter(2)
+    fusion_p3 = f32[3]{0} parameter(3)
+    add1 = f32[3]{0} add(fusion_p0, fusion_p1)
+    add2 = f32[3]{0} add(fusion_p2, fusion_p3)
+    ROOT add3 = f32[3]{0} add(add1, add2)
+  }
+
+  async_computation {
+    async_p0 = f32[3]{0} parameter(0)
+    async_p1 = f32[3]{0} parameter(1)
+    async_p2 = f32[3]{0} parameter(2)
+    async_p3 = f32[3]{0} parameter(3)
+    ROOT fusion = f32[3]{0} fusion(async_p0, async_p1, async_p2, async_p3), kind=kCustom, calls=fusion_computation
+  }
+
+  ENTRY entry {
+    p0 = f32[3]{0} parameter(0)
+    p1 = f32[3]{0} parameter(1)
+    p2 = f32[3]{0} parameter(2)
+    p3 = f32[3]{0} parameter(3)
+    p4 = f32[3]{0} parameter(4)
+    p5 = f32[3]{0} parameter(5)
+    copy = f32[3]{0} copy(p0)
+    tmp = f32[3]{0} add(p4, p4)
+    async-start = ((f32[3]{0}, f32[3]{0}, f32[3]{0}, f32[3]{0}), f32[3]{0}, s32[]) async-start(copy, p1, p2, p3), calls=async_computation
+    tmp2 = f32[3]{0} add(p5, p5)
+    async-done = f32[3]{0} async-done(async-start), calls=async_computation
+    tmp3 = f32[3]{0} add(copy, copy)
+    ROOT add = f32[3]{0} add(async-done, tmp3)
+  }
+  )hlo";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  AssignMemorySpace(module.get());
+
+  // Check that copy got an alternate memory allocation.
+  auto copy =
+      module->GetComputationWithName("entry")->GetInstructionWithName("copy");
+  EXPECT_EQ(copy->shape().layout().memory_space(), kAlternateMemorySpace);
+  auto async_start =
+      module->GetComputationWithName("entry")->GetInstructionWithName(
+          "async-start");
+  EXPECT_EQ(async_start->shape()
+                .tuple_shapes(0)
+                .tuple_shapes(0)
+                .layout()
+                .memory_space(),
+            kAlternateMemorySpace);
+  EXPECT_EQ(async_start->shape()
+                .tuple_shapes(0)
+                .tuple_shapes(1)
+                .layout()
+                .memory_space(),
+            kAlternateMemorySpace);
+  EXPECT_EQ(async_start->shape()
+                .tuple_shapes(0)
+                .tuple_shapes(2)
+                .layout()
+                .memory_space(),
+            kAlternateMemorySpace);
+  EXPECT_EQ(async_start->shape()
+                .tuple_shapes(0)
+                .tuple_shapes(3)
+                .layout()
+                .memory_space(),
+            kAlternateMemorySpace);
+  auto async_comp = module->GetComputationWithName("async_computation");
+  EXPECT_EQ(async_comp->GetInstructionWithName("async_p0")
+                ->shape()
+                .layout()
+                .memory_space(),
+            kAlternateMemorySpace);
+  EXPECT_EQ(async_comp->GetInstructionWithName("async_p1")
+                ->shape()
+                .layout()
+                .memory_space(),
+            kAlternateMemorySpace);
+  EXPECT_EQ(async_comp->GetInstructionWithName("async_p2")
+                ->shape()
+                .layout()
+                .memory_space(),
+            kAlternateMemorySpace);
+  EXPECT_EQ(async_comp->GetInstructionWithName("async_p3")
+                ->shape()
+                .layout()
+                .memory_space(),
+            kAlternateMemorySpace);
+  auto neg = module->GetComputationWithName("async_computation")
+                 ->GetInstructionWithName("fusion");
+  auto neg_operand = neg->operand(0);
+  EXPECT_EQ(neg_operand->shape().layout().memory_space(),
+            kAlternateMemorySpace);
+}
+
+TEST_F(MemorySpaceAssignmentTest, AsyncStartMultipleOperandsInAlternateMem) {
+  // Checks that when multiple operands of async-start are allocated in
+  // alternate memory, each operand gets a MirroredAllocation at the
+  // corresponding tuple index {0, i} of async-start and for parameter(i) of
+  // async_computation.
+  absl::string_view hlo_string = R"hlo(
+  HloModule AsyncMultipleAllocations, is_scheduled=true
+
+  fusion_computation {
+    fusion_p0 = f32[3]{0} parameter(0)
+    fusion_p1 = f32[3]{0} parameter(1)
+    fusion_p2 = f32[3]{0} parameter(2)
+    fusion_p3 = f32[3]{0} parameter(3)
+    add1 = f32[3]{0} add(fusion_p0, fusion_p1)
+    add2 = f32[3]{0} add(fusion_p2, fusion_p3)
+    ROOT add3 = f32[3]{0} add(add1, add2)
+  }
+
+  async_computation {
+    async_p0 = f32[3]{0} parameter(0)
+    async_p1 = f32[3]{0} parameter(1)
+    async_p2 = f32[3]{0} parameter(2)
+    async_p3 = f32[3]{0} parameter(3)
+    ROOT fusion = f32[3]{0} fusion(async_p0, async_p1, async_p2, async_p3), kind=kCustom, calls=fusion_computation
+  }
+
+  ENTRY entry {
+    p0 = f32[3]{0} parameter(0)
+    p1 = f32[3]{0} parameter(1)
+    p2 = f32[3]{0} parameter(2)
+    p3 = f32[3]{0} parameter(3)
+    p4 = f32[3]{0} parameter(4)
+    p5 = f32[3]{0} parameter(5)
+    copy0 = f32[3]{0} copy(p0)
+    copy1 = f32[3]{0} copy(p1)
+    tmp = f32[3]{0} add(p4, p4)
+    async-start = ((f32[3]{0}, f32[3]{0}, f32[3]{0}, f32[3]{0}), f32[3]{0}, s32[]) async-start(copy0, copy1, p2, p3), calls=async_computation
+    tmp2 = f32[3]{0} add(p5, p5)
+    async-done = f32[3]{0} async-done(async-start), calls=async_computation
+    tmp3 = f32[3]{0} add(copy0, copy1)
+    ROOT add = f32[3]{0} add(async-done, tmp3)
+  }
+  )hlo";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  AssignMemorySpace(module.get());
+
+  auto entry = module->GetComputationWithName("entry");
+  auto copy0 = entry->GetInstructionWithName("copy0");
+  auto copy1 = entry->GetInstructionWithName("copy1");
+  EXPECT_EQ(copy0->shape().layout().memory_space(), kAlternateMemorySpace);
+  EXPECT_EQ(copy1->shape().layout().memory_space(), kAlternateMemorySpace);
+
+  auto async_start = entry->GetInstructionWithName("async-start");
+  EXPECT_EQ(async_start->shape()
+                .tuple_shapes(0)
+                .tuple_shapes(0)
+                .layout()
+                .memory_space(),
+            kAlternateMemorySpace);
+  EXPECT_EQ(async_start->shape()
+                .tuple_shapes(0)
+                .tuple_shapes(1)
+                .layout()
+                .memory_space(),
+            kAlternateMemorySpace);
+  EXPECT_EQ(async_start->shape()
+                .tuple_shapes(0)
+                .tuple_shapes(2)
+                .layout()
+                .memory_space(),
+            kAlternateMemorySpace);
+  EXPECT_EQ(async_start->shape()
+                .tuple_shapes(0)
+                .tuple_shapes(3)
+                .layout()
+                .memory_space(),
+            kAlternateMemorySpace);
+
+  auto async_comp = module->GetComputationWithName("async_computation");
+  EXPECT_EQ(async_comp->GetInstructionWithName("async_p0")
+                ->shape()
+                .layout()
+                .memory_space(),
+            kAlternateMemorySpace);
+  EXPECT_EQ(async_comp->GetInstructionWithName("async_p1")
+                ->shape()
+                .layout()
+                .memory_space(),
+            kAlternateMemorySpace);
+  EXPECT_EQ(async_comp->GetInstructionWithName("async_p2")
+                ->shape()
+                .layout()
+                .memory_space(),
+            kAlternateMemorySpace);
+  EXPECT_EQ(async_comp->GetInstructionWithName("async_p3")
+                ->shape()
+                .layout()
+                .memory_space(),
+            kAlternateMemorySpace);
+
+  auto fusion = async_comp->GetInstructionWithName("fusion");
+  EXPECT_EQ(fusion->operand(0)->shape().layout().memory_space(),
+            kAlternateMemorySpace);
+  EXPECT_EQ(fusion->operand(1)->shape().layout().memory_space(),
+            kAlternateMemorySpace);
+  EXPECT_EQ(fusion->operand(2)->shape().layout().memory_space(),
+            kAlternateMemorySpace);
+  EXPECT_EQ(fusion->operand(3)->shape().layout().memory_space(),
+            kAlternateMemorySpace);
+}
+
+TEST_F(MemorySpaceAssignmentTest, AsyncStartMirroredAllocationInWhileLoop) {
+  // Checks that when async-start is inside a while loop body, mirrored
+  // allocations are correctly created for async-start operands and parameters
+  // inside the while loop.
+  absl::string_view hlo_string = R"hlo(
+  HloModule AsyncInWhile, is_scheduled=true
+
+  fusion_computation {
+    fusion_p0 = f32[3]{0} parameter(0)
+    ROOT negate = f32[3]{0} negate(fusion_p0)
+  }
+
+  async_computation {
+    async_p0 = f32[3]{0} parameter(0)
+    ROOT fusion = f32[3]{0} fusion(async_p0), kind=kCustom, calls=fusion_computation
+  }
+
+  while_cond {
+    cond_param = (f32[3]{0}, s32[]) parameter(0)
+    cond_iter = s32[] get-tuple-element(cond_param), index=1
+    cond_limit = s32[] constant(5)
+    ROOT lt = pred[] compare(cond_iter, cond_limit), direction=LT
+  }
+
+  while_body {
+    body_param = (f32[3]{0}, s32[]) parameter(0)
+    body_data = f32[3]{0} get-tuple-element(body_param), index=0
+    body_iter = s32[] get-tuple-element(body_param), index=1
+    copy0 = f32[3]{0} copy(body_data)
+    async-start = ((f32[3]{0}), f32[3]{0}, s32[]) async-start(copy0), calls=async_computation
+    async-done = f32[3]{0} async-done(async-start), calls=async_computation
+    one = s32[] constant(1)
+    next_iter = s32[] add(body_iter, one)
+    ROOT root = (f32[3]{0}, s32[]) tuple(async-done, next_iter)
+  }
+
+  ENTRY entry {
+    p0 = f32[3]{0} parameter(0)
+    p1 = s32[] constant(0)
+    tuple = (f32[3]{0}, s32[]) tuple(p0, p1)
+    ROOT while = (f32[3]{0}, s32[]) while(tuple), condition=while_cond, body=while_body
+  }
+  )hlo";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  AssignMemorySpace(module.get());
+
+  auto while_body = module->GetComputationWithName("while_body");
+  auto copy0 = while_body->GetInstructionWithName("copy0");
+  EXPECT_EQ(copy0->shape().layout().memory_space(), kAlternateMemorySpace);
+
+  auto async_start = while_body->GetInstructionWithName("async-start");
+  EXPECT_EQ(async_start->shape()
+                .tuple_shapes(0)
+                .tuple_shapes(0)
+                .layout()
+                .memory_space(),
+            kAlternateMemorySpace);
+
+  auto async_comp = module->GetComputationWithName("async_computation");
+  auto async_p0 = async_comp->GetInstructionWithName("async_p0");
+  EXPECT_EQ(async_p0->shape().layout().memory_space(), kAlternateMemorySpace);
+
+  auto fusion = async_comp->GetInstructionWithName("fusion");
+  EXPECT_EQ(fusion->operand(0)->shape().layout().memory_space(),
+            kAlternateMemorySpace);
+}
+
+TEST_F(MemorySpaceAssignmentTest,
+       AsyncStartMirroredAllocationMultipleAsyncCalls) {
+  // Checks that multiple independent async-start calls in the same schedule
+  // correctly create independent mirrored allocations without interference.
+  absl::string_view hlo_string = R"hlo(
+  HloModule AsyncMultipleCalls, is_scheduled=true
+
+  fusion_computation1 {
+    fusion1_p0 = f32[3]{0} parameter(0)
+    ROOT add1 = f32[3]{0} add(fusion1_p0, fusion1_p0)
+  }
+
+  async_computation1 {
+    async1_p0 = f32[3]{0} parameter(0)
+    ROOT fusion1 = f32[3]{0} fusion(async1_p0), kind=kCustom, calls=fusion_computation1
+  }
+
+  fusion_computation2 {
+    fusion2_p0 = f32[3]{0} parameter(0)
+    ROOT add2 = f32[3]{0} add(fusion2_p0, fusion2_p0)
+  }
+
+  async_computation2 {
+    async2_p0 = f32[3]{0} parameter(0)
+    ROOT fusion2 = f32[3]{0} fusion(async2_p0), kind=kCustom, calls=fusion_computation2
+  }
+
+  ENTRY entry {
+    p0 = f32[3]{0} parameter(0)
+    p1 = f32[3]{0} parameter(1)
+    p2 = f32[3]{0} parameter(2)
+    p3 = f32[3]{0} parameter(3)
+    copy1 = f32[3]{0} copy(p0)
+    copy2 = f32[3]{0} copy(p1)
+    tmp = f32[3]{0} add(p2, p2)
+    async-start1 = ((f32[3]{0}), f32[3]{0}, s32[]) async-start(copy1), calls=async_computation1
+    async-start2 = ((f32[3]{0}), f32[3]{0}, s32[]) async-start(copy2), calls=async_computation2
+    async-done1 = f32[3]{0} async-done(async-start1), calls=async_computation1
+    async-done2 = f32[3]{0} async-done(async-start2), calls=async_computation2
+    tmp2 = f32[3]{0} add(p3, p3)
+    tmp3 = f32[3]{0} add(copy1, copy2)
+    tmp4 = f32[3]{0} add(async-done1, async-done2)
+    ROOT add = f32[3]{0} add(tmp3, tmp4)
+  }
+  )hlo";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  AssignMemorySpace(module.get());
+
+  auto entry = module->GetComputationWithName("entry");
+  auto copy1 = entry->GetInstructionWithName("copy1");
+  auto copy2 = entry->GetInstructionWithName("copy2");
+  EXPECT_EQ(copy1->shape().layout().memory_space(), kAlternateMemorySpace);
+  EXPECT_EQ(copy2->shape().layout().memory_space(), kAlternateMemorySpace);
+
+  auto async_start1 = entry->GetInstructionWithName("async-start1");
+  EXPECT_EQ(async_start1->shape()
+                .tuple_shapes(0)
+                .tuple_shapes(0)
+                .layout()
+                .memory_space(),
+            kAlternateMemorySpace);
+
+  auto async_start2 = entry->GetInstructionWithName("async-start2");
+  EXPECT_EQ(async_start2->shape()
+                .tuple_shapes(0)
+                .tuple_shapes(0)
+                .layout()
+                .memory_space(),
+            kAlternateMemorySpace);
+
+  auto async_comp1 = module->GetComputationWithName("async_computation1");
+  auto async1_p0 = async_comp1->GetInstructionWithName("async1_p0");
+  EXPECT_EQ(async1_p0->shape().layout().memory_space(), kAlternateMemorySpace);
+
+  auto async_comp2 = module->GetComputationWithName("async_computation2");
+  auto async2_p0 = async_comp2->GetInstructionWithName("async2_p0");
+  EXPECT_EQ(async2_p0->shape().layout().memory_space(), kAlternateMemorySpace);
+}
+
+TEST_F(MemorySpaceAssignmentTest,
+       AsyncStartMirroredAllocationWithSequentialAsyncCalls) {
+  // Checks that pipelined / sequential async computations where the result of
+  // one async computation feeds into the operand of another async-start work
+  // correctly with mirrored allocations.
+  absl::string_view hlo_string = R"hlo(
+  HloModule AsyncSequentialCalls, is_scheduled=true
+
+  fusion_computation1 {
+    fusion1_p0 = f32[3]{0} parameter(0)
+    ROOT negate1 = f32[3]{0} negate(fusion1_p0)
+  }
+
+  async_computation1 {
+    async1_p0 = f32[3]{0} parameter(0)
+    ROOT fusion1 = f32[3]{0} fusion(async1_p0), kind=kCustom, calls=fusion_computation1
+  }
+
+  fusion_computation2 {
+    fusion2_p0 = f32[3]{0} parameter(0)
+    ROOT negate2 = f32[3]{0} negate(fusion2_p0)
+  }
+
+  async_computation2 {
+    async2_p0 = f32[3]{0} parameter(0)
+    ROOT fusion2 = f32[3]{0} fusion(async2_p0), kind=kCustom, calls=fusion_computation2
+  }
+
+  ENTRY entry {
+    p0 = f32[3]{0} parameter(0)
+    p1 = f32[3]{0} parameter(1)
+    copy1 = f32[3]{0} copy(p0)
+    async-start1 = ((f32[3]{0}), f32[3]{0}, s32[]) async-start(copy1), calls=async_computation1
+    async-done1 = f32[3]{0} async-done(async-start1), calls=async_computation1
+    copy2 = f32[3]{0} copy(async-done1)
+    async-start2 = ((f32[3]{0}), f32[3]{0}, s32[]) async-start(copy2), calls=async_computation2
+    async-done2 = f32[3]{0} async-done(async-start2), calls=async_computation2
+    tmp1 = f32[3]{0} add(copy1, copy2)
+    ROOT add = f32[3]{0} add(tmp1, async-done2)
+  }
+  )hlo";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  AssignMemorySpace(module.get());
+
+  auto entry = module->GetComputationWithName("entry");
+  auto copy1 = entry->GetInstructionWithName("copy1");
+  auto copy2 = entry->GetInstructionWithName("copy2");
+  EXPECT_EQ(copy1->shape().layout().memory_space(), kAlternateMemorySpace);
+  EXPECT_EQ(copy2->shape().layout().memory_space(), kAlternateMemorySpace);
+
+  auto async_start1 = entry->GetInstructionWithName("async-start1");
+  EXPECT_EQ(async_start1->shape()
+                .tuple_shapes(0)
+                .tuple_shapes(0)
+                .layout()
+                .memory_space(),
+            kAlternateMemorySpace);
+
+  auto async_start2 = entry->GetInstructionWithName("async-start2");
+  EXPECT_EQ(async_start2->shape()
+                .tuple_shapes(0)
+                .tuple_shapes(0)
+                .layout()
+                .memory_space(),
+            kAlternateMemorySpace);
+
+  auto async_comp1 = module->GetComputationWithName("async_computation1");
+  auto async1_p0 = async_comp1->GetInstructionWithName("async1_p0");
+  EXPECT_EQ(async1_p0->shape().layout().memory_space(), kAlternateMemorySpace);
+
+  auto async_comp2 = module->GetComputationWithName("async_computation2");
+  auto async2_p0 = async_comp2->GetInstructionWithName("async2_p0");
+  EXPECT_EQ(async2_p0->shape().layout().memory_space(), kAlternateMemorySpace);
+}
+
+TEST_F(MemorySpaceAssignmentTest, AsyncStartTupleReconstruction) {
+  // Checks that tuple reconstruction in Allocation::UpdateUses is correctly
+  // skipped for asynchronous instructions (async-start / async-done) when
+  // dealing with tuple operands and tuple results.
+  absl::string_view hlo_string = R"hlo(
+  HloModule AsyncTupleResult, is_scheduled=true
+
+  fusion_computation {
+    fusion_p0 = f32[3]{0} parameter(0)
+    fusion_p1 = f32[3]{0} parameter(1)
+    neg1 = f32[3]{0} negate(fusion_p0)
+    neg2 = f32[3]{0} negate(fusion_p1)
+    ROOT tuple = (f32[3]{0}, f32[3]{0}) tuple(neg1, neg2)
+  }
+
+  async_computation {
+    async_p0 = f32[3]{0} parameter(0)
+    async_p1 = f32[3]{0} parameter(1)
+    ROOT fusion = (f32[3]{0}, f32[3]{0}) fusion(async_p0, async_p1), kind=kCustom, calls=fusion_computation
+  }
+
+  ENTRY entry {
+    p0 = f32[3]{0} parameter(0)
+    p1 = f32[3]{0} parameter(1)
+    copy0 = f32[3]{0} copy(p0)
+    copy1 = f32[3]{0} copy(p1)
+    async-start = ((f32[3]{0}, f32[3]{0}), (f32[3]{0}, f32[3]{0}), s32[]) async-start(copy0, copy1), calls=async_computation
+    async-done = (f32[3]{0}, f32[3]{0}) async-done(async-start), calls=async_computation
+    gte0 = f32[3]{0} get-tuple-element(async-done), index=0
+    gte1 = f32[3]{0} get-tuple-element(async-done), index=1
+    ROOT add = f32[3]{0} add(gte0, gte1)
+  }
+  )hlo";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  AssignMemorySpace(module.get());
+
+  auto entry = module->GetComputationWithName("entry");
+  auto copy0 = entry->GetInstructionWithName("copy0");
+  auto copy1 = entry->GetInstructionWithName("copy1");
+  EXPECT_EQ(copy0->shape().layout().memory_space(), kAlternateMemorySpace);
+  EXPECT_EQ(copy1->shape().layout().memory_space(), kAlternateMemorySpace);
+
+  auto async_start = entry->GetInstructionWithName("async-start");
+  EXPECT_EQ(async_start->shape()
+                .tuple_shapes(0)
+                .tuple_shapes(0)
+                .layout()
+                .memory_space(),
+            kAlternateMemorySpace);
+  EXPECT_EQ(async_start->shape()
+                .tuple_shapes(0)
+                .tuple_shapes(1)
+                .layout()
+                .memory_space(),
+            kAlternateMemorySpace);
+
+  auto async_comp = module->GetComputationWithName("async_computation");
+  auto async_p0 = async_comp->GetInstructionWithName("async_p0");
+  auto async_p1 = async_comp->GetInstructionWithName("async_p1");
+  EXPECT_EQ(async_p0->shape().layout().memory_space(), kAlternateMemorySpace);
+  EXPECT_EQ(async_p1->shape().layout().memory_space(), kAlternateMemorySpace);
+}
+
 TEST_F(MemorySpaceAssignmentTest, ConditionalAvoidsUnnecessaryPrefetch) {
   // Checks if we avoid unnecessary allocation in alternate memory if the input
   // won't be used in the computation for a long time.
