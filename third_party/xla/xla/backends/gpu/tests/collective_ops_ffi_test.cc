@@ -285,7 +285,7 @@ static absl::Status PrepareMultiGpuBarrier(
 
   CollectiveCliqueRequests::CliqueRequirements requirements;
   requirements.barrier_reqs = CollectiveCliqueRequests::BarrierRequirements{
-      /*module_execution_barrier=*/false, /*use_cross_device_barrier=*/true};
+      /*use_cross_device_barrier=*/true};
 
   std::vector<GlobalDeviceId> all_device_groups;
   for (int i = 0; i < kNumReplicas; ++i) {
