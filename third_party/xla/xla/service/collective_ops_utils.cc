@@ -31,10 +31,12 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/tsl/platform/status_macros.h"
+#include "third_party/json/include/nlohmann/json.hpp"
 #include "xla/core/collectives/reduction_kind.h"
 #include "xla/hlo/ir/collective_op_group_mode.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
@@ -1103,6 +1105,112 @@ bool IsNcclSymmetricBuffersEnabledForCollective(
   }
   NcclSymmetricBuffersSpec spec(opts);
   return spec.IsEnabled(*instruction);
+}
+
+absl::StatusOr<AsyncCollectiveConfig> ParseAsyncCollectiveConfig(
+    absl::string_view config_json_str) {
+  AsyncCollectiveConfig config;
+  if (config_json_str.empty()) {
+    return config;
+  }
+  auto json = nlohmann::json::parse(config_json_str, /*callback=*/nullptr,
+                                    /*allow_exceptions=*/false);
+  if (json.is_discarded()) {
+    return absl::InvalidArgumentError(absl::StrCat(
+        "Failed to parse collective op config JSON: ", config_json_str));
+  }
+  if (json.contains("replica_groups")) {
+    TF_RET_CHECK(json["replica_groups"].is_array());
+    for (const auto& group : json["replica_groups"]) {
+      TF_RET_CHECK(group.is_array());
+      ReplicaGroup rg;
+      for (const auto& id_json : group) {
+        rg.add_replica_ids(id_json.get<int64_t>());
+      }
+      config.replica_groups.push_back(rg);
+    }
+  }
+  if (json.contains("channel_id")) {
+    config.channel_id = json["channel_id"].get<int64_t>();
+  }
+  if (json.contains("use_global_device_ids")) {
+    config.use_global_device_ids = json["use_global_device_ids"].get<bool>();
+  }
+  if (json.contains("permutation")) {
+    TF_RET_CHECK(json["permutation"].is_array());
+    for (const auto& pair : json["permutation"]) {
+      TF_RET_CHECK(pair.is_array() && pair.size() == 2);
+      config.permutation.push_back(
+          {pair[0].get<int64_t>(), pair[1].get<int64_t>()});
+    }
+  }
+  if (json.contains("all_gather_dimension")) {
+    config.all_gather_dimension = json["all_gather_dimension"].get<int64_t>();
+  }
+  if (json.contains("scatter_dimension")) {
+    config.scatter_dimension = json["scatter_dimension"].get<int64_t>();
+  }
+  if (json.contains("tiled")) {
+    config.tiled = json["tiled"].get<bool>();
+  }
+  if (json.contains("split_dimension")) {
+    config.split_dimension = json["split_dimension"].get<int64_t>();
+  }
+  if (json.contains("concat_dimension")) {
+    config.concat_dimension = json["concat_dimension"].get<int64_t>();
+  }
+  if (json.contains("split_count")) {
+    config.split_count = json["split_count"].get<int64_t>();
+  }
+  return config;
+}
+
+std::string SerializeAsyncCollectiveConfig(
+    const AsyncCollectiveConfig& config) {
+  nlohmann::json json = nlohmann::json::object();
+  if (!config.replica_groups.empty()) {
+    nlohmann::json rg_json = nlohmann::json::array();
+    for (const auto& rg : config.replica_groups) {
+      nlohmann::json group = nlohmann::json::array();
+      for (int64_t id : rg.replica_ids()) {
+        group.push_back(id);
+      }
+      rg_json.push_back(group);
+    }
+    json["replica_groups"] = rg_json;
+  }
+  if (config.channel_id.has_value()) {
+    json["channel_id"] = *config.channel_id;
+  }
+  if (config.use_global_device_ids) {
+    json["use_global_device_ids"] = config.use_global_device_ids;
+  }
+  if (!config.permutation.empty()) {
+    nlohmann::json perm_json = nlohmann::json::array();
+    for (const auto& pair : config.permutation) {
+      perm_json.push_back({pair.first, pair.second});
+    }
+    json["permutation"] = perm_json;
+  }
+  if (config.all_gather_dimension.has_value()) {
+    json["all_gather_dimension"] = *config.all_gather_dimension;
+  }
+  if (config.scatter_dimension.has_value()) {
+    json["scatter_dimension"] = *config.scatter_dimension;
+  }
+  if (config.tiled.has_value()) {
+    json["tiled"] = *config.tiled;
+  }
+  if (config.split_dimension.has_value()) {
+    json["split_dimension"] = *config.split_dimension;
+  }
+  if (config.concat_dimension.has_value()) {
+    json["concat_dimension"] = *config.concat_dimension;
+  }
+  if (config.split_count.has_value()) {
+    json["split_count"] = *config.split_count;
+  }
+  return json.dump();
 }
 
 }  // end namespace xla
