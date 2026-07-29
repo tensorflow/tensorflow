@@ -16,7 +16,6 @@ limitations under the License.
 
 #include <algorithm>
 #include <complex>
-#include <cstring>
 #include <initializer_list>
 #include <limits>
 #include <vector>
@@ -255,6 +254,57 @@ TEST(CastOpModel, CastFloatToInt32Infinity) {
   EXPECT_THAT(m.ExtractVector<int32_t>(m.output()),
               ElementsAreArray({std::numeric_limits<int32_t>::max(),
                                 std::numeric_limits<int32_t>::min()}));
+}
+
+TEST(CastOpModel, CastFloatToIntegerOutOfRange) {
+  {
+    CastOpModel m({TensorType_FLOAT32, {2}}, {TensorType_INT64, {2}});
+    m.PopulateTensor<float>(m.input(),
+                            {std::numeric_limits<float>::infinity(),
+                             -std::numeric_limits<float>::infinity()});
+    ASSERT_EQ(m.Invoke(), kTfLiteOk);
+    EXPECT_THAT(m.ExtractVector<int64_t>(m.output()),
+                ElementsAreArray({std::numeric_limits<int64_t>::max(),
+                                  std::numeric_limits<int64_t>::min()}));
+  }
+  {
+    CastOpModel m({TensorType_FLOAT32, {2}}, {TensorType_UINT32, {2}});
+    m.PopulateTensor<float>(m.input(),
+                            {std::numeric_limits<float>::infinity(),
+                             -std::numeric_limits<float>::infinity()});
+    ASSERT_EQ(m.Invoke(), kTfLiteOk);
+    EXPECT_THAT(m.ExtractVector<uint32_t>(m.output()),
+                ElementsAreArray({std::numeric_limits<uint32_t>::max(),
+                                  std::numeric_limits<uint32_t>::min()}));
+  }
+  {
+    CastOpModel m({TensorType_FLOAT32, {2}}, {TensorType_INT8, {2}});
+    m.PopulateTensor<float>(m.input(),
+                            {std::numeric_limits<float>::infinity(),
+                             -std::numeric_limits<float>::infinity()});
+    ASSERT_EQ(m.Invoke(), kTfLiteOk);
+    EXPECT_THAT(m.ExtractVector<int8_t>(m.output()),
+                ElementsAreArray({std::numeric_limits<int8_t>::max(),
+                                  std::numeric_limits<int8_t>::min()}));
+  }
+}
+
+TEST(CastOpModel, CastFloatToIntegerNaN) {
+  const float nan = std::numeric_limits<float>::quiet_NaN();
+  {
+    CastOpModel m({TensorType_FLOAT32, {1}}, {TensorType_INT16, {1}});
+    m.PopulateTensor<float>(m.input(), {nan});
+    ASSERT_EQ(m.Invoke(), kTfLiteOk);
+    EXPECT_THAT(m.ExtractVector<int16_t>(m.output()),
+                ElementsAreArray({std::numeric_limits<int16_t>::max()}));
+  }
+  {
+    CastOpModel m({TensorType_FLOAT32, {1}}, {TensorType_UINT8, {1}});
+    m.PopulateTensor<float>(m.input(), {nan});
+    ASSERT_EQ(m.Invoke(), kTfLiteOk);
+    EXPECT_THAT(m.ExtractVector<uint8_t>(m.output()),
+                ElementsAreArray({std::numeric_limits<uint8_t>::max()}));
+  }
 }
 
 TEST(CastOpModel, CastInt16ToFloat) {
@@ -590,6 +640,28 @@ TEST(CastOpModel, CastFloat8E5M2ToFloat) {
               Pointwise(FloatingPointEq(),
                         Float8Values<float8_internal::Float8E5M2>(input)));
 }
+
+TEST(CastOpModel, CastFloat8E4M3FNToIntegerOutOfRange) {
+  CastOpModel m({TensorType_FLOAT8_E4M3FN, {2}}, {TensorType_INT8, {2}});
+  const std::vector<uint8_t> input =
+      Float8Bytes<float8_internal::Float8E4M3FN>({448.f, -448.f});
+  SetRawInput(&m, input);
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(m.ExtractVector<int8_t>(m.output()),
+              ElementsAreArray({std::numeric_limits<int8_t>::max(),
+                                std::numeric_limits<int8_t>::min()}));
+}
+
+TEST(CastOpModel, CastFloat8E5M2ToIntegerOutOfRange) {
+  CastOpModel m({TensorType_FLOAT8_E5M2, {2}}, {TensorType_INT8, {2}});
+  const std::vector<uint8_t> input =
+      Float8Bytes<float8_internal::Float8E5M2>({57344.f, -57344.f});
+  SetRawInput(&m, input);
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(m.ExtractVector<int8_t>(m.output()),
+              ElementsAreArray({std::numeric_limits<int8_t>::max(),
+                                std::numeric_limits<int8_t>::min()}));
+}
 #endif
 
 TEST(CastOpModel, CastFloat16ToInt32) {
@@ -601,6 +673,14 @@ TEST(CastOpModel, CastFloat16ToInt32) {
   ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.ExtractVector<int32_t>(m.output()),
               ElementsAreArray({100, 20, 3, 0, 0, 1}));
+}
+
+TEST(CastOpModel, CastFloat16ToIntegerNaN) {
+  CastOpModel m({TensorType_FLOAT16, {1}}, {TensorType_UINT16, {1}});
+  m.PopulateTensor<half>(m.input(), {half::from_bits(0x7e00)});
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(m.ExtractVector<uint16_t>(m.output()),
+              ElementsAreArray({std::numeric_limits<uint16_t>::max()}));
 }
 
 TEST(CastOpModel, CastInt32ToFloat16) {

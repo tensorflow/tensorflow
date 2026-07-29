@@ -80,12 +80,19 @@ bool CheckedAlignTo(size_t alignment, T offset, T* aligned_offset) {
                     aligned_offset);
 }
 
+bool IsValidTfLiteAllocator(TfLiteAllocator* allocator) {
+  return allocator != nullptr && allocator->allocate != nullptr &&
+         allocator->deallocate != nullptr;
+}
+
 // Allocates memory and aligns it to the specified size. Returns a pair of the
 // allocation pointer and the aligned pointer.
-tflite::PointerAlignedPointerPair AlignedAlloc(size_t size, size_t alignment);
+tflite::PointerAlignedPointerPair AlignedAlloc(size_t size, size_t alignment,
+                                               TfLiteAllocator* allocator);
 
 // Frees up aligned memory.
-void AlignedFree(const tflite::PointerAlignedPointerPair& buffer);
+void AlignedFree(const tflite::PointerAlignedPointerPair& buffer, size_t size,
+                 size_t alignment, TfLiteAllocator* allocator);
 
 // Reallocates aligned memory
 //
@@ -96,25 +103,53 @@ void AlignedFree(const tflite::PointerAlignedPointerPair& buffer);
 // Returns pointers to the new allocation.
 tflite::PointerAlignedPointerPair AlignedRealloc(
     const tflite::PointerAlignedPointerPair& old_buffer, size_t old_size,
-    size_t new_size, size_t alignment);
+    size_t new_size, size_t alignment, TfLiteAllocator* allocator);
 
 #if defined(_WIN32)
 // On Windows <cstdlib> provides _aligned_malloc, _aligned_free, and
 // _aligned_realloc, use them to implement the Aligned functions.
 
-tflite::PointerAlignedPointerPair AlignedAlloc(size_t size, size_t alignment) {
+tflite::PointerAlignedPointerPair AlignedAlloc(size_t size, size_t alignment,
+                                               TfLiteAllocator* allocator) {
+  if (IsValidTfLiteAllocator(allocator)) {
+    char* pointer = reinterpret_cast<char*>(
+        allocator->allocate(allocator->data, size, alignment));
+    return {pointer, pointer};
+  }
   char* pointer = reinterpret_cast<char*>(_aligned_malloc(size, alignment));
   char* aligned_ptr = pointer;
   return {pointer, aligned_ptr};
 }
 
-void AlignedFree(const tflite::PointerAlignedPointerPair& buffer) {
+void AlignedFree(const tflite::PointerAlignedPointerPair& buffer, size_t size,
+                 size_t alignment, TfLiteAllocator* allocator) {
+  if (buffer.pointer == nullptr) {
+    return;
+  }
+  if (IsValidTfLiteAllocator(allocator)) {
+    allocator->deallocate(allocator->data, buffer.pointer, size, alignment);
+    return;
+  }
   _aligned_free(buffer.pointer);
 }
 
 tflite::PointerAlignedPointerPair AlignedRealloc(
     const tflite::PointerAlignedPointerPair& old_buffer, size_t old_size,
-    size_t new_size, size_t alignment) {
+    size_t new_size, size_t alignment, TfLiteAllocator* allocator) {
+  if (IsValidTfLiteAllocator(allocator)) {
+    tflite::PointerAlignedPointerPair new_buffer =
+        AlignedAlloc(new_size, alignment, allocator);
+    if (new_size > 0 && new_buffer.pointer == nullptr) {
+      return {nullptr, nullptr};
+    }
+    if (new_size > 0 && old_size > 0) {
+      const size_t copy_amount = std::min(new_size, old_size);
+      std::memcpy(new_buffer.aligned_pointer, old_buffer.aligned_pointer,
+                  copy_amount);
+    }
+    AlignedFree(old_buffer, old_size, alignment, allocator);
+    return new_buffer;
+  }
   char* pointer = reinterpret_cast<char*>(
       _aligned_realloc(old_buffer.pointer, new_size, alignment));
   if (new_size > 0 && pointer == nullptr) {
@@ -127,9 +162,15 @@ tflite::PointerAlignedPointerPair AlignedRealloc(
 // Default implementation: Use malloc, allocating extra memory, and align the
 // pointer in the allocated buffer.
 
-tflite::PointerAlignedPointerPair AlignedAlloc(size_t size, size_t alignment) {
+tflite::PointerAlignedPointerPair AlignedAlloc(size_t size, size_t alignment,
+                                               TfLiteAllocator* allocator) {
   if (alignment == 0) {
     return {nullptr, nullptr};
+  }
+  if (IsValidTfLiteAllocator(allocator)) {
+    char* pointer = reinterpret_cast<char*>(
+        allocator->allocate(allocator->data, size, alignment));
+    return {pointer, pointer};
   }
 #if TF_LITE_HAS_ALIGNED_ALLOC
   // (std::)aligned_alloc requires size to be multiple of alignment.
@@ -172,15 +213,23 @@ tflite::PointerAlignedPointerPair AlignedAlloc(size_t size, size_t alignment) {
   return {pointer, aligned_ptr};
 }
 
-void AlignedFree(const tflite::PointerAlignedPointerPair& buffer) {
+void AlignedFree(const tflite::PointerAlignedPointerPair& buffer, size_t size,
+                 size_t alignment, TfLiteAllocator* allocator) {
+  if (buffer.pointer == nullptr) {
+    return;
+  }
+  if (IsValidTfLiteAllocator(allocator)) {
+    allocator->deallocate(allocator->data, buffer.pointer, size, alignment);
+    return;
+  }
   std::free(buffer.pointer);
 }
 
 tflite::PointerAlignedPointerPair AlignedRealloc(
     const tflite::PointerAlignedPointerPair& old_buffer, size_t old_size,
-    size_t new_size, size_t alignment) {
+    size_t new_size, size_t alignment, TfLiteAllocator* allocator) {
   tflite::PointerAlignedPointerPair new_buffer =
-      AlignedAlloc(new_size, alignment);
+      AlignedAlloc(new_size, alignment, allocator);
   if (new_size > 0 && new_buffer.pointer == nullptr) {
     return {nullptr, nullptr};
   }
@@ -190,7 +239,7 @@ tflite::PointerAlignedPointerPair AlignedRealloc(
     std::memcpy(new_buffer.aligned_pointer, old_buffer.aligned_pointer,
                 copy_amount);
   }
-  AlignedFree(old_buffer);
+  AlignedFree(old_buffer, old_size, alignment, allocator);
   return new_buffer;
 }
 #endif
@@ -211,7 +260,8 @@ TfLiteStatus ResizableAlignedBuffer::Resize(size_t new_size,
 #ifdef TF_LITE_TENSORFLOW_PROFILER
   PauseHeapMonitoring(/*pause=*/true);
 #endif
-  auto new_buffer = AlignedRealloc(buffer_, data_size_, new_size, alignment_);
+  auto new_buffer =
+      AlignedRealloc(buffer_, data_size_, new_size, alignment_, allocator_);
   if (new_size > 0 && new_buffer.pointer == nullptr) {
 #ifdef TF_LITE_TENSORFLOW_PROFILER
     PauseHeapMonitoring(/*pause=*/false);
@@ -241,7 +291,7 @@ void ResizableAlignedBuffer::Release() {
   OnTfLiteArenaDealloc(subgraph_index_, reinterpret_cast<std::uintptr_t>(this),
                        data_size_);
 #endif
-  AlignedFree(buffer_);
+  AlignedFree(buffer_, data_size_, alignment_, allocator_);
   buffer_.pointer = nullptr;
   buffer_.aligned_pointer = nullptr;
   data_size_ = 0;

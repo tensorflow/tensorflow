@@ -50,50 +50,64 @@ namespace {
 constexpr int kInputTensor = 0;
 constexpr int kOutputTensor = 0;
 
-void copyCast(const float* in, int32_t* out, int num_elements) {
-  const float min_int_float =
-      static_cast<float>(std::numeric_limits<int32_t>::min());
-  const float max_int_float = std::nextafterf(
-      static_cast<float>(std::numeric_limits<int32_t>::max()), 0);
+template <typename ToT, typename FloatT>
+ToT SaturatingCastFloatingToInteger(FloatT value) {
+  static_assert(std::is_floating_point_v<FloatT>);
+  static_assert(std::is_integral_v<ToT>);
+  static_assert(!std::is_same_v<ToT, bool>);
 
-  std::transform(in, in + num_elements, out, [=](float a) {
-    return a <= max_int_float ? static_cast<int32_t>(std::max(a, min_int_float))
-                              : std::numeric_limits<int32_t>::max();
-  });
+  if (std::isnan(value)) {
+    return std::numeric_limits<ToT>::max();
+  }
+
+  const FloatT min_value =
+      static_cast<FloatT>(std::numeric_limits<ToT>::lowest());
+  FloatT max_value = static_cast<FloatT>(std::numeric_limits<ToT>::max());
+  if (static_cast<long double>(max_value) >
+      static_cast<long double>(std::numeric_limits<ToT>::max())) {
+    max_value = std::nextafter(max_value, FloatT{0});
+  }
+
+  if (value < min_value) {
+    return std::numeric_limits<ToT>::lowest();
+  }
+  if (value > max_value) {
+    return std::numeric_limits<ToT>::max();
+  }
+  return static_cast<ToT>(value);
 }
 
-void copyCast(const float* in, int16_t* out, int num_elements) {
-  const float min_int_float =
-      static_cast<float>(std::numeric_limits<int16_t>::min());
-  const float max_int_float =
-      static_cast<float>(std::numeric_limits<int16_t>::max());
-  std::transform(in, in + num_elements, out, [=](float a) {
-    return static_cast<int16_t>(
-        std::max(std::min(a, max_int_float), min_int_float));
-  });
-}
-
-void copyCast(const float* in, uint8_t* out, int num_elements) {
-  const float min_int_float =
-      static_cast<float>(std::numeric_limits<uint8_t>::min());
-  const float max_int_float =
-      static_cast<float>(std::numeric_limits<uint8_t>::max());
-  std::transform(in, in + num_elements, out, [=](float a) {
-    return static_cast<uint8_t>(
-        std::max(std::min(a, max_int_float), min_int_float));
-  });
+template <typename ToT, typename FromT>
+ToT CastValue(FromT value) {
+  if constexpr (std::is_floating_point_v<FromT> && std::is_integral_v<ToT> &&
+                !std::is_same_v<ToT, bool>) {
+    return SaturatingCastFloatingToInteger<ToT>(value);
+  } else if constexpr (std::is_same_v<FromT, Eigen::bfloat16> &&
+                       std::is_integral_v<ToT> && !std::is_same_v<ToT, bool>) {
+    return SaturatingCastFloatingToInteger<ToT>(
+        Eigen::bfloat16_impl::bfloat16_to_float(value));
+  } else if constexpr (std::is_same_v<FromT, Eigen::half> &&
+                       std::is_integral_v<ToT> && !std::is_same_v<ToT, bool>) {
+    return SaturatingCastFloatingToInteger<ToT>(
+        Eigen::half_impl::half_to_float(value));
+  } else if constexpr (std::is_same_v<FromT, half> && std::is_integral_v<ToT> &&
+                       !std::is_same_v<ToT, bool>) {
+    return SaturatingCastFloatingToInteger<ToT>(static_cast<float>(value));
+  } else {
+    return static_cast<ToT>(value);
+  }
 }
 
 template <typename FromT, typename ToT>
 void copyCast(const FromT* in, ToT* out, int num_elements) {
   std::transform(in, in + num_elements, out,
-                 [](FromT a) { return static_cast<ToT>(a); });
+                 [](FromT a) { return CastValue<ToT>(a); });
 }
 
 template <typename ToT>
 void copyCast(const std::complex<float>* in, ToT* out, int num_elements) {
   std::transform(in, in + num_elements, out, [](std::complex<float> a) {
-    return static_cast<ToT>(std::real(a));
+    return CastValue<ToT>(std::real(a));
   });
 }
 
@@ -106,9 +120,8 @@ void copyCast(const std::complex<float>* in, std::complex<float>* out,
 
 template <typename ToT>
 void copyCast(const half* in, ToT* out, int num_elements) {
-  std::transform(in, in + num_elements, out, [](half a) {
-    return static_cast<ToT>(fp16_ieee_to_fp32_value(a));
-  });
+  std::transform(in, in + num_elements, out,
+                 [](half a) { return CastValue<ToT>(a); });
 }
 
 template <>
