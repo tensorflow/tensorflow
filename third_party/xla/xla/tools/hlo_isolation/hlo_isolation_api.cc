@@ -1117,18 +1117,21 @@ absl::StatusOr<std::vector<bool>> DetectReducesInModuleOutput(
 
 std::vector<numerics::debug_info::MismatchDetails> ExtractMismatchDetails(
     const HloModule& module, const absl::Status& compare_status) {
-  absl::StatusOr<std::vector<NumericMismatch>> top_mismatches =
-      ExtractAndEnrichTopMismatches(std::string(compare_status.message()),
-                                    &module);
-  if (!top_mismatches.ok()) {
-    return {};
-  }
-
   std::string target_name;
   if (const HloComputation* entry = module.entry_computation()) {
     if (const HloInstruction* root = entry->root_instruction()) {
       target_name = root->name();
     }
+  }
+
+  absl::StatusOr<std::vector<NumericMismatch>> top_mismatches =
+      ExtractAndEnrichTopMismatches(std::string(compare_status.message()),
+                                    &module);
+  if (!top_mismatches.ok() || top_mismatches->empty()) {
+    numerics::debug_info::MismatchDetails details;
+    details.target_instruction_name = target_name;
+    details.custom_description = std::string(compare_status.message());
+    return {std::move(details)};
   }
 
   std::vector<numerics::debug_info::MismatchDetails> mismatch_details;
@@ -1157,6 +1160,7 @@ std::vector<numerics::debug_info::MismatchDetails> ExtractMismatchDetails(
     if (m.has_result_of_reduce()) {
       details.result_of_reduce = m.result_of_reduce();
     }
+    details.custom_description = std::string(compare_status.message());
     mismatch_details.push_back(std::move(details));
   }
   return mismatch_details;

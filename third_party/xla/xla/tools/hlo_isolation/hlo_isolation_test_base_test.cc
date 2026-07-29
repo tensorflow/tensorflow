@@ -815,6 +815,18 @@ ENTRY main.1 {
                       &html_matches)
                   .ok() &&
               !html_matches.empty());
+  if (!html_matches.empty()) {
+    std::string html_content;
+    ASSERT_OK(tsl::ReadFileToString(tsl::Env::Default(), html_matches[0],
+                                    &html_content));
+    EXPECT_TRUE(absl::StrContains(
+        html_content,
+        "Value mismatch in check TPU_VS_INTERPRETER for module "
+        "sine_abs_fusion"));
+    EXPECT_TRUE(absl::StrContains(
+        html_content,
+        "Suggested ErrorSpec adjustments to make this test pass:"));
+  }
   // Check that the actual, expected, and mismatches files are present.
   for (absl::string_view suffix : {"actual", "expected", "mismatches"}) {
     std::vector<std::string> matches;
@@ -1060,10 +1072,12 @@ Elements exceeding rel error bound: 5 (50.0%)
   EXPECT_TRUE(annotations.contains(root_key));
   EXPECT_EQ(annotations[root_key].background_color, "pink");
   EXPECT_TRUE(annotations[root_key].tooltip_data.has_value());
-  EXPECT_TRUE(
-      absl::StrContains(*annotations[root_key].tooltip_data, "Actual: 1"));
-  EXPECT_TRUE(
-      absl::StrContains(*annotations[root_key].tooltip_data, "Expected: 2"));
+  EXPECT_TRUE(absl::StrContains(*annotations[root_key].tooltip_data,
+                                "Value mismatch in check TPU_VS_INTERPRETER"));
+  EXPECT_TRUE(absl::StrContains(*annotations[root_key].tooltip_data,
+                                "actual 1.0, expected 2.0"));
+  EXPECT_TRUE(absl::StrContains(*annotations[root_key].tooltip_data,
+                                "Elements exceeding abs error bound: 5"));
 }
 
 TEST_F(HloIsolationTest, PopulateMismatchAnnotations_Fusion) {

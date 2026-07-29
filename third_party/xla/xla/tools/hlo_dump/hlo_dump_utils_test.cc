@@ -462,6 +462,33 @@ ENTRY main {
                                 "Result of reduce: False"));
 }
 
+TEST(HloDumpUtilsTest, PopulateMismatchAnnotations_CustomDescription) {
+  const absl::string_view hlo_string = R"hlo(
+HloModule test_module
+ENTRY main {
+  p0 = f32[10] parameter(0)
+  ROOT add = f32[10] add(p0, p0)
+}
+)hlo";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnUnverifiedModule(hlo_string));
+
+  MismatchDetails details;
+  details.target_instruction_name = "add";
+  details.custom_description =
+      "Value mismatch in check TPU_VS_INTERPRETER\nSuggested ErrorSpec "
+      "adjustments:";
+
+  auto annotations = PopulateMismatchAnnotations(*module, {details});
+  auto root_key = TensorKey::Create("add", ShapeIndex{});
+  ASSERT_TRUE(annotations.contains(root_key));
+  EXPECT_TRUE(annotations[root_key].tooltip_data.has_value());
+  EXPECT_TRUE(absl::StrContains(*annotations[root_key].tooltip_data,
+                                "Value mismatch in check TPU_VS_INTERPRETER"));
+  EXPECT_TRUE(absl::StrContains(*annotations[root_key].tooltip_data,
+                                "Suggested ErrorSpec adjustments:"));
+}
+
 TEST(HloDumpUtilsTest, PopulateMismatchGraphData_Basic) {
   const absl::string_view hlo_string = R"hlo(
 HloModule test_module
