@@ -2096,7 +2096,6 @@ class IsotonicTest(parameterized.TestCase, test_lib.TestCase):
 @test_util.run_all_in_graph_and_eager_modes
 class BatchNormalizationTest(test_lib.TestCase):
 
-  @test_util.run_deprecated_v1
   def testNegativeEpsilonRaises(self):
     """ValueError is raised when variance_epsilon < 0 (scalar)."""
     x = array_ops.ones([2, 3])
