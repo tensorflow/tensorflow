@@ -977,6 +977,23 @@ TEST(BasicFlatBufferModel, ByteSwapStringBufferRespectsBufferSize) {
   EXPECT_EQ(storage[2], 0x12345678);
   EXPECT_EQ(storage[3], 0x23456789);
 }
+
+// A negative leading count is invalid. ByteSwapBuffer must swap only the count
+// word rather than treating it as a large unsigned length and running over the
+// whole buffer, which would corrupt the string character data.
+TEST(BasicFlatBufferModel, ByteSwapStringBufferHandlesNegativeCount) {
+  // storage[0] is the count (-1); the remaining words stand in for offset and
+  // character data that must remain untouched.
+  std::vector<int32_t> storage = {-1, 0x12345678, 0x23456789, 0x3456789a};
+  const size_t buffer_size = storage.size() * sizeof(int32_t);
+  FlatBufferModel::ByteSwapBuffer(
+      static_cast<int8_t>(TensorType_STRING), buffer_size,
+      reinterpret_cast<uint8_t*>(storage.data()), /*from_big_endian=*/true);
+  EXPECT_EQ(storage[0], flatbuffers::EndianSwap<int32_t>(-1));
+  EXPECT_EQ(storage[1], 0x12345678);
+  EXPECT_EQ(storage[2], 0x23456789);
+  EXPECT_EQ(storage[3], 0x3456789a);
+}
 #endif
 
 }  // namespace tflite

@@ -229,9 +229,12 @@ class FlatBufferModelBase {
         auto bp = reinterpret_cast<int32_t*>(buffer);
         int num_of_strings =
             from_big_endian ? bp[0] : flatbuffers::EndianSwap(bp[0]);
+        // A negative count is invalid; swap only the count word itself rather
+        // than the whole buffer, which would waste work and corrupt the string
+        // character data that follows the offset table.
         size_t words =
             num_of_strings < 0
-                ? max_words
+                ? 1
                 : std::min(static_cast<size_t>(num_of_strings) + 2, max_words);
         for (size_t i = 0; i < words; i++)
           bp[i] = flatbuffers::EndianSwap(bp[i]);
