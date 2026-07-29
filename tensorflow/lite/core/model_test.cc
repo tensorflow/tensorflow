@@ -962,4 +962,21 @@ TEST(BasicFlatBufferModel, TestHandleZeroSizeConstant) {
 // These tests will occur with the evaluation tests of individual operators,
 // not here.
 
+#if FLATBUFFERS_LITTLEENDIAN == 0
+// A string tensor buffer records the string count in its leading int32 word.
+// When that (untrusted) count implies more offset words than the buffer holds,
+// ByteSwapBuffer must not swap past the end of the buffer.
+TEST(BasicFlatBufferModel, ByteSwapStringBufferRespectsBufferSize) {
+  // Only the first two words belong to the tensor buffer; the last two are
+  // guards that must remain untouched.
+  std::vector<int32_t> storage = {2, 0x11111111, 0x12345678, 0x23456789};
+  const size_t buffer_size = 2 * sizeof(int32_t);
+  FlatBufferModel::ByteSwapBuffer(
+      static_cast<int8_t>(TensorType_STRING), buffer_size,
+      reinterpret_cast<uint8_t*>(storage.data()), /*from_big_endian=*/true);
+  EXPECT_EQ(storage[2], 0x12345678);
+  EXPECT_EQ(storage[3], 0x23456789);
+}
+#endif
+
 }  // namespace tflite
