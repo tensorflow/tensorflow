@@ -845,6 +845,14 @@ class Interpreter {
       int tensor_index, const TfLiteCustomAllocation& allocation,
       int64_t flags = kTfLiteCustomAllocationFlagsNone);
 
+  /// \brief Sets a custom allocator for TFLite-owned CPU buffers.
+  ///
+  /// The runtime does NOT take ownership of `allocator`, and it must outlive
+  /// the interpreter. This must be called before AllocateTensors() and before
+  /// runtime-owned tensor buffers are allocated.
+  /// \warning This is an experimental API and subject to change. \n
+  TfLiteStatus SetAllocator(TfLiteAllocator* allocator);
+
   /// \warning This is an experimental API and subject to change. \n
   /// \brief Apply InterpreterOptions which tunes behavior of the interpreter.
   TfLiteStatus ApplyOptions(InterpreterOptions* options);
@@ -1041,6 +1049,9 @@ class Interpreter {
 
   // Subgraphs
   std::vector<std::unique_ptr<Subgraph>> subgraphs_;
+
+  // Allocator used for TFLite-owned CPU buffers. Not owned.
+  TfLiteAllocator* allocator_ = nullptr;
 
   // A map of resources. Owned by interpreter and shared by multiple subgraphs.
   resource::ResourceMap resources_;

@@ -14,11 +14,15 @@ limitations under the License.
 ==============================================================================*/
 #include <stdint.h>
 
+#include <cstdarg>
+#include <limits>
 #include <string>
 #include <vector>
 
 #include <gtest/gtest.h>
+#include "tensorflow/lite/array.h"
 #include "tensorflow/lite/core/interpreter.h"
+#include "tensorflow/lite/kernels/internal/reshape_utils.h"
 #include "tensorflow/lite/kernels/reshape_test_common.h"
 #include "tensorflow/lite/string_type.h"
 
@@ -26,6 +30,22 @@ namespace tflite {
 namespace {
 using ::testing::ElementsAreArray;
 using ::testing::IsEmpty;
+
+void SilentReportError(TfLiteContext*, const char*, ...) {}
+
+TfLiteContext MakeSilentContext() {
+  TfLiteContext context{};
+  context.ReportError = SilentReportError;
+  return context;
+}
+
+RuntimeShape MakeRuntimeShape(const std::vector<int>& dims) {
+  RuntimeShape shape(static_cast<int>(dims.size()));
+  for (int i = 0; i < dims.size(); ++i) {
+    shape.SetDim(i, dims[i]);
+  }
+  return shape;
+}
 
 template <typename T>
 class ReshapeOpTest : public ::testing::Test {
@@ -255,6 +275,75 @@ TYPED_TEST(ReshapeOpTest, Strings) {
     EXPECT_THAT(m.GetOutput(),
                 ElementsAreArray({"1", "2", "3", "4", "5", "6", "7", "8"}));
   }
+}
+
+TEST(ReshapeShapeResolverTest, ResolvesInferredDimension) {
+  TfLiteContext context = MakeSilentContext();
+  RuntimeShape input_shape = MakeRuntimeShape({2, 3, 4});
+  IntArrayUniquePtr output_shape = BuildTfLiteArray({2, -1, 3});
+
+  EXPECT_EQ(reshape_internal::ResolveOutputShape(&context, input_shape,
+                                                 *output_shape),
+            kTfLiteOk);
+  EXPECT_THAT(std::vector<int>(output_shape->data,
+                               output_shape->data + output_shape->size),
+              ElementsAreArray({2, 4, 3}));
+}
+
+TEST(ReshapeShapeResolverTest, AllowsZeroDimension) {
+  TfLiteContext context = MakeSilentContext();
+  RuntimeShape input_shape = MakeRuntimeShape({4, 0});
+  IntArrayUniquePtr output_shape = BuildTfLiteArray({2, 0, -1});
+
+  EXPECT_EQ(reshape_internal::ResolveOutputShape(&context, input_shape,
+                                                 *output_shape),
+            kTfLiteOk);
+  EXPECT_THAT(std::vector<int>(output_shape->data,
+                               output_shape->data + output_shape->size),
+              ElementsAreArray({2, 0, 2}));
+}
+
+TEST(ReshapeShapeResolverTest, RejectsOutputShapeProductOverflow) {
+  TfLiteContext context = MakeSilentContext();
+  RuntimeShape input_shape = MakeRuntimeShape({1});
+  IntArrayUniquePtr output_shape = BuildTfLiteArray(
+      {std::numeric_limits<int>::max(), std::numeric_limits<int>::max(), 5});
+
+  EXPECT_NE(reshape_internal::ResolveOutputShape(&context, input_shape,
+                                                 *output_shape),
+            kTfLiteOk);
+}
+
+TEST(ReshapeShapeResolverTest, RejectsInputShapeProductOverflow) {
+  TfLiteContext context = MakeSilentContext();
+  RuntimeShape input_shape = MakeRuntimeShape(
+      {std::numeric_limits<int>::max(), std::numeric_limits<int>::max(), 5});
+  IntArrayUniquePtr output_shape = BuildTfLiteArray({1});
+
+  EXPECT_NE(reshape_internal::ResolveOutputShape(&context, input_shape,
+                                                 *output_shape),
+            kTfLiteOk);
+}
+
+TEST(ReshapeShapeResolverTest, RejectsNegativeDimensionOtherThanMinusOne) {
+  TfLiteContext context = MakeSilentContext();
+  RuntimeShape input_shape = MakeRuntimeShape({1});
+  IntArrayUniquePtr output_shape = BuildTfLiteArray({-2});
+
+  EXPECT_NE(reshape_internal::ResolveOutputShape(&context, input_shape,
+                                                 *output_shape),
+            kTfLiteOk);
+}
+
+TEST(ReshapeShapeResolverTest, RejectsInferredDimensionOverflow) {
+  TfLiteContext context = MakeSilentContext();
+  RuntimeShape input_shape =
+      MakeRuntimeShape({std::numeric_limits<int>::max(), 2});
+  IntArrayUniquePtr output_shape = BuildTfLiteArray({-1});
+
+  EXPECT_NE(reshape_internal::ResolveOutputShape(&context, input_shape,
+                                                 *output_shape),
+            kTfLiteOk);
 }
 }  // namespace
 }  // namespace tflite

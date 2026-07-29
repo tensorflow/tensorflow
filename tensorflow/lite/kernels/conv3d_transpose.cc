@@ -94,10 +94,9 @@ TfLiteStatus ResizeOutputAndTemporaryTensors(
   }
   // Output and input tensor must have the same batch size.
   TF_LITE_ENSURE_EQ(context, shape_data[0], SizeOfDimension(input, 0));
-  // The number of channels of output must be divisible by that of filter.
+  // Output and filter must have the same number of output channels.
   const int filter_output_channels = SizeOfDimension(filter, 3);
-  TF_LITE_ENSURE(context, filter_output_channels != 0);
-  TF_LITE_ENSURE_EQ(context, shape_data[4] % filter_output_channels, 0);
+  TF_LITE_ENSURE_EQ(context, shape_data[4], filter_output_channels);
 
   // Compute padding.
   const RuntimeShape& filter_shape = GetTensorShape(filter);

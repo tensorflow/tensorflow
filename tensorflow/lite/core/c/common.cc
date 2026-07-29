@@ -19,18 +19,85 @@ limitations under the License.
 #include <cstdlib>
 #endif  // TF_LITE_STATIC_MEMORY
 
+#include <cstddef>
 #include <cstring>
 #include <limits>
 #include <new>
 #include <type_traits>
 #include <utility>
 
+#include "tensorflow/lite/core/c/allocator_internal.h"
 #include "tensorflow/lite/core/c/c_api_types.h"
 #ifdef TF_LITE_TENSORFLOW_PROFILER
 #include "tensorflow/lite/tensorflow_profiler_logger.h"
 #endif
 
 namespace {
+
+#ifndef TF_LITE_STATIC_MEMORY
+
+constexpr size_t kTfLiteTensorAllocationExtraBytes = 16;
+constexpr size_t kTfLiteTensorAllocationAlignment = alignof(std::max_align_t);
+
+bool TfLiteTensorAllocationSize(size_t num_bytes, size_t* allocation_bytes) {
+  if (num_bytes >
+      std::numeric_limits<size_t>::max() - kTfLiteTensorAllocationExtraBytes) {
+    return false;
+  }
+  *allocation_bytes = num_bytes + kTfLiteTensorAllocationExtraBytes;
+  return true;
+}
+
+bool IsValidTfLiteAllocator(TfLiteAllocator* allocator) {
+  return allocator != nullptr && allocator->allocate != nullptr &&
+         allocator->deallocate != nullptr;
+}
+
+TfLiteAllocator* EffectiveTfLiteAllocator(TfLiteAllocator* allocator) {
+  return allocator != nullptr ? allocator
+                              : tflite::internal::GetCurrentTfLiteAllocator();
+}
+
+void* AllocateWithTfLiteAllocator(TfLiteAllocator* allocator, size_t bytes,
+                                  size_t alignment) {
+  if (IsValidTfLiteAllocator(allocator)) {
+    return allocator->allocate(allocator->data, bytes, alignment);
+  }
+  return malloc(bytes);
+}
+
+void DeallocateWithTfLiteAllocator(TfLiteAllocator* allocator, void* ptr,
+                                   size_t bytes, size_t alignment) {
+  if (ptr == nullptr) {
+    return;
+  }
+  if (IsValidTfLiteAllocator(allocator)) {
+    allocator->deallocate(allocator->data, ptr, bytes, alignment);
+    return;
+  }
+  free(ptr);
+}
+
+void* ReallocateWithTfLiteAllocator(TfLiteAllocator* allocator, void* ptr,
+                                    size_t old_bytes, size_t new_bytes,
+                                    size_t alignment) {
+  if (IsValidTfLiteAllocator(allocator) && allocator->reallocate != nullptr) {
+    return allocator->reallocate(allocator->data, ptr, old_bytes, new_bytes,
+                                 alignment);
+  }
+  if (!IsValidTfLiteAllocator(allocator)) {
+    return realloc(ptr, new_bytes);
+  }
+  void* new_ptr = AllocateWithTfLiteAllocator(allocator, new_bytes, alignment);
+  if (new_ptr == nullptr) {
+    return nullptr;
+  }
+  memcpy(new_ptr, ptr, old_bytes < new_bytes ? old_bytes : new_bytes);
+  DeallocateWithTfLiteAllocator(allocator, ptr, old_bytes, alignment);
+  return new_ptr;
+}
+
+#endif  // TF_LITE_STATIC_MEMORY
 
 template <class T>
 size_t TfLiteVarArrayGetSizeInBytes(const int size) {
@@ -141,6 +208,29 @@ TfLiteSparsity* TfLiteSparsityClone(const TfLiteSparsity* const src) {
 
 }  // namespace
 
+namespace tflite {
+namespace internal {
+namespace {
+
+#ifdef TF_LITE_STATIC_MEMORY
+TfLiteAllocator* current_allocator = nullptr;
+#else
+thread_local TfLiteAllocator* current_allocator = nullptr;
+#endif
+
+}  // namespace
+
+TfLiteAllocator* GetCurrentTfLiteAllocator() { return current_allocator; }
+
+TfLiteAllocator* SetCurrentTfLiteAllocator(TfLiteAllocator* allocator) {
+  TfLiteAllocator* previous_allocator = current_allocator;
+  current_allocator = allocator;
+  return previous_allocator;
+}
+
+}  // namespace internal
+}  // namespace tflite
+
 #ifndef TF_LITE_STATIC_MEMORY
 
 TfLiteQuantization TfLiteQuantizationClone(const TfLiteQuantization& src) {
@@ -241,19 +331,31 @@ TfLiteFloatArray* TfLiteFloatArrayCopy(const TfLiteFloatArray* src) {
 void TfLiteFloatArrayFree(TfLiteFloatArray* a) { TfLiteVarArrayFree(a); }
 
 void TfLiteTensorDataFree(TfLiteTensor* t) {
+  TfLiteTensorDataFreeWithAllocator(t, nullptr);
+}
+
+void TfLiteTensorDataFreeWithAllocator(TfLiteTensor* t,
+                                       TfLiteAllocator* allocator) {
   if (t == nullptr) {
     return;
   }
+  TfLiteAllocator* effective_allocator = EffectiveTfLiteAllocator(allocator);
   if (t->allocation_type == kTfLiteVariantObject && t->data.data) {
     delete static_cast<VariantData*>(t->data.data);
   } else if (t->allocation_type == kTfLiteDynamic ||
              t->allocation_type == kTfLitePersistentRo) {
     if (t->data.raw) {
+      size_t allocation_bytes = 0;
+      if (!TfLiteTensorAllocationSize(t->bytes, &allocation_bytes)) {
+        allocation_bytes = t->bytes;
+      }
 #ifdef TF_LITE_TENSORFLOW_PROFILER
       tflite::PauseHeapMonitoring(/*pause=*/true);
       tflite::OnTfLiteTensorDealloc(t);
 #endif
-      free(t->data.raw);
+      DeallocateWithTfLiteAllocator(effective_allocator, t->data.raw,
+                                    allocation_bytes,
+                                    kTfLiteTensorAllocationAlignment);
 #ifdef TF_LITE_TENSORFLOW_PROFILER
       tflite::PauseHeapMonitoring(/*pause=*/false);
 #endif
@@ -461,6 +563,13 @@ TfLiteStatus TfLiteTensorCopy(const TfLiteTensor* src, TfLiteTensor* dst) {
 
 TfLiteStatus TfLiteTensorResizeMaybeCopy(size_t num_bytes, TfLiteTensor* tensor,
                                          bool preserve_data) {
+  return TfLiteTensorResizeMaybeCopyWithAllocator(num_bytes, tensor,
+                                                  preserve_data, nullptr);
+}
+
+TfLiteStatus TfLiteTensorResizeMaybeCopyWithAllocator(
+    size_t num_bytes, TfLiteTensor* tensor, bool preserve_data,
+    TfLiteAllocator* allocator) {
   if (tensor == nullptr) {
     return kTfLiteError;
   }
@@ -468,34 +577,70 @@ TfLiteStatus TfLiteTensorResizeMaybeCopy(size_t num_bytes, TfLiteTensor* tensor,
       tensor->allocation_type != kTfLitePersistentRo) {
     return kTfLiteOk;
   }
-  // Guard against integer overflow: num_bytes + XNN_EXTRA_BYTES must not wrap.
-  constexpr size_t kXnnExtraBytes = 16;
-  if (num_bytes > std::numeric_limits<size_t>::max() - kXnnExtraBytes) {
+
+  size_t alloc_bytes = 0;
+  if (!TfLiteTensorAllocationSize(num_bytes, &alloc_bytes)) {
     return kTfLiteError;
   }
+
+  TfLiteAllocator* effective_allocator = EffectiveTfLiteAllocator(allocator);
+  const bool uses_custom_allocator =
+      IsValidTfLiteAllocator(effective_allocator);
+  const bool needs_allocation =
+      tensor->data.data == nullptr || num_bytes > tensor->bytes ||
+      (uses_custom_allocator && num_bytes < tensor->bytes);
+  if (!needs_allocation) {
+    tensor->bytes = num_bytes;
+    return kTfLiteOk;
+  }
+
+  size_t old_alloc_bytes = 0;
+  if (tensor->data.data != nullptr &&
+      !TfLiteTensorAllocationSize(tensor->bytes, &old_alloc_bytes)) {
+    return kTfLiteError;
+  }
+
 #ifdef TF_LITE_TENSORFLOW_PROFILER
   tflite::PauseHeapMonitoring(/*pause=*/true);
 #endif
-  // This buffer may be consumed by XNNPack.
-  size_t alloc_bytes = num_bytes + kXnnExtraBytes;
   // TODO(b/145340303): Tensor data should be aligned.
-  if (!tensor->data.data) {
-    tensor->data.data = (char*)malloc(alloc_bytes);
+  if (tensor->data.data == nullptr) {
+    tensor->data.data = static_cast<char*>(AllocateWithTfLiteAllocator(
+        effective_allocator, alloc_bytes, kTfLiteTensorAllocationAlignment));
+    if (tensor->data.data == nullptr && num_bytes != 0) {
+#ifdef TF_LITE_TENSORFLOW_PROFILER
+      tflite::PauseHeapMonitoring(/*pause=*/false);
+#endif
+      return kTfLiteError;
+    }
 #ifdef TF_LITE_TENSORFLOW_PROFILER
     tflite::OnTfLiteTensorAlloc(tensor, alloc_bytes);
 #endif
-  } else if (num_bytes > tensor->bytes) {
+  } else {
+    void* new_data = nullptr;
+    if (preserve_data) {
+      new_data = ReallocateWithTfLiteAllocator(
+          effective_allocator, tensor->data.data, old_alloc_bytes, alloc_bytes,
+          kTfLiteTensorAllocationAlignment);
+    } else {
+      new_data = AllocateWithTfLiteAllocator(effective_allocator, alloc_bytes,
+                                             kTfLiteTensorAllocationAlignment);
+    }
+    if (new_data == nullptr) {
+#ifdef TF_LITE_TENSORFLOW_PROFILER
+      tflite::PauseHeapMonitoring(/*pause=*/false);
+#endif
+      return kTfLiteError;
+    }
 #ifdef TF_LITE_TENSORFLOW_PROFILER
     tflite::OnTfLiteTensorDealloc(tensor);
 #endif
-    if (preserve_data) {
-      tensor->data.data = (char*)realloc(tensor->data.data, alloc_bytes);
-    } else {
-      // Calling free and malloc can be more efficient as it avoids needlessly
-      // copying the data when it is not required.
-      free(tensor->data.data);
-      tensor->data.data = (char*)malloc(alloc_bytes);
+    if (!preserve_data) {
+      DeallocateWithTfLiteAllocator(effective_allocator, tensor->data.data,
+                                    old_alloc_bytes,
+                                    kTfLiteTensorAllocationAlignment);
     }
+    tensor->data.data = static_cast<char*>(new_data);
 #ifdef TF_LITE_TENSORFLOW_PROFILER
     tflite::OnTfLiteTensorAlloc(tensor, alloc_bytes);
 #endif
@@ -504,16 +649,18 @@ TfLiteStatus TfLiteTensorResizeMaybeCopy(size_t num_bytes, TfLiteTensor* tensor,
   tflite::PauseHeapMonitoring(/*pause=*/false);
 #endif
   tensor->bytes = num_bytes;
-  if (tensor->data.data == nullptr && num_bytes != 0) {
-    // We are done allocating but tensor is pointing to null and a valid size
-    // was requested, so we error.
-    return kTfLiteError;
-  }
   return kTfLiteOk;
 }
 
 TfLiteStatus TfLiteTensorRealloc(size_t num_bytes, TfLiteTensor* tensor) {
-  return TfLiteTensorResizeMaybeCopy(num_bytes, tensor, true);
+  return TfLiteTensorReallocWithAllocator(num_bytes, tensor, nullptr);
+}
+
+TfLiteStatus TfLiteTensorReallocWithAllocator(size_t num_bytes,
+                                              TfLiteTensor* tensor,
+                                              TfLiteAllocator* allocator) {
+  return TfLiteTensorResizeMaybeCopyWithAllocator(num_bytes, tensor, true,
+                                                  allocator);
 }
 
 const TfLiteIntArray* TfLiteTensorGetDimsSignature(const TfLiteTensor* t) {

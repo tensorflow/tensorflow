@@ -801,6 +801,7 @@ BUILTIN_KERNEL_DEPS = [
     "//tensorflow/lite/kernels/internal:portable_tensor_utils",
     "//tensorflow/lite/kernels/internal:quantization_util",
     "//tensorflow/lite/kernels/internal:reference_base",
+    "//tensorflow/lite/kernels/internal:reshape_utils",
     "//tensorflow/lite/kernels/internal:strided_slice_logic",
     "//tensorflow/lite/kernels/internal:tensor",
     "//tensorflow/lite/kernels/internal:tensor_utils",
@@ -1549,8 +1550,11 @@ cc_test(
         ":kernel_util",
         ":test_main",
         ":test_util",
+        "//tensorflow/lite:array",
         "//tensorflow/lite:framework_stable",
         "//tensorflow/lite:string",
+        "//tensorflow/lite:util",
+        "//tensorflow/lite/c:common",
         "//tensorflow/lite/core:framework_stable",
         "//tensorflow/lite/schema:schema_fbs",
         "@com_google_absl//absl/memory",
@@ -1588,6 +1592,7 @@ cc_test(
         ":kernel_util",
         ":test_main",
         ":test_util",
+        "//tensorflow/lite:array",
         "//tensorflow/lite:framework_stable",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/schema:schema_fbs",
@@ -2092,9 +2097,12 @@ cc_test(
     deps = [
         ":reshape_test_common",
         ":test_main",
+        "//tensorflow/lite:array",
         "//tensorflow/lite:framework_stable",
         "//tensorflow/lite:string",
+        "//tensorflow/lite:util",
         "//tensorflow/lite/core:framework_stable",
+        "//tensorflow/lite/kernels/internal:reshape_utils",
         "@com_google_googletest//:gtest",
     ],
 )
@@ -3200,6 +3208,7 @@ cc_test(
     deps = [
         ":test_main",
         ":test_util",
+        "//tensorflow/lite:array",
         "//tensorflow/lite:framework_stable",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/core/kernels:builtin_ops",
@@ -3468,7 +3477,10 @@ cc_test(
 tflite_portable_test_suite_combined(
     combine_conditions = {"deps": [
         ":test_main",
+        "//tensorflow/lite:array",
+        "//tensorflow/lite:util",
         "//tensorflow/lite/kernels/internal:float8",
+        "//tensorflow/lite/kernels/internal:reshape_utils",
     ]},
     # TODO(b/229985981) : Remove `nnapi_args` after adding Relu0To1 is completed.
     nnapi_args = ["--gunit_filter=*Reshape*"],
