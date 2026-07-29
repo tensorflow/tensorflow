@@ -1224,6 +1224,16 @@ def _autopacking_helper(list_or_tuple, dtype, name):
     # NOTE: Fast path when all the items are tensors, this doesn't do any type
     # checking.
     if all(isinstance(elem, core.Tensor) for elem in list_or_tuple):
+      # GPU Pack kernels do not support 0-D (scalar) inputs.  Reshape each
+      # scalar to shape [1] so that concat can be used instead, then squeeze
+      # the result back to the expected 1-D vector.  This matches the CPU
+      # behaviour of pack([s0, s1, ...]) == [s0, s1, ...].
+      if all(elem.shape.rank == 0 for elem in list_or_tuple):
+        return gen_array_ops.concat_v2(
+            [gen_array_ops.reshape(elem, [1]) for elem in list_or_tuple],
+            axis=0,
+            name=name,
+        )
       return gen_array_ops.pack(list_or_tuple, name=name)
   must_pack = False
   converted_elems = []
@@ -1253,6 +1263,18 @@ def _autopacking_helper(list_or_tuple, dtype, name):
           # convertible-to-tensor types, such as numpy arrays.
           elems_as_tensors.append(
               constant_op.constant(elem, dtype=dtype, name=str(i)))
+      # GPU Pack kernels do not support 0-D (scalar) inputs.  When all
+      # elements are scalars, use reshape+concat to build the 1-D vector
+      # instead so the operation is device-agnostic.
+      if all(
+          isinstance(e, core.Tensor) and e.shape.rank == 0
+          for e in elems_as_tensors
+      ):
+        return gen_array_ops.concat_v2(
+            [gen_array_ops.reshape(e, [1]) for e in elems_as_tensors],
+            axis=0,
+            name=scope,
+        )
       return gen_array_ops.pack(elems_as_tensors, name=scope)
     else:
       return converted_elems
