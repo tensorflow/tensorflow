@@ -104,6 +104,7 @@ void Callback_WithStatusFailed(void* /*stream*/, void** /*buffers*/,
 
 XLA_REGISTER_CUSTOM_CALL_TARGET(Callback_WithStatusFailed, "CUDA");
 XLA_REGISTER_CUSTOM_CALL_TARGET(Callback_WithStatusFailed, "ROCM");
+XLA_REGISTER_CUSTOM_CALL_TARGET(Callback_WithStatusFailed, "SYCL");
 
 TEST(LegacyCustomCallThunkTest, ResolvesLegacyCustomCall) {
   ASSERT_OK_AND_ASSIGN(se::StreamExecutor * executor, GpuExecutor());
