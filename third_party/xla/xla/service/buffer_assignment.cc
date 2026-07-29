@@ -1846,6 +1846,15 @@ bool BufferAssigner::LiveRangeInterferes(
     const HloValue* buffer1, const HloLiveRange::LiveRangeBounds& live_range1,
     const HloValue* buffer2, const HloLiveRange::LiveRangeBounds& live_range2,
     BufferAssignment* assignment) {
+  if (opts_.has_live_range_interference.has_value()) {
+    std::optional<bool> custom_interference =
+        (*opts_.has_live_range_interference)(assignment->alias_analysis(),
+                                             buffer1, buffer2);
+    if (custom_interference.has_value()) {
+      return *custom_interference;
+    }
+  }
+
   CHECK((assignment->hlo_live_range().total_order_scheduled()));
 
   // An HloValue can hold multiple instruction positions during its lifetime
@@ -2034,14 +2043,28 @@ absl::StatusOr<bool> BufferAssigner::MaybeAssignBuffer(
                   << new_value->ToShortString();
           return false;
         }
-      } else if (assignment->hlo_ordering().MayInterfere(
-                     assigned_buffer, *new_value,
-                     assignment->dataflow_analysis(), alias_info_)) {
-        // Fallback to partial order based interference detection (slower) when
-        // we don't have a total order scheduled module.
-        VLOG(4) << "Can't assign: assignee " << assigned_buffer
-                << " may interfere with " << new_value->ToShortString();
-        return false;
+      } else {
+        std::optional<bool> custom_interference;
+        if (opts_.has_live_range_interference.has_value()) {
+          custom_interference = (*opts_.has_live_range_interference)(
+              assignment->alias_analysis(), new_value, &assigned_buffer);
+        }
+        if (custom_interference.has_value()) {
+          if (*custom_interference) {
+            VLOG(4) << "Can't assign: assignee " << assigned_buffer
+                    << " custom interference with "
+                    << new_value->ToShortString();
+            return false;
+          }
+        } else if (assignment->hlo_ordering().MayInterfere(
+                       assigned_buffer, *new_value,
+                       assignment->dataflow_analysis(), alias_info_)) {
+          // Fallback to partial order based interference detection (slower)
+          // when we don't have a total order scheduled module.
+          VLOG(4) << "Can't assign: assignee " << assigned_buffer
+                  << " may interfere with " << new_value->ToShortString();
+          return false;
+        }
       }
 
       // Copy instruction don't share a buffer with their input operand.
@@ -2166,6 +2189,21 @@ bool BufferAssigner::DelayTemporaryBufferAssignment(
     return false;
   }
 
+  // Buffers with custom interference overrides must bypass heap simulation,
+  // which only checks interval overlap. Being pessimistic here by only
+  // checking if the buffer is subject to overrides is fine - bypassing delay
+  // simply falls back to standard sequential assignment, where exact pairwise
+  // interference is checked before any reuse and downstream buffers can still
+  // reuse this allocation.
+  if (opts_.has_live_range_interference.has_value()) {
+    for (const HloValue* hlo_value : hlo_buffer->values()) {
+      if ((*opts_.has_live_range_interference)(assignment->alias_analysis(),
+                                               hlo_value, nullptr)
+              .has_value()) {
+        return false;
+      }
+    }
+  }
   bool all_computations_have_sequential_order = true;
   for (const HloValue* hlo_value : hlo_buffer->values()) {
     HloComputation* computation = hlo_value->instruction()->parent();
