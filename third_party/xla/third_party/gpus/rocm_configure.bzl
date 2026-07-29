@@ -3,10 +3,7 @@
 `rocm_configure` depends on the following environment variables:
 
   * `TF_NEED_ROCM`: Whether to enable building with ROCm.
-  * `TF_ROCM_CLANG`: Whether to use clang for C++ and HIPCC for ROCm compilation.
   * `TF_SYSROOT`: The sysroot to use when compiling.
-  * `CLANG_COMPILER_PATH`: The clang compiler path that will be used for
-    host code compilation if TF_ROCM_CLANG is 1.
   * `TF_ROCM_AMDGPU_TARGETS`: The AMDGPU targets.
   * `TF_ROCM_MULTIPLE_PATHS`: Colon-separated list of ROCm installation paths to merge.
   * `LLVM_PATH`: Path to LLVM installation (used with TF_ROCM_MULTIPLE_PATHS).
@@ -30,10 +27,6 @@ load(
     "get_cpu_value",
     "get_host_environ",
     "get_python_bin",
-)
-load(
-    ":compiler_common_tools.bzl",
-    "to_list_of_strings",
 )
 load(
     ":cuda_configure.bzl",
@@ -145,7 +138,6 @@ def verify_build_defines(params):
     missing = []
     for param in [
         "host_compiler_path",
-        "linker_bin_path",
         "unfiltered_compile_flags",
     ]:
         if ("%{" + param + "}") not in params:
@@ -155,48 +147,6 @@ def verify_build_defines(params):
         auto_configure_fail(
             "Missing template parameters: %s" % missing,
         )
-
-def _rocm_include_path(repository_ctx, rocm_config):
-    """Generates the entries for rocm inc dirs based on rocm_config.
-
-    Args:
-      repository_ctx: The repository context.
-      rocm_config: The ROCm config struct.
-
-    Returns:
-      A list of the ROCm compiler include directories.
-    """
-    inc_dirs = []
-
-    # Add HIP-Clang headers (relative to rocm root)
-    inc_dirs.append(str(repository_ctx.path(rocm_config.rocm_toolkit_path)) + "/include")
-    inc_dirs.append(str(repository_ctx.path(rocm_config.rocm_toolkit_path)) + "/lib/llvm/lib/clang/18/include")
-
-    return inc_dirs
-
-def _hipcc_env(repository_ctx):
-    """Returns the environment variable string for hipcc.
-
-    Args:
-        repository_ctx: The repository context.
-
-    Returns:
-        A string containing environment variables for hipcc.
-    """
-    hipcc_env = ""
-    for name in [
-        "HIP_CLANG_PATH",
-        "DEVICE_LIB_PATH",
-        "HIP_VDI_HOME",
-        "HIPCC_VERBOSE",
-        "HIPCC_COMPILE_FLAGS_APPEND",
-        "HIPCC_LINK_FLAGS_APPEND",
-    ]:
-        if get_host_environ(repository_ctx, name):
-            hipcc_env = (hipcc_env + " " + name + "=" +
-                         get_host_environ(repository_ctx, name))
-
-    return hipcc_env.strip()
 
 def _enable_rocm(repository_ctx):
     enable_rocm = get_host_environ(repository_ctx, "TF_NEED_ROCM")
@@ -500,31 +450,10 @@ def _create_local_rocm_repository(repository_ctx):
         repository_dict,
     )
 
-    # Set up crosstool/
-    rocm_defines = {}
-    rocm_defines["%{linker_bin_path}"] = rocm_config.rocm_toolkit_path + "/usr/bin"
-
-    rocm_defines["%{cxx_builtin_include_directories}"] = to_list_of_strings(
-        _rocm_include_path(repository_ctx, rocm_config),
-    )
-
-    rocm_defines["%{unfiltered_compile_flags}"] = to_list_of_strings([
-        "-DTENSORFLOW_USE_ROCM=1",
-        "-D__HIP_PLATFORM_AMD__",
-        "-DEIGEN_USE_HIP",
-        "-DUSE_ROCM",
-    ])
-
-    # Use wrapper as the host compiler path for the toolchain
-    rocm_defines["%{host_compiler_path}"] = "clang/bin/crosstool_wrapper_driver_is_not_gcc"
-
-    verify_build_defines(rocm_defines)
-
     # Only expand template variables in the BUILD file
     repository_ctx.template(
         "crosstool/BUILD",
         tpl_paths["crosstool:BUILD.rocm"],
-        rocm_defines,
     )
 
     # No templating of cc_toolchain_config - use attributes and templatize the
@@ -532,20 +461,12 @@ def _create_local_rocm_repository(repository_ctx):
     repository_ctx.template(
         "crosstool/cc_toolchain_config.bzl",
         tpl_paths["crosstool:hipcc_cc_toolchain_config.bzl"],
-        rocm_defines,
     )
 
     repository_ctx.template(
         "crosstool/clang/bin/crosstool_wrapper_driver_is_not_gcc",
         tpl_paths["crosstool:clang/bin/crosstool_wrapper_driver_rocm"],
         {
-            "%{rocm_root}": "external/local_config_rocm/" + str(rocm_config.rocm_toolkit_path),
-            "%{hipcc_env}": _hipcc_env(repository_ctx),
-            "%{rocr_runtime_library}": "hsa-runtime64",
-            "%{crosstool_verbose}": "0",
-            "%{rocm_amdgpu_targets}": ",".join(
-                ["%s" % c for c in rocm_config.amdgpu_targets],
-            ),
             "%{tmpdir}": get_host_environ(
                 repository_ctx,
                 _TMPDIR,
