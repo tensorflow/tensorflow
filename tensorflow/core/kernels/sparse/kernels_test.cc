@@ -196,6 +196,32 @@ TEST(CSRSparseMatrix, DecodeRejectsOutOfBoundsColIndices) {
   EXPECT_FALSE(tampered.Decode(data));
 }
 
+TEST(CSRSparseMatrix, DecodeValidationOutOfBoundsColIndices) {
+  // A valid 4 x 5 CSR matrix with four non-zeros spread across the rows.
+  const auto dense_shape = test::AsTensor<int64_t>({4, 5}, TensorShape({2}));
+  const auto batch_pointers = test::AsTensor<int32_t>({0, 4}, TensorShape({2}));
+  const auto row_pointers =
+      test::AsTensor<int32_t>({0, 1, 1, 3, 4}, TensorShape({5}));
+  const auto col_indices =
+      test::AsTensor<int32_t>({0, 3, 4, 0}, TensorShape({4}));
+  const auto values =
+      test::AsTensor<float>({1.0f, 2.0f, 3.0f, 4.0f}, TensorShape({4}));
+
+  CSRSparseMatrix matrix;
+  TF_ASSERT_OK(CSRSparseMatrix::CreateCSRSparseMatrix(
+      DT_FLOAT, dense_shape, batch_pointers, row_pointers, col_indices, values,
+      &matrix));
+
+  VariantTensorData data;
+  matrix.Encode(&data);
+
+  // Push a single column index out of range (num_cols = 5) while leaving the
+  // shapes untouched, so only the value check can catch it.
+  data.tensors_[3].flat<int32_t>()(0) = 100;
+  CSRSparseMatrix tampered;
+  EXPECT_FALSE(tampered.Decode(data));
+}
+
 }  // namespace
 }  // namespace tensorflow
 
