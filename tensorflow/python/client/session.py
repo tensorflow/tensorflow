@@ -939,7 +939,32 @@ class BaseSession(SessionInterface):
 
     The optional `options` argument expects a [`RunOptions`] proto. The options
     allow controlling the behavior of this particular step (e.g. turning tracing
-    on).
+    on, setting step execution timeouts, or enabling detailed OOM allocation
+    reporting via `report_tensor_allocations_upon_oom`).
+
+    For example, to report detailed tensor allocation information if an out-of-memory
+    (OOM) error occurs during execution (note: this option is supported in
+    Graph mode / `tf.compat.v1.Session` and not in Eager mode):
+
+    ```python
+    run_options = tf.compat.v1.RunOptions(
+        report_tensor_allocations_upon_oom=True)
+    output = sess.run(fetches, feed_dict=feed_dict, options=run_options)
+    ```
+
+    To enable execution tracing and set a step execution timeout:
+
+    ```python
+    run_options = tf.compat.v1.RunOptions(
+        trace_level=tf.compat.v1.RunOptions.FULL_TRACE,
+        timeout_in_ms=5000)
+    run_metadata = tf.compat.v1.RunMetadata()
+    output = sess.run(
+        fetches,
+        feed_dict=feed_dict,
+        options=run_options,
+        run_metadata=run_metadata)
+    ```
 
     The optional `run_metadata` argument expects a [`RunMetadata`] proto. When
     appropriate, the non-Tensor output of this step will be collected there. For
