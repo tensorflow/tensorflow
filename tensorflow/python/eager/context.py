@@ -2226,6 +2226,20 @@ class Context:
 
   @intra_op_parallelism_threads.setter
   def intra_op_parallelism_threads(self, num_threads):
+    if not isinstance(num_threads, int):
+      raise TypeError(
+          f"num_threads must be an integer, got {type(num_threads).__name__}."
+      )
+    if num_threads < 0:
+      raise ValueError(
+          f"num_threads must be non-negative, got {num_threads}."
+      )
+    if num_threads > 10000:
+      raise ValueError(
+          f"num_threads must be at most 10000, got {num_threads}. "
+          "Setting an excessively large number of threads can cause system "
+          "instability or crashes."
+      )
     if self._intra_op_parallelism_threads == num_threads:
       return
 
@@ -2242,6 +2256,20 @@ class Context:
 
   @inter_op_parallelism_threads.setter
   def inter_op_parallelism_threads(self, num_threads):
+    if not isinstance(num_threads, int):
+      raise TypeError(
+          f"num_threads must be an integer, got {type(num_threads).__name__}."
+      )
+    if num_threads < 0:
+      raise ValueError(
+          f"num_threads must be non-negative, got {num_threads}."
+      )
+    if num_threads > 10000:
+      raise ValueError(
+          f"num_threads must be at most 10000, got {num_threads}. "
+          "Setting an excessively large number of threads can cause system "
+          "instability or crashes."
+      )
     if self._inter_op_parallelism_threads == num_threads:
       return
 

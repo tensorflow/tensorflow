@@ -906,6 +906,64 @@ class TensorFloat32Test(test.TestCase):
     expected = array_ops.fill((self.DIM, self.DIM), self.DIM * (1 + 2**-12))
     self.assertAllClose(out, expected, rtol=2**-13, atol=0)
 
+  @reset_eager
+  def testIntraOpParallelismThreadsValidation(self):
+    """Test validation of intra_op_parallelism_threads parameter."""
+    # Test valid values
+    config.set_intra_op_parallelism_threads(0)  # System picks
+    config.set_intra_op_parallelism_threads(1)
+    config.set_intra_op_parallelism_threads(100)
+    config.set_intra_op_parallelism_threads(10000)  # Max allowed
+
+    # Test TypeError for non-integer
+    with self.assertRaisesRegex(TypeError, 'must be an integer'):
+      config.set_intra_op_parallelism_threads(1.5)
+    with self.assertRaisesRegex(TypeError, 'must be an integer'):
+      config.set_intra_op_parallelism_threads('4')
+    with self.assertRaisesRegex(TypeError, 'must be an integer'):
+      config.set_intra_op_parallelism_threads(None)
+
+    # Test ValueError for negative
+    with self.assertRaisesRegex(ValueError, 'must be non-negative'):
+      config.set_intra_op_parallelism_threads(-1)
+    with self.assertRaisesRegex(ValueError, 'must be non-negative'):
+      config.set_intra_op_parallelism_threads(-100)
+
+    # Test ValueError for exceeding maximum
+    with self.assertRaisesRegex(ValueError, 'must be at most 10000'):
+      config.set_intra_op_parallelism_threads(10001)
+    with self.assertRaisesRegex(ValueError, 'must be at most 10000'):
+      config.set_intra_op_parallelism_threads(2147483647)  # INT_MAX
+
+  @reset_eager
+  def testInterOpParallelismThreadsValidation(self):
+    """Test validation of inter_op_parallelism_threads parameter."""
+    # Test valid values
+    config.set_inter_op_parallelism_threads(0)  # System picks
+    config.set_inter_op_parallelism_threads(1)
+    config.set_inter_op_parallelism_threads(100)
+    config.set_inter_op_parallelism_threads(10000)  # Max allowed
+
+    # Test TypeError for non-integer
+    with self.assertRaisesRegex(TypeError, 'must be an integer'):
+      config.set_inter_op_parallelism_threads(1.5)
+    with self.assertRaisesRegex(TypeError, 'must be an integer'):
+      config.set_inter_op_parallelism_threads('4')
+    with self.assertRaisesRegex(TypeError, 'must be an integer'):
+      config.set_inter_op_parallelism_threads(None)
+
+    # Test ValueError for negative
+    with self.assertRaisesRegex(ValueError, 'must be non-negative'):
+      config.set_inter_op_parallelism_threads(-1)
+    with self.assertRaisesRegex(ValueError, 'must be non-negative'):
+      config.set_inter_op_parallelism_threads(-100)
+
+    # Test ValueError for exceeding maximum
+    with self.assertRaisesRegex(ValueError, 'must be at most 10000'):
+      config.set_inter_op_parallelism_threads(10001)
+    with self.assertRaisesRegex(ValueError, 'must be at most 10000'):
+      config.set_inter_op_parallelism_threads(2147483647)  # INT_MAX
+
 
 if __name__ == '__main__':
   ops.enable_eager_execution()

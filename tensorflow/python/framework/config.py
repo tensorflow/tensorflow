@@ -128,7 +128,13 @@ def set_intra_op_parallelism_threads(num_threads):
   appropriate number.
 
   Args:
-    num_threads: Number of parallel threads
+    num_threads: Number of parallel threads. Must be a non-negative integer
+      not exceeding 10000.
+
+  Raises:
+    TypeError: If `num_threads` is not an integer.
+    ValueError: If `num_threads` is negative or exceeds 10000.
+    RuntimeError: If called after the context has been initialized.
   """
   context.context().intra_op_parallelism_threads = num_threads
 
@@ -154,7 +160,13 @@ def set_inter_op_parallelism_threads(num_threads):
   0 means the system picks an appropriate number.
 
   Args:
-    num_threads: Number of parallel threads
+    num_threads: Number of parallel threads. Must be a non-negative integer
+      not exceeding 10000.
+
+  Raises:
+    TypeError: If `num_threads` is not an integer.
+    ValueError: If `num_threads` is negative or exceeds 10000.
+    RuntimeError: If called after the context has been initialized.
   """
   context.context().inter_op_parallelism_threads = num_threads
 
