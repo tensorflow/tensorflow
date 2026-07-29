@@ -45,11 +45,13 @@ using gpu_dot_fusion_cost_model::detail::CalculateLoopIterBytes;
 using gpu_dot_fusion_cost_model::detail::
     CalculatePipelinedLoopTimeWithLaunchWaves;
 using gpu_dot_fusion_cost_model::detail::CalculateSharedMemoryPerBlockBytes;
+using gpu_dot_fusion_cost_model::detail::CalculateSmOccupancy;
 using gpu_dot_fusion_cost_model::detail::DotProblemInfo;
 using gpu_dot_fusion_cost_model::detail::DotTileSize;
 using gpu_dot_fusion_cost_model::detail::GetEffectiveHbmBandwidth;
 using gpu_dot_fusion_cost_model::detail::HbmEstimates;
 using gpu_dot_fusion_cost_model::detail::kLoopLatencyTax;
+using gpu_dot_fusion_cost_model::detail::SmOccupancy;
 
 class GpuDotFusionCostModelTest : public HloHardwareIndependentTestBase {
  protected:
@@ -376,6 +378,25 @@ TEST_F(GpuDotFusionCostModelTest, CalculateSharedMemoryPerBlockBytes) {
   DotTileSize dot_tile_f64_16{/*m=*/64, /*n=*/64, /*k=*/16, /*b=*/1};
   EXPECT_EQ(16384, CalculateSharedMemoryPerBlockBytes(
                        dot_info_f64, dot_tile_f64_16, /*num_stages=*/1));
+}
+
+TEST_F(GpuDotFusionCostModelTest, CalculateSmOccupancy_ShmemLimited) {
+  // Large shared memory should limit the occupancy to 1 block per SM.
+  const SmOccupancy occupancy = CalculateSmOccupancy(
+      /*shared_memory_per_block_bytes=*/200000,
+      /*num_warps=*/4, ddh100_);
+  EXPECT_EQ(occupancy.active_blocks_per_sm, 1);
+  EXPECT_EQ(occupancy.active_warps_per_sm, 4);
+}
+
+TEST_F(GpuDotFusionCostModelTest, CalculateSmOccupancy_ThreadLimited) {
+  const SmOccupancy occupancy = CalculateSmOccupancy(
+      /*shared_memory_per_block_bytes=*/1024,
+      /*num_warps=*/4, ddh100_);
+  // H100 has 2048 threads per SM. 4 warps * 32 threads/warp = 128
+  // threads/block. 2048 / 128 = 16 blocks per SM maximum.
+  EXPECT_EQ(occupancy.active_blocks_per_sm, 16);
+  EXPECT_EQ(occupancy.active_warps_per_sm, 64);
 }
 
 TEST_F(GpuDotFusionCostModelTest, CalculateHardwareLaunchWaves_ZeroBlocks) {
