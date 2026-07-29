@@ -757,7 +757,10 @@ class BufferAssignment {
   // Combines allocations of temporary buffers into one big BufferAllocation.
   absl::Status CombineTempAllocations(
       const absl::flat_hash_set<BufferValue::Color>& private_stack_colors,
-      std::optional<BufferValue::Color> temp_buffer_color);
+      std::optional<BufferValue::Color> temp_buffer_color,
+      std::optional<std::function<std::optional<int64_t>(
+          const HloAliasAnalysis&, const HloInstruction*, const ShapeIndex&)>>
+          fixed_offset = std::nullopt);
 
   // Computes stats for the assignment, to be retrieved by GetStats.
   void ComputeSummaryStats();
@@ -875,6 +878,8 @@ class BufferAssigner {
 
   using MustNotLiveOut = std::function<bool(
       const HloAliasAnalysis&, const HloInstruction*, const ShapeIndex&)>;
+  using FixedOffset = std::function<std::optional<int64_t>(
+      const HloAliasAnalysis&, const HloInstruction*, const ShapeIndex&)>;
   using PrivateStacks = absl::flat_hash_map<BufferValue::Color,
                                             std::vector<const HloComputation*>>;
 
@@ -900,6 +905,10 @@ class BufferAssigner {
     // An optional function that returns true if the given instruction can't
     // live out of a computation.
     std::optional<MustNotLiveOut> must_not_live_out;
+
+    // Optional callback returning a required fixed offset for a buffer
+    // position.
+    std::optional<FixedOffset> fixed_offset;
 
     // Description of any buffer offsets that are already set by an earlier
     // pass.
