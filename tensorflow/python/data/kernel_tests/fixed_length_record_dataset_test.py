@@ -205,7 +205,7 @@ class FixedLengthRecordDatasetTest(FixedLengthRecordDatasetTestBase,
           self._record_bytes,
           self._header_bytes,
           self._footer_bytes,
-          buffer_size=sys.maxsize - self._record_bytes)
+          buffer_size=readers._MAX_READER_BUFFER_SIZE_BYTES + 1)
 
   @combinations.generate(test_base.default_test_combinations())
   def testPathlib(self):
