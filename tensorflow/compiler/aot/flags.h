@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_AOT_FLAGS_H_
 #define TENSORFLOW_COMPILER_AOT_FLAGS_H_
 
+#include <cstdint>
 #include <string>
 #include <vector>
 
@@ -48,6 +49,8 @@ struct MainFlags {
   // Sanitizer pass options
   bool sanitize_dataflow = false;
   std::string sanitize_abilists_dataflow;
+  bool sanitize_memory = false;
+  int32_t sanitize_memory_track_origins = 0;
 
   // C++ codegen options
   bool gen_name_to_index = false;

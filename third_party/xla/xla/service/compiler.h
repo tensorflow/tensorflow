@@ -438,6 +438,23 @@ class AotCompilationOptions {
     run_backend_only_ = run_backend_only;
   }
 
+  // Whether to instrument the code with msan. Origin tracking implies msan.
+  bool sanitize_memory() const {
+    return sanitize_memory_ || sanitize_memory_track_origins_ > 0;
+  }
+  void set_sanitize_memory(bool sanitize_memory) {
+    sanitize_memory_ = sanitize_memory;
+  }
+
+  // Level of msan origin tracking: 0 = off, 1 = without store history,
+  // 2 = with store history.
+  int sanitize_memory_track_origins() const {
+    return sanitize_memory_track_origins_;
+  }
+  void set_sanitize_memory_track_origins(int track_origins) {
+    sanitize_memory_track_origins_ = track_origins;
+  }
+
   bool sanitize_dataflow() const { return sanitize_dataflow_; }
   void set_sanitize_dataflow(bool sanitize_dataflow) {
     sanitize_dataflow_ = sanitize_dataflow;
@@ -486,6 +503,8 @@ class AotCompilationOptions {
   int64_t profile_version_ = 0;
   std::string cache_key_;
   bool run_backend_only_ = false;
+  bool sanitize_memory_ = false;
+  int sanitize_memory_track_origins_ = 0;
   bool sanitize_dataflow_ = false;
   std::vector<std::string> sanitize_abilists_dataflow_;
   // Contains target-specific information required by AOT compilation.

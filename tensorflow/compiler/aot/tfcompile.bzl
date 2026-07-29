@@ -39,7 +39,7 @@ load(
     "tf_cc_test",
     "tf_copts",
 )
-load("//tensorflow:tensorflow.default.bzl", "tfcompile_dfsan_abilists", "tfcompile_dfsan_enabled", "tfcompile_friends", "tfcompile_target_cpu")
+load("//tensorflow:tensorflow.default.bzl", "tfcompile_dfsan_abilists", "tfcompile_dfsan_enabled", "tfcompile_friends", "tfcompile_msan_flags", "tfcompile_target_cpu")
 
 visibility(tfcompile_friends())
 
@@ -297,7 +297,7 @@ def _tf_library(
         target_cpu = tfcompile_target_cpu(name),
         target_triple = target_llvm_triple(),
         flags = flags,
-        extra_flags = debug_info_flags + profiling_flags + mlir_flags + traceme_flags,
+        extra_flags = debug_info_flags + profiling_flags + mlir_flags + traceme_flags + tfcompile_msan_flags(),
         dfsan = tfcompile_dfsan_enabled(),
         dfsan_abilists = tfcompile_dfsan_abilists(),
         is_linux = select({

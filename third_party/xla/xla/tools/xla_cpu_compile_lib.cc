@@ -21,23 +21,84 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
+#include "llvm/TargetParser/Host.h"
 #include "xla/backends/cpu/target_machine_options.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/compiled_module.h"
 #include "xla/service/compiler.h"
+#include "xla/service/cpu/cpu_aot_compilation_result.h"
 #include "xla/service/cpu/cpu_compiler.h"
 #include "xla/service/executable.h"
 #include "xla/service/xla_compile_result.pb.h"
 
 namespace xla {
 
+// Compiles without linking the generated code into this process. Sanitizer
+// instrumented code references runtime symbols (e.g. `__msan_*`) that an
+// uninstrumented compiler cannot resolve, so it must not take the JIT path.
+// Like tfcompile, this compiles via CpuCompiler::CompileAheadOfTime, whose HLO
+// pipeline differs slightly from the JIT path's: e.g., it doesn't assign
+// parallel tasks or use oneDNN.
+static absl::StatusOr<std::unique_ptr<CompiledModule>> CompileSanitized(
+    cpu::CpuCompiler& cpu_compiler, std::unique_ptr<HloModule> hlo_module,
+    std::optional<cpu::TargetMachineOptions> target_config,
+    const CpuSanitizerOptions& sanitizer_options) {
+  // CompileAheadOfTime does not compile modules that are already scheduled.
+  if (hlo_module->has_schedule()) {
+    return absl::UnimplementedError(
+        "Sanitizer instrumentation of scheduled HLO modules is not supported");
+  }
+  cpu::TargetMachineOptions target = target_config.value_or(
+      cpu::TargetMachineOptions(hlo_module->config().debug_options()));
+  // Like the JIT path, default to the host triple.
+  std::string triple =
+      target.triple().empty() ? llvm::sys::getProcessTriple() : target.triple();
+  cpu::CpuAotCompilationOptions aot_options(
+      triple, target.cpu(), target.GetTargetMachineFeatures(),
+      hlo_module->name(),
+      cpu::CpuAotCompilationOptions::RelocationModel::BigPic);
+  aot_options.set_sanitize_memory(true);
+  aot_options.set_sanitize_memory_track_origins(
+      sanitizer_options.sanitize_memory_track_origins);
+
+  ABSL_ASSIGN_OR_RETURN(
+      std::vector<std::unique_ptr<CompiledModule>> aot_results,
+      cpu_compiler.CompileAheadOfTime(std::move(hlo_module), aot_options));
+  if (aot_results.size() != 1) {
+    return absl::InternalError(absl::StrCat(
+        "Expected one AOT compilation result, got ", aot_results.size()));
+  }
+  return std::move(aot_results[0]);
+}
+
 absl::StatusOr<std::string> AotCompileCpuExecutable(
     std::unique_ptr<HloModule> hlo_module,
     std::optional<cpu::TargetMachineOptions> target_config,
-    CompilationResult* result) {
+    CompilationResult* result, const CpuSanitizerOptions& sanitizer_options) {
+  if (sanitizer_options.sanitize_memory_track_origins < 0 ||
+      sanitizer_options.sanitize_memory_track_origins > 2) {
+    return absl::InvalidArgumentError(
+        absl::StrCat("sanitize_memory_track_origins must be 0, 1 or 2; got ",
+                     sanitizer_options.sanitize_memory_track_origins));
+  }
   cpu::CpuCompiler cpu_compiler;
+
+  if (sanitizer_options.sanitize_memory ||
+      sanitizer_options.sanitize_memory_track_origins > 0) {
+    ABSL_ASSIGN_OR_RETURN(
+        std::unique_ptr<CompiledModule> aot_result,
+        CompileSanitized(cpu_compiler, std::move(hlo_module),
+                         std::move(target_config), sanitizer_options));
+    if (result != nullptr) {
+      *result->mutable_hlo_module() = aot_result->optimized_module()->ToProto();
+    }
+    return aot_result->SerializeAsString();
+  }
+
   Compiler::CompileOptions compile_options;
   if (target_config.has_value()) {
     compile_options.cpu_target_config =

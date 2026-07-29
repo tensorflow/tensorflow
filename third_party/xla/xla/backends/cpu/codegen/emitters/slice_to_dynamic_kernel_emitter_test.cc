@@ -147,7 +147,7 @@ TEST_F(SliceToDynamicKernelEmitterTest, EmitsAndExecutesSliceToDynamic) {
   ASSERT_OK_AND_ASSIGN(LlvmKernelSource llvm_source,
                        compiler.Compile(std::move(definition).TakeSource()));
   EXPECT_THAT(RunFileCheck(llvm_source.ToString(), R"(
-    CHECK: define ptr @res(ptr{{.*}})
+    CHECK: define noundef ptr @res(ptr{{.*}})
     CHECK: store i32
     CHECK: store float
   )"),
@@ -214,7 +214,7 @@ TEST_F(SliceToDynamicKernelEmitterTest, EmitsAndExecutesUnalignedF16) {
   ASSERT_OK_AND_ASSIGN(LlvmKernelSource llvm_source,
                        compiler.Compile(std::move(definition).TakeSource()));
   EXPECT_THAT(RunFileCheck(llvm_source.ToString(), R"(
-    CHECK: define ptr @res(ptr{{.*}})
+    CHECK: define noundef ptr @res(ptr{{.*}})
     CHECK: store i32 %{{.*}}, ptr {{.*}} align 1
     CHECK: store half
   )"),
@@ -351,7 +351,7 @@ TEST_F(SliceToDynamicKernelEmitterTest, EmitsAndExecutesSubByteS4) {
   ASSERT_OK_AND_ASSIGN(LlvmKernelSource llvm_source,
                        compiler.Compile(std::move(definition).TakeSource()));
   EXPECT_THAT(RunFileCheck(llvm_source.ToString(), R"(
-    CHECK: define ptr @res(ptr{{.*}})
+    CHECK: define noundef ptr @res(ptr{{.*}})
     CHECK-NOT: cmpxchg
     CHECK: store i32 %{{.*}}, ptr {{.*}} align 1
     CHECK: load i8, ptr

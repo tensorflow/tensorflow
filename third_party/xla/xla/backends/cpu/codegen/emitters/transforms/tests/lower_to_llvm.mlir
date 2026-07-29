@@ -116,7 +116,7 @@ func.func private @wrap_entry(
       : tensor<2xi32>, tensor<21x12xi32>, index, index, index
 }
 
-// CHECK:  func.func @wrap_entry(%[[CALL_FRAME:.+]]: !llvm.ptr {llvm.nonnull, llvm.noundef}) -> !llvm.ptr attributes
+// CHECK:  func.func @wrap_entry(%[[CALL_FRAME:.+]]: !llvm.ptr {llvm.nonnull, llvm.noundef}) -> (!llvm.ptr {llvm.noundef}) attributes
 // CHECK-SAME: frame_pointer = #llvm.framePointerKind<all>
 // CHECK-SAME: "prefer-vector-width", "128"
 // CHECK-SAME: uwtable_kind = #llvm.uwtableKind<async>
@@ -292,7 +292,7 @@ func.func @wrap_comparator(
 }
 
 // CHECK-LABEL: func.func @wrap_comparator(
-// CHECK-SAME:    %[[PARAMS:[^:]+]]: !llvm.ptr {llvm.nonnull, llvm.noundef}) -> (i1 {llvm.zeroext}) attributes
+// CHECK-SAME:    %[[PARAMS:[^:]+]]: !llvm.ptr {llvm.nonnull, llvm.noundef}) -> (i1 {llvm.noundef, llvm.zeroext}) attributes
 // CHECK-SAME:  uwtable_kind = #llvm.uwtableKind<async>
 // CHECK-DAG:     %[[P0_PTR:.+]] = llvm.load %[[PARAMS]] : !llvm.ptr -> !llvm.ptr
 // CHECK-DAG:     %[[P0:.+]] = builtin.unrealized_conversion_cast %[[P0_PTR]] : !llvm.ptr to tensor<f32>
