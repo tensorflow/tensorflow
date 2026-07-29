@@ -108,6 +108,48 @@ class StreamExecutorGpuHbmMemorySpace : public PjRtStreamExecutorMemorySpace {
   StreamExecutorGpuHbmMemorySpace(int id, PjRtDevice* device);
 };
 
+class StreamExecutorGpuRawClient : public PjRtStreamExecutorRawClient {
+ public:
+  StreamExecutorGpuRawClient(
+      std::unique_ptr<HostMemoryAllocator> host_memory_allocator,
+      bool should_stage_host_to_device_transfers,
+      std::unique_ptr<AsyncWorkRunner> async_work_runner,
+      se::StreamExecutor* executor = nullptr,
+      bool abort_collectives_on_failure = false,
+      std::unique_ptr<gpu::GpuExecutableRunOptions> gpu_run_options = nullptr)
+      : PjRtStreamExecutorRawClient(std::move(host_memory_allocator),
+                                    should_stage_host_to_device_transfers,
+                                    std::move(async_work_runner), executor,
+                                    std::move(gpu_run_options)),
+        abort_collectives_on_failure_(abort_collectives_on_failure) {}
+
+  void ScheduleRemoteSend(PjRtMemorySpace* memory_space,
+                          PjRtRawBufferRef raw_buffer,
+                          PjRtDeviceEventRefVector definition_events,
+                          PjRtDeviceEventPromiseRef usage_event_promise,
+                          Future<std::string> serialized_descriptor,
+                          PjRtBuffer::RemoteSendCallback on_done) override;
+
+  absl::StatusOr<PjRtDeviceEventRefVector> CrossHostReceiveBuffersInto(
+      absl::Span<const PjRtRawBufferRef> buffers,
+      PjRtCrossHostRecvNotifier notifier,
+      PjRtDeviceEventSpan transfer_dependency_avs) override;
+
+  absl::StatusOr<PjRtDeviceEventRefVector> CrossHostTransferBuffers(
+      PjRtDeviceEventRefVector transfer_dependencies,
+      std::vector<CommonPjRtClient::CrossHostTransferSpec> transfer_specs)
+      override;
+
+ private:
+  void ScheduleTransfersOnLocalDevice(
+      LocalDeviceState* local_device_state, GlobalDeviceId device_id,
+      tsl::AsyncValueRef<BufferSequencingEvent> transfer_event,
+      PjRtDeviceEventRefVector transfer_dependencies,
+      std::vector<CommonPjRtClient::CrossHostTransferSpec> transfer_specs);
+
+  const bool abort_collectives_on_failure_ = false;
+};
+
 // A custom PjRtClient that overrides the device assignment method.
 class StreamExecutorGpuClient : public xla::PjRtStreamExecutorClient {
  public:
@@ -135,20 +177,6 @@ class StreamExecutorGpuClient : public xla::PjRtStreamExecutorClient {
   void UpdateGlobalProcessInfo(
       absl::Span<xla::coordination::TaskInfo> infos) override;
 
-  // ScheduleRemoteSend and MakeCrossHostReceiveBuffers are methods implemented
-  // to support the legacy cross-host transfers API.
-  void ScheduleRemoteSend(PjRtMemorySpace* memory_space,
-                          PjRtRawBufferRef raw_buffer,
-                          PjRtDeviceEventRefVector definition_events,
-                          PjRtDeviceEventPromiseRef usage_event_promise,
-                          Future<std::string> serialized_descriptor,
-                          PjRtBuffer::RemoteSendCallback on_done) override;
-
-  absl::StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>>
-  MakeCrossHostReceiveBuffers(absl::Span<const Shape> shapes,
-                              PjRtDevice* device,
-                              PjRtCrossHostRecvNotifier notifier) override;
-
   void RecordMemoryStats();
 
   absl::Status UpdateCompileOptionsInternal(
@@ -161,27 +189,6 @@ class StreamExecutorGpuClient : public xla::PjRtStreamExecutorClient {
  private:
   const bool abort_collectives_on_failure_ = false;
   std::shared_ptr<gpu::AllocatorMemoryRegistration> memory_registration_;
-
-  absl::StatusOr<PjRtDeviceEventRefVector> CrossHostTransferBuffers(
-      PjRtDeviceEventRefVector transfer_dependencies,
-      std::vector<CrossHostTransferSpec> transfer_specs) override;
-
-  void ScheduleTransfersOnLocalDevice(
-      LocalDeviceState* local_device_state, GlobalDeviceId device_id,
-      tsl::AsyncValueRef<BufferSequencingEvent> transfer_event,
-      PjRtDeviceEventRefVector transfer_dependencies,
-      std::vector<CrossHostTransferSpec> transfer_specs);
-
-  struct PrepareReceiveBufferResult {
-    std::unique_ptr<PjRtBuffer> buffer;
-    PjRtRawBufferRef raw_buffer;
-    LocalDeviceState* local_device;
-    se::Stream* stream;
-    BufferSequencingEventRef definition_event;
-  };
-
-  absl::StatusOr<PrepareReceiveBufferResult> PrepareReceiveBuffer(
-      PjRtDevice* device, Shape shape);
 };
 
 absl::StatusOr<std::unique_ptr<PjRtClient>> GetStreamExecutorGpuClient(

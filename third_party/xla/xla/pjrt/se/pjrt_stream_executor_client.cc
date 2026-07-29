@@ -293,15 +293,21 @@ PjRtStreamExecutorRawClient::PjRtStreamExecutorRawClient(
     std::unique_ptr<HostMemoryAllocator> host_memory_allocator,
     bool should_stage_host_to_device_transfers,
     std::unique_ptr<AsyncWorkRunner> async_work_runner,
-    se::StreamExecutor* executor)
+    se::StreamExecutor* executor,
+    std::unique_ptr<gpu::GpuExecutableRunOptions> gpu_run_options)
     : host_memory_allocator_(std::move(host_memory_allocator)),
       should_stage_host_to_device_transfers_(
           should_stage_host_to_device_transfers),
       async_work_runner_(std::move(async_work_runner)),
-      executor_(executor) {
+      executor_(executor),
+      gpu_run_options_(std::move(gpu_run_options)) {
   if (!host_memory_allocator_) {
     host_memory_allocator_ = std::make_unique<BasicHostMemoryAllocator>(
         std::make_unique<CpuAllocator>());
+  }
+  if (!async_work_runner_) {
+    async_work_runner_ = MakeUnboundedAsyncWorkRunner(
+        "pjrt_async_work_runner", {/*stack_size=*/512 * 1024});
   }
 }
 
@@ -316,30 +322,47 @@ PjRtStreamExecutorClient::PjRtStreamExecutorClient(
     bool should_stage_host_to_device_transfers,
     std::unique_ptr<gpu::GpuExecutableRunOptions> gpu_run_options,
     std::shared_ptr<KeyValueStoreInterface> kv_store)
+    : PjRtStreamExecutorClient(
+          std::move(platform_name), client, std::move(devices), process_index,
+          std::move(memory_spaces), std::move(topology), std::move(allocator),
+          std::make_unique<PjRtStreamExecutorRawClient>(
+              std::move(host_memory_allocator),
+              should_stage_host_to_device_transfers,
+              MakeUnboundedAsyncWorkRunner("pjrt_async_work_runner",
+                                           {/*stack_size=*/512 * 1024}),
+              [&]() -> se::StreamExecutor* {
+                for (const auto& dev : devices) {
+                  if (dev->IsAddressable() &&
+                      dev->local_device_state() != nullptr &&
+                      dev->local_device_state()->compute_stream() != nullptr) {
+                    return dev->local_device_state()
+                        ->compute_stream()
+                        ->parent();
+                  }
+                }
+                return nullptr;
+              }(),
+              std::move(gpu_run_options)),
+          std::move(kv_store)) {}
+
+PjRtStreamExecutorClient::PjRtStreamExecutorClient(
+    std::string platform_name, LocalClient* client,
+    std::vector<std::unique_ptr<PjRtStreamExecutorDevice>> devices,
+    int process_index,
+    std::vector<std::unique_ptr<PjRtMemorySpace>> memory_spaces,
+    std::shared_ptr<const xla::PjRtTopologyDescription> topology,
+    std::unique_ptr<se::DeviceAddressAllocator> allocator,
+    std::unique_ptr<PjRtStreamExecutorRawClient> raw_client,
+    std::shared_ptr<KeyValueStoreInterface> kv_store)
     : platform_id_(tsl::Fingerprint64(platform_name)),
       platform_name_(std::move(platform_name)),
       client_(client),
       topology_(std::move(topology)),
-      raw_client_(std::make_unique<PjRtStreamExecutorRawClient>(
-          std::move(host_memory_allocator),
-          should_stage_host_to_device_transfers,
-          MakeUnboundedAsyncWorkRunner("pjrt_async_work_runner",
-                                       {/*stack_size=*/512 * 1024}),
-          [&]() -> se::StreamExecutor* {
-            for (const auto& dev : devices) {
-              if (dev->IsAddressable() &&
-                  dev->local_device_state() != nullptr &&
-                  dev->local_device_state()->compute_stream() != nullptr) {
-                return dev->local_device_state()->compute_stream()->parent();
-              }
-            }
-            return nullptr;
-          }())),
+      raw_client_(std::move(raw_client)),
       owned_allocator_(std::move(allocator)),
       owned_devices_(std::move(devices)),
       process_index_(process_index),
       owned_memory_spaces_(std::move(memory_spaces)),
-      gpu_run_options_(std::move(gpu_run_options)),
       kv_store_(std::move(kv_store)),
       compile_thread_pool_(
           tsl::Env::Default(), "pjrt_compile_thread_pool",
@@ -1615,7 +1638,7 @@ PjRtStreamExecutorRawLoadedExecutable::Execute(
     compute_reservation = std::make_shared<Semaphore::ScopedReservation>(
         compute_semaphore->ScopedAcquire(1));
   }
-  auto* gpu_run_options = client_->gpu_run_options_.get();
+  auto* gpu_run_options = client_->gpu_run_options();
   if (gpu_run_options && !options.incarnations.empty()) {
     absl::flat_hash_map<GlobalDeviceId, IncarnationId> device_incarnations;
     for (const PjRtDevice* device : client_->devices()) {
@@ -2277,7 +2300,7 @@ PjRtStreamExecutorClient::Compile(MaybeOwningMlirModule module,
 
   XlaComputation xla_computation;
   ExecutableBuildOptions& exec_build_options = options.executable_build_options;
-  auto chlo_opts = gpu_run_options_ == nullptr
+  auto chlo_opts = gpu_run_options() == nullptr
                        ? mlir::mhlo::getDefaultChloToHighLevelMhloOptions()
                        : mlir::mhlo::getGpuChloToHighLevelMhloOptions();
 
@@ -2731,6 +2754,35 @@ absl::StatusOr<xla::Shape> PjRtStreamExecutorClient::GetCopyDestinationShape(
   }
   return MakeDefaultShapeForMemorySpace(
       dst_memory_space, shape, shape.has_layout() ? &shape.layout() : nullptr);
+}
+
+void PjRtStreamExecutorRawClient::ScheduleRemoteSend(
+    PjRtMemorySpace* memory_space, PjRtRawBufferRef raw_buffer,
+    PjRtDeviceEventRefVector definition_events,
+    PjRtDeviceEventPromiseRef usage_event_promise,
+    Future<std::string> serialized_descriptor,
+    PjRtBuffer::RemoteSendCallback on_done) {
+  auto error =
+      absl::UnimplementedError("ScheduleRemoteSend is not implemented.");
+  on_done(error, /*sends_were_enqueued=*/false);
+  usage_event_promise.SetError(error);
+}
+
+absl::StatusOr<PjRtDeviceEventRefVector>
+PjRtStreamExecutorRawClient::CrossHostReceiveBuffersInto(
+    absl::Span<const PjRtRawBufferRef> buffers,
+    PjRtCrossHostRecvNotifier notifier,
+    PjRtDeviceEventSpan transfer_dependency_avs) {
+  return absl::UnimplementedError(
+      "CrossHostReceiveBuffersInto is not implemented.");
+}
+
+absl::StatusOr<PjRtDeviceEventRefVector>
+PjRtStreamExecutorRawClient::CrossHostTransferBuffers(
+    PjRtDeviceEventRefVector transfer_dependencies,
+    std::vector<CommonPjRtClient::CrossHostTransferSpec> transfer_specs) {
+  return absl::UnimplementedError(
+      "CrossHostTransferBuffers is not implemented.");
 }
 
 }  // namespace xla

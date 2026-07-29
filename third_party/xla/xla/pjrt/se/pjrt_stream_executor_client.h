@@ -235,8 +235,13 @@ class PjRtStreamExecutorRawClient {
       std::unique_ptr<HostMemoryAllocator> host_memory_allocator,
       bool should_stage_host_to_device_transfers,
       std::unique_ptr<AsyncWorkRunner> async_work_runner,
-      se::StreamExecutor* executor = nullptr);
-  ~PjRtStreamExecutorRawClient() = default;
+      se::StreamExecutor* executor = nullptr,
+      std::unique_ptr<gpu::GpuExecutableRunOptions> gpu_run_options = nullptr);
+  virtual ~PjRtStreamExecutorRawClient() = default;
+
+  gpu::GpuExecutableRunOptions* gpu_run_options() const {
+    return gpu_run_options_.get();
+  }
 
   AsyncWorkRunner* async_work_runner() const {
     return async_work_runner_.get();
@@ -295,6 +300,22 @@ class PjRtStreamExecutorRawClient {
   CreateLinkedEventPromise(PjRtMemorySpace* memory_space,
                            absl::string_view debug_info);
 
+  virtual void ScheduleRemoteSend(PjRtMemorySpace* memory_space,
+                                  PjRtRawBufferRef raw_buffer,
+                                  PjRtDeviceEventRefVector definition_events,
+                                  PjRtDeviceEventPromiseRef usage_event_promise,
+                                  Future<std::string> serialized_descriptor,
+                                  PjRtBuffer::RemoteSendCallback on_done);
+
+  virtual absl::StatusOr<PjRtDeviceEventRefVector> CrossHostReceiveBuffersInto(
+      absl::Span<const PjRtRawBufferRef> buffers,
+      PjRtCrossHostRecvNotifier notifier,
+      PjRtDeviceEventSpan transfer_dependency_avs);
+
+  virtual absl::StatusOr<PjRtDeviceEventRefVector> CrossHostTransferBuffers(
+      PjRtDeviceEventRefVector transfer_dependencies,
+      std::vector<CommonPjRtClient::CrossHostTransferSpec> transfer_specs);
+
   void Stop() { async_work_runner_.reset(); }
 
  private:
@@ -308,6 +329,7 @@ class PjRtStreamExecutorRawClient {
 
   std::unique_ptr<AsyncWorkRunner> async_work_runner_;
   se::StreamExecutor* executor_;
+  std::unique_ptr<gpu::GpuExecutableRunOptions> gpu_run_options_;
 };
 
 class PjRtStreamExecutorClient : public CommonPjRtClient {
@@ -323,6 +345,15 @@ class PjRtStreamExecutorClient : public CommonPjRtClient {
       std::unique_ptr<HostMemoryAllocator> host_memory_allocator,
       bool should_stage_host_to_device_transfers,
       std::unique_ptr<gpu::GpuExecutableRunOptions> gpu_run_options = nullptr,
+      std::shared_ptr<KeyValueStoreInterface> kv_store = nullptr);
+  explicit PjRtStreamExecutorClient(
+      std::string platform_name, LocalClient* client,
+      std::vector<std::unique_ptr<PjRtStreamExecutorDevice>> devices,
+      int process_index,
+      std::vector<std::unique_ptr<PjRtMemorySpace>> memory_spaces,
+      std::shared_ptr<const xla::PjRtTopologyDescription> topology,
+      std::unique_ptr<se::DeviceAddressAllocator> allocator,
+      std::unique_ptr<PjRtStreamExecutorRawClient> raw_client,
       std::shared_ptr<KeyValueStoreInterface> kv_store = nullptr);
   ~PjRtStreamExecutorClient() override;
 
@@ -440,7 +471,7 @@ class PjRtStreamExecutorClient : public CommonPjRtClient {
   }
 
   gpu::GpuExecutableRunOptions* gpu_run_options() const {
-    return gpu_run_options_.get();
+    return raw_client_->gpu_run_options();
   }
 
 
@@ -509,6 +540,32 @@ class PjRtStreamExecutorClient : public CommonPjRtClient {
   CreateLinkedEventPromise(PjRtMemorySpace* memory_space,
                            absl::string_view debug_info) override {
     return raw_client_->CreateLinkedEventPromise(memory_space, debug_info);
+  }
+
+  void ScheduleRemoteSend(PjRtMemorySpace* memory_space,
+                          PjRtRawBufferRef raw_buffer,
+                          PjRtDeviceEventRefVector definition_events,
+                          PjRtDeviceEventPromiseRef usage_event_promise,
+                          Future<std::string> serialized_descriptor,
+                          PjRtBuffer::RemoteSendCallback on_done) override {
+    raw_client_->ScheduleRemoteSend(memory_space, raw_buffer, definition_events,
+                                    usage_event_promise, serialized_descriptor,
+                                    std::move(on_done));
+  }
+
+  absl::StatusOr<PjRtDeviceEventRefVector> CrossHostReceiveBuffersInto(
+      absl::Span<const PjRtRawBufferRef> buffers,
+      PjRtCrossHostRecvNotifier notifier,
+      PjRtDeviceEventSpan transfer_dependency_avs) override {
+    return raw_client_->CrossHostReceiveBuffersInto(
+        buffers, std::move(notifier), transfer_dependency_avs);
+  }
+
+  absl::StatusOr<PjRtDeviceEventRefVector> CrossHostTransferBuffers(
+      PjRtDeviceEventRefVector transfer_dependencies,
+      std::vector<CrossHostTransferSpec> transfer_specs) override {
+    return raw_client_->CrossHostTransferBuffers(
+        std::move(transfer_dependencies), std::move(transfer_specs));
   }
 
   absl::StatusOr<PjRtDeviceEventRef> CreateDeviceEvent(
@@ -631,7 +688,6 @@ class PjRtStreamExecutorClient : public CommonPjRtClient {
   // Pointers to `owned_memory_spaces_`.
   std::vector<PjRtMemorySpace*> memory_spaces_;
 
-  std::unique_ptr<gpu::GpuExecutableRunOptions> gpu_run_options_;
   std::shared_ptr<KeyValueStoreInterface> kv_store_;
 
   tsl::thread::ThreadPool compile_thread_pool_;
