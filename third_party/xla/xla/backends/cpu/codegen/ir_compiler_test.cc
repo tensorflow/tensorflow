@@ -280,6 +280,10 @@ TEST(IrCompilerTest, TargetMachineOptionsAreCorrectlySet) {
 }
 
 TEST(IrCompilerTest, EmitIntrinsicCall) {
+#if defined(ABSL_HAVE_MEMORY_SANITIZER)
+  GTEST_SKIP() << "MSan intercepts @llvm.memcpy with @__msan_memcpy, which is "
+                  "not lowered to a tail call.";
+#endif
   constexpr absl::string_view kModuleName = "test_module";
   constexpr absl::string_view kMemcpyCall = R"(
   define void @memcpy_call(ptr noalias %a, ptr noalias %b, i64 %n) #0 {
@@ -294,12 +298,13 @@ TEST(IrCompilerTest, EmitIntrinsicCall) {
   auto context = std::make_unique<llvm::LLVMContext>();
   IrCompiler::CompilationHooks compilation_hooks;
 
-  std::unique_ptr<IrCompiler> ir_compiler = IrCompiler::Create(
-      llvm::TargetOptions(),
-      IrCompiler::Options{/*opt_level=*/llvm::CodeGenOptLevel::Aggressive,
-                          /*optimize_for_size=*/false,
-                          TargetMachineOptions(GetDebugOptionsFromFlags())},
-      compilation_hooks);
+  IrCompiler::Options options{/*opt_level=*/llvm::CodeGenOptLevel::Aggressive,
+                              /*optimize_for_size=*/false,
+                              TargetMachineOptions(GetDebugOptionsFromFlags())};
+  options.msan_enabled = false;  // Avoid msan interception of memcpy.
+
+  std::unique_ptr<IrCompiler> ir_compiler =
+      IrCompiler::Create(llvm::TargetOptions(), options, compilation_hooks);
 
   TF_ASSERT_OK_AND_ASSIGN(auto ir_module,
                           ParseModule(*context, kMemcpyCall, kModuleName));
@@ -352,6 +357,40 @@ INSTANTIATE_TEST_SUITE_P(IrCompilerParameterizedTestInstantiation,
                          IrCompilerParameterizedTest,
                          ::testing::Values("x86_64-grtev4-linux-gnu",
                                            "aarch64-unknown-linux-gnu"));
+
+TEST(IrCompilerTest, MemorySanitizerTrackOrigins) {
+  auto context = std::make_unique<llvm::LLVMContext>();
+  IrCompiler::CompilationHooks compilation_hooks;
+
+  TargetMachineOptions target_machine_options(kTargetTripleForHost,
+                                              kTargetCpuForHost, "");
+
+  IrCompiler::Options options{
+      /*opt_level=*/llvm::CodeGenOptLevel::None,
+      /*optimize_for_size=*/false,
+      target_machine_options,
+  };
+  options.msan_enabled = true;
+  options.msan_track_origins = 2;
+
+  std::unique_ptr<IrCompiler> ir_compiler =
+      IrCompiler::Create(llvm::TargetOptions(), options, compilation_hooks);
+
+  ASSERT_OK_AND_ASSIGN(auto ir_module,
+                       ParseModule(*context, kUnoptimizedIr, "test_module"));
+
+  ASSERT_OK_AND_ASSIGN(auto target_machine,
+                       ir_compiler->build_target_machine());
+
+  ir_module->setDataLayout(target_machine->createDataLayout());
+  ir_module->setTargetTriple(target_machine->getTargetTriple());
+  cantFail((*ir_compiler)(*ir_module));
+
+  auto ir = llvm_ir::DumpToString(ir_module.get());
+  EXPECT_THAT(ir, HasSubstr("__msan_track_origins = weak_odr constant i32 2"));
+  EXPECT_THAT(ir, HasSubstr("__emutls_v.__msan_param_tls"));
+  EXPECT_THAT(ir, HasSubstr("@__emutls_get_address"));
+}
 
 }  // namespace
 

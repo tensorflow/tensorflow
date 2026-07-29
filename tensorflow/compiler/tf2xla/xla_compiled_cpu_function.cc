@@ -73,8 +73,7 @@ XlaCompiledCpuFunction::XlaCompiledCpuFunction(const StaticData& static_data,
   // Allocate arg and temp buffers.
   alloc_buffer_table_ = tensorflow::MallocContiguousBuffers(
       absl::MakeConstSpan(static_data.buffer_infos_, static_data.num_buffers_),
-      /*allocate_entry_params=*/allocate_entry_params, buffer_table_,
-      /*annotate_initialized=*/true);
+      /*allocate_entry_params=*/allocate_entry_params, buffer_table_);
   // If Hlo profiling is enabled the generated code expects an appropriately
   // sized buffer to be passed in as the last argument.  If Hlo profiling is
   // disabled the last function argument is still present in the function
