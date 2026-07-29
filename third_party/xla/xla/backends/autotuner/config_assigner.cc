@@ -432,7 +432,8 @@ tsl::Future<ConfigAssigner::Config> ConfigAssigner::GetTunedConfig(
         LogConfigProfiles(*instr, profiles, compilation_failures);
         ASSIGN_OR_RETURN(
             ConfigRunner::ConfigProfile best_profile,
-            PickBestConfig(profiles, options_.scratch_bytes_window_size_us));
+            PickBestConfig(profiles, options_.scratch_bytes_window_size_us,
+                           instr));
         return std::move(best_profile.config);
       });
 }

@@ -66,12 +66,12 @@ absl::StatusOr<std::unique_ptr<NanoRtExecutable>> NanoRtClient::Compile(
 
   // Run high-level XLA CPU compiler passes.
   cpu::CpuCompiler compiler;
-  if (!executable_build_options.run_backend_only()) {
+  /*if (!executable_build_options.run_backend_only()) {
     ASSIGN_OR_RETURN(hlo_module, compiler.RunHloPasses(std::move(hlo_module),
-                                                       /*stream_exec=*/nullptr,
+                                                       /*stream_exec=nullptr,
                                                        compile_options));
   }
-
+*/
   auto optimized_hlo_program_shape =
       hlo_module->entry_computation_layout().ComputeProgramShape();
 

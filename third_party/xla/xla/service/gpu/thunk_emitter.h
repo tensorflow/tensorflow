@@ -193,10 +193,12 @@ class ThunkEmitter {
   // Emits a kCall by invoking EmitHloComputation for its called computation.
   Future<ThunkSequence> EmitCall(const HloInstruction* instr);
 
+  absl::StatusOr<ThunkSequence> EmitAsHostExecute(
+      const HloInstruction* top_instr, const HloInstruction* to_execute,
+      const HloComputation* called_computation);
   absl::StatusOr<ThunkSequence> EmitHostExecuteStart(
       const HloInstruction* async_start,
       const HloCustomCallInstruction* host_execute);
-
   absl::StatusOr<ThunkSequence> EmitHostExecuteDone(
       const HloInstruction* async_done,
       const HloCustomCallInstruction* host_execute);

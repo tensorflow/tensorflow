@@ -40,6 +40,28 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "host_offload_backend",
+    hdrs = ["host_offload_backend.h"],
+    deps = [
+        ":gpu_codegen_backend",
+        "//xla:status_macros",
+        "//xla:xla_proto_cc",
+        "//xla/backends/autotuner:backends_proto_cc",
+        "//xla/backends/autotuner:codegen_backend",
+        "//xla/hlo/ir:hlo",
+        "//xla/service:compiler",
+        "//xla/service:executable",
+        "//xla/service:gpu_topology",
+        "//xla/service/gpu:backend_configs_cc",
+        "//xla/stream_executor:stream_executor_h",
+        "//xla/tsl/platform:status_macros",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
+    ],
+)
+
 xla_cc_test(
     name = "gpu_codegen_backend_test",
     srcs = ["gpu_codegen_backend_test.cc"],
@@ -518,6 +540,7 @@ cc_library(
         ":cudnn",
         ":factory",
         ":fission_backend",
+        ":host_offload_backend",
         ":native_emitter",
         ":triton",
         "//xla:xla_proto_cc",

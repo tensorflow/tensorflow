@@ -200,6 +200,11 @@ AutotuneDecision ShouldAutotuneInstruction(bool do_not_autotune_cublas,
                                            bool do_not_autotune_cudnn,
                                            bool enable_fusion_autotuner,
                                            const HloInstruction& instruction) {
+  std::set<HloOpcode> supported{HloOpcode::kRngGetAndUpdateState,
+                                HloOpcode::kSort, HloOpcode::kCall};
+  if (supported.find(instruction.opcode()) != supported.end()) {
+    return true;
+  }
   // 1. Custom calls.
   if (instruction.opcode() == HloOpcode::kCustomCall) {
     return ShouldAutotuneCustomCall(do_not_autotune_cublas,
@@ -361,6 +366,8 @@ AutotunerPass::GetGpuAutotunerBackends(
        debug_options.xla_gpu_experimental_autotune_backends()) {
     autotune_backends.push_back(static_cast<autotuner::Backend>(backend));
   }
+  // FIXME
+  autotune_backends.push_back(autotuner::Backend::HOST_OFFLOAD);
 
   std::vector<autotuner::Backend> disabled_autotune_backends;
   if (debug_options.xla_gpu_experimental_disable_binary_libraries()) {
