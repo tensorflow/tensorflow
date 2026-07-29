@@ -1225,10 +1225,10 @@ def _autopacking_helper(list_or_tuple, dtype, name):
     # checking.
     if all(isinstance(elem, core.Tensor) for elem in list_or_tuple):
       # GPU Pack kernels do not support 0-D (scalar) inputs.  Reshape each
-      # scalar to shape [1] so that concat can be used instead, then squeeze
-      # the result back to the expected 1-D vector.  This matches the CPU
-      # behaviour of pack([s0, s1, ...]) == [s0, s1, ...].
-      if all(elem.shape.rank == 0 for elem in list_or_tuple):
+      # scalar to shape [1] so that concat can be used instead to produce
+      # the expected 1-D vector.  This matches the CPU behaviour of
+      # pack([s0, s1, ...]) == [s0, s1, ...].
+      if list_or_tuple and all(elem.shape.rank == 0 for elem in list_or_tuple):
         return gen_array_ops.concat_v2(
             [gen_array_ops.reshape(elem, [1]) for elem in list_or_tuple],
             axis=0,
@@ -1266,7 +1266,7 @@ def _autopacking_helper(list_or_tuple, dtype, name):
       # GPU Pack kernels do not support 0-D (scalar) inputs.  When all
       # elements are scalars, use reshape+concat to build the 1-D vector
       # instead so the operation is device-agnostic.
-      if all(
+      if elems_as_tensors and all(
           isinstance(e, core.Tensor) and e.shape.rank == 0
           for e in elems_as_tensors
       ):
