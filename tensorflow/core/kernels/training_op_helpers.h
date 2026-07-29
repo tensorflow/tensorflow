@@ -56,6 +56,25 @@ namespace tensorflow {
 // this function with `lock_held = true` to avoid double locking.
 template <typename Device, typename T>
 absl::Status EnsureSparseVariableAccess(OpKernelContext* ctx, Var* var) {
+  // Checked before every early return below, not just before the copy. Callers
+  // read the variable as `T` after this function succeeds, and
+  // Tensor::flat<T>() CHECK-fails on a dtype mismatch, so the mismatch has to
+  // be rejected even on the paths where this function itself does no work.
+  // ResourceScatterNdUpdate is what makes the ordering load-bearing: it has no
+  // dtype validation of its own and relies entirely on this check, while an
+  // unshared variable (the common case) takes the RefCountIsOne() early return
+  // below.
+  //
+  // Safe without the mutex: a Var's dtype is fixed when it is constructed
+  // (`Var(DataType dtype) : tensor_(dtype)`), and the copy-on-read assignment
+  // further down allocates its replacement with that same dtype, so no
+  // concurrent writer can change what this reads.
+  if (var->tensor()->dtype() != DataTypeToEnum<T>::v()) {
+    return absl::InvalidArgumentError(
+        absl::StrCat("Trying to read a resource variable of dtype ",
+                     DataTypeString(var->tensor()->dtype()), " as ",
+                     DataTypeString(DataTypeToEnum<T>::v()), "."));
+  }
   if (var->copy_on_read_mode.load()) {
     return absl::OkStatus();
   }
@@ -76,15 +95,6 @@ absl::Status EnsureSparseVariableAccess(OpKernelContext* ctx, Var* var) {
   if (var->tensor()->RefCountIsOne()) {
     var->copy_on_read_mode.store(true);
     return absl::OkStatus();
-  }
-  // The copy below reads the variable as `T`, which CHECK-fails if the
-  // variable was created with a different dtype. The caller ignores this
-  // status; GetInputTensorFromVariable reports the mismatch to the user.
-  if (var->tensor()->dtype() != DataTypeToEnum<T>::v()) {
-    return absl::InvalidArgumentError(
-        absl::StrCat("Trying to read a resource variable of dtype ",
-                     DataTypeString(var->tensor()->dtype()), " as ",
-                     DataTypeString(DataTypeToEnum<T>::v()), "."));
   }
   Tensor tmp;
   if (std::is_same<T, Variant>::value) {
