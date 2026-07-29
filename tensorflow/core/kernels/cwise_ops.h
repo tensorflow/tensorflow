@@ -438,9 +438,18 @@ struct functor_traits<google_floor_div_real<Scalar>> {
     Cost = 2 * Eigen::internal::scalar_div_cost<
                    Scalar, packet_traits<Scalar>::HasDiv>::value +
            8 * NumTraits<Scalar>::AddCost,
+    // The vectorized packetOp relies on bitwise packet intrinsics (pand,
+    // pandnot, pxor, pcmp_lt, pabs, pselect) that are not defined for every
+    // packet type on GPU targets. Restrict packet access to host compilation
+    // so GPU execution uses the scalar operator(), which applies the same
+    // opposite-sign infinity correction.
+#if defined(EIGEN_GPUCC)
+    PacketAccess = false
+#else
     PacketAccess = packet_traits<Scalar>::HasDiv &&
                    packet_traits<Scalar>::HasRound &&
                    packet_traits<Scalar>::HasCmp
+#endif
   };
 };
 
