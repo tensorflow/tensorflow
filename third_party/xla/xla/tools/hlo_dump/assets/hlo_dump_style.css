@@ -33,17 +33,16 @@ body {
   flex-direction: column;
   height: 100vh;
 }
-#graph-container,
+#graph-container {
+  height: 55vh;
+  min-height: 50px;
+  overflow: hidden;
+}
 #histogram-container {
   height: 300px;
   min-height: 50px;
   width: 100%;
   border-bottom: 2px solid #ccc;
-}
-#graph-container {
-  overflow: hidden;
-}
-#histogram-container {
   overflow: auto;
   padding: 10px;
 }
@@ -74,7 +73,7 @@ pre {
   display: inline-block;
 }
 .tooltip {
-  cursor: help;
+  cursor: pointer;
 }
 .tooltip:target,
 .nv:target,

@@ -208,18 +208,18 @@ std::string SerializeGraphDataCompressed(const GraphData& data) {
   tsl::core::PutFixed32(&binary_data, data.nodes.size());
 
   for (const auto& node : data.nodes) {
-    int32_t id = node.id;
+    int64_t id = node.id;
     float x = node.x;
     float y = node.y;
     float diff_score = node.diff_score;
-    int32_t anchor_id = node.anchor_id;
+    int64_t anchor_id = node.anchor_id;
     uint16_t key_len = node.key.size();
 
-    tsl::core::PutFixed32(&binary_data, id);
+    tsl::core::PutFixed64(&binary_data, id);
     tsl::core::PutFixed32(&binary_data, absl::bit_cast<uint32_t>(x));
     tsl::core::PutFixed32(&binary_data, absl::bit_cast<uint32_t>(y));
     tsl::core::PutFixed32(&binary_data, absl::bit_cast<uint32_t>(diff_score));
-    tsl::core::PutFixed32(&binary_data, anchor_id);
+    tsl::core::PutFixed64(&binary_data, anchor_id);
     tsl::core::PutFixed16(&binary_data, key_len);
     binary_data.append(node.key.data(), key_len);
   }
@@ -227,11 +227,11 @@ std::string SerializeGraphDataCompressed(const GraphData& data) {
   tsl::core::PutFixed32(&binary_data, data.edges.size());
 
   for (const auto& edge : data.edges) {
-    int32_t supplier_id = edge.supplier_id;
-    int32_t consumer_id = edge.consumer_id;
+    int64_t supplier_id = edge.supplier_id;
+    int64_t consumer_id = edge.consumer_id;
 
-    tsl::core::PutFixed32(&binary_data, supplier_id);
-    tsl::core::PutFixed32(&binary_data, consumer_id);
+    tsl::core::PutFixed64(&binary_data, supplier_id);
+    tsl::core::PutFixed64(&binary_data, consumer_id);
   }
 
   std::string compressed;
@@ -926,9 +926,23 @@ std::string ConvertHloToHtml(
   std::string compressed_data_str;
   if (graph_data != nullptr) {
     compressed_data_str = SerializeGraphDataCompressed(*graph_data);
-    graph_content =
-        "<canvas id=\"dag-canvas\" style=\"width: 100%; height: 100%; display: "
-        "block;\"></canvas>";
+    graph_content = absl::StrCat(
+        "<div style=\"position: absolute; top: 10px; right: 10px; z-index: "
+        "10; background: rgba(255, 255, 255, 0.8); padding: 5px; "
+        "border-radius: 4px; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2); "
+        "display: flex; gap: 5px;\">",
+        "<button id=\"zoom-in-btn\" style=\"cursor: pointer; padding: 4px 8px; "
+        "border: 1px solid #ccc; background: #fff; border-radius: 2px; "
+        "font-weight: bold;\">+</button>",
+        "<button id=\"zoom-out-btn\" style=\"cursor: pointer; padding: 4px "
+        "8px; border: 1px solid #ccc; background: #fff; border-radius: 2px; "
+        "font-weight: bold;\">-</button>",
+        "<button id=\"zoom-fit-btn\" style=\"cursor: pointer; padding: 4px "
+        "8px; border: 1px solid #ccc; background: #fff; border-radius: 2px; "
+        "font-size: 12px;\">Fit</button>",
+        "</div>",
+        "<canvas id=\"dag-canvas\" style=\"width: 100%; height: 100%; "
+        "display: block;\"></canvas>");
   }
 
   std::string data_injection_script;
@@ -968,19 +982,19 @@ absl::flat_hash_map<TensorKey, TensorAnnotation> PopulateMismatchAnnotations(
     const HloModule& module, absl::Span<const MismatchDetails> mismatches) {
   absl::flat_hash_map<TensorKey, TensorAnnotation> annotations;
 
-  absl::flat_hash_map<const HloComputation*, const HloInstruction*>
-      comp_to_fusion;
-  for (const HloComputation* comp : module.computations()) {
-    for (const HloInstruction* instr : comp->instructions()) {
-      if (instr->opcode() == HloOpcode::kFusion) {
-        comp_to_fusion[instr->fused_instructions_computation()] = instr;
-      }
-      TensorKey key = TensorKey::Create(instr->name(), ShapeIndex{});
-      TensorAnnotation ann;
-      ann.anchor_id = absl::StrCat("step", instr->unique_id());
-      annotations[key] = std::move(ann);
-    }
-  }
+  // absl::flat_hash_map<const HloComputation*, const HloInstruction*>
+  //     comp_to_fusion;
+  // for (const HloComputation* comp : module.computations()) {
+  //   for (const HloInstruction* instr : comp->instructions()) {
+  //     if (instr->opcode() == HloOpcode::kFusion) {
+  //       comp_to_fusion[instr->fused_instructions_computation()] = instr;
+  //     }
+  //     TensorKey key = TensorKey::Create(instr->name(), ShapeIndex{});
+  //     TensorAnnotation ann;
+  //     ann.anchor_id = absl::StrCat("step", instr->unique_id());
+  //     annotations[key] = std::move(ann);
+  //   }
+  // }
 
   absl::flat_hash_map<std::string, const HloInstruction*> name_to_instr;
   for (const HloComputation* comp : module.computations()) {
