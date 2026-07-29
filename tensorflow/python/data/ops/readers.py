@@ -37,6 +37,11 @@ _DEFAULT_READER_BUFFER_SIZE_BYTES = 256 * 1024  # 256 KB
 # The default TFRecordDataset buffer size is set to -1. The actual default is
 # set in the kernel when this value is detected.
 _DEFAULT_TF_RECORD_BUFFER_SIZE_BYTES = -1
+# Sanity limit for a read buffer. Values beyond this are almost certainly a
+# mistake (e.g. `sys.maxsize`) rather than a legitimate buffer size, and would
+# otherwise cause the kernel to abort the process with `std::bad_alloc` while
+# trying to allocate a buffer of that size.
+_MAX_READER_BUFFER_SIZE_BYTES = 1 << 40  # 1 TB
 
 
 def _normalise_fspath(path):
@@ -546,6 +551,13 @@ class _FixedLengthRecordDataset(dataset_ops.DatasetSource):
         "header_bytes", header_bytes)
     self._footer_bytes = convert.optional_param_to_tensor(
         "footer_bytes", footer_bytes)
+    if (isinstance(buffer_size, int) and
+        buffer_size > _MAX_READER_BUFFER_SIZE_BYTES):
+      raise ValueError(
+          f"`buffer_size` must not exceed {_MAX_READER_BUFFER_SIZE_BYTES} "
+          f"bytes, but got {buffer_size}. Requesting a buffer this large "
+          "would cause the reader to abort the process instead of raising "
+          "a catchable error.")
     self._buffer_size = convert.optional_param_to_tensor(
         "buffer_size", buffer_size, _DEFAULT_READER_BUFFER_SIZE_BYTES)
     self._compression_type = convert.optional_param_to_tensor(

@@ -16,6 +16,7 @@
 import gzip
 import os
 import pathlib
+import sys
 import zlib
 
 from absl.testing import parameterized
@@ -191,6 +192,20 @@ class FixedLengthRecordDatasetTest(FixedLengthRecordDatasetTestBase,
             r"file \".*fixed_length_record.0.txt\" has body length 21 bytes, "
             r"which is not an exact multiple of the record length \(4 bytes\).")
         )
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testExcessiveBufferSize(self):
+    test_filenames = self._createFiles()
+    # A `buffer_size` this large would previously cause the C++ kernel to
+    # abort the process with `std::bad_alloc` instead of raising a catchable
+    # error. See https://github.com/tensorflow/tensorflow/issues/113159.
+    with self.assertRaisesRegex(ValueError, r"`buffer_size` must not exceed"):
+      readers.FixedLengthRecordDataset(
+          test_filenames,
+          self._record_bytes,
+          self._header_bytes,
+          self._footer_bytes,
+          buffer_size=sys.maxsize - self._record_bytes)
 
   @combinations.generate(test_base.default_test_combinations())
   def testPathlib(self):
