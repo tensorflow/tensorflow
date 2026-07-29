@@ -49,13 +49,7 @@ CudaDeviceAddressVmmAllocator::CudaDeviceAddressVmmAllocator(
     std::optional<int64_t> reclaim_exempt_memory_space)
     : DeviceAddressVmmAllocator(platform, reclaim_exempt_memory_space) {}
 
-CudaDeviceAddressVmmAllocator::~CudaDeviceAddressVmmAllocator() {
-  absl::Status status = SynchronizeAllPendingOperations();
-  if (!status.ok()) {
-    LOG(FATAL) << "Failed to synchronize pending CUDA VMM deallocations: "
-               << status;
-  }
-}
+CudaDeviceAddressVmmAllocator::~CudaDeviceAddressVmmAllocator() = default;
 
 absl::StatusOr<std::unique_ptr<CudaDeviceAddressVmmAllocator>>
 CudaDeviceAddressVmmAllocator::Create(

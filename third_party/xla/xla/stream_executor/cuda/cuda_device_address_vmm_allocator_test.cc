@@ -1079,7 +1079,7 @@ TEST_F(DeviceAddressVmmAllocatorTest,
 }
 
 TEST_F(DeviceAddressVmmAllocatorTest, DeallocateNull) {
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto allocator,
       gpu::CudaDeviceAddressVmmAllocator::Create(executor_, stream_.get()));
 
@@ -1092,9 +1092,10 @@ TEST_F(DeviceAddressVmmAllocatorTest, DeallocateNull) {
 // --- Timeline / sequence-number design tests ---
 //
 // These tests exercise the cuStreamWriteValue64-based deferred deallocation
-// mechanism. Each pending Deallocate() call records an increasing seqno and
-// enqueues a GPU timeline write; the CPU checks the pinned counter to decide
-// when memory is safe to free.
+// mechanism. Consecutive pending Deallocate() and UnMap() calls share a batch
+// sequence number. The allocator enqueues one trailing GPU timeline write when
+// the batch is flushed, and the CPU checks the pinned counter to decide when
+// the batch is safe to complete.
 
 // Verifies that TryReusePendingDeallocation returns the same virtual address
 // when a new allocation of the same rounded size is requested immediately
@@ -1102,34 +1103,34 @@ TEST_F(DeviceAddressVmmAllocatorTest, DeallocateNull) {
 // all prior GPU work finishes before any new work submitted after Allocate.
 TEST_F(DeviceAddressVmmAllocatorTest,
        PendingDeallocationReusesSameVirtualAddress) {
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto allocator,
       gpu::CudaDeviceAddressVmmAllocator::Create(executor_, stream_.get()));
 
   const int ordinal = executor_->device_ordinal();
   constexpr uint64_t kSize = 1024;
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto addr1,
       allocator->Allocate(ordinal, kSize, /*retry_on_failure=*/true,
                           static_cast<int64_t>(MemorySpace::kCollective)));
   void* const va = addr1->opaque();
 
-  // Deallocate: timeline write is enqueued but VA is not freed yet.
+  // Deallocate opens a trailing batch, but the VA is not freed yet. Reusing the
+  // pending entry below cancels it before a timeline write is needed.
   DeviceAddressBase raw = addr1.cref();
   addr1.Release();
   ASSERT_THAT(allocator->Deallocate(ordinal, raw), IsOk());
 
   // Allocate the same size — TryReusePendingDeallocation should match the
   // pending entry and return the identical virtual address.
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto addr2,
       allocator->Allocate(ordinal, kSize, /*retry_on_failure=*/true,
                           static_cast<int64_t>(MemorySpace::kCollective)));
   EXPECT_EQ(addr2->opaque(), va);
 
-  // Sync to drain all pending GPU timeline writes before the allocator
-  // is destroyed.
+  // Drain any unrelated GPU work before the allocator is destroyed.
   ASSERT_THAT(stream_->BlockHostUntilDone(), IsOk());
 }
 
@@ -1138,13 +1139,13 @@ TEST_F(DeviceAddressVmmAllocatorTest,
 // AFTER the memcpy, so the physical memory is not freed until the GPU finishes.
 TEST_F(DeviceAddressVmmAllocatorTest,
        DeferredDeallocationSafeWhileGpuWritesData) {
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto allocator,
       gpu::CudaDeviceAddressVmmAllocator::Create(executor_, stream_.get()));
 
   const int ordinal = executor_->device_ordinal();
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto addr,
       allocator->Allocate(ordinal, sizeof(uint64_t), /*retry_on_failure=*/true,
                           static_cast<int64_t>(MemorySpace::kCollective)));
@@ -1154,22 +1155,21 @@ TEST_F(DeviceAddressVmmAllocatorTest,
   DeviceAddressBase dev_addr = addr.cref();
   ASSERT_THAT(stream_->Memcpy(&dev_addr, &kPattern, sizeof(kPattern)), IsOk());
 
-  // Deallocate while the memcpy is still queued. The seqno timeline write is
-  // appended to the stream AFTER the memcpy, so the VA cannot be reused until
-  // the GPU advances past it.
+  // Deallocate while the memcpy is still queued. Synchronization below flushes
+  // the batch marker after the memcpy, so teardown cannot run early.
   ASSERT_THAT(allocator->Deallocate(ordinal, addr.Release()), IsOk());
 
-  // Sync: both the memcpy and the timeline write execute in order.
+  // Flush and wait: both the memcpy and the batch timeline write execute in
+  // order.
   // No crash here means the physical memory was not freed prematurely.
-  ASSERT_THAT(stream_->BlockHostUntilDone(), IsOk());
+  ASSERT_THAT(allocator->SynchronizePendingOperations(ordinal), IsOk());
 }
 
-// Allocates and deallocates N buffers, recording a distinct seqno for each.
-// After a single stream sync all seqnos have been written by the GPU, so
-// re-allocating the same size should succeed by reusing the pending entries.
+// Allocates and deallocates N buffers in one batch. One allocator sync flushes
+// the trailing marker and completes every entry sharing the batch sequence.
 TEST_F(DeviceAddressVmmAllocatorTest,
-       MultipleSeqnosAllCompleteAfterStreamSync) {
-  TF_ASSERT_OK_AND_ASSIGN(
+       BatchedDeallocationsCompleteAfterAllocatorSync) {
+  ASSERT_OK_AND_ASSIGN(
       auto allocator,
       gpu::CudaDeviceAddressVmmAllocator::Create(executor_, stream_.get()));
 
@@ -1177,39 +1177,45 @@ TEST_F(DeviceAddressVmmAllocatorTest,
   constexpr int kCount = 8;
   constexpr uint64_t kSize = 1024;
 
-  // Allocate kCount buffers and immediately queue their deallocation.
-  // Each Deallocate increments next_seqno and enqueues a timeline write.
+  std::vector<ScopedDeviceAddress<uint8_t>> addresses;
+  addresses.reserve(kCount);
   for (int i = 0; i < kCount; ++i) {
-    TF_ASSERT_OK_AND_ASSIGN(
+    ASSERT_OK_AND_ASSIGN(
         auto addr,
         allocator->Allocate(ordinal, kSize, /*retry_on_failure=*/true,
                             static_cast<int64_t>(MemorySpace::kCollective)));
-    ASSERT_THAT(allocator->Deallocate(ordinal, addr.Release()), IsOk());
+    addresses.push_back(std::move(addr));
   }
 
-  // Sync the stream: all kCount timeline writes (seqnos 1..kCount) complete.
-  ASSERT_THAT(stream_->BlockHostUntilDone(), IsOk());
+  // Queue every distinct buffer before another allocation can reuse it. These
+  // deallocations share one sequence number and one trailing timeline write.
+  for (auto& address : addresses) {
+    ASSERT_THAT(allocator->Deallocate(ordinal, address.Release()), IsOk());
+  }
 
-  // Each new Allocate call finds a matching pending entry via
-  // TryReusePendingDeallocation (or via ProcessCompletedPendingDeallocations
-  // once the pending queue is exhausted).
+  ASSERT_THAT(allocator->SynchronizePendingOperations(ordinal), IsOk());
+
+  // Every allocation succeeds after the completed batch releases its physical
+  // allocations.
+  addresses.clear();
   for (int i = 0; i < kCount; ++i) {
-    TF_ASSERT_OK_AND_ASSIGN(
+    ASSERT_OK_AND_ASSIGN(
         auto addr,
         allocator->Allocate(ordinal, kSize, /*retry_on_failure=*/true,
                             static_cast<int64_t>(MemorySpace::kCollective)));
     EXPECT_FALSE(addr.is_null());
+    addresses.push_back(std::move(addr));
   }
 
-  ASSERT_THAT(stream_->BlockHostUntilDone(), IsOk());
+  addresses.clear();
+  ASSERT_THAT(allocator->SynchronizePendingOperations(ordinal), IsOk());
 }
 
-// Verifies that the destructor correctly spin-waits on the pinned timeline
-// counter until all pending GPU timeline writes complete, then frees the
-// physical memory without crashing.
+// Verifies that destruction synchronizes through the executor and directly
+// retires pending state without accessing the allocator stream.
 TEST_F(DeviceAddressVmmAllocatorTest,
-       DestructorWithPendingDeallocationsDoesNotCrash) {
-  TF_ASSERT_OK_AND_ASSIGN(
+       DestructorWithDestroyedStreamAndPendingDeallocationsDoesNotCrash) {
+  ASSERT_OK_AND_ASSIGN(
       auto allocator,
       gpu::CudaDeviceAddressVmmAllocator::Create(executor_, stream_.get()));
 
@@ -1217,16 +1223,16 @@ TEST_F(DeviceAddressVmmAllocatorTest,
 
   // Queue several deallocations without syncing the stream first.
   for (int i = 0; i < 4; ++i) {
-    TF_ASSERT_OK_AND_ASSIGN(
+    ASSERT_OK_AND_ASSIGN(
         auto addr,
         allocator->Allocate(ordinal, 1024, /*retry_on_failure=*/true,
                             static_cast<int64_t>(MemorySpace::kCollective)));
     ASSERT_THAT(allocator->Deallocate(ordinal, addr.Release()), IsOk());
   }
 
-  // Destroy without an explicit stream sync. The destructor must spin on the
-  // pinned_timeline until the GPU writes all pending seqnos, then free
-  // each virtual address safely.
+  // The stream may be destroyed before the allocator. Destruction must not try
+  // to enqueue the trailing batch marker through this now-dangling pointer.
+  stream_.reset();
   allocator.reset();  // Must not crash or leak.
 }
 

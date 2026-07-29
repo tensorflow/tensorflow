@@ -36,7 +36,7 @@ namespace stream_executor::gpu {
 // CUDA implementation of DeviceAddressVmmAllocator.
 //
 // Uses cuMemCreate/cuMemAddressReserve for physical and virtual memory
-// management, and cuStreamWriteValue64 for GPU timeline-based deferred
+// management, and cuStreamWriteValue64 for batched GPU timeline-based deferred
 // deallocation. Requires compute capability >= 7.0 (Volta and later) for
 // cuStreamWriteValue64 support.
 //
@@ -74,9 +74,10 @@ class CudaDeviceAddressVmmAllocator : public DeviceAddressVmmAllocator {
   //
   // Parameters:
   //   executor:  StreamExecutor for this device. Must outlive the allocator.
-  //   stream:    Stream used for deferred deallocation. Must outlive the
-  //              allocator. This should typically be the main compute stream
-  //              from ServiceExecutableRunOptions.
+  //   stream:    Stream used for deferred deallocation. Must remain valid for
+  //              allocator operations other than destruction. This should
+  //              typically be the main compute stream from
+  //              ServiceExecutableRunOptions.
   //   pa_budget: Maximum bytes of physical memory that may be simultaneously
   //              allocated on this device. Defaults to unlimited.
   static absl::StatusOr<std::unique_ptr<CudaDeviceAddressVmmAllocator>> Create(
@@ -99,7 +100,8 @@ class CudaDeviceAddressVmmAllocator : public DeviceAddressVmmAllocator {
       StreamExecutor* executor, uint64_t size) override;
 
   // Enqueues a cuStreamWriteValue64 on the device's stream to write `seqno`
-  // to the pinned timeline when the GPU reaches this point in the stream.
+  // to the pinned timeline when the GPU reaches this batched deallocation point
+  // in the stream.
   absl::Status EnqueueDeferredDeallocation(PerDeviceState& state,
                                            uint64_t seqno) override;
 
