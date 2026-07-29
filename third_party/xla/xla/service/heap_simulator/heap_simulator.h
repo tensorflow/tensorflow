@@ -354,11 +354,20 @@ struct BufferIntervalTreeNode {
   BufferIntervalTreeNode* right;
   // parent
   BufferIntervalTreeNode* parent;
+  // Treap heap priority. It is a deterministic hash of the node's key, ensuring
+  // that the max heap property keeps the tree balanced regardless of insertion
+  // order, and that the tree shape is strictly reproducible.
+  uint64_t priority = 0;
 
   std::string ToString() const;
 };
 
 // An interval tree that can query buffers overlapping in time.
+// The tree is implemented as a deterministic treap: it is a BST keyed by
+// (start, end, chunk.offset) and a max heap on a deterministically generated
+// priority. This guarantees O(log n) operations. The tree shape does not affect
+// query results (overlap queries return the same node set for any shape), only
+// their cost.
 class BufferIntervalTree {
  public:
   using Chunk = HeapSimulator::Chunk;
@@ -446,6 +455,14 @@ class BufferIntervalTree {
   // to be non-null.
   std::vector<const BufferIntervalTreeNode*> NodesOverlappingInTime(
       int64_t start, int64_t end) const;
+
+  // Treap rebalancing helpers. Rotations allow us to adjust the tree height
+  // (maintaining an O(log n) height) while preserving key ordering. After
+  // rotating nodes, we recompute the BufferIntervalTreeNode::subtree_end so
+  // that overlap queries remain correct.
+  static void RecomputeSubtreeEnd(BufferIntervalTreeNode* node);
+  void RotateLeft(BufferIntervalTreeNode* x);
+  void RotateRight(BufferIntervalTreeNode* x);
 
   BufferIntervalTreeNode* root_ = nullptr;
   std::list<BufferIntervalTreeNode> node_storage_;

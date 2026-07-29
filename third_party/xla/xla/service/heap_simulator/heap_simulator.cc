@@ -829,46 +829,159 @@ void GlobalDecreasingSizeBestFitHeap<BufferType>::Free(const BufferType* buffer,
 
 using Chunk = HeapSimulator::Chunk;
 
+namespace {
+
+// Total order on nodes: (start, end, chunk.offset) lexicographically. Used as
+// the treap's BST key. `start` is the primary key, so all overlap query pruning
+// (which only reasons about `start` and `subtree_end`) is unaffected.
+bool BufferIntervalTreeNodeKeyLess(int64_t a_start, int64_t a_end,
+                                   int64_t a_offset, int64_t b_start,
+                                   int64_t b_end, int64_t b_offset) {
+  return std::forward_as_tuple(a_start, a_end, a_offset) <
+         std::forward_as_tuple(b_start, b_end, b_offset);
+}
+
+// Deterministic treap priority from the node key, so the tree shape (and thus
+// compilation) is reproducible. Tree shape does not affect query results.
+//
+// The constants are the standard splitmix64 and xxHash64 mixing multipliers.
+// Their specific values do not matter beyond being odd and giving decent
+// avalanche; all that is required is that they never change, so a given key
+// always hashes to the same priority.
+uint64_t BufferIntervalTreeNodePriority(int64_t start, int64_t end,
+                                        int64_t offset) {
+  uint64_t p = static_cast<uint64_t>(start) * 0x9E3779B97F4A7C15ull;
+  p ^= (static_cast<uint64_t>(end) + 0x9E3779B9ull) * 0xC2B2AE3D27D4EB4Full;
+  p ^= (static_cast<uint64_t>(offset) + 0x85EBCA6Bull) * 0x165667B19E3779F9ull;
+  p ^= p >> 31;
+  p *= 0xD6E8FEB86659FD93ull;
+  p ^= p >> 32;
+  return p;
+}
+
+}  // namespace
+
+void BufferIntervalTree::RecomputeSubtreeEnd(BufferIntervalTreeNode* node) {
+  node->subtree_end = node->end;
+  if (node->left != nullptr) {
+    node->subtree_end = std::max(node->subtree_end, node->left->subtree_end);
+  }
+  if (node->right != nullptr) {
+    node->subtree_end = std::max(node->subtree_end, node->right->subtree_end);
+  }
+}
+
+// Left rotation: x's right child y moves up to x's position; x becomes y's left
+// child. Preserves BST order; recomputes subtree_end for the rotated pair
+// (x first, since it moves down and becomes y's child).
+void BufferIntervalTree::RotateLeft(BufferIntervalTreeNode* x) {
+  BufferIntervalTreeNode* y = x->right;
+  x->right = y->left;
+  if (y->left != nullptr) {
+    y->left->parent = x;
+  }
+  y->parent = x->parent;
+  if (x->parent == nullptr) {
+    root_ = y;
+  } else if (x == x->parent->left) {
+    x->parent->left = y;
+  } else {
+    x->parent->right = y;
+  }
+  y->left = x;
+  x->parent = y;
+  RecomputeSubtreeEnd(x);
+  RecomputeSubtreeEnd(y);
+}
+
+// Right rotation: mirror of RotateLeft.
+void BufferIntervalTree::RotateRight(BufferIntervalTreeNode* x) {
+  BufferIntervalTreeNode* y = x->left;
+  x->left = y->right;
+  if (y->right != nullptr) {
+    y->right->parent = x;
+  }
+  y->parent = x->parent;
+  if (x->parent == nullptr) {
+    root_ = y;
+  } else if (x == x->parent->left) {
+    x->parent->left = y;
+  } else {
+    x->parent->right = y;
+  }
+  y->right = x;
+  x->parent = y;
+  RecomputeSubtreeEnd(x);
+  RecomputeSubtreeEnd(y);
+}
+
 void BufferIntervalTree::Add(int64_t start, int64_t end, const Chunk& chunk) {
+  const uint64_t priority =
+      BufferIntervalTreeNodePriority(start, end, chunk.offset);
   node_storage_.emplace_back(BufferIntervalTreeNode{
       start, end, end, chunk,
-      /*left=*/nullptr, /*right=*/nullptr, /*parent=*/nullptr});
+      /*left=*/nullptr, /*right=*/nullptr, /*parent=*/nullptr, priority});
+  BufferIntervalTreeNode* node = &node_storage_.back();
   if (root_ == nullptr) {
-    root_ = &node_storage_.back();
-    // This is root.
+    root_ = node;
     return;
   }
 
+  // BST insert keyed by (start, end, offset).
   BufferIntervalTreeNode* parent = root_;
   while (true) {
-    parent->subtree_end = std::max(parent->subtree_end, end);
-    if (parent->start > start) {
+    if (BufferIntervalTreeNodeKeyLess(start, end, chunk.offset, parent->start,
+                                      parent->end, parent->chunk.offset)) {
       if (parent->left == nullptr) {
-        parent->left = &node_storage_.back();
-        node_storage_.back().parent = parent;
-        return;
+        parent->left = node;
+        node->parent = parent;
+        break;
       }
       parent = parent->left;
     } else {
       if (parent->right == nullptr) {
-        parent->right = &node_storage_.back();
-        node_storage_.back().parent = parent;
-        return;
+        parent->right = node;
+        node->parent = parent;
+        break;
       }
       parent = parent->right;
+    }
+  }
+
+  // Propagate the new leaf's end up the ancestor chain (subtree_end is
+  // non-decreasing as you walk up the tree, so stop once an ancestor already
+  // covers `end`).
+  for (BufferIntervalTreeNode* a = parent; a != nullptr; a = a->parent) {
+    if (a->subtree_end >= end) {
+      break;
+    }
+    a->subtree_end = end;
+  }
+
+  // Bubble up to restore the max heap on priority. Each rotation recomputes
+  // subtree_end for the rotated pair; a rotation preserves the multiset of
+  // nodes in that subtree, so ancestors above keep a correct subtree_end.
+  while (node->parent != nullptr && node->parent->priority < node->priority) {
+    if (node == node->parent->left) {
+      RotateRight(node->parent);
+    } else {
+      RotateLeft(node->parent);
     }
   }
 }
 
 bool BufferIntervalTree::Remove(int64_t start, int64_t end,
                                 const Chunk& chunk) {
+  // Find the node by the total (start, end, offset) key.
   BufferIntervalTreeNode* to_delete = root_;
   while (to_delete != nullptr) {
     if (to_delete->start == start && to_delete->end == end &&
         to_delete->chunk.offset == chunk.offset) {
       break;
     }
-    if (start < to_delete->start) {
+    if (BufferIntervalTreeNodeKeyLess(start, end, chunk.offset,
+                                      to_delete->start, to_delete->end,
+                                      to_delete->chunk.offset)) {
       to_delete = to_delete->left;
     } else {
       to_delete = to_delete->right;
@@ -878,111 +991,37 @@ bool BufferIntervalTree::Remove(int64_t start, int64_t end,
     // Nothing to delete.
     return false;
   }
-  // Found the node to be deleted, enter deletion sequence.
 
-  // Recursively traverse the parents of node and fix up the `subtree_end`
-  // invariant of a node. Recursive lambda need an explicit
-  // std::function declaration.
-  std::function<void(BufferIntervalTreeNode*)> fix_up =
-      [&](BufferIntervalTreeNode* node) {
-        if (node == nullptr) {
-          return;
-        }
-        node->subtree_end = node->end;
-        if (node->left) {
-          node->subtree_end =
-              std::max(node->subtree_end, node->left->subtree_end);
-        }
-        if (node->right) {
-          node->subtree_end =
-              std::max(node->subtree_end, node->right->subtree_end);
-        }
-        // Recursively go up.
-        fix_up(node->parent);
-      };
-
-  if (to_delete->right == nullptr) {
-    // to_delete has no right child, simply move up left child of to_delete if
-    // any.
-    //
-    // Turn:
-    //      parent
-    //       /
-    // to_delete
-    //  /      \
-    // left    nullptr
-    //
-    // Into:
-    //      parent
-    //      /
-    //    left
-    if (root_ == to_delete) {
-      // Deleting root is simply resetting root;
-      root_ = to_delete->left;
-      return true;
-    }
-
-    if (to_delete == to_delete->parent->left) {
-      // to_delete is left child of parent.
-      to_delete->parent->left = to_delete->left;
-    }
-    if (to_delete == to_delete->parent->right) {
-      // to_delete is right child of parent.
-      to_delete->parent->right = to_delete->left;
-    }
-    // Rewire parent to the node being moved up.
-    if (to_delete->left) {
-      to_delete->left->parent = to_delete->parent;
-    }
-    // Fix up starting from subroot.
-    fix_up(to_delete);
-  } else {
-    // 1. Find left-most node of the right subtree, promote it to the position
-    // of to_delete.
-    BufferIntervalTreeNode* to_promote = to_delete->right;
-    while (to_promote->left != nullptr) {
-      // Go to left-most subtree.
-      to_promote = to_promote->left;
-    }
-
-    // 2. Copy the content of `to_promote` to `to_delete`.
-    to_delete->start = to_promote->start;
-    to_delete->end = to_promote->end;
-    // This is incorrect but we will fix this up later in the `fix_up`
-    // procedure.
-    to_delete->subtree_end = to_promote->subtree_end;
-    to_delete->chunk = to_promote->chunk;
-    auto to_promote_parent = to_promote->parent;
-    // 3. Move the right child of `to_promote` up if there is any.
-    //
-    // Turn
-    //
-    // to_delete
-    //         \
-    //        to_promote_parent
-    //         /
-    //    to_promote
-    //          \
-    //          right
-    // into
-    //
-    // to_promote
-    //         \
-    //         to_promote_parent
-    //         /
-    //      right
-    if (to_promote_parent->left == to_promote) {
-      to_promote_parent->left = to_promote->right;
+  // Treap delete: rotate `to_delete` down until it is a leaf, always bringing
+  // up the higher-priority child so the remaining tree keeps the max heap
+  // property (and stays balanced). Each rotation recomputes subtree_end for the
+  // rotated pair.
+  while (to_delete->left != nullptr || to_delete->right != nullptr) {
+    if (to_delete->left == nullptr) {
+      RotateLeft(to_delete);
+    } else if (to_delete->right == nullptr) {
+      RotateRight(to_delete);
+    } else if (to_delete->left->priority > to_delete->right->priority) {
+      RotateRight(to_delete);
     } else {
-      to_promote_parent->right = to_promote->right;
+      RotateLeft(to_delete);
     }
-    if (to_promote->right) {
-      // Set correct parent.
-      to_promote->right->parent = to_promote_parent;
+  }
+
+  // `to_delete` is now a leaf. Detach it and fix subtree_end up to the root.
+  BufferIntervalTreeNode* parent = to_delete->parent;
+  if (parent == nullptr) {
+    root_ = nullptr;
+  } else {
+    if (parent->left == to_delete) {
+      parent->left = nullptr;
+    } else {
+      parent->right = nullptr;
     }
-    // 4. Recursive fix up the `subtree_end` starting from
-    // `to_promote_parent`.
-    fix_up(to_promote_parent);
+    to_delete->parent = nullptr;
+    for (BufferIntervalTreeNode* a = parent; a != nullptr; a = a->parent) {
+      RecomputeSubtreeEnd(a);
+    }
   }
   // Don't free the entry in node_storage_ until we free the entire tree.
   return true;
