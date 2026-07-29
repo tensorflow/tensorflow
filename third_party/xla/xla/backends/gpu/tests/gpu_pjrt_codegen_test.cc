@@ -98,8 +98,11 @@ std::string GpuPjRtCodegenTest::MakePlatformSpecificLlvm(
         IsBuiltWithRocm()
             ? "%[[LOGICAL_T2:.*]] = extractvalue { i1, i64 } %[[LOGICAL_T1]], 0"
             : "0"},
-       {"BR_CAL", IsBuiltWithRocm() ? "br i1 %[[LOGICAL_T2]],"
-                                    : "br i1 %[[LOGICAL_T0]]"}});
+       {"BR_CAL",
+        IsBuiltWithRocm() ? "br i1 %[[LOGICAL_T2]]," : "br i1 %[[LOGICAL_T0]]"},
+       {"STORE_v$0FLOAT", IsBuiltWithOneAPI()
+                              ? "@llvm.spv.store.v$0f32.p1(<$0 x float>"
+                              : "store <$0 x float>"}});
 }
 
 absl::StatusOr<std::unique_ptr<Executable>>
