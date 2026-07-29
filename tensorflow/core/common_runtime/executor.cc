@@ -168,6 +168,32 @@ class ExecutorImpl : public Executor {
 
     void Initialize(const GraphView& gview) {
       is_expensive_.resize(gview.num_nodes());
+#if defined(__aarch64__) && defined(__linux__)
+      // Auto-detect cycle scale factor.
+      // On ARM Linux, GetCurrentClockCycle() reads CNTVCT_EL0 (virtual timer
+      // counter), which runs at a fixed frequency independent of the CPU core.
+      // The scale factor converts timer cycles to x86-TSC-equivalent cycles.
+      {
+        uint64_t cntfrq;
+        asm volatile("mrs %0, cntfrq_el0" : "=r"(cntfrq));
+        if (cntfrq > 0) {
+          std::string freq_str;
+          if (tensorflow::ReadFileToString(
+              Env::Default(),
+              "/sys/devices/system/cpu/cpu0/cpufreq/cpuinfo_max_freq",
+              &freq_str)
+              .ok()) {
+            int64_t cpu_freq_khz;
+            if (absl::SimpleAtoi(freq_str, &cpu_freq_khz) && cpu_freq_khz > 0) {
+              uint64_t scale = (static_cast<uint64_t>(cpu_freq_khz) * 1000) / cntfrq;
+              if (scale > 0) {
+                aarch64_cycle_scale_ = scale;
+              }
+            }
+          }
+        }
+      }
+#endif
       cost_estimates_ =
           std::make_unique<std::atomic_uint_fast64_t[]>(gview.num_nodes());
       for (int32_t i = 0; i < gview.num_nodes(); ++i) {
@@ -203,9 +229,13 @@ class ExecutorImpl : public Executor {
       // affect correctness but may slow down the update frequency.
       std::atomic_uint_fast64_t& cost_estimate = cost_estimates_[node.node_id];
       auto prev_estimate = cost_estimate.load(std::memory_order_relaxed);
-
+#if defined(__aarch64__) && defined(__linux__)
+      uint64_t new_estimate =
+          ((kCostDecay - 1) * prev_estimate + elapsed_cycles * aarch64_cycle_scale_) / kCostDecay;
+#else
       uint64_t new_estimate =
           ((kCostDecay - 1) * prev_estimate + elapsed_cycles) / kCostDecay;
+#endif
 
       cost_estimate.store(new_estimate, std::memory_order_relaxed);
     }
@@ -217,7 +247,9 @@ class ExecutorImpl : public Executor {
     static constexpr uint64_t kInitialCostEstimateCycles = 100 * 1000 * 1000;
     static constexpr uint64_t kOpIsExpensiveThresholdCycles = 8000;
     static constexpr uint64_t kCostDecay = 10;
-
+#if defined(__aarch64__) && defined(__linux__)
+    uint64_t aarch64_cycle_scale_ = 1;
+#endif
     std::vector<bool> is_expensive_;
     // std::unique_ptr<std::atomic<bool>[]> is_expensive_;
     std::unique_ptr<std::atomic_uint_fast64_t[]> cost_estimates_;
