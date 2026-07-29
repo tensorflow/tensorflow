@@ -221,6 +221,12 @@ class CommonPjRtClient : public PjRtClient {
         std::move(raw_buffer), std::move(definition_device_events));
   }
 
+  // Turns an existing buffer into an undonatable buffer. Consumes the input
+  // buffer and returns an equivalent hold-free buffer aliasing the same device
+  // memory.
+  absl::StatusOr<std::unique_ptr<PjRtBuffer>> MakeUndonatable(
+      std::unique_ptr<PjRtBuffer> buffer);
+
   // When calling APIs that take extra debug information, we may want
   // to omit this debug information if it is not going to be used.
   virtual bool event_tracking_enabled() { return false; }
@@ -463,6 +469,12 @@ class CommonPjRtClient : public PjRtClient {
                                     PjRtDeviceEventRef event,
                                     std::intptr_t stream);
 
+  absl::StatusOr<std::unique_ptr<PjRtClient::AsyncHostToDeviceTransferManager>>
+  CreateBuffersForAsyncHostToDevice(
+      absl::Span<const PjRtClient::ShapeSpec> shape_specs,
+      std::optional<absl::Span<const std::optional<Layout>>> device_layouts,
+      PjRtMemorySpace* memory_space) override;
+
  protected:
   // Returns the required alignment for device memory addresses when slicing.
   virtual absl::StatusOr<size_t> GetDeviceAddressAlignment() const {
@@ -687,6 +699,15 @@ class CommonPjRtLoadedExecutable : public PjRtLoadedExecutable {
     return GetExecutable()->FingerprintExecutable();
   }
 
+  // Invoked once per device at the top of ExecuteLaunch (phase 2 of the
+  // two-phase launch). The hook must be thread-safe: it may be called
+  // concurrently from per-device launch threads. Must not be set concurrently
+  // with Execute. Intended for tests that need to observe which devices reach
+  // phase 2.
+  void SetExecuteLaunchHookForTesting(std::function<void(PjRtDevice*)> hook) {
+    execute_launch_hook_ = std::move(hook);
+  }
+
  protected:
   // Execute is split into Prepare and Launch.
   // Prepare can fail and be retried, while Launch is guaranteed to succeed.
@@ -785,6 +806,8 @@ class CommonPjRtLoadedExecutable : public PjRtLoadedExecutable {
   std::shared_ptr<DeviceAssignment> device_assignment_;
 
   std::unique_ptr<DispatchInfo::Extras> extras_;
+
+  std::function<void(PjRtDevice*)> execute_launch_hook_;
 };
 
 class CommonPjRtRawBufferImpl : public PjRtRawBuffer {

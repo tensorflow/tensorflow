@@ -62,7 +62,7 @@ class Compiler final : public llvm::RTTIExtends<Compiler, xla::ifrt::Compiler> {
   }
 
   tsl::Future<xla::ifrt::LoadedExecutableRef> DeserializeLoadedExecutable(
-      absl::string_view serialized,
+      const absl::Cord& serialized,
       std::unique_ptr<xla::ifrt::DeserializeExecutableOptions> options)
       override;
 

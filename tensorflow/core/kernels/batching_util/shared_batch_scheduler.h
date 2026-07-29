@@ -49,6 +49,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/batching_util/batch_stats.h"
 #include "tensorflow/core/kernels/batching_util/periodic_function.h"
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/cpu_info.h"
 #include "tensorflow/core/platform/env.h"
@@ -331,6 +332,10 @@ class SharedBatchScheduler
       // If true, the batch scheduler lazily filters tasks whose RPC deadline
       // has expired or were cancelled before they are sent for execution.
       bool enable_lazy_cancellation_filtering = false;
+      // A map of criticality to batch timeout in micros.
+      // Requires: if nonempty, specifies a timeout for each criticality.
+      absl::flat_hash_map<tsl::criticality::Criticality, int64_t>
+          criticality_batch_timeout_micros;
     };
 
     PriorityAwareSchedulerOptions priority_aware_scheduler_options;
@@ -426,9 +431,11 @@ class PriorityTaskQueue {
           split_input_task_func,
       bool enable_large_batch_splitting, bool enable_task_resplit,
       bool enable_lazy_cancellation_filtering, size_t max_execution_batch_size,
-      int64_t batch_timeout_micros, bool disable_padding,
-      ModelBatchStats* model_batch_stats, Env* env)
-      : start_times_(batch_timeout_micros),
+      int64_t batch_timeout_micros,
+      const absl::flat_hash_map<tsl::criticality::Criticality, int64_t>&
+          criticality_batch_timeout_micros,
+      bool disable_padding, ModelBatchStats* model_batch_stats, Env* env)
+      : start_times_(batch_timeout_micros, criticality_batch_timeout_micros),
         allowed_batch_sizes_(allowed_batch_sizes),
         batch_padding_policy_(batch_padding_policy),
         max_queue_depth_(max_queue_depth),
@@ -652,8 +659,11 @@ class PriorityTaskQueue {
   // Requires: all time arguments are provided in micros.
   class StartTimes {
    public:
-    explicit StartTimes(int64_t batch_timeout)
-        : batch_timeout_(batch_timeout) {}
+    StartTimes(int64_t default_batch_timeout,
+               const absl::flat_hash_map<tsl::criticality::Criticality,
+                                         int64_t>& criticality_batch_timeouts)
+        : default_batch_timeout_(default_batch_timeout),
+          criticality_batch_timeouts_(criticality_batch_timeouts) {}
 
     void Insert(tsl::criticality::Criticality criticality,
                 uint64_t start_time) {
@@ -673,7 +683,9 @@ class PriorityTaskQueue {
            start_times_by_criticality_) {
         if (start_times.empty()) continue;
         uint64_t earliest_start_time = *start_times.begin();
-        if (now >= earliest_start_time + batch_timeout_) {
+        int64_t effective_timeout = gtl::FindWithDefault(
+            criticality_batch_timeouts_, criticality, default_batch_timeout_);
+        if (now >= earliest_start_time + effective_timeout) {
           return true;
         }
       }
@@ -684,7 +696,9 @@ class PriorityTaskQueue {
     absl::flat_hash_map<tsl::criticality::Criticality,
                         absl::btree_multiset<uint64_t>>
         start_times_by_criticality_;
-    const int64_t batch_timeout_;
+    const int64_t default_batch_timeout_;
+    const absl::flat_hash_map<tsl::criticality::Criticality, int64_t>
+        criticality_batch_timeouts_;
   };
 
   tsl::criticality::Criticality GetCriticality(const TaskType& task) const {
@@ -1160,6 +1174,28 @@ absl::Status SharedBatchScheduler<TaskType>::AddQueueAfterRewritingOptions(
   }
 
   if (options.enable_priority_aware_batch_scheduler) {
+    const auto& criticality_timeouts = options.priority_aware_scheduler_options
+                                           .criticality_batch_timeout_micros;
+    for (const auto& [criticality, timeout] : criticality_timeouts) {
+      if (timeout < 0) {
+        return absl::InvalidArgumentError(
+            absl::StrFormat("criticality_batch_timeout_micros must contain "
+                            "nonnegative values; found negative timeout %d for "
+                            "criticality %d.",
+                            timeout, static_cast<int>(criticality)));
+      }
+    }
+    if (!criticality_timeouts.empty()) {
+      for (const auto criticality :
+           tsl::criticality::kAllCriticalitiesDescending) {
+        if (!criticality_timeouts.contains(criticality)) {
+          return absl::InvalidArgumentError(absl::StrFormat(
+              "criticality_batch_timeout_micros must specify timeouts for each "
+              "criticality, but criticality %d is missing.",
+              static_cast<int>(criticality)));
+        }
+      }
+    }
     if (options.mixed_priority_batching_policy !=
         MixedPriorityBatchingPolicy::kLowPriorityPaddingWithMaxBatchSize) {
       LOG(WARNING)
@@ -1374,6 +1410,8 @@ Queue<TaskType>::Queue(
           options.priority_aware_scheduler_options
               .enable_lazy_cancellation_filtering,
           GetMaxExecutionBatchSize(options), options.batch_timeout_micros,
+          options.priority_aware_scheduler_options
+              .criticality_batch_timeout_micros,
           options.disable_padding, options.model_batch_stats, env),
       options_(options),
       env_(env),

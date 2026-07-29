@@ -77,12 +77,8 @@ class GpuIndexingPerformanceModelTest
   se::DeviceDescription device_info_{TestGpuDeviceInfo::RTXA6000DeviceInfo()};
   HloFusionAnalysisCache fusion_analysis_cache_{device_info_};
   GpuPerformanceModelWithIndexingAnalysis indexing_cost_model_{
-      &device_info_,
-      &fusion_analysis_cache_,
-      HloCostAnalysis::DefaultShapeSize,
-      &mlir_context_,
-      use_experimental_tiling(),
-      /*enable_same_shape_multi_output_fusion=*/false};
+      &device_info_, &fusion_analysis_cache_, HloCostAnalysis::DefaultShapeSize,
+      &mlir_context_, use_experimental_tiling()};
 
   size_t WarpSize() const { return ::xla::gpu::WarpSize(device_info_); }
 
@@ -555,15 +551,8 @@ ENTRY main {
   EXPECT_EQ(tiled_runtime_data.block_level_parameters.output_tile_sizes.size(),
             1);
 
-  // Experimental tiling uses padded tile sizes, while the symbolic tiling does
-  // not.
-  if (use_experimental_tiling()) {
-    EXPECT_THAT(tiled_runtime_data.block_level_parameters.output_tile_sizes[0],
-                ElementsAre(4, 1024));
-  } else {
-    EXPECT_THAT(tiled_runtime_data.block_level_parameters.output_tile_sizes[0],
-                ElementsAre(4, 911));
-  }
+  EXPECT_THAT(tiled_runtime_data.block_level_parameters.output_tile_sizes[0],
+              ElementsAre(4, 911));
   EXPECT_EQ(tiled_runtime_data.block_level_parameters.num_warps, 4);
 
   EXPECT_EQ(tiled_runtime_data.runtime_data.bytes_read, kExpectedBytesRead);
@@ -955,8 +944,7 @@ ENTRY main {
         std::unique_ptr<experimental::TilingSpace> tiling_space,
         experimental::TilingSpace::Create(*fusion_adaptor, &mlir_context_));
 
-    EXPECT_OK(tiling_space->AssignTileSizes(
-        xla::xtile::GetPaddedTileSizes(output_tile_sizes)));
+    EXPECT_OK(tiling_space->AssignTileSizes(output_tile_sizes));
 
     ASSERT_OK_AND_ASSIGN(
         experimental::TiledHloComputation tiled_hlo_computation,

@@ -897,30 +897,59 @@ absl::Status LayoutAssignment::AddMandatoryConstraints(
         ComputationLayout async_layout = async_constraint->computation_layout();
         bool reset_needed = false;
         for (int64_t i = 0; i < instruction->operand_count(); ++i) {
-          if (instruction->operand(i)->shape().IsArray()) {
-            auto operand_layout = InferArrayLayout(instruction->operand(i), {});
-            if (operand_layout.ok() &&
-                async_layout.parameter_layout(i).shape().has_layout() &&
-                async_layout.parameter_layout(i).shape().layout() !=
-                    operand_layout.value()) {
-              Shape s = instruction->operand(i)->shape();
-              *s.mutable_layout() = operand_layout.value();
-              *async_layout.mutable_parameter_layout(i) = ShapeLayout(s);
+          if (async_layout.parameter_layout(i).LayoutIsSet()) {
+            Shape param_shape = instruction->operand(i)->shape();
+            bool param_reset = false;
+            ShapeUtil::ForEachSubshape(
+                param_shape,
+                [&](const Shape& subshape, const ShapeIndex& index) {
+                  if (!subshape.IsArray()) {
+                    return;
+                  }
+                  auto operand_layout =
+                      InferArrayLayout(instruction->operand(i), index);
+                  const Shape& async_subshape = ShapeUtil::GetSubshape(
+                      async_layout.parameter_layout(i).shape(), index);
+                  if (operand_layout.ok() && async_subshape.has_layout() &&
+                      async_subshape.layout() != operand_layout.value()) {
+                    *ShapeUtil::GetMutableSubshape(&param_shape, index)
+                         ->mutable_layout() = operand_layout.value();
+                    param_reset = true;
+                  }
+                });
+            if (param_reset) {
+              *async_layout.mutable_parameter_layout(i) =
+                  ShapeLayout(param_shape);
               reset_needed = true;
             }
           }
         }
         if (instruction->shape().IsTuple() &&
             instruction->shape().tuple_shapes_size() > 1 &&
-            instruction->shape().tuple_shapes(1).IsArray() &&
-            async_layout.result_layout().shape().has_layout()) {
-          auto result_layout = InferArrayLayout(instruction, {1});
-          if (result_layout.ok() &&
-              async_layout.result_layout().shape().layout() !=
-                  result_layout.value()) {
-            Shape s = instruction->shape().tuple_shapes(1);
-            *s.mutable_layout() = result_layout.value();
-            *async_layout.mutable_result_layout() = ShapeLayout(s);
+            async_layout.result_layout().LayoutIsSet()) {
+          Shape result_shape = instruction->shape().tuple_shapes(1);
+          bool subshape_reset = false;
+          ShapeUtil::ForEachSubshape(
+              result_shape,
+              [&](const Shape& subshape, const ShapeIndex& index) {
+                if (!subshape.IsArray()) {
+                  return;
+                }
+                ShapeIndex full_index = index;
+                full_index.push_front(1);
+
+                auto result_layout = InferArrayLayout(instruction, full_index);
+                const Shape& async_subshape = ShapeUtil::GetSubshape(
+                    async_layout.result_layout().shape(), index);
+                if (result_layout.ok() && async_subshape.has_layout() &&
+                    async_subshape.layout() != result_layout.value()) {
+                  *ShapeUtil::GetMutableSubshape(&result_shape, index)
+                       ->mutable_layout() = result_layout.value();
+                  subshape_reset = true;
+                }
+              });
+          if (subshape_reset) {
+            *async_layout.mutable_result_layout() = ShapeLayout(result_shape);
             reset_needed = true;
           }
         }
@@ -932,14 +961,13 @@ absl::Status LayoutAssignment::AddMandatoryConstraints(
                   /*prop_parameter_layout=*/true);
         }
         for (int64_t i = 0; i < instruction->operand_count(); ++i) {
-          if (instruction->operand(i)->shape().IsArray() &&
-              async_layout.parameter_layout(i).shape().has_layout()) {
+          if (async_layout.parameter_layout(i).LayoutIsSet()) {
             RETURN_IF_ERROR(SetOperandLayout(
                 async_layout.parameter_layout(i).shape(), instruction, i,
                 /*mandatory=*/true, /*dfs=*/true));
           }
         }
-        if (async_layout.result_layout().shape().has_layout() &&
+        if (async_layout.result_layout().LayoutIsSet() &&
             instruction->shape().IsTuple() &&
             instruction->shape().tuple_shapes_size() > 1) {
           Shape result_tuple_shape = instruction->shape();
@@ -962,20 +990,38 @@ absl::Status LayoutAssignment::AddMandatoryConstraints(
           ComputationLayout async_layout =
               async_constraint->computation_layout();
           bool reset_needed = false;
-          auto done_layout = InferArrayLayout(instruction, {});
           if (constraints->computation()->IsEntryComputation() &&
               instruction == constraints->computation()->root_instruction() &&
               entry_computation_layout_->result_layout().AnyLayoutIsSet()) {
-            done_layout = entry_computation_layout_->result_layout().layout();
-          }
-          if (done_layout.ok() &&
-              async_layout.result_layout().shape().has_layout() &&
-              async_layout.result_layout().shape().layout() !=
-                  done_layout.value()) {
+            if (!async_layout.result_layout().MatchesLayoutInShape(
+                    entry_computation_layout_->result_layout().shape(),
+                    /*minor_to_major_only=*/true)) {
+              *async_layout.mutable_result_layout() =
+                  entry_computation_layout_->result_layout();
+              reset_needed = true;
+            }
+          } else if (async_layout.result_layout().LayoutIsSet()) {
             Shape s = instruction->shape();
-            *s.mutable_layout() = done_layout.value();
-            *async_layout.mutable_result_layout() = ShapeLayout(s);
-            reset_needed = true;
+            bool shape_reset = false;
+            ShapeUtil::ForEachSubshape(s, [&](const Shape& subshape,
+                                              const ShapeIndex& index) {
+              if (!subshape.IsArray()) {
+                return;
+              }
+              auto done_layout = InferArrayLayout(instruction, index);
+              const Shape& async_subshape = ShapeUtil::GetSubshape(
+                  async_layout.result_layout().shape(), index);
+              if (done_layout.ok() && async_subshape.has_layout() &&
+                  async_subshape.layout() != done_layout.value()) {
+                *ShapeUtil::GetMutableSubshape(&s, index)->mutable_layout() =
+                    done_layout.value();
+                shape_reset = true;
+              }
+            });
+            if (shape_reset) {
+              *async_layout.mutable_result_layout() = ShapeLayout(s);
+              reset_needed = true;
+            }
           }
           if (reset_needed) {
             async_constraint->mutable_computation_constraint()
@@ -985,8 +1031,7 @@ absl::Status LayoutAssignment::AddMandatoryConstraints(
                     /*prop_result_layout=*/true,
                     /*prop_parameter_layout=*/true);
           }
-          if (async_layout.result_layout().shape().has_layout() &&
-              instruction->shape().IsArray()) {
+          if (async_layout.result_layout().LayoutIsSet()) {
             RETURN_IF_ERROR(SetInstructionLayout(
                 async_layout.result_layout().shape(), instruction,
                 /*mandatory=*/reset_needed ||
@@ -2907,58 +2952,54 @@ absl::StatusOr<bool> LayoutAssignment::RunImpl(
         mutable_computation_constraints(module->entry_computation())
             ->mutable_computation_constraint()
             ->mutable_computation_layout();
-    RETURN_IF_ERROR(
-        module->input_output_alias_config().ForEachAliasWithStatus(
-            [&](const ShapeIndex& output_index,
-                const HloInputOutputAliasConfig::Alias& alias) {
-              const auto param = alias.parameter_number;
-              const auto& index = alias.parameter_index;
-              bool param_is_forced =
-                  ShapeUtil::GetSubshape(
-                      saved_entry_computation_layout_.parameter_shape(param),
-                      index)
-                      .has_layout();
-              bool result_is_forced =
-                  ShapeUtil::GetSubshape(
-                      saved_entry_computation_layout_.result_shape(),
-                      output_index)
-                      .has_layout();
-              if (param_is_forced && result_is_forced) {
-                return absl::OkStatus();
-              }
-              auto* entry = module->entry_computation();
-              ASSIGN_OR_RETURN(
-                  auto param_layout,
-                  InferArrayLayout(entry->parameter_instruction(param), index));
-              ASSIGN_OR_RETURN(
-                  auto result_layout,
-                  InferArrayLayout(entry->root_instruction(), output_index));
-              if (param_layout.minor_to_major() ==
-                  result_layout.minor_to_major()) {
-                return absl::OkStatus();
-              }
-              changed = true;
-              if (!param_is_forced) {
-                entry_computation_layout_->mutable_parameter_layout(param)
-                    ->ResetLayout(result_layout, index);
-                entry_computation_layout_->mutable_result_layout()->ResetLayout(
-                    result_layout, output_index);
-                entry_constraint->mutable_parameter_layout(param)->ResetLayout(
-                    result_layout, index);
-                entry_constraint->mutable_result_layout()->ResetLayout(
-                    result_layout, output_index);
-                return absl::OkStatus();
-              }
-              entry_computation_layout_->mutable_parameter_layout(param)
-                  ->ResetLayout(param_layout, index);
-              entry_computation_layout_->mutable_result_layout()->ResetLayout(
-                  param_layout, output_index);
-              entry_constraint->mutable_parameter_layout(param)->ResetLayout(
-                  param_layout, index);
-              entry_constraint->mutable_result_layout()->ResetLayout(
-                  param_layout, output_index);
-              return absl::OkStatus();
-            }));
+    RETURN_IF_ERROR(module->input_output_alias_config().ForEachAliasWithStatus(
+        [&](const ShapeIndex& output_index,
+            const HloInputOutputAliasConfig::Alias& alias) {
+          const auto param = alias.parameter_number;
+          const auto& index = alias.parameter_index;
+          bool param_is_forced =
+              ShapeUtil::GetSubshape(
+                  saved_entry_computation_layout_.parameter_shape(param), index)
+                  .has_layout();
+          bool result_is_forced =
+              ShapeUtil::GetSubshape(
+                  saved_entry_computation_layout_.result_shape(), output_index)
+                  .has_layout();
+          if (param_is_forced && result_is_forced) {
+            return absl::OkStatus();
+          }
+          auto* entry = module->entry_computation();
+          ASSIGN_OR_RETURN(
+              auto param_layout,
+              InferArrayLayout(entry->parameter_instruction(param), index));
+          ASSIGN_OR_RETURN(
+              auto result_layout,
+              InferArrayLayout(entry->root_instruction(), output_index));
+          if (param_layout.minor_to_major() == result_layout.minor_to_major()) {
+            return absl::OkStatus();
+          }
+          changed = true;
+          if (!param_is_forced) {
+            entry_computation_layout_->mutable_parameter_layout(param)
+                ->ResetLayout(result_layout, index);
+            entry_computation_layout_->mutable_result_layout()->ResetLayout(
+                result_layout, output_index);
+            entry_constraint->mutable_parameter_layout(param)->ResetLayout(
+                result_layout, index);
+            entry_constraint->mutable_result_layout()->ResetLayout(
+                result_layout, output_index);
+            return absl::OkStatus();
+          }
+          entry_computation_layout_->mutable_parameter_layout(param)
+              ->ResetLayout(param_layout, index);
+          entry_computation_layout_->mutable_result_layout()->ResetLayout(
+              param_layout, output_index);
+          entry_constraint->mutable_parameter_layout(param)->ResetLayout(
+              param_layout, index);
+          entry_constraint->mutable_result_layout()->ResetLayout(param_layout,
+                                                                 output_index);
+          return absl::OkStatus();
+        }));
   }
 
   for (auto* computation : computations_to_work) {

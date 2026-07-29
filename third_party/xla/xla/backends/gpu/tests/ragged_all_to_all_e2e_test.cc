@@ -58,6 +58,7 @@ enum class RaggedAllToAllImplType {
   kDecomposer,
   kOneShotWithMultiGpuBarrier,
   kOneShotWithMultiGpuBarrierWithNccl,
+  kDeviceKernel,
 };
 
 class RaggedAllToAllTestBase : public CollectiveOpsWithFlagsBase {
@@ -253,13 +254,14 @@ class RaggedAllToAllTestBase : public CollectiveOpsWithFlagsBase {
     opts.set_xla_gpu_unsupported_enable_ragged_all_to_all_decomposer(
         impl_type_ == RaggedAllToAllImplType::kDecomposer);
     opts.set_xla_gpu_ragged_all_to_all_mode(collectives_mode_);
+    // Requires symmetric memory.
+    opts.set_xla_gpu_experimental_ragged_all_to_all_use_barrier_with_nccl(
+        false);
     if (IsSymmetricNcclPath()) {
       opts.set_xla_gpu_unsupported_use_ragged_all_to_all_one_shot_kernel(false);
     }
     if (impl_type_ == RaggedAllToAllImplType::kOneShotWithMultiGpuBarrier) {
       opts.set_xla_gpu_unsupported_use_ragged_all_to_all_one_shot_kernel(true);
-      opts.set_xla_gpu_experimental_ragged_all_to_all_use_barrier_with_nccl(
-          false);
     }
     if (impl_type_ ==
             RaggedAllToAllImplType::kOneShotWithMultiGpuBarrierWithNccl &&
@@ -272,6 +274,9 @@ class RaggedAllToAllTestBase : public CollectiveOpsWithFlagsBase {
       opts.set_xla_gpu_experimental_ragged_all_to_all_use_barrier(false);
       opts.set_xla_gpu_experimental_ragged_all_to_all_use_barrier_with_nccl(
           true);
+    }
+    if (impl_type_ == RaggedAllToAllImplType::kDeviceKernel) {
+      opts.set_xla_gpu_experimental_ragged_all_to_all_use_device_kernel(true);
     }
     return opts;
   }
@@ -1021,6 +1026,8 @@ std::string RaggedAllToAllImplTypeName(
       return "one_shot_with_multi_gpu_barrier";
     case RaggedAllToAllImplType::kOneShotWithMultiGpuBarrierWithNccl:
       return "one_shot_with_multi_gpu_barrier_with_nccl";
+    case RaggedAllToAllImplType::kDeviceKernel:
+      return "device_kernel";
     default:
       LOG(FATAL) << "Unknown ragged all-to-all implementation type.";
   }
@@ -1040,8 +1047,8 @@ std::string CollectivesModeName(DebugOptions::CollectivesMode mode) {
 }
 
 // Builds the test parameters: NCCL impl is exercised against all collectives
-// modes (private/symmetric/peer); other impls only need PRIVATE since they
-// don't dispatch on the mode.
+// modes (private/symmetric/peer); the device-kernel impl requires symmetric
+// memory; other impls only need PRIVATE since they don't dispatch on the mode.
 std::vector<
     std::tuple<bool, RaggedAllToAllImplType, DebugOptions::CollectivesMode>>
 BuildRaggedAllToAllTestParams() {
@@ -1062,6 +1069,8 @@ BuildRaggedAllToAllTestParams() {
       params.emplace_back(enable_async, impl_type,
                           DebugOptions::COLLECTIVES_PRIVATE_MEMORY);
     }
+    params.emplace_back(enable_async, RaggedAllToAllImplType::kDeviceKernel,
+                        DebugOptions::COLLECTIVES_SYMMETRIC_MEMORY);
   }
   return params;
 }

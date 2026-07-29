@@ -35,11 +35,16 @@ namespace stream_executor::cuda {
 
 namespace {
 
+namespace ffi = ::xla::ffi;
+
 absl::Status CubScanLaunchKernelFfiHandler(
-    xla::ffi::AnyBuffer d_in, xla::ffi::Result<xla::ffi::AnyBuffer> d_out,
-    xla::ffi::Result<xla::ffi::AnyBuffer> d_temp_storage, int64_t vector_length,
+    ffi::AnyBuffer d_in, ffi::Result<ffi::AnyBuffer> d_out,
+    ffi::Result<ffi::BufferR1<xla::U8>> d_temp_storage, int64_t vector_length,
     int64_t row_length, int64_t column_length, CubScanKind kind,
     bool is_reverse, CUstream stream) {
+  RETURN_IF_ERROR(
+      ffi::Verify("output", *d_out, ffi::match::Buffer().Like(d_in)));
+
   return CubScanLaunchKernel(
       d_in.element_type(), d_temp_storage->untyped_data(),
       d_temp_storage->size_bytes(), d_in.untyped_data(), d_out->untyped_data(),
@@ -63,26 +68,26 @@ absl::Status CubScanDummyExecuteFfiHandler() {
 }  // namespace
 
 XLA_FFI_DEFINE_HANDLER(kCubScanExecute, CubScanLaunchKernelFfiHandler,
-                       xla::ffi::Ffi::Bind()
-                           .Arg<xla::ffi::AnyBuffer>()  // d_in
-                           .Ret<xla::ffi::AnyBuffer>()  // d_out
-                           .Ret<xla::ffi::AnyBuffer>()  // d_temp_storage
+                       ffi::Ffi::Bind()
+                           .Arg<ffi::AnyBuffer>()          // d_in
+                           .Ret<ffi::AnyBuffer>()          // d_out
+                           .Ret<ffi::BufferR1<xla::U8>>()  // d_temp_storage
                            .Attr<int64_t>("vector_length")
                            .Attr<int64_t>("row_length")
                            .Attr<int64_t>("column_length")
                            .Attr<CubScanKind>("kind")
                            .Attr<bool>("is_reverse")
-                           .Ctx<xla::ffi::PlatformStream<CUstream>>(),
-                       {xla::ffi::Traits::kCmdBufferCompatible});
+                           .Ctx<ffi::PlatformStream<CUstream>>(),
+                       {ffi::Traits::kCmdBufferCompatible});
 
-XLA_FFI_REGISTER_HANDLER(xla::ffi::GetXlaFfiApi(),
+XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(),
                          xla::gpu::kCubDeviceScanTarget.data(), "CUDA",
                          {/*instantiate=*/nullptr, /*prepare=*/nullptr,
                           /*initialize=*/nullptr,
                           /*.execute=*/kCubScanExecute});
 
 XLA_FFI_DEFINE_HANDLER(kCubScanInstantiate, CubScanGetScratchSizeFfiHandler,
-                       xla::ffi::Ffi::BindInstantiate()
+                       ffi::Ffi::BindInstantiate()
                            .Attr<xla::PrimitiveType>("element_type")
                            .Attr<int64_t>("vector_length")
                            .Attr<int64_t>("row_length")
@@ -91,10 +96,10 @@ XLA_FFI_DEFINE_HANDLER(kCubScanInstantiate, CubScanGetScratchSizeFfiHandler,
                            .Attr<bool>("is_reverse"));
 
 XLA_FFI_DEFINE_HANDLER(kCubScanDummyExecute, CubScanDummyExecuteFfiHandler,
-                       xla::ffi::Ffi::Bind());
+                       ffi::Ffi::Bind());
 
 XLA_FFI_REGISTER_HANDLER(
-    xla::ffi::GetXlaFfiApi(),
+    ffi::GetXlaFfiApi(),
     xla::gpu::kCubDeviceScanUnassignedScratchSizeTarget.data(), "CUDA",
     {/*.instantiate=*/kCubScanInstantiate, /*prepare=*/nullptr,
      /*initialize=*/nullptr, /*execute=*/kCubScanDummyExecute});

@@ -175,6 +175,19 @@ PJRT_DEFINE_STRUCT_TRAITS(PJRT_TpuExecutable_IsTpuPredeterminedError_Args,
 typedef PJRT_Error* PJRT_TpuExecutable_IsTpuPredeterminedError(
     PJRT_TpuExecutable_IsTpuPredeterminedError_Args* args);
 
+struct PJRT_TpuExecutable_IsTpuCancellationPlaceholderError_Args {
+  size_t struct_size;
+  const char* serialized_status;
+  size_t serialized_status_size;
+  bool is_cancellation_placeholder;  // out
+};
+PJRT_DEFINE_STRUCT_TRAITS(
+    PJRT_TpuExecutable_IsTpuCancellationPlaceholderError_Args,
+    is_cancellation_placeholder);
+
+typedef PJRT_Error* PJRT_TpuExecutable_IsTpuCancellationPlaceholderError(
+    PJRT_TpuExecutable_IsTpuCancellationPlaceholderError_Args* args);
+
 typedef struct PJRT_TpuExecutable_Extension {
   PJRT_Extension_Base base;
   PJRT_NO_DISCARD PJRT_TpuExecutable_GetTargetArguments* get_target_arguments;
@@ -190,9 +203,11 @@ typedef struct PJRT_TpuExecutable_Extension {
       get_tpu_compilation_env_field_as_string;
   PJRT_NO_DISCARD PJRT_TpuExecutable_IsTpuPredeterminedError*
       is_tpu_predetermined_error;
+  PJRT_NO_DISCARD PJRT_TpuExecutable_IsTpuCancellationPlaceholderError*
+      is_tpu_cancellation_placeholder_error;
 } PJRT_TpuExecutable_Extension;
 PJRT_DEFINE_STRUCT_TRAITS(PJRT_TpuExecutable_Extension,
-                          is_tpu_predetermined_error);
+                          is_tpu_cancellation_placeholder_error);
 
 #ifdef __cplusplus
 }

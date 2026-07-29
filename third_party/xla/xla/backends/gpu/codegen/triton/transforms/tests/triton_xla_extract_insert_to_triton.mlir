@@ -48,15 +48,110 @@ func.func @lower_extract_insert(%arg0: !tt.ptr<bf16>, %arg1: !tt.ptr<bf16>) {
 // CHECK-TMA:         tt.descriptor_store %arg1[{{.*}}],
 // CHECK-TMA:         tt.return
 
-// Middle singleton dim is TDM-incompatible, so fall back to pointer loads.
 // CHECK-TDM-LABEL: tt.func @lower_extract_insert(
 // CHECK-TDM-SAME:      %arg0: !tt.ptr<bf16> {tt.divisibility = 16 : i32},
 // CHECK-TDM-SAME:      %arg1: !tt.ptr<bf16> {tt.divisibility = 16 : i32}) {
+// CHECK-TDM:         %[[PTR0:.*]] = tt.addptr %arg0, %{{.*}} : !tt.ptr<bf16>, i64
+// CHECK-TDM:         %[[DESC0:.*]] = tt.make_tensor_descriptor %[[PTR0]]
+// CHECK-TDM-SAME:       <bf16>, <16x64xbf16>
+// CHECK-TDM:         %[[LOAD:.*]] = tt.descriptor_load %[[DESC0]]
+// CHECK-TDM:         %[[PTR1:.*]] = tt.addptr %arg1, %{{.*}} : !tt.ptr<bf16>, i64
+// CHECK-TDM:         %[[DESC1:.*]] = tt.make_tensor_descriptor %[[PTR1]]
+// CHECK-TDM-SAME:       <bf16>, <16x64xbf16>
+// CHECK-TDM:         tt.descriptor_store %[[DESC1]]{{.*}}, %[[LOAD]]
+// CHECK-TDM:         tt.return
+
+// -----
+
+func.func @lower_extract_insert_batch_major_dim(
+    %arg0: !tt.ptr<bf16>, %arg1: !tt.ptr<bf16>) {
+  %extracted_tensor = triton_xla.extract from %arg0
+      as memref<4x32x256xbf16, #xtile.layout<[2, 1, 0]>>
+      [2, 0, 0] [1, 32, 256] [1, 1, 1] : tensor<32x256xbf16>
+  triton_xla.insert %extracted_tensor into %arg1
+      as memref<4x32x256xbf16, #xtile.layout<[2, 1, 0]>>
+      [1, 0, 0] [1, 32, 256] [1, 1, 1] : tensor<32x256xbf16>
+  func.return
+}
+
+// CHECK-TDM-LABEL: tt.func @lower_extract_insert_batch_major_dim(
+// CHECK-TDM:         %[[PTR0:.*]] = tt.addptr %arg0, %{{.*}} : !tt.ptr<bf16>, i64
+// CHECK-TDM:         %[[DESC0:.*]] = tt.make_tensor_descriptor %[[PTR0]]
+// CHECK-TDM-SAME:       <bf16>, <32x256xbf16>
+// CHECK-TDM:         %[[LOAD:.*]] = tt.descriptor_load %[[DESC0]]
+// CHECK-TDM:         %[[PTR1:.*]] = tt.addptr %arg1, %{{.*}} : !tt.ptr<bf16>, i64
+// CHECK-TDM:         %[[DESC1:.*]] = tt.make_tensor_descriptor %[[PTR1]]
+// CHECK-TDM-SAME:       <bf16>, <32x256xbf16>
+// CHECK-TDM:         tt.descriptor_store %[[DESC1]]{{.*}}, %[[LOAD]]
+// CHECK-TDM:         tt.return
+
+// -----
+
+func.func @lower_extract_insert_small_minor_dim(
+    %arg0: !tt.ptr<f8E4M3FN>, %arg1: !tt.ptr<f8E4M3FN>) {
+  %extracted_tensor = triton_xla.extract from %arg0
+      as memref<4x128x4xf8E4M3FN, #xtile.layout<[2, 1, 0]>>
+      [2, 0, 0] [1, 128, 4] [1, 1, 1] : tensor<128x4xf8E4M3FN>
+  triton_xla.insert %extracted_tensor into %arg1
+      as memref<4x128x4xf8E4M3FN, #xtile.layout<[2, 1, 0]>>
+      [1, 0, 0] [1, 128, 4] [1, 1, 1] : tensor<128x4xf8E4M3FN>
+  func.return
+}
+
+// CHECK-TDM-LABEL: tt.func @lower_extract_insert_small_minor_dim(
 // CHECK-TDM-NOT:     tt.make_tensor_descriptor
 // CHECK-TDM-NOT:     tt.descriptor_load
 // CHECK-TDM-NOT:     tt.descriptor_store
 // CHECK-TDM:         %[[LOAD:.*]] = tt.load
 // CHECK-TDM:         tt.store {{.*}}, %[[LOAD]]
+// CHECK-TDM:         tt.return
+
+// -----
+
+func.func @lower_extract_insert_trivial_batch_dim(
+    %arg0: !tt.ptr<bf16>, %arg1: !tt.ptr<bf16>) {
+  %extracted_tensor = triton_xla.extract from %arg0
+      as memref<32x256x4xbf16, #xtile.layout<[2, 1, 0]>>
+      [0, 0, 2] [32, 256, 1] [1, 1, 1] : tensor<32x256xbf16>
+  triton_xla.insert %extracted_tensor into %arg1
+      as memref<32x256x4xbf16, #xtile.layout<[2, 1, 0]>>
+      [0, 0, 1] [32, 256, 1] [1, 1, 1] : tensor<32x256xbf16>
+  func.return
+}
+
+// CHECK-TDM-LABEL: tt.func @lower_extract_insert_trivial_batch_dim(
+// CHECK-TDM-NOT:     tt.make_tensor_descriptor
+// CHECK-TDM-NOT:     tt.descriptor_load
+// CHECK-TDM-NOT:     tt.descriptor_store
+// CHECK-TDM:         %[[LOAD:.*]] = tt.load
+// CHECK-TDM:         tt.store {{.*}}, %[[LOAD]]
+// CHECK-TDM:         tt.return
+
+// -----
+
+func.func @lower_extract_insert_nontrivial_batch_dim(
+    %arg0: !tt.ptr<bf16>, %arg1: !tt.ptr<bf16>) {
+  %extracted_tensor = triton_xla.extract from %arg0
+      as memref<32x256x8xbf16, #xtile.layout<[2, 1, 0]>>
+      [0, 0, 0] [32, 256, 8] [1, 1, 1] : tensor<32x256x8xbf16>
+  triton_xla.insert %extracted_tensor into %arg1
+      as memref<32x256x8xbf16, #xtile.layout<[2, 1, 0]>>
+      [0, 0, 0] [32, 256, 8] [1, 1, 1] : tensor<32x256x8xbf16>
+  func.return
+}
+
+// CHECK-LABEL: tt.func @lower_extract_insert_nontrivial_batch_dim
+// CHECK:         %[[LOAD:.*]] = tt.load
+// CHECK:         tt.store {{.*}}, %[[LOAD]]
+
+// CHECK-TDM-LABEL: tt.func @lower_extract_insert_nontrivial_batch_dim(
+// CHECK-TDM-NOT:     tt.addptr
+// CHECK-TDM:         %[[DESC0:.*]] = tt.make_tensor_descriptor %arg0
+// CHECK-TDM-SAME:       <bf16>, <32x256x8xbf16>
+// CHECK-TDM:         %[[LOAD:.*]] = tt.descriptor_load %[[DESC0]]
+// CHECK-TDM:         %[[DESC1:.*]] = tt.make_tensor_descriptor %arg1
+// CHECK-TDM-SAME:       <bf16>, <32x256x8xbf16>
+// CHECK-TDM:         tt.descriptor_store %[[DESC1]]{{.*}}, %[[LOAD]]
 // CHECK-TDM:         tt.return
 
 // -----
@@ -300,8 +395,10 @@ func.func @incompatible_tma_const_offset_not_divisible_by_16_bytes(
 // CHECK-TMA:         tt.descriptor_store
 
 // CHECK-TDM-LABEL: tt.func @incompatible_tma_const_offset_not_divisible_by_16_bytes
-// CHECK-TDM-NOT:     tt.make_tensor_descriptor
-// CHECK-TDM:         tt.load
+// CHECK-TDM:         %[[DESC0:.*]] = tt.make_tensor_descriptor %arg0
+// CHECK-TDM-SAME:       <bf16>, <64xbf16>
+// CHECK-TDM:         %[[LOAD:.*]] = tt.descriptor_load %[[DESC0]]
+// CHECK-TDM-NOT:     tt.descriptor_store
 // CHECK-TDM:         tt.store
 
 // -----
@@ -335,7 +432,10 @@ module {
 
 // CHECK-TDM-LABEL: tt.func @incompatible_tma_dynamic_offset_not_divisible_by_16_bytes
 // CHECK-TDM:         tt.descriptor_load
-// CHECK-TDM:         tt.store
+// CHECK-TDM:         %[[PTR1:.*]] = tt.addptr %arg1, %{{.*}} : !tt.ptr<bf16>, i64
+// CHECK-TDM:         %[[DESC1:.*]] = tt.make_tensor_descriptor %[[PTR1]]
+// CHECK-TDM-SAME:       <bf16>, <16x16xbf16>
+// CHECK-TDM:         tt.descriptor_store %[[DESC1]]
 
 // -----
 

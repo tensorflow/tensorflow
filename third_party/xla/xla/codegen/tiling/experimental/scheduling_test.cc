@@ -72,7 +72,12 @@ class SchedulingTest : public HloHardwareIndependentTestBase {
     if (!tile_sizes.empty()) {
       RETURN_IF_ERROR(tiling_space->AssignTileSizes(tile_sizes));
     }
-    return TiledHloComputation::Tile(*fusion_adaptor, std::move(tiling_space));
+    ASSIGN_OR_RETURN(
+        TiledHloComputation tiled_computation,
+        TiledHloComputation::Tile(*fusion_adaptor, std::move(tiling_space)));
+    tiled_computation.Simplify();
+    tiled_computation.SortInstructionsPostOrder();
+    return tiled_computation;
   }
 
   mlir::MLIRContext mlir_context_;

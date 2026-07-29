@@ -41,7 +41,7 @@ jobs:
       - name: "Fetch HEAD of main branch"
         run: git fetch origin main --depth=1
       - name: Install uv dependencies
-        uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39 # v8.2.0
+        uses: astral-sh/setup-uv@11f9893b081a58869d3b5fccaea48c9e9e46f990 # v8.3.2
       - name: "Run clang-format check"
         env:
           TARGET_REF: "origin/${{ github.base_ref || 'main' }}"

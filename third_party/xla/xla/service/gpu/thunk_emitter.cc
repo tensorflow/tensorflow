@@ -1,4 +1,4 @@
-/*Copyright 2022 The OpenXLA Authors.
+/*Copyright 2026 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -254,22 +254,30 @@ AsyncThunkSequence ThunkEmitter::EmitCollectiveKernelThunk(
       NewModuleWithFusion(instr, HloInstruction::FusionKind::kLoop);
   HloFusionInstruction* fusion_instr = Cast<HloFusionInstruction>(
       fused_module->entry_computation()->root_instruction());
-  static constexpr bool kMultimemDisabled = false;
-  const bool should_flatten = [&](const HloInstruction* instr) {
+  // For both AllReduce and AllGather the kernel strategy is determined by the
+  // annotation written by CollectiveKernelStrategyAnnotator before scheduling.
+  // Reading the annotation uniformly avoids direct flag checks in the emitter.
+  const HloOpcode opcode = instr->opcode();
+  bool should_flatten = false;
+  bool is_collective_kernel_enabled = false;
+  if (auto gpu_config = instr->backend_config<GpuBackendConfig>();
+      gpu_config.ok()) {
+    is_collective_kernel_enabled = IsTritonCollectiveKernel(
+        gpu_config->collective_backend_config().kernel_strategy());
+  }
+  // For AllReduce two-shot, the fused module must be flattened to 1-D so
+  // Triton can assign contiguous subtiles to each rank.
+  if (opcode == HloOpcode::kAllReduce && is_collective_kernel_enabled) {
+    static constexpr bool kMultimemDisabled = false;
     const int64_t size_bytes =
         ShapeUtil::ElementsIn(instr->shape()) *
         primitive_util::ByteWidth(instr->shape().element_type());
     const bool has_rank_higher_than_1 =
         instr->shape().IsArray() && instr->shape().dimensions().size() > 1;
-    return has_rank_higher_than_1 &&
-           GetAllReduceStrategy(size_bytes, kMultimemDisabled) ==
-               se::gpu::AllReduceStrategy::kTwoShot;
-  }(instr);
-  bool is_collective_kernel_enabled =
-      instr->GetModule()
-          ->config()
-          .debug_options()
-          .xla_gpu_unsupported_use_all_reduce_one_shot_kernel();
+    should_flatten = has_rank_higher_than_1 &&
+                     GetAllReduceStrategy(size_bytes, kMultimemDisabled) ==
+                         se::gpu::AllReduceStrategy::kTwoShot;
+  }
   if (is_collective_kernel_enabled && should_flatten) {
     RETURN_IF_ERROR(FlattenCollectiveFusion(fusion_instr));
   }
@@ -429,7 +437,7 @@ AsyncThunkSequence ThunkEmitter::EmitConditional(const HloInstruction* instr) {
   return tsl::JoinFutures(absl::MakeSpan(branch_thunks))
       .Map([thunk_info = std::move(thunk_info),
             shaped_slice = std::move(shaped_slice)](
-               std::vector<ThunkSequence> branch_thunks) {
+               std::vector<ThunkSequence> branch_thunks) mutable {
         return ThunkSequence::Of<ConditionalThunk>(std::move(thunk_info),
                                                    std::move(shaped_slice),
                                                    std::move(branch_thunks));
@@ -1316,6 +1324,7 @@ AsyncThunkSequence ThunkEmitter::EmitTritonCustomCall(
     block_level_parameters.global_scratch_memory_size =
         call.global_scratch_memory_size;
     block_level_parameters.is_tma_allowed = call.is_tma_allowed;
+    block_level_parameters.waves_per_eu = call.waves_per_eu;
 
     return ir_emitter_context_->kernel_compiler()
         ->CompileTritonToLlvm(
@@ -1329,8 +1338,8 @@ AsyncThunkSequence ThunkEmitter::EmitTritonCustomCall(
               instr, call = std::move(call),
               kernel_compiler = ir_emitter_context_->kernel_compiler(),
               buffer_assignment = &ir_emitter_context_->buffer_assignment(),
-              gpu_device_info = ir_emitter_context_->gpu_device_info()](
-                 TritonWrapperResult result)
+              &gpu_device_info = ir_emitter_context_->gpu_device_info()](
+                 TritonWrapperResult result) mutable
                  -> xla::Future<KernelReuseCache::Entry> {
           auto local_module =
               std::move(result.kernel_source).thread_safe_module();
@@ -1360,8 +1369,9 @@ AsyncThunkSequence ThunkEmitter::EmitTritonCustomCall(
               .Map([use_pdl = result.use_pdl, shmem_bytes = result.shmem_bytes,
                     launch_dimensions = std::move(launch_dimensions),
                     tma_metadata = result.tma_metadata,
-                    kernel_name](const std::vector<uint8_t>& cubin) {
-                return KernelReuseCache::Entry{kernel_name,
+                    kernel_name = std::move(kernel_name)](
+                       const std::vector<uint8_t>& cubin) mutable {
+                return KernelReuseCache::Entry{std::move(kernel_name),
                                                launch_dimensions,
                                                /*cluster_dim=*/std::nullopt,
                                                shmem_bytes,
@@ -1383,23 +1393,24 @@ AsyncThunkSequence ThunkEmitter::EmitTritonCustomCall(
 
   Thunk::ThunkInfo thunk_info = Thunk::ThunkInfo::WithProfileAnnotation(
       instr, ir_emitter_context_->GetNextThunkId());
-  return status_or_entry.Map(
-      [thunk_info = std::move(thunk_info),
-       kernel_arguments = std::move(kernel_arguments),
-       call_zeroed_outputs =
-           std::move(call_zeroed_outputs)](const KernelReuseCache::Entry* entry)
-          -> absl::StatusOr<ThunkSequence> {
-        ASSIGN_OR_RETURN(CustomKernel custom_kernel,
-                         kernel::CreateOwnedCubinCustomKernel(
-                             entry->kernel_name, entry->binary,
-                             kernel_arguments.args().size(),
-                             entry->launch_dimensions.block_counts(),
-                             entry->launch_dimensions.thread_counts_per_block(),
-                             entry->shmem_bytes));
-        return ThunkSequence::Of<CustomKernelThunk>(
-            thunk_info, std::move(custom_kernel), kernel_arguments,
-            entry->use_pdl, call_zeroed_outputs, entry->tma_metadata);
-      });
+  return status_or_entry.Map([thunk_info = std::move(thunk_info),
+                              kernel_arguments = std::move(kernel_arguments),
+                              call_zeroed_outputs =
+                                  std::move(call_zeroed_outputs)](
+                                 const KernelReuseCache::Entry* entry) mutable
+                                 -> absl::StatusOr<ThunkSequence> {
+    ASSIGN_OR_RETURN(
+        CustomKernel custom_kernel,
+        kernel::CreateOwnedCubinCustomKernel(
+            entry->kernel_name, entry->binary, kernel_arguments.args().size(),
+            entry->launch_dimensions.block_counts(),
+            entry->launch_dimensions.thread_counts_per_block(),
+            entry->shmem_bytes));
+    return ThunkSequence::Of<CustomKernelThunk>(
+        std::move(thunk_info), std::move(custom_kernel),
+        std::move(kernel_arguments), entry->use_pdl, call_zeroed_outputs,
+        entry->tma_metadata);
+  });
 }
 
 AsyncThunkSequence ThunkEmitter::EmitAsyncComputation(
@@ -1430,7 +1441,7 @@ AsyncThunkSequence ThunkEmitter::EmitAsyncComputation(
   return std::move(nested_thunks)
       .Map([thunk_info = std::move(thunk_info),
             async_execution = std::move(async_execution),
-            execution_stream_id](ThunkSequence nested_thunks) {
+            execution_stream_id](ThunkSequence nested_thunks) mutable {
         return ThunkSequence::Of<AsyncStartThunk>(
             std::move(thunk_info), execution_stream_id,
             std::move(nested_thunks), async_execution);
@@ -1702,7 +1713,7 @@ AsyncThunkSequence ThunkEmitter::EmitAsyncCustomCallStart(
   return std::move(custom_call_thunks)
       .Map([start_thunk_info = std::move(start_thunk_info),
             async_execution = std::move(async_execution),
-            execution_stream_id](ThunkSequence custom_call_thunks) {
+            execution_stream_id](ThunkSequence custom_call_thunks) mutable {
         return ThunkSequence::Of<AsyncStartThunk>(
             std::move(start_thunk_info), execution_stream_id,
             std::move(custom_call_thunks), std::move(async_execution));
@@ -1742,7 +1753,7 @@ AsyncThunkSequence ThunkEmitter::EmitWhile(const HloInstruction* instr) {
   return std::move(tsl::JoinFutures(EmitHloComputation(condition),
                                     EmitHloComputation(body)))
       .Map([info = std::move(info), pred = pred, trip_count = trip_count](
-               std::tuple<ThunkSequence, ThunkSequence> tuple) {
+               std::tuple<ThunkSequence, ThunkSequence> tuple) mutable {
         auto [cond_thunks, body_thunks] = std::move(tuple);
         return ThunkSequence::Of<WhileThunk>(
             std::move(info), std::move(pred), std::move(cond_thunks),
@@ -1978,6 +1989,14 @@ AsyncThunkSequence ThunkEmitter::EmitCollectiveThunk(
           << "; partition count: " << partition_count
           << "; operand count: " << operand_count;
 
+  // A collective-broadcast may select its root rank at runtime, in which case
+  // the last operand is a root-rank vector rather than data to broadcast.
+  bool has_dynamic_root = false;
+  if constexpr (std::is_same_v<HloInstType,
+                               HloCollectiveBroadcastInstruction>) {
+    has_dynamic_root = inst->has_dynamic_root();
+  }
+
   // Stash relevant information in CollectiveThunk::Buffer even if
   // we may not generate an CollectiveThunk.
   std::vector<CollectiveThunk::Buffer> buffers;
@@ -2026,9 +2045,21 @@ AsyncThunkSequence ThunkEmitter::EmitCollectiveThunk(
     }
   } else {
     // For other operations simply zip operands with results.
-    for (int64_t i = 0; i < operand_count; i++) {
+    //
+    // A collective-broadcast with a dynamic root carries an extra trailing
+    // operand: a 1-D S32 vector holding the runtime-selected root rank for each
+    // data operand. That operand has no corresponding output, so it is not
+    // zipped with a result; instead it is mapped to its own allocation and
+    // consumed separately by the thunk.
+    int64_t num_data_operands =
+        has_dynamic_root ? operand_count - 1 : operand_count;
+    for (int64_t i = 0; i < num_data_operands; i++) {
       ShapeIndex idx = GetDstShapeIndex(async_start, inst, i, kind);
       RETURN_IF_ERROR(add_buffer(inst->operand(i), async_start, idx));
+    }
+    if (has_dynamic_root) {
+      const HloInstruction* roots = inst->operand(operand_count - 1);
+      RETURN_IF_ERROR(add_buffer(roots, roots, ShapeIndex({})));
     }
   }
 
@@ -2068,15 +2099,28 @@ AsyncThunkSequence ThunkEmitter::EmitCollectiveThunk(
     use_triton = IsTritonCollectiveKernel(
         gpu_config_status->collective_backend_config().kernel_strategy());
   }
+  // For AllGather the strategy is now determined by the annotation written
+  // by CollectiveKernelStrategyAnnotator.
+  // `use_triton` was already set above by reading the backend_config
+  // annotation.
   if (use_triton) {
     CollectiveConfig collective_config =
         GetCollectiveConfig(inst, use_global_device_ids);
-    thunks =
-        EmitCollectiveKernelThunk(thunk_info, buffers, inst, collective_config);
+    thunks = EmitCollectiveKernelThunk(std::move(thunk_info), buffers, inst,
+                                       collective_config);
   } else {
-    if constexpr (std::is_constructible_v<
-                      CollectiveThunkType, Thunk::ThunkInfo, decltype(inst),
-                      std::vector<CollectiveThunk::Buffer>>) {
+    if constexpr (std::is_same_v<CollectiveThunkType,
+                                 CollectiveBroadcastThunk>) {
+      // CollectiveBroadcastThunk needs the dynamic-root flag so it can treat
+      // the trailing root-rank buffer specially at run time.
+      thunks = ThunkSequence::Of<CollectiveThunkType>(
+          thunk_info, inst, /*buffers=*/std::move(buffers),
+          ir_emitter_context_->debug_options().xla_gpu_use_memcpy_local_p2p(),
+          has_dynamic_root);
+    } else if constexpr (std::is_constructible_v<
+                             CollectiveThunkType, Thunk::ThunkInfo,
+                             decltype(inst),
+                             std::vector<CollectiveThunk::Buffer>>) {
       thunks = ThunkSequence::Of<CollectiveThunkType>(
           thunk_info, inst, /*buffers=*/std::move(buffers));
     } else {
@@ -2118,11 +2162,11 @@ AsyncThunkSequence ThunkEmitter::EmitCollectiveThunk(
 
   return std::move(thunks).Map(
       [async_start_thunk_info = std::move(async_start_thunk_info),
-       execution_stream_id,
-       async_execution = std::move(async_execution)](ThunkSequence thunks) {
+       execution_stream_id, async_execution = std::move(async_execution)](
+          ThunkSequence thunks) mutable {
         return ThunkSequence::Of<AsyncStartThunk>(
-            async_start_thunk_info, execution_stream_id, std::move(thunks),
-            async_execution);
+            std::move(async_start_thunk_info), execution_stream_id,
+            std::move(thunks), async_execution);
       });
 }
 
@@ -2165,7 +2209,7 @@ AsyncThunkSequence ThunkEmitter::EmitCollectiveGroupStartThunk(
       .Map([group_thunk_info = std::move(group_thunk_info),
             start_thunk_info = std::move(start_thunk_info),
             async_execution = std::move(async_execution), execution_stream_id,
-            is_sync](std::vector<ThunkSequence> sequences) {
+            is_sync](std::vector<ThunkSequence> sequences) mutable {
         ThunkSequence thunks = FlattenThunkSequence(std::move(sequences));
         auto group_thunk = std::make_unique<CollectiveGroupThunk>(
             std::move(group_thunk_info), Thunk::Kind::kGroup,
@@ -2340,10 +2384,11 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitCopyStartThunk(
                    ShapeHasHostMemorySpace(shape, 0, host_memory_space));
   ASSIGN_OR_RETURN(bool is_src_host_memory,
                    ShapeHasHostMemorySpace(shape, 1, host_memory_space));
-  if (is_dst_host_memory == is_src_host_memory) {
+  // H2H is not a supported copy-start variant.
+  if (is_dst_host_memory && is_src_host_memory) {
     return absl::InternalError(
-        absl::StrFormat("Copy-start %s doesn't have correct host memory space "
-                        "color S(%d)",
+        absl::StrFormat("Copy-start %s has host memory space S(%d) on both "
+                        "source and destination, which is unsupported",
                         copy_start_instr->ToString(),
                         static_cast<int>(stream_executor::MemorySpace::kHost)));
   }
@@ -2352,8 +2397,21 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitCopyStartThunk(
   Thunk::ThunkInfo copy_thunk_info = Thunk::ThunkInfo::WithProfileAnnotation(
       copy_start_instr, ir_emitter_context_->GetNextThunkId());
 
-  std::unique_ptr<CopyThunk> copy_thunk;
-  if (is_dst_host_memory) {
+  std::unique_ptr<Thunk> copy_thunk;
+  if (!is_dst_host_memory && !is_src_host_memory) {
+    // D2D async copy: both source and destination reside in device memory.
+    // The thunk is a raw memcpy, so source and destination layouts must
+    // match; layout-changing copies must not reach this path.
+    TF_RET_CHECK(LayoutUtil::LayoutsInShapesEqual(
+        shape.tuple_shapes(0), input_shape, Layout::Equal().MinorToMajorOnly()))
+        << "Copy-start " << copy_start_instr->ToString()
+        << " has mismatched source/destination layouts";
+    copy_thunk = std::make_unique<DeviceToDeviceCopyThunk>(
+        copy_thunk_info,
+        /*source_buffer=*/ShapedSlice{src_buffer, input_shape},
+        /*destination_buffer=*/ShapedSlice{dst_buffer, input_shape},
+        /*mem_size=*/ShapeUtil::ByteSizeOf(input_shape));
+  } else if (is_dst_host_memory) {
     copy_thunk = std::make_unique<DeviceToHostCopyThunk>(
         copy_thunk_info,
         /*source_buffer=*/ShapedSlice{src_buffer, input_shape},
@@ -2716,7 +2774,7 @@ AsyncThunkSequence ThunkEmitter::EmitAsyncStart(const HloInstruction* instr) {
       return std::move(fusion_thunks)
           .Map([start_thunk_info = std::move(start_thunk_info),
                 async_execution = std::move(async_execution),
-                execution_stream_id](ThunkSequence fusion_thunks) {
+                execution_stream_id](ThunkSequence fusion_thunks) mutable {
             return ThunkSequence::Of<AsyncStartThunk>(
                 std::move(start_thunk_info), execution_stream_id,
                 std::move(fusion_thunks), std::move(async_execution));

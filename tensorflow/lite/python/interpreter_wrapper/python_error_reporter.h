@@ -28,7 +28,7 @@ namespace interpreter_wrapper {
 
 class PythonErrorReporter : public tflite::StatefulErrorReporter {
  public:
-  PythonErrorReporter() {}
+  PythonErrorReporter() = default;
 
   // Report an error message
   int Report(const char* format, va_list args) override;

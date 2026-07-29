@@ -44,7 +44,12 @@ _CORNER_CASES = {
         'isAlive': {},
         'join': {},
         'native_id': {}
-    }
+    },
+    'test.StubOutForTesting': {
+        '__del__': {},
+        '__enter__': {},
+        '__exit__': {}
+    },
 }
 
 _NORMALIZE_TYPE = {
@@ -88,6 +93,23 @@ _UNSTABLE_EXTERNAL_BASE_CLASSES = tuple(
 )
 _TENSORFLOW_FAMILY_MARKERS = ('tensorflow', 'tf_keras', 'keras')
 _OWNERSHIP_IDENTIFIER_RE = re.compile(r'[A-Za-z_][A-Za-z0-9_]*')
+_EXCLUDED_DUNDERS = frozenset(vars(object)) - {
+    '__eq__',
+    '__ne__',
+    '__lt__',
+    '__le__',
+    '__gt__',
+    '__ge__',
+} | {
+    '__getstate__',
+    '__setstate__',
+    '__copy__',
+    '__deepcopy__',
+    # __round__ is dynamically attached to tf.Tensor at module import time
+    # in tensorflow/python/ops/numpy_ops/np_array_ops.py, so we exclude it
+    # to keep API generation deterministic.
+    '__round__',
+}
 
 
 def _NormalizeType(ty):
@@ -216,47 +238,47 @@ def _SanitizedArgSpec(obj):
 
 def _GenerateArgsSpec(doc):
   """Generate args spec from a method docstring."""
-  args_spec = []
-  doc = re.search(r'\(.*\)', doc)
+  args = []
+  varargs = None
+  keywords = None
+  doc = re.search(r'\((.*)\)', doc)
   if not doc:
     return None
-  # remove parentheses
-  doc = doc.group().strip('(').strip(')')
-  doc_split = doc.split(',')
-  for s in doc_split:
-    arg = re.search(r'\w+', s)
-    if not arg:
+  for param in doc.group(1).split(','):
+    m = re.match(r'\s*(\*{0,2})(\w+)', param)
+    if not m:
       return None
-    args_spec.append(f'\'{arg.group()}\'')
-  return ', '.join(args_spec)
+    prefix, name = m.groups()
+    if prefix == '**':
+      keywords = name
+    elif prefix == '*':
+      varargs = name
+    else:
+      args.append(f"'{name}'")
+  return args, varargs, keywords
 
 
 def _ParseDocstringArgSpec(doc):
-  """Get an ArgSpec string from a method docstring.
+  """Get an ArgSpec string from a pybind11-style docstring.
 
-  This method is used to generate argspec for C extension functions that follow
-  pybind11 DocString format function signature. For example:
-  `foo_function(a: int, b: string) -> None...`
+  For example: `foo_function(a: int, *args, **kwargs) -> None`
 
   Args:
     doc: A python string which starts with function signature.
 
   Returns:
-    string: a argspec string representation if successful. If not, return None.
+    string: an argspec string representation.
 
   Raises:
     ValueError: Raised when failed to parse the input docstring.
   """
-  # Check if the docstring begins with a function signature
-  match = re.search(r'^\w+\(.*\)', doc)
-  args_spec = _GenerateArgsSpec(doc)
-  if (not match) or (args_spec is None):
+  result = _GenerateArgsSpec(doc)
+  if result is None:
     raise ValueError(f'Failed to parse argspec from docstring: {doc}')
 
-  # TODO(panzf): implement parsing docs with varargs, keywords, and defaults
-  output_string = (
-      f'args=[{args_spec}], varargs=None, keywords=None, defaults=None')
-  return output_string
+  args, varargs, keywords = result
+  return (f'args=[{", ".join(args)}], varargs={varargs},'
+          f' keywords={keywords}, defaults=None')
 
 
 def _SanitizedMRO(obj):
@@ -334,13 +356,35 @@ class PythonObjectToProtoVisitor:
       ):
         return
       is_tuple_subclass = isinstance(parent, type) and issubclass(parent, tuple)
-      is_allowed_dunder = member_name == '__init__' or (
-          member_name == '__new__' and is_tuple_subclass
+      is_tf_defined_dunder_method = (
+          member_name.startswith('__')
+          and member_name.endswith('__')
+          # Exclude dunders that are only defined on object, e.g. __repr__,
+          # because they aren't really part of TensorFlow API.
+          and member_name not in _EXCLUDED_DUNDERS
+          and isinstance(parent, type)
+          and _IsApiMethod(member_obj)
+          and _IsTensorFlowOwnedClass(_OwnerClass(parent, member_name))
+      )
+      is_allowed_dunder = (
+          member_name == '__init__'
+          or (member_name == '__new__' and is_tuple_subclass)
+          or is_tf_defined_dunder_method
       )
       if is_allowed_dunder or not member_name.startswith('_'):
         if _IsApiMethod(member_obj):
           new_method = proto.member_method.add()
           new_method.name = member_name
+          if isinstance(parent, type):
+            raw = inspect.getattr_static(parent, member_name, None)
+            if isinstance(raw, classmethod):
+              new_method.method_kind = (
+                  api_objects_pb2.TFAPIMethod.CLASS
+              )
+            elif isinstance(raw, staticmethod):
+              new_method.method_kind = (
+                  api_objects_pb2.TFAPIMethod.STATIC
+              )
           # If member_obj is a python builtin, there is no way to get its
           # argspec, because it is implemented on the C side. It also has no
           # func_code.

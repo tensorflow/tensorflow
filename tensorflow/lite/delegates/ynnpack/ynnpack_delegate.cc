@@ -38,6 +38,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/ynnpack/reduction.h"
 #include "tensorflow/lite/delegates/ynnpack/softmax.h"
 #include "tensorflow/lite/delegates/ynnpack/utils.h"
+#include "tensorflow/lite/kernels/kernel_util.h"
 
 namespace tflite {
 namespace ynnpack {
@@ -69,10 +70,18 @@ class YNNPackDelegateKernel : public SimpleDelegateKernelInterface {
     inputs_.clear();
 
     outputs_.clear();
+    dummy_inputs_.clear();
     input_shapes_.clear();
 
-    int external_value_ids =
-        input_tensor_indices_.size() + output_tensor_indices_.size();
+    int num_dummy_inputs = 0;
+    for (const auto& node : nodes_info_) {
+      if (IsRuntimeBmm(context, node.node_index) && node.inputs.size() >= 3) {
+        num_dummy_inputs += 2;
+      }
+    }
+
+    int external_value_ids = input_tensor_indices_.size() +
+                             output_tensor_indices_.size() + num_dummy_inputs;
     uint32_t subgraph_flags = 0;
     if (options_.fast_math) {
       subgraph_flags |= YNN_FLAG_FAST_MATH;
@@ -86,7 +95,7 @@ class YNNPackDelegateKernel : public SimpleDelegateKernelInterface {
     TF_LITE_ENSURE_YNN_STATUS(
         ynn_create_subgraph(external_value_ids, subgraph_flags, &subgraph_));
 
-    int next_external_id = 0;
+    uint32_t next_external_id = 0;
 
     // Define input tensors of the partition as external inputs.
     input_shapes_.resize(input_tensor_indices_.size());
@@ -208,6 +217,10 @@ class YNNPackDelegateKernel : public SimpleDelegateKernelInterface {
       } else if (node.builtin_code == kTfLiteBuiltinDepthToSpace) {
         TF_LITE_ENSURE_STATUS(DefineDepthToSpaceNode(
             context, subgraph_, tensor_to_value_id_, node));
+      } else if (IsRuntimeBmm(context, node.node_index)) {
+        TF_LITE_ENSURE_STATUS(DefineRuntimeBatchedMatMulNode(
+            context, subgraph_, tensor_to_value_id_, next_external_id,
+            dummy_inputs_, node));
       } else if (node.builtin_code == kTfLiteBuiltinBatchMatmul) {
         TF_LITE_ENSURE_STATUS(DefineBatchMatMulNode(context, subgraph_,
                                                     tensor_to_value_id_, node));
@@ -314,6 +327,11 @@ class YNNPackDelegateKernel : public SimpleDelegateKernelInterface {
           runtime_, input.val_id, tensor.dims->size, dims));
     }
 
+    for (const auto& dummy : dummy_inputs_) {
+      TF_LITE_ENSURE_YNN_STATUS(ynn_set_external_value_shape(
+          runtime_, dummy.dummy_val_id, dummy.rank, dummy.full_dims));
+    }
+
     TF_LITE_ENSURE_YNN_STATUS(ynn_reshape_runtime(runtime_));
 
     // Query output shapes from YNNPACK and resize TFLite tensors.
@@ -338,6 +356,43 @@ class YNNPackDelegateKernel : public SimpleDelegateKernelInterface {
   }
 
   TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) override {
+    if (!dummy_inputs_.empty()) {
+      // Set shape for dummy inputs based on param_tensor data at each
+      // invocation.
+      for (const auto& dummy : dummy_inputs_) {
+        const TfLiteTensor& param_tensor =
+            context->tensors[dummy.param_tensor_index];
+        size_t dims[YNN_MAX_TENSOR_RANK];
+        std::copy_n(dummy.full_dims, dummy.rank, dims);
+        size_t num_elements = tflite::NumElements(&param_tensor);
+        if (num_elements > 0) {
+          int64_t active_tokens = 0;
+          size_t index = (num_elements >= 2) ? 1 : 0;
+          if (param_tensor.type == kTfLiteInt32 &&
+              param_tensor.data.raw != nullptr &&
+              param_tensor.bytes >= (index + 1) * sizeof(int32_t)) {
+            const int32_t* i32_data =
+                reinterpret_cast<const int32_t*>(param_tensor.data.raw);
+            active_tokens = i32_data[index];
+          } else if (param_tensor.type == kTfLiteInt64 &&
+                     param_tensor.data.raw != nullptr &&
+                     param_tensor.bytes >= (index + 1) * sizeof(int64_t)) {
+            const int64_t* i64_data =
+                reinterpret_cast<const int64_t*>(param_tensor.data.raw);
+            active_tokens = i64_data[index];
+          }
+          if (active_tokens > 0) {
+            dims[dummy.seq_axis] =
+                std::min<size_t>(active_tokens, dims[dummy.seq_axis]);
+          }
+        }
+        TF_LITE_ENSURE_YNN_STATUS(ynn_set_external_value_shape(
+            runtime_, dummy.dummy_val_id, dummy.rank, dims));
+      }
+
+      TF_LITE_ENSURE_YNN_STATUS(ynn_reshape_runtime(runtime_));
+    }
+
     // Set input buffers.
     for (const auto& input : inputs_) {
       TfLiteTensor& tensor = context->tensors[input.tensor_index];
@@ -374,6 +429,7 @@ class YNNPackDelegateKernel : public SimpleDelegateKernelInterface {
   std::vector<int> output_tensor_indices_;
   std::vector<std::vector<size_t>> input_shapes_;
   TensorToValueIdMap tensor_to_value_id_;
+  std::vector<DummyInputInfo> dummy_inputs_;
 };
 
 class YNNPackDelegate : public SimpleDelegateInterface {
@@ -445,6 +501,9 @@ class YNNPackDelegate : public SimpleDelegateInterface {
       return IsQuantizeSupported(registration, node, context) == kTfLiteOk;
     } else if (builtin_code == kTfLiteBuiltinDequantize) {
       return IsDequantizeSupported(registration, node, context) == kTfLiteOk;
+    } else if (IsRuntimeBmm(registration, node)) {
+      return IsRuntimeBatchedMatMulSupported(registration, node, context) ==
+             kTfLiteOk;
     }
     return false;
   }

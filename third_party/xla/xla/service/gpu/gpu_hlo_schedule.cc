@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/service/gpu/gpu_hlo_schedule.h"
 
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <deque>
@@ -72,6 +73,7 @@ limitations under the License.
 #include "xla/service/legalize_scheduling_annotations.h"
 #include "xla/service/p2p_schedule_preparation.h"
 #include "xla/service/profile_guided_latency_estimator.h"
+#include "xla/service/scheduler_memory_fencing.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/device_description.h"
@@ -657,6 +659,12 @@ absl::Status RunLatencyHidingSchedulerPasses(
       memory_limit,
       options.xla_gpu_experimental_parallel_collective_overlap_limit(),
       options.xla_gpu_experimental_parallel_async_compute_limit());
+  const bool enable_selective_memcpy_overlap =
+      options.xla_gpu_experimental_enable_selective_memcpy_overlap();
+  if (enable_selective_memcpy_overlap) {
+    config.enable_selective_resources = true;
+    config.max_hops_to_closest_selective_overlap = 1;
+  }
 
   auto shape_size_in_bytes = ShapeSizeBytesFunction(pointer_size);
 
@@ -685,6 +693,13 @@ absl::Status RunLatencyHidingSchedulerPasses(
           DefaultSchedulerCore::ScheduleCandidate& a,
           DefaultSchedulerCore::ScheduleCandidate& b)
       -> std::optional<DefaultSchedulerCore::CandidateResult> {
+    // Its priority relative to memory pressure follows
+    // force_delay_over_memory_pressure, and it always precedes generic
+    // async-window heuristics.
+    if (auto result = GpuD2DOverlapSchedulingRule(a, b)) {
+      return result;
+    }
+
     if (config.aggressive_scheduling_policies &&
         prioritize_compute_over_async_start) {
       HloGraphNode* a_node = a.node;
@@ -742,6 +757,20 @@ absl::Status RunLatencyHidingSchedulerPasses(
           ? GpuScheduleCrossesOverlapLimit
           : nullptr);
 
+  const int64_t configured_fencing_threshold_bytes =
+      // NOLINTNEXTLINE
+      options.has_xla_gpu_experimental_scheduler_memory_fencing_threshold_bytes()
+          ? options
+                .xla_gpu_experimental_scheduler_memory_fencing_threshold_bytes()
+          : -1;
+  if (std::optional<int64_t> fencing_threshold_bytes =
+          GetSchedulerMemoryFencingThresholdBytes(
+              configured_fencing_threshold_bytes, memory_limit)) {
+    pipeline.AddPass<SchedulerMemoryFencing>(
+        shape_size_in_bytes, *fencing_threshold_bytes,
+        options.xla_gpu_experimental_scheduler_memory_fencing_slack_windows(),
+        alias_info);
+  }
   pipeline.AddPass<LatencyHidingScheduler>(scheduling_context,
                                            std::move(scheduler_core));
   pipeline.AddPass<SchedulingInstructionAnnotator>();
@@ -1003,6 +1032,19 @@ SchedulerConfig MakeGPUSchedulerConfig(uint64_t memory_limit,
         config.parallel_collective_overlap_limit);
 
   return config;
+}
+
+std::optional<int64_t> GetSchedulerMemoryFencingThresholdBytes(
+    int64_t configured_threshold_bytes, uint64_t memory_limit) {
+  if (configured_threshold_bytes < 0) {
+    return std::nullopt;
+  }
+
+  const uint64_t threshold_bytes =
+      configured_threshold_bytes == 0
+          ? memory_limit / 100
+          : static_cast<uint64_t>(configured_threshold_bytes);
+  return static_cast<int64_t>(std::min(threshold_bytes, memory_limit));
 }
 
 }  // namespace gpu

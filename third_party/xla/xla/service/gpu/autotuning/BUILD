@@ -1,3 +1,18 @@
+# Copyright 2026 The OpenXLA Authors. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
+
 # Description:
 #   Components that implement GPU autotuning.
 
@@ -33,6 +48,7 @@ xla_test(
         ":autotuner_pass",
         "//xla:shape_util",
         "//xla:xla_proto_cc",
+        "//xla/backends/autotuner:backends_proto_cc",
         "//xla/backends/autotuner:codegen_backend",
         "//xla/backends/autotuner:config_assigner",
         "//xla/backends/autotuner:profiler",
@@ -264,14 +280,15 @@ cc_library(
     deps = [
         "//xla:util",
         "//xla:xla_proto_cc",
+        "//xla/backends/autotuner:autotune_cache_store",
         "//xla/backends/autotuner:autotuner_cache_interface",
         "//xla/backends/autotuner:backends_proto_cc",
         "//xla/backends/autotuner:codegen_backend",
         "//xla/backends/autotuner:codegen_orchestrator",
         "//xla/backends/autotuner:config_assigner",
-        "//xla/backends/autotuner:directory_cache",
+        "//xla/backends/autotuner:directory_store",
         "//xla/backends/autotuner:hlo_extractor",
-        "//xla/backends/autotuner:local_cache",
+        "//xla/backends/autotuner:in_memory_store",
         "//xla/backends/autotuner:profiler",
         "//xla/backends/autotuner:tiered_cache",
         "//xla/backends/gpu/autotuner:factory",

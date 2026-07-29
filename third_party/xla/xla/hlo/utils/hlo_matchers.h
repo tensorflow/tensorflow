@@ -377,6 +377,7 @@ HLO_MATCHER(Reverse);
 HLO_MATCHER(Rng);
 HLO_MATCHER(RngBitGenerator);
 HLO_MATCHER(RngGetAndUpdateState);
+HLO_MATCHER(ScaledDot);
 HLO_MATCHER(Scatter);
 HLO_MATCHER(Select);
 HLO_MATCHER(SelectAndScatter);

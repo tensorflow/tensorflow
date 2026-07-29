@@ -25,7 +25,7 @@ namespace xla {
 namespace gpu {
 namespace {
 
-class InPlaceOpTest : public HloPjRtInterpreterReferenceMixin<HloPjRtTestBase> {
+class InPlaceOpTest : public HloInterpreterReferenceMixin<HloPjRtTestBase> {
   // Don't override any flags.
   DebugOptions GetDebugOptionsForTest() const override {
     return GetDebugOptionsFromFlags();

@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/functional/function_ref.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
+#include "absl/strings/cord.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
@@ -206,14 +207,14 @@ class PjRtExecutable final
     // executable string in the `serialized_executable`, which can be
     // deserialized into either a `PjRtExecutable` or `PjRtLoadedExecutable` by
     // the caller.
-    static absl::StatusOr<std::pair<CommonMetadata, absl::string_view>>
-    Deserialize(absl::string_view serialized_executable,
-                absl::FunctionRef<
-                    absl::Status(const ExecutableVersion& executable_version,
-                                 const DeviceListRef& devices)>
-                    is_executable_version_compatible,
-                const XlaDeserializeExecutableOptions&
-                    xla_deserialize_executable_options);
+    static absl::StatusOr<std::pair<CommonMetadata, absl::Cord>> Deserialize(
+        const absl::Cord& serialized_executable,
+        absl::FunctionRef<
+            absl::Status(const ExecutableVersion& executable_version,
+                         const DeviceListRef& devices)>
+            is_executable_version_compatible,
+        const XlaDeserializeExecutableOptions&
+            xla_deserialize_executable_options);
   };
 
  protected:

@@ -49,7 +49,7 @@ NamedSharding::NamedSharding(Mesh mesh,
                              absl::Span<const AxisRef> unreduced_axes,
                              absl::Span<const AxisRef> manual_axes,
                              absl::Span<const OpMetadata> metadata,
-                             NamedSharding::ReductionOp reduction_op)
+                             ReductionOp reduction_op)
     : mesh_(std::move(mesh)),
       dim_shardings_(dim_shardings.begin(), dim_shardings.end()),
       replicated_axes_(replicated_axes.begin(), replicated_axes.end()),
@@ -248,6 +248,28 @@ std::string NamedSharding::ToString(bool include_metadata) const {
 
   if (IsUnreduced() && num_dimensions() == 0) {
     absl::StrAppend(&result, ", unreduced");
+    if (reduction_op_ != ReductionOp::kSum) {
+      absl::StrAppend(&result, "=");
+      switch (reduction_op_) {
+        case ReductionOp::kMax:
+          absl::StrAppend(&result, "max");
+          break;
+        case ReductionOp::kMin:
+          absl::StrAppend(&result, "min");
+          break;
+        default:
+          break;
+      }
+    }
+    if (!unreduced_axes_.empty() && unreduced_axes_.size() < mesh_.num_axes()) {
+      absl::StrAppend(&result, "{");
+      absl::StrAppend(
+          &result, absl::StrJoin(unreduced_axes_, ", ",
+                                 [&](std::string* out, const AxisRef& axis) {
+                                   absl::StrAppend(out, axis.ToString(&mesh_));
+                                 }));
+      absl::StrAppend(&result, "}");
+    }
     absl::StrAppend(&result, metadata_str);
     absl::StrAppend(&result, "}");
     return result;
@@ -371,19 +393,19 @@ NamedSharding NamedSharding::FromProto(const NamedShardingProto& proto) {
     unreduced_axes.push_back(AxisRef::FromProto(axis_proto));
   }
 
-  NamedSharding::ReductionOp reduction_op;
+  ReductionOp reduction_op;
   switch (proto.reduction_op()) {
     case NamedShardingProto::SUM:
-      reduction_op = NamedSharding::ReductionOp::kSum;
+      reduction_op = ReductionOp::kSum;
       break;
     case NamedShardingProto::MAX:
-      reduction_op = NamedSharding::ReductionOp::kMax;
+      reduction_op = ReductionOp::kMax;
       break;
     case NamedShardingProto::MIN:
-      reduction_op = NamedSharding::ReductionOp::kMin;
+      reduction_op = ReductionOp::kMin;
       break;
     default:
-      reduction_op = NamedSharding::ReductionOp::kSum;
+      reduction_op = ReductionOp::kSum;
       break;
   }
 

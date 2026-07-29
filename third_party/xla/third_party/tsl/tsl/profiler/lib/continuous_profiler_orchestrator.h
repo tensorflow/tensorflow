@@ -101,6 +101,23 @@ class ContinuousProfilerOrchestrator : public ProfilerInterface {
     return status;
   }
 
+  std::vector<tensorflow::profiler::XSpace> SerializeChunks() {
+    std::vector<std::any> chunks = PopBuffer();
+    std::vector<tensorflow::profiler::XSpace> spaces;
+    spaces.reserve(chunks.size());
+    tensorflow::profiler::XSpace space;
+    for (auto& chunk : chunks) {
+      space.Clear();
+      absl::Status status = profiler_->Serialize(std::move(chunk), &space);
+      if (status.ok()) {
+        spaces.push_back(std::move(space));
+      } else {
+        LOG(ERROR) << "Failed to serialize profiler chunk: " << status;
+      }
+    }
+    return spaces;
+  }
+
   // Returns the current polling interval (primarily for testing).
   absl::Duration polling_interval() const {
     absl::MutexLock lock(mutex_);

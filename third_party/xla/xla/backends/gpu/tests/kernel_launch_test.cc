@@ -21,8 +21,8 @@ limitations under the License.
 namespace xla::gpu {
 namespace {
 
-class KernelLaunchTest
-    : public HloPjRtInterpreterReferenceMixin<HloPjRtTestBase> {};
+class KernelLaunchTest : public HloInterpreterReferenceMixin<HloPjRtTestBase> {
+};
 
 TEST_F(KernelLaunchTest, Basic) {
   const char* hlo_text = R"(

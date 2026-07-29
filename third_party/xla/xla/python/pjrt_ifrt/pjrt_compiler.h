@@ -19,6 +19,7 @@ limitations under the License.
 #include <memory>
 
 #include "absl/status/status.h"
+#include "absl/strings/cord.h"
 #include "absl/strings/string_view.h"
 #include "llvm/Support/ExtensibleRTTI.h"
 #include "xla/python/ifrt/compiler.h"
@@ -60,7 +61,7 @@ class PjRtCompiler final : public llvm::RTTIExtends<PjRtCompiler, Compiler> {
   }
 
   tsl::Future<LoadedExecutableRef> DeserializeLoadedExecutable(
-      absl::string_view serialized,
+      const absl::Cord& serialized,
       std::unique_ptr<DeserializeExecutableOptions> options) override;
 
   static char ID;  // NOLINT

@@ -13,12 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <string>
-
-#include "absl/container/flat_hash_map.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
-#include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/transforms/expanders/op_expander_pass.h"
 
@@ -38,9 +34,6 @@ class BitcastDtypesExpander : public OpExpanderPass {
 
   absl::StatusOr<HloInstruction*> ExpandInstruction(
       HloInstruction* instruction) override;
-
- private:
-  absl::flat_hash_map<std::string, HloComputation*> computation_cache_;
 };
 
 }  // namespace xla

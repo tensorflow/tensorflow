@@ -2435,8 +2435,10 @@ absl::StatusOr<int64_t> HloRematerialization::CalledComputationsMemoryUsage(
                                           execution_threads)) {
       continue;
     }
-    TF_RET_CHECK(ContainsKey(computation_peak_memory_, computation));
-    callee_usage += computation_peak_memory_.at(computation);
+    if (auto it = computation_peak_memory_.find(computation);
+        it != computation_peak_memory_.end()) {
+      callee_usage += it->second;
+    }
   }
   return callee_usage;
 }
@@ -2714,7 +2716,7 @@ HloRematerialization::PeakPrioritySubPass(
           << ", changed = " << module_changed_in_this_subpass << ")";
 
   // Update peak memory used by computation.
-  computation_peak_memory_.at(computation) = peak_memory_during_remat;
+  computation_peak_memory_[computation] = peak_memory_during_remat;
   RematSubpassResult remat_subpass_result{
       // NOLINTNEXTLINE (-Wpre-c++20-compat-pedantic)
       .status = RematSubpassStatus::kUnchanged,
@@ -2854,7 +2856,11 @@ absl::StatusOr<bool> HloRematerialization::RematerializeComputation(
     HloComputation* computation, HloSchedule* schedule,
     int64_t memory_limit_bytes, int64_t min_remat_size,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
-  const auto peak_memory_usage = computation_peak_memory_.at(computation);
+  auto it = computation_peak_memory_.find(computation);
+  if (it == computation_peak_memory_.end()) {
+    return false;
+  }
+  const auto peak_memory_usage = it->second;
   if (peak_memory_usage <= memory_limit_bytes) {
     // Nothing to do.
     VLOG(1) << "Asked to rematerialize computation of size "
@@ -3032,12 +3038,10 @@ absl::StatusOr<bool> HloRematerialization::RematerializeComputation(
           << remat_count << " instructions; " << net_instructions_added
           << " net instructions added";
   VLOG(1) << "  peak memory usage now " << HumanReadableNumBytes(peak_memory)
-          << " (was "
-          << HumanReadableNumBytes(computation_peak_memory_.at(computation))
-          << ")";
+          << " (was " << HumanReadableNumBytes(peak_memory_usage) << ")";
 
   // Update peak memory used by computation.
-  computation_peak_memory_.at(computation) = peak_memory;
+  computation_peak_memory_[computation] = peak_memory;
 
   // Update order to include rematerialized instructions.
   HloInstructionSequence& sequence = schedule->GetOrCreateSequence(computation);
@@ -3180,8 +3184,11 @@ absl::StatusOr<bool> HloRematerialization::RunImpl(
     // Only consider asynchronous computations invoked from the main thread.
     for (const auto [entry_computation, parallel_threads] :
          options_.async_computation_parallelism) {
-      const int64_t peak_memory =
-          computation_peak_memory_.at(entry_computation);
+      int64_t peak_memory = 0;
+      if (auto it = computation_peak_memory_.find(entry_computation);
+          it != computation_peak_memory_.end()) {
+        peak_memory = it->second;
+      }
       // Adjust memory usage for parallel execution of the same computation
       // on different devices.
       const int64_t parallel_peak_memory = peak_memory * parallel_threads;
@@ -3221,9 +3228,13 @@ absl::StatusOr<bool> HloRematerialization::RunImpl(
   // asynchronous computations. This is because the peak memory for a
   // computation does not include the output as this is typically accounted for
   // in the caller.
+  int64_t before_entry_peak_memory = 0;
+  if (auto it = computation_peak_memory_.find(module->entry_computation());
+      it != computation_peak_memory_.end()) {
+    before_entry_peak_memory = it->second;
+  }
   const int64_t before_peak_memory =
-      computation_peak_memory_.at(module->entry_computation()) +
-      module_output_size + total_async_peak_memory;
+      before_entry_peak_memory + module_output_size + total_async_peak_memory;
   VLOG(1) << "Peak memory usage of module (before): "
           << HumanReadableNumBytes(before_peak_memory);
 
@@ -3260,9 +3271,13 @@ absl::StatusOr<bool> HloRematerialization::RunImpl(
   VLOG(1) << "Rematerialized " << instructions_rematerialized_
           << " instructions in module " << module->name() << "; "
           << net_instructions_added_ << " net instructions added";
+  int64_t current_entry_peak_memory = 0;
+  if (auto it = computation_peak_memory_.find(module->entry_computation());
+      it != computation_peak_memory_.end()) {
+    current_entry_peak_memory = it->second;
+  }
   const int64_t current_peak_memory =
-      computation_peak_memory_.at(module->entry_computation()) +
-      module_output_size + total_async_peak_memory;
+      current_entry_peak_memory + module_output_size + total_async_peak_memory;
   VLOG(1) << "Peak memory usage of module now "
           << HumanReadableNumBytes(current_peak_memory) << " ("
           << current_peak_memory << " bytes), was "

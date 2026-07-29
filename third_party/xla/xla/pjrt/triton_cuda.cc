@@ -59,7 +59,6 @@ limitations under the License.
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/tsl/platform/logging.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/xla.pb.h"
 #include "triton/Dialect/Triton/IR/Dialect.h"
 #include "triton/Dialect/TritonGPU/IR/Dialect.h"
@@ -169,7 +168,9 @@ absl::StatusOr<CompilationResult> Compile(absl::string_view module,
           (*module_op)
               ->getAttrOfType<::mlir::DenseI32ArrayAttr>("ttg.num-ctas")) {
     auto vals = attr.asArrayRef();
-    cluster_dim_x = vals[0];
+    if (!vals.empty()) {
+      cluster_dim_x = vals[0];
+    }
     if (vals.size() > 1) {
       cluster_dim_y = vals[1];
     }

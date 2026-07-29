@@ -2176,6 +2176,13 @@ func.func @tranpose_arg64(%arg0: tensor<2x3xf32>, %arg1: tensor<2xi64>) -> tenso
   // CHECK: "tfl.transpose"
 }
 
+func.func @tranpose_bf16(%arg0: tensor<2x3xbf16>, %arg1: tensor<2xi32>) -> tensor<3x2xbf16> {
+  %0 = "tf.Transpose"(%arg0, %arg1): (tensor<2x3xbf16>, tensor<2xi32>) -> tensor<3x2xbf16>
+  func.return %0 : tensor<3x2xbf16>
+  // CHECK-LABEL: tranpose_bf16
+  // CHECK: "tfl.transpose"
+}
+
 func.func @cumsum(%arg0: tensor<3x3xf32>, %arg1: tensor<i32>) -> tensor<3x3xf32> {
   %0 = "tf.Cumsum"(%arg0, %arg1) {exclusive = false, reverse = false} : (tensor<3x3xf32>, tensor<i32>) -> tensor<3x3xf32>
   func.return %0 : tensor<3x3xf32>
@@ -2619,6 +2626,14 @@ func.func @dynamic_update_slice_f16_arg(%arg0: tensor<4x5xf16>, %arg1: tensor<1x
 
 // CHECK-LABEL:dynamic_update_slice_f16_arg
 // CHECK: "tfl.dynamic_update_slice"(%arg0, %arg1, %arg2) : (tensor<4x5xf16>, tensor<1x5xf16>, tensor<2xi32>) -> tensor<4x5xf16>
+}
+
+func.func @dynamic_update_slice_bf16_arg(%arg0: tensor<4x5xbf16>, %arg1: tensor<1x5xbf16>, %arg2: tensor<2xi32>) -> tensor<4x5xbf16> {
+  %0 = "tf.XlaDynamicUpdateSlice"(%arg0, %arg1, %arg2) : (tensor<4x5xbf16>, tensor<1x5xbf16>, tensor<2xi32>) -> tensor<4x5xbf16>
+  func.return %0 : tensor<4x5xbf16>
+
+// CHECK-LABEL:dynamic_update_slice_bf16_arg
+// CHECK: "tfl.dynamic_update_slice"(%arg0, %arg1, %arg2) : (tensor<4x5xbf16>, tensor<1x5xbf16>, tensor<2xi32>) -> tensor<4x5xbf16>
 }
 
 func.func @dynamic_update_slice_i16(%arg0: tensor<4x5xi16>, %arg1: tensor<1x5xi16>, %arg2: tensor<2xi32>) -> tensor<4x5xi16> {

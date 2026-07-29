@@ -391,6 +391,7 @@ static absl::StatusOr<bool> SplitAllReduce(const HloModuleConfig& config,
           ar.shape(), ar.operands(), ar.to_apply(),
           std::make_shared<CollectiveDeviceList>(first_ar_replica_groups),
           ar.constrain_layout(), channel_id, ar.use_global_device_ids()));
+  ar.SetupDerivedInstruction(first_ar);
 
   // Create second AR.
   channel_id = next_channel_id++;

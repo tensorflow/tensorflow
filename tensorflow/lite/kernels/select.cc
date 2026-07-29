@@ -113,6 +113,7 @@ TfLiteStatus SelectPrepare(TfLiteContext* context, TfLiteNode* node) {
         TF_LITE_ENSURE_OK(context, CalculateShapeForBroadcast(
                                        context, input_condition, input_x,
                                        input_y, &output_size));
+        TF_LITE_ENSURE(context, output_size->size <= 8);
         data->requires_broadcast = true;
         break;
       }

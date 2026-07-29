@@ -22,6 +22,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_sharding.h"
@@ -29,6 +30,13 @@ limitations under the License.
 #include "xla/shape.h"
 
 namespace xla {
+
+class HloModule;
+
+// Collects all logical device IDs involved in `sharding`.
+// Returns empty list/set for replicated sharding.
+absl::flat_hash_set<int64_t> GetLogicalDeviceIds(
+    const HloSharding& sharding, const HloModule* module = nullptr);
 
 struct ShardTensor {
   // The logical shard ID.

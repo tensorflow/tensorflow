@@ -29,6 +29,7 @@ limitations under the License.
 #include "absl/hash/hash.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/cord.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "llvm/Support/ExtensibleRTTI.h"
@@ -284,7 +285,7 @@ class MockCompiler : public llvm::RTTIExtends<MockCompiler, Compiler> {
                const xla::ifrt::DeviceListRef& devices),
               (const, final));
   MOCK_METHOD(tsl::Future<LoadedExecutableRef>, DeserializeLoadedExecutable,
-              (absl::string_view serialized,
+              (const absl::Cord& serialized,
                std::unique_ptr<DeserializeExecutableOptions> options),
               (final));
 

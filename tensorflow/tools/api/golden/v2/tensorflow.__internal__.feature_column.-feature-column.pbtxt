@@ -15,7 +15,15 @@ tf_class {
     mtype: "<class \'abc.abstractproperty\'>"
   }
   member_method {
+    name: "__gt__"
+    argspec: "args=[\'self\', \'other\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
     name: "__init__"
+  }
+  member_method {
+    name: "__lt__"
+    argspec: "args=[\'self\', \'other\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "create_state"
@@ -24,6 +32,7 @@ tf_class {
   member_method {
     name: "from_config"
     argspec: "args=[\'cls\', \'config\', \'custom_objects\', \'columns_by_name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
+    method_kind: CLASS
   }
   member_method {
     name: "get_config"

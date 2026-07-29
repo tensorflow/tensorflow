@@ -272,6 +272,11 @@ absl::StatusOr<TensorValue> EmitTiledBitcast(
     TensorValue input) {
   Shape input_shape = tiled_bitcast.hlo()->operand(0)->shape();
   const Shape& output_shape = tiled_bitcast.hlo()->shape();
+  ASSIGN_OR_RETURN(
+      SmallVector<int64_t> input_storage_tile_sizes,
+      GetStorageShape(tiled_bitcast.operand(0)->tile_sizes(), input_shape));
+  ASSIGN_OR_RETURN(SmallVector<int64_t> output_storage_tile_sizes,
+                   GetStorageShape(tiled_bitcast.tile_sizes(), output_shape));
   // If the bitcast changes the element type to an element type of the same
   // bitwidth, we need to emit a ttir::BitcastOp.
   if (input_shape.element_type() != output_shape.element_type()) {
@@ -284,8 +289,7 @@ absl::StatusOr<TensorValue> EmitTiledBitcast(
     ASSIGN_OR_RETURN(Type output_element_type,
                      PrimitiveTypeToMlirType(b, output_shape.element_type()));
     auto output_type = mlir::RankedTensorType::get(
-        GetPaddedTileSizes(tiled_bitcast.operand(0)->tile_sizes()),
-        output_element_type);
+        GetPaddedTileSizes(input_storage_tile_sizes), output_element_type);
     input = mlir::cast<TensorValue>(
         mlir::tensor::BitcastOp::create(b, output_type, input).getResult());
     input_shape.set_element_type(output_shape.element_type());
@@ -309,7 +313,7 @@ absl::StatusOr<TensorValue> EmitTiledBitcast(
   // different, even in rank, compared to the tile sizes of the final shape of
   // the bitcast, so it's not possible to easily propagate them from the output.
   std::vector<int64_t> transpose1_tile_sizes =
-      Permute(tiled_bitcast.operand(0)->tile_sizes(), trt->transpose1_dims);
+      Permute(input_storage_tile_sizes, trt->transpose1_dims);
   TensorValue normalized_input =
       trt->IsTranspose1Identity()
           ? input
@@ -322,7 +326,7 @@ absl::StatusOr<TensorValue> EmitTiledBitcast(
   // the tile sizes of the reshape, we compute the tile sizes backwards, taking
   // the inverse permutation.
   std::vector<int64_t> reshape_tile_sizes =
-      PermuteInverse(tiled_bitcast.tile_sizes(), trt->transpose2_dims);
+      PermuteInverse(output_storage_tile_sizes, trt->transpose2_dims);
   TensorValue normalized_reshape;
   if (ShapeUtil::Equal(trt->transpose1_shape, trt->reshape_shape)) {
     normalized_reshape = normalized_input;
@@ -335,7 +339,7 @@ absl::StatusOr<TensorValue> EmitTiledBitcast(
   // bitcast by the tiling analysis.
   return trt->IsTranspose2Identity()
              ? normalized_reshape
-             : EmitTiledTranspose(b, tiled_bitcast.tile_sizes(),
+             : EmitTiledTranspose(b, output_storage_tile_sizes,
                                   llvm::to_vector(trt->transpose2_dims),
                                   normalized_reshape);
 }
@@ -990,8 +994,10 @@ absl::StatusOr<TensorValue> EmitTiledHloInstruction(
             "while lowering ",
             fusion.called_computation()->ToString()));
       }
-      parameter =
-          mlir::cast<TensorValue>(Cast(b, parameter, expected_element_type));
+      if (!IsPackedTritonDotScaledOperandType(hlo->shape().element_type())) {
+        parameter =
+            mlir::cast<TensorValue>(Cast(b, parameter, expected_element_type));
+      }
     }
 
     return parameter;
@@ -1056,7 +1062,9 @@ absl::StatusOr<TensorValue> EmitTiledHloInstruction(
   }
 
   if (hlo->opcode() == HloOpcode::kReshape) {
-    return EmitTiledReshape(b, tiled_hlo.tile_sizes(),
+    ASSIGN_OR_RETURN(SmallVector<int64_t> storage_tile_sizes,
+                     GetStorageShape(tiled_hlo.tile_sizes(), hlo->shape()));
+    return EmitTiledReshape(b, storage_tile_sizes,
                             values[tiled_hlo.operand(0)]);
   }
 
@@ -1067,7 +1075,9 @@ absl::StatusOr<TensorValue> EmitTiledHloInstruction(
   if (hlo->opcode() == HloOpcode::kTranspose) {
     auto transpose =
         ::xla::Cast<const HloTransposeInstruction>(tiled_hlo.hlo());
-    return EmitTiledTranspose(b, tiled_hlo.tile_sizes(),
+    ASSIGN_OR_RETURN(SmallVector<int64_t> storage_tile_sizes,
+                     GetStorageShape(tiled_hlo.tile_sizes(), hlo->shape()));
+    return EmitTiledTranspose(b, storage_tile_sizes,
                               llvm::to_vector(transpose->dimensions()),
                               values[tiled_hlo.operand(0)]);
   }

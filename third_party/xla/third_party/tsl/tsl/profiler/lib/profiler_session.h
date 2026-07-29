@@ -15,15 +15,12 @@ limitations under the License.
 #ifndef TENSORFLOW_TSL_PROFILER_LIB_PROFILER_SESSION_H_
 #define TENSORFLOW_TSL_PROFILER_LIB_PROFILER_SESSION_H_
 
-#include <functional>
+#include <cstdint>
 #include <memory>
 #include <vector>
 
 #include "absl/status/status.h"
 #include "absl/synchronization/mutex.h"
-#include "xla/tsl/platform/status.h"
-#include "xla/tsl/platform/types.h"
-#include "tsl/platform/platform.h"
 #include "tsl/platform/thread_annotations.h"
 #include "tsl/profiler/protobuf/profiler_options.pb.h"
 #include "tsl/profiler/protobuf/xplane.pb.h"
@@ -66,6 +63,13 @@ class ProfilerSession {
   // Collects profile data into XSpace.
   absl::Status CollectData(tensorflow::profiler::XSpace* space)
       TF_LOCKS_EXCLUDED(mutex_);
+
+  absl::Status Stop() TF_LOCKS_EXCLUDED(mutex_);
+
+  std::vector<tensorflow::profiler::XSpace> SerializeChunks()
+      TF_LOCKS_EXCLUDED(mutex_);
+
+  bool IsContinuousProfilingEnabled() const;
 
  private:
   // Constructs an instance of the class and starts profiling

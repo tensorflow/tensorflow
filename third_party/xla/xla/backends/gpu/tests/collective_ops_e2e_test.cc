@@ -29,6 +29,7 @@ limitations under the License.
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
+#include "absl/strings/substitute.h"
 #include "absl/types/span.h"
 #include "xla/array.h"
 #include "xla/backends/gpu/tests/collective_ops_e2e_test_base.h"
@@ -398,6 +399,62 @@ TEST_P(AsyncCollectiveOps, AsyncCollectiveBroadcast) {
   LiteralTestUtil::ExpectR1Equal<uint32_t>({11, 11}, results[1]);
 }
 
+TEST_P(AsyncCollectiveOps, AsyncCollectiveBroadcastDynamicRoot) {
+  // The broadcast root rank is not encoded in `replica_groups` (whose first
+  // member would be the static root); instead it is supplied at run time by the
+  // trailing S32 operand. With `replica_groups={{0, 1}}` a static broadcast
+  // would source from replica 0 (value 10), so selecting root rank 1 at run
+  // time (replica 1, value 11) proves the root is chosen dynamically.
+  constexpr absl::string_view kModuleTemplate = R"(
+  HloModule test
+  ENTRY test_computation {
+    replica = u32[] replica-id()
+    ten = u32[] constant(10)
+    sum = u32[] add(replica, ten)
+    p = u32[2] broadcast(sum), dimensions={}
+    root = s32[1] constant({$0})
+    bcast = u32[2] collective-broadcast(p, root),
+        replica_groups={{0, 1}}, has_dynamic_root=true
+    ROOT res = copy(bcast)
+  }
+  )";
+  const int64_t kNumReplicas = 2;
+  ASSERT_GE(device_count(), kNumReplicas)
+      << "Test requires at least " << kNumReplicas << " devices ("
+      << device_count() << " available)";
+
+  // (root rank -> broadcast value seen by every replica).
+  for (const auto& [root_rank, expected] :
+       std::vector<std::pair<int, uint32_t>>{{0, 10}, {1, 11}}) {
+    TF_ASSERT_OK_AND_ASSIGN(
+        auto module,
+        ParseAndReturnVerifiedModule(
+            absl::Substitute(kModuleTemplate, root_rank), kNumReplicas));
+
+    TF_ASSERT_OK_AND_ASSIGN(ExecutionResult execution_result,
+                            ExecuteReplicated(std::move(module)));
+
+    const HloModule* hlo_module = execution_result.optimized_module;
+    HloInstruction* cb_start =
+        FindInstruction(hlo_module, HloOpcode::kAsyncStart);
+    HloInstruction* cb_done =
+        FindInstruction(hlo_module, HloOpcode::kAsyncDone);
+    ASSERT_THAT(cb_start, NotNull());
+    ASSERT_THAT(cb_done, NotNull());
+    EXPECT_EQ(IsAsync(cb_start), enable_async_);
+    EXPECT_TRUE(Cast<HloCollectiveBroadcastInstruction>(
+                    cb_start->async_wrapped_instruction())
+                    ->has_dynamic_root());
+
+    const std::vector<Literal>& results = execution_result.results;
+    ASSERT_EQ(results.size(), kNumReplicas);
+    for (int i = 0; i < kNumReplicas; ++i) {
+      LiteralTestUtil::ExpectR1Equal<uint32_t>({expected, expected},
+                                               results[i]);
+    }
+  }
+}
+
 TEST_P(CollectivesModeOps, AllGather) {
   const absl::string_view kModuleStr = R"(
   HloModule test
@@ -737,6 +794,79 @@ TEST_F(CollectiveOpsTestE2E, CollectiveGroupAllReduceDifferentReplicaGroups) {
   LiteralTestUtil::ExpectR1Equal<float>({5, 5, 5, 5}, replica3[1]);
 }
 
+TEST_F(CollectiveOpsTestE2E, AsyncVariadicAllReduce) {
+  const absl::string_view kModuleStr = R"(
+  HloModule test
+
+  add {
+    x = f32[] parameter(0)
+    y = f32[] parameter(1)
+    ROOT add = f32[] add(x, y)
+  }
+
+  variadic_all_reduce {
+    p0 = f32[4] parameter(0)
+    p1 = f32[4] parameter(1)
+    ROOT all-reduce = (f32[4], f32[4]) all-reduce(p0, p1),
+      replica_groups={}, to_apply=add
+  }
+
+  ENTRY main {
+    p0 = f32[4] parameter(0)
+    p1 = f32[4] parameter(1)
+    start = ((f32[4], f32[4]), (f32[4], f32[4])) async-start(p0, p1),
+      calls=variadic_all_reduce
+    ROOT done = (f32[4], f32[4]) async-done(start)
+  }
+  )";
+
+  const int64_t kNumReplicas = 2;
+  if (device_count() < kNumReplicas) {
+    GTEST_SKIP() << "Test requires at least " << kNumReplicas << " devices ("
+                 << device_count() << " available)";
+  }
+
+  HloModuleConfig config =
+      GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
+  // Disable all-reduce-contiguous pass to avoid rewriting the variadic
+  // all-reduce in a concatenate, slice and contiguous all-reduce.
+  config.mutable_debug_options().add_xla_disable_hlo_passes(
+      "all-reduce-contiguous");
+
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnVerifiedModule(kModuleStr, config));
+
+  std::vector<Literal> p0_args;
+  std::vector<Literal> p1_args;
+  p0_args.reserve(kNumReplicas);
+  p1_args.reserve(kNumReplicas);
+
+  p0_args.push_back(LiteralUtil::CreateR1<float>({1, 2, 3, 4}));
+  p1_args.push_back(LiteralUtil::CreateR1<float>({10, 20, 30, 40}));
+
+  p0_args.push_back(LiteralUtil::CreateR1<float>({5, 6, 7, 8}));
+  p1_args.push_back(LiteralUtil::CreateR1<float>({50, 60, 70, 80}));
+
+  std::vector<std::vector<Literal*>> args(kNumReplicas);
+  for (int64_t replica = 0; replica < kNumReplicas; ++replica) {
+    args[replica] = {&p0_args[replica], &p1_args[replica]};
+  }
+
+  ASSERT_OK_AND_ASSIGN(ExecutionResult execution_result,
+                       ExecuteReplicated(std::move(module), args));
+
+  std::vector<Literal>& results = execution_result.results;
+  ASSERT_EQ(results.size(), kNumReplicas);
+
+  for (int64_t replica = 0; replica < kNumReplicas; ++replica) {
+    std::vector<Literal> tuple_elements = results[replica].DecomposeTuple();
+    ASSERT_EQ(tuple_elements.size(), 2);
+    LiteralTestUtil::ExpectR1Equal<float>({6, 8, 10, 12}, tuple_elements[0]);
+    LiteralTestUtil::ExpectR1Equal<float>({60, 80, 100, 120},
+                                          tuple_elements[1]);
+  }
+}
+
 TEST_P(AsyncCollectiveOps, AsyncReduceScatter) {
   const absl::string_view kModuleStr = R"(
   HloModule test
@@ -1012,6 +1142,10 @@ ENTRY entry {
     replica_groups={{0,1}}
 }
 )";
+
+  if (!IsHopperAndHigher()) {
+    GTEST_SKIP() << "Test requires Hopper or later.";
+  }
 
   const int64_t kNumReplicas = 2;
   ASSERT_GE(device_count(), kNumReplicas)
@@ -2366,9 +2500,12 @@ class CollectiveOpsTestE2EPipelinedNonPipelined : public CollectiveOpsTestE2E {
     HloModuleConfig ref_config =
         GetModuleConfigForTest(kNumReplicas, kNumPartitions);
     DebugOptions& ref_opts = ref_config.mutable_debug_options();
-    ref_opts.set_xla_gpu_enable_pipelined_all_reduce(false);
-    ref_opts.set_xla_gpu_enable_pipelined_all_gather(false);
-    ref_opts.set_xla_gpu_enable_pipelined_reduce_scatter(false);
+    ref_opts.set_xla_gpu_pipeline_all_reduce(
+        DebugOptions::COLLECTIVE_PIPELINING_MODE_OFF);
+    ref_opts.set_xla_gpu_pipeline_all_gather(
+        DebugOptions::COLLECTIVE_PIPELINING_MODE_OFF);
+    ref_opts.set_xla_gpu_pipeline_reduce_scatter(
+        DebugOptions::COLLECTIVE_PIPELINING_MODE_OFF);
 
     TF_ASSERT_OK_AND_ASSIGN(
         auto ref_module, ParseAndReturnVerifiedModule(hlo_string, ref_config));

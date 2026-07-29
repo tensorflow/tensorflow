@@ -781,6 +781,9 @@ BUILTIN_KERNEL_DEPS = [
     ":control_flow_common",
     "@eigen_archive//:eigen3",
     "@flatbuffers",
+    "@com_google_absl//absl/algorithm:container",
+    "@com_google_absl//absl/base:nullability",
+    "@com_google_absl//absl/container:inlined_vector",
     "@com_google_absl//absl/types:span",
     "//tensorflow/lite:framework_stable",
     "//tensorflow/lite:minimal_logging",
@@ -1184,6 +1187,7 @@ cc_test(
     deps = [
         ":test_main",
         ":test_util",
+        "//tensorflow/lite/core/c:c_api_types",
         "//tensorflow/lite/schema:schema_fbs",
         "@com_google_googletest//:gtest",
         "@flatbuffers",
@@ -1465,6 +1469,7 @@ cc_test(
         "//tensorflow/lite:framework_stable",
         "//tensorflow/lite/core:framework_stable",
         "//tensorflow/lite/core/kernels:builtin_ops",
+        "//tensorflow/lite/schema:schema_fbs",
         "@com_google_googletest//:gtest",
     ],
 )
@@ -1509,13 +1514,13 @@ cc_test(
         ":test_util",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/core/c:c_api_types",
+        "//tensorflow/lite/kernels/internal:float8",
         "//tensorflow/lite/kernels/internal:tensor_utils_no_eigen",
         "//tensorflow/lite/schema:schema_fbs",
         "//tensorflow/lite/types:half",
         "@com_google_absl//absl/random",
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest",
-        "@eigen_archive//:eigen3",
     ],
 )
 
@@ -1652,6 +1657,7 @@ cc_test(
         "//tensorflow/lite:framework_stable",
         "//tensorflow/lite/core:framework_stable",
         "//tensorflow/lite/core/api",
+        "//tensorflow/lite/kernels/internal:float8",
         "//tensorflow/lite/kernels/internal:types",
         "//tensorflow/lite/schema:schema_fbs",
         "@com_google_absl//absl/memory",
@@ -1894,6 +1900,8 @@ cc_test(
         ":reduce_test_common",
         ":test_main",
         ":test_util",
+        "//tensorflow/lite/c:c_api_types",
+        "//tensorflow/lite/c:common",
         "//tensorflow/lite/schema:schema_fbs",
         "@com_google_googletest//:gtest",
         "@flatbuffers",
@@ -2118,6 +2126,7 @@ cc_test(
         ":test_main",
         ":test_util",
         "//tensorflow/lite:string",
+        "//tensorflow/lite/core/c:c_api_types",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/schema:schema_fbs",
         "//tensorflow/lite/types:half",
@@ -2150,6 +2159,7 @@ cc_test(
         ":test_main",
         ":test_util",
         "//tensorflow/lite/core/c:common",
+        "//tensorflow/lite/kernels/internal:float8",
         "//tensorflow/lite/schema:schema_fbs",
         "@com_google_googletest//:gtest",
     ],
@@ -2708,6 +2718,7 @@ cc_test(
         ":test_main",
         ":test_util",
         "//tensorflow/lite/core/c:common",
+        "//tensorflow/lite/kernels/internal:float8",
         "//tensorflow/lite/schema:schema_fbs",
         "@com_google_googletest//:gtest",
     ],
@@ -2930,6 +2941,7 @@ cc_test(
     deps = [
         ":test_main",
         ":test_util",
+        "//tensorflow/lite/core/c:c_api_types",
         "//tensorflow/lite/schema:schema_fbs",
         "//tensorflow/lite/types:half",
         "@com_google_googletest//:gtest",
@@ -3379,7 +3391,7 @@ cc_test(
     name = "unsorted_segment_min_test",
     size = "small",
     srcs = [
-        "unsorted_segment_sum_test.cc",
+        "unsorted_segment_min_test.cc",
         "unsorted_segment_test.cc",
         "unsorted_segment_test.h",
     ],
@@ -3454,7 +3466,10 @@ cc_test(
 )
 
 tflite_portable_test_suite_combined(
-    combine_conditions = {"deps": [":test_main"]},
+    combine_conditions = {"deps": [
+        ":test_main",
+        "//tensorflow/lite/kernels/internal:float8",
+    ]},
     # TODO(b/229985981) : Remove `nnapi_args` after adding Relu0To1 is completed.
     nnapi_args = ["--gunit_filter=*Reshape*"],
     #nnapi_args = ["--gunit_filter=-*QuantizedActivationsOpTest.Relu0To1*"],

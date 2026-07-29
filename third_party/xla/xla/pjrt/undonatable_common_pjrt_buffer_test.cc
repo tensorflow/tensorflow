@@ -23,13 +23,18 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/base/casts.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/future.h"
+#include "xla/hlo/builder/xla_builder.h"
+#include "xla/pjrt/common_pjrt_client.h"
 #include "xla/pjrt/device_event.h"
 #include "xla/pjrt/pjrt_client.h"
+#include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/plugin/xla_cpu/cpu_client_options.h"
 #include "xla/pjrt/plugin/xla_cpu/xla_cpu_pjrt_client.h"
 #include "xla/pjrt/raw_buffer.h"
@@ -77,39 +82,44 @@ class UndonatableCommonPjRtBufferTest : public ::testing::Test {
 
 // 1. Verify basic construction, acquisition, and identification.
 TEST_F(UndonatableCommonPjRtBufferTest, LifetimeAndAcquisition) {
-  auto buffer = std::make_unique<UndonatableCommonPjRtBuffer>(
-      shape_, raw_buffer_, absl::InlinedVector<PjRtDeviceEventRef, 2>(),
-      memory_space_);
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<PjRtBuffer> buffer,
+      UndonatableCommonPjRtBuffer::Create(std::move(src_buffer_)));
+  auto* undonatable_buffer =
+      dynamic_cast<UndonatableCommonPjRtBuffer*>(buffer.get());
+  ASSERT_NE(undonatable_buffer, nullptr);
 
   EXPECT_FALSE(buffer->IsDeleted());
   EXPECT_THAT(buffer->memory_space(), Eq(memory_space_));
 
   // Fast hold-free retrieval should yield the exact same underlying buffer.
-  PjRtRawBufferRef retrieved_raw = buffer->AcquireRawBufferRef();
+  PjRtRawBufferRef retrieved_raw = undonatable_buffer->AcquireRawBufferRef();
   EXPECT_THAT(retrieved_raw.get(), Eq(raw_buffer_.get()));
 }
 
 // 2. Verify Metadata Accessors.
 TEST_F(UndonatableCommonPjRtBufferTest, MetadataAccessors) {
-  auto buffer = std::make_unique<UndonatableCommonPjRtBuffer>(
-      shape_, raw_buffer_, absl::InlinedVector<PjRtDeviceEventRef, 2>(),
-      memory_space_);
+  bool expected_is_on_cpu = src_buffer_->IsOnCpu();
+  ASSERT_OK_AND_ASSIGN(size_t expected_size,
+                       src_buffer_->GetOnDeviceSizeInBytes());
+
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<PjRtBuffer> buffer,
+      UndonatableCommonPjRtBuffer::Create(std::move(src_buffer_)));
 
   EXPECT_THAT(buffer->device(), Eq(device_));
   EXPECT_THAT(buffer->client(), Eq(client_.get()));
-  EXPECT_EQ(buffer->IsOnCpu(), src_buffer_->IsOnCpu());
+  EXPECT_EQ(buffer->IsOnCpu(), expected_is_on_cpu);
 
-  ASSERT_OK_AND_ASSIGN(size_t expected_size,
-                       src_buffer_->GetOnDeviceSizeInBytes());
   ASSERT_OK_AND_ASSIGN(size_t size, buffer->GetOnDeviceSizeInBytes());
   EXPECT_EQ(size, expected_size);
 }
 
 // 3. Verify RawBuffer factory registry.
 TEST_F(UndonatableCommonPjRtBufferTest, RawBufferFactoryRegistryWorks) {
-  auto buffer = std::make_unique<UndonatableCommonPjRtBuffer>(
-      shape_, raw_buffer_, absl::InlinedVector<PjRtDeviceEventRef, 2>(),
-      memory_space_);
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<PjRtBuffer> buffer,
+      UndonatableCommonPjRtBuffer::Create(std::move(src_buffer_)));
 
   ASSERT_OK_AND_ASSIGN(PjRtRawBufferRef retrieved_raw,
                        PjRtRawBuffer::CreateRawAliasOfBuffer(buffer.get()));
@@ -124,18 +134,26 @@ TEST_F(UndonatableCommonPjRtBufferTest, DiesOnNullRawBuffer) {
                "raw_buffer cannot be null");
 }
 
+TEST_F(UndonatableCommonPjRtBufferTest, CreateReturnsErrorOnNullBuffer) {
+  EXPECT_THAT(UndonatableCommonPjRtBuffer::Create(nullptr),
+              StatusIs(absl::StatusCode::kInvalidArgument));
+}
+
 // 5. Verify calling Delete() on UndonatableCommonPjRtBuffer is a no-op:
 // IsDeleted() remains false and raw buffer acquisition continues to succeed.
 TEST_F(UndonatableCommonPjRtBufferTest, DeleteIsNoOpAndBufferRemainsValid) {
-  auto buffer = std::make_unique<UndonatableCommonPjRtBuffer>(
-      shape_, raw_buffer_, absl::InlinedVector<PjRtDeviceEventRef, 2>(),
-      memory_space_);
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<PjRtBuffer> buffer,
+      UndonatableCommonPjRtBuffer::Create(std::move(src_buffer_)));
 
   buffer->Delete();
   EXPECT_FALSE(buffer->IsDeleted());
 
   // Retrieving raw should continue to return the valid underlying buffer.
-  PjRtRawBufferRef retrieved_raw = buffer->AcquireRawBufferRef();
+  auto* undonatable_buffer =
+      dynamic_cast<UndonatableCommonPjRtBuffer*>(buffer.get());
+  ASSERT_NE(undonatable_buffer, nullptr);
+  PjRtRawBufferRef retrieved_raw = undonatable_buffer->AcquireRawBufferRef();
   EXPECT_THAT(retrieved_raw.get(), Eq(raw_buffer_.get()));
 
   // Critical constraint: Memory space metadata must still be safe/retrievable
@@ -145,9 +163,9 @@ TEST_F(UndonatableCommonPjRtBufferTest, DeleteIsNoOpAndBufferRemainsValid) {
 
 // 6. Verify rejection of donations (Core Guarantee Contract).
 TEST_F(UndonatableCommonPjRtBufferTest, RejectsDonation) {
-  auto buffer = std::make_unique<UndonatableCommonPjRtBuffer>(
-      shape_, raw_buffer_, absl::InlinedVector<PjRtDeviceEventRef, 2>(),
-      memory_space_);
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<PjRtBuffer> buffer,
+      UndonatableCommonPjRtBuffer::Create(std::move(src_buffer_)));
 
   EXPECT_THAT(buffer->DonateWithControlDependency({}),
               StatusIs(absl::StatusCode::kInvalidArgument));
@@ -203,6 +221,80 @@ TEST_F(UndonatableCommonPjRtBufferTest, GetReadyFuture_PropagatesErrors) {
   absl::Status status = ready_fut.Await();
   EXPECT_TRUE(ready_fut.IsReady());
   EXPECT_THAT(status, StatusIs(absl::StatusCode::kInternal, "fake error"));
+}
+
+TEST_F(UndonatableCommonPjRtBufferTest, ExecutesSuccessfullyWithoutDonation) {
+  XlaBuilder builder("identity");
+  auto param = Parameter(&builder, 0, *shape_, "param");
+  ASSERT_OK_AND_ASSIGN(auto comp, builder.Build(param));
+
+  ASSERT_OK_AND_ASSIGN(auto executable,
+                       client_->CompileAndLoad(comp, CompileOptions{}));
+
+  auto* common_pjrt_client = absl::down_cast<CommonPjRtClient*>(client_.get());
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<PjRtBuffer> buffer,
+      common_pjrt_client->MakeUndonatable(std::move(src_buffer_)));
+
+  ASSERT_OK_AND_ASSIGN(auto results,
+                       executable->Execute({{buffer.get()}}, ExecuteOptions{}));
+
+  ASSERT_EQ(results.size(), 1);     // One replica
+  ASSERT_EQ(results[0].size(), 1);  // One output buffer
+  PjRtBuffer* output_buffer = results[0][0].get();
+  EXPECT_NE(output_buffer, nullptr);
+}
+
+TEST_F(UndonatableCommonPjRtBufferTest, ExecuteFailsIfDonationRequested) {
+  XlaBuilder builder("identity_aliased");
+  auto param = Parameter(&builder, 0, *shape_, "param");
+  builder.SetUpAlias({/*output_index=*/}, /*param_number=*/0,
+                     /*param_index=*/{});
+  ASSERT_OK_AND_ASSIGN(auto comp, builder.Build(param));
+
+  ASSERT_OK_AND_ASSIGN(auto executable,
+                       client_->CompileAndLoad(comp, CompileOptions{}));
+
+  auto* common_pjrt_client = absl::down_cast<CommonPjRtClient*>(client_.get());
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<PjRtBuffer> buffer,
+      common_pjrt_client->MakeUndonatable(std::move(src_buffer_)));
+
+  auto result_or = executable->Execute({{buffer.get()}}, ExecuteOptions{});
+
+  EXPECT_THAT(
+      result_or.status(),
+      StatusIs(absl::StatusCode::kInvalidArgument,
+               ::testing::HasSubstr(
+                   "Donation requested on UndonatableCommonPjRtBuffer")));
+}
+
+TEST_F(UndonatableCommonPjRtBufferTest,
+       ExecuteFailsIfDefinitionEventIsInError) {
+  auto future = tsl::MakeUnconstructedAsyncValueRef<int>();
+  future.SetError(absl::InternalError("Simulated upstream error"));
+
+  absl::InlinedVector<PjRtDeviceEventRef, 2> events;
+  events.push_back(
+      PjRtDeviceEventPtr::FromAsyncValue(future.GetAsyncValue()).CopyRef());
+
+  auto buffer = std::make_unique<UndonatableCommonPjRtBuffer>(
+      shape_, raw_buffer_, std::move(events), memory_space_);
+
+  XlaBuilder builder("identity");
+  auto param = Parameter(&builder, 0, *shape_, "param");
+  ASSERT_OK_AND_ASSIGN(auto comp, builder.Build(param));
+  ASSERT_OK_AND_ASSIGN(auto executable,
+                       client_->CompileAndLoad(comp, CompileOptions{}));
+
+  ASSERT_OK_AND_ASSIGN(auto results,
+                       executable->Execute({{buffer.get()}}, ExecuteOptions{}));
+  ASSERT_EQ(results.size(), 1);     // One replica
+  ASSERT_EQ(results[0].size(), 1);  // One output buffer
+  PjRtBuffer* output_buffer = results[0][0].get();
+  EXPECT_THAT(output_buffer->GetReadyFuture().Await(),
+              StatusIs(absl::StatusCode::kInternal,
+                       ::testing::HasSubstr("Simulated upstream error")));
 }
 
 }  // namespace

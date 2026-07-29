@@ -277,13 +277,14 @@ absl::StatusOr<const se::CommandBuffer::Command*> KernelThunk::Record(
   if (auto* create = std::get_if<RecordCreate>(&record_action)) {
     return command_buffer->CreateLaunch(
         launch_dimensions_.thread_counts_per_block(),
-        launch_dimensions_.block_counts(), *kernel, *packed_args,
+        launch_dimensions_.block_counts(), cluster_dim_, *kernel, *packed_args,
         create->dependencies, priority());
   }
   if (auto* update = std::get_if<RecordUpdate>(&record_action)) {
     RETURN_IF_ERROR(command_buffer->UpdateLaunch(
         update->command, launch_dimensions_.thread_counts_per_block(),
-        launch_dimensions_.block_counts(), *kernel, *packed_args));
+        launch_dimensions_.block_counts(), cluster_dim_, *kernel,
+        *packed_args));
     return update->command;
   }
   return Internal("Invalid record action");

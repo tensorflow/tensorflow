@@ -125,7 +125,15 @@ else
   # When using the Linux-like path, venv creation quietly fails, which is
   # why it's converted here.
   venv_dir=$(cygpath -m $venv_dir)
-  "/c/python${TFCI_PYTHON_VERSION}/python.exe" -m venv "$venv_dir"
+  py_exe="/c/python${TFCI_PYTHON_VERSION}/python.exe"
+  if [[ ! -f "$py_exe" ]]; then
+    py_exe=$(which "python${TFCI_PYTHON_VERSION}" 2>/dev/null || which "python${TFCI_PYTHON_VERSION}.exe" 2>/dev/null)
+  fi
+  if [[ -z "$py_exe" ]]; then
+    echo "Error: Could not find python${TFCI_PYTHON_VERSION} executable."
+    exit 1
+  fi
+  "$py_exe" -m venv "$venv_dir"
   python="$venv_dir/Scripts/python.exe"
 fi
 

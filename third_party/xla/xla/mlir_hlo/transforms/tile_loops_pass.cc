@@ -17,7 +17,6 @@ limitations under the License.
 // tiled loops.
 
 #include <cstdint>
-#include <memory>
 #include <utility>
 
 #include "llvm/ADT/STLExtras.h"

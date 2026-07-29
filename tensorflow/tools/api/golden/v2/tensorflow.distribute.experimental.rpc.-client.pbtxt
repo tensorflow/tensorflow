@@ -12,5 +12,6 @@ tf_class {
   member_method {
     name: "create"
     argspec: "args=[\'rpc_layer\', \'address\', \'name\', \'timeout_in_ms\'], varargs=None, keywords=None, defaults=[\'\', \'0\'], "
+    method_kind: STATIC
   }
 }

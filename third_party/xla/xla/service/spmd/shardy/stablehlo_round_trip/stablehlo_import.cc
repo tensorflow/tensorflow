@@ -377,13 +377,13 @@ TensorShardingAttr convertToSdySharding(
 
     mlir::sdy::ReductionOp reductionOp = mlir::sdy::ReductionOp::SUM;
     switch (namedSharding.reduction_op()) {
-      case xla::NamedSharding::ReductionOp::kSum:
+      case xla::ReductionOp::kSum:
         reductionOp = mlir::sdy::ReductionOp::SUM;
         break;
-      case xla::NamedSharding::ReductionOp::kMax:
+      case xla::ReductionOp::kMax:
         reductionOp = mlir::sdy::ReductionOp::MAX;
         break;
-      case xla::NamedSharding::ReductionOp::kMin:
+      case xla::ReductionOp::kMin:
         reductionOp = mlir::sdy::ReductionOp::MIN;
         break;
     }
@@ -415,14 +415,29 @@ TensorShardingAttr convertToSdySharding(
 
   if (hloSharding.IsReplicated() || hloSharding.IsManual() ||
       hloSharding.IsUnknown()) {
-    if (inlineMesh) {
-      return TensorShardingAttr::getFullyReplicated(
-          ctx, rank, globalMesh,
-          /*isClosed=*/!hloSharding.IsUnknown() && !openDims);
+    mlir::sdy::ReductionOp reductionOp = mlir::sdy::ReductionOp::SUM;
+    switch (hloSharding.reduction_op()) {
+      case xla::ReductionOp::kSum:
+        reductionOp = mlir::sdy::ReductionOp::SUM;
+        break;
+      case xla::ReductionOp::kMax:
+        reductionOp = mlir::sdy::ReductionOp::MAX;
+        break;
+      case xla::ReductionOp::kMin:
+        reductionOp = mlir::sdy::ReductionOp::MIN;
+        break;
     }
-    return TensorShardingAttr::getFullyReplicated(
-        ctx, rank, kGlobalMeshName,
-        /*isClosed=*/!hloSharding.IsUnknown() && !openDims);
+    SmallVector<DimensionShardingAttr> dimShardings(
+        rank, DimensionShardingAttr::get(
+                  ctx, {}, !hloSharding.IsUnknown() && !openDims));
+    if (inlineMesh) {
+      return TensorShardingAttr::get(ctx, globalMesh, dimShardings,
+                                     /*replicatedAxes=*/{},
+                                     /*unreducedAxes=*/{}, reductionOp);
+    }
+    return TensorShardingAttr::get(ctx, StringAttr::get(ctx, kGlobalMeshName),
+                                   dimShardings, /*replicatedAxes=*/{},
+                                   /*unreducedAxes=*/{}, reductionOp);
   }
 
   CHECK(hloSharding.IsTiled());
@@ -507,12 +522,44 @@ TensorShardingAttr convertToSdySharding(
 
   SmallVector<AxisRefAttr> replicatedAxes;
   SmallVector<AxisRefAttr> unreducedAxes;
+  for (auto [localAxisIndex, subDimInfo] : llvm::enumerate(result->sub_dims)) {
+    if (subDimInfo.tile_dim_index >= rank) {
+      int64_t subgroupIndex = subDimInfo.tile_sub_dim_index;
+      if (subgroupIndex < hloSharding.subgroup_types().size()) {
+        auto subgroupType = hloSharding.subgroup_types()[subgroupIndex];
+        if (subgroupType == xla::OpSharding::REPLICATED) {
+          absl::c_copy(localAxisIndexToGlobalAxes[localAxisIndex],
+                       std::back_inserter(replicatedAxes));
+        } else if (subgroupType == xla::OpSharding::UNREDUCED) {
+          absl::c_copy(localAxisIndexToGlobalAxes[localAxisIndex],
+                       std::back_inserter(unreducedAxes));
+        }
+      }
+    }
+  }
+
+  mlir::sdy::ReductionOp reductionOp = mlir::sdy::ReductionOp::SUM;
+  if (!unreducedAxes.empty()) {
+    switch (hloSharding.reduction_op()) {
+      case xla::ReductionOp::kSum:
+        reductionOp = mlir::sdy::ReductionOp::SUM;
+        break;
+      case xla::ReductionOp::kMax:
+        reductionOp = mlir::sdy::ReductionOp::MAX;
+        break;
+      case xla::ReductionOp::kMin:
+        reductionOp = mlir::sdy::ReductionOp::MIN;
+        break;
+    }
+  }
+
   if (inlineMesh) {
     return TensorShardingAttr::get(ctx, globalMesh, dimShardings,
-                                   replicatedAxes, unreducedAxes);
+                                   replicatedAxes, unreducedAxes, reductionOp);
   }
   return TensorShardingAttr::get(ctx, StringAttr::get(ctx, kGlobalMeshName),
-                                 dimShardings, replicatedAxes, unreducedAxes);
+                                 dimShardings, replicatedAxes, unreducedAxes,
+                                 reductionOp);
 }
 
 namespace {

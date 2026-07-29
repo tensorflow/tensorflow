@@ -192,7 +192,7 @@ void DoHelpCommand() {
   std::cout << R"(Commands:
   <instruction> [<width>] [/ <boundary_instruction>+]
     Renders a neighborhood of <width> nodes around <instruction>, without going
-    beyond the optional boundary instructions.  If <width> is not provided, 
+    beyond the optional boundary instructions.  If <width> is not provided,
     the default value is )"
             << kDefaultWidth << R"(.
   allpaths <instruction> <instruction> [<n>]
@@ -220,6 +220,9 @@ void DoHelpCommand() {
     Creates a new HLO module with <instruction> as entry computation root. If
     <height> is specified, the new computation contains nodes up to <height>
     nodes above the root.
+  stacktrace <instruction>
+    Prints detailed metadata for <instruction>, including opcode, op type,
+    op name, source location, and stack trace if available.
   help
     Prints this usage information.
   quit
@@ -425,6 +428,42 @@ void DoInfoCommand(const HloModule& module,
                 << std::endl;
     }
   }
+}
+
+void DoStacktraceCommand(const HloModule& module,
+                         const std::vector<std::string>& tokens) {
+  if (tokens.size() != 2) {
+    std::cerr << "Usage: stacktrace <instruction>" << std::endl;
+    return;
+  }
+  std::string node_name = tokens[1];
+  const HloInstruction* instr = FindInstruction(module, node_name);
+  if (!instr) {
+    std::cerr << "Couldn't find HloInstruction named " << node_name
+              << std::endl;
+    return;
+  }
+
+  std::cout << "Instruction: " << instr->name()
+            << " (opcode: " << instr->opcode() << ")" << std::endl;
+  const OpMetadata& metadata = instr->metadata();
+  std::cout << "Metadata:" << std::endl;
+  if (!metadata.op_type().empty()) {
+    std::cout << "  Op Type: " << metadata.op_type() << std::endl;
+  }
+  if (!metadata.op_name().empty()) {
+    std::cout << "  Op Name: " << metadata.op_name() << std::endl;
+  }
+  if (!metadata.source_file().empty()) {
+    std::cout << "  Source Location: " << metadata.source_file();
+    if (metadata.source_line() != 0) {
+      std::cout << ":" << metadata.source_line();
+    }
+    std::cout << std::endl;
+  }
+  std::string stack_trace = instr->GetStackTraceStringFromMetadata();
+  std::cout << "Stack Trace:" << std::endl;
+  std::cout << stack_trace << std::endl;
 }
 
 void DoExtractCommand(const HloModule& module,
@@ -721,6 +760,8 @@ void InteractiveDumpGraphs(const Options& opts, const HloModule& module) {
       DoInfoCommand(module, tokens);
     } else if (tokens[0] == "extract") {
       DoExtractCommand(module, tokens);
+    } else if (tokens[0] == "stacktrace") {
+      DoStacktraceCommand(module, tokens);
     } else if (tokens[0] == "allpaths") {
       DoAllPathsCommand(opts, module, tokens);
     } else {

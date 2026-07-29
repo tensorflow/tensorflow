@@ -66,6 +66,9 @@ KernelLoaderSpec GetAddI32PtxKernelSpec();
 // Returns TMA test kernel loaded from PTX.
 KernelLoaderSpec GetTmaPtxKernelSpec();
 
+// Returns a minimal cluster kernel loaded from PTX.
+KernelLoaderSpec GetMinimalClusterKernelSpec();
+
 }  // namespace stream_executor::gpu
 
 #endif  // XLA_STREAM_EXECUTOR_GPU_GPU_TEST_KERNELS_H_

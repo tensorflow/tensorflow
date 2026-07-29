@@ -20,6 +20,8 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
+#include <gmock/gmock.h>
+#include <gtest/gtest.h>
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/tsl/platform/status_macros.h"
@@ -56,7 +58,7 @@ class GpuAllGatherOptimizerTest : public HloHardwareIndependentTestBase {
   }
 
   template <HloOpcode oc>
-  size_t CollectiveCount(std::unique_ptr<HloModule> &module) {
+  size_t CollectiveCount(std::unique_ptr<HloModule>& module) {
     return absl::c_count_if(module->entry_computation()->instructions(),
                             HloPredicateIsOp<oc>);
   }
@@ -226,6 +228,49 @@ add.1 = bf16[8,128,128]{2,1,0} add(all-gather.1, all-gather.2)
                                                /*num_replicas=*/8,
                                                /*num_partitions=*/1,
                                                /*expect_change=*/false));
+}
+
+TEST_F(GpuAllGatherOptimizerTest, CollectiveGroupKeyConstrainsOptimization) {
+  constexpr absl::string_view kHloString = R"(
+HloModule module
+
+ENTRY main {
+  p0 = f32[4] parameter(0)
+  p1 = f32[4] parameter(1)
+  p2 = f32[4] parameter(2)
+  p3 = f32[4] parameter(3)
+  p4 = f32[4] parameter(4)
+  p5 = f32[4] parameter(5)
+  same0 = f32[8] all-gather(p0), dimensions={0}, replica_groups={{0,1}},
+    frontend_attributes={collective_group_key="same"}
+  same1 = f32[8] all-gather(p1), dimensions={0}, replica_groups={{0,1}},
+    frontend_attributes={collective_group_key="same"}
+  same_add = f32[8] add(same0, same1)
+  different0 = f32[8] all-gather(p2), dimensions={0}, replica_groups={{0,1}},
+    frontend_attributes={collective_group_key="different_0"}
+  different1 = f32[8] all-gather(p3), dimensions={0}, replica_groups={{0,1}},
+    frontend_attributes={collective_group_key="different_1"}
+  different_add = f32[8] add(different0, different1)
+  mixed0 = f32[8] all-gather(p4), dimensions={0}, replica_groups={{0,1}},
+    frontend_attributes={collective_group_key="mixed"}
+  mixed1 = f32[8] all-gather(p5), dimensions={0}, replica_groups={{0,1}}
+  mixed_add = f32[8] add(mixed0, mixed1)
+  ROOT result = tuple(same_add, different_add, mixed_add)
+}
+)";
+
+  ASSERT_OK_AND_ASSIGN(auto module, RunPass(kHloString, /*num_replicas=*/1,
+                                            /*num_partitions=*/2,
+                                            /*expect_change=*/true));
+
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  HloInstruction* combined = root->mutable_operand(0);
+  // Only the matching-key all-gathers are combined; the mismatched and
+  // mixed-key operands remain unfused adds.
+  EXPECT_EQ(combined->opcode(), HloOpcode::kAllGather);
+  EXPECT_EQ(root->operand(1)->opcode(), HloOpcode::kAdd);
+  EXPECT_EQ(root->operand(2)->opcode(), HloOpcode::kAdd);
+  EXPECT_EQ(combined->get_frontend_attribute("collective_group_key"), "same");
 }
 
 }  // namespace

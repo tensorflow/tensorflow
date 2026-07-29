@@ -45,7 +45,7 @@ limitations under the License.
 namespace xla {
 namespace {
 
-using TimeBound = HloLiveRange::TimeBound;
+using LiveRangeBounds = HloLiveRange::LiveRangeBounds;
 class HloLiveRangeTest : public HloHardwareIndependentTestBase {
  protected:
   HloLiveRangeTest() : module_(CreateNewVerifiedModule()) {}
@@ -73,8 +73,8 @@ class HloLiveRangeTest : public HloHardwareIndependentTestBase {
                                                                   index);
   }
 
-  HloLiveRange::TimeBound LiveRangeAt(const HloInstruction* instruction,
-                                      const ShapeIndex& index = {}) const {
+  HloLiveRange::LiveRangeBounds LiveRangeAt(
+      const HloInstruction* instruction, const ShapeIndex& index = {}) const {
     auto* value = BufferAt(instruction, index);
     return hlo_live_range_->buffer_live_ranges().at(value);
   }
@@ -117,10 +117,10 @@ TEST_F(HloLiveRangeTest, Multiply) {
   CheckSchedule();
 
   // Parameters live from beginning to end.
-  EXPECT_EQ(LiveRangeAt(paramA), TimeBound({0, 3}));
-  EXPECT_EQ(LiveRangeAt(paramX), TimeBound({0, 3}));
+  EXPECT_EQ(LiveRangeAt(paramA), LiveRangeBounds({0, 3}));
+  EXPECT_EQ(LiveRangeAt(paramX), LiveRangeBounds({0, 3}));
   // Mul lives after parameters are defined to the end.
-  EXPECT_EQ(LiveRangeAt(mul), TimeBound({2, 3}));
+  EXPECT_EQ(LiveRangeAt(mul), LiveRangeBounds({2, 3}));
 }
 
 TEST_F(HloLiveRangeTest, MultiplyAdd) {
@@ -147,14 +147,14 @@ TEST_F(HloLiveRangeTest, MultiplyAdd) {
   CheckSchedule();
 
   // Parameters live from beginning to end.
-  EXPECT_EQ(LiveRangeAt(paramA), TimeBound({0, 5}));
-  EXPECT_EQ(LiveRangeAt(paramX), TimeBound({0, 5}));
-  EXPECT_EQ(LiveRangeAt(paramY), TimeBound({0, 5}));
+  EXPECT_EQ(LiveRangeAt(paramA), LiveRangeBounds({0, 5}));
+  EXPECT_EQ(LiveRangeAt(paramX), LiveRangeBounds({0, 5}));
+  EXPECT_EQ(LiveRangeAt(paramY), LiveRangeBounds({0, 5}));
   // Mul starts after parameter are defined (Note: all parameters are defined at
   // 0, mul starts at 2 which is an arbitrary number).
-  EXPECT_EQ(LiveRangeAt(mul), TimeBound({2, 4}));
+  EXPECT_EQ(LiveRangeAt(mul), LiveRangeBounds({2, 4}));
   // Add lives after mul is defined to the end of the program.
-  EXPECT_EQ(LiveRangeAt(add), TimeBound({4, 5}));
+  EXPECT_EQ(LiveRangeAt(add), LiveRangeBounds({4, 5}));
 }
 
 TEST_F(HloLiveRangeTest, LiveOutBuffers) {
@@ -184,14 +184,14 @@ TEST_F(HloLiveRangeTest, LiveOutBuffers) {
   CheckSchedule();
 
   // Parameters live from beginning to end.
-  EXPECT_EQ(LiveRangeAt(paramA), TimeBound({0, 6}));
-  EXPECT_EQ(LiveRangeAt(paramX), TimeBound({0, 6}));
-  EXPECT_EQ(LiveRangeAt(paramY), TimeBound({0, 6}));
+  EXPECT_EQ(LiveRangeAt(paramA), LiveRangeBounds({0, 6}));
+  EXPECT_EQ(LiveRangeAt(paramX), LiveRangeBounds({0, 6}));
+  EXPECT_EQ(LiveRangeAt(paramY), LiveRangeBounds({0, 6}));
   // Mul starts after parameter are defined (Note: all parameters are defined at
   // 0, mul starts at 2 which is an arbitrary number).
-  EXPECT_EQ(LiveRangeAt(mul), TimeBound({2, 6}));
+  EXPECT_EQ(LiveRangeAt(mul), LiveRangeBounds({2, 6}));
   // Add lives after mul is defined to the end of the program.
-  EXPECT_EQ(LiveRangeAt(add), TimeBound({4, 6}));
+  EXPECT_EQ(LiveRangeAt(add), LiveRangeBounds({4, 6}));
 }
 
 TEST_F(HloLiveRangeTest, InstructionScheduledAfterRoot) {
@@ -224,15 +224,15 @@ TEST_F(HloLiveRangeTest, InstructionScheduledAfterRoot) {
   CheckSchedule();
 
   // Parameters live from beginning to end.
-  EXPECT_EQ(LiveRangeAt(paramA), TimeBound({0, 7}));
-  EXPECT_EQ(LiveRangeAt(paramX), TimeBound({0, 7}));
-  EXPECT_EQ(LiveRangeAt(paramY), TimeBound({0, 7}));
+  EXPECT_EQ(LiveRangeAt(paramA), LiveRangeBounds({0, 7}));
+  EXPECT_EQ(LiveRangeAt(paramX), LiveRangeBounds({0, 7}));
+  EXPECT_EQ(LiveRangeAt(paramY), LiveRangeBounds({0, 7}));
   // Live out buffers live through the computation.
 
-  EXPECT_EQ(LiveRangeAt(mul), TimeBound({2, 7}));
-  EXPECT_EQ(LiveRangeAt(add), TimeBound({4, 7}));
-  EXPECT_EQ(LiveRangeAt(tuple), TimeBound({5, 7}));
-  EXPECT_EQ(LiveRangeAt(add2), TimeBound({6, 6}));
+  EXPECT_EQ(LiveRangeAt(mul), LiveRangeBounds({2, 7}));
+  EXPECT_EQ(LiveRangeAt(add), LiveRangeBounds({4, 7}));
+  EXPECT_EQ(LiveRangeAt(tuple), LiveRangeBounds({5, 7}));
+  EXPECT_EQ(LiveRangeAt(add2), LiveRangeBounds({6, 6}));
 }
 
 TEST_F(HloLiveRangeTest, AliasedParameter) {
@@ -263,16 +263,16 @@ TEST_F(HloLiveRangeTest, AliasedParameter) {
   CheckSchedule();
 
   // Non-readonly parameter live like other normal buffers.
-  EXPECT_EQ(LiveRangeAt(paramA), TimeBound({0, 2}));
+  EXPECT_EQ(LiveRangeAt(paramA), LiveRangeBounds({0, 2}));
 
   // Readonly parameters live from beginning to end.
-  EXPECT_EQ(LiveRangeAt(paramX), TimeBound({0, 5}));
-  EXPECT_EQ(LiveRangeAt(paramY), TimeBound({0, 5}));
+  EXPECT_EQ(LiveRangeAt(paramX), LiveRangeBounds({0, 5}));
+  EXPECT_EQ(LiveRangeAt(paramY), LiveRangeBounds({0, 5}));
   // Mul starts after parameter are defined (Note: all parameters are defined at
   // 0, mul starts at 2 which is an arbitrary number).
-  EXPECT_EQ(LiveRangeAt(mul), TimeBound({2, 4}));
+  EXPECT_EQ(LiveRangeAt(mul), LiveRangeBounds({2, 4}));
   // Add lives after mul is defined to the end of the program.
-  EXPECT_EQ(LiveRangeAt(add), TimeBound({4, 5}));
+  EXPECT_EQ(LiveRangeAt(add), LiveRangeBounds({4, 5}));
 }
 
 TEST_F(HloLiveRangeTest, While) {
@@ -405,11 +405,11 @@ ENTRY %While {
                                   .value());
   }
 
-  absl::flat_hash_map<const HloValue*, HloLiveRange::TimeBound>&
+  absl::flat_hash_map<const HloValue*, HloLiveRange::LiveRangeBounds>&
       buffer_live_ranges_0 = hlo_live_ranges[0]->buffer_live_ranges();
   for (const auto& iter : buffer_live_ranges_0) {
     for (size_t i = 1; i < num_runs; i++) {
-      absl::flat_hash_map<const HloValue*, HloLiveRange::TimeBound>&
+      absl::flat_hash_map<const HloValue*, HloLiveRange::LiveRangeBounds>&
           buffer_live_ranges_i = hlo_live_ranges[i]->buffer_live_ranges();
       auto found_iter = buffer_live_ranges_i.find(iter.first);
       EXPECT_TRUE(found_iter != buffer_live_ranges_i.end())

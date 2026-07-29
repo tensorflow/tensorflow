@@ -21,6 +21,7 @@ limitations under the License.
 #include <variant>
 
 #include "absl/status/status.h"
+#include "xla/backends/gpu/collectives/gpu_communicator.h"
 #include "xla/core/collectives/symmetric_memory.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/gpu/ragged_all_to_all_kernel.h"
@@ -73,6 +74,16 @@ absl::Status RunRaggedAllToAllWithSymmetricMemoryKernel(
     se::DeviceAddressBase output_offsets_buffer, int64_t num_outputs,
     int64_t num_updates_per_output, int64_t num_input_rows,
     int64_t num_row_elements);
+
+absl::Status RunDeviceRaggedAllToAllKernel(
+    se::Stream* stream, PrimitiveType element_type,
+    xla::gpu::GpuDeviceCommunicator* dev_comm, xla::SymmetricMemory* send_win,
+    xla::SymmetricMemory* recv_win, se::DeviceAddressBase input_offsets_buffer,
+    se::DeviceAddressBase send_sizes_buffer,
+    se::DeviceAddressBase output_offsets_buffer, int64_t num_ranks,
+    int64_t num_updates_per_replica, int64_t num_row_elements,
+    int64_t cta_count, int64_t input_buffer_offset_bytes,
+    int64_t output_buffer_offset_bytes);
 
 }  // namespace xla::gpu
 

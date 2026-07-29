@@ -20,6 +20,7 @@ limitations under the License.
 #include "absl/functional/any_invocable.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/cord.h"
 #include "absl/strings/string_view.h"
 #include "llvm/Support/ExtensibleRTTI.h"
 #include "xla/python/ifrt/client.h"
@@ -69,7 +70,7 @@ class IfrtIrProgramCompiler final
       const DeviceListRef& devices) const override;
 
   tsl::Future<LoadedExecutableRef> DeserializeLoadedExecutable(
-      absl::string_view serialized,
+      const absl::Cord& serialized,
       std::unique_ptr<DeserializeExecutableOptions> options) override;
 
  private:

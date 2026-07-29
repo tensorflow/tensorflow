@@ -1200,6 +1200,10 @@ absl::flat_hash_map<int, HloInstruction*> CreateSinkedAllReduces(
                 old_reduce_scatter->use_global_device_ids(),
                 old_reduce_scatter->scatter_dimension()));
       }
+      // The recreated collective has the same opcode, so preserve its metadata,
+      // sharding, frontend attributes, and backend config. Channel IDs are not
+      // derived state, so the newly allocated channel ID remains intact.
+      loop_all_reduce->SetupDerivedInstruction(all_reduced_delta);
 
       if (!ShapeUtil::SameElementType(all_reduced_delta->shape(),
                                       accumulation_buffer_shape)) {

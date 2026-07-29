@@ -134,6 +134,19 @@ struct Options {
   // Backend-specific integer value that describes the alternate memory.
   int64_t alternate_memory_space = 0;
 
+  // Color of "view" values. Views are zero-copy, possibly sub-region aliases
+  // into another allocation. We identify them by their color. MSA extends the
+  // pointed-to buffer's allocation to account for the live range of views to
+  // it. Pair with an is_allowed_in_alternate_mem_fn that rejects view colored
+  // values. std::nullopt disables views.
+  std::optional<int64_t> dus_view_color;
+
+  // When true, a view's source buffer is kept in default memory instead of
+  // being considered for alternate memory. Set this to avoid the superlinear
+  // compile time growth that can occur when views extend the live ranges of
+  // while loop carried buffers. Only meaningful when dus_view_color is set.
+  bool view_source_default_memory_only = false;
+
   // Maximum size of the alternate memory space.
   int64_t max_size_in_bytes = 0;
 
@@ -354,6 +367,10 @@ struct Options {
   // ones. If it fails to replace the slice, it keeps the sync version.
   bool enable_sync_slice_replacement = false;
 
+  // Used in block prefetching mode. If true, try to asyncify DMA like custom
+  // fusion instructions, like cross-buffer slice fusions.
+  bool enable_sync_custom_fusion_replacement = false;
+
   // If non-zero, this is the number of extra outstanding async copies that we
   // allow for each sync mem op that is converted to an async mem op.
   int extend_async_copies_limit_for_sync_mem_op_conversion = 0;
@@ -461,6 +478,14 @@ struct Options {
   // assignment algorithm.
   absl::flat_hash_map<HloPosition, std::vector<CustomCallPrefetchDetails>>
       hlo_position_to_custom_call_prefetch_details;
+
+  // Used in block prefetching mode. Returns the operand index of the source
+  // buffer (source of a DMA) for a custom fusion instruction that can be
+  // asyncified. Currently this matches cross-buffer slice fusions which can
+  // be lowered to asynchronous DMAs.
+  std::function<std::optional<int64_t>(const HloInstruction*)>
+      custom_fusion_block_prefetch_operand_index_fn =
+          [](const HloInstruction*) { return std::nullopt; };
 
   std::string ToString() const;
 };

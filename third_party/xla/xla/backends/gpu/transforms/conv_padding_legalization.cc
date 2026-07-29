@@ -19,24 +19,26 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <cstdlib>
+#include <optional>
 #include <vector>
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/literal_util.h"
 #include "xla/service/gpu/cublas_cudnn.h"
 #include "xla/service/hlo_creation_utils.h"
 #include "xla/service/shape_inference.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/window_util.h"
 #include "xla/xla_data.pb.h"
@@ -45,11 +47,40 @@ namespace xla {
 namespace gpu {
 
 namespace {
+absl::StatusOr<std::optional<CudnnConvKind>> GetCudnnConvKindForInstruction(
+    const HloInstruction* instr) {
+  if (instr->opcode() == HloOpcode::kCustomCall) {
+    ASSIGN_OR_RETURN(CudnnConvKind kind,
+                     GetCudnnConvKind(Cast<HloCustomCallInstruction>(instr)));
+    return std::make_optional(kind);
+  }
+  if (instr->opcode() == HloOpcode::kConvolution) {
+    auto kind = Cast<HloConvolutionInstruction>(instr)->convolution_kind();
+    switch (kind) {
+      case CONVOLUTION_KIND_FPROP:
+        return std::make_optional(CudnnConvKind::kForward);
+      case CONVOLUTION_KIND_DGRAD:
+        return std::make_optional(CudnnConvKind::kBackwardInput);
+      case CONVOLUTION_KIND_WGRAD:
+        return std::make_optional(CudnnConvKind::kBackwardFilter);
+      case CONVOLUTION_KIND_UNSET:
+        return std::nullopt;
+      default:
+        return absl::InternalError("Unknown convolution kind");
+    }
+  }
+  return absl::InternalError("Not a convolution instruction");
+}
+
 bool IsForwardConvolutionCanonical(const HloInstruction& conv) {
-  CHECK(conv.custom_call_target() == kCudnnConvForwardCallTarget ||
-        conv.custom_call_target() ==
-            kCudnnConvBiasActivationForwardCallTarget ||
-        conv.custom_call_target() == kCudnnConvForwardGraphCallTarget);
+  if (conv.opcode() == HloOpcode::kCustomCall) {
+    CHECK(conv.custom_call_target() == kCudnnConvForwardCallTarget ||
+          conv.custom_call_target() ==
+              kCudnnConvBiasActivationForwardCallTarget ||
+          conv.custom_call_target() == kCudnnConvForwardGraphCallTarget);
+  } else {
+    CHECK(conv.opcode() == HloOpcode::kConvolution);
+  }
   return window_util::HasSymmetricPadding(conv.window()) &&
          !window_util::HasNegativePadding(conv.window()) &&
          !window_util::HasBaseDilation(conv.window());
@@ -229,8 +260,10 @@ void IncreasePaddingHighBy(int64_t delta, WindowDimension* window_dim) {
 
 bool ConvPaddingLegalization::CanonicalizeBackwardFilterConvolution(
     HloInstruction* backward_conv) {
-  CHECK_EQ(backward_conv->custom_call_target(),
-           kCudnnConvBackwardFilterCallTarget);
+  auto kind_or = GetCudnnConvKindForInstruction(backward_conv);
+  CHECK_OK(kind_or);
+  CHECK(kind_or.value().has_value());
+  CHECK(*(kind_or.value()) == CudnnConvKind::kBackwardFilter);
   if (window_util::HasSymmetricPadding(backward_conv->window())) {
     return false;
   }
@@ -301,6 +334,7 @@ bool ConvPaddingLegalization::CanonicalizeBackwardFilterConvolution(
 
 bool ConvPaddingLegalization::CanonicalizeBackwardInputConvolution(
     HloInstruction* backward_conv) {
+  bool is_custom_call = backward_conv->opcode() == HloOpcode::kCustomCall;
   if (window_util::HasSymmetricPadding(backward_conv->window())) {
     return false;
   }
@@ -311,7 +345,9 @@ bool ConvPaddingLegalization::CanonicalizeBackwardInputConvolution(
 
   // The backward_conv CustomCall returns a tuple (conv_result, scratch_memory).
   // Get the shape of conv_result.
-  Shape backward_conv_shape = backward_conv->shape().tuple_shapes(0);
+  Shape backward_conv_shape = is_custom_call
+                                  ? backward_conv->shape().tuple_shapes(0)
+                                  : backward_conv->shape();
 
   Shape new_backward_conv_shape = backward_conv_shape;
   for (size_t i = 0; i < backward_conv->window().dimensions_size(); ++i) {
@@ -323,23 +359,48 @@ bool ConvPaddingLegalization::CanonicalizeBackwardInputConvolution(
       // cuDNN convolution (which doesn't support negative padding) to fail.
       return false;
     }
-    // If the backward convolution has uneven padding on the activations, we
-    // move some padding on the larger end to "internal" padding, so that the
-    // backward convolution produces larger activations which get sliced later.
+    // If the backward convolution has asymmetric padding, we adjust the window
+    // padding to make it symmetric and insert a post-convolution kSlice to crop
+    // out the extra boundary elements.
     //
-    // For example, suppose we have a non-canonical HLO
-    //   [A] = BackwardInputConvolve([a b], [x y z], padding=(low=2,high=1))
-    // where the amount of padding low is larger, we can canonicalize it to
-    //   [B A] = BackwardInputConvolve([a b], [x y z], padding=(low=1,high=1))
-    //   [A] = Slice([B A])
-    if (padding_low > padding_high) {
-      IncreasePaddingLowBy(padding_high - padding_low,
-                           new_backward_conv_window.mutable_dimensions(i));
-    } else if (padding_low < padding_high) {
-      IncreasePaddingHighBy(padding_low - padding_high,
-                            new_backward_conv_window.mutable_dimensions(i));
+    // The direction of padding adjustment depends on the instruction type:
+    //
+    // 1) cuDNN Custom Call (__cudnn$convBackwardInput):
+    //    window.pad stores the FORWARD convolution descriptor padding (p_fwd).
+    //    Decreasing p_fwd increases the backward data output size.
+    //    Example: pad=(low=2, high=1) is canonicalized to pad=(low=1, high=1).
+    //    The output produces extra elements [B] at the low (left) end: [B A].
+    //    We slice off the low end (start_indices += 1) to recover valid data
+    //    [A].
+    //
+    // 2) Raw HLO Convolution (convolution_kind=dgrad):
+    //    window.pad stores the HLO BACKWARD padding on dY (p_bwd).
+    //    Increasing p_bwd increases the convolution output size.
+    //    Example: pad=(low=2, high=1) is canonicalized to pad=(low=2, high=2).
+    //    The output produces extra elements [B] at the high (right) end: [A B].
+    //    We slice off the high end (limit_indices -= 1) to recover valid data
+    //    [A].
+    if (is_custom_call) {
+      // For cuDNN custom-calls, decreasing the cuDNN descriptor padding
+      // increases the backward data output size.
+      if (padding_low > padding_high) {
+        IncreasePaddingLowBy(padding_high - padding_low,
+                             new_backward_conv_window.mutable_dimensions(i));
+      } else if (padding_low < padding_high) {
+        IncreasePaddingHighBy(padding_low - padding_high,
+                              new_backward_conv_window.mutable_dimensions(i));
+      }
+    } else {
+      // For HLO convolution instructions, increasing the HLO window padding
+      // increases the convolution output size.
+      if (padding_low > padding_high) {
+        IncreasePaddingHighBy(padding_low - padding_high,
+                              new_backward_conv_window.mutable_dimensions(i));
+      } else if (padding_low < padding_high) {
+        IncreasePaddingLowBy(padding_high - padding_low,
+                             new_backward_conv_window.mutable_dimensions(i));
+      }
     }
-    // Decreasing the padding by X *increases* the size of our output by X.
     // Note that we have swapped input spatial dimensions with output spatial
     // dimensions to be compatible with the cuDNN API, so
     // input_spatial_dimensions(i) gives the i-th spatial dimension of the
@@ -355,22 +416,32 @@ bool ConvPaddingLegalization::CanonicalizeBackwardInputConvolution(
   HloInstruction* output = backward_conv->mutable_operand(0);
   HloInstruction* filter = backward_conv->mutable_operand(1);
 
-  HloInstruction* new_backward_conv_call =
-      computation->AddInstruction(backward_conv->CloneWithNewOperands(
-          ShapeUtil::MakeTupleShape(
-              {new_backward_conv_shape, ShapeUtil::MakeShape(U8, {0})}),
-          {output, filter}));
-  new_backward_conv_call->set_window(new_backward_conv_window);
+  HloInstruction* new_backward_conv_call;
+  HloInstruction* new_backward_conv;
+  HloInstruction* new_backward_conv_scratch = nullptr;
 
-  // The CustomCall created above returns a tuple (conv_result, scratch_memory).
-  // Extract out the two elements.
-  HloInstruction* new_backward_conv =
-      computation->AddInstruction(HloInstruction::CreateGetTupleElement(
-          new_backward_conv_shape, new_backward_conv_call, 0));
-  HloInstruction* new_backward_conv_scratch =
-      computation->AddInstruction(HloInstruction::CreateGetTupleElement(
-          new_backward_conv_call->shape().tuple_shapes(1),
-          new_backward_conv_call, 1));
+  if (is_custom_call) {
+    new_backward_conv_call =
+        computation->AddInstruction(backward_conv->CloneWithNewOperands(
+            ShapeUtil::MakeTupleShape(
+                {new_backward_conv_shape, ShapeUtil::MakeShape(U8, {0})}),
+            {output, filter}));
+    new_backward_conv_call->set_window(new_backward_conv_window);
+
+    new_backward_conv =
+        computation->AddInstruction(HloInstruction::CreateGetTupleElement(
+            new_backward_conv_shape, new_backward_conv_call, 0));
+    new_backward_conv_scratch =
+        computation->AddInstruction(HloInstruction::CreateGetTupleElement(
+            new_backward_conv_call->shape().tuple_shapes(1),
+            new_backward_conv_call, 1));
+  } else {
+    new_backward_conv_call =
+        computation->AddInstruction(backward_conv->CloneWithNewOperands(
+            new_backward_conv_shape, {output, filter}));
+    new_backward_conv_call->set_window(new_backward_conv_window);
+    new_backward_conv = new_backward_conv_call;
+  }
 
   // Slice the new backward convolution.
   //
@@ -390,15 +461,18 @@ bool ConvPaddingLegalization::CanonicalizeBackwardInputConvolution(
     // input_spatial_dimensions(i) gives the i-th spatial dimension of the
     // output.
     int64_t dim = backward_conv_dnums.input_spatial_dimensions(i);
-    if (padding_low > padding_high) {
-      // If the amount of low padding (of the old backward convolution) is
-      // larger, we internally pad the low end of the activations and slice
-      // internal padding out here.
-      start_indices[dim] += padding_low - padding_high;
-    } else if (padding_low < padding_high) {
-      // If the amount of high padding is larger, we slice out the internal
-      // padding on the high end.
-      limit_indices[dim] -= padding_high - padding_low;
+    if (is_custom_call) {
+      if (padding_low > padding_high) {
+        start_indices[dim] += padding_low - padding_high;
+      } else if (padding_low < padding_high) {
+        limit_indices[dim] -= padding_high - padding_low;
+      }
+    } else {
+      if (padding_low > padding_high) {
+        limit_indices[dim] -= padding_low - padding_high;
+      } else if (padding_low < padding_high) {
+        start_indices[dim] += padding_high - padding_low;
+      }
     }
   }
 
@@ -414,28 +488,40 @@ bool ConvPaddingLegalization::CanonicalizeBackwardInputConvolution(
   HloInstruction* slice = computation->AddInstruction(
       HloInstruction::CreateSlice(backward_conv_shape, new_backward_conv,
                                   start_indices, limit_indices, strides));
-  HloInstruction* new_tuple = computation->AddInstruction(
-      HloInstruction::CreateTuple({slice, new_backward_conv_scratch}));
 
-  VLOG(1) << "Canonicalizing backward input conv";
-  VLOG(1) << "Replacing:\n  " << backward_conv->ToString() << "\nwith:\n  "
-          << new_tuple->ToString();
-
-  CHECK_OK(computation->ReplaceInstruction(backward_conv, new_tuple));
+  if (is_custom_call) {
+    HloInstruction* new_tuple = computation->AddInstruction(
+        HloInstruction::CreateTuple({slice, new_backward_conv_scratch}));
+    VLOG(1) << "Canonicalizing backward input conv";
+    VLOG(1) << "Replacing:\n  " << backward_conv->ToString() << "\nwith:\n  "
+            << new_tuple->ToString();
+    CHECK_OK(computation->ReplaceInstruction(backward_conv, new_tuple));
+  } else {
+    VLOG(1) << "Canonicalizing backward input conv";
+    VLOG(1) << "Replacing:\n  " << backward_conv->ToString() << "\nwith:\n  "
+            << slice->ToString();
+    CHECK_OK(computation->ReplaceInstruction(backward_conv, slice));
+  }
   return true;
 }
 
 absl::StatusOr<bool> ConvPaddingLegalization::RunOnComputation(
     HloComputation* computation) {
   bool changed = false;
-  std::vector<HloCustomCallInstruction*> convs;
+  std::vector<HloInstruction*> convs;
   for (auto* instr : computation->instructions()) {
-    if (IsCustomCallToDnnConvolution(*instr)) {
-      convs.push_back(Cast<HloCustomCallInstruction>(instr));
+    if (instr->opcode() == HloOpcode::kConvolution ||
+        IsCustomCallToDnnConvolution(*instr)) {
+      convs.push_back(instr);
     }
   }
-  for (HloCustomCallInstruction* instruction : convs) {
-    ASSIGN_OR_RETURN(auto kind, GetCudnnConvKind(instruction));
+  for (HloInstruction* instruction : convs) {
+    ASSIGN_OR_RETURN(auto kind_opt,
+                     GetCudnnConvKindForInstruction(instruction));
+    if (!kind_opt.has_value()) {
+      continue;
+    }
+    CudnnConvKind kind = *kind_opt;
     changed |= [&] {
       switch (kind) {
         case CudnnConvKind::kForward:

@@ -1,3 +1,18 @@
+# Copyright 2026 The OpenXLA Authors. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
+
 load(
     "@local_config_rocm//rocm:build_defs.bzl",
     "if_rocm_is_configured",
@@ -64,7 +79,7 @@ lit_test_suite(
     srcs = deviceless_tests,
     cfg = "//xla:lit.cfg.py",
     tools = [
-        "//xla/backends/gpu/codegen/triton/tools:hlo_to_xtileir",
+        "//xla/backends/gpu/codegen/triton/tools:fusion_to_triton",
         "@llvm-project//llvm:FileCheck",
     ],
 )
@@ -96,7 +111,7 @@ lit_device_test(
     },
     tools = [
         ":triton_test_correctness",
-        "//xla/backends/gpu/codegen/triton/tools:hlo_to_xtileir",
+        "//xla/backends/gpu/codegen/triton/tools:fusion_to_triton",
         "//xla/tools:hlo-opt",
         "@llvm-project//llvm:FileCheck",
     ],

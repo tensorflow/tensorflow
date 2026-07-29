@@ -23,6 +23,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/base/nullability.h"
 #include "absl/functional/any_invocable.h"
 #include "absl/log/check.h"
@@ -223,10 +224,12 @@ GetBlockLevelFusionConfigForAllReduce(
   }
 
   absl::StatusOr<AllReduceInfo> maybe_all_reduce_info = BuildAllReduceInfo(
-      /*is_collective_kernel_enabled=*/all_reduce->GetModule()
-          ->config()
-          .debug_options()
-          .xla_gpu_unsupported_use_all_reduce_one_shot_kernel(),
+      /*is_collective_kernel_enabled=*/absl::c_linear_search(
+          all_reduce->GetModule()
+              ->config()
+              .debug_options()
+              .xla_gpu_experimental_use_collective_kernels(),
+          static_cast<int>(DebugOptions::COLLECTIVE_KERNEL_ALL_REDUCE)),
       /*is_multimem_enabled=*/false, gpu_topology, all_reduce,
       device_assignment);
   if (absl::IsUnimplemented(maybe_all_reduce_info.status())) {

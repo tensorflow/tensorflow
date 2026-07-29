@@ -20,7 +20,7 @@ namespace gpu {
 namespace {
 
 using ElementWiseRowVectorizationTest =
-    HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>;
+    HloInterpreterReferenceMixin<HloPjRtTestBase>;
 
 TEST_F(ElementWiseRowVectorizationTest, SimpleAddSmallRowBroadcastingTest) {
   const char* hlo_text = R"(
