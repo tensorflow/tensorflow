@@ -18,6 +18,7 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 #include <string>
+#include <tuple>
 #include <vector>
 
 #include <gmock/gmock.h>
@@ -3083,8 +3084,17 @@ ENTRY TestComputation {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(hlo_string));
   InsertCopies(module.get());
-  // An extra copy must be kept inside the loop due to uses in the conditional
-  EXPECT_EQ(CountCopies(*module), 4);
+  // An extra copy must be kept inside the loop due to uses in the conditional.
+  // A fifth copy is inserted because sharing between a use at a conditional
+  // and a def escaping one of its branches is now rejected whenever the def
+  // escapes, rather than depending on the order in which the uses happen to
+  // be examined. The previous count of 4 relied on that order dependence,
+  // which also caused copy elision to vary with branch order. The extra copy
+  // should not occur in practice: the CPU and GPU pipelines run
+  // ConditionalCanonicalizer before copy insertion, which makes every
+  // conditional operand a value-defining tuple, so the escape-based rejection
+  // cannot trigger there.
+  EXPECT_EQ(CountCopies(*module), 5);
 }
 
 TEST_F(CopyInsertionTest, ConditionalBranchMustCopy1) {
@@ -5074,5 +5084,149 @@ ENTRY entry {
   ASSERT_THAT(rw_branch_2, NotNull());
   EXPECT_EQ(CountCopies(*rw_branch_2), 1);
 }
+
+// A while loop whose body contains a conditional where one branch is a
+// passthrough and the other performs an update. This is the HLO-level
+// representation of lax.scan + lax.cond(passthrough) pattern from
+// jax-ml/jax#38145 / #5986. The while-body should not introduce extra copies
+// for the carry forwarded through the passthrough branch.
+TEST_F(CopyInsertionTest, WhileBodyWithPassthroughCond) {
+  const std::string& hlo_string = R"(
+HloModule m
+
+pass_through {
+  p = (f32[8]) parameter(0)
+  v = f32[8] get-tuple-element(p), index=0
+  ROOT t = (f32[8]) tuple(v)
+}
+
+update_branch {
+  p = (f32[8]) parameter(0)
+  v = f32[8] get-tuple-element(p), index=0
+  one = f32[8] constant({1,1,1,1,1,1,1,1})
+  updated = f32[8] add(v, one)
+  ROOT t = (f32[8]) tuple(updated)
+}
+
+cond {
+  param = (s32[], f32[8]) parameter(0)
+  i = s32[] get-tuple-element(param), index=0
+  limit = s32[] constant(10)
+  ROOT done = pred[] compare(i, limit), direction=LT
+}
+
+body {
+  param = (s32[], f32[8]) parameter(0)
+  i = s32[] get-tuple-element(param), index=0
+  x = f32[8] get-tuple-element(param), index=1
+  wrapped = (f32[8]) tuple(x)
+  pred_val = pred[] constant(false)
+  result = (f32[8]) conditional(pred_val, wrapped, wrapped),
+    true_computation=pass_through,
+    false_computation=update_branch
+  new_x = f32[8] get-tuple-element(result), index=0
+  i_next = s32[] add(i, s32[] constant(1))
+  ROOT res = (s32[], f32[8]) tuple(i_next, new_x)
+}
+
+ENTRY main {
+  i0 = s32[] constant(0)
+  x0 = f32[8] constant({0,0,0,0,0,0,0,0})
+  init = (s32[], f32[8]) tuple(i0, x0)
+  w = (s32[], f32[8]) while(init), condition=cond, body=body
+  ROOT out = f32[8] get-tuple-element(w), index=1
+}
+)";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
+  InsertCopies(module.get());
+  // The while loop introduces 2 copies for the loop-carried state (i and x);
+  // these are necessary for while-loop semantics and independent of the
+  // conditional. The conditional itself contributes 0 copies as verified by
+  // CopyInsertionCondOrderTest.
+  EXPECT_EQ(CountCopies(*module), 2);
+}
+
+// A two-branch conditional where one branch is a passthrough (identity) and
+// the other does an in-place update. Copy elision should be independent of
+// which position the passthrough branch occupies.
+class CopyInsertionCondOrderTest
+    : public CopyInsertionTest,
+      public ::testing::WithParamInterface<std::tuple<bool, int64_t>> {};
+
+TEST_P(CopyInsertionCondOrderTest, PassthroughPositionIrrelevant) {
+  const bool passthrough_first = std::get<0>(GetParam());
+  const int64_t region_limit = std::get<1>(GetParam());
+
+  // Passthrough branch in position 0.
+  constexpr absl::string_view kPassthroughFirst = R"(
+HloModule m, input_output_alias={ {}: (1, {}, may-alias) }
+
+branch_id {
+  p1 = (f32[8]) parameter(0)
+  v1 = f32[8] get-tuple-element(p1), index=0
+  ROOT r1 = (f32[8]) tuple(v1)
+}
+
+branch_dus {
+  p0 = (f32[8]) parameter(0)
+  v0 = f32[8] get-tuple-element(p0), index=0
+  one = f32[1] constant({1})
+  idx = s32[] constant(0)
+  dus = f32[8] dynamic-update-slice(v0, one, idx)
+  ROOT r0 = (f32[8]) tuple(dus)
+}
+
+ENTRY main {
+  b = s32[] parameter(0)
+  x = f32[8] parameter(1)
+  t = (f32[8]) tuple(x)
+  cond = (f32[8]) conditional(b, t, t), branch_computations={branch_id, branch_dus}
+  ROOT out = f32[8] get-tuple-element(cond), index=0
+}
+)";
+
+  // Passthrough branch in position 1.
+  constexpr absl::string_view kPassthroughSecond = R"(
+HloModule m, input_output_alias={ {}: (1, {}, may-alias) }
+
+branch_dus {
+  p0 = (f32[8]) parameter(0)
+  v0 = f32[8] get-tuple-element(p0), index=0
+  one = f32[1] constant({1})
+  idx = s32[] constant(0)
+  dus = f32[8] dynamic-update-slice(v0, one, idx)
+  ROOT r0 = (f32[8]) tuple(dus)
+}
+
+branch_id {
+  p1 = (f32[8]) parameter(0)
+  v1 = f32[8] get-tuple-element(p1), index=0
+  ROOT r1 = (f32[8]) tuple(v1)
+}
+
+ENTRY main {
+  b = s32[] parameter(0)
+  x = f32[8] parameter(1)
+  t = (f32[8]) tuple(x)
+  cond = (f32[8]) conditional(b, t, t), branch_computations={branch_dus, branch_id}
+  ROOT out = f32[8] get-tuple-element(cond), index=0
+}
+)";
+
+  std::string hlo =
+      std::string(passthrough_first ? kPassthroughFirst : kPassthroughSecond);
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo));
+  CopyInsertion copy_insertion(&alias_info_, region_limit);
+  ASSERT_IS_OK(copy_insertion.Run(module.get()).status());
+  EXPECT_EQ(CountCopies(*module), 0);
+}
+
+INSTANTIATE_TEST_SUITE_P(CondOrder, CopyInsertionCondOrderTest,
+                         ::testing::Combine(::testing::Bool(),
+                                            ::testing::Values(int64_t{0},
+                                                              int64_t{-1})));
+
 }  // namespace
 }  // namespace xla
