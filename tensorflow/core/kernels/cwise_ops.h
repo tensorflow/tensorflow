@@ -409,8 +409,13 @@ struct google_floor_div_real {
     const T quotient = x / y;
     // Python and NumPy return -1 when a nonzero finite dividend and an
     // infinite divisor have opposite signs, while floor(x / y) returns -0.
-    if (TF_PREDICT_FALSE(Eigen::numext::isinf(y) &&
-                         Eigen::numext::isfinite(x) && x != T(0) &&
+    // Detect the infinite divisor and finite dividend by comparing magnitudes
+    // against infinity, matching the vectorized path below. numext::isinf and
+    // numext::isfinite are not reliably device-callable for Eigen::half, so on
+    // GPU they would skip this correction and leave the -0 result in place.
+    const T infinity = Eigen::NumTraits<T>::infinity();
+    if (TF_PREDICT_FALSE(Eigen::numext::abs(y) == infinity &&
+                         Eigen::numext::abs(x) < infinity && x != T(0) &&
                          ((x < T(0)) != (y < T(0))))) {
       return T(-1);
     }
