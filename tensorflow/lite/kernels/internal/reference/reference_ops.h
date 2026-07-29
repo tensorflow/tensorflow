@@ -970,8 +970,9 @@ inline void SegmentSum(const RuntimeShape& input_shape, const T* input_data,
   for (int i = 0; i < input_shape.Dims(0); i++) {
     int output_index = segment_ids_data[i];
     for (int j = 0; j < segment_flat_size; ++j) {
-      output_data[output_index * segment_flat_size + j] +=
-          input_data[i * segment_flat_size + j];
+      output_data[output_index * segment_flat_size + j] =
+          WrappingAdd<T>(output_data[output_index * segment_flat_size + j],
+                         input_data[i * segment_flat_size + j]);
     }
   }
 }
