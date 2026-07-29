@@ -1848,21 +1848,31 @@ bool BufferAssigner::LiveRangeInterferes(
     BufferAssignment* assignment) {
   CHECK((assignment->hlo_live_range().total_order_scheduled()));
 
-  // Check if a user value can share the same buffer as its operand.
+  // An HloValue can hold multiple instruction positions during its lifetime
+  // (e.g. when passed into a while loop tuple or bitcast view).
+  // operand_live_range.end_position points to the last instruction in
+  // schedule order (which may be a tuple instruction inside a loop body).
+  // However, a downstream user instruction might directly consume a
+  // different position of the value (such as the definition instruction
+  // before the loop). Therefore, we must check all positions of the
+  // HloValue to see if any instruction can share its buffer with the user.
   auto can_share_as_operand =
       [&assignment, this](
           const HloValue* user_value, const HloValue* operand_value,
           const HloLiveRange::LiveRangeBounds& operand_live_range) {
-        // An hlo value can hold multiple instructions during its life time. We
-        // only look at the last instruction and check if it can be shared with
-        // the operand.
-        HloPosition operand_end_position = operand_live_range.end_position;
-        return user_value->instruction()->opcode() != HloOpcode::kCopy &&
-               user_value->instruction()->IsUserOf(
-                   operand_end_position.instruction) &&
-               assignment->dataflow_analysis().CanShareOperandBufferWithUser(
-                   operand_end_position.instruction, operand_end_position.index,
-                   user_value->instruction(), user_value->index(), alias_info_);
+        if (user_value->instruction()->opcode() == HloOpcode::kCopy) {
+          return false;
+        }
+        for (const HloPosition& operand_pos : operand_value->positions()) {
+          if (user_value->instruction()->IsUserOf(operand_pos.instruction) &&
+              assignment->dataflow_analysis().CanShareOperandBufferWithUser(
+                  operand_pos.instruction, operand_pos.index,
+                  user_value->instruction(), user_value->index(),
+                  alias_info_)) {
+            return true;
+          }
+        }
+        return false;
       };
 
   if (!(live_range1.start > live_range2.end ||
