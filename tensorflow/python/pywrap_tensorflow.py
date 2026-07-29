@@ -40,10 +40,8 @@ self_check.preload_check()
 # pylint: disable=wildcard-import,g-import-not-at-top,unused-import,line-too-long
 
 try:
-  # Shared-object wheels omit this module (see :pywrap_tensorflow BUILD select
-  # on //tensorflow:framework_shared_object). ImportError => RTLD_LOCAL, which
-  # is required so TF does not leak LLVM into the process global symbol table.
-  # Monolithic builds ship the module and load with RTLD_GLOBAL for custom ops.
+  # This import is expected to fail if there is an explicit shared object
+  # dependency (with_framework_lib=true), since we do not need RTLD_GLOBAL.
   from tensorflow.python import pywrap_dlopen_global_flags
   _use_dlopen_global_flags = True
 except ImportError:
