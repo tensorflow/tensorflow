@@ -91,13 +91,14 @@ class CuDnnFusionTest
     return device_description().cuda_compute_capability();
   }
   bool IsAtLeastAmpereWithCuDnn9() {
-    se::StreamExecutor* executor = stream_executor();
     return get_cuda_cc().IsAtLeastAmpere() &&
-           GetDnnVersionInfoOrDefault(executor).major_version() >= 9;
+           gpu_target_config()
+                   .device_description.dnn_version()
+                   .major_version() >= 9;
   }
   bool IsAtLeastCuDnnVersion(int major_version, int minor_version) {
-    se::StreamExecutor* executor = stream_executor();
-    const se::dnn::VersionInfo version = GetDnnVersionInfoOrDefault(executor);
+    const se::SemanticVersion version =
+        gpu_target_config().device_description.dnn_version();
     return (version.major_version() == major_version &&
             version.minor_version() >= minor_version) ||
            version.major_version() > major_version;

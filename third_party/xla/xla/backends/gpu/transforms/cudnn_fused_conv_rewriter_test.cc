@@ -87,10 +87,7 @@ class CudnnFusedConvRewriterHloTest : public HloPjRtGpuTestBase {
     return device_description().cuda_compute_capability();
   }
   stream_executor::dnn::VersionInfo GetDnnVersion() const {
-    se::SemanticVersion version = device_description().dnn_version();
-    return stream_executor::dnn::VersionInfo(version.major_version(),
-                                             version.minor_version(),
-                                             version.patch_version());
+    return gpu_target_config().dnn_version_info;
   }
 
   se::SemanticVersion GetToolkitVersion() const {
@@ -122,10 +119,7 @@ class CudnnFusedConvRewriterTest
     return device_description().cuda_compute_capability();
   }
   stream_executor::dnn::VersionInfo GetDnnVersion() const {
-    se::SemanticVersion version = device_description().dnn_version();
-    return stream_executor::dnn::VersionInfo(version.major_version(),
-                                             version.minor_version(),
-                                             version.patch_version());
+    return gpu_target_config().dnn_version_info;
   }
 
   stream_executor::SemanticVersion GetToolkitVersion() const {

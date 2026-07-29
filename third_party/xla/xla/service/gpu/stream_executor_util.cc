@@ -80,25 +80,6 @@ using tsl::profiler::TraceMeLevel;
 namespace xla {
 namespace gpu {
 
-absl::StatusOr<se::dnn::VersionInfo> GetDnnVersionInfo(
-    stream_executor::StreamExecutor* stream_exec) {
-  if (!stream_exec) {
-    return absl::InvalidArgumentError("StreamExecutor is null");
-  }
-  stream_executor::dnn::DnnSupport* dnn = stream_exec->AsDnn();
-  if (!dnn) {
-    return absl::FailedPreconditionError(
-        "DNN library initialization failed. Look at the errors above for more "
-        "details.");
-  }
-  return dnn->GetVersion();
-}
-
-se::dnn::VersionInfo GetDnnVersionInfoOrDefault(
-    stream_executor::StreamExecutor* stream_exec,
-    se::dnn::VersionInfo fallback_version) {
-  return GetDnnVersionInfo(stream_exec).value_or(fallback_version);
-}
 
 namespace {
 
