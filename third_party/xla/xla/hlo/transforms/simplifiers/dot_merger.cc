@@ -49,6 +49,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/permutation_util.h"
+#include "xla/primitive_util.h"
 #include "xla/service/graphcycles/graphcycles.h"
 #include "xla/service/matmul_indexing_utils.h"
 #include "xla/service/shape_inference.h"
@@ -60,6 +61,21 @@ limitations under the License.
 
 namespace xla {
 namespace {
+
+bool HasSubByteUpcast(const HloInstruction* instr) {
+  while (instr != nullptr && (instr->opcode() == HloOpcode::kTranspose ||
+                              instr->opcode() == HloOpcode::kReshape ||
+                              instr->opcode() == HloOpcode::kBitcast ||
+                              instr->opcode() == HloOpcode::kConvert)) {
+    if (instr->opcode() == HloOpcode::kConvert &&
+        primitive_util::IsSubByteNonPredType(
+            instr->operand(0)->shape().element_type())) {
+      return true;
+    }
+    instr = instr->operand(0);
+  }
+  return false;
+}
 
 using ReplacementMap = HloInstructionMap<HloInstruction*>;
 
@@ -178,7 +194,8 @@ BuildEquivalenceClasses(
   for (HloInstruction* instr : comp->instructions()) {
     if (instr->opcode() != HloOpcode::kDot ||
         !instr->control_predecessors().empty() ||
-        !instr->control_successors().empty()) {
+        !instr->control_successors().empty() ||
+        absl::c_any_of(instr->operands(), HasSubByteUpcast)) {
       continue;
     }
 

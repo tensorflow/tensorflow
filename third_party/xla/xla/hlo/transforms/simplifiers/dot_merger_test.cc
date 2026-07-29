@@ -2064,5 +2064,26 @@ TEST_F(DotMergerTest, MergeRHSPreservesMetadata) {
   EXPECT_EQ(merged_dot->metadata().op_name(), "op2");
 }
 
+TEST_F(DotMergerTest, NoMergeSubByteUpcast) {
+  absl::string_view module_string = R"(
+  HloModule module
+
+  ENTRY main {
+    lhs0_s4 = s4[200,100] parameter(0)
+    lhs1_s4 = s4[200,100] parameter(1)
+    lhs0    = bf16[200,100] convert(lhs0_s4)
+    lhs1    = bf16[200,100] convert(lhs1_s4)
+    rhs     = bf16[100,10] parameter(2)
+    dot0    = bf16[200,10] dot(lhs0, rhs), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+    dot1    = bf16[200,10] dot(lhs1, rhs), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+    ROOT tuple = (bf16[200,10], bf16[200,10]) tuple(dot0, dot1)
+  })";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(module_string));
+  DotMerger pass(/*max_size_to_merge=*/std::numeric_limits<int64_t>::max());
+  ASSERT_OK_AND_ASSIGN(bool changed, this->RunHloPass(&pass, module.get()));
+  EXPECT_FALSE(changed);
+}
+
 }  // namespace
 }  // namespace xla
