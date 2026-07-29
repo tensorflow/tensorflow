@@ -93,6 +93,7 @@ xla_cc_test(
         ":tiled_hlo_computation",
         ":tiled_hlo_schedule",
         ":tiling_specification",
+        "//xla:xla_proto_cc",
         "//xla/hlo/analysis:symbolic_map",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
@@ -331,6 +332,7 @@ xla_cc_test(
     deps = [
         ":symbolic_tile_analysis",
         ":tiling_specification",
+        "//xla:xla_proto_cc",
         "//xla/hlo/analysis:symbolic_map",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
