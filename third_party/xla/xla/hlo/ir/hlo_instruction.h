@@ -21,6 +21,7 @@ limitations under the License.
 #ifndef XLA_HLO_IR_HLO_INSTRUCTION_H_
 #define XLA_HLO_IR_HLO_INSTRUCTION_H_
 
+#include <atomic>
 #include <cstddef>
 #include <cstdint>
 #include <functional>
@@ -1918,7 +1919,22 @@ class HloInstruction {
   // has been assigned yet) prefixed by the parent's unique ID. This is a
   // concatenation of the parent's unique ID and the local ID. This is
   // guaranteed to be unique across all instructions in a module.
-  int64_t unique_id() const;
+  // Hot accessor: serves from a cache that is invalidated whenever an input
+  // changes (set_parent, SetLocalId, ClearUniqueIdInternal); on cache hits in
+  // debug builds a DCHECK recomputes and compares, so the test fleet
+  // continuously verifies invalidation coverage.
+  int64_t unique_id() const {
+    const int64_t cached = cached_unique_id_.load(std::memory_order_relaxed);
+    if (cached < 0) {
+      return ComputeAndCacheUniqueId();
+    }
+    // DCHECK does not evaluate its argument in optimized builds, so the
+    // recompute-and-compare below is debug-only.
+    DCHECK(CachedUniqueIdEqualsComputed())
+        << "Stale cached unique id for " << name()
+        << ": a unique-id invalidation hook is missing.";
+    return cached;
+  }
 
   // Returns the computation-specific ID assigned to this node. This is
   // equivalent to the least significant 32 bits of the unique ID. This is not
@@ -2586,16 +2602,18 @@ class HloInstruction {
     }
     RemoveAllOperands();
   }
-  void RemoveAllOperands() { operands_.clear(); }
+  // Defined out-of-line because it invalidates the parent computation's
+  // instruction post-order cache.
+  void RemoveAllOperands();
 
  protected:
   // Internal constructor for a given opcode/shape, other fields must be
   // filled by factory methods.
   HloInstruction(HloOpcode opcode, const Shape& shape);
 
-  void RemoveOperandAt(int index) {
-    operands_.erase(operands_.begin() + index);
-  }
+  // Defined out-of-line because it invalidates the parent computation's
+  // instruction post-order cache.
+  void RemoveOperandAt(int index);
 
   // Removes a list of operands with the given indices in ascending order.
   void RemoveOperandsAtAscendingIndices(
@@ -2640,7 +2658,11 @@ class HloInstruction {
       bool ignore_commutative_operand_order) const;
 
   // Set the computation containing this instruction.
-  void set_parent(HloComputation* computation) { parent_ = computation; }
+  void set_parent(HloComputation* computation) {
+    parent_ = computation;
+    // The parent's id is the high half of unique_id().
+    cached_unique_id_.store(-1, std::memory_order_relaxed);
+  }
 
   // Implementation for non-common logic of PrintExtraAttributes.
   virtual void PrintExtraAttributesImpl(AttributePrinter& printer,
@@ -2670,11 +2692,13 @@ class HloInstruction {
       const Shape& shape, HloOpcode opcode,
       absl::Span<HloInstruction* const> operands);
 
-  // Adds a user for this instruction.
-  void AddUser(HloInstruction* user) { users_.AddUser(user); }
+  // Adds a user for this instruction. Defined out-of-line because it
+  // invalidates the parent computation's instruction post-order cache.
+  void AddUser(HloInstruction* user);
 
-  // Removes a user for this instruction.
-  void RemoveUser(HloInstruction* user) { users_.RemoveUser(user); }
+  // Removes a user for this instruction. Defined out-of-line because it
+  // invalidates the parent computation's instruction post-order cache.
+  void RemoveUser(HloInstruction* user);
 
   // Helper for implementing backend_config().  Parses backend_config_ into the
   // given proto.
@@ -2694,11 +2718,33 @@ class HloInstruction {
     CHECK_EQ(local_id_, -1);  // Should not be assigned already
     CHECK_GE(id, 0);
     local_id_ = id;
+    // The local id is the low half of unique_id().
+    cached_unique_id_.store(-1, std::memory_order_relaxed);
   }
 
   // Clear the unique ID of the instruction so that it can be re-assigned, such
   // as for the purpose of compacting the instruction unique IDs.
-  void ClearUniqueIdInternal() { local_id_ = -1; }
+  void ClearUniqueIdInternal() {
+    local_id_ = -1;
+    cached_unique_id_.store(-1, std::memory_order_relaxed);
+  }
+
+  // Overwrites local_id_ (compaction, canonicalization, and deserialization
+  // paths that may replace an existing id) and invalidates the cached unique
+  // id. Unlike SetLocalId, does not require the id to be unassigned.
+  void OverwriteLocalIdInternal(int32_t id) {
+    local_id_ = id;
+    cached_unique_id_.store(-1, std::memory_order_relaxed);
+  }
+
+  // Slow path of unique_id(): computes the id (CHECK-failing if this
+  // instruction has no parent), fills cached_unique_id_, and returns it.
+  int64_t ComputeAndCacheUniqueId() const;
+
+  // Returns whether cached_unique_id_ matches a freshly computed value.
+  // Used inside a DCHECK on unique_id() cache hits, so an incomplete
+  // invalidation hook fails loudly across the test fleet.
+  bool CachedUniqueIdEqualsComputed() const;
 
   // Rare is allocated lazily, only when any of its constituent fields are
   // non-empty.  This reduces the memory footprint of HloInstruction objects.
@@ -2800,8 +2846,15 @@ class HloInstruction {
   };
 
   LocalId local_id_;  // Unique to this HloInstruction within a HloComputation.
-                      // Index that identifies where the inst is stored in the
-                      // parent computation.
+
+  // Cached unique_id() value (the parent computation's unique id combined
+  // with local_id_). Negative means not yet computed. Invalidated by
+  // set_parent / SetLocalId / ClearUniqueIdInternal. Relaxed atomic:
+  // concurrent readers may race to fill the cache, but they all store the
+  // same value.
+  mutable std::atomic<int64_t> cached_unique_id_{-1};
+  // Index that identifies where the inst is stored in the
+  // parent computation.
 
   // Opcode for this instruction.
   HloOpcode opcode_;

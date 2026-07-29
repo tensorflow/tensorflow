@@ -27,6 +27,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/base/thread_annotations.h"
 #include "absl/container/btree_map.h"
 #include "absl/container/btree_set.h"
 #include "absl/container/flat_hash_map.h"
@@ -40,6 +41,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/cord.h"
 #include "absl/strings/string_view.h"
+#include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/backend_config.h"
@@ -497,7 +499,21 @@ class HloComputation {
 
   // Compute and return a post-order of the instructions in the computation. In
   // this order, definitions of values always appear before their uses.
+  //
+  // The result is cached: repeated calls without intervening graph mutations
+  // return a copy of the cached order instead of re-running the DFS. The
+  // cache is invalidated automatically by every graph mutation (instruction
+  // addition/removal, operand or control-dependency rewiring, root change).
   std::vector<HloInstruction*> MakeInstructionPostOrder() const;
+
+  // Drops the cached instruction post-order (see MakeInstructionPostOrder).
+  // Called automatically by all graph-mutating methods of HloComputation and
+  // HloInstruction; only needs to be called manually by code that mutates the
+  // graph through lower-level means.
+  void InvalidateInstructionPostOrderCache() const {
+    absl::MutexLock lock(&post_order_cache_mutex_);
+    post_order_cache_.reset();
+  }
   // Same as MakeInstructionPostOrder but starting at any instruction in the
   // computation, not just the root. Describes the corresponding subgraph.
   std::vector<HloInstruction*> MakeInstructionPostOrderFrom(
@@ -1054,6 +1070,10 @@ class HloComputation {
       std::vector<HloInstruction*>& post_order,
       std::vector<HloInstruction*>* dfs_stack_scratch) const;
 
+  // Computes the instruction post-order with a fresh DFS, bypassing (and not
+  // populating) the post-order cache.
+  std::vector<HloInstruction*> MakeInstructionPostOrderUncached() const;
+
   void ForEachInstructionPostOrderImpl(
       absl::FunctionRef<void(HloInstruction*)> func, HloInstruction* root,
       VisitMap& visited, std::vector<HloInstruction*>* dfs_stack_scratch) const;
@@ -1118,6 +1138,16 @@ class HloComputation {
   // Removed instructions are moved into to_be_deleted_ first and then
   // deallocated when Cleanup is called.
   PtrVec<HloInstruction*> to_be_deleted_;
+
+  // Cache of the default instruction post-order (see
+  // MakeInstructionPostOrder). Reset by every graph mutation via
+  // InvalidateInstructionPostOrderCache. The mutex makes concurrent
+  // const-qualified post-order queries safe; readers grab a snapshot
+  // shared_ptr so an invalidation cannot pull the vector out from under an
+  // in-flight iteration.
+  mutable absl::Mutex post_order_cache_mutex_;
+  mutable std::shared_ptr<const std::vector<HloInstruction*>> post_order_cache_
+      ABSL_GUARDED_BY(post_order_cache_mutex_);
 
   // Execution thread of this computation. By default, it's main thread.
   std::string execution_thread_ = HloInstruction::kMainExecutionThread;

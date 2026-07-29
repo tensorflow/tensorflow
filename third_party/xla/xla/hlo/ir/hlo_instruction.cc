@@ -1432,7 +1432,7 @@ absl::StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
   TF_RET_CHECK(proto.id() >= 0)
       << "Instruction with negative id: " << proto.id();
   // Drops the most significant 32 bits to ignore parent prefix.
-  instruction->local_id_ = CalculateLocalId(proto.id());
+  instruction->OverwriteLocalIdInternal(CalculateLocalId(proto.id()));
 
   if (proto.has_sharding()) {
     ASSIGN_OR_RETURN(HloSharding sharding,
@@ -2964,11 +2964,23 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
   return clone;
 }
 
+namespace {
+// Drops the cached instruction post-order of `computation`, if any. Helper
+// for the graph mutation paths below; null-safe because instructions under
+// construction (or being destroyed) may have no parent computation.
+void InvalidatePostOrderCache(HloComputation* computation) {
+  if (computation != nullptr) {
+    computation->InvalidateInstructionPostOrderCache();
+  }
+}
+}  // namespace
+
 void HloInstruction::DetachFromOperandsAndUsers() {
   if (cleaned_up_) {
     return;
   }
   cleaned_up_ = true;
+  InvalidatePostOrderCache(parent_);
   // Detach from operands. An instruction may be repeated as an operand. To
   // avoid calling RemoveUser twice on the same operand, check before remove.
   for (int64_t operand_num = 0; operand_num < operand_count(); ++operand_num) {
@@ -2976,12 +2988,14 @@ void HloInstruction::DetachFromOperandsAndUsers() {
     if (operand == nullptr) {
       continue;
     }
+    InvalidatePostOrderCache(operand->parent_);
     operand->users_.MaybeRemoveUser(this);
     operands_[operand_num] = nullptr;
   }
 
   // Update users. Set `nullptr` to the corresponding operand slot for users.
   for (auto& user : this->users()) {
+    InvalidatePostOrderCache(user->parent_);
     for (int i = 0; i < user->operand_count(); ++i) {
       if (user->operands_[i] == this) {
         user->operands_[i] = nullptr;
@@ -3118,6 +3132,8 @@ absl::Status HloInstruction::AddControlDependencyTo(
     HloInstruction* instruction) {
   TF_RET_CHECK(instruction->parent() == parent());
   if (!absl::c_linear_search(control_successors(), instruction)) {
+    // The successor's control_predecessors list feeds the post-order DFS.
+    InvalidatePostOrderCache(instruction->parent_);
     mutable_rare()->control_successors.push_back(instruction);
     TF_RET_CHECK(!absl::c_linear_search(
         instruction->rare()->control_predecessors, this));
@@ -3129,6 +3145,7 @@ absl::Status HloInstruction::AddControlDependencyTo(
 absl::Status HloInstruction::RemoveControlDependencyTo(
     HloInstruction* instruction) {
   TF_RET_CHECK(instruction->parent() == parent());
+  InvalidatePostOrderCache(instruction->parent_);
   if (has_rare()) {
     EraseElementFromVector(&mutable_rare()->control_successors, instruction);
   }
@@ -3142,8 +3159,12 @@ absl::Status HloInstruction::RemoveControlDependencyTo(
 absl::Status HloInstruction::DropAllControlDeps() {
   if (has_rare()) {
     for (auto* ctrl_succ : rare()->control_successors) {
+      InvalidatePostOrderCache(ctrl_succ->parent_);
       EraseElementFromVector(&ctrl_succ->mutable_rare()->control_predecessors,
                              this);
+    }
+    if (!rare()->control_predecessors.empty()) {
+      InvalidatePostOrderCache(parent_);
     }
     for (auto* ctrl_pred : rare()->control_predecessors) {
       EraseElementFromVector(&ctrl_pred->mutable_rare()->control_successors,
@@ -3269,6 +3290,7 @@ void HloInstruction::AppendOperand(HloInstruction* operand) {
     DCHECK(!operand->parent()->IsMarkedAsDead(operand))
         << "Operand " << operand->name() << " is already marked dead";
   }
+  InvalidatePostOrderCache(parent_);
   operands_.push_back(operand);
   operand->AddUser(this);
 }
@@ -3280,11 +3302,32 @@ void HloInstruction::AppendOperands(
   }
 }
 
+void HloInstruction::AddUser(HloInstruction* user) {
+  InvalidatePostOrderCache(parent_);
+  users_.AddUser(user);
+}
+
+void HloInstruction::RemoveUser(HloInstruction* user) {
+  InvalidatePostOrderCache(parent_);
+  users_.RemoveUser(user);
+}
+
+void HloInstruction::RemoveOperandAt(int index) {
+  InvalidatePostOrderCache(parent_);
+  operands_.erase(operands_.begin() + index);
+}
+
+void HloInstruction::RemoveAllOperands() {
+  InvalidatePostOrderCache(parent_);
+  operands_.clear();
+}
+
 void HloInstruction::RemoveOperandsAtAscendingIndices(
     absl::Span<const int> ascending_indices) {
   if (ascending_indices.empty()) {
     return;
   }
+  InvalidatePostOrderCache(parent_);
   int next_index = 0;
   int removed_count = 0;
   for (int to_remove : ascending_indices) {
@@ -3536,6 +3579,7 @@ absl::Status HloInstruction::ReplaceUseWithDifferentShape(
   TF_RET_CHECK(user->operand(operand_number) == this)
       << "Expected operand " << operand_number << " of " << user->ToString()
       << " to be equal to " << ToString();
+  InvalidatePostOrderCache(user->parent_);
   user->operands_[operand_number] = new_producer;
   new_producer->AddUser(user);
   // Update the async chain if the new producer is an async instruction.
@@ -3565,6 +3609,7 @@ absl::Status HloInstruction::ReplaceOperandWithDifferentShape(
     return absl::OkStatus();
   }
 
+  InvalidatePostOrderCache(parent_);
   operands_[operand_num] = new_operand;
 
   VLOG(3) << "Replacing operand " << operand_num << " of " << name() << " with "
@@ -3729,6 +3774,7 @@ absl::Status HloInstruction::ReplaceAllUsesWithDifferentShape(
       // graph. new_producer remains the only user of this instruction.
       new_producer_is_user = true;
     } else {
+      InvalidatePostOrderCache(user->parent_);
       std::replace(user->operands_.begin(), user->operands_.end(), this,
                    new_producer);
       new_producer->AddUser(user);
@@ -3738,6 +3784,7 @@ absl::Status HloInstruction::ReplaceAllUsesWithDifferentShape(
       }
     }
   }
+  InvalidatePostOrderCache(parent_);
   users_.Clear();
   if (new_producer_is_user) {
     AddUser(new_producer);
@@ -5818,13 +5865,21 @@ void HloInstruction::UniquifyName(HloModule* module) {
   UniquifyName(&module->instruction_name_uniquer());
 }
 
-int64_t HloInstruction::unique_id() const {
+int64_t HloInstruction::ComputeAndCacheUniqueId() const {
   CHECK(parent_ != nullptr)
       << "Instruction " << name()
       << " must have a parent in order to have a unique ID.";
   // The parent's unique ID is stored in the most significant 32 bits of the
   // unique ID.
-  return CalculateUniqueId(parent_->unique_id(), local_id_);
+  const int64_t id = CalculateUniqueId(parent_->unique_id(), local_id_);
+  cached_unique_id_.store(id, std::memory_order_relaxed);
+  return id;
+}
+
+bool HloInstruction::CachedUniqueIdEqualsComputed() const {
+  return parent_ != nullptr &&
+         cached_unique_id_.load(std::memory_order_relaxed) ==
+             CalculateUniqueId(parent_->unique_id(), local_id_);
 }
 
 int64_t HloInstruction::CalculateUniqueId(int32_t computation_unique_id,
@@ -5836,6 +5891,8 @@ int64_t HloInstruction::CalculateUniqueId(int32_t computation_unique_id,
 void HloInstruction::SortInstructionUsersAndControlLists(
     const MappedPtrContainerSorter<HloInstruction>::MapPtrFn& map_fn,
     const HloInstruction& sorted_instruction) {
+  // Reordering control_predecessors changes the post-order DFS push order.
+  InvalidatePostOrderCache(parent_);
   using Sorter = MappedPtrContainerSorter<HloInstruction>;
   users_.SortInstructionUsers(map_fn, sorted_instruction.users_);
 
