@@ -21,6 +21,7 @@ limitations under the License.
 #include <string>
 
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/rng_alg.h"
 #include "tensorflow/core/kernels/random_op.h"
 #include "tensorflow/core/kernels/stateless_random_ops_v2.h"
 #include "tensorflow/core/lib/random/random_distributions.h"
@@ -57,9 +58,16 @@ GetKeyCounterAlgFromInputs(OpKernelContext* ctx, int key_input_idx,
   if (alg == RNG_ALG_AUTO_SELECT) {
     alg = RNG_ALG_PHILOX;
   }
+  if (alg != RNG_ALG_PHILOX && alg != RNG_ALG_THREEFRY) {
+    return absl::InvalidArgumentError(
+        absl::StrCat("Unsupported algorithm id: ", alg));
+  }
 
-  TF_RETURN_IF_ERROR(
-      CheckKeyCounterShape(alg, key_t.shape(), counter_t.shape()));
+  // Use the algorithm's counter size, not the algorithm enum value itself
+  // (THREEFRY == 2), which incorrectly rejected valid length-1 counters.
+  TF_RETURN_IF_ERROR(CheckKeyCounterShape(
+      GetCounterSize(static_cast<ConcreteRngAlgorithm>(alg)), key_t.shape(),
+      counter_t.shape()));
   return std::make_tuple(key_t, counter_t, alg);
 }
 
@@ -76,6 +84,13 @@ void FillRandomTensor(OpKernelContext* ctx, Algorithm alg, const Tensor& key,
     functor::FillPhiloxRandom<Device, Distribution>()(
         ctx, ctx->eigen_device<Device>(), key_data, counter_data,
         random::PhiloxRandom() /*dummy*/, flat.data(), flat.size(), dist);
+  } else if (alg == RNG_ALG_THREEFRY) {
+    OP_REQUIRES(
+        ctx, false,
+        absl::UnimplementedError(
+            "The ThreeFry algorithm is only supported under XLA. Use "
+            "tf.function(jit_compile=True), or set alg to 'philox' or "
+            "'auto_select' for eager / non-XLA execution."));
   } else {
     OP_REQUIRES(ctx, false,
                 absl::InvalidArgumentError(

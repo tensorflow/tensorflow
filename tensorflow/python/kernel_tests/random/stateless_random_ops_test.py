@@ -32,6 +32,7 @@ from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.ops import gen_stateless_random_ops_v2
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
+from tensorflow.python.ops import random_ops_util
 from tensorflow.python.ops import stateless_random_ops as stateless
 from tensorflow.python.platform import test
 
@@ -510,6 +511,31 @@ class StatelessOpsTest(test.TestCase, parameterized.TestCase):
     self.assertAllEqual(counter.shape, [2])
     alg = gen_stateless_random_ops_v2.stateless_random_get_alg()
     self.assertAllEqual(alg.shape, [])
+
+  @test_util.run_v2_only
+  def testThreefryKeyCounterShape(self):
+    """ThreeFry key/counter must satisfy non-XLA shape checks (see #100252)."""
+    seed = constant_op.constant([1, 2], dtype=dtypes.int32)
+    key, counter, alg = random_ops_util.get_key_counter_alg(seed, 'threefry')
+    self.assertAllEqual(key.shape, [1])
+    self.assertAllEqual(counter.shape, [2])
+    self.assertEqual(int(alg), random_ops_util.Algorithm.THREEFRY.value)
+
+  @parameterized.parameters(['threefry'])
+  @test_util.run_v2_only
+  def testThreefryWorksUnderXla(self, alg):
+    """alg='threefry' must work when compiled with XLA (#100252)."""
+    @def_function.function(jit_compile=True)
+    def f():
+      return stateless.stateless_random_uniform(
+          shape=[5], seed=[1, 2], alg=alg)
+
+    result = f()
+    self.assertEqual(result.shape, [5])
+    # Results must be in [0, 1) and not all identical.
+    self.assertTrue(np.all(result.numpy() >= 0.0))
+    self.assertTrue(np.all(result.numpy() < 1.0))
+    self.assertGreater(np.unique(result.numpy()).size, 1)
 
   def assertDTypeEqual(self, a, b):
     self.assertEqual(dtypes.as_dtype(a), dtypes.as_dtype(b))
