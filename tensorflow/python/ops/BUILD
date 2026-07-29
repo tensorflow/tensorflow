@@ -3993,9 +3993,9 @@ py_test(
     deps = [
         ":array_ops",
         ":array_ops_gen",
+        ":gradient_checker_v2",
         ":math_ops",
         ":random_ops",
-        ":gradient_checker_v2",
         "//tensorflow/core/config:flags_py",
         "//tensorflow/python/eager:backprop",
         "//tensorflow/python/eager:def_function",
