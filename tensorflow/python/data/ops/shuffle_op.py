@@ -21,6 +21,13 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import gen_dataset_ops
 
+# Sanity limit on the number of elements in the shuffle buffer. The C++
+# kernel eagerly allocates a slot for every element up to `buffer_size` when
+# the iterator is created, so a pathologically large value (e.g.
+# `sys.maxsize`) reaches that allocation and crashes the process instead of
+# raising a catchable error.
+_MAX_SHUFFLE_BUFFER_SIZE_ELEMENTS = 1 << 30  # ~1 billion elements
+
 
 def _shuffle(  # pylint: disable=unused-private-name
     input_dataset,
@@ -45,6 +52,14 @@ class _ShuffleDataset(dataset_ops.UnaryUnchangedStructureDataset):
       name=None,
   ):
     """See `Dataset.shuffle()` for details."""
+    if (isinstance(buffer_size, int) and
+        buffer_size > _MAX_SHUFFLE_BUFFER_SIZE_ELEMENTS):
+      raise ValueError(
+          f"`buffer_size` must not exceed "
+          f"{_MAX_SHUFFLE_BUFFER_SIZE_ELEMENTS} elements, but got "
+          f"{buffer_size}. Requesting a shuffle buffer this large would "
+          "cause the dataset to abort the process instead of raising a "
+          "catchable error.")
     self._input_dataset = input_dataset
     self._buffer_size = ops.convert_to_tensor(
         buffer_size, dtype=dtypes.int64, name="buffer_size")

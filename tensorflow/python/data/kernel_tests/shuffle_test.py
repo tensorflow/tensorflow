@@ -178,6 +178,14 @@ class ShuffleTest(test_base.DatasetTestBase, parameterized.TestCase):
     for i in range(5):
       self.assertEqual(10, counts[i])
 
+  @combinations.generate(test_base.default_test_combinations())
+  def testExcessiveBufferSize(self):
+    dataset = dataset_ops.Dataset.from_tensor_slices([1, 2, 3, 4, 5])
+    with self.assertRaisesRegex(ValueError, "buffer_size"):
+      dataset.shuffle(buffer_size=sys.maxsize)
+    with self.assertRaisesRegex(ValueError, "buffer_size"):
+      dataset.shuffle(buffer_size=2**31 - 1)
+
   @combinations.generate(
       combinations.times(
           test_base.default_test_combinations(),
