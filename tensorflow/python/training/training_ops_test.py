@@ -458,6 +458,21 @@ class TrainingOpsTest(TensorFlowTestCase):
     return param_t, m_t, v_t
 
   @test_util.run_v2_only
+  def testResourceSparseApplyAdagradRejectsVariableDtypeMismatch(self):
+    var = variables.Variable(np.zeros((3, 3), dtype=np.float64))
+    accum = variables.Variable(np.zeros((3, 3), dtype=np.float64))
+    self.evaluate(variables.global_variables_initializer())
+
+    with self.assertRaisesRegex(
+        errors.InvalidArgumentError, "has type double but expected type float"):
+      self.evaluate(gen_training_ops.resource_sparse_apply_adagrad(
+          var.handle,
+          accum.handle,
+          constant_op.constant(0.1, dtype=dtypes.float32),
+          constant_op.constant(np.ones((3, 3)), dtype=dtypes.float32),
+          constant_op.constant([0, 1, 2], dtype=dtypes.int32)))
+
+  @test_util.run_v2_only
   def testResourceSparseApplyAdagradV2AndDisableCopyOnReadRace(self):
     dtype = np.float32
     index_type = np.int32

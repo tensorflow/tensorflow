@@ -33,6 +33,7 @@ limitations under the License.
 #include "tensorflow/core/framework/variant_op_registry.h"
 #include "tensorflow/core/kernels/dense_update_functor.h"
 #include "tensorflow/core/kernels/variable_ops.h"
+#include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/refcount.h"
 #include "tsl/platform/mutex.h"
 
@@ -46,9 +47,10 @@ namespace tensorflow {
 // @param lock_held  Whether the variable mutex was already held or not
 // NOTE: This function uses variable's `copy_on_read_mode` flag to decide if
 // it should immediately return or continue to lock the variable mutex for more
-// processing, and always sets the `copy_on_read_mode` flag to true when this
-// function returns. However, there is no guarantee that another op won't set
-// the `copy_on_read_mode` flag back to false after this function.
+// processing. Except for invalid dtype combinations, it always sets the
+// `copy_on_read_mode` flag to true when this function returns. However, there
+// is no guarantee that another op won't set the `copy_on_read_mode` flag back
+// to false after this function.
 // Therefore, for the operation that requires `copy_on_read` to stay true during
 // its execution, the caller needs to lock the variable mutex outside and call
 // this function with `lock_held = true` to avoid double locking.
@@ -65,6 +67,14 @@ absl::Status EnsureSparseVariableAccess(OpKernelContext* ctx, Var* var) {
   // enters this critical section will set the `copy_on_read_mode` flag to true.
   // All other threads can then exit this critical section immediately.
   if (var->copy_on_read_mode.load()) {
+    return absl::OkStatus();
+  }
+
+  // A resource variable with a different dtype is rejected later by
+  // GetInputTensorFromVariable. Avoid typed access here so the mismatch can be
+  // reported as a recoverable error instead of triggering Tensor's CHECK.
+  if (var->tensor()->IsInitialized() &&
+      var->tensor()->dtype() != DataTypeToEnum<T>::v()) {
     return absl::OkStatus();
   }
 
@@ -287,10 +297,20 @@ absl::Status GetInputTensorFromVariable(OpKernelContext* ctx, int input,
     TF_RETURN_IF_ERROR(LookupResource(ctx, handle, &var));
     if (sparse) {
       var->mu()->assert_held_shared();
+    } else {
+      var->mu()->assert_held();
+    }
+    if (var->tensor()->IsInitialized() &&
+        var->tensor()->dtype() != DataTypeToEnum<T>::v()) {
+      return errors::InvalidArgument(
+          "Resource variable at input ", input, " has type ",
+          DataTypeString(var->tensor()->dtype()), " but expected type ",
+          DataTypeString(DataTypeToEnum<T>::v()));
+    }
+    if (sparse) {
       *out = *var->tensor();
       return absl::OkStatus();
     }
-    var->mu()->assert_held();
     TF_RETURN_IF_ERROR(PrepareToUpdateVariable<Device, T>(
         ctx, var->tensor(), var->copy_on_read_mode.load()));
     *out = *var->tensor();
