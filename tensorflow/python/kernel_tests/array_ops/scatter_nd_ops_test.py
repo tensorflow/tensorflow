@@ -28,6 +28,7 @@ from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import gen_state_ops
 from tensorflow.python.ops import gradient_checker_v2
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
@@ -463,6 +464,31 @@ class StatefulScatterNdTest(test.TestCase):
         op(ref, indices, updates).eval()
         indices = np.array([2, 0, 6])
         op(ref, indices, updates).eval()
+
+  @test_util.run_in_graph_and_eager_modes
+  def testResourceScatterNdUpdateRejectsDtypeMismatch(self):
+    # The op's `T` attr comes from `updates` and says nothing about the
+    # variable it targets, so a float32 update can be pointed at a float64
+    # resource variable. The kernel then reads that variable as `T`, and
+    # Tensor::flat<T>() CHECK-fails rather than returning an error; this op
+    # had no validation of its own on the resource path at all.
+    for var_dtype, dtype_name in (
+        (dtypes.float64, 'double'),
+        (dtypes.bfloat16, 'bfloat16'),
+        (dtypes.float16, 'half'),
+    ):
+      ref = resource_variable_ops.ResourceVariable(
+          array_ops.ones([8], dtype=var_dtype))
+      self.evaluate(ref.initializer)
+      indices = constant_op.constant([[4], [3]], dtype=dtypes.int32)
+      updates = constant_op.constant([0., 2.], dtype=dtypes.float32)
+      with self.assertRaisesRegex(
+          errors.InvalidArgumentError,
+          'Trying to read a resource variable of dtype %s as float'
+          % dtype_name):
+        self.evaluate(
+            gen_state_ops.resource_scatter_nd_update(
+                ref.handle, indices, updates))
 
 
 class StatefulScatterNdDeterminismTest(StatefulScatterNdTest):

@@ -1394,6 +1394,34 @@ class SliceAssignTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     with self.assertRaises(ValueError):
       self.evaluate(v[:].assign(too_small_val))
 
+  @test_util.run_in_graph_and_eager_modes
+  def testResourceStridedSliceAssignRejectsDtypeMismatch(self):
+    # The `v[:].assign(...)` path above type-checks in Python, so reaching the
+    # kernel takes the raw op: `T` comes from `value` and is independent of the
+    # variable's dtype. ResourceStridedSliceAssign does validate the pairing,
+    # but only after calling EnsureSparseVariableAccess, whose copy reads the
+    # variable as `T`, so a variable whose refcount is not 1 CHECK-failed
+    # before the check could run.
+    for var_dtype, dtype_name in (
+        (dtypes.float64, "double"),
+        (dtypes.bfloat16, "bfloat16"),
+        (dtypes.float16, "half"),
+    ):
+      v = resource_variable_ops.ResourceVariable(
+          array_ops.ones([2], dtype=var_dtype))
+      self.evaluate(v.initializer)
+      begin = constant_op.constant([0], dtype=dtypes.int32)
+      end = constant_op.constant([2], dtype=dtypes.int32)
+      strides = constant_op.constant([1], dtype=dtypes.int32)
+      value = constant_op.constant([3., 4.], dtype=dtypes.float32)
+      with self.assertRaisesRegex(
+          errors.InvalidArgumentError,
+          "Trying to read a resource variable of dtype %s as float"
+          % dtype_name):
+        self.evaluate(
+            gen_array_ops.resource_strided_slice_assign(
+                v.handle, begin, end, strides, value))
+
   @test_util.disable_xla("b/123559667")
   @test_util.run_in_graph_and_eager_modes
   def testTensorStridedSliceUpdateWithInputForward(self):
