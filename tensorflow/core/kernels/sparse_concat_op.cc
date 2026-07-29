@@ -17,10 +17,10 @@ limitations under the License.
 
 #include "tensorflow/core/kernels/sparse_concat_op.h"
 
+#include <limits>
 #include <numeric>
 #include <utility>
 #include <vector>
-#include <limits>
 
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"

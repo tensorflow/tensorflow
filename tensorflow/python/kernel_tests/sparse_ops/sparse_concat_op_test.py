@@ -521,7 +521,6 @@ class SparseConcatTest(test.TestCase):
         concat_op = sparse_ops.sparse_concat(axis=1, sp_inputs=[sp1, sp2])
         self.evaluate(concat_op)
 
-
   def testSparseConcatOutputVolumeOverflow(self):
     # Individual volumes fit in int64, but the concatenated
     # output volume overflows int64, triggering
