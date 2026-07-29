@@ -42,6 +42,9 @@ In `tensorflow/c/experimental/filesystem/filesystem_interface.h`, removed `TF_Tr
         (including the defaults) now raises an error unless automatic type
         promotion is enabled, which keeps the cost of promotion opt-in.
 
+* oneDNN (MKL) convolution and transpose kernels
+    * Raises `InvalidArgumentError` instead of aborting the process for a rank-mismatched `Conv3DBackpropFilterV2` input and for `ConjugateTranspose` on a scalar. Fixes [#118340](https://github.com/tensorflow/tensorflow/issues/118340) and [#118345](https://github.com/tensorflow/tensorflow/issues/118345).
+
 * <SIMILAR TO ABOVE SECTION, BUT FOR OTHER IMPORTANT CHANGES / BUG FIXES>
 * <IF A CHANGE CLOSES A GITHUB ISSUE, IT SHOULD BE DOCUMENTED HERE>
 * <NOTES SHOULD BE GROUPED PER AREA>
