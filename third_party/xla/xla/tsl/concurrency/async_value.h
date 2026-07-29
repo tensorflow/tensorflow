@@ -1191,12 +1191,22 @@ inline void AsyncValue::Destroy() {
     static_cast<internal::SharedPtrAsyncValue*>(this)->~SharedPtrAsyncValue();
     if (was_ref_counted) {
 #if defined(__cpp_sized_deallocation)
-      ::operator delete(
-          this, sizeof(internal::SharedPtrAsyncValue),
-          std::align_val_t{alignof(internal::SharedPtrAsyncValue)});
+      if constexpr (alignof(internal::SharedPtrAsyncValue) <=
+                    __STDCPP_DEFAULT_NEW_ALIGNMENT__) {
+        ::operator delete(this, sizeof(internal::SharedPtrAsyncValue));
+      } else {
+        ::operator delete(
+            this, sizeof(internal::SharedPtrAsyncValue),
+            std::align_val_t{alignof(internal::SharedPtrAsyncValue)});
+      }
 #else   // defined(__cpp_sized_deallocation)
-      ::operator delete(
-          this, std::align_val_t{alignof(internal::SharedPtrAsyncValue)});
+      if constexpr (alignof(internal::SharedPtrAsyncValue) <=
+                    __STDCPP_DEFAULT_NEW_ALIGNMENT__) {
+        ::operator delete(this);
+      } else {
+        ::operator delete(
+            this, std::align_val_t{alignof(internal::SharedPtrAsyncValue)});
+      }
 #endif  // defined(__cpp_sized_deallocation)
     }
     return;
