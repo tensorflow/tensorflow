@@ -143,6 +143,7 @@ TEST_F(AllGatherPadDsSimplifierTest, MultiReplicaGenericCaseLowPad) {
     EXPECT_EQ(
         concate->operand(i)->get_frontend_attribute(kCollectiveGroupKeyAttr),
         "g0");
+    EXPECT_EQ(concate->operand(i)->channel_id(), 4);
   }
 }
 

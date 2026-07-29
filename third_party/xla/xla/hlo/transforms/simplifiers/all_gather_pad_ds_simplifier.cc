@@ -36,7 +36,6 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
-#include "xla/hlo/utils/hlo_query.h"
 #include "xla/literal_util.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/collective_opt_utils.h"
@@ -417,12 +416,10 @@ HloInstruction* AddCollectivePermuteWithNewSourceTargetPair(
   combined_pairs.insert(combined_pairs.end(), cp->source_target_pairs().begin(),
                         cp->source_target_pairs().end());
 
-  // TODO(wfelix): pass the channel id from the caller to avoid the expensive
-  // channel id query and enable parallelism.
   HloInstruction* combined =
       cp->parent()->AddInstruction(HloInstruction::CreateCollectivePermute(
           cp->shape(), cp->mutable_operand(0), combined_pairs,
-          hlo_query::NextChannelId(*cp->GetModule())));
+          cp->channel_id()));
   CopyCollectiveGroupKey(*cp, *combined);
   return combined;
 }
@@ -501,8 +498,7 @@ std::optional<std::vector<HloInstruction*>> ProcessReplicaGroup(
       HloInstruction* cp =
           computation->AddInstruction(HloInstruction::CreateCollectivePermute(
               ag.operand(0)->shape(), ag.mutable_operand(0),
-              {{iter->second, target_partition_id}},
-              hlo_query::NextChannelId(*ag.GetModule())));
+              {{iter->second, target_partition_id}}, ag.channel_id()));
       CopyCollectiveGroupKey(ag, *cp);
       new_instrs_per_rg.push_back(cp);
     } else {
