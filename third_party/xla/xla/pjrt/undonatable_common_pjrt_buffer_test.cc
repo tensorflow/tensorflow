@@ -42,6 +42,7 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/concurrency/future.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace {
