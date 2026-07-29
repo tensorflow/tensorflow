@@ -51,6 +51,7 @@ cc_library(
         "//xla/tests:test_utils",
         "//xla/tools:hlo_decomposer_lib",
         "//xla/tools:hlo_module_loader",
+        "//xla/tools/hlo_dump:hlo_dump_utils",
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:status_macros",
         "//xla/tsl/platform:test",
@@ -109,6 +110,7 @@ xla_cc_test(
         "//xla/tests:pjrt_interpreter_client_registry",
         "//xla/tests:test_utils",
         "//xla/tests:xla_internal_test_main",  # fixdeps: keep
+        "//xla/tools/hlo_dump:hlo_dump_utils",
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:status_macros",
         "//xla/tsl/platform:test",

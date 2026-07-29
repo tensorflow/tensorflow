@@ -69,6 +69,7 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/tests/test_utils.h"
 #include "xla/tools/hlo_decomposer.h"
+#include "xla/tools/hlo_dump/hlo_dump_utils.h"
 #include "xla/tools/hlo_isolation/hlo_isolation.pb.h"
 #include "xla/tools/hlo_module_loader.h"
 #include "xla/tsl/platform/env.h"
@@ -109,15 +110,30 @@ absl::Status InitIsolatorOptions(ModuleIsolationOptions& options) {
       auto* env = tsl::Env::Default();
       std::string outdir;
       std::string filename;
+      std::string html_filename;
       if (tsl::io::GetTestUndeclaredOutputsDir(&outdir)) {
         filename = tsl::io::JoinPath(
             outdir, absl::StrCat("failed-module-", module.name(), ".txt"));
+        html_filename = tsl::io::JoinPath(
+            outdir, absl::StrCat("failed-module-", module.name(), ".html"));
       } else {
         filename = tsl::io::GetTempFilename(
             absl::StrCat("failed-module-", module.name(), ".txt"));
+        html_filename = tsl::io::GetTempFilename(
+            absl::StrCat("failed-module-", module.name(), ".html"));
       }
       CHECK_OK(tsl::WriteStringToFile(env, filename, module.ToString()));
       LOG(INFO) << "Wrote failed HLO module to " << filename;
+
+      std::vector<numerics::debug_info::MismatchDetails> mismatch_details =
+          ExtractMismatchDetails(module, compare_status);
+      auto html_path_or =
+          numerics::debug_info::DumpHloModuleMismatchWithGraphData(
+              module, mismatch_details,
+              absl::StrCat("failed-module-", module.name(), ".html"));
+      if (html_path_or.ok()) {
+        LOG(INFO) << "Wrote failed HLO module HTML to " << *html_path_or;
+      }
     };
   }
   if (!options.make_fake_arguments_fn) {
@@ -1097,6 +1113,53 @@ absl::StatusOr<std::vector<bool>> DetectReducesInModuleOutput(
     bfs(defused_module.get(), i);
   }
   return reduce_in_output;
+}
+
+std::vector<numerics::debug_info::MismatchDetails> ExtractMismatchDetails(
+    const HloModule& module, const absl::Status& compare_status) {
+  absl::StatusOr<std::vector<NumericMismatch>> top_mismatches =
+      ExtractAndEnrichTopMismatches(std::string(compare_status.message()),
+                                    &module);
+  if (!top_mismatches.ok()) {
+    return {};
+  }
+
+  std::string target_name;
+  if (const HloComputation* entry = module.entry_computation()) {
+    if (const HloInstruction* root = entry->root_instruction()) {
+      target_name = root->name();
+    }
+  }
+
+  std::vector<numerics::debug_info::MismatchDetails> mismatch_details;
+  mismatch_details.reserve(top_mismatches->size());
+  for (const auto& m : *top_mismatches) {
+    numerics::debug_info::MismatchDetails details;
+    details.target_instruction_name = target_name;
+    if (module.result_shape().IsTuple()) {
+      details.output_shape_index = m.output_shape_index();
+    }
+    details.actual = m.actual();
+    details.expected = m.expected();
+    details.rel_error = m.rel_error();
+    if (m.has_percentage_of_elems_exceeding_abs_error()) {
+      details.percentage_of_elems_exceeding_abs_error =
+          m.percentage_of_elems_exceeding_abs_error();
+    }
+    if (m.has_percentage_of_elems_exceeding_rel_error()) {
+      details.percentage_of_elems_exceeding_rel_error =
+          m.percentage_of_elems_exceeding_rel_error();
+    }
+    if (m.has_percentage_of_elems_exceeding_both_errors()) {
+      details.percentage_of_elems_exceeding_both_errors =
+          m.percentage_of_elems_exceeding_both_errors();
+    }
+    if (m.has_result_of_reduce()) {
+      details.result_of_reduce = m.result_of_reduce();
+    }
+    mismatch_details.push_back(std::move(details));
+  }
+  return mismatch_details;
 }
 
 absl::StatusOr<std::vector<NumericMismatch>> ExtractAndEnrichTopMismatches(
