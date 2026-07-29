@@ -547,8 +547,7 @@ class SparseConcatTest(test.TestCase):
     with self.assertRaisesOpError(
         "results in overflow when computing number of elements"
     ):
-      self.evaluate(
-          sparse_ops.sparse_concat(axis=1, sp_inputs=[sp1, sp2]))
+      self.evaluate(sparse_ops.sparse_concat(axis=1, sp_inputs=[sp1, sp2]))
 
 if __name__ == "__main__":
   test.main()

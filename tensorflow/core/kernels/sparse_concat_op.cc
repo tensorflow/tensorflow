@@ -212,8 +212,7 @@ class SparseConcatOp : public OpKernel {
           OP_REQUIRES(context, new_dim >= 0,
                       absl::InvalidArgumentError(absl::StrCat(
                           "Concat dimension overflowed at position ", i)));
-          OP_REQUIRES_OK(context,
-                         output_shape.SetDimWithStatus(j, new_dim));
+          OP_REQUIRES_OK(context, output_shape.SetDimWithStatus(j, new_dim));
         }
       }
     }
