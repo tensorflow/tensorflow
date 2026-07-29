@@ -1022,7 +1022,9 @@ absl::flat_hash_map<TensorKey, TensorAnnotation> PopulateMismatchAnnotations(
     std::vector<std::string> tooltip_parts;
     tooltip_parts.push_back("<b>Numeric Mismatch:</b>");
     if (mismatch.custom_description.has_value()) {
-      tooltip_parts.push_back(*mismatch.custom_description);
+      tooltip_parts.push_back(
+          absl::StrCat("<pre style=\"margin: 0; white-space: pre-wrap;\">",
+                       *mismatch.custom_description, "</pre>"));
     } else {
       tooltip_parts.push_back(absl::StrFormat("Actual: %g", mismatch.actual));
       tooltip_parts.push_back(

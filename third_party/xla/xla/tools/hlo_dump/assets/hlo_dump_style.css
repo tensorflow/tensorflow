@@ -103,12 +103,14 @@ pre {
   display: none;
   position: fixed;
   width: max-content;
-  max-width: 1000px;
+  max-width: 80vw;
+  max-height: 75vh;
+  overflow: auto;
   background-color: #333;
   color: #fff;
   text-align: left;
   border-radius: 4px;
-  padding: 4px 8px;
+  padding: 8px 12px;
   z-index: 10000;
   font-family: monospace;
   font-size: 12px;
@@ -144,10 +146,14 @@ pre {
   position: fixed;
   background-color: #333;
   color: #fff;
-  padding: 5px;
-  border-radius: 3px;
+  padding: 8px 12px;
+  border-radius: 4px;
   display: none;
   z-index: 10000;
   font-family: monospace;
   font-size: 12px;
+  max-width: 45vw;
+  max-height: 75vh;
+  overflow: auto;
+  box-shadow: 0 2px 5px rgba(0,0,0,0.3);
 }
