@@ -836,15 +836,11 @@ TensorBuffer* FromProtoField<Variant>(Allocator* a, const TensorProto& in,
     const int64_t real_n = n < in_n ? n : in_n;
     for (int64_t i = 0; i < real_n; ++i) {
       data[i] = in.variant_val(i);
-      const std::string variant_type_name = data[i].TypeName();
       if (!DecodeUnaryVariant(&data[i])) {
         LOG(ERROR) << "Could not decode variant with type_name: \""
-                   << variant_type_name
+                   << in.variant_val(i).type_name()
                    << "\".  Perhaps you forgot to register a "
                       "decoder via REGISTER_UNARY_VARIANT_DECODE_FUNCTION?";
-        for (int64_t j = 0; j <= i; ++j) {
-          data[j].clear();
-        }
         buf->Unref();
         return nullptr;
       }
