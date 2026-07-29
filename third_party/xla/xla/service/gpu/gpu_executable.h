@@ -209,6 +209,11 @@ class GpuExecutable : public Executable {
     return *buffer_allocator_;
   }
 
+  // `persistent_alloc_indices` lists allocations whose device addresses are
+  // stable for this execution. Passing std::nullopt disables command buffer
+  // lowering for this step (CommandBufferThunk falls back to its thunk
+  // sequence); pass a valid - possibly empty - span once the allocation
+  // address policy is decided.
   absl::Status ExecuteThunks(
       const BufferAllocations& buffer_allocations,
       const ServiceExecutableRunOptions* run_options,
