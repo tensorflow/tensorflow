@@ -525,10 +525,10 @@ class UnsortedSegmentReductionOp : public OpKernel {
         num_segments.dtype() == DT_INT32
             ? static_cast<int64_t>(num_segments.scalar<int32_t>()())
             : num_segments.scalar<int64_t>()());
-    OP_REQUIRES(
-        context, num_segments_val >= 0,
-        errors::InvalidArgument("Input num_segments == ", num_segments_val,
-                                " must not be negative."));
+    OP_REQUIRES(context, num_segments_val >= 0,
+                absl::InvalidArgumentError(
+                    absl::StrCat("Input num_segments == ", num_segments_val,
+                                 " must not be negative.")));
     // Guard against excessively large num_segments that would cause integer
     // overflow in output tensor size calculations, leading to illegal memory
     // access or process abort (see #117549). For 32-bit Index types the
@@ -539,9 +539,9 @@ class UnsortedSegmentReductionOp : public OpKernel {
         static_cast<int64_t>(1) << 31,  // 2G
         static_cast<int64_t>(std::numeric_limits<Index>::max()));
     OP_REQUIRES(context, num_segments_val <= kMaxSegments,
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(absl::StrCat(
                     "Input num_segments == ", num_segments_val,
-                    " is too large. Must be at most ", kMaxSegments));
+                    " is too large. Must be at most ", kMaxSegments)));
     const Index output_rows =
         internal::SubtleMustCopy(static_cast<Index>(num_segments_val));
     TensorShape output_shape;
