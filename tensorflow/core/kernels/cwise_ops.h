@@ -844,6 +844,28 @@ struct functor_traits<scalar_erfinv_op<float>> {
   };
 };
 
+// Functor for tf.math.floor on float32 on CPU.
+//
+// std::floor (and Eigen's pfloor) returns -0.0f for small negative float32
+// subnormals, e.g. floor(-1e-45f) = -0.0f, but the correct result is -1.0f.
+// This scalar-only functor corrects that behaviour.  PacketAccess is disabled
+// so that Eigen always falls back to this scalar path on the CPU; the
+// vectorised floor path (via SIMD pfloor) shares the same bug.
+struct scalar_cpu_floor_float_op {
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE float operator()(const float& x) const {
+    const float r = numext::floor(x);
+    return (r == 0.0f && x < 0.0f) ? -1.0f : r;
+  }
+};
+
+template <>
+struct functor_traits<scalar_cpu_floor_float_op> {
+  enum {
+    Cost = NumTraits<float>::MulCost,
+    PacketAccess = false,
+  };
+};
+
 }  // end namespace internal
 }  // end namespace Eigen
 
@@ -1044,6 +1066,10 @@ struct isfinite : base<T, Eigen::internal::scalar_isfinite_op<T>, bool> {};
 
 template <typename T>
 struct floor : base<T, Eigen::internal::scalar_floor_op<T>> {};
+
+template <>
+struct floor<float>
+    : base<float, Eigen::internal::scalar_cpu_floor_float_op> {};
 
 template <typename T>
 struct round : base<T, Eigen::internal::scalar_round_half_to_even_op<T>> {};

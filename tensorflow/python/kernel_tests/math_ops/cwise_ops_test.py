@@ -1055,6 +1055,14 @@ class RoundingTest(test.TestCase):
     y = [-2., -2., -0., 0., 2., 2., 2.]
     self._compare_values(x, y=y)
 
+  def testNegativeFloat32SubnormalsFloorToMinusOne(self):
+    values = np.array(
+        [-4.21023219e-44, -1e-40, -1e-38, -1.40129846e-45], dtype=np.float32)
+
+    with test_util.force_cpu():
+      self.assertAllEqual(
+          np.floor(values), self.evaluate(math_ops.floor(values)))
+
   def testTypes(self):
     for dtype in [np.float16, np.float32, np.float64,
                   dtypes_lib.bfloat16.as_numpy_dtype]:
