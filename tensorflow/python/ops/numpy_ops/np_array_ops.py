@@ -1609,12 +1609,14 @@ def broadcast_arrays(*args, **kwargs):  # pylint: disable=missing-docstring
 @tf_export.tf_export('experimental.numpy.sign', v1=[])
 @np_utils.np_doc_only('sign')
 def sign(x, out=None, where=None, **kwargs):  # pylint: disable=missing-docstring,redefined-outer-name
-  if out:
-    raise ValueError('tf.numpy doesnt support setting out.')
-  if where:
-    raise ValueError('tf.numpy doesnt support setting where.')
+  if out is not None:
+    raise ValueError("tf.numpy doesn't support setting out.")
+  if where is not None:
+    raise ValueError("tf.numpy doesn't support setting where.")
   if kwargs:
-    raise ValueError('tf.numpy doesnt support setting {}'.format(kwargs.keys()))
+    raise ValueError(
+        "tf.numpy doesn't support setting {}".format(kwargs.keys())
+    )
 
   x = asarray(x)
 
