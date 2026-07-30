@@ -464,6 +464,15 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
     return absl::OkStatus();
   }
 
+  absl::Status HandleAtan(const HloInstruction* atan) override {
+    ASSIGN_OR_RETURN(Literal literal,
+                     ElementWiseUnaryOp(atan, [](ElementwiseT elem_operand) {
+                       return std::atan(elem_operand);
+                     }));
+    parent_->SetEvaluatedLiteralFor(atan, std::move(literal));
+    return absl::OkStatus();
+  }
+
   absl::Status HandleAtan2(const HloInstruction* atan2) override {
     if constexpr (std::is_floating_point_v<ElementwiseT>) {
       ASSIGN_OR_RETURN(Literal literal,

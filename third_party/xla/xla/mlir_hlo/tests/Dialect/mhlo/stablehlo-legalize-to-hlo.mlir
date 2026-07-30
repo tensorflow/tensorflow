@@ -611,6 +611,24 @@ func.func @op_and(%arg0: tensor<i1>, %arg1: tensor<i1>) -> tensor<i1> {
 
 // -----
 
+// CHECK-LABEL: "op_stablehlo_atan"
+func.func @op_stablehlo_atan(%arg0: tensor<f32>) -> tensor<f32> {
+  // CHECK: "mhlo.atan"([[ARG0:%arg[0-9]+]]) : (tensor<f32>) -> tensor<f32>
+  %0 = "stablehlo.custom_call"(%arg0) {call_target_name = "stablehlo.atan"} : (tensor<f32>) -> tensor<f32>
+  func.return %0 : tensor<f32>
+}
+
+// -----
+
+// CHECK-LABEL: "op_mhlo_atan"
+func.func @op_mhlo_atan(%arg0: tensor<f32>) -> tensor<f32> {
+  // CHECK: "mhlo.atan"([[ARG0:%arg[0-9]+]]) : (tensor<f32>) -> tensor<f32>
+  %0 = "stablehlo.custom_call"(%arg0) {call_target_name = "mhlo.atan", mhlo.attributes = {}} : (tensor<f32>) -> tensor<f32>
+  func.return %0 : tensor<f32>
+}
+
+// -----
+
 // CHECK-LABEL: "op_atan2"
 func.func @op_atan2(%arg0: tensor<f32>, %arg1: tensor<f32>) -> tensor<f32> {
   // CHECK: "mhlo.atan2"([[ARG0:%arg[0-9]+]], [[ARG1:%arg[0-9]+]]) : (tensor<f32>, tensor<f32>) -> tensor<f32>

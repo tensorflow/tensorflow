@@ -365,6 +365,7 @@ absl::StatusOr<DimAndBound> InferMostSpecificDimAndBound(int64_t dim,
     case HloOpcode::kAsinh:
     case HloOpcode::kAcos:
     case HloOpcode::kAcosh:
+    case HloOpcode::kAtan:
     case HloOpcode::kAtanh:
     case HloOpcode::kCosh:
     case HloOpcode::kCos:

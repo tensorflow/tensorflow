@@ -553,6 +553,13 @@ func.func @op_and(%arg0: tensor<i1>, %arg1: tensor<i1>) -> tensor<i1> {
 // AsyncStartOp aka mhlo.async_start is unsupported at the moment (see negative test below).
 // AsyncUpdateOp aka mhlo.async_update is unsupported at the moment (see negative test below).
 
+// CHECK-LABEL: "op_atan"
+func.func @op_atan(%arg0: tensor<f32>) -> tensor<f32> {
+  // CHECK: "stablehlo.custom_call"([[ARG0:%arg[0-9]+]]) <{call_target_name = "mhlo.atan"}> {mhlo.attributes = {}, mhlo.version = 1 : i64} : (tensor<f32>) -> tensor<f32>
+  %0 = "mhlo.atan"(%arg0) : (tensor<f32>) -> tensor<f32>
+  func.return %0 : tensor<f32>
+}
+
 // CHECK-LABEL: "op_atan2"
 func.func @op_atan2(%arg0: tensor<f32>, %arg1: tensor<f32>) -> tensor<f32> {
   // CHECK: "stablehlo.atan2"([[ARG0:%arg[0-9]+]], [[ARG1:%arg[0-9]+]]) : (tensor<f32>, tensor<f32>) -> tensor<f32>

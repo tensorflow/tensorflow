@@ -95,7 +95,9 @@ XlaOp Asin(XlaOp x,
            bool expand = true);
 
 // Computes the arc tangent of 'x'.
-XlaOp Atan(XlaOp x);
+XlaOp Atan(XlaOp x,
+           const std::optional<ResultAccuracy>& result_accuracy = std::nullopt,
+           bool expand = false);
 
 // Hyperbolic trigonometric functions
 
