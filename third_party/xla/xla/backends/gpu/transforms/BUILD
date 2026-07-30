@@ -556,6 +556,73 @@ cc_library(
 )
 
 cc_library(
+    name = "conv_fp8_fallback",
+    srcs = ["conv_fp8_fallback.cc"],
+    hdrs = ["conv_fp8_fallback.h"],
+    tags = [
+        "cuda-only",
+        "gpu",
+    ],
+    deps = [
+        ":cudnn_fusion_compiler",
+        "//xla:literal",
+        "//xla:shape_util",
+        "//xla:xla_data_proto_cc",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/pass:hlo_pass",
+        "//xla/service/gpu:backend_configs_cc",
+        "//xla/service/gpu:ir_emission_utils",
+        "//xla/stream_executor:device_description",
+        "//xla/tsl/platform:status_macros",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
+    ],
+)
+
+xla_test(
+    name = "conv_fp8_fallback_test",
+    srcs = ["conv_fp8_fallback_test.cc"],
+    # All NVIDIA GPUs: the probe verdicts driving the pass differ per
+    # generation. Every case is deviceless and opens no GPU, but needs a
+    # loadable cuDNN >= 9.8 runtime and a CUDA driver (cuDNN's deviceless
+    # heuristics abort without one), so GPU machines only.
+    backends = ["gpu"],
+    tags = [
+        "cuda-only",
+        "no_mac",
+    ],
+    deps = [
+        ":conv_fp8_fallback",
+        ":conv_fusion_rewriter",
+        ":conv_kind_assignment",
+        "//xla:shape_util",
+        "//xla:xla_data_proto_cc",
+        "//xla/backends/gpu/target_config",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
+        "//xla/hlo/testlib:verified_hlo_module",
+        "//xla/service/gpu:backend_configs_cc",
+        "//xla/service/gpu:ir_emission_utils",
+        "//xla/stream_executor:device_description",
+        "//xla/stream_executor:device_description_proto_cc",
+        "//xla/stream_executor:dnn",
+        "//xla/stream_executor/cuda:cudnn_plugin",
+        "//xla/tsl/cuda:cudart",  # build_cleaner: keep
+        "//xla/tsl/cuda:cudnn",  # build_cleaner: keep
+        "//xla/tsl/platform:status_macros",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
     name = "conv_kind_assignment",
     srcs = ["conv_kind_assignment.cc"],
     hdrs = ["conv_kind_assignment.h"],

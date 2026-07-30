@@ -44,6 +44,7 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"
 #include "xla/backends/gpu/transforms/algebraic_simplifier.h"
 #include "xla/backends/gpu/transforms/block_scaling_rewriter.h"
+#include "xla/backends/gpu/transforms/conv_fp8_fallback.h"
 #include "xla/backends/gpu/transforms/conv_kind_assignment.h"
 #include "xla/backends/gpu/transforms/conv_padding_legalization.h"
 #include "xla/backends/gpu/transforms/conv_rewriter.h"
@@ -55,6 +56,7 @@ limitations under the License.
 #include "xla/backends/gpu/transforms/cudnn_pad_for_convolutions.h"
 #include "xla/backends/gpu/transforms/cudnn_simplify_padding.h"
 #include "xla/backends/gpu/transforms/triangular_solve_rewriter.h"
+#include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -69,6 +71,7 @@ limitations under the License.
 #include "xla/hlo/transforms/simplifiers/hlo_constant_folding.h"
 #include "xla/hlo/transforms/simplifiers/reshape_mover.h"
 #include "xla/hlo/transforms/simplifiers/tuple_simplifier.h"
+#include "xla/pjrt/distributed/key_value_store_interface.h"
 #include "xla/service/call_inliner.h"
 #include "xla/service/compilation_stats.h"
 #include "xla/service/compiler.h"
@@ -84,6 +87,7 @@ limitations under the License.
 #include "xla/service/gpu/nvptx_alias_info.h"
 #include "xla/service/gpu/ptx_compile_options_from_debug_options.h"
 #include "xla/service/gpu/target_constants.h"
+#include "xla/service/hlo_cost_analysis.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/hlo_verifier.h"
 #include "xla/service/llvm_ir/llvm_util.h"
@@ -339,6 +343,25 @@ absl::Status NVPTXCompiler::OptimizeHloPostLayoutAssignment(
           .status());
 
   return absl::OkStatus();
+}
+
+absl::Status NVPTXCompiler::AddAutotunerPass(
+    HloPassPipeline* pipeline, HloModule* hlo_module,
+    const se::GpuComputeCapability& gpu_version, const CompileOptions& options,
+    tsl::thread::ThreadPool* thread_pool,
+    stream_executor::StreamExecutor* stream_executor,
+    const GpuTargetConfig* target_config, const AliasInfo* alias_info,
+    mlir::MLIRContext* mlir_context,
+    HloCostAnalysis::ShapeSizeFunction shape_size_fn,
+    const MultiProcessKeyValueStore& key_value_store) {
+  // Rewrite FP8 cuDNN conv fusions to BF16 when cuDNN has no FP8 plans for
+  // them on the target GPU; without this the autotuner fails hard when it
+  // enumerates their plans. Runs after ConvFusionRewriter (which created the
+  // fusions) and probes devicelessly, so it also covers AOT compilation.
+  pipeline->AddPass<ConvFp8Fallback>(target_config->device_description);
+  return GpuCompiler::AddAutotunerPass(
+      pipeline, hlo_module, gpu_version, options, thread_pool, stream_executor,
+      target_config, alias_info, mlir_context, shape_size_fn, key_value_store);
 }
 
 absl::Status NVPTXCompiler::RunCudnnCompilerPasses(
