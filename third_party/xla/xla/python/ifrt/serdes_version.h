@@ -43,9 +43,11 @@ class SerDesVersion {
   // 3: 2026-04-15, Allowed mixed serialization for stablehlo dialects.
   // 4: 2026-06-10, Added support for output bundle slice sizes in
   //                XlaCompileOptions and IfrtIRCompileOptions.
+  // 5: 2026-07-22, Added support for split_device_index_ranges in
+  //                CustomCallProgram.
   // Returns the current version.
   static SerDesVersion current() {
-    return SerDesVersion(SerDesVersionNumber(4));
+    return SerDesVersion(SerDesVersionNumber(5));
   }
 
   SerDesVersion(const SerDesVersion& other) = default;

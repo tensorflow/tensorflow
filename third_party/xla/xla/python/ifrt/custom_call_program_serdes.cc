@@ -14,7 +14,6 @@ limitations under the License.
 ==============================================================================*/
 
 #include <memory>
-#include <string>
 #include <utility>
 #include <vector>
 
@@ -61,8 +60,27 @@ class CustomCallProgramSerDes
 
     const CustomCallProgram& program =
         llvm::cast<CustomCallProgram>(serializable);
+    if (version.version_number() < SerDesVersionNumber(5) &&
+        !program.split_device_index_ranges.empty()) {
+      return absl::FailedPreconditionError(
+          absl::StrCat("Unsupported ", version.version_number(),
+                       " for CustomCallProgram serialization with "
+                       "split_device_index_ranges"));
+    }
+
     CustomCallProgramProto proto;
-    proto.set_version_number(SerDesVersionNumber(0).value());
+    if (version.version_number() >= SerDesVersionNumber(5)) {
+      proto.set_version_number(SerDesVersionNumber(5).value());
+      for (const std::pair<int, int>& range :
+           program.split_device_index_ranges) {
+        CustomCallProgramProto::IndexRangeProto* range_proto =
+            proto.add_split_device_index_ranges();
+        range_proto->set_start(range.first);
+        range_proto->set_end(range.second);
+      }
+    } else {
+      proto.set_version_number(SerDesVersionNumber(0).value());
+    }
     proto.set_type(program.type);
     proto.set_name(program.name);
     // TODO(hyeontaek): Remove absl::Cord flattening once protobuf [CTYPE=CORD]
@@ -95,7 +113,7 @@ class CustomCallProgramSerDes
           "Failed to parse serialized CustomCallProgramProto");
     }
     const SerDesVersionNumber version_number(proto.version_number());
-    if (version_number != SerDesVersionNumber(0)) {
+    if (version_number > SerDesVersionNumber(5)) {
       return absl::FailedPreconditionError(
           absl::StrCat("Unsupported ", version_number,
                        " for CustomCallProgram deserialization"));
@@ -104,6 +122,14 @@ class CustomCallProgramSerDes
     ASSIGN_OR_RETURN(DeviceListRef devices,
                      DeviceList::FromProto(deserialize_program_options->client,
                                            proto.devices()));
+    std::vector<std::pair<int, int>> split_device_index_ranges;
+    if (version_number >= SerDesVersionNumber(5)) {
+      for (const CustomCallProgramProto::IndexRangeProto& range_proto :
+           proto.split_device_index_ranges()) {
+        split_device_index_ranges.push_back(
+            {range_proto.start(), range_proto.end()});
+      }
+    }
     std::vector<ArraySpec> input_specs;
     input_specs.reserve(proto.input_specs_size());
     for (const ArraySpecProto& spec_proto : proto.input_specs()) {
@@ -128,6 +154,8 @@ class CustomCallProgramSerDes
         /*serialized_program_text=*/
         absl::Cord(std::move(*proto.mutable_serialized_program_text())),
         /*devices=*/std::move(devices),
+        /*split_device_index_ranges=*/
+        std::move(split_device_index_ranges),
         /*input_specs=*/std::move(input_specs),
         /*output_specs=*/std::move(output_specs));
   }

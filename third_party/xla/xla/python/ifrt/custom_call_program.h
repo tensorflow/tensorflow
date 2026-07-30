@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_PYTHON_IFRT_CUSTOM_CALL_PROGRAM_H_
 #define XLA_PYTHON_IFRT_CUSTOM_CALL_PROGRAM_H_
 
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -38,12 +39,14 @@ struct CustomCallProgram
   // specs must use only the devices in `devices`.
   CustomCallProgram(std::string type, std::string name,
                     absl::Cord serialized_program_text, DeviceListRef devices,
+                    std::vector<std::pair<int, int>> split_device_index_ranges,
                     std::vector<ArraySpec> input_specs,
                     std::vector<ArraySpec> output_specs)
       : type(std::move(type)),
         name(std::move(name)),
         serialized_program_text(std::move(serialized_program_text)),
         devices(std::move(devices)),
+        split_device_index_ranges(std::move(split_device_index_ranges)),
         input_specs(std::move(input_specs)),
         output_specs(std::move(output_specs)) {}
   ~CustomCallProgram() override = default;
@@ -63,6 +66,12 @@ struct CustomCallProgram
   // List of devices to compile and run the custom call program on.
   DeviceListRef devices;
 
+  // If empty, the whole `devices` will be used to form a single SPMD domain.
+  //
+  // When not empty, each pair specifies the device index range [start, end)
+  // of an SPMD domain.
+  std::vector<std::pair<int, int>> split_device_index_ranges;
+
   // Specification for input and output arrays. The custom call program must
   // expect to receive input arrays and return output arrays both following the
   // specification.
@@ -72,9 +81,7 @@ struct CustomCallProgram
   static char ID;  // NOLINT
 };
 
-// Compile options for a custom call program. It is currently empty because
-// the custom call program does not use any other runtime objects for
-// compilation.
+// Compile options for a custom call program.
 struct CustomCallCompileOptions
     : llvm::RTTIExtends<CustomCallCompileOptions, CompileOptions> {
   CustomCallCompileOptions() = default;

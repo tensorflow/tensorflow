@@ -84,11 +84,18 @@ TEST_P(CustomCallProgramSerDesTest, RoundTrip) {
                                    /*shape=*/shape1,
                                    /*shard_shape=*/shard_shape1);
 
+  std::vector<std::pair<int, int>> split_device_index_ranges;
+  if (version().version_number() >= SerDesVersionNumber(5)) {
+    split_device_index_ranges = {std::make_pair(0, 4), std::make_pair(4, 8)};
+  }
+
   CustomCallProgram orig(
       /*type=*/"test type",
       /*name=*/"test name",
       /*serialized_program_text=*/absl::Cord("test\0program\0text\0"),
       /*devices=*/std::move(devices),
+      /*split_device_index_ranges=*/
+      split_device_index_ranges,
       /*input_specs=*/
       {
           ArraySpec{/*dtype=*/DType(DType::kF32), /*shape=*/shape0,
@@ -114,6 +121,11 @@ TEST_P(CustomCallProgramSerDesTest, RoundTrip) {
             absl::Cord("test\0program\0text\0").Flatten());
 
   EXPECT_EQ(*deserialized_program->devices, *orig.devices);
+  if (version().version_number() >= SerDesVersionNumber(5)) {
+    EXPECT_THAT(
+        deserialized_program->split_device_index_ranges,
+        testing::ElementsAre(std::make_pair(0, 4), std::make_pair(4, 8)));
+  }
 
   ASSERT_THAT(deserialized_program->input_specs, SizeIs(1));
   EXPECT_EQ(deserialized_program->input_specs.front().dtype,
