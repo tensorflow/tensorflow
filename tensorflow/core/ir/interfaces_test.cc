@@ -35,7 +35,7 @@ TEST(TensorFlowRegistryInterface, TestDefaultImplementation) {
   state.addTypes(dialect->getControlType());
 
   Operation *op = Operation::create(state);
-  auto cleanup = llvm::make_scope_exit([&] { op->destroy(); });
+  auto cleanup = llvm::scope_exit([&] { op->destroy(); });
   ASSERT_TRUE(succeeded(verify(op)));
   auto iface = dyn_cast<TensorFlowRegistryInterface>(op);
   EXPECT_FALSE(iface);
@@ -66,7 +66,7 @@ TEST(TensorFlowRegisterInterface, TestCustomImplementation) {
     OperationState state(UnknownLoc::get(&context), std::get<0>(it));
     state.addTypes(dialect->getControlType());
     Operation *op = Operation::create(state);
-    auto cleanup = llvm::make_scope_exit([&] { op->destroy(); });
+    auto cleanup = llvm::scope_exit([&] { op->destroy(); });
     auto iface = dyn_cast<TensorFlowRegistryInterface>(op);
     ASSERT_TRUE(iface);
     EXPECT_EQ(iface.isStateful(), std::get<1>(it));
