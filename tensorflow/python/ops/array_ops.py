@@ -6320,9 +6320,9 @@ def fold(patches,
          output_size,
          sizes,
          strides,
-         padding='VALID',
+         padding="VALID",
          rates=1,
-         reduction='sum'):
+         reduction="sum"):
   """Reconstructs an image from a tensor of extracted patches.
 
   This op acts as an inverse of `tf.image.extract_patches`.It takes a
@@ -6341,7 +6341,7 @@ def fold(patches,
   This means that if an op is run multiple times with
   the same inputs on the same hardware,
   it will have the exact same outputs each time.
-  refer: https://www.tensorflow.org/api_docs/python/tf/config/experimental/enable_op_determinism
+  See `tf.config.experimental.enable_op_determinism` for details.
 
   Args:
     patches: A 4D `Tensor` of shape `(batch, out_h, out_w, patch_dim)`, where
@@ -6350,7 +6350,7 @@ def fold(patches,
 
     output_size: A tuple of integers `(height, width)` specifying the spatial
       dimensions of the reconstructed image (before removing padding if
-      `padding='VALID'`).
+      `padding="VALID"`).
 
     sizes: An `int` or tuple `(kernel_h, kernel_w)` specifying the size of
       each patch.
@@ -6359,16 +6359,16 @@ def fold(patches,
       size between patches.
       A single value `int` specifies the same stride for both height and width.
 
-    padding: A `str` ('VALID', 'SAME') or an `int`.
-      - 'VALID': No padding is applied (default).
-      - 'SAME': Matches the padding behavior of `tf.image.extract_patches`.
+    padding: A `str` ("VALID", "SAME") or an `int`.
+      - "VALID": No padding is applied (default).
+      - "SAME": Matches the padding behavior of `tf.image.extract_patches`.
       - `int`: Applies symmetric padding of this exact value to all sides.
 
     rates: An `int` or tuple `(dilation_h, dilation_w)` specifying the dilation
       rate (spacing between kernel elements). Must be `>= 1`. Defaults to 1.
 
-    reduction: A `str`, either `'sum'` or `'mean'`. Specifies how to aggregate
-      pixel values from overlapping patches. Defaults to `'sum'`.
+    reduction: A `str`, either `"sum"` or `"mean"`. Specifies how to aggregate
+      pixel values from overlapping patches. Defaults to `"sum"`.
 
 
   Returns:
@@ -6385,7 +6385,7 @@ def fold(patches,
     ...     sizes=[1, 2, 2, 1],
     ...     strides=[1, 2, 2, 1],
     ...     rates=[1, 1, 1, 1],
-    ...     padding='VALID'
+    ...     padding="VALID"
     ... )
 
     >>> # Reconstruct the original image
@@ -6397,7 +6397,8 @@ def fold(patches,
     ... )
 
     **Eg.2: Overlapping patches: (stride is smaller than sizes(kernel))**
-    >>> # It's important to enable_op_determinism before using fold() in this case
+    >>> # It's important to enable_op_determinism before
+    >>> # using fold() in this case
     >>> tf.config.experimental.enable_op_determinism()
     >>> # Extract overlapping 2x2 patches
     >>> overlapping_patches = tf.image.extract_patches(
@@ -6405,7 +6406,7 @@ def fold(patches,
     ...     sizes=[1, 2, 2, 1],
     ...     strides=[1, 1, 1, 1],
     ...     rates=[1, 1, 1, 1],
-    ...     padding='VALID'
+    ...     padding="VALID"
     ... )
 
     >>> # Reconstruct the image using mean reduction to average the
@@ -6415,7 +6416,7 @@ def fold(patches,
     ...     output_size=(4, 4),
     ...     sizes=(2, 2),
     ...     strides=(1, 1),
-    ...     reduction='mean'
+    ...     reduction="mean"
     ... )
   """
 
@@ -6429,7 +6430,7 @@ def fold(patches,
       f"got {patches.shape.ndims}D tensor with shape {patches.shape}")
 
   if isinstance(reduction, str):
-    if reduction not in ('sum', 'mean'):
+    if reduction not in ("sum", "mean"):
       raise ValueError(f"reduction must be 'sum' or 'mean', got {reduction}")
   else:
     raise ValueError(f"reduction must be 'sum' or 'mean', got {reduction}")
@@ -6462,8 +6463,11 @@ def fold(patches,
       raise ValueError(f"dilation must be >= 1, got {dilation}")
 
   if stride_h < kernel_h or stride_w < kernel_w:
-    from tensorflow.python.framework import config  # Local imports - to avoid circular imports
+    # Local imports - to avoid circular imports
+    # pylint: disable=g-import-not-at-top
+    from tensorflow.python.framework import config
     from tensorflow.python.platform import tf_logging
+    # pylint: enable=g-import-not-at-top
     if not config.is_op_determinism_enabled():
       tf_logging.warning(
         msg="The fold operation may produce non-deterministic results "
@@ -6500,9 +6504,9 @@ def fold(patches,
   k_eff_h = (kernel_h - 1) * dilation_h + 1
   k_eff_w = (kernel_w - 1) * dilation_w + 1
   if isinstance(padding, str):
-    if padding == 'VALID':
+    if padding == "VALID":
       pad_top = pad_bottom = pad_left = pad_right = 0
-    elif padding == 'SAME':
+    elif padding == "SAME":
       # Calculate total padding required
       val_h = (out_h - 1) * stride_h + k_eff_h - height
       val_w = (out_w - 1) * stride_w + k_eff_w - width
@@ -6510,7 +6514,8 @@ def fold(patches,
         constant_op.constant(0, dtype=val_h.dtype), val_h)
       pad_total_w = gen_math_ops.maximum(
         constant_op.constant(0, dtype=val_w.dtype), val_w)
-      # For odd values of total padding, add more padding at the 'right' side of the given dimension.
+      # For odd values of total padding,
+      # add more padding at the 'right' side of the given dimension.
       pad_top = pad_total_h // 2
       pad_bottom = pad_total_h - pad_top
       pad_left = pad_total_w // 2
@@ -6539,15 +6544,17 @@ def fold(patches,
   kh_range = gen_math_ops._range(0, kernel_h, 1)
   kw_range = gen_math_ops._range(0, kernel_w, 1)
 
-  b_grid, h_grid, w_grid, kh_grid, kw_grid = meshgrid(batch_range,
-                                                      h_range,
-                                                      w_range,
-                                                      kh_range,
-                                                      kw_range,
-                                                      indexing='ij')
+  b_grid, h_grid, w_grid, kh_grid, kw_grid = meshgrid(
+    batch_range,
+    h_range,
+    w_range,
+    kh_range,
+    kw_range,
+    indexing='ij')
 
   # Calculate output coordinates with dilation
-  # fold formula: output[i*stride + kh*dilation, j*stride + kw*dilation] = patch_pixel
+  # fold formula:
+  # output[i*stride + kh*dilation, j*stride + kw*dilation] = patch_pixel
   out_h_coords = h_grid * stride_h + kh_grid * dilation_h
   out_w_coords = w_grid * stride_w + kw_grid * dilation_w
 
@@ -6555,9 +6562,7 @@ def fold(patches,
   indices = array_ops_stack.stack([
     reshape(b_grid, [-1]),
     reshape(out_h_coords, [-1]),
-    reshape(out_w_coords, [-1])
-  ],
-                                  axis=1)
+    reshape(out_w_coords, [-1])],axis=1)
 
   updates = reshape(patches_reshaped, [-1, channels])
 
@@ -6566,7 +6571,7 @@ def fold(patches,
     indices=indices,
     updates=updates,
     shape=[batch_size, padded_height, padded_width, channels])
-  if reduction == 'mean':
+  if reduction == "mean":
     ones_updates = ones(shape=shape_internal(updates), dtype=updates.dtype)
     divisor_matrix = gen_array_ops.scatter_nd(  #calc overlapping count
       indices=indices,
