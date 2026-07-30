@@ -118,6 +118,8 @@ absl::Status ConvertJaxToTFLiteFlatBuffer(
   }
   pass_config.unfold_large_splat_constant =
       converter_flags.unfold_large_splat_constant();
+  pass_config.fold_fp16_resource_casts =
+      converter_flags.fold_fp16_resource_casts();
   pass_config.enable_hlo_to_tf_conversion = true;
   pass_config.enable_stablehlo_conversion =
       converter_flags.convert_to_stablehlo();
