@@ -665,7 +665,7 @@ struct CtxDecoding<Context> {
 
   XLA_FFI_ATTRIBUTE_ALWAYS_INLINE
   static std::optional<Context> Decode(const XLA_FFI_Api* api,
-                                       XLA_FFI_ExecutionContext* ctx,
+                                       XLA_FFI_InvokeContext* ctx,
                                        DiagnosticEngine&) {
     return Context(api, ctx);
   }
@@ -681,7 +681,7 @@ namespace internal {
 // `func` and name for error reporting.
 template <typename T, typename F>
 static std::optional<T> DecodeInternalCtx(const XLA_FFI_Api* api,
-                                          XLA_FFI_ExecutionContext* ctx,
+                                          XLA_FFI_InvokeContext* ctx,
                                           DiagnosticEngine& diagnostic, F func,
                                           const char* name) {
   void* result = nullptr;
@@ -701,7 +701,7 @@ struct CtxDecoding<DeviceOrdinal> {
   using Type = int32_t;
 
   static std::optional<Type> Decode(const XLA_FFI_Api* api,
-                                    XLA_FFI_ExecutionContext* ctx,
+                                    XLA_FFI_InvokeContext* ctx,
                                     DiagnosticEngine&) {
     return api->internal_api->XLA_FFI_INTERNAL_DeviceOrdinal_Get(ctx);
   }
@@ -712,7 +712,7 @@ struct CtxDecoding<CalledComputation> {
   using Type = const HloComputation*;
 
   static std::optional<Type> Decode(const XLA_FFI_Api* api,
-                                    XLA_FFI_ExecutionContext* ctx,
+                                    XLA_FFI_InvokeContext* ctx,
                                     DiagnosticEngine&) {
     void* ptr = api->internal_api->XLA_FFI_INTERNAL_CalledComputation_Get(ctx);
     return reinterpret_cast<Type>(ptr);
@@ -724,7 +724,7 @@ struct CtxDecoding<RunId> {
   using Type = RunId;
 
   static std::optional<Type> Decode(const XLA_FFI_Api* api,
-                                    XLA_FFI_ExecutionContext* ctx,
+                                    XLA_FFI_InvokeContext* ctx,
                                     DiagnosticEngine& diagnostic) {
     return RunId{api->internal_api->XLA_FFI_INTERNAL_RunId_Get(ctx)};
   }
@@ -743,7 +743,7 @@ struct CtxDecoding<UserData<T>> {
   using Type = T*;
 
   static std::optional<Type> Decode(const XLA_FFI_Api* api,
-                                    XLA_FFI_ExecutionContext* ctx,
+                                    XLA_FFI_InvokeContext* ctx,
                                     DiagnosticEngine& diagnostic) {
     auto* execution_context = reinterpret_cast<const ExecutionContext*>(
         api->internal_api->XLA_FFI_INTERNAL_ExecutionContext_Get(ctx));
@@ -782,7 +782,7 @@ struct CtxDecoding<State<T, stage>> {
   using Type = T*;
 
   static std::optional<Type> Decode(const XLA_FFI_Api* api,
-                                    XLA_FFI_ExecutionContext* ctx,
+                                    XLA_FFI_InvokeContext* ctx,
                                     DiagnosticEngine& diagnostic) {
     auto* execution_state = reinterpret_cast<const ExecutionState*>(
         api->internal_api->XLA_FFI_INTERNAL_ExecutionState_Get(
@@ -811,7 +811,7 @@ struct CtxDecoding<State<T, stage>> {
 template <ExecutionStage stage>
 struct ResultEncoding<stage, absl::Status> {
   static XLA_FFI_Error* Encode(const XLA_FFI_Api* api,
-                               XLA_FFI_ExecutionContext* ctx,
+                               XLA_FFI_InvokeContext* ctx,
                                absl::Status status) {
     if (ABSL_PREDICT_TRUE(status.ok())) {
       return nullptr;
@@ -830,7 +830,7 @@ struct ResultEncoding<stage, absl::StatusOr<std::unique_ptr<T>>> {
   }
 
   static XLA_FFI_Error* Encode(const XLA_FFI_Api* api,
-                               XLA_FFI_ExecutionContext* ctx,
+                               XLA_FFI_InvokeContext* ctx,
                                absl::StatusOr<std::unique_ptr<T>> state) {
     if (ABSL_PREDICT_TRUE(state.ok())) {
       auto* execution_state = reinterpret_cast<ExecutionState*>(
@@ -855,7 +855,7 @@ struct ResultEncoding<stage, absl::StatusOr<std::unique_ptr<T>>> {
 template <ExecutionStage stage>
 struct ResultEncoding<stage, tsl::AsyncValueRef<tsl::Chain>> {
   static XLA_FFI_Future* Encode(const XLA_FFI_Api* api,
-                                XLA_FFI_ExecutionContext* ctx,
+                                XLA_FFI_InvokeContext* ctx,
                                 tsl::AsyncValueRef<tsl::Chain> async_value) {
     return api->internal_api->XLA_FFI_INTERNAL_Future_Forward(
         async_value.release());

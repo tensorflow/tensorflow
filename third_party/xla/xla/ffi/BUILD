@@ -375,6 +375,7 @@ xla_cc_test(
     features = ["-use_header_modules"],
     shuffle_tests = False,
     deps = [
+        ":api",
         ":attribute_map",
         ":call_frame",
         ":execution_context",

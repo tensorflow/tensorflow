@@ -229,7 +229,7 @@ CallFrame::CallFrame(std::unique_ptr<Arguments> arguments,
       attributes_(std::move(attributes)) {}
 
 XLA_FFI_CallFrame CallFrame::Build(const XLA_FFI_Api* api,
-                                   XLA_FFI_ExecutionContext* ctx,
+                                   XLA_FFI_InvokeContext* ctx,
                                    XLA_FFI_ExecutionStage stage) {
   XLA_FFI_CallFrame call_frame = {XLA_FFI_CallFrame_STRUCT_SIZE, nullptr};
   call_frame.api = api;

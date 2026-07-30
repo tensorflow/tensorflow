@@ -38,6 +38,7 @@ limitations under the License.
 #include "xla/backends/cpu/ffi.h"
 #include "xla/backends/gpu/ffi.h"
 #include "xla/executable_run_options.h"
+#include "xla/ffi/api/api.h"
 #include "xla/ffi/api/c_api.h"
 #include "xla/ffi/attribute_map.h"
 #include "xla/ffi/call_frame.h"
@@ -265,6 +266,76 @@ TEST(FfiTest, RunId) {
 
   auto status = Invoke(Api(), *handler, call_frame, context);
   TF_ASSERT_OK(status);
+}
+
+struct MyExtension {
+  static constexpr int64_t kExtensionType = 1234;
+  static constexpr int64_t kMajorVersion = 1;
+  static constexpr int64_t kMinorVersion = 2;
+  XLA_FFI_Extension extension_base;
+  int32_t my_data;
+};
+
+struct AnotherExtension {
+  static constexpr int64_t kExtensionType = 1236;
+  static constexpr int64_t kMajorVersion = 3;
+  static constexpr int64_t kMinorVersion = 4;
+  XLA_FFI_Extension extension_base;
+  int32_t my_data;
+};
+
+TEST(FfiTest, DecodeExtension) {
+  MyExtension test_ext;
+  test_ext.extension_base = MakeExtensionHeader<MyExtension>();
+  test_ext.my_data = 42;
+
+  bool handler_called = false;
+
+  auto handler = Ffi::Bind().Ctx<FfiExtension<MyExtension>>().To(
+      [&](const MyExtension* ext) -> absl::Status {
+        EXPECT_NE(ext, nullptr);
+        EXPECT_EQ(ext->my_data, 42);
+        EXPECT_EQ(ext->extension_base.id.major_version,
+                  MyExtension::kMajorVersion);
+        EXPECT_EQ(ext->extension_base.id.minor_version,
+                  MyExtension::kMinorVersion);
+        handler_called = true;
+        return absl::OkStatus();
+      });
+
+  CallFrameBuilder builder(/*num_args=*/0, /*num_rets=*/0);
+  auto call_frame = builder.Build();
+
+  InvokeContext context;
+  context.extension_start = reinterpret_cast<XLA_FFI_Extension*>(&test_ext);
+
+  auto status = Invoke(Api(), *handler, call_frame, context);
+  EXPECT_TRUE(handler_called);
+  ASSERT_OK(status);
+}
+
+TEST(FfiTest, DecodeExtensionNotFound) {
+  MyExtension test_ext;
+  test_ext.extension_base = MakeExtensionHeader<MyExtension>();
+  test_ext.my_data = 42;
+  bool handler_called = false;
+
+  auto handler = Ffi::Bind().Ctx<FfiExtension<AnotherExtension>>().To(
+      [&](const AnotherExtension* ext) -> absl::Status {
+        handler_called = true;
+        return absl::OkStatus();
+      });
+
+  CallFrameBuilder builder(/*num_args=*/0, /*num_rets=*/0);
+  auto call_frame = builder.Build();
+
+  InvokeContext context;
+  context.extension_start = reinterpret_cast<XLA_FFI_Extension*>(&test_ext);
+
+  auto status = Invoke(Api(), *handler, call_frame, context);
+  EXPECT_FALSE(status.ok());
+  EXPECT_THAT(status.message(), HasSubstr("Extension not found in context"));
+  EXPECT_FALSE(handler_called);
 }
 
 TEST(FfiTest, BuiltinAttributes) {

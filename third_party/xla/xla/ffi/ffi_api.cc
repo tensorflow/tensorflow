@@ -229,7 +229,7 @@ static XLA_FFI_Error* XLA_FFI_Stream_Get(XLA_FFI_Stream_Get_Args* args) {
       "XLA_FFI_Stream_Get", XLA_FFI_Stream_Get_Args_STRUCT_SIZE,
       args->struct_size));
 
-  auto* gpu = std::get_if<XLA_FFI_ExecutionContext::GpuContext>(
+  auto* gpu = std::get_if<XLA_FFI_InvokeContext::GpuContext>(
       &args->ctx->backend_context);
 
   if (ABSL_PREDICT_FALSE(gpu == nullptr)) {
@@ -269,8 +269,8 @@ static XLA_FFI_Error* XLA_FFI_DeviceOrdinal_Get(
 
 static XLA_FFI_Error* XLA_FFI_Type_Register(XLA_FFI_Type_Register_Args* args) {
   XLA_FFI_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
-      "XLA_FFI_ExecutionContext_Get_Args",
-      XLA_FFI_ExecutionContext_Get_Args_STRUCT_SIZE, args->struct_size));
+      "XLA_FFI_InvokeContext_Get_Args",
+      XLA_FFI_InvokeContext_Get_Args_STRUCT_SIZE, args->struct_size));
 
   absl::string_view type_name(args->name.ptr, args->name.len);
   TypeRegistry::TypeId type_id(args->type_id->type_id);
@@ -298,11 +298,29 @@ static XLA_FFI_Error* XLA_FFI_Type_Register(XLA_FFI_Type_Register_Args* args) {
   return nullptr;
 }
 
-static XLA_FFI_Error* XLA_FFI_ExecutionContext_Get(
-    XLA_FFI_ExecutionContext_Get_Args* args) {
+static XLA_FFI_Error* XLA_FFI_InvokeContext_FindExtension(
+    XLA_FFI_InvokeContext_FindExtension_Args* args) {
   XLA_FFI_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
-      "XLA_FFI_ExecutionContext_Get_Args",
-      XLA_FFI_ExecutionContext_Get_Args_STRUCT_SIZE, args->struct_size));
+      "XLA_FFI_InvokeContext_FindExtension",
+      XLA_FFI_InvokeContext_FindExtension_Args_STRUCT_SIZE, args->struct_size));
+
+  args->extension = nullptr;
+  const XLA_FFI_Extension* ext = args->ctx->extension_start;
+  while (ext != nullptr) {
+    if (ext->id.extension_type == args->extension_type) {
+      args->extension = ext;
+      return nullptr;
+    }
+    ext = ext->next;
+  }
+  return nullptr;
+}
+
+static XLA_FFI_Error* XLA_FFI_InvokeContext_Get(
+    XLA_FFI_InvokeContext_Get_Args* args) {
+  XLA_FFI_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
+      "XLA_FFI_InvokeContext_Get_Args",
+      XLA_FFI_InvokeContext_Get_Args_STRUCT_SIZE, args->struct_size));
 
   DCHECK(args->ctx->execution_context) << "ExecutionContext must be set";
   auto user_data = args->ctx->execution_context->Lookup(
@@ -315,7 +333,7 @@ static XLA_FFI_Error* XLA_FFI_ExecutionContext_Get(
   return nullptr;
 }
 
-static ExecutionState* GetExecutionState(XLA_FFI_ExecutionContext* ctx,
+static ExecutionState* GetExecutionState(XLA_FFI_InvokeContext* ctx,
                                          XLA_FFI_ExecutionStage stage) {
   switch (stage) {
     case XLA_FFI_ExecutionStage_INSTANTIATE:
@@ -336,9 +354,9 @@ namespace {
 // compatibility reasons. This can be removed 15 Feb 2027.
 struct XLA_FFI_State_Args_V02 {
   size_t struct_size;
-  XLA_FFI_Extension_Base* extension_start;
+  XLA_FFI_InternalExtension* extension_start;
 
-  XLA_FFI_ExecutionContext* ctx;
+  XLA_FFI_InvokeContext* ctx;
   XLA_FFI_TypeId* type_id;
   void* state;
 };
@@ -433,7 +451,7 @@ static XLA_FFI_Error* XLA_FFI_DeviceMemory_Allocate(
       "XLA_FFI_DeviceMemory_Allocate_Args",
       XLA_FFI_DeviceMemory_Allocate_Args_STRUCT_SIZE, args->struct_size));
 
-  auto* gpu = std::get_if<XLA_FFI_ExecutionContext::GpuContext>(
+  auto* gpu = std::get_if<XLA_FFI_InvokeContext::GpuContext>(
       &args->ctx->backend_context);
 
   // TODO(ezhulenev): Device memory allocation should be supported for all
@@ -476,7 +494,7 @@ static XLA_FFI_Error* XLA_FFI_DeviceMemory_Free(
       "XLA_FFI_DeviceMemory_Free_Args",
       XLA_FFI_DeviceMemory_Free_Args_STRUCT_SIZE, args->struct_size));
 
-  auto* gpu = std::get_if<XLA_FFI_ExecutionContext::GpuContext>(
+  auto* gpu = std::get_if<XLA_FFI_InvokeContext::GpuContext>(
       &args->ctx->backend_context);
 
   // TODO(ezhulenev): Device memory allocation should be supported for all
@@ -503,9 +521,9 @@ static XLA_FFI_Error* XLA_FFI_DeviceMemory_Free(
 }
 
 static absl::StatusOr<const Eigen::ThreadPoolDevice*> GetIntraOpThreadPool(
-    const XLA_FFI_ExecutionContext* ctx) {
+    const XLA_FFI_InvokeContext* ctx) {
   auto* cpu =
-      std::get_if<XLA_FFI_ExecutionContext::CpuContext>(&ctx->backend_context);
+      std::get_if<XLA_FFI_InvokeContext::CpuContext>(&ctx->backend_context);
 
   if (ABSL_PREDICT_FALSE(cpu == nullptr)) {
     return Unimplemented("XLA FFI CPU context is not available");
@@ -575,7 +593,7 @@ const XLA_FFI_Api* GetXlaFfiApi() {
       XLA_FFI_Handler_Register,
       XLA_FFI_Stream_Get,
       XLA_FFI_Type_Register,
-      XLA_FFI_ExecutionContext_Get,
+      XLA_FFI_InvokeContext_Get,
       XLA_FFI_State_Set,
       XLA_FFI_State_Get,
       XLA_FFI_DeviceMemory_Allocate,
@@ -587,6 +605,7 @@ const XLA_FFI_Api* GetXlaFfiApi() {
       XLA_FFI_Future_SetError,
       XLA_FFI_RunId_Get,
       XLA_FFI_DeviceOrdinal_Get,
+      XLA_FFI_InvokeContext_FindExtension,
   };
 
   return &api;
