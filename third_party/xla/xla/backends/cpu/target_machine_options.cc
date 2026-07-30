@@ -109,10 +109,10 @@ GetEnabledAndDisabledFeatures(const std::vector<std::string>& features) {
 // is not recognized by the LLVM toolchain
 static std::string GetSafeCpuName() {
   std::string cpu = llvm::sys::getHostCPUName().str();
-#if defined(WIN32) && defined(_M_ARM64)
-// LLVM returns oryon-1 as CPU name on Snapdragon processors
-// Fallback to generic target as a safe CPU name 
-    return "generic";
+#if defined(_WIN32) && defined(_M_ARM64)
+  // LLVM returns oryon-1 as CPU name on Snapdragon processors
+  // Fallback to generic target as a safe CPU name 
+  return "generic";
 #endif
   return cpu;
 }
