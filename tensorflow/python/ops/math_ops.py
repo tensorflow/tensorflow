@@ -976,7 +976,7 @@ def round(x, name=None):  # pylint: disable=redefined-builtin
 
   ```python
   x = tf.constant([1.4+2.6j, 3.2+4.8j])
-  rounded = tf.complex(tf.round(tf.math.real(x)), tf.round(tf.math.imag(x)))
+  rounded = tf.complex(tf.math.round(tf.math.real(x)), tf.math.round(tf.math.imag(x)))
   ```
 
   Args:
