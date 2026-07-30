@@ -567,7 +567,7 @@ cc_toolchain(
     toolchain_identifier = "clang_cl_arm64",
 )
 
-# buildifier: disable=platform-specific-binaries
+# buildifier: disable=platform-specific-binaries 
 cc_toolchain_config(
     name = "clang_cl_arm64",
     abi_libc_version = "local",
