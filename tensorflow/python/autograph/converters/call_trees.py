@@ -227,7 +227,7 @@ class CallTreeTransformer(converter.Base):
             'unexpected behavior, especially with XLA compilation. '
             'Use `tf.random` functions instead for dynamic random values. '
             'For example, replace `random.randint(a, b)` with '
-            '`tf.random.uniform([], a, b, dtype=tf.int32)`. '
+            '`tf.random.uniform([], a, b + 1, dtype=tf.int32)`. '
             'See https://www.tensorflow.org/guide/function#executing_python_side_effects',
             full_name)
         python_random_warned = True

@@ -266,8 +266,12 @@ class CallTreesTest(converter_testing.TestCase):
     def f():
       return random.randint(1, 10)
 
-    # Transform should work and issue warning
-    tr, mock = self._transform_with_mock(f)
+    with self.assertLogs(level='WARNING') as logs:
+      tr, mock = self._transform_with_mock(f)
+
+    self.assertLen(logs.output, 1)
+    self.assertIn('Detected use of Python\'s `random.randint()` inside a tf.function.',
+                  logs.output[0])
 
     # The function should still be callable
     result = tr()
@@ -283,7 +287,12 @@ class CallTreesTest(converter_testing.TestCase):
     def f():
       return random.randrange(0, 100)
 
-    tr, mock = self._transform_with_mock(f)
+    with self.assertLogs(level='WARNING') as logs:
+      tr, mock = self._transform_with_mock(f)
+
+    self.assertLen(logs.output, 1)
+    self.assertIn('Detected use of Python\'s `random.randrange()` inside a tf.function.',
+                  logs.output[0])
 
     # The function should still be callable
     result = tr()
@@ -299,7 +308,12 @@ class CallTreesTest(converter_testing.TestCase):
     def f():
       return random.choice([1, 2, 3])
 
-    tr, mock = self._transform_with_mock(f)
+    with self.assertLogs(level='WARNING') as logs:
+      tr, mock = self._transform_with_mock(f)
+
+    self.assertLen(logs.output, 1)
+    self.assertIn('Detected use of Python\'s `random.choice()` inside a tf.function.',
+                  logs.output[0])
 
     # The function should still be callable
     result = tr()
