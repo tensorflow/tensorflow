@@ -259,8 +259,16 @@ static TfLiteStatus AllocateTemporaryTensorsIfRequired(
   // execution path.
   // TODO(b/178743262): Consider making this check conditioned on the available
   // memory of the system, rather than coupling to the mobile platform check.
+  const bool need_dilated_im2col =
+      params->dilation_width_factor != 1 || params->dilation_height_factor != 1;
   if (IsMobilePlatform() && !(is_hybrid && !is_per_channel) &&
       data->need_im2col && im2col_bytes >= kMaxIm2colBufferSizeMobile) {
+    // Dilated convolution requires non-null im2col_data even in reference_ops.
+    // Therefore, dilated im2col buffer allocations cannot be skipped.
+    if (need_dilated_im2col) {
+      TF_LITE_KERNEL_LOG(context, "Dilated im2col buffer size overflowed.");
+      return kTfLiteError;
+    }
     data->need_im2col = false;
     data->im2col_oversized = true;
   }
@@ -433,19 +441,6 @@ TfLiteStatus Prepare(KernelType kernel_type, TfLiteContext* context,
        (filter->type == kTfLiteUInt8 || filter->type == kTfLiteInt8 ||
         filter->type == kTfLiteInt4));
 
-  if (is_hybrid) {
-    int input_num_elements = 0;
-    TF_LITE_ENSURE_MSG(
-        context, CheckedNumElements(input, input_num_elements) == kTfLiteOk,
-        "%s", "Conv hybrid input has too many elements.");
-  }
-  if (filter->type == kTfLiteInt4) {
-    int filter_num_elements = 0;
-    TF_LITE_ENSURE_MSG(
-        context, CheckedNumElements(filter, filter_num_elements) == kTfLiteOk,
-        "%s", "Conv int4 filter has too many elements.");
-  }
-
   if (filter->quantization.type == kTfLiteAffineQuantization) {
     TF_LITE_ENSURE(context, filter->quantization.params);
     TF_LITE_ENSURE(context, reinterpret_cast<TfLiteAffineQuantization*>(
@@ -500,19 +495,36 @@ TfLiteStatus Prepare(KernelType kernel_type, TfLiteContext* context,
           input_height, input_width, filter_height, filter_width, padding,
           &out_height, &out_width, &data->padding));
 
+  int output_spatial_elements = 0;
+  TF_LITE_ENSURE_MSG(context,
+                     CheckedNumElements({out_height, out_width},
+                                        output_spatial_elements) == kTfLiteOk,
+                     "%s", "Conv output spatial dimensions overflow.");
+
   size_t im2col_type_size;
   TF_LITE_ENSURE_STATUS(GetSizeOfType(context, input->type, &im2col_type_size));
   size_t im2col_elements = 0;
   size_t im2col_bytes = 0;
+  size_t spatial_matrix_elements = 0;
+  TF_LITE_ENSURE_OK(
+      context,
+      CheckedShapeProduct(
+          context,
+          {out_height, out_width, channels_in, filter_height, filter_width},
+          "Conv spatial matrix size overflowed.", spatial_matrix_elements));
+
+  size_t conv_matrix_elements = 0;
+  TF_LITE_ENSURE_OK(
+      context, CheckedShapeProduct(context,
+                                   {batches, out_height, out_width, channels_in,
+                                    filter_height, filter_width},
+                                   "Conv matrix size overflowed.",
+                                   conv_matrix_elements));
+
   const bool requires_im2col =
       IsIm2ColRequired(input, params, filter, data, is_hybrid, kernel_type);
   if (requires_im2col) {
-    TF_LITE_ENSURE_OK(
-        context,
-        CheckedShapeProduct(context,
-                            {batches, out_height, out_width, channels_in,
-                             filter_height, filter_width},
-                            "Conv im2col size overflowed.", im2col_elements));
+    im2col_elements = conv_matrix_elements;
     TF_LITE_ENSURE_MSG(
         context,
         MultiplyAndCheckOverflow(im2col_elements, im2col_type_size,
@@ -928,6 +940,10 @@ void EvalQuantizedPerChannel(TfLiteContext* context, TfLiteNode* node,
       switch (filter->type) {
         case kTfLiteInt4:
         case kTfLiteInt8: {
+          if (data->need_im2col && im2col->data.raw == nullptr) {
+            TF_LITE_KERNEL_LOG(context, "Conv im2col buffer not allocated.");
+            return;
+          }
           optimized_integer_ops::ConvPerChannel(
               op_params, data->per_channel_output_multiplier.data(),
               data->per_channel_output_shift.data(), GetTensorShape(input),
@@ -1092,6 +1108,12 @@ void EvalFloat(TfLiteContext* context, TfLiteNode* node,
     }
     case kCblasOptimized:
     case kGenericOptimized: {
+      // Guard against cases where im2col tensor allocation was skipped or
+      // failed due to memory quota/limits during AllocateTensors().
+      if (data->need_im2col && im2col->data.raw == nullptr) {
+        TF_LITE_KERNEL_LOG(context, "Conv im2col buffer not allocated.");
+        return;
+      }
       optimized_ops::Conv(op_params, GetTensorShape(input),
                           GetTensorData<float>(input), GetTensorShape(filter),
                           GetTensorData<float>(filter), GetTensorShape(bias),
@@ -1372,6 +1394,10 @@ TfLiteStatus EvalImpl(TfLiteContext* context, TfLiteNode* node) {
       data->need_hwcn_weights
           ? &context->tensors[node->temporaries->data[data->hwcn_weights_index]]
           : nullptr;
+
+  if (NumElements(output) == 0) {
+    return kTfLiteOk;
+  }
 
   if (data->need_hwcn_weights && !data->have_weights_been_transposed) {
     TransposeFloatTensor(filter, hwcn_weights);
