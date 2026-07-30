@@ -20,7 +20,6 @@ REGULAR_HLO_FILES = [
     "gemma3_1b_flax_sample_loop.hlo",
     "in_place_dynamic_update_slice_fusion.hlo",
     "jax.b380442861.hlo",
-    "jax.issue.26021.hlo",
     "jax.issue.33666.linx.frag_0100.module_0005.hlo",
     "jax.issue.33666.linx.frag_0100.module_0009.hlo",
     "jax.issue.33666.linx.frag_0100.module_0019.hlo",
