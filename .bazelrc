@@ -80,6 +80,22 @@ common --repo_env=ML_WHEEL_VERSION_SUFFIX=""
 
 common --incompatible_default_to_explicit_init_py
 
+common --features=-cpp_modules
+common --features=-cpp20_module_compile_flags
+common --features=-cpp_module_modmap_file
+common --features=-layering_check
+
+common --host_features=-cpp_modules
+common --host_features=-cpp20_module_compile_flags
+common --host_features=-cpp_module_modmap_file
+common --host_features=-layering_check
+
+build --copt="-isystem"
+build --copt="external/com_google_protobuf/src"
+
+build --host_copt="-isystem"
+build --host_copt="external/com_google_protobuf/src"
+
 # For projects which use TensorFlow as part of a Bazel build process, putting
 # nothing in a bazelrc will default to a monolithic build. The following line
 # opts in to modular op registration support by default.

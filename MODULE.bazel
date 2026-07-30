@@ -83,12 +83,13 @@ single_version_override(
 )
 
 bazel_dep(name = "libprotobuf-mutator", version = "1.3", repo_name = "libprotobuf_mutator")
+# TODO: update to latest version.
 bazel_dep(name = "rules_ml_toolchain")
 archive_override(
     module_name = "rules_ml_toolchain",
-    integrity = "sha256-C0L2k6YMYFDYfbHgoOrrhKs/VBkfzglNhjNPrtyAfaA=",
-    strip_prefix = "rules_ml_toolchain-398d613aea7a4c294da49b79a6d6f3f8732bd84c",
-    urls = ["https://github.com/google-ml-infra/rules_ml_toolchain/archive/398d613aea7a4c294da49b79a6d6f3f8732bd84c.tar.gz"],
+    integrity = "sha256-EbKKWOx+ou0O3VNzPdZs72OCtoATSLZ6xaGA9gbWWz4=",
+    strip_prefix = "rules_ml_toolchain-cb96c4faa01ce98c38f857c1b85c1ec6938ee201",
+    urls = ["https://github.com/yuriivcs/rules_ml_toolchain/archive/cb96c4faa01ce98c38f857c1b85c1ec6938ee201.tar.gz"],
 )
 
 bazel_dep(name = "xla", repo_name = "xla")
