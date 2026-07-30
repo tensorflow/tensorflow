@@ -21,6 +21,8 @@ load("@local_config_cuda//cuda:build_defs.bzl", "cuda_library")
 load("//xla/stream_executor:build_defs.bzl", "stream_executor_friends")
 load("//xla/tsl:package_groups.bzl", "DEFAULT_LOAD_VISIBILITY")
 
+# Internally this loads a macro, but in OSS this is a function
+# buildifier: disable=out-of-order-load
 def register_extension_info(**_kwargs):
     pass
 
