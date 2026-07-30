@@ -1,0 +1,727 @@
+HloModule jit_controller, entry_computation_layout={(f64[6]{0}, f64[6]{0})->f64[3]{0}}, allow_spmd_sharding_propagation_to_parameters={true,true}, allow_spmd_sharding_propagation_to_output={true}
+
+%region_0.3 (Arg_0.4: f64[], Arg_1.5: f64[]) -> f64[] {
+  %Arg_0.4 = f64[] parameter(0)
+  %Arg_1.5 = f64[] parameter(1)
+  ROOT %add.6 = f64[] add(%Arg_0.4, %Arg_1.5)
+}
+
+%norm.7 (Arg_0.8: f64[3]) -> f64[] {
+  %Arg_0.8 = f64[3]{0} parameter(0)
+  %multiply.10 = f64[3]{0} multiply(%Arg_0.8, %Arg_0.8)
+  %constant.9 = f64[] constant(0)
+  %reduce.11 = f64[] reduce(%multiply.10, %constant.9), dimensions={0}, to_apply=%region_0.3
+  ROOT %sqrt.12 = f64[] sqrt(%reduce.11)
+}
+
+%nominal_controller.13 (Arg_0.14: f64[6], Arg_1.15: f64[6]) -> f64[3] {
+  %Arg_0.14 = f64[6]{0} parameter(0)
+  %slice.29 = f64[3]{0} slice(%Arg_0.14), slice={[0:3]}
+  %Arg_1.15 = f64[6]{0} parameter(1)
+  %slice.23 = f64[3]{0} slice(%Arg_1.15), slice={[0:3]}
+  %slice.20 = f64[3]{0} slice(%Arg_1.15), slice={[0:3]}
+  %slice.21 = f64[3]{0} slice(%Arg_0.14), slice={[0:3]}
+  %subtract.22 = f64[3]{0} subtract(%slice.20, %slice.21)
+  %constant.18 = f64[] constant(0.5)
+  %broadcast.19 = f64[3]{0} broadcast(%constant.18), dimensions={}
+  %multiply.24 = f64[3]{0} multiply(%subtract.22, %broadcast.19)
+  %call.25 = f64[] call(%subtract.22), to_apply=%norm.7
+  %broadcast.26 = f64[3]{0} broadcast(%call.25), dimensions={}
+  %divide.27 = f64[3]{0} divide(%multiply.24, %broadcast.26)
+  %subtract.28 = f64[3]{0} subtract(%slice.23, %divide.27)
+  %subtract.30 = f64[3]{0} subtract(%slice.29, %subtract.28)
+  %constant.16 = f64[] constant(-1)
+  %broadcast.17 = f64[3]{0} broadcast(%constant.16), dimensions={}
+  %multiply.31 = f64[3]{0} multiply(%subtract.30, %broadcast.17)
+  %slice.32 = f64[3]{0} slice(%Arg_0.14), slice={[3:6]}
+  %slice.33 = f64[3]{0} slice(%Arg_1.15), slice={[3:6]}
+  %subtract.34 = f64[3]{0} subtract(%slice.32, %slice.33)
+  ROOT %subtract.35 = f64[3]{0} subtract(%multiply.31, %subtract.34)
+}
+
+%block.36 (Arg_0.37: f64[3,3], Arg_1.38: f64[3,3]) -> f64[6,3] {
+  %Arg_0.37 = f64[3,3]{1,0} parameter(0)
+  %Arg_1.38 = f64[3,3]{1,0} parameter(1)
+  ROOT %concatenate.39 = f64[6,3]{1,0} concatenate(%Arg_0.37, %Arg_1.38), dimensions={0}
+}
+
+%block_0.40 (Arg_0.41: f64[3,3], Arg_1.42: f64[3,3], Arg_2.43: f64[3,3], Arg_3.44: f64[3,3]) -> f64[6,6] {
+  %Arg_0.41 = f64[3,3]{1,0} parameter(0)
+  %Arg_1.42 = f64[3,3]{1,0} parameter(1)
+  %concatenate.45 = f64[3,6]{1,0} concatenate(%Arg_0.41, %Arg_1.42), dimensions={1}
+  %Arg_2.43 = f64[3,3]{1,0} parameter(2)
+  %Arg_3.44 = f64[3,3]{1,0} parameter(3)
+  %concatenate.46 = f64[3,6]{1,0} concatenate(%Arg_2.43, %Arg_3.44), dimensions={1}
+  ROOT %concatenate.47 = f64[6,6]{1,0} concatenate(%concatenate.45, %concatenate.46), dimensions={0}
+}
+
+%block_1.48 (Arg_0.49: f64[3,3], Arg_1.50: f64[3,3], Arg_2.51: f64[3,3], Arg_3.52: f64[3,3]) -> f64[6,6] {
+  %Arg_0.49 = f64[3,3]{1,0} parameter(0)
+  %Arg_1.50 = f64[3,3]{1,0} parameter(1)
+  %concatenate.53 = f64[3,6]{1,0} concatenate(%Arg_0.49, %Arg_1.50), dimensions={1}
+  %Arg_2.51 = f64[3,3]{1,0} parameter(2)
+  %Arg_3.52 = f64[3,3]{1,0} parameter(3)
+  %concatenate.54 = f64[3,6]{1,0} concatenate(%Arg_2.51, %Arg_3.52), dimensions={1}
+  ROOT %concatenate.55 = f64[6,6]{1,0} concatenate(%concatenate.53, %concatenate.54), dimensions={0}
+}
+
+%block_1.56 (Arg_0.57: f64[3,3], Arg_1.58: f64[3,3], Arg_2.59: f64[3,3], Arg_3.60: f64[3,3]) -> f64[6,6] {
+  %Arg_0.57 = f64[3,3]{1,0} parameter(0)
+  %Arg_1.58 = f64[3,3]{1,0} parameter(1)
+  %concatenate.61 = f64[3,6]{1,0} concatenate(%Arg_0.57, %Arg_1.58), dimensions={1}
+  %Arg_2.59 = f64[3,3]{1,0} parameter(2)
+  %Arg_3.60 = f64[3,3]{1,0} parameter(3)
+  %concatenate.62 = f64[3,6]{1,0} concatenate(%Arg_2.59, %Arg_3.60), dimensions={1}
+  ROOT %concatenate.63 = f64[6,6]{1,0} concatenate(%concatenate.61, %concatenate.62), dimensions={0}
+}
+
+%qp_data.64 (Arg_0.65: f64[6], Arg_1.66: f64[3]) -> (f64[3,3], f64[3], f64[6,3], f64[6]) {
+  %iota.79 = s64[3]{0} iota(), iota_dimension=0
+  %broadcast.80 = s64[3,3]{1,0} broadcast(%iota.79), dimensions={0}
+  %iota.81 = s64[3]{0} iota(), iota_dimension=0
+  %broadcast.82 = s64[3,3]{1,0} broadcast(%iota.81), dimensions={1}
+  %compare.83 = pred[3,3]{1,0} compare(%broadcast.80, %broadcast.82), direction=EQ
+  %convert.84 = f64[3,3]{1,0} convert(%compare.83)
+  %constant.73 = f64[] constant(2)
+  %broadcast.74 = f64[3,3]{1,0} broadcast(%constant.73), dimensions={}
+  %multiply.85 = f64[3,3]{1,0} multiply(%convert.84, %broadcast.74)
+  %Arg_1.66 = f64[3]{0} parameter(1)
+  %constant.71 = f64[] constant(-2)
+  %broadcast.72 = f64[3]{0} broadcast(%constant.71), dimensions={}
+  %multiply.86 = f64[3]{0} multiply(%Arg_1.66, %broadcast.72)
+  %constant.69 = f64[] constant(0)
+  %broadcast.70 = f64[3,3]{1,0} broadcast(%constant.69), dimensions={}
+  %iota.95 = s64[3]{0} iota(), iota_dimension=0
+  %broadcast.96 = s64[3,3]{1,0} broadcast(%iota.95), dimensions={0}
+  %iota.97 = s64[3]{0} iota(), iota_dimension=0
+  %broadcast.98 = s64[3,3]{1,0} broadcast(%iota.97), dimensions={1}
+  %compare.99 = pred[3,3]{1,0} compare(%broadcast.96, %broadcast.98), direction=EQ
+  %convert.100 = f64[3,3]{1,0} convert(%compare.99)
+  %call.101 = f64[6,6]{1,0} call(%broadcast.70, %convert.100, %broadcast.70, %broadcast.70), to_apply=%block_0.40
+  %iota.87 = s64[3]{0} iota(), iota_dimension=0
+  %broadcast.88 = s64[3,3]{1,0} broadcast(%iota.87), dimensions={0}
+  %iota.89 = s64[3]{0} iota(), iota_dimension=0
+  %broadcast.90 = s64[3,3]{1,0} broadcast(%iota.89), dimensions={1}
+  %compare.91 = pred[3,3]{1,0} compare(%broadcast.88, %broadcast.90), direction=EQ
+  %convert.92 = f64[3,3]{1,0} convert(%compare.91)
+  %constant.67 = f64[] constant(1)
+  %broadcast.68 = f64[3,3]{1,0} broadcast(%constant.67), dimensions={}
+  %divide.93 = f64[3,3]{1,0} divide(%convert.92, %broadcast.68)
+  %call.94 = f64[6,3]{1,0} call(%broadcast.70, %divide.93), to_apply=%block.36
+  %dot.102 = f64[6,3]{1,0} dot(%call.101, %call.94), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  %slice.104 = f64[3,3]{1,0} slice(%dot.102), slice={[0:3], [0:3]}
+  %negate.106 = f64[3,3]{1,0} negate(%slice.104)
+  %transpose.112 = f64[3,3]{0,1} transpose(%negate.106), dimensions={1,0}
+  %slice.108 = f64[3,3]{1,0} slice(%dot.102), slice={[0:3], [0:3]}
+  %transpose.113 = f64[3,3]{0,1} transpose(%slice.108), dimensions={1,0}
+  %concatenate.114 = f64[3,6]{1,0} concatenate(%transpose.112, %transpose.113), dimensions={1}
+  %slice.103 = f64[3,3]{1,0} slice(%call.94), slice={[0:3], [0:3]}
+  %negate.105 = f64[3,3]{1,0} negate(%slice.103)
+  %transpose.109 = f64[3,3]{0,1} transpose(%negate.105), dimensions={1,0}
+  %slice.107 = f64[3,3]{1,0} slice(%call.94), slice={[0:3], [0:3]}
+  %transpose.110 = f64[3,3]{0,1} transpose(%slice.107), dimensions={1,0}
+  %concatenate.111 = f64[3,6]{1,0} concatenate(%transpose.109, %transpose.110), dimensions={1}
+  %add.115 = f64[3,6]{1,0} add(%concatenate.114, %concatenate.111)
+  %transpose.116 = f64[6,3]{0,1} transpose(%add.115), dimensions={1,0}
+  %negate.117 = f64[6,3]{0,1} negate(%transpose.116)
+  %iota.126 = s64[3]{0} iota(), iota_dimension=0
+  %broadcast.127 = s64[3,3]{1,0} broadcast(%iota.126), dimensions={0}
+  %iota.128 = s64[3]{0} iota(), iota_dimension=0
+  %broadcast.129 = s64[3,3]{1,0} broadcast(%iota.128), dimensions={1}
+  %compare.130 = pred[3,3]{1,0} compare(%broadcast.127, %broadcast.129), direction=EQ
+  %convert.131 = f64[3,3]{1,0} convert(%compare.130)
+  %call.132 = f64[6,6]{1,0} call(%broadcast.70, %convert.131, %broadcast.70, %broadcast.70), to_apply=%block_1.56
+  %Arg_0.65 = f64[6]{0} parameter(0)
+  %dot.133 = f64[6]{0} dot(%call.132, %Arg_0.65), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  %slice.137 = f64[3]{0} slice(%dot.133), slice={[0:3]}
+  %negate.141 = f64[3]{0} negate(%slice.137)
+  %slice.145 = f64[3]{0} slice(%dot.133), slice={[0:3]}
+  %concatenate.150 = f64[6]{0} concatenate(%negate.141, %slice.145), dimensions={0}
+  %constant.75 = f64[] constant(1)
+  %broadcast.76 = f64[3]{0} broadcast(%constant.75), dimensions={}
+  %slice.135 = f64[3]{0} slice(%Arg_0.65), slice={[0:3]}
+  %subtract.139 = f64[3]{0} subtract(%broadcast.76, %slice.135)
+  %slice.143 = f64[3]{0} slice(%Arg_0.65), slice={[0:3]}
+  %constant.77 = f64[] constant(-1)
+  %broadcast.78 = f64[3]{0} broadcast(%constant.77), dimensions={}
+  %subtract.147 = f64[3]{0} subtract(%slice.143, %broadcast.78)
+  %concatenate.148 = f64[6]{0} concatenate(%subtract.139, %subtract.147), dimensions={0}
+  %add.152 = f64[6]{0} add(%concatenate.150, %concatenate.148)
+  %iota.118 = s64[3]{0} iota(), iota_dimension=0
+  %broadcast.119 = s64[3,3]{1,0} broadcast(%iota.118), dimensions={0}
+  %iota.120 = s64[3]{0} iota(), iota_dimension=0
+  %broadcast.121 = s64[3,3]{1,0} broadcast(%iota.120), dimensions={1}
+  %compare.122 = pred[3,3]{1,0} compare(%broadcast.119, %broadcast.121), direction=EQ
+  %convert.123 = f64[3,3]{1,0} convert(%compare.122)
+  %call.124 = f64[6,6]{1,0} call(%broadcast.70, %convert.123, %broadcast.70, %broadcast.70), to_apply=%block_1.48
+  %dot.125 = f64[6]{0} dot(%call.124, %Arg_0.65), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  %dot.134 = f64[6]{0} dot(%call.132, %dot.125), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  %slice.138 = f64[3]{0} slice(%dot.134), slice={[0:3]}
+  %negate.142 = f64[3]{0} negate(%slice.138)
+  %slice.146 = f64[3]{0} slice(%dot.134), slice={[0:3]}
+  %concatenate.151 = f64[6]{0} concatenate(%negate.142, %slice.146), dimensions={0}
+  %slice.136 = f64[3]{0} slice(%dot.125), slice={[0:3]}
+  %negate.140 = f64[3]{0} negate(%slice.136)
+  %slice.144 = f64[3]{0} slice(%dot.125), slice={[0:3]}
+  %concatenate.149 = f64[6]{0} concatenate(%negate.140, %slice.144), dimensions={0}
+  %add.153 = f64[6]{0} add(%concatenate.151, %concatenate.149)
+  %add.154 = f64[6]{0} add(%add.152, %add.153)
+  ROOT %tuple.155 = (f64[3,3]{1,0}, f64[3]{0}, f64[6,3]{0,1}, f64[6]{0}) tuple(%multiply.85, %multiply.86, %negate.117, %add.154)
+}
+
+%qr.156 (Arg_0.157: f64[3,3]) -> (f64[3,3], f64[3,3]) {
+  %Arg_0.157 = f64[3,3]{1,0} parameter(0)
+  %custom-call.162 = (f64[3,3]{0,1}, f64[3]{0}) custom-call(%Arg_0.157), custom_call_target="lapack_dgeqrf_ffi", operand_layout_constraints={f64[3,3]{0,1}}, output_to_operand_aliasing={{0}: (0, {})}, api_version=API_VERSION_TYPED_FFI, frontend_attributes={num_batch_dims="0"}, backend_config={}
+  %get-tuple-element.163 = f64[3,3]{0,1} get-tuple-element(%custom-call.162), index=0, frontend_attributes={num_batch_dims="0"}
+  %get-tuple-element.164 = f64[3]{0} get-tuple-element(%custom-call.162), index=1, frontend_attributes={num_batch_dims="0"}
+  %custom-call.165 = f64[3,3]{0,1} custom-call(%get-tuple-element.163, %get-tuple-element.164), custom_call_target="lapack_dorgqr_ffi", operand_layout_constraints={f64[3,3]{0,1}, f64[3]{0}}, output_to_operand_aliasing={{}: (0, {})}, api_version=API_VERSION_TYPED_FFI, frontend_attributes={num_batch_dims="0"}, backend_config={}
+  %iota.166 = s32[3]{0} iota(), iota_dimension=0
+  %broadcast.167 = s32[3,3]{1,0} broadcast(%iota.166), dimensions={0}
+  %constant.160 = s32[] constant(-1)
+  %broadcast.161 = s32[3,3]{1,0} broadcast(%constant.160), dimensions={}
+  %add.168 = s32[3,3]{1,0} add(%broadcast.167, %broadcast.161)
+  %iota.169 = s32[3]{0} iota(), iota_dimension=0
+  %broadcast.170 = s32[3,3]{1,0} broadcast(%iota.169), dimensions={1}
+  %compare.171 = pred[3,3]{1,0} compare(%add.168, %broadcast.170), direction=GE
+  %constant.158 = f64[] constant(0)
+  %broadcast.159 = f64[3,3]{1,0} broadcast(%constant.158), dimensions={}
+  %select.172 = f64[3,3]{1,0} select(%compare.171, %broadcast.159, %get-tuple-element.163)
+  ROOT %tuple.173 = (f64[3,3]{0,1}, f64[3,3]{1,0}) tuple(%custom-call.165, %select.172)
+}
+
+%_solve_triangular.174 (Arg_0.175: f64[3,3], Arg_1.176: f64[3]) -> f64[3] {
+  %Arg_0.175 = f64[3,3]{1,0} parameter(0)
+  %Arg_1.176 = f64[3]{0} parameter(1)
+  %reshape.177 = f64[3,1]{1,0} reshape(%Arg_1.176)
+  %custom-call.178 = f64[3,1]{0,1} custom-call(%Arg_0.175, %reshape.177), custom_call_target="lapack_dtrsm_ffi", operand_layout_constraints={f64[3,3]{0,1}, f64[3,1]{0,1}}, output_to_operand_aliasing={{}: (1, {})}, api_version=API_VERSION_TYPED_FFI, frontend_attributes={num_batch_dims="0"}, backend_config={diag = 78 : ui8, side = 76 : ui8, trans_x = 78 : ui8, uplo = 85 : ui8}
+  ROOT %reshape.179 = f64[3]{0} reshape(%custom-call.178)
+}
+
+%region_1.180 (Arg_0.181: f64[], Arg_1.182: f64[]) -> f64[] {
+  %Arg_0.181 = f64[] parameter(0)
+  %Arg_1.182 = f64[] parameter(1)
+  ROOT %minimum.183 = f64[] minimum(%Arg_0.181, %Arg_1.182)
+}
+
+%_where.184 (Arg_0.185: pred[], Arg_1.186: f64[12], Arg_2.187: f64[12]) -> f64[12] {
+  %Arg_0.185 = pred[] parameter(0)
+  %broadcast.188 = pred[12]{0} broadcast(%Arg_0.185), dimensions={}
+  %Arg_1.186 = f64[12]{0} parameter(1)
+  %Arg_2.187 = f64[12]{0} parameter(2)
+  ROOT %select.189 = f64[12]{0} select(%broadcast.188, %Arg_1.186, %Arg_2.187)
+}
+
+%region_2.190 (Arg_0.191: f64[], Arg_1.192: f64[]) -> f64[] {
+  %Arg_0.191 = f64[] parameter(0)
+  %Arg_1.192 = f64[] parameter(1)
+  ROOT %minimum.193 = f64[] minimum(%Arg_0.191, %Arg_1.192)
+}
+
+%_where.194 (Arg_0.195: pred[], Arg_1.196: f64[12], Arg_2.197: f64[12]) -> f64[12] {
+  %Arg_0.195 = pred[] parameter(0)
+  %broadcast.198 = pred[12]{0} broadcast(%Arg_0.195), dimensions={}
+  %Arg_1.196 = f64[12]{0} parameter(1)
+  %Arg_2.197 = f64[12]{0} parameter(2)
+  ROOT %select.199 = f64[12]{0} select(%broadcast.198, %Arg_1.196, %Arg_2.197)
+}
+
+%region_4.200 (Arg_0.201: f64[], Arg_1.202: f64[]) -> f64[] {
+  %Arg_0.201 = f64[] parameter(0)
+  %Arg_1.202 = f64[] parameter(1)
+  ROOT %maximum.203 = f64[] maximum(%Arg_0.201, %Arg_1.202)
+}
+
+%norm_2.204 (Arg_0.205: f64[33]) -> f64[] {
+  %Arg_0.205 = f64[33]{0} parameter(0)
+  %abs.208 = f64[33]{0} abs(%Arg_0.205)
+  %constant.207 = f64[] constant(-inf)
+  %reduce.209 = f64[] reduce(%abs.208, %constant.207), dimensions={0}, to_apply=%region_4.200
+  %constant.206 = f64[] constant(0)
+  ROOT %maximum.210 = f64[] maximum(%reduce.209, %constant.206)
+}
+
+%_where_3.211 (Arg_0.212: pred[], Arg_1.213: s64[], Arg_2.214: s64[]) -> s64[] {
+  %Arg_0.212 = pred[] parameter(0)
+  %Arg_1.213 = s64[] parameter(1)
+  %Arg_2.214 = s64[] parameter(2)
+  ROOT %select.215 = s64[] select(%Arg_0.212, %Arg_1.213, %Arg_2.214)
+}
+
+%qr_4.216 (Arg_0.217: f64[3,3]) -> (f64[3,3], f64[3,3]) {
+  %Arg_0.217 = f64[3,3]{1,0} parameter(0)
+  %custom-call.222 = (f64[3,3]{0,1}, f64[3]{0}) custom-call(%Arg_0.217), custom_call_target="lapack_dgeqrf_ffi", operand_layout_constraints={f64[3,3]{0,1}}, output_to_operand_aliasing={{0}: (0, {})}, api_version=API_VERSION_TYPED_FFI, frontend_attributes={num_batch_dims="0"}, backend_config={}
+  %get-tuple-element.223 = f64[3,3]{0,1} get-tuple-element(%custom-call.222), index=0, frontend_attributes={num_batch_dims="0"}
+  %get-tuple-element.224 = f64[3]{0} get-tuple-element(%custom-call.222), index=1, frontend_attributes={num_batch_dims="0"}
+  %custom-call.225 = f64[3,3]{0,1} custom-call(%get-tuple-element.223, %get-tuple-element.224), custom_call_target="lapack_dorgqr_ffi", operand_layout_constraints={f64[3,3]{0,1}, f64[3]{0}}, output_to_operand_aliasing={{}: (0, {})}, api_version=API_VERSION_TYPED_FFI, frontend_attributes={num_batch_dims="0"}, backend_config={}
+  %iota.226 = s32[3]{0} iota(), iota_dimension=0
+  %broadcast.227 = s32[3,3]{1,0} broadcast(%iota.226), dimensions={0}
+  %constant.220 = s32[] constant(-1)
+  %broadcast.221 = s32[3,3]{1,0} broadcast(%constant.220), dimensions={}
+  %add.228 = s32[3,3]{1,0} add(%broadcast.227, %broadcast.221)
+  %iota.229 = s32[3]{0} iota(), iota_dimension=0
+  %broadcast.230 = s32[3,3]{1,0} broadcast(%iota.229), dimensions={1}
+  %compare.231 = pred[3,3]{1,0} compare(%add.228, %broadcast.230), direction=GE
+  %constant.218 = f64[] constant(0)
+  %broadcast.219 = f64[3,3]{1,0} broadcast(%constant.218), dimensions={}
+  %select.232 = f64[3,3]{1,0} select(%compare.231, %broadcast.219, %get-tuple-element.223)
+  ROOT %tuple.233 = (f64[3,3]{0,1}, f64[3,3]{1,0}) tuple(%custom-call.225, %select.232)
+}
+
+%_solve_triangular_5.234 (Arg_0.235: f64[3,3], Arg_1.236: f64[3]) -> f64[3] {
+  %Arg_0.235 = f64[3,3]{1,0} parameter(0)
+  %Arg_1.236 = f64[3]{0} parameter(1)
+  %reshape.237 = f64[3,1]{1,0} reshape(%Arg_1.236)
+  %custom-call.238 = f64[3,1]{0,1} custom-call(%Arg_0.235, %reshape.237), custom_call_target="lapack_dtrsm_ffi", operand_layout_constraints={f64[3,3]{0,1}, f64[3,1]{0,1}}, output_to_operand_aliasing={{}: (1, {})}, api_version=API_VERSION_TYPED_FFI, frontend_attributes={num_batch_dims="0"}, backend_config={diag = 78 : ui8, side = 76 : ui8, trans_x = 78 : ui8, uplo = 85 : ui8}
+  ROOT %reshape.239 = f64[3]{0} reshape(%custom-call.238)
+}
+
+%_where_6.240 (Arg_0.241: pred[12], Arg_1.242: f64[12], Arg_2.243: f64[]) -> f64[12] {
+  %Arg_0.241 = pred[12]{0} parameter(0)
+  %Arg_1.242 = f64[12]{0} parameter(1)
+  %Arg_2.243 = f64[] parameter(2)
+  %broadcast.244 = f64[12]{0} broadcast(%Arg_2.243), dimensions={}
+  ROOT %select.245 = f64[12]{0} select(%Arg_0.241, %Arg_1.242, %broadcast.244)
+}
+
+%region_5.246 (Arg_0.247: f64[], Arg_1.248: f64[]) -> f64[] {
+  %Arg_0.247 = f64[] parameter(0)
+  %Arg_1.248 = f64[] parameter(1)
+  ROOT %minimum.249 = f64[] minimum(%Arg_0.247, %Arg_1.248)
+}
+
+%region_6.250 (Arg_0.251: f64[], Arg_1.252: f64[]) -> f64[] {
+  %Arg_0.251 = f64[] parameter(0)
+  %Arg_1.252 = f64[] parameter(1)
+  ROOT %minimum.253 = f64[] minimum(%Arg_0.251, %Arg_1.252)
+}
+
+%_where_6.254 (Arg_0.255: pred[12], Arg_1.256: f64[12], Arg_2.257: f64[]) -> f64[12] {
+  %Arg_0.255 = pred[12]{0} parameter(0)
+  %Arg_1.256 = f64[12]{0} parameter(1)
+  %Arg_2.257 = f64[] parameter(2)
+  %broadcast.258 = f64[12]{0} broadcast(%Arg_2.257), dimensions={}
+  ROOT %select.259 = f64[12]{0} select(%Arg_0.255, %Arg_1.256, %broadcast.258)
+}
+
+%region_7.260 (Arg_0.261: f64[], Arg_1.262: f64[]) -> f64[] {
+  %Arg_0.261 = f64[] parameter(0)
+  %Arg_1.262 = f64[] parameter(1)
+  ROOT %minimum.263 = f64[] minimum(%Arg_0.261, %Arg_1.262)
+}
+
+%region_8.264 (Arg_0.265: f64[], Arg_1.266: f64[]) -> f64[] {
+  %Arg_0.265 = f64[] parameter(0)
+  %Arg_1.266 = f64[] parameter(1)
+  ROOT %minimum.267 = f64[] minimum(%Arg_0.265, %Arg_1.266)
+}
+
+%region_9.268 (Arg_0.269: f64[], Arg_1.270: f64[]) -> f64[] {
+  %Arg_0.269 = f64[] parameter(0)
+  %Arg_1.270 = f64[] parameter(1)
+  ROOT %minimum.271 = f64[] minimum(%Arg_0.269, %Arg_1.270)
+}
+
+%_solve_triangular_5.272 (Arg_0.273: f64[3,3], Arg_1.274: f64[3]) -> f64[3] {
+  %Arg_0.273 = f64[3,3]{1,0} parameter(0)
+  %Arg_1.274 = f64[3]{0} parameter(1)
+  %reshape.275 = f64[3,1]{1,0} reshape(%Arg_1.274)
+  %custom-call.276 = f64[3,1]{0,1} custom-call(%Arg_0.273, %reshape.275), custom_call_target="lapack_dtrsm_ffi", operand_layout_constraints={f64[3,3]{0,1}, f64[3,1]{0,1}}, output_to_operand_aliasing={{}: (1, {})}, api_version=API_VERSION_TYPED_FFI, frontend_attributes={num_batch_dims="0"}, backend_config={diag = 78 : ui8, side = 76 : ui8, trans_x = 78 : ui8, uplo = 85 : ui8}
+  ROOT %reshape.277 = f64[3]{0} reshape(%custom-call.276)
+}
+
+%_where_6.278 (Arg_0.279: pred[12], Arg_1.280: f64[12], Arg_2.281: f64[]) -> f64[12] {
+  %Arg_0.279 = pred[12]{0} parameter(0)
+  %Arg_1.280 = f64[12]{0} parameter(1)
+  %Arg_2.281 = f64[] parameter(2)
+  %broadcast.282 = f64[12]{0} broadcast(%Arg_2.281), dimensions={}
+  ROOT %select.283 = f64[12]{0} select(%Arg_0.279, %Arg_1.280, %broadcast.282)
+}
+
+%region_10.284 (Arg_0.285: f64[], Arg_1.286: f64[]) -> f64[] {
+  %Arg_0.285 = f64[] parameter(0)
+  %Arg_1.286 = f64[] parameter(1)
+  ROOT %minimum.287 = f64[] minimum(%Arg_0.285, %Arg_1.286)
+}
+
+%region_11.288 (Arg_0.289: f64[], Arg_1.290: f64[]) -> f64[] {
+  %Arg_0.289 = f64[] parameter(0)
+  %Arg_1.290 = f64[] parameter(1)
+  ROOT %minimum.291 = f64[] minimum(%Arg_0.289, %Arg_1.290)
+}
+
+%_where_6.292 (Arg_0.293: pred[12], Arg_1.294: f64[12], Arg_2.295: f64[]) -> f64[12] {
+  %Arg_0.293 = pred[12]{0} parameter(0)
+  %Arg_1.294 = f64[12]{0} parameter(1)
+  %Arg_2.295 = f64[] parameter(2)
+  %broadcast.296 = f64[12]{0} broadcast(%Arg_2.295), dimensions={}
+  ROOT %select.297 = f64[12]{0} select(%Arg_0.293, %Arg_1.294, %broadcast.296)
+}
+
+%region_12.298 (Arg_0.299: f64[], Arg_1.300: f64[]) -> f64[] {
+  %Arg_0.299 = f64[] parameter(0)
+  %Arg_1.300 = f64[] parameter(1)
+  ROOT %minimum.301 = f64[] minimum(%Arg_0.299, %Arg_1.300)
+}
+
+%region_13.302 (Arg_0.303: f64[], Arg_1.304: f64[]) -> f64[] {
+  %Arg_0.303 = f64[] parameter(0)
+  %Arg_1.304 = f64[] parameter(1)
+  ROOT %minimum.305 = f64[] minimum(%Arg_0.303, %Arg_1.304)
+}
+
+%region_14.306 (Arg_0.307: f64[], Arg_1.308: f64[]) -> f64[] {
+  %Arg_0.307 = f64[] parameter(0)
+  %Arg_1.308 = f64[] parameter(1)
+  ROOT %minimum.309 = f64[] minimum(%Arg_0.307, %Arg_1.308)
+}
+
+%region_3.310 (arg_tuple.311: (f64[3], f64[6], f64[6], f64[6], f64[6], /*index=5*/f64[6], s64[], s64[], f64[3,3], f64[3], /*index=10*/f64[6,3], f64[], f64[6], f64[])) -> (f64[3], f64[6], f64[6], f64[6], f64[6], /*index=5*/f64[6], s64[], s64[], f64[3,3], f64[3], /*index=10*/f64[6,3], f64[], f64[6], f64[]) {
+  %arg_tuple.311 = (f64[3]{0}, f64[6]{0}, f64[6]{0}, f64[6]{0}, f64[6]{0}, /*index=5*/f64[6]{0}, s64[], s64[], f64[3,3]{1,0}, f64[3]{0}, /*index=10*/f64[6,3]{1,0}, f64[], f64[6]{0}, f64[]) parameter(0)
+  %get-tuple-element.318 = s64[] get-tuple-element(%arg_tuple.311), index=6
+  %get-tuple-element.312 = f64[3]{0} get-tuple-element(%arg_tuple.311), index=0
+  %constant.327 = f64[1]{0} constant({1})
+  %get-tuple-element.314 = f64[6]{0} get-tuple-element(%arg_tuple.311), index=2
+  %get-tuple-element.316 = f64[6]{0} get-tuple-element(%arg_tuple.311), index=4
+  %multiply.345 = f64[6]{0} multiply(%get-tuple-element.314, %get-tuple-element.316)
+  %get-tuple-element.315 = f64[6]{0} get-tuple-element(%arg_tuple.311), index=3
+  %concatenate.405 = f64[12]{0} concatenate(%get-tuple-element.314, %get-tuple-element.315), dimensions={0}
+  %negate.359 = f64[6]{0} negate(%multiply.345)
+  %negate.341 = f64[6]{0} negate(%get-tuple-element.316)
+  %get-tuple-element.317 = f64[6]{0} get-tuple-element(%arg_tuple.311), index=5
+  %subtract.342 = f64[6]{0} subtract(%negate.341, %get-tuple-element.317)
+  %get-tuple-element.323 = f64[] get-tuple-element(%arg_tuple.311), index=11
+  %broadcast.343 = f64[6]{0} broadcast(%get-tuple-element.323), dimensions={}
+  %add.344 = f64[6]{0} add(%subtract.342, %broadcast.343)
+  %negate.358 = f64[6]{0} negate(%add.344)
+  %negate.397 = f64[6]{0} negate(%negate.358)
+  %get-tuple-element.313 = f64[6]{0} get-tuple-element(%arg_tuple.311), index=1
+  %negate.347 = f64[6]{0} negate(%get-tuple-element.313)
+  %add.348 = f64[6]{0} add(%negate.347, %get-tuple-element.314)
+  %negate.361 = f64[6]{0} negate(%add.348)
+  %get-tuple-element.322 = f64[6,3]{1,0} get-tuple-element(%arg_tuple.311), index=10
+  %dot.349 = f64[6]{0} dot(%get-tuple-element.322, %get-tuple-element.312), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  %subtract.350 = f64[6]{0} subtract(%dot.349, %get-tuple-element.313)
+  %add.351 = f64[6]{0} add(%subtract.350, %get-tuple-element.315)
+  %get-tuple-element.324 = f64[6]{0} get-tuple-element(%arg_tuple.311), index=12
+  %subtract.352 = f64[6]{0} subtract(%add.351, %get-tuple-element.324)
+  %negate.362 = f64[6]{0} negate(%subtract.352)
+  %subtract.367 = f64[6]{0} subtract(%negate.361, %negate.362)
+  %multiply.346 = f64[6]{0} multiply(%get-tuple-element.315, %get-tuple-element.317)
+  %negate.360 = f64[6]{0} negate(%multiply.346)
+  %divide.366 = f64[6]{0} divide(%negate.360, %get-tuple-element.317)
+  %add.368 = f64[6]{0} add(%subtract.367, %divide.366)
+  %divide.365 = f64[6]{0} divide(%negate.359, %get-tuple-element.316)
+  %subtract.369 = f64[6]{0} subtract(%add.368, %divide.365)
+  %divide.363 = f64[6]{0} divide(%get-tuple-element.314, %get-tuple-element.316)
+  %multiply.370 = f64[6]{0} multiply(%divide.363, %negate.358)
+  %subtract.371 = f64[6]{0} subtract(%subtract.369, %multiply.370)
+  %get-tuple-element.320 = f64[3,3]{1,0} get-tuple-element(%arg_tuple.311), index=8
+  %transpose.373 = f64[3,6]{0,1} transpose(%get-tuple-element.322), dimensions={1,0}
+  %transpose.374 = f64[3,6]{0,1} transpose(%get-tuple-element.322), dimensions={1,0}
+  %constant.332 = f64[] constant(1)
+  %broadcast.333 = f64[6]{0} broadcast(%constant.332), dimensions={}
+  %divide.364 = f64[6]{0} divide(%get-tuple-element.315, %get-tuple-element.317)
+  %add.372 = f64[6]{0} add(%divide.363, %divide.364)
+  %divide.375 = f64[6]{0} divide(%broadcast.333, %add.372)
+  %reshape.376 = f64[1,6]{1,0} reshape(%divide.375)
+  %broadcast.377 = f64[1,6]{1,0} broadcast(%reshape.376), dimensions={0,1}
+  %reshape.378 = f64[6]{0} reshape(%broadcast.377)
+  %broadcast.379 = f64[3,6]{1,0} broadcast(%reshape.378), dimensions={1}
+  %multiply.380 = f64[3,6]{0,1} multiply(%transpose.374, %broadcast.379)
+  %transpose.381 = f64[6,3]{1,0} transpose(%multiply.380), dimensions={1,0}
+  %dot.382 = f64[3,3]{1,0} dot(%transpose.373, %transpose.381), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  %add.383 = f64[3,3]{1,0} add(%get-tuple-element.320, %dot.382)
+  %call.384 = (f64[3,3]{0,1}, f64[3,3]{1,0}) call(%add.383), to_apply=%qr_4.216
+  %get-tuple-element.386 = f64[3,3]{1,0} get-tuple-element(%call.384), index=1
+  %get-tuple-element.385 = f64[3,3]{0,1} get-tuple-element(%call.384), index=0
+  %transpose.391 = f64[3,3]{1,0} transpose(%get-tuple-element.385), dimensions={1,0}
+  %dot.336 = f64[3]{0} dot(%get-tuple-element.320, %get-tuple-element.312), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  %get-tuple-element.321 = f64[3]{0} get-tuple-element(%arg_tuple.311), index=9
+  %add.337 = f64[3]{0} add(%dot.336, %get-tuple-element.321)
+  %transpose.338 = f64[3,6]{0,1} transpose(%get-tuple-element.322), dimensions={1,0}
+  %dot.339 = f64[3]{0} dot(%transpose.338, %get-tuple-element.317), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  %add.340 = f64[3]{0} add(%add.337, %dot.339)
+  %negate.357 = f64[3]{0} negate(%add.340)
+  %transpose.387 = f64[3,6]{0,1} transpose(%get-tuple-element.322), dimensions={1,0}
+  %divide.388 = f64[6]{0} divide(%subtract.371, %add.372)
+  %dot.389 = f64[3]{0} dot(%transpose.387, %divide.388), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  %subtract.390 = f64[3]{0} subtract(%negate.357, %dot.389)
+  %dot.392 = f64[3]{0} dot(%transpose.391, %subtract.390), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  %call.393 = f64[3]{0} call(%get-tuple-element.386, %dot.392), to_apply=%_solve_triangular_5.234
+  %dot.394 = f64[6]{0} dot(%get-tuple-element.322, %call.393), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  %add.395 = f64[6]{0} add(%subtract.371, %dot.394)
+  %divide.396 = f64[6]{0} divide(%add.395, %add.372)
+  %subtract.398 = f64[6]{0} subtract(%negate.397, %divide.396)
+  %multiply.399 = f64[6]{0} multiply(%get-tuple-element.314, %subtract.398)
+  %subtract.400 = f64[6]{0} subtract(%negate.359, %multiply.399)
+  %divide.401 = f64[6]{0} divide(%subtract.400, %get-tuple-element.316)
+  %multiply.402 = f64[6]{0} multiply(%get-tuple-element.315, %divide.396)
+  %subtract.403 = f64[6]{0} subtract(%negate.360, %multiply.402)
+  %divide.404 = f64[6]{0} divide(%subtract.403, %get-tuple-element.317)
+  %concatenate.407 = f64[12]{0} concatenate(%divide.401, %divide.404), dimensions={0}
+  %constant.329 = f64[] constant(0)
+  %broadcast.330 = f64[12]{0} broadcast(%constant.329), dimensions={}
+  %compare.411 = pred[12]{0} compare(%concatenate.407, %broadcast.330), direction=LT
+  %negate.412 = f64[12]{0} negate(%concatenate.405)
+  %divide.413 = f64[12]{0} divide(%negate.412, %concatenate.407)
+  %constant.328 = f64[] constant(inf)
+  %call.414 = f64[12]{0} call(%compare.411, %divide.413, %constant.328), to_apply=%_where_6.240
+  %reduce.415 = f64[] reduce(%call.414, %constant.328), dimensions={0}, to_apply=%region_5.246
+  %reshape.416 = f64[1]{0} reshape(%reduce.415)
+  %concatenate.417 = f64[2]{0} concatenate(%constant.327, %reshape.416), dimensions={0}
+  %reduce.418 = f64[] reduce(%concatenate.417, %constant.328), dimensions={0}, to_apply=%region_6.250
+  %reshape.427 = f64[1]{0} reshape(%reduce.418)
+  %concatenate.408 = f64[12]{0} concatenate(%subtract.398, %divide.396), dimensions={0}
+  %compare.419 = pred[12]{0} compare(%concatenate.408, %broadcast.330), direction=LT
+  %concatenate.406 = f64[12]{0} concatenate(%get-tuple-element.316, %get-tuple-element.317), dimensions={0}
+  %negate.420 = f64[12]{0} negate(%concatenate.406)
+  %divide.421 = f64[12]{0} divide(%negate.420, %concatenate.408)
+  %call.422 = f64[12]{0} call(%compare.419, %divide.421, %constant.328), to_apply=%_where_6.254
+  %reduce.423 = f64[] reduce(%call.422, %constant.328), dimensions={0}, to_apply=%region_7.260
+  %reshape.424 = f64[1]{0} reshape(%reduce.423)
+  %concatenate.425 = f64[2]{0} concatenate(%constant.327, %reshape.424), dimensions={0}
+  %reduce.426 = f64[] reduce(%concatenate.425, %constant.328), dimensions={0}, to_apply=%region_8.264
+  %reshape.428 = f64[1]{0} reshape(%reduce.426)
+  %concatenate.429 = f64[2]{0} concatenate(%reshape.427, %reshape.428), dimensions={0}
+  %reduce.430 = f64[] reduce(%concatenate.429, %constant.328), dimensions={0}, to_apply=%region_9.268
+  %broadcast.431 = f64[12]{0} broadcast(%reduce.430), dimensions={}
+  %multiply.432 = f64[12]{0} multiply(%broadcast.431, %concatenate.407)
+  %add.433 = f64[12]{0} add(%concatenate.405, %multiply.432)
+  %broadcast.434 = f64[12]{0} broadcast(%reduce.430), dimensions={}
+  %multiply.435 = f64[12]{0} multiply(%broadcast.434, %concatenate.408)
+  %add.436 = f64[12]{0} add(%concatenate.406, %multiply.435)
+  %dot.437 = f64[] dot(%add.433, %add.436), lhs_contracting_dims={0}, rhs_contracting_dims={0}
+  %dot.438 = f64[] dot(%concatenate.405, %concatenate.406), lhs_contracting_dims={0}, rhs_contracting_dims={0}
+  %divide.439 = f64[] divide(%dot.437, %dot.438)
+  %multiply.440 = f64[] multiply(%divide.439, %divide.439)
+  %multiply.441 = f64[] multiply(%multiply.440, %divide.439)
+  %dot.409 = f64[] dot(%concatenate.405, %concatenate.406), lhs_contracting_dims={0}, rhs_contracting_dims={0}
+  %constant.331 = f64[] constant(12)
+  %divide.410 = f64[] divide(%dot.409, %constant.331)
+  %multiply.442 = f64[] multiply(%multiply.441, %divide.410)
+  %broadcast.444 = f64[6]{0} broadcast(%multiply.442), dimensions={}
+  %multiply.443 = f64[6]{0} multiply(%divide.401, %subtract.398)
+  %subtract.445 = f64[6]{0} subtract(%broadcast.444, %multiply.443)
+  %subtract.446 = f64[6]{0} subtract(%multiply.345, %subtract.445)
+  %negate.454 = f64[6]{0} negate(%subtract.446)
+  %negate.453 = f64[6]{0} negate(%add.344)
+  %negate.478 = f64[6]{0} negate(%negate.453)
+  %negate.456 = f64[6]{0} negate(%add.348)
+  %negate.457 = f64[6]{0} negate(%subtract.352)
+  %subtract.462 = f64[6]{0} subtract(%negate.456, %negate.457)
+  %multiply.447 = f64[] multiply(%multiply.441, %divide.410)
+  %broadcast.449 = f64[6]{0} broadcast(%multiply.447), dimensions={}
+  %multiply.448 = f64[6]{0} multiply(%divide.404, %divide.396)
+  %subtract.450 = f64[6]{0} subtract(%broadcast.449, %multiply.448)
+  %subtract.451 = f64[6]{0} subtract(%multiply.346, %subtract.450)
+  %negate.455 = f64[6]{0} negate(%subtract.451)
+  %divide.461 = f64[6]{0} divide(%negate.455, %get-tuple-element.317)
+  %add.463 = f64[6]{0} add(%subtract.462, %divide.461)
+  %divide.460 = f64[6]{0} divide(%negate.454, %get-tuple-element.316)
+  %subtract.464 = f64[6]{0} subtract(%add.463, %divide.460)
+  %divide.458 = f64[6]{0} divide(%get-tuple-element.314, %get-tuple-element.316)
+  %multiply.465 = f64[6]{0} multiply(%divide.458, %negate.453)
+  %subtract.466 = f64[6]{0} subtract(%subtract.464, %multiply.465)
+  %transpose.472 = f64[3,3]{1,0} transpose(%get-tuple-element.385), dimensions={1,0}
+  %negate.452 = f64[3]{0} negate(%add.340)
+  %transpose.468 = f64[3,6]{0,1} transpose(%get-tuple-element.322), dimensions={1,0}
+  %divide.459 = f64[6]{0} divide(%get-tuple-element.315, %get-tuple-element.317)
+  %add.467 = f64[6]{0} add(%divide.458, %divide.459)
+  %divide.469 = f64[6]{0} divide(%subtract.466, %add.467)
+  %dot.470 = f64[3]{0} dot(%transpose.468, %divide.469), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  %subtract.471 = f64[3]{0} subtract(%negate.452, %dot.470)
+  %dot.473 = f64[3]{0} dot(%transpose.472, %subtract.471), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  %call.474 = f64[3]{0} call(%get-tuple-element.386, %dot.473), to_apply=%_solve_triangular_5.272
+  %dot.475 = f64[6]{0} dot(%get-tuple-element.322, %call.474), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  %add.476 = f64[6]{0} add(%subtract.466, %dot.475)
+  %divide.477 = f64[6]{0} divide(%add.476, %add.467)
+  %subtract.479 = f64[6]{0} subtract(%negate.478, %divide.477)
+  %multiply.480 = f64[6]{0} multiply(%get-tuple-element.314, %subtract.479)
+  %subtract.481 = f64[6]{0} subtract(%negate.454, %multiply.480)
+  %divide.482 = f64[6]{0} divide(%subtract.481, %get-tuple-element.316)
+  %multiply.483 = f64[6]{0} multiply(%get-tuple-element.315, %divide.477)
+  %subtract.484 = f64[6]{0} subtract(%negate.455, %multiply.483)
+  %divide.485 = f64[6]{0} divide(%subtract.484, %get-tuple-element.317)
+  %concatenate.487 = f64[12]{0} concatenate(%divide.482, %divide.485), dimensions={0}
+  %compare.489 = pred[12]{0} compare(%concatenate.487, %broadcast.330), direction=LT
+  %negate.490 = f64[12]{0} negate(%concatenate.405)
+  %divide.491 = f64[12]{0} divide(%negate.490, %concatenate.487)
+  %call.492 = f64[12]{0} call(%compare.489, %divide.491, %constant.328), to_apply=%_where_6.278
+  %reduce.493 = f64[] reduce(%call.492, %constant.328), dimensions={0}, to_apply=%region_10.284
+  %reshape.494 = f64[1]{0} reshape(%reduce.493)
+  %concatenate.495 = f64[2]{0} concatenate(%constant.327, %reshape.494), dimensions={0}
+  %reduce.496 = f64[] reduce(%concatenate.495, %constant.328), dimensions={0}, to_apply=%region_11.288
+  %constant.326 = f64[] constant(0.99)
+  %multiply.497 = f64[] multiply(%reduce.496, %constant.326)
+  %reshape.507 = f64[1]{0} reshape(%multiply.497)
+  %concatenate.488 = f64[12]{0} concatenate(%subtract.479, %divide.477), dimensions={0}
+  %compare.498 = pred[12]{0} compare(%concatenate.488, %broadcast.330), direction=LT
+  %negate.499 = f64[12]{0} negate(%concatenate.406)
+  %divide.500 = f64[12]{0} divide(%negate.499, %concatenate.488)
+  %call.501 = f64[12]{0} call(%compare.498, %divide.500, %constant.328), to_apply=%_where_6.292
+  %reduce.502 = f64[] reduce(%call.501, %constant.328), dimensions={0}, to_apply=%region_12.298
+  %reshape.503 = f64[1]{0} reshape(%reduce.502)
+  %concatenate.504 = f64[2]{0} concatenate(%constant.327, %reshape.503), dimensions={0}
+  %reduce.505 = f64[] reduce(%concatenate.504, %constant.328), dimensions={0}, to_apply=%region_13.302
+  %multiply.506 = f64[] multiply(%reduce.505, %constant.326)
+  %reshape.508 = f64[1]{0} reshape(%multiply.506)
+  %concatenate.509 = f64[3]{0} concatenate(%constant.327, %reshape.507, %reshape.508), dimensions={0}
+  %reduce.510 = f64[] reduce(%concatenate.509, %constant.328), dimensions={0}, to_apply=%region_14.306
+  %multiply.511 = f64[] multiply(%reduce.510, %constant.326)
+  %broadcast.512 = f64[3]{0} broadcast(%multiply.511), dimensions={}
+  %multiply.513 = f64[3]{0} multiply(%broadcast.512, %call.474)
+  %add.514 = f64[3]{0} add(%get-tuple-element.312, %multiply.513)
+  %broadcast.515 = f64[6]{0} broadcast(%multiply.511), dimensions={}
+  %subtract.486 = f64[6]{0} subtract(%divide.482, %negate.456)
+  %multiply.516 = f64[6]{0} multiply(%broadcast.515, %subtract.486)
+  %add.517 = f64[6]{0} add(%get-tuple-element.313, %multiply.516)
+  %broadcast.518 = f64[6]{0} broadcast(%multiply.511), dimensions={}
+  %multiply.519 = f64[6]{0} multiply(%broadcast.518, %divide.482)
+  %add.520 = f64[6]{0} add(%get-tuple-element.314, %multiply.519)
+  %broadcast.521 = f64[6]{0} broadcast(%multiply.511), dimensions={}
+  %multiply.522 = f64[6]{0} multiply(%broadcast.521, %divide.485)
+  %add.523 = f64[6]{0} add(%get-tuple-element.315, %multiply.522)
+  %broadcast.524 = f64[6]{0} broadcast(%multiply.511), dimensions={}
+  %multiply.525 = f64[6]{0} multiply(%broadcast.524, %subtract.479)
+  %add.526 = f64[6]{0} add(%get-tuple-element.316, %multiply.525)
+  %broadcast.527 = f64[6]{0} broadcast(%multiply.511), dimensions={}
+  %multiply.528 = f64[6]{0} multiply(%broadcast.527, %divide.477)
+  %add.529 = f64[6]{0} add(%get-tuple-element.317, %multiply.528)
+  %concatenate.353 = f64[33]{0} concatenate(%add.340, %add.344, %multiply.345, %multiply.346, %add.348, /*index=5*/%subtract.352), dimensions={0}
+  %call.354 = f64[] call(%concatenate.353), to_apply=%norm_2.204
+  %get-tuple-element.325 = f64[] get-tuple-element(%arg_tuple.311), index=13
+  %compare.355 = pred[] compare(%call.354, %get-tuple-element.325), direction=LT
+  %constant.335 = s64[] constant(1)
+  %constant.334 = s64[] constant(0)
+  %call.356 = s64[] call(%compare.355, %constant.335, %constant.334), to_apply=%_where_3.211
+  %get-tuple-element.319 = s64[] get-tuple-element(%arg_tuple.311), index=7
+  %add.530 = s64[] add(%get-tuple-element.319, %constant.335)
+  ROOT %tuple.531 = (f64[3]{0}, f64[6]{0}, f64[6]{0}, f64[6]{0}, f64[6]{0}, /*index=5*/f64[6]{0}, s64[], s64[], f64[3,3]{1,0}, f64[3]{0}, /*index=10*/f64[6,3]{1,0}, f64[], f64[6]{0}, f64[]) tuple(%add.514, %add.517, %add.520, %add.523, %add.526, /*index=5*/%add.529, %call.356, %add.530, %get-tuple-element.320, %get-tuple-element.321, /*index=10*/%get-tuple-element.322, %get-tuple-element.323, %get-tuple-element.324, %get-tuple-element.325)
+}
+
+%region_15.532 (arg_tuple.533: (f64[3], f64[6], f64[6], f64[6], f64[6], /*index=5*/f64[6], s64[], s64[], f64[3,3], f64[3], /*index=10*/f64[6,3], f64[], f64[6], f64[])) -> pred[] {
+  %arg_tuple.533 = (f64[3]{0}, f64[6]{0}, f64[6]{0}, f64[6]{0}, f64[6]{0}, /*index=5*/f64[6]{0}, s64[], s64[], f64[3,3]{1,0}, f64[3]{0}, /*index=10*/f64[6,3]{1,0}, f64[], f64[6]{0}, f64[]) parameter(0)
+  %get-tuple-element.534 = f64[3]{0} get-tuple-element(%arg_tuple.533), index=0
+  %get-tuple-element.535 = f64[6]{0} get-tuple-element(%arg_tuple.533), index=1
+  %get-tuple-element.536 = f64[6]{0} get-tuple-element(%arg_tuple.533), index=2
+  %get-tuple-element.537 = f64[6]{0} get-tuple-element(%arg_tuple.533), index=3
+  %get-tuple-element.538 = f64[6]{0} get-tuple-element(%arg_tuple.533), index=4
+  %get-tuple-element.539 = f64[6]{0} get-tuple-element(%arg_tuple.533), index=5
+  %get-tuple-element.542 = f64[3,3]{1,0} get-tuple-element(%arg_tuple.533), index=8
+  %get-tuple-element.543 = f64[3]{0} get-tuple-element(%arg_tuple.533), index=9
+  %get-tuple-element.544 = f64[6,3]{1,0} get-tuple-element(%arg_tuple.533), index=10
+  %get-tuple-element.545 = f64[] get-tuple-element(%arg_tuple.533), index=11
+  %get-tuple-element.546 = f64[6]{0} get-tuple-element(%arg_tuple.533), index=12
+  %get-tuple-element.547 = f64[] get-tuple-element(%arg_tuple.533), index=13
+  %get-tuple-element.541 = s64[] get-tuple-element(%arg_tuple.533), index=7
+  %constant.549 = s64[] constant(30)
+  %compare.550 = pred[] compare(%get-tuple-element.541, %constant.549), direction=LT
+  %get-tuple-element.540 = s64[] get-tuple-element(%arg_tuple.533), index=6
+  %constant.548 = s64[] constant(0)
+  %compare.551 = pred[] compare(%get-tuple-element.540, %constant.548), direction=EQ
+  ROOT %and.552 = pred[] and(%compare.550, %compare.551)
+}
+
+%solve_qp_elastic.553 (Arg_0.554: f64[3,3], Arg_1.555: f64[3], Arg_2.556: f64[6,3], Arg_3.557: f64[6], Arg_4.558: f64[], Arg_5.559: f64[]) -> f64[3] {
+  %Arg_0.554 = f64[3,3]{1,0} parameter(0)
+  %transpose.570 = f64[3,3]{0,1} transpose(%Arg_0.554), dimensions={1,0}
+  %add.571 = f64[3,3]{1,0} add(%Arg_0.554, %transpose.570)
+  %constant.564 = f64[] constant(0.5)
+  %broadcast.565 = f64[3,3]{1,0} broadcast(%constant.564), dimensions={}
+  %multiply.572 = f64[3,3]{1,0} multiply(%add.571, %broadcast.565)
+  %Arg_2.556 = f64[6,3]{1,0} parameter(2)
+  %transpose.575 = f64[3,6]{0,1} transpose(%Arg_2.556), dimensions={1,0}
+  %constant.562 = f64[] constant(0.5)
+  %broadcast.563 = f64[3,6]{1,0} broadcast(%constant.562), dimensions={}
+  %multiply.576 = f64[3,6]{0,1} multiply(%transpose.575, %broadcast.563)
+  %dot.577 = f64[3,3]{1,0} dot(%multiply.576, %Arg_2.556), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  %add.578 = f64[3,3]{1,0} add(%multiply.572, %dot.577)
+  %call.579 = (f64[3,3]{0,1}, f64[3,3]{1,0}) call(%add.578), to_apply=%qr.156
+  %get-tuple-element.581 = f64[3,3]{1,0} get-tuple-element(%call.579), index=1
+  %get-tuple-element.580 = f64[3,3]{0,1} get-tuple-element(%call.579), index=0
+  %transpose.587 = f64[3,3]{1,0} transpose(%get-tuple-element.580), dimensions={1,0}
+  %Arg_1.555 = f64[3]{0} parameter(1)
+  %negate.573 = f64[3]{0} negate(%Arg_1.555)
+  %transpose.582 = f64[3,6]{0,1} transpose(%Arg_2.556), dimensions={1,0}
+  %multiply.583 = f64[3,6]{0,1} multiply(%transpose.582, %broadcast.563)
+  %Arg_4.558 = f64[] parameter(4)
+  %broadcast.574 = f64[6]{0} broadcast(%Arg_4.558), dimensions={}
+  %Arg_3.557 = f64[6]{0} parameter(3)
+  %subtract.584 = f64[6]{0} subtract(%broadcast.574, %Arg_3.557)
+  %dot.585 = f64[3]{0} dot(%multiply.583, %subtract.584), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  %subtract.586 = f64[3]{0} subtract(%negate.573, %dot.585)
+  %dot.588 = f64[3]{0} dot(%transpose.587, %subtract.586), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  %call.589 = f64[3]{0} call(%get-tuple-element.581, %dot.588), to_apply=%_solve_triangular.174
+  %dot.590 = f64[6]{0} dot(%Arg_2.556, %call.589), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  %add.591 = f64[6]{0} add(%dot.590, %broadcast.574)
+  %subtract.592 = f64[6]{0} subtract(%add.591, %Arg_3.557)
+  %constant.560 = f64[] constant(0.5)
+  %broadcast.561 = f64[6]{0} broadcast(%constant.560), dimensions={}
+  %multiply.593 = f64[6]{0} multiply(%subtract.592, %broadcast.561)
+  %subtract.594 = f64[6]{0} subtract(%broadcast.574, %multiply.593)
+  %negate.595 = f64[6]{0} negate(%subtract.594)
+  %concatenate.596 = f64[12]{0} concatenate(%subtract.594, %multiply.593), dimensions={0}
+  %negate.597 = f64[12]{0} negate(%concatenate.596)
+  %constant.568 = f64[] constant(inf)
+  %reduce.598 = f64[] reduce(%negate.597, %constant.568), dimensions={0}, to_apply=%region_1.180
+  %negate.599 = f64[] negate(%reduce.598)
+  %constant.567 = f64[] constant(0)
+  %compare.600 = pred[] compare(%negate.599, %constant.567), direction=LT
+  %negate.601 = f64[12]{0} negate(%concatenate.596)
+  %negate.602 = f64[12]{0} negate(%concatenate.596)
+  %constant.569 = f64[] constant(1)
+  %add.603 = f64[] add(%negate.599, %constant.569)
+  %broadcast.604 = f64[12]{0} broadcast(%add.603), dimensions={}
+  %add.605 = f64[12]{0} add(%negate.602, %broadcast.604)
+  %call.606 = f64[12]{0} call(%compare.600, %negate.601, %add.605), to_apply=%_where.184
+  %slice.614 = f64[6]{0} slice(%call.606), slice={[0:6]}
+  %slice.615 = f64[6]{0} slice(%call.606), slice={[6:12]}
+  %reduce.607 = f64[] reduce(%concatenate.596, %constant.568), dimensions={0}, to_apply=%region_2.190
+  %negate.608 = f64[] negate(%reduce.607)
+  %compare.609 = pred[] compare(%negate.608, %constant.567), direction=GE
+  %add.610 = f64[] add(%negate.608, %constant.569)
+  %broadcast.611 = f64[12]{0} broadcast(%add.610), dimensions={}
+  %add.612 = f64[12]{0} add(%concatenate.596, %broadcast.611)
+  %call.613 = f64[12]{0} call(%compare.609, %add.612, %concatenate.596), to_apply=%_where.194
+  %slice.616 = f64[6]{0} slice(%call.613), slice={[0:6]}
+  %slice.617 = f64[6]{0} slice(%call.613), slice={[6:12]}
+  %constant.566 = s64[] constant(0)
+  %Arg_5.559 = f64[] parameter(5)
+  %tuple.618 = (f64[3]{0}, f64[6]{0}, f64[6]{0}, f64[6]{0}, f64[6]{0}, /*index=5*/f64[6]{0}, s64[], s64[], f64[3,3]{1,0}, f64[3]{0}, /*index=10*/f64[6,3]{1,0}, f64[], f64[6]{0}, f64[]) tuple(%call.589, %negate.595, %slice.614, %slice.615, %slice.616, /*index=5*/%slice.617, %constant.566, %constant.566, %multiply.572, %Arg_1.555, /*index=10*/%Arg_2.556, %Arg_4.558, %Arg_3.557, %Arg_5.559)
+  %while.619 = (f64[3]{0}, f64[6]{0}, f64[6]{0}, f64[6]{0}, f64[6]{0}, /*index=5*/f64[6]{0}, s64[], s64[], f64[3,3]{1,0}, f64[3]{0}, /*index=10*/f64[6,3]{1,0}, f64[], f64[6]{0}, f64[]) while(%tuple.618), condition=%region_15.532, body=%region_3.310
+  ROOT %get-tuple-element.620 = f64[3]{0} get-tuple-element(%while.619), index=0
+  %get-tuple-element.621 = f64[6]{0} get-tuple-element(%while.619), index=1
+  %get-tuple-element.622 = f64[6]{0} get-tuple-element(%while.619), index=2
+  %get-tuple-element.623 = f64[6]{0} get-tuple-element(%while.619), index=3
+  %get-tuple-element.624 = f64[6]{0} get-tuple-element(%while.619), index=4
+  %get-tuple-element.625 = f64[6]{0} get-tuple-element(%while.619), index=5
+  %get-tuple-element.626 = s64[] get-tuple-element(%while.619), index=6
+  %get-tuple-element.627 = s64[] get-tuple-element(%while.619), index=7
+}
+
+%safety_filter.628 (Arg_0.629: f64[6], Arg_1.630: f64[3]) -> f64[3] {
+  %Arg_0.629 = f64[6]{0} parameter(0)
+  %Arg_1.630 = f64[3]{0} parameter(1)
+  %call.633 = (f64[3,3]{1,0}, f64[3]{0}, f64[6,3]{0,1}, f64[6]{0}) call(%Arg_0.629, %Arg_1.630), to_apply=%qp_data.64
+  %get-tuple-element.634 = f64[3,3]{1,0} get-tuple-element(%call.633), index=0
+  %get-tuple-element.635 = f64[3]{0} get-tuple-element(%call.633), index=1
+  %get-tuple-element.636 = f64[6,3]{0,1} get-tuple-element(%call.633), index=2
+  %get-tuple-element.637 = f64[6]{0} get-tuple-element(%call.633), index=3
+  %constant.632 = f64[] constant(1000)
+  %constant.631 = f64[] constant(1e-06)
+  ROOT %call.638 = f64[3]{0} call(%get-tuple-element.634, %get-tuple-element.635, %get-tuple-element.636, %get-tuple-element.637, %constant.632, /*index=5*/%constant.631), to_apply=%solve_qp_elastic.553
+}
+
+%controller.639 (Arg_0.640: f64[6], Arg_1.641: f64[6]) -> f64[3] {
+  %Arg_0.640 = f64[6]{0} parameter(0)
+  %Arg_1.641 = f64[6]{0} parameter(1)
+  %call.642 = f64[3]{0} call(%Arg_0.640, %Arg_1.641), to_apply=%nominal_controller.13
+  ROOT %call.643 = f64[3]{0} call(%Arg_0.640, %call.642), to_apply=%safety_filter.628
+}
+
+ENTRY %main.645 (Arg_0.1: f64[6], Arg_1.2: f64[6]) -> f64[3] {
+  %Arg_0.1 = f64[6]{0} parameter(0)
+  %Arg_1.2 = f64[6]{0} parameter(1)
+  ROOT %call.644 = f64[3]{0} call(%Arg_0.1, %Arg_1.2), to_apply=%controller.639
+}
+
