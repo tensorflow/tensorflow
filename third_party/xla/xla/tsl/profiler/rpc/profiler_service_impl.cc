@@ -20,6 +20,7 @@ limitations under the License.
 #include <optional>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
@@ -95,6 +96,34 @@ bool IsValidSnapshotSessionId(absl::string_view id) {
 absl::Status CollectData(const ProfileRequest& request,
                          ProfilerSession* profiler, ProfileResponse* response) {
   response->set_empty_trace(true);
+  if (profiler->IsContinuousProfilingEnabled()) {
+    RETURN_IF_ERROR(profiler->Stop());
+    std::vector<tensorflow::profiler::XSpace> xspaces =
+        profiler->SerializeChunks();
+    VLOG(3) << "Collected " << xspaces.size() << " XSpace chunks to "
+            << (request.emit_xspace() ? "response" : "repository") << ".";
+    if (request.emit_xspace()) {
+      LOG(WARNING)
+          << "XSpace chunks are dropped as they are not supported with "
+             "continuous profiling.";
+      if (!xspaces.empty()) {
+        *response->mutable_xspace() = std::move(xspaces.back());
+      }
+      response->set_empty_trace(IsEmpty(*response->mutable_xspace()));
+      return absl::OkStatus();
+    }
+    bool empty_trace = true;
+    for (const tensorflow::profiler::XSpace& xspace : xspaces) {
+      if (!IsEmpty(xspace)) {
+        empty_trace = false;
+        break;
+      }
+    }
+    response->set_empty_trace(empty_trace);
+    return SaveXSpaceChunks(request.repository_root(), request.session_id(),
+                            GetHostname(request), xspaces);
+  }
+
   // Read the profile data into xspace.
   tensorflow::profiler::XSpace xspace;
   tensorflow::profiler::XSpace* xspace_ptr =
