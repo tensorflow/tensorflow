@@ -533,17 +533,11 @@ class UnsortedSegmentReductionOp : public OpKernel {
     // overflow in output tensor size calculations, leading to illegal memory
     // access or process abort (see #117549).
     //
-    // The bound is kint32max for every Index type, not 2^31. Those differ by
-    // one, and the smaller value is the safe one: 2^31 is not representable in
-    // a signed 32-bit integer, so any downstream code that indexes with int32
-    // would wrap it to a negative value. Using kint32max also removes the
-    // asymmetry where a 64-bit index admitted one more segment than a 32-bit
-    // one for no reason a caller could observe or rely on.
-    //
-    // Nothing practical is given up. A single segment costs at least an entry
-    // in the CPU functor's std::vector<Index> row_counter, so kint32max
-    // segments is already tens of gigabytes of bookkeeping before any output
-    // element is written.
+    // Use kint32max for every index type. Although an int64 index could
+    // represent 2^31, that value is not representable as a signed int32 and
+    // would wrap if any downstream code performs 32-bit indexing; a uniform
+    // bound avoids that edge case. Nothing practical is lost, since the CPU
+    // functor already allocates std::vector<Index> row_counter(num_segments).
     const int64_t kMaxSegments =
         static_cast<int64_t>(std::numeric_limits<int32_t>::max());
     OP_REQUIRES(context, num_segments_val <= kMaxSegments,
