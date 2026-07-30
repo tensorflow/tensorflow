@@ -6427,8 +6427,13 @@ def fold(patches,
     raise ValueError(
       f"patches(input must be 4D (batch, height, width, patch_dim), "
       f"got {patches.shape.ndims}D tensor with shape {patches.shape}")
-  if reduction not in ('sum', 'mean'):
+
+  if isinstance(reduction, str):
+    if reduction not in ('sum', 'mean'):
+      raise ValueError(f"reduction must be 'sum' or 'mean', got {reduction}")
+  else:
     raise ValueError(f"reduction must be 'sum' or 'mean', got {reduction}")
+
   if isinstance(kernel_size, int):
     kernel_h = kernel_w = kernel_size
     if kernel_size < 1:

@@ -484,6 +484,16 @@ class TestFoldInputValidation(test.TestCase):
       array_ops.fold(patches, (4, 4), 2, (1, -2))
       array_ops.fold(patches, (4, 4), 2, 2)
 
+  def test_invalid_reduction(self):
+    patches = random_ops.random_normal([1, 3, 3, 4])
+    with self.assertRaisesRegex(ValueError,
+                                "reduction must be 'sum' or 'mean'"):
+      array_ops.fold(patches,
+                     output_size=(4, 4),
+                     sizes=2,
+                     strides=2,
+                     reduction='INVALID_STRING')
+
 
 @test_util.run_all_in_graph_and_eager_modes
 class TestFoldGradients(test.TestCase):
@@ -701,84 +711,82 @@ class TestFoldSamePadding(test.TestCase):
     expected = x * overlap_counts
     self.assertAllClose(reconstructed, expected)
 
+  def test_fold_same_padding_with_dilation(self):
+    """TEST: SAME padding with dilation > 1.
+    kernel=3, dilation=2 -> effective kernel size = 5.
+    """
+    image_size, kernel_size, stride, dilation = 6, 3, 2, 2
 
-def test_fold_same_padding_with_dilation(self):
-  """TEST: SAME padding with dilation > 1.
-  kernel=3, dilation=2 -> effective kernel size = 5.
-  """
-  image_size, kernel_size, stride, dilation = 6, 3, 2, 2
+    x = random_ops.random_normal([1, image_size, image_size, 1], seed=42)
 
-  x = random_ops.random_normal([1, image_size, image_size, 1], seed=42)
+    patches = self._extract_patches(x,
+                                    kernel=kernel_size,
+                                    stride=stride,
+                                    padding="SAME",
+                                    dilation=dilation)
 
-  patches = self._extract_patches(x,
-                                  kernel=kernel_size,
-                                  stride=stride,
-                                  padding="SAME",
-                                  dilation=dilation)
+    reconstructed = array_ops.fold(patches,
+                                   output_size=(image_size, image_size),
+                                   sizes=kernel_size,
+                                   strides=stride,
+                                   padding="SAME",
+                                   rates=dilation)
 
-  reconstructed = array_ops.fold(patches,
-                                 output_size=(image_size, image_size),
-                                 sizes=kernel_size,
-                                 strides=stride,
-                                 padding="SAME",
-                                 rates=dilation)
+    ones = array_ops.ones_like(x)
+    ones_patches = self._extract_patches(ones,
+                                         kernel=kernel_size,
+                                         stride=stride,
+                                         padding="SAME",
+                                         dilation=dilation)
 
-  ones = array_ops.ones_like(x)
-  ones_patches = self._extract_patches(ones,
-                                       kernel=kernel_size,
-                                       stride=stride,
-                                       padding="SAME",
-                                       dilation=dilation)
+    overlap_counts = array_ops.fold(ones_patches,
+                                    output_size=(image_size, image_size),
+                                    sizes=kernel_size,
+                                    strides=stride,
+                                    padding="SAME",
+                                    rates=dilation)
 
-  overlap_counts = array_ops.fold(ones_patches,
-                                  output_size=(image_size, image_size),
-                                  sizes=kernel_size,
-                                  strides=stride,
-                                  padding="SAME",
-                                  rates=dilation)
+    expected = x * overlap_counts
+    self.assertAllClose(reconstructed, expected)
 
-  expected = x * overlap_counts
-  self.assertAllClose(reconstructed, expected)
+  def test_fold_non_square_parameters(self):
+    """TEST: Non-square kernel, stride and dilation."""
+    height, width = 7, 8
+    kernel_size = (3, 5)
+    stride = (2, 3)
+    dilation = (1, 2)
 
+    x = random_ops.random_normal([1, height, width, 2], seed=42)
 
-def test_fold_non_square_parameters(self):
-  """TEST: Non-square kernel, stride and dilation."""
-  height, width = 7, 8
-  kernel_size = (3, 5)
-  stride = (2, 3)
-  dilation = (1, 2)
+    patches = array_ops.extract_image_patches_v2(x,
+                                                 sizes=[1, 3, 5, 1],
+                                                 strides=[1, 2, 3, 1],
+                                                 padding="SAME",
+                                                 rates=[1, 1, 2, 1])
 
-  x = random_ops.random_normal([1, height, width, 2], seed=42)
+    reconstructed = array_ops.fold(patches,
+                                   output_size=(height, width),
+                                   sizes=kernel_size,
+                                   strides=stride,
+                                   padding="SAME",
+                                   rates=dilation)
 
-  patches = self._extract_patches(x,
-                                  kernel=kernel_size,
-                                  stride=stride,
-                                  padding="SAME",
-                                  dilation=dilation)
+    ones = array_ops.ones_like(x)
+    ones_patches = array_ops.extract_image_patches_v2(ones,
+                                                      sizes=[1, 3, 5, 1],
+                                                      strides=[1, 2, 3, 1],
+                                                      padding="SAME",
+                                                      rates=[1, 1, 2, 1])
 
-  reconstructed = array_ops.fold(patches,
-                                 output_size=(height, width),
-                                 sizes=kernel_size,
-                                 strides=stride,
-                                 padding="SAME",
-                                 rates=dilation)
+    overlap_counts = array_ops.fold(ones_patches,
+                                    output_size=(height, width),
+                                    sizes=kernel_size,
+                                    strides=stride,
+                                    padding="SAME",
+                                    rates=dilation)
 
-  ones = array_ops.ones_like(x)
-  ones_patches = self._extract_patches(ones,
-                                       kernel=kernel_size,
-                                       stride=stride,
-                                       padding="SAME",
-                                       dilation=dilation)
-
-  overlap_counts = array_ops.fold(ones_patches,
-                                  output_size=(height, width),
-                                  sizes=kernel_size,
-                                  strides=stride,
-                                  padding="SAME",
-                                  rates=dilation)
-
-  expected = x * overlap_counts
-  self.assertAllClose(reconstructed, expected)
+    expected = x * overlap_counts
+    self.assertAllClose(reconstructed, expected)
 
 
 @test_util.run_all_in_graph_and_eager_modes
@@ -838,6 +846,7 @@ class TestFoldDeterminism(test.TestCase):
                                 padding="VALID")
 
         self.assertAllClose(reference, result)
+
 
 if __name__ == "__main__":
   test.main()
