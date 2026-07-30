@@ -73,3 +73,14 @@ platform(
         "cache-silo-key": "20260115",
     },
 )
+
+# Register a Windows ARM64 platform.
+platform(
+    name = "windows_ltsc2022_arm64",
+    constraint_values = [
+        "@platforms//cpu:aarch64",
+        "@platforms//os:windows",
+        "@bazel_tools//tools/cpp:clang-cl",
+    ],
+)
+

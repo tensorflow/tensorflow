@@ -105,9 +105,21 @@ GetEnabledAndDisabledFeatures(const std::vector<std::string>& features) {
 
 }  // namespace
 
+// Returns a safe fallback CPU name when the host CPU
+// is not recognized by the LLVM toolchain
+static std::string GetSafeCpuName() {
+  std::string cpu = llvm::sys::getHostCPUName().str();
+#if defined(WIN32) && defined(_M_ARM64)
+// LLVM returns oryon-1 as CPU name on Snapdragon processors
+// Fallback to generic target as a safe CPU name 
+    return "generic";
+#endif
+  return cpu;
+}
+
 TargetMachineOptions::TargetMachineOptions() {
   triple_ = llvm::sys::getDefaultTargetTriple();
-  cpu_ = llvm::sys::getHostCPUName();
+  cpu_ = GetSafeCpuName();
 }
 
 TargetMachineOptions::TargetMachineOptions(const DebugOptions& debug_options) {
@@ -123,7 +135,7 @@ TargetMachineOptions::TargetMachineOptions(const DebugOptions& debug_options) {
   // are on a Broadwell host.
   cpu_ = detected_machine_attributes.num_filtered_features
              ? CpuTargetFromMaxFeature(*xla_cpu_max_isa)
-             : absl::string_view(llvm::sys::getHostCPUName());
+             : GetSafeCpuName();
 
   EnableFeaturesIfAVX512(enabled_features_);
 }
@@ -144,7 +156,7 @@ TargetMachineOptions TargetMachineOptions::Native() {
   auto [enabled_features, disabled_features] =
       GetEnabledAndDisabledFeatures(detected_machine_attributes.features);
   return TargetMachineOptions(
-      llvm::sys::getDefaultTargetTriple(), llvm::sys::getHostCPUName().str(),
+      llvm::sys::getDefaultTargetTriple(), GetSafeCpuName(),
       std::move(enabled_features), std::move(disabled_features));
 }
 

@@ -238,7 +238,10 @@ _TEXTUAL_HDRS_LIST = glob([
 # compiler doesn't clean up stack from temporary objects.)
 cc_library(
     name = "onednn_autogen",
-    srcs = glob(["src/cpu/x64/gemm/**/*_kern_autogen*.cpp"]),
+    srcs = select({
+        "@xla//xla/tsl:windows_arm64": [],
+        "//conditions:default": glob(["src/cpu/x64/gemm/**/*_kern_autogen*.cpp"]),
+    }),
     copts = [
         "-O1",
         "-U_FORTIFY_SOURCE",
@@ -254,41 +257,53 @@ alias(
     visibility = ["//visibility:public"],
 )
 
+# Common CPU sources excluding all arch-specific sources.
+_CPU_COMMON_SRCS_ASYNC = glob(
+    [
+        "src/common/*.cpp",
+        "src/cpu/*.cpp",
+        "src/cpu/jit_utils/**/*.cpp",
+        "src/graph/interface/*.cpp",
+        "src/graph/backend/*.cpp",
+        "src/graph/backend/dnnl/*.cpp",
+        "src/graph/backend/fake/*.cpp",
+        "src/graph/backend/dnnl/executables/*.cpp",
+        "src/graph/backend/dnnl/passes/*.cpp",
+        "src/graph/backend/dnnl/patterns/*.cpp",
+        "src/graph/backend/dnnl/kernels/*.cpp",
+        "src/graph/utils/*.cpp",
+        "src/graph/utils/pm/*.cpp",
+        "third_party/ittnotify/*.c",
+    ],
+    exclude = [
+        "src/cpu/aarch64/**",
+        "src/cpu/ppc64/**",
+        "src/cpu/rv64/**",
+        "src/cpu/sycl/**",
+    ],
+)
+
+# x64-specific sources - only on x86_64 platforms.
+_CPU_X64_SRCS_ASYNC = glob(
+    ["src/cpu/x64/**/*.cpp"],
+    exclude = ["src/cpu/x64/gemm/**/*_kern_autogen.cpp"],
+)
+
 cc_library(
     name = "onednn_cpu",
     # Builds oneDNN with CPU support only (no GPU kernels).
     # Used when SYCL is not configured. See :onednn_gpu_and_cpu for GPU variant.
-    srcs = glob(
-        [
-            "src/common/*.cpp",
-            "src/cpu/*.cpp",
-            "src/cpu/**/*.cpp",
-            "src/cpu/jit_utils/**/*.cpp",
-            "src/cpu/x64/**/*.cpp",
-            "src/graph/interface/*.cpp",
-            "src/graph/backend/*.cpp",
-            "src/graph/backend/dnnl/*.cpp",
-            "src/graph/backend/fake/*.cpp",
-            "src/graph/backend/dnnl/executables/*.cpp",
-            "src/graph/backend/dnnl/passes/*.cpp",
-            "src/graph/backend/dnnl/patterns/*.cpp",
-            "src/graph/backend/dnnl/kernels/*.cpp",
-            "src/graph/utils/*.cpp",
-            "src/graph/utils/pm/*.cpp",
-            "third_party/ittnotify/*.c",
-        ],
-        exclude = [
-            "src/cpu/aarch64/**",
-            "src/cpu/ppc64/**",
-            "src/cpu/rv64/**",
-            "src/cpu/x64/gemm/**/*_kern_autogen.cpp",
-            "src/cpu/sycl/**",
-        ],
-    ),
+    srcs = select({
+        "@xla//xla/tsl:windows_arm64": [],
+        "//conditions:default": _CPU_COMMON_SRCS_ASYNC + _CPU_X64_SRCS_ASYNC,
+    }),
     copts = _COPTS_LIST + [
         "-DDNNL_ENABLE_ITT_TASKS",  # Enable ITT for CPU
     ],
-    includes = _INCLUDES_LIST,
+    includes = select({
+        "@xla//xla/tsl:windows_arm64": [],
+        "//conditions:default": _INCLUDES_LIST,
+    }),
     # TODO(penpornk): Use lrt_if_needed from tensorflow.bzl instead.
     linkopts = select({
         "@xla//xla/tsl:linux_aarch64": ["-lrt"],
@@ -297,9 +312,15 @@ cc_library(
         "@xla//xla/tsl:linux_riscv64": ["-lrt"],
         "//conditions:default": [],
     }),
-    textual_hdrs = _TEXTUAL_HDRS_LIST,
+        textual_hdrs = select({
+        "@xla//xla/tsl:windows_arm64": [],
+        "//conditions:default": _TEXTUAL_HDRS_LIST,
+    }),
     visibility = ["//visibility:public"],
-    deps = [":onednn_autogen"] + if_mkl_ml(
+    deps = select({
+        "@xla//xla/tsl:windows_arm64": [],
+        "//conditions:default": [":onednn_autogen"],
+    }) + if_mkl_ml(
         ["@xla//xla/tsl/mkl:intel_binary_blob"],
         [],
     ),

@@ -560,6 +560,27 @@ common:win_clang --extra_toolchains=@local_config_cc//:cc-toolchain-x64_windows-
 common:win_clang --extra_execution_platforms=//tensorflow/tools/toolchains/win:x64_windows-clang-cl
 common:win_clang --host_platform=//tensorflow/tools/toolchains/win:x64_windows-clang-cl
 
+common:win_arm64_clang --config=win_clang_base
+common:win_arm64_clang --config=clang_local
+common:win_arm64_clang --cpu=arm64_windows
+common:win_arm64_clang --extra_toolchains=@local_config_cc//:cc-toolchain-arm64_windows-clang-cl
+common:win_arm64_clang --extra_execution_platforms=//tensorflow/tools/toolchains/win2022:windows_ltsc2022_arm64
+common:win_arm64_clang --host_platform=//tensorflow/tools/toolchains/win2022:windows_ltsc2022_arm64
+common:win_arm64_clang --platforms=//tensorflow/tools/toolchains/win2022:windows_ltsc2022_arm64
+common:win_arm64_clang --define=tensorflow_mkldnn_contraction_kernel=0
+common:win_arm64_clang --define=xnn_enable_avxvnniint8=false
+common:win_arm64_clang --define=xnn_enable_avx512fp16=false
+common:win_arm64_clang --define=xnn_enable_sme2=false
+common:win_arm64_clang --define=ynn_enable_arm64_sme=false
+common:win_arm64_clang --define=ynn_enable_arm64_sme2=false
+common:win_arm64_clang --@rules_python//python/config_settings:bootstrap_impl=zip
+common:win_arm64_clang --build_python_zip
+common:win_arm64_clang --define=with_onednn_v3=false
+common:win_arm64_clang --define=build_with_mkl=false
+common:win_arm64_clang --define=enable_mkl=false
+common:win_arm64_clang --define=no_nccl_support=true
+common:win_arm64_clang --repo_env=TF_NEED_CUDA=0
+
 common:windows_x86_cpu_2022 --config=win_clang_base
 common:windows_x86_cpu_2022 --crosstool_top="//tensorflow/tools/toolchains/win2022/20241118:toolchain"
 common:windows_x86_cpu_2022 --extra_toolchains="//tensorflow/tools/toolchains/win2022/20241118:cc-toolchain-x64_windows-clang-cl"
@@ -862,6 +883,18 @@ common:release_cpu_windows --config=release_base
 # TODO(kanglan): Update windows configs after b/289091160 is fixed
 common:release_cpu_windows --config=avx_win
 common:release_cpu_windows --define=no_tensorflow_py_deps=true
+
+# Native Windows ARM64 CPU build. Do not inherit release_cpu_windows because it
+# enables x86_64-only AVX flags. Minimal native Windows ARM64 CPU wheel build.
+common:release_cpu_windows_arm64 --config=release_base
+common:release_cpu_windows_arm64 --config=win_arm64_clang
+common:release_cpu_windows_arm64 --define=no_tensorflow_py_deps=true
+common:release_cpu_windows_arm64 --define=with_xla_support=true
+common:release_cpu_windows_arm64 --config=nogcp
+common:release_cpu_windows_arm64 --config=nonccl
+common:release_cpu_windows_arm64 --define=disable_tf_lite_py=true
+common:release_cpu_windows_arm64 --define=with_tpu_support=false
+
 
 # Exclude TFRT integration for anything but Linux.
 common:android --config=no_tfrt
