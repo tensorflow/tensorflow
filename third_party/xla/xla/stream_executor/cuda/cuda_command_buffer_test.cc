@@ -304,6 +304,35 @@ TEST(CudaCommandBufferTest, LaunchClusterKernelWithClusterDimsSucceeds) {
   ASSERT_OK(stream->BlockHostUntilDone());
 }
 
+TEST(CudaCommandBufferTest, LaunchHostCallback) {
+  Platform* platform = CudaPlatform();
+  ASSERT_OK_AND_ASSIGN(StreamExecutor * executor,
+                       platform->ExecutorForDevice(0));
+  if (!executor->GetDeviceDescription()
+           .cuda_compute_capability()
+           .IsAtLeastVolta()) {
+    GTEST_SKIP() << "Requires at least a Volta GPU.";
+  }
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<Stream> stream,
+                       executor->CreateStream());
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<CommandBuffer> cmd_buffer,
+                       executor->CreateCommandBuffer(primary));
+
+  int counter = 0;
+  ASSERT_OK_AND_ASSIGN(const CommandBuffer::Command* cmd,
+                       cmd_buffer->CreateHost([&]() { counter++; }, {}));
+  ASSERT_NE(cmd, nullptr);
+
+  ASSERT_OK(cmd_buffer->Finalize());
+  ASSERT_OK(cmd_buffer->Submit(stream.get()));
+  ASSERT_OK(stream->BlockHostUntilDone());
+  EXPECT_EQ(counter, 1);
+
+  ASSERT_OK(cmd_buffer->Submit(stream.get()));
+  ASSERT_OK(stream->BlockHostUntilDone());
+  EXPECT_EQ(counter, 2);
+}
+
 TEST(CudaCommandBufferTest, MemcpyH2D2H) {
   Platform* platform = CudaPlatform();
   ASSERT_OK_AND_ASSIGN(StreamExecutor * executor,
