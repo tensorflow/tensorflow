@@ -39,7 +39,7 @@ constexpr ErrorSpec kErrorSpec = ErrorSpec{1e-4, 1e-4};
 // the global variable.
 class TensorFloat32GlobalVarTest
     : public ::testing::WithParamInterface<bool>,
-      public HloInterpreterReferenceMixin<HloPjRtTestBase> {
+      public HloInterpreterReferenceMixin<HloTestBase> {
  protected:
   TensorFloat32GlobalVarTest() {
     tsl::enable_tensor_float_32_execution(false);
