@@ -21,6 +21,7 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/strings/ascii.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/attr_value_util.h"
 #include "tensorflow/core/framework/op_def.pb.h"
@@ -282,15 +283,17 @@ bool IsValidOpName(absl::string_view sp) {
 // names to a safe identifier character set: they must start with a letter
 // or underscore and contain only letters, digits, and underscores.
 bool IsValidAttrOrArgName(absl::string_view sp) {
-  using ::tensorflow::strings::Scanner;
-
   if (sp.empty()) return false;
-  if (sp[0] != '_' && !isalpha(static_cast<unsigned char>(sp[0]))) {
+  if (sp[0] != '_' && !absl::ascii_isalpha(sp[0])) {
     return false;
   }
-  Scanner scanner(sp);
-  scanner.Any(Scanner::LETTER_DIGIT_UNDERSCORE);
-  return scanner.GetResult() && scanner.empty();
+  for (size_t i = 1; i < sp.size(); ++i) {
+    char c = sp[i];
+    if (c != '_' && !absl::ascii_isalnum(c)) {
+      return false;
+    }
+  }
+  return true;
 }
 
 absl::Status ValidateOpDef(const OpDef& op_def) {
