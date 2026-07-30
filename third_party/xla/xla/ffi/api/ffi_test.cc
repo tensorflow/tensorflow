@@ -493,7 +493,7 @@ TEST(FfiTest, RunIdViaContext) {
   CallFrameBuilder builder(/*num_args=*/0, /*num_rets=*/0);
   auto call_frame = builder.Build();
 
-  auto handler = Ffi::Bind().Ctx().To([&](Context ctx) {
+  auto handler = Ffi::Bind().Ctx().To([&](Context<> ctx) {
     ErrorOr<RunId> run_id = ctx.get<RunId>();
     EXPECT_TRUE(run_id.has_value());
     EXPECT_EQ(run_id->run_id, 42);
@@ -513,7 +513,7 @@ TEST(FfiTest, DeviceOrdinal) {
   auto call_frame = builder.Build();
 
   auto handler = Ffi::Bind().Ctx<DeviceOrdinal>().Ctx().To(
-      [&](int32_t device_ordinal, Context ctx) {
+      [&](int32_t device_ordinal, Context<> ctx) {
         // Get device ordinal from the argument.
         EXPECT_EQ(device_ordinal, 42);
 

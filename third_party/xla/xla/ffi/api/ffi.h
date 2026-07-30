@@ -989,8 +989,8 @@ class RemainingArgs : public internal::RemainingArgsBase {
   }
 };
 
-template <>
-struct internal::Decode<internal::RemainingArgsTag> {
+template <ExecutionStage stage>
+struct internal::Decode<stage, internal::RemainingArgsTag> {
   static std::optional<RemainingArgs> call(DecodingOffsets& offsets,
                                            DecodingContext& ctx,
                                            DiagnosticEngine& diagnostic) {
@@ -1077,8 +1077,8 @@ class RemainingRets : public internal::RemainingRetsBase {
   }
 };
 
-template <>
-struct internal::Decode<internal::RemainingRetsTag> {
+template <ExecutionStage stage>
+struct internal::Decode<stage, internal::RemainingRetsTag> {
   static std::optional<RemainingRets> call(DecodingOffsets& offsets,
                                            DecodingContext& ctx,
                                            DiagnosticEngine& diagnostic) {
@@ -1199,8 +1199,8 @@ class Dictionary : public internal::DictionaryBase {
 };
 
 // Decode `AttrsTag` (all attributes) into a `Dictionary`.
-template <>
-struct internal::Decode<internal::AttrsTag<Dictionary>> {
+template <ExecutionStage stage>
+struct internal::Decode<stage, internal::AttrsTag<Dictionary>> {
   XLA_FFI_ATTRIBUTE_ALWAYS_INLINE static std::optional<Dictionary> call(
       DecodingOffsets& offsets, DecodingContext& ctx,
       DiagnosticEngine& diagnostic) {
@@ -1226,14 +1226,15 @@ struct AttrDecoding<Dictionary> {
 // Type-safe wrapper for accessing context.
 //===----------------------------------------------------------------------===//
 
-class Context : public internal::ContextBase {
+template <ExecutionStage stage>
+class Context : public internal::ContextBase<stage> {
  public:
-  using internal::ContextBase::ContextBase;
+  using internal::ContextBase<stage>::ContextBase;
 
   template <typename T>
-  ErrorOr<typename CtxDecoding<T>::Type> get() const {
+  ErrorOr<typename CtxDecoding<stage, T>::Type> get() const {
     DiagnosticEngine diagnostic;
-    auto value = internal::ContextBase::get<T>(diagnostic);
+    auto value = internal::ContextBase<stage>::template get<T>(diagnostic);
     if (XLA_FFI_PREDICT_FALSE(!value.has_value())) {
       return Unexpected(Error::Internal(diagnostic.Result()));
     }
@@ -1242,15 +1243,15 @@ class Context : public internal::ContextBase {
 };
 
 // Context decoding for catch-all `Context` type.
-template <>
-struct CtxDecoding<Context> {
-  using Type = Context;
+template <ExecutionStage stage>
+struct CtxDecoding<stage, Context<stage>> {
+  using Type = Context<stage>;
 
   XLA_FFI_ATTRIBUTE_ALWAYS_INLINE
-  static std::optional<Context> Decode(const XLA_FFI_Api* api,
-                                       XLA_FFI_ExecutionContext* ctx,
-                                       DiagnosticEngine&) {
-    return Context(api, ctx);
+  static std::optional<Type> Decode(const XLA_FFI_Api* api,
+                                    XLA_FFI_ExecutionContext* ctx,
+                                    DiagnosticEngine&) {
+    return Context<stage>(api, ctx);
   }
 };
 
@@ -1388,8 +1389,8 @@ struct PlatformStream {};
 //
 // Example: Ffi::Bind().Ctx<PlatformStream<cudaStream_t>()
 //                     .To([](cudaStream_t stream) { ... });
-template <typename T>
-struct CtxDecoding<PlatformStream<T>> {
+template <ExecutionStage stage, typename T>
+struct CtxDecoding<stage, PlatformStream<T>> {
   using Type = T;
 
   static_assert(std::is_pointer_v<T>, "stream type must be a pointer");
@@ -1435,7 +1436,8 @@ class ScratchAllocator {
   std::optional<void*> Allocate(size_t size, size_t alignment = 1);
 
  private:
-  friend struct CtxDecoding<ScratchAllocator>;
+  template <ExecutionStage, typename>
+  friend struct CtxDecoding;
 
   ScratchAllocator(const XLA_FFI_Api* api, XLA_FFI_ExecutionContext* ctx,
                    DiagnosticEngine& diagnostic);
@@ -1456,8 +1458,8 @@ class ScratchAllocator {
 //
 // Example: Ffi::Bind().Ctx<ScratchAllocator>()
 //                     .To([](ScratchAllocator scratch) { ... });
-template <>
-struct CtxDecoding<ScratchAllocator> {
+template <ExecutionStage stage>
+struct CtxDecoding<stage, ScratchAllocator> {
   using Type = ScratchAllocator;
 
   XLA_FFI_ATTRIBUTE_ALWAYS_INLINE static std::optional<Type> Decode(
@@ -1561,7 +1563,8 @@ class ThreadPool {
   }
 
  private:
-  friend struct CtxDecoding<ThreadPool>;
+  template <ExecutionStage, typename>
+  friend struct CtxDecoding;
 
   ThreadPool(const XLA_FFI_Api* api, XLA_FFI_ExecutionContext* ctx,
              DiagnosticEngine& diagnostic);
@@ -1575,8 +1578,8 @@ class ThreadPool {
 //
 // Example: Ffi::Bind().Ctx<ThreadPool>()
 //                     .To([](ThreadPool thread_pool) { ... });
-template <>
-struct CtxDecoding<ThreadPool> {
+template <ExecutionStage stage>
+struct CtxDecoding<stage, ThreadPool> {
   using Type = ThreadPool;
 
   XLA_FFI_ATTRIBUTE_ALWAYS_INLINE static std::optional<Type> Decode(
@@ -1634,8 +1637,8 @@ struct UserData {};
 //
 // Example: Ffi::Bind().Ctx<UserData<MyData>>()
 //                     .To([](MyData* data) { ... });
-template <typename T>
-struct CtxDecoding<UserData<T>> {
+template <ExecutionStage stage, typename T>
+struct CtxDecoding<stage, UserData<T>> {
   using Type = T*;
 
   static_assert(std::is_same_v<decltype(T::id), TypeId>,
@@ -1682,8 +1685,8 @@ using Initialized = State<T, ExecutionStage::kInitialize>;
 //
 // Example: Ffi::Bind().Ctx<State<MyState>>()
 //                     .To([](MyState* state) { ... });
-template <typename T, ExecutionStage stage>
-struct CtxDecoding<State<T, stage>> {
+template <ExecutionStage stage, typename T, ExecutionStage state_stage>
+struct CtxDecoding<stage, State<T, state_stage>> {
   using Type = T*;
 
   static_assert(std::is_same_v<decltype(T::id), TypeId>,
@@ -1695,7 +1698,7 @@ struct CtxDecoding<State<T, stage>> {
     XLA_FFI_State_Get_Args args;
     args.struct_size = XLA_FFI_State_Get_Args_STRUCT_SIZE;
     args.extension_start = nullptr;
-    args.stage = static_cast<XLA_FFI_ExecutionStage>(stage);
+    args.stage = static_cast<XLA_FFI_ExecutionStage>(state_stage);
     args.ctx = ctx;
     args.type_id = &T::id;
     args.state = nullptr;
@@ -1725,8 +1728,8 @@ struct RunId {
 //
 // Example: Ffi::Bind().Ctx<RunId>()
 //                     .To([](RunId run_id) { ... });
-template <>
-struct CtxDecoding<RunId> {
+template <ExecutionStage stage>
+struct CtxDecoding<stage, RunId> {
   using Type = RunId;
 
   XLA_FFI_ATTRIBUTE_ALWAYS_INLINE static std::optional<Type> Decode(
@@ -1759,8 +1762,8 @@ struct DeviceOrdinal {};
 //
 // Example: Ffi::Bind().Ctx<DeviceOrdinal>()
 //                     .To([](int32_t device_ordinal) { ... });
-template <>
-struct CtxDecoding<DeviceOrdinal> {
+template <ExecutionStage stage>
+struct CtxDecoding<stage, DeviceOrdinal> {
   using Type = int32_t;
 
   XLA_FFI_ATTRIBUTE_ALWAYS_INLINE static std::optional<Type> Decode(
