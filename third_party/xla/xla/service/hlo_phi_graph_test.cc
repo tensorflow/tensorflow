@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/service/hlo_phi_graph.h"
 
+#include <gtest/gtest.h>
 #include "xla/literal_util.h"
 #include "tsl/platform/test.h"
 
@@ -105,6 +106,55 @@ TEST_F(PhiGraphTest, NestedPhiReduction) {
   EXPECT_EQ(D.id(), phi_graph.FindOptimizedValue(B.id()));
   EXPECT_EQ(D.id(), phi_graph.FindOptimizedValue(C.id()));
   EXPECT_EQ(D.id(), phi_graph.FindOptimizedValue(E.id()));
+}
+
+TEST_F(PhiGraphTest, TriggerUaF) {
+  // When running this test, use the following arguments: --config=asan
+  PhiGraph phi_graph;
+  HloValue A = NewHloValue(true);
+  HloValue B = NewHloValue(true);
+  HloValue C = NewHloValue(true);
+  HloValue D = NewHloValue(true);
+  HloValue E = NewHloValue(false);  // Non-phi node
+
+  // A = phi(B, B)
+  // B = phi(C, C)
+  // C = phi(D, D)
+  // D = phi(A, E) // D takes A and the non-phi node E
+  phi_graph.RegisterPhi(A, {&B, &B});
+  phi_graph.RegisterPhi(B, {&C, &C});
+  phi_graph.RegisterPhi(C, {&D, &D});
+  phi_graph.RegisterPhi(D, {&A, &E});
+
+  phi_graph.Optimize();
+  EXPECT_EQ(phi_graph.FindOptimizedValue(A.id()), E.id());
+  EXPECT_EQ(phi_graph.FindOptimizedValue(B.id()), E.id());
+  EXPECT_EQ(phi_graph.FindOptimizedValue(C.id()), E.id());
+  EXPECT_EQ(phi_graph.FindOptimizedValue(D.id()), E.id());
+}
+
+TEST_F(PhiGraphTest, TransitiveReplacementUpdatesUsers) {
+  // When running this test, use the following arguments: --config=asan
+  PhiGraph phi_graph;
+  HloValue A = NewHloValue(true);
+  HloValue B = NewHloValue(true);
+  HloValue C = NewHloValue(false);  // Non-phi
+  HloValue D = NewHloValue(true);
+  HloValue E = NewHloValue(false);  // Non-phi
+
+  // A = phi(B, B) -> A replaced by B
+  // B = phi(C, C) -> B replaced by C
+  // D = phi(A, E)
+  phi_graph.RegisterPhi(A, {&B, &B});
+  phi_graph.RegisterPhi(B, {&C, &C});
+  phi_graph.RegisterPhi(D, {&A, &E});
+
+  phi_graph.Optimize();
+  EXPECT_EQ(phi_graph.FindOptimizedValue(A.id()), C.id());
+  EXPECT_EQ(phi_graph.FindOptimizedValue(B.id()), C.id());
+  // D should have inputs C and E. It cannot be optimized further.
+  // But D should NOT have B as an input.
+  EXPECT_TRUE(phi_graph.InputsEqualTo(D, {&C, &E}));
 }
 
 }  // namespace
