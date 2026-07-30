@@ -90,6 +90,12 @@ absl::StatusOr<bool> AllReduceSimplifier::RunImpl(
            root->opcode() == HloOpcode::kReduceScatter) &&
           ShapeUtil::Compatible(root->shape(), root->operand(0)->shape())) {
         async_computations_to_remove.push_back(computation);
+      } else if (root->opcode() == HloOpcode::kAllReduce) {
+        ASSIGN_OR_RETURN(int64_t group_size,
+                         get_participant_counts_for_replica_group(root));
+        if (group_size == 1) {
+          async_computations_to_remove.push_back(computation);
+        }
       }
     } else {
       for (HloInstruction* inst : computation->MakeInstructionPostOrder()) {

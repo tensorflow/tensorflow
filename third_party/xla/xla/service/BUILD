@@ -3367,6 +3367,25 @@ cc_library(
 )
 
 cc_library(
+    name = "async_collective_custom_call_rewriter",
+    srcs = ["async_collective_custom_call_rewriter.cc"],
+    hdrs = ["async_collective_custom_call_rewriter.h"],
+    deps = [
+        ":collective_ops_utils",
+        ":shape_inference",
+        "//xla:shape_util",
+        "//xla:status_macros",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/pass:hlo_pass",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_macros",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
     name = "all_gather_decomposer",
     srcs = ["all_gather_decomposer.cc"],
     hdrs = ["all_gather_decomposer.h"],
@@ -5779,7 +5798,6 @@ cc_library(
         "//xla/hlo/ir:collective_op_group_mode",
         "//xla/hlo/ir:hlo",
         "//xla/runtime:device_id",
-        "//xla/tsl/platform:status_macros",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/log",
@@ -5790,6 +5808,7 @@ cc_library(
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/types:span",
+        "@jsoncpp_git//:jsoncpp",
     ],
 )
 

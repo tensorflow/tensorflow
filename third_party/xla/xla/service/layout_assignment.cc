@@ -1335,6 +1335,42 @@ absl::Status LayoutAssignment::CopyOperandIfLayoutsDiffer(
   VLOG(2) << "Operand " << operand->ToString() << " layout does not match "
           << operand_layout.ToString() << " in " << instruction->ToString();
 
+  // If the instruction is inside an async computation, and the operand is a
+  // parameter, do the copy outside the async computation (in the caller).
+  if (instruction->parent()->IsAsyncComputation() &&
+      operand->opcode() == HloOpcode::kParameter) {
+    HloComputation* async_comp = instruction->parent();
+    auto callers = async_comp->caller_instructions();
+    TF_RET_CHECK(callers.size() == 1);
+    HloInstruction* async_start = callers[0];
+    TF_RET_CHECK(async_start->opcode() == HloOpcode::kAsyncStart);
+    int64_t param_no = operand->parameter_number();
+
+    // Set operand constraint for async-start instead.
+    // This will force AssignLayouts to insert the copy when it processes the
+    // caller computation.
+    RETURN_IF_ERROR(SetOperandLayout(operand_layout.shape(), async_start,
+                                     param_no,
+                                     /*mandatory=*/true, /*dfs=*/false));
+
+    // Update the parameter shape to match operand_layout.
+    *operand->mutable_shape() = operand_layout.shape();
+
+    // Update computation layout.
+    auto it = computation_layouts_.find(async_comp);
+    if (it != computation_layouts_.end()) {
+      LayoutConstraints* async_constraint = it->second.get();
+      ComputationLayout async_layout = async_constraint->computation_layout();
+      *async_layout.mutable_parameter_layout(param_no) =
+          ShapeLayout(operand->shape());
+      async_constraint->mutable_computation_constraint()
+          ->ResetComputationLayout(async_layout, current_priority_ + 1,
+                                   /*prop_result_layout=*/false,
+                                   /*prop_parameter_layout=*/false);
+    }
+    return absl::OkStatus();
+  }
+
   // If the operand is only used by a conditional, do the copy inside the branch
   // to avoid overhead for other branches.
   if (!reverse_computation_order_ &&
@@ -1373,7 +1409,29 @@ absl::Status LayoutAssignment::CopyOperandIfLayoutsDiffer(
 
   VLOG(4) << "New copy of " << operand->ToString() << " is "
           << operand_copy->ToString();
-  return instruction->ReplaceOperandWith(operand_no, operand_copy);
+  RETURN_IF_ERROR(instruction->ReplaceOperandWith(operand_no, operand_copy));
+
+  const auto& points_to_set = points_to_analysis_->GetPointsToSet(instruction);
+  return ShapeUtil::ForEachMutableSubshapeWithStatus(
+      instruction->mutable_shape(),
+      [&](Shape* subshape, const ShapeIndex& index) -> absl::Status {
+        if (!subshape->IsArray()) {
+          return absl::OkStatus();
+        }
+        auto buffers = points_to_set.element(index);
+        for (const LogicalBuffer* buffer : buffers) {
+          if (buffer->instruction() == operand) {
+            const Shape& copy_subshape =
+                ShapeUtil::GetSubshape(operand_copy->shape(), buffer->index());
+            *subshape->mutable_layout() = copy_subshape.layout();
+            VLOG(3) << "Propagated layout from copy " << operand_copy->name()
+                    << " to " << instruction->name() << " at index "
+                    << index.ToString() << " : "
+                    << copy_subshape.layout().ToString();
+          }
+        }
+        return absl::OkStatus();
+      });
 }
 
 void LayoutAssignment::SetupCopiedInstruction(const HloInstruction& instruction,

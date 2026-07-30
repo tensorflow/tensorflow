@@ -44,10 +44,6 @@ absl::StatusOr<bool> ReduceScatterDecomposer::RunImpl(
 
   for (HloComputation* computation :
        module->MakeNonfusionComputations(execution_threads)) {
-    if (computation->IsAsyncComputation()) {
-      // TODO: b/501070020 - Support async reduce-scatter.
-      continue;
-    }
     for (HloInstruction* instruction :
          computation->MakeInstructionPostOrder()) {
       auto* rs = DynCast<HloReduceScatterInstruction>(instruction);

@@ -260,6 +260,7 @@ cc_library(
         "//xla/mlir_hlo:transforms_passes",
         "//xla/service:all_reduce_promotion",
         "//xla/service:all_to_all_decomposer",
+        "//xla/service:async_collective_custom_call_rewriter",
         "//xla/service:batched_gather_scatter_normalizer",
         "//xla/service:batchnorm_expander",
         "//xla/service:buffer_assignment",
