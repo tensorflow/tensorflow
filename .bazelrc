@@ -570,9 +570,8 @@ common:win_arm64_clang --platforms=//tensorflow/tools/toolchains/win2022:windows
 common:win_arm64_clang --define=tensorflow_mkldnn_contraction_kernel=0
 common:win_arm64_clang --define=xnn_enable_avxvnniint8=false
 common:win_arm64_clang --define=xnn_enable_avx512fp16=false
-common:win_arm64_clang --define=xnn_enable_sme2=false
-common:win_arm64_clang --define=ynn_enable_arm64_sme=false
-common:win_arm64_clang --define=ynn_enable_arm64_sme2=false
+common:win_arm64_clang --define=xnn_enable_arm64_sme=false
+common:win_arm64_clang --define=xnn_enable_arm64_sme2=false
 common:win_arm64_clang --@rules_python//python/config_settings:bootstrap_impl=zip
 common:win_arm64_clang --build_python_zip
 common:win_arm64_clang --define=with_onednn_v3=false
