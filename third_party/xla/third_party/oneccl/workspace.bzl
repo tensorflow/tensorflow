@@ -21,7 +21,7 @@ def repo_v2():
         patch_file = [
             "//third_party/oneccl:load_plugin.patch",
         ],
-        sha256 = "f57ea65a4477003bce367cbed57c06195868d8a3993633a499b38cd0ea165350",
-        strip_prefix = "oneCCL-master-v2",
-        urls = tf_mirror_urls("https://github.com/uxlfoundation/oneCCL/archive/refs/heads/master-v2.tar.gz"),
+        sha256 = "de801277f23242d128fa4edd3e33224a450ca438ec545511fe65efa6d1426530",
+        strip_prefix = "oneCCL-2022.0.0",
+        urls = tf_mirror_urls("https://github.com/uxlfoundation/oneCCL/archive/refs/tags/2022.0.0.tar.gz"),
     )
