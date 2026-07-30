@@ -124,7 +124,6 @@ bool DecodeUnaryVariant(Variant* variant) {
   UnaryVariantOpRegistry::VariantDecodeFn* decode_fn =
       UnaryVariantOpRegistry::Global()->GetDecodeFn(variant->TypeName());
   if (decode_fn == nullptr) {
-    variant->clear();
     return false;
   }
   const std::string type_name = variant->TypeName();
