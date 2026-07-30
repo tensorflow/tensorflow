@@ -28,6 +28,8 @@ def StableHLO_NullChannelHandleAttr : NativeCodeCall<"stablehlo::ChannelHandleAt
 
 def CastIntElementsAttr : NativeCodeCall<"cast<DenseIntElementsAttr>($0)">;
 
+def MHLO_CopyDiscardableAttrs : NativeCodeCallVoid<"hlo::copyDiscardableAttrs($0, $1)">;
+
 class ConstantSplat<string value> : NativeCodeCall<
     "hlo::getSplat(&$_builder, $0, " # value # ")">;
 
