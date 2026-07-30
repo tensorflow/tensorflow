@@ -1,4 +1,4 @@
-/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2026 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,28 +13,28 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_CC_SAVED_MODEL_FINGERPRINTING_H_
-#define TENSORFLOW_CC_SAVED_MODEL_FINGERPRINTING_H_
+#include "tensorflow/cc/saved_model/singleprint.h"
 
 #include <string>
 
-#include "absl/status/statusor.h"
-#include "absl/strings/string_view.h"
-#include "tensorflow/cc/saved_model/singleprint.h"
+#include <gtest/gtest.h>
 #include "tensorflow/core/protobuf/fingerprint.pb.h"
 
 namespace tensorflow::saved_model::fingerprinting {
+namespace {
 
-// Creates a FingerprintDef proto from a SavedModel (regular or chunked) and the
-// checkpoint meta file (.index) in `export_dir`.
-absl::StatusOr<FingerprintDef> CreateFingerprintDef(
-    absl::string_view export_dir);
+TEST(SingleprintTest, TestSingleprintFromHashes) {
+  EXPECT_EQ(Singleprint(1, 2, 3, 4), "1/2/3/4");
+}
 
-// Loads the `fingerprint.pb` from `export_dir`, returns an error if there is
-// none.
-absl::StatusOr<FingerprintDef> ReadSavedModelFingerprint(
-    absl::string_view export_dir);
+TEST(SingleprintTest, TestSingleprintFromProto) {
+  FingerprintDef fingerprint_pb;
+  fingerprint_pb.set_graph_def_program_hash(10);
+  fingerprint_pb.set_signature_def_hash(20);
+  fingerprint_pb.set_saved_object_graph_hash(30);
+  fingerprint_pb.set_checkpoint_hash(40);
+  EXPECT_EQ(Singleprint(fingerprint_pb), "10/20/30/40");
+}
 
+}  // namespace
 }  // namespace tensorflow::saved_model::fingerprinting
-
-#endif  // TENSORFLOW_CC_SAVED_MODEL_FINGERPRINTING_H_
