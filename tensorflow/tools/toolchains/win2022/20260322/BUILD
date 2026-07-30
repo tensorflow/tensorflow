@@ -621,7 +621,7 @@ cc_toolchain_config(
 toolchain(
     name = "cc-toolchain-arm64_windows-clang-cl",
     exec_compatible_with = [
-        "@platforms//cpu:arm64",
+        "@platforms//cpu:aarch64",
         "@platforms//os:windows",
         "@bazel_tools//tools/cpp:clang-cl",
     ],
