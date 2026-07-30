@@ -12867,6 +12867,25 @@ ENTRY entry {
                           op::Shape("c64[1,1,3]")));
 }
 
+TEST_P(SpmdPartitioningTest, Fft3DC128) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  input = c128[1,1,6] parameter(0),
+    sharding={devices=[1,1,2]<=[2]}
+  ROOT fft = c128[1,1,6] fft(input), fft_type=FFT, fft_length={6},
+    sharding={devices=[1,1,2]<=[2]}
+}
+)";
+
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       PartitionComputation(hlo_string, /*num_devices=*/2));
+  EXPECT_THAT(
+      module->entry_computation()->root_instruction(),
+      AllOf(op::GetTupleElement(op::While()), op::Shape("c128[1,1,3]")));
+}
+
 TEST_P(SpmdPartitioningTest, Fft3DSmallShardFallsBack) {
   // The last FFT dimension is sharded down to a per-shard size of 1, so halo
   // exchange (which establishes the divisibility that the per-partition shuffle
