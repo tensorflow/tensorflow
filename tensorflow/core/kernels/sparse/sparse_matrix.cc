@@ -33,21 +33,9 @@ constexpr const char CSRSparseMatrix::kTypeName[];
 absl::Status CSRSparseMatrix::ValidateComponentValues(
     const Tensor& dense_shape, const Tensor& batch_pointers,
     const Tensor& row_pointers, const Tensor& col_indices) {
-  // Decode operates on the tensors carried by a serialized variant, which are
-  // host-resident. Custom in-memory pipelines could still hand Decode
-  // device-resident tensors; reading those directly from host would crash, so
-  // reject them rather than dereference device memory.
-  auto on_device = [](const Tensor& t) {
-    return t.NumElements() > 0 && t.IsInitialized() &&
-           t.GetMemoryType() == AllocatorMemoryType::kDevice;
-  };
-  if (on_device(batch_pointers) || on_device(row_pointers) ||
-      on_device(col_indices)) {
-    return absl::InvalidArgumentError(
-        "CSRSparseMatrix::Validate: cannot validate device-resident CSR "
-        "components from host");
-  }
-
+  // Decode rejects device-resident dense_shape/index tensors before calling
+  // this, so every tensor read here is host-resident.
+  //
   // dense_shape has already been checked to be an int64 vector of size 2 or 3
   // by ValidateTypesAndShapes, and the index arrays to be int32 vectors of the
   // matching sizes: batch_pointers -> batch_size + 1,
@@ -64,8 +52,8 @@ absl::Status CSRSparseMatrix::ValidateComponentValues(
   }
 
   const int64_t total_nnz = col_indices.NumElements();
-  // The tensors are host-resident (checked above), so read them through raw
-  // pointers to keep these O(nnz) loops cheap and vectorizable.
+  // The tensors are host-resident (Decode rejects device tensors), so read
+  // them through raw pointers to keep these O(nnz) loops cheap and vectorizable.
   const int32_t* batch_ptr = batch_pointers.flat<int32_t>().data();
   const int32_t* row_ptr = row_pointers.flat<int32_t>().data();
   const int32_t* col_ind = col_indices.flat<int32_t>().data();

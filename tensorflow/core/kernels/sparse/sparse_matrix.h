@@ -347,6 +347,20 @@ class CSRSparseMatrix {
     Tensor col_indices(p.tensors_[3]);
     Tensor values(p.tensors_[4]);
 
+    // ValidateTypesAndShapes and the value checks below read dense_shape and
+    // the index arrays directly on the host (e.g. dense_shape.vec<int64_t>()).
+    // A crafted or custom-pipeline variant could hand us device-resident
+    // tensors, so reject them up front rather than dereference device memory
+    // from host.
+    auto on_device = [](const Tensor& t) {
+      return t.NumElements() > 0 && t.IsInitialized() &&
+             t.GetMemoryType() == AllocatorMemoryType::kDevice;
+    };
+    if (on_device(dense_shape) || on_device(batch_pointers) ||
+        on_device(row_pointers) || on_device(col_indices)) {
+      return false;
+    }
+
     // Check that the validated bool is consistent with the data.
     absl::Status s = ValidateTypesAndShapes(dtype, dense_shape, batch_pointers,
                                             row_pointers, col_indices, values);
