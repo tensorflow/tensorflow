@@ -327,6 +327,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
       kDefaultReduceScatterCombineThreshold);
   opts.set_xla_gpu_collective_permute_combine_threshold_bytes(
       kDefaultCollectivePermuteCombineThreshold);
+  opts.set_xla_while_loop_all_reduce_dus_code_motion_max_size_bytes(10240);
   opts.set_xla_gpu_collective_combine_threshold_count(
       kDefaultCollectiveCombineThresholdCount);
   opts.set_xla_gpu_enable_all_gather_combine_by_dim(false);
@@ -2328,6 +2329,15 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       "Amount of padding the redzone allocator will put on one side of each "
       "buffer it allocates. (So the buffer's total size will be increased by "
       "2x this value.)"));
+  flag_list->push_back(tsl::Flag(
+      "xla_while_loop_all_reduce_dus_code_motion_max_size_bytes",
+      int64_setter_for(
+          &DebugOptions::
+              set_xla_while_loop_all_reduce_dus_code_motion_max_size_bytes),
+      debug_options->xla_while_loop_all_reduce_dus_code_motion_max_size_bytes(),
+      "Maximum size (in bytes) of an all-reduce that the while-loop all-reduce "
+      "code motion pass is allowed to hoist out of a loop for dynamic update "
+      "slice patterns."));
   flag_list->push_back(tsl::Flag(
       "xla_gpu_shape_checks", setter_for_xla_gpu_shape_checks,
       DebugOptions::ShapeChecks_Name(debug_options->xla_gpu_shape_checks()),

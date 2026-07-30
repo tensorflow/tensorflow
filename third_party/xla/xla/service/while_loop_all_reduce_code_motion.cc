@@ -307,12 +307,16 @@ std::optional<MovableAllReduceContext> MatchDynamicUpdateSliceContext(
   };
 
   // Do not hoist all-reduce ops if the resulting all-reduce is too large.
-  // The threshold value is chosen arbitrarily.
-  constexpr int64_t kAllReduceMaxSizeBytes = 10240;
-  if ((*loop_bound + 1) * ShapeUtil::ArraySize(all_reduce->shape()) >
-      kAllReduceMaxSizeBytes) {
+  const int64_t all_reduce_max_size_bytes =
+      all_reduce->GetModule()
+          ->config()
+          .debug_options()
+          .xla_while_loop_all_reduce_dus_code_motion_max_size_bytes();
+  const int64_t all_reduce_size_bytes =
+      (*loop_bound + 1) * ShapeUtil::ArraySize(all_reduce->shape());
+  if (all_reduce_size_bytes > all_reduce_max_size_bytes) {
     VLOG(5) << "Resulting all-reduce exceeds the size threshold: "
-            << kAllReduceMaxSizeBytes;
+            << all_reduce_size_bytes << " > " << all_reduce_max_size_bytes;
     return std::nullopt;
   }
 
@@ -395,8 +399,9 @@ std::optional<MovableAllReduceContext> MatchDynamicUpdateSliceContext(
                "loop output at the same tuple index.";
     return std::nullopt;
   }
-  if (gte->user_count() != 1 || hlo_query::CountGteInstructionsWithIndex(
-                                    hlo->parent(), gte->tuple_index()) != 1) {
+  if (gte->user_count() != 1 ||
+      hlo_query::GetUniqueGteInstruction(gte->operand(0), gte->tuple_index()) ==
+          nullptr) {
     VLOG(5) << "DUS operand must have no users in the loop body.";
     return std::nullopt;
   }
@@ -1225,9 +1230,12 @@ absl::flat_hash_map<int, HloInstruction*> CreateSinkedAllReduces(
   return tuple_index_to_new_buffer;
 }
 
-// Creates a tuple which is equivalent to the original while instruction's
-// output.
-HloInstruction* CreateNewWhileResult(
+// Builds a tuple equivalent to the original while instruction's output,
+// replaces all uses of `old_while_instruction` with it, and then forwards any
+// GTE users of that tuple to the corresponding tuple operands. If the tuple
+// has no remaining users, it is removed.
+absl::Status InsertNewWhileResult(
+    HloInstruction* old_while_instruction,
     HloInstruction* new_while_instruction,
     const absl::flat_hash_map<int, HloInstruction*>&
         tuple_index_to_new_buffer) {
@@ -1235,9 +1243,10 @@ HloInstruction* CreateNewWhileResult(
   CHECK(new_while_instruction->shape().IsTuple());
   std::vector<HloInstruction*> new_while_result_elements(
       new_while_instruction->shape().tuple_shapes().size(), nullptr);
-  for (int i = 0; i < new_while_result_elements.size(); i++) {
-    if (ContainsKey(tuple_index_to_new_buffer, i)) {
-      new_while_result_elements[i] = tuple_index_to_new_buffer.at(i);
+  for (int64_t i = 0; i < new_while_result_elements.size(); ++i) {
+    if (auto it = tuple_index_to_new_buffer.find(i);
+        it != tuple_index_to_new_buffer.end()) {
+      new_while_result_elements[i] = it->second;
     } else {
       HloInstruction* gte =
           while_parent->AddInstruction(HloInstruction::CreateGetTupleElement(
@@ -1248,7 +1257,25 @@ HloInstruction* CreateNewWhileResult(
   }
   HloInstruction* new_while_result = while_parent->AddInstruction(
       HloInstruction::CreateTuple(new_while_result_elements));
-  return new_while_result;
+  RETURN_IF_ERROR(while_parent->ReplaceInstruction(old_while_instruction,
+                                                   new_while_result));
+
+  // Forward GTE(tuple, i) to the corresponding tuple operand so nested while
+  // hoisting can see through the reconstructed packing.
+  std::vector<HloInstruction*> users(new_while_result->users());
+  for (HloInstruction* user : users) {
+    if (user->opcode() != HloOpcode::kGetTupleElement) {
+      continue;
+    }
+    const int64_t index =
+        Cast<HloGetTupleElementInstruction>(user)->tuple_index();
+    // This will also automatically clean up `new_while_result` if `user` was
+    // the last user.
+    RETURN_IF_ERROR(while_parent->ReplaceInstruction(
+        user, new_while_result_elements[index]));
+  }
+
+  return absl::OkStatus();
 }
 
 // Creates the sinked all-reduce instructions for all accumulation buffers.
@@ -1284,12 +1311,10 @@ absl::Status AddSinkedAllReducesAndReplaceWhile(
   absl::flat_hash_map<int, HloInstruction*> tuple_index_to_new_buffer =
       CreateSinkedAllReduces(new_while_instruction, all_reduce_to_accumulations,
                              new_while_init_context.tuple_index_to_old_buffer);
-  // Step 4) create the tuple and replace the old while instruction for all of
-  // its uses.
-  HloInstruction* new_while_result =
-      CreateNewWhileResult(new_while_instruction, tuple_index_to_new_buffer);
-  RETURN_IF_ERROR(while_instruction->parent()->ReplaceInstruction(
-      while_instruction, new_while_result));
+  // Step 4) create the tuple, replace the old while instruction for all of
+  // its uses, and forward GTE users of the reconstructed tuple.
+  RETURN_IF_ERROR(InsertNewWhileResult(while_instruction, new_while_instruction,
+                                       tuple_index_to_new_buffer));
   return absl::OkStatus();
 }
 
@@ -1380,11 +1405,10 @@ absl::StatusOr<HloInstruction*> AddSinkedAllReducesAndReplaceWhile(
     tuple_index_to_new_buffer[context.param_tuple_index] = update;
   }
 
-  // Replace the old while instruction with the new one.
-  HloInstruction* new_while_result =
-      CreateNewWhileResult(new_while_instruction, tuple_index_to_new_buffer);
-  RETURN_IF_ERROR(
-      while_parent->ReplaceInstruction(while_instruction, new_while_result));
+  // Replace the old while instruction with the reconstructed result and
+  // forward GTE users of the reconstructed tuple.
+  RETURN_IF_ERROR(InsertNewWhileResult(while_instruction, new_while_instruction,
+                                       tuple_index_to_new_buffer));
   return new_while_instruction;
 }
 
