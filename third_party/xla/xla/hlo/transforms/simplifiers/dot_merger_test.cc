@@ -79,8 +79,7 @@ TEST_F(DotMergerTest, MergeRHS) {
   EXPECT_THAT(dot0,
               GmockMatch(m::Dot(m::Parameter(0),
                                 m::Concatenate().WithBinaryOperandsAnyOrder(
-                                    m::Transpose(m::Parameter(1)),
-                                    m::Transpose(m::Parameter(2))))));
+                                    m::Parameter(1), m::Parameter(2)))));
   ASSERT_NE(lhs, nullptr);
   // We want a deterministic first user.
   EXPECT_EQ(lhs->users()[0], dot0);
@@ -121,12 +120,10 @@ TEST_F(DotMergerTest, MergeRHSSortedByPowerOfTwo) {
   EXPECT_EQ(dot0, dot3);
   // Expected order: RHS2 (64, TZ 6), RHS3 (24, TZ 3), RHS1 (50, TZ 1), RHS0
   // (10, TZ 1)
-  EXPECT_THAT(
-      dot0, GmockMatch(m::Dot(m::Parameter(0),
-                              m::Concatenate(m::Transpose(m::Parameter(3)),
-                                             m::Transpose(m::Parameter(4)),
-                                             m::Transpose(m::Parameter(2)),
-                                             m::Transpose(m::Parameter(1))))));
+  EXPECT_THAT(dot0, GmockMatch(m::Dot(
+                        m::Parameter(0),
+                        m::Concatenate(m::Parameter(3), m::Parameter(4),
+                                       m::Parameter(2), m::Parameter(1)))));
 }
 
 TEST_F(DotMergerTest, MergeRHSWithLHS) {
@@ -178,15 +175,14 @@ TEST_F(DotMergerTest, MergeRHSWithLayouts) {
       module->entry_computation()->root_instruction(),
       GmockMatch(m::Tuple(m::Slice(m::Op(&dot0)), m::Slice(m::Op(&dot1)))));
   EXPECT_EQ(dot0, dot1);
-  Shape expected_concat_shape =
-      ShapeUtil::MakeShapeWithDenseLayout(F32, {60, 100}, {1, 0});
-  EXPECT_THAT(dot0,
-              GmockMatch(m::Dot(
-                  m::Parameter(0),
-                  m::Concatenate()
-                      .WithBinaryOperandsAnyOrder(m::Transpose(m::Parameter(1)),
-                                                  m::Transpose(m::Parameter(2)))
-                      .WithShapeEqualTo(&expected_concat_shape))));
+  // DotMerger is layout-agnostic: operands concatenate directly, no transpose.
+  Shape expected_concat_shape = ShapeUtil::MakeShape(F32, {100, 60});
+  EXPECT_THAT(
+      dot0, GmockMatch(m::Dot(m::Parameter(0),
+                              m::Concatenate()
+                                  .WithBinaryOperandsAnyOrder(m::Parameter(1),
+                                                              m::Parameter(2))
+                                  .WithShapeEqualTo(&expected_concat_shape))));
 }
 
 TEST_F(DotMergerTest, MergeDifferentLayoutRHS) {
@@ -852,6 +848,41 @@ TEST_F(DotMergerTest, MergeMultipleNonContractingDimsInRhsSharedOperand) {
   EXPECT_EQ(s0, s1);
 }
 
+// Contracting (dim 1) sits between non-contracting dims 0 and 2, so the
+// canonical order must keep the last dim in place.
+TEST_F(DotMergerTest, MergeKeepsConcatOperandMinorDimMinor) {
+  absl::string_view module_string = R"(
+  HloModule module
+
+  ENTRY main {
+    lhs  = f32[64,2880] parameter(0)
+    rhs0 = f32[4,2880,2880] parameter(1)
+    rhs1 = f32[4,2880,2880] parameter(2)
+    dot0 = f32[64,4,2880] dot(lhs, rhs0), lhs_contracting_dims={1}, rhs_contracting_dims={1}
+    dot1 = f32[64,4,2880] dot(lhs, rhs1), lhs_contracting_dims={1}, rhs_contracting_dims={1}
+    ROOT tuple = (f32[64,4,2880], f32[64,4,2880]) tuple(dot0, dot1)
+  })";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(module_string));
+  DotMerger pass(/*max_size_to_merge=*/std::numeric_limits<int64_t>::max());
+  ASSERT_OK_AND_ASSIGN(bool changed, this->RunHloPass(&pass, module.get()));
+  EXPECT_TRUE(changed);
+  ASSERT_OK(verifier().Run(module.get()).status());
+  SCOPED_TRACE(module->ToString());
+
+  // No transpose may move the last logical dimension (last dim maps to itself).
+  for (const HloInstruction* instr :
+       module->entry_computation()->instructions()) {
+    if (instr->opcode() != HloOpcode::kTranspose) {
+      continue;
+    }
+    const auto& perm = instr->dimensions();
+    ASSERT_FALSE(perm.empty());
+    EXPECT_EQ(perm.back(), static_cast<int64_t>(perm.size()) - 1)
+        << "last-dimension-swapping transpose: " << instr->ToString();
+  }
+}
+
 TEST_F(DotMergerTest, MergeMultipleOuterDims) {
   absl::string_view module_string = R"(
   HloModule module
@@ -1043,14 +1074,13 @@ TEST_F(DotMergerTest, MergeWithTypeUpgrade) {
   EXPECT_TRUE(changed);
   const HloInstruction* d0 = nullptr;
   const HloInstruction* d1 = nullptr;
-  ASSERT_THAT(module->entry_computation()->root_instruction(),
-              GmockMatch(m::Tuple(
-                  m::Slice(m::Dot(&d0,
-                                  m::Concatenate(m::Transpose(m::Parameter(0)),
-                                                 m::Transpose(m::Parameter(1))),
-                                  m::Parameter(2))
-                               .WithShape(F32, {20, 10})),
-                  m::Slice(m::Op(&d1)))));
+  ASSERT_THAT(
+      module->entry_computation()->root_instruction(),
+      GmockMatch(m::Tuple(
+          m::Slice(m::Dot(&d0, m::Concatenate(m::Parameter(0), m::Parameter(1)),
+                          m::Parameter(2))
+                       .WithShape(F32, {20, 10})),
+          m::Slice(m::Op(&d1)))));
   EXPECT_EQ(d0, d1);
 }
 
@@ -1520,10 +1550,10 @@ TEST_F(DotMergerTest, MergeOneConcatOperandMissingNonContractingDim) {
                                   m::Reshape(m::Slice(m::Op(&dot1))))));
   EXPECT_EQ(dot0, dot1);
 
-  EXPECT_THAT(dot0,
-              GmockMatch(m::Dot(m::Parameter(0),
-                                m::Concatenate(m::Transpose(m::Parameter(1)),
-                                               m::Reshape(m::Parameter(2))))));
+  EXPECT_THAT(
+      dot0, GmockMatch(m::Dot(
+                m::Parameter(0),
+                m::Concatenate(m::Parameter(1), m::Reshape(m::Parameter(2))))));
 }
 
 TEST_F(DotMergerTest, MergeWithConsumerNormalization) {
@@ -1957,12 +1987,11 @@ TEST_F(DotMergerTest, MergeWithDegenerateNonContractingDimsInSharedOperand) {
                                   m::Reshape(m::Slice(m::Op(&dot1))))));
   EXPECT_EQ(dot0, dot1);
   // Verify the merged dot has the degenerate dimension reshaped out from LHS
-  EXPECT_THAT(
-      dot0,
-      GmockMatch(m::Dot(
-          m::Reshape(m::Parameter(0)),  // LHS is reshaped to [100]
-          m::Concatenate().WithBinaryOperandsAnyOrder(
-              m::Transpose(m::Parameter(1)), m::Transpose(m::Parameter(2))))));
+  EXPECT_THAT(dot0,
+              GmockMatch(m::Dot(
+                  m::Reshape(m::Parameter(0)),  // LHS is reshaped to [100]
+                  m::Concatenate().WithBinaryOperandsAnyOrder(
+                      m::Parameter(1), m::Parameter(2)))));
 }
 
 TEST_F(DotMergerTest, MergeWithConsecutiveContractingDims) {
@@ -1990,13 +2019,12 @@ TEST_F(DotMergerTest, MergeWithConsecutiveContractingDims) {
       module->entry_computation()->root_instruction(),
       GmockMatch(m::Tuple(m::Slice(m::Op(&dot0)), m::Slice(m::Op(&dot1)))));
   EXPECT_EQ(dot0, dot1);
-  EXPECT_THAT(dot0, GmockMatch(m::Dot(
-                        m::Reshape(m::Parameter(0)).WithShape(F32, {200, 100}),
-                        m::Concatenate().WithBinaryOperandsAnyOrder(
-                            m::Reshape(m::Transpose(m::Parameter(1)))
-                                .WithShape(F32, {10, 200}),
-                            m::Reshape(m::Transpose(m::Parameter(2)))
-                                .WithShape(F32, {50, 200})))));
+  EXPECT_THAT(dot0,
+              GmockMatch(m::Dot(
+                  m::Reshape(m::Parameter(0)).WithShape(F32, {200, 100}),
+                  m::Concatenate().WithBinaryOperandsAnyOrder(
+                      m::Reshape(m::Parameter(1)).WithShape(F32, {200, 10}),
+                      m::Reshape(m::Parameter(2)).WithShape(F32, {200, 50})))));
 }
 
 TEST_F(DotMergerTest, MergeWithConsecutiveContractingDimsAndDegenerate) {
@@ -2024,13 +2052,12 @@ TEST_F(DotMergerTest, MergeWithConsecutiveContractingDimsAndDegenerate) {
               GmockMatch(m::Tuple(m::Reshape(m::Slice(m::Op(&dot0))),
                                   m::Reshape(m::Slice(m::Op(&dot1))))));
   EXPECT_EQ(dot0, dot1);
-  EXPECT_THAT(dot0, GmockMatch(m::Dot(
-                        m::Reshape(m::Parameter(0)).WithShape(F32, {200, 100}),
-                        m::Concatenate().WithBinaryOperandsAnyOrder(
-                            m::Reshape(m::Transpose(m::Parameter(1)))
-                                .WithShape(F32, {10, 200}),
-                            m::Reshape(m::Transpose(m::Parameter(2)))
-                                .WithShape(F32, {50, 200})))));
+  EXPECT_THAT(dot0,
+              GmockMatch(m::Dot(
+                  m::Reshape(m::Parameter(0)).WithShape(F32, {200, 100}),
+                  m::Concatenate().WithBinaryOperandsAnyOrder(
+                      m::Reshape(m::Parameter(1)).WithShape(F32, {200, 10}),
+                      m::Reshape(m::Parameter(2)).WithShape(F32, {200, 50})))));
 }
 
 TEST_F(DotMergerTest, MergeRHSPreservesMetadata) {
