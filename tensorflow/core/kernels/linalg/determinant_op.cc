@@ -16,6 +16,13 @@ limitations under the License.
 // See docs in ../ops/linalg_ops.cc.
 
 #include <cmath>
+#include <cstdint>
+#include <memory>
+#include <utility>
+#include <vector>
+
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 
 #if GOOGLE_CUDA
 #define EIGEN_USE_GPU
