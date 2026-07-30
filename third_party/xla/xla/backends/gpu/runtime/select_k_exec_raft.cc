@@ -213,40 +213,252 @@ SelectAlgo choose_select_k_algorithm(uint32_t rows, uint32_t cols, uint32_t k) {
 template <>
 SelectAlgo choose_select_k_algorithm<float>(uint32_t rows, uint32_t cols,
                                             uint32_t k) {
-  if (k > 256) {
-    return SelectAlgo::kRadix11bits;
-  } else if (k > 3) {
-    if (cols > 55000) {
-      return SelectAlgo::kWarpDistributedShm;
-    } else {
-      if (cols > 5250) {
-        if (k > 192) {
-          return SelectAlgo::kRadix11bits;
-        } else {
+  if (k > 163) {
+    if (rows > 803) {
+      if (k > 256) {
+        return SelectAlgo::kRadix8bits;
+      } else {
+        if (cols > 3120) {
           return SelectAlgo::kWarpDistributedShm;
+        } else {
+          return SelectAlgo::kWarpFiltered;
+        }
+      }
+    } else {
+      if (cols > 19332) {
+        if (cols > 106382976) {
+          return SelectAlgo::kRadix11bitsExtraPass;
+        } else {
+          if (k > 256) {
+            return SelectAlgo::kRadix11bits;
+          } else {
+            if (rows > 384) {
+              return SelectAlgo::kWarpDistributedShm;
+            } else {
+              if (cols > 110946) {
+                return SelectAlgo::kRadix11bits;
+              } else {
+                return SelectAlgo::kWarpFiltered;
+              }
+            }
+          }
         }
       } else {
-        return SelectAlgo::kWarpDistributedShm;
+        if (k > 256) {
+          return SelectAlgo::kRadix8bits;
+        } else {
+          return SelectAlgo::kWarpFiltered;
+        }
       }
     }
   } else {
-    return SelectAlgo::kWarpImmediate;
+    if (k > 1) {
+      if (cols > 34520) {
+        if (k > 73) {
+          if (rows > 132) {
+            return SelectAlgo::kWarpDistributedShm;
+          } else {
+            if (cols > 259191) {
+              if (cols > 12021888) {
+                if (rows > 2) {
+                  return SelectAlgo::kWarpDistributedShm;
+                } else {
+                  return SelectAlgo::kRadix11bits;
+                }
+              } else {
+                if (rows > 36) {
+                  return SelectAlgo::kWarpDistributedShm;
+                } else {
+                  return SelectAlgo::kRadix11bits;
+                }
+              }
+            } else {
+              if (rows > 48) {
+                return SelectAlgo::kRadix11bits;
+              } else {
+                return SelectAlgo::kWarpFiltered;
+              }
+            }
+          }
+        } else {
+          if (k > 4) {
+            return SelectAlgo::kWarpDistributedShm;
+          } else {
+            if (rows > 18) {
+              return SelectAlgo::kWarpDistributedShm;
+            } else {
+              if (cols > 1652995) {
+                return SelectAlgo::kWarpDistributedShm;
+              } else {
+                return SelectAlgo::kWarpImmediate;
+              }
+            }
+          }
+        }
+      } else {
+        if (rows > 363) {
+          if (cols > 1115) {
+            return SelectAlgo::kWarpDistributedShm;
+          } else {
+            if (rows > 1536) {
+              return SelectAlgo::kWarpDistributedShm;
+            } else {
+              return SelectAlgo::kWarpImmediate;
+            }
+          }
+        } else {
+          if (k > 85) {
+            if (cols > 1034) {
+              return SelectAlgo::kWarpFiltered;
+            } else {
+              return SelectAlgo::kWarpImmediate;
+            }
+          } else {
+            if (rows > 81) {
+              if (k > 4) {
+                if (cols > 12288) {
+                  return SelectAlgo::kWarpDistributedShm;
+                } else {
+                  return SelectAlgo::kWarpImmediate;
+                }
+              } else {
+                return SelectAlgo::kWarpImmediate;
+              }
+            } else {
+              return SelectAlgo::kWarpImmediate;
+            }
+          }
+        }
+      }
+    } else {
+      return SelectAlgo::kWarpImmediate;
+    }
   }
 }
 
 template <>
 SelectAlgo choose_select_k_algorithm<nv_bfloat16>(uint32_t rows, uint32_t cols,
                                                   uint32_t k) {
-  if (k > 256) {
-    return SelectAlgo::kRadix11bits;
-  } else if (k > 3) {
-    if (cols > 5250 && k > 192) {
-      return SelectAlgo::kRadix11bits;
+  if (k > 40) {
+    if (cols > 24576) {
+      if (rows > 768) {
+        if (k > 192) {
+          return SelectAlgo::kRadix8bits;
+        } else {
+          if (cols > 196608) {
+            if (k > 80) {
+              return SelectAlgo::kRadix11bits;
+            } else {
+              if (rows > 1536) {
+                return SelectAlgo::kWarpDistributed;
+              } else {
+                return SelectAlgo::kWarpDistributedShm;
+              }
+            }
+          } else {
+            return SelectAlgo::kWarpDistributedShm;
+          }
+        }
+      } else {
+        if (k > 192) {
+          if (cols > 393216) {
+            if (cols > 6291456) {
+              return SelectAlgo::kRadix11bitsExtraPass;
+            } else {
+              if (k > 768) {
+                if (cols > 3145728) {
+                  return SelectAlgo::kRadix11bits;
+                } else {
+                  return SelectAlgo::kRadix11bitsExtraPass;
+                }
+              } else {
+                return SelectAlgo::kRadix11bits;
+              }
+            }
+          } else {
+            return SelectAlgo::kRadix11bitsExtraPass;
+          }
+        } else {
+          if (cols > 6291456) {
+            if (k > 80) {
+              return SelectAlgo::kRadix11bitsExtraPass;
+            } else {
+              if (cols > 25165824) {
+                if (rows > 6) {
+                  return SelectAlgo::kWarpDistributed;
+                } else {
+                  return SelectAlgo::kRadix11bitsExtraPass;
+                }
+              } else {
+                return SelectAlgo::kRadix11bitsExtraPass;
+              }
+            }
+          } else {
+            if (cols > 98304) {
+              return SelectAlgo::kRadix11bits;
+            } else {
+              if (rows > 48) {
+                return SelectAlgo::kRadix11bitsExtraPass;
+              } else {
+                return SelectAlgo::kWarpFiltered;
+              }
+            }
+          }
+        }
+      }
     } else {
-      return SelectAlgo::kWarpDistributedShm;
+      if (k > 256) {
+        return SelectAlgo::kRadix8bits;
+      } else {
+        if (rows > 768) {
+          return SelectAlgo::kWarpDistributedShm;
+        } else {
+          if (rows > 48) {
+            if (cols > 6144) {
+              return SelectAlgo::kRadix8bits;
+            } else {
+              return SelectAlgo::kWarpFiltered;
+            }
+          } else {
+            if (cols > 6144) {
+              return SelectAlgo::kWarpFiltered;
+            } else {
+              if (k > 80) {
+                return SelectAlgo::kWarpImmediate;
+              } else {
+                return SelectAlgo::kWarpFiltered;
+              }
+            }
+          }
+        }
+      }
     }
   } else {
-    return SelectAlgo::kWarpImmediate;
+    if (k > 1) {
+      if (cols > 24576) {
+        if (cols > 98304) {
+          return SelectAlgo::kWarpDistributedShm;
+        } else {
+          if (rows > 48) {
+            return SelectAlgo::kWarpDistributedShm;
+          } else {
+            if (k > 24) {
+              return SelectAlgo::kWarpDistributedShm;
+            } else {
+              return SelectAlgo::kWarpImmediate;
+            }
+          }
+        }
+      } else {
+        if (rows > 384) {
+          return SelectAlgo::kWarpDistributedShm;
+        } else {
+          return SelectAlgo::kWarpImmediate;
+        }
+      }
+    } else {
+      return SelectAlgo::kWarpImmediate;
+    }
   }
 }
 
