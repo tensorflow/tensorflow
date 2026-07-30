@@ -95,7 +95,6 @@ def EntryFuncOp : XTile_Op<"entry_func", [
   let arguments = (ins SymbolNameAttr:$sym_name,
                        TypeAttrOf<FunctionType>:$function_type,
                        OptionalAttr<DictArrayAttr>:$arg_attrs,
-                       OptionalAttr<XTile_TilingInfoAttr>:$tile_info,
                        OptionalAttr<DictArrayAttr>:$res_attrs,
                        // The number of arguments that are opaque to tiling
                        // infrastructure and hence do not correspond to a memref
@@ -128,7 +127,7 @@ def EntryFuncOp : XTile_Op<"entry_func", [
           .drop_back();
     }
 
-    mlir::Value getTileId() {
+    mlir::Value getProgramId() {
       return getBody().getArguments().back();
     }
 

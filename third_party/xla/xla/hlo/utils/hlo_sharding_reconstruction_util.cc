@@ -22,16 +22,17 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
+#include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/hlo/ir/mesh_and_axis.h"
 #include "xla/hlo/ir/named_sharding.h"
 #include "xla/literal.h"
 #include "xla/shape.h"
-#include "xla/tsl/platform/errors.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -178,17 +179,9 @@ absl::StatusOr<xla::Literal> UnshardLiteral(
 
     // For manual subgroups, we just need one of the replicated manual groups to
     // reconstruct the full tensor structure.
-    if (is_manual_subgroup) {
-      bool should_process = true;
-      for (int i = 0; i < tile_indices.size(); ++i) {
-        if (i == manual_dim && tile_indices[i] != 0) {
-          should_process = false;
-          break;
-        }
-      }
-      if (!should_process) {
-        continue;
-      }
+    if (is_manual_subgroup && manual_dim >= 0 &&
+        manual_dim < tile_indices.size() && tile_indices[manual_dim] != 0) {
+      continue;
     }
 
     std::vector<int64_t> start_indices(unsharded_shape.dimensions().size(), 0);
@@ -217,6 +210,43 @@ absl::StatusOr<xla::Literal> UnshardLiteral(
                                                     /*copy_size=*/copy_dims));
   }
   return unsharded_literal;
+}
+
+absl::flat_hash_set<int64_t> GetLogicalDeviceIds(const HloSharding& sharding,
+                                                 const HloModule* module) {
+  absl::flat_hash_set<int64_t> device_ids;
+  if (sharding.IsTuple()) {
+    for (const auto& element : sharding.tuple_elements()) {
+      auto sub_ids = GetLogicalDeviceIds(element, module);
+      device_ids.insert(sub_ids.begin(), sub_ids.end());
+    }
+    return device_ids;
+  }
+  if (sharding.IsReplicated()) {
+    return device_ids;
+  }
+  if (sharding.UseNamedShardingLeaf()) {
+    sharding.named_sharding().mesh().device_assignment().Each(
+        [&](absl::Span<const int64_t> index, int64_t device) {
+          device_ids.insert(device);
+        });
+    return device_ids;
+  }
+  if (sharding.IsManual()) {
+    if (module != nullptr && module->config().has_static_device_assignment()) {
+      const auto& assignment = module->config().static_device_assignment();
+      for (int computation = 0; computation < assignment.computation_count();
+           ++computation) {
+        device_ids.insert(computation);
+      }
+    }
+    return device_ids;
+  }
+  sharding.tile_assignment().array().Each(
+      [&](absl::Span<const int64_t> index, int64_t device) {
+        device_ids.insert(device);
+      });
+  return device_ids;
 }
 
 }  // namespace xla

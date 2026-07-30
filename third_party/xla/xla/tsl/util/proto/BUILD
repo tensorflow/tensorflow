@@ -30,10 +30,7 @@ cc_library(
     testonly = True,
     srcs = ["proto_matchers.cc"],
     hdrs = ["proto_matchers.h"],
-    visibility = [
-        "//pathways:__subpackages__",  # For OSS
-        "//xla:__subpackages__",
-    ],
+    visibility = ["//visibility:public"],
     deps = [
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/strings:string_view",

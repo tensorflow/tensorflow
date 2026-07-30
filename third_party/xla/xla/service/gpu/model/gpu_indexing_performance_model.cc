@@ -44,11 +44,12 @@ limitations under the License.
 #include "xla/backends/gpu/codegen/triton/fusion.h"
 #include "xla/codegen/tiling/experimental/tiled_hlo.h"
 #include "xla/codegen/tiling/experimental/tiling_space.h"
+#include "xla/codegen/tiling/experimental/tiling_space_utils.h"
 #include "xla/codegen/tiling/symbolic_tile_analysis.h"
 #include "xla/codegen/tiling/tiled_hlo_computation.h"
 #include "xla/codegen/tiling/tiling_specification.h"
-#include "xla/codegen/xtile/codegen/emitter_helpers.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
+#include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
@@ -69,8 +70,6 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/device_description.h"
-#include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 
 namespace xla {
@@ -206,7 +205,7 @@ void ForEachInstructionInTiledHloComputation(
          llvm::enumerate(instruction->hlo_regions())) {
       int64_t num_blocks_cur_region =
           GetNumBlocksForRegion(instruction, num_blocks_cur_hlo, i);
-      for (const auto& tiled_hlo : region) {
+      for (const auto& tiled_hlo : region.instructions()) {
         worklist.push_back({tiled_hlo.get(), num_blocks_cur_region});
       }
     }
@@ -609,20 +608,20 @@ int64_t GpuPerformanceModelWithIndexingAnalysis::FlopsPerElement(
     }
 
     auto operand_shape = instr->operand(0)->shape();
-    auto output_shape = instr->shape().IsArray()
-                            ? instr->shape()
-                            : instr->shape().tuple_shapes(0);
 
-    // Size of reduction dimensions.
-    int64_t reduction_factor = ShapeUtil::ElementsIn(operand_shape) /
-                               ShapeUtil::ElementsIn(output_shape);
+    // Size of reduction dimensions padded to power of 2.
+    int64_t padded_reduction_factor = 1;
+    for (int64_t dim : instr->dimensions()) {
+      padded_reduction_factor *=
+          llvm::PowerOf2Ceil(operand_shape.dimensions(dim));
+    }
 
     // The Cost Model assumes that the reduction computation is applied N-1
     // times to reduce N elements. This is not true, because emitters will
-    // generate a loop with N iterations. We don't fix it here to keep this
-    // estimate consistent with `GpuHloCostAnalysis`. This likely doesn't matter
-    // much for the application of the Cost Model.
-    return (reduction_factor - 1) * flops_per_reduce_computation;
+    // generate a loop with N iterations. Also note that this calculation now
+    // differs from `GpuHloCostAnalysis` because it accounts for power-of-two
+    // padding of the reduction dimensions.
+    return (padded_reduction_factor - 1) * flops_per_reduce_computation;
   }
 
   // Encountered unexpected instruction, call into `GpuHloCostAnalysis`.
@@ -655,8 +654,7 @@ GpuPerformanceModelWithIndexingAnalysis::EstimateRunTimeForTiledFusion(
     ASSIGN_OR_RETURN(
         llvm::SmallVector<int64_t> tile_sizes,
         GetTilingSpaceConcreteSizes(*tiling_space, block_level_parameters));
-    RETURN_IF_ERROR(tiling_space->AssignTileSizes(
-        xla::xtile::GetPaddedTileSizes(tile_sizes)));
+    RETURN_IF_ERROR(tiling_space->AssignTileSizes((tile_sizes)));
 
     ASSIGN_OR_RETURN(experimental::TiledHloComputation tiled_hlo_computation,
                      experimental::TiledHloComputation::Tile(
@@ -733,6 +731,12 @@ GpuPerformanceModelWithIndexingAnalysis::TryFindTopKBestTilingsForFusion(
   XLA_SCOPED_LOGGING_TIMER(
       "GpuPerformanceModelWithIndexingAnalysis::"
       "TryFindTopKBestTilingsForFusion");
+  if (!fusion_adaptor.GetRoots().empty() &&
+      fusion_adaptor.GetRoots()[0].instruction().parent() != nullptr) {
+    VLOG(1) << "TryFindTopKBestTilingsForFusion adaptor "
+               "root[0].parent: "
+            << fusion_adaptor.GetRoots()[0].instruction().parent()->name();
+  }
   absl::InlinedVector<TiledRunTimeData, 4> candidates;
 
   if (use_experimental_tiling_) {
@@ -748,12 +752,11 @@ GpuPerformanceModelWithIndexingAnalysis::TryFindTopKBestTilingsForFusion(
         tilings.size(), " tilings.");
 
     for (const llvm::SmallVector<int64_t, 4>& tiling : tilings) {
-      VLOG(2) << "Trying tiling: " << absl::StrJoin(tiling, ",");
       ASSIGN_OR_RETURN(std::unique_ptr<TilingSpace> tiling_space,
                        TilingSpace::Create(fusion_adaptor, mlir_context_));
 
-      RETURN_IF_ERROR(tiling_space->AssignTileSizes(
-          xla::xtile::GetPaddedTileSizes(tiling)));
+      RETURN_IF_ERROR(tiling_space->AssignTileSizes(tiling));
+      VLOG(3) << "Trying tile sizes " << absl::StrJoin(tiling, ",");
 
       const absl::StatusOr<TiledHloComputation> tiled_computation =
           TiledHloComputation::Tile(fusion_adaptor, std::move(tiling_space));
@@ -767,7 +770,7 @@ GpuPerformanceModelWithIndexingAnalysis::TryFindTopKBestTilingsForFusion(
       if (const Decision valid = experimental::VerifyTritonConstraints(
               *tiled_computation, *device_info_);
           !valid) {
-        VLOG(2) << "Triton constraints violated for tiling " << valid.Explain();
+        VLOG(3) << "Triton constraints violated for tiling " << valid.Explain();
         continue;
       }
 
@@ -779,6 +782,7 @@ GpuPerformanceModelWithIndexingAnalysis::TryFindTopKBestTilingsForFusion(
                            }));
 
       if (tiled_run_time_data.has_value()) {
+        VLOG(2) << "Accepted tile sizes " << absl::StrJoin(tiling, ",");
         candidates.push_back(*tiled_run_time_data);
       }
     }
@@ -830,13 +834,16 @@ GpuPerformanceModelWithIndexingAnalysis::TryFindTopKBestTilingsForFusion(
               }));
 
       if (tiled_run_time_data.has_value()) {
+        ASSIGN_OR_RETURN(FlatTiling flat_tiling,
+                         tiling.Flatten(analysis.GetTilingSpecification()));
+        VLOG(2) << "Accepted tile sizes " << absl::StrJoin(flat_tiling, ",");
         candidates.push_back(*tiled_run_time_data);
       }
     }
   }
 
-  VLOG(1) << absl::StrCat("TryFindTopKBestTilingsForFusion found ",
-                          candidates.size(), " valid tiling candidates.");
+  VLOG(1) << absl::StrCat("Found ", candidates.size(),
+                          " valid tiling candidates.");
   absl::c_stable_sort(
       candidates, [](const TiledRunTimeData& a, const TiledRunTimeData& b) {
         return a.runtime_data.exec_time < b.runtime_data.exec_time;

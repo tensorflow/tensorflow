@@ -70,10 +70,7 @@ class CollectiveInterpolator {
                            h = H::combine(std::move(h), permute_type);
                          },
                          [&](const CollectiveDeviceList& device_list) {
-                           h = H::combine(std::move(h),
-                                          device_list.ToString(
-                                              /*print_full_replica_group_list=*/
-                                              true));
+                           h = H::combine(std::move(h), device_list.ToString());
                          }},
           key.collective_params);
       return h;
@@ -92,11 +89,9 @@ class CollectiveInterpolator {
                                            other.collective_params);
               },
               [&](const CollectiveDeviceList& device_list) {
-                return device_list.ToString(
-                           /*print_full_replica_group_list=*/true) ==
+                return device_list.ToString() ==
                        std::get<CollectiveDeviceList>(other.collective_params)
-                           .ToString(
-                               /*print_full_replica_group_list=*/true);
+                           .ToString();
               }},
           collective_params);
     }

@@ -34,14 +34,14 @@ jobs:
       contains(github.event.pull_request.body, 'FORCE_TEST_ACTIONS')
     steps:
       - name: "Checking out repository"
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: '0'
           persist-credentials: false
       - name: "Fetch HEAD of main branch"
         run: git fetch origin main --depth=1
       - name: Install uv dependencies
-        uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39 # v8.2.0
+        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
       - name: "Run clang-format check"
         env:
           TARGET_REF: "origin/${{ github.base_ref || 'main' }}"

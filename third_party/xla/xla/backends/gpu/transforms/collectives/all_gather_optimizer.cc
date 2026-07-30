@@ -15,24 +15,70 @@ limitations under the License.
 
 #include "xla/backends/gpu/transforms/collectives/all_gather_optimizer.h"
 
+#include <array>
 #include <cstdint>
 #include <utility>
 
 #include "absl/container/flat_hash_set.h"
+#include "absl/log/log.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/tsl/platform/status_macros.h"
+#include "xla/backends/gpu/transforms/collectives/gpu_collective_combiner_utils.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/collective_ops_utils.h"
+#include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/shape_util.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
+#include "tsl/platform/protobuf.h"
 
 namespace xla {
 namespace gpu {
+namespace {
+
+bool NormalizeBackendConfigCopyForComparison(GpuBackendConfig& config) {
+  if (!config.has_collective_backend_config() &&
+      config.backend_config_case() !=
+          GpuBackendConfig::BACKEND_CONFIG_NOT_SET) {
+    return false;
+  }
+
+  CollectiveBackendConfig* collective_config =
+      config.mutable_collective_backend_config();
+  // These fields are OR-merged when building the replacement.
+  collective_config->clear_is_pipelined();
+  collective_config->clear_is_spmd_generated();
+  return true;
+}
+
+bool HaveCompatibleCollectiveBackendConfigs(const HloInstruction& lhs,
+                                            const HloInstruction& rhs) {
+  auto lhs_config_or = lhs.backend_config<GpuBackendConfig>();
+  auto rhs_config_or = rhs.backend_config<GpuBackendConfig>();
+  if (!lhs_config_or.ok() || !rhs_config_or.ok()) {
+    VLOG(2) << "Failed to parse an all-gather backend config.";
+    return false;
+  }
+
+  // backend_config<T>() returns owned values. Normalize only these local
+  // copies; the instructions' backend configs remain unchanged.
+  GpuBackendConfig lhs_config = std::move(*lhs_config_or);
+  GpuBackendConfig rhs_config = std::move(*rhs_config_or);
+  if (!NormalizeBackendConfigCopyForComparison(lhs_config) ||
+      !NormalizeBackendConfigCopyForComparison(rhs_config)) {
+    VLOG(2) << "An all-gather has a non-collective backend config.";
+    return false;
+  }
+  return tsl::protobuf::util::MessageDifferencer::Equals(lhs_config,
+                                                         rhs_config);
+}
+
+}  // namespace
 
 absl::StatusOr<bool> AllGatherOptimizer::RunImpl(
     HloModule* module,
@@ -69,6 +115,20 @@ absl::StatusOr<bool> AllGatherOptimizer::RunImpl(
         continue;
       }
 
+      if (!HaveCompatibleCollectiveGroupKeys(*left_all_gather,
+                                             *right_all_gather)) {
+        VLOG(2) << "The right and left all-gather ops belong to different "
+                   "collective groups.";
+        continue;
+      }
+
+      if (!HaveCompatibleCollectiveBackendConfigs(*left_all_gather,
+                                                  *right_all_gather)) {
+        VLOG(2) << "The right and left all-gather ops have incompatible "
+                   "backend configs.";
+        continue;
+      }
+
       if (!ShapeUtil::Equal(left_all_gather->operand(0)->shape(),
                             right_all_gather->operand(0)->shape())) {
         VLOG(2) << "all-gather operands have different shapes";
@@ -96,9 +156,26 @@ absl::StatusOr<bool> AllGatherOptimizer::RunImpl(
           /*constrain_layout=*/false, left_all_gather->channel_id(),
           Cast<HloAllGatherInstruction>(left_all_gather)
               ->use_global_device_ids());
+      instruction->SetupDerivedInstruction(combined.get());
+
+      if (HasCollectiveGroupKey(*left_all_gather)) {
+        CopyCollectiveGroupKey(*left_all_gather, *combined);
+      } else {
+        ClearCollectiveGroupKey(*combined);
+      }
+      combined->CopyBackendConfigFrom(left_all_gather);
+
+      std::array<HloInstruction*, 2> all_gathers = {left_all_gather,
+                                                    right_all_gather};
+      RETURN_IF_ERROR(
+          MergeCollectiveBackendConfig(all_gathers, combined.get()));
 
       RETURN_IF_ERROR(computation->ReplaceWithNewInstruction(
-          instruction, std::move(combined)));
+          instruction, std::move(combined),
+          /*preserve_sharding=*/false,
+          /*relay_control_dependency=*/false,
+          /*remove_unused_operands=*/true,
+          /*preserve_frontend_attributes=*/false));
       changed = true;
     }
   }

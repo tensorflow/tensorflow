@@ -66,10 +66,13 @@ std::vector<std::unique_ptr<GpuCommunicator>> DowncastComms(
 absl::StatusOr<std::vector<std::unique_ptr<GpuCommunicator>>>
 CreateCommunicators(absl::Span<se::StreamExecutor* const> executors,
                     std::vector<GlobalDeviceId> device_ids, bool blocking,
-                    size_t num_ids) {
+                    size_t num_ids, GpuCollectives* custom_backend) {
   CHECK_EQ(executors.size(), device_ids.size());
 
-  GpuCollectives* collectives = GpuCollectives::Default("GPU");
+  GpuCollectives* collectives = custom_backend;
+  if (custom_backend == nullptr) {
+    collectives = GpuCollectives::Default("GPU");
+  }
 
   std::vector<GpuCollectives::Device> devices;
   devices.reserve(executors.size());

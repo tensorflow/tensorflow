@@ -1,0 +1,790 @@
+HloModule jit__lambda_, entry_computation_layout={(f32[])->(f32[], f32[], f32[10]{0}, f32[10]{0}, s32[], /*index=5*/s32[], s32[], s32[], s32[])}, allow_spmd_sharding_propagation_to_parameters={true}, allow_spmd_sharding_propagation_to_output={true,true,true,true,true,true,true,true,true}
+// this hlo module was produced to track b/380012920
+// NOTE: this hlo module has been modified to not rely on python custom-calls so that it can be run independently of JAX. (it has been verified that we still see the same ratio in performance)
+
+_where.7 {
+  Arg_0.8 = pred[] parameter(0), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/pjit"}
+  Arg_1.9 = s32[] parameter(1), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/pjit"}
+  Arg_2.10 = s32[] parameter(2), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/pjit"}
+  ROOT select.11 = s32[] select(Arg_0.8, Arg_1.9, Arg_2.10), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/jit(_where)/select_n" source_file="third_party/py/diffrax/_integrate.py" source_line=734}
+}
+
+region_0.12 {
+  Arg_0.13 = pred[] parameter(0), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/jit(branched_error_if_impl)/reduce_or"}
+  Arg_1.14 = pred[] parameter(1), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/jit(branched_error_if_impl)/reduce_or"}
+  ROOT or.15 = pred[] or(Arg_0.13, Arg_1.14), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/jit(branched_error_if_impl)/reduce_or" source_file="third_party/py/equinox/_unvmap.py" source_line=49}
+}
+
+region_1.16 {
+  ROOT Arg_.17 = f32[10000]{0} parameter(0), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/pjit"}
+}
+
+region_2.18 {
+  arg_empty_tuple.19 = () parameter(0)
+  constant.22 = f32[] constant(55906239034112)
+  ROOT get-tuple-element.26 = f32[10000]{0} broadcast(constant.22), dimensions={}
+} // region_2.18
+
+branched_error_if_impl.27 {
+  Arg_1.29 = pred[9999]{0} parameter(1), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/pjit"}
+  constant.30 = pred[] constant(false)
+  reduce.31 = pred[] reduce(Arg_1.29, constant.30), dimensions={0}, to_apply=region_0.12, metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/jit(branched_error_if_impl)/reduce_or" source_file="third_party/py/equinox/_unvmap.py" source_line=49}
+  convert.32 = s32[] convert(reduce.31), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/jit(branched_error_if_impl)/convert_element_type" source_file="third_party/py/equinox/_errors.py" source_line=90}
+  Arg_0.28 = f32[10000]{0} parameter(0), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/pjit"}
+  tuple.33 = () tuple(), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/jit(branched_error_if_impl)/cond" source_file="third_party/py/equinox/_errors.py" source_line=90}
+  ROOT conditional.34 = f32[10000]{0} conditional(convert.32, Arg_0.28, tuple.33), branch_computations={region_1.16, region_2.18}, metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/jit(branched_error_if_impl)/cond" source_file="third_party/py/equinox/_errors.py" source_line=90}
+} // branched_error_if_impl.27
+
+region_3.35 {
+  Arg_0.36 = pred[] parameter(0), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/jit(branched_error_if_impl)/reduce_or"}
+  Arg_1.37 = pred[] parameter(1), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/jit(branched_error_if_impl)/reduce_or"}
+  ROOT or.38 = pred[] or(Arg_0.36, Arg_1.37), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/jit(branched_error_if_impl)/reduce_or" source_file="third_party/py/equinox/_unvmap.py" source_line=49}
+}
+
+region_4.39 {
+  ROOT Arg_.40 = f32[10]{0} parameter(0), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/pjit"}
+}
+
+region_5.41 {
+  arg_empty_tuple.42 = () parameter(0)
+  constant.43 = f32[] constant(55906239034752)
+  ROOT get-tuple-element.49 = f32[10]{0} broadcast(constant.43), dimensions={}
+} // region_5.41
+
+branched_error_if_impl_0.50 {
+  Arg_1.52 = pred[9]{0} parameter(1), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/pjit"}
+  constant.53 = pred[] constant(false)
+  reduce.54 = pred[] reduce(Arg_1.52, constant.53), dimensions={0}, to_apply=region_3.35, metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/jit(branched_error_if_impl)/reduce_or" source_file="third_party/py/equinox/_unvmap.py" source_line=49}
+  convert.55 = s32[] convert(reduce.54), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/jit(branched_error_if_impl)/convert_element_type" source_file="third_party/py/equinox/_errors.py" source_line=90}
+  Arg_0.51 = f32[10]{0} parameter(0), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/pjit"}
+  tuple.56 = () tuple(), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/jit(branched_error_if_impl)/cond" source_file="third_party/py/equinox/_errors.py" source_line=90}
+  ROOT conditional.57 = f32[10]{0} conditional(convert.55, Arg_0.51, tuple.56), branch_computations={region_4.39, region_5.41}, metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/jit(branched_error_if_impl)/cond" source_file="third_party/py/equinox/_errors.py" source_line=90}
+} // branched_error_if_impl_0.50
+
+region_6.58 {
+  Arg_0.59 = pred[] parameter(0), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/jit(branched_error_if_impl)/reduce_or"}
+  Arg_1.60 = pred[] parameter(1), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/jit(branched_error_if_impl)/reduce_or"}
+  ROOT or.61 = pred[] or(Arg_0.59, Arg_1.60), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/jit(branched_error_if_impl)/reduce_or" source_file="third_party/py/equinox/_unvmap.py" source_line=49}
+}
+
+region_7.62 {
+  ROOT Arg_.63 = f32[10]{0} parameter(0), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/pjit"}
+}
+
+region_8.64 {
+  arg_empty_tuple.65 = () parameter(0)
+  constant.66 = f32[] constant(55906239035264)
+  ROOT get-tuple-element.72 = f32[10]{0} broadcast(constant.66), dimensions={}
+} // region_8.64
+
+branched_error_if_impl_1.73 {
+  Arg_1.75 = pred[10]{0} parameter(1), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/pjit"}
+  constant.76 = pred[] constant(false)
+  reduce.77 = pred[] reduce(Arg_1.75, constant.76), dimensions={0}, to_apply=region_6.58, metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/jit(branched_error_if_impl)/reduce_or" source_file="third_party/py/equinox/_unvmap.py" source_line=49}
+  convert.78 = s32[] convert(reduce.77), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/jit(branched_error_if_impl)/convert_element_type" source_file="third_party/py/equinox/_errors.py" source_line=90}
+  Arg_0.74 = f32[10]{0} parameter(0), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/pjit"}
+  tuple.79 = () tuple(), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/jit(branched_error_if_impl)/cond" source_file="third_party/py/equinox/_errors.py" source_line=90}
+  ROOT conditional.80 = f32[10]{0} conditional(convert.78, Arg_0.74, tuple.79), branch_computations={region_7.62, region_8.64}, metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/jit(branched_error_if_impl)/cond" source_file="third_party/py/equinox/_errors.py" source_line=90}
+} // branched_error_if_impl_1.73
+
+region_9.81 {
+  ROOT Arg_.82 = f32[10000]{0} parameter(0), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/pjit"}
+}
+
+region_10.83 {
+  arg_empty_tuple.84 = () parameter(0)
+  constant.85 = f32[] constant(55906239036032)
+  ROOT get-tuple-element.91 = f32[10000]{0} broadcast(constant.85), dimensions={}
+} // region_10.83
+
+branched_error_if_impl_2.92 {
+  Arg_1.94 = pred[] parameter(1), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/pjit"}
+  convert.95 = s32[] convert(Arg_1.94), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/jit(branched_error_if_impl)/convert_element_type" source_file="third_party/py/equinox/_errors.py" source_line=90}
+  Arg_0.93 = f32[10000]{0} parameter(0), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/pjit"}
+  tuple.96 = () tuple(), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/jit(branched_error_if_impl)/cond" source_file="third_party/py/equinox/_errors.py" source_line=90}
+  ROOT conditional.97 = f32[10000]{0} conditional(convert.95, Arg_0.93, tuple.96), branch_computations={region_9.81, region_10.83}, metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/jit(branched_error_if_impl)/cond" source_file="third_party/py/equinox/_errors.py" source_line=90}
+}
+
+_where_3.98 {
+  Arg_0.99 = pred[] parameter(0), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/pjit"}
+  Arg_1.100 = f32[] parameter(1), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/pjit"}
+  Arg_2.101 = f32[] parameter(2), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/pjit"}
+  ROOT select.102 = f32[] select(Arg_0.99, Arg_1.100, Arg_2.101), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/jit(_where)/select_n" source_file="third_party/py/diffrax/_term.py" source_line=466}
+}
+
+_where_3.103 {
+  Arg_0.104 = pred[] parameter(0), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/pjit"}
+  Arg_1.105 = f32[] parameter(1), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/pjit"}
+  Arg_2.106 = f32[] parameter(2), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/pjit"}
+  ROOT select.107 = f32[] select(Arg_0.104, Arg_1.105, Arg_2.106), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/jit(_where)/select_n" source_file="third_party/py/diffrax/_term.py" source_line=466}
+}
+
+_where_3.108 {
+  Arg_0.109 = pred[] parameter(0), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/pjit"}
+  Arg_1.110 = f32[] parameter(1), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/pjit"}
+  Arg_2.111 = f32[] parameter(2), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/pjit"}
+  ROOT select.112 = f32[] select(Arg_0.109, Arg_1.110, Arg_2.111), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/jit(_where)/select_n" source_file="third_party/py/diffrax/_term.py" source_line=466}
+}
+
+_where_3.113 {
+  Arg_0.114 = pred[] parameter(0), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/pjit"}
+  Arg_1.115 = f32[] parameter(1), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/pjit"}
+  Arg_2.116 = f32[] parameter(2), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/pjit"}
+  ROOT select.117 = f32[] select(Arg_0.114, Arg_1.115, Arg_2.116), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/jit(_where)/select_n" source_file="third_party/py/diffrax/_term.py" source_line=466}
+}
+
+_where_4.118 {
+  Arg_0.119 = pred[] parameter(0), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/pjit"}
+  Arg_1.120 = s32[] parameter(1), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/pjit"}
+  Arg_2.121 = s32[] parameter(2), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/pjit"}
+  ROOT select.122 = s32[] select(Arg_0.119, Arg_1.120, Arg_2.121), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/jit(_where)/select_n" source_file="third_party/py/diffrax/_integrate.py" source_line=734}
+}
+
+_where_5.123 {
+  Arg_0.124 = pred[] parameter(0), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/pjit"}
+  Arg_1.125 = s32[] parameter(1), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/pjit"}
+  convert.127 = f32[] convert(Arg_1.125), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/jit(_where)/convert_element_type" source_file="third_party/py/diffrax/_solver/runge_kutta.py" source_line=689}
+  Arg_2.126 = f32[] parameter(2), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/pjit"}
+  ROOT select.128 = f32[] select(Arg_0.124, convert.127, Arg_2.126), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/jit(_where)/select_n" source_file="third_party/py/diffrax/_solver/runge_kutta.py" source_line=689}
+}
+
+region_12.129 {
+  Arg_0.130 = f32[] parameter(0), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/scatter"}
+  ROOT Arg_1.131 = f32[] parameter(1), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/scatter"}
+}
+
+_where_6.132 {
+  Arg_0.133 = pred[] parameter(0), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/checkpointed-no-vjp/while/body/pjit"}
+  Arg_1.134 = f32[] parameter(1), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/checkpointed-no-vjp/while/body/pjit"}
+  Arg_2.135 = f32[] parameter(2), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/checkpointed-no-vjp/while/body/pjit"}
+  ROOT select.136 = f32[] select(Arg_0.133, Arg_1.134, Arg_2.135), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/checkpointed-no-vjp/while/body/jit(_where)/select_n" source_file="third_party/py/diffrax/_solver/runge_kutta.py" source_line=1021}
+}
+
+region_14.137 {
+  Arg_0.138 = f32[] parameter(0), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/checkpointed-no-vjp/while/body/scatter"}
+  ROOT Arg_1.139 = f32[] parameter(1), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/checkpointed-no-vjp/while/body/scatter"}
+}
+
+region_13.140 {
+  arg_tuple.141 = (s32[], pred[], pred[], s32[], f32[], /*index=5*/f32[], f32[7]{0}, f32[], f32[], f32[], /*index=10*/f32[], f32[]) parameter(0)
+  get-tuple-element.144 = pred[] get-tuple-element(arg_tuple.141), index=2
+  get-tuple-element.146 = f32[] get-tuple-element(arg_tuple.141), index=4
+  get-tuple-element.147 = f32[] get-tuple-element(arg_tuple.141), index=5
+  constant.156 = f32[7]{0} constant({0, 0.161, 0.327, 0.9, 0.98002553, 1, 1})
+  get-tuple-element.145 = s32[] get-tuple-element(arg_tuple.141), index=3
+  constant.159 = s32[] constant(0)
+  compare.165 = pred[] compare(get-tuple-element.145, constant.159), direction=LT, metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/checkpointed-no-vjp/while/body/lt" source_file="third_party/py/diffrax/_solver/runge_kutta.py" source_line=854}
+  constant.158 = s32[] constant(7)
+  add.166 = s32[] add(get-tuple-element.145, constant.158), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/checkpointed-no-vjp/while/body/add" source_file="third_party/py/diffrax/_solver/runge_kutta.py" source_line=854}
+  select.167 = s32[] select(compare.165, add.166, get-tuple-element.145), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/checkpointed-no-vjp/while/body/select_n" source_file="third_party/py/diffrax/_solver/runge_kutta.py" source_line=854}
+  dynamic-slice.168 = f32[1]{0} dynamic-slice(constant.156, select.167), dynamic_slice_sizes={1}, metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/checkpointed-no-vjp/while/body/dynamic_slice" source_file="third_party/py/diffrax/_solver/runge_kutta.py" source_line=854}
+  reshape.169 = f32[] reshape(dynamic-slice.168), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/checkpointed-no-vjp/while/body/squeeze" source_file="third_party/py/diffrax/_solver/runge_kutta.py" source_line=854}
+  constant.155 = f32[] constant(1)
+  compare.172 = pred[] compare(reshape.169, constant.155), direction=EQ, metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/checkpointed-no-vjp/while/body/eq" source_file="third_party/py/diffrax/_solver/runge_kutta.py" source_line=1021}
+  get-tuple-element.152 = f32[] get-tuple-element(arg_tuple.141), index=10
+  get-tuple-element.151 = f32[] get-tuple-element(arg_tuple.141), index=9
+  get-tuple-element.150 = f32[] get-tuple-element(arg_tuple.141), index=8
+  multiply.173 = f32[] multiply(reshape.169, get-tuple-element.150), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/checkpointed-no-vjp/while/body/mul" source_file="third_party/py/diffrax/_solver/runge_kutta.py" source_line=1021}
+  add.174 = f32[] add(get-tuple-element.151, multiply.173), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/checkpointed-no-vjp/while/body/add" source_file="third_party/py/diffrax/_solver/runge_kutta.py" source_line=1021}
+  call.175 = f32[] call(compare.172, get-tuple-element.152, add.174), to_apply=_where_6.132
+  get-tuple-element.142 = s32[] get-tuple-element(arg_tuple.141), index=0
+  constant.154 = s32[] constant(1)
+  add.184 = s32[] add(get-tuple-element.142, constant.154), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/checkpointed-no-vjp/while/body/add" source_file="third_party/py/equinox/internal/_loop/common.py" source_line=485}
+  get-tuple-element.143 = pred[] get-tuple-element(arg_tuple.141), index=1
+  add.183 = s32[] add(get-tuple-element.145, constant.154), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/checkpointed-no-vjp/while/body/add" source_file="third_party/py/diffrax/_solver/runge_kutta.py" source_line=1059}
+  compare.185 = pred[] compare(add.183, constant.158), direction=LT, metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/checkpointed-no-vjp/while/body/lt" source_file="third_party/py/diffrax/_solver/runge_kutta.py" source_line=843}
+  and.186 = pred[] and(get-tuple-element.143, compare.185), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/checkpointed-no-vjp/while/body/and" source_file="third_party/py/equinox/internal/_loop/common.py" source_line=486}
+  get-tuple-element.149 = f32[] get-tuple-element(arg_tuple.141), index=7
+  constant.157 = f32[7,7]{1,0} constant({...})
+  compare.160 = pred[] compare(get-tuple-element.145, constant.159), direction=LT, metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/checkpointed-no-vjp/while/body/lt" source_file="third_party/py/diffrax/_solver/runge_kutta.py" source_line=853}
+  add.161 = s32[] add(get-tuple-element.145, constant.158), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/checkpointed-no-vjp/while/body/add" source_file="third_party/py/diffrax/_solver/runge_kutta.py" source_line=853}
+  select.162 = s32[] select(compare.160, add.161, get-tuple-element.145), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/checkpointed-no-vjp/while/body/select_n" source_file="third_party/py/diffrax/_solver/runge_kutta.py" source_line=853}
+  dynamic-slice.163 = f32[1,7]{1,0} dynamic-slice(constant.157, select.162, constant.159), dynamic_slice_sizes={1,7}, metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/checkpointed-no-vjp/while/body/dynamic_slice" source_file="third_party/py/diffrax/_solver/runge_kutta.py" source_line=853}
+  reshape.164 = f32[7]{0} reshape(dynamic-slice.163), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/checkpointed-no-vjp/while/body/squeeze" source_file="third_party/py/diffrax/_solver/runge_kutta.py" source_line=853}
+  get-tuple-element.148 = f32[7]{0} get-tuple-element(arg_tuple.141), index=6
+  dot.170 = f32[] dot(reshape.164, get-tuple-element.148), lhs_contracting_dims={0}, rhs_contracting_dims={0}, operand_precision={highest,highest}, metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/checkpointed-no-vjp/while/body/dot_general" source_file="third_party/py/diffrax/_solver/base.py" source_line=31}
+  add.171 = f32[] add(get-tuple-element.149, dot.170), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/checkpointed-no-vjp/while/body/add" source_file="third_party/py/diffrax/_solver/runge_kutta.py" source_line=307}
+  cosine.176 = f32[] cosine(add.171), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/checkpointed-no-vjp/while/body/cos" source_file="third_party/py/jax/jaxlib/cpu/slow_test.py" source_line=47}
+  compare.178 = pred[] compare(get-tuple-element.145, constant.159), direction=LT, metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/checkpointed-no-vjp/while/body/lt" source_file="third_party/py/equinox/internal/_loop/common.py" source_line=239}
+  add.179 = s32[] add(get-tuple-element.145, constant.158), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/checkpointed-no-vjp/while/body/add" source_file="third_party/py/equinox/internal/_loop/common.py" source_line=239}
+  select.180 = s32[] select(compare.178, add.179, get-tuple-element.145), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/checkpointed-no-vjp/while/body/select_n" source_file="third_party/py/equinox/internal/_loop/common.py" source_line=239}
+  reshape.181 = s32[1]{0} reshape(select.180), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/checkpointed-no-vjp/while/body/broadcast_in_dim" source_file="third_party/py/equinox/internal/_loop/common.py" source_line=239}
+  get-tuple-element.153 = f32[] get-tuple-element(arg_tuple.141), index=11
+  multiply.177 = f32[] multiply(get-tuple-element.153, cosine.176), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/checkpointed-no-vjp/while/body/mul" source_file="third_party/py/diffrax/_term.py" source_line=208}
+  scatter.182 = f32[7]{0} scatter(get-tuple-element.148, reshape.181, multiply.177), update_window_dims={}, inserted_window_dims={0}, scatter_dims_to_operand_dims={0}, index_vector_dim=0, indices_are_sorted=true, unique_indices=true, to_apply=region_14.137, metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/checkpointed-no-vjp/while/body/scatter" source_file="third_party/py/equinox/internal/_loop/common.py" source_line=239}
+  ROOT tuple.187 = (s32[], pred[], pred[], s32[], f32[], /*index=5*/f32[], f32[7]{0}, f32[], f32[], f32[], /*index=10*/f32[], f32[]) tuple(add.184, and.186, get-tuple-element.143, add.183, add.171, /*index=5*/cosine.176, scatter.182, get-tuple-element.149, get-tuple-element.150, get-tuple-element.151, /*index=10*/get-tuple-element.152, get-tuple-element.153)
+} // region_13.140
+
+region_15.188 {
+  arg_tuple.189 = (s32[], pred[], pred[], s32[], f32[], /*index=5*/f32[], f32[7]{0}, f32[], f32[], f32[], /*index=10*/f32[], f32[]) parameter(0)
+  get-tuple-element.191 = pred[] get-tuple-element(arg_tuple.189), index=1
+  get-tuple-element.192 = pred[] get-tuple-element(arg_tuple.189), index=2
+  get-tuple-element.194 = f32[] get-tuple-element(arg_tuple.189), index=4
+  get-tuple-element.195 = f32[] get-tuple-element(arg_tuple.189), index=5
+  get-tuple-element.196 = f32[7]{0} get-tuple-element(arg_tuple.189), index=6
+  get-tuple-element.197 = f32[] get-tuple-element(arg_tuple.189), index=7
+  get-tuple-element.198 = f32[] get-tuple-element(arg_tuple.189), index=8
+  get-tuple-element.199 = f32[] get-tuple-element(arg_tuple.189), index=9
+  get-tuple-element.200 = f32[] get-tuple-element(arg_tuple.189), index=10
+  get-tuple-element.201 = f32[] get-tuple-element(arg_tuple.189), index=11
+  get-tuple-element.193 = s32[] get-tuple-element(arg_tuple.189), index=3
+  constant.202 = s32[] constant(7)
+  compare.203 = pred[] compare(get-tuple-element.193, constant.202), direction=LT, metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/checkpointed-no-vjp/while/cond/lt" source_file="third_party/py/diffrax/_solver/runge_kutta.py" source_line=843}
+  get-tuple-element.190 = s32[] get-tuple-element(arg_tuple.189), index=0
+  compare.204 = pred[] compare(get-tuple-element.190, constant.202), direction=LT, metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/checkpointed-no-vjp/while/cond/lt" source_file="third_party/py/equinox/internal/_loop/common.py" source_line=431}
+  ROOT and.205 = pred[] and(compare.203, compare.204), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/checkpointed-no-vjp/while/cond/and" source_file="third_party/py/equinox/internal/_loop/common.py" source_line=431}
+} // region_15.188
+
+_where_7.206 {
+  Arg_0.207 = pred[] parameter(0), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/pjit"}
+  Arg_1.208 = f32[] parameter(1), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/pjit"}
+  Arg_2.209 = f32[] parameter(2), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/pjit"}
+  ROOT select.210 = f32[] select(Arg_0.207, Arg_1.208, Arg_2.209), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/jit(_where)/select_n" source_file="third_party/py/diffrax/_solver/runge_kutta.py" source_line=1193}
+}
+
+_where_8.211 {
+  Arg_0.212 = pred[] parameter(0), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/pjit"}
+  Arg_1.213 = f32[] parameter(1), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/pjit"}
+  Arg_2.214 = f32[] parameter(2), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/pjit"}
+  ROOT select.215 = f32[] select(Arg_0.212, Arg_1.213, Arg_2.214), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/jit(_where)/select_n" source_file="third_party/py/diffrax/_integrate.py" source_line=253}
+}
+
+_where_6.216 {
+  Arg_0.217 = pred[] parameter(0), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/checkpointed-no-vjp/while/body/pjit"}
+  Arg_1.218 = f32[] parameter(1), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/checkpointed-no-vjp/while/body/pjit"}
+  Arg_2.219 = f32[] parameter(2), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/checkpointed-no-vjp/while/body/pjit"}
+  ROOT select.220 = f32[] select(Arg_0.217, Arg_1.218, Arg_2.219), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/checkpointed-no-vjp/while/body/jit(_where)/select_n" source_file="third_party/py/diffrax/_solver/runge_kutta.py" source_line=1021}
+}
+
+_where_6.221 {
+  Arg_0.222 = pred[] parameter(0), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/checkpointed-no-vjp/while/body/pjit"}
+  Arg_1.223 = f32[] parameter(1), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/checkpointed-no-vjp/while/body/pjit"}
+  Arg_2.224 = f32[] parameter(2), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/checkpointed-no-vjp/while/body/pjit"}
+  ROOT select.225 = f32[] select(Arg_0.222, Arg_1.223, Arg_2.224), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/checkpointed-no-vjp/while/body/jit(_where)/select_n" source_file="third_party/py/diffrax/_solver/runge_kutta.py" source_line=1021}
+}
+
+_where_6.226 {
+  Arg_0.227 = pred[] parameter(0), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/checkpointed-no-vjp/while/body/pjit"}
+  Arg_1.228 = f32[] parameter(1), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/checkpointed-no-vjp/while/body/pjit"}
+  Arg_2.229 = f32[] parameter(2), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/checkpointed-no-vjp/while/body/pjit"}
+  ROOT select.230 = f32[] select(Arg_0.227, Arg_1.228, Arg_2.229), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/checkpointed-no-vjp/while/body/jit(_where)/select_n" source_file="third_party/py/diffrax/_solver/runge_kutta.py" source_line=1021}
+}
+
+_where_9.231 {
+  Arg_0.232 = pred[] parameter(0), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/pjit"}
+  Arg_1.233 = pred[] parameter(1), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/pjit"}
+  Arg_2.234 = pred[] parameter(2), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/pjit"}
+  ROOT select.235 = pred[] select(Arg_0.232, Arg_1.233, Arg_2.234), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/jit(_where)/select_n" source_file="third_party/py/diffrax/_integrate.py" source_line=285}
+}
+
+_where_6.236 {
+  Arg_0.237 = pred[] parameter(0), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/checkpointed-no-vjp/while/body/pjit"}
+  Arg_1.238 = f32[] parameter(1), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/checkpointed-no-vjp/while/body/pjit"}
+  Arg_2.239 = f32[] parameter(2), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/checkpointed-no-vjp/while/body/pjit"}
+  ROOT select.240 = f32[] select(Arg_0.237, Arg_1.238, Arg_2.239), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/checkpointed-no-vjp/while/body/jit(_where)/select_n" source_file="third_party/py/diffrax/_solver/runge_kutta.py" source_line=1021}
+}
+
+_where_4.241 {
+  Arg_0.242 = pred[] parameter(0), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/pjit"}
+  Arg_1.243 = s32[] parameter(1), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/pjit"}
+  Arg_2.244 = s32[] parameter(2), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/pjit"}
+  ROOT select.245 = s32[] select(Arg_0.242, Arg_1.243, Arg_2.244), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/jit(_where)/select_n" source_file="third_party/py/diffrax/_integrate.py" source_line=734}
+}
+
+_where_4.246 {
+  Arg_0.247 = pred[] parameter(0), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/pjit"}
+  Arg_1.248 = s32[] parameter(1), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/pjit"}
+  Arg_2.249 = s32[] parameter(2), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/pjit"}
+  ROOT select.250 = s32[] select(Arg_0.247, Arg_1.248, Arg_2.249), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/jit(_where)/select_n" source_file="third_party/py/diffrax/_integrate.py" source_line=734}
+}
+
+_where_5.251 {
+  Arg_0.252 = pred[] parameter(0), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/pjit"}
+  Arg_1.253 = s32[] parameter(1), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/pjit"}
+  convert.255 = f32[] convert(Arg_1.253), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/jit(_where)/convert_element_type" source_file="third_party/py/diffrax/_solver/runge_kutta.py" source_line=689}
+  Arg_2.254 = f32[] parameter(2), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/pjit"}
+  ROOT select.256 = f32[] select(Arg_0.252, convert.255, Arg_2.254), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/jit(_where)/select_n" source_file="third_party/py/diffrax/_solver/runge_kutta.py" source_line=689}
+}
+
+_where_5.257 {
+  Arg_0.258 = pred[] parameter(0), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/pjit"}
+  Arg_1.259 = s32[] parameter(1), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/pjit"}
+  convert.261 = f32[] convert(Arg_1.259), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/jit(_where)/convert_element_type" source_file="third_party/py/diffrax/_solver/runge_kutta.py" source_line=689}
+  Arg_2.260 = f32[] parameter(2), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/pjit"}
+  ROOT select.262 = f32[] select(Arg_0.258, convert.261, Arg_2.260), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/jit(_where)/select_n" source_file="third_party/py/diffrax/_solver/runge_kutta.py" source_line=689}
+}
+
+region_17.263 {
+  Arg_0.264 = f32[] parameter(0), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/inner-loop/checkpointed-no-vjp/while/body/scatter"}
+  ROOT Arg_1.265 = f32[] parameter(1), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/inner-loop/checkpointed-no-vjp/while/body/scatter"}
+}
+
+region_18.266 {
+  Arg_0.267 = f32[] parameter(0), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/inner-loop/checkpointed-no-vjp/while/body/scatter"}
+  ROOT Arg_1.268 = f32[] parameter(1), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/inner-loop/checkpointed-no-vjp/while/body/scatter"}
+}
+
+region_16.269 {
+  arg_tuple.270 = (s32[], pred[], pred[], s32[], f32[10]{0}, /*index=5*/f32[10]{0}, s32[], f32[10]{0}, f32[], f32[], /*index=10*/f32[7]{0}, f32[]) parameter(0)
+  get-tuple-element.273 = pred[] get-tuple-element(arg_tuple.270), index=2
+  get-tuple-element.271 = s32[] get-tuple-element(arg_tuple.270), index=0
+  constant.305 = s32[] constant(1)
+  add.387 = s32[] add(get-tuple-element.271, constant.305), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/inner-loop/checkpointed-no-vjp/while/body/add" source_file="third_party/py/equinox/internal/_loop/common.py" source_line=485}
+  get-tuple-element.272 = pred[] get-tuple-element(arg_tuple.270), index=1
+  get-tuple-element.278 = f32[10]{0} get-tuple-element(arg_tuple.270), index=7
+  get-tuple-element.274 = s32[] get-tuple-element(arg_tuple.270), index=3
+  add.385 = s32[] add(get-tuple-element.274, constant.305), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/inner-loop/checkpointed-no-vjp/while/body/add" source_file="third_party/py/diffrax/_integrate.py" source_line=343}
+  constant.307 = s32[] constant(0)
+  compare.388 = pred[] compare(add.385, constant.307), direction=LT, metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/inner-loop/checkpointed-no-vjp/while/body/lt" source_file="third_party/py/diffrax/_integrate.py" source_line=329}
+  constant.306 = s32[] constant(10)
+  add.389 = s32[] add(add.385, constant.306), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/inner-loop/checkpointed-no-vjp/while/body/add" source_file="third_party/py/diffrax/_integrate.py" source_line=329}
+  select.390 = s32[] select(compare.388, add.389, add.385), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/inner-loop/checkpointed-no-vjp/while/body/select_n" source_file="third_party/py/diffrax/_integrate.py" source_line=329}
+  dynamic-slice.391 = f32[1]{0} dynamic-slice(get-tuple-element.278, select.390), dynamic_slice_sizes={1}, metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/inner-loop/checkpointed-no-vjp/while/body/dynamic_slice" source_file="third_party/py/diffrax/_integrate.py" source_line=329}
+  reshape.392 = f32[] reshape(dynamic-slice.391), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/inner-loop/checkpointed-no-vjp/while/body/squeeze" source_file="third_party/py/diffrax/_integrate.py" source_line=329}
+  get-tuple-element.279 = f32[] get-tuple-element(arg_tuple.270), index=8
+  compare.393 = pred[] compare(reshape.392, get-tuple-element.279), direction=LE, metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/inner-loop/checkpointed-no-vjp/while/body/le" source_file="third_party/py/diffrax/_integrate.py" source_line=329}
+  compare.394 = pred[] compare(add.385, constant.306), direction=LT, metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/inner-loop/checkpointed-no-vjp/while/body/lt" source_file="third_party/py/diffrax/_integrate.py" source_line=330}
+  and.395 = pred[] and(compare.393, compare.394), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/inner-loop/checkpointed-no-vjp/while/body/and" source_file="third_party/py/diffrax/_integrate.py" source_line=328}
+  and.396 = pred[] and(get-tuple-element.272, and.395), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/inner-loop/checkpointed-no-vjp/while/body/and" source_file="third_party/py/equinox/internal/_loop/common.py" source_line=486}
+  get-tuple-element.275 = f32[10]{0} get-tuple-element(arg_tuple.270), index=4
+  get-tuple-element.277 = s32[] get-tuple-element(arg_tuple.270), index=6
+  compare.375 = pred[] compare(get-tuple-element.277, constant.307), direction=LT, metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/inner-loop/checkpointed-no-vjp/while/body/lt" source_file="third_party/py/equinox/internal/_loop/common.py" source_line=239}
+  add.376 = s32[] add(get-tuple-element.277, constant.306), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/inner-loop/checkpointed-no-vjp/while/body/add" source_file="third_party/py/equinox/internal/_loop/common.py" source_line=239}
+  select.377 = s32[] select(compare.375, add.376, get-tuple-element.277), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/inner-loop/checkpointed-no-vjp/while/body/select_n" source_file="third_party/py/equinox/internal/_loop/common.py" source_line=239}
+  reshape.378 = s32[1]{0} reshape(select.377), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/inner-loop/checkpointed-no-vjp/while/body/broadcast_in_dim" source_file="third_party/py/equinox/internal/_loop/common.py" source_line=239}
+  compare.308 = pred[] compare(get-tuple-element.274, constant.307), direction=LT, metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/inner-loop/checkpointed-no-vjp/while/body/lt" source_file="third_party/py/diffrax/_integrate.py" source_line=334}
+  add.309 = s32[] add(get-tuple-element.274, constant.306), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/inner-loop/checkpointed-no-vjp/while/body/add" source_file="third_party/py/diffrax/_integrate.py" source_line=334}
+  select.310 = s32[] select(compare.308, add.309, get-tuple-element.274), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/inner-loop/checkpointed-no-vjp/while/body/select_n" source_file="third_party/py/diffrax/_integrate.py" source_line=334}
+  dynamic-slice.311 = f32[1]{0} dynamic-slice(get-tuple-element.278, select.310), dynamic_slice_sizes={1}, metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/inner-loop/checkpointed-no-vjp/while/body/dynamic_slice" source_file="third_party/py/diffrax/_integrate.py" source_line=334}
+  reshape.312 = f32[] reshape(dynamic-slice.311), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/inner-loop/checkpointed-no-vjp/while/body/squeeze" source_file="third_party/py/diffrax/_integrate.py" source_line=334}
+  scatter.379 = f32[10]{0} scatter(get-tuple-element.275, reshape.378, reshape.312), update_window_dims={}, inserted_window_dims={0}, scatter_dims_to_operand_dims={0}, index_vector_dim=0, indices_are_sorted=true, unique_indices=true, to_apply=region_17.263, metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/inner-loop/checkpointed-no-vjp/while/body/scatter" source_file="third_party/py/equinox/internal/_loop/common.py" source_line=239}
+  get-tuple-element.276 = f32[10]{0} get-tuple-element(arg_tuple.270), index=5
+  compare.380 = pred[] compare(get-tuple-element.277, constant.307), direction=LT, metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/inner-loop/checkpointed-no-vjp/while/body/lt" source_file="third_party/py/equinox/internal/_loop/common.py" source_line=239}
+  add.381 = s32[] add(get-tuple-element.277, constant.306), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/inner-loop/checkpointed-no-vjp/while/body/add" source_file="third_party/py/equinox/internal/_loop/common.py" source_line=239}
+  select.382 = s32[] select(compare.380, add.381, get-tuple-element.277), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/inner-loop/checkpointed-no-vjp/while/body/select_n" source_file="third_party/py/equinox/internal/_loop/common.py" source_line=239}
+  reshape.383 = s32[1]{0} reshape(select.382), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/inner-loop/checkpointed-no-vjp/while/body/broadcast_in_dim" source_file="third_party/py/equinox/internal/_loop/common.py" source_line=239}
+  get-tuple-element.282 = f32[] get-tuple-element(arg_tuple.270), index=11
+  get-tuple-element.280 = f32[] get-tuple-element(arg_tuple.270), index=9
+  compare.313 = pred[] compare(get-tuple-element.280, get-tuple-element.279), direction=EQ, metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/inner-loop/checkpointed-no-vjp/while/body/eq" source_file="third_party/py/diffrax/_misc.py" source_line=83}
+  subtract.314 = f32[] subtract(reshape.312, get-tuple-element.280), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/inner-loop/checkpointed-no-vjp/while/body/sub" source_file="third_party/py/diffrax/_misc.py" source_line=84}
+  call.315 = f32[] call(compare.313, constant.307, subtract.314), to_apply=_where_5.251
+  subtract.316 = f32[] subtract(get-tuple-element.279, get-tuple-element.280), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/inner-loop/checkpointed-no-vjp/while/body/sub" source_file="third_party/py/diffrax/_misc.py" source_line=85}
+  call.317 = f32[] call(compare.313, constant.305, subtract.316), to_apply=_where_5.257
+  divide.318 = f32[] divide(call.315, call.317), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/inner-loop/checkpointed-no-vjp/while/body/div" source_file="third_party/py/diffrax/_misc.py" source_line=86}
+  constant.304 = f32[] constant(-1.05308855)
+  multiply.319 = f32[] multiply(divide.318, constant.304), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/inner-loop/checkpointed-no-vjp/while/body/mul" source_file="third_party/py/diffrax/_solver/tsit5.py" source_line=125}
+  constant.303 = f32[] constant(1.32998908)
+  subtract.320 = f32[] subtract(divide.318, constant.303), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/inner-loop/checkpointed-no-vjp/while/body/sub" source_file="third_party/py/diffrax/_solver/tsit5.py" source_line=127}
+  multiply.321 = f32[] multiply(multiply.319, subtract.320), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/inner-loop/checkpointed-no-vjp/while/body/mul" source_file="third_party/py/diffrax/_solver/tsit5.py" source_line=125}
+  multiply.322 = f32[] multiply(divide.318, divide.318), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/inner-loop/checkpointed-no-vjp/while/body/integer_pow" source_file="third_party/py/diffrax/_solver/tsit5.py" source_line=128}
+  constant.302 = f32[] constant(1.4364028)
+  multiply.323 = f32[] multiply(divide.318, constant.302), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/inner-loop/checkpointed-no-vjp/while/body/mul" source_file="third_party/py/diffrax/_solver/tsit5.py" source_line=128}
+  subtract.324 = f32[] subtract(multiply.322, multiply.323), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/inner-loop/checkpointed-no-vjp/while/body/sub" source_file="third_party/py/diffrax/_solver/tsit5.py" source_line=128}
+  constant.301 = f32[] constant(0.713981688)
+  add.325 = f32[] add(subtract.324, constant.301), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/inner-loop/checkpointed-no-vjp/while/body/add" source_file="third_party/py/diffrax/_solver/tsit5.py" source_line=128}
+  multiply.326 = f32[] multiply(multiply.321, add.325), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/inner-loop/checkpointed-no-vjp/while/body/mul" source_file="third_party/py/diffrax/_solver/tsit5.py" source_line=125}
+  reshape.365 = f32[1]{0} reshape(multiply.326), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/inner-loop/checkpointed-no-vjp/while/body/broadcast_in_dim" source_file="third_party/py/diffrax/_solver/tsit5.py" source_line=152}
+  multiply.327 = f32[] multiply(divide.318, divide.318), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/inner-loop/checkpointed-no-vjp/while/body/integer_pow" source_file="third_party/py/diffrax/_solver/tsit5.py" source_line=130}
+  constant.300 = f32[] constant(0.1017)
+  multiply.328 = f32[] multiply(multiply.327, constant.300), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/inner-loop/checkpointed-no-vjp/while/body/mul" source_file="third_party/py/diffrax/_solver/tsit5.py" source_line=130}
+  multiply.329 = f32[] multiply(divide.318, divide.318), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/inner-loop/checkpointed-no-vjp/while/body/integer_pow" source_file="third_party/py/diffrax/_solver/tsit5.py" source_line=130}
+  constant.299 = f32[] constant(2.19665694)
+  multiply.330 = f32[] multiply(divide.318, constant.299), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/inner-loop/checkpointed-no-vjp/while/body/mul" source_file="third_party/py/diffrax/_solver/tsit5.py" source_line=130}
+  subtract.331 = f32[] subtract(multiply.329, multiply.330), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/inner-loop/checkpointed-no-vjp/while/body/sub" source_file="third_party/py/diffrax/_solver/tsit5.py" source_line=130}
+  constant.298 = f32[] constant(1.29498529)
+  add.332 = f32[] add(subtract.331, constant.298), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/inner-loop/checkpointed-no-vjp/while/body/add" source_file="third_party/py/diffrax/_solver/tsit5.py" source_line=130}
+  multiply.333 = f32[] multiply(multiply.328, add.332), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/inner-loop/checkpointed-no-vjp/while/body/mul" source_file="third_party/py/diffrax/_solver/tsit5.py" source_line=130}
+  reshape.366 = f32[1]{0} reshape(multiply.333), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/inner-loop/checkpointed-no-vjp/while/body/broadcast_in_dim" source_file="third_party/py/diffrax/_solver/tsit5.py" source_line=152}
+  multiply.334 = f32[] multiply(divide.318, divide.318), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/inner-loop/checkpointed-no-vjp/while/body/integer_pow" source_file="third_party/py/diffrax/_solver/tsit5.py" source_line=133}
+  constant.297 = f32[] constant(2.49062729)
+  multiply.335 = f32[] multiply(multiply.334, constant.297), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/inner-loop/checkpointed-no-vjp/while/body/mul" source_file="third_party/py/diffrax/_solver/tsit5.py" source_line=132}
+  multiply.336 = f32[] multiply(divide.318, divide.318), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/inner-loop/checkpointed-no-vjp/while/body/integer_pow" source_file="third_party/py/diffrax/_solver/tsit5.py" source_line=134}
+  constant.296 = f32[] constant(2.38535643)
+  multiply.337 = f32[] multiply(divide.318, constant.296), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/inner-loop/checkpointed-no-vjp/while/body/mul" source_file="third_party/py/diffrax/_solver/tsit5.py" source_line=134}
+  subtract.338 = f32[] subtract(multiply.336, multiply.337), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/inner-loop/checkpointed-no-vjp/while/body/sub" source_file="third_party/py/diffrax/_solver/tsit5.py" source_line=134}
+  constant.295 = f32[] constant(1.57803464)
+  add.339 = f32[] add(subtract.338, constant.295), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/inner-loop/checkpointed-no-vjp/while/body/add" source_file="third_party/py/diffrax/_solver/tsit5.py" source_line=134}
+  multiply.340 = f32[] multiply(multiply.335, add.339), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/inner-loop/checkpointed-no-vjp/while/body/mul" source_file="third_party/py/diffrax/_solver/tsit5.py" source_line=132}
+  reshape.367 = f32[1]{0} reshape(multiply.340), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/inner-loop/checkpointed-no-vjp/while/body/broadcast_in_dim" source_file="third_party/py/diffrax/_solver/tsit5.py" source_line=152}
+  constant.294 = f32[] constant(1.21712923)
+  subtract.341 = f32[] subtract(divide.318, constant.294), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/inner-loop/checkpointed-no-vjp/while/body/sub" source_file="third_party/py/diffrax/_solver/tsit5.py" source_line=138}
+  constant.293 = f32[] constant(-16.5481033)
+  multiply.342 = f32[] multiply(subtract.341, constant.293), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/inner-loop/checkpointed-no-vjp/while/body/mul" source_file="third_party/py/diffrax/_solver/tsit5.py" source_line=137}
+  constant.292 = f32[] constant(0.616204083)
+  subtract.343 = f32[] subtract(divide.318, constant.292), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/inner-loop/checkpointed-no-vjp/while/body/sub" source_file="third_party/py/diffrax/_solver/tsit5.py" source_line=139}
+  multiply.344 = f32[] multiply(multiply.342, subtract.343), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/inner-loop/checkpointed-no-vjp/while/body/mul" source_file="third_party/py/diffrax/_solver/tsit5.py" source_line=137}
+  multiply.345 = f32[] multiply(divide.318, divide.318), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/inner-loop/checkpointed-no-vjp/while/body/integer_pow" source_file="third_party/py/diffrax/_solver/tsit5.py" source_line=140}
+  multiply.346 = f32[] multiply(multiply.344, multiply.345), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/inner-loop/checkpointed-no-vjp/while/body/mul" source_file="third_party/py/diffrax/_solver/tsit5.py" source_line=137}
+  reshape.368 = f32[1]{0} reshape(multiply.346), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/inner-loop/checkpointed-no-vjp/while/body/broadcast_in_dim" source_file="third_party/py/diffrax/_solver/tsit5.py" source_line=152}
+  constant.291 = f32[] constant(1.20307124)
+  subtract.347 = f32[] subtract(divide.318, constant.291), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/inner-loop/checkpointed-no-vjp/while/body/sub" source_file="third_party/py/diffrax/_solver/tsit5.py" source_line=144}
+  constant.290 = f32[] constant(47.3795204)
+  multiply.348 = f32[] multiply(subtract.347, constant.290), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/inner-loop/checkpointed-no-vjp/while/body/mul" source_file="third_party/py/diffrax/_solver/tsit5.py" source_line=143}
+  constant.289 = f32[] constant(0.658047318)
+  subtract.349 = f32[] subtract(divide.318, constant.289), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/inner-loop/checkpointed-no-vjp/while/body/sub" source_file="third_party/py/diffrax/_solver/tsit5.py" source_line=145}
+  multiply.350 = f32[] multiply(multiply.348, subtract.349), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/inner-loop/checkpointed-no-vjp/while/body/mul" source_file="third_party/py/diffrax/_solver/tsit5.py" source_line=143}
+  multiply.351 = f32[] multiply(divide.318, divide.318), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/inner-loop/checkpointed-no-vjp/while/body/integer_pow" source_file="third_party/py/diffrax/_solver/tsit5.py" source_line=146}
+  multiply.352 = f32[] multiply(multiply.350, multiply.351), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/inner-loop/checkpointed-no-vjp/while/body/mul" source_file="third_party/py/diffrax/_solver/tsit5.py" source_line=143}
+  reshape.369 = f32[1]{0} reshape(multiply.352), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/inner-loop/checkpointed-no-vjp/while/body/broadcast_in_dim" source_file="third_party/py/diffrax/_solver/tsit5.py" source_line=152}
+  constant.288 = f32[] constant(1.2)
+  subtract.353 = f32[] subtract(divide.318, constant.288), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/inner-loop/checkpointed-no-vjp/while/body/sub" source_file="third_party/py/diffrax/_solver/tsit5.py" source_line=148}
+  constant.287 = f32[] constant(-34.8706589)
+  multiply.354 = f32[] multiply(subtract.353, constant.287), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/inner-loop/checkpointed-no-vjp/while/body/mul" source_file="third_party/py/diffrax/_solver/tsit5.py" source_line=148}
+  constant.286 = f32[] constant(0.666666687)
+  subtract.355 = f32[] subtract(divide.318, constant.286), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/inner-loop/checkpointed-no-vjp/while/body/sub" source_file="third_party/py/diffrax/_solver/tsit5.py" source_line=148}
+  multiply.356 = f32[] multiply(multiply.354, subtract.355), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/inner-loop/checkpointed-no-vjp/while/body/mul" source_file="third_party/py/diffrax/_solver/tsit5.py" source_line=148}
+  multiply.357 = f32[] multiply(divide.318, divide.318), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/inner-loop/checkpointed-no-vjp/while/body/integer_pow" source_file="third_party/py/diffrax/_solver/tsit5.py" source_line=148}
+  multiply.358 = f32[] multiply(multiply.356, multiply.357), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/inner-loop/checkpointed-no-vjp/while/body/mul" source_file="third_party/py/diffrax/_solver/tsit5.py" source_line=148}
+  reshape.370 = f32[1]{0} reshape(multiply.358), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/inner-loop/checkpointed-no-vjp/while/body/broadcast_in_dim" source_file="third_party/py/diffrax/_solver/tsit5.py" source_line=152}
+  constant.285 = f32[] constant(1)
+  subtract.359 = f32[] subtract(divide.318, constant.285), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/inner-loop/checkpointed-no-vjp/while/body/sub" source_file="third_party/py/diffrax/_solver/tsit5.py" source_line=149}
+  constant.284 = f32[] constant(2.5)
+  multiply.360 = f32[] multiply(subtract.359, constant.284), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/inner-loop/checkpointed-no-vjp/while/body/mul" source_file="third_party/py/diffrax/_solver/tsit5.py" source_line=149}
+  constant.283 = f32[] constant(0.6)
+  subtract.361 = f32[] subtract(divide.318, constant.283), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/inner-loop/checkpointed-no-vjp/while/body/sub" source_file="third_party/py/diffrax/_solver/tsit5.py" source_line=149}
+  multiply.362 = f32[] multiply(multiply.360, subtract.361), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/inner-loop/checkpointed-no-vjp/while/body/mul" source_file="third_party/py/diffrax/_solver/tsit5.py" source_line=149}
+  multiply.363 = f32[] multiply(divide.318, divide.318), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/inner-loop/checkpointed-no-vjp/while/body/integer_pow" source_file="third_party/py/diffrax/_solver/tsit5.py" source_line=149}
+  multiply.364 = f32[] multiply(multiply.362, multiply.363), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/inner-loop/checkpointed-no-vjp/while/body/mul" source_file="third_party/py/diffrax/_solver/tsit5.py" source_line=149}
+  reshape.371 = f32[1]{0} reshape(multiply.364), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/inner-loop/checkpointed-no-vjp/while/body/broadcast_in_dim" source_file="third_party/py/diffrax/_solver/tsit5.py" source_line=152}
+  concatenate.372 = f32[7]{0} concatenate(reshape.365, reshape.366, reshape.367, reshape.368, reshape.369, /*index=5*/reshape.370, reshape.371), dimensions={0}, metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/inner-loop/checkpointed-no-vjp/while/body/concatenate" source_file="third_party/py/diffrax/_solver/tsit5.py" source_line=152}
+  get-tuple-element.281 = f32[7]{0} get-tuple-element(arg_tuple.270), index=10
+  dot.373 = f32[] dot(concatenate.372, get-tuple-element.281), lhs_contracting_dims={0}, rhs_contracting_dims={0}, operand_precision={highest,highest}, metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/inner-loop/checkpointed-no-vjp/while/body/dot_general" source_file="third_party/py/diffrax/_solver/base.py" source_line=31}
+  add.374 = f32[] add(get-tuple-element.282, dot.373), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/inner-loop/checkpointed-no-vjp/while/body/add" source_file="third_party/py/equinox/internal/_omega.py" source_line=100}
+  scatter.384 = f32[10]{0} scatter(get-tuple-element.276, reshape.383, add.374), update_window_dims={}, inserted_window_dims={0}, scatter_dims_to_operand_dims={0}, index_vector_dim=0, indices_are_sorted=true, unique_indices=true, to_apply=region_18.266, metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/inner-loop/checkpointed-no-vjp/while/body/scatter" source_file="third_party/py/equinox/internal/_loop/common.py" source_line=239}
+  add.386 = s32[] add(get-tuple-element.277, constant.305), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/inner-loop/checkpointed-no-vjp/while/body/add" source_file="third_party/py/diffrax/_integrate.py" source_line=346}
+  ROOT tuple.397 = (s32[], pred[], pred[], s32[], f32[10]{0}, /*index=5*/f32[10]{0}, s32[], f32[10]{0}, f32[], f32[], /*index=10*/f32[7]{0}, f32[]) tuple(add.387, and.396, get-tuple-element.272, add.385, scatter.379, /*index=5*/scatter.384, add.386, get-tuple-element.278, get-tuple-element.279, get-tuple-element.280, /*index=10*/get-tuple-element.281, get-tuple-element.282)
+} // region_16.269
+
+region_19.398 {
+  arg_tuple.399 = (s32[], pred[], pred[], s32[], f32[10]{0}, /*index=5*/f32[10]{0}, s32[], f32[10]{0}, f32[], f32[], /*index=10*/f32[7]{0}, f32[]) parameter(0)
+  get-tuple-element.401 = pred[] get-tuple-element(arg_tuple.399), index=1
+  get-tuple-element.402 = pred[] get-tuple-element(arg_tuple.399), index=2
+  get-tuple-element.404 = f32[10]{0} get-tuple-element(arg_tuple.399), index=4
+  get-tuple-element.405 = f32[10]{0} get-tuple-element(arg_tuple.399), index=5
+  get-tuple-element.406 = s32[] get-tuple-element(arg_tuple.399), index=6
+  get-tuple-element.409 = f32[] get-tuple-element(arg_tuple.399), index=9
+  get-tuple-element.410 = f32[7]{0} get-tuple-element(arg_tuple.399), index=10
+  get-tuple-element.411 = f32[] get-tuple-element(arg_tuple.399), index=11
+  get-tuple-element.407 = f32[10]{0} get-tuple-element(arg_tuple.399), index=7
+  get-tuple-element.403 = s32[] get-tuple-element(arg_tuple.399), index=3
+  constant.413 = s32[] constant(0)
+  compare.414 = pred[] compare(get-tuple-element.403, constant.413), direction=LT, metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/inner-loop/checkpointed-no-vjp/while/cond/lt" source_file="third_party/py/diffrax/_integrate.py" source_line=329}
+  constant.412 = s32[] constant(10)
+  add.415 = s32[] add(get-tuple-element.403, constant.412), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/inner-loop/checkpointed-no-vjp/while/cond/add" source_file="third_party/py/diffrax/_integrate.py" source_line=329}
+  select.416 = s32[] select(compare.414, add.415, get-tuple-element.403), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/inner-loop/checkpointed-no-vjp/while/cond/select_n" source_file="third_party/py/diffrax/_integrate.py" source_line=329}
+  dynamic-slice.417 = f32[1]{0} dynamic-slice(get-tuple-element.407, select.416), dynamic_slice_sizes={1}, metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/inner-loop/checkpointed-no-vjp/while/cond/dynamic_slice" source_file="third_party/py/diffrax/_integrate.py" source_line=329}
+  reshape.418 = f32[] reshape(dynamic-slice.417), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/inner-loop/checkpointed-no-vjp/while/cond/squeeze" source_file="third_party/py/diffrax/_integrate.py" source_line=329}
+  get-tuple-element.408 = f32[] get-tuple-element(arg_tuple.399), index=8
+  compare.419 = pred[] compare(reshape.418, get-tuple-element.408), direction=LE, metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/inner-loop/checkpointed-no-vjp/while/cond/le" source_file="third_party/py/diffrax/_integrate.py" source_line=329}
+  compare.420 = pred[] compare(get-tuple-element.403, constant.412), direction=LT, metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/inner-loop/checkpointed-no-vjp/while/cond/lt" source_file="third_party/py/diffrax/_integrate.py" source_line=330}
+  and.421 = pred[] and(compare.419, compare.420), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/inner-loop/checkpointed-no-vjp/while/cond/and" source_file="third_party/py/diffrax/_integrate.py" source_line=328}
+  get-tuple-element.400 = s32[] get-tuple-element(arg_tuple.399), index=0
+  compare.422 = pred[] compare(get-tuple-element.400, constant.412), direction=LT, metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/inner-loop/checkpointed-no-vjp/while/cond/lt" source_file="third_party/py/equinox/internal/_loop/common.py" source_line=431}
+  ROOT and.423 = pred[] and(and.421, compare.422), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/inner-loop/checkpointed-no-vjp/while/cond/and" source_file="third_party/py/equinox/internal/_loop/common.py" source_line=431}
+} // region_19.398
+
+region_11.424 {
+  arg_tuple.425 = (s32[], pred[], pred[], f32[], f32[], /*index=5*/f32[], pred[], f32[], s32[], s32[], /*index=10*/s32[], s32[], s32[], f32[10]{0}, f32[10]{0}, /*index=15*/s32[], s32[], f32[10000]{0}, f32[], f32[10]{0}) parameter(0)
+  get-tuple-element.428 = pred[] get-tuple-element(arg_tuple.425), index=2
+  get-tuple-element.442 = s32[] get-tuple-element(arg_tuple.425), index=16
+  constant.460 = s32[] constant(1)
+  compare.461 = pred[] compare(get-tuple-element.442, constant.460), direction=EQ, metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/eq" source_file="third_party/py/diffrax/_term.py" source_line=466}
+  get-tuple-element.430 = f32[] get-tuple-element(arg_tuple.425), index=4
+  get-tuple-element.431 = f32[] get-tuple-element(arg_tuple.425), index=5
+  negate.462 = f32[] negate(get-tuple-element.431), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/neg" source_file="third_party/py/diffrax/_term.py" source_line=466}
+  call.463 = f32[] call(compare.461, get-tuple-element.430, negate.462), to_apply=_where_3.98
+  compare.464 = pred[] compare(get-tuple-element.442, constant.460), direction=EQ, metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/eq" source_file="third_party/py/diffrax/_term.py" source_line=467}
+  negate.465 = f32[] negate(get-tuple-element.430), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/neg" source_file="third_party/py/diffrax/_term.py" source_line=467}
+  call.466 = f32[] call(compare.464, get-tuple-element.431, negate.465), to_apply=_where_3.103
+  constant.459 = s32[] constant(0)
+  get-tuple-element.432 = pred[] get-tuple-element(arg_tuple.425), index=6
+  call.477 = s32[] call(get-tuple-element.432, constant.459, constant.460), to_apply=_where_4.118
+  constant.455 = s32[] constant(7)
+  compare.481 = pred[] compare(call.477, constant.455), direction=LT, metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/lt" source_file="third_party/py/diffrax/_solver/runge_kutta.py" source_line=843}
+  constant.454 = pred[] constant(true)
+  get-tuple-element.429 = f32[] get-tuple-element(arg_tuple.425), index=3
+  get-tuple-element.433 = f32[] get-tuple-element(arg_tuple.425), index=7
+  call.478 = f32[] call(get-tuple-element.432, constant.459, get-tuple-element.433), to_apply=_where_5.123
+  constant.457 = f32[] constant(0)
+  broadcast.458 = f32[7]{0} broadcast(constant.457), dimensions={}
+  constant.456 = s32[1]{0} constant({0})
+  convert.475 = f32[] convert(get-tuple-element.442), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/convert_element_type" source_file="third_party/py/equinox/internal/_omega.py" source_line=130}
+  compare.471 = pred[] compare(get-tuple-element.442, constant.460), direction=EQ, metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/eq" source_file="third_party/py/diffrax/_term.py" source_line=449}
+  negate.472 = f32[] negate(get-tuple-element.430), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/neg" source_file="third_party/py/diffrax/_term.py" source_line=449}
+  call.473 = f32[] call(compare.471, get-tuple-element.431, negate.472), to_apply=_where_3.113
+  compare.468 = pred[] compare(get-tuple-element.442, constant.460), direction=EQ, metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/eq" source_file="third_party/py/diffrax/_term.py" source_line=448}
+  negate.469 = f32[] negate(get-tuple-element.431), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/neg" source_file="third_party/py/diffrax/_term.py" source_line=448}
+  call.470 = f32[] call(compare.468, get-tuple-element.430, negate.469), to_apply=_where_3.108
+  subtract.474 = f32[] subtract(call.473, call.470), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/sub" source_file="third_party/py/diffrax/_term.py" source_line=198}
+  multiply.476 = f32[] multiply(convert.475, subtract.474), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/mul" source_file="third_party/py/equinox/internal/_omega.py" source_line=130}
+  multiply.479 = f32[] multiply(multiply.476, call.478), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/mul" source_file="third_party/py/diffrax/_term.py" source_line=208}
+  scatter.480 = f32[7]{0} scatter(broadcast.458, constant.456, multiply.479), update_window_dims={}, inserted_window_dims={0}, scatter_dims_to_operand_dims={0}, index_vector_dim=0, indices_are_sorted=true, unique_indices=true, to_apply=region_12.129, metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/scatter" source_file="third_party/py/diffrax/_solver/runge_kutta.py" source_line=769}
+  subtract.467 = f32[] subtract(get-tuple-element.431, get-tuple-element.430), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/sub" source_file="third_party/py/diffrax/_solver/runge_kutta.py" source_line=641}
+  tuple.482 = (s32[], pred[], pred[], s32[], f32[], /*index=5*/f32[], f32[7]{0}, f32[], f32[], f32[], /*index=10*/f32[], f32[]) tuple(constant.459, compare.481, constant.454, call.477, get-tuple-element.429, /*index=5*/call.478, scatter.480, get-tuple-element.429, subtract.467, get-tuple-element.430, /*index=10*/get-tuple-element.431, multiply.476), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/checkpointed-no-vjp/while" source_file="third_party/py/equinox/internal/_loop/checkpointed.py" source_line=270}
+  while.483 = (s32[], pred[], pred[], s32[], f32[], /*index=5*/f32[], f32[7]{0}, f32[], f32[], f32[], /*index=10*/f32[], f32[]) while(tuple.482), condition=region_15.188, body=region_13.140, metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/checkpointed-no-vjp/while" source_file="third_party/py/equinox/internal/_loop/checkpointed.py" source_line=270}
+  get-tuple-element.484 = s32[] get-tuple-element(while.483), index=0, metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/checkpointed-no-vjp/while" source_file="third_party/py/equinox/internal/_loop/checkpointed.py" source_line=270}
+  get-tuple-element.485 = pred[] get-tuple-element(while.483), index=1, metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/checkpointed-no-vjp/while" source_file="third_party/py/equinox/internal/_loop/checkpointed.py" source_line=270}
+  get-tuple-element.486 = pred[] get-tuple-element(while.483), index=2, metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/checkpointed-no-vjp/while" source_file="third_party/py/equinox/internal/_loop/checkpointed.py" source_line=270}
+  get-tuple-element.487 = s32[] get-tuple-element(while.483), index=3, metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/checkpointed-no-vjp/while" source_file="third_party/py/equinox/internal/_loop/checkpointed.py" source_line=270}
+  constant.453 = f32[7]{0} constant({0.00178001111, 0.000816434447, -0.0078808777, 0.144711, -0.582357168, 0.45808211, -0.0151515156})
+  get-tuple-element.490 = f32[7]{0} get-tuple-element(while.483), index=6, metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/checkpointed-no-vjp/while" source_file="third_party/py/equinox/internal/_loop/checkpointed.py" source_line=270}
+  dot.491 = f32[] dot(constant.453, get-tuple-element.490), lhs_contracting_dims={0}, rhs_contracting_dims={0}, operand_precision={highest,highest}, metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/dot_general" source_file="third_party/py/diffrax/_solver/base.py" source_line=31}
+  constant.452 = f32[] constant(inf)
+  call.492 = f32[] call(constant.454, dot.491, constant.452), to_apply=_where_7.206
+  compare.493 = pred[] compare(call.492, call.492), direction=NE, metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/ne" source_file="third_party/py/diffrax/_integrate.py" source_line=253}
+  call.494 = f32[] call(compare.493, constant.452, call.492), to_apply=_where_8.211
+  get-tuple-element.445 = f32[10]{0} get-tuple-element(arg_tuple.425), index=19
+  get-tuple-element.438 = s32[] get-tuple-element(arg_tuple.425), index=12
+  compare.517 = pred[] compare(get-tuple-element.438, constant.459), direction=LT, metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/inner-loop/lt" source_file="third_party/py/diffrax/_integrate.py" source_line=329}
+  constant.447 = s32[] constant(10)
+  add.518 = s32[] add(get-tuple-element.438, constant.447), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/inner-loop/add" source_file="third_party/py/diffrax/_integrate.py" source_line=329}
+  select.519 = s32[] select(compare.517, add.518, get-tuple-element.438), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/inner-loop/select_n" source_file="third_party/py/diffrax/_integrate.py" source_line=329}
+  dynamic-slice.520 = f32[1]{0} dynamic-slice(get-tuple-element.445, select.519), dynamic_slice_sizes={1}, metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/inner-loop/dynamic_slice" source_file="third_party/py/diffrax/_integrate.py" source_line=329}
+  reshape.521 = f32[] reshape(dynamic-slice.520), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/inner-loop/squeeze" source_file="third_party/py/diffrax/_integrate.py" source_line=329}
+  compare.522 = pred[] compare(reshape.521, get-tuple-element.431), direction=LE, metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/inner-loop/le" source_file="third_party/py/diffrax/_integrate.py" source_line=329}
+  compare.523 = pred[] compare(get-tuple-element.438, constant.447), direction=LT, metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/inner-loop/lt" source_file="third_party/py/diffrax/_integrate.py" source_line=330}
+  and.524 = pred[] and(compare.522, compare.523), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/inner-loop/and" source_file="third_party/py/diffrax/_integrate.py" source_line=328}
+  get-tuple-element.439 = f32[10]{0} get-tuple-element(arg_tuple.425), index=13
+  get-tuple-element.440 = f32[10]{0} get-tuple-element(arg_tuple.425), index=14
+  get-tuple-element.441 = s32[] get-tuple-element(arg_tuple.425), index=15
+  tuple.525 = (s32[], pred[], pred[], s32[], f32[10]{0}, /*index=5*/f32[10]{0}, s32[], f32[10]{0}, f32[], f32[], /*index=10*/f32[7]{0}, f32[]) tuple(constant.459, and.524, constant.454, get-tuple-element.438, get-tuple-element.439, /*index=5*/get-tuple-element.440, get-tuple-element.441, get-tuple-element.445, get-tuple-element.431, get-tuple-element.430, /*index=10*/get-tuple-element.490, get-tuple-element.429), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/inner-loop/checkpointed-no-vjp/while" source_file="third_party/py/equinox/internal/_loop/checkpointed.py" source_line=270}
+  while.526 = (s32[], pred[], pred[], s32[], f32[10]{0}, /*index=5*/f32[10]{0}, s32[], f32[10]{0}, f32[], f32[], /*index=10*/f32[7]{0}, f32[]) while(tuple.525), condition=region_19.398, body=region_16.269, metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/inner-loop/checkpointed-no-vjp/while" source_file="third_party/py/equinox/internal/_loop/checkpointed.py" source_line=270}
+  get-tuple-element.527 = s32[] get-tuple-element(while.526), index=0, metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/inner-loop/checkpointed-no-vjp/while" source_file="third_party/py/equinox/internal/_loop/checkpointed.py" source_line=270}
+  get-tuple-element.528 = pred[] get-tuple-element(while.526), index=1, metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/inner-loop/checkpointed-no-vjp/while" source_file="third_party/py/equinox/internal/_loop/checkpointed.py" source_line=270}
+  get-tuple-element.529 = pred[] get-tuple-element(while.526), index=2, metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/inner-loop/checkpointed-no-vjp/while" source_file="third_party/py/equinox/internal/_loop/checkpointed.py" source_line=270}
+  get-tuple-element.426 = s32[] get-tuple-element(arg_tuple.425), index=0
+  add.534 = s32[] add(get-tuple-element.426, constant.460), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/add" source_file="third_party/py/equinox/internal/_loop/common.py" source_line=485}
+  get-tuple-element.427 = pred[] get-tuple-element(arg_tuple.425), index=1
+  get-tuple-element.435 = s32[] get-tuple-element(arg_tuple.425), index=9
+  add.512 = s32[] add(get-tuple-element.435, constant.460), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/add" source_file="third_party/py/diffrax/_integrate.py" source_line=302}
+  constant.446 = s32[] constant(9999)
+  compare.535 = pred[] compare(add.512, constant.446), direction=LT, metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/lt" source_file="third_party/py/diffrax/_integrate.py" source_line=226}
+  and.536 = pred[] and(get-tuple-element.427, compare.535), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/and" source_file="third_party/py/equinox/internal/_loop/common.py" source_line=486}
+  get-tuple-element.488 = f32[] get-tuple-element(while.483), index=4, metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/checkpointed-no-vjp/while" source_file="third_party/py/equinox/internal/_loop/checkpointed.py" source_line=270}
+  call.509 = f32[] call(constant.454, get-tuple-element.488, get-tuple-element.429), to_apply=_where_6.226
+  get-tuple-element.444 = f32[] get-tuple-element(arg_tuple.425), index=18
+  minimum.501 = f32[] minimum(get-tuple-element.431, get-tuple-element.444), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/min" source_file="third_party/py/diffrax/_integrate.py" source_line=279}
+  get-tuple-element.443 = f32[10000]{0} get-tuple-element(arg_tuple.425), index=17
+  get-tuple-element.434 = s32[] get-tuple-element(arg_tuple.425), index=8
+  compare.495 = pred[] compare(get-tuple-element.434, constant.459), direction=LT, metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/lt" source_file="third_party/py/diffrax/_step_size_controller/constant.py" source_line=125}
+  constant.451 = s32[] constant(10000)
+  add.496 = s32[] add(get-tuple-element.434, constant.451), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/add" source_file="third_party/py/diffrax/_step_size_controller/constant.py" source_line=125}
+  select.497 = s32[] select(compare.495, add.496, get-tuple-element.434), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/select_n" source_file="third_party/py/diffrax/_step_size_controller/constant.py" source_line=125}
+  dynamic-slice.498 = f32[1]{0} dynamic-slice(get-tuple-element.443, select.497), dynamic_slice_sizes={1}, metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/dynamic_slice" source_file="third_party/py/diffrax/_step_size_controller/constant.py" source_line=125}
+  reshape.499 = f32[] reshape(dynamic-slice.498), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/squeeze" source_file="third_party/py/diffrax/_step_size_controller/constant.py" source_line=125}
+  constant.450 = f32[] constant(1e-06)
+  subtract.502 = f32[] subtract(get-tuple-element.444, constant.450), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/sub" source_file="third_party/py/diffrax/_integrate.py" source_line=155}
+  compare.503 = pred[] compare(reshape.499, subtract.502), direction=GT, metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/gt" source_file="third_party/py/diffrax/_integrate.py" source_line=155}
+  subtract.504 = f32[] subtract(get-tuple-element.444, minimum.501), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/sub" source_file="third_party/py/diffrax/_integrate.py" source_line=156}
+  constant.449 = f32[] constant(0.5)
+  multiply.505 = f32[] multiply(subtract.504, constant.449), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/mul" source_file="third_party/py/diffrax/_integrate.py" source_line=156}
+  add.506 = f32[] add(minimum.501, multiply.505), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/add" source_file="third_party/py/diffrax/_integrate.py" source_line=156}
+  call.507 = f32[] call(constant.454, get-tuple-element.444, add.506), to_apply=_where_6.216
+  call.508 = f32[] call(compare.503, call.507, reshape.499), to_apply=_where_6.221
+  constant.448 = pred[] constant(false)
+  call.510 = pred[] call(constant.454, constant.448, get-tuple-element.432), to_apply=_where_9.231
+  get-tuple-element.489 = f32[] get-tuple-element(while.483), index=5, metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/checkpointed-no-vjp/while" source_file="third_party/py/equinox/internal/_loop/checkpointed.py" source_line=270}
+  call.511 = f32[] call(constant.454, get-tuple-element.489, get-tuple-element.433), to_apply=_where_6.236
+  add.500 = s32[] add(get-tuple-element.434, constant.460), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/add" source_file="third_party/py/diffrax/_step_size_controller/constant.py" source_line=127}
+  get-tuple-element.436 = s32[] get-tuple-element(arg_tuple.425), index=10
+  call.513 = s32[] call(constant.454, constant.460, constant.459), to_apply=_where_4.241
+  add.514 = s32[] add(get-tuple-element.436, call.513), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/add" source_file="third_party/py/diffrax/_integrate.py" source_line=303}
+  get-tuple-element.437 = s32[] get-tuple-element(arg_tuple.425), index=11
+  call.515 = s32[] call(constant.454, constant.459, constant.460), to_apply=_where_4.246
+  add.516 = s32[] add(get-tuple-element.437, call.515), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/add" source_file="third_party/py/diffrax/_integrate.py" source_line=306}
+  get-tuple-element.530 = s32[] get-tuple-element(while.526), index=3, metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/inner-loop/checkpointed-no-vjp/while" source_file="third_party/py/equinox/internal/_loop/checkpointed.py" source_line=270}
+  get-tuple-element.531 = f32[10]{0} get-tuple-element(while.526), index=4, metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/inner-loop/checkpointed-no-vjp/while" source_file="third_party/py/equinox/internal/_loop/checkpointed.py" source_line=270}
+  get-tuple-element.532 = f32[10]{0} get-tuple-element(while.526), index=5, metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/inner-loop/checkpointed-no-vjp/while" source_file="third_party/py/equinox/internal/_loop/checkpointed.py" source_line=270}
+  get-tuple-element.533 = s32[] get-tuple-element(while.526), index=6, metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/body/inner-loop/checkpointed-no-vjp/while" source_file="third_party/py/equinox/internal/_loop/checkpointed.py" source_line=270}
+  ROOT tuple.537 = (s32[], pred[], pred[], f32[], f32[], /*index=5*/f32[], pred[], f32[], s32[], s32[], /*index=10*/s32[], s32[], s32[], f32[10]{0}, f32[10]{0}, /*index=15*/s32[], s32[], f32[10000]{0}, f32[], f32[10]{0}) tuple(add.534, and.536, get-tuple-element.427, call.509, minimum.501, /*index=5*/call.508, call.510, call.511, add.500, add.512, /*index=10*/add.514, add.516, get-tuple-element.530, get-tuple-element.531, get-tuple-element.532, /*index=15*/get-tuple-element.533, get-tuple-element.442, get-tuple-element.443, get-tuple-element.444, get-tuple-element.445)
+} // region_11.424
+
+region_20.538 {
+  arg_tuple.539 = (s32[], pred[], pred[], f32[], f32[], /*index=5*/f32[], pred[], f32[], s32[], s32[], /*index=10*/s32[], s32[], s32[], f32[10]{0}, f32[10]{0}, /*index=15*/s32[], s32[], f32[10000]{0}, f32[], f32[10]{0}) parameter(0)
+  get-tuple-element.541 = pred[] get-tuple-element(arg_tuple.539), index=1
+  get-tuple-element.542 = pred[] get-tuple-element(arg_tuple.539), index=2
+  get-tuple-element.543 = f32[] get-tuple-element(arg_tuple.539), index=3
+  get-tuple-element.544 = f32[] get-tuple-element(arg_tuple.539), index=4
+  get-tuple-element.545 = f32[] get-tuple-element(arg_tuple.539), index=5
+  get-tuple-element.546 = pred[] get-tuple-element(arg_tuple.539), index=6
+  get-tuple-element.547 = f32[] get-tuple-element(arg_tuple.539), index=7
+  get-tuple-element.548 = s32[] get-tuple-element(arg_tuple.539), index=8
+  get-tuple-element.550 = s32[] get-tuple-element(arg_tuple.539), index=10
+  get-tuple-element.551 = s32[] get-tuple-element(arg_tuple.539), index=11
+  get-tuple-element.552 = s32[] get-tuple-element(arg_tuple.539), index=12
+  get-tuple-element.553 = f32[10]{0} get-tuple-element(arg_tuple.539), index=13
+  get-tuple-element.554 = f32[10]{0} get-tuple-element(arg_tuple.539), index=14
+  get-tuple-element.555 = s32[] get-tuple-element(arg_tuple.539), index=15
+  get-tuple-element.556 = s32[] get-tuple-element(arg_tuple.539), index=16
+  get-tuple-element.557 = f32[10000]{0} get-tuple-element(arg_tuple.539), index=17
+  get-tuple-element.558 = f32[] get-tuple-element(arg_tuple.539), index=18
+  get-tuple-element.559 = f32[10]{0} get-tuple-element(arg_tuple.539), index=19
+  get-tuple-element.549 = s32[] get-tuple-element(arg_tuple.539), index=9
+  constant.561 = s32[] constant(9999)
+  compare.562 = pred[] compare(get-tuple-element.549, constant.561), direction=LT, metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/cond/lt" source_file="third_party/py/diffrax/_integrate.py" source_line=226}
+  get-tuple-element.540 = s32[] get-tuple-element(arg_tuple.539), index=0
+  constant.560 = s32[] constant(10000)
+  compare.563 = pred[] compare(get-tuple-element.540, constant.560), direction=LT, metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/cond/lt" source_file="third_party/py/equinox/internal/_loop/common.py" source_line=431}
+  ROOT and.564 = pred[] and(compare.562, compare.563), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while/cond/and" source_file="third_party/py/equinox/internal/_loop/common.py" source_line=431}
+} // region_20.538
+
+_where_10.565 {
+  Arg_0.566 = pred[] parameter(0), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/pjit"}
+  Arg_1.567 = s32[] parameter(1), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/pjit"}
+  Arg_2.568 = s32[] parameter(2), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/pjit"}
+  ROOT select.569 = s32[] select(Arg_0.566, Arg_1.567, Arg_2.568), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/jit(_where)/select_n" source_file="third_party/py/equinox/_enum.py" source_line=368}
+}
+
+region_21.570 {
+  arg_tuple.571 = (f32[], f32[], f32[10]{0}, f32[10]{0}, s32[], /*index=5*/s32[], s32[], s32[]) parameter(0)
+  get-tuple-element.572 = f32[] get-tuple-element(arg_tuple.571), index=0
+  get-tuple-element.573 = f32[] get-tuple-element(arg_tuple.571), index=1
+  get-tuple-element.574 = f32[10]{0} get-tuple-element(arg_tuple.571), index=2
+  get-tuple-element.575 = f32[10]{0} get-tuple-element(arg_tuple.571), index=3
+  get-tuple-element.576 = s32[] get-tuple-element(arg_tuple.571), index=4
+  get-tuple-element.577 = s32[] get-tuple-element(arg_tuple.571), index=5
+  get-tuple-element.578 = s32[] get-tuple-element(arg_tuple.571), index=6
+  get-tuple-element.579 = s32[] get-tuple-element(arg_tuple.571), index=7
+  ROOT tuple.580 = (f32[], f32[], f32[10]{0}, f32[10]{0}, s32[], /*index=5*/s32[], s32[], s32[]) tuple(get-tuple-element.572, get-tuple-element.573, get-tuple-element.574, get-tuple-element.575, get-tuple-element.576, /*index=5*/get-tuple-element.577, get-tuple-element.578, get-tuple-element.579)
+} // region_21.570
+
+branched_error_if_impl_11.604 {
+  Arg_8.613 = pred[] parameter(8), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/pjit"}
+  convert.615 = s32[] convert(Arg_8.613), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/jit(branched_error_if_impl)/convert_element_type" source_file="third_party/py/equinox/_errors.py" source_line=90}
+  Arg_0.605 = f32[] parameter(0), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/pjit"}
+  Arg_1.606 = f32[] parameter(1), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/pjit"}
+  Arg_2.607 = f32[10]{0} parameter(2), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/pjit"}
+  Arg_3.608 = f32[10]{0} parameter(3), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/pjit"}
+  Arg_4.609 = s32[] parameter(4), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/pjit"}
+  Arg_5.610 = s32[] parameter(5), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/pjit"}
+  Arg_6.611 = s32[] parameter(6), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/pjit"}
+  Arg_7.612 = s32[] parameter(7), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/pjit"}
+  tuple.616 = (f32[], f32[], f32[10]{0}, f32[10]{0}, s32[], /*index=5*/s32[], s32[], s32[]) tuple(Arg_0.605, Arg_1.606, Arg_2.607, Arg_3.608, Arg_4.609, /*index=5*/Arg_5.610, Arg_6.611, Arg_7.612), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/jit(branched_error_if_impl)/cond" source_file="third_party/py/equinox/_errors.py" source_line=90}
+  Arg_9.614 = s32[] parameter(9), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/pjit"}
+  conditional.617 = (f32[], f32[], f32[10]{0}, f32[10]{0}, s32[], /*index=5*/s32[], s32[], s32[]) call(tuple.616), to_apply=region_21.570, metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/jit(branched_error_if_impl)/cond" source_file="third_party/py/equinox/_errors.py" source_line=90}
+  get-tuple-element.618 = f32[] get-tuple-element(conditional.617), index=0, metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/jit(branched_error_if_impl)/cond" source_file="third_party/py/equinox/_errors.py" source_line=90}
+  get-tuple-element.619 = f32[] get-tuple-element(conditional.617), index=1, metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/jit(branched_error_if_impl)/cond" source_file="third_party/py/equinox/_errors.py" source_line=90}
+  get-tuple-element.620 = f32[10]{0} get-tuple-element(conditional.617), index=2, metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/jit(branched_error_if_impl)/cond" source_file="third_party/py/equinox/_errors.py" source_line=90}
+  get-tuple-element.621 = f32[10]{0} get-tuple-element(conditional.617), index=3, metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/jit(branched_error_if_impl)/cond" source_file="third_party/py/equinox/_errors.py" source_line=90}
+  get-tuple-element.622 = s32[] get-tuple-element(conditional.617), index=4, metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/jit(branched_error_if_impl)/cond" source_file="third_party/py/equinox/_errors.py" source_line=90}
+  get-tuple-element.623 = s32[] get-tuple-element(conditional.617), index=5, metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/jit(branched_error_if_impl)/cond" source_file="third_party/py/equinox/_errors.py" source_line=90}
+  get-tuple-element.624 = s32[] get-tuple-element(conditional.617), index=6, metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/jit(branched_error_if_impl)/cond" source_file="third_party/py/equinox/_errors.py" source_line=90}
+  get-tuple-element.625 = s32[] get-tuple-element(conditional.617), index=7, metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/jit(branched_error_if_impl)/cond" source_file="third_party/py/equinox/_errors.py" source_line=90}
+  ROOT tuple.626 = (f32[], f32[], f32[10]{0}, f32[10]{0}, s32[], /*index=5*/s32[], s32[], s32[]) tuple(get-tuple-element.618, get-tuple-element.619, get-tuple-element.620, get-tuple-element.621, get-tuple-element.622, /*index=5*/get-tuple-element.623, get-tuple-element.624, get-tuple-element.625)
+} // branched_error_if_impl_11.604
+
+diffeqsolve.627 {
+  constant.636 = s32[] constant(0)
+  constant.642 = pred[] constant(true)
+  Arg_2.630 = f32[] parameter(2), metadata={op_name="jit(<lambda>)/jit(main)/pjit"}
+  Arg_0.628 = f32[] parameter(0), metadata={op_name="jit(<lambda>)/jit(main)/pjit"}
+  Arg_1.629 = f32[] parameter(1), metadata={op_name="jit(<lambda>)/jit(main)/pjit"}
+  compare.643 = pred[] compare(Arg_0.628, Arg_1.629), direction=LT, metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/lt" source_file="third_party/py/diffrax/_integrate.py" source_line=734}
+  constant.641 = s32[] constant(1)
+  constant.640 = s32[] constant(-1)
+  call.644 = s32[] call(compare.643, constant.641, constant.640), to_apply=_where.7
+  convert.645 = f32[] convert(call.644), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/convert_element_type" source_file="third_party/py/diffrax/_integrate.py" source_line=735}
+  multiply.646 = f32[] multiply(Arg_0.628, convert.645), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/mul" source_file="third_party/py/diffrax/_integrate.py" source_line=735}
+  Arg_4.632 = f32[10000]{0} parameter(4), metadata={op_name="jit(<lambda>)/jit(main)/pjit"}
+  convert.652 = f32[] convert(call.644), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/convert_element_type" source_file="third_party/py/diffrax/_step_size_controller/constant.py" source_line=76}
+  broadcast.653 = f32[10000]{0} broadcast(convert.652), dimensions={}, metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/mul" source_file="third_party/py/diffrax/_step_size_controller/constant.py" source_line=76}
+  multiply.654 = f32[10000]{0} multiply(Arg_4.632, broadcast.653), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/mul" source_file="third_party/py/diffrax/_step_size_controller/constant.py" source_line=76}
+  slice.655 = f32[9999]{0} slice(multiply.654), slice={[1:10000]}, metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/slice" source_file="third_party/py/diffrax/_step_size_controller/constant.py" source_line=80}
+  slice.656 = f32[9999]{0} slice(multiply.654), slice={[0:9999]}, metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/slice" source_file="third_party/py/diffrax/_step_size_controller/constant.py" source_line=80}
+  compare.657 = pred[9999]{0} compare(slice.655, slice.656), direction=LE, metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/le" source_file="third_party/py/diffrax/_step_size_controller/constant.py" source_line=80}
+  call.658 = f32[10000]{0} call(multiply.654, compare.657), to_apply=branched_error_if_impl.27
+  slice.669 = f32[1]{0} slice(call.658), slice={[0:1]}, metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/slice" source_file="third_party/py/diffrax/_step_size_controller/constant.py" source_line=105}
+  reshape.670 = f32[] reshape(slice.669), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/squeeze" source_file="third_party/py/diffrax/_step_size_controller/constant.py" source_line=105}
+  compare.671 = pred[] compare(multiply.646, reshape.670), direction=NE, metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/ne" source_file="third_party/py/diffrax/_step_size_controller/constant.py" source_line=105}
+  convert.647 = f32[] convert(call.644), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/convert_element_type" source_file="third_party/py/diffrax/_integrate.py" source_line=736}
+  multiply.648 = f32[] multiply(Arg_1.629, convert.647), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/mul" source_file="third_party/py/diffrax/_integrate.py" source_line=736}
+  slice.672 = f32[1]{0} slice(call.658), slice={[9999:10000]}, metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/dynamic_slice" source_file="third_party/py/diffrax/_step_size_controller/constant.py" source_line=105}
+  reshape.673 = f32[] reshape(slice.672), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/squeeze" source_file="third_party/py/diffrax/_step_size_controller/constant.py" source_line=105}
+  compare.674 = pred[] compare(multiply.648, reshape.673), direction=NE, metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/ne" source_file="third_party/py/diffrax/_step_size_controller/constant.py" source_line=105}
+  or.675 = pred[] or(compare.671, compare.674), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/or" source_file="third_party/py/diffrax/_step_size_controller/constant.py" source_line=105}
+  call.676 = f32[10000]{0} call(call.658, or.675), to_apply=branched_error_if_impl_2.92
+  slice.677 = f32[1]{0} slice(call.676), slice={[1:2]}, metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/slice" source_file="third_party/py/diffrax/_step_size_controller/constant.py" source_line=108}
+  reshape.678 = f32[] reshape(slice.677), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/squeeze" source_file="third_party/py/diffrax/_step_size_controller/constant.py" source_line=108}
+  minimum.679 = f32[] minimum(reshape.678, multiply.648), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/min" source_file="third_party/py/diffrax/_integrate.py" source_line=827}
+  constant.638 = f32[] constant(0)
+  constant.637 = s32[] constant(2)
+  constant.633 = f32[] constant(inf)
+  broadcast.634 = f32[10]{0} broadcast(constant.633), dimensions={}
+  Arg_3.631 = f32[10]{0} parameter(3), metadata={op_name="jit(<lambda>)/jit(main)/pjit"}
+  convert.649 = f32[] convert(call.644), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/convert_element_type" source_file="third_party/py/diffrax/_integrate.py" source_line=740}
+  broadcast.650 = f32[10]{0} broadcast(convert.649), dimensions={}, metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/mul" source_file="third_party/py/diffrax/_integrate.py" source_line=740}
+  multiply.651 = f32[10]{0} multiply(Arg_3.631, broadcast.650), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/mul" source_file="third_party/py/diffrax/_integrate.py" source_line=740}
+  slice.659 = f32[9]{0} slice(multiply.651), slice={[1:10]}, metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/slice" source_file="third_party/py/diffrax/_integrate.py" source_line=799}
+  slice.660 = f32[9]{0} slice(multiply.651), slice={[0:9]}, metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/slice" source_file="third_party/py/diffrax/_integrate.py" source_line=799}
+  compare.661 = pred[9]{0} compare(slice.659, slice.660), direction=LT, metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/lt" source_file="third_party/py/diffrax/_integrate.py" source_line=799}
+  call.662 = f32[10]{0} call(multiply.651, compare.661), to_apply=branched_error_if_impl_0.50
+  broadcast.663 = f32[10]{0} broadcast(multiply.648), dimensions={}, metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/gt" source_file="third_party/py/diffrax/_integrate.py" source_line=804}
+  compare.664 = pred[10]{0} compare(call.662, broadcast.663), direction=GT, metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/gt" source_file="third_party/py/diffrax/_integrate.py" source_line=804}
+  broadcast.665 = f32[10]{0} broadcast(multiply.646), dimensions={}, metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/lt" source_file="third_party/py/diffrax/_integrate.py" source_line=804}
+  compare.666 = pred[10]{0} compare(call.662, broadcast.665), direction=LT, metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/lt" source_file="third_party/py/diffrax/_integrate.py" source_line=804}
+  or.667 = pred[10]{0} or(compare.664, compare.666), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/or" source_file="third_party/py/diffrax/_integrate.py" source_line=804}
+  call.668 = f32[10]{0} call(call.662, or.667), to_apply=branched_error_if_impl_1.73
+  tuple.680 = (s32[], pred[], pred[], f32[], f32[], /*index=5*/f32[], pred[], f32[], s32[], s32[], /*index=10*/s32[], s32[], s32[], f32[10]{0}, f32[10]{0}, /*index=15*/s32[], s32[], f32[10000]{0}, f32[], f32[10]{0}) tuple(constant.636, constant.642, constant.642, Arg_2.630, multiply.646, /*index=5*/minimum.679, constant.642, constant.638, constant.637, constant.636, /*index=10*/constant.636, constant.636, constant.636, broadcast.634, broadcast.634, /*index=15*/constant.636, call.644, call.658, multiply.648, call.668), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while" source_file="third_party/py/equinox/internal/_loop/checkpointed.py" source_line=270}
+  while.681 = (s32[], pred[], pred[], f32[], f32[], /*index=5*/f32[], pred[], f32[], s32[], s32[], /*index=10*/s32[], s32[], s32[], f32[10]{0}, f32[10]{0}, /*index=15*/s32[], s32[], f32[10000]{0}, f32[], f32[10]{0}) while(tuple.680), condition=region_20.538, body=region_11.424, metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while" source_file="third_party/py/equinox/internal/_loop/checkpointed.py" source_line=270}
+  get-tuple-element.682 = s32[] get-tuple-element(while.681), index=0, metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while" source_file="third_party/py/equinox/internal/_loop/checkpointed.py" source_line=270}
+  get-tuple-element.683 = pred[] get-tuple-element(while.681), index=1, metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while" source_file="third_party/py/equinox/internal/_loop/checkpointed.py" source_line=270}
+  get-tuple-element.684 = pred[] get-tuple-element(while.681), index=2, metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while" source_file="third_party/py/equinox/internal/_loop/checkpointed.py" source_line=270}
+  get-tuple-element.685 = f32[] get-tuple-element(while.681), index=3, metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while" source_file="third_party/py/equinox/internal/_loop/checkpointed.py" source_line=270}
+  get-tuple-element.686 = f32[] get-tuple-element(while.681), index=4, metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while" source_file="third_party/py/equinox/internal/_loop/checkpointed.py" source_line=270}
+  get-tuple-element.687 = f32[] get-tuple-element(while.681), index=5, metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while" source_file="third_party/py/equinox/internal/_loop/checkpointed.py" source_line=270}
+  get-tuple-element.688 = pred[] get-tuple-element(while.681), index=6, metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while" source_file="third_party/py/equinox/internal/_loop/checkpointed.py" source_line=270}
+  get-tuple-element.689 = f32[] get-tuple-element(while.681), index=7, metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while" source_file="third_party/py/equinox/internal/_loop/checkpointed.py" source_line=270}
+  get-tuple-element.690 = s32[] get-tuple-element(while.681), index=8, metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while" source_file="third_party/py/equinox/internal/_loop/checkpointed.py" source_line=270}
+  get-tuple-element.694 = s32[] get-tuple-element(while.681), index=12, metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while" source_file="third_party/py/equinox/internal/_loop/checkpointed.py" source_line=270}
+  get-tuple-element.697 = s32[] get-tuple-element(while.681), index=15, metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while" source_file="third_party/py/equinox/internal/_loop/checkpointed.py" source_line=270}
+  convert.703 = f32[] convert(call.644), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/convert_element_type" source_file="third_party/py/diffrax/_integrate.py" source_line=971}
+  multiply.704 = f32[] multiply(multiply.646, convert.703), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/mul" source_file="third_party/py/diffrax/_integrate.py" source_line=971}
+  convert.705 = f32[] convert(call.644), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/convert_element_type" source_file="third_party/py/diffrax/_integrate.py" source_line=972}
+  multiply.706 = f32[] multiply(multiply.648, convert.705), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/mul" source_file="third_party/py/diffrax/_integrate.py" source_line=972}
+  get-tuple-element.695 = f32[10]{0} get-tuple-element(while.681), index=13, metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while" source_file="third_party/py/equinox/internal/_loop/checkpointed.py" source_line=270}
+  convert.700 = f32[] convert(call.644), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/convert_element_type" source_file="third_party/py/diffrax/_integrate.py" source_line=939}
+  broadcast.701 = f32[10]{0} broadcast(convert.700), dimensions={}, metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/mul" source_file="third_party/py/diffrax/_integrate.py" source_line=939}
+  multiply.702 = f32[10]{0} multiply(get-tuple-element.695, broadcast.701), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/mul" source_file="third_party/py/diffrax/_integrate.py" source_line=939}
+  get-tuple-element.696 = f32[10]{0} get-tuple-element(while.681), index=14, metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while" source_file="third_party/py/equinox/internal/_loop/checkpointed.py" source_line=270}
+  get-tuple-element.692 = s32[] get-tuple-element(while.681), index=10, metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while" source_file="third_party/py/equinox/internal/_loop/checkpointed.py" source_line=270}
+  get-tuple-element.693 = s32[] get-tuple-element(while.681), index=11, metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while" source_file="third_party/py/equinox/internal/_loop/checkpointed.py" source_line=270}
+  get-tuple-element.691 = s32[] get-tuple-element(while.681), index=9, metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/outer-loop/checkpointed-no-vjp/while" source_file="third_party/py/equinox/internal/_loop/checkpointed.py" source_line=270}
+  constant.639 = s32[] constant(9999)
+  compare.698 = pred[] compare(get-tuple-element.691, constant.639), direction=LT, metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/lt" source_file="third_party/py/diffrax/_integrate.py" source_line=226}
+  call.699 = s32[] call(compare.698, constant.641, constant.636), to_apply=_where_10.565
+  compare.707 = pred[] compare(call.699, constant.636), direction=EQ, metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/eq" source_file="third_party/py/equinox/_enum.py" source_line=152}
+  constant.635 = s32[] constant(7)
+  compare.708 = pred[] compare(call.699, constant.635), direction=EQ, metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/eq" source_file="third_party/py/equinox/_enum.py" source_line=152}
+  or.709 = pred[] or(compare.707, compare.708), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/or" source_file="third_party/py/diffrax/_solution.py" source_line=28}
+  not.710 = pred[] not(or.709), metadata={op_name="jit(<lambda>)/jit(main)/jit(diffeqsolve)/not" source_file="third_party/py/diffrax/_integrate.py" source_line=996}
+  call.711 = (f32[], f32[], f32[10]{0}, f32[10]{0}, s32[], /*index=5*/s32[], s32[], s32[]) call(multiply.704, multiply.706, multiply.702, get-tuple-element.696, get-tuple-element.692, /*index=5*/get-tuple-element.693, get-tuple-element.691, call.699, not.710, call.699), to_apply=branched_error_if_impl_11.604
+  get-tuple-element.712 = f32[] get-tuple-element(call.711), index=0
+  get-tuple-element.713 = f32[] get-tuple-element(call.711), index=1
+  get-tuple-element.714 = f32[10]{0} get-tuple-element(call.711), index=2
+  get-tuple-element.715 = f32[10]{0} get-tuple-element(call.711), index=3
+  get-tuple-element.716 = s32[] get-tuple-element(call.711), index=4
+  get-tuple-element.717 = s32[] get-tuple-element(call.711), index=5
+  get-tuple-element.718 = s32[] get-tuple-element(call.711), index=6
+  get-tuple-element.719 = s32[] get-tuple-element(call.711), index=7
+  ROOT tuple.720 = (f32[], f32[], f32[10]{0}, f32[10]{0}, s32[], /*index=5*/s32[], s32[], s32[]) tuple(get-tuple-element.712, get-tuple-element.713, get-tuple-element.714, get-tuple-element.715, get-tuple-element.716, /*index=5*/get-tuple-element.717, get-tuple-element.718, get-tuple-element.719)
+} // diffeqsolve.627
+
+ENTRY main.731 {
+  constant.5 = f32[] constant(0)
+  constant.6 = f32[] constant(20)
+  Arg_0.1 = f32[] parameter(0), metadata={op_name="y0"}
+  constant.3 = f32[10]{0} constant({0, 2.22222233, 4.44444466, 6.66666651, 8.88888931, 11.1111107, 13.333333, 15.5555553, 17.7777786, 20})
+  constant.4 = f32[10000]{0} constant({...})
+  call.721 = (f32[], f32[], f32[10]{0}, f32[10]{0}, s32[], /*index=5*/s32[], s32[], s32[]) call(constant.5, constant.6, Arg_0.1, constant.3, constant.4), to_apply=diffeqsolve.627
+  get-tuple-element.722 = f32[] get-tuple-element(call.721), index=0
+  get-tuple-element.723 = f32[] get-tuple-element(call.721), index=1
+  get-tuple-element.724 = f32[10]{0} get-tuple-element(call.721), index=2
+  get-tuple-element.725 = f32[10]{0} get-tuple-element(call.721), index=3
+  constant.2 = s32[] constant(10000)
+  get-tuple-element.726 = s32[] get-tuple-element(call.721), index=4
+  get-tuple-element.727 = s32[] get-tuple-element(call.721), index=5
+  get-tuple-element.728 = s32[] get-tuple-element(call.721), index=6
+  get-tuple-element.729 = s32[] get-tuple-element(call.721), index=7
+  ROOT tuple.730 = (f32[], f32[], f32[10]{0}, f32[10]{0}, s32[], /*index=5*/s32[], s32[], s32[], s32[]) tuple(get-tuple-element.722, get-tuple-element.723, get-tuple-element.724, get-tuple-element.725, constant.2, /*index=5*/get-tuple-element.726, get-tuple-element.727, get-tuple-element.728, get-tuple-element.729)
+} // main.731
+

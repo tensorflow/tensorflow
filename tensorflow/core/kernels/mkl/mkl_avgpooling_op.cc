@@ -16,6 +16,7 @@
 #ifdef INTEL_MKL
 #define EIGEN_USE_THREADS
 
+#include "absl/algorithm/container.h"
 #include "dnnl.hpp"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/framework/common_shape_fns.h"
@@ -61,6 +62,18 @@ class MklAvgPoolingOp : public MklPoolingForwardOpBase<T> {
       MklPoolParameters pool_params;
       // Check whether pooling is 2D or 3D.
       bool is_pool2d = (this->ksize_.size() == 4);
+
+      // Validate that the input tensor rank matches the pooling type.
+      // This prevents a CHECK failure in TFShapeToMklDnnDimsInNCDHW when
+      // the input does not have the expected number of dimensions.
+      if (!dnn_shape_input.IsMklTensor()) {
+        int expected_rank = is_pool2d ? 4 : 5;
+        OP_REQUIRES(context, input_tensor.dims() == expected_rank,
+                    absl::InvalidArgumentError(
+                        absl::StrCat("Input must be rank ", expected_rank,
+                                     " but got rank ", input_tensor.dims())));
+      }
+
       // Get the input tensor and initialize the pooling parameters.
       TensorShape input_tensor_shape = input_tensor.shape();
       this->InitMklPoolParameters(context, &pool_params, dnn_shape_input,
@@ -205,6 +218,12 @@ class MklAvgPoolingGradOp : public MklPoolingBackwardOpBase<T> {
           MklGetInput(context, kInputTensorIndexInputShape);
       const Tensor& grad_tensor =
           MklGetInput(context, kInputTensorIndexInputGradient);
+      MklDnnShape orig_input_mkl_shape, grad_mkl_shape;
+      GetMklShape(context, kInputTensorIndexInputShape, &orig_input_mkl_shape,
+                  this->native_format_);
+      GetMklShape(context, kInputTensorIndexInputGradient, &grad_mkl_shape,
+                  this->native_format_);
+      if (!context->status().ok()) return;
 
       // Verify that orig_input_tensor is a 1D vector before calling
       // .vec<int32>(). A scalar or higher-rank tensor would cause an
@@ -316,13 +335,6 @@ class MklAvgPoolingGradOp : public MklPoolingBackwardOpBase<T> {
       if (output_shape.num_elements() == 0 || grad_tensor.NumElements() == 0) {
         return;
       }
-      MklDnnShape orig_input_mkl_shape, grad_mkl_shape;
-      GetMklShape(context, kInputTensorIndexInputShape, &orig_input_mkl_shape,
-                  this->native_format_);
-      GetMklShape(context, kInputTensorIndexInputGradient, &grad_mkl_shape,
-                  this->native_format_);
-      if (!context->status().ok()) return;
-
       // Used to allocate output_diff_src/diff_src.
       MklDnnData<T> grad_dnn_data(&cpu_engine_);
       MklPoolParameters pool_params;
@@ -361,6 +373,12 @@ class MklAvgPoolingGradOp : public MklPoolingBackwardOpBase<T> {
 
       memory::dims output_dims_mkl_order;
       this->GetOutputDims(pool_params, &output_dims_mkl_order);
+
+      // Check if there is any 0-dimension in output.
+      if (absl::c_any_of(output_dims_mkl_order,
+                         [](dnnl_dim_t dim) { return dim == 0; })) {
+        return;
+      }
 
       // get src memory::desc
       memory::desc src_md =

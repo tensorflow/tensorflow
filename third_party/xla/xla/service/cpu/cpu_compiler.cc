@@ -477,8 +477,7 @@ void AddHloVerifier(HloPassPipeline* pipeline, HloVerifierOpts&& opts = {},
 }
 
 std::unique_ptr<HloPassFix<HloPassPipeline>> CreateSimplificationPipeline(
-    absl::string_view name, HloModule* module, bool use_fusion_emitters,
-    bool use_onednn_custom_call) {
+    absl::string_view name, HloModule* module, bool use_onednn_custom_call) {
   // Run the following passes to a fixed point.
   const bool fast_compile =
       module->config().debug_options().xla_cpu_opt_preset() ==
@@ -506,10 +505,8 @@ std::unique_ptr<HloPassFix<HloPassPipeline>> CreateSimplificationPipeline(
   pipeline->AddPass<SortSimplifier>();
   pipeline->AddPass<HloDCE>();
   pipeline->AddPass<GatherExpander>(GatherExpander::kEliminateSimpleGathers);
-  if (use_fusion_emitters) {
-    // Conversion to MLIR only works with simplified gathers.
-    pipeline->AddPass<GatherSimplifier>();
-  }
+  // Conversion to MLIR only works with simplified gathers.
+  pipeline->AddPass<GatherSimplifier>();
 
   if (absl::c_contains(module->config()
                            .debug_options()
@@ -583,8 +580,6 @@ absl::Status CpuCompiler::RunHloPassesThroughLayoutAssn(
     HloModule* module, bool is_aot_compile,
     TargetMachineFeatures* target_machine_features) {
   const int64_t num_partitions = module->config().num_partitions();
-  const bool use_fusion_emitters =
-      module->config().debug_options().xla_cpu_use_fusion_emitters();
   const bool use_shardy_partitioner = module->config().use_shardy_partitioner();
   const bool fast_compile =
       module->config().debug_options().xla_cpu_opt_preset() ==
@@ -909,26 +904,22 @@ absl::Status CpuCompiler::RunHloPassesThroughLayoutAssn(
     pipeline.AddPass<ChangeOpDataType>(F16, F32, dot_conv_f16_to_f32_filter);
   }
 
-  pipeline.AddPass(CreateSimplificationPipeline(
-      "simplification", module, use_fusion_emitters, use_onednn_custom_call));
+  pipeline.AddPass(CreateSimplificationPipeline("simplification", module,
+                                                use_onednn_custom_call));
 
   // Scatter expander is sandwiched between two simplification pipelines to
   // enable constant folding with the original scatter instructions (which is
   // more efficient than with the expanded version) but then to also ensure that
   // the resulting while loops are simplified.
   pipeline.AddPass<SelectAndScatterExpander>();
-  if (use_fusion_emitters) {
-    pipeline.AddPass<ScatterExpander>(
-        ScatterExpander::kEliminateSimpleScatters);
-    pipeline.AddPass<ScatterSimplifier>();
-  }
-  if (!use_fusion_emitters || !kFusionEmitterScatterEnabled) {
+  pipeline.AddPass<ScatterExpander>(ScatterExpander::kEliminateSimpleScatters);
+  pipeline.AddPass<ScatterSimplifier>();
+  if (!kFusionEmitterScatterEnabled) {
     pipeline.AddPass<ScatterExpander>(ScatterExpander::kEliminateAllScatters);
   }
 
   pipeline.AddPass(CreateSimplificationPipeline(
-      "post_scatter_expansion_simplification", module, use_fusion_emitters,
-      use_onednn_custom_call));
+      "post_scatter_expansion_simplification", module, use_onednn_custom_call));
   pipeline.AddPass<GemvRewriter>(/*is_layout_sensitive=*/false);
 
   pipeline.AddPass<BitcastDtypesExpander>();
@@ -983,7 +974,6 @@ absl::Status CpuCompiler::RunHloPassesAfterLayoutAssn(
     TargetMachineFeatures* target_machine_features,
     const CompileOptions& compile_options) {
   const auto& debug_options = module->config().debug_options();
-  const bool use_fusion_emitters = debug_options.xla_cpu_use_fusion_emitters();
   bool flatten_after_fusion = options::FlattenAfterFusion(module->config());
   if (debug_options.xla_cpu_opt_preset() ==
       xla::DebugOptions::CPU_OPT_PRESET_FAST_COMPILE) {
@@ -1065,13 +1055,11 @@ absl::Status CpuCompiler::RunHloPassesAfterLayoutAssn(
       &alias_info,
       /*may_duplicate=*/!use_multi_output_fusion);
 
-  if (use_fusion_emitters) {
-    bool use_experimental_loop_fusion =
-        options::UseExperimentalLoopFusion(module->config());
-    bool use_tiled_emitter = options::EnableTiledEmitter(module->config());
-    pipeline.AddPass<FusionWrapper>(use_experimental_loop_fusion,
-                                    use_tiled_emitter);
-  }
+  bool use_experimental_loop_fusion =
+      options::UseExperimentalLoopFusion(module->config());
+  bool use_tiled_emitter = options::EnableTiledEmitter(module->config());
+  pipeline.AddPass<FusionWrapper>(use_experimental_loop_fusion,
+                                  use_tiled_emitter);
 
   if (use_multi_output_fusion) {
     pipeline.AddPass<CpuMultiOutputFusion>(&alias_info);

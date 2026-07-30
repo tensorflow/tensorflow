@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/memory/memory.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/cord.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/tsl/platform/status_macros.h"
@@ -1094,8 +1095,8 @@ module {
   ASSERT_OK_AND_ASSIGN(
       std::shared_ptr<LoadedExecutable> deserialized_executable,
       client_->GetDefaultCompiler()
-          ->DeserializeLoadedExecutable(serialized_executable,
-                                        std::move(options))
+          ->DeserializeLoadedExecutable(
+              absl::Cord(std::move(serialized_executable)), std::move(options))
           .Await());
 }
 
@@ -2685,7 +2686,8 @@ module {
     ASSERT_OK_AND_ASSIGN(std::shared_ptr<LoadedExecutable> deserialized_exec,
                          client_->GetDefaultCompiler()
                              ->DeserializeLoadedExecutable(
-                                 serialized_executable, std::move(options))
+                                 absl::Cord(std::move(serialized_executable)),
+                                 std::move(options))
                              .Await());
 
     ASSERT_OK_AND_ASSIGN(LoadedExecutable::ExecuteBundleResult result,

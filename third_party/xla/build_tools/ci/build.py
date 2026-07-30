@@ -815,9 +815,6 @@ Build(
     ),
     override_module={
         "xla": f"{_GITHUB_WORKSPACE}/openxla/xla",
-        # TODO(alekstheod): remove when jax is migrated to
-        # latest the rules_ml_toolchain
-        "rules_ml_toolchain": f"{_GITHUB_WORKSPACE}/openxla/rules_ml_toolchain",
     },
     options=_DEFAULT_BAZEL_OPTIONS,
     repo_env={"HERMETIC_PYTHON_VERSION": "3.12"},
@@ -924,6 +921,7 @@ Build(
         "-//tensorflow/python/kernel_tests/...",
         "-//tensorflow/python/data/...",
         "-//tensorflow/python/compiler/tensorrt/...",
+        "-//tensorflow/python/ops/numpy_ops/tests/...",
     ),
     build_tag_filters=tensorflow_cpu_tag_filters,
     test_tag_filters=tensorflow_cpu_tag_filters,
@@ -955,6 +953,7 @@ Build(
         "-//tensorflow/python/kernel_tests/...",
         "-//tensorflow/python/data/...",
         "-//tensorflow/python/compiler/tensorrt/...",
+        "-//tensorflow/python/ops/numpy_ops/tests/...",
     ),
     build_tag_filters=tensorflow_gpu_tag_filters,
     test_tag_filters=tensorflow_gpu_tag_filters,

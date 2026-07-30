@@ -23,6 +23,7 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "absl/base/thread_annotations.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/functional/any_invocable.h"
 #include "absl/functional/function_ref.h"
@@ -44,9 +45,11 @@ limitations under the License.
 #include "xla/future.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/kernel_args.h"
+#include "xla/stream_executor/memory_allocation.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/concurrency/executor.h"
 #include "xla/tsl/platform/env.h"
+#include "xla/tsl/util/tied_ref.h"
 #include "xla/xla_data.pb.h"
 
 // Include NCCL after XLA headers.
@@ -60,6 +63,7 @@ using NcclSignalDesc = GpuSignalDesc;
 struct NcclCapabilities {
   bool supports_device_comm;
   bool supports_one_sided_comm;
+  bool supports_gin;
 
   // Reason one-sided comm is not supported, cached at construction. Empty
   // if one-sided comm is supported.
@@ -99,6 +103,7 @@ class NcclCommunicator : public GpuCommunicator {
   absl::Status Abort() final;
   absl::Status HealthCheck() const final;
   absl::StatusOr<size_t> NumRanks() const final;
+  absl::StatusOr<size_t> CurrentRank() final;
 
   PlatformCommunicatorHandle platform_comm() const final {
     absl::MutexLock lock(comm_->mutex);
@@ -106,6 +111,7 @@ class NcclCommunicator : public GpuCommunicator {
   }
 
   bool SupportsDeviceComm() const final;
+  bool SupportsGin() const final;
 
   GxlCommunicator* gxl_communicator() const final {
     return gxl_communicator_.get();
@@ -172,6 +178,9 @@ class NcclCommunicator : public GpuCommunicator {
 
   Future<> WaitSignal(RankId peer, int op_cnt, const SignalDesc& signal_desc,
                       const Executor& executor) final;
+
+  Future<> WaitSignals(absl::Span<const PeerWaitDesc> peer_wait_descs,
+                       const Executor& executor) final;
 
   std::string ToString() const final;
 
@@ -249,6 +258,21 @@ class NcclCommunicator : public GpuCommunicator {
                                 const SignalDesc& signal_desc,
                                 const Executor& executor) final;
 
+  absl::Status LaunchWaitSignals(absl::Span<const PeerWaitDesc> peer_wait_descs,
+                                 const Executor& executor) final;
+
+  absl::Status LaunchMultiGpuBarrier(const Executor& executor) final;
+
+  void InitializeCrossDeviceBarrier(
+      tsl::TiedRef<se::MemoryAllocation> tied_signal_value,
+      tsl::TiedRef<se::MemoryAllocation> tied_signal,
+      tsl::TiedRef<SymmetricMemory> tied_symmetric_memory) final;
+
+  bool IsCrossDeviceBarrierInitiated() const final {
+    absl::MutexLock lock(barrier_mu_);
+    return is_cross_device_barrier_initiated_;
+  }
+
   // Executes f on executor_, or calls f directly if executor_ is null.
   Future<> Execute(absl::AnyInvocable<absl::Status() &&> f) const;
 
@@ -300,6 +324,15 @@ class NcclCommunicator : public GpuCommunicator {
   NcclCapabilities capabilities_;
 
   std::unique_ptr<GxlCommunicator> gxl_communicator_;
+
+  mutable absl::Mutex barrier_mu_;
+  bool is_cross_device_barrier_initiated_ ABSL_GUARDED_BY(barrier_mu_) = false;
+  tsl::TiedRef<se::MemoryAllocation> tied_cross_device_barrier_signal_value_
+      ABSL_GUARDED_BY(barrier_mu_);
+  tsl::TiedRef<se::MemoryAllocation> tied_cross_device_barrier_signal_
+      ABSL_GUARDED_BY(barrier_mu_);
+  tsl::TiedRef<SymmetricMemory> tied_cross_device_barrier_symmetric_memory_
+      ABSL_GUARDED_BY(barrier_mu_);
 };
 
 //===----------------------------------------------------------------------===//

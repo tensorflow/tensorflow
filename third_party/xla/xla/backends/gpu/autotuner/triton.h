@@ -56,8 +56,7 @@ class TritonBackend : public GpuCodegenBackend {
                            const BackendConfig& config) override;
 
   bool CanProduceWrongResults() const override { return true; }
-  // TODO(b/514330710): use valid version
-  std::string version() const override { return "unknown"; }
+  std::string version() const override;
 
  private:
   bool IsSupported(const HloInstruction& instr) override;

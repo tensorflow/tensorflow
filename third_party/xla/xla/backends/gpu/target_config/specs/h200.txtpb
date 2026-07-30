@@ -236,8 +236,8 @@ gpu_device_info {
 }
 platform_name: "CUDA"
 dnn_version_info {
-  major: 8
-  minor: 9
-  patch: 4
+  major: 9
+  minor: 10
+  patch: 0
 }
 device_description_str: "NVIDIA H200 141GB HBM3e"

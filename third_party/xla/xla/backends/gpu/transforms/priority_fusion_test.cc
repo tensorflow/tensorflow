@@ -1071,6 +1071,12 @@ ENTRY main {
 
 TEST_F(PriorityFusionTest,
        FuseTritonProducerWithTwoConsumersUsingMultiOutputFusion) {
+  if (GetDebugOptionsForTest()
+          .xla_gpu_experimental_enable_tiling_propagation()) {
+    // TODO(b/530092114): support multi-output fusions.
+    GTEST_SKIP()
+        << "Multi-output fusions are not supported with block-level emitter";
+  }
   const std::string kHloText = R"(
 HloModule t
 
@@ -1125,6 +1131,11 @@ ENTRY main {
 
 TEST_F(PriorityFusionTest,
        FuseProducerWithTritonConsumerUsingMultiOutputFusion) {
+  if (GetDebugOptionsForTest()
+          .xla_gpu_experimental_enable_tiling_propagation()) {
+    GTEST_SKIP()
+        << "Multi-output fusions are not supported with block-level emitter";
+  }
   const std::string kHloText = R"(
 HloModule t
 
@@ -1173,6 +1184,11 @@ ENTRY main {
 }
 
 TEST_F(PriorityFusionTest, FuseTritonFusionBothEndsUsingMultiOutputFusion) {
+  if (GetDebugOptionsForTest()
+          .xla_gpu_experimental_enable_tiling_propagation()) {
+    GTEST_SKIP()
+        << "Multi-output fusions are not supported with block-level emitter";
+  }
   // Here, we fuse `fusion` first into `exp` and `sqrt`. When we try to fuse
   // `log` into the two fusions resulting from the previous step using
   // multi-output fusion, we currently don't allow that, as we would need to
@@ -1486,8 +1502,8 @@ TEST_F(PriorityFusionWithTritonEnabledTest,
        MultipleMultiOutputFusionCandidates) {
   if (GetDebugOptionsForTest()
           .xla_gpu_experimental_enable_tiling_propagation()) {
-    // TODO: b/502910372 - Support Triton multi-output fusions under new tiling.
-    GTEST_SKIP() << "New tiling is not supported yet.";
+    GTEST_SKIP()
+        << "Multi-output fusions are not supported with block-level emitter";
   }
   auto module = *ParseAndReturnVerifiedModule(R"(
     HloModule test_module

@@ -40,13 +40,13 @@ AsyncThunkSequence CuDnnFusion::Emit(IrEmitterContext& ir_emitter_context,
       auto kernel_arguments,
       emitters::KernelArguments::Create(ir_emitter_context.buffer_assignment(),
                                         GetDefaultBufferAlignment(), &fusion));
-  return ThunkSequence::Of(std::make_unique<CuDnnThunk>(
+  return ThunkSequence::Of<CuDnnThunk>(
       emitters::GetComputationFingerprint(
           fusion.fused_instructions_computation(), {}),
       Thunk::ThunkInfo::WithProfileAnnotation(
           &fusion, ir_emitter_context.GetNextThunkId()),
       kernel_arguments.GetArgumentShapedSlices(),
-      kernel_arguments.GetArgumentOutputFlags()));
+      kernel_arguments.GetArgumentOutputFlags());
 }
 
 }  // namespace gpu

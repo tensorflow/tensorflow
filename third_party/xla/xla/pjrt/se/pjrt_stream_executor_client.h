@@ -23,6 +23,7 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <string>
+#include <typeindex>
 #include <utility>
 #include <vector>
 
@@ -35,10 +36,12 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/cord.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
+#include "riegeli/bytes/reader.h"
 #include "xla/client/executable_build_options.h"
 #include "xla/client/local_client.h"
 #include "xla/executable_run_options.h"
@@ -81,14 +84,6 @@ limitations under the License.
 #include "tsl/platform/casts.h"
 
 namespace xla {
-
-struct PjRtStreamExecutorExecutionOutput {
-  // Donated inputs which must be freed.
-  std::vector<tsl::AsyncValueRef<RawSEDeviceMemory>> to_be_released;
-  // For PjRtStreamExecutorClient implementations that
-  // use ScopedDeviceAddress for donated inputs.
-  std::vector<se::ScopedDeviceAddress<uint8_t>> se_to_be_released;
-};
 
 class PjRtStreamExecutorDevice : public PjRtDevice {
  public:
@@ -234,6 +229,117 @@ class PjRtStreamExecutorMemorySpace : public PjRtMemorySpace {
   PjRtMemorySpaceCApiDelegator capi_delegator_{this};
 };
 
+class PjRtStreamExecutorRawClient : public PjRtRawClient {
+ public:
+  explicit PjRtStreamExecutorRawClient(
+      std::unique_ptr<se::DeviceAddressAllocator> allocator,
+      LocalClient* client,
+      std::unique_ptr<HostMemoryAllocator> host_memory_allocator,
+      bool should_stage_host_to_device_transfers,
+      std::unique_ptr<AsyncWorkRunner> async_work_runner,
+      se::StreamExecutor* executor = nullptr,
+      std::unique_ptr<gpu::GpuExecutableRunOptions> gpu_run_options = nullptr);
+  virtual ~PjRtStreamExecutorRawClient() = default;
+
+  gpu::GpuExecutableRunOptions* gpu_run_options() const {
+    return gpu_run_options_.get();
+  }
+
+  AsyncWorkRunner* async_work_runner() const {
+    return async_work_runner_.get();
+  }
+
+  HostMemoryAllocator* GetHostMemoryAllocator() const {
+    return host_memory_allocator_.get();
+  }
+
+  bool should_stage_host_to_device_transfers() const {
+    return should_stage_host_to_device_transfers_;
+  }
+
+  se::StreamExecutor* executor() const { return executor_; }
+
+  se::DeviceAddressAllocator* allocator() const { return allocator_; }
+  LocalClient* client() const { return client_; }
+
+  bool ShouldStageHostToDeviceTransfers(const void* data, int64_t size) const {
+    // Allocating multi-gigabyte pinned buffers can be very slow. In that case,
+    // using a staging buffer is probably worse than not using one.
+    // TODO(phawkins): add chunking for transfers.
+    return should_stage_host_to_device_transfers_ &&
+           size < (int64_t{1} << 30) &&
+           (executor_ == nullptr || !executor_->IsHostMemoryPinned(data, size));
+  }
+
+  void ThenRecordEvent(BufferSequencingEventRef event,
+                       LocalDeviceState* local_device,
+                       EventPool::Handle device_event, se::Stream* stream);
+
+  absl::Status AllocateAndRecordEvent(
+      BufferSequencingEventRef event, LocalDeviceState* local_device,
+      se::Stream* stream, absl::string_view tag = "",
+      absl::AnyInvocable<void() &&> cleanup = {});
+
+  void SetEventAsError(BufferSequencingEventRef event, absl::Status s);
+
+  absl::Status WaitForAllocation(se::Stream* stream,
+                                 const PjRtRawBufferInterface& raw_buffer);
+
+  static bool IsOnCpu(PjRtMemorySpace* memory_space);
+
+  absl::StatusOr<PjRtRawBufferRef> AllocateRawBuffer(
+      PjRtMemorySpace* memory_space, size_t on_device_bytes_count,
+      bool retry_on_oom, tsl::AsyncValueRef<bool> allocate_after) override;
+
+  absl::StatusOr<PjRtRawBufferRef> AllocateRawBufferForExecute(
+      PjRtMemorySpace* memory_space, size_t on_device_bytes_count,
+      bool retry_on_oom) override;
+
+  absl::StatusOr<std::pair<PjRtRawBufferRef,
+                           CommonPjRtClient::PjRtFulfillAliasRawBufferCallback>>
+  CreateRawBufferChannel(PjRtMemorySpace* memory_space,
+                         size_t on_device_bytes_count) override;
+
+  absl::StatusOr<std::pair<PjRtDeviceEventPromiseRef, PjRtDeviceEventRef>>
+  CreateLinkedEventPromise(PjRtMemorySpace* memory_space,
+                           absl::string_view debug_info) override;
+
+  virtual void ScheduleRemoteSend(PjRtMemorySpace* memory_space,
+                                  PjRtRawBufferRef raw_buffer,
+                                  PjRtDeviceEventRefVector definition_events,
+                                  PjRtDeviceEventPromiseRef usage_event_promise,
+                                  Future<std::string> serialized_descriptor,
+                                  PjRtBuffer::RemoteSendCallback on_done);
+
+  virtual absl::StatusOr<PjRtDeviceEventRefVector> CrossHostReceiveBuffersInto(
+      absl::Span<const PjRtRawBufferRef> buffers,
+      PjRtCrossHostRecvNotifier notifier,
+      PjRtDeviceEventSpan transfer_dependency_avs);
+
+  virtual absl::StatusOr<PjRtDeviceEventRefVector> CrossHostTransferBuffers(
+      PjRtDeviceEventRefVector transfer_dependencies,
+      std::vector<CommonPjRtClient::CrossHostTransferSpec> transfer_specs);
+
+  void Stop() { async_work_runner_.reset(); }
+
+ private:
+  se::DeviceAddressAllocator* allocator_ = nullptr;
+  std::unique_ptr<se::DeviceAddressAllocator> owned_allocator_;
+  LocalClient* client_ = nullptr;
+
+  // Allocator to be used for staging memory transfers to devices.
+  std::unique_ptr<HostMemoryAllocator> host_memory_allocator_;
+
+  // Should we always prefer to stage host-to-device transfers via memory
+  // allocated on host_memory_allocator_? True only on GPU, where we prefer to
+  // transfer via pinned memory.
+  bool should_stage_host_to_device_transfers_;
+
+  std::unique_ptr<AsyncWorkRunner> async_work_runner_;
+  se::StreamExecutor* executor_;
+  std::unique_ptr<gpu::GpuExecutableRunOptions> gpu_run_options_;
+};
+
 class PjRtStreamExecutorClient : public CommonPjRtClient {
  public:
   // `allocator` may null, in which case the platform default allocator is used.
@@ -242,11 +348,23 @@ class PjRtStreamExecutorClient : public CommonPjRtClient {
       std::vector<std::unique_ptr<PjRtStreamExecutorDevice>> devices,
       int process_index,
       std::vector<std::unique_ptr<PjRtMemorySpace>> memory_spaces,
+      std::shared_ptr<const xla::PjRtTopologyDescription> topology,
       std::unique_ptr<se::DeviceAddressAllocator> allocator,
       std::unique_ptr<HostMemoryAllocator> host_memory_allocator,
       bool should_stage_host_to_device_transfers,
-      std::unique_ptr<gpu::GpuExecutableRunOptions> gpu_run_options);
+      std::unique_ptr<gpu::GpuExecutableRunOptions> gpu_run_options = nullptr,
+      std::shared_ptr<KeyValueStoreInterface> kv_store = nullptr);
+  explicit PjRtStreamExecutorClient(
+      std::string platform_name, LocalClient* client,
+      std::vector<std::unique_ptr<PjRtStreamExecutorDevice>> devices,
+      int process_index,
+      std::vector<std::unique_ptr<PjRtMemorySpace>> memory_spaces,
+      std::shared_ptr<const xla::PjRtTopologyDescription> topology,
+      std::unique_ptr<PjRtStreamExecutorRawClient> raw_client,
+      std::shared_ptr<KeyValueStoreInterface> kv_store = nullptr);
   ~PjRtStreamExecutorClient() override;
+
+  PjRtStreamExecutorRawClient* raw_client() const { return raw_client_.get(); }
 
   int process_index() const override { return process_index_; }
 
@@ -307,11 +425,20 @@ class PjRtStreamExecutorClient : public CommonPjRtClient {
       absl::string_view serialized,
       std::optional<CompileOptions> options) override;
 
+  absl::StatusOr<std::unique_ptr<PjRtExecutable>> DeserializeExecutable(
+      const absl::Cord& serialized,
+      std::optional<CompileOptions> options) override;
+
   // For PjRtStreamExecutorClient, `options` is mandatory.
   // This function returns an InvalidArgument error if `std::nullopt` is passed.
   // TODO(b/237720161): make it actually optional
   absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>>
   LoadSerializedExecutable(absl::string_view serialized,
+                           std::optional<CompileOptions> options,
+                           const LoadOptions& load_options) override;
+
+  absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>>
+  LoadSerializedExecutable(const absl::Cord& serialized,
                            std::optional<CompileOptions> options,
                            const LoadOptions& load_options) override;
 
@@ -336,7 +463,7 @@ class PjRtStreamExecutorClient : public CommonPjRtClient {
 
   absl::Status DmaUnmap(void* data) override;
 
-  bool IsDmaMapped(const void* data_start, int64_t transfer_size);
+  bool IsHostMemoryPinned(const void* ptr, uint64_t size) const;
 
   LocalDeviceState& device_state(int device_ordinal) const {
     return *absl::down_cast<PjRtStreamExecutorDevice*>(
@@ -345,52 +472,32 @@ class PjRtStreamExecutorClient : public CommonPjRtClient {
                 ->local_device_state();
   }
   LocalClient* client() const { return client_; }
-  se::DeviceAddressAllocator* allocator() const { return allocator_; }
+  se::DeviceAddressAllocator* allocator() const {
+    return raw_client_->allocator();
+  }
   HostMemoryAllocator* GetHostMemoryAllocator() const override {
-    return host_memory_allocator_.get();
+    return raw_client_->GetHostMemoryAllocator();
   }
 
-  bool ShouldStageHostToDeviceTransfers(const void* data, int64_t size) {
-    // Allocating multi-gigabyte pinned buffers can be very slow. In that case,
-    // using a staging buffer is probably worse than not using one.
-    // TODO(phawkins): add chunking for transfers.
-    return should_stage_host_to_device_transfers_ &&
-           size < (int64_t{1} << 30) && !IsDmaMapped(data, size);
+  gpu::GpuExecutableRunOptions* gpu_run_options() const {
+    return raw_client_->gpu_run_options();
   }
 
-  virtual gpu::GpuExecutableRunOptions* gpu_run_options(
-      const ExecuteOptions& options) {
-    return gpu_run_options_.get();
-  }
 
-  virtual absl::StatusOr<PjRtStreamExecutorExecutionOutput> RunAsync(
-      LocalExecutable& exec, PjRtDevice* device,
-      absl::Span<const PjRtRawBufferRef> flat_arguments,
-      absl::Span<const PjRtRawBufferRef> results,
-      ExecutableRunOptions run_options, bool parameter_is_tupled_arguments,
-      absl::Span<const Shape> executable_parameter_shapes);
-
-  void ThenRecordEvent(BufferSequencingEventRef event,
-                       LocalDeviceState* local_device,
-                       EventPool::Handle device_event, se::Stream* stream);
-
-  absl::Status AllocateAndRecordEvent(
-      BufferSequencingEventRef event, LocalDeviceState* local_device,
-      se::Stream* stream, absl::string_view tag = "",
-      absl::AnyInvocable<void() &&> cleanup = {});
 
   PjRtDeviceEventRef CreateErrorDeviceEvent(absl::Status error);
 
-  void SetEventAsError(BufferSequencingEventRef event, absl::Status s);
-
-  bool IsOnCpu(PjRtMemorySpace* memory_space);
+  bool IsOnCpu(PjRtMemorySpace* memory_space) override {
+    return PjRtStreamExecutorRawClient::IsOnCpu(memory_space);
+  }
 
   AsyncWorkRunner* async_work_runner() const override {
-    return async_work_runner_.get();
+    return raw_client_->async_work_runner();
   }
 
   bool allows_recursion() const override { return false; }
   bool allows_execute_recursion() const override { return true; }
+  bool use_stream_based_compaction() const override { return true; }
 
   PjRtDynamicShapeKind GetDynamicShapeKind(
       int memory_space_kind_id) const override {
@@ -407,31 +514,67 @@ class PjRtStreamExecutorClient : public CommonPjRtClient {
 
   absl::StatusOr<PjRtRawBufferRef> AllocateRawBuffer(
       PjRtMemorySpace* memory_space, size_t on_device_bytes_count,
-      bool retry_on_oom, tsl::AsyncValueRef<bool> allocate_after) override;
+      bool retry_on_oom, tsl::AsyncValueRef<bool> allocate_after) override {
+    return raw_client_->AllocateRawBuffer(memory_space, on_device_bytes_count,
+                                          retry_on_oom, allocate_after);
+  }
 
   absl::StatusOr<PjRtRawBufferRef> AllocateRawBufferForExecute(
       PjRtMemorySpace* memory_space, size_t on_device_bytes_count,
-      bool retry_on_oom) override;
+      bool retry_on_oom) override {
+    return raw_client_->AllocateRawBufferForExecute(
+        memory_space, on_device_bytes_count, retry_on_oom);
+  }
 
   absl::StatusOr<std::pair<PjRtRawBufferRef, PjRtFulfillAliasRawBufferCallback>>
   CreateRawBufferChannel(PjRtMemorySpace* memory_space,
-                         size_t on_device_bytes_count) override;
+                         size_t on_device_bytes_count) override {
+    return raw_client_->CreateRawBufferChannel(memory_space,
+                                               on_device_bytes_count);
+  }
 
-  absl::StatusOr<PjRtDeviceEventRef> LinearizeInto(
-      const LiteralSlice& literal, const xla::Shape& device_shape,
-      HostBufferSemantics host_buffer_semantics,
-      PjRtRawBufferRef raw_buffer) override;
-
-  absl::StatusOr<PjRtDeviceEventRef> LinearizeHostBufferInto(
-      const void* data, PrimitiveType type, absl::Span<int64_t const> dims,
+  bool ShouldPerformZeroCopyLinearize(
+      const void* data, const xla::Shape& device_shape, PrimitiveType type,
+      absl::Span<int64_t const> dims,
       std::optional<absl::Span<int64_t const>> byte_strides,
-      HostBufferSemantics host_buffer_semantics,
-      absl::AnyInvocable<void() &&> on_done_with_host_buffer,
-      const xla::Shape& device_shape, PjRtRawBufferRef raw_buffer) override;
+      PjRtMemorySpace* memory_space) override;
+
+  absl::StatusOr<tsl::AsyncValueRef<PjRtStagingBuffer>> AllocateLinearizeDest(
+      bool sync, const xla::Shape& device_shape,
+      absl::Span<const int64_t> byte_strides,
+      PjRtRawBufferRef dest_buffer) override;
 
   absl::StatusOr<std::pair<PjRtDeviceEventPromiseRef, PjRtDeviceEventRef>>
   CreateLinkedEventPromise(PjRtMemorySpace* memory_space,
-                           absl::string_view debug_info) override;
+                           absl::string_view debug_info) override {
+    return raw_client_->CreateLinkedEventPromise(memory_space, debug_info);
+  }
+
+  void ScheduleRemoteSend(PjRtMemorySpace* memory_space,
+                          PjRtRawBufferRef raw_buffer,
+                          PjRtDeviceEventRefVector definition_events,
+                          PjRtDeviceEventPromiseRef usage_event_promise,
+                          Future<std::string> serialized_descriptor,
+                          PjRtBuffer::RemoteSendCallback on_done) override {
+    raw_client_->ScheduleRemoteSend(memory_space, raw_buffer, definition_events,
+                                    usage_event_promise, serialized_descriptor,
+                                    std::move(on_done));
+  }
+
+  absl::StatusOr<PjRtDeviceEventRefVector> CrossHostReceiveBuffersInto(
+      absl::Span<const PjRtRawBufferRef> buffers,
+      PjRtCrossHostRecvNotifier notifier,
+      PjRtDeviceEventSpan transfer_dependency_avs) override {
+    return raw_client_->CrossHostReceiveBuffersInto(
+        buffers, std::move(notifier), transfer_dependency_avs);
+  }
+
+  absl::StatusOr<PjRtDeviceEventRefVector> CrossHostTransferBuffers(
+      PjRtDeviceEventRefVector transfer_dependencies,
+      std::vector<CrossHostTransferSpec> transfer_specs) override {
+    return raw_client_->CrossHostTransferBuffers(
+        std::move(transfer_dependencies), std::move(transfer_specs));
+  }
 
   absl::StatusOr<PjRtDeviceEventRef> CreateDeviceEvent(
       PjRtMemorySpace* memory_space, Future<> dependency) override;
@@ -447,14 +590,35 @@ class PjRtStreamExecutorClient : public CommonPjRtClient {
   tsl::AsyncValueRef<PjRtStagingBuffer> AllocateForDelinearizationAsync(
       size_t size, PjRtMemorySpace* memory_space) override;
 
-  absl::Status WaitForAllocation(se::Stream* stream,
-                                 const PjRtRawBufferInterface& raw_buffer);
-
   void LaunchOnDevice(PjRtDevice* device,
                       absl::AnyInvocable<void()> execute_fn) const override;
 
+  absl::StatusOr<xla::Shape> GetCopyDestinationShape(
+      const xla::Shape& shape, PjRtMemorySpace* src_memory_space,
+      PjRtMemorySpace* dst_memory_space) override;
+
+  absl::StatusOr<const xla::PjRtTopologyDescription*> GetTopologyDescription()
+      const override {
+    return topology();
+  }
+
+  const xla::PjRtTopologyDescription* topology() const {
+    return topology_.get();
+  }
+
+  std::optional<std::shared_ptr<KeyValueStoreInterface>> key_value_store()
+      const override {
+    if (!kv_store_) {
+      return std::nullopt;
+    }
+    return kv_store_;
+  }
+
  protected:
   friend class PjRtStreamExecutorRawBuffer;
+  friend class PjRtStreamExecutorRawLoadedExecutable;
+
+  virtual void RecordMemoryStats() {}
 
   // Helper function for creating PjRtStreamExecutorExecutables. Modifies
   // `options` in-place.
@@ -498,21 +662,19 @@ class PjRtStreamExecutorClient : public CommonPjRtClient {
       std::unique_ptr<LocalExecutable> local_executables,
       CompileOptions compile_options);
 
+  absl::StatusOr<std::unique_ptr<PjRtExecutable>> DeserializeExecutable(
+      std::unique_ptr<riegeli::Reader> reader,
+      std::optional<CompileOptions> options);
+
   absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> LoadInternal(
       std::shared_ptr<PjRtExecutable> executable, bool dump);
 
   const PjRtPlatformId platform_id_;
   const std::string platform_name_;
   LocalClient* client_;
+  std::shared_ptr<const xla::PjRtTopologyDescription> topology_;
 
-  // Allocator to be used for staging memory transfers to devices.
-  std::unique_ptr<HostMemoryAllocator> host_memory_allocator_;
-
-  // Device memory allocator. If owned, the allocator must outlive the devices,
-  // because it is the device destructor that waits for any outstanding work to
-  // complete.
-  se::DeviceAddressAllocator* allocator_;
-  std::unique_ptr<se::DeviceAddressAllocator> owned_allocator_;
+  std::unique_ptr<PjRtStreamExecutorRawClient> raw_client_;
 
   // Includes all devices, including non-local devices on multi-host platforms.
   std::vector<std::unique_ptr<PjRtStreamExecutorDevice>> owned_devices_;
@@ -528,20 +690,28 @@ class PjRtStreamExecutorClient : public CommonPjRtClient {
   // Pointers to `owned_memory_spaces_`.
   std::vector<PjRtMemorySpace*> memory_spaces_;
 
-  // Should we always prefer to stage host-to-device transfers via memory
-  // allocated on host_memory_allocator_? True only on GPU, where we prefer to
-  // transfer via pinned memory.
-  bool should_stage_host_to_device_transfers_;
-
-  std::unique_ptr<gpu::GpuExecutableRunOptions> gpu_run_options_;
+  std::shared_ptr<KeyValueStoreInterface> kv_store_;
 
   tsl::thread::ThreadPool compile_thread_pool_;
-  std::unique_ptr<AsyncWorkRunner> async_work_runner_;
-
-  absl::Mutex dma_maps_mutex_;
-  // Maps dma mapped start pointers to their sizes.
-  absl::flat_hash_map<void*, size_t> dma_maps_ ABSL_GUARDED_BY(dma_maps_mutex_);
 };
+
+struct PjRtStreamExecutorExecutionOutput {
+  // Donated inputs which must be freed.
+  std::vector<tsl::AsyncValueRef<RawSEDeviceMemory>> to_be_released;
+  // For PjRtStreamExecutorClient implementations that
+  // use ScopedDeviceAddress for donated inputs.
+  std::vector<se::ScopedDeviceAddress<uint8_t>> se_to_be_released;
+};
+
+using RunAsyncHandlerFn = absl::StatusOr<PjRtStreamExecutorExecutionOutput> (*)(
+    LocalExecutable& exec, PjRtDevice* device,
+    absl::Span<const PjRtRawBufferRef> flat_arguments,
+    absl::Span<const PjRtRawBufferRef> results,
+    ExecutableRunOptions run_options, bool parameter_is_tupled_arguments,
+    absl::Span<const Shape> executable_parameter_shapes);
+
+void RegisterRunAsyncHandler(std::type_index executable_type,
+                             RunAsyncHandlerFn handler);
 
 // Converts a 2D set of Device objects indexed by [replica][partition] into an
 // xla::DeviceAssignment.

@@ -33,6 +33,7 @@ tf_class {
   member_method {
     name: "loop"
     argspec: "args=[\'coord\', \'timer_interval_secs\', \'target\', \'args\', \'kwargs\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
+    method_kind: STATIC
   }
   member_method {
     name: "run"

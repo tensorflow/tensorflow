@@ -84,8 +84,7 @@ class BlockLevelEmitterBackend : public GpuCodegenBackend {
   // We don't want to use the Triton emitter as a reference because it can
   // produce wrong results.
   bool CanProduceWrongResults() const override { return true; }
-  // TODO(b/514330710): use valid version
-  std::string version() const override { return "unknown"; }
+  std::string version() const override;
 
  private:
   absl::StatusOr<BlockLevelFusionConfig> GetCostModelConfig(

@@ -139,6 +139,19 @@ PythonHooks* PythonHooks::GetSingleton() {
   return singleton;
 }
 
+PythonHookContext::~PythonHookContext() {
+  if (Py_IsInitialized()) {
+    PyGILState_STATE gil_state = PyGILState_Ensure();
+    for (auto& shard : entry_shards_) {
+#ifdef Py_GIL_DISABLED
+      absl::MutexLock lock(&shard.mu);
+#endif  // Py_GIL_DISABLED
+      shard.entries.clear();
+    }
+    PyGILState_Release(gil_state);
+  }
+}
+
 void PythonHookContext::Start(const PythonHooksOptions& options) {
   if (!Py_IsInitialized()) {
     return;

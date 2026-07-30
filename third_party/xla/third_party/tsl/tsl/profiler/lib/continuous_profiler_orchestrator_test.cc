@@ -18,10 +18,11 @@ limitations under the License.
 #include <atomic>
 #include <memory>
 #include <utility>
+#include <vector>
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "absl/time/clock.h"
+#include "absl/synchronization/notification.h"
 #include "absl/time/time.h"
 #include "xla/tsl/platform/test.h"
 #include "tsl/profiler/lib/profiler_interface.h"
@@ -31,7 +32,6 @@ namespace tsl {
 namespace profiler {
 namespace {
 
-using ::testing::Invoke;
 using ::testing::Pointee;
 using ::testing::Return;
 
@@ -67,15 +67,19 @@ TEST(ContinuousProfilerOrchestratorTest,
 
   // Setup Consume mock to return sequential chunks with high sizes to shrink
   // the interval
+  absl::Notification consumed_enough;
   std::atomic<int> consume_count(0);
   EXPECT_CALL(*mock, Consume())
-      .WillRepeatedly(Invoke([&]() -> absl::StatusOr<ConsumeResult> {
+      .WillRepeatedly([&]() -> absl::StatusOr<ConsumeResult> {
         int count = ++consume_count;
+        if (count >= 4 && !consumed_enough.HasBeenNotified()) {
+          consumed_enough.Notify();
+        }
         return ConsumeResult{
             .data = std::any(count),
             .estimated_size_bytes = 1000 * 1024 * 1024  // 1000MB (>512MB)
         };
-      }));
+      });
 
   ContinuousProfilerOrchestrator<ProfilerInterface> orchestrator(
       std::move(mock_profiler));
@@ -83,13 +87,8 @@ TEST(ContinuousProfilerOrchestratorTest,
   // Start orchestrator (spawns background loop)
   ASSERT_OK(orchestrator.Start());
 
-  // Wait until we have consumed at least 4 chunks.
-  // Due to high watermark scaling, interval shrinks from 1s -> 500ms -> 250ms
-  // -> 125ms -> 100ms. This will happen in less than 1.0 second of real-time
-  // sleep.
-  while (consume_count < 4) {
-    absl::SleepFor(absl::Milliseconds(50));
-  }
+  // Wait until we have consumed at least 4 chunks using notification.
+  consumed_enough.WaitForNotification();
 
   // Stop orchestrator (terminates background loop)
   ASSERT_OK(orchestrator.Stop());
@@ -122,13 +121,17 @@ TEST(ContinuousProfilerOrchestratorTest, DynamicIntervalLowWatermarkScaling) {
   EXPECT_CALL(*mock, Stop()).WillOnce(Return(absl::OkStatus()));
 
   // Consume returns a very small chunk (1MB < 5MB low watermark)
+  absl::Notification first_consumed;
   EXPECT_CALL(*mock, Consume())
-      .WillRepeatedly(Invoke([]() -> absl::StatusOr<ConsumeResult> {
+      .WillRepeatedly([&]() -> absl::StatusOr<ConsumeResult> {
+        if (!first_consumed.HasBeenNotified()) {
+          first_consumed.Notify();
+        }
         return ConsumeResult{
             .data = std::any(1),
             .estimated_size_bytes = 1 * 1024 * 1024  // 1MB (<5MB)
         };
-      }));
+      });
 
   ContinuousProfilerOrchestrator<ProfilerInterface> orchestrator(
       std::move(mock_profiler));
@@ -137,15 +140,50 @@ TEST(ContinuousProfilerOrchestratorTest, DynamicIntervalLowWatermarkScaling) {
   // Start
   ASSERT_OK(orchestrator.Start());
 
-  // Wait a very short time for the first immediate consume to run and adjust
-  // the interval
-  absl::SleepFor(absl::Milliseconds(50));
+  // Wait for the first immediate consume to run and adjust the interval
+  first_consumed.WaitForNotification();
 
   // Stop immediately
   ASSERT_OK(orchestrator.Stop());
 
   // Verify interval scaled up from 1s to 2s due to low watermark!
   EXPECT_EQ(orchestrator.polling_interval(), absl::Seconds(2));
+}
+
+TEST(ContinuousProfilerOrchestratorTest, SerializeChunks) {
+  auto mock_profiler = std::make_unique<MockProfiler>();
+  MockProfiler* mock = mock_profiler.get();
+
+  EXPECT_CALL(*mock, Start()).WillOnce(Return(absl::OkStatus()));
+  EXPECT_CALL(*mock, Stop()).WillOnce(Return(absl::OkStatus()));
+
+  absl::Notification consumed_enough;
+  std::atomic<int> consume_count(0);
+  EXPECT_CALL(*mock, Consume())
+      .WillRepeatedly([&]() -> absl::StatusOr<ConsumeResult> {
+        int count = ++consume_count;
+        if (count >= 2 && !consumed_enough.HasBeenNotified()) {
+          consumed_enough.Notify();
+        }
+        return ConsumeResult{.data = std::any(count),
+                             .estimated_size_bytes = 10 * 1024 * 1024};
+      });
+
+  ContinuousProfilerOrchestrator<ProfilerInterface> orchestrator(
+      std::move(mock_profiler));
+
+  ASSERT_OK(orchestrator.Start());
+  consumed_enough.WaitForNotification();
+  ASSERT_OK(orchestrator.Stop());
+
+  EXPECT_CALL(*mock, SerializeMock(::testing::_, ::testing::_))
+      .WillRepeatedly(Return(absl::InternalError("serialization error")));
+  EXPECT_CALL(*mock, SerializeMock(Pointee(AnyEqInt(1)), ::testing::_))
+      .WillOnce(Return(absl::OkStatus()));
+
+  std::vector<tensorflow::profiler::XSpace> spaces =
+      orchestrator.SerializeChunks();
+  EXPECT_EQ(spaces.size(), 1);
 }
 
 }  // namespace

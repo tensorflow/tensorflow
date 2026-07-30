@@ -84,12 +84,32 @@ class GpuPjRtCodegenTest : public HloPjRtGpuTestBase {
                                   bool match_optimized_ir = false,
                                   bool run_optimization_passes = true);
 
-  bool IsBuiltWithRocm() {
+  bool IsBuiltWithRocm() const {
     return runner_type_ == HloRunnerPropertyTag::kUsingGpuRocm;
   }
 
-  bool IsBuiltWithOneAPI() {
+  bool IsBuiltWithOneAPI() const {
     return runner_type_ == HloRunnerPropertyTag::kUsingGpuOneAPI;
+  }
+
+  std::string GpuKernelType() const {
+    if (IsBuiltWithRocm()) {
+      return "amdgpu_kernel";
+    }
+    if (IsBuiltWithOneAPI()) {
+      return "spir_kernel";
+    }
+    return "ptx_kernel";
+  }
+
+  std::string GpuBarrier() const {
+    if (IsBuiltWithRocm()) {
+      return "void @llvm.amdgcn.s.barrier()";
+    }
+    if (IsBuiltWithOneAPI()) {
+      return "spir_func void @_Z7barrierj(i32 3)";
+    }
+    return "void @llvm.nvvm.barrier.cta.sync.aligned.all(i32 0)";
   }
 
  private:

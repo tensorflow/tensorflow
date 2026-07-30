@@ -68,6 +68,9 @@ class ObjectPool {
   // the builder; returns ResourceExhausted if the pool has no available object.
   absl::StatusOr<BorrowedObject> Get();
 
+  // Clears all available objects from the pool.
+  void Clear();
+
   // Borrows an available object from the pool, or creates a new object with the
   // builder if the pool is empty. Returns any error produced by the builder.
   absl::StatusOr<BorrowedObject> GetOrCreate(Args... args);
@@ -135,6 +138,14 @@ auto ObjectPool<T, Args...>::CreateObject(Args... args)
   DCHECK(builder_) << "ObjectPool builder is not initialized";
   ASSIGN_OR_RETURN(T object, builder_(std::forward<Args>(args)...));
   return std::make_unique<T>(std::move(object));
+}
+
+template <typename T, typename... Args>
+auto ObjectPool<T, Args...>::Clear() -> void {
+  absl::MutexLock lock(mu_);
+  size_t num_available = available_.size();
+  available_.clear();
+  num_created_ -= num_available;
 }
 
 template <typename T, typename... Args>

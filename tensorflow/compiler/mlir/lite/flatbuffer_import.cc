@@ -403,6 +403,56 @@ Status ParseDebugMetadata(Builder builder, const char* data, size_t size,
   return absl::OkStatus();
 }
 
+std::string GetTfliteOpNameForLoc(const tflite::OperatorCodeT& op_code) {
+  auto builtin_code = tflite::GetBuiltinCode(&op_code);
+  if (builtin_code == tflite::BuiltinOperator_CUSTOM) {
+    if (!op_code.custom_code.empty()) return op_code.custom_code;
+    return "CUSTOM";
+  }
+  return tflite::EnumNameBuiltinOperator(builtin_code);
+}
+
+Location AttachTfliteOpLoc(Builder builder, int subgraph_index, int op_index,
+                           const tflite::OperatorCodeT& op_code,
+                           Location child_loc) {
+  std::string op_name = GetTfliteOpNameForLoc(op_code);
+  std::string loc_name = absl::StrCat("tflite.subgraph=", subgraph_index,
+                                      ".op=", op_index, ":", op_name);
+  // Attach as FusedLoc metadata so name extractors (e.g. GetNameFromLoc used
+  // by the exporter to derive tensor names) keep resolving names from the
+  // original child location.
+  return mlir::FusedLoc::get(child_loc.getContext(), {child_loc},
+                             builder.getStringAttr(loc_name));
+}
+
+Location AttachTfliteTensorLoc(Builder builder, int subgraph_index,
+                               int tensor_index, Location child_loc) {
+  std::string loc_name = absl::StrCat("tflite.subgraph=", subgraph_index,
+                                      ".tensor=", tensor_index, ":CONST");
+  return mlir::FusedLoc::get(child_loc.getContext(), {child_loc},
+                             builder.getStringAttr(loc_name));
+}
+
+Location MaybeAttachFusedActivationLoc(Location loc, Builder builder,
+                                       int subgraph_index, int op_index,
+                                       const tflite::OperatorCodeT& op_code,
+                                       Location child_loc, Operation* mlir_op) {
+  auto fused_attr =
+      mlir_op->getAttrOfType<mlir::StringAttr>("fused_activation_function");
+  if (!fused_attr) return loc;
+
+  llvm::StringRef fused = fused_attr.getValue();
+  if (fused.empty() || fused == "NONE") return loc;
+
+  std::string op_name = GetTfliteOpNameForLoc(op_code);
+  std::string fused_name = fused.str();
+  std::string loc_name =
+      absl::StrCat("tflite.subgraph=", subgraph_index, ".op=", op_index, ":",
+                   op_name, "_fused_", fused_name);
+  return mlir::FusedLoc::get(child_loc.getContext(), {child_loc},
+                             builder.getStringAttr(loc_name));
+}
+
 // Return MLIR location if it exists in the debug metadata. Otherwise, create a
 // MLIR location by fusing its output tensor names.
 Location OpLoc(const OperatorT& op, Builder builder,
@@ -1470,7 +1520,7 @@ mlir::ResultRange MaybeWrapInControlNode(mlir::Operation* op,
 // inputs/outputs in signature will be attached to the FuncOp.
 StatusOr<FuncOp> ConvertSubgraph(
     const tflite::ModelT& model, const tflite::SubGraphT& subgraph,
-    llvm::StringRef name,
+    int subgraph_index, llvm::StringRef name,
     const std::vector<std::unique_ptr<tflite::OperatorCodeT>>& op_codes,
     const std::vector<std::string>& func_names,
     const std::vector<std::unique_ptr<tflite::BufferT>>& buffers,
@@ -1672,6 +1722,8 @@ StatusOr<FuncOp> ConvertSubgraph(
           return emitError(const_loc, op_or_err.status().ToString()),
                  op_or_err.status();
         }
+        op_or_err.value()->setLoc(AttachTfliteTensorLoc(builder, subgraph_index,
+                                                        input_num, const_loc));
         vals_map[input_num] = op_or_err.value()->getResult(0);
       }
     }
@@ -1689,7 +1741,11 @@ StatusOr<FuncOp> ConvertSubgraph(
       intermediate_types.emplace_back(type);
     }
 
-    auto op_loc = OpLoc(*op, builder, debug_metadata, subgraph, base_loc);
+    const tflite::OperatorCodeT& op_code = *op_codes.at(op->opcode_index);
+    auto original_op_loc =
+        OpLoc(*op, builder, debug_metadata, subgraph, base_loc);
+    auto op_loc = AttachTfliteOpLoc(builder, subgraph_index, it.index(),
+                                    op_code, original_op_loc);
 
     // If there's an optional argument, maybe_optional_arg_marker has been set
     // to a valid Value
@@ -1698,6 +1754,10 @@ StatusOr<FuncOp> ConvertSubgraph(
         ConvertOp(*op, vals_map, intermediate_types, maybe_optional_arg_marker,
                   op_codes, func_names, subgraph.tensors, op_loc, op_builder,
                   model_ptr));
+    op_loc = MaybeAttachFusedActivationLoc(op_loc, builder, subgraph_index,
+                                           it.index(), op_code, original_op_loc,
+                                           mlir_op);
+    mlir_op->setLoc(op_loc);
 
     // Add the results to the value maps. There are two cases: 1. the result
     // tensor does not have min/max values, the original op result is used
@@ -1762,6 +1822,8 @@ StatusOr<FuncOp> ConvertSubgraph(
         return emitError(const_loc, op_or_err.status().ToString()),
                op_or_err.status();
       }
+      op_or_err.value()->setLoc(
+          AttachTfliteTensorLoc(builder, subgraph_index, index, const_loc));
       vals_map[index] = op_or_err.value()->getResult(0);
     }
     return_operands.push_back(vals_map[index]);
@@ -2039,8 +2101,8 @@ OwningOpRef<mlir::ModuleOp> tflite::FlatBufferToMlir(
         SubgraphName(set_implicit_main_func, e.index(), *subgraph);
     uint32_t subgraph_index = static_cast<uint32_t>(e.index());
     auto func_or_error = ConvertSubgraph(
-        *model, *subgraph, name, model->operator_codes, func_names,
-        model->buffers, base_loc, builder,
+        *model, *subgraph, static_cast<int>(subgraph_index), name,
+        model->operator_codes, func_names, model->buffers, base_loc, builder,
         /*is_entry_point=*/
         set_implicit_main_func
             ? e.index() == 0

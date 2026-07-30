@@ -14,7 +14,6 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/tools/evaluation/stages/tflite_inference_stage.h"
 
-#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
@@ -235,7 +234,13 @@ TfLiteStatus TfliteInferenceStage::Run() {
       size_t copy_bytes = tensor->bytes;
       if (input_buffer_sizes_) {
         if (i < input_buffer_sizes_->size()) {
-          copy_bytes = std::min(tensor->bytes, input_buffer_sizes_->at(i));
+          if (input_buffer_sizes_->at(i) != tensor->bytes) {
+            ABSL_LOG(ERROR)
+                << "Input buffer size " << input_buffer_sizes_->at(i)
+                << " does not match tensor size " << tensor->bytes
+                << " for tensor index " << i;
+            return kTfLiteError;
+          }
         } else {
           ABSL_LOG(ERROR) << "Input buffer size not provided for tensor index "
                           << i;

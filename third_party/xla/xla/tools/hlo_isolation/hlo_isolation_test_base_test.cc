@@ -25,11 +25,15 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest-spi.h>
 #include "absl/base/nullability.h"
+#include "absl/cleanup/cleanup.h"
 #include "absl/functional/any_invocable.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
+#include "absl/status/status_matchers.h"
+#include "absl/strings/match.h"
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
@@ -48,6 +52,7 @@ limitations under the License.
 #include "xla/tests/hlo_interpreter_reference_mixin.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tests/test_utils.h"
+#include "xla/tools/hlo_dump/hlo_dump_utils.h"
 #include "xla/tools/hlo_isolation/hlo_isolation.pb.h"
 #include "xla/tools/hlo_isolation/hlo_isolation_api.h"
 #include "xla/tsl/platform/env.h"
@@ -57,6 +62,10 @@ limitations under the License.
 namespace xla {
 namespace hlo_isolation {
 namespace {
+
+using ::absl_testing::StatusIs;
+using ::testing::Contains;
+using ::testing::IsEmpty;
 
 class HloIsolationTest
     : public HloIsolationTestMixin<HloInterpreterReferenceMixin<HloTestBase>> {
@@ -797,6 +806,15 @@ ENTRY main.1 {
                       &module_matches)
                   .ok() &&
               !module_matches.empty());
+  // Check that the failed module HTML file is present.
+  std::vector<std::string> html_matches;
+  EXPECT_TRUE(tsl::Env::Default()
+                  ->GetMatchingPaths(
+                      tsl::io::JoinPath(outputs_dir,
+                                        "failed-module-sine_abs_fusion.html"),
+                      &html_matches)
+                  .ok() &&
+              !html_matches.empty());
   // Check that the actual, expected, and mismatches files are present.
   for (absl::string_view suffix : {"actual", "expected", "mismatches"}) {
     std::vector<std::string> matches;
@@ -818,7 +836,10 @@ TEST_F(HloIsolationTest, TestInitIsolatorOptionsRunHloPasses) {
   options.run_hlo_passes = true;
   options.make_fake_arguments_fn =
       [](const HloModule&) -> absl::StatusOr<std::vector<Literal>> {
-    return std::vector<Literal>{};
+    std::vector<Literal> args;
+    args.push_back(LiteralUtil::CreateR0<float>(1.0f));
+    args.push_back(LiteralUtil::CreateR0<float>(2.0f));
+    return args;
   };
 
   const char* hlo_text = R"(
@@ -919,6 +940,218 @@ TEST_F(HloIsolationTest, TestPopulateNumericCheckMismatches) {
   EXPECT_EQ(numeric_check.top_mismatches_size(), 1);
   ASSERT_TRUE(numeric_check.has_top_mismatch());
   EXPECT_DOUBLE_EQ(numeric_check.top_mismatch().rel_error(), 2.5);
+}
+
+TEST(FusionDebuggerTest, DirUsesUndeclaredOutputsDir) {
+  // Save environment variable
+  const char* original_env = std::getenv("TEST_UNDECLARED_OUTPUTS_DIR");
+  std::string original_val = original_env ? original_env : "";
+
+  // Set custom undeclared outputs dir
+  std::string custom_dir = "/some/custom/undeclared/outputs/dir";
+  tsl::setenv("TEST_UNDECLARED_OUTPUTS_DIR", custom_dir.c_str(),
+              /*overwrite=*/1);
+
+  EXPECT_EQ(GetFusionDebuggerDir(), custom_dir);
+
+  // Restore environment variable
+  if (!original_val.empty()) {
+    tsl::setenv("TEST_UNDECLARED_OUTPUTS_DIR", original_val.c_str(),
+                /*overwrite=*/1);
+  } else {
+    tsl::unsetenv("TEST_UNDECLARED_OUTPUTS_DIR");
+  }
+}
+
+TEST(FusionDebuggerTest, FilePathUsesUndeclaredOutputsDir) {
+  // Save environment variable
+  const char* original_env = std::getenv("TEST_UNDECLARED_OUTPUTS_DIR");
+  std::string original_val = original_env ? original_env : "";
+
+  // Set custom undeclared outputs dir
+  std::string custom_dir = "/some/custom/undeclared/outputs/dir";
+  tsl::setenv("TEST_UNDECLARED_OUTPUTS_DIR", custom_dir.c_str(),
+              /*overwrite=*/1);
+
+  EXPECT_EQ(
+      GetFusionDebuggerFilePath("my_op"),
+      tsl::io::JoinPath(custom_dir, "fusion-debugger-reference-my_op.bin"));
+
+  // Restore environment variable
+  if (!original_val.empty()) {
+    tsl::setenv("TEST_UNDECLARED_OUTPUTS_DIR", original_val.c_str(),
+                /*overwrite=*/1);
+  } else {
+    tsl::unsetenv("TEST_UNDECLARED_OUTPUTS_DIR");
+  }
+}
+
+TEST(FusionDebuggerTest, CleanUpAndGetLeftoverFiles) {
+  // We can write to the directory from GetFusionDebuggerDir().
+  std::string debugger_dir = GetFusionDebuggerDir();
+
+  // Make sure it is cleaned up before starting
+  CleanUpAllFusionDebuggerFiles();
+  EXPECT_THAT(GetLeftoverFusionDebuggerFiles(), IsEmpty());
+
+  // Create a debug file
+  std::string file_path = GetFusionDebuggerFilePath("test_cleanup_op");
+
+  // Write a dummy string to file
+  tsl::Env* env = tsl::Env::Default();
+  ASSERT_OK(tsl::WriteStringToFile(env, file_path, "dummy data"));
+
+  // Verify it exists in leftover files and via filesystem
+  EXPECT_THAT(GetLeftoverFusionDebuggerFiles(), Contains(file_path));
+
+  // Clean up
+  CleanUpAllFusionDebuggerFiles();
+
+  // Verify it no longer exists
+  EXPECT_THAT(GetLeftoverFusionDebuggerFiles(), IsEmpty());
+  EXPECT_THAT(env->FileExists(file_path),
+              StatusIs(absl::StatusCode::kNotFound));
+}
+
+TEST(FusionDebuggerTest, DestructorCleansUpAllFiles) {
+  // Clear any existing leftover files first
+  CleanUpAllFusionDebuggerFiles();
+  EXPECT_THAT(GetLeftoverFusionDebuggerFiles(), IsEmpty());
+
+  std::string file_path = GetFusionDebuggerFilePath("cleanup_destructor_test");
+  tsl::Env* env = tsl::Env::Default();
+
+  {
+    absl::Cleanup cleanup = [] { CleanUpAllFusionDebuggerFiles(); };
+    ASSERT_OK(tsl::WriteStringToFile(env, file_path, "test data"));
+    EXPECT_OK(env->FileExists(file_path));
+  }
+
+  // Destruction of cleanup should delete the file
+  EXPECT_THAT(env->FileExists(file_path),
+              StatusIs(absl::StatusCode::kNotFound));
+  EXPECT_THAT(GetLeftoverFusionDebuggerFiles(), IsEmpty());
+}
+
+TEST_F(HloIsolationTest, PopulateMismatchAnnotations_Basic) {
+  const absl::string_view hlo_string = R"hlo(
+HloModule test_module
+ENTRY main {
+  p0 = f32[10] parameter(0)
+  ROOT add = f32[10] add(p0, p0)
+}
+)hlo";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
+
+  absl::Status compare_status = absl::InternalError(
+      R"(Value mismatch in check TPU_VS_INTERPRETER for module test_module
+
+Mismatch count 5 (50.0%)
+actual 1.0, expected 2.0, index {0}, rel error 0.5, abs error 1.0
+Elements exceeding abs error bound: 5 (50.0%)
+Elements exceeding rel error bound: 5 (50.0%)
+)");
+
+  auto annotations = numerics::debug_info::PopulateMismatchAnnotations(
+      *module, ExtractMismatchDetails(*module, compare_status));
+  EXPECT_FALSE(annotations.empty());
+  auto root_key = numerics::debug_info::TensorKey::Create("add", ShapeIndex{});
+  EXPECT_TRUE(annotations.contains(root_key));
+  EXPECT_EQ(annotations[root_key].background_color, "pink");
+  EXPECT_TRUE(annotations[root_key].tooltip_data.has_value());
+  EXPECT_TRUE(
+      absl::StrContains(*annotations[root_key].tooltip_data, "Actual: 1"));
+  EXPECT_TRUE(
+      absl::StrContains(*annotations[root_key].tooltip_data, "Expected: 2"));
+}
+
+TEST_F(HloIsolationTest, PopulateMismatchAnnotations_Fusion) {
+  const absl::string_view hlo_string = R"hlo(
+HloModule fusion_module
+fused_computation {
+  p0.1 = f32[10] parameter(0)
+  ROOT add.1 = f32[10] add(p0.1, p0.1)
+}
+ENTRY main {
+  p0 = f32[10] parameter(0)
+  ROOT fusion = f32[10] fusion(p0), kind=kLoop, calls=fused_computation
+}
+)hlo";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
+
+  absl::Status compare_status = absl::InternalError(
+      R"(Value mismatch in check TPU_VS_INTERPRETER for module fusion_module
+
+Mismatch count 5 (50.0%)
+actual 1.0, expected 2.0, index {0}, rel error 0.25, abs error 1.0
+Elements exceeding abs error bound: 5 (50.0%)
+Elements exceeding rel error bound: 5 (50.0%)
+)");
+
+  auto details = ExtractMismatchDetails(*module, compare_status);
+  auto annotations =
+      numerics::debug_info::PopulateMismatchAnnotations(*module, details);
+  auto graph_data =
+      numerics::debug_info::PopulateMismatchGraphData(*module, details);
+
+  auto outer_key =
+      numerics::debug_info::TensorKey::Create("fusion", ShapeIndex{});
+  auto inner_key =
+      numerics::debug_info::TensorKey::Create("add.1", ShapeIndex{});
+  ASSERT_TRUE(annotations.contains(outer_key));
+  ASSERT_TRUE(annotations.contains(inner_key));
+  EXPECT_EQ(annotations[outer_key].background_color, "pink");
+  EXPECT_EQ(annotations[inner_key].background_color, "pink");
+  EXPECT_EQ(annotations[outer_key].tooltip_data,
+            annotations[inner_key].tooltip_data);
+
+  bool found_fusion = false;
+  bool found_add1 = false;
+  for (const auto& node : graph_data.nodes) {
+    if (node.key == "fusion") {
+      found_fusion = true;
+      EXPECT_EQ(node.diff_score, 25.0);
+    } else if (node.key == "fusion/add.1") {
+      found_add1 = true;
+      EXPECT_EQ(node.diff_score, 25.0);
+    }
+  }
+  EXPECT_TRUE(found_fusion);
+  EXPECT_TRUE(found_add1);
+}
+
+TEST_F(HloIsolationTest, PopulateMismatchGraphData_ZeroRelError) {
+  const absl::string_view hlo_string = R"hlo(
+HloModule test_module
+ENTRY main {
+  p0 = f32[10] parameter(0)
+  ROOT add = f32[10] add(p0, p0)
+}
+)hlo";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
+
+  absl::Status compare_status = absl::InternalError(
+      R"(Value mismatch in check TPU_VS_INTERPRETER for module test_module
+
+Mismatch count 5 (50.0%)
+actual 1.0, expected 1.0, index {0}, rel error 0.0, abs error 0.0
+Elements exceeding abs error bound: 0 (0.0%)
+Elements exceeding rel error bound: 0 (0.0%)
+)");
+
+  auto graph_data = numerics::debug_info::PopulateMismatchGraphData(
+      *module, ExtractMismatchDetails(*module, compare_status));
+  bool found_add = false;
+  for (const auto& node : graph_data.nodes) {
+    if (node.key == "add") {
+      found_add = true;
+      EXPECT_EQ(node.diff_score, 100.0);
+    }
+  }
+  EXPECT_TRUE(found_add);
 }
 
 }  // namespace

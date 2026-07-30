@@ -42,6 +42,8 @@ limitations under the License.
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
+#include "absl/strings/str_join.h"
+#include "absl/strings/str_replace.h"
 #include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
@@ -56,6 +58,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module_metadata.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/ir/hlo_original_value.h"
 #include "xla/hlo/ir/hlo_original_value_util.h"
 #include "xla/hlo/ir/hlo_payload_deduplicator.h"
 #include "xla/hlo/ir/hlo_print_options.h"
@@ -320,6 +323,15 @@ void HloModule::MoveComputationsFrom(HloModule* module,
   module->computations_.clear();
 }
 
+struct OriginalArrayComparator {
+  bool operator()(const OriginalArray& lhs, const OriginalArray& rhs) const {
+    if (lhs.instruction_name != rhs.instruction_name) {
+      return lhs.instruction_name < rhs.instruction_name;
+    }
+    return lhs.shape_index < rhs.shape_index;
+  }
+};
+
 void HloModule::ReplaceComputations(
     const absl::flat_hash_map<HloComputation*, HloComputation*>& replacements) {
   // Replace all uses of non-canonical computations with their
@@ -394,6 +406,48 @@ void HloModule::Print(
     printer->Append(original_value_recovery_table_.ToString(new_options));
     printer->Append("}\n");
   }
+  if (!debug_attributes_.empty()) {
+    absl::btree_map<OriginalArray, std::vector<DebugAttributes>,
+                    OriginalArrayComparator>
+        ordered_debug_attributes(debug_attributes_.begin(),
+                                 debug_attributes_.end());
+    size_t non_empty_attrs = 0;
+    for (const auto& [_, vec] : ordered_debug_attributes) {
+      if (!vec.empty()) {
+        non_empty_attrs++;
+      }
+    }
+    if (non_empty_attrs > 0) {
+      printer->Append(",\ndebug_attributes={\n");
+      const std::string tab(2 * (options.indent_amount() + 1), ' ');
+      size_t i = 0;
+      for (const auto& [original_array, debug_attributes_vec] :
+           ordered_debug_attributes) {
+        if (debug_attributes_vec.empty()) {
+          continue;
+        }
+        printer->Append(tab);
+        printer->Append("{");
+        printer->Append(original_array.ToString());
+        printer->Append("}:(");
+        for (size_t j = 0; j < debug_attributes_vec.size(); ++j) {
+          printer->Append("{");
+          printer->Append(debug_attributes_vec[j].ToString());
+          printer->Append("}");
+          if (j + 1 < debug_attributes_vec.size()) {
+            printer->Append(",");
+          }
+        }
+        printer->Append(")");
+        if (++i < non_empty_attrs) {
+          printer->Append(",");
+        }
+        printer->Append("\n");
+      }
+      printer->Append("}");
+    }
+  }
+
   for (const auto& [key, value] : custom_fields) {
     printer->Append(absl::StrCat(", ", key, "="));
     std::visit(
@@ -636,6 +690,40 @@ void HloModule::ToProto(HloModuleProto* proto, HloProtoOptions options) const {
   if (!original_value_recovery_table_.empty()) {
     *proto->mutable_original_value_recovery_table() =
         original_value_recovery_table_.ToProto();
+  }
+  if (!debug_attributes_.empty()) {
+    absl::btree_map<OriginalArray, std::vector<DebugAttributes>,
+                    OriginalArrayComparator>
+        ordered_debug_attributes(debug_attributes_.begin(),
+                                 debug_attributes_.end());
+    for (const auto& [original_array, debug_attributes_vec] :
+         ordered_debug_attributes) {
+      if (debug_attributes_vec.empty()) {
+        continue;
+      }
+      auto* debug_attribute_proto = proto->add_debug_attributes();
+      *debug_attribute_proto->mutable_original_array() =
+          original_array.ToProto();
+      for (const auto& debug_attributes : debug_attributes_vec) {
+        auto* debug_attributes_proto =
+            debug_attribute_proto->add_debug_attributes();
+        switch (debug_attributes.log_mode) {
+          case DebugAttributes::DebugLogMode::kDefault:
+            debug_attributes_proto->set_log_mode(DebugAttributesProto::DEFAULT);
+            break;
+          case DebugAttributes::DebugLogMode::kFusionDebugger:
+            debug_attributes_proto->set_log_mode(
+                DebugAttributesProto::FUSION_DEBUGGER);
+            break;
+          default:
+            debug_attributes_proto->set_log_mode(DebugAttributesProto::NONE);
+            break;
+        }
+        debug_attributes_proto->set_callback_id(debug_attributes.callback_id);
+        debug_attributes_proto->set_partitioned(debug_attributes.partitioned);
+        debug_attributes_proto->set_op_id(debug_attributes.op_id);
+      }
+    }
   }
 
   if (!config().device_type().empty()) {
@@ -1041,6 +1129,30 @@ absl::StatusOr<std::unique_ptr<HloModule>> HloModule::CreateFromProto(
     ASSIGN_OR_RETURN(module->original_value_recovery_table_,
                      HloModule::OriginalValueRecoveryTable::FromProto(
                          proto.original_value_recovery_table()));
+  }
+  for (const auto& debug_attribute_table_entry : proto.debug_attributes()) {
+    OriginalArray original_array =
+        OriginalArray::FromProto(debug_attribute_table_entry.original_array());
+    for (const auto& debug_attr_proto :
+         debug_attribute_table_entry.debug_attributes()) {
+      DebugAttributes::DebugLogMode debug_log_mode =
+          DebugAttributes::DebugLogMode::kNone;
+      switch (debug_attr_proto.log_mode()) {
+        case DebugAttributesProto::DEFAULT:
+          debug_log_mode = DebugAttributes::DebugLogMode::kDefault;
+          break;
+        case DebugAttributesProto::FUSION_DEBUGGER:
+          debug_log_mode = DebugAttributes::DebugLogMode::kFusionDebugger;
+          break;
+        default:
+          break;
+      }
+      module->AddDebugAttributes(
+          original_array,
+          DebugAttributes{debug_log_mode, debug_attr_proto.callback_id(),
+                          debug_attr_proto.partitioned(),
+                          debug_attr_proto.op_id()});
+    }
   }
 
   DeduplicateOriginalValues(module.get());
@@ -1646,6 +1758,12 @@ void HloModule::Clone(const std::string& suffix, HloCloneContext* context,
   for (const auto& [parameter, indices, offset] : CrossProgramPrefetches()) {
     module->AddCrossProgramPrefetch(parameter, indices, offset);
   }
+  if (has_spmd_output_sharding()) {
+    module->set_spmd_output_sharding(spmd_output_sharding());
+  }
+  if (has_spmd_parameters_shardings()) {
+    module->set_spmd_parameters_shardings(spmd_parameters_shardings());
+  }
 
   // To make clone behavior match uncloned behavior, we reorder
   // module->computations_ to match the order in computations_.
@@ -1748,15 +1866,6 @@ std::string HloModule::GetFingerprint128(const HloPrintOptions& options) const {
                       absl::Hex(fingerprint.high64, absl::kZeroPad16));
 }
 
-struct OriginalArrayComparator {
-  bool operator()(const OriginalArray& lhs, const OriginalArray& rhs) const {
-    if (lhs.instruction_name != rhs.instruction_name) {
-      return lhs.instruction_name < rhs.instruction_name;
-    }
-    return lhs.shape_index < rhs.shape_index;
-  }
-};
-
 // Order the original value recovery table by the instruction name of the key
 // OriginalArray. This is to make the order of the table deterministic for
 // testing and debugging.
@@ -1774,6 +1883,34 @@ GetOrderedHashMap(
   return ordered_table;
 }
 
+std::string HloModule::DebugAttributes::ToString() const {
+  std::vector<std::string> attrs;
+  if (log_mode != DebugLogMode::kNone) {
+    std::string mode_str;
+    switch (log_mode) {
+      case DebugLogMode::kDefault:
+        mode_str = "default";
+        break;
+      case DebugLogMode::kFusionDebugger:
+        mode_str = "fusion_debugger";
+        break;
+      default:
+        break;
+    }
+    attrs.push_back(absl::StrCat("log_mode=", mode_str));
+  }
+  if (callback_id != 0) {
+    attrs.push_back(absl::StrCat("callback_id=", callback_id));
+  }
+  if (partitioned) {
+    attrs.push_back("partitioned=true");
+  }
+  if (op_id != 0) {
+    attrs.push_back(absl::StrCat("op_id=", op_id));
+  }
+  return absl::StrJoin(attrs, ",");
+}
+
 std::string HloModule::OriginalValueRecoveryTable::ToString(
     HloPrintOptions options) const {
   std::string result;
@@ -1788,11 +1925,13 @@ std::string HloModule::OriginalValueRecoveryTable::ToString(
     const std::string tab(2 * (options.indent_amount()), ' ');
     std::string recovery_module_string;
     if (recovery_module) {
-      absl::StrAppend(
-          &recovery_module_string, ",\n", tab, "\"\n",
-          recovery_module->ToString(
-              HloPrintOptions().set_indent_amount(options.indent_amount() + 1)),
-          "\n", tab, "\"");
+      std::string recovery_module_text = recovery_module->ToString(
+          HloPrintOptions().set_indent_amount(options.indent_amount() + 1));
+      // Escape the double quotes and backslashes in the recovery module text.
+      absl::StrReplaceAll({{"\\", "\\\\"}, {"\"", "\\\""}},
+                          &recovery_module_text);
+      absl::StrAppend(&recovery_module_string, ",\n", tab, "\"\n",
+                      recovery_module_text, "\n", tab, "\"");
     }
     absl::StrAppend(&result, tab, "{", old_original_array.ToString(), "} : {",
                     new_original_array.ToString(), "}", recovery_module_string,

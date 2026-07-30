@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/python/ifrt/buffer_hash_util.h"
 
+#include <cstddef>
 #include <cstdint>
 #include <string>
 #include <utility>
@@ -26,8 +27,10 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
-#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "highwayhash/arch_specific.h"
+#include "highwayhash/hh_types.h"
+#include "highwayhash/highwayhash.h"
 #include "xla/layout.h"
 #include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/index.h"
@@ -35,7 +38,6 @@ limitations under the License.
 #include "xla/python/ifrt/shape.h"
 #include "xla/status_macros.h"
 #include "xla/tsl/lib/strings/proto_serialization.h"
-#include "xla/xla_data.pb.h"
 #include "tsl/platform/fingerprint.h"
 
 namespace xla {
@@ -43,12 +45,26 @@ namespace ifrt {
 
 namespace {
 
+// A HighwayHash function with a randomly generated fixed key.
+uint64_t HighwayHash64(const char* data, size_t size) {
+  static constexpr highwayhash::HHKey kKey = {
+      0x82b924c02d5409baULL,
+      0x3b2e1849380974a9ULL,
+      0xac79a5b64f5559aeULL,
+      0xf5d1bfa11e88f03eULL,
+  };
+  highwayhash::HHStateT<HH_TARGET> state(kKey);
+  highwayhash::HHResult64 result;
+  highwayhash::HighwayHashT(&state, data, size, &result);
+  return result;
+}
+
 // Hashes a span of buffer that contains elements of integral type `T`.
 template <typename T>
 uint64_t HashBuffer(absl::Span<const T> buffer) {
   static_assert(std::is_integral_v<T>, "T must be an integral type.");
-  return tsl::Fingerprint64(absl::string_view(
-      reinterpret_cast<const char*>(buffer.data()), buffer.size() * sizeof(T)));
+  return HighwayHash64(reinterpret_cast<const char*>(buffer.data()),
+                       buffer.size() * sizeof(T));
 }
 }  // namespace
 

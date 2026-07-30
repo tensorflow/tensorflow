@@ -22,6 +22,7 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/cord.h"
 #include "absl/strings/string_view.h"
 #include "xla/tsl/platform/status_macros.h"
 #include "llvm/Support/Casting.h"
@@ -76,12 +77,12 @@ class SerDes : public llvm::RTTIExtends<SerDes, llvm::RTTIRoot> {
   // qualified type name of the class that implements `Serializable`.
   virtual absl::string_view type_name() const = 0;
 
-  virtual absl::StatusOr<std::string> Serialize(
+  virtual absl::StatusOr<absl::Cord> Serialize(
       const Serializable& serializable,
       std::unique_ptr<SerializeOptions> options) = 0;
 
   virtual absl::StatusOr<std::unique_ptr<Serializable>> Deserialize(
-      const std::string& serialized,
+      const absl::Cord& serialized,
       std::unique_ptr<DeserializeOptions> options) = 0;
 
   static char ID;  // NOLINT

@@ -310,9 +310,16 @@ static absl::StatusOr<ncclConfig_t> AsNcclConfig(
 
   ASSIGN_OR_RETURN(int nccl_version, GetLinkedNcclVersion());
 
-  if (xla::GetDebugOptionsFromFlags()
-          .xla_gpu_experimental_enable_nccl_symmetric_buffers() &&
-      config.use_minimal_resource) {
+  const DebugOptions& opts = xla::GetDebugOptionsFromFlags();
+  bool symmetric_buffers_enabled =
+      opts.xla_gpu_experimental_enable_nccl_symmetric_buffers() ||
+      absl::c_any_of(opts.xla_enable_nccl_symmetric_buffers_for_collectives(),
+                     [](const DebugOptions::CollectiveFilter& filter) {
+                       return filter.collective() ==
+                              DebugOptions::ALLCOLLECTIVES;
+                     });
+
+  if (symmetric_buffers_enabled && config.use_minimal_resource) {
     VLOG(1) << "Setting CTAPolicy to NCCL_CTA_POLICY_ZERO";
     comm_config.CTAPolicy = NCCL_CTA_POLICY_ZERO;
   }

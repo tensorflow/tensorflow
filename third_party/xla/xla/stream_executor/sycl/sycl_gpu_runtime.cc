@@ -16,7 +16,10 @@ limitations under the License.
 #include "xla/stream_executor/sycl/sycl_gpu_runtime.h"
 
 #include <cassert>
+#include <cstdint>
 #include <iostream>
+#include <limits>
+#include <vector>
 
 #include "absl/base/call_once.h"
 #include "absl/synchronization/mutex.h"
@@ -26,6 +29,9 @@ limitations under the License.
 namespace stream_executor::sycl {
 
 namespace {
+
+using HostPointerQueryFn = ze_result_t(ZE_APICALL*)(ze_driver_handle_t, void*,
+                                                    void**);
 
 absl::Status IsValidDeviceOrdinal(int device_ordinal,
                                   const absl::string_view& function_name) {
@@ -128,6 +134,57 @@ absl::Status MemfillDevice(::sycl::queue* stream_handle, void* dst_device,
 }
 
 }  // namespace
+
+// PJRT DmaMap uses prepare_for_device_copy to register ordinary host memory,
+// but SYCL still classifies the imported pointer as usm::alloc::unknown. Query
+// Level Zero directly so registration can be verified and copies from the
+// DmaMapped range can remain asynchronous.
+// TODO(intel-tf): Remove this helper once HostMemoryRegister uses
+// sycl_ext_oneapi_register_host_memory, which makes registered ranges visible
+// to standard SYCL USM pointer queries.
+bool SyclIsHostMemoryRegistered(const ::sycl::device& device,
+                                const void* location, std::size_t size) {
+  if (location == nullptr || size == 0) {
+    return false;
+  }
+  const std::uintptr_t start = reinterpret_cast<std::uintptr_t>(location);
+  if (size - 1 > std::numeric_limits<std::uintptr_t>::max() - start) {
+    return false;
+  }
+  try {
+    const ze_driver_handle_t driver =
+        ::sycl::get_native<::sycl::backend::ext_oneapi_level_zero>(
+            device.get_platform());
+    thread_local ze_driver_handle_t cached_driver = nullptr;
+    thread_local HostPointerQueryFn query = nullptr;
+    if (cached_driver != driver) {
+      query = nullptr;
+      if (zeDriverGetExtensionFunctionAddress(
+              driver, "zexDriverGetHostPointerBaseAddress",
+              reinterpret_cast<void**>(&query)) != ZE_RESULT_SUCCESS) {
+        return false;
+      }
+      cached_driver = driver;
+    }
+    if (query == nullptr) {
+      return false;
+    }
+    // The extension exposes range membership and the imported base, but not
+    // the range size. Imported ranges are contiguous and non-overlapping, so
+    // both endpoints resolving to the same base proves that the complete
+    // half-open range belongs to one import. This mirrors NEO's own
+    // HostPointerManager range-coverage check.
+    void* start_base = nullptr;
+    void* end_base = nullptr;
+    return query(driver, const_cast<void*>(location), &start_base) ==
+               ZE_RESULT_SUCCESS &&
+           query(driver, reinterpret_cast<void*>(start + size - 1),
+                 &end_base) == ZE_RESULT_SUCCESS &&
+           start_base == end_base;
+  } catch (const ::sycl::exception&) {
+    return false;
+  }
+}
 
 DevicePool SyclDevicePool::device_pool_;
 
@@ -279,16 +336,8 @@ absl::StatusOr<StreamPtr> SyclStreamPool::GetOrCreateStream(
   ASSIGN_OR_RETURN(StreamPool * stream_pool,
                    SyclStreamPool::InitStreamPool(device_ordinal));
   // If multiple streams are enabled, create a new stream and add it
-  // to the pool, unless the pool has reached kMaxStreamsPerDevice.
+  // to the pool.
   absl::MutexLock write_lock(&stream_pool_mu_);
-  if (stream_pool->size() >= kMaxStreamsPerDevice) {
-    VLOG(2) << "Stream pool size for device ordinal " << device_ordinal
-            << " exceeds the maximum limit of " << kMaxStreamsPerDevice;
-    return absl::ResourceExhaustedError(
-        absl::StrCat("SyclStreamPool::GetOrCreateStream: Maximum number of "
-                     "streams reached for device ordinal ",
-                     device_ordinal, "."));
-  }
   VLOG(2) << "Stream pool size for device ordinal " << device_ordinal << ": "
           << stream_pool->size();
   ::sycl::property_list prop_list{::sycl::property::queue::enable_profiling(),
@@ -541,7 +590,9 @@ absl::Status SyclMemcpyDeviceToHostAsync(::sycl::queue* stream_handle,
   }
   ::sycl::usm::alloc dst_alloc_type =
       ::sycl::get_pointer_type(dst_host, stream_handle->get_context());
-  bool async = (dst_alloc_type == ::sycl::usm::alloc::host);
+  bool async = dst_alloc_type == ::sycl::usm::alloc::host ||
+               SyclIsHostMemoryRegistered(stream_handle->get_device(), dst_host,
+                                          byte_count);
   return MemcpyDeviceToHost(stream_handle, dst_host, src_device, byte_count,
                             async);
 }
@@ -561,7 +612,9 @@ absl::Status SyclMemcpyHostToDeviceAsync(::sycl::queue* stream_handle,
   }
   ::sycl::usm::alloc src_alloc_type =
       ::sycl::get_pointer_type(src_host, stream_handle->get_context());
-  bool async = (src_alloc_type == ::sycl::usm::alloc::host);
+  bool async = src_alloc_type == ::sycl::usm::alloc::host ||
+               SyclIsHostMemoryRegistered(stream_handle->get_device(), src_host,
+                                          byte_count);
   return MemcpyHostToDevice(stream_handle, dst_device, src_host, byte_count,
                             async);
 }

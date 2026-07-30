@@ -201,6 +201,7 @@ struct HloVerifierOpts {
 class ShapeVerifier : public DfsHloVisitor {
  public:
   explicit ShapeVerifier(const HloVerifierOpts& opts) : opts_(opts) {}
+  explicit ShapeVerifier(const HloVerifierOpts&& opts) = delete;
 
   friend class HloVerifierTestHelper;
 

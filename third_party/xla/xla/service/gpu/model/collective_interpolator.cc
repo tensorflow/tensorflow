@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/service/gpu/model/collective_interpolator.h"
 
 #include <array>
+#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <optional>
@@ -30,6 +31,7 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
 #include "absl/time/time.h"
 #include "xla/tsl/platform/status_macros.h"
 #include "google/protobuf/text_format.h"
@@ -42,7 +44,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/replica_group.h"
 #include "xla/service/collective_ops_utils.h"
-#include "xla/service/gpu/model/collective_interpolator_data.h"
+#include "xla/service/gpu/model/default_collective_perf_table.h"
 #include "xla/service/gpu/model/gpu_hlo_cost_analysis.h"
 #include "xla/service/gpu/model/hlo_op_profile.pb.h"
 #include "xla/service/gpu/model/hlo_op_profiles.h"
@@ -52,19 +54,28 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/device_description.h"
-#include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla::gpu {
 
 namespace {
 
+absl::string_view GetDefaultCollectivePerfTable() {
+  const struct FileToc* toc = config::default_collective_perf_table_create();
+  for (size_t i = 0; i < config::default_collective_perf_table_size(); ++i) {
+    if (absl::string_view(toc[i].name) ==
+        "default_collective_perf_table.txtpb") {
+      return absl::string_view(toc[i].data, toc[i].size);
+    }
+  }
+  LOG(FATAL) << "Embedded file not found: default_collective_perf_table.txtpb";
+}
+
 static const DeviceHloInstructionProfiles& Profile() {
   static const DeviceHloInstructionProfiles* profile = []() {
     auto* profile = new DeviceHloInstructionProfiles();
-    CHECK(tsl::protobuf::TextFormat::ParseFromString(kDefaultCollectivePTable,
-                                                     profile))
+    CHECK(tsl::protobuf::TextFormat::ParseFromString(
+        GetDefaultCollectivePerfTable(), profile))
         << "Cannot parse a default profile.";
     return profile;
   }();

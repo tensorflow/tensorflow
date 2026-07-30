@@ -285,7 +285,7 @@ ENTRY e {
 // CHECK:         %[[EXTRACT1:.*]] = xtile.extract %arg1[] [] [] : memref<f32> -> tensor<f32>
 // CHECK:         %[[OUTPUT:.*]], %{{.*}} = xtile.scan(%[[EXTRACT0]]) inits(%[[EXTRACT1]])
 // CHECK-SAME:        dimension = 0 {scan_dim_size = 1024 : i64}
-// CHECK-SAME:        : (tensor<1024xf32>), (tensor<f32>) -> (tensor<1024xf32>), (tensor<1024xf32>) {
+// CHECK-SAME:        : (tensor<1024xf32>), (tensor<f32>) -> (tensor<1024xf32>), (tensor<f32>) {
 // CHECK:         ^bb0(%[[INPUT:.*]]: tensor<f32>, %[[CARRY:.*]]: tensor<f32>):
 // CHECK:           %[[ADD:.*]] = stablehlo.add %[[INPUT]], %[[CARRY]] : tensor<f32>
 // CHECK:           stablehlo.return %[[ADD]], %[[ADD]] : tensor<f32>, tensor<f32>

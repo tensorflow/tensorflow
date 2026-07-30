@@ -160,6 +160,47 @@ ENTRY entry {
                          mlir_context));
 }
 
+TEST_F(TritonEmitterDevicelessTest, RejectsGenericFp4FusionOutput) {
+  constexpr absl::string_view kHloText = R"(
+fusion {
+  p0 = f4e2m1fn[128,256]{1,0:E(4)} parameter(0)
+  ROOT copy = f4e2m1fn[128,256]{1,0:E(4)} copy(p0)
+}
+
+ENTRY entry {
+  p0 = f4e2m1fn[128,256]{1,0:E(4)} parameter(0)
+  ROOT triton_fusion = f4e2m1fn[128,256]{1,0:E(4)} fusion(p0),
+    kind=kCustom, calls=fusion,
+    backend_config={"fusion_backend_config":{
+      "kind":"__triton",
+      "block_level_fusion_config":{
+        "num_warps":"1",
+        "output_tiles":[{"sizes":["1","1"]}],
+        "num_ctas":"1",
+        "num_stages":"1"}}}
+}
+)";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> hlo_module,
+                       ParseAndReturnVerifiedModule(kHloText));
+  const HloFusionInstruction* triton_fusion = Cast<HloFusionInstruction>(
+      hlo_module->entry_computation()->root_instruction());
+  const se::DeviceDescription dev_info = TestGpuDeviceInfo::B200SXMDeviceInfo();
+  mlir::MLIRContext mlir_context;
+  RegisterSymbolicExprStorage(&mlir_context);
+
+  EXPECT_THAT(
+      CreateTritonModule("test_fn", *triton_fusion, dev_info,
+                         BlockLevelParameters::FromBlockLevelFusionConfig(
+                             triton_fusion->backend_config<GpuBackendConfig>()
+                                 ->fusion_backend_config()
+                                 .block_level_fusion_config()),
+                         mlir_context),
+      absl_testing::StatusIs(
+          absl::StatusCode::kInvalidArgument,
+          ::testing::HasSubstr(
+              "f4e2m1fn storage value must feed scaled-dot operand 0 or 1")));
+}
+
 TEST_F(WarpSpecializationTritonEmitterTest,
        ExtraWarpsAreRequestedForWarpSpecialization) {
   const std::string hlo_text = R"(
@@ -280,15 +321,13 @@ ENTRY main {
 // CHECK-LABEL: @test_fn
 // CHECK:         %[[INPUT:.*]] = xtile.extract %arg0[%c0] [1024] [1] : memref<1024xf32> -> tensor<1024xf32>
 // CHECK:         %[[INIT:.*]] = xtile.extract %arg1[] [] [] : memref<f32> -> tensor<f32>
-// CHECK:         %[[OUTPUT:.*]], %{{.*}} = xtile.scan(%[[INPUT]]) inits(%[[INIT]])
-// CHECK-SAME:        dimension = 0 {scan_dim_size = 1024 : i64}
-// CHECK-SAME:        : (tensor<1024xf32>), (tensor<f32>) -> (tensor<1024xf32>), (tensor<1024xf32>) {
-// CHECK:         ^bb0(%[[INPUT:.*]]: tensor<f32>, %[[CARRY:.*]]: tensor<f32>):
-// CHECK-DAG:       %[[LHS:.*]] = tensor.extract %[[INPUT]][] : tensor<f32>
-// CHECK-DAG:       %[[RHS:.*]] = tensor.extract %[[CARRY]][] : tensor<f32>
+// CHECK:         %[[SCAN:.*]] = "tt.scan"(%[[INPUT]]) <{axis = 0 : i32, reverse = false}> ({
+// CHECK:         ^bb0(%[[LHS:.*]]: f32, %[[RHS:.*]]: f32):
 // CHECK:           %[[ADD:.*]] = arith.addf %[[LHS]], %[[RHS]] : f32
-// CHECK:           %[[RESULT:.*]] = tensor.from_elements %[[ADD]] : tensor<f32>
-// CHECK:           stablehlo.return %[[RESULT]], %[[RESULT]] : tensor<f32>, tensor<f32>
+// CHECK:           tt.scan.return %[[ADD]] : f32
+// CHECK:         }) : (tensor<1024xf32>) -> tensor<1024xf32>
+// CHECK:         %[[BCAST_INIT:.*]] = stablehlo.broadcast_in_dim %[[INIT]], dims = [] : (tensor<f32>) -> tensor<1024xf32>
+// CHECK:         %[[OUTPUT:.*]] = arith.addf %[[BCAST_INIT]], %[[SCAN]] : tensor<1024xf32>
 // CHECK:         xtile.insert %[[OUTPUT]] into %arg2[%c0] [1024] [1] : tensor<1024xf32> -> memref<1024xf32>
 )";
 

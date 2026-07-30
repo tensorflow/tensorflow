@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors All Rights Reserved.
+/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -325,6 +325,24 @@ absl::Status ExportToTensorBoard(const XSpace& xspace,
   return ExportToTensorBoard(xspace, logdir,
                              tsl::profiler::GetCurrentTimeStampAsString(),
                              also_export_trace_json);
+}
+
+absl::Status ExportToTensorBoard(absl::string_view logdir,
+                                 absl::string_view run,
+                                 std::vector<XSpace>& xspaces) {
+  if (xspaces.empty()) {
+    return absl::OkStatus();
+  }
+
+  std::string repository_root =
+      GetTensorBoardProfilePluginDir(std::string(logdir));
+  std::string host = tsl::port::Hostname();
+  return SaveXSpaceChunks(repository_root, run, host, xspaces);
+}
+
+absl::Status ExportToTensorBoard(absl::string_view logdir,
+                                 std::vector<XSpace>& xspaces) {
+  return ExportToTensorBoard(logdir, GetCurrentTimeStampAsString(), xspaces);
 }
 
 absl::Status CaptureRemoteTrace(

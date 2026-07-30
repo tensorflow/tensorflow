@@ -58,5 +58,6 @@ def StablehloLowerToArithPass : Pass<"stablehlo-lower-to-arith"> {
   }];
   let dependentDialects = [
     "mlir::arith::ArithDialect",
+    "mlir::math::MathDialect",
   ];
 }

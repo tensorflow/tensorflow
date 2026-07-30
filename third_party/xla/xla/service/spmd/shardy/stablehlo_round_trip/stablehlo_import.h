@@ -80,7 +80,8 @@ void registerStablehloImportPipeline();
 // after HloShardingV3 is enabled.
 void addStablehloImportPipeline(mlir::OpPassManager& pm,
                                 mlir::ArrayRef<bool> allowPropagationToArgs,
-                                mlir::ArrayRef<bool> allowPropagationToResults);
+                                mlir::ArrayRef<bool> allowPropagationToResults,
+                                bool enableHloShardingV3 = false);
 
 // Creates ImportShardingsPass that converts `mhlo.sharding` to `mesh` and
 // `sdy.sharding`.

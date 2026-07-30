@@ -495,13 +495,6 @@ GpuExecutable::GpuExecutable(
       buffer_allocations_debug_summary_(
           std::move(buffer_allocations_debug_summary)),
       collective_use_minimal_resource_(collective_use_minimal_resource) {
-  if (gpu_version_.IsRocm()) {
-    // ROCm uses hsaco hashes to distinguish between modules.
-    // Bad things happen if multiple modules with identical code are loaded.
-    binary_.resize(binary_.size() + 16);
-    *(uint64_t*)(&binary_[binary_.size() - 16]) = tsl::EnvTime::NowNanos();
-    *(uint64_t*)(&binary_[binary_.size() - 8]) = tsl::random::New64();
-  }
   if (has_module() && enable_debug_info_manager_) {
     XlaDebugInfoManager::Get()->RegisterModule(shared_module(),
                                                buffer_assignment_proto_);
@@ -510,7 +503,7 @@ GpuExecutable::GpuExecutable(
 
   const DebugOptions* allocation_debug_options =
       has_module() ? &module_config().debug_options() : nullptr;
-  buffer_allocator_ = std::make_unique<GpuExecutableBufferAllocator>(
+  buffer_allocator_ = GpuExecutableBufferAllocator::Create(
       module_name_, allocation_ptrs_, program_shape_.result(),
       allocation_debug_options, thunk_executor_.get());
 }
@@ -556,11 +549,6 @@ absl::Status MaybeSyncAndProfile(const ServiceExecutableRunOptions* run_options,
 absl::Status RendezvousAfterInitialization(
     const ServiceExecutableRunOptions& run_options,
     const DebugOptions* absl_nullable debug_options);
-
-absl::Status BarrierAfterExecutable(
-    const ServiceExecutableRunOptions& run_options,
-    const DebugOptions* absl_nullable debug_options, se::Stream& stream_to_sync,
-    size_t num_participants);
 
 absl::Status GpuExecutable::ExecuteThunksImpl(
     const DebugOptions* debug_options, const std::string& module_name,
@@ -731,20 +719,12 @@ absl::Status GpuExecutable::ExecuteThunksImpl(
   // A state container for this execution.
   Thunk::ExecutionScopedState execution_scoped_state;
 
-  // Parameters for executing collective operations.
-  std::optional<std::string> collectives_impl_name;
-  if (debug_options &&
-      !debug_options->xla_gpu_collectives_implementation().empty()) {
-    collectives_impl_name = debug_options->xla_gpu_collectives_implementation();
-  }
-
-  ASSIGN_OR_RETURN(
-      CollectiveParams collective_params,
-      CollectiveParams::Create(
-          *run_options, communication_streams.streams,
-          LocalDeviceId(main_stream->parent()->device_ordinal()),
-          std::move(collectives_impl_name), collective_max_nchannels,
-          p2p_max_nchannels, collective_use_minimal_resource));
+  ASSIGN_OR_RETURN(CollectiveParams collective_params,
+                   CollectiveParams::Create(
+                       *run_options, communication_streams.streams,
+                       LocalDeviceId(main_stream->parent()->device_ordinal()),
+                       collective_max_nchannels, p2p_max_nchannels,
+                       collective_use_minimal_resource));
 
   CollectiveCliqueRequests collective_clique_requests;
   CollectiveMemoryRequests collective_memory_requests(buffer_allocations);
@@ -827,25 +807,6 @@ absl::Status GpuExecutable::ExecuteThunksImpl(
   RETURN_IF_ERROR(thunk_executor.ExecuteOnStream(execute_params));
   XLA_VLOG_DEVICE(1, run_options->device_ordinal())
       << "End GpuExecutable::ExecuteOnStream module: " << module_name;
-
-  // Collective kernel thunks may request a barrier after the module execution.
-  // This might be needed for several reasons:
-  // 1. To make sure that at the end of graph execution all reads and writes to
-  //    the symmetric buffers are finished.
-  // 2. To make sure that cuda module which uses a multimem handler used by
-  //    another GPU will be unloaded only after all kernels are finished.
-  //    Otherwise module unloading can cause a deadlock.
-  absl::flat_hash_set<GlobalDeviceId> requested_barrier_devices =
-      collective_clique_requests.GetDevicesRequiringBarrier();
-  if (absl::c_linear_search(requested_barrier_devices,
-                            collective_params.global_device_id.value())) {
-    XLA_VLOG_DEVICE(1, collective_params.global_device_id.value())
-        << "Barrier after executable required by participants: ("
-        << absl::StrJoin(requested_barrier_devices, ", ") << ")";
-    RETURN_IF_ERROR(BarrierAfterExecutable(*run_options, debug_options,
-                                           *main_stream,
-                                           requested_barrier_devices.size()));
-  }
 
   return MaybeSyncAndProfile(run_options, execution_timer.get(),
                              block_host_until_done ? main_stream : nullptr);
@@ -965,43 +926,6 @@ absl::Status MaybeSyncAndProfile(const ServiceExecutableRunOptions* run_options,
   return absl::OkStatus();
 }
 
-absl::Status BarrierAfterExecutable(
-    const ServiceExecutableRunOptions& run_options,
-    const DebugOptions* absl_nullable debug_options, se::Stream& stream,
-    const size_t num_participants) {
-  RETURN_IF_ERROR(stream.BlockHostUntilDone());
-
-  XLA_VLOG_DEVICE(1, run_options.device_ordinal()) << absl::StreamFormat(
-      "Join thunks in barrier after module execution rendezvous with %d "
-      "local "
-      "participants",
-      num_participants);
-
-  tsl::profiler::TraceMe trace([&] {
-    return tsl::profiler::TraceMeEncode(
-        "RendezvousAfterExecution",
-        {{"run_id", run_options.run_options().run_id().ToInt()},
-         {"num_local_participants", num_participants}});
-  });
-
-  auto rendezvous_key = InitializationKey{run_options.run_options().run_id()};
-  auto rendezvous_name = absl::StrFormat(
-      "thunk barrier after module execution completion for device ordinal "
-      "%d; run_id=%d",
-      run_options.device_ordinal(), run_options.run_options().run_id().ToInt());
-
-  return Rendezvous(
-      rendezvous_name, rendezvous_key, num_participants,
-      absl::Seconds(
-          debug_options
-              ? debug_options->xla_gpu_executable_warn_stuck_timeout_seconds()
-              : 10),
-      absl::Seconds(
-          debug_options
-              ? debug_options->xla_gpu_executable_terminate_timeout_seconds()
-              : 30));
-}
-
 absl::StatusOr<const GpuExecutable::BufferAllocToDeviceMemoryMap*>
 GpuExecutable::ResolveConstantGlobals(se::Stream* stream) {
   return module_globals_->Resolve(stream);
@@ -1082,13 +1006,13 @@ absl::StatusOr<ExecutionOutput> GpuExecutable::ExecuteAsyncOnStreamImpl(
         param_no};
   };
 
-  ASSIGN_OR_RETURN(
-      GpuExecutableBufferAllocator::ExecutionScope allocation_scope,
-      buffer_allocator_->CreateExecutionScope(run_options, memory_allocator,
-                                              device_ordinal));
+  ASSIGN_OR_RETURN(std::unique_ptr<GpuExecutableBufferAllocator::ExecutionScope>
+                       allocation_scope,
+                   buffer_allocator_->CreateExecutionScope(
+                       run_options, memory_allocator, device_ordinal));
 
   ASSIGN_OR_RETURN(BufferAllocations buffer_allocations,
-                   allocation_scope.GenerateBufferAllocations(
+                   allocation_scope->GenerateBufferAllocations(
                        run_options, get_parameter_buffer, globals,
                        memory_allocator, device_ordinal));
   XLA_VLOG_DEVICE(3, device_ordinal) << buffer_allocations.ToString();
@@ -1168,7 +1092,7 @@ absl::StatusOr<ExecutionOutput> GpuExecutable::ExecuteAsyncOnStreamImpl(
                       .IsTuple()) {
         ASSIGN_OR_RETURN(
             result_buffer,
-            allocation_scope.AllocateCopyProtectedOutputBuffer(
+            allocation_scope->AllocateCopyProtectedOutputBuffer(
                 run_options, buffer_allocations, index, *allocation,
                 device_ordinal, memory_allocator, [&](absl::Status status) {
                   return ResourceExhausted("%s\n%s\n", status.message(),
@@ -1192,7 +1116,7 @@ absl::StatusOr<ExecutionOutput> GpuExecutable::ExecuteAsyncOnStreamImpl(
     buffers_in_result.insert(result_buffer);
   }
 
-  absl::Status execute_status = allocation_scope.ExecuteWithBufferAllocations(
+  absl::Status execute_status = allocation_scope->ExecuteWithBufferAllocations(
       buffer_allocations, device_ordinal,
       [&](const BufferAllocations& execution_buffers,
           std::optional<absl::Span<const BufferAllocation::Index>>

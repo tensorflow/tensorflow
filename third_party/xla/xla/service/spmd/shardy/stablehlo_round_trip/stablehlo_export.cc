@@ -48,7 +48,8 @@ void addStablehloExportPipeline(mlir::OpPassManager& pm,
       /*addMissingShardingToControlFlow=*/options
           .addMissingShardingToControlFlow,
       /*enableHloShardingV3=*/options.enableHloShardingV3,
-      /*simplifyReplicatedShardings=*/options.simplifyReplicatedShardings));
+      /*simplifyReplicatedShardings=*/options.simplifyReplicatedShardings,
+      /*clearReverseOpSharding=*/options.clearReverseOpSharding));
   pm.addPass(createStablehloRoundTripExportCallbackCustomCallsPass());
 }
 

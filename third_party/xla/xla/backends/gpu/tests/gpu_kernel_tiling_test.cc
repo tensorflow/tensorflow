@@ -84,7 +84,7 @@ TEST_F(GpuKernelTilingTest, UnnestedTransposeWithProperDimensionsTiled) {
           .value();
 
   auto expected_ir = R"(
-; CHECK: call void BARRIER()
+; CHECK: call BARRIER()
 )";
   ASSERT_OK(CompileAndVerifyIr(std::move(hlo_module),
                                MakePlatformSpecificLlvm(expected_ir),
@@ -110,7 +110,7 @@ TEST_F(GpuKernelTilingTest, UnnestedTransposeWithSmallDimensionsNotTiled) {
       ParseAndReturnVerifiedModule(kHloString, ConfigWithLayoutAssignment())
           .value();
   auto expected_ir = R"(
-; CHECK-NOT: call void BARRIER()
+; CHECK-NOT: call BARRIER()
 )";
   EXPECT_OK(CompileAndVerifyIr(std::move(hlo_module),
                                MakePlatformSpecificLlvm(expected_ir),
@@ -130,7 +130,7 @@ TEST_F(GpuKernelTilingTest, UnnestedTransposeC128TypeRun) {
       ParseAndReturnVerifiedModule(kHloString, ConfigWithLayoutAssignment())
           .value();
   auto expected_ir = R"(
-; CHECK: call void BARRIER()
+; CHECK: call BARRIER()
 )";
   ASSERT_OK(CompileAndVerifyIr(std::move(hlo_module),
                                MakePlatformSpecificLlvm(expected_ir),
@@ -161,7 +161,7 @@ TEST_F(GpuKernelTilingTest, SimpleFusionWithTransposeTiled) {
   // Check that a call to llvm.nvvm.barrier0 is generated.
   auto expected_ir = R"(
 ; CHECK-LABEL: define KERNEL_ANNOTATION @{{[a-z_]*}}fusion
-; CHECK: call void BARRIER()
+; CHECK: call BARRIER()
 ; CHECK: }
 )";
   ASSERT_OK(CompileAndVerifyIr(std::move(hlo_module),
@@ -197,7 +197,7 @@ TEST_F(GpuKernelTilingTest, MultipleOutputFusionWithOnePossibleTransposeTiled) {
           .value();
   auto expected_ir = R"(
 ; CHECK-LABEL: define KERNEL_ANNOTATION @{{[a-z_]*}}fusion
-; CHECK: call void BARRIER()
+; CHECK: call BARRIER()
 ; CHECK: }
 )";
   ASSERT_OK(CompileAndVerifyIr(std::move(hlo_module),
@@ -229,7 +229,7 @@ TEST_F(GpuKernelTilingTest, TransposedInputWithUserReverseNotTiled) {
           .value();
   auto expected_ir = R"(
 ; CHECK-LABEL: define KERNEL_ANNOTATION @{{[a-z_]*}}fusion
-; CHECK-NOT: call void BARRIER()
+; CHECK-NOT: call BARRIER()
 ; CHECK: }
 )";
   EXPECT_OK(CompileAndVerifyIr(std::move(hlo_module),
@@ -258,7 +258,7 @@ TEST_F(GpuKernelTilingTest, TransposedInputWithUserBitcastNotTiled) {
           .value();
   auto expected_ir = R"(
 ; CHECK-LABEL: define KERNEL_ANNOTATION @{{[a-z_]*}}fusion
-; CHECK-NOT: call void BARRIER()
+; CHECK-NOT: call BARRIER()
 ; CHECK: }
 )";
   ASSERT_OK(CompileAndVerifyIr(std::move(hlo_module),
@@ -295,7 +295,7 @@ TEST_F(GpuKernelTilingTest, TransposedInputWithoutUnsafeUseTiled) {
           .value();
   auto expected_ir = R"(
 ; CHECK-LABEL: define KERNEL_ANNOTATION @{{[a-z_]*}}fusion
-; CHECK: call void BARRIER()
+; CHECK: call BARRIER()
 ; CHECK: }
 )";
   ASSERT_OK(CompileAndVerifyIr(std::move(hlo_module),
@@ -519,12 +519,18 @@ TEST_F(GpuKernelTilingTest, ReductionInputTooLarge) {
   absl::Status status =
       CompileToExecutable(std::move(hlo_module), true).status();
 
-  if (xla::PlatformUtil::CanonicalPlatformName("gpu").value() == "rocm") {
+  std::string platform_name =
+      xla::PlatformUtil::CanonicalPlatformName("gpu").value();
+  if (platform_name == "rocm") {
     EXPECT_THAT(
         status.message(),
         ::testing::ContainsRegex(
             "Kernel '.*' launch needs more blocks [(]4294967296, 65536[)] "
             "than allowed by hardware [(]2147483647, 65536[)]"));
+  } else if (platform_name == "sycl") {
+    // oneAPI has a higher block-count limit than CUDA/ROCm, so this should
+    // compile successfully.
+    EXPECT_OK(status);
   } else {
     EXPECT_THAT(status.message(),
                 ::testing::ContainsRegex(

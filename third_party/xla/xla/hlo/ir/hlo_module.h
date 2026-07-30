@@ -1080,6 +1080,26 @@ class HloModule {
       topological_sort_;
 
  public:
+  struct DebugAttributes {
+    enum class DebugLogMode {
+      // No debug log.
+      kNone,
+      // Log using TPU logging without perturbing the execution.
+      kDefault,
+      // Log using Fusion Debugger, without perturbing the execution.
+      kFusionDebugger,
+    };
+    DebugLogMode log_mode = DebugLogMode::kNone;
+    int64_t callback_id = 0;
+    // Whether to undo automatic sharding when logging the tensor.
+    bool partitioned = false;
+    // The operand index in the xla_debug_log custom call in the original HLO
+    // module that this tensor is associated with.
+    int64_t op_id = 0;
+
+    std::string ToString() const;
+  };
+
   class OriginalValueRecoveryTable {
    public:
     using Table = absl::flat_hash_map<
@@ -1196,7 +1216,19 @@ class HloModule {
         std::move(original_value_recovery_table.table_);
   }
 
+  void AddDebugAttributes(const OriginalArray& original_array,
+                          const DebugAttributes& debug_attributes) {
+    debug_attributes_[original_array].push_back(debug_attributes);
+  }
+
+  const absl::flat_hash_map<OriginalArray, std::vector<DebugAttributes>>&
+  debug_attributes() const {
+    return debug_attributes_;
+  }
+
  private:
+  absl::flat_hash_map<OriginalArray, std::vector<DebugAttributes>>
+      debug_attributes_;
   OriginalValueRecoveryTable original_value_recovery_table_;
 
   mutable absl::Mutex cache_mutex_;

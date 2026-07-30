@@ -1,3 +1,18 @@
+# Copyright 2026 The OpenXLA Authors. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
+
 load("@bazel_skylib//rules:common_settings.bzl", "bool_flag")
 load("@local_config_cuda//cuda:build_defs.bzl", "cuda_library")
 load("@rules_cc//cc:cc_binary.bzl", "cc_binary")
@@ -42,7 +57,7 @@ load(
     "//xla/tsl/platform/default:cuda_build_defs.bzl",
     "if_cuda_newer_than",
 )
-load(":build_defs.bzl", "stage_in_bin_subdirectory")
+load(":build_defs.bzl", "embeddable_cuda_library", "stage_in_bin_subdirectory")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -1547,7 +1562,6 @@ cc_library(
 cc_library(
     name = "cuda_executor_lib",
     srcs = ["cuda_executor.cc"],
-    hdrs = [":cuda_executor"],
     tags = [
         "cuda-only",
         "gpu",
@@ -1754,6 +1768,7 @@ cc_library(
         "//xla/tsl/cuda:tensorrt_rpath",
     ] + if_nccl([
         ":multi_gpu_barrier_kernel_cuda",
+        ":ragged_all_to_all_device_kernel_cuda",
         ":ragged_all_to_all_kernel_cuda",
     ]),
     alwayslink = 1,
@@ -2012,6 +2027,7 @@ cc_library(
         ":cuda_kernel",
         ":cuda_status",
         ":cuda_stream",
+        "//xla:util",
         "//xla/stream_executor:bit_pattern",
         "//xla/stream_executor:command_buffer",
         "//xla/stream_executor:device_address",
@@ -2029,10 +2045,12 @@ cc_library(
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:status_macros",
         "@com_google_absl//absl/base",
+        "@com_google_absl//absl/cleanup",
         "@com_google_absl//absl/debugging:leak_check",
         "@com_google_absl//absl/functional:any_invocable",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/log:vlog_is_on",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
@@ -2790,6 +2808,27 @@ cuda_library(
 )
 
 cuda_library(
+    name = "ragged_all_to_all_device_kernel_cuda",
+    srcs = [
+        "ragged_all_to_all_device_kernel_cuda.cc",
+        "//xla/stream_executor/gpu:ragged_all_to_all_device_kernel_lib.cu.h",
+    ],
+    # copybara:uncomment compatible_with = ["//buildenv/target:non_prod"],
+    tags = [
+        "cuda-only",
+        "gpu",
+    ],
+    deps = [
+        ":cuda_platform_id",
+        "//xla/stream_executor/gpu:gpu_kernel_registry",
+        "//xla/stream_executor/gpu:ragged_all_to_all_device_kernel",
+        "//xla/tsl/cuda:nccl",
+        "@com_google_absl//absl/base",
+    ],
+    alwayslink = 1,
+)
+
+cuda_library(
     name = "ragged_all_to_all_kernel_cuda",
     srcs = [
         "ragged_all_to_all_kernel_cuda.cc",
@@ -3222,5 +3261,80 @@ xla_cc_test(
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/time",
         "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_library(
+    name = "cudart_kernel_registry",
+    srcs = ["cudart_kernel_registry.cc"],
+    hdrs = ["cudart_kernel_registry.h"],
+    linkopts = [
+        "-Wl,--wrap=__cudaRegisterFatBinary",
+        "-Wl,--wrap=__cudaRegisterFunction",
+    ],
+    tags = [
+        "cuda-only",
+        "gpu",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//xla/stream_executor:kernel_spec",
+        "//xla/tsl/platform:status_macros",
+        "@com_google_absl//absl/base",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/base:no_destructor",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/synchronization",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+embeddable_cuda_library(
+    name = "simple_kernel_cuda",
+    testonly = 1,
+    srcs = ["simple_kernel_cuda.cu.cc"],
+    hdrs = ["simple_kernel_cuda.h"],
+    # copybara:uncomment compatible_with = ["//buildenv/target:non_prod"],
+    tags = [
+        "cuda-only",
+        "gpu",
+    ],
+    deps = [
+        ":cuda_status",
+        "//xla/stream_executor:device_address",
+        "//xla/stream_executor:stream",
+        "@com_google_absl//absl/status",
+        "@local_config_cuda//cuda:cuda_headers",
+    ],
+    alwayslink = 1,
+)
+
+xla_test(
+    name = "cudart_kernel_registry_test",
+    srcs = ["cudart_kernel_registry_test.cc"],
+    backends = ["nvgpu_any"],
+    tags = [
+        "cuda-only",
+    ],
+    deps = [
+        ":cuda_platform",
+        ":cudart_kernel_registry",
+        ":simple_kernel_cuda",
+        "//xla/stream_executor:device_address",
+        "//xla/stream_executor:kernel",
+        "//xla/stream_executor:kernel_spec",
+        "//xla/stream_executor:launch_dim",
+        "//xla/stream_executor:platform",
+        "//xla/stream_executor:platform_manager",
+        "//xla/stream_executor:stream",
+        "//xla/stream_executor:stream_executor_h",
+        "//xla/stream_executor:typed_kernel_factory",
+        "//xla/tsl/platform:test",
+        "@com_google_absl//absl/status:status_matchers",
+        "@com_google_googletest//:gtest_main",
     ],
 )

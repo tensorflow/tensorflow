@@ -95,8 +95,8 @@ void DatasetToGraphOp::Compute(OpKernelContext* ctx) {
   absl::Status s =
       AsGraphDef(dataset, SerializationContext(params), &graph_def);
   if (!s.ok()) {
-    ctx->CtxFailure(errors::FailedPrecondition(
-        "Failed to serialize the input pipeline graph: ", s.message()));
+    ctx->CtxFailure(absl::FailedPreconditionError(absl::StrCat(
+        "Failed to serialize the input pipeline graph: ", s.message())));
     return;
   }
   if (strip_device_assignment_) {
@@ -140,7 +140,7 @@ void DatasetFromGraphOp::Compute(OpKernelContext* ctx) {
   OP_REQUIRES_OK(ctx, ParseScalarArgument(ctx, kGraphDef, &graph_def_string));
   GraphDef graph_def;
   OP_REQUIRES(ctx, graph_def.ParseFromString(graph_def_string),
-              errors::InvalidArgument("Could not parse GraphDef"));
+              absl::InvalidArgumentError("Could not parse GraphDef"));
   std::string output_node;
   for (const auto& node : graph_def.node()) {
     if (node.op() == FunctionLibraryDefinition::kRetOp) {

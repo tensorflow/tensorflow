@@ -37,6 +37,7 @@ limitations under the License.
 #include "xla/backends/gpu/codegen/triton/support.h"
 #include "xla/codegen/tiling/experimental/tiled_hlo.h"
 #include "xla/codegen/tiling/experimental/tiling_space.h"
+#include "xla/codegen/tiling/experimental/tiling_space_utils.h"
 #include "xla/codegen/tiling/symbolic_tile.h"
 #include "xla/codegen/tiling/symbolic_tile_analysis.h"
 #include "xla/codegen/tiling/symbolic_tiled_hlo_instruction.h"
@@ -270,10 +271,11 @@ absl::StatusOr<BlockLevelParameters> FindBlockLevelParametersWithTilingSpace(
     // Finds the corresponding tiled instruction for its original HLO
     // instruction.
     auto tiled_dot =
-        absl::c_find_if(tiled_computation->tiled_hlo_instructions(),
+        absl::c_find_if(tiled_computation->tiled_root_region().instructions(),
                         [&](const auto& tiled) { return tiled->hlo() == dot; });
     // That should never happen.
-    CHECK(tiled_dot != tiled_computation->tiled_hlo_instructions().end())
+    CHECK(tiled_dot !=
+          tiled_computation->tiled_root_region().instructions().end())
         << "Dot tiled instruction not found in tiled computation";
     absl::StatusOr<llvm::SmallVector<int64_t>> static_tile_sizes =
         tiled_dot->get()->tile().GetStaticTileSizes();

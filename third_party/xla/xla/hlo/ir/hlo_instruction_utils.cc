@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/status/status_macros.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
+#include "re2/re2.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -89,6 +90,14 @@ int32_t NestingDepth(const HloInstruction* hlo) {
     ++level;
   }
   return level;
+}
+
+bool IsTopKStable(const HloCustomCallInstruction* inst) {
+  static const LazyRE2 kUnstableRegex = {R"((?i)is_stable\s*=\s*false)"};
+  if (RE2::PartialMatch(inst->raw_backend_config_string(), *kUnstableRegex)) {
+    return false;
+  }
+  return true;
 }
 
 namespace async {

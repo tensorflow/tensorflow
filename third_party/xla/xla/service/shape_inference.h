@@ -119,7 +119,8 @@ class ShapeInference {
       int64_t batch_group_count, const Window& window,
       const ConvolutionDimensionNumbers& dimension_numbers,
       const SparsityConfig& sparsity_config,
-      std::optional<PrimitiveType> preferred_element_type);
+      std::optional<PrimitiveType> preferred_element_type,
+      ConvolutionKind convolution_kind = CONVOLUTION_KIND_UNSET);
 
   // Infers the shape produced by the given FFT type on the given operand.
   static absl::StatusOr<Shape> InferFftShape(

@@ -21,6 +21,7 @@ limitations under the License.
 #include <sycl/sycl.hpp>
 // clang-format on
 
+#include <cstddef>
 #include <string>
 #include <vector>
 
@@ -79,14 +80,6 @@ using StreamPtr = std::shared_ptr<::sycl::queue>;
 using StreamPool = std::vector<StreamPtr>;
 using StreamPoolMap = absl::flat_hash_map<int /*device_ordinal*/, StreamPool>;
 
-// TODO(intel-tf): kMaxStreamsPerDevice is the maximum number of streams that
-// can be created per device via GetOrCreateStream when multiple streams are
-// enabled.
-//
-// For now, we set it to 32 so that there is no unbounded growth. However, it
-// can be adjusted based on the device capabilities and workload requirements.
-constexpr int kMaxStreamsPerDevice = 32;
-
 // Manages pools of SYCL streams (queues) per device. All methods are static and
 // thread-safe via a global mutex. For high concurrency workloads, consider
 // refactoring to use per-device mutexes.
@@ -105,8 +98,7 @@ class SyclStreamPool {
   // pool) SYCL stream. If the stream pool is empty, returns an error.
   //
   // If multiple streams are enabled (via enable_multiple_streams), creates
-  // a new stream up to the maximum limit (kMaxStreamsPerDevice). Returns an
-  // error if the limit is reached.
+  // a new stream.
   static absl::StatusOr<StreamPtr> GetOrCreateStream(
       int device_ordinal, bool enable_multiple_streams);
 
@@ -147,6 +139,11 @@ struct SyclTimerProperties {
   // Bitmask for valid kernel timestamp bits.
   uint64_t timestamp_mask;
 };
+
+// Returns whether the complete range belongs to one driver-imported host
+// allocation.
+bool SyclIsHostMemoryRegistered(const ::sycl::device& device,
+                                const void* location, std::size_t size);
 
 // Returns the timer frequency (Hz) and valid timestamp bitmask for the given
 // device ordinal using the Level Zero backend.

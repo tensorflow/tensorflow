@@ -290,6 +290,7 @@ absl::StatusOr<std::vector<TritonGemmConfig>> OptimizeConfigsWithCostModel(
 
   std::unique_ptr<HloModule> module =
       ExtractInstructionIntoNewModule(*dot->parent()->FusionInstruction());
+  module->mutable_config().set_debug_options(debug_options);
 
   auto extracted_fusion = Cast<HloFusionInstruction>(
       module->entry_computation()->root_instruction());

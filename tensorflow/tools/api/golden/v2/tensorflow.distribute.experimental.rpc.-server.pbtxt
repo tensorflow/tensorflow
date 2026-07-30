@@ -8,6 +8,7 @@ tf_class {
   member_method {
     name: "create"
     argspec: "args=[\'rpc_layer\', \'address\'], varargs=None, keywords=None, defaults=None"
+    method_kind: STATIC
   }
   member_method {
     name: "register"

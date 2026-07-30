@@ -24,15 +24,18 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/tsl/platform/status_macros.h"
+#include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "tsl/platform/errors.h"
-namespace xla {
+#include "xla/side_effect_util.h"
+#include "xla/xla_data.pb.h"
 
+namespace xla {
 
 // WrapMultipleSendRecvInstructions is a side-effecting function that
 // creates a single computation that wraps all the send/recv instructions.
@@ -94,9 +97,14 @@ static absl::Status CreateAsyncStartAndAsyncDone(
   HloInstruction* async_start =
       computation->AddInstruction(HloInstruction::CreateAsyncStart(
           async_start_shape, async_start_inputs, async_computation));
+  module->SetAndUniquifyInstrName(
+      async_start, absl::StrCat(async_computation->name(), ".start"));
+  async_start->set_frontend_attribute(kCollectiveGroupMarkerAttr, "");
   HloInstruction* async_done =
       computation->AddInstruction(HloInstruction::CreateAsyncDone(
           async_computation->root_instruction()->shape(), async_start));
+  module->SetAndUniquifyInstrName(
+      async_done, absl::StrCat(async_computation->name(), ".done"));
   HloInstruction* replacement_async_done = nullptr;
   int async_done_gte_index = 0;
   for (HloInstruction* instruction : send_recv_instructions) {
@@ -161,6 +169,13 @@ absl::StatusOr<bool> CollectiveSendRecvCombiner::RunImpl(
               instruction)) {
         continue;
       }
+
+      // Host transfers use host-handler completion events and cannot be
+      // represented by a grouped collective async start/done pair.
+      if (Cast<HloSendRecvInstruction>(instruction)->is_host_transfer()) {
+        continue;
+      }
+
       if (instruction->users().size() != 1 ||
           HloPredicateIsNotOp<HloOpcode::kSendDone, HloOpcode::kRecvDone>(
               instruction->users()[0])) {
@@ -174,7 +189,7 @@ absl::StatusOr<bool> CollectiveSendRecvCombiner::RunImpl(
     // Create a new computation that wraps the send/recv instructions.
     ++wrapped_computation_index;
     HloComputation::Builder builder = HloComputation::Builder(
-        absl::StrCat("wrapped_send_recv_", wrapped_computation_index));
+        absl::StrCat("send_recv_group_", wrapped_computation_index));
     std::vector<HloInstruction*> async_start_inputs;
     std::vector<Shape> async_start_input_shapes;
     HloComputation* async_computation = WrapMultipleSendRecvInstructions(

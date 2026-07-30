@@ -46,6 +46,9 @@ void AddOrUpdateVectorOfPairsAsAttribute(
 // `hlo`. i.e. 0 = in the top-level computation, ...
 int32_t NestingDepth(const HloInstruction* hlo);
 
+// Checks if CustomCall TopK instruction is stable. Defaults to true.
+bool IsTopKStable(const HloCustomCallInstruction* inst);
+
 namespace async {
 
 // Utilities for async instructions.

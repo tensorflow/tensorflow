@@ -289,8 +289,7 @@ absl::StatusOr<const std::vector<Field>> GetFieldTypes(
 absl::Status SetRepeatedFieldElement(
     tsl::protobuf::Message* message,
     const tsl::protobuf::FieldDescriptor* field_desc, uint64_t field_index,
-    const std::string& chunk,
-    std::function<absl::Status(void)> message_callback) {
+    std::string chunk, std::function<absl::Status(void)> message_callback) {
   if (field_desc->is_map())
     return absl::FailedPreconditionError("Field is a map.");
   const tsl::protobuf::Reflection* reflection = message->GetReflection();
@@ -334,7 +333,8 @@ absl::Status SetRepeatedFieldElement(
           field_desc->enum_type()->FindValueByName(chunk));
       break;
     case tsl::protobuf::FieldDescriptor::CPPTYPE_STRING:
-      reflection->SetRepeatedString(message, field_desc, field_index, chunk);
+      reflection->SetRepeatedString(message, field_desc, field_index,
+                                    std::move(chunk));
       break;
     case tsl::protobuf::FieldDescriptor::CPPTYPE_MESSAGE:
       return message_callback();
@@ -349,7 +349,7 @@ absl::Status SetRepeatedFieldElement(
 
 absl::Status SetFieldElement(
     tsl::protobuf::Message* message,
-    const tsl::protobuf::FieldDescriptor* field_desc, const std::string& chunk,
+    const tsl::protobuf::FieldDescriptor* field_desc, std::string chunk,
     std::function<absl::Status(void)> message_callback) {
   const tsl::protobuf::Reflection* reflection = message->GetReflection();
 
@@ -382,7 +382,7 @@ absl::Status SetFieldElement(
                           field_desc->enum_type()->FindValueByName(chunk));
       break;
     case tsl::protobuf::FieldDescriptor::CPPTYPE_STRING:
-      reflection->SetString(message, field_desc, chunk);
+      reflection->SetString(message, field_desc, std::move(chunk));
       break;
     case tsl::protobuf::FieldDescriptor::CPPTYPE_MESSAGE:
       return message_callback();

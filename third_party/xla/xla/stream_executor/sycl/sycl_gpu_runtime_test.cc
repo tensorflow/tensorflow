@@ -196,24 +196,6 @@ TEST_F(SyclGpuRuntimeTest, TestStreamPoolDestroy_Negative) {
   EXPECT_EQ(stream_handle, nullptr);
 }
 
-TEST_F(SyclGpuRuntimeTest, TestMaxStreamsPerDevice) {
-  // Ensure that the maximum number of streams per device is respected.
-  constexpr int kMaxStreams = kMaxStreamsPerDevice;
-  std::vector<StreamPtr> streams(kMaxStreams);
-  for (int i = 0; i < kMaxStreams - 1; ++i) {
-    TF_ASSERT_OK_AND_ASSIGN(streams[i], SyclStreamPool::GetOrCreateStream(
-                                            kDefaultDeviceOrdinal,
-                                            /*enable_multiple_streams=*/true));
-    ASSERT_NE(streams[i], nullptr);
-  }
-
-  // Attempt to create one more stream, which should fail.
-  EXPECT_THAT(
-      SyclStreamPool::GetOrCreateStream(kDefaultDeviceOrdinal,
-                                        /*enable_multiple_streams=*/true),
-      absl_testing::StatusIs(absl::StatusCode::kResourceExhausted));
-}
-
 TEST_F(SyclGpuRuntimeTest, TestGetTimerProperties) {
   TF_ASSERT_OK_AND_ASSIGN(SyclTimerProperties timer_props,
                           SyclGetTimerProperties(kDefaultDeviceOrdinal));

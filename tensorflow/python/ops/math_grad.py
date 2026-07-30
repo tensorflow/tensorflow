@@ -785,9 +785,10 @@ def _XLogyGrad(op: ops.Operation, grad):
   sy = array_ops.shape(y)
   rx, ry = gen_array_ops.broadcast_gradient_args(sx, sy)
   with ops.control_dependencies([grad]):
-    not_zero_x = math_ops.cast(
-        math_ops.not_equal(x, math_ops.cast(0., dtype=x.dtype)), dtype=x.dtype)
-    partial_x = gen_math_ops.xlogy(not_zero_x, y)
+    # The gradient of xlogy w.r.t. x is log(y) for all x (including x=0),
+    # because d/dx x*log(y) = log(y). The zero-mask should only apply to
+    # the forward value, not the derivative w.r.t. x.
+    partial_x = gen_math_ops.log(y)
     partial_y = gen_math_ops.xdivy(x, y)
     return (array_ops.reshape(math_ops.reduce_sum(partial_x * grad, rx), sx),
             array_ops.reshape(math_ops.reduce_sum(partial_y * grad, ry), sy))
@@ -802,9 +803,10 @@ def _XLog1pyGrad(op: ops.Operation, grad):
   sy = array_ops.shape(y)
   rx, ry = gen_array_ops.broadcast_gradient_args(sx, sy)
   with ops.control_dependencies([grad]):
-    not_zero_x = math_ops.cast(
-        math_ops.not_equal(x, math_ops.cast(0., dtype=x.dtype)), dtype=x.dtype)
-    partial_x = gen_math_ops.xlog1py(not_zero_x, y)
+    # The gradient of xlog1py w.r.t. x is log1p(y) for all x (including x=0),
+    # because d/dx x*log1p(y) = log1p(y). The zero-mask should only apply to
+    # the forward value, not the derivative w.r.t. x.
+    partial_x = gen_math_ops.log1p(y)
     partial_y = gen_math_ops.xdivy(x, y + 1.)
     return (array_ops.reshape(math_ops.reduce_sum(partial_x * grad, rx), sx),
             array_ops.reshape(math_ops.reduce_sum(partial_y * grad, ry), sy))
@@ -1164,8 +1166,12 @@ def _IgammaGrad(op: ops.Operation, grad):
     partial_a = gen_math_ops.igamma_grad_a(a, x)
     # Perform operations in log space before summing, because Gamma(a)
     # and Gamma'(a) can grow large.
-    partial_x = math_ops.exp(-x + (a - 1) * math_ops.log(x) -
-                             math_ops.lgamma(a))
+    # Use xlogy so that the (a - 1) * log(x) term evaluates to 0 (not NaN)
+    # when a == 1 and x == 0. The true derivative there is
+    # d/dx igamma(1, x) = e^-x = 1, so `(a - 1) * log(x)` computing
+    # `0 * -inf = NaN` is incorrect. This mirrors the neighboring Betainc
+    # gradient, which already uses xlogy for the same reason.
+    partial_x = math_ops.exp(-x + math_ops.xlogy(a - 1, x) - math_ops.lgamma(a))
     return (array_ops.reshape(math_ops.reduce_sum(partial_a * grad, ra), sa),
             array_ops.reshape(math_ops.reduce_sum(partial_x * grad, rx), sx))
 

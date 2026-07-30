@@ -508,6 +508,22 @@ static std::optional<int64_t> NextDep(
   return std::nullopt;
 }
 
+ThunkSequence::ThunkSequence(int64_t len)
+    : std::vector<std::unique_ptr<Thunk>>(len) {}
+
+ThunkSequence::ThunkSequence(std::vector<std::unique_ptr<Thunk>> thunks)
+    : std::vector<std::unique_ptr<Thunk>>(std::move(thunks)) {}
+
+void ThunkSequence::Append(std::unique_ptr<Thunk> thunk) {
+  push_back(std::move(thunk));
+}
+
+ThunkSequence ThunkSequence::Of(std::unique_ptr<Thunk> thunk) {
+  ThunkSequence thunks;
+  thunks.Append(std::move(thunk));
+  return thunks;
+}
+
 absl::Status ThunkSequence::WalkNested(Thunk::Walker callback) {
   for (auto& thunk : *this) {
     RETURN_IF_ERROR(thunk->Walk(callback));

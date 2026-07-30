@@ -1,0 +1,12 @@
+--- a/lib/Target/LLVMIR/LLVMDILocalVariable.cpp
++++ b/lib/Target/LLVMIR/LLVMDILocalVariable.cpp
+@@ -242,7 +242,7 @@
+       LLVM::DITypeAttr typeAttr;
+     };
+     llvm::SmallVector<ArgInfo> argInfos;
+-    llvm::SmallVector<mlir::LLVM::DINodeAttr> retainedNodes;
++    llvm::SmallVector<mlir::Attribute> retainedNodes;
+ 
+     for (unsigned idx = resNum; idx < argTypeAttrs.size(); idx++) {
+       LLVM::DITypeAttr argTypeAttr = argTypeAttrs[idx];
+

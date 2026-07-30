@@ -131,14 +131,22 @@ bool ContainsOnlyFormattingOps(const HloInstruction* async_op) {
   if (async_op->opcode() == HloOpcode::kAsyncDone) {
     return ContainsOnlyFormattingOps(async_op->operand(0));
   }
-  HloInstruction* call =
-      async_op->async_wrapped_computation()->root_instruction();
-  bool result = true;
-  for (HloInstruction* instr :
-       call->called_computations().front()->instructions()) {
+
+  const HloComputation* computation = async_op->async_wrapped_computation();
+
+  // Async wrappers can nest call-like instructions. Look through the root's
+  // callee so the recursive checks below continue into the nested async.
+  const HloInstruction* root = computation->root_instruction();
+  if (!root->called_computations().empty()) {
+    computation = root->called_computations().front();
+  }
+
+  for (const HloInstruction* instr : computation->instructions()) {
     if (HloPredicateIsOp<HloOpcode::kAsyncStart, HloOpcode::kAsyncDone>(
             instr)) {
-      result &= ContainsOnlyFormattingOps(instr);
+      if (!ContainsOnlyFormattingOps(instr)) {
+        return false;
+      }
     } else if (!HloPredicateIsOp<HloOpcode::kCopy, HloOpcode::kParameter>(
                    instr)) {
       return false;
@@ -451,10 +459,12 @@ bool LegalizeSchedulingAnnotations::KeepSchedulingAnnotation(
 }
 
 bool LegalizeSchedulingAnnotations::RemoveTrivialGroups(
-    const absl::flat_hash_map<
+    absl::flat_hash_map<
         Annotation,
         absl::flat_hash_map<HloComputation*, std::vector<HloInstruction*>>>&
-        annotation_to_instruction) {
+        annotation_to_instruction,
+    absl::flat_hash_map<HloInstruction*, Annotation>&
+        instruction_to_annotation) {
   absl::flat_hash_map<
       AnnotationGroupId,
       absl::flat_hash_map<HloComputation*, std::vector<HloInstruction*>>>
@@ -473,6 +483,7 @@ bool LegalizeSchedulingAnnotations::RemoveTrivialGroups(
   bool changed = false;
   for (const auto& [group_id, comp_annotated_instructions] :
        group_id_to_instruction) {
+    absl::flat_hash_set<HloInstruction*> deleted_instructions;
     std::vector<HloInstruction*> instructions_across_comps;
     for (const auto& [comp, annotated_instructions] :
          comp_annotated_instructions) {
@@ -485,6 +496,7 @@ bool LegalizeSchedulingAnnotations::RemoveTrivialGroups(
                 << " from instruction: " << annotated_instructions[0]->name()
                 << " in computation: " << comp->name();
         changed |= RemoveSchedulingAnnotation(annotated_instructions[0]);
+        deleted_instructions.insert(annotated_instructions[0]);
         continue;
       }
       instructions_across_comps.insert(instructions_across_comps.end(),
@@ -500,8 +512,30 @@ bool LegalizeSchedulingAnnotations::RemoveTrivialGroups(
         VLOG(1) << "Removing group id: " << group_id
                 << " from instruction: " << instr->name();
         changed |= RemoveSchedulingAnnotation(instr);
+        deleted_instructions.insert(instr);
       }
-      continue;
+    }
+    if (!deleted_instructions.empty()) {
+      absl::erase_if(annotation_to_instruction, [&](auto& annotation_entry) {
+        auto& [annotation, comp_inst_vector] = annotation_entry;
+        absl::erase_if(comp_inst_vector, [&](auto& comp_entry) {
+          auto& [comp, annotated_instructions] = comp_entry;
+          std::vector<HloInstruction*> updated_annotated_instructions;
+          for (HloInstruction* instr : annotated_instructions) {
+            if (!deleted_instructions.contains(instr)) {
+              updated_annotated_instructions.push_back(instr);
+            } else {
+              instruction_to_annotation.erase(instr);
+            }
+          }
+          if (updated_annotated_instructions.empty()) {
+            return true;
+          }
+          annotated_instructions = std::move(updated_annotated_instructions);
+          return false;
+        });
+        return comp_inst_vector.empty();
+      });
     }
     VLOG(3) << "Retaining nontrivial group: " << group_id;
   }
@@ -738,8 +772,8 @@ absl::StatusOr<bool> LegalizeSchedulingAnnotations::RunImpl(
       return status;
     }
   }
-
-  changed |= RemoveTrivialGroups(annotation_to_instruction);
+  changed |=
+      RemoveTrivialGroups(annotation_to_instruction, instruction_to_annotation);
   changed |=
       FillSimpleGaps(annotation_to_instruction, instruction_to_annotation);
 

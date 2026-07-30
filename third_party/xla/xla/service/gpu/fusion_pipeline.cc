@@ -66,7 +66,7 @@ HloPassPipeline FusionPipeline(
   // Rewrite convs into conv fusions.
   if (!debug_options.xla_gpu_experimental_disable_binary_libraries() &&
       debug_options.xla_gpu_experimental_enable_conv_fusion()) {
-    fusion.AddPass<ConvFusionRewriter>();
+    fusion.AddPass<ConvFusionRewriter>(gpu_device_info);
   }
 
   GpuHloCostAnalysis::Options cost_analysis_options{

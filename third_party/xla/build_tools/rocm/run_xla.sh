@@ -37,32 +37,18 @@ echo ""
 echo "Bazel will use ${N_BUILD_JOBS} concurrent build job(s) and ${N_TEST_JOBS} concurrent test job(s) for gpu ${AMD_GPU_GFX_ID}."
 echo ""
 
-export PYTHON_BIN_PATH=`which python3`
-export TF_NEED_ROCM=1
 export ROCM_PATH=/opt/rocm
 
 SCRIPT_DIR=$(realpath $(dirname $0))
-TAG_FILTERS=$($SCRIPT_DIR/rocm_tag_filters.sh),gpu,-multi_gpu,-multi_gpu_h100,requires-gpu-amd,,-skip_rocprofiler_sdk,-no_oss,-oss_excluded,-oss_serial
 
-if [ ! -d /tf/pkg ]; then
-	mkdir -p /tf/pkg
-fi
-
-bazel --bazelrc=build_tools/rocm/rocm_xla.bazelrc test \
+$SCRIPT_DIR/run_xla_ci_build.sh \
     --config=rocm_ci \
-    --config=xla_sgpu \
-    --build_tag_filters=$TAG_FILTERS \
-    --test_tag_filters=$TAG_FILTERS \
-    --profile=/tf/pkg/profile.json.gz \
-    --test_timeout=920,2400,7200,9600 \
-    --test_sharding_strategy=disabled \
-    --test_output=errors \
-    --flaky_test_attempts=3 \
-    --keep_going \
+    --config=ci_single_gpu \
     --local_test_jobs=${N_TEST_JOBS} \
     --test_env=TF_TESTS_PER_GPU=$TF_TESTS_PER_GPU \
+    --keep_going \
     --test_env=TF_GPU_COUNT=$TF_GPU_COUNT \
     --action_env=TF_ROCM_AMDGPU_TARGETS=${AMD_GPU_GFX_ID} \
-    --action_env=XLA_FLAGS="--xla_gpu_force_compilation_parallelism=16" \
     --repo_env="ROCM_PATH=$ROCM_PATH" \
-    --run_under=//build_tools/ci:parallel_gpu_execute
+    -- \
+    //xla/...

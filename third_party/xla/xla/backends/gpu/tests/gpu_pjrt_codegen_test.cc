@@ -85,11 +85,8 @@ std::string GpuPjRtCodegenTest::MakePlatformSpecificLlvm(
     absl::string_view input) {
   return absl::StrReplaceAll(
       input,
-      {{"KERNEL_ANNOTATION",
-        IsBuiltWithRocm() ? "amdgpu_kernel void" : "ptx_kernel void"},
-       {"BARRIER()", IsBuiltWithRocm()
-                         ? "@llvm.amdgcn.s.barrier()"
-                         : "@llvm.nvvm.barrier.cta.sync.aligned.all(i32 0)"},
+      {{"KERNEL_ANNOTATION", GpuKernelType() + " void"},
+       {"BARRIER()", GpuBarrier()},
        {"SHUFFLE", IsBuiltWithRocm() ? "i32 @llvm.amdgcn.ds.swizzle"
                                      : "float @llvm.nvvm.shfl.sync.down.f32"},
        {"TIDX", IsBuiltWithRocm() ? "@llvm.amdgcn.workitem.id.x"
@@ -101,8 +98,11 @@ std::string GpuPjRtCodegenTest::MakePlatformSpecificLlvm(
         IsBuiltWithRocm()
             ? "%[[LOGICAL_T2:.*]] = extractvalue { i1, i64 } %[[LOGICAL_T1]], 0"
             : "0"},
-       {"BR_CAL", IsBuiltWithRocm() ? "br i1 %[[LOGICAL_T2]],"
-                                    : "br i1 %[[LOGICAL_T0]]"}});
+       {"BR_CAL",
+        IsBuiltWithRocm() ? "br i1 %[[LOGICAL_T2]]," : "br i1 %[[LOGICAL_T0]]"},
+       {"STORE_v$0FLOAT", IsBuiltWithOneAPI()
+                              ? "@llvm.spv.store.v$0f32.p1(<$0 x float>"
+                              : "store <$0 x float>"}});
 }
 
 absl::StatusOr<std::unique_ptr<Executable>>

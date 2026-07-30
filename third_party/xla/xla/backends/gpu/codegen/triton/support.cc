@@ -99,6 +99,10 @@ CodegenDecision IsTritonSupportedDataType(
 // Set of unary elementwise ops that are genuinely supported by Triton.
 absl::flat_hash_set<HloOpcode> TritonSupportedUnaryElementwiseOps(
     PrimitiveType element_type, const se::GpuComputeCapability& gpu_version) {
+  if (primitive_util::IsComplexType(element_type)) {
+    return {};
+  }
+
   if (element_type == PrimitiveType::PRED) {
     return {HloOpcode::kNot, HloOpcode::kCopy};
   }
@@ -229,6 +233,9 @@ CodegenDecision IsTritonSupportedConversion(
 // Set of binary element-wise ops that are genuinely supported by Triton.
 absl::flat_hash_set<HloOpcode> TritonSupportedBinaryElementwiseOps(
     PrimitiveType element_type, const se::GpuComputeCapability& gpu_version) {
+  if (primitive_util::IsComplexType(element_type)) {
+    return {};
+  }
   if (element_type == PrimitiveType::S4 || element_type == PrimitiveType::U16 ||
       element_type == PrimitiveType::F8E5M2 ||
       element_type == PrimitiveType::F8E4M3FN ||
@@ -279,6 +286,9 @@ absl::flat_hash_set<HloOpcode> TritonSupportedBinaryElementwiseOps(
 // Set of ternary elementwise ops that are genuinely supported by Triton.
 absl::flat_hash_set<HloOpcode> TritonSupportedTernaryElementwiseOps(
     PrimitiveType element_type, const se::GpuComputeCapability& gpu_version) {
+  if (primitive_util::IsComplexType(element_type)) {
+    return {};
+  }
   if (element_type == PrimitiveType::S4 || element_type == PrimitiveType::U16) {
     return {};
   }
@@ -626,11 +636,16 @@ CodegenDecision IsTritonSupportedScaledDot(
   PrimitiveType rhs_scale_type = dot.operand(3)->shape().element_type();
   std::vector<PrimitiveType> supported_scale_types = {F8E4M3FN, F8E5M2,
                                                       F8E8M0FNU, S8};
-  if (!absl::c_linear_search(supported_scale_types, lhs_scale_type)) {
+  // Unscaled 16-bit operands (BF16) do not use dequantization block scales.
+  // In HLO, they carry dummy/placeholder scale constants (e.g. BF16 1.0), so
+  // we skip the scale type check when the operand type is BF16.
+  if (lhs_type != BF16 &&
+      !absl::c_linear_search(supported_scale_types, lhs_scale_type)) {
     return CodegenDecision::Forbid(absl::StrCat(
         "Unsupported LHS scale type: ", PrimitiveType_Name(lhs_scale_type)));
   }
-  if (!absl::c_linear_search(supported_scale_types, rhs_scale_type)) {
+  if (rhs_type != BF16 &&
+      !absl::c_linear_search(supported_scale_types, rhs_scale_type)) {
     return CodegenDecision::Forbid(absl::StrCat(
         "Unsupported RHS scale type: ", PrimitiveType_Name(rhs_scale_type)));
   }

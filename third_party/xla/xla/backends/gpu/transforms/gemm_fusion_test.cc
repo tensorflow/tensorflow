@@ -2100,6 +2100,50 @@ ENTRY main {
                                  m::Bitcast(m::Transpose(m::Parameter()))))));
 }
 
+TEST_P(GemmFusionTestVersioned,
+       TransposeDoesNotFuseInConcatGemmIfNonMajorPhysicalDim) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(R"(
+HloModule module
+
+ENTRY main {
+  p_lhs = bf16[512,3584] parameter(0)
+  p_p1 = bf16[14336,3584] parameter(1)
+  p_p2 = bf16[3584,64]{1,0} parameter(2)
+
+  trans2 = bf16[64,3584]{1,0} transpose(p_p2), dimensions={1,0}
+  cat = bf16[14400,3584]{1,0} concatenate(p_p1, trans2), dimensions={0}
+  bitcast_cat = bf16[3584,14400]{0,1} bitcast(cat)
+
+  ROOT d = bf16[14400,512]{0,1} dot(bitcast_cat, p_lhs),
+    lhs_contracting_dims={0}, rhs_contracting_dims={1}
+}
+)"));
+
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       GemmFusion(gpu_version_).Run(module.get()));
+  EXPECT_TRUE(changed);
+
+  if (std::get<0>(GetParam())) {
+    // V2: TritonFusionAnalysis returns a failure status.
+    const HloComputation* computation = module->entry_computation()
+                                            ->root_instruction()
+                                            ->called_computations()[0];
+    EXPECT_THAT(
+        TritonFusionAnalysis::Execute(*computation).status(),
+        absl_testing::StatusIs(
+            absl::StatusCode::kFailedPrecondition,
+            ::testing::HasSubstr("Transposing sliced concatenate dimension to "
+                                 "non-major-most physical position.")));
+  } else {
+    // V1: Transpose is unfused.
+    EXPECT_THAT(
+        module->entry_computation()->root_instruction(),
+        GmockMatch(m::Fusion(m::Parameter(), m::Transpose(m::Parameter()),
+                             m::Parameter())));
+  }
+}
+
 TEST_P(GemmFusionTestVersioned, InstructionWithCalledComputationsIsSkipped) {
   // Tests that reduce instruction (which has called computations) is not fused.
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,

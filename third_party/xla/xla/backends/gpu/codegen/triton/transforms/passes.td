@@ -243,16 +243,8 @@ def XTileLowerToTritonPass
     : Pass<"xtile-lower-to-triton", "mlir::ModuleOp"> {
   let summary = "Lowers XTile operations to their Triton equivalent.";
   let dependentDialects = [
+    "::mlir::stablehlo::StablehloDialect",
     "::mlir::triton::TritonDialect",
-    "::xla::xtile::XTileDialect",
-  ];
-}
-
-def XTileScalarizeScanPass
-    : Pass<"xtile-scalarize-scan", "mlir::ModuleOp"> {
-  let summary = "Scalarizes the region of an xtile.scan operation.";
-  let dependentDialects = [
-    "::mlir::tensor::TensorDialect",
     "::xla::xtile::XTileDialect",
   ];
 }

@@ -283,8 +283,8 @@ SymbolicExpr SymbolicExprSimplifier::SimplifySumDiv(SymbolicExpr dividend,
     // Extract constant multiples of divisor from plain constant summands.
     if (expr.GetType() == SymbolicExprType::kConstant) {
       int64_t val = expr.GetValue();
-      if (val >= divisor || val <= -divisor) {
-        int64_t count = llvm::divideFloorSigned(val, divisor);
+      int64_t count = llvm::divideFloorSigned(val, divisor);
+      if (count != 0) {
         int64_t remainder = val - count * divisor;
         extracted = extracted + CreateSymbolicConstant(
                                     count, range_evaluator_->GetMLIRContext());

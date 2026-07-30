@@ -48,6 +48,9 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE(context, 0 <= axis && axis < NumDimensions(input));
   if (input->type != kTfLiteInt32 && input->type != kTfLiteFloat32 &&
       input->type != kTfLiteFloat16 && input->type != kTfLiteBFloat16 &&
+#if defined(TFLITE_ENABLE_EXTRA_REFERENCE_KERNELS)
+      input->type != kTfLiteFloat8E4M3FN && input->type != kTfLiteFloat8E5M2 &&
+#endif
       input->type != kTfLiteUInt8 && input->type != kTfLiteInt8 &&
       input->type != kTfLiteInt16 && input->type != kTfLiteBool) {
     TF_LITE_KERNEL_LOG(context, "Type '%s' is not supported by unpack.",

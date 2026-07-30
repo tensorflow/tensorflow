@@ -51,6 +51,7 @@ limitations under the License.
 #include "xla/backends/gpu/codegen/kernel_compiler.h"
 #include "xla/backends/gpu/runtime/execution_stream_id.h"
 #include "xla/backends/gpu/runtime/sequential_thunk.h"
+#include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/future.h"
 #include "xla/hlo/analysis/hlo_ordering.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -261,15 +262,24 @@ absl::StatusOr<CompileModuleResults> CompileModuleToLlvmIr(
   XLA_SCOPED_LOGGING_TIMER(absl::StrCat(
       "GpuCompiler::RunBackend - IR emission for ", hlo_module->name()));
 
-  xla::Future<std::unique_ptr<SequentialThunk>> future_sequential_thunk =
+  Future<ThunkSequence> future_thunks =
       thunk_emitter.EmitHloEntryComputation(hlo_module);
 
-  ASSIGN_OR_RETURN(
-      results.constants_binary,
-      compiler->CompileToTargetBinary(thunk_emitter.ConsumeConstantsModule())
-          .Await());
-  ASSIGN_OR_RETURN(results.executable,
-                   std::move(future_sequential_thunk).Await());
+  llvm::Module* constants_module = thunk_emitter.constants_module();
+  const bool has_constants_module =
+      !constants_module->empty() || !constants_module->global_empty();
+  if (has_constants_module) {
+    ASSIGN_OR_RETURN(
+        results.constants_binary,
+        compiler->CompileToTargetBinary(thunk_emitter.ConsumeConstantsModule())
+            .Await());
+  } else {
+    VLOG(2) << "Constants LLVM module is empty; skipping target compilation.";
+  }
+
+  ASSIGN_OR_RETURN(ThunkSequence thunks, std::move(future_thunks).Await());
+  results.executable =
+      std::make_unique<SequentialThunk>(Thunk::ThunkInfo{}, std::move(thunks));
 
   // This won't record values for calls that error out (because if they error
   // out we have no way of telling how far through the process we got).

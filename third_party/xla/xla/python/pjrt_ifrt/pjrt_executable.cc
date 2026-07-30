@@ -30,6 +30,7 @@ limitations under the License.
 #include "absl/log/vlog_is_on.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/cord.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/tsl/platform/status_macros.h"
@@ -600,24 +601,24 @@ absl::StatusOr<std::string> PjRtExecutable::CommonMetadata::Serialize(
   return serialized_executable;
 }
 
-absl::StatusOr<std::pair<PjRtExecutable::CommonMetadata, absl::string_view>>
+absl::StatusOr<std::pair<PjRtExecutable::CommonMetadata, absl::Cord>>
 PjRtExecutable::CommonMetadata::Deserialize(
-    absl::string_view serialized_executable,
+    const absl::Cord& serialized_executable,
     absl::FunctionRef<absl::Status(const ExecutableVersion& executable_version,
                                    const DeviceListRef& devices)>
         is_executable_version_compatible,
     const XlaDeserializeExecutableOptions& xla_deserialize_executable_options) {
   SerializedXlaExecutableMetadata metadata;
-  tsl::protobuf::io::ArrayInputStream input_stream(
-      serialized_executable.data(), serialized_executable.size());
+  tsl::protobuf::io::CordInputStream input_stream(&serialized_executable);
   if (!tsl::protobuf::util::ParseDelimitedFromZeroCopyStream(
           &metadata, &input_stream, nullptr)) {
     return absl::InvalidArgumentError(
         "Failed to parse SerializedXlaExecutableMetadata");
   }
 
-  absl::string_view serialized_pjrt_executable =
-      serialized_executable.substr(input_stream.ByteCount());
+  absl::Cord serialized_pjrt_executable = serialized_executable.Subcord(
+      input_stream.ByteCount(),
+      serialized_executable.size() - input_stream.ByteCount());
 
   ASSIGN_OR_RETURN(
       std::unique_ptr<xla::ifrt::XlaExecutableVersion> executable_version,
@@ -713,7 +714,8 @@ PjRtExecutable::CommonMetadata::Deserialize(
   common_metadata.outputs_bundle_slice_sizes =
       std::move(outputs_bundle_slice_sizes);
 
-  return std::make_pair(std::move(common_metadata), serialized_pjrt_executable);
+  return std::make_pair(std::move(common_metadata),
+                        std::move(serialized_pjrt_executable));
 }
 
 absl::StatusOr<std::string> PjRtExecutable::Serialize() const {

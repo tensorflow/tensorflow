@@ -29,6 +29,7 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"
 #include "xla/codegen/tiling/experimental/tiled_hlo.h"
 #include "xla/codegen/tiling/experimental/tiling_space.h"
+#include "xla/codegen/tiling/experimental/tiling_space_utils.h"
 #include "xla/codegen/tiling/symbolic_tile_analysis.h"
 #include "xla/codegen/tiling/tiled_hlo_computation.h"
 #include "xla/codegen/tiling/tiling_specification.h"
@@ -39,7 +40,6 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
-#include "xla/hlo/testlib/test_helpers.h"
 #include "xla/hlo/utils/hlo_traversal.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
@@ -551,15 +551,8 @@ ENTRY main {
   EXPECT_EQ(tiled_runtime_data.block_level_parameters.output_tile_sizes.size(),
             1);
 
-  // Experimental tiling uses padded tile sizes, while the symbolic tiling does
-  // not.
-  if (use_experimental_tiling()) {
-    EXPECT_THAT(tiled_runtime_data.block_level_parameters.output_tile_sizes[0],
-                ElementsAre(4, 1024));
-  } else {
-    EXPECT_THAT(tiled_runtime_data.block_level_parameters.output_tile_sizes[0],
-                ElementsAre(4, 911));
-  }
+  EXPECT_THAT(tiled_runtime_data.block_level_parameters.output_tile_sizes[0],
+              ElementsAre(4, 911));
   EXPECT_EQ(tiled_runtime_data.block_level_parameters.num_warps, 4);
 
   EXPECT_EQ(tiled_runtime_data.runtime_data.bytes_read, kExpectedBytesRead);
@@ -951,8 +944,7 @@ ENTRY main {
         std::unique_ptr<experimental::TilingSpace> tiling_space,
         experimental::TilingSpace::Create(*fusion_adaptor, &mlir_context_));
 
-    EXPECT_OK(tiling_space->AssignTileSizes(
-        xla::xtile::GetPaddedTileSizes(output_tile_sizes)));
+    EXPECT_OK(tiling_space->AssignTileSizes(output_tile_sizes));
 
     ASSERT_OK_AND_ASSIGN(
         experimental::TiledHloComputation tiled_hlo_computation,
@@ -1086,6 +1078,9 @@ INSTANTIATE_TEST_SUITE_P(FlopsPerElementTestInstantiation, FlopsPerElementTest,
                          ::testing::ValuesIn({false}));
 
 TEST_P(FlopsPerElementTest, MatchesGpuHloCostAnalysis_Reduce) {
+  // Note: This comparison only succeeds when the reduction dimension size is a
+  // power of two (e.g. 64), because FlopsPerElement accounts for power-of-two
+  // padding while GpuHloCostAnalysis measures unpadded FLOP counts.
   CompareFlopsModels(R"(
 HloModule m
 
@@ -1096,7 +1091,7 @@ add {
 }
 
 ENTRY entry_computation {
-  param_0.3 = f32[32,40] parameter(0)
+  param_0.3 = f32[32,64] parameter(0)
   constant = f32[] constant(0)
   ROOT reduce = f32[32] reduce(param_0.3, constant), dimensions={1}, to_apply=add
 }
@@ -1104,6 +1099,9 @@ ENTRY entry_computation {
 }
 
 TEST_P(FlopsPerElementTest, MatchesGpuHloCostAnalysis_VariadicReduce) {
+  // Note: This comparison only succeeds when the reduction dimension size is a
+  // power of two (e.g. 64), because FlopsPerElement accounts for power-of-two
+  // padding while GpuHloCostAnalysis measures unpadded FLOP counts.
   CompareFlopsModels(R"(
 HloModule m
 
@@ -1118,11 +1116,37 @@ add_multiply {
 }
 
 ENTRY entry_computation {
-  param_0 = f32[32,40] parameter(0)
+  param_0 = f32[32,64] parameter(0)
   c0 = f32[] constant(0)
   ROOT reduce = (f32[32], f32[32]) reduce(param_0, param_0, c0, c0), dimensions={1}, to_apply=add_multiply
 }
 )");
+}
+
+TEST_P(FlopsPerElementTest, PaddedReduceDimensions) {
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+HloModule m
+
+add {
+  param_0 = f32[] parameter(0)
+  param_1 = f32[] parameter(1)
+  ROOT add.0 = f32[] add(param_0, param_1)
+}
+
+ENTRY entry_computation {
+  param_0.3 = f32[10,15,9] parameter(0)
+  constant = f32[] constant(0)
+  ROOT reduce = f32[10] reduce(param_0.3, constant), dimensions={1,2}, to_apply=add
+}
+)"));
+  auto* instr = module->entry_computation()->root_instruction();
+
+  // Dim 1 size 15 -> PowerOf2Ceil(15) = 16.
+  // Dim 2 size 9  -> PowerOf2Ceil(9)  = 16.
+  // Padded reduction factor = 16 * 16 = 256.
+  // Elementwise f32 add = 3 FLOPs per operation.
+  // FLOPs per output element = (256 - 1) * 3 = 765.
+  EXPECT_EQ(indexing_cost_model_.FlopsPerElement(instr), 765);
 }
 
 TEST_P(FlopsPerElementTest, MatchesGpuHloCostAnalysis_Elementwise_Cosine) {

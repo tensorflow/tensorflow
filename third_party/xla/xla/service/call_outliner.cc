@@ -30,11 +30,12 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_clone_context.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
-#include "xla/service/call_marker.h"
 #include "xla/status_macros.h"
 #include "xla/tsl/platform/logging.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace {
@@ -98,12 +99,27 @@ absl::Status RestoreMetadataAndDependencies(HloInstruction* call_instruction,
         innermost_after->raw_backend_config_string());
   }
 
+  // Restore original instruction name if present.
+  std::string instruction_name;
+  if (innermost_after->has_frontend_attributes()) {
+    auto map = innermost_after->frontend_attributes().map();
+    auto it = map.find(kCallMarkedInstructionNameAttribute.data());
+    if (it != map.end()) {
+      instruction_name = it->second;
+    }
+  }
+
   // Restore original frontend attributes from the 'after' marker (excluding the
-  // internal marker attribute).
+  // internal marker attributes).
   FrontendAttributes attributes = innermost_after->frontend_attributes();
   attributes.mutable_map()->erase(kCallMarkedComputationAttribute.data());
+  attributes.mutable_map()->erase(kCallMarkedInstructionNameAttribute.data());
   if (!attributes.map().empty()) {
     call_instruction->set_frontend_attributes(attributes);
+  }
+
+  if (!instruction_name.empty()) {
+    call_instruction->SetAndSanitizeName(instruction_name);
   }
 
   // Restore control predecessors from the 'before' marker.
@@ -246,6 +262,10 @@ absl::StatusOr<HloInstruction*> CallOutliner::OutlineAndReplaceBlock(
   std::vector<HloInstruction*> call_operands;
   ASSIGN_OR_RETURN(HloComputation * outlined_computation,
                    BuildOutlinedComputation(module, block, call_operands));
+  std::string original_computation_name = GetMarkedComputationName(block.after);
+  if (!original_computation_name.empty()) {
+    outlined_computation->SetAndSanitizeName(original_computation_name);
+  }
   outlined_computation->SetExecutionThread(computation->execution_thread());
   VLOG(2) << "CallOutliner created outlined computation "
           << outlined_computation->name() << " in module " << module->name();

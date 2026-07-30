@@ -47,14 +47,62 @@ limitations under the License.
 #include "xla/service/source_target_pairs.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/side_effect_util.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/statusor.h"
+#include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace {
 
 using CycleType = collective_permute_cycle::CycleType;
+
+std::unique_ptr<HloInstruction> MakeTestInstruction(absl::string_view name) {
+  return HloInstruction::CreateParameter(
+      /*parameter_number=*/0, ShapeUtil::MakeShape(F32, {1}), name);
+}
+
+TEST(CollectiveOpsUtilsTest, GetCollectiveGroupKey) {
+  std::unique_ptr<HloInstruction> instruction =
+      MakeTestInstruction("instruction");
+  EXPECT_EQ(GetCollectiveGroupKey(*instruction), std::nullopt);
+  EXPECT_FALSE(HasCollectiveGroupKey(*instruction));
+
+  instruction->set_frontend_attribute(kCollectiveGroupKeyAttr, "");
+  EXPECT_EQ(GetCollectiveGroupKey(*instruction), std::nullopt);
+  EXPECT_FALSE(HasCollectiveGroupKey(*instruction));
+
+  instruction->set_frontend_attribute(kCollectiveGroupKeyAttr, "g0");
+  EXPECT_EQ(GetCollectiveGroupKey(*instruction), "g0");
+  EXPECT_TRUE(HasCollectiveGroupKey(*instruction));
+}
+
+TEST(CollectiveOpsUtilsTest, ClearCollectiveGroupKey) {
+  std::unique_ptr<HloInstruction> instruction =
+      MakeTestInstruction("instruction");
+  instruction->set_frontend_attribute(kCollectiveGroupKeyAttr, "g0");
+  instruction->set_frontend_attribute("other", "preserved");
+
+  ClearCollectiveGroupKey(*instruction);
+
+  EXPECT_FALSE(HasCollectiveGroupKey(*instruction));
+  EXPECT_EQ(instruction->get_frontend_attribute("other"), "preserved");
+}
+
+TEST(CollectiveOpsUtilsTest, CollectiveGroupCompatibilityRequiresMatchingKey) {
+  std::unique_ptr<HloInstruction> lhs = MakeTestInstruction("lhs");
+  std::unique_ptr<HloInstruction> rhs = MakeTestInstruction("rhs");
+  lhs->set_frontend_attribute(kCollectiveGroupKeyAttr, "g0");
+
+  EXPECT_FALSE(HaveCompatibleCollectiveGroupKeys(*lhs, *rhs));
+
+  rhs->set_frontend_attribute(kCollectiveGroupKeyAttr, "other");
+  EXPECT_FALSE(HaveCompatibleCollectiveGroupKeys(*lhs, *rhs));
+
+  rhs->set_frontend_attribute(kCollectiveGroupKeyAttr, "g0");
+  EXPECT_TRUE(HaveCompatibleCollectiveGroupKeys(*lhs, *rhs));
+}
 
 // Creates a container of ReplicaGroups.
 std::vector<ReplicaGroup> CreateReplicaGroups(
@@ -1312,13 +1360,15 @@ class IsNcclSymmetricBuffersEnabledForCollectiveTest : public ::testing::Test {
         p_f32_1024 = f32[1024]{0} parameter(0)
         p_s32_1024 = s32[1024]{0} parameter(1)
         p_f32_2048 = f32[2048]{0} parameter(2)
+        p_f32_512 = f32[512]{0} parameter(3)
 
         ar_f32_1024 = f32[1024]{0} all-reduce(p_f32_1024), replica_groups={{0,1}}, to_apply=add_f32
         ar_s32_1024 = s32[1024]{0} all-reduce(p_s32_1024), replica_groups={{0,1}}, to_apply=add_s32
         ar_f32_2048 = f32[2048]{0} all-reduce(p_f32_2048), replica_groups={{0,1}}, to_apply=add_f32
+        ag_f32_512 = f32[1024]{0} all-gather(p_f32_512), replica_groups={{0,1}}, dimensions={0}
         ag_f32_1024 = f32[2048]{0} all-gather(p_f32_1024), replica_groups={{0,1}}, dimensions={0}
 
-        ROOT tuple = (f32[1024]{0}, s32[1024]{0}, f32[2048]{0}, f32[2048]{0}) tuple(ar_f32_1024, ar_s32_1024, ar_f32_2048, ag_f32_1024)
+        ROOT tuple = (f32[1024]{0}, s32[1024]{0}, f32[2048]{0}, f32[1024]{0}, f32[2048]{0}) tuple(ar_f32_1024, ar_s32_1024, ar_f32_2048, ag_f32_512, ag_f32_1024)
       }
     )";
 
@@ -1328,11 +1378,13 @@ class IsNcclSymmetricBuffersEnabledForCollectiveTest : public ::testing::Test {
     ar_f32_1024_ = entry->GetInstructionWithName("ar_f32_1024");
     ar_s32_1024_ = entry->GetInstructionWithName("ar_s32_1024");
     ar_f32_2048_ = entry->GetInstructionWithName("ar_f32_2048");
+    ag_f32_512_ = entry->GetInstructionWithName("ag_f32_512");
     ag_f32_1024_ = entry->GetInstructionWithName("ag_f32_1024");
 
     ASSERT_NE(ar_f32_1024_, nullptr);
     ASSERT_NE(ar_s32_1024_, nullptr);
     ASSERT_NE(ar_f32_2048_, nullptr);
+    ASSERT_NE(ag_f32_512_, nullptr);
     ASSERT_NE(ag_f32_1024_, nullptr);
   }
 
@@ -1340,6 +1392,7 @@ class IsNcclSymmetricBuffersEnabledForCollectiveTest : public ::testing::Test {
   HloInstruction* ar_f32_1024_;
   HloInstruction* ar_s32_1024_;
   HloInstruction* ar_f32_2048_;
+  HloInstruction* ag_f32_512_;
   HloInstruction* ag_f32_1024_;
 };
 
@@ -1349,6 +1402,7 @@ TEST_F(IsNcclSymmetricBuffersEnabledForCollectiveTest, MasterSwitchEnablesAll) {
   EXPECT_TRUE(IsNcclSymmetricBuffersEnabledForCollective(ar_f32_1024_, opts));
   EXPECT_TRUE(IsNcclSymmetricBuffersEnabledForCollective(ar_s32_1024_, opts));
   EXPECT_TRUE(IsNcclSymmetricBuffersEnabledForCollective(ar_f32_2048_, opts));
+  EXPECT_TRUE(IsNcclSymmetricBuffersEnabledForCollective(ag_f32_512_, opts));
   EXPECT_TRUE(IsNcclSymmetricBuffersEnabledForCollective(ag_f32_1024_, opts));
 }
 
@@ -1359,6 +1413,7 @@ TEST_F(IsNcclSymmetricBuffersEnabledForCollectiveTest, AllFilterEnablesAll) {
   EXPECT_TRUE(IsNcclSymmetricBuffersEnabledForCollective(ar_f32_1024_, opts));
   EXPECT_TRUE(IsNcclSymmetricBuffersEnabledForCollective(ar_s32_1024_, opts));
   EXPECT_TRUE(IsNcclSymmetricBuffersEnabledForCollective(ar_f32_2048_, opts));
+  EXPECT_TRUE(IsNcclSymmetricBuffersEnabledForCollective(ag_f32_512_, opts));
   EXPECT_TRUE(IsNcclSymmetricBuffersEnabledForCollective(ag_f32_1024_, opts));
 }
 
@@ -1370,7 +1425,8 @@ TEST_F(IsNcclSymmetricBuffersEnabledForCollectiveTest, AllFilterWithSizeLimit) {
   EXPECT_TRUE(IsNcclSymmetricBuffersEnabledForCollective(ar_f32_1024_, opts));
   EXPECT_TRUE(IsNcclSymmetricBuffersEnabledForCollective(ar_s32_1024_, opts));
   EXPECT_FALSE(IsNcclSymmetricBuffersEnabledForCollective(ar_f32_2048_, opts));
-  EXPECT_TRUE(IsNcclSymmetricBuffersEnabledForCollective(ag_f32_1024_, opts));
+  EXPECT_TRUE(IsNcclSymmetricBuffersEnabledForCollective(ag_f32_512_, opts));
+  EXPECT_FALSE(IsNcclSymmetricBuffersEnabledForCollective(ag_f32_1024_, opts));
 }
 
 TEST_F(IsNcclSymmetricBuffersEnabledForCollectiveTest,

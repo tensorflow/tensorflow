@@ -137,6 +137,10 @@ tf_class {
     mtype: "<class \'property\'>"
   }
   member_method {
+    name: "__call__"
+    argspec: "args=[\'self\'], varargs=args, keywords=kwargs, defaults=None"
+  }
+  member_method {
     name: "__init__"
     argspec: "args=[\'self\', \'name\', \'dtype\', \'shape\'], varargs=None, keywords=None, defaults=[\'mean_tensor\', \'None\', \'None\'], "
   }
@@ -195,6 +199,7 @@ tf_class {
   member_method {
     name: "from_config"
     argspec: "args=[\'cls\', \'config\'], varargs=None, keywords=None, defaults=None"
+    method_kind: CLASS
   }
   member_method {
     name: "get_build_config"
@@ -267,5 +272,6 @@ tf_class {
   member_method {
     name: "with_name_scope"
     argspec: "args=[\'cls\', \'method\'], varargs=None, keywords=None, defaults=None"
+    method_kind: CLASS
   }
 }

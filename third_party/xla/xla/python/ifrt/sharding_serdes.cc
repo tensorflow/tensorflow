@@ -20,6 +20,7 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/cord.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "xla/tsl/platform/status_macros.h"
@@ -54,7 +55,7 @@ class SingleDeviceShardingSerDes
     return "xla::ifrt::SingleDeviceSharding";
   }
 
-  absl::StatusOr<std::string> Serialize(
+  absl::StatusOr<absl::Cord> Serialize(
       const Serializable& serializable,
       std::unique_ptr<SerializeOptions> options) override {
     const SerDesVersion version = GetRequestedSerDesVersion(options.get());
@@ -71,11 +72,11 @@ class SingleDeviceShardingSerDes
     if (sharding.memory_kind().memory_kind().has_value()) {
       proto.set_memory_kind(std::string(*sharding.memory_kind().memory_kind()));
     }
-    return proto.SerializeAsString();
+    return proto.SerializeAsCord();
   }
 
   absl::StatusOr<std::unique_ptr<Serializable>> Deserialize(
-      const std::string& serialized,
+      const absl::Cord& serialized,
       std::unique_ptr<DeserializeOptions> options) override {
     const auto* deserialize_sharding_options =
         llvm::dyn_cast_or_null<DeserializeShardingOptions>(options.get());
@@ -116,7 +117,7 @@ class OpaqueShardingSerDes
     return "xla::ifrt::OpaqueSharding";
   }
 
-  absl::StatusOr<std::string> Serialize(
+  absl::StatusOr<absl::Cord> Serialize(
       const Serializable& serializable,
       std::unique_ptr<SerializeOptions> options) override {
     const SerDesVersion version = GetRequestedSerDesVersion(options.get());
@@ -132,11 +133,11 @@ class OpaqueShardingSerDes
     if (sharding.memory_kind().memory_kind().has_value()) {
       proto.set_memory_kind(std::string(*sharding.memory_kind().memory_kind()));
     }
-    return proto.SerializeAsString();
+    return proto.SerializeAsCord();
   }
 
   absl::StatusOr<std::unique_ptr<Serializable>> Deserialize(
-      const std::string& serialized,
+      const absl::Cord& serialized,
       std::unique_ptr<DeserializeOptions> options) override {
     const auto* deserialize_sharding_options =
         llvm::dyn_cast_or_null<DeserializeShardingOptions>(options.get());
@@ -177,7 +178,7 @@ class ConcreteShardingSerDes
     return "xla::ifrt::ConcreteSharding";
   }
 
-  absl::StatusOr<std::string> Serialize(
+  absl::StatusOr<absl::Cord> Serialize(
       const Serializable& serializable,
       std::unique_ptr<SerializeOptions> options) override {
     const SerDesVersion version = GetRequestedSerDesVersion(options.get());
@@ -206,11 +207,11 @@ class ConcreteShardingSerDes
         dynamic_shape.ToProto(*proto.add_shard_dynamic_shapes(), version);
       }
     }
-    return proto.SerializeAsString();
+    return proto.SerializeAsCord();
   }
 
   absl::StatusOr<std::unique_ptr<Serializable>> Deserialize(
-      const std::string& serialized,
+      const absl::Cord& serialized,
       std::unique_ptr<DeserializeOptions> options) override {
     const auto* deserialize_sharding_options =
         llvm::dyn_cast_or_null<DeserializeShardingOptions>(options.get());
@@ -278,7 +279,7 @@ class ConcreteEvenShardingSerDes
     return "xla::ifrt::ConcreteEvenSharding";
   }
 
-  absl::StatusOr<std::string> Serialize(
+  absl::StatusOr<absl::Cord> Serialize(
       const Serializable& serializable,
       std::unique_ptr<SerializeOptions> options) override {
     const SerDesVersion version = GetRequestedSerDesVersion(options.get());
@@ -298,11 +299,11 @@ class ConcreteEvenShardingSerDes
     sharding.shape().ToProto(*proto.mutable_shape(), version);
     sharding.shard_shape().ToProto(*proto.mutable_shard_shape(), version);
     proto.set_is_fully_replicated(sharding.IsFullyReplicated());
-    return proto.SerializeAsString();
+    return proto.SerializeAsCord();
   }
 
   absl::StatusOr<std::unique_ptr<Serializable>> Deserialize(
-      const std::string& serialized,
+      const absl::Cord& serialized,
       std::unique_ptr<DeserializeOptions> options) override {
     const auto* deserialize_sharding_options =
         llvm::dyn_cast_or_null<DeserializeShardingOptions>(options.get());
@@ -346,7 +347,7 @@ class ShardingParamShardingSerDes
     return "xla::ifrt::ShardingParamSharding";
   }
 
-  absl::StatusOr<std::string> Serialize(
+  absl::StatusOr<absl::Cord> Serialize(
       const Serializable& serializable,
       std::unique_ptr<SerializeOptions> options) override {
     const SerDesVersion version = GetRequestedSerDesVersion(options.get());
@@ -365,11 +366,11 @@ class ShardingParamShardingSerDes
     }
     RETURN_IF_ERROR(sharding.sharding_param().ToProto(
         *proto.mutable_sharding_param(), version));
-    return proto.SerializeAsString();
+    return proto.SerializeAsCord();
   }
 
   absl::StatusOr<std::unique_ptr<Serializable>> Deserialize(
-      const std::string& serialized,
+      const absl::Cord& serialized,
       std::unique_ptr<DeserializeOptions> options) override {
     const auto* deserialize_sharding_options =
         llvm::dyn_cast_or_null<DeserializeShardingOptions>(options.get());

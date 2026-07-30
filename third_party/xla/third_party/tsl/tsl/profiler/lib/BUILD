@@ -193,6 +193,7 @@ tsl_cc_test(
         "//tsl/profiler/protobuf:xplane_proto_cc",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/time",
         "@com_google_googletest//:gtest_main",
         "@xla//xla/tsl/platform:test",
@@ -435,5 +436,6 @@ cc_library(
         "@com_google_absl//absl/time",
         "@xla//xla/tsl/platform:env",
         "@xla//xla/tsl/platform:errors",
+        "@xla//xla/tsl/platform:logging",
     ],
 )

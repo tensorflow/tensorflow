@@ -240,7 +240,7 @@ namespace {
 // TODO(abanas): The following three usings are a workaround, delete when
 // ResultBuffer is implemented as its own class
 using ResultBufferBase = ffi::Result<ffi::AnyBuffer>;
-template <PrimitiveType dtype, size_t rank = xla::ffi::internal::kDynamicRank>
+template <PrimitiveType dtype, size_t rank = xla::ffi::kDynamicRank>
 using ResultBuffer = ffi::Result<ffi::Buffer<dtype, rank>>;
 template <PrimitiveType dtype>
 using ResultBufferR0 = ResultBuffer<dtype, 0>;

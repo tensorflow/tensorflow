@@ -19,6 +19,7 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/cord.h"
 #include "absl/strings/string_view.h"
 #include "xla/tsl/platform/status_macros.h"
 #include "llvm/Support/Casting.h"
@@ -50,7 +51,7 @@ class TpuXlaExecutableAbiVersionSerDes
     return "xla::TpuXlaExecutableAbiVersion";
   }
 
-  absl::StatusOr<std::string> Serialize(
+  absl::StatusOr<absl::Cord> Serialize(
       const xla::ifrt::Serializable& serializable,
       std::unique_ptr<xla::ifrt::SerializeOptions> options) override {
     const auto& version =
@@ -58,7 +59,7 @@ class TpuXlaExecutableAbiVersionSerDes
 
     ASSIGN_OR_RETURN(xla::PjRtExecutableAbiVersionProto proto,
                      version.ExecutableAbiVersion().ToProto());
-    std::string executable_abi_version;
+    absl::Cord executable_abi_version;
     if (!proto.SerializeToString(&executable_abi_version)) {
       return absl::InternalError(
           "Failed to serialize PjRtExecutableAbiVersion to string.");
@@ -67,7 +68,7 @@ class TpuXlaExecutableAbiVersionSerDes
   }
 
   absl::StatusOr<std::unique_ptr<xla::ifrt::Serializable>> Deserialize(
-      const std::string& serialized,
+      const absl::Cord& serialized,
       std::unique_ptr<xla::ifrt::DeserializeOptions> options) override {
     xla::PjRtExecutableAbiVersionProto proto;
     if (!proto.ParseFromString(serialized)) {
