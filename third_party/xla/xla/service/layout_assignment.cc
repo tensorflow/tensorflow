@@ -969,7 +969,9 @@ absl::Status LayoutAssignment::AddMandatoryConstraints(
         }
         if (async_layout.result_layout().LayoutIsSet() &&
             instruction->shape().IsTuple() &&
-            instruction->shape().tuple_shapes_size() > 1) {
+            instruction->shape().tuple_shapes_size() > 1 &&
+            ShapeUtil::Compatible(instruction->shape().tuple_shapes(1),
+                                  async_layout.result_layout().shape())) {
           Shape result_tuple_shape = instruction->shape();
           *ShapeUtil::GetMutableSubshape(&result_tuple_shape, {1}) =
               async_layout.result_layout().shape();
