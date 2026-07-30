@@ -191,12 +191,19 @@ const ApiDef::Arg* FindInputArg(absl::string_view name, const ApiDef& api_def) {
     }                                                              \
   } while (false)
 
+// Forward declaration; defined below alongside IsValidOpName.
+bool IsValidAttrOrArgName(absl::string_view sp);
+
 static absl::Status ValidateArg(const OpDef::ArgDef& arg, const OpDef& op_def,
                                 bool output,
                                 absl::flat_hash_set<absl::string_view>* names) {
   const std::string suffix =
       absl::StrCat(output ? " for output '" : " for input '", arg.name(), "'");
   VALIDATE(names->emplace(arg.name()).second, "Duplicate name: ", arg.name());
+  VALIDATE(IsValidAttrOrArgName(arg.name()), "Invalid argument name: ",
+           arg.name(),
+           " (must start with a letter or underscore and contain only "
+           "letters, digits, and underscores)");
   VALIDATE(HasAttrStyleType(arg), "Missing type", suffix);
 
   if (!arg.number_attr().empty()) {
@@ -267,6 +274,25 @@ bool IsValidOpName(absl::string_view sp) {
   }
 }
 
+// Attribute and argument names are not restricted to CamelCase like op
+// names, but they are spliced verbatim (unescaped) into generated C++ and
+// Python wrapper source by tools such as cc_op_gen.cc and python_op_gen.cc.
+// To prevent a malicious attr/arg name from injecting arbitrary code into
+// that generated source (e.g. a name containing `", ), ;`), restrict these
+// names to a safe identifier character set: they must start with a letter
+// or underscore and contain only letters, digits, and underscores.
+bool IsValidAttrOrArgName(absl::string_view sp) {
+  using ::tensorflow::strings::Scanner;
+
+  if (sp.empty()) return false;
+  if (sp[0] != '_' && !isalpha(static_cast<unsigned char>(sp[0]))) {
+    return false;
+  }
+  Scanner scanner(sp);
+  scanner.Any(Scanner::LETTER_DIGIT_UNDERSCORE);
+  return scanner.GetResult() && scanner.empty();
+}
+
 absl::Status ValidateOpDef(const OpDef& op_def) {
   if (!absl::StartsWith(op_def.name(), "_")) {
     VALIDATE(IsValidOpName(op_def.name()), "Invalid name: ", op_def.name(),
@@ -279,6 +305,10 @@ absl::Status ValidateOpDef(const OpDef& op_def) {
     // Validate name
     VALIDATE(names.emplace(attr.name()).second,
              "Duplicate name: ", attr.name());
+    VALIDATE(IsValidAttrOrArgName(attr.name()), "Invalid attr name: ",
+             attr.name(),
+             " (must start with a letter or underscore and contain only "
+             "letters, digits, and underscores)");
     DataType dt;
     VALIDATE(!DataTypeFromString(attr.name(), &dt), "Attr can't have name ",
              attr.name(), " that matches a data type");
