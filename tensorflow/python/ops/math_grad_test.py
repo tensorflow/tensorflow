@@ -876,6 +876,7 @@ class IgammaGradTest(test.TestCase):
           np.array([-np.inf, -1.0, 0.0, 0.0], dtype=dtype.as_numpy_dtype), xgrad
       )
 
+  @test_util.run_in_graph_and_eager_modes
   def testIgammaGradNumericalJacobian(self):
     # d/dx igamma(1, x) tends to e^-x near the singular boundary x=0. Compare
     # the analytic x-gradient against a numerical Jacobian at a small positive
