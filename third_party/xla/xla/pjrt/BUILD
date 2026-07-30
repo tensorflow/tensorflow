@@ -60,6 +60,25 @@ xla_cc_test(
 )
 
 cc_library(
+    name = "raw_pjrt_client",
+    srcs = ["raw_pjrt_client.cc"],
+    hdrs = ["raw_pjrt_client.h"],
+    visibility = internal_visibility([":friends"]),
+    deps = [
+        ":device_event",
+        ":pjrt_client",
+        ":raw_buffer",
+        "//xla:future",
+        "//xla/tsl/concurrency:async_value",
+        "@com_google_absl//absl/functional:any_invocable",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+cc_library(
     name = "pjrt_c_api_client",
     hdrs = ["pjrt_c_api_client.h"],
     visibility = internal_visibility([":friends"]),
@@ -138,6 +157,7 @@ cc_library(
         ":pjrt_compiler",
         ":pjrt_executable",
         ":raw_buffer",
+        ":raw_pjrt_client",
         ":staging_buffer",
         ":transpose",
         ":utils",

@@ -290,17 +290,25 @@ class CpuAllocator : public tsl::Allocator {
 };
 
 PjRtStreamExecutorRawClient::PjRtStreamExecutorRawClient(
+    std::unique_ptr<se::DeviceAddressAllocator> allocator, LocalClient* client,
     std::unique_ptr<HostMemoryAllocator> host_memory_allocator,
     bool should_stage_host_to_device_transfers,
     std::unique_ptr<AsyncWorkRunner> async_work_runner,
     se::StreamExecutor* executor,
     std::unique_ptr<gpu::GpuExecutableRunOptions> gpu_run_options)
-    : host_memory_allocator_(std::move(host_memory_allocator)),
+    : owned_allocator_(std::move(allocator)),
+      client_(client),
+      host_memory_allocator_(std::move(host_memory_allocator)),
       should_stage_host_to_device_transfers_(
           should_stage_host_to_device_transfers),
       async_work_runner_(std::move(async_work_runner)),
       executor_(executor),
       gpu_run_options_(std::move(gpu_run_options)) {
+  if (owned_allocator_ != nullptr) {
+    allocator_ = owned_allocator_.get();
+  } else if (client_ != nullptr) {
+    allocator_ = client_->backend().memory_allocator();
+  }
   if (!host_memory_allocator_) {
     host_memory_allocator_ = std::make_unique<BasicHostMemoryAllocator>(
         std::make_unique<CpuAllocator>());
@@ -324,9 +332,9 @@ PjRtStreamExecutorClient::PjRtStreamExecutorClient(
     std::shared_ptr<KeyValueStoreInterface> kv_store)
     : PjRtStreamExecutorClient(
           std::move(platform_name), client, std::move(devices), process_index,
-          std::move(memory_spaces), std::move(topology), std::move(allocator),
+          std::move(memory_spaces), std::move(topology),
           std::make_unique<PjRtStreamExecutorRawClient>(
-              std::move(host_memory_allocator),
+              std::move(allocator), client, std::move(host_memory_allocator),
               should_stage_host_to_device_transfers,
               MakeUnboundedAsyncWorkRunner("pjrt_async_work_runner",
                                            {/*stack_size=*/512 * 1024}),
@@ -351,7 +359,6 @@ PjRtStreamExecutorClient::PjRtStreamExecutorClient(
     int process_index,
     std::vector<std::unique_ptr<PjRtMemorySpace>> memory_spaces,
     std::shared_ptr<const xla::PjRtTopologyDescription> topology,
-    std::unique_ptr<se::DeviceAddressAllocator> allocator,
     std::unique_ptr<PjRtStreamExecutorRawClient> raw_client,
     std::shared_ptr<KeyValueStoreInterface> kv_store)
     : platform_id_(tsl::Fingerprint64(platform_name)),
@@ -359,7 +366,6 @@ PjRtStreamExecutorClient::PjRtStreamExecutorClient(
       client_(client),
       topology_(std::move(topology)),
       raw_client_(std::move(raw_client)),
-      owned_allocator_(std::move(allocator)),
       owned_devices_(std::move(devices)),
       process_index_(process_index),
       owned_memory_spaces_(std::move(memory_spaces)),
@@ -368,11 +374,6 @@ PjRtStreamExecutorClient::PjRtStreamExecutorClient(
           tsl::Env::Default(), "pjrt_compile_thread_pool",
           std::max<int>(DefaultThreadPoolSize(), client->device_count())) {
   CHECK(topology_) << " topology is required.";
-  if (owned_allocator_ != nullptr) {
-    allocator_ = owned_allocator_.get();
-  } else {
-    allocator_ = client_->backend().memory_allocator();
-  }
 
   for (const std::unique_ptr<PjRtStreamExecutorDevice>& device :
        owned_devices_) {
@@ -548,8 +549,7 @@ PjRtStreamExecutorClient::MakeDefaultShapeForMemorySpace(
 
 absl::StatusOr<PjRtRawBufferRef> PjRtStreamExecutorRawClient::AllocateRawBuffer(
     PjRtMemorySpace* memory_space, size_t on_device_bytes_count,
-    bool retry_on_oom, tsl::AsyncValueRef<bool> allocate_after,
-    se::DeviceAddressAllocator* allocator, LocalClient* client) {
+    bool retry_on_oom, tsl::AsyncValueRef<bool> allocate_after) {
   CHECK(allocate_after == nullptr)
       << "allocate_after is not supported for PjRtStreamExecutorClient.";
   auto* device = tensorflow::down_cast<PjRtStreamExecutorDevice*>(
@@ -566,15 +566,19 @@ absl::StatusOr<PjRtRawBufferRef> PjRtStreamExecutorRawClient::AllocateRawBuffer(
         absl::StrCat("Buffer allocation: invalid memory space: ",
                      memory_space->DebugString()));
   }
+  if (allocator_ == nullptr) {
+    return absl::InternalError(
+        "se::DeviceAddressAllocator is null in PjRtStreamExecutorRawClient.");
+  }
   ASSIGN_OR_RETURN(
       auto buffer,
-      allocator->Allocate(local_device->local_device_id().value(),
-                          on_device_bytes_count, true, layout_memory_space));
+      allocator_->Allocate(local_device->local_device_id().value(),
+                           on_device_bytes_count, true, layout_memory_space));
   auto mem =
-      RawSEDeviceMemory::Create(buffer.Release(), local_device, allocator);
-  if (local_device->allocation_model() !=
-      LocalDeviceState::kComputeSynchronized) {
-    DCHECK(client->backend().transfer_manager()->CanBufferBeAccessedNow(
+      RawSEDeviceMemory::Create(buffer.Release(), local_device, allocator_);
+  if (client_ != nullptr && local_device->allocation_model() !=
+                                LocalDeviceState::kComputeSynchronized) {
+    DCHECK(client_->backend().transfer_manager()->CanBufferBeAccessedNow(
         local_device->compute_stream()->parent(), mem->mem()));
   }
   return tsl::MakeRef<PjRtStreamExecutorRawBuffer>(

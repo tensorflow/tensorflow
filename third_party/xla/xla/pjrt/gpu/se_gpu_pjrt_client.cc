@@ -247,9 +247,9 @@ StreamExecutorGpuClient::StreamExecutorGpuClient(
     : xla::PjRtStreamExecutorClient(
           platform_name, client, std::move(devices), process_index,
           /*memory_spaces=*/{},  // Initialized below.
-          std::move(topology), std::move(allocator),
+          std::move(topology),
           std::make_unique<StreamExecutorGpuRawClient>(
-              std::move(host_memory_allocator),
+              std::move(allocator), client, std::move(host_memory_allocator),
               should_stage_host_to_device_transfers,
               /*async_work_runner=*/nullptr, GetFirstExecutor(devices),
               abort_collectives_on_failure, std::move(gpu_run_options)),

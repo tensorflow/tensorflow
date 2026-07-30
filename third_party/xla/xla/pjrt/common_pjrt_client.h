@@ -48,6 +48,7 @@ limitations under the License.
 #include "xla/pjrt/dynamic_shapes.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/raw_buffer.h"
+#include "xla/pjrt/raw_pjrt_client.h"
 #include "xla/pjrt/transpose.h"
 #include "xla/runtime/device_id.h"
 #include "xla/shape.h"
@@ -493,27 +494,7 @@ class CommonPjRtClient : public PjRtClient {
       TransposePlanCache(1024);
 };
 
-// Represents the launch state for a loaded executable. This state must be
-// reconstructed each time we want to launch the executable.
-class PjRtRawLoadedExecutable {
- public:
-  virtual ~PjRtRawLoadedExecutable() = default;
 
-  virtual PjRtDevice* device() = 0;
-
-  struct RawExecuteResult {
-    std::optional<tsl::Future<>> future;
-    PjRtDeviceEventRef primary_execute_event;
-    absl::Status inline_status;
-  };
-  virtual RawExecuteResult Execute(const ExecuteOptions& options,
-                                   absl::Span<const PjRtRawBufferRef> inputs,
-                                   absl::Span<const PjRtRawBufferRef> results,
-                                   PjRtDeviceEventRefVector extra_deps,
-                                   PjRtDeviceEventRefVector control_deps,
-                                   bool is_predetermined_error,
-                                   bool fill_future) && = 0;
-};
 
 class CommonPjRtLoadedExecutable : public PjRtLoadedExecutable {
  public:

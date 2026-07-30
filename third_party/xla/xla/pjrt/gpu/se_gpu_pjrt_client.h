@@ -111,16 +111,18 @@ class StreamExecutorGpuHbmMemorySpace : public PjRtStreamExecutorMemorySpace {
 class StreamExecutorGpuRawClient : public PjRtStreamExecutorRawClient {
  public:
   StreamExecutorGpuRawClient(
+      std::unique_ptr<se::DeviceAddressAllocator> allocator,
+      LocalClient* client,
       std::unique_ptr<HostMemoryAllocator> host_memory_allocator,
       bool should_stage_host_to_device_transfers,
       std::unique_ptr<AsyncWorkRunner> async_work_runner,
       se::StreamExecutor* executor = nullptr,
       bool abort_collectives_on_failure = false,
       std::unique_ptr<gpu::GpuExecutableRunOptions> gpu_run_options = nullptr)
-      : PjRtStreamExecutorRawClient(std::move(host_memory_allocator),
-                                    should_stage_host_to_device_transfers,
-                                    std::move(async_work_runner), executor,
-                                    std::move(gpu_run_options)),
+      : PjRtStreamExecutorRawClient(
+            std::move(allocator), client, std::move(host_memory_allocator),
+            should_stage_host_to_device_transfers, std::move(async_work_runner),
+            executor, std::move(gpu_run_options)),
         abort_collectives_on_failure_(abort_collectives_on_failure) {}
 
   void ScheduleRemoteSend(PjRtMemorySpace* memory_space,
