@@ -819,11 +819,19 @@ TEST_P(LoadMMapWeightCacheProviderTest, LoadingAStaleFileRestartsABuild) {
   }
   // Delete the cache provider to force a sync of the stale state.
   cache_provider = MMapWeightCacheProvider();
-  EXPECT_FALSE(IsCompatibleCacheFile(tmp_file));
+  EXPECT_FALSE(IsCompatibleCacheFile(
+      FileDescriptor::Open(tmp_file.GetCPath(), O_RDWR, 0644)));
 
   EXPECT_TRUE(cache_provider.LoadOrStartBuild(tmp_file.GetCPath(),
                                               tmp_file.Duplicate()));
   EXPECT_TRUE(cache_provider.CanStartBuildStep());
+
+  // Delete the cache provider to force a sync of the stale state.
+  cache_provider = MMapWeightCacheProvider();
+  EXPECT_TRUE(IsCompatibleCacheFile(
+      FileDescriptor::Open(tmp_file.GetCPath(), O_RDWR, 0644)));
+
+  EXPECT_TRUE(cache_provider.Load(tmp_file.GetCPath(), tmp_file.Duplicate()));
 }
 
 TEST_P(LoadMMapWeightCacheProviderTest, LookUpSucceeds) {
