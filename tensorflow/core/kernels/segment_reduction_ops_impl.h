@@ -521,10 +521,10 @@ class UnsortedSegmentReductionOp : public OpKernel {
     // Copy the value out of the (possibly shared) input buffer before any
     // validation, so that the value that is checked is the same one that is
     // subsequently used (see SubtleMustCopy).
-    const int64_t num_segments_val = internal::SubtleMustCopy(
+    const int64_t num_segments_val =
         num_segments.dtype() == DT_INT32
-            ? static_cast<int64_t>(num_segments.scalar<int32_t>()())
-            : num_segments.scalar<int64_t>()());
+            ? internal::SubtleMustCopy(num_segments.scalar<int32_t>()())
+            : internal::SubtleMustCopy(num_segments.scalar<int64_t>()());
     OP_REQUIRES(context, num_segments_val >= 0,
                 absl::InvalidArgumentError(
                     absl::StrCat("Input num_segments == ", num_segments_val,
@@ -542,8 +542,7 @@ class UnsortedSegmentReductionOp : public OpKernel {
                 absl::InvalidArgumentError(absl::StrCat(
                     "Input num_segments == ", num_segments_val,
                     " is too large. Must be at most ", kMaxSegments)));
-    const Index output_rows =
-        internal::SubtleMustCopy(static_cast<Index>(num_segments_val));
+    const Index output_rows = static_cast<Index>(num_segments_val);
     TensorShape output_shape;
     OP_REQUIRES_OK(context, output_shape.AddDimWithStatus(output_rows));
     for (int i = segment_ids.dims(); i < data.dims(); i++) {
