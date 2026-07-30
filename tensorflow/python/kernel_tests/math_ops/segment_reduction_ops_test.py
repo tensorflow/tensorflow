@@ -750,8 +750,24 @@ class UnsortedSegmentTest(SegmentReductionHelper, parameterized.TestCase):
     """
     data = constant_op.constant([1, 2, 3, 4], dtype=dtypes_lib.int32)
     segment_ids = constant_op.constant([0, 1, 0, 1], dtype=dtypes_lib.int32)
-    # Exactly the 2G boundary (2^31): valid for an int64 index but out of
-    # range for a signed int32 index.
+    # Exactly the 2^31 boundary: one past what a signed int32 can represent.
+    num_segments = constant_op.constant(1 << 31, dtype=dtypes_lib.int64)
+    with self.assertRaisesRegex(errors_impl.InvalidArgumentError,
+                                "is too large"):
+      self.evaluate(math_ops.unsorted_segment_sum(
+          data=data, segment_ids=segment_ids, num_segments=num_segments))
+
+  def testNumSegmentsOverflow_Int64Index(self):
+    """num_segments == 2^31 must be rejected with an int64 index too.
+
+    The limit is kint32max for every index type, not 2^31. The two differ by
+    one, and an earlier revision of this check allowed 2^31 whenever Index was
+    wide enough to hold it -- which left a value that is not representable in a
+    signed 32-bit integer reaching any downstream code that indexes with int32.
+    This pins the 64-bit path to the same bound. See #117549.
+    """
+    data = constant_op.constant([1, 2, 3, 4], dtype=dtypes_lib.int32)
+    segment_ids = constant_op.constant([0, 1, 0, 1], dtype=dtypes_lib.int64)
     num_segments = constant_op.constant(1 << 31, dtype=dtypes_lib.int64)
     with self.assertRaisesRegex(errors_impl.InvalidArgumentError,
                                 "is too large"):
