@@ -1193,6 +1193,11 @@ class ArrayMethodsTest(test.TestCase):
           arr = np.asarray(state.randn(*shape) * 100, dtype=dtype)
         self.match(np_array_ops.sign(arr), np.sign(arr))
 
+    with self.assertRaisesRegex(ValueError, "doesn't support setting out"):
+      np_array_ops.sign([1], out=[])
+    with self.assertRaisesRegex(ValueError, "doesn't support setting where"):
+      np_array_ops.sign([1], where=False)
+
 
 class ArrayManipulationTest(test.TestCase):
 
