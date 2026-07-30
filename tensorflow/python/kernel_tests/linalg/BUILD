@@ -750,8 +750,9 @@ cuda_py_strict_test(
 cuda_py_strict_test(
     name = "matrix_triangular_solve_op_test",
     size = "medium",
+    timeout = "long",
     srcs = ["matrix_triangular_solve_op_test.py"],
-    shard_count = 3,
+    shard_count = 8,
     deps = [
         "//tensorflow/python/framework:test_lib",
         "//tensorflow/python/ops:array_ops",

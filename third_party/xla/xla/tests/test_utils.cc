@@ -111,11 +111,14 @@ void FindConstrainedUsesHelper(
                    op_num == 1) {
           constrained_uses.push_back(use);
         } else if (opcode == HloOpcode::kFusion) {
-          const HloInstruction* const to_analyze =
-              user->fused_parameter(op_num);
-          FindConstrainedUsesHelper(dataflow, *to_analyze,
-                                    treat_gte_as_data_formatting, visited,
-                                    constrained_uses);
+          // Fusions can have unused operands with no corresponding parameter.
+          if (op_num < user->fused_parameters().size()) {
+            const HloInstruction* const to_analyze =
+                user->fused_parameter(op_num);
+            FindConstrainedUsesHelper(dataflow, *to_analyze,
+                                      treat_gte_as_data_formatting, visited,
+                                      constrained_uses);
+          }
         } else if (NeedsInitValue(use)) {
           constrained_uses.push_back(use);
         } else if (IsDataFormattingOp(user, treat_gte_as_data_formatting)) {
