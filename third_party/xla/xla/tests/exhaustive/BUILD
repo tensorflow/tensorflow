@@ -16,6 +16,7 @@
 # Description:
 #   Computationally expensive, exhaustive tests for XLA
 
+load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
 load("//xla/tests:build_defs.bzl", "GPU_BACKENDS", "xla_test")
 load("//xla/tests/exhaustive:build_defs.bzl", "exhaustive_xla_test")
 load("//xla/tsl:tsl.default.bzl", "filegroup", "get_compatible_with_portable")
@@ -286,5 +287,16 @@ exhaustive_xla_test(
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/types:span",
         "@tsl//tsl/platform:test",
+    ],
+)
+
+bzl_library(
+    name = "build_defs_bzl",
+    srcs = ["build_defs.bzl"],
+    # copybara:uncomment parse_tests = False,
+    visibility = ["//visibility:private"],
+    deps = [
+        "//xla/tests:build_defs_bzl",
+        "//xla/tsl:package_groups_bzl",
     ],
 )
