@@ -17,6 +17,7 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 #include <string>
+#include <vector>
 
 #include "llvm/ADT/APInt.h"
 #include "llvm/ADT/StringRef.h"
@@ -67,6 +68,7 @@ class ReconfigBatchOpPass
         options.enable_priority_aware_batch_scheduler_resplit;
     enable_batching_task_lazy_cancellation_ =
         options.enable_batching_task_lazy_cancellation;
+    batch_timeout_multipliers_ = options.batch_timeout_multipliers;
   }
   ReconfigBatchOpPass()
       : mlir::PassWrapper<ReconfigBatchOpPass,
@@ -99,7 +101,8 @@ class ReconfigBatchOpPass
         num_warmup_batch_threads_ == 0 &&
         !enable_priority_aware_batch_scheduler_ &&
         !enable_priority_aware_batch_scheduler_resplit_ &&
-        !enable_batching_task_lazy_cancellation_) {
+        !enable_batching_task_lazy_cancellation_ &&
+        batch_timeout_multipliers_.empty()) {
       return;
     }
     mlir::ModuleOp module = getOperation();
@@ -174,6 +177,19 @@ class ReconfigBatchOpPass
       }
       if (enable_batching_task_lazy_cancellation_) {
         batch_op.setEnableBatchingTaskLazyCancellation(true);
+      }
+      if (!batch_timeout_multipliers_.empty()) {
+        std::vector<int64_t> per_criticality_batch_timeout_micros;
+        per_criticality_batch_timeout_micros.reserve(
+            batch_timeout_multipliers_.size());
+        for (double multiplier : batch_timeout_multipliers_) {
+          per_criticality_batch_timeout_micros.push_back(static_cast<int64_t>(
+              batch_op.getBatchTimeoutMicros() * multiplier));
+        }
+        batch_op->setAttr(
+            "per_criticality_batch_timeout_micros",
+            mlir::Builder(module.getContext())
+                .getI64ArrayAttr(per_criticality_batch_timeout_micros));
       }
     });
   }
@@ -253,6 +269,10 @@ class ReconfigBatchOpPass
       llvm::cl::init(false),
       llvm::cl::desc("If true, the queue implementation will allow task "
                      "resplit for priority aware batch scheduler.")};
+  mlir::Pass::ListOption<double> batch_timeout_multipliers_{
+      *this, "tfrt-batch-timeout-multipliers",
+      llvm::cl::desc("A list of batch timeout multipliers for each criticality "
+                     "level.")};
   mlir::Pass::Option<bool> enable_batching_task_lazy_cancellation_{
       *this, "tfrt-enable-batching-task-lazy-cancellation",
       llvm::cl::init(false),

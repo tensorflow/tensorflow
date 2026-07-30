@@ -167,6 +167,11 @@ struct TfrtPipelineOptions
                      "resplit for priority aware batch scheduler."),
       llvm::cl::init(false)};
 
+  ListOption<double> batch_timeout_multipliers{
+      *this, "tfrt-batch-timeout-multipliers",
+      llvm::cl::desc("A list of batch timeout multipliers for each criticality "
+                     "level.")};
+
   Option<bool> enable_batching_task_lazy_cancellation{
       *this, "tfrt-enable-batching-task-lazy-cancellation",
       llvm::cl::desc("If true, enable lazy cancellation filtering in the "

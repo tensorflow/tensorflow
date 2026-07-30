@@ -721,6 +721,8 @@ xla_test(
         "//xla:array2d",
         "//xla:array3d",
         "//xla:error_spec",
+        "//xla:literal",
+        "//xla:literal_util",
         "//xla:shape_util",
         "//xla:xla_data_proto_cc",
         "//xla/hlo/builder:xla_builder",
