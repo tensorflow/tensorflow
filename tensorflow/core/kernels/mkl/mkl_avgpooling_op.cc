@@ -210,27 +210,30 @@ class MklAvgPoolingGradOp : public MklPoolingBackwardOpBase<T> {
       // .vec<int32>(). A scalar or higher-rank tensor would cause an
       // assertion crash.
       OP_REQUIRES(context, orig_input_tensor.dims() == 1,
-                  errors::InvalidArgument(
+                  absl::InvalidArgument(absl::StrCat(
                       "orig_input_shape must be a 1D tensor, but got a ",
                       orig_input_tensor.dims(), "D tensor with shape ",
-                      orig_input_tensor.shape().DebugString()));
+                      orig_input_tensor.shape().DebugString())));
 
       // Defensive validation that ksize has the expected number of
       // dimensions. The constructor already validates this, but we
       // check here to guard against potential memory safety issues
       // if ksize is somehow invalid at Compute time.
-      OP_REQUIRES(
-          context, this->ksize_.size() == 4 || this->ksize_.size() == 5,
-          errors::InvalidArgument("ksize must have 4 or 5 elements, but got ",
-                                  this->ksize_.size()));
-
-      OP_REQUIRES(context, this->ksize_.size() == grad_tensor.dims(),
-                  errors::InvalidArgument(
-                      "Expected grad_tensor to have ", this->ksize_.size(),
-                      " dimensions, but got ", grad_tensor.dims()));
+      OP_REQUIRES(context, this->ksize_.size() == 4 || this->ksize_.size() == 5,
+                  absl::InvalidArgument(
+                      absl::StrCat("ksize must have 4 or 5 elements, but got ",
+                                   this->ksize_.size())));
 
       bool is_pool2d = (this->ksize_.size() == 4);
       int expected_rank = is_pool2d ? 4 : 5;
+
+      // Validate that grad_tensor has the expected rank to previent CHECK
+      // failure in TFShapeToMklDnnDims* functions which unconditionally access
+      // dim_size(N) (see #118354).
+      OP_REQUIRES(context, grad_tensor.dims() == expected_rank,
+                  absl::InvalidArgument(absl::StrCat(
+                      "Expected grad tensor to be ", expected_rank,
+                      "D, but got a ", grad_tensor.dims(), "D tensor.")));
 
       // For empty tensor, avg_pool_3d_grad in oneDNN doesn't handle this case.
       // Follow what native TF does in this case.
@@ -241,24 +244,19 @@ class MklAvgPoolingGradOp : public MklPoolingBackwardOpBase<T> {
         OP_REQUIRES_OK(context, output_shape.AddDimWithStatus(shape_vec(i)));
       }
 
-      // Validate that output_shape and grad_tensor have the expected rank
-      // to prevent CHECK failure in TFShapeToMklDnnDims* functions which
-      // unconditionally access dim_size(N) (see #118354).
+      // Validate that output_shape has the expected rank to prevent CHECK
+      // failure in TFShapeToMklDnnDims* functions which unconditionally access
+      // dim_size(N) (see #118354).
       OP_REQUIRES(
           context, output_shape.dims() == expected_rank,
-          errors::InvalidArgument("Expected orig_input shape to represent a ",
-                                  expected_rank, "D shape, but got a ",
-                                  output_shape.dims(), "D shape."));
-      OP_REQUIRES(context, grad_tensor.dims() == expected_rank,
-                  errors::InvalidArgument("Expected grad tensor to be ",
-                                          expected_rank, "D, but got a ",
-                                          grad_tensor.dims(), "D tensor."));
+          absl::InvalidArgument(absl::StrCat(
+              "Expected orig_input shape to represent a ", expected_rank,
+              "D shape, but got a ", output_shape.dims(), "D shape.")));
 
       Tensor* output_tensor = nullptr;
       OP_REQUIRES_OK(context,
                      context->allocate_output(0, output_shape, &output_tensor));
       output_tensor->flat<T>().setZero();
-
 
       // Validate grad tensor rank before accessing its dimensions.
       // For 2D pooling, grad must be 4D; for 3D pooling, grad must be 5D.
