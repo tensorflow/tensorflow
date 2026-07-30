@@ -2798,5 +2798,350 @@ ENTRY %main (param: (f32[4,8], f32[8,16])) -> (f32[4,8], f32[8,16]) {
       LayoutUtil::MakeLayout({1, 0})));
 }
 
+TEST_F(LayoutAssignmentTest, AsyncUpdateLateBindingOperandConstraints) {
+  const char* module_str = R"hlo(
+HloModule AsyncUpdateLateBindingOperandConstraints, entry_computation_layout={(f32[4,8]{0,1}, f32[8,16]{1,0})->f32[4,8]{0,1}}
+
+%async_comp (p0: f32[4,8], p1: f32[8,16]) -> f32[4,8] {
+  %p0 = f32[4,8]{0,1} parameter(0)
+  %p1 = f32[8,16]{1,0} parameter(1)
+  ROOT %copy = f32[4,8]{0,1} copy(%p0)
+}
+
+ENTRY %main (p0: f32[4,8], p1: f32[8,16]) -> f32[4,8] {
+  %p0 = f32[4,8]{0,1} parameter(0)
+  %p1 = f32[8,16]{1,0} parameter(1)
+  %async_start = ((f32[4,8]{0,1}), f32[4,8]{0,1}, s32[]) async-start(%p0), calls=%async_comp
+  %async_update = ((f32[4,8]{0,1}, f32[8,16]{1,0}), f32[4,8]{0,1}, s32[]) async-update(%async_start, %p1)
+  ROOT %async_done = f32[4,8]{0,1} async-done(%async_update)
+}
+)hlo";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
+                       ParseAndReturnVerifiedModule(module_str));
+  ComputationLayout* computation_layout = m->mutable_entry_computation_layout();
+  LayoutAssignment layout_assignment(computation_layout);
+  EXPECT_IS_OK(layout_assignment.Run(m.get()).status());
+
+  const HloInstruction* async_update =
+      FindInstruction(m.get(), HloOpcode::kAsyncUpdate);
+  ASSERT_NE(async_update, nullptr);
+  EXPECT_TRUE(LayoutUtil::Equal(async_update->operand(1)->shape().layout(),
+                                LayoutUtil::MakeLayout({1, 0})));
+}
+
+TEST_F(LayoutAssignmentTest, AsyncUpdateLateBindingOutputConstraints) {
+  const char* module_str = R"hlo(
+HloModule AsyncUpdateLateBindingOutputConstraints, entry_computation_layout={(f32[4,8]{0,1}, f32[8,16]{1,0})->(f32[4,8]{0,1}, f32[8,16]{1,0})}
+
+%async_comp (p0: f32[4,8], p1: f32[8,16]) -> (f32[4,8], f32[8,16]) {
+  %p0 = f32[4,8]{0,1} parameter(0)
+  %p1 = f32[8,16]{1,0} parameter(1)
+  ROOT %tuple = (f32[4,8]{0,1}, f32[8,16]{1,0}) tuple(%p0, %p1)
+}
+
+ENTRY %main (p0: f32[4,8], p1: f32[8,16]) -> (f32[4,8], f32[8,16]) {
+  %p0 = f32[4,8]{0,1} parameter(0)
+  %p1 = f32[8,16]{1,0} parameter(1)
+  %async_start = ((f32[4,8]{0,1}), (f32[4,8]{0,1}), s32[]) async-start(%p0), calls=%async_comp
+  %async_update = ((f32[4,8]{0,1}, f32[8,16]{1,0}), (f32[4,8]{0,1}, f32[8,16]{1,0}), s32[]) async-update(%async_start, %p1)
+  ROOT %async_done = (f32[4,8]{0,1}, f32[8,16]{1,0}) async-done(%async_update)
+}
+)hlo";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
+                       ParseAndReturnVerifiedModule(module_str));
+  ComputationLayout* computation_layout = m->mutable_entry_computation_layout();
+  LayoutAssignment layout_assignment(computation_layout);
+  EXPECT_IS_OK(layout_assignment.Run(m.get()).status());
+
+  const HloInstruction* async_update =
+      FindInstruction(m.get(), HloOpcode::kAsyncUpdate);
+  ASSERT_NE(async_update, nullptr);
+  EXPECT_TRUE(LayoutUtil::Equal(
+      ShapeUtil::GetSubshape(async_update->shape(), {1, 0}).layout(),
+      LayoutUtil::MakeLayout({0, 1})));
+  EXPECT_TRUE(LayoutUtil::Equal(
+      ShapeUtil::GetSubshape(async_update->shape(), {1, 1}).layout(),
+      LayoutUtil::MakeLayout({1, 0})));
+}
+
+TEST_F(LayoutAssignmentTest, AsyncMultiUpdateLateBindingOutputConstraints) {
+  const char* module_str = R"hlo(
+HloModule AsyncMultiUpdateLateBindingOutputConstraints, entry_computation_layout={(f32[4,8]{0,1}, f32[8,16]{1,0}, f32[16,32]{1,0})->(f32[4,8]{0,1}, f32[8,16]{1,0}, f32[16,32]{1,0})}
+
+%async_comp (p0: f32[4,8], p1: f32[8,16], p2: f32[16,32]) -> (f32[4,8], f32[8,16], f32[16,32]) {
+  %p0 = f32[4,8]{0,1} parameter(0)
+  %p1 = f32[8,16]{1,0} parameter(1)
+  %p2 = f32[16,32]{1,0} parameter(2)
+  ROOT %tuple = (f32[4,8]{0,1}, f32[8,16]{1,0}, f32[16,32]{1,0}) tuple(%p0, %p1, %p2)
+}
+
+ENTRY %main (p0: f32[4,8], p1: f32[8,16], p2: f32[16,32]) -> (f32[4,8], f32[8,16], f32[16,32]) {
+  %p0 = f32[4,8]{0,1} parameter(0)
+  %p1 = f32[8,16]{1,0} parameter(1)
+  %p2 = f32[16,32]{1,0} parameter(2)
+  %async_start = ((f32[4,8]{0,1}), (f32[4,8]{0,1}), s32[]) async-start(%p0), calls=%async_comp
+  %async_update1 = ((f32[4,8]{0,1}, f32[8,16]{1,0}), (f32[4,8]{0,1}, f32[8,16]{1,0}), s32[]) async-update(%async_start, %p1)
+  %async_update2 = ((f32[4,8]{0,1}, f32[8,16]{1,0}, f32[16,32]{1,0}), (f32[4,8]{0,1}, f32[8,16]{1,0}, f32[16,32]{1,0}), s32[]) async-update(%async_update1, %p2)
+  ROOT %async_done = (f32[4,8]{0,1}, f32[8,16]{1,0}, f32[16,32]{1,0}) async-done(%async_update2)
+}
+)hlo";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
+                       ParseAndReturnVerifiedModule(module_str));
+  ComputationLayout* computation_layout = m->mutable_entry_computation_layout();
+  LayoutAssignment layout_assignment(computation_layout);
+  EXPECT_IS_OK(layout_assignment.Run(m.get()).status());
+
+  const HloInstruction* async_done =
+      FindInstruction(m.get(), HloOpcode::kAsyncDone);
+  ASSERT_NE(async_done, nullptr);
+  EXPECT_TRUE(LayoutUtil::Equal(
+      ShapeUtil::GetSubshape(async_done->shape(), {0}).layout(),
+      LayoutUtil::MakeLayout({0, 1})));
+  EXPECT_TRUE(LayoutUtil::Equal(
+      ShapeUtil::GetSubshape(async_done->shape(), {1}).layout(),
+      LayoutUtil::MakeLayout({1, 0})));
+  EXPECT_TRUE(LayoutUtil::Equal(
+      ShapeUtil::GetSubshape(async_done->shape(), {2}).layout(),
+      LayoutUtil::MakeLayout({1, 0})));
+}
+
+TEST_F(LayoutAssignmentTest, AsyncNestedTupleOutputConstraints) {
+  const char* module_str = R"hlo(
+HloModule AsyncNestedTupleOutputConstraints, entry_computation_layout={((f32[4,8]{0,1}, f32[8,16]{1,0}))->((f32[4,8]{0,1}, f32[8,16]{1,0}))}
+
+%async_comp (p0: (f32[4,8], f32[8,16])) -> ((f32[4,8], f32[8,16])) {
+  %p0 = (f32[4,8]{0,1}, f32[8,16]{1,0}) parameter(0)
+  ROOT %nested_tuple = ((f32[4,8]{0,1}, f32[8,16]{1,0})) tuple(%p0)
+}
+
+ENTRY %main (p0: (f32[4,8], f32[8,16])) -> ((f32[4,8], f32[8,16])) {
+  %p0 = (f32[4,8]{0,1}, f32[8,16]{1,0}) parameter(0)
+  %async_start = (((f32[4,8]{0,1}, f32[8,16]{1,0})), ((f32[4,8]{0,1}, f32[8,16]{1,0})), s32[]) async-start(%p0), calls=%async_comp
+  ROOT %async_done = ((f32[4,8]{0,1}, f32[8,16]{1,0})) async-done(%async_start)
+}
+)hlo";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
+                       ParseAndReturnVerifiedModule(module_str));
+  ComputationLayout* computation_layout = m->mutable_entry_computation_layout();
+  LayoutAssignment layout_assignment(computation_layout);
+  EXPECT_IS_OK(layout_assignment.Run(m.get()).status());
+
+  const HloInstruction* async_start =
+      FindInstruction(m.get(), HloOpcode::kAsyncStart);
+  ASSERT_NE(async_start, nullptr);
+  EXPECT_TRUE(LayoutUtil::Equal(
+      ShapeUtil::GetSubshape(async_start->shape(), {1, 0, 0}).layout(),
+      LayoutUtil::MakeLayout({0, 1})));
+  EXPECT_TRUE(LayoutUtil::Equal(
+      ShapeUtil::GetSubshape(async_start->shape(), {1, 0, 1}).layout(),
+      LayoutUtil::MakeLayout({1, 0})));
+}
+
+TEST_F(LayoutAssignmentTest, AsyncUnconstrainedResultLayoutConstraints) {
+  const char* module_str = R"hlo(
+HloModule AsyncUnconstrainedResultLayoutConstraints
+
+%async_comp (p0: f32[4,8]) -> f32[4,8] {
+  ROOT %p0 = f32[4,8] parameter(0)
+}
+
+ENTRY %main (p0: f32[4,8]) -> f32[4,8] {
+  %p0 = f32[4,8] parameter(0)
+  %async_start = ((f32[4,8]), f32[4,8], s32[]) async-start(%p0), calls=%async_comp
+  ROOT %async_done = f32[4,8] async-done(%async_start)
+}
+)hlo";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
+                       ParseAndReturnVerifiedModule(module_str));
+  ComputationLayout computation_layout(
+      m->entry_computation()->ComputeProgramShape());
+  LayoutAssignment layout_assignment(&computation_layout);
+  EXPECT_IS_OK(layout_assignment.Run(m.get()).status());
+}
+
+TEST_F(LayoutAssignmentTest, AsyncUpdateMultiOperands) {
+  const char* module_str = R"hlo(
+HloModule AsyncUpdateMultiOperands, entry_computation_layout={(f32[4,8]{0,1}, f32[8,16]{1,0}, f32[16,32]{0,1})->(f32[4,8]{0,1}, f32[8,16]{1,0}, f32[16,32]{0,1})}
+
+%async_comp (p0: f32[4,8], p1: f32[8,16], p2: f32[16,32]) -> (f32[4,8], f32[8,16], f32[16,32]) {
+  %p0 = f32[4,8]{0,1} parameter(0)
+  %p1 = f32[8,16]{1,0} parameter(1)
+  %p2 = f32[16,32]{0,1} parameter(2)
+  ROOT %tuple = (f32[4,8]{0,1}, f32[8,16]{1,0}, f32[16,32]{0,1}) tuple(%p0, %p1, %p2)
+}
+
+ENTRY %main (p0: f32[4,8], p1: f32[8,16], p2: f32[16,32]) -> (f32[4,8], f32[8,16], f32[16,32]) {
+  %p0 = f32[4,8]{0,1} parameter(0)
+  %p1 = f32[8,16]{1,0} parameter(1)
+  %p2 = f32[16,32]{0,1} parameter(2)
+  %async_start = ((f32[4,8]{0,1}), (f32[4,8]{0,1}), s32[]) async-start(%p0), calls=%async_comp
+  %async_update = ((f32[4,8]{0,1}, f32[8,16]{1,0}, f32[16,32]{0,1}), (f32[4,8]{0,1}, f32[8,16]{1,0}, f32[16,32]{0,1}), s32[]) async-update(%async_start, %p1, %p2)
+  ROOT %async_done = (f32[4,8]{0,1}, f32[8,16]{1,0}, f32[16,32]{0,1}) async-done(%async_update)
+}
+)hlo";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
+                       ParseAndReturnVerifiedModule(module_str));
+  ComputationLayout* computation_layout = m->mutable_entry_computation_layout();
+  LayoutAssignment layout_assignment(computation_layout);
+  EXPECT_IS_OK(layout_assignment.Run(m.get()).status());
+
+  const HloInstruction* async_update =
+      FindInstruction(m.get(), HloOpcode::kAsyncUpdate);
+  ASSERT_NE(async_update, nullptr);
+  EXPECT_TRUE(LayoutUtil::Equal(async_update->operand(1)->shape().layout(),
+                                LayoutUtil::MakeLayout({1, 0})));
+  EXPECT_TRUE(LayoutUtil::Equal(async_update->operand(2)->shape().layout(),
+                                LayoutUtil::MakeLayout({0, 1})));
+}
+
+TEST_F(LayoutAssignmentTest, AsyncMultiUpdateMultiOperands) {
+  const char* module_str = R"hlo(
+HloModule AsyncMultiUpdateMultiOperands, entry_computation_layout={(f32[4,8]{0,1}, f32[8,16]{1,0}, f32[16,32]{0,1}, f32[32,64]{1,0})->(f32[4,8]{0,1}, f32[8,16]{1,0}, f32[16,32]{0,1}, f32[32,64]{1,0})}
+
+%async_comp (p0: f32[4,8], p1: f32[8,16], p2: f32[16,32], p3: f32[32,64]) -> (f32[4,8], f32[8,16], f32[16,32], f32[32,64]) {
+  %p0 = f32[4,8]{0,1} parameter(0)
+  %p1 = f32[8,16]{1,0} parameter(1)
+  %p2 = f32[16,32]{0,1} parameter(2)
+  %p3 = f32[32,64]{1,0} parameter(3)
+  ROOT %tuple = (f32[4,8]{0,1}, f32[8,16]{1,0}, f32[16,32]{0,1}, f32[32,64]{1,0}) tuple(%p0, %p1, %p2, %p3)
+}
+
+ENTRY %main (p0: f32[4,8], p1: f32[8,16], p2: f32[16,32], p3: f32[32,64]) -> (f32[4,8], f32[8,16], f32[16,32], f32[32,64]) {
+  %p0 = f32[4,8]{0,1} parameter(0)
+  %p1 = f32[8,16]{1,0} parameter(1)
+  %p2 = f32[16,32]{0,1} parameter(2)
+  %p3 = f32[32,64]{1,0} parameter(3)
+  %async_start = ((f32[4,8]{0,1}), (f32[4,8]{0,1}), s32[]) async-start(%p0), calls=%async_comp
+  %async_update1 = ((f32[4,8]{0,1}, f32[8,16]{1,0}, f32[16,32]{0,1}), (f32[4,8]{0,1}, f32[8,16]{1,0}, f32[16,32]{0,1}), s32[]) async-update(%async_start, %p1, %p2)
+  %async_update2 = ((f32[4,8]{0,1}, f32[8,16]{1,0}, f32[16,32]{0,1}, f32[32,64]{1,0}), (f32[4,8]{0,1}, f32[8,16]{1,0}, f32[16,32]{0,1}, f32[32,64]{1,0}), s32[]) async-update(%async_update1, %p3)
+  ROOT %async_done = (f32[4,8]{0,1}, f32[8,16]{1,0}, f32[16,32]{0,1}, f32[32,64]{1,0}) async-done(%async_update2)
+}
+)hlo";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
+                       ParseAndReturnVerifiedModule(module_str));
+  ComputationLayout* computation_layout = m->mutable_entry_computation_layout();
+  LayoutAssignment layout_assignment(computation_layout);
+  EXPECT_IS_OK(layout_assignment.Run(m.get()).status());
+
+  const HloInstruction* async_update1 =
+      FindInstruction(m.get(), "async_update1");
+  ASSERT_NE(async_update1, nullptr);
+  EXPECT_TRUE(LayoutUtil::Equal(async_update1->operand(1)->shape().layout(),
+                                LayoutUtil::MakeLayout({1, 0})));
+  EXPECT_TRUE(LayoutUtil::Equal(async_update1->operand(2)->shape().layout(),
+                                LayoutUtil::MakeLayout({0, 1})));
+
+  const HloInstruction* async_update2 =
+      FindInstruction(m.get(), "async_update2");
+  ASSERT_NE(async_update2, nullptr);
+  EXPECT_TRUE(LayoutUtil::Equal(async_update2->operand(1)->shape().layout(),
+                                LayoutUtil::MakeLayout({1, 0})));
+}
+
+TEST_F(LayoutAssignmentTest, AsyncUpdateLayoutConflict) {
+  const char* module_str = R"hlo(
+HloModule AsyncUpdateLayoutConflict, entry_computation_layout={(f32[4,8]{0,1}, f32[8,16]{1,0})->(f32[4,8]{0,1}, f32[8,16]{0,1})}
+
+%async_comp (p0: f32[4,8], p1: f32[8,16]) -> (f32[4,8], f32[8,16]) {
+  %p0 = f32[4,8]{0,1} parameter(0)
+  %p1 = f32[8,16]{0,1} parameter(1)
+  ROOT %tuple = (f32[4,8]{0,1}, f32[8,16]{0,1}) tuple(%p0, %p1)
+}
+
+ENTRY %main (p0: f32[4,8], p1: f32[8,16]) -> (f32[4,8], f32[8,16]) {
+  %p0 = f32[4,8]{0,1} parameter(0)
+  %p1 = f32[8,16]{1,0} parameter(1)
+  %async_start = ((f32[4,8]{0,1}), (f32[4,8]{0,1}), s32[]) async-start(%p0), calls=%async_comp
+  %async_update = ((f32[4,8]{0,1}, f32[8,16]{0,1}), (f32[4,8]{0,1}, f32[8,16]{0,1}), s32[]) async-update(%async_start, %p1)
+  ROOT %async_done = (f32[4,8]{0,1}, f32[8,16]{0,1}) async-done(%async_update)
+}
+)hlo";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
+                       ParseAndReturnVerifiedModule(module_str));
+  ComputationLayout* computation_layout = m->mutable_entry_computation_layout();
+  LayoutAssignment layout_assignment(computation_layout);
+  EXPECT_IS_OK(layout_assignment.Run(m.get()).status());
+
+  const HloInstruction* async_update =
+      FindInstruction(m.get(), HloOpcode::kAsyncUpdate);
+  ASSERT_NE(async_update, nullptr);
+  EXPECT_EQ(async_update->operand(1)->opcode(), HloOpcode::kCopy);
+  EXPECT_TRUE(LayoutUtil::Equal(async_update->operand(1)->shape().layout(),
+                                LayoutUtil::MakeLayout({0, 1})));
+}
+
+TEST_F(LayoutAssignmentTest, AsyncStartTakesNothing) {
+  const char* module_str = R"hlo(
+HloModule AsyncStartTakesNothing, entry_computation_layout={(f32[8,16]{1,0})->f32[8,16]{1,0}}
+
+%async_comp (p0: f32[8,16]) -> f32[8,16] {
+  ROOT %p0 = f32[8,16]{1,0} parameter(0)
+}
+
+ENTRY %main (p0: f32[8,16]) -> f32[8,16] {
+  %p0 = f32[8,16]{1,0} parameter(0)
+  %async_start = ((), (), s32[]) async-start(), calls=%async_comp
+  %async_update = ((f32[8,16]{1,0}), f32[8,16]{1,0}, s32[]) async-update(%async_start, %p0)
+  ROOT %async_done = f32[8,16]{1,0} async-done(%async_update)
+}
+)hlo";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
+                       ParseAndReturnVerifiedModule(module_str));
+  ComputationLayout* computation_layout = m->mutable_entry_computation_layout();
+  LayoutAssignment layout_assignment(computation_layout);
+  EXPECT_IS_OK(layout_assignment.Run(m.get()).status());
+
+  const HloInstruction* async_update =
+      FindInstruction(m.get(), HloOpcode::kAsyncUpdate);
+  ASSERT_NE(async_update, nullptr);
+  EXPECT_TRUE(LayoutUtil::Equal(async_update->operand(1)->shape().layout(),
+                                LayoutUtil::MakeLayout({1, 0})));
+}
+
+TEST_F(LayoutAssignmentTest, AsyncOutputBoundOnlyAtDone) {
+  const char* module_str = R"hlo(
+HloModule AsyncOutputBoundOnlyAtDone, entry_computation_layout={(f32[4,8]{0,1}, f32[8,16]{1,0})->(f32[4,8]{0,1}, f32[8,16]{1,0})}
+
+%async_comp (p0: f32[4,8], p1: f32[8,16]) -> (f32[4,8], f32[8,16]) {
+  %p0 = f32[4,8]{0,1} parameter(0)
+  %p1 = f32[8,16]{1,0} parameter(1)
+  ROOT %tuple = (f32[4,8]{0,1}, f32[8,16]{1,0}) tuple(%p0, %p1)
+}
+
+ENTRY %main (p0: f32[4,8], p1: f32[8,16]) -> (f32[4,8], f32[8,16]) {
+  %p0 = f32[4,8]{0,1} parameter(0)
+  %p1 = f32[8,16]{1,0} parameter(1)
+  %async_start = ((f32[4,8]{0,1}), (), s32[]) async-start(%p0), calls=%async_comp
+  %async_update = ((f32[4,8]{0,1}, f32[8,16]{1,0}), (), s32[]) async-update(%async_start, %p1)
+  ROOT %async_done = (f32[4,8]{0,1}, f32[8,16]{1,0}) async-done(%async_update)
+}
+)hlo";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
+                       ParseAndReturnVerifiedModule(module_str));
+  ComputationLayout* computation_layout = m->mutable_entry_computation_layout();
+  LayoutAssignment layout_assignment(computation_layout);
+  EXPECT_IS_OK(layout_assignment.Run(m.get()).status());
+
+  const HloInstruction* async_done =
+      FindInstruction(m.get(), HloOpcode::kAsyncDone);
+  ASSERT_NE(async_done, nullptr);
+  EXPECT_TRUE(LayoutUtil::Equal(
+      ShapeUtil::GetSubshape(async_done->shape(), {0}).layout(),
+      LayoutUtil::MakeLayout({0, 1})));
+  EXPECT_TRUE(LayoutUtil::Equal(
+      ShapeUtil::GetSubshape(async_done->shape(), {1}).layout(),
+      LayoutUtil::MakeLayout({1, 0})));
+}
+
 }  // namespace
 }  // namespace xla

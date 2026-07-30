@@ -267,7 +267,15 @@ class ComputationLayoutConstraint : public LayoutConstraint {
                       // layouts there are used to indicate that the layout
                       // should be automatically inferred.
                       /*ignore_layouts=*/!computation->IsEntryComputation())
-                : *computation_layout) {}
+                : *computation_layout) {
+    parameter_layouts_set_.resize(computation->num_parameters(), false);
+    if (computation_layout != nullptr) {
+      for (int i = 0; i < computation->num_parameters(); ++i) {
+        parameter_layouts_set_[i] =
+            computation_layout->parameter_layout(i).LayoutIsSet();
+      }
+    }
+  }
 
   // Accessors for the underlying ComputationLayout.
   const ComputationLayout& computation_layout() const {
@@ -282,6 +290,14 @@ class ComputationLayoutConstraint : public LayoutConstraint {
   void ResetComputationLayout(const ComputationLayout& layout, int64_t priority,
                               bool prop_result_layout,
                               bool prop_parameter_layout) {
+    if (prop_parameter_layout) {
+      for (int i = 0; i < parameter_layouts_set_.size(); ++i) {
+        if (layout.parameter_layout(i) !=
+            computation_layout_.parameter_layout(i)) {
+          parameter_layouts_set_[i] = true;
+        }
+      }
+    }
     computation_layout_ = layout;
     priority_ = priority;
     if (prop_result_layout) {
@@ -304,6 +320,14 @@ class ComputationLayoutConstraint : public LayoutConstraint {
     return layout_state_ & kParameterLayoutIsSet;
   }
 
+  // Returns true if specific parameter layout has been explicitly set.
+  // We track this per-parameter to allow setting unset parameters even if
+  // other parameters in the same computation have already been set with
+  // higher priority.
+  bool parameter_layout_is_set(int64_t parameter_no) const {
+    return parameter_layouts_set_[parameter_no];
+  }
+
   // Returns true if the result layout has been explicitly set.
   bool result_layout_is_set() const {
     return layout_state_ & kResultLayoutIsSet;
@@ -323,6 +347,8 @@ class ComputationLayoutConstraint : public LayoutConstraint {
 
   // The computation interface layout (parameter and result shape layouts).
   ComputationLayout computation_layout_;
+
+  std::vector<bool> parameter_layouts_set_;
 };
 
 // Encapsulates layout constraints across communication channels (Send/Recv).
@@ -800,9 +826,66 @@ class LayoutAssignment : public HloModulePass {
                                    LayoutConstraints* constraints);
   absl::Status AddConditionalConstraints(HloInstruction* instruction);
   absl::Status AddAsyncStartConstraints(HloInstruction* instruction);
+  absl::Status AddAsyncUpdateConstraints(HloInstruction* instruction);
   absl::Status AddAsyncDoneConstraints(HloInstruction* instruction,
                                        LayoutConstraints* constraints);
+  absl::Status AddAsyncInstructionConstraints(HloInstruction* instruction,
+                                              HloComputation* async_comp);
 
+  // Propagates layout constraints from the caller instruction into the inner
+  // async sub-computation.
+  // This is the forward propagation step: it takes the layouts of the operands
+  // and result of the async start/update instruction (which are in the parent
+  // computation) and propagates them to the parameters and result of the
+  // async sub-computation.
+  // If any layout in the sub-computation is updated, it resets the
+  // sub-computation layout with an elevated priority to ensure it is respected
+  // during the sub-computation's layout assignment. Returns the reconciled
+  // layout of the sub-computation.
+  ComputationLayout PropagateLayoutsToAsyncSubComputation(
+      const HloInstruction* instruction, LayoutConstraints* async_constraint);
+
+  // Propagates the operand array layouts of `instruction` to the parameter
+  // layouts defined in `async_layout`.
+  // Updates `async_layout` in-place and returns true if any parameter layout
+  // was changed.
+  bool PropagateOperandLayoutsToAsyncParameters(
+      const HloInstruction* instruction, ComputationLayout* async_layout);
+
+  // Propagates array layouts for operand `operand_idx` of `instruction`
+  // to the corresponding parameter `param_idx` in `async_layout`.
+  // Updates `async_layout` in-place and returns true if the layout was updated.
+  bool PropagateOperandLayoutToAsyncParameter(const HloInstruction* instruction,
+                                              int64_t operand_idx,
+                                              int64_t param_idx,
+                                              ComputationLayout* async_layout);
+
+  // Propagates array layouts from the result shape of `instruction` (tuple
+  // element 1) to `async_layout`'s result layout.
+  // We assume the result shape of the async operation is at index {1} of the
+  // `instruction` (async start/update) output tuple.
+  // Updates `async_layout` in-place and returns true if the result layout was
+  // updated.
+  bool PropagateResultLayoutToAsyncSubComputation(
+      const HloInstruction* instruction, ComputationLayout* async_layout);
+
+  // Propagates async sub-computation parameter and result layout constraints
+  // back onto the caller instruction and its operands in the parent
+  // computation. This is the backward propagation step: it takes the resolved
+  // layouts from the async sub-computation and applies them as mandatory
+  // constraints on the caller instruction's shape (at index {1} for result) and
+  // its operands.
+  absl::Status PropagateLayoutsFromAsyncSubComputation(
+      HloInstruction* instruction, const ComputationLayout& async_layout,
+      LayoutConstraints* async_constraint);
+
+  absl::Status ConstrainAsyncOperands(HloInstruction* instruction,
+                                      int first_operand_idx,
+                                      int start_param_idx,
+                                      const ComputationLayout& async_layout);
+  absl::Status AddAsyncOpResultLayoutConstraint(
+      HloInstruction* instruction, const ComputationLayout& async_layout,
+      LayoutConstraints* async_constraint);
   // Sets the computation result layout based on constraints and
   // sub-computations.
   absl::Status AddComputationResultLayoutConstraints(
