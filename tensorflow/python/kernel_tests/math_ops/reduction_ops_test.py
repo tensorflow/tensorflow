@@ -273,6 +273,15 @@ class SumReductionTest(BaseReductionTest):
       np_arr = self._makeIncremental((2,) * rank, dtypes.bfloat16)
       self._compareAllAxes(np_arr, rtol=1e-3, atol=5.)
 
+  def testFloat16LargeValues(self):
+    # Regression test for #123299: the sum was accumulated in float16 rather
+    # than float32, so large values lost precision well before the result
+    # type did. 60000 is exactly representable in float16.
+    np_arr = np.full((3, 2), 10000.0, dtype=np.float16)
+    with self.session():
+      tf_sum = self.evaluate(math_ops.reduce_sum(constant_op.constant(np_arr)))
+    self.assertAllClose(tf_sum, 60000.0)
+
   @test_util.run_deprecated_v1
   def testFloat32(self):
     for rank in range(1, _MAX_RANK + 1):
@@ -567,6 +576,16 @@ class MeanReductionTest(BaseReductionTest):
     for rank in range(1, _MAX_RANK + 1):
       np_arr = self._makeIncremental((2,) * rank, dtypes.bfloat16)
       self._compareAllAxes(np_arr)
+
+  def testFloat16ConstantInput(self):
+    # Regression test for #123299: accumulating in float16 made the mean of a
+    # constant tensor inexact (9992 rather than 10000), which in turn made
+    # reduce_std report a nonzero spread for identical elements.
+    np_arr = np.full((3, 2), 10000.0, dtype=np.float16)
+    with self.session():
+      x = constant_op.constant(np_arr)
+      self.assertAllClose(self.evaluate(math_ops.reduce_mean(x)), 10000.0)
+      self.assertAllClose(self.evaluate(math_ops.reduce_std(x)), 0.0)
 
   @test_util.run_deprecated_v1
   def testFloat64(self):
