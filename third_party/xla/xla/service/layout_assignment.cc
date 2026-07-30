@@ -57,8 +57,6 @@ limitations under the License.
 #include "xla/shape_layout.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
-#include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 
@@ -787,6 +785,10 @@ absl::Status LayoutAssignment::AddMandatoryConstraints(
       // Layout of input and output of kWhile instruction must be equal and must
       // match both input and output of body computation. Also, the input of
       // condition computation must match kWhile layout.
+      //
+      // If DFS propagation resulted in inconsistent layouts (e.g., body
+      // parameter != body root), we reset them to be consistent and increase
+      // their constraint priority for subsequent rounds.
       HloComputation* body = instruction->while_body();
       HloComputation* condition = instruction->while_condition();
       const HloInstruction* init = instruction->operand(0);
@@ -844,6 +846,10 @@ absl::Status LayoutAssignment::AddMandatoryConstraints(
       // Find the conditional branch with the most instructions and force all
       // other computations to match that layout. A potentially better decision
       // could count the number FLOPs or how constrained the layouts are.
+      //
+      // If branch layouts mismatch, we reset them to match the "best" branch
+      // and record the mismatch to trigger high-priority resets in subsequent
+      // rounds.
       int64_t largest_branch = -1;
       int64_t largest_instruction_count = 0;
       for (int j = 0; j < instruction->branch_count(); ++j) {
@@ -890,6 +896,11 @@ absl::Status LayoutAssignment::AddMandatoryConstraints(
           best_branch_computation_layout.result_shape(), instruction,
           /*mandatory=*/true, /*dfs=*/true, /*allow_alias=*/false));
     } else if (instruction->opcode() == HloOpcode::kAsyncStart) {
+      // Async instructions must have matching layouts between the caller and
+      // the callee (async wrapped computation).
+      //
+      // If we detect mismatches, we reset the callee's layout to match the
+      // caller and raise the constraint priority for subsequent rounds.
       HloComputation* async_comp = instruction->async_wrapped_computation();
       auto it = computation_layouts_.find(async_comp);
       if (it != computation_layouts_.end()) {
@@ -2613,7 +2624,8 @@ absl::Status LayoutAssignment::RunOnComputation(
           << ")";
   VLOG(4) << computation->ToString() << "\n";
 
-  // Gather all array-shaped logical buffers into unconstrained_buffer_ids.
+  // Initialize the set of unconstrained buffers with all array-shaped logical
+  // buffers in this computation.
   for (HloInstruction* inst : computation->instructions()) {
     points_to_analysis_->GetPointsToSet(inst).ForEachElement(
         [&](const ShapeIndex&, const PointsToSet::BufferList& buffers) {
@@ -2628,13 +2640,14 @@ absl::Status LayoutAssignment::RunOnComputation(
         });
   }
 
-  // Add constraints required for correctness on all backends (eg, entry
-  // parameter layout constraints).
+  // Add mandatory constraints required for correctness (e.g., entry
+  // parameter layouts).
   RETURN_IF_ERROR(AddMandatoryConstraints(channel_constraints, constraints));
 
-  // Add any backend-specific constraints.
+  // Add backend-specific constraints.
   RETURN_IF_ERROR(AddBackendConstraints(constraints));
 
+  // Constrain layouts for custom calls that have specific layout requirements.
   for (HloInstruction* instruction :
        constraints->computation()->MakeInstructionPostOrder()) {
     if (!IsLayoutConstrainedCustomCall(instruction)) {
@@ -2666,11 +2679,10 @@ absl::Status LayoutAssignment::RunOnComputation(
     }
   }
 
-  // Propagates layouts from mandatory and backend constraints.
+  // Propagate the mandatory and backend constraints.
   RETURN_IF_ERROR(PropagateConstraints(constraints));
 
-  // Prior to applying default layouts, we take note of all HLO instructions
-  // which lack a layout constraint.
+  // Record instructions that lack layout constraints before applying defaults.
   for (LogicalBuffer::Id buffer_id : unconstrained_buffer_ids_) {
     VLOG(5)
         << "unconstrained instruction:"
@@ -2680,14 +2692,14 @@ absl::Status LayoutAssignment::RunOnComputation(
         points_to_analysis_->GetBuffer(buffer_id).instruction());
   }
 
-  // While any unconstrained buffers remain, pick an arbitrary buffer, give it a
-  // layout and propagate the change.
+  // Iteratively assign layouts to remaining unconstrained buffers and
+  // propagate.
   while (!unconstrained_buffer_ids_.empty()) {
     int unconstrained_count = unconstrained_buffer_ids_.size();
 
-    // Arbitrarily pick the first unconstrained buffer and give it the default
-    // layout (or the literal layout, in case of constants). By construction
-    // unconstrained_buffers() has a stable sort based on LogicalBuffer::Id.
+    // Arbitrarily pick the first unconstrained buffer and assign a layout.
+    // Constants use their literal's layout; other buffers get a default layout.
+    // unconstrained_buffer_ids_ has a stable sort based on LogicalBuffer::Id.
     const LogicalBuffer& buffer =
         points_to_analysis_->GetBuffer(*unconstrained_buffer_ids_.begin());
     const HloInstruction* instruction = buffer.instruction();
@@ -2702,14 +2714,14 @@ absl::Status LayoutAssignment::RunOnComputation(
 
     RETURN_IF_ERROR(PropagateConstraints(constraints));
 
-    // To verify progress has been made, check that the number of unconstrained
-    // buffers has been reduced.
+    // Verify progress is being made by checking that the number of
+    // unconstrained buffers decreased.
     CHECK_LT(unconstrained_buffer_ids_.size(), unconstrained_count);
   }
 
   RETURN_IF_ERROR(CalculateComputationLayout(constraints));
-  // Record the layouts assigned for any communication ops in
-  // channel_constraints so that they are constrained for future modules.
+  // Record layouts of communication operations to ensure consistency across
+  // modules.
   if (channel_constraints != nullptr) {
     RETURN_IF_ERROR(ConstrainChannelLayouts(computation, channel_constraints));
   }
@@ -2904,20 +2916,11 @@ absl::StatusOr<bool> LayoutAssignment::RunImpl(
   }
   TF_RET_CHECK(ShapeUtil::Compatible(entry_computation_layout_->result_shape(),
                                      entry->root_instruction()->shape()));
-  // We do two passes. The first one we pass a nullptr ComputationLayout to
-  // the RunOnComputation() calls (for non entry computations), and we register
-  // the ComputationLayout which are naturally flowing in DFS fashion to the
-  // parameters and root instruction.
-  // Walking in DFS mode though, means that we can end up with incorrect layouts
-  // when seen from an outer instruction, which has across-computation
-  // constraints to impose.
-  // For example, the kWhile instruction needs to enforce the same layouts for
-  // the parameters and root of the body, as well as the condition parameters.
-  // Similarly, the kConditional instruction needs to enforce the same layouts
-  // for the root of the true and false computations.
-  // So in the first pass, while allowing the layouts to flow to parameters and
-  // root, we also fix up the eventually inconsistent ComputationLayout, which
-  // will be then made mandatory by the second pass.
+  // Perform multiple propagation rounds to resolve layouts across computation
+  // boundaries. We run at least kNumberOfPropagationRounds (typically 2).
+  // Layouts are allowed to flow naturally in the first round, and any detected
+  // inconsistencies at boundary instructions are resolved with higher-priority
+  // constraints in subsequent rounds.
   ASSIGN_OR_RETURN(auto points_to_analysis, TuplePointsToAnalysis::Run(module));
   points_to_analysis_ = std::move(points_to_analysis);
   auto computations_to_work =
@@ -2944,6 +2947,8 @@ absl::StatusOr<bool> LayoutAssignment::RunImpl(
     VLOG(1) << "Running " << (i == 0 ? "un" : "") << "constrained pass";
     RETURN_IF_ERROR(ClearPreviousPassSideEffects(module, execution_threads));
     for (auto* computation : computations_to_work) {
+      // Layouts are propagated within each computation. In the first round,
+      // non-entry computations start with unconstrained layouts.
       LayoutConstraints* constraints =
           mutable_computation_constraints(computation);
       RETURN_IF_ERROR(
@@ -2954,6 +2959,11 @@ absl::StatusOr<bool> LayoutAssignment::RunImpl(
         mutable_computation_constraints(module->entry_computation())
             ->mutable_computation_constraint()
             ->mutable_computation_layout();
+    // Ensure that input-output aliasing requirements are met. Aliased
+    // parameters and results must have the same layout. If they mismatch, we
+    // resolve the mismatch by resetting one to match the other (respecting
+    // forced layouts) and set `changed = true` to trigger another propagation
+    // round.
     RETURN_IF_ERROR(module->input_output_alias_config().ForEachAliasWithStatus(
         [&](const ShapeIndex& output_index,
             const HloInputOutputAliasConfig::Alias& alias) {
