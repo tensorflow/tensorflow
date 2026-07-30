@@ -254,23 +254,107 @@ diff --ruN a/stablehlo/stablehlo/tests/ops_stablehlo_roundtrip.mlir b/stablehlo/
 diff --ruN a/stablehlo/stablehlo/tests/transforms/stablehlo_aggressive_simplification.mlir b/stablehlo/stablehlo/tests/transforms/stablehlo_aggressive_simplification.mlir
 --- stablehlo/stablehlo/tests/transforms/stablehlo_aggressive_simplification.mlir
 +++ stablehlo/stablehlo/tests/transforms/stablehlo_aggressive_simplification.mlir
-@@ -1021,6 +1021,16 @@
-   %0 = stablehlo.add %arg0, %arg0 {mhlo.frontend_attributes = {bar = "1", foo = "0"}} : tensor<f32>
-   %1 = stablehlo.multiply %0, %cst {mhlo.frontend_attributes = {foo = "1"}} : tensor<f32>
-   // CHECK: %[[ADD:.*]] = stablehlo.add %arg0, %arg0 {mhlo.frontend_attributes = {bar = "1", foo = "1"}} : tensor<f32>
-+  // CHECK: return %[[ADD]] : tensor<f32>
-+  return %1 : tensor<f32>
+@@ -666,6 +666,14 @@
+   // CHECK: stablehlo.slice %arg0 [1:3] : (tensor<4xi32>) -> tensor<2xi32>
+   %c = stablehlo.constant dense<1> : tensor<i64>
+   %0 = stablehlo.dynamic_slice %arg0, %c, sizes = [2] : (tensor<4xi32>, tensor<i64>) -> tensor<2xi32>
++  func.return %0 : tensor<2xi32>
 +}
 +
++// CHECK-LABEL: dynamic_slice_constant_start_discardable_attrs
++func.func @dynamic_slice_constant_start_discardable_attrs(%arg0: tensor<4xi32>) -> tensor<2xi32> {
++  // CHECK: stablehlo.slice %arg0 [1:3] {mhlo.frontend_attributes = {MUST_FUSE = "0"}} : (tensor<4xi32>) -> tensor<2xi32>
++  %c = stablehlo.constant dense<1> : tensor<i64>
++  %0 = stablehlo.dynamic_slice %arg0, %c, sizes = [2] {mhlo.frontend_attributes = {MUST_FUSE = "0"}} : (tensor<4xi32>, tensor<i64>) -> tensor<2xi32>
+   func.return %0 : tensor<2xi32>
+ }
+ 
+@@ -1025,6 +1033,16 @@
+   return %1 : tensor<f32>
+ }
+ 
 +// CHECK-LABEL: @multiply_by_one_merge_attrs_conflict_xla_metadata_payload
 +func.func @multiply_by_one_merge_attrs_conflict_xla_metadata_payload(%arg0: tensor<f32>) -> tensor<f32> {
 +  %cst = stablehlo.constant dense<1.0> : tensor<f32>
 +  %0 = stablehlo.add %arg0, %arg0 {mhlo.frontend_attributes = {foo = "1", xla_metadata_payload = "0"}} : tensor<f32>
 +  %1 = stablehlo.multiply %0, %cst {mhlo.frontend_attributes = {xla_metadata_payload = "1"}} : tensor<f32>
 +  // CHECK: %[[ADD:.*]] = stablehlo.add %arg0, %arg0 {mhlo.frontend_attributes = {foo = "1", xla_metadata_payload = "0"}} : tensor<f32>
-   // CHECK: return %[[ADD]] : tensor<f32>
-   return %1 : tensor<f32>
++  // CHECK: return %[[ADD]] : tensor<f32>
++  return %1 : tensor<f32>
++}
++
+ // -----
+ 
+ /////////
+@@ -1151,6 +1169,32 @@
+   // CHECK-NEXT: [[START_INDEX_1_1D:%.*]] = stablehlo.slice %arg1 [1:2] : (tensor<2xi32>) -> tensor<1xi32>
+   // CHECK-NEXT: [[START_INDEX_1_0D:%.*]] = stablehlo.reshape [[START_INDEX_1_1D]] : (tensor<1xi32>) -> tensor<i32>
+   // CHECK-NEXT: [[RESULT:%.*]] = stablehlo.dynamic_slice %arg0, [[START_INDEX_0_0D]], [[START_INDEX_1_0D]], sizes = [1, 4] : (tensor<?x4xf32>, tensor<i32>, tensor<i32>) -> tensor<1x4xf32>
++  // CHECK-NEXT: return [[RESULT]] : tensor<1x4xf32>
++}
++
++// CHECK-LABEL: @simplify_real_dynamic_slice_to_slice_discardable_attrs
++func.func @simplify_real_dynamic_slice_to_slice_discardable_attrs(%arg0: tensor<?x4xf32>) -> tensor<1x4xf32> {
++  %0 = stablehlo.constant dense<[0, 0]> : tensor<2xi32>
++  %1 = stablehlo.constant dense<[1, 4]> : tensor<2xi32>
++  %2 = stablehlo.constant dense<[1, 1]> : tensor<2xi32>
++  %3 = stablehlo.real_dynamic_slice %arg0, %0, %1, %2 {mhlo.frontend_attributes = {MUST_FUSE = "0"}} : (tensor<?x4xf32>, tensor<2xi32>, tensor<2xi32>, tensor<2xi32>) -> tensor<1x4xf32>
++  // CHECK: %[[RESULT:.*]] =  stablehlo.slice %arg0 [0:1, 0:4] {mhlo.frontend_attributes = {MUST_FUSE = "0"}} : (tensor<?x4xf32>) -> tensor<1x4xf32>
++  // CHECK: return %[[RESULT]] : tensor<1x4xf32>
++  return %3 : tensor<1x4xf32>
++}
++
++// CHECK-LABEL: @simplify_real_dynamic_slice_to_dynamic_slice_discardable_attrs
++func.func @simplify_real_dynamic_slice_to_dynamic_slice_discardable_attrs(%arg0: tensor<?x4xf32>, %arg1: tensor<2xi32>) -> tensor<1x4xf32> {
++  %0 = stablehlo.constant dense<[1, 4]> : tensor<2xi32>
++  %1 = stablehlo.add %arg1, %0 : tensor<2xi32>
++  %2 = stablehlo.constant dense<[1, 1]> : tensor<2xi32>
++  %3 = stablehlo.real_dynamic_slice %arg0, %arg1, %1, %2 {mhlo.frontend_attributes = {MUST_FUSE = "0"}} : (tensor<?x4xf32>, tensor<2xi32>, tensor<2xi32>, tensor<2xi32>) -> tensor<1x4xf32>
++  return %3 : tensor<1x4xf32>
++  //      CHECK: [[START_INDEX_0_1D:%.*]] = stablehlo.slice %arg1 [0:1] : (tensor<2xi32>) -> tensor<1xi32>
++  // CHECK-NEXT: [[START_INDEX_0_0D:%.*]] = stablehlo.reshape [[START_INDEX_0_1D]] : (tensor<1xi32>) -> tensor<i32>
++  // CHECK-NEXT: [[START_INDEX_1_1D:%.*]] = stablehlo.slice %arg1 [1:2] : (tensor<2xi32>) -> tensor<1xi32>
++  // CHECK-NEXT: [[START_INDEX_1_0D:%.*]] = stablehlo.reshape [[START_INDEX_1_1D]] : (tensor<1xi32>) -> tensor<i32>
++  // CHECK-NEXT: [[RESULT:%.*]] = stablehlo.dynamic_slice %arg0, [[START_INDEX_0_0D]], [[START_INDEX_1_0D]], sizes = [1, 4] {mhlo.frontend_attributes = {MUST_FUSE = "0"}} : (tensor<?x4xf32>, tensor<i32>, tensor<i32>) -> tensor<1x4xf32>
+   // CHECK-NEXT: return [[RESULT]] : tensor<1x4xf32>
  }
+ 
+diff --ruN a/stablehlo/stablehlo/tests/transforms/stablehlo_canonicalize_dynamism.mlir b/stablehlo/stablehlo/tests/transforms/stablehlo_canonicalize_dynamism.mlir
+--- stablehlo/stablehlo/tests/transforms/stablehlo_canonicalize_dynamism.mlir
++++ stablehlo/stablehlo/tests/transforms/stablehlo_canonicalize_dynamism.mlir
+@@ -519,6 +519,32 @@
+ 
+ // -----
+ 
++// CHECK-LABEL: func @real_dynamic_slice_to_slice_discardable_attrs
++func.func @real_dynamic_slice_to_slice_discardable_attrs(%arg0: tensor<4xf32>) -> tensor<1xf32> {
++  //  CHECK-NOT: stablehlo.real_dynamic_slice
++  //      CHECK: stablehlo.slice %arg0 [0:1:2] {mhlo.frontend_attributes = {MUST_FUSE = "0"}} : (tensor<4xf32>) -> tensor<1xf32>
++  %0 = stablehlo.constant dense<0> : tensor<1xi64>
++  %1 = stablehlo.constant dense<1> : tensor<1xi64>
++  %2 = stablehlo.constant dense<2> : tensor<1xi64>
++  %3 = stablehlo.real_dynamic_slice %arg0, %0, %1, %2 {mhlo.frontend_attributes = {MUST_FUSE = "0"}} : (tensor<4xf32>, tensor<1xi64>, tensor<1xi64>, tensor<1xi64>) -> tensor<1xf32>
++  return %3 : tensor<1xf32>
++}
++
++// -----
++
++// CHECK-LABEL: func @real_dynamic_slice_to_dynamic_slice_discardable_attrs
++func.func @real_dynamic_slice_to_dynamic_slice_discardable_attrs(%arg0: tensor<?xf32>, %arg1: tensor<1xi64>) -> tensor<1xf32> {
++  //  CHECK-NOT: stablehlo.real_dynamic_slice
++  //      CHECK: stablehlo.dynamic_slice %arg0, %{{.*}}, sizes = [1] {mhlo.frontend_attributes = {MUST_FUSE = "0"}} : (tensor<?xf32>, tensor<i64>) -> tensor<1xf32>
++  %0 = stablehlo.constant dense<1> : tensor<1xi64>
++  %1 = stablehlo.add %arg1, %0 : tensor<1xi64>
++  %2 = stablehlo.constant dense<1> : tensor<1xi64>
++  %3 = stablehlo.real_dynamic_slice %arg0, %arg1, %1, %2 {mhlo.frontend_attributes = {MUST_FUSE = "0"}} : (tensor<?xf32>, tensor<1xi64>, tensor<1xi64>, tensor<1xi64>) -> tensor<1xf32>
++  return %3 : tensor<1xf32>
++}
++
++// -----
++
+ // CHECK-LABEL: func @real_dynamic_slice_to_slice_success_dynamic_result_type
+ func.func @real_dynamic_slice_to_slice_success_dynamic_result_type(%arg0: tensor<4xf32>) -> tensor<?xf32> {
+   //  CHECK-NOT: stablehlo.real_dynamic_slice
 diff --ruN a/stablehlo/stablehlo/tests/transforms/stablehlo_convert_to_signless.mlir b/stablehlo/stablehlo/tests/transforms/stablehlo_convert_to_signless.mlir
 --- stablehlo/stablehlo/tests/transforms/stablehlo_convert_to_signless.mlir
 +++ stablehlo/stablehlo/tests/transforms/stablehlo_convert_to_signless.mlir
@@ -321,26 +405,160 @@ diff --ruN a/stablehlo/stablehlo/transforms/ChloLegalizeToStablehlo.cpp b/stable
                       /*direction=*/mlir::stablehlo::ComparisonDirection::GT);
  
      // Get the sorted input and index tuple element.
+diff --ruN a/stablehlo/stablehlo/transforms/StablehloCanonicalizeDynamism.cpp b/stablehlo/stablehlo/transforms/StablehloCanonicalizeDynamism.cpp
+--- stablehlo/stablehlo/transforms/StablehloCanonicalizeDynamism.cpp
++++ stablehlo/stablehlo/transforms/StablehloCanonicalizeDynamism.cpp
+@@ -275,8 +275,11 @@
+       startIndices.push_back(startIndex0D);
+     }
+ 
+-    rewriter.replaceOpWithNewOp<DynamicSliceOp>(
+-        op, op.getType(), op.getOperand(), startIndices, sliceSizes);
++    auto dynamicSliceOp =
++        DynamicSliceOp::create(rewriter, op.getLoc(), op.getType(),
++                               op.getOperand(), startIndices, sliceSizes);
++    dynamicSliceOp->setDiscardableAttrs(op->getDiscardableAttrDictionary());
++    rewriter.replaceOp(op, dynamicSliceOp);
+     return success();
+   }
+ };
+@@ -295,8 +298,11 @@
+       return rewriter.notifyMatchFailure(op, "expected static limit");
+     if (!succeeded(hlo::matchInts(op.getStrides(), strides)))
+       return rewriter.notifyMatchFailure(op, "expected static strides");
+-    rewriter.replaceOpWithNewOp<SliceOp>(op, op.getType(), op.getOperand(),
+-                                         startIndices, limitIndices, strides);
++    auto sliceOp =
++        SliceOp::create(rewriter, op.getLoc(), op.getType(), op.getOperand(),
++                        startIndices, limitIndices, strides);
++    sliceOp->setDiscardableAttrs(op->getDiscardableAttrDictionary());
++    rewriter.replaceOp(op, sliceOp);
+     return success();
+   }
+ };
 diff --ruN a/stablehlo/stablehlo/transforms/optimization/StablehloAggressiveSimplification.cpp b/stablehlo/stablehlo/transforms/optimization/StablehloAggressiveSimplification.cpp
 --- stablehlo/stablehlo/transforms/optimization/StablehloAggressiveSimplification.cpp
 +++ stablehlo/stablehlo/transforms/optimization/StablehloAggressiveSimplification.cpp
-@@ -87,12 +87,17 @@
+@@ -69,16 +69,14 @@
+   });
+ }
+ 
+-bool mergeDiscardableAttributes(Value sourceValue, Value destValue) {
+-  Operation* sourceOp = sourceValue.getDefiningOp();
+-  Operation* destOp = destValue.getDefiningOp();
++bool mergeDiscardableAttributes(Operation* sourceOp, Operation* destOp) {
+   if (!sourceOp || !destOp) return false;
+ 
+   auto sourceAttrs = sourceOp->getDiscardableAttrDictionary();
+-  if (!sourceAttrs) return true;
++  if (!sourceAttrs || sourceAttrs.empty()) return true;
+ 
+   auto destAttrs = destOp->getDiscardableAttrDictionary();
+-  if (!destAttrs) {
++  if (!destAttrs || destAttrs.empty()) {
+     destOp->setDiscardableAttrs(sourceAttrs);
+     return true;
+   }
+@@ -87,16 +85,25 @@
    for (auto attr : sourceAttrs.getValue()) {
      if (attr.getName() == "mhlo.frontend_attributes" &&
          mergedAttrs.get("mhlo.frontend_attributes")) {
 -      // Merge frontend attributes, prioritizing source attributes.
+-      auto destFrontendAttrs =
+-          cast<DictionaryAttr>(mergedAttrs.get("mhlo.frontend_attributes"));
+-      auto sourceFrontendAttrs = cast<DictionaryAttr>(attr.getValue());
+-      NamedAttrList frontendAttrs(destFrontendAttrs);
+-      for (auto sourceAttr : sourceFrontendAttrs) {
+-        frontendAttrs.set(sourceAttr.getName(), sourceAttr.getValue());
 +      // Merge frontend attributes, prioritizing source attributes except for
 +      // `xla_metadata_payload`, which is set by the surviving op.
-       auto destFrontendAttrs =
-           cast<DictionaryAttr>(mergedAttrs.get("mhlo.frontend_attributes"));
-       auto sourceFrontendAttrs = cast<DictionaryAttr>(attr.getValue());
-       NamedAttrList frontendAttrs(destFrontendAttrs);
-       for (auto sourceAttr : sourceFrontendAttrs) {
-+        if (sourceAttr.getName() == "xla_metadata_payload" &&
-+            frontendAttrs.get("xla_metadata_payload")) {
-+          continue;  // keep the surviving op's own identity
++      auto destFrontendAttrs = dyn_cast_or_null<DictionaryAttr>(
++          mergedAttrs.get("mhlo.frontend_attributes"));
++      auto sourceFrontendAttrs = dyn_cast<DictionaryAttr>(attr.getValue());
++      if (destFrontendAttrs && sourceFrontendAttrs) {
++        NamedAttrList frontendAttrs(destFrontendAttrs);
++        for (auto sourceAttr : sourceFrontendAttrs) {
++          if (sourceAttr.getName() == "xla_metadata_payload" &&
++              frontendAttrs.get("xla_metadata_payload")) {
++            continue;  // keep the surviving op's own identity
++          }
++          frontendAttrs.set(sourceAttr.getName(), sourceAttr.getValue());
 +        }
-         frontendAttrs.set(sourceAttr.getName(), sourceAttr.getValue());
++        mergedAttrs.set("mhlo.frontend_attributes",
++                        frontendAttrs.getDictionary(destOp->getContext()));
++      } else {
++        mergedAttrs.set(attr.getName(), attr.getValue());
        }
-       mergedAttrs.set("mhlo.frontend_attributes",
+-      mergedAttrs.set("mhlo.frontend_attributes",
+-                      frontendAttrs.getDictionary(destOp->getContext()));
+     } else {
+       // Otherwise prioritize source attributes
+       mergedAttrs.set(attr.getName(), attr.getValue());
+@@ -105,6 +112,11 @@
+ 
+   destOp->setDiscardableAttrs(mergedAttrs.getDictionary(destOp->getContext()));
+   return true;
++}
++
++bool mergeDiscardableAttributes(Value sourceValue, Value destValue) {
++  return mergeDiscardableAttributes(sourceValue.getDefiningOp(),
++                                    destValue.getDefiningOp());
+ }
+ 
+ template <typename OpType>
+@@ -637,8 +649,12 @@
+     auto sliceStrides = rewriter.getDenseI64ArrayAttr(
+         SmallVector<int64_t, 4>(inputType.getRank(), 1));
+ 
+-    rewriter.replaceOpWithNewOp<SliceOp>(dynamicSlice, input, sliceStartIndices,
+-                                         sliceLimits, sliceStrides);
++    auto sliceOp =
++        SliceOp::create(rewriter, dynamicSlice.getLoc(), input,
++                        sliceStartIndices, sliceLimits, sliceStrides);
++    mergeDiscardableAttributes(dynamicSlice.getOperation(),
++                               sliceOp.getOperation());
++    rewriter.replaceOp(dynamicSlice, sliceOp);
+     return success();
+   }
+ };
+@@ -705,9 +721,12 @@
+       startIndices.push_back(startIndex0D);
+     }
+ 
+-    rewriter.replaceOpWithNewOp<DynamicSliceOp>(
+-        op, op.getOperand(), startIndices,
++    auto dynamicSliceOp = DynamicSliceOp::create(
++        rewriter, op.getLoc(), op.getOperand(), startIndices,
+         rewriter.getDenseI64ArrayAttr(sliceSizes));
++    mergeDiscardableAttributes(op.getOperation(),
++                               dynamicSliceOp.getOperation());
++    rewriter.replaceOp(op, dynamicSliceOp);
+     return success();
+   }
+ };
+diff --ruN a/stablehlo/stablehlo/transforms/optimization/StablehloAggressiveSimplificationPatterns.td b/stablehlo/stablehlo/transforms/optimization/StablehloAggressiveSimplificationPatterns.td
+--- stablehlo/stablehlo/transforms/optimization/StablehloAggressiveSimplificationPatterns.td
++++ stablehlo/stablehlo/transforms/optimization/StablehloAggressiveSimplificationPatterns.td
+@@ -550,16 +550,18 @@
+ //       -> slice(X, start, limit, strides)
+ //          [if start, limit, strides are all constants]
+ def RealDynamicSliceOp_ReplaceWithSlice
+-  : Pat<(StableHLO_RealDynamicSliceOp
++  : Pat<(StableHLO_RealDynamicSliceOp:$op
+             $operand,
+             (ConstantLikeMatcher DenseIntElementsAttr:$start_indices),
+             (ConstantLikeMatcher DenseIntElementsAttr:$limit_indices),
+             (ConstantLikeMatcher DenseIntElementsAttr:$strides)),
+-        (StableHLO_SliceOp
++        (StableHLO_SliceOp:$new_op
+             $operand,
+             (ConvertToI64Array $start_indices),
+             (ConvertToI64Array $limit_indices),
+-            (ConvertToI64Array $strides))>;
++            (ConvertToI64Array $strides)),
++        [],
++        [(MergeDiscardableAttributes $op, $new_op)]>;
+ 
+ ////////
+ // RealOp
 
