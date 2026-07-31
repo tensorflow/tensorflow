@@ -538,15 +538,21 @@ class ConvDimensionAdapter {
     result.sizes.push_back(logical_dims[dums_.input_feature_dimension()]);
     result.strides.push_back(logical_strides[dums_.input_batch_dimension()]);
     result.strides.push_back(logical_strides[dums_.input_feature_dimension()]);
+    // cuDNN frontend expects tensor rank to be at least 4 (2 spatial dims).
+    // Prepend dummy spatial dimensions (e.g. H=1 for 1D convs) so 1D convs
+    // are represented as (N, C, 1, W).
+    while (result.sizes.size() + dums_.input_spatial_dimensions_size() < 4) {
+      result.sizes.push_back(1);
+      int64_t dummy_stride = 1;
+      if (dums_.input_spatial_dimensions_size() > 0) {
+        dummy_stride = logical_strides[dums_.input_spatial_dimensions(0)];
+      }
+      result.strides.push_back(dummy_stride);
+    }
     for (auto i = 0; i < dums_.input_spatial_dimensions_size(); ++i) {
       result.sizes.push_back(logical_dims[dums_.input_spatial_dimensions(i)]);
       result.strides.push_back(
           logical_strides[dums_.input_spatial_dimensions(i)]);
-    }
-    // cuDNN frontend expects tensor rank to be at least 4 (2 spatial dims).
-    while (result.sizes.size() < 4) {
-      result.sizes.push_back(1);
-      result.strides.push_back(1);
     }
     return result;
   }
@@ -947,12 +953,13 @@ absl::StatusOr<se::gpu::CudnnGraph> HloFusionToCuDnnGraph(
         dilation.push_back(dim.window_dilation());
       }
       // cuDNN frontend expects at least 2 spatial dimensions for conv
-      // operations.
+      // operations. Prepend dummy spatial dimensions (e.g. H=1 for 1D convs)
+      // so 1D convs are represented as (N, C, 1, W).
       while (pre_padding.size() < 2) {
-        pre_padding.push_back(0);
-        post_padding.push_back(0);
-        stride.push_back(1);
-        dilation.push_back(1);
+        pre_padding.insert(pre_padding.begin(), 0);
+        post_padding.insert(post_padding.begin(), 0);
+        stride.insert(stride.begin(), 1);
+        dilation.insert(dilation.begin(), 1);
       }
       const auto compute_dtype =
           GetComputeDataType(hlo->shape().element_type());
