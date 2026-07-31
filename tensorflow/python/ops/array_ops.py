@@ -1225,15 +1225,15 @@ def _autopacking_helper(list_or_tuple, dtype, name):
     # checking.
     if all(isinstance(elem, core.Tensor) for elem in list_or_tuple):
       # GPU Pack kernels do not support 0-D (scalar) inputs.  Reshape each
-      # scalar to shape [1] so that concat can be used instead to produce
-      # the expected 1-D vector.  This matches the CPU behaviour of
-      # pack([s0, s1, ...]) == [s0, s1, ...].
+      # scalar to shape [1] so that the result is a 1-D vector, matching the
+      # CPU behaviour of pack([s0, s1, ...]) == [s0, s1, ...].
+      # concat_v2 requires >= 2 inputs, so a single scalar is handled with a
+      # plain reshape.
       if list_or_tuple and all(elem.shape.rank == 0 for elem in list_or_tuple):
-        return gen_array_ops.concat_v2(
-            [gen_array_ops.reshape(elem, [1]) for elem in list_or_tuple],
-            axis=0,
-            name=name,
-        )
+        reshaped = [gen_array_ops.reshape(elem, [1]) for elem in list_or_tuple]
+        if len(reshaped) == 1:
+          return reshaped[0]
+        return gen_array_ops.concat_v2(reshaped, axis=0, name=name)
       return gen_array_ops.pack(list_or_tuple, name=name)
   must_pack = False
   converted_elems = []
@@ -1264,17 +1264,17 @@ def _autopacking_helper(list_or_tuple, dtype, name):
           elems_as_tensors.append(
               constant_op.constant(elem, dtype=dtype, name=str(i)))
       # GPU Pack kernels do not support 0-D (scalar) inputs.  When all
-      # elements are scalars, use reshape+concat to build the 1-D vector
-      # instead so the operation is device-agnostic.
+      # elements are scalars, use reshape to build the 1-D vector instead so
+      # the operation is device-agnostic.  concat_v2 requires >= 2 inputs, so
+      # a single scalar is handled with a plain reshape.
       if elems_as_tensors and all(
           isinstance(e, core.Tensor) and e.shape.rank == 0
           for e in elems_as_tensors
       ):
-        return gen_array_ops.concat_v2(
-            [gen_array_ops.reshape(e, [1]) for e in elems_as_tensors],
-            axis=0,
-            name=scope,
-        )
+        reshaped = [gen_array_ops.reshape(e, [1]) for e in elems_as_tensors]
+        if len(reshaped) == 1:
+          return reshaped[0]
+        return gen_array_ops.concat_v2(reshaped, axis=0, name=scope)
       return gen_array_ops.pack(elems_as_tensors, name=scope)
     else:
       return converted_elems
