@@ -20,10 +20,9 @@ limitations under the License.
 
 namespace stream_executor::gpu {
 
-__global__ void RedzoneAllocatorKernelImpl(uint8_t* input_buffer,
-                                           uint8_t redzone_pattern,
-                                           uint64_t buffer_length,
-                                           uint32_t* out_mismatched_ptr) {
+inline __global__ void RedzoneAllocatorKernelImpl(
+    uint8_t* input_buffer, uint8_t redzone_pattern, uint64_t buffer_length,
+    uint32_t* out_mismatched_ptr) {
   const uint64_t block_dim_x = static_cast<uint64_t>(blockDim.x),
                  stride = block_dim_x * gridDim.x;
   for (uint64_t idx = threadIdx.x + blockIdx.x * block_dim_x;
