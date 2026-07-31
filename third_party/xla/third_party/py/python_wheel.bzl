@@ -177,10 +177,8 @@ def _collect_data_aspect_impl(_, ctx):
             for f in data.files.to_list():
                 if not f.owner.package:
                     continue
-
-                # Check if filename contains any of the extensions (for versioned .so files)
                 for ext in extensions:
-                    if "." + ext in f.basename:
+                    if f.extension == ext:
                         files[f] = True
                         break
 
