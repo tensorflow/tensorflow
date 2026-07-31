@@ -35,6 +35,7 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "xla/tsl/platform/status_macros.h"
+#include "xla/frontend_attributes.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -61,9 +62,11 @@ const absl::string_view kDceSideEffectFrontendAttribute =
 // remove_cross_partition_collective_ops
 bool IsRemovableWhile(const HloInstruction* instruction,
                       bool remove_cross_partition_collective_ops) {
-  if (instruction->opcode() != HloOpcode::kWhile) {
+  if (instruction->opcode() != HloOpcode::kWhile ||
+      HasDisableWhileLoopDceAttr(instruction)) {
     return false;
   }
+
   for (HloComputation* computation : instruction->called_computations()) {
     for (HloInstruction* called_instr : computation->instructions()) {
       auto maybe_collective_op =
@@ -197,9 +200,10 @@ bool CanRemoveInstruction(
     bool remove_cross_partition_collective_ops,
     const std::function<std::vector<HloInstruction*>(const HloComputation*)>&
         computation_callers) {
-  if (!instruction->IsDead()) {
+  if (!instruction->IsDead() || HasDisableWhileLoopDceAttr(instruction)) {
     return false;
   }
+
   if (!instruction->parent()->IsSafelyRemovable(
           instruction,
           /*ignore_control_dependency=*/false,

@@ -981,6 +981,7 @@ cc_library(
     hdrs = ["hlo_dce.h"],
     visibility = internal_visibility([":friends"]),
     deps = [
+        "//xla:frontend_attributes",
         "//xla:shape_layout",
         "//xla:shape_util",
         "//xla:util",
