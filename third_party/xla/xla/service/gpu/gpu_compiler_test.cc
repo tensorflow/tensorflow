@@ -1715,20 +1715,24 @@ m {
 
 // Define a test-specific enum for expected TopK implementations.
 enum class TopKImpl {
-  kCustomKernel,  // Custom GPU kernel
-  kSelectK,       // raft::select_k
-  kSort           // Fallback Sort+Slice
+  kCustomKernel,           // Custom GPU kernel
+  kSelectK,                // raft::select_k
+  kSort,                   // Fallback Sort+Slice
+  kSelectKWithU64Adapter,  // pack_to_u64 + raft::select_k(u64) +
+                           // unpack_from_u64
+  kSortWithS32Adapter      // pack_to_s32 + Sort(s32)+Slice + unpack_from_s32
 };
 
 // Test fixture for verifying GPU TopK lowering to SelectK or custom kernel.
 class GpuCompilerSelectKTest
     : public GpuCompilerTest,
-      public ::testing::WithParamInterface<std::tuple<int, int, TopKImpl>> {};
+      public ::testing::WithParamInterface<
+          std::tuple<absl::string_view, int, int, bool, TopKImpl>> {};
 
 // Test lowering of TopK to different GPU implementations
 // (CustomKernel, raft::select_k, or Sort+Slice (LLVM/CUBSort)).
 TEST_P(GpuCompilerSelectKTest, SelectKOrCustomKernelThunk) {
-  auto [n, k, expected_impl] = GetParam();
+  auto [dtype, n, k, is_stable, expected_impl] = GetParam();
 
   bool is_rocm = device_description().gpu_compute_capability().IsRocm();
   bool is_oneapi = device_description().gpu_compute_capability().IsOneAPI();
@@ -1747,11 +1751,11 @@ TEST_P(GpuCompilerSelectKTest, SelectKOrCustomKernelThunk) {
 HloModule m
 
 ENTRY main {
-  p = f32[8,$0]{1,0} parameter(0)
-  ROOT t = (f32[8,$1]{1,0}, s32[8,$1]{1,0}) topk(p), k=$1, largest=true, is_stable=false
+  p = $0[8,$1]{1,0} parameter(0)
+  ROOT t = ($0[8,$2]{1,0}, s32[8,$2]{1,0}) topk(p), k=$2, largest=true, is_stable=$3
 }
 )",
-                                          n, k);
+                                          dtype, n, k, is_stable);
 
   // Configure module with debug options.
   HloModuleConfig config;
@@ -1812,6 +1816,19 @@ ENTRY main {
       } else {
         FAIL() << "Unexpected thunk sequence size: " << kinds.size();
       }
+      break;
+    }
+
+    case TopKImpl::kSelectKWithU64Adapter:
+      EXPECT_THAT(kinds,
+                  ElementsAre(Thunk::Kind::kCustomKernel, Thunk::Kind::kSelectK,
+                              Thunk::Kind::kCustomKernel));
+      break;
+
+    case TopKImpl::kSortWithS32Adapter: {
+      EXPECT_THAT(kinds, ElementsAre(Thunk::Kind::kCustomKernel,
+                                     Thunk::Kind::kCustomKernel,
+                                     Thunk::Kind::kCustomKernel));
       break;
     }
 
@@ -2554,16 +2571,52 @@ INSTANTIATE_TEST_SUITE_P(
     });
 
 auto SelectKTestParams() {
-  // Depending on N and K, XLA chooses different TopK implementations:
-  // CustomKernel, raft::select_k, or Sort+Slice.
+  // Depending on dtype, N, K and is_stable flag, XLA chooses different TopK
+  // implementations:
+  // CustomKernel, raft::select_k, select_k_with_u64_adapter, or Sort+Slice.
   // The heuristic for selecting between TopK CustomKernel and
   // raft::matrix::select_k was developed as part of the initial research
   // described in b/409009349.
-  return ::testing::Values(std::make_tuple(1023, 4, TopKImpl::kSelectK),
-                           std::make_tuple(1024, 4, TopKImpl::kCustomKernel),
-                           std::make_tuple(1024, 16, TopKImpl::kSelectK),
-                           std::make_tuple(8192, 24, TopKImpl::kSelectK),
-                           std::make_tuple(8192, 512, TopKImpl::kSort));
+  return ::testing::Values(
+      // dtype, n, k, is_stable, expected_impl
+      std::make_tuple("f32", 1023, 4, false, TopKImpl::kSelectK),
+      std::make_tuple("f32", 1023, 4, true, TopKImpl::kSelectKWithU64Adapter),
+      std::make_tuple("f32", 1024, 4, false, TopKImpl::kCustomKernel),
+      std::make_tuple("f32", 1024, 4, true, TopKImpl::kCustomKernel),
+      std::make_tuple("f32", 1024, 16, false, TopKImpl::kSelectK),
+      std::make_tuple("f32", 1024, 16, true, TopKImpl::kCustomKernel),
+      std::make_tuple("f32", 8192, 24, false, TopKImpl::kSelectK),
+      std::make_tuple("f32", 8192, 24, true, TopKImpl::kSelectKWithU64Adapter),
+      std::make_tuple("f32", 8192, 512, false, TopKImpl::kSort),
+      std::make_tuple("f32", 8192, 512, true, TopKImpl::kSort),
+      // f32: exact upper bound of max_k
+      std::make_tuple("f32", 8192, 128, false, TopKImpl::kSelectK),
+      std::make_tuple("f32", 8192, 128, true, TopKImpl::kSelectKWithU64Adapter),
+      // f32: just over the upper bound
+      std::make_tuple("f32", 8192, 129, false, TopKImpl::kSort),
+      std::make_tuple("f32", 8192, 129, true, TopKImpl::kSort),
+      // bf16 and size <= 2**16 - use sort(s32) + slice.
+      std::make_tuple("bf16", 1023, 4, false, TopKImpl::kSortWithS32Adapter),
+      std::make_tuple("bf16", 1023, 4, true, TopKImpl::kSortWithS32Adapter),
+      std::make_tuple("bf16", 1024, 4, false, TopKImpl::kSortWithS32Adapter),
+      std::make_tuple("bf16", 1024, 4, true, TopKImpl::kSortWithS32Adapter),
+      std::make_tuple("bf16", 1024, 16, false, TopKImpl::kSortWithS32Adapter),
+      std::make_tuple("bf16", 1024, 16, true, TopKImpl::kSortWithS32Adapter),
+      // bf16 and size > 2**16.
+      std::make_tuple("bf16", 65540, 16, false, TopKImpl::kSelectK),
+      std::make_tuple("bf16", 65540, 16, true, TopKImpl::kCustomKernel),
+      std::make_tuple("bf16", 65540, 24, false, TopKImpl::kSelectK),
+      std::make_tuple("bf16", 65540, 24, true,
+                      TopKImpl::kSelectKWithU64Adapter),
+      std::make_tuple("bf16", 65540, 512, false, TopKImpl::kSort),
+      std::make_tuple("bf16", 65540, 512, true, TopKImpl::kSort),
+      // bf16: exact upper bound of max_k for batch=8
+      std::make_tuple("bf16", 65540, 128, false, TopKImpl::kSelectK),
+      std::make_tuple("bf16", 65540, 128, true,
+                      TopKImpl::kSelectKWithU64Adapter),
+      // bf16: just over the upper bound
+      std::make_tuple("bf16", 65540, 129, false, TopKImpl::kSort),
+      std::make_tuple("bf16", 65540, 129, true, TopKImpl::kSort));
 }
 // Instantiate the test suite with (n, k, expected_kind) pairs.
 INSTANTIATE_TEST_SUITE_P(SelectKOrCustomKernel, GpuCompilerSelectKTest,
