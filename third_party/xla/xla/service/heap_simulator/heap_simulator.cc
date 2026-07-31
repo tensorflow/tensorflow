@@ -1814,11 +1814,35 @@ class ComposedSliceTimePermutationIterator
   std::unique_ptr<SliceTimePermutationIterator> base_iterator_;
 };
 
+// A trivial iterator that yields exactly one permutation, {0}, for an unsliced
+// allocation (num_slices == 1). This is the overwhelmingly common case.
+// Short circuiting here avoids the heap allocations of the general
+// ComposedSliceTimePermutationIterator, a compile time speedup that preserves
+// the exact same behavior.
+class SingleSliceTimePermutationIterator : public SliceTimePermutationIterator {
+ public:
+  SingleSliceTimePermutationIterator() : permutation_(1, 0) {}
+  ~SingleSliceTimePermutationIterator() override = default;
+
+  void Begin() override { done_ = false; }
+  bool Done() const override { return done_; }
+  void Next() override { done_ = true; }
+  absl::Span<const int64_t> Get() const override { return permutation_; }
+
+ private:
+  bool done_ = true;
+  std::vector<int64_t> permutation_;
+};
+
 }  // namespace
 
 std::unique_ptr<SliceTimePermutationIterator>
 SliceTimePermutationIterator::CreateForNewAllocation(
     Ty ty, absl::Span<const int64_t> inclusive_slice_start_times) {
+  // Fast path for the common unsliced case.
+  if (inclusive_slice_start_times.size() == 1) {
+    return std::make_unique<SingleSliceTimePermutationIterator>();
+  }
   switch (ty) {
     case Ty::kAll:
       return std::make_unique<ComposedSliceTimePermutationIterator>(
@@ -2523,8 +2547,8 @@ GlobalDecreasingSizeBestFitHeap<BufferType>::FindChunkCandidate(
 }
 
 template <typename BufferType>
-typename GlobalDecreasingSizeBestFitHeap<BufferType>::FreeChunks
-GlobalDecreasingSizeBestFitHeap<BufferType>::MakeFreeChunks(
+const std::vector<std::pair<int64_t, int64_t>>&
+GlobalDecreasingSizeBestFitHeap<BufferType>::MakeFreeChunksList(
     const BufferInterval& buffer_interval, int64_t max_colocation_size) const {
   used_chunks_.clear();
 
@@ -2546,18 +2570,19 @@ GlobalDecreasingSizeBestFitHeap<BufferType>::MakeFreeChunks(
         });
   }
 
-  if (used_chunks_.empty()) {
-    return FreeChunks({{0, INT64_MAX}});
-  }
-
   // Sort used chunks by offset ascending.
   std::sort(used_chunks_.begin(), used_chunks_.end(),
             [](const Chunk& a, const Chunk& b) { return a.offset < b.offset; });
 
+  free_chunks_list_.clear();
+  if (used_chunks_.empty()) {
+    free_chunks_list_.push_back({0, INT64_MAX});
+    return free_chunks_list_;
+  }
+
   // Merge overlapping used chunks and build free chunks in a single pass.
   // Track the start of the current free space candidate.
   int64_t current_free_chunk_start = 0;
-  free_chunks_list_.clear();
 
   {
     const absl::Span<const Chunk> used_chunks = used_chunks_;
@@ -2589,7 +2614,16 @@ GlobalDecreasingSizeBestFitHeap<BufferType>::MakeFreeChunks(
 
   free_chunks_list_.push_back({current_free_chunk_start, INT64_MAX});
 
-  return FreeChunks(free_chunks_list_.rbegin(), free_chunks_list_.rend());
+  return free_chunks_list_;
+}
+
+template <typename BufferType>
+typename GlobalDecreasingSizeBestFitHeap<BufferType>::FreeChunks
+GlobalDecreasingSizeBestFitHeap<BufferType>::MakeFreeChunks(
+    const BufferInterval& buffer_interval, int64_t max_colocation_size) const {
+  const std::vector<std::pair<int64_t, int64_t>>& free_chunks_list =
+      MakeFreeChunksList(buffer_interval, max_colocation_size);
+  return FreeChunks(free_chunks_list.rbegin(), free_chunks_list.rend());
 }
 
 template <typename BufferType>
@@ -2629,6 +2663,10 @@ GlobalDecreasingSizeBestFitHeap<BufferType>::FindChunkCandidates(
 
   int64_t max_colocation_size =
       GetMaxColocationSize(sliced_buffer_interval.full_buffer_interval());
+  if (sliced_buffer_interval.num_slices() == 1) {
+    return FindUnslicedChunkCandidates(sliced_buffer_interval,
+                                       max_colocation_size, preferred_offset);
+  }
   auto chunks =
       CreateSlicedAllocationFinder(
           sliced_buffer_interval, max_colocation_size, preferred_offset,
@@ -2638,6 +2676,82 @@ GlobalDecreasingSizeBestFitHeap<BufferType>::FindChunkCandidates(
           .Find();
   return PostProcessFindChunkCandidatesResult(sliced_buffer_interval,
                                               std::move(chunks));
+}
+
+template <typename BufferType>
+std::vector<typename GlobalDecreasingSizeBestFitHeap<BufferType>::Chunk>
+GlobalDecreasingSizeBestFitHeap<BufferType>::FindUnslicedChunkCandidates(
+    const SlicedBufferInterval& sliced_buffer_interval,
+    int64_t max_colocation_size, int64_t preferred_offset) const {
+  // For a single slice, SlicedAllocationFinder::Find() reduces to:
+  //   1. If preferred_offset >= 0 and it is aligned, find the free chunk with
+  //      the largest start <= preferred_offset; if
+  //      [preferred_offset, preferred_offset + max_colocation_size) lies
+  //      inside it, place at preferred_offset.
+  //   2. Otherwise, among free chunks whose aligned start still fits
+  //      max_colocation_size before the chunk end, pick the one with the
+  //      smallest (size, start) and place at its aligned start.
+  // (In SlicedAllocationFinder, each FreeChunkRoot holds a single
+  // FreeChunkPiece for a single slice time, so FindInRoot only ever tries the
+  // first aligned offset, and the single permutation {0} always satisfies its
+  // piece time check.) Computing this directly from the merged free chunk list
+  // skips the FreeChunks map, the finder's root map and its root heap, all
+  // otherwise built per probe on the prefetch hot path. The last free chunk
+  // extends to INT64_MAX, so a fit always exists.
+  const std::vector<std::pair<int64_t, int64_t>>& free_chunks =
+      MakeFreeChunksList(sliced_buffer_interval.IntervalForMakeFreeChunks(0),
+                         max_colocation_size);
+  CHECK(!free_chunks.empty());
+  const int64_t slice_size =
+      sliced_buffer_interval.SliceSizesSortedByOffset().front();
+  std::vector<Chunk> result;
+
+  auto compute_candidate = [&]() -> int64_t {
+    if (preferred_offset >= 0 && preferred_offset % alignment_ == 0) {
+      // Find the free chunk with the largest start <= preferred_offset.
+      auto it = std::upper_bound(
+          free_chunks.begin(), free_chunks.end(), preferred_offset,
+          [](int64_t offset, const std::pair<int64_t, int64_t>& free_chunk) {
+            return offset < free_chunk.first;
+          });
+      if (it != free_chunks.begin()) {
+        const std::pair<int64_t, int64_t>& free_chunk = *std::prev(it);
+        if (preferred_offset < free_chunk.second &&
+            free_chunk.second - max_colocation_size >= preferred_offset) {
+          return preferred_offset;
+        }
+      }
+    }
+    // Best fit: smallest (size, start) free chunk that fits
+    // max_colocation_size at its aligned start.
+    int64_t best_offset = -1;
+    int64_t best_size = std::numeric_limits<int64_t>::max();
+    for (const std::pair<int64_t, int64_t>& free_chunk : free_chunks) {
+      int64_t aligned_start = free_chunk.first;
+      if (aligned_start % alignment_ != 0) {
+        aligned_start += alignment_ - (aligned_start % alignment_);
+      }
+      if (free_chunk.second - max_colocation_size < aligned_start) {
+        continue;
+      }
+      int64_t size = free_chunk.second - free_chunk.first;
+      // Note: best_offset < 0 must be checked explicitly because the final
+      // free chunk extends to INT64_MAX, so its size can equal the best_size
+      // sentinel.
+      if (best_offset < 0 || size < best_size) {
+        best_size = size;
+        best_offset = aligned_start;
+      }
+    }
+    return best_offset;
+  };
+
+  int64_t candidate_offset = compute_candidate();
+  if (candidate_offset >= 0) {
+    result.push_back(Chunk::FromOffsetSize(candidate_offset, slice_size));
+  }
+
+  return result;
 }
 
 template <typename BufferType>
