@@ -220,8 +220,8 @@ endfunction()
 # OVERRIDABLE_FETCH_CONTENT_<contentName>_<variable> where <contentName> is the
 # CONTENT_NAME argument content provided to this method and <variable> is the
 # argument of this method to override. For example, given CONTENT_NAME = foo
-# the GIT_REPOSITORY can be overridden by setting foo_GIT_REPOSITORY to the
-# value to use instead.
+# the GIT_REPOSITORY can be overridden by setting
+# OVERRIDABLE_FETCH_CONTENT_foo_GIT_REPOSITORY to the value to use instead.
 #
 # To convert a GIT_REPOSITORY / GIT_TAG reference to a URL,
 # set OVERRIDABLE_FETCH_CONTENT_GIT_REPOSITORY_AND_TAG_TO_URL_<contentName>
