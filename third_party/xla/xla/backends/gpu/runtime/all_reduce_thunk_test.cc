@@ -207,6 +207,8 @@ class NoOpReduceScatterThunk : public ReduceScatterThunk {
       : ReduceScatterThunk(std::move(thunk_info), std::move(config),
                            std::move(buffers)) {}
 
+  using ReduceScatterThunk::CanUseSymmetricBuffer;
+
   absl::Status ExecuteOnStream(const ExecuteParams& params) override {
     return absl::OkStatus();
   }
@@ -337,6 +339,15 @@ static NoOpReduceScatterThunk MakeNoOpReduceScatterThunk(
     int64_t length) {
   return NoOpReduceScatterThunk(Thunk::ThunkInfo(), MakeSumConfig(),
                                 {MakeNoOpBuffer(alloc_src, alloc_dst, length)});
+}
+
+TEST(ReduceScatterThunkTest, SupportsSymmetricBuffers) {
+  BufferAllocation alloc_src(/*index=*/0, /*size=*/16, /*color=*/0);
+  BufferAllocation alloc_dst(/*index=*/1, /*size=*/16, /*color=*/0);
+  NoOpReduceScatterThunk thunk =
+      MakeNoOpReduceScatterThunk(alloc_src, alloc_dst, /*length=*/4);
+
+  EXPECT_TRUE(thunk.CanUseSymmetricBuffer());
 }
 
 // Records AllReduceThunk into a primary command buffer (create phase) and
