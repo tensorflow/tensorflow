@@ -6462,7 +6462,11 @@ def fold(patches,
     if dilation_h < 1 or dilation_w < 1:
       raise ValueError(f"dilation must be >= 1, got {dilation}")
 
-  if stride_h < kernel_h or stride_w < kernel_w:
+  # Handling inputs for padding argument
+  k_eff_h = (kernel_h - 1) * dilation_h + 1
+  k_eff_w = (kernel_w - 1) * dilation_w + 1
+
+  if stride_h < k_eff_h or stride_w < k_eff_w:
     # Local imports - to avoid circular imports
     # pylint: disable=g-import-not-at-top
     from tensorflow.python.framework import config
@@ -6499,10 +6503,7 @@ def fold(patches,
   channels = patch_dim // kernel_area
 
   height, width = output_size
-
-  # Handling inputs for padding argument
-  k_eff_h = (kernel_h - 1) * dilation_h + 1
-  k_eff_w = (kernel_w - 1) * dilation_w + 1
+  
   if isinstance(padding, str):
     if padding == "VALID":
       pad_top = pad_bottom = pad_left = pad_right = 0
