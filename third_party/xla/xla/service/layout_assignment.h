@@ -775,6 +775,22 @@ class LayoutAssignment : public HloModulePass {
       ChannelLayoutConstraints* channel_constraints,
       LayoutConstraints* constraints);
 
+  // Constrains layouts for custom calls that have specific layout requirements.
+  absl::Status AddCustomCallConstraints(LayoutConstraints* constraints);
+
+  // Initializes unconstrained_buffer_ids_ with all array-shaped logical buffers
+  // in the given computation.
+  void InitUnconstrainedBuffers(HloComputation* computation);
+
+  // Records instructions that lack layout constraints before applying default
+  // layouts.
+  void RecordUnconstrainedLayoutInstructions();
+
+  // Iteratively assigns layouts to remaining unconstrained buffers and
+  // propagates until all buffers are constrained.
+  absl::Status AssignLayoutsToUnconstrainedBuffers(
+      LayoutConstraints* constraints);
+
   // Return a vector containing the constraints which have been added to the
   // LayoutConstraints object since the construction of the object or since the
   // last time ConsumeAddedConstraints() has been called. This is used to

@@ -2616,16 +2616,7 @@ absl::Status LayoutAssignment::ClearComputationLayouts(
   return absl::OkStatus();
 }
 
-absl::Status LayoutAssignment::RunOnComputation(
-    LayoutConstraints* constraints,
-    ChannelLayoutConstraints* channel_constraints) {
-  HloComputation* computation = constraints->computation();
-  VLOG(1) << "LayoutAssignment::RunOnComputation(" << computation->name()
-          << ")";
-  VLOG(4) << computation->ToString() << "\n";
-
-  // Initialize the set of unconstrained buffers with all array-shaped logical
-  // buffers in this computation.
+void LayoutAssignment::InitUnconstrainedBuffers(HloComputation* computation) {
   for (HloInstruction* inst : computation->instructions()) {
     points_to_analysis_->GetPointsToSet(inst).ForEachElement(
         [&](const ShapeIndex&, const PointsToSet::BufferList& buffers) {
@@ -2639,15 +2630,10 @@ absl::Status LayoutAssignment::RunOnComputation(
           }
         });
   }
+}
 
-  // Add mandatory constraints required for correctness (e.g., entry
-  // parameter layouts).
-  RETURN_IF_ERROR(AddMandatoryConstraints(channel_constraints, constraints));
-
-  // Add backend-specific constraints.
-  RETURN_IF_ERROR(AddBackendConstraints(constraints));
-
-  // Constrain layouts for custom calls that have specific layout requirements.
+absl::Status LayoutAssignment::AddCustomCallConstraints(
+    LayoutConstraints* constraints) {
   for (HloInstruction* instruction :
        constraints->computation()->MakeInstructionPostOrder()) {
     if (!IsLayoutConstrainedCustomCall(instruction)) {
@@ -2678,11 +2664,10 @@ absl::Status LayoutAssignment::RunOnComputation(
       }
     }
   }
+  return absl::OkStatus();
+}
 
-  // Propagate the mandatory and backend constraints.
-  RETURN_IF_ERROR(PropagateConstraints(constraints));
-
-  // Record instructions that lack layout constraints before applying defaults.
+void LayoutAssignment::RecordUnconstrainedLayoutInstructions() {
   for (LogicalBuffer::Id buffer_id : unconstrained_buffer_ids_) {
     VLOG(5)
         << "unconstrained instruction:"
@@ -2691,9 +2676,10 @@ absl::Status LayoutAssignment::RunOnComputation(
     unconstrained_layout_instructions_.insert(
         points_to_analysis_->GetBuffer(buffer_id).instruction());
   }
+}
 
-  // Iteratively assign layouts to remaining unconstrained buffers and
-  // propagate.
+absl::Status LayoutAssignment::AssignLayoutsToUnconstrainedBuffers(
+    LayoutConstraints* constraints) {
   while (!unconstrained_buffer_ids_.empty()) {
     int unconstrained_count = unconstrained_buffer_ids_.size();
 
@@ -2718,6 +2704,40 @@ absl::Status LayoutAssignment::RunOnComputation(
     // unconstrained buffers decreased.
     CHECK_LT(unconstrained_buffer_ids_.size(), unconstrained_count);
   }
+  return absl::OkStatus();
+}
+
+absl::Status LayoutAssignment::RunOnComputation(
+    LayoutConstraints* constraints,
+    ChannelLayoutConstraints* channel_constraints) {
+  HloComputation* computation = constraints->computation();
+  VLOG(1) << "LayoutAssignment::RunOnComputation(" << computation->name()
+          << ")";
+  VLOG(4) << computation->ToString() << "\n";
+
+  // Initialize the set of unconstrained buffers with all array-shaped logical
+  // buffers in this computation.
+  InitUnconstrainedBuffers(computation);
+
+  // Add mandatory constraints required for correctness (e.g., entry
+  // parameter layouts).
+  RETURN_IF_ERROR(AddMandatoryConstraints(channel_constraints, constraints));
+
+  // Add backend-specific constraints.
+  RETURN_IF_ERROR(AddBackendConstraints(constraints));
+
+  // Constrain layouts for custom calls that have specific layout requirements.
+  RETURN_IF_ERROR(AddCustomCallConstraints(constraints));
+
+  // Propagate the mandatory, backend, and custom call constraints.
+  RETURN_IF_ERROR(PropagateConstraints(constraints));
+
+  // Record instructions that lack layout constraints before applying defaults.
+  RecordUnconstrainedLayoutInstructions();
+
+  // Iteratively assign layouts to remaining unconstrained buffers and
+  // propagate.
+  RETURN_IF_ERROR(AssignLayoutsToUnconstrainedBuffers(constraints));
 
   RETURN_IF_ERROR(CalculateComputationLayout(constraints));
   // Record layouts of communication operations to ensure consistency across
