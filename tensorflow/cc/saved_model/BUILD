@@ -508,6 +508,60 @@ tf_cc_test(
 
 # Linked directly into ":tensorflow_framework".
 cc_library(
+    name = "singleprint_impl",
+    srcs = [
+        "singleprint.cc",
+        "singleprint.h",
+    ],
+    visibility = [
+        "//tensorflow:__pkg__",
+        "//tensorflow/python:__pkg__",
+    ],
+    deps = [
+        ":constants",
+        "//tensorflow/core/protobuf:for_core_protos_cc",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@tsl//tsl/platform:errors",
+        "@tsl//tsl/platform:statusor",
+    ] + if_not_mobile([
+        "//tensorflow/core:lib",
+    ]) + if_android([
+        "//tensorflow/core:portable_tensorflow_lib_lite",
+    ]),
+    alwayslink = True,
+)
+
+cc_library(
+    name = "singleprint",
+    hdrs = ["singleprint.h"],
+    visibility = ["//visibility:public"],
+    deps = if_static([
+        ":singleprint_impl",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "//tensorflow/core/protobuf:for_core_protos_cc",
+    ]) + if_not_mobile([
+        "//tensorflow/core:lib",
+    ]) + if_android([
+        "//tensorflow/core:portable_tensorflow_lib_lite",
+    ]),
+)
+
+tf_cc_test(
+    name = "singleprint_test",
+    size = "small",
+    srcs = ["singleprint_test.cc"],
+    deps = [
+        ":singleprint",
+        "//tensorflow/core:protos_all_cc",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+# Linked directly into ":tensorflow_framework".
+cc_library(
     name = "fingerprinting_impl",
     srcs = [
         "fingerprinting.cc",
@@ -520,6 +574,7 @@ cc_library(
     deps = [
         ":constants",
         ":fingerprinting_x_platform_utils",
+        ":singleprint",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/graph/regularization:simple_delete",
         "//tensorflow/core/graph/regularization:util",
@@ -555,7 +610,9 @@ cc_library(
         "//tensorflow/core/tfrt:__subpackages__",
         "//tensorflow/python/saved_model:__subpackages__",
     ],
-    deps = if_static([
+    deps = [
+        ":singleprint",
+    ] + if_static([
         ":fingerprinting_impl",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/status:statusor",
