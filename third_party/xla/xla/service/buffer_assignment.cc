@@ -841,8 +841,9 @@ bool BufferAssignment::HasAllocation(const HloBuffer& buffer) const {
 
 const BufferAllocation& BufferAssignment::GetAssignedAllocation(
     const HloValue& value) const {
-  CHECK(HasAllocation(value));
-  return GetAllocation(allocation_index_for_value_.at(&value));
+  auto it = allocation_index_for_value_.find(&value);
+  CHECK(it != allocation_index_for_value_.end());
+  return GetAllocation(it->second);
 }
 
 const BufferAllocation& BufferAssignment::GetAssignedAllocation(
