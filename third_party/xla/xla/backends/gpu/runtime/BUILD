@@ -235,12 +235,19 @@ xla_cc_test(
     deps = [
         ":command",
         ":command_executor",
+        ":command_state",
+        ":thunk",
         "//xla:shape_util",
         "//xla:xla_data_proto_cc",
         "//xla/runtime:buffer_use",
         "//xla/runtime:execution_graph",
         "//xla/runtime:resource_use",
         "//xla/service:buffer_assignment",
+        "//xla/service:service_executable_run_options",
+        "//xla/service/gpu:buffer_allocations",
+        "//xla/stream_executor:command_buffer",
+        "//xla/stream_executor:device_address",
+        "//xla/stream_executor:mock_command_buffer",
         "//xla/tsl/lib/core:status_test_util",
         "//xla/tsl/platform:statusor",
         "//xla/tsl/platform:test",
@@ -248,6 +255,7 @@ xla_cc_test(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/types:span",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
