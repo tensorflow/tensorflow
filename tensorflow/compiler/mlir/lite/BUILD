@@ -43,6 +43,7 @@ package_group(
         "//research/language_modeling/sentence_explorer/ondevice/...",
         "//tensorflow/compiler/mlir/...",
         "//tensorflow/lite/...",
+        "//third_party/ai_lab/...",
         "//third_party/iree/...",
         "//third_party/odml/infra/...",
         "//third_party/odml/litert/...",
