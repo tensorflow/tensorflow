@@ -603,8 +603,8 @@ struct BuildMMapWeightCacheProviderTest : testing::TestWithParam<TestVariant> {
 
   void EndSetup() {
     ctx.FinalizeTensors();
-    cache_provider.MapTensorIdentifiers(ctx.tensors.data(), ctx.tensors.size(),
-                                        ctx.tensor_buffer_identifiers);
+    ASSERT_TRUE(cache_provider.MapTensorIdentifiers(
+        ctx.tensors.data(), ctx.tensors.size(), ctx.tensor_buffer_identifiers));
     if (use_explicit_fd) {
       ASSERT_TRUE(
           cache_provider.StartBuild(explicit_fd_path, tmp_file.Duplicate()));
@@ -922,8 +922,8 @@ TEST_P(MMapWeightCacheProviderTest, XnnpackCApiJourney) {
     ASSERT_TRUE(cache_provider.StartBuildStep());
 
     xnn_weights_cache_t cache = &cache_provider.GetCacheProvider();
-    cache_provider.MapTensorIdentifiers(tensors, size(tensors),
-                                        tensor_buffer_identifiers);
+    ASSERT_TRUE(cache_provider.MapTensorIdentifiers(tensors, size(tensors),
+                                                    tensor_buffer_identifiers));
 
     const xnn_weights_cache_look_up_key look_up_key_1{
         .seed = fake_packing_algo_seed,
@@ -1031,6 +1031,7 @@ TEST_P(MMapWeightCacheProviderTest, XnnpackCApiJourney) {
     std::unordered_map<size_t, size_t> tensor_buffer_identifiers;
     for (int i = 0; i < kBufferCount; ++i) {
       tensors[i].data.data = (void*)(fake_buffer_pointer + i);
+      tensors[i].bytes = 1;
       tensor_buffer_identifiers[i] = i;
     }
 
@@ -1044,8 +1045,8 @@ TEST_P(MMapWeightCacheProviderTest, XnnpackCApiJourney) {
       cache_provider = load_cache_provider.get();
       ASSERT_TRUE(cache_provider->LoadOrStartBuild(temp_fd_cpath,
                                                    temp_fd_value.Duplicate()));
-      cache_provider->MapTensorIdentifiers(tensors, size(tensors),
-                                           tensor_buffer_identifiers);
+      ASSERT_TRUE(cache_provider->MapTensorIdentifiers(
+          tensors, size(tensors), tensor_buffer_identifiers));
     }
     xnn_weights_cache_t cache = &cache_provider->GetCacheProvider();
 
@@ -1117,8 +1118,8 @@ TEST_P(MMapWeightCacheProviderTest, CacheIsRebuiltOnFingerprintMismatch) {
     TfLiteTensor tensor;
     tensor.data.data = (void*)kernel;
     tensor.bytes = sizeof(kernel);
-    cache_provider.MapTensorIdentifiers(
-        &tensor, /*size=*/1, /*tensor_index_to_identifier=*/{{0, 1}});
+    ASSERT_TRUE(cache_provider.MapTensorIdentifiers(
+        &tensor, /*size=*/1, /*tensor_index_to_identifier=*/{{0, 1}}));
     ASSERT_TRUE(
         cache_provider.LoadOrStartBuild(temp_fd_cpath, temp_fd.Duplicate()));
     ASSERT_TRUE(cache_provider.StartBuildStep());
@@ -1171,8 +1172,8 @@ class IsCompatibleCacheFileTest
     TfLiteTensor tensor;
     tensor.data.data = (void*)kernel;
     tensor.bytes = sizeof(kernel);
-    cache_provider.MapTensorIdentifiers(
-        &tensor, /*size=*/1, /*tensor_index_to_identifier=*/{{0, 1}});
+    ASSERT_TRUE(cache_provider.MapTensorIdentifiers(
+        &tensor, /*size=*/1, /*tensor_index_to_identifier=*/{{0, 1}}));
     ASSERT_TRUE(
         cache_provider.LoadOrStartBuild(fd_.GetCPath(), fd_.Duplicate()));
     ASSERT_TRUE(cache_provider.StartBuildStep());
