@@ -24,6 +24,7 @@ from tensorflow.python.data.ops import readers as reader_ops
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import lookup_ops as core_lookup_ops
 from tensorflow.python.ops import string_ops
 from tensorflow.python.ops import variables
@@ -185,6 +186,7 @@ class DatasetInitializerTest(test.TestCase):
       lookup_ops.table_from_dataset(
           ds, vocab_size=sys.maxsize, default_value="n/a",
           key_dtype=dtypes.int64)
+
 
 if __name__ == "__main__":
   test.main()
