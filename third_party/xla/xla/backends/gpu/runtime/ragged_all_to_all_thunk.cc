@@ -414,10 +414,6 @@ RaggedAllToAllThunk::GetCliqueRequirements(const GpuCliqueKey& clique_key) {
   CollectiveCliqueRequests::CliqueRequirements clique_reqs;
   if (UsesDeviceKernel()) {
     clique_reqs.dev_comm = DeviceKernelLsaDevCommRequirements();
-  } else if (config_.use_multi_gpu_barrier_with_nccl_in_one_shot_kernel) {
-    GpuDeviceCommunicator::Requirements req;
-    req.lsa_barrier_count = 1;
-    clique_reqs.dev_comm = req;
   }
   return clique_reqs;
 }
@@ -471,17 +467,10 @@ absl::StatusOr<RaggedAllToAllStreamState*> RaggedAllToAllThunk::InitializeOnce(
     if (config_.fast_interconnect_slice_size_override.has_value()) {
       state->lsa_size = config_.fast_interconnect_slice_size_override.value();
     } else {
-      GpuDeviceCommunicator::Requirements req;
-      if (UsesDeviceKernel()) {
-        req = DeviceKernelLsaDevCommRequirements();
-      } else {
-        req.lsa_barrier_count = 1;
-      }
-      ASSIGN_OR_RETURN(auto* dev_comm,
-                       params.collective_cliques->GetDeviceComm(
-                           state->clique_key, state->rank, req));
+      ASSIGN_OR_RETURN(auto* comm, params.collective_cliques->GetComm(
+                                       state->clique_key, state->rank));
 
-      state->lsa_size = dev_comm->lsa_size();
+      state->lsa_size = comm->LsaSize();
     }
   }
   XLA_VLOG_DEVICE(3, state->device_ordinal)
@@ -785,7 +774,7 @@ absl::Status RaggedAllToAllThunk::RunCollective(const ExecuteParams& params,
 
   auto* gpu_comm = tsl::down_cast<GpuCommunicator*>(&comm);
   if (UsesDeviceKernel() && gpu_comm->SupportsDeviceComm() &&
-      params.collective_memory != nullptr) {
+      params.collective_memory != nullptr && state->lsa_size.has_value()) {
     auto [input_sym, input_offset] =
         params.collective_memory->FindSymmetricMemory(
             clique_key, device_buffers[0].source_buffer);
@@ -795,25 +784,21 @@ absl::Status RaggedAllToAllThunk::RunCollective(const ExecuteParams& params,
 
     if (input_sym != nullptr && output_sym != nullptr) {
       ASSIGN_OR_RETURN(int32_t num_ranks, comm.NumRanks());
-      ASSIGN_OR_RETURN(
-          auto* lsa_dev_comm,
-          params.collective_cliques->GetDeviceComm(
-              clique_key, state->rank, DeviceKernelLsaDevCommRequirements()));
 
-      const int64_t lsa_size = lsa_dev_comm->lsa_size();
-      const bool has_remote_peers = lsa_size < num_ranks;
+      const int64_t lsa_size = state->lsa_size.value();
+      const bool has_remote_peers = state->lsa_size.value() < num_ranks;
       if (has_remote_peers && !gpu_comm->SupportsGin()) {
         XLA_VLOG_DEVICE(3, state->device_ordinal)
             << "Device kernel skipped: lsa_size=" << lsa_size
             << " num_ranks=" << num_ranks << " requires GIN";
       } else {
-        GpuDeviceCommunicator* dev_comm = lsa_dev_comm;
         const bool gin = has_remote_peers && gpu_comm->SupportsGin();
-        if (has_remote_peers) {
-          ASSIGN_OR_RETURN(dev_comm, params.collective_cliques->GetDeviceComm(
-                                         clique_key, state->rank,
-                                         DeviceKernelDevCommRequirements()));
-        }
+        ASSIGN_OR_RETURN(
+            GpuDeviceCommunicator * dev_comm,
+            params.collective_cliques->GetDeviceComm(
+                clique_key, state->rank,
+                has_remote_peers ? DeviceKernelDevCommRequirements()
+                                 : DeviceKernelLsaDevCommRequirements()));
 
         const int64_t num_updates_per_replica =
             config_.num_total_updates / num_ranks;

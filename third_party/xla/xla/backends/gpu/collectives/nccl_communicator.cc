@@ -100,6 +100,7 @@ NcclCapabilities GetCapabilities(std::shared_ptr<NcclCommState> comm_state) {
   bool support_device_comm = false;
   bool support_one_sided_comm = false;
   bool support_gin = false;
+  std::optional<int> lsa_size;
   std::string one_sided_comm_unsupported_reason = "";
 
   ncclCommProperties_t props = NCCL_COMM_PROPERTIES_INITIALIZER;
@@ -111,6 +112,7 @@ NcclCapabilities GetCapabilities(std::shared_ptr<NcclCommState> comm_state) {
           /*supports_device_comm=*/false,
           /*supports_one_sided_comm=*/false,
           /*supports_gin=*/false,
+          /*lsa_size=*/std::nullopt,
           /*one_sided_comm_unsupported_reason=*/
           absl::StrFormat("NCCL failed to query communicator properties: %s",
                           ncclGetErrorString(status)),
@@ -140,10 +142,19 @@ NcclCapabilities GetCapabilities(std::shared_ptr<NcclCommState> comm_state) {
     support_gin = true;
   }
 
+  // NCCL partitions communicator ranks into equal-sized contiguous LSA teams.
+  // NCCL 2.29 derives these teams from its logical topology. On MNNVL, one
+  // logical topology node and therefore one LSA team can span multiple physical
+  // hosts.
+  if (props.nLsaTeams > 0 && props.nRanks % props.nLsaTeams == 0) {
+    lsa_size = props.nRanks / props.nLsaTeams;
+  }
+
   return {
       /*supports_device_comm=*/support_device_comm,
       /*supports_one_sided_comm=*/support_one_sided_comm,
       /*supports_gin=*/support_gin,
+      /*lsa_size=*/lsa_size,
       /*one_sided_comm_unsupported_reason=*/one_sided_comm_unsupported_reason,
   };
 #elif NCCL_VERSION_CODE >= 22900
@@ -151,6 +162,7 @@ NcclCapabilities GetCapabilities(std::shared_ptr<NcclCommState> comm_state) {
       /*supports_device_comm=*/true,
       /*supports_one_sided_comm=*/false,
       /*supports_gin=*/false,
+      /*lsa_size=*/std::nullopt,
       /*one_sided_comm_unsupported_reason=*/
       absl::StrFormat("NCCL >= 2.29.7 is required (current: %d)",
                       NCCL_VERSION_CODE),
@@ -160,6 +172,7 @@ NcclCapabilities GetCapabilities(std::shared_ptr<NcclCommState> comm_state) {
       /*supports_device_comm=*/true,
       /*supports_one_sided_comm=*/false,
       /*supports_gin=*/false,
+      /*lsa_size=*/std::nullopt,
       /*one_sided_comm_unsupported_reason=*/
       absl::StrFormat("NCCL >= 2.29.0 is required (current: %d)",
                       NCCL_VERSION_CODE),
@@ -169,6 +182,7 @@ NcclCapabilities GetCapabilities(std::shared_ptr<NcclCommState> comm_state) {
       /*supports_device_comm=*/false,
       /*supports_one_sided_comm=*/false,
       /*supports_gin=*/false,
+      /*lsa_size=*/std::nullopt,
       /*one_sided_comm_unsupported_reason=*/
       absl::StrFormat("NCCL >= 2.29.0 is required (current: %d)",
                       NCCL_VERSION_CODE),
@@ -208,6 +222,10 @@ bool NcclCommunicator::SupportsDeviceComm() const {
 
 bool NcclCommunicator::SupportsGin() const {
   return capabilities_.supports_gin;
+}
+
+std::optional<int> NcclCommunicator::LsaSize() const {
+  return capabilities_.lsa_size;
 }
 
 absl::StatusOr<std::unique_ptr<GpuDeviceCommunicator>>
