@@ -50,6 +50,7 @@ limitations under the License.
 #include "xla/service/compiled_module.h"
 #include "xla/service/compiler.h"
 #include "xla/service/cpu/cpu_compiler.h"
+#include "xla/service/cpu/export_hlo.h"
 #include "xla/service/executable.h"
 #include "xla/service/gpu/autotuning/autotuner_cache.h"
 #include "xla/service/gpu/export_hlo.h"
@@ -567,7 +568,11 @@ absl::Status XlaCompileMain(const XlaCompileOptions& options) {
   }
 
   if (options.repo_options.wait_for_uploads) {
-    gpu::MaybeWaitForUploads();
+    if (backend == BackendType::kCpu) {
+      cpu::MaybeWaitForUploads();
+    } else {
+      gpu::MaybeWaitForUploads();
+    }
   }
   return absl::OkStatus();
 }

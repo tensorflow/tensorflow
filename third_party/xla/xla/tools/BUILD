@@ -1163,6 +1163,7 @@ cc_library(
         "//xla/service/cpu:cpu_compiler",
         "//xla/service/cpu:cpu_executable",
         "//xla/service/cpu:executable_proto_cc",
+        "//xla/service/cpu:export_hlo",
         "//xla/service/gpu:export_hlo",
         "//xla/service/gpu:gpu_symbol_repository",
         "//xla/service/gpu/autotuning:autotuner_cache",
