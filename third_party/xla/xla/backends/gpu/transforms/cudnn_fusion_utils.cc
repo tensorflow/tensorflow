@@ -56,7 +56,6 @@ bool IsEpilogueOpSupportedByCuDNN(const HloInstruction& hlo,
     case HloOpcode::kNegate:
     case HloOpcode::kPower:
     case HloOpcode::kRsqrt:
-    case HloOpcode::kSelect:
     case HloOpcode::kSin:
     case HloOpcode::kSqrt:
     case HloOpcode::kSubtract:
