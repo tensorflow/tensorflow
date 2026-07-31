@@ -597,12 +597,12 @@ def _resolve_xla_einsum_ellipsis(equation, input0_shape, input1_shape):
   Returns the equation with '...' replaced by concrete labels, or the original
   equation unchanged if no ellipsis is present or shapes are not static.
   """
+  if '...' not in equation:
+    return equation
+
   # Remove spaces to ensure correct length calculations
   # (e.g. '...ab, bc->...ac').
   equation = equation.replace(' ', '')
-
-  if '...' not in equation:
-    return equation
 
   inputs_str, output = equation.split('->')
   left, right = inputs_str.split(',')
@@ -623,6 +623,11 @@ def _resolve_xla_einsum_ellipsis(equation, input0_shape, input1_shape):
 
   batch0 = rank0 - len(left_explicit)
   batch1 = rank1 - len(right_explicit)
+
+  # If either operand's rank is less than its explicit label count, the
+  # equation/shape is malformed; fall back to the original equation.
+  if batch0 < 0 or batch1 < 0:
+    return equation
 
   # The ellipsis covers the maximum batch dims across operands (broadcasting).
   batch_ndims = max(batch0, batch1)

@@ -1190,14 +1190,27 @@ class ResolveXlaEinsumEllipsisTest(test.TestCase):
     result = self._fn(eq, [2, 3, 4, 5], [5, 6])
     self.assertEqual(result, 'deab,bc->deac')
 
+  def test_no_ellipsis_with_spaces_unchanged(self):
+    """Equations without '...' are returned unchanged, even with spaces."""
+    eq = 'ab, bc -> ac'
+    result = self._fn(eq, [4, 5], [5, 6])
+    # No ellipsis: the original string (including spaces) must be returned.
+    self.assertEqual(result, eq)
+
+  def test_negative_batch_falls_back(self):
+    """Falls back when rank is less than explicit label count (malformed)."""
+    # rank0=1 but left_explicit='ab' (len 2) -> batch0 = 1-2 = -1
+    eq = '...ab,...bc->...ac'
+    result = self._fn(eq, [1], [3, 5, 6])
+    self.assertEqual(result, eq)
+
   def test_uppercase_labels_used_when_lowercase_exhausted(self):
     """Batch label is uppercase when all lowercase letters are in use."""
     # Use all 26 lowercase letters as explicit labels so that the helper must
     # fall back to uppercase letters for the single batch dimension.
-    explicit = 'abcdefghijklmnopqrstuvwxyz'
-    # Equation: '...<26 lower>,<26 lower>A->...A'
     # left_explicit  = 26 chars  -> rank 27 -> batch0 = 1
     # right_explicit = 27 chars  -> rank 28 -> batch1 = 1  (no ellipsis)
+    explicit = 'abcdefghijklmnopqrstuvwxyz'
     eq = '...{0},{0}A->...A'.format(explicit)
     shape0 = [1] * 27   # rank 27: 1 batch dim + 26 explicit dims
     shape1 = [1] * 28   # rank 28: 27 explicit dims (no ellipsis in right)
@@ -1205,14 +1218,15 @@ class ResolveXlaEinsumEllipsisTest(test.TestCase):
     # The ellipsis must have been resolved (no '...' remaining).
     self.assertNotIn('...', result)
     self.assertIn('->', result)
-    # The resolved batch label must be an uppercase letter ('A' is in 'used'
-    # via the 'A' in explicit right subscript and output, so expect 'B').
+    # All 26 lowercase letters are in 'used', and 'A' is also used, so the
+    # first available label is 'B' (uppercase).
     resolved_left = result.split('->')[0].split(',')[0]
     batch_label = resolved_left[0]   # first char of left subscript is batch
     self.assertTrue(
         batch_label.isupper(),
         msg=(f'Expected an uppercase batch label, '
              f'got {batch_label!r} in {result!r}'))
+    self.assertEqual(batch_label, 'B')
 
 
 class EinsumBenchmark(test.Benchmark):
