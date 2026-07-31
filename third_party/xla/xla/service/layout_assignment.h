@@ -790,6 +790,19 @@ class LayoutAssignment : public HloModulePass {
       HloInstruction* instruction,
       ChannelLayoutConstraints* channel_constraints);
 
+  // Adds constraints for instructions that call or interact with
+  // sub-computations.
+  absl::Status AddSubcomputationLayoutConstraints(
+      LayoutConstraints* constraints);
+
+  absl::Status AddCallConstraints(HloInstruction* instruction);
+  absl::Status AddWhileConstraints(HloInstruction* instruction,
+                                   LayoutConstraints* constraints);
+  absl::Status AddConditionalConstraints(HloInstruction* instruction);
+  absl::Status AddAsyncStartConstraints(HloInstruction* instruction);
+  absl::Status AddAsyncDoneConstraints(HloInstruction* instruction,
+                                       LayoutConstraints* constraints);
+
   // Constrains layouts for custom calls that have specific layout requirements.
   absl::Status AddCustomCallConstraints(LayoutConstraints* constraints);
 
