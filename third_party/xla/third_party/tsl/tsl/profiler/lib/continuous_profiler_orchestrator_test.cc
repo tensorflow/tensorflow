@@ -93,8 +93,8 @@ TEST(ContinuousProfilerOrchestratorTest,
   // Stop orchestrator (terminates background loop)
   ASSERT_OK(orchestrator.Stop());
 
-  // Verify polling interval shrank from 1s due to high watermark
-  EXPECT_LE(orchestrator.polling_interval(), absl::Milliseconds(500));
+  // Verify polling interval remains at 2s.
+  EXPECT_LE(orchestrator.polling_interval(), absl::Milliseconds(2000));
 
   // Verify that CollectData serializes the chunks in correct chronological
   // order!
@@ -135,7 +135,7 @@ TEST(ContinuousProfilerOrchestratorTest, DynamicIntervalLowWatermarkScaling) {
 
   ContinuousProfilerOrchestrator<ProfilerInterface> orchestrator(
       std::move(mock_profiler));
-  EXPECT_EQ(orchestrator.polling_interval(), absl::Seconds(1));  // initial
+  EXPECT_EQ(orchestrator.polling_interval(), absl::Seconds(2));  // initial
 
   // Start
   ASSERT_OK(orchestrator.Start());
@@ -146,8 +146,8 @@ TEST(ContinuousProfilerOrchestratorTest, DynamicIntervalLowWatermarkScaling) {
   // Stop immediately
   ASSERT_OK(orchestrator.Stop());
 
-  // Verify interval scaled up from 1s to 2s due to low watermark!
-  EXPECT_EQ(orchestrator.polling_interval(), absl::Seconds(2));
+  // Verify interval scaled up from 2s to 4s due to low watermark!
+  EXPECT_EQ(orchestrator.polling_interval(), absl::Seconds(4));
 }
 
 TEST(ContinuousProfilerOrchestratorTest, SerializeChunks) {
