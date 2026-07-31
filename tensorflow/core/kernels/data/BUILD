@@ -80,6 +80,7 @@ tf_cc_test(
     deps = [
         ":cache_dataset_ops",
         ":iterator_ops",
+        ":range_dataset_op",
         ":tensor_slice_dataset_op",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
