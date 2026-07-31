@@ -46,12 +46,12 @@ def stochastic_cast(
   """Casts input to the desired precision with stochastic rounding.
 
   This means the value of the cast result will be rounded to two of the closest
-  values with with a probability proportional to the distance between the number
+  values with a probability proportional to the distance between the number
   and the two closest to the input. For example, if a number falls between 2 and
   3, and is closer to 2 than to 3, it has a higher probability of being rounded
   to 2. On the other hand, if it's closer to 3 than to 2, it has a higher
   probability of being rounded to 3. This is intended to eliminate rounding bias
-  introduced by determinisitc rounding methods. If cast to integers, the values
+  introduced by deterministic rounding methods. If cast to integers, the values
   will saturate if out of range, e.g. 254.8 in floating point will become 127 in
   int8. If inputs are NaN, the results will be zero. Given the same random seed,
   the results will be deterministic, but not otherwise.
