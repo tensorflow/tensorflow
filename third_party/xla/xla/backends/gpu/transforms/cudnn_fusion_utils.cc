@@ -71,7 +71,8 @@ bool IsEpilogueOpSupportedByCuDNN(const HloInstruction& hlo,
              IsEpilogueOpSupportedByCuDNN(*hlo.users()[0], can_fuse_reduce,
                                           is_nchw);
     case HloOpcode::kBroadcast:
-      return ShapeUtil::IsScalar(hlo.operand(0)->shape());
+      return ShapeUtil::IsScalar(hlo.operand(0)->shape()) ||
+             hlo.operand(0)->shape().dimensions().size() == 1;
     case HloOpcode::kConstant:
       return ShapeUtil::IsScalar(hlo.shape());
     case HloOpcode::kReduce:

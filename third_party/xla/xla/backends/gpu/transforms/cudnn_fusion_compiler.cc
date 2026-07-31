@@ -522,6 +522,16 @@ class ConvDimensionAdapter {
       result.strides = std::vector<int64_t>(spatial_dims + 2, 1);
       return result;
     }
+    if (hlo.shape().dimensions().size() == 1) {
+      Result result;
+      int64_t spatial_dims =
+          std::max<int64_t>(2, dums_.input_spatial_dimensions_size());
+      result.sizes = std::vector<int64_t>(spatial_dims + 2, 1);
+      result.strides = std::vector<int64_t>(spatial_dims + 2, 0);
+      result.sizes[1] = hlo.shape().dimensions(0);
+      result.strides[1] = 1;
+      return result;
+    }
     // Placeholder FP32 data type here, it is not used.
     auto desc = se::dnn::TensorDescriptor::For(
         se::dnn::DataType::kFloat, hlo.shape().dimensions(),
