@@ -14,8 +14,11 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/data/service/utils.h"
 
+#include <cstdint>
 #include <string>
 
+#include "absl/status/status.h"
+#include "xla/tsl/protobuf/error_codes.pb.h"
 #include "tensorflow/core/data/service/common.pb.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
