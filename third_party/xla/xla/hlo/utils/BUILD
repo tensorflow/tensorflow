@@ -85,6 +85,7 @@ xla_cc_test(
         "//xla/hlo/analysis:alias_info",
         "//xla/hlo/analysis:hlo_alias_analysis",
         "//xla/hlo/ir:hlo",
+        "//xla/hlo/parser:hlo_parser",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
         "//xla/service:hlo_value",
         "//xla/tsl/lib/core:status_test_util",

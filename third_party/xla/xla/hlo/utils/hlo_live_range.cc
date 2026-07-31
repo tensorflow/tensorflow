@@ -43,6 +43,7 @@ limitations under the License.
 #include "xla/hlo/utils/hlo_stack_trace.h"
 #include "xla/service/hlo_buffer.h"
 #include "xla/service/hlo_value.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
 
 namespace xla {
@@ -310,7 +311,11 @@ int64_t HloLiveRange::ComputePeakMemoryMoment() const {
     bool is_end;
     const HloValue* value;
     std::tie(time, is_end, value) = event;
-    auto buffer_size = ShapeUtil::ByteSizeOf(value->instruction()->shape(), 8);
+    const Shape& shape = value->instruction()->shape();
+    if (shape.is_unbounded_dynamic()) {
+      return -1;
+    }
+    auto buffer_size = ShapeUtil::ByteSizeOf(shape, 8);
     if (is_end) {
       memory_usage -= buffer_size;
     } else {
@@ -346,6 +351,13 @@ std::string HloLiveRange::ToString() const {
   }
 
   int64_t peak_moment = ComputePeakMemoryMoment();
+
+  if (peak_moment < 0) {
+    absl::StrAppend(&output,
+                    "  Peak memory could not be determined due to unbounded "
+                    "dynamic shape.\n");
+    return output;
+  }
 
   absl::StrAppendFormat(&output, "  Live ranges at %lld (peak):\n",
                         peak_moment);
