@@ -1593,6 +1593,10 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
   bool IsPositionColoredInDefaultMemoryAtTime(const HloPosition& position,
                                               int64_t time) const;
 
+  // Memoizes alias_analysis_.GetUniqueBufferAt, which rebuilds and sorts a
+  // buffer set per call. Safe because alias analysis is immutable in a run.
+  const HloBuffer& GetUniqueBufferAtCached(const HloPosition& position) const;
+
   // Reserves a chunk in alternate memory of size MaxScopedMemorySize() for
   // the entire program duration for scoped memory allocations.
   int64_t ReserveAlternateMemoryForScopedMemoryAllocations();
@@ -1725,6 +1729,9 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
   // be in default memory, to meet buffer coloring requirements.
   absl::flat_hash_map<const HloBuffer*, std::vector<TimeInterval>>
       default_memory_coloring_requirements_;
+
+  mutable absl::flat_hash_map<HloPosition, const HloBuffer*>
+      unique_buffer_at_position_cache_;
 
   // Set of HloUses that are in the default memory.
   absl::flat_hash_set<HloUse> uses_in_default_memory_set_;

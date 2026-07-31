@@ -450,6 +450,10 @@ class BufferIntervalTree {
 
   void Clear();
 
+  // Bumped on every mutation (Add, successful Remove, Clear) so callers can
+  // detect that data they cached from the tree is stale.
+  uint64_t version() const { return version_; }
+
  private:
   // The BufferIntervalTreeNode objects inside the result vector are guaranteed
   // to be non-null.
@@ -466,6 +470,7 @@ class BufferIntervalTree {
 
   BufferIntervalTreeNode* root_ = nullptr;
   std::list<BufferIntervalTreeNode> node_storage_;
+  uint64_t version_ = 0;
 };
 
 // An iterator that is passed to
@@ -942,6 +947,14 @@ class GlobalDecreasingSizeBestFitHeap : public HeapAlgorithm<BufferType> {
   FreeChunks MakeFreeChunks(const BufferInterval& buffer_interval,
                             int64_t max_colocation_size) const;
 
+  // Lets MakeFreeChunks queries that are contained in [start, end] and have no
+  // colocations share one offset sorted snapshot of the chunks overlapping
+  // that window, instead of walking and sorting the interval tree per query.
+  // Every other query takes the direct path. Results are unchanged: the
+  // snapshot is rebuilt whenever the tree version changes. Scopes do not nest.
+  void BeginFreeChunksSnapshotScope(int64_t start, int64_t end) const;
+  void EndFreeChunksSnapshotScope() const;
+
   // Finds the latest value <= buffer_interval.end such that that no chunk
   // intersects [preferred_offset, preferred_offset + buffer_interval.size).
   int64_t FindLatestEndWithFreeChunkAtPreferredOffset(
@@ -1020,6 +1033,25 @@ class GlobalDecreasingSizeBestFitHeap : public HeapAlgorithm<BufferType> {
   BufferIntervalTree interval_tree_;
 
  private:
+  // Computes the same free chunks as MakeFreeChunks, but returns a reference to
+  // the reused scratch storage `free_chunks_list_` (invalidated by the next
+  // call to MakeFreeChunks or MakeFreeChunksList) instead of materializing the
+  // FreeChunks map. Used by the unsliced fast path in FindChunkCandidates to
+  // avoid per query container construction.
+  const std::vector<std::pair<int64_t, int64_t>>& MakeFreeChunksList(
+      const BufferInterval& buffer_interval, int64_t max_colocation_size) const;
+
+  // Fast path of FindChunkCandidates for an unsliced (num_slices() == 1)
+  // interval: computes the best fit chunk directly from the merged free chunk
+  // list, skipping the SlicedAllocationFinder containers. Returns exactly what
+  // FindChunkCandidates returns; see the implementation comment.
+  std::vector<Chunk> FindUnslicedChunkCandidates(
+      const SlicedBufferInterval& sliced_buffer_interval,
+      int64_t max_colocation_size, int64_t preferred_offset) const;
+
+  // Rebuilds the snapshot for the active scope if it is missing or stale.
+  void RefreshFreeChunksSnapshotIfNeeded() const;
+
   int64_t alignment_;
 
   // The current time represented as an integer. It increments by 1 at each
@@ -1032,6 +1064,31 @@ class GlobalDecreasingSizeBestFitHeap : public HeapAlgorithm<BufferType> {
   // Temporary buffers used by MakeFreeChunks to avoid reallocating memory.
   mutable std::vector<Chunk> used_chunks_;
   mutable std::vector<std::pair<int64_t, int64_t>> free_chunks_list_;
+
+  // State for BeginFreeChunksSnapshotScope. The snapshot holds every interval
+  // tree node overlapping the scope window, sorted by chunk offset, so a query
+  // inside that window needs only one linear filter pass. The version stamp
+  // forces a lazy rebuild after any mutation, including mid scope commits.
+  struct FreeChunksSnapshotEntry {
+    int64_t start;
+    int64_t end;
+    Chunk chunk;
+  };
+  mutable bool free_chunks_snapshot_scope_active_ = false;
+  mutable int64_t free_chunks_snapshot_scope_start_ = 0;
+  mutable int64_t free_chunks_snapshot_scope_end_ = -1;
+  mutable bool free_chunks_snapshot_valid_ = false;
+  mutable uint64_t free_chunks_snapshot_tree_version_ = 0;
+  mutable std::vector<FreeChunksSnapshotEntry> free_chunks_snapshot_;
+
+  // Memoizes GetTransitiveColocations, keyed by interval.buffer plus the
+  // immediate colocations snapshot it was computed from. Both must match on a
+  // hit, since commit queries the same buffer with inline intervals carrying a
+  // different colocation set. Alloc and ShareWith clear it.
+  mutable absl::flat_hash_map<
+      const BufferType*, std::pair<absl::InlinedVector<const BufferType*, 2>,
+                                   absl::flat_hash_set<const BufferType*>>>
+      transitive_colocations_cache_;
 
  protected:
   // Returns all transitive colocated buffers of this buffer interval. I.e., If
