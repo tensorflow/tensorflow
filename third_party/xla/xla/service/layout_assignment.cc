@@ -670,89 +670,131 @@ absl::Status ResetMemorySpaceInLayout(ShapeLayout& mutable_shape_layout) {
 
 }  // namespace
 
+absl::Status LayoutAssignment::AddInfeedConstraints(
+    HloInstruction* instruction) {
+  // Infeed layouts must match the layout of the original inserted
+  // instruction.
+  // TODO(b/31425034): Change infeeds to be more like parameters, with
+  // shapes in the ComputationLayout.
+  return SetInstructionLayout(instruction->shape(), instruction,
+                              /*mandatory=*/true, /*dfs=*/true,
+                              /*allow_alias=*/false);
+}
+
+absl::Status LayoutAssignment::AddOutfeedConstraints(
+    HloInstruction* instruction) {
+  return SetOperandLayout(instruction->outfeed_shape(), instruction, 0,
+                          /*mandatory=*/true, /*dfs=*/true);
+}
+
+absl::Status LayoutAssignment::AddParameterConstraints(
+    HloInstruction* instruction, LayoutConstraints* constraints) {
+  // Allow some parameter/result layouts to be unset in the entry computation.
+  // Parameter layouts must match the respective layout in ComputationLayout, if
+  // there is one.
+  if (reverse_computation_order_ ||
+      (constraints->computation()->IsEntryComputation() &&
+       entry_computation_layout_->AnyLayoutSet()) ||
+      (conditional_mismatch_.count(constraints->computation()) == 0 &&
+       constraints->computation_constraint().parameter_layout_is_set())) {
+    ShapeLayout parameter_layout =
+        constraints->computation_layout().parameter_layout(
+            instruction->parameter_number());
+    if (parameter_layout.AnyLayoutIsSet()) {
+      // Clear out memory space in layout. Host offloader will do the analysis
+      // later.
+      RETURN_IF_ERROR(ResetMemorySpaceInLayout(parameter_layout));
+      Shape param_shape = parameter_layout.shape();
+      RETURN_IF_ERROR(SetInstructionLayout(param_shape, instruction));
+      if (reverse_computation_order_) {
+        RETURN_IF_ERROR(
+            PropagateParameterLayoutToUsers(instruction, param_shape, this));
+      }
+    }
+  }
+  return absl::OkStatus();
+}
+
+absl::Status LayoutAssignment::AddCollectiveConstraints(
+    HloInstruction* instruction) {
+  RETURN_IF_ERROR(SetInstructionLayout(instruction->shape(), instruction));
+  for (int64_t i = 0; i < instruction->operand_count(); ++i) {
+    CHECK(instruction->shape().IsArray() ||
+          (instruction->shape().IsTuple() &&
+           instruction->shape().tuple_shapes().size() > i));
+    const Shape& shape = instruction->shape().IsTuple()
+                             ? instruction->shape().tuple_shapes(i)
+                             : instruction->shape();
+    RETURN_IF_ERROR(SetOperandLayout(shape, instruction, i,
+                                     /*mandatory=*/true, /*dfs=*/true));
+  }
+  return absl::OkStatus();
+}
+
+absl::Status LayoutAssignment::AddCrossModuleAllReduceConstraints(
+    HloInstruction* instruction,
+    ChannelLayoutConstraints* channel_constraints) {
+  auto get_channel_constraints = [&](const HloInstruction* inst) {
+    return IsHostSendRecv(inst) ? &host_channel_constraints_
+                                : channel_constraints;
+  };
+  CHECK(get_channel_constraints(instruction))
+      << "Multi-module layout assignment requires ChannelLayoutConstraints";
+  int64_t channel_id = instruction->channel_id().value();
+  if (!get_channel_constraints(instruction)->IsChannelConstrained(channel_id)) {
+    return absl::OkStatus();
+  }
+  // TODO(b/68493863): Change to use SetOperandLayout().
+  const Shape& buffer_shape = instruction->operand(0)->shape();
+  TF_RET_CHECK(buffer_shape.IsArray());
+  Shape new_buffer_shape =
+      get_channel_constraints(instruction)
+          ->LayoutShapeForChannel(buffer_shape, channel_id);
+  return SetInstructionLayout(new_buffer_shape, instruction);
+}
+
+absl::Status LayoutAssignment::AddInstructionLayoutConstraints(
+    ChannelLayoutConstraints* channel_constraints,
+    LayoutConstraints* constraints) {
+  // Constrain layouts of instructions which define values with pre-existing
+  // layouts.
+  for (auto* instruction : constraints->computation()->instructions()) {
+    switch (instruction->opcode()) {
+      case HloOpcode::kInfeed:
+        RETURN_IF_ERROR(AddInfeedConstraints(instruction));
+        break;
+      case HloOpcode::kOutfeed:
+        RETURN_IF_ERROR(AddOutfeedConstraints(instruction));
+        break;
+      case HloOpcode::kParameter:
+        RETURN_IF_ERROR(AddParameterConstraints(instruction, constraints));
+        break;
+      default:
+        if (IsLayoutConstrainedCollective(instruction)) {
+          RETURN_IF_ERROR(AddCollectiveConstraints(instruction));
+        } else if (instruction->IsCrossModuleAllReduce() &&
+                   !instruction->GetModule()
+                        ->config()
+                        .use_spmd_partitioning()) {
+          RETURN_IF_ERROR(AddCrossModuleAllReduceConstraints(
+              instruction, channel_constraints));
+        }
+        break;
+    }
+  }
+  return absl::OkStatus();
+}
+
 absl::Status LayoutAssignment::AddMandatoryConstraints(
     ChannelLayoutConstraints* channel_constraints,
     LayoutConstraints* constraints) {
   VLOG(2) << "Adding mandatory layout constraints to computation "
           << constraints->computation()->name();
 
-  auto get_channel_constraints = [&](const HloInstruction* instruction) {
-    return IsHostSendRecv(instruction) ? &host_channel_constraints_
-                                       : channel_constraints;
-  };
-
   // Constrain layouts of instructions which define values with pre-existing
   // layouts.
-  for (auto* instruction : constraints->computation()->instructions()) {
-    if (instruction->opcode() == HloOpcode::kInfeed) {
-      // Infeed layouts must match the layout of the original inserted
-      // instruction.
-      // TODO(b/31425034): Change infeeds to be more like parameters, with
-      // shapes in the ComputationLayout.
-      RETURN_IF_ERROR(SetInstructionLayout(instruction->shape(), instruction,
-                                           /*mandatory=*/true, /*dfs=*/true,
-                                           /*allow_alias=*/false));
-    } else if (instruction->opcode() == HloOpcode::kOutfeed) {
-      // Constrain the input to the Outfeed instruction to be the expected
-      // layout of the Outfeed.
-      RETURN_IF_ERROR(SetOperandLayout(instruction->outfeed_shape(),
-                                       instruction, 0,
-                                       /*mandatory=*/true, /*dfs=*/true));
-    } else if (instruction->opcode() == HloOpcode::kParameter) {
-      if (reverse_computation_order_ ||
-          (constraints->computation()->IsEntryComputation() &&
-           entry_computation_layout_->AnyLayoutSet()) ||
-          (conditional_mismatch_.count(constraints->computation()) == 0 &&
-           constraints->computation_constraint().parameter_layout_is_set())) {
-        ShapeLayout parameter_layout =
-            constraints->computation_layout().parameter_layout(
-                instruction->parameter_number());
-        // Allow some parameter/result layouts to be unset in the entry
-        // computation.
-        if (parameter_layout.AnyLayoutIsSet()) {
-          // Clear out memory space in layout. Host offloader will do the
-          // analysis later.
-          RETURN_IF_ERROR(ResetMemorySpaceInLayout(parameter_layout));
-          // Parameter layouts must match the respective layout in
-          // ComputationLayout, if there is one.
-          Shape param_shape = parameter_layout.shape();
-          RETURN_IF_ERROR(SetInstructionLayout(param_shape, instruction));
-          if (reverse_computation_order_) {
-            RETURN_IF_ERROR(PropagateParameterLayoutToUsers(instruction,
-                                                            param_shape, this));
-          }
-        }
-      }
-    } else if (IsLayoutConstrainedCollective(instruction)) {
-      RETURN_IF_ERROR(SetInstructionLayout(instruction->shape(), instruction));
-      for (int64_t i = 0; i < instruction->operand_count(); ++i) {
-        CHECK(instruction->shape().IsArray() ||
-              instruction->shape().IsTuple() &&
-                  instruction->shape().tuple_shapes().size() > i);
-        const Shape& shape = instruction->shape().IsTuple()
-                                 ? instruction->shape().tuple_shapes(i)
-                                 : instruction->shape();
-        RETURN_IF_ERROR(SetOperandLayout(shape, instruction, i,
-                                         /*mandatory=*/true, /*dfs=*/true));
-      }
-    } else if (instruction->IsCrossModuleAllReduce() &&
-               !instruction->GetModule()->config().use_spmd_partitioning()) {
-      CHECK(get_channel_constraints(instruction))
-          << "Multi-module layout assignment requires ChannelLayoutConstraints";
-      int64_t channel_id = instruction->channel_id().value();
-      if (!get_channel_constraints(instruction)
-               ->IsChannelConstrained(channel_id)) {
-        continue;
-      }
-      // TODO(b/68493863): Change to use SetOperandLayout().
-      const Shape& buffer_shape = instruction->operand(0)->shape();
-      TF_RET_CHECK(buffer_shape.IsArray());
-      Shape new_buffer_shape =
-          get_channel_constraints(instruction)
-              ->LayoutShapeForChannel(buffer_shape, channel_id);
-      RETURN_IF_ERROR(SetInstructionLayout(new_buffer_shape, instruction));
-    }
-  }
+  RETURN_IF_ERROR(
+      AddInstructionLayoutConstraints(channel_constraints, constraints));
 
   // Constrain layouts of instructions which call computations which have
   // already been assigned layouts. Instructions which call computations in a
