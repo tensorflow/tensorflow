@@ -152,6 +152,74 @@ TEST(CollectiveOrderTest, SimpleOrderAttr) {
   VerifyAttrs(*graph, {{"c2_0", {3}}, {"c2_1", {3}}});
 }
 
+// Initialize the following graph, all on one device:
+//
+//              a
+//            /   \
+//          c3     c4
+//          |      |
+//         id3    id4
+//          |      |
+//          c1     c2
+//
+// Here ci denotes a collective node with `instance_key` i, and `id` is an
+// identity node.  The data dependencies are chosen so that exactly two of the
+// six collective pairs already have a data path -- (c3, c1) and (c4, c2) --
+// and the remaining four become control edges oriented from the higher
+// instance key to the lower one:
+//
+//   c4 -> c3,  c4 -> c1,  c3 -> c2,  c2 -> c1
+//
+// c4 -> c1 is redundant: the path c4 -> c3 -> c2 -> c1 already orders them.
+// The transitive reduction of a DAG is unique, so the only correct output is
+// {c4 -> c3, c3 -> c2, c2 -> c1}.
+//
+// The instance keys are assigned so that they descend along the order in which
+// `DiscoverDataDependencies` discovers the collectives.  That makes the pair
+// (c3, c2) reach the enumeration after (c4, c1), so `all_paths[c3]` is filled
+// before c2 acquires c1, and the redundancy of c4 -> c1 is only visible to a
+// closure that back-propagates.
+std::unique_ptr<Graph> InitDiamondGraph() {
+  GraphDefBuilder builder(GraphDefBuilder::kFailImmediately);
+  const std::string dev0 = "/job:localhost/replica:0/task:0/device:CPU:0";
+  Node* a = ops::SourceOp("TestParams",
+                          builder.opts().WithName("a").WithDevice(dev0));
+  Node* c3 = CollectiveReduceNode(&builder, a, "c3", dev0, 3);
+  Node* c4 = CollectiveReduceNode(&builder, a, "c4", dev0, 4);
+  Node* id3 = ops::UnaryOp(
+      "Identity", c3,
+      builder.opts().WithName("id3").WithDevice(dev0).WithAttr("T", DT_FLOAT));
+  Node* id4 = ops::UnaryOp(
+      "Identity", c4,
+      builder.opts().WithName("id4").WithDevice(dev0).WithAttr("T", DT_FLOAT));
+  CollectiveReduceNode(&builder, id3, "c1", dev0, 1);
+  CollectiveReduceNode(&builder, id4, "c2", dev0, 2);
+
+  std::unique_ptr<Graph> graph = std::make_unique<Graph>(OpRegistry::Global());
+  absl::Status s = GraphDefBuilderToGraph(builder, graph.get());
+  if (!s.ok()) {
+    LOG(FATAL) << "Error building graph " << s;
+  }
+  return graph;
+}
+
+// The emitted control edges must be the transitive reduction of the dependency
+// graph.  That object is unique for a DAG, so this is the only admissible
+// output and it cannot depend on iteration order.
+//
+// Before the transitive closure fix, `all_paths[c3]` was populated from
+// `all_paths[c2]` at the moment the edge c3 -> c2 was created, which happens
+// before c2 -> c1 exists.  Nothing back-propagated c1 into it afterwards, so
+// the pruning step never saw the path c4 -> c3 -> c2 -> c1 and kept the
+// redundant edge c4 -> c1.
+TEST(CollectiveOrderTest, TransitiveReductionIsExact) {
+  std::unique_ptr<Graph> graph = InitDiamondGraph();
+  TF_EXPECT_OK(OrderCollectives(graph.get(), GraphCollectiveOrder::kEdges));
+  VerifyGraph(*graph, {"c1", "c2", "c3", "c4"},
+              {{"c2", "c1"}, {"c3", "c2"}, {"c4", "c3"}});
+}
+
+
 // Initialize the following graph:
 //
 //         a
