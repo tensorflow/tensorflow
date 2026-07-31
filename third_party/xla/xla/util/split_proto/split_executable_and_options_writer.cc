@@ -19,6 +19,7 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "google/protobuf/field_mask.pb.h"
 #include "absl/status/status.h"
 #include "google/protobuf/message_lite.h"
 #include "google/protobuf/util/field_mask_util.h"
