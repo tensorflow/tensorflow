@@ -484,7 +484,6 @@ class TopkDecomposerVisitor : public DfsHloRewriteVisitor {
     // fits in 16 bits so indices can be packed.
     constexpr int32_t kLow16BitsLimit = int32_t{1} << 16;
     if (topk->largest() && topk->operand(0)->shape().element_type() == BF16 &&
-        !HasSingleUserReadingOnlyTheValueOutput(topk) &&
         topk->operand(0)->shape().dimensions().back() < kLow16BitsLimit) {
       return DecomposeTopKWithSorting(topk);
     }
@@ -596,6 +595,11 @@ class TopkDecomposerVisitor : public DfsHloRewriteVisitor {
             s32_shape, HloOpcode::kXor, input_with_low_bits, iota));
 
     // Step 6: Sort in descending order (GT comparator on S32, unstable).
+    // Note: Even though we set is_stable=false on the HLO sort instruction,
+    // the sort is inherently stable. Because the lower 16 bits embed the
+    // unique iota index of each element, no two packed S32 keys can ever be
+    // equal. Any tie in the upper 16 bits (BF16 values) is deterministically
+    // broken by the original index order.
     XlaBuilder b(absl::StrCat("packed_comparator_", call->name()));
     XlaComputation gt_comp = CreateScalarGtComputation({S32}, &b);
     ASSIGN_OR_RETURN(
