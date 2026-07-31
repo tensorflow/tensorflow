@@ -19,7 +19,9 @@ limitations under the License.
 #include <cstdint>
 #include <optional>
 #include <string>
+#include <variant>
 
+#include "absl/base/macros.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -28,6 +30,17 @@ limitations under the License.
 #include "tsl/profiler/lib/scoped_annotation.h"
 
 namespace xla::gpu {
+
+//===----------------------------------------------------------------------===//
+// Prepared annotation payloads
+//===----------------------------------------------------------------------===//
+
+// Trace annotation levels are ordered: each level includes the metadata from
+// lower levels.
+enum class TraceAnnotationLevel : int32_t {
+  kBasic = 0,
+  kDetailed = 1,
+};
 
 // Prepared information for the top level NVTX/profiler range covering an
 // HloModule
@@ -44,48 +57,98 @@ class ModuleAnnotation {
 
  private:
   friend void RangePush(tsl::profiler::ProfilerDomainHandle domain,
-                        const ModuleAnnotation& annotation) {
-    tsl::profiler::RangePush(domain, annotation.title(), annotation);
-  }
+                        const ModuleAnnotation& annotation);
 
   std::string longest_prefix_;
   std::string title_str_;
   tsl::profiler::StringHandle title_;
   tsl::profiler::StringHandle module_name_;
-  tsl::profiler::StringHandle common_src_locations_{};
-  int32_t module_id_{-1};
-  int32_t common_stack_frames_{};
+  tsl::profiler::StringHandle common_src_locations_;
+  int32_t module_id_;
+  int32_t common_stack_frames_;
 };
 
-// Prepared information for a kernel/thunk/fusion/... within an HloModule
-struct KernelAnnotation {
-  KernelAnnotation(const ModuleAnnotation& module_annotation,
-                   const HloInstruction& inst);
+// Prepared NVTX and XProf information for an HLO instruction within a module.
+struct InstructionAnnotation {
+  InstructionAnnotation(
+      const ModuleAnnotation& module_annotation, const HloInstruction& inst,
+      TraceAnnotationLevel annotation_level = TraceAnnotationLevel::kBasic);
 
-  explicit operator absl::string_view() const { return title_str; }
-  static uint64_t NvtxSchemaId();
+  // NVTX uses a compact registered name because detailed metadata is carried
+  // separately in the structured payload.
+  absl::string_view nvtx_name() const { return nvtx_name_str_; }
 
- private:
-  friend void RangePush(tsl::profiler::ProfilerDomainHandle domain,
-                        const KernelAnnotation& annotation) {
-    tsl::profiler::RangePush(domain, annotation.title, annotation);
+  // XProf records a string annotation, so at the detailed level this name also
+  // contains the metadata as parseable key-value fields.
+  absl::string_view xprof_name() const { return xprof_name_str_; }
+
+  bool has_detailed_annotations() const {
+    return !std::holds_alternative<Basic>(payload_);
+  }
+  bool is_collective_annotation() const {
+    return std::holds_alternative<Collective>(payload_);
   }
 
-  std::string title_str;
-  tsl::profiler::StringHandle title;
-  tsl::profiler::StringHandle hlo_dump;
-  tsl::profiler::StringHandle src_locations;
-  tsl::profiler::StringHandle called_hlo_dump;
+ private:
+  struct Basic {
+    static uint64_t NvtxSchemaId();
+
+    tsl::profiler::StringHandle hlo_dump;
+    tsl::profiler::StringHandle src_locations;
+    tsl::profiler::StringHandle called_hlo_dump;
+  };
+
+  struct Detailed {
+    static uint64_t NvtxSchemaId();
+
+    Basic basic;
+    tsl::profiler::StringHandle hlo_op_name;
+    int64_t hlo_op_id;
+    tsl::profiler::StringHandle op_type;
+    tsl::profiler::StringHandle op_name;
+    tsl::profiler::StringHandle source_file;
+    int32_t source_line;
+    tsl::profiler::StringHandle output_shape;
+  };
+
+  struct Collective {
+    static uint64_t NvtxSchemaId();
+
+    Detailed detailed;
+    tsl::profiler::StringHandle replica_groups;
+    uint8_t is_pipelined;
+    uint8_t is_spmd_generated;
+    tsl::profiler::StringHandle collective_group_key;
+    tsl::profiler::StringHandle combiner_key;
+    tsl::profiler::StringHandle scheduling_group_id;
+    tsl::profiler::StringHandle stream_annotation;
+  };
+
+  friend void RangePush(tsl::profiler::ProfilerDomainHandle domain,
+                        const InstructionAnnotation& annotation);
+
+  std::string nvtx_name_str_;
+  std::string xprof_name_str_;
+  tsl::profiler::StringHandle nvtx_name_;
+  std::variant<Basic, Detailed, Collective> payload_;
 };
+
+//===----------------------------------------------------------------------===//
+// Per-module annotation collection
+//===----------------------------------------------------------------------===//
 
 // Parsed/prepared information for an HloModule that gets propagated to NVTX
 // ranges/profilers/... at execution time.
 struct ModuleAnnotations {
-  explicit ModuleAnnotations(absl::string_view module_name);
-  explicit ModuleAnnotations(const HloModule&);
+  explicit ModuleAnnotations(
+      absl::string_view module_name,
+      TraceAnnotationLevel annotation_level = TraceAnnotationLevel::kBasic);
+  explicit ModuleAnnotations(
+      const HloModule&,
+      TraceAnnotationLevel annotation_level = TraceAnnotationLevel::kBasic);
 
   ModuleAnnotation top_level;
-  absl::flat_hash_map<absl::string_view, KernelAnnotation> kernels;
+  absl::flat_hash_map<absl::string_view, InstructionAnnotation> instructions;
 };
 
 //===----------------------------------------------------------------------===//
@@ -103,8 +166,14 @@ class ScopedModuleAnnotations {
 
 const ModuleAnnotations* GetCurrentModuleAnnotations();
 
-std::optional<tsl::profiler::ScopedAnnotation> GetKernelAnnotation(
+std::optional<tsl::profiler::ScopedAnnotation> GetInstructionAnnotation(
     absl::string_view profile_annotation);
+
+ABSL_DEPRECATE_AND_INLINE()
+inline std::optional<tsl::profiler::ScopedAnnotation> GetKernelAnnotation(
+    absl::string_view profile_annotation) {
+  return GetInstructionAnnotation(profile_annotation);
+}
 
 }  // namespace xla::gpu
 
