@@ -1141,7 +1141,7 @@ ENTRY main {
   dout = f32[2,9,9,32] parameter(0)
   filter = f32[32,3,3,17] parameter(1)
   reverse = f32[32,3,3,17] reverse(filter), dimensions={1,2}
-  conv = f32[2,9,9,17] convolution(dout, reverse), window={size=3x3 pad=1_1x1_1}, dim_labels=b01f_i01o->b01f, feature_group_count=1, convolution_kind=dgrad
+  conv = f32[2,9,9,17] convolution(dout, reverse), window={size=3x3 pad=1_1x1_1}, dim_labels=b01f_i01o->b01f, feature_group_count=1
   ROOT relu = f32[2,9,9,17] maximum(zeros, conv)
 })";
 
