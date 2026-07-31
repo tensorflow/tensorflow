@@ -525,20 +525,20 @@ class SparseConcatTest(test.TestCase):
     # Individual volumes fit in int64, but the concatenated
     # output volume overflows int64, triggering
     # SetDimWithStatus -> RecomputeNumElements.
-    # Axis = 1, X = int64_max // 11
-    # Input 1 volume: 10 * X < int64_max
-    # Input 2 volume:  2 * X < int64_max
-    # Output volume:  12 * X > int64_max
+    # Axis = 1, dim_x = int64_max // 11
+    # Input 1 volume: 10 * dim_x < int64_max
+    # Input 2 volume:  2 * dim_x < int64_max
+    # Output volume:  12 * dim_x > int64_max
     int64_max = 9223372036854775807
-    X = int64_max // 11
+    dim_x = int64_max // 11
 
     indices1 = constant_op.constant([[0, 0, 0]], dtype=dtypes.int64)
     values1 = constant_op.constant([1.0], dtype=dtypes.float32)
-    shape1 = constant_op.constant([1, 10, X], dtype=dtypes.int64)
+    shape1 = constant_op.constant([1, 10, dim_x], dtype=dtypes.int64)
 
     indices2 = constant_op.constant([[0, 0, 0]], dtype=dtypes.int64)
     values2 = constant_op.constant([2.0], dtype=dtypes.float32)
-    shape2 = constant_op.constant([1, 2, X], dtype=dtypes.int64)
+    shape2 = constant_op.constant([1, 2, dim_x], dtype=dtypes.int64)
 
     sp1 = sparse_tensor.SparseTensor(indices1, values1, shape1)
     sp2 = sparse_tensor.SparseTensor(indices2, values2, shape2)
