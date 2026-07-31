@@ -165,6 +165,7 @@ limitations under the License.
 #include "xla/mlir_hlo/transforms/passes.h"
 #include "xla/service/all_reduce_promotion.h"
 #include "xla/service/all_to_all_decomposer.h"
+#include "xla/service/async_collective_custom_call_rewriter.h"
 #include "xla/service/batched_gather_scatter_normalizer.h"
 #include "xla/service/batchnorm_expander.h"
 #include "xla/service/buffer_assignment.h"
@@ -589,6 +590,8 @@ absl::Status CpuCompiler::RunHloPassesThroughLayoutAssn(
 
   // Replace asynchronous collectives with synchronous ones.
   HloPassPipeline async_collective_pipeline("async-collective");
+  async_collective_pipeline.AddPass<AsyncCollectiveCustomCallRewriter>(
+      /*use_legacy_collectives=*/false);
   AsyncCollectiveReplacer::Config acr_config(HloPredicateTrue);
   async_collective_pipeline.AddPass<AsyncCollectiveReplacer>(acr_config);
   RETURN_IF_ERROR(async_collective_pipeline.Run(module).status());

@@ -31,10 +31,11 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
+#include "json/json.h"
 #include "xla/core/collectives/reduction_kind.h"
 #include "xla/hlo/ir/collective_op_group_mode.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
@@ -1103,6 +1104,128 @@ bool IsNcclSymmetricBuffersEnabledForCollective(
   }
   NcclSymmetricBuffersSpec spec(opts);
   return spec.IsEnabled(*instruction);
+}
+
+absl::StatusOr<AsyncCollectiveConfig> ParseAsyncCollectiveConfig(
+    absl::string_view config_json_str) {
+  AsyncCollectiveConfig config;
+  if (config_json_str.empty()) {
+    return config;
+  }
+  Json::Value json;
+  Json::CharReaderBuilder builder;
+  std::unique_ptr<Json::CharReader> reader(builder.newCharReader());
+  std::string errors;
+  if (!reader->parse(config_json_str.data(),
+                     config_json_str.data() + config_json_str.size(), &json,
+                     &errors)) {
+    return absl::InvalidArgumentError(
+        absl::StrCat("Failed to parse collective op config JSON: ", errors,
+                     ". JSON string: ", config_json_str));
+  }
+  if (json.isMember("replica_groups")) {
+    const Json::Value& replica_groups = json["replica_groups"];
+    TF_RET_CHECK(replica_groups.isArray());
+    for (const auto& group : replica_groups) {
+      TF_RET_CHECK(group.isArray());
+      ReplicaGroup rg;
+      for (const auto& id_json : group) {
+        rg.add_replica_ids(id_json.asInt64());
+      }
+      config.replica_groups.push_back(rg);
+    }
+  }
+  if (json.isMember("channel_id")) {
+    config.channel_id = json["channel_id"].asInt64();
+  }
+  if (json.isMember("use_global_device_ids")) {
+    config.use_global_device_ids = json["use_global_device_ids"].asBool();
+  }
+  if (json.isMember("permutation")) {
+    const Json::Value& permutation = json["permutation"];
+    TF_RET_CHECK(permutation.isArray());
+    for (const auto& pair : permutation) {
+      TF_RET_CHECK(pair.isArray() && pair.size() == 2);
+      config.permutation.push_back({pair[0].asInt64(), pair[1].asInt64()});
+    }
+  }
+  if (json.isMember("all_gather_dimension")) {
+    config.all_gather_dimension = json["all_gather_dimension"].asInt64();
+  }
+  if (json.isMember("scatter_dimension")) {
+    config.scatter_dimension = json["scatter_dimension"].asInt64();
+  }
+  if (json.isMember("tiled")) {
+    config.tiled = json["tiled"].asBool();
+  }
+  if (json.isMember("split_dimension")) {
+    config.split_dimension = json["split_dimension"].asInt64();
+  }
+  if (json.isMember("concat_dimension")) {
+    config.concat_dimension = json["concat_dimension"].asInt64();
+  }
+  if (json.isMember("split_count")) {
+    config.split_count = json["split_count"].asInt64();
+  }
+  return config;
+}
+
+std::string SerializeAsyncCollectiveConfig(
+    const AsyncCollectiveConfig& config) {
+  Json::Value json(Json::objectValue);
+  if (!config.replica_groups.empty()) {
+    Json::Value rg_json(Json::arrayValue);
+    for (const auto& rg : config.replica_groups) {
+      Json::Value group(Json::arrayValue);
+      for (int64_t id : rg.replica_ids()) {
+        group.append(static_cast<Json::Value::Int64>(id));
+      }
+      rg_json.append(group);
+    }
+    json["replica_groups"] = rg_json;
+  }
+  if (config.channel_id.has_value()) {
+    json["channel_id"] = static_cast<Json::Value::Int64>(*config.channel_id);
+  }
+  if (config.use_global_device_ids) {
+    json["use_global_device_ids"] = config.use_global_device_ids;
+  }
+  if (!config.permutation.empty()) {
+    Json::Value perm_json(Json::arrayValue);
+    for (const auto& pair : config.permutation) {
+      Json::Value pair_json(Json::arrayValue);
+      pair_json.append(static_cast<Json::Value::Int64>(pair.first));
+      pair_json.append(static_cast<Json::Value::Int64>(pair.second));
+      perm_json.append(pair_json);
+    }
+    json["permutation"] = perm_json;
+  }
+  if (config.all_gather_dimension.has_value()) {
+    json["all_gather_dimension"] =
+        static_cast<Json::Value::Int64>(*config.all_gather_dimension);
+  }
+  if (config.scatter_dimension.has_value()) {
+    json["scatter_dimension"] =
+        static_cast<Json::Value::Int64>(*config.scatter_dimension);
+  }
+  if (config.tiled.has_value()) {
+    json["tiled"] = *config.tiled;
+  }
+  if (config.split_dimension.has_value()) {
+    json["split_dimension"] =
+        static_cast<Json::Value::Int64>(*config.split_dimension);
+  }
+  if (config.concat_dimension.has_value()) {
+    json["concat_dimension"] =
+        static_cast<Json::Value::Int64>(*config.concat_dimension);
+  }
+  if (config.split_count.has_value()) {
+    json["split_count"] = static_cast<Json::Value::Int64>(*config.split_count);
+  }
+
+  Json::StreamWriterBuilder builder;
+  builder["indentation"] = "";
+  return Json::writeString(builder, json);
 }
 
 }  // end namespace xla

@@ -1963,6 +1963,7 @@ cc_library(
         "//xla/service:all_reduce_promotion",
         "//xla/service:all_reduce_reassociate",
         "//xla/service:all_reduce_simplifier",
+        "//xla/service:async_collective_custom_call_rewriter",
         "//xla/service:batched_gather_scatter_normalizer",
         "//xla/service:batchnorm_expander",
         "//xla/service:buffer_assignment",
