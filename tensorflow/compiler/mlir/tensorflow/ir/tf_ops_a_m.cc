@@ -307,8 +307,8 @@ void BatchFunctionOp::eraseArguments(const BitVector& erase_indices) {
 //===----------------------------------------------------------------------===//
 
 template <typename OpT,
-          typename std::enable_if<llvm::is_one_of<
-              OpT, BatchMatMulOp, BatchMatMulV2Op>::value>::type* = nullptr>
+          std::enable_if_t<llvm::is_one_of<OpT, BatchMatMulOp,
+                                           BatchMatMulV2Op>::value>* = nullptr>
 static LogicalResult Verify(OpT op) {
   if (!HasRankAtLeast(op.getX(), 2)) {
     return op.emitOpError("requires lhs operand to have rank at least two");
@@ -1143,8 +1143,9 @@ std::optional<std::string> CollectiveGatherV2Op::GetResourceInstanceStr() {
 // ConcatOp and ConcatV2Op
 //===----------------------------------------------------------------------===//
 
-template <typename OpT, typename std::enable_if<llvm::is_one_of<
-                            OpT, ConcatOp, ConcatV2Op>::value>::type* = nullptr>
+template <typename OpT,
+          std::enable_if_t<llvm::is_one_of<OpT, ConcatOp, ConcatV2Op>::value>* =
+              nullptr>
 static LogicalResult Verify(OpT op) {
   // TODO(hinsu): Convert variadic length attributes to derived attributes.
   Operation::operand_range values = op.getValues();
@@ -1520,9 +1521,8 @@ void ConcatV2Op::getCanonicalizationPatterns(RewritePatternSet& results,
 //===----------------------------------------------------------------------===//
 
 template <typename OpT,
-          typename std::enable_if<llvm::is_one_of<
-              OpT, CumsumOp, CumulativeLogsumexpOp, CumprodOp>::value>::type* =
-              nullptr>
+          std::enable_if_t<llvm::is_one_of<OpT, CumsumOp, CumulativeLogsumexpOp,
+                                           CumprodOp>::value>* = nullptr>
 static LogicalResult Verify(OpT op) {
   if (!IsOfRankOrUnranked(op.getAxis(), 0))
     return op.emitOpError("requires scalar axis operand");
@@ -1774,8 +1774,9 @@ static LogicalResult VerifyConvOpAttributes(
 // Verifies that,
 // * Number of input channels is divisible by the number of filter input
 //   channels
-template <typename OpT, typename std::enable_if<llvm::is_one_of<
-                            OpT, Conv2DOp, Conv3DOp>::value>::type* = nullptr>
+template <typename OpT,
+          std::enable_if_t<llvm::is_one_of<OpT, Conv2DOp, Conv3DOp>::value>* =
+              nullptr>
 static LogicalResult Verify(OpT op) {
   int num_spatial_dims = std::is_same<OpT, Conv2DOp>() ? 2 : 3;
   int num_dims = 2 + num_spatial_dims;
@@ -1892,8 +1893,8 @@ LogicalResult Conv2DOp::UpdateDataFormat(StringRef data_format) {
 
 // Verifies the inferred return type of the given operation.
 template <typename OpT,
-          typename std::enable_if<llvm::is_one_of<
-              OpT, Conv2DOpAdaptor, Conv3DOpAdaptor>::value>::type* = nullptr>
+          std::enable_if_t<llvm::is_one_of<OpT, Conv2DOpAdaptor,
+                                           Conv3DOpAdaptor>::value>* = nullptr>
 static LogicalResult inferConvReturnTypeComponents(
     std::optional<mlir::Location> location, OpT op,
     ArrayRef<Attribute> explicit_padding,
