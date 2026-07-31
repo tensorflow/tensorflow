@@ -74,12 +74,12 @@ _tf_uses_legacy_keras = (
     _os.environ.get("TF_USE_LEGACY_KERAS", None) in ("true", "True", "1"))
 setattr(_current_module, "keras", _KerasLazyLoader(globals(), mode="v1"))
 _module_dir = _module_util.get_parent_dir_for_name("keras._tf_keras.keras")
-_current_module.__path__ = [_module_dir] + _current_module.__path__
+_current_module.__path__ = [_module_dir] + list(_current_module.__path__)
 if _tf_uses_legacy_keras:
   _module_dir = _module_util.get_parent_dir_for_name("tf_keras.api._v1.keras")
 else:
   _module_dir = _module_util.get_parent_dir_for_name("keras.api._v1.keras")
-_current_module.__path__ = [_module_dir] + _current_module.__path__
+_current_module.__path__ = [_module_dir] + list(_current_module.__path__)
 
 _CONTRIB_WARNING = """
 The TensorFlow contrib module will not be included in TensorFlow 2.0.
@@ -95,7 +95,7 @@ contrib = _LazyLoader("contrib", globals(), "tensorflow.contrib",
 # sets the __all__ variable. If it does, we have to be sure to add
 # "contrib".
 if "__all__" in vars():
-  vars()["__all__"].append("contrib")
+  vars()["__all__"] = list(vars()["__all__"]) + ["contrib"]
 
 from tensorflow.python.platform import flags
 # The "app" module will be imported as part of the placeholder section above.
@@ -117,7 +117,7 @@ if _tf_uses_legacy_keras:
 else:
   _module_dir = _module_util.get_parent_dir_for_name(
       "keras.api._v1.keras.__internal__.legacy.layers")
-_current_module.__path__ = [_module_dir] + _current_module.__path__
+_current_module.__path__ = [_module_dir] + list(_current_module.__path__)
 
 _current_module.nn.rnn_cell = _KerasLazyLoader(
     globals(),
@@ -130,7 +130,7 @@ if _tf_uses_legacy_keras:
 else:
   _module_dir = _module_util.get_parent_dir_for_name(
       "keras.api._v1.keras.__internal__.legacy.rnn_cell")
-_current_module.nn.__path__ = [_module_dir] + _current_module.nn.__path__
+_current_module.nn.__path__ = [_module_dir] + list(_current_module.nn.__path__)
 
 del importlib
 
@@ -149,7 +149,9 @@ if "getsitepackages" in dir(_site):
 
 for _scheme in sysconfig.get_scheme_names():
   for _name in ["purelib", "platlib"]:
-    _site_packages_dirs += [sysconfig.get_path(_name, _scheme)]
+    _path = sysconfig.get_path(_name, _scheme)
+    if _path is not None:
+      _site_packages_dirs.append(_path)
 
 _site_packages_dirs = list(set(_site_packages_dirs))
 
