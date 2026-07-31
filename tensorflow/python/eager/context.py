@@ -2228,19 +2228,16 @@ class Context:
 
     Raises:
       TypeError: If num_threads is not an integer (including booleans).
-      ValueError: If num_threads is negative or exceeds 10000.
+      ValueError: If num_threads is not in the range [0, 10000].
     """
-    if isinstance(num_threads, bool) or not isinstance(num_threads, int):
+    if isinstance(num_threads, bool) or not isinstance(num_threads, compat.integral_types):
       raise TypeError(
           f"num_threads must be an integer, got {type(num_threads).__name__}."
       )
-    if num_threads < 0:
+    
+    if not (0 <= num_threads <= 10000):
       raise ValueError(
-          f"num_threads must be non-negative, got {num_threads}."
-      )
-    if num_threads > 10000:
-      raise ValueError(
-          f"num_threads must be at most 10000, got {num_threads}. "
+          f"num_threads must be in the range [0, 10000], got {num_threads}. "
           "Setting an excessively large number of threads can cause system "
           "instability or crashes."
       )

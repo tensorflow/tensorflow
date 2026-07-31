@@ -927,17 +927,29 @@ class TensorFloat32Test(test.TestCase):
     with self.assertRaisesRegex(TypeError, 'must be an integer'):
       config.set_intra_op_parallelism_threads(False)
 
-    # Test ValueError for negative
-    with self.assertRaisesRegex(ValueError, 'must be non-negative'):
+    # Test ValueError for out of range
+    with self.assertRaisesRegex(ValueError, 'must be in the range'):
       config.set_intra_op_parallelism_threads(-1)
-    with self.assertRaisesRegex(ValueError, 'must be non-negative'):
+    with self.assertRaisesRegex(ValueError, 'must be in the range'):
       config.set_intra_op_parallelism_threads(-100)
-
-    # Test ValueError for exceeding maximum
-    with self.assertRaisesRegex(ValueError, 'must be at most 10000'):
+    with self.assertRaisesRegex(ValueError, 'must be in the range'):
       config.set_intra_op_parallelism_threads(10001)
-    with self.assertRaisesRegex(ValueError, 'must be at most 10000'):
+    with self.assertRaisesRegex(ValueError, 'must be in the range'):
       config.set_intra_op_parallelism_threads(2147483647)  # INT_MAX
+
+  @reset_eager
+  def testIntraOpParallelismThreadsNumpyInteger(self):
+    """Test validation of intra_op_parallelism_threads with numpy integers."""
+    import numpy as np
+    # Test valid numpy integers
+    config.set_intra_op_parallelism_threads(np.int32(1))
+    config.set_intra_op_parallelism_threads(np.int64(100))
+    
+    # Test out of range numpy integers
+    with self.assertRaisesRegex(ValueError, 'must be in the range'):
+      config.set_intra_op_parallelism_threads(np.int32(10001))
+    with self.assertRaisesRegex(ValueError, 'must be in the range'):
+      config.set_intra_op_parallelism_threads(np.int64(-1))
 
   @reset_eager
   def testInterOpParallelismThreadsValidation(self):
@@ -960,17 +972,29 @@ class TensorFloat32Test(test.TestCase):
     with self.assertRaisesRegex(TypeError, 'must be an integer'):
       config.set_inter_op_parallelism_threads(False)
 
-    # Test ValueError for negative
-    with self.assertRaisesRegex(ValueError, 'must be non-negative'):
+    # Test ValueError for out of range
+    with self.assertRaisesRegex(ValueError, 'must be in the range'):
       config.set_inter_op_parallelism_threads(-1)
-    with self.assertRaisesRegex(ValueError, 'must be non-negative'):
+    with self.assertRaisesRegex(ValueError, 'must be in the range'):
       config.set_inter_op_parallelism_threads(-100)
-
-    # Test ValueError for exceeding maximum
-    with self.assertRaisesRegex(ValueError, 'must be at most 10000'):
+    with self.assertRaisesRegex(ValueError, 'must be in the range'):
       config.set_inter_op_parallelism_threads(10001)
-    with self.assertRaisesRegex(ValueError, 'must be at most 10000'):
+    with self.assertRaisesRegex(ValueError, 'must be in the range'):
       config.set_inter_op_parallelism_threads(2147483647)  # INT_MAX
+
+  @reset_eager
+  def testInterOpParallelismThreadsNumpyInteger(self):
+    """Test validation of inter_op_parallelism_threads with numpy integers."""
+    import numpy as np
+    # Test valid numpy integers
+    config.set_inter_op_parallelism_threads(np.int32(1))
+    config.set_inter_op_parallelism_threads(np.int64(100))
+    
+    # Test out of range numpy integers
+    with self.assertRaisesRegex(ValueError, 'must be in the range'):
+      config.set_inter_op_parallelism_threads(np.int32(10001))
+    with self.assertRaisesRegex(ValueError, 'must be in the range'):
+      config.set_inter_op_parallelism_threads(np.int64(-1))
 
 
 if __name__ == '__main__':
