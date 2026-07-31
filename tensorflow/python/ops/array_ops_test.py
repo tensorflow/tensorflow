@@ -163,13 +163,13 @@ class TestFoldNonOverlapping(test.TestCase):
 
   def _extract_patches(self, x, kernel, stride, padding="VALID", dilation=1):
     """Helper that matches TensorFlow's _extract_patches API."""
+
     return array_ops.extract_image_patches_v2(
-      images=x,
-      sizes=[1, kernel, kernel, 1],
-      strides=[1, stride, stride, 1],
-      rates=[1, dilation, dilation, 1],
-      padding=padding,
-    )
+        images=x,
+        sizes=[1, kernel, kernel, 1],
+        strides=[1, stride, stride, 1],
+        rates=[1, dilation, dilation, 1],
+        padding=padding)
 
   def test_perfect_inverse_no_overlap_valid_basic(self):
     x = random_ops.random_normal([2, 8, 8, 3])
@@ -180,12 +180,14 @@ class TestFoldNonOverlapping(test.TestCase):
                                    strides=4,
                                    padding="VALID")
     self.assertAllClose(
-      reconstructed,
-      x,
-      msg="fold() is not the perfect inverse of _extract_patches (VALID)")
+        reconstructed,
+        x,
+        msg="fold() is not the perfect inverse of _extract_patches (VALID)")
 
   def test_inverse_various_sizes_no_overlap(self):
-    """Test to see if inverse relationship holds for various batch, image,
+    """Tests inverse behavior across various input sizes.
+
+    Test to see if inverse relationship holds for various batch, image,
     kernel, and channel sizes.
     """
     batch_sizes = [1, 2, 4]
@@ -200,7 +202,7 @@ class TestFoldNonOverlapping(test.TestCase):
             if image_size % kernel_size != 0:
               continue
             x = random_ops.random_normal(
-              [batch_size, image_size, image_size, channels])
+                [batch_size, image_size, image_size, channels])
             patches = self._extract_patches(x,
                                             kernel=kernel_size,
                                             stride=kernel_size,
@@ -238,13 +240,13 @@ class TestFoldOverlapping(test.TestCase):
 
   def _extract_patches(self, x, kernel, stride, padding="VALID", dilation=1):
     """Helper that matches TensorFlow's _extract_patches API."""
+
     return array_ops.extract_image_patches_v2(
-      images=x,
-      sizes=[1, kernel, kernel, 1],
-      strides=[1, stride, stride, 1],
-      rates=[1, dilation, dilation, 1],
-      padding=padding,
-    )
+        images=x,
+        sizes=[1, kernel, kernel, 1],
+        strides=[1, stride, stride, 1],
+        rates=[1, dilation, dilation, 1],
+        padding=padding)
 
   def setUp(self):
     super().setUp()
@@ -267,13 +269,13 @@ class TestFoldOverlapping(test.TestCase):
     self.assertEqual(reconstructed.dtype, x.dtype)
 
     overlap_counts = array_ops.constant(
-      [  # manual calc
-        [[1], [2], [2], [1]],
-        [[2], [4], [4], [2]],
-        [[2], [4], [4], [2]],
-        [[1], [2], [2], [1]],
-      ],
-      dtype=dtypes.float32)
+        [  # manual calc
+          [[1], [2], [2], [1]],
+          [[2], [4], [4], [2]],
+          [[2], [4], [4], [2]],
+          [[1], [2], [2], [1]],
+        ],
+        dtype=dtypes.float32)
     overlap_counts = array_ops.reshape(overlap_counts, (1, 4, 4, 1))
 
     expected = x * overlap_counts
@@ -281,23 +283,24 @@ class TestFoldOverlapping(test.TestCase):
     self.assertAllClose(reconstructed, expected)
 
   def test_fold_overlapping_patches_various_params(self):
-    """Test overlapping fold with VALID padding across different
-    kernel/stride combos.
+    """Tests overlapping fold with VALID padding.
+
+    Covers multiple kernel and stride combinations.
     """
     batch_sizes = [1, 2]
     channel_sizes = [1, 3]
     params = [
-      (6, 4, 2),
-      (6, 3, 1),
-      (8, 4, 2),
-      (8, 6, 2),
+        (6, 4, 2),
+        (6, 3, 1),
+        (8, 4, 2),
+        (8, 6, 2),
     ]
 
     for batch_size in batch_sizes:
       for channels in channel_sizes:
         for image_size, kernel_size, stride in params:
           x = random_ops.random_normal(
-            [batch_size, image_size, image_size, channels])
+              [batch_size, image_size, image_size, channels])
           patches = self._extract_patches(x,
                                           kernel=kernel_size,
                                           stride=stride,
@@ -328,6 +331,7 @@ class TestFoldOverlapping(test.TestCase):
   @test_util.run_in_graph_and_eager_modes
   def testFoldReductionMeanReconstruction(self):
     """Basic test for reduction="mean"."""
+
     input_image = array_ops.constant([[[[1.0], [2.0], [3.0]],
                                        [[4.0], [5.0], [6.0]],
                                        [[7.0], [8.0], [9.0]]]])
@@ -374,8 +378,9 @@ class TestFoldOverlapping(test.TestCase):
 
   @test_util.run_in_graph_and_eager_modes
   def testFoldReductionMeanEmptyPixels(self):
-    """This tests the `safe_divisor` logic to ensure no NaNs are produced
-    when pixels receive 0 patches.
+    """Tests the `safe_divisor` logic.
+
+    This ensures no NaNs are produced when pixels receive 0 patches.
     """
     patches = array_ops.constant([[[[1.0, 2.0, 3.0,
                                      4.0]]]])  # created a single 2x2 patch
@@ -400,7 +405,7 @@ class TestFoldOverlapping(test.TestCase):
 
   @test_util.run_in_graph_and_eager_modes
   def testFoldReductionMeanMultipleDimensions(self):
-    """We test combinations of (batch_size, channels, size, stride, rate)."""
+    """Tests combinations of (batch_size, channels, size, stride, rate)."""
 
     test_configs = [
       {
@@ -425,11 +430,11 @@ class TestFoldOverlapping(test.TestCase):
       input_image = random_ops.random_uniform(input_shape, seed=42)
 
       patches = array_ops.extract_image_patches(
-        input_image,
-        ksizes=[1, config["size"], config["size"], 1],
-        strides=[1, config["stride"], config["stride"], 1],
-        rates=[1, config["rate"], config["rate"], 1],
-        padding="VALID")
+          input_image,
+          ksizes=[1, config["size"], config["size"], 1],
+          strides=[1, config["stride"], config["stride"], 1],
+          rates=[1, config["rate"], config["rate"], 1],
+          padding="VALID")
 
       folded_image = array_ops.fold(patches,
                                     output_size=(7, 7),
@@ -503,7 +508,9 @@ class TestFoldInputValidation(test.TestCase):
 
 @test_util.run_all_in_graph_and_eager_modes
 class TestFoldGradients(test.TestCase):
-  """Verifies that fold is differentiable and produces numerically correct
+  """Tests fold differentiability and numerical gradient correctness.
+
+  Verifies that fold is differentiable and produces numerically correct
   gradients when composed with extract_patches.
   """
 
@@ -513,16 +520,18 @@ class TestFoldGradients(test.TestCase):
 
   def _extract_patches(self, x, kernel, stride, padding="VALID", dilation=1):
     """Helper that matches TensorFlow's _extract_patches API."""
+
     return array_ops.extract_image_patches_v2(
-      images=x,
-      sizes=[1, kernel, kernel, 1],
-      strides=[1, stride, stride, 1],
-      rates=[1, dilation, dilation, 1],
-      padding=padding,
+        images=x,
+        sizes=[1, kernel, kernel, 1],
+        strides=[1, stride, stride, 1],
+        rates=[1, dilation, dilation, 1],
+        padding=padding,
     )
 
   def test_fold_gradient_exists(self):
     """Verifies that fold produces non-zero gradients."""
+
     x = random_ops.random_normal([1, 4, 4, 1])
 
     with backprop.GradientTape() as tape:
@@ -544,6 +553,7 @@ class TestFoldGradients(test.TestCase):
 
   def test_fold_gradient_numerical_correctness(self):
     """To check if autodiff matches numerical gradient."""
+
     x = random_ops.random_normal([1, 4, 4, 1])
 
     def forward(x):
@@ -557,14 +567,14 @@ class TestFoldGradients(test.TestCase):
 
     with self.cached_session():
       theoretical, numerical = gradient_checker_v2.compute_gradient(
-        forward, [x])
+          forward, [x])
 
     self.assertAllClose(
-      theoretical[0],
-      numerical[0],
-      atol=1e-3,
-      rtol=1e-3,
-      msg="Autodiff and numerical gradients don't match",
+        theoretical[0],
+        numerical[0],
+        atol=1e-3,
+        rtol=1e-3,
+        msg="Autodiff and numerical gradients don't match",
     )
 
 
@@ -573,12 +583,13 @@ class TestFoldSamePadding(test.TestCase):
 
   def _extract_patches(self, x, kernel, stride, padding="VALID", dilation=1):
     """Helper that matches TensorFlow's _extract_patches API."""
+
     return array_ops.extract_image_patches_v2(
-      images=x,
-      sizes=[1, kernel, kernel, 1],
-      strides=[1, stride, stride, 1],
-      rates=[1, dilation, dilation, 1],
-      padding=padding,
+        images=x,
+        sizes=[1, kernel, kernel, 1],
+        strides=[1, stride, stride, 1],
+        rates=[1, dilation, dilation, 1],
+        padding=padding,
     )
 
   def setUp(self):
@@ -605,6 +616,7 @@ class TestFoldSamePadding(test.TestCase):
 
   def test_fold_asymmetric_same_padding(self):
     """Testing the (pad_total // 2) logic.
+
     Image 6x6, Kernel 3, Stride 2 requires EXACTLY 1 pixel of total padding.
     TensorFlow puts this on the bottom/right.
     """
@@ -761,6 +773,7 @@ class TestFoldSamePadding(test.TestCase):
 
   def test_fold_non_square_parameters(self):
     """TEST: Non-square kernel, stride and dilation."""
+
     height, width = 7, 8
     kernel_size = (3, 5)
     stride = (2, 3)
@@ -808,17 +821,19 @@ class TestFoldDeterminism(test.TestCase):
 
   def _extract_patches(self, x, kernel, stride, padding="VALID", dilation=1):
     return array_ops.extract_image_patches_v2(
-      images=x,
-      sizes=[1, kernel, kernel, 1],
-      strides=[1, stride, stride, 1],
-      rates=[1, dilation, dilation, 1],
-      padding=padding,
+        images=x,
+        sizes=[1, kernel, kernel, 1],
+        strides=[1, stride, stride, 1],
+        rates=[1, dilation, dilation, 1],
+        padding=padding,
     )
 
   @test_util.run_gpu_only
   def test_fold_gpu_deterministic(self):
-    """To check if GPU output is deterministic if
-    op determinism is turned off.
+    """Tests GPU determinism for fold.
+
+    To check if repeated GPU executions produce identical results when
+    op determinism is disabled.
     """
     config.disable_op_determinism()
     x = random_ops.random_normal([4, 128, 128, 16], dtype=dtypes.float32)
@@ -826,19 +841,21 @@ class TestFoldDeterminism(test.TestCase):
     outputs = []
     for _ in range(20):
       outputs.append(
-        array_ops.fold(patches,
-                       output_size=(128, 128),
-                       sizes=15,
-                       strides=1,
-                       padding="VALID",
-                       rates=1))
+          array_ops.fold(patches,
+                        output_size=(128, 128),
+                        sizes=15,
+                        strides=1,
+                        padding="VALID",
+                        rates=1))
     reference = outputs[0]
     for output in outputs[1:]:
       self.assertAllClose(reference, output)
 
   def test_fold_cpu_deterministic(self):
-    """To check if CPU output is deterministic if
-    op determinism is turned off.
+    """Tests CPU determinism for fold.
+
+    To check if repeated CPU executions produce identical results when
+    op determinism is disabled.
     """
     config.disable_op_determinism()
     with ops.device("/CPU:0"):

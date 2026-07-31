@@ -6426,8 +6426,8 @@ def fold(patches,
   # Handling inputs
   if patches.shape.ndims != 4:
     raise ValueError(
-      f"patches(input must be 4D (batch, height, width, patch_dim), "
-      f"got {patches.shape.ndims}D tensor with shape {patches.shape}")
+        f"patches(input must be 4D (batch, height, width, patch_dim), "
+        f"got {patches.shape.ndims}D tensor with shape {patches.shape}")
 
   if isinstance(reduction, str):
     if reduction not in ("sum", "mean"):
@@ -6474,15 +6474,15 @@ def fold(patches,
     # pylint: enable=g-import-not-at-top
     if not config.is_op_determinism_enabled():
       tf_logging.warning(
-        msg="The fold operation may produce non-deterministic results "
-        " for floating-point data types "
-        "when patches are overlapping (stride < kernel_size). "
-        "This is because the order in which the updates are applied is "
-        "non-deterministic and when floating-point numbers are added in"
-        " different orders the resulting numerical approximation error "
-        "can be slightly different. To ensure reproducible results, "
-        " enable op determinism using "
-        "`tf.config.experimental.enable_op_determinism()`")
+          msg="The fold operation may produce non-deterministic results "
+          " for floating-point data types "
+          "when patches are overlapping (stride < kernel_size). "
+          "This is because the order in which the updates are applied is "
+          "non-deterministic and when floating-point numbers are added in"
+          " different orders the resulting numerical approximation error "
+          "can be slightly different. To ensure reproducible results, "
+          " enable op determinism using "
+          "`tf.config.experimental.enable_op_determinism()`")
 
 
 # Get dimensions - extract dynamic shapes for the graph logic
@@ -6496,14 +6496,14 @@ def fold(patches,
   if patches.shape.rank is not None and patches.shape[3] is not None:
     if patches.shape[3] % kernel_area != 0:
       raise ValueError(
-        f"Expected size of input's dimension 3 should be divisble by"
-        f" the product of kernel_size, but input's dim 3 is"
-        f" {patches.shape[3]} and kernel_size is {kernel_size}")
+          f"Expected size of input's dimension 3 should be divisble by"
+          f" the product of kernel_size, but input's dim 3 is"
+          f" {patches.shape[3]} and kernel_size is {kernel_size}")
 
   channels = patch_dim // kernel_area
 
   height, width = output_size
-  
+
   if isinstance(padding, str):
     if padding == "VALID":
       pad_top = pad_bottom = pad_left = pad_right = 0
@@ -6512,9 +6512,9 @@ def fold(patches,
       val_h = (out_h - 1) * stride_h + k_eff_h - height
       val_w = (out_w - 1) * stride_w + k_eff_w - width
       pad_total_h = gen_math_ops.maximum(
-        constant_op.constant(0, dtype=val_h.dtype), val_h)
+          constant_op.constant(0, dtype=val_h.dtype), val_h)
       pad_total_w = gen_math_ops.maximum(
-        constant_op.constant(0, dtype=val_w.dtype), val_w)
+          constant_op.constant(0, dtype=val_w.dtype), val_w)
       # For odd values of total padding,
       # add more padding at the 'right' side of the given dimension.
       pad_top = pad_total_h // 2
@@ -6536,7 +6536,7 @@ def fold(patches,
 
   # Reshape patches
   patches_reshaped = reshape(
-    patches, [batch_size, out_h, out_w, kernel_h, kernel_w, channels])
+      patches, [batch_size, out_h, out_w, kernel_h, kernel_w, channels])
 
   # Create coordinate grids
   batch_range = gen_math_ops._range(0, batch_size, 1)
@@ -6546,12 +6546,12 @@ def fold(patches,
   kw_range = gen_math_ops._range(0, kernel_w, 1)
 
   b_grid, h_grid, w_grid, kh_grid, kw_grid = meshgrid(
-    batch_range,
-    h_range,
-    w_range,
-    kh_range,
-    kw_range,
-    indexing='ij')
+      batch_range,
+      h_range,
+      w_range,
+      kh_range,
+      kw_range,
+      indexing='ij')
 
   # Calculate output coordinates with dilation
   # fold formula:
@@ -6561,25 +6561,25 @@ def fold(patches,
 
   # Build scatter indices
   indices = array_ops_stack.stack([
-    reshape(b_grid, [-1]),
-    reshape(out_h_coords, [-1]),
-    reshape(out_w_coords, [-1])],axis=1)
+      reshape(b_grid, [-1]),
+      reshape(out_h_coords, [-1]),
+      reshape(out_w_coords, [-1])], axis=1)
 
   updates = reshape(patches_reshaped, [-1, channels])
 
   # Scatter into output tensor
   output = gen_array_ops.scatter_nd(
-    indices=indices,
-    updates=updates,
-    shape=[batch_size, padded_height, padded_width, channels])
+      indices=indices,
+      updates=updates,
+      shape=[batch_size, padded_height, padded_width, channels])
   if reduction == "mean":
     ones_updates = ones(shape=shape_internal(updates), dtype=updates.dtype)
     divisor_matrix = gen_array_ops.scatter_nd(  #calc overlapping count
-      indices=indices,
-      updates=ones_updates,
-      shape=[batch_size, padded_height, padded_width, channels])
+        indices=indices,
+        updates=ones_updates,
+        shape=[batch_size, padded_height, padded_width, channels])
     safe_divisor = gen_math_ops.maximum(  # To avoid zero division errors
-      divisor_matrix, constant_op.constant(1, dtype=divisor_matrix.dtype))
+        divisor_matrix, constant_op.constant(1, dtype=divisor_matrix.dtype))
     output = gen_math_ops.div(output, safe_divisor)  # element-wise division
 
   # Crop to desired output_size by removing the calculated padding
