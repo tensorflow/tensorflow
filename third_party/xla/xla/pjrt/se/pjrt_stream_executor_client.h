@@ -483,8 +483,6 @@ class PjRtStreamExecutorClient : public CommonPjRtClient {
     return raw_client_->gpu_run_options();
   }
 
-
-
   PjRtDeviceEventRef CreateErrorDeviceEvent(absl::Status error);
 
   bool IsOnCpu(PjRtMemorySpace* memory_space) override {
@@ -696,7 +694,7 @@ class PjRtStreamExecutorClient : public CommonPjRtClient {
 };
 
 struct PjRtStreamExecutorExecutionOutput {
-  // Donated inputs which must be freed.
+  // Buffers to be released after the execution is complete.
   std::vector<tsl::AsyncValueRef<RawSEDeviceMemory>> to_be_released;
   // For PjRtStreamExecutorClient implementations that
   // use ScopedDeviceAddress for donated inputs.
