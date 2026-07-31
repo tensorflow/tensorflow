@@ -748,6 +748,27 @@ class LayoutAssignment : public HloModulePass {
   // Initializes the layout assignment object for a new Run() call.
   absl::Status Init(HloModule* module);
 
+  // Clones conditional computations with multiple callsites and adds copies
+  // for operands of Send and layout-constrained CustomCall instructions.
+  absl::Status PrepareHloForLayoutAssignment(
+      HloModule* module,
+      const absl::flat_hash_set<absl::string_view>& execution_threads);
+
+  // Verifies that the entry computation layout is compatible with the entry
+  // computation shape.
+  absl::Status VerifyEntryComputationLayout(const HloModule* module) const;
+
+  // Sets up propagation by running points-to analysis, gathering computations
+  // to work on, and initializing entry computation constraints.
+  absl::StatusOr<std::vector<HloComputation*>> SetupPropagation(
+      HloModule* module,
+      const absl::flat_hash_set<absl::string_view>& execution_threads);
+
+  // Resolves input-output aliasing by resetting layouts to match if they
+  // mismatch. Returns true if any layouts were changed.
+  absl::StatusOr<bool> ResolveInputOutputAliasing(
+      HloModule* module, ComputationLayout* entry_constraint);
+
   // Adds constraints which must be satisfied for correctness on all
   // backends. Called once prior to propagating constraints.
   absl::Status AddMandatoryConstraints(
