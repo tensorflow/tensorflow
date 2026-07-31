@@ -381,3 +381,52 @@ func.func @lower_fused_dot_in_loop_non_canonical(
   // CHECK: return %[[FINAL_R]]
   return %res : tensor<1x2x8xf32>
 }
+
+// CHECK-LABEL: func @reduce_with_non_neutral_init
+// CHECK-SAME: (%[[ARG0:.*]]: tensor<16x8xf32>) -> tensor<8xf32>
+func.func @reduce_with_non_neutral_init(%arg0: tensor<16x8xf32>) -> tensor<8xf32> {
+  %cst = stablehlo.constant dense<5.000000e+00> : tensor<f32>
+  // CHECK: %[[REDUCE:.*]] = "tt.reduce"(%[[ARG0]]) <{axis = 0 : i32}>
+  // CHECK: %[[COMBINED:.*]] = arith.maximumf %[[REDUCE]], %{{.*}} : tensor<8xf32>
+  // CHECK: return %[[COMBINED]] : tensor<8xf32>
+  %1 = "stablehlo.reduce"(%arg0, %cst) ({
+  ^bb0(%arg1: tensor<f32>, %arg2: tensor<f32>):
+    %max = arith.maximumf %arg1, %arg2 : tensor<f32>
+    stablehlo.return %max : tensor<f32>
+  }) {dimensions = array<i64: 0>} : (tensor<16x8xf32>, tensor<f32>) -> tensor<8xf32>
+  return %1 : tensor<8xf32>
+}
+
+// CHECK-LABEL: func @reduce_to_scalar_with_non_neutral_init
+// CHECK-SAME: (%[[ARG0:.*]]: tensor<16xf32>) -> tensor<f32>
+func.func @reduce_to_scalar_with_non_neutral_init(%arg0: tensor<16xf32>) -> tensor<f32> {
+  %cst = stablehlo.constant dense<5.000000e+00> : tensor<f32>
+  // CHECK: %[[REDUCE:.*]] = "tt.reduce"(%[[ARG0]]) <{axis = 0 : i32}>
+  // CHECK: %[[REDUCE_TENSOR:.*]] = tensor.from_elements %[[REDUCE]] : tensor<f32>
+  // CHECK: %[[COMBINED:.*]] = arith.minimumf %[[REDUCE_TENSOR]], %{{.*}} : tensor<f32>
+  // CHECK: return %[[COMBINED]] : tensor<f32>
+  %1 = "stablehlo.reduce"(%arg0, %cst) ({
+  ^bb0(%arg1: tensor<f32>, %arg2: tensor<f32>):
+    %min = arith.minimumf %arg1, %arg2 : tensor<f32>
+    stablehlo.return %min : tensor<f32>
+  }) {dimensions = array<i64: 0>} : (tensor<16xf32>, tensor<f32>) -> tensor<f32>
+  return %1 : tensor<f32>
+}
+
+// CHECK-LABEL: func @reduce_multi_input_with_non_neutral_init
+// CHECK-SAME: (%[[ARG0:.*]]: tensor<16x8xf32>, %[[ARG1:.*]]: tensor<16x8xf32>) -> (tensor<8xf32>, tensor<8xf32>)
+func.func @reduce_multi_input_with_non_neutral_init(%arg0: tensor<16x8xf32>, %arg1: tensor<16x8xf32>) -> (tensor<8xf32>, tensor<8xf32>) {
+  %cst0 = stablehlo.constant dense<5.000000e+00> : tensor<f32>
+  %cst1 = stablehlo.constant dense<1.000000e+01> : tensor<f32>
+  // CHECK: %[[REDUCE:.*]]:2 = "tt.reduce"(%[[ARG0]], %[[ARG1]]) <{axis = 0 : i32}>
+  // CHECK: %[[COMB0:.*]] = arith.maximumf %[[REDUCE]]#0, %{{.*}} : tensor<8xf32>
+  // CHECK: %[[COMB1:.*]] = arith.maximumf %[[REDUCE]]#1, %{{.*}} : tensor<8xf32>
+  // CHECK: return %[[COMB0]], %[[COMB1]]
+  %0:2 = "stablehlo.reduce"(%arg0, %arg1, %cst0, %cst1) ({
+  ^bb0(%arg0_lhs: tensor<f32>, %arg1_lhs: tensor<f32>, %arg0_rhs: tensor<f32>, %arg1_rhs: tensor<f32>):
+    %max0 = arith.maximumf %arg0_lhs, %arg0_rhs : tensor<f32>
+    %max1 = arith.maximumf %arg1_lhs, %arg1_rhs : tensor<f32>
+    stablehlo.return %max0, %max1 : tensor<f32>, tensor<f32>
+  }) {dimensions = array<i64: 0>} : (tensor<16x8xf32>, tensor<16x8xf32>, tensor<f32>, tensor<f32>) -> (tensor<8xf32>, tensor<8xf32>)
+  return %0#0, %0#1 : tensor<8xf32>, tensor<8xf32>
+}
