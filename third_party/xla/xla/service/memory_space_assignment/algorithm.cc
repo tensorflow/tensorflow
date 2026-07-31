@@ -4778,23 +4778,23 @@ void MsaAlgorithm::MaybeSplitAllocationValues(
     HloInstruction* defining_instruction =
         allocation_value.value()->defining_instruction();
     auto& result = results[i];
-    if (!instruction_to_split_dims_.contains(defining_instruction)) {
-      instruction_to_split_dims_[allocation_value.value()
-                                     ->defining_instruction()] =
-          options_.init_split_tree_fn(defining_instruction, nullptr);
+    auto [it, inserted] =
+        instruction_to_split_dims_.try_emplace(defining_instruction);
+    if (inserted) {
+      it->second = options_.init_split_tree_fn(defining_instruction, nullptr);
     }
-    int64_t* mutable_element =
-        instruction_to_split_dims_[defining_instruction].mutable_element(
-            allocation_value.value()->defining_position().index);
+    auto& split_tree = it->second;
+    const ShapeIndex& shape_index =
+        allocation_value.value()->defining_position().index;
     if (!result.has_value()) {
-      *mutable_element = options_.replicated_split_dimension;
+      split_tree[shape_index] = options_.replicated_split_dimension;
       VLOG(4) << "Splitting allocation value: "
               << allocation_value.ToShortString() << ": kReplicated.";
       continue;
     }
     // TODO(b/382592216): Delay this assignment until after the AllocationValue
     //  actually gets an alternate memory allocation.
-    *mutable_element = result->dimension();
+    split_tree[shape_index] = result->dimension();
     Shape new_shape = allocation_value.value()->shape();
     if (new_shape.has_layout() &&
         new_shape.layout().split_configs().size() == 0) {

@@ -42,7 +42,6 @@ limitations under the License.
 #include "xla/service/memory_space_assignment/repacking.h"
 #include "xla/service/memory_space_assignment/slice.h"
 #include "xla/shape.h"
-#include "xla/shape_tree.h"
 #include "xla/shape_util.h"
 #include "xla/util.h"
 
@@ -65,13 +64,15 @@ using WindowPrefetchNotifyOperandAppendedFunction =
     std::function<void(HloInstruction*, int64_t, int64_t)>;
 using IsAsyncSliceImplementedFunction =
     std::function<bool(const HloInstruction*)>;
-using InitSplitTreeFn = std::function<ShapeTree<int64_t>(
+using InitSplitTreeFn = std::function<absl::flat_hash_map<ShapeIndex, int64_t>(
     const HloInstruction*,
-    absl::flat_hash_map<const HloInstruction*, ShapeTree<int64_t>>*)>;
+    absl::flat_hash_map<const HloInstruction*,
+                        absl::flat_hash_map<ShapeIndex, int64_t>>*)>;
 using DetermineSplitDimensionFunction =
     std::function<std::optional<SplitConfig>(
         const HloValue&,
-        absl::flat_hash_map<const HloInstruction*, ShapeTree<int64_t>>*)>;
+        absl::flat_hash_map<const HloInstruction*,
+                            absl::flat_hash_map<ShapeIndex, int64_t>>*)>;
 using BitcastSplitFn = std::function<absl::StatusOr<int64_t>(
     const HloInstruction* instruction, int64_t split_dim)>;
 using ShapeSizeFn = std::function<int64_t(const Shape&)>;

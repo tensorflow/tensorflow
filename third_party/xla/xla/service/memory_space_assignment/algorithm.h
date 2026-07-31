@@ -1708,7 +1708,8 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
   absl::flat_hash_set<const HloInstruction*> successful_async_conversion_set_;
   std::vector<const HloInstruction*> not_finalized_async_conversions_;
   // Maps from an HloValue to the dimension it is split on.
-  absl::flat_hash_map<const HloInstruction*, ShapeTree<int64_t>>
+  absl::flat_hash_map<const HloInstruction*,
+                      absl::flat_hash_map<ShapeIndex, int64_t>>
       instruction_to_split_dims_;
   // Debug strings.
   std::string buffer_info_str_;

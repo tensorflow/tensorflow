@@ -355,7 +355,6 @@ cc_library(
         ":prefetch_interval_picker",
         ":repacking",
         ":slice",
-        "//xla:shape_tree",
         "//xla:shape_util",
         "//xla:util",
         "//xla/hlo/ir:hlo",

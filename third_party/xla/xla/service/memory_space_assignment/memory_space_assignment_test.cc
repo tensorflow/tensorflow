@@ -274,23 +274,24 @@ TEST_F(MemorySpaceAssignmentTest, BasicSplit) {
   Options options = DefaultMemorySpaceOptions();
   options.max_size_in_bytes = 256 * 512 * 16;
   options.init_split_tree_fn =
-      [&options](const HloInstruction* instruction,
-                 absl::flat_hash_map<const HloInstruction*, ShapeTree<int64_t>>*
-                     split_map) {
-        if (split_map != nullptr) {
-          auto result = split_map->find(instruction);
-          if (result != split_map->end()) {
-            return result->second;
-          }
-        }
-        return ShapeTree<int64_t>(instruction->shape(),
-                                  options.any_split_dimension);
-      };
+      [](const HloInstruction* instruction,
+         absl::flat_hash_map<const HloInstruction*,
+                             absl::flat_hash_map<ShapeIndex, int64_t>>*
+             split_map) -> absl::flat_hash_map<ShapeIndex, int64_t> {
+    if (split_map != nullptr) {
+      auto result = split_map->find(instruction);
+      if (result != split_map->end()) {
+        return result->second;
+      }
+    }
+    return {};
+  };
 
   options.determine_split_dimension_fn =
       [&split_config](
           const HloValue& hlo_value,
-          absl::flat_hash_map<const HloInstruction*, ShapeTree<int64_t>>*
+          absl::flat_hash_map<const HloInstruction*,
+                              absl::flat_hash_map<ShapeIndex, int64_t>>*
               split_map) -> std::optional<SplitConfig> {
     if (hlo_value.instruction()->opcode() == HloOpcode::kAdd ||
         hlo_value.instruction()->opcode() == HloOpcode::kSubtract) {
