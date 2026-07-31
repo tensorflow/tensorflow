@@ -1092,21 +1092,8 @@ absl::Status LayoutAssignment::AddSubcomputationLayoutConstraints(
   return absl::OkStatus();
 }
 
-absl::Status LayoutAssignment::AddMandatoryConstraints(
-    ChannelLayoutConstraints* channel_constraints,
+absl::Status LayoutAssignment::AddComputationResultLayoutConstraints(
     LayoutConstraints* constraints) {
-  VLOG(2) << "Adding mandatory layout constraints to computation "
-          << constraints->computation()->name();
-
-  // Constrain layouts of instructions which define values with pre-existing
-  // layouts.
-  RETURN_IF_ERROR(
-      AddInstructionLayoutConstraints(channel_constraints, constraints));
-
-  // Constrain layouts of instructions which call computations which have
-  // already been assigned layouts.
-  RETURN_IF_ERROR(AddSubcomputationLayoutConstraints(constraints));
-  // Finally set the result layout to match ComputationLayout, if there is one.
   if (conditional_mismatch_.count(constraints->computation()) > 0) {
     VLOG(5) << "Setting mismatching conditional result:"
             << constraints->computation()->name() << "\n";
@@ -1129,6 +1116,27 @@ absl::Status LayoutAssignment::AddMandatoryConstraints(
       VLOG(2) << "Computation result layout is not set.\n";
     }
   }
+  return absl::OkStatus();
+}
+
+absl::Status LayoutAssignment::AddMandatoryConstraints(
+    ChannelLayoutConstraints* channel_constraints,
+    LayoutConstraints* constraints) {
+  VLOG(2) << "Adding mandatory layout constraints to computation "
+          << constraints->computation()->name();
+
+  // Phase 1: Add constraints for instructions with pre-existing / fixed
+  // layouts.
+  RETURN_IF_ERROR(
+      AddInstructionLayoutConstraints(channel_constraints, constraints));
+
+  // Phase 2: Add constraints for instructions interacting with
+  // sub-computations.
+  RETURN_IF_ERROR(AddSubcomputationLayoutConstraints(constraints));
+
+  // Phase 3: Finalize computation result layout.
+  RETURN_IF_ERROR(AddComputationResultLayoutConstraints(constraints));
+
   VLOG(4) << "Done adding mandatory constraints.";
   return absl::OkStatus();
 }

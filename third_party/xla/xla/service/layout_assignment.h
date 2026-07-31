@@ -803,6 +803,11 @@ class LayoutAssignment : public HloModulePass {
   absl::Status AddAsyncDoneConstraints(HloInstruction* instruction,
                                        LayoutConstraints* constraints);
 
+  // Sets the computation result layout based on constraints and
+  // sub-computations.
+  absl::Status AddComputationResultLayoutConstraints(
+      LayoutConstraints* constraints);
+
   // Constrains layouts for custom calls that have specific layout requirements.
   absl::Status AddCustomCallConstraints(LayoutConstraints* constraints);
 
