@@ -185,6 +185,11 @@ class ShuffleTest(test_base.DatasetTestBase, parameterized.TestCase):
       dataset.shuffle(buffer_size=sys.maxsize)
     with self.assertRaisesRegex(ValueError, "buffer_size"):
       dataset.shuffle(buffer_size=2**31 - 1)
+    with self.assertRaisesRegex(ValueError, "buffer_size"):
+      dataset.shuffle(buffer_size=np.int64(2**31 - 1))
+    with self.assertRaisesRegex(ValueError, "buffer_size"):
+      dataset.shuffle(
+          buffer_size=constant_op.constant(2**31 - 1, dtype=dtypes.int64))
 
   @combinations.generate(
       combinations.times(
