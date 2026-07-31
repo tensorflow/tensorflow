@@ -33,6 +33,7 @@ cc_library(
         "//xla/pjrt:pjrt_compiler",
         "//xla/pjrt:pjrt_executable",
         "//xla/service:dump",
+        "//xla/service/llvm_ir:llvm_type_conversion_util",
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:status_macros",
