@@ -396,7 +396,6 @@ class PjRtCpuExecutable;
 class CpuPjRtRawLoadedExecutable : public PjRtRawLoadedExecutable {
  public:
   explicit CpuPjRtRawLoadedExecutable(RunId run_id) : run_id_(run_id) {}
-  PjRtDevice* device() override { return device_; }
 
   PjRtRawLoadedExecutable::RawExecuteResult Execute(
       const ExecuteOptions& options,

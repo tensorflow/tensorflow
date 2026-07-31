@@ -704,13 +704,7 @@ class CommonPjRtLoadedExecutable : public PjRtLoadedExecutable {
     const ExecuteOptions* options;
   };
 
-  struct DeviceAndAssignment {
-    PjRtDevice* device;
-    std::shared_ptr<DeviceAssignment> device_assignment;
-    std::optional<int32_t> slice_id;
-    int replica;
-    int partition;
-  };
+  using DeviceAndAssignment = PjRtExecutableLoadState::DeviceAndAssignment;
 
   virtual absl::StatusOr<DeviceAndAssignment> LookupDeviceAndAssignment(
       const ExecuteOptions& options, int replica, int partition,
