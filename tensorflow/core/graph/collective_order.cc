@@ -17,6 +17,7 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <numeric>
+#include <utility>
 #include <vector>
 
 #include "absl/algorithm/container.h"
@@ -166,16 +167,24 @@ absl::Status CreateControlDependencies(
   // set a function of the graph alone, so it no longer depends on the iteration
   // order of `neighbor_set`, which is keyed by `Node*`.
   std::vector<Node*> redundant;
+  std::vector<std::pair<Node*, int>> neighbors;
   for (int i = 0; i < num_collectives; ++i) {
     auto edges_it = dependency_edges->find(collective_nodes[i]);
     if (edges_it == dependency_edges->end()) continue;
     absl::flat_hash_set<Node*>& neighbor_set = edges_it->second;
-    redundant.clear();
+    // Resolve each neighbour's index once. The test below is quadratic in the
+    // number of neighbours, so looking indices up inside it would make the hash
+    // lookups quadratic as well.
+    neighbors.clear();
+    neighbors.reserve(neighbor_set.size());
     for (Node* v : neighbor_set) {
-      const int v_idx = collective_index[v];
-      for (Node* w : neighbor_set) {
+      neighbors.emplace_back(v, collective_index[v]);
+    }
+    redundant.clear();
+    for (const auto& [v, v_idx] : neighbors) {
+      for (const auto& [w, w_idx] : neighbors) {
         if (w == v) continue;
-        if (test_reaches(collective_index[w], v_idx)) {
+        if (test_reaches(w_idx, v_idx)) {
           redundant.push_back(v);
           break;
         }
