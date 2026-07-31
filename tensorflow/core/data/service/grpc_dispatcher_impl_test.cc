@@ -175,6 +175,28 @@ TEST_F(GrpcDispatcherImplTest, GetSplitInvalidProviderIndex) {
   }
 }
 
+TEST_F(GrpcDispatcherImplTest, GetOrRegisterDatasetInvalidDatasetId) {
+  const std::vector<std::string> invalid_ids = {
+      "..\\..\\etc\\passwd",
+      "a\\b",
+      "a/b",
+      ".",
+      "..",
+  };
+
+  for (const auto& id : invalid_ids) {
+    ClientContext ctx;
+    GetOrRegisterDatasetRequest req;
+    *req.mutable_dataset()->mutable_graph() = testing::RangeDataset(10).graph();
+    req.set_dataset_id(id);
+    GetOrRegisterDatasetResponse resp;
+    ::grpc::Status status =
+        dispatcher_client_stub_->GetOrRegisterDataset(&ctx, req, &resp);
+    EXPECT_EQ(status.error_code(), ::grpc::StatusCode::INVALID_ARGUMENT)
+        << "Dataset ID '" << id << "' should be rejected.";
+  }
+}
+
 }  // namespace
 }  // namespace data
 }  // namespace tensorflow
