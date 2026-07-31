@@ -60,6 +60,10 @@ body {
   overflow: auto;
   padding: 10px;
 }
+.hlo-block {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 60em;
+}
 pre {
   white-space: pre-wrap;
   word-wrap: break-word;
@@ -84,6 +88,7 @@ pre {
   outline-offset: 0;
   background-color: rgba(51, 153, 255, 0.2) !important;
   border-radius: 2px;
+  position: relative;
   z-index: 10;
 }
 .tooltip-table {

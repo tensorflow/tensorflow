@@ -664,10 +664,6 @@ TokenAnnotationMapping GetTokenAnnotationMapping(
                 // Deeper shape index (longer path) wins for background/border.
                 mapping.token_to_annotation.insert({abs_token_idx, annotation});
                 shape_tokens_indices[sid].push_back(abs_token_idx);
-                if (annotation->stack_frame_id) {
-                  mapping.token_stack_frame_ids[abs_token_idx] =
-                      *annotation->stack_frame_id;
-                }
               }
             }
           }
@@ -699,11 +695,56 @@ std::string GenerateHloHtmlContent(
     absl::flat_hash_map<std::string, std::string>& tooltip_data) {
   std::string parts;
   int tt_counter = 0;
-  absl::flat_hash_map<const TensorAnnotation*, std::string> ann_to_id;
+  absl::flat_hash_map<std::string, std::string> tooltip_str_to_id;
+  bool in_block = false;
+  int line_count = 0;
+  constexpr int kLinesPerBlock = 50;
+
+  auto open_block_if_needed = [&]() {
+    if (!in_block) {
+      absl::StrAppend(&parts, "<div class=\"hlo-block\">");
+      in_block = true;
+      line_count = 0;
+    }
+  };
+
+  auto close_block_if_open = [&]() {
+    if (in_block) {
+      absl::StrAppend(&parts, "</div>");
+      in_block = false;
+      line_count = 0;
+    }
+  };
+
   for (size_t i = 0; i < tokens.size(); ++i) {
     if (mapping.tokens_to_skip.count(i)) {
       continue;
     }
+
+    if (tokens[i].kind == TokKind::kText &&
+        absl::StrContains(tokens[i].value, '\n')) {
+      std::string val = tokens[i].value;
+      size_t pos = 0;
+      while (pos < val.size()) {
+        size_t nl_pos = val.find('\n', pos);
+        if (nl_pos == std::string::npos) {
+          open_block_if_needed();
+          absl::StrAppend(&parts, HtmlEscape(val.substr(pos)));
+          break;
+        }
+        open_block_if_needed();
+        absl::StrAppend(&parts, HtmlEscape(val.substr(pos, nl_pos - pos)),
+                        "\n");
+        line_count++;
+        if (line_count >= kLinesPerBlock) {
+          close_block_if_open();
+        }
+        pos = nl_pos + 1;
+      }
+      continue;
+    }
+
+    open_block_if_needed();
 
     if (mapping.span_starts.count(i)) {
       for (const auto* ann : mapping.span_starts.at(i)) {
@@ -714,12 +755,12 @@ std::string GenerateHloHtmlContent(
         std::string tooltip_attr;
         if (ann->tooltip_data) {
           std::string tt_id;
-          auto it = ann_to_id.find(ann);
-          if (it != ann_to_id.end()) {
+          auto it = tooltip_str_to_id.find(*ann->tooltip_data);
+          if (it != tooltip_str_to_id.end()) {
             tt_id = it->second;
           } else {
             tt_id = absl::StrCat("tt", tt_counter++);
-            ann_to_id[ann] = tt_id;
+            tooltip_str_to_id[*ann->tooltip_data] = tt_id;
             tooltip_data[tt_id] = *ann->tooltip_data;
           }
           tooltip_attr = absl::StrCat(" data-tooltip-id=\"", tt_id, "\"");
@@ -773,9 +814,19 @@ std::string GenerateHloHtmlContent(
                       anchor_attr, extra_attrs, style_attr, ">",
                       HtmlEscape(tokens[i].value), "</span>");
     } else {
-      const char* css_class = TokKindToClass(tokens[i].kind);
-      if (css_class[0] != '\0' || !anchor_attr.empty() ||
-          !extra_attrs.empty()) {
+      bool needs_span = !anchor_attr.empty() || !extra_attrs.empty() ||
+                        mapping.token_links.count(i) > 0;
+      if (!needs_span) {
+        TokKind kind = tokens[i].kind;
+        if (kind == TokKind::kComment || kind == TokKind::kCommentSpecial ||
+            kind == TokKind::kString || kind == TokKind::kKeyword ||
+            kind == TokKind::kKeywordType || kind == TokKind::kNameFunction ||
+            kind == TokKind::kNameComputation || kind == TokKind::kNumber) {
+          needs_span = true;
+        }
+      }
+      if (needs_span) {
+        const char* css_class = TokKindToClass(tokens[i].kind);
         absl::StrAppend(&parts, "<span class=\"", css_class, "\"", anchor_attr,
                         extra_attrs, ">", HtmlEscape(tokens[i].value),
                         "</span>");
@@ -794,6 +845,7 @@ std::string GenerateHloHtmlContent(
       }
     }
   }
+  close_block_if_open();
   return parts;
 }
 
