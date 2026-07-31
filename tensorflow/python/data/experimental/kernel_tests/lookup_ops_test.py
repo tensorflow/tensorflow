@@ -149,6 +149,7 @@ class DatasetInitializerTest(test.TestCase):
     result = self.evaluate(output)
     self.assertAllEqual([0, 1, 2], result)
 
+  @test_util.run_v2_only
   def test_index_table_from_dataset_oversized_vocab_size(self):
     ds = dataset_ops.Dataset.from_tensor_slices(
         ["apple", "banana", "orange"])
@@ -156,6 +157,7 @@ class DatasetInitializerTest(test.TestCase):
         ValueError, "is larger than the known dataset cardinality"):
       lookup_ops.index_table_from_dataset(ds, vocab_size=1000)
 
+  @test_util.run_v2_only
   def test_table_from_dataset_oversized_vocab_size(self):
     keys = dataset_ops.Dataset.from_tensor_slices([2, 3, 4])
     values = dataset_ops.Dataset.from_tensor_slices(["two", "three", "four"])
