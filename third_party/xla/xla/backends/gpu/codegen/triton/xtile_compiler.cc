@@ -690,15 +690,15 @@ absl::Status LowerXTileToTriton(
     // unsupported types.
     pm.enableVerifier(/*enabled=*/false);
     pm.addPass(mlir::triton::xla::createTensorLowerToTritonPass());
+    pm.addPass(xtile::createStablehloLowerToArithPass());
+    pm.addPass(xtile::createStablehloLowerToXtilePass());
+    pm.addPass(mlir::triton::xla::createArithFP8ConversionToTritonPass());
     mlir::triton::xla::StableHLOLowerToTritonPassOptions stablehlo_options;
     stablehlo_options.warp_specialization_allowed_ =
         block_level_parameters.is_warp_specialization_allowed;
     pm.addPass(
         mlir::triton::xla::createStableHLOLowerToTritonPass(stablehlo_options));
-    pm.addPass(xtile::createStablehloLowerToArithPass());
-    pm.addPass(xtile::createStablehloLowerToXtilePass());
     pm.addPass(xtile::createConvertElementwise0DTensorToScalarPass());
-    pm.addPass(mlir::triton::xla::createArithFP8ConversionToTritonPass());
     pm.addPass(mlir::triton::xla::createXTileLowerToTritonPass());
     pm.addPass(
         mlir::triton::xla::createTritonXLAFoldReshapeAroundForLoopPass());

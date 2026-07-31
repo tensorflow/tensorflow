@@ -546,7 +546,9 @@ class AllReduceEmitter {
     // See fusion emitter for more details.
     if (elem_storage_type_ != elem_type_) {
       next_tile = mlir::cast<xtile::TensorValue>(
-          xtile::Cast(builder_, next_tile, elem_type_));
+          arith::TruncIOp::create(
+              builder_, next_tile.getType().clone(elem_type_), next_tile)
+              .getResult());
     }
     return next_tile;
   }
@@ -574,8 +576,9 @@ class AllReduceEmitter {
     // storage type. Downstream passes should be able to optimize this away.
     mlir::Value storage_tile = tile_to_store;
     if (elem_storage_type_ != elem_type_) {
-      storage_tile = mlir::cast<xtile::TensorValue>(
-          xtile::Cast(builder_, tile_to_store, elem_storage_type_));
+      auto shaped_type = mlir::cast<mlir::ShapedType>(tile_to_store.getType());
+      storage_tile = arith::ExtUIOp::create(
+          builder_, shaped_type.clone(elem_storage_type_), tile_to_store);
     }
     auto [ptrs, mask] = triton::CreateTensorOfPointersAndMask(
         builder_,        //
