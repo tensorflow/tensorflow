@@ -23,6 +23,7 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <ostream>
+#include <random>
 #include <string>
 #include <tuple>
 #include <utility>
@@ -43,6 +44,8 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "absl/strings/str_replace.h"
 #include "absl/strings/string_view.h"
+#include "absl/time/clock.h"
+#include "absl/time/time.h"
 #include "absl/types/span.h"
 #include "xla/tsl/platform/status_macros.h"
 #include "xla/comparison_util.h"
@@ -18433,6 +18436,102 @@ TEST_F(MemorySpaceAssignmentTest,
       module.get(),
       {"negate_entry", "custom_call_entry", "custom_call0", "custom_call1"},
       kAlternateMemorySpace);
+}
+
+TEST(RangeAddMinMaxTreeTest, MatchesBruteForce) {
+  constexpr int kSize = 37;
+  RangeAddMinMaxTree tree(kSize);
+  std::vector<int64_t> reference(kSize, 0);
+  std::minstd_rand gen(1234);
+  auto pick = [&]() { return static_cast<int>(gen() % kSize); };
+  for (int step = 0; step < 300; ++step) {
+    const int a = pick(), b = pick();
+    const int lo = std::min(a, b), hi = std::max(a, b);
+    int64_t delta = static_cast<int64_t>(gen() % 41) - 20;
+    tree.AddRange(lo, hi, delta);
+    for (int i = lo; i <= hi; ++i) reference[i] += delta;
+
+    const int c = pick(), d = pick();
+    const int qlo = std::min(c, d), qhi = std::max(c, d);
+    auto first = reference.begin() + qlo;
+    auto last = reference.begin() + qhi + 1;
+    EXPECT_EQ(tree.MinInRange(qlo, qhi), *std::min_element(first, last));
+    int64_t max = *std::max_element(first, last);
+    EXPECT_EQ(tree.MaxInRange(qlo, qhi), max);
+    // max has no index above it; max - 1 has at least one.
+    for (int64_t threshold : {max, max - 1}) {
+      std::optional<int64_t> want;
+      for (int i = qhi; i >= qlo && !want.has_value(); --i) {
+        if (reference[i] > threshold) want = i;
+      }
+      EXPECT_EQ(tree.RightmostIndexAbove(qlo, qhi, threshold), want);
+    }
+  }
+}
+
+// Builds a scheduled module with `num_candidates` f32[512,512] values produced
+// early and consumed late, separated by `filler_length` cheap ops. Every
+// candidate is live across the whole filler span, so they all compete for the
+// small alternate memory at once with long prefetch windows: the allocation
+// search shape that N simultaneous loop carried promotions produce.
+std::string GenerateLongRangePrefetchStressModule(int num_candidates,
+                                                  int filler_length) {
+  std::string text =
+      "HloModule long_range_prefetch_stress, is_scheduled=true\n\nENTRY main "
+      "{\n  px = f32[64,64] parameter(0)\n";
+  for (int i = 0; i < num_candidates; ++i) {
+    // The negate output, not the parameter, is the alternate memory candidate.
+    absl::StrAppend(&text, "  param", i, " = f32[512,512] parameter(", i + 1,
+                    ")\n  cand", i, " = f32[512,512] negate(param", i, ")\n");
+  }
+  absl::StrAppend(&text, "  fill0 = f32[64,64] add(px, px)\n");
+  for (int j = 1; j < filler_length; ++j) {
+    absl::StrAppend(&text, "  fill", j, " = f32[64,64] add(fill", j - 1,
+                    ", px)\n");
+  }
+  // A gap op before each consumer spreads the use times out.
+  std::vector<std::string> consumers;
+  for (int i = 0; i < num_candidates; ++i) {
+    absl::StrAppend(&text, "  gap", i, " = f32[64,64] add(fill",
+                    filler_length - 1, ", fill", i % filler_length, ")\n  use",
+                    i, " = f32[512,512] negate(cand", i, ")\n");
+    consumers.push_back(absl::StrCat("use", i));
+  }
+  absl::StrAppend(
+      &text, "  ROOT result = (",
+      absl::StrJoin(std::vector<std::string>(consumers.size(), "f32[512,512]"),
+                    ", "),
+      ") tuple(", absl::StrJoin(consumers, ", "), ")\n}\n");
+  return text;
+}
+
+// Guards the allocation search's scaling on many simultaneous long range
+// alternate memory candidates. The wall clock bound has wide headroom, so it
+// trips on an asymptotic regression, not on machine noise.
+TEST_F(MemorySpaceAssignmentTest, ManySimultaneousLongRangeCandidatesScales) {
+  std::vector<absl::Duration> durations;
+  for (int num_candidates : {32, 512}) {
+    TF_ASSERT_OK_AND_ASSIGN(
+        auto module,
+        ParseAndReturnVerifiedModule(GenerateLongRangePrefetchStressModule(
+            num_candidates, /*filler_length=*/512)));
+    // Alternate memory holds only ~3 of the 1 MiB candidates, so they compete
+    // and most placement probes fail.
+    Options options = DefaultMemorySpaceOptions();
+    options.max_size_in_bytes = 3 * (1 << 20) + (1 << 16);
+    options.max_outstanding_prefetches = -1;
+    options.max_outstanding_evictions = -1;
+    absl::Time start = absl::Now();
+    AssignMemorySpaceUsingCostAnalysis(module.get(), std::move(options));
+    durations.push_back(absl::Now() - start);
+    LOG(INFO) << "MSA long range stress: " << num_candidates
+              << " candidates took " << durations.back();
+  }
+  // 16x the candidates is only 4x the schedule length here, so the honest
+  // bound is well under the 256x a quadratic search would cost.
+  EXPECT_LT(durations[1], durations[0] * 12 + absl::Seconds(1))
+      << "MSA allocation search scaled superlinearly: " << durations[0]
+      << " at 32 candidates vs " << durations[1] << " at 512";
 }
 
 }  // namespace

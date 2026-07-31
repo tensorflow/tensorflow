@@ -36,6 +36,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/cleanup/cleanup.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
@@ -465,6 +466,114 @@ bool MsaAlgorithm::MatchesPrefetchContext(
                  .instruction->name() == producer_name &&
          context.request->allocation_value->defining_position().index ==
              producer_shape_index;
+}
+
+RangeAddMinMaxTree::RangeAddMinMaxTree(int64_t size)
+    : size_(size), nodes_(size > 0 ? 4 * size : 0) {}
+
+void RangeAddMinMaxTree::AddRange(int64_t start, int64_t end, int64_t delta) {
+  start = std::max<int64_t>(start, 0);
+  end = std::min<int64_t>(end, size_ - 1);
+  if (size_ == 0 || start > end || delta == 0) {
+    return;
+  }
+  AddRangeImpl(/*node=*/1, /*node_start=*/0, /*node_end=*/size_ - 1, start, end,
+               delta);
+}
+
+void RangeAddMinMaxTree::AddRangeImpl(int64_t node, int64_t node_start,
+                                      int64_t node_end, int64_t start,
+                                      int64_t end, int64_t delta) {
+  if (start <= node_start && node_end <= end) {
+    nodes_[node].pending += delta;
+    nodes_[node].min += delta;
+    nodes_[node].max += delta;
+    return;
+  }
+  int64_t mid = node_start + (node_end - node_start) / 2;
+  if (start <= mid) {
+    AddRangeImpl(2 * node, node_start, mid, start, std::min(end, mid), delta);
+  }
+  if (end > mid) {
+    AddRangeImpl(2 * node + 1, mid + 1, node_end, std::max(start, mid + 1), end,
+                 delta);
+  }
+  nodes_[node].min = std::min(nodes_[2 * node].min, nodes_[2 * node + 1].min) +
+                     nodes_[node].pending;
+  nodes_[node].max = std::max(nodes_[2 * node].max, nodes_[2 * node + 1].max) +
+                     nodes_[node].pending;
+}
+
+int64_t RangeAddMinMaxTree::MaxInRange(int64_t start, int64_t end) const {
+  start = std::max<int64_t>(start, 0);
+  end = std::min<int64_t>(end, size_ - 1);
+  CHECK_LE(start, end);
+  return MaxImpl(/*node=*/1, /*node_start=*/0, /*node_end=*/size_ - 1, start,
+                 end);
+}
+
+int64_t RangeAddMinMaxTree::MaxImpl(int64_t node, int64_t node_start,
+                                    int64_t node_end, int64_t start,
+                                    int64_t end) const {
+  if (start <= node_start && node_end <= end) {
+    return nodes_[node].max;
+  }
+  int64_t mid = node_start + (node_end - node_start) / 2;
+  int64_t result = std::numeric_limits<int64_t>::min();
+  if (start <= mid) {
+    result = MaxImpl(2 * node, node_start, mid, start, std::min(end, mid));
+  }
+  if (end > mid) {
+    result = std::max(result, MaxImpl(2 * node + 1, mid + 1, node_end,
+                                      std::max(start, mid + 1), end));
+  }
+  return result + nodes_[node].pending;
+}
+
+int64_t RangeAddMinMaxTree::MinInRange(int64_t start, int64_t end) const {
+  start = std::max<int64_t>(start, 0);
+  end = std::min<int64_t>(end, size_ - 1);
+  CHECK_LE(start, end);
+  return MinImpl(/*node=*/1, /*node_start=*/0, /*node_end=*/size_ - 1, start,
+                 end);
+}
+
+int64_t RangeAddMinMaxTree::MinImpl(int64_t node, int64_t node_start,
+                                    int64_t node_end, int64_t start,
+                                    int64_t end) const {
+  if (start <= node_start && node_end <= end) {
+    return nodes_[node].min;
+  }
+  int64_t mid = node_start + (node_end - node_start) / 2;
+  int64_t result = std::numeric_limits<int64_t>::max();
+  if (start <= mid) {
+    result = MinImpl(2 * node, node_start, mid, start, std::min(end, mid));
+  }
+  if (end > mid) {
+    result = std::min(result, MinImpl(2 * node + 1, mid + 1, node_end,
+                                      std::max(start, mid + 1), end));
+  }
+  return result + nodes_[node].pending;
+}
+
+std::optional<int64_t> RangeAddMinMaxTree::RightmostIndexAbove(
+    int64_t start, int64_t end, int64_t threshold) const {
+  start = std::max<int64_t>(start, 0);
+  end = std::min<int64_t>(end, size_ - 1);
+  if (size_ == 0 || start > end || MaxInRange(start, end) <= threshold) {
+    return std::nullopt;
+  }
+  int64_t lo = start;
+  int64_t hi = end;
+  while (lo < hi) {
+    int64_t mid = lo + (hi - lo + 1) / 2;
+    if (MaxInRange(mid, end) > threshold) {
+      lo = mid;
+    } else {
+      hi = mid - 1;
+    }
+  }
+  return lo;
 }
 
 MsaAlgorithm::MsaAlgorithm(HloModule* module, AllocationSequence* allocations,
@@ -6763,8 +6872,9 @@ void MsaAlgorithm::UpdateReservedScopedAllocationSize() {
     Allocation* allocation = allocation_block.allocation;
     if (allocation->is_scoped_allocation()) {
       int64_t time = allocation->start_time();
-      peak_memory_usage_[time] +=
-          (reserved_scoped_memory_map[time] - allocation->chunk().size);
+      peak_memory_usage_.AddRange(
+          time, time,
+          reserved_scoped_memory_map[time] - allocation->chunk().size);
       allocation_block.size = reserved_scoped_memory_map[time];
       allocation->mutable_chunk()->size = reserved_scoped_memory_map[time];
     }
@@ -6959,10 +7069,11 @@ bool MsaAlgorithm::UncommitChunkAndUpdatePeakMemory(
     const MsaBufferInterval& interval, const Chunk& chunk) {
   VLOG(3) << "Uncommitting: [" << interval.start << ", " << interval.end
           << "] off = " << chunk.offset << " size = " << chunk.size;
-  for (int i = interval.start; i <= interval.end; ++i) {
-    peak_memory_usage_[i] -= chunk.size;
-    CHECK_GE(peak_memory_usage_[i], 0)
-        << "Peak memory usage at " << i << " is below zero after uncommitting. "
+  // Empty intervals were a no op before; MinInRange needs a non empty range.
+  if (interval.start <= interval.end) {
+    peak_memory_usage_.AddRange(interval.start, interval.end, -chunk.size);
+    CHECK_GE(peak_memory_usage_.MinInRange(interval.start, interval.end), 0)
+        << "Peak memory usage is below zero after uncommitting. "
         << interval.start << "-" << interval.end << " : [" << chunk.offset
         << ", " << chunk.size << "]";
   }
@@ -6971,11 +7082,14 @@ bool MsaAlgorithm::UncommitChunkAndUpdatePeakMemory(
 
 void MsaAlgorithm::CommitChunkAndUpdatePeakMemory(
     const MsaBufferInterval& buffer_interval, const Chunk& chunk) {
-  for (int i = buffer_interval.start; i <= buffer_interval.end; ++i) {
-    peak_memory_usage_[i] += chunk.size;
-    CHECK_LE(peak_memory_usage_[i], options_.max_size_in_bytes)
-        << "Peak memory usage at " << i
-        << " exceeds the max size of alternate memory. "
+  // Empty intervals were a no op before; MaxInRange needs a non empty range.
+  if (buffer_interval.start <= buffer_interval.end) {
+    peak_memory_usage_.AddRange(buffer_interval.start, buffer_interval.end,
+                                chunk.size);
+    CHECK_LE(peak_memory_usage_.MaxInRange(buffer_interval.start,
+                                           buffer_interval.end),
+             options_.max_size_in_bytes)
+        << "Peak memory usage exceeds the max size of alternate memory. "
         << buffer_interval.start << "-" << buffer_interval.end << " : "
         << chunk.ToString() << " buffer "
         << (buffer_interval.buffer ? buffer_interval.buffer->ToString()
@@ -7158,18 +7272,22 @@ void MsaAlgorithm::AddToPendingChunks(const MsaBufferInterval& buffer_interval,
 
 std::optional<int> MsaAlgorithm::FindEarliestExclusiveTimeToSatisfyPeakMemory(
     int exclusive_start_time, int end_time, int64_t size) const {
-  std::optional<int> earliest_time_exclusive = std::nullopt;
-  for (int time_inclusive = ExclusiveToInclusiveEndTime(end_time);
-       time_inclusive > exclusive_start_time; --time_inclusive) {
-    if (peak_memory_usage_[time_inclusive] + size <=
-        options_.max_size_in_bytes) {
-      earliest_time_exclusive = InclusiveToExclusiveStartTime(time_inclusive);
-    } else {
-      break;
-    }
+  // The answer is one past the rightmost time in the window whose peak usage
+  // would overflow, which the tree finds without walking the window.
+  int inclusive_end_time = ExclusiveToInclusiveEndTime(end_time);
+  if (inclusive_end_time <= exclusive_start_time) {
+    return std::nullopt;
   }
-
-  return earliest_time_exclusive;
+  std::optional<int64_t> overflow = peak_memory_usage_.RightmostIndexAbove(
+      exclusive_start_time + 1, inclusive_end_time,
+      options_.max_size_in_bytes - size);
+  if (!overflow.has_value()) {
+    return InclusiveToExclusiveStartTime(exclusive_start_time + 1);
+  }
+  if (*overflow == inclusive_end_time) {
+    return std::nullopt;  // Not even the last time fits.
+  }
+  return InclusiveToExclusiveStartTime(*overflow + 1);
 }
 
 std::string MsaAlgorithm::SingleFailureResultToString(
@@ -8652,6 +8770,23 @@ AllocationResult MsaAlgorithm::PrefetchWithResourceConstraints(
   if (init_result != AllocationResult::kSuccess) {
     return init_result;
   }
+
+  // The placement probes below all query windows inside [scope_start,
+  // scope_end], so let them share one free chunk snapshot instead of walking
+  // and sorting the interval tree per probe. A query that falls outside just
+  // takes the direct path, so a loose bound here only costs speed.
+  int64_t scope_start =
+      context.prev_allocation_in_default_mem->earliest_available_time();
+  if (request.earliest_prefetch_time) {
+    scope_start = std::max(scope_start, *request.earliest_prefetch_time);
+  }
+  int64_t scope_end = request.end_time;
+  if (!request.all_use_times.empty()) {
+    scope_end = std::max(scope_end, request.all_use_times.back());
+  }
+  BeginFreeChunksSnapshotScope(scope_start, scope_end);
+  absl::Cleanup end_scope = [this] { EndFreeChunksSnapshotScope(); };
+
   AllocationResult check_result = EnsureSomeSpatialPrefetchFitExists(context);
   if (check_result != AllocationResult::kSuccess) {
     return check_result;
@@ -9472,15 +9607,16 @@ bool MsaAlgorithm::IsUseColoredInDefaultMemory(const HloUse& use) const {
 
 bool MsaAlgorithm::IsPositionColoredInAlternateMemoryAtTime(
     const HloPosition& position, int64_t time) const {
+  // With no colorings the loop cannot return true, so skip its alias queries.
+  if (reserved_allocations_for_alt_mem_colorings_.empty()) {
+    return false;
+  }
   // Check if the defining position of the corresponding value is colored in
   // alternate memory at the time of the use or the defining position of an
   // aliasing value is colored in alternate memory at the time of the use.
-  for (const HloValue* value :
-       alias_analysis_.GetUniqueBufferAt(position.instruction, position.index)
-           .values()) {
+  for (const HloValue* value : GetUniqueBufferAtCached(position).values()) {
     HloPosition defining_position = value->defining_position();
-    const HloBuffer& buffer = alias_analysis_.GetUniqueBufferAt(
-        defining_position.instruction, defining_position.index);
+    const HloBuffer& buffer = GetUniqueBufferAtCached(defining_position);
     auto reserved_allocations_it =
         reserved_allocations_for_alt_mem_colorings_.find(&buffer);
     if (reserved_allocations_it !=
@@ -9500,15 +9636,16 @@ bool MsaAlgorithm::IsPositionColoredInAlternateMemoryAtTime(
 
 bool MsaAlgorithm::IsPositionColoredInDefaultMemoryAtTime(
     const HloPosition& position, int64_t time) const {
+  // With no colorings the loop cannot return true, so skip its alias queries.
+  if (default_memory_coloring_requirements_.empty()) {
+    return false;
+  }
   // Check if the defining position of the corresponding value is colored in
   // default memory at the time of the use or the defining position of an
   // aliasing value is colored in default memory at the time of the use.
-  for (const HloValue* value :
-       alias_analysis_.GetUniqueBufferAt(position.instruction, position.index)
-           .values()) {
+  for (const HloValue* value : GetUniqueBufferAtCached(position).values()) {
     HloPosition defining_position = value->defining_position();
-    const HloBuffer& buffer = alias_analysis_.GetUniqueBufferAt(
-        defining_position.instruction, defining_position.index);
+    const HloBuffer& buffer = GetUniqueBufferAtCached(defining_position);
     auto default_memory_colorings_it =
         default_memory_coloring_requirements_.find(&buffer);
     if (default_memory_colorings_it !=
@@ -9524,6 +9661,16 @@ bool MsaAlgorithm::IsPositionColoredInDefaultMemoryAtTime(
     }
   }
   return false;
+}
+
+const HloBuffer& MsaAlgorithm::GetUniqueBufferAtCached(
+    const HloPosition& position) const {
+  const HloBuffer*& buffer = unique_buffer_at_position_cache_[position];
+  if (buffer == nullptr) {
+    buffer = &alias_analysis_.GetUniqueBufferAt(position.instruction,
+                                                position.index);
+  }
+  return *buffer;
 }
 
 int64_t AsynchronousCopyResource::GetScaledIntegerResource(
