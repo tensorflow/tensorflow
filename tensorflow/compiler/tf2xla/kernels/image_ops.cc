@@ -504,8 +504,17 @@ class NonMaxSuppressionOp : public XlaOpKernel {
       xla::XlaOp selected_indices =
           xla::Broadcast(xla::ConstantR0<int32_t>(builder, 0), {output_size});
       if (!pad_to_max_output_size) {
-        selected_indices =
-            xla::SetDimensionSize(selected_indices, num_valid, 0);
+        absl::StatusOr<xla::XlaOp> rebounded_result =
+            xla::SetDimensionSizeWithRebound(&context->value_inference(),
+                                             selected_indices, num_valid, 0);
+        if (rebounded_result.ok()) {
+          selected_indices = *rebounded_result;
+        } else {
+          // TODO(b/207187072): Remove special handling once dynamic reshape
+          // can also be handled.
+          selected_indices =
+              xla::SetDimensionSize(selected_indices, num_valid, 0);
+        }
       }
       context->SetOutput(0, selected_indices);
       if (pad_to_max_output_size) context->SetOutput(1, num_valid);
