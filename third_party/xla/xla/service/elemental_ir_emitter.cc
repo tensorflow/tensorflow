@@ -1240,22 +1240,37 @@ absl::StatusOr<llvm::Value*> ElementalIrEmitter::EmitComplexUnaryOp(
     }
     case HloOpcode::kCos:
     case HloOpcode::kSin: {
-      // If the argument is z = x + i*y, let
-      //   sinh(y) = (exp(y) - exp(-y)) / 2
-      //   cosh(y) = (exp(y) + exp(-y)) / 2 ,
-      // then
+      // If the argument is z = x + i*y, then
       //   sin(x + i*y) = sin(x)*cosh(y) + i*cos(x)*sinh(y)
       //   cos(x + i*y) = cos(x)*cosh(y) - i*sin(x)*sinh(y)
+      //
+      // Compute sinh(y) and cosh(y) via
+      //   half_e_pos = exp( y + log(1/2) )     // == e^y / 2
+      //   half_e_neg = exp(-y + log(1/2) )     // == e^-y / 2
+      //   sinh(y) = half_e_pos - half_e_neg
+      //   cosh(y) = half_e_pos + half_e_neg
+      //
+      // This avoids forming 1/exp(y) (which overflows when y is very
+      // negative and exp(y) underflows to 0, or underflows when y is very
+      // positive and 1/exp(y) is subnormal). Mirrors the technique used
+      // by the builder-level Cosh/Sinh at
+      // xla/hlo/builder/lib/math.cc:1386, 1421. For |y| beyond the
+      // representation limit, exp() will produce inf, and IEEE
+      // multiplication propagates to give the correctly-signed inf
+      // result (the true answer is also out of range).
       auto x = EmitExtractReal(operand_value);
       auto y = EmitExtractImag(operand_value);
       auto type = y->getType();
-      ASSIGN_OR_RETURN(auto exp_y, EmitExp(component_type, y, ""));
-      auto half_exp_y = FMul(llvm::ConstantFP::get(type, 0.5), exp_y);
-      auto half_exp_neg_y = FDiv(llvm::ConstantFP::get(type, 0.5), exp_y);
+      auto half = llvm::ConstantFP::get(type, 0.5);
+      ASSIGN_OR_RETURN(auto log_half, EmitLog(component_type, half));
+      ASSIGN_OR_RETURN(auto half_e_pos,
+                       EmitExp(component_type, FAdd(y, log_half), ""));
+      ASSIGN_OR_RETURN(auto half_e_neg,
+                       EmitExp(component_type, FSub(log_half, y), ""));
+      auto sinh_y = FSub(half_e_pos, half_e_neg);
+      auto cosh_y = FAdd(half_e_pos, half_e_neg);
       ASSIGN_OR_RETURN(auto sin_x, EmitSin(component_type, x));
       ASSIGN_OR_RETURN(auto cos_x, EmitCos(component_type, x));
-      auto sinh_y = FSub(half_exp_y, half_exp_neg_y);
-      auto cosh_y = FAdd(half_exp_y, half_exp_neg_y);
       llvm::Value* real_result = nullptr;
       llvm::Value* imag_result = nullptr;
       if (op->opcode() == HloOpcode::kSin) {
