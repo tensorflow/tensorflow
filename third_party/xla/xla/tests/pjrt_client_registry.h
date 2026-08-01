@@ -115,19 +115,14 @@ class PjRtClientTestFactoryRegistry {
 
       std::string mode_str = test_mode;
       AOTTestMode mode;
-      if (mode_str == "golden")
+      if (mode_str == "golden") {
         mode = AOTTestMode::kGoldenVerification;
-      else if (mode_str == "backward_oldest")
-        mode = AOTTestMode::kBackwardOldest;
-      else if (mode_str == "backward_previous")
-        mode = AOTTestMode::kBackwardPrevious;
-      else if (mode_str == "forward_oldest")
-        mode = AOTTestMode::kForwardOldest;
-      else if (mode_str == "forward_previous")
-        mode = AOTTestMode::kForwardPrevious;
-      else
+      } else if (mode_str == "backward") {
+        mode = AOTTestMode::kBackwardsCompatibility;
+      } else {
         return absl::InvalidArgumentError(
             absl::StrCat("Unknown AOT test mode: ", mode_str));
+      }
 
       return std::make_unique<AOTInterceptionPjrtClient>(std::move(client),
                                                          mode, artifact_path);
