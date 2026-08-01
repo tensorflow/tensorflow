@@ -4058,6 +4058,7 @@ cc_library(
         ":computation_layout",
         ":hlo_graph_dumper",
         ":logical_buffer",
+        ":while_util",
         "//xla:permutation_util",
         "//xla:shape_layout",
         "//xla:shape_util",

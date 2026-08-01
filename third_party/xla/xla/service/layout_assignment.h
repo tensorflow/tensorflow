@@ -976,6 +976,9 @@ class LayoutAssignment : public HloModulePass {
   int64_t current_priority() const { return current_priority_; }
 
  private:
+  // Returns whether the given instruction is in a copy-disabled while loop.
+  bool IsWhileLoopCopyDisabled(const HloInstruction& instruction) const;
+
   // Map containing the layouts of all computations assigned so
   // far. Computations are handled in a topological sort where computations are
   // handled before their caller instructions so the layouts of caller
@@ -1019,6 +1022,9 @@ class LayoutAssignment : public HloModulePass {
   // ClearAddedConstraints.
   std::vector<const LayoutConstraint*> added_constraints_;
   int64_t current_priority_ = LayoutConstraint::kBeginningPriority;
+
+  // Stores the set of while computations that have copy disabled.
+  absl::flat_hash_set<const HloComputation*> copy_disabled_while_computations_;
 };
 
 }  // namespace xla

@@ -53,6 +53,7 @@ limitations under the License.
 #include "xla/permutation_util.h"
 #include "xla/service/computation_layout.h"
 #include "xla/service/logical_buffer.h"
+#include "xla/service/while_util.h"
 #include "xla/shape.h"
 #include "xla/shape_layout.h"
 #include "xla/shape_util.h"
@@ -1375,7 +1376,8 @@ absl::StatusOr<HloInstruction*> LayoutAssignment::CreateCopyWithNewLayout(
 
 // Creates a copy of the given operand if the operand's layout does not match
 // the given layout. This copy replaces the use in the given instruction. Tuple
-// operands will be deep-copied.
+// operands will be deep-copied. This could be overriden on while loops with a
+// front-end attribute.
 absl::Status LayoutAssignment::CopyOperandIfLayoutsDiffer(
     const ShapeLayout& operand_layout, HloInstruction* instruction,
     int64_t operand_no) {
@@ -1392,6 +1394,47 @@ absl::Status LayoutAssignment::CopyOperandIfLayoutsDiffer(
   }
   VLOG(2) << "Operand " << operand->ToString() << " layout does not match "
           << operand_layout.ToString() << " in " << instruction->ToString();
+
+  if (IsWhileLoopCopyDisabled(*instruction)) {
+    HloComputation* comp = instruction->parent();
+    HloInstruction* param = comp->parameter_instruction(0);
+    ShapeIndex index = {};
+    HloInstruction* current = operand;
+    while (current->opcode() == HloOpcode::kGetTupleElement) {
+      index.insert(index.begin(), current->tuple_index());
+      current = current->mutable_operand(0);
+    }
+    if (current == param) {
+      Shape* param_subshape =
+          ShapeUtil::GetMutableSubshape(param->mutable_shape(), index);
+      Shape* root_subshape =
+          ShapeUtil::IndexIsValid(comp->root_instruction()->shape(), index)
+              ? ShapeUtil::GetMutableSubshape(
+                    comp->root_instruction()->mutable_shape(), index)
+              : nullptr;
+      if (param_subshape != nullptr) {
+        VLOG(2) << "Changing copy-disabled while loop parameter layout to "
+                << operand_layout.ToString();
+        *param_subshape = operand_layout.shape();
+        if (root_subshape != nullptr &&
+            ShapeUtil::Compatible(*root_subshape, operand_layout.shape())) {
+          *root_subshape = operand_layout.shape();
+        }
+        if (operand != param) {
+          *operand->mutable_shape() = operand_layout.shape();
+        }
+        ComputationLayout computed_computation_layout(
+            comp->ComputeProgramShape(), /*ignore_layouts=*/false);
+        mutable_computation_constraints(comp)
+            ->mutable_computation_constraint()
+            ->ResetComputationLayout(computed_computation_layout,
+                                     current_priority_ + 1,
+                                     /* prop_result_layout=*/true,
+                                     /*prop_parameter_layout=*/true);
+        return absl::OkStatus();
+      }
+    }
+  }
 
   // If the operand is only used by a conditional, do the copy inside the branch
   // to avoid overhead for other branches.
@@ -2487,11 +2530,13 @@ absl::Status LayoutAssignment::AssignLayouts(LayoutConstraints& constraints) {
     if (!result_layout.MatchesLayoutInShape(
             computation->root_instruction()->shape(),
             /*minor_to_major_only=*/true)) {
-      ASSIGN_OR_RETURN(
-          HloInstruction * new_root,
-          CreateCopyWithNewLayout(result_layout.shape(),
-                                  computation->root_instruction()));
-      computation->set_root_instruction(new_root);
+      if (!copy_disabled_while_computations_.contains(computation)) {
+        ASSIGN_OR_RETURN(
+            HloInstruction * new_root,
+            CreateCopyWithNewLayout(result_layout.shape(),
+                                    computation->root_instruction()));
+        computation->set_root_instruction(new_root);
+      }
     } else {
       // Copy the tiling info/tail_padding_alignment_in_elements specified in
       // result layout.
@@ -3318,6 +3363,8 @@ bool LayoutAssignment::IsAtMostRank1(const Shape& shape) {
 }
 
 absl::Status LayoutAssignment::Init(HloModule* module) {
+  copy_disabled_while_computations_ =
+      WhileUtil::GetCopyDisabledWhileLoopComputations(module);
   computation_layouts_.clear();
   conditional_mismatch_.clear();
   current_priority_ = LayoutConstraint::kBeginningPriority;
@@ -3374,6 +3421,11 @@ absl::Status LayoutAssignment::AddCopyForOperand(HloInstruction* instruction,
     RETURN_IF_ERROR(instruction->ReplaceOperandWith(operand_number, copy));
   }
   return absl::OkStatus();
+}
+
+bool LayoutAssignment::IsWhileLoopCopyDisabled(
+    const HloInstruction& instruction) const {
+  return copy_disabled_while_computations_.contains(instruction.parent());
 }
 
 }  // namespace xla
