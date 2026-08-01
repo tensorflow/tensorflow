@@ -16,7 +16,6 @@
 import gzip
 import os
 import pathlib
-import sys
 import zlib
 
 from absl.testing import parameterized
