@@ -557,6 +557,18 @@ class UpperBoundInferenceTest : public ValueInferenceTest {
   }
 };
 
+class LowerBoundInferenceTest : public ValueInferenceTest {
+ public:
+  absl::StatusOr<OptionalLiteral> ComputeLowerBoundLiteral(
+      XlaOp operand, XlaBuilder* builder, Layout* output_layout = nullptr) {
+    ValueInference value_inference(builder);
+    ASSIGN_OR_RETURN(auto literal,
+                     value_inference.AnalyzeConstant(
+                         operand, ValueInferenceMode::kLowerBound));
+    return literal;
+  }
+};
+
 TEST_F(UpperBoundInferenceTest, GetDimensionSize) {
   XlaBuilder b(TestName());
   auto p =
@@ -669,6 +681,52 @@ TEST_F(UpperBoundInferenceTest, ParamCantInferBound) {
   auto sub = Div(gds, p1);
   EXPECT_FALSE(
       ComputeUpperBoundLiteral(sub, &b).value().Get<int32_t>({}).has_value());
+}
+
+TEST_F(UpperBoundInferenceTest, MinimumWithDynamicOperandKeepsUpperBound) {
+  XlaBuilder b(TestName());
+  auto p0 = Parameter(&b, 0, ShapeUtil::MakeShape(S32, {2}, {true}), "p0");
+  auto p1 = Parameter(&b, 1, ShapeUtil::MakeScalarShape(S32), "p1");
+
+  auto min = Min(GetDimensionSize(p0, 0), p1);
+  auto result = ComputeUpperBoundLiteral(min, &b).value().Get<int32_t>({});
+
+  ASSERT_TRUE(result.has_value());
+  EXPECT_EQ(result.value(), 2);
+}
+
+TEST_F(UpperBoundInferenceTest, MaximumWithDynamicOperandCantInferUpperBound) {
+  XlaBuilder b(TestName());
+  auto p0 = Parameter(&b, 0, ShapeUtil::MakeShape(S32, {2}, {true}), "p0");
+  auto p1 = Parameter(&b, 1, ShapeUtil::MakeScalarShape(S32), "p1");
+
+  auto max = Max(GetDimensionSize(p0, 0), p1);
+  auto result = ComputeUpperBoundLiteral(max, &b).value().Get<int32_t>({});
+
+  EXPECT_FALSE(result.has_value());
+}
+
+TEST_F(LowerBoundInferenceTest, MaximumWithDynamicOperandKeepsLowerBound) {
+  XlaBuilder b(TestName());
+  auto p0 = Parameter(&b, 0, ShapeUtil::MakeShape(S32, {2}, {true}), "p0");
+  auto p1 = Parameter(&b, 1, ShapeUtil::MakeScalarShape(S32), "p1");
+
+  auto max = Max(GetDimensionSize(p0, 0), p1);
+  auto result = ComputeLowerBoundLiteral(max, &b).value().Get<int32_t>({});
+
+  ASSERT_TRUE(result.has_value());
+  EXPECT_EQ(result.value(), 0);
+}
+
+TEST_F(LowerBoundInferenceTest, MinimumWithDynamicOperandCantInferLowerBound) {
+  XlaBuilder b(TestName());
+  auto p0 = Parameter(&b, 0, ShapeUtil::MakeShape(S32, {2}, {true}), "p0");
+  auto p1 = Parameter(&b, 1, ShapeUtil::MakeScalarShape(S32), "p1");
+
+  auto min = Min(GetDimensionSize(p0, 0), p1);
+  auto result = ComputeLowerBoundLiteral(min, &b).value().Get<int32_t>({});
+
+  EXPECT_FALSE(result.has_value());
 }
 
 TEST_F(UpperBoundInferenceTest, KeyValueSort) {

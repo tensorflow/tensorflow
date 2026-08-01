@@ -221,9 +221,10 @@ enum PostorderDFSNodeType {
   kConstantLowerBound,
   // This node is about figuring out whether a value is dynamic.
   kValueIsDynamic,
-  // This node is about figuring out whether a bound value is dynamic. It's
-  // similar to kValueIsDynamic, but views shape bound as static values.
-  kBoundIsDynamic,
+  // These nodes are about figuring out whether a bound value is dynamic. They
+  // are similar to kValueIsDynamic, but view shape bounds as static values.
+  kUpperBoundIsDynamic,
+  kLowerBoundIsDynamic,
 };
 
 std::string PostorderDFSNodeTypeToString(PostorderDFSNodeType type) {
@@ -236,9 +237,16 @@ std::string PostorderDFSNodeTypeToString(PostorderDFSNodeType type) {
       return "kConstantLowerBound";
     case kValueIsDynamic:
       return "kValueIsDynamic";
-    case kBoundIsDynamic:
-      return "kBoundIsDynamic";
+    case kUpperBoundIsDynamic:
+      return "kUpperBoundIsDynamic";
+    case kLowerBoundIsDynamic:
+      return "kLowerBoundIsDynamic";
   }
+}
+
+bool IsBoundDynamism(PostorderDFSNodeType type) {
+  return type == PostorderDFSNodeType::kUpperBoundIsDynamic ||
+         type == PostorderDFSNodeType::kLowerBoundIsDynamic;
 }
 
 struct InferenceContext {
@@ -478,6 +486,23 @@ PostorderDFSNode CreateAllDynamicResult(const Shape& shape,
       });
 }
 
+absl::StatusOr<Literal> EvaluateMinMaxBoundWithOptionalOperand(
+    HloEvaluator& evaluator, HloOpcode opcode, const Literal& lhs_bound,
+    const Literal& lhs_bound_is_dynamic, const Literal& rhs_bound,
+    const Literal& rhs_bound_is_dynamic) {
+  ASSIGN_OR_RETURN(
+      Literal binary_bound,
+      evaluator.EvaluateElementwiseBinaryOp(opcode, lhs_bound, rhs_bound));
+  ASSIGN_OR_RETURN(
+      Literal rhs_or_binary_bound,
+      evaluator.EvaluateElementwiseTernaryOp(HloOpcode::kSelect,
+                                             lhs_bound_is_dynamic, rhs_bound,
+                                             binary_bound));
+  return evaluator.EvaluateElementwiseTernaryOp(HloOpcode::kSelect,
+                                                rhs_bound_is_dynamic, lhs_bound,
+                                                rhs_or_binary_bound);
+}
+
 }  // namespace
 
 // Analyze a tensor's constant value, upper-bound value or lower-bound value.
@@ -695,6 +720,37 @@ absl::StatusOr<PostorderDFSNode> PostorderDFSVisitor::AnalyzeUpperBound(
                 HloOpcode::kMaximum, lower_bound_abs, upper_bound_abs);
           });
     }
+    case HloOpcode::kMaximum: {
+      // upper-bound(max(lhs, rhs)) = max(upper-bound(lhs), upper-bound(rhs))
+      return PostorderDFSNode()
+          .AddDependency(root->operand_ids(0),
+                         PostorderDFSNodeType::kConstantUpperBound, context)
+          .AddDependency(root->operand_ids(1),
+                         PostorderDFSNodeType::kConstantUpperBound, context)
+          .AddVisit([this](Literal lhs_bound,
+                           Literal rhs_bound) -> absl::StatusOr<Literal> {
+            return evaluator.EvaluateElementwiseBinaryOp(
+                HloOpcode::kMaximum, lhs_bound, rhs_bound);
+          });
+    }
+    case HloOpcode::kMinimum: {
+      // upper-bound(min(lhs, rhs)) can use either operand's upper bound.
+      return PostorderDFSNode()
+          .AddDependency(root->operand_ids(0),
+                         PostorderDFSNodeType::kConstantUpperBound, context)
+          .AddDependency(root->operand_ids(0),
+                         PostorderDFSNodeType::kUpperBoundIsDynamic, context)
+          .AddDependency(root->operand_ids(1),
+                         PostorderDFSNodeType::kConstantUpperBound, context)
+          .AddDependency(root->operand_ids(1),
+                         PostorderDFSNodeType::kUpperBoundIsDynamic, context)
+          .AddVisit([this](absl::Span<Literal> operands)
+                        -> absl::StatusOr<Literal> {
+            return EvaluateMinMaxBoundWithOptionalOperand(
+                evaluator, HloOpcode::kMinimum, operands[0], operands[1],
+                operands[2], operands[3]);
+          });
+    }
     case HloOpcode::kSort: {
       auto dfs = PostorderDFSNode();
       InferenceContext dep_context = context;
@@ -867,6 +923,37 @@ absl::StatusOr<PostorderDFSNode> PostorderDFSVisitor::AnalyzeLowerBound(
                                  HloOpcode::kAbs, upper_bound));
             return evaluator.EvaluateElementwiseBinaryOp(
                 HloOpcode::kMinimum, lower_bound_abs, upper_bound_abs);
+          });
+    }
+    case HloOpcode::kMaximum: {
+      // lower-bound(max(lhs, rhs)) can use either operand's lower bound.
+      return PostorderDFSNode()
+          .AddDependency(root->operand_ids(0),
+                         PostorderDFSNodeType::kConstantLowerBound, context)
+          .AddDependency(root->operand_ids(0),
+                         PostorderDFSNodeType::kLowerBoundIsDynamic, context)
+          .AddDependency(root->operand_ids(1),
+                         PostorderDFSNodeType::kConstantLowerBound, context)
+          .AddDependency(root->operand_ids(1),
+                         PostorderDFSNodeType::kLowerBoundIsDynamic, context)
+          .AddVisit([this](absl::Span<Literal> operands)
+                        -> absl::StatusOr<Literal> {
+            return EvaluateMinMaxBoundWithOptionalOperand(
+                evaluator, HloOpcode::kMaximum, operands[0], operands[1],
+                operands[2], operands[3]);
+          });
+    }
+    case HloOpcode::kMinimum: {
+      // lower-bound(min(lhs, rhs)) = min(lower-bound(lhs), lower-bound(rhs))
+      return PostorderDFSNode()
+          .AddDependency(root->operand_ids(0),
+                         PostorderDFSNodeType::kConstantLowerBound, context)
+          .AddDependency(root->operand_ids(1),
+                         PostorderDFSNodeType::kConstantLowerBound, context)
+          .AddVisit([this](Literal lhs_bound,
+                           Literal rhs_bound) -> absl::StatusOr<Literal> {
+            return evaluator.EvaluateElementwiseBinaryOp(
+                HloOpcode::kMinimum, lhs_bound, rhs_bound);
           });
     }
     case HloOpcode::kNegate: {
@@ -1050,7 +1137,7 @@ absl::StatusOr<PostorderDFSNode> PostorderDFSVisitor::AnalyzeIsDynamic(
                        handle_to_instruction(operand_handle));
       return PostorderDFSNode().AddVisit(
           [operand_proto, dimension, type]() -> absl::StatusOr<Literal> {
-            if (type == PostorderDFSNodeType::kBoundIsDynamic) {
+            if (IsBoundDynamism(type)) {
               // The bound of dynamic dimension is not dynamic.
               return LiteralUtil::CreateR0<bool>(false);
             }
@@ -1082,7 +1169,7 @@ absl::StatusOr<PostorderDFSNode> PostorderDFSVisitor::AnalyzeIsDynamic(
               !all_operands_values_static,
               ShapeUtil::GetSubshape(root_shape, context.shape_index));
         }
-        CHECK(type == PostorderDFSNodeType::kBoundIsDynamic);
+        CHECK(IsBoundDynamism(type));
         // The condition for bounds are more relaxed than values. If we know the
         // bounds of each element [B0, B1... Bn], all results have the same
         // bound
@@ -1168,8 +1255,6 @@ absl::StatusOr<PostorderDFSNode> PostorderDFSVisitor::AnalyzeIsDynamic(
     case HloOpcode::kAtan2:
     case HloOpcode::kDivide:
     case HloOpcode::kComplex:
-    case HloOpcode::kMaximum:
-    case HloOpcode::kMinimum:
     case HloOpcode::kMultiply:
     case HloOpcode::kPower:
     case HloOpcode::kRemainder:
@@ -1187,6 +1272,22 @@ absl::StatusOr<PostorderDFSNode> PostorderDFSVisitor::AnalyzeIsDynamic(
             .WithPrimitiveType(PRED)
             .WithOpCode(HloOpcode::kOr)
             .Evaluate();
+      });
+    }
+    case HloOpcode::kMaximum:
+    case HloOpcode::kMinimum: {
+      return result.AddVisit([opcode, type,
+                              this](absl::Span<Literal> operands)
+                                 -> absl::StatusOr<Literal> {
+        HloOpcode mask_opcode = HloOpcode::kOr;
+        if ((opcode == HloOpcode::kMinimum &&
+             type == PostorderDFSNodeType::kUpperBoundIsDynamic) ||
+            (opcode == HloOpcode::kMaximum &&
+             type == PostorderDFSNodeType::kLowerBoundIsDynamic)) {
+          mask_opcode = HloOpcode::kAnd;
+        }
+        return evaluator.EvaluateElementwiseBinaryOp(mask_opcode, operands[0],
+                                                     operands[1]);
       });
     }
     case HloOpcode::kTuple:
@@ -1483,7 +1584,7 @@ absl::StatusOr<PostorderDFSNode> PostorderDFSVisitor::AnalyzeIsDynamic(
       if (root->custom_call_target() == "SetBound") {
         return PostorderDFSNode().AddVisit([type,
                                             root]() -> absl::StatusOr<Literal> {
-          if (type == PostorderDFSNodeType::kBoundIsDynamic) {
+          if (IsBoundDynamism(type)) {
             ASSIGN_OR_RETURN(Shape root_shape, Shape::FromProto(root->shape()));
             return CreatePredLiteral(false, root_shape);
           } else {
@@ -1620,7 +1721,8 @@ absl::StatusOr<Literal> PostorderDFSVisitor::PostOrderDFSVisit(
         ASSIGN_OR_RETURN(node, AnalyzeUpperBound(item.handle, item.context));
         break;
       }
-      case PostorderDFSNodeType::kBoundIsDynamic:
+      case PostorderDFSNodeType::kUpperBoundIsDynamic:
+      case PostorderDFSNodeType::kLowerBoundIsDynamic:
       case PostorderDFSNodeType::kValueIsDynamic: {
         VLOG(1) << "value is dynamic";
         ASSIGN_OR_RETURN(
@@ -1841,7 +1943,8 @@ absl::StatusOr<OptionalLiteral> ValueInference::AnalyzeConstant(
     case ValueInferenceMode::kLowerBound: {
       ASSIGN_OR_RETURN(Literal mask,
                        visitor.PostOrderDFSVisit(
-                           handle, PostorderDFSNodeType::kBoundIsDynamic));
+                           handle,
+                           PostorderDFSNodeType::kLowerBoundIsDynamic));
       if (mask.IsAll(1)) {
         // Everything is dynamic, no need to do constant inference.
         return OptionalLiteral(CreateGarbageLiteral(op_shape), std::move(mask));
@@ -1855,7 +1958,8 @@ absl::StatusOr<OptionalLiteral> ValueInference::AnalyzeConstant(
     case ValueInferenceMode::kUpperBound: {
       ASSIGN_OR_RETURN(Literal mask,
                        visitor.PostOrderDFSVisit(
-                           handle, PostorderDFSNodeType::kBoundIsDynamic));
+                           handle,
+                           PostorderDFSNodeType::kUpperBoundIsDynamic));
       if (mask.IsAll(1)) {
         // Everything is dynamic, no need to do constant inference.
         return OptionalLiteral(CreateGarbageLiteral(op_shape), std::move(mask));
