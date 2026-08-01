@@ -30,6 +30,7 @@ limitations under the License.
 #include "tensorflow/lite/builtin_ops.h"
 #include "tensorflow/lite/core/c/builtin_op_data.h"
 #include "tensorflow/lite/core/c/common.h"
+#include "tensorflow/lite/core/subgraph.h"
 #include "tensorflow/lite/delegates/utils/simple_delegate.h"
 #include "tensorflow/lite/delegates/ynnpack/copy.h"
 #include "tensorflow/lite/delegates/ynnpack/dot.h"
@@ -508,7 +509,29 @@ class YNNPackDelegate : public SimpleDelegateInterface {
     return false;
   }
 
-  TfLiteStatus Initialize(TfLiteContext* context) override { return kTfLiteOk; }
+  // There is an issue with composite ops: if we leave composite ops we don't
+  // support in the graph, TFlite will undo delegates, inline the composite ops,
+  // and then redo-delegation. This is expensive, and also somehow causes
+  // a performance issue at invocation time too (not just delegation). To avoid
+  // this, we need to inline all the composite ops we don't support first.
+  // TODO: b/541012735 - This might break other delegates that would have
+  // supported the composite op without inlining.
+  TfLiteStatus Initialize(TfLiteContext* context) override {
+    auto* subgraph = reinterpret_cast<tflite::Subgraph*>(context->impl_);
+    if (subgraph != nullptr) {
+      auto filter = [context](const TfLiteNode* node,
+                              const TfLiteRegistration* reg) -> bool {
+        if (IsRuntimeBmm(reg, node) &&
+            IsRuntimeBatchedMatMulSupported(reg, node, context) == kTfLiteOk) {
+          // Don't inline this supported runtime_bmm.
+          return false;
+        }
+        return true;
+      };
+      TF_LITE_ENSURE_STATUS(subgraph->InlineCompositeNodes(filter));
+    }
+    return kTfLiteOk;
+  }
 
   const char* Name() const override {
     static constexpr char kName[] = "YNNPackDelegate";

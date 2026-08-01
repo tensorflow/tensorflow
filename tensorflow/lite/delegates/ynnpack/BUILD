@@ -34,6 +34,7 @@ cc_library(
     deps = [
         "//tensorflow/lite:builtin_ops",
         "//tensorflow/lite:minimal_logging",
+        "//tensorflow/lite/core:subgraph",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/delegates/utils:simple_delegate",
         "//tensorflow/lite/kernels:kernel_util",
