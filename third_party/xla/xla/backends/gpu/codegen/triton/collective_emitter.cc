@@ -1019,17 +1019,16 @@ GetCollectiveBlockLevelFusionConfig(const GpuTopology& gpu_topology,
   }
 }
 
-absl::StatusOr<bool> TrySetGpuBackendConfigForCollective(
+absl::Status TrySetGpuBackendConfigForCollective(
     const GpuTopology& gpu_topology, HloFusionInstruction* fusion_instr,
     const DeviceAssignment* device_assignment) {
   ASSIGN_OR_RETURN(const std::optional<BlockLevelFusionConfig> block_config,
                    GetCollectiveBlockLevelFusionConfig(
                        gpu_topology, fusion_instr, device_assignment));
   if (!block_config.has_value()) {
-    VLOG(3) << "No block level fusion config calculated for collective: "
-            << fusion_instr->ToString()
-            << ". Not using Triton collective fusion.";
-    return false;
+    return absl::FailedPreconditionError(absl::StrCat(
+        "No block level fusion config calculated for collective ",
+        fusion_instr->ToString(), ". Not using Triton collective fusion."));
   }
   ASSIGN_OR_RETURN(GpuBackendConfig gpu_backend_config,
                    fusion_instr->backend_config<GpuBackendConfig>());
@@ -1039,7 +1038,7 @@ absl::StatusOr<bool> TrySetGpuBackendConfigForCollective(
        ->mutable_block_level_fusion_config() = *std::move(block_config);
   RETURN_IF_ERROR(
       fusion_instr->set_backend_config(std::move(gpu_backend_config)));
-  return true;
+  return absl::OkStatus();
 }
 
 absl::StatusOr<std::vector<Shape>> GetCollectiveUnmanagedKernelArguments(
