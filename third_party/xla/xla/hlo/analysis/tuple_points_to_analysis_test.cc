@@ -1231,5 +1231,72 @@ ENTRY main {
                            {p0});
 }
 
+// Test that if async-done has incompatible output shape (e.g., empty tuple at
+// index {1} in async-start), AsyncDone (which returns a non-tuple array) does
+// not forward the points-to set of the empty tuple from async-start, but
+// instead defines its own buffer.
+TEST_F(TuplePointsToAnalysisTest, AsyncDoneNoBindOutput) {
+  std::string hlo_str = R"(
+HloModule AsyncDoneNoBindOutput
+
+%async_comp (param: f32[8,8]) -> f32[8,8] {
+  %param = f32[8,8]{0,1} parameter(0)
+  ROOT %copy = f32[8,8]{0,1} copy(%param)
+}
+
+ENTRY main {
+  %param = f32[8,8]{0,1} parameter(0)
+  %async_start = ((f32[8,8]{0,1}), (), s32[]) async-start(%param), calls=%async_comp
+  ROOT %async_done = f32[8,8]{0,1} async-done(%async_start)
+}
+)";
+  ASSERT_OK_AND_ASSIGN(
+      module_, ParseAndReturnVerifiedModule(hlo_str, GetModuleConfigForTest()));
+  RunAnalysis();
+
+  auto* async_done = FindInstruction(module_.get(), "async_done");
+  const PointsToSet& points_to_set =
+      points_to_analysis_->GetPointsToSet(async_done);
+  EXPECT_FALSE(points_to_set.element({}).empty());
+  EXPECT_EQ(async_done, points_to_set.element({}).at(0)->instruction());
+}
+
+// Test that if async-done binds a tuple output (empty tuple at index {1} in
+// async-start),
+// and AsyncDone returns a tuple, we do not forward and instead define new
+// buffers for all elements of the AsyncDone tuple.
+TEST_F(TuplePointsToAnalysisTest, AsyncDoneNoBindOutputTuple) {
+  std::string hlo_str = R"(
+HloModule AsyncDoneNoBindOutputTuple
+
+%async_comp (param: f32[8,8]) -> (f32[8,8], f32[4,4]) {
+  %param = f32[8,8]{0,1} parameter(0)
+  ROOT %cc = (f32[8,8]{0,1}, f32[4,4]{0,1}) custom-call(%param), custom_call_target="some_target"
+}
+
+ENTRY main {
+  %param = f32[8,8]{0,1} parameter(0)
+  %async_start = ((f32[8,8]{0,1}), (), s32[]) async-start(%param), calls=%async_comp
+  ROOT %async_done = (f32[8,8]{0,1}, f32[4,4]{0,1}) async-done(%async_start)
+}
+)";
+  ASSERT_OK_AND_ASSIGN(
+      module_, ParseAndReturnVerifiedModule(hlo_str, GetModuleConfigForTest()));
+  RunAnalysis();
+
+  auto* async_done = FindInstruction(module_.get(), "async_done");
+  const PointsToSet& points_to_set =
+      points_to_analysis_->GetPointsToSet(async_done);
+
+  // Element {0} and {1} should have buffers defined by async_done itself.
+  EXPECT_FALSE(points_to_set.element({0}).empty());
+  EXPECT_EQ(async_done, points_to_set.element({0}).at(0)->instruction());
+  EXPECT_EQ(ShapeIndex({0}), points_to_set.element({0}).at(0)->index());
+
+  EXPECT_FALSE(points_to_set.element({1}).empty());
+  EXPECT_EQ(async_done, points_to_set.element({1}).at(0)->instruction());
+  EXPECT_EQ(ShapeIndex({1}), points_to_set.element({1}).at(0)->index());
+}
+
 }  // namespace
 }  // namespace xla
