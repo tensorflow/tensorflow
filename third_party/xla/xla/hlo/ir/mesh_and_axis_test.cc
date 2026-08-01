@@ -105,6 +105,19 @@ TEST(MeshAndAxisTest, MeshToAndFromProtoIotaTiling) {
   EXPECT_EQ(mesh, Mesh::FromProto(proto));
 }
 
+TEST(MeshAndAxisTest, MeshFromProtoWithDeviceIdsSizeMismatchDoesNotOverflow) {
+  MeshProto proto;
+  proto.add_axes()->set_name("a");
+  proto.mutable_axes(0)->set_size(1);
+  proto.add_device_ids(1);
+  proto.add_device_ids(2);
+  proto.add_device_ids(3);
+
+  Mesh mesh = Mesh::FromProto(proto);
+  EXPECT_EQ(mesh.axis_sizes().size(), 1);
+  EXPECT_EQ(mesh.axis_sizes()[0], 1);
+}
+
 TEST(MeshAndAxisTest, MeshToProtoIotaTilingWithReshapeDims) {
   MeshProto expected;
   expected.add_axes()->set_name("axis1");

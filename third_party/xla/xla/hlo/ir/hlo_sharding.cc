@@ -1111,9 +1111,13 @@ const TileAssignment& HloSharding::TileAgnosticDeviceAssignment() const {
     int64_t product_of_dimensions = 1;
     bool any_overflow = false;
     for (auto dimension : dims) {
+      if (dimension <= 0) {
+        return absl::InvalidArgumentError("Dimension must be positive.");
+      }
       bool overflow = false;
       std::tie(product_of_dimensions, overflow) =
           OverflowSafeMultiply(product_of_dimensions, dimension);
+      any_overflow |= overflow;
     }
     TF_RET_CHECK(!any_overflow);
     return product_of_dimensions;
@@ -1127,9 +1131,28 @@ const TileAssignment& HloSharding::TileAgnosticDeviceAssignment() const {
     ASSIGN_OR_RETURN(int64_t product_of_iota_dimensions,
                      product_no_overflow(proto.iota_reshape_dims()));
     TF_RET_CHECK(product_of_dimensions == product_of_iota_dimensions);
+    // Validate permutation
+    std::vector<bool> seen(proto.iota_transpose_perm().size(), false);
+    for (int perm_val : proto.iota_transpose_perm()) {
+      if (perm_val < 0 || perm_val >= proto.iota_transpose_perm().size()) {
+        return absl::InvalidArgumentError(
+            "Invalid permutation index in iota_transpose_perm.");
+      }
+      if (seen[perm_val]) {
+        return absl::InvalidArgumentError(
+            "Duplicate index in iota_transpose_perm.");
+      }
+      seen[perm_val] = true;
+    }
   } else {
     TF_RET_CHECK(product_of_dimensions ==
                  proto.tile_assignment_devices().size());
+    for (int64_t device_id : proto.tile_assignment_devices()) {
+      if (device_id < 0) {
+        return absl::InvalidArgumentError(
+            "Device ID in tile_assignment_devices must be non-negative.");
+      }
+    }
   }
 
   auto create_tile_assignment = [&] {
