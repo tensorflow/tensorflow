@@ -299,6 +299,9 @@ PjRtStreamExecutorRawClient::PjRtStreamExecutorRawClient(
     : owned_allocator_(std::move(allocator)),
       client_(client),
       host_memory_allocator_(std::move(host_memory_allocator)),
+      has_custom_host_memory_allocator_(dynamic_cast<BasicHostMemoryAllocator*>(
+                                            host_memory_allocator_.get()) ==
+                                        nullptr),
       should_stage_host_to_device_transfers_(
           should_stage_host_to_device_transfers),
       async_work_runner_(std::move(async_work_runner)),
@@ -540,8 +543,21 @@ absl::StatusOr<PjRtRawBufferRef> PjRtStreamExecutorRawClient::AllocateRawBuffer(
       auto buffer,
       allocator_->Allocate(local_device->local_device_id().value(),
                            on_device_bytes_count, true, layout_memory_space));
-  auto mem =
-      RawSEDeviceMemory::Create(buffer.Release(), local_device, allocator_);
+  tsl::AsyncValueRef<RawSEDeviceMemory> mem;
+  if (has_custom_host_memory_allocator_ &&
+      layout_memory_space == Layout::kHostMemorySpace) {
+    xla::HostMemoryAllocator::AllocateOptions alloc_opts = {
+        /*numa_node=*/local_device->executor()->numa_node(),
+        /*local_device_id=*/local_device->local_device_id(),
+    };
+    auto buffer =
+        GetHostMemoryAllocator()->Allocate(on_device_bytes_count, alloc_opts);
+    se::DeviceAddressBase address(buffer.get(), on_device_bytes_count);
+    mem = RawSEDeviceMemory::CreateForeign(address,
+                                           [buffer = std::move(buffer)]() {});
+  } else {
+    mem = RawSEDeviceMemory::Create(buffer.Release(), local_device, allocator_);
+  }
   if (client_ != nullptr && local_device->allocation_model() !=
                                 LocalDeviceState::kComputeSynchronized) {
     DCHECK(client_->backend().transfer_manager()->CanBufferBeAccessedNow(

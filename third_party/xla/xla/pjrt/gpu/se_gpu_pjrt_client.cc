@@ -126,6 +126,7 @@ limitations under the License.
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/protobuf/coordination_service.pb.h"
+#include "xla/tsl/util/env_var.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/fingerprint.h"
 #include "tsl/platform/numa.h"
@@ -845,7 +846,6 @@ void StreamExecutorGpuRawClient::ScheduleTransfersOnLocalDevice(
 
 // Prepare a receive buffer on a given device for receiving data as part of a
 
-
 // Send functionality for original cross-host transfers API.
 void StreamExecutorGpuRawClient::ScheduleRemoteSend(
     PjRtMemorySpace* memory_space, PjRtRawBufferRef raw_buffer,
@@ -1127,8 +1127,8 @@ BuildLocalDeviceStates(LocalClient* xla_client, bool schedule_async,
 absl::StatusOr<std::unique_ptr<se::DeviceAddressAllocator>>
 GetStreamExecutorGpuDeviceAllocator(
     se::Platform* platform, const GpuAllocatorConfig& allocator_config,
-    const std::map<int, std::unique_ptr<LocalDeviceState>>&
-        addressable_devices) {
+    const std::map<int, std::unique_ptr<LocalDeviceState>>& addressable_devices,
+    bool preallocate_host_memory) {
   std::vector<se::MultiDeviceAdapter::AllocatorInfo> allocators;
   const DebugOptions& debug_options = xla::GetDebugOptionsFromFlags();
   GpuAllocatorConfig::Kind effective_kind = allocator_config.kind;
@@ -1245,7 +1245,9 @@ GetStreamExecutorGpuDeviceAllocator(
              /*memory_space=*/(int)xla::gpu::MemorySpaceColor::kTempBuffer});
 
         // Host memory space (StreamExecutor MemorySpace::kHost = 5)
-        ASSIGN_OR_RETURN(auto host_allocator, GetGpuHostAllocator(executor));
+        ASSIGN_OR_RETURN(
+            auto host_allocator,
+            GetGpuHostAllocator(executor, preallocate_host_memory));
         allocators.push_back(
             {std::move(host_allocator), stream,
              /*memory_space=*/static_cast<int>(se::MemorySpace::kHost)});
@@ -1305,9 +1307,9 @@ GetStreamExecutorGpuDeviceAllocator(
   }
 
   for (const auto& ordinal_and_device : addressable_devices) {
-    ASSIGN_OR_RETURN(
-        auto host_allocator,
-        GetGpuHostAllocator(ordinal_and_device.second->executor()));
+    ASSIGN_OR_RETURN(auto host_allocator,
+                     GetGpuHostAllocator(ordinal_and_device.second->executor(),
+                                         preallocate_host_memory));
     allocators.push_back(
         {std::move(host_allocator), ordinal_and_device.second->compute_stream(),
          /*memory_space=*/static_cast<int>(se::MemorySpace::kHost)});
@@ -1752,44 +1754,63 @@ absl::StatusOr<std::unique_ptr<PjRtClient>> GetStreamExecutorGpuClient(
   auto memory_registration =
       CreateAllocatorMemoryRegistration(&allocator_config);
 
+  bool preallocate_host_memory;
+  RETURN_IF_ERROR(tsl::ReadBoolFromEnvVar(
+      "XLA_PJRT_GPU_HOST_MEMORY_PREALLOCATE", false, &preallocate_host_memory));
+
   ASSIGN_OR_RETURN(auto allocator,
                    GetStreamExecutorGpuDeviceAllocator(
                        xla_client->platform(), std::move(allocator_config),
-                       local_device_states));
+                       local_device_states, preallocate_host_memory));
 
   std::unique_ptr<HostMemoryAllocator> host_memory_allocator;
   if (options.host_memory_allocator_factory != nullptr) {
-    se::StreamExecutor* const stream_executor =
-        local_device_states.begin()->second->compute_stream()->parent();
-    HostMemoryAllocator::Options allocator_options;
-    allocator_options.alignment = tsl::Allocator::kAllocatorAlignment;
-    allocator_options.map_fn = [stream_executor](
-                                   std::optional<LocalDeviceId> local_device_id,
-                                   void* data, size_t size) {
-      bool success = stream_executor->HostMemoryRegister(data, size);
-      if (!success) {
-        return absl::InternalError(absl::StrFormat(
-            "Failed to register host memory at address: %ps", data));
-      }
-      return absl::OkStatus();
-    };
-    allocator_options.unmap_fn =
-        [stream_executor](std::optional<LocalDeviceId> local_device_id,
-                          void* data) {
-          bool success = stream_executor->HostMemoryUnregister(data);
-          if (!success) {
-            return absl::InternalError(absl::StrFormat(
-                "Failed to unregister host memory at address: %ps", data));
-          }
-          return absl::OkStatus();
-        };
-    ASSIGN_OR_RETURN(
-        host_memory_allocator,
-        options.host_memory_allocator_factory(std::move(allocator_options)));
-  } else {
+    if (preallocate_host_memory) {
+      // Since `GetStreamExecutorGpuDeviceAllocator()` always creates a host
+      // memory allocator, using both default host memory allocator and custom
+      // allocator is wasteful if the default allocator is configured to
+      // preallocate memory. We ask users to disable preallocation if they want
+      // to use a custom host memory allocator instead.
+      LOG(WARNING)
+          << "Ignoring the custom host memory allocator factory given to PjRt "
+             "GPU client creation since preallocation is also enabled; disable "
+             "preallocation via XLA_PJRT_GPU_HOST_MEMORY_PREALLOCATE=false if "
+             "you want to use a custom host allocator factory";
+    } else {
+      se::StreamExecutor* const stream_executor =
+          local_device_states.begin()->second->compute_stream()->parent();
+      HostMemoryAllocator::Options allocator_options;
+      allocator_options.alignment = tsl::Allocator::kAllocatorAlignment;
+      allocator_options.map_fn =
+          [stream_executor](std::optional<LocalDeviceId> local_device_id,
+                            void* data, size_t size) {
+            bool success = stream_executor->HostMemoryRegister(data, size);
+            if (!success) {
+              return absl::InternalError(absl::StrFormat(
+                  "Failed to register host memory at address: %ps", data));
+            }
+            return absl::OkStatus();
+          };
+      allocator_options.unmap_fn =
+          [stream_executor](std::optional<LocalDeviceId> local_device_id,
+                            void* data) {
+            bool success = stream_executor->HostMemoryUnregister(data);
+            if (!success) {
+              return absl::InternalError(absl::StrFormat(
+                  "Failed to unregister host memory at address: %ps", data));
+            }
+            return absl::OkStatus();
+          };
+      ASSIGN_OR_RETURN(
+          host_memory_allocator,
+          options.host_memory_allocator_factory(std::move(allocator_options)));
+    }
+  }
+  if (host_memory_allocator == nullptr) {
     ASSIGN_OR_RETURN(
         auto allocator,
-        GetGpuHostAllocator(local_device_states.begin()->second->executor()));
+        GetGpuHostAllocator(local_device_states.begin()->second->executor(),
+                            preallocate_host_memory));
     host_memory_allocator = std::make_unique<BasicHostMemoryAllocator>(
         std::move(allocator), tsl::Allocator::kAllocatorAlignment);
   }

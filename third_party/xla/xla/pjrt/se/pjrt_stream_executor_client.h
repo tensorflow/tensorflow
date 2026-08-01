@@ -345,6 +345,7 @@ class PjRtStreamExecutorRawClient : public PjRtRawClient {
 
   // Allocator to be used for staging memory transfers to devices.
   std::unique_ptr<HostMemoryAllocator> host_memory_allocator_;
+  bool has_custom_host_memory_allocator_ = false;
 
   // Should we always prefer to stage host-to-device transfers via memory
   // allocated on host_memory_allocator_? True only on GPU, where we prefer to
