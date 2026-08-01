@@ -1905,6 +1905,7 @@ py_library(
         ":linalg_ops_impl",
         ":map_fn",
         ":math_ops",
+        ":norm_grad",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:tensor",
@@ -2040,6 +2041,7 @@ py_library(
         ":array_ops_gen",
         ":math_ops",
         ":math_ops_gen",
+        ":norm_grad",
         ":special_math_ops",
         "//tensorflow/python/compat",
         "//tensorflow/python/eager:context",
@@ -2049,6 +2051,19 @@ py_library(
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:tensor",
         "//tensorflow/python/framework:tensor_util",
+        "//third_party/py/numpy",
+    ],
+)
+
+py_library(
+    name = "norm_grad",
+    srcs = ["norm_grad.py"],
+    strict_deps = True,
+    deps = [
+        ":array_ops",
+        ":cond",
+        ":math_ops",
+        "//tensorflow/python/framework:dtypes",
         "//third_party/py/numpy",
     ],
 )
@@ -3603,6 +3618,7 @@ cuda_py_strict_test(
         ":gradient_checker",
         ":gradient_checker_v2",
         ":gradients",
+        ":linalg_ops",
         ":math_grad",
         ":math_ops",
         "//tensorflow/python/eager:backprop",
