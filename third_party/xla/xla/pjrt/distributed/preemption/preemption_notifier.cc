@@ -29,7 +29,7 @@ limitations under the License.
 #include "absl/time/time.h"
 #include "xla/tsl/platform/env.h"
 #if defined(PLATFORM_GOOGLE)
-#include "thread/executor.h"
+#include "third_party/gloop/thread/executor.h"
 #include "thread/signal.h"
 #endif
 
