@@ -1949,6 +1949,10 @@ TEST_P(OneShotRaggedAllToAllMemSpaceTest, DirectUsage) {
   DebugOptions& opts = config.mutable_debug_options();
   opts.set_xla_gpu_experimental_ragged_all_to_all_use_barrier_with_nccl(true);
 
+  // This test will run on a system with 1 GPU, so we need to disable the
+  // decomposer pass.
+  opts.add_xla_disable_hlo_passes("ragged-all-to-all-multi-host-decomposer");
+
   std::pair<const HloModule*, std::unique_ptr<OpaqueExecutable>>
       optimized_module_and_executable;
   ASSERT_OK_AND_ASSIGN(optimized_module_and_executable,
