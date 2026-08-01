@@ -147,15 +147,14 @@ inline int32x4x4_t MultiplyByQuantizedMultiplier4Rows(
 
 template <typename T>
 int CountLeadingZeros(T integer_input) {
-  static_assert(std::is_unsigned<T>::value,
-                "Only unsigned integer types handled.");
+  static_assert(std::is_unsigned_v<T>, "Only unsigned integer types handled.");
   if (integer_input == 0) {
     return std::numeric_limits<T>::digits;
   }
 #if defined(__GNUC__)
-  if (std::is_same<T, uint32_t>::value) {
+  if (std::is_same_v<T, uint32_t>) {
     return __builtin_clz(integer_input);
-  } else if (std::is_same<T, uint64_t>::value) {
+  } else if (std::is_same_v<T, uint64_t>) {
     return __builtin_clzll(integer_input);
   }
 #endif
