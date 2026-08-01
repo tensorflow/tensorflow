@@ -268,36 +268,51 @@ TEST(FfiTest, RunId) {
   TF_ASSERT_OK(status);
 }
 
-struct MyExtension {
-  static constexpr int64_t kExtensionType = 1234;
-  static constexpr int64_t kMajorVersion = 1;
-  static constexpr int64_t kMinorVersion = 2;
+struct MyCExtension {
   XLA_FFI_Extension extension_base;
   int32_t my_data;
 };
 
-struct AnotherExtension {
+// Context is a wrapper around the C API extension.
+struct MyContext {
+  const MyCExtension* ext;
+};
+
+struct MyExtension {
+  using Type = MyContext;
+  using CExtension = MyCExtension;
+  static constexpr auto kName = "MyExtension";
+  static constexpr int64_t kExtensionType = 1234;
+  static constexpr int32_t kMajorVersion = 1;
+  static constexpr int32_t kMinorVersion = 2;
+
+  static Type Create(const CExtension* ext) { return Type{ext}; }
+  static bool Support(int32_t major_version, int32_t minor_version) {
+    return major_version == kMajorVersion && minor_version <= kMinorVersion;
+  }
+};
+
+struct AnotherExtension : public MyExtension {
+  static constexpr auto kName = "AnotherExtension";
   static constexpr int64_t kExtensionType = 1236;
-  static constexpr int64_t kMajorVersion = 3;
-  static constexpr int64_t kMinorVersion = 4;
-  XLA_FFI_Extension extension_base;
-  int32_t my_data;
+  static constexpr int32_t kMajorVersion = 3;
+  static constexpr int32_t kMinorVersion = 2;
 };
 
 TEST(FfiTest, DecodeExtension) {
-  MyExtension test_ext;
+  MyCExtension test_ext;
   test_ext.extension_base = MakeExtensionHeader<MyExtension>();
   test_ext.my_data = 42;
 
   bool handler_called = false;
 
-  auto handler = Ffi::Bind().Ctx<FfiExtension<MyExtension>>().To(
-      [&](const MyExtension* ext) -> absl::Status {
-        EXPECT_NE(ext, nullptr);
-        EXPECT_EQ(ext->my_data, 42);
-        EXPECT_EQ(ext->extension_base.id.major_version,
+  auto handler = Ffi::Bind().Ctx<Extension<MyExtension>>().To(
+      [&](const MyExtension::Type ctx) -> absl::Status {
+        EXPECT_NE(ctx.ext, nullptr);
+        EXPECT_EQ(ctx.ext->my_data, 42);
+        EXPECT_EQ(ctx.ext->extension_base.id.major_version,
                   MyExtension::kMajorVersion);
-        EXPECT_EQ(ext->extension_base.id.minor_version,
+        EXPECT_EQ(ctx.ext->extension_base.id.minor_version,
                   MyExtension::kMinorVersion);
         handler_called = true;
         return absl::OkStatus();
@@ -312,16 +327,23 @@ TEST(FfiTest, DecodeExtension) {
   auto status = Invoke(Api(), *handler, call_frame, context);
   EXPECT_TRUE(handler_called);
   ASSERT_OK(status);
+
+  // Check that version mismatch causes an error.
+  test_ext.extension_base.id.major_version = 5;
+  test_ext.extension_base.id.minor_version = 0;
+  status = Invoke(Api(), *handler, call_frame, context);
+  EXPECT_FALSE(status.ok());
+  EXPECT_THAT(status.message(), HasSubstr("Extension version mismatch"));
 }
 
 TEST(FfiTest, DecodeExtensionNotFound) {
-  MyExtension test_ext;
+  MyCExtension test_ext;
   test_ext.extension_base = MakeExtensionHeader<MyExtension>();
   test_ext.my_data = 42;
   bool handler_called = false;
 
-  auto handler = Ffi::Bind().Ctx<FfiExtension<AnotherExtension>>().To(
-      [&](const AnotherExtension* ext) -> absl::Status {
+  auto handler = Ffi::Bind().Ctx<Extension<AnotherExtension>>().To(
+      [&](const AnotherExtension::Type ext) -> absl::Status {
         handler_called = true;
         return absl::OkStatus();
       });

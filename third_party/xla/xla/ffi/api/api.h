@@ -1759,6 +1759,14 @@ struct Decode<CtxTag<T>> {
   }
 };
 
+template <typename T, typename = void>
+struct HasExtensionSupport : std::false_type {};
+template <typename T>
+struct HasExtensionSupport<
+    T, std::enable_if_t<
+           std::is_same_v<decltype(T::Support), bool(int32_t, int32_t)>>>
+    : std::true_type {};
+
 }  // namespace internal
 
 //===----------------------------------------------------------------------===//
@@ -1766,16 +1774,47 @@ struct Decode<CtxTag<T>> {
 //===----------------------------------------------------------------------===//
 
 // Type tag for decoding an Extension.
+// The type T must define the following traits:
+// - CExtension: The C API extension type. See: struct XLA_FFI_Extension.
+// - Type: The C++ type to be decoded to. Must be constructible from CExtension*
+//         using a static method Create (see below).
+// - kName: a name for the extension used for diagnostics.
+// - kExtensionType: int64 type id to identify this extension.
+// - kMajorVersion: the major version of the extension.
+// - kMinorVersion: the minor version of the extension.
+// - Create: a static method that creates the Type from the
+//     C API extension.
+// - Support: a static method that checks given a major and minor version if
+//     the extension is supported. Optional. By default, an extension is
+//     supported if both major and minor versions match.
+//     Signature: bool Support(int32_t major_version, int32_t minor_version);
+// Example:
+//   struct MyExtension {
+//     using Type = MyContext;
+//     using CExtension = XLA_FFI_MyExtension;
+//
+//     static constexpr auto kName = "MyExtension";
+//     static constexpr int64_t kExtensionType = XLA_FFI_Extension_MyExtension;
+//     static constexpr int32_t kMajorVersion =
+//         XLA_FFI_Extension_MyExtension_MajorVersion;
+//     static constexpr int32_t kMinorVersion =
+//         XLA_FFI_Extension_MyExtension_MinorVersion;
+//
+//     static Type Create(const CExtension* ext) {
+//       return MyContext(ext->some_field);
+//     }
+//   };
+// And then use it with T::Type as a value type:
+//   Ffi::Bind().Ctx<Extension<MyExtension>>()
+//                     .To([](const MyExtension::Type ext) { ... });
 template <typename T>
-struct FfiExtension {};
+struct Extension {};
 
 // Context decoding for an Extension.
-//
-// Example: Ffi::Bind().Ctx<FFIExtension<MyExtension>>()
-//                     .To([](const MyExtension* ext) { ... });
+// Returned value is guaranteed to be non-null.
 template <typename T>
-struct CtxDecoding<FfiExtension<T>> {
-  using Type = const T*;
+struct CtxDecoding<Extension<T>> {
+  using Type = typename T::Type;
 
   static std::optional<Type> Decode(const XLA_FFI_Api* api,
                                     XLA_FFI_InvokeContext* ctx,
@@ -1789,21 +1828,40 @@ struct CtxDecoding<FfiExtension<T>> {
 
     XLA_FFI_Error* error = api->XLA_FFI_InvokeContext_FindExtension(&args);
     if (error != nullptr) {
-      diagnostic.Emit("Failed to find extension: ")
-          << internal::GetErrorMessage(api, error);
+      diagnostic.Emit("Failed to find extension ")
+          << T::kName << ": " << internal::GetErrorMessage(api, error);
       internal::DestroyError(api, error);
       return std::nullopt;
     }
 
     if (args.extension == nullptr) {
-      diagnostic.Emit("Extension not found in context");
+      diagnostic.Emit("Extension ") << T::kName << " not found in context";
       return std::nullopt;
     }
-
-    // args.extension_type is a contract that guarantees that the extension is
-    // of type T.
-    // NOLINTNEXTLINE
-    return reinterpret_cast<Type>(args.extension);
+    const auto emit_version_mismatch = [&]() {
+      diagnostic.Emit("Extension version mismatch for ")
+          << T::kName << ": actual(" << args.extension->id.major_version << "."
+          << args.extension->id.minor_version << ") vs current("
+          << T::kMajorVersion << "." << T::kMinorVersion << ")";
+    };
+    if constexpr (internal::HasExtensionSupport<T>::value) {
+      if (!T::Support(args.extension->id.major_version,
+                      args.extension->id.minor_version)) {
+        emit_version_mismatch();
+        return std::nullopt;
+      }
+    } else {  // Default support check.
+      if (args.extension->id.major_version != T::kMajorVersion ||
+          args.extension->id.minor_version != T::kMinorVersion) {
+        emit_version_mismatch();
+        return std::nullopt;
+      }
+    }
+    return T::Create(
+        // T::kExtensionType is a contract that guarantees that the extension
+        // is of type T.
+        // NOLINTNEXTLINE
+        reinterpret_cast<const typename T::CExtension*>(args.extension));
   }
 };
 
@@ -2026,7 +2084,7 @@ struct internal::Decode<internal::AttrsTag<T>> {
 template <typename T>
 inline XLA_FFI_Extension MakeExtensionHeader() {
   return XLA_FFI_Extension{
-      /*.struct_size=*/sizeof(T),
+      /*.struct_size=*/sizeof(typename T::CExtension),
       /*.id=*/
       XLA_FFI_ExtensionId{/*extension_type=*/T::kExtensionType,
                           /*major_version=*/T::kMajorVersion,

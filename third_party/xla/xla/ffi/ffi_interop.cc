@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/ffi/ffi_interop.h"
 
+#include <string>
 #include <utility>
 
 #include "absl/base/optimization.h"
@@ -60,6 +61,19 @@ tsl::AsyncValueRef<tsl::Chain> TakeFuture(XLA_FFI_Future* future) {
   tsl::AsyncValueRef<tsl::Chain> async_value = future->async_value;
   async_value.AndThen([future] { delete future; });
   return async_value;
+}
+
+XLA_FFI_Error* CreateError(absl::Status status) {
+  if (status.ok()) {
+    return nullptr;
+  }
+  XLA_FFI_Error_Create_Args args;
+  args.struct_size = XLA_FFI_Error_Create_Args_STRUCT_SIZE;
+  args.extension_start = nullptr;
+  args.errc = static_cast<XLA_FFI_Error_Code>(status.code());
+  std::string message(status.message());
+  args.message = message.c_str();
+  return XLA_FFI_GetApi()->XLA_FFI_Error_Create(&args);
 }
 
 }  // namespace xla::ffi
