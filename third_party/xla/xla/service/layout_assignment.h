@@ -803,6 +803,53 @@ class LayoutAssignment : public HloModulePass {
   absl::Status AddAsyncDoneConstraints(HloInstruction* instruction,
                                        LayoutConstraints* constraints);
 
+  // Propagates layout constraints from the caller instruction into the inner
+  // async sub-computation.
+  // This is the forward propagation step: it takes the layouts of the operands
+  // and result of the async start/update instruction (which are in the parent
+  // computation) and propagates them to the parameters and result of the
+  // async sub-computation.
+  // If any layout in the sub-computation is updated, it resets the
+  // sub-computation layout with an elevated priority to ensure it is respected
+  // during the sub-computation's layout assignment. Returns the reconciled
+  // layout of the sub-computation.
+  ComputationLayout PropagateLayoutsToAsyncSubComputation(
+      const HloInstruction* instruction, LayoutConstraints* async_constraint);
+
+  // Propagates the operand array layouts of `instruction` to the parameter
+  // layouts defined in `async_layout`.
+  // Updates `async_layout` in-place and returns true if any parameter layout
+  // was changed.
+  bool PropagateOperandLayoutsToAsyncParameters(
+      const HloInstruction* instruction, ComputationLayout* async_layout);
+
+  // Propagates array layouts for a single operand `param_idx` of `instruction`
+  // to the corresponding parameter layout in `async_layout`.
+  // `instruction` operand `param_idx` is mapped to the parameter `param_idx`
+  // of the async sub-computation.
+  // Updates `async_layout` in-place and returns true if the layout was updated.
+  bool PropagateOperandLayoutToAsyncParameter(const HloInstruction* instruction,
+                                              int64_t param_idx,
+                                              ComputationLayout* async_layout);
+
+  // Propagates array layouts from the result shape of `instruction` (tuple
+  // element 1) to `async_layout`'s result layout.
+  // We assume the result shape of the async operation is at index {1} of the
+  // `instruction` (async start/update) output tuple.
+  // Updates `async_layout` in-place and returns true if the result layout was
+  // updated.
+  bool PropagateResultLayoutToAsyncSubComputation(
+      const HloInstruction* instruction, ComputationLayout* async_layout);
+
+  // Propagates async sub-computation parameter and result layout constraints
+  // back onto the caller instruction and its operands in the parent
+  // computation. This is the backward propagation step: it takes the resolved
+  // layouts from the async sub-computation and applies them as mandatory
+  // constraints on the caller instruction's shape (at index {1} for result) and
+  // its operands.
+  absl::Status PropagateLayoutsFromAsyncSubComputation(
+      HloInstruction* instruction, const ComputationLayout& async_layout,
+      LayoutConstraints* async_constraint);
   // Sets the computation result layout based on constraints and
   // sub-computations.
   absl::Status AddComputationResultLayoutConstraints(
