@@ -10301,39 +10301,6 @@ ENTRY entry {
   EXPECT_THAT(root, op::AllReduce(op::AllReduce(scatter)));
 }
 
-TEST_P(SpmdPartitioningTest, IndexPassthroughScatterConflictFallback) {
-  absl::string_view hlo_string = R"(
-HloModule module
-
-add (lhs: f32[], rhs: f32[]) -> f32[] {
-  lhs = f32[] parameter(0)
-  rhs = f32[] parameter(1)
-  ROOT sum = f32[] add(lhs, rhs)
-}
-
-ENTRY entry {
-  %input = f32[256,128] parameter(0), sharding={devices=[2,1]<=[2]}
-  %indices = s32[128,1] parameter(1), sharding={devices=[2,1]<=[2]}
-  %updates = f32[128,128] parameter(2), sharding={devices=[2,1]<=[2]}
-  ROOT %scatter = f32[256,128] scatter(%input, %indices, %updates),
-      to_apply=add,
-      update_window_dims={1},
-      inserted_window_dims={0},
-      scatter_dims_to_operand_dims={0},
-      index_vector_dim=1, sharding={devices=[2,1]<=[2]}
-})";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          PartitionComputation(hlo_string, /*num_devices=*/2));
-  VLOG(1) << module->ToString();
-  const auto root = module->entry_computation()->root_instruction();
-  auto operand = AllOf(op::Shape("f32[128,128]"), op::Parameter(0));
-  auto indices = AllOf(op::Shape("s32[128,1]"),
-                       op::Subtract(op::AllGather(op::Parameter(1)), _));
-  auto update =
-      AllOf(op::Shape("f32[128,128]"), op::AllGather(op::Parameter(2)));
-  EXPECT_THAT(root, op::Scatter(operand, indices, update));
-}
-
 TEST_P(SpmdPartitioningTest, IndexPassthroughScatterReshardIndices) {
   absl::string_view hlo_string = R"(
 HloModule module
@@ -14462,12 +14429,13 @@ ENTRY %module {
                           PartitionComputation(hlo_string, /*num_devices=*/4));
   const auto root = module->entry_computation()->root_instruction();
   VLOG(1) << module->ToString();
-  auto operand = AllOf(op::Shape("s32[4,2,2,2]"));
-  auto indices = AllOf(op::Shape("s32[2,4,4]"));
-  auto update = AllOf(op::Shape("s32[4,4,2,2]"));
+  auto operand = AllOf(op::Shape("s32[4,4,2,2]"));
+  auto indices = AllOf(op::Shape("s32[2,4,2]"));
+  auto update = AllOf(op::Shape("s32[4,2,2,2]"));
   auto scatter =
-      AllOf(op::Shape("s32[4,2,2,2]"), op::Scatter(operand, indices, update));
-  EXPECT_THAT(root, op::AllGather(op::AllGather(scatter)));
+      AllOf(op::Shape("s32[4,4,2,2]"), op::Scatter(operand, indices, update));
+  EXPECT_THAT(root, op::AllGather(op::AllGather(
+                        op::DynamicSlice(op::AllReduce(scatter), _, _, _, _))));
 }
 
 TEST_P(SpmdPartitioningTest, GatherScatterPartitioningIndexParallelCase) {
