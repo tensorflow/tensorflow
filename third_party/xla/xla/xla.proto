@@ -351,6 +351,9 @@ message DebugOptions {
   // Sets XLA:CPU's scheduler type.
   optional CpuSchedulerType xla_cpu_scheduler_type = 448;
 
+  // If true, XLA:CPU uses the new xtile lowering.
+  optional bool xla_cpu_use_new_xtile_lowering = 528;
+
   // When true, XLA:CPU uses XNNPACK to execute supported operations.
   optional bool xla_cpu_use_xnnpack = 359;
 
