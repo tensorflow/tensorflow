@@ -505,6 +505,30 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
   void ExtendScopedAlternateMemoryAllocations();
 
  private:
+  // Pins all scalar buffers in alternate memory. If a buffer has DMA like
+  // uses that can be asyncified, we need to make sure the buffer is live until
+  // the DMA done instruction. If the buffer is the source buffer of the DMA,
+  // MSA handles it. If the buffer is not the source buffer of the DMA,
+  // currently, it requires special handling. Scalars are the only buffers that
+  // have asyncifiable DMA uses in which they are not the source buffer of the
+  // DMA. In this case, we extend the live range of the scalar buffers to the
+  // end of the program as a temporary hack to make sure the buffer outlives any
+  // newly created async done instruction.
+  absl::Status PinScalarBuffersInAlternateMemory(
+      absl::flat_hash_set<const HloBuffer*>& scalar_buffers_to_pin_in_alt_mem);
+
+  // Returns the set of scalar buffers that are pinned to the alternate
+  // memory.
+  absl::flat_hash_set<const HloBuffer*> GetScalarBuffersPinnedToAltMemory(
+      absl::Span<const MsaBufferInterval> sorted_buffer_intervals) const;
+
+  // Helper method for PinScalarBuffersInAlternateMemory to pin a single scalar
+  // buffer's positions in the alternate memory.
+  absl::Status PinScalarBufferInAlternateMemory(
+      const HloBuffer* buffer, int64_t program_end_time,
+      const absl::flat_hash_map<const HloInstruction*, int64_t>&
+          instruction_schedule);
+
   // We inherit AllocationBlock struct to attach the Allocation information to
   // make importing repacked offsets easier.
   struct RepackAllocationBlock : AllocationBlock {
@@ -614,6 +638,7 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
   struct BlockPrefetchCandidateUseAnalysis {
     int64_t first_use_time = std::numeric_limits<int64_t>::max();
     bool all_uses_allowed_in_alternate_memory = true;
+    bool all_uses_are_synchronous = true;
   };
 
   // Encapsulates the block prefetch scheduling state that is maintained across
@@ -717,8 +742,9 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
       BlockPrefetchSchedulingState& scheduling_state,
       AllocationSequence& allocations);
 
-  // Helper method for BlockPrefetchBuffer() to create pinned allocations in
-  // alternate memory for HloPositions.
+  // Helper method to create pinned allocations in alternate memory for
+  // HloPositions. Used by BlockPrefetchBuffer() and
+  // PinScalarBufferInAlternateMemory().
   void CreatePinnedAllocationsInAltMemoryForPositions(
       absl::Span<const HloPosition> positions, const Chunk& chunk_candidate,
       const absl::flat_hash_map<HloPosition, LiveRange>& position_to_live_range,
@@ -727,11 +753,18 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
       const absl::flat_hash_set<const HloInstruction*>&
           async_conv_candidate_instructions,
       AllocationSequence& allocations,
-      std::vector<AllocationBlock*>& colocations);
+      std::vector<AllocationBlock*>& colocations,
+      // If set, overrides the end_time of the final position's pinned
+      // allocation. (Used to extend a scalar buffer's last allocation to the
+      // end of the program, as a temporary hack to make sure the buffer
+      // outlives any newly created async done instruction). If nullopt, the
+      // position's own live range end time is used.
+      std::optional<int64_t> last_position_end_time = std::nullopt);
 
-  // Helper method for BlockPrefetchBuffer() to create mirrored allocations in
-  // alternate memory for HloPositions.
-  void CreateMirroredAllocationsInAlternateMemory(
+  // Helper method to create mirrored allocations in alternate memory for
+  // HloPositions. Used by BlockPrefetchBuffer() and
+  // PinScalarBufferInAlternateMemory().
+  absl::Status CreateMirroredAllocationsInAlternateMemory(
       absl::Span<const HloPosition> positions,
       const LiveRangeCalculator& calculator,
       const absl::flat_hash_map<const HloInstruction*, int64_t>&

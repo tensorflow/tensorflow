@@ -94,6 +94,7 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_tree.h"
 #include "xla/shape_util.h"
+#include "xla/status_macros.h"
 #include "xla/tsl/platform/logging.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
@@ -3302,6 +3303,11 @@ MsaAlgorithm::ComputeBlockPrefetchCandidateUseAnalysis(
         analysis.all_uses_allowed_in_alternate_memory = false;
         break;
       }
+      if (HloDataflowAnalysis::IsAsynchronousOperationStart(
+              use.instruction->opcode())) {
+        analysis.all_uses_are_synchronous = false;
+        break;
+      }
       int64_t corrected_use_time = GetCorrectedUseTime(use);
       analysis.first_use_time =
           std::min(analysis.first_use_time, corrected_use_time);
@@ -3365,6 +3371,13 @@ void MsaAlgorithm::FilterBlockPrefetchCandidatesByUseConstraints(
       category = BlockPrefetchCategory::kPinToDefaultMemory;
       continue;
     }
+    if (!use_analysis.all_uses_are_synchronous) {
+      VLOG(3) << "Not block prefetching a buffer because not all uses are "
+                 "synchronous: "
+              << buffer->ToString();
+      category = BlockPrefetchCategory::kPinToDefaultMemory;
+      continue;
+    }
 
     const HloInstruction* first_instruction =
         initial_analysis.buffer_to_first_defining_value.at(buffer)
@@ -3372,6 +3385,14 @@ void MsaAlgorithm::FilterBlockPrefetchCandidatesByUseConstraints(
     if (HasDataMovementPositionsInMiddle(buffer, first_instruction)) {
       VLOG(3) << "Not block prefetching a buffer because it has data movement "
                  "positions in the middle: "
+              << buffer->ToString();
+      category = BlockPrefetchCategory::kPinToDefaultMemory;
+      continue;
+    }
+
+    if (ShapeUtil::IsEffectiveScalar(first_instruction->shape())) {
+      VLOG(3) << "Not block prefetching a buffer because it is an effective "
+                 "scalar: "
               << buffer->ToString();
       category = BlockPrefetchCategory::kPinToDefaultMemory;
       continue;
@@ -3448,15 +3469,17 @@ void MsaAlgorithm::CreatePinnedAllocationsInAltMemoryForPositions(
         position_to_uses,
     const absl::flat_hash_set<const HloInstruction*>&
         async_conv_candidate_instructions,
-    AllocationSequence& allocations,
-    std::vector<AllocationBlock*>& colocations) {
-  for (size_t idx = 1; idx < positions.size(); idx++) {
+    AllocationSequence& allocations, std::vector<AllocationBlock*>& colocations,
+    std::optional<int64_t> last_position_end_time) {
+  for (size_t idx = 0; idx < positions.size(); idx++) {
     HloPosition non_trivial_position = positions[idx];
     LiveRange live_range = position_to_live_range.at(non_trivial_position);
     int64_t start_time = live_range.start_time;
     int64_t end_time = live_range.end_time;
     if (idx < positions.size() - 1) {
       end_time = position_to_live_range.at(positions[idx + 1]).start_time;
+    } else if (last_position_end_time.has_value()) {
+      end_time = last_position_end_time.value();
     }
     allocations.emplace_back(std::make_unique<PinnedAllocation>(
         non_trivial_position, MemorySpace::kAlternate, chunk_candidate,
@@ -3469,6 +3492,10 @@ void MsaAlgorithm::CreatePinnedAllocationsInAltMemoryForPositions(
     for (const HloUse* use :
          FindOrDefault(position_to_uses, non_trivial_position, {})) {
       CHECK(!async_conv_candidate_instructions.contains(use->instruction));
+      CHECK_EQ(non_trivial_position,
+               GetNonTrivialSourcePosition(
+                   {use->instruction->mutable_operand(use->operand_number),
+                    use->operand_index}));
       pinned_allocation->AddUse(*use);
       AddOperandToAlternateMemoryMap(use->instruction, use->operand_number,
                                      use->operand_index);
@@ -3480,7 +3507,7 @@ void MsaAlgorithm::CreatePinnedAllocationsInAltMemoryForPositions(
   }
 }
 
-void MsaAlgorithm::CreateMirroredAllocationsInAlternateMemory(
+absl::Status MsaAlgorithm::CreateMirroredAllocationsInAlternateMemory(
     absl::Span<const HloPosition> positions,
     const LiveRangeCalculator& calculator,
     const absl::flat_hash_map<const HloInstruction*, int64_t>&
@@ -3511,13 +3538,19 @@ void MsaAlgorithm::CreateMirroredAllocationsInAlternateMemory(
         break;
       }
     }
-    CHECK(parent_allocation != nullptr);
+    TF_RET_CHECK(parent_allocation != nullptr)
+        << "Parent allocation not found for mirrored allocation at: "
+        << non_trivial_position.ToString();
     allocations.emplace_back(std::make_unique<MirroredAllocation>(
         non_trivial_position, *parent_allocation, start_time, end_time));
     Allocation* mirrored_allocation = allocations.back().get();
     for (const HloUse* use :
          FindOrDefault(position_to_uses, non_trivial_position, {})) {
       CHECK(!async_conv_candidate_instructions.contains(use->instruction));
+      CHECK_EQ(non_trivial_position,
+               GetNonTrivialSourcePosition(
+                   {use->instruction->mutable_operand(use->operand_number),
+                    use->operand_index}));
       mirrored_allocation->AddUse(*use);
       AddOperandToAlternateMemoryMap(use->instruction, use->operand_number,
                                      use->operand_index);
@@ -3527,6 +3560,7 @@ void MsaAlgorithm::CreateMirroredAllocationsInAlternateMemory(
       }
     }
   }
+  return absl::OkStatus();
 }
 
 // TODO(b/537894642): This method should be decomposed into smaller methods.
@@ -3570,9 +3604,10 @@ absl::StatusOr<Decision> MsaAlgorithm::BlockPrefetchBuffer(
     return Decision::Forbid("Buffer has overlapping live ranges");
   }
   const absl::flat_hash_map<HloPosition, LiveRange>& position_to_live_range =
-      calculator.position_to_live_range();
+      calculator.non_trivial_non_forwarded_position_to_live_range();
   const absl::flat_hash_map<HloPosition, std::vector<const HloUse*>>&
-      position_to_uses = calculator.position_to_uses();
+      position_to_uses =
+          calculator.non_trivial_non_forwarded_position_to_uses();
 
   // Determine which positions need real allocations, which need mirrored
   // allocations, and which can be ignored (because they are trivial).
@@ -3734,9 +3769,12 @@ absl::StatusOr<Decision> MsaAlgorithm::BlockPrefetchBuffer(
   colocations.push_back(&repack_allocation_blocks_.back());
 
   // Associate uses of the first position to the copy allocation.
-  for (const HloUse* use : position_to_uses.at(
-           non_trivial_positions_for_real_allocations.front())) {
+  for (const HloUse* use : position_to_uses.at(buffer_defining_position)) {
     if (!async_conv_candidate_instructions.contains(use->instruction)) {
+      CHECK_EQ(buffer_defining_position,
+               GetNonTrivialSourcePosition(
+                   {use->instruction->mutable_operand(use->operand_number),
+                    use->operand_index}));
       copy_allocation->AddUse(*use);
       AddOperandToAlternateMemoryMap(use->instruction, use->operand_number,
                                      use->operand_index);
@@ -3754,13 +3792,15 @@ absl::StatusOr<Decision> MsaAlgorithm::BlockPrefetchBuffer(
   // - Create MirroredAllocations for aliased/phi positions to properly link
   //   their uses without allocating duplicate physical chunks.
   CreatePinnedAllocationsInAltMemoryForPositions(
-      non_trivial_positions_for_real_allocations, chunk_candidate,
-      position_to_live_range, position_to_uses,
+      absl::MakeConstSpan(non_trivial_positions_for_real_allocations)
+          .subspan(1),
+      chunk_candidate, position_to_live_range, position_to_uses,
       async_conv_candidate_instructions, allocations, colocations);
-  CreateMirroredAllocationsInAlternateMemory(
+
+  RETURN_IF_ERROR(CreateMirroredAllocationsInAlternateMemory(
       non_trivial_positions_for_mirrored_allocations, calculator,
       instruction_schedule, position_to_uses, async_conv_candidate_instructions,
-      allocations);
+      allocations));
 
   // 9. Finalize the block prefetch.
   ClearPendingChunks();
@@ -3778,9 +3818,13 @@ absl::StatusOr<Decision> MsaAlgorithm::BlockPrefetchBuffer(
 absl::Status MsaAlgorithm::CreateNewBlockPrefetches(
     int64_t block_prefetching_starting_offset) {
   if (!options_.hlo_position_to_custom_call_prefetch_details.empty() ||
-      options_.reserved_bytes_for_block_prefetches <= 0) {
+      options_.reserved_bytes_for_block_prefetches <= 0 ||
+      options_.block_prefetched_positions.empty()) {
     return absl::OkStatus();
   }
+  VLOG(3) << "Trying to block prefetch "
+          << options_.block_prefetched_positions.size() << " positions.";
+
   const absl::flat_hash_map<const HloInstruction*, int64_t>&
       instruction_schedule = hlo_live_range_.instruction_schedule();
   const BlockPrefetchContext context =
@@ -3789,6 +3833,7 @@ absl::Status MsaAlgorithm::CreateNewBlockPrefetches(
   int64_t block_prefetching_limit_bytes =
       block_prefetching_starting_offset +
       options_.reserved_bytes_for_block_prefetches;
+
   if (block_prefetching_limit_bytes > options_.max_size_in_bytes) {
     return absl::InvalidArgumentError(absl::StrCat(
         "Block prefetched values bytes limit: ", block_prefetching_limit_bytes,
@@ -4055,6 +4100,174 @@ MsaAlgorithm::GetPostProcessedSortedBufferIntervals() {
   return sorted_buffer_intervals;
 }
 
+absl::flat_hash_set<const HloBuffer*>
+MsaAlgorithm::GetScalarBuffersPinnedToAltMemory(
+    absl::Span<const MsaBufferInterval> sorted_buffer_intervals) const {
+  absl::flat_hash_set<const HloBuffer*> scalar_buffers_to_pin_in_alt_mem;
+  for (const MsaBufferInterval& interval : sorted_buffer_intervals) {
+    HloInstruction* instruction = interval.buffer->instruction();
+    if (ShapeUtil::IsEffectiveScalar(interval.buffer->shape()) &&
+        instruction->shape().has_layout() &&
+        instruction->shape().layout().memory_space() ==
+            options_.alternate_memory_space) {
+      CHECK(!IsValueFinalized(interval.buffer))
+          << "Scalar pinned to alternate memory is already finalized: "
+          << interval.buffer->ToShortString();
+      const HloBuffer& scalar_buffer = alias_analysis_.GetUniqueBufferAt(
+          instruction, interval.buffer->index());
+      scalar_buffers_to_pin_in_alt_mem.insert(&scalar_buffer);
+    }
+  }
+  return scalar_buffers_to_pin_in_alt_mem;
+}
+
+absl::Status MsaAlgorithm::PinScalarBuffersInAlternateMemory(
+    absl::flat_hash_set<const HloBuffer*>& scalar_buffers_to_pin_in_alt_mem) {
+  int64_t program_end_time = static_cast<int64_t>(
+      hlo_live_range_.flattened_instruction_sequence().instructions().size() -
+      1);
+  const auto& instruction_schedule = hlo_live_range_.instruction_schedule();
+  std::vector<const HloBuffer*> sorted_scalar_buffers(
+      scalar_buffers_to_pin_in_alt_mem.begin(),
+      scalar_buffers_to_pin_in_alt_mem.end());
+  absl::c_sort(
+      sorted_scalar_buffers,
+      [](const HloBuffer* a, const HloBuffer* b) { return a->id() < b->id(); });
+  for (const HloBuffer* buffer : sorted_scalar_buffers) {
+    RETURN_IF_ERROR(PinScalarBufferInAlternateMemory(buffer, program_end_time,
+                                                     instruction_schedule));
+  }
+  return absl::OkStatus();
+}
+
+absl::Status MsaAlgorithm::PinScalarBufferInAlternateMemory(
+    const HloBuffer* buffer, int64_t program_end_time,
+    const absl::flat_hash_map<const HloInstruction*, int64_t>&
+        instruction_schedule) {
+  // For each scalar buffer pinned in alternate memory:
+  // 1. Compute live ranges for the buffer.
+  // 2. Partition non-trivial positions into positions that get real
+  //    (pinned) allocations and positions that get mirrored allocations.
+  // 3. Find a chunk candidate for the buffer, skipping constant buffers or
+  //    buffers that would OOM the alternate memory.
+  // 4. Commit the chunk to the alternate memory.
+  // 5. Create pinned allocations in alternate memory for the real positions,
+  //    extending the last position to the end of the program (note: extending
+  //    to program end is a temporary hack).
+  // 6. Create mirrored allocations in alternate memory for the remaining
+  //    positions.
+  // 7. Finalize the buffer values.
+  // 8. Colocate the repack allocation blocks.
+  // 9. Add allocations to the allocations list.
+  // 10. Clear the pending chunks.
+
+  // Compute live ranges of all positions in the buffer.
+  LiveRangeCalculator calculator(*buffer, instruction_schedule);
+  auto [buffer_live_ranges, has_overlap] =
+      calculator.CalculateBufferLiveRange();
+  // outer_positions_to_live_range contain the minimal set of non-trivial
+  // positions required to capture the entire live range of a buffer without
+  // overlaps (i.e. nested non-trivial positions are not present in it).
+  const absl::flat_hash_map<HloPosition, LiveRange>&
+      outer_positions_to_live_range =
+          calculator.non_trivial_non_forwarded_position_to_live_range();
+  const absl::flat_hash_map<HloPosition, std::vector<const HloUse*>>&
+      outer_positions_to_uses =
+          calculator.non_trivial_non_forwarded_position_to_uses();
+
+  // Partition non-trivial positions into positions that get real (pinned)
+  // allocations and positions that get mirrored allocations.
+  std::vector<HloPosition> non_trivial_positions_for_real_allocations;
+  std::vector<HloPosition> non_trivial_positions_for_mirrored_allocations;
+  for (const HloPosition& position : buffer->ComputePositions()) {
+    if (IsTrivialPosition(position)) {
+      TF_RET_CHECK(!outer_positions_to_live_range.contains(position))
+          << "Trivial position should not have live range: "
+          << position.ToString();
+      continue;
+    }
+
+    if (outer_positions_to_live_range.contains(position)) {
+      non_trivial_positions_for_real_allocations.push_back(position);
+    } else {
+      non_trivial_positions_for_mirrored_allocations.push_back(position);
+    }
+  }
+  absl::c_stable_sort(non_trivial_positions_for_real_allocations,
+                      [&](const HloPosition& a, const HloPosition& b) {
+                        return outer_positions_to_live_range.at(a).start_time <
+                               outer_positions_to_live_range.at(b).start_time;
+                      });
+
+  // Find a chunk candidate for the buffer, skipping constant buffers or
+  // buffers that would OOM the alternate memory.
+  int64_t buffer_start_time = buffer_live_ranges.front().start_time;
+  const HloValue* first_defining_value =
+      &alias_analysis_.dataflow_analysis().GetUniqueValueAt(
+          non_trivial_positions_for_real_allocations.front().instruction,
+          non_trivial_positions_for_real_allocations.front().index);
+  const MsaBufferInterval& buffer_interval =
+      FindOrDefault(buffer_intervals_, first_defining_value, {});
+  // A buffer might not be found in buffer_intervals_ (e.g. tokens, constants
+  // etc).
+  if (buffer_interval.buffer == nullptr ||
+      first_defining_value->defining_instruction()->opcode() ==
+          HloOpcode::kConstant) {
+    VLOG(2) << "Skipping coloring for buffer: " << buffer->ToString()
+            << " because it is a constant buffer or not found in buffer "
+               "intervals.";
+    return absl::OkStatus();
+  }
+  int64_t buffer_size = buffer_interval.size;
+  MsaBufferInterval interval =
+      MsaBufferInterval{/*buffer=*/first_defining_value,
+                        /*size=*/buffer_size,
+                        /*start=*/buffer_start_time,
+                        /*end=*/program_end_time,
+                        /*colocations=*/{},
+                        /*need_allocation=*/true};
+  Chunk chunk_candidate = FindChunkCandidate(interval);
+  if (chunk_candidate.chunk_end() > options_.max_size_in_bytes) {
+    return absl::FailedPreconditionError(absl::StrCat(
+        "Overcoloring scalars causes VMEM OOM. Scalar instruction: ",
+        first_defining_value->defining_instruction()->ToShortString()));
+  }
+
+  // Commit the chunk to the alternate memory.
+  AddToPendingChunks(interval, chunk_candidate);
+  AllocationSequence allocations;
+  std::vector<AllocationBlock*> colocations;
+
+  // Create pinned allocations in alternate memory for the real positions.
+  // Unlike block prefetching, scalar buffers have no leading copy allocation,
+  // so all real positions (starting at index 0) get pinned allocations, and
+  // the last position's allocation is extended to the end of the program.
+  CreatePinnedAllocationsInAltMemoryForPositions(
+      non_trivial_positions_for_real_allocations, chunk_candidate,
+      outer_positions_to_live_range, outer_positions_to_uses,
+      /*async_conv_candidate_instructions=*/{}, allocations, colocations,
+      /*last_position_end_time=*/program_end_time);
+
+  // Create mirrored allocations in alternate memory for the remaining
+  // positions.
+  RETURN_IF_ERROR(CreateMirroredAllocationsInAlternateMemory(
+      non_trivial_positions_for_mirrored_allocations, calculator,
+      instruction_schedule, outer_positions_to_uses,
+      /*async_conv_candidate_instructions=*/{}, allocations));
+
+  // Finalize the buffer values, colocate the repack allocation blocks, and add
+  // the allocations to the allocations list.
+  ClearPendingChunks();
+  for (const HloValue* value : buffer->values()) {
+    FinalizeValue(value);
+  }
+  MarkRepackAllocationBlocksColocated(colocations);
+  for (auto& allocation : allocations) {
+    allocations_->push_back(std::move(allocation));
+  }
+  return absl::OkStatus();
+}
+
 absl::StatusOr<HeapSimulator::Result<HloValue>> MsaAlgorithm::Finish() {
   // Note: Memory Space Assignment creates a HeapSimulator and passes an
   // MsaAlgorithm object to it. buffer_intervals_ is populated by calling the
@@ -4156,6 +4369,11 @@ absl::StatusOr<HeapSimulator::Result<HloValue>> MsaAlgorithm::Finish() {
       reserved_in_bytes_ += options_.size_fn(*interval.buffer);
     }
   }
+
+  absl::flat_hash_set<const HloBuffer*> scalar_buffers_to_pin_in_alt_mem =
+      GetScalarBuffersPinnedToAltMemory(sorted_buffer_intervals);
+  RETURN_IF_ERROR(
+      PinScalarBuffersInAlternateMemory(scalar_buffers_to_pin_in_alt_mem));
 
   VLOG(2) << "Total reserved bytes = " << reserved_in_bytes_;
   for (MsaBufferInterval& interval : sorted_buffer_intervals) {

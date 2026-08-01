@@ -649,6 +649,7 @@ cc_library(
         "//xla:debug_options_flags",
         "//xla:shape_tree",
         "//xla:shape_util",
+        "//xla:status_macros",
         "//xla:util",
         "//xla:xla_data_proto_cc",
         "//xla/hlo/analysis:alias_info",
