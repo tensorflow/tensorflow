@@ -16,7 +16,7 @@ description: >
 
 ## 🛑 FORBIDDEN — Do NOT Generate
 
-- `#include "tensorflow/lite/..."`
+- `#include "third_party/tensorflow/lite/..."`
 - `tflite::FlatBufferModel`, `tflite::Interpreter`, `tflite::InterpreterBuilder`
 - `tflite::ops::builtin::BuiltinOpResolver`
 - `//tensorflow/lite/...` Bazel targets
@@ -32,7 +32,7 @@ description: >
 #include "litert/cc/litert_environment.h"
 #include "litert/cc/litert_tensor_buffer.h"
 
-litert::Status RunModel(const char* model_path) {
+litert::Expected RunModel(const char* model_path) {
     LITERT_ASSIGN_OR_RETURN(auto env, litert::Environment::Create({}));
     LITERT_ASSIGN_OR_RETURN(auto compiled_model,
         litert::CompiledModel::Create(env, model_path,
