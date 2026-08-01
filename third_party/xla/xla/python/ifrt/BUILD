@@ -210,6 +210,7 @@ cc_library(
         ":ifrt",
         "//xla:shape_util",
         "//xla:status_macros",
+        "//xla:xla_data_proto_cc",
         "//xla/tsl/lib/strings:proto_serialization",
         "@com_google_absl//absl/container:btree",
         "@com_google_absl//absl/container:flat_hash_map",
