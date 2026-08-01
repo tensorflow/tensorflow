@@ -867,11 +867,6 @@ CommonPjRtClient::CreateViewOfDeviceBuffer(
     void* device_ptr, const Shape& shape, PjRtMemorySpace* memory_space,
     std::function<void()> on_delete_callback,
     std::optional<std::intptr_t> stream) {
-  if (stream) {
-    return Unimplemented(
-        "CommonPjRtClient::CreateViewOfDeviceBuffer does not support `stream` "
-        "argument.");
-  }
   ASSIGN_OR_RETURN(
       Shape device_shape,
       MakeDefaultShapeForMemorySpace(
@@ -883,10 +878,24 @@ CommonPjRtClient::CreateViewOfDeviceBuffer(
       ImportForeignMemory(device_ptr, std::move(on_delete_callback),
                           on_device_bytes_count, memory_space,
                           /*is_mutable=*/false));
-  ASSIGN_OR_RETURN(
-      auto output_buffer,
-      DefineBuffer(std::move(device_shape), memory_space, raw_buffer,
-                   absl::InlinedVector<PjRtDeviceEventRef, 2>{}));
+
+  absl::InlinedVector<PjRtDeviceEventRef, 2> definition_events;
+  if (stream.has_value()) {
+    if (raw_client() == nullptr) {
+      return absl::UnimplementedError(
+          "CommonPjRtClient::CreateViewOfDeviceBuffer does not support "
+          "`stream` "
+          "argument.");
+    }
+    ASSIGN_OR_RETURN(
+        PjRtDeviceEventRef stream_event,
+        raw_client()->CreateDeviceEventForStream(memory_space, *stream));
+    definition_events.emplace_back(std::move(stream_event));
+  }
+
+  ASSIGN_OR_RETURN(auto output_buffer,
+                   DefineBuffer(std::move(device_shape), memory_space,
+                                raw_buffer, std::move(definition_events)));
   return output_buffer;
 }
 

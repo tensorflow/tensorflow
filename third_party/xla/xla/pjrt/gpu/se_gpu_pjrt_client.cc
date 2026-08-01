@@ -235,10 +235,7 @@ static se::StreamExecutor* GetFirstExecutor(
 StreamExecutorGpuClient::StreamExecutorGpuClient(
     std::string platform_name, LocalClient* client,
     std::vector<std::unique_ptr<PjRtStreamExecutorDevice>> devices,
-    int process_index, std::unique_ptr<se::DeviceAddressAllocator> allocator,
-    std::unique_ptr<HostMemoryAllocator> host_memory_allocator,
-    bool should_stage_host_to_device_transfers,
-    std::unique_ptr<gpu::GpuExecutableRunOptions> gpu_run_options,
+    int process_index, std::unique_ptr<StreamExecutorGpuRawClient> raw_client,
     std::shared_ptr<KeyValueStoreInterface> kv_store,
     bool abort_collectives_on_failure,
     std::shared_ptr<xla::StreamExecutorGpuTopologyDescription> topology,
@@ -247,13 +244,7 @@ StreamExecutorGpuClient::StreamExecutorGpuClient(
     : xla::PjRtStreamExecutorClient(
           platform_name, client, std::move(devices), process_index,
           /*memory_spaces=*/{},  // Initialized below.
-          std::move(topology),
-          std::make_unique<StreamExecutorGpuRawClient>(
-              std::move(allocator), client, std::move(host_memory_allocator),
-              should_stage_host_to_device_transfers,
-              /*async_work_runner=*/nullptr, GetFirstExecutor(devices),
-              abort_collectives_on_failure, std::move(gpu_run_options)),
-          std::move(kv_store)),
+          std::move(topology), std::move(raw_client), std::move(kv_store)),
       abort_collectives_on_failure_(abort_collectives_on_failure),
       memory_registration_(std::move(memory_registration)) {
   VLOG(1) << absl::StreamFormat(
@@ -1832,13 +1823,17 @@ absl::StatusOr<std::unique_ptr<PjRtClient>> GetStreamExecutorGpuClient(
   auto se_gpu_topology =
       CreateSEGpuTopology(pjrt_platform_name, std::move(gpu_topology),
                           GetFirstExecutor(device_topology_pair.first));
+  auto raw_client = std::make_unique<StreamExecutorGpuRawClient>(
+      std::move(allocator), xla_client, std::move(host_memory_allocator),
+      options.should_stage_host_to_device_transfers,
+      /*async_work_runner=*/nullptr,
+      GetFirstExecutor(device_topology_pair.first),
+      options.abort_collectives_on_failure, std::move(gpu_run_options));
   return std::make_unique<StreamExecutorGpuClient>(
       pjrt_platform_name, xla_client, std::move(device_topology_pair.first),
-      options.node_id, std::move(allocator), std::move(host_memory_allocator),
-      options.should_stage_host_to_device_transfers, std::move(gpu_run_options),
-      std::move(kv_store), options.abort_collectives_on_failure,
-      std::move(se_gpu_topology), options.num_nodes,
-      std::move(memory_registration));
+      options.node_id, std::move(raw_client), std::move(kv_store),
+      options.abort_collectives_on_failure, std::move(se_gpu_topology),
+      options.num_nodes, std::move(memory_registration));
 }
 
 static std::vector<std::unique_ptr<PjRtStreamExecutorDevice>> BuildLocalDevices(
@@ -1908,15 +1903,17 @@ absl::StatusOr<std::unique_ptr<PjRtClient>> GetSharedStreamExecutorGpuClient(
   auto se_gpu_topology =
       CreateSEGpuTopology(platform_name, std::move(gpu_topology),
                           GetFirstExecutor(device_topology_pair.first));
+  auto raw_client = std::make_unique<StreamExecutorGpuRawClient>(
+      std::move(allocator), local_client, std::move(host_memory_allocator),
+      /*should_stage_host_to_device_transfers=*/true,
+      /*async_work_runner=*/nullptr,
+      GetFirstExecutor(device_topology_pair.first),
+      /*abort_collectives_on_failure=*/false, std::move(gpu_run_options));
   return std::make_unique<StreamExecutorGpuClient>(
       platform_name, local_client, std::move(device_topology_pair.first),
-      /*process_index=*/options.node_id,
-      /*allocator=*/std::move(allocator),
-      /*host_memory_allocator=*/std::move(host_memory_allocator),
-      /*should_stage_host_to_device_transfers=*/true,
-      /*gpu_run_options=*/std::move(gpu_run_options), options.kv_store,
-      /*abort_collectives_on_failure=*/false,
-      /*gpu_topology=*/std::move(se_gpu_topology),
+      /*process_index=*/options.node_id, std::move(raw_client),
+      options.kv_store, /*abort_collectives_on_failure=*/false,
+      /*topology=*/std::move(se_gpu_topology),
       /*num_nodes=*/options.num_nodes);
 }
 

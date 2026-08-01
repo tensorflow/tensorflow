@@ -158,10 +158,7 @@ class StreamExecutorGpuClient : public xla::PjRtStreamExecutorClient {
   StreamExecutorGpuClient(
       std::string platform_name, LocalClient* client,
       std::vector<std::unique_ptr<PjRtStreamExecutorDevice>> devices,
-      int process_index, std::unique_ptr<se::DeviceAddressAllocator> allocator,
-      std::unique_ptr<HostMemoryAllocator> host_memory_allocator,
-      bool should_stage_host_to_device_transfers,
-      std::unique_ptr<gpu::GpuExecutableRunOptions> gpu_run_options,
+      int process_index, std::unique_ptr<StreamExecutorGpuRawClient> raw_client,
       std::shared_ptr<KeyValueStoreInterface> kv_store,
       bool abort_collectives_on_failure,
       std::shared_ptr<xla::StreamExecutorGpuTopologyDescription> topology,

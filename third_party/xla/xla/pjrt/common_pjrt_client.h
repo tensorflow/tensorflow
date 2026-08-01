@@ -68,6 +68,8 @@ class CommonPjRtClient : public PjRtClient {
   // TODO(parkers): make pure virtual and update all clients.
   virtual AsyncWorkRunner* async_work_runner() const { return nullptr; }
 
+  virtual PjRtRawClient* raw_client() const { return nullptr; }
+
   // Some clients do not support recursion eg: calling to_literal in host
   // callbacks. Those clients should return false here.
   virtual bool allows_recursion() const { return true; }
@@ -142,7 +144,8 @@ class CommonPjRtClient : public PjRtClient {
   virtual absl::StatusOr<PjRtRawBufferRef> AllocateRawBuffer(
       PjRtMemorySpace* memory_space, size_t on_device_bytes_count,
       bool retry_on_oom, tsl::AsyncValueRef<bool> allocate_after) {
-    return absl::UnimplementedError("AllocateRawBuffer is not supported");
+    return raw_client()->AllocateRawBuffer(memory_space, on_device_bytes_count,
+                                           retry_on_oom, allocate_after);
   }
 
   // Allocates a raw buffer of a particular size. Backends may support retrying
@@ -161,7 +164,9 @@ class CommonPjRtClient : public PjRtClient {
       void* device_ptr, absl::AnyInvocable<void() &&> on_delete_callback,
       size_t on_device_bytes_count, PjRtMemorySpace* memory_space,
       bool is_mutable) {
-    return absl::UnimplementedError("ImportForeignMemory is not supported");
+    return raw_client()->ImportForeignMemory(memory_space, device_ptr,
+                                             on_device_bytes_count,
+                                             std::move(on_delete_callback));
   }
 
   // Linearizes a literal into a raw buffer and returns a DeviceEvent
@@ -238,8 +243,7 @@ class CommonPjRtClient : public PjRtClient {
       std::pair<PjRtDeviceEventPromiseRef, PjRtDeviceEventRef>>
   CreateLinkedEventPromise(PjRtMemorySpace* memory_space,
                            absl::string_view debug_info) {
-    return absl::UnimplementedError(
-        "CreateLinkedEventPromise is not supported");
+    return raw_client()->CreateLinkedEventPromise(memory_space, debug_info);
   }
 
   // Track a user-provided future with attached debug_info (if
@@ -279,7 +283,7 @@ class CommonPjRtClient : public PjRtClient {
 
   virtual absl::StatusOr<PjRtDeviceEventRef> CreateDeviceEvent(
       PjRtMemorySpace* memory_space, Future<> dependency) {
-    return absl::UnimplementedError("CreateDeviceEvent is not supported");
+    return raw_client()->CreateDeviceEvent(memory_space, std::move(dependency));
   }
 
   // Registers the necessary debug information for an allocation event.
@@ -330,7 +334,8 @@ class CommonPjRtClient : public PjRtClient {
       std::pair<PjRtRawBufferRef, PjRtFulfillAliasRawBufferCallback>>
   CreateRawBufferChannel(PjRtMemorySpace* memory_space,
                          size_t on_device_bytes_count) {
-    return absl::UnimplementedError("CreateRawBufferChannel is not supported");
+    return raw_client()->CreateRawBufferChannel(memory_space,
+                                                on_device_bytes_count);
   }
 
   absl::StatusOr<std::unique_ptr<PjRtBuffer>> CreateUninitializedBuffer(

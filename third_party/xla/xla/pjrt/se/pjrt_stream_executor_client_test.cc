@@ -54,6 +54,7 @@ limitations under the License.
 #include "xla/pjrt/plugin/xla_cpu/cpu_topology.h"
 #include "xla/pjrt/plugin/xla_cpu/cpu_topology_description.h"
 #include "xla/pjrt/se/local_device_state.h"
+#include "xla/pjrt/thread_pool_async_work_runner.h"
 #include "xla/service/computation_placer.h"
 #include "xla/service/platform_util.h"
 #include "xla/shape.h"
@@ -88,6 +89,38 @@ CreateCpuTopologyDescription(size_t cpu_device_count) {
                   cpu::TargetMachineOptions(GetDebugOptionsFromFlags())));
 }
 
+absl::StatusOr<std::unique_ptr<PjRtStreamExecutorClient>>
+MakeTestPjRtStreamExecutorClient(
+    std::string platform_name, LocalClient* client,
+    std::vector<std::unique_ptr<PjRtStreamExecutorDevice>> devices,
+    int process_index,
+    std::vector<std::unique_ptr<PjRtMemorySpace>> memory_spaces,
+    std::shared_ptr<const xla::PjRtTopologyDescription> topology,
+    std::unique_ptr<se::DeviceAddressAllocator> allocator,
+    std::unique_ptr<HostMemoryAllocator> host_memory_allocator,
+    bool should_stage_host_to_device_transfers,
+    std::unique_ptr<gpu::GpuExecutableRunOptions> gpu_run_options = nullptr,
+    std::shared_ptr<KeyValueStoreInterface> kv_store = nullptr) {
+  se::StreamExecutor* first_executor = nullptr;
+  for (const auto& dev : devices) {
+    if (dev->IsAddressable() && dev->local_device_state() != nullptr &&
+        dev->local_device_state()->compute_stream() != nullptr) {
+      first_executor = dev->local_device_state()->compute_stream()->parent();
+      break;
+    }
+  }
+  auto raw_client = std::make_unique<PjRtStreamExecutorRawClient>(
+      std::move(allocator), client, std::move(host_memory_allocator),
+      should_stage_host_to_device_transfers,
+      MakeUnboundedAsyncWorkRunner("pjrt_async_work_runner",
+                                   {/*stack_size=*/512 * 1024}),
+      first_executor, std::move(gpu_run_options));
+  return std::make_unique<PjRtStreamExecutorClient>(
+      std::move(platform_name), client, std::move(devices), process_index,
+      std::move(memory_spaces), std::move(topology), std::move(raw_client),
+      std::move(kv_store));
+}
+
 absl::StatusOr<std::unique_ptr<PjRtStreamExecutorClient>> GetClient() {
   LocalClient* local_client = xla::ClientLibrary::LocalClientOrDie();
   ASSIGN_OR_RETURN(se::Platform * platform, PlatformUtil::GetPlatform("Host"));
@@ -108,7 +141,7 @@ absl::StatusOr<std::unique_ptr<PjRtStreamExecutorClient>> GetClient() {
   devices.back()->AttachMemorySpace(memory_spaces.back().get(),
                                     /*is_default=*/true);
   auto topology = CreateCpuTopologyDescription(devices.size());
-  return std::make_unique<PjRtStreamExecutorClient>(
+  return MakeTestPjRtStreamExecutorClient(
       "cpu", local_client, std::move(devices),
       /*process_index=*/0, std::move(memory_spaces),
       /*topology=*/std::move(topology), /*allocator=*/nullptr,
@@ -155,7 +188,7 @@ absl::StatusOr<std::unique_ptr<PjRtStreamExecutorClient>> GetClientWithDevices(
                                       /*is_default=*/true);
   }
   auto topology = CreateCpuTopologyDescription(devices.size());
-  return std::make_unique<PjRtStreamExecutorClient>(
+  return MakeTestPjRtStreamExecutorClient(
       "cpu", local_client, std::move(devices), /*process_index=*/0,
       std::move(memory_spaces),
       /*topology=*/std::move(topology), /*allocator=*/nullptr,
