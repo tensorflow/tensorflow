@@ -159,8 +159,7 @@ def safe_euclidean_norm_grad(tensor, norm, axis):
     direction. The minimum-norm subgradient zero is returned at the origin.
   """
   def direct_direction():
-    denominator = math_ops.real(norm) if tensor.dtype.is_complex else norm
-    return _divide_by_real_denominator(tensor, denominator)
+    return math_ops.truediv(tensor, norm)
 
   def scaled_direction():
     scale = _reduction_scale(tensor, axis)
