@@ -196,20 +196,23 @@ std::vector<HloInstruction*> AsyncCollectiveCreator::MatchCollectives(
     VLOG(2) << "Found collective op: " << instruction->ToString();
 
     bool matched = false;
+    bool ignore_size_check = config_.should_ignore_size_check(instruction);
     if (op == HloOpcode::kAllReduce) {
       bool convert = config_.convert_all_reduce(instruction);
       int64_t size = GetShapeSize(instruction->shape());
       int64_t threshold = config_.all_reduce_min_threshold_in_bytes;
       VLOG(2) << "kAllReduce: convert=" << convert << ", size=" << size
-              << ", threshold=" << threshold;
-      matched = convert && size >= threshold;
+              << ", threshold=" << threshold
+              << ", ignore_size_check=" << ignore_size_check;
+      matched = convert && (ignore_size_check || size >= threshold);
     } else if (op == HloOpcode::kAllGather) {
       bool convert = config_.convert_all_gather(instruction);
       int64_t size = GetShapeSize(instruction->shape());
       int64_t threshold = config_.all_gather_min_threshold_in_bytes;
       VLOG(2) << "kAllGather: convert=" << convert << ", size=" << size
-              << ", threshold=" << threshold;
-      matched = convert && size >= threshold;
+              << ", threshold=" << threshold
+              << ", ignore_size_check=" << ignore_size_check;
+      matched = convert && (ignore_size_check || size >= threshold);
     } else if (op == HloOpcode::kCollectiveBroadcast) {
       bool convert = config_.convert_collective_broadcast(instruction);
       VLOG(2) << "kCollectiveBroadcast: convert=" << convert;
@@ -227,8 +230,9 @@ std::vector<HloInstruction*> AsyncCollectiveCreator::MatchCollectives(
       int64_t size = GetShapeSize(instruction->shape());
       int64_t threshold = config_.reduce_scatter_min_threshold_in_bytes;
       VLOG(2) << "kReduceScatter: convert=" << convert << ", size=" << size
-              << ", threshold=" << threshold;
-      matched = convert && size >= threshold;
+              << ", threshold=" << threshold
+              << ", ignore_size_check=" << ignore_size_check;
+      matched = convert && (ignore_size_check || size >= threshold);
     } else if (op == HloOpcode::kRaggedAllToAll) {
       bool convert = config_.convert_ragged_all_to_all(instruction);
       VLOG(2) << "kRaggedAllToAll: convert=" << convert;
