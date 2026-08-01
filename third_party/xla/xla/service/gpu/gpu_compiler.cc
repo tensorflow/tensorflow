@@ -2925,6 +2925,8 @@ absl::StatusOr<std::unique_ptr<Executable>> GpuCompiler::RunBackend(
                            module->name(), module->unique_id());
   }};
 
+  LOG(INFO) << "GpuCompiler::RunBackend for: " << module->ToString();
+
   RecordGpuCompilerStacktrace();
 
   const DebugOptions& debug_opts = module->config().debug_options();

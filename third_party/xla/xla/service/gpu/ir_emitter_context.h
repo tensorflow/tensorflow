@@ -46,6 +46,7 @@ limitations under the License.
 #include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/service/name_uniquer.h"
 #include "xla/stream_executor/device_description.h"
+#include "tsl/platform/stacktrace.h"
 
 namespace xla::gpu {
 // Maps host offloading start ops to their async events so we can emit done
@@ -153,6 +154,8 @@ class IrEmitterContext {
         std::make_unique<llvm::Module>(module_name, llvm_context);
     llvm_module->setTargetTriple(target_triple_);
     llvm_module->setDataLayout(data_layout_);
+    LOG(INFO) << "Create Module setDataLayout " << data_layout_;
+    LOG(INFO) << tsl::CurrentStackTrace();
     return llvm_module;
   }
 

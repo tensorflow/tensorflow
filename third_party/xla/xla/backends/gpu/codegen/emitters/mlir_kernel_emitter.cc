@@ -344,6 +344,9 @@ MlirKernelFusion::EmitLlvmModule(const HloFusionInstruction& fusion,
 
         AddRanges(kernel_func, launch_dims, module);
 
+        LOG(INFO) << "Emit MLIR Module setDataLayout " << data_layout;
+        LOG(INFO) << tsl::CurrentStackTrace();
+
         module->setDataLayout(data_layout);
         module->setTargetTriple(target_triple);
 

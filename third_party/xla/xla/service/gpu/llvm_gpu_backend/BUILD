@@ -185,6 +185,7 @@ cc_library(
         "//xla:xla_proto_cc",
         "//xla/service/llvm_ir:llvm_command_line_options",
         "//xla/service/llvm_ir:llvm_type_conversion_util",
+        "//xla/service/llvm_ir:llvm_util",
         "//xla/stream_executor:device_description",
         "//xla/stream_executor:kernel_stats",
         "//xla/tsl/platform:env",
@@ -222,6 +223,7 @@ cc_library(
         "@llvm-project//llvm:TargetParser",
         "@tsl//tsl/platform:path",
         "@tsl//tsl/platform:random",
+        "@tsl//tsl/platform:stacktrace",
         "@tsl//tsl/profiler/lib:traceme",
     ] + if_oss([
         # keep sorted

@@ -131,6 +131,7 @@ limitations under the License.
 #include "xla/util.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
+#include "tsl/platform/stacktrace.h"
 #include "triton/Dialect/Triton/IR/Dialect.h"
 #include "triton/Dialect/TritonGPU/IR/Dialect.h"
 
@@ -625,6 +626,10 @@ absl::StatusOr<TritonWrapperResult> CompileTritonToLLVM(
   // Integrate LLVM matmul kernel into XLA's LLVM module.
   captured_nvvm_annotations =
       xgt::ExtractNvvmAnnotations(ll_triton_module.get());
+
+  LOG(INFO) << "Triton compile setDataLayout" << data_layout;
+  LOG(INFO) << tsl::CurrentStackTrace();
+
   ll_triton_module->setDataLayout(data_layout);
   ll_triton_module->setTargetTriple(target_triple);
   // Use override flag because libdevice functions can be present in both.
