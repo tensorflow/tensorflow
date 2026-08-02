@@ -57,9 +57,14 @@ GetKeyCounterAlgFromInputs(OpKernelContext* ctx, int key_input_idx,
   if (alg == RNG_ALG_AUTO_SELECT) {
     alg = RNG_ALG_PHILOX;
   }
+  if (alg != RNG_ALG_PHILOX && alg != RNG_ALG_THREEFRY) {
+    return absl::InvalidArgumentError(
+        absl::StrCat("Unsupported algorithm id: ", alg));
+  }
 
-  TF_RETURN_IF_ERROR(
-      CheckKeyCounterShape(alg, key_t.shape(), counter_t.shape()));
+  TF_RETURN_IF_ERROR(CheckKeyCounterShape(
+      GetCounterSize(ConcreteRngAlgorithm(alg)), key_t.shape(),
+      counter_t.shape()));
   return std::make_tuple(key_t, counter_t, alg);
 }
 

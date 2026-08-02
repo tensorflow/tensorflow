@@ -431,6 +431,19 @@ class StatelessOpsTest(test.TestCase, parameterized.TestCase):
     seed = (7, 17)
     self._test_explicit_alg(case, seed)
 
+  @test_util.run_v2_only
+  def testThreefryAlg(self):
+    """Tests that alg='threefry' is accepted by the kernels."""
+    # ThreeFry's counter has length 1, unlike Philox's length-2 counter, so a
+    # counter-size check that assumes Philox would wrongly reject ThreeFry.
+    with ops.device('CPU'):
+      x = stateless.stateless_random_uniform(
+          shape=[5], seed=[1, 2], alg='threefry')
+      self.assertAllEqual(x.shape, [5])
+      y = stateless.stateless_shuffle(
+          math_ops.range(5), seed=[1, 2], alg='threefry')
+      self.assertAllEqual(y.shape, [5])
+
   @parameterized.named_parameters(
       ('_%s_%s_%s' % (case[0], seed_type.name, case_id), case, seed_type)  # pylint: disable=g-complex-comprehension
       for seed_type in SEED_TYPES
