@@ -788,6 +788,7 @@ cc_library(
     srcs = ["shape_inference.cc"],
     hdrs = ["shape_inference.h"],
     deps = [
+        ":hlo_proto_cc",
         "//xla:permutation_util",
         "//xla:shape_util",
         "//xla:status_macros",
@@ -815,6 +816,7 @@ xla_cc_test(
     name = "shape_inference_test",
     srcs = ["shape_inference_test.cc"],
     deps = [
+        ":hlo_proto_cc",
         ":shape_inference",
         "//xla:shape_util",
         "//xla:xla_data_proto_cc",
@@ -825,6 +827,7 @@ xla_cc_test(
         "//xla/hlo/testlib:test_helpers",
         "//xla/tests:xla_internal_test_main",  # fixdeps: keep
         "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status:status_matchers",
