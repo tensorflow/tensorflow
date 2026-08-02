@@ -3681,6 +3681,25 @@ class FromKerasModelTest(lite_v2_test_util.ModelTest):
     if len(quant_params['zero_points']) != 1:
       self.assertLen(quant_params['zero_points'], expected_num_params)
 
+  def testKerasMultipleTfFunctions(self):
+    class Model(tf.keras.Model):
+      def __init__(self):
+        super().__init__()
+        self.bias = tf.Variable([2.0], dtype=tf.float32)
+
+      @tf.function(input_signature=[tf.TensorSpec(shape=[1], dtype=tf.float32)])
+      def call(self, x):
+        return x + self.bias
+
+      @tf.function(input_signature=[tf.TensorSpec(shape=[1], dtype=tf.float32)])
+      def other_signature(self, x):
+        return x * 2.0
+
+    model = Model()
+    converter = lite.TFLiteConverterV2.from_keras_model(model)
+    tflite_model = converter.convert()
+    self.assertIsNotNone(tflite_model)
+
 
 class FromJaxModelTest(lite_v2_test_util.ModelTest):
 

@@ -1753,9 +1753,15 @@ class TFLiteKerasModelConverterV2(TFLiteConverterBaseV2):
           self._convert_keras_to_saved_model(temp_dir)
       )
       if self.saved_model_dir:
-        return super(TFLiteKerasModelConverterV2, self).convert(
-            graph_def, input_tensors, output_tensors
-        )
+        try:
+          return super(TFLiteKerasModelConverterV2, self).convert(
+              graph_def, input_tensors, output_tensors
+          )
+        except Exception:  # pylint: disable=broad-except
+          logging.warning(
+              "SavedModel conversion failed. Fallback to freezing Keras model."
+          )
+          self.saved_model_dir = None
     finally:
       shutil.rmtree(temp_dir, True)
 

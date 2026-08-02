@@ -220,13 +220,17 @@ def trace_model_call(model, input_signature=None):
     # rather than a list consisting of the single tensor.
     inputs = args[0] if len(input_signature) == 1 else list(args)
 
-    with keras_deps.get_call_context_function()().enter(
-        model,
-        inputs=inputs,
-        build_graph=False,
-        call_context_args={'training': False},
-        saving=True,
-    ):
+    call_context = keras_deps.get_call_context_function()
+    if call_context is not None:
+      with call_context().enter(
+          model,
+          inputs=inputs,
+          build_graph=False,
+          call_context_args={'training': False},
+          saving=True,
+      ):
+        outputs = model(inputs, training=False)
+    else:
       outputs = model(inputs, training=False)
 
     return outputs
