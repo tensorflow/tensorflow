@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -64,11 +65,11 @@ class VariadicReductionLayoutEqualizer : public DfsHloRewriteVisitor {
     }
 
     if (changed) {
-      TF_ASSIGN_OR_RETURN(
+      ASSIGN_OR_RETURN(
           auto new_reduce,
           MakeReduceHlo(new_inputs, reduce->init_values(), reduce->dimensions(),
                         reduce->called_computations()[0]));
-      TF_RETURN_IF_ERROR(ReplaceInstruction(reduce, new_reduce));
+      RETURN_IF_ERROR(ReplaceInstruction(reduce, new_reduce));
     }
 
     return absl::OkStatus();
@@ -105,16 +106,15 @@ class ReduceDecomposerVisitor : public DfsHloRewriteVisitor {
     }
 
     TF_RET_CHECK(!output_shapes.empty());
-    TF_ASSIGN_OR_RETURN(
-        auto expected_tuple_shape,
-        ShapeUtil::MakeValidatedMaybeTupleShape(expected_shapes));
-    TF_ASSIGN_OR_RETURN(auto expected_output_shape,
-                        ShapeUtil::MakeValidatedMaybeTupleShape(output_shapes));
+    ASSIGN_OR_RETURN(auto expected_tuple_shape,
+                     ShapeUtil::MakeValidatedMaybeTupleShape(expected_shapes));
+    ASSIGN_OR_RETURN(auto expected_output_shape,
+                     ShapeUtil::MakeValidatedMaybeTupleShape(output_shapes));
     if (expected_tuple_shape == expected_output_shape) {
       return absl::OkStatus();  // Nothing to do here.
     }
 
-    TF_ASSIGN_OR_RETURN(
+    ASSIGN_OR_RETURN(
         auto r_prime,
         MakeReduceHlo(reduce->inputs(), reduce->init_values(),
                       reduce->dimensions(), reduce->called_computations()[0],
@@ -134,19 +134,19 @@ class ReduceDecomposerVisitor : public DfsHloRewriteVisitor {
         shape.set_element_type(to_replace->shape().element_type());
       }
       auto copy = MakeCopyHlo(to_copy, shape);
-      TF_RETURN_IF_ERROR(ReplaceInstruction(to_replace, copy));
+      RETURN_IF_ERROR(ReplaceInstruction(to_replace, copy));
       return absl::OkStatus();
     }
 
     // Handle variadic reductions.
     std::vector<HloInstruction*> copies;
     for (int i = 0; i < reduce->input_count(); i++) {
-      TF_ASSIGN_OR_RETURN(auto from, GetOutput(r_prime, i));
+      ASSIGN_OR_RETURN(auto from, GetOutput(r_prime, i));
       auto copy = MakeCopyHlo(from, output_shapes[i]);
       copies.push_back(copy);
     }
     auto out = MaybeMakeTuple(copies);
-    TF_RETURN_IF_ERROR(ReplaceInstruction(reduce, out));
+    RETURN_IF_ERROR(ReplaceInstruction(reduce, out));
     return absl::OkStatus();
   }
 
@@ -178,13 +178,12 @@ class ReduceDecomposerVisitor : public DfsHloRewriteVisitor {
 absl::StatusOr<bool> ReduceDecomposer::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
-  TF_ASSIGN_OR_RETURN(bool changed1,
-                      VariadicReductionLayoutEqualizer{}.RunOnModule(
-                          module, execution_threads));
-  TF_ASSIGN_OR_RETURN(
-      bool changed2,
-      ReduceDecomposerVisitor{custom_layout_allowed_}.RunOnModule(
-          module, execution_threads));
+  ASSIGN_OR_RETURN(bool changed1,
+                   VariadicReductionLayoutEqualizer{}.RunOnModule(
+                       module, execution_threads));
+  ASSIGN_OR_RETURN(bool changed2,
+                   ReduceDecomposerVisitor{custom_layout_allowed_}.RunOnModule(
+                       module, execution_threads));
   return changed1 || changed2;
 }
 

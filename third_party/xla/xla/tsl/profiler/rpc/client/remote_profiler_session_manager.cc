@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/time/time.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/tsl/lib/gtl/map_util.h"
 #include "xla/tsl/platform/logging.h"
 #include "xla/tsl/platform/statusor.h"
@@ -117,7 +118,7 @@ absl::Status RemoteProfilerSessionManager::Init() {
   clients_.reserve(options_.service_addresses().size());
 
   ProfileRequest request_template = request_;
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       std::vector<std::string> override_hostnames_list,
       ParseAndValidateOverrideHostnames(options_, request_template));
 

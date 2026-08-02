@@ -15,19 +15,26 @@ limitations under the License.
 #ifndef XLA_TSL_PLATFORM_DEFAULT_STATUSOR_H_
 #define XLA_TSL_PLATFORM_DEFAULT_STATUSOR_H_
 
+#include "absl/base/attributes.h"
 #include "absl/status/statusor.h"
 #include "xla/tsl/platform/macros.h"
 #include "xla/tsl/platform/status.h"
+
+namespace tsl {
+ABSL_DEPRECATED(
+    "TF_ASSIGN_OR_RETURN is deprecated. Use ASSIGN_OR_RETURN instead")
+inline void TfAssignOrReturnDeprecationMarker() {}
+}  // namespace tsl
 
 #define TF_ASSIGN_OR_RETURN(lhs, rexpr) \
   TF_ASSIGN_OR_RETURN_IMPL(             \
       TF_STATUS_MACROS_CONCAT_NAME(_status_or_value, __COUNTER__), lhs, rexpr)
 
-#define TF_ASSIGN_OR_RETURN_IMPL(statusor, lhs, rexpr) \
-  auto statusor = (rexpr);                             \
-  if (TF_PREDICT_FALSE(!statusor.ok())) {              \
-    return statusor.status();                          \
-  }                                                    \
+#define TF_ASSIGN_OR_RETURN_IMPL(statusor, lhs, rexpr)                   \
+  auto statusor = (::tsl::TfAssignOrReturnDeprecationMarker(), (rexpr)); \
+  if (TF_PREDICT_FALSE(!statusor.ok())) {                                \
+    return statusor.status();                                            \
+  }                                                                      \
   lhs = std::move(statusor).value()
 
 #endif  // XLA_TSL_PLATFORM_DEFAULT_STATUSOR_H_

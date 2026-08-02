@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "llvm/IR/Constants.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Instructions.h"
@@ -131,7 +132,7 @@ static absl::Status EmitDynamicUpdateSliceInPlaceImpl(
   const int64_t rank = output_shape.dimensions().size();
   std::vector<llvm::Value*> start_multi_index(rank);
   for (int64_t i = 0; i < rank; ++i) {
-    TF_ASSIGN_OR_RETURN(start_multi_index[i], start_indices_generator(i));
+    ASSIGN_OR_RETURN(start_multi_index[i], start_indices_generator(i));
     llvm::Value* output_dim_size = llvm::ConstantInt::get(
         start_multi_index[i]->getType(), output_shape.dimensions(i));
     llvm::Value* update_dim_size = llvm::ConstantInt::get(
@@ -172,8 +173,8 @@ static absl::Status EmitDynamicUpdateSliceInPlaceImpl(
     // Do output[output_index] = update[update_index].
     IrArray::Index output_index(output_multi_index, output_shape,
                                 b->getInt64Ty());
-    TF_ASSIGN_OR_RETURN(llvm::Value * update_data,
-                        update_array_generator(update_index));
+    ASSIGN_OR_RETURN(llvm::Value * update_data,
+                     update_array_generator(update_index));
     output_array.EmitWriteArrayElement(output_index, update_data, b);
     return absl::OkStatus();
   };
@@ -240,23 +241,23 @@ static absl::Status EmitFusedDynamicUpdateSliceInPlaceImpl(
     // through the chain of ops that gives us the update operand and use the
     // layout of its source buffer(s).  But this is no worse than we do with
     // fusion elsewhere.)
-    TF_RETURN_IF_ERROR(LayoutUtil::CopyLayoutBetweenShapes(
+    RETURN_IF_ERROR(LayoutUtil::CopyLayoutBetweenShapes(
         dynamic_update_slice->shape(), &update_shape));
 
     // Create element generators for update and start_indices.
-    TF_ASSIGN_OR_RETURN(ElementGenerator update_array_generator,
-                        fused_emitter->GetGenerator(*update));
+    ASSIGN_OR_RETURN(ElementGenerator update_array_generator,
+                     fused_emitter->GetGenerator(*update));
 
     IndexGenerator start_indices_generator =
         [&](int64_t index) -> absl::StatusOr<llvm::Value*> {
-      TF_ASSIGN_OR_RETURN(ElementGenerator element_generator,
-                          fused_emitter->GetGenerator(
-                              *dynamic_update_slice->operand(2 + index)));
+      ASSIGN_OR_RETURN(ElementGenerator element_generator,
+                       fused_emitter->GetGenerator(
+                           *dynamic_update_slice->operand(2 + index)));
       return element_generator(IrArray::Index(b->getInt64Ty()));
     };
     bool is_signed = ShapeUtil::ElementIsSigned(start_indices->shape());
 
-    TF_RETURN_IF_ERROR(EmitDynamicUpdateSliceInPlaceImpl(
+    RETURN_IF_ERROR(EmitDynamicUpdateSliceInPlaceImpl(
         update_shape, start_indices_generator, is_signed,
         update_array_generator, fusion_output_array,
         IrName(dynamic_update_slice), b));

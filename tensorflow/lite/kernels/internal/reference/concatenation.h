@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_LITE_KERNELS_INTERNAL_REFERENCE_CONCATENATION_H_
 
 #include <algorithm>
+#include <cstddef>
 
 #include "tensorflow/lite/kernels/internal/common.h"
 #include "tensorflow/lite/kernels/internal/compatibility.h"
@@ -60,9 +61,9 @@ inline void Concatenation(const ConcatenationParams& params,
   }
 
   Scalar* output_ptr = output_data;
-  for (int k = 0; k < outer_size; k++) {
+  for (int64_t k = 0; k < outer_size; k++) {
     for (int i = 0; i < inputs_count; ++i) {
-      const int copy_size = input_shapes[i]->Dims(axis) * base_inner_size;
+      const int64_t copy_size = input_shapes[i]->Dims(axis) * base_inner_size;
       const Scalar* input_ptr = input_data[i] + k * copy_size;
       memcpy(output_ptr, input_ptr, copy_size * sizeof(Scalar));
       output_ptr += copy_size;
@@ -107,12 +108,16 @@ inline void Concatenation<Int4>(const ConcatenationParams& params,
   // We can't guarantee that the output buffer is initialized to 0, so we have
   // to clear it to ensure the high/low nibbles not currently being written are
   // not garbage.
-  // Note: output_shape.FlatSize() gives number of elements (nibbles).
+  // Note: The total number of elements (nibbles) is outer_size *
+  // output_shape.Dims(axis) * base_inner_size. We use int64_t to avoid
+  // overflow issues with FlatSize().
+  int64_t total_elements =
+      outer_size * output_shape.Dims(axis) * base_inner_size;
   // Bytes needed: (elements + 1) / 2.
-  memset(output_ptr, 0, (output_shape.FlatSize() + 1) / 2);
+  memset(output_ptr, 0, (static_cast<size_t>(total_elements) + 1) / 2);
 
   int64_t output_offset = 0;
-  for (int k = 0; k < outer_size; k++) {
+  for (int64_t k = 0; k < outer_size; k++) {
     for (int i = 0; i < inputs_count; ++i) {
       const int64_t copy_size = input_shapes[i]->Dims(axis) * base_inner_size;
       const uint8_t* input_ptr =
@@ -124,7 +129,7 @@ inline void Concatenation<Int4>(const ConcatenationParams& params,
       // So current offset in elements is k * copy_size.
       int64_t input_offset = k * copy_size;
 
-      for (int j = 0; j < copy_size; ++j) {
+      for (int64_t j = 0; j < copy_size; ++j) {
         int64_t in_idx = input_offset + j;
         uint8_t val = input_ptr[in_idx / 2];
         uint8_t nibble = (in_idx % 2 == 0) ? (val & 0x0F) : ((val >> 4) & 0x0F);
@@ -184,9 +189,9 @@ inline void ConcatenationWithScaling(const ConcatenationParams& params,
 
   const float inverse_output_scale = 1.f / output_scale;
   uint8_t* output_ptr = output_data;
-  for (int k = 0; k < outer_size; k++) {
+  for (int64_t k = 0; k < outer_size; k++) {
     for (int i = 0; i < inputs_count; ++i) {
-      const int copy_size = input_shapes[i]->Dims(axis) * base_inner_size;
+      const int64_t copy_size = input_shapes[i]->Dims(axis) * base_inner_size;
       const uint8_t* input_ptr = input_data[i] + k * copy_size;
       if (input_zeropoint[i] == output_zeropoint &&
           input_scale[i] == output_scale) {
@@ -194,7 +199,7 @@ inline void ConcatenationWithScaling(const ConcatenationParams& params,
       } else {
         const float scale = input_scale[i] * inverse_output_scale;
         const float bias = -input_zeropoint[i] * scale;
-        for (int j = 0; j < copy_size; ++j) {
+        for (int64_t j = 0; j < copy_size; ++j) {
           const int32_t value = static_cast<int32_t>(tflite::TfLiteRound(
                                     input_ptr[j] * scale + bias)) +
                                 output_zeropoint;

@@ -149,10 +149,10 @@ absl::Status WrapStringTensorAsEvents(const DebugNodeKey& debug_node_key,
   for (size_t i = 0; i < num_strs; ++i) {
     // Take into account the extra bytes in proto buffer.
     if (StringValMaxBytesInProto(strs[i]) > chunk_size_ub) {
-      return errors::FailedPrecondition(
+      return absl::FailedPreconditionError(absl::StrCat(
           "string value at index ", i, " from debug node ",
           debug_node_key.debug_node_name,
-          " does not fit gRPC message size limit (", chunk_size_ub, ")");
+          " does not fit gRPC message size limit (", chunk_size_ub, ")"));
     }
     if (chunk_size + StringValMaxBytesInProto(strs[i]) > chunk_size_ub) {
       cutoffs.push_back(i);
@@ -279,10 +279,10 @@ absl::Status PublishEncodedGraphDefInChunks(
     const absl::Status s = DebugGrpcIO::SendEventProtoThroughGrpcStream(
         event, debug_url, num_chunks - 1 == i);
     if (!s.ok()) {
-      return errors::FailedPrecondition(
+      return absl::FailedPreconditionError(absl::StrCat(
           "Failed to send chunk ", i, " of ", num_chunks,
           " of encoded GraphDef of size ", encoded_graph_def.size(), " bytes, ",
-          "due to: ", s.message());
+          "due to: ", s.message()));
     }
   }
   return absl::OkStatus();
@@ -410,7 +410,7 @@ absl::Status DebugIO::PublishDebugMetadata(
               dump_root_dir,
               absl::StrCat(DebugNodeKey::kMetadataFilePrefix,
                            DebugIO::kCoreMetadataTag, "sessionrun",
-                           strings::Printf("%.14lld", static_cast<long long>(
+                           absl::StrFormat("%.14lld", static_cast<long long>(
                                                           session_run_index)))),
           Env::Default()->NowMicros());
       status.Update(DebugFileIO::DumpEventProtoToFile(
@@ -779,9 +779,9 @@ absl::Status DebugGrpcChannel::Connect(const int64_t timeout_micros) {
   if (!channel_->WaitForConnected(
           gpr_time_add(gpr_now(GPR_CLOCK_REALTIME),
                        gpr_time_from_micros(timeout_micros, GPR_TIMESPAN)))) {
-    return errors::FailedPrecondition(
+    return absl::FailedPreconditionError(absl::StrCat(
         "Failed to connect to gRPC channel at ", server_stream_addr_,
-        " within a timeout of ", timeout_micros / 1e6, " s.");
+        " within a timeout of ", timeout_micros / 1e6, " s."));
   }
   stub_ = grpc::EventListener::NewStub(channel_);
   reader_writer_ = stub_->SendEvents(&ctx_);
@@ -881,8 +881,8 @@ absl::Status DebugGrpcIO::ReceiveEventReplyProtoThroughGrpcStream(
   if (debug_grpc_channel->ReadEventReply(event_reply)) {
     return absl::OkStatus();
   } else {
-    return errors::Cancelled(absl::StrCat("Reading EventReply from stream URL ",
-                                          grpc_stream_url, " failed."));
+    return absl::CancelledError(absl::StrCat(
+        "Reading EventReply from stream URL ", grpc_stream_url, " failed."));
   }
 }
 
@@ -919,8 +919,8 @@ absl::Status DebugGrpcIO::SendEventProtoThroughGrpcStream(
 
   bool write_ok = debug_grpc_channel->WriteEvent(event_proto);
   if (!write_ok) {
-    return errors::Cancelled(absl::StrCat("Write event to stream URL ",
-                                          grpc_stream_url, " failed."));
+    return absl::CancelledError(absl::StrCat("Write event to stream URL ",
+                                             grpc_stream_url, " failed."));
   }
 
   if (receive_reply) {

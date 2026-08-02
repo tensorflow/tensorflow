@@ -20,6 +20,7 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/ffi/execution_state.pb.h"
 #include "xla/ffi/type_registry.h"
 #include "xla/tsl/platform/statusor.h"
@@ -54,9 +55,9 @@ class ExecutionState {
   using TypeId = TypeRegistry::TypeId;
   using TypeInfo = TypeRegistry::TypeInfo;
 
-  // Sets opaque state with a given type id. Returns an error if state is
-  // already set, or if type id is not supported as a state.
-  absl::Status Set(TypeId type_id, void* state);
+  // Sets opaque state with a given type id and type info. Returns an error if
+  // state is already set.
+  absl::Status Set(TypeId type_id, TypeInfo type_info, void* state);
 
   // Returns opaque state of the given type id. If set state type id does not
   // match the requested one, returns an error.
@@ -86,8 +87,6 @@ class ExecutionState {
     TypeInfo type_info;
   };
 
-  absl::Status Set(TypeId type_id, TypeInfo type_info, void* state);
-
   std::unique_ptr<void, Deleter> state_;
 };
 
@@ -105,7 +104,7 @@ absl::Status ExecutionState::Set(std::unique_ptr<T> state) {
 
 template <typename T>
 absl::StatusOr<T*> ExecutionState::Get() const {
-  TF_ASSIGN_OR_RETURN(void* state, Get(TypeRegistry::GetTypeId<T>()));
+  ASSIGN_OR_RETURN(void* state, Get(TypeRegistry::GetTypeId<T>()));
   return tsl::safe_reinterpret_cast<T*>(state);
 }
 

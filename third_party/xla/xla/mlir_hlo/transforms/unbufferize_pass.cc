@@ -16,18 +16,15 @@ limitations under the License.
 // This files implements a pass that changes a partially bufferized function
 // back to tensor arguments and return values.
 
-#include <cstdint>
-#include <memory>
-#include <tuple>
-#include <utility>
-
-#include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/DenseSet.h"
+#include "llvm/ADT/Sequence.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/LogicalResult.h"
 #include "mlir/Dialect/Bufferization/IR/Bufferization.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
-#include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/IR/IRMapping.h"
+#include "mlir/IR/PatternMatch.h"
+#include "mlir/IR/Types.h"
 #include "mlir/IR/Value.h"
 #include "mlir/Support/LLVM.h"
 #include "transforms/passes.h"
@@ -93,10 +90,6 @@ void UnbufferizePass::runOnOperation() {
   Operation *terminator = funcOp.getBody().back().getTerminator();
   rewriter.setInsertionPoint(terminator);
   rewriter.replaceOpWithNewOp<func::ReturnOp>(terminator, results);
-}
-
-std::unique_ptr<OperationPass<func::FuncOp>> hlo::createUnbufferizePass() {
-  return std::make_unique<UnbufferizePass>();
 }
 
 }  // namespace mlir

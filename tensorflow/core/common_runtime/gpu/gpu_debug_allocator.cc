@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/gpu/gpu_debug_allocator.h"
 
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <optional>

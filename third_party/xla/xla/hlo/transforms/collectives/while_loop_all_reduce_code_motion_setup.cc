@@ -20,6 +20,7 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/statusor.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -131,7 +132,7 @@ absl::StatusOr<HloInstruction*> ReorderReduceTranspose::ExpandInstruction(
   // Create a new Transpose instruction that uses the same dimension
   // for permutation as before, but on the converted operand (if applicable)
   // or the original reduce-scatter operand.
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       auto* new_transpose,
       MakeTransposeHlo(
           has_convert ? new_convert : reduce_scatter->mutable_operand(0),

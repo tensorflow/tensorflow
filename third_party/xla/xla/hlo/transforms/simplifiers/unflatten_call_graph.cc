@@ -29,6 +29,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "highwayhash/arch_specific.h"
 #include "highwayhash/hh_types.h"
 #include "highwayhash/highwayhash.h"
@@ -125,7 +126,7 @@ UnflattenCallGraph::HashComputations(
   // Hash all called computations in parallel.
   return (xla::concurrency::ForEach<ComputationHashResult>(
       called_computations.begin(), called_computations.end(), hash_computation,
-      *task_executor_));
+      xla::concurrency::DefaultExecutor()));
 }
 
 absl::Status UnflattenCallGraph::ValidateComputationHashes(
@@ -149,9 +150,9 @@ absl::Status UnflattenCallGraph::ValidateComputationHashes(
   };
 
   // Validate all computations against their canonical versions in parallel.
-  TF_RETURN_IF_ERROR(
-      (xla::concurrency::ForEach(hash_results.begin(), hash_results.end(),
-                                 validate_against_canonical, *task_executor_)));
+  RETURN_IF_ERROR((xla::concurrency::ForEach(
+      hash_results.begin(), hash_results.end(), validate_against_canonical,
+      concurrency::DefaultExecutor())));
 
   return absl::OkStatus();
 }
@@ -169,8 +170,8 @@ absl::StatusOr<bool> UnflattenCallGraph::RunImpl(
   if (calls.targets.empty()) {
     return false;
   }
-  TF_ASSIGN_OR_RETURN(const std::vector<ComputationHashResult> hash_results,
-                      HashComputations(calls.targets));
+  ASSIGN_OR_RETURN(const std::vector<ComputationHashResult> hash_results,
+                   HashComputations(calls.targets));
 
   // Map computations to their hashes.
   // The HloComputation* keys are owned by the HloModule and are guaranteed to
@@ -213,7 +214,7 @@ absl::StatusOr<bool> UnflattenCallGraph::RunImpl(
   }
 
   if (changed) {
-    TF_RETURN_IF_ERROR(module->RemoveUnusedComputations());
+    RETURN_IF_ERROR(module->RemoveUnusedComputations());
     module->CleanupComputations();
   }
 

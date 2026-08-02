@@ -119,7 +119,7 @@ class DeviceAddressBase {
 template <typename T>
 class DeviceAddress final : public DeviceAddressBase {
  public:
-  // Default constructor instantiates a null-pointed, zero-sized addess range.
+  // Default constructor instantiates a null-pointed, zero-sized address range.
   DeviceAddress() : DeviceAddressBase(nullptr, 0) {}
   explicit DeviceAddress(std::nullptr_t) : DeviceAddress() {}
 
@@ -145,7 +145,8 @@ class DeviceAddress final : public DeviceAddressBase {
 
   // Creates and address range slice at the given offset and count. Offset and
   // count are specified in terms of T elements.
-  DeviceAddress<T> GetSlice(uint64_t element_offset, uint64_t element_count) {
+  DeviceAddress<T> GetSlice(uint64_t element_offset,
+                            uint64_t element_count) const {
     return DeviceAddress<T>(
         GetByteSlice(sizeof(T) * element_offset, sizeof(T) * element_count));
   }
@@ -160,6 +161,12 @@ class DeviceAddress final : public DeviceAddressBase {
   DeviceAddress(void* opaque, uint64_t size)
       : DeviceAddressBase(opaque, size) {}
 };
+
+// Support using DeviceAddressBase as a key in absl hash containers.
+template <typename H>
+H AbslHashValue(H h, const DeviceAddressBase& addr) {
+  return H::combine(std::move(h), addr.opaque(), addr.size());
+}
 
 }  // namespace stream_executor
 

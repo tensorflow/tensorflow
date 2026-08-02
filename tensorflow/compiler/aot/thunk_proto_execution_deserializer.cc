@@ -118,6 +118,11 @@ ThunkProtoExecutionDeserializer::ThunkSpecificRunImplFromThunkSequence(
                             GetTopKThunkRunImpl(thunk));
         break;
       }
+      case xla::cpu::ThunkProto::kRngSeedThunk: {
+        TF_ASSIGN_OR_RETURN(thunk_run_impls.emplace_back(),
+                            GetRngSeedThunkRunImpl(thunk));
+        break;
+      }
       default: {
         return xla::Internal("Unsupported thunk type: %s.", thunk.kind());
       }
@@ -428,6 +433,36 @@ ThunkProtoExecutionDeserializer::GetRngGetAndUpdateStateThunkRunImpl(
        {"{{RNG_STATE_PTR}}",
         absl::StrCat("reinterpret_cast<uint64_t*>(",
                      GetBufferAllocationString(rng_thunk.state_buffer()),
+                     ")")}});
+}
+
+absl::StatusOr<std::string>
+ThunkProtoExecutionDeserializer::GetRngSeedThunkRunImpl(
+    const xla::cpu::ThunkProto& thunk) {
+  if (!thunk.has_rng_seed_thunk()) {
+    return xla::Internal(
+        "RngSeed thunk was expected when getting thunk run implementation.");
+  }
+  const xla::cpu::RngSeedThunkProto& rng_seed_thunk = thunk.rng_seed_thunk();
+
+  absl::string_view rng_seed_thunk_invocation_format = R"(
+     // Rng Seed Thunk
+     {
+         uint64_t seed = static_cast<uint64_t>(run_options->rng_seed());
+         if (seed == 0) {
+           static thread_local std::random_device rd;
+           static thread_local std::mt19937_64 gen(rd());
+           std::uniform_int_distribution<uint64_t> distrib(1, std::numeric_limits<uint64_t>::max());
+           seed = distrib(gen);
+         }
+         *reinterpret_cast<uint64_t*>({{RNG_SEED_PTR}}) = seed;
+     })";
+
+  return absl::StrReplaceAll(
+      rng_seed_thunk_invocation_format,
+      {{"{{RNG_SEED_PTR}}",
+        absl::StrCat("reinterpret_cast<uint64_t*>(",
+                     GetBufferAllocationString(rng_seed_thunk.dest_buffer()),
                      ")")}});
 }
 

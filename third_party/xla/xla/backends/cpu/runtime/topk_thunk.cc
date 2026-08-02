@@ -21,6 +21,7 @@ limitations under the License.
 
 #include "absl/memory/memory.h"
 #include "absl/status/statusor.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/cpu/runtime/thunk.h"
 #include "xla/backends/cpu/runtime/topk_lib.h"
 #include "xla/runtime/buffer_use.h"
@@ -29,6 +30,7 @@ limitations under the License.
 #include "xla/stream_executor/device_address.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/platform/statusor.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla::cpu {
 
@@ -54,13 +56,11 @@ absl::StatusOr<std::unique_ptr<TopKThunk>> TopKThunk::Create(
 
 tsl::AsyncValueRef<Thunk::ExecuteEvent> TopKThunk::Execute(
     const ExecuteParams& params) {
-  TF_ASSIGN_OR_RETURN(
-      se::DeviceAddressBase values,
-      params.buffer_allocations->GetDeviceAddress(values_buffer_));
-  TF_ASSIGN_OR_RETURN(
-      se::DeviceAddressBase output,
-      params.buffer_allocations->GetDeviceAddress(output_buffer_));
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(se::DeviceAddressBase values,
+                   params.buffer_allocations->GetDeviceAddress(values_buffer_));
+  ASSIGN_OR_RETURN(se::DeviceAddressBase output,
+                   params.buffer_allocations->GetDeviceAddress(output_buffer_));
+  ASSIGN_OR_RETURN(
       se::DeviceAddressBase indices,
       params.buffer_allocations->GetDeviceAddress(indices_buffer_));
 

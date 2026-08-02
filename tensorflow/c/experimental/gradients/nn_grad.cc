@@ -73,7 +73,7 @@ absl::Status BroadcastMul(AbstractContext* ctx, AbstractTensorHandle* vec,
                           absl::Span<AbstractTensorHandle*> outputs) {
   if (!isa<ImmediateExecutionContext>(ctx)) {
     // TODO(b/168850692): Fix this.
-    return errors::Unimplemented(
+    return absl::UnimplementedError(
         "BroadcastMul is not supported in tracing mode yet.");
   }
   auto imm_ctx = dyn_cast<ImmediateExecutionContext>(ctx);

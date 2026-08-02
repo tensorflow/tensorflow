@@ -30,6 +30,7 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/pjrt/pjrt_layout.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/device.h"
@@ -39,6 +40,7 @@ limitations under the License.
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
 #include "xla/python/ifrt/user_context.h"
+#include "xla/python/ifrt/value.h"
 #include "xla/tsl/concurrency/future.h"
 #include "xla/tsl/concurrency/ref_count.h"
 #include "xla/tsl/platform/statusor.h"
@@ -147,6 +149,10 @@ void BasicStringArray::DeleteInternal() {
   is_deleted_ = true;
 }
 
+absl::StatusOr<std::optional<int64_t>> BasicStringArray::ByteSize() const {
+  return xla::ifrt::Layout::ByteSize(dtype(), shape_, sharding_, LayoutRef());
+}
+
 tsl::Future<> BasicStringArray::GetReadyFuture() const {
   DCHECK(this);
   absl::MutexLock lock(mu_);
@@ -175,7 +181,7 @@ BasicStringArray::DisassembleIntoSingleDeviceArrays(
     return absl::FailedPreconditionError("Array has already been deleted");
   }
 
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       auto shapes_and_shadings,
       sharding_->Disassemble(shape_, single_device_shard_semantics));
   const int num_shards = shapes_and_shadings.size();
@@ -249,12 +255,12 @@ BasicStringArray::DisassembleIntoSingleDeviceArrays(
   std::vector<ArrayRef> arrays;
   arrays.reserve(num_shards);
   for (int i = 0; i < num_shards; ++i) {
-    TF_ASSIGN_OR_RETURN(auto array,
-                        BasicStringArray::Create(
-                            client_, std::move(shapes_and_shadings[i].first),
-                            std::move(shapes_and_shadings[i].second),
-                            std::move(buffer_futures[i]),
-                            std::move(on_done_with_buffer_callbacks[i])));
+    ASSIGN_OR_RETURN(auto array,
+                     BasicStringArray::Create(
+                         client_, std::move(shapes_and_shadings[i].first),
+                         std::move(shapes_and_shadings[i].second),
+                         std::move(buffer_futures[i]),
+                         std::move(on_done_with_buffer_callbacks[i])));
     arrays.push_back(array);
   }
   return arrays;
@@ -306,8 +312,8 @@ absl::StatusOr<ArrayRef> BasicStringArray::Copy(
     return absl::FailedPreconditionError("Array has already been deleted");
   }
 
-  TF_ASSIGN_OR_RETURN(auto new_sharding, sharding().WithDeviceAssignment(
-                                             std::move(devices), memory_kind));
+  ASSIGN_OR_RETURN(auto new_sharding, sharding().WithDeviceAssignment(
+                                          std::move(devices), memory_kind));
   if (new_sharding->devices()->size() != sharding_->devices()->size()) {
     return absl::InvalidArgumentError(absl::StrCat(
         "Number of devices in new sharding: ", new_sharding->devices()->size(),

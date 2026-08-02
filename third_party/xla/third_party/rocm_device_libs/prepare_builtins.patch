@@ -1,11 +1,11 @@
 diff --git a/utils/prepare-builtins/prepare-builtins.cpp b/utils/prepare-builtins/prepare-builtins.cpp
-index 3f60dcd..82c23a1 100644
+index e693e6d2e4e9..f3b941cce4e7 100644
 --- a/utils/prepare-builtins/prepare-builtins.cpp
 +++ b/utils/prepare-builtins/prepare-builtins.cpp
-@@ -73,6 +73,14 @@ int main(int argc, char **argv) {
-     return 1;
+@@ -96,6 +96,14 @@ int main(int argc, char **argv) {
+     }
    }
-
+ 
 +  // Strip the OpenCL version metadata. There are a lot of linked
 +  // modules in the library build, each spamming the same
 +  // version. This may also report a different version than the user

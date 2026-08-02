@@ -15,10 +15,13 @@ limitations under the License.
 
 #include "xla/backends/gpu/transforms/stream_attribute_async_wrapper.h"
 
+#include <cstdint>
+
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/log.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -30,26 +33,28 @@ limitations under the License.
 #include "xla/xla_data.pb.h"
 
 namespace xla::gpu {
-
 namespace {
+
+static constexpr int64_t kDefaultStreamId = 0;
+
 static absl::StatusOr<bool> AsynchronizeInstruction(HloInstruction* instr) {
   auto instr_gpu_config = instr->backend_config<GpuBackendConfig>();
-  if (!instr_gpu_config.ok() || instr_gpu_config->operation_queue_id() ==
-                                    Thunk::kDefaultExecutionStreamId.value()) {
+  if (!instr_gpu_config.ok() ||
+      instr_gpu_config->operation_queue_id() == kDefaultStreamId) {
     return false;
   }
   HloComputation* computation = instr->parent();
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       HloInstruction * done,
       computation->CreateAsyncInstructions(
           instr, {}, StreamAttributeAsyncWrapper::kParallelExecutionThread,
           /*replace=*/true));
-  TF_ASSIGN_OR_RETURN(GpuBackendConfig gpu_config,
-                      done->backend_config<GpuBackendConfig>());
+  ASSIGN_OR_RETURN(GpuBackendConfig gpu_config,
+                   done->backend_config<GpuBackendConfig>());
   // Set the false delay of done op to be false so it can be scheduled
   // far apart from start.
   gpu_config.set_force_earliest_schedule(false);
-  TF_RETURN_IF_ERROR(done->set_backend_config(gpu_config));
+  RETURN_IF_ERROR(done->set_backend_config(gpu_config));
   VLOG(5) << "Created async instruction: " << done->ToString();
   return true;
 }
@@ -64,7 +69,7 @@ absl::StatusOr<bool> StreamAttributeAsyncWrapper::RunImpl(
   for (const HloComputation* comp :
        module->MakeNonfusionComputations(execution_threads)) {
     for (HloInstruction* instr : comp->instructions()) {
-      TF_ASSIGN_OR_RETURN(bool result, AsynchronizeInstruction(instr));
+      ASSIGN_OR_RETURN(bool result, AsynchronizeInstruction(instr));
       changed |= result;
     }
   }

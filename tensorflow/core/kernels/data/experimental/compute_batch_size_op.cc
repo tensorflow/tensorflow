@@ -106,7 +106,7 @@ class ComputeBatchSizeOp : public OpKernel {
 
     const NodeDef* node = graph_view.GetNode(dataset_node_name);
     OP_REQUIRES(ctx, node != nullptr,
-                errors::InvalidArgument("Node does not exist in graph"));
+                absl::InvalidArgumentError("Node does not exist in graph"));
     int64_t batch_size = GetBatchSize(*node, graph_view);
     Tensor* result;
     OP_REQUIRES_OK(ctx, ctx->allocate_output(0, TensorShape({}), &result));

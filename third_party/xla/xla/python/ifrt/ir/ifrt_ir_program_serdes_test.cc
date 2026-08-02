@@ -21,20 +21,22 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/OperationSupport.h"
 #include "mlir/IR/OwningOpRef.h"
+#include "shardy/dialect/sdy/ir/dialect.h"
 #include "stablehlo/dialect/Version.h"
 #include "xla/python/ifrt/ir/ifrt_ir_program.h"
+#include "xla/python/ifrt/ir/support/module_parsing.h"
 #include "xla/python/ifrt/ir/version.h"
 #include "xla/python/ifrt/serdes.h"
 #include "xla/python/ifrt/serdes.pb.h"
 #include "xla/python/ifrt/serdes_test_util.h"
 #include "xla/python/ifrt/serdes_version.h"
-#include "xla/python/ifrt/support/module_parsing.h"
 #include "xla/tsl/platform/statusor.h"
 
 namespace xla {
@@ -180,7 +182,10 @@ module @multiple_calls_of_same_module {
   // `SerializeIfrtIRProgramOptions::ifrt_version`.
   auto options = std::make_unique<SerializeIfrtIRProgramOptions>(
       Version::getCurrentVersion().toString(),
-      ::mlir::vhlo::Version::getCurrentVersion().toString(),
+      /*vhlo_target_version=*/
+      mlir::vhlo::Version::getCurrentVersion().toString(),
+      /*atom_program_sdy_version=*/
+      mlir::sdy::SdyDialectVersion::getCurrentVersion().toString(),
       /*version_in_place=*/false);
   TF_ASSERT_OK_AND_ASSIGN(serialized,
                           Serialize(*initial_program, std::move(options)));
@@ -225,7 +230,10 @@ module @multiple_calls_of_same_module {
   // `SerializeIfrtIRProgramOptions::ifrt_version`.
   auto options = std::make_unique<SerializeIfrtIRProgramOptions>(
       Version::getCurrentVersion().toString(),
-      ::mlir::vhlo::Version::getCurrentVersion().toString(),
+      /*vhlo_target_version=*/
+      mlir::vhlo::Version::getCurrentVersion().toString(),
+      /*atom_program_sdy_version=*/
+      mlir::sdy::SdyDialectVersion::getCurrentVersion().toString(),
       /*version_in_place=*/false);
   TF_ASSERT_OK_AND_ASSIGN(serialized,
                           Serialize(*initial_program, std::move(options)));
@@ -269,7 +277,10 @@ module {
   // `SerializeIfrtIRProgramOptions::ifrt_version`.
   auto options = std::make_unique<SerializeIfrtIRProgramOptions>(
       Version::getCurrentVersion().toString(),
-      ::mlir::vhlo::Version::getCurrentVersion().toString());
+      /*vhlo_target_version=*/
+      mlir::vhlo::Version::getCurrentVersion().toString(),
+      /*atom_program_sdy_version=*/
+      mlir::sdy::SdyDialectVersion::getCurrentVersion().toString());
   EXPECT_THAT(
       Serialize(*initial_program, std::move(options)),
       absl_testing::StatusIs(absl::StatusCode::kInvalidArgument,
@@ -319,7 +330,10 @@ module {
 
 INSTANTIATE_TEST_SUITE_P(
     SerDesVersion, IfrtIRProgramSerDesTest,
-    testing::ValuesIn(test_util::Week4OldOrLaterSerDesVersions()));
+    testing::ValuesIn(test_util::Week4OldOrLaterSerDesVersions()),
+    [](const testing::TestParamInfo<SerDesVersion>& info) {
+      return absl::StrCat(info.param.version_number().value());
+    });
 
 }  // namespace
 }  // namespace ifrt

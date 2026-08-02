@@ -22,6 +22,7 @@ limitations under the License.
 
 #define EIGEN_USE_GPU
 
+#include "absl/status/status.h"
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/tensor_format.h"
@@ -34,49 +35,55 @@ namespace functor {
 // argmax indices are not written.
 template <typename T>
 struct MaxPoolForwardWithOptionalArgmax {
-  bool operator()(const T* bottom_data, const int batch, const int height,
-                  const int width, const int channels, const int pooled_height,
-                  const int pooled_width, const int kernel_h,
-                  const int kernel_w, const int stride_h, const int stride_w,
-                  const int pad_t, const int pad_l, T* top_data, int64_t* mask,
-                  const Eigen::GpuDevice& d, bool propagate_nans,
-                  const bool include_batch_in_index);
+  absl::Status operator()(const T* bottom_data, const int batch,
+                          const int height, const int width, const int channels,
+                          const int pooled_height, const int pooled_width,
+                          const int kernel_h, const int kernel_w,
+                          const int stride_h, const int stride_w,
+                          const int pad_t, const int pad_l, T* top_data,
+                          int64_t* mask, const Eigen::GpuDevice& d,
+                          bool propagate_nans,
+                          const bool include_batch_in_index);
 };
 
 struct MaxPoolForwardNoMask_NCHW_VECT_C {
-  bool operator()(const int32_t* bottom_data, const int batch, const int height,
-                  const int width, int channels, const int pooled_height,
-                  const int pooled_width, const int kernel_h,
-                  const int kernel_w, const int stride_h, const int stride_w,
-                  const int pad_t, const int pad_l, int32_t* top_data,
-                  const Eigen::GpuDevice& d);
+  absl::Status operator()(const int32_t* bottom_data, const int batch,
+                          const int height, const int width, int channels,
+                          const int pooled_height, const int pooled_width,
+                          const int kernel_h, const int kernel_w,
+                          const int stride_h, const int stride_w,
+                          const int pad_t, const int pad_l, int32_t* top_data,
+                          const Eigen::GpuDevice& d);
 };
 
 template <typename T>
 struct MaxPoolBackwardWithArgmax {
-  bool operator()(const int output_size, const int input_size,
-                  const T* top_diff, const int64_t* mask, const int top_offset,
-                  const int bottom_offset, T* bottom_diff,
-                  const Eigen::GpuDevice& d, const bool include_batch_in_index);
+  absl::Status operator()(const int output_size, const int input_size,
+                          const T* top_diff, const int64_t* mask,
+                          const int top_offset, const int bottom_offset,
+                          T* bottom_diff, const Eigen::GpuDevice& d,
+                          const bool include_batch_in_index);
 };
 
 template <typename T>
 struct MaxPoolGradBackwardWithArgmax {
-  bool operator()(const int output_size, const int input_size,
-                  const T* top_diff, const int64_t* mask, const int top_offset,
-                  const int bottom_offset, T* bottom_diff,
-                  const Eigen::GpuDevice& d, const bool include_batch_in_index);
+  absl::Status operator()(const int output_size, const int input_size,
+                          const T* top_diff, const int64_t* mask,
+                          const int top_offset, const int bottom_offset,
+                          T* bottom_diff, const Eigen::GpuDevice& d,
+                          const bool include_batch_in_index);
 };
 
 template <typename T>
 struct MaxPoolGradBackwardNoMask {
-  bool operator()(TensorFormat data_format, const T* bottom_data,
-                  const T* output_data, const int batch,
-                  const int pooled_height, const int pooled_width,
-                  const int channels, const int height, const int width,
-                  const int kernel_h, const int kernel_w, const int stride_h,
-                  const int stride_w, const int pad_t, const int pad_l,
-                  const T* top_diff, T* bottom_diff, const Eigen::GpuDevice& d);
+  absl::Status operator()(TensorFormat data_format, const T* bottom_data,
+                          const T* output_data, const int batch,
+                          const int pooled_height, const int pooled_width,
+                          const int channels, const int height, const int width,
+                          const int kernel_h, const int kernel_w,
+                          const int stride_h, const int stride_w,
+                          const int pad_t, const int pad_l, const T* top_diff,
+                          T* bottom_diff, const Eigen::GpuDevice& d);
 };
 
 }  // namespace functor

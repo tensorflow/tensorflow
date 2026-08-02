@@ -1,10 +1,26 @@
+// Copyright 2026 The TensorFlow Authors. All Rights Reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// ==============================================================================
+
 // Protocol message for the fast Example parse unit test.
 syntax = "proto3";
 
-import "tensorflow/core/example/feature.proto";
-option cc_enable_arenas = true;
-
 package tensorflow;
+
+import "tensorflow/core/example/feature.proto";
+
+option cc_enable_arenas = true;
 
 // This message is parallel to Example, but with additional fields to test
 // unknown fields handling in example_proto_fast_parsing_test.cc.
@@ -18,4 +34,4 @@ message ExampleWithExtras {
   double extra5 = 1341;
   repeated float extra6 = 1342;
   Features extra7 = 1343;
-};
+}

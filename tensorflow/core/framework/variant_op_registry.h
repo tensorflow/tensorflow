@@ -319,10 +319,10 @@ absl::Status UnaryOpVariant(OpKernelContext* ctx, VariantUnaryOp op,
   UnaryVariantOpRegistry::VariantUnaryOpFn* unary_op_fn =
       UnaryVariantOpRegistry::Global()->GetUnaryOpFn(op, device, v.TypeId());
   if (unary_op_fn == nullptr) {
-    return errors::Internal("No unary variant unary_op function found for op ",
-                            VariantUnaryOpToString(op),
-                            " Variant type_name: ", v.TypeName(),
-                            " for device type: ", device);
+    return absl::InternalError(absl::StrCat(
+        "No unary variant unary_op function found for op ",
+        VariantUnaryOpToString(op), " Variant type_name: ", v.TypeName(),
+        " for device type: ", device));
   }
   return (*unary_op_fn)(ctx, v, v_out);
 }
@@ -341,19 +341,19 @@ absl::Status BinaryOpVariants(OpKernelContext* ctx, VariantBinaryOp op,
                               const Variant& a, const Variant& b,
                               Variant* out) {
   if (a.TypeId() != b.TypeId()) {
-    return errors::Internal(
-        "BinaryOpVariants: Variants a and b have different "
-        "type ids.  Type names: '",
-        a.TypeName(), "' vs. '", b.TypeName(), "'");
+    return absl::InternalError(
+        absl::StrCat("BinaryOpVariants: Variants a and b have different "
+                     "type ids.  Type names: '",
+                     a.TypeName(), "' vs. '", b.TypeName(), "'"));
   }
   const std::string& device = DeviceName<Device>::value;
   UnaryVariantOpRegistry::VariantBinaryOpFn* binary_op_fn =
       UnaryVariantOpRegistry::Global()->GetBinaryOpFn(op, device, a.TypeId());
   if (binary_op_fn == nullptr) {
-    return errors::Internal("No unary variant binary_op function found for op ",
-                            VariantBinaryOpToString(op),
-                            " Variant type_name: '", a.TypeName(),
-                            "' for device type: ", device);
+    return absl::InternalError(
+        absl::StrCat("No unary variant binary_op function found for op ",
+                     VariantBinaryOpToString(op), " Variant type_name: '",
+                     a.TypeName(), "' for device type: ", device));
   }
   return (*binary_op_fn)(ctx, a, b, out);
 }
@@ -375,8 +375,11 @@ class UnaryVariantDecodeRegistration {
           if (t == nullptr) {
             return false;
           }
+          VariantTensorData data;
+          if (!data.FromProto(std::move(*t))) {
+            return false;
+          }
           Variant decoded = T();
-          VariantTensorData data(std::move(*t));
           if (!decoded.Decode(std::move(data))) {
             return false;
           }
@@ -406,9 +409,9 @@ class UnaryVariantDeviceCopyRegistration {
           DCHECK_NE(to, nullptr);
           *to = T();
           if (from.get<T>() == nullptr) {
-            return errors::Internal(
+            return absl::InternalError(absl::StrCat(
                 "VariantCopyToGPUFn: Could not access object, type_index: ",
-                type_index_name);
+                type_index_name));
           }
           const T& t = *from.get<T>();
           T* t_out = to->get<T>();
@@ -436,9 +439,9 @@ class UnaryVariantUnaryOpRegistration {
           DCHECK_NE(v_out, nullptr);
           *v_out = T();
           if (v.get<T>() == nullptr) {
-            return errors::Internal(
+            return absl::InternalError(absl::StrCat(
                 "VariantUnaryOpFn: Could not access object, type_index: ",
-                type_index_name);
+                type_index_name));
           }
           const T& t = *v.get<T>();
           T* t_out = v_out->get<T>();
@@ -468,14 +471,14 @@ class UnaryVariantBinaryOpRegistration {
           DCHECK_NE(out, nullptr);
           *out = T();
           if (a.get<T>() == nullptr) {
-            return errors::Internal(
+            return absl::InternalError(absl::StrCat(
                 "VariantBinaryOpFn: Could not access object 'a', type_index: ",
-                type_index_name);
+                type_index_name));
           }
           if (b.get<T>() == nullptr) {
-            return errors::Internal(
+            return absl::InternalError(absl::StrCat(
                 "VariantBinaryOpFn: Could not access object 'b', type_index: ",
-                type_index_name);
+                type_index_name));
           }
           const T& t_a = *a.get<T>();
           const T& t_b = *b.get<T>();

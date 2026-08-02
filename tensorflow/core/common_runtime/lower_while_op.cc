@@ -558,7 +558,7 @@ absl::Status LowerWhileHelper::UpdateConsumers() {
         // can start before all the outputs have been computed.
         int exit_node_index = op_input_output_to_lowered_node_[e->src_output()];
         if (exit_node_index < 0) {
-          return errors::Internal(
+          return absl::InternalError(
               "Expecting an Exit node for a Resource tensor.");
         }
         graph_->AddEdge(exit_nodes_[exit_node_index], 0, e->dst(),
@@ -596,19 +596,19 @@ absl::Status RewriteWhileNode(Node* n, Graph* g,
 
   const AttrValue* cond_attr = n->attrs().Find("cond");
   if (cond_attr == nullptr) {
-    return errors::InvalidArgument("While cond function missing");
+    return absl::InvalidArgumentError("While cond function missing");
   }
   const AttrValue* body_attr = n->attrs().Find("body");
   if (body_attr == nullptr) {
-    return errors::InvalidArgument("While body function missing");
+    return absl::InvalidArgumentError("While body function missing");
   }
   const AttrValue* parallel_iterations_attr =
       n->attrs().Find("parallel_iterations");
   if (parallel_iterations_attr == nullptr) {
-    return errors::InvalidArgument("parallel_iterations attr missing");
+    return absl::InvalidArgumentError("parallel_iterations attr missing");
   }
   if (parallel_iterations_attr->i() < 1) {
-    return errors::InvalidArgument("parallel_iterations must be > 0");
+    return absl::InvalidArgumentError("parallel_iterations must be > 0");
   }
 
   TF_RETURN_IF_ERROR(LowerWhileHelper::Run(

@@ -28,6 +28,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -147,7 +148,7 @@ class EnforceMinorToMajorReduceOpVisitor : public DfsHloRewriteVisitor {
       }
     }
 
-    TF_ASSIGN_OR_RETURN(
+    ASSIGN_OR_RETURN(
         auto new_reduce_shape,
         ShapeUtil::MakeValidatedMaybeTupleShape(new_reduce_shapes));
 
@@ -186,9 +187,9 @@ class EnforceMinorToMajorReduceOpVisitor : public DfsHloRewriteVisitor {
 absl::StatusOr<bool> ReductionLayoutNormalizer::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
-  TF_ASSIGN_OR_RETURN(bool changed,
-                      EnforceMinorToMajorReduceOpVisitor().RunOnModule(
-                          module, execution_threads));
+  ASSIGN_OR_RETURN(bool changed,
+                   EnforceMinorToMajorReduceOpVisitor().RunOnModule(
+                       module, execution_threads));
   return changed;
 }
 

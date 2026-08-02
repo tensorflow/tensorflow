@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "llvm/Support/Casting.h"
 #include "xla/python/ifrt/executable.h"
 #include "xla/python/ifrt/serdes.h"
@@ -74,12 +75,11 @@ absl::Status XlaExecutableVersion::ToProto(
   executable_version_proto.set_version_number(SerDesVersionNumber(0).value());
   executable_version_proto.set_platform_id(platform_id);
   if (abi_version) {
-    TF_ASSIGN_OR_RETURN(
-        xla::ifrt::Serialized executable_abi_version_proto,
-        xla::ifrt::Serialize(
-            *abi_version,
-            std::make_unique<xla::ifrt::SerializeOptions>(
-                xla::ifrt::SerDesWeek4OldVersionAccessor::Get())));
+    ASSIGN_OR_RETURN(xla::ifrt::Serialized executable_abi_version_proto,
+                     xla::ifrt::Serialize(
+                         *abi_version,
+                         std::make_unique<xla::ifrt::SerializeOptions>(
+                             xla::ifrt::SerDesWeek4OldVersionAccessor::Get())));
     std::string executable_abi_version;
     if (!executable_abi_version_proto.SerializeToString(
             &executable_abi_version)) {
@@ -110,11 +110,11 @@ XlaExecutableVersion::FromProto(const SerializedXlaExecutableVersion& proto) {
     return absl::InvalidArgumentError(
         "Failed to parse XlaExecutableAbiVersion from string.");
   }
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<XlaExecutableAbiVersion>
-                          xla_executable_runtime_abi_version,
-                      xla::ifrt::Deserialize<XlaExecutableAbiVersion>(
-                          executable_abi_version_proto,
-                          std::make_unique<xla::ifrt::DeserializeOptions>()));
+  ASSIGN_OR_RETURN(std::unique_ptr<XlaExecutableAbiVersion>
+                       xla_executable_runtime_abi_version,
+                   xla::ifrt::Deserialize<XlaExecutableAbiVersion>(
+                       executable_abi_version_proto,
+                       std::make_unique<xla::ifrt::DeserializeOptions>()));
 
   return std::make_unique<XlaExecutableVersion>(
       proto.platform_id(), std::move(xla_executable_runtime_abi_version));

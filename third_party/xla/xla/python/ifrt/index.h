@@ -20,9 +20,13 @@ limitations under the License.
 #include <ostream>
 
 #include "absl/container/inlined_vector.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/types/span.h"
+#include "xla/python/ifrt/index.pb.h"
+#include "xla/python/ifrt/serdes_default_version_accessor.h"
+#include "xla/python/ifrt/serdes_version.h"
 #include "xla/tsl/platform/logging.h"
 
 namespace xla {
@@ -47,6 +51,22 @@ class Index {
   Index(Index&&) = default;
   Index& operator=(const Index&) = default;
   Index& operator=(Index&&) = default;
+
+  // Constructs `Index` from `IndexProto`.
+  static absl::StatusOr<Index> FromProto(const IndexProto& proto);
+
+  // Converts the index to a protobuf.
+  void ToProto(
+      IndexProto& proto,
+      SerDesVersion version = SerDesDefaultVersionAccessor::Get()) const;
+
+  // Returns a `IndexProto` representation.
+  IndexProto ToProto(
+      SerDesVersion version = SerDesDefaultVersionAccessor::Get()) const {
+    IndexProto proto;
+    ToProto(proto, version);
+    return proto;
+  }
 
   absl::Span<const int64_t> elements() const { return elements_; }
 

@@ -1,18 +1,34 @@
+# Copyright 2026 The OpenXLA Authors. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
+
 load(
     "@local_config_rocm//rocm:build_defs.bzl",
     "if_rocm_is_configured",
 )
+load(
+    "@local_config_sycl//sycl:build_defs.bzl",
+    "if_sycl_is_configured",
+)
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("//xla:lit.bzl", "enforce_glob", "lit_test_suite")
+load("//xla/backends/gpu/tests:helper.bzl", "get_canonical_repo_name")
 load(
     "//xla/stream_executor:build_defs.bzl",
     "if_gpu_is_configured",
 )
 load("//xla/tsl:tsl.default.bzl", "filegroup")
-load(
-    "//xla/tsl/platform:build_config_root.bzl",
-    "tf_gpu_tests_tags",
-)
 
 # hlo-opt tool.
 load(
@@ -34,6 +50,7 @@ cc_library(
     deps = [
         "//xla:debug_options_flags",
         "//xla:xla_proto_cc",
+        "//xla/backends/gpu/transforms:scatter_determinism_expander",
         "//xla/backends/gpu/transforms:scatter_expander",
         "//xla/backends/gpu/transforms:scatter_slice_simplifier",
         "//xla/backends/gpu/transforms/collectives:all_gather_dynamic_slice_simplifier",
@@ -54,7 +71,6 @@ cc_library(
         "//xla/service:map_inliner",
         "//xla/service:platform_util",
         "//xla/service:reduce_scatter_reassociate",
-        "//xla/service:scatter_determinism_expander",
         "//xla/service:scatter_simplifier",
         "//xla/service:select_and_scatter_expander",
         "//xla/service:sharding_remover",
@@ -68,6 +84,7 @@ cc_library(
         "//xla/service/spmd/shardy:shardy_xla_pass",
         "//xla/stream_executor:platform",
         "//xla/stream_executor:stream_executor_h",
+        "//xla/tsl/platform:status_macros",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status:statusor",
@@ -85,6 +102,7 @@ cc_library(
         "//xla:debug_options_flags",
         "//xla:shape_util",
         "//xla:types",
+        "//xla/backends/gpu/target_config",
         "//xla/backends/gpu/transforms:cudnn_custom_call_converter",
         "//xla/backends/gpu/transforms:dot_algorithm_rewriter",
         "//xla/backends/gpu/transforms:dot_dimension_sorter",
@@ -93,7 +111,6 @@ cc_library(
         "//xla/backends/gpu/transforms:fusion_wrapper",
         "//xla/backends/gpu/transforms:gemm_broadcast_folding_rewriter",
         "//xla/backends/gpu/transforms:gemm_fusion",
-        "//xla/backends/gpu/transforms:gemv_rewriter",
         "//xla/backends/gpu/transforms:reduce_scatter_creator",
         "//xla/backends/gpu/transforms:reduction_degenerate_dim_remover",
         "//xla/backends/gpu/transforms:reduction_dimension_grouper",
@@ -110,6 +127,7 @@ cc_library(
         "//xla/hlo/tools/hlo_opt:opt_lib",
         "//xla/hlo/transforms:host_offloader",
         "//xla/hlo/transforms/simplifiers:algebraic_simplifier",
+        "//xla/hlo/transforms/simplifiers:gemv_rewriter",
         "//xla/hlo/transforms/simplifiers:hlo_memory_scheduler",
         "//xla/hlo/transforms/simplifiers:reduce_window_rewriter",
         "//xla/service:buffer_value",
@@ -119,6 +137,7 @@ cc_library(
         "//xla/service:executable",
         "//xla/service:hlo_graph_dumper",
         "//xla/service:hlo_module_config",
+        "//xla/service:llvm_compiler",
         "//xla/service:platform_util",
         "//xla/service/gpu:alias_info",
         "//xla/service/gpu:compile_module_to_llvm_ir",
@@ -134,12 +153,15 @@ cc_library(
         "//xla/stream_executor/cuda:cuda_compute_capability",
         "//xla/stream_executor/platform:initialize",
         "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:status_macros",
         "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/base",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:string_view",
         "@llvm-project//llvm:ir_headers",
+        "@tsl//tsl/platform:casts",
     ] + if_gpu_is_configured([
         "//xla/service:gpu_plugin_without_collectives",
         "//xla/service/gpu:gpu_executable",
@@ -147,6 +169,8 @@ cc_library(
         "//xla/stream_executor:cuda_platform",
     ]) + if_rocm_is_configured([
         "//xla/stream_executor:rocm_platform",
+    ]) + if_sycl_is_configured([
+        "//xla/stream_executor:sycl_platform",
     ]),
     alwayslink = True,  # Initializer needs to run.
 )
@@ -170,6 +194,7 @@ cc_library(
         "//xla/hlo/tools/hlo_opt:opt_lib",
         "//xla/hlo/transforms:host_offloader",
         "//xla/hlo/transforms/simplifiers:hlo_memory_scheduler",
+        "//xla/hlo/transforms/simplifiers:recognize_reduce_window",
         "//xla/service:batchnorm_expander",
         "//xla/service:buffer_value",
         "//xla/service:change_op_data_type",
@@ -197,6 +222,7 @@ cc_library(
         "//xla/stream_executor/host:host_platform",
         "//xla/stream_executor/platform:initialize",
         "//xla/tsl/platform:logging",
+        "//xla/tsl/platform:status_macros",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status:statusor",
@@ -238,11 +264,14 @@ lit_test_suite(
     ]) + if_rocm_is_configured([
         "--param=PTX=GCN",
         "--param=GPU=mi200",
+    ]) + if_sycl_is_configured([
+        "--param=PTX=ONEAPI",
+        "--param=GPU=bmg_g21",
     ]),
     cfg = "//xla:lit.cfg.py",
     data = [":test_utilities"],
-    default_tags = tf_gpu_tests_tags(),
-    hermetic_cuda_data_dir = "%S/../../../../../cuda_nvcc",
+    default_tags = ["gpu"],  # Needs to run in a build with a gpu configured.
+    hermetic_cuda_data_dir = "%S/../../../../../" + get_canonical_repo_name("cuda_nvcc"),
     tags_override = {
         "tests/gpu_hlo_ptx.hlo": ["cuda-only"],
     },

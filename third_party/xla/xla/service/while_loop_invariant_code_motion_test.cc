@@ -25,6 +25,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/hlo/parser/hlo_parser.h"
+#include "xla/hlo/testlib/filecheck.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/test.h"
 #include "xla/hlo/utils/hlo_matchers.h"
@@ -73,21 +74,20 @@ HloComputation* WhileLoopInvariantCodeMotionTest::MakeAlwaysTrueComputation(
 
 TEST_F(WhileLoopInvariantCodeMotionTest, HoistOneInvariantOperation) {
   auto m = CreateNewVerifiedModule();
-  auto scalar_s32 = ShapeUtil::MakeShape(S32, {});
+  auto array_s32 = ShapeUtil::MakeShape(S32, {2});
   Shape while_shape =
-      ShapeUtil::MakeTupleShape({scalar_s32, scalar_s32, scalar_s32});
+      ShapeUtil::MakeTupleShape({array_s32, array_s32, array_s32});
 
   HloComputation* while_body = [&]() {
     HloComputation::Builder builder(TestName() + ".while_body");
     HloInstruction* param = builder.AddInstruction(
         HloInstruction::CreateParameter(0, while_shape, "param"));
     HloInstruction* gte_0 = builder.AddInstruction(
-        HloInstruction::CreateGetTupleElement(scalar_s32, param, 0));
+        HloInstruction::CreateGetTupleElement(array_s32, param, 0));
     HloInstruction* gte_1 = builder.AddInstruction(
-        HloInstruction::CreateGetTupleElement(scalar_s32, param, 1));
-    HloInstruction* add_result =
-        builder.AddInstruction(HloInstruction::CreateBinary(
-            scalar_s32, HloOpcode::kAdd, gte_0, gte_1));
+        HloInstruction::CreateGetTupleElement(array_s32, param, 1));
+    HloInstruction* add_result = builder.AddInstruction(
+        HloInstruction::CreateBinary(array_s32, HloOpcode::kAdd, gte_0, gte_1));
     builder.AddInstruction(
         HloInstruction::CreateTuple({gte_0, gte_1, add_result}));
 
@@ -115,38 +115,36 @@ TEST_F(WhileLoopInvariantCodeMotionTest, HoistOneInvariantOperation) {
 
 TEST_F(WhileLoopInvariantCodeMotionTest, HoistInvariantOperationTree) {
   auto m = CreateNewVerifiedModule();
-  auto scalar_s32 = ShapeUtil::MakeShape(S32, {});
+  auto array_s32 = ShapeUtil::MakeShape(S32, {2});
   Shape while_shape =
-      ShapeUtil::MakeTupleShape({scalar_s32, scalar_s32, scalar_s32});
+      ShapeUtil::MakeTupleShape({array_s32, array_s32, array_s32});
 
   HloComputation* while_body = [&]() {
     HloComputation::Builder builder(TestName() + ".while_body");
     HloInstruction* param = builder.AddInstruction(
         HloInstruction::CreateParameter(0, while_shape, "param"));
     HloInstruction* gte_0 = builder.AddInstruction(
-        HloInstruction::CreateGetTupleElement(scalar_s32, param, 0));
+        HloInstruction::CreateGetTupleElement(array_s32, param, 0));
     HloInstruction* gte_1 = builder.AddInstruction(
-        HloInstruction::CreateGetTupleElement(scalar_s32, param, 1));
+        HloInstruction::CreateGetTupleElement(array_s32, param, 1));
     HloInstruction* gte_2_loop_variant = builder.AddInstruction(
-        HloInstruction::CreateGetTupleElement(scalar_s32, param, 2));
+        HloInstruction::CreateGetTupleElement(array_s32, param, 2));
 
-    HloInstruction* add_result =
-        builder.AddInstruction(HloInstruction::CreateBinary(
-            scalar_s32, HloOpcode::kAdd, gte_0, gte_1));
+    HloInstruction* add_result = builder.AddInstruction(
+        HloInstruction::CreateBinary(array_s32, HloOpcode::kAdd, gte_0, gte_1));
     HloInstruction* mul_result =
         builder.AddInstruction(HloInstruction::CreateBinary(
-            scalar_s32, HloOpcode::kMultiply, add_result, gte_1));
-    HloInstruction* negate_result =
-        builder.AddInstruction(HloInstruction::CreateUnary(
-            scalar_s32, HloOpcode::kNegate, mul_result));
+            array_s32, HloOpcode::kMultiply, add_result, gte_1));
+    HloInstruction* negate_result = builder.AddInstruction(
+        HloInstruction::CreateUnary(array_s32, HloOpcode::kNegate, mul_result));
     HloInstruction* constant = builder.AddInstruction(
-        HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32_t>(4)));
+        HloInstruction::CreateConstant(LiteralUtil::CreateR1<int32_t>({4, 4})));
     HloInstruction* sub_result =
         builder.AddInstruction(HloInstruction::CreateBinary(
-            scalar_s32, HloOpcode::kSubtract, negate_result, constant));
+            array_s32, HloOpcode::kSubtract, negate_result, constant));
     HloInstruction* divide_result =
         builder.AddInstruction(HloInstruction::CreateBinary(
-            scalar_s32, HloOpcode::kDivide, sub_result, gte_2_loop_variant));
+            array_s32, HloOpcode::kDivide, sub_result, gte_2_loop_variant));
     builder.AddInstruction(
         HloInstruction::CreateTuple({gte_0, gte_1, divide_result}));
 
@@ -367,25 +365,23 @@ TEST_F(WhileLoopInvariantCodeMotionTest, DontHoistBitcastAlone) {
 TEST_F(WhileLoopInvariantCodeMotionTest, HoistBitcastIfNeeded) {
   // The bitcast's user can be hoisted, so hoist the bitcast too.
   auto m = CreateNewVerifiedModule();
-  auto scalar_s32 = ShapeUtil::MakeShape(S32, {});
-  auto effective_scalar_s32 = ShapeUtil::MakeShape(S32, {1});
-  Shape while_shape = ShapeUtil::MakeTupleShape(
-      {scalar_s32, effective_scalar_s32, effective_scalar_s32});
+  auto array_s32 = ShapeUtil::MakeShape(S32, {2});
+  Shape while_shape =
+      ShapeUtil::MakeTupleShape({array_s32, array_s32, array_s32});
 
   HloComputation* while_body = [&]() {
     HloComputation::Builder builder(TestName() + ".while_body");
     HloInstruction* param = builder.AddInstruction(
         HloInstruction::CreateParameter(0, while_shape, "param"));
     HloInstruction* gte_0 = builder.AddInstruction(
-        HloInstruction::CreateGetTupleElement(scalar_s32, param, 0));
+        HloInstruction::CreateGetTupleElement(array_s32, param, 0));
     HloInstruction* gte_1 = builder.AddInstruction(
-        HloInstruction::CreateGetTupleElement(effective_scalar_s32, param, 1));
-    HloInstruction* bitcast_inst =
-        builder.AddInstruction(HloInstruction::CreateUnary(
-            effective_scalar_s32, HloOpcode::kBitcast, gte_0));
+        HloInstruction::CreateGetTupleElement(array_s32, param, 1));
+    HloInstruction* bitcast_inst = builder.AddInstruction(
+        HloInstruction::CreateUnary(array_s32, HloOpcode::kBitcast, gte_0));
     HloInstruction* add_inst =
         builder.AddInstruction(HloInstruction::CreateBinary(
-            effective_scalar_s32, HloOpcode::kAdd, bitcast_inst, gte_1));
+            array_s32, HloOpcode::kAdd, bitcast_inst, gte_1));
     builder.AddInstruction(
         HloInstruction::CreateTuple({gte_0, gte_1, add_inst}));
 
@@ -776,22 +772,22 @@ TEST_F(WhileLoopInvariantCodeMotionTest, HoistWithOriginalValue) {
 HloModule licm_ov_test
 
 body {
-  p_body = (s32[], s32[]) parameter(0)
-  gte0 = s32[] get-tuple-element(p_body), index=0
-  c = s32[] constant(1), origin={{"c.1"}}
-  add = s32[] add(gte0, c), origin={{"add.1"}}
-  ROOT tuple = (s32[], s32[]) tuple(gte0, add)
+  p_body = (s32[2], s32[2]) parameter(0)
+  gte0 = s32[2] get-tuple-element(p_body), index=0
+  c = s32[2] constant({1, 1}), origin={{"c.1"}}
+  add = s32[2] add(gte0, c), origin={{"add.1"}}
+  ROOT tuple = (s32[2], s32[2]) tuple(gte0, add)
 }
 
 cond {
-  p_cond = (s32[], s32[]) parameter(0)
+  p_cond = (s32[2], s32[2]) parameter(0)
   ROOT result = pred[] constant(true)
 }
 
 ENTRY entry {
-  p_entry_0 = s32[] parameter(0)
-  while_init = (s32[], s32[]) tuple(p_entry_0, p_entry_0)
-  ROOT while0 = (s32[], s32[]) while(while_init), condition=cond, body=body, origin={({"while.5" {0}},{"while.5" {1}})}
+  p_entry_0 = s32[2] parameter(0)
+  while_init = (s32[2], s32[2]) tuple(p_entry_0, p_entry_0)
+  ROOT while0 = (s32[2], s32[2]) while(while_init), condition=cond, body=body, origin={({"while.5" {0}},{"while.5" {1}})}
 }
 )";
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_string));
@@ -827,6 +823,181 @@ ENTRY entry {
   EXPECT_EQ(transformed_while->original_value()->ToString(),
             "({\"while.5\" {0}}, {\"while.5\" {1}}, {\"while.5#*/c.1\"}, "
             "{\"while.5#*/add.1\"})");
+}
+
+TEST_F(WhileLoopInvariantCodeMotionTest, HoistsGetRngSeed) {
+  const char* const hlo_string = R"(
+HloModule licm_get_rng_seed_test
+
+body {
+  p_body = (u64[1], u64[1]) parameter(0)
+  gte0 = u64[1] get-tuple-element(p_body), index=0
+  rng_seed = u64[] custom-call(), custom_call_target="GetRngSeed"
+  bcast = u64[1] broadcast(rng_seed), dimensions={}
+  add = u64[1] add(gte0, bcast)
+  ROOT tuple = (u64[1], u64[1]) tuple(gte0, add)
+}
+
+cond {
+  p_cond = (u64[1], u64[1]) parameter(0)
+  ROOT result = pred[] constant(true)
+}
+
+ENTRY entry {
+  p_entry_0 = (u64[1], u64[1]) parameter(0)
+  ROOT while0 = (u64[1], u64[1]) while(p_entry_0), condition=cond, body=body
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_string));
+
+  TF_ASSERT_OK_AND_ASSIGN(bool simplified_loop,
+                          WhileLoopInvariantCodeMotion{}.Run(m.get()));
+  EXPECT_TRUE(simplified_loop);
+
+  EXPECT_THAT(m->entry_computation()->instructions(),
+              Contains(op::CustomCall()));
+}
+
+TEST_F(WhileLoopInvariantCodeMotionTest, HoistInvariantCall) {
+  const char* const hlo_string = R"(
+HloModule HoistInvariantCall
+
+foo (p0: s32[2], p1: s32[2]) -> s32[2] {
+  p0 = s32[2]{0} parameter(0)
+  p1 = s32[2]{0} parameter(1)
+  ROOT add = s32[2]{0} add(p0, p1)
+}
+
+body (param: (s32[2], s32[2], s32[2])) -> (s32[2], s32[2], s32[2]) {
+  param = (s32[2], s32[2], s32[2]) parameter(0)
+  gte_0 = s32[2]{0} get-tuple-element(param), index=0
+  gte_1 = s32[2]{0} get-tuple-element(param), index=1
+  call_result = s32[2]{0} call(gte_0, gte_1), to_apply=foo
+  ROOT tuple = (s32[2], s32[2], s32[2]) tuple(gte_0, gte_1, call_result)
+}
+
+cond (param: (s32[2], s32[2], s32[2])) -> pred[] {
+  param = (s32[2], s32[2], s32[2]) parameter(0)
+  ROOT result = pred[] constant(true)
+}
+
+ENTRY entry {
+  init_value = (s32[2], s32[2], s32[2]) parameter(0)
+  // CHECK: ENTRY %entry
+  // CHECK: %[[call:.+]] = s32[2]{0} call({{.+}}, {{.+}}), to_apply=%foo
+  // CHECK: %[[while_init:.+]] = (s32[2]{0}, s32[2]{0}, s32[2]{0}, s32[2]{0}) tuple({{.+}}, {{.+}}, {{.+}}, %[[call]])
+  // CHECK: %[[while:.+]] = (s32[2]{0}, s32[2]{0}, s32[2]{0}, s32[2]{0}) while(%[[while_init]]){{.*}}
+  ROOT while = (s32[2], s32[2], s32[2]) while(init_value), condition=cond, body=body
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(bool simplified_loop,
+                          WhileLoopInvariantCodeMotion{}.Run(m.get()));
+  EXPECT_TRUE(simplified_loop);
+
+  EXPECT_THAT(RunFileCheck(m->ToString(), hlo_string),
+              absl_testing::IsOkAndHolds(true));
+}
+
+TEST_F(WhileLoopInvariantCodeMotionTest, DontHoistCallWithSideEffects) {
+  const char* const hlo_string = R"(
+HloModule DontHoistCallWithSideEffects
+
+foo (p0: s32[2], p1: s32[2], tok: token[]) -> (s32[2], token[]) {
+  p0 = s32[2]{0} parameter(0)
+  p1 = s32[2]{0} parameter(1)
+  tok = token[] parameter(2)
+  outfeed = token[] outfeed(p0, tok)
+  add = s32[2]{0} add(p0, p1)
+  ROOT tuple = (s32[2]{0}, token[]) tuple(add, outfeed)
+}
+
+body (param: (s32[2], s32[2], s32[2], token[])) -> (s32[2], s32[2], s32[2], token[]) {
+  param = (s32[2], s32[2], s32[2], token[]) parameter(0)
+  gte_0 = s32[2]{0} get-tuple-element(param), index=0
+  gte_1 = s32[2]{0} get-tuple-element(param), index=1
+  token_val = token[] get-tuple-element(param), index=3
+  // CHECK: %body (
+  // CHECK: %[[call:.+]] = (s32[2]{0}, token[]) call({{.+}}, {{.+}}, {{.+}}), to_apply=%foo
+  call_result = (s32[2]{0}, token[]) call(gte_0, gte_1, token_val), to_apply=foo
+  call_res_0 = s32[2]{0} get-tuple-element(call_result), index=0
+  call_res_token = token[] get-tuple-element(call_result), index=1
+  ROOT tuple = (s32[2]{0}, s32[2]{0}, s32[2]{0}, token[]) tuple(gte_0, gte_1, call_res_0, call_res_token)
+}
+
+cond (param: (s32[2], s32[2], s32[2], token[])) -> pred[] {
+  param = (s32[2], s32[2], s32[2], token[]) parameter(0)
+  ROOT result = pred[] constant(true)
+}
+
+ENTRY entry {
+  init_value = (s32[2], s32[2], s32[2], token[]) parameter(0)
+  ROOT while = (s32[2], s32[2], s32[2], token[]) while(init_value), condition=cond, body=body
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(bool simplified_loop,
+                          WhileLoopInvariantCodeMotion{}.Run(m.get()));
+  EXPECT_FALSE(simplified_loop);
+
+  EXPECT_THAT(RunFileCheck(m->ToString(), hlo_string),
+              absl_testing::IsOkAndHolds(true));
+}
+
+TEST_F(WhileLoopInvariantCodeMotionTest, SharedCalleeOneHoistedOneNot) {
+  const char* const hlo_string = R"(
+HloModule SharedCalleeOneHoistedOneNot
+
+foo (p0: s32[2]) -> s32[2] {
+  p0 = s32[2]{0} parameter(0)
+  ROOT negate = s32[2]{0} negate(p0)
+}
+
+body_hoist (param: (s32[2], s32[2])) -> (s32[2], s32[2]) {
+  param = (s32[2], s32[2]) parameter(0)
+  gte_0 = s32[2]{0} get-tuple-element(param), index=0
+  call_res = s32[2]{0} call(gte_0), to_apply=foo
+  ROOT tuple = (s32[2], s32[2]) tuple(gte_0, call_res)
+}
+
+body_no_hoist (param: (s32[2], s32[2])) -> (s32[2], s32[2]) {
+  param = (s32[2], s32[2]) parameter(0)
+  gte_0 = s32[2]{0} get-tuple-element(param), index=0
+  gte_1 = s32[2]{0} get-tuple-element(param), index=1
+  // CHECK: %body_no_hoist (
+  // CHECK: call({{.*}}), to_apply=%foo
+  // CHECK: %{{.*}}body_hoist (
+  // CHECK-NOT: call(
+  call_res = s32[2]{0} call(gte_1), to_apply=foo
+  one = s32[2]{0} constant({1, 1})
+  add = s32[2]{0} add(gte_1, one)
+  ROOT tuple = (s32[2], s32[2]) tuple(call_res, add)
+}
+
+cond (param: (s32[2], s32[2])) -> pred[] {
+  param = (s32[2], s32[2]) parameter(0)
+  ROOT result = pred[] constant(true)
+}
+
+ENTRY entry {
+  init_value = (s32[2], s32[2]) parameter(0)
+  // CHECK: ENTRY %entry
+  // CHECK: call({{.*}}), to_apply=%foo
+  while_hoist = (s32[2], s32[2]) while(init_value), condition=cond, body=body_hoist
+  while_no_hoist = (s32[2], s32[2]) while(while_hoist), condition=cond, body=body_no_hoist
+  ROOT result = (s32[2], s32[2]) copy(while_no_hoist)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(bool simplified_loop,
+                          WhileLoopInvariantCodeMotion{}.Run(m.get()));
+  EXPECT_TRUE(simplified_loop);
+
+  EXPECT_THAT(RunFileCheck(m->ToString(), hlo_string),
+              absl_testing::IsOkAndHolds(true));
 }
 
 }  // namespace

@@ -23,6 +23,7 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "xla/backends/cpu/target_machine_options.h"
+#include "xla/pjrt/host_memory_spaces.h"
 #include "xla/pjrt/pjrt_common.h"
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_device_dimensions.h"
@@ -131,6 +132,42 @@ TEST(CpuTopologyDescriptionTest,
   auto [device_coords, core_id] = std::move(device_core);
   ASSERT_EQ(device_coords, (PjRtDeviceDimensions{0, 0, 1}));
   ASSERT_EQ(core_id, 0);
+}
+
+TEST(CpuTopologyDescriptionTest, KindIdToKind) {
+  std::vector<CpuTopology::CpuDevice> cpu_devices = {{0, 0}};
+  xla::cpu::TargetMachineOptions target_machine_options(
+      /*triple=*/"triple", /*cpu=*/"cpu", /*features=*/"");
+  CpuTopologyDescription topology(
+      xla::CpuId(), "cpu", "1.0",
+      CpuTopology(cpu_devices, target_machine_options));
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      absl::string_view pinned_host_kind,
+      topology.KindIdToKind(PinnedHostMemorySpace::kKindId));
+  EXPECT_EQ(pinned_host_kind, "pinned_host");
+
+  TF_ASSERT_OK_AND_ASSIGN(absl::string_view device_kind,
+                          topology.KindIdToKind(CpuDeviceMemorySpace::kKindId));
+  EXPECT_EQ(device_kind, "device");
+
+  EXPECT_FALSE(topology.KindIdToKind(-1).ok());
+}
+
+TEST(CpuTopologyDescriptionTest, MemorySpaceKindIds) {
+  std::vector<CpuTopology::CpuDevice> cpu_devices = {{0, 0}};
+  xla::cpu::TargetMachineOptions target_machine_options(
+      /*triple=*/"triple", /*cpu=*/"cpu", /*features=*/"");
+  CpuTopologyDescription topology(
+      xla::CpuId(), "cpu", "1.0",
+      CpuTopology(cpu_devices, target_machine_options));
+
+  EXPECT_THAT(
+      topology.GetMemorySpaceKindIds(),
+      ElementsAre(CpuDeviceMemorySpace::kKindId, PinnedHostMemorySpace::kKindId,
+                  UnpinnedHostMemorySpace::kKindId));
+  EXPECT_EQ(topology.GetDefaultMemorySpaceKindId(),
+            CpuDeviceMemorySpace::kKindId);
 }
 
 }  // namespace

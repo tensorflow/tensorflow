@@ -193,7 +193,7 @@ TEST_P(ThreadSafeBufferTest, CancelReaders) {
           EXPECT_THAT(buffer.Pop(), absl_testing::StatusIs(error::ABORTED));
         })));
   }
-  buffer.Cancel(errors::Aborted("Aborted"));
+  buffer.Cancel(absl::AbortedError("Aborted"));
 }
 
 TEST_P(ThreadSafeBufferTest, CancelWriters) {
@@ -214,17 +214,17 @@ TEST_P(ThreadSafeBufferTest, CancelWriters) {
           }
         })));
   }
-  buffer.Cancel(errors::Cancelled("Cancelled"));
+  buffer.Cancel(absl::CancelledError("Cancelled"));
 }
 
 TEST_P(ThreadSafeBufferTest, CancelMultipleTimes) {
   ThreadSafeBuffer<Tensor> buffer(GetBufferSize());
-  buffer.Cancel(errors::Unknown("Unknown"));
+  buffer.Cancel(absl::UnknownError("Unknown"));
   EXPECT_THAT(buffer.Push(Tensor("Test tensor")),
               absl_testing::StatusIs(error::UNKNOWN));
-  buffer.Cancel(errors::DeadlineExceeded("Deadline exceeded"));
+  buffer.Cancel(absl::DeadlineExceededError("Deadline exceeded"));
   EXPECT_THAT(buffer.Pop(), absl_testing::StatusIs(error::DEADLINE_EXCEEDED));
-  buffer.Cancel(errors::ResourceExhausted("Resource exhausted"));
+  buffer.Cancel(absl::ResourceExhaustedError("Resource exhausted"));
   EXPECT_THAT(buffer.Push(Tensor("Test tensor")),
               absl_testing::StatusIs(error::RESOURCE_EXHAUSTED));
 }

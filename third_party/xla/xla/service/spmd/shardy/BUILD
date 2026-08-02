@@ -1,3 +1,18 @@
+# Copyright 2026 The OpenXLA Authors. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
+
 # Integrates Shardy into the current XLA pipeline.
 
 load("//xla:xla.default.bzl", "xla_cc_binary", "xla_cc_test")
@@ -26,6 +41,7 @@ cc_library(
         ":utils",
         "//xla:shape_layout",
         "//xla:shape_util",
+        "//xla:status_macros",
         "//xla:util",
         "//xla:xla_data_proto_cc",
         "//xla:xla_proto_cc",
@@ -43,6 +59,7 @@ cc_library(
         "//xla/tsl/framework/mlir:status_scoped_diagnostic_handler",
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:status_macros",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -76,10 +93,12 @@ cc_library(
         "//xla/hlo/ir:mesh_and_axis",
         "//xla/hlo/ir:named_sharding",
         "//xla/hlo/translate/hlo_to_mhlo:hlo_utils",
+        "//xla/mlir_hlo",
         "//xla/mlir_hlo:hlo_dialect_registration",
         "//xla/service/spmd/shardy/extensions:mhlo_extensions",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
         "@llvm-project//llvm:Support",
@@ -99,6 +118,7 @@ xla_cc_test(
     srcs = ["utils_test.cc"],
     deps = [
         ":utils",
+        "@com_google_absl//absl/status:status_matchers",
         "@com_google_googletest//:gtest_main",
         "@llvm-project//llvm:Support",
     ],
@@ -125,6 +145,7 @@ xla_cc_test(
         "//xla/hlo/utils:hlo_matchers",
         "//xla/service:computation_layout",
         "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/log",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -136,15 +157,12 @@ xla_cc_binary(
         "//xla/mlir_hlo:hlo_dialect_registration",
         "//xla/mlir_hlo:stablehlo_extension_passes",
         "//xla/service/spmd/shardy/extensions:mhlo_extensions",
-        "//xla/service/spmd/shardy/round_trip_common:export_named_computations",
         "//xla/service/spmd/shardy/round_trip_common:import_constants",
-        "//xla/service/spmd/shardy/round_trip_common:import_func_calls",
         "//xla/service/spmd/shardy/round_trip_common:import_sdy_custom_calls",
         "//xla/service/spmd/shardy/round_trip_common:open_while_free_vars_sharding",
         "//xla/service/spmd/shardy/sdy_round_trip:dedup_meshes",
         "//xla/service/spmd/shardy/sdy_round_trip:export_ops",
         "//xla/service/spmd/shardy/sdy_round_trip:export_shardy_attrs",
-        "//xla/service/spmd/shardy/sdy_round_trip:flatten_call_graph",
         "//xla/service/spmd/shardy/sdy_round_trip:import_shardy_attrs",
         "//xla/service/spmd/shardy/sdy_round_trip:pipelines",
         "//xla/service/spmd/shardy/sdy_round_trip:shard_map_export",
@@ -156,7 +174,6 @@ xla_cc_binary(
         "//xla/service/spmd/shardy/stablehlo_round_trip:export_ops",
         "//xla/service/spmd/shardy/stablehlo_round_trip:export_shardings",
         "//xla/service/spmd/shardy/stablehlo_round_trip:shard_map_export",
-        "//xla/service/spmd/shardy/stablehlo_round_trip:shard_map_import",
         "//xla/service/spmd/shardy/stablehlo_round_trip:stablehlo_export",
         "//xla/service/spmd/shardy/stablehlo_round_trip:stablehlo_import",
         "@llvm-project//mlir:AllPassesAndDialects",

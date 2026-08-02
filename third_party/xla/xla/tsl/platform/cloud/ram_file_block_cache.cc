@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/time/time.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/tsl/platform/env.h"
 
 namespace tsl {
@@ -93,7 +94,7 @@ absl::Status RamFileBlockCache::UpdateLRU(const Key& key,
     Key fmax = std::make_pair(key.first, std::numeric_limits<size_t>::max());
     auto fcmp = block_map_.upper_bound(fmax);
     if (fcmp != block_map_.begin() && key < (--fcmp)->first) {
-      return errors::Internal("Block cache contents are inconsistent.");
+      return absl::InternalError("Block cache contents are inconsistent.");
     }
   }
 
@@ -167,7 +168,7 @@ absl::Status RamFileBlockCache::MaybeFetch(
         return absl::OkStatus();
     }
   }
-  return errors::Internal(
+  return absl::InternalError(
       "Control flow should never reach the end of RamFileBlockCache::Fetch.");
 }
 
@@ -197,8 +198,8 @@ absl::Status RamFileBlockCache::Read(const std::string& filename, size_t offset,
     // LRU iterator for the key and block.
     std::shared_ptr<Block> block = Lookup(key);
     DCHECK(block) << "No block for key " << key.first << "@" << key.second;
-    TF_RETURN_IF_ERROR(MaybeFetch(key, block));
-    TF_RETURN_IF_ERROR(UpdateLRU(key, block));
+    RETURN_IF_ERROR(MaybeFetch(key, block));
+    RETURN_IF_ERROR(UpdateLRU(key, block));
     // Copy the relevant portion of the block into the result buffer.
     const auto& data = block->data;
     if (offset >= pos + data.size()) {

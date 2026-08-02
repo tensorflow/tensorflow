@@ -54,13 +54,13 @@ class SimpleRendezvous : public RendezvousInterface {
   absl::Status Send(const ParsedKey& parsed, const Args& send_args,
                     const Tensor& val, const bool is_dead) override {
     if (is_dead) {
-      return errors::Internal("Send of a dead tensor");
+      return absl::InternalError("Send of a dead tensor");
     }
 
     mutex_lock l(mu_);
     std::string edge_name(parsed.edge_name);
     if (table_.count(edge_name) > 0) {
-      return errors::Internal("Send of an already sent tensor");
+      return absl::InternalError("Send of an already sent tensor");
     }
     table_[edge_name] = val;
     return absl::OkStatus();
@@ -74,7 +74,7 @@ class SimpleRendezvous : public RendezvousInterface {
       std::string key(parsed.edge_name);
       mutex_lock l(mu_);
       if (table_.count(key) <= 0) {
-        status = errors::Internal("Did not find key ", key);
+        status = absl::InternalError(absl::StrCat("Did not find key ", key));
       } else {
         tensor = table_[key];
       }
@@ -106,7 +106,7 @@ absl::Status GraphRunner::Run(Graph* graph,
                               const std::vector<std::string>& output_names,
                               std::vector<Tensor>* outputs) {
   if (device_ == nullptr) {
-    return errors::NotFound("Cannot find a device for GraphRunner.");
+    return absl::NotFoundError("Cannot find a device for GraphRunner.");
   }
 
   if (function_library && function_library->device() &&

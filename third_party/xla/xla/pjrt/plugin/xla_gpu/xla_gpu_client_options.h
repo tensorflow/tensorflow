@@ -60,7 +60,7 @@ struct GpuClientOptions {
 
   std::optional<bool> use_async_dispatch;
 
-  int max_inflight_computations = 8;
+  std::optional<int> max_inflight_computations = 32;
 };
 
 }  //  namespace xla

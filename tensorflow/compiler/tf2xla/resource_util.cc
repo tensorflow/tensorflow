@@ -73,9 +73,9 @@ absl::StatusOr<absl::InlinedVector<const Edge*, 1>> OutputEdgesByIndex(
     const Node& n, int idx) {
   absl::InlinedVector<const Edge*, 1> res;
   if (idx >= n.num_outputs()) {
-    return errors::InvalidArgument("Invalid out_edge index: ", idx, ", Node ",
-                                   n.name(), " only has ", n.num_outputs(),
-                                   " outputs.");
+    return absl::InvalidArgumentError(
+        absl::StrCat("Invalid out_edge index: ", idx, ", Node ", n.name(),
+                     " only has ", n.num_outputs(), " outputs."));
   }
 
   for (const Edge* o : n.out_edges()) {
@@ -202,9 +202,9 @@ absl::Status PropagateThroughCallOp(
                         absl::flat_hash_set<ResourceUsageAnalysis::NodeInfo>>*
         source_to_path) {
   if (call_depth > kMaxCallDepth) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(absl::StrCat(
         "Function call stack in given graph is too deep, last function ",
-        "name is: ", function_name.value());
+        "name is: ", function_name.value()));
   }
   // resource_arg_indices contains all indices of the input
   // arguments that carry Stack/TensorArray resource handles.
@@ -281,17 +281,17 @@ absl::Status AnalyzeResourceUsage(
       user_to_source;
   for (const Node* n : reverse_post_order) {
     if (IsControlFlowV1Node(n)) {
-      return errors::InvalidArgument(
+      return absl::InvalidArgumentError(absl::StrCat(
           "AnalyzeResourceUsage does not support control flow v1 node: ",
-          n->DebugString());
+          n->DebugString()));
     }
 
     // TODO(ycao): Support pass-through functional while/if nodes.
     if (n->type_string() == kIfOp || n->type_string() == kWhileOp) {
-      return errors::InvalidArgument(
+      return absl::InvalidArgumentError(absl::StrCat(
           "AnalyzeResourceUsage does not yet support control flow v2 "
           "node: ",
-          n->DebugString());
+          n->DebugString()));
     }
 
     // Record a resource source edge.

@@ -1,5 +1,5 @@
 load("@xla//third_party/rules_python/python:py_test.bzl", "py_test")
-load("//xla:pytype.bzl", "pytype_strict_library")
+load("//xla:pytype.bzl", "pytype_strict_binary", "pytype_strict_library")
 load(
     "//xla:xla.default.bzl",
     "xla_cc_test",
@@ -61,7 +61,10 @@ pytype_strict_library(
     name = "xla_extension",
     srcs = ["xla_extension.py"],
     visibility = internal_visibility(XLA_PYTHON_XLA_EXTENSION_USERS),
-    deps = if_google(["//third_party/py/jax/jaxlib:_jax"]),
+    deps = if_google([
+        ":_hlo",
+        "//third_party/py/jax/jaxlib:_jax",
+    ]),
 )
 
 tsl_pybind_extension(
@@ -135,6 +138,7 @@ cc_library(
         "//xla/python/ifrt",
         "//xla/python/pjrt_ifrt:pjrt_dtype",
         "//xla/tsl/platform:logging",
+        "//xla/tsl/platform:status_macros",
         "//xla/tsl/platform:statusor",
         "//xla/tsl/python/lib/core:numpy",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -217,6 +221,7 @@ cc_library(
         "//xla/service:custom_call_sharding_helper",
         "//xla/service/spmd:spmd_partitioner",
         "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:status_macros",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/cleanup",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -264,7 +269,13 @@ cc_library(
 nanobind_pywrap_extension(
     name = "_hlo_pass",
     srcs = ["hlo_pass.cc"],
+    pytype_deps = [
+        "//third_party/py/jax/jaxlib:_jax",
+    ],
     pytype_srcs = ["_hlo_pass.pyi"],
+    stub_replacement_patterns = {
+        "_hlo_pass.__prefix__": "from jax.jaxlib._jax import HloModule",
+    },
     visibility = [":friends"],
     deps = [
         "//xla/hlo/pass:hlo_pass",
@@ -281,9 +292,13 @@ nanobind_pywrap_extension(
     name = "_xla_builder",
     srcs = ["xla_builder.cc"],
     pytype_deps = [
+        ":_hlo",
         "//third_party/py/jax/jaxlib:_jax",
     ],
     pytype_srcs = ["_xla_builder.pyi"],
+    stub_replacement_patterns = {
+        "_xla_builder.__prefix__": "from ._hlo import XlaComputation, OpSharding_Type, ProgramShape, Shape",
+    },
     deps = [
         ":nb_helpers",
         "//xla:shape_util",
@@ -300,11 +315,31 @@ nanobind_pywrap_extension(
 nanobind_pywrap_extension(
     name = "_ops",
     srcs = ["ops.cc"],
+    postprocess_stubgen = ":posprocess_ops_stub",
     pytype_deps = [
+        ":_hlo",
         ":_xla_builder",
         "//third_party/py/jax/jaxlib:_jax",
     ],
     pytype_srcs = ["_ops.pyi"],
+    stub_replacement_patterns = {
+        "_ops.__prefix__": "\n".join([
+            "from ._xla_builder import XlaOp, XlaBuilder",
+            "from ._hlo import Literal, PrimitiveType, Shape, XlaComputation",
+            "from typing import Any",
+            "ChannelHandle = Any",
+            "ConvolutionDimensionNumbers = Any",
+            "DotDimensionNumbers = Any",
+            "Layout = Any",
+            "LiteralSlice = Any",
+            "GatherDimensionNumbers = Any",
+            "PaddingConfig = Any",
+            "PrecisionConfig = Any",
+            "ReplicaGroup = Any",
+            "ResultAccuracy = Any",
+            "ScatterDimensionNumbers = Any",
+        ]),
+    },
     deps = [
         ":literal_type_casters",
         ":nb_absl_span",
@@ -333,6 +368,63 @@ nanobind_pywrap_extension(
     ],
 )
 
+nanobind_pywrap_extension(
+    name = "_hlo",
+    srcs = ["hlo.cc"],
+    additional_stubgen_deps = [
+        "//third_party/py/numpy",
+    ],
+    pytype_srcs = ["_hlo.pyi"],
+    deps = [
+        ":dlpack_types",
+        ":nb_absl_span",
+        ":strides",
+        ":types",
+        "//xla:array",
+        "//xla:debug_options_flags",
+        "//xla:literal",
+        "//xla:shape_util",
+        "//xla:util",
+        "//xla:xla_data_proto_cc",
+        "//xla/hlo/builder:xla_computation",
+        "//xla/hlo/ir:backend_config",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/parser:hlo_parser",
+        "//xla/pjrt:exceptions",
+        "//xla/pjrt:status_casters",
+        "//xla/python:nb_numpy",
+        "//xla/service:hlo_graph_dumper",
+        "//xla/service:hlo_module_config",
+        "//xla/service/spmd/shardy/stablehlo_round_trip:stablehlo_import",
+        "//xla/tsl/lib/strings:proto_serialization",
+        "//xla/tsl/platform:env",
+        "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:status_macros",
+        "//xla/tsl/platform:statusor",
+        "//xla/tsl/python/lib/core:numpy",
+        "@com_google_absl//absl/base",
+        "@com_google_absl//absl/hash",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/types:span",
+        "@dlpack",
+        "@llvm-project//mlir:Support",
+        "@nanobind",
+        "@tsl//tsl/platform:protobuf",
+    ],
+)
+
+pytype_strict_binary(
+    name = "posprocess_ops_stub",
+    srcs = ["posprocess_ops_stub.py"],
+    visibility = ["//visibility:private"],
+    deps = [
+        "@absl_py//absl:app",
+    ],
+)
+
 cc_library(
     name = "refine_polymorphic_shapes",
     srcs = ["refine_polymorphic_shapes.cc"],
@@ -347,6 +439,7 @@ cc_library(
         "//xla/service/spmd/shardy/sdy_round_trip:pipelines",
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:logging",
+        "//xla/tsl/platform:status_macros",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@llvm-project//llvm:Support",
@@ -392,6 +485,7 @@ cc_library(
         "//xla/pjrt/c:pjrt_c_api_hdrs",
         "//xla/pjrt/c:pjrt_c_api_helpers",
         "//xla/pjrt/c:pjrt_c_api_profiler_extension_hdrs",
+        "@com_google_absl//absl/log:absl_log",
         "@tsl//tsl/profiler/lib:profiler_factory",
         "@tsl//tsl/profiler/lib:profiler_interface",
         "@tsl//tsl/profiler/protobuf:profiler_options_proto_cc",
@@ -401,7 +495,11 @@ cc_library(
 nanobind_pywrap_extension(
     name = "_profiler",
     srcs = ["profiler.cc"],
+    pytype_deps = ["//third_party/py/typing_extensions"],
     pytype_srcs = ["_profiler.pyi"],
+    stub_replacement_patterns = {
+        "_profiler.__prefix__": "from ._profile_data import ProfileData",
+    },
     visibility = internal_visibility([
         ":jax",
         "//third_party/py/torch_tpu:__subpackages__",
@@ -411,12 +509,15 @@ nanobind_pywrap_extension(
         ":profiler_utils",
         ":xplane_to_profile_instructions",
         # placeholder for index annotation deps
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
         "@nanobind",
         "//xla/backends/profiler:profiler_backends",
         "//xla/backends/profiler/cpu:python_tracer",
         "//xla/backends/profiler/plugin:plugin_tracer",
+        "//xla/backends/profiler/subprocess:subprocess_profiler",
+        "//xla/backends/profiler/subprocess:subprocess_registry",
         "//xla/backends/profiler/util:metadata_registry",
         "//xla/pjrt:exceptions",
         "//xla/pjrt:status_casters",
@@ -504,6 +605,7 @@ cc_library(
         "//xla/hlo/ir:hlo",
         "//xla/service:hlo_proto_cc",
         "//xla/tsl/platform:env",
+        "//xla/tsl/platform:status_macros",
         "//xla/tsl/platform:types",
         "//xla/tsl/profiler/convert:xla_op_utils",
         "//xla/tsl/profiler/utils:file_system_utils",
@@ -514,6 +616,7 @@ cc_library(
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
+        "@tsl//tsl/platform:protobuf",
         "@tsl//tsl/profiler/protobuf:profiled_instructions_proto_cc",
         "@tsl//tsl/profiler/protobuf:xplane_proto_cc",
     ],
@@ -680,4 +783,43 @@ cc_library(
     hdrs = ["version.h"],
     compatible_with = [],
     visibility = internal_visibility([":friends"]),
+)
+
+tsl_pybind_extension(
+    name = "xla_transform",
+    srcs = ["xla_transform_py.cc"],
+    deps = [
+        "//xla/service:xla_transform",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@nanobind",
+    ],
+)
+
+py_test(
+    name = "xla_transform_test",
+    srcs = ["xla_transform_test.py"],
+    tags = ["no_oss"],
+    deps = [
+        ":xla_extension",
+        ":xla_transform",
+        "//third_party/py/numpy",
+        "@absl_py//absl/testing:absltest",
+    ] + xla_py_test_deps(),
+)
+
+py_test(
+    name = "xla_hlo_test",
+    srcs = ["xla_hlo_test.py"],
+    main = "xla_hlo_test.py",
+    strict_deps = True,
+    tags = ["no_oss"],
+    deps = [
+        ":_hlo",
+        ":xla_client",
+        "//third_party/py/numpy",
+        "@absl_py//absl/logging",
+        "@absl_py//absl/testing:absltest",
+        "@absl_py//absl/testing:parameterized",
+    ] + xla_py_test_deps(),
 )

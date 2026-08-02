@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/cpu/buffer_allocation_info.h"
 #include "xla/backends/cpu/runtime/function_library.h"
 #include "xla/backends/cpu/runtime/thunk.h"
@@ -39,6 +40,7 @@ limitations under the License.
 #include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_profile_printer_data.pb.h"
 #include "xla/stream_executor/platform.h"
+#include "xla/tsl/lib/strings/proto_serialization.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 
@@ -112,19 +114,25 @@ class CpuAotCompilationResult : public CompiledModule {
       std::vector<SymbolProto> symbols, const ThunkSequence& thunks,
       std::unique_ptr<FunctionLibrary> function_library,
       TargetMachineOptionsProto target_machine_options =
-          TargetMachineOptionsProto());
+          TargetMachineOptionsProto(),
+      std::string data_layout = "");
 
   ~CpuAotCompilationResult() override = default;
 
   absl::StatusOr<std::string> SerializeAsString() const override {
-    return proto_.SerializeAsString();
+    std::string serialized;
+    if (!tsl::SerializeToStringDeterministic(proto_, &serialized)) {
+      return Internal("Failed to serialize CpuAotCompilationResult.");
+    }
+    return serialized;
   }
 
   absl::StatusOr<std::unique_ptr<Executable>> LoadExecutable() && override;
 
   absl::StatusOr<std::unique_ptr<Executable>> LoadExecutable(
       se::Platform::Id platform_id,
-      const se::DeviceDescription& device_description) &&
+      const se::DeviceDescription& device_description,
+      const DebugOptions& debug_options) &&
       override;
 
   const HloModule* optimized_module() const override { return module_.get(); }
@@ -162,9 +170,8 @@ class CpuAotCompilationResult : public CompiledModule {
   static absl::StatusOr<std::unique_ptr<CpuAotCompilationResult>> FromProto(
       CompilationResultProto proto,
       std::unique_ptr<FunctionLibrary> function_library) {
-    TF_ASSIGN_OR_RETURN(
-        std::unique_ptr<HloModule> module,
-        HloModule::CreateFromProtoWithConfig(proto.hlo_module()));
+    ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
+                     HloModule::CreateFromProtoWithConfig(proto.hlo_module()));
 
     return std::unique_ptr<CpuAotCompilationResult>(new CpuAotCompilationResult(
         proto, std::move(module), std::move(function_library)));
@@ -189,7 +196,8 @@ class CpuAotCompilationResult : public CompiledModule {
       std::optional<size_t> temp_allocation_index,
       std::vector<BufferAllocationInfo> buffer_allocation_infos,
       std::unique_ptr<FunctionLibrary> function_library,
-      TargetMachineOptionsProto target_machine_options);
+      TargetMachineOptionsProto target_machine_options,
+      std::string data_layout);
 
   explicit CpuAotCompilationResult(
       CompilationResultProto proto, std::unique_ptr<HloModule> module,

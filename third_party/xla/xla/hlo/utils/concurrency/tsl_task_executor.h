@@ -16,54 +16,30 @@ limitations under the License.
 #ifndef XLA_HLO_UTILS_CONCURRENCY_TSL_TASK_EXECUTOR_H_
 #define XLA_HLO_UTILS_CONCURRENCY_TSL_TASK_EXECUTOR_H_
 
-#include <memory>
+#include <cstdint>
 #include <optional>
-#include <string>
-#include <vector>
 
-#include "absl/functional/any_invocable.h"
-#include "absl/status/status.h"
+#include "absl/base/attributes.h"
+#include "absl/strings/string_view.h"
+#include "xla/tsl/concurrency/executor.h"
 #include "xla/tsl/platform/threadpool.h"
 
 namespace xla::concurrency {
 
-// Tasks must signal a status. We promise to call tasks at most once.
-using Task = absl::AnyInvocable<absl::Status() &&>;
-
-// A thread pool with a higher-level API for parallelization of compiler passes.
-// Not thread safe.
-//
-// All calls are synchronous. Specifically, the call to parallelize work blocks
-// until the work is done, or canceled due to failure of any of the submitted
-// tasks. Once a parallelization call unblocks implementatinos must guarantee
-// that no value caputerd by any of the submitted tasks would be accessed going
-// forward. Specifically, any captured values can be destroyed after the
-// parallelization call returns, even when the work is cancelled.
-//
-// This design is chosen for simplicity & expediency. It has obvious downside
-// that blocking until all work is done will result in many threads idling
-// towards the end of the execution.
-//
-// Features
-// - Batch submitted for execution fails if any individual task fails.
-// - Guarantees in-order processing of tasks when `parallelism` is 1.
-class TslTaskExecutor {
+class ABSL_DEPRECATED(
+    "Prefer `xla::concurrency::DefaultExecutor()` if you want to use a default "
+    "executor available to the XLA process. Otherwise use TSL ThreadPool "
+    "directly, or any other tsl::Executor implementation.") TslTaskExecutor
+    : public tsl::Executor {
  public:
-  // Runs all the actions on `parallelism` theads. If fewer threads are
-  // available, runs on as many as it has.
-  //
-  // When `parallelism` == 1 sequential execution is guaranteed.
-  absl::Status ExecuteIndependentTasks(
-      std::vector<Task> tasks, std::optional<int> parallelism = std::nullopt);
+  explicit TslTaskExecutor(
+      std::optional<int32_t> max_parallelism = std::nullopt,
+      absl::string_view name = "TslTaskExecutor");
 
-  explicit TslTaskExecutor(std::optional<int> max_parallelism = std::nullopt);
+  void Execute(Task task) final;
 
  private:
-  std::unique_ptr<tsl::thread::ThreadPool> thread_pool_;
-
-  // std::string because `tsl::thread::ThreadPool` wants a string and not a
-  // view.
-  const std::string kThreadPoolName = "TslTaskExecutor";
+  tsl::thread::ThreadPool thread_pool_;
 };
 
 }  // namespace xla::concurrency

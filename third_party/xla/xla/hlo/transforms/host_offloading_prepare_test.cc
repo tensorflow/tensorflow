@@ -21,6 +21,7 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
@@ -41,7 +42,7 @@ class HostOffloadingPrepareTest : public HloHardwareIndependentTestBase {
       return absl::InternalError("Expected a non-scheduled module");
     }
     HostOffloadingPrepare pass(rewrite);
-    TF_ASSIGN_OR_RETURN(bool changed, pass.Run(module));
+    ASSIGN_OR_RETURN(bool changed, pass.Run(module));
     return changed;
   }
 

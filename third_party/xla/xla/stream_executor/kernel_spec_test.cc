@@ -179,8 +179,7 @@ TEST(KernelLoaderSpec, InProcessSymbolFromProto) {
     arity: 42
     kernel_args_packing_spec {
       kernel_arguments {
-        relocations { kind: KIND_BITS64_ABSOLUTE argument_index: 0 offset: 0 }
-        data: "\x00\x00\x00\x00\x00\x00\x00\x00"
+        relocations { kind: KIND_BITS64_ABSOLUTE argument_index: 0 }
       }
       kernel_arguments { data: "\x34\x12\x00\x00" }
     }
@@ -204,8 +203,7 @@ TEST(KernelLoaderSpec, InProcessSymbolFromProto) {
   const auto kReferenceKernelArgsPackingSpecProto =
       R"pb(
     kernel_arguments {
-      relocations { kind: KIND_BITS64_ABSOLUTE argument_index: 0 offset: 0 }
-      data: "\x00\x00\x00\x00\x00\x00\x00\x00"
+      relocations { kind: KIND_BITS64_ABSOLUTE argument_index: 0 }
     }
     kernel_arguments { data: "\x34\x12\x00\x00" }
       )pb";
@@ -246,9 +244,7 @@ TEST(kernelLoaderSpec, StoresKernelArgsPackingSpec) {
               relocations {
                 kind: KIND_BITS64_ABSOLUTE
                 argument_index: 0
-                offset: 0
               }
-              data: "\x00\x00\x00\x00\x00\x00\x00\x00"
             }
             kernel_arguments { data: "\x34\x12\x00\x00" }
           )pb");
@@ -270,9 +266,7 @@ TEST(kernelLoaderSpec, StoresKernelArgsPackingSpec) {
                     relocations {
                       kind: KIND_BITS64_ABSOLUTE
                       argument_index: 0
-                      offset: 0
                     }
-                    data: "\x00\x00\x00\x00\x00\x00\x00\x00"
                   }
                   kernel_arguments { data: "\x34\x12\x00\x00" }
                 }

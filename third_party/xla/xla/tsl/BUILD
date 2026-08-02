@@ -1,3 +1,18 @@
+# Copyright 2026 The OpenXLA Authors. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
+
 # Tensor Standard Libraries - common utilities for implementing XLA.
 
 load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
@@ -107,9 +122,6 @@ config_setting(
     define_values = {
         "framework_shared_object": "true",
     },
-    values = {
-        "apple_platform_type": "macos",
-    },
     visibility = ["//visibility:public"],
 )
 
@@ -121,9 +133,6 @@ config_setting(
     ],
     define_values = {
         "framework_shared_object": "true",
-    },
-    values = {
-        "apple_platform_type": "macos",
     },
     visibility = ["//visibility:public"],
 )
@@ -147,27 +156,13 @@ config_setting(
 # Config setting for determining if we are building for Android.
 config_setting(
     name = "android",
-    constraint_values = if_google(
-        ["@platforms//os:android"],
-        [],
-    ),
-    values = if_oss(
-        {"crosstool_top": "//external:android/crosstool"},
-        {},
-    ),
+    constraint_values = ["@platforms//os:android"],
     visibility = ["//visibility:public"],
 )
 
 config_setting(
     name = "emscripten",
-    constraint_values = if_google(
-        ["@platforms//os:emscripten"],
-        [],
-    ),
-    values = if_oss(
-        {"crosstool_top": "//external:android/emscripten"},
-        {},
-    ),
+    constraint_values = ["@platforms//os:emscripten"],
     visibility = ["//visibility:public"],
 )
 
@@ -177,9 +172,6 @@ config_setting(
         "@platforms//cpu:x86_64",
         "@platforms//os:macos",
     ],
-    values = {
-        "apple_platform_type": "macos",
-    },
     visibility = ["//visibility:public"],
 )
 
@@ -189,9 +181,6 @@ config_setting(
         "@platforms//cpu:aarch64",
         "@platforms//os:macos",
     ],
-    values = {
-        "apple_platform_type": "macos",
-    },
     visibility = ["//visibility:public"],
 )
 
@@ -233,14 +222,7 @@ config_setting(
 # TODO(jakeharmon): Remove equivalent from tensorflow/BUILD
 config_setting(
     name = "ios",
-    constraint_values = if_google(
-        ["@platforms//os:ios"],
-        [],
-    ),
-    values = if_oss(
-        {"apple_platform_type": "ios"},
-        {},
-    ),
+    constraint_values = ["@platforms//os:ios"],
     visibility = ["//visibility:public"],
 )
 
@@ -272,11 +254,6 @@ config_setting(
             "@platforms//cpu:armv7",
             "@platforms//os:android",
         ],
-    values = dict(
-        if_oss(
-            {"crosstool_top": "//external:android/crosstool"},
-        ),
-    ),
     visibility = ["//visibility:public"],
 )
 
@@ -360,11 +337,6 @@ config_setting(
             "@platforms//cpu:x86_64",
             "@platforms//os:ios",
         ],
-    values = dict(
-        if_oss(
-            {"crosstool_top": "//tools/osx/crosstool:crosstool"},
-        ),
-    ),
     visibility = ["//visibility:public"],
 )
 
@@ -460,11 +432,6 @@ config_setting(
             "@platforms//cpu:x86_32",
             "@platforms//os:android",
         ],
-    values = dict(
-        if_oss(
-            {"crosstool_top": "//external:android/crosstool"},
-        ),
-    ),
     visibility = ["//visibility:public"],
 )
 
@@ -536,6 +503,11 @@ config_setting(
     visibility = ["//visibility:public"],
 )
 
+bool_flag(
+    name = "no_nccl_support_flag",
+    build_setting_default = False,
+)
+
 config_setting(
     name = "using_no_nccl_support_define",
     define_values = dict(
@@ -544,10 +516,25 @@ config_setting(
     visibility = internal_visibility(["//visibility:private"]),
 )
 
+config_setting(
+    name = "using_no_nccl_support_flag",
+    flag_values = {":no_nccl_support_flag": "True"},
+    visibility = internal_visibility(["//visibility:private"]),
+)
+
+selects.config_setting_group(
+    name = "using_no_nccl_support",
+    match_any = [
+        ":using_no_nccl_support_define",
+        ":using_no_nccl_support_flag",
+    ],
+    visibility = internal_visibility(["//visibility:private"]),
+)
+
 selects.config_setting_group(
     name = "no_nccl_support",
     match_all = [
-        ":using_no_nccl_support_define",
+        ":using_no_nccl_support",
     ] + if_google([
         "@local_config_cuda//cuda:using_config_cuda",
     ]),
@@ -605,7 +592,7 @@ bzl_library(
         "//xla/tsl/mkl:build_defs_bzl",
         "//xla/tsl/platform:rules_cc_bzl",
         "@local_config_tensorrt//:build_defs_bzl",
-        "@xla//third_party/py/rules_pywrap:pywrap_bzl",
+        "@rules_ml_toolchain//py/rules_pywrap:pywrap_bzl",
         "@local_config_rocm//rocm:build_defs_bzl",
         "@local_config_sycl//sycl:build_defs_bzl",
         "//third_party/compute_library:build_defs_bzl",

@@ -342,7 +342,8 @@ REGISTER_OP("QueueDequeueManyV2")
       } else {
         const int32_t n = c->input_tensor(1)->scalar<int32_t>()();
         if (n < 0) {
-          return errors::InvalidArgument("Input 'n' must be >= 0, but is ", n);
+          return absl::InvalidArgumentError(
+              absl::StrCat("Input 'n' must be >= 0, but is ", n));
         }
         n_shape = c->Vector(n);
       }

@@ -18,6 +18,7 @@ limitations under the License.
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <iterator>
 #include <vector>
 
@@ -28,6 +29,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/debug_options_flags.h"
 #include "xla/hlo/analysis/hlo_dfs_reachability.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
@@ -36,6 +38,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/gpu/alias_info.h"
 #include "xla/service/gpu/gpu_fusible.h"
+#include "xla/service/gpu/model/fusion_analysis_cache.h"
 #include "xla/service/gpu/model/gpu_hlo_cost_analysis.h"
 #include "xla/service/gpu/model/gpu_performance_model.h"
 #include "xla/service/gpu/model/gpu_performance_model_base.h"
@@ -197,7 +200,7 @@ FusionDecision ProducerCandidateIsFusible(
     const HloInstruction& producer, const HloInstruction& consumer,
     const HloDfsReachability& reachability, FusionInfoCache* fusion_info_cache,
     const se::DeviceDescription& device_info,
-    GpuPerformanceModelOwning& gpu_performance_model,
+    GpuPerformanceModel& gpu_performance_model,
     GpuHloCostAnalysis* cost_analysis) {
   if (!IsFusibleAsMultiOutputFusionRoot(consumer, device_info)) {
     return FusionDecision::Forbid(
@@ -219,7 +222,7 @@ FusionDecision ProducerCandidateIsFusible(
   }
 
   GpuPerformanceModel::RunTimes t =
-      gpu_performance_model.Get().EstimateRunTimesForMultiOutputFusion(
+      gpu_performance_model.EstimateRunTimesForMultiOutputFusion(
           &producer, &consumer, cost_analysis);
   if (t.time_fused > t.time_unfused) {
     return FusionDecision::Forbid("will execute slower if fused");
@@ -232,7 +235,7 @@ std::vector<HloInstruction*> GetProducerConsumerMultiOutputFusionCandidates(
     const HloInstruction* producer, const HloDfsReachability& reachability,
     FusionInfoCache* fusion_info_cache,
     const se::DeviceDescription& device_info, const GpuAliasInfo* alias_info,
-    GpuPerformanceModelOwning& gpu_performance_model,
+    GpuPerformanceModel& gpu_performance_model,
     GpuHloCostAnalysis* cost_analysis) {
   std::vector<HloInstruction*> fusion_candidates;
   const HloComputation* computation = producer->parent();
@@ -325,9 +328,11 @@ void MultiOutputFusion::RecomputeReachability() {
   reachability_ = HloDfsReachability::Build(computation_);
 }
 
-bool MultiOutputFusion::FuseSiblings(HloInstruction* parent,
-                                     FusionInfoCache* fusion_info_cache,
-                                     GpuHloCostAnalysis* cost_analysis) {
+bool MultiOutputFusion::FuseSiblings(
+    HloInstruction* parent,
+    const std::function<void(const HloInstruction*)>&
+        invalidate_caches_callback,
+    FusionInfoCache* fusion_info_cache, GpuHloCostAnalysis* cost_analysis) {
   const HloComputation* computation = parent->parent();
   const HloModule* module = computation->parent();
   bool dump_fusion =
@@ -383,8 +388,8 @@ bool MultiOutputFusion::FuseSiblings(HloInstruction* parent,
         continue;
       }
       VLOG(2) << "Fuse siblings " << (*i)->name() << " and " << (*j)->name();
-      fusion_info_cache->Invalidate(*i);
-      fusion_info_cache->Invalidate(*j);
+      invalidate_caches_callback(*i);
+      invalidate_caches_callback(*j);
       HloInstruction* remaining = *i;
       HloInstruction* fused = *j;
       CHECK_OK(cost_analysis->RemoveInstruction(remaining));
@@ -426,12 +431,15 @@ absl::StatusOr<bool> MultiOutputFusion::DoMultiOutputFusion() {
                                     /*min_latencies_seconds=*/{},
                                     /*count_multiple_input_accesses=*/true},
                                    device_info_);
-  TF_RETURN_IF_ERROR(computation_->Accept(&cost_analysis));
+  RETURN_IF_ERROR(computation_->Accept(&cost_analysis));
   std::vector<HloInstruction*> defs_before_uses =
       computation_->MakeInstructionPostOrder();
 
   FusionInfoCache fusion_info_cache(device_info_);
-  GpuPerformanceModelOwning gpu_performance_model(device_info_, mlir_context_);
+  GpuPerformanceModelCache gpu_performance_model_cache;
+  HloFusionAnalysisCache fusion_analysis_cache(device_info_);
+  GpuPerformanceModel gpu_performance_model(device_info_, fusion_analysis_cache,
+                                            gpu_performance_model_cache);
   // Traverse the HLO in uses-before-defs order.
   for (auto it = defs_before_uses.rbegin(); it != defs_before_uses.rend();
        ++it) {
@@ -446,7 +454,14 @@ absl::StatusOr<bool> MultiOutputFusion::DoMultiOutputFusion() {
       continue;
     }
     // First, fuse the consumer ops of the current op, which are siblings.
-    if (FuseSiblings(/*parent=*/producer, &fusion_info_cache, &cost_analysis)) {
+    if (FuseSiblings(/*parent=*/producer,
+                     [&fusion_info_cache, &gpu_performance_model_cache,
+                      &fusion_analysis_cache](const HloInstruction* instr) {
+                       gpu_performance_model_cache.Invalidate(*instr);
+                       fusion_analysis_cache.Invalidate(instr->unique_id());
+                       fusion_info_cache.Invalidate(instr);
+                     },
+                     &fusion_info_cache, &cost_analysis)) {
       changed = true;
     }
     // Second, perform producer-consumer multi-output fusion. This order will
@@ -469,8 +484,12 @@ absl::StatusOr<bool> MultiOutputFusion::DoMultiOutputFusion() {
     changed = true;
     fusion_info_cache.Invalidate(producer);
     fusion_info_cache.Invalidate(consumer_for_fusion);
-    TF_RETURN_IF_ERROR(cost_analysis.RemoveInstruction(producer));
-    TF_RETURN_IF_ERROR(cost_analysis.RemoveInstruction(consumer_for_fusion));
+    gpu_performance_model_cache.Invalidate(*producer);
+    gpu_performance_model_cache.Invalidate(*consumer_for_fusion);
+    fusion_analysis_cache.Invalidate(producer->unique_id());
+    fusion_analysis_cache.Invalidate(consumer_for_fusion->unique_id());
+    RETURN_IF_ERROR(cost_analysis.RemoveInstruction(producer));
+    RETURN_IF_ERROR(cost_analysis.RemoveInstruction(consumer_for_fusion));
 
     HloInstruction* input_fusion;
     if (HloPredicateIsOp<HloOpcode::kFusion>(consumer_for_fusion)) {
@@ -502,7 +521,7 @@ absl::StatusOr<bool> MultiOutputFusion::DoMultiOutputFusion() {
       CHECK_EQ(0, producer->user_count());
       CHECK_OK(computation_->RemoveInstruction(producer));
     }
-    TF_RETURN_IF_ERROR(cost_analysis.RevisitInstruction(input_fusion));
+    RETURN_IF_ERROR(cost_analysis.RevisitInstruction(input_fusion));
 
     DumpFusionState(*input_fusion,
                     absl::StrCat("Fused into |", input_fusion->name(),
@@ -529,7 +548,7 @@ absl::StatusOr<bool> MultiOutputFusion::RunImpl(
   bool changed = false;
   for (auto* computation : GetFusibleComputations(*module, execution_threads)) {
     computation_ = computation;
-    TF_ASSIGN_OR_RETURN(bool computation_changed, DoMultiOutputFusion());
+    ASSIGN_OR_RETURN(bool computation_changed, DoMultiOutputFusion());
     changed |= computation_changed;
   }
   return changed;

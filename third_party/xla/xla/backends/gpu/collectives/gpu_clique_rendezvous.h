@@ -16,7 +16,6 @@ limitations under the License.
 #ifndef XLA_BACKENDS_GPU_COLLECTIVES_GPU_CLIQUE_RENDEZVOUS_H_
 #define XLA_BACKENDS_GPU_COLLECTIVES_GPU_CLIQUE_RENDEZVOUS_H_
 
-#include <any>
 #include <functional>
 #include <memory>
 
@@ -24,6 +23,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "xla/backends/gpu/collectives/gpu_clique_key.h"
 #include "xla/core/collectives/rank_id.h"
+#include "xla/tsl/util/unique_any.h"
 #include "xla/util.h"
 
 namespace xla::gpu {
@@ -40,7 +40,7 @@ class GpuCliqueRendezvous {
   // rendezvous synchronization to ensure that all ranks arrive to the barrier.
   // The result is collectively owned by all participants.
   static absl::StatusOr<std::shared_ptr<GpuCliqueRendezvous>> Join(
-      const GpuCliqueKey& clique_key, RankId rank, std::any data);
+      const GpuCliqueKey& clique_key, RankId rank, tsl::UniqueAny data);
 
   // Returns the clique key associated with this rendezvous object.
   const GpuCliqueKey& clique_key() const { return clique_key_; }
@@ -54,20 +54,36 @@ class GpuCliqueRendezvous {
       return NotFound("Data not found for rank %d", rank.value());
     }
 
-    if (std::any_cast<T>(&it->second) == nullptr) {
+    const T* ptr = tsl::any_cast<T>(&it->second);
+    if (ptr == nullptr) {
       return InvalidArgument("Data type mismatch for rank %d", rank.value());
     }
 
-    const T& data = std::any_cast<const T&>(it->second);
-    return std::reference_wrapper<const T>(data);
+    return std::reference_wrapper<const T>(*ptr);
+  }
+
+  // Returns a mutable reference to the value at the given rank.
+  template <typename T>
+  absl::StatusOr<std::reference_wrapper<T>> at(RankId rank) {
+    auto it = values_.find(rank);
+    if (it == values_.end()) {
+      return NotFound("Data not found for rank %d", rank.value());
+    }
+
+    T* ptr = tsl::any_cast<T>(&it->second);
+    if (ptr == nullptr) {
+      return InvalidArgument("Data type mismatch for rank %d", rank.value());
+    }
+
+    return std::reference_wrapper<T>(*ptr);
   }
 
  private:
   GpuCliqueRendezvous(GpuCliqueKey clique_key,
-                      absl::btree_map<RankId, std::any> values);
+                      absl::btree_map<RankId, tsl::UniqueAny> values);
 
   GpuCliqueKey clique_key_;
-  absl::btree_map<RankId, std::any> values_;
+  absl::btree_map<RankId, tsl::UniqueAny> values_;
 };
 
 }  // namespace xla::gpu

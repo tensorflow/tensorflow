@@ -65,6 +65,28 @@ class UserContext : public tsl::ReferenceCounted<UserContext>,
 
 using UserContextRef = tsl::RCReference<UserContext>;
 
+class BasicUserContext final : public UserContext {
+ public:
+  // `DebugString()` will contain `msg`.
+  static absl_nonnull UserContextRef Create(std::string msg);
+
+  // `UserContext` implementation.
+
+  UserContextId Id() const override { return id_; }
+  std::string DebugString() const override { return msg_; }
+
+  static char ID;  // NOLINT
+
+ private:
+  template <typename T, typename... Args>
+  friend tsl::RCReference<T> tsl::MakeRef(Args&&... args);
+
+  explicit BasicUserContext(std::string msg);
+
+  UserContextId id_;
+  std::string msg_;
+};
+
 // 'AnnotatedUserContext` represents a `UserContext` with a human-readable short
 // message. The annotation adds extra contextual information that is known after
 // creation time of the original `UserContext`, but before actually observing

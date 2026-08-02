@@ -17,6 +17,7 @@ limitations under the License.
 #define XLA_BACKENDS_GPU_RUNTIME_CONDITIONAL_THUNK_H_
 
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -26,6 +27,8 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
+#include "xla/backends/gpu/runtime/command.h"
+#include "xla/backends/gpu/runtime/command_executor.h"
 #include "xla/backends/gpu/runtime/host_memory_pool.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
@@ -47,7 +50,7 @@ namespace xla::gpu {
 // instruction of the true computation share the same allocation. Similarly, the
 // buffers of the false operand and that of the parameter instruction of the
 // false computation share the same allocation.
-class ConditionalThunk : public Thunk {
+class ConditionalThunk : public Command {
  public:
   ConditionalThunk(ThunkInfo thunk_info,
                    const ShapedSlice& branch_index_buffer_index,
@@ -59,6 +62,13 @@ class ConditionalThunk : public Thunk {
   absl::Status Prepare(const PrepareParams& params) override;
   absl::Status Initialize(const InitializeParams& params) override;
   absl::Status ExecuteOnStream(const ExecuteParams& params) override;
+  absl::StatusOr<const se::CommandBuffer::Command*> Record(
+      const Thunk::ExecuteParams& execute_params,
+      const RecordParams& record_params, RecordAction record_action,
+      se::CommandBuffer* command_buffer) override;
+
+  absl::Status SetOrUpdateCommandBufferBranchExecutors(
+      std::vector<CommandExecutor> branch_executors);
 
   absl::Span<const ThunkExecutor> branch_executors() const {
     return branch_executors_;
@@ -102,8 +112,11 @@ class ConditionalThunk : public Thunk {
   std::string ToString(int indent) const override;
 
  private:
+  absl::Status WalkNestedCommands(CommandWalker callback) override;
+
   const ShapedSlice branch_index_buffer_index_;
   std::vector<ThunkExecutor> branch_executors_;
+  std::optional<std::vector<CommandExecutor>> command_branch_executors_;
   bool branch_index_is_bool_;
 
   // Host memory pool for transferring predicate value from device to host.

@@ -95,7 +95,7 @@ TEST_P(CppGradients, TestSetAttrString) {
   }
   s = AddInput(check_numerics_op.get(), t.get(), &forward_op);
   ASSERT_EQ(errors::OK, s.code()) << s.message();
-  string message = "This is the way!";
+  std::string message = "This is the way!";
   s = SetAttrString(check_numerics_op.get(), "message", message.data(),
                     message.length(), &forward_op);
   ASSERT_EQ(errors::OK, s.code()) << s.message();
@@ -109,7 +109,7 @@ TEST_P(CppGradients, TestSetAttrString) {
               &num_retvals, &forward_op, tape.get(), registry);
   ASSERT_EQ(errors::OK, s.code()) << s.message();
 
-  string read_message;
+  std::string read_message;
   s = forward_op.attrs.Get("message", &read_message);
   ASSERT_EQ(errors::OK, s.code()) << s.message();
   ASSERT_EQ(read_message, message);
@@ -161,6 +161,63 @@ TEST_P(CppGradients, TestRecordOperationWithNullGradientFunctionRaises) {
       "or NotDifferentiableGradientFunction.",
       s.message());
   ASSERT_EQ(nullptr, outputs[0]);
+}
+
+TEST_P(CppGradients, TestExecuteWithLargerOutputsVectorDoesNotCrash) {
+  std::unique_ptr<TF_Status, decltype(&TF_DeleteStatus)> status(
+      TF_NewStatus(), TF_DeleteStatus);
+  AbstractContextPtr ctx;
+  {
+    AbstractContext* ctx_raw = nullptr;
+    absl::Status s =
+        BuildImmediateExecutionContext(std::get<1>(GetParam()), &ctx_raw);
+    ASSERT_EQ(errors::OK, s.code()) << s.message();
+    ctx.reset(ctx_raw);
+  }
+
+  AbstractTensorHandlePtr t;
+  {
+    AbstractTensorHandle* x_raw = nullptr;
+    absl::Status s =
+        TestScalarTensorHandle<float, TF_FLOAT>(ctx.get(), 1.0f, &x_raw);
+    ASSERT_EQ(errors::OK, s.code()) << s.message();
+    t.reset(x_raw);
+  }
+
+  AbstractOperationPtr check_numerics_op(ctx->CreateOperation());
+  ForwardOperation forward_op;
+  absl::Status s = Reset(check_numerics_op.get(), "CheckNumerics",
+                         /*raw_device_name=*/nullptr, &forward_op);
+  ASSERT_EQ(errors::OK, s.code()) << s.message();
+  if (isa<TracingOperation>(check_numerics_op.get())) {
+    s = dyn_cast<TracingOperation>(check_numerics_op.get())
+            ->SetOpName("check_numerics");
+    ASSERT_EQ(errors::OK, s.code()) << s.message();
+  }
+  s = AddInput(check_numerics_op.get(), t.get(), &forward_op);
+  ASSERT_EQ(errors::OK, s.code()) << s.message();
+  std::string message = "This is the way!";
+  s = SetAttrString(check_numerics_op.get(), "message", message.data(),
+                    message.length(), &forward_op);
+  ASSERT_EQ(errors::OK, s.code()) << s.message();
+
+  int num_retvals = 1;
+  // Allocate outputs with size 2, but we only expect 1 output.
+  // The second element will be initialized to nullptr.
+  std::vector<AbstractTensorHandle*> outputs(2, nullptr);
+
+  GradientRegistry registry;
+  s = RegisterGradients(&registry);
+  ASSERT_EQ(errors::OK, s.code()) << s.message();
+  auto tape = std::make_unique<Tape>(/*persistent=*/false);
+
+  // This call should NOT crash.
+  s = Execute(check_numerics_op.get(), ctx.get(), absl::MakeSpan(outputs),
+              &num_retvals, &forward_op, tape.get(), registry);
+  ASSERT_EQ(errors::OK, s.code()) << s.message();
+  EXPECT_EQ(num_retvals, 1);
+  EXPECT_NE(outputs[0], nullptr);
+  EXPECT_EQ(outputs[1], nullptr);  // Should remain nullptr
 }
 
 // TODO(b/164171226): Enable this test with tfrt after AddInputList is

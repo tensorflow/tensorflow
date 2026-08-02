@@ -23,13 +23,10 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "third_party/gpus/cuda/include/library_types.h"
-#include "third_party/gpus/cudnn/cudnn_version.h"
-#if CUDNN_VERSION >= 90000
 #include "third_party/gpus/cudnn/cudnn_graph.h"
-#else
-#include "third_party/gpus/cudnn/cudnn_ops_infer.h"
-#endif
+#include "third_party/gpus/cudnn/cudnn_version.h"
 #include "xla/stream_executor/semantic_version.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
@@ -106,18 +103,16 @@ absl::StatusOr<int> GetCudnnProperty(CudnnProperty type) {
     return absl::NotFoundError("cuDNN is not linked into the application.");
   }
   int value{};
-  TF_RETURN_IF_ERROR(
+  RETURN_IF_ERROR(
       ToStatus(cudnnGetProperty(ToLibraryPropertyType(type), &value)));
   return value;
 }
 
 absl::StatusOr<SemanticVersion> GetLoadedCudnnVersion() {
-  TF_ASSIGN_OR_RETURN(int major,
-                      GetCudnnProperty(CudnnProperty::kMajorVersion));
-  TF_ASSIGN_OR_RETURN(int minor,
-                      GetCudnnProperty(CudnnProperty::kMinorVersion));
-  TF_ASSIGN_OR_RETURN(int patch,
-                      GetCudnnProperty(CudnnProperty::kPatchLevelVersion));
+  ASSIGN_OR_RETURN(int major, GetCudnnProperty(CudnnProperty::kMajorVersion));
+  ASSIGN_OR_RETURN(int minor, GetCudnnProperty(CudnnProperty::kMinorVersion));
+  ASSIGN_OR_RETURN(int patch,
+                   GetCudnnProperty(CudnnProperty::kPatchLevelVersion));
   return SemanticVersion(major, minor, patch);
 }
 

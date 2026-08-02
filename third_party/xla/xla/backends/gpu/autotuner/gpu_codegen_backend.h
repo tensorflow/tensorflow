@@ -19,15 +19,19 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
+#include "absl/algorithm/container.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/autotuner/backends.pb.h"
 #include "xla/backends/autotuner/codegen_backend.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/compiler.h"
 #include "xla/service/executable.h"
 #include "xla/service/gpu_topology.h"
+#include "xla/status_macros.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tools/hlo_decomposer.h"
 #include "xla/tsl/platform/errors.h"
@@ -45,12 +49,14 @@ class GpuCodegenBackend : public CodegenBackend {
   GpuCodegenBackend(autotuner::Backend backend,
                     const DebugOptions* debug_options, Compiler* compiler,
                     const Compiler::GpuTargetConfig* target_config,
-                    stream_executor::StreamExecutor* stream_executor = nullptr)
+                    stream_executor::StreamExecutor* stream_executor = nullptr,
+                    bool uses_last_output_for_scratch = false)
       : backend_(backend),
         stream_executor_(stream_executor),
         target_config_(*target_config),
         debug_options_(*debug_options),
-        compiler_(compiler) {}
+        compiler_(compiler),
+        uses_last_output_for_scratch_(uses_last_output_for_scratch) {}
 
   absl::string_view name() const override { return Backend_Name(backend_); }
 
@@ -67,12 +73,33 @@ class GpuCodegenBackend : public CodegenBackend {
   absl::StatusOr<std::unique_ptr<Executable>> Compile(
       const HloInstruction& hlo_instruction,
       const BackendConfig& config) override {
-    std::unique_ptr<HloModule> hlo_module =
-        ExtractInstructionIntoNewModule(hlo_instruction);
+    // We only check that all the n-1 users are get tuple instructions,
+    // ideally we should also check if they are extracting the first n-1
+    // elements of the tuple and ignoring the last one. But for codegen backends
+    // which uses last output for scratch, this is enough.
+    bool instr_discards_last_output =
+        hlo_instruction.shape().IsTuple() &&
+        hlo_instruction.users().size() ==
+            hlo_instruction.shape().tuple_shapes().size() - 1 &&
+        absl::c_all_of(hlo_instruction.users(), [](const HloInstruction* user) {
+          return user->opcode() == HloOpcode::kGetTupleElement;
+        });
+    bool extract_consumers =
+        uses_last_output_for_scratch_ && instr_discards_last_output;
 
-    HloComputation* entry_computation = hlo_module->entry_computation();
-    HloInstruction* root_instruction = entry_computation->root_instruction();
-    TF_RETURN_IF_ERROR(ApplyConfig(*root_instruction, config));
+    std::unique_ptr<HloModule> hlo_module;
+    HloInstruction* instruction_to_tune = nullptr;
+    if (extract_consumers) {
+      hlo_module = ExtractProducerConsumersIntoNewModule(hlo_instruction);
+      instruction_to_tune =
+          hlo_module->entry_computation()->GetInstructionWithName(
+              hlo_instruction.name());
+      TF_RET_CHECK(instruction_to_tune != nullptr);
+    } else {
+      hlo_module = ExtractInstructionIntoNewModule(hlo_instruction);
+      instruction_to_tune = hlo_module->entry_computation()->root_instruction();
+    }
+    RETURN_IF_ERROR(ApplyConfig(*instruction_to_tune, config));
 
     hlo_module->mutable_config().set_debug_options(debug_options_);
     AdjustDebugOptionsForAutotuning(
@@ -81,8 +108,8 @@ class GpuCodegenBackend : public CodegenBackend {
     Compiler::CompileOptions options;
     options.gpu_topology = GetSingleDeviceGpuTopology("", target_config_);
     options.embed_hlo_module = false;
-    TF_ASSIGN_OR_RETURN(auto optimized_module,
-                        RunHloPasses(std::move(hlo_module), options));
+    ASSIGN_OR_RETURN(auto optimized_module,
+                     RunHloPasses(std::move(hlo_module), options));
     return compiler_->RunBackend(std::move(optimized_module), stream_executor_,
                                  options);
   }
@@ -94,7 +121,6 @@ class GpuCodegenBackend : public CodegenBackend {
     debug_options.set_xla_gpu_dump_llvmir(false);
     // Avoid using another thread pool.
     debug_options.set_xla_gpu_force_compilation_parallelism(1);
-    debug_options.set_xla_gpu_enable_llvm_module_compilation_parallelism(false);
     // Avoid using GPU graphs as we don't want to measure graph construction
     // time.
     debug_options.clear_xla_gpu_enable_command_buffer();
@@ -111,6 +137,7 @@ class GpuCodegenBackend : public CodegenBackend {
     debug_options.set_xla_gpu_dump_autotune_results_to("");
     debug_options.set_xla_gpu_load_autotune_results_from("");
     debug_options.set_xla_gpu_dump_autotune_logs_to("");
+    debug_options.clear_xla_run_hlo_passes_starting_from();
   }
 
  private:
@@ -136,6 +163,7 @@ class GpuCodegenBackend : public CodegenBackend {
   // and the codegen backend can directly produce an executable without a
   // compiler instance.
   Compiler* compiler_;
+  bool uses_last_output_for_scratch_ = false;
 };
 
 }  // namespace gpu

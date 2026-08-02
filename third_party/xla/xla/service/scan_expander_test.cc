@@ -22,6 +22,7 @@ limitations under the License.
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/test.h"
 #include "xla/service/hlo_module_config.h"
+#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
@@ -85,10 +86,12 @@ TEST_F(ScanExpanderTest, ExpandsScanComplex) {
   )";
 
   HloModuleConfig config;
-  auto module = ParseAndReturnUnverifiedModule(kModuleStr, config).value();
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnUnverifiedModule(kModuleStr, config));
 
   ScanExpander expander;
-  ASSERT_TRUE(expander.Run(module.get()).value());
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, expander.Run(module.get()));
+  ASSERT_TRUE(changed);
 
   auto hlo_string = module->ToString();
   RunAndFilecheckHloRewrite(kModuleStr, ScanExpander(), R"(
@@ -106,6 +109,56 @@ TEST_F(ScanExpanderTest, ExpandsScanComplex) {
     // CHECK-NOT: scan(
     // CHECK: while({{.*}}), condition=%scan_condition, body=%scan_body
   )");
+}
+
+TEST_F(ScanExpanderTest, ExpandsAssociativeScanByDefault) {
+  const char* kModuleStr = R"(
+    HloModule scan_module
+
+    add {
+      input = f32[] parameter(0)
+      acc = f32[] parameter(1)
+      add = f32[] add(acc, input)
+      ROOT t = (f32[], f32[]) tuple(add, add)
+    }
+
+    ENTRY Scan {
+      input = f32[4]{0} parameter(0)
+      init = f32[] constant(0)
+      ROOT scan = (f32[4]{0}, f32[]) scan(input, init), dimensions={0}, num_carries=1, is_reverse=false, to_apply=add, is_associative=true
+    }
+  )";
+
+  RunAndFilecheckHloRewrite(kModuleStr, ScanExpander(), R"(
+    // CHECK-NOT: scan(
+    // CHECK: while(
+  )");
+}
+
+TEST_F(ScanExpanderTest, DoesNotExpandAssociativeScanWhenDisabled) {
+  const char* kModuleStr = R"(
+    HloModule scan_module
+
+    add {
+      input = f32[] parameter(0)
+      acc = f32[] parameter(1)
+      add = f32[] add(acc, input)
+      ROOT t = (f32[], f32[]) tuple(add, add)
+    }
+
+    ENTRY Scan {
+      input = f32[4]{0} parameter(0)
+      init = f32[] constant(0)
+      ROOT scan = (f32[4]{0}, f32[]) scan(input, init), dimensions={0}, num_carries=1, is_reverse=false, to_apply=add, is_associative=true
+    }
+  )";
+
+  HloModuleConfig config;
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnUnverifiedModule(kModuleStr, config));
+  ScanExpander expander(/*expand_associative_scans=*/false);
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, expander.Run(module.get()));
+  EXPECT_FALSE(changed);
 }
 
 }  // namespace

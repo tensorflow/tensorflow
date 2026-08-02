@@ -91,7 +91,7 @@ class BiasOp : public BinaryOp<T> {
     std::string data_format;
     if (context->GetAttr("data_format", &data_format).ok()) {
       OP_REQUIRES(context, FormatFromString(data_format, &data_format_),
-                  errors::InvalidArgument("Invalid data format"));
+                  absl::InvalidArgumentError("Invalid data format"));
     } else {
       data_format_ = FORMAT_NHWC;
     }
@@ -161,7 +161,7 @@ class BiasGradOp : public OpKernel {
     std::string data_format;
     if (context->GetAttr("data_format", &data_format).ok()) {
       OP_REQUIRES(context, FormatFromString(data_format, &data_format_),
-                  errors::InvalidArgument("Invalid data format"));
+                  absl::InvalidArgumentError("Invalid data format"));
     } else {
       data_format_ = FORMAT_NHWC;
     }
@@ -175,11 +175,11 @@ class BiasGradOp : public OpKernel {
                 errors::InvalidArgument("Input tensor must be at least 2D: ",
                                         output_backprop.shape()));
 
-    OP_REQUIRES(
-        context,
-        FastBoundsCheck(output_backprop.NumElements(),
-                        std::numeric_limits<int32_t>::max()),
-        errors::InvalidArgument("BiasGrad requires tensor size <= int32 max"));
+    OP_REQUIRES(context,
+                FastBoundsCheck(output_backprop.NumElements(),
+                                std::numeric_limits<int32_t>::max()),
+                absl::InvalidArgumentError(
+                    "BiasGrad requires tensor size <= int32 max"));
 
     int channel_dim;
     if (data_format_ == FORMAT_NCHW) {
@@ -240,7 +240,7 @@ class BiasOp<GPUDevice, T> : public BinaryOp<T> {
     std::string data_format;
     if (context->GetAttr("data_format", &data_format).ok()) {
       OP_REQUIRES(context, FormatFromString(data_format, &data_format_),
-                  errors::InvalidArgument("Invalid data format"));
+                  absl::InvalidArgumentError("Invalid data format"));
     } else {
       data_format_ = FORMAT_NHWC;
     }
@@ -251,28 +251,30 @@ class BiasOp<GPUDevice, T> : public BinaryOp<T> {
     const Tensor& bias = context->input(1);
 
     OP_REQUIRES(context, TensorShapeUtils::IsMatrixOrHigher(input.shape()),
-                errors::InvalidArgument("Input tensor must be at least 2D: ",
-                                        input.shape().DebugString()));
+                absl::InvalidArgumentError(
+                    absl::StrCat("Input tensor must be at least 2D: ",
+                                 input.shape().DebugString())));
     OP_REQUIRES(context, TensorShapeUtils::IsVector(bias.shape()),
-                errors::InvalidArgument("Biases must be 1D: ",
-                                        bias.shape().DebugString()));
+                absl::InvalidArgumentError(absl::StrCat(
+                    "Biases must be 1D: ", bias.shape().DebugString())));
     int32_t batch, height, width, depth, channel;
     GetBiasValueDims(input, data_format_, &batch, &height, &width, &depth,
                      &channel);
     OP_REQUIRES(context, bias.shape().dim_size(0) == channel,
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(absl::StrCat(
                     "Must provide as many biases as the channel dimension "
                     "of the input tensor: ",
                     bias.shape().DebugString(), " vs. ", channel, " in ",
-                    input.shape().DebugString()));
+                    input.shape().DebugString())));
     Tensor* output = nullptr;
     OP_REQUIRES_OK(context, context->forward_input_or_allocate_output(
                                 {0}, 0, input.shape(), &output));
     if (input.NumElements() > 0) {
-      BiasGPU<T>::compute(context->template eigen_device<Device>(),
-                          input.flat<T>().data(), bias.flat<T>().data(),
-                          output->flat<T>().data(), batch, width, height, depth,
-                          channel, data_format_);
+      OP_REQUIRES_OK(context, BiasGPU<T>::compute(
+                                  context->template eigen_device<Device>(),
+                                  input.flat<T>().data(), bias.flat<T>().data(),
+                                  output->flat<T>().data(), batch, width,
+                                  height, depth, channel, data_format_));
     }
   }
 
@@ -388,7 +390,7 @@ class BiasGradOp<GPUDevice, T> : public OpKernel {
     std::string data_format;
     if (context->GetAttr("data_format", &data_format).ok()) {
       OP_REQUIRES(context, FormatFromString(data_format, &data_format_),
-                  errors::InvalidArgument("Invalid data format"));
+                  absl::InvalidArgumentError("Invalid data format"));
     } else {
       data_format_ = FORMAT_NCHW;
     }
@@ -398,10 +400,11 @@ class BiasGradOp<GPUDevice, T> : public OpKernel {
                                const Tensor& output_backprop, int32_t batch,
                                int32_t width, int32_t height, int32_t depth,
                                int32_t channel, Tensor* output) {
-    BiasGradGPU<T>::compute(context->template eigen_device<Device>(),
-                            output_backprop.template flat<T>().data(),
-                            output->flat<T>().data(), batch, width, height,
-                            depth, channel, data_format_);
+    OP_REQUIRES_OK(context, BiasGradGPU<T>::compute(
+                                context->template eigen_device<Device>(),
+                                output_backprop.template flat<T>().data(),
+                                output->flat<T>().data(), batch, width, height,
+                                depth, channel, data_format_));
   }
 
   void ComputeWithReduceSum(OpKernelContext* context,
@@ -442,8 +445,9 @@ class BiasGradOp<GPUDevice, T> : public OpKernel {
 
     OP_REQUIRES(context,
                 TensorShapeUtils::IsMatrixOrHigher(output_backprop.shape()),
-                errors::InvalidArgument("Input tensor must be at least 2D: ",
-                                        output_backprop.shape().DebugString()));
+                absl::InvalidArgumentError(
+                    absl::StrCat("Input tensor must be at least 2D: ",
+                                 output_backprop.shape().DebugString())));
     int32_t batch, height, width, depth, channel;
     GetBiasValueDims(output_backprop, data_format_, &batch, &height, &width,
                      &depth, &channel);
@@ -452,7 +456,8 @@ class BiasGradOp<GPUDevice, T> : public OpKernel {
     OP_REQUIRES_OK(context, context->allocate_output(0, output_shape, &output));
     if (channel == 0) return;
     auto* stream = context->op_device_context()->stream();
-    OP_REQUIRES(context, stream, errors::Internal("No GPU stream available."));
+    OP_REQUIRES(context, stream,
+                absl::InternalError("No GPU stream available."));
     stream_executor::DeviceAddressBase output_ptr(
         output->flat<T>().data(), output->NumElements() * sizeof(T));
     OP_REQUIRES_OK(context, stream->MemZero(&output_ptr,

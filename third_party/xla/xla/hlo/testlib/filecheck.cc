@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/resource_loader.h"
@@ -41,7 +42,7 @@ absl::StatusOr<bool> RunFileCheck(
   if (!env->LocalTempFilename(&pattern_path)) {
     return absl::InternalError("couldn't get a pattern file name");
   }
-  TF_RETURN_IF_ERROR(tsl::WriteStringToFile(env, pattern_path, pattern));
+  RETURN_IF_ERROR(tsl::WriteStringToFile(env, pattern_path, pattern));
   VLOG(3) << "input: " << input;
   return RunFileCheckWithPatternFile(input, pattern_path,
                                      additional_check_prefixes);

@@ -2,7 +2,7 @@ path: "tensorflow.lite.experimental"
 tf_module {
   member {
     name: "Analyzer"
-    mtype: "<type \'type\'>"
+    mtype: "<class \'type\'>"
   }
   member {
     name: "OpResolverType"
@@ -10,15 +10,15 @@ tf_module {
   }
   member {
     name: "QuantizationDebugOptions"
-    mtype: "<type \'type\'>"
+    mtype: "<class \'type\'>"
   }
   member {
     name: "QuantizationDebugger"
-    mtype: "<type \'type\'>"
+    mtype: "<class \'type\'>"
   }
   member {
     name: "authoring"
-    mtype: "<type \'module\'>"
+    mtype: "<class \'module\'>"
   }
   member_method {
     name: "convert_op_hints_to_stubs"

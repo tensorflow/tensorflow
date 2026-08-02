@@ -22,6 +22,7 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "absl/algorithm/container.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
@@ -108,7 +109,7 @@ mlir::ReproducerStreamFactory GetReproducerStreamFactory() {
 std::string EscapeFilename(absl::string_view filename) {
 #if defined(PLATFORM_GOOGLE)
   std::string escaped = strings::EscapeFileName(filename);
-  ReplaceCharacters(&escaped, "%", '+');
+  absl::c_replace(escaped, '%', '+');
   return escaped;
 #else
   return absl::StrReplaceAll(filename, {{"/", "~"}});

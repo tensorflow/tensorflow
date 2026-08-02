@@ -68,6 +68,8 @@ template <typename T, typename... Args>
 AsyncValueRef<T> MakeConstructedAsyncValueRef(Args&&... args);
 template <typename T, typename... Args>
 AsyncValueRef<T> MakeAvailableAsyncValueRef(Args&&... args);
+template <typename T>
+AsyncValueRef<T> MakeAvailableAsyncValueRef(std::shared_ptr<T> value);
 
 // A collection of type traits used by AsyncValueRef and AsyncValuePtr.
 namespace internal {
@@ -869,7 +871,7 @@ class CountDownAsyncValueRef {
     DCHECK_GE(state_->cnt.load(), count) << "Invalid count down value";
 
     if (ABSL_PREDICT_FALSE(!status.ok())) {
-      absl::MutexLock lock(&state_->mutex);
+      absl::MutexLock lock(state_->mutex);
       state_->is_error.store(true, std::memory_order_release);
       state_->status = status;
     }
@@ -898,10 +900,10 @@ class CountDownAsyncValueRef {
       if (ABSL_PREDICT_FALSE(is_error)) {
         // Ownership of the CountDownAsyncValueRef can be transferred to
         // AsyncValueRef itself (via the `AndThen` callback), and `ref.SetError`
-        // call can destroy the `state_` and the `mutex`. We take the error
-        // status by copy to avoid using memory after it was freed.
+        // call can destroy the `state_` and its mutex. We take the
+        // error status by copy to avoid using memory after it was freed.
         auto take_error = [&] {
-          absl::MutexLock lock(&state_->mutex);
+          absl::MutexLock lock(state_->mutex);
           return state_->status;
         };
         state_->ref.SetError(take_error());
@@ -1092,6 +1094,14 @@ AsyncValueRef<T> MakeAvailableAsyncValueRef(Args&&... args) {
       internal::AllocateAndConstruct<internal::ConcreteAsyncValue<T>>(
           typename internal::ConcreteAsyncValue<T>::ConcretePayload{},
           std::forward<Args>(args)...)));
+}
+
+// Allocate and construct an available AsyncValueRef backed by a
+// std::shared_ptr.
+template <typename T>
+AsyncValueRef<T> MakeAvailableAsyncValueRef(std::shared_ptr<T> value) {
+  return AsyncValueRef<T>(
+      tsl::MakeRef<internal::SharedPtrAsyncValue>(std::move(value)));
 }
 
 // Allocates an AsyncValueRef that is constructed from the result of calling an

@@ -13,7 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 #include <cstdint>
+#include <vector>
 
+#include "absl/log/check.h"
+#include "absl/status/status.h"
 #include "tensorflow/compiler/tf2xla/lib/broadcast.h"
 #include "tensorflow/compiler/tf2xla/lib/util.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
@@ -33,6 +36,37 @@ limitations under the License.
 
 namespace tensorflow {
 namespace {
+
+xla::XlaOp ConvertFloatingToUnsigned(xla::XlaOp input,
+                                     xla::PrimitiveType src_type,
+                                     xla::PrimitiveType dst_type) {
+  if (!xla::primitive_util::IsFloatingPointType(src_type) ||
+      !xla::primitive_util::IsUnsignedIntegralType(dst_type)) {
+    return xla::ConvertElementType(input, dst_type);
+  }
+
+  // XLA convert saturates negative floats to unsigned integers at zero, while
+  // TensorFlow Cast's CPU path wraps finite negative values in the destination
+  // unsigned type. NaN and Inf casts to integral types are documented as
+  // undefined, so keep them on the direct HLO convert path.
+  int dst_width = xla::primitive_util::BitWidth(dst_type);
+  int wider_width = dst_width == 64 ? 64 : dst_width * 2;
+  xla::PrimitiveType signed_type =
+      xla::primitive_util::SignedIntegralTypeForBitWidth(wider_width);
+  xla::PrimitiveType unsigned_type =
+      xla::primitive_util::UnsignedIntegralTypeForBitWidth(wider_width);
+  CHECK_NE(signed_type, xla::PRIMITIVE_TYPE_INVALID);
+  CHECK_NE(unsigned_type, xla::PRIMITIVE_TYPE_INVALID);
+
+  xla::XlaOp direct = xla::ConvertElementType(input, dst_type);
+  xla::XlaOp wrapped_negative = xla::ConvertElementType(
+      xla::ConvertElementType(xla::ConvertElementType(input, signed_type),
+                              unsigned_type),
+      dst_type);
+  xla::XlaOp finite_negative =
+      xla::And(xla::Lt(input, xla::ZerosLike(input)), xla::IsFinite(input));
+  return xla::Select(finite_negative, wrapped_negative, direct);
+}
 
 class CastOp : public XlaOpKernel {
  public:
@@ -57,20 +91,22 @@ class CastOp : public XlaOpKernel {
                !xla::primitive_util::IsComplexType(dst_type_)) {
       // As in cast_op.h, we replicate the numpy behavior of truncating the
       // imaginary part.
-      output = xla::ConvertElementType(xla::Real(input), dst_type_);
+      output = ConvertFloatingToUnsigned(
+          xla::Real(input),
+          xla::primitive_util::ComplexComponentType(src_type_), dst_type_);
     } else {
       if (use_truncation_) {
-        OP_REQUIRES(
-            ctx,
-            xla::primitive_util::IsFloatingPointType(src_type_) &&
-                xla::primitive_util::IsFloatingPointType(dst_type_),
-            errors::Unimplemented("Truncate attribute is only "
-                                  "implemented for floating point datatypes."));
+        OP_REQUIRES(ctx,
+                    xla::primitive_util::IsFloatingPointType(src_type_) &&
+                        xla::primitive_util::IsFloatingPointType(dst_type_),
+                    absl::UnimplementedError(
+                        "Truncate attribute is only "
+                        "implemented for floating point datatypes."));
         int mantissa_difference =
             xla::primitive_util::SignificandWidth(src_type_) -
             xla::primitive_util::SignificandWidth(dst_type_);
         OP_REQUIRES(ctx, mantissa_difference > 0,
-                    errors::Unimplemented(
+                    absl::UnimplementedError(
                         "Truncate attribute is only implemented in cases where "
                         "dst datatype "
                         "has fewer mantissa bits than the src datatype"));
@@ -82,14 +118,14 @@ class CastOp : public XlaOpKernel {
         xla::PrimitiveType same_width_int =
             xla::primitive_util::UnsignedIntegralTypeForBitWidth(src_bitwidth);
         OP_REQUIRES(ctx, same_width_int != xla::PRIMITIVE_TYPE_INVALID,
-                    errors::Unimplemented("Unexpected type bitwidth"));
+                    absl::UnimplementedError("Unexpected type bitwidth"));
         input = xla::BitcastConvertType(
             xla::And(
                 xla::BitcastConvertType(input, same_width_int),
                 ::tensorflow::IntegerLiteral(builder, same_width_int, mask)),
             src_type_);
       }
-      output = xla::ConvertElementType(input, dst_type_);
+      output = ConvertFloatingToUnsigned(input, src_type_, dst_type_);
     }
 
     ctx->SetOutput(0, output);
@@ -124,19 +160,81 @@ class BitcastOp : public XlaOpKernel {
       ctx->SetOutput(0, output);
       return;
     }
-    // Error out if the bitcast has a complex source or destination type and
-    // the bitcast is not trivial.
-    OP_REQUIRES(ctx,
-                !xla::primitive_util::IsComplexType(src_type_) &&
-                    !xla::primitive_util::IsComplexType(dst_type_),
-                errors::Unimplemented("Complex types not supported."));
+
+    const bool src_complex = xla::primitive_util::IsComplexType(src_type_);
+    const bool dst_complex = xla::primitive_util::IsComplexType(dst_type_);
+
+    if (src_complex && !dst_complex) {
+      // A bitcast from a complex type reinterprets its contiguous storage,
+      // which holds the real component followed by the imaginary component
+      // (each component_bit_width bits). XLA's BitcastConvert cannot cross
+      // the complex<->real boundary directly, so bitcast each component to
+      // the destination type separately -- this keeps every BitcastConvert
+      // call on a plain real-typed operand, matching the shape XLA's own
+      // shape inference (and the Bitcast op's shape function) computes for
+      // that type pair -- and concatenate the real result before the
+      // imaginary result, since the real component occupies the lower
+      // bytes. This is byte-for-byte equivalent to the eager Bitcast
+      // kernel.
+      const xla::PrimitiveType component =
+          xla::primitive_util::ComplexComponentType(src_type_);
+      const int64_t component_bit_width =
+          xla::primitive_util::BitWidth(component);
+      const int64_t dst_bit_width = xla::primitive_util::BitWidth(dst_type_);
+      // Each component is bitcast independently below, so a destination
+      // wider than a single component (e.g. complex64 -> int64) cannot be
+      // handled this way: the real and imaginary halves would need to be
+      // combined into one destination element, which this decomposition
+      // does not do. Reject it explicitly rather than emit a wrong shape.
+      OP_REQUIRES(ctx, component_bit_width >= dst_bit_width,
+                  absl::UnimplementedError(
+                      "Bitcast from a complex source to a destination type "
+                      "wider than each component is not supported."));
+      OP_REQUIRES(ctx, component_bit_width % dst_bit_width == 0,
+                  absl::InvalidArgumentError(
+                      "Neither bit width is a multiple of the other."));
+
+      xla::XlaOp real_bits =
+          xla::BitcastConvertType(xla::Real(input), dst_type_);
+      xla::XlaOp imag_bits =
+          xla::BitcastConvertType(xla::Imag(input), dst_type_);
+
+      const TensorShape input_shape = ctx->InputShape(0);
+      const int64_t rank = input_shape.dims();
+      if (component_bit_width == dst_bit_width) {
+        // BitcastConvertType does not introduce a new minor dimension when
+        // the widths already match, so add one explicitly before
+        // concatenating the real and imaginary halves.
+        // dim_sizes() returns by value, so it must be materialized once: two
+        // separate calls yield two distinct temporaries, and an iterator pair
+        // taken across them does not denote a valid range.
+        const auto dims = input_shape.dim_sizes();
+        std::vector<int64_t> expanded_dims(dims.begin(), dims.end());
+        expanded_dims.push_back(1);
+        real_bits = xla::Reshape(real_bits, expanded_dims);
+        imag_bits = xla::Reshape(imag_bits, expanded_dims);
+      }
+      // When component_bit_width > dst_bit_width, BitcastConvertType has
+      // already appended a minor dimension of component_bit_width /
+      // dst_bit_width to each of real_bits and imag_bits, so concatenating
+      // along that existing dimension directly produces the same shape the
+      // eager Bitcast kernel does, with no further reshape required.
+      ctx->SetOutput(
+          0, xla::ConcatInDim(ctx->builder(), {real_bits, imag_bits}, rank));
+      return;
+    }
+
+    // Real->complex and complex->complex bitcasts are not yet supported;
+    // XLA's BitcastConvert cannot cross the complex<->real boundary.
+    OP_REQUIRES(ctx, !src_complex && !dst_complex,
+                absl::UnimplementedError("Complex types not supported."));
     auto input_bit_width = xla::primitive_util::BitWidth(src_type_);
     auto output_bit_width = xla::primitive_util::BitWidth(dst_type_);
 
     OP_REQUIRES(ctx,
                 output_bit_width % input_bit_width == 0 ||
                     input_bit_width % output_bit_width == 0,
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(
                     "Neither bit width is a multiple of the other."));
     output = xla::BitcastConvertType(input, dst_type_);
     ctx->SetOutput(0, output);

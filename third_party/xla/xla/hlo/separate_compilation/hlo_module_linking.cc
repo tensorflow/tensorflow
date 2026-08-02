@@ -24,9 +24,11 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/log/vlog_is_on.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/hlo_clone_context.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -77,7 +79,7 @@ class HloLinker {
 
       } else if (!current.entered) {
         VLOG(6) << "First visit to link: " << current.principal->name();
-        TF_RETURN_IF_ERROR(HandleFirstVisit(current));
+        RETURN_IF_ERROR(HandleFirstVisit(current));
 
       } else {
         VLOG(6) << "Second visit to link: " << current.principal->name();
@@ -199,13 +201,13 @@ absl::StatusOr<std::unique_ptr<HloModule>> LinkComputation(
           *linking_manifest.compilation_environment));
 
   HloLinker linker(linked_module.get(), linking_manifest, root_computation);
-  TF_ASSIGN_OR_RETURN(HloComputation * linked_clone_ptr, linker.Link());
+  ASSIGN_OR_RETURN(HloComputation * linked_clone_ptr, linker.Link());
 
   linked_module->ReplaceEntryComputation(linked_clone_ptr);
   linked_module->mutable_config().SetComputationLayoutIfExists(
       linked_clone_ptr->ComputeProgramShape());
   xla::HloDCE dce_pass;
-  TF_RETURN_IF_ERROR(dce_pass.Run(linked_module.get()).status());
+  RETURN_IF_ERROR(dce_pass.Run(linked_module.get()).status());
 
   if (VLOG_IS_ON(6)) {
     for (const HloComputation* comp : linked_module->computations()) {

@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <array>
+#include <atomic>
 #include <cstdint>
 #include <memory>
 #include <optional>
@@ -25,14 +26,19 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/cleanup/cleanup.h"
 #include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
+#include "absl/synchronization/notification.h"
 #include "absl/types/span.h"
+#include "third_party/gpus/cuda/include/cuda.h"
+#include "xla/stream_executor/activate_context.h"
 #include "xla/stream_executor/cuda/cuda_event.h"
 #include "xla/stream_executor/cuda/cuda_executor.h"
 #include "xla/stream_executor/cuda/cuda_platform_id.h"
+#include "xla/stream_executor/cuda/cuda_status.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/gpu/gpu_test_kernels.h"
 #include "xla/stream_executor/kernel.h"
@@ -40,12 +46,15 @@ limitations under the License.
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/stream_executor.h"
+#include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/statusor.h"
 
 namespace stream_executor {
 namespace gpu {
 namespace {
 
+using ::absl_testing::IsOk;
+using ::absl_testing::StatusIs;
 using ::testing::Each;
 using ::testing::ElementsAre;
 using ::testing::ElementsAreArray;
@@ -77,25 +86,24 @@ TEST_F(CudaStreamTest, Memset32) {
   // Should fail due to the invalid size parameter.
   EXPECT_THAT(stream->Memset32(&buffer, 0xDEADBEEF,
                                kBufferNumElements * sizeof(uint32_t) + 1),
-              absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
+              StatusIs(absl::StatusCode::kInvalidArgument));
 
   // Should fail due to the non-4-byte-aligned pointer.
   DeviceAddressBase unaligned_pointer =
       buffer.GetByteSlice(/*offset_bytes=*/1, /*size_bytes=*/0);
   EXPECT_THAT(stream->Memset32(&unaligned_pointer, 0xDEADBEEF,
                                kBufferNumElements * sizeof(uint32_t) + 1),
-              absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
+              StatusIs(absl::StatusCode::kInvalidArgument));
 
   // Correct call. Should succeed.
   EXPECT_THAT(stream->Memset32(&buffer, 0xDEADBEEF,
                                kBufferNumElements * sizeof(uint32_t)),
-              absl_testing::IsOk());
+              IsOk());
 
   std::array<uint32_t, kBufferNumElements> host_buffer;
-  EXPECT_THAT(stream->MemcpyD2H(buffer, absl::MakeSpan(host_buffer)),
-              absl_testing::IsOk());
+  EXPECT_THAT(stream->MemcpyD2H(buffer, absl::MakeSpan(host_buffer)), IsOk());
 
-  EXPECT_THAT(stream->BlockHostUntilDone(), absl_testing::IsOk());
+  EXPECT_THAT(stream->BlockHostUntilDone(), IsOk());
   EXPECT_THAT(host_buffer, Each(0xDEADBEEF));
 }
 
@@ -110,18 +118,17 @@ TEST_F(CudaStreamTest, MemZero) {
 
   EXPECT_THAT(stream->Memset32(&buffer, 0xDEADBEEF,
                                kBufferNumElements * sizeof(uint32_t)),
-              absl_testing::IsOk());
+              IsOk());
 
   // We overwrite half the buffer with zeros.
   EXPECT_THAT(
       stream->MemZero(&buffer, kBufferNumElements / 2 * sizeof(uint32_t)),
-      absl_testing::IsOk());
+      IsOk());
 
   std::array<uint32_t, kBufferNumElements> host_buffer;
-  EXPECT_THAT(stream->MemcpyD2H(buffer, absl::MakeSpan(host_buffer)),
-              absl_testing::IsOk());
+  EXPECT_THAT(stream->MemcpyD2H(buffer, absl::MakeSpan(host_buffer)), IsOk());
 
-  EXPECT_THAT(stream->BlockHostUntilDone(), absl_testing::IsOk());
+  EXPECT_THAT(stream->BlockHostUntilDone(), IsOk());
   // We expect the first half of the buffer to be zeros.
   EXPECT_THAT(
       absl::MakeConstSpan(host_buffer).subspan(0, kBufferNumElements / 2),
@@ -146,13 +153,12 @@ TEST_F(CudaStreamTest, MemcpyHostToDeviceAndBack) {
                 [i = 0]() mutable { return i++; });
 
   EXPECT_THAT(stream->MemcpyH2D(absl::MakeConstSpan(src_buffer), &buffer),
-              absl_testing::IsOk());
+              IsOk());
 
   std::array<uint32_t, kBufferNumElements> host_buffer;
-  EXPECT_THAT(stream->MemcpyD2H(buffer, absl::MakeSpan(host_buffer)),
-              absl_testing::IsOk());
+  EXPECT_THAT(stream->MemcpyD2H(buffer, absl::MakeSpan(host_buffer)), IsOk());
 
-  EXPECT_THAT(stream->BlockHostUntilDone(), absl_testing::IsOk());
+  EXPECT_THAT(stream->BlockHostUntilDone(), IsOk());
   EXPECT_THAT(host_buffer, ElementsAreArray(src_buffer));
 }
 
@@ -169,17 +175,16 @@ TEST_F(CudaStreamTest, MemcpyDeviceToDevice) {
 
   EXPECT_THAT(stream->Memset32(&buffer1, 0xDEADBEEF,
                                kBufferNumElements * sizeof(uint32_t)),
-              absl_testing::IsOk());
+              IsOk());
 
   EXPECT_THAT(stream->MemcpyD2D(&buffer2, buffer1,
                                 kBufferNumElements * sizeof(uint32_t)),
-              absl_testing::IsOk());
+              IsOk());
 
   std::array<uint32_t, kBufferNumElements> host_buffer;
-  EXPECT_THAT(stream->MemcpyD2H(buffer2, absl::MakeSpan(host_buffer)),
-              absl_testing::IsOk());
+  EXPECT_THAT(stream->MemcpyD2H(buffer2, absl::MakeSpan(host_buffer)), IsOk());
 
-  EXPECT_THAT(stream->BlockHostUntilDone(), absl_testing::IsOk());
+  EXPECT_THAT(stream->BlockHostUntilDone(), IsOk());
   EXPECT_THAT(host_buffer, Each(0xDEADBEEF));
 }
 
@@ -191,9 +196,9 @@ TEST_F(CudaStreamTest, DoHostCallback) {
   int callback_call_counter = 0;
   EXPECT_THAT(stream->DoHostCallback(
                   [&callback_call_counter]() { callback_call_counter++; }),
-              absl_testing::IsOk());
+              IsOk());
 
-  EXPECT_THAT(stream->BlockHostUntilDone(), absl_testing::IsOk());
+  EXPECT_THAT(stream->BlockHostUntilDone(), IsOk());
   EXPECT_EQ(callback_call_counter, 1);
 }
 
@@ -211,17 +216,16 @@ TEST_F(CudaStreamTest, LaunchKernel) {
   DeviceAddress<int32_t> b = executor_->AllocateArray<int32_t>(kLength, 0);
   DeviceAddress<int32_t> c = executor_->AllocateArray<int32_t>(kLength, 0);
 
-  EXPECT_THAT(stream->Memset32(&a, 1, kByteLength), absl_testing::IsOk());
-  EXPECT_THAT(stream->Memset32(&b, 2, kByteLength), absl_testing::IsOk());
-  EXPECT_THAT(stream->MemZero(&c, kByteLength), absl_testing::IsOk());
+  EXPECT_THAT(stream->Memset32(&a, 1, kByteLength), IsOk());
+  EXPECT_THAT(stream->Memset32(&b, 2, kByteLength), IsOk());
+  EXPECT_THAT(stream->MemZero(&c, kByteLength), IsOk());
   EXPECT_THAT(add.Launch(ThreadDim(), BlockDim(kLength), stream.get(), a, b, c),
-              absl_testing::IsOk());
+              IsOk());
 
-  EXPECT_THAT(stream->BlockHostUntilDone(), absl_testing::IsOk());
+  EXPECT_THAT(stream->BlockHostUntilDone(), IsOk());
 
   std::array<int32_t, kLength> host_buffer;
-  EXPECT_THAT(stream->MemcpyD2H(c, absl::MakeSpan(host_buffer)),
-              absl_testing::IsOk());
+  EXPECT_THAT(stream->MemcpyD2H(c, absl::MakeSpan(host_buffer)), IsOk());
   EXPECT_THAT(host_buffer, Each(3));
 }
 
@@ -243,15 +247,15 @@ TEST_F(CudaStreamTest, WaitForEvent) {
   TF_ASSERT_OK_AND_ASSIGN(CudaEvent event,
                           CudaEvent::Create(executor_, /*allow_timing=*/false));
 
-  EXPECT_THAT(stream->WaitFor(&event), absl_testing::IsOk());
+  EXPECT_THAT(stream->WaitFor(&event), IsOk());
 
   bool callback_called = false;
   EXPECT_THAT(
       stream->DoHostCallback([&callback_called]() { callback_called = true; }),
-      absl_testing::IsOk());
+      IsOk());
 
-  EXPECT_THAT(stream->RecordEvent(&event), absl_testing::IsOk());
-  EXPECT_THAT(stream->BlockHostUntilDone(), absl_testing::IsOk());
+  EXPECT_THAT(stream->RecordEvent(&event), IsOk());
+  EXPECT_THAT(stream->BlockHostUntilDone(), IsOk());
   EXPECT_TRUE(callback_called);
 }
 
@@ -284,27 +288,144 @@ TEST_F(CudaStreamTest, WaitForOtherStream) {
     absl::MutexLock lock(mutex);
     execution_order.push_back(ExecutionStage::kBeforeWaitForEvent);
   }),
-              absl_testing::IsOk());
-  EXPECT_THAT(stream1->WaitFor(&event), absl_testing::IsOk());
+              IsOk());
+  EXPECT_THAT(stream1->WaitFor(&event), IsOk());
   EXPECT_THAT(stream1->DoHostCallback([&]() {
     absl::MutexLock lock(mutex);
     execution_order.push_back(ExecutionStage::kAfterWaitForEvent);
   }),
-              absl_testing::IsOk());
-  EXPECT_THAT(stream2->WaitFor(stream1.get()), absl_testing::IsOk());
+              IsOk());
+  EXPECT_THAT(stream2->WaitFor(stream1.get()), IsOk());
   EXPECT_THAT(stream2->DoHostCallback([&]() {
     absl::MutexLock lock(mutex);
     execution_order.push_back(ExecutionStage::kAfterWaitForStream);
   }),
-              absl_testing::IsOk());
+              IsOk());
 
-  EXPECT_THAT(stream1->RecordEvent(&event), absl_testing::IsOk());
-  EXPECT_THAT(stream2->BlockHostUntilDone(), absl_testing::IsOk());
+  EXPECT_THAT(stream1->RecordEvent(&event), IsOk());
+  EXPECT_THAT(stream2->BlockHostUntilDone(), IsOk());
   absl::MutexLock lock(mutex);
   EXPECT_THAT(execution_order,
               ElementsAre(ExecutionStage::kBeforeWaitForEvent,
                           ExecutionStage::kAfterWaitForEvent,
                           ExecutionStage::kAfterWaitForStream));
+}
+
+TEST_F(CudaStreamTest, DoHostCallbackWithStatusSuccess) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<CudaStream> stream,
+                          CudaStream::Create(executor_,
+                                             /*priority=*/std::nullopt));
+
+  bool callback_called = false;
+  bool error_callback_called = false;
+
+  EXPECT_THAT(stream->DoHostCallbackWithStatus(
+                  [&callback_called]() {
+                    callback_called = true;
+                    return absl::OkStatus();
+                  },
+                  [&error_callback_called](absl::Status s) {
+                    error_callback_called = true;
+                  }),
+              IsOk());
+
+  EXPECT_THAT(stream->BlockHostUntilDone(), IsOk());
+  EXPECT_TRUE(callback_called);
+  EXPECT_FALSE(error_callback_called);
+}
+
+TEST_F(CudaStreamTest, DoHostCallbackWithStatusError) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<CudaStream> stream,
+                          CudaStream::Create(executor_,
+                                             /*priority=*/std::nullopt));
+
+  bool error_callback_called = false;
+  absl::Status callback_status;
+
+  EXPECT_THAT(stream->DoHostCallbackWithStatus(
+                  []() { return absl::InternalError("Test error"); },
+                  [&error_callback_called, &callback_status](absl::Status s) {
+                    error_callback_called = true;
+                    callback_status = s;
+                  }),
+              IsOk());
+  EXPECT_THAT(stream->BlockHostUntilDone(), IsOk());
+  EXPECT_TRUE(error_callback_called);
+  EXPECT_THAT(callback_status,
+              StatusIs(absl::StatusCode::kInternal, "Test error"));
+}
+
+TEST_F(CudaStreamTest, CaptureStreamIsolation) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<CudaStream> stream,
+                          CudaStream::Create(executor_,
+                                             /*priority=*/std::nullopt));
+
+  absl::Notification capture_started;
+  absl::Notification main_thread_done;
+  std::atomic<bool> capture_finished = false;
+
+  std::unique_ptr<tsl::Thread> capture_thread(tsl::Env::Default()->StartThread(
+      tsl::ThreadOptions(), "capture_thread", [&]() -> void {
+        CUgraph graph = nullptr;
+        ASSERT_OK(cuda::ToStatus(cuGraphCreate(&graph, 0)));
+        ASSERT_OK_AND_ASSIGN(
+            auto handle,
+            stream->BeginCapture(graph, /*dependencies=*/nullptr,
+                                 /*dependency_data=*/nullptr,
+                                 /*num_dependencies=*/0,
+                                 CU_STREAM_CAPTURE_MODE_THREAD_LOCAL));
+
+        CudaStream* capture_stream = handle.capturing_stream();
+        // BlockHostUntilDone is not allowed on capture streams.
+        EXPECT_THAT(capture_stream->BlockHostUntilDone(),
+                    StatusIs(absl::StatusCode::kFailedPrecondition));
+        EXPECT_THAT(capture_stream->DoHostCallbackWithStatus(
+                        []() { return absl::OkStatus(); }),
+                    StatusIs(absl::StatusCode::kFailedPrecondition));
+        capture_started.Notify();
+        main_thread_done.WaitForNotification();
+        capture_finished = true;
+
+        ASSERT_OK(handle.EndCapture());
+        ASSERT_THAT(cuda::ToStatus(cuGraphDestroy(graph)), IsOk());
+      }));
+
+  capture_started.WaitForNotification();
+
+  // 3. Default stream is not capturing, and not blocked by the background
+  // capture.
+  EXPECT_TRUE(stream->BlockHostUntilDone().ok());
+  EXPECT_FALSE(capture_finished);
+
+  main_thread_done.Notify();
+}
+
+TEST_F(CudaStreamTest, NestedCaptureFails) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<CudaStream> stream,
+                          CudaStream::Create(executor_,
+                                             /*priority=*/std::nullopt));
+
+  CUgraph graph;
+  std::unique_ptr<ActivateContext> activation = executor_->Activate();
+  ASSERT_EQ(cuGraphCreate(&graph, 0), CUDA_SUCCESS);
+  absl::Cleanup cleanup_graph = [graph] { cuGraphDestroy(graph); };
+
+  TF_ASSERT_OK_AND_ASSIGN(auto handle1,
+                          stream->BeginCapture(graph, /*dependencies=*/nullptr,
+                                               /*dependency_data=*/nullptr,
+                                               /*num_dependencies=*/0,
+                                               CU_STREAM_CAPTURE_MODE_GLOBAL));
+
+  CUgraph graph2;
+  ASSERT_EQ(cuGraphCreate(&graph2, 0), CUDA_SUCCESS);
+  absl::Cleanup cleanup_graph2 = [graph2] { cuGraphDestroy(graph2); };
+  auto handle2_or = stream->BeginCapture(graph2, /*dependencies=*/nullptr,
+                                         /*dependency_data=*/nullptr,
+                                         /*num_dependencies=*/0,
+                                         CU_STREAM_CAPTURE_MODE_GLOBAL);
+  // Second capture on the same stream fails-fast
+  EXPECT_THAT(handle2_or, StatusIs(absl::StatusCode::kFailedPrecondition));
+  EXPECT_THAT(handle1.EndCapture(), IsOk());
 }
 
 }  // namespace

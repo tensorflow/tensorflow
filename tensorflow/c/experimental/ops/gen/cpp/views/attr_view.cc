@@ -24,7 +24,6 @@ limitations under the License.
 #include "tensorflow/c/experimental/ops/gen/common/view_util.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/types.pb.h"
-#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 namespace generator {
@@ -38,7 +37,7 @@ std::string AttrView::VariableType() const {
     return "const char*";
   }
   if (attr_.full_type() == "list(string)") {
-    return "absl::Span<string const>";
+    return "absl::Span<std::string const>";
   }
 
   // Normal path: translate base type to C++ ...

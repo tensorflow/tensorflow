@@ -14,6 +14,14 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/common_runtime/scoped_allocator.h"
 
+#include <cstddef>
+#include <cstdint>
+#include <string>
+
+#include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "absl/strings/str_cat.h"
+#include "absl/types/span.h"
 #include "tensorflow/core/common_runtime/scoped_allocator_mgr.h"
 #include "tensorflow/core/platform/dynamic_annotations.h"
 

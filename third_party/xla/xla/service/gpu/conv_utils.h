@@ -21,6 +21,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/gpu/backend_configs.pb.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace gpu {

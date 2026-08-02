@@ -63,7 +63,7 @@ void SwapDimSizes(const int dim_a, const int dim_b, TensorShape* shape) {
 
 // Concatenates 'inputs' into a single tensor along the zeroth dimension.
 // Requires that all elements of 'inputs' have element type T, all inputs
-// have more than zero elements and ouput is preallocated.
+// have more than zero elements and output is preallocated.
 template <typename T>
 void ConcatHelper(OpKernelContext* context, const std::vector<Tensor>& inputs,
                   Tensor* output) {
@@ -116,11 +116,11 @@ class CSRSparseMatMulCPUOp : public OpKernel {
     OP_REQUIRES_OK(c, c->GetAttr("transpose_b", &transpose_b_));
     OP_REQUIRES_OK(c, c->GetAttr("adjoint_a", &adjoint_a_));
     OP_REQUIRES(c, !(adjoint_a_ && transpose_a_),
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(
                     "Only one of adjoint_a and transpose_a may be true."));
     OP_REQUIRES_OK(c, c->GetAttr("adjoint_b", &adjoint_b_));
     OP_REQUIRES(c, !(adjoint_b_ && transpose_b_),
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(
                     "Only one of adjoint_b and transpose_b may be true."));
   }
 
@@ -146,10 +146,10 @@ class CSRSparseMatMulCPUOp : public OpKernel {
         input_matrix_a->batch_size() == input_matrix_b->batch_size() ||
             (input_matrix_a->batch_size() == 1) ||
             (input_matrix_b->batch_size() == 1),
-        errors::InvalidArgument(
+        absl::InvalidArgumentError(absl::StrCat(
             "Batch sizes of A and B are not compatible.  Batch sizes are: ",
             input_matrix_a->batch_size(), " vs. ",
-            input_matrix_b->batch_size()));
+            input_matrix_b->batch_size())));
 
     // Validate input_matrix_a's and input_matrix_b's shapes
     TensorShape a_shape;
@@ -170,9 +170,9 @@ class CSRSparseMatMulCPUOp : public OpKernel {
 
     OP_REQUIRES(
         ctx, a_shape.dim_size(row_dim + 1) == b_shape.dim_size(row_dim),
-        errors::InvalidArgument(
+        absl::InvalidArgumentError(absl::StrCat(
             "Inner product dimensions of A and B do not agree.  Shapes are: ",
-            a_shape.DebugString(), " vs. ", b_shape.DebugString()));
+            a_shape.DebugString(), " vs. ", b_shape.DebugString())));
 
     // Infer the output shape of the matrix product.
     const int batch_size =
@@ -329,12 +329,12 @@ class CSRSparseMatMulGPUOp : public OpKernel {
     bool adjoint_a;
     OP_REQUIRES_OK(c, c->GetAttr("adjoint_a", &adjoint_a));
     OP_REQUIRES(c, !(adjoint_a && transpose_a_),
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(
                     "Only one of adjoint_a and transpose_a may be true."));
     bool adjoint_b;
     OP_REQUIRES_OK(c, c->GetAttr("adjoint_b", &adjoint_b));
     OP_REQUIRES(c, !(adjoint_b && transpose_b_),
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(
                     "Only one of adjoint_b and transpose_b may be true."));
     conjugate_a_ = adjoint_a;
     conjugate_b_ = adjoint_b;
@@ -361,9 +361,9 @@ class CSRSparseMatMulGPUOp : public OpKernel {
         ctx,
         a_matrix->batch_size() == b_matrix->batch_size() ||
             (a_matrix->batch_size() == 1) || (b_matrix->batch_size() == 1),
-        errors::InvalidArgument(
+        absl::InvalidArgumentError(absl::StrCat(
             "Batch sizes of A and B are not compatible.  Batch sizes are: ",
-            a_matrix->batch_size(), " vs. ", b_matrix->batch_size()));
+            a_matrix->batch_size(), " vs. ", b_matrix->batch_size())));
 
     auto a_dense_shape = a_matrix->dense_shape().vec<int64_t>();
     auto b_dense_shape = b_matrix->dense_shape().vec<int64_t>();
@@ -390,10 +390,10 @@ class CSRSparseMatMulGPUOp : public OpKernel {
 
     OP_REQUIRES(
         ctx, a_inner_dim == b_inner_dim,
-        errors::InvalidArgument(
+        absl::InvalidArgumentError(absl::StrCat(
             "Inner product dimensions of A and B do not agree.  Shapes are: ",
             a_tensor_shape.DebugString(), " vs. ",
-            b_tensor_shape.DebugString()));
+            b_tensor_shape.DebugString())));
 
     Tensor c_dense_shape_t(cpu_allocator(), DT_INT64, TensorShape({rank}));
     auto c_dense_shape = c_dense_shape_t.vec<int64_t>();
@@ -540,7 +540,7 @@ class CSRSparseMatMulGPUOp : public OpKernel {
           ctx,
           cusparseSpMatGetSize(matC.get(), &cRows, &cCols, &cNnz) ==
               CUSPARSE_STATUS_SUCCESS,
-          errors::Internal("Failed to obtain dimensions from SpMatDescr."));
+          absl::InternalError("Failed to obtain dimensions from SpMatDescr."));
       c_batch_ptr(i + 1) = c_batch_ptr(i) + cNnz;
 
       Tensor colidx_tmp, values_tmp;
@@ -558,7 +558,7 @@ class CSRSparseMatMulGPUOp : public OpKernel {
           cusparseCsrSetPointers(matC.get(), row_ptr, col_ptr, val_ptr);
       OP_REQUIRES(
           ctx, cusp_status == CUSPARSE_STATUS_SUCCESS,
-          errors::Internal("Failed to update CSR pointers in SpMatDesc."));
+          absl::InternalError("Failed to update CSR pointers in SpMatDesc."));
       OP_REQUIRES_OK(ctx,
                      cudaSparse.SpGEMM_copy<T>(matA, matB, matC, gemmDesc));
 

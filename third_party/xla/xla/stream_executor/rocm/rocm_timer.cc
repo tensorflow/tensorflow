@@ -22,9 +22,9 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/time/time.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "rocm/include/hip/hip_runtime.h"
 #include "xla/stream_executor/activate_context.h"
-#include "xla/stream_executor/rocm/rocm_driver_wrapper.h"
 #include "xla/stream_executor/rocm/rocm_event.h"
 #include "xla/stream_executor/rocm/rocm_status.h"
 #include "xla/stream_executor/stream.h"
@@ -39,14 +39,14 @@ absl::StatusOr<float> GetEventElapsedTime(StreamExecutor* executor,
   std::unique_ptr<ActivateContext> activation = executor->Activate();
   // The stop event must have completed in order for hipEventElapsedTime to
   // work.
-  hipError_t res = wrap::hipEventSynchronize(stop);
+  hipError_t res = hipEventSynchronize(stop);
   if (res != hipSuccess) {
     LOG(ERROR) << "failed to synchronize the stop event: " << ToString(res);
     return false;
   }
   float elapsed_milliseconds;
-  TF_RETURN_IF_ERROR(
-      ToStatus(wrap::hipEventElapsedTime(&elapsed_milliseconds, start, stop),
+  RETURN_IF_ERROR(
+      ToStatus(hipEventElapsedTime(&elapsed_milliseconds, start, stop),
                "failed to get elapsed time between events"));
 
   return elapsed_milliseconds;
@@ -64,21 +64,21 @@ absl::StatusOr<absl::Duration> RocmTimer::GetElapsedDuration() {
   if (is_stopped_) {
     return absl::FailedPreconditionError("Measuring inactive timer");
   }
-  TF_RETURN_IF_ERROR(stream_->RecordEvent(&stop_event_));
-  TF_ASSIGN_OR_RETURN(float elapsed_milliseconds,
-                      GetEventElapsedTime(executor_, start_event_.GetHandle(),
-                                          stop_event_.GetHandle()));
+  RETURN_IF_ERROR(stream_->RecordEvent(&stop_event_));
+  ASSIGN_OR_RETURN(float elapsed_milliseconds,
+                   GetEventElapsedTime(executor_, start_event_.GetHandle(),
+                                       stop_event_.GetHandle()));
   is_stopped_ = true;
   return absl::Milliseconds(elapsed_milliseconds);
 }
 
 absl::StatusOr<RocmTimer> RocmTimer::Create(StreamExecutor* executor,
                                             Stream* stream) {
-  TF_ASSIGN_OR_RETURN(RocmEvent start_event,
-                      RocmEvent::Create(executor, /*allow_timing=*/true));
-  TF_ASSIGN_OR_RETURN(RocmEvent stop_event,
-                      RocmEvent::Create(executor, /*allow_timing=*/true));
-  TF_RETURN_IF_ERROR(stream->RecordEvent(&start_event));
+  ASSIGN_OR_RETURN(RocmEvent start_event,
+                   RocmEvent::Create(executor, /*allow_timing=*/true));
+  ASSIGN_OR_RETURN(RocmEvent stop_event,
+                   RocmEvent::Create(executor, /*allow_timing=*/true));
+  RETURN_IF_ERROR(stream->RecordEvent(&start_event));
   return RocmTimer(executor, std::move(start_event), std::move(stop_event),
                    stream);
 }

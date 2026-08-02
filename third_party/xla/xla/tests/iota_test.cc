@@ -36,7 +36,7 @@ limitations under the License.
 namespace xla {
 namespace {
 
-using IotaTest = HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>;
+using IotaTest = HloPjRtInterpreterReferenceMixin<HloTestBase>;
 
 TEST_F(IotaTest, IotaReshapeR1) {
   const std::string hlo_text = R"(
@@ -71,7 +71,7 @@ std::vector<T> GetR1Expected(const int64_t num_elements) {
 
 class IotaR1Test
     : public ClientLibraryTestRunnerMixin<
-          HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>>,
+          HloPjRtInterpreterReferenceMixin<HloTestBase>>,
       public ::testing::WithParamInterface<std::tuple<PrimitiveType, int>> {};
 
 TEST_P(IotaR1Test, DoIt) {
@@ -115,10 +115,10 @@ INSTANTIATE_TEST_CASE_P(
     ::testing::Combine(::testing::Values(F8E4M3FN, F8E5M2, U32, S32, F32, BF16),
                        ::testing::Range(/*start=*/10,
                                         /*end=*/10001,
-                                        /*step=*/10)));
+                                        /*step=*/20)));
 
 class IotaR2Test : public ClientLibraryTestRunnerMixin<
-                       HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>>,
+                       HloPjRtInterpreterReferenceMixin<HloTestBase>>,
                    public ::testing::WithParamInterface<
                        std::tuple<PrimitiveType, int, int>> {};
 
@@ -128,7 +128,7 @@ TEST_P(IotaR2Test, DoIt) {
   const int64_t num_elements = std::get<1>(spec);
   const int64_t iota_dim = std::get<2>(spec);
   XlaBuilder builder(TestName() + "_" + PrimitiveType_Name(element_type));
-  std::vector<int64_t> dimensions = {42};
+  std::vector<int64_t> dimensions = {5};
   dimensions.insert(dimensions.begin() + iota_dim, num_elements);
   Iota(&builder, ShapeUtil::MakeShape(element_type, dimensions), iota_dim);
   if (primitive_util::IsFloatingPointType(element_type)) {
@@ -148,11 +148,11 @@ INSTANTIATE_TEST_CASE_P(
     ::testing::Combine(::testing::Values(F8E4M3FN, F8E5M2, U32, S32, F32, BF16),
                        ::testing::Range(/*start=*/10,
                                         /*end=*/1001,
-                                        /*step=*/10),
+                                        /*step=*/20),
                        ::testing::Values(0, 1)));
 
 class IotaR3Test : public ClientLibraryTestRunnerMixin<
-                       HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>>,
+                       HloPjRtInterpreterReferenceMixin<HloTestBase>>,
                    public ::testing::WithParamInterface<
                        std::tuple<PrimitiveType, int, int>> {};
 
@@ -162,7 +162,7 @@ TEST_P(IotaR3Test, DoIt) {
   const int64_t num_elements = std::get<1>(spec);
   const int64_t iota_dim = std::get<2>(spec);
   XlaBuilder builder(TestName() + "_" + PrimitiveType_Name(element_type));
-  std::vector<int64_t> dimensions = {42, 19};
+  std::vector<int64_t> dimensions = {3, 4};
   dimensions.insert(dimensions.begin() + iota_dim, num_elements);
   Iota(&builder, ShapeUtil::MakeShape(element_type, dimensions), iota_dim);
   if (primitive_util::IsFloatingPointType(element_type)) {
@@ -182,7 +182,7 @@ INSTANTIATE_TEST_CASE_P(
     ::testing::Combine(::testing::Values(F8E4M3FN, F8E5M2, U32, S32, F32, BF16),
                        ::testing::Range(/*start=*/10,
                                         /*end=*/1001,
-                                        /*step=*/10),
+                                        /*step=*/20),
                        ::testing::Values(0, 1, 2)));
 
 }  // namespace

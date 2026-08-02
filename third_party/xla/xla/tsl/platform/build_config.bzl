@@ -1,3 +1,18 @@
+# Copyright 2026 The TensorFlow Authors. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
+
 """Provides a redirection point for platform specific implementations of starlark utilities."""
 
 load(
@@ -19,6 +34,8 @@ load(
     _tf_cuda_root_path_deps = "tf_cuda_root_path_deps",
     _tf_error_logging_deps = "tf_error_logging_deps",
     _tf_fingerprint_deps = "tf_fingerprint_deps",
+    _tf_google_mobile_hdrs_no_runtime = "tf_google_mobile_hdrs_no_runtime",
+    _tf_google_mobile_hdrs_only_runtime = "tf_google_mobile_hdrs_only_runtime",
     _tf_google_mobile_srcs_no_runtime = "tf_google_mobile_srcs_no_runtime",
     _tf_google_mobile_srcs_only_runtime = "tf_google_mobile_srcs_only_runtime",
     _tf_jspb_proto_library = "tf_jspb_proto_library",
@@ -57,14 +74,16 @@ tf_additional_test_deps = _tf_additional_test_deps
 tf_cuda_root_path_deps = _tf_cuda_root_path_deps
 tf_error_logging_deps = _tf_error_logging_deps
 tf_fingerprint_deps = _tf_fingerprint_deps
+tf_google_mobile_hdrs_no_runtime = _tf_google_mobile_hdrs_no_runtime
+tf_google_mobile_hdrs_only_runtime = _tf_google_mobile_hdrs_only_runtime
 tf_google_mobile_srcs_no_runtime = _tf_google_mobile_srcs_no_runtime
 tf_google_mobile_srcs_only_runtime = _tf_google_mobile_srcs_only_runtime
 tf_jspb_proto_library = _tf_jspb_proto_library
 tf_lib_proto_parsing_deps = _tf_lib_proto_parsing_deps
 tf_platform_alias = _tf_platform_alias
 tf_platform_deps = _tf_platform_deps
-tf_portable_proto_lib = _tf_portable_proto_lib
 tf_portable_deps_no_runtime = _tf_portable_deps_no_runtime
+tf_portable_proto_lib = _tf_portable_proto_lib
 tf_proto_library = _tf_proto_library
 tf_protobuf_compiler_deps = _tf_protobuf_compiler_deps
 tf_protobuf_deps = _tf_protobuf_deps
@@ -76,6 +95,6 @@ tf_pyclif_proto_library = _tf_pyclif_proto_library
 tf_resource_deps = _tf_resource_deps
 tf_stream_executor_deps = _tf_stream_executor_deps
 tf_windows_aware_platform_deps = _tf_windows_aware_platform_deps
-tsl_protobuf_deps = _tsl_protobuf_deps
 tsl_cc_test = _tsl_cc_test
 tsl_grpc_credentials_deps = _tsl_grpc_credentials_deps
+tsl_protobuf_deps = _tsl_protobuf_deps

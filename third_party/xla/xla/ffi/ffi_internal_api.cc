@@ -25,7 +25,6 @@ limitations under the License.
 #include "xla/ffi/api/c_api.h"
 #include "xla/ffi/api/c_api_internal.h"  // IWYU pragma: keep
 #include "xla/ffi/execution_context.h"
-#include "xla/ffi/execution_state.h"
 #include "xla/ffi/ffi_registry.h"
 #include "xla/ffi/ffi_structs.h"
 #include "xla/ffi/type_registry.h"
@@ -67,26 +66,24 @@ static void* XLA_FFI_Internal_TypeRegistrationMap_Get() {
   return &internal::StaticTypeRegistrationMap();
 }
 
-static int32_t XLA_FFI_INTERNAL_DeviceOrdinal_Get(
-    XLA_FFI_ExecutionContext* ctx) {
+static int32_t XLA_FFI_INTERNAL_DeviceOrdinal_Get(XLA_FFI_InvokeContext* ctx) {
   return ctx->device_ordinal;
 }
 
-static int64_t XLA_FFI_INTERNAL_RunId_Get(XLA_FFI_ExecutionContext* ctx) {
+static int64_t XLA_FFI_INTERNAL_RunId_Get(XLA_FFI_InvokeContext* ctx) {
   return ctx->run_id.ToInt();
 }
 
 static void* XLA_FFI_INTERNAL_CalledComputation_Get(
-    XLA_FFI_ExecutionContext* ctx) {
+    XLA_FFI_InvokeContext* ctx) {
   return const_cast<HloComputation*>(ctx->called_computation);  // NOLINT
 }
 
-static void* XLA_FFI_INTERNAL_ExecutionContext_Get(
-    XLA_FFI_ExecutionContext* ctx) {
+static void* XLA_FFI_INTERNAL_ExecutionContext_Get(XLA_FFI_InvokeContext* ctx) {
   return const_cast<ExecutionContext*>(ctx->execution_context);  // NOLINT
 }
 
-static void* XLA_FFI_INTERNAL_ExecutionState_Get(XLA_FFI_ExecutionContext* ctx,
+static void* XLA_FFI_INTERNAL_ExecutionState_Get(XLA_FFI_InvokeContext* ctx,
                                                  XLA_FFI_ExecutionStage stage) {
   switch (stage) {
     case XLA_FFI_ExecutionStage_INSTANTIATE:
@@ -106,8 +103,8 @@ static void* XLA_FFI_INTERNAL_ExecutionState_Get(XLA_FFI_ExecutionContext* ctx,
 //===----------------------------------------------------------------------===//
 
 static XLA_FFI_Error* XLA_FFI_INTERNAL_IntraOpThreadPool_Get(
-    XLA_FFI_ExecutionContext* ctx, void** thread_pool) {
-  if (auto* cpu = std::get_if<XLA_FFI_ExecutionContext::CpuContext>(
+    XLA_FFI_InvokeContext* ctx, void** thread_pool) {
+  if (auto* cpu = std::get_if<XLA_FFI_InvokeContext::CpuContext>(
           &ctx->backend_context)) {
     *thread_pool = const_cast<Eigen::ThreadPoolDevice*>(  // NOLINT
         cpu->intra_op_thread_pool);
@@ -116,7 +113,7 @@ static XLA_FFI_Error* XLA_FFI_INTERNAL_IntraOpThreadPool_Get(
 
   // For GPU backend we don't have intra-op thread pool, but we didn't promise
   // to return one, so instead of an error we return a nullptr thread pool.
-  if (auto* _ = std::get_if<XLA_FFI_ExecutionContext::GpuContext>(
+  if (auto* _ = std::get_if<XLA_FFI_InvokeContext::GpuContext>(
           &ctx->backend_context)) {
     return nullptr;
   }
@@ -128,9 +125,9 @@ static XLA_FFI_Error* XLA_FFI_INTERNAL_IntraOpThreadPool_Get(
 // XLA:GPU specific internal APIs.
 //===----------------------------------------------------------------------===//
 
-static XLA_FFI_Error* XLA_FFI_INTERNAL_Stream_Get(XLA_FFI_ExecutionContext* ctx,
+static XLA_FFI_Error* XLA_FFI_INTERNAL_Stream_Get(XLA_FFI_InvokeContext* ctx,
                                                   void** stream) {
-  if (auto* gpu = std::get_if<XLA_FFI_ExecutionContext::GpuContext>(
+  if (auto* gpu = std::get_if<XLA_FFI_InvokeContext::GpuContext>(
           &ctx->backend_context)) {
     *stream = gpu->stream;
     return nullptr;
@@ -140,9 +137,43 @@ static XLA_FFI_Error* XLA_FFI_INTERNAL_Stream_Get(XLA_FFI_ExecutionContext* ctx,
       InvalidArgument("XLA FFI GPU context is not available")};
 }
 
+static XLA_FFI_Error* XLA_FFI_INTERNAL_ComputationStream_Get(
+    XLA_FFI_InvokeContext* ctx, int64_t id, void** stream) {
+  if (auto* gpu = std::get_if<XLA_FFI_InvokeContext::GpuContext>(
+          &ctx->backend_context)) {
+    if (id < 0 || id >= gpu->computation_streams.size()) {
+      return new XLA_FFI_Error{
+          InvalidArgument("Computation stream id %d is out of range [0, %d)",
+                          id, gpu->computation_streams.size())};
+    }
+    *stream = gpu->computation_streams[id];
+    return nullptr;
+  }
+
+  return new XLA_FFI_Error{
+      InvalidArgument("XLA FFI GPU context is not available")};
+}
+
+static XLA_FFI_Error* XLA_FFI_INTERNAL_CommunicationStream_Get(
+    XLA_FFI_InvokeContext* ctx, int64_t id, void** stream) {
+  if (auto* gpu = std::get_if<XLA_FFI_InvokeContext::GpuContext>(
+          &ctx->backend_context)) {
+    if (id < 0 || id >= gpu->communication_streams.size()) {
+      return new XLA_FFI_Error{
+          InvalidArgument("Communication stream id %d is out of range [0, %d)",
+                          id, gpu->communication_streams.size())};
+    }
+    *stream = gpu->communication_streams[id];
+    return nullptr;
+  }
+
+  return new XLA_FFI_Error{
+      InvalidArgument("XLA FFI GPU context is not available")};
+}
+
 static XLA_FFI_Error* XLA_FFI_INTERNAL_DeviceMemoryAllocator_Get(
-    XLA_FFI_ExecutionContext* ctx, void** allocator) {
-  if (auto* gpu = std::get_if<XLA_FFI_ExecutionContext::GpuContext>(
+    XLA_FFI_InvokeContext* ctx, void** allocator) {
+  if (auto* gpu = std::get_if<XLA_FFI_InvokeContext::GpuContext>(
           &ctx->backend_context)) {
     *allocator = gpu->allocator;
     return nullptr;
@@ -153,8 +184,8 @@ static XLA_FFI_Error* XLA_FFI_INTERNAL_DeviceMemoryAllocator_Get(
 }
 
 static XLA_FFI_Error* XLA_FFI_INTERNAL_CollectiveParams_Get(
-    XLA_FFI_ExecutionContext* ctx, void** collective_params) {
-  if (auto* gpu = std::get_if<XLA_FFI_ExecutionContext::GpuContext>(
+    XLA_FFI_InvokeContext* ctx, void** collective_params) {
+  if (auto* gpu = std::get_if<XLA_FFI_InvokeContext::GpuContext>(
           &ctx->backend_context)) {
     *collective_params = const_cast<xla::gpu::CollectiveParams*>(  // NOLINT
         gpu->collective_params);
@@ -166,8 +197,8 @@ static XLA_FFI_Error* XLA_FFI_INTERNAL_CollectiveParams_Get(
 }
 
 static XLA_FFI_Error* XLA_FFI_INTERNAL_CollectiveCliqueRequests_Get(
-    XLA_FFI_ExecutionContext* ctx, void** collective_clique_requests) {
-  if (auto* gpu = std::get_if<XLA_FFI_ExecutionContext::GpuContext>(
+    XLA_FFI_InvokeContext* ctx, void** collective_clique_requests) {
+  if (auto* gpu = std::get_if<XLA_FFI_InvokeContext::GpuContext>(
           &ctx->backend_context)) {
     *collective_clique_requests = gpu->collective_clique_requests;
     return nullptr;
@@ -178,8 +209,8 @@ static XLA_FFI_Error* XLA_FFI_INTERNAL_CollectiveCliqueRequests_Get(
 }
 
 static XLA_FFI_Error* XLA_FFI_INTERNAL_CollectiveMemoryRequests_Get(
-    XLA_FFI_ExecutionContext* ctx, void** collective_memory_requests) {
-  if (auto* gpu = std::get_if<XLA_FFI_ExecutionContext::GpuContext>(
+    XLA_FFI_InvokeContext* ctx, void** collective_memory_requests) {
+  if (auto* gpu = std::get_if<XLA_FFI_InvokeContext::GpuContext>(
           &ctx->backend_context)) {
     *collective_memory_requests = gpu->collective_memory_requests;
     return nullptr;
@@ -190,8 +221,8 @@ static XLA_FFI_Error* XLA_FFI_INTERNAL_CollectiveMemoryRequests_Get(
 }
 
 static XLA_FFI_Error* XLA_FFI_INTERNAL_CollectiveCliques_Get(
-    XLA_FFI_ExecutionContext* ctx, void** collective_clique) {
-  if (auto* gpu = std::get_if<XLA_FFI_ExecutionContext::GpuContext>(
+    XLA_FFI_InvokeContext* ctx, void** collective_clique) {
+  if (auto* gpu = std::get_if<XLA_FFI_InvokeContext::GpuContext>(
           &ctx->backend_context)) {
     *collective_clique = const_cast<xla::gpu::CollectiveCliques*>(  // NOLINT
         gpu->collective_cliques);
@@ -203,8 +234,8 @@ static XLA_FFI_Error* XLA_FFI_INTERNAL_CollectiveCliques_Get(
 }
 
 static XLA_FFI_Error* XLA_FFI_INTERNAL_CollectiveMemory_Get(
-    XLA_FFI_ExecutionContext* ctx, void** collective_memory) {
-  if (auto* gpu = std::get_if<XLA_FFI_ExecutionContext::GpuContext>(
+    XLA_FFI_InvokeContext* ctx, void** collective_memory) {
+  if (auto* gpu = std::get_if<XLA_FFI_InvokeContext::GpuContext>(
           &ctx->backend_context)) {
     *collective_memory = const_cast<xla::gpu::CollectiveMemory*>(  // NOLINT
         gpu->collective_memory);
@@ -216,12 +247,26 @@ static XLA_FFI_Error* XLA_FFI_INTERNAL_CollectiveMemory_Get(
 }
 
 static XLA_FFI_Error* XLA_FFI_INTERNAL_GpuComputeCapability_Get(
-    XLA_FFI_ExecutionContext* ctx, void** gpu_compute_capability) {
-  if (auto* gpu = std::get_if<XLA_FFI_ExecutionContext::GpuContext>(
+    XLA_FFI_InvokeContext* ctx, void** gpu_compute_capability) {
+  if (auto* gpu = std::get_if<XLA_FFI_InvokeContext::GpuContext>(
           &ctx->backend_context)) {
     *gpu_compute_capability =
         const_cast<stream_executor::GpuComputeCapability*>(  // NOLINT
             gpu->gpu_compute_capability);
+    return nullptr;
+  }
+
+  return new XLA_FFI_Error{
+      InvalidArgument("XLA FFI GPU context is not available")};
+}
+
+static XLA_FFI_Error* XLA_FFI_INTERNAL_CpuTargetMachineOptions_Get(
+    XLA_FFI_InvokeContext* ctx, void** cpu_target_machine_options) {
+  if (auto* gpu = std::get_if<XLA_FFI_InvokeContext::GpuContext>(
+          &ctx->backend_context)) {
+    *cpu_target_machine_options =
+        const_cast<xla::cpu::TargetMachineOptions*>(  // NOLINT
+            gpu->cpu_target_machine_options);
     return nullptr;
   }
 
@@ -247,6 +292,8 @@ const XLA_FFI_InternalApi* GetInternalApi() {
 
       // XLA:GPU specific APIs.
       XLA_FFI_INTERNAL_Stream_Get,
+      XLA_FFI_INTERNAL_ComputationStream_Get,
+      XLA_FFI_INTERNAL_CommunicationStream_Get,
       XLA_FFI_INTERNAL_DeviceMemoryAllocator_Get,
       XLA_FFI_INTERNAL_CollectiveParams_Get,
       XLA_FFI_INTERNAL_CollectiveCliqueRequests_Get,
@@ -254,6 +301,7 @@ const XLA_FFI_InternalApi* GetInternalApi() {
       XLA_FFI_INTERNAL_CollectiveCliques_Get,
       XLA_FFI_INTERNAL_CollectiveMemory_Get,
       XLA_FFI_INTERNAL_GpuComputeCapability_Get,
+      XLA_FFI_INTERNAL_CpuTargetMachineOptions_Get,
   };
 
   return &internal_api;

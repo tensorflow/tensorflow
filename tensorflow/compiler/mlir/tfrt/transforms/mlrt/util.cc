@@ -25,7 +25,7 @@ limitations under the License.
 namespace tensorflow {
 namespace mlrt_compiler {
 
-bool UseFallback(mlir::Operation *op) {
+bool UseFallback(mlir::Operation* op) {
   if (!llvm::isa<mlir::TF::TensorFlowDialect>(op->getDialect())) return false;
 
   // TODO(b/173017701): have a centralized place to hold the information
@@ -37,7 +37,8 @@ bool UseFallback(mlir::Operation *op) {
       mlir::TF::BatchFunctionOp, mlir::TF::CaseOp,
       mlir::TF::IfrtRestoreVariableOp, mlir::TF::StatefulPartitionedCallOp,
       mlir::TF::PartitionedCallOp, mlir::TF::LegacyCallOp, mlir::TF::IfOp,
-      mlir::TF::WhileOp, mlir::TF::TPUCompileMlirAndExecuteOp>(op);
+      mlir::TF::WhileOp, mlir::TF::TPUCompileMlirAndExecuteOp,
+      mlir::TF::AsyncIfrtCallOp>(op);
 }
 
 }  // namespace mlrt_compiler

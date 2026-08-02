@@ -1,7 +1,15 @@
 path: "tensorflow.profiler.experimental.Trace"
 tf_class {
   is_instance: "<class \'tensorflow.python.profiler.trace.Trace\'>"
-  is_instance: "<type \'object\'>"
+  is_instance: "<class \'object\'>"
+  member_method {
+    name: "__enter__"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "__exit__"
+    argspec: "args=[\'self\', \'exc_type\', \'exc_val\', \'exc_tb\'], varargs=None, keywords=None, defaults=None"
+  }
   member_method {
     name: "__init__"
     argspec: "args=[\'self\', \'name\'], varargs=None, keywords=kwargs, defaults=None"

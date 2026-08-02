@@ -35,7 +35,9 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/log/vlog_is_on.h"
 #include "absl/status/status.h"
+#include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
@@ -45,10 +47,12 @@ limitations under the License.
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "llvm/ADT/STLExtras.h"
 #include "xla/autotuning.pb.h"
 #include "xla/backends/gpu/codegen/triton/test_utils.h"
 #include "xla/backends/gpu/profiler/kernel_name_tracer.h"
+#include "xla/backends/gpu/tests/gpu_pjrt_codegen_test.h"
 #include "xla/error_spec.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -60,25 +64,23 @@ limitations under the License.
 #include "xla/service/dump.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/ir_emission_utils.h"
-#include "xla/service/gpu/tests/gpu_codegen_test.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/tests/hlo_pjrt_interpreter_reference_mixin.h"
 #include "xla/tests/test_utils.h"
-#include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 
-namespace xla {
-namespace gpu {
+namespace xla::gpu {
 namespace {
 
-class AlgorithmTest : public GpuCodegenTest {
+class AlgorithmTest : public HloInterpreterReferenceMixin<GpuPjRtCodegenTest> {
  public:
   DebugOptions GetDebugOptionsForTest() const override {
-    DebugOptions debug_options = GpuCodegenTest::GetDebugOptionsForTest();
+    DebugOptions debug_options = GpuPjRtCodegenTest::GetDebugOptionsForTest();
     debug_options.set_xla_gpu_autotune_level(0);
     return debug_options;
   }
@@ -91,28 +93,20 @@ class AlgorithmTest : public GpuCodegenTest {
   }
 
   stream_executor::CudaComputeCapability GetCudaComputeCapability() {
-    return backend()
-        .default_stream_executor()
-        ->GetDeviceDescription()
-        .cuda_compute_capability();
+    return device_description().cuda_compute_capability();
   }
 
   const stream_executor::GpuComputeCapability& GpuComputeComp() {
-    return device_desc().gpu_compute_capability();
+    return device_description().gpu_compute_capability();
   }
 
   absl::Status CreateTritonIrFromHloTextAndFileCheckForDot(
       absl::string_view hlo_text, absl::string_view triton_fusion_name,
       absl::string_view filecheck_pattern) {
-    TF_ASSIGN_OR_RETURN(std::unique_ptr<VerifiedHloModule> module,
-                        ParseAndReturnVerifiedModule(hlo_text));
+    ASSIGN_OR_RETURN(std::unique_ptr<VerifiedHloModule> module,
+                     ParseAndReturnVerifiedModule(hlo_text));
     return CreateTritonIrAndFileCheckForDot(module.get(), triton_fusion_name,
                                             filecheck_pattern);
-  }
-
- protected:
-  const stream_executor::DeviceDescription& device_desc() {
-    return backend().default_stream_executor()->GetDeviceDescription();
   }
 };
 
@@ -155,6 +149,10 @@ TEST_F(AlgorithmTest, Algorithm3xBF16) {
 }
 
 TEST_F(AlgorithmTest, Algorithm6xBF16) {
+  if (GpuComputeComp().IsRocm() &&
+      GpuComputeComp().rocm_compute_capability()->gfx9_mi200()) {
+    GTEST_SKIP() << "ALG_DOT_BF16_BF16_F32_X6 not supported on MI200.";
+  }
   constexpr absl::string_view kHloText = R"(
     HloModule Algorithm6xBF16
 
@@ -193,21 +191,19 @@ TEST_F(BlasAlgorithmTest, Algorithm_BF16_BF16_F32) {
   constexpr absl::string_view kPattern = R"(
     CHECK:  %convert{{.*}} = bf16[
     CHECK:  %convert{{.*}} = bf16[
-    CHECK: "algorithm":"ALG_UNSET"
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module, GetOptimizedModule(kHloText));
-  TF_ASSERT_OK_AND_ASSIGN(auto ok, RunFileCheck(module->ToString(), kPattern));
+  ASSERT_OK_AND_ASSIGN(auto module, GetOptimizedModule(kHloText));
+  ASSERT_OK_AND_ASSIGN(auto ok, RunFileCheck(module->ToString(), kPattern));
   ASSERT_TRUE(ok);
 
   absl::StatusOr<std::unique_ptr<KernelNameTracer>> tracer =
-      KernelNameTracer::Create(
-          backend().default_stream_executor()->GetPlatform()->id());
+      KernelNameTracer::Create(stream_executor_platform_id());
   if (!tracer.ok()) {
     GTEST_SKIP() << "KernelNameTracer is not implemented.";
   }
-  tracer.value()->start();
+  (*tracer)->start();
   EXPECT_TRUE(Run(std::move(module), /*run_hlo_passes=*/false));
-  auto kernel_names = tracer.value()->stop();
+  auto kernel_names = (*tracer)->stop();
 
   auto cc = GetCudaComputeCapability();
   using CudaComputeCapabilities =
@@ -260,8 +256,8 @@ TEST_F(AlgorithmTest, Algorithm_BF16_BF16_F32_on_BF16_input_for_multiply) {
     CHECK:    %[[multiply:.*]] = [[type:.*]][256,8512]{1,0} multiply([[type]]
     CHECK:    %[[reduce:.*]] = f32[256]{0} reduce(
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module, GetOptimizedModule(kHloText));
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(auto module, GetOptimizedModule(kHloText));
+  ASSERT_OK_AND_ASSIGN(
       auto ok,
       RunFileCheck(
           module->ToString(HloPrintOptions().set_print_operand_shape(true)),
@@ -292,19 +288,18 @@ TEST_F(BlasAlgorithmTest, Algorithm_BF16_BF16_F32_X3) {
     CHECK-COUNT-3: custom_call_target="__cublas${{gemm|lt\$matmul}}"
   )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module, GetOptimizedModule(kHloText));
-  TF_ASSERT_OK_AND_ASSIGN(auto ok, RunFileCheck(module->ToString(), kPattern));
+  ASSERT_OK_AND_ASSIGN(auto module, GetOptimizedModule(kHloText));
+  ASSERT_OK_AND_ASSIGN(auto ok, RunFileCheck(module->ToString(), kPattern));
   ASSERT_TRUE(ok);
 
   absl::StatusOr<std::unique_ptr<KernelNameTracer>> tracer =
-      KernelNameTracer::Create(
-          backend().default_stream_executor()->GetPlatform()->id());
+      KernelNameTracer::Create(stream_executor_platform_id());
   if (!tracer.ok()) {
     GTEST_SKIP() << "KernelNameTracer is not implemented.";
   }
-  tracer.value()->start();
+  (*tracer)->start();
   EXPECT_TRUE(Run(std::move(module), /*run_hlo_passes=*/false));
-  auto kernel_names = tracer.value()->stop();
+  auto kernel_names = (*tracer)->stop();
 
   auto cc = GetCudaComputeCapability();
   using CudaComputeCapabilities =
@@ -359,19 +354,18 @@ TEST_F(BlasAlgorithmTest, Algorithm_BF16_BF16_F32_X6) {
     CHECK-COUNT-6: custom_call_target="__cublas${{gemm|lt\$matmul}}"
   )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module, GetOptimizedModule(kHloText));
-  TF_ASSERT_OK_AND_ASSIGN(auto ok, RunFileCheck(module->ToString(), kPattern));
+  ASSERT_OK_AND_ASSIGN(auto module, GetOptimizedModule(kHloText));
+  ASSERT_OK_AND_ASSIGN(auto ok, RunFileCheck(module->ToString(), kPattern));
   ASSERT_TRUE(ok);
 
   absl::StatusOr<std::unique_ptr<KernelNameTracer>> tracer =
-      KernelNameTracer::Create(
-          backend().default_stream_executor()->GetPlatform()->id());
+      KernelNameTracer::Create(stream_executor_platform_id());
   if (!tracer.ok()) {
     GTEST_SKIP() << "KernelNameTracer is not implemented.";
   }
-  tracer.value()->start();
+  (*tracer)->start();
   EXPECT_TRUE(Run(std::move(module), /*run_hlo_passes=*/false));
-  auto kernel_names = tracer.value()->stop();
+  auto kernel_names = (*tracer)->stop();
 
   auto cc = GetCudaComputeCapability();
   using CudaComputeCapabilities =
@@ -434,19 +428,18 @@ TEST_F(BlasAlgorithmTest, Algorithm_TF32_TF32_F32_X3) {
       CHECK: custom_call_target="__cublas${{gemm|lt\$matmul}}"{{.*}}"algorithm":"ALG_DOT_TF32_TF32_F32"
       CHECK: custom_call_target="__cublas${{gemm|lt\$matmul}}"{{.*}}"algorithm":"ALG_DOT_TF32_TF32_F32"
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module, GetOptimizedModule(kHloText));
-  TF_ASSERT_OK_AND_ASSIGN(auto ok, RunFileCheck(module->ToString(), kPattern));
+  ASSERT_OK_AND_ASSIGN(auto module, GetOptimizedModule(kHloText));
+  ASSERT_OK_AND_ASSIGN(auto ok, RunFileCheck(module->ToString(), kPattern));
   ASSERT_TRUE(ok);
 
   absl::StatusOr<std::unique_ptr<KernelNameTracer>> tracer =
-      KernelNameTracer::Create(
-          backend().default_stream_executor()->GetPlatform()->id());
+      KernelNameTracer::Create(stream_executor_platform_id());
   if (!tracer.ok()) {
     GTEST_SKIP() << "KernelNameTracer is not implemented.";
   }
-  tracer.value()->start();
+  (*tracer)->start();
   EXPECT_TRUE(Run(std::move(module), /*run_hlo_passes=*/false));
-  auto kernel_names = tracer.value()->stop();
+  auto kernel_names = (*tracer)->stop();
 
   auto cc = GetCudaComputeCapability();
   using CudaComputeCapabilities =
@@ -874,6 +867,49 @@ TEST_F(TritonAlgorithmTest, Dot_BF16_X6_WithConst) {
       kHloText, ErrorSpec{/*aabs=*/1e-6, /*arel=*/1e-6}));
 }
 
+TEST_F(TritonAlgorithmTest, UnsetAlgorithmToBF16) {
+  constexpr absl::string_view kHloText = R"hlo(
+    HloModule UnsetAlgorithmToBF16
+
+    triton_fusion_dot {
+      p0 = f32[256,256] parameter(0)
+      p1 = f32[256,256] parameter(1)
+      ROOT dot = f32[256,256] dot(p0, p1),
+          lhs_contracting_dims={0},
+          rhs_contracting_dims={1},
+          backend_config={sizes:[16]}
+    }
+
+    ENTRY entry_computation {
+      p0 = f32[256,256] parameter(0)
+      p1 = f32[256,256] parameter(1)
+      ROOT root = f32[256,256] fusion(p0, p1),
+        kind=kCustom,
+        calls=triton_fusion_dot,
+        backend_config={
+          "fusion_backend_config":{
+            "kind":"__triton_nested_gemm_fusion",
+            "block_level_fusion_config":{
+              "output_tiles": [{"sizes": ["256","16"]}],
+              "num_stages":4,
+              "num_warps":4,
+              "num_ctas":1
+            }},
+          "force_earliest_schedule":false
+        }
+    }
+  )hlo";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloText));
+  module->mutable_config()
+      .mutable_debug_options()
+      .set_xla_gpu_default_to_alg_dot_bf16_bf16_f32(true);
+  EXPECT_OK(
+      CreateTritonIrAndFileCheckForDot(module.get(), "triton_fusion_dot", R"(
+      CHECK: tt.dot{{.*}}tensor<256x16xbf16> * tensor<16x16xbf16> -> tensor<256x16xf32>
+    )"))
+      << "Arguments should be converted to BF16.";
+}
+
 using PC = PrecisionConfig;
 using ::testing::TestParamInfo;
 using ::testing::WithParamInterface;
@@ -1031,12 +1067,7 @@ class NumericTestsForBlas : public BlasAlgorithmTest,
     config.set_replica_count(1);
     config.set_num_partitions(1);
 
-    auto reference_module =
-        ParseAndReturnVerifiedModule(kReferenceHloText, config);
-    CHECK_OK(reference_module.status());
-
-    auto optimized_module =
-        GetOptimizedModule(std::move(reference_module.value()));
+    auto optimized_module = GetOptimizedModule(kReferenceHloText, config);
     CHECK_OK(optimized_module.status());
     return std::move(optimized_module.value());
   }
@@ -1056,6 +1087,18 @@ class NumericTestsForBlas : public BlasAlgorithmTest,
   )";
 
  protected:
+  void SetUp() override {
+    PC::Algorithm algorithm = GetParam();
+    if (GpuComputeComp().IsRocm() &&
+        GpuComputeComp().rocm_compute_capability()->gfx9_mi200() &&
+        (algorithm == PC::ALG_DOT_BF16_BF16_F32_X3 ||
+         algorithm == PC::ALG_DOT_BF16_BF16_F32_X6 ||
+         algorithm == PC::ALG_DOT_BF16_BF16_F32_X9)) {
+      GTEST_SKIP() << AlgorithmToString(GetParam())
+                   << " not supported on MI200.";
+    }
+  }
+
   std::string algorithm_;
 };
 
@@ -1092,7 +1135,7 @@ class NumericTestsForTriton : public TritonAlgorithmTest,
       ROOT _ = f32[8,8] fusion(p0, p1), kind=kCustom, calls=triton_dot,
         backend_config={"fusion_backend_config": {kind: "__triton_gemm",
         triton_gemm_config: {"block_m":32,"block_n":32,"block_k":32,
-        "split_k":1,"num_stages":1,"num_warps":1, "num_ctas":1}}}
+        "num_stages":1,"num_warps":1, "num_ctas":1}}}
     }
   )";
   std::string algorithm_;
@@ -1328,14 +1371,7 @@ class TritonAndBlasSupportForDifferentTensorSizes
 
     DumpToFileInDirOrStdout(options, ++counter, GetTestName("_"), "",
                             "hlo_text.before_passes.txt", hlo_text);
-    auto verified_module_or = ParseAndReturnVerifiedModule(hlo_text, config);
-    if (!verified_module_or.ok()) {
-      LOG(ERROR) << "Failed to parse module: " << verified_module_or.status();
-      return verified_module_or.status();
-    }
-    auto module_or = backend().compiler()->RunHloPasses(
-        std::move(verified_module_or.value()),
-        backend().default_stream_executor(), GetAllocator());
+    auto module_or = GetOptimizedModule(hlo_text, config);
     if (!module_or.ok()) {
       LOG(ERROR) << "Failed to compile module: " << module_or.status();
     }
@@ -1543,13 +1579,18 @@ TEST_P(TritonAndBlasSupportForDifferentTensorSizes,
     case PC::ALG_DOT_TF32_TF32_F32_X3:
     case PC::ALG_DOT_BF16_BF16_F32:
     case PC::ALG_DOT_BF16_BF16_F32_X3:
-    case PC::ALG_DOT_BF16_BF16_F32_X6:
-    case PC::ALG_DOT_BF16_BF16_F32_X9:
     case PC::ALG_DOT_F32_F32_F32:
       ASSERT_TRUE(result_or_status.status().ok())
           << "failed to compile " << algorithm_;
       EXPECT_TRUE(result_or_status.value())
           << "wrong result for " << algorithm_;
+      break;
+    case PC::ALG_DOT_BF16_BF16_F32_X6:
+    case PC::ALG_DOT_BF16_BF16_F32_X9:
+        ASSERT_TRUE(result_or_status.status().ok())
+            << "failed to compile " << algorithm_;
+        EXPECT_TRUE(result_or_status.value())
+            << "wrong result for " << algorithm_;
       break;
     case PC::ALG_DOT_F64_F64_F64:
       EXPECT_EQ(result_or_status.status().code(),
@@ -1630,8 +1671,9 @@ double GetMaxRelErrorForSmallContractingDim(Backend backend,
   //
   // Thus, they do not actually depend on k, since f32 has much higher precision
   // than the rounding mode.
-  const absl::flat_hash_map<PC::Algorithm, double> kMaxMeanRelErrorTriton = {
-      {PC::ALG_DOT_BF16_BF16_F32, 1.6e-2},
+  const absl::flat_hash_map<PC::Algorithm, double> kMaxAbsRelErrorTriton = {
+      {PC::ALG_UNSET, 3.3e-3},
+      {PC::ALG_DOT_BF16_BF16_F32, 3.3e-3},
       {PC::ALG_DOT_TF32_TF32_F32, 2.0e-3},
       // TODO: b/407744579 - Understand what the expected error is with various
       // precision-recovering algorithms. For now we just use the errors that
@@ -1642,7 +1684,8 @@ double GetMaxRelErrorForSmallContractingDim(Backend backend,
       {PC::ALG_DOT_TF32_TF32_F32_X3, 5e-7},
       {PC::ALG_DOT_F32_F32_F32, 2e-07}};
 
-  const absl::flat_hash_map<PC::Algorithm, double> kMaxMeanRelErrorBlas = {
+  const absl::flat_hash_map<PC::Algorithm, double> kMaxAbsRelErrorBlas = {
+      {PC::ALG_UNSET, 3.3e-3},
       {PC::ALG_DOT_BF16_BF16_F32, 3.3e-3},
       {PC::ALG_DOT_TF32_TF32_F32, 4.1e-4},
       {PC::ALG_DOT_BF16_BF16_F32_X3, 2.4e-5},
@@ -1651,14 +1694,14 @@ double GetMaxRelErrorForSmallContractingDim(Backend backend,
       {PC::ALG_DOT_BF16_BF16_F32_X9, 6e-8},
       {PC::ALG_DOT_F32_F32_F32, 2e-07}};
   if (backend == Backend::kTriton) {
-    auto max_rel_error_it = kMaxMeanRelErrorTriton.find(algorithm);
-    CHECK(max_rel_error_it != kMaxMeanRelErrorTriton.end());
+    auto max_rel_error_it = kMaxAbsRelErrorTriton.find(algorithm);
+    CHECK(max_rel_error_it != kMaxAbsRelErrorTriton.end());
     return max_rel_error_it->second;
   }
 
   if (backend == Backend::kBlas) {
-    auto max_rel_error_it = kMaxMeanRelErrorBlas.find(algorithm);
-    CHECK(max_rel_error_it != kMaxMeanRelErrorBlas.end());
+    auto max_rel_error_it = kMaxAbsRelErrorBlas.find(algorithm);
+    CHECK(max_rel_error_it != kMaxAbsRelErrorBlas.end());
     return max_rel_error_it->second;
   }
 
@@ -1801,7 +1844,7 @@ class PrecisionTests
 
   absl::Status CheckGemmPattern(const HloModule& module,
                                 absl::string_view pattern) {
-    TF_ASSIGN_OR_RETURN(bool ok, RunFileCheck(module.ToString(), pattern));
+    ASSIGN_OR_RETURN(bool ok, RunFileCheck(module.ToString(), pattern));
     if (!ok) {
       return absl::InternalError(
           absl::StrCat("The module does not contain the pattern: ", pattern));
@@ -1818,10 +1861,13 @@ class PrecisionTests
                           {"${n}", absl::StrCat(rhs_outer_dim)},
                           {"${k}", absl::StrCat(contracting_dim)},
                           {"${algorithm}", AlgorithmToString(algorithm)}});
-    TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
-                        ParseAndReturnVerifiedModule(hlo_text));
-    auto debug_options = module->config().debug_options();
-    debug_options.set_xla_gpu_enable_split_k_autotuning(false);
+    HloModuleConfig config = GetModuleConfigForTest();
+    auto debug_options = config.debug_options();
+    if (algorithm == PC::ALG_UNSET) {
+      // Here we test that the default algorithm for f32 dots is
+      // ALG_DOT_BF16_BF16_F32 if the flag is set.
+      debug_options.set_xla_gpu_default_to_alg_dot_bf16_bf16_f32(true);
+    }
     if (backend == Backend::kTriton) {
       debug_options.set_xla_gpu_enable_triton_gemm(true);
       debug_options.set_xla_gpu_cublas_fallback(false);
@@ -1831,13 +1877,14 @@ class PrecisionTests
     } else {
       return absl::InvalidArgumentError("Invalid backend");
     }
-    module->mutable_config().set_debug_options(debug_options);
-    TF_ASSIGN_OR_RETURN(module, GetOptimizedModule(std::move(module)));
+    config.set_debug_options(debug_options);
+    ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
+                     GetOptimizedModule(hlo_text, config));
     if (backend == Backend::kTriton) {
-      TF_RETURN_IF_ERROR(CheckGemmPattern(
+      RETURN_IF_ERROR(CheckGemmPattern(
           *module, "CHECK: {{__triton_gemm|__triton_nested_gemm_fusion}}"));
     } else if (backend == Backend::kBlas) {
-      TF_RETURN_IF_ERROR(
+      RETURN_IF_ERROR(
           CheckGemmPattern(*module, "CHECK: __cublas${{gemm|lt\\$matmul}}"));
     } else {
       return absl::InvalidArgumentError("Invalid backend");
@@ -1889,7 +1936,7 @@ TEST_P(PrecisionTests, PrecisionCheck) {
   PC::Algorithm algorithm = std::get<0>(GetParam());
   Backend backend = std::get<1>(GetParam());
   if (backend == Backend::kBlas && algorithm == PC::ALG_DOT_F32_F32_F32) {
-    auto desc = device_desc();
+    auto desc = device_description();
     std::cerr << "platform version: " << desc.platform_version();
     std::cerr << "driver version: " << desc.driver_version();
     std::cerr << "runtime version: " << desc.runtime_version();
@@ -1922,24 +1969,23 @@ TEST_P(PrecisionTests, PrecisionCheck) {
   // Ensure there are no negative arguments to avoid unbounded relative errors
   // due to subtracting two similarly large numbers.
   MakeNonNegative(fake_arguments);
-  std::vector<const Literal*> fake_argument_ptrs =
-      GetLiteralPointers(fake_arguments);
-  std::vector<double> ref_result = RunReferenceDot(
-      fake_argument_ptrs, kLhsOuterDim, kRhsOuterDim, kContractingDim);
+  std::vector<double> ref_result =
+      RunReferenceDot(GetLiteralPointers(fake_arguments), kLhsOuterDim,
+                      kRhsOuterDim, kContractingDim);
   TF_ASSERT_OK_AND_ASSIGN(auto executable, test_runner().CreateExecutable(
                                                std::move(test_module), false));
   TF_ASSERT_OK_AND_ASSIGN(
       Literal test_result,
       test_runner().ExecuteWithExecutable(executable.get(), fake_arguments));
-  ExecutionProfile profile;
   std::vector<uint64_t> profile_times;
   profile_times.reserve(100);
   for (int i = 0; i < 100; ++i) {
+    auto start = absl::Now();
     TF_ASSERT_OK_AND_ASSIGN(
-        Literal test_result,
-        test_runner_as_hlo_runner().ExecuteWithExecutableAndProfile(
-            executable.get(), fake_argument_ptrs, &profile));
-    profile_times.push_back(profile.compute_time_ns());
+        Literal iter_result,
+        test_runner().ExecuteWithExecutable(executable.get(), fake_arguments));
+    auto elapsed = absl::Now() - start;
+    profile_times.push_back(absl::ToInt64Nanoseconds(elapsed));
   }
   auto min_time = *std::min_element(profile_times.begin(), profile_times.end());
   std::cerr << "\n";
@@ -2028,9 +2074,9 @@ TEST_P(PrecisionTests, CheckPrecisionDegradationAlongKDimension) {
 
 INSTANTIATE_TEST_SUITE_P(
     PrecisionTests, PrecisionTests,
-    Combine(Values(PC::ALG_DOT_TF32_TF32_F32, PC::ALG_DOT_TF32_TF32_F32_X3,
-                   PC::ALG_DOT_BF16_BF16_F32, PC::ALG_DOT_BF16_BF16_F32_X3,
-                   PC::ALG_DOT_BF16_BF16_F32_X6,
+    Combine(Values(PC::ALG_UNSET, PC::ALG_DOT_TF32_TF32_F32,
+                   PC::ALG_DOT_TF32_TF32_F32_X3, PC::ALG_DOT_BF16_BF16_F32,
+                   PC::ALG_DOT_BF16_BF16_F32_X3, PC::ALG_DOT_BF16_BF16_F32_X6,
                    // TODO(basioli): re-enable this algorithm testing once the
                    // attribute
                    // importer supports the conversion.
@@ -2040,5 +2086,4 @@ INSTANTIATE_TEST_SUITE_P(
     AlgorithmAndBackendTestParamToString);
 
 }  // namespace
-}  // namespace gpu
-}  // namespace xla
+}  // namespace xla::gpu

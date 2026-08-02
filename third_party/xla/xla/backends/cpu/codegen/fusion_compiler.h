@@ -1,3 +1,4 @@
+#include "xla/hlo/ir/hlo_module.h"
 /* Copyright 2025 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -18,10 +19,12 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
+#include <string>
 #include <utility>
 
 #include "absl/functional/any_invocable.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "llvm/IR/FMF.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Module.h"
@@ -37,12 +40,6 @@ namespace xla::cpu {
 // pipeline.
 class FusionCompiler {
  public:
-  struct CompilationHooks {
-    absl::AnyInvocable<void(mlir::ModuleOp) const> pre_optimization;
-    absl::AnyInvocable<void(mlir::ModuleOp) const> post_optimization;
-    absl::AnyInvocable<void(mlir::ModuleOp) const> post_lowering;
-  };
-
   struct Options {
     int32_t vector_width;
     int32_t verification_level;
@@ -51,7 +48,7 @@ class FusionCompiler {
   };
 
   FusionCompiler(mlir::MLIRContext* context, Options options,
-                 CompilationHooks hooks = {});
+                 const HloModule* hlo_module = nullptr);
 
   // Compile a given MLIR module to LLVM, using the provided LLVM context.
   absl::StatusOr<std::unique_ptr<llvm::Module>> Compile(
@@ -67,18 +64,23 @@ class FusionCompiler {
   // compiling an XLA:CPU fusion. If `register_pass_pipelines` is true, this
   // will also register the pass pipelines for the compiler, typically to be
   // used in tests.
-  static mlir::DialectRegistry CreateDialectRegistry(
-      bool register_pass_pipelines = false);
+  static mlir::DialectRegistry CreateDialectRegistry();
 
  private:
   Options options_;
-  CompilationHooks hooks_;
+  const HloModule* hlo_module_;
   // We have 2 distinct pipelines for scalar and tiled kernels, this is
   // because they differ slightly in their semantics, ideally these would be
   // unified but this is a larger change.
   mlir::PassManager scalar_pass_manager_;
   mlir::PassManager tiled_pass_manager_;
 };
+
+// Xtile CPU pipeline contains two stages, the first is the conversion from
+// Xtile to the vector dialect, the second is the conversion from the vector
+// dialect to LLVM.
+void AddXtileToVectorPasses(mlir::OpPassManager& pm);
+void AddVectorToLLVMPasses(mlir::OpPassManager& pm, bool fast_min_max);
 
 }  // namespace xla::cpu
 

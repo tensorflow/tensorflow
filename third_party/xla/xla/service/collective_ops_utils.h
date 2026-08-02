@@ -38,17 +38,49 @@ limitations under the License.
 #include "xla/hlo/ir/replica_group.h"
 #include "xla/literal.h"
 #include "xla/runtime/device_id.h"
-#include "xla/service/collective_permute_cycle.h"
 #include "xla/service/computation_placer.h"
-#include "xla/service/pattern_matcher.h"
 #include "xla/service/source_target_pairs.h"
+#include "xla/xla.pb.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
+
+// Returns the nonempty collective_group_key frontend attribute. An absent or
+// empty attribute does not opt the instruction into collective grouping.
+std::optional<absl::string_view> GetCollectiveGroupKey(
+    const HloInstruction& instruction);
+
+// Returns whether an instruction has a nonempty collective_group_key frontend
+// attribute.
+bool HasCollectiveGroupKey(const HloInstruction& instruction);
+
+// Returns whether two distinct collective payloads may be coalesced without
+// changing explicit collective groups. Nonempty collective group keys must
+// match; an absent or empty key matches only another absent or empty key.
+// This compatibility check must not gate common-subexpression elimination or
+// decomposition into an equivalent sequence of operations.
+bool HaveCompatibleCollectiveGroupKeys(const HloInstruction& lhs,
+                                       const HloInstruction& rhs);
+
+// Copies the collective_group_key from `source` to `destination`. Attribute
+// absence is copied as well, so any existing key on `destination` is cleared.
+void CopyCollectiveGroupKey(const HloInstruction& source,
+                            HloInstruction& destination);
+
+// Removes the collective_group_key attribute.
+void ClearCollectiveGroupKey(HloInstruction& instruction);
 
 absl::StatusOr<ReductionKind> StringToReductionKind(
     absl::string_view reduction_kind);
 
-// Attempts to match instruction to one of the possible cases for ReductionKind.
+// Returns the ReductionKind corresponding to the given HloOpcode and
+// PrimitiveType.
+// Returns std::nullopt if the HloOpcode cannot be mapped to a ReductionKind.
+std::optional<ReductionKind> OpcodeToReductionKind(HloOpcode hlo_opcode,
+                                                   PrimitiveType type);
+
+// Attempts to match instruction to one of the possible cases for
+// ReductionKind.
 std::optional<ReductionKind> MatchReductionInstruction(
     const HloInstruction* hlo);
 
@@ -61,7 +93,11 @@ std::unique_ptr<HloComputation> MakeReductionComputation(
     ReductionKind reduction_kind, PrimitiveType element_type);
 
 // Returns the HloOpcode corresponding to the given ReductionKind.
-std::optional<HloOpcode> ReductionKindToOpcode(ReductionKind reduction_kind);
+// Certain reduction kinds can map to different opcodes depending on the
+// element type (e.g. ReductionKind::MIN maps to kMinimum for numeric types and
+// kAnd for PRED).
+HloOpcode ReductionKindToOpcode(ReductionKind reduction_kind,
+                                PrimitiveType element_type);
 
 // Returns the reduction identity value for a certain ReductionKind and
 // PrimitiveType.
@@ -75,10 +111,15 @@ std::optional<Literal> GetReductionIdentity(ReductionKind kind,
 absl::StatusOr<std::vector<int>> GetParticipatingIDs(
     CollectiveOpGroupMode group_mode, int current_id,
     std::optional<int> total_participant_count,
-    absl::Span<const ReplicaGroup> groups);
+    absl::Span<const ReplicaGroup> replica_groups);
+
+absl::StatusOr<std::vector<int>> GetParticipatingIDs(
+    CollectiveOpGroupMode group_mode, int current_id,
+    std::optional<int> total_participant_count,
+    const CollectiveDeviceListBase& groups);
 
 // Returns the replica groups for the given async collective instruction.
-absl::StatusOr<std::vector<std::vector<int64_t>>> GetAsyncReplicaGroups(
+absl::StatusOr<std::unique_ptr<CollectiveDeviceListBase>> GetAsyncReplicaGroups(
     const HloInstruction* instruction);
 
 // Returns the group formation mode of instr, assuming that instr is, or is
@@ -197,6 +238,19 @@ bool IsCollective(const HloInstruction* instruction);
 // Returns true if instruction is an async collective op.
 absl::StatusOr<bool> IsAsyncCollective(const HloInstruction* instruction);
 
+// Returns true if instruction is a RaggedAllToAll op or an async-start that
+// wraps a RaggedAllToAll op.
+bool IsRaggedAllToAllOrAsyncStartRaggedAllToAll(
+    const HloInstruction* instruction);
+
+// Returns true if instruction is a RaggedAllToAll op or an async-done that
+// wraps a RaggedAllToAll op.
+bool IsRaggedAllToAllOrAsyncDoneRaggedAllToAll(
+    const HloInstruction* instruction);
+
+// Returns true if the one-shot RaggedAllToAll with NCCL feature is enabled.
+bool IsOneShotRaggedAllToAllWithNcclEnabled(const DebugOptions& opts);
+
 // Returns the collective instruction if argument is a collective op (or a
 // collective fusion) with channel_id.
 HloInstruction* IsOrHasCollectiveWithChannelId(HloInstruction* instruction);
@@ -300,6 +354,42 @@ inline constexpr absl::string_view kCollectiveStreamP2P = "p2p";
 
 int64_t GetSubgroupSize(const HloCollectiveInstruction* hlo,
                         CollectiveOpGroupMode group_mode);
+
+class NcclSymmetricBuffersSpec {
+ public:
+  explicit NcclSymmetricBuffersSpec(const DebugOptions& debug_options);
+
+  bool IsEnabled(const HloInstruction& inst) const;
+
+ private:
+  struct Filter {
+    DebugOptions::CollectiveOpType collective;
+    std::optional<int64_t> max_size_bytes;
+    std::optional<PrimitiveType> op_type;
+  };
+  std::vector<Filter> filters_;
+};
+
+bool IsNcclSymmetricBuffersEnabledForCollective(
+    const HloInstruction* instruction, const DebugOptions& opts);
+
+struct AsyncCollectiveConfig {
+  std::vector<ReplicaGroup> replica_groups;
+  std::optional<int64_t> channel_id;
+  bool use_global_device_ids = false;
+  std::vector<std::pair<int64_t, int64_t>> permutation;
+  std::optional<int64_t> all_gather_dimension;
+  std::optional<int64_t> scatter_dimension;
+  std::optional<bool> tiled;
+  std::optional<int64_t> split_dimension;
+  std::optional<int64_t> concat_dimension;
+  std::optional<int64_t> split_count;
+};
+
+absl::StatusOr<AsyncCollectiveConfig> ParseAsyncCollectiveConfig(
+    absl::string_view config_json_str);
+
+std::string SerializeAsyncCollectiveConfig(const AsyncCollectiveConfig& config);
 
 }  // end namespace xla
 

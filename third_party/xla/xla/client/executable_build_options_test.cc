@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
+#include "google/protobuf/message_lite.h"
 #include "xla/pjrt/proto/compile_options.pb.h"
 #include "xla/service/compilation_environments.h"
 #include "xla/service/computation_placer.h"
@@ -47,7 +48,8 @@ using ::tsl::proto_testing::EqualsProto;
 std::unique_ptr<tsl::protobuf::Message> ProcessNewEnv(
     std::unique_ptr<tsl::protobuf::Message> msg) {
   std::unique_ptr<test::TestCompilationEnvironment1> env(
-      tensorflow::down_cast<test::TestCompilationEnvironment1*>(msg.release()));
+      google::protobuf::DownCastMessage<test::TestCompilationEnvironment1>(
+          msg.release()));
   return env;
 }
 
@@ -90,7 +92,6 @@ TEST(ExecutableBuildOptionsTest, ProtoRoundTripWorks) {
   p.set_use_shardy_partitioner(true);
   p.set_process_index(13);
   p.set_process_count(14);
-  p.set_slice_size(15);
 
   TF_ASSERT_OK_AND_ASSIGN(const ExecutableBuildOptions options,
                           ExecutableBuildOptionsFromProto(p));

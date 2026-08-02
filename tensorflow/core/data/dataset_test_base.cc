@@ -143,8 +143,8 @@ absl::Status WriteDataToFile(const std::string& filename, const char* data,
     TF_RETURN_IF_ERROR(out.Flush());
     TF_RETURN_IF_ERROR(out.Close());
   } else {
-    return tensorflow::errors::InvalidArgument(
-        "Unsupported compression_type: ", ToString(params.compression_type));
+    return absl::InvalidArgumentError(absl::StrCat(
+        "Unsupported compression_type: ", ToString(params.compression_type)));
   }
 
   TF_RETURN_IF_ERROR(file_writer->Flush());
@@ -176,14 +176,14 @@ absl::Status WriteDataToTFRecordFile(
 template <typename T>
 absl::Status IsEqual(const Tensor& t1, const Tensor& t2) {
   if (t1.dtype() != t2.dtype()) {
-    return tensorflow::errors::Internal(
+    return absl::InternalError(absl::StrCat(
         "Two tensors have different dtypes: ", DataTypeString(t1.dtype()),
-        " vs. ", DataTypeString(t2.dtype()));
+        " vs. ", DataTypeString(t2.dtype())));
   }
   if (!t1.IsSameSize(t2)) {
-    return tensorflow::errors::Internal(
+    return absl::InternalError(absl::StrCat(
         "Two tensors have different shapes: ", t1.shape().DebugString(),
-        " vs. ", t2.shape().DebugString());
+        " vs. ", t2.shape().DebugString()));
   }
 
   auto flat_t1 = t1.flat<T>();
@@ -217,8 +217,9 @@ DatasetOpsTestBase::~DatasetOpsTestBase() {
 
 absl::Status DatasetOpsTestBase::ExpectEqual(const Tensor& a, const Tensor& b) {
   if (a.dtype() != b.dtype()) {
-    return errors::Internal("Tensor dtypes don't match:\n", a.DebugString(),
-                            "\n", b.DebugString());
+    return absl::InternalError(absl::StrCat("Tensor dtypes don't match:\n",
+                                            a.DebugString(), "\n",
+                                            b.DebugString()));
   }
   switch (a.dtype()) {
 #define CASE(DT)                           \
@@ -231,24 +232,28 @@ absl::Status DatasetOpsTestBase::ExpectEqual(const Tensor& a, const Tensor& b) {
     case DT_VARIANT: {
       if (!TensorShapeUtils::IsScalar(a.shape()) ||
           !TensorShapeUtils::IsScalar(b.shape())) {
-        return errors::Internal("Variant tensors must be scalars:\n",
-                                a.DebugString(), "\n", b.DebugString());
+        return absl::InternalError(
+            absl::StrCat("Variant tensors must be scalars:\n", a.DebugString(),
+                         "\n", b.DebugString()));
       }
       const TestVariant* a_object = a.scalar<Variant>()().get<TestVariant>();
       const TestVariant* b_object = b.scalar<Variant>()().get<TestVariant>();
       if (a_object == nullptr || b_object == nullptr) {
-        return errors::Internal("Variant types must be `TestVariant`:\n",
-                                a.scalar<Variant>()().TypeName(), "\n",
-                                b.scalar<Variant>()().TypeName());
+        return absl::InternalError(
+            absl::StrCat("Variant types must be `TestVariant`:\n",
+                         a.scalar<Variant>()().TypeName(), "\n",
+                         b.scalar<Variant>()().TypeName()));
       }
       if (*a_object != *b_object) {
-        return errors::Internal("Variant tensors aren't equal:\n",
-                                a.DebugString(), "\n", b.DebugString());
+        return absl::InternalError(
+            absl::StrCat("Variant tensors aren't equal:\n", a.DebugString(),
+                         "\n", b.DebugString()));
       }
       break;
     }
     default:
-      return errors::Internal("Unsupported dtype: ", a.dtype());
+      return absl::InternalError(
+          absl::StrCat("Unsupported dtype: ", a.dtype()));
   }
   return absl::OkStatus();
 }
@@ -269,17 +274,17 @@ absl::Status DatasetOpsTestBase::ExpectEqual(
     std::vector<Tensor> produced_tensors, std::vector<Tensor> expected_tensors,
     bool compare_order) {
   if (produced_tensors.size() != expected_tensors.size()) {
-    return absl::Status(tensorflow::errors::Internal(
+    return absl::Status(absl::InternalError(absl::StrCat(
         "The two tensor vectors have different size (", produced_tensors.size(),
-        " v.s. ", expected_tensors.size(), ")"));
+        " v.s. ", expected_tensors.size(), ")")));
   }
 
   if (produced_tensors.empty()) return absl::OkStatus();
   if (produced_tensors[0].dtype() != expected_tensors[0].dtype()) {
-    return absl::Status(tensorflow::errors::Internal(
-        "The two tensor vectors have different dtypes (",
-        produced_tensors[0].dtype(), " v.s. ", expected_tensors[0].dtype(),
-        ")"));
+    return absl::Status(absl::InternalError(
+        absl::StrCat("The two tensor vectors have different dtypes (",
+                     produced_tensors[0].dtype(), " v.s. ",
+                     expected_tensors[0].dtype(), ")")));
   }
 
   if (!compare_order) {
@@ -313,7 +318,7 @@ absl::Status DatasetOpsTestBase::ExpectEqual(
       // TODO(feihugis): support other dtypes.
 #undef CASE
       default:
-        return errors::Internal("Unsupported dtype: ", dtype);
+        return absl::InternalError(absl::StrCat("Unsupported dtype: ", dtype));
     }
   }
 
@@ -405,8 +410,8 @@ absl::Status DatasetOpsTestBase::GetDatasetFromContext(
 
 absl::Status DatasetOpsTestBase::InitThreadPool(int thread_num) {
   if (thread_num < 1) {
-    return errors::InvalidArgument(
-        "The `thread_num` argument should be positive but got: ", thread_num);
+    return absl::InvalidArgumentError(absl::StrCat(
+        "The `thread_num` argument should be positive but got: ", thread_num));
   }
   thread_pool_ = std::make_unique<thread::ThreadPool>(
       Env::Default(), ThreadOptions(), "test_thread_pool", thread_num);
@@ -416,8 +421,8 @@ absl::Status DatasetOpsTestBase::InitThreadPool(int thread_num) {
 absl::Status DatasetOpsTestBase::InitFunctionLibraryRuntime(
     const std::vector<FunctionDef>& flib, int cpu_num) {
   if (cpu_num < 1) {
-    return errors::InvalidArgument(
-        "The `cpu_num` argument should be positive but got: ", cpu_num);
+    return absl::InvalidArgumentError(absl::StrCat(
+        "The `cpu_num` argument should be positive but got: ", cpu_num));
   }
   SessionOptions options;
   auto* device_count = options.config.mutable_device_count();
@@ -506,9 +511,9 @@ absl::Status DatasetOpsTestBase::RunFunction(
   std::vector<Tensor> computed;
   TF_RETURN_IF_ERROR(frame.GetRetvals(&computed));
   if (computed.size() != rets.size()) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(absl::StrCat(
         "The result does not match the expected number of return outpus",
-        ". Expected: ", rets.size(), ". Actual: ", computed.size());
+        ". Expected: ", rets.size(), ". Actual: ", computed.size()));
   }
   for (int i = 0; i < rets.size(); ++i) {
     *(rets[i]) = computed[i];
@@ -569,9 +574,9 @@ absl::Status DatasetOpsTestBase::CreateSerializationContext(
 absl::Status DatasetOpsTestBase::CheckOpKernelInput(
     const OpKernel& kernel, const absl::InlinedVector<TensorValue, 4>& inputs) {
   if (kernel.num_inputs() != inputs.size()) {
-    return errors::InvalidArgument("The number of input elements should be ",
-                                   kernel.num_inputs(),
-                                   ", but got: ", inputs.size());
+    return absl::InvalidArgumentError(
+        absl::StrCat("The number of input elements should be ",
+                     kernel.num_inputs(), ", but got: ", inputs.size()));
   }
   return absl::OkStatus();
 }
@@ -580,8 +585,9 @@ absl::Status DatasetOpsTestBase::AddDatasetInput(
     absl::InlinedVector<TensorValue, 4>* inputs, DataTypeVector input_types,
     DataType dtype, const TensorShape& shape) {
   if (input_types.size() < inputs->size()) {
-    return errors::InvalidArgument("Adding more inputs than types: ",
-                                   inputs->size(), " vs. ", input_types.size());
+    return absl::InvalidArgumentError(
+        absl::StrCat("Adding more inputs than types: ", inputs->size(), " vs. ",
+                     input_types.size()));
   }
   bool is_ref = IsRefType(input_types[inputs->size()]);
   auto input = std::make_unique<Tensor>(allocator_, dtype, shape);
@@ -589,15 +595,16 @@ absl::Status DatasetOpsTestBase::AddDatasetInput(
   if (is_ref) {
     DataType expected_dtype = RemoveRefType(input_types[inputs->size()]);
     if (expected_dtype != dtype) {
-      return errors::InvalidArgument("The input data type is ", dtype,
-                                     " , but expected: ", expected_dtype);
+      return absl::InvalidArgumentError(
+          absl::StrCat("The input data type is ", dtype,
+                       " , but expected: ", expected_dtype));
     }
     inputs->push_back({&lock_for_refs_, input.get()});
   } else {
     if (input_types[inputs->size()] != dtype) {
-      return errors::InvalidArgument(
-          "The input data type is ", dtype,
-          " , but expected: ", input_types[inputs->size()]);
+      return absl::InvalidArgumentError(
+          absl::StrCat("The input data type is ", dtype,
+                       " , but expected: ", input_types[inputs->size()]));
     }
     inputs->push_back({nullptr, input.get()});
   }
@@ -814,7 +821,7 @@ absl::Status DatasetOpsTestBase::CheckIteratorSaveAndRestore(
 absl::Status DatasetOpsTestBase::Initialize(
     const DatasetParams& dataset_params) {
   if (initialized_) {
-    return errors::Internal(
+    return absl::InternalError(
         "The fields (e.g. dataset_kernel_, dataset_ctx_, dataset_, "
         "iterator_ctx_, iterator_) have already been initialized.");
   }

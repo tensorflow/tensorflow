@@ -124,9 +124,10 @@ StatusOr<Layout> MatMulSPMDExpander::OutputLayoutAndReducedDims(
 
   if (!*left || !*right) {
     if (allow_unknown_layouts) return absl::OkStatus();
-    return errors::Unimplemented("failed to do SPMD expansion for ", OpName(op),
-                                 " operand layouts "
-                                 "unknown");
+    return absl::UnimplementedError(
+        absl::StrCat("failed to do SPMD expansion for ", OpName(op),
+                     " operand layouts "
+                     "unknown"));
   }
 
   if (mlir::isa<mlir::TF::BatchMatMulV2Op>(op)) {
@@ -153,7 +154,7 @@ StatusOr<Layout> MatMulSPMDExpander::OutputLayoutAndReducedDims(
     left_layout = left->value();
     right_layout = right->value();
   } else {
-    return errors::Internal("Unknown op ", OpName(op));
+    return absl::InternalError(absl::StrCat("Unknown op ", OpName(op)));
   }
   GetTransposeSettings(op, &left_transposed, &right_transposed);
 
@@ -270,27 +271,27 @@ absl::Status MatMulSPMDExpander::MaybeRelayoutInputs(
   // dimensions are equal and are sharded. These would require more extensive
   // relayout to solve.
   if (b != c && Layout::IsShardedDimension(b) && Layout::IsShardedDimension(c))
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(absl::StrCat(
         "Contracting dimension for matmul has sharding dimension ", b,
         " for the left input and ", c,
         " for the right input which are not equal. This case is currently not "
-        "supported.");
+        "supported."));
 
   if (a != e && Layout::IsShardedDimension(a) && Layout::IsShardedDimension(e))
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(absl::StrCat(
         "Non-contracting dimension for left argument of matmul has sharding "
         "dimension ",
         a,
         " and the second to last dimension of the output has sharding "
         "dimension ",
-        e, ", which are not equal. This case is currently not supported.");
+        e, ", which are not equal. This case is currently not supported."));
 
   if (d != f && Layout::IsShardedDimension(d) && Layout::IsShardedDimension(f))
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(absl::StrCat(
         "Non-contracting dimension for right argument of matmul has sharding "
         "dimension ",
         d, " and the last dimension of the output has sharding dimension ", f,
-        ", which are not equal. This case is currently not supported.");
+        ", which are not equal. This case is currently not supported."));
 
   // If the output is sharded and the corresponding non-contracting input is not
   // sharded, then shard the input on that dim, to reduce the amount of work

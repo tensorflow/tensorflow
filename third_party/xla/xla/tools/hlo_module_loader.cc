@@ -30,11 +30,13 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/raw_ostream.h"
 #include "google/protobuf/text_format.h"
 #include "re2/re2.h"
+#include "riegeli/bytes/string_reader.h"
 #include "xla/debug_options_flags.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -44,7 +46,9 @@ limitations under the License.
 #include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/tools/run_hlo_module.pb.h"
+#include "xla/tsl/platform/env.h"
 #include "xla/util.h"
+#include "xla/util/split_proto/split_proto_reader.h"
 #include "xla/xla.pb.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/errors.h"
@@ -127,13 +131,13 @@ absl::StatusOr<std::unique_ptr<HloModule>> LoadModuleFromData(
     std::string hlo_string = StripLogHeaders(data);
     HloModuleConfig config;
     config.set_debug_options(debug_options);
-    TF_RETURN_IF_ERROR(OverrideConfig(ovr_config, &config));
+    RETURN_IF_ERROR(OverrideConfig(ovr_config, &config));
     if (config_modifier_hook) {
       config_modifier_hook(&config);
     }
     HloParserOptions options;
     options.set_fill_missing_layouts(fill_missing_layouts);
-    TF_ASSIGN_OR_RETURN(
+    ASSIGN_OR_RETURN(
         module, ParseAndReturnUnverifiedModule(hlo_string, config, options));
   } else {
     HloSnapshot proto;
@@ -151,7 +155,7 @@ absl::StatusOr<std::unique_ptr<HloModule>> LoadModuleFromData(
               "Expected buffer assignment in HLO protobuf binary.");
         }
       }
-    } else if (format == "pbtxt") {
+    } else if (format == "pbtxt" || format == "textproto") {
       if (!tsl::protobuf::TextFormat::ParseFromString(data, &proto) &&
           !tsl::protobuf::TextFormat::ParseFromString(data,
                                                       proto.mutable_hlo()) &&
@@ -159,20 +163,32 @@ absl::StatusOr<std::unique_ptr<HloModule>> LoadModuleFromData(
               data, proto.mutable_hlo()->mutable_hlo_module())) {
         return InvalidArgument("Failed to parse input as HLO protobuf text");
       }
+    } else if (format == "riegeli") {
+      RETURN_IF_ERROR(ReadSplitProto(
+          std::make_unique<riegeli::StringReader<absl::string_view>>(data),
+          *proto.mutable_hlo()));
+      if (buffer_assignment_proto != nullptr) {
+        if (proto.hlo().has_buffer_assignment()) {
+          *buffer_assignment_proto = proto.hlo().buffer_assignment();
+        } else {
+          return InvalidArgument(
+              "Expected buffer assignment in HLO riegeli split proto.");
+        }
+      }
     } else {
       return InvalidArgument(
           "Invalid format from file extension: '%s'. Expected: hlo, txt, "
-          "stablehlo, mhlo, pb, or pbtxt",
+          "stablehlo, mhlo, pb, pbtxt, or riegeli",
           format);
     }
-    TF_ASSIGN_OR_RETURN(HloModuleConfig config,
-                        HloModule::CreateModuleConfigFromProto(
-                            proto.hlo().hlo_module(), debug_options));
-    TF_RETURN_IF_ERROR(OverrideConfig(ovr_config, &config));
+    ASSIGN_OR_RETURN(HloModuleConfig config,
+                     HloModule::CreateModuleConfigFromProto(
+                         proto.hlo().hlo_module(), debug_options));
+    RETURN_IF_ERROR(OverrideConfig(ovr_config, &config));
     if (config_modifier_hook) {
       config_modifier_hook(&config);
     }
-    TF_ASSIGN_OR_RETURN(
+    ASSIGN_OR_RETURN(
         module, HloModule::CreateFromProto(proto.hlo().hlo_module(), config));
   }
   return std::move(module);
@@ -187,7 +203,7 @@ absl::StatusOr<std::unique_ptr<HloModule>> LoadModuleFromFile(
   if (format.empty()) {
     format = std::string(tsl::io::Extension(path));
   }
-  TF_RETURN_IF_ERROR(tsl::ReadFileToString(tsl::Env::Default(), path, &data));
+  RETURN_IF_ERROR(tsl::ReadFileToString(tsl::Env::Default(), path, &data));
   return LoadModuleFromData(data, format, ovr_config, config_modifier_hook,
                             buffer_assignment_proto, fill_missing_layouts);
 }
@@ -201,7 +217,7 @@ LoadInputFromData(absl::string_view data, absl::string_view format) {
         !proto.mutable_hlo()->mutable_hlo_module()->ParseFromString(data)) {
       return InvalidArgument("Failed to parse input as HLO protobuf binary");
     }
-  } else if (format == "pbtxt") {
+  } else if (format == "pbtxt" || format == "textproto") {
     if (!tsl::protobuf::TextFormat::ParseFromString(data, &proto) &&
         !tsl::protobuf::TextFormat::ParseFromString(data,
                                                     proto.mutable_hlo()) &&
@@ -211,8 +227,7 @@ LoadInputFromData(absl::string_view data, absl::string_view format) {
     }
   } else {
     return InvalidArgument(
-        "Invalid format from file extension: '%s'. Expected: pb, "
-        "or pbtxt",
+        "Invalid format from file extension: '%s'. Expected: pb, or pbtxt",
         format);
   }
 
@@ -230,7 +245,7 @@ LoadInputFromFile(const std::string& path, std::string format) {
   if (format.empty()) {
     format = std::string(tsl::io::Extension(path));
   }
-  TF_RETURN_IF_ERROR(tsl::ReadFileToString(tsl::Env::Default(), path, &data));
+  RETURN_IF_ERROR(tsl::ReadFileToString(tsl::Env::Default(), path, &data));
   return LoadInputFromData(data, format);
 }
 

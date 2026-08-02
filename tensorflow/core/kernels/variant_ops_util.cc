@@ -68,10 +68,10 @@ void AddNVariant(OpKernelContext* ctx,
     // Step 1: ensure unary variants.
     OP_REQUIRES(
         ctx, ctx->input(i).dims() == 0,
-        errors::InvalidArgument(
+        absl::InvalidArgumentError(absl::StrCat(
             "AddN of non-scalar Tensor with dtype=DT_VARIANT is not "
             "supported; inputs[",
-            i, " has shape: ", ctx->input(i).shape().DebugString(), "."));
+            i, " has shape: ", ctx->input(i).shape().DebugString(), ".")));
   }
 
   // Step 2: Sum input variants in a tree-like structure using

@@ -94,8 +94,8 @@ class GeneratorDatasetOp::Dataset : public DatasetBase {
   absl::Status AsGraphDefInternal(SerializationContext* ctx,
                                   DatasetGraphDefBuilder* b,
                                   Node** output) const override {
-    return errors::Unimplemented(DebugString(),
-                                 " does not support serialization");
+    return absl::UnimplementedError(
+        absl::StrCat(DebugString(), " does not support serialization"));
   }
 
  private:
@@ -170,13 +170,13 @@ class GeneratorDatasetOp::Dataset : public DatasetBase {
 
     absl::Status SaveInternal(SerializationContext* ctx,
                               IteratorStateWriter* writer) override {
-      return errors::Unimplemented(
+      return absl::UnimplementedError(
           "GeneratorDataset does not support checkpointing.");
     }
 
     absl::Status RestoreInternal(IteratorContext* ctx,
                                  IteratorStateReader* reader) override {
-      return errors::Unimplemented(
+      return absl::UnimplementedError(
           "GeneratorDataset does not support checkpointing.");
     }
 

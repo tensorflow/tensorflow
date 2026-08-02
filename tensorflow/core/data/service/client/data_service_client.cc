@@ -62,6 +62,7 @@ limitations under the License.
 #include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/profiler/lib/traceme_encode.h"
+#include "tsl/platform/random.h"
 #include "tsl/platform/retrying_utils.h"
 
 namespace tensorflow {
@@ -165,7 +166,7 @@ absl::StatusOr<GetNextResult> DataServiceClient::GetNext(
     }
     if (cancelled_) {
       VLOG(3) << "Returning from GetNext due to cancellation";
-      return errors::Cancelled("Data service iterator was cancelled");
+      return absl::CancelledError("Data service iterator was cancelled");
     }
     if (!status_.ok()) {
       VLOG(3) << "Returning from GetNext with error " << status_;
@@ -177,7 +178,8 @@ absl::StatusOr<GetNextResult> DataServiceClient::GetNext(
     }
     if (!ResultReady()) {
       VLOG(3) << "Returning from GetNext with internal error";
-      return errors::Internal("Expected a result to be ready, but none were.");
+      return absl::InternalError(
+          "Expected a result to be ready, but none were.");
     }
     result = PopNextResult();
     worker_thread_cv_.notify_one();
@@ -449,11 +451,6 @@ absl::Status DataServiceClient::AddTask(const TaskInfo& task_info)
       DCHECK_EQ(next_task_index_, 0);
     }
   }
-  if (!IsCoordinatedRead()) {
-    // Shuffle task order within each client to avoid thundering herd effect.
-    std::mt19937 rng;
-    std::shuffle(tasks_.begin(), tasks_.end(), rng);
-  }
   return absl::OkStatus();
 }
 
@@ -548,6 +545,11 @@ void DataServiceClient::UpdateTasks(const ClientHeartbeatResponse& resp)
       break;
     }
   }
+  if (!IsCoordinatedRead()) {
+    // Shuffle task order within each client to avoid thundering herd effect.
+    std::mt19937 rng(tsl::random::New64());
+    std::shuffle(tasks_.begin(), tasks_.end(), rng);
+  }
 }
 
 bool DataServiceClient::ShouldReadFromTask(const TaskInfo& task) const
@@ -614,14 +616,17 @@ void DataServiceClient::UpdateWorkerThreads() TF_LOCKS_EXCLUDED(mu_) {
       num_running_worker_threads_--;
       get_next_cv_.notify_all();
     };
-    worker_threads_.push_back(ctx_->StartThread(
-        "tf-data-service-task_thread", [this, done = std::move(done)]() {
-          RunWorkerThread(std::move(done));
-        }));
+    int64_t thread_index = worker_threads_.size();
+    worker_threads_.push_back(
+        ctx_->StartThread("tf-data-service-task_thread",
+                          [this, thread_index, done = std::move(done)]() {
+                            RunWorkerThread(thread_index, std::move(done));
+                          }));
   }
 }
 
-void DataServiceClient::RunWorkerThread(std::function<void()> done)
+void DataServiceClient::RunWorkerThread(int64_t thread_index,
+                                        std::function<void()> done)
     TF_LOCKS_EXCLUDED(mu_) {
   auto cleanup = gtl::MakeCleanup([done = std::move(done)]() {
     done();
@@ -672,7 +677,7 @@ void DataServiceClient::RunWorkerThread(std::function<void()> done)
     int64_t deadline_micros = std::numeric_limits<int64_t>::max();
     absl::Status s = GetElementTraced(task_to_process.get(), deadline_micros,
                                       /*enqueue_result=*/!IsCoordinatedRead(),
-                                      allow_skip, result);
+                                      allow_skip, result, thread_index);
     if (!s.ok()) {
       mutex_lock l(mu_);
       VLOG(1) << "Failed to get element from worker "
@@ -814,7 +819,7 @@ void DataServiceClient::ProcessGetElementResponse(
 
 absl::Status DataServiceClient::GetElementTraced(
     Task* task, int64_t deadline_micros, bool enqueue_result, bool allow_skip,
-    std::shared_ptr<Result> result) {
+    std::shared_ptr<Result> result, int64_t thread_index) {
   VLOG(3) << "Getting an element for task id " << task->info.task_id();
   tsl::profiler::TraceMe activity("GetDataServiceElement",
                                   tsl::profiler::TraceMeLevel::kInfo);
@@ -831,8 +836,8 @@ absl::Status DataServiceClient::GetElementTraced(
            {"round_index", task->round}});
     });
   }
-  absl::Status s =
-      GetElement(task, deadline_micros, enqueue_result, allow_skip, result);
+  absl::Status s = GetElement(task, deadline_micros, enqueue_result, allow_skip,
+                              result, thread_index);
   VLOG(3) << "Got an element for task id " << task->info.task_id();
   return s;
 }
@@ -870,13 +875,23 @@ absl::Status DataServiceClient::MaybeRemoveTask(Task& task,
 
 absl::Status DataServiceClient::GetElement(Task* task, int64_t deadline_micros,
                                            bool enqueue_result, bool allow_skip,
-                                           std::shared_ptr<Result> result)
+                                           std::shared_ptr<Result> result,
+                                           int64_t thread_index)
     TF_LOCKS_EXCLUDED(mu_) {
   GetElementResult get_element_result;
   while (true) {
     absl::Status s = TryGetElement(*task, allow_skip, get_element_result);
     if (s.ok()) {
       task->num_retries = 0;
+      if (get_element_result.skip) {
+        metrics::RecordTFDataClientGetElementAction(
+            "skip_empty_buffer", absl::StrCat(iteration_client_id_),
+            task->info.worker_address(), absl::StrCat(thread_index));
+      } else if (!get_element_result.end_of_sequence) {
+        metrics::RecordTFDataClientGetElementAction(
+            "success", absl::StrCat(iteration_client_id_),
+            task->info.worker_address(), absl::StrCat(thread_index));
+      }
       break;
     }
     if (!IsPreemptedError(s)) {
@@ -913,7 +928,7 @@ absl::Status DataServiceClient::GetElement(Task* task, int64_t deadline_micros,
     {
       mutex_lock l(mu_);
       if (cancelled_) {
-        return errors::Cancelled("DataServiceDataset iterator cancelled");
+        return absl::CancelledError("DataServiceDataset iterator cancelled");
       }
     }
     int64_t now_micros = Env::Default()->NowMicros();
@@ -941,6 +956,9 @@ absl::Status DataServiceClient::GetElement(Task* task, int64_t deadline_micros,
       // task before returning to this one.
       result->ready = true;
       result->skip = true;
+      metrics::RecordTFDataClientGetElementAction(
+          "skip_error", absl::StrCat(iteration_client_id_),
+          task->info.worker_address(), absl::StrCat(thread_index));
       return absl::OkStatus();
     }
   }

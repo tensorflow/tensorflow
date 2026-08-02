@@ -20,6 +20,9 @@ limitations under the License.
 
 #include <string>
 
+// WARNING: this header file is DEPRECATED.
+// See https://developer.android.com/ndk/guides/neuralnetworks/migration-guide.
+
 typedef struct AHardwareBuffer AHardwareBuffer;
 
 // NN api types based on NNAPI header file

@@ -61,9 +61,9 @@ class PackOp : public OpKernel {
     if (axis < 0) axis += expanded_num_dims;
 
     OP_REQUIRES(c, 0 <= axis && axis < expanded_num_dims,
-                errors::InvalidArgument("axis = ", axis_, " not in [",
-                                        -expanded_num_dims, ", ",
-                                        expanded_num_dims, ")"));
+                absl::InvalidArgumentError(absl::StrCat(
+                    "axis = ", axis_, " not in [", -expanded_num_dims, ", ",
+                    expanded_num_dims, ")")));
 
     TensorShape output_shape(first_input.shape());
     output_shape.InsertDim(axis, num);
@@ -102,10 +102,10 @@ class PackOp : public OpKernel {
     for (int i = 0; i < num; ++i) {
       const Tensor& input = c->input(i);
       OP_REQUIRES(c, first_input.shape().IsSameSize(input.shape()),
-                  errors::InvalidArgument(
+                  absl::InvalidArgumentError(absl::StrCat(
                       "Shapes of all inputs must match: values[0].shape = ",
                       first_input.shape().DebugString(), " != values[", i,
-                      "].shape = ", input.shape().DebugString()));
+                      "].shape = ", input.shape().DebugString())));
 
       inputs_flat.emplace_back(new typename TTypes<T, 2>::ConstMatrix(
           input.shaped<T, 2>({before_dim, after_dim})));

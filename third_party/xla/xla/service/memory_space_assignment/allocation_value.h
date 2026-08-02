@@ -71,7 +71,7 @@ namespace memory_space_assignment {
 //  while {0}
 //  get-tuple-element.5
 // uses:
-//  add.1, operand 0
+//  tuple.1, operand 0
 //  tuple, operand 0
 //  while, operand 0 {0}
 //  add.5, operand 0

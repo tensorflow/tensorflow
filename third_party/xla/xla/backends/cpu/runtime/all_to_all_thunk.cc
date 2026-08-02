@@ -22,6 +22,7 @@ limitations under the License.
 #include "absl/memory/memory.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/cpu/collectives/cpu_collectives.h"
 #include "xla/backends/cpu/runtime/collective_thunk.h"
 #include "xla/backends/cpu/runtime/thunk.h"
@@ -53,7 +54,7 @@ AllToAllThunk::AllToAllThunk(Info info, OpParams op_params,
 
 tsl::AsyncValueRef<AllToAllThunk::ExecuteEvent> AllToAllThunk::Execute(
     const ExecuteParams& params) {
-  TF_ASSIGN_OR_RETURN(OpDeviceMemory data, GetOpDeviceMemory(params));
+  ASSIGN_OR_RETURN(OpDeviceMemory data, GetOpDeviceMemory(params));
 
   VLOG(3) << absl::StreamFormat(
       "AllToAll: #source_buffers=%d, #destination_buffers=%d",

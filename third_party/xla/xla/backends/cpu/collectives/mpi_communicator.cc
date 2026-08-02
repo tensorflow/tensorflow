@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "mpi.h"
 #include "xla/core/collectives/rank_id.h"
 #include "xla/future.h"
@@ -130,9 +131,9 @@ Future<> MpiCommunicator::AllReduce(se::DeviceAddressBase send_buffer,
                                     PrimitiveType dtype, size_t count,
                                     ReductionKind reduction_kind,
                                     const Executor& executor) {
-  TF_ASSIGN_OR_RETURN(MPI_Datatype type, PrimitiveTypeToMpiType(dtype));
-  TF_ASSIGN_OR_RETURN(MPI_Op op, ReductionKindToMpiOp(reduction_kind, type));
-  TF_RETURN_IF_ERROR(MpiErrorToAbslStatus(MPI_Allreduce(
+  ASSIGN_OR_RETURN(MPI_Datatype type, PrimitiveTypeToMpiType(dtype));
+  ASSIGN_OR_RETURN(MPI_Op op, ReductionKindToMpiOp(reduction_kind, type));
+  RETURN_IF_ERROR(MpiErrorToAbslStatus(MPI_Allreduce(
       send_buffer.opaque(), recv_buffer.opaque(), count, type, op, comm_)));
   return absl::OkStatus();
 }
@@ -155,7 +156,7 @@ Future<> MpiCommunicator::CollectivePermute(
     } else {
       VLOG(1) << "recv at " << rank << " from " << source_rank->value();
       requests.emplace_back();
-      TF_RETURN_IF_ERROR(MpiErrorToAbslStatus(
+      RETURN_IF_ERROR(MpiErrorToAbslStatus(
           MPI_Irecv(recv_buffer.opaque(), num_bytes, MPI_BYTE,
                     source_rank->value(), tag, comm_, &requests.back())));
     }
@@ -167,14 +168,14 @@ Future<> MpiCommunicator::CollectivePermute(
     if (target != rank) {
       VLOG(1) << "send from " << rank << " to " << target.value();
       requests.emplace_back();
-      TF_RETURN_IF_ERROR(MpiErrorToAbslStatus(
+      RETURN_IF_ERROR(MpiErrorToAbslStatus(
           MPI_Isend(send_buffer.opaque(), num_bytes, MPI_BYTE, target.value(),
                     tag, comm_, &requests.back())));
     }
   }
 
   for (auto& request : requests) {
-    TF_RETURN_IF_ERROR(
+    RETURN_IF_ERROR(
         MpiErrorToAbslStatus(MPI_Wait(&request, MPI_STATUS_IGNORE)));
   }
 
@@ -209,7 +210,7 @@ Future<> MpiCommunicator::AllToAll(
   for (int i = 1; i < size; i++) {
     int send_rank = (rank + i) % size;
     int recv_rank = (rank + size - i) % size;
-    TF_RETURN_IF_ERROR(MpiErrorToAbslStatus(
+    RETURN_IF_ERROR(MpiErrorToAbslStatus(
         MPI_Sendrecv(input_buffers[send_rank], chunk_bytes, MPI_BYTE, send_rank,
                      tag, output_buffers[recv_rank], chunk_bytes, MPI_BYTE,
                      recv_rank, tag, comm_, MPI_STATUS_IGNORE)));
@@ -222,8 +223,8 @@ Future<> MpiCommunicator::AllGather(se::DeviceAddressBase send_buffer,
                                     se::DeviceAddressBase recv_buffer,
                                     PrimitiveType dtype, size_t count,
                                     const Executor& executor) {
-  TF_ASSIGN_OR_RETURN(MPI_Datatype type, PrimitiveTypeToMpiType(dtype));
-  TF_RETURN_IF_ERROR(MpiErrorToAbslStatus(
+  ASSIGN_OR_RETURN(MPI_Datatype type, PrimitiveTypeToMpiType(dtype));
+  RETURN_IF_ERROR(MpiErrorToAbslStatus(
       MPI_Allgather(send_buffer.opaque(), count, type, recv_buffer.opaque(),
                     count, type, comm_)));
 
@@ -237,9 +238,9 @@ Future<> MpiCommunicator::ReduceScatter(se::DeviceAddressBase send_buffer,
                                         const Executor& executor) {
   const int size = mpi_size_;
   std::vector<int> recvcounts(size, count);
-  TF_ASSIGN_OR_RETURN(MPI_Datatype type, PrimitiveTypeToMpiType(dtype));
-  TF_ASSIGN_OR_RETURN(MPI_Op op, ReductionKindToMpiOp(reduction_kind, type));
-  TF_RETURN_IF_ERROR(MpiErrorToAbslStatus(
+  ASSIGN_OR_RETURN(MPI_Datatype type, PrimitiveTypeToMpiType(dtype));
+  ASSIGN_OR_RETURN(MPI_Op op, ReductionKindToMpiOp(reduction_kind, type));
+  RETURN_IF_ERROR(MpiErrorToAbslStatus(
       MPI_Reduce_scatter(send_buffer.opaque(), recv_buffer.opaque(),
                          recvcounts.data(), type, op, comm_)));
 

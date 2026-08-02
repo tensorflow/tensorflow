@@ -16,14 +16,30 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/Reducer/ReductionPatternInterface.h"  // from @llvm-project
+#include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Tools/mlir-reduce/MlirReduceMain.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/init_mlir.h"
 #include "tensorflow/compiler/mlir/register_common_dialects.h"
 #include "tensorflow/compiler/mlir/tensorflow/dialect_registration.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 
 namespace {
 
-#include "tensorflow/compiler/mlir/tensorflow/transforms/reducer/tf_reduce_patterns.inc"
+struct CollapseAndErase : public mlir::OpRewritePattern<mlir::TF::IdentityOp> {
+  using OpRewritePattern::OpRewritePattern;
+  mlir::LogicalResult matchAndRewrite(
+      mlir::TF::IdentityOp op, mlir::PatternRewriter& rewriter) const override {
+    auto arg = op.getInput().getDefiningOp<mlir::TF::IdentityOp>();
+    if (!arg) return mlir::failure();
+
+    rewriter.replaceOpWithNewOp<mlir::TF::IdentityOp>(op, op.getType(),
+                                                      arg.getInput());
+    if (arg.use_empty()) {
+      rewriter.eraseOp(arg);
+    }
+    return mlir::success();
+  }
+};
 
 struct TFReductionPatternInterface
     : public mlir::DialectReductionPatternInterface {
@@ -33,7 +49,7 @@ struct TFReductionPatternInterface
 
   void populateReductionPatterns(
       mlir::RewritePatternSet &patterns) const final {
-    populateWithGenerated(patterns);
+    patterns.add<CollapseAndErase>(patterns.getContext());
   }
 };
 

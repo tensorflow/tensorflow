@@ -15,12 +15,14 @@ limitations under the License.
 
 #include "xla/stream_executor/sycl/sycl_context.h"
 
+#include "xla/tsl/platform/status_macros.h"
+
 namespace stream_executor::sycl {
 
 absl::StatusOr<std::unique_ptr<SyclContext>> SyclContext::Create(
     int device_ordinal) {
-  TF_ASSIGN_OR_RETURN(::sycl::context sycl_context,
-                      SyclDevicePool::GetDeviceContext());
+  ASSIGN_OR_RETURN(::sycl::context sycl_context,
+                   SyclDevicePool::GetDeviceContext());
   return std::make_unique<SyclContext>(sycl_context, device_ordinal);
 }
 

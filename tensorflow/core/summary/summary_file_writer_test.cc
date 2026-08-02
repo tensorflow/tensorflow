@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/strings/match.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "tensorflow/core/framework/summary.pb.h"
 #include "tensorflow/core/framework/tensor.pb.h"
@@ -76,7 +77,8 @@ class SummaryFileWriterTest : public ::testing::Test {
     for (const std::string& f : files) {
       if (absl::StrContains(f, test_name)) {
         if (found) {
-          return errors::Unknown("Found more than one file for ", test_name);
+          return absl::UnknownError(
+              absl::StrCat("Found more than one file for ", test_name));
         }
         found = true;
         std::unique_ptr<RandomAccessFile> read_file;
@@ -95,7 +97,7 @@ class SummaryFileWriterTest : public ::testing::Test {
       }
     }
     if (!found) {
-      return errors::Unknown("Found no file for ", test_name);
+      return absl::UnknownError(absl::StrCat("Found no file for ", test_name));
     }
     return absl::OkStatus();
   }

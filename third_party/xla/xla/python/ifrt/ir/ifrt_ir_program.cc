@@ -18,16 +18,20 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "absl/memory/memory.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/CommandLine.h"
@@ -42,7 +46,6 @@ limitations under the License.
 #include "xla/python/ifrt/ir/ifrt_ir_compile_options.pb.h"
 #include "xla/python/ifrt/serdes_version.h"
 #include "xla/python/pjrt_ifrt/xla_compiler.h"
-#include "xla/tsl/platform/statusor.h"
 #include "tsl/platform/human_readable_json.h"
 
 namespace xla {
@@ -65,7 +68,7 @@ absl::StatusOr<std::unique_ptr<IfrtIRCompileOptions>> GetIfrtIRCompileOptions(
 absl::StatusOr<std::unique_ptr<IfrtIRCompileOptions>>
 IfrtIRCompileOptions::FromProto(const IfrtIrCompileOptionsProto& proto) {
   const SerDesVersionNumber version_number(proto.version_number());
-  if (version_number != SerDesVersionNumber(0)) {
+  if (version_number > SerDesVersionNumber(4)) {
     return absl::FailedPreconditionError(
         absl::StrCat("Unsupported ", version_number,
                      " for IfrtIRCompileOptions deserialization"));
@@ -76,8 +79,8 @@ IfrtIRCompileOptions::FromProto(const IfrtIrCompileOptionsProto& proto) {
         "IfrtIrCompileOptionsProto.propagate_shardings is deprecated");
   }
 
-  auto compile_options_overrides = std::make_unique<absl::flat_hash_map<
-      std::string, std::unique_ptr<xla::ifrt::CompileOptions>>>();
+  auto compile_options_overrides = std::make_unique<
+      absl::flat_hash_map<std::string, std::unique_ptr<CompileOptions>>>();
   compile_options_overrides->reserve(proto.compile_option_overrides_size());
 
   std::vector<DeviceId> device_ids;
@@ -87,8 +90,8 @@ IfrtIRCompileOptions::FromProto(const IfrtIrCompileOptionsProto& proto) {
   }
 
   for (const auto& [key, value] : proto.compile_option_overrides()) {
-    TF_ASSIGN_OR_RETURN(xla::CompileOptions compile_options,
-                        xla::CompileOptions::FromProto(value));
+    ASSIGN_OR_RETURN(xla::CompileOptions compile_options,
+                     xla::CompileOptions::FromProto(value));
     // TODO(emilyaf): XlaCompileOptions should be built with the correct
     // devices. Pass `ifrt::Client*` to `IfrtIRCompileOptions::FromProto` and
     // look up the IFRT devices corresponding to `device_ids`.
@@ -96,7 +99,16 @@ IfrtIRCompileOptions::FromProto(const IfrtIrCompileOptionsProto& proto) {
     compile_options_overrides->insert(
         {key, std::make_unique<XlaCompileOptions>(compile_options, devices)});
   }
-  return std::make_unique<IfrtIRCompileOptions>(
+  std::optional<std::vector<int>> outputs_bundle_slice_sizes;
+  if (version_number >= SerDesVersionNumber(4)) {
+    if (!proto.outputs_bundle_slice_sizes().empty()) {
+      outputs_bundle_slice_sizes.emplace(
+          proto.outputs_bundle_slice_sizes().begin(),
+          proto.outputs_bundle_slice_sizes().end());
+    }
+  }
+
+  auto options = std::make_unique<IfrtIRCompileOptions>(
       std::move(device_ids),
       absl::flat_hash_map<std::string, LoadedExecutableRef>(),
       std::move(compile_options_overrides), proto.mlir_dump_to(),
@@ -104,7 +116,10 @@ IfrtIRCompileOptions::FromProto(const IfrtIrCompileOptionsProto& proto) {
       proto.mlir_enable_timing(), proto.dot_graph_dump_to(),
       proto.dot_graph_min_executable_peak_memory_bytes(),
       proto.dot_graph_min_executable_flops(),
-      proto.dot_graph_min_per_device_transfer_size_bytes());
+      proto.dot_graph_min_per_device_transfer_size_bytes(),
+      proto.strict_memory_reservation());
+  options->outputs_bundle_slice_sizes = std::move(outputs_bundle_slice_sizes);
+  return options;
 }
 
 absl::Status IfrtIRCompileOptions::ToProto(IfrtIrCompileOptionsProto& proto,
@@ -116,7 +131,11 @@ absl::Status IfrtIRCompileOptions::ToProto(IfrtIrCompileOptionsProto& proto,
   }
 
   proto.Clear();
-  proto.set_version_number(SerDesVersionNumber(0).value());
+  if (version.version_number() >= SerDesVersionNumber(4)) {
+    proto.set_version_number(SerDesVersionNumber(4).value());
+  } else {
+    proto.set_version_number(SerDesVersionNumber(0).value());
+  }
   proto.mutable_device_ids()->Reserve(device_assignments.size());
   for (const DeviceId& device_id : device_assignments) {
     proto.add_device_ids(device_id.value());
@@ -128,10 +147,9 @@ absl::Status IfrtIRCompileOptions::ToProto(IfrtIrCompileOptionsProto& proto,
             "compile_options must be XlaCompileOptions");
       }
 
-      TF_ASSIGN_OR_RETURN(
-          CompileOptionsProto compile_options_proto,
-          static_cast<xla::ifrt::XlaCompileOptions*>(compile_options.get())
-              ->compile_options.ToProto());
+      ASSIGN_OR_RETURN(CompileOptionsProto compile_options_proto,
+                       static_cast<XlaCompileOptions*>(compile_options.get())
+                           ->compile_options.ToProto());
       proto.mutable_compile_option_overrides()->insert(
           {id, compile_options_proto});
     }
@@ -146,13 +164,97 @@ absl::Status IfrtIRCompileOptions::ToProto(IfrtIrCompileOptionsProto& proto,
   proto.set_dot_graph_min_executable_flops(dot_graph_min_executable_flops);
   proto.set_dot_graph_min_per_device_transfer_size_bytes(
       dot_graph_min_per_device_transfer_size_bytes);
+  proto.set_strict_memory_reservation(strict_memory_reservation);
+  if (outputs_bundle_slice_sizes.has_value()) {
+    if (version.version_number() < SerDesVersionNumber(4)) {
+      return absl::FailedPreconditionError(
+          absl::StrCat("Unsupported ", version.version_number(),
+                       " for IfrtIRCompileOptions serialization with "
+                       "outputs_bundle_slice_sizes"));
+    }
+    proto.mutable_outputs_bundle_slice_sizes()->Add(
+        outputs_bundle_slice_sizes->begin(), outputs_bundle_slice_sizes->end());
+  }
+  return absl::OkStatus();
+}
+
+absl::Status IfrtIRCompileOptions::SetOptionsFromMap(
+    const absl::flat_hash_map<std::string,
+                              std::variant<std::string, bool, int64_t, double>>&
+        options) {
+  absl::flat_hash_set<std::string> recognized_keys;
+
+#define SET_BOOL_OPTION(field)                                         \
+  if (auto it = options.find(#field); it != options.end()) {           \
+    const bool* v = std::get_if<bool>(&it->second);                    \
+    if (v == nullptr) {                                                \
+      return absl::InvalidArgumentError(                               \
+          absl::StrCat("Option '", #field, "' expects a bool value")); \
+    }                                                                  \
+    field = *v;                                                        \
+    recognized_keys.insert(#field);                                    \
+  }
+
+#define SET_STRING_OPTION(field)                                         \
+  if (auto it = options.find(#field); it != options.end()) {             \
+    const std::string* v = std::get_if<std::string>(&it->second);        \
+    if (v == nullptr) {                                                  \
+      return absl::InvalidArgumentError(                                 \
+          absl::StrCat("Option '", #field, "' expects a string value")); \
+    }                                                                    \
+    field = *v;                                                          \
+    recognized_keys.insert(#field);                                      \
+  }
+
+#define SET_INT64_OPTION(field)                                          \
+  if (auto it = options.find(#field); it != options.end()) {             \
+    const int64_t* v = std::get_if<int64_t>(&it->second);                \
+    if (v == nullptr) {                                                  \
+      return absl::InvalidArgumentError(                                 \
+          absl::StrCat("Option '", #field, "' expects an int64 value")); \
+    }                                                                    \
+    field = *v;                                                          \
+    recognized_keys.insert(#field);                                      \
+  }
+
+#define SET_DOUBLE_OPTION(field)                                        \
+  if (auto it = options.find(#field); it != options.end()) {            \
+    const double* v = std::get_if<double>(&it->second);                 \
+    if (v == nullptr) {                                                 \
+      return absl::InvalidArgumentError(                                \
+          absl::StrCat("Option '", #field, "' expects a float value")); \
+    }                                                                   \
+    field = *v;                                                         \
+    recognized_keys.insert(#field);                                     \
+  }
+
+  SET_BOOL_OPTION(mlir_enable_timing);
+  SET_STRING_OPTION(mlir_dump_to);
+  SET_STRING_OPTION(mlir_dump_pass_re);
+  SET_STRING_OPTION(mlir_dump_func_re);
+  SET_STRING_OPTION(dot_graph_dump_to);
+  SET_INT64_OPTION(dot_graph_min_executable_peak_memory_bytes);
+  SET_INT64_OPTION(dot_graph_min_per_device_transfer_size_bytes);
+  SET_DOUBLE_OPTION(dot_graph_min_executable_flops);
+  SET_BOOL_OPTION(strict_memory_reservation);
+
+#undef SET_BOOL_OPTION
+#undef SET_STRING_OPTION
+#undef SET_INT64_OPTION
+#undef SET_DOUBLE_OPTION
+
+  for (const auto& [key, _] : options) {
+    if (!recognized_keys.contains(key)) {
+      return absl::InvalidArgumentError(
+          absl::StrCat("Unrecognized IFRT IR compile option: '", key, "'"));
+    }
+  }
   return absl::OkStatus();
 }
 
 llvm::raw_ostream& operator<<(llvm::raw_ostream& os,
                               const IfrtIRCompileOptions& options) {
-  absl::StatusOr<xla::ifrt::IfrtIrCompileOptionsProto> proto_or =
-      options.ToProto();
+  absl::StatusOr<IfrtIrCompileOptionsProto> proto_or = options.ToProto();
   if (!proto_or.ok()) {
     os << "Failed to convert IfrtIRCompileOptions to proto: "
        << proto_or.status().ToString();

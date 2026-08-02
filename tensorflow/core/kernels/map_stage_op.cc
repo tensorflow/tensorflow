@@ -166,9 +166,9 @@ class StagingMap : public ResourceBase {
   absl::Status check_index(const Tensor& key, std::size_t index)
       TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
     if (index >= dtypes_.size()) {
-      return absl::Status(errors::InvalidArgument(
-          "Index '", index, "' for key '", key.scalar<int64_t>()(),
-          "' was out of bounds '", dtypes_.size(), "'."));
+      return absl::Status(absl::InvalidArgumentError(
+          absl::StrCat("Index '", index, "' for key '", key.scalar<int64_t>()(),
+                       "' was out of bounds '", dtypes_.size(), "'.")));
     }
 
     return absl::OkStatus();
@@ -188,9 +188,9 @@ class StagingMap : public ResourceBase {
 
       // Insist on a value present at the specified index
       if (!(*map_tuple)[index].has_value()) {
-        return absl::Status(errors::InvalidArgument(
+        return absl::Status(absl::InvalidArgumentError(absl::StrCat(
             "Tensor at index '", index, "' for key '", key.scalar<int64_t>()(),
-            "' has already been removed."));
+            "' has already been removed.")));
       }
 
       // Copy the contained tensor and
@@ -212,10 +212,10 @@ class StagingMap : public ResourceBase {
                                          const OptionalTuple& tuple)
       TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
     if (tuple[index].has_value()) {
-      return errors::InvalidArgument("The tensor for index '", index,
-                                     "' for key '", key.scalar<int64_t>()(),
-                                     "' was already initialized '",
-                                     dtypes_.size(), "'.");
+      return absl::InvalidArgumentError(
+          absl::StrCat("The tensor for index '", index, "' for key '",
+                       key.scalar<int64_t>()(), "' was already initialized '",
+                       dtypes_.size(), "'."));
     }
 
     return absl::OkStatus();
@@ -224,7 +224,7 @@ class StagingMap : public ResourceBase {
   // Check that the indices are strictly ordered
   absl::Status check_index_ordering(const Tensor& indices) {
     if (indices.NumElements() == 0) {
-      return errors::InvalidArgument("Indices are empty");
+      return absl::InvalidArgumentError("Indices are empty");
     }
 
     auto findices = indices.flat<int>();
@@ -234,7 +234,7 @@ class StagingMap : public ResourceBase {
         continue;
       }
 
-      return errors::InvalidArgument("Indices are not strictly ordered");
+      return absl::InvalidArgumentError("Indices are not strictly ordered");
     }
 
     return absl::OkStatus();
@@ -244,10 +244,10 @@ class StagingMap : public ResourceBase {
   absl::Status check_memory_limit(std::size_t bytes)
       TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
     if (has_memory_limit() && bytes > memory_limit_) {
-      return errors::ResourceExhausted(
+      return absl::ResourceExhaustedError(absl::StrCat(
           "Attempted to insert tensors with combined size of '", bytes,
           "' bytes into Staging Area with a memory limit of '", memory_limit_,
-          "'.");
+          "'."));
     }
 
     return absl::OkStatus();
@@ -535,7 +535,7 @@ class MapStageOp : public OpKernel {
     OP_REQUIRES_OK(ctx, ctx->input("indices", &indices_tensor));
     OP_REQUIRES_OK(ctx, ctx->input_list("values", &values_tensor));
     OP_REQUIRES(ctx, key_tensor->NumElements() > 0,
-                errors::InvalidArgument("key must not be empty"));
+                absl::InvalidArgumentError("key must not be empty"));
 
     OP_REQUIRES(ctx, key_tensor->NumElements() == 1,
                 errors::InvalidArgument(
@@ -589,8 +589,9 @@ class MapUnstageOp : public OpKernel {
     OP_REQUIRES_OK(ctx, ctx->input("key", &key_tensor));
     OP_REQUIRES_OK(ctx, ctx->input("indices", &indices_tensor));
     OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(key_tensor->shape()),
-                errors::InvalidArgument("key must be an int64 scalar: ",
-                                        key_tensor->shape().DebugString()));
+                absl::InvalidArgumentError(
+                    absl::StrCat("key must be an int64 scalar: ",
+                                 key_tensor->shape().DebugString())));
 
     OP_REQUIRES_OK(ctx, map->pop(key_tensor, indices_tensor, &tuple));
 
@@ -639,8 +640,9 @@ class MapPeekOp : public OpKernel {
 
     OP_REQUIRES_OK(ctx, ctx->input("key", &key_tensor));
     OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(key_tensor->shape()),
-                errors::InvalidArgument("key must be an int64 scalar: ",
-                                        key_tensor->shape().DebugString()));
+                absl::InvalidArgumentError(
+                    absl::StrCat("key must be an int64 scalar: ",
+                                 key_tensor->shape().DebugString())));
     OP_REQUIRES_OK(ctx, ctx->input("indices", &indices_tensor));
     OP_REQUIRES_OK(ctx, map->get(key_tensor, indices_tensor, &tuple));
 

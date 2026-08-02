@@ -140,10 +140,11 @@ typedef void PJRT_PhaseCompile_C_Buffers_Destroy(
 // functionalities provided by this extension.
 typedef struct PJRT_PhaseCompile_Extension {
   PJRT_Extension_Base base;
-  PJRT_PhaseCompile_Get_Compiler* phase_compile_get_compiler;
+  PJRT_NO_DISCARD PJRT_PhaseCompile_Get_Compiler* phase_compile_get_compiler;
   PJRT_PhaseCompile_Destroy_Compiler* phase_compile_destroy_compiler;
-  PJRT_PhaseCompile_Run_Phase* phase_compile_run_phases;
-  PJRT_PhaseCompile_Get_PhaseNames* phase_compile_get_phase_names;
+  PJRT_NO_DISCARD PJRT_PhaseCompile_Run_Phase* phase_compile_run_phases;
+  PJRT_NO_DISCARD PJRT_PhaseCompile_Get_PhaseNames*
+      phase_compile_get_phase_names;
   PJRT_PhaseCompile_C_Buffers_Destroy* phase_compile_c_buffers_destroy;
 } PJRT_PhaseCompile_Extension;
 

@@ -136,15 +136,15 @@ class CSRSoftmaxGradOp : public OpKernel {
 
     OP_REQUIRES(
         ctx, softmax_matrix->dims() == grad_softmax_matrix->dims(),
-        errors::InvalidArgument(
+        absl::InvalidArgumentError(absl::StrCat(
             "Ranks of softmax and grad_softmax matrices differ: ",
-            softmax_matrix->dims(), " vs. ", grad_softmax_matrix->dims()));
+            softmax_matrix->dims(), " vs. ", grad_softmax_matrix->dims())));
 
     OP_REQUIRES(
         ctx, softmax_matrix->dims() == grad_softmax_matrix->dims(),
-        errors::InvalidArgument(
+        absl::InvalidArgumentError(absl::StrCat(
             "Ranks of softmax and grad_softmax matrices differ: ",
-            softmax_matrix->dims(), " vs. ", grad_softmax_matrix->dims()));
+            softmax_matrix->dims(), " vs. ", grad_softmax_matrix->dims())));
 
     Tensor dense_shape_t = softmax_matrix->dense_shape();
     auto host_dense_shape =
@@ -155,10 +155,10 @@ class CSRSoftmaxGradOp : public OpKernel {
 
     for (int i = 0; i < host_dense_shape.size(); ++i) {
       OP_REQUIRES(ctx, host_dense_shape(i) == host_grad_dense_shape(i),
-                  errors::InvalidArgument(
+                  absl::InvalidArgumentError(absl::StrCat(
                       "Shapes of softmax and grad_softmax matrices differ: ",
                       dense_shape_t.SummarizeValue(3), " vs. ",
-                      grad_softmax_matrix->dense_shape().SummarizeValue(3)));
+                      grad_softmax_matrix->dense_shape().SummarizeValue(3))));
     }
 
     // Allocate output shapes.  Note that since the Softmax Gradient

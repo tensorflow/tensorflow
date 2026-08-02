@@ -20,6 +20,7 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/pjrt/gpu/abi_helpers.h"
 #include "xla/pjrt/pjrt_abi_version.h"
 #include "xla/pjrt/pjrt_compiler.h"
@@ -27,11 +28,11 @@ limitations under the License.
 #include "xla/python/pjrt_ifrt/gpu_xla_executable_abi_version.h"
 #include "xla/python/pjrt_ifrt/xla_executable_abi_version.h"
 #include "xla/stream_executor/abi/executable_abi_version.h"
+#include "xla/stream_executor/abi/executable_abi_version.pb.h"
 #include "xla/stream_executor/abi/runtime_abi_version.h"
 #include "xla/stream_executor/cuda/cuda_platform_id.h"
 #include "xla/stream_executor/cuda/cuda_runtime_abi_version.h"
 #include "xla/stream_executor/semantic_version.h"
-#include "xla/tsl/platform/status_macros.h"
 
 namespace xla {
 namespace {

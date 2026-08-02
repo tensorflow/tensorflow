@@ -17,19 +17,52 @@ limitations under the License.
 #define XLA_PJRT_THREAD_POOL_ASYNC_WORK_RUNNER_H_
 
 #include <memory>
-#include <string>
 
+#include "absl/strings/string_view.h"
 #include "xla/pjrt/async_work_runner.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/threadpool.h"
+#include "tsl/platform/unbounded_work_queue.h"
 
 namespace xla {
 
-std::unique_ptr<AsyncWorkRunner> MakeThreadPoolAsyncWorkRunner(
-    tsl::thread::ThreadPool* pool);
+// AsyncWorkRunner backed by a fixed-size tsl::thread::ThreadPool.
+class ThreadPoolAsyncWorkRunner : public AsyncWorkRunner {
+ public:
+  ThreadPoolAsyncWorkRunner(tsl::Env* env, absl::string_view name,
+                            int num_threads,
+                            const tsl::ThreadOptions& thread_options = {});
 
-std::unique_ptr<AsyncWorkRunner> MakeUnboundedAsyncWorkRunner(
-    const std::string& name, const tsl::ThreadOptions& thread_options);
+  void Execute(Task task) final;
+
+  // Returns the underlying thread pool.
+  tsl::thread::ThreadPool* thread_pool() { return &pool_; }
+
+ private:
+  tsl::thread::ThreadPool pool_;
+};
+
+// AsyncWorkRunner backed by tsl::UnboundedWorkQueue that grows as needed.
+class UnboundedAsyncWorkRunner : public AsyncWorkRunner {
+ public:
+  explicit UnboundedAsyncWorkRunner(
+      absl::string_view name, const tsl::ThreadOptions& thread_options = {});
+
+  void Execute(Task task) final;
+
+  // Returns the underlying unbounded work queue.
+  tsl::UnboundedWorkQueue* unbounded_work_queue() { return &queue_; }
+
+ private:
+  tsl::UnboundedWorkQueue queue_;
+};
+
+std::unique_ptr<ThreadPoolAsyncWorkRunner> MakeThreadPoolAsyncWorkRunner(
+    tsl::Env* env, absl::string_view name, int num_threads,
+    const tsl::ThreadOptions& thread_options = {});
+
+std::unique_ptr<UnboundedAsyncWorkRunner> MakeUnboundedAsyncWorkRunner(
+    absl::string_view name, const tsl::ThreadOptions& thread_options = {});
 
 }  // namespace xla
 

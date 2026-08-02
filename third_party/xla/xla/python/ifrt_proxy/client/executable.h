@@ -109,6 +109,8 @@ class LoadedExecutable final
   absl::StatusOr<ExecuteResult> Execute(
       absl::Span<xla::ifrt::ArrayRef> args, const ExecuteOptions& options,
       std::optional<xla::ifrt::DeviceListRef> devices) override;
+  absl::StatusOr<ExecuteBundleResult> ExecuteBundle(
+      absl::Span<BundleRef> args, const ExecuteOptions& options) override;
 
   std::optional<DeviceListRef> devices() const override;
   absl::Span<xla::ifrt::Device* const> addressable_devices() const override;

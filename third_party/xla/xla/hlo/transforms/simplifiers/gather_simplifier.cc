@@ -21,6 +21,7 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/status/statusor.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/literal_util.h"
@@ -48,10 +49,16 @@ absl::StatusOr<HloInstruction*> GatherSimplifier::ExpandInstruction(
   auto* operand = gather->operands()[0];
   auto* start_indices = gather->operands()[1];
 
+  // A gather from a scalar (rank-0) operand selects that same scalar for every
+  // index, so it is equivalent to broadcasting the operand to the result shape.
+  if (operand_rank == 0) {
+    return gather->AddInstruction(
+        HloInstruction::CreateBroadcast(gather->shape(), operand, {}));
+  }
+
   // Make the start_indices a two-dimensional tensor.
-  TF_ASSIGN_OR_RETURN(
-      start_indices,
-      TransformStartIndices(start_indices, dims.index_vector_dim()));
+  ASSIGN_OR_RETURN(start_indices, TransformStartIndices(
+                                      start_indices, dims.index_vector_dim()));
 
   // Permute the slice sizes according to start_index_map and compute the new
   // output shape for the Gather op.
@@ -78,8 +85,7 @@ absl::StatusOr<HloInstruction*> GatherSimplifier::ExpandInstruction(
         dims.collapsed_slice_dims().size());
     absl::c_transform(dims.collapsed_slice_dims(), collapsed_slice_dims.begin(),
                       [](int64_t dim) { return dim + 1; });
-    TF_ASSIGN_OR_RETURN(result,
-                        ElideDegenerateDims(result, collapsed_slice_dims));
+    ASSIGN_OR_RETURN(result, ElideDegenerateDims(result, collapsed_slice_dims));
   }
 
   // Expand the start index dimensions.
@@ -91,10 +97,10 @@ absl::StatusOr<HloInstruction*> GatherSimplifier::ExpandInstruction(
     }
   }
   if (start_indices_dims.size() > 1) {
-    TF_ASSIGN_OR_RETURN(result,
-                        ExpandFirstDimIntoNDims(result, start_indices_dims));
+    ASSIGN_OR_RETURN(result,
+                     ExpandFirstDimIntoNDims(result, start_indices_dims));
   } else if (start_indices_dims.empty()) {
-    TF_ASSIGN_OR_RETURN(result, ElideDegenerateDims(result, {0}));
+    ASSIGN_OR_RETURN(result, ElideDegenerateDims(result, {0}));
   }
 
   // Move the offset dims to the final locations.
@@ -117,6 +123,14 @@ absl::StatusOr<HloInstruction*> GatherSimplifier::ExpandInstruction(
 bool GatherSimplifier::IsSimplifiedGather(const HloGatherInstruction* gather) {
   auto* start_indices = gather->operands()[1];
   const auto& dims = gather->gather_dimension_numbers();
+  // A gather from a scalar (rank-0) operand is not in simplified form; it is
+  // rewritten to a broadcast of the operand by ExpandInstruction. Returning
+  // false here also avoids dereferencing an empty offset_dims below.
+  const int64_t operand_rank =
+      dims.collapsed_slice_dims().size() + dims.offset_dims().size();
+  if (operand_rank == 0) {
+    return false;
+  }
   return start_indices->shape().dimensions().size() == 2 &&
          dims.index_vector_dim() == 1 && dims.collapsed_slice_dims().empty() &&
          *dims.offset_dims().begin() == 1 &&

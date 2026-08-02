@@ -18,6 +18,7 @@ limitations under the License.
 #include <string>
 
 #include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "xla/pjrt/pjrt_client.h"
@@ -64,7 +65,7 @@ PjrtClientFactoryRegistry::GetPjrtClient(
     absl::StrAppend(&error_msg,
                     "]. Did you forget to link with the appropriate "
                     "`pjrt_*_client_registration` library?");
-    return tsl::errors::NotFound(error_msg);
+    return absl::NotFoundError(error_msg);
   }
   return client_factory_it->second(options);
 }

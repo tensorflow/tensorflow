@@ -29,10 +29,8 @@ limitations under the License.
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/shape.h"
-#include "xla/shape_util.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
-#include "xla/tsl/platform/statusor.h"
 
 namespace xla::gpu {
 namespace {
@@ -49,7 +47,6 @@ class SolGpuCostModelStatsCollectionTest
   se::DeviceDescription device_info_ =
       TestGpuDeviceInfo::RTXA6000DeviceInfo(se::CudaComputeCapability(9, 0));
   int pointer_size_ = 8;
-  MLIRContext mlir_context_;
 };
 
 TEST_F(SolGpuCostModelStatsCollectionTest,
@@ -71,13 +68,13 @@ TEST_F(SolGpuCostModelStatsCollectionTest,
     ROOT ar-done = f32[8192,4096] all-reduce-done(ar-start)
   })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloText));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloText));
 
-  TF_ASSERT_OK_AND_ASSIGN(bool changed,
-                          SolGpuCostModelStatsCollection(
-                              device_info_, HloCostAnalysis::DefaultShapeSize,
-                              pointer_size_, &mlir_context_)
-                              .Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(
+      bool changed,
+      SolGpuCostModelStatsCollection(
+          device_info_, HloCostAnalysis::DefaultShapeSize, pointer_size_)
+          .Run(module.get()));
 
   VLOG(1) << module->ToString();
 
@@ -109,12 +106,12 @@ TEST_F(SolGpuCostModelStatsCollectionTest,
         async-start(%param), calls=%async_rs
       ROOT %rs_done = f32[512,128256] async-done(%rs_start)
   })";
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloText));
-  TF_ASSERT_OK_AND_ASSIGN(bool changed,
-                          SolGpuCostModelStatsCollection(
-                              device_info_, HloCostAnalysis::DefaultShapeSize,
-                              pointer_size_, &mlir_context_)
-                              .Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloText));
+  ASSERT_OK_AND_ASSIGN(
+      bool changed,
+      SolGpuCostModelStatsCollection(
+          device_info_, HloCostAnalysis::DefaultShapeSize, pointer_size_)
+          .Run(module.get()));
   VLOG(1) << module->ToString();
   EXPECT_FALSE(changed);
   HloInstruction* rs_start = FindInstruction(module.get(), "rs_start");

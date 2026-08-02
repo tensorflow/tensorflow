@@ -61,10 +61,10 @@ class CSRSparseMatrixAddFunctor {
     if (a_tensor_shape.dims() == 3) {
       if ((a_tensor_shape.dims() != b_tensor_shape.dims()) ||
           (a_tensor_shape.dim_size(0) != b_tensor_shape.dim_size(0))) {
-        return errors::InvalidArgument(
-            "Incompatible shapes of a and b, a.shape == ",
-            a_tensor_shape.DebugString(),
-            ", b.shape == ", b_tensor_shape.DebugString());
+        return absl::InvalidArgumentError(
+            absl::StrCat("Incompatible shapes of a and b, a.shape == ",
+                         a_tensor_shape.DebugString(),
+                         ", b.shape == ", b_tensor_shape.DebugString()));
       }
     }
     const int rank = a_tensor_shape.dims();
@@ -72,10 +72,10 @@ class CSRSparseMatrixAddFunctor {
          b_tensor_shape.dim_size(rank - 2)) ||
         (a_tensor_shape.dim_size(rank - 1) !=
          b_tensor_shape.dim_size(rank - 1))) {
-      return errors::InvalidArgument(
-          "Incompatible shapes of a and b, a.shape == ",
-          a_tensor_shape.DebugString(),
-          ", b.shape == ", b_tensor_shape.DebugString());
+      return absl::InvalidArgumentError(
+          absl::StrCat("Incompatible shapes of a and b, a.shape == ",
+                       a_tensor_shape.DebugString(),
+                       ", b.shape == ", b_tensor_shape.DebugString()));
     }
 
     const int batch_size = a.batch_size();
@@ -218,14 +218,14 @@ class CSRAddOp : public OpKernel {
 
     const Tensor& alpha_t = ctx->input(2);
     const Tensor& beta_t = ctx->input(3);
-    OP_REQUIRES(
-        ctx, TensorShapeUtils::IsScalar(alpha_t.shape()),
-        errors::InvalidArgument("Expected alpha to be a scalar, saw shape: ",
-                                alpha_t.shape().DebugString()));
-    OP_REQUIRES(
-        ctx, TensorShapeUtils::IsScalar(beta_t.shape()),
-        errors::InvalidArgument("Expected beta to be a scalar, saw shape: ",
-                                beta_t.shape().DebugString()));
+    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(alpha_t.shape()),
+                absl::InvalidArgumentError(
+                    absl::StrCat("Expected alpha to be a scalar, saw shape: ",
+                                 alpha_t.shape().DebugString())));
+    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(beta_t.shape()),
+                absl::InvalidArgumentError(
+                    absl::StrCat("Expected beta to be a scalar, saw shape: ",
+                                 beta_t.shape().DebugString())));
 
     const T host_alpha = alpha_t.scalar<T>()();
     const T host_beta = beta_t.scalar<T>()();
@@ -341,8 +341,8 @@ struct CSRSparseMatrixAdd<GPUDevice, T>
         descrC_.descr(), c_row_ptr.data(), output_nnz, workspace));
 
     if (*output_nnz < 0) {
-      return errors::Internal(
-          "CSRAdd: CsrgeamNnz returned nnzTotalDevHostPtr < 0: ", *output_nnz);
+      return absl::InternalError(absl::StrCat(
+          "CSRAdd: CsrgeamNnz returned nnzTotalDevHostPtr < 0: ", *output_nnz));
     }
     return absl::OkStatus();
   }

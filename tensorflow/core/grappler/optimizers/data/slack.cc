@@ -110,8 +110,8 @@ absl::Status Slack::OptimizeAndCollectStats(Cluster* cluster,
                                             GraphDef* output,
                                             OptimizationStats* stats) {
   if (slack_period_ < 1)
-    return errors::InvalidArgument("Invalid `slack_period` parameter: ",
-                                   slack_period_);
+    return absl::InvalidArgumentError(
+        absl::StrCat("Invalid `slack_period` parameter: ", slack_period_));
 
   *output = item.graph;
   MutableGraphView graph(output);
@@ -123,9 +123,9 @@ absl::Status Slack::OptimizeAndCollectStats(Cluster* cluster,
     return absl::OkStatus();
 
   if (item.fetch.size() != 1) {
-    return errors::InvalidArgument(
-        "Expected only one fetch node but there were ", item.fetch.size(), ": ",
-        absl::StrJoin(item.fetch, ", "));
+    return absl::InvalidArgumentError(
+        absl::StrCat("Expected only one fetch node but there were ",
+                     item.fetch.size(), ": ", absl::StrJoin(item.fetch, ", ")));
   }
   // Walks the input pipeline backwards from the fetch node to find the last
   // PrefetchDataset node in the pipeline.

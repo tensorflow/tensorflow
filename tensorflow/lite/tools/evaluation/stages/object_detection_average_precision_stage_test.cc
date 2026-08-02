@@ -14,8 +14,6 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/tools/evaluation/stages/object_detection_average_precision_stage.h"
 
-#include <stdint.h>
-
 #include <gtest/gtest.h>
 #include "tensorflow/lite/c/c_api_types.h"
 #include "tensorflow/lite/tools/evaluation/proto/evaluation_config.pb.h"
@@ -195,6 +193,49 @@ TEST(ObjectDetectionAveragePrecisionStage, DefaultIoUThresholds) {
       detection_metrics.individual_average_precisions(0).iou_threshold(), 0.5);
   EXPECT_FLOAT_EQ(
       detection_metrics.individual_average_precisions(9).iou_threshold(), 0.95);
+}
+
+TEST(ObjectDetectionAveragePrecisionStage, NegativeClassId) {
+  EvaluationStageConfig config = GetAveragePrecisionStageConfig(3);
+  ObjectDetectionAveragePrecisionStage stage =
+      ObjectDetectionAveragePrecisionStage(config);
+  EXPECT_EQ(stage.Init(), kTfLiteOk);
+
+  ObjectDetectionResult ground_truth;
+  ground_truth.set_image_name("some_image.jpg");
+  auto* object = ground_truth.add_objects();
+  object->set_class_id(-1);
+  auto* bbox = object->mutable_bounding_box();
+  bbox->set_normalized_top(0.5);
+  bbox->set_normalized_bottom(1.0);
+  bbox->set_normalized_left(0.5);
+  bbox->set_normalized_right(1.0);
+
+  stage.SetEvalInputs(ObjectDetectionResult(), ground_truth);
+  EXPECT_EQ(stage.Run(), kTfLiteError);
+
+  ObjectDetectionResult predicted;
+  auto* pred_object = predicted.add_objects();
+  pred_object->set_class_id(-1);
+  pred_object->set_score(0.8);
+  auto* pred_bbox = pred_object->mutable_bounding_box();
+  pred_bbox->set_normalized_top(0.5);
+  pred_bbox->set_normalized_bottom(1.0);
+  pred_bbox->set_normalized_left(0.5);
+  pred_bbox->set_normalized_right(1.0);
+
+  stage.SetEvalInputs(predicted, GetGroundTruthDetectionResult());
+  EXPECT_EQ(stage.Run(), kTfLiteError);
+
+  // Verify internal state remains unmutated and fully functional after error
+  stage.SetEvalInputs(GetGroundTruthDetectionResult(),
+                      GetGroundTruthDetectionResult());
+  EXPECT_EQ(stage.Run(), kTfLiteOk);
+  EvaluationStageMetrics metrics = stage.LatestMetrics();
+  EXPECT_FLOAT_EQ(metrics.process_metrics()
+                      .object_detection_average_precision_metrics()
+                      .overall_mean_average_precision(),
+                  1.0);
 }
 
 }  // namespace

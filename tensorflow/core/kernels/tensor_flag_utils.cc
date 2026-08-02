@@ -50,24 +50,24 @@ absl::Status ValidateSparseMatrixShardingConfig(const Tensor& config) {
   auto config_matrix = config.matrix<float>();
   for (int i = 0; i < config.dim_size(0); ++i) {
     if (0 > config_matrix(i, 0)) {
-      return errors::InvalidArgument(
-          "First column of fraction_rows_per_thread_config "
-          "should "
-          "have non-negative values but found ",
-          config_matrix(i, 0), " in row ", i);
+      return absl::InvalidArgumentError(
+          absl::StrCat("First column of fraction_rows_per_thread_config "
+                       "should "
+                       "have non-negative values but found ",
+                       config_matrix(i, 0), " in row ", i));
     }
     if (0 > config_matrix(i, 1)) {
-      return errors::InvalidArgument(
-          "Second column of fraction_rows_per_thread_config "
-          "should "
-          "have non-negative values but found ",
-          config_matrix(i, 1), " in row ", i);
+      return absl::InvalidArgumentError(
+          absl::StrCat("Second column of fraction_rows_per_thread_config "
+                       "should "
+                       "have non-negative values but found ",
+                       config_matrix(i, 1), " in row ", i));
     }
     if (!(0 < config_matrix(i, 2) && config_matrix(i, 2) <= 1)) {
-      return errors::InvalidArgument(
-          "Last column of fraction_rows_per_thread_config should "
-          "have values in the range (0, 1] but found ",
-          config_matrix(i, 2), " in row ", i);
+      return absl::InvalidArgumentError(
+          absl::StrCat("Last column of fraction_rows_per_thread_config should "
+                       "have values in the range (0, 1] but found ",
+                       config_matrix(i, 2), " in row ", i));
     }
   }
   return absl::OkStatus();
@@ -115,17 +115,17 @@ absl::Status ValidateScalarQuantityShardingConfig(const Tensor& config) {
   auto config_matrix = config.matrix<float>();
   for (int i = 0; i < config.dim_size(0); ++i) {
     if (0 > config_matrix(i, 0)) {
-      return errors::InvalidArgument(
-          "First column of fraction_rows_per_thread_config "
-          "should "
-          "have non-negative values but found ",
-          config_matrix(i, 0), " in row ", i);
+      return absl::InvalidArgumentError(
+          absl::StrCat("First column of fraction_rows_per_thread_config "
+                       "should "
+                       "have non-negative values but found ",
+                       config_matrix(i, 0), " in row ", i));
     }
     if (!(0 < config_matrix(i, 1) && config_matrix(i, 1) <= 1)) {
-      return errors::InvalidArgument(
-          "Last column of fraction_rows_per_thread_config should "
-          "have values in the range (0, 1] but found ",
-          config_matrix(i, 1), " in row ", i);
+      return absl::InvalidArgumentError(
+          absl::StrCat("Last column of fraction_rows_per_thread_config should "
+                       "have values in the range (0, 1] but found ",
+                       config_matrix(i, 1), " in row ", i));
     }
   }
   return absl::OkStatus();
@@ -170,20 +170,22 @@ Tindices GetPowerBucket(const Tindices value, const Tindices bucket_size) {
   template int64 FindConfigValueForKey<int64, TypeIndex>(                 \
       const TTypes<int64_t>::ConstMatrix& config_mat, const TypeIndex key);
 
-REGISTER_SPARSE_UTIL_FUNCTIONS(int32);
-REGISTER_SPARSE_UTIL_FUNCTIONS(int64);
-REGISTER_SPARSE_UTIL_FUNCTIONS(uint8);
-REGISTER_SPARSE_UTIL_FUNCTIONS(uint16);
-REGISTER_SPARSE_UTIL_FUNCTIONS(uint32);
-REGISTER_SPARSE_UTIL_FUNCTIONS(uint64);
+REGISTER_SPARSE_UTIL_FUNCTIONS(int32_t);
+REGISTER_SPARSE_UTIL_FUNCTIONS(int64_t);
+REGISTER_SPARSE_UTIL_FUNCTIONS(uint8_t);
+REGISTER_SPARSE_UTIL_FUNCTIONS(uint16_t);
+REGISTER_SPARSE_UTIL_FUNCTIONS(uint32_t);
+REGISTER_SPARSE_UTIL_FUNCTIONS(uint64_t);
 
-template int32 GetLinearBucket(const int32 value, const int32 bucket_size);
+template int32_t GetLinearBucket(const int32_t value,
+                                 const int32_t bucket_size);
 
-template int64 GetLinearBucket(const int64 value, const int64 bucket_size);
+template int64_t GetLinearBucket(const int64_t value,
+                                 const int64_t bucket_size);
 
-template int32 GetPowerBucket(const int32 value, const int32 bucket_size);
+template int32_t GetPowerBucket(const int32_t value, const int32_t bucket_size);
 
-template int64 GetPowerBucket(const int64 value, const int64 bucket_size);
+template int64_t GetPowerBucket(const int64_t value, const int64_t bucket_size);
 
 }  // namespace tensor_flag_utils
 }  // namespace tensorflow

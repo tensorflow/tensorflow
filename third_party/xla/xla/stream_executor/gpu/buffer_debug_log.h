@@ -21,6 +21,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/status/statusor.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/gpu/runtime/buffer_debug_log.pb.h"
 #include "xla/backends/gpu/runtime/buffer_debug_log_structs.h"
 #include "xla/stream_executor/device_address.h"
@@ -71,8 +72,8 @@ class BufferDebugLog : public BufferDebugLogBase {
   // small to hold any entries.
   static absl::StatusOr<BufferDebugLog<Entry>> CreateOnDevice(
       Stream& stream, DeviceAddress<uint8_t> log_buffer) {
-    TF_ASSIGN_OR_RETURN(auto memory, BufferDebugLogBase::CreateOnDevice(
-                                         stream, log_buffer, sizeof(Entry)));
+    ASSIGN_OR_RETURN(auto memory, BufferDebugLogBase::CreateOnDevice(
+                                      stream, log_buffer, sizeof(Entry)));
     return BufferDebugLog<Entry>(memory);
   }
 
@@ -103,11 +104,17 @@ class BufferDebugLog : public BufferDebugLogBase {
   // the log.
   absl::StatusOr<std::vector<Entry>> ReadFromDevice(Stream& stream) const {
     std::vector<Entry> entries(memory_.size() / sizeof(Entry), Entry{});
-    TF_ASSIGN_OR_RETURN(size_t initialized_entries,
-                        BufferDebugLogBase::ReadFromDevice(
-                            stream, memory_, sizeof(Entry), entries.data()));
+    ASSIGN_OR_RETURN(size_t initialized_entries,
+                     BufferDebugLogBase::ReadFromDevice(
+                         stream, memory_, sizeof(Entry), entries.data()));
     entries.resize(initialized_entries);
     return entries;
+  }
+
+  // Clears the log by resetting its header on the device.
+  absl::Status Clear(Stream& stream) {
+    return BufferDebugLogBase::CreateOnDevice(stream, memory_, sizeof(Entry))
+        .status();
   }
 
   // Returns a view of the `BufferDebugLogHeader`.

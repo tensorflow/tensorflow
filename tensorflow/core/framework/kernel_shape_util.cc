@@ -25,11 +25,12 @@ absl::Status GetWindowedOutputSizeVerbose(
     int64_t stride, Padding padding_type, int64_t* output_size,
     int64_t* padding_before, int64_t* padding_after) {
   if (stride <= 0) {
-    return errors::InvalidArgument("Stride must be > 0, but got ", stride);
+    return absl::InvalidArgumentError(
+        absl::StrCat("Stride must be > 0, but got ", stride));
   }
   if (dilation_rate < 1) {
-    return errors::InvalidArgument("Dilation rate must be >= 1, but got ",
-                                   dilation_rate);
+    return absl::InvalidArgumentError(
+        absl::StrCat("Dilation rate must be >= 1, but got ", dilation_rate));
   }
 
   // See also the parallel implementation in GetWindowedOutputSizeFromDimsV2.
@@ -56,11 +57,10 @@ absl::Status GetWindowedOutputSizeVerbose(
       break;
   }
   if (*output_size < 0) {
-    return errors::InvalidArgument(
-        "Computed output size would be negative: ", *output_size,
-        " [input_size: ", input_size,
-        ", effective_filter_size: ", effective_filter_size,
-        ", stride: ", stride, "]");
+    return absl::InvalidArgumentError(
+        absl::StrCat("Computed output size would be negative: ", *output_size,
+                     " [input_size: ", input_size, ", effective_filter_size: ",
+                     effective_filter_size, ", stride: ", stride, "]"));
   }
   return absl::OkStatus();
 }
@@ -70,7 +70,7 @@ absl::Status GetWindowedOutputSize(int64_t input_size, int64_t filter_size,
                                    Padding padding_type, int64_t* output_size,
                                    int64_t* padding_size) {
   if (padding_type == Padding::EXPLICIT) {
-    return errors::Internal(
+    return absl::InternalError(
         "GetWindowedOutputSize does not handle EXPLICIT padding; call "
         "GetWindowedOutputSizeVerbose instead");
   }

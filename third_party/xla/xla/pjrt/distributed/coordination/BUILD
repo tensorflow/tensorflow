@@ -1,3 +1,18 @@
+# Copyright 2026 The TensorFlow Authors. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
+
 load("//xla:xla.default.bzl", "xla_cc_test")
 load("//xla/tsl:tsl.bzl", "if_oss", "internal_visibility")
 load("//xla/tsl/platform:build_config.bzl", "tf_proto_library")
@@ -11,12 +26,23 @@ package(
     licenses = ["notice"],
 )
 
+tf_proto_library(
+    name = "coordination_service_proto",
+    srcs = ["coordination_service.proto"],
+    has_services = 1,
+    create_grpc_library = True,
+    create_java_proto = False,
+    create_kotlin_proto = False,
+    create_service = True,
+    visibility = ["//visibility:public"],
+)
+
 cc_library(
     name = "coordination_service_error_util",
     srcs = ["coordination_service_error_util.cc"],
     hdrs = ["coordination_service_error_util.h"],
     deps = [
-        "//xla/tsl/protobuf:coordination_service_proto_cc",
+        ":coordination_service_proto_cc",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:cord",
@@ -30,8 +56,8 @@ xla_cc_test(
     srcs = ["coordination_service_error_util_test.cc"],
     deps = [
         ":coordination_service_error_util",
+        ":coordination_service_proto_cc",
         "//xla/tsl/platform:test",
-        "//xla/tsl/protobuf:coordination_service_proto_cc",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest_main",
@@ -42,9 +68,9 @@ cc_library(
     name = "coordination_client",
     hdrs = ["coordination_client.h"],
     deps = [
+        ":coordination_service_proto_cc",
         "//xla/tsl/distributed_runtime:call_options",
         "//xla/tsl/platform:status",
-        "//xla/tsl/protobuf:coordination_service_proto_cc",
     ],
 )
 
@@ -54,14 +80,14 @@ cc_library(
     hdrs = ["coordination_service.h"],
     deps = [
         ":coordination_service_error_util",
+        ":coordination_service_proto_cc",
         ":key_value_store",
-        "//xla/service:global_device_id",
+        "//xla/runtime:device_id",
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:status",
+        "//xla/tsl/platform:status_macros",
         "//xla/tsl/protobuf:coordination_config_proto_cc",
-        "//xla/tsl/protobuf:coordination_service_proto_cc",
-        "//xla/tsl/util:device_name_utils",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -81,12 +107,6 @@ cc_library(
     ],
 )
 
-tf_proto_library(
-    name = "test_device_proto",
-    testonly = 1,
-    srcs = ["test_device.proto"],
-)
-
 xla_cc_test(
     name = "coordination_service_test",
     srcs = ["coordination_service_test.cc"],
@@ -95,23 +115,21 @@ xla_cc_test(
         "no_oss",
     ]),  # b/169705709, no protobuf matchers in OSS.
     deps = [
-        ":coordination_client",
         ":coordination_service",
-        ":coordination_service_error_util",
-        ":test_device_proto_cc",
-        "//xla/tsl/distributed_runtime:call_options",
+        ":coordination_service_proto_cc",
+        "//xla/runtime:device_id",
         "//xla/tsl/lib/core:status_test_util",
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:status",
         "//xla/tsl/platform:test",
         "//xla/tsl/protobuf:coordination_config_proto_cc",
-        "//xla/tsl/protobuf:coordination_service_proto_cc",
         "//xla/tsl/util/proto:proto_matchers",
-        "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/time",
@@ -128,6 +146,7 @@ cc_library(
         ":coordination_client",
         ":coordination_service",
         ":coordination_service_error_util",
+        ":coordination_service_proto_cc",
         "//xla:util",
         "//xla/runtime:device_id",
         "//xla/tsl/distributed_runtime:call_options",
@@ -136,7 +155,6 @@ cc_library(
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:status",
         "//xla/tsl/protobuf:coordination_config_proto_cc",
-        "//xla/tsl/protobuf:coordination_service_proto_cc",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
@@ -161,6 +179,7 @@ xla_cc_test(
         ":coordination_client",
         ":coordination_service_agent",
         ":coordination_service_error_util",
+        ":coordination_service_proto_cc_impl",
         "//xla/tsl/distributed_runtime:call_options",
         "//xla/tsl/lib/core:status_test_util",
         "//xla/tsl/platform:env",
@@ -168,7 +187,6 @@ xla_cc_test(
         "//xla/tsl/platform:statusor",
         "//xla/tsl/platform:test",
         "//xla/tsl/protobuf:coordination_config_proto_cc_impl",
-        "//xla/tsl/protobuf:coordination_service_proto_cc_impl",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/memory",
@@ -190,16 +208,17 @@ cc_library(
         ":coordination_service",
         ":coordination_service_agent",
         ":coordination_service_error_util",
+        ":coordination_service_proto_cc",
+        "//xla/service:global_device_id",
         "//xla/tsl/platform:status",
-        "//xla/tsl/protobuf:coordination_service_proto_cc",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/time",
         "@com_google_protobuf//:protobuf_lite",
-        "@tsl//tsl/platform:protobuf",
         "@tsl//tsl/platform:thread_annotations",
     ],
 )
@@ -209,7 +228,7 @@ cc_library(
     srcs = ["key_value_store.cc"],
     hdrs = ["key_value_store.h"],
     deps = [
-        "//xla/tsl/protobuf:coordination_service_proto_cc",
+        ":coordination_service_proto_cc",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:btree",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -231,9 +250,9 @@ xla_cc_test(
         "no_oss",
     ]),  # no status matchers in OSS.
     deps = [
+        ":coordination_service_proto_cc",
         ":key_value_store",
         "//xla/tsl/platform:test",
-        "//xla/tsl/protobuf:coordination_service_proto_cc",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:string_view",
@@ -246,12 +265,13 @@ xla_cc_test(
     name = "client_server_test",
     size = "medium",
     srcs = ["client_server_test.cc"],
-    shard_count = 4,
+    # shard_count = 4,
     tags = if_oss(["not_run:arm"]),
     deps = [
         ":coordination_client",
         ":coordination_service",
         ":coordination_service_agent",
+        ":coordination_service_proto_cc_impl",
         ":grpc_coordination_client",
         ":grpc_coordination_service_impl",
         "//xla/tsl/distributed_runtime/rpc:async_service_interface",
@@ -259,15 +279,18 @@ xla_cc_test(
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:status",
+        "//xla/tsl/platform:status_macros",
         "//xla/tsl/platform:test",
         "//xla/tsl/protobuf:coordination_config_proto_cc_impl",
-        "//xla/tsl/protobuf:coordination_service_proto_cc_impl",
         "@com_github_grpc_grpc//:grpc++",
+        "@com_google_absl//absl/functional:any_invocable",
         "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_matchers",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/time",
@@ -290,6 +313,7 @@ cc_library(
     hdrs = ["grpc_coordination_client.h"],
     deps = [
         ":coordination_client",
+        ":coordination_service_proto_cc",
         "//xla/tsl/distributed_runtime:call_options",
         "//xla/tsl/distributed_runtime/rpc:grpc_channel",
         "//xla/tsl/distributed_runtime/rpc:grpc_client_cq_tag",
@@ -297,11 +321,8 @@ cc_library(
         "//xla/tsl/distributed_runtime/rpc:grpc_util",
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:status",
-        "//xla/tsl/protobuf:coordination_service_proto_cc",
         "@com_github_grpc_grpc//:grpc++",
-        "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/log",
-        "@com_google_absl//absl/synchronization",
         "@tsl//tsl/platform:protobuf",
     ],
 )
@@ -313,13 +334,13 @@ cc_library(
     deps = [
         ":coordination_service",
         ":coordination_service_agent",
+        ":coordination_service_cc_grpc_proto",
+        ":coordination_service_proto_cc",
         ":coordination_service_rpc_handler",
         "//xla/tsl/distributed_runtime/rpc:async_service_interface",
         "//xla/tsl/distributed_runtime/rpc:grpc_call",
         "//xla/tsl/distributed_runtime/rpc:grpc_util",
         "//xla/tsl/platform:env",
-        "//xla/tsl/protobuf:coordination_service_cc_grpc_proto",
-        "//xla/tsl/protobuf:coordination_service_proto_cc",
         "@com_github_grpc_grpc//:grpc++",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/status",

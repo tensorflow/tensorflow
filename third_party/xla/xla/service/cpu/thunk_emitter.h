@@ -159,6 +159,9 @@ class ThunkEmitter {
   absl::StatusOr<ThunkSequence> EmitRngGetAndUpdateStateThunk(
       const HloInstruction* instruction);
 
+  absl::StatusOr<ThunkSequence> EmitRngSeedThunk(
+      const HloInstruction* instruction);
+
   absl::StatusOr<ThunkSequence> EmitStochasticConvertThunk(
       const HloInstruction* instruction);
 
@@ -210,9 +213,6 @@ class ThunkEmitter {
       const HloInstruction* instruction);
 
   absl::StatusOr<ThunkSequence> EmitSliceThunk(
-      const HloInstruction* instruction);
-
-  absl::StatusOr<ThunkSequence> EmitDynamicUpdateSliceThunk(
       const HloInstruction* instruction);
 
   absl::StatusOr<ThunkSequence> EmitSortThunk(
@@ -279,6 +279,9 @@ class ThunkEmitter {
 
   ParallelFusionEmitter parallel_fusion_emitter_;
 };
+
+bool FusionRoutesToMlirEmitter(const HloModuleConfig& config,
+                               const HloFusionInstruction* fusion);
 
 }  // namespace xla::cpu
 

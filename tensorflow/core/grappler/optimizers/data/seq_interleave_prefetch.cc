@@ -192,7 +192,7 @@ absl::Status CreateAndAppendPrefetchNode(MutableGraphView* graph,
   // 1. Find the position for the `prefetch` node.
   const NodeDef* add_after = get_last_dataset_op_node();
   if (add_after == nullptr) {
-    return errors::NotFound(
+    return absl::NotFoundError(
         "Could not find any dataset node to append `Prefetch` at its output in "
         "`seq_interleave_prefetch` rewrite");
   }

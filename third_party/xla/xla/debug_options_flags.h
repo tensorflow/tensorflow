@@ -92,6 +92,12 @@ DebugOptions GetDebugOptionsFromFlags();
 // Gets a DebugOptions proto that reflects the defaults as if no flags were set.
 DebugOptions DefaultDebugOptionsIgnoringFlags();
 
+// Processes DebugOptions by starting with options from a proto (if provided) or
+// default options, and then applying overrides from the XLA_FLAGS environment
+// variable.
+DebugOptions GetDebugOptionsFromProtoAndFlags(
+    DebugOptions* proto_debug_options);
+
 // Checks whether the pass fuel was explicitly set.
 bool PassFuelIsSet(absl::string_view pass);
 

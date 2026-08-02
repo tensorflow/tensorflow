@@ -1,3 +1,17 @@
+// Copyright 2026 The TensorFlow Authors. All Rights Reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// ==============================================================================
 // RUN: tf-tfrt-opt -split-input-file -verify-diagnostics -lower-to-ifrt-restore-variable %s | FileCheck %s
 
 
@@ -10,7 +24,7 @@
 // CHECK-NEXT:     [[NAME:%.*]] = "tf.Const"() <{value = dense<"y"> : tensor<1x!tf_type.string>}> : () -> tensor<1x!tf_type.string>
 // CHECK-NEXT:     [[HANDLEY:%.*]] = "tf.VarHandleOp"() <{container = "", shared_name = "y"}> : () -> tensor<!tf_type.resource<tensor<3x1xf32>>>
 // CHECK-NEXT:     "tf.IfrtRestoreVariableOp"([[PREFIX]], [[NAME]], [[SLICE]], [[HANDLEY]])
-// CHECK-SAME:        {restored_dtypes = [f32], truncate_in_cast = array<i1: false>}
+// CHECK-SAME:        {restored_dtypes = [f32], returned_tensor_names = [], truncate_in_cast = array<i1: false>}
 // CHECK-NOT:       "tf.RestoreV2"
 // CHECK-NEXT:     return
 
@@ -35,7 +49,7 @@ module {
 // CHECK-NEXT:     [[NAME:%.*]] = "tf.Const"() <{value = dense<"y"> : tensor<1x!tf_type.string>}> : () -> tensor<1x!tf_type.string>
 // CHECK-NEXT:     [[HANDLEY:%.*]] = "tf.VarHandleOp"() <{container = "", shared_name = "y"}> : () -> tensor<!tf_type.resource<tensor<3x1xf32>>>
 // CHECK-NEXT:     "tf.IfrtRestoreVariableOp"([[PREFIX]], [[NAME]], [[SLICE]], [[HANDLEY]])
-// CHECK-SAME:        {restored_dtypes = [f32], truncate_in_cast = array<i1: false>}
+// CHECK-SAME:        {restored_dtypes = [f32], returned_tensor_names = [], truncate_in_cast = array<i1: false>}
 // CHECK-NOT:       "tf.RestoreV2"
 // CHECK-NEXT:     return
 
@@ -62,7 +76,7 @@ module {
 // CHECK-NEXT:     [[HANDLEY:%.*]] = "tf.VarHandleOp"() <{container = "x", shared_name = "y"}> : () -> tensor<!tf_type.resource<tensor<3x1xf32>>>
 // CHECK-NEXT:     [[HANDLEZ:%.*]] = "tf.VarHandleOp"() <{container = "x", shared_name = "z"}> : () -> tensor<!tf_type.resource<tensor<1x3xf32>>>
 // CHECK-NEXT:     "tf.IfrtRestoreVariableOp"([[PREFIX]], [[NAME]], [[SLICE]], [[HANDLEY]], [[HANDLEZ]])
-// CHECK-SAME:        {restored_dtypes = [f32, f32], truncate_in_cast = array<i1: false, false>}
+// CHECK-SAME:        {restored_dtypes = [f32, f32], returned_tensor_names = [], truncate_in_cast = array<i1: false, false>}
 // CHECK-NOT:       "tf.RestoreV2"
 // CHECK-NEXT:     return
 
@@ -97,15 +111,27 @@ module {
 }
 
 // -----
-// Unsupported OP from RestoreV2 to AssignVariableOp is an error.
+//  Restored tensor is consumed by an op other than AssignVariableOp, it is returned as an output by IfrtRestoreVariableOp.
+
+// CHECK-LABEL: func.func @restore_with_consumer() {
+// CHECK-NEXT:   %cst = "tf.Const"() <{value = dense<"restore_ariables"> : tensor<!tf_type.string>}> : () -> tensor<!tf_type.string>
+// CHECK-NEXT:   %cst_0 = "tf.Const"() <{value = dense<""> : tensor<1x!tf_type.string>}> : () -> tensor<1x!tf_type.string>
+// CHECK-NEXT:   %cst_1 = "tf.Const"() <{value = dense<"y"> : tensor<1x!tf_type.string>}> : () -> tensor<1x!tf_type.string>
+// CHECK-NEXT:   %0 = "tf.VarHandleOp"() <{container = "", shared_name = "y"}> : () -> tensor<!tf_type.resource<tensor<3x1xf32>>>
+// CHECK-NEXT:   %1 = "tf.IfrtRestoreVariableOp"(%cst, %cst_1, %cst_0, %0) <{restored_dtypes = [f32], returned_tensor_names = ["y"], truncate_in_cast = array<i1: false>}> : (tensor<!tf_type.string>, tensor<1x!tf_type.string>, tensor<1x!tf_type.string>, tensor<!tf_type.resource<tensor<3x1xf32>>>) -> tensor<3x1xf32>
+// CHECK-NEXT:   %2 = "tf.ReluOp"(%1) : (tensor<3x1xf32>) -> tensor<3x1xf32>
+// CHECK-NEXT:   %3 = "tf.VarHandleOp"() <{container = "x", shared_name = "y"}> : () -> tensor<!tf_type.resource<tensor<3x1xf32>>>
+// CHECK-NEXT:   "tf.AssignVariableOp"(%3, %2) : (tensor<!tf_type.resource<tensor<3x1xf32>>>, tensor<3x1xf32>) -> ()
+// CHECK-NOT: "tf.RestoreV2"
+// CHECK-NEXT: return
+
 
 module {
-  func.func @unassigned_restore_return_error() {
+  func.func @restore_with_consumer() {
     %cst = "tf.Const"() <{value = dense<"restore_ariables"> : tensor<!tf_type.string>}> : () -> tensor<!tf_type.string>
-    %cst_0 = "tf.Const"() <{value = dense<["", ""]> : tensor<2x!tf_type.string>}> : () -> tensor<2x!tf_type.string>
-    %cst_1 = "tf.Const"() <{value = dense<["y", "z"]> : tensor<2x!tf_type.string>}> : () -> tensor<2x!tf_type.string>
-    %0 = "tf.RestoreV2"(%cst, %cst_1, %cst_0): (tensor<!tf_type.string>, tensor<2x!tf_type.string>, tensor<2x!tf_type.string>) -> (tensor<3x1xf32>)
-    //expected-error@below {{'tf.ReluOp' op is not a supported user of RestoreV2Op}}
+    %cst_0 = "tf.Const"() <{value = dense<""> : tensor<1x!tf_type.string>}> : () -> tensor<1x!tf_type.string>
+    %cst_1 = "tf.Const"() <{value = dense<"y"> : tensor<1x!tf_type.string>}> : () -> tensor<1x!tf_type.string>
+    %0 = "tf.RestoreV2"(%cst, %cst_1, %cst_0): (tensor<!tf_type.string>, tensor<1x!tf_type.string>, tensor<1x!tf_type.string>) -> tensor<3x1xf32>
     %2 = "tf.ReluOp"(%0) : (tensor<3x1xf32>) -> tensor<3x1xf32>
     %1 = "tf.VarHandleOp"() <{container = "x", shared_name = "y"}> : () -> tensor<!tf_type.resource<tensor<3x1xf32>>>
     "tf.AssignVariableOp"(%1, %2) : (tensor<!tf_type.resource<tensor<3x1xf32>>>, tensor<3x1xf32>) -> ()
@@ -123,7 +149,7 @@ module {
 // CHECK-NEXT:     [[NAME:%.*]] = "tf.Const"() <{value = dense<"y"> : tensor<1x!tf_type.string>}> : () -> tensor<1x!tf_type.string>
 // CHECK-NEXT:     [[HANDLEY:%.*]] = "tf.VarHandleOp"() <{container = "", shared_name = "y"}> : () -> tensor<!tf_type.resource<tensor<3x1xbf16>>>
 // CHECK-NEXT:     "tf.IfrtRestoreVariableOp"([[PREFIX]], [[NAME]], [[SLICE]], [[HANDLEY]])
-// CHECK-SAME:        {restored_dtypes = [f32], truncate_in_cast = array<i1: false>}
+// CHECK-SAME:        {restored_dtypes = [f32], returned_tensor_names = [], truncate_in_cast = array<i1: false>}
 // CHECK-NOT:       "tf.RestoreV2"
 // CHECK-NEXT:     return
 
@@ -133,9 +159,164 @@ module {
     %cst_0 = "tf.Const"() <{value = dense<""> : tensor<1x!tf_type.string>}> : () -> tensor<1x!tf_type.string>
     %cst_1 = "tf.Const"() <{value = dense<"y"> : tensor<1x!tf_type.string>}> : () -> tensor<1x!tf_type.string>
     %0 = "tf.RestoreV2"(%cst, %cst_1, %cst_0): (tensor<!tf_type.string>, tensor<1x!tf_type.string>, tensor<1x!tf_type.string>) -> tensor<3x1xf32>
-    %1 = "tf.Cast"(%0) <{truncate = false}> : (tensor<3x1xf32>) -> tensor<3x1xbf16>
+    %1 = "tf.Cast"(%0) <{Truncate = false}> : (tensor<3x1xf32>) -> tensor<3x1xbf16>
     %2 = "tf.VarHandleOp"() <{container = "", shared_name = "y"}> : () -> tensor<!tf_type.resource<tensor<3x1xbf16>>>
     "tf.AssignVariableOp"(%2, %1) : (tensor<!tf_type.resource<tensor<3x1xbf16>>>, tensor<3x1xbf16>) -> ()
+    return
+  }
+}
+
+// -----
+// variable and table lookup
+// CHECK-LABEL: func.func @restore_var_and_table()
+// CHECK-NEXT:  [[PREFIX:%.*]] = "tf.Const"() <{value = dense<"model/foo"> : tensor<!tf_type.string>}> : () -> tensor<!tf_type.string>
+// CHECK-NEXT:  [[NAMES:%.*]] = "tf.Const"() <{value = dense<["var1", "table1_keys", "table1_vals"]> : tensor<3x!tf_type.string>}> : () -> tensor<3x!tf_type.string>
+// CHECK-NEXT:  [[SLICE:%.*]] = "tf.Const"() <{value = dense<""> : tensor<3x!tf_type.string>}> : () -> tensor<3x!tf_type.string>
+// CHECK-NEXT:  [[VAR1:%.*]] = "tf.VarHandleOp"() <{container = "", shared_name = "var1"}> : () -> tensor<!tf_type.resource<tensor<*xi32>>>
+// CHECK-NEXT:  [[TABLE1_KEYS:%.*]] = "tf.VarHandleOp"() <{container = "", shared_name = "table1_keys"}> : () -> tensor<!tf_type.resource<tensor<*xi64>>>
+// CHECK-NEXT:  [[TABLE1_VALS:%.*]] = "tf.VarHandleOp"() <{container = "", shared_name = "table1_vals"}> : () -> tensor<!tf_type.resource<tensor<*xf32>>>
+// CHECK-NEXT:  [[RETURNED_VALUES:%.*]]:2 = "tf.IfrtRestoreVariableOp"([[PREFIX]], [[NAMES]], [[SLICE]], [[VAR1]], [[TABLE1_KEYS]], [[TABLE1_VALS]])
+// CHECK-SAME:     <{restored_dtypes = [i32, i64, f32], returned_tensor_names = ["table1_keys", "table1_vals"], truncate_in_cast = array<i1: false, false, false>}> : (tensor<!tf_type.string>, tensor<3x!tf_type.string>, tensor<3x!tf_type.string>, tensor<!tf_type.resource<tensor<*xi32>>>, tensor<!tf_type.resource<tensor<*xi64>>>, tensor<!tf_type.resource<tensor<*xf32>>>) -> (tensor<*xi64>, tensor<*xf32>)
+// CHECK-NEXT:  [[TABLE1:%.*]] = "tf.HashTableV2"() <{container = "", key_dtype = i64, shared_name = "table1", value_dtype = f32}> : () -> tensor<!tf_type.resource>
+// CHECK-NEXT:  "tf.LookupTableImportV2"([[TABLE1]], [[RETURNED_VALUES]]#0, [[RETURNED_VALUES]]#1) : (tensor<!tf_type.resource>, tensor<*xi64>, tensor<*xf32>) -> ()
+// CHECK-NOT:   "tf.RestoreV2"
+// CHECK-NEXT:  return
+module {
+  func.func @restore_var_and_table() {
+    %cst = "tf.Const"() {value = dense<"model/foo"> : tensor<!tf_type.string>} : () -> tensor<!tf_type.string>
+    %cst_0 = "tf.Const"() {value = dense<["var1", "table1_keys", "table1_vals"]> : tensor<3x!tf_type.string>} : () -> tensor<3x!tf_type.string>
+    %cst_1 = "tf.Const"() {value = dense<["", "", ""]> : tensor<3x!tf_type.string>} : () -> tensor<3x!tf_type.string>
+    %0:3 = "tf.RestoreV2"(%cst, %cst_0, %cst_1) {dtypes = [i32, i64, f32]} : (tensor<!tf_type.string>, tensor<3x!tf_type.string>, tensor<3x!tf_type.string>) -> (tensor<*xi32>, tensor<*xi64>, tensor<*xf32>)
+    %1 = "tf.VarHandleOp"() {container = "", shared_name = "var1"} : () -> tensor<!tf_type.resource<tensor<*xi32>>>
+    "tf.AssignVariableOp"(%1, %0#0) : (tensor<!tf_type.resource<tensor<*xi32>>>, tensor<*xi32>) -> ()
+    %2 = "tf.HashTableV2"() {container = "", key_dtype = i64, shared_name = "table1", value_dtype = f32} : () -> tensor<!tf_type.resource>
+    "tf.LookupTableImportV2"(%2, %0#1, %0#2) : (tensor<!tf_type.resource>, tensor<*xi64>, tensor<*xf32>) -> ()
+    return
+  }
+}
+
+// -----
+// variable and dense table lookup
+// CHECK-LABEL: func.func @restore_var_and_dense_table()
+// CHECK-NEXT:  [[PREFIX:%.*]] = "tf.Const"() <{value = dense<"model/foo"> : tensor<!tf_type.string>}> : () -> tensor<!tf_type.string>
+// CHECK-NEXT:  [[NAMES:%.*]] = "tf.Const"() <{value = dense<["var1", "table1_keys", "table1_vals"]> : tensor<3x!tf_type.string>}> : () -> tensor<3x!tf_type.string>
+// CHECK-NEXT:  [[SLICE:%.*]] = "tf.Const"() <{value = dense<""> : tensor<3x!tf_type.string>}> : () -> tensor<3x!tf_type.string>
+// CHECK-NEXT:  [[VAR1:%.*]] = "tf.VarHandleOp"() <{container = "", shared_name = "var1"}> : () -> tensor<!tf_type.resource<tensor<*xi32>>>
+// CHECK-NEXT:  [[TABLE1_KEYS:%.*]] = "tf.VarHandleOp"() <{container = "", shared_name = "table1_keys"}> : () -> tensor<!tf_type.resource<tensor<*xi64>>>
+// CHECK-NEXT:  [[TABLE1_VALS:%.*]] = "tf.VarHandleOp"() <{container = "", shared_name = "table1_vals"}> : () -> tensor<!tf_type.resource<tensor<*xf32>>>
+// CHECK-NEXT:  [[RETURNED_VALUES:%.*]]:2 = "tf.IfrtRestoreVariableOp"([[PREFIX]], [[NAMES]], [[SLICE]], [[VAR1]], [[TABLE1_KEYS]], [[TABLE1_VALS]])
+// CHECK-SAME:     <{restored_dtypes = [i32, i64, f32], returned_tensor_names = ["table1_keys", "table1_vals"], truncate_in_cast = array<i1: false, false, false>}> : (tensor<!tf_type.string>, tensor<3x!tf_type.string>, tensor<3x!tf_type.string>, tensor<!tf_type.resource<tensor<*xi32>>>, tensor<!tf_type.resource<tensor<*xi64>>>, tensor<!tf_type.resource<tensor<*xf32>>>) -> (tensor<*xi64>, tensor<*xf32>)
+// CHECK-NEXT:  [[EMPTY_KEY:%.*]] = "tf.Const"() <{value = dense<-1> : tensor<i64>}> : () -> tensor<i64>
+// CHECK-NEXT:  [[DEFAULT_VALUE:%.*]] = "tf.Const"() <{value = dense<0.000000e+00> : tensor<f32>}> : () -> tensor<f32>
+// CHECK-NEXT:  [[TABLE1:%.*]] = "tf.MutableDenseHashTableV2"(%cst_2, %cst_3) <{container = "", shared_name = "table1", value_dtype = f32}> {key_dtype = i64} : (tensor<i64>, tensor<f32>) -> tensor<!tf_type.resource>
+// CHECK-NEXT:  "tf.LookupTableImportV2"([[TABLE1]], [[RETURNED_VALUES]]#0, [[RETURNED_VALUES]]#1) : (tensor<!tf_type.resource>, tensor<*xi64>, tensor<*xf32>) -> ()
+// CHECK-NOT:   "tf.RestoreV2"
+// CHECK-NEXT: return
+module {
+  func.func @restore_var_and_dense_table() {
+    %cst = "tf.Const"() {value = dense<"model/foo"> : tensor<!tf_type.string>} : () -> tensor<!tf_type.string>
+    %cst_0 = "tf.Const"() {value = dense<["var1", "table1_keys", "table1_vals"]> : tensor<3x!tf_type.string>} : () -> tensor<3x!tf_type.string>
+    %cst_1 = "tf.Const"() {value = dense<["", "", ""]> : tensor<3x!tf_type.string>} : () -> tensor<3x!tf_type.string>
+    %0:3 = "tf.RestoreV2"(%cst, %cst_0, %cst_1) {dtypes = [i32, i64, f32]} : (tensor<!tf_type.string>, tensor<3x!tf_type.string>, tensor<3x!tf_type.string>) -> (tensor<*xi32>, tensor<*xi64>, tensor<*xf32>)
+    %1 = "tf.VarHandleOp"() {container = "", shared_name = "var1"} : () -> tensor<!tf_type.resource<tensor<*xi32>>>
+    "tf.AssignVariableOp"(%1, %0#0) : (tensor<!tf_type.resource<tensor<*xi32>>>, tensor<*xi32>) -> ()
+    %empty_key = "tf.Const"() {value = dense<-1> : tensor<i64>} : () -> tensor<i64>
+    %default_value = "tf.Const"() {value = dense<0.0> : tensor<f32>} : () -> tensor<f32>
+    %2 = "tf.MutableDenseHashTableV2"(%empty_key, %default_value) {container = "", key_dtype = i64, shared_name = "table1", value_dtype = f32} : (tensor<i64>, tensor<f32>) -> tensor<!tf_type.resource>
+    "tf.LookupTableImportV2"(%2, %0#1, %0#2) : (tensor<!tf_type.resource>, tensor<*xi64>, tensor<*xf32>) -> ()
+    return
+  }
+}
+
+
+// -----
+// restored variable assigned to one var handle and then read and assigned to another
+// CHECK-LABEL: func.func @restore_and_copy() {
+// CHECK-DAG:   [[PREFIX:%.*]] = "tf.Const"() <{value = dense<"restore_ariables"> : tensor<!tf_type.string>}>
+// CHECK-DAG:   [[VAR_Y:%.*]] = "tf.VarHandleOp"() <{container = "", shared_name = "y"}> : () -> tensor<!tf_type.resource<tensor<3x1xf32>>>
+// CHECK-DAG:   [[VAR_Z:%.*]] = "tf.VarHandleOp"() <{container = "", shared_name = "z"}> : () -> tensor<!tf_type.resource<tensor<3x1xf32>>>
+// CHECK-DAG:   [[NEW_NAME:%.*]] = "tf.Const"() <{value = dense<"y"> : tensor<2x!tf_type.string>}>
+// CHECK-DAG:   [[NEW_SLICE:%.*]] = "tf.Const"() <{value = dense<""> : tensor<2x!tf_type.string>}>
+// CHECK:       "tf.IfrtRestoreVariableOp"([[PREFIX]], [[NEW_NAME]], [[NEW_SLICE]], [[VAR_Y]], [[VAR_Z]])
+// CHECK-SAME:  <{restored_dtypes = [f32, f32], returned_tensor_names = [], truncate_in_cast = array<i1: false, false>}>
+// CHECK-NOT:   "tf.RestoreV2"
+// CHECK-NOT:   "tf.ReadVariableOp"
+// CHECK-NEXT:  return
+
+module {
+  func.func @restore_and_copy() {
+    %cst = "tf.Const"() <{value = dense<"restore_ariables"> : tensor<!tf_type.string>}> : () -> tensor<!tf_type.string>
+    %cst_0 = "tf.Const"() <{value = dense<""> : tensor<1x!tf_type.string>}> : () -> tensor<1x!tf_type.string>
+    %cst_1 = "tf.Const"() <{value = dense<"y"> : tensor<1x!tf_type.string>}> : () -> tensor<1x!tf_type.string>
+    %0 = "tf.RestoreV2"(%cst, %cst_1, %cst_0): (tensor<!tf_type.string>, tensor<1x!tf_type.string>, tensor<1x!tf_type.string>) -> tensor<3x1xf32>
+    %1 = "tf.VarHandleOp"() <{container = "", shared_name = "y"}> : () -> tensor<!tf_type.resource<tensor<3x1xf32>>>
+    "tf.AssignVariableOp"(%1, %0) : (tensor<!tf_type.resource<tensor<3x1xf32>>>, tensor<3x1xf32>) -> ()
+    %read = "tf.ReadVariableOp"(%1) : (tensor<!tf_type.resource<tensor<3x1xf32>>>) -> tensor<3x1xf32>
+    %2 = "tf.VarHandleOp"() <{container = "", shared_name = "z"}> : () -> tensor<!tf_type.resource<tensor<3x1xf32>>>
+    "tf.AssignVariableOp"(%2, %read) : (tensor<!tf_type.resource<tensor<3x1xf32>>>, tensor<3x1xf32>) -> ()
+    return
+  }
+}
+
+// -----
+// restored variable assigned to one var handle and then read and assigned to another in a different block/function
+// CHECK-LABEL: func.func @restore_derived() {
+// CHECK-DAG:   [[PREFIX:%.*]] = "tf.Const"() <{value = dense<"restore_variables"> : tensor<!tf_type.string>}>
+// CHECK-DAG:   [[HANDLEY:%.*]] = "tf.VarHandleOp"() <{container = "", shared_name = "y"}> : () -> tensor<!tf_type.resource<tensor<3x1xf32>>>
+// CHECK-DAG:   [[HANDLEZ:%.*]] = "tf.VarHandleOp"() <{container = "", shared_name = "z"}> : () -> tensor<!tf_type.resource<tensor<3x1xf32>>>
+// CHECK-DAG:   [[NEW_NAME:%.*]] = "tf.Const"() <{value = dense<"y"> : tensor<2x!tf_type.string>}>
+// CHECK-DAG:   [[NEW_SLICE:%.*]] = "tf.Const"() <{value = dense<""> : tensor<2x!tf_type.string>}>
+// CHECK:       "tf.IfrtRestoreVariableOp"([[PREFIX]], [[NEW_NAME]], [[NEW_SLICE]], [[HANDLEY]], [[HANDLEZ]])
+// CHECK-SAME:  <{restored_dtypes = [f32, f32], returned_tensor_names = [], truncate_in_cast = array<i1: false, false>}>
+// CHECK-NOT:   "tf.RestoreV2"
+// CHECK-NEXT:  return
+
+module {
+  func.func @restore_derived() {
+    %cst = "tf.Const"() <{value = dense<"restore_variables"> : tensor<!tf_type.string>}> : () -> tensor<!tf_type.string>
+    %cst_0 = "tf.Const"() <{value = dense<""> : tensor<1x!tf_type.string>}> : () -> tensor<1x!tf_type.string>
+    %cst_1 = "tf.Const"() <{value = dense<"y"> : tensor<1x!tf_type.string>}> : () -> tensor<1x!tf_type.string>
+    %0 = "tf.RestoreV2"(%cst, %cst_1, %cst_0): (tensor<!tf_type.string>, tensor<1x!tf_type.string>, tensor<1x!tf_type.string>) -> tensor<3x1xf32>
+    %1 = "tf.VarHandleOp"() <{container = "", shared_name = "y"}> : () -> tensor<!tf_type.resource<tensor<3x1xf32>>>
+    "tf.AssignVariableOp"(%1, %0) : (tensor<!tf_type.resource<tensor<3x1xf32>>>, tensor<3x1xf32>) -> ()
+    return
+  }
+
+  func.func @derived_init() {
+    %0 = "tf.VarHandleOp"() <{container = "", shared_name = "y"}> : () -> tensor<!tf_type.resource<tensor<3x1xf32>>>
+    %1 = "tf.ReadVariableOp"(%0) : (tensor<!tf_type.resource<tensor<3x1xf32>>>) -> tensor<3x1xf32>
+    %2 = "tf.Identity"(%1) : (tensor<3x1xf32>) -> tensor<3x1xf32>
+    %3 = "tf.VarHandleOp"() <{container = "", shared_name = "z"}> : () -> tensor<!tf_type.resource<tensor<3x1xf32>>>
+    "tf.AssignVariableOp"(%3, %2) : (tensor<!tf_type.resource<tensor<3x1xf32>>>, tensor<3x1xf32>) -> ()
+    return
+  }
+}
+
+// -----
+// restored variable assigned to one var handle and then read, cast, and assigned to another
+// CHECK-LABEL: func.func @restore_and_cast_copy() {
+// CHECK-DAG:   [[PREFIX:%.*]] = "tf.Const"() <{value = dense<"restore_ariables"> : tensor<!tf_type.string>}>
+// CHECK-DAG:   [[HANDLEY:%.*]] = "tf.VarHandleOp"() <{container = "", shared_name = "y"}> : () -> tensor<!tf_type.resource<tensor<3x1xf32>>>
+// CHECK-DAG:   [[HANDLEZ:%.*]] = "tf.VarHandleOp"() <{container = "", shared_name = "z"}> : () -> tensor<!tf_type.resource<tensor<3x1xbf16>>>
+// CHECK-DAG:   [[NEW_NAME:%.*]] = "tf.Const"() <{value = dense<"y"> : tensor<2x!tf_type.string>}>
+// CHECK-DAG:   [[NEW_SLICE:%.*]] = "tf.Const"() <{value = dense<""> : tensor<2x!tf_type.string>}>
+// CHECK:       "tf.IfrtRestoreVariableOp"([[PREFIX]], [[NEW_NAME]], [[NEW_SLICE]], [[HANDLEY]], [[HANDLEZ]])
+// CHECK-SAME:  <{restored_dtypes = [f32, f32], returned_tensor_names = [], truncate_in_cast = array<i1: false, true>}>
+// CHECK-NOT:   "tf.RestoreV2"
+// CHECK-NOT:   "tf.ReadVariableOp"
+// CHECK-NEXT:  return
+module {
+  func.func @restore_and_cast_copy() {
+    %cst = "tf.Const"() <{value = dense<"restore_ariables"> : tensor<!tf_type.string>}> : () -> tensor<!tf_type.string>
+    %cst_0 = "tf.Const"() <{value = dense<""> : tensor<1x!tf_type.string>}> : () -> tensor<1x!tf_type.string>
+    %cst_1 = "tf.Const"() <{value = dense<"y"> : tensor<1x!tf_type.string>}> : () -> tensor<1x!tf_type.string>
+    %0 = "tf.RestoreV2"(%cst, %cst_1, %cst_0): (tensor<!tf_type.string>, tensor<1x!tf_type.string>, tensor<1x!tf_type.string>) -> tensor<3x1xf32>
+    %1 = "tf.VarHandleOp"() <{container = "", shared_name = "y"}> : () -> tensor<!tf_type.resource<tensor<3x1xf32>>>
+    "tf.AssignVariableOp"(%1, %0) : (tensor<!tf_type.resource<tensor<3x1xf32>>>, tensor<3x1xf32>) -> ()
+    %read = "tf.ReadVariableOp"(%1) : (tensor<!tf_type.resource<tensor<3x1xf32>>>) -> tensor<3x1xf32>
+    %cast = "tf.Cast"(%read) <{Truncate = true}> : (tensor<3x1xf32>) -> tensor<3x1xbf16>
+    %2 = "tf.VarHandleOp"() <{container = "", shared_name = "z"}> : () -> tensor<!tf_type.resource<tensor<3x1xbf16>>>
+    "tf.AssignVariableOp"(%2, %cast) : (tensor<!tf_type.resource<tensor<3x1xbf16>>>, tensor<3x1xbf16>) -> ()
     return
   }
 }

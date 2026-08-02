@@ -19,8 +19,10 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/cord.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/ExtensibleRTTI.h"
 #include "xla/hlo/ir/hlo_sharding.h"
@@ -43,7 +45,7 @@ class HloShardingSpecSerDes
     return "xla::ifrt::HloShardingSpec";
   }
 
-  absl::StatusOr<std::string> Serialize(
+  absl::StatusOr<absl::Cord> Serialize(
       const Serializable& serializable,
       std::unique_ptr<SerializeOptions> options) override {
     const SerDesVersion version = GetRequestedSerDesVersion(options.get());
@@ -61,11 +63,11 @@ class HloShardingSpecSerDes
         sharding_spec.xla_hlo_sharding().ToProto();
     proto.set_num_shards(sharding_spec.num_shards());
 
-    return proto.SerializeAsString();
+    return proto.SerializeAsCord();
   }
 
   absl::StatusOr<std::unique_ptr<Serializable>> Deserialize(
-      const std::string& serialized,
+      const absl::Cord& serialized,
       std::unique_ptr<DeserializeOptions> options) override {
     HloShardingSpecProto proto;
     if (!proto.ParseFromString(serialized)) {
@@ -78,8 +80,8 @@ class HloShardingSpecSerDes
           absl::StrCat("Unsupported ", version_number,
                        " for HloShardingSpec deserialization"));
     }
-    TF_ASSIGN_OR_RETURN(auto xla_hlo_sharding,
-                        xla::HloSharding::FromProto(proto.xla_op_sharding()));
+    ASSIGN_OR_RETURN(auto xla_hlo_sharding,
+                     xla::HloSharding::FromProto(proto.xla_op_sharding()));
 
     return HloShardingSpec::Create(proto.num_shards(),
                                    std::move(xla_hlo_sharding));

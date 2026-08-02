@@ -32,6 +32,8 @@ namespace m = ::xla::match;
 class AllReducePromotionTest : public HloHardwareIndependentTestBase {
  public:
   AllReducePromotion pass_{{{U16, U32}, {S16, S32}}};
+  AllReducePromotion all_reduce_only_pass_{{{U16, U32}, {S16, S32}},
+                                           /*promote_all_reduce_only=*/true};
 };
 
 TEST_F(AllReducePromotionTest, SimplePromotionAllReduce) {
@@ -92,6 +94,67 @@ TEST_F(AllReducePromotionTest, SimplePromotionReduceScatter) {
       GmockMatch(m::Convert(m::ReduceScatter(m::Convert().WithShape(U32, {2}))
                                 .WithShape(U32, {1}))
                      .WithShape(U16, {1})));
+}
+
+// With promote_all_reduce_only=true, kAllReduce is still promoted.
+TEST_F(AllReducePromotionTest, AllReduceOnly_AllReduceStillPromoted) {
+  absl::string_view hlo_text = R"(
+  HloModule test
+
+  sum {
+    a = u16[] parameter(0)
+    b = u16[] parameter(1)
+    ROOT add.2 = u16[] add(a, b)
+  }
+
+  ENTRY test_computation {
+    id32 = u32[] replica-id()
+    id = u16[] convert(id32)
+    id2 = u16[2] broadcast(id), dimensions={}
+    a0 = u16[2] constant({10, 15})
+    a1 = u16[2] add(id2, a0)
+    ROOT cp = u16[2] all-reduce(a1), replica_groups={}, to_apply=sum
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_text));
+  TF_ASSERT_OK_AND_ASSIGN(bool changed,
+                          RunHloPass(&all_reduce_only_pass_, module.get()));
+  EXPECT_TRUE(changed);
+  EXPECT_THAT(
+      module->entry_computation()->root_instruction(),
+      GmockMatch(m::Convert(m::AllReduce(m::Convert().WithShape(U32, {2}))
+                                .WithShape(U32, {2}))
+                     .WithShape(U16, {2})));
+}
+
+// With promote_all_reduce_only=true, kReduceScatter is NOT promoted.
+TEST_F(AllReducePromotionTest, AllReduceOnly_ReduceScatterUntouched) {
+  absl::string_view hlo_text = R"(
+  HloModule test
+
+  sum {
+    a = u16[] parameter(0)
+    b = u16[] parameter(1)
+    ROOT add.2 = u16[] add(a, b)
+  }
+
+  ENTRY test_computation {
+    id32 = u32[] replica-id()
+    id = u16[] convert(id32)
+    id2 = u16[2] broadcast(id), dimensions={}
+    a0 = u16[2] constant({10, 15})
+    a1 = u16[2] add(id2, a0)
+    ROOT cp = u16[1] reduce-scatter(a1), dimensions={0}, replica_groups={}, to_apply=sum
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_text));
+  TF_ASSERT_OK_AND_ASSIGN(bool changed,
+                          RunHloPass(&all_reduce_only_pass_, module.get()));
+  EXPECT_FALSE(changed);
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              GmockMatch(m::ReduceScatter().WithShape(U16, {1})));
 }
 
 }  // namespace

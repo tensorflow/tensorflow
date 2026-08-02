@@ -40,17 +40,18 @@ enum class TestType {
 template <typename dims_type, typename value_type>
 class FillOpModel : public SingleOpModel {
  public:
-  explicit FillOpModel(TensorType dims_tensor_type,
-                       std::initializer_list<int> dims_shape,
-                       std::initializer_list<dims_type> dims_data,
-                       value_type value, TestType input_tensor_types) {
+  explicit FillOpModel(
+      TensorType dims_tensor_type, std::initializer_list<int> dims_shape,
+      std::initializer_list<dims_type> dims_data, value_type value,
+      TestType input_tensor_types,
+      TensorType value_tensor_type = GetTensorType<value_type>()) {
     if (input_tensor_types == TestType::kDynamic) {
       dims_ = AddInput(dims_tensor_type);
     } else {
       dims_ = AddConstInput(dims_tensor_type, dims_data, dims_shape);
     }
-    value_ = AddInput(GetTensorType<value_type>());
-    output_ = AddOutput(GetTensorType<value_type>());
+    value_ = AddInput(value_tensor_type);
+    output_ = AddOutput(value_tensor_type);
     SetBuiltinOp(BuiltinOperator_FILL, BuiltinOptions_FillOptions,
                  CreateFillOptions(builder_).Union());
     BuildInterpreter({dims_shape, {}});
@@ -118,6 +119,18 @@ TEST_P(FillOpTest, FillInt32) {
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({-11, -11, -11, -11, -11, -11}));
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2, 3}));
 }
+
+#if defined(TFLITE_ENABLE_EXTRA_REFERENCE_KERNELS)
+TEST_P(FillOpTest, Float8) {
+  for (TensorType tensor_type :
+       {TensorType_FLOAT8_E4M3FN, TensorType_FLOAT8_E5M2}) {
+    FillOpModel<int32_t, uint8_t> model(TensorType_INT32, {1}, {4}, 0x38,
+                                        GetParam(), tensor_type);
+    ASSERT_EQ(model.Invoke(), kTfLiteOk);
+    EXPECT_THAT(model.GetOutput(), ElementsAreArray({0x38, 0x38, 0x38, 0x38}));
+  }
+}
+#endif
 
 TEST_P(FillOpTest, FillInt64) {
   FillOpModel<int64_t, int64_t> m(TensorType_INT64, {2}, {2, 4}, 1LL << 45,

@@ -25,7 +25,10 @@ limitations under the License.
 #include <vector>
 
 #include "absl/status/status.h"
-#include "third_party/gpus/cuda/extras/CUPTI/include/cupti.h"
+#include "third_party/gpus/cuda/extras/CUPTI/include/cupti_activity.h"
+#include "third_party/gpus/cuda/extras/CUPTI/include/cupti_callbacks.h"
+#include "third_party/gpus/cuda/extras/CUPTI/include/cupti_driver_cbid.h"
+#include "third_party/gpus/cuda/include/cuda.h"
 #include "third_party/gpus/cuda/include/nvtx3/nvToolsExt.h"
 #include "xla/backends/profiler/gpu/cupti_buffer_events.h"
 #include "xla/backends/profiler/gpu/cupti_collector.h"
@@ -49,6 +52,8 @@ struct CuptiTracerOptions {
   std::vector<CUpti_ActivityKind> activities_selected;
   // Whether to call cuptiFinalize.
   bool cupti_finalize = false;
+  // Whether to prefer CUPTI V2 multi-subscriber APIs when available.
+  bool prefer_cupti_v2 = true;
   // Whether to call cuCtxSynchronize for each device before Stop().
   bool sync_devices_before_stop = false;
   // Whether to enable NVTX tracking, we need this for TensorRT tracking.
@@ -68,7 +73,7 @@ class CuptiTracer;
 
 class CuptiDriverApiHook {
  public:
-  virtual ~CuptiDriverApiHook() {}
+  virtual ~CuptiDriverApiHook() = default;
 
   virtual absl::Status OnDriverApiEnter(
       int device_id, CUpti_CallbackDomain domain, CUpti_CallbackId cbid,
@@ -124,7 +129,7 @@ class CuptiTracer {
 
   absl::Status HandleCallback(CUpti_CallbackDomain domain,
                               CUpti_CallbackId cbid,
-                              const CUpti_CallbackData* callback_info);
+                              const CUpti_CallbackData* cbdata);
 
   // Returns a buffer and its size for CUPTI to store activities. This buffer
   // will be reclaimed when CUPTI makes a callback to ProcessActivityBuffer.
@@ -137,6 +142,10 @@ class CuptiTracer {
                                      uint8_t* buffer, size_t size);
 
   static uint64_t GetTimestamp();
+  // Selects and prepares the subscriber for the next profiling session before
+  // the profiler takes its GPU timestamp anchor.
+  absl::Status PrepareForProfilerStart(const CuptiTracerOptions& option);
+  uint64_t GetTimestampForSubscriber() const;
   static int NumGpus();
   // Returns the error (if any) when using libcupti.
   static std::string ErrorIfAny();
@@ -185,10 +194,14 @@ class CuptiTracer {
       bool stop_recording);
 
   absl::Status EnableApiTracing();
+  absl::Status PrepareSubscriberForSession(const CuptiTracerOptions& option);
   absl::Status EnableActivityTracing();
-  absl::Status DisableApiTracing();
+  absl::Status DisableApiTracing(bool unsubscribe);
   absl::Status DisableActivityTracing();
   absl::Status Finalize();
+  // Clears local bookkeeping without unsubscribing from CUPTI.
+  void ClearSubscriberState();
+  absl::Status UnsubscribeAndClearSubscriber();
   void ConfigureActivityUnifiedMemoryCounter(bool enable);
   absl::Status HandleNVTXCallback(CUpti_CallbackId cbid,
                                   const CUpti_CallbackData* cbdata);
@@ -210,7 +223,12 @@ class CuptiTracer {
   // Cupti handle for driver or runtime API callbacks. Cupti permits a single
   // subscriber to be active at any time and can be used to trace Cuda runtime
   // as and driver calls for all contexts and devices.
-  CUpti_SubscriberHandle subscriber_;  // valid when api_tracing_enabled_.
+  CUpti_SubscriberHandle subscriber_ = nullptr;
+  bool subscriber_is_v2_ = false;
+  bool using_v2_subscriber_api_ = false;
+  // Whether subscriber selection and V2 timestamp preflight have completed
+  // for the current session.
+  bool subscriber_prepared_for_current_session_ = false;
 
   bool activity_tracing_enabled_ = false;
 

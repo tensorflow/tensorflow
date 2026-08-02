@@ -97,10 +97,6 @@ class XlaInterpreterExecutor : public StreamExecutorCommon {
 
   // No "synchronize all activity" implemented for this platform at the moment.
   bool SynchronizeAllActivity() override { return true; }
-  absl::Status SynchronousMemZero(DeviceAddressBase* location,
-                                  uint64_t size) override {
-    return absl::InternalError("Interpreter can not memzero");
-  }
 
   absl::Status SynchronousMemcpy(DeviceAddressBase* dev_dst,
                                  const void* host_src, uint64_t size) override;

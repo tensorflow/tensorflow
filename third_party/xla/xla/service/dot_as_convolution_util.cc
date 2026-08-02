@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <optional>
 
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/shape_inference.h"
@@ -168,14 +169,13 @@ CreateShardedConvForDotGeneralConvolution(
     wd->set_padding_high(wd->size() - 1);
     wd->set_padding_low(wd->size() - 1);
   }
-  TF_ASSIGN_OR_RETURN(
-      Shape sharded_conv_shape,
-      ShapeInference::InferConvolveShape(
-          sharded_lhs_hlo->shape(), sharded_rhs_hlo->shape(),
-          /*feature_group_count=*/conv.feature_group_count(),
-          /*batch_group_count=*/conv.batch_group_count(), window, conv_dnums,
-          conv.sparsity_config(),
-          /*preferred_element_type=*/conv.shape().element_type()));
+  ASSIGN_OR_RETURN(Shape sharded_conv_shape,
+                   ShapeInference::InferConvolveShape(
+                       sharded_lhs_hlo->shape(), sharded_rhs_hlo->shape(),
+                       /*feature_group_count=*/conv.feature_group_count(),
+                       /*batch_group_count=*/conv.batch_group_count(), window,
+                       conv_dnums, conv.sparsity_config(),
+                       /*preferred_element_type=*/conv.shape().element_type()));
   *sharded_conv_shape.mutable_layout() = conv.shape().layout();
   CHECK(!conv.sparsity_config().has_lhs() && !conv.sparsity_config().has_rhs());
   return HloInstruction::CreateConvolve(

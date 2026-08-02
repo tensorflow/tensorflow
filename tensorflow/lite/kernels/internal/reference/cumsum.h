@@ -71,9 +71,11 @@ inline void CumSum(const T* input_data, const RuntimeShape& shape, int32_t axis,
 
         if (exclusive) {
           output_data[index] = accumulator;
-          accumulator += input_data[index];
+          accumulator = AddTensorValuesWithExpectedOverflow(accumulator,
+                                                            input_data[index]);
         } else {
-          accumulator += input_data[index];
+          accumulator = AddTensorValuesWithExpectedOverflow(accumulator,
+                                                            input_data[index]);
           output_data[index] = accumulator;
         }
       }

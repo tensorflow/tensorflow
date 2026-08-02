@@ -29,6 +29,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
@@ -100,7 +101,7 @@ ConcatenateFusionKernelEmitter::EmitKernelDefinition() {
   bool force_64_bit = backend_kind_ == BackendKind::kCpu;
   emitters::SetIndexDataLayout(*module, fusion_, force_64_bit);
 
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       mlir::func::FuncOp entry_func,
       emitters::EmitKernelApi(*module, fusion_, buffer_assignment_,
                               buffer_alignment_, entry_function_name_));
@@ -110,15 +111,15 @@ ConcatenateFusionKernelEmitter::EmitKernelDefinition() {
       GetEpilogues(fusion_, &mlir_context_);
   emitters::PartitionedComputations computations(
       fusion_.fused_instructions_computation(), &mlir_context_, epilogues);
-  TF_ASSIGN_OR_RETURN(auto call_targets, emitters::EmitPartitionedComputations(
-                                             *module, computations));
+  ASSIGN_OR_RETURN(auto call_targets, emitters::EmitPartitionedComputations(
+                                          *module, computations));
 
-  TF_RETURN_IF_ERROR(
+  RETURN_IF_ERROR(
       EmitEntryFunction(computations, call_targets, entry_func, fusion_));
 
-  TF_ASSIGN_OR_RETURN(auto kernel_spec,
-                      GetKernelSpec(entry_function_name_, fusion_,
-                                    buffer_assignment_, work_dimensions_));
+  ASSIGN_OR_RETURN(auto kernel_spec,
+                   GetKernelSpec(entry_function_name_, fusion_,
+                                 buffer_assignment_, work_dimensions_));
 
   return KernelDefinition(std::move(kernel_spec),
                           MlirKernelSource(std::move(module)));

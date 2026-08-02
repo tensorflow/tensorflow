@@ -121,6 +121,39 @@ TEST_F(ConditionalSimplifierTest, BranchGetsInlined) {
                  op::Add(op::Parameter(0), op::Constant())));
 }
 
+TEST_F(ConditionalSimplifierTest, RespectsUninlineableAttribute) {
+  absl::string_view hlo_string = R"(
+HloModule RespectsUninlineableAttribute
+
+on_false {
+  param = s32[] parameter(0)
+  ROOT constant = s32[] constant(42)
+}
+
+on_true {
+  param = s32[] parameter(0)
+  ROOT constant = s32[] constant(1)
+}
+
+ENTRY main {
+  p = pred[] constant(true)
+  param = s32[] constant(0)
+  ROOT conditional = s32[] conditional(p, param, param),
+    true_computation=on_true, false_computation=on_false,
+    frontend_attributes={inlineable="false"}
+})";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(bool changed, ConditionalSimplifier().Run(module.get()));
+  EXPECT_TRUE(changed);
+  HloVerifier v(/*layout_sensitive=*/false, /*allow_mixed_precision=*/false);
+  TF_ASSERT_OK(v.Run(module.get()));
+
+  const HloInstruction* root = module->entry_computation()->root_instruction();
+  EXPECT_EQ(root->opcode(), HloOpcode::kCall);
+  EXPECT_EQ(root->to_apply()->name(), "on_true");
+}
+
 TEST_F(ConditionalSimplifierTest, ConditionalWithControlDependency) {
   auto m = CreateNewVerifiedModule();
   HloComputation* computation = MakeConditional(m.get());
@@ -610,6 +643,35 @@ ENTRY main {
   // "get-second-index" instruction in hlo_string).
   EXPECT_EQ(ShapeUtil::TupleElementCount(conditional->shape()), 1);
   EXPECT_EQ(conditional->original_value()->ToString(), R"(({"cond" {1}}))");
+}
+
+TEST_F(ConditionalSimplifierTest, NotRemoveIfWithSchedulingGroupId) {
+  absl::string_view hlo_string =
+      R"(
+HloModule module
+
+%true_comp {
+  %param = s32[] parameter(0)
+  %constant = s32[] constant(1)
+  ROOT %add = s32[] add(%param, %constant)
+}
+
+%false_comp {
+  %param.1 = s32[] parameter(0)
+  %constant.1 = s32[] constant(42)
+  ROOT %add.1 = s32[] add(%param.1, %constant.1)
+}
+
+ENTRY %entry {
+  %constant.2 = pred[] constant(false)
+  %constant.3 = s32[] constant(1)
+  %param = s32[] parameter(0)
+  ROOT %conditional = s32[] conditional(%constant.2, %constant.3, %param), true_computation=%true_comp, false_computation=%false_comp, frontend_attributes={_scheduling_group_id="0"}
+})";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(bool changed, ConditionalSimplifier().Run(module.get()));
+  EXPECT_FALSE(changed);
 }
 
 }  // namespace

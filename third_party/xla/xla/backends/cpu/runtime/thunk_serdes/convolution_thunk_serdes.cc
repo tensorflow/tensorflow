@@ -21,15 +21,19 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/base/casts.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/cpu/runtime/convolution_dims.h"
 #include "xla/backends/cpu/runtime/convolution_thunk.h"
 #include "xla/backends/cpu/runtime/thunk.h"
 #include "xla/backends/cpu/runtime/thunk.pb.h"
 #include "xla/backends/cpu/runtime/thunk_proto_serdes.h"
 #include "xla/backends/cpu/runtime/thunk_proto_serdes_utils.h"
+#include "xla/hlo/ir/hlo_module.h"
+#include "xla/runtime/resource_use.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
@@ -40,7 +44,7 @@ namespace {
 
 absl::Status ConvolutionThunkToProto(const Thunk& thunk, ThunkProto& proto) {
   const auto& convolution_thunk =
-      tsl::down_cast<const ConvolutionThunk&>(thunk);
+      absl::down_cast<const ConvolutionThunk&>(thunk);
 
   ConvolutionThunkProto* convolution_thunk_proto =
       proto.mutable_convolution_thunk();
@@ -60,15 +64,15 @@ absl::Status ConvolutionThunkToProto(const Thunk& thunk, ThunkProto& proto) {
   const ConvolutionSlices& convolution_slices =
       convolution_thunk.convolution_slices();
 
-  TF_RETURN_IF_ERROR(SerializeSliceShapeIntoProto(
+  RETURN_IF_ERROR(SerializeSliceShapeIntoProto(
       convolution_slices.input_buffer, convolution_slices.input_shape,
       convolution_thunk_proto->mutable_input_buffer_shape()));
 
-  TF_RETURN_IF_ERROR(SerializeSliceShapeIntoProto(
+  RETURN_IF_ERROR(SerializeSliceShapeIntoProto(
       convolution_slices.output_buffer, convolution_slices.output_shape,
       convolution_thunk_proto->mutable_output_buffer_shape()));
 
-  TF_RETURN_IF_ERROR(SerializeSliceShapeIntoProto(
+  RETURN_IF_ERROR(SerializeSliceShapeIntoProto(
       convolution_slices.kernel_buffer, convolution_slices.kernel_shape,
       convolution_thunk_proto->mutable_kernel_buffer_shape()));
 
@@ -80,8 +84,10 @@ absl::Status ConvolutionThunkToProto(const Thunk& thunk, ThunkProto& proto) {
 
 absl::StatusOr<std::unique_ptr<Thunk>> ConvolutionThunkFromProto(
     const ThunkProto& proto,
-    const std::vector<BufferAllocation>& buffer_allocations) {
-  TF_ASSIGN_OR_RETURN(Thunk::Info info, ThunkInfoFromProto(proto.info()));
+    const std::vector<BufferAllocation>& buffer_allocations,
+    const HloModule* hlo_module,
+    const std::vector<std::shared_ptr<Resource>>* resources) {
+  ASSIGN_OR_RETURN(Thunk::Info info, ThunkInfoFromProto(proto.info()));
 
   // Parse options.
   ConvolutionThunk::Options options;
@@ -97,15 +103,15 @@ absl::StatusOr<std::unique_ptr<Thunk>> ConvolutionThunkFromProto(
   // Feature group count.
   int64_t feature_group_count = proto.convolution_thunk().feature_group_count();
 
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       auto input_slice_shape,
       DeserializeSliceShapeFromProto(
           proto.convolution_thunk().input_buffer_shape(), buffer_allocations));
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       auto kernel_slice_shape,
       DeserializeSliceShapeFromProto(
           proto.convolution_thunk().kernel_buffer_shape(), buffer_allocations));
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       auto output_slice_shape,
       DeserializeSliceShapeFromProto(
           proto.convolution_thunk().output_buffer_shape(), buffer_allocations));

@@ -19,6 +19,7 @@ limitations under the License.
 
 #include <gtest/gtest.h>
 #include "absl/strings/string_view.h"
+#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 
 namespace xla {
@@ -224,6 +225,40 @@ ENTRY %Gather (input_tensor: f32[50,49,48,47,46,0], start_indices: s64[10,9,8,7,
     CHECK-SAME:     index_vector_dim=4,
     CHECK-SAME:     slice_sizes={30,29,28,27,26,0}
   )");
+}
+
+TEST_F(BatchedGatherScatterNormalizerTest,
+       DoNotNormalizeBatchGatherWhenBatchingDimsOverlapStartIndexMap) {
+  constexpr absl::string_view kModuleStr = R"(
+HloModule overlap_batch_gather, entry_computation_layout={(s32[4,40,1]{2,1,0})->s32[4,40,2]{2,1,0}}
+
+ENTRY %entry (start_indices: s32[4,40,1]) -> s32[4,40,2] {
+  %iota = s32[4,1]{1,0} iota(), iota_dimension=0
+  %zero = s32[] constant(0)
+  %pad = s32[4,2]{1,0} pad(s32[4,1]{1,0} %iota, s32[] %zero), padding=0_0x0_1
+  %start_indices = s32[4,40,1]{2,1,0} parameter(0)
+  ROOT %gather = s32[4,40,2]{2,1,0}
+    gather(s32[4,2]{1,0} %pad, s32[4,40,1]{2,1,0} %start_indices),
+    offset_dims={2}, collapsed_slice_dims={}, start_index_map={0},
+    operand_batching_dims={0}, start_indices_batching_dims={0},
+    index_vector_dim=2, slice_sizes={1,2}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto module,
+      RunAndCheckHloRewrite(kModuleStr, BatchedGatherScatterNormalizer(),
+                            /*expect_change=*/false));
+
+  auto* gather = DynCast<HloGatherInstruction>(
+      module->entry_computation()->root_instruction());
+  ASSERT_NE(gather, nullptr);
+  const auto& dims = gather->gather_dimension_numbers();
+  EXPECT_EQ(dims.start_index_map_size(), 1);
+  EXPECT_EQ(dims.start_index_map(0), 0);
+  EXPECT_EQ(dims.operand_batching_dims_size(), 1);
+  EXPECT_EQ(dims.operand_batching_dims(0), 0);
+  EXPECT_EQ(dims.start_indices_batching_dims_size(), 1);
+  EXPECT_EQ(dims.start_indices_batching_dims(0), 0);
 }
 
 TEST_F(BatchedGatherScatterNormalizerTest, NormalizeBatchScatter) {

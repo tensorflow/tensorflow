@@ -28,7 +28,7 @@ limitations under the License.
 namespace xla {
 namespace {
 
-using Int4Test = HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>;
+using Int4Test = HloPjRtInterpreterReferenceMixin<HloTestBase>;
 
 TEST_F(Int4Test, InputIsOutput) {
   const std::string hlo_text = R"(
@@ -309,10 +309,9 @@ TEST_F(Int4TestWithAlgsimpDisabled, TwoDots) {
   EXPECT_TRUE(RunAndCompare(hlo_text, std::nullopt));
 }
 
-class ElementwiseTest
-    : public HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>,
-      public ::testing::WithParamInterface<
-          std::tuple<HloOpcode, PrimitiveType>> {
+class ElementwiseTest : public HloPjRtInterpreterReferenceMixin<HloTestBase>,
+                        public ::testing::WithParamInterface<
+                            std::tuple<HloOpcode, PrimitiveType>> {
  public:
   static std::vector<HloOpcode> GetElementwiseOpcodesWithIntSupportWithArity(
       int arity) {
@@ -414,6 +413,9 @@ TEST_P(UnaryElementwiseTest, Unary) {
 
 TEST_P(BinaryElementwiseTest, Binary) {
   auto [opcode, type] = GetParam();
+  if (opcode == HloOpcode::kMulhi) {
+    GTEST_SKIP() << "Mulhi is not supported for S4/U4";
+  }
   auto type_name = primitive_util::LowercasePrimitiveTypeName(type);
 
   const std::string hlo_text = absl::Substitute(

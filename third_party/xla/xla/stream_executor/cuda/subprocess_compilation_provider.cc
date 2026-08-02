@@ -28,6 +28,7 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/stream_executor/cuda/compilation_options.h"
 #include "xla/stream_executor/cuda/compilation_provider.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
@@ -58,6 +59,9 @@ absl::StatusOr<Assembly> CompileHelper(absl::string_view ptxas_path,
   if (options.generate_debug_info) {
     asm_opts.extra_flags.push_back("--device-debug");
   }
+  asm_opts.extra_flags.insert(asm_opts.extra_flags.end(),
+                              options.additional_ptxas_flags.begin(),
+                              options.additional_ptxas_flags.end());
 
   return CompileGpuAsmUsingPtxAs(ptxas_path, cc, ptx, asm_opts,
                                  options.cancel_if_reg_spill,
@@ -77,9 +81,9 @@ absl::StatusOr<RelocatableModule>
 SubprocessCompilationProvider::CompileToRelocatableModule(
     const CudaComputeCapability& cc, absl::string_view ptx,
     const CompilationOptions& options) const {
-  TF_ASSIGN_OR_RETURN(auto assembly,
-                      CompileHelper(path_to_ptxas_, cc, ptx, options,
-                                    /*compile_to_relocatable_module=*/true));
+  ASSIGN_OR_RETURN(auto assembly,
+                   CompileHelper(path_to_ptxas_, cc, ptx, options,
+                                 /*compile_to_relocatable_module=*/true));
   return RelocatableModule{std::move(assembly.cubin),
                            std::move(assembly.compilation_log)};
 }
@@ -94,14 +98,14 @@ absl::StatusOr<Assembly> SubprocessCompilationProvider::CompileAndLink(
       images.push_back(std::get<RelocatableModule>(input).cubin);
     } else {
       // If we have a PTX string, we need to compile it to CUBIN first.
-      TF_ASSIGN_OR_RETURN(
+      ASSIGN_OR_RETURN(
           RelocatableModule module,
           CompileToRelocatableModule(cc, std::get<Ptx>(input).ptx, options));
       images.push_back(std::move(module.cubin));
     }
   }
 
-  TF_ASSIGN_OR_RETURN(auto cubin, LinkUsingNvlink(path_to_nvlink_, cc, images));
+  ASSIGN_OR_RETURN(auto cubin, LinkUsingNvlink(path_to_nvlink_, cc, images));
   return Assembly{std::move(cubin)};
 }
 

@@ -37,9 +37,18 @@ function resultstore_extract {
   PYTHON_BIN=$(which python3 2>/dev/null || which python)
   XML_PATH="$TFCI_OUTPUT_DIR/Bazel_Test_and_Build_Results/sponge_log.xml"
 
+  local script_path="$TFCI_GIT_DIR/ci/official/utilities/extract_resultstore_links.py"
+  local log_path="$TFCI_OUTPUT_DIR/script.log"
+
+  if [[ "$TFCI_GITHUB_ACTIONS" == "true" ]] && { [[ $(uname -s) == "MSYS_NT"* ]] || [[ $(uname -s) == "MINGW64_NT"* ]]; }; then
+    script_path=$(cygpath -w "$script_path")
+    log_path=$(cygpath -w "$log_path")
+    XML_PATH=$(cygpath -w "$XML_PATH")
+  fi
+
   "$PYTHON_BIN" \
-    "$TFCI_GIT_DIR/ci/official/utilities/extract_resultstore_links.py" \
-    "$TFCI_OUTPUT_DIR/script.log" \
+    "$script_path" \
+    "$log_path" \
     --print \
     --xml-out-path "$XML_PATH"
 }

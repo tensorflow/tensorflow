@@ -22,6 +22,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/runtime/buffer_use.h"
 #include "xla/shape.h"
 #include "xla/status_macros.h"
@@ -101,7 +102,7 @@ inline bool IsConvSupportedType(PrimitiveType primitive_type) {
 absl::StatusOr<ConvolutionCanonicalDims> GetConvolutionCanonicalDims(
     const ConvolutionSlices& slices, const ConvolutionDimensionNumbers& dnums,
     const Window& window, int64_t feature_group_count) {
-  TF_RETURN_IF_ERROR(ValidateConvolutionShapes(
+  RETURN_IF_ERROR(ValidateConvolutionShapes(
       slices.input_shape, slices.kernel_shape, slices.output_shape, dnums));
 
   auto primitive_type = slices.input_shape.element_type();

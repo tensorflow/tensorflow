@@ -183,7 +183,8 @@ struct ParseExampleAttrs {
             ctx->GetAttr("ragged_split_types", &ragged_split_types));
         break;
       default:
-        return errors::InvalidArgument("Unexpected op_version", op_version);
+        return absl::InvalidArgumentError(
+            absl::StrCat("Unexpected op_version", op_version));
     }
     return FinishInit(op_version);
   }
@@ -221,9 +222,10 @@ struct ParseSingleExampleAttrs {
     int num_sparse;
     TF_RETURN_IF_ERROR(ctx->GetAttr("num_sparse", &num_sparse));
     if (num_sparse != sparse_keys.size() || num_sparse != sparse_types.size()) {
-      return errors::InvalidArgument(
+      return absl::InvalidArgumentError(absl::StrCat(
           "num_sparse (", num_sparse, ") must match the size of sparse_keys (",
-          sparse_keys.size(), ") and sparse_types (", sparse_types.size(), ")");
+          sparse_keys.size(), ") and sparse_types (", sparse_types.size(),
+          ")"));
     }
 
     TF_RETURN_IF_ERROR(
@@ -279,7 +281,8 @@ struct ParseSequenceExampleAttrs {
                                         &feature_list_ragged_split_types));
         break;
       default:
-        return errors::InvalidArgument("Unexpected op_version", op_version);
+        return absl::InvalidArgumentError(
+            absl::StrCat("Unexpected op_version", op_version));
     }
     TF_RETURN_IF_ERROR(
         ctx->GetAttr("context_sparse_types", &context_sparse_types));

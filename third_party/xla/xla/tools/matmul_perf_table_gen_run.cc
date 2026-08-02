@@ -59,13 +59,12 @@ MakeRunnerAndGetDeviceDescription() {
   gpu_config.collective_memory_size = 0;
   GpuClientOptions options;
   options.allocator_config = std::move(gpu_config);
-  options.use_tfrt_gpu_client = true;
 
   absl::StatusOr<std::unique_ptr<PjRtClient>> client =
       GetXlaPjrtGpuClient(options);
   CHECK_OK(client);
   GpuTargetConfig gpu_target_config = GetGpuTargetConfig(client->get());
-  return {std::make_unique<HloRunnerPjRt>(*std::move(client)),
+  return {std::make_unique<HloRunner>(*std::move(client)),
           gpu_target_config.device_description};
 }
 
@@ -91,8 +90,8 @@ int RunPerfTableCollection(int argc, char** argv) {
           /*out_dtype=*/"f32",
       },
   };
-  cfg.output =
-      FilepathOutput(HloOpProfiles::GetProfileName(device_description));
+  cfg.output = FilepathOutput(
+      HloOpProfiles::GetDeviceSpecificProfileName(device_description));
   MatmulPerfTableGen table_gen(runner.get(), &device_description,
                                std::move(cfg));
 

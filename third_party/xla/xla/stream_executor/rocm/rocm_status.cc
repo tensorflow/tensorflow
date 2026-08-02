@@ -58,7 +58,6 @@ std::string ToString(hipError_t result) {
       OSTREAM_ROCM_ERROR(ContextAlreadyInUse)
       OSTREAM_ROCM_ERROR(PeerAccessUnsupported)
       OSTREAM_ROCM_ERROR(Unknown)  // Unknown internal error to ROCM.
-#if TF_ROCM_VERSION >= 60200
       OSTREAM_ROCM_ERROR(LaunchTimeOut)
       OSTREAM_ROCM_ERROR(PeerAccessAlreadyEnabled)
       OSTREAM_ROCM_ERROR(PeerAccessNotEnabled)
@@ -82,7 +81,6 @@ std::string ToString(hipError_t result) {
       OSTREAM_ROCM_ERROR(GraphExecUpdateFailure)
       OSTREAM_ROCM_ERROR(RuntimeMemory)
       OSTREAM_ROCM_ERROR(RuntimeOther)
-#endif  // TF_ROCM_VERSION >= 60200
     default:
       return absl::StrCat("hipError_t(", static_cast<int>(result), ")");
   }

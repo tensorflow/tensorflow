@@ -18,6 +18,7 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/tsl/platform/errors.h"
 
@@ -26,7 +27,7 @@ namespace xla::gpu {
 absl::StatusOr<bool> PGLEAccuracyChecker::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
-  TF_RETURN_IF_ERROR(pgle_estimator_.CheckAccuracy(*module));
+  RETURN_IF_ERROR(pgle_estimator_.CheckAccuracy(*module));
   return false;
 }
 

@@ -1,3 +1,18 @@
+# Copyright 2026 The OpenXLA Authors. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
+
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("//xla:xla.default.bzl", "xla_cc_binary")
 
@@ -26,7 +41,7 @@ xla_cc_binary(
         "//xla/backends/cpu/codegen/emitters/ir:xla_cpu",
         "//xla/backends/cpu/codegen/emitters/transforms:passes",
         "//xla/backends/cpu/codegen/tiled/transforms:passes",
-        "//xla/backends/gpu/codegen/emitters:emitter_base",
+        "//xla/backends/gpu/codegen/emitters:mlir_kernel_emitter",
         "//xla/backends/gpu/codegen/emitters/ir:xla_gpu",
         "//xla/backends/gpu/codegen/emitters/transforms:passes",
         "//xla/codegen/emitters/ir:xla",
@@ -37,6 +52,9 @@ xla_cc_binary(
         "//xla/codegen/xtile/ir/transforms:passes",
         "//xla/mlir_hlo",
         "//xla/service/gpu:gpu_device_info_for_tests",
+        "//xla/stream_executor:device_description_proto_cc",
+        "@com_google_absl//absl/log:check",
+        "@com_google_protobuf//:protobuf",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:AffineDialect",
         "@llvm-project//mlir:ArithDialect",
@@ -73,6 +91,7 @@ cc_library(
     visibility = [
         "//xla/backends/cpu/codegen/tools:__subpackages__",
         "//xla/backends/gpu/codegen/tools:__subpackages__",
+        "//xla/backends/gpu/codegen/triton/tests:__subpackages__",
     ],
     deps = [
         "//xla:status_macros",

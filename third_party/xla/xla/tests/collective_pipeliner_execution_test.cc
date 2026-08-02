@@ -22,6 +22,7 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/error_spec.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -40,7 +41,7 @@ limitations under the License.
 namespace xla {
 namespace {
 
-using CollectivePipelinerExecutionTest = HloPjRtTestBase;
+using CollectivePipelinerExecutionTest = HloTestBase;
 
 absl::StatusOr<bool> RunOptimizer(
     HloModule* module, bool last_run, int64_t level_to_operate_on = 0,
@@ -69,7 +70,7 @@ absl::StatusOr<bool> RunOptimizer(
   pass.AddPass<CollectivePipeliner>(config);
   pass.AddPass<HloVerifier>(/*layout_sensitive=*/false,
                             /*allow_mixed_precision=*/false);
-  TF_ASSIGN_OR_RETURN(const bool modified, pass.Run(module));
+  ASSIGN_OR_RETURN(const bool modified, pass.Run(module));
   HloPassPipeline pass_dce("dce");
   pass_dce.AddPass<HloDCE>(/*remove_cross_partition_collective_ops=*/true);
   return modified;

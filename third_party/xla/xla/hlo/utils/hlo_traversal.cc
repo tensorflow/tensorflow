@@ -14,7 +14,6 @@ limitations under the License.
 ==============================================================================*/
 #include "xla/hlo/utils/hlo_traversal.h"
 
-#include <algorithm>
 #include <cstdint>
 #include <functional>
 #include <iterator>
@@ -711,7 +710,9 @@ std::vector<HloInstructionAdaptor> HloFindUseChain(HloInstructionAdaptor parent,
   std::vector<HloInstructionAdaptor> result;
   std::function<bool(HloInstructionAdaptor)> visit;
   visit = [&](HloInstructionAdaptor node) {
-    if (node == root) return true;
+    if (node == root) {
+      return true;
+    }
     for (const auto& user : node.GetUsers()) {
       if (visited.insert(user).second && visit(user)) {
         result.push_back(user);
@@ -722,7 +723,7 @@ std::vector<HloInstructionAdaptor> HloFindUseChain(HloInstructionAdaptor parent,
   };
   if (visit(parent)) {
     result.push_back(parent);
-    std::reverse(result.begin(), result.end());
+    absl::c_reverse(result);
   } else {
     result.clear();
   }

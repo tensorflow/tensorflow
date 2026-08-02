@@ -41,7 +41,7 @@ namespace {
 
 class TridiagonalTest
     : public ClientLibraryTestRunnerMixin<
-          HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>>,
+          HloPjRtInterpreterReferenceMixin<HloTestBase>>,
       public ::testing::WithParamInterface<std::tuple<int, int, int>> {};
 
 TEST_P(TridiagonalTest, SimpleTridiagonalMatMulOk) {

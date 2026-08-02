@@ -1,3 +1,18 @@
+# Copyright 2026 The TensorFlow Authors. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
+
 # Tensorflow windows-specific implementations of tensorflow/core/platform libraries.
 load(
     "//xla/tsl:tsl.bzl",
@@ -52,7 +67,7 @@ cc_library(
         "//xla/tsl/platform:logging",
         "//xla/tsl/platform:macros",
         "//xla/tsl/platform:status",
-        "//xla/tsl/platform:statusor",
+        "//xla/tsl/platform:status_macros",
         "//xla/tsl/platform:threadpool_interface",
         "//xla/tsl/platform:types",
         "//xla/tsl/protobuf:error_codes_proto_impl_cc",
@@ -84,9 +99,7 @@ cc_library(
         "@tsl//tsl/platform:regexp",
         "@tsl//tsl/platform:scanner",
         "@tsl//tsl/platform:setround",
-        "@tsl//tsl/platform:str_util",
         "@tsl//tsl/platform:strcat",
-        "@tsl//tsl/platform:stringpiece",
         "@tsl//tsl/platform:thread_annotations",
         "@tsl//tsl/platform:tracing",
     ],
@@ -96,17 +109,21 @@ cc_library(
     name = "env_impl",
     srcs = [
         "env.cc",
+        "//xla/tsl/platform:ram_file_system.h",
     ],
     tags = [
         "manual",
         "no_oss",
         "nobuilder",
+        "nofixdeps",
     ],
     deps = [
         ":env",
         ":wide_char",
         "//xla/tsl/platform:logging",
         "//xla/tsl/protobuf:error_codes_proto_impl_cc",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/synchronization",
         "@tsl//tsl/platform:load_library",
         "@tsl//tsl/platform:mutex",
     ],
@@ -120,9 +137,6 @@ cc_library(
         "manual",
         "no_oss",
         "nobuilder",
-    ],
-    deps = [
-        "//xla/tsl/platform:types",
     ],
 )
 
@@ -239,7 +253,10 @@ cc_library(
         "no_oss",
         "nobuilder",
     ],
-    deps = ["@tsl//tsl/platform:mutex"],
+    deps = [
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/synchronization",
+    ],
 )
 
 cc_library(
@@ -253,7 +270,8 @@ cc_library(
     ],
     deps = [
         "//xla/tsl/platform:types",
-        "@tsl//tsl/platform:mutex",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/synchronization",
         "@tsl//tsl/platform:stacktrace",
     ],
 )

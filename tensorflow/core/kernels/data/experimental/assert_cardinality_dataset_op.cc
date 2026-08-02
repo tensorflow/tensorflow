@@ -142,17 +142,17 @@ class AssertCardinalityDatasetOp::Dataset : public DatasetBase {
               absl::StrCat("Input dataset was expected to contain ",
                            ElementString(dataset()->cardinality_), "."));
         }
-        return errors::FailedPrecondition(
+        return absl::FailedPreconditionError(absl::StrCat(
             "Input dataset was expected to contain ",
             ElementString(dataset()->cardinality_), " but contained only ",
-            ElementString(num_elements_), ".");
+            ElementString(num_elements_), "."));
       }
       if (dataset()->cardinality_ != kInfiniteCardinality &&
           num_elements_ > dataset()->cardinality_) {
-        return errors::FailedPrecondition(
+        return absl::FailedPreconditionError(absl::StrCat(
             "Input dataset was expected to contain ",
             ElementString(dataset()->cardinality_), " but contained at least ",
-            ElementString(num_elements_), ".");
+            ElementString(num_elements_), "."));
       }
       return absl::OkStatus();
     }

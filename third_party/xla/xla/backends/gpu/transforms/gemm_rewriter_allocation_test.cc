@@ -18,10 +18,10 @@ limitations under the License.
 #include <utility>
 
 #include <gtest/gtest.h>
+#include "xla/backends/gpu/tests/hlo_legacy_gpu_test_base.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/executable.h"
 #include "xla/service/gpu/gpu_executable.h"
-#include "xla/service/gpu/tests/hlo_legacy_gpu_test_base.h"
 #include "xla/stream_executor/device_address_allocator.h"
 #include "xla/stream_executor/stream_executor_address_allocator.h"
 #include "xla/tsl/platform/statusor.h"

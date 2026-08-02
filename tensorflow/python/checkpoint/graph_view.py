@@ -22,6 +22,31 @@ from tensorflow.python.trackable import base
 from tensorflow.python.util.tf_export import tf_export
 
 
+def _copy_attached_dependencies(attached_dependencies, memo):
+  """Deep-copies attached dependencies, reconnecting weak refs to copies."""
+  if attached_dependencies is None:
+    return None
+
+  copied_dependencies = []
+  for dependency in attached_dependencies:
+    if isinstance(dependency, base.WeakTrackableReference):
+      strong_ref = dependency.ref
+      if strong_ref is None:
+        copied_dependencies.append(copy.deepcopy(dependency, memo))
+      else:
+        copied_dependencies.append(
+            base.WeakTrackableReference(
+                dependency.name, copy.deepcopy(strong_ref, memo)
+            )
+        )
+    else:
+      copied_dependencies.append(copy.deepcopy(dependency, memo))
+
+  if isinstance(attached_dependencies, tuple):
+    return tuple(copied_dependencies)
+  return copied_dependencies
+
+
 @tf_export("__internal__.tracking.ObjectGraphView", v1=[])
 class ObjectGraphView(trackable_view.TrackableView):
   """Gathers and serializes an object graph."""
@@ -47,17 +72,24 @@ class ObjectGraphView(trackable_view.TrackableView):
 
   def __deepcopy__(self, memo):
     # By default, weak references are not copied, which leads to surprising
-    # deepcopy behavior. To fix, we first we copy the object itself, then we
-    # make a weak reference to the copy.
+    # deepcopy behavior. To fix, we copy the strong root object first, then
+    # explicitly reconnect _root_ref to that copy instead of relying on
+    # copy.deepcopy(weakref.ref(...)), which may return the original weakref.
     strong_root = self._root_ref()
+    strong_copy = None
     if strong_root is not None:
       strong_copy = copy.deepcopy(strong_root, memo)
-      memo[id(self._root_ref)] = weakref.ref(strong_copy)
     # super() does not have a __deepcopy__, so we need to re-implement it
     copied = super().__new__(type(self))
     memo[id(self)] = copied
     for key, value in vars(self).items():
-      setattr(copied, key, copy.deepcopy(value, memo))
+      if key == "_root_ref":
+        setattr(copied, key,
+                weakref.ref(strong_copy) if strong_copy is not None else value)
+      elif key == "_attached_dependencies":
+        setattr(copied, key, _copy_attached_dependencies(value, memo))
+      else:
+        setattr(copied, key, copy.deepcopy(value, memo))
     return copied
 
   def list_children(self, obj, save_type=base.SaveType.CHECKPOINT, **kwargs):

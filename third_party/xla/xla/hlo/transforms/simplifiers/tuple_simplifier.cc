@@ -21,6 +21,7 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
@@ -55,9 +56,9 @@ absl::StatusOr<HloInstruction*> TupleSimplifier::RemoveWholeTuple(
   if (top_tuple == nullptr) {
     return nullptr;
   }
-  TF_ASSIGN_OR_RETURN(bool changed,
-                      tuple->parent()->ReplaceInstruction(
-                          tuple, top_tuple, /*preserve_sharding=*/true));
+  ASSIGN_OR_RETURN(bool changed,
+                   tuple->parent()->ReplaceInstruction(
+                       tuple, top_tuple, /*preserve_sharding=*/true));
   if (changed) {
     return top_tuple;
   }
@@ -76,8 +77,7 @@ absl::StatusOr<bool> TupleSimplifier::RunImpl(
     }
     for (auto* instruction : computation->MakeInstructionPostOrder()) {
       if (instruction->opcode() == HloOpcode::kTuple) {
-        TF_ASSIGN_OR_RETURN(HloInstruction * instr,
-                            RemoveWholeTuple(instruction));
+        ASSIGN_OR_RETURN(HloInstruction * instr, RemoveWholeTuple(instruction));
         if (instr != nullptr) {
           changed = true;
         }
@@ -115,19 +115,19 @@ absl::StatusOr<bool> TupleSimplifier::RunImpl(
         }
 
         if (replacement) {
-          TF_ASSIGN_OR_RETURN(bool replaced,
-                              computation->ReplaceInstruction(
-                                  instruction, replacement,
-                                  /*preserve_sharding=*/true,
-                                  /*relay_control_dependency=*/true));
+          ASSIGN_OR_RETURN(bool replaced,
+                           computation->ReplaceInstruction(
+                               instruction, replacement,
+                               /*preserve_sharding=*/true,
+                               /*relay_control_dependency=*/true));
           changed |= replaced;
         }
       }
     }
   }
 
-  if (module->has_schedule()) {
-    TF_RETURN_IF_ERROR(module->schedule().Update());
+  if (changed && module->has_schedule()) {
+    RETURN_IF_ERROR(module->schedule().Update());
   }
 
   return changed;

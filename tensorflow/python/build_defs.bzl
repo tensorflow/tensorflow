@@ -1,3 +1,18 @@
+# Copyright 2026 The TensorFlow Authors. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
+
 """Private defs for this directory."""
 
 # Intended only for use within this directory.
@@ -11,7 +26,6 @@
 # hard code the ops/ directory.
 
 load("@xla//third_party/rules_python/python:defs.bzl", "py_library")
-load("//tensorflow:strict.default.bzl", "py_strict_library")
 load("//tensorflow:tensorflow.bzl", "tf_gen_op_wrapper_py")
 
 # This is a private function only intended to be used in this directory, no need to
@@ -50,4 +64,4 @@ def tf_gen_op_wrapper_private_py(
     )
 
 def tf_gen_op_strict_wrapper_private_py(**kwargs):
-    tf_gen_op_wrapper_private_py(py_lib_rule = py_strict_library, **kwargs)
+    tf_gen_op_wrapper_private_py(py_lib_rule = py_library, **kwargs)

@@ -18,10 +18,12 @@ limitations under the License.
 #include <optional>
 #include <string>
 
+#include "xla/tsl/platform/status_macros.h"
 #include "nanobind/stl/shared_ptr.h"  // IWYU pragma: keep
 #include "nanobind/stl/string.h"  // IWYU pragma: keep
 #include "nanobind/stl/string_view.h"  // IWYU pragma: keep
 #include "nanobind/stl/vector.h"  // IWYU pragma: keep
+#include "xla/debug_options_flags.h"
 #include "xla/ffi/api/c_api.h"
 #include "xla/ffi/ffi.h"
 #include "xla/ffi/ffi_api.h"
@@ -119,10 +121,11 @@ RawCompileOptionsFromFlags(const PyHloRunnerConfig& opts) {
   out.hlo_passes_mode = opts.hlo_pass_mode;
   out.spmd_mode = opts.spmd_mode;
   if (!opts.execution_options_path.empty()) {
-    TF_ASSIGN_OR_RETURN(
+    ASSIGN_OR_RETURN(
         out.execution_options,
         FunctionalHloRunner::LoadExecutionOptions(opts.execution_options_path));
   }
+  out.debug_options = GetDebugOptionsFromFlags();
   out.num_replicas = opts.num_replicas < 0
                          ? std::nullopt
                          : std::optional<int>(opts.num_replicas);
@@ -144,14 +147,13 @@ RawCompileOptionsFromFlags(const PyHloRunnerConfig& opts) {
 
 absl::Status RunHloFiles(const std::vector<std::string>& hlo_files,
                          const PyHloRunnerConfig& opts) {
-  TF_ASSIGN_OR_RETURN(FunctionalHloRunner::PreprocessingOptions preproc_options,
-                      PreprocessingOptionsFromFlags(opts));
+  ASSIGN_OR_RETURN(FunctionalHloRunner::PreprocessingOptions preproc_options,
+                   PreprocessingOptionsFromFlags(opts));
   preproc_options.annotate_while_loop_trip_count = true;
-  TF_ASSIGN_OR_RETURN(
-      FunctionalHloRunner::RawCompileOptions raw_compile_options,
-      RawCompileOptionsFromFlags(opts));
-  TF_ASSIGN_OR_RETURN(FunctionalHloRunner::RunningOptions running_options,
-                      RunningOptionsFromFlags(opts));
+  ASSIGN_OR_RETURN(FunctionalHloRunner::RawCompileOptions raw_compile_options,
+                   RawCompileOptionsFromFlags(opts));
+  ASSIGN_OR_RETURN(FunctionalHloRunner::RunningOptions running_options,
+                   RunningOptionsFromFlags(opts));
 
   // tsl::Flags::Parse() leaves unknown flags in argv, we assume that those are
   // HLO files to run. Note that argv[0] is the binary name and is excluded.
@@ -178,20 +180,20 @@ absl::Status RunHloFiles(const std::vector<std::string>& hlo_files,
     gpu_options.num_nodes = opts.num_nodes;
     gpu_options.enable_mock_nccl = opts.enable_mock_nccl;
     gpu_options.allocator_config.memory_fraction = opts.gpu_client_mem_fraction;
-    TF_ASSIGN_OR_RETURN(
+    ASSIGN_OR_RETURN(
         env, GetPjRtEnvironmentForGpu(
                  opts.address, gpu_options,
                  absl::Seconds(opts.gpu_client_initialization_timeout_sec)));
   } else {
     QCHECK(opts.device_type == DeviceType::kHost) << "Invalid device type";
-    TF_ASSIGN_OR_RETURN(env, GetPjRtEnvironmentForHostCpu());
+    ASSIGN_OR_RETURN(env, GetPjRtEnvironmentForHostCpu());
   }
 
   CHECK(env.client != nullptr);
   if (!opts.xla_gpu_dump_xspace_to.empty()) {
-    TF_ASSIGN_OR_RETURN(hlo_runner_profiler,
-                        HLORunnerProfiler::Create(opts.xla_gpu_dump_xspace_to,
-                                                  /*keep_xspace=*/false));
+    ASSIGN_OR_RETURN(hlo_runner_profiler,
+                     HLORunnerProfiler::Create(opts.xla_gpu_dump_xspace_to,
+                                               /*keep_xspace=*/false));
     running_options.profiler = hlo_runner_profiler.get();
   }
 
@@ -201,14 +203,15 @@ absl::Status RunHloFiles(const std::vector<std::string>& hlo_files,
       running_options.execution_profiles = &execution_profiles;
     }
     if (opts.should_run) {
-      TF_RETURN_IF_ERROR(FunctionalHloRunner::LoadAndRunAndDump(
-          *env.client, GetDebugOptionsFromFlags(), preproc_options,
-          raw_compile_options, running_options, hlo_file, opts.input_format,
-          opts.dump_output_literal_to, opts.task_id));
+      RETURN_IF_ERROR(FunctionalHloRunner::LoadAndRunAndDump(
+          *env.client, preproc_options, raw_compile_options, running_options,
+          hlo_file, opts.input_format, opts.dump_output_literal_to,
+          opts.task_id));
     } else {
-      TF_RETURN_IF_ERROR(FunctionalHloRunner::LoadAndCompile(
-          *env.client, GetDebugOptionsFromFlags(), preproc_options,
-          raw_compile_options, hlo_file, opts.input_format, opts.task_id));
+      RETURN_IF_ERROR(FunctionalHloRunner::LoadAndCompile(
+                          *env.client, preproc_options, raw_compile_options,
+                          hlo_file, opts.input_format, opts.task_id)
+                          .status());
     }
     for (int i = 0; i < execution_profiles.size(); ++i) {
       LOG(INFO) << "## Execution time, file=" << hlo_file << " repeat=" << i
@@ -270,10 +273,10 @@ absl::Status RegisterCustomCallTarget(const std::string& fn_name, nb::object fn,
       };
 
       XLA_FFI_Handler_Bundle bundle;
-      TF_ASSIGN_OR_RETURN(bundle.instantiate, handler("instantiate"));
-      TF_ASSIGN_OR_RETURN(bundle.prepare, handler("prepare"));
-      TF_ASSIGN_OR_RETURN(bundle.initialize, handler("initialize"));
-      TF_ASSIGN_OR_RETURN(bundle.execute, handler("execute"));
+      ASSIGN_OR_RETURN(bundle.instantiate, handler("instantiate"));
+      ASSIGN_OR_RETURN(bundle.prepare, handler("prepare"));
+      ASSIGN_OR_RETURN(bundle.initialize, handler("initialize"));
+      ASSIGN_OR_RETURN(bundle.execute, handler("execute"));
 
       return ffi::TakeStatus(ffi::Ffi::RegisterStaticHandler(
           ffi::GetXlaFfiApi(), fn_name, platform, bundle, traits));

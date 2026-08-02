@@ -18,7 +18,6 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
-#include <optional>
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -27,7 +26,6 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/copy_thunk.pb.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
-#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/shaped_slice.h"
 
@@ -37,14 +35,9 @@ namespace gpu {
 // A thunk that copies data from a host buffer to a device buffer.
 class HostToDeviceCopyThunk : public CopyThunk {
  public:
-  // Constructs a HostToDeviceCopyThunk that copies data from `source_buffer` to
-  // the device buffer `destination_buffer`. `mem_size` is the size of the data
-  // in bytes. `events` are the cuda record/wait events.
-  // `instr` is the copy-start instruction.
   HostToDeviceCopyThunk(ThunkInfo thunk_info, const ShapedSlice& source_buffer,
-                        const ShapedSlice& destination_buffer, int64_t mem_size,
-                        std::shared_ptr<CopyThunk::AsyncEvents> events,
-                        int64_t instr_id);
+                        const ShapedSlice& destination_buffer,
+                        int64_t mem_size);
 
   absl::Status ExecuteOnStream(const ExecuteParams& params) override;
 
@@ -52,16 +45,7 @@ class HostToDeviceCopyThunk : public CopyThunk {
 
   static absl::StatusOr<std::unique_ptr<HostToDeviceCopyThunk>> FromProto(
       ThunkInfo thunk_info, const HostToDeviceCopyThunkProto& thunk_proto,
-      absl::Span<const BufferAllocation> buffer_allocations,
-      CopyThunk::AsyncEventsMap& async_events_map);
-
-  std::optional<AsyncEventsUniqueId> GetAsyncEventsUniqueId() const override;
-
-  bool IsAsyncStart() const override { return async_events_ != nullptr; }
-
- private:
-  std::shared_ptr<CopyThunk::AsyncEvents> async_events_;
-  int64_t instr_id_;
+      absl::Span<const BufferAllocation> buffer_allocations);
 };
 
 }  // namespace gpu

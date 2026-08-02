@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/hlo_clone_context.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -213,9 +214,9 @@ absl::StatusOr<bool> RemoveDeadParameters(HloComputation* computation) {
 
   // The new call computation is ready, now make all the call sites use it.
   for (HloInstruction* old_call : computation->caller_instructions()) {
-    TF_RETURN_IF_ERROR(ReplaceCallSite(old_call, new_computation,
-                                       old_to_new_parameter_number,
-                                       old_to_new_output_number, adjust_root));
+    RETURN_IF_ERROR(ReplaceCallSite(old_call, new_computation,
+                                    old_to_new_parameter_number,
+                                    old_to_new_output_number, adjust_root));
   }
 
   return true;
@@ -252,7 +253,7 @@ absl::StatusOr<bool> CallParameterCleanup::RunImpl(
 
   bool changed = false;
   for (HloComputation* computation : computations_to_process) {
-    TF_ASSIGN_OR_RETURN(bool removed, RemoveDeadParameters(computation));
+    ASSIGN_OR_RETURN(bool removed, RemoveDeadParameters(computation));
     changed |= removed;
   }
   return changed;

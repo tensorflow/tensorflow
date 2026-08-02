@@ -33,6 +33,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/executable_run_options.h"
 #include "xla/hlo/builder/xla_computation.h"
 #include "xla/hlo/evaluator/hlo_evaluator.h"
@@ -84,7 +85,7 @@ absl::Status RecordArguments(
     TransferManager* transfer_manager, HloSnapshot* module) {
   module->clear_arguments();
   for (const ShapedBuffer* argument : arguments) {
-    TF_ASSIGN_OR_RETURN(
+    ASSIGN_OR_RETURN(
         Literal literal,
         transfer_manager->TransferLiteralFromDevice(stream, *argument));
     *module->add_arguments() = literal.ToProto();
@@ -97,9 +98,8 @@ absl::Status RecordResult(const ShapedBuffer& result, se::Stream* stream,
                           TransferManager* transfer_manager,
                           HloSnapshot* module) {
   module->clear_result();
-  TF_ASSIGN_OR_RETURN(
-      Literal literal,
-      transfer_manager->TransferLiteralFromDevice(stream, result));
+  ASSIGN_OR_RETURN(Literal literal,
+                   transfer_manager->TransferLiteralFromDevice(stream, result));
   *module->mutable_result() = literal.ToProto();
   return absl::OkStatus();
 }
@@ -192,8 +192,8 @@ absl::Status Service::Unregister(const GlobalDataHandle& data) {
 // Deconstructs a previously-allocated global handle.
 absl::StatusOr<std::vector<std::unique_ptr<GlobalData>>>
 Service::DeconstructTuple(const GlobalData& data) {
-  TF_ASSIGN_OR_RETURN(std::vector<GlobalDataHandle> elements,
-                      allocation_tracker_.DeconstructTuple(data.handle()));
+  ASSIGN_OR_RETURN(std::vector<GlobalDataHandle> elements,
+                   allocation_tracker_.DeconstructTuple(data.handle()));
   std::vector<std::unique_ptr<GlobalData>> out;
   out.reserve(elements.size());
   for (GlobalDataHandle& element : elements) {
@@ -204,7 +204,7 @@ Service::DeconstructTuple(const GlobalData& data) {
 
 absl::Status Service::ValidateResultShape(const Shape& client_shape,
                                           const Shape& result_shape) {
-  TF_RETURN_IF_ERROR(ShapeUtil::ValidateShapeWithOptionalLayout(client_shape));
+  RETURN_IF_ERROR(ShapeUtil::ValidateShapeWithOptionalLayout(client_shape));
   if (!ShapeUtil::Compatible(client_shape, result_shape)) {
     return InvalidArgument(
         "Shape used to set computation result layout %s is not compatible "
@@ -223,8 +223,8 @@ Service::ResolveAndValidateArguments(
   std::vector<std::vector<const ShapedBuffer*>> replicated_arguments;
   replicated_arguments.resize(options_.number_of_replicas());
   for (size_t i = 0; i < arguments.size(); ++i) {
-    TF_ASSIGN_OR_RETURN(std::vector<const ShapedBuffer*> replicated_buffers,
-                        allocation_tracker_.Resolve(arguments[i]->handle()));
+    ASSIGN_OR_RETURN(std::vector<const ShapedBuffer*> replicated_buffers,
+                     allocation_tracker_.Resolve(arguments[i]->handle()));
     CHECK_EQ(options_.number_of_replicas(), replicated_buffers.size());
     for (int replica = 0; replica < options_.number_of_replicas(); ++replica) {
       const ShapedBuffer* shaped_buffer = replicated_buffers[replica];
@@ -274,7 +274,7 @@ Service::BuildExecutables(const HloModuleProto* module_proto,
   VLOG(1) << StrFormat("BuildExecutable on service %p", this);
   VLOG(1) << "Computation :" << module_proto->name();
 
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       auto module,
       CreateModuleFromProto(*module_proto, *module_config, run_backend_only));
   module->set_layout_canonicalization_callback(
@@ -286,13 +286,13 @@ Service::BuildExecutables(const HloModuleProto* module_proto,
 
   std::vector<std::unique_ptr<Executable>> executables;
   if (!run_backend_only) {
-    TF_ASSIGN_OR_RETURN(executables,
-                        backend->compiler()->Compile(
-                            std::move(module), std::move(executors), options));
+    ASSIGN_OR_RETURN(executables,
+                     backend->compiler()->Compile(
+                         std::move(module), std::move(executors), options));
   } else {
-    TF_ASSIGN_OR_RETURN(std::unique_ptr<Executable> executable,
-                        backend->compiler()->RunBackend(std::move(module),
-                                                        executors[0], options));
+    ASSIGN_OR_RETURN(std::unique_ptr<Executable> executable,
+                     backend->compiler()->RunBackend(std::move(module),
+                                                     executors[0], options));
     executables.push_back(std::move(executable));
   }
 
@@ -309,7 +309,7 @@ Service::BuildAotResults(
 
   VLOG(1) << "Computation: " << module_proto->name();
 
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       auto module,
       CreateModuleFromProto(*module_proto, *module_config, run_backend_only));
   DumpHloModuleIfEnabled(*module, kBeforeOptimizationsDumpName);
@@ -319,7 +319,7 @@ Service::BuildAotResults(
   aot_options.set_device_allocator(options.device_allocator);
   aot_options.set_run_backend_only(run_backend_only);
 
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       std::vector<std::unique_ptr<CompiledModule>> aot_results,
       backend->compiler()->CompileAheadOfTime(std::move(module), aot_options));
   return std::move(aot_results);
@@ -333,11 +333,10 @@ absl::StatusOr<GlobalDataHandle> Service::ExecuteAndRegisterResult(
   // Set up streams.
   std::vector<StreamPool::Ptr> streams;
 
-  TF_ASSIGN_OR_RETURN(auto replicas, Replicas(*backend, device_handle));
+  ASSIGN_OR_RETURN(auto replicas, Replicas(*backend, device_handle));
   TF_RET_CHECK(!replicas.empty());
   for (se::StreamExecutor* executor : replicas) {
-    TF_ASSIGN_OR_RETURN(StreamPool::Ptr stream,
-                        backend->BorrowStream(executor));
+    ASSIGN_OR_RETURN(StreamPool::Ptr stream, backend->BorrowStream(executor));
     streams.push_back(std::move(stream));
   }
 
@@ -368,8 +367,8 @@ absl::StatusOr<GlobalDataHandle> Service::ExecuteAndRegisterResult(
   }
 
   if (options_.number_of_replicas() == 1) {
-    TF_ASSIGN_OR_RETURN(auto result, executable->ExecuteOnStreamWrapper(
-                                         run_options.data(), arguments[0]));
+    ASSIGN_OR_RETURN(auto result, executable->ExecuteOnStreamWrapper(
+                                      run_options.data(), arguments[0]));
     return allocation_tracker_.Register(std::move(result), result_tag);
   }
 
@@ -380,8 +379,8 @@ absl::StatusOr<GlobalDataHandle> Service::ExecuteAndRegisterResult(
     replicated_arguments.push_back(arg);
   }
 
-  TF_ASSIGN_OR_RETURN(auto results, executable->ExecuteOnStreams(
-                                        run_options, replicated_arguments));
+  ASSIGN_OR_RETURN(auto results, executable->ExecuteOnStreams(
+                                     run_options, replicated_arguments));
   TF_RET_CHECK(!results.empty());
   return allocation_tracker_.RegisterReplicatedBuffers(std::move(results),
                                                        result_tag);
@@ -403,8 +402,7 @@ absl::StatusOr<std::vector<se::StreamExecutor*>> Service::GetExecutors(
   }
   std::vector<se::StreamExecutor*> executors;
   for (const auto& device_handle : execution_options.device_handles()) {
-    TF_ASSIGN_OR_RETURN(auto replicas,
-                        Replicas(*execute_backend_, device_handle));
+    ASSIGN_OR_RETURN(auto replicas, Replicas(*execute_backend_, device_handle));
     se::StreamExecutor* executor = replicas[0];
     CHECK(executor != nullptr);
     executors.push_back(executor);
@@ -419,10 +417,10 @@ Service::GetArguments(const ExecutionOptions& execution_options,
   // a vector of device memory offsets for the arguments from the allocations.
   // In the case of partitioned computations, assume all arguments go on the
   // zeroth core.
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       auto replicas,
       Replicas(*execute_backend_, execution_options.device_handles(0)));
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       std::vector<std::vector<const ShapedBuffer*>> replicated_arguments,
       ResolveAndValidateArguments(arguments, replicas));
   return replicated_arguments;
@@ -449,12 +447,12 @@ absl::StatusOr<std::vector<std::unique_ptr<GlobalData>>> Service::ExecuteGraph(
       << "program shape may not be empty";
 
   // Get the executors.
-  TF_ASSIGN_OR_RETURN(std::vector<se::StreamExecutor*> executors,
-                      GetExecutors(execution_options, /*requests_size=*/1,
-                                   /*request_index=*/0));
+  ASSIGN_OR_RETURN(std::vector<se::StreamExecutor*> executors,
+                   GetExecutors(execution_options, /*requests_size=*/1,
+                                /*request_index=*/0));
 
   // Get the replicated arguments.
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       std::vector<std::vector<const ShapedBuffer*>> replicated_arguments,
       GetArguments(execution_options, computation.arguments));
 
@@ -478,11 +476,10 @@ absl::StatusOr<std::vector<std::unique_ptr<GlobalData>>> Service::ExecuteGraph(
   // the program and the argument allocations. Here, we care only about the
   // shapes of the arguments, so, it is sufficient to use the arguments of
   // replica 0.
-  TF_ASSIGN_OR_RETURN(
-      ProgramShape program_shape,
-      ProgramShape::FromProto(
-          computation.computation.proto().host_program_shape()));
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(ProgramShape program_shape,
+                   ProgramShape::FromProto(
+                       computation.computation.proto().host_program_shape()));
+  ASSIGN_OR_RETURN(
       std::unique_ptr<HloModuleConfig> module_config,
       CreateModuleConfig(program_shape, replicated_arguments.front(),
                          computation.execution_options));
@@ -498,7 +495,7 @@ absl::StatusOr<std::vector<std::unique_ptr<GlobalData>>> Service::ExecuteGraph(
   //
   // TODO(jlebar): There's currently no way to pass a device allocator to
   // ExecuteGraph, so we have to pass a null device_allocator below.
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       std::vector<std::unique_ptr<Executable>> executables,
       BuildExecutables(&computation.computation.proto(),
                        std::move(module_config), execute_backend_.get(),
@@ -514,11 +511,11 @@ absl::StatusOr<std::vector<std::unique_ptr<GlobalData>>> Service::ExecuteGraph(
 
   if (executable_ptr->dumping_snapshot()) {
     *snapshot.mutable_hlo() = *executable_ptr->hlo_proto();
-    TF_ASSIGN_OR_RETURN(auto stream, execute_backend_->BorrowStream(
-                                         executors[0]->device_ordinal()));
-    TF_RETURN_IF_ERROR(
-        RecordArguments(replicated_arguments.front(), stream.get(),
-                        execute_backend_->transfer_manager(), &snapshot));
+    ASSIGN_OR_RETURN(auto stream, execute_backend_->BorrowStream(
+                                      executors[0]->device_ordinal()));
+    RETURN_IF_ERROR(RecordArguments(replicated_arguments.front(), stream.get(),
+                                    execute_backend_->transfer_manager(),
+                                    &snapshot));
   }
 
   ExecutionProfile profile;
@@ -546,7 +543,7 @@ absl::StatusOr<std::vector<std::unique_ptr<GlobalData>>> Service::ExecuteGraph(
     DumpHloSnapshotIfEnabled(executable_ptr->module(), snapshot);
   }
 
-  TF_RETURN_IF_ERROR(execution_status);
+  RETURN_IF_ERROR(execution_status);
 
   std::vector<std::unique_ptr<GlobalData>> out;
   out.reserve(outputs.size());
@@ -555,13 +552,12 @@ absl::StatusOr<std::vector<std::unique_ptr<GlobalData>>> Service::ExecuteGraph(
   }
 
   if (executable_ptr->dumping_snapshot()) {
-    TF_ASSIGN_OR_RETURN(const ShapedBuffer* result_buffer,
-                        allocation_tracker_.ResolveForReplica(outputs[0], 0));
-    TF_ASSIGN_OR_RETURN(auto stream,
-                        execute_backend_->BorrowStream(executors[0]));
-    TF_RETURN_IF_ERROR(RecordResult(*result_buffer, stream.get(),
-                                    execute_backend_->transfer_manager(),
-                                    &snapshot));
+    ASSIGN_OR_RETURN(const ShapedBuffer* result_buffer,
+                     allocation_tracker_.ResolveForReplica(outputs[0], 0));
+    ASSIGN_OR_RETURN(auto stream, execute_backend_->BorrowStream(executors[0]));
+    RETURN_IF_ERROR(RecordResult(*result_buffer, stream.get(),
+                                 execute_backend_->transfer_manager(),
+                                 &snapshot));
     DumpHloSnapshotIfEnabled(executable_ptr->module(), snapshot);
   }
 
@@ -608,7 +604,7 @@ absl::StatusOr<std::unique_ptr<Executable>> Service::BuildExecutable(
     return absl::StrFormat("XlaCompile:#module=%s#", module_proto.name());
   }};
 
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       std::unique_ptr<HloModule> module,
       CreateModuleFromProto(module_proto, *module_config, run_backend_only));
   UpdateEntryComputationLayout(
@@ -624,11 +620,11 @@ absl::StatusOr<std::unique_ptr<Executable>> Service::BuildExecutable(
     if (DumpingEnabledForHloModule(*module)) {
       hlo_proto_before_opt = std::make_unique<HloProto>(MakeHloProto(*module));
     }
-    TF_ASSIGN_OR_RETURN(module, backend->compiler()->RunHloPasses(
-                                    std::move(module), executor, options));
+    ASSIGN_OR_RETURN(module, backend->compiler()->RunHloPasses(
+                                 std::move(module), executor, options));
   }
 
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       std::unique_ptr<Executable> executable,
       backend->compiler()->RunBackend(std::move(module), executor, options));
 
@@ -669,16 +665,16 @@ absl::StatusOr<ExecutionHandle> Service::Compile(
     argument_shape_ptrs.push_back(&shape);
   }
 
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       ProgramShape program_shape,
       ProgramShape::FromProto(computation.proto().host_program_shape()));
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModuleConfig> module_config,
-                      CreateModuleConfig(program_shape, argument_shape_ptrs,
-                                         &execution_options));
+  ASSIGN_OR_RETURN(std::unique_ptr<HloModuleConfig> module_config,
+                   CreateModuleConfig(program_shape, argument_shape_ptrs,
+                                      &execution_options));
   VLOG(3) << "Compile created HloModuleConfig computation layout: "
           << module_config->entry_computation_layout().ToString();
 
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       std::unique_ptr<Executable> executable,
       BuildExecutable(computation.proto(), std::move(module_config),
                       execute_backend_.get(),
@@ -694,13 +690,13 @@ absl::StatusOr<std::unique_ptr<GlobalData>> Service::Execute(
     ExecutionProfile* execution_profile) {
   VLOG(1) << "running execute request";
 
-  TF_ASSIGN_OR_RETURN(std::shared_ptr<Executable> executable,
-                      compilation_cache_.LookUp(handle));
+  ASSIGN_OR_RETURN(std::shared_ptr<Executable> executable,
+                   compilation_cache_.LookUp(handle));
 
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       std::vector<se::StreamExecutor*> replicas,
       Replicas(*execute_backend_, SingleComputationDeviceHandle()));
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       std::vector<std::vector<const ShapedBuffer*>> replicated_arguments,
       ResolveAndValidateArguments(arguments, replicas));
 
@@ -726,19 +722,19 @@ absl::StatusOr<std::unique_ptr<GlobalData>> Service::Execute(
     }
   }
 
-  TF_ASSIGN_OR_RETURN(auto stream,
-                      execute_backend_->BorrowStream(
-                          execute_backend_->default_stream_executor()));
+  ASSIGN_OR_RETURN(auto stream,
+                   execute_backend_->BorrowStream(
+                       execute_backend_->default_stream_executor()));
   HloSnapshot snapshot;
   if (executable->dumping_snapshot()) {
     *snapshot.mutable_hlo() = *executable->hlo_proto();
     snapshot.set_execution_platform(execute_backend_->platform()->Name());
-    TF_RETURN_IF_ERROR(
-        RecordArguments(replicated_arguments.front(), stream.get(),
-                        execute_backend_->transfer_manager(), &snapshot));
+    RETURN_IF_ERROR(RecordArguments(replicated_arguments.front(), stream.get(),
+                                    execute_backend_->transfer_manager(),
+                                    &snapshot));
   }
 
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       GlobalDataHandle output,
       ExecuteAndRegisterResult(
           executable.get(), replicated_arguments, execute_backend_.get(),
@@ -746,11 +742,11 @@ absl::StatusOr<std::unique_ptr<GlobalData>> Service::Execute(
           absl::StrCat("result of ", executable->name()), execution_profile));
 
   if (executable->dumping_snapshot()) {
-    TF_ASSIGN_OR_RETURN(const ShapedBuffer* result_buffer,
-                        allocation_tracker_.ResolveForReplica(output, 0));
-    TF_RETURN_IF_ERROR(RecordResult(*result_buffer, stream.get(),
-                                    execute_backend_->transfer_manager(),
-                                    &snapshot));
+    ASSIGN_OR_RETURN(const ShapedBuffer* result_buffer,
+                     allocation_tracker_.ResolveForReplica(output, 0));
+    RETURN_IF_ERROR(RecordResult(*result_buffer, stream.get(),
+                                 execute_backend_->transfer_manager(),
+                                 &snapshot));
     DumpHloSnapshotIfEnabled(executable->module(), snapshot);
   }
 
@@ -759,8 +755,8 @@ absl::StatusOr<std::unique_ptr<GlobalData>> Service::Execute(
 
 absl::StatusOr<Literal> Service::TransferToClient(
     const GlobalData& data, const Shape* shape_with_layout) {
-  TF_ASSIGN_OR_RETURN(const ShapedBuffer* shaped_buffer,
-                      allocation_tracker_.ResolveForReplica(data.handle(), 0));
+  ASSIGN_OR_RETURN(const ShapedBuffer* shaped_buffer,
+                   allocation_tracker_.ResolveForReplica(data.handle(), 0));
 
   Shape return_shape;
   if (shape_with_layout) {
@@ -783,11 +779,10 @@ absl::StatusOr<Literal> Service::TransferToClient(
     }
   }
 
-  TF_ASSIGN_OR_RETURN(
-      auto stream,
-      execute_backend_->BorrowStream(shaped_buffer->physical_device_ordinal()));
+  ASSIGN_OR_RETURN(auto stream, execute_backend_->BorrowStream(
+                                    shaped_buffer->physical_device_ordinal()));
 
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       Literal result_literal,
       execute_backend_->transfer_manager()->TransferLiteralFromDevice(
           stream.get(), *shaped_buffer));
@@ -803,9 +798,9 @@ absl::StatusOr<std::unique_ptr<GlobalData>> Service::TransferToServer(
   const Shape& shape = literal_slice.shape();
   std::vector<se::StreamExecutor*> replicas;
   if (device_handle) {
-    TF_ASSIGN_OR_RETURN(replicas, Replicas(*execute_backend_, *device_handle));
+    ASSIGN_OR_RETURN(replicas, Replicas(*execute_backend_, *device_handle));
   } else {
-    TF_ASSIGN_OR_RETURN(
+    ASSIGN_OR_RETURN(
         replicas, Replicas(*execute_backend_, SingleComputationDeviceHandle()));
   }
 
@@ -817,23 +812,23 @@ absl::StatusOr<std::unique_ptr<GlobalData>> Service::TransferToServer(
       return execute_backend_->compiler()->DefaultDeviceShapeRepresentation(
           shape);
     };
-    TF_ASSIGN_OR_RETURN(
+    ASSIGN_OR_RETURN(
         ScopedShapedBuffer shaped_buffer,
         execute_backend_->transfer_manager()->AllocateScopedShapedBuffer(
             shape, execute_backend_->memory_allocator(),
             executor->device_ordinal(), device_shape_representation_fn));
-    TF_ASSIGN_OR_RETURN(auto stream, execute_backend_->BorrowStream(executor));
-    TF_RETURN_IF_ERROR(
+    ASSIGN_OR_RETURN(auto stream, execute_backend_->BorrowStream(executor));
+    RETURN_IF_ERROR(
         execute_backend_->transfer_manager()->TransferLiteralToDevice(
             stream.get(), literal_slice, shaped_buffer));
     replicated_buffers.emplace_back(std::move(shaped_buffer));
   }
 
-  TF_ASSIGN_OR_RETURN(GlobalDataHandle out,
-                      allocation_tracker_.RegisterReplicatedBuffers(
-                          std::move(replicated_buffers),
-                          StrCat("TransferToServer literal of shape ",
-                                 ShapeUtil::HumanString(shape))));
+  ASSIGN_OR_RETURN(GlobalDataHandle out,
+                   allocation_tracker_.RegisterReplicatedBuffers(
+                       std::move(replicated_buffers),
+                       StrCat("TransferToServer literal of shape ",
+                              ShapeUtil::HumanString(shape))));
 
   return std::make_unique<GlobalData>(this, out);
 }
@@ -852,13 +847,12 @@ absl::Status Service::TransferToInfeed(const LiteralSlice& literal,
 
   se::StreamExecutor* executor;
   if (device_handle) {
-    TF_ASSIGN_OR_RETURN(auto replicas,
-                        Replicas(*execute_backend_, *device_handle));
+    ASSIGN_OR_RETURN(auto replicas,
+                     Replicas(*execute_backend_, *device_handle));
     executor = replicas[replica_id];
   } else {
-    TF_ASSIGN_OR_RETURN(
-        auto replicas,
-        Replicas(*execute_backend_, SingleComputationDeviceHandle()));
+    ASSIGN_OR_RETURN(auto replicas, Replicas(*execute_backend_,
+                                             SingleComputationDeviceHandle()));
     executor = replicas[replica_id];
   }
 
@@ -878,19 +872,18 @@ absl::StatusOr<Literal> Service::TransferFromOutfeed(
 
   se::StreamExecutor* executor;
   if (device_handle) {
-    TF_ASSIGN_OR_RETURN(auto replicas,
-                        Replicas(*execute_backend_, *device_handle));
+    ASSIGN_OR_RETURN(auto replicas,
+                     Replicas(*execute_backend_, *device_handle));
     executor = replicas[replica_id];
   } else {
-    TF_ASSIGN_OR_RETURN(
-        auto replicas,
-        Replicas(*execute_backend_, SingleComputationDeviceHandle()));
+    ASSIGN_OR_RETURN(auto replicas, Replicas(*execute_backend_,
+                                             SingleComputationDeviceHandle()));
     executor = replicas[replica_id];
   }
 
   auto literal = Literal::CreateFromShape(*shape_with_layout);
 
-  TF_RETURN_IF_ERROR(
+  RETURN_IF_ERROR(
       execute_backend_->transfer_manager()->TransferLiteralFromOutfeed(
           executor, &literal));
   return literal;
@@ -908,25 +901,25 @@ absl::StatusOr<Literal> Service::ComputeConstantGraph(
         "constant computation may not depend on any parameters.");
   }
 
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       ProgramShape program_shape,
       ProgramShape::FromProto(computation.proto().host_program_shape()));
   DCHECK_OK(ShapeUtil::ValidateShape(program_shape.result()));
 
   if (output_layout) {
-    TF_RETURN_IF_ERROR(LayoutUtil::ValidateLayoutForShape(
-        *output_layout, program_shape.result()));
+    RETURN_IF_ERROR(LayoutUtil::ValidateLayoutForShape(*output_layout,
+                                                       program_shape.result()));
   }
 
   HloModuleConfig config(program_shape);
 
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
-                      CreateModuleFromProto(computation.proto(), config));
+  ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
+                   CreateModuleFromProto(computation.proto(), config));
   DynamicPadder dynamic_padder;
-  TF_RETURN_IF_ERROR(dynamic_padder.Run(module.get()).status());
+  RETURN_IF_ERROR(dynamic_padder.Run(module.get()).status());
 
-  TF_ASSIGN_OR_RETURN(DynamicDimensionInference dynamic_dimension_inference,
-                      DynamicDimensionInference::Run(module.get()));
+  ASSIGN_OR_RETURN(DynamicDimensionInference dynamic_dimension_inference,
+                   DynamicDimensionInference::Run(module.get()));
 
   HloEvaluator evaluator;
   evaluator.set_dynamic_dimension_inference(&dynamic_dimension_inference);
@@ -944,7 +937,7 @@ absl::StatusOr<Literal> Service::ComputeConstantGraph(
                              custom_call->custom_call_target(),
                              custom_call->ToString());
       });
-  TF_ASSIGN_OR_RETURN(auto result_literal, evaluator.Evaluate(*module, {}));
+  ASSIGN_OR_RETURN(auto result_literal, evaluator.Evaluate(*module, {}));
 
   // Since the result layout is non-effective to the Evaluator results, explicit
   // relayout here.
@@ -957,8 +950,8 @@ absl::StatusOr<Literal> Service::ComputeConstantGraph(
 }
 
 absl::StatusOr<Shape> Service::GetShape(const GlobalData& data) {
-  TF_ASSIGN_OR_RETURN(const ShapedBuffer* buffer,
-                      allocation_tracker_.ResolveForReplica(data.handle(), 0));
+  ASSIGN_OR_RETURN(const ShapedBuffer* buffer,
+                   allocation_tracker_.ResolveForReplica(data.handle(), 0));
   return buffer->on_device_shape();
 }
 
@@ -971,7 +964,7 @@ DeviceHandle Service::SingleComputationDeviceHandle() const {
 
 absl::StatusOr<std::vector<se::StreamExecutor*>> Service::Replicas(
     const Backend& backend, const DeviceHandle& device_handle) const {
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       DeviceAssignment da,
       backend.computation_placer()->AssignDevices(
           options_.number_of_replicas(), device_handle.device_count()));
@@ -980,7 +973,7 @@ absl::StatusOr<std::vector<se::StreamExecutor*>> Service::Replicas(
     // From the computation placer, find out the device ids of the replicas for
     // the given device handle.
     int64_t device_ordinal = da.DeviceId(replica, device_handle.handle());
-    TF_ASSIGN_OR_RETURN(auto executor, backend.stream_executor(device_ordinal));
+    ASSIGN_OR_RETURN(auto executor, backend.stream_executor(device_ordinal));
     replicas.push_back(executor);
   }
   return replicas;

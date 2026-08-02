@@ -22,7 +22,6 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "xla/codegen/tiling/affine_map_evaluator.h"
 #include "xla/hlo/analysis/indexing_analysis.h"
 #include "xla/hlo/analysis/indexing_map.h"
 #include "xla/hlo/analysis/indexing_test_utils.h"
@@ -81,7 +80,7 @@ TEST_F(SymbolicTileTest, CanPropagateTileThroughTrivialReshape) {
       Symbolic tile with
         offset_map: (d0, d1, d2, d3) -> (0, 0, 0)
         size_map: (d0, d1, d2, d3) -> (d0 * d1, d2, d3)
-        stride_map: (d0, d1, d2, d3) -> (((-d1 + 12) floordiv 11) * ((-(-d0 + 2) + 1) * 11) + -((-d1 + 12) floordiv 11) + 1, 1, 1)
+        stride_map: (d0, d1, d2, d3) -> (((-d1 + 12) / 11) * (d0 - 2 + 1) * 11 - ((-d1 + 12) / 11 - 1), 1, 1)
         constraints: d0 in [1, 1] || d1 in [1, 1] || d1 in [11, 11]
       )")));
 }
@@ -103,7 +102,7 @@ TEST_F(SymbolicTileTest,
               Optional(MatchSymbolicTileString(R"(
       Symbolic tile with
         offset_map: (d0, d1) -> (0, 0, 0, 0)
-        size_map: (d0, d1) -> ((d0 + 47) floordiv 48, (d0 + 5) floordiv 6, d0 - ((d0 - 1) floordiv 6) * 6, d1)
+        size_map: (d0, d1) -> ((d0 + 47) / 48, (d0 + 5) / 6, d0 - ((d0 - 1) / 6) * 6, d1)
         stride_map: (d0, d1) -> (1, 1, 1, 1)
         constraints:
           6 mod d0 in [0, 0] || d0 mod 6 in [0, 0]
@@ -130,11 +129,8 @@ TEST_F(SymbolicTileTest,
   EXPECT_THAT(symbolic_tile, Optional(MatchSymbolicTileString(R"(
       Symbolic tile with
         offset_map: (d0, d1, d2, d3) -> (0, 0)
-        size_map: (d0, d1, d2, d3) -> ((d0 * d1) * d2, d3)
-        stride_map: (d0, d1, d2, d3) ->
-          (((-d2 + 7) floordiv 6) * (((-d1 + 9) floordiv 8) *
-          ((-((-d0 + 5) floordiv 4) + 1) * 48) +
-          (-((-d1 + 9) floordiv 8) + 1) * 6) + -((-d2 + 7) floordiv 6) + 1, 1)
+        size_map: (d0, d1, d2, d3) -> (d0 * d1 * d2, d3)
+        stride_map: (d0, d1, d2, d3) -> (((-d2 + 7) / 6) * (((-d1 + 9) / 8) * (-((-d0 + 5) / 4) + 1) * 48 + (-((-d1 + 9) / 8) + 1) * 6) - ((-d2 + 7) / 6 - 1), 1)
         constraints: d0 in [1, 1] && d1 in [1, 1] ||
                      d0 in [1, 1] && d2 in [1, 1] ||
                      d0 in [1, 1] && d2 in [6, 6] ||
@@ -145,25 +141,25 @@ TEST_F(SymbolicTileTest,
 
   // Capturing elements along dimensions 0, 1, and 2 makes the stride equal to
   // 1.
-  EXPECT_THAT(EvaluateAffineMap(symbolic_tile->stride_map(), {4, 8, 6, 4}),
+  EXPECT_THAT(symbolic_tile->stride_map().Evaluate({4, 8, 6, 4}),
               ElementsAre(1, 1));
   // Capturing elements along dimension 2 makes the stride equal to 1.
-  EXPECT_THAT(EvaluateAffineMap(symbolic_tile->stride_map(), {1, 1, 6, 4}),
+  EXPECT_THAT(symbolic_tile->stride_map().Evaluate({1, 1, 6, 4}),
               ElementsAre(1, 1));
   // Capturing elements only along dimension 1 makes the stride equal to
   // the length of dimension 2 (6).
-  EXPECT_THAT(EvaluateAffineMap(symbolic_tile->stride_map(), {1, 8, 1, 4}),
+  EXPECT_THAT(symbolic_tile->stride_map().Evaluate({1, 8, 1, 4}),
               ElementsAre(6, 1));
   // Capturing elements only along dimension 0 makes the stride equal to the
   // product of the lengths of dimensions 1 and 2 (8 * 6).
-  EXPECT_THAT(EvaluateAffineMap(symbolic_tile->stride_map(), {2, 1, 1, 4}),
+  EXPECT_THAT(symbolic_tile->stride_map().Evaluate({2, 1, 1, 4}),
               ElementsAre(48, 1));
   // Capturing elements along dimension 0 and dimension 1 makes the stride
   // equal to the length of dimension 2 (6).
-  EXPECT_THAT(EvaluateAffineMap(symbolic_tile->stride_map(), {2, 8, 1, 4}),
+  EXPECT_THAT(symbolic_tile->stride_map().Evaluate({2, 8, 1, 4}),
               ElementsAre(6, 1));
   // Capturing a single element in the collapsed dimensions makes the stride 0.
-  EXPECT_THAT(EvaluateAffineMap(symbolic_tile->stride_map(), {1, 1, 1, 4}),
+  EXPECT_THAT(symbolic_tile->stride_map().Evaluate({1, 1, 1, 4}),
               ElementsAre(0, 1));
 }
 
@@ -495,7 +491,7 @@ TEST_F(SymbolicTileTest, CanPropagateTileThroughGather) {
 
 TEST_F(SymbolicTileTest, CanPropagateTileThroughSplitReshapeOfReverse) {
   // A split reshape of a reverse creates a negative unit stride atop a
-  // floordiv.
+  // /.
   auto input_indexing = GetOutputToInputIndexing(ParseAndGetRoot(R"(
     HloModule m
     computation {
@@ -516,7 +512,7 @@ TEST_F(SymbolicTileTest, CanPropagateTileThroughSplitReshapeOfReverse) {
       Symbolic tile with
         offset_map: (d0, d1) -> (0, 7, 5, 0)
         size_map: (d0, d1) ->
-          (1, (d0 + 5) floordiv 6, d0 - ((d0 - 1) floordiv 6) * 6, d1)
+          (1, (d0 + 5) / 6, d0 - ((d0 - 1) / 6) * 6, d1)
         stride_map: (d0, d1) -> (0, -1, -1, 1)
       )")));
 }
@@ -545,8 +541,8 @@ TEST_F(SymbolicTileTest, CanPropagateTileThroughReverseOfCombiningReshape) {
               Optional(MatchSymbolicTileString(R"(
       Symbolic tile with
         offset_map: (d0, d1, d2, d3) -> (23, 0)
-        size_map: (d0, d1, d2, d3) -> ((d0 * d1) * d2, d3)
-        stride_map: (d0, d1, d2, d3) -> (((-d2 + 7) floordiv 6) * (((-d1 + 5) floordiv 4) * ((-((-d0 + 3) floordiv 2) + 1) * 24) - (-((-d1 + 5) floordiv 4) + 1) * 6) - (-((-d2 + 7) floordiv 6) + 1), 1)
+        size_map: (d0, d1, d2, d3) -> (d0 * d1 * d2, d3)
+        stride_map: (d0, d1, d2, d3) -> (((-d2 + 7) / 6) * (((-d1 + 5) / 4) * (-((-d0 + 3) / 2) + 1) * 24 - (((-d1 + 5) / 4) * -6 + 6)) - (-((-d2 + 7) / 6) + 1), 1)
         constraints: d0 in [1, 1] && d1 in [1, 1] || d0 in [1, 1] && d2 in [1, 1] || d0 in [1, 1] && d2 in [6, 6] || d1 in [1, 1] && d2 in [1, 1] || d1 in [4, 4] && d2 in [1, 1] || d1 in [4, 4] && d2 in [6, 6]
       )")));
 }
@@ -612,25 +608,24 @@ TEST_F(SymbolicTileTest, CanPropagateTileModAndFloorDiv) {
   //   p0 = f32[3,5,7]{2,1,0} parameter(0)
   //   bitcast = f32[105]{0} bitcast(p0)
   IndexingMap indexing_map = IndexingMap::FromTensorSizes(
-      ParseSymbolicMap(
-          "(d0) -> (d0 floordiv 35, (d0 floordiv 7) mod 5, d0 mod 7)",
-          &mlir_context_),
+      ParseSymbolicMap("(d0) -> (d0 / 35, (d0 / 7) mod 5, d0 mod 7)",
+                       &mlir_context_),
       {105}, {});
 
   EXPECT_THAT(SymbolicTile::FromIndexingMap(indexing_map),
               Optional(MatchSymbolicTileString(R"(
       Symbolic tile with
         offset_map: (d0) -> (0, 0, 0)
-        size_map: (d0) -> ((d0 + 34) floordiv 35, (d0 + 6) floordiv 7 - (((d0 + 6) floordiv 7 - 1) floordiv 5) * 5, d0 - ((d0 - 1) floordiv 7) * 7)
+        size_map: (d0) -> ((d0 + 34) / 35, (d0 + 6) / 7 - (((d0 + 6) / 7 - 1) / 5) * 5, d0 - ((d0 - 1) / 7) * 7)
         stride_map: (d0) -> (1, 1, 1)
-        constraints: ((d0 + 6) floordiv 7) mod 5 in [0, 0] && 7 mod d0 in [0, 0] || ((d0 + 6) floordiv 7) mod 5 in [0, 0] && d0 mod 7 in [0, 0] || 5 mod ((d0 + 6) floordiv 7) in [0, 0] && 7 mod d0 in [0, 0] || 5 mod ((d0 + 6) floordiv 7) in [0, 0] && d0 mod 7 in [0, 0]
+        constraints: ((d0 + 6) / 7) mod 5 in [0, 0] && 7 mod d0 in [0, 0] || ((d0 + 6) / 7) mod 5 in [0, 0] && d0 mod 7 in [0, 0] || 5 mod ((d0 + 6) / 7) in [0, 0] && 7 mod d0 in [0, 0] || 5 mod ((d0 + 6) / 7) in [0, 0] && d0 mod 7 in [0, 0]
       )")));
 }
 
 TEST_F(SymbolicTileTest,
        FailsGracefullyAtPropagatingTileThroughSliceOfSplitReshape) {
   // TODO(b/349487906): constraints should allow us to unblock this use case.
-  // A slice of a split reshape creates a non-unit stride atop a floordiv.
+  // A slice of a split reshape creates a non-unit stride atop a /.
   auto input_indexing = GetOutputToInputIndexing(ParseAndGetRoot(R"(
     HloModule m
     computation {
@@ -676,7 +671,7 @@ TEST_F(SymbolicTileTest,
 TEST_F(SymbolicTileTest,
        FailsGracefullyAtPropagatingTileThroughSliceOfSplitReshapeOnTranspose) {
   // TODO(b/349487906): constraints should allow us to unblock this use case.
-  // A slice of a split reshape creates a non-unit stride atop a floordiv.
+  // A slice of a split reshape creates a non-unit stride atop a /.
   auto input_indexing = GetOutputToInputIndexing(ParseAndGetRoot(R"(
     HloModule m
     computation {
@@ -701,7 +696,7 @@ TEST_F(SymbolicTileTest,
        FailsGracefullyAtPropagatingTileThroughSliceOfSplitReshapeOfReverse) {
   // TODO(b/349487906): constraints should allow us to unblock this use case.
   // A slice of a split reshape of a reverse creates a negative non-unit stride
-  // atop a floordiv.
+  // atop a /.
   auto input_indexing = GetOutputToInputIndexing(ParseAndGetRoot(R"(
     HloModule m
     computation {
@@ -769,7 +764,7 @@ TEST_F(SymbolicTileTest, CanCombineCompatibleConstraints) {
               Optional(MatchSymbolicTileString(R"(
       Symbolic tile with
         offset_map: (d0, d1) -> (0, 0, 0, 0, 0)
-        size_map: (d0, d1) -> ((d0 + 47) floordiv 48, (d0 + 5) floordiv 6, d0 - ((d0 - 1) floordiv 6) * 6, (d1 + 7) floordiv 8, d1 - ((d1 - 1) floordiv 8) * 8)
+        size_map: (d0, d1) -> ((d0 + 47) / 48, (d0 + 5) / 6, d0 - ((d0 - 1) / 6) * 6, (d1 + 7) / 8, d1 - ((d1 - 1) / 8) * 8)
         stride_map: (d0, d1) -> (1, 1, 1, 1, 1)
         constraints:
           6 mod d0 in [0, 0] && 8 mod d1 in [0, 0] ||
@@ -799,7 +794,7 @@ TEST_F(SymbolicTileTest,
       Symbolic tile with
         offset_map: (d0, d1, d2) -> (0, 0)
         size_map: (d0, d1, d2) -> (d0 * d1, 50304)
-        stride_map: (d0, d1, d2) -> (((-d1 + 2049) floordiv 2048) * ((-((-d0 + 5) floordiv 4) + 1) * 2048) + -((-d1 + 2049) floordiv 2048) + 1, 1)
+        stride_map: (d0, d1, d2) -> (((-d1 + 2049) / 2048) * (-((-d0 + 5) / 4) + 1) * 2048 - ((-d1 + 2049) / 2048 - 1), 1)
         constraints: d0 in [1, 1] || d1 in [1, 1] || d1 in [2048, 2048]
       )")));
 }
@@ -823,7 +818,7 @@ TEST_F(SymbolicTileTest,
       Symbolic tile with
         offset_map: (d0, d1, d2) -> (0, 0)
         size_map: (d0, d1, d2) -> (d0 * d1, 50304)
-        stride_map: (d0, d1, d2) -> (((-d1 + 2049) floordiv 2048) * ((-((-d0 + 5) floordiv 4) + 1) * 2048) + -((-d1 + 2049) floordiv 2048) + 1, 1)
+        stride_map: (d0, d1, d2) -> (((-d1 + 2049) / 2048) * (-((-d0 + 5) / 4) + 1) * 2048 - ((-d1 + 2049) / 2048 - 1), 1)
         constraints: d0 in [1, 1] || d1 in [1, 1] || d1 in [2048, 2048]
       )")));
 }

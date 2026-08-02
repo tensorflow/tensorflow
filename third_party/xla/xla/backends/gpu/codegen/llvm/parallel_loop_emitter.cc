@@ -34,6 +34,7 @@ limitations under the License.
 #include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
 // IWYU pragma: no_include "llvm/IR/Intrinsics.gen.inc"
+#include "xla/tsl/platform/status_macros.h"
 #include "llvm/IR/Intrinsics.h"
 #include "llvm/IR/Value.h"
 #include "xla/service/gpu/target_util.h"
@@ -48,9 +49,9 @@ namespace gpu {
 ParallelLoopEmitter::ParallelLoopEmitter(
     llvm_ir::BodyEmitter body_emitter, const Shape& shape,
     const LaunchDimensions& launch_dimensions, llvm::IRBuilderBase* b,
-    LaunchDimensionsConfig launch_config)
+    int unroll_factor)
     : launch_dimensions_(launch_dimensions),
-      launch_config_(launch_config),
+      unroll_factor_(unroll_factor),
       body_emitter_(body_emitter),
       shape_(shape),
       b_(b) {}
@@ -59,10 +60,9 @@ ParallelLoopEmitter::ParallelLoopEmitter(
     const llvm_ir::ElementGenerator& target_element_generator,
     absl::Span<const llvm_ir::IrArray> target_arrays,
     const LaunchDimensions& launch_dimensions, llvm::IRBuilderBase* b,
-
-    LaunchDimensionsConfig launch_config)
+    int unroll_factor)
     : launch_dimensions_(launch_dimensions),
-      launch_config_(launch_config),
+      unroll_factor_(unroll_factor),
       body_emitter_(
           llvm_ir::MakeBodyEmitter(target_element_generator, target_arrays, b,
                                    /*is_tuple=*/target_arrays.size() > 1)),
@@ -135,10 +135,9 @@ ParallelLoopEmitter::EmitLinearBaseAndThreadIdx(llvm::Type* index_type,
           "linear_index_in_range")},
       {}, b_);
 
-  if (launch_config_.unroll_factor > 1) {
+  if (unroll_factor_ > 1) {
     linear_index_base = b_->CreateMul(
-        linear_index_base,
-        llvm::ConstantInt::get(index_type, launch_config_.unroll_factor),
+        linear_index_base, llvm::ConstantInt::get(index_type, unroll_factor_),
         "linear_index_base", /*HasNUW=*/true, /*HasNSW=*/true);
   }
 
@@ -170,8 +169,7 @@ ParallelLoopEmitter::EmitIndexAndSetExitBasicBlock(absl::string_view loop_name,
   CHECK_EQ(launch_dimensions_.thread_counts_per_block().z, 1);
   CHECK_EQ(launch_dimensions_.block_counts().y, 1);
   CHECK_EQ(launch_dimensions_.block_counts().z, 1);
-  VLOG(3) << "EmitIndexAndSetExitBasicBlock unroll_factor "
-          << launch_config_.unroll_factor;
+  VLOG(3) << "EmitIndexAndSetExitBasicBlock unroll_factor " << unroll_factor_;
   CHECK_NE(index_type, nullptr);
 
   std::vector<llvm_ir::IrArray::Index> array_indices;
@@ -181,7 +179,7 @@ ParallelLoopEmitter::EmitIndexAndSetExitBasicBlock(absl::string_view loop_name,
   llvm::Value* linear_index_base = linear_base_and_thread_idx.linear_base;
 
   std::vector<llvm::Value*> multidim(shape_.dimensions().size(), nullptr);
-  for (int i = 0; i < launch_config_.unroll_factor; ++i) {
+  for (int i = 0; i < unroll_factor_; ++i) {
     // The add operation is needed even if the offset is 0, since when the
     // kernel is unrolled, the following GEP instruction shares the same pointer
     // and sequential indices with others, allowing the default SLP pass to
@@ -213,11 +211,11 @@ absl::Status ParallelLoopEmitter::EmitSerialLoop(absl::string_view loop_name,
                                                  llvm::Type* index_type,
                                                  llvm::Value* base_indvar) {
   int64_t num_elements = ShapeUtil::ElementsIn(shape_);
-  bool check_bounds = num_elements % launch_config_.unroll_factor > 0;
+  bool check_bounds = num_elements % unroll_factor_ > 0;
   for (const llvm_ir::IrArray::Index& array_index :
        EmitIndexAndSetExitBasicBlock(loop_name, index_type, base_indvar)) {
     if (!check_bounds) {
-      TF_RETURN_IF_ERROR(body_emitter_(array_index));
+      RETURN_IF_ERROR(body_emitter_(array_index));
     } else {
       // If the unroll_factor does not divide the number of elements, we must
       // check that the index is in bounds, since the last iteration of the last
@@ -232,7 +230,7 @@ absl::Status ParallelLoopEmitter::EmitSerialLoop(absl::string_view loop_name,
                             llvm::ConstantInt::get(index_type, num_elements)),
           llvm_ir::IrName(loop_name, "unrolled_in_bounds"), b_, false);
       llvm_ir::SetToFirstInsertPoint(if_in_bounds.true_block, b_);
-      TF_RETURN_IF_ERROR(body_emitter_(array_index));
+      RETURN_IF_ERROR(body_emitter_(array_index));
       llvm_ir::SetToFirstInsertPoint(if_in_bounds.after_block, b_);
     }
   }
@@ -248,18 +246,18 @@ absl::Status ParallelLoopEmitter::EmitLoop(absl::string_view loop_name,
   int64_t num_elements = ShapeUtil::ElementsIn(shape_);
   // If all the elements are handled by the current threads, no need
   // to add a loop inside the kernel.
-  if (total_threads * launch_config_.unroll_factor >= num_elements) {
+  if (total_threads * unroll_factor_ >= num_elements) {
     VLOG(1) << "No loops inside the kernel";
-    TF_RETURN_IF_ERROR(EmitSerialLoop(loop_name, index_type));
+    RETURN_IF_ERROR(EmitSerialLoop(loop_name, index_type));
   } else {
     KernelSupportLibrary ksl(b_, llvm_ir::UnrollMode::kDefaultUnroll);
     auto constant = [&](int64_t val) {
       return llvm::ConstantInt::get(index_type, val);
     };
 
-    TF_RETURN_IF_ERROR(ksl.ForWithStatus(
+    RETURN_IF_ERROR(ksl.ForWithStatus(
         "loop", constant(0), constant(num_elements),
-        constant(total_threads * launch_config_.unroll_factor),
+        constant(total_threads * unroll_factor_),
         [&](llvm::Value* base_indvar) {
           return EmitSerialLoop(loop_name, index_type, base_indvar);
         }));
@@ -267,7 +265,7 @@ absl::Status ParallelLoopEmitter::EmitLoop(absl::string_view loop_name,
 
   // Set the insertion point of b_ to the loop exit, so that
   // code emitted for later instructions will be correctly placed.
-  CHECK(exit_bb_->getTerminator());
+  CHECK(exit_bb_->hasTerminator());
   b_->SetInsertPoint(exit_bb_->getTerminator());
   return absl::OkStatus();
 }

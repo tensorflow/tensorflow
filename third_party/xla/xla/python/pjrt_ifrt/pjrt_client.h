@@ -41,12 +41,12 @@ limitations under the License.
 #include "xla/pjrt/distributed/client.h"
 #include "xla/pjrt/distributed/key_value_store_interface.h"
 #include "xla/pjrt/pjrt_client.h"
-#include "xla/pjrt/pjrt_common.h"
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_layout.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/array_spec.h"
 #include "xla/python/ifrt/attribute_map.h"
+#include "xla/python/ifrt/bundle.h"
 #include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/compiler.h"
 #include "xla/python/ifrt/device.h"
@@ -257,14 +257,25 @@ class PjRtClient final
       absl::Span<const xla::ifrt::ArraySpec> specs,
       xla::ifrt::ArrayCopySemantics semantics) override;
 
+  tsl::Future<std::vector<uint64_t>> HashValues(
+      absl::Span<const ValueRef> values, HashMode mode) override;
+
   absl::StatusOr<std::vector<xla::ifrt::ArrayRef>> ReshardArrays(
       absl::Span<ArrayRef> arrays, absl::Span<const ArraySpec> specs,
       ArrayCopySemantics semantics) override;
 
   tsl::Future<> GetReadyFuture(absl::Span<const ValueRef> values) override;
 
+  tsl::Future<> DeleteValues(absl::Span<ValueRef> values) override;
+
   absl::StatusOr<tsl::RCReference<Tuple>> MakeTuple(
       absl::Span<ValueRef> values) override;
+
+  absl::StatusOr<BundleRef> Bundle(absl::Span<ValueRef> values,
+                                   ArrayCopySemantics semantics) override;
+
+  absl::StatusOr<BundleRef> ConcatBundles(
+      absl::Span<BundleRef> bundles, ArrayCopySemantics semantics) override;
 
   void CancelExecution(
       xla::ifrt::LoadedExecutable::CancellationHandle cancellation_handle,

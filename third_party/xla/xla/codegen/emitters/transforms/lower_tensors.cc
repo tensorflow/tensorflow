@@ -78,10 +78,11 @@ limitations under the License.
 
 namespace xla {
 namespace emitters {
-namespace {
 
 #define GEN_PASS_DEF_LOWERTENSORSPASS
 #include "xla/codegen/emitters/transforms/passes.h.inc"
+
+namespace {
 
 using llvm::dyn_cast_or_null;
 using mlir::failure;
@@ -1389,6 +1390,8 @@ class RewriteGetDynamicDimSize : public OpRewritePattern<GetDynamicDimSizeOp> {
 
 class LowerTensorsPass : public impl::LowerTensorsPassBase<LowerTensorsPass> {
  public:
+  LowerTensorsPass() = default;
+
   explicit LowerTensorsPass(const LowerTensorsPassOptions& options)
       : LowerTensorsPassBase(options) {}
 
@@ -1470,15 +1473,7 @@ class LowerTensorsPass : public impl::LowerTensorsPassBase<LowerTensorsPass> {
 
 }  // namespace
 
-std::unique_ptr<::mlir::Pass> CreateLowerTensorsPass(
-    const std::string& target_type, const std::string& gpu_device_info) {
-  LowerTensorsPassOptions options;
-  options.gpu_device_info_ = gpu_device_info;
-  options.target_type_ = target_type;
-  return std::make_unique<LowerTensorsPass>(options);
-}
-
-std::unique_ptr<::mlir::Pass> CreateLowerTensorsPass(
+std::unique_ptr<::mlir::Pass> createLowerTensorsPass(
     const se::DeviceDescription& device_description) {
   return std::make_unique<LowerTensorsPass>(device_description);
 }

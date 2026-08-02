@@ -51,15 +51,16 @@ class GenerateVocabRemappingOp : public OpKernel {
                    context->input("new_vocab_file", &new_vocab_file_tensor));
     OP_REQUIRES(context,
                 TensorShapeUtils::IsScalar(new_vocab_file_tensor->shape()),
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(absl::StrCat(
                     "new_vocab_file should be a single string, but got ",
-                    new_vocab_file_tensor->shape().DebugString()));
+                    new_vocab_file_tensor->shape().DebugString())));
 
     // Build a new ID->token lookup table.
     const std::string& new_vocab_filename =
         new_vocab_file_tensor->scalar<tstring>()();
-    OP_REQUIRES(context, !new_vocab_filename.empty(),
-                errors::InvalidArgument("new vocab filename cannot be empty."));
+    OP_REQUIRES(
+        context, !new_vocab_filename.empty(),
+        absl::InvalidArgumentError("new vocab filename cannot be empty."));
     lookup::HashTable<int64_t, tstring>* new_vocab_table =
         new lookup::HashTable<int64_t, tstring>(context, this);
     core::ScopedUnref unref_new(new_vocab_table);
@@ -74,24 +75,25 @@ class GenerateVocabRemappingOp : public OpKernel {
                                 -2,  // value_index, use the whole line/token.
                                 0,   // No offset.
                                 context->env(), new_vocab_table));
-    OP_REQUIRES(context,
-                new_vocab_offset_ + num_new_vocab_ <= new_vocab_table->size(),
-                errors::InvalidArgument("lookup table size must be larger than "
-                                        "last new vocab entry's line"));
+    OP_REQUIRES(
+        context, new_vocab_offset_ + num_new_vocab_ <= new_vocab_table->size(),
+        absl::InvalidArgumentError("lookup table size must be larger than "
+                                   "last new vocab entry's line"));
 
     const Tensor* old_vocab_file_tensor;
     OP_REQUIRES_OK(context,
                    context->input("old_vocab_file", &old_vocab_file_tensor));
     OP_REQUIRES(context,
                 TensorShapeUtils::IsScalar(old_vocab_file_tensor->shape()),
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(absl::StrCat(
                     "old_vocab_file should be a single string, but got ",
-                    old_vocab_file_tensor->shape().DebugString()));
+                    old_vocab_file_tensor->shape().DebugString())));
     // Build a token->old ID lookup table.
     const std::string& old_vocab_filename =
         old_vocab_file_tensor->scalar<tstring>()();
-    OP_REQUIRES(context, !old_vocab_filename.empty(),
-                errors::InvalidArgument("new vocab filename cannot be empty."));
+    OP_REQUIRES(
+        context, !old_vocab_filename.empty(),
+        absl::InvalidArgumentError("new vocab filename cannot be empty."));
     lookup::HashTable<tstring, int64_t>* old_vocab_table =
         new lookup::HashTable<tstring, int64_t>(context, this);
     core::ScopedUnref unref_old(old_vocab_table);

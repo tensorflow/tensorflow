@@ -19,6 +19,7 @@ limitations under the License.
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <memory>
 #include <utility>
 #include <vector>
 
@@ -27,9 +28,11 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/gpu/collectives/gpu_clique_key.h"
 #include "xla/backends/gpu/collectives/gpu_clique_rendezvous.h"
 #include "xla/core/collectives/rank_id.h"
+#include "xla/core/collectives/symmetric_memory.h"
 #include "xla/status_macros.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/gpu/gpu_kernel_registry.h"
@@ -41,6 +44,35 @@ limitations under the License.
 
 namespace xla {
 namespace gpu {
+
+namespace {
+
+// Returns a cached kernel for the given stream executor.
+template <typename Kernel>
+absl::StatusOr<typename Kernel::KernelType*> GetCachedKernel(
+    se::StreamExecutor* executor) {
+  static absl::NoDestructor<absl::flat_hash_map<
+      se::StreamExecutor*, std::unique_ptr<typename Kernel::KernelType>>>
+      kernel_per_executor;
+  static absl::NoDestructor<absl::Mutex> kernel_mutex;
+
+  absl::MutexLock lock(*kernel_mutex);
+  auto it = kernel_per_executor->find(executor);
+  if (it == kernel_per_executor->end()) {
+    ASSIGN_OR_RETURN(
+        auto new_kernel,
+        (stream_executor::gpu::GpuKernelRegistry::GetGlobalRegistry()
+             .LoadKernel<Kernel>(executor)));
+    it = kernel_per_executor
+             ->emplace(executor, std::make_unique<typename Kernel::KernelType>(
+                                     std::move(new_kernel)))
+             .first;
+  }
+
+  return it->second.get();
+}
+
+}  // namespace
 
 // Launches a cross-GPU barrier synchronization.
 //
@@ -71,26 +103,8 @@ absl::Status LaunchMultiGpuBarrier(
     signal_buffers[peer] = barrier_addresses[peer].opaque();
   }
 
-  stream_executor::StreamExecutor* executor = stream->parent();
-  // Load the multi-GPU barrier kernel only once per stream executor.
-  static absl::NoDestructor<absl::flat_hash_map<
-      se::StreamExecutor*, MultiGpuBarrierKernel::KernelType>>
-      kernel_per_executor;
-  static absl::NoDestructor<absl::Mutex> kernel_mutex;
-
-  MultiGpuBarrierKernel::KernelType* kernel;
-  {
-    absl::MutexLock lock(*kernel_mutex);
-    if (!kernel_per_executor->contains(executor)) {
-      TF_ASSIGN_OR_RETURN(
-          auto new_kernel,
-          (stream_executor::gpu::GpuKernelRegistry::GetGlobalRegistry()
-               .LoadKernel<MultiGpuBarrierKernel>(executor)));
-      kernel_per_executor->emplace(executor, std::move(new_kernel));
-    }
-
-    kernel = &kernel_per_executor->at(executor);
-  }
+  ASSIGN_OR_RETURN(MultiGpuBarrierKernel::KernelType * kernel,
+                   GetCachedKernel<MultiGpuBarrierKernel>(stream->parent()));
 
   stream_executor::DeviceAddress<uint32_t> typed_sync_counter(
       local_barrier_signal_value);
@@ -100,6 +114,31 @@ absl::Status LaunchMultiGpuBarrier(
       stream_executor::BlockDim(1, 1, 1), stream,
       static_cast<int64_t>(rank.value()), static_cast<int64_t>(num_devices),
       signal_buffers, typed_sync_counter);
+}
+
+// See MultiGpuBarrierWithNcclKernel for more details.
+absl::Status LaunchMultiGpuBarrierWithNccl(
+    stream_executor::Stream* stream, int64_t num_devices, RankId rank,
+    xla::SymmetricMemory* symmetric_memory,
+    stream_executor::DeviceAddressBase local_barrier_signal_value) {
+  using MultiGpuBarrierWithNcclKernel =
+      stream_executor::gpu::MultiGpuBarrierWithNcclKernel;
+
+  TF_RET_CHECK(symmetric_memory != nullptr) << "Symmetric memory is required";
+
+  ASSIGN_OR_RETURN(
+      MultiGpuBarrierWithNcclKernel::KernelType * kernel,
+      GetCachedKernel<MultiGpuBarrierWithNcclKernel>(stream->parent()));
+
+  stream_executor::DeviceAddress<uint32_t> typed_sync_counter(
+      local_barrier_signal_value);
+
+  return kernel->Launch(stream_executor::ThreadDim(
+                            MultiGpuBarrierWithNcclKernel::kMaxPeers, 1, 1),
+                        stream_executor::BlockDim(1, 1, 1), stream,
+                        static_cast<int64_t>(rank.value()),
+                        static_cast<int64_t>(num_devices), symmetric_memory,
+                        typed_sync_counter);
 }
 
 size_t GetMultiGpuBarrierSignalBufferSize() {
@@ -117,7 +156,7 @@ absl::StatusOr<std::vector<void*>> CollectParamToPeers(
 
   size_t num_parameters = parameters.size();
   // Exchange device parameters with all ranks in the clique.
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       auto device_parameters,
       GpuCliqueRendezvous::Join(clique_key, rank, std::move(parameters)));
 
@@ -130,8 +169,8 @@ absl::StatusOr<std::vector<void*>> CollectParamToPeers(
   using DeviceParameters = std::vector<stream_executor::DeviceAddressBase>;
 
   for (auto peer = RankId(0); peer < RankId(clique_key.num_devices()); ++peer) {
-    TF_ASSIGN_OR_RETURN(const DeviceParameters& peer_parameters,
-                        device_parameters->at<DeviceParameters>(peer));
+    ASSIGN_OR_RETURN(const DeviceParameters& peer_parameters,
+                     device_parameters->at<DeviceParameters>(peer));
     peer_to_parameters[peer.value()] = std::move(peer_parameters);
   }
 

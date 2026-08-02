@@ -17,6 +17,7 @@ limitations under the License.
 #include <cstdint>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "xla/hlo/builder/lib/arithmetic.h"
@@ -33,7 +34,7 @@ class BucketizeOp : public XlaOpKernel {
   explicit BucketizeOp(OpKernelConstruction* context) : XlaOpKernel(context) {
     OP_REQUIRES_OK(context, context->GetAttr("boundaries", &boundaries_));
     OP_REQUIRES(context, std::is_sorted(boundaries_.begin(), boundaries_.end()),
-                errors::InvalidArgument("Expected sorted boundaries"));
+                absl::InvalidArgumentError("Expected sorted boundaries"));
   }
 
   void Compile(XlaOpKernelContext* context) override {

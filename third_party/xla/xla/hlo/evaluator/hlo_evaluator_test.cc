@@ -20,7 +20,6 @@ limitations under the License.
 #include <initializer_list>
 #include <limits>
 #include <memory>
-#include <numeric>
 #include <optional>
 #include <string>
 #include <utility>
@@ -49,6 +48,7 @@ limitations under the License.
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/test.h"
+#include "xla/hlo/testlib/test_helpers.h"
 #include "xla/hlo/transforms/simplifiers/hlo_element_type_converter.h"
 #include "xla/layout.h"
 #include "xla/layout_util.h"
@@ -424,6 +424,67 @@ TEST_F(HloEvaluatorTest, DoesMultiply) {
       {{std::numeric_limits<int32_t>::min(), 0}, {-400, 16}});
   TestBinaryOp(HloOpcode::kMultiply, std::move(expected), std::move(lhs),
                std::move(rhs));
+}
+// Verifies that HloEvaluator evaluates a HLO instruction that performs
+// element-wise multiply-high with 2 operands.
+TEST_F(HloEvaluatorTest, DoesMulhiU32) {
+  // u32: 0xFFFFFFFF * 0xFFFFFFFF = 0xFFFFFFFE00000001
+  // High bits: 0xFFFFFFFE (4294967294)
+  auto lhs_u32 = LiteralUtil::CreateR0<uint32_t>(0xFFFFFFFF);
+  auto rhs_u32 = LiteralUtil::CreateR0<uint32_t>(0xFFFFFFFF);
+  auto expected_u32 = LiteralUtil::CreateR0<uint32_t>(0xFFFFFFFE);
+  TestBinaryOp(HloOpcode::kMulhi, std::move(expected_u32), std::move(lhs_u32),
+               std::move(rhs_u32));
+}
+
+TEST_F(HloEvaluatorTest, DoesMulhiS32) {
+  // s32: -1 * -1 = 1 (wider signed multiply: 0xFFFFFFFF * 0xFFFFFFFF = 1)
+  // 64-bit signed product: 1 (0x0000000000000001)
+  // High bits (signed): 0
+  auto lhs_s32 = LiteralUtil::CreateR0<int32_t>(-1);
+  auto rhs_s32 = LiteralUtil::CreateR0<int32_t>(-1);
+  auto expected_s32 = LiteralUtil::CreateR0<int32_t>(0);
+  TestBinaryOp(HloOpcode::kMulhi, std::move(expected_s32), std::move(lhs_s32),
+               std::move(rhs_s32));
+}
+
+TEST_F(HloEvaluatorTest, DoesMulhiS32Min) {
+  // s32: Min * 2
+  // -2147483648 * 2 = -4294967296 (0xFFFFFFFF00000000)
+  // High bits (signed): -1 (0xFFFFFFFF)
+  auto lhs_s32_2 =
+      LiteralUtil::CreateR0<int32_t>(std::numeric_limits<int32_t>::min());
+  auto rhs_s32_2 = LiteralUtil::CreateR0<int32_t>(2);
+  auto expected_s32_2 = LiteralUtil::CreateR0<int32_t>(-1);
+  TestBinaryOp(HloOpcode::kMulhi, std::move(expected_s32_2),
+               std::move(lhs_s32_2), std::move(rhs_s32_2));
+}
+
+// Regression test: clz of a negative signed integer must be 0, not negative.
+// The evaluator used to sign extend to 64 bits, so clz(s32 0xC1A63AF0) gave
+// -32.
+TEST_F(HloEvaluatorTest, DoesCountLeadingZerosS32) {
+  auto input = LiteralUtil::CreateR1<int32_t>(
+      {0, 1, -1, -1046070544, std::numeric_limits<int32_t>::min(),
+       std::numeric_limits<int32_t>::max()});
+  auto expected = LiteralUtil::CreateR1<int32_t>({32, 31, 0, 0, 0, 1});
+  TestUnaryOp(HloOpcode::kClz, std::move(expected), std::move(input));
+}
+
+TEST_F(HloEvaluatorTest, DoesCountLeadingZerosU32) {
+  auto input = LiteralUtil::CreateR1<uint32_t>(
+      {0, 1, 0xFFFFFFFF, 0x80000000, 0x7FFFFFFF});
+  auto expected = LiteralUtil::CreateR1<uint32_t>({32, 31, 0, 0, 1});
+  TestUnaryOp(HloOpcode::kClz, std::move(expected), std::move(input));
+}
+
+// Narrow type: masks to the s8 width, not the 64 bit ElementwiseT width.
+TEST_F(HloEvaluatorTest, DoesCountLeadingZerosS8) {
+  auto input = LiteralUtil::CreateR1<int8_t>(
+      {0, 1, -1, std::numeric_limits<int8_t>::min(),
+       std::numeric_limits<int8_t>::max()});
+  auto expected = LiteralUtil::CreateR1<int8_t>({8, 7, 0, 0, 1});
+  TestUnaryOp(HloOpcode::kClz, std::move(expected), std::move(input));
 }
 // Verifies that HloEvaluator evaluates a HLO instruction that performs
 // element-wise divide with 2 operands.
@@ -2960,14 +3021,14 @@ TEST_P(HloEvaluatorBf16Test, Conv2DGroupedConvolution) {
   *window.add_dimensions() = dim;
 
   std::vector<float> input_elems(ShapeUtil::ElementsIn(input_shape));
-  std::iota(input_elems.begin(), input_elems.end(), -7);
+  absl::c_iota(input_elems, -7);
   auto input_r1 = LiteralUtil::CreateR1<float>(input_elems);
   auto input_r4 = input_r1.Reshape(input_dims).value();
   HloInstruction* lhs_instruction =
       b.AddInstruction(HloInstruction::CreateConstant(std::move(input_r4)));
 
   std::vector<float> filter_elems(ShapeUtil::ElementsIn(filter_shape));
-  std::iota(filter_elems.begin(), filter_elems.end(), -31);
+  absl::c_iota(filter_elems, -31);
   auto filter_r1 = LiteralUtil::CreateR1<float>(filter_elems);
   auto filter_r4 = filter_r1.Reshape(filter_dims).value();
   HloInstruction* rhs_instruction =
@@ -6040,9 +6101,11 @@ ENTRY main {
 
   absl::StatusOr<Literal> actual = Evaluate({&arg});
   EXPECT_FALSE(actual.ok());
-  EXPECT_EQ(actual.status().message(),
-            "Evaluator cannot evaluate bitcast for non-scalar operand without "
-            "assigned layout.");
+  EXPECT_THAT(
+      actual.status().message(),
+      ::testing::HasSubstr(
+          "Evaluator cannot evaluate bitcast for non-scalar operand without "
+          "assigned layout."));
 }
 
 TEST_P(HloEvaluatorBf16Test, EffectiveScalarBitcastWithoutLayout) {
@@ -6509,6 +6572,126 @@ TEST_F(HloEvaluatorTest, AsyncOpsWithLayout) {
   TF_ASSERT_OK_AND_ASSIGN(
       Literal result, HloEvaluator().Evaluate(*m_->entry_computation(), {}));
   EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
+}
+
+TEST_F(HloEvaluatorTest, LateBindingAsyncStartAndUpdate) {
+  const absl::string_view hlo_text = R"(
+  HloModule test
+
+  async_computation {
+    p0 = f32[4] parameter(0)
+    ROOT negate = f32[4] negate(p0)
+  }
+
+  ENTRY entry {
+    x = f32[4] constant({1.0, 2.0, 3.0, 4.0})
+    async-start = ((), (), s32[]) async-start(), calls=async_computation,
+                                  async_execution_thread="thread"
+    async-update = ((f32[4]), f32[4], s32[]) async-update(async-start, x)
+    ROOT async-done = f32[4] async-done(async-update)
+  }
+  )";
+  ASSERT_OK_AND_ASSIGN(m_, ParseAndReturnVerifiedModule(hlo_text));
+  Literal expected = LiteralUtil::CreateR1<float>({-1.0f, -2.0f, -3.0f, -4.0f});
+  ASSERT_OK_AND_ASSIGN(Literal result,
+                       HloEvaluator().Evaluate(*m_->entry_computation(), {}));
+  EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
+}
+
+TEST_F(HloEvaluatorTest, LateBindingAsyncMultipleUpdates) {
+  const absl::string_view hlo_text = R"(
+  HloModule test
+
+  async_computation {
+    p0 = f32[4] parameter(0)
+    p1 = f32[4] parameter(1)
+    add = f32[4] add(p0, p1)
+    negate = f32[4] negate(p0)
+    ROOT tuple = (f32[4], f32[4]) tuple(add, negate)
+  }
+
+  ENTRY entry {
+    x = f32[4] constant({1.0, 2.0, 3.0, 4.0})
+    y = f32[4] constant({10.0, 20.0, 30.0, 40.0})
+    async-start = ((), (), s32[]) async-start(), calls=async_computation,
+                                  async_execution_thread="thread"
+    async-update0 = ((f32[4]), (), s32[]) async-update(async-start, x)
+    async-update1 = ((f32[4], f32[4]), (f32[4], f32[4]), s32[]) async-update(async-update0, y)
+    ROOT async-done = (f32[4], f32[4]) async-done(async-update1)
+  }
+  )";
+  ASSERT_OK_AND_ASSIGN(m_, ParseAndReturnVerifiedModule(hlo_text));
+  Literal expected_add =
+      LiteralUtil::CreateR1<float>({11.0f, 22.0f, 33.0f, 44.0f});
+  Literal expected_negate =
+      LiteralUtil::CreateR1<float>({-1.0f, -2.0f, -3.0f, -4.0f});
+  Literal expected = LiteralUtil::MakeTuple({&expected_add, &expected_negate});
+
+  ASSERT_OK_AND_ASSIGN(Literal result,
+                       HloEvaluator().Evaluate(*m_->entry_computation(), {}));
+  EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
+}
+
+TEST_F(HloEvaluatorTest, LateBindingAsyncDone) {
+  const absl::string_view hlo_text = R"(
+  HloModule test
+
+  async_computation {
+    p0 = f32[4] parameter(0)
+    ROOT negate = f32[4] negate(p0)
+  }
+
+  ENTRY entry {
+    x = f32[4] constant({1.0, 2.0, 3.0, 4.0})
+    async-start = ((), (), s32[]) async-start(), calls=async_computation,
+                                  async_execution_thread="thread"
+    async-update = ((f32[4]), (), s32[]) async-update(async-start, x)
+    ROOT async-done = f32[4] async-done(async-update)
+  }
+  )";
+  ASSERT_OK_AND_ASSIGN(m_, ParseAndReturnVerifiedModule(hlo_text));
+  Literal expected = LiteralUtil::CreateR1<float>({-1.0f, -2.0f, -3.0f, -4.0f});
+  ASSERT_OK_AND_ASSIGN(Literal result,
+                       HloEvaluator().Evaluate(*m_->entry_computation(), {}));
+  EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
+}
+
+TEST_F(HloEvaluatorTest, LateBindingAsyncOutputBoundFirst) {
+  const absl::string_view hlo_text = R"(
+  HloModule test
+
+  async_computation {
+    p0 = f32[4] parameter(0)
+    ROOT negate = f32[4] negate(p0)
+  }
+
+  ENTRY entry {
+    x = f32[4] constant({1.0, 2.0, 3.0, 4.0})
+    async-start = ((), f32[4], s32[]) async-start(), calls=async_computation,
+                                  async_execution_thread="thread"
+    async-update = ((f32[4]), f32[4], s32[]) async-update(async-start, x)
+    ROOT async-done = f32[4] async-done(async-update)
+  }
+  )";
+  ASSERT_OK_AND_ASSIGN(m_, ParseAndReturnVerifiedModule(hlo_text));
+  Literal expected = LiteralUtil::CreateR1<float>({-1.0f, -2.0f, -3.0f, -4.0f});
+  Literal start_literal;
+  HloEvaluator evaluator;
+  evaluator.set_eval_literal_handler(
+      [&](const HloInstruction* hlo, const LiteralSlice& literal) {
+        if (hlo->name() == "async-start") {
+          start_literal = literal.Clone();
+        }
+      });
+  ASSERT_OK_AND_ASSIGN(Literal result,
+                       evaluator.Evaluate(*m_->entry_computation(), {}));
+  EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
+
+  // Verify that back-propagation updated the outputs
+  // tuple component {1} of async-start:
+  EXPECT_EQ(start_literal.shape().tuple_shapes().size(), 3);
+  Literal start_output = start_literal.SubLiteral({1});
+  EXPECT_TRUE(LiteralTestUtil::Equal(expected, start_output));
 }
 
 TEST_F(HloEvaluatorTest, MapBF16) {
@@ -7824,6 +8007,190 @@ TEST_F(HloEvaluatorTest, Simple4x4Conv2DWith2x2KernelNoOutputLayout) {
   // clang-format on
   auto expected = LiteralUtil::CreateR4FromArray4D<float>(expected_array);
 
+  EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
+}
+
+TEST_F(HloEvaluatorTest, Scan1D) {
+  const char* const hlo_string = R"(
+  HloModule scan_module
+
+  scan_add {
+    x = f32[] parameter(0)
+    y = f32[] parameter(1)
+    add = f32[] add(x, y)
+    ROOT t = (f32[], f32[]) tuple(add, add)
+  }
+
+  ENTRY entry {
+    input = f32[4] constant({1, 2, 3, 4})
+    init = f32[] constant(0)
+    ROOT scan = (f32[4], f32[]) scan(input, init), dimensions={0}, num_carries=1, to_apply=scan_add
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(m_, ParseAndReturnVerifiedModule(hlo_string));
+
+  auto result =
+      evaluator_.Evaluate(m_->entry_computation()->root_instruction()).value();
+
+  auto expected = LiteralUtil::MakeTupleOwned(
+      LiteralUtil::CreateR1<float>({1.0f, 3.0f, 6.0f, 10.0f}),
+      LiteralUtil::CreateR0<float>(10.0f));
+  EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
+}
+
+TEST_F(HloEvaluatorTest, Scan1DReverse) {
+  const char* const hlo_string = R"(
+  HloModule scan_module
+
+  scan_add {
+    x = f32[] parameter(0)
+    y = f32[] parameter(1)
+    add = f32[] add(x, y)
+    ROOT t = (f32[], f32[]) tuple(add, add)
+  }
+
+  ENTRY entry {
+    input = f32[4] constant({1, 2, 3, 4})
+    init = f32[] constant(0)
+    ROOT scan = (f32[4], f32[]) scan(input, init), dimensions={0}, is_reverse=true, num_carries=1, to_apply=scan_add
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(m_, ParseAndReturnVerifiedModule(hlo_string));
+
+  auto result =
+      evaluator_.Evaluate(m_->entry_computation()->root_instruction()).value();
+
+  auto expected = LiteralUtil::MakeTupleOwned(
+      LiteralUtil::CreateR1<float>({10.0f, 9.0f, 7.0f, 4.0f}),
+      LiteralUtil::CreateR0<float>(10.0f));
+  EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
+}
+
+TEST_F(HloEvaluatorTest, Scan2D) {
+  const char* const hlo_string = R"(
+  HloModule scan_module
+
+  scan_add {
+    x = f32[2] parameter(0)
+    y = f32[2] parameter(1)
+    add = f32[2] add(x, y)
+    ROOT t = (f32[2], f32[2]) tuple(add, add)
+  }
+
+  ENTRY entry {
+    input = f32[2,2] constant({{1, 2}, {3, 4}})
+    init = f32[2] constant({0, 0})
+    ROOT scan = (f32[2,2], f32[2]) scan(input, init), dimensions={0}, num_carries=1, to_apply=scan_add
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(m_, ParseAndReturnVerifiedModule(hlo_string));
+
+  auto result =
+      evaluator_.Evaluate(m_->entry_computation()->root_instruction()).value();
+
+  auto expected = LiteralUtil::MakeTupleOwned(
+      LiteralUtil::CreateR2<float>({{1.0f, 2.0f}, {4.0f, 6.0f}}),
+      LiteralUtil::CreateR1<float>({4.0f, 6.0f}));
+  EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
+}
+
+TEST_F(HloEvaluatorTest, Scan3D) {
+  const char* const hlo_string = R"(
+  HloModule scan_module
+
+  scan_add {
+    x = f32[2,2] parameter(0)
+    y = f32[2,2] parameter(1)
+    add = f32[2,2] add(x, y)
+    ROOT t = (f32[2,2], f32[2,2]) tuple(add, add)
+  }
+
+  ENTRY entry {
+    input = f32[2,2,2] constant({{{1, 2}, {3, 4}}, {{5, 6}, {7, 8}}})
+    init = f32[2,2] constant({{0, 0}, {0, 0}})
+    ROOT scan = (f32[2,2,2], f32[2,2]) scan(input, init), dimensions={1}, num_carries=1, to_apply=scan_add
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(m_, ParseAndReturnVerifiedModule(hlo_string));
+
+  auto result =
+      evaluator_.Evaluate(m_->entry_computation()->root_instruction()).value();
+
+  auto expected = LiteralUtil::MakeTupleOwned(
+      LiteralUtil::CreateR3<float>(
+          {{{1.0f, 2.0f}, {4.0f, 6.0f}}, {{5.0f, 6.0f}, {12.0f, 14.0f}}}),
+      LiteralUtil::CreateR2<float>({{4.0f, 6.0f}, {12.0f, 14.0f}}));
+  EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
+}
+
+TEST_F(HloEvaluatorTest, ScanVariadic) {
+  const char* const hlo_string = R"(
+  HloModule scan_module
+
+  scan_add_mul {
+    x1 = f32[] parameter(0)
+    x2 = f32[] parameter(1)
+    y1 = f32[] parameter(2)
+    y2 = f32[] parameter(3)
+    add = f32[] add(x1, y1)
+    mul = f32[] multiply(x2, y2)
+    ROOT t = (f32[], f32[], f32[], f32[]) tuple(add, mul, add, mul)
+  }
+
+  ENTRY entry {
+    input1 = f32[3] constant({1, 2, 3})
+    input2 = f32[3] constant({1, 2, 3})
+    init1 = f32[] constant(0)
+    init2 = f32[] constant(1)
+    ROOT scan = (f32[3], f32[3], f32[], f32[]) scan(input1, input2, init1, init2), dimensions={0}, num_carries=2, to_apply=scan_add_mul
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(m_, ParseAndReturnVerifiedModule(hlo_string));
+
+  auto result =
+      evaluator_.Evaluate(m_->entry_computation()->root_instruction()).value();
+
+  auto expected = LiteralUtil::MakeTupleOwned(
+      LiteralUtil::CreateR1<float>({1.0f, 3.0f, 6.0f}),
+      LiteralUtil::CreateR1<float>({1.0f, 2.0f, 6.0f}),
+      LiteralUtil::CreateR0<float>(6.0f), LiteralUtil::CreateR0<float>(6.0f));
+  EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
+}
+
+TEST_F(HloEvaluatorTest, ScanDisagreeingCarry) {
+  const char* const hlo_string = R"(
+  HloModule scan_module
+
+  reduce_add {
+    lhs = f32[] parameter(0)
+    rhs = f32[] parameter(1)
+    ROOT add = f32[] add(lhs, rhs)
+  }
+
+  scan_add_disagreeing {
+    x = f32[2] parameter(0)
+    y = f32[2,2] parameter(1)
+    broadcast_x = f32[2,2] broadcast(x), dimensions={1}
+    add = f32[2,2] add(broadcast_x, y)
+    reduce_init = f32[] constant(0)
+    reduce_out = f32[2] reduce(add, reduce_init), dimensions={0}, to_apply=reduce_add
+    ROOT t = (f32[2], f32[2,2]) tuple(reduce_out, add)
+  }
+
+  ENTRY entry {
+    input = f32[2,2] constant({{1, 2}, {3, 4}})
+    init = f32[2,2] constant({{0, 0}, {0, 0}})
+    ROOT scan = (f32[2,2], f32[2,2]) scan(input, init), dimensions={0}, num_carries=1, to_apply=scan_add_disagreeing
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(m_, ParseAndReturnVerifiedModule(hlo_string));
+
+  auto result =
+      evaluator_.Evaluate(m_->entry_computation()->root_instruction()).value();
+
+  auto expected = LiteralUtil::MakeTupleOwned(
+      LiteralUtil::CreateR2<float>({{2.0f, 4.0f}, {8.0f, 12.0f}}),
+      LiteralUtil::CreateR2<float>({{4.0f, 6.0f}, {4.0f, 6.0f}}));
   EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
 }
 

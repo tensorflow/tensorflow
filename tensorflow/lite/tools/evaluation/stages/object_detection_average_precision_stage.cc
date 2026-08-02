@@ -14,8 +14,6 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/tools/evaluation/stages/object_detection_average_precision_stage.h"
 
-#include <stdint.h>
-
 #include <vector>
 
 #include "absl/log/log.h"
@@ -52,6 +50,9 @@ TfLiteStatus ObjectDetectionAveragePrecisionStage::Init() {
     return kTfLiteError;
   }
 
+  ground_truth_object_vectors_.clear();
+  predicted_object_vectors_.clear();
+
   // Initialize per-class data structures.
   for (int i = 0; i < num_classes_; ++i) {
     ground_truth_object_vectors_.emplace_back();
@@ -61,26 +62,32 @@ TfLiteStatus ObjectDetectionAveragePrecisionStage::Init() {
 }
 
 TfLiteStatus ObjectDetectionAveragePrecisionStage::Run() {
-  for (int i = 0; i < ground_truth_objects_.objects_size(); ++i) {
-    const int class_id = ground_truth_objects_.objects(i).class_id();
-    if (class_id >= num_classes_) {
+  for (const auto& object : ground_truth_objects_.objects()) {
+    const int class_id = object.class_id();
+    if (class_id < 0 || class_id >= num_classes_) {
       LOG(ERROR) << "Encountered invalid class ID: " << class_id;
       return kTfLiteError;
     }
-
-    ground_truth_object_vectors_[class_id].push_back(ConvertProtoToDetection(
-        ground_truth_objects_.objects(i), current_image_index_));
   }
 
-  for (int i = 0; i < predicted_objects_.objects_size(); ++i) {
-    const int class_id = predicted_objects_.objects(i).class_id();
-    if (class_id >= num_classes_) {
+  for (const auto& object : predicted_objects_.objects()) {
+    const int class_id = object.class_id();
+    if (class_id < 0 || class_id >= num_classes_) {
       LOG(ERROR) << "Encountered invalid class ID: " << class_id;
       return kTfLiteError;
     }
+  }
 
-    predicted_object_vectors_[class_id].push_back(ConvertProtoToDetection(
-        predicted_objects_.objects(i), current_image_index_));
+  for (const auto& object : ground_truth_objects_.objects()) {
+    const int class_id = object.class_id();
+    ground_truth_object_vectors_[class_id].push_back(
+        ConvertProtoToDetection(object, current_image_index_));
+  }
+
+  for (const auto& object : predicted_objects_.objects()) {
+    const int class_id = object.class_id();
+    predicted_object_vectors_[class_id].push_back(
+        ConvertProtoToDetection(object, current_image_index_));
   }
 
   current_image_index_++;
@@ -103,10 +110,10 @@ EvaluationStageMetrics ObjectDetectionAveragePrecisionStage::LatestMetrics() {
     // Refer: http://cocodataset.org/#detection-eval
     float threshold = 0.5;
     for (int i = 0; i < 10; ++i) {
-      iou_thresholds.push_back(threshold + i * 0.05);
+      iou_thresholds.push_back(threshold + i * 0.05f);
     }
   } else {
-    for (auto& threshold : ap_params.iou_thresholds()) {
+    for (const float threshold : ap_params.iou_thresholds()) {
       iou_thresholds.push_back(threshold);
     }
   }

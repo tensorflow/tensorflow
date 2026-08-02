@@ -714,7 +714,7 @@ LogicalResult IdentifyXlaShardingForTPUComputation(
 
   for (int idx = 0; idx < num_cores_per_replica; idx++) {
     logical_device_vec[idx] =
-        xla::sharding_builder::AssignDevice(idx).SerializeAsString();
+        xla::sharding_builder::SingleDevice(idx).SerializeAsString();
   }
 
   OpShardingVector sharding_for_args;

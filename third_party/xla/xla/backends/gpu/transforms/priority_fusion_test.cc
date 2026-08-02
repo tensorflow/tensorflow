@@ -1071,6 +1071,12 @@ ENTRY main {
 
 TEST_F(PriorityFusionTest,
        FuseTritonProducerWithTwoConsumersUsingMultiOutputFusion) {
+  if (GetDebugOptionsForTest()
+          .xla_gpu_experimental_enable_tiling_propagation()) {
+    // TODO(b/530092114): support multi-output fusions.
+    GTEST_SKIP()
+        << "Multi-output fusions are not supported with block-level emitter";
+  }
   const std::string kHloText = R"(
 HloModule t
 
@@ -1125,6 +1131,11 @@ ENTRY main {
 
 TEST_F(PriorityFusionTest,
        FuseProducerWithTritonConsumerUsingMultiOutputFusion) {
+  if (GetDebugOptionsForTest()
+          .xla_gpu_experimental_enable_tiling_propagation()) {
+    GTEST_SKIP()
+        << "Multi-output fusions are not supported with block-level emitter";
+  }
   const std::string kHloText = R"(
 HloModule t
 
@@ -1173,6 +1184,11 @@ ENTRY main {
 }
 
 TEST_F(PriorityFusionTest, FuseTritonFusionBothEndsUsingMultiOutputFusion) {
+  if (GetDebugOptionsForTest()
+          .xla_gpu_experimental_enable_tiling_propagation()) {
+    GTEST_SKIP()
+        << "Multi-output fusions are not supported with block-level emitter";
+  }
   // Here, we fuse `fusion` first into `exp` and `sqrt`. When we try to fuse
   // `log` into the two fusions resulting from the previous step using
   // multi-output fusion, we currently don't allow that, as we would need to
@@ -1484,6 +1500,11 @@ TEST_F(PriorityFusionWithTritonEnabledTest, LimitNumberOfParameters) {
 
 TEST_F(PriorityFusionWithTritonEnabledTest,
        MultipleMultiOutputFusionCandidates) {
+  if (GetDebugOptionsForTest()
+          .xla_gpu_experimental_enable_tiling_propagation()) {
+    GTEST_SKIP()
+        << "Multi-output fusions are not supported with block-level emitter";
+  }
   auto module = *ParseAndReturnVerifiedModule(R"(
     HloModule test_module
 
@@ -1503,6 +1524,9 @@ TEST_F(PriorityFusionWithTritonEnabledTest,
   PriorityFusion priority_fusion_with_thread_pool{/*thread_pool=*/&pool,
                                                   device_info_, &alias_info_,
                                                   options, &mlir_context_};
+  module->mutable_config()
+      .mutable_debug_options()
+      .set_xla_gpu_unsupported_enable_triton_multi_output_fusion(true);
   EXPECT_THAT(priority_fusion_with_thread_pool.Run(module.get()),
               absl_testing::IsOkAndHolds(true));
   HloInstruction* root = module->entry_computation()->root_instruction();
@@ -1552,22 +1576,24 @@ ENTRY main.4 {
 }
   )";
 
-  // We expect 3 fusions for now (reduction, scale computation, and
-  // quantization).
+  // We expect 2 fusions (one for quantization, one for reduction + scale).
   // TODO: b/482345867 - The goal is to eventually reduce this to 1.
   GpuHloCostAnalysis::Options options;
   options.count_multiple_input_accesses = true;
-  auto priority_fusion = PriorityFusion(nullptr, device_info_, &alias_info_,
-                                        options, &mlir_context_);
-  RunAndFilecheckHloRewrite(kHlo, std::move(priority_fusion),
-                            R"(
+  PriorityFusion priority_fusion(nullptr, device_info_, &alias_info_, options,
+                                 &mlir_context_);
+  HloModuleConfig config;
+  config.mutable_debug_options()
+      .set_xla_gpu_experimental_enable_triton_heroless_priority_fusion(true);
+
+  RunAndFilecheckHloRewrite(kHlo, std::move(priority_fusion), R"(
 CHECK: ENTRY
 CHECK: %[[VAL:.*]] = bf16[2,256,512]{2,1,0} parameter(0)
-CHECK: %[[RED_FUSION:.*]] = bf16[2,256,4]{2,1,0} fusion(%[[VAL]]), kind=kInput
-CHECK: %[[SCALE_FUSION:.*]] = bf16[2,256,4]{2,1,0} fusion(%[[RED_FUSION]]), kind=kLoop
-CHECK: %[[QUANT_FUSION:.*]] = s8[2,256,512]{2,1,0} fusion(%[[VAL]], %[[SCALE_FUSION]]), kind=kLoop
+CHECK: %[[SCALE_FUSION:.*]] = bf16[2,256,4]{2,1,0} fusion(%[[VAL]]), kind=kCustom
+CHECK: %[[QUANT_FUSION:.*]] = s8[2,256,512]{2,1,0} fusion(%[[VAL]], %[[SCALE_FUSION]]), kind=kCustom
 CHECK: ROOT %{{.*}} = (s8[2,256,512]{2,1,0}, bf16[2,256,4]{2,1,0}) tuple(%[[QUANT_FUSION]], %[[SCALE_FUSION]])
-      )");
+      )",
+                            /*after_pass_checks=*/nullptr, &config);
 }
 
 }  // namespace gpu

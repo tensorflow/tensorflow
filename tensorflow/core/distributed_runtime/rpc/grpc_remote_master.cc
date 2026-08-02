@@ -179,7 +179,7 @@ class GrpcRemoteMaster : public MasterInterface {
       now = absl::FromUnixMicros(Env::Default()->NowMicros());
       if (now > expired_time && timeout > absl::ZeroDuration()) {
         // If timeout_in_ms is set, exit the retry loop on timeout.
-        return errors::DeadlineExceeded(ctx.debug_error_string());
+        return absl::DeadlineExceededError(ctx.debug_error_string());
       }
     }
   }

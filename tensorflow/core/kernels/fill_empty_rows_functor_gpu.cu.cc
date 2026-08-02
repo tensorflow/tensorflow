@@ -18,6 +18,7 @@ limitations under the License.
 #define EIGEN_USE_GPU
 
 #include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
+#include "xla/tsl/platform/statusor.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_event_mgr.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor_types.h"
@@ -36,8 +37,8 @@ typedef Eigen::GpuDevice GPUDevice;
 
 namespace kernel_forward {
 bool to_pointers(bool x) { return x; }
-int32 to_pointers(int32 x) { return x; }
-int64 to_pointers(int64 x) { return x; }
+int32_t to_pointers(int32_t x) { return x; }
+int64_t to_pointers(int64_t x) { return x; }
 template <class T>
 T* to_pointers(T* x) {
   return x;
@@ -52,9 +53,11 @@ typename T::ConstPointerType to_pointers(const T& x) {
 }
 
 template <typename Tindex, typename... CallerArgs, typename... KernelArgs>
-Status wrap_kernel_call(void (*func)(KernelArgs...), const GPUDevice& device,
-                        Tindex size, CallerArgs... args) {
-  auto config = GetGpuLaunchConfig(size, device);
+absl::Status wrap_kernel_call(void (*func)(KernelArgs...),
+                              const GPUDevice& device, Tindex size,
+                              CallerArgs... args) {
+  TF_ASSIGN_OR_RETURN(GpuLaunchConfig64 config,
+                      GetGpuLaunchConfig64(size, device));
   return GpuLaunchKernel(func, config.block_count, config.thread_per_block, 0,
                          device.stream(), config, to_pointers(args)...);
 }
@@ -77,10 +80,10 @@ struct CastFunctor {
 // true if the indices are not ordered by row.
 template <typename Tindex>
 __global__ __launch_bounds__(1024) void CountElementsPerRowKernel(
-    GpuLaunchConfig cfg, Tindex dense_rows, int rank, const Tindex* indices,
+    GpuLaunchConfig64 cfg, Tindex dense_rows, int rank, const Tindex* indices,
     Tindex* elements_per_row, int* rows_are_not_ordered,
     int* first_invalid_index) {
-  GPU_1D_KERNEL_LOOP(i, cfg.virtual_thread_count) {
+  for (int64_t i : GpuGridRangeX(cfg.virtual_thread_count)) {
     Tindex row = indices[i * rank];
     if (row < 0 || row >= dense_rows) {
       GpuAtomicMin(first_invalid_index, i);
@@ -98,8 +101,9 @@ __global__ __launch_bounds__(1024) void CountElementsPerRowKernel(
 
 template <typename Tindex>
 __global__ __launch_bounds__(1024) void CopyRowIndicesKernel(
-    GpuLaunchConfig cfg, int rank, const Tindex* indices, Tindex* row_indices) {
-  GPU_1D_KERNEL_LOOP(i, cfg.virtual_thread_count) {
+    GpuLaunchConfig64 cfg, int rank, const Tindex* indices,
+    Tindex* row_indices) {
+  for (int64_t i : GpuGridRangeX(cfg.virtual_thread_count)) {
     row_indices[i] = indices[i * rank];
   }
 }
@@ -107,9 +111,9 @@ __global__ __launch_bounds__(1024) void CopyRowIndicesKernel(
 // Sets empty_row_indicator[row] to whether the row is empty.
 template <typename Tindex>
 __global__ __launch_bounds__(1024) void ComputeEmptyRowIndicatorKernel(
-    GpuLaunchConfig cfg, const Tindex* elements_per_row,
+    GpuLaunchConfig64 cfg, const Tindex* elements_per_row,
     bool* empty_row_indicator) {
-  GPU_1D_KERNEL_LOOP(row, cfg.virtual_thread_count) {
+  for (int64_t row : GpuGridRangeX(cfg.virtual_thread_count)) {
     empty_row_indicator[row] = elements_per_row[row] == 0;
   }
 }
@@ -119,11 +123,11 @@ __global__ __launch_bounds__(1024) void ComputeEmptyRowIndicatorKernel(
 // empty row.
 template <typename T, typename Tindex>
 __global__ __launch_bounds__(1024) void ScatterInputElementsKernel(
-    GpuLaunchConfig cfg, Tindex dense_rows, int rank,
+    GpuLaunchConfig64 cfg, Tindex dense_rows, int rank,
     const Tindex* input_index_map, const Tindex* indices, const T* values,
     const Tindex* num_new_rows_before, Tindex* output_indices, T* output_values,
     Tindex* reverse_index_map) {
-  GPU_1D_KERNEL_LOOP(i, cfg.virtual_thread_count) {
+  for (int64_t i : GpuGridRangeX(cfg.virtual_thread_count)) {
     Tindex input_i = input_index_map ? input_index_map[i] : i;
     Tindex row = indices[input_i * rank];
     Tindex output_i = i + num_new_rows_before[row];
@@ -141,10 +145,10 @@ __global__ __launch_bounds__(1024) void ScatterInputElementsKernel(
 // input) in output_indices and output_values.
 template <typename T, typename Tindex>
 __global__ __launch_bounds__(1024) void ScatterNewElementsKernel(
-    GpuLaunchConfig cfg, int rank, const T* default_value,
+    GpuLaunchConfig64 cfg, int rank, const T* default_value,
     const Tindex* num_new_rows_through, const Tindex* input_row_ends,
     const bool* empty_row_indicator, Tindex* output_indices, T* output_values) {
-  GPU_1D_KERNEL_LOOP(row, cfg.virtual_thread_count) {
+  for (int64_t row : GpuGridRangeX(cfg.virtual_thread_count)) {
     if (!empty_row_indicator[row]) continue;  // Only process empty rows
     Tindex input_i = (row == 0 ? 0 : input_row_ends[row - 1]);
     Tindex output_i = input_i + (row == 0 ? 0 : num_new_rows_through[row - 1]);
@@ -159,10 +163,11 @@ __global__ __launch_bounds__(1024) void ScatterNewElementsKernel(
 
 template <typename T, typename Tindex, bool RaggedOperands>
 struct FillEmptyRows<GPUDevice, T, Tindex, RaggedOperands> {
-  Status operator()(OpKernelContext* context, const Tensor& default_value_t,
-                    const Tensor& indices_t, const Tensor& values_t,
-                    const Tensor& dense_shape_t,
-                    typename AsyncOpKernel::DoneCallback done) {
+  absl::Status operator()(OpKernelContext* context,
+                          const Tensor& default_value_t,
+                          const Tensor& indices_t, const Tensor& values_t,
+                          const Tensor& dense_shape_t,
+                          typename AsyncOpKernel::DoneCallback done) {
     const int kEmptyRowIndicatorOutput = 2;
 
     const auto default_value = default_value_t.scalar<T>();
@@ -176,7 +181,7 @@ struct FillEmptyRows<GPUDevice, T, Tindex, RaggedOperands> {
     DataType index_type = DataTypeToEnum<Tindex>::value;
     const GPUDevice& device = context->eigen_device<GPUDevice>();
     se::Stream* stream = context->op_device_context()->stream();
-    if (!stream) return errors::Internal("No GPU stream available.");
+    if (!stream) return absl::InternalError("No GPU stream available.");
 
     if (dense_rows == 0) {
       Tindex* output_indices;
@@ -191,7 +196,7 @@ struct FillEmptyRows<GPUDevice, T, Tindex, RaggedOperands> {
                                                     TensorShape({0}), &unused));
       }
       done();
-      return OkStatus();
+      return absl::OkStatus();
     }
 
     // The algorithm as currently implemented is summarized as follows:
@@ -227,7 +232,7 @@ struct FillEmptyRows<GPUDevice, T, Tindex, RaggedOperands> {
     TF_RETURN_IF_ERROR(context->allocate_temp(
         index_type, TensorShape({dense_rows}), &elements_per_row_t));
     auto elements_per_row = elements_per_row_t.flat<Tindex>();
-    se::DeviceMemoryBase elements_per_row_gpu_memory(
+    stream_executor::DeviceAddressBase elements_per_row_gpu_memory(
         elements_per_row.data(), dense_rows * sizeof(Tindex));
     TF_RETURN_IF_ERROR(stream->MemZero(&elements_per_row_gpu_memory,
                                        dense_rows * sizeof(Tindex)));
@@ -235,7 +240,7 @@ struct FillEmptyRows<GPUDevice, T, Tindex, RaggedOperands> {
     TF_RETURN_IF_ERROR(context->allocate_temp(DT_INT32, TensorShape({1}),
                                               &rows_are_not_ordered_t));
     auto rows_are_not_ordered_gpu = rows_are_not_ordered_t.flat<int>();
-    se::DeviceMemoryBase rows_are_not_ordered_gpu_memory(
+    stream_executor::DeviceAddressBase rows_are_not_ordered_gpu_memory(
         rows_are_not_ordered_gpu.data(), sizeof(int));
     TF_RETURN_IF_ERROR(
         stream->MemZero(&rows_are_not_ordered_gpu_memory, sizeof(int)));
@@ -244,7 +249,7 @@ struct FillEmptyRows<GPUDevice, T, Tindex, RaggedOperands> {
                                               &first_invalid_index_t));
     auto first_invalid_index_gpu = first_invalid_index_t.flat<int>();
     constexpr const int kAllIndicesValid = std::numeric_limits<int>::max();
-    se::DeviceMemoryBase first_invalid_index_gpu_memory(
+    stream_executor::DeviceAddressBase first_invalid_index_gpu_memory(
         first_invalid_index_gpu.data(), sizeof(int));
     TF_RETURN_IF_ERROR(stream->Memset32(&first_invalid_index_gpu_memory,
                                         kAllIndicesValid, sizeof(int)));
@@ -303,11 +308,12 @@ struct FillEmptyRows<GPUDevice, T, Tindex, RaggedOperands> {
                               /*output=*/num_empty_rows_through.data()));
 
     ScratchSpace<Tindex> num_empty_rows_host(context, 1, /*on_host=*/true);
-    TF_RETURN_IF_ERROR(stream->Memcpy(
-        num_empty_rows_host.mutable_data(),
-        se::DeviceMemoryBase(num_empty_rows_through.data() + (dense_rows - 1),
-                             sizeof(*num_empty_rows_host.data())),
-        sizeof(*num_empty_rows_host.data())));
+    TF_RETURN_IF_ERROR(
+        stream->Memcpy(num_empty_rows_host.mutable_data(),
+                       stream_executor::DeviceAddressBase(
+                           num_empty_rows_through.data() + (dense_rows - 1),
+                           sizeof(*num_empty_rows_host.data())),
+                       sizeof(*num_empty_rows_host.data())));
 
     ScratchSpace<int> rows_are_not_ordered_host(context, 1, /*on_host=*/true);
     TF_RETURN_IF_ERROR(
@@ -341,8 +347,8 @@ struct FillEmptyRows<GPUDevice, T, Tindex, RaggedOperands> {
         int first_invalid_index = *first_invalid_index_host.data();
         OP_REQUIRES_ASYNC(
             context, first_invalid_index == kAllIndicesValid,
-            errors::InvalidArgument("indices(", first_invalid_index,
-                                    ", 0) is invalid."),
+            absl::InvalidArgumentError(absl::StrCat(
+                "indices(", first_invalid_index, ", 0) is invalid.")),
             done);
 
         Tindex num_empty_rows = *num_empty_rows_host.data();
@@ -401,13 +407,13 @@ struct FillEmptyRows<GPUDevice, T, Tindex, RaggedOperands> {
     context->device()
         ->tensorflow_accelerator_device_info()
         ->event_mgr->ThenExecute(stream, async_finish_computation);
-    return OkStatus();
+    return absl::OkStatus();
   }
 
  private:
   static constexpr int IndicesRank = RaggedOperands ? 1 : 2;
 
-  Status AllocateOutputsExceptEmptyRowIndicator(
+  absl::Status AllocateOutputsExceptEmptyRowIndicator(
       OpKernelContext* context, Tindex N, int rank, Tindex num_empty_rows,
       Tindex** output_indices, T** output_values, Tindex** reverse_index_map) {
     Tensor* output_indices_t;
@@ -440,10 +446,10 @@ struct FillEmptyRows<GPUDevice, T, Tindex, RaggedOperands> {
     } else {
       *reverse_index_map = nullptr;
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
-  Status ArgSortByRows(
+  absl::Status ArgSortByRows(
       OpKernelContext* context, const GPUDevice& device, Tindex N, int rank,
       Tindex dense_rows,
       typename TTypes<Tindex, IndicesRank>::ConstTensor indices,
@@ -489,9 +495,9 @@ namespace {
 
 template <typename T, typename Tindex>
 __global__ __launch_bounds__(1024) void GatherOriginalGradValuesKernel(
-    GpuLaunchConfig cfg, const Tindex* reverse_index_map, const T* grad_values,
-    T* d_values, bool* visited, Tindex N_full) {
-  GPU_1D_KERNEL_LOOP(input_i, cfg.virtual_thread_count) {
+    GpuLaunchConfig64 cfg, const Tindex* reverse_index_map,
+    const T* grad_values, T* d_values, bool* visited, Tindex N_full) {
+  for (int64_t input_i : GpuGridRangeX(cfg.virtual_thread_count)) {
     Tindex output_i = reverse_index_map[input_i];
     if (output_i >= 0 && output_i < N_full) {
       d_values[input_i] = grad_values[output_i];
@@ -517,11 +523,11 @@ namespace functor {
 
 template <typename T, typename Tindex>
 struct FillEmptyRowsGrad<GPUDevice, T, Tindex> {
-  Status operator()(OpKernelContext* context,
-                    typename TTypes<Tindex>::ConstVec reverse_index_map,
-                    typename TTypes<T>::ConstVec grad_values,
-                    typename TTypes<T>::Vec d_values,
-                    typename TTypes<T>::Scalar d_default_value) {
+  absl::Status operator()(OpKernelContext* context,
+                          typename TTypes<Tindex>::ConstVec reverse_index_map,
+                          typename TTypes<T>::ConstVec grad_values,
+                          typename TTypes<T>::Vec d_values,
+                          typename TTypes<T>::Scalar d_default_value) {
     const GPUDevice& device = context->eigen_device<GPUDevice>();
     const Tindex N = reverse_index_map.dimension(0);
     const Tindex N_full = grad_values.dimension(0);
@@ -572,7 +578,7 @@ struct FillEmptyRowsGrad<GPUDevice, T, Tindex> {
         &temp_storage));
 
     gpuprim_status = gpuprim::DeviceReduce::Sum(
-        /*temp_storage=*/temp_storage.flat<int8>().data(), temp_storage_bytes,
+        /*temp_storage=*/temp_storage.flat<int8_t>().data(), temp_storage_bytes,
         /*d_in=*/transform_iterator,
         /*d_out=*/d_default_value.data(),
         /*num_items=*/N_full,
@@ -586,7 +592,7 @@ struct FillEmptyRowsGrad<GPUDevice, T, Tindex> {
           temp_storage_bytes, ", status: ", GpuGetErrorString(gpuprim_status));
     }
 
-    return OkStatus();
+    return absl::OkStatus();
   }
 };
 

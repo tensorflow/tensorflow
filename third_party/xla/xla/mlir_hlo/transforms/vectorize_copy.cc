@@ -14,21 +14,28 @@ limitations under the License.
 ==============================================================================*/
 
 #include <algorithm>
-#include <memory>
+#include <cstdint>
 #include <utility>
 
+#include "llvm/ADT/SmallVector.h"
+#include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Linalg/Transforms/Transforms.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Dialect/MemRef/Utils/MemRefUtils.h"
-#include "mlir/Pass/Pass.h"
+#include "mlir/Dialect/SCF/IR/SCF.h"
+#include "mlir/IR/MLIRContext.h"
+#include "mlir/IR/OpDefinition.h"
+#include "mlir/IR/PatternMatch.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
+#include "transforms/passes.h"
 
 namespace mlir {
-namespace {
 
 #define GEN_PASS_DEF_VECTORIZECOPYPASS
 #include "transforms/passes.h.inc"
+
+namespace {
 
 /// Transforms a big non-contiguous `memref.copy` into a loop over smaller
 /// copies that are either contiguous or can be vectorized.
@@ -222,9 +229,4 @@ struct VectorizeCopyPass
 };
 
 }  // namespace
-
-std::unique_ptr<OperationPass<func::FuncOp>> createVectorizeCopyPass() {
-  return std::make_unique<VectorizeCopyPass>();
-}
-
 }  // namespace mlir

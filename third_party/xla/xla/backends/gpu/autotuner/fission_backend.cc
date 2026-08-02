@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/backends/gpu/autotuner/fission_backend.h"
 
+#include <cstddef>
 #include <memory>
 #include <utility>
 #include <vector>
@@ -23,6 +24,8 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/autotuner/codegen_backend.h"
 #include "xla/backends/gpu/transforms/priority_fusion.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
@@ -34,6 +37,8 @@ limitations under the License.
 #include "xla/hlo/pass/hlo_pass_pipeline.h"
 #include "xla/service/compiler.h"
 #include "xla/service/hlo_cost_analysis.h"
+#include "xla/shape_util.h"
+#include "xla/status_macros.h"
 #include "xla/tools/hlo_decomposer.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
@@ -76,7 +81,13 @@ absl::Status InlineFissionedComputation(HloInstruction* fusion_instr,
   }
   HloInstruction* new_root =
       cloned_instructions.at(fissioned_computation->root_instruction());
-  return parent_computation->ReplaceInstruction(fusion_instr, new_root);
+  ASSIGN_OR_RETURN(bool replaced,
+                   parent_computation->ReplaceInstruction(
+                       fusion_instr, new_root, /*preserve_sharding=*/false,
+                       /*relay_control_dependency=*/true));
+  TF_RET_CHECK(replaced) << "Failed to inline fissioned computation for "
+                         << fusion_instr->name();
+  return absl::OkStatus();
 }
 
 }  // namespace
@@ -88,19 +99,17 @@ FissionBackend::GetSupportedConfigs(const HloInstruction& instr) {
             << instr.ToString();
     return std::vector<std::unique_ptr<BackendConfig>>();
   }
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> hlo_module,
-                      GetFissionedAndRewrittenModule(instr));
-  absl::StatusOr<HloInstruction*> supported_instr =
-      FindFirstSupportedInstruction(hlo_module.get());
-  if (supported_instr.status().code() == absl::StatusCode::kNotFound) {
+  ASSIGN_OR_RETURN(std::unique_ptr<HloModule> hlo_module,
+                   GetFissionedAndRewrittenModule(instr));
+  absl::StatusOr<std::vector<HloInstruction*>> supported_instrs =
+      FindSupportedInstructions(hlo_module.get());
+  if (supported_instrs.status().code() == absl::StatusCode::kNotFound) {
     VLOG(3) << "No supported instructions found by " << name() << ": "
             << instr.ToString();
     return std::vector<std::unique_ptr<BackendConfig>>();
   }
-  TF_RETURN_IF_ERROR(supported_instr.status());
-  return codegen_backend_->GetSupportedConfigs(**supported_instr);
-
-  return std::vector<std::unique_ptr<BackendConfig>>();
+  RETURN_IF_ERROR(supported_instrs.status());
+  return codegen_backend_->GetSupportedConfigs(*(*supported_instrs)[0]);
 }
 
 absl::StatusOr<std::unique_ptr<BackendConfig>> FissionBackend::GetDefaultConfig(
@@ -108,40 +117,66 @@ absl::StatusOr<std::unique_ptr<BackendConfig>> FissionBackend::GetDefaultConfig(
   if (!IsSupported(instr)) {
     return absl::InvalidArgumentError("Not a fusion instruction.");
   }
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> hlo_module,
-                      GetFissionedAndRewrittenModule(instr));
-  TF_ASSIGN_OR_RETURN(HloInstruction * supported_instr,
-                      FindFirstSupportedInstruction(hlo_module.get()));
-  return codegen_backend_->GetDefaultConfig(*supported_instr);
+  ASSIGN_OR_RETURN(std::unique_ptr<HloModule> hlo_module,
+                   GetFissionedAndRewrittenModule(instr));
+  ASSIGN_OR_RETURN(std::vector<HloInstruction*> supported_instrs,
+                   FindSupportedInstructions(hlo_module.get()));
+  return codegen_backend_->GetDefaultConfig(*supported_instrs[0]);
+}
+
+absl::Status FissionBackend::RunPriorityFusion(HloModule* module) {
+  HloCostAnalysis::Options priority_fusion_options;
+  priority_fusion_options.count_multiple_input_accesses = true;
+  PriorityFusion priority_fusion(
+      /*thread_pool=*/nullptr, target_config().device_description, alias_info_,
+      priority_fusion_options, mlir_context_);
+  return priority_fusion.Run(module).status();
 }
 
 absl::StatusOr<std::unique_ptr<HloModule>> FissionBackend::RunHloPasses(
     std::unique_ptr<HloModule> hlo_module,
     const Compiler::CompileOptions& options) {
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       std::unique_ptr<HloModule> module,
       codegen_backend_->RunHloPasses(std::move(hlo_module), options));
 
-  // Run priority fusion to fuse the fissioned HLOs.
-  HloCostAnalysis::Options priority_fusion_options;
-  priority_fusion_options.count_multiple_input_accesses = true;
-  // TODO: b/407494653 - Get rid of PriorityFusion.
-  PriorityFusion priority_fusion(
-      /*thread_pool=*/nullptr, target_config().device_description, alias_info_,
-      priority_fusion_options, mlir_context_);
-  TF_RETURN_IF_ERROR(priority_fusion.Run(module.get()).status());
+  RETURN_IF_ERROR(RunPriorityFusion(module.get()));
   return module;
 }
 
 absl::Status FissionBackend::ApplyConfig(HloInstruction& instr,
                                          const BackendConfig& config) {
   HloModule* module = instr.GetModule();
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> hlo_module,
-                      GetFissionedAndRewrittenModule(instr));
-  TF_ASSIGN_OR_RETURN(HloInstruction * supported_instr,
-                      FindFirstSupportedInstruction(hlo_module.get()));
-  TF_RETURN_IF_ERROR(codegen_backend_->ApplyConfig(*supported_instr, config));
-  TF_RETURN_IF_ERROR(
+  ASSIGN_OR_RETURN(std::unique_ptr<HloModule> hlo_module,
+                   GetFissionedAndRewrittenModule(instr));
+  ASSIGN_OR_RETURN(std::vector<HloInstruction*> supported_instrs,
+                   FindSupportedInstructions(hlo_module.get()));
+
+  for (size_t i = 0; i < supported_instrs.size(); ++i) {
+    HloInstruction* supported_instr = supported_instrs[i];
+    if (i > 0) {
+      if (supported_instr->opcode() != supported_instrs[0]->opcode()) {
+        return absl::InternalError(absl::StrCat(
+            "FissionBackend expected isomorphic supported instructions, but "
+            "found different opcodes: ",
+            HloOpcodeString(supported_instrs[0]->opcode()), " vs ",
+            HloOpcodeString(supported_instr->opcode())));
+      }
+      if (!ShapeUtil::Compatible(supported_instr->shape(),
+                                 supported_instrs[0]->shape())) {
+        return absl::InternalError(
+            "FissionBackend expected isomorphic supported instructions with "
+            "compatible shapes, but found incompatible shapes.");
+      }
+    }
+    RETURN_IF_ERROR(codegen_backend_->ApplyConfig(*supported_instr, config));
+  }
+
+  // Given that the autotuner runs post fusion, we have to run priority fusion
+  // again to fuse the epilogue and prologues.
+  RETURN_IF_ERROR(RunPriorityFusion(hlo_module.get()));
+
+  RETURN_IF_ERROR(
       InlineFissionedComputation(&instr, hlo_module->entry_computation()));
   return module->RemoveUnusedComputations();
 }
@@ -156,12 +191,21 @@ FissionBackend::GetFissionedAndRewrittenModule(
   const auto* fusion = Cast<HloFusionInstruction>(&fusion_instr);
   std::unique_ptr<HloModule> hlo_module =
       ExtractComputationIntoNewModule(*fusion->called_computation());
-  TF_RETURN_IF_ERROR(rewriter_pipeline_->Run(hlo_module.get()).status());
+  // ExtractComputationIntoNewModule creates a new HloModule with a default
+  // HloModuleConfig, whose DebugOptions are initialized to
+  // DefaultDebugOptionsIgnoringFlags() — not the user's values. Propagate the
+  // user-defined debug options before running any passes so that the rewriter
+  // pipeline (e.g. GemmRewriter reads xla_gpu_gemm_rewrite_size_threshold) and
+  // any subsequent PriorityFusion run observe the correct flag values.
+  DebugOptions options = debug_options();
+  AdjustDebugOptionsForAutotuning(options);
+  hlo_module->mutable_config().set_debug_options(options);
+  RETURN_IF_ERROR(rewriter_pipeline_->Run(hlo_module.get()).status());
   return hlo_module;
 }
 
-absl::StatusOr<HloInstruction*> FissionBackend::FindFirstSupportedInstruction(
-    const HloModule* module) {
+absl::StatusOr<std::vector<HloInstruction*>>
+FissionBackend::FindSupportedInstructions(const HloModule* module) {
   std::vector<HloInstruction*> supported_instructions;
   for (HloComputation* computation : module->computations()) {
     for (HloInstruction* instruction : computation->instructions()) {
@@ -173,12 +217,7 @@ absl::StatusOr<HloInstruction*> FissionBackend::FindFirstSupportedInstruction(
   if (supported_instructions.empty()) {
     return absl::NotFoundError("No supported instructions found.");
   }
-  if (supported_instructions.size() > 1) {
-    LOG(WARNING) << "Backend " << name()
-                 << " found multiple supported instructions found. Using the "
-                    "first one.";
-  }
-  return supported_instructions[0];
+  return supported_instructions;
 }
 
 }  // namespace gpu

@@ -151,6 +151,32 @@ class StridedSliceTest(xla_test.XLATestCase):
 
         self.assertAllEqual([0], result)
 
+  def testDynamicSliceOutOfBounds(self):
+    for dtype in self.numeric_types:
+      with self.session():
+        i = array_ops.placeholder(dtype, shape=[10])
+        begin = array_ops.placeholder(dtypes.int32, shape=[1])
+        end = array_ops.placeholder(dtypes.int32, shape=[1])
+        with self.test_scope():
+          o = array_ops.strided_slice(i, begin, end, [1])
+        params = {i: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9], begin: [5], end: [15]}
+        result = o.eval(feed_dict=params)
+
+        self.assertAllEqual([5, 6, 7, 8, 9], result)
+
+  def testZeroStridedSlice(self):
+    for dtype in self.numeric_types:
+      with self.session() as sess:
+        i = array_ops.placeholder(dtype, shape=[10])
+        with self.test_scope():
+          o1 = array_ops.strided_slice(i, [0], [5], [1])
+          o2 = array_ops.strided_slice(i, [10], [15], [1])
+        params = {i: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]}
+        result1, result2 = sess.run([o1, o2], feed_dict=params)
+
+        self.assertAllEqual([0, 1, 2, 3, 4], result1)
+        self.assertAllEqual([], result2)
+
   def test1DNegativeStride(self):
     for dtype in self.numeric_types:
       with self.session():

@@ -11,6 +11,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/kernels/data/batch_dataset_op.h"
 
+#include <memory>
 #include <string>
 
 #include "tensorflow/core/common_runtime/type_inference.h"
@@ -318,7 +319,8 @@ static void add_identity_nodes(Node* node, Graph& graph,
 // Runs type inference pass on graph
 static absl::Status type_inference(Graph& graph) {
   GraphOptimizationPassOptions opt_options;
-  std::unique_ptr<Graph> graph_ptr(new Graph(OpRegistry::Global()));
+  std::unique_ptr<Graph> graph_ptr =
+      std::make_unique<Graph>(OpRegistry::Global());
   graph_ptr->Copy(graph);
   opt_options.graph = &graph_ptr;
   opt_options.flib_def = graph.mutable_flib_def();

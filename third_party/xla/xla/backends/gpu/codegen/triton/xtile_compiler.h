@@ -16,18 +16,12 @@ limitations under the License.
 #ifndef XLA_BACKENDS_GPU_CODEGEN_TRITON_XTILE_COMPILER_H_
 #define XLA_BACKENDS_GPU_CODEGEN_TRITON_XTILE_COMPILER_H_
 
-#include <cstdint>
-#include <memory>
 #include <ostream>
 #include <string>
-#include <vector>
 
-#include "absl/functional/any_invocable.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
-#include "llvm/IR/Metadata.h"
-#include "llvm/IR/Module.h"
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/TargetParser/Triple.h"
 #include "mlir/IR/BuiltinOps.h"
@@ -36,6 +30,8 @@ limitations under the License.
 #include "mlir/IR/Value.h"
 #include "mlir/Pass/PassManager.h"
 #include "xla/autotuning.pb.h"
+#include "xla/backends/gpu/codegen/triton/triton_kernel_source.h"
+#include "xla/backends/gpu/codegen/triton/triton_wrapper_result.h"
 #include "xla/codegen/tiling/symbolic_tile_analysis.h"
 #include "xla/codegen/tiling/tiling_specification.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -44,27 +40,8 @@ limitations under the License.
 #include "xla/service/gpu/model/block_level_parameters.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/stream_executor/device_description.h"
-#include "xla/stream_executor/gpu/tma_metadata.h"
-#include "xla/stream_executor/launch_dim.h"
 
-namespace xla {
-namespace gpu {
-
-struct TritonWrapperResult {
-  int64_t shmem_bytes = 0;
-  int64_t global_scratch_memory_size = 0;
-  se::gpu::TmaMetadata tma_metadata;
-  se::ThreadDim thread_dims;
-  bool use_pdl = false;
-
-  // The captured nvvm.annotations from the lowest level LLVM IR coming from
-  // Triton. We need to propagate them because we later create the kernel and
-  // splice the impl_fn into it.
-  std::vector<llvm::Metadata*> nvvm_annotations;
-  std::unique_ptr<llvm::Module> llvm_module;
-};
-
-std::ostream& operator<<(std::ostream& os, const TritonWrapperResult& result);
+namespace xla::gpu {
 
 // Load the MLIR dialects required for Triton IR generation.
 void LoadMlirDialectsForTriton(mlir::MLIRContext& mlir_context);
@@ -72,34 +49,28 @@ void LoadMlirDialectsForTriton(mlir::MLIRContext& mlir_context);
 // Generate Triton IR by running the provided generator and compile it into LLVM
 // IR.
 absl::StatusOr<TritonWrapperResult> TritonWrapper(
-    absl::string_view fn_name, const HloFusionInstruction* fusion,
+    absl::string_view fn_name, const HloFusionInstruction& fusion,
     const se::GpuComputeCapability& cc,
     const se::DeviceDescription& device_info,
     const BlockLevelParameters& block_level_parameters,
     const llvm::Triple& target_triple, const std::string& data_layout,
-    llvm::LLVMContext& llvm_context, mlir::MLIRContext& mlir_context);
+    mlir::MLIRContext& mlir_context);
 
-// Creates the initial Triton module for the given fusion. Visible for testing,
-// use TritonWrapper instead.
-absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> CreateTritonModule(
-    absl::string_view fn_name, const HloFusionInstruction* fusion,
+// Creates the initial Triton module for the given fusion.
+absl::StatusOr<TritonKernelSource> CreateTritonModule(
+    absl::string_view fn_name, const HloFusionInstruction& fusion,
     const se::DeviceDescription& device_info,
     const BlockLevelParameters& block_level_parameters,
-    mlir::MLIRContext& mlir_context, bool use_experimental_tiling = false);
+    mlir::MLIRContext& mlir_context);
 
 // Compiles a given Triton module to LLVM IR.
-// If `emit_kernels` is false, then the function skips emitting
-// the kernels, but it still returns correctly filled TritonWrapperResult.
-// That is useful when deserializing from the compilation cache.
 absl::StatusOr<TritonWrapperResult> CompileTritonToLLVM(
     absl::string_view kernel_name, const HloModule& hlo_module,
     const se::DeviceDescription& device_info,
     const BlockLevelParameters& block_level_parameters,
-    mlir::ModuleOp triton_module, const llvm::Triple& target_triple,
-    const std::string& data_layout, llvm::LLVMContext& llvm_context,
-    mlir::MLIRContext& mlir_context, bool is_xla_fusion,
-    bool emit_kernel = true,
-    absl::AnyInvocable<void()> error_handler = nullptr);
+    const llvm::Triple& target_triple, const std::string& data_layout,
+    TritonKernelSource triton_source, mlir::MLIRContext& mlir_context,
+    bool is_xla_fusion);
 
 std::string GetLibdevicePath(const HloModuleConfig& hlo_config,
                              const se::DeviceDescription& device_info);
@@ -118,22 +89,6 @@ inline std::string GetModuleIrString(mlir::ModuleOp triton_module,
   return triton_ir;
 }
 
-// Given a tiling specification for a fusion and an annotated fusion, derives a
-// tiling for the annotated fusion.
-//
-// Note that the tiling extracted here is voluntarily not checked against the
-// specification, which means that it could be invalid. This should only be the
-// case, though, if this logic gets stale, or if the fusion does not contain
-// the required annotations. Checking constraints is not cheap, so we left it up
-// to the caller to decide when to check the constraints.
-//
-// TODO(b/421837868): this belongs near/in `BlockLevelParameters`, but we start
-// with this here in order to allow an incremental replacement.
-absl::StatusOr<Tiling> TilingFromAnnotatedFusion(
-    const HloFusionInstruction* fusion,
-    const SymbolicTileAnalysis& symbolic_tile_analysis,
-    const BlockLevelParameters& block_level_parameters);
-
 // This function lowers the shared dialect module to Triton. It is exposed for
 // testing with the same motivation as EmitXTileModule.
 //
@@ -146,7 +101,6 @@ absl::Status LowerXTileToTriton(
     const BlockLevelParameters& block_level_parameters);
 
 }  // namespace ir_emitter_triton_internal
-}  // namespace gpu
-}  // namespace xla
+}  // namespace xla::gpu
 
 #endif  // XLA_BACKENDS_GPU_CODEGEN_TRITON_XTILE_COMPILER_H_

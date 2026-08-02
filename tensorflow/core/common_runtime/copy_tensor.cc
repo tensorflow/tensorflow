@@ -77,10 +77,10 @@ void CopyHostToDevice(const Tensor* input, Allocator* cpu_allocator,
         return absl::OkStatus();
       } else {
         if (!DMAHelper::CanUseDMA(&from)) {
-          absl::Status err = errors::InvalidArgument(
-              "During Variant Host->Device Copy: "
-              "non-DMA-copy attempted of tensor type: ",
-              DataTypeString(from.dtype()));
+          absl::Status err = absl::InvalidArgumentError(
+              absl::StrCat("During Variant Host->Device Copy: "
+                           "non-DMA-copy attempted of tensor type: ",
+                           DataTypeString(from.dtype())));
           status_cb->UpdateStatus(err);
           return err;
         }
@@ -151,10 +151,10 @@ void CopyDeviceToDevice(CopyTensor::CopyFunction copy_function,
         return absl::OkStatus();
       } else {
         if (!DMAHelper::CanUseDMA(&from)) {
-          absl::Status err = errors::InvalidArgument(
+          absl::Status err = absl::InvalidArgumentError(absl::StrCat(
               "During Variant Device->Device Copy: ", src->name(), " to ",
               dst->name(), " non-DMA-copy attempted of tensor type: ",
-              DataTypeString(from.dtype()));
+              DataTypeString(from.dtype())));
           status_cb->UpdateStatus(err);
           return err;
         }
@@ -361,10 +361,10 @@ void CopyDeviceToHost(const Tensor* input, Allocator* cpu_allocator,
         return absl::OkStatus();
       } else {
         if (!DMAHelper::CanUseDMA(&from)) {
-          absl::Status err = errors::InvalidArgument(
-              "During Variant Device->Host Copy: "
-              "non-DMA-copy attempted of tensor type: ",
-              DataTypeString(from.dtype()));
+          absl::Status err = absl::InvalidArgumentError(
+              absl::StrCat("During Variant Device->Host Copy: "
+                           "non-DMA-copy attempted of tensor type: ",
+                           DataTypeString(from.dtype())));
           status_cb->UpdateStatus(err);
           return err;
         }

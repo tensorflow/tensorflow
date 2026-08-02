@@ -29,6 +29,7 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
@@ -43,6 +44,7 @@ limitations under the License.
 #include "tensorflow/compiler/jit/flags.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/mlir_roundtrip_flags.h"
 #include "tensorflow/compiler/mlir/tf2xla/api/v2/graph_to_tf_executor.h"
+#include "tensorflow/compiler/mlir/tf2xla/internal/graph_to_tf_executor_util.h"
 #include "tensorflow/compiler/mlir/tfrt/saved_model/saved_model.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/mlrt/import_model.h"
 #include "tensorflow/compiler/mlir/tfrt/translate/import_model.h"
@@ -329,7 +331,7 @@ absl::Status CheckInputSpecs(
         "model: ", model_metadata.name(),
         ", version: ", model_metadata.version(), ", error: ", status.message());
     if (!run_options.validate_input_specs_dry_run) {
-      return tensorflow::errors::InvalidArgument(error_string);
+      return absl::InvalidArgumentError(error_string);
     }
     LOG_EVERY_N_SEC(WARNING, 5)
         << "TFRT input specs validation failed, " << error_string;
@@ -548,6 +550,10 @@ void EmitSavedModelUnifiedModelId(absl::string_view saved_model_dir,
 absl::StatusOr<std::unique_ptr<SavedModel>> SavedModelImpl::LoadSavedModel(
     Options options, absl::string_view saved_model_dir,
     const std::unordered_set<std::string>& tags) {
+  if (absl::StrContains(saved_model_dir, "..")) {
+    return absl::InvalidArgumentError(
+        "saved_model_dir cannot contain '..' for security reasons.");
+  }
   TF_ASSIGN_OR_RETURN(auto meta_graph_def,
                       ReadSavedModel(saved_model_dir, tags));
   return LoadSavedModel(std::move(options), std::move(meta_graph_def),
@@ -557,6 +563,10 @@ absl::StatusOr<std::unique_ptr<SavedModel>> SavedModelImpl::LoadSavedModel(
 absl::StatusOr<std::unique_ptr<SavedModel>> SavedModelImpl::LoadSavedModel(
     Options options, tensorflow::MetaGraphDef meta_graph_def,
     absl::string_view saved_model_dir) {
+  if (absl::StrContains(saved_model_dir, "..")) {
+    return absl::InvalidArgumentError(
+        "saved_model_dir cannot contain '..' for security reasons.");
+  }
   LOG(INFO) << "TFRT loading v1 savedmodel: " << saved_model_dir;
 
   EmitSavedModelUnifiedModelId(saved_model_dir, options);
@@ -1135,10 +1145,18 @@ SavedModelImpl::ImportSubgraph(
       graph_executor_->graph_execution_state().CreateOptimizedGraph(
           graph_import_config));
 
+  std::optional<absl::string_view> optional_module_name = std::nullopt;
+  if (!name.empty()) {
+    optional_module_name = name;
+  }
+
   // Convert the optimized graph to an MLIR module.
   return tensorflow::tf2xla::v2::ConvertGraphToTfExecutor(
       *optimization_result.graph, /*debug_info=*/{},
-      optimization_result.graph->flib_def(), graph_import_config, context);
+      optimization_result.graph->flib_def(), graph_import_config, context,
+      /*tf_name_to_mlir_name=*/nullptr, /*config_proto=*/{},
+      /*bridge_version=*/tensorflow::TF2XLABridgeVersion::kNotBridgeUseCase,
+      /*module_name=*/optional_module_name);
 }
 
 absl::Status SavedModelImpl::RunByTensorNames(
@@ -1323,7 +1341,7 @@ SavedModelImpl::GetOrCreateLoadingResult(const RunOptions& run_options,
   if (iter != loading_result_cache_.end()) return {*iter->second};
 
   if (run_options.disable_compilation) {
-    return tensorflow::errors::InvalidArgument(
+    return absl::InvalidArgumentError(
         absl::StrCat("GraphExecutor: compilation is disabled in execution but "
                      "the compiled graph is not found for ",
                      joined_name));

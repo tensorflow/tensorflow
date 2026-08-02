@@ -29,6 +29,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/layout.h"
 #include "xla/literal.h"
+#include "xla/service/hlo.pb.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/shape_util.h"
 #include "xla/util.h"
@@ -210,6 +211,15 @@ bool IsEffectiveParameter(const HloInstruction& instr) {
           IsEffectiveParameter(*instr.operand(0)));
 }
 
+const HloInstruction* StripCastLike(const HloInstruction* instr) {
+  while (instr->opcode() == HloOpcode::kCopy ||
+         instr->opcode() == HloOpcode::kConvert ||
+         instr->opcode() == HloOpcode::kBitcast) {
+    instr = instr->operand(0);
+  }
+  return instr;
+}
+
 HloInstruction* GetFirstInstructionWithOpcode(const HloComputation& computation,
                                               const HloOpcode opcode) {
   auto instructions = computation.instructions();
@@ -370,6 +380,28 @@ bool IsChangeTilingCopyFusion(const HloInstruction* instr) {
          Layout::Equal().IgnoreTiles().IgnoreMemorySpace()(operand_layout,
                                                            output_layout) &&
          operand_tiles != output_tiles;
+}
+
+bool IsStandardAssociativeScan(const HloInstruction* instruction) {
+  auto* scan = DynCast<HloScanInstruction>(instruction);
+  if (scan == nullptr || scan->IsRoot() ||
+      scan->is_associative() != TRI_STATE_TRUE || scan->num_carries() != 1 ||
+      scan->operand_count() != 2 || !scan->shape().IsTuple() ||
+      scan->shape().tuple_shapes().size() != 2 ||
+      !scan->shape().tuple_shapes(0).IsArray()) {
+    return false;
+  }
+
+  for (const HloInstruction* user : scan->users()) {
+    if (user->user_count() == 0 && !user->IsRoot()) {
+      continue;
+    }
+    if (user->opcode() != HloOpcode::kGetTupleElement) {
+      return false;
+    }
+  }
+
+  return true;
 }
 
 }  // namespace hlo_query

@@ -202,6 +202,15 @@ TEST(FpTruncExecutionTest, F32ToF8e4m3fn) {
   EXPECT_EQ(fptrunc(-0.5f), static_cast<int8_t>(0b10110000));
   EXPECT_EQ(fptrunc(0.125f), static_cast<int8_t>(0b00100000));
 
+  // Test halfway points and double-rounding prevention.
+  // 368.0f is the halfway point between 352.0f (0x7B) and 384.0f (0x7C).
+  // RNE rounds 368.0f to even (384.0f / 0x7C).
+  // 367.9f is slightly below halfway and should round down to 352.0f (0x7B).
+  // 368.1f is slightly above halfway and should round up to 384.0f (0x7C).
+  EXPECT_EQ(fptrunc(367.9f), static_cast<int8_t>(0x7B));
+  EXPECT_EQ(fptrunc(368.1f), static_cast<int8_t>(0x7C));
+  EXPECT_EQ(fptrunc(368.0f), static_cast<int8_t>(0x7C));
+
   // Test denormals (exponent all 0s) round to 0 in fp8e4m3fn.
   EXPECT_EQ(fptrunc(std::numeric_limits<float>::denorm_min()), 0);
   EXPECT_EQ(fptrunc(std::numeric_limits<float>::min()), 0);
@@ -411,6 +420,15 @@ TEST(FpTruncExecutionTest, F32ToF8e5m2) {
   EXPECT_EQ(fptrunc(-16.0f), static_cast<int8_t>(0b11001100));
   EXPECT_EQ(fptrunc(0.5f), static_cast<int8_t>(0b00111000));
   EXPECT_EQ(fptrunc(-0.5f), static_cast<int8_t>(0b10111000));
+
+  // Test halfway points and double-rounding prevention.
+  // 1.875f is the halfway point between 1.75f (0x3F) and 2.0f (0x40).
+  // RNE rounds 1.875f to even (2.0f / 0x40).
+  // 1.8749f is slightly below halfway and should round down to 1.75f (0x3F).
+  // 1.8751f is slightly above halfway and should round up to 2.0f (0x40).
+  EXPECT_EQ(fptrunc(1.8749f), static_cast<int8_t>(0x3F));
+  EXPECT_EQ(fptrunc(1.8751f), static_cast<int8_t>(0x40));
+  EXPECT_EQ(fptrunc(1.8750f), static_cast<int8_t>(0x40));
 
   // Test underflow and subnormals
   // Smallest subnormal is 0.25 * 2^(1-15) = 2^-2 * 2^-14 = 2^-16

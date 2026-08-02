@@ -272,7 +272,7 @@ absl::Status RewriteCaseNode(Node* n, Graph* g, bool keep_node_fetchable) {
           << "): " << SummarizeNode(*n);
   const AttrValue* branches_attr = n->attrs().Find("branches");
   if (branches_attr == nullptr) {
-    return errors::InvalidArgument("branch functions missing");
+    return absl::InvalidArgumentError("branch functions missing");
   }
 
   int num_branches = branches_attr->list().func_size();

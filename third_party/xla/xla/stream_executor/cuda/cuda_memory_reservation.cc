@@ -22,49 +22,40 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "third_party/gpus/cuda/include/cuda.h"
+#include "third_party/gpus/cuda/include/cuda_runtime_api.h"
 #include "xla/stream_executor/activate_context.h"
+#include "xla/stream_executor/cuda/cuda_device_allocator.h"
 #include "xla/stream_executor/cuda/cuda_raw_memory_allocation.h"
 #include "xla/stream_executor/cuda/cuda_status.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/memory_allocation.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/util.h"
-#include "tsl/platform/statusor.h"
 
 namespace stream_executor::gpu {
-namespace {
-
-CUmemAllocationProp BuildAllocationProperties(CUdevice device) {
-  CUmemAllocationProp props = {};
-  props.type = CU_MEM_ALLOCATION_TYPE_PINNED;
-  props.location.type = CU_MEM_LOCATION_TYPE_DEVICE;
-  props.location.id = device;
-  props.requestedHandleTypes =
-      static_cast<CUmemAllocationHandleType>(CU_MEM_HANDLE_TYPE_NONE);
-  return props;
-}
-
-}  // namespace
 
 absl::StatusOr<std::unique_ptr<CudaMemoryReservation>>
 CudaMemoryReservation::Create(StreamExecutor* executor, uint64_t size) {
   std::unique_ptr<ActivateContext> activation = executor->Activate();
 
   CUdevice device;
-  TF_RETURN_IF_ERROR(
+  RETURN_IF_ERROR(
       cuda::ToStatus(cuDeviceGet(&device, executor->device_ordinal())));
 
-  CUmemAllocationProp props = BuildAllocationProperties(device);
+  ASSIGN_OR_RETURN(CudaDeviceAllocator::Options options,
+                   QueryDeviceAllocatorOptions(device));
+  CUmemAllocationProp props = BuildVmmAllocationProp(device, options);
 
   size_t granularity = 0;
-  TF_RETURN_IF_ERROR(cuda::ToStatus(cuMemGetAllocationGranularity(
+  RETURN_IF_ERROR(cuda::ToStatus(cuMemGetAllocationGranularity(
       &granularity, &props, CU_MEM_ALLOC_GRANULARITY_RECOMMENDED)));
 
   uint64_t padded_size = xla::RoundUpTo<uint64_t>(size, granularity);
 
   CUdeviceptr ptr;
-  TF_RETURN_IF_ERROR(cuda::ToStatus(
+  RETURN_IF_ERROR(cuda::ToStatus(
       cuMemAddressReserve(&ptr, padded_size, granularity, 0, 0)));
 
   return std::unique_ptr<CudaMemoryReservation>(
@@ -96,12 +87,36 @@ absl::Status CudaMemoryReservation::Map(size_t reservation_offset,
 absl::Status CudaMemoryReservation::SetAccess(uint64_t reservation_offset,
                                               size_t size) {
   std::unique_ptr<ActivateContext> activation = executor_->Activate();
+
+  // Always grant access to the local device.
   CUmemAccessDesc desc = {};
   desc.location.type = CU_MEM_LOCATION_TYPE_DEVICE;
-  desc.location.id = static_cast<int>(executor_->device_ordinal());
+  desc.location.id = executor_->device_ordinal();
   desc.flags = CU_MEM_ACCESS_FLAGS_PROT_READWRITE;
-  return cuda::ToStatus(
-      cuMemSetAccess(ptr_ + reservation_offset, size, &desc, 1));
+  RETURN_IF_ERROR(
+      cuda::ToStatus(cuMemSetAccess(ptr_ + reservation_offset, size, &desc, 1),
+                     "cuMemSetAccess for local device"));
+
+  // Grant access to all P2P-capable peer devices. VA-mapped memory does not
+  // automatically inherit peer access, so NCCL collective operations using
+  // NVLink to read/write peer GPU buffers will deadlock without this.
+  int device_count = 0;
+  RETURN_IF_ERROR(
+      cuda::ToStatus(cudaGetDeviceCount(&device_count), "cudaGetDeviceCount"));
+  for (int32_t peer = 0; peer < device_count; ++peer) {
+    if (peer == executor_->device_ordinal()) {
+      continue;
+    }
+    if (!executor_->CanEnablePeerAccessTo(peer)) {
+      continue;
+    }
+    desc.location.id = peer;
+    RETURN_IF_ERROR(cuda::ToStatus(
+        cuMemSetAccess(ptr_ + reservation_offset, size, &desc, 1),
+        "cuMemSetAccess for peer device"));
+  }
+
+  return absl::OkStatus();
 }
 
 absl::Status CudaMemoryReservation::UnMap(size_t offset, size_t size) {

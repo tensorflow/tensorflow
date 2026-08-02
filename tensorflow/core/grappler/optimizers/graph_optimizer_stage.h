@@ -151,9 +151,9 @@ class GraphOptimizerStage {
   absl::Status EnsureNodeIsSupported(const NodeDef* node) const {
     return IsSupported(node)
                ? absl::OkStatus()
-               : errors::InvalidArgument(
+               : absl::InvalidArgumentError(absl::StrCat(
                      "Node ", node->name(), " is not supported by optimizer ",
-                     optimizer_name_, " and stage ", stage_name_);
+                     optimizer_name_, " and stage ", stage_name_));
   }
 
   // Get a name for a new node, created by this stage, based on one or multiple

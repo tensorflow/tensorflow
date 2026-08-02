@@ -31,6 +31,7 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/subprocess.h"
@@ -73,7 +74,7 @@ absl::StatusOr<std::vector<uint8_t>> BundleGpuAsm(
       return absl::InternalError(
           "Could not get temporary filenames for images.");
     }
-    TF_RETURN_IF_ERROR(tsl::WriteStringToFile(
+    RETURN_IF_ERROR(tsl::WriteStringToFile(
         env, img_path, std::string(img.bytes.begin(), img.bytes.end())));
     VLOG(2) << "image written to " << img_path;
     inputs_list << "," << img_path;
@@ -128,7 +129,7 @@ absl::StatusOr<std::vector<uint8_t>> BundleGpuAsm(
 
   // Read in the result and return it as a byte vector.
   std::string result_blob;
-  TF_RETURN_IF_ERROR(
+  RETURN_IF_ERROR(
       tsl::ReadFileToString(tsl::Env::Default(), result_path, &result_blob));
   return std::vector<uint8_t>(result_blob.begin(), result_blob.end());
 }

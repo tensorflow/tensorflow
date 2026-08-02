@@ -59,19 +59,13 @@ struct alignas(kSize) Vec {
 // Launch parameters:
 //  - Block grid: (num_ranks, num_block_clusters, num_updates_per_block)
 //  - Thread grid: (num_threads_per_update, 1, 1)
-template <int64_t kVectorSize>
-__global__ void __launch_bounds__(128) RaggedAllToAllKernelImpl(
-    const void* __restrict__ input_ptr,
-    std::array<void* __restrict__, kMaxNumRaggedAllToAllOutputPtrs> output_ptrs,
+template <typename T>
+__device__ void TransferDataToLsaPeer(
+    const T* __restrict__ input_ptr, T* __restrict__ output_ptr,
     const int64_t* __restrict__ input_offsets_ptr,
     const int64_t* __restrict__ send_sizes_ptr,
     const int64_t* __restrict__ output_offsets_ptr,
     int64_t num_updates_per_replica, int64_t num_row_elements) {
-  using T = Vec<kVectorSize>;
-
-  const T* typed_input_ptr = static_cast<const T* __restrict__>(input_ptr);
-  T* output_ptr = static_cast<T* __restrict__>(output_ptrs[blockIdx.x]);
-
   int64_t num_updates_to_process = gridDim.z;
 
   for (int64_t i = 0; i < num_updates_to_process; ++i) {
@@ -94,11 +88,28 @@ __global__ void __launch_bounds__(128) RaggedAllToAllKernelImpl(
 
     for (int64_t j = threadIdx.x + offset_update_batch_idx * blockDim.x;
          j < update_size; j += num_updates_to_process * blockDim.x) {
-      output_ptr[output_offset_start + j] =
-          typed_input_ptr[input_offset_start + j];
+      output_ptr[output_offset_start + j] = input_ptr[input_offset_start + j];
     }
   }
 }
+
+template <int64_t kVectorSize>
+__global__ void __launch_bounds__(128) RaggedAllToAllKernelImpl(
+    const void* __restrict__ input_ptr,
+    stream_executor::gpu::RaggedAllToAllOutputPtrs output_ptrs,
+    const int64_t* __restrict__ input_offsets_ptr,
+    const int64_t* __restrict__ send_sizes_ptr,
+    const int64_t* __restrict__ output_offsets_ptr,
+    int64_t num_updates_per_replica, int64_t num_row_elements) {
+  using T = Vec<kVectorSize>;
+  const T* typed_input_ptr = static_cast<const T* __restrict__>(input_ptr);
+  T* output_ptr = static_cast<T* __restrict__>(output_ptrs[blockIdx.x]);
+
+  TransferDataToLsaPeer(typed_input_ptr, output_ptr, input_offsets_ptr,
+                        send_sizes_ptr, output_offsets_ptr,
+                        num_updates_per_replica, num_row_elements);
+}
+
 }  // namespace stream_executor::gpu
 
 #endif  // XLA_STREAM_EXECUTOR_GPU_RAGGED_ALL_TO_ALL_KERNEL_LIB_CU_H_

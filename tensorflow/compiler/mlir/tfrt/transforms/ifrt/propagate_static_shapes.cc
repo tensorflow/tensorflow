@@ -20,6 +20,7 @@ limitations under the License.
 
 #include "absl/log/log.h"
 #include "llvm/ADT/DenseMap.h"
+#include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
@@ -47,14 +48,16 @@ namespace tensorflow {
 namespace ifrt_serving {
 namespace {
 
+using mlir::TF::AsyncIfrtCallOp;
 using mlir::TF::IfrtCallOp;
 using mlir::TF::SetStaticDimensionBoundsOp;
 
-// Identifies operands of `IfrtCallOp` that are defined by
+// Identifies operands of `IfrtCallOp` or `AsyncIfrtCallOp` that are defined by
 // `SetStaticDimensionBoundsOp` and returns a map from operand index to the
 // defining op.
+template <typename OpT>
 llvm::SmallDenseMap<size_t, SetStaticDimensionBoundsOp>
-GetArgIdxToStaticShapeOpMap(IfrtCallOp ifrt_call) {
+GetArgIdxToStaticShapeOpMap(OpT ifrt_call) {
   llvm::SmallDenseMap<size_t, SetStaticDimensionBoundsOp>
       arg_idx_to_static_shape_op;
   for (const auto& [i, arg] : llvm::enumerate(ifrt_call.getArgs())) {
@@ -73,15 +76,16 @@ GetArgIdxToStaticShapeOpMap(IfrtCallOp ifrt_call) {
   return arg_idx_to_static_shape_op;
 }
 
-// Replaces `old_op` with a new `IfrtCallOp` with `updated_args` and
-// `static_shape_args`. Returns the new `IfrtCallOp`.
-IfrtCallOp UpdateIfrtCallOp(
-    IfrtCallOp old_op, const llvm::SmallVector<mlir::Value, 4>& updated_args,
-    const llvm::SmallVector<mlir::Value, 4>& static_shape_args,
-    mlir::OpBuilder& builder) {
+// Replaces `old_op` with a new op with `updated_args` and
+// `static_shape_args`. Returns the new op.
+template <typename OpT>
+OpT UpdateIfrtCallOp(OpT old_op,
+                     const llvm::SmallVector<mlir::Value, 4>& updated_args,
+                     const llvm::SmallVector<mlir::Value, 4>& static_shape_args,
+                     mlir::OpBuilder& builder) {
   // Clone to a new op.
   builder.setInsertionPoint(old_op);
-  auto new_op = mlir::cast<IfrtCallOp>(builder.clone(*old_op));
+  auto new_op = mlir::cast<OpT>(builder.clone(*old_op));
   // Wire up inputs.
   llvm::SmallVector<mlir::Value, 4> new_operands;
   new_operands.append(updated_args.begin(), updated_args.end());
@@ -150,8 +154,9 @@ mlir::LogicalResult UpdateTpuCompileMetadata(
 // `static_shape_args`. This includes setting `tf._static_shape_arg` attributes
 // on original arguments, updating the function signature, adding block
 // arguments, and updating the `TPUCompileMetadataProto`.
+template <typename OpT>
 mlir::LogicalResult UpdateCalleeFuncOp(
-    mlir::ModuleOp module, IfrtCallOp ifrt_call,
+    mlir::ModuleOp module, OpT ifrt_call,
     const llvm::SmallVector<mlir::Value, 4>& static_shape_args,
     const llvm::SmallDenseMap<size_t, size_t>& arg_idx_to_static_shape_idx) {
   // Find the callee `FuncOp` by program ID.
@@ -206,6 +211,62 @@ mlir::LogicalResult UpdateCalleeFuncOp(
   return UpdateTpuCompileMetadata(func_op, static_shape_args);
 }
 
+template <typename OpT>
+mlir::LogicalResult ProcessIfrtCall(
+    OpT ifrt_call, mlir::ModuleOp module, mlir::OpBuilder& op_builder,
+    llvm::DenseSet<uint64_t>& processed_programs) {
+  llvm::SmallDenseMap<size_t, SetStaticDimensionBoundsOp>
+      arg_idx_to_static_shape_op = GetArgIdxToStaticShapeOpMap(ifrt_call);
+  if (arg_idx_to_static_shape_op.empty()) return mlir::success();
+
+  VLOG(2) << "Found `IfrtCallOp` with " << arg_idx_to_static_shape_op.size()
+          << " static shaped args. IfrtCallOp: " << ifrt_call;
+
+  mlir::OperandRange old_args = ifrt_call.getArgs();
+  llvm::SmallVector<mlir::Value, 4> updated_args;
+  updated_args.resize(old_args.size());
+  llvm::SmallVector<mlir::Value, 4> static_shape_args;
+  llvm::SmallDenseMap<size_t, size_t> arg_idx_to_static_shape_idx;
+  for (const auto& [i, arg] : llvm::enumerate(old_args)) {
+    auto iter = arg_idx_to_static_shape_op.find(i);
+    if (iter != arg_idx_to_static_shape_op.end()) {
+      SetStaticDimensionBoundsOp static_shape_op = iter->second;
+      arg_idx_to_static_shape_idx[i] =
+          old_args.size() + static_shape_args.size();
+      static_shape_args.push_back(static_shape_op.getStaticShape());
+      updated_args[i] = static_shape_op.getInput();
+    } else {
+      updated_args[i] = arg;
+    }
+  }
+  uint64_t program_id = ifrt_call.getProgramId();
+  auto new_ifrt_call =
+      UpdateIfrtCallOp(ifrt_call, updated_args, static_shape_args, op_builder);
+
+  // Defensive coding behavior: Ensure we only update the callee FuncOp once
+  // per program_id. In theory, it is highly unlikely that the same program
+  // is called by both IfrtCallOp and AsyncIfrtCallOp (or multiple times with
+  // different static shape bounds) in the same module, because the choice of
+  // op type is usually controlled by a session-wide flag (e.g.,
+  // enable_async_ifrt). However, protecting against it avoids duplicate
+  // argument promotion in the callee signature.
+  if (!processed_programs.contains(program_id)) {
+    if (mlir::failed(UpdateCalleeFuncOp(module, new_ifrt_call,
+                                        static_shape_args,
+                                        arg_idx_to_static_shape_idx))) {
+      return mlir::failure();
+    }
+    processed_programs.insert(program_id);
+  }
+
+  // Erase all `SetStaticDimensionBounds` ops.
+  for (auto [_, op] : arg_idx_to_static_shape_op) {
+    op.replaceAllUsesWith(op.getOperand(0));
+    op.erase();
+  }
+  return mlir::success();
+}
+
 // Pass that propagates static shapes from `tf.SetStaticDimensionBoundsOp` to
 // `IfrtCallOp` and callee `FuncOp`.
 struct PropagateStaticShapesPass : public mlir::OperationPass<mlir::ModuleOp> {
@@ -234,47 +295,27 @@ struct PropagateStaticShapesPass : public mlir::OperationPass<mlir::ModuleOp> {
   void runOnOperation() override {
     mlir::ModuleOp module = getOperation();
     mlir::OpBuilder op_builder(module.getContext());
-    // Collect all `IfrtCallOp` in the module, before any modifications.
+
+    llvm::DenseSet<uint64_t> processed_programs;
+
+    // Collect all calls in the module, before any modifications.
     llvm::SmallVector<IfrtCallOp, 4> ifrt_calls;
+    llvm::SmallVector<AsyncIfrtCallOp, 4> async_ifrt_calls;
     module.walk([&ifrt_calls](IfrtCallOp op) { ifrt_calls.push_back(op); });
-    // For each `IfrtCallOp`, create a new one with static shape arguments,
-    // and update the callee `FuncOp` to reflect the new arguments.
+    module.walk([&async_ifrt_calls](AsyncIfrtCallOp op) {
+      async_ifrt_calls.push_back(op);
+    });
+
     for (auto ifrt_call : ifrt_calls) {
-      llvm::SmallDenseMap<size_t, SetStaticDimensionBoundsOp>
-          arg_idx_to_static_shape_op = GetArgIdxToStaticShapeOpMap(ifrt_call);
-      if (arg_idx_to_static_shape_op.empty()) continue;
-      VLOG(2) << "Found `IfrtCallOp` with " << arg_idx_to_static_shape_op.size()
-              << " static shaped args. IfrtCallOp: " << ifrt_call;
-      // The total args in the new `IfrtCallOp` will be `updated_args` +
-      // `static_shape_args`.
-      mlir::OperandRange old_args = ifrt_call.getArgs();
-      llvm::SmallVector<mlir::Value, 4> updated_args;
-      updated_args.resize(old_args.size());
-      llvm::SmallVector<mlir::Value, 4> static_shape_args;
-      llvm::SmallDenseMap<size_t, size_t> arg_idx_to_static_shape_idx;
-      for (const auto& [i, arg] : llvm::enumerate(old_args)) {
-        auto iter = arg_idx_to_static_shape_op.find(i);
-        if (iter != arg_idx_to_static_shape_op.end()) {
-          SetStaticDimensionBoundsOp static_shape_op = iter->second;
-          arg_idx_to_static_shape_idx[i] =
-              old_args.size() + static_shape_args.size();
-          static_shape_args.push_back(static_shape_op.getStaticShape());
-          updated_args[i] = static_shape_op.getInput();
-        } else {
-          updated_args[i] = arg;
-        }
-      }
-      auto new_ifrt_call = UpdateIfrtCallOp(ifrt_call, updated_args,
-                                            static_shape_args, op_builder);
-      if (mlir::failed(UpdateCalleeFuncOp(module, new_ifrt_call,
-                                          static_shape_args,
-                                          arg_idx_to_static_shape_idx))) {
+      if (mlir::failed(ProcessIfrtCall(ifrt_call, module, op_builder,
+                                       processed_programs))) {
         return signalPassFailure();
       }
-      // Erase all `SetStaticDimensionBounds` ops.
-      for (auto [_, op] : arg_idx_to_static_shape_op) {
-        op.replaceAllUsesWith(op.getOperand(0));
-        op.erase();
+    }
+    for (auto ifrt_call : async_ifrt_calls) {
+      if (mlir::failed(ProcessIfrtCall(ifrt_call, module, op_builder,
+                                       processed_programs))) {
+        return signalPassFailure();
       }
     }
   }

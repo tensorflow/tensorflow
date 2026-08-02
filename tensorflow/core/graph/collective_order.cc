@@ -78,8 +78,8 @@ absl::Status CreateControlDependencies(
   for (int i = 0; i < collective_nodes.size() - 1; i++) {
     if (!collective_nodes[i]->IsCollective() ||
         collective_nodes[i]->type_string() != "CollectiveReduce") {
-      return errors::Internal("Unexpected node ",
-                              collective_nodes[i]->DebugString());
+      return absl::InternalError(
+          absl::StrCat("Unexpected node ", collective_nodes[i]->DebugString()));
     }
     const auto& deps_i = (*data_dependencies)[collective_nodes[i]];
     for (int j = i + 1; j < collective_nodes.size(); j++) {
@@ -88,10 +88,10 @@ absl::Status CreateControlDependencies(
         continue;
       }
       if (instance_keys[i] == instance_keys[j]) {
-        return errors::Internal("Unexpected same instance_key ",
-                                instance_keys[i],
-                                " on 2 nodes with the same device ",
-                                collective_nodes[i]->requested_device());
+        return absl::InternalError(
+            absl::StrCat("Unexpected same instance_key ", instance_keys[i],
+                         " on 2 nodes with the same device ",
+                         collective_nodes[i]->requested_device()));
       }
       const auto& deps_j = (*data_dependencies)[collective_nodes[j]];
       if (deps_i.find(instance_keys[j]) == deps_i.end() &&
@@ -175,8 +175,8 @@ absl::Status InsertControlDependencies(
       pair.first->AddAttr("wait_for", wait_for_list);
     }
   } else {
-    return errors::Internal("Unexpected GraphCollectiveOrder type ",
-                            static_cast<int>(order_type));
+    return absl::InternalError(absl::StrCat(
+        "Unexpected GraphCollectiveOrder type ", static_cast<int>(order_type)));
   }
   return absl::OkStatus();
 }

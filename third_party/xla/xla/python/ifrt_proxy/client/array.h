@@ -173,6 +173,8 @@ class Array final : public llvm::RTTIExtends<Array, xla::ifrt::Array> {
   LayoutRef layout() const override;
   UserContextRef user_context() const override { return user_context_; }
 
+  absl::StatusOr<std::optional<int64_t>> ByteSize() const override;
+
   absl::StatusOr<std::vector<xla::ifrt::ArrayRef>>
   DisassembleIntoSingleDeviceArrays(
       ArrayCopySemantics array_copy_semantics,

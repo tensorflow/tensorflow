@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/SMLoc.h"
 #include "llvm/Support/SourceMgr.h"
@@ -43,18 +44,19 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_input_output_alias_config.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/ir/hlo_print_options.h"
 #include "xla/hlo/translate/mhlo_to_hlo/attribute_exporter.h"
 #include "xla/hlo/translate/mhlo_to_hlo/mlir_hlo_to_hlo.h"
 #include "xla/hlo/translate/mhlo_to_hlo/type_to_shape.h"
 #include "xla/hlo/translate/register.h"
+#include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "xla/mlir_hlo/utils/unregistered_attributes.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/hlo_proto_util.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/statusor.h"
+#include "tsl/platform/protobuf.h"
 
 namespace xla {
 
@@ -62,7 +64,9 @@ mlir::LogicalResult MlirHloToHloTranslateFunction(mlir::ModuleOp module,
                                                   llvm::raw_ostream& output,
                                                   bool emit_return_tuple,
                                                   bool emit_use_tuple_arg) {
-  if (!module) return mlir::failure();
+  if (!module) {
+    return mlir::failure();
+  }
 
   mlir::MlirToHloConversionOptions options;
   options.use_tuple_args = emit_use_tuple_arg;
@@ -77,16 +81,17 @@ mlir::LogicalResult MlirHloToHloTranslateFunction(mlir::ModuleOp module,
   }
 
   // Print as HloProto with empty BufferAssignment for legacy compatibility.
-  output << MakeHloProto(*statusOrModule.value()).DebugString();
+  output << tsl::LegacyUnredactedDebugString(
+      MakeHloProto(*statusOrModule.value()));
   return mlir::success();
 }
 
 absl::StatusOr<std::unique_ptr<HloModule>> HloModuleFromProto(
     const HloProto& hlo_proto) {
   const HloModuleProto& module_proto = hlo_proto.hlo_module();
-  TF_ASSIGN_OR_RETURN(const HloModuleConfig module_config,
-                      HloModule::CreateModuleConfigFromProto(
-                          module_proto, GetDebugOptionsFromFlags()));
+  ASSIGN_OR_RETURN(const HloModuleConfig module_config,
+                   HloModule::CreateModuleConfigFromProto(
+                       module_proto, GetDebugOptionsFromFlags()));
   return HloModule::CreateFromProto(module_proto, module_config);
 }
 
@@ -106,10 +111,10 @@ absl::Status ConvertMlirHloToHloViaBuilder(
     xla::Shape shape = xla::TypeToShape(arg.getType());
 
     std::optional<OriginalValueProto> original_value_proto;
-    if (auto original_value_attr = main.getArgAttrOfType<mlir::StringAttr>(
-            num, xla::kMhloOriginalValueAttr)) {
-      original_value_proto =
-          xla::ConvertOriginalValue(original_value_attr.getValue());
+    if (auto original_value_attr =
+            main.getArgAttrOfType<mlir::mhlo::OriginalValueAttr>(
+                num, xla::kMhloOriginalValueAttr)) {
+      original_value_proto = xla::ConvertOriginalValue(original_value_attr);
     }
     xla::XlaScopedOriginalValueAssignment original_value_assignment(
         &builder, original_value_proto);
@@ -119,16 +124,17 @@ absl::Status ConvertMlirHloToHloViaBuilder(
   }
 
   std::vector<xla::XlaOp> returns(1);
-  TF_RETURN_IF_ERROR(
+  RETURN_IF_ERROR(
       mlir::BuildHloFromMlirHlo(module, builder, xla_params, returns, options));
 
   xla::XlaOp return_value;
-  if (returns.size() == 1)
+  if (returns.size() == 1) {
     return_value = returns[0];
-  else if (returns.size() > 1)
+  } else if (returns.size() > 1) {
     return_value = xla::Tuple(&builder, returns);
+  }
 
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       xla::XlaComputation computation,
       return_value.valid() ? builder.Build(return_value) : builder.Build());
 
@@ -164,7 +170,9 @@ mlir::LogicalResult MlirHloToHloTextTranslateFunction(
     bool emit_use_tuple_arg, bool print_layouts, bool print_large_constants,
     bool print_sugar, bool via_builder, bool with_layouts,
     bool direct_stablehlo_to_hlo) {
-  if (!module) return mlir::failure();
+  if (!module) {
+    return mlir::failure();
+  }
 
   HloProto hloProto;
   mlir::MlirToHloConversionOptions options;

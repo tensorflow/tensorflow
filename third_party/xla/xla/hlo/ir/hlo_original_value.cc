@@ -23,6 +23,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/base/no_destructor.h"
 #include "absl/log/check.h"
 #include "absl/strings/str_cat.h"
@@ -92,6 +93,10 @@ std::string NodeToString(const Node& node) {
 
   return absl::StrCat("(", absl::StrJoin(children_str, ", "), ")");
 }
+
+bool HasNegativeShapeIndex(absl::Span<const int64_t> shape_index) {
+  return absl::c_any_of(shape_index, [](int64_t idx) { return idx < 0; });
+}
 }  // namespace
 
 void OriginalValue::ClearInternalNodeValues() {
@@ -155,9 +160,9 @@ OriginalValueProto OriginalValue::ToProto() const {
   if (is_synthetic_call()) {
     original_value_proto.set_is_synthetic_call(true);
   } else {
-    tree().ForEachElement([&original_value_proto](
-                              const ShapeIndex& index,
-                              const std::optional<OriginalArray>& value) {
+    for (const auto& leaf_it : original_arrays()) {
+      const ShapeIndex& index = leaf_it.first;
+      const std::optional<OriginalArray>& value = leaf_it.second;
       OriginalValueElementProto* original_value_node_proto =
           original_value_proto.add_elements();
       for (const auto& i : index) {
@@ -166,7 +171,7 @@ OriginalValueProto OriginalValue::ToProto() const {
       if (value.has_value()) {
         *original_value_node_proto->mutable_original_array() = value->ToProto();
       }
-    });
+    }
   }
   return original_value_proto;
 }
@@ -178,6 +183,11 @@ std::shared_ptr<OriginalValue> OriginalValue::FromProto(
   }
   std::vector<std::pair<ShapeIndex, std::optional<OriginalArray>>> nodes;
   for (const auto& leaf : original_value_proto.elements()) {
+    if (HasNegativeShapeIndex(leaf.shape_index()) ||
+        (leaf.has_original_array() &&
+         HasNegativeShapeIndex(leaf.original_array().shape_index()))) {
+      return nullptr;
+    }
     ShapeIndex index(leaf.shape_index());
     if (leaf.has_original_array()) {
       nodes.emplace_back(index,

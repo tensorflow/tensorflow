@@ -1814,26 +1814,26 @@ TEST(XlaCompilationTest, DeterministicClusterNames) {
         absl::StrSplit(rhs_cluster_name, '_');
 
     if (lhs_cluster_name_parts.size() != 3) {
-      return errors::FailedPrecondition("unexpected lhs cluster name: ",
-                                        lhs_cluster_name);
+      return absl::FailedPreconditionError(
+          absl::StrCat("unexpected lhs cluster name: ", lhs_cluster_name));
     }
 
     if (rhs_cluster_name_parts.size() != 3) {
-      return errors::FailedPrecondition("unexpected rhs cluster name: ",
-                                        rhs_cluster_name);
+      return absl::FailedPreconditionError(
+          absl::StrCat("unexpected rhs cluster name: ", rhs_cluster_name));
     }
 
     if (lhs_cluster_name_parts[0] != rhs_cluster_name_parts[0] ||
         lhs_cluster_name_parts[1] != rhs_cluster_name_parts[1]) {
-      return errors::FailedPrecondition(
-          "Cluster names mismatch: lhs: ", lhs_cluster_name,
-          " rhs: ", rhs_cluster_name);
+      return absl::FailedPreconditionError(
+          absl::StrCat("Cluster names mismatch: lhs: ", lhs_cluster_name,
+                       " rhs: ", rhs_cluster_name));
     }
 
     if (lhs_cluster_name_parts[2] == rhs_cluster_name_parts[2]) {
-      return errors::FailedPrecondition(
+      return absl::FailedPreconditionError(absl::StrCat(
           "cluster sequence numbers are the same: lhs: ", lhs_cluster_name,
-          " rhs: ", rhs_cluster_name);
+          " rhs: ", rhs_cluster_name));
     }
 
     return absl::OkStatus();

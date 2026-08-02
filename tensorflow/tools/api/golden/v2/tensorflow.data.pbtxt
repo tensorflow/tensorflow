@@ -2,58 +2,58 @@ path: "tensorflow.data"
 tf_module {
   member {
     name: "AUTOTUNE"
-    mtype: "<type \'int\'>"
+    mtype: "<class \'int\'>"
   }
   member {
     name: "Dataset"
-    mtype: "<type \'type\'>"
+    mtype: "<class \'abc.ABCMeta\'>"
   }
   member {
     name: "DatasetSpec"
-    mtype: "<type \'type\'>"
+    mtype: "<class \'abc.ABCMeta\'>"
   }
   member {
     name: "FixedLengthRecordDataset"
-    mtype: "<type \'type\'>"
+    mtype: "<class \'abc.ABCMeta\'>"
   }
   member {
     name: "INFINITE_CARDINALITY"
-    mtype: "<type \'int\'>"
+    mtype: "<class \'int\'>"
   }
   member {
     name: "Iterator"
-    mtype: "<type \'type\'>"
+    mtype: "<class \'abc.ABCMeta\'>"
   }
   member {
     name: "IteratorSpec"
-    mtype: "<type \'type\'>"
+    mtype: "<class \'abc.ABCMeta\'>"
   }
   member {
     name: "NumpyIterator"
-    mtype: "<type \'type\'>"
+    mtype: "<class \'type\'>"
   }
   member {
     name: "Options"
-    mtype: "<type \'type\'>"
+    mtype: "<class \'type\'>"
   }
   member {
     name: "TFRecordDataset"
-    mtype: "<type \'type\'>"
+    mtype: "<class \'abc.ABCMeta\'>"
   }
   member {
     name: "TextLineDataset"
-    mtype: "<type \'type\'>"
+    mtype: "<class \'abc.ABCMeta\'>"
   }
   member {
     name: "ThreadingOptions"
-    mtype: "<type \'type\'>"
+    mtype: "<class \'type\'>"
   }
   member {
     name: "UNKNOWN_CARDINALITY"
-    mtype: "<type \'int\'>"
+    mtype: "<class \'int\'>"
   }
   member {
     name: "experimental"
-    mtype: "<type \'module\'>"
+    mtype: "<class \'module\'>"
   }
 }

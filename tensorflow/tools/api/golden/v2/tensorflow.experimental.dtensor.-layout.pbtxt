@@ -5,23 +5,27 @@ tf_class {
   is_instance: "<class \'pybind11_builtins.pybind11_object\'>"
   member {
     name: "mesh"
-    mtype: "<type \'property\'>"
+    mtype: "<class \'property\'>"
   }
   member {
     name: "rank"
-    mtype: "<type \'property\'>"
+    mtype: "<class \'property\'>"
   }
   member {
     name: "shape"
-    mtype: "<type \'property\'>"
+    mtype: "<class \'property\'>"
   }
   member {
     name: "sharding_specs"
-    mtype: "<type \'property\'>"
+    mtype: "<class \'property\'>"
   }
   member {
     name: "type"
-    mtype: "<type \'property\'>"
+    mtype: "<class \'property\'>"
+  }
+  member_method {
+    name: "__eq__"
+    argspec: "args=[\'self\', \'arg0\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "__init__"
@@ -34,6 +38,7 @@ tf_class {
   member_method {
     name: "batch_sharded"
     argspec: "args=[\'cls\', \'mesh\', \'batch_dim\', \'rank\', \'axis\'], varargs=None, keywords=None, defaults=[\'0\'], "
+    method_kind: CLASS
   }
   member_method {
     name: "delete"
@@ -42,18 +47,22 @@ tf_class {
   member_method {
     name: "from_device"
     argspec: "args=[\'cls\', \'device\'], varargs=None, keywords=None, defaults=None"
+    method_kind: CLASS
   }
   member_method {
     name: "from_proto"
     argspec: "args=[\'cls\', \'layout_proto\'], varargs=None, keywords=None, defaults=None"
+    method_kind: CLASS
   }
   member_method {
     name: "from_single_device_mesh"
     argspec: "args=[\'cls\', \'mesh\'], varargs=None, keywords=None, defaults=None"
+    method_kind: CLASS
   }
   member_method {
     name: "from_string"
     argspec: "args=[\'cls\', \'layout_str\'], varargs=None, keywords=None, defaults=None"
+    method_kind: CLASS
   }
   member_method {
     name: "global_shape_from_local_shape"
@@ -62,6 +71,7 @@ tf_class {
   member_method {
     name: "inner_sharded"
     argspec: "args=[\'cls\', \'mesh\', \'inner_dim\', \'rank\'], varargs=None, keywords=None, defaults=None"
+    method_kind: CLASS
   }
   member_method {
     name: "is_batch_parallel"
@@ -94,6 +104,7 @@ tf_class {
   member_method {
     name: "replicated"
     argspec: "args=[\'cls\', \'mesh\', \'rank\'], varargs=None, keywords=None, defaults=None"
+    method_kind: CLASS
   }
   member_method {
     name: "to_parted"

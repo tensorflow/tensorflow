@@ -17,16 +17,20 @@ limitations under the License.
 #include <cstdint>
 #include <limits>
 #include <memory>
+#include <utility>
 #include <vector>
 
-#include "xla/tests/xla_test_backend_predicates.h"
 #include "absl/strings/string_view.h"
 #include "xla/error_spec.h"
 #include "xla/hlo/builder/xla_builder.h"
+#include "xla/hlo/evaluator/hlo_evaluator.h"
+#include "xla/pjrt/interpreter/interpreter_client.h"
+#include "xla/service/hlo_runner_pjrt.h"
 #include "xla/shape_util.h"
 #include "xla/tests/client_library_test_runner_mixin.h"
 #include "xla/tests/hlo_pjrt_interpreter_reference_mixin.h"
 #include "xla/tests/hlo_pjrt_test_base.h"
+#include "xla/tests/hlo_runner_agnostic_reference_mixin.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/ml_dtypes.h"
@@ -34,9 +38,8 @@ limitations under the License.
 namespace xla {
 namespace {
 
-class BitcastConvertTest
-    : public ClientLibraryTestRunnerMixin<
-          HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>> {
+class BitcastConvertTest : public ClientLibraryTestRunnerMixin<
+                               HloPjRtInterpreterReferenceMixin<HloTestBase>> {
  public:
   BitcastConvertTest() {
     mutable_debug_options()->add_xla_disable_hlo_passes("algsimp");
@@ -151,7 +154,7 @@ TEST_F(BitcastConvertTest, ConvertReshape) {
 }
 
 class BitcastConvertHloTest
-    : public HloPjRtInterpreterReferenceMixin<HloPjRtTestBase> {};
+    : public HloPjRtInterpreterReferenceMixin<HloTestBase> {};
 
 TEST_F(BitcastConvertHloTest, S32to4S8) {
   absl::string_view hlo_string = R"(
@@ -202,9 +205,6 @@ ENTRY main {
 }
 
 TEST_F(BitcastConvertHloTest, FourPredToF32) {
-  if (test::DeviceTypeIs({test::kTpu})) {
-    GTEST_SKIP();
-  }
   absl::string_view hlo_string = R"(
 HloModule bitcast_to_smaller
 
@@ -216,7 +216,23 @@ ENTRY main {
   EXPECT_TRUE(RunAndCompare(hlo_string, ErrorSpec{1e-5, 1e-5}));
 }
 
-TEST_F(BitcastConvertHloTest, S8ToPred) {
+template <typename T>
+class HloPjRtInterpreterReferenceMixinNoAot
+    : public HloRunnerAgnosticReferenceMixin<T> {
+ protected:
+  template <typename... BaseArgs>
+  explicit HloPjRtInterpreterReferenceMixinNoAot(BaseArgs&&... base_args)
+      : HloRunnerAgnosticReferenceMixin<T>(
+            std::make_unique<HloRunner>(std::make_unique<InterpreterClient>(
+                []() { return std::make_unique<HloEvaluator>(); })),
+            std::forward<BaseArgs>(base_args)...) {}
+  ~HloPjRtInterpreterReferenceMixinNoAot() override = default;
+};
+
+class BitcastConvertNoAotTest
+    : public HloPjRtInterpreterReferenceMixinNoAot<HloTestBase> {};
+
+TEST_F(BitcastConvertNoAotTest, S8ToPred) {
   absl::string_view hlo_string = R"(
 HloModule bitcast_to_smaller
 
@@ -225,9 +241,6 @@ ENTRY main {
   ROOT out = pred[10] bitcast-convert(p)
 }
 )";
-  if (test::DeviceTypeIs({test::kTpu})) {
-    GTEST_SKIP();
-  }
   EXPECT_TRUE(RunAndCompare(hlo_string, ErrorSpec{1e-5, 1e-5}));
 }
 

@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/c/c_api_experimental.h"
 
+#include "absl/log/check.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/substitute.h"
 #include "absl/synchronization/notification.h"
 #include "tensorflow/c/c_api.h"
@@ -36,6 +38,7 @@ limitations under the License.
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/shape_inference.h"
 #include "tensorflow/core/framework/tensor.pb.h"
+#include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/graph/node_builder.h"
 #include "tensorflow/core/platform/blocking_counter.h"
@@ -53,7 +56,6 @@ using tensorflow::FunctionDef;
 using tensorflow::Node;
 using tensorflow::NodeBuilder;
 using tensorflow::Status;
-using tensorflow::errors::InvalidArgument;
 
 namespace {
 typedef std::unique_ptr<TF_Function, decltype(&TF_DeleteFunction)>
@@ -208,15 +210,15 @@ static std::vector<UniqueFuncPtr> CreateFunctionsFromTextProto(
     std::function<void(FunctionDef*)>* mutate_proto_func, TF_Status* status) {
   tensorflow::GraphDef gdef;
   if (!tensorflow::protobuf::TextFormat::ParseFromString(text_proto, &gdef)) {
-    status->status = tensorflow::errors::Internal(
-        "Invalid text proto for GraphDef: ", text_proto);
+    status->status = absl::InternalError(
+        absl::StrCat("Invalid text proto for GraphDef: ", text_proto));
     return {};
   }
   const auto& fdef_lib = gdef.library();
   if (fdef_lib.gradient_size() > 0) {
-    status->status = tensorflow::errors::Internal(
+    status->status = absl::InternalError(absl::StrCat(
         "GradientDef is not supported in reading Dataset related functions: ",
-        text_proto);
+        text_proto));
     return {};
   }
   std::vector<UniqueFuncPtr> ret;
@@ -251,8 +253,8 @@ TF_Tensor* TF_DequeueNamedTensor(TF_Session* session, int tensor_id,
   TF_Operation* dequeue_op = TF_GraphOperationByName(
       session->graph, absl::StrCat("fifo_queue_dequeue_", tensor_id).c_str());
   if (dequeue_op == nullptr) {
-    status->status = tensorflow::errors::Internal(
-        "Unable to find the dequeue node in the TF graph.");
+    status->status =
+        absl::InternalError("Unable to find the dequeue node in the TF graph.");
     return nullptr;
   }
 
@@ -296,15 +298,15 @@ void TF_EnqueueNamedTensor(TF_Session* session, int tensor_id,
   TF_Operation* enqueue_op = TF_GraphOperationByName(
       session->graph, absl::StrCat("fifo_queue_enqueue_", tensor_id).c_str());
   if (enqueue_op == nullptr) {
-    status->status = tensorflow::errors::Internal(
-        "Unable to find the enqueue node in the TF graph.");
+    status->status =
+        absl::InternalError("Unable to find the enqueue node in the TF graph.");
     return;
   }
 
   TF_Operation* placeholder_op = TF_GraphOperationByName(
       session->graph, absl::StrCat("arg_tensor_enqueue_", tensor_id).c_str());
   if (placeholder_op == nullptr) {
-    status->status = tensorflow::errors::Internal(
+    status->status = absl::InternalError(
         "Unable to find the placeholder node as input to enqueue in the TF "
         "graph.");
     return;
@@ -326,8 +328,8 @@ TF_Buffer* TFE_GetServerDef(const char* text_proto, TF_Status* status) {
   tensorflow::ServerDef server_def;
   if (!tensorflow::protobuf::TextFormat::ParseFromString(text_proto,
                                                          &server_def)) {
-    status->status = tensorflow::errors::Internal(
-        "Invalid text proto for ServerDef: ", text_proto);
+    status->status = absl::InternalError(
+        absl::StrCat("Invalid text proto for ServerDef: ", text_proto));
     return nullptr;
   }
   status->status = absl::Status();
@@ -337,7 +339,7 @@ TF_Buffer* TFE_GetServerDef(const char* text_proto, TF_Status* status) {
 }
 
 void TF_MakeInternalErrorStatus(TF_Status* status, const char* errMsg) {
-  status->status = tensorflow::errors::Internal(errMsg);
+  status->status = absl::InternalError(errMsg);
 }
 
 struct TF_CheckpointReader : public tensorflow::checkpoint::CheckpointReader {
@@ -395,8 +397,8 @@ void TF_CheckpointReaderGetVariableShape(TF_CheckpointReader* reader,
   const auto& shape = reader->GetVariableToShapeMap().at(name);
   int rank = shape.dims();
   if (num_dims != rank) {
-    status->status = InvalidArgument("Expected rank is ", num_dims,
-                                     " but actual rank is ", rank);
+    status->status = absl::InvalidArgumentError(absl::StrCat(
+        "Expected rank is ", num_dims, " but actual rank is ", rank));
     return;
   }
   for (int i = 0; i < num_dims; i++) {
@@ -455,16 +457,16 @@ const char* TF_GetNumberAttrForOpListInput(const char* op_name, int input_index,
   if (!status->status.ok()) return nullptr;
 
   if (input_index >= op_def->input_arg_size() || input_index < 0) {
-    status->status = tensorflow::errors::InvalidArgument(
-        input_index, " out of range for ", op_name);
+    status->status = absl::InvalidArgumentError(
+        absl::StrCat(input_index, " out of range for ", op_name));
     return nullptr;
   }
 
   const tensorflow::OpDef_ArgDef& input_arg = op_def->input_arg()[input_index];
 
   if (input_arg.number_attr().empty()) {
-    status->status = tensorflow::errors::NotFound(
-        op_name, " does not have number_attr() defined.");
+    status->status = absl::NotFoundError(
+        absl::StrCat(op_name, " does not have number_attr() defined."));
     return nullptr;
   }
 
@@ -486,15 +488,25 @@ void TF_InitMain(const char* usage, int* argc, char*** argv) {
   tensorflow::port::InitMain(usage, argc, argv);
 }
 
-int TF_PickUnusedPortOrDie() {
-  return tensorflow::internal::PickUnusedPortOrDie();
-}
+int TF_PickUnusedPortOrDie() { return tsl::net::PickUnusedPortOrDie(); }
 
 TFE_TensorHandle* TFE_NewTensorHandleFromScalar(TF_DataType data_type,
                                                 void* data, size_t len,
                                                 TF_Status* status) {
   auto dtype = static_cast<tensorflow::DataType>(data_type);
-  DCHECK(tensorflow::DataTypeCanUseMemcpy(dtype));
+  if (!tensorflow::DataTypeCanUseMemcpy(dtype)) {
+    status->status = absl::InvalidArgumentError(
+        absl::StrCat("DataType ", dtype, " cannot use memcpy"));
+    return nullptr;
+  }
+
+  size_t expected_len = static_cast<size_t>(tensorflow::DataTypeSize(dtype));
+  if (len > expected_len) {
+    status->status = absl::InvalidArgumentError(
+        absl::StrCat("len (", len, ") is larger than expected scalar size for ",
+                     dtype, " (", expected_len, " bytes)"));
+    return nullptr;
+  }
 
   tensorflow::Tensor tensor(dtype, tensorflow::TensorShape({}));
   std::memcpy(tensorflow::TensorCApi::Buffer(tensor)->data(), data, len);
@@ -510,7 +522,7 @@ TF_CAPI_EXPORT extern void TFE_EnableCollectiveOps(TFE_Context* ctx,
                                                    TF_Status* status) {
   tensorflow::ServerDef server_def;
   if (!server_def.ParseFromArray(proto, proto_len)) {
-    status->status = tensorflow::errors::InvalidArgument(
+    status->status = absl::InvalidArgumentError(
         "Invalid tensorflow.ServerDef protocol buffer");
     return;
   }
@@ -549,10 +561,10 @@ TF_ShapeAndTypeList* TF_NewShapeAndTypeList(int num_items) {
 
 void TF_ShapeAndTypeListSetShape(TF_ShapeAndTypeList* shape_list, int index,
                                  const int64_t* dims, int num_dims) {
-  DCHECK(index >= 0 && index < shape_list->num_items);
+  CHECK(index >= 0 && index < shape_list->num_items);
   TF_ShapeAndType& shape = shape_list->items[index];
-  DCHECK(shape.dims == nullptr) << "Shape at " << index << " is already set!";
-  DCHECK(num_dims >= 0) << "Number of dimensions cannot be negative!";
+  CHECK(shape.dims == nullptr) << "Shape at " << index << " is already set!";
+  CHECK(num_dims >= 0) << "Number of dimensions cannot be negative!";
   shape.num_dims = num_dims;
   shape.dims = new int64_t[num_dims];
   memcpy(shape.dims, dims, sizeof(int64_t) * num_dims);
@@ -560,16 +572,16 @@ void TF_ShapeAndTypeListSetShape(TF_ShapeAndTypeList* shape_list, int index,
 
 void TF_ShapeAndTypeListSetUnknownShape(TF_ShapeAndTypeList* shape_list,
                                         int index) {
-  DCHECK(index >= 0 && index < shape_list->num_items);
+  CHECK(index >= 0 && index < shape_list->num_items);
   TF_ShapeAndType& shape = shape_list->items[index];
-  DCHECK(shape.dims == nullptr) << "Shape at " << index << " is already set!";
+  CHECK(shape.dims == nullptr) << "Shape at " << index << " is already set!";
   shape.num_dims = -1;
   shape.dims = nullptr;
 }
 
 void TF_ShapeAndTypeListSetDtype(TF_ShapeAndTypeList* shape_list, int index,
                                  TF_DataType dtype) {
-  DCHECK(index >= 0 && index < shape_list->num_items);
+  CHECK(index >= 0 && index < shape_list->num_items);
   TF_ShapeAndType& shape_and_type = shape_list->items[index];
   shape_and_type.dtype = dtype;
 }
@@ -678,9 +690,9 @@ void TFE_InferShapes(TFE_Op* tfe_op, TF_ShapeAndTypeList* input_shapes,
   if (!status->status.ok()) return;
 
   if (op_reg_data->shape_inference_fn == nullptr) {
-    status->status =
-        InvalidArgument("No shape inference function exists for op '",
-                        node_def.op(), "', did you forget to define it?");
+    status->status = absl::InvalidArgumentError(
+        absl::StrCat("No shape inference function exists for op '",
+                     node_def.op(), "', did you forget to define it?"));
     return;
   }
 
@@ -724,7 +736,7 @@ void TF_ImportGraphDefOptionsSetValidateColocationConstraints(
 TF_Library* TF_LoadPluggableDeviceLibrary(const char* library_filename,
                                           TF_Status* status) {
 #if defined(IS_MOBILE_PLATFORM) || defined(IS_SLIM_BUILD)
-  status->status = tensorflow::errors::Unimplemented(
+  status->status = absl::UnimplementedError(
       "PluggableDevice plugin functionality is not supported on mobile");
   return nullptr;
 #else

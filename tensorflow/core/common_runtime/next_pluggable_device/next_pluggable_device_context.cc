@@ -133,7 +133,7 @@ void NextPluggableDeviceContext::CopyCPUTensorToDevice(
 void NextPluggableDeviceContext::CopyTensorInSameDevice(
     const Tensor* input_tensor, Device* device, Tensor* output_tensor,
     StatusCallback done) const {
-  done(errors::Unimplemented("Same-device copies not implemented."));
+  done(absl::UnimplementedError("Same-device copies not implemented."));
 }
 
 }  // namespace tensorflow

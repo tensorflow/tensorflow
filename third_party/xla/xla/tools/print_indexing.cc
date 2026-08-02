@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "llvm/ADT/STLExtras.h"
 #include "mlir/IR/MLIRContext.h"
 #include "xla/hlo/analysis/indexing_analysis.h"
@@ -43,8 +44,8 @@ print_indexing <file.hlo> [--operand_id=0] [--output_id=0])";
 namespace xla {
 
 absl::Status Run(const std::string& filename, int operand_id, int output_id) {
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
-                      LoadModuleFromFile(filename));
+  ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
+                   LoadModuleFromFile(filename));
   auto root = module->entry_computation()->root_instruction();
   bool print_all = operand_id < 0;
   int get_operand_id = operand_id;

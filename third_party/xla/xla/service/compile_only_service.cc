@@ -20,6 +20,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/strings/str_cat.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/debug_options_flags.h"
 #include "xla/service/backend.h"
 #include "xla/service/compiler.h"
@@ -46,10 +47,10 @@ CompileOnlyService::NewService(se::Platform* platform) {
 CompileOnlyService::NewService(const ServiceOptions& options) {
   se::Platform* platform = options.platform();
   if (platform == nullptr) {
-    TF_ASSIGN_OR_RETURN(platform, PlatformUtil::GetDefaultPlatform());
+    ASSIGN_OR_RETURN(platform, PlatformUtil::GetDefaultPlatform());
   }
 
-  TF_ASSIGN_OR_RETURN(auto compiler, Compiler::GetForPlatform(platform->id()));
+  ASSIGN_OR_RETURN(auto compiler, Compiler::GetForPlatform(platform->id()));
 
   std::unique_ptr<CompileOnlyService> service(
       new CompileOnlyService(options, std::move(compiler)));
@@ -119,15 +120,15 @@ CompileOnlyService::CompileAheadOfTime(
                                       update_shape_with_empty_tiles);
   }
 
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       ProgramShape program_shape,
       ProgramShape::FromProto(computation.computation.host_program_shape()));
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       std::unique_ptr<HloModuleConfig> module_config,
       CreateModuleConfig(program_shape, computation.argument_layouts,
                          &execution_options, &options));
 
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       std::unique_ptr<HloModule> hlo_module,
       HloModule::CreateFromProto(computation.computation, *module_config));
   DumpHloModuleIfEnabled(*hlo_module, "before_optimizations");

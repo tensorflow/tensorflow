@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/service/maybe_owning_device_address.h"
 #include "xla/service/service_executable_run_options.h"
 #include "xla/service/shaped_buffer.h"
@@ -81,8 +82,8 @@ absl::StatusOr<ScopedShapedBuffer> Executable::ExecuteOnStream(
   absl::StatusOr<ScopedShapedBuffer> result =
       ExecuteAsyncOnStream(run_options, arguments);
   absl::Status blocking_status = run_options->stream()->BlockHostUntilDone();
-  TF_RETURN_IF_ERROR(result.status());
-  TF_RETURN_IF_ERROR(blocking_status);
+  RETURN_IF_ERROR(result.status());
+  RETURN_IF_ERROR(blocking_status);
   return result;
 }
 
@@ -104,8 +105,8 @@ absl::StatusOr<ScopedShapedBuffer> Executable::ExecuteAsyncOnStream(
   for (const ShapedBuffer* arg : arguments) {
     args.emplace_back(MakeMaybeOwningDeviceAddressTree(*arg));
   }
-  TF_ASSIGN_OR_RETURN(ExecutionOutput out,
-                      ExecuteAsyncOnStream(run_options, std::move(args)));
+  ASSIGN_OR_RETURN(ExecutionOutput out,
+                   ExecuteAsyncOnStream(run_options, std::move(args)));
   return out.ConsumeResult();
 }
 
@@ -115,8 +116,8 @@ absl::StatusOr<ExecutionOutput> Executable::ExecuteOnStream(
   absl::StatusOr<ExecutionOutput> result =
       ExecuteAsyncOnStream(run_options, std::move(arguments));
   absl::Status blocking_status = run_options->stream()->BlockHostUntilDone();
-  TF_RETURN_IF_ERROR(result.status());
-  TF_RETURN_IF_ERROR(blocking_status);
+  RETURN_IF_ERROR(result.status());
+  RETURN_IF_ERROR(blocking_status);
   return result;
 }
 
@@ -129,8 +130,7 @@ absl::StatusOr<std::vector<ScopedShapedBuffer>> Executable::ExecuteOnStreams(
   return_values.reserve(run_options.size());
 
   if (run_options.size() == 1) {
-    TF_ASSIGN_OR_RETURN(auto rv,
-                        ExecuteOnStream(&run_options[0], arguments[0]));
+    ASSIGN_OR_RETURN(auto rv, ExecuteOnStream(&run_options[0], arguments[0]));
     return_values.push_back(std::move(rv));
     return std::move(return_values);
   }
@@ -139,13 +139,13 @@ absl::StatusOr<std::vector<ScopedShapedBuffer>> Executable::ExecuteOnStreams(
     // We cannot BlockHostUntilDone() on the already-launched executions in case
     // of error, since if the executions communicate, the initially launched
     // executions may never complete if not all executions are running.
-    TF_ASSIGN_OR_RETURN(auto rv,
-                        ExecuteAsyncOnStream(&run_options[i], arguments[i]));
+    ASSIGN_OR_RETURN(auto rv,
+                     ExecuteAsyncOnStream(&run_options[i], arguments[i]));
     return_values.push_back(std::move(rv));
   }
   for (const auto& options : run_options) {
     TF_RET_CHECK(options.stream() != nullptr);
-    TF_RETURN_IF_ERROR(options.stream()->BlockHostUntilDone());
+    RETURN_IF_ERROR(options.stream()->BlockHostUntilDone());
   }
   return std::move(return_values);
 }
@@ -156,8 +156,8 @@ absl::StatusOr<ScopedShapedBuffer> Executable::ExecuteOnStreamWrapper(
   absl::StatusOr<ScopedShapedBuffer> result =
       ExecuteAsyncOnStreamWrapper(run_options, arguments);
   absl::Status block_status = run_options->stream()->BlockHostUntilDone();
-  TF_RETURN_IF_ERROR(result.status());
-  TF_RETURN_IF_ERROR(block_status);
+  RETURN_IF_ERROR(result.status());
+  RETURN_IF_ERROR(block_status);
   return result;
 }
 
@@ -167,8 +167,8 @@ absl::StatusOr<ExecutionOutput> Executable::ExecuteOnStreamWrapper(
   absl::StatusOr<ExecutionOutput> result =
       ExecuteAsyncOnStreamWrapper(run_options, std::move(arguments));
   absl::Status block_status = run_options->stream()->BlockHostUntilDone();
-  TF_RETURN_IF_ERROR(result.status());
-  TF_RETURN_IF_ERROR(block_status);
+  RETURN_IF_ERROR(result.status());
+  RETURN_IF_ERROR(block_status);
   return result;
 }
 
@@ -202,7 +202,7 @@ absl::Status ExecuteWrapperAfterExecution(
   if (state.profile != nullptr) {
     // We block instead of using an async callback because reading the timer
     // value may call back into the driver on GPU, which is not allowed.
-    TF_RETURN_IF_ERROR(stream->BlockHostUntilDone());
+    RETURN_IF_ERROR(stream->BlockHostUntilDone());
 
     const int64_t executable_size_in_bytes =
         executable->SizeOfGeneratedCodeInBytes();
@@ -231,7 +231,7 @@ absl::StatusOr<ScopedShapedBuffer> Executable::ExecuteAsyncOnStreamWrapper(
   auto state = ExecuteWrapperBeforeExecution(*this, run_options);
   absl::StatusOr<ScopedShapedBuffer> return_value =
       ExecuteAsyncOnStream(run_options, arguments);
-  TF_RETURN_IF_ERROR(ExecuteWrapperAfterExecution(
+  RETURN_IF_ERROR(ExecuteWrapperAfterExecution(
       this, state, return_value.status(), run_options->stream()));
   return return_value;
 }
@@ -242,7 +242,7 @@ absl::StatusOr<ExecutionOutput> Executable::ExecuteAsyncOnStreamWrapper(
   auto state = ExecuteWrapperBeforeExecution(*this, run_options);
   absl::StatusOr<ExecutionOutput> return_value =
       ExecuteAsyncOnStream(run_options, std::move(arguments));
-  TF_RETURN_IF_ERROR(ExecuteWrapperAfterExecution(
+  RETURN_IF_ERROR(ExecuteWrapperAfterExecution(
       this, state, return_value.status(), run_options->stream()));
   return return_value;
 }

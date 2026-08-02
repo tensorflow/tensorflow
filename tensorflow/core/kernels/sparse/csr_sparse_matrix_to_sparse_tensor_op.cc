@@ -46,14 +46,15 @@ using GPUDevice = Eigen::GpuDevice;
 absl::Status ValidateCSRSparseMatrix(const CSRSparseMatrix& csr_sparse_matrix,
                                      DataType expected_dtype) {
   if (csr_sparse_matrix.dtype() != expected_dtype) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(absl::StrCat(
         "Expected a CSRSparseMatrix of type ", DataTypeString(expected_dtype),
-        " but saw type: ", DataTypeString(csr_sparse_matrix.dtype()));
+        " but saw type: ", DataTypeString(csr_sparse_matrix.dtype())));
   }
   const int rank = csr_sparse_matrix.dense_shape().dim_size(0);
   if (rank != 2 && rank != 3) {
-    return errors::InvalidArgument("CSR SparseMatrix must have rank 2 or 3; ",
-                                   "but dense_shape has size ", rank);
+    return absl::InvalidArgumentError(
+        absl::StrCat("CSR SparseMatrix must have rank 2 or 3; ",
+                     "but dense_shape has size ", rank));
   }
   return absl::OkStatus();
 }

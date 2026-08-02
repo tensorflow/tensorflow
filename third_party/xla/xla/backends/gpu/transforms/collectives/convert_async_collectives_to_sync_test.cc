@@ -19,6 +19,7 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
@@ -41,8 +42,8 @@ class GpuConvertAsyncCollectivesToSyncTest
     : public HloHardwareIndependentTestBase {
  public:
   absl::Status RunPass(HloModule* module, bool expect_change) {
-    TF_ASSIGN_OR_RETURN(bool changed,
-                        GpuConvertAsyncCollectivesToSync().Run(module));
+    ASSIGN_OR_RETURN(bool changed,
+                     GpuConvertAsyncCollectivesToSync().Run(module));
     EXPECT_EQ(changed, expect_change);
     return absl::OkStatus();
   }
@@ -353,7 +354,7 @@ TEST_F(GpuConvertAsyncCollectivesToSyncTest,
 
       ENTRY test_computation {
         id = u32[] replica-id()
-        start = u32[] all-reduce-start(id), to_apply=apply_op, channel_id=3, replica_groups={{0,1}, {2,3}}, backend_config={"collective_backend_config":{"backend":"NVSHMEM"}}
+        start = u32[] all-reduce-start(id), to_apply=apply_op, channel_id=3, replica_groups={{0,1}, {2,3}}, backend_config={"collective_backend_config":{"is_pipelined":true}}
         id2 = f32[] bitcast(id)
         ROOT done = u32[] all-reduce-done(start)
       }
@@ -373,7 +374,7 @@ TEST_F(GpuConvertAsyncCollectivesToSyncTest,
       inst->backend_config<GpuBackendConfig>()
           .value()
           .collective_backend_config();
-  EXPECT_EQ(backend_config.backend(), backend_config_orig.backend());
+  EXPECT_EQ(backend_config.is_pipelined(), backend_config_orig.is_pipelined());
 }
 
 }  // namespace

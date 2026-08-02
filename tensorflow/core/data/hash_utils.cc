@@ -93,7 +93,7 @@ absl::Status GetSink(const GraphDef& graph_def, const NodeDef** sink) {
   }
 
   if (sink == nullptr) {
-    return errors::Internal("Cannot find sink node for dataset graph.");
+    return absl::InternalError("Cannot find sink node for dataset graph.");
   }
   return absl::OkStatus();
 }
@@ -193,10 +193,10 @@ class GraphHasher {
                const decltype(node_def_by_name)::value_type& item) {
               absl::StrAppend(out, "'", item.first, "'");
             };
-        return errors::Internal(
+        return absl::InternalError(absl::StrCat(
             "Encountered graph with duplicate node name '", node.name(),
             "' in [", absl::StrJoin(node_def_by_name, ",", node_name_formatter),
-            "]");
+            "]"));
       }
     }
     // Pre-process the graph to do a BFS and prune away cycles that might cause
@@ -228,8 +228,9 @@ class GraphHasher {
 
         auto* input_node = gtl::FindPtrOrNull(node_def_by_name, node_name);
         if (input_node == nullptr) {
-          return errors::Internal("Graph node [", node->name(), "] has input [",
-                                  node_name, "] that doesn't exist in graph");
+          return absl::InternalError(
+              absl::StrCat("Graph node [", node->name(), "] has input [",
+                           node_name, "] that doesn't exist in graph"));
         }
 
         // If we've already seen this node before, skip it and don't add it to
@@ -267,7 +268,8 @@ class GraphHasher {
 
     NodeRep* node_rep = gtl::FindOrNull(nodes_, node);
     if (node_rep == nullptr) {
-      return errors::InvalidArgument("Could not find node: ", node->name());
+      return absl::InvalidArgumentError(
+          absl::StrCat("Could not find node: ", node->name()));
     }
 
     uint64_t non_input_hash;
@@ -299,8 +301,8 @@ class GraphHasher {
                           Hash64Combine(control_inputs_hash, inputs_hash));
     auto result = node_cache_->emplace(node, *hash);
     if (!result.second) {
-      return errors::Internal(absl::StrCat("Computed the hash for node ",
-                                           node->DebugString(), " twice!"));
+      return absl::InternalError(absl::StrCat("Computed the hash for node ",
+                                              node->DebugString(), " twice!"));
     }
     return absl::OkStatus();
   }
@@ -309,9 +311,9 @@ class GraphHasher {
                                const NodeDef* that_node) {
     absl::Status s = CheckNodesEqualHelper(this_node, that, that_node);
     if (!s.ok()) {
-      return errors::FailedPrecondition("Nodes ", this_node->name(), " and ",
-                                        that_node->name(),
-                                        " are not the same:\n", s);
+      return absl::FailedPreconditionError(
+          absl::StrCat("Nodes ", this_node->name(), " and ", that_node->name(),
+                       " are not the same:\n", s));
     }
     return s;
   }
@@ -329,9 +331,9 @@ class GraphHasher {
     auto& this_node_inputs = nodes_[this_node].node_inputs;
     auto& that_node_inputs = that->nodes_[that_node].node_inputs;
     if (this_node_inputs.size() != that_node_inputs.size()) {
-      return errors::FailedPrecondition(
+      return absl::FailedPreconditionError(absl::StrCat(
           "Nodes have different numbers of node inputs: ",
-          this_node_inputs.size(), " vs ", that_node_inputs.size());
+          this_node_inputs.size(), " vs ", that_node_inputs.size()));
     }
     for (int i = 0; i < this_node_inputs.size(); ++i) {
       const NodeDef* this_input = this_node_inputs[i].first;
@@ -345,10 +347,10 @@ class GraphHasher {
       absl::string_view this_input_suffix = this_node_inputs[i].second;
       absl::string_view that_input_suffix = that_node_inputs[i].second;
       if (this_input_suffix != that_input_suffix) {
-        return errors::FailedPrecondition(
+        return absl::FailedPreconditionError(absl::StrCat(
             "Node inputs ", this_input->name(), " and ", that_input->name(),
             " have different suffixes: ", this_input_suffix, " vs ",
-            that_input_suffix);
+            that_input_suffix));
       }
     }
     return absl::OkStatus();
@@ -404,7 +406,7 @@ class GraphHasher {
     auto result =
         attr_cache_->emplace(std::make_pair(node, hash_functions), *hash);
     if (!result.second) {
-      return errors::Internal(absl::StrCat(
+      return absl::InternalError(absl::StrCat(
           "Computed the hash for non-input node: ", node->DebugString(),
           " and hash function bool: ", hash_functions, "twice!"));
     }
@@ -428,9 +430,9 @@ class GraphHasher {
       }
     } else {
       if (this_node->op() != that_node->op()) {
-        return errors::FailedPrecondition(
+        return absl::FailedPreconditionError(absl::StrCat(
             "ops for nodes ", this_node->name(), " and ", that_node->name(),
-            " are different: ", this_node->op(), " != ", that_node->op());
+            " are different: ", this_node->op(), " != ", that_node->op()));
       }
     }
 
@@ -439,11 +441,11 @@ class GraphHasher {
       const bool this_has_attr = this_node->attr().contains(attr_key);
       const bool that_has_attr = that_node->attr().contains(attr_key);
       if (this_has_attr != that_has_attr) {
-        return errors::FailedPrecondition(
-            "attr with key ", attr_key, " is different for nodes ",
-            this_node->name(), " and ", that_node->name(),
-            ". Present in former: ", this_has_attr,
-            ". Present in latter: ", that_has_attr);
+        return absl::FailedPreconditionError(
+            absl::StrCat("attr with key ", attr_key, " is different for nodes ",
+                         this_node->name(), " and ", that_node->name(),
+                         ". Present in former: ", this_has_attr,
+                         ". Present in latter: ", that_has_attr));
       }
       if (!this_has_attr) {
         continue;
@@ -459,10 +461,10 @@ class GraphHasher {
     }
 
     if (this_node->device() != that_node->device()) {
-      return errors::FailedPrecondition(
-          "Devices are different for nodes ", this_node->name(), " and ",
-          that_node->name(), ": ", this_node->device(), " vs ",
-          that_node->device());
+      return absl::FailedPreconditionError(
+          absl::StrCat("Devices are different for nodes ", this_node->name(),
+                       " and ", that_node->name(), ": ", this_node->device(),
+                       " vs ", that_node->device()));
     }
     return absl::OkStatus();
   }
@@ -495,9 +497,9 @@ class GraphHasher {
                                const AttrValue& that_attr,
                                bool compare_functions) {
     if (this_attr.has_func() != that_attr.has_func()) {
-      return errors::FailedPrecondition(
+      return absl::FailedPreconditionError(absl::StrCat(
           "AttrValues are of different types: ", this_attr.DebugString(),
-          " vs ", that_attr.DebugString());
+          " vs ", that_attr.DebugString()));
     }
     if (this_attr.has_func()) {
       if (compare_functions) {
@@ -507,15 +509,15 @@ class GraphHasher {
       return absl::OkStatus();
     }
     if (this_attr.has_list() != that_attr.has_list()) {
-      return errors::FailedPrecondition(
+      return absl::FailedPreconditionError(absl::StrCat(
           "AttrValues are of different types: ", this_attr.DebugString(),
-          " vs ", that_attr.DebugString());
+          " vs ", that_attr.DebugString()));
     }
     if (this_attr.has_list()) {
       if (this_attr.list().func_size() != that_attr.list().func_size()) {
-        return errors::FailedPrecondition(
+        return absl::FailedPreconditionError(absl::StrCat(
             "AttrValues have func lists of different sizes: ",
-            this_attr.DebugString(), " vs ", that_attr.DebugString());
+            this_attr.DebugString(), " vs ", that_attr.DebugString()));
       }
       if (compare_functions) {
         for (int i = 0; i < this_attr.list().func_size(); ++i) {
@@ -531,9 +533,9 @@ class GraphHasher {
     TF_RETURN_IF_ERROR(that->HashAttr(attr_name, that_attr,
                                       /*hash_functions=*/true, &that_hash));
     if (this_hash != that_hash) {
-      return errors::FailedPrecondition(
-          "AttrValues are different: ", this_attr.DebugString(), " vs ",
-          that_attr.DebugString());
+      return absl::FailedPreconditionError(
+          absl::StrCat("AttrValues are different: ", this_attr.DebugString(),
+                       " vs ", that_attr.DebugString()));
     }
     return absl::OkStatus();
   }
@@ -581,7 +583,7 @@ class GraphHasher {
     *hash = Hash64Combine(ret_nodes_hash, control_ret_nodes_hash);
     auto result = function_cache_->emplace(fdef, *hash);
     if (!result.second) {
-      return errors::Internal(
+      return absl::InternalError(
           absl::StrCat("Computed the hash for function ", name, " twice!"));
     }
     return absl::OkStatus();
@@ -601,8 +603,9 @@ class GraphHasher {
     absl::Status s = CheckFunctionsEqualHelper(this_name, this_attrs, that,
                                                that_name, that_attrs);
     if (!s.ok()) {
-      return errors::FailedPrecondition("Functions ", this_name, " and ",
-                                        that_name, " are not the same:\n", s);
+      return absl::FailedPreconditionError(
+          absl::StrCat("Functions ", this_name, " and ", that_name,
+                       " are not the same:\n", s));
     }
     return s;
   }
@@ -626,10 +629,10 @@ class GraphHasher {
     GraphDef that_graph_def = that_fbody->graph->ToGraphDefDebug();
 
     if (this_fbody->ret_nodes.size() != that_fbody->ret_nodes.size()) {
-      return errors::FailedPrecondition(
+      return absl::FailedPreconditionError(absl::StrCat(
           "Different numbers of ret nodes for functions ", this_name, " and ",
           that_name, ": ", this_fbody->ret_nodes.size(), " vs ",
-          that_fbody->ret_nodes.size());
+          that_fbody->ret_nodes.size()));
     }
     for (int i = 0; i < this_fbody->ret_nodes.size(); ++i) {
       const NodeDef* this_root = &this_fbody->ret_nodes[i]->def();
@@ -697,11 +700,11 @@ class GraphHasher {
                           const decltype(this_hashes)::value_type& item) {
         out->append(item.second->name());
       };
-      return errors::FailedPrecondition(
+      return absl::FailedPreconditionError(absl::StrCat(
           "Control dependencies are different. One node has dependencies [",
           absl::StrJoin(this_hashes, ", ", formatter),
           "], which don't match any of the other node's dependencies [",
-          absl::StrJoin(that_hashes, ", ", formatter), "]");
+          absl::StrJoin(that_hashes, ", ", formatter), "]"));
     }
     return absl::OkStatus();
   }
@@ -754,8 +757,8 @@ absl::Status HashTensor(const Tensor& tensor, uint64_t* hash) {
   switch (tensor.dtype()) {
     case DT_RESOURCE:
     case DT_VARIANT:
-      return errors::Unimplemented("Hashing ", DataTypeString(tensor.dtype()),
-                                   " is not supported.");
+      return absl::UnimplementedError(absl::StrCat(
+          "Hashing ", DataTypeString(tensor.dtype()), " is not supported."));
     case DT_STRING:
       s = tensor.flat<tstring>().data();
       for (int i = 0; i < tensor.NumElements(); ++i, ++s) {

@@ -24,6 +24,8 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
+#include "xla/tsl/platform/status_macros.h"
+#include "xla/overflow_util.h"
 #include "xla/python/ifrt/serdes_version.h"
 #include "xla/python/ifrt/shape.pb.h"
 #include "xla/tsl/platform/errors.h"
@@ -56,12 +58,29 @@ absl::StatusOr<Shape> Shape::FromProto(const ShapeProto& proto) {
 
   Shape::Dimensions dims;
   dims.reserve(proto.dims_size());
+  // Detects a dimension product that overflows int64_t, reusing the same
+  // OverflowSafeMultiply utility that xla::ShapeUtil::ValidateDimensions
+  // already uses for the core XLA Shape type. This class has its own
+  // FromProto reachable independently (e.g. via ifrt_proxy's deserialized
+  // RPC request protos) and needs the equivalent check, since num_elements()
+  // below does not detect overflow itself -- an unchecked product silently
+  // wraps to a small value that undersizes any buffer computed from it.
+  int64_t product = 1;
+  bool overflow = false;
   for (int64_t dim : proto.dims()) {
     if (dim < 0) {
       return InvalidArgument(
           "Shape expects non-negative dimension sizes, but got %d", dim);
     }
+    const auto [new_product, this_overflowed] =
+        OverflowSafeMultiply(product, dim);
+    product = new_product;
+    overflow |= this_overflowed;
     dims.push_back(dim);
+  }
+  if (overflow) {
+    return InvalidArgument(
+        "Shape dimensions overflow int64_t when multiplied together");
   }
   return Shape(std::move(dims));
 }
@@ -126,7 +145,7 @@ void BoundedDynamicShapeTag::ToProto(BoundedDynamicShapeTagProto& proto,
 
 absl::StatusOr<DynamicShape> DynamicShape::Create(Shape shape,
                                                   DynamicShapeTag tag) {
-  TF_RETURN_IF_ERROR(std::visit(
+  RETURN_IF_ERROR(std::visit(
       overloaded{
           [&](const BoundedDynamicShapeTag& tag) -> absl::Status {
             if (tag.DynamicDims().size() != shape.dims().size()) {
@@ -166,9 +185,9 @@ absl::StatusOr<DynamicShape> DynamicShape::FromProto(
         "Unsupported ", version_number, " for DynamicShape deserialization"));
   }
 
-  TF_ASSIGN_OR_RETURN(Shape shape, Shape::FromProto(proto.shape()));
+  ASSIGN_OR_RETURN(Shape shape, Shape::FromProto(proto.shape()));
   if (proto.has_bounded_dynamic_shape_tag()) {
-    TF_ASSIGN_OR_RETURN(
+    ASSIGN_OR_RETURN(
         BoundedDynamicShapeTag tag,
         BoundedDynamicShapeTag::FromProto(proto.bounded_dynamic_shape_tag()));
     return DynamicShape::Create(std::move(shape), std::move(tag));

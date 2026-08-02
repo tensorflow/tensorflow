@@ -57,7 +57,7 @@ void UntypedStreamingRPCState::Tag::OnCompleted(bool ok) {
 void Exchange::Complete(absl::Status status) {
   if (status.ok()) {
     if (!tsl::GrpcMaybeParseProto(&response_buf_, response_)) {
-      status.Update(errors::Internal("could not parse rpc response"));
+      status.Update(absl::InternalError("could not parse rpc response"));
     }
   }
   VLOG(3) << "Completing exchange " << DebugString() << " with "

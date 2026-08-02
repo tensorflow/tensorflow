@@ -1,3 +1,18 @@
+# Copyright 2026 The TensorFlow Authors. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
+
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("@rules_python//python:proto.bzl", "py_proto_library")
 load("//tensorflow:tensorflow.bzl", "if_google", "tf_cc_shared_object", "tf_cc_test")
@@ -12,20 +27,10 @@ package(
 
 package_group(
     name = "friends",
+    # TODO(b/476497239): Remove the old JSV codebase once the migration is done.
     packages = [
-        # copybara:uncomment "//cloud/ai/platform/prediction/...",
-        # copybara:uncomment "//learning/brain/experimental/tfrt/native_lowering/...",
-        # copybara:uncomment "//learning/brain/tfrt/...",
-        # TODO(b/476497239): Remove the old JSV codebase once the migration is done.
-        # copybara:uncomment "//learning/infra/mira/experimental/orbax_model/...",
-        # copybara:uncomment "//learning/serving/servables/tfrt/...",
-        # copybara:uncomment "//smartass/brain/inference/...",
-        # copybara:uncomment "//third_party/neptune/...",
-        # copybara:uncomment "//tensorflow/compiler/mlir/tfrt/...",
         "//tensorflow/core/tfrt/...",
         "//tensorflow/core/tfrt/graph_executor/python/...",
-        # copybara:uncomment "//tensorflow_serving/servables/tensorflow/...",
-        # copybara:uncomment "//tensorflow_serving/servables/tensorflow/google/...",
     ],
 )
 
@@ -182,7 +187,9 @@ tf_cc_test(
         "//tensorflow/core/platform:status",
         "//tensorflow/core/platform:statusor",
         "//tensorflow/core/protobuf:for_core_protos_cc",
+        "//tensorflow/core/runtime_fallback/kernel:kernel_fallback_compat_request_state",
         "//tensorflow/core/tfrt/fallback:fallback_state",
+        "//tensorflow/core/tfrt/fallback:op_kernel_runner",
         "//tensorflow/core/tfrt/mlrt/interpreter:context",
         "//tensorflow/core/tfrt/mlrt/interpreter:value",
         "//tensorflow/core/tfrt/mlrt/kernel",

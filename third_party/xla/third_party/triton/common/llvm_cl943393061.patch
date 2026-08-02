@@ -1,0 +1,11 @@
+--- a/bin/RegisterTritonDialects.h
++++ b/bin/RegisterTritonDialects.h
+@@ -95,7 +95,6 @@
+   mlir::triton::registerAllocateSharedMemoryNvPass();
+   mlir::registerLLVMDIScope();
+   mlir::LLVM::registerInlinerInterface(registry);
+-  mlir::NVVM::registerInlinerInterface(registry);
+   mlir::registerLLVMDILocalVariable();
+ 
+   // TritonAMDGPUToLLVM passes
+

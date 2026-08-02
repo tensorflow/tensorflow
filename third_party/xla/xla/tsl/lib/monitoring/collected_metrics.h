@@ -20,6 +20,7 @@ limitations under the License.
 #ifndef XLA_TSL_LIB_MONITORING_COLLECTED_METRICS_H_
 #define XLA_TSL_LIB_MONITORING_COLLECTED_METRICS_H_
 
+#include <cstdint>
 #include <map>
 #include <memory>
 #include <string>
@@ -82,6 +83,11 @@ struct Point {
     // MetricDescriptor for this Point.
     std::string name;
     std::string value;
+
+    bool operator==(const Label& other) const {
+      return name == other.name && value == other.value;
+    }
+    bool operator!=(const Label& other) const { return !(*this == other); }
   };
   std::vector<Label> labels;
 

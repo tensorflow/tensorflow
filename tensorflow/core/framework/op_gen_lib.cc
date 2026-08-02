@@ -390,9 +390,9 @@ absl::Status MergeApiDefs(ApiDef* base_api_def, const ApiDef& new_api_def) {
       }
     }
     if (!found_base_arg) {
-      return errors::FailedPrecondition("Argument ", new_arg.name(),
-                                        " not defined in base api for ",
-                                        base_api_def->graph_op_name());
+      return absl::FailedPreconditionError(absl::StrCat(
+          "Argument ", new_arg.name(), " not defined in base api for ",
+          base_api_def->graph_op_name()));
     }
   }
   for (const auto& new_arg : new_api_def.out_arg()) {
@@ -406,28 +406,28 @@ absl::Status MergeApiDefs(ApiDef* base_api_def, const ApiDef& new_api_def) {
       }
     }
     if (!found_base_arg) {
-      return errors::FailedPrecondition("Argument ", new_arg.name(),
-                                        " not defined in base api for ",
-                                        base_api_def->graph_op_name());
+      return absl::FailedPreconditionError(absl::StrCat(
+          "Argument ", new_arg.name(), " not defined in base api for ",
+          base_api_def->graph_op_name()));
     }
   }
   // Merge arg order
   if (new_api_def.arg_order_size() > 0) {
     // Validate that new arg_order is correct.
     if (new_api_def.arg_order_size() != base_api_def->arg_order_size()) {
-      return errors::FailedPrecondition(
+      return absl::FailedPreconditionError(absl::StrCat(
           "Invalid number of arguments ", new_api_def.arg_order_size(), " for ",
           base_api_def->graph_op_name(),
-          ". Expected: ", base_api_def->arg_order_size());
+          ". Expected: ", base_api_def->arg_order_size()));
     }
     if (!std::is_permutation(new_api_def.arg_order().begin(),
                              new_api_def.arg_order().end(),
                              base_api_def->arg_order().begin())) {
-      return errors::FailedPrecondition(
+      return absl::FailedPreconditionError(absl::StrCat(
           "Invalid arg_order: ", absl::StrJoin(new_api_def.arg_order(), ", "),
           " for ", base_api_def->graph_op_name(),
           ". All elements in arg_order override must match base arg_order: ",
-          absl::StrJoin(base_api_def->arg_order(), ", "));
+          absl::StrJoin(base_api_def->arg_order(), ", ")));
     }
 
     base_api_def->clear_arg_order();
@@ -447,9 +447,9 @@ absl::Status MergeApiDefs(ApiDef* base_api_def, const ApiDef& new_api_def) {
       }
     }
     if (!found_base_attr) {
-      return errors::FailedPrecondition("Attribute ", new_attr.name(),
-                                        " not defined in base api for ",
-                                        base_api_def->graph_op_name());
+      return absl::FailedPreconditionError(absl::StrCat(
+          "Attribute ", new_attr.name(), " not defined in base api for ",
+          base_api_def->graph_op_name()));
     }
   }
   // Merge summary

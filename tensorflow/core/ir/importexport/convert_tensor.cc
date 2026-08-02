@@ -235,8 +235,8 @@ absl::StatusOr<ElementsAttr> ConvertTensorProto(const TensorProto& input_tensor,
 
   Tensor t;
   if (!t.FromProto(input_tensor)) {
-    return InvalidArgument("Failed to parse input_tensor: ",
-                           input_tensor.DebugString());
+    return absl::InvalidArgumentError(absl::StrCat(
+        "Failed to parse input_tensor: ", input_tensor.DebugString()));
   }
   return ConvertTensor(t, builder);
 }
@@ -444,7 +444,8 @@ Status ConvertToTensorProto(const ElementsAttr attr, TensorProto* output) {
     return ConvertTensorProtoAttr(tensor_attr, output);
 
   auto dense_attr = mlir::dyn_cast<DenseElementsAttr>(attr);
-  if (!dense_attr) return InvalidArgument("Unsupported elements attr");
+  if (!dense_attr)
+    return absl::InvalidArgumentError("Unsupported elements attr");
 
   switch (output_dtype) {
     case tensorflow::DT_BOOL:
@@ -531,8 +532,8 @@ Status ConvertToTensorProto(const ElementsAttr attr, TensorProto* output) {
                               output->mutable_tensor_content());
       break;
     default:
-      return Unimplemented(absl::StrCat("Unimplemented data type ",
-                                        DataTypeString(output_dtype)));
+      return absl::UnimplementedError(absl::StrCat(
+          "Unimplemented data type ", DataTypeString(output_dtype)));
   }
   return absl::OkStatus();
 }
@@ -541,7 +542,8 @@ Status ConvertToTensor(const ElementsAttr attr, Tensor* output_tensor) {
   TensorProto tensor_proto;
   TF_RETURN_IF_ERROR(ConvertToTensorProto(attr, &tensor_proto));
   if (!output_tensor->FromProto(tensor_proto)) {
-    return InvalidArgument("Couldn't convert tensor proto to tensor.");
+    return absl::InvalidArgumentError(
+        "Couldn't convert tensor proto to tensor.");
   }
   return absl::OkStatus();
 }

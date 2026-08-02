@@ -14,10 +14,10 @@ limitations under the License.
 ==============================================================================*/
 
 #include <memory>
-#include <string>
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/cord.h"
 #include "absl/strings/string_view.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/ExtensibleRTTI.h"
@@ -37,7 +37,7 @@ class XlaExecutableVersionSerDes
     return "xla::ifrt::XlaExecutableVersion";
   }
 
-  absl::StatusOr<std::string> Serialize(
+  absl::StatusOr<absl::Cord> Serialize(
       const Serializable& serializable,
       std::unique_ptr<SerializeOptions> options) override {
     const SerDesVersion version = GetRequestedSerDesVersion(options.get());
@@ -51,11 +51,11 @@ class XlaExecutableVersionSerDes
       return executable_version_proto.status();
     }
 
-    return executable_version_proto.value().SerializeAsString();
+    return executable_version_proto.value().SerializeAsCord();
   }
 
   absl::StatusOr<std::unique_ptr<Serializable>> Deserialize(
-      const std::string& serialized,
+      const absl::Cord& serialized,
       std::unique_ptr<DeserializeOptions> options) override {
     SerializedXlaExecutableVersion executable_version_proto;
     if (!executable_version_proto.ParseFromString(serialized)) {

@@ -96,9 +96,9 @@ void deallocate_buffer(void* data, size_t len, void* arg);
 
 class TensorInterface : public AbstractTensorInterface {
  public:
-  TensorInterface() {}
+  TensorInterface() = default;
   explicit TensorInterface(tensorflow::Tensor t) : tensor_(std::move(t)) {}
-  ~TensorInterface() override {}
+  ~TensorInterface() override = default;
 
   void Release() override;
 
@@ -125,7 +125,7 @@ class TensorInterface : public AbstractTensorInterface {
 };
 
 inline Tensor& TensorFromInterface(AbstractTensorInterface* tensor) {
-  return down_cast<TensorInterface*>(tensor)->Tensor();
+  return absl::down_cast<TensorInterface*>(tensor)->Tensor();
 }
 
 AbstractTensorInterface* TensorInterfaceFromTensor(const Tensor& src,

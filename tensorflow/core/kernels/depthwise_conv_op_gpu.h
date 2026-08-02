@@ -627,10 +627,11 @@ __global__ __launch_bounds__(1024, 2) void DepthwiseConv2dGPUKernelNCHWSmall(
 template <typename T, DepthwiseConv2dDirection kDirection,
           int kKnownFilterWidth, int kKnownFilterHeight, int kBlockDepth,
           bool kKnownEvenHeight>
-Status LaunchDepthwiseConv2dGPUSmall(OpKernelContext* ctx,
-                                     const DepthwiseArgs& args, const T* input,
-                                     const T* filter, T* output,
-                                     TensorFormat data_format) {
+absl::Status LaunchDepthwiseConv2dGPUSmall(OpKernelContext* ctx,
+                                           const DepthwiseArgs& args,
+                                           const T* input, const T* filter,
+                                           T* output,
+                                           TensorFormat data_format) {
   typedef typename detail::PseudoHalfType<T>::Type S;
   const int block_height = (args.in_rows + 1) / 2;
   dim3 block_dim;
@@ -656,8 +657,8 @@ Status LaunchDepthwiseConv2dGPUSmall(OpKernelContext* ctx,
                                             kKnownEvenHeight>;
       break;
     default:
-      return errors::InvalidArgument("FORMAT_", ToString(data_format),
-                                     " is not supported");
+      return absl::InvalidArgumentError(
+          absl::StrCat("FORMAT_", ToString(data_format), " is not supported"));
   }
   const int tile_width = args.in_cols + args.filter_cols - 1;
   const int tile_height = block_height * 2 + args.filter_rows - 1;
@@ -673,7 +674,7 @@ Status LaunchDepthwiseConv2dGPUSmall(OpKernelContext* ctx,
   TF_CHECK_OK(GpuLaunchKernel(kernel, config.block_count, block_dim,
                               shared_memory_size, device.stream(), args, input,
                               filter, output));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Returns whether the context's GPU supports efficient fp16 math.
@@ -687,10 +688,11 @@ inline bool HasFastHalfMath(OpKernelContext* ctx) {
 
 template <typename T, DepthwiseConv2dDirection kDirection,
           int kKnownFilterWidth, int kKnownFilterHeight, int kBlockDepth>
-Status LaunchDepthwiseConv2dGPUSmall(OpKernelContext* ctx,
-                                     const DepthwiseArgs& args, const T* input,
-                                     const T* filter, T* output,
-                                     TensorFormat data_format) {
+absl::Status LaunchDepthwiseConv2dGPUSmall(OpKernelContext* ctx,
+                                           const DepthwiseArgs& args,
+                                           const T* input, const T* filter,
+                                           T* output,
+                                           TensorFormat data_format) {
   if (args.in_rows & 1) {
     return LaunchDepthwiseConv2dGPUSmall<T, kDirection, kKnownFilterWidth,
                                          kKnownFilterHeight, kBlockDepth,
@@ -705,10 +707,11 @@ Status LaunchDepthwiseConv2dGPUSmall(OpKernelContext* ctx,
 
 template <typename T, DepthwiseConv2dDirection kDirection,
           int kKnownFilterWidth, int kKnownFilterHeight>
-Status LaunchDepthwiseConv2dGPUSmall(OpKernelContext* ctx,
-                                     const DepthwiseArgs& args, const T* input,
-                                     const T* filter, T* output,
-                                     TensorFormat data_format) {
+absl::Status LaunchDepthwiseConv2dGPUSmall(OpKernelContext* ctx,
+                                           const DepthwiseArgs& args,
+                                           const T* input, const T* filter,
+                                           T* output,
+                                           TensorFormat data_format) {
   // Maximize (power of two) kBlockDepth while keeping a block within 1024
   // threads (2 pixels per thread).
   const int block_pixels = (args.in_rows + 1) / 2 * args.in_cols;
@@ -729,9 +732,10 @@ Status LaunchDepthwiseConv2dGPUSmall(OpKernelContext* ctx,
 
 template <typename T, int kKnownFilterWidth, int kKnownFilterHeight,
           int kKnownDepthMultiplier>
-Status LaunchDepthwiseConv2dGPU(OpKernelContext* ctx, const DepthwiseArgs& args,
-                                const T* input, const T* filter, T* output,
-                                TensorFormat data_format) {
+absl::Status LaunchDepthwiseConv2dGPU(OpKernelContext* ctx,
+                                      const DepthwiseArgs& args, const T* input,
+                                      const T* filter, T* output,
+                                      TensorFormat data_format) {
   void (*kernel)(const DepthwiseArgs, const T*, const T*, T*, int);
   switch (data_format) {
     case FORMAT_NHWC:
@@ -745,8 +749,8 @@ Status LaunchDepthwiseConv2dGPU(OpKernelContext* ctx, const DepthwiseArgs& args,
                                        kKnownDepthMultiplier>;
       break;
     default:
-      return errors::InvalidArgument("FORMAT_", ToString(data_format),
-                                     " is not supported");
+      return absl::InvalidArgumentError(
+          absl::StrCat("FORMAT_", ToString(data_format), " is not supported"));
   }
   const int num_outputs =
       args.batch * args.out_rows * args.out_cols * args.out_depth;
@@ -762,13 +766,14 @@ Status LaunchDepthwiseConv2dGPU(OpKernelContext* ctx, const DepthwiseArgs& args,
                               std::min(max_block_count, config.block_count),
                               config.thread_per_block, 0, device.stream(), args,
                               input, filter, output, num_outputs));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 template <typename T, int kKnownFilterWidth, int kKnownFilterHeight>
-Status LaunchDepthwiseConv2dGPU(OpKernelContext* ctx, const DepthwiseArgs& args,
-                                const T* input, const T* filter, T* output,
-                                TensorFormat data_format) {
+absl::Status LaunchDepthwiseConv2dGPU(OpKernelContext* ctx,
+                                      const DepthwiseArgs& args, const T* input,
+                                      const T* filter, T* output,
+                                      TensorFormat data_format) {
   if (args.depth_multiplier == 1) {
     if (CanLaunchDepthwiseConv2dGPUSmall(args)) {
       return LaunchDepthwiseConv2dGPUSmall<
@@ -952,11 +957,9 @@ __global__ void __launch_bounds__(640, 2)
 
 template <typename T, int kKnownFilterWidth, int kKnownFilterHeight,
           int kKnownDepthMultiplier>
-Status LaunchDepthwiseConv2dBackpropInputGPU(OpKernelContext* ctx,
-                                             const DepthwiseArgs& args,
-                                             const T* out_backprop,
-                                             const T* filter, T* in_backprop,
-                                             TensorFormat data_format) {
+absl::Status LaunchDepthwiseConv2dBackpropInputGPU(
+    OpKernelContext* ctx, const DepthwiseArgs& args, const T* out_backprop,
+    const T* filter, T* in_backprop, TensorFormat data_format) {
   void (*kernel)(const DepthwiseArgs, const T*, const T*, T*, int);
   switch (data_format) {
     case FORMAT_NHWC:
@@ -968,8 +971,8 @@ Status LaunchDepthwiseConv2dBackpropInputGPU(OpKernelContext* ctx,
           T, kKnownFilterWidth, kKnownFilterHeight, kKnownDepthMultiplier>;
       break;
     default:
-      return errors::InvalidArgument("FORMAT_", ToString(data_format),
-                                     " is not supported");
+      return absl::InvalidArgumentError(
+          absl::StrCat("FORMAT_", ToString(data_format), " is not supported"));
   }
   const int num_in_backprop =
       args.batch * args.in_rows * args.in_cols * args.in_depth;
@@ -980,15 +983,13 @@ Status LaunchDepthwiseConv2dBackpropInputGPU(OpKernelContext* ctx,
   TF_CHECK_OK(GpuLaunchKernel(
       kernel, config.block_count, config.thread_per_block, 0, device.stream(),
       args, out_backprop, filter, in_backprop, num_in_backprop));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 template <typename T, int kKnownFilterWidth, int kKnownFilterHeight>
-Status LaunchDepthwiseConv2dBackpropInputGPU(OpKernelContext* ctx,
-                                             const DepthwiseArgs& args,
-                                             const T* out_backprop,
-                                             const T* filter, T* in_backprop,
-                                             TensorFormat data_format) {
+absl::Status LaunchDepthwiseConv2dBackpropInputGPU(
+    OpKernelContext* ctx, const DepthwiseArgs& args, const T* out_backprop,
+    const T* filter, T* in_backprop, TensorFormat data_format) {
   if (args.depth_multiplier == 1) {
     // This kernel doesn't currently work in all cases so it is disabled.
     // TODO(b/150988950): Fix and reenable this kernel.
@@ -1544,7 +1545,7 @@ __launch_bounds__(1024, 2) void DepthwiseConv2dBackpropFilterGPUKernelNCHWSmall(
 
 template <typename T, int kKnownFilterWidth, int kKnownFilterHeight,
           int kBlockDepth, int kAccumPixels>
-Status TryLaunchDepthwiseConv2dBackpropFilterGPUSmall(
+absl::Status TryLaunchDepthwiseConv2dBackpropFilterGPUSmall(
     OpKernelContext* ctx, const DepthwiseArgs& args, const int block_height,
     const T* out_backprop, const T* input, T* filter_backprop,
     TensorFormat data_format) {
@@ -1557,7 +1558,7 @@ Status TryLaunchDepthwiseConv2dBackpropFilterGPUSmall(
   const int shared_memory_size =
       kBlockDepth * (tile_pixels + filter_pixels * kAccumPixels) * sizeof(S);
   if (shared_memory_size > device.sharedMemPerBlock()) {
-    return errors::FailedPrecondition("Not enough shared memory");
+    return absl::FailedPreconditionError("Not enough shared memory");
   }
 
   dim3 block_dim;
@@ -1579,8 +1580,8 @@ Status TryLaunchDepthwiseConv2dBackpropFilterGPUSmall(
           T, kKnownFilterWidth, kKnownFilterHeight, kBlockDepth, kAccumPixels>;
       break;
     default:
-      return errors::InvalidArgument("FORMAT_", ToString(data_format),
-                                     " is not supported");
+      return absl::InvalidArgumentError(
+          absl::StrCat("FORMAT_", ToString(data_format), " is not supported"));
   }
   const int num_out_backprop = args.out_rows * args.out_cols * block_count;
   GpuLaunchConfig config = GetGpuLaunchConfigFixedBlockSize(
@@ -1589,12 +1590,12 @@ Status TryLaunchDepthwiseConv2dBackpropFilterGPUSmall(
   TF_CHECK_OK(GpuLaunchKernel(kernel, config.block_count, block_dim,
                               shared_memory_size, device.stream(), args,
                               out_backprop, input, filter_backprop));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 template <typename T, int kKnownFilterWidth, int kKnownFilterHeight,
           int kBlockDepth>
-Status TryLaunchDepthwiseConv2dBackpropFilterGPUSmall(
+absl::Status TryLaunchDepthwiseConv2dBackpropFilterGPUSmall(
     OpKernelContext* ctx, const DepthwiseArgs& args, const int block_height,
     const T* out_backprop, const T* input, T* filter_backprop,
     TensorFormat data_format) {
@@ -1620,7 +1621,7 @@ Status TryLaunchDepthwiseConv2dBackpropFilterGPUSmall(
 }
 
 template <typename T, int kKnownFilterWidth, int kKnownFilterHeight>
-Status TryLaunchDepthwiseConv2dBackpropFilterGPUSmall(
+absl::Status TryLaunchDepthwiseConv2dBackpropFilterGPUSmall(
     OpKernelContext* ctx, const DepthwiseArgs& args, const T* out_backprop,
     const T* input, T* filter_backprop, TensorFormat data_format) {
   // Maximize (power of two) kBlockDepth while keeping a block within 1024
@@ -1641,7 +1642,7 @@ Status TryLaunchDepthwiseConv2dBackpropFilterGPUSmall(
   }
 
   if (!CanLaunchDepthwiseConv2dBackpropFilterGPUSmall(args, block_height)) {
-    return errors::FailedPrecondition("Cannot launch this configuration");
+    return absl::FailedPreconditionError("Cannot launch this configuration");
   }
 
   switch (block_depth) {
@@ -1661,13 +1662,13 @@ Status TryLaunchDepthwiseConv2dBackpropFilterGPUSmall(
           ctx, args, block_height, out_backprop, input, filter_backprop,
           data_format);
     default:
-      return errors::InvalidArgument("Unexpected block depth");
+      return absl::InvalidArgumentError("Unexpected block depth");
   }
 }
 
 template <typename T, int kKnownFilterWidth, int kKnownFilterHeight,
           int kKnownDepthMultiplier>
-Status LaunchDepthwiseConv2dBackpropFilterGPU(
+absl::Status LaunchDepthwiseConv2dBackpropFilterGPU(
     OpKernelContext* ctx, const DepthwiseArgs& args, const T* out_backprop,
     const T* input, T* filter_backprop, TensorFormat data_format) {
   auto device = ctx->eigen_gpu_device();
@@ -1691,15 +1692,15 @@ Status LaunchDepthwiseConv2dBackpropFilterGPU(
     TF_CHECK_OK(GpuLaunchKernel(kernel, blocks, threads, 0, device.stream(),
                                 args, out_backprop, input, filter_backprop));
   } else {
-    return errors::InvalidArgument("FORMAT_", ToString(data_format),
-                                   " is not supported");
+    return absl::InvalidArgumentError(
+        absl::StrCat("FORMAT_", ToString(data_format), " is not supported"));
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 template <typename T, int kKnownFilterWidth, int kKnownFilterHeight>
-Status LaunchDepthwiseConv2dBackpropFilterGPU(
+absl::Status LaunchDepthwiseConv2dBackpropFilterGPU(
     OpKernelContext* ctx, const DepthwiseArgs& args, const T* out_backprop,
     const T* input, T* filter_backprop, TensorFormat data_format) {
   if (args.depth_multiplier == 1) {
@@ -1707,7 +1708,7 @@ Status LaunchDepthwiseConv2dBackpropFilterGPU(
                                                        kKnownFilterHeight>(
             ctx, args, out_backprop, input, filter_backprop, data_format)
             .ok()) {
-      return OkStatus();
+      return absl::OkStatus();
     }
 
     return LaunchDepthwiseConv2dBackpropFilterGPU<T, kKnownFilterWidth,
@@ -1731,7 +1732,7 @@ void LaunchDepthwiseConvBackpropFilterOp<GpuDevice, T>::operator()(
   // DepthwiseConv2dNativeBackpropFilterOp
   OP_REQUIRES(
       ctx, !OpDeterminismRequired(),
-      errors::Unimplemented(
+      absl::UnimplementedError(
           "A deterministic GPU implementation of DepthwiseConvBackpropFilter is"
           " not available with this version of cuDNN. Please build with cuDNN"
           " version 7.6.3 or later."));
@@ -1739,7 +1740,8 @@ void LaunchDepthwiseConvBackpropFilterOp<GpuDevice, T>::operator()(
   // Initialize the results to 0.
   int num_filter_backprop =
       args.filter_rows * args.filter_cols * args.out_depth;
-  se::DeviceMemoryBase filter_bp_ptr(filter_backprop, num_filter_backprop);
+  stream_executor::DeviceAddressBase filter_bp_ptr(filter_backprop,
+                                                   num_filter_backprop);
   OP_REQUIRES_OK(
       ctx, stream->MemZero(&filter_bp_ptr, num_filter_backprop * sizeof(T)));
 

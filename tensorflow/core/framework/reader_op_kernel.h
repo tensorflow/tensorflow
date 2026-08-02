@@ -59,7 +59,8 @@ class ReaderOpKernel : public ResourceOpKernel<ReaderInterface> {
       if (!already_cancelled) {
         ResourceOpKernel<ReaderInterface>::Compute(context);
       } else {
-        context->SetStatus(errors::Cancelled("read operation was cancelled"));
+        context->SetStatus(
+            absl::CancelledError("read operation was cancelled"));
       }
     }
   }
@@ -72,7 +73,7 @@ class ReaderOpKernel : public ResourceOpKernel<ReaderInterface> {
       TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) override {
     *reader = factory_();
     if (*reader == nullptr) {
-      return errors::ResourceExhausted("Failed to allocate reader");
+      return absl::ResourceExhaustedError("Failed to allocate reader");
     }
     std::function<ReaderInterface*()> temp = nullptr;
     factory_.swap(temp);

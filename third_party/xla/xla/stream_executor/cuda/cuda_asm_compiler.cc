@@ -17,13 +17,14 @@ limitations under the License.
 
 #include <cassert>
 #include <cstdint>
-#include <string>
 #include <utility>
 #include <vector>
 
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/stream_executor/cuda/cubin_or_ptx_image.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/cuda/ptx_compiler.h"
@@ -31,7 +32,6 @@ limitations under the License.
 #include "xla/stream_executor/cuda/subprocess_compilation.h"
 #include "xla/stream_executor/gpu/gpu_asm_opts.h"
 #include "xla/tsl/platform/logging.h"
-#include "xla/tsl/platform/statusor.h"
 
 namespace stream_executor {
 
@@ -41,18 +41,18 @@ absl::StatusOr<std::vector<uint8_t>> BundleGpuAsm(
 }
 
 absl::StatusOr<std::vector<uint8_t>> CompileGpuAsm(
-    const CudaComputeCapability& cc, const std::string& ptx,
+    const CudaComputeCapability& cc, absl::string_view ptx,
     GpuAsmOpts options) {
   if (IsLibNvPtxCompilerSupported()) {
     VLOG(3) << "Compiling GPU ASM with libnvptxcompiler";
-    TF_ASSIGN_OR_RETURN(auto assembly,
-                        CompileGpuAsmUsingLibNvPtxCompiler(cc, ptx, options));
+    ASSIGN_OR_RETURN(auto assembly,
+                     CompileGpuAsmUsingLibNvPtxCompiler(cc, ptx, options));
     return std::move(assembly.cubin);
   }
 
   VLOG(3) << "Compiling GPU ASM with PTXAS. Libnvptxcompiler compilation "
              "not supported.";
-  TF_ASSIGN_OR_RETURN(auto assembly, CompileGpuAsmUsingPtxAs(cc, ptx, options));
+  ASSIGN_OR_RETURN(auto assembly, CompileGpuAsmUsingPtxAs(cc, ptx, options));
   return std::move(assembly.cubin);
 }
 

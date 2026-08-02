@@ -1,3 +1,18 @@
+# Copyright 2026 The OpenXLA Authors. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
+
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("//xla:xla.default.bzl", "xla_cc_test")
 load("//xla/tests:build_defs.bzl", "xla_test")
@@ -94,14 +109,34 @@ xla_test(
         "h100",
         "b200",
     ],
-    use_legacy_runtime = True,
     deps = [
         "//xla:xla_proto_cc",
         "//xla/hlo/parser:hlo_parser",
-        "//xla/service/gpu/tests:gpu_codegen_test",
+        "//xla/tests:hlo_pjrt_test_base",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/base:log_severity",
         "@com_google_absl//absl/log:scoped_mock_log",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+xla_test(
+    name = "output_buffer_debug_test",
+    srcs = ["output_buffer_debug_test.cc"],
+    backends = [
+        "h100",
+    ],
+    deps = [
+        "//xla:literal",
+        "//xla:literal_util",
+        "//xla:xla_proto_cc",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/parser:hlo_parser",
+        "//xla/tests:hlo_test_base",
+        "@com_google_absl//absl/base:log_severity",
+        "@com_google_absl//absl/log:scoped_mock_log",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest_main",
     ],

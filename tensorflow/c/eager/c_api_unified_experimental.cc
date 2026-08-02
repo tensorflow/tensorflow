@@ -41,7 +41,8 @@ static FactoriesMap& GetFactories() {
 
 static tracing::FactoryFunction default_factory;
 
-void RegisterTracingEngineFactory(const string& name, FactoryFunction factory) {
+void RegisterTracingEngineFactory(const std::string& name,
+                                  FactoryFunction factory) {
   assert((!GetFactories().count(name)) ||
          (GetFactories()[name] == factory) &&
              "Duplicate tracing factory registration");
@@ -54,21 +55,21 @@ absl::Status SetDefaultTracingEngine(const char* name) {
     default_factory = GetFactories().find(name)->second;
     return absl::OkStatus();
   }
-  string msg = absl::StrCat(
+  std::string msg = absl::StrCat(
       "No tracing engine factory has been registered with the key '", name,
       "' (available: ");
   // Ensure deterministic (sorted) order in the error message
-  std::set<string> factories_sorted;
+  std::set<std::string> factories_sorted;
   for (const auto& factory : GetFactories())
     factories_sorted.insert(factory.first);
   const char* comma = "";
-  for (const string& factory : factories_sorted) {
+  for (const std::string& factory : factories_sorted) {
     msg += comma + factory;
     comma = ", ";
   }
   msg += ")";
 
-  return errors::InvalidArgument(msg.c_str());
+  return absl::InvalidArgumentError(msg);
 }
 
 static TracingContext* CreateTracingExecutionContext(const char* fn_name,
@@ -77,7 +78,7 @@ static TracingContext* CreateTracingExecutionContext(const char* fn_name,
     return default_factory(fn_name, s);
   }
   tsl::Set_TF_Status_from_Status(
-      s, errors::FailedPrecondition("default_factory is nullptr"));
+      s, absl::FailedPreconditionError("default_factory is nullptr"));
   return nullptr;
 }
 
@@ -124,7 +125,7 @@ TF_AbstractFunction* TF_FinalizeFunction(TF_ExecutionContext* ctx,
   TracingContext* tracing_ctx = dyn_cast<TracingContext>(unwrap(ctx));
   if (!tracing_ctx) {
     tsl::Set_TF_Status_from_Status(
-        s, tensorflow::errors::InvalidArgument(
+        s, absl::InvalidArgumentError(
                "Only TracingContext can be converted into a function."));
     return nullptr;
   }
@@ -142,7 +143,7 @@ TF_AbstractTensor* TF_AddFunctionParameter(TF_ExecutionContext* func,
   TracingContext* tracing_ctx = dyn_cast<TracingContext>(unwrap(func));
   if (!tracing_ctx) {
     tsl::Set_TF_Status_from_Status(
-        s, tensorflow::errors::InvalidArgument(
+        s, absl::InvalidArgumentError(
                "TF_AddFunctionParameter must be called on a TracingContext."));
     return nullptr;
   }
@@ -204,7 +205,7 @@ void TF_AbstractOpSetOpName(TF_AbstractOp* op, const char* const op_name,
   TracingOperation* tracing_op = dyn_cast<TracingOperation>(unwrap(op));
   if (!tracing_op) {
     tsl::Set_TF_Status_from_Status(
-        s, tensorflow::errors::InvalidArgument(
+        s, absl::InvalidArgumentError(
                "TF_AbstractOpSetOpName must be called on a TracingOperation."));
     return;
   }

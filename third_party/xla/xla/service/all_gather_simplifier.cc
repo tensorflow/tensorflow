@@ -22,6 +22,7 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -46,7 +47,7 @@ absl::StatusOr<bool> AllGatherSimplifier::CancelSingleDynamicSliceFromAllGather(
   HloComputation* computation = inst->parent();
 
   if (ShapeUtil::Compatible(inst->shape(), inst->operand(0)->shape())) {
-    TF_RETURN_IF_ERROR(
+    RETURN_IF_ERROR(
         computation->ReplaceInstruction(inst, inst->mutable_operand(0)));
     return true;
   }
@@ -68,8 +69,8 @@ absl::StatusOr<bool> AllGatherSimplifier::CancelSingleDynamicSliceFromAllGather(
     if (!ShapeUtil::Compatible(ds->shape(), ag_operand->shape())) {
       return false;
     }
-    TF_RETURN_IF_ERROR(ds->ReplaceAllUsesWith(ag_operand));
-    TF_RETURN_IF_ERROR(computation->RemoveInstructionAndUnusedOperands(ds));
+    RETURN_IF_ERROR(ds->ReplaceAllUsesWith(ag_operand));
+    RETURN_IF_ERROR(computation->RemoveInstructionAndUnusedOperands(ds));
     return true;
   }
 
@@ -82,8 +83,8 @@ absl::StatusOr<bool> AllGatherSimplifier::RunImpl(
   bool changed = false;
   for (auto computation : module->computations(execution_threads)) {
     for (HloInstruction* inst : computation->MakeInstructionPostOrder()) {
-      TF_ASSIGN_OR_RETURN(bool local_changed,
-                          CancelSingleDynamicSliceFromAllGather(module, inst));
+      ASSIGN_OR_RETURN(bool local_changed,
+                       CancelSingleDynamicSliceFromAllGather(module, inst));
       changed |= local_changed;
     }
   }

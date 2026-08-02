@@ -48,10 +48,10 @@ class CSRMulOp : public OpKernel {
     const Tensor& b_t = ctx->input(1);
 
     OP_REQUIRES(ctx, a_matrix->dtype() == b_t.dtype(),
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(absl::StrCat(
                     "Input types don't match.  a.dtype == ",
                     DataTypeString(a_matrix->dtype()),
-                    " vs. b.dtype == ", DataTypeString(b_t.dtype())));
+                    " vs. b.dtype == ", DataTypeString(b_t.dtype()))));
 
     const int b_rank = b_t.dims();
 
@@ -63,18 +63,18 @@ class CSRMulOp : public OpKernel {
           ctx,
           ((a_matrix->dims() == 3) && (b_t.dim_size(0) == batch_size) &&
            (b_t.NumElements() == batch_size)),
-          errors::InvalidArgument(
+          absl::InvalidArgumentError(absl::StrCat(
               "If b is a rank-3 tensor, then a must be a rank 3 and the size "
               "of b be "
               "[batch_size, 1, 1].  But the shape of b is: ",
               b_t.shape().DebugString(),
-              " and the shape of a is: ", a_dense_shape_t.DebugString()));
+              " and the shape of a is: ", a_dense_shape_t.DebugString())));
     } else {
       OP_REQUIRES(ctx, b_rank == 0,
-                  errors::Unimplemented(
+                  absl::UnimplementedError(absl::StrCat(
                       "Multiplying by a 2D+ dense tensor is not currently "
                       "supported, but shape of b is: ",
-                      b_t.shape().DebugString()));
+                      b_t.shape().DebugString())));
     }
 
     Tensor c_t(cpu_allocator(), DT_VARIANT, TensorShape({}));

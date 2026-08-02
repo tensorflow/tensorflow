@@ -20,6 +20,7 @@ limitations under the License.
 #include <variant>
 
 #include "absl/status/status.h"
+#include "absl/types/span.h"
 #include "xla/executable_run_options.h"
 #include "xla/ffi/execution_context.h"
 #include "xla/ffi/execution_state.h"
@@ -35,6 +36,10 @@ limitations under the License.
 namespace Eigen {
 struct ThreadPoolDevice;
 }  // namespace Eigen
+
+namespace xla::cpu {
+class TargetMachineOptions;
+}  // namespace xla::cpu
 
 namespace stream_executor {
 class Stream;
@@ -61,9 +66,11 @@ struct XLA_FFI_Future {
   tsl::AsyncValueRef<tsl::Chain> async_value;
 };
 
+struct XLA_FFI_Extension;
+
 // This struct corresponds to `InvokeContext` available to XLA:FFI C++ clients,
 // the the invoke context for documentation.
-struct XLA_FFI_ExecutionContext {
+struct XLA_FFI_InvokeContext {
   struct CpuContext {
     const Eigen::ThreadPoolDevice* intra_op_thread_pool = nullptr;
   };
@@ -78,6 +85,9 @@ struct XLA_FFI_ExecutionContext {
     const xla::gpu::CollectiveMemory* collective_memory = nullptr;
     const stream_executor::GpuComputeCapability* gpu_compute_capability =
         nullptr;
+    const xla::cpu::TargetMachineOptions* cpu_target_machine_options = nullptr;
+    absl::Span<stream_executor::Stream* const> computation_streams;
+    absl::Span<stream_executor::Stream* const> communication_streams;
   };
 
   using BackendContext = std::variant<std::monostate, CpuContext, GpuContext>;
@@ -96,6 +106,8 @@ struct XLA_FFI_ExecutionContext {
 
   const xla::HloComputation* called_computation = nullptr;
   const xla::ffi::ExecutionContext* execution_context = nullptr;
+
+  const XLA_FFI_Extension* extension_start = nullptr;
 };
 
 #endif  // XLA_FFI_FFI_STRUCTS_H_

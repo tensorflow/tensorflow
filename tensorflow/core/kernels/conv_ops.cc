@@ -51,28 +51,28 @@ absl::Status InitConv2DParameters(const OpKernelConstruction* context,
   std::string data_format_string;
   TF_RETURN_IF_ERROR(context->GetAttr("data_format", &data_format_string));
   TF_REQUIRES(FormatFromString(data_format_string, &params->data_format),
-              errors::InvalidArgument("Invalid data format"));
+              absl::InvalidArgumentError("Invalid data format"));
 
   const auto& strides = params->strides;
   const auto& dilations = params->dilations;
   const auto& data_format = params->data_format;
 
   TF_REQUIRES(dilations.size() == 4,
-              errors::InvalidArgument("Sliding window dilations field must "
-                                      "specify 4 dimensions"));
+              absl::InvalidArgumentError("Sliding window dilations field must "
+                                         "specify 4 dimensions"));
   TF_REQUIRES(strides.size() == 4,
-              errors::InvalidArgument("Sliding window strides field must "
-                                      "specify 4 dimensions"));
+              absl::InvalidArgumentError("Sliding window strides field must "
+                                         "specify 4 dimensions"));
   const int64_t stride_n = GetTensorDim(strides, data_format, 'N');
   const int64_t stride_c = GetTensorDim(strides, data_format, 'C');
   const int64_t stride_h = GetTensorDim(strides, data_format, 'H');
   const int64_t stride_w = GetTensorDim(strides, data_format, 'W');
   TF_REQUIRES(
       stride_n == 1 && stride_c == 1,
-      errors::Unimplemented("Current implementation does not yet support "
-                            "strides in the batch and depth dimensions."));
+      absl::UnimplementedError("Current implementation does not yet support "
+                               "strides in the batch and depth dimensions."));
   TF_REQUIRES(stride_h > 0 && stride_w > 0,
-              errors::InvalidArgument(
+              absl::InvalidArgumentError(
                   "Row and column strides should be larger than 0."));
 
   const int64_t dilation_n = GetTensorDim(dilations, data_format, 'N');
@@ -81,11 +81,11 @@ absl::Status InitConv2DParameters(const OpKernelConstruction* context,
   const int64_t dilation_w = GetTensorDim(dilations, data_format, 'W');
   TF_REQUIRES(
       dilation_n == 1 && dilation_c == 1,
-      errors::Unimplemented("Current implementation does not yet support "
-                            "dilations in the batch and depth dimensions."));
+      absl::UnimplementedError("Current implementation does not yet support "
+                               "dilations in the batch and depth dimensions."));
   TF_REQUIRES(
       dilation_h > 0 && dilation_w > 0,
-      errors::InvalidArgument("Dilated rates should be larger than 0."));
+      absl::InvalidArgumentError("Dilated rates should be larger than 0."));
 
   int num_dims = data_format == TensorFormat::FORMAT_NCHW_VECT_C ? 5 : 4;
   TF_RETURN_IF_ERROR(CheckValidPadding(
@@ -100,18 +100,18 @@ absl::Status ComputeConv2DDimension(const Conv2DParameters& params,
   int required_dims =
       params.data_format == TensorFormat::FORMAT_NCHW_VECT_C ? 5 : 4;
   // Check that 2D convolution input and filter have exactly required_dims.
-  TF_REQUIRES(
-      input.dims() == required_dims,
-      errors::InvalidArgument("convolution input must be ", required_dims,
-                              "-dimensional: ", input.shape().DebugString()));
-  TF_REQUIRES(
-      filter.dims() == required_dims,
-      errors::InvalidArgument("convolution filter must be ", required_dims,
-                              "-dimensional: ", filter.shape().DebugString()));
+  TF_REQUIRES(input.dims() == required_dims,
+              absl::InvalidArgumentError(
+                  absl::StrCat("convolution input must be ", required_dims,
+                               "-dimensional: ", input.shape().DebugString())));
+  TF_REQUIRES(filter.dims() == required_dims,
+              absl::InvalidArgumentError(absl::StrCat(
+                  "convolution filter must be ", required_dims,
+                  "-dimensional: ", filter.shape().DebugString())));
   for (int i = 0; i < required_dims - 1; i++) {
     TF_REQUIRES(
         FastBoundsCheck(filter.dim_size(i), std::numeric_limits<int>::max()),
-        errors::InvalidArgument("filter too large"));
+        absl::InvalidArgumentError("filter too large"));
   }
 
   FilterTensorFormat filter_format =
@@ -124,18 +124,18 @@ absl::Status ComputeConv2DDimension(const Conv2DParameters& params,
   const int64_t in_depth_raw = GetTensorDim(input, params.data_format, 'C');
   const int64_t patch_depth_raw = GetFilterDim(filter, filter_format, 'I');
   TF_REQUIRES(FastBoundsCheck(in_depth_raw, std::numeric_limits<int>::max()),
-              errors::InvalidArgument("Input depth too large"));
+              absl::InvalidArgumentError("Input depth too large"));
   TF_REQUIRES(FastBoundsCheck(patch_depth_raw, std::numeric_limits<int>::max()),
-              errors::InvalidArgument("Patch depth too large"));
+              absl::InvalidArgumentError("Patch depth too large"));
   const int in_depth = static_cast<int>(in_depth_raw);
   const int patch_depth = static_cast<int>(patch_depth_raw);
   TF_REQUIRES(patch_depth > 0,
-              errors::InvalidArgument(
-                  "filter depth must be stricly positive, got ", patch_depth));
+              absl::InvalidArgumentError(absl::StrCat(
+                  "filter depth must be stricly positive, got ", patch_depth)));
   TF_REQUIRES(in_depth % patch_depth == 0,
-              errors::InvalidArgument(
+              absl::InvalidArgumentError(absl::StrCat(
                   "input depth must be evenly divisible by filter depth: ",
-                  in_depth, " vs ", patch_depth));
+                  in_depth, " vs ", patch_depth)));
 
   // The last dimension for filter is out_depth.
   const int out_depth =
@@ -145,7 +145,7 @@ absl::Status ComputeConv2DDimension(const Conv2DParameters& params,
   // The first dimension for filter is rows/height.
   const int64_t input_rows_raw = GetTensorDim(input, params.data_format, 'H');
   TF_REQUIRES(FastBoundsCheck(input_rows_raw, std::numeric_limits<int>::max()),
-              errors::InvalidArgument("Input rows too large"));
+              absl::InvalidArgumentError("Input rows too large"));
   const int input_rows = static_cast<int>(input_rows_raw);
   const int filter_rows =
       static_cast<int>(GetFilterDim(filter, filter_format, 'H'));
@@ -154,7 +154,7 @@ absl::Status ComputeConv2DDimension(const Conv2DParameters& params,
   // The second dimension for filter is columns/width.
   const int64_t input_cols_raw = GetTensorDim(input, params.data_format, 'W');
   TF_REQUIRES(FastBoundsCheck(input_cols_raw, std::numeric_limits<int>::max()),
-              errors::InvalidArgument("Input cols too large"));
+              absl::InvalidArgumentError("Input cols too large"));
   const int input_cols = static_cast<int>(input_cols_raw);
   const int filter_cols =
       static_cast<int>(GetFilterDim(filter, filter_format, 'W'));
@@ -162,7 +162,7 @@ absl::Status ComputeConv2DDimension(const Conv2DParameters& params,
   // The first dimension for input is batch.
   const int64_t batch_raw = GetTensorDim(input, params.data_format, 'N');
   TF_REQUIRES(FastBoundsCheck(batch_raw, std::numeric_limits<int>::max()),
-              errors::InvalidArgument("batch is too large"));
+              absl::InvalidArgumentError("batch is too large"));
   const int batch = static_cast<int>(batch_raw);
 
   // Take the stride and dilation from the second and third dimensions only (we

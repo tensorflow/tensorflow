@@ -22,6 +22,7 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
 #include "xla/service/hlo.pb.h"
@@ -59,7 +60,7 @@ absl::StatusOr<HloUnoptimizedSnapshot> SerializeAndDeserialize(
     const HloUnoptimizedSnapshot& snapshot) {
   std::string serialized_snapshot;
   tsl::protobuf::io::StringOutputStream output_stream(&serialized_snapshot);
-  TF_RETURN_IF_ERROR(SerializeHloUnoptimizedSnapshot(snapshot, &output_stream));
+  RETURN_IF_ERROR(SerializeHloUnoptimizedSnapshot(snapshot, &output_stream));
 
   tsl::protobuf::io::ArrayInputStream input_stream(serialized_snapshot.data(),
                                                    serialized_snapshot.size());

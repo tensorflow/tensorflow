@@ -17,6 +17,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/status_macros.h"
 #include "xla/tsl/platform/errors.h"
@@ -31,7 +32,7 @@ absl::Status VerifiedHloModule::ParseHloStringAndVerifyModule(
     absl::string_view str, const HloParserOptions& options) {
   TF_RET_CHECK(computation_count() == 0);
   auto parser = HloParser::CreateHloParserForTests(str, options);
-  TF_RETURN_IF_ERROR(parser->Run(this));
+  RETURN_IF_ERROR(parser->Run(this));
   return Verify();
 }
 

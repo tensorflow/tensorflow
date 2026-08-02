@@ -21,6 +21,7 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/debug_options_flags.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/transforms/despecializer.h"
@@ -52,10 +53,10 @@ absl::StatusOr<std::unique_ptr<HloModule>> PrepareReferenceModule(
   std::unique_ptr<HloModule> reference_module =
       test_module.Clone("reference", reference_config);
   if (module_modifier_hook) {
-    TF_RETURN_IF_ERROR(
+    RETURN_IF_ERROR(
         module_modifier_hook(test_module, test_runner, reference_module.get()));
   } else if (!skip_despecialization) {
-    TF_RETURN_IF_ERROR(Despecializer().Run(reference_module.get()).status());
+    RETURN_IF_ERROR(Despecializer().Run(reference_module.get()).status());
   }
   return std::move(reference_module);
 }

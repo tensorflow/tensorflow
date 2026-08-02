@@ -23,6 +23,7 @@ limitations under the License.
 #include "xla/hlo/transforms/simplifiers/algebraic_simplifier.h"
 #include "xla/literal_util.h"
 #include "xla/service/call_inliner.h"
+#include "xla/service/spmd/spmd_partitioner.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/statusor.h"
@@ -217,5 +218,28 @@ ENTRY %main (param0: (f32[5]{0}, f32[5]{0})) -> f32[1,2,3,5,1] {
   RunAndFilecheckHloRewrite(hlo_string, AlgebraicSimplifier(options));
 }
 
+TEST_F(OriginalValueRecoveryTableTest,
+       ReplicatedShardingPropagatesOriginalValue) {
+  constexpr absl::string_view hlo_string = R"hlo(
+// CHECK-NOT: origin_recovery_table
+// CHECK:       ENTRY %[[COMPUTATION:.*]] (param: f32[4]) -> f32[4]
+// CHECK:       parameter(0), sharding={replicated}, origin={{[{]}}{"param_origin"}
+// CHECK:       negate(%param), origin={{[{]}}{"negate_origin"}
+
+HloModule test, entry_computation_layout={(f32[4]{0})->f32[4]{0}}, num_partitions=2
+
+ENTRY %main (a: f32[4]) -> f32[4] {
+  %a = f32[4]{0} parameter(0), sharding={replicated}, origin={{"param_origin"}}
+  ROOT %negate = f32[4]{0} negate(%a), sharding={replicated}, origin={{"negate_origin"}}
+}
+  )hlo";
+
+  spmd::SpmdPartitionerOptions options;
+  options.threshold_for_windowed_einsum_mib = 0;
+  options.bidirectional_windowed_einsum = true;
+  options.allow_module_signature_change = true;
+
+  RunAndFilecheckHloRewrite(hlo_string, spmd::SpmdPartitioner(2, 1, options));
+}
 }  // namespace
 }  // namespace xla

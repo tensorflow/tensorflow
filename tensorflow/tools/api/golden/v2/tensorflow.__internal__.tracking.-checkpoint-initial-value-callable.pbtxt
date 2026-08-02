@@ -1,14 +1,18 @@
 path: "tensorflow.__internal__.tracking.CheckpointInitialValueCallable"
 tf_class {
   is_instance: "<class \'tensorflow.python.trackable.base.CheckpointInitialValueCallable\'>"
-  is_instance: "<type \'object\'>"
+  is_instance: "<class \'object\'>"
   member {
     name: "checkpoint_position"
-    mtype: "<type \'property\'>"
+    mtype: "<class \'property\'>"
   }
   member {
     name: "restore_uid"
-    mtype: "<type \'property\'>"
+    mtype: "<class \'property\'>"
+  }
+  member_method {
+    name: "__call__"
+    argspec: "args=[\'self\', \'shape\', \'dtype\', \'shard_info\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\'], "
   }
   member_method {
     name: "__init__"

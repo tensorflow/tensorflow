@@ -20,10 +20,9 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/types/span.h"
-#include "llvm/ADT/SmallVector.h"
 #include "mlir/IR/MLIRContext.h"
+#include "xla/codegen/tiling/experimental/tiled_hlo.h"
 #include "xla/codegen/tiling/tiled_hlo_instruction.h"
-#include "xla/hlo/analysis/indexing_map.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
 #include "xla/stream_executor/device_description.h"
@@ -88,16 +87,9 @@ double BandwidthUtilizationRateHeuristicForTiledMemoryAccess(
     const TiledHloInstruction& hbm_access_instr,
     const se::DeviceDescription& device_info);
 
-// Returns true if read of this tiled hlo operand is coalesced.
-//
-// We consider a read coalesced if the operand tile consist of contiguous chunk
-// of memory that saturate DRAM->L2 cache line. For post-V100 NVIDIA GPUs, that
-// is 64 bytes by default.
-//
-// TODO(b/332714755): check whether we should bump up the granularity of
-// memory transactions.
-bool IsTiledReadCoalescedHeuristic(const TiledHloInstruction& operand,
-                                   const se::DeviceDescription& device_info);
+double BandwidthUtilizationRateHeuristicForTiledMemoryAccess(
+    const experimental::TiledHloInstruction& hbm_access_instr,
+    const se::DeviceDescription& device_info);
 
 }  // namespace xla::gpu
 

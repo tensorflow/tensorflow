@@ -30,7 +30,7 @@ struct SessionOptions;
 
 class DeviceFactory {
  public:
-  virtual ~DeviceFactory() {}
+  virtual ~DeviceFactory() = default;
   static void Register(const std::string& device_type,
                        std::unique_ptr<DeviceFactory> factory, int priority,
                        bool is_pluggable_device);

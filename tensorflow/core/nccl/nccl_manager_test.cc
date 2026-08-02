@@ -933,7 +933,7 @@ TYPED_TEST(NcclManagerTest, AbortThenReset) {
   node_fn(test_case.get(), 0, communicator_key);
   Env::Default()->SleepForMicroseconds(1000000);
   for (auto& node : nodes) {
-    node.nccl_manager.StartAbort(errors::Unavailable("peer down"));
+    node.nccl_manager.StartAbort(absl::UnavailableError("peer down"));
   }
   {
     mutex_lock l(test_case->mu);

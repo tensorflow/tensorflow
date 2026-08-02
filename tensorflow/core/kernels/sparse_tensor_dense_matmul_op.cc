@@ -52,30 +52,33 @@ class SparseTensorDenseMatMulOp : public OpKernel {
 
     // Check that the dimensions of the two matrices are valid.
     OP_REQUIRES(ctx, TensorShapeUtils::IsMatrix(b->shape()),
-                errors::InvalidArgument("Tensor 'b' is not a matrix"));
+                absl::InvalidArgumentError("Tensor 'b' is not a matrix"));
 
     OP_REQUIRES(ctx, TensorShapeUtils::IsVector(a_shape->shape()),
-                errors::InvalidArgument("Tensor 'a_shape' is not a vector"));
+                absl::InvalidArgumentError("Tensor 'a_shape' is not a vector"));
 
     OP_REQUIRES(
         ctx, a_shape->NumElements() == 2,
-        errors::InvalidArgument("Tensor 'a_shape' must have 2 elements"));
-
-    OP_REQUIRES(ctx, TensorShapeUtils::IsVector(a_values->shape()),
-                errors::InvalidArgument("Tensor 'a_values' is not a vector"));
-
-    OP_REQUIRES(ctx, TensorShapeUtils::IsMatrix(a_indices->shape()),
-                errors::InvalidArgument("Tensor 'a_indices' is not a matrix"));
-
-    const int64_t nnz = a_indices->shape().dim_size(0);
-    OP_REQUIRES(ctx, nnz == a_values->NumElements(),
-                errors::InvalidArgument("Number of rows of a_indices does not "
-                                        "match number of entries in a_values"));
+        absl::InvalidArgumentError("Tensor 'a_shape' must have 2 elements"));
 
     OP_REQUIRES(
-        ctx, a_indices->shape().dim_size(1) == a_shape->NumElements(),
-        errors::InvalidArgument("Number of columns of a_indices does not match "
-                                "number of entries in a_shape"));
+        ctx, TensorShapeUtils::IsVector(a_values->shape()),
+        absl::InvalidArgumentError("Tensor 'a_values' is not a vector"));
+
+    OP_REQUIRES(
+        ctx, TensorShapeUtils::IsMatrix(a_indices->shape()),
+        absl::InvalidArgumentError("Tensor 'a_indices' is not a matrix"));
+
+    const int64_t nnz = a_indices->shape().dim_size(0);
+    OP_REQUIRES(
+        ctx, nnz == a_values->NumElements(),
+        absl::InvalidArgumentError("Number of rows of a_indices does not "
+                                   "match number of entries in a_values"));
+
+    OP_REQUIRES(ctx, a_indices->shape().dim_size(1) == a_shape->NumElements(),
+                absl::InvalidArgumentError(
+                    "Number of columns of a_indices does not match "
+                    "number of entries in a_shape"));
 
     auto a_shape_t = a_shape->vec<int64_t>();
     const int64_t outer_left = (adjoint_a_) ? a_shape_t(1) : a_shape_t(0);
@@ -87,13 +90,13 @@ class SparseTensorDenseMatMulOp : public OpKernel {
 
     OP_REQUIRES(
         ctx, inner_right == inner_left,
-        errors::InvalidArgument(
+        absl::InvalidArgumentError(absl::StrCat(
             "Cannot multiply A and B because inner dimension does not match: ",
             inner_left, " vs. ", inner_right,
             ".  Did you forget a transpose?  "
             "Dimensions of A: [",
             a_shape_t(0), ", ", a_shape_t(1),
-            ").  Dimensions of B: ", b->shape().DebugString()));
+            ").  Dimensions of B: ", b->shape().DebugString())));
 
     if (std::is_same<Device, GPUDevice>::value) {
       // The GPU implementation is optimized to use 32 bit indexing, so
@@ -109,9 +112,9 @@ class SparseTensorDenseMatMulOp : public OpKernel {
            FastBoundsCheck(b->NumElements(), int32max) &&
            FastBoundsCheck(outer_left * outer_right, int32max) &&
            FastBoundsCheck(a_values->NumElements(), int32max)),
-          errors::InvalidArgument("Cannot use GPU for > 2^31 entry inputs"));
+          absl::InvalidArgumentError("Cannot use GPU for > 2^31 entry inputs"));
       OP_REQUIRES(ctx, FastBoundsCheck(nnz * outer_right, int32max),
-                  errors::InvalidArgument(
+                  absl::InvalidArgumentError(
                       "Cannot use GPU when output.shape[1] * nnz(a) > 2^31"));
     }
 
@@ -241,14 +244,16 @@ namespace functor {
 namespace {
 absl::Status KOutOfBoundsError(int64_t k, std::size_t i, int rhs_index_a,
                                std::size_t lhs_right) {
-  return errors::InvalidArgument("k (", k, ") from index[", i, ",", rhs_index_a,
-                                 "] out of bounds (>=", lhs_right, ")");
+  return absl::InvalidArgumentError(
+      absl::StrCat("k (", k, ") from index[", i, ",", rhs_index_a,
+                   "] out of bounds (>=", lhs_right, ")"));
 }
 
 absl::Status MOutOfBoundsError(int64_t m, std::size_t i, int lhs_index_a,
                                int64_t out_dim0) {
-  return errors::InvalidArgument("m (", m, ") from index[", i, ",", lhs_index_a,
-                                 "] out of bounds (>=", out_dim0, ")");
+  return absl::InvalidArgumentError(
+      absl::StrCat("m (", m, ") from index[", i, ",", lhs_index_a,
+                   "] out of bounds (>=", out_dim0, ")"));
 }
 
 template <typename T, typename Tsum, typename Tindices, bool ADJ_A, bool ADJ_B>

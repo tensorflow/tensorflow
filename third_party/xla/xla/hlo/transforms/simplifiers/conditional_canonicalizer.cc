@@ -21,6 +21,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/shape.h"
@@ -74,7 +75,7 @@ absl::StatusOr<bool> CanonicalizeNonTupleConditional(
           0, HloInstruction::CreateParameter(0, shape, param->name()));
       HloInstruction* const gte = branch->AddInstruction(
           HloInstruction::CreateGetTupleElement(new_param, 0));
-      TF_RETURN_IF_ERROR(new_param->ReplaceAllUsesWithDifferentShape(gte));
+      RETURN_IF_ERROR(new_param->ReplaceAllUsesWithDifferentShape(gte));
       changed = true;
     }
 
@@ -96,8 +97,7 @@ absl::StatusOr<bool> CanonicalizeNonTupleConditional(
     if (!operand->shape().IsTuple()) {
       auto tuple =
           parent->AddInstruction(HloInstruction::CreateTuple({operand}));
-      TF_RETURN_IF_ERROR(
-          conditional->ReplaceOperandWithDifferentShape(i, tuple));
+      RETURN_IF_ERROR(conditional->ReplaceOperandWithDifferentShape(i, tuple));
       changed = true;
     }
   }
@@ -110,7 +110,7 @@ absl::StatusOr<bool> CanonicalizeNonTupleConditional(
         parent->AddInstruction(conditional->CloneWithNewShape(new_shape));
     auto gte = parent->AddInstruction(
         HloInstruction::CreateGetTupleElement(root_shape, new_conditional, 0));
-    TF_RETURN_IF_ERROR(parent->ReplaceInstruction(conditional, gte));
+    RETURN_IF_ERROR(parent->ReplaceInstruction(conditional, gte));
     changed = true;
   }
 
@@ -129,7 +129,7 @@ absl::StatusOr<bool> ConditionalCanonicalizer::RunImpl(
     for (auto* inst : comp->MakeInstructionPostOrder()) {
       if (inst->opcode() == HloOpcode::kConditional) {
         bool result;
-        TF_ASSIGN_OR_RETURN(result, CanonicalizeNonTupleConditional(inst));
+        ASSIGN_OR_RETURN(result, CanonicalizeNonTupleConditional(inst));
         changed |= result;
       }
     }

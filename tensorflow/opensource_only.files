@@ -61,6 +61,7 @@ tf_staging/tensorflow/lite/acceleration/configuration/c/stable_delegate.h:
 tf_staging/tensorflow/lite/acceleration/configuration/c/xnnpack_plugin.h:
 tf_staging/tensorflow/lite/acceleration/configuration/configuration_generated.h:
 tf_staging/tensorflow/lite/acceleration/configuration/delegate_registry.h:
+tf_staging/tensorflow/lite/api_visibility.bzl:
 tf_staging/tensorflow/lite/async/c/BUILD:
 tf_staging/tensorflow/lite/async/c/async_kernel.h:
 tf_staging/tensorflow/lite/async/c/async_signature_runner.h:
@@ -194,6 +195,7 @@ tf_staging/tensorflow/tools/toolchains/win/BUILD:
 tf_staging/tensorflow/tools/toolchains/win/bazel_211/BUILD:
 tf_staging/tensorflow/tools/toolchains/win/tf_win_05022023/BUILD:
 tf_staging/tensorflow/tools/toolchains/win2022/20241118/BUILD:
+tf_staging/tensorflow/tools/toolchains/win2022/20260322/BUILD:
 tf_staging/tensorflow/tools/toolchains/win2022/BUILD:
 tf_staging/tensorflow/tools/toolchains/win_1803/py38/BUILD:
 tf_staging/tensorflow/tools/toolchains/win_1803/py39/BUILD:

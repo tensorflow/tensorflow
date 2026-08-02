@@ -30,6 +30,7 @@ limitations under the License.
 #include "absl/strings/ascii.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/types.h"
@@ -459,7 +460,7 @@ absl::Status CurlHttpRequest::Send() {
   }
 
   const CURLcode curl_result = libcurl_->curl_easy_perform(curl_);
-  TF_RETURN_IF_ERROR(CURLcodeToStatus(curl_result, error_buffer));
+  RETURN_IF_ERROR(CURLcodeToStatus(curl_result, error_buffer));
 
   double written_size = 0;
   CHECK_CURL_OK(libcurl_->curl_easy_getinfo(curl_, CURLINFO_SIZE_DOWNLOAD,

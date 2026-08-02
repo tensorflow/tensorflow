@@ -19,14 +19,18 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/base/casts.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/cpu/runtime/dot_thunk.h"
 #include "xla/backends/cpu/runtime/thunk.h"
 #include "xla/backends/cpu/runtime/thunk.pb.h"
 #include "xla/backends/cpu/runtime/thunk_proto_serdes.h"
 #include "xla/backends/cpu/runtime/thunk_proto_serdes_utils.h"
+#include "xla/hlo/ir/hlo_module.h"
+#include "xla/runtime/resource_use.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
@@ -35,38 +39,40 @@ limitations under the License.
 namespace xla::cpu {
 namespace {
 
-absl::Status ToProto(const Thunk& thunk, ThunkProto& proto) {
-  const auto& dot_thunk = tsl::down_cast<const DotThunk&>(thunk);
+absl::Status DotThunkToProto(const Thunk& thunk, ThunkProto& proto) {
+  const auto& dot_thunk = absl::down_cast<const DotThunk&>(thunk);
   DotThunkProto* dot_thunk_proto = proto.mutable_dot_thunk();
 
   *dot_thunk_proto->mutable_dot_dimensions() = dot_thunk.dot_dimensions();
-  TF_RETURN_IF_ERROR(SerializeSliceShapeIntoProto(
+  RETURN_IF_ERROR(SerializeSliceShapeIntoProto(
       dot_thunk.dot_slices().lhs_buffer, dot_thunk.dot_slices().lhs_shape,
       dot_thunk_proto->mutable_lhs_buffer_shape()));
-  TF_RETURN_IF_ERROR(SerializeSliceShapeIntoProto(
+  RETURN_IF_ERROR(SerializeSliceShapeIntoProto(
       dot_thunk.dot_slices().rhs_buffer, dot_thunk.dot_slices().rhs_shape,
       dot_thunk_proto->mutable_rhs_buffer_shape()));
-  TF_RETURN_IF_ERROR(SerializeSliceShapeIntoProto(
+  RETURN_IF_ERROR(SerializeSliceShapeIntoProto(
       dot_thunk.dot_slices().out_buffer, dot_thunk.dot_slices().out_shape,
       dot_thunk_proto->mutable_out_buffer_shape()));
 
   return absl::OkStatus();
 }
 
-absl::StatusOr<std::unique_ptr<Thunk>> FromProto(
+absl::StatusOr<std::unique_ptr<Thunk>> DotThunkFromProto(
     const ThunkProto& proto,
-    const std::vector<BufferAllocation>& buffer_allocations) {
-  TF_ASSIGN_OR_RETURN(Thunk::Info info, ThunkInfoFromProto(proto.info()));
+    const std::vector<BufferAllocation>& buffer_allocations,
+    const HloModule* hlo_module,
+    const std::vector<std::shared_ptr<Resource>>* resources) {
+  ASSIGN_OR_RETURN(Thunk::Info info, ThunkInfoFromProto(proto.info()));
 
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       auto lhs_slice_shape,
       DeserializeSliceShapeFromProto(proto.dot_thunk().lhs_buffer_shape(),
                                      buffer_allocations));
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       auto rhs_slice_shape,
       DeserializeSliceShapeFromProto(proto.dot_thunk().rhs_buffer_shape(),
                                      buffer_allocations));
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       auto out_slice_shape,
       DeserializeSliceShapeFromProto(proto.dot_thunk().out_buffer_shape(),
                                      buffer_allocations));
@@ -84,8 +90,8 @@ absl::StatusOr<std::unique_ptr<Thunk>> FromProto(
 }  // namespace
 
 void RegisterDotThunkSerDes() {
-  CHECK_OK(ThunkSerDesRegistry::Get().Register(Thunk::Kind::kDot, ToProto,
-                                               FromProto));
+  CHECK_OK(ThunkSerDesRegistry::Get().Register(
+      Thunk::Kind::kDot, DotThunkToProto, DotThunkFromProto));
 }
 
 // Statically register the DotThunk serialization/deserialization logic.

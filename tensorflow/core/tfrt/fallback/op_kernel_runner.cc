@@ -37,9 +37,9 @@ namespace {
 absl::Status CheckOpDefCompatibility(const tensorflow::OpDef& op_def) {
   auto check_arg_def = [&](const auto& arg_def) {
     if (arg_def.is_ref())
-      return tensorflow::errors::Internal(
-          "TFRT kernel fallback error: Unsupported ref args in ",
-          op_def.name());
+      return absl::InternalError(
+          absl::StrCat("TFRT kernel fallback error: Unsupported ref args in ",
+                       op_def.name()));
     return absl::OkStatus();
   };
 

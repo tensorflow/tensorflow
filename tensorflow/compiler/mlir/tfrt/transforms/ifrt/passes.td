@@ -27,6 +27,10 @@ def RewriteClusterToIfrtCallPass: Pass<"rewrite-cluster-to-ifrt-call", "mlir::Mo
   let dependentDialects = ["mlir::tf_device::TensorFlowDeviceDialect"];
 
   let constructor = "CreateRewriteClusterToIfrtCallPass()";
+  let options = [
+    Option<"enable_async_ifrt", "enable-async-ifrt", "bool", "false",
+           "Enable async IFRT execution.">
+  ];
  }
 
 def PropagateStaticShapesPass : Pass<"propagate-static-shapes", "mlir::ModuleOp"> {

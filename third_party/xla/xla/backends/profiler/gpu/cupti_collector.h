@@ -44,6 +44,9 @@ struct CuptiTracerCollectorOptions {
   uint64_t max_annotation_strings = 1024 * 1024;
   // Number of GPUs involved.
   uint32_t num_gpus;
+  // If true, only aggregate stats are collected and individual events are
+  // dropped.
+  bool aggregated_tracing = false;
 };
 // This struct will be used to store the PM Sampling data.
 // Same as CUDA 12.6.2 extras/CUPTI/samples/pm_sampling/pm_sampling.h
@@ -105,8 +108,7 @@ class CuptiTraceCollector {
   // Default behavior is direct process those cached activity events and
   // add it into this class by calling AddEvent().
   virtual void OnTracerCachedActivityBuffers(
-      std::list<CuptiActivityBufferManager::ActivityBufferAndSize>
-          activity_buffers);
+      CuptiActivityBufferManager::CachedActivityBufferBatch activity_buffers);
 
   // Consumer side functions (i.e. called by GPU tracer);
   virtual bool Export(tensorflow::profiler::XSpace* space,

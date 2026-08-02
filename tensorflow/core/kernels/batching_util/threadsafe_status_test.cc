@@ -32,13 +32,13 @@ TEST(ThreadSafeStatus, Update) {
   ThreadSafeStatus status;
   TF_EXPECT_OK(status.status());
 
-  status.Update(errors::FailedPrecondition("original error"));
+  status.Update(absl::FailedPreconditionError("original error"));
   EXPECT_EQ(status.status().code(), error::FAILED_PRECONDITION);
 
   status.Update(absl::OkStatus());
   EXPECT_EQ(status.status().code(), error::FAILED_PRECONDITION);
 
-  status.Update(errors::Internal("new error"));
+  status.Update(absl::InternalError("new error"));
   EXPECT_EQ(status.status().code(), error::FAILED_PRECONDITION);
 }
 

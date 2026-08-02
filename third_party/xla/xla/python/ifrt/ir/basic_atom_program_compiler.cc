@@ -25,7 +25,9 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/device.h"
@@ -34,10 +36,12 @@ limitations under the License.
 #include "xla/python/ifrt/executable.h"
 #include "xla/python/ifrt/hlo/hlo_program.h"
 #include "xla/python/ifrt/ir/atom_program_compiler.h"
+#include "xla/python/ifrt/ir/compilation_utils.h"
 #include "xla/python/ifrt/ir/ifrt_dialect.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/pjrt_ifrt/xla_compiler.h"
 #include "xla/service/computation_placer.h"
+#include "xla/status_macros.h"
 #include "xla/tsl/concurrency/future.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
@@ -45,31 +49,30 @@ limitations under the License.
 namespace xla {
 namespace ifrt {
 
-absl::StatusOr<std::unique_ptr<xla::ifrt::AtomProgramCompiler>>
-BasicAtomProgramCompiler::Create(
-    xla::ifrt::Client* absl_nonnull client,
-    absl::Span<const xla::ifrt::DeviceId> device_assignments) {
-  for (const xla::ifrt::DeviceId device_id : device_assignments) {
-    TF_RETURN_IF_ERROR(client->LookupDevice(device_id).status());
+absl::StatusOr<std::unique_ptr<AtomProgramCompiler>>
+BasicAtomProgramCompiler::Create(Client* absl_nonnull client,
+                                 absl::Span<const DeviceId> device_assignments,
+                                 bool strict_memory_reservation) {
+  for (const DeviceId device_id : device_assignments) {
+    RETURN_IF_ERROR(client->LookupDevice(device_id).status());
   }
-  return absl::WrapUnique(
-      new BasicAtomProgramCompiler(client, device_assignments));
+  return absl::WrapUnique(new BasicAtomProgramCompiler(
+      client, device_assignments, strict_memory_reservation));
 }
 
 BasicAtomProgramCompiler::BasicAtomProgramCompiler(
-    xla::ifrt::Client* absl_nonnull client,
-    absl::Span<const xla::ifrt::DeviceId> device_assignments)
+    Client* absl_nonnull client, absl::Span<const DeviceId> device_assignments,
+    bool strict_memory_reservation)
     : client_(client),
-      device_assignments_(device_assignments.begin(),
-                          device_assignments.end()) {}
+      device_assignments_(device_assignments.begin(), device_assignments.end()),
+      strict_memory_reservation_(strict_memory_reservation) {}
 
 tsl::Future<LoadedExecutableRef> BasicAtomProgramCompiler::CompileXla(
-    std::unique_ptr<xla::ifrt::HloProgram> hlo_program,
-    xla::CompileOptions options) {
+    std::unique_ptr<HloProgram> hlo_program, xla::CompileOptions options) {
   // Rewrite device assignment from logical ids to IFRT device ids.
   xla::DeviceAssignment device_assignment =
       options.executable_build_options.device_assignment();
-  TF_RETURN_IF_ERROR(device_assignment.EachStatus(
+  RETURN_IF_ERROR(device_assignment.EachStatus(
       [&](absl::Span<const int64_t>, int64_t* id) -> absl::Status {
         if (*id < 0 || *id >= device_assignments_.size()) {
           return absl::NotFoundError(
@@ -82,19 +85,39 @@ tsl::Future<LoadedExecutableRef> BasicAtomProgramCompiler::CompileXla(
       }));
   options.executable_build_options.set_device_assignment(device_assignment);
 
-  xla::ifrt::AtomProgramCompileResult result;
-  TF_ASSIGN_OR_RETURN(
-      xla::ifrt::DeviceListRef devices,
-      xla::ifrt::GetDeviceListFromXlaCompileOptions(client_, options));
+  ASSIGN_OR_RETURN(DeviceListRef devices,
+                   GetDeviceListFromXlaCompileOptions(client_, options));
+
+  TF_RET_CHECK(!devices->devices().empty())
+      << "CompileXla was called with empty device assignment.";
+  xla::ifrt::Device* first_device = devices->devices().front();
+  absl::string_view platform_name = first_device->PlatformName();
+  TF_RET_CHECK(platform_name == "tpu" || platform_name == "cpu" ||
+               platform_name == "cuda" || platform_name == "rocm")
+      << "Unsupported platform: " << platform_name;
+
+  if (strict_memory_reservation_) {
+    TF_RET_CHECK(first_device->PlatformName() == "tpu")
+        << "IFRT IR `strict_memory_reservation` option is only supported for "
+           "TPU devices. Got device platform: "
+        << first_device->PlatformName();
+    ASSIGN_OR_RETURN(
+        int64_t device_memory,
+        first_device->Attributes().Get<int64_t>("device_memory_bytes_limit"));
+
+    RETURN_IF_ERROR(SetStrictMemoryReservation(hlo_program->name(),
+                                               device_memory, options));
+  }
+
   return client_->GetDefaultCompiler()->CompileAndLoad(
-      std::move(hlo_program), std::make_unique<xla::ifrt::XlaCompileOptions>(
+      std::move(hlo_program), std::make_unique<XlaCompileOptions>(
                                   std::move(options), std::move(devices)));
 }
 
 tsl::Future<LoadedExecutableRef> BasicAtomProgramCompiler::CompileMpmdReshard(
-    std::vector<xla::ifrt::DType> dtypes, std::vector<xla::ifrt::Shape> shapes,
-    std::vector<xla::ifrt::IfrtArrayType> in_array_types,
-    std::vector<xla::ifrt::IfrtArrayType> out_array_types) {
+    std::vector<DType> dtypes, std::vector<Shape> shapes,
+    std::vector<IfrtArrayType> in_array_types,
+    std::vector<IfrtArrayType> out_array_types) {
   return absl::UnimplementedError(
       "BasicAtomProgramCompiler does not support MPMD resharding");
 }

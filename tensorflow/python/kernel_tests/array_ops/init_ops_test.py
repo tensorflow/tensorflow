@@ -451,6 +451,13 @@ class VarianceScalingInitializationTest(test.TestCase):
     self.assertNear(np.mean(x), expect_mean, err=1e-2)
     self.assertNear(np.var(x), expect_var, err=1e-2)
 
+  @test_util.run_deprecated_v1
+  def testInvalidDistributionType(self):
+    with self.assertRaisesRegex(ValueError, "must be a string"):
+      init_ops.variance_scaling_initializer(distribution=None)
+    with self.assertRaisesRegex(ValueError, "must be a string"):
+      init_ops.variance_scaling_initializer(distribution=123)
+
 
 # TODO(vrv): move to sequence_ops_test?
 class RangeTest(test.TestCase):

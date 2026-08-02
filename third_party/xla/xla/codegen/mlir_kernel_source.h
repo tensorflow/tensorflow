@@ -63,7 +63,7 @@ class MlirKernelSource final : public KernelSource {
 
   // Moves ownership of the module to the caller.
   mlir::OwningOpRef<mlir::ModuleOp> TakeModule() && {
-    DCHECK(mlir_context_ == nullptr && mlir_context_ == nullptr)
+    DCHECK(module_.get() != nullptr)
         << "Can't move ownership of the module owned by the MlirKernelSource";
     return std::move(module_);
   }

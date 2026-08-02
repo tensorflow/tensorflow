@@ -27,7 +27,9 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "google/protobuf/text_format.h"
+#include "xla/backends/cpu/target_machine_options.h"
 #include "xla/backends/profiler/plugin/plugin_tracer_impl.h"
 #include "xla/backends/profiler/plugin/profiler_c_api.h"
 #include "xla/backends/profiler/plugin/profiler_error.h"
@@ -45,10 +47,13 @@ limitations under the License.
 #include "xla/pjrt/c/pjrt_c_api_memory_descriptions_extension.h"
 #include "xla/pjrt/c/pjrt_c_api_profiler_extension.h"
 #include "xla/pjrt/c/pjrt_c_api_shardings_extension.h"
+#include "xla/pjrt/c/pjrt_c_api_status_utils.h"
 #include "xla/pjrt/c/pjrt_c_api_stream_extension.h"
 #include "xla/pjrt/c/pjrt_c_api_triton_extension.h"
 #include "xla/pjrt/c/pjrt_c_api_triton_internal.h"
 #include "xla/pjrt/c/pjrt_c_api_wrapper_impl.h"
+#include "xla/pjrt/c/pjrt_c_api_xla_transform_extension.h"
+#include "xla/pjrt/c/pjrt_c_api_xla_transform_internal.h"
 #include "xla/pjrt/extensions/abi_version/gpu_abi_version_extension.h"
 #include "xla/pjrt/extensions/cross_host_transfers/pjrt_c_api_cross_host_transfers_extension.h"
 #include "xla/pjrt/gpu/gpu_helpers.h"
@@ -64,6 +69,7 @@ limitations under the License.
 #include "xla/python/custom_call_batch_partitioner.h"
 #include "xla/python/custom_partition_callback.h"
 #include "xla/service/compiler.h"
+#include "xla/service/cpu/executable.pb.h"
 #include "xla/service/custom_call_target_registry.h"
 #include "xla/service/gpu_topology.h"
 #include "xla/stream_executor/stream_executor.h"
@@ -78,9 +84,13 @@ namespace gpu_plugin {
 
 #if TENSORFLOW_USE_ROCM
 #define PJRT_GPU_PLUGIN_PLATFORM_NAME "ROCM"
+#elif TENSORFLOW_USE_SYCL
+#define PJRT_GPU_PLUGIN_PLATFORM_NAME "ONEAPI"
 #else
 #define PJRT_GPU_PLUGIN_PLATFORM_NAME "CUDA"
 #endif
+
+const PJRT_Api* GetGpuPjrtApi();
 
 PJRT_Error* PJRT_Client_Create(PJRT_Client_Create_Args* args) {
   PJRT_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
@@ -109,6 +119,8 @@ PJRT_Error* PJRT_Client_Create(PJRT_Client_Create_Args* args) {
           {"enable_mock_nccl", PJRT_NamedValue_Type::PJRT_NamedValue_kBool},
           {"mock_gpu_topology", PJRT_NamedValue_Type::PJRT_NamedValue_kString},
           {"partition_index", PJRT_NamedValue_Type::PJRT_NamedValue_kInt64},
+          {"max_inflight_computations",
+           PJRT_NamedValue_Type::PJRT_NamedValue_kInt64},
       });
   PJRT_RETURN_IF_ERROR(
       ValidateCreateOptions(create_options, kExpectedOptionNameAndTypes));
@@ -123,18 +135,21 @@ PJRT_Error* PJRT_Client_Create(PJRT_Client_Create_Args* args) {
     auto allocator_name = std::get<std::string>(it->second);
     if (allocator_name == "default") {
       allocator_config.kind = xla::GpuAllocatorConfig::Kind::kDefault;
-    } else if (allocator_name == "platform") {
+    } else if (allocator_name == "platform" || allocator_name == "address") {
       allocator_config.kind = xla::GpuAllocatorConfig::Kind::kPlatform;
     } else if (allocator_name == "bfc") {
       allocator_config.kind = xla::GpuAllocatorConfig::Kind::kBFC;
     } else if (allocator_name == "cuda_async") {
       allocator_config.kind = xla::GpuAllocatorConfig::Kind::kCudaAsync;
+    } else if (allocator_name == "vmm") {
+      allocator_config.kind = xla::GpuAllocatorConfig::Kind::kVmm;
     } else {
-      return new PJRT_Error{absl::UnimplementedError(absl::StrFormat(
+      return StatusToPjRtError(absl::UnimplementedError(absl::StrFormat(
           "Allocator %s not supported for PJRT GPU plugin. Supported "
           "allocator "
-          "options are: 'default', 'platform', 'bfc' and 'cuda_async'.",
-          allocator_name))};
+          "options are: 'default', 'platform', 'bfc', 'cuda_async', 'vmm' and "
+          "'address'.",
+          allocator_name)));
     }
   }
   if (auto it = create_options.find("memory_fraction");
@@ -193,6 +208,11 @@ PJRT_Error* PJRT_Client_Create(PJRT_Client_Create_Args* args) {
       it != create_options.end()) {
     partition_index = std::get<int64_t>(it->second);
   }
+  std::optional<int64_t> max_inflight_computations;
+  if (auto it = create_options.find("max_inflight_computations");
+      it != create_options.end()) {
+    max_inflight_computations = std::get<int64_t>(it->second);
+  }
 
   xla::GpuClientOptions options;
   options.allocator_config = allocator_config;
@@ -210,9 +230,17 @@ PJRT_Error* PJRT_Client_Create(PJRT_Client_Create_Args* args) {
   options.enable_mock_nccl = enable_mock_nccl;
   options.mock_gpu_topology = mock_gpu_topology;
   options.partition_index = partition_index;
+  if (max_inflight_computations.has_value()) {
+    int64_t v = *max_inflight_computations;
+    if (v <= 0 || v > INT32_MAX) {
+      return StatusToPjRtError(absl::InvalidArgumentError(absl::StrFormat(
+          "max_inflight_computations must be in (0, INT32_MAX], got %d", v)));
+    }
+    options.max_inflight_computations = static_cast<int>(v);
+  }
   PJRT_ASSIGN_OR_RETURN(std::unique_ptr<xla::PjRtClient> client,
                         xla::GetXlaPjrtGpuClient(options));
-  args->client = pjrt::CreateWrapperClient(std::move(client));
+  args->client = pjrt::CreateWrapperClient(GetGpuPjrtApi(), std::move(client));
   return nullptr;
 }
 
@@ -229,6 +257,7 @@ namespace {
 
 struct TargetConfigAndDevices {
   stream_executor::GpuTargetConfigProto target_config_proto;
+  xla::cpu::TargetMachineOptionsProto host_target_machine_options;
   std::vector<int> device_ids;
 };
 
@@ -238,22 +267,45 @@ struct TargetConfigAndDevices {
 // returning the local client's target config.
 absl::StatusOr<TargetConfigAndDevices> GetTargetConfigFromOptions(
     const absl::flat_hash_map<std::string, xla::PjRtValueType>& options) {
+  std::optional<stream_executor::GpuTargetConfigProto> target_config_proto;
+
   if (auto target_config_it = options.find("target_config");
       target_config_it != options.end()) {
     std::string target_config_proto_string =
         std::get<std::string>(target_config_it->second);
-    stream_executor::GpuTargetConfigProto target_config_proto;
-    if (!tsl::protobuf::TextFormat::ParseFromString(target_config_proto_string,
-                                                    &target_config_proto)) {
+    if (!tsl::protobuf::TextFormat::ParseFromString(
+            target_config_proto_string, &target_config_proto.emplace())) {
       return absl::FailedPreconditionError(
           "Failed to parse GpuTargetConfigProto "
           "from the 'target_config' parameter.");
     }
-    return {{target_config_proto, {}}};
   }
-  TF_ASSIGN_OR_RETURN(xla::LocalClient * xla_client,
-                      xla::GetGpuXlaClient(/*platform_name=*/std::nullopt,
-                                           /*allowed_devices=*/std::nullopt));
+
+  std::optional<xla::cpu::TargetMachineOptionsProto>
+      host_target_machine_options;
+  if (auto host_target_machine_options_it =
+          options.find("host_target_machine_options");
+      host_target_machine_options_it != options.end()) {
+    std::string host_target_machine_options_proto_string =
+        std::get<std::string>(host_target_machine_options_it->second);
+    if (!tsl::protobuf::TextFormat::ParseFromString(
+            host_target_machine_options_proto_string,
+            &host_target_machine_options.emplace())) {
+      return absl::FailedPreconditionError(
+          "Failed to parse TargetMachineOptions "
+          "from the 'host_target_machine_options' parameter.");
+    }
+  }
+  if (!host_target_machine_options.has_value()) {
+    host_target_machine_options.emplace(
+        xla::cpu::TargetMachineOptions().ToProto());
+  }
+  if (target_config_proto.has_value()) {
+    return {{*target_config_proto, *host_target_machine_options, {}}};
+  }
+  ASSIGN_OR_RETURN(xla::LocalClient * xla_client,
+                   xla::GetGpuXlaClient(/*platform_name=*/std::nullopt,
+                                        /*allowed_devices=*/std::nullopt));
   stream_executor::StreamExecutor* executor =
       xla_client->backend().default_stream_executor();
   std::vector<int> device_ids;
@@ -263,7 +315,8 @@ absl::StatusOr<TargetConfigAndDevices> GetTargetConfigFromOptions(
     device_ids.push_back(executor->device_ordinal());
   }
   auto gpu_target_config = xla::Compiler::GpuTargetConfig(executor);
-  return {{gpu_target_config.ToProto(), device_ids}};
+  return {
+      {gpu_target_config.ToProto(), *host_target_machine_options, device_ids}};
 }
 
 }  // namespace
@@ -275,12 +328,20 @@ PJRT_Error* PJRT_GpuDeviceTopology_Create(
       PJRT_TopologyDescription_Create_Args_STRUCT_SIZE, args->struct_size));
 
   // Determine the platform ID and name based on the platform.
-  xla::PjRtPlatformId platform_id =
-      (std::string(PJRT_GPU_PLUGIN_PLATFORM_NAME) == "ROCM") ? xla::RocmId()
-                                                             : xla::CudaId();
-  std::string platform_name =
-      (std::string(PJRT_GPU_PLUGIN_PLATFORM_NAME) == "ROCM") ? xla::RocmName()
-                                                             : xla::CudaName();
+  xla::PjRtPlatformId platform_id;
+  std::string platform_name;
+  absl::string_view plugin_platform = PJRT_GPU_PLUGIN_PLATFORM_NAME;
+
+  if (plugin_platform == "ROCM") {
+    platform_id = xla::RocmId();
+    platform_name = xla::RocmName();
+  } else if (plugin_platform == "ONEAPI") {
+    platform_id = xla::OneapiId();
+    platform_name = xla::OneapiName();
+  } else {
+    platform_id = xla::CudaId();
+    platform_name = xla::CudaName();
+  }
 
   absl::flat_hash_map<std::string, xla::PjRtValueType> create_options =
       pjrt::ConvertFromPjRtNamedValueList(args->create_options,
@@ -305,10 +366,10 @@ PJRT_Error* PJRT_GpuDeviceTopology_Create(
     // If the user did not specify the topology and we did not
     // get any devices from the client, then error out because
     // we do not know how many devices the topology should have.
-    return new PJRT_Error{
+    return StatusToPjRtError(
         absl::FailedPreconditionError("Cannot create topology without an "
                                       "explicit topology shape or without "
-                                      "a client")};
+                                      "a client"));
   }
 
   if (sizes.GetDeviceCount() != device_ids.size()) {
@@ -316,21 +377,40 @@ PJRT_Error* PJRT_GpuDeviceTopology_Create(
     absl::c_iota(device_ids, 0);
   }
 
+  PJRT_ASSIGN_OR_RETURN(
+      auto gpu_target_config,
+      xla::Compiler::GpuTargetConfig::FromProto(target_config_proto));
+
+  PJRT_ASSIGN_OR_RETURN(
+      auto host_target_machine_options,
+      xla::cpu::TargetMachineOptions::FromProto(
+          target_config_and_devices.host_target_machine_options));
+
   auto gpu_topology = std::make_shared<const xla::GpuTopology>(
       target_config_proto.device_description_str(), sizes.num_partitions,
-      sizes.num_hosts_per_partition, sizes.num_devices_per_host);
+      sizes.num_hosts_per_partition, sizes.num_devices_per_host,
+      std::move(gpu_target_config), std::move(host_target_machine_options));
 
   std::string target_config_attr;
   if (!tsl::protobuf::TextFormat::PrintToString(target_config_proto,
                                                 &target_config_attr)) {
-    return new PJRT_Error{
-        absl::FailedPreconditionError("Cannot serialize target_config_proto")};
+    return StatusToPjRtError(
+        absl::FailedPreconditionError("Cannot serialize target_config_proto"));
+  }
+  std::string host_target_machine_options_attr;
+  if (!tsl::protobuf::TextFormat::PrintToString(
+          target_config_and_devices.host_target_machine_options,
+          &host_target_machine_options_attr)) {
+    return StatusToPjRtError(absl::FailedPreconditionError(
+        "Cannot serialize host_target_machine_options"));
   }
   auto pjrt_topology =
       std::make_unique<xla::StreamExecutorGpuTopologyDescription>(
           platform_id, platform_name, std::move(gpu_topology),
           absl::flat_hash_map<std::string, xla::PjRtDeviceAttribute>{
-              {"target_config", std::move(target_config_attr)}},
+              {"target_config", std::move(target_config_attr)},
+              {"host_target_machine_options",
+               std::move(host_target_machine_options_attr)}},
           std::move(target_config_proto));
   args->topology = CreateWrapperDeviceTopology(std::move(pjrt_topology));
   return nullptr;
@@ -491,10 +571,10 @@ PJRT_Error* PJRT_Gpu_Register_Custom_Call(
               reinterpret_cast<XLA_FFI_Handler*>(args->handler_execute)});
       return nullptr;
     default:
-      return new PJRT_Error{absl::UnimplementedError(
+      return StatusToPjRtError(absl::UnimplementedError(
           absl::StrFormat("API version %d not supported for PJRT GPU plugin. "
                           "Supported versions are 0 and 1.",
-                          args->api_version))};
+                          args->api_version)));
   }
 }
 
@@ -526,8 +606,11 @@ const PJRT_Api* GetGpuPjrtApi() {
   static PJRT_Shardings_Extension shardings_extension =
       pjrt::CreateShardingsExtension(&cross_host_transfers_extension.base);
 
+  static PJRT_Xla_Transform_Extension xla_transform_extension =
+      pjrt::CreateXlaTransformExtension(&shardings_extension.base);
+
   static PJRT_AbiVersion_Extension abi_version_extension =
-      pjrt::CreateGpuAbiVersionExtension(&shardings_extension.base);
+      pjrt::CreateGpuAbiVersionExtension(&xla_transform_extension.base);
 
   static const PJRT_Api pjrt_api = pjrt::CreatePjrtApi(
       pjrt::gpu_plugin::PJRT_Client_Create,

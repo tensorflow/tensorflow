@@ -138,7 +138,7 @@ absl::Status SplitVGrad(const Scope& scope, const Operation& op,
                         const std::vector<Output>& grad_inputs,
                         std::vector<Output>* grad_outputs) {
   if (op.num_inputs() < 3) {
-    return errors::InvalidArgument("SplitV requires 3 arguments");
+    return absl::InvalidArgumentError("SplitV requires 3 arguments");
   }
   grad_outputs->push_back(Concat(scope, grad_inputs, op.input(2)));
   for (int i = 0; i < op.num_inputs() - 1; ++i) {
@@ -528,7 +528,7 @@ absl::Status ConcatGradHelper(const Scope& scope, const Operation& op,
                               int start_value_index, int end_value_index,
                               int dim_index) {
   if (end_value_index >= op.num_inputs()) {
-    return errors::Internal("Invalid input index");
+    return absl::InternalError("Invalid input index");
   }
   std::vector<Output> inputs;
   inputs.reserve(end_value_index - start_value_index);
@@ -547,10 +547,10 @@ absl::Status ConcatGradHelper(const Scope& scope, const Operation& op,
   scope.UpdateStatus(builder.Finalize(scope.graph(), &concat_offset_node));
   scope.UpdateStatus(scope.DoShapeInference(concat_offset_node));
   if (concat_offset_node->num_outputs() != inputs.size()) {
-    return errors::Internal("ConcatOffset has invalid output count");
+    return absl::InternalError("ConcatOffset has invalid output count");
   }
   if (grad_inputs.size() != 1) {
-    return errors::InvalidArgument("Concat grad should have 1 input");
+    return absl::InvalidArgumentError("Concat grad should have 1 input");
   }
 
   // For each dx[i], we take a slice of dy. The offset and size of the
@@ -581,10 +581,11 @@ absl::Status BroadcastToGrad(const Scope& scope, const Operation& op,
                              const std::vector<Output>& grad_inputs,
                              std::vector<Output>* grad_outputs) {
   if (grad_inputs.size() != 1) {
-    return errors::InvalidArgument("BroadcastTo grad should have 1 grad input");
+    return absl::InvalidArgumentError(
+        "BroadcastTo grad should have 1 grad input");
   }
   if (op.num_inputs() != 2) {
-    return errors::InvalidArgument("BroadcastTo requires 2 inputs");
+    return absl::InvalidArgumentError("BroadcastTo requires 2 inputs");
   }
 
   auto x_shape = Shape(scope, op.input(0));
@@ -601,10 +602,10 @@ absl::Status TileGrad(const Scope& scope, const Operation& op,
                       const std::vector<Output>& grad_inputs,
                       std::vector<Output>* grad_outputs) {
   if (op.num_inputs() != 2) {
-    return errors::InvalidArgument("Tile requires 2 inputs");
+    return absl::InvalidArgumentError("Tile requires 2 inputs");
   }
   if (grad_inputs.size() != 1) {
-    return errors::InvalidArgument("Tile grad requires 1 grad input");
+    return absl::InvalidArgumentError("Tile grad requires 1 grad input");
   }
 
   Shape::Attrs shape_attrs;
@@ -697,10 +698,10 @@ absl::Status GatherV2Grad(const Scope& scope, const Operation& op,
                           const std::vector<Output>& grad_inputs,
                           std::vector<Output>* grad_outputs) {
   if (op.num_inputs() != 3) {
-    return errors::InvalidArgument("Gather requires 3 inputs");
+    return absl::InvalidArgumentError("Gather requires 3 inputs");
   }
   if (grad_inputs.size() != 1) {
-    return errors::InvalidArgument("Gather grad requires 1 grad input");
+    return absl::InvalidArgumentError("Gather grad requires 1 grad input");
   }
 
   // params can be large, so colocate the shape calculation with it.
@@ -726,7 +727,7 @@ absl::Status GatherV2Grad(const Scope& scope, const Operation& op,
   if (batch_dims < 0) {
     // TODO(bdodson): Figure out if we can find the param rank here, like the
     // python implementation does.
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(
         "C++ GatherV2 gradient does not support negative batch_dims.");
   }
 

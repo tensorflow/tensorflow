@@ -232,10 +232,10 @@ class Im2ColConvFunctor {
 
     OP_REQUIRES(
         context, output_width > 0,
-        errors::InvalidArgument("output_width must be strictly positive"));
+        absl::InvalidArgumentError("output_width must be strictly positive"));
     OP_REQUIRES(
         context, output_height > 0,
-        errors::InvalidArgument("output_height must be strictly positive"));
+        absl::InvalidArgumentError("output_height must be strictly positive"));
     int filter_left_offset;
     int filter_top_offset;
     if (padding == VALID) {
@@ -263,7 +263,7 @@ class Im2ColConvFunctor {
     // image world if it helps to visualize it.
     const int filter_value_count = filter_width * filter_height * input_depth;
     OP_REQUIRES(context, filter_value_count > 0,
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(
                     "filter patch must contain at least one element"));
     const int64_t patches_per_chunk =
         kMaxChunkSize / (filter_value_count * sizeof(T1));
@@ -463,27 +463,27 @@ class QuantizedConv2DOp : public OpKernel {
       : OpKernel(context) {
     OP_REQUIRES_OK(context, context->GetAttr("strides", &strides_));
     OP_REQUIRES(context, strides_.size() == 4,
-                errors::InvalidArgument("Sliding window strides field must "
-                                        "specify 4 dimensions"));
+                absl::InvalidArgumentError("Sliding window strides field must "
+                                           "specify 4 dimensions"));
     OP_REQUIRES(context, strides_[1] == strides_[2],
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(
                     "Current implementation only supports equal length "
                     "strides in the row and column dimensions."));
-    OP_REQUIRES(
-        context, (strides_[0] == 1 && strides_[3] == 1),
-        errors::InvalidArgument("Current implementation does not yet support "
-                                "strides in the batch and depth dimensions."));
+    OP_REQUIRES(context, (strides_[0] == 1 && strides_[3] == 1),
+                absl::InvalidArgumentError(
+                    "Current implementation does not yet support "
+                    "strides in the batch and depth dimensions."));
     std::vector<int32_t> dilations;
     OP_REQUIRES_OK(context, context->GetAttr("dilations", &dilations));
     OP_REQUIRES(context, dilations.size() == 4,
-                errors::InvalidArgument("Dilations field must "
-                                        "specify 4 dimensions"));
+                absl::InvalidArgumentError("Dilations field must "
+                                           "specify 4 dimensions"));
     OP_REQUIRES(context, dilations[1] == 1 && dilations[2] == 1,
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(
                     "Current implementation only supports dilated rate as 1 "
                     "in the row and column dimensions."));
     OP_REQUIRES(context, (dilations[0] == 1 && dilations[3] == 1),
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(
                     "Current implementation does not yet support "
                     "dilations in the batch and depth dimensions."));
     OP_REQUIRES_OK(context, context->GetAttr("padding", &padding_));
@@ -507,27 +507,31 @@ class QuantizedConv2DOp : public OpKernel {
     const Tensor& filter = context->input(1);
 
     // For 2D convolution, there should be 4 dimensions.
-    OP_REQUIRES(context, input.dims() == 4,
-                errors::InvalidArgument("input must be rank 4 but is rank ",
-                                        input.shape().dims()));
-    OP_REQUIRES(context, filter.dims() == 4,
-                errors::InvalidArgument("filter must be rank 4 but is rank ",
-                                        filter.shape().dims()));
+    OP_REQUIRES(
+        context, input.dims() == 4,
+        absl::InvalidArgumentError(absl::StrCat(
+            "input must be rank 4 but is rank ", input.shape().dims())));
+    OP_REQUIRES(
+        context, filter.dims() == 4,
+        absl::InvalidArgumentError(absl::StrCat(
+            "filter must be rank 4 but is rank ", filter.shape().dims())));
 
     OP_REQUIRES(context, TensorShapeUtils::IsScalar(context->input(2).shape()),
-                errors::InvalidArgument("min_input must be rank 0 but is rank ",
-                                        context->input(2).shape().dims()));
+                absl::InvalidArgumentError(
+                    absl::StrCat("min_input must be rank 0 but is rank ",
+                                 context->input(2).shape().dims())));
     OP_REQUIRES(context, TensorShapeUtils::IsScalar(context->input(3).shape()),
-                errors::InvalidArgument("max_input must be rank 0 but is rank ",
-                                        context->input(3).shape().dims()));
-    OP_REQUIRES(
-        context, TensorShapeUtils::IsScalar(context->input(4).shape()),
-        errors::InvalidArgument("min_filter must be rank 0 but is rank ",
-                                context->input(4).shape().dims()));
-    OP_REQUIRES(
-        context, TensorShapeUtils::IsScalar(context->input(5).shape()),
-        errors::InvalidArgument("max_filter must be rank 0 but is rank ",
-                                context->input(5).shape().dims()));
+                absl::InvalidArgumentError(
+                    absl::StrCat("max_input must be rank 0 but is rank ",
+                                 context->input(3).shape().dims())));
+    OP_REQUIRES(context, TensorShapeUtils::IsScalar(context->input(4).shape()),
+                absl::InvalidArgumentError(
+                    absl::StrCat("min_filter must be rank 0 but is rank ",
+                                 context->input(4).shape().dims())));
+    OP_REQUIRES(context, TensorShapeUtils::IsScalar(context->input(5).shape()),
+                absl::InvalidArgumentError(
+                    absl::StrCat("max_filter must be rank 0 but is rank ",
+                                 context->input(5).shape().dims())));
 
     const float min_input = context->input(2).flat<float>()(0);
     const float max_input = context->input(3).flat<float>()(0);
@@ -545,9 +549,9 @@ class QuantizedConv2DOp : public OpKernel {
     // filter's in_depth.
     const int64_t in_depth = input.dim_size(3);
     OP_REQUIRES(context, in_depth == filter.dim_size(2),
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(absl::StrCat(
                     "input and filter must have the same depth: ", in_depth,
-                    " vs ", filter.dim_size(2)));
+                    " vs ", filter.dim_size(2))));
 
     // The last dimension for filter is out_depth.
     const int64_t out_depth = filter.dim_size(3);

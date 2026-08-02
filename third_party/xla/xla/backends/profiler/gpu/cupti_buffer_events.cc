@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/backends/profiler/gpu/cupti_buffer_events.h"
 
+#include <cstddef>
 #include <cstdint>
 #include <optional>
 #include <string>
@@ -532,6 +533,11 @@ void AddMemsetActivityEvent(CuptiEventCollectorDelegate &collector,
   event.context_id = memset->contextId;
   event.stream_id = memset->streamId;
   SetEventGraphId(event, memset);
+  AnnotationMap::AnnotationInfo info =
+      collector.annotation_map.LookUp(event.device_id, event.correlation_id);
+  event.annotation = info.annotation;
+  event.nvtx_range = info.nvtx_range;
+  event.scope_range_id = info.scope_range_id;
   event.memset_info.num_bytes = memset->bytes;
   event.memset_info.mem_kind = mem_kind;
   event.memset_info.async = (memset->flags & CUPTI_ACTIVITY_FLAG_MEMSET_ASYNC);
@@ -576,14 +582,20 @@ void AddSynchronizationActivityEvent(
 }
 
 static absl::Status ConvertActivityBuffer(
-    CuptiEventCollectorDelegate &collector, uint8_t *buffer, const size_t size,
-    const size_t max_activity_event_count, size_t &total_activity_event_count,
-    size_t &dropped_activity_event_count) {
-  CuptiInterface *cupti_interface = GetCuptiInterface();
+    CuptiEventCollectorDelegate& collector,
+    const CuptiActivityBufferManager::CachedActivityBufferBatch& cached_buffers,
+    const CuptiActivityBufferManager::ActivityBufferAndSize& buffer_and_size,
+    const size_t max_activity_event_count, size_t& total_activity_event_count,
+    size_t& dropped_activity_event_count, CuptiInterface* cupti_interface) {
+  uint8_t* buffer = buffer_and_size.buffer.get();
+  const size_t size = buffer_and_size.size;
   CUpti_Activity *record = nullptr;
   while (true) {
     CUptiResult status =
-        cupti_interface->ActivityGetNextRecord(buffer, size, &record);
+        cached_buffers.use_v2_records
+            ? cupti_interface->ActivityGetNextRecordV2(
+                  cached_buffers.subscriber, buffer, size, &record)
+            : cupti_interface->ActivityGetNextRecord(buffer, size, &record);
     if (status == CUPTI_SUCCESS) {
       if (total_activity_event_count >= max_activity_event_count) {
         dropped_activity_event_count++;
@@ -753,7 +765,7 @@ absl::string_view AnnotationMap::Add(uint32_t device_id,
       return info.annotation;
     }
   }
-  return "";
+  return absl::string_view();
 }
 
 AnnotationMap::AnnotationInfo AnnotationMap::LookUp(
@@ -774,19 +786,18 @@ CuptiActivityBufferManager::ActivityBufferAndSize::ActivityBufferAndSize(
       size(sz) {}
 
 void AddActivityBufferListEventsTo(
-    CuptiEventCollectorDelegate &collector,
-    std::list<CuptiActivityBufferManager::ActivityBufferAndSize> &buffer_list,
-    size_t max_activity_event_count, size_t &dropped_activity_event_count) {
+    CuptiEventCollectorDelegate& collector,
+    CuptiActivityBufferManager::CachedActivityBufferBatch& cached_buffers,
+    size_t max_activity_event_count, size_t& dropped_activity_event_count) {
   dropped_activity_event_count = 0;
   size_t total_activity_event_count = 0;
-  while (!buffer_list.empty()) {
+  while (!cached_buffers.buffers.empty()) {
     CuptiActivityBufferManager::ActivityBufferAndSize buffer_and_size(
-        std::move(buffer_list.front()));
-    buffer_list.pop_front();
-    ConvertActivityBuffer(collector, buffer_and_size.buffer.get(),
-                          buffer_and_size.size, max_activity_event_count,
-                          total_activity_event_count,
-                          dropped_activity_event_count)
+        std::move(cached_buffers.buffers.front()));
+    cached_buffers.buffers.pop_front();
+    ConvertActivityBuffer(collector, cached_buffers, buffer_and_size,
+                          max_activity_event_count, total_activity_event_count,
+                          dropped_activity_event_count, GetCuptiInterface())
         .IgnoreError();
   }
 }

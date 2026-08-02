@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "llvm/MC/TargetRegistry.h"
 #include "llvm/Support/CodeGen.h"
 #include "llvm/Target/TargetOptions.h"
@@ -39,6 +40,7 @@ limitations under the License.
 #include "xla/hlo/tools/hlo_opt/opt_lib.h"
 #include "xla/hlo/transforms/host_offloader.h"
 #include "xla/hlo/transforms/simplifiers/hlo_memory_scheduler.h"
+#include "xla/hlo/transforms/simplifiers/recognize_reduce_window.h"
 #include "xla/service/batchnorm_expander.h"
 #include "xla/service/buffer_value.h"
 #include "xla/service/change_op_data_type.h"
@@ -83,8 +85,8 @@ class CpuOptProvider : public CompiledOptProvider {
   absl::StatusOr<std::optional<std::string>> GenerateStage(
       std::unique_ptr<HloModule> module, absl::string_view s) override {
     if (s == "llvm-before-optimizations") {
-      TF_ASSIGN_OR_RETURN(std::unique_ptr<Executable> executable,
-                          GetExecutable(std::move(module)));
+      ASSIGN_OR_RETURN(std::unique_ptr<Executable> executable,
+                       GetExecutable(std::move(module)));
       return static_cast<cpu::CpuExecutable*>(executable.get())
           ->ir_module_string();
     }
@@ -145,6 +147,9 @@ class CpuOptProvider : public CompiledOptProvider {
 
     RegisterPass<spmd::StatefulRngSpmdPartitioner>(
         module_config.num_partitions(), module_config.replica_count());
+    if (module_config.debug_options().xla_enable_enzyme_comms_opt()) {
+      RegisterPass<RecognizeReduceWindow>();
+    }
     RegisterPass<BatchNormExpander>(
         /*rewrite_training_op=*/true,
         /*rewrite_inference_op=*/true,

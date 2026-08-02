@@ -31,17 +31,21 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/error_spec.h"
 #include "xla/hlo/builder/xla_builder.h"
 #include "xla/hlo/builder/xla_computation.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/ir/hlo_print_options.h"
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/hlo/testlib/filecheck.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/test_helpers.h"
 #include "xla/hlo/testlib/verified_hlo_module.h"
+#include "xla/hlo/transforms/despecializer.h"
+#include "xla/hlo/transforms/simplifiers/float_normalization.h"
 #include "xla/literal.h"
 #include "xla/service/computation_placer.h"
 #include "xla/service/hlo.pb.h"
@@ -49,11 +53,27 @@ limitations under the License.
 #include "xla/service/hlo_runner_interface.h"
 #include "xla/shape.h"
 #include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
+
+// Convenience method to run the Despecializer pass on a given HloModule.
+inline absl::Status Despecialize(HloModule* module) {
+  Despecializer despecializer;
+  return despecializer.Run(module).status();
+}
+
+// Convenience method to remove bf16 mixed precision and then despecialize
+// a given HloModule.
+inline absl::Status RemoveBF16AndDespecialize(HloModule* module) {
+  BFloat16MixedPrecisionRemoval remover;
+  RETURN_IF_ERROR(remover.Run(module).status());
+  Despecializer despecializer;
+  return despecializer.Run(module).status();
+}
 
 struct HloRunnerAgnosticTestBaseOptions {
   bool verifier_layout_sensitive = false;
@@ -172,13 +192,13 @@ class HloRunnerAgnosticTestBase : public HloHardwareIndependentTestBase {
   absl::StatusOr<std::pair<const HloModule*, std::unique_ptr<OpaqueExecutable>>>
   GetOptimizedModuleForExecutable(absl::string_view hlo_text,
                                   const HloModuleConfig& config) {
-    TF_ASSIGN_OR_RETURN(std::unique_ptr<VerifiedHloModule> module,
-                        ParseAndReturnVerifiedModule(hlo_text, config));
-    TF_ASSIGN_OR_RETURN(
+    ASSIGN_OR_RETURN(std::unique_ptr<VerifiedHloModule> module,
+                     ParseAndReturnVerifiedModule(hlo_text, config));
+    ASSIGN_OR_RETURN(
         std::unique_ptr<OpaqueExecutable> executable,
         CreateExecutable(std::move(module), /*run_hlo_passes=*/true));
-    TF_ASSIGN_OR_RETURN(const HloModule* optimized_module,
-                        test_runner_->HloModuleFromWrapped(executable.get()));
+    ASSIGN_OR_RETURN(const HloModule* optimized_module,
+                     test_runner_->HloModuleFromWrapped(executable.get()));
     return {{optimized_module, std::move(executable)}};
   }
 
@@ -186,8 +206,8 @@ class HloRunnerAgnosticTestBase : public HloHardwareIndependentTestBase {
   // optimized HloModule.
   absl::StatusOr<std::unique_ptr<HloModule>> GetOptimizedModule(
       absl::string_view hlo_text, const HloModuleConfig& config) {
-    TF_ASSIGN_OR_RETURN(auto module_and_executable,
-                        GetOptimizedModuleForExecutable(hlo_text, config));
+    ASSIGN_OR_RETURN(auto module_and_executable,
+                     GetOptimizedModuleForExecutable(hlo_text, config));
     return module_and_executable.first->Clone();
   }
 

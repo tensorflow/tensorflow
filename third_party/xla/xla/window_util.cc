@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
+#include "xla/overflow_util.h"
 #include "xla/tsl/platform/logging.h"
 #include "xla/xla_data.pb.h"
 
@@ -245,7 +246,12 @@ int64_t DilatedBound(int64_t bound, int64_t dilation) {
   // the dilated array has 9 entries 1xxx2xxx3. Here, each original entry except
   // the last expands into 4 entries, so that is (bound - 1) * dilation. Then we
   // add 1 to account for the final input element.
-  return (bound - 1) * dilation + 1;
+  auto [product, overflow] = OverflowSafeMultiply(bound - 1, dilation);
+  if (overflow) {
+    LOG(FATAL) << "DilatedBound overflow: bound=" << bound
+               << " dilation=" << dilation;
+  }
+  return product + 1;
 }
 
 int64_t StridedBound(int64_t bound, int64_t window_size, int64_t stride) {

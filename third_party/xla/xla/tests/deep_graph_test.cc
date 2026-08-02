@@ -23,7 +23,7 @@ namespace xla {
 namespace {
 
 class DeepGraphTest : public ClientLibraryTestRunnerMixin<
-                          HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>> {};
+                          HloPjRtInterpreterReferenceMixin<HloTestBase>> {};
 
 TEST_F(DeepGraphTest, DeepGraph) {
   // TODO(b/62624812): To trigger the stack overflow this test is

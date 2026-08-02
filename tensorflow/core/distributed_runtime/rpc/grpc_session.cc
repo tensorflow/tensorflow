@@ -106,7 +106,7 @@ void GrpcSession::SetHandleAndGraphVersion(std::string handle,
 absl::Status GrpcSession::Handle(std::string* out_handle) {
   mutex_lock l(mu_);
   if (handle_.empty()) {
-    return errors::InvalidArgument("A session is not created yet....");
+    return absl::InvalidArgumentError("A session is not created yet....");
   }
   *out_handle = handle_;
   return absl::OkStatus();
@@ -117,7 +117,7 @@ absl::Status GrpcSession::CreateImpl(CallOptions* call_options,
   {
     mutex_lock l(mu_);
     if (!handle_.empty()) {
-      return errors::InvalidArgument("A session is alive.");
+      return absl::InvalidArgumentError("A session is alive.");
     }
   }
   CreateSessionRequest req;
@@ -262,8 +262,8 @@ absl::Status GrpcSession::RunHelper(
   for (size_t i = 0; i < resp->num_tensors(); ++i) {
     auto fetch_it = output_name_to_offset.find(resp->tensor_name(i));
     if (fetch_it == output_name_to_offset.end()) {
-      return errors::Internal("Received response for unrequested fetch: ",
-                              resp->tensor_name(i));
+      return absl::InternalError(absl::StrCat(
+          "Received response for unrequested fetch: ", resp->tensor_name(i)));
     }
 
     Tensor output;
@@ -464,7 +464,7 @@ absl::Status GrpcSession::RunCallable(CallableHandle handle,
   for (const TensorProto& fetch : resp.fetch()) {
     Tensor fetch_tensor;
     if (!fetch_tensor.FromProto(cpu_allocator(), fetch)) {
-      return errors::Internal(
+      return absl::InternalError(
           "Could not parse fetched tensor data in response from master.");
     }
     fetch_tensors->push_back(std::move(fetch_tensor));

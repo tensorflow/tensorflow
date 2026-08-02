@@ -76,8 +76,7 @@ void RecordCpuCompilerStacktrace() {
 }
 
 int GetCpuCompilerStacktraceCount(absl::string_view stacktrace) {
-  return cpu_compiler_stacktrace_count->GetCell(std::string(stacktrace))
-      ->value();
+  return cpu_compiler_stacktrace_count->GetCell(stacktrace)->value();
 }
 
 }  // namespace cpu

@@ -18,8 +18,10 @@ limitations under the License.
 #include <optional>
 #include <utility>
 
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/shaped_slice.pb.h"
 #include "xla/shape.h"
@@ -31,16 +33,18 @@ absl::StatusOr<ShapedSlice> ShapedSlice::FromProto(
     const ShapedSliceProto& proto,
     absl::Span<const BufferAllocation> buffer_allocations) {
   ShapedSlice shaped_slice;
-  TF_ASSIGN_OR_RETURN(
-      shaped_slice.slice,
-      BufferAllocation::Slice::FromProto(proto.slice(), buffer_allocations));
-  TF_ASSIGN_OR_RETURN(shaped_slice.shape, Shape::FromProto(proto.shape()));
+  ASSIGN_OR_RETURN(shaped_slice.slice, BufferAllocation::Slice::FromProto(
+                                           proto.slice(), buffer_allocations));
+  if (!proto.has_shape()) {
+    return absl::InvalidArgumentError("ShapedSlice proto has no shape");
+  }
+  ASSIGN_OR_RETURN(shaped_slice.shape, Shape::FromProto(proto.shape()));
   return shaped_slice;
 }
 
 absl::StatusOr<ShapedSliceProto> ShapedSlice::ToProto() const {
   ShapedSliceProto proto;
-  TF_ASSIGN_OR_RETURN(*proto.mutable_slice(), slice.ToProto());
+  ASSIGN_OR_RETURN(*proto.mutable_slice(), slice.ToProto());
   *proto.mutable_shape() = shape.ToProto();
   return proto;
 }
@@ -49,7 +53,7 @@ absl::StatusOr<NullableShapedSlice> NullableShapedSlice::FromProto(
     const NullableShapedSliceProto& proto,
     absl::Span<const BufferAllocation> buffer_allocations) {
   if (proto.has_shaped_slice()) {
-    TF_ASSIGN_OR_RETURN(
+    ASSIGN_OR_RETURN(
         ShapedSlice shaped_slice,
         ShapedSlice::FromProto(proto.shaped_slice(), buffer_allocations));
     return NullableShapedSlice(std::move(shaped_slice));
@@ -60,7 +64,7 @@ absl::StatusOr<NullableShapedSlice> NullableShapedSlice::FromProto(
 absl::StatusOr<NullableShapedSliceProto> NullableShapedSlice::ToProto() const {
   NullableShapedSliceProto proto;
   if (has_value()) {
-    TF_ASSIGN_OR_RETURN(*proto.mutable_shaped_slice(), value().ToProto());
+    ASSIGN_OR_RETURN(*proto.mutable_shaped_slice(), value().ToProto());
   }
   return proto;
 }

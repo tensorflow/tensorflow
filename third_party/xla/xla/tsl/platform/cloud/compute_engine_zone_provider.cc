@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <utility>
 
+#include "xla/tsl/platform/status_macros.h"
 #include "tsl/platform/str_util.h"
 namespace tsl {
 
@@ -34,8 +35,8 @@ absl::Status ComputeEngineZoneProvider::GetZone(std::string* zone) {
     return absl::OkStatus();
   }
   std::vector<char> response_buffer;
-  TF_RETURN_IF_ERROR(google_metadata_client_->GetMetadata(kGceMetadataZonePath,
-                                                          &response_buffer));
+  RETURN_IF_ERROR(google_metadata_client_->GetMetadata(kGceMetadataZonePath,
+                                                       &response_buffer));
   absl::string_view location(&response_buffer[0], response_buffer.size());
 
   std::vector<std::string> elems = str_util::Split(location, "/");

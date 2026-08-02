@@ -15,6 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_EXPERIMENTAL_ACCELERATION_COMPATIBILITY_GPU_COMPATIBILITY_H_
 #define TENSORFLOW_LITE_EXPERIMENTAL_ACCELERATION_COMPATIBILITY_GPU_COMPATIBILITY_H_
 
+#include <cstddef>
 #include <map>
 #include <memory>
 #include <string>
@@ -65,7 +66,7 @@ class GPUCompatibilityList {
   // To have the compatibility list own the flatbuffer, use the alternative
   // Create() method below.
   static std::unique_ptr<GPUCompatibilityList> Create(
-      const unsigned char* compatibility_list_flatbuffer, int length);
+      const unsigned char* compatibility_list_flatbuffer, size_t length);
 
   // Constructs list from the given flatbuffer data. Returns a unique_ptr to a
   // nullptr is the given flatbuffer is empty or invalid.
@@ -108,7 +109,7 @@ class GPUCompatibilityList {
   GPUCompatibilityList& operator=(const GPUCompatibilityList&) = delete;
 
   // Checks if the provided byte array represents a valid compatibility list
-  static bool IsValidFlatbuffer(const unsigned char* data, int len);
+  static bool IsValidFlatbuffer(const unsigned char* data, size_t len);
 
   std::map<std::string, std::string> InfosToMap(
       const AndroidInfo& android_info,

@@ -129,7 +129,7 @@ class Device : public DeviceBase {
   // Stream::BlockHostUntilDone or Device::Sync. When applicable, the device
   // status is also updated with the retrieved stream status.
   virtual absl::Status RefreshStatus() {
-    return errors::Unimplemented(
+    return absl::UnimplementedError(
         "RefreshStatus is not supported on this device.");
   }
 

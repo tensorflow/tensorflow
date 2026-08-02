@@ -32,6 +32,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/synchronization/mutex.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/runtime/device_id.h"
 #include "xla/stream_executor/cuda/cuda_platform_id.h"
 #include "xla/stream_executor/host/host_platform_id.h"
@@ -67,15 +68,13 @@ DeviceAssignment::LogicalIdForDevice(GlobalDeviceId device_id) const {
 
 absl::StatusOr<int> DeviceAssignment::ReplicaIdForDevice(
     GlobalDeviceId device_id) const {
-  TF_ASSIGN_OR_RETURN(const LogicalID logical_id,
-                      LogicalIdForDevice(device_id));
+  ASSIGN_OR_RETURN(const LogicalID logical_id, LogicalIdForDevice(device_id));
   return logical_id.replica_id;
 }
 
 absl::StatusOr<int> DeviceAssignment::PartitionIdForDevice(
     GlobalDeviceId device_id) const {
-  TF_ASSIGN_OR_RETURN(const LogicalID logical_id,
-                      LogicalIdForDevice(device_id));
+  ASSIGN_OR_RETURN(const LogicalID logical_id, LogicalIdForDevice(device_id));
   return logical_id.computation_id;
 }
 

@@ -19,18 +19,20 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "absl/base/nullability.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "rocm/include/hip/hip_runtime.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform/initialize.h"
 #include "xla/stream_executor/platform_manager.h"
-#include "xla/stream_executor/rocm/rocm_driver_wrapper.h"
 #include "xla/stream_executor/rocm/rocm_executor.h"
 #include "xla/stream_executor/rocm/rocm_platform_id.h"
+#include "xla/stream_executor/rocm/rocm_runtime_abi_version.h"
 #include "xla/stream_executor/rocm/rocm_status.h"
 #include "xla/tsl/platform/errors.h"
 
@@ -41,7 +43,7 @@ namespace {
 // Actually performs the work of ROCM initialization. Wrapped up in one-time
 // execution guard.
 static absl::Status InternalInitialize() {
-  hipError_t res = wrap::hipInit(0 /* = flags */);
+  hipError_t res = hipInit(0 /* = flags */);
 
   if (res == hipSuccess) {
     return absl::OkStatus();
@@ -75,7 +77,7 @@ int ROCmPlatform::VisibleDeviceCount() const {
   }
 
   int device_count = 0;
-  hipError_t res = wrap::hipGetDeviceCount(&device_count);
+  hipError_t res = hipGetDeviceCount(&device_count);
   if (res != hipSuccess) {
     LOG(ERROR) << "could not retrieve ROCM device count: " << ToString(res);
     return 0;
@@ -88,12 +90,12 @@ const std::string& ROCmPlatform::Name() const { return name_; }
 
 absl::StatusOr<std::unique_ptr<DeviceDescription>>
 ROCmPlatform::DescriptionForDevice(int ordinal) const {
-  TF_RETURN_IF_ERROR(PlatformInitialize());
+  RETURN_IF_ERROR(PlatformInitialize());
   return RocmExecutor::CreateDeviceDescription(ordinal);
 }
 
 absl::StatusOr<StreamExecutor*> ROCmPlatform::ExecutorForDevice(int ordinal) {
-  TF_RETURN_IF_ERROR(PlatformInitialize());
+  RETURN_IF_ERROR(PlatformInitialize());
   return executor_cache_.GetOrCreate(
       ordinal, [this, ordinal]() { return GetUncachedExecutor(ordinal); });
 }
@@ -105,8 +107,13 @@ absl::StatusOr<StreamExecutor*> ROCmPlatform::FindExisting(int ordinal) {
 absl::StatusOr<std::unique_ptr<StreamExecutor>>
 ROCmPlatform::GetUncachedExecutor(int ordinal) {
   auto executor = std::make_unique<RocmExecutor>(this, ordinal);
-  TF_RETURN_IF_ERROR(executor->Init());
+  RETURN_IF_ERROR(executor->Init());
   return std::move(executor);
+}
+
+absl::StatusOr<std::unique_ptr<RuntimeAbiVersion> absl_nonnull>
+ROCmPlatform::GetRuntimeAbiVersion() const {
+  return std::make_unique<ROCmRuntimeAbiVersion>();
 }
 
 }  // namespace gpu

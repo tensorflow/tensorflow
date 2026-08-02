@@ -88,7 +88,7 @@ absl::Status PyArrayDescr_to_TF_DataType(PyArray_Descr* descr,
   // Return an error if the fields attribute is null.
   // Occurs with an improper conversion attempt to resource.
   if (PyDataType_FIELDS(descr) == nullptr) {
-    return errors::Internal("Unexpected numpy data type");
+    return absl::InternalError("Unexpected numpy data type");
   }
 
   if (PyDict_Next(PyDataType_FIELDS(descr), &pos, &key, &value)) {
@@ -98,7 +98,7 @@ absl::Status PyArrayDescr_to_TF_DataType(PyArray_Descr* descr,
         PyBytes_Check(key) ? PyBytes_AsString(key)
                            : PyBytes_AsString(PyUnicode_AsASCIIString(key));
     if (!key_string) {
-      return errors::Internal("Corrupt numpy type descriptor");
+      return absl::InternalError("Corrupt numpy type descriptor");
     }
     std::string key = key_string;
     // The typenames here should match the field names in the custom struct
@@ -118,11 +118,11 @@ absl::Status PyArrayDescr_to_TF_DataType(PyArray_Descr* descr,
     } else if (key == "resource") {
       *out_tf_datatype = TF_RESOURCE;
     } else {
-      return errors::Internal("Unsupported numpy data type");
+      return absl::InternalError("Unsupported numpy data type");
     }
     return absl::OkStatus();
   }
-  return errors::Internal("Unsupported numpy data type");
+  return absl::InternalError("Unsupported numpy data type");
 }
 
 absl::Status PyArray_TYPE_to_TF_DataType(PyArrayObject* array,
@@ -242,8 +242,8 @@ absl::Status PyArray_TYPE_to_TF_DataType(PyArrayObject* array,
         break;
       }
 
-      return errors::Internal("Unsupported numpy type: ",
-                              numpy_type_name(pyarray_type));
+      return absl::InternalError(absl::StrCat("Unsupported numpy type: ",
+                                              numpy_type_name(pyarray_type)));
   }
   return absl::OkStatus();
 }
@@ -254,7 +254,7 @@ absl::Status PyObjectToString(PyObject* obj, const char** ptr, Py_ssize_t* len,
   if (PyBytes_Check(obj)) {
     char* buf;
     if (PyBytes_AsStringAndSize(obj, &buf, len) != 0) {
-      return errors::Internal("Unable to get element as bytes.");
+      return absl::InternalError("Unable to get element as bytes.");
     }
     *ptr = buf;
     return absl::OkStatus();
@@ -272,9 +272,10 @@ absl::Status PyObjectToString(PyObject* obj, const char** ptr, Py_ssize_t* len,
     }
     Py_XDECREF(utemp);
 #endif
-    return errors::Internal("Unable to convert element to UTF-8");
+    return absl::InternalError("Unable to convert element to UTF-8");
   } else {
-    return errors::Internal("Unsupported object type ", obj->ob_type->tp_name);
+    return absl::InternalError(
+        absl::StrCat("Unsupported object type ", obj->ob_type->tp_name));
   }
 }
 
@@ -288,7 +289,8 @@ absl::Status PyBytesArrayMap(PyArrayObject* array, F f) {
     auto item = tensorflow::make_safe(PyArray_GETITEM(
         array, static_cast<char*>(PyArray_ITER_DATA(iter.get()))));
     if (!item) {
-      return errors::Internal("Unable to get element from the feed - no item.");
+      return absl::InternalError(
+          "Unable to get element from the feed - no item.");
     }
     Py_ssize_t len;
     const char* ptr;
@@ -337,15 +339,15 @@ absl::Status CopyTF_TensorStringsToPyArray(const TF_Tensor* src,
     auto py_string =
         make_safe(PyBytes_FromStringAndSize(tstr_i.data(), tstr_i.size()));
     if (py_string == nullptr) {
-      return errors::Internal(
+      return absl::InternalError(absl::StrCat(
           "failed to create a python byte array when converting element #", i,
-          " of a TF_STRING tensor to a numpy ndarray");
+          " of a TF_STRING tensor to a numpy ndarray"));
     }
 
     if (PyArray_SETITEM(dst, static_cast<char*>(PyArray_ITER_DATA(iter.get())),
                         py_string.get()) != 0) {
-      return errors::Internal("Error settings element #", i,
-                              " in the numpy ndarray");
+      return absl::InternalError(
+          absl::StrCat("Error settings element #", i, " in the numpy ndarray"));
     }
     PyArray_ITER_NEXT(iter.get());
   }
@@ -361,7 +363,7 @@ absl::Status GetPyArrayDimensionsForTensor(
   const int ndims = TF_NumDims(tensor);
   if (TF_TensorType(tensor) == TF_RESOURCE) {
     if (ndims != 0) {
-      return errors::InvalidArgument(
+      return absl::InvalidArgumentError(
           "Fetching of non-scalar resource tensors is not supported.");
     }
     dims->push_back(TF_TensorByteSize(tensor));
@@ -394,8 +396,9 @@ absl::Status GetPyArrayDescrForTensor(const TF_Tensor* tensor,
     int convert_result = PyArray_DescrConverter(fields, descr);
     Py_CLEAR(fields);
     if (convert_result != 1) {
-      return errors::Internal("Failed to create numpy array description for ",
-                              "TF_RESOURCE-type tensor");
+      return absl::InternalError(
+          absl::StrCat("Failed to create numpy array description for ",
+                       "TF_RESOURCE-type tensor"));
     }
   } else {
     int type_num = -1;
@@ -497,7 +500,7 @@ absl::Status TF_TensorToPyArray(Safe_TF_TensorPtr tensor,
   Safe_PyObjectPtr safe_out_array =
       tensorflow::make_safe(PyArray_Empty(dims.size(), dims.data(), descr, 0));
   if (!safe_out_array) {
-    return errors::Internal("Could not allocate ndarray");
+    return absl::InternalError("Could not allocate ndarray");
   }
   PyArrayObject* py_array =
       reinterpret_cast<PyArrayObject*>(safe_out_array.get());
@@ -541,7 +544,7 @@ absl::Status NdarrayToTensor(TFE_Context* ctx, PyObject* ndarray,
   // Make sure we dereference this array object in case of error, etc.
   Safe_PyObjectPtr array_safe(make_safe(
       PyArray_FromAny(ndarray, nullptr, 0, 0, NPY_ARRAY_CARRAY_RO, nullptr)));
-  if (!array_safe) return errors::InvalidArgument("Not a ndarray.");
+  if (!array_safe) return absl::InvalidArgumentError("Not a ndarray.");
   PyArrayObject* array = reinterpret_cast<PyArrayObject*>(array_safe.get());
 
   // Convert numpy dtype to TensorFlow dtype.

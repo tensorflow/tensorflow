@@ -1,3 +1,17 @@
+// Copyright 2026 The OpenXLA Authors. All Rights Reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// ==============================================================================
 // RUN: emitters_opt %s -split-input-file -xla-lower-tensors -xla-merge-pointers | FileCheck %s
 
 module {
@@ -80,3 +94,27 @@ func.func private @private_entry_func(
 // CHECK:         %[[SUM:.*]] = arith.addf %[[V0]], %[[V1]]
 // CHECK:         return %[[SUM]]
 // CHECK:        }
+
+// -----
+
+// Verify that xla.not_invariant suppresses llvm.noalias on that argument.
+
+func.func @not_invariant_suppresses_noalias(
+    %arg0: tensor<43xf32> {xla.slice_index = 0, xla.not_invariant},
+    %arg1: tensor<43xf32> {xla.slice_index = 1},
+    %arg2: tensor<43xf32> {xla.slice_index = 2, xla.invariant},
+    %idx: index) -> f32 attributes {xla.entry} {
+  %v0 = tensor.extract %arg0[%idx] : tensor<43xf32>
+  %v1 = tensor.extract %arg1[%idx] : tensor<43xf32>
+  %v2 = tensor.extract %arg2[%idx] : tensor<43xf32>
+  %sum = arith.addf %v0, %v1 : f32
+  %sum2 = arith.addf %sum, %v2 : f32
+  func.return %sum2 : f32
+}
+
+// CHECK-LABEL: func.func @not_invariant_suppresses_noalias(
+// CHECK-SAME:    %[[ARG0:[a-z0-9]+]]: !llvm.ptr,
+// CHECK-SAME:    %[[ARG1:[a-z0-9]+]]: !llvm.ptr {llvm.noalias},
+// CHECK-SAME:    %[[ARG2:[a-z0-9]+]]: !llvm.ptr {llvm.noalias, xla.invariant},
+// CHECK-SAME:    %[[IDX:[a-z0-9]+]]: index) -> f32 attributes {xla.entry}
+// CHECK-NOT:     xla.not_invariant

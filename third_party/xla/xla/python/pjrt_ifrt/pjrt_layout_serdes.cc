@@ -19,8 +19,10 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/cord.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/ExtensibleRTTI.h"
 #include "xla/layout.h"
@@ -43,7 +45,7 @@ class PjRtLayoutSerDes : public llvm::RTTIExtends<PjRtLayoutSerDes, SerDes> {
     return "xla::ifrt::PjRtLayout";
   }
 
-  absl::StatusOr<std::string> Serialize(
+  absl::StatusOr<absl::Cord> Serialize(
       const Serializable& serializable,
       std::unique_ptr<SerializeOptions> options) override {
     const SerDesVersion version = GetRequestedSerDesVersion(options.get());
@@ -60,11 +62,11 @@ class PjRtLayoutSerDes : public llvm::RTTIExtends<PjRtLayoutSerDes, SerDes> {
     // the features used via `xla::PjRtLayout`.
     *proto.mutable_xla_layout() =
         pjrt_layout->pjrt_layout()->xla_layout().ToProto();
-    return proto.SerializeAsString();
+    return proto.SerializeAsCord();
   }
 
   absl::StatusOr<std::unique_ptr<Serializable>> Deserialize(
-      const std::string& serialized,
+      const absl::Cord& serialized,
       std::unique_ptr<DeserializeOptions> options) override {
     PjRtLayoutProto proto;
     if (!proto.ParseFromString(serialized)) {
@@ -76,8 +78,8 @@ class PjRtLayoutSerDes : public llvm::RTTIExtends<PjRtLayoutSerDes, SerDes> {
       return absl::FailedPreconditionError(absl::StrCat(
           "Unsupported ", version_number, " for PjRtLayout deserialization"));
     }
-    TF_ASSIGN_OR_RETURN(auto xla_layout,
-                        xla::Layout::FromProto(proto.xla_layout()));
+    ASSIGN_OR_RETURN(auto xla_layout,
+                     xla::Layout::FromProto(proto.xla_layout()));
     return PjRtLayout::Create(
         std::make_unique<xla::PjRtLayout>(std::move(xla_layout)));
   }

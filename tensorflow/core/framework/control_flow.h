@@ -33,7 +33,7 @@ struct FrameAndIter {
   uint64_t frame_id = kIllegalFrameId;
   int64_t iter_id = kIllegalIterId;
 
-  FrameAndIter() {}
+  FrameAndIter() = default;
 
   FrameAndIter(uint64_t frame, int64_t iter) {
     frame_id = frame;

@@ -21,6 +21,8 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/base/attributes.h"
+#include "absl/status/status.h"
 #include "absl/types/span.h"
 #include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/framework/types.pb.h"

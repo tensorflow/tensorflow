@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/gpu/codegen/triton/support_legacy.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -64,7 +65,7 @@ HloInstruction* PermuteDotOperandDimensions(HloInstruction* operand,
   std::vector<int64_t> permutation;
   for (auto kind : {DotOperandDims::kBatch, DotOperandDims::kNonContracting,
                     DotOperandDims::kContracting}) {
-    for (auto index : dims->DimensionIndices(kind)) {
+    for (auto index : dims->Indices(kind)) {
       permutation.push_back(index);
     }
   }
@@ -75,7 +76,7 @@ HloInstruction* PermuteDotOperandDimensions(HloInstruction* operand,
   operand = operand->parent()->AddInstruction(
       HloInstruction::CreateTranspose(new_shape, operand, permutation),
       metadata);
-  dims->Permute(permutation);
+  dims->ApplyPermutation(permutation);
   return operand;
 }
 
@@ -153,7 +154,7 @@ absl::StatusOr<HloInstruction*> DotStrengthReduction::ExpandInstruction(
     HloInstruction* instruction) {
   HloDotInstruction* dot = Cast<HloDotInstruction>(instruction);
   const OpMetadata* metadata = &dot->metadata();
-  TF_ASSIGN_OR_RETURN(auto dot_dims, DotOperandDims::FromDot(dot));
+  ASSIGN_OR_RETURN(auto dot_dims, DotOperandDims::FromDot(dot));
 
   std::array<HloInstruction*, 2> operands = {dot->mutable_operand(0),
                                              dot->mutable_operand(1)};
@@ -169,28 +170,27 @@ absl::StatusOr<HloInstruction*> DotStrengthReduction::ExpandInstruction(
     // non-contracting, contracting] dimensions.
     // Therefore, we insert other side's non-contracting dimensions before or
     // after our contracting depending on the operand.
-    int insert_before = our_dims.DimensionCount(DotOperandDims::kBatch);
+    int insert_before = our_dims.Rank(DotOperandDims::kBatch);
     if (i == 0) {
-      insert_before += our_dims.DimensionCount(DotOperandDims::kNonContracting);
+      insert_before += our_dims.Rank(DotOperandDims::kNonContracting);
     }
 
     operands[i] = BroadcastDimensions(
         operands[i], insert_before,
-        other_dims.DimensionSizes(DotOperandDims::kNonContracting), metadata);
+        other_dims.Sizes(DotOperandDims::kNonContracting), metadata);
   }
 
   // At this point, both operands have the same shape. Elementwise multiply.
   CHECK(operands[0]->shape().dimensions() == operands[1]->shape().dimensions());
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       HloInstruction * flow,
       MakeMultiplyForDotPrecisionAlgorithm(
           operands[0], operands[1], dot->precision_config().algorithm()));
   flow->set_metadata(*metadata);
 
   // If there were any contracting dims, we need to reduce them.
-  flow = ReduceDimensions(
-      flow, dot_dims[0].DimensionCount(DotOperandDims::kContracting),
-      GetGemmAccumulatorType(dot), metadata);
+  flow = ReduceDimensions(flow, dot_dims[0].Rank(DotOperandDims::kContracting),
+                          GetGemmAccumulatorType(dot), metadata);
 
   // If the output type is different from what it was before (either because
   // reduction used a different accumulator type, or because types of operand

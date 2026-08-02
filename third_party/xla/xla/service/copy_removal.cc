@@ -306,24 +306,37 @@ bool ComputeRelativeLocation::AddControlDependenceForUnorderedOps() {
   PredecessorHloOrdering* ordering =
       dynamic_cast<PredecessorHloOrdering*>(ordering_);
   if (ordering == nullptr) {
-    // Support force ordering of unordered-ops only when using predecssor
+    // Support force ordering of unordered-ops only when using predecessor
     // ordering.
     return false;
   }
+  // NOLINTNEXTLINE computation order is not important for correctness.
   for (const auto& comp_it : ctrl_deps_) {
     HloComputation* parent = comp_it.first;
     HloReachabilityMap& reachability_map = ordering->reachability_map(parent);
+    absl::flat_hash_map<const HloInstruction*,
+                        absl::flat_hash_set<const HloInstruction*>>
+        to_update;
+    // NOLINTNEXTLINE the loop aggregation is order independent.
     for (const auto& instr_it : comp_it.second) {
-      HloInstruction* entry1 = instr_it.first;
-      for (HloInstruction* entry2 : instr_it.second) {
-        VLOG(3) << "   Adding control dependence between:";
-        VLOG(3) << "     predecessor: " << entry2->name();
-        VLOG(3) << "       successor: " << entry1->name();
-        CHECK_OK(entry2->AddControlDependencyTo(entry1));
+      HloInstruction* successor = instr_it.first;
+      for (HloInstruction* predecessor : instr_it.second) {
+        VLOG(3) << "   Adding control dependence between predecessor: "
+                << predecessor->name()
+                << " and successor: " << successor->name();
+        CHECK_OK(predecessor->AddControlDependencyTo(successor));
+        to_update[successor].insert(predecessor);
       }
-      reachability_map.UpdateReachabilityThroughInstruction(entry1);
-      for (HloInstruction* entry2 : instr_it.second) {
-        DCHECK(ordering_->GetExecutionConstraint(entry1, entry2) ==
+    }
+    // Adding all control dependencies and updating in one go is more efficient
+    // than calling UpdateReachabilityThroughInstruction for each new
+    // dependence.
+    reachability_map.UpdateMultipleInstructions(std::move(to_update));
+    // NOLINTNEXTLINE the order has no effect on the correctness.
+    for (const auto& instr_it : comp_it.second) {
+      const HloInstruction* successor = instr_it.first;
+      for (const HloInstruction* predecessor : instr_it.second) {
+        DCHECK(ordering_->GetExecutionConstraint(successor, predecessor) ==
                HloOrdering::ExecutionConstraint::kRunAfter);
       }
     }
@@ -577,21 +590,28 @@ Relation::RuntimeOrder ComputeRelativeLocation::ComputeRuntimeOrdering(
         }
         return false;
       };
-      if (!ctrl_deps_.empty()) {
-        auto ctrl_deps = ctrl_deps_[instr1->parent()];
-        if (absl::c_any_of(ctrl_deps[instr2], [&](HloInstruction* pred2) {
-              return ControlDependenceBefore(instr1, pred2);
-            })) {
-          VLOG(2) << "control-dependent: " << instr1->name() << " vs "
-                  << instr2->name();
-          return Save(instr1, instr2, Relation::kBeforeStart);
+      if (auto ctrl_deps_it = ctrl_deps_.find(instr1->parent());
+          ctrl_deps_it != ctrl_deps_.end()) {
+        const auto& ctrl_deps = ctrl_deps_it->second;
+        if (auto instr2_deps = ctrl_deps.find(instr2);
+            instr2_deps != ctrl_deps.end()) {
+          if (absl::c_any_of(instr2_deps->second, [&](HloInstruction* pred2) {
+                return ControlDependenceBefore(instr1, pred2);
+              })) {
+            VLOG(2) << "control-dependent: " << instr1->name() << " vs "
+                    << instr2->name();
+            return Save(instr1, instr2, Relation::kBeforeStart);
+          }
         }
-        if (absl::c_any_of(ctrl_deps[instr1], [&](HloInstruction* pred1) {
-              return ControlDependenceBefore(instr2, pred1);
-            })) {
-          VLOG(2) << "control-dependent: " << instr2->name() << " vs "
-                  << instr1->name();
-          return Save(instr1, instr2, Relation::kAfterEnd);
+        if (auto instr1_deps = ctrl_deps.find(instr1);
+            instr1_deps != ctrl_deps.end()) {
+          if (absl::c_any_of(instr1_deps->second, [&](HloInstruction* pred1) {
+                return ControlDependenceBefore(instr2, pred1);
+              })) {
+            VLOG(2) << "control-dependent: " << instr2->name() << " vs "
+                    << instr1->name();
+            return Save(instr1, instr2, Relation::kAfterEnd);
+          }
         }
       }
       // Don't save the result for unordered operations, so they can be
@@ -1209,10 +1229,44 @@ bool CopyRemover::TryElideCopy(
     // Splice source buffer values list right after 'prev_dest'.
     SpliceAfter(copy_node.src->next, Prev(*copy_node.dest));
   } else {
-    VLOG(2) << copy->name()
-            << " copies value in middle of source buffer to value in middle "
-               "of destination buffer";
-    return false;
+    // Check whether src and dest are already in the same list, i.e. the copy
+    // connects two values that already share a buffer, but non-adjacently
+    // (values defined in other conditional branches may be ordered between
+    // them). Removing such a copy does not merge buffers; it only transfers
+    // the uses of dest to src. This is safe if those uses are live-range
+    // before every value defined between src and dest.
+    bool same_list = false;
+    for (ValueNode* n = copy_node.src->next; n != copy_node.src; n = n->next) {
+      if (n == copy_node.dest) {
+        same_list = true;
+        break;
+      }
+    }
+    if (!same_list) {
+      VLOG(2) << copy->name()
+              << " copies value in middle of source buffer to value in middle "
+                 "of destination buffer";
+      return false;
+    }
+    ValueNode merged(copy_node.src->value);
+    merged.uses = copy_node.dest->uses;
+    for (ValueNode* n = copy_node.src->next; n != copy_node.dest; n = n->next) {
+      if (!LiveRangeBefore(merged, *n)) {
+        VLOG(2) << copy->name()
+                << " connects values in the same buffer, but the uses of its "
+                   "destination are not live-range before the intervening "
+                   "value "
+                << n->value->ToShortString();
+        return false;
+      }
+    }
+    VLOG(2) << "TryElideCopy - copy (" << copy->name()
+            << ") connects two values in the same buffer; transferring uses.";
+    RemoveCopyValue(copy_node.dest, copy_node.src);
+    XLA_VLOG_LINES(4, ToString());
+    DCHECK_OK(Verify());
+    VLOG(3) << "TryElideCopy succeeded for: " << copy->name();
+    return true;
   }
 
   RemoveCopyValue(copy_node.dest);
@@ -1225,19 +1279,25 @@ bool CopyRemover::TryElideCopy(
 
 // Delete the given ValueNode associated with a elided kCopy
 // instruction. This should be called after splicing the value lists of the
-// source and destination buffers together.
-void CopyRemover::RemoveCopyValue(ValueNode* copy_value_node) {
+// source and destination buffers together. 'operand_node' is the node whose
+// value the elided copy read; it receives the uses of 'copy_value_node'. If
+// nullptr, the node preceding 'copy_value_node' in its list is used.
+void CopyRemover::RemoveCopyValue(ValueNode* copy_value_node,
+                                  ValueNode* operand_node) {
   CHECK_EQ(copy_value_node->value->defining_instruction()->opcode(),
            HloOpcode::kCopy);
-  ValueNode* operand_node = copy_value_node->prev;
+  if (operand_node == nullptr) {
+    operand_node = copy_value_node->prev;
+  }
   CHECK(operand_node != copy_value_node);
 
   VLOG(2) << "Removing copy " << operand_node->value->ToShortString() << " => "
           << copy_value_node->value->ToShortString();
 
-  // Splice out the copy value node.
-  operand_node->next = copy_value_node->next;
-  copy_value_node->next->prev = operand_node;
+  // Splice out the copy value node. The operand node is not necessarily
+  // adjacent to the copy value node in the list.
+  copy_value_node->prev->next = copy_value_node->next;
+  copy_value_node->next->prev = copy_value_node->prev;
 
   // Patch up uses. Remove use of copy from operand_node uses.
   auto it =

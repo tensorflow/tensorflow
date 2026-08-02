@@ -30,9 +30,7 @@ namespace emitters {
 #define GEN_PASS_DECL
 #include "xla/codegen/emitters/transforms/lower_to_llvm_gpu.h.inc"
 
-std::unique_ptr<mlir::Pass> CreateLowerToLLVMGPUPass(
-    const std::string& gpu_device_info = "");
-std::unique_ptr<mlir::Pass> CreateLowerToLLVMGPUPass(
+std::unique_ptr<mlir::Pass> createLowerToLLVMGPUPass(
     const stream_executor::DeviceDescription& device_description);
 #define GEN_PASS_REGISTRATION
 #include "xla/codegen/emitters/transforms/lower_to_llvm_gpu.h.inc"

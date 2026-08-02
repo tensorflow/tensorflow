@@ -53,8 +53,8 @@ class ResourceBase : public core::WeakRefCounted {
   // destroyed before the resource is used. To avoid this lifetime issue, you
   // can usually set a unique `shared_name` attribute for the resource.
   virtual absl::Status AsGraphDef(GraphDefBuilder* builder, Node** out) const {
-    return errors::Unimplemented("AsGraphDef not implemented for resource ",
-                                 DebugString());
+    return absl::UnimplementedError(absl::StrCat(
+        "AsGraphDef not implemented for resource ", DebugString()));
   }
 
   // Releases temporary resources held by this resource created during warmup.

@@ -99,8 +99,8 @@ class CheckNumericsOp<CPUDevice, T> : public OpKernel {
     if (fp_props != 0) {
       const std::string& status = getErrorString(fp_props);
       if (!status.empty()) {
-        context->SetStatus(errors::InvalidArgument(message_, " : Tensor had ",
-                                                   status, " values"));
+        context->SetStatus(absl::InvalidArgumentError(
+            absl::StrCat(message_, " : Tensor had ", status, " values")));
       }
     }
   }
@@ -219,7 +219,7 @@ class CheckNumericsOp<GPUDevice, T> : public AsyncOpKernel {
 
     auto* stream = context->op_device_context()->stream();
     OP_REQUIRES_ASYNC(context, stream != nullptr,
-                      errors::Internal("No GPU stream available."), done);
+                      absl::InternalError("No GPU stream available."), done);
 
     stream_executor::DeviceAddressBase abnormal_detected_ptr(
         abnormal_detected.flat<int>().data(),
@@ -244,14 +244,14 @@ class CheckNumericsOp<GPUDevice, T> : public AsyncOpKernel {
         context->allocate_temp(DT_INT32, TensorShape({abnormal_detected_size}),
                                &abnormal_detected_host, attr),
         done);
-    OP_REQUIRES_ASYNC(context,
-                      stream
-                          ->Memcpy(abnormal_detected_host.flat<int>().data(),
-                                   abnormal_detected_ptr,
-                                   abnormal_detected_size * sizeof(int))
-                          .ok(),
-                      errors::Internal("GPU memcpy from device to host failed"),
-                      done);
+    OP_REQUIRES_ASYNC(
+        context,
+        stream
+            ->Memcpy(abnormal_detected_host.flat<int>().data(),
+                     abnormal_detected_ptr,
+                     abnormal_detected_size * sizeof(int))
+            .ok(),
+        absl::InternalError("GPU memcpy from device to host failed"), done);
 
     // We have observed crashes on some network stacks when not holding
     // this tensor reference.
@@ -300,8 +300,8 @@ class CheckNumericsOp<GPUDevice, T> : public AsyncOpKernel {
       } else if (is_inf) {
         anomalies = "Inf";
       }
-      context->SetStatus(errors::InvalidArgument(message_, " : Tensor had ",
-                                                 anomalies, " values"));
+      context->SetStatus(absl::InvalidArgumentError(
+          absl::StrCat(message_, " : Tensor had ", anomalies, " values")));
     }
   }
 

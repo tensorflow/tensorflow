@@ -18,9 +18,11 @@ limitations under the License.
 #include <stdint.h>
 
 #include <initializer_list>
+#include <limits>
 #include <vector>
 
 #include <gtest/gtest.h>
+#include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/kernels/test_util.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 
@@ -125,6 +127,35 @@ TEST_P(UnsortedSegmentTest, Data5dHasShapeNumSegDataShapeSuffix) {
   model.PopulateTensor(model.num_segments(), {10});
   ASSERT_EQ(model.Invoke(), kTfLiteOk);
   EXPECT_THAT(model.GetOutputShape(), testing::ElementsAreArray({10, 2, 1, 2}));
+}
+
+TEST_P(UnsortedSegmentTest, NegativeNumSegmentsRejected) {
+  UnsortedSegmentModel<int32_t> model =
+      getModel({TensorType_INT32, {1}}, {TensorType_INT32, {1}},
+               {TensorType_INT32, {1}});
+  model.PopulateTensor<int32_t>(model.data(), {1});
+  model.PopulateTensor<int32_t>(model.segment_ids(), {-1});
+  model.PopulateTensor<int32_t>(model.num_segments(), {-1});
+  EXPECT_EQ(model.Invoke(), kTfLiteError);
+}
+
+TEST_P(UnsortedSegmentTest, IntermediateSuffixProductOverflowRejected) {
+  UnsortedSegmentModel<int32_t> model = getModel(
+      {TensorType_INT32,
+       {0, std::numeric_limits<int>::max(), std::numeric_limits<int>::max()}},
+      {TensorType_INT32, {0}}, {TensorType_INT32, {1}});
+  model.PopulateTensor<int32_t>(model.num_segments(), {0});
+  EXPECT_EQ(model.Invoke(), kTfLiteError);
+}
+
+TEST_P(UnsortedSegmentTest, NonEmptyOutputWithNullDataRejected) {
+  UnsortedSegmentModel<int32_t> model =
+      getConstModel({TensorType_INT32, {1}}, {0}, {1}, {1}, {1});
+  model.PopulateTensor<int32_t>(model.data(), {1});
+  TfLiteTensor* output = model.output_tensor();
+  ASSERT_NE(output->data.raw, nullptr);
+  output->data.raw = nullptr;
+  EXPECT_EQ(model.Invoke(), kTfLiteError);
 }
 }  // namespace
 }  // namespace tflite

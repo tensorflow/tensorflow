@@ -43,7 +43,7 @@ absl::Status CreateStringScalarTensorHandle(ImmediateExecutionContext* ctx,
                                             ImmediateTensorHandlePtr* out) {
   AbstractTensorPtr tensor(ctx->CreateStringScalar(s));
   if (tensor.get() == nullptr) {
-    return errors::Internal(
+    return absl::InternalError(
         "Failed to create scalar string tensor for checkpoint restore");
   }
 
@@ -58,7 +58,7 @@ absl::Status CreateStringVectorTensorHandle(ImmediateExecutionContext* ctx,
   int64_t flat_shape[] = {1};
   AbstractTensorPtr tensor(ctx->CreateTensor(DT_STRING, flat_shape));
   if (tensor.get() == nullptr) {
-    return errors::Internal(
+    return absl::InternalError(
         "Failed to create vector string tensor for checkpoint restore");
   }
   // Use placement new to construct the string, since we don't have
@@ -107,7 +107,7 @@ absl::Status SingleRestore(ImmediateExecutionContext* ctx,
   AbstractTensorHandlePtr owned_restored_handle(restored_handle);
   if (!tensorflow::isa<ImmediateExecutionTensorHandle>(
           owned_restored_handle.get())) {
-    return errors::Internal("Unexpected tensor handle kind.");
+    return absl::InternalError("Unexpected tensor handle kind.");
   }
   out->reset(reinterpret_cast<ImmediateExecutionTensorHandle*>(
       owned_restored_handle.release()));

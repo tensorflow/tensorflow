@@ -246,7 +246,7 @@ LogicalResult GetFunctionsToRewrite(
 void SetOpSharding(Operation* op, bool manual_sharding) {
   xla::OpSharding sharding =
       manual_sharding ? ::xla::sharding_builder::Manual()
-                      : ::xla::sharding_builder::AssignDevice(kShardingTpuCore);
+                      : ::xla::sharding_builder::SingleDevice(kShardingTpuCore);
   op->setAttr(kShardingAttr,
               StringAttr::get(op->getContext(), sharding.SerializeAsString()));
 }

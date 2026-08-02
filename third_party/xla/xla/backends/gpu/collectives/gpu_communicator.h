@@ -16,27 +16,48 @@ limitations under the License.
 #ifndef XLA_BACKENDS_GPU_COLLECTIVES_GPU_COMMUNICATOR_H_
 #define XLA_BACKENDS_GPU_COLLECTIVES_GPU_COMMUNICATOR_H_
 
-#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <optional>
 #include <string>
+#include <utility>
 
 #include "absl/container/inlined_vector.h"
 #include "absl/functional/any_invocable.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
+#include "xla/backends/gpu/collectives/gxl_communicator.h"
 #include "xla/core/collectives/communicator.h"
 #include "xla/core/collectives/rank_id.h"
+#include "xla/core/collectives/reduction_kind.h"
+#include "xla/core/collectives/registered_memory.h"
 #include "xla/core/collectives/symmetric_memory.h"
 #include "xla/future.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/kernel_args.h"
+#include "xla/stream_executor/memory_allocation.h"
+#include "xla/tsl/util/tied_ref.h"
 #include "xla/util.h"
+#include "xla/xla_data.pb.h"
+
+namespace stream_executor {
+class StreamExecutor;
+}  // namespace stream_executor
 
 namespace xla::gpu {
+
+class GpuSignalDesc : public Communicator::SignalDesc {
+ public:
+  GpuSignalDesc(int sig_idx, int ctx) : sig_idx_(sig_idx), ctx_(ctx) {}
+  int sig_idx() const { return sig_idx_; }
+  int ctx() const { return ctx_; }
+
+ private:
+  int sig_idx_;
+  int ctx_;
+};
 
 // Platform-specific handle to the underlying communicator implementation. It
 // allows exporting collective communication primitives created and owned by
@@ -66,33 +87,65 @@ class GpuDeviceCommunicator {
   struct Requirements {
     template <typename Sink>
     friend void AbslStringify(Sink& sink, const Requirements& reqs) {
-      absl::Format(&sink, "{lsa_barrier_count: %d}", reqs.lsa_barrier_count);
+      absl::Format(&sink,
+                   "{barrier_count: %d, lsa_barrier_count: %d, "
+                   "rail_gin_barrier_count: %d, "
+                   "gin_signal_count: %d, gin_connection_full: %d}",
+                   reqs.barrier_count, reqs.lsa_barrier_count,
+                   reqs.rail_gin_barrier_count, reqs.gin_signal_count,
+                   reqs.gin_connection_full);
     }
 
     bool operator==(const Requirements& other) const {
-      return other.lsa_barrier_count == lsa_barrier_count;
+      return other.barrier_count == barrier_count &&
+             other.lsa_barrier_count == lsa_barrier_count &&
+             other.rail_gin_barrier_count == rail_gin_barrier_count &&
+             other.gin_signal_count == gin_signal_count &&
+             other.gin_connection_full == gin_connection_full;
     }
 
     bool operator<(const Requirements& other) const {
-      return other.lsa_barrier_count < lsa_barrier_count;
+      if (barrier_count != other.barrier_count) {
+        return barrier_count < other.barrier_count;
+      }
+      if (lsa_barrier_count != other.lsa_barrier_count) {
+        return lsa_barrier_count < other.lsa_barrier_count;
+      }
+      if (rail_gin_barrier_count != other.rail_gin_barrier_count) {
+        return rail_gin_barrier_count < other.rail_gin_barrier_count;
+      }
+      if (gin_signal_count != other.gin_signal_count) {
+        return gin_signal_count < other.gin_signal_count;
+      }
+      return gin_connection_full < other.gin_connection_full;
     }
 
+    int32_t barrier_count = 0;
     // The number of barriers to allocate for load/store accessible
     // communication.
     int32_t lsa_barrier_count = 0;
+    int32_t rail_gin_barrier_count = 0;
+    int32_t gin_signal_count = 0;
+    bool gin_connection_full = false;
   };
 
-  // Returns a platform-spcific handle to the unerdlying communicator object.
+  static bool RequestsGin(const Requirements& reqs) {
+    return reqs.gin_connection_full || reqs.gin_signal_count > 0 ||
+           reqs.rail_gin_barrier_count > 0;
+  }
+
+  // Returns a platform-specific handle to the underlying communicator object.
   virtual PlatformCommunicatorHandle platform_comm() const {
     return PlatformCommunicatorHandle{nullptr};
   }
 
+  // Returns the size of the load/store accessible communication.
+  virtual int64_t lsa_size() const = 0;
+
   virtual std::string ToString() const = 0;
 
-  // A packed kernel argument type for passing device communicator to device
-  // kernels (byte storage appropriately sized to fit platform-specific handle).
-  using PackedKernelArg = std::array<std::byte, 256>;
-  virtual PackedKernelArg PackKernelArg() const = 0;
+  // Packs device communicator as a device kernel argument.
+  virtual se::PackedKernelArg PackKernelArg() const = 0;
 
   template <typename Sink>
   friend void AbslStringify(Sink& sink, const GpuDeviceCommunicator& comm) {
@@ -104,13 +157,13 @@ class GpuDeviceCommunicator {
 // collective methods.
 //
 // For example, the `Communicator::AllReduce` method (which is asynchronous and
-// returns an AsyncValueRef<Event>) has a corresponding syncrhonous
+// returns an AsyncValueRef<Event>) has a corresponding synchronous
 // `GpuCommunicator::LaunchAllReduce` method which returns an `absl::Status`.
 class GpuCommunicator : public Communicator {
  public:
   ~GpuCommunicator() override = default;
 
-  // Returns a platform-spcific handle to the unerdlying communicator object.
+  // Returns a platform-specific handle to the underlying communicator object.
   virtual PlatformCommunicatorHandle platform_comm() const {
     return PlatformCommunicatorHandle{nullptr};
   }
@@ -118,10 +171,42 @@ class GpuCommunicator : public Communicator {
   // Returns true iff communicator supports device-initiated communication.
   virtual bool SupportsDeviceComm() const { return false; }
 
+  // Returns true iff GPU-initiated networking (GIN) is available for this
+  // communicator. GIN enables device-side threads to directly initiate
+  // network transfers to remote (non-LSA) peers.
+  virtual bool SupportsGin() const { return false; }
+
+  // Returns the size of the load/store accessible communication domain (LSA).
+  // If LSA is not supported, returns std::nullopt.
+  virtual std::optional<int> LsaSize() const { return std::nullopt; }
+
+  // Returns the StreamExecutor (and thus the device) this communicator runs on,
+  // or nullptr if not backed by a StreamExecutor.
+  virtual stream_executor::StreamExecutor* stream_executor() const {
+    return nullptr;
+  }
+
+  // Returns GXL communicator if supported.
+  virtual GxlCommunicator* gxl_communicator() const { return nullptr; }
+
+  // Sets GXL communicator.
+  virtual void set_gxl_communicator(
+      std::unique_ptr<GxlCommunicator> gxl_communicator) {}
+
   // Creates a new device communicator linked to *this GPU communicator object.
   virtual absl::StatusOr<std::unique_ptr<GpuDeviceCommunicator>>
   CreateDeviceComm(const GpuDeviceCommunicator::Requirements& requirements) {
     return Unimplemented("Device communicator is not implementing");
+  }
+
+  // Registers an existing device address range with this communicator for
+  // accelerated ("zero-copy") collectives. Unlike CreateSymmetricMemory this
+  // makes no symmetry assumption about the buffer's address across ranks and is
+  // NOT a collective operation -- each rank may register independently. Returns
+  // an RAII handle; destroying it deregisters the range from this communicator.
+  virtual absl::StatusOr<std::unique_ptr<RegisteredMemory>>
+  CreateRegisteredMemory(se::DeviceAddressBase addr) {
+    return Unimplemented("Registered memory is not implemented");
   }
 
   // Creates a symmetric memory from the existing device address range. This is
@@ -136,10 +221,12 @@ class GpuCommunicator : public Communicator {
   // Host-side collective communication APIs
   //===--------------------------------------------------------------------===//
 
-  // Executes f in a group. f should invoke synchronous collective methods like
-  // LaunchAllReduce and not asynchronous collective methods like AllReduce.
-  virtual Future<> GroupExecute(
-      absl::AnyInvocable<absl::Status(GpuCommunicator*)> f) = 0;
+  // Executes a group of collective launches on this communicator. All
+  // collective operations in the `group` must use only *this communicator,
+  // otherwise behavior is undefined.
+  virtual Future<> GroupExecute(absl::AnyInvocable<absl::Status() &&> group) {
+    return Future<>(std::move(group)());
+  }
 
   virtual absl::Status LaunchAllReduce(se::DeviceAddressBase send_buffer,
                                        se::DeviceAddressBase recv_buffer,
@@ -181,14 +268,57 @@ class GpuCommunicator : public Communicator {
   virtual absl::Status LaunchRecv(se::DeviceAddressBase recv_buffer,
                                   PrimitiveType dtype, size_t count,
                                   RankId peer, const Executor& executor) = 0;
+
+  virtual absl::Status LaunchPut(se::DeviceAddressBase send_buffer,
+                                 SymmetricMemory* recv_buffer, size_t offset,
+                                 size_t count, RankId peer,
+                                 const Executor& executor) {
+    return Unimplemented("LaunchPut is not implemented");
+  }
+
+  virtual absl::Status LaunchSignal(RankId peer, const SignalDesc& signal_desc,
+                                    const Executor& executor) {
+    return Unimplemented("LaunchSignal is not implemented");
+  }
+
+  virtual absl::Status LaunchWaitSignal(RankId peer, int op_cnt,
+                                        const SignalDesc& signal_desc,
+                                        const Executor& executor) {
+    return Unimplemented("LaunchWaitSignal is not implemented");
+  }
+
+  virtual absl::Status LaunchWaitSignals(
+      absl::Span<const PeerWaitDesc> peer_wait_descs,
+      const Executor& executor) {
+    return Unimplemented("LaunchWaitSignals is not implemented");
+  }
+
+  virtual absl::Status LaunchMultiGpuBarrier(const Executor& executor) {
+    return Unimplemented("LaunchMultiGpuBarrier is not implemented");
+  }
+
+  virtual void InitializeCrossDeviceBarrier(
+      tsl::TiedRef<se::MemoryAllocation> tied_signal_value,
+      tsl::TiedRef<se::MemoryAllocation> tied_signal,
+      tsl::TiedRef<SymmetricMemory> tied_symmetric_memory) {}
+
+  virtual bool IsCrossDeviceBarrierInitiated() const { return false; }
+
+  template <typename Sink>
+  friend void AbslStringify(Sink& sink, const GpuCommunicator& comm) {
+    absl::Format(&sink, "%s", comm.ToString());
+  }
 };
 
 }  // namespace xla::gpu
 
+// Specialize `KernelArgPacking` template to define how to pass device
+// communicators to device kernels. We rely on packing device comms to opaque
+// packed kernel arguments.
 namespace stream_executor {
 template <>
 struct KernelArgPacking<xla::gpu::GpuDeviceCommunicator*> {
-  using Type = xla::gpu::GpuDeviceCommunicator::PackedKernelArg;
+  using Type = PackedKernelArg;
   static Type Pack(xla::gpu::GpuDeviceCommunicator* comm) {
     return comm->PackKernelArg();
   }

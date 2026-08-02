@@ -195,7 +195,7 @@ absl::Status WorkerIndexResolver::ValidateWorker(
     }
   }
 
-  return errors::FailedPrecondition(absl::Substitute(
+  return absl::FailedPreconditionError(absl::Substitute(
       "Failed to assign an index for worker $0. Configured workers list: [$1]. "
       "The worker's address is not configured, or other workers are already "
       "running at the configured host. If your worker has restarted, make sure "
@@ -219,7 +219,7 @@ absl::StatusOr<int64_t> WorkerIndexResolver::GetWorkerIndex(
     absl::string_view worker_address) const {
   const auto it = absl::c_find(worker_addresses_, worker_address);
   if (it == worker_addresses_.cend()) {
-    return errors::NotFound(absl::Substitute(
+    return absl::NotFoundError(absl::Substitute(
         "Failed to shard dataset in tf.data service: Worker $0 is not in the "
         "workers list. Got workers list $1.",
         worker_address, absl::StrJoin(worker_addresses_, ",")));

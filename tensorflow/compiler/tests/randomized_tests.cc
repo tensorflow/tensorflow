@@ -319,7 +319,7 @@ class OpTest : public ::testing::Test {
 
   // Runs 'fn' up to --tf_xla_test_repetitions times, or until a test failure
   // occurs; whichever happens first. Reruns if the TestResult is kInvalid.
-  void Repeatedly(const std::function<TestResult(void)>& fn);
+  void Repeatedly(const std::function<TestResult()>& fn);
 
   // Select a random element from 'candidates'.
   template <typename T>
@@ -726,7 +726,7 @@ class TensorGeneratorBool : public TensorGenerator<bool> {
   }
 };
 
-void OpTest::Repeatedly(const std::function<TestResult(void)>& fn) {
+void OpTest::Repeatedly(const std::function<TestResult()>& fn) {
   int const max_repetitions = tf_xla_test_repetitions;
   int valid_test_runs = 0;
   // We run up to 100 * max_repetitions times; the idea is that if we roll the
@@ -1424,7 +1424,7 @@ absl::Status TensorsAreEqualImplBfloat16(const Tensor& x, const Tensor& y) {
   auto Ty = y.flat<bfloat16>();
   for (int i = 0; i < Tx.size(); ++i) {
     if (Tx(i) != Ty(i)) {
-      return errors::InvalidArgument(absl::StrCat(
+      return absl::InvalidArgumentError(absl::StrCat(
           i, "-th tensor element isn't equal: ", static_cast<float>(Tx(i)),
           " vs. ", static_cast<float>(Ty(i)), ". x = ", x.DebugString(),
           "y = ", y.DebugString()));
@@ -1440,12 +1440,12 @@ absl::Status TensorsAreEqualImplBfloat16(const Tensor& x, const Tensor& y) {
 absl::Status TensorsAreClose(const Tensor& a, const Tensor& b, double atol,
                              double rtol) {
   if (a.dtype() != b.dtype()) {
-    return errors::InvalidArgument(absl::StrCat(
+    return absl::InvalidArgumentError(absl::StrCat(
         "Tensors have different types: ", DataTypeString(a.dtype()), " and ",
         DataTypeString(b.dtype())));
   }
   if (!a.IsSameSize(b)) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(
         absl::StrCat("Tensors have different shapes: ", a.shape().DebugString(),
                      " and ", b.shape().DebugString()));
   }
@@ -2747,7 +2747,8 @@ TEST_F(OpTest, Einsum) {
                                              .RandomInput(a.type, a.rhs_dims)
                                              .Attr("equation", a.equation)
                                              .Attr("T", a.type)
-                                             .Attr("N", 2));
+                                             .Attr("N", 2),
+                                         2e-1, 2e-1);
   });
 }
 

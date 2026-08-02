@@ -55,7 +55,7 @@ class IfrtLoadedVariableRegistry {
     std::string input_name;
     xla::HloSharding hlo_sharding;
     // Use pointer instead of value to avoid copy when building the key.
-    std::shared_ptr<xla::Shape> shape_on_device;
+    std::shared_ptr<const xla::Shape> shape_on_device;
     template <typename H>
     friend H AbslHashValue(H h, const Key& key) {
       h = H::combine(std::move(h), key.input_name, key.device_ids,
@@ -90,7 +90,7 @@ class IfrtLoadedVariableRegistry {
 
     KeyView(absl::Span<const int> device_ids, absl::string_view input_name,
             const xla::HloSharding& hlo_sharding,
-            std::shared_ptr<xla::Shape> shape_on_device)
+            std::shared_ptr<const xla::Shape> shape_on_device)
         : device_ids(device_ids),
           input_name(input_name),
           hlo_sharding(hlo_sharding),
@@ -99,7 +99,7 @@ class IfrtLoadedVariableRegistry {
     absl::Span<const int> device_ids;
     absl::string_view input_name;
     const xla::HloSharding& hlo_sharding;
-    std::shared_ptr<xla::Shape> shape_on_device;
+    std::shared_ptr<const xla::Shape> shape_on_device;
 
     template <typename H>
     friend H AbslHashValue(H h, const KeyView& key) {

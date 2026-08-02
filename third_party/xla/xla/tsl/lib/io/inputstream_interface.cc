@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/tsl/lib/io/inputstream_interface.h"
 
 #include "absl/status/status.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/tsl/platform/errors.h"
 
 namespace tsl {
@@ -33,7 +34,7 @@ absl::Status InputStreamInterface::SkipNBytes(int64_t bytes_to_skip) {
   // Read kDefaultSkipSize at a time till bytes_to_skip.
   while (bytes_to_skip > 0) {
     int64_t bytes_to_read = std::min<int64_t>(kMaxSkipSize, bytes_to_skip);
-    TF_RETURN_IF_ERROR(ReadNBytes(bytes_to_read, &unused));
+    RETURN_IF_ERROR(ReadNBytes(bytes_to_read, &unused));
     bytes_to_skip -= bytes_to_read;
   }
   return absl::OkStatus();

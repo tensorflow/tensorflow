@@ -21,8 +21,10 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "xla/hlo/builder/lib/constants.h"
+#include "xla/hlo/builder/lib/math.h"
 #include "xla/hlo/builder/value_inference.h"
 #include "xla/hlo/builder/xla_builder.h"
+#include "xla/primitive_util.h"
 #include "xla/xla_data.pb.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/op_requires.h"
@@ -47,6 +49,9 @@ class SegmentReduce : public XlaOpKernel {
 
   // A function to combine two scalars with the same index (e.g., sum).
   virtual xla::XlaOp Combine(xla::XlaOp a, xla::XlaOp b) = 0;
+
+  // Whether to pre-filter/replace NaNs in updates logic.
+  virtual bool FilterNaNs() const { return false; }
 
   void Compile(XlaOpKernelContext* ctx) override {
     // output = unsorted_segment_sum(data, indices, num_segments)
@@ -125,6 +130,10 @@ class SegmentReduce : public XlaOpKernel {
       }
     }
 
+    if (FilterNaNs() && xla::primitive_util::IsFloatingPointType(type_)) {
+      data = xla::Select(xla::IsNan(data), InitialValue(builder), data);
+    }
+
     auto combiner = [this](xla::XlaOp a, xla::XlaOp b,
                            xla::XlaBuilder* builder) { return Combine(a, b); };
 
@@ -182,6 +191,8 @@ class SegmentMin : public SegmentReduce {
   explicit SegmentMin(OpKernelConstruction* ctx)
       : SegmentReduce(ctx, indices_are_sorted) {}
 
+  bool FilterNaNs() const override { return true; }
+
   xla::XlaOp InitialValue(xla::XlaBuilder* builder) override {
     return xla::MaxFiniteValue(builder, type_);
   };
@@ -201,6 +212,8 @@ class SegmentMax : public SegmentReduce {
  public:
   explicit SegmentMax(OpKernelConstruction* ctx)
       : SegmentReduce(ctx, indices_are_sorted) {}
+
+  bool FilterNaNs() const override { return true; }
 
   xla::XlaOp InitialValue(xla::XlaBuilder* builder) override {
     return xla::MinFiniteValue(builder, type_);

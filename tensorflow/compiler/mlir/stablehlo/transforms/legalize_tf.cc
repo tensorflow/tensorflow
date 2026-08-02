@@ -658,6 +658,72 @@ static Type ChangeTensorElementType(Builder *b, Type tensor_type,
   return UnrankedTensorType::get(element_type);
 }
 
+class ConvertFloatToUnsignedCastOp : public OpRewritePattern<TF::CastOp> {
+ public:
+  explicit ConvertFloatToUnsignedCastOp(MLIRContext* context)
+      : OpRewritePattern<TF::CastOp>(context, /*benefit=*/2) {}
+
+  LogicalResult matchAndRewrite(TF::CastOp op,
+                                PatternRewriter& rewriter) const override {
+    if (op.getTruncate()) return failure();
+
+    auto input_type = mlir::dyn_cast<RankedTensorType>(op.getX().getType());
+    auto result_type = mlir::dyn_cast<RankedTensorType>(op.getType());
+    if (!input_type || !result_type) return failure();
+
+    Type input_element_type = input_type.getElementType();
+    Type result_element_type = result_type.getElementType();
+    if (!mlir::isa<FloatType>(input_element_type) ||
+        !result_element_type.isUnsignedInteger()) {
+      return failure();
+    }
+
+    // XLA convert saturates negative floats to unsigned integers at zero, while
+    // TensorFlow Cast's CPU path wraps finite negative values in the
+    // destination unsigned type. NaN and Inf casts to integral types are
+    // documented as undefined, so keep them on the direct HLO convert path.
+    int result_width = result_element_type.getIntOrFloatBitWidth();
+    int wider_width = result_width == 64 ? 64 : result_width * 2;
+    Type signed_element_type = rewriter.getIntegerType(wider_width);
+    Type unsigned_element_type =
+        IntegerType::get(rewriter.getContext(), wider_width,
+                         IntegerType::SignednessSemantics::Unsigned);
+
+    Type signed_type =
+        ChangeTensorElementType(&rewriter, op.getType(), signed_element_type);
+    Type unsigned_type =
+        ChangeTensorElementType(&rewriter, op.getType(), unsigned_element_type);
+
+    Location loc = op.getLoc();
+    auto scalar_input_type =
+        tensorflow::GetTypeFromTFTensorShape({}, input_element_type);
+    Value zero = ConstantOp::create(
+        rewriter, loc,
+        DenseElementsAttr::get(scalar_input_type,
+                               rewriter.getFloatAttr(input_element_type, 0.0)));
+    Value broadcast_zero = BroadcastToShapeOf(loc, zero, op.getX(), rewriter);
+    Value is_negative = CompareOp::create(
+        rewriter, loc, op.getX(), broadcast_zero, ComparisonDirection::LT);
+    Type predicate_type =
+        ChangeTensorElementType(&rewriter, input_type, rewriter.getI1Type());
+    Value is_finite =
+        IsFiniteOp::create(rewriter, loc, predicate_type, op.getX());
+    Value finite_negative =
+        AndOp::create(rewriter, loc, is_negative, is_finite);
+
+    Value direct = ConvertOp::create(rewriter, loc, op.getType(), op.getX());
+    Value signed_value =
+        ConvertOp::create(rewriter, loc, signed_type, op.getX());
+    Value unsigned_value =
+        ConvertOp::create(rewriter, loc, unsigned_type, signed_value);
+    Value wrapped_negative =
+        ConvertOp::create(rewriter, loc, op.getType(), unsigned_value);
+    rewriter.replaceOpWithNewOp<SelectOp>(op, op.getType(), finite_negative,
+                                          wrapped_negative, direct);
+    return success();
+  }
+};
+
 //===----------------------------------------------------------------------===//
 // Softmax op utilities.
 //===----------------------------------------------------------------------===//
@@ -5346,7 +5412,7 @@ class ConvertInfeedDequeueTupleOp
       // the token to device 0.
       if (sharding_proto.type() == ::xla::OpSharding::TUPLE) {
         *sharding_proto.add_tuple_shardings() =
-            ::xla::sharding_builder::AssignDevice(0);
+            ::xla::sharding_builder::SingleDevice(0);
         data_and_token->setAttr(
             kShardingAttr,
             rewriter.getStringAttr(sharding_proto.SerializeAsString()));
@@ -6249,6 +6315,68 @@ class ConvertConstOp : public OpRewritePattern<TF::ConstOp> {
   }
 };
 
+// Converts TF::CrossOp to mhlo operations.
+class ConvertCrossOp : public OpRewritePattern<TF::CrossOp> {
+ public:
+  using OpRewritePattern::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(TF::CrossOp op,
+                                PatternRewriter& rewriter) const override {
+    Location loc = op.getLoc();
+    Value a = op.getA();
+    Value b = op.getB();
+    auto a_type = mlir::dyn_cast<RankedTensorType>(a.getType());
+    auto b_type = mlir::dyn_cast<RankedTensorType>(b.getType());
+    if (!a_type || !b_type || !a_type.hasStaticShape() ||
+        !b_type.hasStaticShape()) {
+      return failure();
+    }
+
+    if (a_type.getShape() != b_type.getShape()) return failure();
+
+    int64_t rank = a_type.getRank();
+    if (rank < 1 || a_type.getShape().back() != 3) return failure();
+
+    SmallVector<int64_t> starts(rank, 0);
+    auto limits = llvm::to_vector(a_type.getShape());
+    SmallVector<int64_t> strides(rank, 1);
+
+    auto slice = [&](Value val, int64_t slice_idx) -> Value {
+      starts[rank - 1] = slice_idx;
+      limits[rank - 1] = slice_idx + 1;
+      return SliceOp::create(rewriter, loc, val,
+                             GetI64ElementsAttr(starts, &rewriter),
+                             GetI64ElementsAttr(limits, &rewriter),
+                             GetI64ElementsAttr(strides, &rewriter));
+    };
+
+    Value u1 = slice(a, 0);
+    Value v1 = slice(b, 0);
+    Value u2 = slice(a, 1);
+    Value v2 = slice(b, 1);
+    Value u3 = slice(a, 2);
+    Value v3 = slice(b, 2);
+
+    auto mul = [&](Value x, Value y) -> Value {
+      return MulOp::create(rewriter, loc, x, y);
+    };
+    auto sub = [&](Value x, Value y) -> Value {
+      return SubtractOp::create(rewriter, loc, x, y);
+    };
+
+    Value s1 = sub(mul(u2, v3), mul(u3, v2));
+    Value s2 = sub(mul(u3, v1), mul(u1, v3));
+    Value s3 = sub(mul(u1, v2), mul(u2, v1));
+
+    Value output = ConcatenateOp::create(rewriter, loc, op.getType(),
+                                         ValueRange{s1, s2, s3},
+                                         rewriter.getI64IntegerAttr(rank - 1));
+
+    rewriter.replaceOp(op, output);
+    return success();
+  }
+};
+
 // Converts the Cumsum or Cumprod TensorFlow op to the HLO ReduceWindow op by
 // setting appropriate window dimensions, with the given aggregation op as the
 // reduction function. The input tensor needs to have a static shape, and 'axis'
@@ -6918,6 +7046,7 @@ void PopulatePatterns(MLIRContext *context, RewritePatternSet *patterns) {
     ConvertBiasAddOp,
     ConvertBroadcastToOp,
     ConvertBF16FloorDivOp,
+    ConvertFloatToUnsignedCastOp,
     ConvertClipByValueOp,
     ConvertConstOp,
     ConvertConv2DOp,
@@ -6927,6 +7056,7 @@ void PopulatePatterns(MLIRContext *context, RewritePatternSet *patterns) {
     ConvertConv3DBackpropFilterOp,
     ConvertConv2DBackpropInputOp,
     ConvertConv3DBackpropInputOp,
+    ConvertCrossOp,
     ConvertCumprodOp,
     ConvertCumsumOp,
     ConvertDiagPartOp,

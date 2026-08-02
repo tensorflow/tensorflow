@@ -39,7 +39,9 @@ fails with an OOM error, because the HBM is now occupied with more data buffers.
         reduce the amount of memory used for activations.
     -   **Parameter sharding:** For very large models, use model parallelism or
         sharding techniques (like FSDP or Megascale) to distribute the model's
-        parameters and computation across multiple TPU cores or hosts.
+        parameters and computation across multiple TPU cores or hosts. Note that
+        this can increase the network communication overhead due to splitting
+        tensors across multiple chips.
     -   **Shorten sequence/context length:** For models processing sequential
         data (e.g., NLP models), reducing the sequence length can significantly
         decrease memory usage.

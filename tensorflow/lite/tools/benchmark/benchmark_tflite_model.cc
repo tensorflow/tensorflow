@@ -533,43 +533,54 @@ TfLiteStatus SplitInputLayerNameAndValueFile(
 std::pair<TfLiteStatus, std::unique_ptr<BenchmarkInterpreterRunner>>
 BenchmarkInterpreterRunner::Create(tflite::Interpreter* const interpreter,
                                    std::string signature_key) {
-  if (!signature_key.empty()) {
-    const std::vector<const std::string*>& keys = interpreter->signature_keys();
+  const std::vector<const std::string*>& interpreter_keys =
+      interpreter->signature_keys();
+
+  // Model without signature.
+  if (interpreter_keys.empty()) {
+    if (!signature_key.empty()) {
+      TFLITE_LOG(ERROR) << "Signature key is specified, but the model does not "
+                           "have any signatures.";
+      return {kTfLiteError, nullptr};
+    }
+
+    return {kTfLiteOk, std::make_unique<BenchmarkInterpreterRunner>(
+                           interpreter, nullptr, nullptr)};
+  }
+
+  // Model with one or more signatures.
+  if (interpreter_keys.size() == 1 && signature_key.empty()) {
+    // Default to the only signature if not specified.
+    signature_key = *interpreter_keys[0];
+  } else {
+    // Ensure that the requested signature key is valid.
     bool found = std::any_of(
-        keys.begin(), keys.end(),
+        interpreter_keys.begin(), interpreter_keys.end(),
         [&signature_key](const auto& k) { return *k == signature_key; });
 
-    if (keys.size() > 1 && (signature_key.empty() || !found)) {
-      TFLITE_LOG(ERROR)
-          << "Signature not specified or incorrect for graph with multiple "
-             "signatures. Pass one of the following to the flag "
-             "\"--signature_to_run_for\"";
-      for (const std::string* k : keys) {
+    if (!found) {
+      TFLITE_LOG(ERROR) << "Signature not specified or incorrect. Pass one "
+                           "of the following to the flag "
+                           "\"--signature_to_run_for\"";
+      for (const std::string* k : interpreter_keys) {
         TFLITE_LOG(ERROR) << " #> Signature key: " << *k;
       }
       return {kTfLiteError, nullptr};
-    } else if (keys.size() == 1 && signature_key.empty()) {
-      signature_key = *keys[0];
-    }
-
-    if (!signature_key.empty() && !keys.empty()) {
-      TFLITE_LOG(INFO) << "Using signature: " << signature_key;
-      auto signature_runner =
-          interpreter->GetSignatureRunner(signature_key.c_str());
-      if (signature_runner == nullptr) {
-        return {kTfLiteError, nullptr};
-      } else {
-        int subgraph_index =
-            interpreter->GetSubgraphIndexFromSignature(signature_key.c_str());
-
-        return {kTfLiteOk, std::make_unique<BenchmarkInterpreterRunner>(
-                               interpreter, signature_runner,
-                               interpreter->subgraph(subgraph_index))};
-      }
     }
   }
-  return {kTfLiteOk, std::make_unique<BenchmarkInterpreterRunner>(
-                         interpreter, nullptr, nullptr)};
+  TFLITE_LOG(INFO) << "Using signature: " << signature_key;
+  SignatureRunner* signature_runner =
+      interpreter->GetSignatureRunner(signature_key.c_str());
+  if (signature_runner == nullptr) {
+    return {kTfLiteError, nullptr};
+  } else {
+    int subgraph_index =
+        interpreter->GetSubgraphIndexFromSignature(signature_key.c_str());
+
+    return {kTfLiteOk, std::make_unique<BenchmarkInterpreterRunner>(
+                           interpreter, signature_runner,
+                           interpreter->subgraph(subgraph_index))};
+  }
 }
 
 TfLiteStatus BenchmarkInterpreterRunner::AllocateTensors() {

@@ -29,8 +29,8 @@ limitations under the License.
 namespace xla {
 
 template <typename T>
-void parse_xla_backend_extra_options(T* extra_options_map,
-                                     std::string comma_separated_values) {
+void parse_comma_separated_values(T* extra_options_map,
+                                  std::string comma_separated_values) {
   std::vector<std::string> extra_options_parts =
       absl::StrSplit(comma_separated_values, ',');
 

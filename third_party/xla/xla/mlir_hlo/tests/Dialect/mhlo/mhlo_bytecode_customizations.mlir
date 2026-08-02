@@ -1,6 +1,22 @@
+// Copyright 2026 The OpenXLA Authors. All Rights Reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// ==============================================================================
 // RUN: mlir-hlo-opt %s | mlir-hlo-opt
-// RUN: diff <(mlir-hlo-opt %s) <(mlir-hlo-opt -emit-bytecode %s | mlir-hlo-opt)
-// RUN: (! mlir-hlo-opt -debug %s) || mlir-hlo-opt -emit-bytecode -debug-only=mhlo-bytecode %s 2>&1 | (! grep 'Not Implemented')
+// RUN: mlir-hlo-opt %s > %t.diff_a
+// RUN: mlir-hlo-opt -emit-bytecode %s | mlir-hlo-opt > %t.diff_b
+// RUN: cmp -s %t.diff_a %t.diff_b
+// RUN: not mlir-hlo-opt -debug %s || mlir-hlo-opt -emit-bytecode -debug-only=mhlo-bytecode %s 2>&1 | not grep 'Not Implemented'
 
 // Test all attributes and types in MHLO
 // Use round trip testing to validate both serialization and deserialization
@@ -25,7 +41,11 @@ func.func @test_bytecode_customizations(
   arg_alias = #mhlo.output_operand_alias<output_tuple_indices = [0], operand_index = 0, operand_tuple_indices = [1]>,
   res_alias = [#mhlo.result_alias<result_index = [2]>,
                #mhlo.result_alias<tuple_indices = [1, 1], result_index = [2, 0, 1], must_alias>],
-  ext = #mhlo.type_extensions<bounds = [4]>
+  replica_groups_mesh_axes = #mhlo.replica_group_mesh_axes<mesh = @mesh, axes = [#mhlo.axis_ref<name = "foo">, #mhlo.axis_ref<name = "bar", sub_axis_info = (1)2>]>,
+  ext = #mhlo.type_extensions<bounds = [4]>,
+  orig_arr = #mhlo.original_array<"my_inst", [0, 1, 2]>,
+  orig_val_el = #mhlo.original_value_element<[0], <"source_op", []>>,
+  orig_val = #mhlo.original_value<false, [<[0], <"first_instruction", [0, 1]>>, <[1], <"second_instruction", [2]>>]>
 } {
   func.return
 }

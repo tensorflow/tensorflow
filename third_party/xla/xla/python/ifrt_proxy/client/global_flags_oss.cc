@@ -62,6 +62,8 @@ static GlobalClientFlags DefaultGlobalClientFlags() {
       GetIntFromEnv<int64_t>(
           "IFRT_PROXY_GRPC_LARGE_TRANSFER_OPTIMIZATION_THRESHOLD_BYTES",
           std::numeric_limits<int64_t>::max());
+  result.crash_on_disconnect =
+      GetBoolFromEnv("IFRT_PROXY_CRASH_ON_DISCONNECT", false);
   return result;
 };
 

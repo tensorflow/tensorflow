@@ -1,3 +1,18 @@
+# Copyright 2026 The TensorFlow Authors. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
+
 # Description:
 #   Contains experimental kernels for datasets and iterators.
 
@@ -604,6 +619,8 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -786,10 +803,12 @@ tf_kernel_library(
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:dataset_ops_op_lib",
         "//tensorflow/core:framework",
+        "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
         "//tensorflow/core/data:captured_function",
-        "//tensorflow/core/data:dataset_utils",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -813,6 +832,7 @@ tf_kernel_library(
         "//tensorflow/core/data:dataset_utils",
         "//tensorflow/core/framework:dataset_options_proto_cc",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -851,13 +871,13 @@ tf_kernel_library(
         "//tensorflow/core/data:serialization_utils",
         "//tensorflow/core/data:snapshot_utils",
         "//tensorflow/core/framework:op_requires",
-        "//tensorflow/core/platform:platform_port",
         "//tensorflow/core/profiler/lib:traceme",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/time",
     ],
 )
@@ -943,6 +963,7 @@ tf_kernel_library(
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
         "@eigen_archive//:eigen3",
     ],
 )
@@ -959,6 +980,7 @@ tf_kernel_library(
         "//tensorflow/core/framework:types_proto_cc",
         "//tensorflow/core/kernels:ops_util",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
     ],
 )

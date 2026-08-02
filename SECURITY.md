@@ -24,15 +24,6 @@ If you need to run untrusted models, execute them inside a
 in TensorFlow ops can be recognized as security issues only if they are
 reachable and exploitable through production-grade, benign models.
 
-### Compilation
-
-Compiling models via the recommended entry points described in
-[XLA](https://www.tensorflow.org/xla) and
-[JAX](https://jax.readthedocs.io/en/latest/jax-101/02-jitting.html)
-documentation should be safe, while some of the testing and debugging tools that
-come with the compiler are not designed to be used with untrusted data and
-should be used with caution when working with untrusted models.
-
 ### Saved graphs and checkpoints
 
 When loading untrusted serialized computation graphs (in form of a `GraphDef`,

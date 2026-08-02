@@ -71,6 +71,13 @@ class PadTester {
 
   void Test(TfLiteDelegate* delegate) const;
 
+  inline PadTester& FP16(bool fp16 = true) {
+    fp16_ = fp16;
+    return *this;
+  }
+
+  inline bool FP16() const { return fp16_; }
+
  private:
   std::vector<char> CreateTfLiteModel() const;
 
@@ -79,6 +86,7 @@ class PadTester {
   std::vector<int32_t> input_shape_;
   std::vector<int32_t> input_pre_paddings_;
   std::vector<int32_t> input_post_paddings_;
+  bool fp16_ = false;
 };
 
 }  // namespace xnnpack

@@ -23,8 +23,8 @@ limitations under the License.
 #include "tensorflow/c/eager/abstract_operation.h"
 #include "tensorflow/c/eager/abstract_tensor_handle.h"
 #include "tensorflow/c/eager/tracing_utils.h"
-#include "xla/tsl/platform/errors.h"
-#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/framework/types.h"  // NOLINT
+#include "tensorflow/core/platform/errors.h"  // NOLINT
 
 using tensorflow::tracing::MaybeSetOpName;
 
@@ -111,8 +111,8 @@ absl::Status AddV2(AbstractContext* ctx, AbstractTensorHandle* const x,
 absl::Status MatMul(AbstractContext* ctx, AbstractTensorHandle* const a,
                     AbstractTensorHandle* const b,
                     AbstractTensorHandle** product, bool transpose_a,
-                    bool transpose_b, const char* name,
-                    const char* raw_device_name) {
+                    bool transpose_b, bool grad_a, bool grad_b,
+                    const char* name, const char* raw_device_name) {
   AbstractOperationPtr op_ptr(ctx->CreateOperation());
   TF_RETURN_IF_ERROR(op_ptr->Reset("MatMul", raw_device_name));
   TF_RETURN_IF_ERROR(MaybeSetOpName(op_ptr.get(), name));
@@ -120,6 +120,8 @@ absl::Status MatMul(AbstractContext* ctx, AbstractTensorHandle* const a,
   TF_RETURN_IF_ERROR(op_ptr->AddInput(b));
   TF_RETURN_IF_ERROR(op_ptr->SetAttrBool("transpose_a", transpose_a));
   TF_RETURN_IF_ERROR(op_ptr->SetAttrBool("transpose_b", transpose_b));
+  TF_RETURN_IF_ERROR(op_ptr->SetAttrBool("grad_a", grad_a));
+  TF_RETURN_IF_ERROR(op_ptr->SetAttrBool("grad_b", grad_b));
   int num_retvals = 1;
   return op_ptr->Execute(absl::MakeSpan(product, 1), &num_retvals);
 }

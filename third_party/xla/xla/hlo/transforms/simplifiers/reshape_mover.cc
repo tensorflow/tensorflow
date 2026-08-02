@@ -30,6 +30,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/permutation_util.h"
 #include "xla/service/hlo_creation_utils.h"
@@ -294,8 +295,8 @@ absl::StatusOr<bool> ReshapeMover::SinkRearrangeOperands(
   for (size_t i = 0; i < operands.size(); ++i) {
     VLOG(3) << "Updating operand #" << i << ": "
             << operands[i]->ToString(print_no_metadata);
-    TF_ASSIGN_OR_RETURN(operands[i],
-                        ApplyInverseRearrange(rearrange, operands[i]));
+    ASSIGN_OR_RETURN(operands[i],
+                     ApplyInverseRearrange(rearrange, operands[i]));
     VLOG(3) << "Updated operand #" << i
             << " to: " << operands[i]->ToString(print_no_metadata);
   }
@@ -330,7 +331,7 @@ absl::StatusOr<bool> ReshapeMover::SinkRearrangeOperands(
     new_elementwise->clear_sharding();
   }
 
-  TF_RETURN_IF_ERROR(computation->ReplaceWithNewInstruction(
+  RETURN_IF_ERROR(computation->ReplaceWithNewInstruction(
       instruction, std::move(new_rearrange)));
   return true;
 }
@@ -389,7 +390,7 @@ absl::StatusOr<bool> ReshapeMover::TryReshapeMoveOnCandidates(
         })) {
       break;
     }
-    TF_ASSIGN_OR_RETURN(bool did_change, SinkRearrangeOperands(instruction));
+    ASSIGN_OR_RETURN(bool did_change, SinkRearrangeOperands(instruction));
     CHECK(did_change);
   }
   return true;
@@ -406,8 +407,7 @@ absl::StatusOr<bool> ReshapeMover::RunImpl(
         candidates.insert(instruction);
       }
     }
-    TF_ASSIGN_OR_RETURN(bool did_change,
-                        TryReshapeMoveOnCandidates(&candidates));
+    ASSIGN_OR_RETURN(bool did_change, TryReshapeMoveOnCandidates(&candidates));
     changed |= did_change;
   }
   return changed;

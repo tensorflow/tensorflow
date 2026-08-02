@@ -35,19 +35,13 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
-#include "mlir/IR/AffineExpr.h"
-#include "mlir/IR/MLIRContext.h"
-#include "mlir/Support/LLVM.h"
-#include "xla/codegen/tiling/affine_map_evaluator.h"
-#include "xla/hlo/analysis/indexing_map.h"
-#include "xla/hlo/analysis/indexing_map_serialization.h"
+#include "xla/hlo/analysis/interval.h"
+#include "xla/hlo/analysis/symbolic_expr.h"
 
 namespace xla {
 namespace {
 
 using ::llvm::SmallVector;
-using ::mlir::AffineConstantExpr;
-using ::mlir::AffineExpr;
 using Constraint = ConstraintExpression::Constraint;
 using ConjointConstraints = llvm::SmallVector<Constraint, 2>;
 
@@ -76,8 +70,7 @@ std::optional<ConjointConstraints> TryIntersectConjointConstraints(
       auto& [result_expr, result_interval] = *result_it;
       result_interval = result_interval.Intersect(interval);
       if (!result_interval.IsFeasible()) {
-        VLOG(1) << "Got two incompatible intervals for expression "
-                << ToString(expr);
+        VLOG(1) << "Got two incompatible intervals for expression " << expr;
         return std::nullopt;
       }
     } else {
@@ -178,7 +171,7 @@ bool ConstraintExpression::IsSatisfiedBy(
   return absl::c_any_of(
       disjoint_conjoint_constraints_, [&](const auto& conjunction) {
         return absl::c_all_of(conjunction, [&](const Constraint& constraint) {
-          int64_t value = EvaluateAffineExpr(constraint.expr, dim_values);
+          int64_t value = constraint.expr.Evaluate(dim_values);
           return constraint.interval.Contains(value);
         });
       });
@@ -188,7 +181,7 @@ void ConstraintExpression::PrintUnsatisfiedConstraints(
     absl::Span<const int64_t> dim_values, std::ostream& out) const {
   auto is_conjunction_satisfied = [&](const auto& conjunction) {
     return absl::c_all_of(conjunction, [&](const Constraint& constraint) {
-      int64_t value = EvaluateAffineExpr(constraint.expr, dim_values);
+      int64_t value = constraint.expr.Evaluate(dim_values);
       return constraint.interval.Contains(value);
     });
   };
@@ -200,7 +193,7 @@ void ConstraintExpression::PrintUnsatisfiedConstraints(
     }
     out << "Unsatisfied conjunction: #" << i << "\n";
     for (const Constraint& constraint : conjunction) {
-      int64_t value = EvaluateAffineExpr(constraint.expr, dim_values);
+      int64_t value = constraint.expr.Evaluate(dim_values);
       if (!constraint.interval.Contains(value)) {
         out << " -- " << constraint.expr << " in "
             << constraint.interval.ToString() << ". Value: " << value << "\n";
@@ -209,13 +202,15 @@ void ConstraintExpression::PrintUnsatisfiedConstraints(
   }
 }
 
-std::string ConstraintExpression::ToString() const {
+std::string ConstraintExpression::ToString(
+    std::optional<int64_t> num_dims) const {
   std::stringstream ss;
-  Print(ss);
+  Print(ss, num_dims);
   return ss.str();
 }
 
-void ConstraintExpression::Print(std::ostream& out) const {
+void ConstraintExpression::Print(std::ostream& out,
+                                 std::optional<int64_t> num_dims) const {
   if (IsAlwaysSatisfied()) {
     out << "always satisfied\n";
     return;
@@ -234,7 +229,7 @@ void ConstraintExpression::Print(std::ostream& out) const {
     constraint_strings.reserve(conjunction.size());
     for (const auto& [expr, interval] : conjunction) {
       constraint_strings.push_back(
-          absl::StrCat(xla::ToString(expr), " in ", interval.ToString()));
+          absl::StrCat(expr.ToString(num_dims), " in ", interval.ToString()));
     }
     std::sort(constraint_strings.begin(), constraint_strings.end());
     conjunction_strings.push_back(absl::StrJoin(constraint_strings, " && "));
@@ -245,19 +240,19 @@ void ConstraintExpression::Print(std::ostream& out) const {
 
 namespace {
 
-bool IsConstraintAlwaysSatisfied(AffineExpr expr, Interval interval) {
-  if (AffineConstantExpr constant = mlir::dyn_cast<AffineConstantExpr>(expr)) {
-    return interval.Contains(constant.getValue());
+bool IsConstraintAlwaysSatisfied(SymbolicExpr expr, Interval interval) {
+  if (expr.GetType() == SymbolicExprType::kConstant) {
+    return interval.Contains(expr.GetValue());
   }
   return false;
 }
 
-bool IsConstraintUnsatisfiable(AffineExpr expr, Interval interval) {
+bool IsConstraintUnsatisfiable(SymbolicExpr expr, Interval interval) {
   if (!interval.IsFeasible()) {
     return true;
   }
-  if (AffineConstantExpr constant = mlir::dyn_cast<AffineConstantExpr>(expr)) {
-    return !interval.Contains(constant.getValue());
+  if (expr.GetType() == SymbolicExprType::kConstant) {
+    return !interval.Contains(expr.GetValue());
   }
   return false;
 }
@@ -289,12 +284,11 @@ SimplifyConjointConstraints(const ConjointConstraints& conjunction) {
   // always the same.
   auto comp = [](const Constraint& a, const Constraint& b) {
     if (a.expr != b.expr) {
-      // AffineExpr are deduplicated and stored as immutable objects in
-      // MLIRContext. Comparing pointers gives us a fast and easy way to get
-      // stable ordering.
-      CHECK_EQ(a.expr.getContext(), b.expr.getContext())
-          << "AffineExpr should be from the same MLIRContext.";
-      return a.expr.getImpl() < b.expr.getImpl();
+      // SymbolicExpr are deduplicated. Comparing pointers gives us a fast and
+      // easy way to get stable ordering.
+      CHECK_EQ(a.expr.GetContext(), b.expr.GetContext())
+          << "SymbolicExpr should be from the same MLIRContext.";
+      return a.expr.GetImpl() < b.expr.GetImpl();
     }
 
     // Default comparison for intervals will return nullopt if intervals are

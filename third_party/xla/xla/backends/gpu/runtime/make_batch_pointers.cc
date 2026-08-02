@@ -18,6 +18,7 @@ limitations under the License.
 #include <cstddef>
 
 #include "absl/status/status.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/gpu/gpu_kernel_registry.h"
 #include "xla/stream_executor/gpu/make_batch_pointers_kernel.h"
@@ -43,7 +44,7 @@ absl::Status MakeBatchPointers(se::Stream* stream,
     return 128;
   }();
 
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       auto kernel,
       stream_executor::gpu::GpuKernelRegistry::GetGlobalRegistry()
           .LoadKernel<stream_executor::gpu::MakeBatchPointersKernel>(executor));

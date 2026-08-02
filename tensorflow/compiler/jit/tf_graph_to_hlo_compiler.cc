@@ -75,7 +75,7 @@ absl::Status TfGraphToHloCompiler::Compile(
     call_args.set_compile_options(options.DebugString());
     *call_args.mutable_function() = function;
     for (const XlaArgument& arg : args) {
-      call_args.add_xla_arguments(arg.HumanString());
+      *call_args.add_xla_args() = arg.ToProto();
     }
 
     std::string dump_path = tsl::io::JoinPath(

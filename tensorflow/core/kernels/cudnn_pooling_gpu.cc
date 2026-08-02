@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/conv_2d.h"
 #include "tensorflow/core/kernels/conv_3d.h"
 #include "tensorflow/core/kernels/conv_ops_gpu.h"
+#include "tensorflow/core/kernels/fill_functor.h"
 #include "tensorflow/core/kernels/numeric_options_utils.h"
 
 typedef Eigen::GpuDevice GPUDevice;
@@ -103,10 +104,10 @@ void DnnPooling3dImpl(OpKernelContext* context,
                      transformed_output.template flat<T>().size());
 
   auto* stream = context->op_device_context()->stream();
-  OP_REQUIRES(context, stream, errors::Internal("No GPU stream available."));
+  OP_REQUIRES(context, stream, absl::InternalError("No GPU stream available."));
   auto* dnn = stream->parent()->AsDnn();
   OP_REQUIRES(context, dnn != nullptr,
-              errors::Internal("No DNN support for stream."));
+              absl::InternalError("No DNN support for stream."));
 #if TENSORFLOW_USE_ROCM
   static int64 PoolingScratchSize = GetDnnWorkspaceLimit(
       // default value is in bytes despite the name of the environment variable
@@ -196,6 +197,15 @@ void DnnPooling3dGradImpl(
   // If input is empty, we are done.
   if (tensor_in_shape.num_elements() == 0) {
     return;
+  }
+
+  // If output size has 0, we can skip as well to avoid CUDNN errors.
+  for (int64_t dim : output_size) {
+    if (dim == 0) {
+      functor::SetZeroFunctor<GPUDevice, T>()(
+          context->eigen_device<GPUDevice>(), input_backprop->flat<T>());
+      return;
+    }
   }
 
   const int64_t in_batch = GetTensorDim(tensor_in_shape, data_format, 'N');
@@ -296,10 +306,10 @@ void DnnPooling3dGradImpl(
                      transformed_input_backprop.template flat<T>().size());
 
   auto* stream = context->op_device_context()->stream();
-  OP_REQUIRES(context, stream, errors::Internal("No GPU stream available."));
+  OP_REQUIRES(context, stream, absl::InternalError("No GPU stream available."));
   auto* dnn = stream->parent()->AsDnn();
   OP_REQUIRES(context, dnn != nullptr,
-              errors::Internal("No DNN support for stream."));
+              absl::InternalError("No DNN support for stream."));
 
 #if TENSORFLOW_USE_ROCM
   static int64 PoolingScratchSize = GetDnnWorkspaceLimit(

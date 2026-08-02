@@ -17,45 +17,29 @@ limitations under the License.
 #define XLA_SERVICE_GPU_EXECUTION_STREAM_ASSIGNMENT_H_
 
 #include "absl/container/flat_hash_map.h"
-#include "absl/log/check.h"
 #include "absl/status/statusor.h"
-#include "xla/backends/gpu/runtime/thunk.h"
+#include "xla/backends/gpu/runtime/execution_stream_id.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 
 namespace xla::gpu {
 
-// `ExecutionStreamAssignments` represent a mapping from `HloInstructions` to
-// `ExecutionStreamIds`. Asynchronous calls (`async-start`, `async-update`, and
-// `async-done`) result in the target computations being assigned new
-// `ExecutionStreamIds` to support concurrent execution.
+// `ExecutionStreamAssignment` maps async scope-start `HloInstructions` to
+// `ExecutionStreamIds`. Only operations that start a new execution scope (e.g.
+// async-start, all-reduce-start, send, recv, copy-start) are assigned an
+// `ExecutionStreamId`. Operations inside an execution scope inherit their
+// stream from the parent `AsyncStartThunk` at run time (structured
+// concurrency).
 class ExecutionStreamAssignment {
  public:
   struct Options {
-    // The `ExecutionStreamAssignment` will round-robin compute thunks across
-    // this many `ExecutionStreams`.
+    // Number of additional compute execution streams for round-robin
+    // assignment of async compute operations.
     int number_of_compute_execution_streams = 4;
-    // The `ExecutionStreamAssignment` will round-robin collective thunks
-    // across this many `ExecutionStreams`.
-    int number_of_collective_execution_streams = 1;
+    // Number of additional communication execution streams for round-robin
+    // assignment of async communication operations.
+    int number_of_communication_execution_streams = 1;
   };
-
-  struct AsyncExecutionStreamIds {
-    // Execution stream id of async instruction in the parent computation (i.e.
-    // stream id of the `async-start` operation).
-    ExecutionStreamId parent_stream_id;
-    // Execution stream id of instructions in the attached async computation
-    // (i.e. stream id of instructins inside `custom-call-start` body). If
-    // async computation doesn't have an attached computation, the async stream
-    // id must be used by the operation itself (i.e. for `all-reduce-start`).
-    ExecutionStreamId async_stream_id;
-  };
-
-  friend bool operator==(const AsyncExecutionStreamIds& a,
-                         const AsyncExecutionStreamIds& b) {
-    return a.parent_stream_id == b.parent_stream_id &&
-           a.async_stream_id == b.async_stream_id;
-  }
 
   // The `HloModule` must be flat. In other words, there must be a one-to-one
   // mapping between callsites and computations. One way to guarantee this is to
@@ -67,27 +51,15 @@ class ExecutionStreamAssignment {
   explicit ExecutionStreamAssignment(const HloModule* module)
       : ExecutionStreamAssignment(module, Options{}) {}
 
-  // Returns the `ExecutionStreamId` for the given instruction, which *must* be
-  // synchronous. Returns an error if the instruction is either not reachable
-  // from the module's entrypoint, or is only reachable through embedded calls.
-  absl::StatusOr<ExecutionStreamId> GetSyncExecutionStreamId(
-      const HloInstruction* instruction) const;
-
-  // Returns the source and destination `ExecutionStreamIds` for the given
-  // instruction, which *must* be asynchronous. Returns an error if the
-  // instruction is either not reachable from the module's entrypoint, or is
-  // only reachable through embedded calls.
-  absl::StatusOr<AsyncExecutionStreamIds> GetAsyncExecutionStreamIds(
+  // Returns the `ExecutionStreamId` for the given instruction, which must be
+  // an async scope-start operation. Returns an error if the instruction is not
+  // a scope-start or is not reachable from the module's entrypoint.
+  absl::StatusOr<ExecutionStreamId> GetExecutionStreamId(
       const HloInstruction* instruction) const;
 
  private:
-  // Maps from `HloInstructions` to `ExecutionStreamIds` for synchronous and
-  // asynchronous instructions, respectively. All instructions reachable through
-  // non-embedded calls must be present.
   absl::flat_hash_map<const HloInstruction*, ExecutionStreamId>
-      sync_instructions_;
-  absl::flat_hash_map<const HloInstruction*, AsyncExecutionStreamIds>
-      async_instructions_;
+      async_start_instructions_;
 };
 
 }  // namespace xla::gpu

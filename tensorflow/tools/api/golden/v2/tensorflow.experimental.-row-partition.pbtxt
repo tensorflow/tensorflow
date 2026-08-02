@@ -2,50 +2,60 @@ path: "tensorflow.experimental.RowPartition"
 tf_class {
   is_instance: "<class \'tensorflow.python.ops.ragged.row_partition.RowPartition\'>"
   is_instance: "<class \'tensorflow.python.framework.composite_tensor.CompositeTensor\'>"
-  is_instance: "<type \'object\'>"
+  is_instance: "<class \'object\'>"
   member {
     name: "dtype"
-    mtype: "<type \'property\'>"
+    mtype: "<class \'property\'>"
   }
   member {
     name: "static_nrows"
-    mtype: "<type \'property\'>"
+    mtype: "<class \'property\'>"
   }
   member {
     name: "static_nvals"
-    mtype: "<type \'property\'>"
+    mtype: "<class \'property\'>"
   }
   member {
     name: "static_uniform_row_length"
-    mtype: "<type \'property\'>"
+    mtype: "<class \'property\'>"
   }
   member_method {
     name: "__init__"
     argspec: "args=[\'self\', \'row_splits\', \'row_lengths\', \'value_rowids\', \'nrows\', \'uniform_row_length\', \'nvals\', \'internal\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'None\', \'None\', \'False\'], "
   }
   member_method {
+    name: "__tf_tracing_type__"
+    argspec: "args=[\'self\', \'context\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
     name: "from_row_lengths"
     argspec: "args=[\'cls\', \'row_lengths\', \'validate\', \'dtype\', \'dtype_hint\'], varargs=None, keywords=None, defaults=[\'True\', \'None\', \'None\'], "
+    method_kind: CLASS
   }
   member_method {
     name: "from_row_limits"
     argspec: "args=[\'cls\', \'row_limits\', \'validate\', \'dtype\', \'dtype_hint\'], varargs=None, keywords=None, defaults=[\'True\', \'None\', \'None\'], "
+    method_kind: CLASS
   }
   member_method {
     name: "from_row_splits"
     argspec: "args=[\'cls\', \'row_splits\', \'validate\', \'dtype\', \'dtype_hint\'], varargs=None, keywords=None, defaults=[\'True\', \'None\', \'None\'], "
+    method_kind: CLASS
   }
   member_method {
     name: "from_row_starts"
     argspec: "args=[\'cls\', \'row_starts\', \'nvals\', \'validate\', \'dtype\', \'dtype_hint\'], varargs=None, keywords=None, defaults=[\'True\', \'None\', \'None\'], "
+    method_kind: CLASS
   }
   member_method {
     name: "from_uniform_row_length"
     argspec: "args=[\'cls\', \'uniform_row_length\', \'nvals\', \'nrows\', \'validate\', \'dtype\', \'dtype_hint\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'True\', \'None\', \'None\'], "
+    method_kind: CLASS
   }
   member_method {
     name: "from_value_rowids"
     argspec: "args=[\'cls\', \'value_rowids\', \'nrows\', \'validate\', \'dtype\', \'dtype_hint\'], varargs=None, keywords=None, defaults=[\'None\', \'True\', \'None\', \'None\'], "
+    method_kind: CLASS
   }
   member_method {
     name: "is_uniform"

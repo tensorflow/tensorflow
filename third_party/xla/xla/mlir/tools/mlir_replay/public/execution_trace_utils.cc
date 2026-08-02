@@ -28,6 +28,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/Casting.h"
@@ -242,7 +243,7 @@ absl::StatusOr<InterpreterValue> LiteralToValue(const xla::Literal& literal) {
     auto elements = literal.Clone().DecomposeTuple();
     Tuple result;
     for (auto& element : elements) {
-      TF_ASSIGN_OR_RETURN(auto converted, LiteralToValue(element));
+      ASSIGN_OR_RETURN(auto converted, LiteralToValue(element));
       result.values.push_back(
           std::make_shared<InterpreterValue>(std::move(converted)));
     }
@@ -302,14 +303,13 @@ absl::StatusOr<InterpreterValue> LiteralToValue(const xla::Literal& literal) {
 
 absl::StatusOr<InterpreterValue> LiteralToValue(
     const xla::LiteralProto& literal) {
-  TF_ASSIGN_OR_RETURN(auto deserialized,
-                      xla::Literal::CreateFromProto(literal));
+  ASSIGN_OR_RETURN(auto deserialized, xla::Literal::CreateFromProto(literal));
   return LiteralToValue(deserialized);
 }
 
 absl::StatusOr<InterpreterValue> LiteralToValue(
     const xla::LiteralProto& literal, mlir::Type type) {
-  TF_ASSIGN_OR_RETURN(auto result, LiteralToValue(literal));
+  ASSIGN_OR_RETURN(auto result, LiteralToValue(literal));
   return {DispatchScalarType(type, [&](auto dummy) -> InterpreterValue {
     TensorOrMemref<decltype(dummy)> cast;
     cast.view = result.View();
@@ -400,7 +400,7 @@ absl::StatusOr<InterpreterValue> TracedValueToValue(
     case TracedValue::TUPLE:
       Tuple result;
       for (const auto& elem : traced_value.tuple_elements()) {
-        TF_ASSIGN_OR_RETURN(auto converted, TracedValueToValue(elem));
+        ASSIGN_OR_RETURN(auto converted, TracedValueToValue(elem));
         result.values.push_back(
             std::make_shared<InterpreterValue>(std::move(converted)));
       }

@@ -83,7 +83,9 @@ void NewRemoteDevices(Env* env, WorkerCacheInterface* worker_cache,
   WorkerInterface* wi = worker_cache->GetOrCreateWorker(worker_name);
   if (wi == nullptr) {
     std::vector<Device*> empty;
-    done(errors::NotFound("Device ", worker_name, " is not found."), &empty);
+    done(absl::NotFoundError(
+             absl::StrCat("Device ", worker_name, " is not found.")),
+         &empty);
     return;
   }
   struct Call {
@@ -108,7 +110,8 @@ void NewRemoteDevices(Env* env, WorkerCacheInterface* worker_cache,
     if (!DeviceNameUtils::ParseFullName(worker_name, &worker_name_parsed) ||
         !worker_name_parsed.has_job || !worker_name_parsed.has_replica ||
         !worker_name_parsed.has_task) {
-      s = errors::InvalidArgument("Could not parse worker name: ", worker_name);
+      s = absl::InvalidArgumentError(
+          absl::StrCat("Could not parse worker name: ", worker_name));
       LOG(WARNING) << s;
       return;
     }

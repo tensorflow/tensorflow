@@ -70,8 +70,8 @@ std::vector<int64_t> ExpandWithBatchAndFeatureDimensions(
   return tensor_sizes;
 }
 
-using PoolingTest = ClientLibraryTestRunnerMixin<
-    HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>>;
+using PoolingTest =
+    ClientLibraryTestRunnerMixin<HloPjRtInterpreterReferenceMixin<HloTestBase>>;
 
 TEST_F(PoolingTest, MaxPool2D) {
   XlaBuilder builder(TestName());

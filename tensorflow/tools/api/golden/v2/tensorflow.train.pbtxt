@@ -6,19 +6,19 @@ tf_module {
   }
   member {
     name: "Checkpoint"
-    mtype: "<type \'type\'>"
+    mtype: "<class \'type\'>"
   }
   member {
     name: "CheckpointManager"
-    mtype: "<type \'type\'>"
+    mtype: "<class \'type\'>"
   }
   member {
     name: "CheckpointOptions"
-    mtype: "<type \'type\'>"
+    mtype: "<class \'type\'>"
   }
   member {
     name: "CheckpointView"
-    mtype: "<type \'type\'>"
+    mtype: "<class \'type\'>"
   }
   member {
     name: "ClusterDef"
@@ -26,11 +26,11 @@ tf_module {
   }
   member {
     name: "ClusterSpec"
-    mtype: "<type \'type\'>"
+    mtype: "<class \'type\'>"
   }
   member {
     name: "Coordinator"
-    mtype: "<type \'type\'>"
+    mtype: "<class \'type\'>"
   }
   member {
     name: "Example"
@@ -38,7 +38,7 @@ tf_module {
   }
   member {
     name: "ExponentialMovingAverage"
-    mtype: "<type \'type\'>"
+    mtype: "<class \'type\'>"
   }
   member {
     name: "Feature"
@@ -78,11 +78,11 @@ tf_module {
   }
   member {
     name: "TrackableView"
-    mtype: "<type \'type\'>"
+    mtype: "<class \'type\'>"
   }
   member {
     name: "experimental"
-    mtype: "<type \'module\'>"
+    mtype: "<class \'module\'>"
   }
   member_method {
     name: "checkpoints_iterator"

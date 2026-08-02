@@ -55,8 +55,6 @@ class EmbedRandomAccessFile : public RandomAccessFile {
 
 class EmbedFileSystem : public tsl::FileSystem {
  public:
-  TF_USE_FILESYSTEM_METHODS_WITH_NO_TRANSACTION_SUPPORT;
-
   ~EmbedFileSystem() override;
 
   // Creates a new embedded file, overwriting it if it exists.
@@ -66,7 +64,7 @@ class EmbedFileSystem : public tsl::FileSystem {
       const std::string& fname,
       std::unique_ptr<RandomAccessFile>* result) override;
 
-  absl::Status FileExists(const std::string& fname) override;
+  absl::Status FileExists(absl::string_view fname) override;
 
   absl::Status GetFileSize(const std::string& fname,
                            uint64_t* file_size) override;

@@ -17,10 +17,10 @@ limitations under the License.
 
 #include <algorithm>
 #include <cstdint>
-#include <numeric>
 #include <vector>
 
 #include "xla/tests/xla_test_backend_predicates.h"
+#include "absl/algorithm/container.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
@@ -40,20 +40,19 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/tests/client_library_test_runner_mixin.h"
 #include "xla/tests/hlo_pjrt_interpreter_reference_mixin.h"
-#include "xla/tests/hlo_pjrt_test_base.h"
+#include "xla/tests/hlo_test_base.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/types.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
 
-class SelfAdjointEigTest
-    : public ClientLibraryTestRunnerMixin<
-          HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>> {
+class SelfAdjointEigTest : public ClientLibraryTestRunnerMixin<
+                               HloPjRtInterpreterReferenceMixin<HloTestBase>> {
  protected:
   void SetUp() override {
     ClientLibraryTestRunnerMixin<
-        HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>>::SetUp();
+        HloPjRtInterpreterReferenceMixin<HloTestBase>>::SetUp();
     batch_3d_4x4_ = Array3D<float>{
         {
             {4, 6, 8, 10},
@@ -135,7 +134,7 @@ XlaOp ComputeMatmulVWVt(SelfAdjointEigResult result, XlaBuilder* builder) {
   Shape shape = builder->GetShape(result.v).value();
   absl::Span<const int64_t> out_dims = shape.dimensions();
   std::vector<int64_t> broadcast_dims(shape.dimensions().size() - 1);
-  std::iota(broadcast_dims.begin(), broadcast_dims.end(), 0);
+  absl::c_iota(broadcast_dims, 0);
 
   broadcast_dims[shape.dimensions().size() - 2] = shape.dimensions().size() - 1;
   auto vw =
@@ -285,7 +284,7 @@ Array2D<float> GenerateRandomSymmetricMatrix(int size) {
 
 using EighTestCase = int64_t;
 class RandomEighTest : public ClientLibraryTestRunnerMixin<
-                           HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>>,
+                           HloPjRtInterpreterReferenceMixin<HloTestBase>>,
                        public ::testing::WithParamInterface<EighTestCase> {};
 
 TEST_P(RandomEighTest, Random) {

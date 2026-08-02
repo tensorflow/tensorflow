@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -153,7 +154,7 @@ absl::StatusOr<bool> ProcessScatter(HloInstruction* hlo,
           scatter->to_apply(), dnums, false, false));
   scatter1->set_metadata(scatter->metadata());
   scatter1->set_sharding(scatter->sharding());
-  TF_RETURN_IF_ERROR(scatter->ReplaceAllUsesWith(scatter1));
+  RETURN_IF_ERROR(scatter->ReplaceAllUsesWith(scatter1));
   return true;
 }
 
@@ -164,7 +165,7 @@ absl::StatusOr<bool> RunOnComputation(HloComputation* computation,
     if (!hlo->has_sharding()) {
       continue;
     }
-    TF_ASSIGN_OR_RETURN(bool scatter_changed, ProcessScatter(hlo, call_graph));
+    ASSIGN_OR_RETURN(bool scatter_changed, ProcessScatter(hlo, call_graph));
     if (scatter_changed) {
       changed = true;
       continue;
@@ -180,7 +181,7 @@ absl::StatusOr<bool> SpmdPrepare::RunImpl(
   bool changed = false;
   std::unique_ptr<CallGraph> call_graph = CallGraph::Build(module);
   for (auto comp : module->computations(execution_threads)) {
-    TF_ASSIGN_OR_RETURN(bool comp_changed, RunOnComputation(comp, *call_graph));
+    ASSIGN_OR_RETURN(bool comp_changed, RunOnComputation(comp, *call_graph));
     changed |= comp_changed;
   }
   return changed;

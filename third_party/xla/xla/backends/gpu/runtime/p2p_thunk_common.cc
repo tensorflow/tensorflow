@@ -18,16 +18,18 @@ limitations under the License.
 #include <cstdint>
 #include <optional>
 #include <string>
+#include <tuple>
 #include <utility>
 #include <vector>
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
-#include "absl/synchronization/mutex.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "xla/backends/gpu/runtime/collective_params.h"
 #include "xla/backends/gpu/runtime/collective_thunk.h"
+#include "xla/backends/gpu/runtime/collective_thunk.pb.h"
 #include "xla/executable_run_options.h"
 #include "xla/hlo/ir/collective_op_group_mode.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -37,12 +39,35 @@ limitations under the License.
 #include "xla/service/source_target_pairs.h"
 #include "xla/shape.h"
 #include "xla/status_macros.h"
-#include "xla/stream_executor/stream_executor.h"
-#include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/util/sorted_range.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace gpu {
+
+std::vector<SourceTarget> GetSortedSourceTargetPairs(
+    const P2PConfig::IdToSourceTargetMap& id_to_source_target) {
+  std::vector<SourceTarget> source_target_pairs;
+  source_target_pairs.reserve(id_to_source_target.size() / 2);
+  auto cmp = [](const auto& a, const auto& b) {
+    return std::tie(a.second.source, a.first) <
+           std::tie(b.second.source, b.first);
+  };
+
+  for (const auto& [current_id, entry] :
+       tsl::SortedRange(id_to_source_target, cmp)) {
+    // Each link `source <-> target` is represented twice in the map.
+    // We only process the entry where `source` is populated (the first case)
+    // to avoid adding duplicate pairs.
+    if (entry.source.has_value()) {
+      SourceTarget pair;
+      pair.set_source(*entry.source);
+      pair.set_target(current_id);
+      source_target_pairs.push_back(pair);
+    }
+  }
+  return source_target_pairs;
+}
 
 absl::StatusOr<std::vector<std::pair<int64_t, int64_t>>> GetSourceTargetPairs(
     mlir::DictionaryAttr frontend_attributes) {
@@ -53,8 +78,8 @@ absl::StatusOr<std::vector<std::pair<int64_t, int64_t>>> GetSourceTargetPairs(
         absl::StrCat("expecting send/recv op with string attribute ",
                      kSendRecvSourceTargetPairsAttr));
   }
-  TF_ASSIGN_OR_RETURN(std::vector<ReplicaGroup> replica_groups,
-                      ParseReplicaGroupsOnly(src_dst_string.str()));
+  ASSIGN_OR_RETURN(std::vector<ReplicaGroup> replica_groups,
+                   ParseReplicaGroupsOnly(src_dst_string.str()));
   std::vector<std::pair<int64_t, int64_t>> source_target_pairs;
   source_target_pairs.reserve(replica_groups.size());
   for (const ReplicaGroup& replica_group : replica_groups) {
@@ -121,7 +146,7 @@ P2PConfig GetP2PConfigForSendRecv(const HloSendRecvInstruction* instr,
 absl::StatusOr<const int64_t> GetCollectiveCurrentId(
     CollectiveParams* collective_params, const P2PConfig& config) {
   GlobalDeviceId global_device_id = collective_params->global_device_id;
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       const DeviceAssignment::LogicalID current_logical_id,
       collective_params->device_assn->LogicalIdForDevice(global_device_id));
   const int64_t current_id =

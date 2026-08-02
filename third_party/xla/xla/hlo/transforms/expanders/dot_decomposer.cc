@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -273,7 +274,7 @@ absl::StatusOr<bool> DotDecomposer::RunImpl(
   }
   bool changed = false;
   for (auto* dot : non_canonical_dots) {
-    TF_RETURN_IF_ERROR(CanonicalizeDot(Cast<HloDotInstruction>(dot)));
+    RETURN_IF_ERROR(CanonicalizeDot(Cast<HloDotInstruction>(dot)));
     changed = true;
   }
   return changed;

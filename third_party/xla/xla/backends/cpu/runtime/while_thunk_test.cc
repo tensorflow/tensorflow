@@ -22,6 +22,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/cpu/runtime/buffer_allocations.h"
 #include "xla/backends/cpu/runtime/thunk.h"
 #include "xla/backends/cpu/runtime/thunk_testlib.h"
@@ -37,6 +38,7 @@ limitations under the License.
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/tsl/platform/threadpool.h"
+#include "xla/xla_data.pb.h"
 
 #define EIGEN_USE_THREADS
 
@@ -114,9 +116,8 @@ class CondThunk : public Thunk {
   tsl::AsyncValueRef<ExecuteEvent> Execute(const ExecuteParams& params) final {
     auto event = tsl::MakeConstructedAsyncValueRef<ExecuteEvent>();
 
-    TF_ASSIGN_OR_RETURN(
-        se::DeviceAddressBase predicate_mem,
-        params.buffer_allocations->GetDeviceAddress(pred_slice_));
+    ASSIGN_OR_RETURN(se::DeviceAddressBase predicate_mem,
+                     params.buffer_allocations->GetDeviceAddress(pred_slice_));
     bool* predicate = reinterpret_cast<bool*>(predicate_mem.opaque());
 
     // Continue while loop until counter reaches 0.
@@ -145,7 +146,7 @@ class BodyThunk : public Thunk {
   tsl::AsyncValueRef<ExecuteEvent> Execute(const ExecuteParams& params) final {
     auto event = tsl::MakeConstructedAsyncValueRef<ExecuteEvent>();
 
-    TF_ASSIGN_OR_RETURN(
+    ASSIGN_OR_RETURN(
         se::DeviceAddressBase counter_mem,
         params.buffer_allocations->GetDeviceAddress(counter_slice_));
 

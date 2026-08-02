@@ -1006,6 +1006,94 @@ TEST_F(ShapeInferenceTest, ConvolveWithNarrowerPreferredElementType) {
                                inferred_shape));
 }
 
+TEST_F(ShapeInferenceTest, ConvolveDgradShapeInference) {
+  Shape lhs_shape = ShapeUtil::MakeShape(F32, {2, 2, 2, 3, 2});
+  Shape rhs_shape = ShapeUtil::MakeShape(F32, {3, 2, 3, 3, 3});
+  ConvolutionDimensionNumbers dnums;
+  dnums.set_input_batch_dimension(0);
+  dnums.set_input_feature_dimension(4);
+  dnums.add_input_spatial_dimensions(1);
+  dnums.add_input_spatial_dimensions(2);
+  dnums.add_input_spatial_dimensions(3);
+  dnums.set_kernel_input_feature_dimension(0);
+  dnums.set_kernel_output_feature_dimension(1);
+  dnums.add_kernel_spatial_dimensions(2);
+  dnums.add_kernel_spatial_dimensions(3);
+  dnums.add_kernel_spatial_dimensions(4);
+  dnums.set_output_batch_dimension(0);
+  dnums.set_output_feature_dimension(4);
+  dnums.add_output_spatial_dimensions(1);
+  dnums.add_output_spatial_dimensions(2);
+  dnums.add_output_spatial_dimensions(3);
+
+  Window window;
+  for (int i = 0; i < 3; ++i) {
+    auto* dim = window.add_dimensions();
+    dim->set_size(3);
+    dim->set_stride(1);
+    dim->set_padding_low(1);
+    dim->set_padding_high(1);
+    dim->set_base_dilation(2);
+    dim->set_window_dilation(1);
+  }
+
+  ASSERT_OK_AND_ASSIGN(
+      const Shape inferred_shape,
+      ShapeInference::InferConvolveShape(
+          lhs_shape, rhs_shape, /*feature_group_count=*/1,
+          /*batch_group_count=*/1, window, dnums, SparsityConfig(),
+          /*preferred_element_type=*/std::nullopt, CONVOLUTION_KIND_DGRAD));
+
+  EXPECT_TRUE(ShapeUtil::Equal(ShapeUtil::MakeShape(F32, {2, 3, 3, 5, 3}),
+                               inferred_shape));
+}
+
+TEST_F(ShapeInferenceTest, ConvolveWgradShapeInference) {
+  Shape lhs_shape = ShapeUtil::MakeShape(F32, {2, 4, 4, 4, 3});
+  Shape rhs_shape = ShapeUtil::MakeShape(F32, {2, 2, 2, 2, 5});
+  ConvolutionDimensionNumbers dnums;
+  dnums.set_input_batch_dimension(0);
+  dnums.set_input_feature_dimension(4);
+  dnums.add_input_spatial_dimensions(1);
+  dnums.add_input_spatial_dimensions(2);
+  dnums.add_input_spatial_dimensions(3);
+
+  // For WGRAD, RHS is dOut.
+  dnums.set_output_batch_dimension(0);
+  dnums.set_output_feature_dimension(4);
+  dnums.add_output_spatial_dimensions(1);
+  dnums.add_output_spatial_dimensions(2);
+  dnums.add_output_spatial_dimensions(3);
+
+  // Result of WGRAD is kernel W (io012).
+  dnums.set_kernel_input_feature_dimension(0);
+  dnums.set_kernel_output_feature_dimension(1);
+  dnums.add_kernel_spatial_dimensions(2);
+  dnums.add_kernel_spatial_dimensions(3);
+  dnums.add_kernel_spatial_dimensions(4);
+
+  Window window;
+  for (int i = 0; i < 3; ++i) {
+    auto* dim = window.add_dimensions();
+    dim->set_size(3);
+    dim->set_stride(1);
+    dim->set_padding_low(0);
+    dim->set_padding_high(0);
+    dim->set_base_dilation(1);
+    dim->set_window_dilation(1);
+  }
+
+  ASSERT_OK_AND_ASSIGN(
+      const Shape inferred_shape,
+      ShapeInference::InferConvolveShape(
+          lhs_shape, rhs_shape, /*feature_group_count=*/1,
+          /*batch_group_count=*/1, window, dnums, SparsityConfig(),
+          /*preferred_element_type=*/std::nullopt, CONVOLUTION_KIND_WGRAD));
+
+  EXPECT_TRUE(ShapeUtil::Equal(ShapeUtil::MakeShape(F32, {3, 5, 3, 3, 3}),
+                               inferred_shape));
+}
+
 namespace fft {
 
 static const char* unsupported_rank = "only supports ranks 1-3";
@@ -4916,6 +5004,30 @@ TEST_F(ShapeInferenceTest, UnboundedCollectiveBroadcast) {
   EXPECT_TRUE(ShapeUtil::Equal(inferred_shape, expected))
       << "inferred: " << ShapeUtil::HumanString(inferred_shape)
       << " expected: " << ShapeUtil::HumanString(expected);
+}
+
+TEST_F(ShapeInferenceTest, UnboundedCollectiveBroadcastWithDynamicRoot) {
+  ASSERT_OK_AND_ASSIGN(const Shape operand, ParseShape("f32[?, 10]"));
+  ASSERT_OK_AND_ASSIGN(const Shape roots, ParseShape("s32[1]"));
+  ASSERT_OK_AND_ASSIGN(const Shape expected, ParseShape("f32[?, 10]"));
+  ASSERT_OK_AND_ASSIGN(
+      const Shape inferred_shape,
+      ShapeInference::InferCollectiveBroadcastShape(
+          /*operand_shapes=*/{&operand, &roots}, /*has_dynamic_root=*/true));
+  EXPECT_TRUE(ShapeUtil::Equal(inferred_shape, expected))
+      << "inferred: " << ShapeUtil::HumanString(inferred_shape)
+      << " expected: " << ShapeUtil::HumanString(expected);
+}
+
+TEST_F(ShapeInferenceTest,
+       UnboundedCollectiveBroadcastWithMismatchedDynamicRootOperand) {
+  ASSERT_OK_AND_ASSIGN(const Shape operand, ParseShape("f32[?, 10]"));
+  ASSERT_OK_AND_ASSIGN(const Shape expected, ParseShape("f32[?, 10]"));
+  const absl::StatusOr<Shape> inferred_shape =
+      ShapeInference::InferCollectiveBroadcastShape(
+          /*operand_shapes=*/{&operand}, /*has_dynamic_root=*/true);
+  EXPECT_THAT(inferred_shape.status().message(),
+              HasSubstr("operand_shapes.size() > 1"));
 }
 
 TEST_F(ShapeInferenceTest, CollectivePermute) {

@@ -20,12 +20,15 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <string>
+#include <tuple>
 #include <utility>
 #include <vector>
 
+#include "absl/base/casts.h"
 #include "absl/base/const_init.h"
 #include "absl/base/no_destructor.h"
 #include "absl/base/thread_annotations.h"
+#include "absl/cleanup/cleanup.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/functional/any_invocable.h"
@@ -37,6 +40,7 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/cpu/collectives/cpu_collectives.h"
 #include "xla/core/collectives/clique_id.h"
 #include "xla/core/collectives/clique_key.h"
@@ -48,6 +52,7 @@ limitations under the License.
 #include "xla/megascale/c_api_client/c_api_megascale_error_aggregator.h"
 #include "xla/megascale/c_api_client/megascale_types.h"
 #include "xla/megascale/dcn_topology.pb.h"
+#include "xla/megascale/megascale_runtime_error_overlay.pb.h"
 #include "xla/pjrt/c/pjrt_c_api.h"
 #include "xla/pjrt/c/pjrt_c_api_collectives_extension.h"
 #include "xla/pjrt/c/pjrt_c_api_helpers.h"
@@ -61,6 +66,7 @@ limitations under the License.
 #include "xla/pjrt/plugin/plugin_names.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/stream_executor/device_address.h"
+#include "xla/tsl/platform/logging.h"
 #include "xla/tsl/platform/macros.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
@@ -512,17 +518,17 @@ absl::StatusOr<PJRT_MultiSlice_Extension*> GetMultiSliceExtension(
 
 absl::StatusOr<std::unique_ptr<xla::MultiSliceConfig>> CreateAoTMegascaleConfig(
     const xla::PjRtTopologyDescription& topology_description, int num_slices) {
-  TF_ASSIGN_OR_RETURN(const PJRT_Api* c_api, pjrt::PjrtApi(kTpuPjrtName));
-  TF_ASSIGN_OR_RETURN(PJRT_Megascale_Extension * extension,
-                      GetMegascaleExtension(c_api));
-  TF_ASSIGN_OR_RETURN(PJRT_MultiSlice_Extension * multi_slice_extension,
-                      GetMultiSliceExtension(c_api));
+  ASSIGN_OR_RETURN(const PJRT_Api* c_api, pjrt::PjrtApi(kTpuPjrtName));
+  ASSIGN_OR_RETURN(PJRT_Megascale_Extension * extension,
+                   GetMegascaleExtension(c_api));
+  ASSIGN_OR_RETURN(PJRT_MultiSlice_Extension * multi_slice_extension,
+                   GetMultiSliceExtension(c_api));
 
   PJRT_Megascale_CreateAoTConfig_Args args;
   args.struct_size = PJRT_Megascale_CreateAoTConfig_Args_STRUCT_SIZE;
-  args.topology = tsl::down_cast<const xla::PjRtCApiTopologyDescription&>(
-                      topology_description)
-                      .c_topology();
+  args.topology =
+      absl::down_cast<const PjRtCApiTopologyDescription&>(topology_description)
+          .c_topology();
   args.num_slices = num_slices;
   args.multi_slice_config = nullptr;
 
@@ -534,9 +540,9 @@ absl::StatusOr<std::unique_ptr<xla::MultiSliceConfig>> CreateAoTMegascaleConfig(
 
 absl::StatusOr<std::shared_ptr<CApiMegascaleErrorAggregator>>
 CreateMegascaleErrorAggregator(absl::string_view app_type) {
-  TF_ASSIGN_OR_RETURN(const PJRT_Api* c_api, pjrt::PjrtApi(kTpuPjrtName));
-  TF_ASSIGN_OR_RETURN(PJRT_Megascale_Extension * extension,
-                      GetMegascaleExtension(c_api));
+  ASSIGN_OR_RETURN(const PJRT_Api* c_api, pjrt::PjrtApi(kTpuPjrtName));
+  ASSIGN_OR_RETURN(PJRT_Megascale_Extension * extension,
+                   GetMegascaleExtension(c_api));
 
   PJRT_Megascale_ErrorAggregator_Create_Args args{};
   args.struct_size = PJRT_Megascale_ErrorAggregator_Create_Args_STRUCT_SIZE;
@@ -556,17 +562,17 @@ CreateMultiSliceMegascaleConfig(
     std::shared_ptr<CApiPjRtClientContext> megascale_client_ctx) {
   const PJRT_Api* c_api = megascale_client_ctx->c_api();
   const PJRT_Megascale_Extension* extension = megascale_client_ctx->extension();
-  TF_ASSIGN_OR_RETURN(PJRT_MultiSlice_Extension * multi_slice_extension,
-                      GetMultiSliceExtension(c_api));
+  ASSIGN_OR_RETURN(PJRT_MultiSlice_Extension * multi_slice_extension,
+                   GetMultiSliceExtension(c_api));
 
   std::string endpoint_addresses_str = endpoint_addresses.SerializeAsString();
   std::string dcn_topology_str = dcn_topology.SerializeAsString();
 
   PJRT_Megascale_CreateMultiSliceConfig_Args args;
   args.struct_size = PJRT_Megascale_CreateMultiSliceConfig_Args_STRUCT_SIZE;
-  args.topology = tsl::down_cast<const xla::PjRtCApiTopologyDescription&>(
-                      topology_description)
-                      .c_topology();
+  args.topology =
+      absl::down_cast<const PjRtCApiTopologyDescription&>(topology_description)
+          .c_topology();
   args.num_slices = num_slices;
   args.local_slice_id = local_slice_id;
   args.local_host_id = local_host_id;
@@ -587,8 +593,7 @@ CreateMultiSliceMegascaleConfig(
 
 absl::StatusOr<std::shared_ptr<CApiPjRtClientContext>>
 MegaScaleClientContextFromClient(xla::PjRtClient* client) {
-  xla::PjRtCApiClient* c_api_client =
-      tsl::down_cast<xla::PjRtCApiClient*>(client);
+  xla::PjRtCApiClient* c_api_client = absl::down_cast<PjRtCApiClient*>(client);
   const PJRT_Api* c_api = c_api_client->pjrt_c_api();
   const PJRT_Megascale_Extension* extension =
       c_api_client->FindExtension<PJRT_Megascale_Extension>(
@@ -610,9 +615,9 @@ MegaScaleClientContextFromClient(xla::PjRtClient* client) {
 
 absl::StatusOr<std::shared_ptr<CApiPjRtClientContext>>
 CreateDefaultMegaScaleClientContext() {
-  TF_ASSIGN_OR_RETURN(const PJRT_Api* c_api, pjrt::PjrtApi(kTpuPjrtName));
-  TF_ASSIGN_OR_RETURN(PJRT_Megascale_Extension * extension,
-                      GetMegascaleExtension(c_api));
+  ASSIGN_OR_RETURN(const PJRT_Api* c_api, pjrt::PjrtApi(kTpuPjrtName));
+  ASSIGN_OR_RETURN(PJRT_Megascale_Extension * extension,
+                   GetMegascaleExtension(c_api));
 
   PJRT_Megascale_CreateDefaultClientContext_Args args;
   args.struct_size = PJRT_Megascale_CreateDefaultClientContext_Args_STRUCT_SIZE;
@@ -632,8 +637,8 @@ CreateMegascaleCollectives(
     std::optional<xla::megascale::runtime::DCNTopology>&& dcn_topology) {
   const PJRT_Api* c_api = megascale_client_ctx.c_api();
   const PJRT_Megascale_Extension* extension = megascale_client_ctx.extension();
-  TF_ASSIGN_OR_RETURN(PJRT_Collectives_Extension * collectives_extension,
-                      GetCollectivesExtension(c_api));
+  ASSIGN_OR_RETURN(PJRT_Collectives_Extension * collectives_extension,
+                   GetCollectivesExtension(c_api));
 
   std::vector<const char*> addresses_ptrs;
   std::vector<size_t> address_sizes;
@@ -700,9 +705,9 @@ static absl::NoDestructor<
 
 absl::Status RegisterMegascaleErrorHandler(absl::string_view handler_name,
                                            MegaScaleErrorHandler handler) {
-  TF_ASSIGN_OR_RETURN(const PJRT_Api* c_api, pjrt::PjrtApi(kTpuPjrtName));
-  TF_ASSIGN_OR_RETURN(PJRT_Megascale_Extension * extension,
-                      GetMegascaleExtension(c_api));
+  ASSIGN_OR_RETURN(const PJRT_Api* c_api, pjrt::PjrtApi(kTpuPjrtName));
+  ASSIGN_OR_RETURN(PJRT_Megascale_Extension * extension,
+                   GetMegascaleExtension(c_api));
 
   auto heap_handler =
       std::make_unique<MegaScaleErrorHandler>(std::move(handler));
@@ -732,9 +737,9 @@ absl::Status RegisterMegascaleErrorHandler(absl::string_view handler_name,
 }
 
 absl::Status UnregisterMegascaleErrorHandler(absl::string_view handler_name) {
-  TF_ASSIGN_OR_RETURN(const PJRT_Api* c_api, pjrt::PjrtApi(kTpuPjrtName));
-  TF_ASSIGN_OR_RETURN(PJRT_Megascale_Extension * extension,
-                      GetMegascaleExtension(c_api));
+  ASSIGN_OR_RETURN(const PJRT_Api* c_api, pjrt::PjrtApi(kTpuPjrtName));
+  ASSIGN_OR_RETURN(PJRT_Megascale_Extension * extension,
+                   GetMegascaleExtension(c_api));
 
   PJRT_Megascale_UnregisterErrorHandler_Args args{};
   args.struct_size = PJRT_Megascale_UnregisterErrorHandler_Args_STRUCT_SIZE;
@@ -748,6 +753,111 @@ absl::Status UnregisterMegascaleErrorHandler(absl::string_view handler_name) {
     megascale_error_handlers->erase(handler_name);
   }
   return absl::OkStatus();
+}
+
+absl::StatusOr<std::vector<runtime::HostNetworkAddress>>
+GetInterfaceAddressesHelper(absl::string_view megascale_port_name,
+                            int32_t megascale_port,
+                            const std::vector<std::string>& interface_prefixes,
+                            bool use_all_interfaces,
+                            bool limit_to_process_numa_local_interfaces) {
+  ASSIGN_OR_RETURN(const PJRT_Api* c_api, pjrt::PjrtApi(kTpuPjrtName));
+  ASSIGN_OR_RETURN(PJRT_Megascale_Extension * extension,
+                   GetMegascaleExtension(c_api));
+
+  std::vector<const char*> prefixes_ptrs;
+  std::vector<size_t> prefixes_sizes;
+  prefixes_ptrs.reserve(interface_prefixes.size());
+  prefixes_sizes.reserve(interface_prefixes.size());
+  for (const auto& prefix : interface_prefixes) {
+    prefixes_ptrs.push_back(prefix.data());
+    prefixes_sizes.push_back(prefix.size());
+  }
+
+  PJRT_Megascale_GetInterfaceAddressesHelper_Args args{};
+  args.struct_size =
+      PJRT_Megascale_GetInterfaceAddressesHelper_Args_STRUCT_SIZE;
+  args.megascale_port_name = megascale_port_name.data();
+  args.megascale_port_name_size = megascale_port_name.size();
+  args.megascale_port = megascale_port;
+  args.interface_prefixes = prefixes_ptrs.data();
+  args.interface_prefixes_sizes = prefixes_sizes.data();
+  args.num_interface_prefixes = interface_prefixes.size();
+  args.use_all_interfaces = use_all_interfaces;
+  args.limit_to_process_numa_local_interfaces =
+      limit_to_process_numa_local_interfaces;
+
+  RETURN_STATUS_IF_PJRT_ERROR(extension->get_interface_addresses_helper(&args),
+                              c_api);
+
+  absl::Cleanup cleanup = [&args]() {
+    if (args.addresses_deleter != nullptr) {
+      args.addresses_deleter(args.addresses);
+    }
+  };
+
+  CHECK_NOTNULL(args.serialized_addresses);
+  CHECK_NOTNULL(args.serialized_addresses_sizes);
+  std::vector<runtime::HostNetworkAddress> addresses;
+  addresses.reserve(args.num_addresses);
+  for (size_t i = 0; i < args.num_addresses; ++i) {
+    runtime::HostNetworkAddress address;
+    CHECK_NOTNULL(args.serialized_addresses[i]);
+    if (!address.ParseFromString(
+            absl::string_view(args.serialized_addresses[i],
+                              args.serialized_addresses_sizes[i]))) {
+      return absl::InternalError(
+          "Failed to parse HostNetworkAddress proto from serialized address.");
+    }
+    addresses.push_back(std::move(address));
+  }
+
+  return addresses;
+}
+
+absl::StatusOr<std::tuple<runtime::MegaScaleRuntimeErrorOverlay, bool>>
+GetOrCreateRuntimeError(
+    runtime::MegaScaleRuntimeErrorOverlay::ErrorType error_type,
+    absl::Time start_time, const absl::Status& status, int32_t launch_id,
+    std::optional<runtime::MegaScaleRuntimeErrorOverlay::UnrecoverableErrorType>
+        unrecoverable_error_type) {
+  ASSIGN_OR_RETURN(const PJRT_Api* c_api, pjrt::PjrtApi(kTpuPjrtName));
+  ASSIGN_OR_RETURN(PJRT_Megascale_Extension * extension,
+                   GetMegascaleExtension(c_api));
+
+  PJRT_Megascale_GetOrCreateRuntimeError_Args args{};
+  args.struct_size = PJRT_Megascale_GetOrCreateRuntimeError_Args_STRUCT_SIZE;
+  args.error_type = static_cast<int32_t>(error_type);
+  args.start_time_nanos = absl::ToUnixNanos(start_time);
+  args.status_code = pjrt::StatusCodeToPjrtErrorCode(status.code());
+  args.status_message = status.message().data();
+  args.status_message_size = status.message().size();
+  args.launch_id = launch_id;
+  args.has_unrecoverable_error_type = unrecoverable_error_type.has_value();
+  if (unrecoverable_error_type.has_value()) {
+    args.unrecoverable_error_type =
+        static_cast<int32_t>(*unrecoverable_error_type);
+  }
+
+  RETURN_STATUS_IF_PJRT_ERROR(extension->get_or_create_runtime_error(&args),
+                              c_api);
+
+  absl::Cleanup cleanup = [&args]() {
+    if (args.error_deleter != nullptr) {
+      args.error_deleter(args.error);
+    }
+  };
+
+  CHECK_NOTNULL(args.serialized_error);
+  runtime::MegaScaleRuntimeErrorOverlay error;
+  if (!error.ParseFromString(absl::string_view(args.serialized_error,
+                                               args.serialized_error_size))) {
+    return absl::InternalError(
+        "Failed to parse MegaScaleRuntimeErrorOverlay proto from serialized "
+        "error.");
+  }
+
+  return std::make_tuple(std::move(error), args.is_new_error);
 }
 
 }  // namespace c_api_client

@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "llvm/IR/BasicBlock.h"
 #include "llvm/IR/Constants.h"
 #include "llvm/IR/IRBuilder.h"
@@ -86,8 +87,8 @@ BodyEmitter MakeBodyEmitter(const ElementGenerator& target_element_generator,
     CHECK_EQ(target_arrays.size(), 1);
     return [=](const llvm_ir::IrArray::Index array_index) -> absl::Status {
       // Convert target_element_generator to a BodyEmitter.
-      TF_ASSIGN_OR_RETURN(llvm::Value * target_element,
-                          target_element_generator(array_index));
+      ASSIGN_OR_RETURN(llvm::Value * target_element,
+                       target_element_generator(array_index));
       target_arrays_vec[0].EmitWriteArrayElement(array_index, target_element,
                                                  b);
       return absl::OkStatus();
@@ -95,8 +96,8 @@ BodyEmitter MakeBodyEmitter(const ElementGenerator& target_element_generator,
   }
 
   return [=](const llvm_ir::IrArray::Index array_index) {
-    TF_ASSIGN_OR_RETURN(llvm::Value * target_element,
-                        target_element_generator(array_index));
+    ASSIGN_OR_RETURN(llvm::Value * target_element,
+                     target_element_generator(array_index));
     CHECK(target_element->getType()->isStructTy())
         << "This BodyEmitter is for multi-output, but target element "
            "generator does not produce values of struct type.";
@@ -209,7 +210,7 @@ absl::Status LoopEmitter::EmitLoop(absl::string_view loop_name,
   for (const IrArray::Index& array_index :
        EmitIndexAndSetExitBasicBlock(loop_name, index_type,
                                      /*base_index*/ nullptr)) {
-    TF_RETURN_IF_ERROR(body_emitter_(array_index));
+    RETURN_IF_ERROR(body_emitter_(array_index));
   }
 
   // Set the insertion point of b_ to the loop exit, so that

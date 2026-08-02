@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -96,15 +97,15 @@ absl::StatusOr<HloInstruction*> AdjustScatterDims(
 absl::StatusOr<HloInstruction*> CanonicalizeScatterIndices(
     HloInstruction* scatter_indices, int64_t index_vector_dim) {
   // Transpose the non-index-vector dimensions to the front.
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       HloInstruction * transposed_scatter_indices,
       TransposeIndexVectorDimToLast(scatter_indices, index_vector_dim));
   if (scatter_indices->shape().dimensions().size() == index_vector_dim + 1 &&
       scatter_indices->shape().dimensions(index_vector_dim) == 1) {
     auto new_shape =
         ShapeUtil::DeleteDimension(index_vector_dim, scatter_indices->shape());
-    TF_ASSIGN_OR_RETURN(scatter_indices,
-                        MakeReshapeHlo(new_shape, scatter_indices));
+    ASSIGN_OR_RETURN(scatter_indices,
+                     MakeReshapeHlo(new_shape, scatter_indices));
   }
   bool indices_are_scalar =
       index_vector_dim == scatter_indices->shape().dimensions().size();
@@ -152,7 +153,7 @@ absl::StatusOr<HloComputation*> CallAndGetOutput(HloComputation* original,
       new_comp->AddInstruction(
           HloInstruction::CreateGetTupleElement(call_original, output_index)),
       /*accept_different_shape=*/true);
-  TF_RETURN_IF_ERROR(CallInliner::Inline(call_original).status());
+  RETURN_IF_ERROR(CallInliner::Inline(call_original).status());
   return new_comp;
 }
 
@@ -196,7 +197,7 @@ absl::StatusOr<HloComputation*> CallComputationAndGetIthOutputWithBinaryParams(
       new_comp->AddInstruction(
           HloInstruction::CreateGetTupleElement(call_original, output_index)),
       /*accept_different_shape=*/true);
-  TF_RETURN_IF_ERROR(CallInliner::Inline(call_original).status());
+  RETURN_IF_ERROR(CallInliner::Inline(call_original).status());
   return new_comp;
 }
 

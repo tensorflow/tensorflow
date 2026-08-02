@@ -62,9 +62,9 @@ absl::Status ZerosLikeTensor(OpKernelContext* ctx, const Tensor& x,
       break;
     }
     default:
-      return errors::InvalidArgument(
-          "Trying to compute zeros_like for unsupported dtype ",
-          DataTypeString(out->dtype()));
+      return absl::InvalidArgumentError(
+          absl::StrCat("Trying to compute zeros_like for unsupported dtype ",
+                       DataTypeString(out->dtype())));
   }
   return absl::OkStatus();
 }
@@ -81,17 +81,17 @@ absl::Status BinaryAddTensors(OpKernelContext* ctx, const Tensor& a,
     return absl::OkStatus();
   }
   if (a.dtype() != b.dtype()) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(absl::StrCat(
         "Trying to add two tensors with incompatible element types. ",
         "One is ", DataTypeString(a.dtype()), " and the other is ",
-        DataTypeString(b.dtype()));
+        DataTypeString(b.dtype())));
   }
   if (a.shape() != b.shape()) {
     // TODO(apassos) support broadcasting additions here?
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(absl::StrCat(
         "Trying to add two tensors with incompatible element shapes. ",
         "One is ", a.shape().DebugString(), " and the other is ",
-        b.shape().DebugString());
+        b.shape().DebugString()));
   }
 
   AllocatorAttributes attr;
@@ -118,8 +118,8 @@ absl::Status BinaryAddTensors(OpKernelContext* ctx, const Tensor& a,
       break;
     }
     default:
-      return errors::InvalidArgument("Trying to add unsupported dtype ",
-                                     out->dtype());
+      return absl::InvalidArgumentError(
+          absl::StrCat("Trying to add unsupported dtype ", out->dtype()));
   }
   return absl::OkStatus();
 }

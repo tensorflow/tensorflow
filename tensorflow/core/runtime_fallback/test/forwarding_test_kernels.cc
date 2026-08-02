@@ -74,7 +74,7 @@ class FailingKernel : public OpKernelT {
 
   void Compute(OpKernelContextT* ctx) override {
     ctx->CtxFailure("filename", 999,
-                    errors::Internal("TFRT forwarding error!"));
+                    absl::InternalError("TFRT forwarding error!"));
   }
 };
 

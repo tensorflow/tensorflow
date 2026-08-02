@@ -20,6 +20,7 @@ limitations under the License.
 #include <limits>
 
 #include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "tensorflow/core/framework/kernel_def_builder.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
@@ -54,8 +55,8 @@ class TridiagonalSolveOp : public LinearAlgebraOp<Scalar> {
                      context->GetAttr("perturb_singular", &perturb_singular_));
     }
     OP_REQUIRES(context, pivoting_ || !perturb_singular_,
-                errors::InvalidArgument("Setting perturb_singular requires "
-                                        "also setting partial_pivoting."));
+                absl::InvalidArgumentError("Setting perturb_singular requires "
+                                           "also setting partial_pivoting."));
   }
 
   void ValidateInputMatrixShapes(

@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
 #include "absl/strings/strip.h"
+#include "xla/tsl/platform/macros.h"
 #include "tsl/platform/regexp.h"
 
 namespace tsl {
@@ -81,7 +82,8 @@ std::optional<TfOp> GetMemcpyOp(absl::string_view tf_op_fullname) {
     tf_op.category = Category::kMemcpyDToD;
     tf_op.type = kMemcpyDToDOp;
     return tf_op;
-  } else if (absl::StartsWithIgnoreCase(tf_op_fullname, "MEMCPYHToH")) {
+  }
+  if (absl::StartsWithIgnoreCase(tf_op_fullname, "MEMCPYHToH")) {
     tf_op.category = Category::kMemcpyHToH;
     tf_op.type = kMemcpyHToHOp;
     return tf_op;
@@ -91,12 +93,13 @@ std::optional<TfOp> GetMemcpyOp(absl::string_view tf_op_fullname) {
 
 }  // namespace
 
-const absl::string_view kUnknownOp = "";  // op types are non-empty strings
-const absl::string_view kDatasetOp = "Dataset";
-const absl::string_view kMemcpyHToDOp = "MemcpyHToD";
-const absl::string_view kMemcpyDToHOp = "MemcpyDToH";
-const absl::string_view kMemcpyDToDOp = "MemcpyDToD";
-const absl::string_view kMemcpyHToHOp = "MemcpyHToH";
+TF_CONST_INIT const absl::string_view kUnknownOp =
+    "";  // op types are non-empty strings
+TF_CONST_INIT const absl::string_view kDatasetOp = "Dataset";
+TF_CONST_INIT const absl::string_view kMemcpyHToDOp = "MemcpyHToD";
+TF_CONST_INIT const absl::string_view kMemcpyDToHOp = "MemcpyDToH";
+TF_CONST_INIT const absl::string_view kMemcpyDToDOp = "MemcpyDToD";
+TF_CONST_INIT const absl::string_view kMemcpyHToHOp = "MemcpyHToH";
 
 // Example inputs: "MyOpName", "MyNamespace>MyOpName"
 bool IsTfOpName(absl::string_view op_name) {
@@ -120,7 +123,9 @@ bool IsJaxOpType(absl::string_view op_type) {
 }
 
 bool IsJaxOpNameAndType(absl::string_view op_name, absl::string_view op_type) {
-  if (op_name.empty() || !IsJaxOpType(op_type)) return false;
+  if (op_name.empty() || !IsJaxOpType(op_type)) {
+    return false;
+  }
   std::vector<absl::string_view> split_result =
       absl::StrSplit(op_name, kNameScopeSeparator);
   return absl::StrContains(split_result.back(), op_type);
@@ -197,7 +202,9 @@ std::vector<absl::string_view> ParseTfNameScopes(absl::string_view tf_op_name) {
   std::vector<absl::string_view> name_scopes =
       absl::StrSplit(tf_op_name, kNameScopeSeparator);
   // The last element is an op name not TF name scope.
-  if (!name_scopes.empty()) name_scopes.pop_back();
+  if (!name_scopes.empty()) {
+    name_scopes.pop_back();
+  }
   return name_scopes;
 }
 

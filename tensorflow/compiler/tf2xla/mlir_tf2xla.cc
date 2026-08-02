@@ -13,16 +13,17 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <map>
+#include <cstddef>
 #include <memory>
 #include <optional>
 #include <string>
 #include <unordered_map>
-#include <utility>
 #include <vector>
 
 #include "absl/algorithm/container.h"
 #include "absl/log/log.h"
+#include "absl/log/vlog_is_on.h"
+#include "absl/status/status.h"
 #include "absl/strings/string_view.h"
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
@@ -68,7 +69,7 @@ class FakeDevice : public Device {
       : Device(nullptr, device_attributes) {}
 
   absl::Status Sync() override {
-    return errors::Unimplemented("FakeDevice::Sync()");
+    return absl::UnimplementedError("FakeDevice::Sync()");
   }
 };
 

@@ -22,12 +22,10 @@ limitations under the License.
 #include <string>
 #include <vector>
 
-#include "google/protobuf/any.pb.h"
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
 #include "xla/autotuning.pb.h"
-#include "xla/backends/autotuner/autotuner_cache.pb.h"
 #include "xla/backends/autotuner/autotuner_cache_interface.h"
 #include "xla/backends/autotuner/backends.pb.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -40,6 +38,7 @@ limitations under the License.
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/protobuf/dnn.pb.h"
 #include "xla/xla.pb.h"
+#include "tsl/platform/protobuf.h"
 
 namespace xla {
 namespace gpu {
@@ -94,43 +93,35 @@ class LegacyCacheTest : public ::testing::Test {
   Config CreateDummyTritonConfig() {
     Config config;
     config.codegen_backend = Backend::TRITON;
-    config.backend_config.PackFrom(AutotuneResult::TritonGemmKey());
+    config.backend_config.mutable_triton();
     return config;
   }
 
   Config CreateDummyCublasLtConfig() {
     Config config;
     config.codegen_backend = Backend::CUBLASLT;
-    config.backend_config.PackFrom(AutotuneResult::GemmKey());
+    config.backend_config.mutable_gemm();
     return config;
   }
 
   Config CreateDummyCublasLtFissionConfig() {
     Config config;
     config.codegen_backend = Backend::CUBLASLT_FISSION;
-    config.backend_config.PackFrom(AutotuneResult::GemmKey());
+    config.backend_config.mutable_gemm();
     return config;
   }
 
   Config CreateDummyCudnnConfig() {
     Config config;
     config.codegen_backend = Backend::CUDNN;
-    config.backend_config.PackFrom(stream_executor::dnn::AlgorithmProto());
-    return config;
-  }
-
-  Config CreateDummyCustomKernelFissionConfig() {
-    Config config;
-    config.codegen_backend = Backend::CUSTOM_KERNEL_FISSION;
-    config.backend_config.PackFrom(AutotuneResult::CustomKernelFusionKey());
+    config.backend_config.mutable_algorithm();
     return config;
   }
 
   Config CreateDummyBackendConfig() {
-    using DummyOtherConfig = AutotuneResult::CustomKernelFusionKey;
     Config config;
-    config.codegen_backend = Backend::CUSTOM_KERNEL_FISSION;
-    config.backend_config.PackFrom(DummyOtherConfig());
+    config.codegen_backend = Backend::BLOCK_LEVEL_EMITTER;
+    config.backend_config.mutable_block_level();
     return config;
   }
 };
@@ -144,16 +135,8 @@ MATCHER_P(ConfigEq, expected_config, "") {
                      << actual_config.codegen_backend;
     return false;
   }
-  // Compare backend_config (google::protobuf::Any)
-  if (actual_config.backend_config.type_url() !=
-      expected_config.backend_config.type_url()) {
-    *result_listener << "backend_config type_url mismatch: expected "
-                     << expected_config.backend_config.type_url() << ", got "
-                     << actual_config.backend_config.type_url();
-    return false;
-  }
-  if (actual_config.backend_config.value() !=
-      expected_config.backend_config.value()) {
+  if (!tsl::protobuf::util::MessageDifferencer::Equals(
+          actual_config.backend_config, expected_config.backend_config)) {
     *result_listener << "backend_config value mismatch";
     return false;
   }
@@ -214,14 +197,6 @@ TEST_F(LegacyCacheTest, InsertAndLookupCudnn) {
   auto instr = CreateDummyInstr("hlo3");
   Config config = CreateDummyCudnnConfig();
 
-  TF_ASSERT_OK(cache.Insert(instr.get(), config));
-  EXPECT_THAT(cache.Lookup(instr.get()), Optional(ConfigEq(config)));
-}
-
-TEST_F(LegacyCacheTest, InsertAndLookupCustomKernelFission) {
-  auto cache = LegacyCache(test_dir_, mode_, device_desc_);
-  auto instr = CreateDummyInstr("hlo4");
-  Config config = CreateDummyCustomKernelFissionConfig();
   TF_ASSERT_OK(cache.Insert(instr.get(), config));
   EXPECT_THAT(cache.Lookup(instr.get()), Optional(ConfigEq(config)));
 }

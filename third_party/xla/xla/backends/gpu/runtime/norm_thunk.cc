@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
 #include "xla/runtime/buffer_use.h"
@@ -51,7 +52,7 @@ absl::StatusOr<std::unique_ptr<NormThunk>> NormThunk::Create(
     std::optional<BufferAllocation::Slice> dscale_slice,
     std::optional<BufferAllocation::Slice> dbias_slice,
     BufferAllocation::Slice scratch_slice) {
-  TF_ASSIGN_OR_RETURN(GpuNormConfig config, GpuNormConfig::For(descriptor));
+  ASSIGN_OR_RETURN(GpuNormConfig config, GpuNormConfig::For(descriptor));
 
   // Can't use make_unique because the constructor is private. go/totw/134
   return absl::WrapUnique(new NormThunk(
@@ -132,7 +133,7 @@ absl::Status NormThunk::ExecuteOnStream(const ExecuteParams& params) {
   RunNormOptions opts;
   opts.norm_runner = &GetOrCreateRunner(params.stream);
 
-  TF_RETURN_IF_ERROR(RunGpuNorm(
+  RETURN_IF_ERROR(RunGpuNorm(
       config_, x_se_buffer, scale_se_buffer, y_or_dx_se_buffer, bias_se_buffer,
       dy_se_buffer, expectation_se_buffer, norm_factor_se_buffer,
       dscale_se_buffer, dbias_se_buffer, scratch, params.stream, opts));
@@ -148,7 +149,7 @@ absl::Status NormThunk::Initialize(const InitializeParams& params) {
   // the execution plan while a NCCL collective is running.
   se::dnn::LazyOpRunner<se::dnn::NormOp>* lazy_runner =
       GetOrCreateRunner(params.stream).AsNormRunner();
-  TF_ASSIGN_OR_RETURN(auto ln_config, config_.AsDnnNormOpConfig());
+  ASSIGN_OR_RETURN(auto ln_config, config_.AsDnnNormOpConfig());
   return lazy_runner->GetOrCreateRunner(ln_config, params.stream).status();
 }
 
@@ -185,49 +186,47 @@ Thunk::BufferUses NormThunk::buffer_uses() const {
 absl::StatusOr<std::unique_ptr<NormThunk>> NormThunk::FromProto(
     ThunkInfo thunk_info, const NormThunkProto& proto,
     absl::Span<const BufferAllocation> buffer_allocations) {
-  TF_ASSIGN_OR_RETURN(GpuNormDescriptor descriptor,
-                      GpuNormDescriptor::FromProto(proto.norm_descriptor()));
+  ASSIGN_OR_RETURN(GpuNormDescriptor descriptor,
+                   GpuNormDescriptor::FromProto(proto.norm_descriptor()));
 
-  TF_ASSIGN_OR_RETURN(auto x, BufferAllocation::Slice::FromProto(
-                                  proto.x(), buffer_allocations));
-  TF_ASSIGN_OR_RETURN(auto scale, BufferAllocation::Slice::FromProto(
-                                      proto.scale(), buffer_allocations));
-  TF_ASSIGN_OR_RETURN(auto y_or_dx, BufferAllocation::Slice::FromProto(
-                                        proto.y_or_dx(), buffer_allocations));
+  ASSIGN_OR_RETURN(auto x, BufferAllocation::Slice::FromProto(
+                               proto.x(), buffer_allocations));
+  ASSIGN_OR_RETURN(auto scale, BufferAllocation::Slice::FromProto(
+                                   proto.scale(), buffer_allocations));
+  ASSIGN_OR_RETURN(auto y_or_dx, BufferAllocation::Slice::FromProto(
+                                     proto.y_or_dx(), buffer_allocations));
   std::optional<BufferAllocation::Slice> bias;
   if (proto.has_bias()) {
-    TF_ASSIGN_OR_RETURN(bias, BufferAllocation::Slice::FromProto(
-                                  proto.bias(), buffer_allocations));
+    ASSIGN_OR_RETURN(bias, BufferAllocation::Slice::FromProto(
+                               proto.bias(), buffer_allocations));
   }
   std::optional<BufferAllocation::Slice> expectation;
   if (proto.has_expectation()) {
-    TF_ASSIGN_OR_RETURN(expectation,
-                        BufferAllocation::Slice::FromProto(proto.expectation(),
-                                                           buffer_allocations));
+    ASSIGN_OR_RETURN(expectation, BufferAllocation::Slice::FromProto(
+                                      proto.expectation(), buffer_allocations));
   }
   std::optional<BufferAllocation::Slice> norm_factor;
   if (proto.has_norm_factor()) {
-    TF_ASSIGN_OR_RETURN(norm_factor,
-                        BufferAllocation::Slice::FromProto(proto.norm_factor(),
-                                                           buffer_allocations));
+    ASSIGN_OR_RETURN(norm_factor, BufferAllocation::Slice::FromProto(
+                                      proto.norm_factor(), buffer_allocations));
   }
   std::optional<BufferAllocation::Slice> dy;
   if (proto.has_dy()) {
-    TF_ASSIGN_OR_RETURN(
+    ASSIGN_OR_RETURN(
         dy, BufferAllocation::Slice::FromProto(proto.dy(), buffer_allocations));
   }
   std::optional<BufferAllocation::Slice> dscale;
   if (proto.has_dscale()) {
-    TF_ASSIGN_OR_RETURN(dscale, BufferAllocation::Slice::FromProto(
-                                    proto.dscale(), buffer_allocations));
+    ASSIGN_OR_RETURN(dscale, BufferAllocation::Slice::FromProto(
+                                 proto.dscale(), buffer_allocations));
   }
   std::optional<BufferAllocation::Slice> dbias;
   if (proto.has_dbias()) {
-    TF_ASSIGN_OR_RETURN(dbias, BufferAllocation::Slice::FromProto(
-                                   proto.dbias(), buffer_allocations));
+    ASSIGN_OR_RETURN(dbias, BufferAllocation::Slice::FromProto(
+                                proto.dbias(), buffer_allocations));
   }
-  TF_ASSIGN_OR_RETURN(auto scratch, BufferAllocation::Slice::FromProto(
-                                        proto.scratch(), buffer_allocations));
+  ASSIGN_OR_RETURN(auto scratch, BufferAllocation::Slice::FromProto(
+                                     proto.scratch(), buffer_allocations));
 
   return Create(std::move(thunk_info), descriptor, x, scale, y_or_dx, bias,
                 expectation, norm_factor, dy, dscale, dbias, scratch);
@@ -240,33 +239,30 @@ absl::StatusOr<ThunkProto> NormThunk::ToProto() const {
   NormThunkProto* norm_proto = proto.mutable_norm_thunk();
   *norm_proto->mutable_norm_descriptor() = descriptor_.ToProto();
 
-  TF_ASSIGN_OR_RETURN(*norm_proto->mutable_x(), x_buffer_.ToProto());
-  TF_ASSIGN_OR_RETURN(*norm_proto->mutable_scale(), scale_buffer_.ToProto());
-  TF_ASSIGN_OR_RETURN(*norm_proto->mutable_y_or_dx(),
-                      y_or_dx_buffer_.ToProto());
+  ASSIGN_OR_RETURN(*norm_proto->mutable_x(), x_buffer_.ToProto());
+  ASSIGN_OR_RETURN(*norm_proto->mutable_scale(), scale_buffer_.ToProto());
+  ASSIGN_OR_RETURN(*norm_proto->mutable_y_or_dx(), y_or_dx_buffer_.ToProto());
   if (bias_buffer_.has_value()) {
-    TF_ASSIGN_OR_RETURN(*norm_proto->mutable_bias(), bias_buffer_->ToProto());
+    ASSIGN_OR_RETURN(*norm_proto->mutable_bias(), bias_buffer_->ToProto());
   }
   if (expectation_buffer_.has_value()) {
-    TF_ASSIGN_OR_RETURN(*norm_proto->mutable_expectation(),
-                        expectation_buffer_->ToProto());
+    ASSIGN_OR_RETURN(*norm_proto->mutable_expectation(),
+                     expectation_buffer_->ToProto());
   }
   if (norm_factor_buffer_.has_value()) {
-    TF_ASSIGN_OR_RETURN(*norm_proto->mutable_norm_factor(),
-                        norm_factor_buffer_->ToProto());
+    ASSIGN_OR_RETURN(*norm_proto->mutable_norm_factor(),
+                     norm_factor_buffer_->ToProto());
   }
   if (dy_buffer_.has_value()) {
-    TF_ASSIGN_OR_RETURN(*norm_proto->mutable_dy(), dy_buffer_->ToProto());
+    ASSIGN_OR_RETURN(*norm_proto->mutable_dy(), dy_buffer_->ToProto());
   }
   if (dscale_buffer_.has_value()) {
-    TF_ASSIGN_OR_RETURN(*norm_proto->mutable_dscale(),
-                        dscale_buffer_->ToProto());
+    ASSIGN_OR_RETURN(*norm_proto->mutable_dscale(), dscale_buffer_->ToProto());
   }
   if (dbias_buffer_.has_value()) {
-    TF_ASSIGN_OR_RETURN(*norm_proto->mutable_dbias(), dbias_buffer_->ToProto());
+    ASSIGN_OR_RETURN(*norm_proto->mutable_dbias(), dbias_buffer_->ToProto());
   }
-  TF_ASSIGN_OR_RETURN(*norm_proto->mutable_scratch(),
-                      scratch_buffer_.ToProto());
+  ASSIGN_OR_RETURN(*norm_proto->mutable_scratch(), scratch_buffer_.ToProto());
 
   return proto;
 }

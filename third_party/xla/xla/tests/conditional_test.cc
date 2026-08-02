@@ -50,13 +50,12 @@ using ::absl_testing::IsOkAndHolds;
 
 constexpr ErrorSpec kErrorSpec{0.001};
 
-class ConditionalOpTest
-    : public ClientLibraryTestRunnerMixin<
-          HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>> {
+class ConditionalOpTest : public ClientLibraryTestRunnerMixin<
+                              HloPjRtInterpreterReferenceMixin<HloTestBase>> {
  protected:
   void SetUp() override {
     ClientLibraryTestRunnerMixin<
-        HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>>::SetUp();
+        HloPjRtInterpreterReferenceMixin<HloTestBase>>::SetUp();
     mutable_debug_options()->set_xla_test_add_command_buffer_mode(true);
   }
 
@@ -876,7 +875,7 @@ TEST_F(ConditionalOpTest, DuplicateElementsConditional) {
   EXPECT_TRUE(LiteralTestUtil::Equal(false_reference, false_result));
 }
 
-using ConditionalOpHloTest = HloPjRtTestBase;
+using ConditionalOpHloTest = HloTestBase;
 
 TEST_F(ConditionalOpHloTest, ParallelExecution) {
   // Test conditional works when an executable is executed in parallel.

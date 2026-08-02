@@ -2,8 +2,10 @@
 
 #include "absl/strings/string_view.h"
 #include "xla/backends/gpu/collectives/gpu_clique_key.h"
+#include "xla/backends/gpu/runtime/thunk.pb.h"
 #include "xla/runtime/buffer_use.h"
 #include "xla/service/buffer_assignment.h"
+#include "xla/xla_data.pb.h"
 /* Copyright 2024 The OpenXLA Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -25,6 +27,8 @@ limitations under the License.
 #include <cstdint>
 #include <vector>
 
+#include "absl/base/thread_annotations.h"
+#include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
@@ -32,12 +36,17 @@ limitations under the License.
 #include "xla/core/collectives/communicator.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/stream_executor/memory_allocation.h"
 #include "xla/stream_executor/stream.h"
 
 namespace xla::gpu {
 
+struct CollectiveBroadcastMetadata {
+  int64_t num_roots;
+  std::unique_ptr<se::MemoryAllocation> bcast_roots = nullptr;
+};
 // Thunk that performs a collective broadcast.
-class CollectiveBroadcastStartThunk : public CollectiveThunk {
+class CollectiveBroadcastThunk : public CollectiveThunk {
  public:
   static absl::Status CheckImplementable(const HloInstruction* instr,
                                          int64_t replica_count,
@@ -47,39 +56,26 @@ class CollectiveBroadcastStartThunk : public CollectiveThunk {
       const HloCollectiveBroadcastInstruction* inst);
 
   const CollectiveConfig& config() const override { return config_; }
-  absl::Span<const Buffer> buffers() const { return buffers_; }
 
   static absl::string_view GetHloOpName() {
     return "collective-broadcast-start";
   }
 
-  CollectiveBroadcastStartThunk(ThunkInfo thunk_info,
-                                const HloCollectiveBroadcastInstruction* instr,
-                                std::vector<Buffer> buffers,
-                                bool p2p_memcpy_enabled = false);
-  CollectiveBroadcastStartThunk(ThunkInfo thunk_info, CollectiveConfig config,
-                                std::shared_ptr<AsyncEvents> async_events,
-                                std::vector<Buffer> buffers);
+  CollectiveBroadcastThunk(ThunkInfo thunk_info,
+                           const HloCollectiveBroadcastInstruction* instr,
+                           std::vector<Buffer> buffers,
+                           bool p2p_memcpy_enabled = false,
+                           bool has_dynamic_root = false);
+  CollectiveBroadcastThunk(ThunkInfo thunk_info, CollectiveConfig config,
+                           std::vector<Buffer> buffers,
+                           bool has_dynamic_root = false);
+  absl::Status Initialize(const InitializeParams& params) override;
 
-  static absl::StatusOr<std::unique_ptr<CollectiveBroadcastStartThunk>>
-  FromProto(ThunkInfo thunk_info,
-            const CollectiveBroadcastStartThunkProto& thunk_proto,
-            absl::Span<const BufferAllocation> buffer_allocations,
-            CollectiveThunk::AsyncEventsMap& async_events_map);
+  static absl::StatusOr<std::unique_ptr<CollectiveBroadcastThunk>> FromProto(
+      ThunkInfo thunk_info, const CollectiveBroadcastThunkProto& thunk_proto,
+      absl::Span<const BufferAllocation> buffer_allocations);
 
   absl::StatusOr<ThunkProto> ToProto() const override;
-
-  BufferUses buffer_uses() const override {
-    BufferUses uses;
-    uses.reserve(buffers_.size() * 2);
-    for (const Buffer& buffer : buffers_) {
-      uses.push_back(BufferUse::Read(buffer.source_buffer.slice,
-                                     buffer.source_buffer.shape));
-      uses.push_back(BufferUse::Write(buffer.destination_buffer.slice,
-                                      buffer.destination_buffer.shape));
-    }
-    return uses;
-  }
 
  protected:
   bool RequiresRendezvous() const override { return true; }
@@ -90,11 +86,17 @@ class CollectiveBroadcastStartThunk : public CollectiveThunk {
 
  private:
   const CollectiveConfig config_;
-  const std::vector<Buffer> buffers_;
+  mutable absl::Mutex mutex_;
+  absl::flat_hash_map<se::StreamExecutor*,
+                      std::unique_ptr<CollectiveBroadcastMetadata>>
+      per_executor_cb_metadata_ ABSL_GUARDED_BY(mutex_);
+  bool has_dynamic_root_;
 };
 
 absl::Status RunCollectiveBroadcast(std::vector<DeviceBufferPair>& buffers,
-                                    se::Stream& stream, Communicator& comm);
+                                    se::Stream& stream, Communicator& comm,
+                                    CollectiveBroadcastMetadata* cb_metadata,
+                                    bool has_dynamic_root = false);
 
 }  // namespace xla::gpu
 

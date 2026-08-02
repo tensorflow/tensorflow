@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/memory/memory.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/cpu/collectives/cpu_collectives.h"
 #include "xla/backends/cpu/runtime/collective_thunk.h"
 #include "xla/backends/cpu/runtime/thunk.h"
@@ -64,7 +65,7 @@ ReduceScatterThunk::ReduceScatterThunk(Info info, ReductionKind reduction_kind,
 
 tsl::AsyncValueRef<ReduceScatterThunk::ExecuteEvent>
 ReduceScatterThunk::Execute(const ExecuteParams& params) {
-  TF_ASSIGN_OR_RETURN(OpDeviceMemory data, GetOpDeviceMemory(params));
+  ASSIGN_OR_RETURN(OpDeviceMemory data, GetOpDeviceMemory(params));
 
   VLOG(3) << absl::StreamFormat(
       "ReduceScatter: #source_buffers=%d, #destination_buffers=%d, "

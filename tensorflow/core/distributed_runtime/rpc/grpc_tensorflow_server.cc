@@ -71,13 +71,14 @@ absl::Status FillServerDef(const std::string& cluster_spec,
               << absl::StrJoin(host_ports, ", ") << "}";
   }
   if (my_num_tasks == 0) {
-    return errors::InvalidArgument("Job name \"", options->job_name(),
-                                   "\" does not appear in the cluster spec");
+    return absl::InvalidArgumentError(
+        absl::StrCat("Job name \"", options->job_name(),
+                     "\" does not appear in the cluster spec"));
   }
   if (options->task_index() >= my_num_tasks) {
-    return errors::InvalidArgument("Task index ", options->task_index(),
-                                   " is invalid (job \"", options->job_name(),
-                                   "\" contains ", my_num_tasks, " tasks");
+    return absl::InvalidArgumentError(absl::StrCat(
+        "Task index ", options->task_index(), " is invalid (job \"",
+        options->job_name(), "\" contains ", my_num_tasks, " tasks"));
   }
   return absl::OkStatus();
 }

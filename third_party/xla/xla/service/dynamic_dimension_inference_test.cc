@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/comparison_util.h"
 #include "xla/hlo/builder/xla_builder.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
@@ -57,10 +58,10 @@ class DynamicDimensionInferenceTest : public HloHardwareIndependentTestBase {
           DynamicDimensionInference::ShapeCheckMode::kIgnore,
       const DynamicDimensionInference::AssertionGenerator& assertion_generator =
           nullptr) {
-    TF_ASSIGN_OR_RETURN(DynamicDimensionInference inference,
-                        DynamicDimensionInference::Run(
-                            module_.get(), op_supports_dynamism_handler,
-                            handler, shape_check_mode, assertion_generator));
+    ASSIGN_OR_RETURN(DynamicDimensionInference inference,
+                     DynamicDimensionInference::Run(
+                         module_.get(), op_supports_dynamism_handler, handler,
+                         shape_check_mode, assertion_generator));
 
     inference_ = std::make_unique<DynamicDimensionInference>(inference);
     return absl::OkStatus();

@@ -22,20 +22,17 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Pass/PassRegistry.h"
 #include "mlir/Transforms/Passes.h"
-#include "shardy/dialect/sdy/ir/dialect.h"
-#include "stablehlo/dialect/StablehloOps.h"
-#include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "xla/python/ifrt/ir/atom_program_compiler.h"
 #include "xla/python/ifrt/ir/ifrt_ir_program.h"
 #include "xla/python/ifrt/ir/ifrt_ir_program.pb.h"
 #include "xla/python/ifrt/ir/version.h"
 #include "xla/tsl/platform/env.h"
-#include "xla/tsl/platform/errors.h"
 #include "tsl/platform/path.h"
 
 namespace xla {
@@ -70,20 +67,28 @@ IfrtToDotPassOptions GetIfrtToDotPassOptions(
 
 void createIfrtToOutlinedAtomProgramsPipeline(mlir::OpPassManager& pm) {
   // Passes that verify the correctness of the module.
-  pm.addPass(createSpmdExpandableInterfaceVerificationPass(
-      {{mlir::mhlo::MhloDialect::getDialectNamespace().str(),
-        mlir::stablehlo::StablehloDialect::getDialectNamespace().str(),
-        mlir::sdy::SdyDialect::getDialectNamespace().str()}}));
   pm.addNestedPass<mlir::func::FuncOp>(createIfrtVerifyDonationPass());
 
   pm.addPass(createIfrtOutlineAtomProgramToModulePass());
+  // DCE the sdy.mesh ops at the program-level.
+  pm.addPass(mlir::createSymbolDCEPass());
 
-  pm.addPass(createIfrtVerifyShardingSpecifiedPass());
-  pm.addNestedPass<mlir::func::FuncOp>(
-      xla::ifrt::createIfrtMergeReshardsPass());
+  pm.addNestedPass<mlir::func::FuncOp>(createIfrtVerifyShardingSpecifiedPass());
   // We can split ifrt.Reshard to ifrt.CopyArrays because all the shardings
-  // are specified.
+  // are specified. Moreover, it is necessary to run
+  // IfrtMergeCopiesAndReshardsPass after this pass because it introduces
+  // non-merged CopyArrays ops.
   pm.addPass(createIfrtReshardToCopyArraysPass());
+  // Insert CopyArrays for arrays that are returned multiple times so that the
+  // donation/reuse semantics are correctly handled. This pass must run before
+  // InsertMergeCopiesAndReshardsPass so that the newly inserted CopyArrays ops
+  // can be merged.
+  pm.addNestedPass<mlir::func::FuncOp>(
+      createIfrtInsertCopyArraysForReturnedManyTimesPass());
+  // IfrtMergeCopiesAndReshardsPass doesn't handle control dependencies, so we
+  // need to run it before adding the control dependencies.
+  pm.addNestedPass<mlir::func::FuncOp>(createIfrtMergeCopiesAndReshardsPass());
+  pm.addNestedPass<mlir::func::FuncOp>(createIfrtAddCtrlDependenciesPass());
 }
 
 void createIfrtPopulateAtomProgramMetadataPipeline(mlir::OpPassManager& pm) {
@@ -94,7 +99,7 @@ void createIfrtPopulateAtomProgramMetadataPipeline(mlir::OpPassManager& pm) {
 
 void createIfrtCompileXlaPreprocessingPipeline(
     mlir::OpPassManager& pm,
-    std::shared_ptr<xla::ifrt::IfrtIRCompileOptions> compile_options) {
+    std::shared_ptr<IfrtIRCompileOptions> compile_options) {
   pm.addPass(createIfrtLowerAtomProgramMetadataToXlaPass(
       {/*compile_options=*/compile_options}));
   pm.addPass(createIfrtRemoveIfrtAttrsPass());
@@ -103,7 +108,7 @@ void createIfrtCompileXlaPreprocessingPipeline(
 absl::Status createOutlinedAtomProgramsToCompiledPipeline(
     mlir::OpPassManager& pm, std::shared_ptr<AtomProgramCompiler> compiler,
     const OutlinedAtomProgramsToCompiledPipelineOptions& options,
-    std::shared_ptr<xla::ifrt::IfrtIRCompileOptions> compile_options,
+    std::shared_ptr<IfrtIRCompileOptions> compile_options,
     std::shared_ptr<AtomExecutableFutureMap> atom_executable_future_map,
     std::shared_ptr<AtomExecutableMap> bound_executable_map) {
   IfrtToDotPassOptions ifrt_to_dot_pass_options =
@@ -123,7 +128,7 @@ absl::Status createOutlinedAtomProgramsToCompiledPipeline(
       std::move(bound_executable_map)));
 
   if (!ifrt_to_dot_pass_options.dot_graph_dump_to.empty()) {
-    TF_RETURN_IF_ERROR(tsl::Env::Default()->RecursivelyCreateDir(
+    RETURN_IF_ERROR(tsl::Env::Default()->RecursivelyCreateDir(
         ifrt_to_dot_pass_options.dot_graph_dump_to));
     pm.addPass(createIfrtToDotPass(std::move(ifrt_to_dot_pass_options),
                                    atom_executable_future_map));
@@ -134,11 +139,14 @@ absl::Status createOutlinedAtomProgramsToCompiledPipeline(
 void createIfrtToVersionedPipeline(mlir::OpPassManager& pm,
                                    std::string ifrt_target_version,
                                    std::string vhlo_target_version,
+                                   std::string sdy_target_version,
                                    IfrtIrProgramProto& ifrt_ir_program) {
   pm.addPass(createIfrtRemoveAttrsFromOtherDialectsPass());
   pm.addPass(createIfrtAtomProgramsToVhloPass(
-      ifrt_ir_program.mutable_atom_programs(), std::move(vhlo_target_version)));
+      ifrt_ir_program.mutable_atom_programs(), std::move(vhlo_target_version),
+      std::move(sdy_target_version)));
   pm.addPass(createIfrtLegalizeToVifrtPass());
+  pm.addPass(createVifrtToVersionPass({std::move(ifrt_target_version)}));
   // Run symbol DCE to remove atom programs that have been legalized to VHLO.
   pm.addPass(mlir::createSymbolDCEPass());
 }
@@ -158,7 +166,7 @@ void createIfrtFromVersionedPipeline(
 
 void registerIfrtPassesAndPipelines(
     std::shared_ptr<AtomProgramCompiler> compiler,
-    std::shared_ptr<xla::ifrt::IfrtIRCompileOptions> compile_options,
+    std::shared_ptr<IfrtIRCompileOptions> compile_options,
     std::shared_ptr<AtomExecutableFutureMap> atom_executable_future_map,
     std::shared_ptr<AtomExecutableMap> bound_executable_map) {
   registerIfrtIrPasses();

@@ -20,6 +20,7 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/SmallVector.h"
 #include "xla/backends/gpu/codegen/triton/ir/triton_xla_ops.h"
@@ -123,11 +124,10 @@ absl::StatusOr<TmaDescriptor> CreateTmaDescriptor(
   auto interleave = TmaDescriptor::TmaInterleave::kNone;
   auto l2_promotion = TmaDescriptor::TmaL2Promotion::k128B;
 
-  TF_ASSIGN_OR_RETURN(
-      auto tma_desc,
-      TmaDescriptor::Create(global_dims, global_strides, box_dims,
-                            element_strides, element_byte_size, interleave,
-                            swizzle_mode, l2_promotion));
+  ASSIGN_OR_RETURN(auto tma_desc, TmaDescriptor::Create(
+                                      global_dims, global_strides, box_dims,
+                                      element_strides, element_byte_size,
+                                      interleave, swizzle_mode, l2_promotion));
   return tma_desc;
 }
 
@@ -144,8 +144,7 @@ absl::StatusOr<TmaDescriptor> CreateTmaDescriptor(
 // data. It might make sense to re-evaluate this recommendation later if we
 // believe there are missed opportunities.
 bool IsTmaRecommended(const TritonGemmConfig& config) {
-  return (config.split_k == 1 || config.split_k == 16) &&
-         config.num_warps <= 8 &&
+  return config.num_warps <= 8 &&
          (config.num_stages == 1 || config.num_stages == 3 ||
           config.num_stages == 4) &&
          config.block_m <= 256 && config.block_n <= 256 &&

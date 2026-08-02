@@ -53,8 +53,9 @@ class QuantizeAndDequantizeV2Op : public OpKernel {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("axis", &axis_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("num_bits", &num_bits_));
     OP_REQUIRES(ctx, num_bits_ > 0 && num_bits_ < (signed_input_ ? 62 : 63),
-                InvalidArgument("num_bits is out of range: ", num_bits_,
-                                " with signed_input_ ", signed_input_));
+                absl::InvalidArgumentError(
+                    absl::StrCat("num_bits is out of range: ", num_bits_,
+                                 " with signed_input_ ", signed_input_)));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("range_given", &range_given_));
 
     std::string round_mode_string;
@@ -62,10 +63,10 @@ class QuantizeAndDequantizeV2Op : public OpKernel {
     OP_REQUIRES(
         ctx,
         (round_mode_string == "HALF_UP" || round_mode_string == "HALF_TO_EVEN"),
-        InvalidArgument("Round mode string must be "
-                        "'HALF_UP' or "
-                        "'HALF_TO_EVEN', is '" +
-                        round_mode_string + "'"));
+        absl::InvalidArgumentError("Round mode string must be "
+                                   "'HALF_UP' or "
+                                   "'HALF_TO_EVEN', is '" +
+                                   round_mode_string + "'"));
     if (round_mode_string == "HALF_UP") {
       round_mode_ = ROUND_HALF_UP;
     } else if (round_mode_string == "HALF_TO_EVEN") {
@@ -77,10 +78,12 @@ class QuantizeAndDequantizeV2Op : public OpKernel {
   void Compute(OpKernelContext* ctx) override {
     const Tensor& input = ctx->input(0);
     OP_REQUIRES(ctx, axis_ >= -1,
-                InvalidArgument("Axis must be at least -1. Found ", axis_));
+                absl::InvalidArgumentError(
+                    absl::StrCat("Axis must be at least -1. Found ", axis_)));
     OP_REQUIRES(ctx, (axis_ == -1 || axis_ < input.shape().dims()),
-                InvalidArgument("Shape must be at least rank ", axis_ + 1,
-                                " but is rank ", input.shape().dims()));
+                absl::InvalidArgumentError(
+                    absl::StrCat("Shape must be at least rank ", axis_ + 1,
+                                 " but is rank ", input.shape().dims())));
     const int depth = (axis_ == -1) ? 1 : input.dim_size(axis_);
     Tensor input_min_tensor;
     Tensor input_max_tensor;
@@ -90,9 +93,9 @@ class QuantizeAndDequantizeV2Op : public OpKernel {
       input_min_tensor = ctx->input(1);
       input_max_tensor = ctx->input(2);
       OP_REQUIRES(ctx, input_min_tensor.dims() == 0,
-                  InvalidArgument("input_min must be a scalar."));
+                  absl::InvalidArgumentError("input_min must be a scalar."));
       OP_REQUIRES(ctx, input_max_tensor.dims() == 0,
-                  InvalidArgument("input_max must be a scalar."));
+                  absl::InvalidArgumentError("input_max must be a scalar."));
       if (axis_ == -1) {
         auto min_val = input_min_tensor.scalar<T>()();
         auto max_val = input_max_tensor.scalar<T>()();
@@ -100,14 +103,14 @@ class QuantizeAndDequantizeV2Op : public OpKernel {
                     InvalidArgument("Invalid range: input_min ", min_val,
                                     " > input_max ", max_val));
       } else {
-        OP_REQUIRES(
-            ctx, TensorShapeUtils::IsVector(input_min_tensor.shape()),
-            InvalidArgument("Shape must be rank 1 for input_min_tensor when the"
-                            " axis is specified"));
-        OP_REQUIRES(
-            ctx, TensorShapeUtils::IsVector(input_max_tensor.shape()),
-            InvalidArgument("Shape must be rank 1 for input_max_tensor when the"
-                            " axis is specified"));
+        OP_REQUIRES(ctx, TensorShapeUtils::IsVector(input_min_tensor.shape()),
+                    absl::InvalidArgumentError(
+                        "Shape must be rank 1 for input_min_tensor when the"
+                        " axis is specified"));
+        OP_REQUIRES(ctx, TensorShapeUtils::IsVector(input_max_tensor.shape()),
+                    absl::InvalidArgumentError(
+                        "Shape must be rank 1 for input_max_tensor when the"
+                        " axis is specified"));
         OP_REQUIRES(
             ctx, input_min_tensor.dim_size(0) == depth,
             InvalidArgument("input_min_tensor has incorrect size, was ",
@@ -173,42 +176,46 @@ class QuantizeAndDequantizeV4GradientOp : public OpKernel {
     OP_REQUIRES_OK(ctx,
                    ctx->allocate_output(0, input.shape(), &input_backprop));
     OP_REQUIRES(ctx, axis_ >= -1,
-                InvalidArgument("Axis must be at least -1. Found ", axis_));
+                absl::InvalidArgumentError(
+                    absl::StrCat("Axis must be at least -1. Found ", axis_)));
     OP_REQUIRES(ctx, (axis_ == -1 || axis_ < input.shape().dims()),
-                InvalidArgument(
+                absl::InvalidArgumentError(absl::StrCat(
                     "Axis should be -1 or 0 or a positive value less than ",
-                    input.shape().dims(), "but given axis value was ", axis_));
+                    input.shape().dims(), "but given axis value was ", axis_)));
 
-    OP_REQUIRES(ctx, input.IsSameSize(gradient),
-                InvalidArgument("gradient and input must be the same size"));
+    OP_REQUIRES(
+        ctx, input.IsSameSize(gradient),
+        absl::InvalidArgumentError("gradient and input must be the same size"));
     const int depth = (axis_ == -1) ? 1 : input.dim_size(axis_);
     const Tensor& input_min_tensor = ctx->input(2);
     OP_REQUIRES(ctx,
                 input_min_tensor.dims() == 0 || input_min_tensor.dims() == 1,
-                InvalidArgument(
+                absl::InvalidArgumentError(absl::StrCat(
                     "Input min tensor must have dimension 0 or 1. Received ",
-                    input_min_tensor.dims(), "."));
+                    input_min_tensor.dims(), ".")));
     const Tensor& input_max_tensor = ctx->input(3);
     OP_REQUIRES(ctx,
                 input_max_tensor.dims() == 0 || input_max_tensor.dims() == 1,
-                InvalidArgument(
+                absl::InvalidArgumentError(absl::StrCat(
                     "Input max tensor must have dimension 0 or 1. Received ",
-                    input_max_tensor.dims(), "."));
+                    input_max_tensor.dims(), ".")));
     if (axis_ != -1) {
-      OP_REQUIRES(
-          ctx, TensorShapeUtils::IsVector(input_min_tensor.shape()),
-          InvalidArgument("Shape must be rank 1 for input_min_tensor when the"
-                          " axis is specified"));
-      OP_REQUIRES(
-          ctx, TensorShapeUtils::IsVector(input_max_tensor.shape()),
-          InvalidArgument("Shape must be rank 1 for input_max_tensor when the"
-                          " axis is specified"));
+      OP_REQUIRES(ctx, TensorShapeUtils::IsVector(input_min_tensor.shape()),
+                  absl::InvalidArgumentError(
+                      "Shape must be rank 1 for input_min_tensor when the"
+                      " axis is specified"));
+      OP_REQUIRES(ctx, TensorShapeUtils::IsVector(input_max_tensor.shape()),
+                  absl::InvalidArgumentError(
+                      "Shape must be rank 1 for input_max_tensor when the"
+                      " axis is specified"));
       OP_REQUIRES(ctx, input_min_tensor.dim_size(0) == depth,
-                  InvalidArgument("min has incorrect size, expected ", depth,
-                                  " was ", input_min_tensor.dim_size(0)));
+                  absl::InvalidArgumentError(
+                      absl::StrCat("min has incorrect size, expected ", depth,
+                                   " was ", input_min_tensor.dim_size(0))));
       OP_REQUIRES(ctx, input_max_tensor.dim_size(0) == depth,
-                  InvalidArgument("max has incorrect size, expected ", depth,
-                                  " was ", input_max_tensor.dim_size(0)));
+                  absl::InvalidArgumentError(
+                      absl::StrCat("max has incorrect size, expected ", depth,
+                                   " was ", input_max_tensor.dim_size(0))));
     }
 
     TensorShape min_max_shape(input_min_tensor.shape());
@@ -221,12 +228,12 @@ class QuantizeAndDequantizeV4GradientOp : public OpKernel {
                    ctx->allocate_output(2, min_max_shape, &input_max_backprop));
 
     if (axis_ == -1) {
-      OP_REQUIRES(
-          ctx, TensorShapeUtils::IsScalar(input_min_tensor.shape()),
-          InvalidArgument("input_min must be a scalar if axis is unspecified"));
-      OP_REQUIRES(
-          ctx, TensorShapeUtils::IsScalar(input_max_tensor.shape()),
-          InvalidArgument("input_max must be a scalar if axis is unspecified"));
+      OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(input_min_tensor.shape()),
+                  absl::InvalidArgumentError(
+                      "input_min must be a scalar if axis is unspecified"));
+      OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(input_max_tensor.shape()),
+                  absl::InvalidArgumentError(
+                      "input_max must be a scalar if axis is unspecified"));
       functor::QuantizeAndDequantizeOneScaleGradientFunctor<Device, T> f;
       f(ctx->eigen_device<Device>(), gradient.template flat<T>(),
         input.template flat<T>(), input_min_tensor.scalar<T>(),
@@ -270,9 +277,9 @@ class QuantizeAndDequantizeV3Op : public OpKernel {
   void Compute(OpKernelContext* ctx) override {
     const Tensor& input = ctx->input(0);
     OP_REQUIRES(ctx, -input.dims() <= axis_ && axis_ < input.dims(),
-                InvalidArgument(
+                absl::InvalidArgumentError(absl::StrCat(
                     "Axis requested is larger than input dimensions. Axis: ",
-                    axis_, " Input Dimensions: ", input.dims()));
+                    axis_, " Input Dimensions: ", input.dims())));
     const int depth = (axis_ == -1) ? 1 : input.dim_size(axis_);
     Tensor* output = nullptr;
     OP_REQUIRES_OK(ctx, ctx->allocate_output(0, input.shape(), &output));
@@ -280,15 +287,17 @@ class QuantizeAndDequantizeV3Op : public OpKernel {
     // Get num_bits and validate.
     const Tensor num_bits_tensor = ctx->input(3);
     OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(num_bits_tensor.shape()),
-                InvalidArgument("Invalid shape. The `num_bits` tensor should "
-                                "be a scalar. Got dimensions: ",
-                                num_bits_tensor.dims()));
+                absl::InvalidArgumentError(
+                    absl::StrCat("Invalid shape. The `num_bits` tensor should "
+                                 "be a scalar. Got dimensions: ",
+                                 num_bits_tensor.dims())));
 
     const int num_bits_val = num_bits_tensor.scalar<int32_t>()();
     OP_REQUIRES(ctx,
                 num_bits_val > 0 && num_bits_val < (signed_input_ ? 62 : 63),
-                InvalidArgument("num_bits is out of range: ", num_bits_val,
-                                " with `signed_input_` ", signed_input_));
+                absl::InvalidArgumentError(
+                    absl::StrCat("num_bits is out of range: ", num_bits_val,
+                                 " with `signed_input_` ", signed_input_)));
 
     Tensor input_min_tensor;
     Tensor input_max_tensor;
@@ -302,14 +311,14 @@ class QuantizeAndDequantizeV3Op : public OpKernel {
                     InvalidArgument("Invalid range: input_min ", min_val,
                                     " > input_max ", max_val));
       } else {
-        OP_REQUIRES(
-            ctx, TensorShapeUtils::IsVector(input_min_tensor.shape()),
-            InvalidArgument("Shape must be rank 1 for input_min_tensor when the"
-                            " axis is specified"));
-        OP_REQUIRES(
-            ctx, TensorShapeUtils::IsVector(input_max_tensor.shape()),
-            InvalidArgument("Shape must be rank 1 for input_max_tensor when the"
-                            " axis is specified"));
+        OP_REQUIRES(ctx, TensorShapeUtils::IsVector(input_min_tensor.shape()),
+                    absl::InvalidArgumentError(
+                        "Shape must be rank 1 for input_min_tensor when the"
+                        " axis is specified"));
+        OP_REQUIRES(ctx, TensorShapeUtils::IsVector(input_max_tensor.shape()),
+                    absl::InvalidArgumentError(
+                        "Shape must be rank 1 for input_max_tensor when the"
+                        " axis is specified"));
         OP_REQUIRES(
             ctx, input_min_tensor.dim_size(0) == depth,
             InvalidArgument("input_min_tensor has incorrect size, was ",
@@ -361,15 +370,17 @@ class QuantizeAndDequantizeOp : public OpKernel {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("signed_input", &signed_input_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("num_bits", &num_bits_));
     OP_REQUIRES(ctx, num_bits_ > 0 && num_bits_ < (signed_input_ ? 62 : 63),
-                InvalidArgument("num_bits is out of range: ", num_bits_,
-                                " with signed_input_ ", signed_input_));
+                absl::InvalidArgumentError(
+                    absl::StrCat("num_bits is out of range: ", num_bits_,
+                                 " with signed_input_ ", signed_input_)));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("range_given", &range_given_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("input_min", &input_min_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("input_max", &input_max_));
     if (range_given_) {
       OP_REQUIRES(ctx, input_min_ <= input_max_,
-                  InvalidArgument("Invalid range: input_min ", input_min_,
-                                  " > input_max ", input_max_));
+                  absl::InvalidArgumentError(
+                      absl::StrCat("Invalid range: input_min ", input_min_,
+                                   " > input_max ", input_max_)));
     }
   }
 

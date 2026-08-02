@@ -15,9 +15,12 @@ limitations under the License.
 
 #include "tensorflow/core/distributed_runtime/tensor_coding.h"
 
+#include "absl/status/status.h"
 #include "tensorflow/core/framework/device_attributes.pb.h"
 #include "tensorflow/core/framework/device_base.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor.pb.h"
+#include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/lib/strings/strcat.h"
@@ -155,6 +158,27 @@ TEST_F(TensorResponseTest, Simple) {
 }
 
 TEST_F(TensorResponseTest, StringTensor) { DoTestForStrings(DT_STRING); }
+
+TEST_F(TensorResponseTest, InitPartialOverflow) {
+  RecvTensorResponse response;
+  TensorProto* tensor_proto = response.mutable_tensor();
+  tensor_proto->set_dtype(DT_FLOAT);
+
+  // Set shape dimensions that cause integer overflow.
+  TensorShapeProto* shape_proto = tensor_proto->mutable_tensor_shape();
+  shape_proto->add_dim()->set_size(2147483647);
+  shape_proto->add_dim()->set_size(2147483647);
+  shape_proto->add_dim()->set_size(2147483647);
+
+  TensorResponse tensor_response;
+  DummyDevice cpu_device(Env::Default());
+  tensor_response.InitAlloc(&cpu_device, AllocatorAttributes());
+
+  absl::Status s =
+      tensor_response.InitPartial(response, AllocationAttributes());
+  EXPECT_FALSE(s.ok());
+  EXPECT_TRUE(absl::IsInvalidArgument(s));
+}
 
 std::string MakeFloatTensorTestCase(int num_elems) {
   std::vector<int8_t> v(num_elems);

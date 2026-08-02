@@ -19,8 +19,8 @@ limitations under the License.
 #include <cstdint>
 #include <iterator>
 #include <memory>
+#include <string>
 #include <utility>
-#include <variant>
 #include <vector>
 
 #include "absl/container/flat_hash_set.h"
@@ -29,6 +29,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "llvm/ADT/SmallVector.h"
 #include "xla/comparison_util.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
@@ -37,8 +38,12 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/literal_util.h"
+#include "xla/service/gpu/backend_configs.pb.h"
+#include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/stream_executor/cuda/cuda_compute_capability.h"
+#include "xla/stream_executor/device_description.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
@@ -354,11 +359,26 @@ bool IsBF16Operation(const HloInstruction* ragged_dot) {
          (ragged_dot->operand(1)->shape().element_type() == BF16);
 }
 
+bool CanBeHandledByCuDNNFusion(const HloInstruction* instruction) {
+  const HloRaggedDotInstruction* ragged_dot =
+      DynCast<HloRaggedDotInstruction>(instruction);
+  const auto& ragged_dims = ragged_dot->ragged_dot_dimension_numbers();
+  if (ragged_dims.lhs_ragged_dimensions().size() != 1 ||
+      (ragged_dot->shape().element_type() != F16 &&
+       ragged_dot->shape().element_type() != BF16)) {
+    return false;
+  }
+  int lhs_ragged_dim = ragged_dims.lhs_ragged_dimensions(0);
+  RaggedDotMode mode =
+      GetRaggedDotMode(lhs_ragged_dim, ragged_dims.dot_dimension_numbers());
+  return mode == RaggedDotMode::kRaggedNonContracting;
+}
+
 bool CanBeHandledByGpublasltGroupGemm(
     const se::GpuComputeCapability& gpu_compute_capability,
     const HloInstruction* instruction) {
   // Currently only Hipblaslt supports GroupGemm.
-  // The current status of  Hipblaslt support for GroupGemm is as follows:
+  // The current status of Hipblaslt support for GroupGemm is as follows:
   // For MI300 targets (gfx942) : datatype supported FP16 and BF16
   // For MI350/355 targets (gfx950) : datatype supported FP16 only
 
@@ -388,11 +408,14 @@ absl::StatusOr<bool> RaggedDotRewriter::RunImpl(
           .debug_options()
           .xla_gpu_experimental_use_ragged_dot_grouped_gemm() &&
       module->config().debug_options().xla_gpu_enable_cublaslt();
-  if (module->config()
+  const se::CudaComputeCapability* cuda_cc =
+      gpu_compute_capability_.cuda_compute_capability();
+  const bool ragged_dot_fusion_enabled =
+      module->config()
           .debug_options()
-          .xla_gpu_experimental_use_ragged_dot_fusion()) {
-    return false;
-  }
+          .xla_gpu_experimental_use_ragged_dot_fusion() &&
+      cudnn_version_ >= kMinCudnnVersionForRaggedDotFusion &&
+      cuda_cc != nullptr && cuda_cc->IsAtLeastAmpere();
 
   // Gather all Ragged Dot operations.
   std::vector<HloRaggedDotInstruction*> ragged_dots;
@@ -400,21 +423,26 @@ absl::StatusOr<bool> RaggedDotRewriter::RunImpl(
        module->MakeNonfusionComputations(execution_threads)) {
     for (auto* instruction : computation->instructions()) {
       if (instruction->opcode() == HloOpcode::kRaggedDot) {
-        if (!(has_grouped_gemm && gpu_compute_capability_.has_value() &&
-              CanBeHandledByGpublasltGroupGemm(gpu_compute_capability_.value(),
-                                               instruction))) {
-          // Only ragged-dot that cannot be lowered through Gpublaslt GroupGemm
-          // are added to the list of operations to rewrite in regular dot.
-          ragged_dots.push_back(Cast<HloRaggedDotInstruction>(instruction));
+        // Only ragged-dot that cannot be lowered through Gpublaslt
+        // GroupGemm or cuDNN fusion are added to the list of operations to
+        // rewrite in regular dot.
+        if (ragged_dot_fusion_enabled &&
+            CanBeHandledByCuDNNFusion(instruction)) {
+          continue;
         }
+        if (has_grouped_gemm && CanBeHandledByGpublasltGroupGemm(
+                                    gpu_compute_capability_, instruction)) {
+          continue;
+        }
+        ragged_dots.push_back(Cast<HloRaggedDotInstruction>(instruction));
       }
     }
   }
 
   for (auto* ragged_dot : ragged_dots) {
-    TF_ASSIGN_OR_RETURN(auto general_dot, RaggedToGeneral(ragged_dot));
+    ASSIGN_OR_RETURN(auto general_dot, RaggedToGeneral(ragged_dot));
     general_dot->set_metadata(ragged_dot->metadata());
-    TF_RETURN_IF_ERROR(ragged_dot->parent()->ReplaceWithNewInstruction(
+    RETURN_IF_ERROR(ragged_dot->parent()->ReplaceWithNewInstruction(
         ragged_dot, std::move(general_dot)));
   }
 

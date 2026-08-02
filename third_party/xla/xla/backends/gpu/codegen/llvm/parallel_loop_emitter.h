@@ -44,8 +44,7 @@ class ParallelLoopEmitter {
   // how to parallelize.
   ParallelLoopEmitter(llvm_ir::BodyEmitter body_emitter, const Shape& shape,
                       const LaunchDimensions& launch_dimensions,
-                      llvm::IRBuilderBase* b,
-                      LaunchDimensionsConfig launch_config = {});
+                      llvm::IRBuilderBase* b, int unroll_factor = 1);
 
   // Constructs a loop emitter for a loop that generates on element of each of N
   // arrays on each iteration.
@@ -55,8 +54,7 @@ class ParallelLoopEmitter {
   ParallelLoopEmitter(const llvm_ir::ElementGenerator& target_element_generator,
                       absl::Span<const llvm_ir::IrArray> target_arrays,
                       const LaunchDimensions& launch_dimensions,
-                      llvm::IRBuilderBase* b,
-                      LaunchDimensionsConfig launch_config = {});
+                      llvm::IRBuilderBase* b, int unroll_factor = 1);
 
   ParallelLoopEmitter(const ParallelLoopEmitter&) = delete;
   ParallelLoopEmitter& operator=(const ParallelLoopEmitter&) = delete;
@@ -82,7 +80,7 @@ class ParallelLoopEmitter {
 
   // The thread and block dimension to parallelize the loop on.
   const LaunchDimensions launch_dimensions_;
-  const LaunchDimensionsConfig launch_config_;
+  const int unroll_factor_;
 
   // An IR emitter that generates the loop body.
   llvm_ir::BodyEmitter body_emitter_;

@@ -25,7 +25,7 @@ namespace xla {
 namespace {
 
 class AlgebraicSimplifierOverflowTest
-    : public HloPjRtInterpreterReferenceMixin<HloPjRtTestBase> {};
+    : public HloInterpreterReferenceMixin<HloTestBase> {};
 
 // Test that the algebraic simplifier does not generate integer overflows
 // by moving the subtraction to the other side of the comparison

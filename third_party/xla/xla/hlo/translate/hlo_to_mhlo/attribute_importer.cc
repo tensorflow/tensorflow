@@ -19,22 +19,35 @@ limitations under the License.
 
 #include <algorithm>
 #include <cassert>
+#include <cstddef>
 #include <cstdint>
 #include <optional>
+#include <string>
 #include <utility>
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/log/check.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "llvm/ADT/APFloat.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/Support/Casting.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/Builders.h"
+#include "mlir/IR/BuiltinAttributes.h"
+#include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/BuiltinTypes.h"
+#include "mlir/IR/SymbolTable.h"
+#include "shardy/dialect/sdy/ir/dialect.h"
 #include "stablehlo/dialect/StablehloOps.h"
+#include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_original_value.h"
+#include "xla/hlo/ir/mesh_and_axis.h"
+#include "xla/hlo/ir/replica_group.h"
 #include "xla/layout.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "xla/service/hlo.pb.h"
@@ -427,8 +440,8 @@ mlir::ArrayAttr ConvertOutputOperandAliasing(
 
 absl::StatusOr<mlir::mhlo::CustomCallApiVersion> ConvertCustomCallApiVersion(
     xla::CustomCallApiVersion api_version) {
-  TF_ASSIGN_OR_RETURN(auto stablehlo_api_version,
-                      stablehlo::ConvertCustomCallApiVersion(api_version));
+  ASSIGN_OR_RETURN(auto stablehlo_api_version,
+                   stablehlo::ConvertCustomCallApiVersion(api_version));
   auto mhlo_api_version = mlir::mhlo::symbolizeCustomCallApiVersion(
       mlir::stablehlo::stringifyCustomCallApiVersion(stablehlo_api_version));
   if (!mhlo_api_version.has_value()) {
@@ -480,6 +493,97 @@ mlir::NamedAttribute ConvertReplicaGroups(
                                mlir::DenseIntElementsAttr::get(type, attr));
 }
 
+mlir::StringAttr FindOrInsertSdyMesh(const Mesh& mesh,
+                                     mlir::SymbolTable* symbol_table,
+                                     mlir::OpBuilder* builder) {
+  if (!symbol_table) {
+    return {};
+  }
+
+  auto module_op = llvm::cast<mlir::ModuleOp>(symbol_table->getOp());
+  for (auto mesh_op : module_op.getOps<mlir::sdy::MeshOp>()) {
+    if (mesh_op.getMesh().getAxes().size() != mesh.num_axes()) {
+      continue;
+    }
+
+    bool compatible = true;
+    auto mesh_axes = mesh_op.getMesh().getAxes();
+    for (size_t i = 0; i < mesh_axes.size(); ++i) {
+      auto axis_attr = llvm::cast<mlir::sdy::MeshAxisAttr>(mesh_axes[i]);
+      if (axis_attr.getName() != mesh.axis_names()[i] ||
+          axis_attr.getSize() != mesh.axis_size(i)) {
+        compatible = false;
+        break;
+      }
+    }
+    if (compatible) {
+      return builder->getStringAttr(mesh_op.getSymName());
+    }
+  }
+
+  std::string name = "mesh";
+  int counter = 0;
+  while (symbol_table->lookup(name)) {
+    name = "mesh_" + std::to_string(++counter);
+  }
+  auto mesh_name_attr = builder->getStringAttr(name);
+
+  llvm::SmallVector<mlir::sdy::MeshAxisAttr> mesh_axes;
+  for (int i = 0; i < mesh.num_axes(); ++i) {
+    mesh_axes.push_back(mlir::sdy::MeshAxisAttr::get(
+        builder->getContext(), builder->getStringAttr(mesh.axis_names()[i]),
+        mesh.axis_size(i)));
+  }
+
+  mlir::OpBuilder::InsertionGuard guard(*builder);
+  builder->setInsertionPointToStart(module_op.getBody());
+  auto mesh_op = builder->create<mlir::sdy::MeshOp>(
+      builder->getUnknownLoc(), mesh_name_attr,
+      mlir::sdy::MeshAttr::get(builder->getContext(), mesh_axes));
+  symbol_table->insert(mesh_op);
+
+  return mesh_name_attr;
+}
+
+mlir::Attribute BuildMeshAxesAttr(
+    const MeshAxesReplicaGroupList& mesh_axes_list,
+    mlir::StringAttr mesh_name_attr, mlir::OpBuilder* builder) {
+  const Mesh& mesh = mesh_axes_list.mesh();
+  llvm::SmallVector<mlir::Attribute> axes_attrs;
+  for (const auto& axis_ref : mesh_axes_list.axes()) {
+    auto name = mesh.axis_names()[axis_ref.mesh_axis_index()];
+    mlir::stablehlo::SubAxisInfoAttr sub_axis_attr;
+    if (auto sub = axis_ref.sub_axis_info()) {
+      sub_axis_attr = mlir::stablehlo::SubAxisInfoAttr::get(
+          builder->getContext(), sub->pre_size, sub->size);
+    }
+    axes_attrs.push_back(mlir::stablehlo::AxisRefAttr::get(
+        builder->getContext(), builder->getStringAttr(name), sub_axis_attr));
+  }
+  return mlir::stablehlo::ReplicaGroupMeshAxesAttr::get(
+      builder->getContext(), mlir::FlatSymbolRefAttr::get(mesh_name_attr),
+      builder->getArrayAttr(axes_attrs));
+}
+
+mlir::NamedAttribute ConvertReplicaGroups(const HloInstruction* instruction,
+                                          mlir::SymbolTable* symbol_table,
+                                          mlir::OpBuilder* builder) {
+  if (instruction->device_list()->version() ==
+      CollectiveDeviceListVersion::kMeshAxes) {
+    DCHECK(symbol_table != nullptr)
+        << "Translating MeshAxesReplicaGroupList without a SymbolTable will "
+           "cause silent fallback to flattened representation.";
+    const auto& mesh_axes_list = static_cast<const MeshAxesReplicaGroupList&>(
+        *instruction->device_list());
+    if (auto mesh_name =
+            FindOrInsertSdyMesh(mesh_axes_list.mesh(), symbol_table, builder)) {
+      auto attr = BuildMeshAxesAttr(mesh_axes_list, mesh_name, builder);
+      return builder->getNamedAttr("replica_groups", attr);
+    }
+  }
+  return ConvertReplicaGroups(instruction->replica_groups(), builder);
+}
+
 mlir::NamedAttribute ConvertSourceTargetPairs(
     const std::vector<std::pair<int64_t, int64_t>>& source_target_pairs,
     mlir::Builder* builder) {
@@ -498,6 +602,37 @@ mlir::NamedAttribute ConvertUseGlobalDeviceIds(mlir::Builder* builder) {
   return builder->getNamedAttr("use_global_device_ids", builder->getUnitAttr());
 }
 
+// Converts the original value to attributes.
+mlir::mhlo::OriginalValueAttr ConvertOriginalValue(
+    const xla::OriginalValue& original_value, mlir::Builder* builder) {
+  if (original_value.is_synthetic_call()) {
+    return mlir::mhlo::OriginalValueAttr::get(builder->getContext(),
+                                              /*is_synthetic_call=*/true,
+                                              /*original_value_elements=*/{});
+  }
+  llvm::SmallVector<mlir::mhlo::OriginalValueElementAttr>
+      original_value_elements;
+  for (const auto& [shape_index, original_array] :
+       original_value.tree().leaves()) {
+    std::optional<mlir::mhlo::OriginalArrayAttr> original_array_attr;
+    if (original_array.has_value()) {
+      original_array_attr = mlir::mhlo::OriginalArrayAttr::get(
+          builder->getContext(),
+          builder->getStringAttr(original_array->instruction_name),
+          original_array->shape_index);
+    }
+    mlir::mhlo::OriginalValueElementAttr original_element_attr =
+        mlir::mhlo::OriginalValueElementAttr::get(
+            builder->getContext(), shape_index, original_array_attr);
+    original_value_elements.push_back(original_element_attr);
+  }
+  mlir::mhlo::OriginalValueAttr original_value_attr =
+      mlir::mhlo::OriginalValueAttr::get(builder->getContext(),
+                                         original_value.is_synthetic_call(),
+                                         original_value_elements);
+  return original_value_attr;
+}
+
 absl::StatusOr<mlir::ArrayAttr> ExtractLayoutsFromShapes(
     const absl::Span<const Shape> shapes_with_layouts, mlir::Builder* builder) {
   std::vector<mlir::Attribute> layouts;
@@ -513,22 +648,16 @@ absl::StatusOr<mlir::ArrayAttr> ExtractLayoutsFromShapes(
       continue;
     }
 
-    // Only a subset of layout specification in XLA is supported in MHLO
-    // currently. The layout has to be dense, and only specify the order of
-    // dimensions. Sparse, tiled layout or non-default memory space fields
-    // cannot be expressed in MHLO layout yet.
+    // Only the dimension order (minor-to-major) of an XLA layout is encoded in
+    // the MHLO layout index tensor. Tilings and non-default memory spaces are
+    // carried separately (see ExtractTilingsFromShapes /
+    // ExtractMemorySpacesFromShapes) because the index tensor has no slot for
+    // them.
     if (!shape_and_layout.IsArray()) {
       return Unimplemented("Only dense arrays are supported.");
     }
 
     const xla::Layout& xla_layout = shape_and_layout.layout();
-    if (!xla_layout.tiles().empty()) {
-      return Unimplemented("Tiled layout is not supported yet");
-    }
-    if (xla_layout.memory_space() != xla::Layout::kDefaultMemorySpace) {
-      return Unimplemented(
-          "Layout support for non-default memory space is not yet implemented");
-    }
 
     llvm::SmallVector<int64_t> layout;
     for (int64_t dim_index : xla_layout.minor_to_major()) {
@@ -545,6 +674,80 @@ absl::StatusOr<mlir::ArrayAttr> ExtractLayoutsFromTuple(
     return InvalidArgument("Expected shape to be Tuple");
   }
   return ExtractLayoutsFromShapes(shape.tuple_shapes(), builder);
+}
+
+absl::StatusOr<mlir::ArrayAttr> ExtractTilingsFromShapes(
+    const absl::Span<const Shape> shapes_with_layouts, mlir::Builder* builder) {
+  std::vector<mlir::Attribute> tilings;
+  tilings.reserve(shapes_with_layouts.size());
+  for (auto& shape_and_layout : shapes_with_layouts) {
+    if (shape_and_layout.IsTuple()) {
+      return Unimplemented(
+          "Tiling support for nested tuples is not implemented.");
+    }
+    // XLA can have invalid layout for certain values (such as token types).
+    // These are imported as empty tiling in MHLO.
+    if (!shape_and_layout.IsArray()) {
+      tilings.push_back(builder->getArrayAttr({}));
+      continue;
+    }
+
+    const xla::Layout& xla_layout = shape_and_layout.layout();
+    std::vector<mlir::Attribute> tiles;
+    tiles.reserve(xla_layout.tiles().size());
+    for (const auto& tile : xla_layout.tiles()) {
+      tiles.push_back(builder->getIndexTensorAttr(tile.dimensions()));
+    }
+    tilings.push_back(builder->getArrayAttr(tiles));
+  }
+  return builder->getArrayAttr(tilings);
+}
+
+absl::StatusOr<mlir::ArrayAttr> ExtractTilingsFromTuple(
+    xla::Shape shape, mlir::Builder* builder) {
+  if (!shape.IsTuple()) {
+    return InvalidArgument("Expected shape to be Tuple");
+  }
+  return ExtractTilingsFromShapes(shape.tuple_shapes(), builder);
+}
+
+namespace {
+
+// Returns the memory space of a single (array) shape's layout, or the default
+// memory space for shapes without an array layout (e.g. tokens).
+int64_t GetMemorySpaceOrDefault(const Shape& shape) {
+  if (shape.IsArray() && shape.has_layout()) {
+    return shape.layout().memory_space();
+  }
+  return xla::Layout::kDefaultMemorySpace;
+}
+
+}  // namespace
+
+std::optional<mlir::DenseI64ArrayAttr> ExtractMemorySpacesFromShapes(
+    const absl::Span<const Shape> shapes_with_layouts, mlir::Builder* builder) {
+  llvm::SmallVector<int64_t> memory_spaces;
+  memory_spaces.reserve(shapes_with_layouts.size());
+  bool has_non_default = false;
+  for (const Shape& shape : shapes_with_layouts) {
+    int64_t memory_space = GetMemorySpaceOrDefault(shape);
+    has_non_default |= memory_space != xla::Layout::kDefaultMemorySpace;
+    memory_spaces.push_back(memory_space);
+  }
+  // Only emit the attribute when it carries information beyond the default, so
+  // the common (HBM-only) case keeps its existing representation.
+  if (!has_non_default) {
+    return std::nullopt;
+  }
+  return builder->getDenseI64ArrayAttr(memory_spaces);
+}
+
+std::optional<mlir::DenseI64ArrayAttr> ExtractMemorySpacesFromTuple(
+    const Shape shape, mlir::Builder* builder) {
+  if (!shape.IsTuple()) {
+    return ExtractMemorySpacesFromShapes({shape}, builder);
+  }
+  return ExtractMemorySpacesFromShapes(shape.tuple_shapes(), builder);
 }
 
 }  // namespace xla

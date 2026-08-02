@@ -120,7 +120,8 @@ Status DemangleDataType(absl::string_view str, DataType* proto) {
   TF_RETURN_IF_ERROR(ConsumePrefix(str, kDataTypePrefix, &pbtxt));
   // NOLINTNEXTLINE: redundant string conversion for divergence in OSS API.
   if (!DataType_Parse(std::string(pbtxt), proto)) {
-    return FailedPrecondition("Could not parse TFDataType mangled proto");
+    return absl::FailedPreconditionError(
+        "Could not parse TFDataType mangled proto");
   }
   return absl::OkStatus();
 }

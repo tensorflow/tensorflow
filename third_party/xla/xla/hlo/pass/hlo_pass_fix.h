@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/pass/hlo_pass_interface.h"
 #include "xla/tsl/platform/errors.h"
@@ -57,7 +58,7 @@ class HloPassFix : public Pass {
       override {
     RunState run_state;
     run_state.changed_last_iteration = outer_run_state->changed_last_iteration;
-    TF_RETURN_IF_ERROR(RunToFixPoint(module, &run_state, execution_threads));
+    RETURN_IF_ERROR(RunToFixPoint(module, &run_state, execution_threads));
     outer_run_state->changed_this_iteration.insert(run_state.changed.begin(),
                                                    run_state.changed.end());
     return absl::OkStatus();
@@ -68,7 +69,7 @@ class HloPassFix : public Pass {
                                const absl::flat_hash_set<absl::string_view>&
                                    execution_threads) override {
     RunState run_state(module);
-    TF_RETURN_IF_ERROR(RunToFixPoint(module, &run_state, execution_threads));
+    RETURN_IF_ERROR(RunToFixPoint(module, &run_state, execution_threads));
     return !run_state.changed.empty();
   }
 
@@ -92,7 +93,7 @@ class HloPassFix : public Pass {
           hashes.insert(hash);
         }
       }
-      TF_RETURN_IF_ERROR(
+      RETURN_IF_ERROR(
           RunOnChangedComputationsOnce(module, run_state, execution_threads));
       VLOG(3) << Pass::name() << " iteration " << run_state->iteration
               << " changed_this_iteration: "
@@ -135,7 +136,7 @@ class HloPassFix : public Pass {
     // If Pass does not override the default
     // HloPassInterface::RunOnChangedComputations that calls into
     // HloPassFix<Pass>::RunImpl, avoid infinite recursion.
-    TF_ASSIGN_OR_RETURN(bool changed, Pass::RunImpl(module, execution_threads));
+    ASSIGN_OR_RETURN(bool changed, Pass::RunImpl(module, execution_threads));
     if (changed) {
       auto computations = module->computations(execution_threads);
       run_state->changed_this_iteration.insert(computations.begin(),

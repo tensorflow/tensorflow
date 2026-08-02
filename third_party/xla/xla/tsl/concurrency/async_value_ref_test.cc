@@ -1022,6 +1022,60 @@ TEST(AsyncValueRefTest, ScopedAsyncValueDestroyed) {
   EXPECT_EQ(foo_counter, 0);
 }
 
+TEST(AsyncValueRefTest, SharedPtrAsyncValueOwnerAndUpcast) {
+  static int destructor_count = 0;
+  struct Base {
+    virtual ~Base() = default;
+    int base_val = 100;
+  };
+  struct Derived : public Base {
+    int derived_val = 42;
+    ~Derived() override { destructor_count++; }
+  };
+
+  destructor_count = 0;
+  {
+    auto shared_derived = std::make_shared<Derived>();
+    AsyncValueRef<Derived> ref_derived =
+        MakeAvailableAsyncValueRef(shared_derived);
+
+    EXPECT_TRUE(ref_derived.IsConcrete());
+    EXPECT_EQ(ref_derived.get().derived_val, 42);
+    EXPECT_EQ(ref_derived.get().base_val, 100);
+
+    // Upcasting AsyncValueRef<Derived> -> AsyncValueRef<Base>
+    AsyncValueRef<Base> ref_base = ref_derived;
+    EXPECT_TRUE(ref_base.IsConcrete());
+    EXPECT_EQ(ref_base.get().base_val, 100);
+
+    shared_derived.reset();
+    EXPECT_EQ(destructor_count, 0);
+    EXPECT_EQ(ref_base.get().base_val, 100);
+    EXPECT_EQ(ref_derived.get().derived_val, 42);
+  }
+  EXPECT_EQ(destructor_count, 1);
+
+  destructor_count = 0;
+  {
+    auto shared_derived = std::make_shared<Derived>();
+    auto indirect = MakeIndirectAsyncValue<Derived>();
+
+    EXPECT_FALSE(indirect->IsConcrete());
+    indirect->ForwardTo(MakeAvailableAsyncValueRef(shared_derived));
+
+    EXPECT_TRUE(indirect->IsConcrete());
+    EXPECT_EQ(indirect->get<Derived>().derived_val, 42);
+
+    AsyncValueRef<Derived> ref(indirect);
+    EXPECT_EQ(ref.get().derived_val, 42);
+
+    shared_derived.reset();
+    EXPECT_EQ(destructor_count, 0);
+    EXPECT_EQ(ref.get().derived_val, 42);
+  }
+  EXPECT_EQ(destructor_count, 1);
+}
+
 //===----------------------------------------------------------------------===//
 // Performance benchmarks below
 //===----------------------------------------------------------------------===//

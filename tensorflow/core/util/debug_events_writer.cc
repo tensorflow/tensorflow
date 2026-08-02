@@ -61,8 +61,8 @@ absl::Status SingleDebugEventFileWriter::Init() {
       "Creating writable file ", file_path_);
   record_writer_ = std::make_unique<io::RecordWriter>(writable_file_.get());
   if (record_writer_ == nullptr) {
-    return errors::Unknown("Could not create record writer at path: ",
-                           file_path_);
+    return absl::UnknownError(
+        absl::StrCat("Could not create record writer at path: ", file_path_));
   }
   num_outstanding_events_.store(0);
   VLOG(1) << "Successfully opened debug events file: " << file_path_;
@@ -90,7 +90,8 @@ absl::Status SingleDebugEventFileWriter::Flush() {
     return absl::OkStatus();
   }
   if (writable_file_ == nullptr) {
-    return errors::Unknown("Unexpected NULL file for path: ", file_path_);
+    return absl::UnknownError(
+        absl::StrCat("Unexpected NULL file for path: ", file_path_));
   }
 
   {
@@ -149,8 +150,8 @@ absl::Status DebugEventsWriter::LookUpDebugEventsWriter(
   std::unordered_map<std::string, std::unique_ptr<DebugEventsWriter>>*
       writer_pool = DebugEventsWriter::GetDebugEventsWriterMap();
   if (writer_pool->find(dump_root) == writer_pool->end()) {
-    return errors::FailedPrecondition(
-        "No DebugEventsWriter has been created at dump root ", dump_root);
+    return absl::FailedPreconditionError(absl::StrCat(
+        "No DebugEventsWriter has been created at dump root ", dump_root));
   }
   *debug_events_writer = (*writer_pool)[dump_root].get();
   return absl::OkStatus();
@@ -187,7 +188,8 @@ absl::Status DebugEventsWriter::Init() {
   metadata_writer_ =
       std::make_unique<SingleDebugEventFileWriter>(metadata_filename);
   if (metadata_writer_ == nullptr) {
-    return errors::Unknown("Could not create debug event metadata file writer");
+    return absl::UnknownError(
+        "Could not create debug event metadata file writer");
   }
 
   DebugEvent debug_event;
@@ -466,9 +468,9 @@ absl::Status DebugEventsWriter::Close() {
   if (failed_to_close_files.empty()) {
     return absl::OkStatus();
   } else {
-    return errors::FailedPrecondition(
+    return absl::FailedPreconditionError(absl::StrCat(
         "Failed to close %d debug-events files associated with tfdbg",
-        failed_to_close_files.size());
+        failed_to_close_files.size()));
   }
 }
 
@@ -505,8 +507,8 @@ absl::Status DebugEventsWriter::InitNonMetadataFile(DebugEventFileType type) {
 
   *writer = std::make_unique<SingleDebugEventFileWriter>(filename);
   if (*writer == nullptr) {
-    return errors::Unknown("Could not create debug event file writer for ",
-                           filename);
+    return absl::UnknownError(absl::StrCat(
+        "Could not create debug event file writer for ", filename));
   }
   TF_RETURN_WITH_CONTEXT_IF_ERROR(
       (*writer)->Init(), "Initializing debug event writer at path ", filename);
@@ -527,9 +529,9 @@ absl::Status DebugEventsWriter::SerializeAndWriteDebugEvent(
     (*writer)->WriteSerializedDebugEvent(str);
     return absl::OkStatus();
   } else {
-    return errors::Internal(
+    return absl::InternalError(absl::StrCat(
         "Unable to find debug events file writer for DebugEventsFileType ",
-        type);
+        type));
   }
 }
 

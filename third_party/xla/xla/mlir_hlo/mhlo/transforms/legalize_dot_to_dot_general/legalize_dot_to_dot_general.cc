@@ -81,10 +81,5 @@ void populateDotToDotGeneralPatterns(mlir::MLIRContext *context,
   patterns->add<DotToDotGeneralPattern>(context);
 }
 
-std::unique_ptr<OperationPass<func::FuncOp>>
-createLegalizeDotToDotGeneralPass() {
-  return std::make_unique<LegalizeDotToDotGeneralPass>();
-}
-
 }  // namespace mhlo
 }  // namespace mlir

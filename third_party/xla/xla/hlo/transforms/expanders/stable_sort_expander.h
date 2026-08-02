@@ -33,15 +33,6 @@ class StableSortExpander : public OpExpanderPass {
  public:
   absl::string_view name() const override { return "stable-sort-expander"; }
 
-  // Returns the index of the sort operand that is an iota op with an iota
-  // dimension which is the same as the dimension to sort. Also it should have
-  // an integral type that is large enough for the number of elements in the
-  // sort dimension. For now, we only allow S32, because we expect to find a S32
-  // iota operand for all Sort ops which are created by TopK.
-  //
-  // If no operand of the input sort matches the conditions above, returns -1.
-  static int64_t IotaOperandIndexForStableSort(const HloSortInstruction& sort);
-
  private:
   bool InstructionMatchesPattern(HloInstruction* instruction) override;
   absl::StatusOr<HloInstruction*> ExpandInstruction(

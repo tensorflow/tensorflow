@@ -24,7 +24,6 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import cond as tf_cond
-
 from tensorflow.python.ops import gen_linalg_ops
 from tensorflow.python.ops import linalg_ops
 from tensorflow.python.ops import map_fn
@@ -88,7 +87,8 @@ def logdet(matrix, name=None):
     name:  A name to give this `Op`.  Defaults to `logdet`.
 
   Returns:
-    The natural log of the determinant of `matrix`.
+    The natural log of the absolute value of the determinant of `matrix`.
+    For a singular matrix (determinant = 0), returns -inf.
 
   @compatibility(numpy)
   Equivalent to numpy.linalg.slogdet, although no sign is returned since only

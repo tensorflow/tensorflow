@@ -2,23 +2,23 @@ path: "tensorflow.__internal__.feature_column"
 tf_module {
   member {
     name: "DenseColumn"
-    mtype: "<type \'type\'>"
+    mtype: "<class \'abc.ABCMeta\'>"
   }
   member {
     name: "FeatureColumn"
-    mtype: "<type \'type\'>"
+    mtype: "<class \'abc.ABCMeta\'>"
   }
   member {
     name: "FeatureTransformationCache"
-    mtype: "<type \'type\'>"
+    mtype: "<class \'type\'>"
   }
   member {
     name: "SequenceDenseColumn"
-    mtype: "<type \'type\'>"
+    mtype: "<class \'abc.ABCMeta\'>"
   }
   member {
     name: "StateManager"
-    mtype: "<type \'type\'>"
+    mtype: "<class \'type\'>"
   }
   member_method {
     name: "deserialize_feature_column"

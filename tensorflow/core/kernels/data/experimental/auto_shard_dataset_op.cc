@@ -48,12 +48,12 @@ void AutoShardDatasetOp::MakeDataset(OpKernelContext* ctx, DatasetBase* input,
   OP_REQUIRES_OK(ctx, ParseScalarArgument(ctx, kNumWorkers, &num_workers));
   OP_REQUIRES(
       ctx, num_workers > 0,
-      errors::InvalidArgument("num_workers must be greater than zero."));
+      absl::InvalidArgumentError("num_workers must be greater than zero."));
 
   OP_REQUIRES_OK(ctx, ParseScalarArgument(ctx, kIndex, &index));
-  OP_REQUIRES(
-      ctx, index >= 0 && index < num_workers,
-      errors::InvalidArgument("index must be between 0 and ", num_workers - 1));
+  OP_REQUIRES(ctx, index >= 0 && index < num_workers,
+              absl::InvalidArgumentError(absl::StrCat(
+                  "index must be between 0 and ", num_workers - 1)));
   auto_shard_policy = auto_shard_policy_;
   if (input->options().distribute_options().auto_shard_policy() !=
       AutoShardPolicy::AUTO) {

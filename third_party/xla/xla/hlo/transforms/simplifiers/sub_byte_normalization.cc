@@ -22,6 +22,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/layout.h"
@@ -104,7 +105,7 @@ absl::StatusOr<bool> SubByteNormalization::RunImpl(
     // element_size_in_bits within fusions being meaningless, because HloVerfier
     // checks for the correct use of element_size_in_bits even in fusion
     // computations.
-    TF_RETURN_IF_ERROR(computation->Accept(&visitor));
+    RETURN_IF_ERROR(computation->Accept(&visitor));
   }
   auto* computation_layout = module->mutable_entry_computation_layout();
   for (int param_no = 0; param_no < computation_layout->parameter_count();

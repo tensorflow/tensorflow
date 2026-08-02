@@ -311,6 +311,7 @@ void LoadOpenCLFunctions(void* libopencl, bool use_wrapper) {
   LoadFunction(clCreateSampler);
   LoadFunction(clEnqueueTask);
 
+#ifndef CL_DELEGATE_NO_GL
   // OpenGL sharing
   LoadFunction(clCreateFromGLBuffer);
   LoadFunction(clCreateFromGLTexture);
@@ -324,6 +325,7 @@ void LoadOpenCLFunctions(void* libopencl, bool use_wrapper) {
   LoadFunction(clCreateFromEGLImageKHR);
   LoadFunction(clEnqueueAcquireEGLObjectsKHR);
   LoadFunction(clEnqueueReleaseEGLObjectsKHR);
+#endif
 
   LoadQcomExtensionFunctions();
 }
@@ -432,6 +434,8 @@ PFN_clCreateCommandQueue clCreateCommandQueue;
 PFN_clCreateSampler clCreateSampler;
 PFN_clEnqueueTask clEnqueueTask;
 
+#ifndef CL_DELEGATE_NO_GL
+
 // OpenGL sharing
 PFN_clCreateFromGLBuffer clCreateFromGLBuffer;
 PFN_clCreateFromGLTexture clCreateFromGLTexture;
@@ -445,6 +449,8 @@ PFN_clCreateEventFromEGLSyncKHR clCreateEventFromEGLSyncKHR;
 PFN_clCreateFromEGLImageKHR clCreateFromEGLImageKHR;
 PFN_clEnqueueAcquireEGLObjectsKHR clEnqueueAcquireEGLObjectsKHR;
 PFN_clEnqueueReleaseEGLObjectsKHR clEnqueueReleaseEGLObjectsKHR;
+
+#endif
 
 // cl_khr_command_buffer extension
 PFN_clCreateCommandBufferKHR clCreateCommandBufferKHR;

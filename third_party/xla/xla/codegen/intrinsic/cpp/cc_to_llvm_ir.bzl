@@ -1,3 +1,18 @@
+# Copyright 2026 The OpenXLA Authors. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
+
 """
 A rule to compile a C++ file to a header containing LLVM IR.
 //third_party/tensorflow/compiler/xla/service/cpu/tests
@@ -110,6 +125,9 @@ def cc_ir_header(name, src, deps = [], copts = [], **kwargs):
         "-std=c++17",
         "-fno-experimental-sanitize-metadata=all",
         "-fno-sanitize=all",
+        "-fno-profile-instr-generate",
+        "-fno-coverage-mapping",
+        "-fno-profile-generate",
     ] + copts
 
     # Disabled features to avoid instrumentations in the IR. ALL sanitizers must be disabled.
@@ -127,6 +145,7 @@ def cc_ir_header(name, src, deps = [], copts = [], **kwargs):
         "msan",
         "tsan",
         "ubsan",
+        "coverage",
     ]
 
     # Prefix features with '-'
@@ -205,7 +224,7 @@ def cc_ir_header(name, src, deps = [], copts = [], **kwargs):
             "//conditions:default": [":" + out_o],
         }),
         hdrs = [":" + out_header],
-        deps = deps + [
+        deps = [
             "//xla/util:embedded_constant_buffers",
             "@com_google_absl//absl/strings:string_view",
         ],

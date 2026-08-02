@@ -98,14 +98,14 @@ TEST_F(HloShardingSpecTest, IsFullyReplicated) {
   {
     // Maximal HloSharding with a single device is fully replicated.
     int num_shards = 1;
-    auto xla_hlo_sharding = xla::HloSharding::AssignDevice(/*device_id=*/0);
+    auto xla_hlo_sharding = xla::HloSharding::SingleDevice(/*device_id=*/0);
     std::shared_ptr<const HloShardingSpec> spec =
         HloShardingSpec::Create(num_shards, xla_hlo_sharding);
     EXPECT_TRUE(spec->IsFullyReplicated());
   }
   {
     // Maximal HloSharding with more than one device is not fully replicated.
-    auto xla_hlo_sharding = xla::HloSharding::AssignDevice(/*device_id=*/0);
+    auto xla_hlo_sharding = xla::HloSharding::SingleDevice(/*device_id=*/0);
     std::shared_ptr<const HloShardingSpec> spec =
         HloShardingSpec::Create(num_shards, xla_hlo_sharding);
     EXPECT_FALSE(spec->IsFullyReplicated());
@@ -509,7 +509,7 @@ TEST_F(HloShardingSpecTest, Hash) {
       HloShardingSpec::Create(6, xla::HloSharding::Replicate()),
       HloShardingSpec::Create(1, xla::HloSharding::Replicate()),
       HloShardingSpec::Create(6,
-                              xla::HloSharding::AssignDevice(/*device_id=*/0)),
+                              xla::HloSharding::SingleDevice(/*device_id=*/0)),
       HloShardingSpec::Create(
           6, xla::HloSharding::PartialTile(
                  xla::TileAssignment(xla::IotaTileAssignment::Create({2, 3})))),
