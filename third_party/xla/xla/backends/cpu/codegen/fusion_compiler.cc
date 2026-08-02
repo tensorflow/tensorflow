@@ -435,6 +435,7 @@ void AddVectorToLLVMPasses(mlir::OpPassManager& pm, bool fast_min_max) {
   pm.addPass(cpu::createLowerToLLVMPass());
   pm.addPass(mlir::createConvertVectorToSCFPass(
       mlir::VectorTransferToSCFOptions().enableFullUnroll(false)));
+  pm.addNestedPass<mlir::func::FuncOp>(cpu::createHoistAllocaPass());
   pm.addPass(cpu::createUnpackSubByteVectorWritePass());
 
   mlir::ConvertVectorToLLVMPassOptions options;

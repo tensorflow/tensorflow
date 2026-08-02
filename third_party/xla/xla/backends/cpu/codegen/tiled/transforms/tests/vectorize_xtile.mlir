@@ -511,3 +511,24 @@ func.func @test_insert_unaligned(%arg0: tensor<8xf32>, %arg1: memref<128xf32>, %
 // CHECK:   vector.transfer_write %{{.*}}, %{{.*}}[%{{.*}}], %[[MASK]] : vector<8xf32>, memref<128xf32>
 // CHECK: }
 
+func.func @test_transpose(%arg0: tensor<16x16x8xf32>) -> tensor<8x16x16xf32> {
+  %0 = stablehlo.transpose %arg0, dims = [2, 0, 1] : (tensor<16x16x8xf32>) -> tensor<8x16x16xf32>
+  return %0 : tensor<8x16x16xf32>
+}
+// CHECK-LABEL: @test_transpose
+// CHECK: %[[CAST:.*]] = builtin.unrealized_conversion_cast %arg0 : tensor<16x16x8xf32> to vector<16x16x8xf32>
+// CHECK: %[[TRANS:.*]] = vector.transpose %[[CAST]], [2, 0, 1] : vector<16x16x8xf32> to vector<8x16x16xf32>
+// CHECK: %[[RET:.*]] = builtin.unrealized_conversion_cast %[[TRANS]] : vector<8x16x16xf32> to tensor<8x16x16xf32>
+// CHECK: return %[[RET]]
+
+func.func @test_transpose_2d(%arg0: tensor<16x32xf32>) -> tensor<32x16xf32> {
+  %0 = stablehlo.transpose %arg0, dims = [1, 0] : (tensor<16x32xf32>) -> tensor<32x16xf32>
+  return %0 : tensor<32x16xf32>
+}
+// CHECK-LABEL: @test_transpose_2d
+// CHECK: %[[CAST:.*]] = builtin.unrealized_conversion_cast %arg0 : tensor<16x32xf32> to vector<16x32xf32>
+// CHECK: %[[TRANS:.*]] = vector.transpose %[[CAST]], [1, 0] : vector<16x32xf32> to vector<32x16xf32>
+// CHECK: %[[RET:.*]] = builtin.unrealized_conversion_cast %[[TRANS]] : vector<32x16xf32> to tensor<32x16xf32>
+// CHECK: return %[[RET]]
+
+

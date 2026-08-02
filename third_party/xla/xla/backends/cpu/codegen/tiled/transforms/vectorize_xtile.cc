@@ -258,6 +258,23 @@ struct ConvertInsertTile
   }
 };
 
+struct VectorizeTransposeOp
+    : public mlir::OpConversionPattern<shlo::TransposeOp> {
+  using OpConversionPattern::OpConversionPattern;
+
+  mlir::LogicalResult matchAndRewrite(
+      shlo::TransposeOp op, OpAdaptor adaptor,
+      mlir::ConversionPatternRewriter& rewriter) const override {
+    mlir::Type new_type = this->getTypeConverter()->convertType(op.getType());
+    if (!new_type) {
+      return mlir::failure();
+    }
+    rewriter.replaceOpWithNewOp<mv::TransposeOp>(
+        op, new_type, adaptor.getOperand(), op.getPermutation());
+    return mlir::success();
+  }
+};
+
 template <typename OpTy>
 struct VectorizeElementwiseOp : public mlir::OpConversionPattern<OpTy> {
   using mlir::OpConversionPattern<OpTy>::OpConversionPattern;
@@ -313,14 +330,15 @@ class VectorizeXTilePass
         ma::ArithDialect, mlir::memref::MemRefDialect, mm::MathDialect,
         ms::SCFDialect, mlir::tensor::TensorDialect, mv::VectorDialect,
         shlo::StablehloDialect, xla::XlaDialect, xtile::XTileDialect>();
-    target.addIllegalOp<xtile::ExtractTileOp, xtile::InsertTileOp>();
+    target.addIllegalOp<shlo::TransposeOp, xtile::ExtractTileOp,
+                        xtile::InsertTileOp>();
     target.addLegalOp<mlir::UnrealizedConversionCastOp>();
     target.addDynamicallyLegalDialect<ma::ArithDialect, mm::MathDialect>(
         [&](mlir::Operation* op) { return type_converter.isLegal(op); });
 
     mlir::RewritePatternSet patterns(context);
-    patterns.add<ConvertExtractTile, ConvertInsertTile>(type_converter,
-                                                        context);
+    patterns.add<ConvertExtractTile, ConvertInsertTile, VectorizeTransposeOp>(
+        type_converter, context);
     populateVectorizePatterns<
         ma::AddFOp, ma::AddIOp, ma::SubFOp, ma::SubIOp, ma::MulFOp, ma::MulIOp,
         ma::DivFOp, ma::DivSIOp, ma::DivUIOp, ma::RemFOp, ma::RemSIOp,
