@@ -27,6 +27,11 @@ load(
     "if_onednn_async",
     "onednn_v3_define",
 )
+load(
+    "//third_party/KDNN:build_defs.bzl",
+    _if_enable_kdnn = "if_enable_kdnn",
+    _kdnn_deps = "kdnn_deps",
+)
 load("//tensorflow:tf_version.bzl", "TF_VERSION")
 
 #
@@ -347,6 +352,13 @@ def if_zendnn(if_true, if_false = []):
         "//conditions:default": if_false,
     })
 
+# KDNN — Kunpeng Deep Neural Network library (Huawei, ARM-only). Opt-in
+# via --define=enable_kdnn=true; gated additionally on aarch64. We
+# re-export the macro from third_party/KDNN/build_defs.bzl under a
+# shorter name so the rest of the bazel files can use `if_enable_kdnn`.
+if_enable_kdnn = _if_enable_kdnn
+kdnn_deps = _kdnn_deps
+
 def if_libtpu(if_true, if_false = []):
     """Shorthand for select()ing whether to build backend support for TPUs when building libtpu.so"""
     return select({
@@ -477,6 +489,9 @@ def tf_copts(
         onednn_v3_define() +
         if_mkldnn_aarch64_acl(["-DDNNL_AARCH64_USE_ACL=1"]) +
         if_zendnn(["-DAMD_ZENDNN"]) +
+        # KERNEL_KDNN enables the gated KDNN kernel / op blocks in
+        # tensorflow/core/kernels/kdnn/ and tensorflow/core/ops/.
+        if_enable_kdnn(["-DKERNEL_KDNN"]) +
         if_enable_acl(["-DXLA_CPU_USE_ACL=1", "-fexceptions"]) +
         if_llvm_aarch32_available(["-DTF_LLVM_AARCH32_AVAILABLE=1"]) +
         if_llvm_aarch64_available(["-DTF_LLVM_AARCH64_AVAILABLE=1"]) +

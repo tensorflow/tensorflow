@@ -188,4 +188,38 @@ bool IsZenDnnEnabled() {
 #endif  // !AMD_ZENDNN
 }
 
+bool IsKDNNEnabled() {
+#ifndef KERNEL_KDNN
+  // The TF binary was not built with --define=enable_kdnn=true. KDNN
+  // kernels / ops are simply not compiled in. Returning false here is
+  // the single source of truth for every consumer (Grappler remapper,
+  // eager op rewrite, test gates).
+  return false;
+#else
+  // Build-time flag is on. Check the runtime escape hatch:
+  //   TF_ENABLE_KDNN_OPTS=0  -> force disable even if built with --define
+  //   TF_ENABLE_KDNN_OPTS unset -> default-on
+  //   TF_ENABLE_KDNN_OPTS=1  -> explicit on
+  static absl::once_flag once;
+  static bool kdnn_enabled = true;
+  absl::call_once(once, [&] {
+    auto status = ReadBoolFromEnvVar("TF_ENABLE_KDNN_OPTS", kdnn_enabled,
+                                     &kdnn_enabled);
+    if (!status.ok()) {
+      LOG(WARNING) << "TF_ENABLE_KDNN_OPTS is not set to either '0', 'false',"
+                   << " '1', or 'true'. Using the default setting: "
+                   << kdnn_enabled;
+    }
+    if (kdnn_enabled) {
+      LOG(INFO) << "KDNN (Kunpeng DNN) custom operations are on. "
+                << "You may see slightly different numerical results due to "
+                << "floating-point round-off errors from different computation "
+                << "orders. To turn them off, set the environment variable "
+                << "`TF_ENABLE_KDNN_OPTS=0`.";
+    }
+  });
+  return kdnn_enabled;
+#endif  // KERNEL_KDNN
+}
+
 }  // namespace tensorflow

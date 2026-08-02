@@ -1,0 +1,58 @@
+# KDNN — Kunpeng Deep Neural Network Library
+
+This directory holds the integration glue for the third-party **KDNN** library
+developed by Huawei as part of openEuler's **KAIL (Kunpeng AI Library) BoostKit**.
+KDNN targets the **Kunpeng 920** (ARMv8) CPU.
+
+This is intentionally a **header + BUILD skeleton** — the actual shared library
+(`libkdnn.so`) is expected to be provided by the operator. See the
+*Distribution* section below.
+
+## What is here
+
+| File | Purpose |
+|---|---|
+| `kdnn.h` | Minimal C API header (declarations only). Mirrors the public surface of KAIL's KDNN. No implementation. |
+| `build_defs.bzl` | Bazel macros: `if_enable_kdnn`, `kdnn_deps`. |
+| `BUILD` | Minimal `cc_library` rules for the header + a stubbed implementation. |
+
+## What is NOT here
+
+- The KDNN implementation itself (`.c`, `.cpp`, `.s` ARM assembly).
+- The actual `libkdnn.so` binary.
+- Any KAIL BoostKit packaging.
+
+Those are downloaded or symlinked into this tree at *build time* via the
+`KDNN_ROOT` environment variable (analogous to the existing `TF_MKL_ROOT`).
+See the `kdnn_repository` rule.
+
+## Build flag
+
+```sh
+# Explicit opt-in; default off.
+bazel build --define=enable_kdnn=true //tensorflow/...
+```
+
+The flag is a TRANSITIVE — both `tensorflow/tensorflow.bzl` and the
+Kunpeng-aarch64 `config_setting` (declared in `tensorflow/workspace.bzl`)
+must be satisfied for the KDNN kernels to compile.
+
+## Distribution
+
+The KDNN source is distributed by Huawei under the openEuler BoostKit. The
+TF integration expects one of two models:
+
+1. **Pre-built binary** (recommended for the initial PR): the operator places
+   `libkdnn.so` and `kdnn.h` under a directory pointed to by `KDNN_ROOT`.
+2. **Source build** (future work): the operator runs a build script that
+   produces `libkdnn.so` and places it under `KDNN_ROOT/lib`.
+
+Either model lands the artifacts where the `kdnn_repository` rule can find
+them.
+
+## Why this is a separate third_party directory
+
+KDNN is **not** a generic x86 backend — it is ARM-only. The existing MKL
+tree would be misleading because the activation is gated by a different
+`config_setting` (aarch64 + opt-in flag vs. x86 + default-on). Keeping it
+separate also makes it easy to backport independently of MKL.

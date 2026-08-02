@@ -993,6 +993,7 @@ filegroup(
         "nccl_ops_op_lib",
         "nn_grad",
         "nn_ops_op_lib",
+        "kdnn_nn_ops_op_lib",
         "no_op_op_lib",
         "optional_ops_op_lib",
         "parsing_ops_op_lib",

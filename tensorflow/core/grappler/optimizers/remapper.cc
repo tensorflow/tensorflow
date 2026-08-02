@@ -4148,6 +4148,101 @@ absl::Status ReplaceSigmoidMulWithSwish(
   return absl::OkStatus();
 }
 
+// =============================================================================
+// KDNN rewrites
+// =============================================================================
+// KDNN (Kunpeng Deep Neural Network) is a third-party, ARM-only library
+// distributed by Huawei as part of openEuler KAIL BoostKit. The rewrites
+// here substitute a public op (e.g. Sigmoid) with a KDNN-backed variant
+// (e.g. _KdnnSigmoid) when IsKDNNEnabled() is true.
+//
+// All KDNN code is wrapped in `#ifdef KERNEL_KDNN` so the file compiles
+// cleanly on builds that do NOT opt in. When the flag is absent, these
+// functions are dead-code-eliminated by the compiler and contribute no
+// runtime cost.
+
+#ifdef KERNEL_KDNN
+
+// Match the public `Sigmoid` op as a candidate for the KDNN rewrite.
+//
+// Restrict to float / half / bfloat16 — KDNN does not have a complex
+// Sigmoid implementation. Also restrict to CPU devices; KDNN is
+// CPU-only.
+bool FindSigmoidToKdnn(RemapperContext* ctx, int node_index,
+                       std::map<std::string, int>* matched_nodes_map,
+                       std::set<int>* remove_node_indices) {
+  if (!IsKDNNEnabled()) return false;
+
+  using utils::MatchingDirection;
+  using utils::NodeStatus;
+  // clang-format off
+  // Match a single Sigmoid op:
+  //   Sigmoid(x) --> _KdnnSigmoid(x)
+  utils::OpTypePattern sigmoid_pattern{
+    "Sigmoid", "sigmoid", NodeStatus::kReplace,
+    {
+      { "*", "input", NodeStatus::kRemain}
+    }
+  };
+  // clang-format on
+
+  auto* sigmoid_node_def = ctx->graph_view.GetNode(node_index)->node();
+
+  // Only float / half / bfloat16 — KDNN does not implement the complex
+  // or double variant. Check the T attr.
+  if (!(HasDataType(sigmoid_node_def, DT_FLOAT) ||
+        HasDataType(sigmoid_node_def, DT_HALF) ||
+        HasDataType(sigmoid_node_def, DT_BFLOAT16))) {
+    return false;
+  }
+
+  if (!NodeIsOnCpu(sigmoid_node_def)) return false;
+
+  bool found_op_type_match = false;
+  utils::SubGraphMatcher<MatchingDirection::kFollowInputs> graph_matcher(
+      &(ctx->graph_view));
+  matched_nodes_map->clear();
+  remove_node_indices->clear();
+  found_op_type_match = graph_matcher.GetMatchedNodes(
+      sigmoid_pattern, {}, ctx->graph_view.GetNode(node_index),
+      matched_nodes_map, remove_node_indices);
+  return found_op_type_match;
+}
+
+// Replace the matched Sigmoid node with _KdnnSigmoid.
+absl::Status ReplaceSigmoidWithKdnnSigmoid(
+    RemapperContext* ctx, const std::map<std::string, int>& matched_nodes_map,
+    const std::set<int>& remove_node_indices,
+    std::vector<bool>* invalidated_nodes,
+    std::vector<bool>* nodes_to_delete) {
+  const NodeDef* sigmoid =
+      ctx->graph_view.GetNode(matched_nodes_map.at("sigmoid"))->node();
+
+  NodeDef fused_op;
+  fused_op.set_name(sigmoid->name());
+  fused_op.set_op("_KdnnSigmoid");
+  fused_op.set_device(sigmoid->device());
+  fused_op.add_input(sigmoid->input(0));
+
+  auto* attr = fused_op.mutable_attr();
+  (*attr)["T"] = sigmoid->attr().at("T");
+
+  utils::Mutation* mutation = ctx->graph_view.GetMutationBuilder();
+  absl::Status status;
+  mutation->AddNode(std::move(fused_op), &status);
+  TF_RETURN_IF_ERROR(status);
+  TF_RETURN_IF_ERROR(mutation->Apply());
+
+  (*invalidated_nodes)[matched_nodes_map.at("sigmoid")] = true;
+
+  for (const auto& node_index : remove_node_indices) {
+    (*nodes_to_delete)[node_index] = true;
+  }
+  return absl::OkStatus();
+}
+
+#endif  // KERNEL_KDNN
+
 absl::Status AddFusedBatchNormExNode(RemapperContext* ctx,
                                      const FusedBatchNormEx& matched,
                                      std::vector<bool>* invalidated_nodes,
@@ -5239,6 +5334,24 @@ absl::Status Remapper::Optimize(Cluster* cluster, const GrapplerItem& item,
           continue;
         }
       }
+
+#ifdef KERNEL_KDNN
+      // Remap plain Sigmoid(x) into _KdnnSigmoid(x). This is a leaf
+      // rewrite — there is no fusion. It MUST be checked after the
+      // Mul+Sigmoid → Swish fusion above, so that the more profitable
+      // fusion has a chance to match first. (After the KDNN rewrite
+      // lands, Sigmoid no longer exists in the graph and the Swish
+      // fusion would no longer match.)
+      std::map<std::string, int> kdnn_sigmoid_matched_nodes_map;
+      std::set<int> kdnn_sigmoid_remove_node_indices;
+      if (FindSigmoidToKdnn(&ctx, i, &kdnn_sigmoid_matched_nodes_map,
+                            &kdnn_sigmoid_remove_node_indices)) {
+        TF_RETURN_IF_ERROR(ReplaceSigmoidWithKdnnSigmoid(
+            &ctx, kdnn_sigmoid_matched_nodes_map, kdnn_sigmoid_remove_node_indices,
+            &invalidated_nodes, &nodes_to_delete));
+        continue;
+      }
+#endif  // KERNEL_KDNN
 
       // Remap smaller ops from layernorm python api into _MklLayerNorm
       matched_nodes_map.clear();

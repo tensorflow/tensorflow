@@ -3112,5 +3112,102 @@ class XlaCpuJitDisableFusionTest : public RemapperTest {
 TEST_F(XlaCpuJitDisableFusionTest, MatMulWithBias) { RunTest<DT_FLOAT>(); }
 #endif  // !(DNNL_AARCH64_USE_ACL || GOOGLE_CUDA || TENSORFLOW_USE_ROCM)
 
+// =============================================================================
+// KDNN rewrites
+// =============================================================================
+// The KDNN rewrite path is gated by IsKDNNEnabled() (which is only true
+// when the binary was built with --define=enable_kdnn=true AND the
+// runtime env-var TF_ENABLE_KDNN_OPTS is not 0). In addition the
+// kdnn_apply_activation stub used by the test harness does not support
+// double, so we restrict the test to float32.
+//
+// On a CI box without KDNN, the test must SKIP rather than FAIL —
+// otherwise the standard CI (x86) would be broken by an aarch64-only
+// feature. We do this by checking IsKDNNEnabled() and bailing out.
+
+class RemapperSigmoidToKdnnTest : public GrapplerTest {
+ protected:
+  template <DataType DTYPE>
+  void RunTest() {
+#ifndef KERNEL_KDNN
+    GTEST_SKIP() << "KDNN is not compiled in (build with "
+                     "--define=enable_kdnn=true to enable).";
+#else
+    // Runtime gate: the build flag is set, but the user may have set
+    // TF_ENABLE_KDNN_OPTS=0. In that case the rewrite won't fire and
+    // we should SKIP rather than FAIL — KDNN is opt-in.
+    if (!IsKDNNEnabled()) {
+      GTEST_SKIP() << "KDNN is disabled at runtime "
+                      "(TF_ENABLE_KDNN_OPTS=0).";
+    }
+
+    using ::tensorflow::ops::Placeholder;
+
+    tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+    auto shape = ops::Placeholder::Shape({8, 8});
+    auto input = Placeholder(s.WithOpName("input"), DTYPE, shape);
+
+    auto sigmoid = ops::Sigmoid(s.WithOpName("Sigmoid"), input);
+    auto fetch = ops::Identity(s.WithOpName("fetch"), sigmoid);
+
+    auto input_t = GenerateTensorWithSetRandom<DTYPE>({8, 8});
+
+    GrapplerItem item;
+    item.fetch = {"fetch"};
+    item.feed = {{"input", input_t}};
+    TF_ASSERT_OK(s.ToGraphDef(&item.graph));
+
+    // Force all nodes onto CPU — KDNN is CPU-only.
+    for (int i = 0; i < item.graph.node_size(); ++i) {
+      item.graph.mutable_node(i)->set_device("/device:CPU:0");
+    }
+
+    Remapper optimizer(RewriterConfig::ON);
+    GraphDef output;
+    TF_ASSERT_OK(optimizer.Optimize(nullptr, item, &output));
+
+    int found = 0;
+    for (const NodeDef& node : output.node()) {
+      if (node.name() == "Sigmoid") {
+        EXPECT_EQ(node.op(), "_KdnnSigmoid");
+        ASSERT_EQ(node.input_size(), 1);
+        EXPECT_EQ(node.input(0), "input");
+        ++found;
+      }
+    }
+    EXPECT_EQ(found, 1);
+
+    // Numerical correctness: the rewritten graph must produce the
+    // same output (within tolerance) as the original Sigmoid.
+    auto tensors_expected = EvaluateNodes(item.graph, item.fetch, item.feed);
+    ASSERT_EQ(tensors_expected.size(), 1);
+    auto tensors = EvaluateNodes(output, item.fetch, item.feed);
+    ASSERT_EQ(tensors.size(), 1);
+    float atol = 1e-5, rtol = 1e-5;
+    if (DTYPE == DT_BFLOAT16) {
+      atol = 1e-2;
+      rtol = 1e-2;
+    } else if (DTYPE == DT_HALF) {
+      atol = 1e-3;
+      rtol = 1e-3;
+    }
+    test::ExpectClose(tensors[0], tensors_expected[0], atol, rtol);
+#endif  // KERNEL_KDNN
+  }
+};
+
+TEST_F(RemapperSigmoidToKdnnTest, Float32) {
+  RunTest<DT_FLOAT>();
+}
+
+#ifdef KERNEL_KDNN
+TEST_F(RemapperSigmoidToKdnnTest, BFloat16) {
+  RunTest<DT_BFLOAT16>();
+}
+TEST_F(RemapperSigmoidToKdnnTest, Half) {
+  RunTest<DT_HALF>();
+}
+#endif  // KERNEL_KDNN
+
 }  // namespace grappler
 }  // namespace tensorflow
