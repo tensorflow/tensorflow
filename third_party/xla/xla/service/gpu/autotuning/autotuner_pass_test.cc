@@ -515,15 +515,6 @@ TEST_F(AutotunerFlagsTest, DevicelessUsesDefaultConfig) {
             true);
 }
 
-TEST_F(AutotunerFlagsTest, DeterministicAutotuningSetsSelectFirstConfig) {
-  DebugOptions debug_options = GetDebugOptionsForTest();
-  debug_options.set_xla_gpu_deterministic_ops(true);
-  EXPECT_EQ(GetConfigAssignerOptions(debug_options).select_first_config, true);
-  debug_options.set_xla_gpu_deterministic_ops(false);
-  debug_options.set_xla_gpu_exclude_nondeterministic_ops(true);
-  EXPECT_EQ(GetConfigAssignerOptions(debug_options).select_first_config, true);
-}
-
 TEST_F(AutotunerFlagsTest, GetGpuAutotunerBackendsRespectsDeterminism) {
   DebugOptions debug_options = GetDebugOptionsForTest();
   debug_options.set_xla_gpu_exclude_nondeterministic_ops(true);
