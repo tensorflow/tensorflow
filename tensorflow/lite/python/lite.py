@@ -1762,6 +1762,7 @@ class TFLiteKerasModelConverterV2(TFLiteConverterBaseV2):
               "SavedModel conversion failed. Fallback to freezing Keras model."
           )
           self.saved_model_dir = None
+          return None
     finally:
       shutil.rmtree(temp_dir, True)
 
