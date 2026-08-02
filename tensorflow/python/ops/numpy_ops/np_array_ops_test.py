@@ -29,6 +29,7 @@ from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops.numpy_ops import np_array_ops
 from tensorflow.python.ops.numpy_ops import np_arrays
@@ -629,6 +630,9 @@ class ArrayMethodsTest(test.TestCase):
     # op requiring a smaller static extent failed to compile under XLA even
     # though eager execution succeeded. The condition is derived from the input
     # so its selected count is data-dependent (not constant-folded away).
+    if not test_util.is_xla_enabled():
+      self.skipTest("XLA JIT compiler is not enabled in this test environment.")
+
     def f(x):
       condition = x[:3] > 0.0  # data-dependent, static length 3
       compressed = np_array_ops.compress(condition, x)  # bounded by len 3, not 5
