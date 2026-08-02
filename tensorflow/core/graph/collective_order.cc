@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/graph/collective_order.h"
 
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <numeric>
@@ -23,6 +24,8 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/core/graph/algorithm.h"
 
 namespace tensorflow {
@@ -88,13 +91,8 @@ absl::Status CreateControlDependencies(
   std::vector<uint64_t> reaches(
       static_cast<size_t>(num_collectives) * words_per_row, 0);
   const auto set_reaches = [&](int a, int b) {
-    reaches[static_cast<size_t>(a) * words_per_row + b / 64] |=
-        uint64_t{1} << (b % 64);
-  };
-  const auto test_reaches = [&](int a, int b) {
-    return (reaches[static_cast<size_t>(a) * words_per_row + b / 64] >>
-            (b % 64)) &
-           1;
+    reaches[static_cast<size_t>(a) * words_per_row + b / 64] |= uint64_t{1}
+                                                                << (b % 64);
   };
   absl::flat_hash_map<Node*, int> collective_index;
   collective_index.reserve(num_collectives);
@@ -168,6 +166,7 @@ absl::Status CreateControlDependencies(
   // order of `neighbor_set`, which is keyed by `Node*`.
   std::vector<Node*> redundant;
   std::vector<std::pair<Node*, int>> neighbors;
+  std::vector<uint64_t> combined_reach(words_per_row, 0);
   for (int i = 0; i < num_collectives; ++i) {
     auto edges_it = dependency_edges->find(collective_nodes[i]);
     if (edges_it == dependency_edges->end()) continue;
@@ -180,14 +179,24 @@ absl::Status CreateControlDependencies(
     for (Node* v : neighbor_set) {
       neighbors.emplace_back(v, collective_index[v]);
     }
+    // Union of everything this node's successors can reach. A successor that
+    // lies in that union is reachable from another successor, so the direct
+    // edge to it is implied. Every edge runs from a higher instance key to a
+    // lower one, so the graph is acyclic and `reaches[v]` never contains `v`
+    // itself; no self-exclusion is needed. Taking the union costs
+    // O(|neighbours| * words_per_row) against the O(|neighbours|^2) of testing
+    // every ordered pair.
+    std::fill(combined_reach.begin(), combined_reach.end(), 0);
+    for (const auto& [v, v_idx] : neighbors) {
+      const size_t v_row = static_cast<size_t>(v_idx) * words_per_row;
+      for (int w = 0; w < words_per_row; ++w) {
+        combined_reach[w] |= reaches[v_row + w];
+      }
+    }
     redundant.clear();
     for (const auto& [v, v_idx] : neighbors) {
-      for (const auto& [w, w_idx] : neighbors) {
-        if (w == v) continue;
-        if (test_reaches(w_idx, v_idx)) {
-          redundant.push_back(v);
-          break;
-        }
+      if ((combined_reach[v_idx / 64] >> (v_idx % 64)) & 1) {
+        redundant.push_back(v);
       }
     }
     for (Node* v : redundant) neighbor_set.erase(v);
