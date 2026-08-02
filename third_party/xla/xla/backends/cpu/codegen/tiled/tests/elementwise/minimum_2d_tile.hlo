@@ -16,8 +16,8 @@ fusion {
   p1 = f32[128,256] parameter(1)
   ROOT minimum = f32[128,256] minimum(p0, p1)
 }
-// CHECK:      #indexing_map = #xla.indexing_map<"(pid, tid) -> (pid * 32 + tid / 64), domain: pid in [0, 3], tid in [0, 2047]">
-// CHECK:      #indexing_map1 = #xla.indexing_map<"(tid) -> ((tid mod 64) * 4), domain: tid in [0, 2047]">
+// CHECK:      #indexing_map = #xla.indexing_map<"(pid, tid) -> ((tid / 64) * 8 + pid * 64), domain: pid in [0, 1], tid in [0, 511]">
+// CHECK:      #indexing_map1 = #xla.indexing_map<"(tid) -> ((tid mod 64) * 4), domain: tid in [0, 511]">
 
 // CHECK:        xtile.entry_func @wrapped_fusion(
 // CHECK-SAME:     %[[LHS:[^:]+]]: memref<128x256xf32>,
@@ -28,34 +28,36 @@ fusion {
 
 // CHECK:  %[[C0:.*]] = arith.constant 0 : index
 // CHECK:  %[[C1:.*]] = arith.constant 1 : index
-// CHECK:  %[[LIMIT:.*]] = arith.constant 2048 : index
+// CHECK:  %[[LIMIT:.*]] = arith.constant 512 : index
 // CHECK:  scf.for %[[TID:.*]] = %[[C0]] to %[[LIMIT]] step %[[C1]] {
 // CHECK:    %[[IDX_0:.*]] = xla.apply_indexing #indexing_map(%[[PID]], %[[TID]])
 // CHECK:    %[[IDX_1:.*]] = xla.apply_indexing #indexing_map1(%[[TID]])
-// CHECK:    %[[T_0:.*]] = xtile.extract %[[LHS]][%[[IDX_0]], %[[IDX_1]]] [1, 4] [1, 1]
-// CHECK:    %[[T_1:.*]] = xtile.extract %[[RHS]][%[[IDX_0]], %[[IDX_1]]] [1, 4] [1, 1]
-// CHECK:    %[[MIN:.*]] = stablehlo.minimum %[[T_0]], %[[T_1]] : tensor<1x4xf32>
-// CHECK:    xtile.insert %[[MIN]] into %[[OUT]][%[[IDX_0]], %[[IDX_1]]] [1, 4] [1, 1]
+// CHECK:    %[[T_0:.*]] = xtile.extract %[[LHS]][%[[IDX_0]], %[[IDX_1]]] [8, 4] [1, 1]
+// CHECK:    %[[T_1:.*]] = xtile.extract %[[RHS]][%[[IDX_0]], %[[IDX_1]]] [8, 4] [1, 1]
+// CHECK:    %[[MIN:.*]] = stablehlo.minimum %[[T_0]], %[[T_1]] : tensor<8x4xf32>
+// CHECK:    xtile.insert %[[MIN]] into %[[OUT]][%[[IDX_0]], %[[IDX_1]]] [8, 4] [1, 1]
 // CHECK:  }
 // CHECK:  xtile.return
 
 // CHECK-VECTOR-LABEL: func.func @wrapped_fusion_impl
-// CHECK-VECTOR:         %[[ALLOCA_0:.*]] = memref.alloca() : memref<1x4xf32>
-// CHECK-VECTOR:         %[[ALLOCA_1:.*]] = memref.alloca() : memref<1x4xf32>
-// CHECK-VECTOR:         memref.copy %{{.*}}, %[[ALLOCA_0]]
-// CHECK-VECTOR:         memref.copy %{{.*}}, %{{.*}}
+// CHECK-VECTOR:  %[[ALLOCA_0:.*]] = memref.alloca() : memref<8x4xf32>
+// CHECK-VECTOR:  %[[ALLOCA_1:.*]] = memref.alloca() : memref<8x4xf32>
+// CHECK-VECTOR:  memref.copy %{{.*}}, %[[ALLOCA_0]]
+// CHECK-VECTOR:  memref.copy %{{.*}}, %{{.*}}
 
 // NEW-VECTOR-LABEL: func.func @wrapped_fusion_impl
 // NEW-VECTOR-SAME:    %[[ARG0:.*]]: memref<128x256xf32>, %[[ARG1:.*]]: memref<128x256xf32>, %[[ARG2:.*]]: memref<128x256xf32>
 // NEW-VECTOR:         %[[PAD:.*]] = arith.constant 0.000000e+00 : f32
 // NEW-VECTOR:         scf.for
 // NEW-VECTOR-NOT:     scf.if
-// NEW-VECTOR:         %[[R0:.*]] = vector.transfer_read %[[ARG0]][%{{.*}}, %{{.*}}], %[[PAD]] {in_bounds = [true, true]} : memref<128x256xf32>, vector<1x4xf32>
-// NEW-VECTOR:         %[[R1:.*]] = vector.transfer_read %[[ARG1]][%{{.*}}, %{{.*}}], %[[PAD]] {in_bounds = [true, true]} : memref<128x256xf32>, vector<1x4xf32>
+// NEW-VECTOR:         %[[R0:.*]] = vector.transfer_read %[[ARG0]][%{{.*}}, %{{.*}}], %[[PAD]] {in_bounds = [true, true]} : memref<128x256xf32>, vector<8x4xf32>
+// NEW-VECTOR:         %[[R1:.*]] = vector.transfer_read %[[ARG1]][%{{.*}}, %{{.*}}], %[[PAD]] {in_bounds = [true, true]} : memref<128x256xf32>, vector<8x4xf32>
 // NEW-VECTOR:         %[[MIN:.*]] = arith.minimumf %[[R0]], %[[R1]]
-// NEW-VECTOR:         vector.transfer_write %[[MIN]], %[[ARG2]][%{{.*}}, %{{.*}}] {in_bounds = [true, true]} : vector<1x4xf32>, memref<128x256xf32>
+// NEW-VECTOR:         vector.transfer_write %[[MIN]], %[[ARG2]][%{{.*}}, %{{.*}}] {in_bounds = [true, true]} : vector<8x4xf32>, memref<128x256xf32>
 
-// CHECK-LLVM: llvm.intr.memcpy
+// CHECK-LLVM-LABEL: llvm.func internal @wrapped_fusion_impl
+// CHECK-LLVM:         llvm.load
+// CHECK-LLVM:         llvm.store
 
 ENTRY main {
   p0 = f32[128,256] parameter(0)
@@ -64,8 +66,8 @@ ENTRY main {
     backend_config={
       "fusion_backend_config":{
         "block_level_fusion_config":{
-          "output_tiles":[{"sizes":["1", "4"]}],
-          "num_ctas":"4"
+          "output_tiles":[{"sizes":["8", "4"]}],
+          "num_ctas":"2"
         }
       }
     }

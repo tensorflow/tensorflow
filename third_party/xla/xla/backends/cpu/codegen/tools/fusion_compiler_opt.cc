@@ -53,6 +53,10 @@ int main(int argc, char** argv) {
       "xtile-cpu-xtile-to-vector",
       "Run the conversion from XTile to Vector dialect.",
       [](mlir::OpPassManager& pm) { xla::cpu::AddXtileToVectorPasses(pm); });
+  mlir::PassPipelineRegistration<mlir::EmptyPipelineOptions>(
+      "xtile-cpu-new-xtile-to-vector",
+      "Run the conversion from XTile to Vector dialect.",
+      [](mlir::OpPassManager& pm) { xla::cpu::AddNewXtileToVectorPasses(pm); });
   mlir::PassPipelineRegistration<XtileCpuPassOptions>(
       "xtile-cpu-vector-to-llvm",
       "Run the conversion from Vector to LLVM dialect.",
