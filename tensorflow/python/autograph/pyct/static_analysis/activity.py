@@ -663,6 +663,20 @@ class ActivityAnalyzer(transformer.Base):
                                           (node.orelse, NodeAnno.ORELSE_SCOPE)))
     return node
 
+  def visit_Match(self, node):
+    # Reaching-definitions analysis maps each of these expression scopes to the
+    # corresponding CFG node.
+    node.subject = self._process_statement(node.subject)
+    node.cases = self.visit_block(node.cases)
+    return node
+
+  def visit_match_case(self, node):
+    node.pattern = self._process_statement(node.pattern)
+    if node.guard is not None:
+      node.guard = self._process_statement(node.guard)
+    node.body = self.visit_block(node.body)
+    return node
+
   def visit_For(self, node):
     self._enter_scope(False)
     node.target = self.visit(node.target)

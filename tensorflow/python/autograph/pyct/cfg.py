@@ -839,6 +839,28 @@ class AstToCfg(gast.NodeVisitor):
     self.builder.exit_cond_section(node)
     self.builder.end_statement(node)
 
+  def visit_Match(self, node):
+    self.builder.begin_statement(node)
+
+    # Match statements run at trace time, but their branches still need a
+    # conservative CFG for the static analyses that precede conversion.
+    self.builder.enter_cond_section(node)
+    self._process_basic_statement(node.subject)
+
+    for case in node.cases:
+      self.builder.new_cond_branch(node)
+      self._process_basic_statement(case.pattern)
+      if case.guard is not None:
+        self._process_basic_statement(case.guard)
+      for stmt in case.body:
+        self.visit(stmt)
+
+    # A match statement may leave all cases unmatched.
+    self.builder.new_cond_branch(node)
+
+    self.builder.exit_cond_section(node)
+    self.builder.end_statement(node)
+
   def visit_While(self, node):
     self.builder.begin_statement(node)
     self._enter_lexical_scope(node)

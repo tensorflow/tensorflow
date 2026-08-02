@@ -56,6 +56,14 @@ class VariableAccessTransformer(converter.Base):
       node = templates.replace_as_expression('ag__.ld(var_)', var_=node)
     return node
 
+  def visit_match_case(self, node):
+    # Pattern value and class names have stricter syntax than expressions, so
+    # they cannot be wrapped in `ag__.ld`.
+    if node.guard is not None:
+      node.guard = self.visit(node.guard)
+    node.body = self.visit_block(node.body)
+    return node
+
   def visit_Delete(self, node):
     node = self.generic_visit(node)
 

@@ -146,6 +146,13 @@ class ConditionalReturnRewriter(converter.Base):
 
     return node
 
+  def visit_match_case(self, node):
+    node.pattern = self.visit(node.pattern)
+    if node.guard is not None:
+      node.guard = self.visit(node.guard)
+    node.body, _ = self._visit_statement_block(node, node.body)
+    return node
+
   def visit_FunctionDef(self, node):
     node.args = self.visit(node.args)
     node.body, _ = self._visit_statement_block(node, node.body)
@@ -332,6 +339,13 @@ class ReturnStatementsTransformer(converter.Base):
     node.test = self.visit(node.test)
     node.body = self._visit_statement_block(node, node.body)
     node.orelse = self._visit_statement_block(node, node.orelse)
+    return node
+
+  def visit_match_case(self, node):
+    node.pattern = self.visit(node.pattern)
+    if node.guard is not None:
+      node.guard = self.visit(node.guard)
+    node.body = self._visit_statement_block(node, node.body)
     return node
 
   def visit_FunctionDef(self, node):

@@ -960,6 +960,109 @@ class ApiTest(test.TestCase):
       x = compiled_fn(constant_op.constant((4, 8)), 4)
       self.assertAllEqual(self.evaluate(x), (1, 2))
 
+  def test_to_graph_match_statement(self):
+
+    def test_fn(x, selector):
+      match selector:
+        case 'square':
+          return x**2
+        case 'double':
+          return x * 2
+        case _:
+          raise ValueError(selector)
+
+    compiled_fn = api.to_graph(test_fn)
+
+    x = constant_op.constant(3)
+    self.assertEqual(self.evaluate(compiled_fn(x, 'square')), 9)
+    self.assertEqual(self.evaluate(compiled_fn(x, 'double')), 6)
+    with self.assertRaisesRegex(ValueError, 'invalid'):
+      compiled_fn(x, 'invalid')
+
+  def test_to_graph_match_statement_with_capture_and_guard(self):
+
+    def test_fn(value):
+      match value:
+        case [head, *tail] if head > 0:  # pylint: disable=used-before-assignment
+          return head, tail
+        case _:
+          return None
+
+    compiled_fn = api.to_graph(test_fn)
+
+    self.assertEqual(compiled_fn([1, 2, 3]), (1, [2, 3]))
+    self.assertIsNone(compiled_fn([-1, 2, 3]))
+
+  def test_to_graph_match_statement_with_nested_return(self):
+
+    def test_fn(value, threshold):
+      match value:
+        case [head, *tail]:
+          if head > threshold:
+            return tail
+          return []
+        case _:
+          return None
+
+    compiled_fn = api.to_graph(test_fn)
+
+    self.assertEqual(compiled_fn([3, 4, 5], 2), [4, 5])
+    self.assertEqual(compiled_fn([1, 4, 5], 2), [])
+    self.assertIsNone(compiled_fn('invalid', 2))
+
+  def test_to_graph_match_statement_with_continue(self):
+
+    def test_fn(values):
+      result = []
+      for value in values:
+        match value:
+          case 0:
+            continue
+            result.append(100)  # pylint: disable=unreachable
+          case _:
+            pass
+        result.append(value)
+      return result
+
+    compiled_fn = api.to_graph(test_fn)
+
+    self.assertEqual(compiled_fn([0, 1, 2]), [1, 2])
+
+  def test_to_graph_match_statement_with_list_pop(self):
+
+    def test_fn(selector, values):
+      match selector:
+        case 'pop':
+          return values.pop()
+        case _:
+          return len(values)
+
+    compiled_fn = api.to_graph(
+        test_fn, experimental_optional_features=converter.Feature.LISTS)
+
+    self.assertEqual(compiled_fn('size', [1, 2, 3]), 3)
+
+  def test_to_graph_match_statement_with_class_pattern(self):
+
+    class Point:
+
+      __match_args__ = ('x', 'y')
+
+      def __init__(self, x, y):
+        self.x = x
+        self.y = y
+
+    def test_fn(value):
+      match value:
+        case Point(x, y):
+          return x + y
+        case _:
+          return None
+
+    compiled_fn = api.to_graph(test_fn)
+
+    self.assertEqual(compiled_fn(Point(2, 3)), 5)
+
   @test_util.run_deprecated_v1
   def test_to_graph_with_defaults(self):
 

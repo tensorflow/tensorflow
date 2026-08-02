@@ -358,6 +358,38 @@ class AstToCfgTest(test.TestCase):
     )
     self.assertGraphEnds(graph, 'a', ('a > 0', 'return'))
 
+  def test_match_straightline(self):
+
+    def test_fn(value):
+      match value:
+        case 0:
+          result = 'zero'
+        case 1 if value > 0:
+          result = 'one'
+      return result
+
+    graph, = self._build_cfg(test_fn).values()
+
+    self.assertGraphMatches(
+        graph,
+        (
+            (None, 'value', 'value'),
+            ('value', 'value', ('0', '1', 'return result')),
+            ('value', '0', "result = 'zero'"),
+            ('0', "result = 'zero'", 'return result'),
+            ('value', '1', 'value > 0'),
+            ('1', 'value > 0', "result = 'one'"),
+            ('value > 0', "result = 'one'", 'return result'),
+            (("result = 'zero'", "result = 'one'", 'value'),
+             'return result', None),
+        ),
+    )
+    self.assertStatementEdges(
+        graph,
+        (('value', 'Match:2', 'return result'),),
+    )
+    self.assertGraphEnds(graph, 'value', ('return result',))
+
   def test_while_straightline(self):
 
     def test_fn(a):
