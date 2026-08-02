@@ -138,7 +138,7 @@ int64_t KeyedSparseTensorColumn<int64_t>::Feature(int64_t batch, int64_t n,
     return Fingerprint64(values_.vec<tstring>()(start + n));
   return Fingerprint64(
       {reinterpret_cast<const char*>(&values_.vec<int64_t>()(start + n)),
-       sizeof(values_.dtype())});
+       sizeof(int64_t)});
 }
 
 // InternalType is string or StringPiece when using StringCrosser.
