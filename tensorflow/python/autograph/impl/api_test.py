@@ -1041,6 +1041,7 @@ class ApiTest(test.TestCase):
         test_fn, experimental_optional_features=converter.Feature.LISTS)
 
     self.assertEqual(compiled_fn('size', [1, 2, 3]), 3)
+    self.assertEqual(compiled_fn('pop', [1, 2, 3]), 3)
 
   def test_to_graph_match_statement_with_class_pattern(self):
 
@@ -1062,6 +1063,7 @@ class ApiTest(test.TestCase):
     compiled_fn = api.to_graph(test_fn)
 
     self.assertEqual(compiled_fn(Point(2, 3)), 5)
+    self.assertIsNone(compiled_fn('not a point'))
 
   @test_util.run_deprecated_v1
   def test_to_graph_with_defaults(self):
