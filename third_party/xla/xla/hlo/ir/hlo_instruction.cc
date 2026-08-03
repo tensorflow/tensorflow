@@ -991,7 +991,7 @@ absl::StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
       precision_config.mutable_operand_precision()->Resize(
           proto.operand_ids_size(), PrecisionConfig::DEFAULT);
       instruction = CreateConvolve(
-          shape, operands(0), operands(1),
+          shape, all_operands(),
           std::max<int64_t>(proto.feature_group_count(), 1),
           std::max<int64_t>(proto.batch_group_count(), 1), proto.window(),
           proto.convolution_dimension_numbers(), precision_config,
@@ -1649,13 +1649,13 @@ HloInstruction::CreateRngBitGenerator(const Shape& shape, HloInstruction* state,
 }
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateConvolve(
-    const Shape& shape, HloInstruction* lhs, HloInstruction* rhs,
+    const Shape& shape, absl::Span<HloInstruction* const> operands,
     int64_t feature_group_count, int64_t batch_group_count,
     const Window& window, const ConvolutionDimensionNumbers& dimension_numbers,
     const PrecisionConfig& precision_config,
     const SparsityConfig& sparsity_config, ConvolutionKind convolution_kind) {
   return std::make_unique<HloConvolutionInstruction>(
-      shape, lhs, rhs, feature_group_count, batch_group_count, window,
+      shape, operands, feature_group_count, batch_group_count, window,
       dimension_numbers, precision_config, sparsity_config, convolution_kind);
 }
 
@@ -5588,7 +5588,8 @@ std::string SparsityConfigToString(const SparsityConfig& sparsity_config) {
                      sparsity_config.lhs().block_size());
     result.push_back(StrCat("lhs={sparsity=", sparsity_str,
                             " dimension=", sparsity_config.lhs().dimension(),
-                            " stride=", sparsity_config.lhs().stride(), "}"));
+                            " stride=", sparsity_config.lhs().stride(),
+                            " idx=", sparsity_config.lhs().idx(), "}"));
   }
   if (sparsity_config.has_rhs()) {
     std::string sparsity_str =
@@ -5596,7 +5597,8 @@ std::string SparsityConfigToString(const SparsityConfig& sparsity_config) {
                      sparsity_config.rhs().block_size());
     result.push_back(StrCat("rhs={sparsity=", sparsity_str,
                             " dimension=", sparsity_config.rhs().dimension(),
-                            " stride=", sparsity_config.rhs().stride(), "}"));
+                            " stride=", sparsity_config.rhs().stride(),
+                            " idx=", sparsity_config.rhs().idx(), "}"));
   }
   return StrJoin(result, " ");
 }

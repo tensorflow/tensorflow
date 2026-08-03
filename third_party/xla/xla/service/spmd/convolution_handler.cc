@@ -994,9 +994,9 @@ absl::StatusOr<std::unique_ptr<HloInstruction>> CreateShardedConvolution(
   *sharded_conv_shape.mutable_layout() = conv.shape().layout();
   CHECK(!conv.sparsity_config().has_lhs() && !conv.sparsity_config().has_rhs());
   return HloInstruction::CreateConvolve(
-      sharded_conv_shape, sharded_lhs_hlo, sharded_rhs_hlo, feature_group_count,
-      batch_group_count, window, conv_dnums, conv.precision_config(),
-      conv.sparsity_config());
+      sharded_conv_shape, {sharded_lhs_hlo, sharded_rhs_hlo},
+      feature_group_count, batch_group_count, window, conv_dnums,
+      conv.precision_config(), conv.sparsity_config());
 }
 
 // Partition convolution.

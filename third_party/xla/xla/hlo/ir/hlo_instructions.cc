@@ -3163,7 +3163,7 @@ std::unique_ptr<HloInstruction> HloOutfeedInstruction::CloneWithNewOperandsImpl(
 }
 
 HloConvolutionInstruction::HloConvolutionInstruction(
-    const Shape& shape, HloInstruction* lhs, HloInstruction* rhs,
+    const Shape& shape, absl::Span<HloInstruction* const> operands,
     int64_t feature_group_count, int64_t batch_group_count,
     const Window& window, const ConvolutionDimensionNumbers& dimension_numbers,
     const PrecisionConfig& precision_config,
@@ -3182,8 +3182,9 @@ HloConvolutionInstruction::HloConvolutionInstruction(
   if (window_util::HasWindowDilation(window)) {
     SetAndSanitizeName(StrCat(name(), "-window-dilated"));
   }
-  AppendOperand(lhs);
-  AppendOperand(rhs);
+  for (HloInstruction* operand : operands) {
+    AppendOperand(operand);
+  }
 }
 
 std::string HloConvolutionInstruction::ToCategory() const {
@@ -3281,11 +3282,10 @@ std::unique_ptr<HloInstruction>
 HloConvolutionInstruction::CloneWithNewOperandsImpl(
     const Shape& shape, absl::Span<HloInstruction* const> new_operands,
     HloCloneContext* context) const {
-  CHECK_EQ(new_operands.size(), 2);
   return std::make_unique<HloConvolutionInstruction>(
-      shape, new_operands[0], new_operands[1], feature_group_count_,
-      batch_group_count_, window(), convolution_dimension_numbers_,
-      precision_config_, sparsity_config_, convolution_kind_);
+      shape, new_operands, feature_group_count_, batch_group_count_, window(),
+      convolution_dimension_numbers_, precision_config_, sparsity_config_,
+      convolution_kind_);
 }
 
 HloReduceWindowInstruction::HloReduceWindowInstruction(

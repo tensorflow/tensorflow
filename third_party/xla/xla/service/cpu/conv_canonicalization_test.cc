@@ -85,7 +85,7 @@ TEST_F(ConvCanonicalizationTest, NonCanonicalToCanonical) {
   builder.AddInstruction(HloInstruction::CreateConvolve(
       ShapeUtil::MakeShape(
           F32, {kOutputFeatureCount, kBatchSize, output_size, output_size}),
-      input, kernel, /*feature_group_count=*/1, /*batch_group_count=*/1,
+      {input, kernel}, /*feature_group_count=*/1, /*batch_group_count=*/1,
       conv_window_, dnums, DefaultPrecisionConfig(2)));
 
   auto module = CreateNewVerifiedModule();
@@ -148,7 +148,7 @@ TEST_F(ConvCanonicalizationTest, CanonicalStaysTheSame) {
   builder.AddInstruction(HloInstruction::CreateConvolve(
       ShapeUtil::MakeShape(
           F32, {kBatchSize, output_size, output_size, kOutputFeatureCount}),
-      input, kernel, /*feature_group_count=*/1, /*batch_group_count=*/1,
+      {input, kernel}, /*feature_group_count=*/1, /*batch_group_count=*/1,
       conv_window_, dnums, DefaultPrecisionConfig(2)));
 
   auto module = CreateNewVerifiedModule();

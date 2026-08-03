@@ -348,7 +348,7 @@ absl::Status ConvolutionVisitor::HandleBatchGroupCount(
     CHECK(!convolution->sparsity_config().has_lhs() &&
           !convolution->sparsity_config().has_rhs());
     auto new_convolution = add(HloInstruction::CreateConvolve(
-        expanded_filter_shape, activation, filter,
+        expanded_filter_shape, {activation, filter},
         /*feature_group_count=*/1, /*batch_group_count=*/1,
         convolution->window(), dim_numbers, convolution->precision_config(),
         convolution->sparsity_config()));
@@ -494,7 +494,7 @@ absl::Status ConvolutionVisitor::HandleConvolution(
           expanded_filter, zero_filter));
 
       auto new_convolution = HloInstruction::CreateConvolve(
-          convolution->shape(), convolution->mutable_operand(0), new_filter,
+          convolution->shape(), {convolution->mutable_operand(0), new_filter},
           /*feature_group_count=*/1, /*batch_group_count=*/1,
           convolution->window(), dim_numbers, convolution->precision_config());
       changed_ = true;
@@ -583,7 +583,7 @@ absl::Status ConvolutionVisitor::HandleConvolution(
         convolution->shape().element_type(), new_output_dimension);
     HloInstruction* new_convolution =
         computation_->AddInstruction(HloInstruction::CreateConvolve(
-            new_convolution_output_shape, new_activation, new_filter,
+            new_convolution_output_shape, {new_activation, new_filter},
             /*feature_group_count=*/group_count, /*batch_group_count=*/1,
             new_window, dim_numbers, convolution->precision_config()));
     changed_ = true;

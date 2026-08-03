@@ -143,7 +143,7 @@ absl::StatusOr<HloInstruction*> MakeConvolveHlo(
           window, dimension_numbers, sparsity_config, preferred_element_type));
   return computation->AddInstruction(
       HloInstruction::CreateConvolve(
-          convolve_shape, lhs, rhs, feature_group_count, batch_group_count,
+          convolve_shape, {lhs, rhs}, feature_group_count, batch_group_count,
           window, dimension_numbers, precision_config, sparsity_config),
       metadata, frontend_attributes);
 }

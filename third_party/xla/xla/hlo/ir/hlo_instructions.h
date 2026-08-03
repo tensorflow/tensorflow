@@ -1989,7 +1989,7 @@ class HloOutfeedInstruction : public HloInstruction {
 class HloConvolutionInstruction : public HloInstruction {
  public:
   explicit HloConvolutionInstruction(
-      const Shape& shape, HloInstruction* lhs, HloInstruction* rhs,
+      const Shape& shape, absl::Span<HloInstruction* const> operands,
       int64_t feature_group_count, int64_t batch_group_count,
       const Window& window,
       const ConvolutionDimensionNumbers& dimension_numbers,
@@ -2069,6 +2069,7 @@ class HloConvolutionInstruction : public HloInstruction {
   PrecisionConfig precision_config_;
   // The sparsity configuration used for the convolution.
   SparsityConfig sparsity_config_;
+  // Convolution block scaling config.
   // Conv type (fprop, dgrad, wgrad)
   ConvolutionKind convolution_kind_ = CONVOLUTION_KIND_UNSET;
 };

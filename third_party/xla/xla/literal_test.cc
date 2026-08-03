@@ -3672,6 +3672,15 @@ TEST_F(LiteralUtilTest, CopyFromProtoDynamicShapeMismatch) {
   EXPECT_FALSE(Literal::CreateFromProto(proto).ok());
 }
 
+TEST_F(LiteralUtilTest, MakeFakeLiteralF8E8M0FNU) {
+  ASSERT_OK_AND_ASSIGN(Literal literal,
+                       MakeFakeLiteral(ShapeUtil::MakeShape(F8E8M0FNU, {1024}),
+                                       /*pseudo_random=*/true));
+  for (tsl::float8_e8m0fnu value : literal.data<tsl::float8_e8m0fnu>()) {
+    EXPECT_FALSE(Eigen::numext::isnan(value));
+  }
+}
+
 }  // namespace
 
 }  // namespace xla

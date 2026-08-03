@@ -302,6 +302,18 @@ absl::Status ShapeVerifier::HandleScaledDot(HloInstruction* scaled_dot) {
 }
 
 absl::Status ShapeVerifier::HandleConvolution(HloInstruction* convolution) {
+  if (convolution->sparsity_config().has_lhs()) {
+    int32_t idx = convolution->sparsity_config().lhs().idx();
+    if (idx < 0 || idx >= convolution->operand_count()) {
+      return InvalidArgument("Sparsity idx %d out of bounds for lhs", idx);
+    }
+  }
+  if (convolution->sparsity_config().has_rhs()) {
+    int32_t idx = convolution->sparsity_config().rhs().idx();
+    if (idx < 0 || idx >= convolution->operand_count()) {
+      return InvalidArgument("Sparsity idx %d out of bounds for rhs", idx);
+    }
+  }
   ASSIGN_OR_RETURN(
       Shape expected,
       ShapeInference::InferConvolveShape(

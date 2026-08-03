@@ -434,7 +434,7 @@ TEST_F(DynamicDimensionInferenceTest, ConvolutionTest) {
   Window window;
 
   auto* conv = builder.AddInstruction(HloInstruction::CreateConvolve(
-      zx_shape_dynamic, a_param, b_param, /*feature_group_count=*/1,
+      zx_shape_dynamic, {a_param, b_param}, /*feature_group_count=*/1,
       /*batch_group_count=*/1, window, dnums, DefaultPrecisionConfig(2)));
 
   module_->AddEntryComputation(builder.Build());
