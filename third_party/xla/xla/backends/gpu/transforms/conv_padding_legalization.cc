@@ -359,23 +359,48 @@ bool ConvPaddingLegalization::CanonicalizeBackwardInputConvolution(
       // cuDNN convolution (which doesn't support negative padding) to fail.
       return false;
     }
-    // If the backward convolution has uneven padding on the activations, we
-    // move some padding on the larger end to "internal" padding, so that the
-    // backward convolution produces larger activations which get sliced later.
+    // If the backward convolution has asymmetric padding, we adjust the window
+    // padding to make it symmetric and insert a post-convolution kSlice to crop
+    // out the extra boundary elements.
     //
-    // For example, suppose we have a non-canonical HLO
-    //   [A] = BackwardInputConvolve([a b], [x y z], padding=(low=2,high=1))
-    // where the amount of padding low is larger, we can canonicalize it to
-    //   [B A] = BackwardInputConvolve([a b], [x y z], padding=(low=1,high=1))
-    //   [A] = Slice([B A])
-    if (padding_low > padding_high) {
-      IncreasePaddingLowBy(padding_high - padding_low,
-                           new_backward_conv_window.mutable_dimensions(i));
-    } else if (padding_low < padding_high) {
-      IncreasePaddingHighBy(padding_low - padding_high,
-                            new_backward_conv_window.mutable_dimensions(i));
+    // The direction of padding adjustment depends on the instruction type:
+    //
+    // 1) cuDNN Custom Call (__cudnn$convBackwardInput):
+    //    window.pad stores the FORWARD convolution descriptor padding (p_fwd).
+    //    Decreasing p_fwd increases the backward data output size.
+    //    Example: pad=(low=2, high=1) is canonicalized to pad=(low=1, high=1).
+    //    The output produces extra elements [B] at the low (left) end: [B A].
+    //    We slice off the low end (start_indices += 1) to recover valid data
+    //    [A].
+    //
+    // 2) Raw HLO Convolution (convolution_kind=dgrad):
+    //    window.pad stores the HLO BACKWARD padding on dY (p_bwd).
+    //    Increasing p_bwd increases the convolution output size.
+    //    Example: pad=(low=2, high=1) is canonicalized to pad=(low=2, high=2).
+    //    The output produces extra elements [B] at the high (right) end: [A B].
+    //    We slice off the high end (limit_indices -= 1) to recover valid data
+    //    [A].
+    if (is_custom_call) {
+      // For cuDNN custom-calls, decreasing the cuDNN descriptor padding
+      // increases the backward data output size.
+      if (padding_low > padding_high) {
+        IncreasePaddingLowBy(padding_high - padding_low,
+                             new_backward_conv_window.mutable_dimensions(i));
+      } else if (padding_low < padding_high) {
+        IncreasePaddingHighBy(padding_low - padding_high,
+                              new_backward_conv_window.mutable_dimensions(i));
+      }
+    } else {
+      // For HLO convolution instructions, increasing the HLO window padding
+      // increases the convolution output size.
+      if (padding_low > padding_high) {
+        IncreasePaddingHighBy(padding_low - padding_high,
+                              new_backward_conv_window.mutable_dimensions(i));
+      } else if (padding_low < padding_high) {
+        IncreasePaddingLowBy(padding_high - padding_low,
+                             new_backward_conv_window.mutable_dimensions(i));
+      }
     }
-    // Decreasing the padding by X *increases* the size of our output by X.
     // Note that we have swapped input spatial dimensions with output spatial
     // dimensions to be compatible with the cuDNN API, so
     // input_spatial_dimensions(i) gives the i-th spatial dimension of the
@@ -436,15 +461,18 @@ bool ConvPaddingLegalization::CanonicalizeBackwardInputConvolution(
     // input_spatial_dimensions(i) gives the i-th spatial dimension of the
     // output.
     int64_t dim = backward_conv_dnums.input_spatial_dimensions(i);
-    if (padding_low > padding_high) {
-      // If the amount of low padding (of the old backward convolution) is
-      // larger, we internally pad the low end of the activations and slice
-      // internal padding out here.
-      start_indices[dim] += padding_low - padding_high;
-    } else if (padding_low < padding_high) {
-      // If the amount of high padding is larger, we slice out the internal
-      // padding on the high end.
-      limit_indices[dim] -= padding_high - padding_low;
+    if (is_custom_call) {
+      if (padding_low > padding_high) {
+        start_indices[dim] += padding_low - padding_high;
+      } else if (padding_low < padding_high) {
+        limit_indices[dim] -= padding_high - padding_low;
+      }
+    } else {
+      if (padding_low > padding_high) {
+        limit_indices[dim] -= padding_low - padding_high;
+      } else if (padding_low < padding_high) {
+        start_indices[dim] += padding_high - padding_low;
+      }
     }
   }
 

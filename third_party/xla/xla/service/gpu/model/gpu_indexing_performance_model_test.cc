@@ -29,6 +29,7 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"
 #include "xla/codegen/tiling/experimental/tiled_hlo.h"
 #include "xla/codegen/tiling/experimental/tiling_space.h"
+#include "xla/codegen/tiling/experimental/tiling_space_utils.h"
 #include "xla/codegen/tiling/symbolic_tile_analysis.h"
 #include "xla/codegen/tiling/tiled_hlo_computation.h"
 #include "xla/codegen/tiling/tiling_specification.h"
@@ -39,7 +40,6 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
-#include "xla/hlo/testlib/test_helpers.h"
 #include "xla/hlo/utils/hlo_traversal.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
@@ -551,15 +551,8 @@ ENTRY main {
   EXPECT_EQ(tiled_runtime_data.block_level_parameters.output_tile_sizes.size(),
             1);
 
-  // Experimental tiling uses padded tile sizes, while the symbolic tiling does
-  // not.
-  if (use_experimental_tiling()) {
-    EXPECT_THAT(tiled_runtime_data.block_level_parameters.output_tile_sizes[0],
-                ElementsAre(4, 1024));
-  } else {
-    EXPECT_THAT(tiled_runtime_data.block_level_parameters.output_tile_sizes[0],
-                ElementsAre(4, 911));
-  }
+  EXPECT_THAT(tiled_runtime_data.block_level_parameters.output_tile_sizes[0],
+              ElementsAre(4, 911));
   EXPECT_EQ(tiled_runtime_data.block_level_parameters.num_warps, 4);
 
   EXPECT_EQ(tiled_runtime_data.runtime_data.bytes_read, kExpectedBytesRead);
@@ -951,8 +944,7 @@ ENTRY main {
         std::unique_ptr<experimental::TilingSpace> tiling_space,
         experimental::TilingSpace::Create(*fusion_adaptor, &mlir_context_));
 
-    EXPECT_OK(tiling_space->AssignTileSizes(
-        xla::xtile::GetPaddedTileSizes(output_tile_sizes)));
+    EXPECT_OK(tiling_space->AssignTileSizes(output_tile_sizes));
 
     ASSERT_OK_AND_ASSIGN(
         experimental::TiledHloComputation tiled_hlo_computation,

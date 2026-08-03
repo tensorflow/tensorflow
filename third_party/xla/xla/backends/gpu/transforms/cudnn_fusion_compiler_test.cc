@@ -170,6 +170,43 @@ INSTANTIATE_TEST_SUITE_P(
           primitive_util::LowercasePrimitiveTypeName(info.param));
     });
 
+TEST_F(CudnnFusionCompilerConstTest,
+       GetAvailablePlanCountFrom0DConvolutionFusion) {
+  std::string hlo_text = R"(
+  fusion0d {
+    p0 = f32[10,5] parameter(0)
+    p1 = f32[7,5] parameter(1)
+    ROOT conv = f32[10,7] convolution(p0, p1),
+      window={},
+      dim_labels=bf_oi->bf,
+      convolution_kind=fprop
+  }
+
+  ENTRY e {
+    p0 = f32[10,5] parameter(0)
+    p1 = f32[7,5] parameter(1)
+    ROOT _ = f32[10,7] fusion(p0, p1), kind=kCustom, calls=fusion0d,
+      backend_config={
+        "fusion_backend_config": {
+          "kind": "__cudnn$$fusion",
+        }
+      }
+  })";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
+                       ParseAndReturnVerifiedModule(hlo_text));
+
+  const HloInstruction* root =
+      hlo_module->entry_computation()->root_instruction();
+  auto* fusion = Cast<HloFusionInstruction>(root);
+
+  ASSERT_OK_AND_ASSIGN(int plan_count,
+                       CuDnnFusionCompiler::GetAvailablePlanCount(
+                           stream_executor(),
+                           stream_executor()->GetDeviceDescription(), *fusion));
+  EXPECT_GT(plan_count, 0);
+}
+
 }  // namespace
 }  // namespace gpu
 }  // namespace xla

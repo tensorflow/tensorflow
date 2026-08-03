@@ -5618,5 +5618,79 @@ void BM_FastMergeManagerStress(::testing::benchmark::State& state) {
 
 BENCHMARK(BM_FastMergeManagerStress)->Range(1'000, 10'000'000);
 
+// Tests that BufferAssignment::FromProto rejects a malformed proto containing
+// an assigned buffer with a negative offset or size.
+//
+// Without the fix, such values bypass the CHECK_LE guards in AddAssignment
+// (e.g. CHECK_LE(-1, 1024) is true for any real allocation size) and get
+// stored in assigned_buffers_. They are later used in LLVM IR pointer
+// arithmetic:
+//   tempbuf_address_base + b()->getInt64(slice.offset())
+// producing an out-of-bounds address.
+//
+// The fix mirrors the check added to Slice::FromProto in PR #44653, applied
+// to the Assigned buffer path in BufferAssignment::FromProto that PR missed.
+TEST_F(BufferAssignmentTest, FromProtoRejectsNegativeOffset) {
+  const char* const hlo_text = R"(
+    HloModule test
+    ENTRY e {
+      p0 = f32[4]{0} parameter(0)
+      ROOT neg = f32[4]{0} negate(p0)
+    }
+  )";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_text));
+
+  // Get a valid proto via normal round-trip, then corrupt one offset field.
+  // This simulates a malformed serialized AOT executable supplied by an
+  // attacker to CpuAotLoader::LoadAotCompilationResult().
+  auto buffers = RunBufferAssignment(module.get());
+  auto proto = buffers->ToProto();
+
+  bool mutated = false;
+  for (auto& alloc : *proto.mutable_buffer_allocations()) {
+    if (alloc.assigned_size() > 0) {
+      alloc.mutable_assigned(0)->set_offset(-1);
+      mutated = true;
+      break;
+    }
+  }
+  ASSERT_TRUE(mutated) << "Test setup: expected at least one assigned buffer";
+
+  // Must return an error — not crash via CHECK_LE, not silently store -1.
+  auto result = BufferAssignment::FromProto(proto, module.get(),
+                                            &BufferSizeBytes, &alias_info_);
+  EXPECT_FALSE(result.ok());
+  EXPECT_THAT(result.status().message(), ::testing::HasSubstr("negative"));
+}
+
+TEST_F(BufferAssignmentTest, FromProtoRejectsNegativeSize) {
+  const char* const hlo_text = R"(
+    HloModule test
+    ENTRY e {
+      p0 = f32[4]{0} parameter(0)
+      ROOT neg = f32[4]{0} negate(p0)
+    }
+  )";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_text));
+
+  auto buffers = RunBufferAssignment(module.get());
+  auto proto = buffers->ToProto();
+
+  bool mutated = false;
+  for (auto& alloc : *proto.mutable_buffer_allocations()) {
+    if (alloc.assigned_size() > 0) {
+      alloc.mutable_assigned(0)->set_size(-1);
+      mutated = true;
+      break;
+    }
+  }
+  ASSERT_TRUE(mutated) << "Test setup: expected at least one assigned buffer";
+
+  auto result = BufferAssignment::FromProto(proto, module.get(),
+                                            &BufferSizeBytes, &alias_info_);
+  EXPECT_FALSE(result.ok());
+  EXPECT_THAT(result.status().message(), ::testing::HasSubstr("negative"));
+}
+
 }  // namespace
 }  // namespace xla

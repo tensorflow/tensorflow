@@ -14,9 +14,13 @@ limitations under the License.
 ==============================================================================*/
 
 #include "llvm/ADT/StringRef.h"
+#include "llvm/Support/CommandLine.h"
 #include "mlir/Dialect/Func/Extensions/AllExtensions.h"
 #include "mlir/Dialect/LLVMIR/Transforms/InlinerInterfaceImpl.h"
 #include "mlir/InitAllPasses.h"
+#include "mlir/Pass/PassManager.h"
+#include "mlir/Pass/PassOptions.h"
+#include "mlir/Pass/PassRegistry.h"
 #include "mlir/Support/LogicalResult.h"
 #include "mlir/Tools/mlir-opt/MlirOptMain.h"
 #include "stablehlo/conversions/linalg/transforms/Passes.h"
@@ -26,18 +30,35 @@ limitations under the License.
 #include "xla/codegen/emitters/transforms/passes.h"
 #include "xla/codegen/xtile/ir/transforms/passes.h"
 
+struct XtileCpuPassOptions
+    : public mlir::PassPipelineOptions<XtileCpuPassOptions> {
+  Option<bool> fast_min_max{
+      *this, "fast_min_max",
+      llvm::cl::desc("Whether to enable fast min/max operations."),
+      llvm::cl::init(false)};
+};
+
 int main(int argc, char** argv) {
   mlir::DialectRegistry registry =
-      xla::cpu::FusionCompiler::CreateDialectRegistry(true);
+      xla::cpu::FusionCompiler::CreateDialectRegistry();
 
   mlir::registerAllPasses();
-
   xla::emitters::registerTransformsPasses();
   xla::cpu::registerXlaCpuTransformsPasses();
   xla::cpu::registerXTileCpuTransformsPasses();
   xla::xtile::registerXTileTransformsPasses();
   mlir::stablehlo::registerStablehloLinalgTransformsPasses();
 
+  mlir::PassPipelineRegistration<mlir::EmptyPipelineOptions>(
+      "xtile-cpu-xtile-to-vector",
+      "Run the conversion from XTile to Vector dialect.",
+      [](mlir::OpPassManager& pm) { xla::cpu::AddXtileToVectorPasses(pm); });
+  mlir::PassPipelineRegistration<XtileCpuPassOptions>(
+      "xtile-cpu-vector-to-llvm",
+      "Run the conversion from Vector to LLVM dialect.",
+      [](mlir::OpPassManager& pm, const XtileCpuPassOptions& options) {
+        xla::cpu::AddVectorToLLVMPasses(pm, options.fast_min_max);
+      });
   return mlir::failed(MlirOptMain(
       argc, argv, "XLA:CPU Fusion compiler pass driver\n", registry));
 }

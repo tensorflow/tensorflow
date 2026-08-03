@@ -37,15 +37,6 @@ namespace tflite {
 namespace ynnpack {
 
 namespace {
-uint16_t FloatToBfloat16(float f) {
-  uint32_t val;
-  std::memcpy(&val, &f, sizeof(float));
-  // Round to nearest even.
-  uint32_t rounding_bias = 0x7fff + ((val >> 16) & 1);
-  val += rounding_bias;
-  return static_cast<uint16_t>(val >> 16);
-}
-
 template <typename T>
 T QuantizeValue(float value, float scale, int32_t zero_point) {
   int32_t quantized = zero_point + std::round(value / scale);
@@ -368,65 +359,19 @@ TfLiteStatus DefineScalarConstant(TfLiteContext* context,
                                   ynn_subgraph_t subgraph, ynn_type type,
                                   double value, uint32_t* id_out) {
   TF_LITE_ENSURE(context, type != ynn_type_invalid);
-  switch (type) {
-    case ynn_type_fp32: {
-      float f_val = static_cast<float>(value);
-      TF_LITE_ENSURE_EQ(context,
-                        ynn_define_tensor(subgraph, type, 0, nullptr, &f_val,
-                                          YNN_VALUE_FLAG_COPY_DATA, id_out),
-                        ynn_status_success);
-      return kTfLiteOk;
-    }
-    case ynn_type_int32: {
-      int32_t i_val = static_cast<int32_t>(value);
-      TF_LITE_ENSURE_EQ(context,
-                        ynn_define_tensor(subgraph, type, 0, nullptr, &i_val,
-                                          YNN_VALUE_FLAG_COPY_DATA, id_out),
-                        ynn_status_success);
-      return kTfLiteOk;
-    }
-    case ynn_type_int8: {
-      int8_t i8_val = static_cast<int8_t>(value);
-      TF_LITE_ENSURE_EQ(context,
-                        ynn_define_tensor(subgraph, type, 0, nullptr, &i8_val,
-                                          YNN_VALUE_FLAG_COPY_DATA, id_out),
-                        ynn_status_success);
-      return kTfLiteOk;
-    }
-    case ynn_type_uint8: {
-      uint8_t u8_val = static_cast<uint8_t>(value);
-      TF_LITE_ENSURE_EQ(context,
-                        ynn_define_tensor(subgraph, type, 0, nullptr, &u8_val,
-                                          YNN_VALUE_FLAG_COPY_DATA, id_out),
-                        ynn_status_success);
-      return kTfLiteOk;
-    }
-    case ynn_type_fp64: {
-      TF_LITE_ENSURE_EQ(context,
-                        ynn_define_tensor(subgraph, type, 0, nullptr, &value,
-                                          YNN_VALUE_FLAG_COPY_DATA, id_out),
-                        ynn_status_success);
-      return kTfLiteOk;
-    }
-    case ynn_type_fp16: {
-      tflite::half f16_val(static_cast<float>(value));
-      uint16_t bits = f16_val.to_bits();
-      TF_LITE_ENSURE_EQ(context,
-                        ynn_define_tensor(subgraph, type, 0, nullptr, &bits,
-                                          YNN_VALUE_FLAG_COPY_DATA, id_out),
-                        ynn_status_success);
-      return kTfLiteOk;
-    }
-    case ynn_type_bf16: {
-      uint16_t bits = FloatToBfloat16(static_cast<float>(value));
-      TF_LITE_ENSURE_EQ(context,
-                        ynn_define_tensor(subgraph, type, 0, nullptr, &bits,
-                                          YNN_VALUE_FLAG_COPY_DATA, id_out),
-                        ynn_status_success);
-      return kTfLiteOk;
-    }
-    default:
-      TF_LITE_ENSURE(context, false);
+  if (type == ynn_type_fp64) {
+    TF_LITE_ENSURE_EQ(context,
+                      ynn_define_tensor(subgraph, type, 0, nullptr, &value,
+                                        YNN_VALUE_FLAG_COPY_DATA, id_out),
+                      ynn_status_success);
+    return kTfLiteOk;
+  } else {
+    float f_val = static_cast<float>(value);
+    TF_LITE_ENSURE_EQ(context,
+                      ynn_define_tensor(subgraph, type, 0, nullptr, &f_val,
+                                        YNN_VALUE_FLAG_COPY_DATA_FP32, id_out),
+                      ynn_status_success);
+    return kTfLiteOk;
   }
 }
 

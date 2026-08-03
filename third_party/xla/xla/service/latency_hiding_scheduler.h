@@ -1660,6 +1660,8 @@ class DefaultSchedulerCore : public SchedulerCore {
   using ResourceMap = absl::flat_hash_map<int64_t, int64_t>;
   using ShouldSkipNodeFunction = std::function<bool(const HloGraphNode*)>;
 
+  struct SchedulingState;
+
   // Class used to cache expensive information. Currently memory pressure
   // changes are cached. The caching is invalidated at the end of the scheduling
   // process for this next candidate. The information shouldn't survive across
@@ -1680,6 +1682,7 @@ class DefaultSchedulerCore : public SchedulerCore {
     }
 
     HloGraphNode* node = nullptr;
+    const SchedulingState* scheduling_state = nullptr;
 
     // Fields below are valid if the corresponding has_... field is true
 

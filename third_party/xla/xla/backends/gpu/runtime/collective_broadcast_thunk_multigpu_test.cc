@@ -47,9 +47,13 @@ static constexpr int kNumDevices = 2;
 static constexpr int64_t kLength = 4;
 static constexpr int64_t kByteLength = sizeof(float) * kLength;
 
-static CollectiveConfig MakeCollectiveBroadcastConfig() {
+static CollectiveConfig MakeCollectiveBroadcastConfig(
+    bool has_dynamic_root = false) {
   CollectiveConfig config;
   config.operand_element_type = {F32};
+  if (has_dynamic_root) {
+    config.operand_element_type.push_back(S32);
+  }
   config.group_mode = COLLECTIVE_OP_GROUP_MODE_CROSS_REPLICA;
 
   ReplicaGroup replica_group;
@@ -60,8 +64,9 @@ static CollectiveConfig MakeCollectiveBroadcastConfig() {
   return config;
 }
 
-static CollectiveBroadcastThunk MakeThunk(const BufferAllocation& alloc_src,
-                                          const BufferAllocation& alloc_dst) {
+static CollectiveBroadcastThunk MakeThunk(
+    const BufferAllocation& alloc_src, const BufferAllocation& alloc_dst,
+    const BufferAllocation* alloc_root = nullptr) {
   ShapedSlice src_slice{BufferAllocation::Slice(&alloc_src, 0, kByteLength),
                         ShapeUtil::MakeShape(F32, {kLength})};
   ShapedSlice dst_slice{BufferAllocation::Slice(&alloc_dst, 0, kByteLength),
@@ -71,8 +76,22 @@ static CollectiveBroadcastThunk MakeThunk(const BufferAllocation& alloc_src,
                                  .destination_buffer = dst_slice,
                                  .source_memory_space = 0,
                                  .destination_memory_space = 0};
-  return CollectiveBroadcastThunk(Thunk::ThunkInfo(),
-                                  MakeCollectiveBroadcastConfig(), {buffer});
+  std::vector<CollectiveThunk::Buffer> buffers = {buffer};
+  if (alloc_root) {
+    ShapedSlice root_slice{
+        BufferAllocation::Slice(alloc_root, 0, sizeof(int32_t)),
+        ShapeUtil::MakeShape(S32, {1})};
+    CollectiveThunk::Buffer root_buffer{.element_count = 1,
+                                        .source_buffer = root_slice,
+                                        .destination_buffer = root_slice,
+                                        .source_memory_space = 0,
+                                        .destination_memory_space = 0};
+    buffers.push_back(root_buffer);
+  }
+  bool has_dynamic_root = (alloc_root != nullptr);
+  return CollectiveBroadcastThunk(
+      Thunk::ThunkInfo(), MakeCollectiveBroadcastConfig(has_dynamic_root),
+      buffers, has_dynamic_root);
 }
 
 using DeviceTestSlot = CollectiveThunkMultiGpuTestState;
@@ -125,8 +144,12 @@ static absl::Status VerifyOutput(se::Stream& stream, se::DeviceAddressBase dst,
 
 static absl::Status SetupDeviceSlot(int device_ordinal, DeviceTestSlot& slot,
                                     CollectiveBroadcastThunk& thunk,
-                                    const DeviceAssignment& device_assignment) {
+                                    const DeviceAssignment& device_assignment,
+                                    int64_t dynamic_root_buffer_size = 0) {
   std::vector<int64_t> buffer_sizes = DeviceBufferSizes();
+  if (dynamic_root_buffer_size > 0) {
+    buffer_sizes.push_back(dynamic_root_buffer_size);
+  }
   return SetupCollectiveThunkDevice(device_ordinal, kNumDevices, buffer_sizes,
                                     thunk, device_assignment, slot);
 }
@@ -247,6 +270,27 @@ TEST(CollectiveBroadcastThunkMultiGpuTest, RecordCommandBufferUpdate) {
   ASSERT_OK(RunOnDevices(
       kNumDevices, "collective_broadcast_update",
       [&](int d) { return RunUpdatePhase(slots[d], thunk, d, /*phase=*/3); }));
+}
+
+TEST(CollectiveBroadcastThunkMultiGpuTest, ExecuteOnStreamWithDynamicRoot) {
+  if (!HasEnoughGpus(kNumDevices)) {
+    GTEST_SKIP() << "Test requires at least " << kNumDevices << " GPUs";
+  }
+
+  DeviceAssignment device_assignment = MakeDeviceAssignment(kNumDevices);
+  BufferAllocation alloc_src(/*index=*/0, kByteLength, /*color=*/0);
+  BufferAllocation alloc_dst(/*index=*/1, kByteLength, /*color=*/0);
+  BufferAllocation alloc_root(/*index=*/2, sizeof(int32_t), /*color=*/0);
+
+  CollectiveBroadcastThunk thunk = MakeThunk(alloc_src, alloc_dst, &alloc_root);
+  std::vector<DeviceTestSlot> slots(kNumDevices);
+
+  ASSERT_OK(RunOnDevices(
+      kNumDevices, "collective_broadcast_execute", [&](int d) -> absl::Status {
+        RETURN_IF_ERROR(SetupDeviceSlot(d, slots[d], thunk, device_assignment,
+                                        alloc_root.size()));
+        return RunExecuteOnStreamPhase(slots[d], thunk, d, /*phase=*/1);
+      }));
 }
 
 }  // namespace

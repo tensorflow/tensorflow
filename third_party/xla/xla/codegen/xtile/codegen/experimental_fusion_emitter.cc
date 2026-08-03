@@ -52,6 +52,7 @@ limitations under the License.
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Support/LLVM.h"
 #include "stablehlo/dialect/StablehloOps.h"
+#include "xla/codegen/emitters/ir/xla_ops.h"
 #include "xla/codegen/tiling/experimental/reshape_analysis.h"
 #include "xla/codegen/tiling/experimental/scheduling.h"
 #include "xla/codegen/tiling/experimental/tiled_hlo.h"
@@ -60,9 +61,11 @@ limitations under the License.
 #include "xla/codegen/xtile/codegen/emitter_helpers.h"
 #include "xla/codegen/xtile/ir/transforms/passes.h"
 #include "xla/codegen/xtile/ir/xtile_ops.h"
+#include "xla/hlo/analysis/indexing_map.h"
 #include "xla/hlo/analysis/indexing_map_serialization.h"  // IWYU pragma: keep
 #include "xla/hlo/analysis/interval.h"
 #include "xla/hlo/analysis/symbolic_expr.h"
+#include "xla/hlo/analysis/symbolic_map.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -255,75 +258,68 @@ absl::StatusOr<TensorValue> EmitConcatenate(
   return mlir::cast<TensorValue>(if_ops.front().getResult(0));
 }
 
-// Computes and applies a mask to the reduction dimension of the dot operand
-// passed as a parameter.
+// Computes and applies a mask to the reduction dimension of the dot or reduce
+// operand passed as a parameter.
 //
 // Note: we currently assume that contracting_dimension_tile_index is an i32
 // scalar.
-absl::StatusOr<TensorValue> MaskDotOperand(
-    mlir::ImplicitLocOpBuilder& b, const ge::TiledHloInstruction& dot_operand,
-    TensorValue dot_operand_value, Value contracting_dimension_tile_index,
-    int contraction_dimension_index) {
-  llvm::ArrayRef<int64_t> tile_shape = dot_operand_value.getType().getShape();
+absl::StatusOr<TensorValue> MaskOperand(mlir::ImplicitLocOpBuilder& b,
+                                        const ge::TiledHloInstruction& operand,
+                                        TensorValue operand_value,
+                                        Value tile_index, int dimension_index,
+                                        Value neutral_value) {
+  llvm::ArrayRef<int64_t> tile_shape = operand_value.getType().getShape();
 
-  int64_t contracting_dimension_size =
-      dot_operand.hlo()->shape().dimensions(contraction_dimension_index);
-  int64_t tile_size = tile_shape[contraction_dimension_index];
+  int64_t dimension_size = operand.hlo()->shape().dimensions(dimension_index);
+  int64_t tile_size = tile_shape[dimension_index];
 
-  if (contracting_dimension_size % tile_size == 0) {
-    return dot_operand_value;
+  if (dimension_size % tile_size == 0) {
+    return operand_value;
   }
 
   // Only mask out tiles that we know to go beyond boundaries of the
-  // contracting dimension---i.e. tiles whose index exceeds the number of
+  // dimension---i.e. tiles whose index exceeds the number of
   // full tiles (tiles without padding).
-  Type result_type = dot_operand_value.getType();
+  Type result_type = operand_value.getType();
   Value tile_size_value = CreateConst(b, b.getI32Type(), tile_size);
   Value num_full_tiles = arith::DivSIOp::create(
-      b, CreateConst(b, b.getI32Type(), contracting_dimension_size),
-      tile_size_value);
+      b, CreateConst(b, b.getI32Type(), dimension_size), tile_size_value);
   // if tile_index >= num_full_tiles...
-  auto cond =
-      arith::CmpIOp::create(b, arith::CmpIPredicate::sge,
-                            contracting_dimension_tile_index, num_full_tiles);
+  auto cond = arith::CmpIOp::create(b, arith::CmpIPredicate::sge, tile_index,
+                                    num_full_tiles);
   auto if_op = mlir::scf::IfOp::create(b, mlir::TypeRange(result_type), cond,
                                        /*withElseRegion=*/true);
   // then ...
   {
     b.setInsertionPointToStart(if_op.thenBlock());
-    // indices =
-    //   contracting_dimension_tile_index * tile_size + range(0, tile_size)
-    // mask = indices < contracting_dimension_size
-    // operand = select(broadcast(mask, operand.shape), operand, 0)
-    Value tile_offset = arith::MulIOp::create(
-        b, contracting_dimension_tile_index, tile_size_value);
+    // indices = sequential_dim_tile_index * tile_size + range(0, tile_size)
+    // mask = indices < sequential_dim_tile_index
+    // operand = select(broadcast(mask, operand.shape), operand, padding_value)
+    Value tile_offset = arith::MulIOp::create(b, tile_index, tile_size_value);
     TensorValue range = Iota(b, tile_size);
     TensorValue broadcasted_tile_offset =
         xtile::Splat(b, tile_offset, {tile_size});
     Value indices = arith::AddIOp::create(b, range, broadcasted_tile_offset);
 
     Value boundary =
-        CreateConst(b, b.getI32Type(), contracting_dimension_size, {tile_size});
+        CreateConst(b, b.getI32Type(), dimension_size, {tile_size});
 
     Value mask =
         arith::CmpIOp::create(b, arith::CmpIPredicate::slt, indices, boundary);
 
     mask = xtile::BroadcastInDims(b, mlir::cast<TensorValue>(mask), tile_shape,
-                                  {contraction_dimension_index});
-    ASSIGN_OR_RETURN(
-        auto element_type,
-        PrimitiveTypeToMlirType(b, dot_operand.hlo()->shape().element_type()));
+                                  {dimension_index});
 
-    TensorValue zero = CreateConst(b, element_type, 0.0f, tile_shape);
+    TensorValue padding_value = xtile::Splat(b, neutral_value, tile_shape);
 
-    Value masked_dot_operand =
-        arith::SelectOp::create(b, mask, dot_operand_value, zero);
-    mlir::scf::YieldOp::create(b, masked_dot_operand);
+    Value masked_operand =
+        arith::SelectOp::create(b, mask, operand_value, padding_value);
+    mlir::scf::YieldOp::create(b, masked_operand);
   }
   // else ...
   {
     b.setInsertionPointToStart(if_op.elseBlock());
-    mlir::scf::YieldOp::create(b, dot_operand_value);
+    mlir::scf::YieldOp::create(b, operand_value);
   }
   b.setInsertionPointAfter(if_op);
   return mlir::cast<TensorValue>(if_op.getResult(0));
@@ -449,17 +445,25 @@ absl::StatusOr<TensorValue> EmitDot(EmitterContext& emitter_ctx,
     TensorValue lhs_tensor = results[0];
     int64_t lhs_contracting_dim_idx =
         dot.dot_dimension_numbers().lhs_contracting_dimensions(0);
+    ASSIGN_OR_RETURN(
+        Type lhs_element_type,
+        PrimitiveTypeToMlirType(b, lhs_operand->hlo()->shape().element_type()));
+    Value lhs_zero = CreateConst(b, lhs_element_type, 0.0f);
     ASSIGN_OR_RETURN(lhs_tensor,
-                     MaskDotOperand(b, *lhs_operand, lhs_tensor, iv_i32,
-                                    lhs_contracting_dim_idx));
+                     MaskOperand(b, *lhs_operand, lhs_tensor, iv_i32,
+                                 lhs_contracting_dim_idx, lhs_zero));
 
     // Canonicalize RHS to match Triton's expectations.
     TensorValue rhs_tensor = results[1];
     int64_t rhs_contracting_dim_idx =
         dot.dot_dimension_numbers().rhs_contracting_dimensions(0);
+    ASSIGN_OR_RETURN(
+        Type rhs_element_type,
+        PrimitiveTypeToMlirType(b, rhs_operand->hlo()->shape().element_type()));
+    Value rhs_zero = CreateConst(b, rhs_element_type, 0.0f);
     ASSIGN_OR_RETURN(rhs_tensor,
-                     MaskDotOperand(b, *rhs_operand, rhs_tensor, iv_i32,
-                                    rhs_contracting_dim_idx));
+                     MaskOperand(b, *rhs_operand, rhs_tensor, iv_i32,
+                                 rhs_contracting_dim_idx, rhs_zero));
 
     // Emit the partial dot.
     Value acc = for_op.getRegionIterArgs().front();
@@ -945,19 +949,8 @@ absl::StatusOr<std::vector<TensorValue>> EmitScan(
   return results;
 }
 
-absl::StatusOr<TensorValue> EmitReduce(
+absl::StatusOr<TensorValue> EmitReduceWithNoRegion(
     EmitterContext& emitter_ctx, const ge::TiledHloInstruction& tiled_hlo) {
-  if (tiled_hlo.hlo()->dimensions().size() != 1 ||
-      tiled_hlo.hlo()->operand_count() != 2) {
-    // Triton does support variadic reduce and reductions over multiple
-    // dimensions but we don't support it here yet. For example, xtile.mask
-    // only supports masking of at most one dimension. To support
-    // multi-dimensional we should use a different method or update xtile.mask.
-    return absl::InvalidArgumentError(absl::StrCat(
-        "Only reduce with one dimension and two operands is supported. Got ",
-        tiled_hlo.hlo()->dimensions().size(), " dimensions and ",
-        tiled_hlo.hlo()->operand_count(), " operands."));
-  }
   ImplicitLocOpBuilder& b = emitter_ctx.b();
   const HloReduceInstruction& reduce_hlo =
       *::xla::Cast<HloReduceInstruction>(tiled_hlo.hlo());
@@ -970,9 +963,6 @@ absl::StatusOr<TensorValue> EmitReduce(
       tiled_input->hlo()->shape().dimensions(reduce_dim);
   TensorValue init_value =
       emitter_ctx.TiledHloToTensorValue(*tiled_hlo.operand(1));
-  // N.B.: while that mostly works in practice, there are valid HLOs, for
-  // example `reduce(p0, init=1), to_apply=add`, that will produce the wrong
-  // result with this implementation.
   mlir::Value neutral_value = mlir::tensor::ExtractOp::create(b, init_value);
   input_value = mlir::cast<TensorValue>(b.createOrFold<xtile::MaskOp>(
       input_value, mask_dim_bounds, neutral_value));
@@ -981,6 +971,142 @@ absl::StatusOr<TensorValue> EmitReduce(
   RETURN_IF_ERROR(EmitReduceComputation(
       b, &reduce_hlo, tiled_hlo.hlo()->to_apply(), reduction));
   return mlir::cast<TensorValue>(reduction.getResult(0));
+}
+
+// Emits a single element-wise accumulation step by binding the reduction
+// combiner parameters (Parameter 0: accumulator, Parameter 1: input tile)
+// to their concrete MLIR values and executing the combiner computation.
+absl::StatusOr<TensorValue> EmitCombinerStep(
+    mlir::ImplicitLocOpBuilder& b, const HloReduceInstruction& reduce_hlo,
+    mlir::Value acc_value, TensorValue input_tile) {
+  absl::flat_hash_map<const HloInstruction*, TensorValue> region_values;
+  std::vector<const HloInstruction*> to_emit;
+  const HloComputation* combiner = reduce_hlo.to_apply();
+  to_emit.reserve(combiner->instruction_count() - combiner->num_parameters());
+  int64_t num_inputs = reduce_hlo.input_count();
+
+  for (const HloInstruction* instr : combiner->MakeInstructionPostOrder()) {
+    if (instr->opcode() != HloOpcode::kParameter) {
+      to_emit.push_back(instr);
+      continue;
+    }
+    int64_t parameter_number = instr->parameter_number();
+    region_values[instr] = parameter_number < num_inputs
+                               ? mlir::cast<TensorValue>(acc_value)
+                               : input_tile;
+  }
+  return EmitScope(b, to_emit, region_values);
+}
+
+// We perform tiled reduction by accumulating partial reduction results
+// element-wise across tiles along the reduction dimension, and then
+// performing a final reduction on the accumulated tile.
+absl::StatusOr<TensorValue> EmitReduceWithRegion(
+    EmitterContext& emitter_ctx, const ge::TiledHloInstruction& tiled_hlo) {
+  TF_RET_CHECK(!tiled_hlo.hlo_regions().empty())
+      << "Expected non-empty HLO regions in tiled reduction instruction: "
+      << tiled_hlo.hlo()->ToString();
+  auto& b = emitter_ctx.b();
+  const HloReduceInstruction& reduce_hlo =
+      *::xla::Cast<HloReduceInstruction>(tiled_hlo.hlo());
+  const ge::TiledHloInstruction* tiled_input = tiled_hlo.operand(0);
+  const ge::TiledHloInstruction* tiled_init = tiled_hlo.operand(1);
+
+  TensorValue init_value = emitter_ctx.TiledHloToTensorValue(*tiled_init);
+
+  // N.B.: Our implementation initializes the loop accumulator using the HLO's
+  // reduction initial value. This assumes the initial value is also the
+  // mathematical neutral value (identity) of the reduction operation (e.g., 0.0
+  // for add, -inf for max). While this is almost always true in practice, it
+  // will produce incorrect results for HLOs where the initial value differs
+  // from the identity (e.g., `reduce(p0, init=1.0), to_apply=add`), because the
+  // initial value gets applied multiple times across tiled loop steps and the
+  // final reduction.
+  mlir::Value neutral_value = mlir::tensor::ExtractOp::create(b, init_value);
+
+  ASSIGN_OR_RETURN(llvm::SmallVector<int64_t> input_tile_shape,
+                   tiled_input->tile().GetStaticTileSizes());
+
+  TensorValue accumulator = xtile::Splat(b, neutral_value, input_tile_shape);
+
+  SmallVector<int64_t> sequential_dim_ids =
+      GetSequentialDimIds(*tiled_hlo.hlo());
+  ASSIGN_OR_RETURN(
+      SmallVector<int64_t> loop_iteration_counts,
+      GetSequentialLoopIterationCounts(tiled_hlo, sequential_dim_ids));
+  TF_RET_CHECK(loop_iteration_counts.size() == 1)
+      << "Expected exactly one loop iteration count for reduce";
+
+  auto for_op = mlir::scf::ForOp::create(
+      b,
+      /*lowerBound=*/MakeIndex(b, 0),
+      /*upperBound=*/MakeIndex(b, loop_iteration_counts.front()),
+      /*step=*/MakeIndex(b, 1), accumulator);
+
+  {  // Loop body.
+    mlir::OpBuilder::InsertionGuard g(b);
+    b.setInsertionPointToStart(for_op.getBody());
+    Value iv = for_op.getInductionVar();
+    Value iv_i32 = Cast(b, iv, b.getI32Type());
+
+    const ge::TilingSpace::DimensionInfo& dim_info =
+        tiled_hlo.tile().tiling_space().GetDimensionInfo(
+            *tiled_hlo.hlo(), sequential_dim_ids.front());
+    TF_RET_CHECK(emitter_ctx.MapSymbolIdToSequentialDimValue(
+        dim_info.id, iv, Interval{0, loop_iteration_counts.front() - 1}));
+
+    TF_RET_CHECK(!tiled_hlo.hlo_regions().empty())
+        << "Expected non-empty HLO regions in tiled reduction instruction: "
+        << tiled_hlo.hlo()->ToString();
+    ASSIGN_OR_RETURN(
+        std::vector<TensorValue> results,
+        EmitTiledComputation(emitter_ctx, tiled_hlo.hlo_regions().front(),
+                             {tiled_input}));
+    TF_RET_CHECK(!results.empty())
+        << "Expected non-empty results from emitting tiled computation: "
+        << tiled_hlo.hlo()->ToString();
+    TensorValue input_tile = results[0];
+
+    TF_RET_CHECK(!reduce_hlo.dimensions().empty())
+        << "Expected non-empty reduction dimensions in HLO: "
+        << reduce_hlo.ToString();
+    int64_t reduce_dim = reduce_hlo.dimensions()[0];
+    ASSIGN_OR_RETURN(
+        input_tile, MaskOperand(b, *tiled_input, input_tile, iv_i32, reduce_dim,
+                                neutral_value));
+
+    ASSIGN_OR_RETURN(
+        TensorValue combine_result,
+        EmitCombinerStep(b, reduce_hlo, for_op.getRegionIterArgs().front(),
+                         input_tile));
+
+    mlir::scf::YieldOp::create(b, combine_result);
+  }
+
+  Value loop_result = for_op.getResult(0);
+  stablehlo::ReduceOp reduction = stablehlo::ReduceOp::create(
+      b, loop_result, init_value, reduce_hlo.dimensions());
+  RETURN_IF_ERROR(
+      EmitReduceComputation(b, &reduce_hlo, reduce_hlo.to_apply(), reduction));
+  return mlir::cast<TensorValue>(reduction.getResult(0));
+}
+
+// Emits a tiled reduction instruction.
+absl::StatusOr<TensorValue> EmitReduce(
+    EmitterContext& emitter_ctx, const ge::TiledHloInstruction& tiled_hlo) {
+  if (tiled_hlo.hlo()->dimensions().size() != 1 ||
+      tiled_hlo.hlo()->operand_count() != 2) {
+    // Currently we only support reduce on a single dimension on one input.
+    // TODO(b/525358513): Add support for multi-dimensional reduce.
+    // TODO(b/525357362): Add variadic support.
+    return absl::InvalidArgumentError(absl::StrCat(
+        "Only reduce with one dimension and two operands is supported. Got ",
+        tiled_hlo.hlo()->dimensions().size(), " dimensions and ",
+        tiled_hlo.hlo()->operand_count(), " operands."));
+  }
+  return tiled_hlo.hlo_regions().empty()
+             ? EmitReduceWithNoRegion(emitter_ctx, tiled_hlo)
+             : EmitReduceWithRegion(emitter_ctx, tiled_hlo);
 }
 
 absl::StatusOr<TensorValue> EmitTiledHloInstruction(
@@ -1038,6 +1164,9 @@ absl::StatusOr<TensorValue> EmitTiledHloInstruction(
   }
   if (hlo->opcode() == HloOpcode::kScaledDot) {
     return EmitScaledDot(emitter_ctx, tiled_hlo);
+  }
+  if (hlo->opcode() == HloOpcode::kReduce) {
+    return EmitReduce(emitter_ctx, tiled_hlo);
   }
   if (hlo->opcode() == HloOpcode::kConcatenate) {
     return EmitConcatenate(emitter_ctx, tiled_hlo);
@@ -1113,9 +1242,6 @@ absl::StatusOr<TensorValue> EmitTiledHloInstruction(
                        GetStorageShape(logical_tile_sizes, hlo->shape()));
       return EmitTranspose(b, storage_tile_sizes, hlo->dimensions(),
                            mlir::cast<TensorValue>(operands[0]));
-    }
-    case HloOpcode::kReduce: {
-      return EmitReduce(emitter_ctx, tiled_hlo);
     }
     case HloOpcode::kScan: {
       ASSIGN_OR_RETURN(auto result, EmitScan(emitter_ctx, tiled_hlo));
@@ -1207,6 +1333,7 @@ absl::Status EmitGeneric(ImplicitLocOpBuilder& b,
             << ExtractInstructionIntoNewModule(fusion)->ToString();
     VLOG(6) << "Tiled computation: \n" << tiled_computation.ToString();
   }
+  b.setInsertionPointToStart(&fn.front());
   Value program_id = fn.getProgramId();
   Value tile_id = program_id;
 
@@ -1216,19 +1343,23 @@ absl::Status EmitGeneric(ImplicitLocOpBuilder& b,
   if (num_tiles_per_pid > 1) {
     Value zero = arith::ConstantIndexOp::create(b, 0);
     Value one = arith::ConstantIndexOp::create(b, 1);
-    Value num_tiles_per_pid_val =
-        arith::ConstantIndexOp::create(b, num_tiles_per_pid);
+    SymbolicExpr pid_dim = CreateDimExpr(0, mlir_context);
+    SymbolicExpr num_tiles_expr =
+        CreateSymbolicConstant(schedule.num_tiles, mlir_context);
+    SymbolicExpr upper_bound_expr =
+        (num_tiles_expr - pid_dim * num_tiles_per_pid).min(num_tiles_per_pid);
+    SymbolicMap symbolic_map =
+        SymbolicMap::Get(mlir_context, /*num_dimensions=*/1, /*num_symbols=*/0,
+                         {upper_bound_expr});
+    Value upper_bound =
+        xla::ApplyIndexingOp::create(
+            b, ValueRange{program_id}, symbolic_map,
+            {IndexingMap::Variable{{0, schedule.num_pids - 1}, "pid"}},
+            /*range_vars=*/{})
+            .getResult(0);
+    auto for_op = mlir::scf::ForOp::create(b, zero, upper_bound, one);
 
-    // Loop ub = min(num_tiles_per_pid, num_tiles - pid * num_tiles_per_pid).
-    Value upper_bound = arith::SubIOp::create(
-        b, arith::ConstantIndexOp::create(b, schedule.num_tiles),
-        arith::MulIOp::create(b, program_id, num_tiles_per_pid_val));
-    upper_bound = arith::MinUIOp::create(b, upper_bound, num_tiles_per_pid_val);
-    auto for_op = mlir::scf::ForOp::create(b, zero, num_tiles_per_pid_val, one);
-
-    tile_id = arith::AddIOp::create(
-        b, arith::MulIOp::create(b, program_id, num_tiles_per_pid_val),
-        for_op.getInductionVar());
+    tile_id = for_op.getInductionVar();
     b.setInsertionPointToStart(for_op.getBody());
   }
   EmitterContext emitter_ctx{b,        &fusion, program_id,       tile_id,
@@ -1261,7 +1392,8 @@ absl::Status EmitGeneric(ImplicitLocOpBuilder& b,
                                 tile_info.padded_tile_sizes(),
                                 tile_info.tile_strides());
   }
-
+  b.setInsertionPointToEnd(&fn.front());
+  b.create<xtile::EntryFuncReturnOp>();
   return absl::OkStatus();
 }
 
@@ -1337,7 +1469,7 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> EmitXTileModule(
     absl::string_view fn_name, const HloFusionInstruction& fusion,
     const ::xla::gpu::experimental::TiledHloComputation& tiled_computation,
     MLIRContext& mlir_context, absl::Span<mlir::Type> opaque_args_types,
-    const std::optional<GpuComputeCapability>& gpu_cc) {
+    const std::optional<GpuComputeCapability>& gpu_cc, int num_tiles_per_pid) {
   const HloComputation* hlo_computation =
       fusion.fused_instructions_computation();
 
@@ -1360,13 +1492,11 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> EmitXTileModule(
   auto fn = xtile::EntryFuncOp::create(b, fn_name, fn_arg_types,
                                        named_attributes, {});
   fn.addEntryBlock();
-  b.setInsertionPointToStart(&fn.front());
 
-  ASSIGN_OR_RETURN(auto schedule, GetSchedule(tiled_computation));
+  ASSIGN_OR_RETURN(auto schedule,
+                   GetSchedule(tiled_computation, num_tiles_per_pid));
   RETURN_IF_ERROR(
       EmitGeneric(b, fusion, tiled_computation, schedule, fn, &mlir_context));
-
-  b.create<xtile::EntryFuncReturnOp>();
   if (VLOG_IS_ON(8)) {
     std::string s;
     llvm::raw_string_ostream os(s);

@@ -105,6 +105,49 @@ absl::StatusOr<std::vector<RepeatedFlagModifier>> ParseRepeatedEnumModifiers(
 
 }  // namespace details
 
+// This is the reverse of the `collectives_mode_setter_for` parser defined
+// below.
+template <typename Sink>
+void AbslStringify(Sink& sink, DebugOptions::CollectivesMode mode) {
+  switch (mode) {
+    case DebugOptions::COLLECTIVES_PRIVATE_MEMORY:
+      sink.Append("private");
+      break;
+    case DebugOptions::COLLECTIVES_SYMMETRIC_MEMORY:
+      sink.Append("symmetric");
+      break;
+    case DebugOptions::COLLECTIVES_PEER_MEMORY:
+      sink.Append("peer");
+      break;
+    default:
+      sink.Append("invalid");
+      break;
+  }
+}
+
+// This is the reverse of the `collective_pipelining_mode_setter_for` parser
+// defined below.
+template <typename Sink>
+void AbslStringify(Sink& sink, DebugOptions::CollectivePipeliningMode mode) {
+  switch (mode) {
+    case DebugOptions::COLLECTIVE_PIPELINING_MODE_DEFAULT:
+      sink.Append("default");
+      break;
+    case DebugOptions::COLLECTIVE_PIPELINING_MODE_OFF:
+      sink.Append("off");
+      break;
+    case DebugOptions::COLLECTIVE_PIPELINING_MODE_ON:
+      sink.Append("on");
+      break;
+    case DebugOptions::COLLECTIVE_PIPELINING_MODE_EXPLICIT:
+      sink.Append("explicit");
+      break;
+    default:
+      sink.Append("invalid");
+      break;
+  }
+}
+
 namespace {
 
 template <typename T>
@@ -184,6 +227,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_backend_optimization_level(3);
   opts.set_xla_gpu_autotune_level(4);
   opts.set_xla_gpu_autotune_max_solutions(0);
+  opts.set_xla_gpu_blas_max_algorithms(0);
   opts.set_xla_gpu_fusion_autotune_top_k_configs(1);
   opts.set_xla_cpu_multi_thread_eigen(true);
   opts.set_xla_gpu_cuda_data_dir("./cuda_sdk_lib");
@@ -218,7 +262,6 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
 #ifdef XLA_CPU_USE_ACL
   opts.set_xla_cpu_use_acl(true);
 #endif
-  opts.set_xla_cpu_use_fusion_emitters(true);
   opts.set_xla_cpu_use_xnnpack(true);
   opts.set_xla_cpu_experimental_xnn_graph_fusion_mode(
       DebugOptions::XNN_GRAPH_FUSION_MODE_DISABLED);
@@ -335,9 +378,12 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_memory_limit_slop_factor(95);
   opts.set_xla_gpu_enable_highest_priority_async_stream(true);
 
-  opts.set_xla_gpu_enable_pipelined_all_reduce(false);
-  opts.set_xla_gpu_enable_pipelined_all_gather(false);
-  opts.set_xla_gpu_enable_pipelined_reduce_scatter(true);
+  opts.set_xla_gpu_pipeline_all_reduce(
+      DebugOptions::COLLECTIVE_PIPELINING_MODE_DEFAULT);
+  opts.set_xla_gpu_pipeline_all_gather(
+      DebugOptions::COLLECTIVE_PIPELINING_MODE_DEFAULT);
+  opts.set_xla_gpu_pipeline_reduce_scatter(
+      DebugOptions::COLLECTIVE_PIPELINING_MODE_ON);
   opts.set_xla_gpu_enable_pipelined_host_offloading(false);
   opts.set_xla_gpu_enable_pipelined_p2p(false);
 
@@ -354,6 +400,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
 
   opts.set_xla_gpu_enable_triton_gemm(true);
   opts.set_xla_gpu_unsupported_enable_triton_multi_output_fusion(false);
+  opts.set_xla_gpu_experimental_enable_same_shape_multi_output_fusion(false);
   opts.set_xla_gpu_enable_cudnn_int8x32_convolution_reordering(true);
   opts.set_xla_gpu_triton_gemm_any(true);
   opts.set_xla_gpu_experimental_gemm_fusion_v2(false);
@@ -391,7 +438,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
 
   opts.set_xla_gpu_experimental_enable_fusion_block_level_rewriter(false);
 
-  opts.set_xla_gpu_match_tpu_precision(false);
+  opts.set_xla_gpu_default_to_alg_dot_bf16_bf16_f32(false);
   opts.set_xla_gpu_enable_libnvptxcompiler(
       stream_executor::IsLibNvPtxCompilerSupported());
   opts.set_xla_gpu_libnvjitlink_mode(DebugOptions::LIB_NV_JIT_LINK_MODE_AUTO);
@@ -433,7 +480,6 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_experimental_autotune_cache_mode(
       DebugOptions::AUTOTUNE_CACHE_MODE_UPDATE);
 
-
   opts.set_xla_gpu_autotune_gemm_rtol(0.1f);
 
   // TODO(b/355487968): Remove this flag once all data will be presented in
@@ -465,7 +511,10 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_enable_fast_math(false);
   opts.set_xla_gpu_experimental_parallel_collective_overlap_limit(1);
   opts.set_xla_gpu_experimental_collective_start_as_early_as_possible(false);
+  opts.set_xla_gpu_experimental_enable_selective_memcpy_overlap(false);
   opts.set_xla_gpu_experimental_parallel_async_compute_limit(2);
+  opts.set_xla_gpu_experimental_scheduler_memory_fencing_threshold_bytes(-1);
+  opts.set_xla_gpu_experimental_scheduler_memory_fencing_slack_windows(1);
   opts.set_xla_pjrt_allow_auto_layout_in_hlo(false);
   opts.set_xla_gpu_enable_scatter_determinism_expander(false);
   opts.set_xla_gpu_unsupported_enable_all_reduce_decomposer(false);
@@ -500,6 +549,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_experimental_ragged_all_to_all_use_barrier_with_nccl(true);
   opts.set_xla_gpu_ragged_all_to_all_mode(
       DebugOptions::COLLECTIVES_PRIVATE_MEMORY);
+  opts.set_xla_gpu_experimental_ragged_all_to_all_use_device_kernel(false);
   opts.set_xla_gpu_experimental_use_ragged_dot_grouped_gemm(true);
   opts.set_xla_gpu_native_emitter_tune_unroll_factor_for_loops(false);
   opts.set_xla_gpu_experimental_use_ragged_dot_fusion(false);
@@ -511,12 +561,14 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_keep_shardings_after_spmd(false);
   opts.set_xla_enable_hlo_sharding_v3(false);
   opts.set_xla_enable_rgv3_materialization(true);
+  opts.set_xla_spmd_enable_dynamic_slice_collective_broadcast(false);
   opts.set_xla_sdy_export_all_reduce_scatter(false);
   opts.set_xla_gpu_experimental_enable_checksum_tracing_on_thunks(false);
   opts.set_xla_gpu_experimental_enable_buffer_saver_on_thunks(false);
   opts.set_xla_gpu_experimental_thunk_buffer_debug_module_outputs(false);
   opts.set_xla_gpu_enable_gxl_ragged_all_to_all(false);
   opts.set_xla_gpu_gxl_scratch_size_bytes(64 * 1024 * 1024);
+  opts.set_xla_gpu_async_copy_min_bytes(-1);
 
   // Disable float checks.
   opts.set_xla_gpu_detect_nan(DebugOptions::DETECTION_MODE_NONE);
@@ -876,6 +928,41 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
             return false;
           }
           (debug_options->*member_setter)(mode);
+          return true;
+        };
+      };
+
+  auto collective_pipelining_mode_setter_for =
+      [debug_options](void (DebugOptions::*member_setter)(
+          DebugOptions::CollectivePipeliningMode)) {
+        return [debug_options, member_setter](absl::string_view value) {
+          DebugOptions::CollectivePipeliningMode mode;
+          std::string lower = absl::AsciiStrToLower(value);
+          if (lower == "default") {
+            mode = DebugOptions::COLLECTIVE_PIPELINING_MODE_DEFAULT;
+          } else if (lower == "off") {
+            mode = DebugOptions::COLLECTIVE_PIPELINING_MODE_OFF;
+          } else if (lower == "on") {
+            mode = DebugOptions::COLLECTIVE_PIPELINING_MODE_ON;
+          } else if (lower == "explicit") {
+            mode = DebugOptions::COLLECTIVE_PIPELINING_MODE_EXPLICIT;
+          } else {
+            return false;
+          }
+          (debug_options->*member_setter)(mode);
+          return true;
+        };
+      };
+
+  // Compatibility parser for deprecated boolean collective-pipelining flags.
+  // True maps to ON and false maps to DEFAULT.
+  auto legacy_collective_pipelining_setter_for =
+      [debug_options](void (DebugOptions::*mode_member_setter)(
+          DebugOptions::CollectivePipeliningMode)) {
+        return [debug_options, mode_member_setter](bool value) {
+          (debug_options->*mode_member_setter)(
+              value ? DebugOptions::COLLECTIVE_PIPELINING_MODE_ON
+                    : DebugOptions::COLLECTIVE_PIPELINING_MODE_DEFAULT);
           return true;
         };
       };
@@ -1455,11 +1542,6 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       "xla_cpu_opt_preset", setter_for_xla_cpu_opt_preset,
       DebugOptions::CpuOptPreset_Name(debug_options->xla_cpu_opt_preset()),
       "Set CPU optimization preset (FAST_RUNTIME, FAST_COMPILE)"));
-  flag_list->push_back(
-      tsl::Flag("xla_cpu_use_fusion_emitters",
-                bool_setter_for(&DebugOptions::set_xla_cpu_use_fusion_emitters),
-                debug_options->xla_cpu_use_fusion_emitters(),
-                "Use fusion emitters for code generation in the CPU backend."));
   flag_list->push_back(tsl::Flag(
       "xla_cpu_use_thunk_runtime",
       [](bool) {
@@ -1596,6 +1678,14 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       debug_options->xla_gpu_autotune_max_solutions(),
       "Maximal number of GEMM solutions to consider for autotuning: 0 means "
       "consider all solutions returned by the GEMM library."));
+  flag_list->push_back(tsl::Flag(
+      "xla_gpu_blas_max_algorithms",
+      int64_setter_for(&DebugOptions::set_xla_gpu_blas_max_algorithms),
+      debug_options->xla_gpu_blas_max_algorithms(),
+      "Maximum number of BLAS library algorithms to evaluate during "
+      "autotuning. Setting this to a lower value (e.g., 16 or 32) speeds up "
+      "compilation at the cost of potentially missing the optimal algorithm. "
+      "Setting to 0 uses the default (128 for most BLAS libraries)."));
   flag_list->push_back(
       tsl::Flag("xla_gpu_fusion_autotune_top_k_configs",
                 int32_setter_for(
@@ -1877,17 +1967,14 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       debug_options->xla_gpu_force_compilation_parallelism(),
       "Overrides normal multi-threaded compilation setting to use this many "
       "threads. Setting to 0 (the default value) means no enforcement."));
-  flag_list->push_back(
-      tsl::Flag("xla_gpu_default_to_alg_dot_bf16_bf16_f32",
-                bool_setter_for(&DebugOptions::set_xla_gpu_match_tpu_precision),
-                debug_options->xla_gpu_match_tpu_precision(),
-                "Deprecated. Use `xla_gpu_match_tpu_precision` instead."));
+
   flag_list->push_back(tsl::Flag(
-      "xla_gpu_match_tpu_precision",
-      bool_setter_for(&DebugOptions::set_xla_gpu_match_tpu_precision),
-      debug_options->xla_gpu_match_tpu_precision(),
+      "xla_gpu_default_to_alg_dot_bf16_bf16_f32",
+      bool_setter_for(
+          &DebugOptions::set_xla_gpu_default_to_alg_dot_bf16_bf16_f32),
+      debug_options->xla_gpu_default_to_alg_dot_bf16_bf16_f32(),
       "Use the dot precision algorithm `ALG_DOT_BF16_BF16_F32 by default for "
-      "f32 dots. This leads to the same precision as on TPU."));
+      "f32 dots."));
   flag_list->push_back(
       tsl::Flag("xla_gpu_deterministic_ops",
                 bool_setter_for(&DebugOptions::set_xla_gpu_deterministic_ops),
@@ -2327,20 +2414,53 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       "Enable async stream to have the highest priority."));
   flag_list->push_back(tsl::Flag(
       "xla_gpu_enable_pipelined_all_reduce",
-      bool_setter_for(&DebugOptions::set_xla_gpu_enable_pipelined_all_reduce),
-      debug_options->xla_gpu_enable_pipelined_all_reduce(),
-      "[Stable] Enable pipelinling of all-reduce instructions."));
+      legacy_collective_pipelining_setter_for(
+          &DebugOptions::set_xla_gpu_pipeline_all_reduce),
+      /*default_value_for_display=*/false,
+      "[Deprecated] True maps to --xla_gpu_pipeline_all_reduce=on and false "
+      "maps to --xla_gpu_pipeline_all_reduce=default."));
+  flag_list->push_back(tsl::Flag(
+      "xla_gpu_pipeline_all_reduce",
+      collective_pipelining_mode_setter_for(
+          &DebugOptions::set_xla_gpu_pipeline_all_reduce),
+      absl::StrCat(debug_options->xla_gpu_pipeline_all_reduce()),
+      "[Stable] Controls all-reduce pipelining: default follows optimization "
+      "effort, off disables the pass, on considers all structurally eligible "
+      "all-reduces, and explicit considers only all-reduces carrying a "
+      "boolean-true is_pipelineable frontend attribute."));
   flag_list->push_back(tsl::Flag(
       "xla_gpu_enable_pipelined_all_gather",
-      bool_setter_for(&DebugOptions::set_xla_gpu_enable_pipelined_all_gather),
-      debug_options->xla_gpu_enable_pipelined_all_gather(),
-      "[Stable] Enable pipelinling of all-gather instructions."));
-  flag_list->push_back(
-      tsl::Flag("xla_gpu_enable_pipelined_reduce_scatter",
-                bool_setter_for(
-                    &DebugOptions::set_xla_gpu_enable_pipelined_reduce_scatter),
-                debug_options->xla_gpu_enable_pipelined_reduce_scatter(),
-                "[Stable] Enable pipelinling of reduce-scatter instructions."));
+      legacy_collective_pipelining_setter_for(
+          &DebugOptions::set_xla_gpu_pipeline_all_gather),
+      /*default_value_for_display=*/false,
+      "[Deprecated] True maps to --xla_gpu_pipeline_all_gather=on and false "
+      "maps to --xla_gpu_pipeline_all_gather=default."));
+  flag_list->push_back(tsl::Flag(
+      "xla_gpu_pipeline_all_gather",
+      collective_pipelining_mode_setter_for(
+          &DebugOptions::set_xla_gpu_pipeline_all_gather),
+      absl::StrCat(debug_options->xla_gpu_pipeline_all_gather()),
+      "[Stable] Controls all-gather pipelining: default follows optimization "
+      "effort, off disables the pass, on considers all structurally eligible "
+      "all-gathers, and explicit considers only all-gathers carrying a "
+      "boolean-true is_pipelineable frontend attribute."));
+  flag_list->push_back(tsl::Flag(
+      "xla_gpu_enable_pipelined_reduce_scatter",
+      legacy_collective_pipelining_setter_for(
+          &DebugOptions::set_xla_gpu_pipeline_reduce_scatter),
+      /*default_value_for_display=*/true,
+      "[Deprecated] True maps to --xla_gpu_pipeline_reduce_scatter=on and "
+      "false maps to --xla_gpu_pipeline_reduce_scatter=default."));
+  flag_list->push_back(tsl::Flag(
+      "xla_gpu_pipeline_reduce_scatter",
+      collective_pipelining_mode_setter_for(
+          &DebugOptions::set_xla_gpu_pipeline_reduce_scatter),
+      absl::StrCat(debug_options->xla_gpu_pipeline_reduce_scatter()),
+      "[Stable] Controls reduce-scatter pipelining: default follows "
+      "optimization effort, off disables the pass, on considers all "
+      "structurally eligible reduce-scatters, and explicit considers only "
+      "reduce-scatters carrying a boolean-true is_pipelineable frontend "
+      "attribute."));
   flag_list->push_back(tsl::Flag(
       "xla_gpu_enable_pipelined_host_offloading",
       bool_setter_for(
@@ -2401,6 +2521,15 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
               set_xla_gpu_unsupported_enable_triton_multi_output_fusion),
       debug_options->xla_gpu_unsupported_enable_triton_multi_output_fusion(),
       "Enable Triton multi-output fusions."));
+  flag_list->push_back(tsl::Flag(
+      "xla_gpu_experimental_enable_same_shape_multi_output_fusion",
+      bool_setter_for(
+          &DebugOptions::
+              set_xla_gpu_experimental_enable_same_shape_multi_output_fusion),
+      debug_options
+          ->xla_gpu_experimental_enable_same_shape_multi_output_fusion(),
+      "Enable experimental support for multi-output block-level emitter "
+      "fusions where all roots share the same shape."));
   flag_list->push_back(tsl::Flag(
       "xla_gpu_verify_triton_fusion_numerics",
       bool_setter_for(&DebugOptions::set_xla_gpu_verify_triton_fusion_numerics),
@@ -2713,13 +2842,13 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       tsl::Flag("xla_gpu_collective_permute_mode",
                 collectives_mode_setter_for(
                     &DebugOptions::set_xla_gpu_collective_permute_mode),
-                std::string("private"),
+                absl::StrCat(debug_options->xla_gpu_collective_permute_mode()),
                 "Memory mode for collective-permute: private, symmetric, peer. "
                 "See CollectivesMode for details."));
   flag_list->push_back(tsl::Flag(
       "xla_gpu_all_gather_mode",
       collectives_mode_setter_for(&DebugOptions::set_xla_gpu_all_gather_mode),
-      std::string("private"),
+      absl::StrCat(debug_options->xla_gpu_all_gather_mode()),
       "Memory mode for all-gather: private, symmetric, peer. "
       "See CollectivesMode for details."));
   flag_list->push_back(tsl::Flag(
@@ -3007,12 +3136,41 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
           ->xla_gpu_experimental_collective_start_as_early_as_possible(),
       "This controls whether collectives should start as early as possible."));
   flag_list->push_back(tsl::Flag(
+      "xla_gpu_experimental_enable_selective_memcpy_overlap",
+      bool_setter_for(
+          &DebugOptions::
+              set_xla_gpu_experimental_enable_selective_memcpy_overlap),
+      debug_options->xla_gpu_experimental_enable_selective_memcpy_overlap(),
+      "When enabled, the GPU latency hiding scheduler selectively overlaps "
+      "async device-to-device (D2D) memcpys with compute-bound kernels."));
+  flag_list->push_back(tsl::Flag(
       "xla_gpu_experimental_parallel_async_compute_limit",
       int32_setter_for(
           &DebugOptions::set_xla_gpu_experimental_parallel_async_compute_limit),
       debug_options->xla_gpu_experimental_parallel_async_compute_limit(),
       "This controls how many in-flight asynchronous computations "
       "latency hiding scheduler can schedule."));
+  flag_list->push_back(tsl::Flag(
+      "xla_gpu_experimental_scheduler_memory_fencing_threshold_bytes",
+      int64_setter_for(
+          &DebugOptions::
+              // NOLINTNEXTLINE
+          set_xla_gpu_experimental_scheduler_memory_fencing_threshold_bytes),
+      debug_options
+          ->xla_gpu_experimental_scheduler_memory_fencing_threshold_bytes(),
+      "Buffers of at least this size in bytes are fenced by the "
+      "SchedulerMemoryFencing pass. -1 disables the pass, 0 uses 1% of the "
+      "scheduler memory limit, and positive values are capped at the scheduler "
+      "memory limit."));
+  flag_list->push_back(tsl::Flag(
+      "xla_gpu_experimental_scheduler_memory_fencing_slack_windows",
+      int32_setter_for(
+          &DebugOptions::
+              set_xla_gpu_experimental_scheduler_memory_fencing_slack_windows),
+      debug_options
+          ->xla_gpu_experimental_scheduler_memory_fencing_slack_windows(),
+      "How many async operation windows the users of a fenced buffer may be "
+      "deferred past the buffer's last-use window in the pre-LHS schedule."));
   flag_list->push_back(tsl::Flag(
       "xla_pjrt_allow_auto_layout_in_hlo",
       bool_setter_for(&DebugOptions::set_xla_pjrt_allow_auto_layout_in_hlo),
@@ -3279,7 +3437,7 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       tsl::Flag("xla_gpu_ragged_all_to_all_mode",
                 collectives_mode_setter_for(
                     &DebugOptions::set_xla_gpu_ragged_all_to_all_mode),
-                std::string("private"),
+                absl::StrCat(debug_options->xla_gpu_ragged_all_to_all_mode()),
                 "Memory mode for ragged-all-to-all: private, symmetric, peer. "
                 "In symmetric mode, the put/signal path is used. "
                 "See CollectivesMode for details."));
@@ -3293,6 +3451,21 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       int64_setter_for(&DebugOptions::set_xla_gpu_gxl_scratch_size_bytes),
       debug_options->xla_gpu_gxl_scratch_size_bytes(),
       "Size in bytes of the scratch buffer for GXL collectives."));
+  flag_list->push_back(tsl::Flag(
+      "xla_gpu_experimental_ragged_all_to_all_use_device_kernel",
+      bool_setter_for(
+          &DebugOptions::
+              set_xla_gpu_experimental_ragged_all_to_all_use_device_kernel),
+      debug_options->xla_gpu_experimental_ragged_all_to_all_use_device_kernel(),
+      "If true, use the device-initiated (NCCL GIN + LSA) kernel for "
+      "ragged-all-to-all. Requires NCCL >= 2.29."));
+  flag_list->push_back(tsl::Flag(
+      "xla_gpu_async_copy_min_bytes",
+      int64_setter_for(&DebugOptions::set_xla_gpu_async_copy_min_bytes),
+      debug_options->xla_gpu_async_copy_min_bytes(),
+      "Minimum transfer size (in bytes) for a device-to-device copy to be "
+      "converted to an async copy-start/copy-done pair. Set to -1 to disable "
+      "async device-to-device copies."));
   flag_list->push_back(tsl::Flag(
       "xla_gpu_experimental_use_ragged_dot_grouped_gemm",
       bool_setter_for(
@@ -3355,6 +3528,15 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       "If true, opportunistically materialize MeshAxesReplicaGroupList "
       "(RGV3) in SPMD partitioner. If false, fallback to legacy V1/V2 "
       "representations."));
+  flag_list->push_back(tsl::Flag(
+      "xla_spmd_enable_dynamic_slice_collective_broadcast",
+      bool_setter_for(
+          &DebugOptions::
+              set_xla_spmd_enable_dynamic_slice_collective_broadcast),
+      debug_options->xla_spmd_enable_dynamic_slice_collective_broadcast(),
+      "If true, enable the GPU SPMD lowering that broadcasts a single dynamic "
+      "slice from its sharded owner instead of all-gathering the full "
+      "operand."));
   flag_list->push_back(tsl::Flag(
       "xla_sdy_export_all_reduce_scatter",
       bool_setter_for(&DebugOptions::set_xla_sdy_export_all_reduce_scatter),
@@ -3616,18 +3798,21 @@ FlagStatus GetFlagStatus(absl::string_view flag_name) {
           "xla_gpu_dot_merger_threshold_mb",
           "xla_gpu_enable_dynamic_slice_fusion",
           "xla_gpu_enable_latency_hiding_scheduler",
-          "xla_gpu_enable_pipelined_all_gather",
-          "xla_gpu_enable_pipelined_all_reduce",
-          "xla_gpu_enable_pipelined_reduce_scatter",
           "xla_gpu_enable_triton_gemm",
           "xla_gpu_enable_while_loop_double_buffering",
           "xla_gpu_exhaustive_tiling_search",
+          "xla_gpu_pipeline_all_gather",
+          "xla_gpu_pipeline_all_reduce",
+          "xla_gpu_pipeline_reduce_scatter",
           "xla_gpu_reduce_scatter_combine_threshold_bytes",
           // go/keep-sorted end
       });
   static const absl::NoDestructor<absl::flat_hash_set<std::string>>
       kDeprecatedFlags(absl::flat_hash_set<std::string>{
           // go/keep-sorted start
+          "xla_gpu_enable_pipelined_all_gather",
+          "xla_gpu_enable_pipelined_all_reduce",
+          "xla_gpu_enable_pipelined_reduce_scatter",
           // go/keep-sorted end
       });
   return kStableFlags->contains(flag_name)       ? FlagStatus::kStable
@@ -3638,6 +3823,9 @@ FlagStatus GetFlagStatus(absl::string_view flag_name) {
 
 void ResetThreadLocalFuel() {
   absl::call_once(flags_init, &AllocateFlags, nullptr);
+  if (initial_fuel->empty()) {
+    return;
+  }
 
   thread_fuel = std::make_unique<
       absl::node_hash_map<std::string, std::atomic<int64_t>>>();
@@ -3649,6 +3837,9 @@ void ResetThreadLocalFuel() {
 
 bool PassFuelIsSet(absl::string_view pass) {
   absl::call_once(flags_init, &AllocateFlags, nullptr);
+  if (initial_fuel->empty()) {
+    return false;
+  }
   auto* fuel_pool = thread_fuel ? thread_fuel.get() : global_fuel;
   auto it = fuel_pool->find(pass);
   return it != fuel_pool->end();
@@ -3658,6 +3849,9 @@ bool ConsumeFuel(absl::string_view pass, bool* just_ran_out) {
   absl::call_once(flags_init, &AllocateFlags, nullptr);
   if (just_ran_out != nullptr) {
     *just_ran_out = false;
+  }
+  if (initial_fuel->empty()) {
+    return true;
   }
   auto* fuel_pool = thread_fuel ? thread_fuel.get() : global_fuel;
   if (fuel_pool->empty()) {

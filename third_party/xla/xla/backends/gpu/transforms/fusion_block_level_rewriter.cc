@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
@@ -31,6 +32,7 @@ limitations under the License.
 #include "llvm/Support/MathExtras.h"
 #include "mlir/IR/MLIRContext.h"
 #include "xla/backends/gpu/codegen/triton/support.h"
+#include "xla/codegen/tiling/tiling_util.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -47,7 +49,7 @@ limitations under the License.
 #include "xla/service/hlo_graph_dumper.h"
 #include "xla/service/instruction_fusion.h"
 #include "xla/service/pattern_matcher.h"
-#include "xla/shape_util.h"
+#include "xla/shape.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
@@ -166,18 +168,22 @@ absl::StatusOr<bool> ShouldTryRewriteFusion(
     }
   }
 
+  const DebugOptions& debug_options =
+      fusion->GetModule()->config().debug_options();
+  const bool can_emit_same_shape_multi_output_fusion =
+      IsSameShapeMultiOutputFusion(*fusion,
+                                   Shape::Equal().IgnoreElementType()) &&
+      debug_options
+          .xla_gpu_experimental_enable_same_shape_multi_output_fusion() &&
+      debug_options.xla_gpu_experimental_enable_tiling_propagation();
+
   if (fusion->IsMultiOutputFusion() &&
-      !fusion->GetModule()
-           ->config()
-           .debug_options()
-           .xla_gpu_unsupported_enable_triton_multi_output_fusion()) {
+      !can_emit_same_shape_multi_output_fusion &&
+      !debug_options.xla_gpu_unsupported_enable_triton_multi_output_fusion()) {
     return false;
   }
 
-  if (fusion->GetModule()
-          ->config()
-          .debug_options()
-          .xla_gpu_experimental_enable_fusion_block_level_rewriter()) {
+  if (debug_options.xla_gpu_experimental_enable_fusion_block_level_rewriter()) {
     return true;
   }
 

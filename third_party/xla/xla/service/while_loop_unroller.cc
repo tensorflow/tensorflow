@@ -60,8 +60,7 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
-#include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/platform/logging.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 
@@ -302,6 +301,7 @@ absl::StatusOr<bool> UnrollInternal(HloInstruction* while_op,
   ASSIGN_OR_RETURN(int64_t next_scheduling_id,
                    NextSchedulingGroupId(*while_op->GetModule()));
   std::vector<HloInstruction*> new_calls;
+  new_calls.reserve(config.trip_count);
   for (int64_t i = config.init; i < config.trip_count + config.init; ++i) {
     CHECK(OverflowSafeAdd(i, (int64_t)1).has_value());
 
@@ -349,6 +349,7 @@ absl::StatusOr<UnrollResult> UnrollInternalWrappedAndReturnReplacement(
                    NextSchedulingGroupId(*while_op->GetModule()));
 
   std::vector<HloInstruction*> new_calls;
+  new_calls.reserve(config.trip_count);
   for (int64_t i = config.init; i < config.trip_count + config.init; ++i) {
     CHECK(OverflowSafeAdd(i, (int64_t)1).has_value());
 
@@ -769,6 +770,9 @@ bool IsInputWriteOnly(int64_t input_idx, const HloComputation* computation) {
       case HloOpcode::kDynamicUpdateSlice:
         // DUS operations with first operand as input are permitted.
         if (user->operand(0) != instr) {
+          return false;
+        }
+        if (!WhileUtil::IsUpdatedBufferWriteOnly(user)) {
           return false;
         }
         break;

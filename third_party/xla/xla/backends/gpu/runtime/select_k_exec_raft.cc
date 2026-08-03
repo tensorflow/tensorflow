@@ -176,7 +176,8 @@ struct RaftStreamResource : public se::Stream::Resource {
 // How the heuristic is generated:
 //
 //   1. Build the benchmark module:
-//        raft/cpp/bench/prims/matrix
+//        cd raft
+//        ./build.sh libraft bench-prims
 //
 //   2. Collect performance data by running microbenchmarks:
 //
@@ -199,7 +200,7 @@ struct RaftStreamResource : public se::Stream::Resource {
 // Notes:
 //   - To generate performance data for BFloat16,
 //     modify cpp/bench/prims/matrix/select_k.cu  and register nv_bfloat16 type
-//     using SELECTION_REGISTER mactos.
+//     using SELECTION_REGISTER macros.
 // ============================================================================
 
 template <typename T>
@@ -246,6 +247,40 @@ SelectAlgo choose_select_k_algorithm<nv_bfloat16>(uint32_t rows, uint32_t cols,
     }
   } else {
     return SelectAlgo::kWarpImmediate;
+  }
+}
+
+template <>
+SelectAlgo choose_select_k_algorithm<uint64_t>(uint32_t rows, uint32_t cols,
+                                               uint32_t k) {
+  if (k > 129) {
+    if (cols > 20215) {
+      if (rows > 1013) {
+        return SelectAlgo::kRadix11bitsExtraPass;
+      } else {
+        return SelectAlgo::kRadix11bits;
+      }
+    } else {
+      if (k > 256) {
+        return SelectAlgo::kRadix8bits;
+      } else {
+        return SelectAlgo::kWarpFiltered;
+      }
+    }
+  } else {
+    if (k > 1) {
+      if (cols > 22089) {
+        return SelectAlgo::kWarpDistributedShm;
+      } else {
+        if (rows > 341) {
+          return SelectAlgo::kWarpDistributedShm;
+        } else {
+          return SelectAlgo::kWarpImmediate;
+        }
+      }
+    } else {
+      return SelectAlgo::kWarpImmediate;
+    }
   }
 }
 
@@ -334,6 +369,11 @@ template absl::Status select_k_exec<float>(int, se::DeviceAddressAllocator*,
                                            std::uint32_t, std::uint32_t);
 
 template absl::Status select_k_exec<nv_bfloat16>(
+    int, se::DeviceAddressAllocator*, se::Stream*, se::DeviceAddressBase,
+    se::DeviceAddressBase, se::DeviceAddressBase, std::uint32_t, std::uint32_t,
+    std::uint32_t);
+
+template absl::Status select_k_exec<std::uint64_t>(
     int, se::DeviceAddressAllocator*, se::Stream*, se::DeviceAddressBase,
     se::DeviceAddressBase, se::DeviceAddressBase, std::uint32_t, std::uint32_t,
     std::uint32_t);

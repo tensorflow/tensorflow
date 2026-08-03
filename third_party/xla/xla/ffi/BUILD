@@ -170,6 +170,7 @@ cc_library(
         "//xla/hlo/ir:hlo",
         "//xla/stream_executor:device_address",
         "//xla/tsl/concurrency:async_value",
+        "//xla/tsl/platform:status_macros",
         "//xla/tsl/util:safe_reinterpret_cast",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base:core_headers",

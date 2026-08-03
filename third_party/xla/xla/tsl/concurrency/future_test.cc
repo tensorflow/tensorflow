@@ -1755,6 +1755,36 @@ TEST(FutureTest, DetachStatefulOnThreadPoolExecutor) {
   EXPECT_EQ(counter, 100);
 }
 
+TEST(PromiseOnceTest, SetMultipleTimes) {
+  auto [promise, future] = MakePromiseOnce();
+
+  EXPECT_TRUE(promise.Set(absl::OkStatus()));
+  EXPECT_FALSE(promise.Set());
+  EXPECT_FALSE(promise.Set(absl::InternalError("error")));
+
+  EXPECT_OK(future.Await());
+  EXPECT_OK(promise.future().Await());
+}
+
+TEST(PromiseOnceTest, MoveOnly) {
+  auto [promise, future] = MakePromiseOnce<std::unique_ptr<int32_t>>();
+
+  EXPECT_TRUE(promise.Set(std::make_unique<int32_t>(42)));
+  EXPECT_FALSE(promise.Set(std::make_unique<int32_t>(43)));
+
+  EXPECT_THAT(future.Await(), IsOkAndHolds(Pointee(42)));
+}
+
+TEST(PromiseOnceTest, Copyable) {
+  auto [promise, future] = MakePromiseOnce<int32_t>();
+
+  EXPECT_TRUE(promise.Set(42));
+  EXPECT_FALSE(promise.Set(43));
+
+  EXPECT_THAT(future.Await(), IsOkAndHolds(42));
+  EXPECT_THAT(promise.future().Await(), IsOkAndHolds(42));
+}
+
 //===----------------------------------------------------------------------===//
 // Performance benchmarks.
 //===----------------------------------------------------------------------===//

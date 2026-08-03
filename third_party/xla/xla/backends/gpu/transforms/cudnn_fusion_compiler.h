@@ -48,6 +48,27 @@ class CuDnnFusionCompiler : public HloModulePass {
       const se::DeviceDescription& gpu_device_info,
       const HloFusionInstruction& hlo);
 
+  enum class DevicelessFusionSupport {
+    // cuDNN's deviceless heuristics advertise at least one execution plan.
+    // Not a guarantee: building the plan on the real device (possibly a
+    // different cuDNN) can still fail.
+    kSupported,
+    // Authoritative: cuDNN reports no engine supports this graph on the
+    // target.
+    kUnsupported,
+    // No verdict (graph construction or deviceless preparation failed; cause
+    // is VLOG(1)-logged). Not evidence either way.
+    kUnknown,
+  };
+
+  // Deviceless (no GPU / cuDNN handle) probe of cuDNN support for the fusion
+  // `hlo` on the target `gpu_device_info`. The verdict applies to the fusion
+  // pipeline only; the legacy conv custom-call pipeline enumerates engines
+  // differently.
+  static DevicelessFusionSupport SupportsFusionDeviceless(
+      const se::DeviceDescription& gpu_device_info,
+      const HloFusionInstruction& hlo);
+
  protected:
   absl::StatusOr<bool> RunImpl(
       HloModule* module,

@@ -383,12 +383,14 @@ std::string MakeKernelName(absl::string_view prefix,
   // and attach the longest prefix to this launch.
   absl::string_view op_name = GetLongestOpNamePrefix(inst);
   if (op_name.empty()) {
-    return absl::StrCat("Thunk:#hlo_op=", inst.name(), "#");
+    return absl::StrCat("Thunk:#hlo_op=", inst.name(),
+                        ",unique_hlo_op_id=", inst.unique_id(), "#");
   }
   if (op_name.substr(0, prefix.size()) != prefix) {
     // the op_name we got for this instruction does not start with the prefix
     // that we thought was common to all instructions in the module
-    return absl::StrCat("Thunk:#name=", op_name, ",hlo_op=", inst.name(), "#");
+    return absl::StrCat("Thunk:#name=", op_name, ",hlo_op=", inst.name(),
+                        ",unique_hlo_op_id=", inst.unique_id(), "#");
   }
   // remove the prefix that's in the parent module annotation
   auto short_name = op_name.substr(prefix.size());
@@ -396,7 +398,8 @@ std::string MakeKernelName(absl::string_view prefix,
   if (!short_name.empty() && short_name.front() == '/') {
     short_name = short_name.substr(1);
   }
-  return absl::StrCat("Thunk:#name=", short_name, ",hlo_op=", inst.name(), "#");
+  return absl::StrCat("Thunk:#name=", short_name, ",hlo_op=", inst.name(),
+                      ",unique_hlo_op_id=", inst.unique_id(), "#");
 }
 }  // namespace
 

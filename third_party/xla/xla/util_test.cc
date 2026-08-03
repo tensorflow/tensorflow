@@ -19,7 +19,6 @@ limitations under the License.
 #include <cstdint>
 #include <limits>
 #include <list>
-#include <memory>
 #include <set>
 #include <string>
 #include <utility>
@@ -37,7 +36,6 @@ limitations under the License.
 #include "xla/hlo/testlib/test.h"
 #include "xla/tsl/platform/logging.h"
 #include "xla/tsl/platform/test_benchmark.h"
-#include "xla/tsl/util/maybe_owning.h"
 #include "xla/types.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/ml_dtypes.h"
@@ -605,40 +603,6 @@ TEST_P(PackUnpackIntNTest, RoundTrip) {
 
 INSTANTIATE_TEST_SUITE_P(PackUnpackIntNTest, PackUnpackIntNTest,
                          testing::Values(1, 2, 4));
-
-TEST(UtilTest, MaybeOwningTestNull) {
-  MaybeOwning<char> m(nullptr);
-  EXPECT_EQ(m.get(), nullptr);
-  EXPECT_EQ(m.get_mutable(), nullptr);
-}
-
-TEST(UtilTest, MaybeOwningTestOwning) {
-  MaybeOwning<char> m(std::make_unique<char>());
-  *m.get_mutable() = 'a';
-  EXPECT_EQ(*m, 'a');
-}
-
-TEST(UtilTest, MaybeOwningTestShared) {
-  auto owner = std::make_unique<char>();
-  *owner = 'x';
-  MaybeOwning<char> c1(owner.get());
-  MaybeOwning<char> c2(owner.get());
-
-  EXPECT_EQ(*c1, 'x');
-  EXPECT_EQ(*c2, 'x');
-  EXPECT_EQ(c1.get(), c2.get());
-}
-
-TEST(UtilTest, MaybeOwningTestSharedNoCharType) {
-  auto owner = std::make_unique<int>();
-  *owner = 42;
-  MaybeOwning<int> i1(owner.get());
-  MaybeOwning<int> i2(owner.get());
-
-  EXPECT_EQ(*i1, 42);
-  EXPECT_EQ(*i2, 42);
-  EXPECT_EQ(i1.get(), i2.get());
-}
 
 TEST(UtilTest, PrintAllFields) {
   // Here we are using one of the bool fields that has the default value to

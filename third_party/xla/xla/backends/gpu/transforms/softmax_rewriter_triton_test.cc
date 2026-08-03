@@ -529,7 +529,11 @@ ENTRY main {
 }
 )";
   auto module = ParseAndReturnVerifiedModule(hlo_string).value();
-  EXPECT_FALSE(fusion_rewriter_.Run(module.get()).value());
+  if (bool experimental_tiling = GetParam(); experimental_tiling) {
+    EXPECT_TRUE(fusion_rewriter_.Run(module.get()).value());
+  } else {
+    EXPECT_FALSE(fusion_rewriter_.Run(module.get()).value());
+  }
 }
 
 TEST_P(SoftmaxRewriterTritonTest, CanFuseSoftmaxDiamondWithBitcastsOnEachUse) {

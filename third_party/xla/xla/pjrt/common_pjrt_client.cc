@@ -63,6 +63,7 @@ limitations under the License.
 #include "xla/pjrt/device_event_utils.h"
 #include "xla/pjrt/dynamic_shapes.h"
 #include "xla/pjrt/host_callback.h"
+#include "xla/pjrt/host_to_device_transfer_manager.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_executable.h"
@@ -1801,9 +1802,8 @@ CommonPjRtClient::CrossHostReceiveBuffers(
 
 static std::unique_ptr<PjRtBuffer> CreateOutputLeafBuffer(
     std::shared_ptr<const Shape> output_leaf_shape,
-    PjRtDeviceEventRef definition_event, bool is_predetermined_error,
-    CommonPjRtClient* client, PjRtDevice* device, PjRtRawBufferRef leaf_buffer,
-    int kind_id) {
+    PjRtDeviceEventRef definition_event, CommonPjRtClient* client,
+    PjRtDevice* device, PjRtRawBufferRef leaf_buffer, int kind_id) {
   PjRtMemorySpace* memory_space = nullptr;
   if (leaf_buffer) {
     memory_space = leaf_buffer->memory_space();
@@ -1844,23 +1844,21 @@ std::vector<std::unique_ptr<PjRtBuffer>> CommonPjRtClient::CreateOutputs(
       auto leaf_shape =
           std::shared_ptr<const Shape>(output_device_shape, &tuple_shapes[i]);
       res.push_back(CreateOutputLeafBuffer(
-          std::move(leaf_shape), definition_event, is_predetermined_error, this,
-          device, get_buffer(i), output_memory_space_kind_ids[i]));
+          std::move(leaf_shape), definition_event, this, device, get_buffer(i),
+          output_memory_space_kind_ids[i]));
     }
   } else if (!output_device_shape->IsTuple() &&
              output_leaf_buffers.size() == 1) {
     // Share the shape directly from the executable.
     res.push_back(CreateOutputLeafBuffer(
-        output_device_shape, std::move(definition_event),
-        is_predetermined_error, this, device, std::move(output_leaf_buffers[0]),
-        output_memory_space_kind_ids[0]));
+        output_device_shape, std::move(definition_event), this, device,
+        std::move(output_leaf_buffers[0]), output_memory_space_kind_ids[0]));
   } else {
     CHECK(is_predetermined_error)
         << "Nontuple results must have a single result buffer.";
-    res.push_back(CreateOutputLeafBuffer(output_device_shape,
-                                         std::move(definition_event),
-                                         is_predetermined_error, this, device,
-                                         {}, output_memory_space_kind_ids[0]));
+    res.push_back(CreateOutputLeafBuffer(
+        output_device_shape, std::move(definition_event), this, device, {},
+        output_memory_space_kind_ids[0]));
   }
   return res;
 }
@@ -2049,6 +2047,9 @@ absl::Status CommonPjRtLoadedExecutable::CheckBufferCompatibilities(
 absl::StatusOr<PjRtLoadedExecutable::Result>
 CommonPjRtLoadedExecutable::ExecuteLaunch(ExecuteLaunchArgs& launch_args,
                                           bool fill_future) const {
+  if (execute_launch_hook_) {
+    execute_launch_hook_(launch_args.device);
+  }
   auto results = std::move(*launch_args.executable)
                      .Execute(*launch_args.options, launch_args.input_buffers,
                               launch_args.output_leaf_buffers,
@@ -2326,21 +2327,31 @@ CommonPjRtLoadedExecutable::Execute(
               // Wait for prepare to finish on all cores.
               if (client()->supports_two_phase_launch()) {
                 absl::MutexLock lock(mu);
-                preparing--;
-                auto done_preparing = [&]() ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu) {
-                  return preparing == 0;
-                };
-                mu.Await(absl::Condition(&done_preparing));
                 if (!launch_status.ok()) {
                   if (failed == 0) {
                     first_failure_status = launch_status;
                   }
                   failed++;
                 }
+                preparing--;
+                auto done_preparing = [&]() ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu) {
+                  return preparing == 0;
+                };
+                mu.Await(absl::Condition(&done_preparing));
                 if (failed > 0) {
                   // Poison results for all cores.
                   results[i] = first_failure_status;
                   // Abort phase 2 if Prepare fails for any core.
+                  --launching;
+                  return;
+                }
+              } else {
+                // Non-two-phase clients have no barrier to participate in, but
+                // the Prepare status must still be checked before Launch:
+                // launch_args.executable is only populated on Prepare success.
+                if (!launch_status.ok()) {
+                  results[i] = launch_status;
+                  absl::MutexLock lock(mu);
                   --launching;
                   return;
                 }
@@ -3434,6 +3445,15 @@ Future<> CommonPjRtBufferImpl::GetReadyFuture() {
         memory_space(), "CommonPjRtBuffer", "Await", std::move(future));
   }
   return definition_future_;
+}
+
+absl::StatusOr<std::unique_ptr<PjRtClient::AsyncHostToDeviceTransferManager>>
+CommonPjRtClient::CreateBuffersForAsyncHostToDevice(
+    absl::Span<const PjRtClient::ShapeSpec> shape_specs,
+    std::optional<absl::Span<const std::optional<Layout>>> device_layouts,
+    PjRtMemorySpace* memory_space) {
+  return xla::CreateAsyncHostToDeviceTransferManager(
+      shape_specs, std::move(device_layouts), memory_space);
 }
 
 }  // namespace xla

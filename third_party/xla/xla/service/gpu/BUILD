@@ -655,10 +655,22 @@ cc_library(
     hdrs = ["triton_call.h"],
     deps = [
         "@com_google_absl//absl/strings:string_view",
+        "@llvm-project//llvm:Support",
         "@llvm-project//mlir:AsmParser",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Parser",
         "@llvm-project//mlir:Support",
+    ],
+)
+
+xla_cc_test(
+    name = "triton_call_test",
+    srcs = ["triton_call_test.cc"],
+    deps = [
+        ":triton_call",
+        "//xla/tests:xla_internal_test_main",
+        "@com_google_googletest//:gtest",
+        "@llvm-project//mlir:IR",
     ],
 )
 
@@ -1032,7 +1044,6 @@ cc_library(
         "//xla/tsl/platform:status_macros",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
@@ -1807,6 +1818,7 @@ cc_library(
         "//xla/backends/gpu/transforms:gemm_fusion",
         "//xla/backends/gpu/transforms:gemm_fusion_swap_operands",
         "//xla/backends/gpu/transforms:gemm_rewriter",
+        "//xla/backends/gpu/transforms:gpu_copy_async_wrapper",
         "//xla/backends/gpu/transforms:hoist_fused_bitcasts",
         "//xla/backends/gpu/transforms:layout_assignment",
         "//xla/backends/gpu/transforms:move_copy_to_users",
@@ -2053,6 +2065,7 @@ cc_library(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:span",
         "@com_google_absl//absl/types:variant",
@@ -2816,6 +2829,7 @@ cc_library(
         "//xla/service:legalize_scheduling_annotations",
         "//xla/service:p2p_schedule_preparation",
         "//xla/service:profile_guided_latency_estimator",
+        "//xla/service:scheduler_memory_fencing",
         "//xla/service/gpu/model:analytical_latency_estimator",
         "//xla/service/gpu/model:gpu_hlo_cost_analysis",
         "//xla/service/gpu/model:sol_latency_estimator",
@@ -3647,6 +3661,7 @@ xla_cc_test(
     srcs = ["gpu_latency_hiding_scheduler_test.cc"],
     deps = [
         ":alias_info",
+        ":backend_configs_cc",
         ":gpu_device_info_for_tests",
         ":gpu_hlo_schedule",
         ":gpu_latency_hiding_scheduler",

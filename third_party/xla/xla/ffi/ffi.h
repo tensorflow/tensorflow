@@ -25,9 +25,9 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <functional>
-#include <limits>
 #include <memory>
 #include <optional>
+#include <ostream>
 #include <string>
 
 // IWYU pragma: begin_exports
@@ -44,6 +44,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/executable_run_options.h"
 #include "xla/ffi/api/c_api.h"
 #include "xla/ffi/api/c_api_internal.h"  // IWYU pragma: keep
@@ -81,8 +82,6 @@ const XLA_FFI_Api* GetXlaFfiApi();
 //===----------------------------------------------------------------------===//
 
 namespace internal {
-
-inline constexpr size_t kDynamicRank = std::numeric_limits<size_t>::max();
 
 // NativeTypeOf<dtype>::type is the native type for implementing the given dtype
 // in the FFI.
@@ -155,6 +154,8 @@ class AnyBuffer {
   }
 
  private:
+  friend struct match::internal::BufferCast;
+
   const XLA_FFI_Buffer* buf_;
 };
 
@@ -162,7 +163,7 @@ class AnyBuffer {
 //
 // The dtype and rank are checked at decoding time. If rank is not specified,
 // any rank is accepted.
-template <PrimitiveType dtype, size_t rank = internal::kDynamicRank>
+template <PrimitiveType dtype, size_t rank = kDynamicRank>
 class Buffer {
  public:
   using Dimensions = AnyBuffer::Dimensions;
@@ -174,8 +175,7 @@ class Buffer {
   PrimitiveType element_type() const { return dtype; }
 
   Dimensions dimensions() const {
-    return Dimensions(buf_->dims,
-                      rank == internal::kDynamicRank ? buf_->rank : rank);
+    return Dimensions(buf_->dims, rank == kDynamicRank ? buf_->rank : rank);
   }
 
   ABSL_ATTRIBUTE_ALWAYS_INLINE size_t size_bytes() const {
@@ -201,6 +201,8 @@ class Buffer {
   }
 
  private:
+  friend struct match::internal::BufferCast;
+
   const XLA_FFI_Buffer* buf_;
 };
 
@@ -226,7 +228,7 @@ ABSL_ATTRIBUTE_ALWAYS_INLINE std::optional<Buffer<dtype, rank>> DecodeBuffer(
            << primitive_util::LowercasePrimitiveTypeName(buf_dtype);
   }
 
-  if constexpr (rank != internal::kDynamicRank) {
+  if constexpr (rank != kDynamicRank) {
     if (ABSL_PREDICT_FALSE(buf->rank != rank)) {
       return diagnostic.Emit("Wrong buffer rank: expected ")
              << rank << " but got " << buf->rank;
@@ -266,6 +268,95 @@ TypeRegistry::TypeId GetTypeId(const XLA_FFI_Api* api) {
 }
 
 }  // namespace internal
+
+//===----------------------------------------------------------------------===//
+// Buffer Matching
+//===----------------------------------------------------------------------===//
+
+namespace match {
+namespace internal {
+
+struct BufferCast {
+  template <typename To, typename From>
+  static To Cast(const From& buffer) {
+    return To(buffer.buf_);
+  }
+};
+
+// `PrimitiveType` has no symbolic `operator<<` (it would print the integer
+// enum value), so route diagnostics through the shared spelled-out name.
+template <>
+struct ValuePrinter<PrimitiveType> {
+  friend std::ostream& operator<<(std::ostream& os, ValuePrinter printer) {
+    return os << primitive_util::LowercasePrimitiveTypeName(printer.value);
+  }
+
+  PrimitiveType value;
+};
+
+}  // namespace internal
+
+// A buffer-matching pattern specialized to the internal `PrimitiveType` enum.
+template <typename DTypes = DTypeSet<PrimitiveType>, typename Ranks = RankSet<>>
+using BufferPattern = internal::BufferPatternBase<DTypes, Ranks>;
+
+template <PrimitiveType dtype, size_t rank = kDynamicRank>
+auto Buffer() {
+  using DTypes = DTypeSet<PrimitiveType, dtype>;
+  if constexpr (rank == kDynamicRank) {
+    return BufferPattern<DTypes>();
+  } else {
+    return BufferPattern<DTypes, RankSet<rank>>();
+  }
+}
+
+inline BufferPattern<> Buffer() { return {}; }
+
+}  // namespace match
+
+template <typename BufferType, typename DTypes, typename Ranks>
+absl::Status Verify(absl::string_view name, BufferType buffer,
+                    const match::BufferPattern<DTypes, Ranks>& pattern) {
+  if (auto error = internal::MatchBuffer(name, buffer, pattern)) {
+    return absl::InvalidArgumentError(std::move(*error));
+  }
+  return absl::OkStatus();
+}
+
+// Matches an AnyBuffer and returns the concrete buffer type specified by a
+// pattern with exactly one dtype and one rank.
+template <PrimitiveType dtype, size_t rank>
+absl::StatusOr<Buffer<dtype, rank>> Match(
+    absl::string_view name, AnyBuffer buffer,
+    const match::BufferPattern<match::DTypeSet<PrimitiveType, dtype>,
+                               match::RankSet<rank>>& pattern) {
+  RETURN_IF_ERROR(Verify(name, buffer, pattern));
+  return match::internal::BufferCast::Cast<Buffer<dtype, rank>>(buffer);
+}
+
+template <PrimitiveType dtype, size_t rank, typename DTypes, typename Ranks>
+absl::StatusOr<Buffer<dtype, rank>> Match(
+    absl::string_view name, Buffer<dtype, rank> buffer,
+    const match::BufferPattern<DTypes, Ranks>& pattern) {
+  RETURN_IF_ERROR(Verify(name, buffer, pattern));
+  return buffer;
+}
+
+namespace internal {
+
+template <typename Buffer>
+absl::StatusOr<Result<Buffer>> WrapResult(absl::StatusOr<Buffer> buffer) {
+  ASSIGN_OR_RETURN(Buffer matched, std::move(buffer));
+  return Result<Buffer>(std::move(matched));
+}
+
+}  // namespace internal
+
+template <typename BufferType, typename DTypes, typename Ranks>
+auto Match(absl::string_view name, Result<BufferType> buffer,
+           const match::BufferPattern<DTypes, Ranks>& pattern) {
+  return internal::WrapResult(Match(name, *buffer, pattern));
+}
 
 //===----------------------------------------------------------------------===//
 // Arguments binding

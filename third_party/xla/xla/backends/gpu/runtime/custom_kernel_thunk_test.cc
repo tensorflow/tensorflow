@@ -246,8 +246,8 @@ TEST(CustomKernelThunkTest, RecordCommandBuffer) {
   TF_ASSERT_OK_AND_ASSIGN(std::string platform_name,
                           PlatformUtil::CanonicalPlatformName("gpu"));
   auto name = absl::AsciiStrToUpper(platform_name);
-  if (name == "ROCM") {
-    GTEST_SKIP() << "AddI32 PTX kernel not supported on ROCm.";
+  if (name == "ROCM" || name == "SYCL") {
+    GTEST_SKIP() << "AddI32 PTX kernel not supported on ROCm or oneAPI.";
   }
   TF_ASSERT_OK_AND_ASSIGN(se::StreamExecutor * executor, GpuExecutor());
   TF_ASSERT_OK_AND_ASSIGN(auto stream, executor->CreateStream());
@@ -304,10 +304,11 @@ TEST(CustomKernelThunkTest, RecordCommandBuffer) {
 }
 
 TEST(CustomKernelThunkTest, RecordCommandBufferUpdate) {
-  TF_ASSERT_OK_AND_ASSIGN(std::string name,
+  TF_ASSERT_OK_AND_ASSIGN(std::string platform_name,
                           PlatformUtil::CanonicalPlatformName("gpu"));
-  if (absl::AsciiStrToUpper(name) == "ROCM") {
-    GTEST_SKIP() << "AddI32 PTX kernel not supported on ROCm.";
+  auto name = absl::AsciiStrToUpper(platform_name);
+  if (name == "ROCM" || name == "SYCL") {
+    GTEST_SKIP() << "AddI32 PTX kernel not supported on ROCm or oneAPI.";
   }
   TF_ASSERT_OK_AND_ASSIGN(se::StreamExecutor * executor, GpuExecutor());
   TF_ASSERT_OK_AND_ASSIGN(auto stream, executor->CreateStream());
@@ -382,8 +383,8 @@ TEST(CustomKernelThunkTest, RecordCommandBufferUpdateWithNewOutputBuffer) {
   TF_ASSERT_OK_AND_ASSIGN(std::string platform_name,
                           PlatformUtil::CanonicalPlatformName("gpu"));
   auto name = absl::AsciiStrToUpper(platform_name);
-  if (name == "ROCM") {
-    GTEST_SKIP() << "AddI32 PTX kernel not supported on ROCm.";
+  if (name == "ROCM" || name == "SYCL") {
+    GTEST_SKIP() << "AddI32 PTX kernel not supported on ROCm or oneAPI.";
   }
   TF_ASSERT_OK_AND_ASSIGN(se::StreamExecutor * executor, GpuExecutor());
   TF_ASSERT_OK_AND_ASSIGN(auto stream, executor->CreateStream());
@@ -468,8 +469,8 @@ TEST(CustomKernelThunkTest, RecordFailsWithoutInitialize) {
   TF_ASSERT_OK_AND_ASSIGN(std::string platform_name,
                           PlatformUtil::CanonicalPlatformName("gpu"));
   auto name = absl::AsciiStrToUpper(platform_name);
-  if (name == "ROCM") {
-    GTEST_SKIP() << "AddI32 PTX kernel not supported on ROCm.";
+  if (name == "ROCM" || name == "SYCL") {
+    GTEST_SKIP() << "AddI32 PTX kernel not supported on ROCm or oneAPI.";
   }
   TF_ASSERT_OK_AND_ASSIGN(se::StreamExecutor * executor, GpuExecutor());
   TF_ASSERT_OK_AND_ASSIGN(auto stream, executor->CreateStream());

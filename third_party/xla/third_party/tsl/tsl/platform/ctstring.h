@@ -71,7 +71,7 @@ inline size_t TF_TString_GetCapacity(const TF_TString *str);
 //    A view into an unowned character string.
 //
 // NOTE:
-//    VIEW and OFFSET types are immutable, so any modifcation via Append,
+//    VIEW and OFFSET types are immutable, so any modification via Append,
 //    AppendN, or GetMutableDataPointer of a VIEW/OFFSET based tstring will
 //    result in a conversion to an owned type (SMALL/LARGE).
 inline TF_TString_Type TF_TString_GetType(const TF_TString *str);

@@ -120,5 +120,30 @@ ENTRY entry {
   EXPECT_TRUE(triton_fusion::IsInputWorthFusing(*slice));
 }
 
+TEST_F(TritonTilingPropagationTest,
+       IsInputWorthFusingSliceNotWorthThroughSharedNonElementwiseOperand) {
+  // `slice` reaches `ds` through a single-user reshape, but `ds` is a
+  // dynamic-slice shared with `keep0`. Fusing the slice would recompute `ds` in
+  // each consumer, so it is not worth fusing.
+  const char* hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  w = f32[4,2,512] parameter(0)
+  idx = s32[] parameter(1)
+  zero = s32[] constant(0)
+  ds = f32[1,2,512] dynamic-slice(w, idx, zero, zero), dynamic_slice_sizes={1,2,512}
+  keep0 = f32[1,1,512] slice(ds), slice={[0:1], [0:1], [0:512]}
+  reshape = f32[2,512] reshape(ds)
+  slice = f32[1,512] slice(reshape), slice={[1:2], [0:512]}
+  ROOT root = tuple(slice, keep0)
+}
+)";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  const HloInstruction* slice =
+      module->entry_computation()->root_instruction()->operand(0);
+  EXPECT_FALSE(triton_fusion::IsInputWorthFusing(*slice));
+}
+
 }  // namespace
 }  // namespace xla::gpu

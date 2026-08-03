@@ -48,7 +48,7 @@ limitations under the License.
 namespace {
 static absl::StatusOr<xla::BufferSequencingEventRef>
 GetOrCreateAllocationReadyEvent(const xla::RawSEDeviceMemory& device_buffer,
-                                xla::PjRtStreamExecutorClient* client,
+                                xla::PjRtStreamExecutorRawClient* client,
                                 xla::LocalDeviceState* local_device) {
   ASSIGN_OR_RETURN(auto result,
                    device_buffer.GetDefinitionEvent(client->async_work_runner(),
@@ -69,7 +69,7 @@ GetOrCreateAllocationReadyEvent(const xla::RawSEDeviceMemory& device_buffer,
 namespace xla {
 
 PjRtStreamExecutorDeviceEventPromise::PjRtStreamExecutorDeviceEventPromise(
-    PjRtStreamExecutorClient* client, LocalDeviceState* local_device,
+    PjRtStreamExecutorRawClient* client, LocalDeviceState* local_device,
     AsyncWorkRunner* async_work_runner)
     : client_(client),
       local_device_(local_device),
@@ -271,11 +271,9 @@ absl::StatusOr<PjRtRawBufferRef> PjRtStreamExecutorRawBuffer::Slice(
 
 absl::StatusOr<PjRtDeviceEventRef>
 PjRtStreamExecutorRawBuffer::MakeAllocationReadyEvent() {
-  auto* client =
-      tensorflow::down_cast<PjRtStreamExecutorClient*>(memory_space_->client());
   if (device_buffer_.IsConcrete()) {
     ASSIGN_OR_RETURN(auto result, GetOrCreateAllocationReadyEvent(
-                                      *device_buffer_, client, local_device_));
+                                      *device_buffer_, client_, local_device_));
     return PjRtDeviceEventRef(std::move(result));
   }
   if (device_buffer_.IsError()) {
@@ -284,12 +282,12 @@ PjRtStreamExecutorRawBuffer::MakeAllocationReadyEvent() {
 
   ASSIGN_OR_RETURN(
       auto promise_and_event,
-      client->CreateLinkedEventPromise(
+      client_->CreateLinkedEventPromise(
           memory_space_,
           "PjRtStreamExecutorRawBuffer::MakeAllocationReadyEvent"));
   auto [promise, event] = std::move(promise_and_event);
 
-  device_buffer_.AndThen([client, promise = std::move(promise),
+  device_buffer_.AndThen([client = client_, promise = std::move(promise),
                           device_buffer = device_buffer_,
                           local_device = local_device_]() mutable {
     if (device_buffer.IsError()) {

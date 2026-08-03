@@ -38,7 +38,8 @@ namespace {
 
 absl::StatusOr<bool> CreateCollectivesGroupAsyncPair(HloInstruction* instr) {
   if (instr->opcode() != HloOpcode::kCall ||
-      !instr->frontend_attributes().map().contains(kCollectivesGroupAttr)) {
+      !instr->frontend_attributes().map().contains(
+          kCollectiveGroupMarkerAttr)) {
     return false;
   }
   HloComputation* computation = instr->parent();

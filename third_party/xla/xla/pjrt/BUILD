@@ -174,6 +174,7 @@ cc_library(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:span",
         "@llvm-project//llvm:Support",
@@ -521,6 +522,7 @@ cc_library(
         ":maybe_owning_mlir_module",
         ":pjrt_abi_version",
         ":pjrt_common",
+        ":pjrt_compiler_variant",
         ":pjrt_device_description",
         ":pjrt_device_dimensions",
         ":pjrt_executable",
@@ -555,6 +557,7 @@ xla_cc_test(
         ":pjrt_client",
         ":pjrt_common",
         ":pjrt_compiler",
+        ":pjrt_compiler_variant",
         ":pjrt_device_description",
         ":pjrt_executable",
         "//xla:shape_util",
@@ -569,6 +572,7 @@ xla_cc_test(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest_main",
+        "@tsl//tsl/platform:fingerprint",
     ],
 )
 
@@ -1065,6 +1069,7 @@ cc_library(
         "@com_google_absl//absl/strings:string_view",
         "@tsl//tsl/platform:path",
     ],
+    alwayslink = True,
 )
 
 cc_library(
@@ -1089,7 +1094,6 @@ cc_library(
         "//xla/stream_executor/cuda:cuda_compute_capability",
         "//xla/tsl/platform:logging",
         "//xla/tsl/platform:status_macros",
-        "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
@@ -1123,6 +1127,7 @@ cc_library(
         "@triton//third_party/nvidia:TritonNVIDIAGPUToLLVM",
         "@tsl//tsl/platform:path",
     ],
+    alwayslink = True,
 )
 
 cc_library(
@@ -1177,6 +1182,7 @@ cc_library(
         "@tsl//tsl/platform:path",
         "@tsl//tsl/platform:random",
     ],
+    alwayslink = True,
 )
 
 cc_library(
@@ -1194,6 +1200,16 @@ cc_library(
     ) + [
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:string_view",
+    ],
+)
+
+xla_cc_test(
+    name = "triton_test",
+    srcs = ["triton_test.cc"],
+    deps = [
+        ":triton",
+        "@com_google_absl//absl/status",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
