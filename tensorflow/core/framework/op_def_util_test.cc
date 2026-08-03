@@ -68,6 +68,35 @@ void ExpectFailure(const absl::Status& status, const std::string& message) {
 }
 }  // namespace
 
+TEST_F(ValidateOpDefTest, InvalidAttrOrArgName) {
+  // Invalid characters in attribute name.
+  ExpectFailure(
+      TestProto(
+          "name: 'BadAttrName' attr { name: "
+          "'evil\\\"); system(\\\"touch /tmp/PWNED...\\\"); //' "
+          "type: 'int' }"),
+      "Invalid attr name");
+
+  // Invalid start character in attribute name.
+  ExpectFailure(
+      TestProto("name: 'BadAttrName' attr { name: '123_invalid' type: 'int' }"),
+      "Invalid attr name");
+
+  // Invalid characters in argument name.
+  ExpectFailure(
+      TestProto(
+          "name: 'BadArgName' input_arg { name: "
+          "'evil\\\"); system(\\\"touch /tmp/PWNED...\\\"); //' "
+          "type: DT_INT32 }"),
+      "Invalid argument name");
+
+  // Invalid start character in argument name.
+  ExpectFailure(
+      TestProto(
+          "name: 'BadArgName' input_arg { name: '123_invalid' type: DT_INT32 }"),
+      "Invalid argument name");
+}
+
 TEST_F(ValidateOpDefTest, OpDefValid) {
   TF_EXPECT_OK(TestBuilder(OpDefBuilder("X").Attr("a: int")));
   TF_EXPECT_OK(TestBuilder(OpDefBuilder("X").Input("a: int32")));

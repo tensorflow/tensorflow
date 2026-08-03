@@ -192,9 +192,6 @@ const ApiDef::Arg* FindInputArg(absl::string_view name, const ApiDef& api_def) {
     }                                                              \
   } while (false)
 
-// Forward declaration; defined below alongside IsValidOpName.
-bool IsValidAttrOrArgName(absl::string_view sp);
-
 static absl::Status ValidateArg(const OpDef::ArgDef& arg, const OpDef& op_def,
                                 bool output,
                                 absl::flat_hash_set<absl::string_view>* names) {
