@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/backends/gpu/runtime/collective_memory_cache.h"
+#include "xla/backends/gpu/collectives/collective_memory_cache.h"
 
 #include <cstdint>
 #include <memory>
@@ -31,22 +31,39 @@ namespace xla::gpu {
 
 std::shared_ptr<SymmetricMemory> CollectiveMemoryCache::FindSymmetricMemory(
     const GpuCliqueKey& clique, RankId rank,
-    stream_executor::DeviceAddressBase addr) {
+    stream_executor::DeviceAddressBase addr,
+    stream_executor::DeviceAddressBase cache_key) {
   absl::MutexLock lock(mutex_);
-  auto it = sym_memories_.find(Key{clique, rank, addr});
+  auto it = sym_memories_.find(Key{clique, rank, cache_key});
   if (it == sym_memories_.end()) {
     return nullptr;
   }
-  return it->second.Lock();
+  auto locked = it->second.Lock();
+  if (locked && locked->addr().opaque() == addr.opaque() &&
+      locked->addr().size() == addr.size()) {
+    return locked;
+  }
+  return nullptr;
 }
 
 std::shared_ptr<SymmetricMemory> CollectiveMemoryCache::AddSymmetricMemory(
     const GpuCliqueKey& clique, RankId rank,
-    stream_executor::DeviceAddressBase addr,
+    stream_executor::DeviceAddressBase cache_key,
     tsl::TiedRef<SymmetricMemory> sym_memory) {
   absl::MutexLock lock(mutex_);
-  auto [it, _] = sym_memories_.insert_or_assign(Key{clique, rank, addr},
+  auto [it, _] = sym_memories_.insert_or_assign(Key{clique, rank, cache_key},
                                                 std::move(sym_memory));
+  return it->second.Lock();
+}
+
+std::shared_ptr<stream_executor::gpu::MulticastMemory>
+CollectiveMemoryCache::AddMulticastMemory(
+    const GpuCliqueKey& clique, RankId rank,
+    stream_executor::DeviceAddressBase addr,
+    tsl::TiedRef<stream_executor::gpu::MulticastMemory> multicast_memory) {
+  absl::MutexLock lock(mutex_);
+  auto [it, _] = multicast_memories_.insert_or_assign(
+      Key{clique, rank, addr}, std::move(multicast_memory));
   return it->second.Lock();
 }
 
@@ -59,17 +76,6 @@ CollectiveMemoryCache::FindMulticastMemory(
   if (it == multicast_memories_.end()) {
     return nullptr;
   }
-  return it->second.Lock();
-}
-
-std::shared_ptr<stream_executor::gpu::MulticastMemory>
-CollectiveMemoryCache::AddMulticastMemory(
-    const GpuCliqueKey& clique, RankId rank,
-    stream_executor::DeviceAddressBase addr,
-    tsl::TiedRef<stream_executor::gpu::MulticastMemory> multicast_memory) {
-  absl::MutexLock lock(mutex_);
-  auto [it, _] = multicast_memories_.insert_or_assign(
-      Key{clique, rank, addr}, std::move(multicast_memory));
   return it->second.Lock();
 }
 

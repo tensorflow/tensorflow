@@ -2028,7 +2028,6 @@ xla_test(
         ":collective_execution",
         ":collective_kernel_thunk",
         ":collective_memory",
-        ":collective_memory_cache",
         ":collective_memory_requests",
         ":collective_params",
         ":collective_thunk",
@@ -2039,6 +2038,7 @@ xla_test(
         "//xla:util",
         "//xla:xla_data_proto_cc",
         "//xla:xla_proto_cc",
+        "//xla/backends/gpu/collectives:collective_memory_cache",
         "//xla/backends/gpu/collectives:gpu_clique_key",
         "//xla/runtime:buffer_use",
         "//xla/runtime:device_id",
@@ -2853,10 +2853,10 @@ cc_library(
     # copybara:uncomment compatible_with = ["//buildenv/target:non_prod"],
     deps = [
         ":collective_cliques",
-        ":collective_memory_cache",
         ":collective_memory_requests",
         ":collective_params",
         "//xla:util",
+        "//xla/backends/gpu/collectives:collective_memory_cache",
         "//xla/backends/gpu/collectives:gpu_clique_key",
         "//xla/backends/gpu/collectives:gpu_communicator",
         "//xla/core/collectives:rank_id",
@@ -2917,24 +2917,6 @@ cc_library(
 )
 
 cc_library(
-    name = "collective_memory_cache",
-    srcs = ["collective_memory_cache.cc"],
-    hdrs = ["collective_memory_cache.h"],
-    compatible_with = get_compatible_with_portable(),
-    deps = [
-        "//xla/backends/gpu/collectives:gpu_clique_key",
-        "//xla/core/collectives:symmetric_memory",
-        "//xla/stream_executor:device_address",
-        "//xla/stream_executor:memory_allocation",
-        "//xla/stream_executor/gpu:multicast_memory",
-        "//xla/tsl/util:tied_ref",
-        "@com_google_absl//absl/base:core_headers",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/synchronization",
-    ],
-)
-
-cc_library(
     name = "collective_cliques",
     srcs = ["collective_cliques.cc"],
     hdrs = ["collective_cliques.h"],
@@ -2945,6 +2927,7 @@ cc_library(
         ":collective_params",
         "//xla:status_macros",
         "//xla:util",
+        "//xla/backends/gpu/collectives:collective_memory_cache",
         "//xla/backends/gpu/collectives:gpu_clique",
         "//xla/backends/gpu/collectives:gpu_clique_key",
         "//xla/backends/gpu/collectives:gpu_cliques",
