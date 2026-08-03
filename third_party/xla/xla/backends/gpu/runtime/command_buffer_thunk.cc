@@ -25,7 +25,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
-#include "absl/functional/function_ref.h"
+#include "absl/base/thread_annotations.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/synchronization/mutex.h"

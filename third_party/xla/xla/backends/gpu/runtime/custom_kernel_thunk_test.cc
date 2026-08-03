@@ -26,12 +26,14 @@ limitations under the License.
 #include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/ascii.h"
+#include "absl/strings/string_view.h"
 #include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/gpu/codegen/kernels/custom_kernel.h"
 #include "xla/backends/gpu/codegen/kernels/ptx_custom_kernel.h"
 #include "xla/backends/gpu/runtime/command.h"
 #include "xla/backends/gpu/runtime/command_state.h"
 #include "xla/backends/gpu/runtime/thunk.h"
+#include "xla/backends/gpu/runtime/thunk.pb.h"
 #include "xla/codegen/emitters/kernel_arguments.h"
 #include "xla/runtime/buffer_use.h"
 #include "xla/service/buffer_assignment.h"
@@ -54,6 +56,7 @@ limitations under the License.
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/util/proto/parse_text_proto.h"
 #include "xla/tsl/util/proto/proto_matchers.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla::gpu {
 namespace {
