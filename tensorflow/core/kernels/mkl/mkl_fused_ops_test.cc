@@ -1233,22 +1233,22 @@ class BiasCacheTest : public OpsTestBase {
     Tensor bias(DT_FLOAT, {kFilterCount});
     test::FillValues<float>(&bias, {1});
 
-    Tensor min_input(DT_FLOAT, {1});
+    Tensor min_input(DT_FLOAT, {});
     test::FillValues<float>(&min_input, {1});
 
-    Tensor max_input(DT_FLOAT, {1});
+    Tensor max_input(DT_FLOAT, {});
     test::FillValues<float>(&max_input, {1});
 
-    Tensor min_filter(DT_FLOAT, {1});
+    Tensor min_filter(DT_FLOAT, {});
     test::FillValues<float>(&min_filter, {1});
 
-    Tensor max_filter(DT_FLOAT, {1});
+    Tensor max_filter(DT_FLOAT, {});
     test::FillValues<float>(&max_filter, {1});
 
-    Tensor min_output(DT_FLOAT, {1});
+    Tensor min_output(DT_FLOAT, {});
     test::FillValues<float>(&min_output, {1});
 
-    Tensor max_output(DT_FLOAT, {1});
+    Tensor max_output(DT_FLOAT, {});
     test::FillValues<float>(&max_output, {1});
 
     Tensor expected(DT_QUINT8, TensorShape({1, 1, 2, 1}));
