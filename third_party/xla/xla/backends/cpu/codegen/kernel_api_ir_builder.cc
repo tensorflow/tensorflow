@@ -35,6 +35,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/tsl/platform/status_macros.h"
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/IR/Attributes.h"
 #include "llvm/IR/CallingConv.h"
 #include "llvm/IR/Constants.h"
 #include "llvm/IR/DerivedTypes.h"
@@ -554,6 +555,10 @@ void KernelApiIrBuilder::SetKernelFunctionAttributes(llvm::Function* function) {
   // We use external linkage because we'll be resolving this function from the
   // XLA runtime.
   function->setCallingConv(llvm::CallingConv::C);
+
+  // Msan annotations for the kernel call frame.
+  function->addParamAttr(0, llvm::Attribute::NoUndef);
+  function->addParamAttr(0, llvm::Attribute::NonNull);
 
   // Generate unwind information so that GDB can crawl through the stack frames
   // created by the JIT compiled code.
