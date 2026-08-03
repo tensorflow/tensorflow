@@ -14,6 +14,8 @@
 # ==============================================================================
 """TensorFlow Lite tooling helper functionality."""
 
+# pylint: disable=line-too-long
+
 import enum
 import functools
 import pprint

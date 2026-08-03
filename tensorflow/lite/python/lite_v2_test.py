@@ -14,6 +14,8 @@
 # ==============================================================================
 """Tests for lite.py functionality related to TensorFlow 2.0."""
 
+# pylint: disable=line-too-long
+
 import ctypes
 import functools
 import itertools
