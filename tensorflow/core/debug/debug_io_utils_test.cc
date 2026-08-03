@@ -151,6 +151,58 @@ TEST_F(DebugIOUtilsTest, DumpFloatTensorToFileSunnyDay) {
   ASSERT_EQ(0, undeleted_dirs);
 }
 
+TEST_F(DebugIOUtilsTest, DumpTensorToDirWithRelativeDumpRootSunnyDay) {
+  Initialize();
+
+  // A relative directory with no path separator at all. io::Dirname() on a
+  // path like this returns "", and DebugFileIO::RecursiveCreateDir used to
+  // recurse on that empty result forever instead of treating it as "no
+  // parent directory left to create" (see GitHub issue #123114).
+  const std::string test_dir = "tfdbg_relative_dump_root_test";
+  if (env_->FileExists(test_dir).ok()) {
+    int64_t undeleted_files = 0;
+    int64_t undeleted_dirs = 0;
+    ASSERT_TRUE(
+        env_->DeleteRecursively(test_dir, &undeleted_files, &undeleted_dirs)
+            .ok());
+  }
+
+  const uint64_t wall_time = env_->NowMicros();
+  const DebugNodeKey kDebugNodeKey("/job:localhost/replica:0/task:0/cpu:0",
+                                   "foo/bar/qux/tensor_a", 0, "DebugIdentity");
+
+  std::string dump_file_path;
+  TF_ASSERT_OK(DebugFileIO::DumpTensorToDir(
+      kDebugNodeKey, *tensor_a_, wall_time, test_dir, &dump_file_path));
+
+  // Read the file into a Event proto.
+  Event event;
+  TF_ASSERT_OK(ReadEventFromFile(dump_file_path, &event));
+
+  ASSERT_GE(wall_time, event.wall_time());
+  ASSERT_EQ(1, event.summary().value().size());
+  ASSERT_EQ(kDebugNodeKey.debug_node_name,
+            event.summary().value(0).node_name());
+
+  Tensor a_prime(DT_FLOAT);
+  ASSERT_TRUE(a_prime.FromProto(event.summary().value(0).tensor()));
+
+  // Verify tensor shape and value.
+  ASSERT_EQ(tensor_a_->shape(), a_prime.shape());
+  for (int i = 0; i < a_prime.flat<float>().size(); ++i) {
+    ASSERT_EQ(tensor_a_->flat<float>()(i), a_prime.flat<float>()(i));
+  }
+
+  // Tear down temporary file and directories.
+  int64_t undeleted_files = 0;
+  int64_t undeleted_dirs = 0;
+  ASSERT_TRUE(
+      env_->DeleteRecursively(test_dir, &undeleted_files, &undeleted_dirs)
+          .ok());
+  ASSERT_EQ(0, undeleted_files);
+  ASSERT_EQ(0, undeleted_dirs);
+}
+
 TEST_F(DebugIOUtilsTest, DumpStringTensorToFileSunnyDay) {
   Initialize();
 
