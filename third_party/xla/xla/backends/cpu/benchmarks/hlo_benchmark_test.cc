@@ -72,16 +72,11 @@ void Set_XLA_FLAGS() {
 
 std::string GetHloAbsolutePath(absl::string_view hlo_path) {
   if (absl::GetFlag(FLAGS_hlo_paths_absolute)) {
-    return absl::StrCat(hlo_path);
+    return std::string(hlo_path);
   }
-  const char* workspace = std::getenv("TEST_WORKSPACE");
-  if (workspace && *workspace) {
-    const std::string workspace_prefix = absl::StrCat(workspace, "/");
-    if (!absl::StartsWith(hlo_path, workspace_prefix)) {
-      return tsl::io::JoinPath(::testing::SrcDir(), workspace, hlo_path);
-    }
-  }
-  return tsl::io::JoinPath(::testing::SrcDir(), hlo_path);
+  std::string workspace_dir;
+  CHECK(tsl::io::GetTestWorkspaceDir(&workspace_dir));  // Crash OK.
+  return tsl::io::JoinPath(workspace_dir, hlo_path);
 }
 
 absl::Status RunBenchmark(benchmark::State* absl_nullable state,
