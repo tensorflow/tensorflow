@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/ynnpack/dot.h"
 
 #include <algorithm>
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <cstdio>
@@ -31,6 +32,7 @@ limitations under the License.
 #include "tensorflow/lite/builtin_ops.h"
 #include "tensorflow/lite/core/c/builtin_op_data.h"
 #include "tensorflow/lite/core/c/common.h"
+#include "tensorflow/lite/delegates/ynnpack/softmax.h"
 #include "tensorflow/lite/delegates/ynnpack/utils.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 
@@ -529,14 +531,12 @@ flexbuffers::Map GetFlexBufferMap(const TfLiteRegistration* reg,
 
 // Find a dummy input we can use for a particular runtime_bmm op. Often, many
 // runtime_bmm ops use the same params tensor, which can share a dummy input.
-TfLiteStatus GetOrCreateDummyInput(TfLiteContext* context,
-                                   ynn_subgraph_t subgraph,
-                                   uint32_t& next_external_id,
-                                   std::vector<DummyInputInfo>& dummy_inputs,
-                                   int param_tensor_index, int seq_axis,
-                                   size_t rank, const size_t* full_dims,
-                                   ynn_type type, uint32_t* dummy_val_id_out) {
-  for (const auto& dummy : dummy_inputs) {
+TfLiteStatus GetOrCreateDummyInput(
+    TfLiteContext* context, ynn_subgraph_t subgraph, uint32_t& next_external_id,
+    std::vector<DynamicSequenceInputInfo>& dynamic_sequence_inputs,
+    int param_tensor_index, int seq_axis, size_t rank, const size_t* full_dims,
+    ynn_type type, uint32_t* dummy_val_id_out) {
+  for (const auto& dummy : dynamic_sequence_inputs) {
     if (dummy.param_tensor_index == param_tensor_index &&
         dummy.seq_axis == seq_axis && dummy.rank == rank) {
       bool dims_match = true;
@@ -547,7 +547,7 @@ TfLiteStatus GetOrCreateDummyInput(TfLiteContext* context,
         }
       }
       if (dims_match) {
-        *dummy_val_id_out = dummy.dummy_val_id;
+        *dummy_val_id_out = dummy.dynamic_seq_val_id;
         return kTfLiteOk;
       }
     }
@@ -558,13 +558,13 @@ TfLiteStatus GetOrCreateDummyInput(TfLiteContext* context,
       subgraph, type, rank, /*dims=*/nullptr, /*data=*/nullptr,
       YNN_VALUE_FLAG_EXTERNAL_INPUT, &dummy_val_id));
 
-  DummyInputInfo dummy_info;
+  DynamicSequenceInputInfo dummy_info;
   dummy_info.param_tensor_index = param_tensor_index;
-  dummy_info.dummy_val_id = dummy_val_id;
+  dummy_info.dynamic_seq_val_id = dummy_val_id;
   dummy_info.seq_axis = seq_axis;
   dummy_info.rank = rank;
   std::copy_n(full_dims, rank, dummy_info.full_dims);
-  dummy_inputs.push_back(dummy_info);
+  dynamic_sequence_inputs.push_back(dummy_info);
 
   *dummy_val_id_out = dummy_val_id;
   return kTfLiteOk;
@@ -575,7 +575,8 @@ TfLiteStatus GetOrCreateDummyInput(TfLiteContext* context,
 TfLiteStatus DefineRuntimeBatchedMatMulNode(
     TfLiteContext* context, ynn_subgraph_t subgraph,
     TensorToValueIdMap& tensor_to_value_id, uint32_t& next_external_id,
-    std::vector<DummyInputInfo>& dummy_inputs, const NodeInfo& node) {
+    std::vector<DynamicSequenceInputInfo>& dynamic_sequence_inputs,
+    const NodeInfo& node) {
   TF_LITE_ENSURE(context, node.inputs.size() >= 2);
   TF_LITE_ENSURE_EQ(context, node.outputs.size(), 1);
 
@@ -1232,6 +1233,157 @@ TfLiteStatus DefineDepthwiseConvNode(TfLiteContext* context,
       output_tensor_index));
 
   tensor_to_value_id[output_tensor_index] = output_id;
+  return kTfLiteOk;
+}
+
+bool IsScaledDotProductAttention(const TfLiteRegistration* registration,
+                                 const TfLiteNode* node) {
+  return registration != nullptr && registration->custom_name != nullptr &&
+         std::strcmp(registration->custom_name,
+                     "odml.scaled_dot_product_attention") == 0;
+}
+
+bool IsScaledDotProductAttention(TfLiteContext* context, int node_index) {
+  TfLiteNode* node = nullptr;
+  TfLiteRegistration* registration = nullptr;
+  if (context->GetNodeAndRegistration(context, node_index, &node,
+                                      &registration) != kTfLiteOk) {
+    return false;
+  }
+  return IsScaledDotProductAttention(registration, node);
+}
+
+TfLiteStatus IsScaledDotProductAttentionSupported(
+    const TfLiteRegistration* registration, const TfLiteNode* node,
+    TfLiteContext* context) {
+  TF_LITE_ENSURE(context, node->inputs->size >= 3);
+  TF_LITE_ENSURE_EQ(context, node->outputs->size, 1);
+
+  const TfLiteTensor& q = context->tensors[node->inputs->data[0]];
+  const TfLiteTensor& k = context->tensors[node->inputs->data[1]];
+  const TfLiteTensor& v = context->tensors[node->inputs->data[2]];
+  const TfLiteTensor& output = context->tensors[node->outputs->data[0]];
+
+  TF_LITE_ENSURE(context, IsTensorSupported(q));
+  TF_LITE_ENSURE(context, IsTensorSupported(k));
+  TF_LITE_ENSURE(context, IsTensorSupported(v));
+  TF_LITE_ENSURE(context, IsTensorSupported(output));
+
+  TF_LITE_ENSURE_EQ(context, q.type, kTfLiteFloat32);
+  TF_LITE_ENSURE_EQ(context, k.type, kTfLiteFloat32);
+  TF_LITE_ENSURE_EQ(context, v.type, kTfLiteFloat32);
+  TF_LITE_ENSURE_EQ(context, output.type, kTfLiteFloat32);
+
+  TF_LITE_ENSURE_EQ(context, q.dims->size, 4);
+  TF_LITE_ENSURE_EQ(context, k.dims->size, 4);
+  TF_LITE_ENSURE_EQ(context, v.dims->size, 4);
+
+  return kTfLiteOk;
+}
+
+TfLiteStatus DefineScaledDotProductAttentionNode(
+    TfLiteContext* context, ynn_subgraph_t subgraph,
+    TensorToValueIdMap& tensor_to_value_id, uint32_t& next_external_id,
+    std::vector<DynamicSequenceInputInfo>& dynamic_sequence_inputs,
+    const NodeInfo& node) {
+  TfLiteNode* tflite_node = nullptr;
+  TfLiteRegistration* registration = nullptr;
+  TF_LITE_ENSURE_STATUS(context->GetNodeAndRegistration(
+      context, node.node_index, &tflite_node, &registration));
+
+  uint32_t q_val_id = tensor_to_value_id.at(node.inputs[0]);
+  uint32_t k_val_id = tensor_to_value_id.at(node.inputs[1]);
+  uint32_t v_val_id = tensor_to_value_id.at(node.inputs[2]);
+
+  const TfLiteTensor& q_tensor = context->tensors[node.inputs[0]];
+
+  // Check optional params tensor for dynamic sequence cropping (start_pos)
+  int param_tensor_index = -1;
+  for (size_t i = 3; i < node.inputs.size(); ++i) {
+    if (node.inputs[i] >= 0) {
+      const TfLiteTensor& t = context->tensors[node.inputs[i]];
+      if (t.type == kTfLiteInt32 || t.type == kTfLiteInt64) {
+        param_tensor_index = node.inputs[i];
+        break;
+      }
+    }
+  }
+
+  uint32_t active_k_val_id = k_val_id;
+  uint32_t active_v_val_id = v_val_id;
+
+  if (param_tensor_index >= 0) {
+    const TfLiteTensor& k_tensor = context->tensors[node.inputs[1]];
+    int seq_axis = 1;  // sequence axis in [B, S, H, D]
+
+    uint32_t dynamic_seq_val_id = next_external_id++;
+    TF_LITE_ENSURE_YNN_STATUS(ynn_define_tensor(
+        subgraph, GetYnnType(k_tensor.type), k_tensor.dims->size,
+        /*dims=*/nullptr, /*data=*/nullptr, YNN_VALUE_FLAG_EXTERNAL_INPUT,
+        &dynamic_seq_val_id));
+
+    DynamicSequenceInputInfo seq_info;
+    seq_info.param_tensor_index = param_tensor_index;
+    seq_info.dynamic_seq_val_id = dynamic_seq_val_id;
+    seq_info.seq_axis = seq_axis;
+    seq_info.rank = k_tensor.dims->size;
+    for (int i = 0; i < k_tensor.dims->size; ++i) {
+      seq_info.full_dims[i] = k_tensor.dims->data[i];
+    }
+    dynamic_sequence_inputs.push_back(seq_info);
+
+    TF_LITE_ENSURE_YNN_STATUS(ynn_define_slice_like(
+        subgraph, /*num_axes=*/1, &seq_axis, k_val_id, dynamic_seq_val_id,
+        &active_k_val_id, /*flags=*/0));
+
+    TF_LITE_ENSURE_YNN_STATUS(ynn_define_slice_like(
+        subgraph, /*num_axes=*/1, &seq_axis, v_val_id, dynamic_seq_val_id,
+        &active_v_val_id, /*flags=*/0));
+  }
+
+  // 1. Convert sequence-major [B, S, H, D] to head-major layout [B, H, S, D]
+  const int32_t io_perm[] = {0, 2, 1, 3};
+  uint32_t q_head_id = YNN_INVALID_VALUE_ID;
+  uint32_t k_head_id = YNN_INVALID_VALUE_ID;
+  uint32_t v_head_id = YNN_INVALID_VALUE_ID;
+
+  TF_LITE_ENSURE_YNN_STATUS(ynn_define_static_transpose(
+      subgraph, 4, io_perm, q_val_id, &q_head_id, 0));
+  TF_LITE_ENSURE_YNN_STATUS(ynn_define_static_transpose(
+      subgraph, 4, io_perm, active_k_val_id, &k_head_id, 0));
+  TF_LITE_ENSURE_YNN_STATUS(ynn_define_static_transpose(
+      subgraph, 4, io_perm, active_v_val_id, &v_head_id, 0));
+
+  // 2. Transpose last two axes of K for S = Q @ K^T
+  const int32_t k_t_perm[] = {0, 1, 3, 2};
+  uint32_t k_t_id = YNN_INVALID_VALUE_ID;
+  TF_LITE_ENSURE_YNN_STATUS(ynn_define_static_transpose(subgraph, 4, k_t_perm,
+                                                        k_head_id, &k_t_id, 0));
+
+  // 3. MatMul S = Q @ K^T
+  uint32_t scores_id = YNN_INVALID_VALUE_ID;
+  TF_LITE_ENSURE_YNN_STATUS(
+      ynn_define_dot(subgraph, /*num_k_dims=*/1, q_head_id, k_t_id,
+                     YNN_INVALID_VALUE_ID, &scores_id, 0));
+
+  // 4. Softmax P = softmax(scale * S)
+  float scale = 1.0f / std::sqrt(static_cast<float>(q_tensor.dims->data[3]));
+  uint32_t probs_id = YNN_INVALID_VALUE_ID;
+  TF_LITE_ENSURE_YNN_STATUS(
+      ynn::define_softmax(subgraph, scores_id, scale, probs_id));
+
+  // 5. MatMul O = P @ V
+  uint32_t o_head_id = YNN_INVALID_VALUE_ID;
+  TF_LITE_ENSURE_YNN_STATUS(ynn_define_dot(subgraph, /*num_k_dims=*/1, probs_id,
+                                           v_head_id, YNN_INVALID_VALUE_ID,
+                                           &o_head_id, 0));
+
+  // 6. Transpose back from head-major [B, H, S_q, D] to sequence-major [B, S_q,
+  // H, D]
+  uint32_t output_val_id = tensor_to_value_id.at(node.outputs[0]);
+  TF_LITE_ENSURE_YNN_STATUS(ynn_define_static_transpose(
+      subgraph, 4, io_perm, o_head_id, &output_val_id, 0));
+
   return kTfLiteOk;
 }
 
