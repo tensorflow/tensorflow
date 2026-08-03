@@ -241,7 +241,11 @@ absl::StatusOr<bool> ProcessFusionInstruction(
   HloFusionAnalysisCache fusion_analysis_cache(device_info);
   GpuPerformanceModelWithIndexingAnalysis indexing_performance_model(
       &device_info, &fusion_analysis_cache, shape_size, mlir_context,
-      use_experimental_tiling);
+      use_experimental_tiling,
+      fusion_instruction->GetModule()
+          ->config()
+          .debug_options()
+          .xla_gpu_experimental_enable_same_shape_multi_output_fusion());
 
   auto fusion_adaptor = HloFusionAdaptor::ForInstruction(
       Cast<HloFusionInstruction>(fusion_instruction));

@@ -409,10 +409,17 @@ absl::StatusOr<ge::TiledHloComputation> GetTiledHloComputation(
                    ge::TilingSpace::Create(*fusion_adaptor, &context));
   using ValidTilings = std::vector<SmallVector<int64_t, 4>>;
   ValidTilings candidates;
+
+  const bool enable_same_shape_multi_output_fusion =
+      fusion.GetModule()
+          ->config()
+          .debug_options()
+          .xla_gpu_experimental_enable_same_shape_multi_output_fusion();
   if (block_level_parameters.has_value()) {
     ASSIGN_OR_RETURN(llvm::SmallVector<int64_t> tile_sizes,
-                     gpu::GetTilingSpaceConcreteSizes(*tiling_space,
-                                                      *block_level_parameters));
+                     gpu::GetTilingSpaceConcreteSizes(
+                         *tiling_space, *block_level_parameters,
+                         enable_same_shape_multi_output_fusion));
     candidates.push_back(
         SmallVector<int64_t, 4>(tile_sizes.begin(), tile_sizes.end()));
   } else {

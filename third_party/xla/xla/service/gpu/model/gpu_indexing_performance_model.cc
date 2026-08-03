@@ -653,7 +653,8 @@ GpuPerformanceModelWithIndexingAnalysis::EstimateRunTimeForTiledFusion(
 
     ASSIGN_OR_RETURN(
         llvm::SmallVector<int64_t> tile_sizes,
-        GetTilingSpaceConcreteSizes(*tiling_space, block_level_parameters));
+        GetTilingSpaceConcreteSizes(*tiling_space, block_level_parameters,
+                                    enable_same_shape_multi_output_fusion_));
     // Assign padded tile size as that what is a Triton emitter requirement.
     // Symbolic analysis route hides this assumption.
     RETURN_IF_ERROR(tiling_space->AssignTileSizes(
