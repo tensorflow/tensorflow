@@ -18,7 +18,6 @@ limitations under the License.
 #include <algorithm>
 #include <array>
 #include <cassert>
-#include <complex>
 #include <cstddef>
 #include <cstdint>
 #include <iterator>
