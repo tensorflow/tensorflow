@@ -232,9 +232,6 @@ absl::StatusOr<bool> ShouldCollectiveUseMinimalResource(
 
 using ::tsl::profiler::ScopedAnnotation;
 
-constexpr int kAsyncStreamTotal =
-    static_cast<int>(AsyncStreamKind::ASYNC_STREAM_KIND_MEMCPYP2P) + 1;
-
 // Returns the number of additional streams to allocate for a `GpuExecutable`.
 static GpuExecutable::NumAdditionalStreams GetNumAdditionalStreams(
     ThunkExecutor& executor, const DebugOptions& opts) {
@@ -242,9 +239,9 @@ static GpuExecutable::NumAdditionalStreams GetNumAdditionalStreams(
   int compute = opts.xla_gpu_executable_num_compute_streams();
   int comm = opts.xla_gpu_executable_num_communication_streams();
 
-  // Clamp it to minimum number of required streams.
+  // Clamp explicitly requested stream counts to non-negative values.
   compute = std::max(0, compute);
-  comm = std::max(kAsyncStreamTotal, comm);
+  comm = std::max(0, comm);
 
   // Then traverse all thunks to see if anyone requested more streams.
   for (const auto& thunk : executor.thunks()) {

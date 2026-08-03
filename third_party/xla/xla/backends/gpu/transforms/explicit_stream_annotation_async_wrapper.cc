@@ -24,6 +24,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/service/collective_ops_utils.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/side_effect_util.h"
 #include "xla/tsl/platform/errors.h"
@@ -35,6 +36,18 @@ namespace xla::gpu {
 
 namespace {
 
+// Returns true if `computation` is, or is transitively called from, a fusion
+// computation. Sort comparators, reduce functions, etc. embedded inside a
+// fusion fall into this category and must not be asynchronized.
+static bool IsNestedInFusionComputation(const HloComputation* computation) {
+  for (const auto& [caller, count] : computation->caller_computations()) {
+    if (caller->IsFusionComputation() || IsNestedInFusionComputation(caller)) {
+      return true;
+    }
+  }
+  return false;
+}
+
 void ClearSchedulingAnnotations(HloInstruction* instr) {
   // These attributes are only valid on the async pairs.
   instr->erase_frontend_attribute(kXlaSchedulingGroupIdAttr);
@@ -42,11 +55,36 @@ void ClearSchedulingAnnotations(HloInstruction* instr) {
 }
 
 static absl::StatusOr<bool> AsynchronizeInstruction(HloInstruction* instr) {
-  if (instr->opcode() != HloOpcode::kCall ||
-      !instr->frontend_attributes().map().contains(kXlaStreamAnnotationAttr)) {
+  if (!instr->frontend_attributes().map().contains(kXlaStreamAnnotationAttr)) {
     return false;
   }
   HloComputation* computation = instr->parent();
+
+  // Instructions inside a fusion or async computation body — or in any
+  // computation transitively nested inside a fusion (e.g. sort comparators,
+  // reduce functions) — cannot be asynchronized directly.
+  if (instr->parent()->IsFusionComputation() ||
+      instr->parent()->IsAsyncComputation() ||
+      IsNestedInFusionComputation(instr->parent())) {
+    return false;
+  }
+
+  // Already async or a collective start/done — nothing to do.
+  if (instr->IsAsynchronous() || IsNonFusionCollective(instr) ||
+      instr->opcode() == HloOpcode::kCopyStart ||
+      instr->opcode() == HloOpcode::kCopyDone) {
+    return false;
+  }
+
+  // If not already a kCall, wrap the instruction in one and move all
+  // frontend attributes to the wrapper so the inner instruction is clean.
+  if (instr->opcode() != HloOpcode::kCall) {
+    auto original_attributes = instr->frontend_attributes();
+    instr->set_frontend_attributes(FrontendAttributes{});
+    instr = computation->CreateCallInstruction({instr});
+    instr->set_frontend_attributes(original_attributes);
+  }
+
   auto original_attributes = instr->frontend_attributes();
 
   // These annotations are only legal on the async instructions and
@@ -80,9 +118,16 @@ absl::StatusOr<bool> ExplicitStreamAnnotationAsyncWrapper::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;
-  for (const HloComputation* comp :
-       module->MakeNonfusionComputations(execution_threads)) {
-    for (HloInstruction* instr : comp->instructions()) {
+  // Iterate in reverse post-order (callers before callees) so that when a kCall
+  // is asynchronized and ClearSchedulingAnnotations is applied to its called
+  // computation's instructions, those annotations are already gone by the time
+  // the inner computation is visited.
+  auto computations = module->MakeNonfusionComputations(execution_threads);
+  for (auto it = computations.rbegin(); it != computations.rend(); ++it) {
+    if ((*it)->IsAsyncComputation() || IsNestedInFusionComputation(*it)) {
+      continue;
+    }
+    for (HloInstruction* instr : (*it)->instructions()) {
       ASSIGN_OR_RETURN(bool result, AsynchronizeInstruction(instr));
       changed |= result;
     }
