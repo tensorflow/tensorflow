@@ -23,7 +23,6 @@ limitations under the License.
 #include <vector>
 
 #include "absl/base/call_once.h"
-#include "absl/base/dynamic_annotations.h"
 #include "absl/log/check.h"
 #include "absl/memory/memory.h"
 #include "absl/status/status.h"
@@ -185,7 +184,6 @@ tsl::AsyncValueRef<OneDnnOpThunk::ExecuteEvent> OneDnnOpThunk::Execute(
                      params.buffer_allocations->GetDeviceAddress(
                          op_buffers_.arguments_buffers[i]));
 
-    ABSL_ANNOTATE_MEMORY_IS_INITIALIZED(arg.opaque(), arg.size());
     VLOG(3) << absl::StreamFormat(
         "  arg: %s (%p)", op_buffers_.arguments_shapes[i].ToString(true),
         arg.opaque());
@@ -203,7 +201,6 @@ tsl::AsyncValueRef<OneDnnOpThunk::ExecuteEvent> OneDnnOpThunk::Execute(
                      params.buffer_allocations->GetDeviceAddress(
                          op_buffers_.results_buffers[i]));
 
-    ABSL_ANNOTATE_MEMORY_IS_INITIALIZED(res.opaque(), res.size());
     VLOG(3) << absl::StreamFormat("  res: %s (%p)",
                                   op_buffers_.results_shapes[i].ToString(true),
                                   res.opaque());
