@@ -75,8 +75,10 @@ std::string GetHloAbsolutePath(absl::string_view hlo_path) {
     return std::string(hlo_path);
   }
   std::string workspace_dir;
-  CHECK(tsl::io::GetTestWorkspaceDir(&workspace_dir));  // Crash OK.
-  return tsl::io::JoinPath(workspace_dir, hlo_path);
+  if (tsl::io::GetTestWorkspaceDir(&workspace_dir)) {
+    return tsl::io::JoinPath(workspace_dir, hlo_path);
+  }
+  return tsl::io::JoinPath(::testing::SrcDir(), hlo_path);
 }
 
 absl::Status RunBenchmark(benchmark::State* absl_nullable state,
