@@ -154,14 +154,11 @@ bool BlockSubcomputationFusion(const HloInstruction* instruction,
   if (opcode == HloOpcode::kScatter) {
     return true;
   }
-  const bool use_experimental_fusion_emitters =
-      options::UseExperimentalLoopFusion(config);
 
   // If the instruction itself can be fused then the subcomputation should be
   // blocked as the fusion emitter can't emit fusion ops inside another
   // fusion.
-  if (use_experimental_fusion_emitters &&
-      emitters::IsSupportedElementalOp(opcode)) {
+  if (emitters::IsSupportedElementalOp(opcode)) {
     return true;
   }
 

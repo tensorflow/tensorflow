@@ -244,7 +244,6 @@ limitations under the License.
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/concurrency/executor.h"
 #include "xla/tsl/platform/env.h"
-#include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/threadpool.h"
 #include "xla/tsl/util/sorted_range.h"
 #include "xla/util.h"
@@ -1058,11 +1057,7 @@ absl::Status CpuCompiler::RunHloPassesAfterLayoutAssn(
       &alias_info,
       /*may_duplicate=*/!use_multi_output_fusion);
 
-  bool use_experimental_loop_fusion =
-      options::UseExperimentalLoopFusion(module->config());
-  bool use_tiled_emitter = options::EnableTiledEmitter(module->config());
-  pipeline.AddPass<FusionWrapper>(use_experimental_loop_fusion,
-                                  use_tiled_emitter);
+  pipeline.AddPass<FusionWrapper>(target_machine_features);
 
   if (use_multi_output_fusion) {
     pipeline.AddPass<CpuMultiOutputFusion>(&alias_info);
@@ -1080,9 +1075,7 @@ absl::Status CpuCompiler::RunHloPassesAfterLayoutAssn(
   pipeline.AddPass<CpuAllReduceCombiner>(kCombineBytes, kCombineCount);
   pipeline.AddPass<TupleSimplifier>();
 
-  // The LayoutAssignment pass may leave behind kCopy instructions which are
-  // duplicate or NOPs, so remove them with algebraic simplification and CSE.
-  // Run this to a fixed point.
+  // Run algebraic simplifier to a fixpoint.
   [&pipeline = pipeline.AddPass<HloPassFix<HloPassPipeline>>(
        "simplification after layout assignment"),
    &module, use_onednn_custom_call] {
@@ -1105,6 +1098,10 @@ absl::Status CpuCompiler::RunHloPassesAfterLayoutAssn(
     pipeline.AddPass<HloDCE>();
     pipeline.AddPass<HloCSE>(/*is_layout_sensitive=*/true);
   }();
+
+  // Safeguard for late elemental instructions created during post-layout
+  // simplification.
+  pipeline.AddPass<FusionWrapper>(target_machine_features);
 
   // Outline ops in the entry computation into calls to subcomputations.
   if (!is_aot_compile) {
@@ -2167,7 +2164,6 @@ absl::StatusOr<std::unique_ptr<Executable>> CpuCompiler::RunBackend(
   };
 
   ThunkEmitter::Options thunk_emitter_options = {
-      /*compile_copy_as_llvm_kernel=*/false,
       /*is_aot_compilation=*/false};
 
   auto ir_compiler = IrCompiler::Create(CompilerTargetOptions(module->config()),
@@ -2285,7 +2281,6 @@ CpuCompiler::CompileAheadOfTimeThunks(
                    target_machine_builder());
 
   ThunkEmitter::Options thunk_emitter_options = {
-      /*compile_copy_as_llvm_kernel=*/aot_options.compile_copy_as_llvm_kernel(),
       /*is_aot_compilation=*/true};
 
   TargetMachineOptions target_machine_options(

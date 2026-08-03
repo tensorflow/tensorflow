@@ -89,7 +89,6 @@ limitations under the License.
 #include "xla/service/cpu/elemental_ir_emitter.h"
 #include "xla/service/cpu/ir_emission_utils.h"
 #include "xla/service/cpu/ir_function.h"
-#include "xla/service/cpu/parallel_loop_emitter.h"
 #include "xla/service/elemental_ir_emitter.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/llvm_ir/buffer_assignment_util.h"
@@ -226,15 +225,6 @@ absl::StatusOr<llvm::Function*> IrEmitter::EmitComputation(
       });
   allow_reassociation_ = allow_reassociation;
 
-  num_dynamic_loop_bounds_ = 0;
-  auto backend_config_or =
-      computation->root_instruction()->backend_config<BackendConfig>();
-  if (backend_config_or.ok() &&
-      !backend_config_or->outer_dimension_partitions().empty()) {
-    num_dynamic_loop_bounds_ =
-        backend_config_or->outer_dimension_partitions().size();
-  }
-
   if (computation->root_instruction()->opcode() != HloOpcode::kOutfeed) {
     ASSIGN_OR_RETURN(
         computation_root_allocation_,
@@ -306,7 +296,7 @@ void IrEmitter::InitializeIrFunction(const std::string& function_name) {
                                 : llvm::GlobalValue::InternalLinkage;
   // Create and initialize new IrFunction.
   compute_function_.emplace(function_name, linkage, hlo_module_config_, module_,
-                            b(), num_dynamic_loop_bounds_);
+                            b());
 }
 
 absl::Status IrEmitter::HandleBitcast(HloInstruction* bitcast) {
@@ -1900,11 +1890,6 @@ absl::Status IrEmitter::HandleScatter(HloInstruction*) {
 absl::Status IrEmitter::HandleSlice(HloInstruction* slice) {
   VLOG(2) << "HandleSlice: " << slice->ToString();
   auto operand = slice->operand(0);
-  // The code below emits a sequential loop nest. For the parallel backend, use
-  // ParallelLoopEmitter which respects dynamic loop bounds.
-  if (ShouldEmitParallelLoopFor(*slice)) {
-    return DefaultAction(slice);
-  }
 
   // The code below assumes the layouts are equal.
   if (!LayoutUtil::Equal(operand->shape().layout(), slice->shape().layout())) {
@@ -3042,11 +3027,6 @@ void EmitTransferElements(llvm::Value* target, llvm::Value* source,
 
 absl::Status IrEmitter::CanDoFastConcatenate(
     const HloInstruction* instr) const {
-  if (ShouldEmitParallelLoopFor(*instr)) {
-    return absl::Status(
-        absl::StatusCode::kFailedPrecondition,
-        "Cannot generate memcpy-based concat for the parallel CPU backend");
-  }
   const auto* concatenate = Cast<HloConcatenateInstruction>(instr);
 
   const Shape& output_shape = concatenate->shape();
@@ -3644,7 +3624,6 @@ absl::Status IrEmitter::EmitTargetElementLoop(
        target_op->opcode() == HloOpcode::kReduce ||
        target_op->opcode() == HloOpcode::kReduceWindow)) {
     // For multiple outputs fusion, we need to emit each operand and the root.
-    TF_RET_CHECK(num_dynamic_loop_bounds_ == 0);
     std::vector<llvm_ir::IrArray> output_arrays;
     for (int64_t i = 0; i < ShapeUtil::TupleElementCount(target_shape); ++i) {
       ASSIGN_OR_RETURN(BufferAllocation::Slice slice,
@@ -3666,18 +3645,8 @@ absl::Status IrEmitter::EmitTargetElementLoop(
     llvm_ir::EmitTuple(target_array, tuple_operand_ptrs, b());
 
   } else {
-    if (ShouldEmitParallelLoopFor(*target_op)) {
-      // Emit code to read dynamic loop bounds from compute function argument.
-      std::vector<std::pair<llvm::Value*, llvm::Value*>> dynamic_loop_bounds =
-          compute_function()->GetDynamicLoopBounds();
-      // Emit parallel loop with dynamic loop bounds for most-major dimensions.
-      RETURN_IF_ERROR(ParallelLoopEmitter(element_generator, target_array,
-                                          &dynamic_loop_bounds, b())
-                          .EmitLoop(IrName(target_op, desc)));
-    } else {
-      RETURN_IF_ERROR(llvm_ir::LoopEmitter(element_generator, target_array, b())
-                          .EmitLoop(IrName(target_op, desc)));
-    }
+    RETURN_IF_ERROR(llvm_ir::LoopEmitter(element_generator, target_array, b())
+                        .EmitLoop(IrName(target_op, desc)));
   }
   return absl::OkStatus();
 }

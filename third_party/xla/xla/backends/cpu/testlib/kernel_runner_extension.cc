@@ -32,7 +32,6 @@ limitations under the License.
 #include "xla/backends/cpu/codegen/computation_kernel_emitter.h"
 #include "xla/backends/cpu/codegen/dot/dot_kernel_emitter.h"
 #include "xla/backends/cpu/codegen/elemental/concatenate_kernel_emitter.h"
-#include "xla/backends/cpu/codegen/elemental/elemental_kernel_emitter.h"
 #include "xla/backends/cpu/codegen/emitters/cpu_scatter_emitter.h"
 #include "xla/backends/cpu/codegen/fusion_compiler.h"
 #include "xla/backends/cpu/codegen/fusion_emitter.h"
@@ -156,13 +155,6 @@ NB_MODULE(_extension, kernel_runner_module) {
                                     "TargetMachineFeatures")
       .def("__str__", &TargetMachineFeatures::get_target_feature_string);
 
-  nb::class_<ElementalKernelEmitter, KernelEmitter<LlvmKernelSource>>(
-      kernel_runner_module, "ElementalKernelEmitter")
-      .def(nb::init<const HloInstruction*, const BufferAssignment*,
-                    const TargetMachineFeatures*>(),
-           nb::keep_alive<1, 2>(), nb::keep_alive<1, 3>(),
-           nb::keep_alive<1, 4>());
-
   nb::class_<DotKernelEmitter, KernelEmitter<LlvmKernelSource>>(
       kernel_runner_module, "DotKernelEmitter")
       .def(nb::init<const HloInstruction*, const BufferAssignment*,
@@ -172,10 +164,8 @@ NB_MODULE(_extension, kernel_runner_module) {
 
   nb::class_<ConcatenateKernelEmitter, KernelEmitter<LlvmKernelSource>>(
       kernel_runner_module, "ConcatenateKernelEmitter")
-      .def(nb::init<const HloInstruction*, const BufferAssignment*,
-                    const TargetMachineFeatures*>(),
-           nb::keep_alive<1, 2>(), nb::keep_alive<1, 3>(),
-           nb::keep_alive<1, 4>());
+      .def(nb::init<const HloInstruction*, const BufferAssignment*>(),
+           nb::keep_alive<1, 2>(), nb::keep_alive<1, 3>());
 
   nb::class_<ComputationKernelEmitter, KernelEmitter<LlvmKernelSource>>(
       kernel_runner_module, "ComputationKernelEmitter")
@@ -270,16 +260,17 @@ NB_MODULE(_extension, kernel_runner_module) {
 
   kernel_runner_module.def(
       "run_fusion_wrapper_pass",
-      [](std::unique_ptr<HloModule, nb::deleter<HloModule>> hlo_module) {
-        FusionWrapper fusion_wrapper(/*using_new_fusion_emitter=*/true,
-                                     /*use_tiled_emitter=*/true);
+      [](std::unique_ptr<HloModule, nb::deleter<HloModule>> hlo_module,
+         const TargetMachineFeatures* target_machine_features) {
+        FusionWrapper fusion_wrapper(target_machine_features);
         absl::StatusOr<bool> result = fusion_wrapper.Run(hlo_module.get());
         if (!result.ok()) {
           throw std::runtime_error(std::string(result.status().message()));
         }
 
         return hlo_module->Clone();
-      });
+      },
+      nb::arg("hlo_module"), nb::arg("target_machine_features") = nullptr);
 }
 
 }  // namespace xla::cpu

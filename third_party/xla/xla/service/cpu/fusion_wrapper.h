@@ -17,6 +17,7 @@ limitations under the License.
 #define XLA_SERVICE_CPU_FUSION_WRAPPER_H_
 
 #include "absl/strings/string_view.h"
+#include "xla/backends/cpu/codegen/target_machine_features.h"
 #include "xla/codegen/emitters/fusion_wrapper_base.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
@@ -28,9 +29,8 @@ namespace cpu {
 // kick in.
 class FusionWrapper : public emitters::FusionWrapperBase {
  public:
-  explicit FusionWrapper(bool using_new_fusion_emitter, bool use_tiled_emitter)
-      : using_new_fusion_emitter_(using_new_fusion_emitter),
-        use_tiled_emitter_(use_tiled_emitter) {}
+  explicit FusionWrapper(const TargetMachineFeatures* target_machine_features)
+      : target_machine_features_(target_machine_features) {}
   ~FusionWrapper() override = default;
 
   absl::string_view name() const override { return "fusion-wrapper"; }
@@ -38,8 +38,7 @@ class FusionWrapper : public emitters::FusionWrapperBase {
   bool MustWrapInstruction(const HloInstruction& instruction) override;
 
  private:
-  bool using_new_fusion_emitter_;
-  bool use_tiled_emitter_;
+  const TargetMachineFeatures* target_machine_features_;
 };
 
 }  // namespace cpu

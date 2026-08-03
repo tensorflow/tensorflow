@@ -113,10 +113,6 @@ class IrEmitter2 {
   // Emits a host kernel for the pad instruction.
   absl::StatusOr<KernelInfo> EmitPadHostKernel(const HloInstruction* pad);
 
-  // Emits a host kernel for the given fusion instruction.
-  absl::StatusOr<KernelInfo> EmitFusionHostKernel(
-      const HloFusionInstruction* fusion);
-
   // Emits a host kernel for the given dot fusion instruction (output fusion).
   absl::StatusOr<KernelInfo> EmitDotFusionHostKernel(
       const HloFusionInstruction* fusion);
@@ -136,37 +132,6 @@ class IrEmitter2 {
   // Emits a host kernel prototype for the given HLO instruction.
   absl::StatusOr<KernelPrototype> EmitKernelPrototype(
       const HloInstruction* instr);
-
-  // Parallel partition bounds for parallelized outer dimensions:
-  //   vector<[i64 lower_bound, i64 upper_bound]>
-  using ParallelPartitionBounds =
-      std::vector<std::pair<llvm::Value*, llvm::Value*>>;
-
-  // A config for running kernel in parallel. We rely on partitioning iteration
-  // space along the outer dimension(s) and run each partition as a separate
-  // task inside a runtime-managed thread pool.
-  struct ParallelConfig {
-    std::vector<int64_t> outer_dimension_partitions;
-  };
-
-  // Returns parallel config for the given instruction or std::nullopt if
-  // the instruction has to be compiled to a single threaded loop.
-  std::optional<ParallelConfig> GetParallelConfig(const HloInstruction* instr);
-
-  // Emits LLVM IR that computes parallel partition bounds from the call frame's
-  // block and thread dimensions and parallel execution config.
-  ParallelPartitionBounds EmitParallelPartitionBounds(
-      llvm::IRBuilderBase& b, const KernelPrototype& kernel_prototype,
-      const ParallelConfig& parallel_config, const Shape& shape,
-      absl::string_view name);
-
-  // Emits LLVM IR using elemental loop emitter and the given element generator.
-  // If the instruction is parallelized, it will emit a parallel loop partition
-  // and return the requested number of execution threads.
-  absl::StatusOr<se::ThreadDim> EmitElementalLoops(
-      llvm::IRBuilderBase& b, const HloInstruction* instr,
-      const KernelPrototype& kernel_prototype,
-      const llvm_ir::ElementGenerator& element_generator);
 
   bool fast_min_max() const;
 
