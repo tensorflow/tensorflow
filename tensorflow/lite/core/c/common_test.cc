@@ -264,6 +264,107 @@ TEST(TensorCopy, TensorCopy_INVALID) {
   EXPECT_EQ(kTfLiteError, TfLiteTensorCopy(&src, &dst));
 }
 
+class RecordingTfLiteAllocator {
+ public:
+  RecordingTfLiteAllocator()
+      : allocator_{this, &RecordingTfLiteAllocator::AllocateCallback,
+                   &RecordingTfLiteAllocator::ReallocateCallback,
+                   &RecordingTfLiteAllocator::DeallocateCallback} {}
+
+  ~RecordingTfLiteAllocator() { std::free(pointer_); }
+
+  TfLiteAllocator* allocator() { return &allocator_; }
+  size_t allocation_bytes() const { return allocation_bytes_; }
+  int reallocation_count() const { return reallocation_count_; }
+  bool callback_arguments_match() const { return callback_arguments_match_; }
+
+ private:
+  static void* AllocateCallback(void* data, size_t bytes, size_t alignment) {
+    return static_cast<RecordingTfLiteAllocator*>(data)->Allocate(bytes,
+                                                                  alignment);
+  }
+
+  static void* ReallocateCallback(void* data, void* ptr, size_t old_bytes,
+                                  size_t new_bytes, size_t alignment) {
+    return static_cast<RecordingTfLiteAllocator*>(data)->Reallocate(
+        ptr, old_bytes, new_bytes, alignment);
+  }
+
+  static void DeallocateCallback(void* data, void* ptr, size_t bytes,
+                                 size_t alignment) {
+    static_cast<RecordingTfLiteAllocator*>(data)->Deallocate(ptr, bytes,
+                                                             alignment);
+  }
+
+  void* Allocate(size_t bytes, size_t alignment) {
+    if (pointer_ != nullptr || alignment > alignof(std::max_align_t)) {
+      callback_arguments_match_ = false;
+      return nullptr;
+    }
+    pointer_ = std::malloc(bytes);
+    if (pointer_ != nullptr) {
+      allocation_bytes_ = bytes;
+      alignment_ = alignment;
+    }
+    return pointer_;
+  }
+
+  void* Reallocate(void* ptr, size_t old_bytes, size_t new_bytes,
+                   size_t alignment) {
+    callback_arguments_match_ &= ptr == pointer_ &&
+                                 old_bytes == allocation_bytes_ &&
+                                 alignment == alignment_;
+    void* new_pointer = std::realloc(ptr, new_bytes);
+    if (new_pointer != nullptr) {
+      pointer_ = new_pointer;
+      allocation_bytes_ = new_bytes;
+      alignment_ = alignment;
+      ++reallocation_count_;
+    }
+    return new_pointer;
+  }
+
+  void Deallocate(void* ptr, size_t bytes, size_t alignment) {
+    callback_arguments_match_ &= ptr == pointer_ &&
+                                 bytes == allocation_bytes_ &&
+                                 alignment == alignment_;
+    std::free(ptr);
+    pointer_ = nullptr;
+    allocation_bytes_ = 0;
+  }
+
+  TfLiteAllocator allocator_;
+  void* pointer_ = nullptr;
+  size_t allocation_bytes_ = 0;
+  size_t alignment_ = 0;
+  int reallocation_count_ = 0;
+  bool callback_arguments_match_ = true;
+};
+
+TEST(TestTensorRealloc, CustomAllocatorShrinkKeepsAllocationSizeInSync) {
+  RecordingTfLiteAllocator allocator;
+  TfLiteTensor tensor{};
+  tensor.allocation_type = kTfLiteDynamic;
+
+  ASSERT_EQ(TfLiteTensorResizeMaybeCopyWithAllocator(
+                /*num_bytes=*/100, &tensor, /*preserve_data=*/true,
+                allocator.allocator()),
+            kTfLiteOk);
+  EXPECT_EQ(allocator.allocation_bytes(), 116);
+
+  ASSERT_EQ(TfLiteTensorResizeMaybeCopyWithAllocator(
+                /*num_bytes=*/50, &tensor, /*preserve_data=*/true,
+                allocator.allocator()),
+            kTfLiteOk);
+  EXPECT_EQ(tensor.bytes, 50);
+  EXPECT_EQ(allocator.allocation_bytes(), 66);
+  EXPECT_EQ(allocator.reallocation_count(), 1);
+
+  TfLiteTensorDataFreeWithAllocator(&tensor, allocator.allocator());
+  EXPECT_TRUE(allocator.callback_arguments_match());
+  EXPECT_EQ(allocator.allocation_bytes(), 0);
+}
+
 TEST(TestTensorRealloc, TensorReallocMoreBytesSucceeds) {
   const TfLiteType t = kTfLiteFloat32;
   const int num_elements = 4;
@@ -405,9 +506,9 @@ TEST(TestTensorRealloc, TensorReallocLargeBytesFails) {
   const size_t large_bytes = std::numeric_limits<size_t>::max() - 16;
   // Subtract 16 to account for adding 16 for XNN_EXTRA_BYTES
   EXPECT_EQ(TfLiteTensorRealloc(large_bytes, tensor), kTfLiteError);
+  EXPECT_EQ(tensor->data.data, data);
 
   TfLiteTensorFree(tensor);
-  free(data);
   free(tensor);
 }
 

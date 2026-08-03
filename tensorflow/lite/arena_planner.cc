@@ -37,12 +37,12 @@ constexpr int32_t kScalarTensorBytes = 4;
 ArenaPlanner::ArenaPlanner(TfLiteContext* context,
                            std::unique_ptr<GraphInfo> graph_info,
                            bool preserve_all_tensors, int tensor_alignment,
-                           int subgraph_index)
+                           int subgraph_index, TfLiteAllocator* allocator)
     : context_(context),
       graph_info_(std::move(graph_info)),
-      arena_(kDefaultArenaAlignment, subgraph_index),
+      arena_(kDefaultArenaAlignment, subgraph_index, allocator),
       has_nonpersistent_memory_(false),
-      persistent_arena_(kDefaultArenaAlignment, subgraph_index),
+      persistent_arena_(kDefaultArenaAlignment, subgraph_index, allocator),
       preserve_all_tensors_(preserve_all_tensors),
       tensor_alignment_(tensor_alignment),
       last_active_node_(kLastActiveNodeUndefined) {}

@@ -37,6 +37,14 @@ TfLiteStatus Interpreter::SetCustomAllocationForTensor(
                                                          allocation, flags);
 }
 
+TfLiteStatus Interpreter::SetAllocator(TfLiteAllocator* allocator) {
+  for (auto& subgraph : subgraphs_) {
+    TF_LITE_ENSURE_STATUS(subgraph->SetAllocator(allocator));
+  }
+  allocator_ = allocator;
+  return kTfLiteOk;
+}
+
 TfLiteStatus Interpreter::ReleaseNonPersistentMemory() {
   // TODO(b/138790287): We could do this for all subgraphs whose tensors have
   // been allocated. However, AllocateTensors() relies on Control Flow ops to
