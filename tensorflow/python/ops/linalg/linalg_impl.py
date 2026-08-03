@@ -102,9 +102,9 @@ def logdet(matrix, name=None):
   with ops.name_scope(name, 'logdet', [matrix]):
     sign, log_abs_det = gen_linalg_ops.log_matrix_determinant(matrix)
     # For real matrices, sign is a scalar (-1, 0, or 1).
-    # Return log_abs_det when sign > 0, NaN otherwise.
-    return array_ops.where(
-        math_ops.real(sign) > 0,
+    # Return log_abs_det when sign >= 0, NaN otherwise.
+    return array_ops.where_v2(
+        math_ops.real(sign) >= 0,
         log_abs_det,
         math_ops.cast(float('nan'), log_abs_det.dtype))
 
