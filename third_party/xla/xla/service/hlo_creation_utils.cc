@@ -36,8 +36,10 @@ limitations under the License.
 #include "xla/hlo/builder/lib/comparators.h"
 #include "xla/hlo/builder/xla_builder.h"
 #include "xla/hlo/builder/xla_computation.h"
+#include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_clone_context.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/literal.h"
@@ -133,19 +135,23 @@ absl::StatusOr<HloInstruction*> MakeConvolveHlo(
     const PrecisionConfig& precision_config,
     std::optional<PrimitiveType> preferred_element_type,
     const SparsityConfig& sparsity_config, const OpMetadata* metadata,
-    const FrontendAttributes* frontend_attributes) {
+    const FrontendAttributes* frontend_attributes,
+    ConvolutionKind convolution_kind) {
   HloComputation* computation = lhs->parent();
   CHECK_EQ(computation, rhs->parent());
   ASSIGN_OR_RETURN(
       Shape convolve_shape,
       ShapeInference::InferConvolveShape(
           lhs->shape(), rhs->shape(), feature_group_count, batch_group_count,
-          window, dimension_numbers, sparsity_config, preferred_element_type));
-  return computation->AddInstruction(
+          window, dimension_numbers, sparsity_config, preferred_element_type,
+          convolution_kind));
+  HloInstruction* conv = computation->AddInstruction(
       HloInstruction::CreateConvolve(
           convolve_shape, lhs, rhs, feature_group_count, batch_group_count,
           window, dimension_numbers, precision_config, sparsity_config),
       metadata, frontend_attributes);
+  Cast<HloConvolutionInstruction>(conv)->set_convolution_kind(convolution_kind);
+  return conv;
 }
 
 absl::StatusOr<HloInstruction*> MakeTransposeHlo(
