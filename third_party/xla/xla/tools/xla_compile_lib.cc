@@ -243,7 +243,8 @@ absl::StatusOr<std::string> CompileExecutable(
     std::optional<Compiler::GpuTargetConfig> gpu_target_config,
     std::optional<Compiler::CpuTargetConfig> cpu_target_config,
     int32_t num_partitions, int32_t num_replicas, CompilationResult& result,
-    absl::string_view target_platform_version, bool use_attached_device) {
+    absl::string_view target_platform_version, bool use_attached_device,
+    const CpuSanitizerOptions& cpu_sanitizer_options) {
   if (backend == BackendType::kCpu) {
     if (num_replicas > 1) {
       hlo_module->mutable_config().set_replica_count(num_replicas);
@@ -256,7 +257,8 @@ absl::StatusOr<std::string> CompileExecutable(
       target_options = cpu_target_config->cpu_target_machine_options;
     }
     return AotCompileCpuExecutable(std::move(hlo_module),
-                                   std::move(target_options), &result);
+                                   std::move(target_options), &result,
+                                   cpu_sanitizer_options);
   }
   return CompileGpuExecutable(std::move(hlo_module),
                               std::move(gpu_target_config), result,
@@ -623,7 +625,8 @@ absl::Status XlaCompileMain(const XlaCompileOptions& options) {
       std::move(hlo_module), backend, std::move(gpu_cfg), std::move(cpu_cfg),
       num_partitions, num_replicas, compilation_result,
       options.gpu_options.target_platform_version,
-      options.gpu_options.use_attached_device);
+      options.gpu_options.use_attached_device,
+      options.cpu_options.sanitizer_options);
   *compilation_result.mutable_status() = tsl::StatusToProto(result.status());
   if (!result.ok()) {
     return result.status();

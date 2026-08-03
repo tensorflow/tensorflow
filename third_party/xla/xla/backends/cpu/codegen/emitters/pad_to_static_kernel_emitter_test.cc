@@ -142,7 +142,7 @@ TEST_F(PadToStaticKernelEmitterTest, EmitsAndExecutesUnalignedF16) {
   ASSERT_OK_AND_ASSIGN(LlvmKernelSource llvm_source,
                        compiler.Compile(std::move(definition).TakeSource()));
   EXPECT_THAT(RunFileCheck(llvm_source.ToString(), R"(
-    CHECK: define ptr @pts(ptr{{.*}})
+    CHECK: define noundef ptr @pts(ptr{{.*}})
     CHECK: load i32, ptr {{.*}} align 1
     CHECK: store half
   )"),

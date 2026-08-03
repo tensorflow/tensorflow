@@ -24,17 +24,12 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/base/casts.h"
-#include "absl/base/dynamic_annotations.h"
 
 namespace xla::cpu::internal {
 
 template <typename T>
 void TopK(int64_t batch_size, int64_t input_size, int64_t k, const T* values,
           T* out_values, int32_t* out_indices) {
-  // values is managed by the JIT code, so msan can't tell they are initialized.
-  ABSL_ANNOTATE_MEMORY_IS_INITIALIZED(values,
-                                      input_size * batch_size * sizeof(T));
-
   auto convert_to_int = [](T value) {
     uint32_t x = absl::bit_cast<uint32_t>(value);
     return static_cast<int32_t>(x) < 0 ? std::numeric_limits<int32_t>::max() - x

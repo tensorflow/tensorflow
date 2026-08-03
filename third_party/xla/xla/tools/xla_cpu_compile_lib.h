@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_TOOLS_XLA_CPU_COMPILE_LIB_H_
 #define XLA_TOOLS_XLA_CPU_COMPILE_LIB_H_
 
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <string>
@@ -27,11 +28,23 @@ limitations under the License.
 
 namespace xla {
 
+// Sanitizer instrumentation for the generated code.
+struct CpuSanitizerOptions {
+  // Instruments the generated code with msan, even if the compiler itself is
+  // not built with msan. If false, the generated code is instrumented iff the
+  // compiler is built with msan.
+  bool sanitize_memory = false;
+  // Msan origin tracking level: 0 = off, 1 = without store history, 2 = with
+  // store history. A level above 0 implies `sanitize_memory`.
+  int32_t sanitize_memory_track_origins = 0;
+};
+
 // Compiles the provided HLO module for CPU using AOT.
 absl::StatusOr<std::string> AotCompileCpuExecutable(
     std::unique_ptr<HloModule> hlo_module,
     std::optional<cpu::TargetMachineOptions> target_config,
-    CompilationResult* result = nullptr);
+    CompilationResult* result = nullptr,
+    const CpuSanitizerOptions& sanitizer_options = {});
 
 }  // namespace xla
 

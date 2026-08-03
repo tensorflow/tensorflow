@@ -17,7 +17,7 @@ fusion {
 // CHECK-VECTOR:         vector.transfer_read {{.*}} {in_bounds = [true, true]} : memref<2x16xf32>, vector<1x16xf32>
 // CHECK-VECTOR:         vector.transfer_write {{.*}} {in_bounds = [true, true]} : vector<1x16xi16>, memref<2x16xi16>
 
-// CHECK-LLVM:       llvm.func @wrapped_fusion(%{{.*}}) -> !llvm.ptr
+// CHECK-LLVM:       llvm.func @wrapped_fusion(%{{.*}}) -> (!llvm.ptr {llvm.noundef})
 // CHECK-LLVM-SAME:    "prefer-vector-width", "256"
 // CHECK-LLVM-LABEL: llvm.func internal @wrapped_fusion_impl
 // CHECK-LLVM:         %[[LOAD:.*]] = llvm.load %{{.*}} <alignment = 4> : !llvm.ptr -> vector<16xf32>

@@ -30,7 +30,6 @@ limitations under the License.
 #include <vector>
 
 #include "absl/base/call_once.h"
-#include "absl/base/dynamic_annotations.h"
 #include "absl/base/nullability.h"
 #include "absl/base/optimization.h"
 #include "absl/container/btree_map.h"
@@ -580,9 +579,6 @@ class NanoArray final : public NanoValue<NanoArray, ifrt::Array> {
       return Internal("Failed to allocate memory for NanoArray. Errno: %s",
                       strerror(errno));
     }
-    // Suppress msan warnings for memory that will be initialized by the
-    // jit-compiled code.
-    ABSL_ANNOTATE_MEMORY_IS_INITIALIZED(owned_data.get(), size);
     return owned_data;
   }
 

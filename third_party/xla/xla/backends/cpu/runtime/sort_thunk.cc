@@ -31,7 +31,6 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/base/attributes.h"
 #include "absl/base/call_once.h"
-#include "absl/base/dynamic_annotations.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/memory/memory.h"
 #include "absl/status/status_macros.h"
@@ -229,13 +228,6 @@ tsl::AsyncValueRef<SortThunk::ExecuteEvent> SortThunk::Execute(
   LessThan* less_than = &less_than_.value();
 
   int64_t num_slices = sort_dims_.outer_dim_size * sort_dims_.inner_dim_size;
-
-  // Annotate memory that might have been initialized by jit-compiled code.
-  for (int64_t i = 0; i < data.size(); ++i) {
-    ABSL_ANNOTATE_MEMORY_IS_INITIALIZED(
-        data[i].opaque(),
-        primitive_sizes[i] * sort_dims_.sort_dim_size * num_slices);
-  }
 
   PrimitiveType first_element_type = inputs_[0].shape.element_type();
   auto sort_slice_range = [raw_data, primitive_sizes, first_element_type,
