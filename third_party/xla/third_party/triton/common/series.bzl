@@ -43,5 +43,6 @@ common_patch_list = [
     "//third_party/triton:common/llvm_cl948082775.patch",
     "//third_party/triton:common/sm120_fp4_non_k_fallback.patch",
     "//third_party/triton:common/blackwell_fp4_mma_padding.patch",
+    "//third_party/triton:common/llvm_cl958541558.patch",
     # Add new patches just above this line
 ]

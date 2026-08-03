@@ -1,15 +1,52 @@
+diff --git a/third_party/llvm/generated.patch b/third_party/llvm/generated.patch
+index 509398da..9a42ef6f 100644
+--- a/third_party/llvm/generated.patch
++++ b/third_party/llvm/generated.patch
+@@ -1 +1,32 @@
+ Auto generated patch. Do not edit or delete it, even if empty.
++diff -ruN --strip-trailing-cr a/llvm/lib/IR/Verifier.cpp b/llvm/lib/IR/Verifier.cpp
++--- a/llvm/lib/IR/Verifier.cpp
+++++ b/llvm/lib/IR/Verifier.cpp
++@@ -3925,10 +3925,8 @@
++   Check(!Attrs.hasFnAttr(Attribute::DenormalFPEnv),
++         "denormal_fpenv attribute may not apply to call sites", Call);
++ 
++-  Check(!Attrs.hasFnAttr(Attribute::StrictFP) ||
++-            Call.getFunction()->isStrictFP(),
++-        "call site marked strictfp without caller function marked strictfp",
++-        Call);
+++  // FIXME: Missing verifier check to forbid a call site marked strictfp without
+++  // caller function marked strictfp.
++ 
++   // Verify call attributes.
++   verifyFunctionAttrs(FTy, Attrs, &Call, IsIntrinsic, Call.isInlineAsm());
++diff -ruN --strip-trailing-cr a/llvm/unittests/IR/VerifierTest.cpp b/llvm/unittests/IR/VerifierTest.cpp
++--- a/llvm/unittests/IR/VerifierTest.cpp
+++++ b/llvm/unittests/IR/VerifierTest.cpp
++@@ -817,9 +817,7 @@
++ 
++   std::string Error;
++   raw_string_ostream ErrorOS(Error);
++-  EXPECT_TRUE(verifyModule(M, &ErrorOS));
++-  EXPECT_TRUE(StringRef(Error).starts_with(
++-      "call site marked strictfp without caller function marked strictfp"))
++-      << Error;
+++  // FIXME: Missing verifier check for strictfp.
+++  EXPECT_FALSE(verifyModule(M, &ErrorOS));
++ }
++ } // end anonymous namespace
 diff --git a/third_party/llvm/workspace.bzl b/third_party/llvm/workspace.bzl
-index dbcd4e35..d40a47b3 100644
+index 8e118acf..73788218 100644
 --- a/third_party/llvm/workspace.bzl
 +++ b/third_party/llvm/workspace.bzl
 @@ -4,8 +4,8 @@ load("//third_party:repo.bzl", "tf_http_archive")
  
  def repo(name):
      """Imports LLVM."""
--    LLVM_COMMIT = "2697ad154734e49f15f787c180fde969433f2968"
--    LLVM_SHA256 = "61cd10f4fae65914e9773d082d1398fa83535fde26142ab411d3d9d3f0bc6f57"
-+    LLVM_COMMIT = "0220c07a94012b9dce9250addac6a8ee1f674b21"
-+    LLVM_SHA256 = "0a3d6f9fc738b3aecfa6944f9db2d0c9f6bebd7b93c7a2670bb0fc29c97b6c01"
+-    LLVM_COMMIT = "6d1ace547c9f9ecf7df9ab87e2db74b5bd3f199d"
+-    LLVM_SHA256 = "c8e26643bc0736f486f1a8a588622f88cef95ba242f80a63fe9ad7ae65bac200"
++    LLVM_COMMIT = "084f6484d76625b995c07f512a323ab7cdc5351d"
++    LLVM_SHA256 = "1c5d4569335226713428bd8fa57dc0d57f0c117020adcf30c30b779e7d7a7535"
  
      tf_http_archive(
          name = name,
