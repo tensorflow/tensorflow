@@ -316,6 +316,13 @@ class ActivityAnalyzer(transformer.Base):
       raise ValueError('Unknown context {} for node "{}".'.format(
           type(node.ctx), qn))
 
+  def _track_pattern_name(self, name):
+    if name is None:
+      return
+    qn = qual_names.QN(name)
+    self.scope.modified.add(qn)
+    self.scope.bound.add(qn)
+
   def _enter_scope(self, isolated, f_name=None):
     self.scope = Scope(self.scope, isolated=isolated, function_name=f_name)
 
@@ -666,15 +673,35 @@ class ActivityAnalyzer(transformer.Base):
   def visit_Match(self, node):
     # Reaching-definitions analysis maps each of these expression scopes to the
     # corresponding CFG node.
-    node.subject = self._process_statement(node.subject)
+    self._enter_scope(False)
+    node.subject = self.visit(node.subject)
+    self._exit_and_record_scope(node.subject)
     node.cases = self.visit_block(node.cases)
     return node
 
   def visit_match_case(self, node):
-    node.pattern = self._process_statement(node.pattern)
+    self._enter_scope(False)
+    node.pattern = self.visit(node.pattern)
+    self._exit_and_record_scope(node.pattern)
     if node.guard is not None:
-      node.guard = self._process_statement(node.guard)
+      self._enter_scope(False)
+      node.guard = self.visit(node.guard)
+      self._exit_and_record_scope(node.guard)
     node.body = self.visit_block(node.body)
+    return node
+
+  def visit_MatchAs(self, node):
+    node = self.generic_visit(node)
+    self._track_pattern_name(node.name)
+    return node
+
+  def visit_MatchStar(self, node):
+    self._track_pattern_name(node.name)
+    return node
+
+  def visit_MatchMapping(self, node):
+    node = self.generic_visit(node)
+    self._track_pattern_name(node.rest)
     return node
 
   def visit_For(self, node):
