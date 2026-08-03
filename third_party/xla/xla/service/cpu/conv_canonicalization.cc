@@ -26,12 +26,10 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/permutation_util.h"
-#include "xla/service/cpu/cpu_runtime.h"
 #include "xla/service/cpu/ir_emission_utils.h"
 #include "xla/shape_util.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/errors.h"
 
 namespace xla {
 namespace cpu {
@@ -137,8 +135,7 @@ absl::StatusOr<bool> ConvCanonicalization::RunImpl(
       new_dnums.set_kernel_output_feature_dimension(num_dims - 1);
 
       // The window of the old convolution is reused, because reshapes only
-      // change the dimension mapping but not the dimension sizes. For
-      // example, input height and width are the same as before the reshapes.
+      // change the dimension mapping but not the dimension sizes.
       HloInstruction* new_conv = module->entry_computation()->AddInstruction(
           HloInstruction::CreateConvolve(
               new_conv_shape, {new_input, new_kernel},

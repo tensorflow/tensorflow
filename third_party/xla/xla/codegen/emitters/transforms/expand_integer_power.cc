@@ -46,6 +46,19 @@ mlir::LogicalResult ExpandIntegerPower(mlir::math::IPowIOp op,
                                        mlir::PatternRewriter& rewriter) {
   llvm::SmallVector<mlir::Type> result_types(op->getResultTypes());
   llvm::SmallVector<mlir::Type> arg_types(op->getOperandTypes());
+  if (op->hasAttr("xla.is_unsigned")) {
+    for (mlir::Type& type : arg_types) {
+      mlir::Type elem_type = mlir::getElementTypeOrSelf(type);
+      auto unsigned_elem_type = mlir::IntegerType::get(
+          op.getContext(), elem_type.getIntOrFloatBitWidth(),
+          mlir::IntegerType::Unsigned);
+      if (auto shaped_type = mlir::dyn_cast<mlir::ShapedType>(type)) {
+        type = shaped_type.clone(unsigned_elem_type);
+      } else {
+        type = unsigned_elem_type;
+      }
+    }
+  }
   mlir::Value result =
       mlir::mhlo::impl::mapMhloOpToStdScalarOp<mlir::mhlo::PowOp>(
           op.getLoc(), result_types, arg_types,

@@ -133,9 +133,6 @@ class ThunkEmitter {
   absl::StatusOr<ThunkSequence> EmitCopyThunk(
       const HloInstruction* instruction);
 
-  absl::StatusOr<ThunkSequence> EmitElementalKernelThunk(
-      const HloInstruction* instruction);
-
   absl::StatusOr<ThunkSequence> EmitPadKernelThunk(
       const HloInstruction* instruction);
 

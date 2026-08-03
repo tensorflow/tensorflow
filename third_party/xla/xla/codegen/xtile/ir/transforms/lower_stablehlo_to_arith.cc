@@ -127,6 +127,9 @@ class LowerStableHloOpToArith : public mlir::OpRewritePattern<StableHloOp> {
         new_op = UnsignedIntArithOp::create(rewriter, op.getLoc(),
                                             signless_operands.front().getType(),
                                             signless_operands);
+        if constexpr (std::is_same_v<UnsignedIntArithOp, mlir::math::IPowIOp>) {
+          new_op->setAttr("xla.is_unsigned", rewriter.getUnitAttr());
+        }
 
         rewriter.replaceOpWithNewOp<mlir::UnrealizedConversionCastOp>(
             op, op.getResult().getType(), new_op->getResult(0));

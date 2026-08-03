@@ -19,14 +19,16 @@ limitations under the License.
 #include <memory>
 #include <string>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
+#include "xla/backends/cpu/codegen/target_machine_features.h"
+#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/service/cpu/target_machine_features_stub.h"
-#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 namespace cpu {
@@ -34,8 +36,9 @@ namespace {
 
 class FusionWrapperTest : public HloHardwareIndependentTestBase {
  protected:
-  TargetMachineFeaturesStub target_machine_features_{
-      [](int64_t size_bytes) { return 16; }};
+  TargetMachineFeaturesStub target_machine_features_{[](int64_t size) {
+    return TargetMachineFeatures::kEigenExpectedTensorAlignment;
+  }};
 };
 
 TEST_F(FusionWrapperTest, Scatter) {
@@ -76,8 +79,7 @@ TEST_F(FusionWrapperTest, Scatter) {
 }
 
 TEST_F(FusionWrapperTest, TransposeWrappedWithNewFusionEmitters) {
-  // Standalone transposes route to ElementalKernelEmitter when unwrapped.
-  // Wrap them when the new fusion emitters are enabled.
+  // Standalone transposes are wrapped when fusion emitters are enabled.
   static constexpr absl::string_view hlo_string = R"(
   HloModule m
     ENTRY e {
