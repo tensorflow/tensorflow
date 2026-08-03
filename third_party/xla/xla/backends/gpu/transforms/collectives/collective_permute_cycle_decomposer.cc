@@ -35,7 +35,6 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
-#include "xla/hlo/utils/hlo_query.h"
 #include "xla/literal_util.h"
 #include "xla/service/collective_permute_cycle.h"
 #include "xla/service/gpu/backend_configs.pb.h"
@@ -188,8 +187,7 @@ absl::StatusOr<HloInstruction*> CreatePartitionOrReplicaId(
 // pairs into two CollectivePermute instructions.
 absl::Status DecomposeCollectivePermuteCycle(
     HloCollectivePermuteInstruction* cp, HloComputation* computation,
-    HloModule* module, int64_t next_channel_id, CycleType cycle_type,
-    std::set<int> indices_to_break_out) {
+    CycleType cycle_type, std::set<int> indices_to_break_out) {
   const std::vector<std::pair<int64_t, int64_t>>& pairs =
       cp->source_target_pairs();
   absl::string_view cp_name = cp->name();
@@ -213,12 +211,8 @@ absl::Status DecomposeCollectivePermuteCycle(
       AddCP(cp, computation, back_pairs, "-bwd", attrs.first, cp->channel_id());
 
   // Forward edge.
-  bool is_cross_partition =
-      (mode == CollectiveOpGroupMode::COLLECTIVE_OP_GROUP_MODE_CROSS_PARTITION);
-  std::optional<int64_t> fwd_channel_id =
-      is_cross_partition ? std::optional(next_channel_id) : std::nullopt;
   HloInstruction* fwd_cp =
-      AddCP(cp, computation, fwd_pairs, "-fwd", attrs.second, fwd_channel_id);
+      AddCP(cp, computation, fwd_pairs, "-fwd", attrs.second, cp->channel_id());
 
   // Calculate the received data as follows:
   //   %partition = u32[] partition-id()
@@ -259,7 +253,6 @@ absl::StatusOr<bool> CollectivePermuteCycleDecomposer::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;
-  int64_t next_channel_id;
   for (auto comp : module->computations(execution_threads)) {
     for (auto hlo : comp->MakeInstructionPostOrder()) {
       if (HloPredicateIsNotOp<HloOpcode::kCollectivePermute>(hlo)) {
@@ -271,13 +264,9 @@ absl::StatusOr<bool> CollectivePermuteCycleDecomposer::RunImpl(
       CycleType cycle_type = cycle_type_and_indices.first;
       std::set<int> indices_to_break_out = cycle_type_and_indices.second;
       if (cycle_type != CycleType::kNone) {
-        if (changed == false) {
-          next_channel_id = hlo_query::NextChannelId(*module);
-          changed = true;
-        }
+        changed = true;
         RETURN_IF_ERROR(DecomposeCollectivePermuteCycle(
-            collective_permute, comp, module, next_channel_id++, cycle_type,
-            indices_to_break_out));
+            collective_permute, comp, cycle_type, indices_to_break_out));
       }
     }
   }
