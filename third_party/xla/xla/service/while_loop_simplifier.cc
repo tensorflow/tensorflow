@@ -26,8 +26,10 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
+#include "absl/functional/function_ref.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/numeric/bits.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/tsl/platform/status_macros.h"
@@ -426,47 +428,40 @@ absl::StatusOr<bool> TryRemoveDeadWhileParams(HloInstruction* while_op) {
   // other parts. UnionFind does not separate such a subset.)
 
   // Tracks the set of inputs that each instruction depends on (in one
-  // iteration). For case 1).
+  // iteration), as a bitset over tuple indices. For case 1). Big while tuples
+  // (1000+ elements) made hash-set unions the dominant cost here; word-wise
+  // ORs over bitsets compute the same memberships far cheaper.
   struct InputIndicesSet {
     void Merge(const InputIndicesSet& other) {
-      // Delay the creation of the owned hash set until sufficient amount of
-      // merge requests have come. This in practice saves a lot of heap
-      // allocations for unary/binary/ternay ops.
-      if (all.size() + other.all.size() <= all.capacity() && owned == nullptr) {
-        absl::c_copy(other.all, std::back_inserter(all));
+      if (other.bits.empty()) {
         return;
       }
-      // Create owned storage to merge stacked sets.
-      if (owned == nullptr) {
-        owned = std::make_unique<absl::flat_hash_set<int64_t>>();
-        // Rough estimation of new set size, to reduce resize.
-        owned->reserve(other.all.front()->size() * 2);
+      if (bits.size() < other.bits.size()) {
+        bits.resize(other.bits.size(), 0);
       }
-      for (auto* deps : all) {
-        if (deps == owned.get()) {
-          continue;
-        }
-        owned->insert(deps->begin(), deps->end());
+      for (size_t i = 0; i < other.bits.size(); ++i) {
+        bits[i] |= other.bits[i];
       }
-      for (auto* deps : other.all) {
-        owned->insert(deps->begin(), deps->end());
-      }
-      all.clear();
-      all.push_back(owned.get());
     }
     void Add(int64_t index) {
-      if (owned == nullptr) {
-        CHECK(all.empty());
-        owned = std::make_unique<absl::flat_hash_set<int64_t>>();
-        all.push_back(owned.get());
+      const size_t word = index / 64;
+      if (bits.size() <= word) {
+        bits.resize(word + 1, 0);
       }
-      owned->insert(index);
+      bits[word] |= uint64_t{1} << (index % 64);
     }
-    // Owned storage.
-    std::unique_ptr<absl::flat_hash_set<int64_t>> owned;
-    // Collection of pointers to all sets of dependencies, the union of which is
-    // the set of input dependencies.
-    absl::InlinedVector<const absl::flat_hash_set<int64_t>*, 4> all;
+    // Calls fn(index) for every index in the set, in increasing order.
+    void ForEachIndex(absl::FunctionRef<void(int64_t)> fn) const {
+      for (size_t word = 0; word < bits.size(); ++word) {
+        uint64_t value = bits[word];
+        while (value != 0) {
+          const int bit = absl::countr_zero(value);
+          fn(static_cast<int64_t>(word * 64 + bit));
+          value &= value - 1;
+        }
+      }
+    }
+    absl::InlinedVector<uint64_t, 4> bits;
   };
   absl::flat_hash_map<HloInstruction*, InputIndicesSet> inst_input_deps;
   // Find disjoint sets of connected instruction groups. This helps finding a
@@ -508,9 +503,8 @@ absl::StatusOr<bool> TryRemoveDeadWhileParams(HloInstruction* while_op) {
         }
       }
       if (inst->HasSideEffect() || inst == while_cond->root_instruction()) {
-        for (auto* dep : deps.all) {
-          side_effecting_indices.insert(dep->begin(), dep->end());
-        }
+        deps.ForEachIndex(
+            [&](int64_t index) { side_effecting_indices.insert(index); });
       }
     }
   }
@@ -518,13 +512,11 @@ absl::StatusOr<bool> TryRemoveDeadWhileParams(HloInstruction* while_op) {
   absl::flat_hash_set<int64_t> indices_affecting_others;
   for (int64_t i = 0; i < tuple_size; ++i) {
     HloInstruction* output = while_body_root->mutable_operand(i);
-    for (auto* deps : inst_input_deps[output].all) {
-      for (int64_t index : *deps) {
-        if (index != i) {
-          indices_affecting_others.insert(index);
-        }
+    inst_input_deps[output].ForEachIndex([&](int64_t index) {
+      if (index != i) {
+        indices_affecting_others.insert(index);
       }
-    }
+    });
   }
   for (int64_t i = 0; i < tuple_size; ++i) {
     if (!indices_affecting_others.contains(i) &&
