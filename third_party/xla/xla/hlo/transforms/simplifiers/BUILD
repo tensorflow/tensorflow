@@ -1328,6 +1328,10 @@ cc_library(
     srcs = ["sort_simplifier.cc"],
     hdrs = ["sort_simplifier.h"],
     deps = [
+        ":algebraic_simplifier",
+        ":hlo_dce",
+        "//xla:literal",
+        "//xla:literal_util",
         "//xla:shape_util",
         "//xla:util",
         "//xla/hlo/ir:hlo",

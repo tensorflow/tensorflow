@@ -157,5 +157,45 @@ TEST_F(SortSimplifierTest, RemoveUnusedFirstOperand) {
   auto root = module->entry_computation()->root_instruction();
   EXPECT_THAT(root, GmockMatch(m::Sort(m::Parameter(1))));
 }
+
+TEST_F(SortSimplifierTest, RemoveConstantSortOperand) {
+  const char* hlo_string = R"(
+   HloModule permutation_sort
+
+   compare {
+     p.0.lhs = f32[] parameter(0)
+     p.0.rhs = f32[] parameter(1)
+     p.1.lhs = s32[] parameter(2)
+     p.1.rhs = s32[] parameter(3)
+     p.2.lhs = s32[] parameter(4)
+     p.2.rhs = s32[] parameter(5)
+     cond1 = pred[] compare(p.1.lhs, p.1.rhs), direction=NE
+     cond2 = pred[] compare(p.1.lhs, p.1.rhs), direction=LT
+     cond3 = pred[] compare(p.2.lhs, p.2.rhs), direction=LT
+     ROOT sel = pred[] select(cond1, cond2, cond3)
+   }
+
+   ENTRY sort_computation {
+     keys = f32[64,8732] parameter(0)
+     zero = s32[] constant(0)
+     zeros = s32[64,8732] broadcast(zero)
+     values = s32[64,8732] parameter(1)
+     sort = (f32[64,8732], s32[64,8732], s32[64,8732]) sort(keys, zeros, values),
+       dimensions={1}, to_apply=compare
+     gte.0 = f32[64,8732] get-tuple-element(sort), index=0
+     gte.1 = s32[64,8732] get-tuple-element(sort), index=1
+     gte.2 = s32[64,8732] get-tuple-element(sort), index=2
+     ROOT tuple = (f32[64,8732], s32[64,8732], s32[64,8732]) tuple(gte.0, gte.1, gte.2)
+   })";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  SortSimplifier simplifier;
+  EXPECT_TRUE(simplifier.Run(module.get()).value());
+  auto root = module->entry_computation()->root_instruction();
+  EXPECT_EQ(root->opcode(), HloOpcode::kTuple);
+  EXPECT_EQ(root->operand(1)->opcode(), HloOpcode::kBroadcast);
+}
+
 }  // namespace
 }  // namespace xla
