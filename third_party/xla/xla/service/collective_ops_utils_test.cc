@@ -689,6 +689,13 @@ std::vector<TestCaseForInstruction> GetTestCasesForInstruction() {
        CollectiveOpGroupMode::COLLECTIVE_OP_GROUP_MODE_CROSS_PARTITION},
       {HloOpcode::kCollectiveBroadcast, false, std::nullopt,
        CollectiveOpGroupMode::COLLECTIVE_OP_GROUP_MODE_CROSS_REPLICA},
+      {HloOpcode::kCollectiveReduce, true, true,
+       CollectiveOpGroupMode::COLLECTIVE_OP_GROUP_MODE_FLATTENED_ID},
+      {HloOpcode::kCollectiveReduce, true, false,
+       CollectiveOpGroupMode::
+           COLLECTIVE_OP_GROUP_MODE_CROSS_REPLICA_AND_PARTITION},
+      {HloOpcode::kCollectiveReduce, false, false,
+       CollectiveOpGroupMode::COLLECTIVE_OP_GROUP_MODE_CROSS_REPLICA},
       {HloOpcode::kCollectivePermute, true, std::nullopt,
        CollectiveOpGroupMode::COLLECTIVE_OP_GROUP_MODE_CROSS_PARTITION},
       {HloOpcode::kCollectivePermute, false, std::nullopt,
@@ -770,6 +777,19 @@ TEST_P(GetCollectOpGroupModeTestForInstruction, Test) {
               two_elements, {parameter}, {group}, /*constrain_layout=*/true,
               channel_id()));
       break;
+    case HloOpcode::kCollectiveReduce: {
+      ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloComputation> max_computation,
+                           CreateMaxComputation());
+      std::unique_ptr<CollectiveDeviceListBase> device_list =
+          std::make_unique<CollectiveDeviceList>(std::vector<ReplicaGroup>{});
+      collective =
+          builder.AddInstruction(HloInstruction::CreateCollectiveReduce(
+              two_elements, {parameter}, max_computation.get(),
+              std::move(device_list),
+              /*constrain_layout=*/true, channel_id(),
+              use_global_device_ids()));
+      break;
+    }
     case HloOpcode::kCollectivePermute:
       collective =
           builder.AddInstruction(HloInstruction::CreateCollectivePermute(

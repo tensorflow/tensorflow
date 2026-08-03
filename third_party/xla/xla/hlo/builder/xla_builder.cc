@@ -4244,6 +4244,41 @@ XlaOp XlaBuilder::AllReduceWithDeviceList(
                        /*async=*/false);
 }
 
+XlaOp XlaBuilder::CollectiveReduceWithDeviceList(
+    absl::Span<const XlaOp> operands, XlaComputationId computation,
+    const CollectiveDeviceListBase& replica_groups,
+    const std::optional<ChannelHandle>& channel_id,
+    std::optional<bool> use_global_device_ids, bool has_dynamic_root) {
+  return ReportErrorOrReturn([&]() -> absl::StatusOr<XlaOp> {
+    HloInstructionProto instr;
+    std::vector<const Shape*> operand_shapes;
+    operand_shapes.reserve(operands.size());
+    for (const XlaOp operand : operands) {
+      ABSL_ASSIGN_OR_RETURN(const Shape* operand_shape, GetShapePtr(operand));
+      operand_shapes.push_back(operand_shape);
+    }
+
+    ABSL_ASSIGN_OR_RETURN(Shape inferred_shape,
+                     ShapeInference::InferCollectiveReduceShape(
+                         operand_shapes, has_dynamic_root));
+    *instr.mutable_shape() = inferred_shape.ToProto();
+
+    PopulateDeviceList(&instr, replica_groups);
+    if (channel_id.has_value()) {
+      instr.set_channel_id(channel_id->handle());
+    }
+    if (use_global_device_ids.has_value()) {
+      instr.set_use_global_device_ids(*use_global_device_ids);
+    }
+    instr.set_has_dynamic_root(has_dynamic_root);
+
+    ABSL_RETURN_IF_ERROR(AddCalledComputation(computation, instr));
+
+    return AddInstruction(std::move(instr), HloOpcode::kCollectiveReduce,
+                          operands);
+  });
+}
+
 XlaOp XlaBuilder::ReduceScatter(
     XlaOp operand, XlaComputationId computation, int64_t scatter_dimension,
     int64_t shard_count, absl::Span<const ReplicaGroup> replica_groups,
@@ -7054,6 +7089,17 @@ XlaOp AllReduceTupleWithDeviceList(
   return AllReduceTupleWithDeviceList(
       operands, operands[0].builder()->AddSubComputation(computation),
       replica_groups, channel_id, shape_with_layout, use_global_device_ids);
+}
+
+XlaOp CollectiveReduceWithDeviceList(
+    absl::Span<const XlaOp> operands, XlaComputationId computation,
+    const CollectiveDeviceListBase& replica_groups,
+    const std::optional<ChannelHandle>& channel_id,
+    std::optional<bool> use_global_device_ids, bool has_dynamic_root) {
+  CHECK(!operands.empty());
+  return operands[0].builder()->CollectiveReduceWithDeviceList(
+      operands, computation, replica_groups, channel_id, use_global_device_ids,
+      has_dynamic_root);
 }
 
 XlaOp ReduceScatterWithDeviceList(
