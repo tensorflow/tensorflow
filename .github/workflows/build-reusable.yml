@@ -42,14 +42,12 @@ jobs:
     defaults:
       run:
         shell: bash
-    container: ${{ (contains(inputs.runner, 'linux-x86') && 'us-docker.pkg.dev/ml-oss-artifacts-published/ml-public-container/ml-build:latest') ||
-                   (contains(inputs.runner, 'linux-arm64') && 'us-docker.pkg.dev/ml-oss-artifacts-published/ml-public-container/ml-build-arm64:latest') ||
-                   (contains(inputs.runner, 'windows-x86') && null) }}
+    container: ${{ (contains(inputs.runner, 'linux-x86') && 'us-docker.pkg.dev/ml-oss-artifacts-published/ml-public-container/ml-build:latest') || (contains(inputs.runner, 'linux-arm64') && 'us-docker.pkg.dev/ml-oss-artifacts-published/ml-public-container/ml-build-arm64:latest') || (contains(inputs.runner, 'windows-x86') && null) }} # zizmor: ignore[unpinned-images]
     timeout-minutes: 300
     steps:
 
       - name: Checkout
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.0.0
+        uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4.1.7
         env:
           GIT_CONFIG_PARAMETERS: "'checkout.workers=12' 'core.featureManyFiles=true'"
         with:
