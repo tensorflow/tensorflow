@@ -259,8 +259,8 @@ function(OverridableFetchContent_Declare CONTENT_NAME)
     ${ARGN}
   )
   # Optionally override parsed arguments with values from variables in the form
-  # ${CONTENT_NAME}_${OVERRIDABLE_ARG}.
-  foreach(OVERRIDABLE_ARG in ${OVERRIDABLE_ARGS})
+  # OVERRIDABLE_FETCH_CONTENT_${CONTENT_NAME}_${OVERRIDABLE_ARG}.
+  foreach(OVERRIDABLE_ARG ${OVERRIDABLE_ARGS})
     set(OVERRIDE_VALUE
       ${OVERRIDABLE_FETCH_CONTENT_${CONTENT_NAME}_${OVERRIDABLE_ARG}}
     )
