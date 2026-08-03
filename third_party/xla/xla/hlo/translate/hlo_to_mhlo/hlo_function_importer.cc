@@ -85,8 +85,6 @@ limitations under the License.
 #include "xla/service/hlo.pb.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
-#include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 
@@ -1891,6 +1889,9 @@ absl::StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
       }
       return op.getOperation();
     }
+    // TODO(b/565684884): Add conversion when Shuffle is supported in StableHLO.
+    case HloOpcode::kShuffle:
+      return InvalidArgument("Shuffle is not supported in StableHLO.");
     case HloOpcode::kRng: {
       auto shape = mlir::stablehlo::ConstantOp::create(
           *func_builder, loc,
@@ -2141,8 +2142,8 @@ absl::StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
                                   &instruction->precision_config(), builder_)));
 
       // If the element types of the operands for convolution are different,
-      // insert a convert op to convert the operands to the common element type
-      // while preserving the values.
+      // insert a convert op to convert the operands to the common element
+      // type while preserving the values.
       auto lhs = operands[0];
       auto rhs = operands[1];
       auto lhs_element_type = instruction->operand(0)->shape().element_type();
@@ -2200,10 +2201,10 @@ absl::StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
     }
 
     case HloOpcode::kAdd: {
-      // HLO add ops on PRED elements are actually boolean or, but MHLO dialect
-      // AddOps on i1 are just addition with overflow; so, we have to implement
-      // the special behavior of HLO add ops on PRED here by creating an
-      // arith::OrIOp instead.
+      // HLO add ops on PRED elements are actually boolean or, but MHLO
+      // dialect AddOps on i1 are just addition with overflow; so, we have to
+      // implement the special behavior of HLO add ops on PRED here by
+      // creating an arith::OrIOp instead.
       if (instruction->shape().element_type() == PRED) {
         return mlir::stablehlo::OrOp::create(*func_builder, loc, result_type,
                                              operands, attributes)
@@ -2227,8 +2228,8 @@ absl::StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
     }
 
     case HloOpcode::kConvert: {
-      // Convert to boolean is special, it requires a comparison to 0 instead of
-      // a truncation to i1, otherwise it is a 1-1 translation.
+      // Convert to boolean is special, it requires a comparison to 0 instead
+      // of a truncation to i1, otherwise it is a 1-1 translation.
       auto ranked_type = mlir::dyn_cast<mlir::RankedTensorType>(result_type);
       mlir::IntegerType integer_type =
           (ranked_type)
@@ -2279,10 +2280,10 @@ absl::StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
           "kind", mlir::mhlo::DomainKindAttr::get(func_builder->getContext(),
                                                   *domain_kind)));
 
-      // In XLA, DomainMetadata is open-world, but in the proto, it is hardcoded
-      // to be ShardingMetadata. Thankfully, the only other implementation of
-      // DomainMetadata is OpName, which is generally used for debugging and
-      // never for compiling production models.
+      // In XLA, DomainMetadata is open-world, but in the proto, it is
+      // hardcoded to be ShardingMetadata. Thankfully, the only other
+      // implementation of DomainMetadata is OpName, which is generally used
+      // for debugging and never for compiling production models.
       //
       // Since this is hardcoded as such in the proto, we must follow suit.
       auto exit_metadata = ShardingMetadata::ToShardingMetadata(

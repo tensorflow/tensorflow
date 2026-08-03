@@ -28,78 +28,14 @@ namespace cpu {
 
 bool FusionWrapper::MustWrapInstruction(const HloInstruction& instruction) {
   const HloOpcode opcode = instruction.opcode();
+  if (opcode == HloOpcode::kScatter) {
+    return true;
+  }
+  if (IsElementalKernelOpcode(opcode)) {
+    return true;
+  }
+
   switch (opcode) {
-    case HloOpcode::kScatter:
-      return true;
-    case HloOpcode::kAbs:
-    case HloOpcode::kAcos:
-    case HloOpcode::kAcosh:
-    case HloOpcode::kAdd:
-    case HloOpcode::kAnd:
-    case HloOpcode::kAsin:
-    case HloOpcode::kAsinh:
-    case HloOpcode::kAtan2:
-    case HloOpcode::kAtanh:
-    case HloOpcode::kBitcastConvert:
-    case HloOpcode::kBroadcast:
-    case HloOpcode::kCbrt:
-    case HloOpcode::kCeil:
-    case HloOpcode::kClamp:
-    case HloOpcode::kClz:
-    case HloOpcode::kCompare:
-    case HloOpcode::kComplex:
-    case HloOpcode::kConvert:
-    case HloOpcode::kCos:
-    case HloOpcode::kCosh:
-    case HloOpcode::kDivide:
-    case HloOpcode::kDynamicSlice:
-    case HloOpcode::kDynamicUpdateSlice:
-    case HloOpcode::kTranspose:
-    case HloOpcode::kErf:
-    case HloOpcode::kExp:
-    case HloOpcode::kExpm1:
-    case HloOpcode::kFloor:
-    case HloOpcode::kGather:
-    case HloOpcode::kImag:
-    case HloOpcode::kIota:
-    case HloOpcode::kIsFinite:
-    case HloOpcode::kLog:
-    case HloOpcode::kLog1p:
-    case HloOpcode::kMap:
-    case HloOpcode::kMaximum:
-    case HloOpcode::kMinimum:
-    case HloOpcode::kMulhi:
-    case HloOpcode::kMultiply:
-    case HloOpcode::kNegate:
-    case HloOpcode::kNot:
-    case HloOpcode::kOr:
-    case HloOpcode::kPad:
-    case HloOpcode::kPopulationCount:
-    case HloOpcode::kPower:
-    case HloOpcode::kReal:
-    case HloOpcode::kReduce:
-    case HloOpcode::kReducePrecision:
-    case HloOpcode::kReduceWindow:
-    case HloOpcode::kRemainder:
-    case HloOpcode::kReshape:
-    case HloOpcode::kReverse:
-    case HloOpcode::kRoundNearestAfz:
-    case HloOpcode::kRoundNearestEven:
-    case HloOpcode::kRsqrt:
-    case HloOpcode::kSelect:
-    case HloOpcode::kShiftLeft:
-    case HloOpcode::kShiftRightArithmetic:
-    case HloOpcode::kShiftRightLogical:
-    case HloOpcode::kSign:
-    case HloOpcode::kSin:
-    case HloOpcode::kSinh:
-    case HloOpcode::kSlice:
-    case HloOpcode::kSqrt:
-    case HloOpcode::kSubtract:
-    case HloOpcode::kTan:
-    case HloOpcode::kTanh:
-    case HloOpcode::kXor:
-      return using_new_fusion_emitter_;
     case HloOpcode::kCopy:
       // If it is a simple copy with no change in layout then it is more
       // efficient to use the default copy thunk which will just be a simple

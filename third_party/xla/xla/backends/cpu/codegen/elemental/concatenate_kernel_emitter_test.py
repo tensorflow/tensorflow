@@ -54,7 +54,8 @@ class ConcatenateKernelRunnerTest(parameterized.TestCase):
         (np.random.rand(*shape) * 10).astype(dtype) for _ in range(num_inputs)
     ]
     if cycle_layout:
-      # Give the inputs different layouts to test the slow path.
+      # Give the inputs different layouts to test that mismatched layouts are
+      # rejected.
       default_layout = [0, 1, 2]
       input_literals = [
           create_literal(input_array, np.roll(default_layout, idx))
@@ -87,6 +88,14 @@ class ConcatenateKernelRunnerTest(parameterized.TestCase):
         buffer_assignment,
         jit_compiler.get_target_machine(),
     )
+
+    if cycle_layout:
+      with self.assertRaisesRegex(
+          RuntimeError,
+          "Concatenate is not supported by ConcatenateKernelEmitter",
+      ):
+        emitter.emit_kernel_definition()
+      return
 
     kernel_definition = emitter.emit_kernel_definition()
     self.assertIsNotNone(kernel_definition)

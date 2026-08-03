@@ -128,7 +128,7 @@ enum CustomCallApiVersion {
 }
 
 // Serialization of HloInstruction.
-// Next ID: 103
+// Next ID: 104
 message HloInstructionProto {
   reserved 10;
   reserved "parameter_name";
@@ -442,6 +442,9 @@ message HloInstructionProto {
 
   // Comparison order (TOTAL, PARTIAL).
   string comparison_order = 102;
+
+  // The mode of a kShuffle and the attributes of that mode.
+  xla.ShuffleMode shuffle_mode = 103;
 }
 
 // Serialization of HloComputation.
