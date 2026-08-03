@@ -483,6 +483,17 @@ GpuExecutable::GpuExecutable(
       buffer_assignment_proto_(std::move(buffer_assignment_proto)),
       thunk_pass_allocations_(std::move(thunk_pass_allocations)),
       alias_info_(std::move(alias_info)),
+      module_annotations_([&] {
+        const DebugOptions& annotation_options =
+            has_module() ? module_config().debug_options() : debug_options;
+        const TraceAnnotationLevel annotation_level =
+            static_cast<TraceAnnotationLevel>(
+                annotation_options.xla_gpu_trace_annotation_level());
+        if (has_module()) {
+          return ModuleAnnotations(module(), annotation_level);
+        }
+        return ModuleAnnotations(module_name_, annotation_level);
+      }()),
       debug_buffer_assignment_show_max_(
           debug_options.xla_debug_buffer_assignment_show_max()),
       constants_(std::move(constants)),

@@ -1303,6 +1303,12 @@ message DebugOptions {
   // Threshold to enable windowed einsum (collective matmul) in MB.
   optional int64 xla_gpu_threshold_for_windowed_einsum_mib = 265;
 
+  // GPU trace annotation detail level. Level 0 emits compact instruction names
+  // and basic structured payloads. Level 1 additionally emits detailed HLO and
+  // collective metadata in XProf annotation names and structured payloads. NVTX
+  // names remain compact.
+  optional int32 xla_gpu_trace_annotation_level = 528;
+
   // Creates triton fusion for all supported gemms.
   // To make sure only triton gemm is chosen by the autotuner run with
   // `xla_gpu_cublas_fallback` set to false.
