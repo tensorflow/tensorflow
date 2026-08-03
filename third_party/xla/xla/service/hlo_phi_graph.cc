@@ -17,6 +17,8 @@ limitations under the License.
 
 #include <queue>
 
+#include "absl/algorithm/container.h"
+
 namespace xla {
 HloValue::Id PhiGraph::GetOptimizedId(const HloValue& value) {
   Node* node = value_id_to_node_[value.id()];
@@ -66,6 +68,10 @@ PhiGraph::Node* PhiGraph::CreateOrReuseNode(const HloValue& value) {
 }
 
 void PhiGraph::ReplaceNodeWith(PhiGraph::Node* node, PhiGraph::Node* replace) {
+  if (node == replace) {
+    return;
+  }
+
   // Update users.
   CHECK(node->is_phi);
   if (node->mark_as_dead) {
@@ -81,6 +87,7 @@ void PhiGraph::ReplaceNodeWith(PhiGraph::Node* node, PhiGraph::Node* replace) {
   CHECK(!replace->mark_as_dead);
   for (Node* user : node->users) {
     absl::c_replace(user->operands, node, replace);
+    replace->users.push_back(user);
   }
 
   // Update operand's users
