@@ -17,6 +17,7 @@ limitations under the License.
 #include <utility>
 
 #include <gtest/gtest.h>
+#include "absl/log/globals.h"
 #include "absl/status/status_matchers.h"
 #include "xla/backends/gpu/tests/gpu_pjrt_codegen_test.h"
 #include "xla/comparison_util.h"
@@ -82,7 +83,9 @@ TEST_F(GpuIndexTest, CompatibleUseLinearIndexWithReshape) {
 }
 
 TEST_F(GpuIndexTest, CompatibleUseLinearIndexWithReshapeAndBroadcast) {
-  std::unique_ptr<HloModule> module = ParseAndReturnVerifiedModule(R"(
+  absl::SetVLogLevel("amdgpu_backend", 10);
+  for (int i = 0; i < 2; ++i) {
+    std::unique_ptr<HloModule> module = ParseAndReturnVerifiedModule(R"(
     HloModule test_module
 
     ENTRY CompatibleUseLinearIndexWithReshape {
@@ -92,21 +95,22 @@ TEST_F(GpuIndexTest, CompatibleUseLinearIndexWithReshapeAndBroadcast) {
       broadcast = f32[5,7,2]{2,1,0} broadcast(reshape), dimensions={1,2}
       ROOT gte = pred[5,7,2]{2,1,0} compare(x, broadcast), direction=GE
     })")
-                                          .value();
+                                            .value();
 
-  // Check the optimized IR reuses the linear index by calculating modulo 14.
+    // Check the optimized IR reuses the linear index by calculating modulo 14.
 
-  // In the IR generated for AMDGPUs, we do not seem to have the
-  // the addrspace(1) attribute for the lines being checked by the following
-  // patterns.
-  // need to investigate why that is the case, and whether or not it is ok
-  EXPECT_OK(CompileAndVerifyIr(std::move(module),
-                               R"(
+    // In the IR generated for AMDGPUs, we do not seem to have the
+    // the addrspace(1) attribute for the lines being checked by the following
+    // patterns.
+    // need to investigate why that is the case, and whether or not it is ok
+    EXPECT_OK(CompileAndVerifyIr(std::move(module),
+                                 R"(
 ; CHECK: %[[urem1:.*]] = urem i{{[0-9]*}} %[[linear_index:.*]], 14
 ; CHECK: %[[idx1:.*]] = zext nneg i{{[0-9]*}} %[[urem1]] to i64
 ; CHECK: getelementptr inbounds{{( nuw)?}} [4 x i8], ptr{{( addrspace\(1\))?}} %[[alloc:.*]], i64 %[[idx1]]
       )",
-                               /*match_optimized_ir=*/true));
+                                 /*match_optimized_ir=*/true));
+  }
 }
 
 TEST_F(GpuIndexTest, CompatibleUseLinearIndexWithSizeOneDimensions) {
