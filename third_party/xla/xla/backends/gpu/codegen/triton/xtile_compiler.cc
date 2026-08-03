@@ -696,6 +696,8 @@ absl::Status LowerXTileToTriton(
     pm.addPass(xtile::createStablehloLowerToArithPass());
     pm.addPass(xtile::createStablehloLowerToXtilePass());
     pm.addPass(mlir::triton::xla::createArithFP8ConversionToTritonPass());
+    pm.addPass(xtile::createLegalizeUnsignedIntegersAsSignlessPass());
+    pm.addPass(mlir::createCanonicalizerPass());
     mlir::triton::xla::StableHLOLowerToTritonPassOptions stablehlo_options;
     stablehlo_options.warp_specialization_allowed_ =
         block_level_parameters.is_warp_specialization_allowed;

@@ -122,6 +122,7 @@ xla_cc_test(
     srcs = ["fusion_emitter_deviceless_test.cc"],
     tags = ["no_oss"],  # Doesn't pass in OSS when building with the `fusion_emitter_stub`.
     deps = [
+        "//xla:comparison_util",
         "//xla:xla_proto_cc",
         "//xla/backends/gpu/codegen/triton:triton_kernel_source",
         "//xla/backends/gpu/codegen/triton:xtile_compiler",
@@ -140,6 +141,7 @@ xla_cc_test(
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_matchers",
+        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest",
         "@llvm-project//llvm:TargetParser",

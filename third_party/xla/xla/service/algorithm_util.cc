@@ -159,7 +159,9 @@ absl::StatusOr<PrimitiveType> GetDefaultGemmAlgorithmAccumulatorType(
     return F32;
   }
 
-  if (lhs_type == S8 && rhs_type == S8 && output_type == S32) {
+  if ((lhs_type == S8 || lhs_type == U8) &&
+      (rhs_type == S8 || rhs_type == U8) &&
+      (output_type == S32 || output_type == U32)) {
     return S32;
   }
 
