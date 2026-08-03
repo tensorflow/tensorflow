@@ -836,8 +836,9 @@ inline BufferPattern<> Buffer() { return {}; }
 template <typename BufferType, typename DTypes, typename Ranks>
 Error Verify(std::string_view name, BufferType buffer,
              const match::BufferPattern<DTypes, Ranks>& pattern) {
-  if (auto error = internal::MatchBuffer(name, buffer, pattern)) {
-    return Error::InvalidArgument(std::move(*error));
+  DiagnosticEngine diagnostic;
+  if (!internal::MatchBuffer(name, buffer, pattern, diagnostic)) {
+    return Error::InvalidArgument(diagnostic.Result());
   }
   return Error::Success();
 }
@@ -849,8 +850,8 @@ ErrorOr<Buffer<dtype, rank>> Match(
     std::string_view name, AnyBuffer buffer,
     const match::BufferPattern<match::DTypeSet<DataType, dtype>,
                                match::RankSet<rank>>& pattern) {
-  if (auto error = internal::MatchBuffer(name, buffer, pattern)) {
-    return Unexpected(Error::InvalidArgument(std::move(*error)));
+  if (Error error = Verify(name, buffer, pattern); error.failure()) {
+    return Unexpected(std::move(error));
   }
   return match::internal::BufferCast::Cast<Buffer<dtype, rank>>(buffer);
 }
