@@ -593,6 +593,59 @@ TEST_F(GpuCompilerTest, CollectivePipeliningModes) {
   }
 }
 
+TEST_F(GpuCompilerTest, GroupCollectivesByKey) {
+  const absl::string_view hlo_string = R"(
+    HloModule group_collectives
+
+    add {
+      a = f32[] parameter(0)
+      b = f32[] parameter(1)
+      ROOT sum = f32[] add(a, b)
+    }
+
+    ENTRY main {
+      p0 = f32[8,8] parameter(0)
+      p1 = f32[32,8] parameter(1)
+      ag = f32[32,8] all-gather(p0), dimensions={0},
+          replica_groups={{0,1,2,3}},
+          frontend_attributes={collective_group_key="g0"}
+      rs = f32[8,8] reduce-scatter(p1), dimensions={0},
+          replica_groups={{0,1,2,3}}, to_apply=add,
+          frontend_attributes={collective_group_key="g0"}
+      ROOT result = (f32[32,8], f32[8,8]) tuple(ag, rs)
+    }
+  )";
+
+  HloModuleConfig config = GetModuleConfigForTest(/*replica_count=*/4);
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string, config));
+
+  // Run only the HLO optimization passes (no executable). This avoids
+  // requiring `replica_count` physical devices, which a real executable build
+  // would demand.
+  Compiler::CompileOptions compile_options;
+  compile_options.gpu_topology =
+      GetSingleDeviceGpuTopology(/*platform_version=*/"", gpu_target_config());
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<HloModule> optimized_module,
+      compiler()->RunHloPasses(std::move(module), /*executor=*/nullptr,
+                               compile_options));
+
+  // The all-gather and reduce-scatter must land in one shared group computation
+  // (proving they were grouped as a unit, not converted to async individually).
+  constexpr absl::string_view kExpected = R"(
+    // CHECK: %[[GROUP:collectives_group[a-zA-Z0-9_.-]*]] ({{.*}}) -> {{.*}} {
+    // CHECK-DAG: all-gather(
+    // CHECK-DAG: reduce-scatter(
+    // CHECK: async-start(
+    // CHECK-SAME: calls=%[[GROUP]]
+    // CHECK-SAME: _collectives_group
+  )";
+
+  EXPECT_THAT(RunFileCheck(optimized_module->ToString(), kExpected),
+              absl_testing::IsOkAndHolds(true));
+}
+
 TEST_F(GpuCompilerTest, RemovesUnnecessaryCopyAfterScheduling) {
   const absl::string_view hlo_string = R"(
 HloModule all_gather_overlapping

@@ -119,6 +119,7 @@ limitations under the License.
 #include "xla/backends/gpu/transforms/gemm_fusion_swap_operands.h"
 #include "xla/backends/gpu/transforms/gemm_rewriter.h"
 #include "xla/backends/gpu/transforms/gpu_copy_async_wrapper.h"
+#include "xla/backends/gpu/transforms/group_collectives_by_key.h"
 #include "xla/backends/gpu/transforms/hoist_fused_bitcasts.h"
 #include "xla/backends/gpu/transforms/layout_assignment.h"
 #include "xla/backends/gpu/transforms/move_copy_to_users.h"
@@ -1531,6 +1532,11 @@ absl::Status RunPostFusionPasses(
                               alias_info, pointer_size, options, gpu_topology,
                               mlir_context);
 
+  // Form async collective groups from collectives sharing a
+  // `collective_group_key` frontend attribute; runs after the combiner so
+  // combined collectives are grouped as a unit.
+  pipeline.AddPass<GroupCollectivesByKey>();
+
   pipeline.AddPass<AllReduceContiguous>();
 
   int32_t blueconnect_num_devices_per_host =
@@ -1574,7 +1580,11 @@ absl::Status RunPostFusionSimplificationPasses(
           .xla_gpu_experimental_stream_annotation()) {
     pipeline.AddPass<ExplicitStreamAnnotationAsyncWrapper>();
   }
+
+  // Rewrite any remaining hand-written `_collectives_group` calls into async
+  // pairs, these are non-inlineable calls in the original HLO module.
   pipeline.AddPass<ExplicitCollectivesGroupAsyncWrapper>();
+
   return pipeline.Run(hlo_module, {HloInstruction::kMainExecutionThread})
       .status();
 }

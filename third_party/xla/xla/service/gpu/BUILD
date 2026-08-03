@@ -1824,6 +1824,7 @@ cc_library(
         "//xla/backends/gpu/transforms:gemm_fusion_swap_operands",
         "//xla/backends/gpu/transforms:gemm_rewriter",
         "//xla/backends/gpu/transforms:gpu_copy_async_wrapper",
+        "//xla/backends/gpu/transforms:group_collectives_by_key",
         "//xla/backends/gpu/transforms:hoist_fused_bitcasts",
         "//xla/backends/gpu/transforms:layout_assignment",
         "//xla/backends/gpu/transforms:move_copy_to_users",
