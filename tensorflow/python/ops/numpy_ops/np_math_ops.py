@@ -326,8 +326,19 @@ def cross(a, b, axisa=-1, axisb=-1, axisc=-1, axis=None):  # pylint: disable=mis
 
     a = maybe_move_axis_to_last(a, axis_a)
     b = maybe_move_axis_to_last(b, axis_b)
-    a_dim = np_utils.getitem(array_ops.shape(a), -1)
-    b_dim = np_utils.getitem(array_ops.shape(b), -1)
+
+    def size_of_last_dim(a):
+      # Prefer the statically-known dimension so that the padding and output
+      # selection below resolve at trace time; a dynamic size turns them into
+      # tf.cond branches whose output shapes XLA cannot infer.
+      if a.shape.rank is not None:
+        static_size = a.shape.dims[-1].value
+        if static_size is not None:
+          return static_size
+      return np_utils.getitem(array_ops.shape(a), -1)
+
+    a_dim = size_of_last_dim(a)
+    b_dim = size_of_last_dim(b)
 
     def maybe_pad_0(a, size_of_last_dim):
       def pad_0(a):
