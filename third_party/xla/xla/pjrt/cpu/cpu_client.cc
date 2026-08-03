@@ -681,17 +681,6 @@ PjRtCpuClient::LoadSerializedExecutableInternal(
 
   // Propagate env_option_overrides-> debug_options
   RETURN_IF_ERROR(compile_options.ApplyAllOptionOverrides());
-  // Override the debug_options() embedded in the module with those
-  // explicitly passed in when deserializing. This allows options such as
-  // --xla_dump_to to be changed.
-  if (executable->has_module()) {
-    ExecutableBuildOptions& build_options =
-        compile_options.executable_build_options;
-    DumpHloModuleIfEnabled(executable->module(), kAfterOptimizationsDumpName,
-                           build_options.has_debug_options()
-                               ? &build_options.debug_options()
-                               : nullptr);
-  }
 
   auto cpu_executable = std::make_shared<PjRtCpuExecutable>(
       num_replicas, num_partitions,
