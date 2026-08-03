@@ -23,9 +23,14 @@ limitations under the License.
 #include "llvm/IR/Value.h"
 #include "xla/backends/cpu/codegen/target_machine_features.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 
 namespace xla {
 namespace cpu {
+
+// Returns true if the opcode is implemented primarily via an elemental kernel
+// loop.
+bool IsElementalKernelOpcode(HloOpcode opcode);
 
 bool PotentiallyImplementedAsEigenConvolution(
     const HloInstruction& convolution,

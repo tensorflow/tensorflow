@@ -19,6 +19,7 @@ limitations under the License.
 
 #include "absl/log/check.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/layout_util.h"
 #include "xla/service/cpu/cpu_runtime.h"
 #include "xla/shape_util.h"
@@ -27,6 +28,82 @@ limitations under the License.
 
 namespace xla {
 namespace cpu {
+
+bool IsElementalKernelOpcode(HloOpcode opcode) {
+  switch (opcode) {
+    case HloOpcode::kAbs:
+    case HloOpcode::kAcos:
+    case HloOpcode::kAcosh:
+    case HloOpcode::kAdd:
+    case HloOpcode::kAnd:
+    case HloOpcode::kAsin:
+    case HloOpcode::kAsinh:
+    case HloOpcode::kAtan2:
+    case HloOpcode::kAtanh:
+    case HloOpcode::kBitcastConvert:
+    case HloOpcode::kBroadcast:
+    case HloOpcode::kCbrt:
+    case HloOpcode::kCeil:
+    case HloOpcode::kClamp:
+    case HloOpcode::kClz:
+    case HloOpcode::kCompare:
+    case HloOpcode::kComplex:
+    case HloOpcode::kConvert:
+    case HloOpcode::kCos:
+    case HloOpcode::kCosh:
+    case HloOpcode::kDivide:
+    case HloOpcode::kDynamicSlice:
+    case HloOpcode::kDynamicUpdateSlice:
+    case HloOpcode::kErf:
+    case HloOpcode::kExp:
+    case HloOpcode::kExpm1:
+    case HloOpcode::kFloor:
+    case HloOpcode::kGather:
+    case HloOpcode::kImag:
+    case HloOpcode::kIota:
+    case HloOpcode::kIsFinite:
+    case HloOpcode::kLog:
+    case HloOpcode::kLog1p:
+    case HloOpcode::kMap:
+    case HloOpcode::kMaximum:
+    case HloOpcode::kMinimum:
+    case HloOpcode::kMulhi:
+    case HloOpcode::kMultiply:
+    case HloOpcode::kNegate:
+    case HloOpcode::kNot:
+    case HloOpcode::kOr:
+    case HloOpcode::kPad:
+    case HloOpcode::kPopulationCount:
+    case HloOpcode::kPower:
+    case HloOpcode::kReal:
+    case HloOpcode::kReduce:
+    case HloOpcode::kReducePrecision:
+    case HloOpcode::kReduceWindow:
+    case HloOpcode::kRemainder:
+    case HloOpcode::kReshape:
+    case HloOpcode::kReverse:
+    case HloOpcode::kRoundNearestAfz:
+    case HloOpcode::kRoundNearestEven:
+    case HloOpcode::kRsqrt:
+    case HloOpcode::kSelect:
+    case HloOpcode::kShiftLeft:
+    case HloOpcode::kShiftRightArithmetic:
+    case HloOpcode::kShiftRightLogical:
+    case HloOpcode::kSign:
+    case HloOpcode::kSin:
+    case HloOpcode::kSinh:
+    case HloOpcode::kSlice:
+    case HloOpcode::kSqrt:
+    case HloOpcode::kSubtract:
+    case HloOpcode::kTan:
+    case HloOpcode::kTanh:
+    case HloOpcode::kTranspose:
+    case HloOpcode::kXor:
+      return true;
+    default:
+      return false;
+  }
+}
 
 int64_t GetMinimumAlignmentForArray(
     const Shape& shape, const TargetMachineFeatures& target_machine_features) {

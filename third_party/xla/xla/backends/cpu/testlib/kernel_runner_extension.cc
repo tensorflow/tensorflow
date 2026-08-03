@@ -270,16 +270,17 @@ NB_MODULE(_extension, kernel_runner_module) {
 
   kernel_runner_module.def(
       "run_fusion_wrapper_pass",
-      [](std::unique_ptr<HloModule, nb::deleter<HloModule>> hlo_module) {
-        FusionWrapper fusion_wrapper(/*using_new_fusion_emitter=*/true,
-                                     /*use_tiled_emitter=*/true);
+      [](std::unique_ptr<HloModule, nb::deleter<HloModule>> hlo_module,
+         const TargetMachineFeatures* target_machine_features) {
+        FusionWrapper fusion_wrapper(target_machine_features);
         absl::StatusOr<bool> result = fusion_wrapper.Run(hlo_module.get());
         if (!result.ok()) {
           throw std::runtime_error(std::string(result.status().message()));
         }
 
         return hlo_module->Clone();
-      });
+      },
+      nb::arg("hlo_module"), nb::arg("target_machine_features") = nullptr);
 }
 
 }  // namespace xla::cpu

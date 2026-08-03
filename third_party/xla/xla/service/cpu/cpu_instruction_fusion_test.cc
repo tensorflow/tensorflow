@@ -35,7 +35,6 @@ limitations under the License.
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/utils/hlo_matchers.h"
 #include "xla/literal_util.h"
-#include "xla/service/cpu/cpu_options.h"
 #include "xla/service/transpose_folding.h"
 #include "xla/shape.h"
 #include "xla/tests/test_utils.h"
@@ -592,9 +591,7 @@ TEST_F(OpcodeFusionTest, DynamicSliceWithDynamicUpdateSlice) {
 TEST_F(OpcodeFusionTest, MessOfFusibleNodes) {
   auto module = CreateNewVerifiedModule();
 
-  if (options::UseExperimentalLoopFusion(module->config())) {
-    GTEST_SKIP() << "New fusion emitter does not support DUS yet.";
-  }
+  GTEST_SKIP() << "New fusion emitter does not support DUS yet.";
 
   HloComputation::Builder builder(TestName());
 

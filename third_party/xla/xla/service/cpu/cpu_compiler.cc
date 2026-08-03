@@ -1087,11 +1087,7 @@ absl::Status CpuCompiler::RunHloPassesAfterLayoutAssn(
       &alias_info,
       /*may_duplicate=*/!use_multi_output_fusion);
 
-  bool use_experimental_loop_fusion =
-      options::UseExperimentalLoopFusion(module->config());
-  bool use_tiled_emitter = options::EnableTiledEmitter(module->config());
-  pipeline.AddPass<FusionWrapper>(use_experimental_loop_fusion,
-                                  use_tiled_emitter, target_machine_features);
+  pipeline.AddPass<FusionWrapper>(target_machine_features);
 
   if (use_multi_output_fusion) {
     pipeline.AddPass<CpuMultiOutputFusion>(&alias_info);

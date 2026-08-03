@@ -850,8 +850,7 @@ bool FusionRoutesToMlirEmitter(const HloModuleConfig& config,
   if (fusion->fused_expression_root()->opcode() == HloOpcode::kScatter) {
     return true;
   }
-  return options::UseExperimentalLoopFusion(config) &&
-         fusion->fusion_kind() == HloFusionInstruction::FusionKind::kLoop;
+  return fusion->fusion_kind() == HloFusionInstruction::FusionKind::kLoop;
 }
 
 absl::StatusOr<ThunkSequence> ThunkEmitter::EmitReductionKernelThunk(
