@@ -40,8 +40,6 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
 #include "xla/tools/hlo_decomposer.h"
-#include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 
@@ -114,14 +112,10 @@ FissionBackend::GetSupportedConfigs(const HloInstruction& instr) {
 
 absl::StatusOr<std::unique_ptr<BackendConfig>> FissionBackend::GetDefaultConfig(
     const HloInstruction& instr) {
-  if (!IsSupported(instr)) {
-    return absl::InvalidArgumentError("Not a fusion instruction.");
-  }
-  ASSIGN_OR_RETURN(std::unique_ptr<HloModule> hlo_module,
-                   GetFissionedAndRewrittenModule(instr));
-  ASSIGN_OR_RETURN(std::vector<HloInstruction*> supported_instrs,
-                   FindSupportedInstructions(hlo_module.get()));
-  return codegen_backend_->GetDefaultConfig(*supported_instrs[0]);
+  // Even if the underlying backend supports default config, it may not work
+  // for fission.
+  return absl::UnimplementedError(
+      "FissionBackend does not support a default config.");
 }
 
 absl::Status FissionBackend::RunPriorityFusion(HloModule* module) {

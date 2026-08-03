@@ -265,15 +265,8 @@ TritonBackend::GetOverriddenConfigs(const HloInstruction* instr) {
 
 absl::StatusOr<std::unique_ptr<BackendConfig>> TritonBackend::GetDefaultConfig(
     const HloInstruction& instr) {
-  ASSIGN_OR_RETURN(std::vector<std::unique_ptr<BackendConfig>> configs,
-                   GetSupportedConfigs(instr));
-
-  if (configs.empty()) {
-    return absl::InvalidArgumentError(
-        absl::StrCat("TritonBackend has no supported configs for '",
-                     instr.name(), "' instruction"));
-  }
-  return std::move(configs[0]);
+  return absl::UnimplementedError(
+      "TritonBackend does not support a default config.");
 }
 
 absl::Status TritonBackend::ApplyConfig(HloInstruction& instr,
