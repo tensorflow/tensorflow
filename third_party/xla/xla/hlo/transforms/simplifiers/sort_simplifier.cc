@@ -32,6 +32,10 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/transforms/simplifiers/algebraic_simplifier.h"
+#include "xla/hlo/transforms/simplifiers/hlo_dce.h"
+#include "xla/literal.h"
+#include "xla/literal_util.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/util.h"
@@ -147,6 +151,121 @@ absl::StatusOr<bool> RemoveUnusedOperandFromSort(HloInstruction* sort) {
   }
   return true;
 }
+
+bool IsConstantOperand(const HloInstruction* operand) {
+  if (operand->IsConstant()) {
+    return operand->literal().IsAllFirst();
+  }
+  if (operand->opcode() == HloOpcode::kBroadcast &&
+      operand->operand(0)->IsConstant()) {
+    return operand->operand(0)->literal().IsAllFirst();
+  }
+  return false;
+}
+
+Literal GetConstantScalarLiteral(const HloInstruction* operand) {
+  if (operand->IsConstant()) {
+    return LiteralUtil::GetFirstScalarLiteral(operand->literal());
+  }
+  CHECK_EQ(operand->opcode(), HloOpcode::kBroadcast);
+  return LiteralUtil::GetFirstScalarLiteral(operand->operand(0)->literal());
+}
+
+absl::StatusOr<bool> RemoveConstantOperandFromSort(
+    HloInstruction* sort,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
+  if (sort->operand_count() <= 1) {
+    return false;
+  }
+  HloComputation* computation = sort->parent();
+  if (computation->root_instruction() == sort) {
+    return false;
+  }
+  for (const HloInstruction* user : sort->users()) {
+    if (user->opcode() != HloOpcode::kGetTupleElement) {
+      return false;
+    }
+  }
+
+  absl::flat_hash_set<int64_t> constant_indices;
+  for (int64_t i = 0; i < sort->operand_count(); ++i) {
+    if (IsConstantOperand(sort->operand(i))) {
+      constant_indices.insert(i);
+    }
+  }
+  if (constant_indices.size() == sort->operand_count()) {
+    constant_indices.erase(0);
+  }
+  if (constant_indices.empty()) {
+    return false;
+  }
+
+  std::vector<HloInstruction*> operands;
+  std::vector<const Shape*> new_shapes;
+  for (int64_t i = 0; i < sort->operand_count(); ++i) {
+    if (!constant_indices.contains(i)) {
+      operands.push_back(sort->mutable_operand(i));
+      new_shapes.push_back(&sort->operand(i)->shape());
+    }
+  }
+
+  Shape new_sort_shape = new_shapes.size() == 1
+                             ? *new_shapes[0]
+                             : ShapeUtil::MakeTupleShapeWithPtrs(new_shapes);
+  HloInstruction* new_sort = computation->AddInstruction(
+      sort->CloneWithNewOperands(new_sort_shape, operands));
+
+  auto comparator = sort->to_apply();
+  HloModule* module = sort->GetModule();
+  HloComputation* new_compare =
+      module->AddEmbeddedComputation(comparator->Clone());
+  std::vector<int64_t> const_indices_desc(constant_indices.begin(),
+                                          constant_indices.end());
+  absl::c_sort(const_indices_desc, std::greater<int64_t>());
+  for (int64_t i : const_indices_desc) {
+    Literal scalar_literal = GetConstantScalarLiteral(sort->operand(i));
+    HloInstruction* constant = new_compare->AddInstruction(
+        HloInstruction::CreateConstant(scalar_literal.Clone()));
+    RETURN_IF_ERROR(
+        new_compare->parameter_instruction(i * 2 + 1)->ReplaceAllUsesWith(
+            constant));
+    RETURN_IF_ERROR(
+        new_compare->parameter_instruction(i * 2)->ReplaceAllUsesWith(
+            constant));
+    RETURN_IF_ERROR(new_compare->RemoveParameter(i * 2 + 1));
+    RETURN_IF_ERROR(new_compare->RemoveParameter(i * 2));
+  }
+  new_sort->set_to_apply(new_compare);
+
+  absl::flat_hash_map<int64_t, HloInstruction*> result_map;
+  int64_t new_index = 0;
+  for (int64_t i = 0; i < sort->operand_count(); ++i) {
+    if (!constant_indices.contains(i)) {
+      if (new_sort->shape().IsTuple()) {
+        result_map[i] =
+            computation->AddInstruction(HloInstruction::CreateGetTupleElement(
+                *new_shapes[new_index], new_sort, new_index));
+      } else {
+        result_map[i] = new_sort;
+      }
+      ++new_index;
+    } else {
+      result_map[i] = sort->mutable_operand(i);
+    }
+  }
+
+  std::vector<HloInstruction*> users(sort->users().begin(),
+                                     sort->users().end());
+  for (HloInstruction* user : users) {
+    RETURN_IF_ERROR(
+        user->ReplaceAllUsesWith(result_map.at(user->tuple_index())));
+    RETURN_IF_ERROR(computation->RemoveInstruction(user));
+  }
+  RETURN_IF_ERROR(computation->RemoveInstructionAndUnusedOperands(sort));
+
+  return true;
+}
+
 }  // namespace
 
 absl::StatusOr<bool> SortSimplifier::RunImpl(
@@ -156,18 +275,37 @@ absl::StatusOr<bool> SortSimplifier::RunImpl(
   XLA_VLOG_LINES(2, module->ToString());
 
   bool changed = false;
-  std::vector<HloInstruction*> sort_instrs;
-  for (auto* comp : module->MakeNonfusionComputations(execution_threads)) {
-    absl::c_copy_if(comp->instructions(), std::back_inserter(sort_instrs),
-                    HloPredicateIsOp<HloOpcode::kSort>);
-  }
-
-  for (HloInstruction* sort_instr : sort_instrs) {
-    ASSIGN_OR_RETURN(bool result, RemoveUnusedOperandFromSort(sort_instr));
-    changed |= result;
+  bool changed_in_iteration = true;
+  while (changed_in_iteration) {
+    changed_in_iteration = false;
+    std::vector<HloInstruction*> sort_instrs;
+    for (auto* comp : module->MakeNonfusionComputations(execution_threads)) {
+      absl::c_copy_if(comp->instructions(), std::back_inserter(sort_instrs),
+                      HloPredicateIsOp<HloOpcode::kSort>);
+    }
+    for (HloInstruction* sort_instr : sort_instrs) {
+      ASSIGN_OR_RETURN(bool const_result, RemoveConstantOperandFromSort(
+                                              sort_instr, execution_threads));
+      if (const_result) {
+        changed_in_iteration = true;
+        break;
+      }
+      ASSIGN_OR_RETURN(bool unused_result,
+                       RemoveUnusedOperandFromSort(sort_instr));
+      if (unused_result) {
+        changed_in_iteration = true;
+        break;
+      }
+    }
+    changed |= changed_in_iteration;
   }
 
   if (changed) {
+    AlgebraicSimplifierOptions options;
+    AlgebraicSimplifier alg_simp(options);
+    RETURN_IF_ERROR(alg_simp.Run(module, execution_threads).status());
+    HloDCE dce;
+    RETURN_IF_ERROR(dce.Run(module, execution_threads).status());
     VLOG(2) << "HLO module after SortSimplifier:";
     XLA_VLOG_LINES(2, module->ToString());
   } else {

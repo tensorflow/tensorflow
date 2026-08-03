@@ -154,9 +154,8 @@ static bool IsNanSafeGt(HloComputation* comp) {
       };
 
   auto match_s32 = [](int64_t parameter_number) {
-    auto param = m::Parameter(parameter_number)
-                     .WithShape(m::Shape().WithElementType(S32));
-    return param;
+    return m::Parameter(parameter_number)
+        .WithShape(m::Shape().WithElementType(S32));
   };
 
   auto match_compare = [](PrimitiveType type) {
@@ -181,7 +180,7 @@ static bool IsNanSafeGt(HloComputation* comp) {
 
   auto match_all_types = [](HloInstruction* root, auto callback) {
     bool result = false;
-    for (auto type : {BF16, F32, S32, U32}) {
+    for (auto type : {BF16, F32, S32, U32, S64, U64}) {
       result = result || Match(root, callback(type));
     }
     return result;
@@ -212,15 +211,38 @@ static bool IsNanSafeGt(HloComputation* comp) {
 }
 
 // Look for the instructions emitted from: xla/client/lib/sorting.cc
-static bool HasIota(HloSortInstruction* sort, HloInstruction* data) {
+// Note: Backends using TopkRewriter should ensure via their profitability
+// callback (is_profitable_to_convert_) that complex Reshape/Broadcast
+// combinations matched here are profitable and compatible with their TopK
+// custom call input layout requirements.
+static bool IsIota(HloInstruction* operand, int64_t sort_dim) {
+  if (operand->shape().element_type() != S32 &&
+      operand->shape().element_type() != U32) {
+    return false;
+  }
   namespace m = match;
   const std::array<int64_t, 1> sort_dims = {
-      data->shape().dimensions(sort->sort_dimension())};
+      operand->shape().dimensions(sort_dim)};
   auto match_iota = [](auto dims) {
-    return m::Iota().WithShape(m::Shape().WithElementType(S32).WithDims(dims));
+    return m::Iota().WithShape(m::Shape().WithDims(dims));
   };
-  return Match(sort->operand(1), match_iota(data->shape().dimensions())) ||
-         Match(sort->operand(1), m::Broadcast(match_iota(sort_dims)));
+  return Match(operand, match_iota(operand->shape().dimensions())) ||
+         Match(operand, m::Broadcast(match_iota(sort_dims))) ||
+         Match(operand, m::Reshape(match_iota(sort_dims))) ||
+         Match(operand, m::Broadcast(m::Reshape(match_iota(sort_dims)))) ||
+         Match(operand, m::Reshape(m::Broadcast(match_iota(sort_dims))));
+}
+
+static bool HasIota(HloSortInstruction* sort) {
+  if (sort->operand_count() == 2) {
+    return IsIota(sort->mutable_operand(1), sort->sort_dimension());
+  }
+  if (sort->operand_count() == 1 &&
+      (sort->operand(0)->shape().element_type() == S32 ||
+       sort->operand(0)->shape().element_type() == U32)) {
+    return IsIota(sort->mutable_operand(0), sort->sort_dimension());
+  }
+  return true;
 }
 
 std::optional<int64_t> TopkRewriter::SortIsInTopK(HloInstruction* inst) {
@@ -231,9 +253,8 @@ std::optional<int64_t> TopkRewriter::SortIsInTopK(HloInstruction* inst) {
   if (sort->operand_count() != 1 && sort->operand_count() != 2) {
     return std::nullopt;
   }
-  HloInstruction* data = sort->mutable_operand(0);
 
-  if (sort->operand_count() == 2 && !HasIota(sort, data)) {
+  if (!HasIota(sort)) {
     return std::nullopt;
   }
   if (!IsNanSafeGt(sort->to_apply())) {
@@ -246,8 +267,14 @@ std::optional<int64_t> TopkRewriter::SortIsInTopK(HloInstruction* inst) {
   for (HloInstruction* user : sort->users()) {
     const HloInstruction* slice = user;
     if (sort->operand_count() == 2) {
-      if (user->opcode() != HloOpcode::kGetTupleElement ||
-          user->user_count() != 1) {
+      if (user->opcode() != HloOpcode::kGetTupleElement) {
+        supported = false;
+        break;
+      }
+      if (user->user_count() == 0) {
+        continue;
+      }
+      if (user->user_count() != 1) {
         supported = false;
         break;
       }
@@ -258,15 +285,15 @@ std::optional<int64_t> TopkRewriter::SortIsInTopK(HloInstruction* inst) {
       supported = false;
       break;
     }
-    if (absl::c_any_of(slice->slice_starts(), [](int x) { return x != 0; }) ||
-        absl::c_any_of(slice->slice_strides(), [](int x) { return x != 1; })) {
-      // Strided slice or slicing at the beginning isn't supported.
-      supported = false;
-      break;
-    }
-    for (int64_t i = 0; i < slice->slice_limits().size(); ++i) {
-      if (i != sort_dim &&
-          slice->slice_limits(i) != slice->operand(0)->shape().dimensions(i)) {
+    for (int64_t i = 0; i < slice->slice_starts().size(); ++i) {
+      if (slice->slice_strides(i) != 1) {
+        // Strided slicing isn't supported.
+        supported = false;
+        break;
+      }
+      if (i != sort_dim && (slice->slice_starts(i) != 0 ||
+                            slice->slice_limits(i) !=
+                                slice->operand(0)->shape().dimensions(i))) {
         // Slicing along a non-sort dimension isn't supported.
         supported = false;
         break;
@@ -387,7 +414,8 @@ absl::StatusOr<HloInstruction*> TopkRewriter::TransformPatternToCustomCall(
   HloInstruction* data = sort->mutable_operand(0);
   const PrimitiveType element_type = data->shape().element_type();
 
-  if (element_type != F32 && element_type != BF16) {
+  if (element_type != F32 && element_type != BF16 && element_type != S32 &&
+      element_type != U32) {
     return nullptr;
   }
 
@@ -402,26 +430,58 @@ absl::StatusOr<HloInstruction*> TopkRewriter::TransformPatternToCustomCall(
     return nullptr;
   }
 
+  const bool was_integral_sort = (data->shape().element_type() == S32 ||
+                                  data->shape().element_type() == U32);
+  if (was_integral_sort) {
+    Shape float_shape = data->shape();
+    float_shape.set_element_type(F32);
+    HloInstruction* data_f32 = sort->parent()->AddInstruction(
+        HloInstruction::CreateConvert(float_shape, data));
+    RETURN_IF_ERROR(sort->ReplaceOperandWithDifferentShape(0, data_f32));
+    if (sort->operand_count() == 1) {
+      *sort->mutable_shape() = float_shape;
+    } else if (sort->operand_count() == 2) {
+      *sort->mutable_shape() =
+          ShapeUtil::MakeTupleShape({float_shape, sort->operand(1)->shape()});
+    }
+  }
+
   TopKCustomCall topkcc = CreateTopKCustomCall(sort, k.value());
 
-  for (HloInstruction* user : sort->users()) {
-    if (sort->operand_count() == 2) {
+  // If the slice starts at 0, its output matches topk_gte, so elide the slice.
+  // Else, retarget the slice to take [start:k] directly from topk_gte.
+  auto replace_slice = [](HloInstruction* slice,
+                          HloInstruction* topk_gte) -> absl::Status {
+    HloInstruction* replacement = topk_gte;
+    if (slice->shape().element_type() != topk_gte->shape().element_type()) {
+      Shape converted_shape = topk_gte->shape();
+      converted_shape.set_element_type(slice->shape().element_type());
+      replacement = slice->parent()->AddInstruction(
+          HloInstruction::CreateConvert(converted_shape, topk_gte));
+    }
+    if (ShapeUtil::SameDimensions(slice->shape(), replacement->shape())) {
+      return slice->ReplaceAllUsesWith(replacement);
+    }
+    return slice->ReplaceOperandWithDifferentShape(0, replacement);
+  };
+
+  std::vector<HloInstruction*> sort_users = sort->users();
+  for (HloInstruction* user : sort_users) {
+    if (user->opcode() == HloOpcode::kGetTupleElement) {
       HloInstruction* gte = user;
-      for (HloInstruction* slice : gte->users()) {
+      std::vector<HloInstruction*> gte_users = gte->users();
+      for (HloInstruction* slice : gte_users) {
         if (gte->tuple_index() == 0) {
-          RETURN_IF_ERROR(slice->ReplaceAllUsesWith(topkcc.value_gte));
+          RETURN_IF_ERROR(replace_slice(slice, topkcc.value_gte));
         } else if (gte->tuple_index() == 1) {
-          RETURN_IF_ERROR(slice->ReplaceAllUsesWith(topkcc.index_gte));
+          RETURN_IF_ERROR(replace_slice(slice, topkcc.index_gte));
         } else {
-          // The line below should be unreachable. SortIsInTopK() already checks
-          // that sort has either 1 or 2 operands. Reaching this line indicates
-          // a programming error (not a bad input), so crashing is OK.
-          LOG(FATAL) << "Sort with more than 2 output isn't supported in "
+          LOG(FATAL) << "Sort with more than 2 outputs isn't supported in "
                         "topk rewriter";
         }
       }
     } else {
-      RETURN_IF_ERROR(user->ReplaceAllUsesWith(topkcc.value_gte));
+      RETURN_IF_ERROR(replace_slice(user, topkcc.value_gte));
     }
   }
 
