@@ -162,9 +162,8 @@ TEST_F(DebugIOUtilsTest, DumpTensorToDirWithRelativeDumpRootSunnyDay) {
   if (env_->FileExists(test_dir).ok()) {
     int64_t undeleted_files = 0;
     int64_t undeleted_dirs = 0;
-    ASSERT_TRUE(
-        env_->DeleteRecursively(test_dir, &undeleted_files, &undeleted_dirs)
-            .ok());
+    TF_ASSERT_OK(
+        env_->DeleteRecursively(test_dir, &undeleted_files, &undeleted_dirs));
   }
 
   const uint64_t wall_time = env_->NowMicros();
@@ -196,9 +195,8 @@ TEST_F(DebugIOUtilsTest, DumpTensorToDirWithRelativeDumpRootSunnyDay) {
   // Tear down temporary file and directories.
   int64_t undeleted_files = 0;
   int64_t undeleted_dirs = 0;
-  ASSERT_TRUE(
-      env_->DeleteRecursively(test_dir, &undeleted_files, &undeleted_dirs)
-          .ok());
+  TF_ASSERT_OK(
+      env_->DeleteRecursively(test_dir, &undeleted_files, &undeleted_dirs));
   ASSERT_EQ(0, undeleted_files);
   ASSERT_EQ(0, undeleted_dirs);
 }
