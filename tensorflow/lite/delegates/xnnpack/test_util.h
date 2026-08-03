@@ -22,13 +22,7 @@ limitations under the License.
 #include "tensorflow/lite/schema/schema_generated.h"
 
 namespace tflite {
-namespace profiling {
-class BufferedProfiler;
-}  // namespace profiling
-
 namespace xnnpack {
-
-bool HasConvertNode(::tflite::profiling::BufferedProfiler* profiler);
 
 int8_t QuantizeInt8(float value, int32_t zero_point, float scale);
 

@@ -22,11 +22,8 @@ limitations under the License.
 #include <limits>
 #include <vector>
 
-#include "absl/strings/match.h"
-#include "tensorflow/lite/core/api/profiler.h"
 #include "tensorflow/lite/kernels/internal/cppmath.h"
 #include "tensorflow/lite/kernels/internal/types.h"
-#include "tensorflow/lite/profiling/buffered_profiler.h"
 
 namespace tflite {
 namespace xnnpack {
@@ -106,20 +103,6 @@ std::vector<float> GetInt8QuantizationScalePerChannel(
     scale.push_back(GetInt8QuantizationScaleFromMinMax(min[idx], max[idx]));
   }
   return scale;
-}
-
-bool HasConvertNode(::tflite::profiling::BufferedProfiler* profiler) {
-  if (profiler == nullptr) return false;
-  auto events = profiler->GetProfileEvents();
-  for (const auto* event : events) {
-    if (event->event_type == ::tflite::Profiler::EventType::
-                                 DELEGATE_PROFILED_OPERATOR_INVOKE_EVENT) {
-      if (absl::StrContains(event->tag, "Convert")) {
-        return true;
-      }
-    }
-  }
-  return false;
 }
 
 }  // namespace xnnpack

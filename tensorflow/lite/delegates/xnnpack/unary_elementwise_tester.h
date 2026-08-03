@@ -59,12 +59,6 @@ class UnaryElementwiseTester {
   float RelativeTolerance() const { return tolerance_.relative; }
   float AbsoluteTolerance() const { return tolerance_.absolute; }
 
-  UnaryElementwiseTester& ExpectFp16Precision(bool fp16_precision = true) {
-    yield_fp16_precision_ = fp16_precision;
-    return *this;
-  }
-  bool ExpectFp16Precision() const { return yield_fp16_precision_; }
-
   void Test(tflite::BuiltinOperator unary_op, TfLiteDelegate* delegate) const;
 
  private:
@@ -75,7 +69,6 @@ class UnaryElementwiseTester {
   std::vector<int32_t> shape_;
   int32_t size_;
   ToleranceInfo tolerance_;
-  bool yield_fp16_precision_ = false;
 };
 
 }  // namespace xnnpack

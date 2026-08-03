@@ -37,8 +37,6 @@ ToleranceInfo GetTolerance(BuiltinOperator op) {
     case BuiltinOperator_COS:
     case BuiltinOperator_SIN:
       return ToleranceInfo{.relative = 5.0f, .absolute = 3.0f};
-    case BuiltinOperator_HARD_SWISH:
-      return ToleranceInfo{.relative = 20.0f, .absolute = 1.0f};
     default:
       return ToleranceInfo{};
   }
