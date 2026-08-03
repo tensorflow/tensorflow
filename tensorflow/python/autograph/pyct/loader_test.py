@@ -82,7 +82,8 @@ class LoaderTest(test.TestCase):
         ],
         decorator_list=[],
         returns=None,
-        type_comment=None)
+        type_comment=None,
+        type_params=[])
 
     module, source, _ = loader.load_ast(node)
 
