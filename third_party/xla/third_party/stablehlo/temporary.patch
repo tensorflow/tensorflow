@@ -539,7 +539,18 @@ diff --ruN a/stablehlo/stablehlo/transforms/optimization/StablehloAggressiveSimp
 diff --ruN a/stablehlo/stablehlo/transforms/optimization/StablehloAggressiveSimplificationPatterns.td b/stablehlo/stablehlo/transforms/optimization/StablehloAggressiveSimplificationPatterns.td
 --- stablehlo/stablehlo/transforms/optimization/StablehloAggressiveSimplificationPatterns.td
 +++ stablehlo/stablehlo/transforms/optimization/StablehloAggressiveSimplificationPatterns.td
-@@ -550,16 +550,18 @@
+@@ -45,7 +45,9 @@
+     "is not a constant.">;
+ 
+ def NumberOfElementsEqual : Constraint<
+-    CPred<"llvm::cast<ShapedType>($0.getType()).getNumElements() == llvm::cast<ShapedType>($1.getType()).getNumElements()">,
++    CPred<"llvm::cast<ShapedType>($0.getType()).hasStaticShape() && "
++          "llvm::cast<ShapedType>($1.getType()).hasStaticShape() && "
++          "llvm::cast<ShapedType>($0.getType()).getNumElements() == llvm::cast<ShapedType>($1.getType()).getNumElements()">,
+     "same number of elements">;
+ 
+ def BroadcastNotReducibleToReshape : Constraint<
+@@ -550,16 +552,18 @@
  //       -> slice(X, start, limit, strides)
  //          [if start, limit, strides are all constants]
  def RealDynamicSliceOp_ReplaceWithSlice
