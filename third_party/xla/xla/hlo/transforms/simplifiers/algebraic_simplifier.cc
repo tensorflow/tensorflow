@@ -524,51 +524,74 @@ int64_t GetReduceFlops(const HloInstruction* reduce) {
   return ShapeUtil::ElementsIn(reduce->shape()) * (reduce_product - 1);
 }
 
-}  // namespace
-
-bool AlgebraicSimplifierVisitor::IsNonNegative(
-    const HloInstruction* hlo, const AlgebraicSimplifierOptions& options) {
-  // Utility only handles real types.
+bool IsNonNegativeHelper(
+    const HloInstruction* hlo, const AlgebraicSimplifierOptions& options,
+    absl::flat_hash_map<const HloInstruction*, bool>& cache) {
   if (IsAnyOperandComplex(hlo)) {
     return false;
   }
+  auto it = cache.find(hlo);
+  if (it != cache.end()) {
+    return it->second;
+  }
+  bool result = false;
   switch (hlo->opcode()) {
     case HloOpcode::kMultiply: {
-      return hlo->operand(0) == hlo->operand(1);
+      result = hlo->operand(0) == hlo->operand(1);
+      break;
     }
     case HloOpcode::kAbs:
     case HloOpcode::kExp:
     case HloOpcode::kIota: {
-      return true;
+      result = true;
+      break;
     }
     case HloOpcode::kBroadcast: {
-      return IsNonNegative(hlo->operand(0), options);
+      result = IsNonNegativeHelper(hlo->operand(0), options, cache);
+      break;
     }
     case HloOpcode::kConstant: {
       if (std::optional<double> value = GetConstantValue(hlo)) {
         // return false for -0.0, -Inf, NaNs and negative values
-        return !std::signbit(*value) && !std::isnan(*value);
+        result = !std::signbit(*value) && !std::isnan(*value);
+      } else {
+        result = false;
       }
-      return false;
+      break;
     }
     case HloOpcode::kMinimum: {
-      return IsNonNegative(hlo->operand(0), options) &&
-             IsNonNegative(hlo->operand(1), options);
+      result = IsNonNegativeHelper(hlo->operand(0), options, cache) &&
+               IsNonNegativeHelper(hlo->operand(1), options, cache);
+      break;
     }
     case HloOpcode::kMaximum: {
-      return IsNonNegative(hlo->operand(0), options) ||
-             IsNonNegative(hlo->operand(1), options);
+      result = IsNonNegativeHelper(hlo->operand(0), options, cache) ||
+               IsNonNegativeHelper(hlo->operand(1), options, cache);
+      break;
     }
     case HloOpcode::kPower: {
-      return IsNonNegative(hlo->operand(0), options);
+      result = IsNonNegativeHelper(hlo->operand(0), options, cache);
+      break;
     }
     case HloOpcode::kSelect: {
-      return IsNonNegative(hlo->operand(1), options) &&
-             IsNonNegative(hlo->operand(2), options);
+      result = IsNonNegativeHelper(hlo->operand(1), options, cache) &&
+               IsNonNegativeHelper(hlo->operand(2), options, cache);
+      break;
     }
     default:
-      return IsPositive(hlo, options);
+      result = IsPositive(hlo, options);
+      break;
   }
+  cache[hlo] = result;
+  return result;
+}
+
+}  // namespace
+
+bool AlgebraicSimplifierVisitor::IsNonNegative(
+    const HloInstruction* hlo, const AlgebraicSimplifierOptions& options) {
+  absl::flat_hash_map<const HloInstruction*, bool> cache;
+  return IsNonNegativeHelper(hlo, options, cache);
 }
 
 void AlgebraicSimplifierVisitor::ResetState(HloComputation* computation) {

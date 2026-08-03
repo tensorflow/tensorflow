@@ -599,6 +599,33 @@ TEST_F(UpperBoundInferenceTest, GetDimensionSizeDiv) {
   EXPECT_EQ(ComputeUpperBoundLiteral(div, &b).value().Get<int32_t>({}), 3);
 }
 
+TEST_F(UpperBoundInferenceTest, Maximum) {
+  XlaBuilder b(TestName());
+  auto p =
+      Parameter(&b, 0, ShapeUtil::MakeShape(S32, {2, 3}, {true, false}), "p0");
+  // range [0, 2]
+  auto gds0 = GetDimensionSize(p, 0);
+  auto max = Max(gds0, ConstantR0<int32_t>(&b, 1));
+  ASSERT_OK_AND_ASSIGN(auto upper_bound, ComputeUpperBoundLiteral(max, &b));
+  EXPECT_EQ(upper_bound.Get<int32_t>({}), 2);
+}
+
+TEST_F(UpperBoundInferenceTest, MinWithDynamic) {
+  XlaBuilder b(TestName());
+  auto p0 =
+      Parameter(&b, 0, ShapeUtil::MakeShape(S32, {2, 3}, {true, false}), "p0");
+  auto p1 = Parameter(&b, 1, ShapeUtil::MakeShape(S32, {}, {}), "p1");
+  // range [0, 2]
+  auto gds0 = GetDimensionSize(p0, 0);
+  // p1 is dynamic (unknown upper bound)
+  auto min = Min(gds0, p1);
+  ASSERT_OK_AND_ASSIGN(auto upper_bound, ComputeUpperBoundLiteral(min, &b));
+  // We expect the upper bound to be 2 because min(gds0, p1) <= gds0 <= 2
+  // Even if p1 is dynamic, the upper bound of min is still bounded by gds0.
+  // Wait, let's see if the current implementation can infer this.
+  EXPECT_EQ(upper_bound.Get<int32_t>({}), 2);
+}
+
 TEST_F(UpperBoundInferenceTest, SumSubtract) {
   // If x = a, y = b - a
   // upperbound(x + y) should be upperbound(b)
@@ -695,6 +722,45 @@ TEST_F(UpperBoundInferenceTest, KeyValueSort) {
     // The bound of the sort result is the max value in the input.
     EXPECT_EQ(result_first_elem.value(), elem_count - 1);
   }
+}
+
+class LowerBoundInferenceTest : public ValueInferenceTest {
+ public:
+  absl::StatusOr<OptionalLiteral> ComputeLowerBoundLiteral(
+      XlaOp operand, XlaBuilder* builder, Layout* output_layout = nullptr) {
+    ValueInference value_inference(builder);
+    ASSIGN_OR_RETURN(auto literal,
+                     value_inference.AnalyzeConstant(
+                         operand, ValueInferenceMode::kLowerBound));
+    return literal;
+  }
+};
+
+TEST_F(LowerBoundInferenceTest, GetDimensionSize) {
+  XlaBuilder b(TestName());
+  auto p =
+      Parameter(&b, 0, ShapeUtil::MakeShape(S32, {2, 3}, {true, false}), "p0");
+
+  auto gds0 = GetDimensionSize(p, 0);
+  auto gds1 = GetDimensionSize(p, 1);
+  auto tuple_2 = Tuple(&b, {gds0, gds1});
+  ASSERT_OK_AND_ASSIGN(auto lower_bound, ComputeLowerBoundLiteral(tuple_2, &b));
+  EXPECT_EQ(lower_bound.Get<int32_t>({}, {0}), 0);
+  EXPECT_EQ(lower_bound.Get<int32_t>({}, {1}), 3);
+}
+
+TEST_F(LowerBoundInferenceTest, MaxWithDynamic) {
+  XlaBuilder b(TestName());
+  auto p0 =
+      Parameter(&b, 0, ShapeUtil::MakeShape(S32, {2, 3}, {true, false}), "p0");
+  auto p1 = Parameter(&b, 1, ShapeUtil::MakeShape(S32, {}, {}), "p1");
+  // range [0, 2]
+  auto gds0 = GetDimensionSize(p0, 0);
+  // p1 is dynamic (unknown lower bound)
+  auto max = Max(gds0, p1);
+  ASSERT_OK_AND_ASSIGN(auto lower_bound, ComputeLowerBoundLiteral(max, &b));
+  // We expect the lower bound to be 0 because max(gds0, p1) >= gds0 >= 0
+  EXPECT_EQ(lower_bound.Get<int32_t>({}), 0);
 }
 
 class ConstValueInferenceTest : public ValueInferenceTest {
