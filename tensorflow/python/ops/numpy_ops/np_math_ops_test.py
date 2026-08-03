@@ -327,6 +327,49 @@ class MathTest(test.TestCase, parameterized.TestCase):
     with self.assertRaisesRegex(error_types, error_pattern):
       compiled_close_fn(a, b)
 
+  def testCrossXlaUnknownBatchDim(self):
+    # The batch dimension is unknown at trace time while the last dimension
+    # is statically 3 (or 2). The padding and output selection in cross must
+    # resolve from the static last dimension rather than through tf.cond,
+    # otherwise XLA cannot infer the shape of the Cross operands and fails
+    # to compile even though the input is a valid 3-element vector.
+    a = np.arange(6, dtype=np.float32).reshape(2, 3)
+    b = np.arange(6, 12, dtype=np.float32).reshape(2, 3)
+
+    compiled_cross = def_function.function(
+        np_math_ops.cross,
+        jit_compile=True,
+        input_signature=[
+            tensor.TensorSpec([None, 3], np.float32),
+            tensor.TensorSpec([None, 3], np.float32),
+        ],
+    )
+    self.match(compiled_cross(a, b), np.cross(a, b), check_dtype=False)
+
+    # A statically 2-element last dimension pads to 3 and returns the z
+    # component only.
+    a2 = np.arange(4, dtype=np.float32).reshape(2, 2)
+    b2 = np.arange(4, 8, dtype=np.float32).reshape(2, 2)
+    compiled_cross_2 = def_function.function(
+        np_math_ops.cross,
+        jit_compile=True,
+        input_signature=[
+            tensor.TensorSpec([None, 2], np.float32),
+            tensor.TensorSpec([None, 2], np.float32),
+        ],
+    )
+    self.match(compiled_cross_2(a2, b2), np.cross(a2, b2), check_dtype=False)
+
+    # A fully dynamic shape still works outside of jit compilation.
+    dynamic_cross = def_function.function(
+        np_math_ops.cross,
+        input_signature=[
+            tensor.TensorSpec([None, None], np.float32),
+            tensor.TensorSpec([None, None], np.float32),
+        ],
+    )
+    self.match(dynamic_cross(a, b), np.cross(a, b), check_dtype=False)
+
   def testAverageWrongShape(self):
     with self.assertRaisesWithPredicateMatch(errors.InvalidArgumentError, r''):
       np_math_ops.average(np.ones([2, 3]), weights=np.ones([2, 4]))
