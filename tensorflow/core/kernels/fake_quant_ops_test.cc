@@ -983,6 +983,21 @@ TEST_F(QuantOpsTest, WithVarsPerChannel_ZeroMinAndMax) {
       {0.0f, 0.0f, 0.0f, 0.0f});
 }
 
+TEST_F(QuantOpsTest, WithVarsPerChannelRejectsScalarInput) {
+  TF_EXPECT_OK(NodeDefBuilder("op", "FakeQuantWithMinMaxVarsPerChannel")
+                   .Input(FakeInput(DT_FLOAT))  // inputs
+                   .Input(FakeInput(DT_FLOAT))  // min
+                   .Input(FakeInput(DT_FLOAT))  // max
+                   .Attr("narrow_range", false)
+                   .Finalize(node_def()));
+  TF_EXPECT_OK(InitOp());
+  AddInputFromArray<float>(TensorShape({}), {1.0f});
+  AddInputFromArray<float>(TensorShape({1}), {0.0f});
+  AddInputFromArray<float>(TensorShape({1}), {1.0f});
+
+  EXPECT_TRUE(absl::IsInvalidArgument(RunOpKernel()));
+}
+
 TEST_F(QuantOpsTest, WithVarsPerChannelSymmetricRangeZeroInput_RegularRange) {
   // Original quantization range: [-10, 10], scale: 20/255.
   // Original zero point: 127.5, nudged zero point 128.0.
@@ -1417,6 +1432,23 @@ TEST_F(QuantOpsTest, WithVarsPerChannelDim1GradientNudgedDown_ZeroMinAndMax) {
   Tensor expected_bprop_wrt_max(allocator(), DT_FLOAT, TensorShape({4}));
   FillValues<float>(&expected_bprop_wrt_max, {0.0f, 0.0f, 0.0f, 0.0f});
   ExpectClose(expected_bprop_wrt_max, *output_bprop_wrt_max);
+}
+
+TEST_F(QuantOpsTest, WithVarsPerChannelGradientRejectsScalarInput) {
+  TF_EXPECT_OK(NodeDefBuilder("op", "FakeQuantWithMinMaxVarsPerChannelGradient")
+                   .Attr("narrow_range", false)
+                   .Input(FakeInput(DT_FLOAT))  // gradients
+                   .Input(FakeInput(DT_FLOAT))  // inputs
+                   .Input(FakeInput(DT_FLOAT))  // min
+                   .Input(FakeInput(DT_FLOAT))  // max
+                   .Finalize(node_def()));
+  TF_EXPECT_OK(InitOp());
+  AddInputFromArray<float>(TensorShape({}), {1.0f});
+  AddInputFromArray<float>(TensorShape({}), {1.0f});
+  AddInputFromArray<float>(TensorShape({1}), {0.0f});
+  AddInputFromArray<float>(TensorShape({1}), {1.0f});
+
+  EXPECT_TRUE(absl::IsInvalidArgument(RunOpKernel()));
 }
 
 TEST_F(QuantOpsTest, WithVarsPerChannelDim1GradientNudgedDown_RegularRange) {
