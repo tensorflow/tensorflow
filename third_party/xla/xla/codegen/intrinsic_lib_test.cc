@@ -22,7 +22,9 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
+#include "absl/strings/string_view.h"
 #include "llvm/Analysis/TargetLibraryInfo.h"
+#include "xla/codegen/intrinsic/cpp/cpp_gen_intrinsics.h"
 #include "xla/codegen/intrinsic/intrinsic.h"
 
 namespace xla::codegen::intrinsics {
@@ -74,6 +76,93 @@ TEST(IntrinsicLibTest, AtanVectorizations) {
                            "xla.atan.f64:xla.atan.v4f64:4:_ZGV_LLVM_N4v",
                            "xla.atan.f64:xla.atan.v8f64:8:_ZGV_LLVM_N8v"));
 }
+
+TEST(IntrinsicLibTest, SinVectorizations) {
+  IntrinsicOptions options;
+  auto lib = IntrinsicFunctionLib(options);
+  std::vector<llvm::VecDesc> vec_descs = lib.Vectorizations();
+  std::vector<std::string> vec_descs_str;
+  for (const auto& vec_desc : vec_descs) {
+    if (vec_desc.getScalarFnName().starts_with("xla.sin")) {
+      vec_descs_str.push_back(ToString(vec_desc));
+    }
+  }
+
+  EXPECT_THAT(vec_descs_str, UnorderedElementsAre(
+                                 "xla.sin.f64:xla.sin.v2f64:2:_ZGV_LLVM_N2v"));
+}
+
+TEST(IntrinsicLibTest, CosVectorizations) {
+  IntrinsicOptions options;
+  auto lib = IntrinsicFunctionLib(options);
+  std::vector<llvm::VecDesc> vec_descs = lib.Vectorizations();
+  std::vector<std::string> vec_descs_str;
+  for (const auto& vec_desc : vec_descs) {
+    if (vec_desc.getScalarFnName().starts_with("xla.cos")) {
+      vec_descs_str.push_back(ToString(vec_desc));
+    }
+  }
+
+  EXPECT_THAT(vec_descs_str, UnorderedElementsAre(
+                                 "xla.cos.f64:xla.cos.v2f64:2:_ZGV_LLVM_N2v"));
+}
+
+TEST(IntrinsicLibTest, AreEigenIntrinsicsAvailable) {
+  // On our standard Linux test environment, this should always be available.
+  EXPECT_TRUE(AreEigenIntrinsicsAvailable());
+}
+
+std::vector<std::string> GetVectorizations(const IntrinsicOptions& options,
+                                           absl::string_view prefix) {
+  IntrinsicFunctionLib lib(options);
+  std::vector<llvm::VecDesc> vec_descs = lib.Vectorizations();
+  std::vector<std::string> vec_descs_str;
+  for (const auto& vec_desc : vec_descs) {
+    if (vec_desc.getScalarFnName().starts_with(prefix)) {
+      vec_descs_str.push_back(ToString(vec_desc));
+    }
+  }
+  return vec_descs_str;
+}
+
+TEST(IntrinsicLibTest, SinVectorizationsAvx512) {
+  IntrinsicOptions options;
+  options.features = "+avx512f";
+  EXPECT_THAT(
+      GetVectorizations(options, "xla.sin"),
+      UnorderedElementsAre("xla.sin.f64:xla.sin.v2f64:2:_ZGV_LLVM_N2v",
+                           "xla.sin.f64:xla.sin.v4f64:4:_ZGV_LLVM_N4v",
+                           "xla.sin.f64:xla.sin.v8f64:8:_ZGV_LLVM_N8v"));
+}
+
+TEST(IntrinsicLibTest, CosVectorizationsAvx512) {
+  IntrinsicOptions options;
+  options.features = "+avx512f";
+  EXPECT_THAT(
+      GetVectorizations(options, "xla.cos"),
+      UnorderedElementsAre("xla.cos.f64:xla.cos.v2f64:2:_ZGV_LLVM_N2v",
+                           "xla.cos.f64:xla.cos.v4f64:4:_ZGV_LLVM_N4v",
+                           "xla.cos.f64:xla.cos.v8f64:8:_ZGV_LLVM_N8v"));
+}
+
+TEST(IntrinsicLibTest, SinVectorizationsAvx2) {
+  IntrinsicOptions options;
+  options.features = "+avx2";
+  EXPECT_THAT(
+      GetVectorizations(options, "xla.sin"),
+      UnorderedElementsAre("xla.sin.f64:xla.sin.v2f64:2:_ZGV_LLVM_N2v",
+                           "xla.sin.f64:xla.sin.v4f64:4:_ZGV_LLVM_N4v"));
+}
+
+TEST(IntrinsicLibTest, CosVectorizationsAvx2) {
+  IntrinsicOptions options;
+  options.features = "+avx2";
+  EXPECT_THAT(
+      GetVectorizations(options, "xla.cos"),
+      UnorderedElementsAre("xla.cos.f64:xla.cos.v2f64:2:_ZGV_LLVM_N2v",
+                           "xla.cos.f64:xla.cos.v4f64:4:_ZGV_LLVM_N4v"));
+}
+
 }  // namespace
 
 }  // namespace xla::codegen::intrinsics

@@ -14,7 +14,6 @@
 # ==============================================================================
 
 load("//xla:xla.default.bzl", "xla_cc_test")
-load("//xla/tsl:tsl.bzl", "if_oss")
 load("//xla/tsl/platform:rules_cc.bzl", "cc_binary", "cc_library")
 load(
     "//xla/tsl/platform/default:build_config_root.bzl",
@@ -136,9 +135,11 @@ cc_library(
     hdrs = ["eigen_unary.h"],
     copts = [
         "-Wno-psabi",
+        "-DEIGEN_UNARY_LIB",
     ],
     deps = [
         ":vector_ops",
+        "@com_google_absl//absl/base:core_headers",
         "@eigen_archive//:eigen3",
     ],
 )
@@ -146,16 +147,19 @@ cc_library(
 cc_ir_header(
     name = "eigen_unary_32_ll",
     src = "eigen_unary.cc",
-    copts = if_oss(
-        [
-            "-DEIGEN_GENERIC_VECTOR_SIZE_BYTES=64",
-            "-mprefer-vector-width=512",
-        ],
-        [
+    copts = select({
+        ":x86_64": [
             "-DEIGEN_GENERIC_VECTOR_SIZE_BYTES=32",
             "-mprefer-vector-width=256",
+            "-mavx2",
         ],
-    ),
+        "//conditions:default": [],
+    }) + [
+        "-O3",
+        "-DNDEBUG",
+        "-U_LIBCPP_HARDENING_MODE",
+        "-D_LIBCPP_HARDENING_MODE=_LIBCPP_HARDENING_MODE_NONE",
+    ],
     deps = [
         ":cpp_context_provider",
         ":eigen_unary_lib",
@@ -167,16 +171,19 @@ cc_ir_header(
 cc_ir_header(
     name = "eigen_unary_64_ll",
     src = "eigen_unary.cc",
-    copts = [
-        "-DEIGEN_GENERIC_VECTOR_SIZE_BYTES=64",
-        "-mprefer-vector-width=512",
-    ] + if_oss(
-        [],
-        select({
-            ":x86_64": ["-mavx512f"],
-            "//conditions:default": [],
-        }),
-    ),
+    copts = select({
+        ":x86_64": [
+            "-DEIGEN_GENERIC_VECTOR_SIZE_BYTES=64",
+            "-mprefer-vector-width=512",
+            "-mavx512f",
+        ],
+        "//conditions:default": [],
+    }) + [
+        "-O3",
+        "-DNDEBUG",
+        "-U_LIBCPP_HARDENING_MODE",
+        "-D_LIBCPP_HARDENING_MODE=_LIBCPP_HARDENING_MODE_NONE",
+    ],
     deps = [
         ":cpp_context_provider",
         ":eigen_unary_lib",

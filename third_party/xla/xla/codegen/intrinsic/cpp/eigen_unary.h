@@ -17,32 +17,59 @@ limitations under the License.
 
 #include "xla/codegen/intrinsic/cpp/vector_ops.h"
 
+#if defined(__has_attribute) && __has_attribute(ext_vector_type) && \
+    defined(__has_builtin) && __has_builtin(__builtin_vectorelements)
+
 namespace xla::codegen {
 
 // Single precision
-// Right now these are unused and we rename them to avoid shadowing the current
-// tanh implementation.
 float tanh_f32(float x) asm("xla.unused.tanh.f32");
 Vec4f tanh_v4f32(Vec4f x) asm("xla.unused.tanh.v4f32");
+#if defined(__x86_64__)
 Vec8f tanh_v8f32(Vec8f x) asm("xla.unused.tanh.v8f32");
 Vec16f tanh_v16f32(Vec16f x) asm("xla.unused.tanh.v16f32");
+#endif
 
 // Double precision
 double tanh_f64(double x) asm("xla.unused.tanh.f64");
+#if defined(__x86_64__)
 Vec4d tanh_v4f64(Vec4d x) asm("xla.unused.tanh.v4f64");
 Vec8d tanh_v8f64(Vec8d x) asm("xla.unused.tanh.v8f64");
+#endif
 
 // Single precision
 float atan_f32(float x) asm("xla.atan.f32");
 Vec4f atan_v4f32(Vec4f x) asm("xla.atan.v4f32");
+#if defined(__x86_64__)
 Vec8f atan_v8f32(Vec8f x) asm("xla.atan.v8f32");
 Vec16f atan_v16f32(Vec16f x) asm("xla.atan.v16f32");
+#endif
 
 // Double precision
 double atan_f64(double x) asm("xla.atan.f64");
+#if defined(__x86_64__)
 Vec4d atan_v4f64(Vec4d x) asm("xla.atan.v4f64");
 Vec8d atan_v8f64(Vec8d x) asm("xla.atan.v8f64");
+#endif
+
+// Double precision
+double sin_f64(double x) asm("xla.sin.f64");
+Vec2d sin_v2f64(Vec2d x) asm("xla.sin.v2f64");
+#if defined(__x86_64__)
+Vec4d sin_v4f64(Vec4d x) asm("xla.sin.v4f64");
+Vec8d sin_v8f64(Vec8d x) asm("xla.sin.v8f64");
+#endif
+
+// Double precision
+double cos_f64(double x) asm("xla.cos.f64");
+Vec2d cos_v2f64(Vec2d x) asm("xla.cos.v2f64");
+#if defined(__x86_64__)
+Vec4d cos_v4f64(Vec4d x) asm("xla.cos.v4f64");
+Vec8d cos_v8f64(Vec8d x) asm("xla.cos.v8f64");
+#endif
 
 }  // namespace xla::codegen
+
+#endif  // defined(__has_attribute) && __has_attribute(ext_vector_type) && ...
 
 #endif  // XLA_CODEGEN_INTRINSIC_CPP_EIGEN_UNARY_H_

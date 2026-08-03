@@ -87,6 +87,55 @@ class EigenAtan : public Intrinsic<EigenAtan> {
     return GetCppGenFunction(module, Name(type));
   }
 };
+
+inline std::vector<std::vector<Type>> GetTrigSupportedVectorTypes(
+    absl::string_view features) {
+  if (!AreEigenIntrinsicsAvailable()) {
+    return {};
+  }
+  std::vector<std::vector<Type>> types = {
+      {Type::S(xla::F64)},
+      {Type::V(xla::F64, 2)},
+  };
+  if (absl::StrContains(features, "+avx2") ||
+      absl::StrContains(features, "+avx512f")) {
+    types.push_back({Type::V(xla::F64, 4)});
+  }
+  if (absl::StrContains(features, "+avx512f")) {
+    types.push_back({Type::V(xla::F64, 8)});
+  }
+  return types;
+}
+
+class EigenSin : public Intrinsic<EigenSin> {
+ public:
+  static constexpr absl::string_view kName = "sin";
+
+  static std::vector<std::vector<Type>> SupportedVectorTypes(
+      absl::string_view features) {
+    return GetTrigSupportedVectorTypes(features);
+  }
+
+  static absl::StatusOr<llvm::Function*> CreateDefinition(
+      llvm::Module* module, const IntrinsicOptions& options, Type type) {
+    return GetCppGenFunction(module, Name(type));
+  }
+};
+
+class EigenCos : public Intrinsic<EigenCos> {
+ public:
+  static constexpr absl::string_view kName = "cos";
+
+  static std::vector<std::vector<Type>> SupportedVectorTypes(
+      absl::string_view features) {
+    return GetTrigSupportedVectorTypes(features);
+  }
+
+  static absl::StatusOr<llvm::Function*> CreateDefinition(
+      llvm::Module* module, const IntrinsicOptions& options, Type type) {
+    return GetCppGenFunction(module, Name(type));
+  }
+};
 }  // namespace xla::codegen::intrinsics
 
 #endif  // XLA_CODEGEN_INTRINSIC_CPP_INTRINSIC_DECLARATIONS_H_
