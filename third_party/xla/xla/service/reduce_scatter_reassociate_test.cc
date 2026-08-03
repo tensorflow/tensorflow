@@ -487,5 +487,32 @@ ENTRY main {
   EXPECT_EQ(ReduceScatterCount(module), 2);
 }
 
+TEST_F(ReduceScatterReassociateTest, ReassociatesPreservesChannelId) {
+  constexpr absl::string_view kHloModule = R"(
+HloModule m
+
+sum {
+  x = f32[] parameter(0)
+  y = f32[] parameter(1)
+  ROOT add = f32[] add(x, y)
+}
+
+ENTRY main {
+  p0 = f32[8] parameter(0)
+  p1 = f32[8] parameter(1)
+  rs0 = f32[4] reduce-scatter(p0), dimensions={0}, channel_id=7, to_apply=sum
+  rs1 = f32[4] reduce-scatter(p1), dimensions={0}, channel_id=7, to_apply=sum
+  ROOT add = f32[4] add(rs0, rs1)
+}
+)";
+
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       RunPass(kHloModule, /*expect_change=*/true));
+  EXPECT_EQ(ReduceScatterCount(module), 1);
+  HloInstruction* reduce_scatter =
+      module->entry_computation()->root_instruction();
+  EXPECT_EQ(reduce_scatter->channel_id(), 7);
+}
+
 }  // namespace
 }  // namespace xla
