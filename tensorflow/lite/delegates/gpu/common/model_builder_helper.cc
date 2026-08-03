@@ -269,6 +269,9 @@ absl::Status CreateVectorCopyData<float>(const TfLiteTensor& src, float* dst) {
     case kTfLiteInt8:
       DequantizeConstantTensor(src, src.data.int8, dst);
       return absl::OkStatus();
+    case kTfLiteInt16:
+      DequantizeConstantTensor(src, src.data.i16, dst);
+      return absl::OkStatus();
     case kTfLiteUInt8:
       DequantizeConstantTensor(src, src.data.uint8, dst);
       return absl::OkStatus();
