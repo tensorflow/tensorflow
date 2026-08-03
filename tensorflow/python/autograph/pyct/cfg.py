@@ -619,10 +619,12 @@ class GraphBuilder(object):
       stmts_entered = self.owners[second] - self.owners[first]
       for stmt in stmts_entered:
         stmt_prev[stmt].add(first)
-    for stmt in stmt_next:
-      stmt_next[stmt] = frozenset(stmt_next[stmt])
-    for stmt in stmt_prev:
-      stmt_prev[stmt] = frozenset(stmt_prev[stmt])
+    stmt_next = {
+        stmt: frozenset(next_nodes) for stmt, next_nodes in stmt_next.items()
+    }
+    stmt_prev = {
+        stmt: frozenset(prev_nodes) for stmt, prev_nodes in stmt_prev.items()
+    }
 
     # Construct the final graph object.
     result = Graph(

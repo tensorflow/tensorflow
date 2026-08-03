@@ -36,6 +36,7 @@ from tensorflow.python.autograph.impl import api
 from tensorflow.python.autograph.impl import conversion
 from tensorflow.python.autograph.pyct import errors
 from tensorflow.python.autograph.pyct import inspect_utils
+from tensorflow.python.autograph.pyct import loader
 from tensorflow.python.autograph.pyct import parser
 from tensorflow.python.autograph.utils import ag_logging
 from tensorflow.python.data.ops import dataset_ops
@@ -84,6 +85,11 @@ class ApiTest(test.TestCase):
         o for o in gc.get_objects() if id(o) not in object_ids_before)
     self.assertEmpty(
         tuple(o for o in objects_after if isinstance(o, TestResource)))
+
+  def _load_test_module(self, source):
+    module, _ = loader.load_source(
+        textwrap.dedent(source), delete_on_exit=True)
+    return module
 
   def test_converted_call_kwonly_args(self):
 
@@ -961,17 +967,18 @@ class ApiTest(test.TestCase):
       self.assertAllEqual(self.evaluate(x), (1, 2))
 
   def test_to_graph_match_statement(self):
+    test_module = self._load_test_module("""
+      def test_fn(x, selector):
+        match selector:
+          case 'square':
+            return x**2
+          case 'double':
+            return x * 2
+          case _:
+            raise ValueError(selector)
+    """)
 
-    def test_fn(x, selector):
-      match selector:
-        case 'square':
-          return x**2
-        case 'double':
-          return x * 2
-        case _:
-          raise ValueError(selector)
-
-    compiled_fn = api.to_graph(test_fn)
+    compiled_fn = api.to_graph(test_module.test_fn)
 
     x = constant_op.constant(3)
     self.assertEqual(self.evaluate(compiled_fn(x, 'square')), 9)
@@ -980,89 +987,95 @@ class ApiTest(test.TestCase):
       compiled_fn(x, 'invalid')
 
   def test_to_graph_match_statement_with_capture_and_guard(self):
+    test_module = self._load_test_module("""
+      def test_fn(value):
+        match value:
+          case [head, *tail] if head > 0:
+            return head, tail
+          case _:
+            return None
+    """)
 
-    def test_fn(value):
-      match value:
-        case [head, *tail] if head > 0:  # pylint: disable=used-before-assignment
-          return head, tail
-        case _:
-          return None
-
-    compiled_fn = api.to_graph(test_fn)
+    compiled_fn = api.to_graph(test_module.test_fn)
 
     self.assertEqual(compiled_fn([1, 2, 3]), (1, [2, 3]))
     self.assertIsNone(compiled_fn([-1, 2, 3]))
 
   def test_to_graph_match_statement_with_nested_return(self):
+    test_module = self._load_test_module("""
+      def test_fn(value, threshold):
+        match value:
+          case [head, *tail]:
+            if head > threshold:
+              return tail
+            return []
+          case _:
+            return None
+    """)
 
-    def test_fn(value, threshold):
-      match value:
-        case [head, *tail]:
-          if head > threshold:
-            return tail
-          return []
-        case _:
-          return None
-
-    compiled_fn = api.to_graph(test_fn)
+    compiled_fn = api.to_graph(test_module.test_fn)
 
     self.assertEqual(compiled_fn([3, 4, 5], 2), [4, 5])
     self.assertEqual(compiled_fn([1, 4, 5], 2), [])
     self.assertIsNone(compiled_fn('invalid', 2))
 
   def test_to_graph_match_statement_with_continue(self):
+    test_module = self._load_test_module("""
+      def test_fn(values):
+        result = []
+        for value in values:
+          match value:
+            case 0:
+              continue
+              result.append(100)
+            case _:
+              pass
+          result.append(value)
+        return result
+    """)
 
-    def test_fn(values):
-      result = []
-      for value in values:
-        match value:
-          case 0:
-            continue
-            result.append(100)  # pylint: disable=unreachable
-          case _:
-            pass
-        result.append(value)
-      return result
-
-    compiled_fn = api.to_graph(test_fn)
+    compiled_fn = api.to_graph(test_module.test_fn)
 
     self.assertEqual(compiled_fn([0, 1, 2]), [1, 2])
 
   def test_to_graph_match_statement_with_list_pop(self):
-
-    def test_fn(selector, values):
-      match selector:
-        case 'pop':
-          return values.pop()
-        case _:
-          return len(values)
+    test_module = self._load_test_module("""
+      def test_fn(selector, values):
+        match selector:
+          case 'pop':
+            return values.pop()
+          case _:
+            return len(values)
+    """)
 
     compiled_fn = api.to_graph(
-        test_fn, experimental_optional_features=converter.Feature.LISTS)
+        test_module.test_fn,
+        experimental_optional_features=converter.Feature.LISTS)
 
     self.assertEqual(compiled_fn('size', [1, 2, 3]), 3)
     self.assertEqual(compiled_fn('pop', [1, 2, 3]), 3)
 
   def test_to_graph_match_statement_with_class_pattern(self):
+    test_module = self._load_test_module("""
+      class Point:
 
-    class Point:
+        __match_args__ = ('x', 'y')
 
-      __match_args__ = ('x', 'y')
+        def __init__(self, x, y):
+          self.x = x
+          self.y = y
 
-      def __init__(self, x, y):
-        self.x = x
-        self.y = y
+      def test_fn(value):
+        match value:
+          case Point(x, y):
+            return x + y
+          case _:
+            return None
+    """)
 
-    def test_fn(value):
-      match value:
-        case Point(x, y):
-          return x + y
-        case _:
-          return None
+    compiled_fn = api.to_graph(test_module.test_fn)
 
-    compiled_fn = api.to_graph(test_fn)
-
-    self.assertEqual(compiled_fn(Point(2, 3)), 5)
+    self.assertEqual(compiled_fn(test_module.Point(2, 3)), 5)
     self.assertIsNone(compiled_fn('not a point'))
 
   @test_util.run_deprecated_v1
