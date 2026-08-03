@@ -56,6 +56,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_schedule.h"
+#include "xla/hlo/utils/hlo_query.h"
 #include "xla/layout.h"
 #include "xla/layout_util.h"
 #include "xla/permutation_util.h"
@@ -99,6 +100,144 @@ absl::Status CheckUnaryOpWithResultAccuracy(HloInstruction* unary) {
     return Internal("Unary op with result accuracy is not supported for %s",
                     HloOpcodeString(opcode));
   }
+  return absl::OkStatus();
+}
+
+absl::Status VerifyAsyncPair(
+    const HloInstruction* done,
+    absl::Span<const HloOpcode> expected_start_opcodes) {
+  TF_RET_CHECK(done->operand_count() == 1);
+  const HloInstruction* start = hlo_query::GetAsyncStartForDone(done);
+  TF_RET_CHECK(start != nullptr)
+      << "Cannot find corresponding start for done: " << done->ToString();
+  TF_RET_CHECK(absl::c_find(expected_start_opcodes, start->opcode()) !=
+               expected_start_opcodes.end())
+      << "Expected start opcode "
+      << absl::StrJoin(expected_start_opcodes, " or ",
+                       [](std::string* out, HloOpcode opcode) {
+                         absl::StrAppend(out, HloOpcodeString(opcode));
+                       })
+      << ", found " << HloOpcodeString(start->opcode())
+      << " for done: " << done->ToString();
+  return absl::OkStatus();
+}
+
+absl::Status VerifyAsyncSingleUser(
+    const HloInstruction* start,
+    const absl::flat_hash_set<HloOpcode>& expected_users) {
+  std::vector<const HloInstruction*> real_users;
+  for (const HloInstruction* user : start->users()) {
+    if (user->opcode() == HloOpcode::kCustomCall &&
+        user->custom_call_target() == "control_dep") {
+      continue;
+    }
+    real_users.push_back(user);
+  }
+
+  if (real_users.size() != 1) {
+    std::vector<std::string> user_strs;
+    for (auto u : real_users) {
+      user_strs.push_back(std::string(u->name()));
+    }
+    LOG(ERROR) << "Jetski: Consumers of " << start->name() << ":\n"
+               << absl::StrJoin(user_strs, "\n");
+  }
+
+  TF_RET_CHECK(real_users.size() == 1)
+      << "The " << HloOpcodeString(start->opcode())
+      << " instruction requires one consumer, found " << real_users.size();
+
+  auto is_expected_done = [&](HloOpcode opcode) {
+    return expected_users.contains(opcode);
+  };
+
+  for (const HloInstruction* user : real_users) {
+    const HloInstruction* curr = user;
+    int64_t carry_idx = -1;
+
+    if (curr->opcode() == HloOpcode::kGetTupleElement &&
+        curr->operand(0) == start) {
+      if (curr->users().size() == 1) {
+        curr = curr->users()[0];
+      } else {
+        return Internal("GTE on start %s has multiple users", start->name());
+      }
+    }
+
+    if (curr->opcode() == HloOpcode::kTuple) {
+      for (int64_t i = 0; i < curr->operand_count(); ++i) {
+        if (curr->operand(i) == start ||
+            (start->users().size() == 1 &&
+             curr->operand(i) == start->users()[0])) {
+          carry_idx = i;
+          break;
+        }
+      }
+      if (carry_idx == -1) {
+        return Internal("Could not find start in tuple %s", curr->name());
+      }
+
+      bool is_body_root = (curr->parent()->root_instruction() == curr);
+      if (is_body_root) {
+        std::optional<HloInstruction*> while_op =
+            curr->parent()->GetUniqueCaller(HloOpcode::kWhile);
+        if (while_op.has_value()) {
+          HloComputation* body = (*while_op)->while_body();
+          HloInstruction* param = body->parameter_instruction(0);
+          const HloInstruction* gte = nullptr;
+          for (const HloInstruction* body_inst : body->instructions()) {
+            if (body_inst->opcode() == HloOpcode::kGetTupleElement &&
+                body_inst->operand(0) == param &&
+                body_inst->tuple_index() == carry_idx) {
+              gte = body_inst;
+              break;
+            }
+          }
+          if (gte) {
+            if (gte->users().size() == 1 &&
+                is_expected_done(gte->users()[0]->opcode())) {
+              continue;
+            }
+          }
+        }
+      } else {
+        if (curr->users().size() == 1 &&
+            curr->users()[0]->opcode() == HloOpcode::kWhile) {
+          HloInstruction* while_op =
+              const_cast<HloInstruction*>(curr->users()[0]);
+          HloComputation* body = while_op->while_body();
+          HloInstruction* param = body->parameter_instruction(0);
+          const HloInstruction* gte = nullptr;
+          for (const HloInstruction* body_inst : body->instructions()) {
+            if (body_inst->opcode() == HloOpcode::kGetTupleElement &&
+                body_inst->operand(0) == param &&
+                body_inst->tuple_index() == carry_idx) {
+              gte = body_inst;
+              break;
+            }
+          }
+          if (gte) {
+            if (gte->users().size() == 1 &&
+                is_expected_done(gte->users()[0]->opcode())) {
+              continue;
+            }
+          }
+        }
+      }
+    }
+
+    if (!is_expected_done(user->opcode())) {
+      return Internal(
+          "The consumer of a %s instruction needs to be one of (%s), found %s",
+          HloOpcodeString(start->opcode()),
+          absl::StrJoin(expected_users, ", ",
+                        [](std::string* out, HloOpcode opcode) {
+                          absl::StrAppend(out, HloOpcodeString(opcode));
+                        }),
+          HloOpcodeString(user->opcode()));
+    }
+  }
+
   return absl::OkStatus();
 }
 }  // namespace
@@ -2813,6 +2952,14 @@ absl::Status VerifySingleUser(
     const HloInstruction* instruction,
     const absl::flat_hash_set<HloOpcode>& expected_users) {
   // Ignore "control_dep" custom calls.
+  if (instruction->opcode() == HloOpcode::kAllGatherStart) {
+    LOG(INFO) << "Jetski: VerifySingleUser for " << instruction->name()
+              << " users size: " << instruction->users().size();
+    for (auto u : instruction->users()) {
+      LOG(INFO) << "Jetski:   user: " << u->name() << " ("
+                << HloOpcodeString(u->opcode()) << ")";
+    }
+  }
   std::vector<const HloInstruction*> real_users;
   for (const HloInstruction* user : instruction->users()) {
     if (user->opcode() == HloOpcode::kCustomCall &&
@@ -2822,8 +2969,17 @@ absl::Status VerifySingleUser(
     real_users.push_back(user);
   }
 
+  if (real_users.size() != 1) {
+    std::vector<std::string> user_strs;
+    for (auto u : real_users) {
+      user_strs.push_back(u->ToString());
+    }
+    LOG(ERROR) << "Jetski: Consumers of " << instruction->ToString() << ":\n"
+               << absl::StrJoin(user_strs, "\n");
+  }
+
   TF_RET_CHECK(real_users.size() == 1)
-      << "The " << instruction->opcode()
+      << "The " << HloOpcodeString(instruction->opcode())
       << " instruction requires one consumer, found " << real_users.size();
 
   const HloInstruction* user = real_users.front();
@@ -2881,7 +3037,7 @@ absl::Status VerifyAsynchronousInstructionPairs(const HloModule& module) {
       }
       switch (instruction->opcode()) {
         case HloOpcode::kAsyncStart: {
-          RETURN_IF_ERROR(VerifySingleUser(
+          RETURN_IF_ERROR(VerifyAsyncSingleUser(
               instruction, {HloOpcode::kAsyncUpdate, HloOpcode::kAsyncDone}));
           break;
         }
@@ -2893,33 +3049,72 @@ absl::Status VerifyAsynchronousInstructionPairs(const HloModule& module) {
               << "The first operand of a " << instruction->opcode()
               << " instruction needs to be AsyncStart or AsyncUpdate, found "
               << operand->opcode();
-          RETURN_IF_ERROR(VerifySingleUser(
+          RETURN_IF_ERROR(VerifyAsyncSingleUser(
               instruction, {HloOpcode::kAsyncUpdate, HloOpcode::kAsyncDone}));
           break;
         }
         case HloOpcode::kAsyncDone: {
-          RETURN_IF_ERROR(VerifySingleOperand(
+          TF_RET_CHECK(instruction->operand_count() == 1)
+              << "The " << HloOpcodeString(instruction->opcode())
+              << " instruction requires one operand, found "
+              << instruction->operand_count();
+          const HloInstruction* operand = instruction->operand(0);
+          if (operand->opcode() != HloOpcode::kAsyncStart &&
+              operand->opcode() != HloOpcode::kAsyncUpdate &&
+              operand->opcode() != HloOpcode::kGetTupleElement) {
+            return Internal(
+                "The operand of a async-done instruction needs to be "
+                "async-start or async-update, found %s",
+                HloOpcodeString(operand->opcode()));
+          }
+          RETURN_IF_ERROR(VerifyAsyncPair(
               instruction, {HloOpcode::kAsyncStart, HloOpcode::kAsyncUpdate}));
           break;
         }
         case HloOpcode::kAllReduceStart: {
           RETURN_IF_ERROR(
-              VerifySingleUser(instruction, {HloOpcode::kAllReduceDone}));
+              VerifyAsyncSingleUser(instruction, {HloOpcode::kAllReduceDone}));
           break;
         }
         case HloOpcode::kAllReduceDone: {
+          TF_RET_CHECK(instruction->operand_count() == 1)
+              << "The " << HloOpcodeString(instruction->opcode())
+              << " instruction requires one operand, found "
+              << instruction->operand_count();
+          const HloInstruction* operand = instruction->operand(0);
+          if (operand->opcode() != HloOpcode::kAllReduceStart &&
+              operand->opcode() != HloOpcode::kGetTupleElement) {
+            return Internal(
+                "The operand of a %s instruction needs to be %s, found %s",
+                HloOpcodeString(instruction->opcode()),
+                HloOpcodeString(HloOpcode::kAllReduceStart),
+                HloOpcodeString(operand->opcode()));
+          }
           RETURN_IF_ERROR(
-              VerifySingleOperand(instruction, {HloOpcode::kAllReduceStart}));
+              VerifyAsyncPair(instruction, {HloOpcode::kAllReduceStart}));
           break;
         }
         case HloOpcode::kAllGatherStart: {
           RETURN_IF_ERROR(
-              VerifySingleUser(instruction, {HloOpcode::kAllGatherDone}));
+              VerifyAsyncSingleUser(instruction, {HloOpcode::kAllGatherDone}));
           break;
         }
         case HloOpcode::kAllGatherDone: {
+          TF_RET_CHECK(instruction->operand_count() == 1)
+              << "The " << HloOpcodeString(instruction->opcode())
+              << " instruction requires one operand, found "
+              << instruction->operand_count();
+          const HloInstruction* operand = instruction->operand(0);
+          if (operand->opcode() != HloOpcode::kAllGatherStart &&
+              operand->opcode() != HloOpcode::kGetTupleElement) {
+            return Internal(
+                "The operand of a %s instruction needs to be %s, found %s",
+                HloOpcodeString(instruction->opcode()),
+                HloOpcodeString(HloOpcode::kAllGatherStart),
+                HloOpcodeString(operand->opcode()));
+          }
           RETURN_IF_ERROR(
-              VerifySingleOperand(instruction, {HloOpcode::kAllGatherStart}));
+              VerifyAsyncPair(instruction, {HloOpcode::kAllGatherStart}));
           break;
         }
         case HloOpcode::kCopyStart: {
@@ -2933,12 +3128,25 @@ absl::Status VerifyAsynchronousInstructionPairs(const HloModule& module) {
           break;
         }
         case HloOpcode::kCollectivePermuteStart: {
-          RETURN_IF_ERROR(VerifySingleUser(
+          RETURN_IF_ERROR(VerifyAsyncSingleUser(
               instruction, {HloOpcode::kCollectivePermuteDone}));
           break;
         }
         case HloOpcode::kCollectivePermuteDone: {
-          RETURN_IF_ERROR(VerifySingleOperand(
+          TF_RET_CHECK(instruction->operand_count() == 1)
+              << "The " << HloOpcodeString(instruction->opcode())
+              << " instruction requires one operand, found "
+              << instruction->operand_count();
+          const HloInstruction* operand = instruction->operand(0);
+          if (operand->opcode() != HloOpcode::kCollectivePermuteStart &&
+              operand->opcode() != HloOpcode::kGetTupleElement) {
+            return Internal(
+                "The operand of a %s instruction needs to be %s, found %s",
+                HloOpcodeString(instruction->opcode()),
+                HloOpcodeString(HloOpcode::kCollectivePermuteStart),
+                HloOpcodeString(operand->opcode()));
+          }
+          RETURN_IF_ERROR(VerifyAsyncPair(
               instruction, {HloOpcode::kCollectivePermuteStart}));
           break;
         }

@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/hlo/translate/hlo_to_mhlo/hlo_module_importer.h"
 
 #include <memory>
+#include <unordered_set>
 
 #include "absl/status/status.h"
 #include "xla/tsl/platform/status_macros.h"
@@ -34,6 +35,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/translate/hlo_to_mhlo/hlo_function_importer.h"
 #include "xla/hlo/translate/hlo_to_mhlo/module_attributes_importer.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
@@ -72,6 +74,7 @@ absl::Status ConvertToMhlo(mlir::ModuleOp module) {
   }
   return absl::OkStatus();
 }
+
 }  // namespace
 
 absl::Status HloModuleImporter::Import(const HloModule& hlo_module) {
@@ -108,7 +111,22 @@ absl::Status HloModuleImporter::Import(const HloModule& hlo_module) {
   }
 
   auto* module_entry_computation = hlo_module.entry_computation();
+  std::unordered_set<const HloComputation*> region_computations;
   for (const auto* computation : hlo_module.computations()) {
+    for (const auto* instruction : computation->instructions()) {
+      if (instruction->opcode() != HloOpcode::kCall) {
+        for (const auto* called_comp : instruction->called_computations()) {
+          region_computations.insert(called_comp);
+        }
+      }
+    }
+  }
+
+  for (const auto* computation : hlo_module.computations()) {
+    if (computation != module_entry_computation &&
+        region_computations.count(computation) > 0) {
+      continue;
+    }
     RETURN_IF_ERROR(HloFunctionImporter::ImportAsFunc(
                         *computation, symbol_table_, &function_map_, &builder_,
                         /*is_main*/ computation == module_entry_computation,

@@ -1235,7 +1235,8 @@ class ConvertToHloModule {
       llvm::ArrayRef<std::optional<xla::OpSharding>> arg_shardings = {},
       llvm::ArrayRef<std::optional<xla::OpSharding>> ret_shardings = {},
       llvm::ArrayRef<std::optional<xla::OriginalValueProto>>
-          arg_original_value_protos = {});
+          arg_original_value_protos = {},
+      llvm::ArrayRef<xla::Shape> arg_shapes = {});
 
   std::optional<xla::OriginalValueProto> GetOriginalValue(mlir::Value value);
 
@@ -1251,7 +1252,8 @@ class ConvertToHloModule {
       llvm::ArrayRef<std::optional<xla::OpSharding>> ret_shardings,
       xla::XlaComputationId& computation,
       llvm::ArrayRef<mlir::Value> implicit_operands = {},
-      llvm::ArrayRef<mlir::Value> implicit_results = {});
+      llvm::ArrayRef<mlir::Value> implicit_results = {},
+      llvm::ArrayRef<xla::Shape> arg_shapes = {});
 
   // Lower cast to HLO cast instruction
   LogicalResult LowerCast(mlir::Operation* inst,
@@ -1441,22 +1443,118 @@ bool SimplyReturnedOp(mlir::Operation* op) {
   return false;
 }
 
+static void CollectLeafShardings(const xla::OpSharding& sharding,
+                                 const xla::Shape& shape,
+                                 std::vector<xla::OpSharding>& leaf_shardings) {
+  if (!shape.IsTuple()) {
+    if (sharding.type() == xla::OpSharding::TUPLE) {
+      if (sharding.tuple_shardings_size() > 0) {
+        CollectLeafShardings(sharding.tuple_shardings(0), shape,
+                             leaf_shardings);
+      }
+    } else {
+      leaf_shardings.push_back(sharding);
+    }
+    return;
+  }
+
+  if (sharding.type() != xla::OpSharding::TUPLE) {
+    int leaf_count = xla::ShapeUtil::GetLeafCount(shape);
+    for (int i = 0; i < leaf_count; ++i) {
+      leaf_shardings.push_back(sharding);
+    }
+  } else {
+    if (sharding.tuple_shardings_size() == shape.tuple_shapes_size()) {
+      for (int i = 0; i < shape.tuple_shapes_size(); ++i) {
+        CollectLeafShardings(sharding.tuple_shardings(i), shape.tuple_shapes(i),
+                             leaf_shardings);
+      }
+    } else {
+      leaf_shardings.push_back(sharding);
+    }
+  }
+}
+
+static xla::OpSharding ReconstructSharding(
+    const xla::Shape& shape, std::vector<xla::OpSharding>::const_iterator& it) {
+  if (!shape.IsTuple()) {
+    return *it++;
+  }
+  xla::OpSharding tuple_sharding;
+  tuple_sharding.set_type(xla::OpSharding::TUPLE);
+  for (const auto& sub_shape : shape.tuple_shapes()) {
+    *tuple_sharding.add_tuple_shardings() = ReconstructSharding(sub_shape, it);
+  }
+  return tuple_sharding;
+}
+
+static void FlattenSharding(const xla::OpSharding& sharding,
+                            std::vector<xla::OpSharding>& flat_shardings) {
+  if (sharding.type() != xla::OpSharding::TUPLE) {
+    flat_shardings.push_back(sharding);
+  } else {
+    for (const auto& sub_sharding : sharding.tuple_shardings()) {
+      FlattenSharding(sub_sharding, flat_shardings);
+    }
+  }
+}
+
+xla::OpSharding BuildOpShardingForShape(
+    const xla::Shape& shape, absl::Span<const xla::OpSharding> leaf_shardings,
+    int64_t& offset) {
+  if (!shape.IsTuple()) {
+    xla::OpSharding res = leaf_shardings[offset];
+    offset += 1;
+    return res;
+  }
+  if (xla::ShapeUtil::GetLeafCount(shape) == 0) {
+    if (offset < leaf_shardings.size()) {
+      xla::OpSharding res = leaf_shardings[offset];
+      offset += 1;
+      return res;
+    }
+    xla::OpSharding res;
+    res.set_type(xla::OpSharding::REPLICATED);
+    return res;
+  }
+  xla::OpSharding res;
+  res.set_type(xla::OpSharding::TUPLE);
+  for (int i = 0; i < shape.tuple_shapes_size(); ++i) {
+    *res.add_tuple_shardings() =
+        BuildOpShardingForShape(shape.tuple_shapes(i), leaf_shardings, offset);
+  }
+  return res;
+}
+
 void BuildGetTupleElementsForTupleResults(
     mlir::Operation* op, xla::XlaOp tuple, xla::XlaBuilder* builder,
     llvm::DenseMap<mlir::Value, xla::XlaOp>& values,
     unsigned num_implicit_results = 0) {
   const std::optional<xla::OpSharding>& sharding = builder->sharding();
   if (sharding.has_value()) {
-    bool is_tuple_sharding = sharding->type() == xla::OpSharding::TUPLE;
-    assert(!is_tuple_sharding || (op->getNumResults() + num_implicit_results ==
-                                  sharding->tuple_shardings_size()));
-    for (auto [index, result] : llvm::enumerate(op->getResults())) {
-      // If `sharding` is not a tuple sharding, then every `get-tuple-element`
-      // gets the same sharding.
-      xla::XlaScopedShardingAssignment scoped_sharding(
-          builder,
-          is_tuple_sharding ? sharding->tuple_shardings(index) : sharding);
-      values[result] = xla::GetTupleElement(tuple, index);
+    if (sharding->type() == xla::OpSharding::TUPLE) {
+      std::vector<xla::OpSharding> flat_shardings;
+      auto shape_or = builder->GetShape(tuple);
+      if (!shape_or.ok()) {
+        op->emitOpError() << "failed to get shape of tuple: "
+                          << shape_or.status().ToString();
+        return;
+      }
+      FlattenSharding(*sharding, flat_shardings);
+
+      auto it = flat_shardings.cbegin();
+      for (auto [index, result] : llvm::enumerate(op->getResults())) {
+        xla::Shape result_shape = shape_or->tuple_shapes(index);
+        xla::OpSharding result_sharding = ReconstructSharding(result_shape, it);
+        xla::XlaScopedShardingAssignment scoped_sharding(builder,
+                                                         result_sharding);
+        values[result] = xla::GetTupleElement(tuple, index);
+      }
+    } else {
+      for (auto [index, result] : llvm::enumerate(op->getResults())) {
+        xla::XlaScopedShardingAssignment scoped_sharding(builder, sharding);
+        values[result] = xla::GetTupleElement(tuple, index);
+      }
     }
   } else {
     xla::XlaScopedShardingAssignment scoped_sharding(builder, std::nullopt);
@@ -1927,25 +2025,138 @@ LogicalResult ExportXlaOp(OutfeedOp op, OpLoweringContext ctx) {
   return success();
 }
 
-LogicalResult ExportXlaOp(OptimizationBarrierOp op, OpLoweringContext ctx) {
-  // In case StableHLO's OptimizationBarrierOp has multiple operands,
-  // create xla::Tuple, using those operands, to be used as
-  // sole operand of xla::OptimizationBarrier.
-  llvm::SmallVector<xla::XlaOp> operands;
-  if (failed(GetTuple(op, op.getOperands(), ctx, operands))) {
-    return failure();
+static xla::OpSharding ExpandSharding(const xla::OpSharding& sharding,
+                                      const xla::Shape& shape) {
+  if (!shape.IsTuple()) {
+    return sharding;
   }
-  if (operands.empty()) {
+  std::vector<xla::OpSharding> leaf_shardings;
+  CollectLeafShardings(sharding, shape, leaf_shardings);
+
+  xla::OpSharding result;
+  result.set_type(xla::OpSharding::TUPLE);
+  for (const auto& leaf : leaf_shardings) {
+    *result.add_tuple_shardings() = leaf;
+  }
+  return result;
+}
+
+LogicalResult ExportXlaOp(OptimizationBarrierOp op, OpLoweringContext ctx) {
+  auto& value_map = *ctx.values;
+
+  llvm::SmallVector<xla::XlaOp, 4> barrier_operands;
+  llvm::SmallVector<int, 4> non_future_indices;
+  llvm::SmallVector<int, 4> future_indices;
+
+  LOG(INFO)
+      << "Jetski: ExportXlaOp(OptimizationBarrierOp) entered. Num operands: "
+      << op.getNumOperands();
+  for (auto [index, operand] : llvm::enumerate(op.getOperands())) {
+    bool is_future = mlir::isa<mlir::stablehlo::FutureType>(operand.getType());
+    std::string type_str;
+    llvm::raw_string_ostream os(type_str);
+    operand.getType().print(os);
+    LOG(INFO) << "Jetski:   Operand " << index << " type: " << os.str()
+              << " is_future: " << is_future;
+    if (is_future) {
+      future_indices.push_back(index);
+    } else {
+      non_future_indices.push_back(index);
+      xla::XlaOp xla_op;
+      if (failed(GetXlaOp(operand, value_map, &xla_op, op))) {
+        return failure();
+      }
+      barrier_operands.push_back(xla_op);
+    }
+  }
+
+  // Bypass futures.
+  for (int index : future_indices) {
+    xla::XlaOp xla_op;
+    if (failed(GetXlaOp(op->getOperand(index), value_map, &xla_op, op))) {
+      return failure();
+    }
+    value_map[op->getResult(index)] = xla_op;
+  }
+
+  if (barrier_operands.empty()) {
     return success();
   }
 
-  auto& value_map = *ctx.values;
-  if (operands.size() == 1) {
-    value_map[op.getOperation()->getResult(0)] =
-        xla::OptimizationBarrier(operands[0]);
+  // Reconstruct sharding if present.
+  const std::optional<xla::OpSharding>& op_sharding = ctx.builder->sharding();
+  std::vector<xla::OpSharding> non_future_shardings;
+  if (op_sharding.has_value()) {
+    if (op_sharding->type() == xla::OpSharding::TUPLE) {
+      std::vector<xla::Shape> hlo_operand_shapes;
+      for (auto operand : op.getOperands()) {
+        xla::XlaOp xla_op = value_map[operand];
+        hlo_operand_shapes.push_back(ctx.builder->GetShape(xla_op).value());
+      }
+      xla::Shape total_hlo_shape =
+          xla::ShapeUtil::MakeTupleShape(hlo_operand_shapes);
+
+      std::vector<xla::OpSharding> flat_shardings(
+          op_sharding->tuple_shardings().begin(),
+          op_sharding->tuple_shardings().end());
+      int64_t leaf_count = xla::ShapeUtil::GetLeafCount(total_hlo_shape);
+      if (leaf_count == 0) leaf_count = 1;
+
+      xla::OpSharding total_sharding;
+      if (op_sharding->tuple_shardings_size() == op.getNumOperands()) {
+        total_sharding = *op_sharding;
+      } else {
+        assert(flat_shardings.size() == leaf_count);
+        int64_t offset = 0;
+        total_sharding =
+            BuildOpShardingForShape(total_hlo_shape, flat_shardings, offset);
+      }
+
+      for (int index : non_future_indices) {
+        non_future_shardings.push_back(total_sharding.tuple_shardings(index));
+      }
+    } else {
+      for (int i = 0; i < non_future_indices.size(); ++i) {
+        non_future_shardings.push_back(*op_sharding);
+      }
+    }
+  }
+
+  std::optional<xla::OpSharding> barrier_sharding;
+  if (op_sharding.has_value()) {
+    if (non_future_shardings.size() == 1) {
+      barrier_sharding = non_future_shardings[0];
+    } else {
+      xla::OpSharding tuple_sharding;
+      tuple_sharding.set_type(xla::OpSharding::TUPLE);
+      for (const auto& s : non_future_shardings) {
+        *tuple_sharding.add_tuple_shardings() = s;
+      }
+      barrier_sharding = tuple_sharding;
+    }
+  }
+
+  if (barrier_operands.size() == 1) {
+    xla::XlaScopedShardingAssignment scoped_sharding(ctx.builder,
+                                                     barrier_sharding);
+    xla::XlaOp barrier_result = xla::OptimizationBarrier(barrier_operands[0]);
+    value_map[op->getResult(non_future_indices[0])] = barrier_result;
   } else {
-    auto result = xla::OptimizationBarrier(Tuple(ctx.builder, operands));
-    BuildGetTupleElementsForTupleResults(op, result, ctx);
+    xla::XlaScopedShardingAssignment scoped_sharding(ctx.builder,
+                                                     barrier_sharding);
+    xla::XlaOp barrier_result =
+        xla::OptimizationBarrier(Tuple(ctx.builder, barrier_operands));
+    for (int i = 0; i < non_future_indices.size(); ++i) {
+      int original_index = non_future_indices[i];
+      std::optional<xla::OpSharding> element_sharding;
+      if (op_sharding.has_value()) {
+        element_sharding = non_future_shardings[i];
+      }
+      xla::XlaScopedShardingAssignment scoped_element_sharding(
+          ctx.builder, element_sharding);
+      value_map[op->getResult(original_index)] =
+          xla::GetTupleElement(barrier_result, i);
+    }
   }
 
   return success();
@@ -2119,10 +2330,71 @@ LogicalResult ExportXlaOp(WhileOp op, OpLoweringContext ctx) {
   xla::XlaComputationId condition;
   xla::XlaComputationId body;
 
+  auto shardingAttr = op->getAttrOfType<mlir::StringAttr>("mhlo.sharding");
+  if (shardingAttr) {
+    LOG(INFO) << "Jetski: WhileOp has mhlo.sharding: "
+              << shardingAttr.getValue().str();
+    auto parsed = xla::ConvertSharding(shardingAttr.getValue());
+    if (parsed) {
+      LOG(INFO) << "Jetski: ConvertSharding succeeded: "
+                << parsed->ShortDebugString();
+    } else {
+      LOG(INFO) << "Jetski: ConvertSharding failed";
+    }
+  } else {
+    LOG(INFO) << "Jetski: WhileOp does NOT have mhlo.sharding attribute";
+    LOG(INFO) << "Jetski: WhileOp attributes:";
+    for (auto attr : op->getAttrs()) {
+      std::string attr_name = attr.getName().str();
+      LOG(INFO) << "  " << attr_name;
+    }
+  }
+
+  if (ctx.builder->sharding()) {
+    LOG(INFO) << "Jetski: builder sharding before GetResultShardings: "
+              << ctx.builder->sharding()->ShortDebugString();
+  } else {
+    LOG(INFO)
+        << "Jetski: builder sharding before GetResultShardings is nullopt";
+  }
+
   // If the results of the while op have a sharding, we use those shardings for
   // the corresponding arguments and return shardings in the body and condition.
   llvm::SmallVector<std::optional<xla::OpSharding>> res_shardings =
       GetResultShardings(ctx.builder->sharding(), op->getNumResults());
+
+  if (!res_shardings.empty()) {
+    LOG(INFO) << "Jetski: ExportXlaOp(WhileOp) res_shardings size: "
+              << res_shardings.size();
+    for (unsigned i = 0; i < op->getNumResults(); ++i) {
+      if (res_shardings[i]) {
+        xla::XlaOp xla_operand;
+        if (failed(
+                GetXlaOp(op->getOperand(i), *ctx.values, &xla_operand, op))) {
+          return failure();
+        }
+        auto shape_or = ctx.builder->GetShape(xla_operand);
+        if (!shape_or.ok()) {
+          return op->emitError(shape_or.status().ToString());
+        }
+        xla::Shape shape = shape_or.value();
+        std::string type_str;
+        llvm::raw_string_ostream os(type_str);
+        op->getResult(i).getType().print(os);
+        LOG(INFO) << "Jetski: result " << i << " type: " << type_str
+                  << " HLO operand shape: " << shape.ToString()
+                  << " sharding before: "
+                  << res_shardings[i]->ShortDebugString();
+        res_shardings[i] = ExpandSharding(*res_shardings[i], shape);
+        LOG(INFO) << "Jetski: sharding after: "
+                  << res_shardings[i]->ShortDebugString();
+      } else {
+        LOG(INFO) << "Jetski: result " << i << " has no sharding";
+      }
+    }
+  } else {
+    LOG(INFO) << "Jetski: ExportXlaOp(WhileOp) res_shardings is empty";
+  }
 
   // stablehlo.WhileOp has operands and corresponding blocks arguments, but the
   // computation inside its region-blocks can also use implicit captures of
@@ -2151,6 +2423,15 @@ LogicalResult ExportXlaOp(WhileOp op, OpLoweringContext ctx) {
     // We only add implicit arg shardings if there are result shardings,
     // otherwise it means sharding propagation hasn't been done yet.
     implicit_shardings = GetXlaOpShardings(implicit_args);
+    for (auto [implicit_index, implicit_arg] : llvm::enumerate(implicit_args)) {
+      if (implicit_shardings[implicit_index]) {
+        auto shape_or = ctx.builder->GetShape(implicit_arg);
+        if (shape_or.ok()) {
+          implicit_shardings[implicit_index] =
+              ExpandSharding(*implicit_shardings[implicit_index], *shape_or);
+        }
+      }
+    }
 
     res_shardings.append(implicit_shardings.begin(), implicit_shardings.end());
     if (std::optional<xla::OpSharding> new_sharding =
@@ -2216,18 +2497,41 @@ LogicalResult ExportXlaOp(WhileOp op, OpLoweringContext ctx) {
     }
   }
 
+  llvm::SmallVector<xla::Shape, 4> body_arg_shapes;
+  body_arg_shapes.reserve(op.getNumOperands() + implicit_args.size());
+  for (Value operand : op.getOperands()) {
+    xla::XlaOp xla_operand;
+    if (failed(GetXlaOp(operand, *ctx.values, &xla_operand, op))) {
+      return failure();
+    }
+    auto shape_or = ctx.builder->GetShape(xla_operand);
+    if (!shape_or.ok()) {
+      return op.emitError(shape_or.status().ToString());
+    }
+    body_arg_shapes.push_back(*shape_or);
+  }
+  for (xla::XlaOp implicit_arg : implicit_args) {
+    auto shape_or = ctx.builder->GetShape(implicit_arg);
+    if (!shape_or.ok()) {
+      return op.emitError(shape_or.status().ToString());
+    }
+    body_arg_shapes.push_back(*shape_or);
+  }
+
   if (failed(ctx.converter->LowerRegionAsComputation(
           &op.getBody(), body, implicit_operands,
           /*implicit_results=*/implicit_operands,
           /*ensure_single_arg=*/true, /*arg_shardings=*/res_shardings,
           /*ret_shardings=*/res_shardings,
-          /*arg_original_value_protos=*/arg_original_value_protos)) ||
+          /*arg_original_value_protos=*/arg_original_value_protos,
+          body_arg_shapes)) ||
       failed(ctx.converter->LowerRegionAsComputation(
           &op.getCond(), condition, implicit_operands,
           /*implicit_results=*/{},
           /*ensure_single_arg=*/true, /*arg_shardings=*/res_shardings,
           /*ret_shardings=*/{},
-          /*arg_original_value_protos=*/arg_original_value_protos))) {
+          /*arg_original_value_protos=*/arg_original_value_protos,
+          body_arg_shapes))) {
     return failure();
   }
 
@@ -3611,6 +3915,54 @@ LogicalResult ExportXlaOp(AsyncStartOp op, OpLoweringContext ctx) {
                           << collective.getName();
 }
 
+static AsyncStartOp FindAsyncStart(mlir::Value value) {
+  if (!value) return nullptr;
+
+  if (auto op = value.getDefiningOp()) {
+    if (auto async_start = dyn_cast<AsyncStartOp>(op)) {
+      return async_start;
+    }
+    if (auto barrier = dyn_cast<OptimizationBarrierOp>(op)) {
+      for (const auto& e : llvm::enumerate(barrier.getResults())) {
+        if (e.value() == value) {
+          return FindAsyncStart(barrier->getOperand(e.index()));
+        }
+      }
+    }
+    if (auto cast = dyn_cast<mlir::UnrealizedConversionCastOp>(op)) {
+      for (const auto& e : llvm::enumerate(cast.getResults())) {
+        if (e.value() == value) {
+          return FindAsyncStart(cast->getOperand(e.index()));
+        }
+      }
+    }
+    if (auto while_op = dyn_cast<WhileOp>(op)) {
+      int res_num = -1;
+      for (const auto& e : llvm::enumerate(while_op.getResults())) {
+        if (e.value() == value) {
+          res_num = e.index();
+          break;
+        }
+      }
+      if (res_num != -1) {
+        auto return_op = while_op.getBody().front().getTerminator();
+        return FindAsyncStart(return_op->getOperand(res_num));
+      }
+    }
+    return nullptr;
+  }
+
+  if (auto block_arg = dyn_cast<mlir::BlockArgument>(value)) {
+    mlir::Block* block = block_arg.getOwner();
+    mlir::Operation* parent_op = block->getParentOp();
+    if (auto while_op = dyn_cast<WhileOp>(parent_op)) {
+      unsigned arg_num = block_arg.getArgNumber();
+      return FindAsyncStart(while_op->getOperand(arg_num));
+    }
+  }
+  return nullptr;
+}
+
 LogicalResult ExportXlaOp(AsyncDoneOp op, OpLoweringContext ctx) {
   // Translate the operand from StableHLO to HLO.
   xla::XlaOp operand;
@@ -3619,10 +3971,10 @@ LogicalResult ExportXlaOp(AsyncDoneOp op, OpLoweringContext ctx) {
   }
 
   // Get the corresponding async_start op.
-  if (!isa<AsyncStartOp>(op.getOperand().getDefiningOp())) {
+  auto async_start = FindAsyncStart(op.getOperand());
+  if (!async_start) {
     return op.emitError() << "async_done argument is not an async_start";
   }
-  auto async_start = dyn_cast<AsyncStartOp>(op.getOperand().getDefiningOp());
   Block& block = async_start.getBody().front();
   Operation& collective = block.front();
 
@@ -5342,8 +5694,20 @@ LogicalResult ConvertToHloModule::LowerReturn(
   // Construct the return value for the function. If there is a single value
   // returned, then return it directly, else create a tuple and return.
   unsigned num_return_values = inst->getNumOperands() + implicit_results.size();
+
+  LOG(INFO) << "Jetski: LowerReturn entered. is_entry_function: "
+            << is_entry_function << " num_return_values: " << num_return_values
+            << " ret_shardings size: " << ret_shardings.size();
+
   std::optional<xla::OpSharding> ret_tuple_sharding =
       CreateTupleSharding(ret_shardings);
+
+  if (ret_tuple_sharding) {
+    LOG(INFO) << "Jetski: ret_tuple_sharding: "
+              << ret_tuple_sharding->ShortDebugString();
+  } else {
+    LOG(INFO) << "Jetski: ret_tuple_sharding is nullopt";
+  }
   auto& value_map = *value_lowering;
   if ((options_.return_tuple && is_entry_function) || num_return_values != 1) {
     std::vector<xla::XlaOp> returns;
@@ -5392,8 +5756,20 @@ LogicalResult ConvertToHloModule::LowerReturn(
       }
     }
 
+    if (builder->sharding()) {
+      LOG(INFO) << "Jetski: builder sharding before scoped_sharding: "
+                << builder->sharding()->ShortDebugString();
+    } else {
+      LOG(INFO) << "Jetski: builder sharding before scoped_sharding is nullopt";
+    }
     xla::XlaScopedShardingAssignment scoped_sharding(builder,
                                                      ret_tuple_sharding);
+    if (builder->sharding()) {
+      LOG(INFO) << "Jetski: builder sharding after scoped_sharding: "
+                << builder->sharding()->ShortDebugString();
+    } else {
+      LOG(INFO) << "Jetski: builder sharding after scoped_sharding is nullopt";
+    }
     *return_value = xla::Tuple(builder, returns);
     return success();
   }
@@ -5794,7 +6170,8 @@ LogicalResult ConvertToHloModule::LowerBasicBlockAsFunction(
     llvm::ArrayRef<std::optional<xla::OpSharding>> ret_shardings,
     xla::XlaComputationId& computation,
     llvm::ArrayRef<mlir::Value> implicit_operands,
-    llvm::ArrayRef<mlir::Value> implicit_results) {
+    llvm::ArrayRef<mlir::Value> implicit_results,
+    llvm::ArrayRef<xla::Shape> caller_arg_shapes) {
   //  Mapping from the Value to lowered XlaOp.
   ValueLoweringMap lowering;
 
@@ -5848,12 +6225,17 @@ LogicalResult ConvertToHloModule::LowerBasicBlockAsFunction(
 
       auto args_size = block->getNumArguments() + implicit_operands.size();
 
-      arg_shapes.reserve(args_size);
-      for (BlockArgument& arg : block->getArguments()) {
-        arg_shapes.push_back(xla::TypeToShape(arg.getType()));
-      }
-      for (Value implicit_operand : implicit_operands) {
-        arg_shapes.push_back(xla::TypeToShape(implicit_operand.getType()));
+      if (!caller_arg_shapes.empty()) {
+        assert(caller_arg_shapes.size() == args_size);
+        arg_shapes.assign(caller_arg_shapes.begin(), caller_arg_shapes.end());
+      } else {
+        arg_shapes.reserve(args_size);
+        for (BlockArgument& arg : block->getArguments()) {
+          arg_shapes.push_back(xla::TypeToShape(arg.getType()));
+        }
+        for (Value implicit_operand : implicit_operands) {
+          arg_shapes.push_back(xla::TypeToShape(implicit_operand.getType()));
+        }
       }
 
       if (args_size > 1) {
@@ -5937,7 +6319,9 @@ LogicalResult ConvertToHloModule::LowerBasicBlockAsFunction(
     } else {
       for (BlockArgument& arg : block->getArguments()) {
         auto num = arg.getArgNumber();
-        xla::Shape shape = xla::TypeToShape(arg.getType());
+        xla::Shape shape = !caller_arg_shapes.empty()
+                               ? caller_arg_shapes[num]
+                               : xla::TypeToShape(arg.getType());
         xla::XlaScopedShardingAssignment scoped_sharding(
             builder, arg_shardings.empty() ? std::nullopt : arg_shardings[num]);
         xla::XlaScopedOriginalValueAssignment original_value(
@@ -6042,7 +6426,8 @@ LogicalResult ConvertToHloModule::LowerRegionAsComputation(
     llvm::ArrayRef<std::optional<xla::OpSharding>> arg_shardings,
     llvm::ArrayRef<std::optional<xla::OpSharding>> ret_shardings,
     llvm::ArrayRef<std::optional<xla::OriginalValueProto>>
-        arg_original_value_protos) {
+        arg_original_value_protos,
+    llvm::ArrayRef<xla::Shape> arg_shapes) {
   std::unique_ptr<xla::XlaBuilder> builder = module_builder_.CreateSubBuilder(
       absl::StrCat(kRegionPrefix, region_id_++));
   if (failed(LowerBasicBlockAsFunction(
@@ -6051,7 +6436,7 @@ LogicalResult ConvertToHloModule::LowerRegionAsComputation(
           /*ensure_single_arg*/ ensure_single_arg,
           /*entry_args_same_across_replicas=*/{}, arg_shardings,
           /*arg_fe_attrs=*/{}, arg_original_value_protos, ret_shardings, func,
-          implicit_operands, implicit_results))) {
+          implicit_operands, implicit_results, arg_shapes))) {
     return failure();
   }
   return success();
