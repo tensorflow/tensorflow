@@ -2477,12 +2477,18 @@ void HloInstruction::SetupDerivedInstruction(
 
   derived_instruction->set_metadata(metadata());
   if (has_rare()) {
-    derived_instruction->set_result_accuracy(result_accuracy());
+    if (has_result_accuracy() &&
+        IsUnaryOpWithResultAccuracy(derived_instruction->opcode())) {
+      derived_instruction->set_result_accuracy(result_accuracy());
+    } else if (derived_instruction->has_rare()) {
+      derived_instruction->set_result_accuracy(ResultAccuracy());
+    }
     derived_instruction->set_frontend_attributes(frontend_attributes());
     // Offload annotations should not be implicitly derived.
     derived_instruction->erase_frontend_attribute(kXlaComputeTypeAttr);
     derived_instruction->set_statistics_viz(statistics_viz());
   } else if (derived_instruction->has_rare()) {
+    derived_instruction->set_result_accuracy(ResultAccuracy());
     derived_instruction->mutable_rare()->frontend_attributes.Clear();
     derived_instruction->mutable_rare()->statistics_viz.Clear();
   }

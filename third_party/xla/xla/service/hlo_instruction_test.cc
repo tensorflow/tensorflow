@@ -3571,5 +3571,48 @@ TEST_F(HloInstructionTest, FusionPermuteOperandsTest) {
                                 m::Parameter(0))));
 }
 
+TEST_F(HloInstructionTest, SetupDerivedInstructionResultAccuracy) {
+  ResultAccuracy result_accuracy_highest;
+  result_accuracy_highest.set_mode(ResultAccuracy::HIGHEST);
+
+  HloComputation::Builder builder("Tanh");
+  HloInstruction* x =
+      builder.AddInstruction(HloInstruction::CreateParameter(0, r0f32_, "x"));
+  HloInstruction* tanh = builder.AddInstruction(
+      HloInstruction::CreateUnary(r0f32_, HloOpcode::kTanh, x));
+  tanh->set_result_accuracy(result_accuracy_highest);
+
+  std::unique_ptr<HloInstruction> derived_exp =
+      HloInstruction::CreateUnary(r0f32_, HloOpcode::kExp, x);
+  tanh->SetupDerivedInstruction(derived_exp.get());
+  EXPECT_TRUE(derived_exp->has_result_accuracy());
+  EXPECT_EQ(derived_exp->result_accuracy().mode(), ResultAccuracy::HIGHEST);
+
+  std::unique_ptr<HloInstruction> derived_convert =
+      HloInstruction::CreateConvert(r0f32_, x);
+  tanh->SetupDerivedInstruction(derived_convert.get());
+  EXPECT_FALSE(derived_convert->has_result_accuracy());
+
+  HloInstruction* plain_tanh = builder.AddInstruction(
+      HloInstruction::CreateUnary(r0f32_, HloOpcode::kTanh, x));
+  plain_tanh->SetupDerivedInstruction(derived_exp.get());
+  EXPECT_FALSE(derived_exp->has_result_accuracy());
+
+  derived_exp->set_result_accuracy(result_accuracy_highest);
+  EXPECT_TRUE(derived_exp->has_result_accuracy());
+
+  HloInstruction* attr_tanh = builder.AddInstruction(
+      HloInstruction::CreateUnary(r0f32_, HloOpcode::kTanh, x));
+  FrontendAttributes attributes;
+  (*attributes.mutable_map())["key"] = "val";
+  attr_tanh->set_frontend_attributes(attributes);
+  EXPECT_FALSE(attr_tanh->frontend_attributes().map().empty());
+  EXPECT_FALSE(attr_tanh->has_result_accuracy());
+
+  attr_tanh->SetupDerivedInstruction(derived_exp.get());
+  EXPECT_FALSE(derived_exp->has_result_accuracy());
+  EXPECT_EQ(derived_exp->frontend_attributes().map().at("key"), "val");
+}
+
 }  // namespace
 }  // namespace xla
