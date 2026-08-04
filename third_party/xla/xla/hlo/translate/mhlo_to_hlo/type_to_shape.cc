@@ -168,6 +168,20 @@ Shape TypeToShape(mlir::Type type) {
     }
     return ShapeUtil::MakeTupleShape(shapes);
 
+  } else if (auto future_type =
+                 mlir::dyn_cast<mlir::stablehlo::FutureType>(type)) {
+    if (future_type.getTypes().empty()) {
+      return ShapeUtil::MakeTupleShape({});
+    }
+    if (future_type.getTypes().size() == 1) {
+      return TypeToShape(future_type.getTypes().front());
+    }
+    llvm::SmallVector<Shape, 4> shapes;
+    shapes.reserve(future_type.getTypes().size());
+    for (mlir::Type sub_type : future_type.getTypes()) {
+      shapes.push_back(TypeToShape(sub_type));
+    }
+    return ShapeUtil::MakeTupleShape(shapes);
   } else if (mlir::isa<mlir::mhlo::TokenType>(type) ||
              mlir::isa<mlir::stablehlo::TokenType>(type)) {
     return ShapeUtil::MakeTokenShape();

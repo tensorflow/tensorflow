@@ -54,6 +54,11 @@ bool IsAsyncCollectiveStartOp(const HloInstruction* instruction,
 bool IsAsyncCollectiveDoneOp(const HloInstruction* instruction,
                              bool include_send_recv = false);
 
+// Returns the start operation for a given done operation.
+// If the done operation is loop-carried, it will trace back through the loop.
+// Returns nullptr if it cannot find the start operation.
+const HloInstruction* GetAsyncStartForDone(const HloInstruction* done);
+
 // Returns whether the instruction provided is a constant rank-0 float32, and
 // if so, places the constant value into out.
 // Precondition: out != nullptr

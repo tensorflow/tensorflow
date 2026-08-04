@@ -92,6 +92,105 @@ bool IsAsyncCollectiveDoneOp(const HloInstruction* instruction,
   }
 }
 
+const HloInstruction* GetAsyncStartForDone(const HloInstruction* done) {
+  if (done->opcode() != HloOpcode::kAsyncDone &&
+      !IsAsyncCollectiveDoneOp(done)) {
+    return nullptr;
+  }
+  if (done->operand_count() == 0) {
+    return nullptr;
+  }
+  const HloInstruction* op = done->operand(0);
+  while (op->opcode() == HloOpcode::kAsyncUpdate) {
+    if (op->operand_count() == 0) {
+      return nullptr;
+    }
+    op = op->operand(0);
+  }
+  if (IsAsyncCollectiveStartOp(op) || op->opcode() == HloOpcode::kAsyncStart) {
+    return op;
+  }
+  if (op->opcode() == HloOpcode::kGetTupleElement) {
+    const HloInstruction* src = op->operand(0);
+    if (src->opcode() == HloOpcode::kParameter) {
+      const HloComputation* comp = src->parent();
+      // We can only use GetCallersMap if callers are computed.
+      // Usually they are.
+      std::optional<HloInstruction*> while_op =
+          comp->GetUniqueCaller(HloOpcode::kWhile);
+      if (while_op.has_value()) {
+        int64_t carry_idx = op->tuple_index();
+        HloInstruction* init = (*while_op)->mutable_operand(0);
+        if (init->opcode() == HloOpcode::kTuple) {
+          HloInstruction* init_val = init->mutable_operand(carry_idx);
+          const HloInstruction* curr = init_val;
+          while (curr != nullptr) {
+            if (IsAsyncCollectiveStartOp(curr) ||
+                curr->opcode() == HloOpcode::kAsyncStart) {
+              return curr;
+            }
+            if (curr->opcode() == HloOpcode::kAsyncUpdate) {
+              curr = curr->operand(0);
+            } else if (curr->opcode() == HloOpcode::kGetTupleElement) {
+              curr = curr->operand(0);
+            } else {
+              break;
+            }
+          }
+        }
+      }
+    }
+    if (src->opcode() == HloOpcode::kWhile) {
+      HloInstruction* while_op = const_cast<HloInstruction*>(src);
+      int64_t carry_idx = op->tuple_index();
+      HloComputation* body = while_op->while_body();
+      HloInstruction* root = body->root_instruction();
+      if (root->opcode() == HloOpcode::kTuple) {
+        HloInstruction* body_val = root->mutable_operand(carry_idx);
+        const HloInstruction* curr = body_val;
+        while (curr != nullptr) {
+          if (IsAsyncCollectiveStartOp(curr) ||
+              curr->opcode() == HloOpcode::kAsyncStart) {
+            return curr;
+          }
+          if (curr->opcode() == HloOpcode::kAsyncUpdate) {
+            curr = curr->operand(0);
+          } else if (curr->opcode() == HloOpcode::kGetTupleElement) {
+            const HloInstruction* gte_src = curr->operand(0);
+            if (gte_src->opcode() == HloOpcode::kParameter &&
+                gte_src->parent() == body) {
+              break;  // Passed through, trace outside
+            }
+            curr = gte_src;
+          } else {
+            break;
+          }
+        }
+        // Trace outside if passed through or not found inside
+        HloInstruction* init = while_op->mutable_operand(0);
+        if (init->opcode() == HloOpcode::kTuple) {
+          HloInstruction* init_val = init->mutable_operand(carry_idx);
+          const HloInstruction* curr_out = init_val;
+          while (curr_out != nullptr) {
+            if (IsAsyncCollectiveStartOp(curr_out) ||
+                curr_out->opcode() == HloOpcode::kAsyncStart) {
+              return curr_out;
+            }
+            if (curr_out->opcode() == HloOpcode::kAsyncUpdate) {
+              curr_out = curr_out->operand(0);
+            } else if (curr_out->opcode() == HloOpcode::kGetTupleElement) {
+              curr_out = curr_out->operand(0);
+            } else {
+              break;
+            }
+          }
+        }
+      }
+    }
+  }
+  return nullptr;
+}
+
 bool IsConstantR0F32(HloInstruction* instruction, float* out) {
   if (instruction->opcode() == HloOpcode::kConstant &&
       ShapeUtil::IsScalarWithElementType(instruction->shape(), F32)) {

@@ -39,6 +39,7 @@ limitations under the License.
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/ErrorHandling.h"
+#include "llvm/Support/raw_ostream.h"
 #include "mlir/AsmParser/AsmParser.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/Attributes.h"
@@ -68,6 +69,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_input_output_alias_config.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/hlo/ir/hlo_sharding_metadata.h"
@@ -114,6 +116,63 @@ std::string SanitizeFunctionName(llvm::StringRef name) {
   std::string output(name);
   llvm::for_each(output, [](char& x) { x = x == '-' ? '_' : x; });
   return output;
+}
+
+bool ContainsFuture(mlir::Type type) {
+  if (llvm::isa<mlir::stablehlo::FutureType>(type)) return true;
+  if (auto tuple_type = llvm::dyn_cast<mlir::TupleType>(type)) {
+    for (auto t : tuple_type.getTypes()) {
+      if (ContainsFuture(t)) return true;
+    }
+  }
+  return false;
+}
+
+mlir::Type ReconstructTypeWithActualTypes(mlir::Type hlo_type,
+                                          mlir::ValueRange arguments,
+                                          int& arg_idx) {
+  if (arg_idx < arguments.size() &&
+      llvm::isa<mlir::stablehlo::FutureType>(arguments[arg_idx].getType())) {
+    return arguments[arg_idx++].getType();
+  }
+  if (auto tuple_type = llvm::dyn_cast<mlir::TupleType>(hlo_type)) {
+    llvm::SmallVector<mlir::Type> elem_types;
+    for (mlir::Type elem_type : tuple_type.getTypes()) {
+      elem_types.push_back(
+          ReconstructTypeWithActualTypes(elem_type, arguments, arg_idx));
+    }
+    return mlir::TupleType::get(hlo_type.getContext(), elem_types);
+  }
+  return arguments[arg_idx++].getType();
+}
+
+mlir::Value ResolveFuture(mlir::Value val) {
+  while (val) {
+    if (auto gte_op = val.getDefiningOp<mlir::stablehlo::GetTupleElementOp>()) {
+      mlir::Value operand = gte_op.getOperand();
+      auto index_attr = gte_op->getAttrOfType<mlir::IntegerAttr>("index");
+      if (!index_attr) break;
+      int idx = index_attr.getInt();
+
+      if (auto tuple_op = operand.getDefiningOp<mlir::stablehlo::TupleOp>()) {
+        val = tuple_op->getOperand(idx);
+        continue;
+      }
+      break;
+    }
+
+    if (auto barrier_op =
+            val.getDefiningOp<mlir::stablehlo::OptimizationBarrierOp>()) {
+      auto result = mlir::dyn_cast<mlir::OpResult>(val);
+      if (!result) break;
+      int idx = result.getResultNumber();
+      val = barrier_op->getOperand(idx);
+      continue;
+    }
+
+    break;
+  }
+  return val;
 }
 
 // Returns whether the instruction is a default dot operation.
@@ -208,10 +267,74 @@ Operation* WrapInTuple(mlir::OpBuilder* builder, Operation* op) {
 Operation* GetTupleElementOp(mlir::OpBuilder* builder, Value value,
                              int64_t index,
                              llvm::SmallVector<NamedAttribute>&& attributes) {
+  std::string type_str;
+  llvm::raw_string_ostream os(type_str);
+  value.getType().print(os);
+  LOG(INFO) << "Jetski: GetTupleElementOp: value type: " << type_str
+            << ", index: " << index;
+  if (llvm::isa<mlir::stablehlo::FutureType>(value.getType())) {
+    std::string val_str;
+    llvm::raw_string_ostream val_os(val_str);
+    value.print(val_os);
+    LOG(INFO) << "Jetski: Intercepted GTE on future. value: " << val_str
+              << ", index: " << index;
+    Value resolved_value = ResolveFuture(value);
+    std::string resolved_val_str;
+    llvm::raw_string_ostream resolved_val_os(resolved_val_str);
+    resolved_value.print(resolved_val_os);
+    if (resolved_value != value) {
+      LOG(INFO) << "Jetski: Resolved future to: " << resolved_val_str;
+    }
+    if (auto op = resolved_value.getDefiningOp()) {
+      if (auto async_start =
+              llvm::dyn_cast<mlir::stablehlo::AsyncStartOp>(op)) {
+        if (index == 0) {
+          auto input = async_start.getOperand(0);
+          std::string input_str;
+          llvm::raw_string_ostream input_os(input_str);
+          input.print(input_os);
+          LOG(INFO) << "Jetski: Mapping GTE on future (index 0) to async_start "
+                       "input: "
+                    << input_str;
+          auto cast_op = builder->create<mlir::UnrealizedConversionCastOp>(
+              value.getLoc(), input.getType(), input);
+          return cast_op.getOperation();
+        } else if (index == 1) {
+          LOG(INFO)
+              << "Jetski: Mapping GTE on future (index 1) to future itself: "
+              << resolved_val_str;
+          auto cast_op = builder->create<mlir::UnrealizedConversionCastOp>(
+              value.getLoc(), resolved_value.getType(), resolved_value);
+          return cast_op.getOperation();
+        } else {
+          std::string op_str;
+          llvm::raw_string_ostream op_os(op_str);
+          op->print(op_os);
+          LOG(ERROR) << "Jetski: GTE index " << index
+                     << " for AsyncStartOp (expected 0 or 1): " << op_str;
+        }
+      } else {
+        std::string op_str;
+        llvm::raw_string_ostream op_os(op_str);
+        op->print(op_os);
+        LOG(ERROR) << "Jetski: GTE on future defined by non-AsyncStartOp: "
+                   << op_str;
+      }
+    } else {
+      LOG(ERROR) << "Jetski: GTE on future block argument! value: "
+                 << resolved_val_str;
+    }
+  }
   attributes.push_back(
       builder->getNamedAttr("index", builder->getI32IntegerAttr(index)));
-  return mlir::stablehlo::GetTupleElementOp::create(*builder, value.getLoc(),
-                                                    value, attributes);
+  auto op = mlir::stablehlo::GetTupleElementOp::create(*builder, value.getLoc(),
+                                                       value, attributes);
+  std::string res_type_str;
+  llvm::raw_string_ostream res_os(res_type_str);
+  op.getResult().getType().print(res_os);
+  LOG(INFO) << "Jetski: Created GetTupleElementOp result type: "
+            << res_type_str;
+  return op;
 }
 
 // Creates an array of zeros like the given MLIR type, if type has bounded
@@ -384,6 +507,13 @@ absl::Status HloFunctionImporter::ImportAsRegion(
 
 absl::StatusOr<FuncOp> HloFunctionImporter::ImportAsFunc(
     const HloComputation& computation, bool is_main) {
+  std::string parent_name =
+      computation.parent() ? computation.parent()->name() : "NULL";
+  LOG(INFO) << "Jetski: ImportAsFunc entered for computation: "
+            << computation.name() << ", parent module: " << parent_name;
+  if (parent_name == "jit_g") {
+    LOG(INFO) << "Jetski: HLO:\n" << computation.ToString();
+  }
   std::string computation_name =
       is_main ? "main" : SanitizeFunctionName(ToStringRef(computation.name()));
 
@@ -561,12 +691,33 @@ absl::StatusOr<FuncOp> HloFunctionImporter::ImportAsFunc(
 
 absl::Status HloFunctionImporter::ImportAsRegion(
     const HloComputation& computation, mlir::Region* region) {
+  std::string parent_name =
+      computation.parent() ? computation.parent()->name() : "NULL";
+  LOG(INFO) << "Jetski: ImportAsRegion entered for computation: "
+            << computation.name() << ", parent module: " << parent_name;
+  if (parent_name == "jit_g") {
+    LOG(INFO) << "Jetski: HLO:\n" << computation.ToString();
+  }
   auto loc = region->getLoc();
   auto* block = new mlir::Block;
   region->push_back(block);
 
   llvm::SmallVector<Type, 4> args;
-  RETURN_IF_ERROR(GetMlirTypes(computation.parameter_instructions(), &args));
+  if (auto while_op = llvm::dyn_cast_or_null<mlir::stablehlo::WhileOp>(
+          region->getParentOp())) {
+    args = llvm::to_vector(while_op.getOperands().getTypes());
+    if (parent_name == "jit_g") {
+      for (size_t i = 0; i < args.size(); ++i) {
+        std::string type_str;
+        llvm::raw_string_ostream os(type_str);
+        args[i].print(os);
+        LOG(INFO) << "Jetski: ImportAsRegion while_op operand " << i
+                  << " type: " << type_str;
+      }
+    }
+  } else {
+    RETURN_IF_ERROR(GetMlirTypes(computation.parameter_instructions(), &args));
+  }
 
   // Flatten the tuple-typed arguments.
   if (!llvm::isa<FuncOp>(region->getParentOp()) ||
@@ -589,6 +740,13 @@ absl::Status HloFunctionImporter::ImportAsRegion(
 absl::StatusOr<Value> HloFunctionImporter::ImportInstructionsImpl(
     const HloComputation& computation,
     const llvm::SmallVectorImpl<Value>& arguments, mlir::OpBuilder* builder) {
+  std::string parent_name =
+      computation.parent() ? computation.parent()->name() : "NULL";
+  LOG(INFO) << "Jetski: ImportInstructionsImpl entered for computation: "
+            << computation.name() << ", parent module: " << parent_name;
+  if (parent_name == "jit_g") {
+    LOG(INFO) << "Jetski: HLO:\n" << computation.ToString();
+  }
   // Setup the input parameters.
   const int num_parameters = computation.num_parameters();
 
@@ -641,8 +799,14 @@ absl::Status HloFunctionImporter::ImportInstructions(
     llvm::SmallVector<Value> effective_arguments;
 
     llvm::SmallVector<Type> computation_arg_types;
-    RETURN_IF_ERROR(GetMlirTypes(computation.parameter_instructions(),
-                                 &computation_arg_types));
+    llvm::SmallVector<Type> hlo_param_types;
+    RETURN_IF_ERROR(
+        GetMlirTypes(computation.parameter_instructions(), &hlo_param_types));
+    int arg_idx = 0;
+    for (Type hlo_type : hlo_param_types) {
+      computation_arg_types.push_back(
+          ReconstructTypeWithActualTypes(hlo_type, arguments, arg_idx));
+    }
     int flatten_idx = 0;
     for (Type computation_arg_type : computation_arg_types) {
       auto orig_tuple_arg_type =
@@ -1938,10 +2102,28 @@ absl::StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
       return op.getOperation();
     }
     case HloOpcode::kWhile: {
+      bool debug_jit_g = instruction->parent() &&
+                         instruction->parent()->parent() &&
+                         instruction->parent()->parent()->name() == "jit_g";
+      if (debug_jit_g) {
+        std::string op_type_str;
+        llvm::raw_string_ostream os(op_type_str);
+        operands[0].getType().print(os);
+        LOG(INFO) << "Jetski: kWhile operands[0] type: " << op_type_str;
+      }
       llvm::SmallVector<Value> flattened_operands;
       llvm::SmallVector<Type> flattened_operand_types;
       FlattenTupleType(operands[0].getType(), flattened_operand_types);
       FlattenTupleValue(func_builder, loc, operands[0], flattened_operands);
+      if (debug_jit_g) {
+        for (size_t i = 0; i < flattened_operand_types.size(); ++i) {
+          std::string type_str;
+          llvm::raw_string_ostream os(type_str);
+          flattened_operand_types[i].print(os);
+          LOG(INFO) << "Jetski: kWhile flattened operand " << i
+                    << " type: " << type_str;
+        }
+      }
 
       auto op = mlir::stablehlo::WhileOp::create(
           *func_builder, loc, flattened_operand_types, flattened_operands,
@@ -2342,7 +2524,50 @@ absl::StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
       NO_ATTRIBUTE_CASE(kShiftRightLogical, ShiftRightLogicalOp);
       NO_ATTRIBUTE_CASE(kSign, SignOp);
       NO_ATTRIBUTE_CASE(kSubtract, SubtractOp);
-      NO_ATTRIBUTE_CASE(kTuple, TupleOp);
+    case HloOpcode::kTuple: {
+      bool debug_jit_g = instruction->parent() &&
+                         instruction->parent()->parent() &&
+                         instruction->parent()->parent()->name() == "jit_g";
+      auto tuple_type = llvm::dyn_cast<mlir::TupleType>(result_type);
+      if (tuple_type) {
+        llvm::SmallVector<mlir::Type> new_element_types;
+        bool changed = false;
+        for (size_t i = 0; i < operands.size(); ++i) {
+          mlir::Type op_type = operands[i].getType();
+          mlir::Type expected_type = tuple_type.getType(i);
+          if (ContainsFuture(op_type) && op_type != expected_type) {
+            new_element_types.push_back(op_type);
+            changed = true;
+            if (debug_jit_g) {
+              std::string op_type_str, expected_type_str;
+              llvm::raw_string_ostream os1(op_type_str), os2(expected_type_str);
+              op_type.print(os1);
+              expected_type.print(os2);
+              LOG(INFO) << "Jetski: kTuple updating element " << i << " from "
+                        << expected_type_str << " to " << op_type_str;
+            }
+          } else {
+            new_element_types.push_back(expected_type);
+          }
+        }
+        if (changed) {
+          auto old_type = result_type;
+          result_type = mlir::TupleType::get(func_builder->getContext(),
+                                             new_element_types);
+          if (debug_jit_g) {
+            std::string old_type_str, new_type_str;
+            llvm::raw_string_ostream os1(old_type_str), os2(new_type_str);
+            old_type.print(os1);
+            result_type.print(os2);
+            LOG(INFO) << "Jetski: kTuple updated result type from "
+                      << old_type_str << " to " << new_type_str;
+          }
+        }
+      }
+      return mlir::stablehlo::TupleOp::create(*func_builder, loc, result_type,
+                                              operands, attributes)
+          .getOperation();
+    }
       NO_ATTRIBUTE_CASE(kXor, XorOp);
 
 #undef NO_ATTRIBUTE_CASE
@@ -2468,20 +2693,30 @@ HloFunctionImporter::ImportInstructionWithLayout(
     const HloInstruction* instruction,
     const llvm::SmallVectorImpl<mlir::Value>& operands,
     mlir::OpBuilder* func_builder, DynamicShapeHandlingMode mode) {
-  LLVM_DEBUG(llvm::dbgs() << "Importing instruction: "
-                          << HloOpcodeString(instruction->opcode()) << '\n');
-  LLVM_DEBUG({
-    llvm::dbgs() << "  operands: (";
-    llvm::interleaveComma(operands, llvm::dbgs(),
-                          [](Value v) { llvm::dbgs() << v.getType(); });
-    llvm::dbgs() << ")\n";
-  });
+  bool debug_jit_g = instruction->parent() && instruction->parent()->parent() &&
+                     instruction->parent()->parent()->name() == "jit_g";
+  if (debug_jit_g) {
+    std::string operand_types_str;
+    llvm::raw_string_ostream os(operand_types_str);
+    llvm::interleaveComma(operands, os,
+                          [&os](Value v) { v.getType().print(os); });
+    LOG(INFO) << "Jetski: Importing instruction: " << instruction->ToString()
+              << "\n  operands: (" << operand_types_str << ")";
+  }
   ASSIGN_OR_RETURN(
       mlir::Operation * op,
       ImportInstructionImpl(instruction, operands, func_builder, mode));
   if (op == nullptr) {
-    LLVM_DEBUG(llvm::dbgs() << "  instruction skipped.\n");
+    if (debug_jit_g) {
+      LOG(INFO) << "  instruction skipped.";
+    }
     return op;
+  }
+  if (debug_jit_g) {
+    std::string op_str;
+    llvm::raw_string_ostream os(op_str);
+    op->print(os);
+    LOG(INFO) << "  imported op: " << op_str;
   }
 
   // Print generic in debug since module may be invalid while printing.

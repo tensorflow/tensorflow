@@ -3376,6 +3376,7 @@ cc_library(
     deps = [
         ":collective_ops_utils",
         ":shape_inference",
+        "//xla:frontend_attributes",
         "//xla:shape_util",
         "//xla:status_macros",
         "//xla/hlo/ir:hlo",
@@ -4286,6 +4287,7 @@ cc_library(
         "//xla/hlo/ir:hlo",
         "//xla/hlo/ir:hlo_instruction_utils",
         "//xla/hlo/pass:hlo_pass",
+        "//xla/hlo/utils:hlo_query",
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:status_macros",
         "@com_google_absl//absl/algorithm:container",

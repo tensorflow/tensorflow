@@ -209,29 +209,61 @@ absl::StatusOr<mlir::Operation*> ImportOldStyleAsyncDone(
   assert(operands.size() == 1 &&
          "*-done ops must take only a single async_bundle operand");
   auto async_start = operands[0].getDefiningOp<mlir::mhlo::AsyncStartOp>();
+  std::string called_computation_name;
   if (!async_start) {
-    return InvalidArgument("*-start requires *-done as input");
+    called_computation_name = "dangling_async_start";
+    LOG(WARNING) << "Jetski: Could not find matching AsyncStartOp for done op. "
+                    "Using dummy called_computation name.";
+  } else {
+    called_computation_name = async_start.getCalledComputation().str();
   }
   attributes.push_back(builder->getNamedAttr(
       "called_computation",
       mlir::FlatSymbolRefAttr::get(builder->getContext(),
-                                   async_start.getCalledComputation())));
+                                   called_computation_name)));
   attributes.push_back(builder->getNamedAttr("execution_thread",
                                              builder->getStringAttr("main")));
 
-  auto async_bundle = llvm::cast<mlir::mhlo::AsyncBundleType>(
-      async_start.getResult().getType());
+  mlir::Value done_operand = operands[0];
+  mlir::Type operand_type = done_operand.getType();
+  mlir::Type start_tuple_type;
 
-  auto start_tuple =
-      llvm::dyn_cast<mlir::TupleType>(async_bundle.getTypes()[1]);
-  if (start_tuple && llvm::isa<mlir::TupleType>(start_tuple.getType(0))) {
-    auto op = mlir::mhlo::AsyncDoneOp::create(*builder, loc, result_type,
-                                              operands, attributes);
-    return {op};
+  if (!llvm::isa<mlir::mhlo::AsyncBundleType>(operand_type)) {
+    mlir::Type bundle_type;
+    if (auto tuple_type = llvm::dyn_cast<mlir::TupleType>(operand_type)) {
+      bundle_type = mlir::mhlo::AsyncBundleType::get(builder->getContext(),
+                                                     tuple_type.getTypes());
+      if (tuple_type.size() > 1) {
+        start_tuple_type = tuple_type.getType(1);
+      }
+    } else {
+      bundle_type = mlir::mhlo::AsyncBundleType::get(builder->getContext(),
+                                                     {operand_type});
+    }
+    auto cast_op = builder->create<mlir::UnrealizedConversionCastOp>(
+        loc, bundle_type, done_operand);
+    done_operand = cast_op.getResult(0);
+  } else {
+    auto async_bundle = llvm::cast<mlir::mhlo::AsyncBundleType>(operand_type);
+    if (async_bundle.getTypes().size() > 1) {
+      start_tuple_type = async_bundle.getTypes()[1];
+    }
   }
-  if (useBundleResult) result_type = async_bundle.getTypes()[1];
+
+  llvm::SmallVector<mlir::Value, 1> done_operands = {done_operand};
+
+  if (start_tuple_type) {
+    auto start_tuple = llvm::dyn_cast<mlir::TupleType>(start_tuple_type);
+    if (start_tuple && llvm::isa<mlir::TupleType>(start_tuple.getType(0))) {
+      auto op = mlir::mhlo::AsyncDoneOp::create(*builder, loc, result_type,
+                                                done_operands, attributes);
+      return {op};
+    }
+    if (useBundleResult) result_type = start_tuple_type;
+  }
+
   auto op = mlir::mhlo::AsyncDoneOp::create(*builder, loc, Untuple(result_type),
-                                            operands, attributes);
+                                            done_operands, attributes);
   return CreateTupleFromOpResults(builder, loc, op.getOperation(), result_type);
 }
 
@@ -536,15 +568,49 @@ absl::StatusOr<mlir::Operation*> ImportAsyncOpDone(
     llvm::SmallVectorImpl<mlir::NamedAttribute>& attributes,
     mlir::Type result_type, mlir::OpBuilder* builder,
     std::optional<HloOpcode> consolidate_if_parent) {
+  if (!operands.empty()) {
+    std::string type_str;
+    llvm::raw_string_ostream os(type_str);
+    operands[0].getType().print(os);
+    LOG(INFO) << "Jetski: ImportAsyncOpDone: operands[0] type: " << type_str;
+    if (auto def_op = operands[0].getDefiningOp()) {
+      LOG(INFO) << "Jetski: operands[0] defining op: "
+                << def_op->getName().getStringRef().str();
+    } else {
+      LOG(INFO) << "Jetski: operands[0] is block argument";
+    }
+  }
   // Consolidate if the defining op matches `consolidate_if_parent`, ensuring
   // the async communication op is not pipelined.
   if (consolidate_if_parent.has_value() &&
       instruction->operand(0)->opcode() == consolidate_if_parent.value()) {
     return operands[0].getDefiningOp();
   }
-  if (!operands.empty() &&
-      llvm::isa<mlir::stablehlo::FutureType>(operands[0].getType())) {
-    return ImportStablehloAsyncDone(operands, loc, result_type, builder);
+  if (!operands.empty()) {
+    mlir::Value done_operand = operands[0];
+    if (auto tuple_type =
+            llvm::dyn_cast<mlir::TupleType>(done_operand.getType())) {
+      int future_idx = -1;
+      for (int i = 0; i < tuple_type.size(); ++i) {
+        if (llvm::isa<mlir::stablehlo::FutureType>(tuple_type.getType(i))) {
+          future_idx = i;
+          break;
+        }
+      }
+      if (future_idx != -1) {
+        llvm::SmallVector<mlir::NamedAttribute, 1> gte_attrs;
+        gte_attrs.push_back(builder->getNamedAttr(
+            "index", builder->getI32IntegerAttr(future_idx)));
+        auto gte_op = mlir::stablehlo::GetTupleElementOp::create(
+            *builder, loc, done_operand, gte_attrs);
+        done_operand = gte_op.getResult();
+      }
+    }
+    if (llvm::isa<mlir::stablehlo::FutureType>(done_operand.getType())) {
+      llvm::SmallVector<mlir::Value, 1> stablehlo_operands = {done_operand};
+      return ImportStablehloAsyncDone(stablehlo_operands, loc, result_type,
+                                      builder);
+    }
   }
   return ImportOldStyleAsyncDone(attributes, operands, loc, result_type,
                                  builder);

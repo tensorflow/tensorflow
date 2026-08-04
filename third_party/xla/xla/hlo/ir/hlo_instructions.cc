@@ -339,9 +339,31 @@ HloAsyncInstruction* HloAsyncInstruction::async_chain_start() const {
 
   HloInstruction* prev = operands()[0];
   while (prev->opcode() != HloOpcode::kAsyncStart) {
-    // If the prev op in the chain isn't async-start, it must be async-update.
-    CHECK(prev->opcode() == HloOpcode::kAsyncUpdate);
-    prev = prev->operands()[0];
+    if (prev->opcode() == HloOpcode::kAsyncUpdate) {
+      prev = prev->operands()[0];
+      continue;
+    }
+    if (prev->opcode() == HloOpcode::kGetTupleElement) {
+      HloInstruction* src = prev->mutable_operand(0);
+      if (src->opcode() == HloOpcode::kParameter) {
+        HloComputation* comp = src->parent();
+        std::optional<HloInstruction*> while_op =
+            comp->GetUniqueCaller(HloOpcode::kWhile);
+        if (while_op.has_value()) {
+          int64_t carry_idx = prev->tuple_index();
+          HloInstruction* init = (*while_op)->mutable_operand(0);
+          if (init->opcode() == HloOpcode::kTuple) {
+            HloInstruction* init_val = init->mutable_operand(carry_idx);
+            prev = init_val;
+            continue;
+          }
+        }
+      } else {
+        prev = src;
+        continue;
+      }
+    }
+    LOG(FATAL) << "Unexpected operand for async chain: " << prev->ToString();
   }
   return Cast<HloAsyncInstruction>(prev);
 }
