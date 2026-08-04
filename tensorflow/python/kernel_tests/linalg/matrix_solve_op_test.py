@@ -125,6 +125,12 @@ class MatrixSolveOpTest(test.TestCase):
     with self.assertRaisesOpError("Input matrix is not invertible."):
       self.evaluate(linalg_ops.matrix_solve(matrix, rhs))
 
+    # All rows of the matrix below add to zero
+    matrix = constant_op.constant([[1., 0., -1.], [-1., 1., 0.],
+                                   [0., -1., 1.]])
+    with self.assertRaisesOpError("Input matrix is not invertible."):
+      self.evaluate(linalg_ops.matrix_solve(matrix, matrix))
+
   def testSingularMatrixRaisesOnGpu(self):
     if not test_util.is_gpu_available(cuda_only=True):
       self.skipTest("CUDA GPU required")
@@ -139,11 +145,6 @@ class MatrixSolveOpTest(test.TestCase):
     with test_util.force_gpu():
       with self.assertRaisesOpError("Input matrix is not invertible."):
         self.evaluate(linalg_ops.matrix_solve(matrix, rhs))
-      # All rows of the matrix below add to zero
-      matrix = constant_op.constant([[1., 0., -1.], [-1., 1., 0.],
-                                     [0., -1., 1.]])
-      with self.assertRaisesOpError("Input matrix is not invertible."):
-        self.evaluate(linalg_ops.matrix_solve(matrix, matrix))
 
   @test_util.run_in_graph_and_eager_modes(use_gpu=True)
   def testConcurrent(self):
