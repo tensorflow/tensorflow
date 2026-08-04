@@ -69,7 +69,7 @@ class MklAvgPoolingOp : public MklPoolingForwardOpBase<T> {
       if (!dnn_shape_input.IsMklTensor()) {
         int expected_rank = is_pool2d ? 4 : 5;
         OP_REQUIRES(context, input_tensor.dims() == expected_rank,
-                    absl::InvalidArgumentError(
+                    absl::InvalidArgument(
                         absl::StrCat("Input must be rank ", expected_rank,
                                      " but got rank ", input_tensor.dims())));
       }
@@ -165,12 +165,12 @@ class MklAvgPoolingOp : public MklPoolingForwardOpBase<T> {
         const Tensor& max_input_t = MklGetInput(context, 2);
 
         OP_REQUIRES(context, TensorShapeUtils::IsScalar(min_input_t.shape()),
-                    absl::InvalidArgumentError(absl::StrCat(
+                    absl::InvalidArgument(absl::StrCat(
                         "min_input shape must be rank 0 but is rank ",
                         min_input_t.dims(), ", received shape: ",
                         min_input_t.shape().DebugString())));
         OP_REQUIRES(context, TensorShapeUtils::IsScalar(max_input_t.shape()),
-                    absl::InvalidArgumentError(absl::StrCat(
+                    absl::InvalidArgument(absl::StrCat(
                         "max_input shape must be rank 0 but is rank ",
                         max_input_t.dims(), ", received shape: ",
                         max_input_t.shape().DebugString())));
@@ -245,14 +245,14 @@ class MklAvgPoolingGradOp : public MklPoolingBackwardOpBase<T> {
 
       bool is_pool2d = (this->ksize_.size() == 4);
       int expected_rank = is_pool2d ? 4 : 5;
+      int expected_grad_rank = is_pool2d ? 4 : 5;
 
-      // Validate that grad_tensor has the expected rank to previent CHECK
-      // failure in TFShapeToMklDnnDims* functions which unconditionally access
-      // dim_size(N) (see #118354).
-      OP_REQUIRES(context, grad_tensor.dims() == expected_rank,
+      // Validate grad tensor rank before accessing its dimensions.
+      // For 2D pooling, grad must be 4D; for 3D pooling, grad must be 5D.
+      OP_REQUIRES(context, grad_tensor.dims() == expected_grad_rank,
                   absl::InvalidArgument(absl::StrCat(
-                      "Expected grad tensor to be ", expected_rank,
-                      "D, but got a ", grad_tensor.dims(), "D tensor.")));
+                      "Expected grad to be rank ", expected_grad_rank,
+                      " but got rank ", grad_tensor.dims())));
 
       // For empty tensor, avg_pool_3d_grad in oneDNN doesn't handle this case.
       // Follow what native TF does in this case.
@@ -276,14 +276,6 @@ class MklAvgPoolingGradOp : public MklPoolingBackwardOpBase<T> {
       OP_REQUIRES_OK(context,
                      context->allocate_output(0, output_shape, &output_tensor));
       output_tensor->flat<T>().setZero();
-
-      // Validate grad tensor rank before accessing its dimensions.
-      // For 2D pooling, grad must be 4D; for 3D pooling, grad must be 5D.
-      int expected_grad_rank = is_pool2d ? 4 : 5;
-      OP_REQUIRES(context, grad_tensor.dims() == expected_grad_rank,
-                  absl::InvalidArgumentError(absl::StrCat(
-                      "Expected grad to be rank ", expected_grad_rank,
-                      " but got rank ", grad_tensor.dims())));
 
       // out-of-memory boundary index check for output_tensor in 2D case.
       const int depth_window = this->ksize_[3];
@@ -323,7 +315,7 @@ class MklAvgPoolingGradOp : public MklPoolingBackwardOpBase<T> {
                     in_cols +
                 cindex + csize - 1;
             OP_REQUIRES(context, input_max < output_tensor->NumElements(),
-                        absl::InvalidArgumentError(absl::StrCat(
+                        absl::InvalidArgument(absl::StrCat(
                             "Output only has ", output_tensor->NumElements(),
                             " elements but computation requested"
                             " would use element with index=",
@@ -366,7 +358,7 @@ class MklAvgPoolingGradOp : public MklPoolingBackwardOpBase<T> {
 
       OP_REQUIRES(
           context, orig_input_dims_mkl_order[0] == diff_dst_dims[0],
-          absl::InvalidArgumentError(absl::StrCat(
+          absl::InvalidArgument(absl::StrCat(
               "Expected first dimension of orig_input and diff_dst to match, "
               "got ",
               orig_input_dims_mkl_order[0], " and ", diff_dst_dims[0])));
