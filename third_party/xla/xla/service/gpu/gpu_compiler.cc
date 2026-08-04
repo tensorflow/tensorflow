@@ -306,7 +306,6 @@ limitations under the License.
 #include "xla/service/llvm_ir/llvm_command_line_options.h"
 #include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/service/memory_annotations.h"
-#include "xla/service/multi_module_driver.h"
 #include "xla/service/reduce_scatter_reassociate.h"
 #include "xla/service/scan_expander.h"
 #include "xla/service/scatter_expander.h"
@@ -2289,17 +2288,6 @@ absl::Status GpuCompiler::OptimizeHloPostLayoutAssignment(
 absl::StatusOr<std::unique_ptr<HloModule>> GpuCompiler::RunHloPasses(
     std::unique_ptr<HloModule> module, se::StreamExecutor* stream_exec,
     const CompileOptions& options) {
-  if (MultiModuleDriver::ShouldProcess(*module)) {
-    VLOG(1) << "Triggering HLO module splitting for module: " << module->name();
-    MultiModuleDriver driver(
-        [this, stream_exec](std::unique_ptr<HloModule> m,
-                            const CompileOptions& opts) {
-          return this->RunHloPasses(std::move(m), stream_exec, opts);
-        },
-        GetGpuCompilationThreadPool()->AsExecutor());
-    return driver.Compile(std::move(module), {stream_exec}, options);
-  }
-
   const DebugOptions debug_opts = module->config().debug_options();
   RETURN_IF_ERROR(LoadAutotuneResultsFromFile(debug_opts));
 
