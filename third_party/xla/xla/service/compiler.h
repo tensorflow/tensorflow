@@ -145,6 +145,9 @@ class Compiler {
 
     MultiProcessKeyValueStore key_value_store;
 
+    // The number of devices in a fast-interconnect domain.
+    int64_t slice_size = 0;
+
     // Embed HLO module in the executable. Only used on GPU at the moment.
     bool embed_hlo_module = true;
 
