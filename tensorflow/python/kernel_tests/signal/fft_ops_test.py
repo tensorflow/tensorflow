@@ -944,7 +944,7 @@ class RFFTOpsTest(BaseFFTOpsTest, parameterized.TestCase):
     b = np.array([1, -1])
     with self.assertRaisesRegex(
         (ValueError, errors.InvalidArgumentError),
-        "(.*must be greater or equal to.*)|(must >= 0)",
+        "(.*must be greater or equal to.*)|(must >= 0)|(must be non-negative)",
     ):
       with self.session():
         v = fft_ops.rfft2d(input_tensor=a, fft_length=b)
@@ -1962,7 +1962,7 @@ class RFFTOpsTest(BaseFFTOpsTest, parameterized.TestCase):
     b = np.array([1, -1])
     with self.assertRaisesRegex(
         (ValueError, errors.InvalidArgumentError),
-        "(.*must be greater or equal to.*)|(must >= 0)",
+        "(.*must be greater or equal to.*)|(must >= 0)|(must be non-negative)",
     ):
       with self.session():
         v = fft_ops.rfft2d(input_tensor=a, fft_length=b)
@@ -2064,4 +2064,3 @@ class FFTShiftTest(test.TestCase, parameterized.TestCase):
 
 if __name__ == "__main__":
   test.main()
->>>>>>> 0a776ca87a27e0d1a03530e98a61eb3eb06b5da8

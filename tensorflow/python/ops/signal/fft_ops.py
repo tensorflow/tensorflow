@@ -91,6 +91,8 @@ def _validate_nonnegative_fft_length(fft_length):
   fft_length_static = _tensor_util.constant_value(fft_length)
   if fft_length_static is None:
     return None
+  # Flatten the constant value so multi-dimensional shapes like [[0]]
+  # are handled correctly and each scalar can be validated.
   for fft_length_i in np.asarray(fft_length_static).flat:
     if int(fft_length_i) < 0:
       raise ValueError(
