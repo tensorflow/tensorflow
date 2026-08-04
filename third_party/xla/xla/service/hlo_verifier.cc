@@ -125,7 +125,9 @@ absl::Status ShapeVerifier::Preprocess(HloInstruction* hlo) {
   if (arity) {
     RETURN_IF_ERROR(CheckOperandCount(hlo, *arity));
   }
-  if (!opts_.allow_unbounded_dynamism && hlo->shape().is_unbounded_dynamic()) {
+  if (hlo->shape().is_unbounded_dynamic() &&
+      (opts_.supported_unbounded_dynamic_op == nullptr ||
+       !opts_.supported_unbounded_dynamic_op(hlo))) {
     return InvalidArgument("Unbounded dynamism is disabled for instruction: %s",
                            hlo->ToString());
   }

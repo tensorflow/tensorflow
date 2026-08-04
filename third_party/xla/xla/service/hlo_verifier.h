@@ -99,8 +99,8 @@ struct HloVerifierOpts {
     return std::move(*this);
   }
 
-  HloVerifierOpts&& WithAllowUnboundedDynamism(bool allow) {
-    allow_unbounded_dynamism = allow;
+  HloVerifierOpts&& WithSupportedUnboundedDynamicOp(HloPredicate fn) {
+    supported_unbounded_dynamic_op = std::move(fn);
     return std::move(*this);
   }
 
@@ -170,8 +170,9 @@ struct HloVerifierOpts {
   // Whether bitcast should have the same size, including all paddings.
   bool allow_bitcast_to_have_different_size = false;
 
-  // Whether unbounded dynamic sizes should be allowed for shapes.
-  bool allow_unbounded_dynamism = false;
+  // Whether unbounded dynamic sizes should be allowed for the given
+  // instruction.
+  HloPredicate supported_unbounded_dynamic_op;
 
   // Check whether instruction has been renamed.
   // Should enforce no function renames unless the name instruction has been
