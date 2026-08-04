@@ -14,6 +14,8 @@
 # ==============================================================================
 """TensorFlow Lite tooling helper functionality."""
 
+# pylint: disable=line-too-long  # Required due to pre-existing legacy lines
+
 import enum
 import functools
 import pprint
@@ -763,12 +765,12 @@ class TFLiteConverterBase:
       )
 
     if self._experimental_calibrate_only:
-      return calibrated
+      return calibrated  # pylint: disable=possibly-used-before-assignment
     elif self.experimental_new_quantizer and (
         activations_type != _dtypes.int16
     ):
       return _mlir_quantize(
-          calibrated,
+          calibrated,  # pylint: disable=possibly-used-before-assignment
           self._experimental_disable_per_channel,
           input_data_type=input_type,
           output_data_type=output_type,
