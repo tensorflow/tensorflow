@@ -41,7 +41,8 @@ inline void Add(const ArithmeticParams& params,
       MatchingElementsSize(input1_shape, input2_shape, output_shape);
   for (int i = 0; i < flat_size; ++i) {
     output_data[i] = ActivationFunctionWithMinMax<T>(
-        input1_data[i] + input2_data[i], activation_min, activation_max);
+        WrappingAdd<T>(input1_data[i], input2_data[i]), activation_min,
+        activation_max);
   }
 }
 
@@ -240,7 +241,8 @@ void AddElementwise(const T* input1_data, const T* input2_data, T* output_data,
                     size_t size, T activation_min, T activation_max) {
   for (size_t c = 0; c < size; ++c) {
     output_data[c] = ActivationFunctionWithMinMax<T>(
-        input1_data[c] + input2_data[c], activation_min, activation_max);
+        WrappingAdd<T>(input1_data[c], input2_data[c]), activation_min,
+        activation_max);
   }
 }
 
@@ -265,7 +267,8 @@ inline void AddElementwise<int32_t>(const int32_t* input1_data,
 #endif
   for (; c < size; ++c) {
     output_data[c] = ActivationFunctionWithMinMax<int32_t>(
-        input1_data[c] + input2_data[c], activation_min, activation_max);
+        WrappingAdd<int32_t>(input1_data[c], input2_data[c]), activation_min,
+        activation_max);
   }
 }
 
@@ -280,7 +283,7 @@ BroadcastAdd6DSlow(const ArithmeticParams& params,
   T activation_min, activation_max;
   GetActivationParams(params, &activation_min, &activation_max);
   auto op = [activation_min, activation_max](T a, T b) {
-    return ActivationFunctionWithMinMax<T>(a + b, activation_min,
+    return ActivationFunctionWithMinMax<T>(WrappingAdd<T>(a, b), activation_min,
                                            activation_max);
   };
   BroadcastBinaryOpSimple(input1_shape, input1_data, input2_shape, input2_data,

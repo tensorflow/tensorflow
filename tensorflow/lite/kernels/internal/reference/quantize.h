@@ -42,11 +42,13 @@ inline void AffineQuantize(const tflite::QuantizationParams& op_params,
 
   for (int i = 0; i < flat_size; i++) {
     const InputT val = input_data[i];
-    int32_t unclamped =
-        static_cast<int32_t>(TfLiteRound(val / static_cast<float>(scale))) +
-        zero_point;
-    int32_t clamped = std::min(std::max(unclamped, min_val), max_val);
-    output_data[i] = clamped;
+    const double unclamped =
+        static_cast<double>(TfLiteRound(val / static_cast<float>(scale))) +
+        static_cast<double>(zero_point);
+    const double clamped =
+        std::min(std::max(unclamped, static_cast<double>(min_val)),
+                 static_cast<double>(max_val));
+    output_data[i] = static_cast<OutputT>(clamped);
   }
 }
 
@@ -74,10 +76,12 @@ inline void PerChannelQuantize(
                             current_dim.data(), 0, nullptr);
     const InputT val = input_data[offset];
     const int channel = current_dim[quantized_dimension];
-    int32_t unclamped = static_cast<int32_t>(TfLiteRound(
-                            val / static_cast<float>(scale[channel]))) +
-                        zero_point[channel];
-    int32_t clamped = std::min(std::max(unclamped, min_val), max_val);
+    const double unclamped = static_cast<double>(TfLiteRound(
+                                 val / static_cast<float>(scale[channel]))) +
+                             static_cast<double>(zero_point[channel]);
+    const double clamped =
+        std::min(std::max(unclamped, static_cast<double>(min_val)),
+                 static_cast<double>(max_val));
     output_data[offset] = static_cast<OutputT>(clamped);
   } while (NextIndex(num_dims, reinterpret_cast<const int*>(dims_data),
                      current_dim.data()));

@@ -114,17 +114,19 @@ inline void ConvPerChannel(
                 // we have seen so far.
                 // TODO(b/174275578): Add a check to make sure the
                 // accumulator depth is smaller than 2^16.
-                acc += filter_val * (input_val + input_offset);
+                acc = WrappingAdd<int32_t>(
+                    acc,
+                    filter_val * WrappingAdd<int32_t>(input_val, input_offset));
               }
             }
           }
 
           if (bias_data) {
-            acc += bias_data[out_channel];
+            acc = WrappingAdd<int32_t>(acc, bias_data[out_channel]);
           }
           acc = MultiplyByQuantizedMultiplier(
               acc, output_multiplier[out_channel], output_shift[out_channel]);
-          acc += output_offset;
+          acc = WrappingAdd<int32_t>(acc, output_offset);
           acc = std::max(acc, output_activation_min);
           acc = std::min(acc, output_activation_max);
           output_data[Offset(output_shape, batch, out_y, out_x, out_channel)] =
@@ -216,12 +218,13 @@ inline void ConvPerChannel(
                 // 32767] -
                 // [-32768, 32767]), which is [-8322945, 8322945].
                 // log2(8322945) = 22.99.
-                acc += filter_val * input_val;
+                acc = WrappingAdd<AccumScalar>(
+                    acc, static_cast<AccumScalar>(filter_val * input_val));
               }
             }
           }
           if (bias_data) {
-            acc += bias_data[out_channel];
+            acc = WrappingAdd<AccumScalar>(acc, bias_data[out_channel]);
           }
           int32_t scaled_acc = MultiplyByQuantizedMultiplier(
               acc, output_multiplier[out_channel], output_shift[out_channel]);
