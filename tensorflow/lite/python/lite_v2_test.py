@@ -3159,9 +3159,9 @@ class FromSavedModelTest(lite_v2_test_util.ModelTest):
 
     root = autotrackable.AutoTrackable()
     root.f = tf.function(lambda x: x * 2.0)
-    root.f.get_concrete_function(tf.TensorSpec([10], tf.float32))
+    to_save = root.f.get_concrete_function(tf.TensorSpec([10], tf.float32))
     save_dir = os.path.join(self.get_temp_dir(), 'saved_model_no_load')
-    save.save(root, save_dir)
+    save.save(root, save_dir, to_save)
 
     converter = lite.TFLiteConverterV2.from_saved_model(save_dir)
     # Patch _load at the lite module level to detect if it's called during

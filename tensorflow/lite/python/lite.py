@@ -1579,6 +1579,14 @@ class TFLiteSavedModelConverterV2(TFLiteConverterBaseV2):
     # EagerContext, and these can leak across convert() calls due to reference
     # cycles that are slow to collect.  The debug info proto is already written
     # to disk alongside saved_model.pb and can be read cheaply.
+    #
+    # Note on adjust_debug_info_func_names: _convert_debug_info_func() (in
+    # util.py) ignores its original_nodes argument entirely and returns the
+    # saved_debug_info proto unchanged, so the function-name adjustment that
+    # _load() applies via adjust_debug_info_func_names() has no effect on this
+    # code path.  The on-disk proto already contains the names as written during
+    # save(), which is what the TFLite C++ pipeline uses for source-location
+    # tracking.
     _, saved_debug_info = _parse_saved_model_with_debug_info(
         self.saved_model_dir
     )
