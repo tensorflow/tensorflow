@@ -168,6 +168,50 @@ diff --ruN a/stablehlo/stablehlo/reference/InterpreterOps.h b/stablehlo/stablehl
  
  // Print the SSA name followed by its type and value like:
  // >>> %0 = tensor<i1> {
+diff --ruN a/stablehlo/stablehlo/tests/TestUtils.cpp b/stablehlo/stablehlo/tests/TestUtils.cpp
+--- stablehlo/stablehlo/tests/TestUtils.cpp
++++ stablehlo/stablehlo/tests/TestUtils.cpp
+@@ -68,6 +68,32 @@
+   }
+ };
+ 
++struct BroadcastIfNeededPattern : public RewritePattern {
++  explicit BroadcastIfNeededPattern(MLIRContext* context)
++      : RewritePattern("hlo_test_broadcast.broadcast_if_needed", 1, context) {}
++  LogicalResult matchAndRewrite(Operation* op,
++                                PatternRewriter& rewriter) const override {
++    if (op->getNumOperands() < 1) return failure();
++    Value input = op->getOperand(0);
++
++    SmallVector<int64_t> broadcastDimensions;
++    if (auto bcastDimsAttr =
++            op->getAttrOfType<DenseI64ArrayAttr>("broadcast_dimensions")) {
++      broadcastDimensions = llvm::to_vector(bcastDimsAttr.asArrayRef());
++    }
++
++    auto targetShape = stablehlo::getDimensions(op->getResult(0));
++    if (failed(targetShape)) return failure();
++
++    auto broadcastedVal = stablehlo::broadcastIfNeeded(
++        rewriter, input, *targetShape, broadcastDimensions);
++    if (failed(broadcastedVal)) return failure();
++
++    rewriter.replaceOp(op, *broadcastedVal);
++    return success();
++  }
++};
++
+ struct InferReturnTypesPattern : public RewritePattern {
+   explicit InferReturnTypesPattern(MLIRContext* context)
+       : RewritePattern("hlo_test_infer.get_return_types", 1, context) {}
+@@ -222,6 +248,7 @@
+   LogicalResult initialize(MLIRContext* context) override {
+     RewritePatternSet patterns(context);
+     patterns.add<BroadcastValuesPattern>(context);
++    patterns.add<BroadcastIfNeededPattern>(context);
+     patterns_ = std::move(patterns);
+     return success();
+   }
 diff --ruN a/stablehlo/stablehlo/tests/interpret/printing.mlir b/stablehlo/stablehlo/tests/interpret/printing.mlir
 --- stablehlo/stablehlo/tests/interpret/printing.mlir
 +++ stablehlo/stablehlo/tests/interpret/printing.mlir
@@ -207,6 +251,24 @@ diff --ruN a/stablehlo/stablehlo/tests/interpret/printing.mlir b/stablehlo/stabl
 +  } : () -> (tensor<2xi32>, tensor<2xi32>)
 +  func.return
 +}
+diff --ruN a/stablehlo/stablehlo/tests/ops_broadcasting.mlir b/stablehlo/stablehlo/tests/ops_broadcasting.mlir
+--- stablehlo/stablehlo/tests/ops_broadcasting.mlir
++++ stablehlo/stablehlo/tests/ops_broadcasting.mlir
+@@ -320,3 +320,14 @@
+   return %0 : !stablehlo.token
+ }
+ 
++// -----
++
++// Non-numpy explicit broadcast_dimensions: [3, 1] -> [3, 4, 5]
++// CHECK-LABEL: func @explicit_broadcast_dims
++func.func @explicit_broadcast_dims(%arg0: tensor<3x1xf64>) -> tensor<3x4x5xf64> {
++  // CHECK: %[[BCAST:.+]] = stablehlo.broadcast_in_dim %arg0, dims = [0, 1] : (tensor<3x1xf64>) -> tensor<3x4x5xf64>
++  // CHECK-NEXT: return %[[BCAST]] : tensor<3x4x5xf64>
++  %0 = "hlo_test_broadcast.broadcast_if_needed"(%arg0) {broadcast_dimensions = array<i64: 0, 1>} : (tensor<3x1xf64>) -> tensor<3x4x5xf64>
++  return %0 : tensor<3x4x5xf64>
++}
++
 diff --ruN a/stablehlo/stablehlo/tests/ops_sparse.mlir b/stablehlo/stablehlo/tests/ops_sparse.mlir
 --- stablehlo/stablehlo/tests/ops_sparse.mlir
 +++ stablehlo/stablehlo/tests/ops_sparse.mlir
@@ -405,6 +467,142 @@ diff --ruN a/stablehlo/stablehlo/transforms/ChloLegalizeToStablehlo.cpp b/stable
                       /*direction=*/mlir::stablehlo::ComparisonDirection::GT);
  
      // Get the sorted input and index tuple element.
+diff --ruN a/stablehlo/stablehlo/transforms/StablehloBroadcastLowering.cpp b/stablehlo/stablehlo/transforms/StablehloBroadcastLowering.cpp
+--- stablehlo/stablehlo/transforms/StablehloBroadcastLowering.cpp
++++ stablehlo/stablehlo/transforms/StablehloBroadcastLowering.cpp
+@@ -223,23 +223,51 @@
+   mlir::RankedTensorType outputType =
+       getRankedTensorType(shape, inputType.getElementType());
+ 
+-  // Short circuit if no broadcasting is needed.
+-  if (inputType == outputType) return input;
+-
+   int64_t inputRank = inputType.getRank();
+   int64_t outputRank = outputType.getRank();
+   if (inputRank > outputRank)
+     return emitError(loc, "input rank must be <= output rank, got ")
+            << inputRank << " vs " << outputRank;
+ 
+-  size_t rankDiff = outputRank - inputRank;
++  // Construct broadcast dimensions (right-aligned for NumPy-style
++  // broadcasting).
++  auto broadcastDimensions =
++      llvm::to_vector(llvm::seq<int64_t>(outputRank - inputRank, outputRank));
++
++  return broadcastIfNeeded(builder, input, shape, broadcastDimensions);
++}
++
++FailureOr<Value> broadcastIfNeeded(OpBuilder& builder, Value input,
++                                   const Dimensions& shape,
++                                   ArrayRef<int64_t> broadcastDimensions) {
++  LLVM_DEBUG(llvm::dbgs() << "[broadcastIfNeeded] Broadcasting input "
++                          << input.getType() << " => " << toString(shape)
++                          << "\n");
++  auto loc = input.getLoc();
++  mlir::RankedTensorType inputType =
++      dyn_cast<RankedTensorType>(input.getType());
++  if (!inputType)
++    return emitError(loc, "expected ranked tensor type for broadcast inputs");
++  mlir::RankedTensorType outputType =
++      getRankedTensorType(shape, inputType.getElementType());
++
++  // Short circuit if no broadcasting is needed.
++  if (inputType == outputType) return input;
++
++  int64_t inputRank = inputType.getRank();
++  int64_t outputRank = outputType.getRank();
++  if (inputRank > outputRank)
++    return emitError(loc, "input rank must be <= output rank, got ")
++           << inputRank << " vs " << outputRank;
++
++  if (static_cast<int64_t>(broadcastDimensions.size()) != inputRank)
++    return emitError(loc, "broadcast_dimensions size (")
++           << broadcastDimensions.size() << ") must match input rank ("
++           << inputRank << ")";
++
+   auto inputShapeOrFail = getDimensions(input);
+   if (failed(inputShapeOrFail)) return failure();
+   Dimensions inputShape = std::move(*inputShapeOrFail);
+-
+-  // Construct broadcast dimensions.
+-  auto broadcastDimensions =
+-      llvm::to_vector(llvm::seq<int64_t>(outputRank - inputRank, outputRank));
+ 
+   // Construct the result type of the broadcast
+   //  - If input is static and target shape is static, use static shape.
+@@ -247,14 +275,30 @@
+   //  - If input is not bounded, but target shape is bounded, broadcast to
+   //    the padded shape then call SetDimensionSize to make dynamic.
+   auto bcastShape = shape;
++  llvm::SmallVector<bool> isMapped(outputRank, false);
++
+   for (int64_t i = 0; i < inputRank; ++i) {
++    int64_t resultIdx = broadcastDimensions[i];
++    if (resultIdx < 0 || resultIdx >= outputRank)
++      return emitError(loc, "broadcast_dimensions index ")
++             << resultIdx << " out of bounds for output rank " << outputRank;
++
++    isMapped[resultIdx] = true;
++
+     int64_t inputDimSize = inputShape[i].size;
+-    int64_t resultIdx = i + rankDiff;
+     int64_t resultDimSize = shape[resultIdx].size;
+     if (inputDimSize != 1 && inputDimSize != resultDimSize)
+       return emitError(loc, "Cannot broadcast input: ")
+              << inputType << " to target shape " << toString(shape);
+ 
++    if (inputShape[i].boundOp.has_value() &&
++        !shape[resultIdx].boundOp.has_value()) {
++      return emitError(
++                 loc, "cannot mix bounded and static dimensions in broadcast: ")
++             << "input dimension " << i << " is bounded, but target dimension "
++             << resultIdx << " is static";
++    }
++
+     if (!inputShape[i].boundOp.has_value() &&
+         shape[resultIdx].boundOp.has_value()) {
+       // Use padded shape in broadcast.
+@@ -262,17 +306,18 @@
+     }
+   }
+ 
+-  // Broadcast to padded size for remaining dimensions.
+-  for (size_t i = 0; i < rankDiff; ++i) {
+-    bcastShape[i] = DimensionInfo{shape[i].size};
++  // Broadcast to padded size for remaining unmapped dimensions.
++  for (int64_t i = 0; i < outputRank; ++i) {
++    if (!isMapped[i]) {
++      bcastShape[i] = DimensionInfo{shape[i].size};
++    }
+   }
+ 
+   // Insert broadcast ops
+   mlir::RankedTensorType bcastType =
+       getRankedTensorType(bcastShape, inputType.getElementType());
+-  LLVM_DEBUG(
+-      llvm::dbgs() << "[numpyBroadcastIfNeeded] Broadcast to padded type "
+-                   << bcastType << "\n");
++  LLVM_DEBUG(llvm::dbgs() << "[broadcastIfNeeded] Broadcast to padded type "
++                          << bcastType << "\n");
+   Value bcastOp = stablehlo::BroadcastInDimOp::create(
+       builder, loc, bcastType, input, broadcastDimensions);
+   if (bcastOp.getType() == outputType) return bcastOp;
+diff --ruN a/stablehlo/stablehlo/transforms/StablehloBroadcastLowering.h b/stablehlo/stablehlo/transforms/StablehloBroadcastLowering.h
+--- stablehlo/stablehlo/transforms/StablehloBroadcastLowering.h
++++ stablehlo/stablehlo/transforms/StablehloBroadcastLowering.h
+@@ -70,6 +70,12 @@
+ FailureOr<Value> numpyBroadcastIfNeeded(OpBuilder& builder, Value input,
+                                         const Dimensions& shape);
+ 
++// Apply broadcasting to the given operand using the specified
++// broadcast_dimensions, returning an error if the operand is not broadcastable.
++FailureOr<Value> broadcastIfNeeded(OpBuilder& builder, Value input,
++                                   const Dimensions& shape,
++                                   ArrayRef<int64_t> broadcastDimensions);
++
+ }  // namespace stablehlo
+ }  // namespace mlir
+ 
 diff --ruN a/stablehlo/stablehlo/transforms/StablehloCanonicalizeDynamism.cpp b/stablehlo/stablehlo/transforms/StablehloCanonicalizeDynamism.cpp
 --- stablehlo/stablehlo/transforms/StablehloCanonicalizeDynamism.cpp
 +++ stablehlo/stablehlo/transforms/StablehloCanonicalizeDynamism.cpp
