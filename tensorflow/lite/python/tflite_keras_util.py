@@ -21,8 +21,6 @@ could not be copied over are accessed using the dependency inversion principle.
 # (for details, refer to tensorflow/python/util/keras_deps.py).
 """
 
-# pylint: disable=line-too-long
-
 import copy
 
 from tensorflow.python.eager import def_function

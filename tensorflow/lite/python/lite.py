@@ -14,8 +14,6 @@
 # ==============================================================================
 """TensorFlow Lite tooling helper functionality."""
 
-# pylint: disable=line-too-long
-
 import enum
 import functools
 import pprint
@@ -1759,9 +1757,11 @@ class TFLiteKerasModelConverterV2(TFLiteConverterBaseV2):
           return super(TFLiteKerasModelConverterV2, self).convert(
               graph_def, input_tensors, output_tensors
           )
-        except Exception:  # pylint: disable=broad-except
+        except Exception as e:  # pylint: disable=broad-except
           logging.warning(
-              "SavedModel conversion failed. Fallback to freezing Keras model."
+              "SavedModel conversion failed. Fallback to freezing Keras "
+              "model: %s",
+              e,
           )
           self.saved_model_dir = None
           return None

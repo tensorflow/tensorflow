@@ -14,8 +14,6 @@
 # ==============================================================================
 """Tests for lite.py functionality related to TensorFlow 2.0."""
 
-# pylint: disable=line-too-long
-
 import ctypes
 import functools
 import itertools
@@ -3689,11 +3687,15 @@ class FromKerasModelTest(lite_v2_test_util.ModelTest):
         super().__init__()
         self.bias = tf.Variable([2.0], dtype=tf.float32)
 
-      @tf.function(input_signature=[tf.TensorSpec(shape=[1], dtype=tf.float32)])
+      @tf.function(
+          input_signature=[tf.TensorSpec(shape=[1], dtype=tf.float32)]
+      )
       def call(self, x):
         return x + self.bias
 
-      @tf.function(input_signature=[tf.TensorSpec(shape=[1], dtype=tf.float32)])
+      @tf.function(
+          input_signature=[tf.TensorSpec(shape=[1], dtype=tf.float32)]
+      )
       def other_signature(self, x):
         return x * 2.0
 
