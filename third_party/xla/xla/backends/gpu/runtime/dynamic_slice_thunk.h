@@ -111,6 +111,27 @@ class DynamicSliceThunk : public Thunk {
         const OffsetAsFunctionOfIndvarModulesMetadataProto& proto);
   };
 
+  // * `thunk_info`: The information about the thunk.
+  // * `embedded_thunk`: The thunk that is operating on the sliced tensors,
+  // usually a custom call GemmThunk.
+  // * `arguments`: The original buffer allocations that we are slicing from.
+  // * `fake_allocations`: The fake allocations that are used as placeholders
+  // during creation of the embedded thunk. These are being replaced during
+  // execution in `ExecuteOnStream` with the actual (dynamic) slices. We create
+  // these outside to manage their lifetime correctly.
+  // * `offsets`: one of 1) constant, 2) slice (where to find offset value), 3)
+  // HloModule (that needs to be executed to get the offset value). See more
+  // details in the `Offset` definition.
+  // * `orig_shapes`: The original shapes of the slices.
+  // * `sliced_shapes`: The sliced shapes.
+  // * `offset_byte_sizes`: The byte sizes of the offsets.
+  // * `offset_as_function_of_indvar_metadata`: The metadata for offset
+  // computations on host. Stores HloModules for computing dynamic offsets and
+  // induction variables to generate the next HloModule. See more details in the
+  // struct definition.
+
+  // The vectors are expected to have the same size, and the i-th element of
+  // each vector corresponds to the i-th operand of the embedded thunk.
   DynamicSliceThunk(
       ThunkInfo thunk_info, std::unique_ptr<ThunkSequence> embedded_thunk,
       std::vector<std::optional<BufferAllocation::Slice>> arguments,
@@ -128,6 +149,12 @@ class DynamicSliceThunk : public Thunk {
 
   absl::Status Prepare(const PrepareParams& params) override;
   absl::Status Initialize(const InitializeParams& params) override;
+
+  // Retrieves the offset values from device to host if needed;
+  // Creates the dynamic slices based on the offset values;
+  // Replaces fake allocations in the embedded thunk with the dynamic slices;
+  // Executes the embedded thunk with the dynamic slices;
+  // Updates the induction variable if needed.
   absl::Status ExecuteOnStream(const ExecuteParams& params) override;
 
   // Definition of a dynamic slice that extract a slice from the original buffer
