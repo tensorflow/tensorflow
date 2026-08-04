@@ -425,8 +425,10 @@ class PjRtStreamExecutorClient : public CommonPjRtClient {
   absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> CompileAndLoad(
       MaybeOwningMlirModule mlir_module, CompileOptions options) override;
 
-  virtual absl::StatusOr<std::string> SerializeExecutable(
-      const PjRtLoadedExecutable& executable) const;
+  absl::StatusOr<std::string> SerializeExecutable(
+      const PjRtLoadedExecutable& executable) const {
+    return executable.SerializeExecutable();
+  }
 
   absl::StatusOr<std::unique_ptr<PjRtExecutable>> DeserializeExecutable(
       absl::string_view serialized,
@@ -737,11 +739,9 @@ class PjRtStreamExecutorRawLoadedExecutable : public PjRtRawLoadedExecutable {
 class PjRtStreamExecutorLoadedExecutable : public CommonPjRtLoadedExecutable {
  public:
   PjRtStreamExecutorLoadedExecutable(
-      std::shared_ptr<LocalExecutable> executables,
       std::shared_ptr<PjRtExecutable> pjrt_executable,
       bool parameter_is_tupled_arguments,
       std::shared_ptr<DeviceAssignment> device_assignment,
-      CompileOptions compile_options,
       std::vector<LogicalDeviceIds> addressable_device_logical_ids,
       std::vector<PjRtDevice*> addressable_devices,
       PjRtStreamExecutorClient* client, std::vector<Shape> parameter_shapes,
@@ -756,9 +756,7 @@ class PjRtStreamExecutorLoadedExecutable : public CommonPjRtLoadedExecutable {
     return pjrt_executable_.get();
   }
 
-  const HloInputOutputAliasConfig& input_output_alias_config() const override {
-    return executable_->executable()->module().input_output_alias_config();
-  }
+  const HloInputOutputAliasConfig& input_output_alias_config() const override;
 
   absl::StatusOr<std::unique_ptr<PjRtRawLoadedExecutable>> LoadRawExecutable(
       const ExecuteOptions& options, size_t host_callback_idx,
@@ -783,33 +781,30 @@ class PjRtStreamExecutorLoadedExecutable : public CommonPjRtLoadedExecutable {
       const ExecuteOptions& options, std::optional<Future<>>& returned_future,
       bool fill_future) const override;
 
-  void Delete() override { executable_.reset(); }
+  void Delete() override { is_deleted_ = true; }
 
-  bool IsDeleted() const override { return executable_ != nullptr; }
+  bool IsDeleted() const override { return is_deleted_; }
 
-  absl::StatusOr<std::string> SerializeExecutable() const override {
-    return client_->SerializeExecutable(*this);
-  }
+  absl::StatusOr<std::shared_ptr<LocalExecutable>> GetLocalExecutable() const;
 
-  const std::shared_ptr<LocalExecutable>& executable() const {
-    return executable_;
-  }
-
-  absl::StatusOr<CompileOptions> GetCompileOptions() const override {
-    return compile_options_;
-  }
+  struct InputHloSnapshotBits {
+    HloModuleProto hlo_module;
+    DebugOptions debug_options;
+  };
 
   void SetInputHloSnapshotBits(HloModuleProto hlo_module,
                                DebugOptions debug_options) {
-    input_hlo_snapshot_bits_ =
-        std::make_optional<InputHloSnapshotBits>(InputHloSnapshotBits{
-            HloModuleProto(std::move(hlo_module)), std::move(debug_options)});
+    input_hlo_snapshot_bits_ = std::make_optional<InputHloSnapshotBits>(
+        InputHloSnapshotBits{std::move(hlo_module), std::move(debug_options)});
+  }
+
+  const std::optional<InputHloSnapshotBits>& input_hlo_snapshot_bits() const {
+    return input_hlo_snapshot_bits_;
   }
 
   absl::StatusOr<std::unique_ptr<PjRtExecutableAbiVersion>> GetAbiVersion()
       const override;
 
- protected:
   bool parameter_is_tupled_arguments() const {
     return parameter_is_tupled_arguments_;
   }
@@ -827,21 +822,14 @@ class PjRtStreamExecutorLoadedExecutable : public CommonPjRtLoadedExecutable {
   // asynchronous execution, the process being executed can outlive the
   // executable itself.
   PjRtStreamExecutorClient* const client_;
-  // One executable per partition.
-  std::shared_ptr<LocalExecutable> executable_;
+  bool is_deleted_ = false;
   std::shared_ptr<PjRtExecutable> pjrt_executable_;
   // On device shapes of the executable parameters.
   std::shared_ptr<std::vector<Shape>> on_device_executable_parameter_shapes_;
-  CompileOptions compile_options_;
 
   // True if the executables were compiled expecting arguments in a single
   // tuple.
   const bool parameter_is_tupled_arguments_;
-
-  struct InputHloSnapshotBits {
-    HloModuleProto hlo_module;
-    DebugOptions debug_options;
-  };
 
   // The unoptimized (unsharded) HloModule. Primarily used for debugging.
   std::optional<InputHloSnapshotBits> input_hlo_snapshot_bits_;

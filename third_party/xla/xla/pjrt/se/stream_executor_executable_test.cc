@@ -51,10 +51,8 @@ TEST(StreamExecutorExecutableTest, GetAbiVersion) {
   auto module = std::make_unique<MockCompiledModule>();
   EXPECT_CALL(*module, GetExecutableAbiVersion())
       .WillOnce(Return(executable_abi_version));
-  std::vector<std::unique_ptr<CompiledModule>> modules{};
-  modules.push_back(std::move(module));
   StreamExecutorExecutable executable(kPlatformId, CompileOptions(),
-                                      std::move(modules), 0, 0, "name",
+                                      std::move(module), 0, 0, "name",
                                       "fingerprint", "memory_kind");
 
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtExecutableAbiVersion> abi_version,
