@@ -9568,7 +9568,7 @@ std::optional<MsaAlgorithm::Chunk> MsaAlgorithm::FindBestChunkCandidate(
   std::vector<Chunk> chunks = FindBestChunkCandidates(request, preferred_offset,
                                                       &sliced_buffer_interval);
   CHECK_LE(chunks.size(), 1);
-  if (chunks.empty()) {
+  if (chunks.empty() || chunks[0].chunk_end() > options_.max_size_in_bytes) {
     return std::nullopt;
   }
   return chunks[0];
@@ -9608,12 +9608,12 @@ std::vector<MsaAlgorithm::Chunk> MsaAlgorithm::FindBestChunkCandidates(
           alternate_mem_interval->UpdateEndTime(use);
           std::vector<Chunk> chunk_candidates =
               FindChunkCandidates(*alternate_mem_interval);
-          int64_t candidates_end =
+          int64_t max_chunk_end =
               absl::c_max_element(chunk_candidates, [](const Chunk& c1,
                                                        const Chunk& c2) {
                 return c1.chunk_end() < c2.chunk_end();
               })->chunk_end();
-          if (candidates_end <= available_heap_size()) {
+          if (max_chunk_end <= options_.max_size_in_bytes) {
             if (use > latest_matching_use) {
               last_chunk_candidates = std::move(chunk_candidates);
               latest_matching_use = use;
@@ -9648,7 +9648,14 @@ std::vector<MsaAlgorithm::Chunk> MsaAlgorithm::FindBestChunkCandidates(
       })->offset;
 
   if (candidates_start == preferred_offset->offset) {
-    return chunk_candidates;
+    int64_t max_chunk_end =
+        absl::c_max_element(chunk_candidates, [](const Chunk& c1,
+                                                 const Chunk& c2) {
+          return c1.chunk_end() < c2.chunk_end();
+        })->chunk_end();
+    if (max_chunk_end <= options_.max_size_in_bytes) {
+      return chunk_candidates;
+    }
   }
 
   return {};
