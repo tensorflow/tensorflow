@@ -821,7 +821,7 @@ bool IsTf32Allowed(const ::xla::xtile::PrecisionSpec& precision_spec) {
   return ::xla::algorithm_util::HasTf32InputType(precision_spec.algorithm);
 }
 
-ttir::InputPrecision InferDotPrecision(
+ttir::InputPrecision InferFpDotPrecision(
     const ::xla::xtile::PrecisionSpec& precision_spec) {
   if (precision_spec.algorithm ==
       ::xla::PrecisionConfig::ALG_DOT_TF32_TF32_F32_X3) {
@@ -932,8 +932,15 @@ LogicalResult RewriteDotGeneralToTritonDot(mlir::PatternRewriter& rewriter,
   ::xla::xtile::PrecisionSpec precision_spec{*hlo_algorithm, lhs_precision,
                                              rhs_precision};
 
+  ttir::InputPrecision ttir_input_precision = ttir::InputPrecision::IEEE;
+  if (mlir::isa<mlir::FloatType>(ElementType(op.getLhs())) &&
+      mlir::isa<mlir::FloatType>(ElementType(op.getRhs())) &&
+      mlir::isa<mlir::FloatType>(mlir::getElementTypeOrSelf(op.getType()))) {
+    ttir_input_precision = InferFpDotPrecision(precision_spec);
+  }
+
   TritonPrecisionSpec triton_precision_spec{*hlo_algorithm,
-                                            InferDotPrecision(precision_spec)};
+                                            ttir_input_precision};
   absl::StatusOr<Value> triton_dot_op =
       (*algorithm_emitter)(builder, dot_operands, triton_precision_spec);
   if (!triton_dot_op.ok()) {
