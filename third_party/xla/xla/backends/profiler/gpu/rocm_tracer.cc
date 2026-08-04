@@ -28,6 +28,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/base/optimization.h"
+#include "absl/container/inlined_vector.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
@@ -64,6 +65,13 @@ absl::Status RocprofilerStatusToAbslStatus(rocprofiler_status_t status) {
   return absl::InternalError(
       absl::StrCat("rocprofiler error: ", errstr ? errstr : "unknown"));
 }
+
+// Thread-local HIP stream stack. The rocprofiler-SDK fires
+// ROCPROFILER_HIP_STREAM_SET callbacks around every HIP API call that uses a
+// stream: PHASE_ENTER pushes the stream, PHASE_EXIT pops it. Between enter
+// and exit, the external correlation callback snapshots the current stream.
+// Initialized with 0 (the default HIP stream).
+thread_local absl::InlinedVector<uint64_t, 4> tls_stream_stack = {0};
 
 }  // namespace
 
@@ -279,9 +287,8 @@ void RocmTracer::MemcpyEvent(const rocprofiler_record_header_t* hdr,
   trace_event->scope_range_id =
       annotation_map()->LookUpScopeRangeId(trace_event->correlation_id);
   trace_event->thread_id = rec.thread_id;
-  // we do not know valid stream ID for memcpy
-  // rec.stream_id.handle;
-  trace_event->stream_id = RocmTracerEvent::kInvalidStreamId;
+  // HIP stream handle set by stream_external_correlation_callback().
+  trace_event->stream_id = rec.correlation_id.external.value;
   trace_event->memcpy_info = MemcpyDetails{
       .num_bytes = rec.bytes,
       .destination = static_cast<uint32_t>(dst_gpu.id.handle),
@@ -314,7 +321,9 @@ void RocmTracer::KernelEvent(const rocprofiler_record_header_t* hdr,
   trace_event->scope_range_id =
       annotation_map()->LookUpScopeRangeId(trace_event->correlation_id);
   trace_event->thread_id = rec.thread_id;
-  trace_event->stream_id = kinfo.queue_id.handle;
+  // HIP stream handle set by stream_external_correlation_callback().
+  trace_event->stream_id = rec.correlation_id.external.value;
+  trace_event->queue_id = kinfo.queue_id.handle;
   trace_event->kernel_info = KernelDetails{
       .private_segment_size = kinfo.private_segment_size,
       .group_segment_size = kinfo.group_segment_size,
@@ -423,6 +432,50 @@ static void tool_tracing_callback(rocprofiler_context_id_t context,
       context, buffer_id, headers, num_headers, drop_count);
 }
 
+// Callback for ROCPROFILER_CALLBACK_TRACING_HIP_STREAM events.
+// Maintains the thread-local stream stack so the external correlation callback
+// can snapshot the current HIP stream for each GPU operation.
+static void hip_stream_callback(rocprofiler_callback_tracing_record_t record,
+                                rocprofiler_user_data_t* /*user_data*/,
+                                void* /*callback_data*/) {
+  if (record.kind != ROCPROFILER_CALLBACK_TRACING_HIP_STREAM) return;
+
+  switch (record.operation) {
+    case ROCPROFILER_HIP_STREAM_SET:
+      if (record.phase == ROCPROFILER_CALLBACK_PHASE_ENTER) {
+        const auto* data =
+            static_cast<const rocprofiler_callback_tracing_hip_stream_data_t*>(
+                record.payload);
+        tls_stream_stack.push_back(data->stream_id.handle);
+      } else if (record.phase == ROCPROFILER_CALLBACK_PHASE_EXIT) {
+        if (tls_stream_stack.size() > 1) {
+          tls_stream_stack.pop_back();
+        }
+      }
+      break;
+    case ROCPROFILER_HIP_STREAM_CREATE:
+    case ROCPROFILER_HIP_STREAM_DESTROY:
+      break;
+    default:
+      VLOG(2) << "Unexpected HIP stream operation: " << record.operation;
+      break;
+  }
+}
+
+// External correlation ID request callback. Invoked by rocprofiler-SDK for
+// every kernel dispatch and memory copy to attach the current HIP stream_id.
+static int stream_external_correlation_callback(
+    rocprofiler_thread_id_t /*thread_id*/,
+    rocprofiler_context_id_t /*context_id*/,
+    rocprofiler_external_correlation_id_request_kind_t /*kind*/,
+    rocprofiler_tracing_operation_t /*operation*/,
+    uint64_t /*internal_corr_id_value*/,
+    rocprofiler_user_data_t* external_corr_id_value, void* /*data*/) {
+  external_corr_id_value->value =
+      tls_stream_stack.empty() ? 0 : tls_stream_stack.back();
+  return 0;
+}
+
 absl::Status RocmTracer::InitProfiling(void* tool_data) {
   name_info_ = GetCallbackTracingNames();
 
@@ -482,6 +535,39 @@ absl::Status RocmTracer::InitProfiling(void* tool_data) {
           context_, ROCPROFILER_BUFFER_TRACING_MEMORY_COPY, nullptr, 0,
           buffer_)));
 
+  // Configure external correlation ID request service on the main context.
+  // This attaches the current HIP stream_id (from tls_stream_stack) to every
+  // kernel dispatch and memory copy record via correlation_id.external.value.
+  {
+    rocprofiler_external_correlation_id_request_kind_t kinds[] = {
+        ROCPROFILER_EXTERNAL_CORRELATION_REQUEST_KERNEL_DISPATCH,
+        ROCPROFILER_EXTERNAL_CORRELATION_REQUEST_MEMORY_COPY,
+    };
+    RETURN_IF_ERROR(RocprofilerStatusToAbslStatus(
+        rocprofiler_configure_external_correlation_id_request_service(
+            context_, kinds, std::size(kinds),
+            stream_external_correlation_callback, nullptr)));
+  }
+
+  // Create a dedicated context for HIP stream tracking callbacks.
+  // This fires ROCPROFILER_HIP_STREAM_SET around every HIP API call that
+  // uses a stream, maintaining the thread-local stream stack.
+  // Intentionally process-lifetime (like utility_context_), not toggled by
+  // Enable()/Disable(): the TLS stack must stay warm so that stream IDs are
+  // correct from the very first dispatch after Enable(). The overhead when
+  // profiling is off is negligible (push/pop on a small TLS vector).
+  RETURN_IF_ERROR(RocprofilerStatusToAbslStatus(
+      rocprofiler_create_context(&hip_stream_ctx_)));
+
+  RETURN_IF_ERROR(RocprofilerStatusToAbslStatus(
+      rocprofiler_configure_callback_tracing_service(
+          hip_stream_ctx_, ROCPROFILER_CALLBACK_TRACING_HIP_STREAM, nullptr, 0,
+          hip_stream_callback, nullptr)));
+
+  RETURN_IF_ERROR(RocprofilerStatusToAbslStatus(
+      rocprofiler_start_context(hip_stream_ctx_)));
+  VLOG(1) << "rocprofiler start hip_stream_ctx";
+
   {
     const rocprofiler_tracing_operation_t* hip_ops = nullptr;
     size_t hip_ops_count = 0;
@@ -539,6 +625,8 @@ void RocmTracer::toolFinalize(void* tool_data) {
   VLOG(1) << "Calling toolFinalize!";
   rocprofiler_stop_context(obj.utility_context_);
   obj.utility_context_.handle = 0;
+  rocprofiler_stop_context(obj.hip_stream_ctx_);
+  obj.hip_stream_ctx_.handle = 0;
   rocprofiler_stop_context(obj.context_);
   obj.context_.handle = 0;
 }
