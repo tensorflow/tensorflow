@@ -407,12 +407,23 @@ absl::Status TuplePointsToAnalysis::HandleAsyncUpdate(
   CHECK(async_update_shape.IsTuple());
   CHECK(prev_async_op_shape.IsTuple());
 
-  // 1. Get the list of explicitly aliased outputs from async-start.
-  HloInstruction* async_start =
-      Cast<HloAsyncInstruction>(async_update)->async_chain_start();
+  // 1. Get explicitly aliased outputs from async-start. When crossing loop
+  // boundaries, async_chain_start() may be null; safely return if unreachable.
+  const HloAsyncInstruction* async_update_inst =
+      (async_update != nullptr) ? DynCast<HloAsyncInstruction>(async_update)
+                                : nullptr;
+  if (async_update_inst == nullptr) {
+    return absl::OkStatus();
+  }
+  HloInstruction* async_start = async_update_inst->async_chain_start();
+  const HloAsyncStartInstruction* async_start_inst =
+      (async_start != nullptr) ? DynCast<HloAsyncStartInstruction>(async_start)
+                               : nullptr;
+  if (async_start_inst == nullptr) {
+    return absl::OkStatus();
+  }
   absl::flat_hash_set<ShapeIndex> explicitly_aliased_outputs;
-  for (const auto& pair : Cast<HloAsyncStartInstruction>(async_start)
-                              ->output_to_operand_aliasing()) {
+  for (const auto& pair : async_start_inst->output_to_operand_aliasing()) {
     explicitly_aliased_outputs.insert(pair.first);
   }
 
@@ -952,10 +963,23 @@ void TuplePointsToAnalysis::InstructionToString(
 
 void TuplePointsToAnalysis::ApplyDeferredAliases(
     HloInstruction* current_instruction, PointsToSet& points_to_set) {
-  HloInstruction* async_start =
-      Cast<HloAsyncInstruction>(current_instruction)->async_chain_start();
-  for (const auto& pair : Cast<HloAsyncStartInstruction>(async_start)
-                              ->output_to_operand_aliasing()) {
+  // When an async instruction crosses a while loop boundary, its async-start
+  // may be null or outside scope; safely return if unreachable.
+  const HloAsyncInstruction* async_inst =
+      (current_instruction != nullptr)
+          ? DynCast<HloAsyncInstruction>(current_instruction)
+          : nullptr;
+  if (async_inst == nullptr) {
+    return;
+  }
+  HloInstruction* async_start = async_inst->async_chain_start();
+  const HloAsyncStartInstruction* async_start_inst =
+      (async_start != nullptr) ? DynCast<HloAsyncStartInstruction>(async_start)
+                               : nullptr;
+  if (async_start_inst == nullptr) {
+    return;
+  }
+  for (const auto& pair : async_start_inst->output_to_operand_aliasing()) {
     const ShapeIndex& logical_output_index = pair.first;
     int64_t operand_nr = pair.second.first;
     const ShapeIndex& logical_operand_index = pair.second.second;

@@ -210,7 +210,6 @@ cc_library(
         "//xla/hlo/ir:hlo_instruction_utils",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
-        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -422,6 +421,7 @@ cc_library(
     srcs = ["hlo_liveness_analysis.cc"],
     hdrs = ["hlo_liveness_analysis.h"],
     deps = [
+        "//xla:frontend_attributes",
         "//xla:shape_tree",
         "//xla:shape_util",
         "//xla:types",
@@ -449,13 +449,11 @@ xla_cc_test(
         ":hlo_liveness_analysis",
         "//xla:literal",
         "//xla:shape_util",
-        "//xla:status_macros",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
         "//xla/hlo/testlib:test",
         "//xla/hlo/testlib:test_helpers",
         "@com_google_googletest//:gtest_main",
-        "@tsl//tsl/platform:logging",
         "@tsl//tsl/platform:test",
     ],
 )
