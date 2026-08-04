@@ -642,6 +642,25 @@ class NearComparator {
       StrAppend(&out, "  ", it->ToString(actual_.shape()), "\n");
     }
 
+    if (num_mismatches_ > 0) {
+      StrAppendFormat(&out, "\nCurrent ErrorSpec: ErrorSpec{%g, %g}\n",
+                      error_.abs, error_.rel);
+      StrAppend(&out,
+                "Suggested ErrorSpec adjustments to make this test pass:\n");
+
+      std::vector<ErrorSpec> rounded_candidates;
+      for (const auto& c : candidates_) {
+        InsertCandidate(
+            ErrorSpec(RoundUpTo1SigFig(c.abs), RoundUpTo1SigFig(c.rel)),
+            rounded_candidates);
+      }
+
+      for (size_t i = 0; i < rounded_candidates.size(); ++i) {
+        StrAppendFormat(&out, "  Option %d: ErrorSpec{%g, %g}\n", i + 1,
+                        rounded_candidates[i].abs, rounded_candidates[i].rel);
+      }
+    }
+
     if (!detailed_message_) {
       return out;
     }
@@ -685,25 +704,6 @@ class NearComparator {
     print_accum_buckets(
         "Absolute error breakdown of elements exceeding rel error bound",
         num_rel_mismatches_, abs_error_buckets_);
-
-    if (num_mismatches_ > 0) {
-      StrAppendFormat(&out, "\nCurrent ErrorSpec: ErrorSpec{%g, %g}\n",
-                      error_.abs, error_.rel);
-      StrAppend(&out,
-                "Suggested ErrorSpec adjustments to make this test pass:\n");
-
-      std::vector<ErrorSpec> rounded_candidates;
-      for (const auto& c : candidates_) {
-        InsertCandidate(
-            ErrorSpec(RoundUpTo1SigFig(c.abs), RoundUpTo1SigFig(c.rel)),
-            rounded_candidates);
-      }
-
-      for (size_t i = 0; i < rounded_candidates.size(); ++i) {
-        StrAppendFormat(&out, "  Option %d: ErrorSpec{%g, %g}\n", i + 1,
-                        rounded_candidates[i].abs, rounded_candidates[i].rel);
-      }
-    }
 
     return out;
   }

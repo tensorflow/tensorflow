@@ -39,6 +39,7 @@ limitations under the License.
 #include "xla/status_macros.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
+#include "tsl/platform/tensor_float_32_utils.h"
 
 namespace xla::gpu {
 
@@ -330,6 +331,11 @@ void RewriteF32ToTF32X3(HloInstruction* instr) {
 absl::StatusOr<bool> DotAlgorithmRewriter::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
+  const auto* cuda_cc = gpu_version_.cuda_compute_capability();
+  if (cuda_cc != nullptr && !cuda_cc->IsAtLeastVolta()) {
+    return false;
+  }
+
   bool changed = false;
   bool default_to_bf16 = module->config()
                              .debug_options()
@@ -346,6 +352,9 @@ absl::StatusOr<bool> DotAlgorithmRewriter::RunImpl(
       auto need_to_simulate_tpu_precision = [&]() -> bool {
         if (!default_to_bf16) {
           return false;  // Default to BF16 is disabled by flag.
+        }
+        if (!tsl::tensor_float_32_execution_enabled()) {
+          return false;
         }
         if (instruction->shape().element_type() != PrimitiveType::F32) {
           return false;  // Accumulator type is not F32.

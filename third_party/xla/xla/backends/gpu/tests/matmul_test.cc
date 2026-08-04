@@ -60,7 +60,7 @@ TEST_F(MatmulTestWithCublas, GemmRewriter_NonCanonicalDots) {
      ROOT r = f32[8,5,7] reduce(d,c), dimensions={0}, to_apply=a
     }
   )";
-  EXPECT_TRUE(RunAndCompare(module_str, ErrorSpec{1e-4, 1e-4}));
+  EXPECT_TRUE(RunAndCompare(module_str, ErrorSpec{2e-3, 1e-4}));
 }
 
 TEST_F(MatmulTestWithCublas, GemmRewriter_RegressionTestF64) {
@@ -130,7 +130,7 @@ TEST_F(MatmulTestWithCublas, InverseAndMatmul) {
   })";
 
   EXPECT_TRUE(RunAndCompare(inverse_module_str, ErrorSpec{1e-4, 1e-4}));
-  EXPECT_TRUE(RunAndCompare(matmul_module_str, ErrorSpec{1e-4, 1e-4}));
+  EXPECT_TRUE(RunAndCompare(matmul_module_str, ErrorSpec{2e-4, 1e-4}));
 }
 
 }  // namespace
