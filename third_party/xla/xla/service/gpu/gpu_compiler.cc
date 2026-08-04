@@ -355,16 +355,20 @@ namespace xla {
 namespace gpu {
 namespace {
 
-bool IsTritonGemmEnabled(const DebugOptions& debug_options,
-                         const se::GpuComputeCapability& gpu_version) {
-  if (!debug_options.xla_gpu_enable_triton_gemm()) {
-    return false;
-  }
+bool IsTritonEnabled(const se::GpuComputeCapability& gpu_version) {
   const auto* cuda_cc = gpu_version.cuda_compute_capability();
   const auto* rocm_cc = gpu_version.rocm_compute_capability();
   return (cuda_cc != nullptr &&
           cuda_cc->IsAtLeast(se::CudaComputeCapability::kAmpere)) ||
          rocm_cc != nullptr;
+}
+
+bool IsTritonGemmEnabled(const DebugOptions& debug_options,
+                         const se::GpuComputeCapability& gpu_version) {
+  if (!debug_options.xla_gpu_enable_triton_gemm()) {
+    return false;
+  }
+  return IsTritonEnabled(gpu_version);
 }
 
 tsl::thread::ThreadPool* GetCompilationThreadPool() {
@@ -2135,7 +2139,7 @@ absl::Status GpuCompiler::OptimizeHloPostLayoutAssignment(
     // in the softmax codegen pipeline. However we should run before
     // ReductionDimensionGrouper, as that makes matching the softmax pattern
     // harder.
-    if (IsTritonGemmEnabled(debug_options, gpu_version)) {
+    if (IsTritonEnabled(gpu_version)) {
       pipeline.AddPass<HloPassFix<GpuAlgebraicSimplifier>>(simplifier_options,
                                                            gpu_version);
       pipeline.AddPass<HloCSE>(/*is_layout_sensitive=*/true);
