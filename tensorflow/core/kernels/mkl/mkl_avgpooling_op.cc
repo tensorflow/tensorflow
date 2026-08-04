@@ -69,7 +69,7 @@ class MklAvgPoolingOp : public MklPoolingForwardOpBase<T> {
       if (!dnn_shape_input.IsMklTensor()) {
         int expected_rank = is_pool2d ? 4 : 5;
         OP_REQUIRES(context, input_tensor.dims() == expected_rank,
-                    absl::InvalidArgument(
+                    absl::InvalidArgumentError(
                         absl::StrCat("Input must be rank ", expected_rank,
                                      " but got rank ", input_tensor.dims())));
       }
@@ -165,12 +165,12 @@ class MklAvgPoolingOp : public MklPoolingForwardOpBase<T> {
         const Tensor& max_input_t = MklGetInput(context, 2);
 
         OP_REQUIRES(context, TensorShapeUtils::IsScalar(min_input_t.shape()),
-                    absl::InvalidArgument(absl::StrCat(
+                    absl::InvalidArgumentError(absl::StrCat(
                         "min_input shape must be rank 0 but is rank ",
                         min_input_t.dims(), ", received shape: ",
                         min_input_t.shape().DebugString())));
         OP_REQUIRES(context, TensorShapeUtils::IsScalar(max_input_t.shape()),
-                    absl::InvalidArgument(absl::StrCat(
+                    absl::InvalidArgumentError(absl::StrCat(
                         "max_input shape must be rank 0 but is rank ",
                         max_input_t.dims(), ", received shape: ",
                         max_input_t.shape().DebugString())));
@@ -229,7 +229,7 @@ class MklAvgPoolingGradOp : public MklPoolingBackwardOpBase<T> {
       // .vec<int32>(). A scalar or higher-rank tensor would cause an
       // assertion crash.
       OP_REQUIRES(context, orig_input_tensor.dims() == 1,
-                  absl::InvalidArgument(absl::StrCat(
+                  absl::InvalidArgumentError(absl::StrCat(
                       "orig_input_shape must be a 1D tensor, but got a ",
                       orig_input_tensor.dims(), "D tensor with shape ",
                       orig_input_tensor.shape().DebugString())));
@@ -239,7 +239,7 @@ class MklAvgPoolingGradOp : public MklPoolingBackwardOpBase<T> {
       // check here to guard against potential memory safety issues
       // if ksize is somehow invalid at Compute time.
       OP_REQUIRES(context, this->ksize_.size() == 4 || this->ksize_.size() == 5,
-                  absl::InvalidArgument(
+                  absl::InvalidArgumentError(
                       absl::StrCat("ksize must have 4 or 5 elements, but got ",
                                    this->ksize_.size())));
 
@@ -250,7 +250,7 @@ class MklAvgPoolingGradOp : public MklPoolingBackwardOpBase<T> {
       // Validate grad tensor rank before accessing its dimensions.
       // For 2D pooling, grad must be 4D; for 3D pooling, grad must be 5D.
       OP_REQUIRES(context, grad_tensor.dims() == expected_grad_rank,
-                  absl::InvalidArgument(absl::StrCat(
+                  absl::InvalidArgumentError(absl::StrCat(
                       "Expected grad to be rank ", expected_grad_rank,
                       " but got rank ", grad_tensor.dims())));
 
@@ -268,7 +268,7 @@ class MklAvgPoolingGradOp : public MklPoolingBackwardOpBase<T> {
       // dim_size(N) (see #118354).
       OP_REQUIRES(
           context, output_shape.dims() == expected_rank,
-          absl::InvalidArgument(absl::StrCat(
+          absl::InvalidArgumentError(absl::StrCat(
               "Expected orig_input shape to represent a ", expected_rank,
               "D shape, but got a ", output_shape.dims(), "D shape.")));
 
@@ -315,7 +315,7 @@ class MklAvgPoolingGradOp : public MklPoolingBackwardOpBase<T> {
                     in_cols +
                 cindex + csize - 1;
             OP_REQUIRES(context, input_max < output_tensor->NumElements(),
-                        absl::InvalidArgument(absl::StrCat(
+                        absl::InvalidArgumentError(absl::StrCat(
                             "Output only has ", output_tensor->NumElements(),
                             " elements but computation requested"
                             " would use element with index=",
@@ -358,7 +358,7 @@ class MklAvgPoolingGradOp : public MklPoolingBackwardOpBase<T> {
 
       OP_REQUIRES(
           context, orig_input_dims_mkl_order[0] == diff_dst_dims[0],
-          absl::InvalidArgument(absl::StrCat(
+          absl::InvalidArgumentError(absl::StrCat(
               "Expected first dimension of orig_input and diff_dst to match, "
               "got ",
               orig_input_dims_mkl_order[0], " and ", diff_dst_dims[0])));
