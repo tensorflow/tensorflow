@@ -745,7 +745,8 @@ std::map<int, llvm::MDNode*> MergeMetadata(
 void DumpIrIfEnabled(const HloModule& hlo_module,
                      const llvm::Module& llvm_module, bool optimized,
                      absl::string_view filename_suffix) {
-  if (!DumpingEnabledForHloModule(hlo_module)) {
+  if (!DumpingEnabledForHloModule(hlo_module) ||
+      !DumpingEnabledForEmitter("llvm", hlo_module.config().debug_options())) {
     return;
   }
   tsl::profiler::ScopedAnnotation annotation([&] {

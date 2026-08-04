@@ -2724,8 +2724,10 @@ GpuCompiler::CompileSingleModule(
       CompileTargetBinary(module_config, llvm_module, device_description,
                           relocatable, debug_module, shard_number));
 
-  const bool should_dump = DumpingEnabledForHloModule(
-      debug_module ? debug_module->name() : "", debug_options);
+  const bool should_dump =
+      DumpingEnabledForHloModule(debug_module ? debug_module->name() : "",
+                                 debug_options) &&
+      DumpingEnabledForEmitter("llvm", debug_options);
 
   if (should_dump) {
     if (debug_module) {
