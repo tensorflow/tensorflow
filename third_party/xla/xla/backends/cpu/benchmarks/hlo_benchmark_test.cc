@@ -45,8 +45,11 @@ ABSL_FLAG(std::vector<std::string>, hlo_paths, std::vector<std::string>({}),
 
 ABSL_FLAG(
     bool, hlo_paths_absolute, false,
-    "If true the HLO paths are absolute, otherwise they are relative to the "
-    "test directory and must be in the data dependencies of the test.");
+    "If true the HLO paths are absolute. Otherwise the paths are relative and "
+    "the corresponding files must be in the data dependencies of the test. "
+    "A relative path is interpreted first as relative to the test workspace "
+    "directory; if the resulting path does not exist, the given path is "
+    "interpreted as relative to the test source directory.");
 
 ABSL_FLAG(int32_t, num_executions, 1,
           "Number of times to execute the HLO within a single benchmark "
@@ -75,8 +78,13 @@ std::string GetHloAbsolutePath(absl::string_view hlo_path) {
     return std::string(hlo_path);
   }
   std::string workspace_dir;
-  CHECK(tsl::io::GetTestWorkspaceDir(&workspace_dir));  // Crash OK.
-  return tsl::io::JoinPath(workspace_dir, hlo_path);
+  if (tsl::io::GetTestWorkspaceDir(&workspace_dir)) {
+    std::string path = tsl::io::JoinPath(workspace_dir, hlo_path);
+    if (tsl::Env::Default()->FileExists(path).ok()) {
+      return path;
+    }
+  }
+  return tsl::io::JoinPath(::testing::SrcDir(), hlo_path);
 }
 
 absl::Status RunBenchmark(benchmark::State* absl_nullable state,
