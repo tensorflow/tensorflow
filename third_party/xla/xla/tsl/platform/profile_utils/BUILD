@@ -59,7 +59,6 @@ filegroup(
 cc_library(
     name = "profile_utils_cpu_utils",
     srcs = [
-        "android_armv7a_cpu_utils_helper.cc",
         "android_armv7a_cpu_utils_helper.h",
         "cpu_utils.cc",
     ],
@@ -73,7 +72,6 @@ cc_library(
         "//xla/tsl/platform:macros",
         "//xla/tsl/platform:types",
         "@com_google_absl//absl/base",
-        "@com_google_absl//absl/strings:str_format",
     ],
     alwayslink = 1,
 )
