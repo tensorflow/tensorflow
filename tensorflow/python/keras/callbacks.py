@@ -1814,10 +1814,8 @@ class EarlyStopping(Callback):
       self.best = current
       if self.restore_best_weights:
         self.best_weights = self.model.get_weights()
-      # Only restart wait if we beat both the baseline and our previous best.
-      if self.baseline is None or self._is_improvement(current, self.baseline):
-        self.wait = 0
-      return  # Do not stop training if the model improved.
+      self.wait = 0
+      return
 
     if self.wait >= self.patience:
       self.stopped_epoch = epoch
