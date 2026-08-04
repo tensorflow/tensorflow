@@ -13,7 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <cstddef>
 #include <cstdint>
 #include <functional>
 #include <iterator>
@@ -39,12 +38,9 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_sharding.h"
-#include "xla/hlo/ir/mesh_and_axis.h"
-#include "xla/hlo/ir/named_sharding.h"
 #include "xla/hlo/utils/hlo_sharding_util.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
-#include "xla/service/call_graph.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/spmd/spmd_partitioner.h"
 #include "xla/service/spmd/spmd_partitioner_util.h"
@@ -1568,79 +1564,6 @@ HloInstruction* SelectOperandForScatterIndexPassthroughDimensions(
       per_group_operand.hlo()));
 }
 
-static bool HasScatterOperandReductionConflict(
-    const HloScatterInstruction* scatter, const HloInstruction* operand,
-    const HloInstruction* updates, const CallGraph& call_graph) {
-  const auto& dnums = scatter->scatter_dimension_numbers();
-  if (dnums.update_window_dims().empty()) {
-    return false;
-  }
-  auto is_window_dim = [&](int64_t dim) {
-    return absl::c_linear_search(dnums.update_window_dims(), dim);
-  };
-  std::vector<int64_t> reduction_update_dims;
-  for (int64_t i = 0; i < updates->shape().dimensions().size(); ++i) {
-    if (is_window_dim(i)) {
-      continue;
-    }
-    reduction_update_dims.push_back(i);
-  }
-
-  if (reduction_update_dims.empty()) {
-    return false;
-  }
-
-  if (!operand->has_sharding() || !updates->has_sharding()) {
-    return false;
-  }
-
-  auto operand_sharding = operand->sharding();
-  auto updates_sharding = updates->sharding();
-  if (operand_sharding.IsTuple() || updates_sharding.IsTuple()) {
-    return false;
-  }
-  if (operand_sharding.IsReplicatedOrSingleDevice() ||
-      updates_sharding.IsReplicatedOrSingleDevice()) {
-    return false;
-  }
-
-  if (operand_sharding.IsTiled() && updates_sharding.IsTiled()) {
-    auto operand_named = HloSharding::ToNamedSharding(operand_sharding);
-    auto updates_named = HloSharding::ToNamedSharding(updates_sharding);
-    if (operand_named.mesh().device_assignment().dimensions() !=
-        updates_named.mesh().device_assignment().dimensions()) {
-      return false;
-    }
-    for (int64_t reduction_dim : reduction_update_dims) {
-      for (int64_t operand_dim : dnums.scatter_dims_to_operand_dims()) {
-        auto operand_axes = operand_named.dim_sharding(operand_dim).axes();
-        auto updates_axes = updates_named.dim_sharding(reduction_dim).axes();
-        for (const auto& op_axis : operand_axes) {
-          for (const auto& up_axis : updates_axes) {
-            if (op_axis == up_axis) {
-              return true;
-            }
-          }
-        }
-      }
-    }
-  }
-  return false;
-}
-
-static bool HasAnyScatterOperandReductionConflict(
-    const HloScatterInstruction* scatter,
-    absl::Span<const PartitionedHlo> operands,
-    absl::Span<const PartitionedHlo> updates, const CallGraph& call_graph) {
-  for (size_t i = 0; i < operands.size(); ++i) {
-    if (HasScatterOperandReductionConflict(scatter, operands[i].hlo(),
-                                           updates[i].hlo(), call_graph)) {
-      return true;
-    }
-  }
-  return false;
-}
-
 // Perform partitioning of Scatter when the indices are partitioned on the
 // non-index vector dimension.
 absl::StatusOr<HloInstruction*> PartitionScatterIndexPassthroughDimensions(
@@ -1658,11 +1581,6 @@ absl::StatusOr<HloInstruction*> PartitionScatterIndexPassthroughDimensions(
   };
 
   SpmdBuilder* b = visitor->builder();
-  if (allow_recursive &&
-      HasAnyScatterOperandReductionConflict(scatter, operands, updates,
-                                            visitor->call_graph())) {
-    return nullptr;
-  }
   // Parse non-variadic computation only. Variadic case will be replicated.
   const hlo_sharding_util::GatherScatterDims index_passthrough_dims =
       hlo_sharding_util::GetGatherScatterIndexPassThroughDims(
