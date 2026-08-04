@@ -1,4 +1,4 @@
-/* Copyright 2026 The OpenXLA Authors. All Rights Reserved.
+/* Copyright 2026 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -15,22 +15,21 @@ limitations under the License.
 
 syntax = "proto3";
 
-package xla.split_proto_cli;
+package xla;
 
 import "xla/pjrt/proto/compile_options.proto";
 import "xla/service/gpu/gpu_executable.proto";
 
-option java_outer_classname = "SplitProtoCli";
+option java_outer_classname = "HumanReadableAotExecutableProto";
 option java_multiple_files = true;
 
-// AOT binaries consist of a ExecutableAndOptionsProto serialized using Split
-// Proto, with a serialized GpuExecutableProto (also using Split Proto) stored
-// in the `serialized_executable` field of the options.
+// An AOT binary consists of an ExecutableAndOptionsProto with a serialized
+// GpuExecutableProto stored in the `serialized_executable` field of the
+// options.
 //
-// This proto combines both protos into a single proto, so that you can inspect,
-// and edit the AOT binary in a single file, that you can re-pack into a new AOT
-// binary.
-message DeserializedSplitExecutableAndOptions {
+// This proto combines both into a single proto, allowing the whole binary to
+// be inspected, edited, or stored in a single human-readable format.
+message HumanReadableAotExecutable {
   // The serialized_executable field of this proto is not populated.
   ExecutableAndOptionsProto executable_and_options = 1;
   gpu.GpuExecutableProto gpu_executable = 2;

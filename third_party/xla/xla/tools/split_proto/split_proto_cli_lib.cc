@@ -50,9 +50,9 @@ limitations under the License.
 #include "xla/service/hlo.pb.h"
 #include "xla/stream_executor/abi/executable_abi_version.pb.h"
 #include "xla/stream_executor/device_description.pb.h"
-#include "xla/tools/split_proto/split_proto_cli.pb.h"
 #include "xla/tsl/util/fixed_option_set_flag.h"
 #include "xla/tsl/util/sorted_range.h"
+#include "xla/util/split_proto/human_readable_aot_executable.pb.h"
 #include "xla/util/split_proto/split_executable_and_options_writer.h"
 #include "xla/util/split_proto/split_gpu_executable_writer.h"
 #include "xla/util/split_proto/split_hlo_writer.h"
@@ -244,10 +244,10 @@ absl::Status Unpack(std::unique_ptr<riegeli::Reader> reader,
 absl::Status PackAot(std::unique_ptr<riegeli::Reader> reader,
                      std::unique_ptr<riegeli::Writer> writer,
                      const PackOptions& options) {
-  std::cout << "Packing DeserializedSplitExecutableAndOptions to split "
+  std::cout << "Packing HumanReadableAotExecutable to split "
                "ExecutableAndOptionsProto"
             << "\n";
-  DeserializedSplitExecutableAndOptions wrapper;
+  HumanReadableAotExecutable wrapper;
   RETURN_IF_ERROR(ParseProto(*reader, options.input_format, wrapper));
 
   std::unique_ptr<riegeli::Writer> serialized_executable_writer =
@@ -268,7 +268,7 @@ absl::Status UnpackAot(std::unique_ptr<riegeli::Reader> reader,
                        std::unique_ptr<riegeli::Writer> writer,
                        const UnpackOptions& options) {
   std::cout << "Unpacking split ExecutableAndOptionsProto to "
-               "DeserializedSplitExecutableAndOptions ("
+               "HumanReadableAotExecutable ("
             << AbslUnparseFlag(options.output_format) << " format)" << "\n";
   ExecutableAndOptionsProto executable_and_options_proto;
   RETURN_IF_ERROR(
@@ -282,7 +282,7 @@ absl::Status UnpackAot(std::unique_ptr<riegeli::Reader> reader,
 
   executable_and_options_proto.clear_serialized_executable();
 
-  DeserializedSplitExecutableAndOptions wrapper;
+  HumanReadableAotExecutable wrapper;
   *wrapper.mutable_executable_and_options() =
       std::move(executable_and_options_proto);
   *wrapper.mutable_gpu_executable() = std::move(gpu_proto);
