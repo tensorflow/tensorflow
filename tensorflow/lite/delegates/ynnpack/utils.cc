@@ -252,6 +252,19 @@ bool IsQuantized(const TfLiteTensor& tensor) {
          tensor.params.scale != 0.0f;
 }
 
+bool IsConstant(const TfLiteTensor& tensor, bool allow_prepare) {
+  switch (tensor.allocation_type) {
+    case kTfLiteMemNone:
+    case kTfLiteMmapRo:
+    case kTfLiteArenaRwPersistent:
+      return true;
+    case kTfLitePersistentRo:
+      return allow_prepare;
+    default:
+      return false;
+  }
+}
+
 bool IsSupportedQuantization(const TfLiteTensor& tensor,
                              bool allow_per_channel) {
   if (!IsQuantized(tensor)) return true;
@@ -618,7 +631,7 @@ uint32_t GetOrCreateValueId(TfLiteContext* context, ynn_subgraph_t subgraph,
   size_t dims_data[YNN_MAX_TENSOR_RANK];
   const size_t* dims = nullptr;
 
-  if (tensor.allocation_type == kTfLiteMmapRo) {
+  if (IsConstant(tensor)) {
     data = tensor.data.raw;
     std::copy_n(tensor.dims->data, tensor.dims->size, dims_data);
     dims = dims_data;

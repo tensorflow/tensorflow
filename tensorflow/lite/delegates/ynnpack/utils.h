@@ -59,6 +59,9 @@ bool IsUnaryOp(int builtin_code);
 bool IsBinaryOp(int builtin_code);
 bool IsStablehloOp(int builtin_code);
 bool IsQuantized(const TfLiteTensor& tensor);
+// Check if a tensor is constant, or if `allow_prepare` is true, that a tensor
+// is constant between `Prepare` calls.
+bool IsConstant(const TfLiteTensor& tensor, bool allow_prepare = false);
 bool IsSupportedQuantization(const TfLiteTensor& tensor,
                              bool allow_per_channel = false);
 bool IsTensorSupported(const TfLiteTensor& tensor,
