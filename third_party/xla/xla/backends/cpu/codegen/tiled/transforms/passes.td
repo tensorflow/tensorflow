@@ -118,27 +118,6 @@ def UnpackSubByteVectorWritePass : Pass<"xtile-cpu-unpack-sub-byte-vector-write"
   ];
 }
 
-def InitializeAllocsPass : Pass<"xtile-cpu-initialize-allocs"> {
-  let summary = "Initializes allocations.";
-
-  let description = [{
-    We don't currently have the infrastructure to instrument JIT kernels fully
-    with msan, therefore to avoid false positives we initialize all allocated
-    memory to set values.
-
-    Integer values will be initialized with all high bits and floats with NaNs.
-
-    This pass will also add a call to __msan_unpoison for each allocation as
-    optimizations can remove the set values.
-  }];
-
-  let dependentDialects = [
-    "mlir::arith::ArithDialect",
-    "::mlir::scf::SCFDialect",
-    "::mlir::LLVM::LLVMDialect",
-  ];
-}
-
 def HoistAllocaPass : Pass<"xtile-cpu-hoist-alloca", "mlir::func::FuncOp"> {
   let summary = "Hoist memref.alloca ops to the entry block of the function.";
   let dependentDialects = [

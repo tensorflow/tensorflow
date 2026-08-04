@@ -63,8 +63,7 @@ class IRBuilderGuardTest : public HloHardwareIndependentTestBase {
                      /*instruction_to_profile_idx=*/{},
                      /*computation_to_profile_idx=*/{},
                      /*computation_transitively_contains_custom_call=*/{},
-                     /*target_machine=*/&target_machine,
-                     /*emit_code_for_msan=*/false);
+                     /*target_machine=*/&target_machine);
   }
 
  protected:

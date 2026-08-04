@@ -16,14 +16,20 @@ limitations under the License.
 #include "xla/backends/cpu/codegen/ir_compiler.h"
 
 #include <algorithm>
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <string>
 #include <utility>
 #include <vector>
 
+#ifdef ABSL_HAVE_MEMORY_SANITIZER
+#include <sanitizer/msan_interface.h>
+#endif
+
 #include "absl/algorithm/container.h"
 #include "absl/base/call_once.h"
+#include "absl/base/config.h"  // IWYU pragma: keep
 #include "absl/base/nullability.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
@@ -38,17 +44,25 @@ limitations under the License.
 #include "llvm-c/Target.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Analysis/CGSCCPassManager.h"
+#include "llvm/Analysis/GlobalsModRef.h"
 #include "llvm/Analysis/LoopAnalysisManager.h"
 #include "llvm/Analysis/RuntimeLibcallInfo.h"
 #include "llvm/Analysis/TargetLibraryInfo.h"
 #include "llvm/ExecutionEngine/ExecutionEngine.h"
 #include "llvm/ExecutionEngine/Orc/Mangling.h"
+#include "llvm/IR/Attributes.h"
+#include "llvm/IR/BasicBlock.h"
+#include "llvm/IR/DataLayout.h"
+#include "llvm/IR/DerivedTypes.h"
+#include "llvm/IR/IRBuilder.h"
+#include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/LegacyPassManager.h"
 #include "llvm/IR/Metadata.h"
 #include "llvm/IR/PassManager.h"
 #include "llvm/IR/Verifier.h"
 #include "llvm/MC/MCContext.h"
 #include "llvm/Object/ObjectFile.h"
+#include "llvm/Pass.h"
 #include "llvm/Passes/OptimizationLevel.h"
 #include "llvm/Passes/PassBuilder.h"
 #include "llvm/Passes/StandardInstrumentations.h"
@@ -64,15 +78,22 @@ limitations under the License.
 #include "llvm/TargetParser/Host.h"
 #include "llvm/TargetParser/Triple.h"
 #include "llvm/Transforms/IPO/AlwaysInliner.h"
+#include "llvm/Transforms/InstCombine/InstCombine.h"
 #include "llvm/Transforms/Instrumentation/DataFlowSanitizer.h"
+#include "llvm/Transforms/Instrumentation/MemorySanitizer.h"
+#include "llvm/Transforms/Scalar/EarlyCSE.h"
+#include "llvm/Transforms/Scalar/GVN.h"
+#include "llvm/Transforms/Scalar/JumpThreading.h"
 #include "xla/backends/cpu/codegen/kernel_api_ir_builder.h"
 #include "xla/backends/cpu/codegen/polynomial_approximations.h"
+#include "xla/backends/cpu/runtime/msan_emulated_tls.h"
 #include "xla/backends/cpu/target_machine_options.h"
 #include "xla/codegen/intrinsic/intrinsic.h"
 #include "xla/codegen/intrinsic/intrinsic_compiler_lib.h"
 #include "xla/codegen/intrinsic_lib.h"
 #include "xla/service/cpu/backend_config.pb.h"
 #include "xla/service/cpu/cpu_options.h"
+#include "xla/service/cpu/cpu_runtime.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/tsl/platform/logging.h"
@@ -80,6 +101,8 @@ limitations under the License.
 #include "xla/xla.pb.h"
 
 namespace xla::cpu {
+
+static constexpr char kNoSanitizeMemoryAttr[] = "no_sanitize_memory";
 
 namespace internal {
 
@@ -236,9 +259,9 @@ std::unique_ptr<IrCompiler> IrCompiler::Create(
     llvm::TargetOptions target_options, Options options,
     CompilationHooks hooks) {
   TargetMachineBuilder target_machine_builder =
-      IrCompiler::InferTargetMachineBuilder(std::move(target_options),
-                                            options.opt_level,
-                                            options.target_machine_options);
+      IrCompiler::InferTargetMachineBuilder(
+          std::move(target_options), options.opt_level,
+          options.target_machine_options, options.msan_enabled);
 
   return std::make_unique<IrCompiler>(target_machine_builder,
                                       std::move(options), std::move(hooks));
@@ -254,14 +277,19 @@ IrCompiler::IrCompiler(TargetMachineBuilder target_machine_builder,
 absl::StatusOr<std::unique_ptr<llvm::TargetMachine>>
 IrCompiler::InferTargetMachine(
     const llvm::TargetOptions& target_options, llvm::CodeGenOptLevel opt_level,
-    const TargetMachineOptions& target_machine_options) {
+    const TargetMachineOptions& target_machine_options, bool msan_enabled) {
   auto attrs_vec = target_machine_options.GetTargetMachineFeaturesVector();
   llvm::SmallVector<std::string> attrs(attrs_vec.begin(), attrs_vec.end());
+
+  llvm::TargetOptions effective_target_options = target_options;
+  if (msan_enabled) {
+    effective_target_options.EmulatedTLS = true;
+  }
 
   absl::call_once(internal::targets_init, &internal::InitializeTargets);
   std::unique_ptr<llvm::TargetMachine> target_machine(
       llvm::EngineBuilder()
-          .setTargetOptions(target_options)
+          .setTargetOptions(effective_target_options)
           .setOptLevel(opt_level)
           .selectTarget(
               /*TargetTriple=*/llvm::Triple(target_machine_options.triple()),
@@ -279,10 +307,10 @@ IrCompiler::InferTargetMachine(
 
 IrCompiler::TargetMachineBuilder IrCompiler::InferTargetMachineBuilder(
     const llvm::TargetOptions& target_options, llvm::CodeGenOptLevel opt_level,
-    const TargetMachineOptions& target_machine_options) {
-  return [target_options, opt_level, target_machine_options] {
-    return InferTargetMachine(target_options, opt_level,
-                              target_machine_options);
+    const TargetMachineOptions& target_machine_options, bool msan_enabled) {
+  return [target_options, opt_level, target_machine_options, msan_enabled] {
+    return InferTargetMachine(target_options, opt_level, target_machine_options,
+                              msan_enabled);
   };
 }
 
@@ -330,6 +358,10 @@ llvm::Expected<std::unique_ptr<llvm::MemoryBuffer>> IrCompiler::operator()(
     if (hooks_.post_optimization) {
       hooks_.post_optimization(module);
     }
+  }
+
+  if (options_.msan_enabled) {
+    InjectMsanEmulatedTls(module);
   }
 
   std::unique_ptr<llvm::MemoryBuffer> mc_memory_buffer =
@@ -426,11 +458,54 @@ llvm::Error IrCompiler::RunIrPasses(llvm::Module& module,
   pb.registerLoopAnalyses(lam);
   pb.crossRegisterProxies(lam, fam, cgam, mam);
 
-  llvm::ModulePassManager pm;
-
-  if (options_.dfsan_enabled) {
-    pm.addPass(llvm::DataFlowSanitizerPass(options_.dfsan_abi_list_files));
+  if (options_.msan_enabled) {
+    for (auto& function : module) {
+      if (!function.isDeclaration() &&
+          !function.hasFnAttribute(kNoSanitizeMemoryAttr)) {
+        function.addFnAttr(llvm::Attribute::SanitizeMemory);
+      }
+    }
   }
+
+  pb.registerOptimizerLastEPCallback([&](llvm::ModulePassManager& mpm,
+                                         llvm::OptimizationLevel level,
+                                         llvm::ThinOrFullLTOPhase) {
+    if (options_.dfsan_enabled) {
+      mpm.addPass(llvm::DataFlowSanitizerPass(options_.dfsan_abi_list_files));
+    }
+
+    if (options_.msan_enabled) {
+      int track_origins = 0;
+#ifdef ABSL_HAVE_MEMORY_SANITIZER
+      // Query the host compiler's origin tracking level. If the compiler
+      // itself was built with msan-track-origins, we match that.
+      // If the compiler was not built with msan, track_origins defaults to 0
+      // (which is ABI-compatible when linked into a track-origins binary).
+      // Note: To support track-origins when AOT compiling with an
+      // uninstrumented compiler, an explicit option beyond "msan_enabled" would
+      // be needed.
+      track_origins = __msan_get_track_origins();
+#endif
+      llvm::MemorySanitizerOptions msan_options(
+          track_origins, /*Recover=*/false, /*Kernel=*/false,
+          /*EagerChecks=*/true);
+      mpm.addPass(llvm::MemorySanitizerPass(msan_options));
+      if (level != llvm::OptimizationLevel::O0) {
+        // Run a small clean-up pipeline to reduce code size, just like
+        // Clang does.
+        mpm.addPass(llvm::RequireAnalysisPass<llvm::GlobalsAA, llvm::Module>());
+        llvm::FunctionPassManager fpm;
+        fpm.addPass(llvm::EarlyCSEPass(/*Enable mem-ssa=*/true));
+        fpm.addPass(llvm::InstCombinePass());
+        fpm.addPass(llvm::JumpThreadingPass());
+        fpm.addPass(llvm::GVNPass());
+        fpm.addPass(llvm::InstCombinePass());
+        mpm.addPass(llvm::createModuleToFunctionPassAdaptor(std::move(fpm)));
+      }
+    }
+  });
+
+  llvm::ModulePassManager pm;
 
   llvm::OptimizationLevel opt_level = GetOptimizationLevel(options_);
   if (opt_level == llvm::OptimizationLevel::O0) {
@@ -524,6 +599,56 @@ llvm::CodeGenOptLevel IrCompiler::GetCodeGenOptLevel(
 absl::StatusOr<std::unique_ptr<llvm::TargetMachine>>
 IrCompiler::build_target_machine() const {
   return target_machine_builder_();
+}
+
+void IrCompiler::InjectMsanEmulatedTls(llvm::Module& module) const {
+  llvm::LLVMContext& ctx = module.getContext();
+  const llvm::DataLayout& dl = module.getDataLayout();
+  llvm::Type* void_ptr_ty = llvm::PointerType::get(ctx, 0);
+
+  auto inject_selector = [&](llvm::StringRef name, MsanTlsSelector selector) {
+    new llvm::GlobalVariable(
+        module, void_ptr_ty, /*isConstant=*/true,
+        llvm::GlobalValue::InternalLinkage,
+        llvm::Constant::getIntegerValue(
+            void_ptr_ty, llvm::APInt(dl.getPointerSizeInBits(),
+                                     static_cast<uintptr_t>(selector))),
+        name);
+  };
+
+  inject_selector("__emutls_v.__msan_param_tls", MsanTlsSelector::kParamTls);
+  inject_selector("__emutls_v.__msan_retval_tls", MsanTlsSelector::kRetvalTls);
+  inject_selector("__emutls_v.__msan_va_arg_tls", MsanTlsSelector::kVaArgTls);
+  inject_selector("__emutls_v.__msan_va_arg_overflow_size_tls",
+                  MsanTlsSelector::kVaArgOverflowSizeTls);
+  inject_selector("__emutls_v.__msan_param_origin_tls",
+                  MsanTlsSelector::kParamOriginTls);
+  inject_selector("__emutls_v.__msan_retval_origin_tls",
+                  MsanTlsSelector::kRetvalOriginTls);
+  inject_selector("__emutls_v.__msan_va_arg_origin_tls",
+                  MsanTlsSelector::kVaArgOriginTls);
+  inject_selector("__emutls_v.__msan_origin_tls", MsanTlsSelector::kOriginTls);
+
+  llvm::FunctionType* emutls_get_addr_type =
+      llvm::FunctionType::get(void_ptr_ty, void_ptr_ty, /*isVarArg=*/false);
+  llvm::Function* emutls_get_addr_fn = llvm::cast<llvm::Function>(
+      module.getOrInsertFunction("__emutls_get_address", emutls_get_addr_type)
+          .getCallee());
+  emutls_get_addr_fn->setLinkage(llvm::GlobalValue::InternalLinkage);
+  emutls_get_addr_fn->addFnAttr(kNoSanitizeMemoryAttr);
+
+  llvm::FunctionCallee bridge_fn = module.getOrInsertFunction(
+      runtime::kMsanEmutlsGetAddressBridgeSymbolName, emutls_get_addr_type);
+
+  llvm::BasicBlock* entry =
+      llvm::BasicBlock::Create(ctx, "entry", emutls_get_addr_fn);
+  llvm::IRBuilder<> builder(entry);
+  // LLVM's emutls calls __emutls_get_address with the *address* of the control
+  // variable. We need to dereference it to get the selector value.
+  auto* control_val =
+      builder.CreateLoad(void_ptr_ty, emutls_get_addr_fn->getArg(0));
+  auto* call = builder.CreateCall(bridge_fn, {control_val});
+  builder.CreateRet(call);
 }
 
 }  // namespace xla::cpu

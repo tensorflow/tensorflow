@@ -435,6 +435,11 @@ class AotCompilationOptions {
     run_backend_only_ = run_backend_only;
   }
 
+  bool sanitize_memory() const { return sanitize_memory_; }
+  void set_sanitize_memory(bool sanitize_memory) {
+    sanitize_memory_ = sanitize_memory;
+  }
+
   bool sanitize_dataflow() const { return sanitize_dataflow_; }
   void set_sanitize_dataflow(bool sanitize_dataflow) {
     sanitize_dataflow_ = sanitize_dataflow;
@@ -482,6 +487,7 @@ class AotCompilationOptions {
   int64_t profile_version_ = 0;
   std::string cache_key_;
   bool run_backend_only_ = false;
+  bool sanitize_memory_ = false;
   bool sanitize_dataflow_ = false;
   std::vector<std::string> sanitize_abilists_dataflow_;
   // Contains target-specific information required by AOT compilation.

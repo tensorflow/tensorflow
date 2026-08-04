@@ -978,6 +978,7 @@ cc_library(
         "//xla/backends/cpu/collectives:cpu_cliques",
         "//xla/backends/cpu/collectives:cpu_collectives",
         "//xla/backends/cpu/collectives:in_process_collectives",
+        "//xla/backends/cpu/runtime:msan_emulated_tls",
         "//xla/backends/cpu/runtime:xfeed_manager",
         "//xla/core/collectives:communicator",
         "//xla/core/collectives:rank_id",

@@ -98,7 +98,6 @@ class IrEmitter : public DfsHloVisitorWithDefault,
   //   computations to whether or not they transitively contain a custom-call
   //   instruction. All computations in the module must have a key in this
   //   map.
-  // emit_code_for_msan: whether emitted code should be compatible with msan.
   IrEmitter(mlir::MLIRContext* mlir_context, const HloModule& hlo_module,
             const BufferAssignment& assignment, llvm::Module* llvm_module,
             absl::flat_hash_map<const HloInstruction*, int64_t>
@@ -108,7 +107,6 @@ class IrEmitter : public DfsHloVisitorWithDefault,
             absl::flat_hash_map<const HloComputation*, bool>
                 computation_transitively_contains_custom_call,
             const TargetMachineFeatures* target_machine,
-            bool emit_code_for_msan,
             absl::flat_hash_map<BufferAllocation::Slice, int64_t>
                 slice_to_buffer_table_index = {},
             bool allow_runtime_calls = true);
@@ -829,8 +827,6 @@ class IrEmitter : public DfsHloVisitorWithDefault,
 
   std::vector<const HloComputation*> thread_local_computations_;
   std::vector<const HloComputation*> global_computations_;
-
-  bool emit_code_for_msan_;
 
   absl::flat_hash_map<BufferAllocation::Slice, int64_t>
       slice_to_buffer_table_index_;
