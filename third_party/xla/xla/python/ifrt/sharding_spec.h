@@ -30,20 +30,23 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "xla/tsl/platform/status_macros.h"
 #include "llvm/Support/ExtensibleRTTI.h"
+#include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/index_domain.h"
 #include "xla/python/ifrt/ir/sharding_param.h"
+#include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/serdes.h"
 #include "xla/python/ifrt/serdes_default_version_accessor.h"
 #include "xla/python/ifrt/serdes_version.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding_spec.pb.h"
-#include "xla/tsl/platform/errors.h"
 
 namespace xla {
 namespace ifrt {
 
+class Sharding;
 class ShardingSpec;
 
+using ShardingRef = absl_nonnull std::shared_ptr<const Sharding>;
 using ShardingSpecRef = absl_nonnull std::shared_ptr<const ShardingSpec>;
 
 // `ShardingSpec` represents partitioning of a logical array into a certain
@@ -77,6 +80,11 @@ class ShardingSpec : public llvm::RTTIExtends<ShardingSpec, Serializable> {
   // Returns if this sharding spec is equal to `other`.
   bool operator==(const ShardingSpec& other) const;
   bool operator!=(const ShardingSpec& other) const { return !(*this == other); }
+
+  // Converts this sharding spec into a sharding with the specified devices and
+  // memory kind.
+  virtual absl::StatusOr<ShardingRef> ToSharding(
+      DeviceListRef devices, MemoryKind memory_kind) const = 0;
 
   // Returns a shard shape if the sharding spec always has the equal shape for
   // all shards. Returns an error if the sharding spec may not have a single
@@ -187,6 +195,9 @@ class SingleDeviceShardingSpec final
 
   ~SingleDeviceShardingSpec() override = default;
 
+  absl::StatusOr<ShardingRef> ToSharding(DeviceListRef devices,
+                                         MemoryKind memory_kind) const override;
+
   absl::StatusOr<Shape> GetShardShape(const Shape& shape) const override;
 
   bool HasSamePartitioning(const ShardingSpec& other) const override;
@@ -221,6 +232,9 @@ class OpaqueShardingSpec
   // ShardingSpec implementation.
 
   ~OpaqueShardingSpec() override = default;
+
+  absl::StatusOr<ShardingRef> ToSharding(DeviceListRef devices,
+                                         MemoryKind memory_kind) const override;
 
   absl::StatusOr<Shape> GetShardShape(const Shape& shape) const override;
 
@@ -309,6 +323,9 @@ class ConcreteShardingSpec
 
   ~ConcreteShardingSpec() override = default;
 
+  absl::StatusOr<ShardingRef> ToSharding(DeviceListRef devices,
+                                         MemoryKind memory_kind) const override;
+
   absl::StatusOr<Shape> GetShardShape(const Shape& shape) const override;
 
   bool HasSamePartitioning(const ShardingSpec& other) const override;
@@ -368,6 +385,9 @@ class ConcreteEvenShardingSpec
 
   ~ConcreteEvenShardingSpec() override = default;
 
+  absl::StatusOr<ShardingRef> ToSharding(DeviceListRef devices,
+                                         MemoryKind memory_kind) const override;
+
   absl::StatusOr<Shape> GetShardShape(const Shape& shape) const override;
 
   bool HasSamePartitioning(const ShardingSpec& other) const override;
@@ -403,6 +423,9 @@ class ShardingParamShardingSpec
       ShardingParam sharding_param);
 
   const ShardingParam& sharding_param() const { return sharding_param_; }
+
+  absl::StatusOr<ShardingRef> ToSharding(DeviceListRef devices,
+                                         MemoryKind memory_kind) const override;
 
   absl::StatusOr<Shape> GetShardShape(const Shape& shape) const override;
 

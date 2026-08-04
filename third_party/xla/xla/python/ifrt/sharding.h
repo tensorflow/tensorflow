@@ -39,7 +39,7 @@ limitations under the License.
 #include "xla/python/ifrt/serdes_version.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.pb.h"
-#include "xla/tsl/platform/errors.h"
+#include "xla/python/ifrt/sharding_spec.h"
 
 namespace xla {
 namespace ifrt {
@@ -101,7 +101,9 @@ class Sharding : public llvm::RTTIExtends<Sharding, Serializable> {
 
   // Returns if this sharding is equal to `other`.
   bool operator==(const Sharding& other) const;
-  bool operator!=(const Sharding& other) const { return !(*this == other); }
+
+  // Returns the sharding spec projected from this sharding.
+  virtual ShardingSpecRef sharding_spec() const = 0;
 
   // Returns a shard shape if the sharding always has the equal shape for all
   // shards. Returns an error if the sharding may not have a single shard
@@ -229,6 +231,8 @@ class SingleDeviceSharding final
 
   ~SingleDeviceSharding() override = default;
 
+  ShardingSpecRef sharding_spec() const override;
+
   absl::StatusOr<Shape> GetShardShape(const Shape& shape) const override;
 
   bool HasSamePartitioning(const Sharding& other) const override;
@@ -274,6 +278,8 @@ class OpaqueSharding : public llvm::RTTIExtends<OpaqueSharding, Sharding> {
   // Sharding implementation.
 
   ~OpaqueSharding() override = default;
+
+  ShardingSpecRef sharding_spec() const override;
 
   absl::StatusOr<Shape> GetShardShape(const Shape& shape) const override;
 
@@ -364,9 +370,17 @@ class ConcreteSharding : public llvm::RTTIExtends<ConcreteSharding, Sharding> {
     return std::get<std::vector<DynamicShape>>(shard_shapes_);
   }
 
+  const std::optional<std::vector<xla::ifrt::IndexDomain>>& index_domains()
+      const {
+    DCHECK(this);
+    return index_domains_;
+  }
+
   // Sharding implementation.
 
   ~ConcreteSharding() override = default;
+
+  ShardingSpecRef sharding_spec() const override;
 
   absl::StatusOr<Shape> GetShardShape(const Shape& shape) const override;
 
@@ -439,6 +453,8 @@ class ConcreteEvenSharding
 
   ~ConcreteEvenSharding() override = default;
 
+  ShardingSpecRef sharding_spec() const override;
+
   absl::StatusOr<Shape> GetShardShape(const Shape& shape) const override;
 
   bool HasSamePartitioning(const Sharding& other) const override;
@@ -486,6 +502,8 @@ class ShardingParamSharding
       MemoryKind memory_kind);
 
   const ShardingParam& sharding_param() const { return sharding_param_; }
+
+  ShardingSpecRef sharding_spec() const override;
 
   absl::StatusOr<Shape> GetShardShape(const Shape& shape) const override;
 
