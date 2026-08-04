@@ -1,5 +1,6 @@
 load("@rules_cc//cc:defs.bzl", "cc_library")
 load("//xla:xla.default.bzl", "xla_cc_test")
+load("//xla/tests:build_defs.bzl", "xla_test")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -40,5 +41,31 @@ xla_cc_test(
         "//xla/tests:aot_interception_pjrt_client",
         "//xla/tsl/platform:test",
         "//xla/tsl/platform:test_main",
+    ],
+)
+
+xla_test(
+    name = "collective_ops_aot_test",
+    srcs = ["collective_ops_aot_test.cc"],
+    backend_tags = {
+        "gpu": [
+            "multi_gpu",
+            "no_oss",
+        ],
+    },
+    backends = ["gpu"],
+    data = glob(["gpu/executables/collective_ops_aot_test_2gpu/**/*.pbtxt"]),
+    tags = ["manual"],
+    deps = [
+        ":test_lib",
+        "//xla:literal",
+        "//xla/service:hlo_module_config",
+        "//xla/tests:literal_test_util",
+        "//xla/tests:xla_internal_test_main",
+        "//xla/tsl/platform:logging",
+        "//xla/tsl/platform:test",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
+        "@tsl//tsl/platform:path",
     ],
 )

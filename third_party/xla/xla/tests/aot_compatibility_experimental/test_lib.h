@@ -38,6 +38,9 @@ struct AotTestParam {
   }
 };
 
+// Returns the path to the executables directory for the current test target.
+std::string GetExecutablesDirectory(absl::string_view target_name);
+
 // Gets the list of AOT test parameters for testing backwards compatibility
 // boundaries.
 // By default we test only 2 versions for backwards compatibility: the minimum

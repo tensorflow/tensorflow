@@ -39,9 +39,7 @@ limitations under the License.
 
 namespace xla {
 namespace aot_compatibility_experimental {
-namespace {
 
-// Returns the path to the executables directory for the current test target.
 std::string GetExecutablesDirectory(absl::string_view target_name) {
   // We use the full target name as part of the path, including backend (e.g.
   // collective_ops_aot_test_2gpu)
@@ -50,6 +48,8 @@ std::string GetExecutablesDirectory(absl::string_view target_name) {
       "compiler/xla/tests/aot_compatibility_experimental/gpu/executables",
       target_name);
 }
+
+namespace {
 
 // Returns all available artifact versions sorted in ascending order.
 absl::StatusOr<std::vector<int32_t>> GetExecutableVersions(
