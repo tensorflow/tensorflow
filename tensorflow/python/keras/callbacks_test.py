@@ -91,23 +91,99 @@ class EarlyStoppingOnEpochEndTest(test_lib.TestCase):
     self.assertTrue(stopper.model.stop_training)
 
   def testPatienceZeroImprovementOverBestButNotBaseline(self):
-    """Improvement over best but NOT baseline: wait increments, training continues."""
-    # baseline=0.3 means only values < 0.3 reset the wait counter.
+    """Improvement over best always resets wait, even if below baseline."""
+    # baseline=0.3: improvements that don't beat baseline still reset wait.
     stopper = callbacks.EarlyStopping(
         monitor='val_loss', patience=0, baseline=0.3)
     stopper.model = _MockModel()
     stopper.on_train_begin()
 
-    # Loss improves from inf to 0.5, but 0.5 is NOT better than baseline 0.3
-    # so wait is NOT reset (stays at 1 after increment).
-    # However, the return prevents checking wait >= patience.
+    # Loss improves from inf to 0.5 — improvement over best resets wait to 0.
     stopper.on_epoch_end(0, logs={'val_loss': 0.5})
     self.assertFalse(stopper.model.stop_training)
 
-    # Loss improves from 0.5 to 0.4, but 0.4 is still NOT better than 0.3.
-    # wait increments (from 1 to 2) + return = no stop.
+    # Loss improves from 0.5 to 0.4 — improvement resets wait to 0 again.
     stopper.on_epoch_end(1, logs={'val_loss': 0.4})
     self.assertFalse(stopper.model.stop_training)
+
+
+class EarlyStoppingPatienceGreaterThanZeroTest(test_lib.TestCase):
+  """Tests for patience > 0 with mixed improvement/non-improvement sequences."""
+
+  def testPatienceTwoStopsAfterTwoNonImprovements(self):
+    """patience=2 stops after 2 consecutive non-improving epochs."""
+    stopper = callbacks.EarlyStopping(monitor='val_loss', patience=2)
+    stopper.model = _MockModel()
+    stopper.on_train_begin()
+
+    # Epoch 0: initial improvement (inf -> 0.5)
+    stopper.on_epoch_end(0, logs={'val_loss': 0.5})
+    self.assertFalse(stopper.model.stop_training)
+
+    # Epoch 1: no improvement (0.5 -> 0.5), wait=1
+    stopper.on_epoch_end(1, logs={'val_loss': 0.5})
+    self.assertFalse(stopper.model.stop_training)
+
+    # Epoch 2: no improvement (0.5 -> 0.6 worse), wait=2 >= patience=2 -> stop
+    stopper.on_epoch_end(2, logs={'val_loss': 0.6})
+    self.assertTrue(stopper.model.stop_training)
+
+  def testPatienceTwoResetsOnImprovement(self):
+    """patience=2: improvement resets wait counter."""
+    stopper = callbacks.EarlyStopping(monitor='val_loss', patience=2)
+    stopper.model = _MockModel()
+    stopper.on_train_begin()
+
+    # Epoch 0: initial improvement (inf -> 0.5), wait=0
+    stopper.on_epoch_end(0, logs={'val_loss': 0.5})
+    self.assertFalse(stopper.model.stop_training)
+
+    # Epoch 1: no improvement (0.5 -> 0.5), wait=1
+    stopper.on_epoch_end(1, logs={'val_loss': 0.5})
+    self.assertFalse(stopper.model.stop_training)
+
+    # Epoch 2: improvement (0.5 -> 0.4), wait resets to 0
+    stopper.on_epoch_end(2, logs={'val_loss': 0.4})
+    self.assertFalse(stopper.model.stop_training)
+
+    # Epoch 3: no improvement (0.4 -> 0.5 worse), wait=1
+    stopper.on_epoch_end(3, logs={'val_loss': 0.5})
+    self.assertFalse(stopper.model.stop_training)
+
+    # Epoch 4: no improvement (0.5 -> 0.5), wait=2 >= patience=2 -> stop
+    stopper.on_epoch_end(4, logs={'val_loss': 0.5})
+    self.assertTrue(stopper.model.stop_training)
+
+  def testPatienceThreeImprovementBelowBaselineResetsWait(self):
+    """Improvement below baseline still resets wait; patience counts properly."""
+    stopper = callbacks.EarlyStopping(
+        monitor='val_loss', patience=3, baseline=0.1)
+    stopper.model = _MockModel()
+    stopper.on_train_begin()
+
+    # Epoch 0: improvement (inf -> 0.5), wait=0 (below baseline but improved)
+    stopper.on_epoch_end(0, logs={'val_loss': 0.5})
+    self.assertFalse(stopper.model.stop_training)
+
+    # Epoch 1: no improvement (0.5 -> 0.5), wait=1
+    stopper.on_epoch_end(1, logs={'val_loss': 0.5})
+    self.assertFalse(stopper.model.stop_training)
+
+    # Epoch 2: improvement (0.5 -> 0.4), wait resets to 0
+    stopper.on_epoch_end(2, logs={'val_loss': 0.4})
+    self.assertFalse(stopper.model.stop_training)
+
+    # Epoch 3: no improvement (0.4 -> 0.5), wait=1
+    stopper.on_epoch_end(3, logs={'val_loss': 0.5})
+    self.assertFalse(stopper.model.stop_training)
+
+    # Epoch 4: no improvement (0.5 -> 0.5), wait=2
+    stopper.on_epoch_end(4, logs={'val_loss': 0.5})
+    self.assertFalse(stopper.model.stop_training)
+
+    # Epoch 5: no improvement, wait=3 >= patience=3 -> stop
+    stopper.on_epoch_end(5, logs={'val_loss': 0.6})
+    self.assertTrue(stopper.model.stop_training)
 
 
 if __name__ == '__main__':
