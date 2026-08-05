@@ -2110,8 +2110,8 @@ absl::Status CommonPjRtLoadedExecutable::ExecutePrepareWithOomRetries(
     if (!absl::IsResourceExhausted(prepare_status)) {
       break;
     }
-    if (!client()->ShouldRetryOnOom(attempts, launch_args->device, this,
-                                    prepare_status)) {
+    if (!client()->ShouldRetryOnOom(attempts, launch_args->device,
+                                    load_state_.get(), prepare_status)) {
       break;
     }
   }

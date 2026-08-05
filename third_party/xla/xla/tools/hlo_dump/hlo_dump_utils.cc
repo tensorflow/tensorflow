@@ -1108,16 +1108,28 @@ absl::flat_hash_map<TensorKey, TensorAnnotation> PopulateMismatchAnnotations(
     std::optional<std::string> tooltip_data = ann.tooltip_data;
     annotations[key] = std::move(ann);
 
-    const HloInstruction* cur = target_instr;
-    while (cur->opcode() == HloOpcode::kFusion) {
-      cur = cur->fused_instructions_computation()->root_instruction();
-      TensorKey inner_key = TensorKey::Create(cur->name(), ShapeIndex{});
-      TensorAnnotation inner_ann;
-      inner_ann.anchor_id = absl::StrCat("step", cur->unique_id());
-      inner_ann.background_color = "pink";
-      inner_ann.tooltip_data = tooltip_data;
-      annotations[inner_key] = std::move(inner_ann);
-    }
+    auto annotate_fusion_hierarchy = [&](auto& self,
+                                         const HloInstruction* instr) -> void {
+      if (instr->opcode() != HloOpcode::kFusion) {
+        return;
+      }
+      for (const HloInstruction* inner :
+           instr->fused_instructions_computation()->instructions()) {
+        if (inner->opcode() == HloOpcode::kParameter || inner->IsConstant()) {
+          continue;
+        }
+        TensorKey inner_key = TensorKey::Create(inner->name(), ShapeIndex{});
+        TensorAnnotation inner_ann;
+        inner_ann.anchor_id = absl::StrCat("step", inner->unique_id());
+        inner_ann.background_color = "pink";
+        inner_ann.tooltip_data = tooltip_data;
+        annotations[inner_key] = std::move(inner_ann);
+        if (inner->opcode() == HloOpcode::kFusion) {
+          self(self, inner);
+        }
+      }
+    };
+    annotate_fusion_hierarchy(annotate_fusion_hierarchy, target_instr);
   }
 
   return annotations;
@@ -1161,14 +1173,22 @@ GraphData PopulateMismatchGraphData(
   }
 
   absl::flat_hash_set<const HloInstruction*> root_instrs;
-  if (root != nullptr) {
-    const HloInstruction* cur = root;
-    root_instrs.insert(cur);
-    while (cur->opcode() == HloOpcode::kFusion) {
-      cur = cur->fused_instructions_computation()->root_instruction();
-      root_instrs.insert(cur);
+  auto collect_fusion_hierarchy = [&](auto& self,
+                                      const HloInstruction* instr) -> void {
+    if (instr == nullptr) {
+      return;
     }
-  }
+    root_instrs.insert(instr);
+    if (instr->opcode() == HloOpcode::kFusion) {
+      for (const HloInstruction* inner :
+           instr->fused_instructions_computation()->instructions()) {
+        if (inner->opcode() != HloOpcode::kParameter && !inner->IsConstant()) {
+          self(self, inner);
+        }
+      }
+    }
+  };
+  collect_fusion_hierarchy(collect_fusion_hierarchy, root);
 
   auto get_suppliers = [&](const HloInstruction* instr) {
     std::vector<const HloInstruction*> suppliers;

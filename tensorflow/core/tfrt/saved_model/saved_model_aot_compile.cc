@@ -328,9 +328,6 @@ absl::StatusOr<std::string> AotCompileToGpuPjRtLoadedExecutableWithDevice(
     XlaCompiler::CompilationResult** compilation_result) {
   TF_ASSIGN_OR_RETURN(auto client,
                       xla::GetStreamExecutorGpuClient(xla::GpuClientOptions()));
-  auto se_client = absl::WrapUnique(
-      absl::down_cast<xla::StreamExecutorGpuClient*>(client.release()));
-
   XlaCompiler::Options options;
   TF_RETURN_IF_ERROR(CompileTfGraphToHlo(
       flib_def, function, graph_def_version, args, has_ref_vars,
@@ -339,9 +336,9 @@ absl::StatusOr<std::string> AotCompileToGpuPjRtLoadedExecutableWithDevice(
   const xla::CompileOptions pjrt_options =
       GetPjRtCompileOptions(options, **compilation_result);
   TF_ASSIGN_OR_RETURN(auto executable,
-                      se_client->CompileAndLoad(
+                      client->CompileAndLoad(
                           *((*compilation_result)->computation), pjrt_options));
-  return se_client->SerializeExecutable(*executable);
+  return executable->SerializeExecutable();
 }
 
 absl::StatusOr<AotResult::ExecutableMap> AotCompileXlaFunctionsInMetaGraphDef(

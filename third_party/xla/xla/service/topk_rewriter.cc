@@ -258,15 +258,15 @@ std::optional<int64_t> TopkRewriter::SortIsInTopK(HloInstruction* inst) {
       supported = false;
       break;
     }
-    if (absl::c_any_of(slice->slice_starts(), [](int x) { return x != 0; }) ||
-        absl::c_any_of(slice->slice_strides(), [](int x) { return x != 1; })) {
-      // Strided slice or slicing at the beginning isn't supported.
-      supported = false;
-      break;
-    }
-    for (int64_t i = 0; i < slice->slice_limits().size(); ++i) {
-      if (i != sort_dim &&
-          slice->slice_limits(i) != slice->operand(0)->shape().dimensions(i)) {
+    for (int64_t i = 0; i < slice->slice_starts().size(); ++i) {
+      if (slice->slice_strides(i) != 1) {
+        // Strided slicing isn't supported.
+        supported = false;
+        break;
+      }
+      if (i != sort_dim && (slice->slice_starts(i) != 0 ||
+                            slice->slice_limits(i) !=
+                                slice->operand(0)->shape().dimensions(i))) {
         // Slicing along a non-sort dimension isn't supported.
         supported = false;
         break;
@@ -404,14 +404,26 @@ absl::StatusOr<HloInstruction*> TopkRewriter::TransformPatternToCustomCall(
 
   TopKCustomCall topkcc = CreateTopKCustomCall(sort, k.value());
 
-  for (HloInstruction* user : sort->users()) {
+  // If the slice starts at 0, its output matches topk_gte, so elide the slice.
+  // Else, retarget the slice to take [start:k] directly from topk_gte.
+  auto replace_slice = [](HloInstruction* slice,
+                          HloInstruction* topk_gte) -> absl::Status {
+    if (ShapeUtil::SameDimensions(slice->shape(), topk_gte->shape())) {
+      return slice->ReplaceAllUsesWith(topk_gte);
+    }
+    return slice->ReplaceOperandWithDifferentShape(0, topk_gte);
+  };
+
+  std::vector<HloInstruction*> sort_users = sort->users();
+  for (HloInstruction* user : sort_users) {
     if (sort->operand_count() == 2) {
       HloInstruction* gte = user;
-      for (HloInstruction* slice : gte->users()) {
+      std::vector<HloInstruction*> gte_users = gte->users();
+      for (HloInstruction* slice : gte_users) {
         if (gte->tuple_index() == 0) {
-          RETURN_IF_ERROR(slice->ReplaceAllUsesWith(topkcc.value_gte));
+          RETURN_IF_ERROR(replace_slice(slice, topkcc.value_gte));
         } else if (gte->tuple_index() == 1) {
-          RETURN_IF_ERROR(slice->ReplaceAllUsesWith(topkcc.index_gte));
+          RETURN_IF_ERROR(replace_slice(slice, topkcc.index_gte));
         } else {
           // The line below should be unreachable. SortIsInTopK() already checks
           // that sort has either 1 or 2 operands. Reaching this line indicates
@@ -421,7 +433,7 @@ absl::StatusOr<HloInstruction*> TopkRewriter::TransformPatternToCustomCall(
         }
       }
     } else {
-      RETURN_IF_ERROR(user->ReplaceAllUsesWith(topkcc.value_gte));
+      RETURN_IF_ERROR(replace_slice(user, topkcc.value_gte));
     }
   }
 

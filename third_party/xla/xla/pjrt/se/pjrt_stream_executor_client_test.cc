@@ -351,7 +351,7 @@ TEST(PjRtStreamExecutorClientTest, DeserializeAndDump) {
         tsl::ReadFileToString(env, compile_dump_name, &compile_dump_contents));
   }
   TF_ASSERT_OK_AND_ASSIGN(std::string serialized,
-                          client->SerializeExecutable(*executable));
+                          executable->SerializeExecutable());
   std::string deserialize_dump_dir;
   EXPECT_TRUE(env->LocalTempFilename(&deserialize_dump_dir));
   EXPECT_NE(compile_dump_dir, deserialize_dump_dir);

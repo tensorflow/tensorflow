@@ -222,7 +222,7 @@ TEST(StreamExecutorGpuCompilerTest, SuccessSerializeDeserialize) {
 
   // Serialize the executable and deserialize it without failure.
   TF_ASSERT_OK_AND_ASSIGN(std::string serialized_executable,
-                          se_client->SerializeExecutable(*loaded_executable));
+                          loaded_executable->SerializeExecutable());
   TF_ASSERT_OK_AND_ASSIGN(
       auto deserialized_executable,
       se_client->LoadSerializedExecutable(serialized_executable, std::nullopt,

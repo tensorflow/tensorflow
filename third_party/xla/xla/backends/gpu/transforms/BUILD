@@ -100,6 +100,34 @@ xla_cc_test(
     ],
 )
 
+cc_library(
+    name = "conv_operand_canonicalizer",
+    srcs = ["conv_operand_canonicalizer.cc"],
+    hdrs = ["conv_operand_canonicalizer.h"],
+    deps = [
+        "//xla:literal",
+        "//xla:shape_util",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/pass:hlo_pass",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/status:status_macros",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+xla_cc_test(
+    name = "conv_operand_canonicalizer_test",
+    srcs = ["conv_operand_canonicalizer_test.cc"],
+    deps = [
+        ":conv_operand_canonicalizer",
+        "//xla/hlo/testlib:filecheck",
+        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
 # End-to-end tested via //third_party/tensorflow/compiler/xla/service/gpu:dot_algorithm_support_test
 cc_library(
     name = "algorithm_checker",
@@ -1665,6 +1693,7 @@ cc_library(
     deps = [
         ":dynamic_slice_fusion",
         "//xla:shape_util",
+        "//xla/hlo/analysis:hlo_dfs_reachability",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/pass:hlo_pass",
         "//xla/service/gpu:backend_configs_cc",
@@ -1751,6 +1780,48 @@ xla_cc_test(
 )
 
 cc_library(
+    name = "group_collectives_by_key",
+    srcs = ["group_collectives_by_key.cc"],
+    hdrs = ["group_collectives_by_key.h"],
+    deps = [
+        "//xla:shape_util",
+        "//xla:side_effect_util",
+        "//xla:util",
+        "//xla:xla_data_proto_cc",
+        "//xla/hlo/analysis:hlo_reachability",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/pass:hlo_pass",
+        "//xla/service:collective_combiner_utils",
+        "//xla/service:collective_ops_utils",
+        "//xla/tsl/platform:status_macros",
+        "@com_google_absl//absl/container:btree",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:vlog_is_on",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+xla_cc_test(
+    name = "group_collectives_by_key_test",
+    srcs = ["group_collectives_by_key_test.cc"],
+    deps = [
+        ":explicit_collectives_group_async_wrapper",
+        ":group_collectives_by_key",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/testlib:filecheck",
+        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest_main",  # fixdeps: keep
+    ],
+)
+
+cc_library(
     name = "explicit_stream_annotation_async_wrapper",
     srcs = ["explicit_stream_annotation_async_wrapper.cc"],
     hdrs = ["explicit_stream_annotation_async_wrapper.h"],
@@ -1760,6 +1831,7 @@ cc_library(
         "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/pass:hlo_pass",
+        "//xla/service:collective_ops_utils",
         "//xla/service/gpu:backend_configs_cc",
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:status_macros",
@@ -1778,6 +1850,7 @@ xla_cc_test(
         ":explicit_stream_annotation_async_wrapper",
         "//xla:side_effect_util",
         "//xla/hlo/ir:hlo",
+        "//xla/hlo/parser:hlo_parser",
         "//xla/hlo/testlib:filecheck",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
         "//xla/service/gpu:backend_configs_cc",
@@ -2446,10 +2519,8 @@ cc_library(
         "//xla/service/gpu/model:triton_emitter_constraints",
         "//xla/stream_executor:device_description",
         "//xla/tsl/platform:env",
-        "//xla/tsl/platform:errors",
         "//xla/tsl/platform:logging",
         "//xla/tsl/platform:status_macros",
-        "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",

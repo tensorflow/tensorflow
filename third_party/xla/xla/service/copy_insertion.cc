@@ -98,6 +98,31 @@ struct SpecialCaseCopyPolicy {
   bool copy_parameters_and_constants = false;
 };
 
+// Returns true if any conditional instruction calling `node` defines a new Phi
+// value at `index`. If the conditional simply passes through reaching values at
+// `index` without merging, no replicated root copies are needed.
+bool ShouldCopyConditionalRootAt(const CallGraphNode& node,
+                                 const HloAliasAnalysis& alias_analysis,
+                                 const ShapeIndex& index) {
+  const HloDataflowAnalysis& dataflow = alias_analysis.dataflow_analysis();
+  for (const CallSite& caller_callsite : node.caller_callsites()) {
+    if (caller_callsite.instruction()->opcode() == HloOpcode::kConditional) {
+      if (!ShapeUtil::IndexIsValid(caller_callsite.instruction()->shape(),
+                                   index)) {
+        return true;  // Conservatively copy if index is out of bounds.
+      }
+      const HloValueSet& value_set =
+          dataflow.GetValueSet(caller_callsite.instruction(), index);
+      if (absl::c_any_of(value_set.values(), [](const HloValue* value) {
+            return value->is_phi();
+          })) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
 SpecialCaseCopyPolicy GetSpecialCaseCopyPolicy(const CallGraphNode& node,
                                                HloModule* module,
                                                HloComputation* computation) {
@@ -1423,7 +1448,6 @@ absl::Status CopyInsertion::AddSpecialCaseCopies(
       continue;
     }
     TF_RET_CHECK(node.context() == CallContext::kControlFlow);
-
     SpecialCaseCopyPolicy policy =
         GetSpecialCaseCopyPolicy(node, module, computation);
     HloInstruction* root = computation->root_instruction();
@@ -1432,6 +1456,9 @@ absl::Status CopyInsertion::AddSpecialCaseCopies(
     absl::flat_hash_map<const HloBuffer*, ShapeIndex> seen;
     ShapeUtil::ForEachSubshape(
         root->shape(), [&](const Shape& subshape, const ShapeIndex& index) {
+          bool copy_replicated =
+              policy.copy_root_replicated_buffers ||
+              ShouldCopyConditionalRootAt(node, *alias_analysis, index);
           std::vector<const HloBuffer*> buffers_at_index =
               alias_analysis->ComputeBuffersAt(root, index);
           bool buffer_seen_before = false;
@@ -1439,7 +1466,7 @@ absl::Status CopyInsertion::AddSpecialCaseCopies(
             buffer_seen_before |= !seen.emplace(buffer, index).second;
           }
 
-          if (buffer_seen_before && policy.copy_root_replicated_buffers &&
+          if (buffer_seen_before && copy_replicated &&
               computation == module->entry_computation() &&
               module->input_output_alias_config().OutputHasAlias(index) &&
               buffers_at_index.size() == 1) {
@@ -1455,7 +1482,7 @@ absl::Status CopyInsertion::AddSpecialCaseCopies(
           }
 
           if (buffers_at_index.size() > 1 ||
-              (buffer_seen_before && policy.copy_root_replicated_buffers)) {
+              (buffer_seen_before && copy_replicated)) {
             VLOG(2) << "Index " << index << " of computation "
                     << computation->name() << " (" << root->name()
                     << ") has ambiguous or non-distinct buffer. Copying.";

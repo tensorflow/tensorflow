@@ -78,7 +78,6 @@ limitations under the License.
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/hlo_runner_interface.h"
 #include "xla/service/llvm_ir/llvm_command_line_options.h"
-#include "xla/service/multi_module_driver.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/service/xla_debug_info_manager.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
@@ -591,6 +590,59 @@ TEST_F(GpuCompilerTest, CollectivePipeliningModes) {
               test_case.expect_pipelined)
         << optimized_hlo;
   }
+}
+
+TEST_F(GpuCompilerTest, GroupCollectivesByKey) {
+  const absl::string_view hlo_string = R"(
+    HloModule group_collectives
+
+    add {
+      a = f32[] parameter(0)
+      b = f32[] parameter(1)
+      ROOT sum = f32[] add(a, b)
+    }
+
+    ENTRY main {
+      p0 = f32[8,8] parameter(0)
+      p1 = f32[32,8] parameter(1)
+      ag = f32[32,8] all-gather(p0), dimensions={0},
+          replica_groups={{0,1,2,3}},
+          frontend_attributes={collective_group_key="g0"}
+      rs = f32[8,8] reduce-scatter(p1), dimensions={0},
+          replica_groups={{0,1,2,3}}, to_apply=add,
+          frontend_attributes={collective_group_key="g0"}
+      ROOT result = (f32[32,8], f32[8,8]) tuple(ag, rs)
+    }
+  )";
+
+  HloModuleConfig config = GetModuleConfigForTest(/*replica_count=*/4);
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string, config));
+
+  // Run only the HLO optimization passes (no executable). This avoids
+  // requiring `replica_count` physical devices, which a real executable build
+  // would demand.
+  Compiler::CompileOptions compile_options;
+  compile_options.gpu_topology =
+      GetSingleDeviceGpuTopology(/*platform_version=*/"", gpu_target_config());
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<HloModule> optimized_module,
+      compiler()->RunHloPasses(std::move(module), /*executor=*/nullptr,
+                               compile_options));
+
+  // The all-gather and reduce-scatter must land in one shared group computation
+  // (proving they were grouped as a unit, not converted to async individually).
+  constexpr absl::string_view kExpected = R"(
+    // CHECK: %[[GROUP:collectives_group[a-zA-Z0-9_.-]*]] ({{.*}}) -> {{.*}} {
+    // CHECK-DAG: all-gather(
+    // CHECK-DAG: reduce-scatter(
+    // CHECK: async-start(
+    // CHECK-SAME: calls=%[[GROUP]]
+    // CHECK-SAME: _collectives_group
+  )";
+
+  EXPECT_THAT(RunFileCheck(optimized_module->ToString(), kExpected),
+              absl_testing::IsOkAndHolds(true));
 }
 
 TEST_F(GpuCompilerTest, RemovesUnnecessaryCopyAfterScheduling) {
@@ -2593,70 +2645,6 @@ TEST_F(GpuCompilerTest, WhileLoopUnrollingFlagScalarConstantSinkerNoCrash) {
   ASSERT_OK(GetOptimizedModuleForExecutable(kHloString, config).status());
 }
 
-TEST_F(GpuCompilerTest, VerifyMultiModuleSplittingAndCompilation) {
-  const char* hlo_string = R"(
-HloModule module
-callee {
-  p0 = f32[] parameter(0)
-  p1 = f32[] parameter(1)
-  ROOT add = f32[] add(p0, p1)
-}
-ENTRY entry {
-  p0 = f32[] parameter(0)
-  p1 = f32[] parameter(1)
-  ROOT call = f32[] call(p0, p1), to_apply=callee, frontend_attributes={compilation_unit="callee", inlineable="false"}
-}
-)";
-
-  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                       ParseAndReturnVerifiedModule(hlo_string));
-
-  auto options = Compiler::CompileOptions();
-  options.gpu_topology =
-      GetSingleDeviceGpuTopology(/*platform_version=*/"", gpu_target_config());
-  MultiModuleDriver::ResetCompileCount();
-
-  ASSERT_OK_AND_ASSIGN(
-      std::unique_ptr<HloModule> optimized_module,
-      compiler()->RunHloPasses(std::move(module), nullptr, options));
-
-  EXPECT_GT(MultiModuleDriver::GetCompileCount(), 0);
-}
-
-TEST_F(GpuCompilerTest, VerifySharedCompilationUnitCompilesOnGpu) {
-  const char* hlo_string = R"(
-HloModule module
-callee {
-  p0 = f32[] parameter(0)
-  ROOT neg = f32[] negate(p0)
-}
-ENTRY entry {
-  p0 = f32[] parameter(0)
-  p1 = f32[] parameter(1)
-  call1 = f32[] call(p0), to_apply=callee,
-    frontend_attributes={compilation_unit="callee"}
-  call2 = f32[] call(p1), to_apply=callee,
-    frontend_attributes={compilation_unit="callee"}
-  ROOT add = f32[] add(call1, call2)
-}
-)";
-
-  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                       ParseAndReturnVerifiedModule(hlo_string));
-
-  auto options = Compiler::CompileOptions();
-  options.gpu_topology =
-      GetSingleDeviceGpuTopology(/*platform_version=*/"", gpu_target_config());
-
-  ASSERT_OK_AND_ASSIGN(
-      std::unique_ptr<HloModule> optimized_module,
-      compiler()->RunHloPasses(std::move(module), nullptr, options));
-
-  ASSERT_OK_AND_ASSIGN(
-      auto executable,
-      compiler()->RunBackend(std::move(optimized_module), nullptr, options));
-}
-
 static absl::Status MockCustomCallExecuteF32(
     ffi::BufferR1<F32> src, ffi::Result<ffi::BufferR1<F32>> dst) {
   return absl::OkStatus();
@@ -3111,6 +3099,52 @@ ENTRY source_dots_computation {
 
   constexpr absl::string_view expected_check = R"(
     // CHECK: custom_call_target="__cublas
+  )";
+
+  EXPECT_THAT(RunFileCheck(optimized_module->ToString(), expected_check),
+              absl_testing::IsOkAndHolds(true));
+}
+
+TEST_F(GpuCompilerTest, TritonGemmDisabledSoftmaxStillUsesTriton) {
+  if (device_description().gpu_compute_capability().IsRocm()) {
+    GTEST_SKIP() << "ROCm does not have Ampere compute capability concept.";
+  }
+  if (!get_cuda_cc().IsAtLeast(se::CudaComputeCapability::kAmpere)) {
+    GTEST_SKIP() << "Test requires Ampere GPU compute capability.";
+  }
+
+  const char* hlo_text = R"(
+HloModule softmax
+
+max_computation {
+  arg_0 = f32[] parameter(0)
+  arg_1 = f32[] parameter(1)
+  ROOT maximum = f32[] maximum(arg_0, arg_1)
+}
+
+add_computation {
+  arg_0 = f32[] parameter(0)
+  arg_1 = f32[] parameter(1)
+  ROOT add = f32[] add(arg_0, arg_1)
+}
+
+ENTRY main {
+  param_0 = f32[127,125]{1,0} parameter(0)
+  constant_neg_inf = f32[] constant(-inf)
+  reduce = f32[127]{0} reduce(param_0, constant_neg_inf), dimensions={1}, to_apply=max_computation
+  broadcast = f32[127,125]{1,0} broadcast(reduce), dimensions={0}
+  ROOT subtract = f32[127,125]{1,0} subtract(param_0, broadcast)
+}
+  )";
+
+  HloModuleConfig config = GetModuleConfigForTest();
+  config.mutable_debug_options().set_xla_gpu_enable_triton_gemm(false);
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> optimized_module,
+                       GetOptimizedModule(hlo_text, config));
+
+  constexpr absl::string_view expected_check = R"(
+    // CHECK: kind=kCustom, calls=%triton_softmax_computation
   )";
 
   EXPECT_THAT(RunFileCheck(optimized_module->ToString(), expected_check),

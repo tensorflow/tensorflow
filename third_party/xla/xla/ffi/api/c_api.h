@@ -429,6 +429,12 @@ typedef XLA_FFI_Error* XLA_FFI_Future_SetError(
 //     on GPU backend) and argument buffers might contain uninitialized
 //     values in this case.
 //
+// (5) Record - called when FFI handler is called as a part of command buffer
+//     recording (e.g. CUDA graph create/update kernel launch on GPU backend).
+//     FFI handler should not have any side effects on the arguments as they
+//     might contain uninitialized values. Can be called multiple times to
+//     create or update the state attached to the FFI handler instance.
+//
 // XLA program (HLO module) compiled to an XLA executable that can be executed
 // on any device accessible to the process, and by extension FFI handlers are
 // not instantiated for any particular device, but for a process. FFI handlers
@@ -444,6 +450,7 @@ typedef enum {
   XLA_FFI_ExecutionStage_PREPARE = 1,
   XLA_FFI_ExecutionStage_INITIALIZE = 2,
   XLA_FFI_ExecutionStage_EXECUTE = 3,
+  XLA_FFI_ExecutionStage_RECORD = 4,
 } XLA_FFI_ExecutionStage;
 
 struct XLA_FFI_Args {
@@ -514,6 +521,7 @@ typedef struct XLA_FFI_Handler_Bundle {
   XLA_FFI_Handler* prepare;      // optional
   XLA_FFI_Handler* initialize;   // optional
   XLA_FFI_Handler* execute;      // required
+  XLA_FFI_Handler* record;       // optional
 } XLA_FFI_Handler_Bundle;
 
 enum XLA_FFI_Handler_TraitsBits {

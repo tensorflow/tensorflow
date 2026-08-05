@@ -121,11 +121,10 @@ class Array final : public llvm::RTTIExtends<Array, xla::ifrt::Array> {
         std::shared_ptr<const xla::PjRtLayout> pjrt_layout)
       : client_(client),
         rpc_helper_(std::move(rpc_helper)),
-        dtype_(dtype),
-        shape_(std::move(shape)),
-        sharding_(std::move(sharding)),
+        array_spec_(xla::ifrt::ArraySpec{dtype, std::move(shape),
+                                         std::move(sharding), pjrt_layout}),
         layout_(pjrt_layout != nullptr
-                    ? xla::ifrt::PjRtLayout::Create(std::move(pjrt_layout))
+                    ? xla::ifrt::PjRtLayout::Create(pjrt_layout)
                     : nullptr),
         user_context_(UserContextScope::current()),
         handle_(arr_handle) {}
@@ -164,13 +163,18 @@ class Array final : public llvm::RTTIExtends<Array, xla::ifrt::Array> {
   bool IsDeleted() const override;
   std::string DebugString() const override;
 
-  DType dtype() const override { return dtype_; }
-  const Shape& shape() const override { return shape_; }
-  const Sharding& sharding() const override { return *sharding_; }
-  ShardingRef shared_ptr_sharding() const override { return sharding_; }
+  const ArraySpec& array_spec() const override { return array_spec_; }
+  DType dtype() const override { return array_spec_.dtype; }
+  const Shape& shape() const override { return array_spec_.shape; }
+  const Sharding& sharding() const override { return *array_spec_.sharding; }
+  ShardingRef shared_ptr_sharding() const override {
+    return array_spec_.sharding;
+  }
   absl::StatusOr<std::shared_ptr<const xla::PjRtLayout>> pjrt_layout()
-      const override;
-  LayoutRef layout() const override;
+      const override {
+    return array_spec_.layout;
+  }
+  LayoutRef layout() const override { return layout_; }
   UserContextRef user_context() const override { return user_context_; }
 
   absl::StatusOr<std::optional<int64_t>> ByteSize() const override;
@@ -205,9 +209,7 @@ class Array final : public llvm::RTTIExtends<Array, xla::ifrt::Array> {
   xla::ifrt::Client* const client_;
 
   const std::shared_ptr<RpcHelper> rpc_helper_;
-  const DType dtype_;
-  const Shape shape_;
-  const ShardingRef sharding_;
+  const ArraySpec array_spec_;
   const std::shared_ptr<const xla::ifrt::PjRtLayout> layout_;
 
   const UserContextRef user_context_;

@@ -186,6 +186,17 @@ func.func @lower_dot_add_to_triton(%arg0: tensor<2x4xf32>, %arg1: tensor<4x8xf32
   return %1 : tensor<2x8xf32>
 }
 
+// CHECK: func @lower_integer_dot_add_to_triton(%[[ARG0:.*]]: tensor<2x4xi32>, %[[ARG1:.*]]: tensor<4x8xi32>, %[[ARG2:.*]]: tensor<2x8xi32>) -> tensor<2x8xi32>
+func.func @lower_integer_dot_add_to_triton(%arg0: tensor<2x4xi32>, %arg1: tensor<4x8xi32>, %arg2: tensor<2x8xi32>) -> tensor<2x8xi32> {
+  // CHECK: %[[RES:.*]] = tt.dot %[[ARG0]], %[[ARG1]], %[[ARG2]] : tensor<2x4xi32> * tensor<4x8xi32> -> tensor<2x8xi32>
+  // CHECK-NOT: inputPrecision = tf32
+  // CHECK-NOT: arith.addi
+  %0 = stablehlo.dot_general %arg0, %arg1, contracting_dims = [1] x [0], precision = [DEFAULT, DEFAULT] : (tensor<2x4xi32>, tensor<4x8xi32>) -> tensor<2x8xi32>
+  %1 = arith.addi %0, %arg2 : tensor<2x8xi32>
+  // CHECK: return %[[RES]] : tensor<2x8xi32>
+  return %1 : tensor<2x8xi32>
+}
+
 // CHECK: func @lower_dot_without_add_falls_back_to_stablehlo(%[[ARG0:.*]]: tensor<2x4xf32>, %[[ARG1:.*]]: tensor<4x8xf32>, %[[ARG2:.*]]: tensor<2x8xf32>) -> tensor<2x8xf32>
 func.func @lower_dot_without_add_falls_back_to_stablehlo(%arg0: tensor<2x4xf32>, %arg1: tensor<4x8xf32>, %arg2: tensor<2x8xf32>) -> tensor<2x8xf32> {
   // CHECK: %[[RES:.*]] = stablehlo.dot_general %[[ARG0]], %[[ARG1]], contracting_dims = [1] x [0], precision = [DEFAULT, DEFAULT] : (tensor<2x4xf32>, tensor<4x8xf32>) -> tensor<2x8xf32>

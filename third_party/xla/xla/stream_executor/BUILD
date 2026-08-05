@@ -136,6 +136,10 @@ xla_cc_test(
 cc_library(
     name = "device_address_allocator",
     hdrs = ["device_address_allocator.h"],
+    visibility = internal_visibility([
+        "//third_party/py/jax:__subpackages__",
+        ":friends",
+    ]),
     deps = [
         ":device_address",
         ":platform",

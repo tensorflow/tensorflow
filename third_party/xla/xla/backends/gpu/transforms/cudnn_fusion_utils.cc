@@ -38,6 +38,13 @@ bool IsEpilogueOpSupportedByCuDNN(const HloInstruction& hlo,
     return false;
   }
   const HloOpcode opcode = hlo.opcode();
+  // Do not fuse chained converts (a convert whose operand is already a
+  // convert). Note: Fusing chained converts could steal a convert from an
+  // convolution requiring it to compile.
+  if (opcode == HloOpcode::kConvert &&
+      hlo.operand(0)->opcode() == HloOpcode::kConvert) {
+    return false;
+  }
   switch (opcode) {
     case HloOpcode::kAbs:
     case HloOpcode::kAdd:

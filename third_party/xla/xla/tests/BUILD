@@ -88,7 +88,6 @@ cc_library(
         "//xla:types",
         "//xla:util",
         "//xla/hlo/ir:hlo",
-        "//xla/tsl/platform:errors",
         "//xla/tsl/platform:status_macros",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/status",
@@ -167,7 +166,6 @@ cc_library(
     srcs = ["pjrt_client_registry.cc"],
     hdrs = ["pjrt_client_registry.h"],
     deps = [
-        ":aot_interception_pjrt_client",
         "//xla/pjrt:pjrt_client",
         "//xla/tsl/platform:status_macros",
         "@com_google_absl//absl/status",

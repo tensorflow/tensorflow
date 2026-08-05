@@ -27,7 +27,6 @@ limitations under the License.
 #include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_module.h"
-#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/transforms/hlo_module_splitter.h"
 #include "xla/hlo/transforms/hlo_module_stitcher.h"
 #include "xla/service/compiler.h"
@@ -44,12 +43,8 @@ void MultiModuleDriver::ResetCompileCount() { compile_count_ = 0; }
 bool MultiModuleDriver::ShouldProcess(const HloModule& module) {
   for (const HloComputation* computation : module.MakeComputationPostOrder()) {
     for (const auto* instruction : computation->instructions()) {
-      if (instruction->opcode() == HloOpcode::kCall) {
-        auto it =
-            instruction->frontend_attributes().map().find("compilation_unit");
-        if (it != instruction->frontend_attributes().map().end()) {
-          return true;
-        }
+      if (HloModuleSplitter::ShouldSplitCall(instruction)) {
+        return true;
       }
     }
   }

@@ -36,6 +36,7 @@ limitations under the License.
 #include "xla/hlo/utils/hlo_query.h"
 #include "xla/literal_util.h"
 #include "xla/service/algorithm_util.h"
+#include "xla/service/compiler.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/cublas_cudnn.h"
 #include "xla/service/gpu/gpu_conv_runner.h"
@@ -389,9 +390,13 @@ absl::StatusOr<std::unique_ptr<BackendConfig>> CudnnBackend::GetDefaultConfig(
     config->mutable_algorithm()->set_algo_id(-1);
     return config;
   }
+  if (instr.opcode() != HloOpcode::kFusion) {
+    return absl::InvalidArgumentError(
+        "Cannot get default cuDNN config: backend only supports fusion "
+        "and custom call instructions");
+  }
 
-  if (stream_executor() != nullptr && instr.opcode() == HloOpcode::kFusion &&
-      IsSupportedCudnnFusion(instr, target_config(), debug_options())) {
+  if (IsSupportedCudnnFusion(instr, target_config(), debug_options())) {
     ASSIGN_OR_RETURN(std::vector<std::unique_ptr<BackendConfig>> configs,
                      GetCudnnFusionConfigs(instr, stream_executor(),
                                            target_config(), debug_options()));
@@ -401,7 +406,7 @@ absl::StatusOr<std::unique_ptr<BackendConfig>> CudnnBackend::GetDefaultConfig(
   }
 
   return absl::InvalidArgumentError(
-      "Cannot get default config for cudnn backend without device.");
+      "Cannot get default cuDNN config: not supported by cuDNN fusion.");
 }
 
 absl::StatusOr<std::vector<std::unique_ptr<BackendConfig>>>

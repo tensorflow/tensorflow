@@ -4497,7 +4497,15 @@ absl::StatusOr<HeapSimulator::Result<HloValue>> MsaAlgorithm::Finish() {
             inefficient_sites.push_back(site);
           }
         }
-        if (!inefficient_sites.empty()) {
+        // We try to add default memory requirements to inefficient sites so
+        // the allocator avoids an inefficient alternate memory placement on
+        // the next pass.
+        // - If we do add new requirements, we do not count the retry attempt
+        //   and try again.
+        // - If we don't add new requirements, we fall through to commit the
+        //   allocations and stop retrying.
+        if (!inefficient_sites.empty() &&
+            InefficientSiteRetryCanProgress(inefficient_sites)) {
           UncommitPendingWork(absl::MakeSpan(proposal.allocation_values));
           for (const HloPositionOrUse& site : inefficient_sites) {
             // To avoid a livelock situation, we commit the required assignments
@@ -4518,6 +4526,7 @@ absl::StatusOr<HeapSimulator::Result<HloValue>> MsaAlgorithm::Finish() {
           continue;
         }
 
+        // The allocation succeeded. Commit it and stop retrying.
         FinalizeAllocations(absl::MakeSpan(proposal.allocation_values));
         break;
       }
@@ -5413,8 +5422,18 @@ absl::StatusOr<AllocationResult> MsaAlgorithm::AllocateAllocationValues(
         continue;
       }
       const auto use_time = request.end_time;
-      UpdateAllocationRequirementForUseAliases(allocation_value_to_update, use,
-                                               use_time);
+      if (!TryUpdateAllocationRequirementForUseAliases(
+              allocation_value_to_update, use, use_time)) {
+        // The use's allocation contradicts an existing required assignment at
+        // an aliased position (e.g. among positions aliased by an in-place
+        // instruction such as a dynamic-update-slice, this use's allocation
+        // landed in alternate memory while another aliased use already
+        // required default memory there). Uncommit and retry; the retry
+        // honors the existing requirement, ultimately falling back to
+        // default memory.
+        result_mark(AllocationResult::kFailRequiresUncommit, result);
+        return result;
+      }
       MaybeCreateMirroredParentAllocationForWhileUse(
           allocation_value_to_update, use, use_time, allocation_values,
           preferred_offset_for_computation);
@@ -5783,7 +5802,7 @@ AllocationRequest MsaAlgorithm::CreateAllocationRequest(
   return request;
 }
 
-void MsaAlgorithm::UpdateAllocationRequirementForUseAliases(
+bool MsaAlgorithm::TryUpdateAllocationRequirementForUseAliases(
     const AllocationValue& allocation_value, const AllocationValue::Use& use,
     int64_t use_time) {
   Allocation* aliased_allocation =
@@ -5793,7 +5812,62 @@ void MsaAlgorithm::UpdateAllocationRequirementForUseAliases(
                                  : "couldn't find the aliased allocation");
 
   if (!aliased_allocation) {
-    return;
+    return true;
+  }
+
+  // Before recording any aliased-use requirement, check every aliased
+  // position for a contradiction with an already recorded required
+  // assignment (or a buffer coloring). A contradiction means this use's
+  // allocation landed in a memory space that some aliased position cannot
+  // follow, e.g. among positions that must be colocated because an in-place
+  // instruction (such as a dynamic-update-slice) aliases them, this use's
+  // allocation landed in alternate memory while another aliased use already
+  // required the same position in default memory at the same time. That is
+  // a failed allocation, not a program invariant violation: report it so the
+  // caller can uncommit and retry (ultimately falling back to default
+  // memory) instead of CHECK-crashing inside AddRequiredAssignment.
+  AliasedOffset* aliased_offset =
+      aliased_allocation->memory_space() == MemorySpace::kAlternate
+          ? GetAliasedOffset(*aliased_allocation)
+          : nullptr;
+  for (const HloPosition& aliased_position : use.aliases) {
+    const HloValue* value =
+        &alias_analysis_.dataflow_analysis().GetUniqueValueAt(
+            aliased_position.instruction, aliased_position.index);
+    const int64_t time =
+        hlo_live_range_.instruction_schedule().at(aliased_position.instruction);
+    const RequiredMemoryAssignment new_requirement{
+        aliased_allocation->memory_space(), time, aliased_offset,
+        RequiredMemoryAssignment::Source::kAliasedUse};
+    const std::optional<RequiredMemoryAssignment> existing_requirement =
+        RequiredMemoryAssignmentAt(value, time);
+    if (existing_requirement.has_value() &&
+        !new_requirement.memory_space_and_offset_equal(*existing_requirement)) {
+      VLOG(2) << "Aliased use requirement for " << value->ToShortString()
+              << " at time " << time << " (" << new_requirement.ToString()
+              << ") conflicts with the existing required assignment ("
+              << existing_requirement->ToString()
+              << "); failing this allocation so it can be retried.";
+      return false;
+    }
+    if (aliased_allocation->memory_space() == MemorySpace::kDefault &&
+        IsPositionColoredInAlternateMemoryAtTime(value->defining_position(),
+                                                 time)) {
+      VLOG(2) << "Aliased use requirement in default memory for "
+              << value->ToShortString() << " at time " << time
+              << " conflicts with an alternate memory coloring; failing this "
+                 "allocation so it can be retried.";
+      return false;
+    }
+    if (aliased_allocation->memory_space() == MemorySpace::kAlternate &&
+        IsPositionColoredInDefaultMemoryAtTime(value->defining_position(),
+                                               time)) {
+      VLOG(2) << "Aliased use requirement in alternate memory for "
+              << value->ToShortString() << " at time " << time
+              << " conflicts with a default memory coloring; failing this "
+                 "allocation so it can be retried.";
+      return false;
+    }
   }
 
   for (const HloPosition& aliased_position : use.aliases) {
@@ -5801,6 +5875,7 @@ void MsaAlgorithm::UpdateAllocationRequirementForUseAliases(
                                  aliased_position.index, aliased_allocation,
                                  RequiredMemoryAssignment::Source::kAliasedUse);
   }
+  return true;
 }
 
 void MsaAlgorithm::MaybeCreateMirroredParentAllocationForWhileUse(
@@ -6642,6 +6717,37 @@ MsaAlgorithm::RequiredMemoryAssignmentAt(const HloValue* buffer,
     }
   }
   return required_assignment_at_time;
+}
+
+bool MsaAlgorithm::InefficientSiteRetryCanProgress(
+    absl::Span<const HloPositionOrUse> sites) const {
+  // A committed required assignment seen here is always in default memory,
+  // so an existing requirement means the default memory requirement is
+  // already in effect: sites colored in alternate memory are never flagged
+  // as inefficient (they are skipped when collecting inefficient_sites),
+  // and a committed alternate memory requirement would have CHECK-failed
+  // the earlier AddRequiredAssignment(kDefault) call that recorded the
+  // site's requirement in the first place.
+  absl::flat_hash_set<std::pair<const HloValue*, int64_t>> pending_keys;
+  for (const auto& [value, assignment] : pending_required_assignments_) {
+    pending_keys.insert({value, assignment.time});
+  }
+  return absl::c_any_of(sites, [&](const HloPositionOrUse& site) {
+    const HloValue* value = nullptr;
+    int64_t time = 0;
+    if (const auto* position = std::get_if<HloPosition>(&site)) {
+      value = &alias_analysis_.dataflow_analysis().GetUniqueValueAt(
+          position->instruction, position->index);
+      time = hlo_live_range_.instruction_schedule().at(position->instruction);
+    } else {
+      const HloUse& use = std::get<HloUse>(site);
+      value = &alias_analysis_.dataflow_analysis().GetUniqueValueAt(
+          use.instruction->operand(use.operand_number), use.operand_index);
+      time = GetCorrectedUseTime(use);
+    }
+    return !RequiredMemoryAssignmentAt(value, time).has_value() ||
+           pending_keys.contains({value, time});
+  });
 }
 
 std::optional<MsaAlgorithm::RequiredMemoryAssignment>
@@ -9568,7 +9674,7 @@ std::optional<MsaAlgorithm::Chunk> MsaAlgorithm::FindBestChunkCandidate(
   std::vector<Chunk> chunks = FindBestChunkCandidates(request, preferred_offset,
                                                       &sliced_buffer_interval);
   CHECK_LE(chunks.size(), 1);
-  if (chunks.empty()) {
+  if (chunks.empty() || chunks[0].chunk_end() > options_.max_size_in_bytes) {
     return std::nullopt;
   }
   return chunks[0];
@@ -9608,12 +9714,12 @@ std::vector<MsaAlgorithm::Chunk> MsaAlgorithm::FindBestChunkCandidates(
           alternate_mem_interval->UpdateEndTime(use);
           std::vector<Chunk> chunk_candidates =
               FindChunkCandidates(*alternate_mem_interval);
-          int64_t candidates_end =
+          int64_t max_chunk_end =
               absl::c_max_element(chunk_candidates, [](const Chunk& c1,
                                                        const Chunk& c2) {
                 return c1.chunk_end() < c2.chunk_end();
               })->chunk_end();
-          if (candidates_end <= available_heap_size()) {
+          if (max_chunk_end <= options_.max_size_in_bytes) {
             if (use > latest_matching_use) {
               last_chunk_candidates = std::move(chunk_candidates);
               latest_matching_use = use;
@@ -9648,7 +9754,14 @@ std::vector<MsaAlgorithm::Chunk> MsaAlgorithm::FindBestChunkCandidates(
       })->offset;
 
   if (candidates_start == preferred_offset->offset) {
-    return chunk_candidates;
+    int64_t max_chunk_end =
+        absl::c_max_element(chunk_candidates, [](const Chunk& c1,
+                                                 const Chunk& c2) {
+          return c1.chunk_end() < c2.chunk_end();
+        })->chunk_end();
+    if (max_chunk_end <= options_.max_size_in_bytes) {
+      return chunk_candidates;
+    }
   }
 
   return {};

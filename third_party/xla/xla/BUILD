@@ -743,6 +743,7 @@ xla_cc_test(
         ":util",
         ":xla_data_proto_cc",
         "//xla/hlo/testlib:test",
+        "//xla/tests:constraint_state",
         "//xla/tsl/lib/core:status_test_util",
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:logging",

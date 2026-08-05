@@ -47,8 +47,8 @@ between standard serialized formats (text/binary) and the Split Proto format
 Subcommands:
   unpack-aot:        Unpacks an AOT binary (Split Proto
                      ExecutableAndOptionsProto) into a single text/binary
-                     proto file of type DeserializedSplitExecutableAndOptions.
-  pack-aot:          Packs a DeserializedSplitExecutableAndOptions (obtained
+                     proto file of type HumanReadableAotExecutable.
+  pack-aot:          Packs a HumanReadableAotExecutable (obtained
                      from unpack-aot) back into a Split Proto
                      ExecutableAndOptionsProto, i.e. the reverse of
                      unpack-aot.

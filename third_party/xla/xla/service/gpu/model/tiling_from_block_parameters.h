@@ -51,7 +51,7 @@ absl::StatusOr<Tiling> TilingFromAnnotatedFusion(
 absl::StatusOr<llvm::SmallVector<int64_t>> GetTilingSpaceConcreteSizes(
     const xla::gpu::experimental::TilingSpace& tiling_space,
     const BlockLevelParameters& block_level_parameters,
-    bool enable_same_shape_multi_output_fusion = false);
+    bool enable_same_shape_multi_output_fusion);
 
 }  // namespace xla::gpu
 

@@ -109,11 +109,25 @@ class HloDataflowAnalysis {
   // shape index. CHECKs if the value set does not contain a exactly one value.
   const HloValue& GetUniqueValueAt(const HloInstruction* instruction,
                                    const ShapeIndex& index = {}) const {
-    return GetValueSet(instruction, index).GetUniqueValue();
+    const HloValueSet& value_set = GetValueSet(instruction, index);
+    if (value_set.values().size() != 1) {
+      LOG(FATAL) << "GetUniqueValueAt failed on instruction: "
+                 << instruction->name() << " at index " << index
+                 << " with value set size " << value_set.values().size() << ": "
+                 << value_set;
+    }
+    return value_set.GetUniqueValue();
   }
   HloValue& GetUniqueValueAt(const HloInstruction* instruction,
                              const ShapeIndex& index = {}) {
-    return GetValue(GetValueSet(instruction, index).GetUniqueValue().id());
+    const HloValueSet& value_set = GetValueSet(instruction, index);
+    if (value_set.values().size() != 1) {
+      LOG(FATAL) << "GetUniqueValueAt failed on instruction: "
+                 << instruction->name() << " at index " << index
+                 << " with value set size " << value_set.values().size() << ": "
+                 << value_set;
+    }
+    return GetValue(value_set.GetUniqueValue().id());
   }
 
   // Returns the HloValue with the given Id.

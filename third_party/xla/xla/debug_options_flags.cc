@@ -299,6 +299,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_cpu_enable_fast_min_max(true);
 
   opts.set_xla_gpu_enable_cublaslt(true);
+  opts.set_xla_gpu_trace_annotation_level(0);
 
   opts.add_xla_gpu_enable_command_buffer(DebugOptions::CONDITIONAL);
   opts.add_xla_gpu_enable_command_buffer(DebugOptions::CUBLAS);
@@ -408,6 +409,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_experimental_gemm_fusion_v2(false);
   opts.set_xla_gpu_verify_triton_fusion_numerics(false);
   opts.set_xla_gpu_experimental_enable_tiling_propagation(false);
+  opts.set_xla_gpu_experimental_cost_model_gemm_tiling_default(false);
 
   // Moving reduce-scatter out of while loops can increase memory footprint, so
   // turning it off by default.
@@ -2763,6 +2765,14 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       "larger than this threshold will be transformed to use windowed einsums."
       "Default is 100000"));
   flag_list->push_back(tsl::Flag(
+      "xla_gpu_trace_annotation_level",
+      int32_setter_for(&DebugOptions::set_xla_gpu_trace_annotation_level),
+      debug_options->xla_gpu_trace_annotation_level(),
+      "GPU trace annotation detail level. Level 0 emits compact instruction "
+      "names and basic structured payloads. Level 1 additionally emits "
+      "detailed HLO and collective metadata in XProf annotation names and "
+      "structured payloads. NVTX names remain compact."));
+  flag_list->push_back(tsl::Flag(
       "xla_gpu_operand_bytes_threshold_for_windowed_einsum",
       int64_setter_for(
           &DebugOptions::
@@ -3698,6 +3708,14 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       "Experimental options for adjusting cost-model guided GEMM tiling "
       "selection; comma-separated list of 'key=val' strings (=val may be "
       "omitted); no whitespace around commas."));
+  flag_list->push_back(tsl::Flag(
+      "xla_gpu_experimental_cost_model_gemm_tiling_default",
+      bool_setter_for(
+          &DebugOptions::
+              set_xla_gpu_experimental_cost_model_gemm_tiling_default),
+      debug_options->xla_gpu_experimental_cost_model_gemm_tiling_default(),
+      "If true, uses the cost model to suggest default GEMM tilings when "
+      "autotuning is disabled (e.g., in deviceless or deterministic mode)."));
   flag_list->push_back(tsl::Flag(
       "xla_gpu_ptx_compiler_extra_flags",
       setter_for_xla_gpu_ptx_compiler_extra_flags,

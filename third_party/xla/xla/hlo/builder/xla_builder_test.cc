@@ -370,6 +370,24 @@ TEST(XlaBuilderTest, DynamicDimensionReshapeToR0) {
   ASSERT_TRUE(statusor.ok());
 }
 
+TEST(XlaBuilderTest, DynamicDimensionReshapeSplitMultipleNonDegenerate) {
+  // Regression test for https://github.com/openxla/xla/issues/44945: a
+  // dynamic dimension split into multiple non-degenerate dimensions must stay
+  // dynamic on the most-major one instead of being silently dropped.
+  XlaBuilder b(TestName());
+  auto x = Parameter(&b, 0, ShapeUtil::MakeShape(F32, {128, 128}), "x");
+  auto y = Parameter(&b, 1, ShapeUtil::MakeShape(S32, {}), "dyn_dim");
+  auto dx = SetDimensionSize(x, y, 1);
+  Reshape(dx, {64, 2, 64, 2});
+  TF_ASSERT_OK_AND_ASSIGN(const auto module, BuildHloModule(b));
+  const Shape& result_shape =
+      module->entry_computation()->root_instruction()->shape();
+  EXPECT_TRUE(ShapeUtil::Equal(
+      result_shape,
+      ShapeUtil::MakeShape(F32, {64, 2, 64, 2}, {false, false, true, false})))
+      << result_shape.ToString(/*print_layout=*/false);
+}
+
 TEST(XlaBuilderTest, ParameterAlreadyRegistered) {
   XlaBuilder b_call("add");
   Parameter(&b_call, 0, ShapeUtil::MakeShape(PRED, {}), "x");

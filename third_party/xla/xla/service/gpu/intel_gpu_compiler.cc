@@ -67,7 +67,8 @@ IntelGpuCompiler::CompileTargetBinary(
                        llvm_module, device_description.gpu_compute_capability(),
                        module_config.debug_options()));
   if (DumpingEnabledForHloModule(debug_module ? debug_module->name() : "",
-                                 module_config.debug_options())) {
+                                 module_config.debug_options()) &&
+      DumpingEnabledForEmitter("spirv", module_config.debug_options())) {
     if (debug_module) {
       DumpToFileInDirOrStdout(*debug_module, "",
                               shard_number.has_value()

@@ -1083,6 +1083,9 @@ TEST_F(CollectiveOpsTestFFI, AllReduce) {
 
   TF_ASSERT_OK_AND_ASSIGN(
       auto module, ParseAndReturnVerifiedModule(hlo_string, kNumReplicas));
+  module->mutable_config()
+      .mutable_debug_options()
+      .set_xla_gpu_executable_num_communication_streams(2);
 
   TF_ASSERT_OK_AND_ASSIGN(
       ExecutionResult execution_result,

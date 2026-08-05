@@ -39,6 +39,15 @@ tf_proto_library(
     ],
 )
 
+tf_proto_library(
+    name = "human_readable_aot_executable_proto",
+    srcs = ["human_readable_aot_executable.proto"],
+    deps = [
+        "//xla/pjrt/proto:compile_options_proto",
+        "//xla/service/gpu:gpu_executable_proto",
+    ],
+)
+
 cc_library(
     name = "split_proto_reader",
     srcs = ["split_proto_reader.cc"],

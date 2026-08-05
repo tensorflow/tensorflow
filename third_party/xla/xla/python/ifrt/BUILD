@@ -21,6 +21,7 @@ ifrt_package_groups()
 cc_library(
     name = "ifrt",
     srcs = [
+        "abstract_array_spec.cc",
         "array_spec.cc",
         "array.cc",
         "client.cc",
@@ -47,6 +48,7 @@ cc_library(
         "value.cc",
     ],
     hdrs = [
+        "abstract_array_spec.h",
         "array.h",
         "layout.h",
         "array_spec.h",
@@ -79,6 +81,7 @@ cc_library(
         ":users",
     ]),
     deps = [
+        ":abstract_array_spec_proto_cc",
         ":array_spec_proto_cc",
         ":attribute_map",
         ":device_proto_cc",
@@ -466,7 +469,6 @@ xla_cc_test(
         ":ifrt",
         "//xla/python/ifrt/ir:sharding_param",
         "//xla/tsl/platform:errors",
-        "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/hash:hash_testing",
         "@com_google_absl//absl/status:status_matchers",
         "@com_google_absl//absl/types:span",
@@ -480,12 +482,14 @@ xla_cc_test(
     size = "small",
     srcs = ["sharding_spec_test.cc"],
     deps = [
+        ":device_test_util",
         ":ifrt",
         "//xla/python/ifrt/ir:sharding_param",
         "//xla/tsl/platform:errors",
-        "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/hash:hash_testing",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_matchers",
+        "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -1018,6 +1022,46 @@ xla_cc_test(
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest_main",
         "@llvm-project//llvm:Support",
+    ],
+)
+
+tf_proto_library(
+    name = "abstract_array_spec_proto",
+    srcs = ["abstract_array_spec.proto"],
+    visibility = internal_visibility([
+        ":friends",
+        ":internal",
+        ":users",
+    ]),
+    deps = [
+        ":dtype_proto",
+        ":shape_proto",
+        ":sharding_spec_proto",
+    ],
+)
+
+xla_cc_test(
+    name = "abstract_array_spec_test",
+    size = "small",
+    srcs = ["abstract_array_spec_test.cc"],
+    deps = [
+        ":abstract_array_spec_proto_cc",
+        ":array_spec_proto_cc",
+        ":device_test_util",
+        ":ifrt",
+        ":serdes_test_util",
+        ":serdes_version",
+        ":sharding_serdes",
+        ":sharding_spec_serdes",
+        "//xla:shape_util",
+        "//xla/pjrt:pjrt_layout",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/hash:hash_testing",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_matchers",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 

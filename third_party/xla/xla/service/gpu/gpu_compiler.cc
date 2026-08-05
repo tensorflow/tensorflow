@@ -119,6 +119,7 @@ limitations under the License.
 #include "xla/backends/gpu/transforms/gemm_fusion_swap_operands.h"
 #include "xla/backends/gpu/transforms/gemm_rewriter.h"
 #include "xla/backends/gpu/transforms/gpu_copy_async_wrapper.h"
+#include "xla/backends/gpu/transforms/group_collectives_by_key.h"
 #include "xla/backends/gpu/transforms/hoist_fused_bitcasts.h"
 #include "xla/backends/gpu/transforms/layout_assignment.h"
 #include "xla/backends/gpu/transforms/move_copy_to_users.h"
@@ -305,7 +306,6 @@ limitations under the License.
 #include "xla/service/llvm_ir/llvm_command_line_options.h"
 #include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/service/memory_annotations.h"
-#include "xla/service/multi_module_driver.h"
 #include "xla/service/reduce_scatter_reassociate.h"
 #include "xla/service/scan_expander.h"
 #include "xla/service/scatter_expander.h"
@@ -355,16 +355,20 @@ namespace xla {
 namespace gpu {
 namespace {
 
-bool IsTritonGemmEnabled(const DebugOptions& debug_options,
-                         const se::GpuComputeCapability& gpu_version) {
-  if (!debug_options.xla_gpu_enable_triton_gemm()) {
-    return false;
-  }
+bool IsTritonEnabled(const se::GpuComputeCapability& gpu_version) {
   const auto* cuda_cc = gpu_version.cuda_compute_capability();
   const auto* rocm_cc = gpu_version.rocm_compute_capability();
   return (cuda_cc != nullptr &&
           cuda_cc->IsAtLeast(se::CudaComputeCapability::kAmpere)) ||
          rocm_cc != nullptr;
+}
+
+bool IsTritonGemmEnabled(const DebugOptions& debug_options,
+                         const se::GpuComputeCapability& gpu_version) {
+  if (!debug_options.xla_gpu_enable_triton_gemm()) {
+    return false;
+  }
+  return IsTritonEnabled(gpu_version);
 }
 
 tsl::thread::ThreadPool* GetCompilationThreadPool() {
@@ -1037,7 +1041,7 @@ static HloPredicate CollectivePipeliningPredicate(
 }
 
 absl::Status RunCollectiveOptimizationPasses(
-    HloModule* hlo_module, const GpuTopology& gpu_topology,
+    HloModule* hlo_module, const GpuCompiler::CompileOptions& options,
     const AlgebraicSimplifierOptions& layout_insensitive_algsimp_opts,
     se::GpuComputeCapability gpu_version, int64_t pointer_size,
     CompilationStats* compilation_stats) {
@@ -1060,12 +1064,12 @@ absl::Status RunCollectiveOptimizationPasses(
       return debug_options
           .xla_gpu_unsupported_override_fast_interconnect_slice_size();
     }
-    return static_cast<int64_t>(gpu_topology.slice_size());
+    return options.slice_size;
   }();
 
-  // `fast_interconnect_slice_size` can be 0 if the slice size is 0 and the
-  // override flag is not set. In this case, we should not run the
-  // RaggedAllToAllMultiHostDecomposer.
+  // `fast_interconnect_slice_size` can be 0 if CompileOptions were not set up
+  // by the runner and the override flag is not set. In this case, we should not
+  // run the RaggedAllToAllMultiHostDecomposer.
   if (debug_options
           .xla_gpu_unsupported_enable_ragged_all_to_all_multi_host_decomposer() &&  // NOLINT
       fast_interconnect_slice_size > 0) {
@@ -1468,7 +1472,7 @@ void AddCollectiveCombinerPasses(
   const DebugOptions& opts = module.config().debug_options();
 
   if (EnableHeuristicCollectiveCombining(module.config(), device_description,
-                                         gpu_topology.slice_size())) {
+                                         options.slice_size)) {
     pipeline.AddPass<CollectiveCombinerAnnotator>(
         device_description, alias_info, pointer_size, mlir_context);
   }
@@ -1531,6 +1535,11 @@ absl::Status RunPostFusionPasses(
                               alias_info, pointer_size, options, gpu_topology,
                               mlir_context);
 
+  // Form async collective groups from collectives sharing a
+  // `collective_group_key` frontend attribute; runs after the combiner so
+  // combined collectives are grouped as a unit.
+  pipeline.AddPass<GroupCollectivesByKey>();
+
   pipeline.AddPass<AllReduceContiguous>();
 
   int32_t blueconnect_num_devices_per_host =
@@ -1574,7 +1583,11 @@ absl::Status RunPostFusionSimplificationPasses(
           .xla_gpu_experimental_stream_annotation()) {
     pipeline.AddPass<ExplicitStreamAnnotationAsyncWrapper>();
   }
+
+  // Rewrite any remaining hand-written `_collectives_group` calls into async
+  // pairs, these are non-inlineable calls in the original HLO module.
   pipeline.AddPass<ExplicitCollectivesGroupAsyncWrapper>();
+
   return pipeline.Run(hlo_module, {HloInstruction::kMainExecutionThread})
       .status();
 }
@@ -1848,11 +1861,10 @@ absl::Status GpuCompiler::OptimizeHloModule(
   // Set max_windowed_einsum_iteration to slice_size, as there will be
   // significant overhead when scaled beyond the maximum size of the
   // fast-interconnect domain.
-  RETURN_IF_ERROR(
-      RunSPMDPasses(hlo_module, gpu_topology.gpu_target_config(), alias_info,
-                    layout_insensitive_algsimp_opts,
-                    /*max_windowed_einsum_iteration=*/gpu_topology.slice_size(),
-                    compilation_stats));
+  RETURN_IF_ERROR(RunSPMDPasses(
+      hlo_module, gpu_topology.gpu_target_config(), alias_info,
+      layout_insensitive_algsimp_opts,
+      /*max_windowed_einsum_iteration=*/options.slice_size, compilation_stats));
 
   {
     HloPassPipeline pipeline("host-compute", compilation_stats);
@@ -1874,7 +1886,7 @@ absl::Status GpuCompiler::OptimizeHloModule(
   se::GpuComputeCapability gpu_version =
       device_description.gpu_compute_capability();
   RETURN_IF_ERROR(RunCollectiveOptimizationPasses(
-      hlo_module, gpu_topology, layout_insensitive_algsimp_opts, gpu_version,
+      hlo_module, options, layout_insensitive_algsimp_opts, gpu_version,
       pointer_size_, compilation_stats));
 
   // Run target-specific HLO optimization passes for convolution
@@ -2127,7 +2139,7 @@ absl::Status GpuCompiler::OptimizeHloPostLayoutAssignment(
     // in the softmax codegen pipeline. However we should run before
     // ReductionDimensionGrouper, as that makes matching the softmax pattern
     // harder.
-    if (IsTritonGemmEnabled(debug_options, gpu_version)) {
+    if (IsTritonEnabled(gpu_version)) {
       pipeline.AddPass<HloPassFix<GpuAlgebraicSimplifier>>(simplifier_options,
                                                            gpu_version);
       pipeline.AddPass<HloCSE>(/*is_layout_sensitive=*/true);
@@ -2279,15 +2291,9 @@ absl::Status GpuCompiler::OptimizeHloPostLayoutAssignment(
 absl::StatusOr<std::unique_ptr<HloModule>> GpuCompiler::RunHloPasses(
     std::unique_ptr<HloModule> module, se::StreamExecutor* stream_exec,
     const CompileOptions& options) {
-  if (MultiModuleDriver::ShouldProcess(*module)) {
-    VLOG(1) << "Triggering HLO module splitting for module: " << module->name();
-    MultiModuleDriver driver(
-        [this, stream_exec](std::unique_ptr<HloModule> m,
-                            const CompileOptions& opts) {
-          return this->RunHloPasses(std::move(m), stream_exec, opts);
-        },
-        GetGpuCompilationThreadPool()->AsExecutor());
-    return driver.Compile(std::move(module), {stream_exec}, options);
+  // TODO rename slice_size to partition_size in CompileOptions
+  if (options.slice_size > 0) {
+    module->mutable_config().set_partition_size(options.slice_size);
   }
 
   const DebugOptions debug_opts = module->config().debug_options();
@@ -2303,9 +2309,6 @@ absl::StatusOr<std::unique_ptr<HloModule>> GpuCompiler::RunHloPasses(
   ASSIGN_OR_RETURN(GpuTopology gpu_topology,
                    InferGpuTopology(module->config(), stream_exec, options,
                                     debug_opts, platform_id_));
-  if (gpu_topology.slice_size() > 0) {
-    module->mutable_config().set_partition_size(gpu_topology.slice_size());
-  }
   const std::optional<std::string> unoptimized_fingerprint =
       MaybeUploadUnoptimizedGpuSymbols(
           module.get(), gpu_topology.gpu_target_config().ToProto());
@@ -2725,8 +2728,10 @@ GpuCompiler::CompileSingleModule(
       CompileTargetBinary(module_config, llvm_module, device_description,
                           relocatable, debug_module, shard_number));
 
-  const bool should_dump = DumpingEnabledForHloModule(
-      debug_module ? debug_module->name() : "", debug_options);
+  const bool should_dump =
+      DumpingEnabledForHloModule(debug_module ? debug_module->name() : "",
+                                 debug_options) &&
+      DumpingEnabledForEmitter("llvm", debug_options);
 
   if (should_dump) {
     if (debug_module) {
@@ -3146,7 +3151,10 @@ absl::Status GpuCompiler::RunPreSchedulingPasses(
         gpu_device_info, cost_analysis_options, mlir_context,
         module->config()
             .debug_options()
-            .xla_gpu_experimental_enable_tiling_propagation());
+            .xla_gpu_experimental_enable_tiling_propagation(),
+        module->config()
+            .debug_options()
+            .xla_gpu_experimental_enable_same_shape_multi_output_fusion());
     // S-curve model analysis for collectives.
     if (module->config()
             .debug_options()

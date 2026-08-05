@@ -287,7 +287,7 @@ static void AddScalarLoweringPasses(mlir::OpPassManager& pm,
   AddGenericLoweringPasses(pm, fast_min_max);
 }
 
-void AddBufferizationPasses(mlir::OpPassManager& pm) {
+void AddBufferizationPasses(mlir::OpPassManager& pm, bool msan_enabled) {
   pm.addPass(mlir::createCanonicalizerPass());
   pm.addPass(mlir::bufferization::createEmptyTensorEliminationPass());
   pm.addPass(mlir::bufferization::createOneShotBufferizePass());
@@ -297,12 +297,9 @@ void AddBufferizationPasses(mlir::OpPassManager& pm) {
       mlir::bufferization::createBufferHoistingPass());
   pm.addPass(mlir::memref::createFoldMemRefAliasOpsPass());
 
-#ifdef ABSL_HAVE_MEMORY_SANITIZER
-  // We must initialize allocs to ensure that we don't get false positives from
-  // msan due to inconsistent instrumentation: memcpy will be instrumented
-  // but all other instructions will not.
-  pm.addPass(cpu::createInitializeAllocsPass());
-#endif  // ABSL_HAVE_MEMORY_SANITIZER
+  if (msan_enabled) {
+    pm.addPass(cpu::createInitializeAllocsPass());
+  }
 
   mlir::bufferization::PromoteBuffersToStackPassOptions
       buffer_promotion_options;
@@ -351,7 +348,7 @@ class ModuleCallbackPass
 // Optimizations passes for the tiled emitter.
 // This is currently very simple but will grow to include tiled optimizations
 // such as transpose hoisting and dimension reduction.
-void AddXtileToVectorPasses(mlir::OpPassManager& pm) {
+void AddXtileToVectorPasses(mlir::OpPassManager& pm, bool msan_enabled) {
   pm.addPass(xtile::createVerifyLegalXTileOpsPass());
 
   emitters::RegisterOptimizationPasses(pm);
@@ -388,7 +385,7 @@ void AddXtileToVectorPasses(mlir::OpPassManager& pm) {
   pm.addPass(mlir::createConvertElementwiseToLinalgPass());
   pm.addPass(cpu::createFuseElementwisePass());
 
-  AddBufferizationPasses(pm);
+  AddBufferizationPasses(pm, msan_enabled);
 
   pm.addPass(cpu::createLinalgElementwiseToVectorPass());
 
@@ -435,6 +432,7 @@ void AddVectorToLLVMPasses(mlir::OpPassManager& pm, bool fast_min_max) {
   pm.addPass(cpu::createLowerToLLVMPass());
   pm.addPass(mlir::createConvertVectorToSCFPass(
       mlir::VectorTransferToSCFOptions().enableFullUnroll(false)));
+  pm.addNestedPass<mlir::func::FuncOp>(cpu::createHoistAllocaPass());
   pm.addPass(cpu::createUnpackSubByteVectorWritePass());
 
   mlir::ConvertVectorToLLVMPassOptions options;
@@ -483,7 +481,7 @@ FusionCompiler::FusionCompiler(mlir::MLIRContext* context, Options options,
   if (options_.use_new_xtile_lowering) {
     AddNewXtileToVectorPasses(tiled_pass_manager_);
   } else {
-    AddXtileToVectorPasses(tiled_pass_manager_);
+    AddXtileToVectorPasses(tiled_pass_manager_, options_.msan_enabled);
   }
   if (should_dump_mlir_passes) {
     tiled_pass_manager_.addPass(

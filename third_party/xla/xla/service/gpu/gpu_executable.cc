@@ -232,9 +232,6 @@ absl::StatusOr<bool> ShouldCollectiveUseMinimalResource(
 
 using ::tsl::profiler::ScopedAnnotation;
 
-constexpr int kAsyncStreamTotal =
-    static_cast<int>(AsyncStreamKind::ASYNC_STREAM_KIND_MEMCPYP2P) + 1;
-
 // Returns the number of additional streams to allocate for a `GpuExecutable`.
 static GpuExecutable::NumAdditionalStreams GetNumAdditionalStreams(
     ThunkExecutor& executor, const DebugOptions& opts) {
@@ -242,9 +239,9 @@ static GpuExecutable::NumAdditionalStreams GetNumAdditionalStreams(
   int compute = opts.xla_gpu_executable_num_compute_streams();
   int comm = opts.xla_gpu_executable_num_communication_streams();
 
-  // Clamp it to minimum number of required streams.
+  // Clamp explicitly requested stream counts to non-negative values.
   compute = std::max(0, compute);
-  comm = std::max(kAsyncStreamTotal, comm);
+  comm = std::max(0, comm);
 
   // Then traverse all thunks to see if anyone requested more streams.
   for (const auto& thunk : executor.thunks()) {
@@ -483,6 +480,17 @@ GpuExecutable::GpuExecutable(
       buffer_assignment_proto_(std::move(buffer_assignment_proto)),
       thunk_pass_allocations_(std::move(thunk_pass_allocations)),
       alias_info_(std::move(alias_info)),
+      module_annotations_([&] {
+        const DebugOptions& annotation_options =
+            has_module() ? module_config().debug_options() : debug_options;
+        const TraceAnnotationLevel annotation_level =
+            static_cast<TraceAnnotationLevel>(
+                annotation_options.xla_gpu_trace_annotation_level());
+        if (has_module()) {
+          return ModuleAnnotations(module(), annotation_level);
+        }
+        return ModuleAnnotations(module_name_, annotation_level);
+      }()),
       debug_buffer_assignment_show_max_(
           debug_options.xla_debug_buffer_assignment_show_max()),
       constants_(std::move(constants)),

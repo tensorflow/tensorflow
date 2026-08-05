@@ -605,7 +605,8 @@ NVPTXCompiler::CompileTargetBinary(
     RecordLlvmPassesAndLlvmToPtxDuration(end_usecs - start_usecs);
 
     if (DumpingEnabledForHloModule(debug_module ? debug_module->name() : "",
-                                   debug_options)) {
+                                   debug_options) &&
+        DumpingEnabledForEmitter("ptx", debug_options)) {
       if (debug_module) {
         DumpToFileInDirOrStdout(*debug_module, "",
                                 shard_number.has_value()

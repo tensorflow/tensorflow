@@ -159,8 +159,8 @@ message ExecutableBuildOptionsProto {
   int64 process_index = 22;
   int64 process_count = 23;
 
-  reserved 26;
-  reserved "slice_size";
+  // The size of the slice.
+  int64 slice_size = 26;
 }
 
 message OptionOverrideProto {

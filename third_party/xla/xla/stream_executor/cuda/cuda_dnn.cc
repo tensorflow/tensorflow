@@ -6874,6 +6874,10 @@ absl::Status CudnnGraph::Prepare(dnn::DnnSupport* dnn_support,
       graph_.deselect_numeric_notes(
           {cudnn_frontend::NumericalNote_t::NONDETERMINISTIC});
     }
+    if (!engine_options.allow_tf32) {
+      graph_.deselect_numeric_notes(
+          {cudnn_frontend::NumericalNote_t::DOWN_CONVERT_INPUTS});
+    }
     if (engine_options.require_command_buffer) {
       graph_.select_behavior_notes(
           {cudnn_frontend::BehaviorNote_t::SUPPORTS_CUDA_GRAPH_NATIVE_API});

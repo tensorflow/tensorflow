@@ -557,6 +557,7 @@ void CompileAndFilecheck(
   opts.num_partitions = num_partitions;
   opts.spmd_mode = FunctionalHloRunner::SpmdMode::kUseSpmdPartitioning;
   opts.xla_dump_to = dump_dir;
+  opts.debug_options.set_xla_dump_emitter_re(".*");
   TF_EXPECT_OK(FunctionalHloRunner::LoadAndCompile(
                    *client, preproc_options, opts, hlo_file, InputFormat::kText)
                    .status());

@@ -767,10 +767,11 @@ PjRtCpuClient::LoadInternal(
       }
     }
   }
+  auto load_state = tsl::MakeRef<CpuExecutableLoadState>(this);
   return std::make_unique<PjRtCpuLoadedExecutable>(
       std::move(cpu_executable), std::move(device_assignment),
       std::move(addressable_device_logical_ids), std::move(addressable_devices),
-      this);
+      this, std::move(load_state));
 }
 
 static absl::StatusOr<std::unique_ptr<xla::Executable>> JitCompile(
@@ -1456,27 +1457,24 @@ PjRtCpuLoadedExecutable::PjRtCpuLoadedExecutable(
     std::shared_ptr<PjRtCpuExecutable> executable,
     std::shared_ptr<DeviceAssignment> device_assignment,
     std::vector<LogicalDeviceIds> addressable_device_logical_ids,
-    std::vector<PjRtDevice*> addressable_devices, PjRtCpuClient* client)
+    std::vector<PjRtDevice*> addressable_devices, PjRtCpuClient* client,
+    tsl::RCReference<PjRtExecutableLoadState> load_state)
     : CommonPjRtLoadedExecutable(
+          tsl::MakeAvailableAsyncValueRef(executable),
           executable->parameter_device_shapes_,
           std::make_shared<const Shape>(
               executable->cpu_executable_->result_shape()),
           std::vector<int>(), executable->output_memory_space_kind_ids_,
           addressable_devices, addressable_device_logical_ids,
-          std::move(device_assignment)),
-      client_(client),
-      executable_(std::move(executable)) {
-  input_buffer_sizes_in_bytes_ = executable_->input_buffer_sizes_in_bytes_;
+          std::move(device_assignment), std::move(load_state)),
+      client_(client) {
+  input_buffer_sizes_in_bytes_ = executable->input_buffer_sizes_in_bytes_;
   parameters_that_must_be_donated_ =
-      executable_->parameters_that_must_be_donated_;
+      executable->parameters_that_must_be_donated_;
 }
 
-void PjRtCpuLoadedExecutable::Delete() {}
-
-bool PjRtCpuLoadedExecutable::IsDeleted() const { return false; }
-
 absl::Status PjRtCpuLoadedExecutable::SetUpDonation(bool tuple_inputs) {
-  return executable_->SetUpDonation(tuple_inputs);
+  return GetExecutable()->SetUpDonation(tuple_inputs);
 }
 
 absl::Status PjRtCpuExecutable::SetUpDonation(bool tuple_inputs) {
@@ -1629,13 +1627,27 @@ CreateBufferTable(const BufferAssignment& assignment,
 }
 
 absl::StatusOr<std::unique_ptr<PjRtRawLoadedExecutable>>
-PjRtCpuLoadedExecutable::LoadRawExecutable(
+CpuExecutableLoadState::LoadRawExecutable(
+    tsl::AsyncValueRef<PjRtExecutable> executable,
     const ExecuteOptions& options, size_t host_callback_idx, xla::RunId run_id,
-    DeviceAndAssignment device_and_assign, int attempt) const {
+    DeviceAndAssignment device_and_assign, int attempt) {
   auto result = std::make_unique<CpuPjRtRawLoadedExecutable>(run_id);
-  result->executable_ = executable_.get();
+  result->executable_ = absl::down_cast<PjRtCpuExecutable*>(&executable.get());
   result->client_ = client_;
-  result->num_addressable_devices_ = addressable_devices_.size();
+  int num_addressable_devices = 0;
+  if (device_and_assign.device_assignment != nullptr) {
+    for (int r = 0; r < device_and_assign.device_assignment->replica_count();
+         ++r) {
+      for (int p = 0;
+           p < device_and_assign.device_assignment->computation_count(); ++p) {
+        GlobalDeviceId device_id((*device_and_assign.device_assignment)(r, p));
+        if (UnpackCpuProcessIndex(device_id) == client_->process_index()) {
+          ++num_addressable_devices;
+        }
+      }
+    }
+  }
+  result->num_addressable_devices_ = num_addressable_devices;
   result->device_assignment_ = std::move(device_and_assign.device_assignment);
   result->device_ = absl::down_cast<PjRtCpuDevice*>(device_and_assign.device);
   return result;
@@ -2086,12 +2098,12 @@ PjRtCpuLoadedExecutable::Execute(
     const int partition = addressable_device_logical_ids_[0].partition;
 
     // Dump once before running, in case there's a crash.
-    MaybeDumpHloSnapshot(executable_->cpu_executable_->module(), run_id,
+    MaybeDumpHloSnapshot(GetExecutable()->cpu_executable_->module(), run_id,
                          argument_handles[0], {});
-    if (executable_->unoptimized_hlo_module_ != nullptr) {
+    if (GetExecutable()->unoptimized_hlo_module_ != nullptr) {
       HloUnoptimizedSnapshot hlo_snapshot;
       *hlo_snapshot.mutable_hlo_module() =
-          executable_->unoptimized_hlo_module_->ToProto();
+          GetExecutable()->unoptimized_hlo_module_->ToProto();
       for (const auto& argument_handle : argument_handles) {
         HloInputs hlo_inputs;
         for (const auto& buffer : argument_handle) {
@@ -2103,7 +2115,7 @@ PjRtCpuLoadedExecutable::Execute(
 
       DumpHloUnoptimizedSnapshotIfEnabled(
           hlo_snapshot,
-          executable_->cpu_executable_->module().config().debug_options());
+          GetExecutable()->cpu_executable_->module().config().debug_options());
     }
     auto statusor = ExecuteHelperOnSingleDevice(argument_handles[0], run_id,
                                                 replica, partition, options,
@@ -2118,7 +2130,7 @@ PjRtCpuLoadedExecutable::Execute(
       returned_futures->push_back(std::move(*statusor->future));
     }
 
-    MaybeDumpHloSnapshot(executable_->cpu_executable_->module(), run_id,
+    MaybeDumpHloSnapshot(GetExecutable()->cpu_executable_->module(), run_id,
                          argument_handles[0], wrapped_results[0]);
     return wrapped_results;
   }

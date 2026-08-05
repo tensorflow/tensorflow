@@ -810,9 +810,9 @@ TEST_P(TileAnalysisTest, ExplicitSimplify) {
   ASSERT_OK_AND_ASSIGN(
       TiledHloComputation tiled_computation,
       TiledHloComputation::Tile(*fusion_adaptor, std::move(tiling_space)));
-  EXPECT_THAT(tiled_computation.ToString(), ::testing::HasSubstr("+ 32 - 256"));
+  EXPECT_THAT(tiled_computation.ToString(), ::testing::HasSubstr("+ 64 - 256"));
   tiled_computation.Simplify();
-  EXPECT_THAT(tiled_computation.ToString(), ::testing::HasSubstr("- 224"));
+  EXPECT_THAT(tiled_computation.ToString(), ::testing::HasSubstr("- 192"));
 }
 
 TEST_F(TileAnalysisTest, StrayInstructionsInFusionAreStripped) {

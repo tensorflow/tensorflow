@@ -5,7 +5,7 @@ load("//third_party:repo.bzl", "tf_http_archive", "tf_mirror_urls")
 def repo():
     tf_http_archive(
         name = "cpuinfo",
-        sha256 = "9213f6f81784eb8679f0621ad1c20eac711e063cb9c7712738720609cbdf1c33",
-        strip_prefix = "cpuinfo-ea6b9f1bb6e1001d8b21574d5bc78ddef62e499d",
-        urls = tf_mirror_urls("https://github.com/pytorch/cpuinfo/archive/ea6b9f1bb6e1001d8b21574d5bc78ddef62e499d.zip"),
+        sha256 = "fe2aa43254838a2eb5658d1742696473a1d834a57f2a0b38d533346bcd212482",
+        strip_prefix = "cpuinfo-8ce83db858065145192c97af90cb668ad72a12e9",
+        urls = tf_mirror_urls("https://github.com/pytorch/cpuinfo/archive/8ce83db858065145192c97af90cb668ad72a12e9.zip"),
     )

@@ -1037,8 +1037,12 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
       const AllocationValue::Use& use, AliasedOffset* preferred_offset) const;
 
   // Propagate the allocation at the use time to any aliases that this use might
-  // have had.
-  void UpdateAllocationRequirementForUseAliases(
+  // have had. Returns false without recording anything when the propagated
+  // requirement contradicts an already recorded required assignment (or a
+  // buffer coloring) at an aliased position: the caller should treat the
+  // use's allocation as failed and uncommit/retry rather than proceed into a
+  // CHECK failure inside AddRequiredAssignment.
+  [[nodiscard]] bool TryUpdateAllocationRequirementForUseAliases(
       const AllocationValue& allocation_value, const AllocationValue::Use& use,
       int64_t use_time);
 
@@ -1246,6 +1250,16 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
   // Returns the required assignment at a particular time, if available.
   std::optional<RequiredMemoryAssignment> RequiredMemoryAssignmentAt(
       const HloValue* buffer, int64_t time) const;
+
+  // Returns true if requiring `sites` in default memory would record at least
+  // one requirement that is not already in effect. Pending requirements do not
+  // count: UncommitPendingWork rolls them back before the retry. Returns false
+  // when every site already carries a committed (non-pending) required
+  // assignment, in which case the retry would be a no-op: it would run against
+  // exactly the same state, produce the same allocations, and flag the same
+  // sites again.
+  bool InefficientSiteRetryCanProgress(
+      absl::Span<const HloPositionOrUse> sites) const;
 
   // Searches for aliases in the use for a required assignment, and returns it
   // if found.

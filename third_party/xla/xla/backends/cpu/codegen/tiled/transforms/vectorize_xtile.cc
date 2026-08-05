@@ -28,6 +28,7 @@ limitations under the License.
 #include "mlir/Dialect/Math/IR/Math.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
+#include "mlir/Dialect/SCF/Transforms/Patterns.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/Dialect/Vector/IR/VectorOps.h"
 #include "mlir/IR/Builders.h"
@@ -36,12 +37,14 @@ limitations under the License.
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/Location.h"
 #include "mlir/IR/PatternMatch.h"
+#include "mlir/IR/Value.h"
 #include "mlir/IR/ValueRange.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Support/LLVM.h"
 #include "mlir/Support/LogicalResult.h"
 #include "mlir/Transforms/DialectConversion.h"
 #include "stablehlo/dialect/StablehloOps.h"
+#include "xla/backends/cpu/codegen/tiled/transforms/lowering_utils.h"
 #include "xla/codegen/emitters/ir/xla_dialect.h"
 #include "xla/codegen/emitters/ir/xla_ops.h"
 #include "xla/codegen/xtile/ir/xtile_dialect.h"
@@ -105,11 +108,9 @@ Value GetIsInBoundsCondition(mlir::OpBuilder& builder, mlir::Location loc,
   for (Value val : apply_indexing.getResults()) {
     Value cmp =
         ma::CmpIOp::create(builder, loc, ma::CmpIPredicate::sge, val, zero);
-    if (is_in_bounds) {
-      is_in_bounds = ma::AndIOp::create(builder, loc, is_in_bounds, cmp);
-    } else {
-      is_in_bounds = cmp;
-    }
+    is_in_bounds = is_in_bounds != nullptr
+                       ? ma::AndIOp::create(builder, loc, is_in_bounds, cmp)
+                       : cmp;
   }
   return is_in_bounds;
 }
@@ -163,6 +164,24 @@ struct ConvertExtractTile
     Value pad = ma::ConstantOp::create(
         rewriter, loc, result_vector_type.getElementType(),
         rewriter.getZeroAttr(result_vector_type.getElementType()));
+
+    // 0d case.
+    if (offsets.empty()) {
+      mlir::AffineMap permutation_map =
+          mlir::vector::getTransferMinorIdentityMap(
+              mlir::cast<mlir::ShapedType>(source_memref.getType()),
+              result_vector_type);
+      mlir::AffineMapAttr permutation_map_attr =
+          mlir::AffineMapAttr::get(permutation_map);
+      mlir::ArrayAttr in_bounds_attr =
+          GetInBoundsAttr(rewriter, result_vector_type.getRank(), true);
+
+      Value read = mv::TransferReadOp::create(
+          rewriter, loc, result_vector_type, source_memref, offsets,
+          permutation_map_attr, pad, /*mask=*/Value(), in_bounds_attr);
+      rewriter.replaceOp(op, read);
+      return mlir::success();
+    }
 
     // Generate scf.if
     ms::IfOp if_op = ms::IfOp::create(rewriter, loc, result_vector_type,
@@ -258,6 +277,165 @@ struct ConvertInsertTile
   }
 };
 
+struct VectorizeBroadcastInDimOp
+    : public mlir::OpConversionPattern<shlo::BroadcastInDimOp> {
+  using OpConversionPattern::OpConversionPattern;
+
+  mlir::LogicalResult matchAndRewrite(
+      shlo::BroadcastInDimOp op, OpAdaptor adaptor,
+      mlir::ConversionPatternRewriter& rewriter) const override {
+    mlir::Type new_type = this->getTypeConverter()->convertType(op.getType());
+    if (!new_type) {
+      return mlir::failure();
+    }
+    auto result_vector_type = mlir::cast<mlir::VectorType>(new_type);
+    Value source_vector = adaptor.getOperand();
+    auto source_vector_type =
+        mlir::cast<mlir::VectorType>(source_vector.getType());
+
+    llvm::ArrayRef<int64_t> source_shape = source_vector_type.getShape();
+    llvm::ArrayRef<int64_t> broadcast_dims = op.getBroadcastDimensions();
+
+    llvm::SmallVector<int64_t> intermediate_shape(result_vector_type.getRank(),
+                                                  1);
+    for (auto [input_dim, result_dim] : llvm::enumerate(broadcast_dims)) {
+      intermediate_shape[result_dim] = source_shape[input_dim];
+    }
+
+    auto intermediate_vector_type = mlir::VectorType::get(
+        intermediate_shape, result_vector_type.getElementType());
+
+    mlir::Value intermediate_vector = mlir::vector::ShapeCastOp::create(
+        rewriter, op->getLoc(), intermediate_vector_type, source_vector);
+
+    rewriter.replaceOpWithNewOp<mv::BroadcastOp>(op, result_vector_type,
+                                                 intermediate_vector);
+    return mlir::success();
+  }
+};
+
+struct VectorizeDotGeneralOp
+    : public mlir::OpConversionPattern<shlo::DotGeneralOp> {
+  using OpConversionPattern::OpConversionPattern;
+
+  mlir::LogicalResult matchAndRewrite(
+      shlo::DotGeneralOp op, OpAdaptor adaptor,
+      mlir::ConversionPatternRewriter& rewriter) const override {
+    if (mlir::isa<mlir::ComplexType>(op.getType().getElementType())) {
+      return rewriter.notifyMatchFailure(
+          op, "complex types are not supported by vector operations");
+    }
+
+    mlir::Operation* add_op;
+    Value accumulator;
+    if (mlir::failed(GetFusedAddUnit(op, rewriter, add_op, accumulator))) {
+      return mlir::failure();
+    }
+
+    auto lhs_vector =
+        mlir::dyn_cast<mlir::TypedValue<mlir::VectorType>>(adaptor.getLhs());
+    auto rhs_vector =
+        mlir::dyn_cast<mlir::TypedValue<mlir::VectorType>>(adaptor.getRhs());
+    if (!lhs_vector || !rhs_vector) {
+      return mlir::failure();
+    }
+
+    int64_t lhs_rank = lhs_vector.getType().getRank();
+    int64_t rhs_rank = rhs_vector.getType().getRank();
+
+    mlir::VectorType result_vector_type = mlir::cast<mlir::VectorType>(
+        this->getTypeConverter()->convertType(op.getType()));
+
+    Value acc_vector = accumulator;
+    if (acc_vector.getType() != result_vector_type) {
+      acc_vector = this->getTypeConverter()->materializeTargetConversion(
+          rewriter, op.getLoc(), result_vector_type, acc_vector);
+    }
+
+    mlir::stablehlo::DotDimensionNumbersAttr dimension_numbers =
+        op.getDotDimensionNumbers();
+
+    llvm::ArrayRef<int64_t> lhs_batch =
+        dimension_numbers.getLhsBatchingDimensions();
+    llvm::ArrayRef<int64_t> lhs_contracting =
+        dimension_numbers.getLhsContractingDimensions();
+
+    llvm::ArrayRef<int64_t> rhs_batch =
+        dimension_numbers.getRhsBatchingDimensions();
+    llvm::ArrayRef<int64_t> rhs_contracting =
+        dimension_numbers.getRhsContractingDimensions();
+
+    int64_t lhs_free_dims =
+        lhs_rank - lhs_batch.size() - lhs_contracting.size();
+    int64_t rhs_free_dims =
+        rhs_rank - rhs_batch.size() - rhs_contracting.size();
+    int64_t iterator_count = lhs_batch.size() + lhs_contracting.size() +
+                             lhs_free_dims + rhs_free_dims;
+
+    mlir::Attribute lhs_indexing_map = GetOperandIndexingMap(
+        rewriter, iterator_count, lhs_rank, lhs_batch, lhs_contracting, 0);
+    mlir::Attribute rhs_indexing_map =
+        GetOperandIndexingMap(rewriter, iterator_count, rhs_rank, rhs_batch,
+                              rhs_contracting, lhs_free_dims);
+    mlir::Attribute output_indexing_map = GetOutputIndexingMap(
+        rewriter, iterator_count, lhs_batch.size(), lhs_contracting.size());
+
+    mlir::ArrayAttr indexing_maps = rewriter.getArrayAttr(
+        {lhs_indexing_map, rhs_indexing_map, output_indexing_map});
+    mlir::ArrayAttr iterator_types = GetIteratorTypes(
+        rewriter, iterator_count, lhs_batch.size(), lhs_contracting.size());
+
+    rewriter.setInsertionPoint(add_op);
+    mlir::Value result = mlir::vector::ContractionOp::create(
+        rewriter, op->getLoc(), lhs_vector, rhs_vector, acc_vector,
+        indexing_maps, iterator_types);
+
+    rewriter.replaceOp(add_op, result);
+    rewriter.eraseOp(op);
+
+    return mlir::success();
+  }
+};
+
+struct VectorizeTransposeOp
+    : public mlir::OpConversionPattern<shlo::TransposeOp> {
+  using OpConversionPattern::OpConversionPattern;
+
+  mlir::LogicalResult matchAndRewrite(
+      shlo::TransposeOp op, OpAdaptor adaptor,
+      mlir::ConversionPatternRewriter& rewriter) const override {
+    mlir::Type new_type = this->getTypeConverter()->convertType(op.getType());
+    if (!new_type) {
+      return mlir::failure();
+    }
+    rewriter.replaceOpWithNewOp<mv::TransposeOp>(
+        op, new_type, adaptor.getOperand(), op.getPermutation());
+    return mlir::success();
+  }
+};
+
+struct VectorizeConstantOp : public mlir::OpConversionPattern<ma::ConstantOp> {
+  using OpConversionPattern::OpConversionPattern;
+
+  mlir::LogicalResult matchAndRewrite(
+      ma::ConstantOp op, OpAdaptor adaptor,
+      mlir::ConversionPatternRewriter& rewriter) const override {
+    auto tensor_type = mlir::dyn_cast<mlir::RankedTensorType>(op.getType());
+    if (!tensor_type) {
+      return mlir::failure();
+    }
+    mlir::VectorType vector_type = mlir::cast<mlir::VectorType>(
+        this->getTypeConverter()->convertType(tensor_type));
+    auto old_attr = mlir::dyn_cast<mlir::DenseElementsAttr>(op.getValue());
+    if (!old_attr) {
+      return mlir::failure();
+    }
+    auto new_attr = old_attr.reshape(vector_type);
+    rewriter.replaceOpWithNewOp<ma::ConstantOp>(op, vector_type, new_attr);
+    return mlir::success();
+  }
+};
+
 template <typename OpTy>
 struct VectorizeElementwiseOp : public mlir::OpConversionPattern<OpTy> {
   using mlir::OpConversionPattern<OpTy>::OpConversionPattern;
@@ -313,14 +491,18 @@ class VectorizeXTilePass
         ma::ArithDialect, mlir::memref::MemRefDialect, mm::MathDialect,
         ms::SCFDialect, mlir::tensor::TensorDialect, mv::VectorDialect,
         shlo::StablehloDialect, xla::XlaDialect, xtile::XTileDialect>();
-    target.addIllegalOp<xtile::ExtractTileOp, xtile::InsertTileOp>();
+    target.addIllegalOp<shlo::BroadcastInDimOp, shlo::DotGeneralOp,
+                        shlo::TransposeOp, xtile::ExtractTileOp,
+                        xtile::InsertTileOp>();
     target.addLegalOp<mlir::UnrealizedConversionCastOp>();
     target.addDynamicallyLegalDialect<ma::ArithDialect, mm::MathDialect>(
         [&](mlir::Operation* op) { return type_converter.isLegal(op); });
 
     mlir::RewritePatternSet patterns(context);
-    patterns.add<ConvertExtractTile, ConvertInsertTile>(type_converter,
-                                                        context);
+    patterns
+        .add<ConvertExtractTile, ConvertInsertTile, VectorizeBroadcastInDimOp,
+             VectorizeConstantOp, VectorizeDotGeneralOp, VectorizeTransposeOp>(
+            type_converter, context);
     populateVectorizePatterns<
         ma::AddFOp, ma::AddIOp, ma::SubFOp, ma::SubIOp, ma::MulFOp, ma::MulIOp,
         ma::DivFOp, ma::DivSIOp, ma::DivUIOp, ma::RemFOp, ma::RemSIOp,
@@ -335,6 +517,8 @@ class VectorizeXTilePass
         mm::IPowIOp, mm::PowFOp, mm::RsqrtOp, mm::SinOp, mm::SinhOp, mm::SqrtOp,
         mm::TanOp, mm::TanhOp, mm::CbrtOp, mm::IsFiniteOp>(type_converter,
                                                            patterns);
+    mlir::scf::populateSCFStructuralTypeConversionsAndLegality(
+        type_converter, patterns, target);
 
     if (mlir::failed(mlir::applyPartialConversion(getOperation(), target,
                                                   std::move(patterns)))) {

@@ -51,6 +51,7 @@ cc_library(
     hdrs = ["lowering_utils.h"],
     visibility = ["//visibility:private"],
     deps = [
+        "@llvm-project//llvm:Support",
         "@llvm-project//mlir:ArithDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:MemRefDialect",
@@ -110,6 +111,7 @@ cc_library(
         "@llvm-project//mlir:MemRefUtils",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:SCFDialect",
+        "@llvm-project//mlir:SCFTransforms",
         "@llvm-project//mlir:SCFUtils",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TensorDialect",

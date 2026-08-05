@@ -165,8 +165,7 @@ absl::StatusOr<Literal> Compare(const Shape& shape, Comparison comparison,
       break;
   }
 
-  LOG(FATAL) << "unhandled direction for conversion to Comparison: "
-             << comparison.ToString();
+  return Unimplemented("Unsupported comparison: %s", comparison.ToString());
 }
 
 std::optional<bool> GetInstructionStaticValueAsBool(

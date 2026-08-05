@@ -317,8 +317,9 @@ inline BufferPattern<> Buffer() { return {}; }
 template <typename BufferType, typename DTypes, typename Ranks>
 absl::Status Verify(absl::string_view name, BufferType buffer,
                     const match::BufferPattern<DTypes, Ranks>& pattern) {
-  if (auto error = internal::MatchBuffer(name, buffer, pattern)) {
-    return absl::InvalidArgumentError(std::move(*error));
+  DiagnosticEngine diagnostic;
+  if (!internal::MatchBuffer(name, buffer, pattern, diagnostic)) {
+    return absl::InvalidArgumentError(diagnostic.Result());
   }
   return absl::OkStatus();
 }
