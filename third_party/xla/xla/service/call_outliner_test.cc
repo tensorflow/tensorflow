@@ -31,7 +31,9 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_print_options.h"
+#include "xla/hlo/parser/hlo_parser.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
+#include "xla/layout_util.h"
 #include "xla/service/call_inliner.h"
 #include "xla/service/call_marker.h"
 #include "xla/tsl/platform/statusor.h"
@@ -996,6 +998,49 @@ TEST_F(CallOutlinerTest, RetainOriginalInstructionName) {
   HloInstruction* call = FindCallByName(module->entry_computation(), "a");
   ASSERT_NE(call, nullptr);
   EXPECT_EQ(call->name(), "attention_block");
+}
+
+TEST_F(CallOutlinerTest, OutlineRootCallPreservesEntryResultLayout) {
+  const absl::string_view hlo_string = R"(
+  HloModule inline_module, entry_computation_layout={()->f32[4,4]{0,1}}
+
+  a {
+    p = f32[4,4]{1,0} parameter(0)
+    ROOT add = f32[4,4]{1,0} add(p, p)
+  }
+
+  ENTRY inline {
+    c = f32[4,4]{1,0} constant(1)
+    ROOT a = f32[4,4]{1,0} call(c), to_apply=a
+  })";
+
+  HloParserOptions parser_options;
+  parser_options.set_keep_module_auto_layouts(true);
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<HloModule> module,
+      ParseAndReturnVerifiedModule(hlo_string, GetModuleConfigForTest(),
+                                   parser_options));
+  CallInliner call_inliner;
+  CallMarker call_marker(call_inliner);
+  TF_ASSERT_OK_AND_ASSIGN(bool marked, call_marker.Run(module.get()));
+  EXPECT_TRUE(marked);
+
+  TF_ASSERT_OK_AND_ASSIGN(bool inlined, call_inliner.Run(module.get()));
+  EXPECT_TRUE(inlined);
+
+  CallOutliner call_outliner;
+  TF_ASSERT_OK_AND_ASSIGN(bool outlined, call_outliner.Run(module.get()));
+  EXPECT_TRUE(outlined);
+
+  EXPECT_EQ(
+      module->entry_computation()->root_instruction()->shape().layout(),
+      module->entry_computation_layout().result_layout().shape().layout());
+
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  EXPECT_EQ(root->opcode(), HloOpcode::kCopy);
+  EXPECT_EQ(root->operand(0)->opcode(), HloOpcode::kCall);
+  EXPECT_EQ(root->operand(0)->shape().layout(), LayoutUtil::MakeLayout({1, 0}));
 }
 
 }  // namespace

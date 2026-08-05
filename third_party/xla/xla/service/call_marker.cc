@@ -39,18 +39,20 @@ namespace xla {
 namespace {
 
 HloInstruction* InsertCallMarkerBefore(HloInstruction* instruction) {
-  // Gather operand shapes of the original call.
-  std::vector<Shape> operands_shapes;
-  operands_shapes.reserve(instruction->operand_count());
-  for (HloInstruction* operand : instruction->operands()) {
-    operands_shapes.push_back(operand->shape());
+  // Gather parameter shapes of the called computation.
+  std::vector<Shape> parameter_shapes;
+  parameter_shapes.reserve(instruction->operand_count());
+  for (HloInstruction* parameter :
+       instruction->to_apply()->parameter_instructions()) {
+    parameter_shapes.push_back(parameter->shape());
   }
-  Shape tuple_shape_of_operands = ShapeUtil::MakeTupleShape(operands_shapes);
+  Shape tuple_shape_of_parameters = ShapeUtil::MakeTupleShape(parameter_shapes);
 
-  // Create a custom call before the call with the tuple shape of the operands.
+  // Create a custom call before the call with the tuple shape of the
+  // parameters.
   std::unique_ptr<HloInstruction> call_before_ptr =
       HloInstruction::CreateCustomCall(
-          tuple_shape_of_operands, instruction->operands(),
+          tuple_shape_of_parameters, instruction->operands(),
           kCallMarkerBeforeTarget, "",
           CustomCallApiVersion::API_VERSION_ORIGINAL);
   Cast<HloCustomCallInstruction>(call_before_ptr.get())
@@ -60,10 +62,15 @@ HloInstruction* InsertCallMarkerBefore(HloInstruction* instruction) {
 }
 
 HloInstruction* InsertCallMarkerAfter(HloInstruction* instruction) {
+  HloModule* module = instruction->GetModule();
+  Shape shape = instruction->shape();
+  if (instruction->parent() == module->entry_computation() &&
+      instruction->parent()->root_instruction() == instruction) {
+    shape = module->entry_computation_layout().result_layout().shape();
+  }
   std::unique_ptr<HloInstruction> call_after_ptr =
       HloInstruction::CreateCustomCall(
-          instruction->to_apply()->root_instruction()->shape(), {instruction},
-          kCallMarkerAfterTarget, "",
+          shape, {instruction}, kCallMarkerAfterTarget, "",
           CustomCallApiVersion::API_VERSION_ORIGINAL);
   Cast<HloCustomCallInstruction>(call_after_ptr.get())
       ->set_custom_call_has_side_effect(true);
