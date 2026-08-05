@@ -35,19 +35,22 @@ inline void AffineQuantize(const tflite::QuantizationParams& op_params,
                            const RuntimeShape& output_shape,
                            OutputT* output_data) {
   const int32_t zero_point = op_params.zero_point;
-  const double scale = op_params.scale;
+  const float scale = static_cast<float>(op_params.scale);
   const int flat_size = MatchingFlatSize(input_shape, output_shape);
   static constexpr int32_t min_val = std::numeric_limits<OutputT>::min();
   static constexpr int32_t max_val = std::numeric_limits<OutputT>::max();
 
   for (int i = 0; i < flat_size; i++) {
     const InputT val = input_data[i];
-    const double unclamped =
-        static_cast<double>(TfLiteRound(val / static_cast<float>(scale))) +
-        static_cast<double>(zero_point);
-    const double clamped =
-        std::min(std::max(unclamped, static_cast<double>(min_val)),
-                 static_cast<double>(max_val));
+    const float rounded = TfLiteRound(val / scale);
+    float clamped;
+    if (std::isnan(rounded)) {
+      clamped = static_cast<float>(zero_point);
+    } else {
+      const float unclamped = rounded + static_cast<float>(zero_point);
+      clamped = std::min(std::max(unclamped, static_cast<float>(min_val)),
+                         static_cast<float>(max_val));
+    }
     output_data[i] = static_cast<OutputT>(clamped);
   }
 }
@@ -76,12 +79,15 @@ inline void PerChannelQuantize(
                             current_dim.data(), 0, nullptr);
     const InputT val = input_data[offset];
     const int channel = current_dim[quantized_dimension];
-    const double unclamped = static_cast<double>(TfLiteRound(
-                                 val / static_cast<float>(scale[channel]))) +
-                             static_cast<double>(zero_point[channel]);
-    const double clamped =
-        std::min(std::max(unclamped, static_cast<double>(min_val)),
-                 static_cast<double>(max_val));
+    const float rounded = TfLiteRound(val / static_cast<float>(scale[channel]));
+    float clamped;
+    if (std::isnan(rounded)) {
+      clamped = static_cast<float>(zero_point[channel]);
+    } else {
+      const float unclamped = rounded + static_cast<float>(zero_point[channel]);
+      clamped = std::min(std::max(unclamped, static_cast<float>(min_val)),
+                         static_cast<float>(max_val));
+    }
     output_data[offset] = static_cast<OutputT>(clamped);
   } while (NextIndex(num_dims, reinterpret_cast<const int*>(dims_data),
                      current_dim.data()));

@@ -115,8 +115,9 @@ inline void ConvPerChannel(
                 // TODO(b/174275578): Add a check to make sure the
                 // accumulator depth is smaller than 2^16.
                 acc = WrappingAdd<int32_t>(
-                    acc,
-                    filter_val * WrappingAdd<int32_t>(input_val, input_offset));
+                    acc, WrappingMul<int32_t>(
+                             filter_val,
+                             WrappingAdd<int32_t>(input_val, input_offset)));
               }
             }
           }
