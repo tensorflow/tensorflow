@@ -82,6 +82,7 @@ class MockArray : public llvm::RTTIExtends<MockArray, Array> {
   MOCK_METHOD(tsl::Future<>, Delete, (), (final));
   MOCK_METHOD(bool, IsDeleted, (), (const, final));
 
+  MOCK_METHOD(const ArraySpec&, array_spec, (), (const, final));
   MOCK_METHOD(DType, dtype, (), (const, final));
   MOCK_METHOD(const Shape&, shape, (), (const, final));
   MOCK_METHOD(const Sharding&, sharding, (), (const, final));
