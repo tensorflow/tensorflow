@@ -72,12 +72,12 @@ GetHostTargetMachineOptions(absl::string_view platform_version) {
         "prefer-no-scatter,+prfchw,+rdpid,+rdrnd,+rdseed,+rtm,+sahf,+serialize,"
         "+sha,+sse,+sse2,+sse3,+sse4.1,+sse4.2,+ssse3,+tsxldtrk,+vaes,+"
         "vpclmulqdq,+wbnoinvd,+xsave,+xsavec,+xsaveopt,+xsaves,-amx-avx512,-"
-        "amx-complex,-amx-fp16,-amx-fp8,-amx-movrs,-amx-tf32,-avx10.1,-avx10.2,"
-        "-avx512vp2intersect,-avxifma,-avxneconvert,-avxvnniint16,-avxvnniint8,"
-        "-ccmp,-cf,-clzero,-cmpccxadd,-egpr,-enqcmd,-fma4,-hreset,-jmpabs,-kl,-"
-        "lwp,-movrs,-mwaitx,-ndd,-nf,-pconfig,-pku,-ppx,-prefetchi,-ptwrite,-"
-        "push2pop2,-raoint,-rdpru,-sgx,-sha512,-shstk,-sm3,-sm4,-sse4a,-tbm,-"
-        "uintr,-usermsr,-waitpkg,-widekl,-xop,-zu"};
+        "amx-complex,-amx-fp16,-amx-fp8,-amx-movrs,-avx10.1,-avx10.2,-"
+        "avx512bmm,-avx512vp2intersect,-avxifma,-avxneconvert,-avxvnniint16,-"
+        "avxvnniint8,-ccmp,-cf,-clzero,-cmpccxadd,-egpr,-enqcmd,-fma4,-hreset,-"
+        "jmpabs,-kl,-lwp,-movrs,-mwaitx,-ndd,-nf,-pconfig,-pku,-ppx,-prefetchi,"
+        "-ptwrite,-push2pop2,-raoint,-rdpru,-sgx,-sha512,-shstk,-sm3,-sm4,-"
+        "sse4a,-tbm,-uintr,-usermsr,-waitpkg,-widekl,-xop,-zu"};
   }
   if (platform_version == "oberon_b200" || platform_version == "oberon_b300") {
     return cpu::TargetMachineOptions{
@@ -105,12 +105,16 @@ absl::StatusOr<std::unique_ptr<const GpuTopology>> GpuTopology::FromProto(
                      cpu::TargetMachineOptions::FromProto(
                          gpu_topology_proto.host_target_machine_options()));
   }
+  std::optional<int32_t> num_devices_per_process = std::nullopt;
+  if (gpu_topology_proto.has_num_devices_per_process()) {
+    num_devices_per_process = gpu_topology_proto.num_devices_per_process();
+  }
   return std::make_unique<GpuTopology>(
       gpu_topology_proto.platform_version(),
       gpu_topology_proto.num_partitions(),
       gpu_topology_proto.num_hosts_per_partition(),
       gpu_topology_proto.num_devices_per_host(), std::move(gpu_target_config),
-      std::move(host_target_machine_options));
+      std::move(host_target_machine_options), num_devices_per_process);
 }
 
 GpuTopologyProto GpuTopology::ToProto() const {
@@ -125,6 +129,9 @@ GpuTopologyProto GpuTopology::ToProto() const {
   if (host_target_machine_options_.has_value()) {
     *proto.mutable_host_target_machine_options() =
         host_target_machine_options()->ToProto();
+  }
+  if (num_devices_per_process_.has_value()) {
+    proto.set_num_devices_per_process(num_devices_per_process());
   }
   return proto;
 }

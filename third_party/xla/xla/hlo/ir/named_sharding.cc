@@ -48,11 +48,13 @@ NamedSharding::NamedSharding(Mesh mesh,
                              absl::Span<const AxisRef> replicated_axes,
                              absl::Span<const AxisRef> unreduced_axes,
                              absl::Span<const AxisRef> manual_axes,
-                             absl::Span<const OpMetadata> metadata)
+                             absl::Span<const OpMetadata> metadata,
+                             ReductionOp reduction_op)
     : mesh_(std::move(mesh)),
       dim_shardings_(dim_shardings.begin(), dim_shardings.end()),
       replicated_axes_(replicated_axes.begin(), replicated_axes.end()),
       unreduced_axes_(unreduced_axes.begin(), unreduced_axes.end()),
+      reduction_op_(reduction_op),
       manual_axes_(manual_axes.begin(), manual_axes.end()),
       metadata_(metadata.begin(), metadata.end()) {
   CHECK_OK(VerifyNamedSharding(*this));
@@ -246,6 +248,28 @@ std::string NamedSharding::ToString(bool include_metadata) const {
 
   if (IsUnreduced() && num_dimensions() == 0) {
     absl::StrAppend(&result, ", unreduced");
+    if (reduction_op_ != ReductionOp::kSum) {
+      absl::StrAppend(&result, "=");
+      switch (reduction_op_) {
+        case ReductionOp::kMax:
+          absl::StrAppend(&result, "max");
+          break;
+        case ReductionOp::kMin:
+          absl::StrAppend(&result, "min");
+          break;
+        default:
+          break;
+      }
+    }
+    if (!unreduced_axes_.empty() && unreduced_axes_.size() < mesh_.num_axes()) {
+      absl::StrAppend(&result, "{");
+      absl::StrAppend(
+          &result, absl::StrJoin(unreduced_axes_, ", ",
+                                 [&](std::string* out, const AxisRef& axis) {
+                                   absl::StrAppend(out, axis.ToString(&mesh_));
+                                 }));
+      absl::StrAppend(&result, "}");
+    }
     absl::StrAppend(&result, metadata_str);
     absl::StrAppend(&result, "}");
     return result;
@@ -279,7 +303,21 @@ std::string NamedSharding::ToString(bool include_metadata) const {
   }
 
   if (!unreduced_axes_.empty()) {
-    absl::StrAppend(&result, ", unreduced={");
+    absl::StrAppend(&result, ", unreduced=");
+    if (reduction_op_ != ReductionOp::kSum) {
+      switch (reduction_op_) {
+        case ReductionOp::kSum:
+          absl::StrAppend(&result, "sum");
+          break;
+        case ReductionOp::kMax:
+          absl::StrAppend(&result, "max");
+          break;
+        case ReductionOp::kMin:
+          absl::StrAppend(&result, "min");
+          break;
+      }
+    }
+    absl::StrAppend(&result, "{");
     absl::StrAppend(&result,
                     absl::StrJoin(unreduced_axes_, ", ",
                                   [&](std::string* out, const AxisRef& axis) {
@@ -316,6 +354,17 @@ NamedShardingProto NamedSharding::ToProto() const {
   for (const AxisRef& axis : unreduced_axes_) {
     *proto.add_unreduced_axes() = axis.ToProto();
   }
+  switch (reduction_op_) {
+    case ReductionOp::kSum:
+      proto.set_reduction_op(NamedShardingProto::SUM);
+      break;
+    case ReductionOp::kMax:
+      proto.set_reduction_op(NamedShardingProto::MAX);
+      break;
+    case ReductionOp::kMin:
+      proto.set_reduction_op(NamedShardingProto::MIN);
+      break;
+  }
   for (const AxisRef& axis : manual_axes_) {
     *proto.add_manual_axes() = axis.ToProto();
   }
@@ -344,6 +393,22 @@ NamedSharding NamedSharding::FromProto(const NamedShardingProto& proto) {
     unreduced_axes.push_back(AxisRef::FromProto(axis_proto));
   }
 
+  ReductionOp reduction_op;
+  switch (proto.reduction_op()) {
+    case NamedShardingProto::SUM:
+      reduction_op = ReductionOp::kSum;
+      break;
+    case NamedShardingProto::MAX:
+      reduction_op = ReductionOp::kMax;
+      break;
+    case NamedShardingProto::MIN:
+      reduction_op = ReductionOp::kMin;
+      break;
+    default:
+      reduction_op = ReductionOp::kSum;
+      break;
+  }
+
   std::vector<AxisRef> manual_axes;
   manual_axes.reserve(proto.manual_axes_size());
   for (const auto& axis_proto : proto.manual_axes()) {
@@ -354,7 +419,8 @@ NamedSharding NamedSharding::FromProto(const NamedShardingProto& proto) {
                                    proto.metadata().end());
 
   return NamedSharding(Mesh::FromProto(proto.mesh()), dim_shardings,
-                       replicated_axes, unreduced_axes, manual_axes, metadata);
+                       replicated_axes, unreduced_axes, manual_axes, metadata,
+                       reduction_op);
 }
 
 std::ostream& operator<<(std::ostream& out, const DimensionSharding& sharding) {

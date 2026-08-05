@@ -50,7 +50,7 @@ namespace {
 //
 // Several tests requires at least four GPUs.  For instructions on running this
 // within Google, see go/multi-gpu-unit-test.
-class CollectiveOpsTest : public HloPjRtTestBase {
+class CollectiveOpsTest : public HloTestBase {
  public:
   CollectiveOpsTest() {
     VLOG(1) << "Running with " << num_devices() << " devices";
@@ -60,7 +60,7 @@ class CollectiveOpsTest : public HloPjRtTestBase {
 
  protected:
   DebugOptions GetDebugOptionsForTest() const override {
-    DebugOptions debug_options = HloPjRtTestBase::GetDebugOptionsForTest();
+    DebugOptions debug_options = HloTestBase::GetDebugOptionsForTest();
     // Disable async->sync collective conversion pass to enable unit testing
     // of async collectives.
     debug_options.add_xla_disable_hlo_passes(
@@ -443,8 +443,8 @@ TEST_F(CollectiveOpsTest, AllReduce_ManyConcurrentAllReduces) {
           GetGlobalPjRtClientTestFactory().Get()();
       CHECK_OK(client_status.status());
       std::unique_ptr<PjRtClient> client = *std::move(client_status);
-      std::unique_ptr<HloRunnerPjRt> runner =
-          std::make_unique<HloRunnerPjRt>(std::move(client));
+      std::unique_ptr<HloRunner> runner =
+          std::make_unique<HloRunner>(std::move(client));
 
       std::unique_ptr<HloModule> module =
           MakeCrsModule(input_literal.shape(),

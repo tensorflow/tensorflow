@@ -16,71 +16,73 @@ limitations under the License.
 #include "tensorflow/dtensor/cc/dtensor_device.h"
 
 #include <algorithm>
+#include <atomic>
 #include <cstdint>
 #include <iterator>
 #include <memory>
 #include <optional>
+#include <queue>
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>
 #include <vector>
 
-#include "absl/base/attributes.h"
+#include "absl/container/fixed_array.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "absl/log/vlog_is_on.h"
 #include "absl/memory/memory.h"
+#include "absl/status/status.h"
+#include "absl/strings/ascii.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
-#include "absl/strings/strip.h"
+#include "absl/types/span.h"
 #include "llvm/Support/Casting.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/OwningOpRef.h"  // from @llvm-project
-#include "tensorflow/c/c_api_experimental.h"
+#include "tensorflow/c/eager/abstract_tensor_handle.h"
 #include "tensorflow/c/eager/c_api.h"
+#include "tensorflow/c/eager/c_api_experimental.h"
+#include "tensorflow/c/eager/immediate_execution_tensor_handle.h"
 #include "tensorflow/c/eager/parallel_device/parallel_device_lib.h"
 #include "tensorflow/c/eager/tfe_context_internal.h"
 #include "tensorflow/c/eager/tfe_op_attrs_internal.h"
 #include "tensorflow/c/eager/tfe_tensorhandle_internal.h"
+#include "tensorflow/c/tf_buffer.h"
 #include "tensorflow/c/tf_datatype.h"
 #include "tensorflow/c/tf_status.h"
 #include "tensorflow/c/tf_status_helper.h"
+#include "tensorflow/c/tf_tensor.h"
 #include "tensorflow/c/tf_tensor_internal.h"
-#include "tensorflow/compiler/mlir/tensorflow/translate/mlir_roundtrip_flags.h"
+#include "tensorflow/compiler/mlir/tf2xla/api/v2/mlir_roundtrip_flags.h"
 #include "tensorflow/compiler/mlir/tf2xla/api/v2/tf_executor_to_graph.h"
 #include "xla/status_macros.h"
-#include "xla/stream_executor/tpu/c_api_decl.h"
-#include "xla/stream_executor/tpu/tpu_platform_interface.h"
-#include "xla/stream_executor/tpu/tpu_topology.h"
+#include "xla/tpu/c_api_decl.h"
 #include "xla/tsl/platform/status.h"
-#include "xla/tsl/platform/statusor.h"
-#include "xla/tsl/util/env_var.h"
 #include "tensorflow/core/common_runtime/device_set.h"
-#include "tensorflow/core/common_runtime/eager/context.h"
+#include "tensorflow/core/common_runtime/eager/eager_executor.h"
 #include "tensorflow/core/common_runtime/eager/eager_operation.h"
-#include "tensorflow/core/common_runtime/eager/tensor_handle.h"
 #include "tensorflow/core/common_runtime/graph_constructor.h"
-#include "tensorflow/core/common_runtime/shape_refiner.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
+#include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/graph_to_functiondef.h"
-#include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/tensor_shape.h"
-#include "tensorflow/core/graph/algorithm.h"
 #include "tensorflow/core/graph/graph.h"
-#include "tensorflow/core/lib/strings/proto_serialization.h"
-#include "tensorflow/core/platform/casts.h"
-#include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/graph/graph_debug_info_builder.h"
 #include "tensorflow/core/platform/fingerprint.h"
-#include "tensorflow/core/platform/types.h"
-#include "tensorflow/core/profiler/lib/traceme.h"
+#include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/platform/refcount.h"
 #include "tensorflow/core/util/debug_data_dumper.h"
-#include "tensorflow/core/util/dump_graph.h"
 #include "tensorflow/dtensor/cc/constants.h"
 #include "tensorflow/dtensor/cc/dstatus.h"
 #include "tensorflow/dtensor/cc/dtensor_device_util.h"
@@ -90,10 +92,13 @@ limitations under the License.
 #include "tensorflow/dtensor/cc/parallel_executor.h"
 #include "tensorflow/dtensor/cc/small_constant_optimization.h"
 #include "tensorflow/dtensor/cc/tensor_layout.h"
+#include "tensorflow/dtensor/cc/tensor_with_layout.h"
 #include "tensorflow/dtensor/cc/tpu_system_interface.h"
 #include "tensorflow/dtensor/mlir/op_utils.h"
 #include "tensorflow/dtensor/mlir/spmd_expander.h"
 #include "tensorflow/dtensor/proto/layout.pb.h"
+#include "tsl/platform/refcount.h"
+#include "tsl/profiler/lib/traceme.h"
 
 using tensorflow::EagerExecutor;
 
@@ -253,67 +258,18 @@ class DTensorDevice {
   std::vector<std::vector<int>> TPUCoreIDsToLocations(
       TFE_Context* context, const std::vector<int>& tpu_core_ids) {
     TpuSystemInterface* tpu_system = GetPreferredTpuSystem();
-    if (tpu_system == nullptr) {
-      VLOG(1) << "Calling TPUCoreIDsToLocations on the default TPU system.";
-      std::vector<std::vector<int>> tpu_core_locations;
-      tpu_core_locations.reserve(tpu_core_ids.size());
-      tpu::TpuPlatformInterface* tpu_platform =
-          tpu::TpuPlatformInterface::GetRegisteredPlatform();
-      if (tpu_platform == nullptr) {
-        LOG(WARNING) << "No TPU platform is found.";
-        return {{}};
-      }
-      if (!tpu_platform->Initialized()) {
-        LOG(WARNING) << "TPU platform is not initialized.";
-        return {{}};
-      }
-      tpu::TpuTopologyExternal tpu_topology = tpu_platform->topology();
-
-      for (const int& tpu_core_id : tpu_core_ids) {
-        tpu::TpuCoreLocationExternal core =
-            tpu_topology.CoreForId(TpuCoreTypeEnum::kTensorCore, tpu_core_id);
-        tpu::TpuDimensionsExternal tpu_chip_location = core.chip_coordinates();
-        tpu_core_locations.push_back({tpu_chip_location.x, tpu_chip_location.y,
-                                      tpu_chip_location.z, core.index()});
-      }
-      return tpu_core_locations;
-    } else {
-      VLOG(1) << "Calling TPUCoreIDsToLocations on a preferred TPU system.";
-      return tpu_system->TPUCoreIDsToLocations(context, tpu_core_ids);
-    }
+    CHECK_NE(tpu_system, nullptr);  // Crash OK
+    VLOG(1) << "Calling TPUCoreIDsToLocations on a preferred TPU system.";
+    return tpu_system->TPUCoreIDsToLocations(context, tpu_core_ids);
   }
 
   std::vector<int> TPUCoreLocationsToIDs(
       TFE_Context* context,
       const std::vector<std::vector<int>>& tpu_core_locations) {
     TpuSystemInterface* tpu_system = GetPreferredTpuSystem();
-    if (tpu_system == nullptr) {
-      VLOG(1) << "Calling TPUCoreLocationsToIDs on the default TPU system.";
-      std::vector<int> tpu_core_ids;
-      tpu_core_ids.reserve(tpu_core_locations.size());
-      tpu::TpuPlatformInterface* tpu_platform =
-          tpu::TpuPlatformInterface::GetRegisteredPlatform();
-      if (tpu_platform == nullptr) {
-        LOG(WARNING) << "No TPU platform is found.";
-        return {};
-      }
-      if (!tpu_platform->Initialized()) {
-        LOG(WARNING) << "TPU platform is not initialized.";
-        return {};
-      }
-      tpu::TpuTopologyExternal tpu_topology = tpu_platform->topology();
-
-      for (const std::vector<int>& tpu_core_location : tpu_core_locations) {
-        tpu::TpuCoreLocationExternal core = tpu_topology.Core(
-            TpuCoreTypeEnum::kTensorCore, tpu_core_location[0],
-            tpu_core_location[1], tpu_core_location[2], tpu_core_location[3]);
-        tpu_core_ids.push_back(core.Id());
-      }
-      return tpu_core_ids;
-    } else {
-      VLOG(1) << "Calling TPUCoreLocationsToIDs on a preferred TPU system.";
-      return tpu_system->TPUCoreLocationsToIDs(context, tpu_core_locations);
-    }
+    CHECK_NE(tpu_system, nullptr);  // Crash OK
+    VLOG(1) << "Calling TPUCoreLocationsToIDs on a preferred TPU system.";
+    return tpu_system->TPUCoreLocationsToIDs(context, tpu_core_locations);
   }
 
   // Waits for ops to finish in ALL meshes as we share the cancellation manager.
@@ -713,7 +669,7 @@ class DTensorDevice {
   // Dispatchs functions for TensorFlow.
   std::unique_ptr<EagerExecutor> eager_executor_;
 
-  mutable mutex mu_;  // Mutex for dtensor_device->execute
+  mutable mutex mu_;                 // Mutex for dtensor_device->execute
   mutable mutex mu_default_mesh_;    // Mutex for default mesh object
   mutable mutex mu_default_layout_;  // Mutex for default layout object
 };
@@ -995,7 +951,6 @@ TFE_TensorHandle* DTensorDevice::ToTensorHandle(TFE_Context* context,
   }
   return tensor_handle;
 }
-
 
 namespace {
 

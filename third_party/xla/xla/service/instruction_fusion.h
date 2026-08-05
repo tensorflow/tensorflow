@@ -144,11 +144,20 @@ class InstructionFusion : public HloModulePass {
           inplace_op_fusion_decider,
       bool legality_check_only = false);
 
-  // Returns whether multi-output fusion can be applied to fuse `producer` into
-  // `consumer`. In contrast to "regular" fusion, the `producer` is not
-  // duplicated by multi-output fusion.
-  virtual FusionDecision ShouldFuseIntoMultiOutput(HloInstruction* consumer,
-                                                   int64_t operand_index) {
+  virtual FusionDecision IsConsumerSuitableForMultiOutputFusion(
+      const HloInstruction* consumer) const {
+    return FusionDecision::Forbid(
+        "multi-output fusion not supported by this pass");
+  }
+
+  // Returns whether multi-output fusion can be applied to fuse `producer` at
+  // `operand_index` into `consumer`. In contrast to "regular" fusion, the
+  // `producer` is not duplicated by multi-output fusion.
+  //
+  // This method is only called if `IsConsumerSuitableForMultiOutputFusion`
+  // returns `Allow`.
+  virtual FusionDecision ShouldFuseOperandIntoMultiOutputFusion(
+      HloInstruction* consumer, int64_t operand_index) {
     return FusionDecision::Forbid(
         "multi-output fusion not supported by this pass");
   }

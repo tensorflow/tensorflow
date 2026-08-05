@@ -44,6 +44,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_input_output_alias_config.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_instruction_utils.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
@@ -97,6 +98,31 @@ struct SpecialCaseCopyPolicy {
   bool copy_parameters_and_constants = false;
 };
 
+// Returns true if any conditional instruction calling `node` defines a new Phi
+// value at `index`. If the conditional simply passes through reaching values at
+// `index` without merging, no replicated root copies are needed.
+bool ShouldCopyConditionalRootAt(const CallGraphNode& node,
+                                 const HloAliasAnalysis& alias_analysis,
+                                 const ShapeIndex& index) {
+  const HloDataflowAnalysis& dataflow = alias_analysis.dataflow_analysis();
+  for (const CallSite& caller_callsite : node.caller_callsites()) {
+    if (caller_callsite.instruction()->opcode() == HloOpcode::kConditional) {
+      if (!ShapeUtil::IndexIsValid(caller_callsite.instruction()->shape(),
+                                   index)) {
+        return true;  // Conservatively copy if index is out of bounds.
+      }
+      const HloValueSet& value_set =
+          dataflow.GetValueSet(caller_callsite.instruction(), index);
+      if (absl::c_any_of(value_set.values(), [](const HloValue* value) {
+            return value->is_phi();
+          })) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
 SpecialCaseCopyPolicy GetSpecialCaseCopyPolicy(const CallGraphNode& node,
                                                HloModule* module,
                                                HloComputation* computation) {
@@ -112,6 +138,34 @@ bool ShouldCopyRootValue(const HloValue& value,
                          const SpecialCaseCopyPolicy& policy) {
   if (policy.copy_parameters_and_constants) {
     return ValueIsReadOnly(value);
+  }
+  return false;
+}
+
+bool IsWhileLoopCopyDisabled(const HloInstruction* instruction,
+                             const CallGraph& call_graph) {
+  if (instruction == nullptr || instruction->parent() == nullptr) {
+    return false;
+  }
+  absl::flat_hash_set<const HloComputation*> visited;
+  std::vector<const HloComputation*> worklist = {instruction->parent()};
+  while (!worklist.empty()) {
+    const HloComputation* curr = worklist.back();
+    worklist.pop_back();
+    if (!visited.insert(curr).second) {
+      continue;
+    }
+    const CallGraphNode& node = call_graph.GetNode(curr);
+    for (const CallSite& callsite : node.caller_callsites()) {
+      const HloInstruction* caller = callsite.instruction();
+      if (caller != nullptr && caller->opcode() == HloOpcode::kWhile &&
+          HasDisableWhileLoopCopiesAttr(caller)) {
+        return true;
+      }
+      if (caller != nullptr && caller->parent() != nullptr) {
+        worklist.push_back(caller->parent());
+      }
+    }
   }
   return false;
 }
@@ -393,6 +447,12 @@ absl::Status AddCopiesForWhile(const HloAliasAnalysis& alias_analysis,
                                HloInstruction* xla_while) {
   VLOG(2) << "Adding copies for kWhile instruction " << xla_while->name();
   TF_RET_CHECK(xla_while->opcode() == HloOpcode::kWhile);
+
+  if (HasDisableWhileLoopCopiesAttr(xla_while)) {
+    VLOG(2) << "While loop copy insertion disabled via frontend attribute for "
+            << xla_while->name();
+    return absl::OkStatus();
+  }
 
   ShapeTree<bool> indices_to_copy(xla_while->shape());
   if (!IndicesToCopyForWhile(alias_analysis.dataflow_analysis(), xla_while,
@@ -1180,16 +1240,63 @@ absl::Status CopyInsertion::AddCopiesToResolveInterference(
         // times by recording and checking the operand number of operands that
         // have been copied.
         absl::flat_hash_set<int64_t> copied_operands;
+        HloOpcode op_code = instruction->opcode();
+        int64_t nr_previous_bound_operands = 0;
+        const HloInstruction* instr_to_get_aliases = instruction;
+        if (op_code == HloOpcode::kAsyncStart ||
+            op_code == HloOpcode::kAsyncUpdate) {
+          // No operands bound, so we don't need to insert copies for them.
+          if ((op_code == HloOpcode::kAsyncStart &&
+               instruction->operand_count() == 0) ||
+              (op_code == HloOpcode::kAsyncUpdate &&
+               instruction->operand_count() == 1)) {
+            continue;
+          }
+
+          if (op_code == HloOpcode::kAsyncStart &&
+              instruction->output_operand_aliasing().empty()) {
+            instr_to_get_aliases = instruction->async_wrapped_instruction();
+          }
+
+          if (op_code == HloOpcode::kAsyncUpdate) {
+            CHECK_GE(instruction->operand_count(), 2);
+            nr_previous_bound_operands =
+                xla::hlo_instruction_utils::async::GetAsyncBoundOperands(
+                    Cast<HloAsyncInstruction>(instruction->operand(0)))
+                    .size();
+          }
+        }
+
         for (const auto& operand_and_output_index :
-             alias_info_->GetInPlaceInputOutputPairs(
-                 // Input/output buffer aliasing analysis needs to be done
-                 // directly with the wrapped instruction when the compiler sees
-                 // an async box.
-                 instruction->opcode() == HloOpcode::kAsyncStart
-                     ? instruction->async_wrapped_instruction()
-                     : instruction)) {
+             alias_info_->GetInPlaceInputOutputPairs(instr_to_get_aliases)) {
           const HloOperandIndex& operand_index = operand_and_output_index.first;
-          if (copied_operands.contains(operand_index.operand_number)) {
+          int64_t logical_operand_number = operand_index.operand_number;
+          int64_t operand_index_in_this_intr = logical_operand_number;
+
+          if (op_code == HloOpcode::kAsyncUpdate ||
+              op_code == HloOpcode::kAsyncStart) {
+            int64_t async_base_operand_idx =
+                (op_code == HloOpcode::kAsyncUpdate) ? 1 : 0;
+            int64_t nr_operands_bound_in_this_intr =
+                instruction->operand_count() - async_base_operand_idx;
+
+            if (logical_operand_number >= nr_previous_bound_operands &&
+                logical_operand_number < nr_previous_bound_operands +
+                                             nr_operands_bound_in_this_intr) {
+              operand_index_in_this_intr =
+                  async_base_operand_idx +
+                  (logical_operand_number - nr_previous_bound_operands);
+            } else {
+              continue;
+            }
+          }
+
+          if (copied_operands.contains(operand_index_in_this_intr)) {
+            continue;
+          }
+          if ((op_code == HloOpcode::kAsyncUpdate ||
+               op_code == HloOpcode::kAsyncDone) &&
+              operand_index_in_this_intr == 0) {
             continue;
           }
 
@@ -1201,15 +1308,21 @@ absl::Status CopyInsertion::AddCopiesToResolveInterference(
           // *) All uses of the operand are 'instruction'.
           if (HasDisjointReadWriteRegionsAttr(instruction) &&
               absl::c_all_of(
-                  instruction->operand(operand_index.operand_number)->users(),
+                  instruction->operand(operand_index_in_this_intr)->users(),
                   [&instruction](const HloInstruction* user) {
-                    return user == instruction;
+                    return user == instruction ||
+                           HasDisjointReadWriteRegionsAttr(user);
                   })) {
             continue;
           }
-          copied_operands.insert(operand_index.operand_number);
+          if ((instruction->opcode() == HloOpcode::kAsyncDone ||
+               instruction->opcode() == HloOpcode::kAsyncUpdate) &&
+              operand_index.operand_number == 0) {
+            continue;
+          }
+          copied_operands.insert(operand_index_in_this_intr);
           RETURN_IF_ERROR(AddCopiesForInPlaceOperation(
-              *alias_analysis, instruction, operand_index.operand_number));
+              *alias_analysis, instruction, operand_index_in_this_intr));
         }
       }
     }
@@ -1238,11 +1351,20 @@ absl::Status CopyInsertion::AddSpecialCaseCopies(
   // Identify which shape indices of which instructions need to be copied. Store
   // these results in 'instructions_to_copy'.
   HloInstructionMap<ShapeTree<bool>> instructions_to_copy;
-  auto add_index_to_copy = [&instructions_to_copy](HloInstruction* instruction,
-                                                   const ShapeIndex& index) {
+  auto add_index_to_copy = [&instructions_to_copy, &call_graph](
+                               HloInstruction* instruction,
+                               const ShapeIndex& index) {
+    if (IsWhileLoopCopyDisabled(instruction, call_graph)) {
+      return;
+    }
     // Buffers are non-copyable and needed copies are added to transition
     // in and out non-copyable values.
     if (ShapeUtil::GetSubshape(instruction->shape(), index).IsBuffer()) {
+      return;
+    }
+    // Copies for async computations are determined by the async start/done
+    // instructions.
+    if (instruction->parent()->IsAsyncComputation()) {
       return;
     }
     VLOG(2) << "Adding index to copy: " << instruction->ToString() << "@"
@@ -1288,6 +1410,11 @@ absl::Status CopyInsertion::AddSpecialCaseCopies(
         if (!use.instruction->IsCustomCall(kPinCustomCallTarget) &&
             use.instruction == position.instruction) {
           VLOG(3) << "Same instruction: " << position.instruction->ToString();
+          if ((use.instruction->opcode() == HloOpcode::kAsyncUpdate ||
+               use.instruction->opcode() == HloOpcode::kAsyncDone) &&
+              use.operand_number == 0) {
+            continue;
+          }
           if (!alias_analysis->dataflow_analysis()
                    .CanShareOperandBufferWithUser(
                        /*operand=*/use.instruction->mutable_operand(
@@ -1321,7 +1448,6 @@ absl::Status CopyInsertion::AddSpecialCaseCopies(
       continue;
     }
     TF_RET_CHECK(node.context() == CallContext::kControlFlow);
-
     SpecialCaseCopyPolicy policy =
         GetSpecialCaseCopyPolicy(node, module, computation);
     HloInstruction* root = computation->root_instruction();
@@ -1330,6 +1456,9 @@ absl::Status CopyInsertion::AddSpecialCaseCopies(
     absl::flat_hash_map<const HloBuffer*, ShapeIndex> seen;
     ShapeUtil::ForEachSubshape(
         root->shape(), [&](const Shape& subshape, const ShapeIndex& index) {
+          bool copy_replicated =
+              policy.copy_root_replicated_buffers ||
+              ShouldCopyConditionalRootAt(node, *alias_analysis, index);
           std::vector<const HloBuffer*> buffers_at_index =
               alias_analysis->ComputeBuffersAt(root, index);
           bool buffer_seen_before = false;
@@ -1337,7 +1466,7 @@ absl::Status CopyInsertion::AddSpecialCaseCopies(
             buffer_seen_before |= !seen.emplace(buffer, index).second;
           }
 
-          if (buffer_seen_before && policy.copy_root_replicated_buffers &&
+          if (buffer_seen_before && copy_replicated &&
               computation == module->entry_computation() &&
               module->input_output_alias_config().OutputHasAlias(index) &&
               buffers_at_index.size() == 1) {
@@ -1353,7 +1482,7 @@ absl::Status CopyInsertion::AddSpecialCaseCopies(
           }
 
           if (buffers_at_index.size() > 1 ||
-              (buffer_seen_before && policy.copy_root_replicated_buffers)) {
+              (buffer_seen_before && copy_replicated)) {
             VLOG(2) << "Index " << index << " of computation "
                     << computation->name() << " (" << root->name()
                     << ") has ambiguous or non-distinct buffer. Copying.";

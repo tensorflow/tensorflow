@@ -55,6 +55,8 @@ struct DummyThunk : public Thunk {
     return absl::OkStatus();
   }
 
+  BufferUses buffer_uses() const override { return {}; }
+
   absl::StatusOr<ThunkProto> ToProto() const override { return ThunkProto{}; }
 };
 

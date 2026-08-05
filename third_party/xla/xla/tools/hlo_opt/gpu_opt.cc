@@ -112,8 +112,7 @@ class GpuOptProvider : public CompiledOptProvider {
       ASSIGN_OR_RETURN(std::unique_ptr<Executable> executable,
                        GetExecutable(std::move(module)));
       auto gpu_executable = static_cast<gpu::GpuExecutable*>(executable.get());
-      return gpu_executable->buffer_assignment()->ToVerboseString(
-          gpu_executable->alias_info(), 9999);
+      return gpu_executable->buffer_allocations_debug_summary();
     }
     {
       // Delegate to base class.

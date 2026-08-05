@@ -49,6 +49,7 @@ DumpOptions::DumpOptions(const DebugOptions& opts)
     : dump_to(opts.xla_dump_to()),
       dump_as_text(opts.xla_dump_hlo_as_text()),
       dump_as_proto(opts.xla_dump_hlo_as_proto()),
+      dump_as_riegeli(opts.xla_dump_hlo_as_riegeli()),
       dump_as_dot(opts.xla_dump_hlo_as_dot()),
       dump_as_html(opts.xla_dump_hlo_as_html()),
       dump_as_url(opts.xla_dump_hlo_as_url()),
@@ -70,8 +71,8 @@ DumpOptions::DumpOptions(const DebugOptions& opts)
   // Did the user specify an explicit format for dumping?
   bool output_format_other_than_url_specified =
       opts.xla_dump_hlo_as_text() || opts.xla_dump_hlo_as_proto() ||
-      opts.xla_dump_hlo_as_dot() || opts.xla_dump_hlo_as_html() ||
-      opts.xla_dump_hlo_snapshots() ||
+      opts.xla_dump_hlo_as_riegeli() || opts.xla_dump_hlo_as_dot() ||
+      opts.xla_dump_hlo_as_html() || opts.xla_dump_hlo_snapshots() ||
       opts.xla_dump_hlo_unoptimized_snapshots();
   bool output_format_specified =
       output_format_other_than_url_specified || opts.xla_dump_hlo_as_url();

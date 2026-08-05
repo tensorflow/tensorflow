@@ -17,6 +17,8 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
+#include <optional>
+#include <utility>
 #include <vector>
 
 #include <gmock/gmock.h>
@@ -36,15 +38,14 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_schedule.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/service/gpu/alias_info.h"
+#include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
 #include "xla/service/gpu/gpu_hlo_schedule.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/latency_hiding_scheduler.h"
 #include "xla/service/profile_guided_latency_estimator.h"
 #include "xla/stream_executor/device_description.h"
-#include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/xla.pb.h"
 
 namespace xla::gpu {
@@ -73,7 +74,8 @@ class GpuLatencyHidingSchedulerBaseTest
       HloModule* module, int64_t num_parallel_resources = 1,
       DebugOptions::PGLEStrictnessLevel strictness =
           DebugOptions::PGLE_STRICTNESS_LEVEL_ERROR,
-      bool enable_early_collective_start = false) {
+      bool enable_early_collective_start = false,
+      bool enable_selective_memcpy_overlap = false) {
     stream_executor::DeviceDescription gpu_device_info =
         TestGpuDeviceInfo::CudaOrRocmDeviceInfo();
     GpuAliasInfo alias_info(gpu_device_info);
@@ -82,6 +84,8 @@ class GpuLatencyHidingSchedulerBaseTest
         num_parallel_resources);
     options.set_xla_gpu_experimental_collective_start_as_early_as_possible(
         enable_early_collective_start);
+    options.set_xla_gpu_experimental_enable_selective_memcpy_overlap(
+        enable_selective_memcpy_overlap);
     options.set_xla_gpu_pgle_accuracy_checker(strictness);
 
     RETURN_IF_ERROR(ScheduleGpuModule(module, /*pointer_size=*/8,
@@ -135,8 +139,8 @@ TEST_F(GpuLatencyHidingSchedulerBaseTest,
   )";
 
   HloModuleConfig config = GetModuleConfig(kFdoProfile);
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(kHloModule, config));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHloModule, config));
 
   for (const HloInstruction* instr :
        module->entry_computation()->instructions()) {
@@ -173,8 +177,8 @@ TEST_F(GpuLatencyHidingSchedulerBaseTest,
   )";
 
   HloModuleConfig config = GetModuleConfig(kFdoProfile);
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(kHloModule, config));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHloModule, config));
 
   for (const HloInstruction* instr :
        module->entry_computation()->instructions()) {
@@ -212,8 +216,8 @@ TEST_F(GpuLatencyHidingSchedulerBaseTest,
   )";
 
   HloModuleConfig config = GetModuleConfig(kFdoProfile);
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(kHloModule, config));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHloModule, config));
 
   for (const HloInstruction* instr :
        module->entry_computation()->instructions()) {
@@ -260,8 +264,8 @@ TEST_F(GpuLatencyHidingSchedulerBaseTest,
   )";
 
   HloModuleConfig config = GetModuleConfig(kFdoProfile);
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(kHloModule, config));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHloModule, config));
 
   for (const HloInstruction* instr :
        module->entry_computation()->instructions()) {
@@ -312,8 +316,8 @@ TEST_F(GpuLatencyHidingSchedulerBaseTest,
     }
   )";
   auto config = GetModuleConfig(kFdoProfile);
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(kHloModule, config));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHloModule, config));
 
   EXPECT_THAT(ScheduleModule(module.get()),
               absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
@@ -333,8 +337,8 @@ TEST_F(GpuLatencyHidingSchedulerBaseTest,
     }
   )";
   auto config = GetModuleConfig(kFdoProfile);
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(kHloModule, config));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHloModule, config));
 
   EXPECT_THAT(ScheduleModule(module.get()),
               absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
@@ -354,10 +358,10 @@ TEST_F(GpuLatencyHidingSchedulerBaseTest,
     }
   )";
   auto config = GetModuleConfig(kFdoProfile);
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(kHloModule, config));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHloModule, config));
 
-  TF_EXPECT_OK(ScheduleModule(module.get()));
+  EXPECT_OK(ScheduleModule(module.get()));
 }
 
 TEST_F(GpuLatencyHidingSchedulerBaseTest,
@@ -392,10 +396,10 @@ TEST_F(GpuLatencyHidingSchedulerBaseTest,
   )";
 
   HloModuleConfig config = GetModuleConfig(kFdoProfile);
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(kHloModule, config));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHloModule, config));
 
-  TF_EXPECT_OK(ScheduleModule(module.get(), /*num_parallel_resources=*/2));
+  EXPECT_OK(ScheduleModule(module.get(), /*num_parallel_resources=*/2));
   const HloSchedule& schedule = module->schedule();
   std::vector<HloInstruction*> instruction_sequence =
       schedule.sequence(module->entry_computation()).instructions();
@@ -443,9 +447,9 @@ TEST_F(GpuLatencyHidingSchedulerBaseTest,
   debug_options.set_xla_gpu_enable_latency_hiding_scheduler(true);
   debug_options.set_xla_gpu_enable_analytical_sol_latency_estimator(true);
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(kHloModule, config));
-  TF_ASSERT_OK(ScheduleModule(module.get(), /*num_parallel_resources=*/1));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHloModule, config));
+  ASSERT_OK(ScheduleModule(module.get(), /*num_parallel_resources=*/1));
 
   const auto& sequence =
       module->schedule().sequence(module->entry_computation()).instructions();
@@ -490,13 +494,13 @@ TEST_F(GpuLatencyHidingSchedulerBaseTest,
   )";
 
   HloModuleConfig config = GetModuleConfig(kFdoProfile);
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(kHloModule, config));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHloModule, config));
   module->mutable_config()
       .mutable_debug_options()
       .set_xla_gpu_experimental_enable_collective_multi_streaming(true);
 
-  TF_EXPECT_OK(ScheduleModule(module.get(), /*num_parallel_resources=*/2));
+  EXPECT_OK(ScheduleModule(module.get(), /*num_parallel_resources=*/2));
   const HloSchedule& schedule = module->schedule();
   std::vector<HloInstruction*> instruction_sequence =
       schedule.sequence(module->entry_computation()).instructions();
@@ -587,10 +591,10 @@ TEST_F(GpuLatencyHidingSchedulerBaseTest, SchedulePipelinedSendRecvsLate) {
   HloModuleConfig config = GetModuleConfig(
       kFdoProfile, /*pipeline_parallelism_opt_level=*/DebugOptions::
           PIPELINE_PARALLELISM_OPT_LEVEL_ENABLE);
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(kHloModule, config));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHloModule, config));
 
-  TF_EXPECT_OK(
+  EXPECT_OK(
       ScheduleModule(module.get(), /*num_parallel_resources=*/2,
                      /*strictness=*/DebugOptions::PGLE_STRICTNESS_LEVEL_OFF));
   const HloSchedule& schedule = module->schedule();
@@ -668,11 +672,11 @@ TEST_F(GpuLatencyHidingSchedulerBaseTest,
   HloModuleConfig config = GetModuleConfig(
       kFdoProfile, /*pipeline_parallelism_opt_level=*/DebugOptions::
           PIPELINE_PARALLELISM_OPT_LEVEL_ENABLE);
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(kHloModule, config));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHloModule, config));
 
-  TF_EXPECT_OK(ScheduleModule(module.get(), /*num_parallel_resources=*/1,
-                              DebugOptions::PGLE_STRICTNESS_LEVEL_OFF));
+  EXPECT_OK(ScheduleModule(module.get(), /*num_parallel_resources=*/1,
+                           DebugOptions::PGLE_STRICTNESS_LEVEL_OFF));
   const HloSchedule& schedule = module->schedule();
 
   VLOG(3) << module->schedule().ToString();
@@ -762,11 +766,11 @@ TEST_F(GpuLatencyHidingSchedulerBaseTest, ScheduleP2PWithMultipliers) {
   HloModuleConfig config = GetModuleConfig(
       kFdoProfile, /*pipeline_parallelism_opt_level=*/DebugOptions::
           PIPELINE_PARALLELISM_OPT_LEVEL_ENABLE);
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(kHloModule, config));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHloModule, config));
 
-  TF_EXPECT_OK(ScheduleModule(module.get(), /*num_parallel_resources=*/1,
-                              DebugOptions::PGLE_STRICTNESS_LEVEL_OFF));
+  EXPECT_OK(ScheduleModule(module.get(), /*num_parallel_resources=*/1,
+                           DebugOptions::PGLE_STRICTNESS_LEVEL_OFF));
   const HloSchedule& schedule = module->schedule();
 
   VLOG(3) << module->schedule().ToString();
@@ -853,11 +857,11 @@ TEST_F(GpuLatencyHidingSchedulerBaseTest,
   HloModuleConfig config = GetModuleConfig(
       kFdoProfile, /*pipeline_parallelism_opt_level=*/DebugOptions::
           PIPELINE_PARALLELISM_OPT_LEVEL_ENABLE);
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(kHloModule, config));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHloModule, config));
 
-  TF_EXPECT_OK(ScheduleModule(module.get(), /*num_parallel_resources=*/1,
-                              DebugOptions::PGLE_STRICTNESS_LEVEL_OFF));
+  EXPECT_OK(ScheduleModule(module.get(), /*num_parallel_resources=*/1,
+                           DebugOptions::PGLE_STRICTNESS_LEVEL_OFF));
   const HloSchedule& schedule = module->schedule();
 
   VLOG(3) << module->schedule().ToString();
@@ -942,11 +946,11 @@ ENTRY main {
   HloModuleConfig config = GetModuleConfig(
       kFdoProfile, /*pipeline_parallelism_opt_level=*/DebugOptions::
           PIPELINE_PARALLELISM_OPT_LEVEL_ENABLE);
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(kHloModule, config));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHloModule, config));
 
-  TF_EXPECT_OK(ScheduleModule(module.get(), /*num_parallel_resources=*/4,
-                              DebugOptions::PGLE_STRICTNESS_LEVEL_OFF));
+  EXPECT_OK(ScheduleModule(module.get(), /*num_parallel_resources=*/4,
+                           DebugOptions::PGLE_STRICTNESS_LEVEL_OFF));
   const HloSchedule& schedule = module->schedule();
 
   HloComputation* main_computation = FindComputation(module.get(), "main");
@@ -1002,10 +1006,10 @@ ENTRY main {
 
   absl::string_view kFdoProfile = "";
   HloModuleConfig config = GetModuleConfig(kFdoProfile);
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(kHloModule, config));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHloModule, config));
 
-  TF_EXPECT_OK(ScheduleModule(module.get(), /*num_parallel_resources=*/2));
+  EXPECT_OK(ScheduleModule(module.get(), /*num_parallel_resources=*/2));
   const HloSchedule& schedule = module->schedule();
   std::vector<HloInstruction*> instruction_sequence =
       schedule.sequence(module->entry_computation()).instructions();
@@ -1048,8 +1052,8 @@ ENTRY main {
 
   absl::string_view kFdoProfile = "";
   HloModuleConfig config = GetModuleConfig(kFdoProfile);
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(kHloModule, config));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHloModule, config));
   HloComputation* comp = module->entry_computation();
   SchedulerConfig sched_config;
   GpuAsyncTracker async_tracker(sched_config);
@@ -1061,6 +1065,877 @@ ENTRY main {
   EXPECT_FALSE(async_tracker.IsSupportedAsyncDone(*dynamic_slice_start));
   EXPECT_TRUE(async_tracker.IsSupportedAsyncDone(*dynamic_slice_done));
   EXPECT_FALSE(async_tracker.IsSupportedAsyncStart(*dynamic_slice_done));
+}
+
+TEST_F(GpuLatencyHidingSchedulerBaseTest, CopyStartDoneUsesComputeResource) {
+  absl::string_view kHloModule = R"(
+HloModule test
+
+ENTRY main {
+  p0 = f32[2,3]{1,0} parameter(0)
+  copy-start = (f32[2,3]{1,0:S(5)}, f32[2,3]{1,0}, u32[]) copy-start(p0)
+  ROOT copy-done = f32[2,3]{1,0:S(5)} copy-done(copy-start)
+})";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHloModule));
+
+  HloComputation* comp = module->entry_computation();
+  HloInstruction* copy_start = comp->GetInstructionWithName("copy-start");
+  HloInstruction* copy_done = comp->GetInstructionWithName("copy-done");
+
+  SchedulerConfig sched_config;
+  GpuAsyncTracker async_tracker(sched_config);
+  EXPECT_TRUE(async_tracker.IsSupportedAsyncStart(*copy_start));
+  EXPECT_TRUE(async_tracker.IsSupportedAsyncDone(*copy_done));
+
+  int64_t compute_resource =
+      ResourceTypeToIndex(GpuResourceType::kGpuAsyncStreamComputes);
+  auto start_resources = async_tracker.GetResourcesFromInstruction(*copy_start);
+  ASSERT_EQ(start_resources.size(), 1);
+  EXPECT_EQ(start_resources[0].first, compute_resource);
+  EXPECT_EQ(start_resources[0].second, ResourceUsageType::kResourceRelease);
+  EXPECT_EQ(async_tracker.GetResourceName(compute_resource),
+            "kGpuAsyncStreamComputes");
+
+  auto done_resources = async_tracker.GetResourcesFromInstruction(*copy_done);
+  ASSERT_EQ(done_resources.size(), 1);
+  EXPECT_EQ(done_resources[0].first, compute_resource);
+  EXPECT_EQ(done_resources[0].second, ResourceUsageType::kResourceOccupy);
+}
+
+TEST_F(GpuLatencyHidingSchedulerBaseTest,
+       ExplicitCollectivesGroupUsesCollectiveResource) {
+  absl::string_view kHloModule = R"(
+HloModule test, is_scheduled=true
+
+comms {
+  p0 = f32[1] parameter(0)
+  ag0-start = (f32[1], f32[1]) all-gather-start(p0), dimensions={0}
+  ag1-start = (f32[1], f32[1]) all-gather-start(p0), dimensions={0}
+  ag0 = f32[1] all-gather-done(ag0-start)
+  ag1 = f32[1] all-gather-done(ag1-start)
+  ROOT result = (f32[1], f32[1]) tuple(ag0, ag1)
+}
+
+ENTRY main {
+  p0 = f32[1] parameter(0)
+  p1 = f32[1] parameter(1)
+  group-start = ((f32[1]), (f32[1], f32[1])) async-start(p0),
+    calls=comms, frontend_attributes={_collectives_group=""}
+  add = f32[1] add(p1, p1)
+  group-done = (f32[1], f32[1]) async-done(group-start)
+  ROOT result = ((f32[1], f32[1]), f32[1]) tuple(group-done, add)
+})";
+
+  HloModuleConfig config = GetModuleConfig(/*fdo_profile=*/"");
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHloModule, config));
+  HloInstruction* group_start = FindInstruction(module.get(), "group-start");
+  HloInstruction* group_done = FindInstruction(module.get(), "group-done");
+
+  SchedulerConfig sched_config;
+  GpuAsyncTracker async_tracker(sched_config);
+  EXPECT_TRUE(async_tracker.IsSupportedAsyncStart(*group_start));
+  EXPECT_FALSE(async_tracker.IsSupportedAsyncDone(*group_start));
+  EXPECT_TRUE(async_tracker.IsSupportedAsyncDone(*group_done));
+  EXPECT_FALSE(async_tracker.IsSupportedAsyncStart(*group_done));
+
+  int64_t collective_resource =
+      ResourceTypeToIndex(GpuResourceType::kGpuAsyncStreamCollectives);
+  auto start_resources =
+      async_tracker.GetResourcesFromInstruction(*group_start);
+  ASSERT_EQ(start_resources.size(), 1);
+  EXPECT_EQ(start_resources[0].first, collective_resource);
+  EXPECT_EQ(start_resources[0].second, ResourceUsageType::kResourceRelease);
+
+  auto done_resources = async_tracker.GetResourcesFromInstruction(*group_done);
+  ASSERT_EQ(done_resources.size(), 1);
+  EXPECT_EQ(done_resources[0].first, collective_resource);
+  EXPECT_EQ(done_resources[0].second, ResourceUsageType::kResourceOccupy);
+  EXPECT_EQ(async_tracker.GetNumResourcesPerInstruction(collective_resource,
+                                                        *group_start),
+            0);
+  EXPECT_EQ(async_tracker.GetNumResourcesPerInstruction(collective_resource,
+                                                        *group_done),
+            1);
+
+  auto start_resource_counts =
+      async_tracker.GetNumResourcesPerInstruction(*group_start);
+  EXPECT_TRUE(start_resource_counts.empty());
+  auto done_resource_counts =
+      async_tracker.GetNumResourcesPerInstruction(*group_done);
+  ASSERT_EQ(done_resource_counts.size(), 1);
+  EXPECT_EQ(done_resource_counts.at(collective_resource), 1);
+}
+
+TEST_F(GpuLatencyHidingSchedulerBaseTest,
+       NestedCollectivesGroupUsesOneResource) {
+  constexpr absl::string_view kHloModule = R"(
+HloModule test, is_scheduled=true
+
+comms {
+  p0 = f32[1] parameter(0)
+  ag0-start = (f32[1], f32[1]) all-gather-start(p0), dimensions={0}
+  ag1-start = (f32[1], f32[1]) all-gather-start(p0), dimensions={0}
+  ag0 = f32[1] all-gather-done(ag0-start)
+  ag1 = f32[1] all-gather-done(ag1-start)
+  ROOT result = (f32[1], f32[1]) tuple(ag0, ag1)
+}
+
+group {
+  p0 = f32[1] parameter(0)
+  group-start = ((f32[1]), (f32[1], f32[1])) async-start(p0),
+    calls=comms, frontend_attributes={_collectives_group=""}
+  ROOT group-done = (f32[1], f32[1]) async-done(group-start)
+}
+
+while_condition {
+  state = (f32[1], f32[1]) parameter(0)
+  ROOT keep-going = pred[] constant(false)
+}
+
+while_body {
+  state = (f32[1], f32[1]) parameter(0)
+  value = f32[1] get-tuple-element(state), index=0
+  ROOT group-call = (f32[1], f32[1]) call(value), to_apply=group
+}
+
+ENTRY main {
+  p0 = f32[1] parameter(0)
+  p1 = f32[1] parameter(1)
+  nested-call = (f32[1], f32[1]) call(p0), to_apply=group
+  init = (f32[1], f32[1]) tuple(p0, p1)
+  nested-while = (f32[1], f32[1]) while(init),
+    condition=while_condition, body=while_body
+  ROOT result = ((f32[1], f32[1]), (f32[1], f32[1])) tuple(
+    nested-call, nested-while)
+})";
+
+  HloModuleConfig config = GetModuleConfig(/*fdo_profile=*/"");
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHloModule, config));
+  HloInstruction* nested_call = FindInstruction(module.get(), "nested-call");
+  HloInstruction* nested_while = FindInstruction(module.get(), "nested-while");
+  ASSERT_NE(nested_call, nullptr);
+  ASSERT_NE(nested_while, nullptr);
+
+  SchedulerConfig sched_config;
+  GpuAsyncTracker async_tracker(sched_config);
+  const int64_t collective_resource =
+      ResourceTypeToIndex(GpuResourceType::kGpuAsyncStreamCollectives);
+  for (const HloInstruction* instruction : {nested_call, nested_while}) {
+    EXPECT_EQ(async_tracker.GetNumResourcesPerInstruction(collective_resource,
+                                                          *instruction),
+              1);
+    auto resource_counts =
+        async_tracker.GetNumResourcesPerInstruction(*instruction);
+    ASSERT_EQ(resource_counts.size(), 1);
+    EXPECT_EQ(resource_counts.at(collective_resource), 1);
+  }
+}
+
+TEST_F(GpuLatencyHidingSchedulerBaseTest,
+       ExplicitCollectivesGroupSerializesWithNativeCollective) {
+  absl::string_view kFdoProfile = R"pb(
+    costs { name: "add" cost_us: 100000.0 }
+  )pb";
+
+  absl::string_view kHloModule = R"(
+HloModule test, replica_count=4
+
+comms {
+  p0 = f32[1] parameter(0)
+  ag = f32[2] all-gather(p0), dimensions={0},
+    replica_groups={{0,2},{1,3}}
+  cp = f32[1] collective-permute(p0), source_target_pairs={{0,1}}
+  ROOT result = (f32[2], f32[1]) tuple(ag, cp)
+}
+
+ENTRY main {
+  p0 = f32[1] parameter(0)
+  p1 = f32[1] parameter(1)
+  group-start = ((f32[1]), (f32[2], f32[1])) async-start(p0),
+    calls=comms, frontend_attributes={_collectives_group=""}
+  native-start = (f32[1], f32[2]) all-gather-start(p0), dimensions={0},
+    replica_groups={{0,1},{2,3}}
+  add = f32[1] add(p1, p1)
+  group-done = (f32[2], f32[1]) async-done(group-start)
+  native-done = f32[2] all-gather-done(native-start)
+  ROOT result = ((f32[2], f32[1]), f32[2], f32[1])
+    tuple(group-done, native-done, add)
+})";
+
+  HloModuleConfig config = GetModuleConfig(kFdoProfile);
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHloModule, config));
+  module->mutable_config()
+      .mutable_debug_options()
+      .set_xla_gpu_experimental_enable_collective_multi_streaming(true);
+  ASSERT_OK(ScheduleModule(module.get(), /*num_parallel_resources=*/2,
+                           DebugOptions::PGLE_STRICTNESS_LEVEL_OFF));
+
+  const HloSchedule& schedule = module->schedule();
+  std::vector<HloInstruction*> instruction_sequence =
+      schedule.sequence(module->entry_computation()).instructions();
+  const int group_start_index =
+      GetIndexByName(instruction_sequence, "group-start");
+  const int group_done_index =
+      GetIndexByName(instruction_sequence, "group-done");
+  const int native_start_index =
+      GetIndexByName(instruction_sequence, "native-start");
+  const int native_done_index =
+      GetIndexByName(instruction_sequence, "native-done");
+  const int add_index = GetIndexByName(instruction_sequence, "add");
+
+  // The second collective in the group and the native collective share ranks
+  // 0 and 1, so they must not overlap.
+  EXPECT_TRUE(group_done_index < native_start_index ||
+              native_done_index < group_start_index);
+  EXPECT_TRUE(
+      (group_start_index < add_index && add_index < group_done_index) ||
+      (native_start_index < add_index && add_index < native_done_index));
+}
+
+TEST_F(GpuLatencyHidingSchedulerBaseTest,
+       ExplicitCollectivesGroupOverlapsNativeWithOneSharedRank) {
+  absl::string_view kFdoProfile = R"pb(
+    costs { name: "add" cost_us: 100000.0 }
+  )pb";
+
+  absl::string_view kHloModule = R"(
+HloModule test, replica_count=4
+
+cp {
+  p0 = f32[1] parameter(0)
+  ROOT cp = f32[1] collective-permute(p0), source_target_pairs={{0,1}}
+}
+
+comms {
+  p0 = f32[1] parameter(0)
+  cp-start = ((f32[1]), f32[1]) async-start(p0), calls=cp
+  ROOT cp-done = f32[1] async-done(cp-start)
+}
+
+ENTRY main {
+  p0 = f32[1] parameter(0)
+  p1 = f32[1] parameter(1)
+  group-start = ((f32[1]), f32[1]) async-start(p0),
+    calls=comms, frontend_attributes={_collectives_group=""}
+  native-start = (f32[1], f32[2]) all-gather-start(p0), dimensions={0},
+    replica_groups={{0,2},{1,3}}
+  add = f32[1] add(p1, p1)
+  group-done = f32[1] async-done(group-start)
+  native-done = f32[2] all-gather-done(native-start)
+  ROOT result = (f32[1], f32[2], f32[1])
+    tuple(group-done, native-done, add)
+})";
+
+  HloModuleConfig config = GetModuleConfig(kFdoProfile);
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHloModule, config));
+  module->mutable_config()
+      .mutable_debug_options()
+      .set_xla_gpu_experimental_enable_collective_multi_streaming(true);
+  ASSERT_OK(ScheduleModule(module.get(), /*num_parallel_resources=*/2,
+                           DebugOptions::PGLE_STRICTNESS_LEVEL_OFF));
+
+  const HloSchedule& schedule = module->schedule();
+  std::vector<HloInstruction*> instruction_sequence =
+      schedule.sequence(module->entry_computation()).instructions();
+  const int group_start_index =
+      GetIndexByName(instruction_sequence, "group-start");
+  const int group_done_index =
+      GetIndexByName(instruction_sequence, "group-done");
+  const int native_start_index =
+      GetIndexByName(instruction_sequence, "native-start");
+  const int native_done_index =
+      GetIndexByName(instruction_sequence, "native-done");
+  const int add_index = GetIndexByName(instruction_sequence, "add");
+
+  // Every native subgroup shares at most one rank with the group's
+  // collective-permute, so the collectives can overlap.
+  EXPECT_TRUE((group_start_index < native_start_index &&
+               native_start_index < group_done_index) ||
+              (native_start_index < group_start_index &&
+               group_start_index < native_done_index));
+  EXPECT_TRUE(
+      (group_start_index < add_index && add_index < group_done_index) ||
+      (native_start_index < add_index && add_index < native_done_index));
+}
+
+TEST_F(GpuLatencyHidingSchedulerBaseTest,
+       ExplicitCollectivesGroupWithImplicitReplicaGroupsSerializes) {
+  absl::string_view kFdoProfile = R"pb(
+    costs { name: "add" cost_us: 100000.0 }
+  )pb";
+
+  absl::string_view kHloModule = R"(
+HloModule test, replica_count=4
+
+comms {
+  p0 = f32[1] parameter(0)
+  ROOT ag = f32[4] all-gather(p0), dimensions={0}
+}
+
+ENTRY main {
+  p0 = f32[1] parameter(0)
+  p1 = f32[1] parameter(1)
+  group-start = ((f32[1]), f32[4]) async-start(p0),
+    calls=comms, frontend_attributes={_collectives_group=""}
+  native-start = (f32[1], f32[2]) all-gather-start(p0), dimensions={0},
+    replica_groups={{0,1},{2,3}}
+  add = f32[1] add(p1, p1)
+  group-done = f32[4] async-done(group-start)
+  native-done = f32[2] all-gather-done(native-start)
+  ROOT result = (f32[4], f32[2], f32[1])
+    tuple(group-done, native-done, add)
+})";
+
+  HloModuleConfig config = GetModuleConfig(kFdoProfile);
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHloModule, config));
+  module->mutable_config()
+      .mutable_debug_options()
+      .set_xla_gpu_experimental_enable_collective_multi_streaming(true);
+  ASSERT_OK(ScheduleModule(module.get(), /*num_parallel_resources=*/2,
+                           DebugOptions::PGLE_STRICTNESS_LEVEL_OFF));
+
+  const HloSchedule& schedule = module->schedule();
+  std::vector<HloInstruction*> instruction_sequence =
+      schedule.sequence(module->entry_computation()).instructions();
+  const int group_start_index =
+      GetIndexByName(instruction_sequence, "group-start");
+  const int group_done_index =
+      GetIndexByName(instruction_sequence, "group-done");
+  const int native_start_index =
+      GetIndexByName(instruction_sequence, "native-start");
+  const int native_done_index =
+      GetIndexByName(instruction_sequence, "native-done");
+  const int add_index = GetIndexByName(instruction_sequence, "add");
+
+  // Empty replica_groups means that all replicas participate. Because that
+  // implicit group cannot be materialized here, serialize conservatively.
+  EXPECT_TRUE(group_done_index < native_start_index ||
+              native_done_index < group_start_index);
+  EXPECT_TRUE(
+      (group_start_index < add_index && add_index < group_done_index) ||
+      (native_start_index < add_index && add_index < native_done_index));
+}
+
+TEST_F(GpuLatencyHidingSchedulerBaseTest,
+       ScheduleDynamicSliceCopyFusionAsMemcpy) {
+  absl::string_view kHloModule = R"(
+HloModule test, num_partitions=4
+
+%dsf_computation (param_0: f32[2,2,2], param_1: s32[], param_2: s32[], param_3: s32[]) -> f32[1,2,2] {
+  %param_0 = f32[2,2,2]{2,1,0} parameter(0)
+  %param_1 = s32[] parameter(1)
+  %param_2 = s32[] parameter(2)
+  %param_3 = s32[] parameter(3)
+  ROOT %dynamic-slice = f32[1,2,2]{2,1,0} dynamic-slice(%param_0, %param_1, %param_2, %param_3), dynamic_slice_sizes={1,2,2},
+      backend_config={"dynamic_slice_config":{"byte_offset":"0","byte_stride":"0"}}
+}
+
+%async_computation (param_0: f32[2,2,2], param_1: s32[], param_2: s32[], param_3: s32[]) -> f32[1,2,2] {
+  %param_0 = f32[2,2,2]{2,1,0} parameter(0)
+  %param_1 = s32[] parameter(1)
+  %param_2 = s32[] parameter(2)
+  %param_3 = s32[] parameter(3)
+  ROOT %dynamic-slice-fusion = f32[1,2,2]{2,1,0} fusion(%param_0, %param_1, %param_2, %param_3), kind=kLoop, calls=%dsf_computation
+}
+
+ENTRY main {
+ p0 = f32[1,2,2]{2,1,0} parameter(0)
+ p1 = f32[2,2,2]{2,1,0} parameter(1)
+ %c0 = s32[] constant(0)
+ %dynamic-slice-start = ((f32[2,2,2]{2,1,0}, s32[], s32[], s32[]), f32[1,2,2]{2,1,0}, u32[]) async-start(
+      %p1, %c0, %c0, %c0), calls=%async_computation
+ %dynamic-slice-done = f32[1,2,2]{2,1,0} async-done(%dynamic-slice-start)
+ %add = f32[1,2,2]{2,1,0} add(p0, p0)
+ ROOT tuple = (f32[1,2,2]{2,1,0}, f32[1,2,2]{2,1,0}) tuple(%dynamic-slice-done, %add)
+})";
+
+  absl::string_view kFdoProfile = "";
+  HloModuleConfig config = GetModuleConfig(kFdoProfile);
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHloModule, config));
+
+  HloComputation* comp = module->entry_computation();
+  HloInstruction* dynamic_slice_start =
+      comp->GetInstructionWithName("dynamic-slice-start");
+  HloInstruction* dynamic_slice_done =
+      comp->GetInstructionWithName("dynamic-slice-done");
+
+  SchedulerConfig sched_config;
+  GpuAsyncTracker async_tracker(sched_config);
+  EXPECT_TRUE(async_tracker.IsSupportedAsyncStart(*dynamic_slice_start));
+  EXPECT_TRUE(async_tracker.IsSupportedAsyncDone(*dynamic_slice_done));
+
+  int64_t memcpy_resource =
+      ResourceTypeToIndex(GpuResourceType::kGpuAsyncStreamMemcpy);
+  auto start_resources =
+      async_tracker.GetResourcesFromInstruction(*dynamic_slice_start);
+  ASSERT_EQ(start_resources.size(), 1);
+  EXPECT_EQ(start_resources[0].first, memcpy_resource);
+  EXPECT_EQ(start_resources[0].second, ResourceUsageType::kResourceRelease);
+  EXPECT_EQ(async_tracker.GetResourceName(memcpy_resource),
+            "kGpuAsyncStreamMemcpy");
+
+  auto done_resources =
+      async_tracker.GetResourcesFromInstruction(*dynamic_slice_done);
+  ASSERT_EQ(done_resources.size(), 1);
+  EXPECT_EQ(done_resources[0].first, memcpy_resource);
+  EXPECT_EQ(done_resources[0].second, ResourceUsageType::kResourceOccupy);
+
+  SchedulerConfig top_down_config;
+  top_down_config.top_down_scheduling = true;
+  GpuAsyncTracker top_down_tracker(top_down_config);
+  auto top_down_start_resources =
+      top_down_tracker.GetResourcesFromInstruction(*dynamic_slice_start);
+  ASSERT_EQ(top_down_start_resources.size(), 1);
+  EXPECT_EQ(top_down_start_resources[0].first, memcpy_resource);
+  EXPECT_EQ(top_down_start_resources[0].second,
+            ResourceUsageType::kResourceOccupy);
+  auto top_down_done_resources =
+      top_down_tracker.GetResourcesFromInstruction(*dynamic_slice_done);
+  ASSERT_EQ(top_down_done_resources.size(), 1);
+  EXPECT_EQ(top_down_done_resources[0].first, memcpy_resource);
+  EXPECT_EQ(top_down_done_resources[0].second,
+            ResourceUsageType::kResourceRelease);
+
+  EXPECT_OK(ScheduleModule(module.get(), /*num_parallel_resources=*/2));
+  const HloSchedule& schedule = module->schedule();
+  std::vector<HloInstruction*> instruction_sequence =
+      schedule.sequence(module->entry_computation()).instructions();
+  EXPECT_LT(GetIndexByName(instruction_sequence, "dynamic-slice-start"),
+            GetIndexByName(instruction_sequence, "add"));
+  EXPECT_LT(GetIndexByName(instruction_sequence, "add"),
+            GetIndexByName(instruction_sequence, "dynamic-slice-done"));
+}
+
+TEST_F(GpuLatencyHidingSchedulerBaseTest,
+       SelectiveMemcpyOverlapChangesOnlyMemcpyHazard) {
+  const int64_t memcpy_resource =
+      ResourceTypeToIndex(GpuResourceType::kGpuAsyncStreamMemcpy);
+  const int64_t collective_resource =
+      ResourceTypeToIndex(GpuResourceType::kGpuAsyncStreamCollectives);
+
+  SchedulerConfig default_config;
+  GpuAsyncTracker default_tracker(default_config);
+  EXPECT_EQ(default_tracker.GetResourceHazardType(memcpy_resource),
+            ResourceHazardType::kUnshareable);
+
+  SchedulerConfig selective_config;
+  selective_config.enable_selective_resources = true;
+  GpuAsyncTracker selective_tracker(selective_config);
+  EXPECT_EQ(selective_tracker.GetResourceHazardType(memcpy_resource),
+            ResourceHazardType::kSelective);
+  EXPECT_EQ(selective_tracker.GetResourceHazardType(collective_resource),
+            ResourceHazardType::kUnshareable);
+}
+
+TEST_F(GpuLatencyHidingSchedulerBaseTest,
+       SelectiveMemcpyOverlapUsesModelBeforeOpcodeFallback) {
+  constexpr absl::string_view kHloModule = R"(
+HloModule test, is_scheduled=true
+
+dot_computation {
+  lhs = f32[8,8] parameter(0)
+  rhs = f32[8,8] parameter(1)
+  ROOT dot = f32[8,8] dot(lhs, rhs),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0}
+}
+
+loop_computation {
+  lhs = f32[8,8] parameter(0)
+  rhs = f32[8,8] parameter(1)
+  ROOT add = f32[8,8] add(lhs, rhs)
+}
+
+transpose_computation {
+  input = f32[8,8] parameter(0)
+  ROOT transpose = f32[8,8] transpose(input), dimensions={1,0}
+}
+
+ENTRY main {
+  p0 = f32[8,8] parameter(0)
+  p1 = f32[8,8] parameter(1)
+  memory_heavy_dot = f32[8,8] fusion(p0, p1), kind=kOutput,
+    calls=dot_computation
+  compute_heavy_loop = f32[8,8] fusion(p0, p1), kind=kLoop,
+    calls=loop_computation
+  exec_only_dot = f32[8,8] dot(p0, p1),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  zero_cost_transpose = f32[8,8] fusion(p0), kind=kLoop,
+    calls=transpose_computation
+  tie_unknown = f32[8,8] custom-call(p0),
+    custom_call_target="unknown_tie"
+  unknown_call = f32[8,8] custom-call(p0), custom_call_target="unknown"
+  cublas = f32[8,8] custom-call(p0, p1),
+    custom_call_target="__cublas$gemm"
+  cudnn = f32[8,8] custom-call(p0, p1),
+    custom_call_target="__cudnn$convForward"
+  ROOT result = (f32[8,8], f32[8,8], f32[8,8], f32[8,8],
+                 f32[8,8], f32[8,8], f32[8,8], f32[8,8])
+    tuple(memory_heavy_dot, compute_heavy_loop, exec_only_dot,
+          zero_cost_transpose, tie_unknown, unknown_call, cublas, cudnn)
+}
+)";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHloModule));
+  HloComputation* computation = module->entry_computation();
+
+  auto set_cost = [&](absl::string_view name, double exec_time,
+                      double compute_time, double memory_access_time) {
+    GpuBackendConfig config;
+    ReificationCost* cost = config.add_reification_cost();
+    cost->set_exec_time_us(exec_time);
+    cost->set_compute_time_us(compute_time);
+    cost->set_memory_access_time_us(memory_access_time);
+    return computation->GetInstructionWithName(name)->set_backend_config(
+        config);
+  };
+  ASSERT_OK(set_cost("memory_heavy_dot", 10.0, 1.0, 9.0));
+  ASSERT_OK(set_cost("compute_heavy_loop", 10.0, 9.0, 1.0));
+  ASSERT_OK(set_cost("zero_cost_transpose", 0.0, 0.0, 0.0));
+  ASSERT_OK(set_cost("tie_unknown", 10.0, 5.0, 5.0));
+  GpuBackendConfig exec_only_config;
+  exec_only_config.add_reification_cost()->set_exec_time_us(10.0);
+  ASSERT_OK(computation->GetInstructionWithName("exec_only_dot")
+                ->set_backend_config(exec_only_config));
+
+  HloSchedule schedule(module.get());
+  for (HloComputation* scheduled_computation :
+       module->MakeNonfusionComputations()) {
+    schedule.set_sequence(scheduled_computation,
+                          scheduled_computation->MakeInstructionPostOrder());
+  }
+  ASSERT_OK(module->set_schedule(std::move(schedule)));
+
+  SchedulerConfig selective_config;
+  selective_config.enable_selective_resources = true;
+  auto selective_tracker = std::make_shared<GpuAsyncTracker>(selective_config);
+  auto latency_estimator =
+      std::make_shared<GpuLatencyEstimator>(/*pointer_size=*/8);
+  stream_executor::DeviceDescription gpu_device_info =
+      TestGpuDeviceInfo::CudaOrRocmDeviceInfo();
+  GpuAliasInfo alias_info(gpu_device_info);
+  auto selective_context = std::make_shared<const SchedulingContext>(
+      module.get(), latency_estimator, selective_tracker, &alias_info);
+  std::vector<HloInstruction*> post_order =
+      computation->MakeInstructionPostOrder();
+  HloScheduleGraph selective_graph(&post_order, selective_context);
+  selective_tracker->PostProcessScheduleGraph(&selective_graph,
+                                              latency_estimator.get());
+
+  auto is_valuable = [&](absl::string_view name) {
+    return selective_graph.GetNode(computation->GetInstructionWithName(name))
+        .GetValuableForSelectiveOverlap();
+  };
+  // Valid model data overrides the opcode fallback in both directions.
+  EXPECT_FALSE(is_valuable("memory_heavy_dot"));
+  EXPECT_TRUE(is_valuable("compute_heavy_loop"));
+  EXPECT_TRUE(is_valuable("tie_unknown"));
+  // Exec-only and all-zero entries are not a compute/memory breakdown.
+  EXPECT_TRUE(is_valuable("exec_only_dot"));
+  EXPECT_FALSE(is_valuable("zero_cost_transpose"));
+  // The fallback recognizes only known compute-heavy custom calls.
+  EXPECT_FALSE(is_valuable("unknown_call"));
+  EXPECT_TRUE(is_valuable("cublas"));
+  EXPECT_TRUE(is_valuable("cudnn"));
+  EXPECT_TRUE(is_valuable("p0"));
+
+  SchedulerConfig default_config;
+  auto default_tracker = std::make_shared<GpuAsyncTracker>(default_config);
+  auto default_context = std::make_shared<const SchedulingContext>(
+      module.get(), latency_estimator, default_tracker, &alias_info);
+  HloScheduleGraph default_graph(&post_order, default_context);
+  default_tracker->PostProcessScheduleGraph(&default_graph,
+                                            latency_estimator.get());
+  EXPECT_TRUE(
+      default_graph
+          .GetNode(computation->GetInstructionWithName("memory_heavy_dot"))
+          .GetValuableForSelectiveOverlap());
+  EXPECT_TRUE(
+      default_graph.GetNode(computation->GetInstructionWithName("unknown_call"))
+          .GetValuableForSelectiveOverlap());
+}
+
+TEST_F(GpuLatencyHidingSchedulerBaseTest,
+       D2DTargetRuleDetectsOpenWindowInBothDirections) {
+  constexpr absl::string_view kHloModule = R"(
+HloModule test, is_scheduled=true
+
+ENTRY main {
+  p0 = f32[8] parameter(0)
+  p1 = f32[8] parameter(1)
+  valuable = f32[8] add(p0, p1)
+  nonvaluable = f32[8] negate(p0)
+  ROOT result = (f32[8], f32[8]) tuple(valuable, nonvaluable)
+}
+)";
+
+  for (bool top_down : {false, true}) {
+    ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                         ParseAndReturnVerifiedModule(kHloModule));
+    SchedulerConfig config;
+    config.enable_selective_resources = true;
+    config.top_down_scheduling = top_down;
+    auto async_tracker = std::make_shared<GpuAsyncTracker>(config);
+    auto latency_estimator =
+        std::make_shared<GpuLatencyEstimator>(/*pointer_size=*/8);
+    stream_executor::DeviceDescription gpu_device_info =
+        TestGpuDeviceInfo::CudaOrRocmDeviceInfo();
+    GpuAliasInfo alias_info(gpu_device_info);
+    auto scheduling_context = std::make_shared<const SchedulingContext>(
+        module.get(), latency_estimator, async_tracker, &alias_info);
+    DefaultSchedulerCore scheduler_core(scheduling_context, config);
+    ASSERT_OK(scheduler_core.InitializeScheduler(module.get()));
+    ASSERT_OK_AND_ASSIGN(
+        std::shared_ptr<SchedulerCore::SchedulingState> base_state,
+        scheduler_core.MakeSchedulingState(module->entry_computation()));
+    auto* state =
+        dynamic_cast<DefaultSchedulerCore::SchedulingState*>(base_state.get());
+    ASSERT_NE(state, nullptr);
+
+    HloGraphNode& valuable_node = state->sched_graph->GetNode(
+        module->entry_computation()->GetInstructionWithName("valuable"));
+    HloGraphNode& nonvaluable_node = state->sched_graph->GetNode(
+        module->entry_computation()->GetInstructionWithName("nonvaluable"));
+    valuable_node.SetValuableForSelectiveOverlap(true);
+    nonvaluable_node.SetValuableForSelectiveOverlap(false);
+    DefaultSchedulerCore::ScheduleCandidate valuable_candidate;
+    valuable_candidate.node = &valuable_node;
+    valuable_candidate.scheduling_state = state;
+    DefaultSchedulerCore::ScheduleCandidate nonvaluable_candidate;
+    nonvaluable_candidate.node = &nonvaluable_node;
+    nonvaluable_candidate.scheduling_state = state;
+
+    EXPECT_FALSE(IsGpuD2DOverlapWindowOpen(*state));
+    EXPECT_FALSE(
+        GpuD2DOverlapSchedulingRule(valuable_candidate, nonvaluable_candidate)
+            .has_value());
+
+    const int64_t memcpy_resource =
+        ResourceTypeToIndex(GpuResourceType::kGpuAsyncStreamMemcpy);
+    state->max_concurrent_resource[memcpy_resource] =
+        async_tracker->GetNumAvailableResources(memcpy_resource) - 1;
+    EXPECT_TRUE(IsGpuD2DOverlapWindowOpen(*state));
+    std::optional<DefaultSchedulerCore::CandidateResult> result =
+        GpuD2DOverlapSchedulingRule(valuable_candidate, nonvaluable_candidate);
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(&result->result, &valuable_candidate);
+    EXPECT_STREQ(result->reason, "kPreferComputeForD2DMemcpyOverlap");
+  }
+}
+
+constexpr absl::string_view kSelectiveMemcpyOverlapHloModule = R"(
+HloModule test, num_partitions=4
+
+dynamic_slice_computation {
+  input = f32[2,2,2] parameter(0)
+  i0 = s32[] parameter(1)
+  i1 = s32[] parameter(2)
+  i2 = s32[] parameter(3)
+  ROOT dynamic_slice = f32[1,2,2] dynamic-slice(input, i0, i1, i2),
+    dynamic_slice_sizes={1,2,2},
+    backend_config={"dynamic_slice_config":{"byte_offset":"0","byte_stride":"0"}}
+}
+
+async_computation {
+  input = f32[2,2,2] parameter(0)
+  i0 = s32[] parameter(1)
+  i1 = s32[] parameter(2)
+  i2 = s32[] parameter(3)
+  ROOT dynamic_slice_fusion = f32[1,2,2] fusion(input, i0, i1, i2),
+    kind=kLoop, calls=dynamic_slice_computation
+}
+
+dot_computation {
+  lhs = f32[64,64] parameter(0)
+  rhs = f32[64,64] parameter(1)
+  ROOT dot = f32[64,64] dot(lhs, rhs),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0}
+}
+
+transpose_computation {
+  input = f32[64,64] parameter(0)
+  ROOT transpose = f32[64,64] transpose(input), dimensions={1,0}
+}
+
+ENTRY main {
+  p0 = f32[64,64] parameter(0)
+  p1 = f32[64,64] parameter(1)
+  copy_input = f32[2,2,2] parameter(2)
+  c0 = s32[] constant(0)
+  dynamic_slice_start = ((f32[2,2,2], s32[], s32[], s32[]),
+                         f32[1,2,2], u32[])
+    async-start(copy_input, c0, c0, c0), calls=async_computation
+  dynamic_slice_done = f32[1,2,2] async-done(dynamic_slice_start)
+  dot_fusion = f32[64,64] fusion(p0, p1), kind=kOutput,
+    calls=dot_computation
+  transpose_fusion = f32[64,64] fusion(p0), kind=kLoop,
+    calls=transpose_computation
+  add = f32[64,64] add(p0, p1)
+  ROOT result = (f32[1,2,2], f32[64,64], f32[64,64], f32[64,64])
+    tuple(dynamic_slice_done, dot_fusion, transpose_fusion, add)
+}
+)";
+
+TEST_F(GpuLatencyHidingSchedulerBaseTest,
+       SelectiveMemcpyOverlapKeepsOnlyComputeInsideBottomUpWindow) {
+  HloModuleConfig config = GetModuleConfig("");
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<HloModule> module,
+      ParseAndReturnVerifiedModule(kSelectiveMemcpyOverlapHloModule, config));
+  ASSERT_OK(ScheduleModule(module.get(), /*num_parallel_resources=*/2,
+                           DebugOptions::PGLE_STRICTNESS_LEVEL_OFF,
+                           /*enable_early_collective_start=*/false,
+                           /*enable_selective_memcpy_overlap=*/true));
+
+  const std::vector<HloInstruction*>& sequence =
+      module->schedule().sequence(module->entry_computation()).instructions();
+  const int start = GetIndexByName(sequence, "dynamic_slice_start");
+  const int done = GetIndexByName(sequence, "dynamic_slice_done");
+  const int dot = GetIndexByName(sequence, "dot_fusion");
+  const int transpose = GetIndexByName(sequence, "transpose_fusion");
+  const int add = GetIndexByName(sequence, "add");
+
+  EXPECT_LT(transpose, start);
+  EXPECT_LT(add, start);
+  EXPECT_LT(start, dot);
+  EXPECT_LT(dot, done);
+}
+
+TEST_F(GpuLatencyHidingSchedulerBaseTest,
+       SelectiveMemcpyOverlapKeepsOnlyComputeInsideTopDownWindow) {
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<HloModule> module,
+      ParseAndReturnVerifiedModule(kSelectiveMemcpyOverlapHloModule));
+  HloSchedule initial_schedule(module.get());
+  for (HloComputation* computation : module->MakeNonfusionComputations()) {
+    initial_schedule.set_sequence(computation,
+                                  computation->MakeInstructionPostOrder());
+  }
+  ASSERT_OK(module->set_schedule(std::move(initial_schedule)));
+
+  SchedulerConfig config =
+      MakeGPUSchedulerConfig(UINT64_MAX, /*overlap_limit=*/2,
+                             /*async_compute_limit=*/2);
+  config.top_down_scheduling = true;
+  // Exercise the early-target hook when it is above memory pressure.
+  config.force_delay_over_memory_pressure = true;
+  config.enable_selective_resources = true;
+  config.max_hops_to_closest_selective_overlap = 1;
+  auto async_tracker = std::make_shared<GpuAsyncTracker>(config);
+  auto latency_estimator =
+      std::make_shared<GpuLatencyEstimator>(/*pointer_size=*/8);
+  stream_executor::DeviceDescription gpu_device_info =
+      TestGpuDeviceInfo::CudaOrRocmDeviceInfo();
+  GpuAliasInfo alias_info(gpu_device_info);
+  auto scheduling_context = std::make_shared<const SchedulingContext>(
+      module.get(), latency_estimator, async_tracker, &alias_info);
+  auto scheduler_core = std::make_shared<DefaultSchedulerCore>(
+      scheduling_context, config,
+      /*target_scheduling_rule=*/nullptr,
+      /*early_target_scheduling_rule=*/GpuD2DOverlapSchedulingRule);
+  LatencyHidingScheduler scheduler(scheduling_context, scheduler_core);
+  ASSERT_OK(scheduler.Run(module.get()).status());
+
+  const std::vector<HloInstruction*>& sequence =
+      module->schedule().sequence(module->entry_computation()).instructions();
+  const int start = GetIndexByName(sequence, "dynamic_slice_start");
+  const int done = GetIndexByName(sequence, "dynamic_slice_done");
+  const int dot = GetIndexByName(sequence, "dot_fusion");
+  const int transpose = GetIndexByName(sequence, "transpose_fusion");
+  const int add = GetIndexByName(sequence, "add");
+
+  EXPECT_LT(start, dot);
+  EXPECT_LT(dot, done);
+  EXPECT_LT(done, transpose);
+  EXPECT_LT(done, add);
+}
+
+TEST_F(GpuLatencyHidingSchedulerBaseTest,
+       SelectiveMemcpyOverlapWithCompetingAsyncStart) {
+  constexpr absl::string_view kHloModule = R"(
+HloModule test, num_partitions=4
+
+dynamic_slice_computation {
+  input = f32[2,2,2] parameter(0)
+  i0 = s32[] parameter(1)
+  i1 = s32[] parameter(2)
+  i2 = s32[] parameter(3)
+  ROOT dynamic_slice = f32[1,2,2] dynamic-slice(input, i0, i1, i2),
+    dynamic_slice_sizes={1,2,2},
+    backend_config={"dynamic_slice_config":{"byte_offset":"0","byte_stride":"0"}}
+}
+
+async_computation {
+  input = f32[2,2,2] parameter(0)
+  i0 = s32[] parameter(1)
+  i1 = s32[] parameter(2)
+  i2 = s32[] parameter(3)
+  ROOT dynamic_slice_fusion = f32[1,2,2] fusion(input, i0, i1, i2),
+    kind=kLoop, calls=dynamic_slice_computation
+}
+
+transpose_computation {
+  input = f32[64,64] parameter(0)
+  ROOT transpose = f32[64,64] transpose(input), dimensions={1,0}
+}
+
+dot_computation {
+  lhs = f32[64,64] parameter(0)
+  rhs = f32[64,64] parameter(1)
+  ROOT dot = f32[64,64] dot(lhs, rhs),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0}
+}
+
+add_reduction {
+  x = f32[] parameter(0)
+  y = f32[] parameter(1)
+  ROOT sum = f32[] add(x, y)
+}
+
+ENTRY main {
+  p0 = f32[64,64] parameter(0)
+  p1 = f32[64,64] parameter(1)
+  copy_input = f32[2,2,2] parameter(2)
+  c0 = s32[] constant(0)
+  dynamic_slice_start = ((f32[2,2,2], s32[], s32[], s32[]),
+                         f32[1,2,2], u32[])
+    async-start(copy_input, c0, c0, c0), calls=async_computation
+  dynamic_slice_done = f32[1,2,2] async-done(dynamic_slice_start)
+  transpose_fusion = f32[64,64] fusion(p0), kind=kLoop,
+    calls=transpose_computation
+  dot_fusion = f32[64,64] fusion(transpose_fusion, p1), kind=kOutput,
+    calls=dot_computation
+  add0 = f32[64,64] add(p0, p1)
+  add1 = f32[64,64] add(add0, p1)
+  all_reduce_start = f32[64,64] all-reduce-start(add1),
+    to_apply=add_reduction
+  all_reduce_done = f32[64,64] all-reduce-done(all_reduce_start)
+  ROOT result = (f32[1,2,2], f32[64,64], f32[64,64])
+    tuple(dynamic_slice_done, all_reduce_done, dot_fusion)
+}
+)";
+  HloModuleConfig config = GetModuleConfig("");
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHloModule, config));
+  ASSERT_OK(ScheduleModule(module.get(), /*num_parallel_resources=*/2,
+                           DebugOptions::PGLE_STRICTNESS_LEVEL_OFF,
+                           /*enable_early_collective_start=*/true,
+                           /*enable_selective_memcpy_overlap=*/true));
+
+  const std::vector<HloInstruction*>& sequence =
+      module->schedule().sequence(module->entry_computation()).instructions();
+  const int transpose = GetIndexByName(sequence, "transpose_fusion");
+  const int memcpy_start = GetIndexByName(sequence, "dynamic_slice_start");
+  const int memcpy_done = GetIndexByName(sequence, "dynamic_slice_done");
+  EXPECT_LT(transpose, memcpy_start);
+  EXPECT_LT(memcpy_start, memcpy_done);
 }
 
 TEST_F(GpuLatencyHidingSchedulerBaseTest, ParallelThreadsShouldBeScheduled) {
@@ -1083,11 +1958,11 @@ TEST_F(GpuLatencyHidingSchedulerBaseTest, ParallelThreadsShouldBeScheduled) {
 
   absl::string_view kFdoProfile = "";
   HloModuleConfig config = GetModuleConfig(kFdoProfile);
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(kHloModule, config));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHloModule, config));
 
   // It should compile without any issues.
-  TF_EXPECT_OK(ScheduleModule(module.get()));
+  EXPECT_OK(ScheduleModule(module.get()));
 }
 
 TEST_F(GpuLatencyHidingSchedulerBaseTest,
@@ -1129,11 +2004,11 @@ ENTRY main {
   absl::string_view kFdoProfile = "";
 
   HloModuleConfig config = GetModuleConfig(kFdoProfile);
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(kHloModule, config));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHloModule, config));
 
-  TF_EXPECT_OK(ScheduleModule(module.get(), /*num_parallel_resources=*/16,
-                              DebugOptions::PGLE_STRICTNESS_LEVEL_ERROR, true));
+  EXPECT_OK(ScheduleModule(module.get(), /*num_parallel_resources=*/16,
+                           DebugOptions::PGLE_STRICTNESS_LEVEL_ERROR, true));
   const HloSchedule& schedule = module->schedule();
   std::vector<HloInstruction*> instruction_sequence =
       schedule.sequence(module->entry_computation()).instructions();
@@ -1234,10 +2109,10 @@ TEST_F(GpuLatencyHidingSchedulerBaseTest, DelayMoveToHostAsyncStart) {
 
   absl::string_view kFdoProfile = "";
   xla::HloModuleConfig config = GetModuleConfig(kFdoProfile);
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
-                          ParseAndReturnVerifiedModule(kHloModule, config));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
+                       ParseAndReturnVerifiedModule(kHloModule, config));
 
-  TF_EXPECT_OK(ScheduleModule(module.get()));
+  EXPECT_OK(ScheduleModule(module.get()));
   const HloSchedule& schedule = module->schedule();
   const std::vector<xla::HloInstruction*>& instruction_sequence =
       schedule.sequence(module->entry_computation()).instructions();
@@ -1283,10 +2158,10 @@ ENTRY main {
   absl::string_view kFdoProfile = "";
 
   auto config = GetModuleConfig(kFdoProfile);
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kHloModule, config));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnVerifiedModule(kHloModule, config));
 
-  TF_EXPECT_OK(ScheduleModule(module.get()));
+  EXPECT_OK(ScheduleModule(module.get()));
   auto schedule = module->schedule();
   std::vector<HloInstruction*> instruction_sequence =
       schedule.sequence(module->entry_computation()).instructions();

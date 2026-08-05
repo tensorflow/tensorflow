@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/stream_executor/kernel_args_packing_spec.h"
 
+#include <cstddef>
 #include <memory>
 #include <optional>
 #include <utility>

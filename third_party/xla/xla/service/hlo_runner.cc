@@ -160,6 +160,10 @@ ExecuteOptions UpdateOrCreateDefaultExecuteOptions(
   } else {
     out_options = *in_options;
   }
+  if (out_options.hlo_output_callbacks.empty()) {
+    out_options.hlo_output_callbacks =
+        replicated_execute_options.hlo_output_callbacks;
+  }
   return out_options;
 }
 

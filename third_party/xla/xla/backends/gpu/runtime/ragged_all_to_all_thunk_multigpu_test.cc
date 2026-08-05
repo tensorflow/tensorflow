@@ -18,6 +18,7 @@ limitations under the License.
 // UpdateChildCommand support.
 
 #include <cstdint>
+#include <memory>
 #include <utility>
 #include <vector>
 
@@ -204,12 +205,11 @@ static absl::Status SetupDeviceSlot(int device_ordinal, DeviceTestSlot& slot,
 
 static absl::Status RunExecuteOnStreamPhase(DeviceTestSlot& slot,
                                             RaggedAllToAllThunk& thunk,
+                                            BufferAllocations& allocations,
                                             int device_ordinal, int phase) {
   RETURN_IF_ERROR(
       PrepareInputs(*slot.stream, slot.create_buffers, device_ordinal, phase));
 
-  BufferAllocations allocations =
-      MakeBufferAllocations(slot, slot.create_buffers);
   Thunk::ExecuteParams execute_params = MakeExecuteParams(slot, allocations);
 
   RETURN_IF_ERROR(ExecuteOnStreamAndBlock(thunk, execute_params));
@@ -219,12 +219,11 @@ static absl::Status RunExecuteOnStreamPhase(DeviceTestSlot& slot,
 
 static absl::Status RunCreatePhase(DeviceTestSlot& slot,
                                    RaggedAllToAllThunk& thunk,
+                                   BufferAllocations& allocations,
                                    int device_ordinal, int phase) {
   RETURN_IF_ERROR(
       PrepareInputs(*slot.stream, slot.create_buffers, device_ordinal, phase));
 
-  BufferAllocations allocations =
-      MakeBufferAllocations(slot, slot.create_buffers);
   Thunk::ExecuteParams execute_params = MakeExecuteParams(slot, allocations);
 
   RETURN_IF_ERROR(ExecuteOnStreamAndBlock(thunk, execute_params));
@@ -239,12 +238,11 @@ static absl::Status RunCreatePhase(DeviceTestSlot& slot,
 
 static absl::Status RunUpdatePhase(DeviceTestSlot& slot,
                                    RaggedAllToAllThunk& thunk,
+                                   BufferAllocations& allocations,
                                    int device_ordinal, int phase) {
   RETURN_IF_ERROR(
       PrepareInputs(*slot.stream, slot.update_buffers, device_ordinal, phase));
 
-  BufferAllocations allocations =
-      MakeBufferAllocations(slot, slot.update_buffers);
   Thunk::ExecuteParams execute_params = MakeExecuteParams(slot, allocations);
 
   RETURN_IF_ERROR(RecordCommandBufferUpdate(slot, thunk, execute_params,
@@ -262,13 +260,18 @@ TEST(RaggedAllToAllThunkMultiGpuTest, ExecuteOnStream) {
   DeviceAssignment device_assignment = MakeDeviceAssignment(kNumDevices);
   std::vector<BufferAllocation> buffer_allocations =
       MakeThunkBufferAllocations();
-  RaggedAllToAllThunk thunk = MakeThunk(buffer_allocations);
   std::vector<DeviceTestSlot> slots(kNumDevices);
+  // Make sure allocations outlive the thunk.
+  std::vector<std::unique_ptr<BufferAllocations>> allocs(kNumDevices);
+  RaggedAllToAllThunk thunk = MakeThunk(buffer_allocations);
 
   ASSERT_OK(
       RunOnDevices(kNumDevices, "ragged_execute", [&](int d) -> absl::Status {
         RETURN_IF_ERROR(SetupDeviceSlot(d, slots[d], thunk, device_assignment));
-        return RunExecuteOnStreamPhase(slots[d], thunk, d, /*phase=*/1);
+        allocs[d] = std::make_unique<BufferAllocations>(
+            MakeBufferAllocations(slots[d], slots[d].create_buffers));
+        return RunExecuteOnStreamPhase(slots[d], thunk, *allocs[d], d,
+                                       /*phase=*/1);
       }));
 }
 
@@ -283,13 +286,17 @@ TEST(RaggedAllToAllThunkMultiGpuTest, RecordCommandBufferCreate) {
   DeviceAssignment device_assignment = MakeDeviceAssignment(kNumDevices);
   std::vector<BufferAllocation> buffer_allocations =
       MakeThunkBufferAllocations();
-  RaggedAllToAllThunk thunk = MakeThunk(buffer_allocations);
   std::vector<DeviceTestSlot> slots(kNumDevices);
+  // Make sure allocations outlive the thunk.
+  std::vector<std::unique_ptr<BufferAllocations>> allocs(kNumDevices);
+  RaggedAllToAllThunk thunk = MakeThunk(buffer_allocations);
 
   ASSERT_OK(
       RunOnDevices(kNumDevices, "ragged_create", [&](int d) -> absl::Status {
         RETURN_IF_ERROR(SetupDeviceSlot(d, slots[d], thunk, device_assignment));
-        return RunCreatePhase(slots[d], thunk, d, /*phase=*/1);
+        allocs[d] = std::make_unique<BufferAllocations>(
+            MakeBufferAllocations(slots[d], slots[d].create_buffers));
+        return RunCreatePhase(slots[d], thunk, *allocs[d], d, /*phase=*/1);
       }));
 }
 
@@ -304,17 +311,25 @@ TEST(RaggedAllToAllThunkMultiGpuTest, RecordCommandBufferUpdate) {
   DeviceAssignment device_assignment = MakeDeviceAssignment(kNumDevices);
   std::vector<BufferAllocation> buffer_allocations =
       MakeThunkBufferAllocations();
-  RaggedAllToAllThunk thunk = MakeThunk(buffer_allocations);
   std::vector<DeviceTestSlot> slots(kNumDevices);
+  // Make sure allocations outlive the thunk.
+  std::vector<std::unique_ptr<BufferAllocations>> create_allocs(kNumDevices);
+  std::vector<std::unique_ptr<BufferAllocations>> update_allocs(kNumDevices);
+  RaggedAllToAllThunk thunk = MakeThunk(buffer_allocations);
 
   ASSERT_OK(
       RunOnDevices(kNumDevices, "ragged_create", [&](int d) -> absl::Status {
         RETURN_IF_ERROR(SetupDeviceSlot(d, slots[d], thunk, device_assignment));
-        return RunCreatePhase(slots[d], thunk, d, /*phase=*/1);
+        create_allocs[d] = std::make_unique<BufferAllocations>(
+            MakeBufferAllocations(slots[d], slots[d].create_buffers));
+        return RunCreatePhase(slots[d], thunk, *create_allocs[d], d,
+                              /*phase=*/1);
       }));
 
   ASSERT_OK(RunOnDevices(kNumDevices, "ragged_update", [&](int d) {
-    return RunUpdatePhase(slots[d], thunk, d, /*phase=*/2);
+    update_allocs[d] = std::make_unique<BufferAllocations>(
+        MakeBufferAllocations(slots[d], slots[d].update_buffers));
+    return RunUpdatePhase(slots[d], thunk, *update_allocs[d], d, /*phase=*/2);
   }));
 }
 

@@ -18,6 +18,7 @@ limitations under the License.
 #include <cstdint>
 #include <functional>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 
@@ -35,6 +36,7 @@ limitations under the License.
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/MLIRContext.h"
 #include "xla/backends/cpu/alignment.h"
+#include "xla/backends/cpu/codegen/emitters/cpu_scatter_emitter.h"
 #include "xla/backends/cpu/codegen/kernel_api_ir_builder.h"
 #include "xla/backends/cpu/codegen/symbol_name_util.h"
 #include "xla/backends/cpu/codegen/tiled/tiled_fusion_emitter.h"
@@ -59,8 +61,11 @@ limitations under the License.
 #include "xla/runtime/work_tile_size.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/cpu/backend_config.pb.h"
+#include "xla/service/gpu/backend_configs.pb.h"
+#include "xla/service/gpu/model/block_level_parameters.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/status_macros.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 
@@ -287,10 +292,19 @@ absl::StatusOr<KernelDefinition<MlirKernelSource>> EmitFusionKernel(
     bool enable_tiled_emitter) {
   ASSIGN_OR_RETURN(std::string name, GetName(fusion, use_unique_c_name));
 
-  if (enable_tiled_emitter) {
-    TiledEmissionResult result =
-        EmitTiledFusionKernel(mlir_context, fusion, buffer_assignment, name,
-                              GetWorkGroupCount(fusion));
+  std::optional<gpu::BlockLevelParameters> block_level_parameters;
+  auto gpu_config_or = fusion.backend_config<gpu::GpuBackendConfig>();
+  if (gpu_config_or.ok() && gpu_config_or->has_fusion_backend_config() &&
+      gpu_config_or->fusion_backend_config().has_block_level_fusion_config()) {
+    block_level_parameters =
+        gpu::BlockLevelParameters::FromBlockLevelFusionConfig(
+            gpu_config_or->fusion_backend_config().block_level_fusion_config());
+  }
+
+  if (enable_tiled_emitter || block_level_parameters.has_value()) {
+    TiledEmissionResult result = EmitTiledFusionKernel(
+        mlir_context, fusion, buffer_assignment, name,
+        GetWorkGroupCount(fusion), block_level_parameters);
     if (result.kernel.ok()) {
       return std::move(*result.kernel);
     }
@@ -301,6 +315,12 @@ absl::StatusOr<KernelDefinition<MlirKernelSource>> EmitFusionKernel(
 
     VLOG(2) << "Tiled emitter failed due to tiling failure: "
             << result.kernel.status() << ", falling back to loop emitter.";
+  }
+
+  if (fusion.fused_expression_root()->opcode() == HloOpcode::kScatter) {
+    TF_RET_CHECK(buffer_assignment != nullptr);
+    CpuScatterFusion kernel_emitter(*buffer_assignment, &fusion, &mlir_context);
+    return kernel_emitter.EmitKernelDefinition();
   }
 
   if (fusion.fusion_kind() == HloFusionInstruction::FusionKind::kLoop) {
@@ -322,7 +342,6 @@ absl::StatusOr<KernelDefinition<MlirKernelSource>> EmitFusionKernel(
     }
     return EmitLoopFusionKernel(mlir_context, fusion, buffer_assignment, name);
   }
-
   return absl::UnimplementedError("Fusion kind not supported.");
 }
 

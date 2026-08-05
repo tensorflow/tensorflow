@@ -138,7 +138,7 @@ class BatchFunctionKernel : public AsyncOpKernel {
     int64_t full_batch_scheduling_boost_micros = -1;
   };
   absl::optional<AdaptiveBatchSchedulerOptions>
-      adaptive_batch_scheduler_options_ = absl::nullopt;
+      adaptive_batch_scheduler_options_ = std::nullopt;
 };
 
 }  // namespace tensorflow

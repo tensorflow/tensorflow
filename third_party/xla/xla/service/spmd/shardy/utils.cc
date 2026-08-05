@@ -273,7 +273,8 @@ CustomCallOp cloneCustomCallWithNewResultTypes(CustomCallOp op,
       op.getCallTargetNameAttr(), op.getHasSideEffectAttr(),
       op.getBackendConfigAttr(), op.getApiVersionAttr(),
       op.getCalledComputations(), op.getOperandLayoutsAttr(),
-      op.getResultLayoutsAttr(), op.getOutputOperandAliases());
+      op.getResultLayoutsAttr(), op.getOutputOperandAliases(),
+      op.getResultTilingsAttr());
   customCallOp->setDiscardableAttrs(mlir::DictionaryAttr::get(
       op->getContext(), llvm::to_vector(op->getDiscardableAttrs())));
   return customCallOp;
@@ -434,6 +435,11 @@ bool hasFrontendMhloShardings(mlir::ModuleOp module) {
   return false;
 }
 
+bool hasFrontendMeshes(mlir::ModuleOp module) {
+  return tryGetFrontendAttr<mlir::DictionaryAttr>(module, kMeshesRoundTripAttr)
+      .has_value();
+}
+
 bool hasShardyMesh(mlir::ModuleOp module) {
   return !module.getOps<mlir::sdy::MeshOp>().empty();
 }
@@ -537,11 +543,22 @@ mlir::sdy::TensorShardingAttr convertToSdyShardingAttr(
         toSdyAxisRefAttr(axisRef, namedSharding.mesh(), context));
   }
 
-  CHECK(namedSharding.manual_axes().empty())
-      << "Manual axes should be handled by shard maps import.";
+  mlir::sdy::ReductionOp reductionOp = mlir::sdy::ReductionOp::SUM;
+  switch (namedSharding.reduction_op()) {
+    case xla::ReductionOp::kSum:
+      reductionOp = mlir::sdy::ReductionOp::SUM;
+      break;
+    case xla::ReductionOp::kMax:
+      reductionOp = mlir::sdy::ReductionOp::MAX;
+      break;
+    case xla::ReductionOp::kMin:
+      reductionOp = mlir::sdy::ReductionOp::MIN;
+      break;
+  }
 
   return mlir::sdy::TensorShardingAttr::get(context, meshAttr, dimShardings,
-                                            replicatedAxes, unreducedAxes);
+                                            replicatedAxes, unreducedAxes,
+                                            reductionOp);
 }
 
 mlir::sdy::TensorShardingPerValueAttr convertToSdySharding(

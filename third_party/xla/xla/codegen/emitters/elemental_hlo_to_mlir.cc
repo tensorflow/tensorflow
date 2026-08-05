@@ -65,6 +65,7 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"
 #include "xla/codegen/emitters/computation_partitioner.h"
 #include "xla/codegen/emitters/ir/xla_ops.h"
+#include "xla/codegen/emitters/transforms/lowering_utils.h"
 #include "xla/codegen/emitters/type_util.h"
 #include "xla/comparison_util.h"
 #include "xla/hlo/analysis/indexing_analysis.h"
@@ -578,6 +579,13 @@ absl::StatusOr<SmallVector<Value, 1>> EmitDotLoop(
                                            /*operand_index=*/1, rhs_indices));
     Value accum = iter_args[0];
 
+    if (algorithm_util::IsBf16ToF32AlgorithmRequested(instr)) {
+      Value lhs_trunc = arith::TruncFOp::create(b, b.getBF16Type(), lhs_value);
+      lhs_value = arith::ExtFOp::create(b, b.getF32Type(), lhs_trunc);
+      Value rhs_trunc = arith::TruncFOp::create(b, b.getBF16Type(), rhs_value);
+      rhs_value = arith::ExtFOp::create(b, b.getF32Type(), rhs_trunc);
+    }
+
     ASSIGN_OR_RETURN(
         accum, EmitMulAdd(lhs_value, rhs_value, accum,
                           instr->shape().element_type(), accumulator_type, b));
@@ -856,60 +864,17 @@ absl::StatusOr<SmallVector<Value, 1>> EmitConvert(
                    .getResult()}};
     }
   }
+  auto in = operands[0];
+  if (auto int_ty = mlir::dyn_cast<IntegerType>(result_type_with_sign)) {
+    if (auto float_ty = mlir::dyn_cast<FloatType>(in.getType())) {
+      Value out = EmitFloatToIntConvertWithClamping(
+          builder, in, float_ty, int_ty, in.getType(), result_element_type);
+      return {{out}};
+    }
+  }
   auto out = mhlo::MhloOpToStdScalarOp::mapConvertOpToStdScalarOp(
       builder.getLoc(), result_type_with_sign, result_element_type, arg_types,
       operands, /*attributes=*/{}, &builder);
-  if (auto int_ty = mlir::dyn_cast<IntegerType>(out.getType())) {
-    auto in = operands[0];
-    if (auto float_ty = mlir::dyn_cast<FloatType>(in.getType())) {
-      auto cst_int = [&](int64_t x) {
-        return arith::ConstantIntOp::create(builder, int_ty, x);
-      };
-      if (primitive_util::IsUnsignedIntegralType(element_type)) {
-        auto cst_float = [&](uint64_t x) {
-          return ConstantOp::create(builder, builder.getFloatAttr(float_ty, x));
-        };
-        int64_t min = 0;
-        int64_t max = llvm::maxUIntN(int_ty.getWidth());
-        // x <= 0 || isnan(x) ? 0 : ...
-        out = mlir::arith::SelectOp::create(
-            builder,
-            mlir::arith::CmpFOp::create(
-                builder, mlir::arith::CmpFPredicate::ULE, in, cst_float(min)),
-            cst_int(min), out);
-        // x >= static_cast<float>(UINT_MAX) ? UINT_MAX : ...
-        out = mlir::arith::SelectOp::create(
-            builder,
-            mlir::arith::CmpFOp::create(
-                builder, mlir::arith::CmpFPredicate::OGE, in, cst_float(max)),
-            cst_int(max), out);
-      } else {
-        auto cst_float = [&](int64_t x) {
-          return ConstantOp::create(builder, builder.getFloatAttr(float_ty, x));
-        };
-        int64_t min = llvm::minIntN(int_ty.getWidth());
-        int64_t max = llvm::maxIntN(int_ty.getWidth());
-        // x <= static_cast<float>(INT_MIN) ? INT_MIN : ...
-        out = mlir::arith::SelectOp::create(
-            builder,
-            mlir::arith::CmpFOp::create(
-                builder, mlir::arith::CmpFPredicate::OLE, in, cst_float(min)),
-            cst_int(min), out);
-        // x >= static_cast<float>(INT_MAX) ? INT_MAX : ...
-        out = mlir::arith::SelectOp::create(
-            builder,
-            mlir::arith::CmpFOp::create(
-                builder, mlir::arith::CmpFPredicate::OGE, in, cst_float(max)),
-            cst_int(max), out);
-        // isnan(x) ? 0 : ...
-        out = mlir::arith::SelectOp::create(
-            builder,
-            mlir::arith::CmpFOp::create(
-                builder, mlir::arith::CmpFPredicate::UNO, in, in),
-            cst_int(0), out);
-      }
-    }
-  }
   return {{out}};
 }
 

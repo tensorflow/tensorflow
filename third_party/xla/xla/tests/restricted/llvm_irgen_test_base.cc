@@ -17,8 +17,10 @@ limitations under the License.
 
 #include <functional>
 #include <memory>
+#include <string>
 #include <utility>
 
+#include <gtest/gtest.h>
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "xla/tsl/platform/status_macros.h"

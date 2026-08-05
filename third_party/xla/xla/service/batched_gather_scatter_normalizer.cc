@@ -38,9 +38,23 @@ limitations under the License.
 namespace xla {
 
 namespace {
+bool HasOverlap(absl::Span<const int64_t> lhs, absl::Span<const int64_t> rhs) {
+  return absl::c_any_of(
+      lhs, [&](int64_t value) { return absl::c_linear_search(rhs, value); });
+}
+
 bool IsBatchGather(const HloGatherInstruction* gather) {
   const auto& dims = gather->gather_dimension_numbers();
   return !dims.operand_batching_dims().empty();
+}
+
+bool CanNormalizeBatchGather(const HloGatherInstruction* gather) {
+  const auto& dims = gather->gather_dimension_numbers();
+  // The normalized non-batch gather prepends operand_batching_dims to
+  // start_index_map. If the two lists overlap, the rewritten ordinary gather
+  // would have duplicate start_index_map entries and fail HLO validation.
+  return IsBatchGather(gather) &&
+         !HasOverlap(dims.operand_batching_dims(), dims.start_index_map());
 }
 
 bool IsBatchScatter(const HloScatterInstruction* scatter) {
@@ -219,7 +233,7 @@ bool BatchedGatherScatterNormalizer::InstructionMatchesPattern(
     HloInstruction* inst) {
   if (inst->opcode() == HloOpcode::kGather) {
     auto* gather = DynCast<HloGatherInstruction>(inst);
-    return IsBatchGather(gather);
+    return CanNormalizeBatchGather(gather);
   }
   if (inst->opcode() == HloOpcode::kScatter) {
     auto* scatter = DynCast<HloScatterInstruction>(inst);

@@ -148,7 +148,8 @@ cc_library(
     ]),
     deps = [
         "//tsl/profiler/protobuf:xplane_proto_cc",
-        "@xla//xla/tsl/platform:status",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
     ],
 )
 
@@ -178,6 +179,22 @@ tsl_cc_test(
     deps = [
         ":profiler_lock",
         "@com_google_absl//absl/status:statusor",
+        "@com_google_googletest//:gtest_main",
+        "@xla//xla/tsl/platform:test",
+    ],
+)
+
+tsl_cc_test(
+    name = "continuous_profiler_orchestrator_test",
+    srcs = ["continuous_profiler_orchestrator_test.cc"],
+    deps = [
+        ":continuous_profiler_orchestrator",
+        ":profiler_interface",
+        "//tsl/profiler/protobuf:xplane_proto_cc",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/synchronization",
+        "@com_google_absl//absl/time",
         "@com_google_googletest//:gtest_main",
         "@xla//xla/tsl/platform:test",
     ],
@@ -235,6 +252,7 @@ cc_library(
         "@xla//xla/tsl/profiler/utils:xplane_schema",
         "@xla//xla/tsl/profiler/utils:xplane_utils",
     ] + if_not_android([
+        ":continuous_profiler_orchestrator",
         ":profiler_collection",
         ":profiler_factory",
         ":profiler_interface",
@@ -389,7 +407,8 @@ cc_library(
         ":profiler_interface",
         "//tsl/profiler/protobuf:xplane_proto_cc",
         "@com_google_absl//absl/status",
-        "@xla//xla/tsl/platform:status",
+        "@com_google_absl//absl/status:statusor",
+        "@xla//xla/tsl/platform:logging",
     ],
 )
 
@@ -400,5 +419,23 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         "@com_google_absl//absl/strings:string_view",
+    ],
+)
+
+cc_library(
+    name = "continuous_profiler_orchestrator",
+    hdrs = ["continuous_profiler_orchestrator.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":profiler_interface",
+        "//tsl/profiler/protobuf:xplane_proto_cc",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/synchronization",
+        "@com_google_absl//absl/time",
+        "@xla//xla/tsl/platform:env",
+        "@xla//xla/tsl/platform:errors",
+        "@xla//xla/tsl/platform:logging",
     ],
 )

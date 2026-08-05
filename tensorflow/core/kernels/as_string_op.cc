@@ -21,6 +21,8 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
+#include "absl/strings/string_view.h"
+#include "Eigen/Core"  // from @eigen_archive
 #include "tensorflow/core/framework/kernel_def_builder.h"
 #include "tensorflow/core/framework/numeric_types.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -161,7 +163,7 @@ class AsStringOp : public OpKernel {
 
     if (dtype == DT_BOOL) {
       const auto& input_flat = input_tensor->flat<bool>();
-      for (int i = 0; i < input_flat.size(); ++i) {
+      for (int64_t i = 0; i < input_flat.size(); ++i) {
         output_flat(i) = (input_flat(i)) ? "true" : "false";
       }
       return;
@@ -169,7 +171,7 @@ class AsStringOp : public OpKernel {
 
     if (dtype == DT_VARIANT) {
       const auto& input_flat = input_tensor->flat<Variant>();
-      for (int i = 0; i < input_flat.size(); ++i) {
+      for (int64_t i = 0; i < input_flat.size(); ++i) {
         output_flat(i) = input_flat(i).DebugString();
       }
       return;
@@ -180,7 +182,7 @@ class AsStringOp : public OpKernel {
 #define ENCODE_TYPE(type, T, enc_fmt)                                   \
   case (type): {                                                        \
     const auto& input_flat = input_tensor->flat<T>();                   \
-    for (int i = 0; i < input_flat.size(); ++i) {                       \
+    for (int64_t i = 0; i < input_flat.size(); ++i) {                   \
       output_flat(i) =                                                  \
           absl::StrFormat(*enc_fmt, width_, precision_, input_flat(i)); \
     }                                                                   \
@@ -199,14 +201,14 @@ class AsStringOp : public OpKernel {
       ENCODE_TYPE(DT_DOUBLE, double, floating_format_);
       case (DT_STRING): {
         const auto& input_flat = input_tensor->flat<tstring>();
-        for (int i = 0; i < input_flat.size(); ++i) {
+        for (int64_t i = 0; i < input_flat.size(); ++i) {
           output_flat(i) = absl::StrFormat(*string_format_, width_, precision_,
                                            absl::string_view(input_flat(i)));
         }
       } break;
       case (DT_HALF): {
         const auto& input_flat = input_tensor->flat<Eigen::half>();
-        for (int i = 0; i < input_flat.size(); ++i) {
+        for (int64_t i = 0; i < input_flat.size(); ++i) {
           output_flat(i) =
               absl::StrFormat(*floating_format_, width_, precision_,
                               static_cast<float>(input_flat(i)));
@@ -214,7 +216,7 @@ class AsStringOp : public OpKernel {
       } break;
       case (DT_BFLOAT16): {
         const auto& input_flat = input_tensor->flat<bfloat16>();
-        for (int i = 0; i < input_flat.size(); ++i) {
+        for (int64_t i = 0; i < input_flat.size(); ++i) {
           output_flat(i) =
               absl::StrFormat(*floating_format_, width_, precision_,
                               static_cast<float>(input_flat(i)));
@@ -222,7 +224,7 @@ class AsStringOp : public OpKernel {
       } break;
       case (DT_COMPLEX64): {
         const auto& input_flat = input_tensor->flat<complex64>();
-        for (int i = 0; i < input_flat.size(); ++i) {
+        for (int64_t i = 0; i < input_flat.size(); ++i) {
           output_flat(i) =
               absl::StrCat("(",
                            absl::StrFormat(*floating_format_, width_,
@@ -235,7 +237,7 @@ class AsStringOp : public OpKernel {
       } break;
       case (DT_COMPLEX128): {
         const auto& input_flat = input_tensor->flat<complex128>();
-        for (int i = 0; i < input_flat.size(); ++i) {
+        for (int64_t i = 0; i < input_flat.size(); ++i) {
           output_flat(i) =
               absl::StrCat("(",
                            absl::StrFormat(*floating_format_, width_,

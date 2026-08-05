@@ -22,6 +22,7 @@ limitations under the License.
 #include <utility>
 
 #include "absl/status/statusor.h"
+#include "absl/strings/cord.h"
 #include "absl/strings/string_view.h"
 #include "llvm/Support/ExtensibleRTTI.h"
 #include "xla/pjrt/pjrt_abi_version.h"
@@ -46,12 +47,12 @@ class GpuXlaExecutableAbiVersionSerDes
     return "xla::GpuXlaExecutableAbiVersion";
   }
 
-  absl::StatusOr<std::string> Serialize(
+  absl::StatusOr<absl::Cord> Serialize(
       const xla::ifrt::Serializable& serializable,
       std::unique_ptr<xla::ifrt::SerializeOptions> options) override;
 
   absl::StatusOr<std::unique_ptr<xla::ifrt::Serializable>> Deserialize(
-      const std::string& serialized,
+      const absl::Cord& serialized,
       std::unique_ptr<xla::ifrt::DeserializeOptions> options) override;
 
   static char ID;  // NOLINT

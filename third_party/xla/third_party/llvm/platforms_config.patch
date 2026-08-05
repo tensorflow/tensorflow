@@ -1,0 +1,18 @@
+diff --git a/utils/bazel/llvm-project-overlay/llvm/config.bzl b/utils/bazel/llvm-project-overlay/llvm/config.bzl
+--- a/utils/bazel/llvm-project-overlay/llvm/config.bzl
++++ b/utils/bazel/llvm-project-overlay/llvm/config.bzl
+@@ -49,13 +49,12 @@
+ backtrace_defines = select({
+     "@platforms//os:windows": [],
+-    "@llvm//platforms/config:musl": [],
+     "//conditions:default": [
+         "HAVE_BACKTRACE=1",
+         "BACKTRACE_HEADER=<execinfo.h>",
+     ],
+ })
+ 
+ mallinfo_defines = select({
+-    "@llvm//platforms/config:gnu": ["HAVE_MALLINFO=1"],
++    "@platforms//os:linux": ["HAVE_MALLINFO=1"],
+     "//conditions:default": [],
+ })

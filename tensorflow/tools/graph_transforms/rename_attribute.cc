@@ -32,7 +32,7 @@ absl::Status RenameAttribute(const GraphDef& input_graph_def,
       (context.params.at("old_attribute_name").size() != 1) ||
       !context.params.count("new_attribute_name") ||
       (context.params.at("new_attribute_name").size() != 1)) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(
         "rename_attribute expects exactly one 'old_attribute_name' and one "
         "'new_attribute_name' argument, e.g. "
         "rename_attribute(old_attribute_name=foo, new_attribute_name=bar)");

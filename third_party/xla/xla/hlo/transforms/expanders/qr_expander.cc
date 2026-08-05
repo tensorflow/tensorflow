@@ -19,10 +19,10 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <iterator>
-#include <numeric>
 #include <string>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -37,14 +37,16 @@ limitations under the License.
 #include "xla/hlo/builder/lib/qr.h"
 #include "xla/hlo/builder/lib/slicing.h"
 #include "xla/hlo/builder/xla_builder.h"
-#include "xla/literal.h"
+#include "xla/hlo/builder/xla_computation.h"
+#include "xla/hlo/ir/hlo_computation.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/primitive_util.h"
 #include "xla/service/hlo_creation_utils.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/errors.h"
 
 namespace xla {
 
@@ -125,7 +127,7 @@ absl::Status House(XlaOp x, XlaOp k, absl::Span<const int64_t> batch_dims,
   const PrimitiveType type = x_shape.element_type();
 
   std::vector<int64_t> batch_dim_ids(batch_dims.size());
-  std::iota(batch_dim_ids.begin(), batch_dim_ids.end(), 0);
+  absl::c_iota(batch_dim_ids, 0);
   const int64_t minor_dim = batch_dims.size();
 
   XlaOp zero = ScalarLike(x, 0.0);
@@ -229,7 +231,7 @@ absl::StatusOr<QrDecomposition> QrExpander::QrBlock(
   }
 
   std::vector<int64_t> batch_dim_indices(num_batch_dims);
-  std::iota(batch_dim_indices.begin(), batch_dim_indices.end(), 0);
+  absl::c_iota(batch_dim_indices, 0);
 
   auto qr_body_fn =
       [&](XlaOp j, absl::Span<const XlaOp> values,
@@ -278,14 +280,14 @@ absl::StatusOr<QrDecomposition> QrExpander::QrBlock(
         /*broadcast_dimensions=*/ConcatVectors(batch_dim_indices, {minor_dim}));
     // Update a[:,j]
     std::vector<int64_t> dim_ids(num_dims);
-    std::iota(dim_ids.begin(), dim_ids.end(), 0);
+    absl::c_iota(dim_ids, 0);
     new_x = BroadcastInDim(new_x, ConcatVectors(batch_dims, {m, n}),
                            /*broadcast_dimensions=*/dim_ids);
     a = Select(Eq(iota_mn, j), new_x, a);
 
     // taus[j] = tau
     std::vector<int64_t> tau_broadcast_dims(batch_dims.size());
-    std::iota(tau_broadcast_dims.begin(), tau_broadcast_dims.end(), 0);
+    absl::c_iota(tau_broadcast_dims, 0);
 
     auto iota_n =
         Iota(builder, ShapeUtil::MakeShape(S32, ConcatVectors(batch_dims, {n})),
@@ -334,7 +336,7 @@ absl::StatusOr<XlaOp> QrExpander::CompactWYRepresentation(
   XlaBuilder* builder = vs.builder();
 
   std::vector<int64_t> batch_dim_indices(batch_dims.size());
-  std::iota(batch_dim_indices.begin(), batch_dim_indices.end(), 0);
+  absl::c_iota(batch_dim_indices, 0);
   int64_t n_index = batch_dims.size() + 1;
 
   auto body_fn =

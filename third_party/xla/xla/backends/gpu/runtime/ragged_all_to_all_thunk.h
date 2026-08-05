@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_BACKENDS_GPU_RUNTIME_RAGGED_ALL_TO_ALL_THUNK_H_
 #define XLA_BACKENDS_GPU_RUNTIME_RAGGED_ALL_TO_ALL_THUNK_H_
 
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <memory>
@@ -42,7 +43,7 @@ limitations under the License.
 #include "xla/service/buffer_assignment.h"
 #include "xla/stream_executor/command_buffer.h"
 #include "xla/stream_executor/device_address.h"
-#include "xla/stream_executor/device_address_handle.h"
+#include "xla/stream_executor/device_address_allocator.h"
 #include "xla/stream_executor/memory_allocation.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/tsl/util/tied_ref.h"
@@ -70,13 +71,13 @@ struct RaggedAllToAllConfig {
   CollectiveThunk::CollectivesMode collectives_mode =
       DebugOptions::COLLECTIVES_PRIVATE_MEMORY;
 
+  // If true, the thunk will use the device-initiated (NCCL GIN + LSA) kernel
+  // for ragged-all-to-all when symmetric buffers are available.
+  bool use_device_kernel = false;
+
   // If set, this will be used to determine if optimized kernels that assume a
   // fast interconnect can be used.
   std::optional<int64_t> fast_interconnect_slice_size_override = std::nullopt;
-
-  // If true, one-shot kernel will use the Symmetric Memory for
-  // output buffers resulting in zero copy and temporary sym buffer elimination.
-  bool zero_copy_in_one_shot_kernel = false;
 };
 
 // Contains the values that are passed between host threads with rendezvous.
@@ -104,7 +105,7 @@ struct RaggedAllToAllStreamState {
       host_buffer_allocs;
 
   // Device memory buffer for output offsets.
-  se::DeviceAddressHandle output_offsets_device_buffer;
+  se::ScopedDeviceAddress<uint8_t> output_offsets_device_buffer;
 
   // MultiGpuBarrier: Device memory buffer for signal values (one per peer).
   // Peers write specific slots in this array to signal this device.
@@ -120,12 +121,6 @@ struct RaggedAllToAllStreamState {
   // Device memory buffer to store the output buffer pointers.
   std::unique_ptr<se::MemoryAllocation> output_buffer_ptr_storage;
 
-  // Reference to the symmetric memory handler for the pointer storage.
-  tsl::TiedRef<xla::SymmetricMemory> output_buffer_ptr_storage_symmetric_memory;
-
-  // Reference to the symmetric memory for the output buffers.
-  std::shared_ptr<xla::SymmetricMemory> output_temporary_symmetric_memory;
-
   // Contains the output buffer pointers and barrier signal buffers for all
   // peers.
   std::shared_ptr<std::vector<RaggedAllToAllRendezvousValue>> participants;
@@ -136,10 +131,6 @@ struct RaggedAllToAllStreamState {
         rank(rank),
         clique_key(std::move(clique_key)) {}
 };
-
-// Returns true if all replicas in every replica group of the collective
-// are located on the same host (node).
-bool IsAllReplicasLocal(int64_t device_count, const CollectiveConfig& config);
 
 // Thunk that performs a NCCL-based Ragged-All-to-All among CUDA GPU-based
 // replicas.
@@ -187,8 +178,48 @@ class RaggedAllToAllThunk : public CollectiveThunk {
     return config_.use_multi_gpu_barrier_with_nccl_in_one_shot_kernel;
   }
 
-  bool zero_copy_in_one_shot_kernel() const {
-    return config_.zero_copy_in_one_shot_kernel;
+  bool UsesDeviceKernel() const {
+    return config_.use_device_kernel && config_.config.use_symmetric_buffer;
+  }
+
+  // Number of per-CTA barrier/signal slots reserved when creating the device
+  // communicator. The kernel indexes its cooperative barrier by blockIdx.x, so
+  // registration must cover the largest grid we might launch. It is a compile
+  // time constant so every rank reserves identical resources, independent of
+  // the executor (which is not available at clique-requirement time).
+  static constexpr int32_t device_kernel_barrier_count() {
+    return kMaxDeviceKernelCtaCount;
+  }
+
+  // Launch grid for the device kernel. Scales with the device SM count and the
+  // amount of copy work, clamped to [kMin, kMax]. All inputs are identical
+  // across ranks (collective config + homogeneous GPUs), so every rank launches
+  // the same grid, which the cross-rank cooperative barriers require.
+  static int32_t DeviceKernelLaunchCtaCount(int core_count,
+                                            int64_t num_active_updates) {
+    int64_t work_cap = std::max<int64_t>(kMinDeviceKernelCtaCount,
+                                         num_active_updates * kCtasPerUpdate);
+    int64_t grid = std::min<int64_t>(core_count, work_cap);
+    grid = std::clamp<int64_t>(grid, kMinDeviceKernelCtaCount,
+                               kMaxDeviceKernelCtaCount);
+    return static_cast<int32_t>(grid);
+  }
+
+  GpuDeviceCommunicator::Requirements DeviceKernelLsaDevCommRequirements()
+      const {
+    GpuDeviceCommunicator::Requirements requirements;
+    requirements.lsa_barrier_count = device_kernel_barrier_count();
+    return requirements;
+  }
+
+  GpuDeviceCommunicator::Requirements DeviceKernelDevCommRequirements() const {
+    GpuDeviceCommunicator::Requirements requirements;
+    requirements.barrier_count = device_kernel_barrier_count();
+    requirements.lsa_barrier_count = device_kernel_barrier_count();
+    requirements.rail_gin_barrier_count = device_kernel_barrier_count();
+    requirements.gin_signal_count = device_kernel_barrier_count();
+    requirements.gin_connection_full = true;
+    return requirements;
   }
 
   // Returns true if one shot kernel is supported
@@ -215,11 +246,18 @@ class RaggedAllToAllThunk : public CollectiveThunk {
                              Communicator& comm) override;
 
  private:
-  bool is_local(int device_count) const {
-    return IsAllReplicasLocal(device_count, config_.config);
-  }
+  bool is_local(int device_count) const;
 
   const RaggedAllToAllConfig config_;
+
+  // Upper bound on the device-kernel launch grid and the number of barrier
+  static constexpr int32_t kMaxDeviceKernelCtaCount = 64;
+  // Floor on the launch grid so small shapes still get some parallelism.
+  static constexpr int32_t kMinDeviceKernelCtaCount = 8;
+  // Target number of CTAs per (peer, update) copy unit before the grid
+  // saturates at the SM count. Gives each update several CTAs of row-copy
+  // bandwidth.
+  static constexpr int32_t kCtasPerUpdate = 4;
 
   mutable absl::Mutex mutex_;
   absl::flat_hash_map<se::StreamExecutor*,
@@ -261,7 +299,7 @@ absl::Status RunRaggedAllToAll(
     const se::DeviceAddressBase& output_offsets_device_buffer,
     CollectiveThunk::CollectivesMode collectives_mode,
     SymmetricMemory* output_symmetric_memory = nullptr,
-    size_t output_base_offset = 0);
+    size_t output_base_offset = 0, int64_t rank = 0);
 
 // Executes an optimized "One-Shot" Ragged All-to-All collective.
 //
@@ -289,8 +327,8 @@ absl::Status RunOneShotRaggedAllToAllWithNccl(
     std::shared_ptr<xla::SymmetricMemory> barrier_signal_symmetric_memory,
     const se::DeviceAddressBase& barrier_signal_value,
     SymmetricMemory* output_sym_mem, size_t output_sym_offset,
-    bool is_zero_copy, int64_t num_total_updates, int64_t num_input_rows,
-    int64_t num_row_elements, absl::Span<DeviceBufferPair const> buffers);
+    int64_t num_total_updates, int64_t num_input_rows, int64_t num_row_elements,
+    absl::Span<DeviceBufferPair const> buffers);
 
 }  // namespace gpu
 }  // namespace xla

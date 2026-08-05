@@ -15,7 +15,10 @@ limitations under the License.
 
 #include "xla/service/reduce_scatter_reassociate.h"
 
+#include <gmock/gmock.h>
+#include <gtest/gtest.h>
 #include "xla/tsl/platform/status_macros.h"
+#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
@@ -399,6 +402,89 @@ ENTRY main {
                           RunPass(hlo_string, /*expect_change=*/true));
   auto* rs = FindInstruction(module.get(), HloOpcode::kReduceScatter);
   EXPECT_FALSE(HasSchedulingAnnotation(rs));
+}
+
+TEST_F(ReduceScatterReassociateTest, ReassociatesMatchingCollectiveGroupKeys) {
+  constexpr absl::string_view kHloModule = R"(
+HloModule m
+
+sum {
+  x = f32[] parameter(0)
+  y = f32[] parameter(1)
+  ROOT add = f32[] add(x, y)
+}
+
+ENTRY main {
+  p0 = f32[8] parameter(0)
+  p1 = f32[8] parameter(1)
+  rs0 = f32[4] reduce-scatter(p0), dimensions={0}, to_apply=sum,
+    frontend_attributes={collective_group_key="g0"}
+  rs1 = f32[4] reduce-scatter(p1), dimensions={0}, to_apply=sum,
+    frontend_attributes={collective_group_key="g0"}
+  ROOT add = f32[4] add(rs0, rs1)
+}
+)";
+
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       RunPass(kHloModule, /*expect_change=*/true));
+  EXPECT_EQ(ReduceScatterCount(module), 1);
+  HloInstruction* reduce_scatter =
+      module->entry_computation()->root_instruction();
+  EXPECT_EQ(reduce_scatter->get_frontend_attribute("collective_group_key"),
+            "g0");
+}
+
+TEST_F(ReduceScatterReassociateTest,
+       DoesNotReassociateDifferentCollectiveGroupKeys) {
+  constexpr absl::string_view kHloModule = R"(
+HloModule m
+
+sum {
+  x = f32[] parameter(0)
+  y = f32[] parameter(1)
+  ROOT add = f32[] add(x, y)
+}
+
+ENTRY main {
+  p0 = f32[8] parameter(0)
+  p1 = f32[8] parameter(1)
+  rs0 = f32[4] reduce-scatter(p0), dimensions={0}, to_apply=sum,
+    frontend_attributes={collective_group_key="g0"}
+  rs1 = f32[4] reduce-scatter(p1), dimensions={0}, to_apply=sum,
+    frontend_attributes={collective_group_key="g1"}
+  ROOT add = f32[4] add(rs0, rs1)
+}
+)";
+
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       RunPass(kHloModule, /*expect_change=*/false));
+  EXPECT_EQ(ReduceScatterCount(module), 2);
+}
+
+TEST_F(ReduceScatterReassociateTest,
+       DoesNotReassociateKeyedAndUnkeyedCollectives) {
+  constexpr absl::string_view kHloModule = R"(
+HloModule m
+
+sum {
+  x = f32[] parameter(0)
+  y = f32[] parameter(1)
+  ROOT add = f32[] add(x, y)
+}
+
+ENTRY main {
+  p0 = f32[8] parameter(0)
+  p1 = f32[8] parameter(1)
+  rs0 = f32[4] reduce-scatter(p0), dimensions={0}, to_apply=sum,
+    frontend_attributes={collective_group_key="g0"}
+  rs1 = f32[4] reduce-scatter(p1), dimensions={0}, to_apply=sum
+  ROOT add = f32[4] add(rs0, rs1)
+}
+)";
+
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       RunPass(kHloModule, /*expect_change=*/false));
+  EXPECT_EQ(ReduceScatterCount(module), 2);
 }
 
 }  // namespace

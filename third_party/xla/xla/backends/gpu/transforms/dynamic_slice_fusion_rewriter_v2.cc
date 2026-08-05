@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/backends/gpu/transforms/dynamic_slice_fusion_rewriter_v2.h"
 
 #include <cstdint>
+#include <memory>
 #include <optional>
 #include <string>
 #include <utility>
@@ -33,6 +34,8 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/tsl/platform/status_macros.h"
+#include "xla/backends/gpu/transforms/dynamic_slice_fusion.h"
+#include "xla/hlo/analysis/hlo_dfs_reachability.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -89,8 +92,13 @@ struct SlicedResult {
 //===----------------------------------------------------------------------===//
 
 bool IsNoOp(const HloInstruction* instr) {
-  return instr->opcode() == HloOpcode::kBitcast ||
-         instr->opcode() == HloOpcode::kGetTupleElement;
+  return HloPredicateIsOp<HloOpcode::kBitcast, HloOpcode::kGetTupleElement>(
+      instr);
+}
+
+bool IsSlicingBoundary(const HloInstruction* instr) {
+  return HloPredicateIsOp<HloOpcode::kSlice, HloOpcode::kDynamicSlice,
+                          HloOpcode::kDynamicUpdateSlice>(instr);
 }
 
 bool HasDynamicSliceConfig(const HloInstruction* instr) {
@@ -379,24 +387,64 @@ std::vector<SlicedResult> ResolveSlicedResults(
 }
 
 //===----------------------------------------------------------------------===//
+// Resolve offset expressions
+//===----------------------------------------------------------------------===//
+
+// Follows `instr` operands to collect instructions that define dynamic (update)
+// slice offset expression: scalar operations computing integer offsets.
+void AddOffsetExpressionInstructions(
+    HloInstruction* instr, std::vector<HloInstruction*>& clone_instructions,
+    absl::flat_hash_set<HloInstruction*>& clone_instruction_set,
+    absl::flat_hash_set<HloInstruction*>& offset_instruction_set) {
+  if (HloPredicateIsOp<HloOpcode::kConstant, HloOpcode::kParameter>(instr) ||
+      IsSlicingBoundary(instr) || !DynamicSliceFusion::Offset::IsExpr(instr)) {
+    return;
+  }
+
+  if (!clone_instruction_set.insert(instr).second) {
+    return;
+  }
+
+  offset_instruction_set.insert(instr);
+  for (HloInstruction* operand : instr->operands()) {
+    AddOffsetExpressionInstructions(operand, clone_instructions,
+                                    clone_instruction_set,
+                                    offset_instruction_set);
+  }
+
+  clone_instructions.push_back(instr);
+}
+
+void AddDynamicSliceOffsetExpressionInstructions(
+    HloInstruction* instr, int64_t first_offset_operand,
+    std::vector<HloInstruction*>& clone_instructions,
+    absl::flat_hash_set<HloInstruction*>& clone_instruction_set,
+    absl::flat_hash_set<HloInstruction*>& offset_instruction_set) {
+  for (int64_t i = first_offset_operand; i < instr->operand_count(); ++i) {
+    AddOffsetExpressionInstructions(instr->mutable_operand(i),
+                                    clone_instructions, clone_instruction_set,
+                                    offset_instruction_set);
+  }
+}
+
+//===----------------------------------------------------------------------===//
 // Build fusion plan
 //===----------------------------------------------------------------------===//
 
 // Complete plan for creating a dynamic-slice fusion from a hero instruction.
 // Contains all instructions to include in the fusion body and the external
-// operands (captures).
+// operands to pass to the fusion.
 struct DynamicSliceFusionPlan {
-  // Operands of `instructions` that are not in the set — these become fusion
-  // parameters (e.g., the original buffers, loop induction variable,
-  // constants).
-  std::vector<HloInstruction*> captures;
+  // External operands needed by cloned instructions. These are operands not
+  // cloned into the fusion body, such as original buffers and scalar offset
+  // expression leaves.
+  std::vector<HloInstruction*> external_operands;
 
-  // All instructions to clone into the fusion body (topological order):
-  // slices, noops, hero, result noops, DUS instructions. The last instruction
-  // becomes the fusion root (may be a single DUS, or the hero itself when
-  // there are no DUS results). When there are multiple results,
-  // CreateFusionBody appends a tuple instruction as the root.
-  std::vector<HloInstruction*> instructions;
+  // All instructions to clone into the fusion body, in dependency order. This
+  // includes offset expression interiors, slices, noops, the hero, result
+  // noops, and DUS instructions. CreateFusionBody builds the final root from
+  // these cloned instructions.
+  std::vector<HloInstruction*> clone_instructions;
 };
 
 std::optional<DynamicSliceFusionPlan> BuildFusionPlan(
@@ -410,63 +458,142 @@ std::optional<DynamicSliceFusionPlan> BuildFusionPlan(
     return std::nullopt;
   }
 
-  std::vector<HloInstruction*> instructions;
-  absl::flat_hash_set<HloInstruction*> instruction_set;
+  // Instructions to clone into the fusion body, in dependency order.
+  std::vector<HloInstruction*> clone_instructions;
+  // Membership set for clone_instructions, used to avoid duplicate clones.
+  absl::flat_hash_set<HloInstruction*> clone_instruction_set;
+  // Subset of cloned instructions that are part of index offset expressions.
+  absl::flat_hash_set<HloInstruction*> offset_instruction_set;
 
-  auto add_instr = [&](HloInstruction* instr) {
-    if (instruction_set.insert(instr).second) {
-      instructions.push_back(instr);
+  // Instructions whose operands are scanned, in order, to discover external
+  // operands that become fusion parameters.
+  std::vector<HloInstruction*> external_operand_scan_roots;
+
+  auto add_clone_instruction = [&](HloInstruction* instr) {
+    if (clone_instruction_set.insert(instr).second) {
+      clone_instructions.push_back(instr);
     }
   };
 
   // Add sliced parameter paths (topological: slice → noops → hero).
-  for (const auto& param : sliced_params) {
-    add_instr(param.slice);
+  for (const SlicedParameter& param : sliced_params) {
+    if (param.slice->opcode() == HloOpcode::kDynamicSlice) {
+      AddDynamicSliceOffsetExpressionInstructions(
+          param.slice, 1, clone_instructions, clone_instruction_set,
+          offset_instruction_set);
+    }
+    add_clone_instruction(param.slice);
+    external_operand_scan_roots.push_back(param.slice);
     for (HloInstruction* noop : param.noops) {
-      add_instr(noop);
+      add_clone_instruction(noop);
+      external_operand_scan_roots.push_back(noop);
     }
   }
 
-  add_instr(hero);
+  add_clone_instruction(hero);
+  external_operand_scan_roots.push_back(hero);
 
   // Add sliced result paths (topological: hero → noops → DUS).
   // For passthrough results (no DUS), add the GTE chain so the hero output
   // is accessible inside the fusion.
   for (const auto& result : sliced_results) {
     for (HloInstruction* noop : result.noops) {
-      add_instr(noop);
+      add_clone_instruction(noop);
+      external_operand_scan_roots.push_back(noop);
     }
     if (result.update_slice != nullptr) {
-      add_instr(result.update_slice);
+      AddDynamicSliceOffsetExpressionInstructions(
+          result.update_slice, 2, clone_instructions, clone_instruction_set,
+          offset_instruction_set);
+      add_clone_instruction(result.update_slice);
+      external_operand_scan_roots.push_back(result.update_slice);
     }
   }
 
-  // Sink constants into the fusion body instead of capturing them as
-  // parameters. Constants have no operands so they go at the front.
+  // Sink constants that are part of offset expressions into the fusion body
+  // instead of capturing them as parameters. Other constants must remain fusion
+  // parameters because the dynamic-slice fusion emitter expects hero operands
+  // and DUS targets to be backed by fusion parameters.
+  auto is_offset_use = [&](HloInstruction* instr, int64_t operand_index) {
+    if (offset_instruction_set.contains(instr)) {
+      return true;
+    }
+    return (instr->opcode() == HloOpcode::kDynamicSlice &&
+            operand_index >= 1) ||
+           (instr->opcode() == HloOpcode::kDynamicUpdateSlice &&
+            operand_index >= 2);
+  };
+
+  std::vector<HloInstruction*> offset_constants;
+  absl::flat_hash_set<HloInstruction*> offset_constant_set;
+  absl::flat_hash_set<HloInstruction*> non_offset_constant_set;
+
+  for (HloInstruction* instr : clone_instructions) {
+    for (int64_t i = 0; i < instr->operand_count(); ++i) {
+      HloInstruction* operand = instr->mutable_operand(i);
+      if (!HloPredicateIsOp<HloOpcode::kConstant>(operand)) {
+        continue;
+      }
+      if (is_offset_use(instr, i)) {
+        if (offset_constant_set.insert(operand).second) {
+          offset_constants.push_back(operand);
+        }
+      } else {
+        non_offset_constant_set.insert(operand);
+      }
+    }
+  }
+
   std::vector<HloInstruction*> constants;
-  for (HloInstruction* instr : instructions) {
-    for (HloInstruction* operand : instr->operands()) {
-      if (operand->opcode() == HloOpcode::kConstant &&
-          instruction_set.insert(operand).second) {
-        constants.push_back(operand);
-      }
-    }
-  }
-  instructions.insert(instructions.begin(), constants.begin(), constants.end());
-
-  // Collect captures: operands of instructions that are not in the set.
-  std::vector<HloInstruction*> captures;
-  absl::flat_hash_set<HloInstruction*> capture_set;
-  for (HloInstruction* instr : instructions) {
-    for (HloInstruction* operand : instr->operands()) {
-      if (!instruction_set.contains(operand) &&
-          capture_set.insert(operand).second) {
-        captures.push_back(operand);
-      }
+  for (HloInstruction* constant : offset_constants) {
+    if (!non_offset_constant_set.contains(constant) &&
+        clone_instruction_set.insert(constant).second) {
+      constants.push_back(constant);
     }
   }
 
-  return DynamicSliceFusionPlan{std::move(captures), std::move(instructions)};
+  clone_instructions.insert(clone_instructions.begin(), constants.begin(),
+                            constants.end());
+
+  // Collect external operands by scanning cloned slice/hero/update path
+  // instructions in order. Recurse only through cloned offset expressions, so
+  // their scalar leaves become fusion parameters without disturbing the
+  // buffer-first parameter order.
+  std::vector<HloInstruction*> external_operands;
+  absl::flat_hash_set<HloInstruction*> external_operand_set;
+  absl::flat_hash_set<HloInstruction*> visited_offset_instruction_set;
+
+  auto collect_external_operand = [&](auto& self, HloInstruction* operand) {
+    // Any non-cloned operand is external to the fusion body and must become a
+    // fusion parameter.
+    if (!clone_instruction_set.contains(operand)) {
+      if (external_operand_set.insert(operand).second) {
+        external_operands.push_back(operand);
+      }
+      return;
+    }
+    // Only cloned offset expressions are transparent for this traversal; other
+    // cloned instructions are already represented inside the fusion body.
+    if (!offset_instruction_set.contains(operand)) {
+      return;
+    }
+    if (!visited_offset_instruction_set.insert(operand).second) {
+      return;
+    }
+    // Recurse through offset expressions to find scalar leaves.
+    for (HloInstruction* offset_operand : operand->operands()) {
+      self(self, offset_operand);
+    }
+  };
+
+  for (HloInstruction* instr : external_operand_scan_roots) {
+    for (HloInstruction* operand : instr->operands()) {
+      collect_external_operand(collect_external_operand, operand);
+    }
+  }
+
+  return DynamicSliceFusionPlan{std::move(external_operands),
+                                std::move(clone_instructions)};
 }
 
 //===----------------------------------------------------------------------===//
@@ -479,14 +606,15 @@ absl::StatusOr<HloComputation*> CreateFusionBody(
   HloComputation::Builder builder("dynamic-slice-fusion");
 
   absl::flat_hash_map<const HloInstruction*, HloInstruction*> instr_mapping;
-  instr_mapping.reserve(plan.captures.size() + plan.instructions.size());
+  instr_mapping.reserve(plan.external_operands.size() +
+                        plan.clone_instructions.size());
 
-  // Create parameters for captures.
-  for (const HloInstruction* capture : plan.captures) {
+  // Create fusion parameters for external operands.
+  for (const HloInstruction* operand : plan.external_operands) {
     int64_t index = instr_mapping.size();
-    instr_mapping[capture] =
+    instr_mapping[operand] =
         builder.AddInstruction(HloInstruction::CreateParameter(
-            index, capture->shape(), absl::StrCat("p", index)));
+            index, operand->shape(), absl::StrCat("p", index)));
   }
 
   auto mapped_operands = [&](HloInstruction* instr) {
@@ -499,7 +627,7 @@ absl::StatusOr<HloComputation*> CreateFusionBody(
   };
 
   // Clone instructions in topological order.
-  for (HloInstruction* instr : plan.instructions) {
+  for (HloInstruction* instr : plan.clone_instructions) {
     instr_mapping[instr] = builder.AddInstruction(
         instr->CloneWithNewOperands(instr->shape(), mapped_operands(instr)));
   }
@@ -539,6 +667,122 @@ absl::Status SetDynamicSliceFusionBackendConfig(HloInstruction* fusion) {
   return fusion->set_backend_config(std::move(gpu_config));
 }
 
+// Returns an existing GetTupleElement of `fusion` at `index`, or creates one.
+HloInstruction* GetOrCreateGte(HloInstruction* fusion, int64_t index) {
+  for (HloInstruction* user : fusion->users()) {
+    auto* gte = DynCast<HloGetTupleElementInstruction>(user);
+    if (gte != nullptr && gte->tuple_index() == index) {
+      return gte;
+    }
+  }
+  return fusion->parent()->AddInstruction(
+      HloInstruction::CreateGetTupleElement(fusion, index));
+}
+
+// Returns true if some consumer of the hero's values cannot be rerouted to
+// the fusion output: raw-tuple consumers, and consumers feeding a fusion
+// operand (rerouting those would form a cycle).
+bool HasUnroutableUsers(HloInstruction* hero,
+                        absl::Span<HloInstruction* const> fusion_operands) {
+  std::vector<HloInstruction*> heads;
+  if (hero->shape().IsTuple()) {
+    for (HloInstruction* user : hero->users()) {
+      if (user->opcode() != HloOpcode::kGetTupleElement) {
+        return true;
+      }
+      heads.push_back(user);
+    }
+  } else {
+    heads.push_back(hero);
+  }
+  std::unique_ptr<HloDfsReachability> reachability =
+      HloDfsReachability::Build(hero->parent());
+  for (HloInstruction* head : heads) {
+    for (HloInstruction* user : head->users()) {
+      for (const HloInstruction* operand : fusion_operands) {
+        if (reachability->IsReachable(user, operand)) {
+          return true;
+        }
+      }
+    }
+  }
+  return false;
+}
+
+// Reroutes hero users outside the DUS chains, leaving the original hero dead.
+absl::Status RerouteExternalUsers(
+    HloInstruction* hero, HloInstruction* fusion,
+    absl::Span<const SlicedResult> sliced_results) {
+  HloComputation* parent = fusion->parent();
+  bool tuple_hero = hero->shape().IsTuple();
+
+  if (tuple_hero) {
+    // Fold duplicate GTEs into the resolved one so each result has one head.
+    absl::flat_hash_map<int64_t, HloInstruction*> canonical;
+    for (const SlicedResult& sliced_result : sliced_results) {
+      if (!sliced_result.noops.empty()) {
+        canonical[sliced_result.result_number] = sliced_result.noops.front();
+      }
+    }
+    std::vector<HloInstruction*> users(hero->users().begin(),
+                                       hero->users().end());
+    for (HloInstruction* user : users) {
+      auto* gte = Cast<HloGetTupleElementInstruction>(user);
+      auto [it, inserted] = canonical.try_emplace(gte->tuple_index(), gte);
+      if (inserted || it->second == gte) {
+        continue;
+      }
+      RETURN_IF_ERROR(gte->ReplaceAllUsesWith(it->second));
+      RETURN_IF_ERROR(parent->RemoveInstruction(gte));
+    }
+  }
+
+  for (const SlicedResult& sliced_result : sliced_results) {
+    if (sliced_result.update_slice == nullptr) {
+      continue;  // RewriteHero's GTE replacement covers these.
+    }
+    // Noops are single-user, so exactly one user of head continues the chain.
+    // Tuple heroes carry their GTE as noops[0]; heads are never tuple-shaped.
+    HloInstruction* head = hero;
+    absl::Span<HloInstruction* const> tail = sliced_result.noops;
+    if (tuple_hero) {
+      head = tail.front();
+      tail.remove_prefix(1);
+    }
+    HloInstruction* chain_user =
+        tail.empty() ? sliced_result.update_slice : tail.front();
+    std::vector<HloInstruction*> external_users;
+    for (HloInstruction* user : head->users()) {
+      if (user != chain_user) {
+        external_users.push_back(user);
+      }
+    }
+    if (external_users.empty()) {
+      continue;
+    }
+
+    HloInstruction* slot =
+        fusion->shape().IsTuple()
+            ? GetOrCreateGte(fusion, sliced_result.result_number)
+            : fusion;
+    const Shape& update_shape = sliced_result.update_slice->operand(1)->shape();
+    HloInstruction* value =
+        parent->AddInstruction(HloInstruction::CreateDynamicSlice(
+            update_shape, slot,
+            Cast<HloDynamicUpdateSliceInstruction>(sliced_result.update_slice)
+                ->index_operands(),
+            update_shape.dimensions()));
+    if (!ShapeUtil::Equal(head->shape(), update_shape)) {
+      value = parent->AddInstruction(
+          HloInstruction::CreateBitcast(head->shape(), value));
+    }
+    VLOG(2) << "Rerouted " << external_users.size() << " external user(s) of "
+            << head->name() << " to " << value->name();
+    RETURN_IF_ERROR(head->ReplaceUsesWith(external_users, value));
+  }
+  return absl::OkStatus();
+}
+
 //===----------------------------------------------------------------------===//
 // Rewrite sync hero
 //===----------------------------------------------------------------------===//
@@ -552,21 +796,30 @@ absl::StatusOr<bool> RewriteHero(
     return false;
   }
 
+  // Skip the rewrite entirely rather than leave a duplicated hero.
+  if (HasUnroutableUsers(hero, plan->external_operands)) {
+    VLOG(2) << "Skipping " << hero->name() << ": unroutable users";
+    return false;
+  }
+
   ASSIGN_OR_RETURN(HloComputation * fusion_body,
                    CreateFusionBody(module, *plan, sliced_results, hero));
 
   HloComputation* parent = hero->parent();
-  HloInstruction* fusion = parent->AddInstruction(HloInstruction::CreateFusion(
-      fusion_body->root_instruction()->shape(),
-      HloInstruction::FusionKind::kCustom, plan->captures, fusion_body));
+  HloInstruction* fusion = parent->AddInstruction(
+      HloInstruction::CreateFusion(fusion_body->root_instruction()->shape(),
+                                   HloInstruction::FusionKind::kCustom,
+                                   plan->external_operands, fusion_body));
   module->SetAndUniquifyInstrName(fusion, "dynamic_slice_fusion");
   RETURN_IF_ERROR(SetDynamicSliceFusionBackendConfig(fusion));
+
+  // Must run before the DUS chains are replaced below (it reads DUS operands).
+  RETURN_IF_ERROR(RerouteExternalUsers(hero, fusion, sliced_results));
 
   if (sliced_results.size() > 1) {
     bool any_result_replaced = false;
     for (int64_t i = 0; i < sliced_results.size(); ++i) {
-      auto* gte = parent->AddInstruction(
-          HloInstruction::CreateGetTupleElement(fusion, i));
+      HloInstruction* gte = GetOrCreateGte(fusion, i);
       if (sliced_results[i].update_slice != nullptr) {
         RETURN_IF_ERROR(
             parent->ReplaceInstruction(sliced_results[i].update_slice, gte));

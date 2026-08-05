@@ -22,6 +22,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "xla/client/client_library.h"

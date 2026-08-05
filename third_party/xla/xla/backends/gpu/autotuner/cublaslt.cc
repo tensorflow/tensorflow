@@ -20,7 +20,9 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "xla/tsl/platform/status_macros.h"
 #include "xla/autotuning.pb.h"
@@ -37,8 +39,6 @@ limitations under the License.
 #include "xla/stream_executor/blas.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/gpu/gpu_blas_lt.h"
-#include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 
@@ -88,6 +88,11 @@ CublasLtBackend::GetSupportedConfigs(const HloInstruction& instr) {
     return std::vector<std::unique_ptr<BackendConfig>>();
   }
 
+  if (stream_executor() == nullptr) {
+    return absl::InvalidArgumentError(
+        "CublasLtBackend cannot enumerate configs in deviceless mode.");
+  }
+
   GpuBackendConfig gpu_config =
       instr.backend_config<GpuBackendConfig>().value();
   const GemmBackendConfig& backend_config = gpu_config.gemm_backend_config();
@@ -114,9 +119,13 @@ CublasLtBackend::GetSupportedConfigs(const HloInstruction& instr) {
   const int64_t workspace_size =
       ShapeUtil::ByteSizeOf(output_shape.tuple_shapes().back());
 
-  ASSIGN_OR_RETURN(
-      std::vector<BlasLt::MatmulAlgorithm> algorithms,
-      plan->GetAlgorithms(GemmConfig::kNumAlgorithms, workspace_size));
+  int max_algorithms = debug_options().xla_gpu_blas_max_algorithms();
+  if (max_algorithms <= 0) {
+    max_algorithms = GemmConfig::kNumAlgorithms;
+  }
+
+  ASSIGN_OR_RETURN(std::vector<BlasLt::MatmulAlgorithm> algorithms,
+                   plan->GetAlgorithms(max_algorithms, workspace_size));
   int num_algorithms = algorithms.size();
   std::vector<std::unique_ptr<BackendConfig>> configs;
   configs.reserve(num_algorithms);

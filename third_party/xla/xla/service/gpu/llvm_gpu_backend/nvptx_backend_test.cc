@@ -64,6 +64,27 @@ TEST(UtilsTest, TestGetSmName) {
   ASSERT_EQ(nvptx::GetSmName(se::CudaComputeCapability{13, 0}), "sm_121");
 }
 
+TEST(UtilsTest, UnknownCapabilityFallsBackToFamilyCompatible) {
+  using FeatureExtension = se::CudaComputeCapability::FeatureExtension;
+  // Directly supported compute capabilities keep their feature extension.
+  EXPECT_EQ(nvptx::ResolveSupportedComputeCapability(se::CudaComputeCapability{
+                10, 0, FeatureExtension::kAcceleratedFeatures}),
+            (se::CudaComputeCapability{
+                10, 0, FeatureExtension::kAcceleratedFeatures}));
+  // An unknown compute capability within a known major version falls back to
+  // the latest supported minor version with the family compatible extension.
+  // This mirrors a yet-unreleased device (e.g. sm_1099a) where ptxas only knows
+  // about sm_103f.
+  EXPECT_EQ(nvptx::ResolveSupportedComputeCapability(se::CudaComputeCapability{
+                10, 99, FeatureExtension::kAcceleratedFeatures}),
+            (se::CudaComputeCapability{
+                10, 3, FeatureExtension::kFamilyCompatibleFeatures}));
+  // When no family-compatible extension is available, don't use any.
+  EXPECT_EQ(nvptx::ResolveSupportedComputeCapability(se::CudaComputeCapability{
+                9, 99, FeatureExtension::kAcceleratedFeatures}),
+            (se::CudaComputeCapability{9, 0, FeatureExtension::kNone}));
+}
+
 using VersionPair = std::pair<se::SemanticVersion, se::SemanticVersion>;
 using PtxVersionFromCudaVersionTest = ::testing::TestWithParam<VersionPair>;
 
@@ -95,6 +116,12 @@ INSTANTIATE_TEST_SUITE_P(VersionTest, PtxVersionFromCudaVersionTest,
                              {{12, 6, 0}, {8, 5, 0}},
                              {{12, 8, 0}, {8, 7, 0}},
                              {{12, 9, 0}, {8, 8, 0}},
+                             // CUDA 13
+                             {{13, 0, 0}, {9, 0, 0}},
+                             {{13, 1, 0}, {9, 1, 0}},
+                             {{13, 2, 0}, {9, 2, 0}},
+                             {{13, 3, 0}, {9, 3, 0}},
+                             {{13, 4, 0}, {9, 4, 0}},
                          }),
                          [](::testing::TestParamInfo<VersionPair> data) {
                            se::SemanticVersion cuda_version = data.param.first;

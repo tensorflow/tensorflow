@@ -74,10 +74,16 @@ void ComputeInputOutputAliasedValues(const HloValue& value,
       std::optional<HloInputOutputAliasConfig::Alias> aliased_input =
           io_alias_config.GetAliasedParameter(pos.index);
       if (aliased_input) {
-        aliased_values.insert(
-            &dataflow.GetUniqueValueAt(entry_computation.parameter_instruction(
-                                           aliased_input->parameter_number),
-                                       aliased_input->parameter_index));
+        // Pipelining and loop crossing can create multi-value value sets.
+        // Iterate over all aliased values instead of assuming a unique value.
+        for (const HloValue* aliased_val :
+             dataflow
+                 .GetValueSet(entry_computation.parameter_instruction(
+                                  aliased_input->parameter_number),
+                              aliased_input->parameter_index)
+                 .values()) {
+          aliased_values.insert(aliased_val);
+        }
       }
     }
   }
@@ -90,13 +96,15 @@ void ComputeWhileAliasedValues(const HloValue& value,
   // Value is init of a while (use is while).
   for (const HloUse& use : value.GetUses()) {
     if (use.instruction->opcode() == HloOpcode::kWhile) {
-      // Determine the while value that this shares a buffer with.
-      const HloValue& while_value =
-          dataflow.GetUniqueValueAt(use.instruction, use.operand_index);
-      aliased_values.insert(&while_value);
-      VLOG(3) << "  value is init value to a while; must share buffer with "
-                 "while value "
-              << while_value;
+      // Determine all while values that this shares a buffer with.
+      // A while operand value set may contain multiple aliased values.
+      for (const HloValue* while_value :
+           dataflow.GetValueSet(use.instruction, use.operand_index).values()) {
+        aliased_values.insert(while_value);
+        VLOG(3) << "  value is init value to a while; must share buffer with "
+                   "while value "
+                << *while_value;
+      }
     }
   }
   // Value is a parameter of a while body/condition.
@@ -109,12 +117,15 @@ void ComputeWhileAliasedValues(const HloValue& value,
         // Call graph must have been flattened.
         CHECK_EQ(call_graph_node.caller_callsites().size(), 1);
 
-        const HloValue& while_value = dataflow.GetUniqueValueAt(
-            callsite.instruction(), value.defining_index());
-        VLOG(3) << "  value is parameter value of the body or condition of a "
-                   "while; must share buffer with while value "
-                << while_value;
-        aliased_values.insert(&while_value);
+        for (const HloValue* while_value :
+             dataflow
+                 .GetValueSet(callsite.instruction(), value.defining_index())
+                 .values()) {
+          VLOG(3) << "  value is parameter value of the body or condition of a "
+                     "while; must share buffer with while value "
+                  << *while_value;
+          aliased_values.insert(while_value);
+        }
       }
     }
   }
@@ -135,14 +146,16 @@ void ComputeWhileAliasedValues(const HloValue& value,
         CHECK_EQ(call_graph_node.caller_callsites().size(), 1)
             << "Call graph must have been flattened.";
 
-        const HloValue& while_value =
-            dataflow.GetUniqueValueAt(callsite.instruction(), position.index);
-        VLOG(3) << "  value @ " << position << " is root of "
-                << callsite.instruction()->name()
-                << "; body root and while value root must share buffer "
-                   "among them: "
-                << while_value;
-        aliased_values.insert(&while_value);
+        for (const HloValue* while_value :
+             dataflow.GetValueSet(callsite.instruction(), position.index)
+                 .values()) {
+          VLOG(3) << "  value @ " << position << " is root of "
+                  << callsite.instruction()->name()
+                  << "; body root and while value root must share buffer "
+                     "among them: "
+                  << *while_value;
+          aliased_values.insert(while_value);
+        }
       }
     }
   }
@@ -167,13 +180,16 @@ void ComputeConditionalAliasedValues(const HloValue& value,
         // Call graph must have been flattened.
         CHECK_EQ(call_graph_node.caller_callsites().size(), 1);
 
-        const HloValue& cond_value =
-            dataflow.GetUniqueValueAt(callsite.instruction(), position.index);
-        VLOG(3) << "  value @ " << position << " is root of "
-                << callsite.instruction()->name()
-                << "; branch computation roots must share buffer among them : "
-                << cond_value;
-        aliased_values.insert(&cond_value);
+        for (const HloValue* cond_value :
+             dataflow.GetValueSet(callsite.instruction(), position.index)
+                 .values()) {
+          VLOG(3)
+              << "  value @ " << position << " is root of "
+              << callsite.instruction()->name()
+              << "; branch computation roots must share buffer among them : "
+              << *cond_value;
+          aliased_values.insert(cond_value);
+        }
       }
     }
   }
@@ -191,11 +207,15 @@ void ComputeInPlaceOperationAliasedValues(const HloValue& value,
          alias_info->GetInPlaceInputOutputPairs(instruction)) {
       if (position.index == operand_and_output_index.second) {
         const HloOperandIndex& operand_index = operand_and_output_index.first;
-        const HloValue& operand_value = dataflow.GetUniqueValueAt(
-            instruction->operand(operand_index.operand_number),
-            operand_index.operand_index);
-        VLOG(3) << " operand value " << operand_value << " aliases.";
-        aliased_values.insert(&operand_value);
+        for (const HloValue* operand_value :
+             dataflow
+                 .GetValueSet(
+                     instruction->operand(operand_index.operand_number),
+                     operand_index.operand_index)
+                 .values()) {
+          VLOG(3) << " operand value " << *operand_value << " aliases.";
+          aliased_values.insert(operand_value);
+        }
       }
     }
   }
@@ -206,10 +226,13 @@ void ComputeInPlaceOperationAliasedValues(const HloValue& value,
       const HloOperandIndex& operand_index = operand_and_output_index.first;
       if (use.operand_number == operand_index.operand_number &&
           use.operand_index == operand_index.operand_index) {
-        const HloValue& use_value = dataflow.GetUniqueValueAt(
-            use.instruction, operand_and_output_index.second);
-        VLOG(3) << " use value " << use_value << " aliases.";
-        aliased_values.insert(&use_value);
+        for (const HloValue* use_value :
+             dataflow
+                 .GetValueSet(use.instruction, operand_and_output_index.second)
+                 .values()) {
+          VLOG(3) << " use value " << *use_value << " aliases.";
+          aliased_values.insert(use_value);
+        }
       }
     }
   }

@@ -1,0 +1,49 @@
+// RUN: fusion_to_xtile %s | fusion_compiler_opt --canonicalize -cse \
+// RUN:   | FileCheck %s
+// RUN: test_correctness %s
+
+// RUN: fusion_to_xtile %s | fusion_compiler_opt \
+// RUN:   --xtile-cpu-new-xtile-to-vector --xla-simplify-arith \
+// RUN:   | FileCheck %s --check-prefix=NEW-VECTOR
+// RUN: test_correctness %s --xla_cpu_use_new_xtile_lowering=true
+
+fusion {
+  p0 = f32[128,32,64] parameter(0)
+  ROOT transpose = f32[32,64,128] transpose(p0), dimensions={1,2,0}
+}
+
+ENTRY main {
+  p0 = f32[128,32,64] parameter(0)
+  ROOT fusion = f32[32,64,128] fusion(p0), kind=kLoop, calls=fusion,
+    backend_config={
+      "fusion_backend_config":{
+        "block_level_fusion_config":{
+          "output_tiles":[{"sizes":["8", "16", "16"]}],
+          "num_ctas":"1"
+        }
+      }
+    }
+}
+
+// CHECK:      #indexing_map = #xla.indexing_map<"(tid) -> ((tid mod 8) * 16), domain: tid in [0, 127]">
+// CHECK:      #indexing_map1 = #xla.indexing_map<"(tid) -> ((tid / 32) * 8), domain: tid in [0, 127]">
+// CHECK:      #indexing_map2 = #xla.indexing_map<"(tid) -> (((tid / 8) mod 4) * 16), domain: tid in [0, 127]">
+
+// CHECK:        xtile.entry_func @wrapped_fusion(
+// CHECK-SAME:     %[[ARG0:[^:]+]]: memref<128x32x64xf32>,
+// CHECK-SAME:     %[[ARG1:[^:]+]]: memref<32x64x128xf32>,
+// CHECK-SAME:     %{{.*}}: index)
+
+// CHECK:        scf.for %[[IDX:.*]] = %{{.*}} to %{{.*}} step %{{.*}} {
+// CHECK:          %[[OFF0:.*]] = xla.apply_indexing #indexing_map(%[[IDX]])
+// CHECK:          %[[OFF1:.*]] = xla.apply_indexing #indexing_map1(%[[IDX]])
+// CHECK:          %[[OFF2:.*]] = xla.apply_indexing #indexing_map2(%[[IDX]])
+// CHECK:          %[[EXT:.*]] = xtile.extract %[[ARG0]][%[[OFF0]], %[[OFF1]], %[[OFF2]]] [16, 8, 16] [1, 1, 1]
+// CHECK:          %[[TRANS:.*]] = stablehlo.transpose %[[EXT]], dims = [1, 2, 0]
+// CHECK:          xtile.insert %[[TRANS]] into %[[ARG1]][%[[OFF1]], %[[OFF2]], %[[OFF0]]] [8, 16, 16] [1, 1, 1]
+
+// NEW-VECTOR:    scf.for %[[IDX:.*]] = %{{.*}} to %{{.*}} step %{{.*}} {
+// NEW-VECTOR-NOT:  scf.if
+// NEW-VECTOR:      %[[EXT:.*]] = vector.transfer_read %{{.*}}[%{{.*}}, %{{.*}}, %{{.*}}], %{{.*}} {in_bounds = [true, true, true]} : memref<128x32x64xf32>, vector<16x8x16xf32>
+// NEW-VECTOR:      %[[TRANS:.*]] = vector.transpose %[[EXT]], [1, 2, 0] : vector<16x8x16xf32> to vector<8x16x16xf32>
+// NEW-VECTOR:      vector.transfer_write %[[TRANS]], %{{.*}}[%{{.*}}, %{{.*}}, %{{.*}}] {in_bounds = [true, true, true]} : vector<8x16x16xf32>, memref<32x64x128xf32>

@@ -1,0 +1,13 @@
+diff --git a/src/common/api_wrapper/ze_api_wrapper.cpp b/src/common/api_wrapper/ze_api_wrapper.cpp
+index 2253c64..b274ea2 100644
+--- a/src/common/api_wrapper/ze_api_wrapper.cpp
++++ b/src/common/api_wrapper/ze_api_wrapper.cpp
+@@ -35,7 +35,7 @@ bool ze_api_init() {
+     ze_lib_info.path = ccl::global_data::env().ze_lib_path;
+ 
+     if (ze_lib_info.path.empty()) {
+-        ze_lib_info.path = "libze_loader.so";
++        ze_lib_info.path = "libze_loader.so.1";
+     }
+     LOG_DEBUG("level-zero lib path: ", ze_lib_info.path);
+ 

@@ -47,7 +47,7 @@ limitations under the License.
 #include "xla/pjrt/pjrt_common.h"
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_executable.h"
-#include "xla/pjrt/stream_executor_executable.h"
+#include "xla/pjrt/se/stream_executor_executable.h"
 #include "xla/pjrt/utils.h"
 #include "xla/primitive_util.h"
 #include "xla/service/compiled_module.h"
@@ -295,9 +295,15 @@ StreamExecutorGpuCompiler::Compile(
   ASSIGN_OR_RETURN(
       std::vector<std::unique_ptr<CompiledModule>> aot_results,
       gpu_compiler->CompileAheadOfTime(std::move(hlo_module), aot_options));
+  if (aot_results.size() > 1) {
+    return absl::UnimplementedError(
+        "CompileAheadOfTime returned multiple results, which is not supported "
+        "by StreamExecutorExecutable.");
+  }
   return std::make_unique<StreamExecutorExecutable>(
-      pjrt_platform_id_, std::move(input_options), std::move(aot_results),
-      num_replicas, num_partitions, name, fingerprint,
+      pjrt_platform_id_, std::move(input_options),
+      aot_results.empty() ? nullptr : std::move(aot_results[0]), num_replicas,
+      num_partitions, name, fingerprint,
       /*default_memory_kind=*/StreamExecutorGpuHbmMemorySpace::kKind);
 }
 

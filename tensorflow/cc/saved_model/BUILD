@@ -1,3 +1,18 @@
+# Copyright 2026 The TensorFlow Authors. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
+
 #Description:
 # TensorFlow SavedModel.
 
@@ -100,6 +115,15 @@ tf_cc_test(
 )
 
 cc_library(
+    name = "loader_default_deps",
+    visibility = ["//visibility:private"],
+    deps = if_static([
+        "//tensorflow/core:all_kernels",
+        "//tensorflow/core:direct_session",
+    ]) + if_google(if_static(["//tensorflow/core/platform/default/build_config:tensorflow_platform_specific"])),
+)
+
+cc_library(
     name = "loader",
     hdrs = ["loader.h"],
     deps = [
@@ -110,10 +134,7 @@ cc_library(
         "//tensorflow:tflite_converter": ["//tensorflow/core:direct_session"] + if_google([
             "//tensorflow/core/platform/default/build_config:tensorflow_platform_specific",
         ]),
-        "//conditions:default": if_static([
-            "//tensorflow/core:all_kernels",
-            "//tensorflow/core:direct_session",
-        ]) + if_google(if_static(["//tensorflow/core/platform/default/build_config:tensorflow_platform_specific"])),
+        "//conditions:default": [":loader_default_deps"],
     }) + if_not_mobile([
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:lib",
@@ -487,6 +508,60 @@ tf_cc_test(
 
 # Linked directly into ":tensorflow_framework".
 cc_library(
+    name = "singleprint_impl",
+    srcs = [
+        "singleprint.cc",
+        "singleprint.h",
+    ],
+    visibility = [
+        "//tensorflow:__pkg__",
+        "//tensorflow/python:__pkg__",
+    ],
+    deps = [
+        ":constants",
+        "//tensorflow/core/protobuf:for_core_protos_cc",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@tsl//tsl/platform:errors",
+        "@tsl//tsl/platform:statusor",
+    ] + if_not_mobile([
+        "//tensorflow/core:lib",
+    ]) + if_android([
+        "//tensorflow/core:portable_tensorflow_lib_lite",
+    ]),
+    alwayslink = True,
+)
+
+cc_library(
+    name = "singleprint",
+    hdrs = ["singleprint.h"],
+    visibility = ["//visibility:public"],
+    deps = if_static([
+        ":singleprint_impl",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "//tensorflow/core/protobuf:for_core_protos_cc",
+    ]) + if_not_mobile([
+        "//tensorflow/core:lib",
+    ]) + if_android([
+        "//tensorflow/core:portable_tensorflow_lib_lite",
+    ]),
+)
+
+tf_cc_test(
+    name = "singleprint_test",
+    size = "small",
+    srcs = ["singleprint_test.cc"],
+    deps = [
+        ":singleprint",
+        "//tensorflow/core:protos_all_cc",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+# Linked directly into ":tensorflow_framework".
+cc_library(
     name = "fingerprinting_impl",
     srcs = [
         "fingerprinting.cc",
@@ -499,6 +574,7 @@ cc_library(
     deps = [
         ":constants",
         ":fingerprinting_x_platform_utils",
+        ":singleprint",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/graph/regularization:simple_delete",
         "//tensorflow/core/graph/regularization:util",
@@ -534,7 +610,9 @@ cc_library(
         "//tensorflow/core/tfrt:__subpackages__",
         "//tensorflow/python/saved_model:__subpackages__",
     ],
-    deps = if_static([
+    deps = [
+        ":singleprint",
+    ] + if_static([
         ":fingerprinting_impl",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/status:statusor",
@@ -595,8 +673,8 @@ tf_cc_test(
     deps = [
         ":fingerprinting_utils",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/platform:env",
         "//tensorflow/core/platform:path",
-        "//tensorflow/core/platform:protobuf",
         "//tensorflow/tools/proto_splitter:chunk_proto_cc",
         "//tensorflow/tools/proto_splitter/cc:util",
         "//tensorflow/tools/proto_splitter/testdata:test_message_proto_cc",
@@ -604,8 +682,8 @@ tf_cc_test(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest_main",
+        "@tsl//tsl/platform:env",
         "@tsl//tsl/platform:errors",
-        "@tsl//tsl/platform:protobuf",
         "@tsl//tsl/platform:status_matchers",
         "@tsl//tsl/platform:statusor",
         "@tsl//tsl/platform:test",

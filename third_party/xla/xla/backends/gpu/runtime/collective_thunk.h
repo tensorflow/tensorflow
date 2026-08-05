@@ -126,7 +126,8 @@ class CollectiveThunk : public Command {
   }
 
   bool IsTracedCommand() const override { return true; }
-  bool requires_initialization() const override { return true; }
+  bool requires_update_on_initialize() const override { return true; }
+  bool requires_warmup() const override { return true; }
 
   absl::Status Prepare(const PrepareParams& params) override;
   absl::Status Initialize(const InitializeParams& params) override;
@@ -198,6 +199,11 @@ class CollectiveThunk : public Command {
   virtual const CollectiveConfig& config() const = 0;
 
   virtual bool CanUseSymmetricBuffer() const { return false; }
+
+  const absl::StatusOr<std::vector<std::vector<GlobalDeviceId>>>&
+  device_groups() const {
+    return device_groups_;
+  }
 
  private:
   // Rendezvous with other local participants before/after the first call to

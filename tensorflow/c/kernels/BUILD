@@ -1,3 +1,18 @@
+# Copyright 2026 The TensorFlow Authors. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
+
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 load("//tensorflow:tensorflow.default.bzl", "filegroup", "tf_gen_op_libs", "tf_kernel_library")
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
@@ -191,11 +206,25 @@ tf_cc_test(
 filegroup(
     name = "portable_all_op_kernels",
     srcs = [
+        ":portable_all_op_kernel_hdrs",
+        ":portable_all_op_kernel_srcs",
+    ],
+)
+
+filegroup(
+    name = "portable_all_op_kernel_srcs",
+    srcs = [
         "bitcast_op.cc",
         "histogram_summary_op.cc",
         "merge_summary_op.cc",
         "summary_op.cc",
         "tensor_shape_utils.cc",
+    ],
+)
+
+filegroup(
+    name = "portable_all_op_kernel_hdrs",
+    srcs = [
         "tensor_shape_utils.h",
     ],
 )

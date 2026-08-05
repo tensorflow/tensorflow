@@ -13,8 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <memory>
-#include <string>
 #include <utility>
 
 #include "absl/status/statusor.h"
@@ -286,14 +284,5 @@ class TritonXLAMathToLibdevicePass
 };
 
 }  // namespace
-
-std::unique_ptr<Pass> CreateTritonXLAMathToLibdevicePass(
-    absl::string_view libdevice_path, absl::string_view triple) {
-  TritonXLAMathToLibdevicePassOptions options;
-  options.libdevice_path_ = libdevice_path;
-  options.triple_string_ = triple;
-
-  return std::make_unique<TritonXLAMathToLibdevicePass>(options);
-}
 
 }  // namespace mlir::triton::xla

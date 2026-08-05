@@ -238,14 +238,13 @@ TEST(BitcastUtilsTest,
 }
 
 TEST(BitcastUtilsTest, CalculateBitcastOfTransposeHandlesTrivialDimensions) {
-  // Size-1 dimensions in the transpose are handled correctly by dropping them
-  // from the new bitcast shape and new transpose dimensions.
+  // Size-1 dimensions in the transpose are handled correctly and not dropped.
   // Ex: operand = f32[7, 1, 6]
   //     transpose = f32[1, 6, 7] transpose(operand), dimensions={1, 2, 0}
   //     result = f32[1, 2, 3, 7] bitcast(transpose)
   // ->
-  // bitcast = f32[7, 2, 3] bitcast(operand)
-  // result = f32[2, 3, 7] transpose(bitcast), dimensions={1, 2, 0}
+  // bitcast = f32[7, 1, 2, 3] bitcast(operand: f32[7, 1, 6])
+  // result = f32[1, 2, 3, 7] transpose(bitcast), dimensions={1, 2, 3, 0}
   Shape operand_shape = ShapeUtil::MakeShape(F32, {7, 1, 6});
   Shape transpose_shape = ShapeUtil::MakeShape(F32, {1, 6, 7});
   Shape result_shape = ShapeUtil::MakeShape(F32, {1, 2, 3, 7});
@@ -259,9 +258,36 @@ TEST(BitcastUtilsTest, CalculateBitcastOfTransposeHandlesTrivialDimensions) {
       CalculateBitcastOfTranspose(
           Cast<HloTransposeInstruction>(transpose_inst.get()), result_shape));
 
-  Shape expected_shape = ShapeUtil::MakeShape(F32, {0, 7, 2, 3});
+  Shape expected_shape = ShapeUtil::MakeShape(F32, {7, 1, 2, 3});
   EXPECT_EQ(params.new_shape, expected_shape);
-  EXPECT_THAT(params.new_dims, testing::ElementsAre(0, 2, 3, 1));
+  EXPECT_THAT(params.new_dims, testing::ElementsAre(1, 2, 3, 0));
+}
+
+TEST(BitcastUtilsTest,
+     CalculateBitcastOfTransposeHandlesPermutedTrivialDimsInCollapsedGroup) {
+  // Size-1 dimension splitting up a collapsed group is handled correctly.
+  // Ex: operand = f32[7, 1, 6]
+  //     transpose = f32[6, 1, 7] transpose(operand), dimensions={2, 1, 0}
+  //     result = f32[2, 3, 7] bitcast(transpose)
+  // ->
+  // bitcast = f32[7, 2, 3] bitcast(operand: f32[7, 1, 6])
+  // result = f32[2, 3, 7] transpose(bitcast), dimensions={1, 2, 0}
+  Shape operand_shape = ShapeUtil::MakeShape(F32, {7, 1, 6});
+  Shape transpose_shape = ShapeUtil::MakeShape(F32, {6, 1, 7});
+  Shape result_shape = ShapeUtil::MakeShape(F32, {2, 3, 7});
+
+  auto param = HloInstruction::CreateParameter(0, operand_shape, "p");
+  auto transpose_inst =
+      HloInstruction::CreateTranspose(transpose_shape, param.get(), {2, 1, 0});
+
+  ASSERT_OK_AND_ASSIGN(
+      BitcastParams params,
+      CalculateBitcastOfTranspose(
+          Cast<HloTransposeInstruction>(transpose_inst.get()), result_shape));
+
+  Shape expected_shape = ShapeUtil::MakeShape(F32, {7, 2, 3});
+  EXPECT_EQ(params.new_shape, expected_shape);
+  EXPECT_THAT(params.new_dims, testing::ElementsAre(1, 2, 0));
 }
 
 TEST(BitcastUtilsTest, CalculateTransposeOfBitcast) {

@@ -94,6 +94,15 @@ GetAllGatherTransformations(HloInstruction* all_gather) {
     if (reshaped_num_strides != all_gather_num_strides) {
       return std::nullopt;
     }
+    // The loop above can exit with reshaped_all_gather_dimension equal to the
+    // rank when all reshape dimensions are consumed to reach the stride count
+    // (e.g. a size-1 all-gather dimension). In that case there is no reshaped
+    // all-gather dimension; guard against the out-of-bounds dimensions() access
+    // below.
+    if (reshaped_all_gather_dimension >=
+        transformation_hlo->shape().dimensions().size()) {
+      return std::nullopt;
+    }
     // Additionally, we make sure the reshape does not change the size of the
     // all-gather dimension.
     // TODO(jlwei@): support merging dimensions following the all-gather

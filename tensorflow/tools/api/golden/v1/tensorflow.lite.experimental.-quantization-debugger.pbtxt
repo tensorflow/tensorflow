@@ -1,10 +1,10 @@
 path: "tensorflow.lite.experimental.QuantizationDebugger"
 tf_class {
   is_instance: "<class \'tensorflow.lite.tools.optimize.debugging.python.debugger.QuantizationDebugger\'>"
-  is_instance: "<type \'object\'>"
+  is_instance: "<class \'object\'>"
   member {
     name: "options"
-    mtype: "<type \'property\'>"
+    mtype: "<class \'property\'>"
   }
   member_method {
     name: "__init__"

@@ -102,6 +102,29 @@ module @foo {
   EXPECT_EQ(hlo_program1->Fingerprint(), hlo_program2->Fingerprint());
 }
 
+TEST(HloProgramTest, FingerprintIgnoresDebugInfoStructure) {
+  TF_ASSERT_OK_AND_ASSIGN(
+      const std::unique_ptr<xla::ifrt::HloProgram> hlo_program1,
+      ParseHloProgramString(R"(
+module @foo {
+  func.func @main(%arg0: tensor<2x3xi32> loc("foo")) -> tensor<2x3xi32> {
+    return %arg0 : tensor<2x3xi32> loc("foo")
+  } loc("foo")
+} loc("foo")
+)"));
+  TF_ASSERT_OK_AND_ASSIGN(
+      const std::unique_ptr<xla::ifrt::HloProgram> hlo_program2,
+      ParseHloProgramString(R"(
+module @foo {
+  func.func @main(%arg0: tensor<2x3xi32> loc("bar")) -> tensor<2x3xi32> {
+    return %arg0 : tensor<2x3xi32> loc("baz")
+  } loc("qux")
+} loc("quux")
+)"));
+
+  EXPECT_EQ(hlo_program1->Fingerprint(), hlo_program2->Fingerprint());
+}
+
 TEST(HloProgramTest, BytesRoundTrip) {
   static constexpr absl::string_view kModule = R"(
 module @hlo_module attributes {mhlo.num_partitions = 1 : i32, mhlo.num_replicas = 1 : i32} {

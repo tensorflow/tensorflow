@@ -96,7 +96,7 @@ using ::testing::ElementsAre;
 using ::testing::HasSubstr;
 
 class CustomCallTest : public ClientLibraryTestRunnerMixin<
-                           HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>> {
+                           HloInterpreterReferenceMixin<HloTestBase>> {
  public:
   std::string PlatformName() {
     if (test_runner().HasProperty(HloRunnerPropertyTag::kUsingGpuCuda)) {
@@ -396,9 +396,6 @@ TEST_F(CustomCallTest, ExportedFfiUnknownTarget) {
           HasSubstr(
               "No FFI handler registered for __xla_test$$unknown_target")));
 }
-
-// Memcpy and SubBuffers tests are already ported in
-// fusions/address_computation_fusion_test.cc
 
 std::string& kExpectedOpaque = *new std::string("abc\0def", 7);
 

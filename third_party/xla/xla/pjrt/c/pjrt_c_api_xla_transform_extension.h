@@ -104,11 +104,31 @@ PJRT_DEFINE_STRUCT_TRAITS(PJRT_Register_Xla_Transform_Args, callbacks);
 typedef PJRT_Error* (*PJRT_Register_Xla_Transform_Fn)(
     PJRT_Register_Xla_Transform_Args* args);
 
+// Struct representing the arguments for the clear_xla_transform callback.
+// The member 'struct_size' must always be set to the size of the struct by
+// the client. The member 'stage' is the pipeline stage of the transform to be
+// cleared. The member 'name' is the name of the transform to be cleared.
+// The member 'cleared' is an out parameter indicating whether the transform
+// was cleared.
+struct PJRT_Clear_Xla_Transform_Args {
+  size_t struct_size;
+  PJRT_XlaTransform_PipelineStage stage;
+  const char* name;
+  size_t name_size;
+  PJRT_XlaTransform_Callbacks* callbacks;
+  bool cleared;  // out
+};
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_Clear_Xla_Transform_Args, cleared);
+
+typedef PJRT_Error* (*PJRT_Clear_Xla_Transform_Fn)(
+    PJRT_Clear_Xla_Transform_Args* args);
+
 typedef struct PJRT_Xla_Transform_Extension {
   PJRT_Extension_Base base;
-  PJRT_Register_Xla_Transform_Fn register_xla_transform;
+  PJRT_NO_DISCARD PJRT_Register_Xla_Transform_Fn register_xla_transform;
+  PJRT_NO_DISCARD PJRT_Clear_Xla_Transform_Fn clear_xla_transform;
 } PJRT_Xla_Transform_Extension;
-PJRT_DEFINE_STRUCT_TRAITS(PJRT_Xla_Transform_Extension, register_xla_transform);
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_Xla_Transform_Extension, clear_xla_transform);
 
 #ifdef __cplusplus
 }

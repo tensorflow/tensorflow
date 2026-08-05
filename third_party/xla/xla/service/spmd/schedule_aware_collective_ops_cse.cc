@@ -110,7 +110,7 @@ absl::StatusOr<bool> RunOnComputation(HloComputation* comp, bool for_replicas,
     auto hlo = *it;
     int64_t h = 0;
     for (auto user : hlo->users()) {
-      h = std::max(h, height[user]) + 1;
+      h = std::max(h, height[user] + 1);
     }
     max_height = std::max(max_height, h);
     height[hlo] = h;

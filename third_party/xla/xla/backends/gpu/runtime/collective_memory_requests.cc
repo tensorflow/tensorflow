@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/backends/gpu/runtime/collective_memory_requests.h"
 
+#include <utility>
 #include <vector>
 
 #include "absl/algorithm/container.h"

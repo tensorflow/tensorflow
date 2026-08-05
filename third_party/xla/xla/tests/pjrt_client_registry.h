@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_TESTS_PJRT_CLIENT_REGISTRY_H_
 #define XLA_TESTS_PJRT_CLIENT_REGISTRY_H_
 
+#include <cstdlib>
 #include <functional>
 #include <memory>
 #include <optional>
@@ -23,6 +24,9 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/pjrt/pjrt_client.h"
 
 namespace xla {

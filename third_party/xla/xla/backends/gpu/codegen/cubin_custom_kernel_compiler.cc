@@ -87,20 +87,21 @@ xla::Future<LlvmKernelSource> CubinCustomKernelCompiler::CompileMlirToLlvm(
       });
 }
 
-xla::Future<std::vector<uint8_t>> CubinCustomKernelCompiler::CompileToPtx(
+xla::Future<std::vector<uint8_t>>
+CubinCustomKernelCompiler::CompileToTargetBinary(
     LlvmKernelSource kernel_source) {
   if (!thread_pool_) {
-    return CompileToPtxImpl(std::move(kernel_source));
+    return CompileToCubinImpl(std::move(kernel_source));
   }
   return xla::MakeFutureOn(
       *thread_pool_->AsExecutor(),
       [this, kernel_source = std::move(kernel_source)]() mutable {
-        return CompileToPtxImpl(std::move(kernel_source));
+        return CompileToCubinImpl(std::move(kernel_source));
       });
 }
 
 absl::StatusOr<std::vector<uint8_t>>
-CubinCustomKernelCompiler::CompileToPtxImpl(LlvmKernelSource kernel_source) {
+CubinCustomKernelCompiler::CompileToCubinImpl(LlvmKernelSource kernel_source) {
   llvm::orc::ThreadSafeModule thread_safe_module =
       std::move(kernel_source).thread_safe_module();
   llvm::Module* llvm_module = thread_safe_module.getModuleUnlocked();
@@ -120,7 +121,7 @@ absl::StatusOr<std::unique_ptr<Thunk>> CubinCustomKernelCompiler::CompileImpl(
     const emitters::KernelArguments& kernel_arguments,
     const LaunchDimensions& launch_dimensions) {
   ASSIGN_OR_RETURN(std::vector<uint8_t> cubin,
-                   CompileToPtxImpl(std::move(kernel_source)));
+                   CompileToCubinImpl(std::move(kernel_source)));
 
   ASSIGN_OR_RETURN(
       CustomKernel custom_kernel,

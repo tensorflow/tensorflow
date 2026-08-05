@@ -17,7 +17,6 @@ limitations under the License.
 
 #include <cstdint>
 #include <optional>
-#include <utility>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
@@ -32,8 +31,6 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/utils/hlo_query.h"
 #include "xla/service/constant_value.h"
-#include "xla/service/gpu/backend_configs.pb.h"
-#include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/value_range.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
@@ -226,62 +223,6 @@ absl::StatusOr<bool> UserKillsBuffer(const HloInstruction* user,
         break;
       }
       result = FusionParamIsKilled(user, op_idx, cfg).value_or(false);
-      if (result) {
-        break;
-      }
-
-      // DSF: in-place semantics live in output_to_operand_aliasing, not in
-      // the fused body — walk the alias map instead.
-      if (user->fusion_kind() != HloInstruction::FusionKind::kCustom) {
-        break;
-      }
-      auto bcfg = user->backend_config<GpuBackendConfig>();
-      if (!bcfg.ok()) {
-        break;
-      }
-      const FusionBackendConfig& fc = bcfg->fusion_backend_config();
-      if (fc.kind() != kCustomFusionKind || !fc.has_custom_fusion_config() ||
-          fc.custom_fusion_config().name() !=
-              kDynamicSliceFusionWithDynamicAddressComputationConfigName) {
-        break;
-      }
-      for (const auto& alias : user->output_operand_aliasing()) {
-        if (alias.second.first != op_idx || !alias.second.second.empty()) {
-          continue;
-        }
-        const ShapeIndex& output_idx = alias.first;
-        const HloInstruction* fused_root = user->fused_expression_root();
-        const HloInstruction* aliased;
-        if (output_idx.empty()) {
-          aliased = fused_root;
-        } else if (fused_root->opcode() == HloOpcode::kTuple &&
-                   output_idx.size() == 1 &&
-                   output_idx[0] < fused_root->operand_count()) {
-          aliased = fused_root->operand(output_idx[0]);
-        } else {
-          continue;
-        }
-        while (aliased->opcode() == HloOpcode::kBitcast) {
-          aliased = aliased->operand(0);
-        }
-        if (aliased->opcode() != HloOpcode::kDynamicUpdateSlice) {
-          continue;
-        }
-        // DUS's operand(0) must trace (through bitcasts) to
-        // fused_param[op_idx].
-        const HloInstruction* dus_target = aliased->operand(0);
-        while (dus_target->opcode() == HloOpcode::kBitcast) {
-          dus_target = dus_target->operand(0);
-        }
-        if (dus_target->opcode() != HloOpcode::kParameter ||
-            dus_target->parameter_number() != op_idx) {
-          continue;
-        }
-        if (IsKillingDus(aliased, dus_target, cfg)) {
-          result = true;
-          break;
-        }
-      }
       break;
     }
 

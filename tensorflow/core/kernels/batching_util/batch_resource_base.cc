@@ -245,17 +245,36 @@ void RecordBatchDelayUs(int64_t batch_delay_us, const std::string& model_name,
 }
 
 void RecordBatchDelayUsV2(int64_t batch_delay_us, const std::string& model_name,
-                          const std::string& op_name, int32_t batch_size) {
-  static auto* cell = tensorflow::monitoring::Sampler<3>::New(
+                          const std::string& op_name, int32_t batch_size,
+                          absl::string_view criticality_str) {
+  static auto* cell = tensorflow::monitoring::Sampler<4>::New(
       {"/tensorflow/serving/batching/batch_delay_us_v2",
        "Tracks the batching delay (in microseconds) for inputs by model_name "
        "(if available).",
-       "model_name", "op_name", "processed_batch_size"},
+       "model_name", "op_name", "processed_batch_size", "criticality"},
       // It's 27 buckets with the last bucket being 2^26 to DBL_MAX;
       // so the limits are [1, 2, 4, 8, ..., 64 * 1024 * 1024, DBL_MAX].
       monitoring::Buckets::Exponential(1, 2, 27));
-  cell->GetCell(model_name, op_name, std::to_string(batch_size))
+  cell->GetCell(model_name, op_name, std::to_string(batch_size),
+                criticality_str)
       ->Add(static_cast<double>(batch_delay_us));
+}
+
+void RecordQueueingDelayUsV2(int64_t queueing_delay_us,
+                             absl::string_view model_name,
+                             absl::string_view op_name, int32_t batch_size,
+                             absl::string_view criticality_str) {
+  static auto* cell = tensorflow::monitoring::Sampler<4>::New(
+      {"/tensorflow/serving/batching/queueing_delay_us_v2",
+       "Tracks the queueing delay (in microseconds) for inputs by model_name "
+       "(if available).",
+       "model_name", "op_name", "processed_batch_size", "criticality"},
+      // It's 27 buckets with the last bucket being 2^26 to DBL_MAX;
+      // so the limits are [1, 2, 4, 8, ..., 64 * 1024 * 1024, DBL_MAX].
+      monitoring::Buckets::Exponential(1, 2, 27));
+  cell->GetCell(std::string(model_name), std::string(op_name),
+                std::to_string(batch_size), criticality_str)
+      ->Add(static_cast<double>(queueing_delay_us));
 }
 
 void RecordBatchTaskSizeSum(int32_t batch_task_size,
@@ -1551,14 +1570,6 @@ void BatchResourceBase::RecordBatchDelayMetrics(
     const absl::Time start_time = absl::FromUnixNanos(task.start_time);
     const absl::Duration total_scheduler_delay =
         batch_schedule_time - start_time;
-    RecordBatchDelayUs(absl::ToInt64Microseconds(total_scheduler_delay),
-                       model_name, op_name, processed_size);
-    RecordBatchDelayUsV2(absl::ToInt64Microseconds(total_scheduler_delay),
-                         model_name, op_name, processed_size);
-
-    RequestCost* request_cost = task.request_cost;
-    // Skip recording the cost if the request_cost is null.
-    if (!request_cost) continue;
 
     // The duration from when the task was enqueued to when the earliest task in
     // its batch has been in the queue for a duration of batch_timeout (i.e.
@@ -1573,6 +1584,20 @@ void BatchResourceBase::RecordBatchDelayMetrics(
         std::min(remaining_batch_timeout, total_scheduler_delay);
     const absl::Duration queueing_delay =
         total_scheduler_delay - batching_delay;
+
+    const std::string criticality_str = absl::StrCat(task.criticality());
+    RecordBatchDelayUs(absl::ToInt64Microseconds(total_scheduler_delay),
+                       model_name, op_name, processed_size);
+    RecordBatchDelayUsV2(absl::ToInt64Microseconds(total_scheduler_delay),
+                         model_name, op_name, processed_size, criticality_str);
+    RecordQueueingDelayUsV2(absl::ToInt64Microseconds(queueing_delay),
+                            model_name, op_name, processed_size,
+                            criticality_str);
+
+    RequestCost* request_cost = task.request_cost;
+    // Skip recording the cost if the request_cost is null.
+    if (!request_cost) continue;
+
     request_cost->RecordMetrics(
         {{"batching_delay_msecs", absl::ToDoubleMilliseconds(batching_delay)},
          {"batch_queueing_delay_msecs",

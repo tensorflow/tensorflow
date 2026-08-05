@@ -27,7 +27,7 @@ namespace {
 // These tests verify that different emitters (Loop, Triton, etc.) properly
 // namespace their cached kernels to avoid cross-emitter cache collisions.
 class KernelCacheRegressionTest
-    : public HloPjRtInterpreterReferenceMixin<HloPjRtGpuTestBase> {};
+    : public HloInterpreterReferenceMixin<HloPjRtGpuTestBase> {};
 
 TEST_F(KernelCacheRegressionTest,
        LoopAndTritonFusionsWithIdenticalComputation) {

@@ -22,7 +22,7 @@ limitations under the License.
 namespace xla {
 namespace {
 
-using FftTextTest = HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>;
+using FftTextTest = HloPjRtInterpreterReferenceMixin<HloTestBase>;
 
 TEST_F(FftTextTest, Fft) {
   absl::string_view hlo_string = R"(

@@ -44,6 +44,7 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"
 #include "xla/backends/gpu/transforms/algebraic_simplifier.h"
 #include "xla/backends/gpu/transforms/block_scaling_rewriter.h"
+#include "xla/backends/gpu/transforms/conv_fp8_fallback.h"
 #include "xla/backends/gpu/transforms/conv_kind_assignment.h"
 #include "xla/backends/gpu/transforms/conv_padding_legalization.h"
 #include "xla/backends/gpu/transforms/conv_rewriter.h"
@@ -55,8 +56,11 @@ limitations under the License.
 #include "xla/backends/gpu/transforms/cudnn_pad_for_convolutions.h"
 #include "xla/backends/gpu/transforms/cudnn_simplify_padding.h"
 #include "xla/backends/gpu/transforms/triangular_solve_rewriter.h"
+#include "xla/hlo/analysis/alias_info.h"
+#include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/pass/hlo_pass_fix.h"
 #include "xla/hlo/pass/hlo_pass_pipeline.h"
@@ -67,6 +71,7 @@ limitations under the License.
 #include "xla/hlo/transforms/simplifiers/hlo_constant_folding.h"
 #include "xla/hlo/transforms/simplifiers/reshape_mover.h"
 #include "xla/hlo/transforms/simplifiers/tuple_simplifier.h"
+#include "xla/pjrt/distributed/key_value_store_interface.h"
 #include "xla/service/call_inliner.h"
 #include "xla/service/compilation_stats.h"
 #include "xla/service/compiler.h"
@@ -82,6 +87,7 @@ limitations under the License.
 #include "xla/service/gpu/nvptx_alias_info.h"
 #include "xla/service/gpu/ptx_compile_options_from_debug_options.h"
 #include "xla/service/gpu/target_constants.h"
+#include "xla/service/hlo_cost_analysis.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/hlo_verifier.h"
 #include "xla/service/llvm_ir/llvm_util.h"
@@ -211,6 +217,7 @@ absl::Status NVPTXCompiler::OptimizeHloConvolutionCanonicalization(
             .debug_options()
             .xla_gpu_experimental_enable_conv_fusion()) {
       pipeline.AddPass<ConvKindAssignment>(gpu_version, dnn_version);
+      pipeline.AddPass<ConvPaddingLegalization>();
     } else {
       // TODO(b/487265446): Remove ConvRewriter, CudnnFusedConvRewriter, and
       // ConvPaddingLegalization once ConvFusionRewriter is the default.
@@ -278,6 +285,18 @@ absl::Status NVPTXCompiler::OptimizeHloConvolutionCanonicalization(
   return absl::OkStatus();
 }
 
+bool NVPTXCompiler::IsScaledDotSupportedByBackend(
+    const HloInstruction* instr,
+    const GpuTargetConfig& gpu_target_config) const {
+  if (GpuCompiler::IsScaledDotSupportedByBackend(instr, gpu_target_config)) {
+    return true;
+  }
+  if (const auto* scaled_dot = DynCast<HloScaledDotInstruction>(instr)) {
+    return CudnnScaledDotHelper::IsSupported(scaled_dot);
+  }
+  return false;
+}
+
 absl::Status NVPTXCompiler::OptimizeHloPostLayoutAssignment(
     HloModule* hlo_module, se::StreamExecutor* stream_exec,
     const CompileOptions& options, const GpuTargetConfig& gpu_target_config,
@@ -326,23 +345,78 @@ absl::Status NVPTXCompiler::OptimizeHloPostLayoutAssignment(
   return absl::OkStatus();
 }
 
+absl::Status NVPTXCompiler::AddAutotunerPass(
+    HloPassPipeline* pipeline, HloModule* hlo_module,
+    const se::GpuComputeCapability& gpu_version, const CompileOptions& options,
+    tsl::thread::ThreadPool* thread_pool,
+    stream_executor::StreamExecutor* stream_executor,
+    const GpuTargetConfig* target_config, const AliasInfo* alias_info,
+    mlir::MLIRContext* mlir_context,
+    HloCostAnalysis::ShapeSizeFunction shape_size_fn,
+    const MultiProcessKeyValueStore& key_value_store) {
+  // Rewrite FP8 cuDNN conv fusions to BF16 when cuDNN has no FP8 plans for
+  // them on the target GPU; without this the autotuner fails hard when it
+  // enumerates their plans. Runs after ConvFusionRewriter (which created the
+  // fusions) and probes devicelessly, so it also covers AOT compilation.
+  pipeline->AddPass<ConvFp8Fallback>(target_config->device_description);
+  return GpuCompiler::AddAutotunerPass(
+      pipeline, hlo_module, gpu_version, options, thread_pool, stream_executor,
+      target_config, alias_info, mlir_context, shape_size_fn, key_value_store);
+}
+
 absl::Status NVPTXCompiler::RunCudnnCompilerPasses(
-    HloModule* module, se::dnn::DnnSupport& dnn_support,
-    BinaryMap* dnn_compiled_graphs) {
-  if (module->config()
-          .debug_options()
-          .xla_gpu_experimental_disable_binary_libraries()) {
+    HloModule* module, se::StreamExecutor* stream_exec,
+    const GpuTargetConfig& gpu_target_config, BinaryMap* dnn_compiled_graphs) {
+  const DebugOptions& debug_options = module->config().debug_options();
+  if (debug_options.xla_gpu_experimental_disable_binary_libraries()) {
     return absl::OkStatus();
   }
+
+  // Decide whether to run cuDNN compilation deviceless (no live cuDNN handle).
+  bool use_deviceless_cudnn = false;
+  switch (debug_options.xla_gpu_cudnn_deviceless_compilation_mode()) {
+    case DebugOptions::CUDNN_DEVICELESS_COMPILATION_UNSET:
+    case DebugOptions::CUDNN_DEVICELESS_COMPILATION_DISABLED:
+      use_deviceless_cudnn = false;
+      break;
+    case DebugOptions::CUDNN_DEVICELESS_COMPILATION_ALWAYS:
+      // Force deviceless even if we have a device.
+      use_deviceless_cudnn = true;
+      break;
+    case DebugOptions::CUDNN_DEVICELESS_COMPILATION_AUTO:
+    default:
+      // Deviceless only when there is no live device to query.
+      use_deviceless_cudnn = (stream_exec == nullptr);
+      break;
+  }
+  // Without a live device and without deviceless compilation there is nothing
+  // to do.
+  if (stream_exec == nullptr && !use_deviceless_cudnn) {
+    return absl::OkStatus();
+  }
+  // Deviceless cuDNN compilation relies on DeviceProperties JSON
+  // serialization, added in cuDNN 9.8.
+  if (use_deviceless_cudnn &&
+      gpu_target_config.dnn_version_info < se::dnn::VersionInfo(9, 8, 0)) {
+    return absl::FailedPreconditionError(
+        "Deviceless cuDNN compilation requires cuDNN >= 9.8.");
+  }
+  se::dnn::DnnSupport* dnn_support =
+      use_deviceless_cudnn ? nullptr : stream_exec->AsDnn();
+
   tsl::profiler::ScopedAnnotation annotation([&] {
     return absl::StrFormat("XlaCompileCudnnFusion:#module=%s,program_id=%d#",
                            module->name(), module->unique_id());
   });
-  CuDnnFusionCompiler fusion_compiler(dnn_support, *dnn_compiled_graphs);
+  const se::DeviceDescription& gpu_device_info =
+      gpu_target_config.device_description;
+  CuDnnFusionCompiler fusion_compiler(dnn_support, gpu_device_info,
+                                      *dnn_compiled_graphs);
   RETURN_IF_ERROR(
       fusion_compiler.Run(module, {HloInstruction::kMainExecutionThread})
           .status());
-  CuDnnCustomCallCompiler call_compiler(dnn_support, *dnn_compiled_graphs);
+  CuDnnCustomCallCompiler call_compiler(dnn_support, gpu_device_info,
+                                        *dnn_compiled_graphs);
   return call_compiler.Run(module, {HloInstruction::kMainExecutionThread})
       .status();
 }
@@ -531,7 +605,8 @@ NVPTXCompiler::CompileTargetBinary(
     RecordLlvmPassesAndLlvmToPtxDuration(end_usecs - start_usecs);
 
     if (DumpingEnabledForHloModule(debug_module ? debug_module->name() : "",
-                                   debug_options)) {
+                                   debug_options) &&
+        DumpingEnabledForEmitter("ptx", debug_options)) {
       if (debug_module) {
         DumpToFileInDirOrStdout(*debug_module, "",
                                 shard_number.has_value()
@@ -558,8 +633,8 @@ NVPTXCompiler::CompileTargetBinary(
   se::cuda::CompilationOptions compilation_options =
       PtxCompileOptionsFromDebugOptions(module_config.debug_options());
 
-  se::CudaComputeCapability cc =
-      *device_description.gpu_compute_capability().cuda_compute_capability();
+  se::CudaComputeCapability cc = nvptx::ResolveSupportedComputeCapability(
+      *device_description.gpu_compute_capability().cuda_compute_capability());
 
   // This may print multiple lines per HLO compilation because of the
   // parallelized compilation of LLVM modules.
@@ -589,16 +664,15 @@ NVPTXCompiler::CompileTargetBinary(
                      compilation_provider->CompileToRelocatableModule(
                          cc, ptx, compilation_options));
     record_ptx_to_cubin_metric();
-    return BackendCompileResult{
-        std::move(ptx), std::move(relocatable_module.cubin),
-        /*dnn_compiled_graphs=*/{}, std::move(relocatable_module.module_stats)};
+    return BackendCompileResult{std::move(ptx),
+                                std::move(relocatable_module.cubin),
+                                std::move(relocatable_module.module_stats)};
   }
 
   ASSIGN_OR_RETURN(se::cuda::Assembly assembly,
                    compilation_provider->Compile(cc, ptx, compilation_options));
   record_ptx_to_cubin_metric();
   return BackendCompileResult{std::move(ptx), std::move(assembly.cubin),
-                              /*dnn_compiled_graphs=*/{},
                               std::move(assembly.module_stats)};
 }
 
@@ -621,8 +695,8 @@ absl::StatusOr<std::vector<uint8_t>> NVPTXCompiler::LinkModules(
     return std::vector<uint8_t>{};
   }
 
-  auto cc =
-      device_description.gpu_compute_capability().cuda_compute_capability();
+  se::CudaComputeCapability cc = nvptx::ResolveSupportedComputeCapability(
+      *device_description.gpu_compute_capability().cuda_compute_capability());
 
   ASSIGN_OR_RETURN(const se::cuda::CompilationProvider* compilation_provider,
                    GetCompilationProvider(debug_options, stream_exec));
@@ -641,7 +715,7 @@ absl::StatusOr<std::vector<uint8_t>> NVPTXCompiler::LinkModules(
           << compilation_provider->name();
   ASSIGN_OR_RETURN(
       se::cuda::Assembly assembly,
-      compilation_provider->CompileAndLink(*cc, inputs, compilation_options));
+      compilation_provider->CompileAndLink(cc, inputs, compilation_options));
 
   return std::move(assembly.cubin);
 }

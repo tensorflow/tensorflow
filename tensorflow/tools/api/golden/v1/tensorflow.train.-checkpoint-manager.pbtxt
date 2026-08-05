@@ -1,26 +1,26 @@
 path: "tensorflow.train.CheckpointManager"
 tf_class {
   is_instance: "<class \'tensorflow.python.checkpoint.checkpoint_management.CheckpointManager\'>"
-  is_instance: "<type \'object\'>"
+  is_instance: "<class \'object\'>"
   member {
     name: "checkpoint"
-    mtype: "<type \'property\'>"
+    mtype: "<class \'property\'>"
   }
   member {
     name: "checkpoint_interval"
-    mtype: "<type \'property\'>"
+    mtype: "<class \'property\'>"
   }
   member {
     name: "checkpoints"
-    mtype: "<type \'property\'>"
+    mtype: "<class \'property\'>"
   }
   member {
     name: "directory"
-    mtype: "<type \'property\'>"
+    mtype: "<class \'property\'>"
   }
   member {
     name: "latest_checkpoint"
-    mtype: "<type \'property\'>"
+    mtype: "<class \'property\'>"
   }
   member_method {
     name: "__init__"

@@ -241,10 +241,6 @@ bool IfrtCallOpInfo::isEqual(CallOp lhs, CallOp rhs) {
   if (lhs == rhs) {
     return true;
   }
-  if (lhs == getEmptyKey() || lhs == getTombstoneKey() ||
-      rhs == getEmptyKey() || rhs == getTombstoneKey()) {
-    return false;
-  }
   // Verify that the input and output types are the same.
   if (lhs.getInputs().getTypes() != rhs.getInputs().getTypes()) {
     return false;
@@ -285,6 +281,9 @@ void UpdateFunctionType(mlir::func::FuncOp func_op) {
 absl::StatusOr<DType> ToIfrtDType(mlir::Type type) {
   if (llvm::isa<IfrtTokenType>(type)) {
     return ToDType(xla::PrimitiveType::TOKEN);
+  }
+  if (llvm::isa<IfrtStringType>(type)) {
+    return DType(DType::kString);
   }
   xla::PrimitiveType primitive_type = xla::ConvertMlirTypeToPrimitiveType(type);
   return ToDType(primitive_type);

@@ -44,9 +44,20 @@ namespace {
 
 class CApiXlaTransformAdapter : public HloXlaTransform {
  public:
+  // callbacks must outlive this object. The pointer is stored directly so that
+  // implementations using offsetof-based recovery (e.g. CApiTransformHloModule
+  // Callback in jaxlib/xla.cc) receive the original address they registered.
+  // If the callback is unregistered, CApiXlaTransformAdapter will be destroyed
+  // and its destructor will call the registered callback dtor.
   explicit CApiXlaTransformAdapter(std::string name,
-                                   PJRT_XlaTransform_Callbacks callbacks)
+                                   PJRT_XlaTransform_Callbacks* callbacks)
       : HloXlaTransform(std::move(name)), callbacks_(callbacks) {}
+
+  ~CApiXlaTransformAdapter() override {
+    if (callbacks_ != nullptr && callbacks_->dtor != nullptr) {
+      callbacks_->dtor(callbacks_);
+    }
+  }
 
   absl::StatusOr<bool> Transform(xla::HloModule* module) override {
     xla::HloModuleProto proto = module->ToProto();
@@ -63,10 +74,10 @@ class CApiXlaTransformAdapter : public HloXlaTransform {
     args.hlo_module.data = serialized_proto.data();
     args.hlo_module.size = serialized_proto.size();
 
-    if (callbacks_.transform_hlo_module == nullptr) {
+    if (callbacks_->transform_hlo_module == nullptr) {
       return absl::InternalError("transform_hlo_module callback is null");
     }
-    callbacks_.transform_hlo_module(&callbacks_, &args);
+    callbacks_->transform_hlo_module(callbacks_, &args);
 
     absl::Status status = absl::OkStatus();
     bool changed = false;
@@ -97,7 +108,7 @@ class CApiXlaTransformAdapter : public HloXlaTransform {
   }
 
  private:
-  PJRT_XlaTransform_Callbacks callbacks_;
+  PJRT_XlaTransform_Callbacks* callbacks_;
 };
 
 }  // namespace
@@ -130,7 +141,7 @@ PJRT_Error* RegisterXlaTransform(PJRT_Register_Xla_Transform_Args* args) {
   }
 
   auto transform =
-      std::make_shared<xla::CApiXlaTransformAdapter>(name, *args->callbacks);
+      std::make_shared<xla::CApiXlaTransformAdapter>(name, args->callbacks);
   xla::HloXlaTransform::PipelineStage stage;
   switch (args->stage) {
     case PJRT_XlaTransform_PipelineStage_kPreScheduler:
@@ -145,7 +156,38 @@ PJRT_Error* RegisterXlaTransform(PJRT_Register_Xla_Transform_Args* args) {
   }
 
   xla::RegisterHloXlaTransform(stage, transform);
+  return nullptr;
+}
 
+PJRT_Error* ClearXlaTransform(PJRT_Clear_Xla_Transform_Args* args) {
+  if (args->struct_size < PJRT_Clear_Xla_Transform_Args_STRUCT_SIZE) {
+    return pjrt::StatusToPjRtError(
+        absl::InvalidArgumentError("Invalid struct_size"));
+  }
+  std::string name;
+  if (args->name != nullptr) {
+    name = std::string(args->name, args->name_size);
+  } else if (args->callbacks != nullptr) {
+    name = "pjrt_c_api_transform_" +
+           std::to_string(reinterpret_cast<uintptr_t>(args->callbacks));
+  } else {
+    return pjrt::StatusToPjRtError(absl::InvalidArgumentError(
+        "Either name or callbacks must be provided"));
+  }
+
+  xla::HloXlaTransform::PipelineStage stage;
+  switch (args->stage) {
+    case PJRT_XlaTransform_PipelineStage_kPreScheduler:
+      stage = xla::HloXlaTransform::PipelineStage::kPreScheduler;
+      break;
+    case PJRT_XlaTransform_PipelineStage_kPostScheduler:
+      stage = xla::HloXlaTransform::PipelineStage::kPostScheduler;
+      break;
+    default:
+      return pjrt::StatusToPjRtError(
+          absl::InvalidArgumentError("Invalid pipeline stage"));
+  }
+  args->cleared = xla::ClearHloXlaTransform(stage, name);
   return nullptr;
 }
 
@@ -160,6 +202,7 @@ PJRT_Xla_Transform_Extension CreateXlaTransformExtension(
           /*next=*/next,
       },
       /*register_xla_transform=*/RegisterXlaTransform,
+      /*clear_xla_transform=*/ClearXlaTransform,
   };
 }
 

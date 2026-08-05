@@ -30,6 +30,7 @@ limitations under the License.
 #include "tensorflow/lite/kernels/test_util.h"
 #include "tensorflow/lite/kernels/transpose_test_utils.h"
 #include "tensorflow/lite/schema/schema_generated.h"
+#include "tensorflow/lite/types/half.h"
 
 namespace tflite {
 namespace {
@@ -142,6 +143,42 @@ class TransposeOpDynamicModel : public TransposeOpModel {
     SetBuiltinOp(BuiltinOperator_TRANSPOSE, BuiltinOptions_TransposeOptions,
                  CreateTransposeOptions(builder_).Union());
     BuildInterpreter({input_shape, perm_shape});
+  }
+};
+
+template <typename T>
+class TransposeOpModelImpl : public SingleOpModel {
+ public:
+  void SetInput(std::initializer_list<T> data) {
+    PopulateTensor<T>(input_, data);
+  }
+
+  void SetPerm(std::initializer_list<int> data) {
+    PopulateTensor<int>(perm_, data);
+  }
+
+  std::vector<T> GetOutput() { return ExtractVector<T>(output_); }
+  std::vector<int> GetOutputShape() { return GetTensorShape(output_); }
+
+ protected:
+  int input_;
+  int perm_;
+  int output_;
+};
+
+template <typename T>
+class TransposeOpConstModelImpl : public TransposeOpModelImpl<T> {
+ public:
+  TransposeOpConstModelImpl(std::initializer_list<int> input_shape,
+                            std::initializer_list<int> perm_shape,
+                            std::initializer_list<int> perm) {
+    this->input_ = this->AddInput({GetTensorType<T>(), input_shape});
+    this->perm_ = this->AddConstInput(TensorType_INT32, perm, perm_shape);
+    this->output_ = this->AddOutput(GetTensorType<T>());
+    this->SetBuiltinOp(BuiltinOperator_TRANSPOSE,
+                       BuiltinOptions_TransposeOptions,
+                       CreateTransposeOptions(this->builder_).Union());
+    this->BuildInterpreter({input_shape});
   }
 };
 
@@ -388,6 +425,15 @@ TEST(TransposeTest, 3DDividedIntoTwo2DsTwo) {
               12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23});
   ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_EQ(m.GetOutput(), out);
+}
+
+TEST(TransposeTest, SimpleTestHalf) {
+  TransposeOpConstModelImpl<half> m({2, 3}, {2}, {1, 0});
+  m.SetInput({half(1), half(2), half(3), half(4), half(5), half(6)});
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray({half(1), half(4), half(2),
+                                               half(5), half(3), half(6)}));
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({3, 2}));
 }
 
 TEST(TransposeTest, 4DDividedIntoTwo2DsOne) {

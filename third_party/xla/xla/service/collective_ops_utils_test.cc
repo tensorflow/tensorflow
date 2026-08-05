@@ -47,14 +47,62 @@ limitations under the License.
 #include "xla/service/source_target_pairs.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/side_effect_util.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/statusor.h"
+#include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace {
 
 using CycleType = collective_permute_cycle::CycleType;
+
+std::unique_ptr<HloInstruction> MakeTestInstruction(absl::string_view name) {
+  return HloInstruction::CreateParameter(
+      /*parameter_number=*/0, ShapeUtil::MakeShape(F32, {1}), name);
+}
+
+TEST(CollectiveOpsUtilsTest, GetCollectiveGroupKey) {
+  std::unique_ptr<HloInstruction> instruction =
+      MakeTestInstruction("instruction");
+  EXPECT_EQ(GetCollectiveGroupKey(*instruction), std::nullopt);
+  EXPECT_FALSE(HasCollectiveGroupKey(*instruction));
+
+  instruction->set_frontend_attribute(kCollectiveGroupKeyAttr, "");
+  EXPECT_EQ(GetCollectiveGroupKey(*instruction), std::nullopt);
+  EXPECT_FALSE(HasCollectiveGroupKey(*instruction));
+
+  instruction->set_frontend_attribute(kCollectiveGroupKeyAttr, "g0");
+  EXPECT_EQ(GetCollectiveGroupKey(*instruction), "g0");
+  EXPECT_TRUE(HasCollectiveGroupKey(*instruction));
+}
+
+TEST(CollectiveOpsUtilsTest, ClearCollectiveGroupKey) {
+  std::unique_ptr<HloInstruction> instruction =
+      MakeTestInstruction("instruction");
+  instruction->set_frontend_attribute(kCollectiveGroupKeyAttr, "g0");
+  instruction->set_frontend_attribute("other", "preserved");
+
+  ClearCollectiveGroupKey(*instruction);
+
+  EXPECT_FALSE(HasCollectiveGroupKey(*instruction));
+  EXPECT_EQ(instruction->get_frontend_attribute("other"), "preserved");
+}
+
+TEST(CollectiveOpsUtilsTest, CollectiveGroupCompatibilityRequiresMatchingKey) {
+  std::unique_ptr<HloInstruction> lhs = MakeTestInstruction("lhs");
+  std::unique_ptr<HloInstruction> rhs = MakeTestInstruction("rhs");
+  lhs->set_frontend_attribute(kCollectiveGroupKeyAttr, "g0");
+
+  EXPECT_FALSE(HaveCompatibleCollectiveGroupKeys(*lhs, *rhs));
+
+  rhs->set_frontend_attribute(kCollectiveGroupKeyAttr, "other");
+  EXPECT_FALSE(HaveCompatibleCollectiveGroupKeys(*lhs, *rhs));
+
+  rhs->set_frontend_attribute(kCollectiveGroupKeyAttr, "g0");
+  EXPECT_TRUE(HaveCompatibleCollectiveGroupKeys(*lhs, *rhs));
+}
 
 // Creates a container of ReplicaGroups.
 std::vector<ReplicaGroup> CreateReplicaGroups(
@@ -1290,4 +1338,261 @@ TEST(GetReductionIdentity, NoCrashForComplexType) {
 }
 
 }  // namespace GetPariticipantCountsForReplicaGroupsTest
+class IsNcclSymmetricBuffersEnabledForCollectiveTest : public ::testing::Test {
+ protected:
+  void SetUp() override {
+    absl::string_view hlo_string = R"(
+      HloModule test_module, replica_count=2
+
+      add_f32 {
+        x = f32[] parameter(0)
+        y = f32[] parameter(1)
+        ROOT add = f32[] add(x, y)
+      }
+
+      add_s32 {
+        x = s32[] parameter(0)
+        y = s32[] parameter(1)
+        ROOT add = s32[] add(x, y)
+      }
+
+      ENTRY test_computation {
+        p_f32_1024 = f32[1024]{0} parameter(0)
+        p_s32_1024 = s32[1024]{0} parameter(1)
+        p_f32_2048 = f32[2048]{0} parameter(2)
+        p_f32_512 = f32[512]{0} parameter(3)
+
+        ar_f32_1024 = f32[1024]{0} all-reduce(p_f32_1024), replica_groups={{0,1}}, to_apply=add_f32
+        ar_s32_1024 = s32[1024]{0} all-reduce(p_s32_1024), replica_groups={{0,1}}, to_apply=add_s32
+        ar_f32_2048 = f32[2048]{0} all-reduce(p_f32_2048), replica_groups={{0,1}}, to_apply=add_f32
+        ag_f32_512 = f32[1024]{0} all-gather(p_f32_512), replica_groups={{0,1}}, dimensions={0}
+        ag_f32_1024 = f32[2048]{0} all-gather(p_f32_1024), replica_groups={{0,1}}, dimensions={0}
+
+        ROOT tuple = (f32[1024]{0}, s32[1024]{0}, f32[2048]{0}, f32[1024]{0}, f32[2048]{0}) tuple(ar_f32_1024, ar_s32_1024, ar_f32_2048, ag_f32_512, ag_f32_1024)
+      }
+    )";
+
+    ASSERT_OK_AND_ASSIGN(module_, ParseAndReturnUnverifiedModule(hlo_string));
+
+    auto* entry = module_->entry_computation();
+    ar_f32_1024_ = entry->GetInstructionWithName("ar_f32_1024");
+    ar_s32_1024_ = entry->GetInstructionWithName("ar_s32_1024");
+    ar_f32_2048_ = entry->GetInstructionWithName("ar_f32_2048");
+    ag_f32_512_ = entry->GetInstructionWithName("ag_f32_512");
+    ag_f32_1024_ = entry->GetInstructionWithName("ag_f32_1024");
+
+    ASSERT_NE(ar_f32_1024_, nullptr);
+    ASSERT_NE(ar_s32_1024_, nullptr);
+    ASSERT_NE(ar_f32_2048_, nullptr);
+    ASSERT_NE(ag_f32_512_, nullptr);
+    ASSERT_NE(ag_f32_1024_, nullptr);
+  }
+
+  std::unique_ptr<HloModule> module_;
+  HloInstruction* ar_f32_1024_;
+  HloInstruction* ar_s32_1024_;
+  HloInstruction* ar_f32_2048_;
+  HloInstruction* ag_f32_512_;
+  HloInstruction* ag_f32_1024_;
+};
+
+TEST_F(IsNcclSymmetricBuffersEnabledForCollectiveTest, MasterSwitchEnablesAll) {
+  DebugOptions opts;
+  opts.set_xla_gpu_experimental_enable_nccl_symmetric_buffers(true);
+  EXPECT_TRUE(IsNcclSymmetricBuffersEnabledForCollective(ar_f32_1024_, opts));
+  EXPECT_TRUE(IsNcclSymmetricBuffersEnabledForCollective(ar_s32_1024_, opts));
+  EXPECT_TRUE(IsNcclSymmetricBuffersEnabledForCollective(ar_f32_2048_, opts));
+  EXPECT_TRUE(IsNcclSymmetricBuffersEnabledForCollective(ag_f32_512_, opts));
+  EXPECT_TRUE(IsNcclSymmetricBuffersEnabledForCollective(ag_f32_1024_, opts));
+}
+
+TEST_F(IsNcclSymmetricBuffersEnabledForCollectiveTest, AllFilterEnablesAll) {
+  DebugOptions opts;
+  auto* filter = opts.add_xla_enable_nccl_symmetric_buffers_for_collectives();
+  filter->set_collective(DebugOptions::ALLCOLLECTIVES);
+  EXPECT_TRUE(IsNcclSymmetricBuffersEnabledForCollective(ar_f32_1024_, opts));
+  EXPECT_TRUE(IsNcclSymmetricBuffersEnabledForCollective(ar_s32_1024_, opts));
+  EXPECT_TRUE(IsNcclSymmetricBuffersEnabledForCollective(ar_f32_2048_, opts));
+  EXPECT_TRUE(IsNcclSymmetricBuffersEnabledForCollective(ag_f32_512_, opts));
+  EXPECT_TRUE(IsNcclSymmetricBuffersEnabledForCollective(ag_f32_1024_, opts));
+}
+
+TEST_F(IsNcclSymmetricBuffersEnabledForCollectiveTest, AllFilterWithSizeLimit) {
+  DebugOptions opts;
+  auto* filter = opts.add_xla_enable_nccl_symmetric_buffers_for_collectives();
+  filter->set_collective(DebugOptions::ALLCOLLECTIVES);
+  filter->set_max_size_bytes(4096);
+  EXPECT_TRUE(IsNcclSymmetricBuffersEnabledForCollective(ar_f32_1024_, opts));
+  EXPECT_TRUE(IsNcclSymmetricBuffersEnabledForCollective(ar_s32_1024_, opts));
+  EXPECT_FALSE(IsNcclSymmetricBuffersEnabledForCollective(ar_f32_2048_, opts));
+  EXPECT_TRUE(IsNcclSymmetricBuffersEnabledForCollective(ag_f32_512_, opts));
+  EXPECT_FALSE(IsNcclSymmetricBuffersEnabledForCollective(ag_f32_1024_, opts));
+}
+
+TEST_F(IsNcclSymmetricBuffersEnabledForCollectiveTest,
+       SingleCollectiveNoOtherFilters) {
+  DebugOptions opts;
+  auto* filter = opts.add_xla_enable_nccl_symmetric_buffers_for_collectives();
+  filter->set_collective(DebugOptions::ALLREDUCE);
+  EXPECT_TRUE(IsNcclSymmetricBuffersEnabledForCollective(ar_f32_1024_, opts));
+  EXPECT_TRUE(IsNcclSymmetricBuffersEnabledForCollective(ar_s32_1024_, opts));
+  EXPECT_TRUE(IsNcclSymmetricBuffersEnabledForCollective(ar_f32_2048_, opts));
+  EXPECT_FALSE(IsNcclSymmetricBuffersEnabledForCollective(ag_f32_1024_, opts));
+}
+
+TEST_F(IsNcclSymmetricBuffersEnabledForCollectiveTest,
+       SingleCollectiveWithSizeFilter) {
+  DebugOptions opts;
+  auto* filter = opts.add_xla_enable_nccl_symmetric_buffers_for_collectives();
+  filter->set_collective(DebugOptions::ALLREDUCE);
+  filter->set_max_size_bytes(4096);
+  EXPECT_TRUE(IsNcclSymmetricBuffersEnabledForCollective(ar_f32_1024_, opts));
+  EXPECT_TRUE(IsNcclSymmetricBuffersEnabledForCollective(ar_s32_1024_, opts));
+  EXPECT_FALSE(IsNcclSymmetricBuffersEnabledForCollective(ar_f32_2048_, opts));
+  EXPECT_FALSE(IsNcclSymmetricBuffersEnabledForCollective(ag_f32_1024_, opts));
+}
+
+TEST_F(IsNcclSymmetricBuffersEnabledForCollectiveTest,
+       SingleCollectiveWithTypeFilter) {
+  DebugOptions opts;
+  auto* filter = opts.add_xla_enable_nccl_symmetric_buffers_for_collectives();
+  filter->set_collective(DebugOptions::ALLREDUCE);
+  filter->set_op_type(F32);
+  EXPECT_TRUE(IsNcclSymmetricBuffersEnabledForCollective(ar_f32_1024_, opts));
+  EXPECT_FALSE(IsNcclSymmetricBuffersEnabledForCollective(ar_s32_1024_, opts));
+  EXPECT_TRUE(IsNcclSymmetricBuffersEnabledForCollective(ar_f32_2048_, opts));
+  EXPECT_FALSE(IsNcclSymmetricBuffersEnabledForCollective(ag_f32_1024_, opts));
+}
+
+TEST_F(IsNcclSymmetricBuffersEnabledForCollectiveTest,
+       SingleCollectiveWithSizeAndTypeFilter) {
+  DebugOptions opts;
+  auto* filter = opts.add_xla_enable_nccl_symmetric_buffers_for_collectives();
+  filter->set_collective(DebugOptions::ALLREDUCE);
+  filter->set_max_size_bytes(4096);
+  filter->set_op_type(F32);
+  EXPECT_TRUE(IsNcclSymmetricBuffersEnabledForCollective(ar_f32_1024_, opts));
+  EXPECT_FALSE(IsNcclSymmetricBuffersEnabledForCollective(ar_s32_1024_, opts));
+  EXPECT_FALSE(IsNcclSymmetricBuffersEnabledForCollective(ar_f32_2048_, opts));
+  EXPECT_FALSE(IsNcclSymmetricBuffersEnabledForCollective(ag_f32_1024_, opts));
+}
+
+TEST_F(IsNcclSymmetricBuffersEnabledForCollectiveTest,
+       OverlappingFiltersDifferentTypes) {
+  DebugOptions opts;
+  {
+    auto* filter = opts.add_xla_enable_nccl_symmetric_buffers_for_collectives();
+    filter->set_collective(DebugOptions::ALLREDUCE);
+    filter->set_max_size_bytes(4096);
+    filter->set_op_type(F32);
+  }
+  {
+    auto* filter = opts.add_xla_enable_nccl_symmetric_buffers_for_collectives();
+    filter->set_collective(DebugOptions::ALLREDUCE);
+    filter->set_max_size_bytes(8192);
+    filter->set_op_type(S32);
+  }
+  EXPECT_TRUE(IsNcclSymmetricBuffersEnabledForCollective(ar_f32_1024_, opts));
+  EXPECT_TRUE(IsNcclSymmetricBuffersEnabledForCollective(ar_s32_1024_, opts));
+  EXPECT_FALSE(IsNcclSymmetricBuffersEnabledForCollective(ar_f32_2048_, opts));
+  EXPECT_FALSE(IsNcclSymmetricBuffersEnabledForCollective(ag_f32_1024_, opts));
+}
+
+TEST_F(IsNcclSymmetricBuffersEnabledForCollectiveTest,
+       OverlappingFiltersDifferentSizes) {
+  DebugOptions opts;
+  {
+    auto* filter = opts.add_xla_enable_nccl_symmetric_buffers_for_collectives();
+    filter->set_collective(DebugOptions::ALLREDUCE);
+    filter->set_max_size_bytes(4096);
+    filter->set_op_type(F32);
+  }
+  {
+    auto* filter = opts.add_xla_enable_nccl_symmetric_buffers_for_collectives();
+    filter->set_collective(DebugOptions::ALLREDUCE);
+    filter->set_max_size_bytes(8192);
+    filter->set_op_type(F32);
+  }
+  EXPECT_TRUE(IsNcclSymmetricBuffersEnabledForCollective(ar_f32_1024_, opts));
+  EXPECT_TRUE(IsNcclSymmetricBuffersEnabledForCollective(ar_f32_2048_, opts));
+}
+
+TEST(CollectiveOpsUtilsTest, ParseAndSerializeAsyncCollectiveConfig) {
+  // Test case 1: Full config
+  std::string json_str1 = R"({
+    "replica_groups": [[0, 1], [2, 3]],
+    "channel_id": 42,
+    "use_global_device_ids": true,
+    "permutation": [[0, 1], [1, 0]],
+    "all_gather_dimension": 2,
+    "scatter_dimension": 3,
+    "tiled": true,
+    "split_dimension": 0,
+    "concat_dimension": 1,
+    "split_count": 4
+  })";
+
+  ASSERT_OK_AND_ASSIGN(AsyncCollectiveConfig config1,
+                       ParseAsyncCollectiveConfig(json_str1));
+
+  EXPECT_EQ(config1.replica_groups.size(), 2);
+  EXPECT_THAT(config1.replica_groups[0].replica_ids(),
+              testing::ElementsAre(0, 1));
+  EXPECT_THAT(config1.replica_groups[1].replica_ids(),
+              testing::ElementsAre(2, 3));
+  EXPECT_EQ(config1.channel_id, 42);
+  EXPECT_TRUE(config1.use_global_device_ids);
+  EXPECT_EQ(config1.permutation.size(), 2);
+  EXPECT_EQ(config1.permutation[0], std::make_pair(int64_t{0}, int64_t{1}));
+  EXPECT_EQ(config1.permutation[1], std::make_pair(int64_t{1}, int64_t{0}));
+  EXPECT_EQ(config1.all_gather_dimension, 2);
+  EXPECT_EQ(config1.scatter_dimension, 3);
+  EXPECT_TRUE(*config1.tiled);
+  EXPECT_EQ(config1.split_dimension, 0);
+  EXPECT_EQ(config1.concat_dimension, 1);
+  EXPECT_EQ(config1.split_count, 4);
+
+  // Serialize back and parse again to check round-trip
+  std::string serialized1 = SerializeAsyncCollectiveConfig(config1);
+  ASSERT_OK_AND_ASSIGN(AsyncCollectiveConfig config1_rt,
+                       ParseAsyncCollectiveConfig(serialized1));
+
+  EXPECT_EQ(config1_rt.replica_groups.size(), 2);
+  EXPECT_THAT(config1_rt.replica_groups[0].replica_ids(),
+              testing::ElementsAre(0, 1));
+  EXPECT_THAT(config1_rt.replica_groups[1].replica_ids(),
+              testing::ElementsAre(2, 3));
+  EXPECT_EQ(config1_rt.channel_id, 42);
+  EXPECT_TRUE(config1_rt.use_global_device_ids);
+  EXPECT_EQ(config1_rt.permutation.size(), 2);
+  EXPECT_EQ(config1_rt.permutation[0], std::make_pair(int64_t{0}, int64_t{1}));
+  EXPECT_EQ(config1_rt.permutation[1], std::make_pair(int64_t{1}, int64_t{0}));
+  EXPECT_EQ(config1_rt.all_gather_dimension, 2);
+  EXPECT_EQ(config1_rt.scatter_dimension, 3);
+  EXPECT_TRUE(*config1_rt.tiled);
+  EXPECT_EQ(config1_rt.split_dimension, 0);
+  EXPECT_EQ(config1_rt.concat_dimension, 1);
+  EXPECT_EQ(config1_rt.split_count, 4);
+
+  // Test case 2: Empty config
+  std::string json_str2 = "{}";
+  ASSERT_OK_AND_ASSIGN(AsyncCollectiveConfig config2,
+                       ParseAsyncCollectiveConfig(json_str2));
+  EXPECT_TRUE(config2.replica_groups.empty());
+  EXPECT_FALSE(config2.channel_id.has_value());
+  EXPECT_FALSE(config2.use_global_device_ids);
+  EXPECT_TRUE(config2.permutation.empty());
+  EXPECT_FALSE(config2.all_gather_dimension.has_value());
+  EXPECT_FALSE(config2.scatter_dimension.has_value());
+  EXPECT_FALSE(config2.tiled.has_value());
+  EXPECT_FALSE(config2.split_dimension.has_value());
+  EXPECT_FALSE(config2.concat_dimension.has_value());
+  EXPECT_FALSE(config2.split_count.has_value());
+
+  // Test case 3: Invalid JSON
+  std::string json_str3 = "{invalid";
+  auto status3 = ParseAsyncCollectiveConfig(json_str3).status();
+  EXPECT_FALSE(status3.ok());
+}
+
 }  // namespace xla

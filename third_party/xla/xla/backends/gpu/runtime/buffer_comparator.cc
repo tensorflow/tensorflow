@@ -18,6 +18,7 @@ limitations under the License.
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
+#include <memory>
 #include <type_traits>
 #include <vector>
 
@@ -36,6 +37,7 @@ limitations under the License.
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/gpu/buffer_comparator_kernel.h"
 #include "xla/stream_executor/gpu/gpu_kernel_registry.h"
+#include "xla/stream_executor/memory_allocation.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/platform/errors.h"
@@ -63,9 +65,11 @@ template <typename ElementT>
 static absl::StatusOr<bool> DeviceCompare(const ComparisonParams& params) {
   se::StreamExecutor* executor = params.stream->parent();
 
-  se::DeviceAddressHandle out(executor, executor->AllocateScalar<uint64_t>());
+  ASSIGN_OR_RETURN(std::unique_ptr<se::MemoryAllocation> allocation,
+                   executor->HostMemoryAllocate(sizeof(uint64_t)));
+  se::DeviceAddressBase out_addr = allocation->address();
 
-  RETURN_IF_ERROR(params.stream->MemZero(out.address_ptr(), sizeof(uint64_t)));
+  RETURN_IF_ERROR(params.stream->MemZero(&out_addr, sizeof(uint64_t)));
   if (params.current.size() != params.expected.size()) {
     return Internal("Mismatched buffer size: %d bytes vs. %d bytes",
                     params.current.size(), params.expected.size());
@@ -95,16 +99,15 @@ static absl::StatusOr<bool> DeviceCompare(const ComparisonParams& params) {
                    1, 1),
       dim.thread_counts_per_block());
 
-  se::DeviceAddress<uint64_t> as_uint64(out.address());
+  se::DeviceAddress<uint64_t> as_uint64(out_addr);
   RETURN_IF_ERROR(comparison_kernel.Launch(
       dim.thread_counts_per_block(), dim.block_counts(), params.stream,
       current_typed, expected_typed, static_cast<float>(params.relative_tol),
       buffer_size, as_uint64));
 
   uint64_t result = -1;
-  CHECK_EQ(out.address().size(), sizeof(result));
-  RETURN_IF_ERROR(
-      params.stream->Memcpy(&result, out.address(), sizeof(result)));
+  CHECK_EQ(out_addr.size(), sizeof(result));
+  RETURN_IF_ERROR(params.stream->Memcpy(&result, out_addr, sizeof(result)));
   RETURN_IF_ERROR(params.stream->BlockHostUntilDone());
   return result == 0;
 }

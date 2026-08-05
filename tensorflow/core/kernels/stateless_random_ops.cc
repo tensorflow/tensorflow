@@ -44,8 +44,8 @@ absl::Status GenerateKey(Tensor seed, random::PhiloxRandom::Key* out_key,
     seed0 = internal::SubtleMustCopy(seed_vals(0));
     seed1 = internal::SubtleMustCopy(seed_vals(1));
   } else {
-    return errors::InvalidArgument("Invalid seed type: ",
-                                   DataTypeString(seed.dtype()));
+    return absl::InvalidArgumentError(
+        absl::StrCat("Invalid seed type: ", DataTypeString(seed.dtype())));
   }
 
   // Scramble the seeds so that the user doesn't need to worry about which
@@ -74,9 +74,10 @@ void StatelessRandomOpBase::Compute(OpKernelContext* context) {
   const Tensor& seed_t = context->input(1);
   TensorShape shape;
   OP_REQUIRES_OK(context, tensor::MakeShape(shape_t, &shape));
-  OP_REQUIRES(context, seed_t.dims() == 1 && seed_t.dim_size(0) == 2,
-              errors::InvalidArgument("seed must have shape [2], not ",
-                                      seed_t.shape().DebugString()));
+  OP_REQUIRES(
+      context, seed_t.dims() == 1 && seed_t.dim_size(0) == 2,
+      absl::InvalidArgumentError(absl::StrCat("seed must have shape [2], not ",
+                                              seed_t.shape().DebugString())));
 
   // Allocate output
   Tensor* output;
@@ -120,12 +121,14 @@ class StatelessRandomUniformIntOp : public StatelessRandomOpBase {
             Tensor* output) override {
     const Tensor& minval = context->input(2);
     const Tensor& maxval = context->input(3);
-    OP_REQUIRES(context, TensorShapeUtils::IsScalar(minval.shape()),
-                errors::InvalidArgument("minval must be 0-D, got shape ",
-                                        minval.shape().DebugString()));
-    OP_REQUIRES(context, TensorShapeUtils::IsScalar(maxval.shape()),
-                errors::InvalidArgument("maxval must be 0-D, got shape ",
-                                        maxval.shape().DebugString()));
+    OP_REQUIRES(
+        context, TensorShapeUtils::IsScalar(minval.shape()),
+        absl::InvalidArgumentError(absl::StrCat(
+            "minval must be 0-D, got shape ", minval.shape().DebugString())));
+    OP_REQUIRES(
+        context, TensorShapeUtils::IsScalar(maxval.shape()),
+        absl::InvalidArgumentError(absl::StrCat(
+            "maxval must be 0-D, got shape ", maxval.shape().DebugString())));
 
     // Verify that minval < maxval.  Note that we'll never reach this point for
     // empty output.  Zero impossible things are fine.
@@ -182,7 +185,7 @@ class StatelessRandomPoissonOp : public StatelessRandomOpBase {
 
     TensorShape samples_shape = output->shape();
     OP_REQUIRES(ctx, TensorShapeUtils::EndsWith(samples_shape, rate_t.shape()),
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(
                     "Shape passed in must end with broadcasted shape."));
 
     const int64_t num_rate = rate_t.NumElements();

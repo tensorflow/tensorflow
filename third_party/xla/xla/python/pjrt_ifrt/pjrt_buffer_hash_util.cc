@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/layout.h"
 #include "xla/literal.h"
 #include "xla/pjrt/pjrt_client.h"
@@ -40,21 +41,11 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/tsl/concurrency/executor.h"
 #include "xla/tsl/concurrency/future.h"
-#include "xla/tsl/platform/env.h"
 
 namespace xla {
 namespace ifrt {
 
 namespace {
-
-// Wraps `SchedClosure` to make it compatible with `tsl::Executor`.
-class SchedClosureExecutor : public tsl::Executor {
- public:
-  void Execute(Task task) override {
-    tsl::Env::Default()->SchedClosure(
-        [task = std::move(task)]() mutable { std::move(task)(); });
-  }
-};
 
 // Shared state for all `InflightHashing` objects.
 struct State {
@@ -81,8 +72,8 @@ class InflightHashing {
 
 }  // namespace
 
-absl::StatusOr<std::vector<uint64_t>> HashPjRtBuffers(
-    absl::Span<PjRtBuffer* const> pjrt_buffers,
+tsl::Future<std::vector<uint64_t>> HashPjRtBuffers(
+    tsl::Executor& executor, absl::Span<PjRtBuffer* const> pjrt_buffers,
     absl::Span<const IndexDomain> index_domains, Client::HashMode mode,
     int64_t max_inflight_memory) {
   if (pjrt_buffers.size() != index_domains.size()) {
@@ -95,7 +86,6 @@ absl::StatusOr<std::vector<uint64_t>> HashPjRtBuffers(
     return std::vector<uint64_t>();
   }
 
-  SchedClosureExecutor executor;
   auto state = std::make_shared<State>();
 
   std::vector<tsl::Future<uint64_t>> futures;
@@ -137,25 +127,17 @@ absl::StatusOr<std::vector<uint64_t>> HashPjRtBuffers(
     // original on-device layout and avoid the delinearization cost.
     xla::Shape descending_shape = xla::ShapeUtil::MakeShapeWithDescendingLayout(
         device_shape.element_type(), device_shape.dimensions());
-    absl::StatusOr<std::unique_ptr<xla::Literal>> literal =
-        xla::Literal::MakeUnique(descending_shape);
+    ASSIGN_OR_RETURN(std::unique_ptr<xla::Literal> literal,
+                     xla::Literal::MakeUnique(descending_shape));
 
-    // Within the loop, we must not return early because inflight hashing
-    // closures reference local variables of this function. We always wait for
-    // all inflight hashing to complete before returning.
-    if (!literal.ok()) {
-      futures.push_back(literal.status());
-      break;
-    }
-
-    xla::Literal* literal_ptr = literal->get();
+    xla::Literal* literal_ptr = literal.get();
     futures.push_back(
         pjrt_buffers[i]
             ->ToLiteral(literal_ptr)
             .Map(executor,
                  [pjrt_buffer = pjrt_buffers[i],
-                  &index_domain = index_domains[i], mode, element_byte_size,
-                  literal = *std::move(literal),
+                  index_domain = index_domains[i], mode, element_byte_size,
+                  literal = std::move(literal),
                   inflight_hashing = std::move(
                       inflight_hashing)]() -> absl::StatusOr<uint64_t> {
                    absl::Span<const char> literal_span(
@@ -176,7 +158,7 @@ absl::StatusOr<std::vector<uint64_t>> HashPjRtBuffers(
                  }));
   }
 
-  return tsl::JoinFutures(absl::MakeSpan(futures)).Await();
+  return tsl::JoinFutures(absl::MakeSpan(futures));
 }
 
 }  // namespace ifrt

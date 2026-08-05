@@ -168,6 +168,77 @@ ENTRY main {
   EXPECT_FALSE(HaveRemainingOffloadAnnotations(module.get()));
 }
 
+TEST_F(HostOffloaderTest, ReplaceBroadcastAndCopyWithAllocateBuffer) {
+  const std::string& hlo_string = R"(
+HloModule my_module
+
+while_body {
+  param = (s32[], f32[2,2048,2048]{2,1,0}, f32[1,2048,2048]{2,1,0}) parameter(0)
+  idx = s32[] get-tuple-element(param), index=0
+  buf = f32[2,2048,2048]{2,1,0} get-tuple-element(param), index=1
+  data = f32[1,2048,2048]{2,1,0} get-tuple-element(param), index=2
+  offload_custom_call = f32[1,2048,2048]{2,1,0} custom-call(data), custom_call_target="MoveToHost"
+  constant_s32_0 = s32[] constant(0)
+  dynamic_update_slice = f32[2,2048,2048]{2,1,0} dynamic-update-slice(buf, offload_custom_call, idx, constant_s32_0, constant_s32_0)
+  constant_1 = s32[] constant(1)
+  next_idx = s32[] add(idx, constant_1)
+  ROOT tuple = (s32[], f32[2,2048,2048]{2,1,0}, f32[1,2048,2048]{2,1,0}) tuple(next_idx, dynamic_update_slice, data)
+}
+
+while_condition {
+  param = (s32[], f32[2,2048,2048]{2,1,0}, f32[1,2048,2048]{2,1,0}) parameter(0)
+  idx = s32[] get-tuple-element(param), index=0
+  constant_2 = s32[] constant(2)
+  ROOT pred_result = pred[] compare(idx, constant_2), direction=LT
+}
+
+ENTRY main {
+  data_param = f32[1,2048,2048]{2,1,0} parameter(0)
+  index_param = s32[] parameter(1)
+  constant_f32_0 = f32[] constant(0)
+  constant_s32_0 = s32[] constant(0)
+  broadcast = f32[2,2048,2048]{2,1,0} broadcast(constant_f32_0), dimensions={}
+  offload_custom_call_2 = f32[2,2048,2048]{2,1,0} custom-call(broadcast), custom_call_target="MoveToHost"
+  while_init = (s32[], f32[2,2048,2048]{2,1,0}, f32[1,2048,2048]{2,1,0}) tuple(index_param, offload_custom_call_2, data_param)
+  while = (s32[], f32[2,2048,2048]{2,1,0}, f32[1,2048,2048]{2,1,0}) while(while_init), condition=while_condition, body=while_body
+  dynamic_update_slice = f32[2,2048,2048]{2,1,0} get-tuple-element(while), index=1
+  dynamic_slice = f32[1,2048,2048]{2,1,0} dynamic-slice(dynamic_update_slice, index_param, constant_s32_0, constant_s32_0), dynamic_slice_sizes={1,2048,2048}
+  ROOT load_custom_call = f32[1,2048,2048]{2,1,0} custom-call(dynamic_slice), custom_call_target="MoveToDevice"
+}
+)";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+
+  ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloader(module.get()));
+  EXPECT_TRUE(changed);
+
+  HloInstruction* dynamic_slice;
+  HloInstruction* while_inst;
+  HloInstruction* allocate_buffer;
+  ASSERT_THAT(
+      module->entry_computation()->root_instruction(),
+      GmockMatch(m::DynamicSlice(
+          &dynamic_slice,
+          m::GetTupleElement(
+              m::While(&while_inst, m::Tuple(m::Op(),
+                                             m::CustomCall(&allocate_buffer,
+                                                           {"AllocateBuffer"}),
+                                             m::Op())),
+              1),
+          m::Op(), m::Op(), m::Op())));
+  EXPECT_EQ(FindInstruction(module.get(), "broadcast"), nullptr);
+  TestShapeHasMemorySpace(allocate_buffer->shape(), Layout::kHostMemorySpace);
+  TestShapeHasMemorySpace(dynamic_slice->shape(), Layout::kDefaultMemorySpace);
+
+  HloInstruction* dynamic_update_slice =
+      FindInstruction(module.get(), HloOpcode::kDynamicUpdateSlice);
+  EXPECT_NE(dynamic_update_slice, nullptr);
+  TestShapeHasMemorySpace(dynamic_update_slice->shape(),
+                          Layout::kHostMemorySpace);
+
+  EXPECT_FALSE(HaveRemainingOffloadAnnotations(module.get()));
+}
+
 TEST_F(HostOffloaderTest, DusFirstOperandIsNotFromABroadcast) {
   const std::string& hlo_string = R"(
 HloModule my_module

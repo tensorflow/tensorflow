@@ -50,13 +50,14 @@ namespace gpu {
 
 CuDnnThunk::CuDnnThunk(std::string fingerprint, ThunkInfo thunk_info,
                        std::vector<ShapedSlice> args,
-                       std::vector<bool> output_args,
+                       std::vector<bool> output_args, bool should_memzero,
                        std::optional<int64_t> sdpa_dropout_seed)
     : TracedCommand(Kind::kCuDnn, std::move(thunk_info)),
       fingerprint_(std::move(fingerprint)),
       graph_(std::make_shared<se::dnn::LazyDnnGraph>(nullptr)),
       args_(std::move(args)),
       output_args_(std::move(output_args)),
+      should_memzero_(should_memzero),
       sdpa_dropout_seed_(sdpa_dropout_seed) {}
 
 absl::Status CuDnnThunk::Initialize(const InitializeParams& params) {
@@ -102,6 +103,9 @@ absl::Status CuDnnThunk::ExecuteOnStream(const ExecuteParams& params) {
   for (const ShapedSlice& arg : args_) {
     auto addr = params.buffer_allocations->GetDeviceAddress(arg.slice);
     if (output_args_[buffer_args.size()]) {
+      if (should_memzero_) {
+        RETURN_IF_ERROR(params.stream->MemZero(&addr, addr.size()));
+      }
       tsl::profiler::MarkMemoryInitialized(
           addr.opaque(), addr.size(),
           static_cast<tsl::profiler::StreamHandle>(
@@ -164,6 +168,7 @@ absl::StatusOr<ThunkProto> CuDnnThunk::ToProto() const {
   for (const bool is_output : output_args_) {
     proto.mutable_cudnn_thunk()->add_output_args(is_output);
   }
+  proto.mutable_cudnn_thunk()->set_should_memzero(should_memzero_);
   if (sdpa_dropout_seed_.has_value()) {
     proto.mutable_cudnn_thunk()->set_sdpa_dropout_seed(
         static_cast<int64_t>(*sdpa_dropout_seed_));
@@ -191,7 +196,7 @@ absl::StatusOr<std::unique_ptr<CuDnnThunk>> CuDnnThunk::FromProto(
   }
   return std::make_unique<CuDnnThunk>(
       proto.fingerprint(), std::move(thunk_info), std::move(args),
-      std::move(output_args), sdpa_dropout_seed);
+      std::move(output_args), proto.should_memzero(), sdpa_dropout_seed);
 }
 
 }  // namespace gpu

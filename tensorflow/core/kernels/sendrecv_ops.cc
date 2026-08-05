@@ -15,8 +15,13 @@ limitations under the License.
 
 #include "tensorflow/core/kernels/sendrecv_ops.h"
 
+#include <cstdint>
+#include <cstdlib>
+#include <string>
 #include <utility>
 
+#include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_def_util.h"

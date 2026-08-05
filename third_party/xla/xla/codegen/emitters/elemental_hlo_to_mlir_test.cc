@@ -508,7 +508,7 @@ TEST_F(ElementalHloToMlirTest, Pad) {
     // CHECK:        %[[FROM_INPUT:.*]] = arith.andi %[[X_AND_CONSTRAINT]], %[[Y_BOUNDS]]
     // CHECK:        %[[RET:.*]] = scf.if %[[FROM_INPUT]]
     // CHECK:          %[[IN0:.*]] = xla.apply_indexing
-    // CHECK-SAME:         <"(d0) -> ((d0 - 1) / 2), domain: d0 in [1, 7]">(%[[X]])
+    // CHECK-SAME:         <"(d0) -> ((d0 + 1) / 2 - 1), domain: d0 in [1, 7]">(%[[X]])
     // CHECK:          %[[IN1:.*]] = xla.apply_indexing
     // CHECK-SAME:         <"(d0) -> (d0 - 4), domain: d0 in [4, 7]">(%[[Y]])
     // CHECK:          %[[VAL:.*]] = tensor.extract %[[ARG0]][%[[IN0]], %[[IN1]]]
@@ -550,7 +550,7 @@ TEST_F(ElementalHloToMlirTest, PadUnsigned) {
     // CHECK:        %[[FROM_INPUT:.*]] = arith.andi %[[X_AND_CONSTRAINT]], %[[Y_BOUNDS]]
     // CHECK:        %[[RET:.*]] = scf.if %[[FROM_INPUT]]
     // CHECK:          %[[IN0:.*]] = xla.apply_indexing
-    // CHECK-SAME:         <"(d0) -> ((d0 - 1) / 2), domain: d0 in [1, 7]">(%[[X]])
+    // CHECK-SAME:         <"(d0) -> ((d0 + 1) / 2 - 1), domain: d0 in [1, 7]">(%[[X]])
     // CHECK:          %[[IN1:.*]] = xla.apply_indexing
     // CHECK-SAME:         <"(d0) -> (d0 - 4), domain: d0 in [4, 7]">(%[[Y]])
     // CHECK:          %[[VAL:.*]] = tensor.extract %[[ARG0]][%[[IN0]], %[[IN1]]]
@@ -595,6 +595,54 @@ TEST_F(ElementalHloToMlirTest, DotWithF32Type) {
     // CHECK-DAG:        %[[A_I_K:.*]] = tensor.extract %[[A]][%[[I]], %[[K]]] : tensor<3x4xf32>
     // CHECK-DAG:        %[[B_K_J:.*]] = tensor.extract %[[B]][%[[K]], %[[J]]] : tensor<4x5xf32>
     // CHECK-DAG:        %[[MULF0:.*]] = arith.mulf %[[A_I_K]], %[[B_K_J]] : f32
+    // CHECK-DAG:        %[[ADDF0:.*]] = arith.addf %[[ACCUM]], %[[MULF0]] : f32
+    // CHECK-DAG:        scf.yield %[[ADDF0]] : f32
+    // CHECK:          } else {
+    // CHECK:            scf.yield %[[ACCUM]] : f32
+    // CHECK:          }
+    // CHECK:          scf.yield %[[IF0]] : f32
+    // CHECK:        }
+    // CHECK:        return %[[FOR0]] : f32
+    // CHECK:      }
+  )"));
+}
+
+TEST_F(ElementalHloToMlirTest, DotWithF32TypeAndBf16Algorithm) {
+  TF_EXPECT_OK(Run(R"(
+    ENTRY main {
+      p0 = f32[3, 4] parameter(0)
+      p1 = f32[4, 5] parameter(1)
+      ROOT dot = f32[3, 5] dot(p0, p1), lhs_contracting_dims={1}, rhs_contracting_dims={0}, algorithm=dot_bf16_bf16_f32
+    })",
+                   R"(
+    // CHECK:      @main_dot(
+    // CHECK-SAME: %[[A:.*]]: tensor<3x4xf32>, %[[B:.*]]: tensor<4x5xf32>,
+    // CHECK-SAME: %[[I:.*]]: index {xla.range = [0 : index, 2 : index]},
+    // CHECK-SAME: %[[J:.*]]: index {xla.range = [0 : index, 4 : index]})
+    // CHECK-SAME: -> f32
+    // CHECK-SAME: {
+    // CHECK-DAG:    %[[ACCUM_INIT:.*]] = arith.constant 0.000000e+00 : f32
+    // CHECK-DAG:    %[[C0:.*]] = arith.constant 0 : index
+    // CHECK-DAG:    %[[C1:.*]] = arith.constant 1 : index
+    // CHECK-DAG:    %[[C2:.*]] = arith.constant 2 : index
+    // CHECK-DAG:    %[[C4:.*]] = arith.constant 4 : index
+    // CHECK:        %[[FOR0:.*]] = scf.for %[[K:.*]] = %[[C0]] to %[[C4]] step %[[C1]]
+    // CHECK-SAME:   iter_args(%[[ACCUM:.*]] = %[[ACCUM_INIT]]) -> (f32) {
+    // CHECK:          %[[CMPI0:.*]] = arith.cmpi sge, %[[I]], %[[C0]] : index
+    // CHECK:          %[[CMPI1:.*]] = arith.cmpi sle, %[[I]], %[[C2]] : index
+    // CHECK:          %[[I_IN_RANGE:.*]] = arith.andi %[[CMPI0]], %[[CMPI1]] : i1
+    // CHECK:          %[[CMPI2:.*]] = arith.cmpi sge, %[[J]], %[[C0]] : index
+    // CHECK:          %[[CMPI3:.*]] = arith.cmpi sle, %[[J]], %[[C4]] : index
+    // CHECK:          %[[J_IN_RANGE:.*]] = arith.andi %[[CMPI2]], %[[CMPI3]] : i1
+    // CHECK:          %[[I_J_IN_RANGE:.*]] = arith.andi %[[I_IN_RANGE]], %[[J_IN_RANGE]] : i1
+    // CHECK:          %[[IF0:.*]] = scf.if %[[I_J_IN_RANGE]] -> (f32) {
+    // CHECK-DAG:        %[[A_I_K:.*]] = tensor.extract %[[A]][%[[I]], %[[K]]] : tensor<3x4xf32>
+    // CHECK-DAG:        %[[B_K_J:.*]] = tensor.extract %[[B]][%[[K]], %[[J]]] : tensor<4x5xf32>
+    // CHECK-DAG:        %[[A_TRUNC:.*]] = arith.truncf %[[A_I_K]] : f32 to bf16
+    // CHECK-DAG:        %[[A_EXT:.*]] = arith.extf %[[A_TRUNC]] : bf16 to f32
+    // CHECK-DAG:        %[[B_TRUNC:.*]] = arith.truncf %[[B_K_J]] : f32 to bf16
+    // CHECK-DAG:        %[[B_EXT:.*]] = arith.extf %[[B_TRUNC]] : bf16 to f32
+    // CHECK-DAG:        %[[MULF0:.*]] = arith.mulf %[[A_EXT]], %[[B_EXT]] : f32
     // CHECK-DAG:        %[[ADDF0:.*]] = arith.addf %[[ACCUM]], %[[MULF0]] : f32
     // CHECK-DAG:        scf.yield %[[ADDF0]] : f32
     // CHECK:          } else {

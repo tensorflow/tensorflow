@@ -1,5 +1,6 @@
 // Regression test for b/503878530
-// RUN: triton_test_correctness --abs_error_bound=1e-3 --rel_error_bound=1e-3 %s
+// RUN: triton_test_correctness --xla_gpu_experimental_enable_tiling_propagation=false --abs_error_bound=1e-3 --rel_error_bound=1e-3 %s
+// RUN: triton_test_correctness --xla_gpu_experimental_enable_tiling_propagation --abs_error_bound=1e-3 --rel_error_bound=1e-3 %s
 
 dot {
   p0 = f16[64,128,32]{2,1,0} parameter(0)

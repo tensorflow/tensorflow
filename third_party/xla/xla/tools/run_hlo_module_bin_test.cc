@@ -26,9 +26,7 @@ limitations under the License.
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
-#include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/env.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/subprocess.h"
 #include "xla/tsl/platform/test.h"
 #include "tsl/platform/path.h"
@@ -171,8 +169,8 @@ TEST_F(RunHloModuleTest, ReadInputLiteralsFromFile) {
 }
 
 TEST_F(RunHloModuleTest, AddSnapshot) {
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnUnverifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnUnverifiedModule(R"(
 HloModule f
 
 ENTRY f {
@@ -188,7 +186,7 @@ ENTRY f {
   tsl::Env* env = tsl::Env::Default();
   std::string snapshot_file = testing::TempDir();
   env->CreateUniqueFileName(&snapshot_file, ".pb");
-  TF_ASSERT_OK(tsl::WriteBinaryProto(env, snapshot_file, snapshot));
+  ASSERT_OK(tsl::WriteBinaryProto(env, snapshot_file, snapshot));
 
   RunHlo(snapshot_file, {"--print_literals"});
 
@@ -215,10 +213,10 @@ TEST_F(RunHloModuleTest, DumpAndParseDebugOptions) {
           "--xla_gpu_dot_merger_threshold_mb=1234"});
   std::string data;
   std::vector<std::string> debug_options_files;
-  TF_ASSERT_OK(tsl::Env::Default()->GetMatchingPaths(
+  ASSERT_OK(tsl::Env::Default()->GetMatchingPaths(
       absl::StrCat(tmp_dir, "/module*debug_options"), &debug_options_files));
   ASSERT_EQ(debug_options_files.size(), 1);
-  TF_ASSERT_OK(tsl::ReadFileToString(env, debug_options_files[0], &data));
+  ASSERT_OK(tsl::ReadFileToString(env, debug_options_files[0], &data));
   EXPECT_THAT(data, testing::HasSubstr("xla_dump_large_constants: true"));
   EXPECT_THAT(data,
               testing::HasSubstr("xla_gpu_dot_merger_threshold_mb: 1234"));
@@ -234,10 +232,10 @@ TEST_F(RunHloModuleTest, DumpAndParseDebugOptions) {
   // Check the new debug options. They should have the dump_large_constants set
   // to true. This comes from the debug options file.
   std::vector<std::string> debug_options_files2;
-  TF_ASSERT_OK(tsl::Env::Default()->GetMatchingPaths(
+  ASSERT_OK(tsl::Env::Default()->GetMatchingPaths(
       absl::StrCat(tmp_dir2, "/module*debug_options"), &debug_options_files2));
   ASSERT_EQ(debug_options_files2.size(), 1);
-  TF_ASSERT_OK(tsl::ReadFileToString(env, debug_options_files2[0], &data));
+  ASSERT_OK(tsl::ReadFileToString(env, debug_options_files2[0], &data));
   EXPECT_THAT(data, testing::HasSubstr("xla_dump_large_constants: true"));
   // Check that the new debug options has xla_gpu_dot_merger_threshold_mb set to
   // 3253. This comes from the command line (overriding the debug options file).
@@ -247,14 +245,37 @@ TEST_F(RunHloModuleTest, DumpAndParseDebugOptions) {
                         "xla_gpu_dot_merger_threshold_mb: 1234")));
   // Read the dumped module and we should see large constant.
   std::vector<std::string> cpu_after_optimizations_files;
-  TF_ASSERT_OK(tsl::Env::Default()->GetMatchingPaths(
+  ASSERT_OK(tsl::Env::Default()->GetMatchingPaths(
       absl::StrCat(tmp_dir2, "/module*.f.*cpu_after_optimizations.txt"),
       &cpu_after_optimizations_files));
   ASSERT_THAT(cpu_after_optimizations_files, testing::SizeIs(1));
-  TF_ASSERT_OK(
+  ASSERT_OK(
       tsl::ReadFileToString(env, cpu_after_optimizations_files[0], &data));
   EXPECT_THAT(data, testing::HasSubstr(
                         "constant({10, 6, 3, 2, 5, 3, 7, 4, 2, 3, 1, 0})"));
+}
+
+TEST_F(RunHloModuleTest, DumpHloAsHtml) {
+  tsl::Env* env = tsl::Env::Default();
+  std::string tmp_dir;
+  EXPECT_TRUE(env->LocalTempFilename(&tmp_dir));
+  RunHlo("add.hlo",
+         {"--xla_dump_to=" + tmp_dir, "--xla_dump_hlo_as_html=true"});
+
+  EXPECT_TRUE(exited_normally_);
+  EXPECT_EQ(exit_status_, 0);
+
+  std::vector<std::string> html_files;
+  ASSERT_OK(env->GetMatchingPaths(absl::StrCat(tmp_dir, "/module*.html"),
+                                  &html_files));
+  EXPECT_FALSE(html_files.empty());
+
+  for (const std::string& html_file : html_files) {
+    std::string html_content;
+    ASSERT_OK(tsl::ReadFileToString(env, html_file, &html_content));
+    EXPECT_THAT(html_content, testing::HasSubstr("<!DOCTYPE html>"));
+    EXPECT_THAT(html_content, testing::HasSubstr("</html>"));
+  }
 }
 
 }  // namespace

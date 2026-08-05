@@ -18,7 +18,9 @@ limitations under the License.
 #include <cstdint>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
 #include "xla/hlo/builder/xla_builder.h"
 #include "xla/shape.h"
 #include "xla/tsl/platform/statusor.h"

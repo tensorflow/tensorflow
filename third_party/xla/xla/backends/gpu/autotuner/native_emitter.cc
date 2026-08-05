@@ -119,7 +119,7 @@ NativeEmitterBackend::GetDefaultConfig(const HloInstruction& instr) {
       config->mutable_native_emitter();
   if (IsSupported(instr) &&
       debug_options().xla_gpu_native_emitter_tune_unroll_factor_for_loops()) {
-    se::DeviceDescription device_description =
+    const se::DeviceDescription& device_description =
         target_config().device_description;
     HloFusionAnalysis fusion_analysis =
         HloFusionAnalysis::Create(instr, device_description);
@@ -142,12 +142,13 @@ absl::Status NativeEmitterBackend::ApplyConfig(HloInstruction& instr,
   const NativeEmitterBackendConfig& native_emitter_fusion_config =
       config.native_emitter();
   auto fusion_instr = Cast<HloFusionInstruction>(&instr);
-  HloInstruction::FusionKind emitter_fusion_kind =
-      native_emitter_fusion_config.type() ==
-              NativeEmitterType::NATIVE_EMITTER_TYPE_LOOP
-          ? HloInstruction::FusionKind::kLoop
-          : HloInstruction::FusionKind::kInput;
-  fusion_instr->set_fusion_kind(emitter_fusion_kind);
+  if (native_emitter_fusion_config.type() ==
+      NativeEmitterType::NATIVE_EMITTER_TYPE_LOOP) {
+    fusion_instr->set_fusion_kind(HloInstruction::FusionKind::kLoop);
+  } else if (native_emitter_fusion_config.type() !=
+             NativeEmitterType::NATIVE_EMITTER_TYPE_INVALID) {
+    fusion_instr->set_fusion_kind(HloInstruction::FusionKind::kInput);
+  }
   ASSIGN_OR_RETURN(GpuBackendConfig gpu_backend_config,
                    instr.backend_config<GpuBackendConfig>());
   *gpu_backend_config.mutable_native_emitter_backend_config() =

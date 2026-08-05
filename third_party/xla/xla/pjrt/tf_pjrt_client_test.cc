@@ -21,6 +21,7 @@ limitations under the License.
 #include <vector>
 
 #include <gtest/gtest.h>
+#include "absl/base/casts.h"
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/literal_util.h"
 #include "xla/pjrt/plugin/xla_cpu/cpu_client_options.h"

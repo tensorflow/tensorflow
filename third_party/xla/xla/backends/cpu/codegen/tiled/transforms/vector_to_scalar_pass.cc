@@ -15,7 +15,6 @@ limitations under the License.
 
 #include <cassert>
 #include <cstdint>
-#include <memory>
 #include <optional>
 #include <utility>
 
@@ -162,9 +161,4 @@ class VectorToScalarPass
 };
 
 }  // namespace
-
-std::unique_ptr<mlir::Pass> CreateVectorToScalarPass() {
-  return std::make_unique<VectorToScalarPass>();
-}
-
 }  // namespace xla::cpu

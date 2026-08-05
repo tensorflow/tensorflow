@@ -640,6 +640,10 @@ absl::StatusOr<bool> InstructionFusion::RunImpl(
 
       std::vector<int64_t>& sorted_operand_numbers = next_entry.second;
 
+      // Cached result of IsConsumerSuitableForMultiOutputFusion for the current
+      // instruction.
+      std::optional<FusionDecision> mof_suitable;
+
       for (int64_t i : sorted_operand_numbers) {
         HloInstruction* operand = instruction->mutable_operand(i);
         VLOG(5) << "Considering fusion of: " << instruction->ToString()
@@ -686,7 +690,12 @@ absl::StatusOr<bool> InstructionFusion::RunImpl(
 
         FusionDecision use_mof = FusionDecision::Allow();
         if (!use_regular_fusion) {
-          use_mof = ShouldFuseIntoMultiOutput(instruction, i);
+          if (!mof_suitable.has_value()) {
+            mof_suitable = IsConsumerSuitableForMultiOutputFusion(instruction);
+          }
+          use_mof = mof_suitable->And(
+              ShouldFuseOperandIntoMultiOutputFusion(instruction, i));
+
           if (use_mof) {
             use_mof = use_mof.And(
                 FusionDecision{!MultiOutputFusionCreatesCycle(
@@ -797,7 +806,11 @@ HloInstruction* InstructionFusion::AddFusionInstruction(
     // have the same value as the root of the fused computation. However, we
     // copy the value nontheless to simplify some use cases that involve
     // fusions.
-    CHECK_OK(computation->ReplaceInstruction(consumer, fusion_instruction));
+    auto status_or_changed = computation->ReplaceInstruction(
+        consumer, fusion_instruction, /*preserve_sharding=*/false,
+        /*relay_control_dependency=*/true);
+    CHECK_OK(status_or_changed.status());
+    CHECK(status_or_changed.value());
   }
   return fusion_instruction;
 }

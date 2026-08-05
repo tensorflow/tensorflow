@@ -30,7 +30,7 @@ namespace xla {
 namespace cpu {
 namespace {
 
-class CpuSpmdCompileTest : public HloPjRtTestBase {};
+class CpuSpmdCompileTest : public HloTestBase {};
 
 TEST_F(CpuSpmdCompileTest, SinglePartition) {
   // Module with "Sharding" custom call and use_spmd_partitioning enabled.

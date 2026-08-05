@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "llvm/Support/ExtensibleRTTI.h"
 #include "xla/pjrt/host_callback.h"
+#include "xla/pjrt/pjrt_executable.h"
 #include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/host_callback.h"
 #include "xla/tsl/concurrency/ref_count.h"
@@ -88,6 +89,39 @@ class PjRtFfiLoadedHostCallback
  private:
   Client* client_;
   void* callable_;
+};
+
+// Wrapper of an XLA HLO output callback. This object is expected to be passed
+// to the `xla::ifrt::PjRtLoadedExecutable`.
+class PjRtHloOutputLoadedHostCallback
+    : public llvm::RTTIExtends<PjRtHloOutputLoadedHostCallback,
+                               LoadedHostCallback> {
+ public:
+  PjRtHloOutputLoadedHostCallback(
+      Client* client,
+      std::unique_ptr<xla::HloOutputCallback> hlo_output_callback)
+      : client_(client), hlo_output_callback_(std::move(hlo_output_callback)) {}
+
+  const xla::HloOutputCallback& hlo_output_callback() const {
+    return *hlo_output_callback_;
+  }
+
+  // LoadedHostCallback implementation.
+
+  ~PjRtHloOutputLoadedHostCallback() override = default;
+
+  Client* client() const override { return client_; }
+
+  absl::StatusOr<std::string> Serialize() const override;
+
+  static char ID;  // NOLINT
+
+ private:
+  template <typename T, typename... Args>
+  friend tsl::RCReference<T> tsl::MakeRef(Args&&... args);
+
+  Client* client_;
+  std::unique_ptr<xla::HloOutputCallback> hlo_output_callback_;
 };
 
 }  // namespace ifrt

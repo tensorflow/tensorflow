@@ -2,10 +2,10 @@ path: "tensorflow.__internal__.test"
 tf_module {
   member {
     name: "ParameterizedBenchmark"
-    mtype: "<type \'type\'>"
+    mtype: "<class \'type\'>"
   }
   member {
     name: "combinations"
-    mtype: "<type \'module\'>"
+    mtype: "<class \'module\'>"
   }
 }

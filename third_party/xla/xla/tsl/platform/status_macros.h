@@ -18,29 +18,7 @@ limitations under the License.
 
 #include "xla/tsl/platform/statusor.h"
 
-#ifndef ASSIGN_OR_RETURN
-#define ASSIGN_OR_RETURN(lhs, rexpr) \
-  ASSIGN_OR_RETURN_IMPL(             \
-      TF_STATUS_MACROS_CONCAT_NAME(_status_or_value, __COUNTER__), lhs, rexpr)
-
-#define ASSIGN_OR_RETURN_IMPL(statusor, lhs, rexpr) \
-  auto statusor = (rexpr);                          \
-  if (ABSL_PREDICT_FALSE(!statusor.ok())) {         \
-    return statusor.status();                       \
-  }                                                 \
-  lhs = std::move(statusor).value()
-#endif  // ASSIGN_OR_RETURN
-
-#ifndef RETURN_IF_ERROR
-// For propagating errors when calling a function.
-#define RETURN_IF_ERROR(...)                 \
-  do {                                       \
-    absl::Status _status = (__VA_ARGS__);    \
-    if (ABSL_PREDICT_FALSE(!_status.ok())) { \
-      MAYBE_ADD_SOURCE_LOCATION(_status)     \
-      return _status;                        \
-    }                                        \
-  } while (0)
-#endif  // RETURN_IF_ERROR
+#define ABSL_DEFINE_UNQUALIFIED_STATUS_MACROS 1
+#include "absl/status/status_macros.h"  // IWYU pragma: export
 
 #endif  // XLA_TSL_PLATFORM_STATUS_MACROS_H_

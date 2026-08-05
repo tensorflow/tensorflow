@@ -271,7 +271,7 @@ class StatsAggregatorSummaryOp : public OpKernel {
   void Compute(OpKernelContext* ctx) override {
     const Tensor& resource_handle_t = ctx->input(0);
     OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(resource_handle_t.shape()),
-                errors::InvalidArgument("resource_handle must be a scalar"));
+                absl::InvalidArgumentError("resource_handle must be a scalar"));
 
     core::RefCountPtr<StatsAggregatorResource> resource;
     ResourceHandle handle;
@@ -294,7 +294,7 @@ class StatsAggregatorSetSummaryWriterOp : public OpKernel {
   void Compute(OpKernelContext* ctx) override {
     const Tensor& resource_handle_t = ctx->input(0);
     OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(resource_handle_t.shape()),
-                errors::InvalidArgument("resource_handle must be a scalar"));
+                absl::InvalidArgumentError("resource_handle must be a scalar"));
 
     core::RefCountPtr<StatsAggregatorResource> resource;
     ResourceHandle resource_handle;
@@ -304,7 +304,7 @@ class StatsAggregatorSetSummaryWriterOp : public OpKernel {
     const Tensor& summary_resource_handle_t = ctx->input(1);
     OP_REQUIRES(ctx,
                 TensorShapeUtils::IsScalar(summary_resource_handle_t.shape()),
-                errors::InvalidArgument("resource_handle must be a scalar"));
+                absl::InvalidArgumentError("resource_handle must be a scalar"));
     core::RefCountPtr<SummaryWriterInterface> summary_resource;
     ResourceHandle summary_r_handle;
     OP_REQUIRES_OK(ctx, HandleFromInput(ctx, 1, &summary_r_handle));

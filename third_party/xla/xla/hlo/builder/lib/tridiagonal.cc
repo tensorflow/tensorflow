@@ -16,11 +16,11 @@ limitations under the License.
 #include "xla/hlo/builder/lib/tridiagonal.h"
 
 #include <cstdint>
-#include <numeric>
 #include <string>
 #include <utility>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
@@ -34,8 +34,6 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace tridiagonal {
@@ -418,7 +416,7 @@ absl::StatusOr<XlaOp> TridiagonalSolver(SolverAlgorithm algo, XlaOp diagonals,
 
   // TODO(belletti): Get rid of the transposes here.
   std::vector<int64_t> transpose_order(rank);
-  std::iota(transpose_order.begin(), transpose_order.end(), 0);
+  absl::c_iota(transpose_order, 0);
   transpose_order[rank - 2] = rank - 1;
   transpose_order[rank - 1] = rank - 2;
   // Swap the last two dimensions.
@@ -455,7 +453,7 @@ absl::StatusOr<XlaOp> TridiagonalMatMul(XlaOp upper_diagonal,
   XlaBuilder* builder = main_diagonal.builder();
 
   std::vector<int64_t> broadcasted_dims(shape_params.rank);
-  std::iota(broadcasted_dims.begin(), broadcasted_dims.end(), 0);
+  absl::c_iota(broadcasted_dims, 0);
   std::vector<int64_t> transpose_dims = broadcasted_dims;
   std::swap(transpose_dims[shape_params.rank - 2],
             transpose_dims[shape_params.rank - 1]);

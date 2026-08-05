@@ -24,10 +24,10 @@ cc_library(
         "tiled_hlo_instruction.h",
     ],
     deps = [
+        "//xla:shape_util",
         "//xla:util",
         "//xla/hlo/analysis:indexing_analysis",
         "//xla/hlo/ir:hlo",
-        "//xla/tsl/platform:errors",
         "//xla/tsl/platform:status_macros",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/memory",
@@ -93,6 +93,7 @@ xla_cc_test(
         ":tiled_hlo_computation",
         ":tiled_hlo_schedule",
         ":tiling_specification",
+        "//xla:xla_proto_cc",
         "//xla/hlo/analysis:symbolic_map",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
@@ -138,6 +139,7 @@ xla_cc_test(
         ":symbolic_tile_analysis",
         ":tiled_hlo_schedule",
         ":tiling_specification",
+        "//xla:xla_proto_cc",
         "//xla/hlo/analysis:indexing_analysis",
         "//xla/hlo/analysis:interval",
         "//xla/hlo/analysis:symbolic_map",
@@ -330,6 +332,7 @@ xla_cc_test(
     deps = [
         ":symbolic_tile_analysis",
         ":tiling_specification",
+        "//xla:xla_proto_cc",
         "//xla/hlo/analysis:symbolic_map",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
@@ -380,7 +383,6 @@ cc_library(
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/log:die_if_null",
-        "@com_google_absl//absl/numeric:bits",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
@@ -404,6 +406,8 @@ xla_cc_test(
         ":tiling_specification",
         "//xla:shape_util",
         "//xla:util",
+        "//xla:xla_proto_cc",
+        "//xla/codegen/tiling/experimental:tiling_space_utils",
         "//xla/hlo/analysis:indexing_test_utils",
         "//xla/hlo/analysis:symbolic_map",
         "//xla/hlo/ir:hlo",
@@ -422,11 +426,38 @@ xla_cc_test(
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/log:vlog_is_on",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_matchers",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest_main",
         "@llvm-project//mlir:IR",
+    ],
+)
+
+cc_library(
+    name = "tiling_util",
+    srcs = ["tiling_util.cc"],
+    hdrs = ["tiling_util.h"],
+    deps = [
+        "//xla:shape_util",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/utils:hlo_traversal",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+xla_cc_test(
+    name = "tiling_util_test",
+    srcs = ["tiling_util_test.cc"],
+    deps = [
+        ":tiling_util",
+        "//xla:shape_util",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
+        "//xla/hlo/utils:hlo_traversal",
+        "@com_google_googletest//:gtest_main",
     ],
 )

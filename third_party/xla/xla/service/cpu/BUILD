@@ -1,10 +1,26 @@
+# Copyright 2026 The OpenXLA Authors. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
+
 load(
     "//xla:xla.default.bzl",
     "xla_cc_test",
+    "xla_internal",
 )
 load("//xla/tests:build_defs.bzl", "xla_test")
 load("//xla/tsl:tsl.bzl", "internal_visibility", "tsl_copts")
-load("//xla/tsl:tsl.default.bzl", "filegroup", "get_compatible_with_portable")
+load("//xla/tsl:tsl.default.bzl", "filegroup", "get_compatible_with_portable", "if_include_google_deps")
 load("//xla/tsl/mkl:build_defs.bzl", "if_graph_api", "if_onednn")
 load("//xla/tsl/mkl:graph.bzl", "onednn_cc_library")
 load("//xla/tsl/platform:build_config.bzl", "tf_proto_library")
@@ -141,6 +157,7 @@ cc_library(
         ":cpu_options",
         ":dot_op_emitter",
         ":executable_proto_cc",
+        ":export_hlo",
         ":fusion_wrapper",
         ":ir_emission_utils",
         ":ir_emitter",
@@ -220,6 +237,7 @@ cc_library(
         "//xla/hlo/transforms/simplifiers:flatten_call_graph",
         "//xla/hlo/transforms/simplifiers:float_normalization",
         "//xla/hlo/transforms/simplifiers:gather_simplifier",
+        "//xla/hlo/transforms/simplifiers:gemv_rewriter",
         "//xla/hlo/transforms/simplifiers:hlo_computation_deduplicator",
         "//xla/hlo/transforms/simplifiers:hlo_constant_folding",
         "//xla/hlo/transforms/simplifiers:hlo_dce",
@@ -242,6 +260,7 @@ cc_library(
         "//xla/mlir_hlo:transforms_passes",
         "//xla/service:all_reduce_promotion",
         "//xla/service:all_to_all_decomposer",
+        "//xla/service:async_collective_custom_call_rewriter",
         "//xla/service:batched_gather_scatter_normalizer",
         "//xla/service:batchnorm_expander",
         "//xla/service:buffer_assignment",
@@ -425,6 +444,17 @@ cc_library(
 )
 
 cc_library(
+    name = "export_hlo",
+    hdrs = ["export_hlo.h"],
+    compatible_with = get_compatible_with_portable(),
+    deps = [
+        ":executable_proto_cc",
+        "//xla/hlo/ir:hlo",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
     # The old target name will still be used so that dependencies won't break.
     # In the future, dependencies should be cleaned up and relinked to the above
     # target if registration is not necessary.
@@ -458,7 +488,9 @@ cc_library(
         "@llvm-project//llvm:Support",
         "@llvm-project//llvm:Target",
         "@llvm-project//llvm:TargetParser",
-    ],
+    ] + if_include_google_deps(
+        xla_internal(["//xla/service/cpu/google:export_hlo"]),
+    ),
     alwayslink = True,  # Contains compiler registration
 )
 
@@ -829,6 +861,7 @@ cc_library(
         "//xla/backends/cpu/runtime/onednn:onednn_fusion_thunk",
         "//xla/backends/cpu/runtime/ynnpack:ynn_fusion_thunk",
         "//xla/backends/cpu/runtime/ynnpack:ynn_interop",
+        "//xla/backends/cpu/transforms:library_fusion_kinds",
         "//xla/codegen:kernel_definition",
         "//xla/codegen:kernel_spec",
         "//xla/codegen:llvm_kernel_source",
@@ -1035,6 +1068,7 @@ xla_cc_test(
         "//xla/tests:xla_internal_test_main",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/status:status_matchers",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
@@ -1051,6 +1085,7 @@ cc_library(
         "//xla:shape_util",
         "//xla:xla_data_proto_cc",
         "//xla/codegen/emitters:elemental_hlo_to_mlir",
+        "//xla/hlo/analysis:hlo_reachability",
         "//xla/hlo/ir:hlo",
         "//xla/service:fusion_node_indexing_evaluation",
         "//xla/service:hlo_module_config",
@@ -1062,6 +1097,7 @@ cc_library(
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/types:span",
     ],
 )
 
@@ -1819,6 +1855,7 @@ cc_library(
         "//xla/backends/cpu/codegen:object_loader",
         "//xla/backends/cpu/runtime:function_library",
         "//xla/hlo/ir:hlo",
+        "//xla/service:compiled_module",
         "//xla/service:compiler",
         "//xla/service:executable",
         "//xla/service:hlo_module_config",
@@ -1852,13 +1889,14 @@ xla_cc_test(
     name = "cpu_compiler_internals_test",
     srcs = ["cpu_compiler_internals_test.cc"],
     deps = [
+        ":cpu_compiler_pure",
+        ":cpu_options",
+        ":thunk_emitter",
         "//xla/backends/cpu/codegen/emitters:cpu_fusion_emitter_config",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
         "//xla/hlo/testlib:verified_hlo_module",
         "//xla/service:llvm_compiler",
-        "//xla/service/cpu:cpu_compiler_pure",
-        "//xla/service/cpu:cpu_options",
         "//xla/tests:xla_internal_test_main",
         "//xla/tsl/lib/core:status_test_util",
         "//xla/tsl/platform:statusor",

@@ -41,6 +41,7 @@ limitations under the License.
 #include "xla/service/hlo_domain_map.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/side_effect_util.h"
 #include "xla/status_macros.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/errors.h"
@@ -169,7 +170,10 @@ absl::StatusOr<bool> AllReduceCombiner::RunWithKeyCombiner(
 
     auto key_fn = [&domain_map, &combine_key](const HloInstruction* instruction)
         -> std::optional<AllReduceCombiner::GroupKey> {
-      if (instruction->opcode() != HloOpcode::kAllReduce) {
+      if (instruction->opcode() != HloOpcode::kAllReduce ||
+          (instruction->has_frontend_attributes() &&
+           instruction->frontend_attributes().map().contains(
+               kXlaSchedulingGroupIdAttr))) {
         return std::nullopt;
       }
       return combine_key(instruction, *domain_map);

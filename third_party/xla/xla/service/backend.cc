@@ -231,7 +231,8 @@ absl::StatusOr<std::vector<StreamPool::Ptr>> Backend::BorrowStreams(
 
   std::vector<StreamPool::Ptr> ptrs;
   for (int i = 0; i < num_streams; i++) {
-    StreamPool::Ptr ptr = stream_pools_.at(executor)->BorrowStream(priority);
+    ASSIGN_OR_RETURN(StreamPool::Ptr ptr,
+                     stream_pools_.at(executor)->BorrowStream(priority));
     ptrs.push_back(std::move(ptr));
   }
   return ptrs;

@@ -63,6 +63,7 @@ limitations under the License.
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/logging.h"
+#include "xla/tsl/util/sorted_range.h"
 #include "xla/util.h"
 #include "tsl/platform/casts.h"
 #include "tsl/platform/hash.h"
@@ -558,6 +559,13 @@ static int32_t GetCommSplitColor(const GpuCliqueKey& clique_key) {
                   sizeof(int64_t) * global_device_ids.size(), 0)));
 }
 
+using RankPair = std::pair<RankId, DeviceRank>;
+
+static bool CompareRankPairsByDeviceRank(const RankPair* lhs,
+                                         const RankPair* rhs) {
+  return lhs->second.rank < rhs->second.rank;
+}
+
 // Joins a GpuClique initialization rendezvous for a `clique_key` and returns
 // a lock that gives an access to clique created by splitting already acquired
 // `parent_clique` clique (access is shared between all participating ranks that
@@ -579,7 +587,6 @@ InitializeGpuClique(GpuCollectives* collectives, se::StreamExecutor* device,
       device->device_ordinal(), rank, clique_key, parent_rank,
       parent_clique_key, num_local_participants);
 
-  using RankPair = std::pair<RankId, DeviceRank>;
   Device gpu_device(device);
   DeviceRank device_rank = {&gpu_device, rank};
   RankPair rank_pair = {parent_rank, device_rank};
@@ -623,11 +630,21 @@ InitializeGpuClique(GpuCollectives* collectives, se::StreamExecutor* device,
       absl::StrAppend(str, mapping.first.value(), "->", mapping.second.value());
     };
 
-    // Collect parent communicators we'll be splitting from and keys for
-    // creating new communicators.
+    // SplitCommunicators treats parent_comms, keys, and ranks as parallel
+    // arrays. Collect all three in child-rank order so that each parent
+    // communicator stays paired with the device and rank of the same physical
+    // participant. Ordering parent_comms by parent rank while ordering ranks by
+    // child rank can bind a split communicator to the wrong StreamExecutor.
     std::vector<Communicator*> parent_comms;
     std::vector<RankId> keys;
-    for (auto& [parent_rank, split_rank] : rank_mapping) {
+    std::vector<DeviceRank> ranks;
+    parent_comms.reserve(rank_pairs.size());
+    keys.reserve(rank_pairs.size());
+    ranks.reserve(rank_pairs.size());
+    auto sorted_rank_pairs =
+        tsl::SortedRange(rank_pairs, CompareRankPairsByDeviceRank);
+    for (const RankPair* rank_pair : sorted_rank_pairs) {
+      const auto& [parent_rank, device_rank] = *rank_pair;
       auto parent_comm = (*parent_clique)->comm(parent_rank);
       if (!parent_comm.has_value()) {
         return InvalidArgument(
@@ -636,17 +653,9 @@ InitializeGpuClique(GpuCollectives* collectives, se::StreamExecutor* device,
       }
 
       parent_comms.push_back(*parent_comm);
-      keys.push_back(split_rank);
+      keys.push_back(device_rank.rank);
+      ranks.push_back(device_rank);
     }
-
-    std::vector<DeviceRank> ranks;
-    ranks.reserve(rank_pairs.size());
-    for (auto& rank_pair : rank_pairs) {
-      ranks.emplace_back(rank_pair->second);
-    }
-
-    // Sort device ranks, mainly to get more readable logs below.
-    absl::c_sort(ranks, [](auto& a, auto& b) { return a.rank < b.rank; });
 
     // Get a globally consistent color value for newly created clique.
     int32_t color = GetCommSplitColor(clique_key);
@@ -1022,7 +1031,7 @@ static absl::Status AbortCliquesWithIncarnations(
   // to be aborted, so that they can cancel pending collective operations.
   for (auto& [cache_key, lockable_clique] : cliques) {
     if (CliqueKeyContainsIncarnation(cache_key.second, incarnation_set)) {
-      VLOG(1) << "Canceling pending GPU clique " << cache_key.second.ToString();
+      VLOG(1) << "Canceling pending GPU clique " << cache_key.second;
       lockable_clique->Cancel();
     }
   }
@@ -1037,25 +1046,24 @@ static absl::Status AbortCliquesWithIncarnations(
     std::vector<std::unique_ptr<tsl::Thread>> threads;
     for (auto& [cache_key, lockable_clique] : cliques) {
       if (!CliqueKeyContainsIncarnation(cache_key.second, incarnation_set)) {
-        VLOG(1) << "Not aborting GPU clique " << cache_key.second.ToString()
+        VLOG(1) << "Not aborting GPU clique " << cache_key.second
                 << " because it does not include a stale incarnation";
         continue;
       }
 
       auto abort = [&result, &result_mu, key = cache_key.second,
                     lockable_clique = &lockable_clique]() {
-        VLOG(1) << "Aborting GPU clique " << key.ToString();
+        VLOG(1) << "Aborting GPU clique " << key;
         if (absl::Status s = (*lockable_clique)->Abort(); !s.ok()) {
           LOG(ERROR) << "Error aborting GPU clique " << key << ": " << s;
           absl::MutexLock lock(result_mu);
           result = std::move(s);
         } else {
-          VLOG(1) << "Aborted GPU clique " << key.ToString();
+          VLOG(1) << "Aborted GPU clique " << key;
         }
       };
 
-      VLOG(1) << "Launching thread to abort GPU clique "
-              << cache_key.second.ToString();
+      VLOG(1) << "Launching thread to abort GPU clique " << cache_key.second;
       threads.push_back(absl::WrapUnique(tsl::Env::Default()->StartThread(
           tsl::ThreadOptions(), "abort", abort)));
     }
@@ -1067,9 +1075,9 @@ static absl::Status AbortCliquesWithIncarnations(
     bool erase =
         CliqueKeyContainsIncarnation(cache_key.second, incarnation_set);
     if (erase) {
-      VLOG(1) << "Removing GPU clique " << cache_key.second.ToString();
+      VLOG(1) << "Removing GPU clique " << cache_key.second;
     } else {
-      VLOG(1) << "Not removing GPU clique " << cache_key.second.ToString()
+      VLOG(1) << "Not removing GPU clique " << cache_key.second
               << " because it does not include a stale incarnation";
     }
     return erase;

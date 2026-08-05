@@ -605,9 +605,9 @@ TEST_F(CollectiveCombinerUtilsTest, MergeFrontendAttributesDeduplicates) {
     ENTRY entry {
       p0 = bf16[8] parameter(0)
       ar.0 = bf16[8] all-reduce(p0), to_apply=add,
-        frontend_attributes={is_pipelinable="true", key_a="val_a"}
+        frontend_attributes={is_pipelineable="true", key_a="val_a"}
       ROOT ar.1 = bf16[8] all-reduce(ar.0), to_apply=add,
-        frontend_attributes={is_pipelinable="true", key_b="val_b"}
+        frontend_attributes={is_pipelineable="true", key_b="val_b"}
     }
   )";
 
@@ -622,9 +622,10 @@ TEST_F(CollectiveCombinerUtilsTest, MergeFrontendAttributesDeduplicates) {
   ASSERT_EQ(instructions.size(), 2);
 
   FrontendAttributes merged = MergeFrontendAttributes(instructions);
-  EXPECT_THAT(merged.map(), UnorderedElementsAre(Pair("is_pipelinable", "true"),
-                                                 Pair("key_a", "val_a"),
-                                                 Pair("key_b", "val_b")));
+  EXPECT_THAT(
+      merged.map(),
+      UnorderedElementsAre(Pair("is_pipelineable", "true"),
+                           Pair("key_a", "val_a"), Pair("key_b", "val_b")));
 }
 
 TEST_F(CollectiveCombinerUtilsTest, MergeFrontendAttributesConflictingValues) {
@@ -754,6 +755,116 @@ TEST_F(CollectiveCombinerUtilsTest,
   EXPECT_TRUE(combined->backend_config<GpuBackendConfig>()
                   ->collective_backend_config()
                   .is_pipelined());
+}
+
+TEST_F(CollectiveCombinerUtilsTest,
+       MergeCollectiveBackendConfigPropagatesSpmdGenerated) {
+  constexpr absl::string_view kHloText = R"(
+    HloModule module
+
+    add {
+      lhs = bf16[] parameter(0)
+      rhs = bf16[] parameter(1)
+      ROOT add = bf16[] add(lhs, rhs)
+    }
+
+    ENTRY entry {
+      p0 = bf16[8] parameter(0)
+      ar.0 = bf16[8] all-reduce(p0), to_apply=add,
+        backend_config={"collective_backend_config": {"is_spmd_generated": true}}
+      ROOT ar.1 = bf16[8] all-reduce(ar.0), to_apply=add
+    }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloText));
+  std::vector<HloInstruction*> instructions;
+  for (HloInstruction* instr :
+       module->entry_computation()->MakeInstructionPostOrder()) {
+    if (instr->opcode() == HloOpcode::kAllReduce) {
+      instructions.push_back(instr);
+    }
+  }
+  ASSERT_EQ(instructions.size(), 2);
+
+  HloInstruction* combined = instructions[1];
+  ASSERT_TRUE(MergeCollectiveBackendConfig(instructions, combined).ok());
+  // After merge, is_spmd_generated because at least one source was.
+  EXPECT_TRUE(combined->backend_config<GpuBackendConfig>()
+                  ->collective_backend_config()
+                  .is_spmd_generated());
+}
+
+TEST_F(CollectiveCombinerUtilsTest,
+       MergeCollectiveBackendConfigSpmdGeneratedFromFrontendAttr) {
+  constexpr absl::string_view kHloText = R"(
+    HloModule module
+
+    add {
+      lhs = bf16[] parameter(0)
+      rhs = bf16[] parameter(1)
+      ROOT add = bf16[] add(lhs, rhs)
+    }
+
+    ENTRY entry {
+      p0 = bf16[8] parameter(0)
+      ar.0 = bf16[8] all-reduce(p0), to_apply=add,
+        frontend_attributes={is_spmd_generated="true"}
+      ROOT ar.1 = bf16[8] all-reduce(ar.0), to_apply=add
+    }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloText));
+  std::vector<HloInstruction*> instructions;
+  for (HloInstruction* instr :
+       module->entry_computation()->MakeInstructionPostOrder()) {
+    if (instr->opcode() == HloOpcode::kAllReduce) {
+      instructions.push_back(instr);
+    }
+  }
+  ASSERT_EQ(instructions.size(), 2);
+
+  HloInstruction* combined = instructions[1];
+  ASSERT_TRUE(MergeCollectiveBackendConfig(instructions, combined).ok());
+  // The frontend attribute on a source is recognized as SPMD-generated.
+  EXPECT_TRUE(combined->backend_config<GpuBackendConfig>()
+                  ->collective_backend_config()
+                  .is_spmd_generated());
+}
+
+TEST_F(CollectiveCombinerUtilsTest,
+       MergeCollectiveBackendConfigSpmdGeneratedDefaultsFalse) {
+  constexpr absl::string_view kHloText = R"(
+    HloModule module
+
+    add {
+      lhs = bf16[] parameter(0)
+      rhs = bf16[] parameter(1)
+      ROOT add = bf16[] add(lhs, rhs)
+    }
+
+    ENTRY entry {
+      p0 = bf16[8] parameter(0)
+      ar.0 = bf16[8] all-reduce(p0), to_apply=add
+      ROOT ar.1 = bf16[8] all-reduce(ar.0), to_apply=add
+    }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloText));
+  std::vector<HloInstruction*> instructions;
+  for (HloInstruction* instr :
+       module->entry_computation()->MakeInstructionPostOrder()) {
+    if (instr->opcode() == HloOpcode::kAllReduce) {
+      instructions.push_back(instr);
+    }
+  }
+  ASSERT_EQ(instructions.size(), 2);
+
+  HloInstruction* combined = instructions[1];
+  ASSERT_TRUE(MergeCollectiveBackendConfig(instructions, combined).ok());
+  // No source carried provenance -> not SPMD-generated.
+  EXPECT_FALSE(combined->backend_config<GpuBackendConfig>()
+                   ->collective_backend_config()
+                   .is_spmd_generated());
 }
 
 }  // namespace

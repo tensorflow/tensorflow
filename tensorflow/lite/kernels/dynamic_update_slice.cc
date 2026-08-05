@@ -143,7 +143,7 @@ void DynamicUpdateSlice(const TfLiteTensor* input, const TfLiteTensor* update,
     return;
   }
   // Computes the effective slice indices.
-  // The clamped indices are gauranteed to >= 0 since update is less than or
+  // The clamped indices are guaranteed to >= 0 since update is less than or
   // equal to the operand size for each dimension.
   std::vector<int> clamped_start_indices =
       ClampStartIndices(input_dims, indices_data, input_shape, update_shape);
@@ -292,6 +292,10 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
     case kTfLiteFloat16:
       DynamicUpdateSlice<Eigen::half>(operand, update, indices_data_i64.data(),
                                       output);
+      break;
+    case kTfLiteBFloat16:
+      DynamicUpdateSlice<Eigen::bfloat16>(operand, update,
+                                          indices_data_i64.data(), output);
       break;
     case kTfLiteFloat32:
       DynamicUpdateSlice<float>(operand, update, indices_data_i64.data(),

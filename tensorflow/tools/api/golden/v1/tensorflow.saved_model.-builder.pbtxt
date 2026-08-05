@@ -2,7 +2,7 @@ path: "tensorflow.saved_model.Builder"
 tf_class {
   is_instance: "<class \'tensorflow.python.saved_model.builder_impl.SavedModelBuilder\'>"
   is_instance: "<class \'tensorflow.python.saved_model.builder_impl._SavedModelBuilder\'>"
-  is_instance: "<type \'object\'>"
+  is_instance: "<class \'object\'>"
   member_method {
     name: "__init__"
     argspec: "args=[\'self\', \'export_dir\'], varargs=None, keywords=None, defaults=None"

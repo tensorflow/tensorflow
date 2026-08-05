@@ -20,6 +20,7 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
 #include "absl/strings/string_view.h"
 #include "xla/autotune_results.pb.h"
@@ -48,7 +49,7 @@ namespace {
 using ::testing::IsEmpty;
 using ::testing::Not;
 
-class XlaCompileLibTest : public HloPjRtTestBase {
+class XlaCompileLibTest : public HloTestBase {
  protected:
   void SetUp() override {
     const std::string hlo_path = tsl::io::JoinPath(tsl::testing::XlaSrcRoot(),

@@ -27,6 +27,7 @@ limitations under the License.
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/service/dump.h"
+#include "xla/service/llvm_ir/llvm_type_conversion_util.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
@@ -139,14 +140,21 @@ absl::Status MaybeDumpCompileInputs(
     VLOG(3) << "  Debug options not set, skipping dump.";
     return absl::OkStatus();
   }
-  std::string dump_path(executable_build_options.debug_options().xla_dump_to());
-  if (dump_path.empty()) {
+  const auto& debug_options = executable_build_options.debug_options();
+  if (debug_options.xla_dump_to().empty()) {
     VLOG(3) << "  Dump path not set via xla_dump_to, skipping dump.";
     return absl::OkStatus();
   }
-  VLOG(3) << "  Dumping compile inputs to " << dump_path;
-  auto dump_status = pjrt::DumpCompileInputs(dump_path, compile_options, module,
-                                             topology, module_id);
+  absl::string_view module_name =
+      xla::llvm_ir::AsStringView(module.getName().value_or(""));
+  if (!xla::DumpingEnabledForHloModule(module_name, debug_options)) {
+    VLOG(3) << "  Module dumping disabled for " << module_name;
+    return absl::OkStatus();
+  }
+  VLOG(3) << "  Dumping compile inputs to " << debug_options.xla_dump_to();
+  auto dump_status =
+      pjrt::DumpCompileInputs(debug_options.xla_dump_to(), compile_options,
+                              module, topology, module_id);
   if (!dump_status.ok()) {
     LOG(WARNING) << "  Failed to dump compile inputs: " << dump_status;
   }

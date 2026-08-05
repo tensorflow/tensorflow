@@ -437,6 +437,14 @@ tsl::Future<> Client::GetReadyFuture(
   return JoinFutures(futures);
 }
 
+tsl::Future<> Client::DeleteValues(absl::Span<xla::ifrt::ValueRef> values) {
+  std::vector<tsl::Future<>> futures;
+  for (const auto& value : values) {
+    futures.push_back(value->Delete());
+  }
+  return tsl::JoinFutures(futures);
+}
+
 absl::Span<xla::ifrt::Device* const> Client::GetAllDevices() const {
   return all_device_ptrs_;
 }

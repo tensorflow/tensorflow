@@ -1206,8 +1206,8 @@ int64_t get_uid() { return _uid++; }
 PyObject* TFE_Py_UID() { return PyLong_FromLongLong(get_uid()); }
 
 void TFE_DeleteContextCapsule(PyObject* context) {
-  TFE_Context* ctx =
-      reinterpret_cast<TFE_Context*>(PyCapsule_GetPointer(context, nullptr));
+  TFE_Context* ctx = reinterpret_cast<TFE_Context*>(
+      PyCapsule_GetPointer(context, "TFE_Context"));
   auto op = ReleaseThreadLocalOp(ctx);
   op.reset();
   TFE_DeleteContext(ctx);
@@ -2027,6 +2027,10 @@ PyObject* TFE_Py_TapeSetNew(PyObject* persistent,
 }
 
 void TFE_Py_TapeSetAdd(PyObject* tape) {
+  if (!PyObject_TypeCheck(tape, &TFE_Py_Tape_Type)) {
+    PyErr_SetString(PyExc_TypeError, "Expected a TFE_Py_Tape object");
+    return;
+  }
   Py_INCREF(tape);
   TFE_Py_Tape* tfe_tape = reinterpret_cast<TFE_Py_Tape*>(tape);
   if (!GetTapeSet()->insert(tfe_tape).second) {
@@ -2045,13 +2049,21 @@ PyObject* TFE_Py_TapeSetIsEmpty() {
 }
 
 void TFE_Py_TapeSetRemove(PyObject* tape) {
+  if (!PyObject_TypeCheck(tape, &TFE_Py_Tape_Type)) {
+    PyErr_SetString(PyExc_TypeError, "Expected a TFE_Py_Tape object");
+    return;
+  }
   auto* stack = GetTapeSet();
+  bool erased = false;
   if (stack != nullptr) {
-    stack->erase(reinterpret_cast<TFE_Py_Tape*>(tape));
+    erased = stack->erase(reinterpret_cast<TFE_Py_Tape*>(tape)) > 0;
   }
   // We kept a reference to the tape in the set to ensure it wouldn't get
   // deleted under us; cleaning it up here.
-  Py_DECREF(tape);
+  // We only decref if the tape was actually erased from the set.
+  if (erased) {
+    Py_DECREF(tape);
+  }
 }
 
 static std::vector<int64_t> MakeIntList(PyObject* list) {
@@ -2210,6 +2222,10 @@ PyObject* TFE_Py_TapeSetPossibleGradientTypes(PyObject* tensors) {
 }
 
 void TFE_Py_TapeWatch(PyObject* tape, PyObject* tensor) {
+  if (!PyObject_TypeCheck(tape, &TFE_Py_Tape_Type)) {
+    PyErr_SetString(PyExc_TypeError, "Expected a TFE_Py_Tape object");
+    return;
+  }
   if (!CouldBackprop()) {
     return;
   }
@@ -3775,7 +3791,7 @@ PyObject* TFE_Py_FastPathExecute_C(PyObject* args) {
       PyObject_GetAttrString(py_eager_context, "_context_handle");
 
   TFE_Context* ctx = reinterpret_cast<TFE_Context*>(
-      PyCapsule_GetPointer(eager_context_handle, nullptr));
+      PyCapsule_GetPointer(eager_context_handle, "TFE_Context"));
   op_exec_info.ctx = ctx;
   op_exec_info.args = args;
 
@@ -3910,8 +3926,10 @@ PyObject* TFE_Py_FastPathExecute_C(PyObject* args) {
 
   // TODO(nareshmodi): Encapsulate callbacks information into a struct.
   if (op_exec_info.run_callbacks) {
-    flattened_attrs.reset(new std::vector<tensorflow::Safe_PyObjectPtr>);
-    flattened_inputs.reset(new std::vector<tensorflow::Safe_PyObjectPtr>);
+    flattened_attrs =
+        std::make_unique<std::vector<tensorflow::Safe_PyObjectPtr>>();
+    flattened_inputs =
+        std::make_unique<std::vector<tensorflow::Safe_PyObjectPtr>>();
   }
 
   // Add inferred attrs and inputs.

@@ -48,7 +48,7 @@ namespace gpu {
 class CuDnnThunk : public TracedCommand {
  public:
   CuDnnThunk(std::string fingerprint, ThunkInfo, std::vector<ShapedSlice> args,
-             std::vector<bool> output_args,
+             std::vector<bool> output_args, bool should_memzero = false,
              std::optional<int64_t> sdpa_dropout_seed = std::nullopt);
   CuDnnThunk(const CuDnnThunk&) = delete;
   CuDnnThunk& operator=(const CuDnnThunk&) = delete;
@@ -91,6 +91,7 @@ class CuDnnThunk : public TracedCommand {
   std::shared_ptr<se::dnn::LazyDnnGraph> graph_;
   std::vector<ShapedSlice> args_;
   std::vector<bool> output_args_;
+  bool should_memzero_;
   // Sdpa dropout seed
   std::optional<int64_t> sdpa_dropout_seed_;
 };

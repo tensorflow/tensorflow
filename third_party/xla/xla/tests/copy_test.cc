@@ -47,7 +47,7 @@ limitations under the License.
 namespace xla {
 namespace {
 
-class CopyOpTest : public HloPjRtTestBase {
+class CopyOpTest : public HloTestBase {
  protected:
   void TestCopyOp(const Literal& literal) {
     auto builder = HloComputation::Builder(TestName());
@@ -339,8 +339,8 @@ TEST_F(CopyOpTest, CopyConstantR4Layout0312_MultipleTilesPerLayer) {
   TestCopyConstantLayoutR4(2, 14, 5, 35, {0, 3, 1, 2});
 }
 
-using CopyOpClientTest = ClientLibraryTestRunnerMixin<
-    HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>>;
+using CopyOpClientTest =
+    ClientLibraryTestRunnerMixin<HloPjRtInterpreterReferenceMixin<HloTestBase>>;
 
 TEST_F(CopyOpClientTest, Copy0x0) {
   Shape in_shape = ShapeUtil::MakeShapeWithDenseLayout(F32, {0, 0}, {0, 1});

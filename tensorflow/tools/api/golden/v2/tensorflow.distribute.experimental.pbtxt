@@ -2,7 +2,7 @@ path: "tensorflow.distribute.experimental"
 tf_module {
   member {
     name: "CentralStorageStrategy"
-    mtype: "<type \'type\'>"
+    mtype: "<class \'type\'>"
   }
   member {
     name: "CollectiveCommunication"
@@ -10,7 +10,7 @@ tf_module {
   }
   member {
     name: "CollectiveHints"
-    mtype: "<type \'type\'>"
+    mtype: "<class \'type\'>"
   }
   member {
     name: "CommunicationImplementation"
@@ -18,7 +18,7 @@ tf_module {
   }
   member {
     name: "CommunicationOptions"
-    mtype: "<type \'type\'>"
+    mtype: "<class \'type\'>"
   }
   member {
     name: "MultiWorkerMirroredStrategy"
@@ -26,38 +26,38 @@ tf_module {
   }
   member {
     name: "ParameterServerStrategy"
-    mtype: "<type \'type\'>"
+    mtype: "<class \'type\'>"
   }
   member {
     name: "PreemptionCheckpointHandler"
-    mtype: "<type \'type\'>"
+    mtype: "<class \'type\'>"
   }
   member {
     name: "PreemptionWatcher"
-    mtype: "<type \'type\'>"
+    mtype: "<class \'type\'>"
   }
   member {
     name: "TPUStrategy"
-    mtype: "<type \'type\'>"
+    mtype: "<class \'type\'>"
   }
   member {
     name: "TerminationConfig"
-    mtype: "<type \'type\'>"
+    mtype: "<class \'type\'>"
   }
   member {
     name: "ValueContext"
-    mtype: "<type \'type\'>"
+    mtype: "<class \'type\'>"
   }
   member {
     name: "coordinator"
-    mtype: "<type \'module\'>"
+    mtype: "<class \'module\'>"
   }
   member {
     name: "partitioners"
-    mtype: "<type \'module\'>"
+    mtype: "<class \'module\'>"
   }
   member {
     name: "rpc"
-    mtype: "<type \'module\'>"
+    mtype: "<class \'module\'>"
   }
 }

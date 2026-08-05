@@ -110,11 +110,12 @@ namespace tensorflow {
 // pybind11 custom type caster.
 
 TFE_Context* InputTFE_Context(const py::handle& ctx) {
-  return static_cast<TFE_Context*>(PyCapsule_GetPointer(ctx.ptr(), nullptr));
+  return static_cast<TFE_Context*>(
+      PyCapsule_GetPointer(ctx.ptr(), "TFE_Context"));
 }
 
 PyObject* OutputTFE_Context(TFE_Context* context) {
-  return PyCapsule_New(context, nullptr, TFE_DeleteContextCapsule);
+  return PyCapsule_New(context, "TFE_Context", TFE_DeleteContextCapsule);
 }
 
 TF_Buffer* ProtoStringToTFBuffer(PyObject* input) {

@@ -123,17 +123,17 @@ struct MultinomialFunctor<GPUDevice, T, OutputType> {
 };
 
 // Explicit instantiation of the GPU functors.
-template struct MultinomialFunctor<GPUDevice, Eigen::half, int32>;
-template struct MultinomialFunctor<GPUDevice, float, int32>;
-template struct MultinomialFunctor<GPUDevice, double, int32>;
-template struct MultinomialFunctor<GPUDevice, int32, int32>;
-template struct MultinomialFunctor<GPUDevice, int64, int32>;
+template struct MultinomialFunctor<GPUDevice, Eigen::half, int32_t>;
+template struct MultinomialFunctor<GPUDevice, float, int32_t>;
+template struct MultinomialFunctor<GPUDevice, double, int32_t>;
+template struct MultinomialFunctor<GPUDevice, int32_t, int32_t>;
+template struct MultinomialFunctor<GPUDevice, int64_t, int32_t>;
 
-template struct MultinomialFunctor<GPUDevice, Eigen::half, int64>;
-template struct MultinomialFunctor<GPUDevice, float, int64>;
-template struct MultinomialFunctor<GPUDevice, double, int64>;
-template struct MultinomialFunctor<GPUDevice, int32, int64>;
-template struct MultinomialFunctor<GPUDevice, int64, int64>;
+template struct MultinomialFunctor<GPUDevice, Eigen::half, int64_t>;
+template struct MultinomialFunctor<GPUDevice, float, int64_t>;
+template struct MultinomialFunctor<GPUDevice, double, int64_t>;
+template struct MultinomialFunctor<GPUDevice, int32_t, int64_t>;
+template struct MultinomialFunctor<GPUDevice, int64_t, int64_t>;
 
 }  // namespace functor
 }  // namespace tensorflow

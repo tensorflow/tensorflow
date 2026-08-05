@@ -487,7 +487,7 @@ absl::StatusOr<std::vector<xla::ifrt::ArrayRef>> Array::RemapArrays(
   });
 
   RETURN_IF_ERROR(plan.CheckArrayCopySemantics(semantics));
-  const int num_inputs = plan.input_specs.size();
+  const int num_inputs = plan.input_specs().size();
   const int num_actual_inputs = arrays.size();
   if (num_inputs != num_actual_inputs) {
     return absl::InvalidArgumentError(
@@ -510,29 +510,29 @@ absl::StatusOr<std::vector<xla::ifrt::ArrayRef>> Array::RemapArrays(
                            rcref.get()));
     }
 
-    if (plan.input_specs[i].dtype != arrays[i]->dtype()) {
+    if (plan.input_specs()[i].dtype != arrays[i]->dtype()) {
       return absl::InvalidArgumentError(absl::StrFormat(
           "RemapArrays expects input #%d to have dtype %v, but got %v", i,
-          plan.input_specs[i].dtype, arrays[i]->dtype()));
+          plan.input_specs()[i].dtype, arrays[i]->dtype()));
     }
-    if (plan.input_specs[i].shape != arrays[i]->shape()) {
+    if (plan.input_specs()[i].shape != arrays[i]->shape()) {
       return absl::InvalidArgumentError(absl::StrFormat(
           "RemapArrays expects input #%d to have shape %v, but got %v", i,
-          plan.input_specs[i].shape, arrays[i]->shape()));
+          plan.input_specs()[i].shape, arrays[i]->shape()));
     }
     // Skip xla::ifrt::Sharding::HasSamePartitioning() check because RemapArrays
     // is currently called with input arrays with implicit sharding
     // reinterpretation. Such patterns should be fixed before enabling stricter
     // checking to avoid false positives.
-    if (*plan.input_specs[i].sharding->devices() !=
+    if (*plan.input_specs()[i].sharding->devices() !=
             *arrays[i]->sharding().devices() ||
-        plan.input_specs[i].sharding->memory_kind() !=
+        plan.input_specs()[i].sharding->memory_kind() !=
             arrays[i]->sharding().memory_kind()) {
       return absl::InvalidArgumentError(
           absl::StrFormat("RemapArrays expects input #%d to be on %v with "
                           "%v, but is on %v with %v",
-                          i, *plan.input_specs[i].sharding->devices(),
-                          plan.input_specs[i].sharding->memory_kind(),
+                          i, *plan.input_specs()[i].sharding->devices(),
+                          plan.input_specs()[i].sharding->memory_kind(),
                           *arrays[i]->sharding().devices(),
                           arrays[i]->sharding().memory_kind()));
     }
@@ -541,8 +541,8 @@ absl::StatusOr<std::vector<xla::ifrt::ArrayRef>> Array::RemapArrays(
   }
 
   std::vector<std::shared_ptr<const xla::PjRtLayout>> output_layouts(
-      plan.output_specs.size());
-  for (const auto& mapping : *plan.mappings) {
+      plan.output_specs().size());
+  for (const auto& mapping : plan.mappings()) {
     if (output_layouts[mapping.out_array] == nullptr) {
       const xla::ifrt::ArrayRef& rcref = arrays[mapping.in_array];
       Array* array = llvm::cast<Array>(rcref.get());
@@ -553,13 +553,13 @@ absl::StatusOr<std::vector<xla::ifrt::ArrayRef>> Array::RemapArrays(
   }
 
   std::vector<xla::ifrt::ArrayRef> result;
-  result.reserve(plan.output_specs.size());
-  for (int i = 0; i < plan.output_specs.size(); ++i) {
+  result.reserve(plan.output_specs().size());
+  for (int i = 0; i < plan.output_specs().size(); ++i) {
     uint64_t h = rpc_helper->NextHandle();
     req->add_result_handles(h);
     result.push_back(xla::ifrt::ArrayRef(tsl::MakeRef<Array>(
-        client, rpc_helper, plan.output_specs[i].dtype,
-        plan.output_specs[i].shape, plan.output_specs[i].sharding,
+        client, rpc_helper, plan.output_specs()[i].dtype,
+        plan.output_specs()[i].shape, plan.output_specs()[i].sharding,
         ArrayHandle{h}, std::move(output_layouts[i]))));
   }
   rpc_helper->RemapArrays(std::move(req));
@@ -722,7 +722,8 @@ tsl::Future<> Array::CopyToStringHostBuffer(
   auto on_ready = [promise = std::move(promise),
                    host_buffer_store = rpc_helper_->host_buffer_store(),
                    host_buffer_handle,
-                   dst_buffer = static_cast<absl::Cord*>(data)](
+                   dst_buffer = static_cast<absl::Cord*>(data),
+                   num_elements = shape_.num_elements()](
                       absl::StatusOr<std::shared_ptr<CopyToHostBufferResponse>>
                           resp) mutable {
     if (!resp.ok()) {
@@ -731,7 +732,7 @@ tsl::Future<> Array::CopyToStringHostBuffer(
     }
     host_buffer_store->Lookup(host_buffer_handle)
         .OnReady([promise = std::move(promise), dst_buffer, host_buffer_store,
-                  host_buffer_handle](
+                  host_buffer_handle, num_elements](
                      absl::StatusOr<absl::Cord> array_contents) mutable {
           absl::Cleanup cleanup = [&]() {
             host_buffer_store->Delete(host_buffer_handle)
@@ -751,7 +752,7 @@ tsl::Future<> Array::CopyToStringHostBuffer(
           }
           auto deserialization_status =
               DeserializeFromCordIntoPreallocatedStringHostBuffer(
-                  *array_contents, dst_buffer);
+                  *array_contents, num_elements, dst_buffer);
           promise.Set(deserialization_status);
         });
   };

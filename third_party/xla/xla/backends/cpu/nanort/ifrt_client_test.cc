@@ -356,6 +356,8 @@ int main(int argc, char** argv) {
       "*LoadedExecutableImplTest.Analysis*:"
       // NanoRT does not support portable execution.
       "*LoadedExecutableImplTest.CompileAndExecutePortable*:"
+      // ExecuteBundle is not implemented.
+      "*CompileAndExecuteBundle*:"
       // Serialization is not implemented.
       "*SerializeAndLoad*";
   xla::ifrt::test_util::SetTestFilterIfNotUserSpecified(kFilter);

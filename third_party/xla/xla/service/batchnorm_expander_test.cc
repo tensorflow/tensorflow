@@ -36,8 +36,7 @@ limitations under the License.
 namespace xla {
 namespace {
 
-class BatchNormExpanderTest
-    : public HloPjRtInterpreterReferenceMixin<HloTestBase> {
+class BatchNormExpanderTest : public HloInterpreterReferenceMixin<HloTestBase> {
  protected:
   // BatchNorm should have a dynamic sized divider for mean operations.
   int64_t CountGetDimensionSize(const HloModule& module) {

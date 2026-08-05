@@ -42,8 +42,8 @@ namespace {
 
 constexpr ErrorSpec kErrorSpec{0.0001};
 
-using TupleTest = ClientLibraryTestRunnerMixin<
-    HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>>;
+using TupleTest =
+    ClientLibraryTestRunnerMixin<HloPjRtInterpreterReferenceMixin<HloTestBase>>;
 
 // Tests a tuple-shaped constant.
 TEST_F(TupleTest, TupleConstant) {
@@ -254,7 +254,7 @@ TEST_F(TupleTest, TupleGTEToTupleToGTEAdd) {
   ComputeAndCompareR2<float>(&builder, expected, {}, kErrorSpec);
 }
 
-using TupleHloTest = HloPjRtTestBase;
+using TupleHloTest = HloTestBase;
 
 TEST_F(TupleHloTest, BadTupleShapeFailsGracefully) {
   const char* testcase = R"(

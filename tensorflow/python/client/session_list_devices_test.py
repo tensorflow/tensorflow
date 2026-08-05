@@ -31,8 +31,11 @@ class SessionListDevicesTest(test_util.TensorFlowTestCase):
   def testListDevices(self):
     with session.Session() as sess:
       devices = sess.list_devices()
-      self.assertTrue('/job:localhost/replica:0/task:0/device:CPU:0' in set(
-          [d.name for d in devices]), devices)
+      self.assertIn(
+          '/job:localhost/replica:0/task:0/device:CPU:0',
+          {d.name for d in devices},
+          devices,
+      )
       # All valid device incarnations must be non-zero.
       self.assertTrue(all(d.incarnation != 0 for d in devices))
 
@@ -47,13 +50,19 @@ class SessionListDevicesTest(test_util.TensorFlowTestCase):
     tf_session.TF_DeleteDeviceList(raw_device_list)
     tf_session.TF_CloseSession(c_session)
 
+  def testTFGetBufferNull(self):
+    with self.assertRaises((ValueError, TypeError)):
+      tf_session.TF_GetBuffer(None)
+
   def testListDevicesGrpcSession(self):
     server = server_lib.Server.create_local_server()
     with session.Session(server.target) as sess:
       devices = sess.list_devices()
-      self.assertTrue(
-          '/job:localhost/replica:0/task:0/device:CPU:0' in set(
-              [d.name for d in devices]), devices)
+      self.assertIn(
+          '/job:localhost/replica:0/task:0/device:CPU:0',
+          {d.name for d in devices},
+          devices,
+      )
       # All valid device incarnations must be non-zero.
       self.assertTrue(all(d.incarnation != 0 for d in devices))
 
@@ -69,11 +78,9 @@ class SessionListDevicesTest(test_util.TensorFlowTestCase):
     config = config_pb2.ConfigProto(cluster_def=cluster_def)
     with session.Session(server1.target, config=config) as sess:
       devices = sess.list_devices()
-      device_names = set(d.name for d in devices)
-      self.assertTrue(
-          '/job:worker/replica:0/task:0/device:CPU:0' in device_names)
-      self.assertTrue(
-          '/job:worker/replica:0/task:1/device:CPU:0' in device_names)
+      device_names = {d.name for d in devices}
+      self.assertIn('/job:worker/replica:0/task:0/device:CPU:0', device_names)
+      self.assertIn('/job:worker/replica:0/task:1/device:CPU:0', device_names)
       # All valid device incarnations must be non-zero.
       self.assertTrue(all(d.incarnation != 0 for d in devices))
 

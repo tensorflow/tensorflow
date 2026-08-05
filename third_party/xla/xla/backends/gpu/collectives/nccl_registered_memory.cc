@@ -22,7 +22,9 @@ limitations under the License.
 #include "absl/memory/memory.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
+#include "absl/synchronization/mutex.h"
 #include "xla/backends/gpu/collectives/nccl_errors.h"
+#include "xla/backends/gpu/collectives/nccl_types.h"
 #include "xla/stream_executor/device_address.h"
 
 // Include NCCL after XLA headers.
@@ -31,26 +33,29 @@ limitations under the License.
 namespace xla::gpu {
 
 NcclRegisteredMemory::NcclRegisteredMemory(
-    ncclComm_t comm, void* handle, stream_executor::DeviceAddressBase addr)
+    std::shared_ptr<NcclCommState> comm, void* handle,
+    stream_executor::DeviceAddressBase addr)
     : comm_(comm), handle_(handle), addr_(addr) {}
 
 absl::StatusOr<std::unique_ptr<NcclRegisteredMemory>>
-NcclRegisteredMemory::Create(ncclComm_t comm,
+NcclRegisteredMemory::Create(std::shared_ptr<NcclCommState> comm_state,
                              stream_executor::DeviceAddressBase addr) {
-  VLOG(3) << absl::StrFormat(
-      "Create NCCL registered memory on comm=%p from: ptr=%p; size=%ld", comm,
-      addr.opaque(), addr.size());
-
   void* handle = nullptr;
-  XLA_NCCL_RETURN_IF_ERROR(
-      ncclCommRegister(comm, addr.opaque(), addr.size(), &handle));
-
-  return absl::WrapUnique(new NcclRegisteredMemory(comm, handle, addr));
+  {
+    absl::MutexLock lock(comm_state->mutex);
+    VLOG(3) << absl::StrFormat(
+        "Create NCCL registered memory on comm=%p from: ptr=%p; size=%ld",
+        comm_state->comm, addr.opaque(), addr.size());
+    XLA_NCCL_RETURN_IF_ERROR(ncclCommRegister(comm_state->comm, addr.opaque(),
+                                              addr.size(), &handle));
+  }
+  return absl::WrapUnique(new NcclRegisteredMemory(comm_state, handle, addr));
 }
 
 NcclRegisteredMemory::~NcclRegisteredMemory() {
   VLOG(3) << absl::StrFormat("Destroy %v", *this);
-  XLA_NCCL_LOG_IF_ERROR(ncclCommDeregister(comm_, handle_));
+  absl::MutexLock lock(comm_->mutex);
+  XLA_NCCL_LOG_IF_ERROR(ncclCommDeregister(comm_->comm, handle_));
 }
 
 stream_executor::DeviceAddressBase NcclRegisteredMemory::addr() const {
@@ -58,8 +63,9 @@ stream_executor::DeviceAddressBase NcclRegisteredMemory::addr() const {
 }
 
 std::string NcclRegisteredMemory::ToString() const {
+  absl::MutexLock lock(comm_->mutex);
   return absl::StrFormat(
-      "NcclRegisteredMemory(comm=%p, handle=%p, ptr=%p, size=%ld)", comm_,
+      "NcclRegisteredMemory(comm=%p, handle=%p, ptr=%p, size=%ld)", comm_->comm,
       handle_, addr_.opaque(), addr_.size());
 }
 

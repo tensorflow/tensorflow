@@ -17,7 +17,6 @@ limitations under the License.
 #include <array>
 #include <cassert>
 #include <cstddef>
-#include <memory>
 #include <tuple>
 #include <type_traits>
 #include <utility>
@@ -209,13 +208,5 @@ class RecoverExp2Pass : public impl::RecoverExp2PassBase<RecoverExp2Pass> {
 };
 
 }  // namespace
-
-/// \brief Create a pass to recover calls to math.exp2(x) from
-/// math.exp(x * log(2)) expressions.
-/// \pre Canonicalization pass must happen before this pass
-std::unique_ptr<mlir::Pass> CreateRecoverExp2Pass() {
-  return std::make_unique<RecoverExp2Pass>();
-}
-
 }  // namespace gpu
 }  // namespace xla

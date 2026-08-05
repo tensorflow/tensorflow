@@ -144,6 +144,31 @@ TEST(VariantOpDecodeRegistryTest, TestEmpty) {
   EXPECT_FALSE(DecodeUnaryVariant(&encoded));
 }
 
+TEST(VariantOpDecodeRegistryTest, TestRecursionLimit) {
+  auto* registry = UnaryVariantOpRegistry::Global();
+  const std::string kTypeName = "RecursiveTest_Unique";
+
+  if (registry->GetDecodeFn(kTypeName) == nullptr) {
+    registry->RegisterDecodeFn(kTypeName, [kTypeName](Variant* v) {
+      Variant nested;
+      VariantTensorDataProto proto;
+      proto.set_type_name(kTypeName);
+      proto.set_metadata("payload");
+      nested = std::move(proto);
+      return DecodeUnaryVariant(&nested);
+    });
+  }
+
+  Variant v;
+  VariantTensorDataProto proto;
+  proto.set_type_name(kTypeName);
+  proto.set_metadata("start");
+  v = std::move(proto);
+
+  // Only assert that the recursive decode fails at the limit.
+  EXPECT_FALSE(DecodeUnaryVariant(&v));
+}
+
 TEST(VariantOpDecodeRegistryTest, TestDuplicate) {
   UnaryVariantOpRegistry registry;
   UnaryVariantOpRegistry::VariantDecodeFn f;

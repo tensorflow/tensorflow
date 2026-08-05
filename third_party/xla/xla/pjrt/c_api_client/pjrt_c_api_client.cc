@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <cstddef>
 #include <cstdint>
+#include <cstring>
 #include <functional>
 #include <memory>
 #include <optional>
@@ -72,8 +73,6 @@ limitations under the License.
 #include "xla/pjrt/distributed/key_value_store_interface.h"
 #include "xla/pjrt/extensions/cross_host_transfers/pjrt_c_api_cross_host_transfers_extension.h"
 #include "xla/pjrt/extensions/executable_metadata/executable_metadata_extension.h"
-#include "xla/pjrt/extensions/host_allocator/host_allocator_extension.h"
-#include "xla/pjrt/extensions/host_allocator/host_allocator_interface_impl.h"
 #include "xla/pjrt/extensions/host_memory_allocator/host_memory_allocator_extension.h"
 #include "xla/pjrt/extensions/host_memory_allocator/host_memory_allocator_interface_impl.h"
 #include "xla/pjrt/host_memory_allocator.h"
@@ -154,17 +153,6 @@ InitExtensions(const PJRT_Api* c_api) {
   return extensions;
 }
 
-static absl::StatusOr<std::unique_ptr<PjRtClient::HostAllocator>>
-InitHostAllocator(const PJRT_Api* c_api, PJRT_Client* c_client) {
-  PJRT_HostAllocator_Extension* extension =
-      pjrt::FindExtension<PJRT_HostAllocator_Extension>(
-          c_api, PJRT_Extension_Type::PJRT_Extension_Type_HostAllocator);
-  if (extension == nullptr) {
-    return absl::UnimplementedError("HostAllocator extension not found");
-  }
-  return std::make_unique<HostAllocatorInterfaceImpl>(c_client, extension);
-}
-
 static std::unique_ptr<HostMemoryAllocator> InitHostMemoryAllocator(
     const PJRT_Api* c_api, PJRT_Client* c_client) {
   PJRT_HostMemoryAllocator_Extension* extension =
@@ -185,7 +173,6 @@ PjRtCApiClient::PjRtCApiClient(
       kv_callback_data_(std::move(kv_callback_data)),
       topo_desc_(InitClientTopoDesc(c_api, c_client)),
       extensions_(InitExtensions(c_api)),
-      host_allocator_(InitHostAllocator(c_api, c_client)),
       host_memory_allocator_(InitHostMemoryAllocator(c_api, c_client)),
       // Example platform version string:
       //   PJRT C API
@@ -1053,14 +1040,6 @@ PjRtCApiClient::GetTopologyDescription() const {
     return topo_desc_.status();
   }
   return &(*topo_desc_);
-}
-
-absl::StatusOr<PjRtClient::HostAllocator*> PjRtCApiClient::GetHostAllocator()
-    const {
-  if (!host_allocator_.ok()) {
-    return host_allocator_.status();
-  }
-  return host_allocator_->get();
 }
 
 HostMemoryAllocator* PjRtCApiClient::GetHostMemoryAllocator() const {
@@ -2027,6 +2006,11 @@ absl::StatusOr<tsl::AllocatorStats> PjRtCApiDevice::GetAllocatorStats() const {
   } else {
     result.peak_bytes_reserved = -1;
   }
+  if (args.peak_allocated_bytes_is_set) {
+    result.peak_allocated_bytes = args.peak_allocated_bytes;
+  } else {
+    result.peak_allocated_bytes = -1;
+  }
   if (args.bytes_reservable_limit_is_set) {
     result.bytes_reservable_limit = args.bytes_reservable_limit;
   }
@@ -2343,7 +2327,9 @@ static absl::StatusOr<Shape> GetOutputShapeHelper(
   for (int i = 0; i < element_types.size(); ++i) {
     ASSIGN_OR_RETURN(xla::Shape shape, ShapeUtil::MakeValidatedShape(
                                            element_types[i], dimensions[i]));
-    *shape.mutable_layout() = layouts[i]->xla_layout();
+    if (shape.IsArray()) {
+      *shape.mutable_layout() = layouts[i]->xla_layout();
+    }
     shapes.push_back(std::move(shape));
   }
   if (shapes.size() == 1) {
@@ -2434,7 +2420,8 @@ PjRtCApiExecutable::GetSerializedExecutableMetadata() const {
   PJRT_ExecutableMetadata_GetExecutableMetadata_Args args;
   args.executable = c_executable();
   args.metadata = nullptr;
-  executable_metadata_extension->get_executable_metadata(&args);
+  RETURN_STATUS_IF_PJRT_ERROR(
+      executable_metadata_extension->get_executable_metadata(&args), c_api_);
   absl::Cleanup cleanup = [&args, &executable_metadata_extension] {
     if (args.metadata != nullptr) {
       PJRT_ExecutableMetadata_DestroySerializedMetadata_Args free_args;
@@ -2742,7 +2729,9 @@ PjRtCApiExecutable::GetHloModules() const {
   }
 
   HloModuleProtoWithConfig proto;
-  proto.ParseFromString(code);
+  if (!proto.ParseFromString(code)) {
+    return InvalidArgument("Failed to deserialize HloModuleProtoWithConfig");
+  }
   std::vector<std::shared_ptr<HloModule>> out;
   ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
                    HloModule::CreateFromProtoWithConfig(proto));
@@ -3017,6 +3006,80 @@ PJRT_SendCallbackInfo CppSendCallbackToC(
       }};
 }
 
+PJRT_HloOutputCallbackInfo CppHloOutputCallbackToC(
+    const xla::HloOutputCallback& cpp_callback, size_t num_operands,
+    PjRtCApiLoadedExecutable::HloOutputCallbackState* state) {
+  state->callback = cpp_callback.callback;
+  state->num_operands = num_operands;
+  return PJRT_HloOutputCallbackInfo{
+      /*user_arg=*/state,
+      /*callback=*/
+      [](int64_t replica_id, int64_t partition_id, const void* data,
+         const int64_t* shape_dims, size_t shape_num_dims,
+         PJRT_Buffer_Type shape_element_type, int64_t operand_index,
+         void* user_arg) {
+        auto* callback_state =
+            reinterpret_cast<PjRtCApiLoadedExecutable::HloOutputCallbackState*>(
+                user_arg);
+
+        std::vector<std::shared_ptr<const Literal>> accumulated_to_call;
+        bool all_received = false;
+        {
+          absl::MutexLock lock(callback_state->mu);
+          if (operand_index < 0 ||
+              operand_index >= callback_state->num_operands) {
+            LOG(ERROR) << "HloOutputCallback: operand_index " << operand_index
+                       << " out of bounds [0, " << callback_state->num_operands
+                       << ")";
+            return;
+          }
+          auto& accumulated =
+              callback_state->accumulated_literals[{replica_id, partition_id}];
+          auto& received =
+              callback_state->received_operands[{replica_id, partition_id}];
+          if (accumulated.empty()) {
+            accumulated.resize(callback_state->num_operands);
+            received.resize(callback_state->num_operands, false);
+          }
+
+          if (data != nullptr) {
+            xla::PrimitiveType element_type =
+                pjrt::ConvertFromPjRtBufferType(shape_element_type);
+            absl::Span<const int64_t> dims(shape_dims, shape_num_dims);
+            xla::Shape shape(element_type, dims);
+            auto literal = std::make_shared<xla::Literal>(shape);
+            std::memcpy(literal->untyped_data(), data, literal->size_bytes());
+            accumulated[operand_index] = std::move(literal);
+          } else {
+            accumulated[operand_index] = nullptr;
+          }
+          received[operand_index] = true;
+
+          all_received = true;
+          for (bool b : received) {
+            if (!b) {
+              all_received = false;
+              break;
+            }
+          }
+          if (all_received) {
+            accumulated_to_call = std::move(accumulated);
+            callback_state->accumulated_literals.erase(
+                {replica_id, partition_id});
+            callback_state->received_operands.erase({replica_id, partition_id});
+          }
+        }
+        if (all_received) {
+          callback_state->callback(
+              replica_id, partition_id,
+              absl::Span<std::shared_ptr<const xla::Literal> const>(
+                  accumulated_to_call.data(), accumulated_to_call.size()));
+        }
+      },
+      /*callback_id=*/cpp_callback.callback_id,
+      /*num_operands=*/num_operands};
+}
+
 CApiCopyToDeviceStream::CApiCopyToDeviceStream(
     PJRT_CopyToDeviceStream* c_stream, const PJRT_Api* c_api)
     : CopyToDeviceStream(/*total_bytes=*/0, /*granule_bytes=*/0),
@@ -3161,6 +3224,29 @@ static void CppRecvCallbackListsToC(
   }
 }
 
+void CppHloOutputCallbacksToC(
+    absl::Span<const xla::HloOutputCallback> cpp_list,
+    std::vector<
+        std::unique_ptr<PjRtCApiLoadedExecutable::HloOutputCallbackState>>&
+        hlo_output_callback_states,
+    std::vector<PJRT_HloOutputCallbackInfo>& c_list) {
+  if (cpp_list.empty()) {
+    return;
+  }
+
+  hlo_output_callback_states.resize(cpp_list.size());
+  c_list.reserve(cpp_list.size());
+
+  for (int i = 0; i < cpp_list.size(); ++i) {
+    const auto& cpp_callback = cpp_list[i];
+    hlo_output_callback_states[i] =
+        std::make_unique<PjRtCApiLoadedExecutable::HloOutputCallbackState>();
+    c_list.emplace_back(
+        CppHloOutputCallbackToC(cpp_callback, cpp_callback.num_operands,
+                                hlo_output_callback_states[i].get()));
+  }
+}
+
 absl::StatusOr<size_t> PjRtCApiLoadedExecutable::GetNumOutputs() const {
   PJRT_Executable_NumOutputs_Args args;
   args.struct_size = PJRT_Executable_NumOutputs_Args_STRUCT_SIZE;
@@ -3281,6 +3367,15 @@ PjRtCApiLoadedExecutable::GetCommonExecuteArgs(
     args.options->recv_callbacks = callback_data.c_recv_callback_lists.data();
     args.options->num_recv_ops = options.recv_callbacks[0].size();
   }
+  if (!options.hlo_output_callbacks.empty()) {
+    CppHloOutputCallbacksToC(options.hlo_output_callbacks,
+                             callback_data.hlo_output_callback_states,
+                             callback_data.c_hlo_output_callbacks);
+    args.options->hlo_output_callbacks =
+        callback_data.c_hlo_output_callbacks.data();
+    args.options->num_hlo_output_callbacks =
+        options.hlo_output_callbacks.size();
+  }
 
   return args;
 }
@@ -3391,7 +3486,8 @@ PjRtCApiLoadedExecutable::Execute(
       device_complete_futures.push_back(pjrt::ConvertCEventToCppFuture(
           args.device_complete_events[i], pjrt_c_api()));
       if (!callback_data->c_send_callbacks.empty() ||
-          !callback_data->c_recv_callbacks.empty()) {
+          !callback_data->c_recv_callbacks.empty() ||
+          !callback_data->hlo_output_callback_states.empty()) {
         device_complete_futures.back().OnReady(
             [callback_data](absl::Status status) {
               // Keeps C callbacks alive until execution completes on all
@@ -3467,6 +3563,11 @@ PjRtCApiLoadedExecutable::ExecuteWithSingleDevice(
   if (fill_future) {
     returned_future = pjrt::ConvertCEventToCppFuture(
         args.device_complete_events[0], pjrt_c_api());
+    if (!callback_data->hlo_output_callback_states.empty()) {
+      returned_future->OnReady([callback_data](absl::Status status) {
+        // Keeps C callbacks alive until execution completes.
+      });
+    }
   }
   return std::move(Convert2DCBuffersToCppBuffers(
       args.output_lists, args.num_devices, c_output_lists_storage[0].size(),
@@ -3614,7 +3715,9 @@ absl::StatusOr<Shape> PjRtCApiBuffer::logical_on_device_shape() {
     return dims.status();
   }
   Shape result(element_type(), *dims, is_dynamic_dimension());
-  *result.mutable_layout() = layout()->xla_layout();
+  if (result.IsArray()) {
+    *result.mutable_layout() = layout()->xla_layout();
+  }
   return result;
 }
 
@@ -4133,7 +4236,7 @@ void PjRtCApiBuffer::CopyToRemoteDevice(
           pjrt::StatusCodeToPjrtErrorCode(descriptor.status().code());
       event_set_args.error_message = descriptor.status().message().data();
       event_set_args.error_message_size = descriptor.status().message().size();
-      c_api->PJRT_Event_Set(&event_set_args);
+      pjrt::LogFatalIfPjrtError(c_api->PJRT_Event_Set(&event_set_args), c_api);
     });
   }
 #endif

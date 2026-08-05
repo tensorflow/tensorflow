@@ -31,8 +31,6 @@ limitations under the License.
 #include "xla/layout.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "xla/shape.h"
-#include "xla/stream_executor/tpu/c_api_conversions.h"
-#include "xla/stream_executor/tpu/tpu_api.h"
 
 namespace mlir {
 namespace mhlo {

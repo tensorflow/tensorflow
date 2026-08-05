@@ -33,12 +33,10 @@ inline void BroadcastBinaryFunction4DSlow(
     const RuntimeShape& unextended_input2_shape, const T2* input2_data,
     const RuntimeShape& unextended_output_shape, R* output_data,
     R (*func)(T1, T2)) {
-  ForEachBroadcastedElement(
-      unextended_input1_shape, unextended_input2_shape, unextended_output_shape,
-      [&](int output_index, int input1_index, int input2_index) {
-        output_data[output_index] =
-            func(input1_data[input1_index], input2_data[input2_index]);
-      });
+  auto op = [func](T1 a, T2 b) { return func(a, b); };
+  BroadcastBinaryOpSimple(unextended_input1_shape, input1_data,
+                          unextended_input2_shape, input2_data,
+                          unextended_output_shape, output_data, op);
 }
 
 // R: Result type. T1: Input 1 type. T2: Input 2 type.

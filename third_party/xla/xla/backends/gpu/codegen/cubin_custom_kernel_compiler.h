@@ -80,7 +80,7 @@ class CubinCustomKernelCompiler final : public KernelCompiler {
       const std::string& entry_function_name, int unroll_factor,
       MlirKernelSource source, BorrowedMlirContext borrowed_context) override;
 
-  xla::Future<std::vector<uint8_t>> CompileToPtx(
+  xla::Future<std::vector<uint8_t>> CompileToTargetBinary(
       LlvmKernelSource kernel_source) override;
 
   xla::Future<TritonWrapperResult> CompileTritonToLlvm(
@@ -92,7 +92,7 @@ class CubinCustomKernelCompiler final : public KernelCompiler {
       bool is_xla_fusion) override;
 
  private:
-  absl::StatusOr<std::vector<uint8_t>> CompileToPtxImpl(
+  absl::StatusOr<std::vector<uint8_t>> CompileToCubinImpl(
       LlvmKernelSource kernel_source);
 
   absl::StatusOr<std::unique_ptr<Thunk>> CompileImpl(

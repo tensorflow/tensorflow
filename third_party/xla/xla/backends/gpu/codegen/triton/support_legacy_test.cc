@@ -79,7 +79,7 @@ bool CombinationCrashesTriton(PrimitiveType lhs_type, PrimitiveType rhs_type,
 class DotTest : public SupportTestBase,
                 public ::testing::WithParamInterface<
                     std::tuple<PrimitiveType, HloOpcode>>,
-                public HloPjRtInterpreterReferenceMixin<HloTestBase> {
+                public HloInterpreterReferenceMixin<HloTestBase> {
  protected:
   DotTest()
       : SupportTestBase(
@@ -221,7 +221,7 @@ std::string DynamicSliceTestParamToString(
 class DynamicSliceTest
     : public SupportTestBase,
       public ::testing::WithParamInterface<DynamicSliceTestParam::TupleType>,
-      public HloPjRtInterpreterReferenceMixin<HloTestBase> {
+      public HloInterpreterReferenceMixin<HloTestBase> {
  public:
   DynamicSliceTest()
       : SupportTestBase(

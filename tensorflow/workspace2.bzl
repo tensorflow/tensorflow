@@ -4,6 +4,8 @@ load("@bazel_features//:deps.bzl", "bazel_features_deps")
 load("@bazel_skylib//lib:versions.bzl", "versions")
 load("@bazel_tools//tools/build_defs/repo:utils.bzl", "maybe")
 load("@rules_jvm_external//:defs.bzl", "maven_install")
+load("@rules_ml_toolchain//cc/llvms/local:local_clang_configure.bzl", "local_clang_configure")
+load("@rules_ml_toolchain//cc/sysroots:local_sysroot_configure.bzl", "local_sysroot_configure")
 load("@rules_ml_toolchain//gpu/rocm:hipcc_configure.bzl", "hipcc_configure")
 load("@tf_runtime//:dependencies.bzl", "tfrt_dependencies")
 load("@xla//third_party/absl:workspace.bzl", absl = "repo")
@@ -164,8 +166,14 @@ def _tf_toolchains():
     git_configure(name = "local_config_git")
     syslibs_configure(name = "local_config_syslibs")
     python_configure(name = "local_config_python")
-    hipcc_configure(name = "config_rocm_hipcc")  # Must be before rocm_configure.
     rocm_configure(name = "local_config_rocm")
+    hipcc_configure(
+        name = "config_rocm_hipcc",
+        rocm_dist = "@local_config_rocm//rocm:toolchain_data",
+    )
+
+    local_clang_configure(name = "local_config_clang")
+    local_sysroot_configure(name = "local_sysroot_config")
     sycl_configure(name = "local_config_sycl")
     remote_execution_configure(name = "local_config_remote_execution")
 
@@ -236,9 +244,9 @@ def _tf_repositories():
     # XNNPack dependency.
     tf_http_archive(
         name = "KleidiAI",
-        sha256 = "be1d6fb524b2a5e3772b38472a24d660e22b210f6b53b73bd8a5437ac2d882a7",
-        strip_prefix = "kleidiai-d41219d3db13758074a6440d7b55a87487334c8b",
-        urls = tf_mirror_urls("https://github.com/ARM-software/kleidiai/archive/d41219d3db13758074a6440d7b55a87487334c8b.zip"),
+        sha256 = "6b3e6630be314a28f6ea28fed14f7109b0b7c472f1e06d2dba17ffccda3b9466",
+        strip_prefix = "kleidiai-dce86647385ab2638aa5abebcb652f3e4271970d",
+        urls = tf_mirror_urls("https://gitlab.arm.com/kleidi/kleidiai/-/archive/dce86647385ab2638aa5abebcb652f3e4271970d/kleidiai-dce86647385ab2638aa5abebcb652f3e4271970d.zip"),
     )
 
     FXdiv()
@@ -349,9 +357,9 @@ def _tf_repositories():
     tf_http_archive(
         name = "com_google_googletest",
         # Use the commit on 2025/6/09:
-        # https://github.com/google/googletest/commit/28e9d1f26771c6517c3b4be10254887673c94018
-        sha256 = "f253ca1a07262f8efde8328e4b2c68979e40ddfcfc001f70d1d5f612c7de2974",
-        strip_prefix = "googletest-28e9d1f26771c6517c3b4be10254887673c94018",
+        # https://github.com/google/googletest/commit/d72f9c8aea6817cdf1ca0ac10887f328de7f3da2
+        sha256 = "a4cb11930215b071168811982dfbebc82a2bb0f90db0e8713245931eb742ea46",
+        strip_prefix = "googletest-d72f9c8aea6817cdf1ca0ac10887f328de7f3da2",
         # Patch googletest to:
         #   - avoid dependencies on @fuchsia_sdk,
         #   - refer to re2 as @com_googlesource_code_re2,
@@ -363,13 +371,13 @@ def _tf_repositories():
         # $ cd github
         # $ git clone https://github.com/google/googletest.git
         # $ cd googletest
-        # $ git checkout 28e9d1f26771c6517c3b4be10254887673c94018
+        # $ git checkout d72f9c8aea6817cdf1ca0ac10887f328de7f3da2
         # ... make local changes to googletest ...
         # $ git diff > <client-root>/third_party/tensorflow/third_party/googletest/googletest.patch
         #
         # The patch path is relative to third_party/tensorflow.
         patch_file = ["@xla//third_party/googletest:googletest.patch"],
-        urls = tf_mirror_urls("https://github.com/google/googletest/archive/28e9d1f26771c6517c3b4be10254887673c940189.zip"),
+        urls = tf_mirror_urls("https://github.com/google/googletest/archive/d72f9c8aea6817cdf1ca0ac10887f328de7f3da29.zip"),
     )
 
     tf_http_archive(
@@ -397,13 +405,13 @@ def _tf_repositories():
 
     tf_http_archive(
         name = "com_github_grpc_grpc",
-        sha256 = "e2ace790a5f2d0f83259d1390a816a33b013ea34df2e86084d927e58daa4c5d9",
-        strip_prefix = "grpc-1.78.0",
+        sha256 = "41b695614b26652ff9e97ce50cfd4a6c7a3d45a9fe598d1454407746499bbf2c",
+        strip_prefix = "grpc-1.81.0",
         system_build_file = "//third_party/systemlibs:grpc.BUILD",
         patch_file = [
             "@xla//third_party/grpc:grpc.patch",
         ],
-        urls = tf_mirror_urls("https://github.com/grpc/grpc/archive/refs/tags/v1.78.0.tar.gz"),
+        urls = tf_mirror_urls("https://github.com/grpc/grpc/archive/refs/tags/v1.81.0.tar.gz"),
     )
 
     linenoise()

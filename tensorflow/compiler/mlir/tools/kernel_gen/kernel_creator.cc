@@ -41,10 +41,10 @@ limitations under the License.
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/GPU/IR/GPUDialect.h"  // from @llvm-project
 #include "mlir/Dialect/GPU/Transforms/Passes.h"  // from @llvm-project
-#include "mlir/Dialect/LLVMIR/Transforms/OptimizeForNVVM.h"  // from @llvm-project
 #include "mlir/Dialect/Linalg/Passes.h"  // from @llvm-project
 #include "mlir/Dialect/MemRef/IR/MemRef.h"  // from @llvm-project
 #include "mlir/Dialect/MemRef/Transforms/Passes.h"  // from @llvm-project
+#include "mlir/Dialect/NVVM/Transforms/OptimizeForNVVM.h"  // from @llvm-project
 #include "mlir/Dialect/SCF/Transforms/Passes.h"  // from @llvm-project
 #include "mlir/Dialect/Shape/IR/Shape.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypeInterfaces.h"  // from @llvm-project
@@ -362,7 +362,7 @@ absl::Status LowerKernelBodiesToLowLevelIr(mlir::ModuleOp module,
   kernelPm.addPass(mlir::createGpuKernelToRocdlPass(architecture));
 #elif GOOGLE_CUDA
   kernelPm.addPass(mlir::createGpuKernelToNvvmPass());
-  kernelPm.addPass(mlir::LLVM::createNVVMOptimizeForTargetPass());
+  kernelPm.addPass(mlir::NVVM::createNVVMOptimizeForTargetPass());
 #endif
   // Remove all location information to prevent a debug build.
   pm.addPass(::mlir::createStripDebugInfoPass());

@@ -37,6 +37,10 @@ class ResourceVariable : public ResourceBase {
 
   ~ResourceVariable() override;
 
+  ResourceType GetResourceType() const override {
+    return ResourceType::kResourceVariable;
+  }
+
   // Assigns data from a tensor. Copies its type, shape and data over.
   TfLiteStatus AssignFrom(const TfLiteTensor* tensor);
 

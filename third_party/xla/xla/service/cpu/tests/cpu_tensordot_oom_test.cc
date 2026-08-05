@@ -30,7 +30,7 @@ namespace {
 
 using ::tsl::testing::IsOk;
 
-class CpuTensordotOomTest : public HloPjRtTestBase {};
+class CpuTensordotOomTest : public HloTestBase {};
 
 // Regression test for OOM caused by tensordots.
 // Reference: https://github.com/openxla/xla/pull/41174

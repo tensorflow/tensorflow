@@ -113,6 +113,8 @@ class Client final : public llvm::RTTIExtends<Client, xla::ifrt::Client> {
 
   tsl::Future<> GetReadyFuture(absl::Span<const ValueRef> values) override;
 
+  tsl::Future<> DeleteValues(absl::Span<xla::ifrt::ValueRef> values) override;
+
   absl::StatusOr<tsl::RCReference<Tuple>> MakeTuple(
       absl::Span<ValueRef> values) override {
     return absl::UnimplementedError(

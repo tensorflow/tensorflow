@@ -47,9 +47,8 @@ limitations under the License.
 #include "xla/stream_executor/cuda/cuda_dnn.h"
 #include "xla/stream_executor/cuda/cudnn_frontend_helpers.h"
 #include "xla/stream_executor/cuda/cudnn_sdpa_score_mod.h"
+#include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/dnn.h"
-#include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/protobuf/dnn.pb.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
@@ -82,7 +81,7 @@ using se::dnn::DataType;
 using se::dnn::MatmulTensorDescriptor;
 using se::dnn::TensorDescriptor;
 
-absl::StatusOr<TensorDescriptor> TensorDescriptorFor(const Shape &shape) {
+absl::StatusOr<TensorDescriptor> TensorDescriptorFor(const Shape& shape) {
   ASSIGN_OR_RETURN(const DataType type,
                    GetDNNDataTypeFromPrimitiveType(shape.element_type()));
   return TensorDescriptor::For(type, shape.dimensions(),
@@ -92,7 +91,7 @@ absl::StatusOr<TensorDescriptor> TensorDescriptorFor(const Shape &shape) {
 enum Side { LHS, RHS };
 
 absl::StatusOr<MatmulTensorDescriptor> MatmulTensorDescriptorFor(
-    const Shape &shape, const DotDimensionNumbers &dnums, const Side side) {
+    const Shape& shape, const DotDimensionNumbers& dnums, const Side side) {
   ASSIGN_OR_RETURN(const DataType type,
                    GetDNNDataTypeFromPrimitiveType(shape.element_type()));
   return MatmulTensorDescriptor::For(
@@ -104,12 +103,14 @@ absl::StatusOr<MatmulTensorDescriptor> MatmulTensorDescriptorFor(
 }
 
 absl::StatusOr<se::gpu::CudnnGraph> BuildGraphForCustomCallToForwardFMHA(
-    se::dnn::DnnSupport &dnn_support, HloCustomCallInstruction *custom_call) {
+    se::dnn::DnnSupport* dnn_support,
+    const se::DeviceDescription& gpu_device_info,
+    HloCustomCallInstruction* custom_call) {
   ASSIGN_OR_RETURN(const xla::gpu::CudnnfMHAKind kind,
                    xla::gpu::GetCudnnfMHAKind(custom_call));
   ASSIGN_OR_RETURN(const auto gpu_config,
                    custom_call->backend_config<xla::gpu::GpuBackendConfig>());
-  const xla::gpu::CudnnfMHABackendConfig &config =
+  const xla::gpu::CudnnfMHABackendConfig& config =
       gpu_config.cudnn_fmha_backend_config();
 
   ASSIGN_OR_RETURN(
@@ -140,7 +141,7 @@ absl::StatusOr<se::gpu::CudnnGraph> BuildGraphForCustomCallToForwardFMHA(
   std::optional<se::dnn::TensorDescriptor> bias;
   if (kind == CudnnfMHAKind::kScaleBiasSoftmax ||
       kind == CudnnfMHAKind::kScaleBiasSoftmaxDropout) {
-    const HloInstruction &bias_hlo = *custom_call->operand(3);
+    const HloInstruction& bias_hlo = *custom_call->operand(3);
     ASSIGN_OR_RETURN(bias, TensorDescriptorFor(bias_hlo.shape()));
     input_index++;
   }
@@ -180,7 +181,7 @@ absl::StatusOr<se::gpu::CudnnGraph> BuildGraphForCustomCallToForwardFMHA(
   }
 
   auto computations = custom_call->called_computations();
-  const HloComputation *score_mod_fwd_comp = nullptr;
+  const HloComputation* score_mod_fwd_comp = nullptr;
   std::optional<stream_executor::gpu::ScoreModFunc> score_mod;
   TF_RET_CHECK(computations.size() <= 1);
   if (computations.size() == 1) {
@@ -194,18 +195,20 @@ absl::StatusOr<se::gpu::CudnnGraph> BuildGraphForCustomCallToForwardFMHA(
   ASSIGN_OR_RETURN(
       se::gpu::CudnnGraph graph,
       se::gpu::GetCudnnFlashAttentionOperationGraph(
-          dnn_support, q, k, v, output, bias, activation, page_table_k,
-          page_table_v, static_cast<float>(config.fmha_scale()),
+          dnn_support, gpu_device_info, q, k, v, output, bias, activation,
+          page_table_k, page_table_v, static_cast<float>(config.fmha_scale()),
           dropout_rate > 0.0, dropout_rate, dnn_mask_type,
           sliding_window_length, max_seg_per_batch, score_mod_ptr));
   return graph;
 }
 
 absl::StatusOr<se::gpu::CudnnGraph> BuildGraphForCustomCallToForwardFMHAF8(
-    se::dnn::DnnSupport &dnn_support, HloCustomCallInstruction *custom_call) {
+    se::dnn::DnnSupport* dnn_support,
+    const se::DeviceDescription& gpu_device_info,
+    HloCustomCallInstruction* custom_call) {
   ASSIGN_OR_RETURN(const auto gpu_config,
                    custom_call->backend_config<xla::gpu::GpuBackendConfig>());
-  const xla::gpu::CudnnfMHABackendConfig &config =
+  const xla::gpu::CudnnfMHABackendConfig& config =
       gpu_config.cudnn_fmha_backend_config();
   ASSIGN_OR_RETURN(Shape intermediate_tensor_shape,
                    Shape::FromProto(config.intermediate_tensor_shape()));
@@ -237,28 +240,31 @@ absl::StatusOr<se::gpu::CudnnGraph> BuildGraphForCustomCallToForwardFMHAF8(
     ASSIGN_OR_RETURN(activation, TensorDescriptorFor(ShapeUtil::GetSubshape(
                                      custom_call->shape(), {3})));
   }
-  ASSIGN_OR_RETURN(se::gpu::CudnnGraph graph,
-                   se::gpu::GetCudnnFlashAttentionF8OperationGraph(
-                       dnn_support, q, k, v, output, activation,
-                       static_cast<float>(config.fmha_scale()), dnn_mask_type));
+  ASSIGN_OR_RETURN(
+      se::gpu::CudnnGraph graph,
+      se::gpu::GetCudnnFlashAttentionF8OperationGraph(
+          dnn_support, gpu_device_info, q, k, v, output, activation,
+          static_cast<float>(config.fmha_scale()), dnn_mask_type));
   return graph;
 }
 
 absl::StatusOr<se::gpu::CudnnGraph> BuildGraphForCustomCallToBackwardFMHA(
-    se::dnn::DnnSupport &dnn_support, HloCustomCallInstruction *custom_call) {
+    se::dnn::DnnSupport* dnn_support,
+    const se::DeviceDescription& gpu_device_info,
+    HloCustomCallInstruction* custom_call) {
   ASSIGN_OR_RETURN(auto gpu_config,
                    custom_call->backend_config<xla::gpu::GpuBackendConfig>());
-  xla::gpu::CudnnfMHABackendConfig &config =
+  xla::gpu::CudnnfMHABackendConfig& config =
       *gpu_config.mutable_cudnn_fmha_backend_config();
 
   int input_index = 0;
-  const Shape &q_shape = custom_call->operand(input_index++)->shape();
-  const Shape &k_shape = custom_call->operand(input_index++)->shape();
-  const Shape &v_shape = custom_call->operand(input_index++)->shape();
+  const Shape& q_shape = custom_call->operand(input_index++)->shape();
+  const Shape& k_shape = custom_call->operand(input_index++)->shape();
+  const Shape& v_shape = custom_call->operand(input_index++)->shape();
   ASSIGN_OR_RETURN(const Shape p_shape,
                    Shape::FromProto(config.intermediate_tensor_shape()));
   ++input_index;
-  const Shape &d_output_shape = custom_call->operand(input_index++)->shape();
+  const Shape& d_output_shape = custom_call->operand(input_index++)->shape();
 
   ASSIGN_OR_RETURN(const CudnnfMHAKind kind, GetCudnnfMHAKind(custom_call));
 
@@ -286,11 +292,11 @@ absl::StatusOr<se::gpu::CudnnGraph> BuildGraphForCustomCallToBackwardFMHA(
   }
 
   int output_index = 0;
-  const Shape &dq_shape =
+  const Shape& dq_shape =
       ShapeUtil::GetSubshape(custom_call->shape(), {output_index++});
-  const Shape &dk_shape =
+  const Shape& dk_shape =
       ShapeUtil::GetSubshape(custom_call->shape(), {output_index++});
-  const Shape &dv_shape =
+  const Shape& dv_shape =
       ShapeUtil::GetSubshape(custom_call->shape(), {output_index++});
   bool has_dbias = custom_call->shape().tuple_shapes().size() == 5;
   std::optional<Shape> dbias_shape;
@@ -350,14 +356,14 @@ absl::StatusOr<se::gpu::CudnnGraph> BuildGraphForCustomCallToBackwardFMHA(
 
   const int sliding_window_length = config.sliding_window_length();
   auto computations = custom_call->called_computations();
-  const HloComputation *score_mod_fwd_comp = nullptr;
-  const HloComputation *score_mod_bwd_comp = nullptr;
-  stream_executor::gpu::ScoreModFunc *score_mod = nullptr;
+  const HloComputation* score_mod_fwd_comp = nullptr;
+  const HloComputation* score_mod_bwd_comp = nullptr;
+  stream_executor::gpu::ScoreModFunc* score_mod = nullptr;
   TF_RET_CHECK(computations.size() <= 1);
   if (computations.size() == 1) {
     score_mod_bwd_comp = computations[0];
     auto softmax_aux = custom_call->mutable_operand(3);
-    HloInstruction *fwd_custom_call;
+    HloInstruction* fwd_custom_call;
     if (!Match(softmax_aux,
                m::GetTupleElement(m::CustomCall(&fwd_custom_call), 1))) {
       return absl::InternalError("Can't find fmha fwd custom call.");
@@ -370,21 +376,23 @@ absl::StatusOr<se::gpu::CudnnGraph> BuildGraphForCustomCallToBackwardFMHA(
   }
   TF_RET_CHECK(input_index == custom_call->operand_count());
 
-  ASSIGN_OR_RETURN(
-      se::gpu::CudnnGraph graph,
-      se::gpu::GetCudnnFlashAttentionBackwardOperationGraph(
-          dnn_support, q, k, p, v, d_output, dq, dk, dv, bias, dbias,
-          dropout_rate, config.seed(), config.fmha_scale(), dropout_rate > 0.0,
-          bias.has_value(), dnn_mask_type, force_deterministic,
-          sliding_window_length, max_seg_per_batch, score_mod));
+  ASSIGN_OR_RETURN(se::gpu::CudnnGraph graph,
+                   se::gpu::GetCudnnFlashAttentionBackwardOperationGraph(
+                       dnn_support, gpu_device_info, q, k, p, v, d_output, dq,
+                       dk, dv, bias, dbias, dropout_rate, config.seed(),
+                       config.fmha_scale(), dropout_rate > 0.0,
+                       bias.has_value(), dnn_mask_type, force_deterministic,
+                       sliding_window_length, max_seg_per_batch, score_mod));
   return graph;
 }
 
 absl::StatusOr<se::gpu::CudnnGraph> BuildGraphForCustomCallToBackwardFMHAF8(
-    se::dnn::DnnSupport &dnn_support, HloCustomCallInstruction *custom_call) {
+    se::dnn::DnnSupport* dnn_support,
+    const se::DeviceDescription& gpu_device_info,
+    HloCustomCallInstruction* custom_call) {
   ASSIGN_OR_RETURN(auto gpu_config,
                    custom_call->backend_config<xla::gpu::GpuBackendConfig>());
-  xla::gpu::CudnnfMHABackendConfig &config =
+  xla::gpu::CudnnfMHABackendConfig& config =
       *gpu_config.mutable_cudnn_fmha_backend_config();
 
   Shape q_shape = custom_call->operand(0)->shape();
@@ -436,13 +444,15 @@ absl::StatusOr<se::gpu::CudnnGraph> BuildGraphForCustomCallToBackwardFMHAF8(
                    GetDNNFmhaMaskKindFromCudnnFmhaMaskKind(cudnn_mask_type));
   ASSIGN_OR_RETURN(se::gpu::CudnnGraph graph,
                    se::gpu::GetCudnnFlashAttentionBackwardF8OperationGraph(
-                       dnn_support, q, k, p, v, d_output, dq, dk, dv,
-                       config.fmha_scale(), dnn_mask_type));
+                       dnn_support, gpu_device_info, q, k, p, v, d_output, dq,
+                       dk, dv, config.fmha_scale(), dnn_mask_type));
   return graph;
 }
 
 absl::StatusOr<se::gpu::CudnnGraph> BuildGraphForCustomCallToBlockScaledDot(
-    se::dnn::DnnSupport &dnn_support, HloCustomCallInstruction *custom_call) {
+    se::dnn::DnnSupport* dnn_support,
+    const se::DeviceDescription& gpu_device_info,
+    HloCustomCallInstruction* custom_call) {
   const bool has_global_scale = custom_call->operand_count() == 5;
   TF_RET_CHECK(custom_call->operand_count() == 4 || has_global_scale);
   TF_RET_CHECK(custom_call->shape().tuple_shapes().size() == 2);
@@ -480,48 +490,59 @@ absl::StatusOr<se::gpu::CudnnGraph> BuildGraphForCustomCallToBlockScaledDot(
                              ? BlockScalingRewriter::kBlockSizeMXFP8
                              : BlockScalingRewriter::kBlockSizeNVFP4;
 
-  ASSIGN_OR_RETURN(se::gpu::CudnnGraph graph,
-                   se::gpu::GetCudnnBlockScaledDotOperationGraph(
-                       dnn_support, lhs_data, lhs_scale, rhs_data, rhs_scale,
-                       result_type, block_size, has_global_scale));
+  ASSIGN_OR_RETURN(
+      se::gpu::CudnnGraph graph,
+      se::gpu::GetCudnnBlockScaledDotOperationGraph(
+          dnn_support, gpu_device_info, lhs_data, lhs_scale, rhs_data,
+          rhs_scale, result_type, block_size, has_global_scale));
   return graph;
 }
 
 absl::StatusOr<se::gpu::CudnnGraph> HloCustomCallToCuDnnGraph(
-    se::dnn::DnnSupport& dnn_support, HloCustomCallInstruction* custom_call) {
+    se::dnn::DnnSupport* dnn_support,
+    const se::DeviceDescription& gpu_device_info,
+    HloCustomCallInstruction* custom_call) {
   if (IsFwdCustomCallTofMHA(*custom_call)) {
-    return BuildGraphForCustomCallToForwardFMHA(dnn_support, custom_call);
+    return BuildGraphForCustomCallToForwardFMHA(dnn_support, gpu_device_info,
+                                                custom_call);
   }
   if (IsFwdCustomCallTofMHAF8(*custom_call)) {
-    return BuildGraphForCustomCallToForwardFMHAF8(dnn_support, custom_call);
+    return BuildGraphForCustomCallToForwardFMHAF8(dnn_support, gpu_device_info,
+                                                  custom_call);
   }
   if (IsBwdCustomCallTofMHA(*custom_call)) {
-    return BuildGraphForCustomCallToBackwardFMHA(dnn_support, custom_call);
+    return BuildGraphForCustomCallToBackwardFMHA(dnn_support, gpu_device_info,
+                                                 custom_call);
   }
   if (IsBwdCustomCallTofMHAF8(*custom_call)) {
-    return BuildGraphForCustomCallToBackwardFMHAF8(dnn_support, custom_call);
+    return BuildGraphForCustomCallToBackwardFMHAF8(dnn_support, gpu_device_info,
+                                                   custom_call);
   }
   TF_RET_CHECK(IsCustomCallToBlockScaledDot(*custom_call));
-  return BuildGraphForCustomCallToBlockScaledDot(dnn_support, custom_call);
+  return BuildGraphForCustomCallToBlockScaledDot(dnn_support, gpu_device_info,
+                                                 custom_call);
 }
 
 class CuDnnCustomCallVisitor : public DfsHloRewriteVisitor {
  public:
-  explicit CuDnnCustomCallVisitor(se::dnn::DnnSupport &dnn_support,
-                                  BinaryMap &compilation_results)
-      : dnn_support_(dnn_support), compilation_results_(compilation_results) {}
+  explicit CuDnnCustomCallVisitor(se::dnn::DnnSupport* dnn_support,
+                                  const se::DeviceDescription& gpu_device_info,
+                                  BinaryMap& compilation_results)
+      : dnn_support_(dnn_support),
+        gpu_device_info_(gpu_device_info),
+        compilation_results_(compilation_results) {}
 
-  void AddWorkspace(HloInstruction &hlo, int64_t workspace_size) {
+  void AddWorkspace(HloInstruction& hlo, int64_t workspace_size) {
     if (workspace_size == 0) {
       return;
     }
     VLOG(4) << "Applying workspace size " << workspace_size << " to "
             << hlo.ToString();
-    Shape *shape = hlo.mutable_shape();
+    Shape* shape = hlo.mutable_shape();
     shape->mutable_tuple_shapes()->back().set_dimensions(0, workspace_size);
   }
 
-  absl::Status HandleCustomCall(HloInstruction *hlo) override {
+  absl::Status HandleCustomCall(HloInstruction* hlo) override {
     if (!IsCustomCallTofMHA(*hlo) && !IsCustomCallTofMHAF8(*hlo) &&
         !IsCustomCallToBlockScaledDot(*hlo)) {
       return absl::OkStatus();
@@ -534,7 +555,7 @@ class CuDnnCustomCallVisitor : public DfsHloRewriteVisitor {
     if (workspace_size_it == workspace_sizes_.cend()) {
       ASSIGN_OR_RETURN(
           se::gpu::CudnnGraph graph,
-          HloCustomCallToCuDnnGraph(dnn_support_,
+          HloCustomCallToCuDnnGraph(dnn_support_, gpu_device_info_,
                                     DynCast<HloCustomCallInstruction>(hlo)));
 
       const int64_t workspace_size = graph.Graph().get_workspace_size();
@@ -549,7 +570,7 @@ class CuDnnCustomCallVisitor : public DfsHloRewriteVisitor {
       ASSIGN_OR_RETURN(const std::string fingerprint_with_workspace,
                        FingerprintWithBackendConfig<GpuBackendConfig>(*hlo));
       compilation_results_[fingerprint_with_workspace] =
-          std::string(reinterpret_cast<char *>(serialized_graph.data()),
+          std::string(reinterpret_cast<char*>(serialized_graph.data()),
                       serialized_graph.size());
     } else {
       VLOG(4) << "Cache hit.";
@@ -561,8 +582,9 @@ class CuDnnCustomCallVisitor : public DfsHloRewriteVisitor {
   }
 
  private:
-  se::dnn::DnnSupport &dnn_support_;
-  BinaryMap &compilation_results_;
+  se::dnn::DnnSupport* dnn_support_;
+  const se::DeviceDescription& gpu_device_info_;
+  BinaryMap& compilation_results_;
   absl::flat_hash_map<std::string, int64_t> workspace_sizes_;
 };
 
@@ -572,7 +594,8 @@ absl::StatusOr<bool> CuDnnCustomCallCompiler::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   XLA_SCOPED_LOGGING_TIMER_LEVEL("cuDNN custom call compiler", 8);
-  return CuDnnCustomCallVisitor(dnn_support_, compilation_results_)
+  return CuDnnCustomCallVisitor(dnn_support_, gpu_device_info_,
+                                compilation_results_)
       .RunOnModule(module, execution_threads);
 }
 

@@ -21,7 +21,11 @@ limitations under the License.
 #include "mlir/Conversion/LLVMCommon/TypeConverter.h"
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "mlir/Dialect/Math/IR/Math.h"
+#include "mlir/IR/BuiltinTypes.h"
+#include "mlir/IR/OpDefinition.h"
 #include "mlir/IR/Operation.h"
+#include "mlir/IR/Value.h"
+#include "mlir/Support/LLVM.h"
 
 namespace xla {
 namespace emitters {
@@ -29,6 +33,14 @@ namespace emitters {
 // Ensure AMDGPU allocas use address space 5 (private).
 // AMDGPU requires allocas in AS5, but MLIR lowering creates them in AS0.
 void EnsureAMDGPUAllocasUseAS5(mlir::Operation* operation);
+
+// Emits MLIR operations to convert float `value` (scalar or shaped) to integer
+// type `dst_element_ty` (signed or unsigned), applying bounds clamping and
+// mapping NaN to 0.
+mlir::Value EmitFloatToIntConvertWithClamping(
+    mlir::ImplicitLocOpBuilder& builder, mlir::Value value,
+    mlir::FloatType src_fp_element_ty, mlir::IntegerType dst_element_ty,
+    mlir::Type src_ty, mlir::Type dst_ty);
 
 namespace spirv {
 namespace mm = ::mlir::math;
@@ -39,8 +51,8 @@ struct SPIRVMathOps {};
 inline auto getSPIRVMathOps() {
   return SPIRVMathOps<
       mm::AcosOp, mm::AcoshOp, mm::AsinOp, mm::AsinhOp, mm::Atan2Op, mm::AtanOp,
-      mm::AtanhOp, mm::CosOp, mm::CoshOp, mm::ExpM1Op, mm::ExpOp, mm::Log1pOp,
-      mm::LogOp, mm::SinOp, mm::SinhOp, mm::TanOp, mm::TanhOp>{};
+      mm::AtanhOp, mm::CosOp, mm::CoshOp, mm::ErfOp, mm::ExpM1Op, mm::ExpOp,
+      mm::Log1pOp, mm::LogOp, mm::SinOp, mm::SinhOp, mm::TanOp, mm::TanhOp>{};
 }
 
 template <typename Op>
@@ -54,21 +66,30 @@ struct OpToSPVFuncCallLowering : public mlir::ConvertOpToLLVMPattern<Op> {
       Op op, typename Op::Adaptor adaptor,
       mlir::ConversionPatternRewriter& rewriter) const override {
     mlir::Type result_type = op->getResultTypes().front();
-    mlir::SmallVector<mlir::Type> arg_types(adaptor.getOperands().getTypes());
+    mlir::SmallVector<mlir::Value> operands;
 
     bool can_lower =
-        mlir::isa<mlir::Float32Type, mlir::Float64Type>(result_type);
-    for (mlir::Type type : arg_types) {
-      can_lower = can_lower && (type == result_type);
+        mlir::isa<mlir::BFloat16Type, mlir::Float16Type, mlir::Float32Type,
+                  mlir::Float64Type>(result_type);
+
+    for (mlir::Value value : adaptor.getOperands()) {
+      can_lower = can_lower && (value.getType() == result_type);
+      if (value.getType().getIntOrFloatBitWidth() < 32) {
+        value = mlir::LLVM::FPExtOp::create(
+            rewriter, value.getLoc(),
+            mlir::Float32Type::get(rewriter.getContext()), value);
+      }
+      operands.push_back(value);
     }
 
     if (!can_lower) {
       return rewriter.notifyMatchFailure(
-          op, " expected F32 or F64 result and operand types");
+          op, " expected BF16, F16, F32 or F64 result and operand types");
     }
 
+    mlir::Type new_result_type = operands.front().getType();
     std::string name =
-        base + (mlir::isa<mlir::Float32Type>(result_type) ? "f" : "d");
+        base + (mlir::isa<mlir::Float32Type>(new_result_type) ? "f" : "d");
 
     auto symbol_table =
         op->template getParentWithTrait<mlir::OpTrait::SymbolTable>();
@@ -78,14 +99,21 @@ struct OpToSPVFuncCallLowering : public mlir::ConvertOpToLLVMPattern<Op> {
       mlir::OpBuilder b(symbol_table->getRegion(0));
       func = ml::LLVMFuncOp::create(
           b, symbol_table->getLoc(), name,
-          ml::LLVMFunctionType::get(result_type, arg_types));
+          ml::LLVMFunctionType::get(
+              new_result_type,
+              llvm::to_vector(llvm::map_range(
+                  operands, [](mlir::Value v) { return v.getType(); }))));
       func.setCConv(ml::cconv::CConv::SPIR_FUNC);
     }
-    auto call =
-        ml::CallOp::create(rewriter, op->getLoc(), func, adaptor.getOperands());
+    auto call = ml::CallOp::create(rewriter, op->getLoc(), func, operands);
     call.setCConv(func.getCConv());
 
-    rewriter.replaceOp(op, {call.getResult()});
+    mlir::Value result = call.getResult();
+    if (result_type != new_result_type) {
+      result = mlir::LLVM::FPTruncOp::create(rewriter, op->getLoc(),
+                                             result_type, result);
+    }
+    rewriter.replaceOp(op, result);
     return mlir::success();
   }
 

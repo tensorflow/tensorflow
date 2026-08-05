@@ -27,6 +27,7 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/algorithm/container.h"
+#include "absl/base/casts.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -181,7 +182,7 @@ ENTRY test_computation {
       module->entry_computation()->root_instruction();
   ASSERT_EQ(root_instr->opcode(), HloOpcode::kCollectivePermute);
   const HloCollectivePermuteInstruction* cp_instr =
-      tensorflow::down_cast<const HloCollectivePermuteInstruction*>(root_instr);
+      absl::down_cast<const HloCollectivePermuteInstruction*>(root_instr);
   ASSERT_NE(cp_instr, nullptr);
 
   // Buffer and Allocation Setup
@@ -282,7 +283,7 @@ ENTRY test_computation {
                                        /*device_allocator=*/nullptr));
   // Downcast to GPU executable
   xla::gpu::GpuExecutable* gpu_executable =
-      tensorflow::down_cast<xla::gpu::GpuExecutable*>(executable.get());
+      absl::down_cast<GpuExecutable*>(executable.get());
   ASSERT_NE(gpu_executable, nullptr);
 
   // Get the thunk sequence and check its size and type

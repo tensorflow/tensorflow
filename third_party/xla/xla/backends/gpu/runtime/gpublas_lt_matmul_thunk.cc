@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/backends/gpu/runtime/gpublas_lt_matmul_thunk.h"
 
+#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <optional>
@@ -22,14 +23,12 @@ limitations under the License.
 #include <type_traits>
 #include <utility>
 #include <variant>
-#include <vector>
 
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "xla/tsl/platform/status_macros.h"
-#include "xla/backends/gpu/runtime/command.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
 #include "xla/backends/gpu/runtime/traced_command.h"
@@ -41,8 +40,6 @@ limitations under the License.
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/gpu/gpu_blas_lt.h"
 #include "xla/stream_executor/stream.h"
-#include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {
@@ -132,6 +129,7 @@ absl::Status CublasLtMatmulThunk::ExecuteOnStream(const ExecuteParams& params) {
   }
   return plan->ExecuteOnStream(params.stream, args, /*profile_result*/ nullptr);
 }
+
 absl::StatusOr<se::gpu::BlasLt::MatmulPlan*>
 CublasLtMatmulThunk::GetCachedMatmulPlan(const ExecuteParams& params) {
   ASSIGN_OR_RETURN(auto* blas_lt,
@@ -142,32 +140,19 @@ CublasLtMatmulThunk::GetCachedMatmulPlan(const ExecuteParams& params) {
             << " instr: " << canonical_hlo_;
 
     ASSIGN_OR_RETURN(auto plan, std::visit(
-                                    [&](const auto& gemm_config) {
+                                    [&](auto&& gemm_config) {
                                       return blas_lt->GetMatmulPlan(gemm_config,
                                                                     epilogue_);
                                     },
                                     gemm_config_));
-
-    // Set the workspace size to the size that was used for autotuning, so
-    // algorithm index will be the same as returned by GetAlgorithms called
-    // during autotuning.
-    int64_t max_workspace = autotune_workspace_size_;
-
-    // If autotuning is disabled, there is no point on retrieving all
-    // algorithms, it's enough to get the default one only.
-    int64_t num_algorithms =
-        algorithm_idx_ == 0 ? 1 : GemmConfig::kNumAlgorithms;
-    ASSIGN_OR_RETURN(auto algorithms,
-                     plan->GetAlgorithms(num_algorithms, max_workspace));
-
-    if (algorithms.empty()) {
-      return absl::InternalError(
-          "Failed to get a MatmulPlan: no valid algorithm found.");
-    }
-    RETURN_IF_ERROR(plan->SetAlgorithm(algorithms[algorithm_idx_]));
     return std::move(plan);
   };
-  return blas_lt->GetOrCreateMatmulPlan(canonical_hlo_, create);
+  // If autotuning is disabled, there is no point on retrieving all
+  // algorithms, it's enough to get the default one only.
+  size_t num_algorithms = algorithm_idx_ == 0 ? 1 : GemmConfig::kNumAlgorithms;
+  return blas_lt->GetOrCreateMatmulPlanWithAlgorithm(
+      canonical_hlo_, create, algorithm_idx_, num_algorithms,
+      autotune_workspace_size_);
 }
 
 absl::Status CublasLtMatmulThunk::Initialize(const InitializeParams& params) {
@@ -206,7 +191,7 @@ Thunk::BufferUses CublasLtMatmulThunk::buffer_uses() const {
     res.push_back(BufferUse::Write(d_amax_->slice, d_amax_->shape));
   }
   if (workspace_.has_value()) {
-    res.push_back(BufferUse::Write(workspace_->slice, workspace_->shape));
+    res.push_back(BufferUse::Scratch(workspace_->slice, workspace_->shape));
   }
   return res;
 }
@@ -219,7 +204,7 @@ absl::StatusOr<ThunkProto> CublasLtMatmulThunk::ToProto() const {
       proto.mutable_cublas_lt_matmul_thunk();
 
   RETURN_IF_ERROR(std::visit(
-      [&](const auto& gemm_config) {
+      [&](auto&& gemm_config) {
         using T = std::decay_t<decltype(gemm_config)>;
         if constexpr (std::is_same_v<T, se::gpu::GroupedGemmConfig>) {
           *cublas_lt_matmul_thunk->mutable_grouped_gemm_config() =

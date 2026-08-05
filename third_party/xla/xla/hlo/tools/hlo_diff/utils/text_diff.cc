@@ -20,6 +20,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/base/no_destructor.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/strings/string_view.h"
@@ -122,7 +123,7 @@ void ComputeDiffRecursive(absl::string_view left, absl::string_view right,
         j--;
       }
     }
-    std::reverse(reversed_chunks.begin(), reversed_chunks.end());
+    absl::c_reverse(reversed_chunks);
     for (const auto& chunk : reversed_chunks) {
       MergeOrPushChunk(chunk.type, chunk.text, chunks);
     }

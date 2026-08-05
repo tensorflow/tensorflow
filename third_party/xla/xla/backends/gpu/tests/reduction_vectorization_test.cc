@@ -33,12 +33,12 @@ namespace xla::gpu {
 namespace {
 
 class ReductionVectorizationTest
-    : public HloPjRtInterpreterReferenceMixin<GpuPjRtCodegenTest> {};
+    : public HloInterpreterReferenceMixin<GpuPjRtCodegenTest> {};
 
 class ReductionVectorizationNoOptTest
-    : public HloPjRtInterpreterReferenceMixin<GpuPjRtCodegenTest> {
+    : public HloInterpreterReferenceMixin<GpuPjRtCodegenTest> {
   DebugOptions GetDebugOptionsForTest() const override {
-    DebugOptions debug_options = HloPjRtInterpreterReferenceMixin<
+    DebugOptions debug_options = HloInterpreterReferenceMixin<
         GpuPjRtCodegenTest>::GetDebugOptionsForTest();
     // The test MultiOutputStore contain a MOF fusion and XLA optimizer pass
     // doesn't like this.

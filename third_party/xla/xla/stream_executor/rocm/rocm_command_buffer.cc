@@ -18,6 +18,7 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -258,7 +259,8 @@ absl::Status RocmCommandBuffer::UpdateClonedChildNode(
 
 absl::StatusOr<GraphNodeHandle> RocmCommandBuffer::CreateKernelNode(
     absl::Span<const GraphNodeHandle> dependencies, StreamPriority priority,
-    const ThreadDim& threads, const BlockDim& blocks, const Kernel& kernel,
+    const ThreadDim& threads, const BlockDim& blocks,
+    const std::optional<ClusterDim>& cluster_dims, const Kernel& kernel,
     const KernelArgsPackedArrayBase& args) {
   const uint64_t shared_mem_bytes = args.number_of_shared_bytes();
 
@@ -314,8 +316,8 @@ absl::StatusOr<GraphNodeHandle> RocmCommandBuffer::CreateKernelNode(
 
 absl::Status RocmCommandBuffer::UpdateKernelNode(
     GraphNodeHandle node_handle, const ThreadDim& threads,
-    const BlockDim& blocks, const Kernel& kernel,
-    const KernelArgsPackedArrayBase& args) {
+    const BlockDim& blocks, const std::optional<ClusterDim>& cluster_dims,
+    const Kernel& kernel, const KernelArgsPackedArrayBase& args) {
   const uint64_t shared_mem_bytes = args.number_of_shared_bytes();
 
   VLOG(2) << "Set kernel node params " << node_handle << " in graph executable "
@@ -377,7 +379,7 @@ absl::StatusOr<GraphNodeHandle> RocmCommandBuffer::CreateEmptyNode(
 }
 
 absl::Status RocmCommandBuffer::Trace(
-    Stream* stream, absl::AnyInvocable<absl::Status()> function) {
+    Stream* stream, absl::AnyInvocable<absl::Status(Stream* stream)> function) {
   RETURN_IF_ERROR(CheckNotFinalized());
   ASSIGN_OR_RETURN(size_t count, GetNodeCount());
   if (count != 0 || !is_owned_graph_)
@@ -395,7 +397,7 @@ absl::Status RocmCommandBuffer::Trace(
   RETURN_IF_ERROR(ToStatus(
       hipStreamBeginCapture(stream_handle, hipStreamCaptureModeThreadLocal),
       "Failed to begin stream capture"));
-  auto traced = function();
+  auto traced = function(stream);
 
   // Always stop capturing the stream before checking `traced` result.
   VLOG(5) << "End stream " << stream << " capture";

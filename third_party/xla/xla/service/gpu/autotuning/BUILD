@@ -1,3 +1,18 @@
+# Copyright 2026 The OpenXLA Authors. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
+
 # Description:
 #   Components that implement GPU autotuning.
 
@@ -29,30 +44,43 @@ xla_test(
     backends = ["gpu"],
     tags = ["cuda-only"],
     deps = [
+        ":autotuner_cache",
         ":autotuner_pass",
         "//xla:shape_util",
         "//xla:xla_proto_cc",
-        "//xla/backends/autotuner",
+        "//xla/backends/autotuner:backends_proto_cc",
         "//xla/backends/autotuner:codegen_backend",
+        "//xla/backends/autotuner:config_assigner",
         "//xla/backends/autotuner:profiler",
         "//xla/backends/gpu/autotuner:cublaslt",
+        "//xla/backends/gpu/autotuner:cudnn",
+        "//xla/backends/gpu/autotuner:triton",
+        "//xla/hlo/analysis:symbolic_map",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
         "//xla/service:platform_util",
+        "//xla/service/gpu:alias_info",
         "//xla/service/gpu:backend_configs_cc",
         "//xla/service/gpu:gpu_compiler",
         "//xla/service/gpu:nvptx_compiler_impl",
         "//xla/stream_executor:device_address_allocator",
+        "//xla/stream_executor:device_description",
         "//xla/stream_executor:platform_manager",
         "//xla/stream_executor:stream_executor_address_allocator",
         "//xla/stream_executor:stream_executor_h",
+        "//xla/stream_executor/cuda:cuda_compute_capability",
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:statusor",
+        "//xla/tsl/util/proto:proto_matchers",
+        "@com_google_absl//absl/base:log_severity",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/log:globals",
+        "@com_google_absl//absl/log:scoped_mock_log",
         "@com_google_absl//absl/status:status_matchers",
         "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest_main",
+        "@llvm-project//mlir:IR",
         "@tsl//tsl/platform:path",
     ],
 )
@@ -252,11 +280,17 @@ cc_library(
     deps = [
         "//xla:util",
         "//xla:xla_proto_cc",
-        "//xla/backends/autotuner",
+        "//xla/backends/autotuner:autotune_cache_store",
         "//xla/backends/autotuner:autotuner_cache_interface",
         "//xla/backends/autotuner:backends_proto_cc",
         "//xla/backends/autotuner:codegen_backend",
+        "//xla/backends/autotuner:codegen_orchestrator",
+        "//xla/backends/autotuner:config_assigner",
+        "//xla/backends/autotuner:directory_store",
+        "//xla/backends/autotuner:hlo_extractor",
+        "//xla/backends/autotuner:in_memory_store",
         "//xla/backends/autotuner:profiler",
+        "//xla/backends/autotuner:tiered_cache",
         "//xla/backends/gpu/autotuner:factory",
         "//xla/backends/gpu/autotuner:gpu_profiler",
         "//xla/backends/gpu/autotuner:legacy_cache",
@@ -277,12 +311,12 @@ cc_library(
         "//xla/stream_executor/sycl:sycl_platform_id",
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:status_macros",
-        "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",

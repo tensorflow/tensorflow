@@ -192,6 +192,9 @@ inline constexpr absl::string_view kCudnnConvReorderFilterAndBiasCallTarget =
 // kConvolution opcode.
 bool IsCustomCallToDnnConvolution(const HloInstruction& hlo);
 
+// Returns true if `hlo` is a convolution fusion.
+bool IsConvFusion(const HloInstruction& hlo);
+
 // Returns true if `hlo` will be implemented as a call to cuDNN convolution
 // reordering helper (required for int8x32 convolutions).
 bool IsCudnnConvolutionReorder(const HloInstruction& hlo);

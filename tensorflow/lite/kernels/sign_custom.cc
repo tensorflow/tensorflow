@@ -13,6 +13,8 @@
 // limitations under the License.
 
 #include <cmath>
+#include <cstdint>
+#include <type_traits>
 
 #include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/kernels/custom_ops_register.h"
@@ -41,7 +43,6 @@ TfLiteStatus PointwiseUnaryOpPrepare(TfLiteContext* context, TfLiteNode* node) {
 // Applies the operator Op pointwise to data of type T.
 template <typename Op, typename T>
 TfLiteStatus PointwiseUnaryOpDoEval(
-    TfLiteContext* context,
     const TfLiteTensor* input,
     TfLiteTensor* output) {
   const T* data = tflite::GetTensorData<T>(input);
@@ -64,14 +65,12 @@ TfLiteStatus PointwiseUnaryOpEval(TfLiteContext* context, TfLiteNode* node) {
 
   switch (output->type) {
     case kTfLiteFloat32:
-      TF_LITE_ENSURE_OK(
-          context,
-          (PointwiseUnaryOpDoEval<Op, float>(context, input, output)));
+      TF_LITE_ENSURE_OK(context,
+                        (PointwiseUnaryOpDoEval<Op, float>(input, output)));
       break;
     case kTfLiteFloat64:
-      TF_LITE_ENSURE_OK(
-          context,
-          (PointwiseUnaryOpDoEval<Op, double>(context, input, output)));
+      TF_LITE_ENSURE_OK(context,
+                        (PointwiseUnaryOpDoEval<Op, double>(input, output)));
       break;
     default: {
       TF_LITE_KERNEL_LOG(context, "Unsupported datatype for sign output: %s",
@@ -87,6 +86,11 @@ TfLiteStatus PointwiseUnaryOpEval(TfLiteContext* context, TfLiteNode* node) {
 struct Sign {
   template <typename T>
   static T Eval(T x) {
+    if constexpr (std::is_floating_point_v<T>) {
+      if (std::isnan(x)) {
+        return x;
+      }
+    }
     if (x > 0) {
       return 1;
     }

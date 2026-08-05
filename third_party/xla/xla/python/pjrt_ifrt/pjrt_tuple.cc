@@ -76,12 +76,7 @@ tsl::Future<> PjRtTuple::Delete() {
       is_deleted_.Notify();
     }
   }
-  std::vector<tsl::Future<>> futures;
-  futures.reserve(values_.size());
-  for (const auto& value : values_) {
-    futures.push_back(value->Delete());
-  }
-  return JoinFutures(absl::MakeSpan(futures));
+  return client_->DeleteValues(absl::MakeSpan(values_));
 }
 
 bool PjRtTuple::IsDeleted() const {

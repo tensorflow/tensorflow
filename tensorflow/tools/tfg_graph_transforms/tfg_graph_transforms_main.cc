@@ -18,6 +18,7 @@ limitations under the License.
 #include <utility>
 
 #include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "llvm/ADT/Twine.h"
 #include "llvm/Support/CommandLine.h"

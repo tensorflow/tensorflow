@@ -29,6 +29,7 @@ limitations under the License.
 #include "absl/hash/hash.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/cord.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "llvm/Support/ExtensibleRTTI.h"
@@ -56,6 +57,7 @@ limitations under the License.
 #include "xla/python/ifrt/remap_plan.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
+#include "xla/python/ifrt/sharding_spec.h"
 #include "xla/python/ifrt/topology.h"
 #include "xla/python/ifrt/tuple.h"
 #include "xla/python/ifrt/user_context.h"
@@ -136,11 +138,12 @@ class MockBundle : public llvm::RTTIExtends<MockBundle, Bundle> {
               (override));
   MOCK_METHOD(absl::StatusOr<BundleRef>, CopyArrays,
               (absl::Span<const int> slice_sizes,
-               absl::Span<const CopySpec> copy_specs),
+               absl::Span<const CopySpec> copy_specs,
+               ArrayCopySemantics semantics),
               (override));
   MOCK_METHOD(absl::StatusOr<BundleRef>, ReshardArrays,
-              (absl::Span<const int> slice_sizes,
-               absl::Span<const ReshardSpec> reshard_specs),
+              (absl::Span<const xla::ifrt::ArraySpec> array_specs,
+               ArrayCopySemantics semantics),
               (override));
 
   static char ID;  // NOLINT
@@ -201,6 +204,8 @@ class MockClient : public llvm::RTTIExtends<MockClient, Client> {
               (final));
   MOCK_METHOD(tsl::Future<>, GetReadyFuture,
               (absl::Span<const ValueRef> values), (final));
+  MOCK_METHOD(tsl::Future<>, DeleteValues, (absl::Span<ValueRef> arrays),
+              (final));
   MOCK_METHOD(absl::StatusOr<tsl::RCReference<Tuple>>, MakeTuple,
               (absl::Span<ValueRef> values), (final));
 
@@ -281,7 +286,7 @@ class MockCompiler : public llvm::RTTIExtends<MockCompiler, Compiler> {
                const xla::ifrt::DeviceListRef& devices),
               (const, final));
   MOCK_METHOD(tsl::Future<LoadedExecutableRef>, DeserializeLoadedExecutable,
-              (absl::string_view serialized,
+              (const absl::Cord& serialized,
                std::unique_ptr<DeserializeExecutableOptions> options),
               (final));
 
@@ -532,6 +537,16 @@ class MockSharding : public llvm::RTTIExtends<MockSharding, Sharding> {
       : llvm::RTTIExtends<MockSharding, Sharding>(devices, memory_kind,
                                                   is_fully_replicated) {}
 
+  MOCK_METHOD(ShardingSpecRef, sharding_spec, (), (const, final));
+  MOCK_METHOD(absl::StatusOr<Shape>, GetShardShape, (const Shape& shape),
+              (const, final));
+  MOCK_METHOD(bool, HasSamePartitioning, (const Sharding& other),
+              (const final));
+  MOCK_METHOD(absl::StatusOr<std::unique_ptr<Sharding>>, WithDeviceAssignment,
+              (std::optional<DeviceListRef> devices,
+               std::optional<MemoryKind> memory_kind),
+              (const final));
+
   MOCK_METHOD((absl::StatusOr<std::vector<std::pair<Shape, ShardingRef>>>),
               Disassemble,
               (const Shape& shape,
@@ -547,14 +562,7 @@ class MockSharding : public llvm::RTTIExtends<MockSharding, Sharding> {
               (const Shape& shape,
                SingleDeviceShardSemantics single_device_shard_semantics),
               (const, final));
-  MOCK_METHOD(absl::StatusOr<Shape>, GetShardShape, (const Shape& shape),
-              (const, final));
-  MOCK_METHOD(bool, HasSamePartitioning, (const Sharding& other),
-              (const final));
-  MOCK_METHOD(absl::StatusOr<std::unique_ptr<Sharding>>, WithDeviceAssignment,
-              (std::optional<DeviceListRef> devices,
-               std::optional<MemoryKind> memory_kind),
-              (const final));
+
   MOCK_METHOD(void, Hash, (absl::HashState), (const final));
 
   std::string DebugString() const final { return "MockSharding"; }

@@ -19,7 +19,6 @@ limitations under the License.
 #include <array>
 #include <cstdint>
 #include <map>
-#include <numeric>
 #include <optional>
 #include <string>
 #include <tuple>
@@ -48,8 +47,6 @@ limitations under the License.
 #include "xla/status_macros.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 
@@ -266,9 +263,8 @@ XlaOp Symmetrize(XlaOp x, bool lower) {
       auto im = Select(im_mask, Imag(x), ZerosLike(Imag(x)));
       im = Select(mask, im, -TransposeInMinorDims(im));
       return Complex(re, im);
-    } else {
-      return Select(mask, x, TransposeInMinorDims(x));
     }
+    return Select(mask, x, TransposeInMinorDims(x));
   });
 }
 
@@ -756,7 +752,7 @@ XlaOp TransposeInMinorDims(XlaOp x) {
     const int64_t n_dims = shape.dimensions().size();
     TF_RET_CHECK(n_dims >= 2);
     std::vector<int64_t> permutation(n_dims);
-    std::iota(permutation.begin(), permutation.end(), 0);
+    absl::c_iota(permutation, 0);
     std::swap(permutation[n_dims - 1], permutation[n_dims - 2]);
     return Transpose(x, permutation);
   });

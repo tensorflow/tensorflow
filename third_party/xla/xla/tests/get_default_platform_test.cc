@@ -27,7 +27,7 @@ using ::testing::HasSubstr;
 // Although we don't use any of the functionality provided by HloPjRtTestBase,
 // we want to model the same environment as a PjRt migrated test that ends up
 // calling GetDefaultPlatform.
-using GetDefaultPlatformTest = HloPjRtTestBase;
+using GetDefaultPlatformTest = HloTestBase;
 
 // Regression test to ensure that it's not possible to call GetDefaultPlatform
 // on a PJRT migrated test due to

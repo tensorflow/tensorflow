@@ -47,7 +47,8 @@ absl::StatusOr<bool> CanonicalizeAllGatherForCSE::RunOnComputation(
     HloAllGatherInstruction* ag = DynCast<HloAllGatherInstruction>(hlo);
 
     // TODO(cjfj): Support all-gathers with more than one operand.
-    if (!ag || ag->operand_count() > 1) {
+    if (!ag || hlo_query::IsAsyncCollectiveStartOp(ag) ||
+        ag->operand_count() > 1) {
       continue;
     }
 

@@ -20,6 +20,7 @@ limitations under the License.
 
 #include <gtest/gtest.h>
 #include "xla/tsl/platform/test.h"
+#include "xla/tsl/protobuf/dnn.pb.h"
 
 namespace stream_executor {
 namespace {
@@ -53,6 +54,15 @@ TEST(DnnTest, VersionInfoComparisonOperators) {
       EXPECT_EQ((a >= b), va >= vb);
     }
   }
+}
+
+TEST(DnnTest, PoolingDescriptorSetDimOutOfBounds) {
+  EXPECT_DEATH(
+      {
+        dnn::PoolingDescriptor pool(1);
+        pool.set_window_height(1337);
+      },
+      "");
 }
 
 TEST(DnnTest, ReorderDimsRankBelow2) {

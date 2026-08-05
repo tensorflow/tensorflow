@@ -18,7 +18,6 @@ limitations under the License.
 #include <vector>
 
 #include "absl/log/check.h"
-#include "absl/memory/memory.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "tensorflow/core/framework/device_attributes.pb.h"
@@ -79,9 +78,9 @@ class GPUDeviceFactory : public BaseGPUDeviceFactory {
       Bytes memory_limit, const DeviceLocality& locality,
       tsl::TfDeviceId tf_device_id, const std::string& physical_device_desc,
       Allocator* gpu_allocator, Allocator* cpu_allocator) override {
-    return absl::make_unique<GPUDevice>(options, name, memory_limit, locality,
-                                        tf_device_id, physical_device_desc,
-                                        gpu_allocator, cpu_allocator);
+    return std::make_unique<GPUDevice>(options, name, memory_limit, locality,
+                                       tf_device_id, physical_device_desc,
+                                       gpu_allocator, cpu_allocator);
   }
 };
 
@@ -147,7 +146,7 @@ class GPUCompatibleCPUDeviceFactory : public DeviceFactory {
       int numa_node = i % num_numa_nodes;
       DeviceLocality locality;
       locality.set_numa_node(numa_node);
-      devices->push_back(absl::make_unique<GPUCompatibleCPUDevice>(
+      devices->push_back(std::make_unique<GPUCompatibleCPUDevice>(
           options, name, Bytes(256 << 20), DeviceLocality(),
           ProcessState::singleton()->GetCPUAllocator(numa_node)));
     }

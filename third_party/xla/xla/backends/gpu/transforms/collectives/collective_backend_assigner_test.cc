@@ -27,8 +27,6 @@ limitations under the License.
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/service/gpu/backend_configs.pb.h"
-#include "xla/stream_executor/cuda/cuda_compute_capability.h"
-#include "xla/stream_executor/device_description.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/xla.pb.h"
 
@@ -38,20 +36,8 @@ namespace {
 
 class CollectiveBackendAssignerTest : public HloHardwareIndependentTestBase {
  protected:
-  absl::StatusOr<bool> RunCollectiveBackendAssigner(HloModule* module,
-                                                    int num_devices_per_host,
-                                                    int64_t slice_size = 0) {
-    se::GpuComputeCapability gpu_version = se::CudaComputeCapability(8, 0);
-    return RunHloPass(CollectiveBackendAssigner(
-                          gpu_version, num_devices_per_host, slice_size),
-                      module);
-  }
-
-  absl::StatusOr<CollectiveBackendConfig_CollectiveBackend>
-  GetCollectiveBackendConfig(const HloInstruction* instr) {
-    ASSIGN_OR_RETURN(GpuBackendConfig gpu_config,
-                     instr->backend_config<GpuBackendConfig>());
-    return gpu_config.collective_backend_config().backend();
+  absl::StatusOr<bool> RunCollectiveBackendAssigner(HloModule* module) {
+    return RunHloPass(CollectiveBackendAssigner(), module);
   }
 
   absl::StatusOr<DebugOptions::CollectivesMode> GetCollectivesMode(
@@ -80,8 +66,7 @@ TEST_F(CollectiveBackendAssignerTest,
       .set_xla_gpu_collective_permute_mode(
           DebugOptions::COLLECTIVES_SYMMETRIC_MEMORY);
 
-  EXPECT_THAT(RunCollectiveBackendAssigner(
-                  module.get(), /*num_devices_per_host=*/1, /*slice_size=*/0),
+  EXPECT_THAT(RunCollectiveBackendAssigner(module.get()),
               absl_testing::IsOkAndHolds(true));
 
   const HloInstruction* permute =
@@ -106,10 +91,7 @@ TEST_F(CollectiveBackendAssignerTest,
   TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloText));
   // Default is COLLECTIVES_MODE_INVALID — collectives_mode should not be set.
 
-  ASSERT_THAT(RunCollectiveBackendAssigner(module.get(),
-                                           /*num_devices_per_host=*/1,
-                                           /*slice_size=*/0),
-              absl_testing::IsOk());
+  ASSERT_THAT(RunCollectiveBackendAssigner(module.get()), absl_testing::IsOk());
 
   const HloInstruction* permute =
       module->entry_computation()->root_instruction();
@@ -142,8 +124,7 @@ TEST_F(CollectiveBackendAssignerTest,
       .set_xla_gpu_collective_permute_mode(
           DebugOptions::COLLECTIVES_SYMMETRIC_MEMORY);
 
-  EXPECT_THAT(RunCollectiveBackendAssigner(
-                  module.get(), /*num_devices_per_host=*/1, /*slice_size=*/0),
+  EXPECT_THAT(RunCollectiveBackendAssigner(module.get()),
               absl_testing::IsOkAndHolds(false));
 
   const HloInstruction* all_reduce =
@@ -170,8 +151,7 @@ TEST_F(CollectiveBackendAssignerTest, AllGatherSymmetricMemorySetsMode) {
   module->mutable_config().mutable_debug_options().set_xla_gpu_all_gather_mode(
       DebugOptions::COLLECTIVES_SYMMETRIC_MEMORY);
 
-  EXPECT_THAT(RunCollectiveBackendAssigner(
-                  module.get(), /*num_devices_per_host=*/1, /*slice_size=*/0),
+  EXPECT_THAT(RunCollectiveBackendAssigner(module.get()),
               absl_testing::IsOkAndHolds(true));
 
   const HloInstruction* all_gather =
@@ -194,10 +174,7 @@ TEST_F(CollectiveBackendAssignerTest, AllGatherPrivateMemoryLeavesDefault) {
 
   TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloText));
 
-  ASSERT_THAT(RunCollectiveBackendAssigner(module.get(),
-                                           /*num_devices_per_host=*/1,
-                                           /*slice_size=*/0),
-              absl_testing::IsOk());
+  ASSERT_THAT(RunCollectiveBackendAssigner(module.get()), absl_testing::IsOk());
 
   const HloInstruction* all_gather =
       module->entry_computation()->root_instruction();

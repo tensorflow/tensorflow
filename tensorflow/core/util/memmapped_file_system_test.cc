@@ -170,9 +170,9 @@ TEST(MemmappedFileSystemTest, CorruptedLength) {
       file_content.length() - sizeof(uint64_t));
 
   MemmappedFileSystemDirectory proto_directory;
-  ASSERT_TRUE(proto_directory.ParseFromArray(
+  ASSERT_TRUE(proto_directory.ParseFromString(absl::string_view(
       file_content.data() + directory_offset,
-      file_content.length() - directory_offset - sizeof(uint64_t)));
+      file_content.length() - directory_offset - sizeof(uint64_t))));
 
   // Modify the first element to have an incredibly large length
   proto_directory.mutable_element(0)->set_length(file_content.length() * 2);

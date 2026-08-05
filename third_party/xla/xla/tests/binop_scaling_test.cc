@@ -28,8 +28,8 @@ limitations under the License.
 namespace xla {
 namespace {
 
-using BinopScalingTest = ClientLibraryTestRunnerMixin<
-    HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>>;
+using BinopScalingTest =
+    ClientLibraryTestRunnerMixin<HloPjRtInterpreterReferenceMixin<HloTestBase>>;
 
 TEST_F(BinopScalingTest, MatrixPlusPseudoMatrixRowVector_32x4) {
   auto alhs = MakeLinspaceArray2D(0.0, 1.0, 32, 4);

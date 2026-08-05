@@ -137,7 +137,7 @@ void ForLoop::Emit(llvm::IRBuilderBase* b) {
   llvm::Value* indvar_inc = b->CreateAdd(indvar, step, "invar.inc",
                                          /*HasNUW=*/true, /*HasNSW=*/true);
   b->CreateStore(indvar_inc, indvar_address);
-  llvm::BranchInst* back_branch = b->CreateBr(header_bb_);
+  llvm::UncondBrInst* back_branch = b->CreateBr(header_bb_);
 
   std::vector<llvm::Metadata*> loop_metadata = GetLoopMetadata(b);
   if (!loop_metadata.empty()) {

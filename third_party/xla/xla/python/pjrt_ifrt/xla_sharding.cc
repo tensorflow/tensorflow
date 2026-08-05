@@ -41,9 +41,9 @@ limitations under the License.
 #include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
+#include "xla/python/ifrt/sharding_spec.h"
+#include "xla/python/pjrt_ifrt/xla_sharding_spec.h"
 #include "xla/shape_util.h"
-#include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 
@@ -136,15 +136,19 @@ HloSharding::HloSharding(DeviceListRef devices, MemoryKind memory_kind,
   }
 }
 
+ShardingSpecRef HloSharding::sharding_spec() const {
+  return HloShardingSpec::Create(devices_->size(), xla_hlo_sharding());
+}
+
 absl::StatusOr<Shape> HloSharding::GetShardShape(const Shape& shape) const {
   if (!tile_information_.has_value()) {
     return shape;
   }
   if (shape.dims().size() != tile_information_->tiled_data_rank) {
-    return InvalidArgument(
+    return absl::InvalidArgumentError(absl::StrFormat(
         "Numbers of dimensions don't match. From Shape %d vs from "
         "HloSharding %d",
-        shape.dims().size(), tile_information_->tiled_data_rank);
+        shape.dims().size(), tile_information_->tiled_data_rank));
   }
   const absl::Span<const int64_t> sharding_dims = tile_information_->dimensions;
   Shape::Dimensions tile_shape;
@@ -173,10 +177,10 @@ absl::StatusOr<std::unique_ptr<Sharding>> HloSharding::WithDeviceAssignment(
     std::optional<DeviceListRef> devices,
     std::optional<MemoryKind> memory_kind) const {
   if (devices.has_value() && (*devices)->size() != devices_->size()) {
-    return InvalidArgument(
+    return absl::InvalidArgumentError(absl::StrFormat(
         "HloSharding should have the same number of devices as the current "
         "sharding, but was asked to have %d devices",
-        (*devices)->size());
+        (*devices)->size()));
   }
   return Create(devices.value_or(devices_), memory_kind.value_or(memory_kind_),
                 xla_hlo_sharding_);
@@ -274,10 +278,10 @@ HloSharding::Disassemble(
     const DynamicShape& dynamic_shape,
     SingleDeviceShardSemantics single_device_shard_semantics) const {
   DCHECK(this);
-  return InvalidArgument(
+  return absl::InvalidArgumentError(absl::StrFormat(
       "HloSharding can only disassemble static shape, but was asked "
       "to disassemble dynamic shape %v",
-      dynamic_shape);
+      dynamic_shape));
 }
 
 absl::StatusOr<std::vector<IndexDomain>> HloSharding::IndexDomains(

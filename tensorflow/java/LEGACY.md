@@ -73,9 +73,6 @@ java -cp bazel-bin/tensorflow/java/libtensorflow.jar \
 
 Installation on Windows requires the more experimental
 [bazel on Windows](https://bazel.build/versions/master/docs/windows.html).
-Details are omitted here, but find inspiration in the script used for building
-the release archive:
-[`tensorflow/tools/ci_build/windows/libtensorflow_cpu.sh`](https://www.tensorflow.org/code/tensorflow/tools/ci_build/windows/libtensorflow_cpu.sh).
 
 ### Bazel
 

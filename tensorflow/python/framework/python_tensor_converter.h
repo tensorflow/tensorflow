@@ -17,6 +17,9 @@ limitations under the License.
 
 #include <Python.h>
 
+#include <optional>
+#include <string>
+
 #include "tensorflow/c/eager/c_api.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/python/lib/core/safe_pyobject_ptr.h"
@@ -41,12 +44,15 @@ class PythonTensorConverter {
   //   ctx: The c++ eager context, or nullptr in graph mode.
   //   device_name: The current device name.
   //
-  // All three argument values must remain alive until `this` is deleted.
+  // The py_eager_context and ctx argument values must remain alive until
+  // `this` is deleted.
   PythonTensorConverter(PyObject* py_eager_context, TFE_Context* ctx,
                         const char* device_name)
       : py_eager_context_(py_eager_context),
         ctx_(ctx),
-        device_name_(device_name) {}
+        device_name_(device_name != nullptr
+                         ? std::optional<std::string>(device_name)
+                         : std::nullopt) {}
 
   // Converts `src` to a tensor (if it's not already one), and returns a new
   // reference to the converted value.
@@ -68,7 +74,7 @@ class PythonTensorConverter {
  private:
   PyObject* py_eager_context_;
   TFE_Context* ctx_;
-  const char* device_name_;
+  std::optional<std::string> device_name_;
 };
 
 }  // namespace tensorflow

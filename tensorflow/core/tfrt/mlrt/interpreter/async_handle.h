@@ -114,8 +114,7 @@ class AsyncHandle {
 
   template <typename F,
             typename Arg = std::decay_t<future_internal::ArgumentType<F>>>
-  typename std::enable_if<std::is_same_v<Arg, absl::Status>, void>::type Then(
-      F then) && {
+  std::enable_if_t<std::is_same_v<Arg, absl::Status>, void> Then(F then) && {
     CHECK(shared_state_);  // Crash OK
     auto* shared_state_ptr = shared_state_.GetAsyncValue();
     shared_state_ptr->AndThen([shared_state = std::move(shared_state_),
@@ -129,7 +128,7 @@ class AsyncHandle {
 
   template <typename F,
             typename Arg = std::decay_t<future_internal::ArgumentType<F>>>
-  typename std::enable_if<std::is_void_v<Arg>, void>::type Then(F then) && {
+  std::enable_if_t<std::is_void_v<Arg>, void> Then(F then) && {
     CHECK(shared_state_);  // Crash OK
     auto* shared_state_ptr = shared_state_.GetAsyncValue();
     shared_state_ptr->AndThen(

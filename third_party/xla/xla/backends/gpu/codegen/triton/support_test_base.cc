@@ -22,6 +22,7 @@ limitations under the License.
 #include <vector>
 
 #include <gtest/gtest.h>
+#include "absl/algorithm/container.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -109,7 +110,10 @@ std::string SupportTestDeviceToString(
 namespace {
 
 bool IsCollectiveFusion(const HloFusionInstruction& fusion) {
-  return fusion.fused_expression_root()->opcode() == HloOpcode::kAllReduceDone;
+  HloOpcode root_opcode = fusion.fused_expression_root()->opcode();
+  std::vector<HloOpcode> collective_opcodes = {HloOpcode::kAllGather,
+                                               HloOpcode::kAllReduce};
+  return absl::c_linear_search(collective_opcodes, root_opcode);
 }
 
 // This function does nothing if the input module already has an entry

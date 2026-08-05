@@ -370,6 +370,24 @@ TEST(XlaBuilderTest, DynamicDimensionReshapeToR0) {
   ASSERT_TRUE(statusor.ok());
 }
 
+TEST(XlaBuilderTest, DynamicDimensionReshapeSplitMultipleNonDegenerate) {
+  // Regression test for https://github.com/openxla/xla/issues/44945: a
+  // dynamic dimension split into multiple non-degenerate dimensions must stay
+  // dynamic on the most-major one instead of being silently dropped.
+  XlaBuilder b(TestName());
+  auto x = Parameter(&b, 0, ShapeUtil::MakeShape(F32, {128, 128}), "x");
+  auto y = Parameter(&b, 1, ShapeUtil::MakeShape(S32, {}), "dyn_dim");
+  auto dx = SetDimensionSize(x, y, 1);
+  Reshape(dx, {64, 2, 64, 2});
+  TF_ASSERT_OK_AND_ASSIGN(const auto module, BuildHloModule(b));
+  const Shape& result_shape =
+      module->entry_computation()->root_instruction()->shape();
+  EXPECT_TRUE(ShapeUtil::Equal(
+      result_shape,
+      ShapeUtil::MakeShape(F32, {64, 2, 64, 2}, {false, false, true, false})))
+      << result_shape.ToString(/*print_layout=*/false);
+}
+
 TEST(XlaBuilderTest, ParameterAlreadyRegistered) {
   XlaBuilder b_call("add");
   Parameter(&b_call, 0, ShapeUtil::MakeShape(PRED, {}), "x");
@@ -962,6 +980,56 @@ TEST(XlaBuilderTest, CollectiveBroadcast) {
   CollectiveBroadcast(x, {replica_group});
   TF_ASSERT_OK_AND_ASSIGN(const auto module, BuildHloModule(b));
   EXPECT_EQ(GetRoot(*module)->opcode(), HloOpcode::kCollectiveBroadcast);
+}
+
+TEST(XlaBuilderTest, CollectiveBroadcastWithDynamicRoot) {
+  XlaBuilder b(TestName());
+  auto x = Parameter(&b, 0, ShapeUtil::MakeShape(F32, {5, 7}), "x");
+  auto root = Parameter(&b, 1, ShapeUtil::MakeShape(S32, {1}), "root");
+
+  ReplicaGroup replica_group;
+  replica_group.add_replica_ids(0);
+  replica_group.add_replica_ids(1);
+  CollectiveBroadcast({x, root}, {replica_group}, std::nullopt,
+                      /*has_dynamic_root=*/true);
+  ASSERT_OK_AND_ASSIGN(const auto module, BuildHloModule(b));
+  EXPECT_EQ(GetRoot(*module)->opcode(), HloOpcode::kCollectiveBroadcast);
+}
+
+TEST(XlaBuilderTest, CollectiveBroadcastWithDynamicRootFailWithOpMismatch) {
+  XlaBuilder b(TestName());
+  auto x = Parameter(&b, 0, ShapeUtil::MakeShape(F32, {5, 7}), "x");
+  auto root = Parameter(&b, 1, ShapeUtil::MakeShape(S32, {2}), "root");
+
+  ReplicaGroup replica_group;
+  replica_group.add_replica_ids(0);
+  replica_group.add_replica_ids(1);
+  CollectiveBroadcast({x, root}, {replica_group}, std::nullopt,
+                      /*has_dynamic_root=*/true);
+  absl::Status status = b.Build().status();
+
+  ASSERT_FALSE(status.ok());
+  EXPECT_THAT(
+      status.message(),
+      HasSubstr(
+          "the same number of elements as the number of non-root operands"));
+}
+
+TEST(XlaBuilderTest,
+     CollectiveBroadcastWithDynamicRootFailWithRootDimMismatch) {
+  XlaBuilder b(TestName());
+  auto x = Parameter(&b, 0, ShapeUtil::MakeShape(F32, {5, 7}), "x");
+  auto root = Parameter(&b, 1, ShapeUtil::MakeShape(S32, {2, 1}), "root");
+
+  ReplicaGroup replica_group;
+  replica_group.add_replica_ids(0);
+  replica_group.add_replica_ids(1);
+  CollectiveBroadcast({x, root}, {replica_group}, std::nullopt,
+                      /*has_dynamic_root=*/true);
+  absl::Status status = b.Build().status();
+
+  ASSERT_FALSE(status.ok());
+  EXPECT_THAT(status.message(), HasSubstr("a 1-D array of S32"));
 }
 
 TEST(XlaBuilderTest, CollectivePermute) {

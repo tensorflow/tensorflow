@@ -38,7 +38,6 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/custom_call_thunk.h"
 #include "xla/backends/gpu/runtime/dynamic_slice_thunk.pb.h"
 #include "xla/backends/gpu/runtime/gpublas_lt_matmul_thunk.h"
-#include "xla/backends/gpu/runtime/scratch_memory_requests.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk_proto_deserialization.h"
 #include "xla/ffi/attribute_map.h"
@@ -83,6 +82,7 @@ class DummyThunk : public Thunk {
   absl::Status ExecuteOnStream(const ExecuteParams& params) override {
     return absl::OkStatus();
   }
+  BufferUses buffer_uses() const override { return {}; }
   absl::StatusOr<ThunkProto> ToProto() const override {
     return absl::UnimplementedError("DummyThunk::ToProto is not implemented");
   }
@@ -104,10 +104,40 @@ se::StreamExecutor* GpuExecutor() {
 }
 void CheckProtoRoundTrip(const DynamicSliceThunk& thunk,
                          const DynamicSliceThunkProto& proto) {
+  // Size allocations to cover every slice referenced by the thunk. Hardcoding
+  // 1024 used to work when FromProto only checked the allocation index; with
+  // offset/size bounds checks it must also fit workspace slices (e.g. 1MiB).
+  std::vector<int64_t> allocation_sizes(10, 1024);
+  auto ensure_fits = [&](const BufferAllocation::Slice& slice) {
+    const int index = slice.index();
+    if (index >= static_cast<int>(allocation_sizes.size())) {
+      allocation_sizes.resize(index + 1, 1024);
+    }
+    allocation_sizes[index] =
+        std::max(allocation_sizes[index], slice.offset() + slice.size());
+  };
+  for (const std::optional<BufferAllocation::Slice>& arg :
+       thunk.get_arguments()) {
+    if (arg.has_value()) {
+      ensure_fits(*arg);
+    }
+  }
+  for (const std::optional<std::vector<DynamicSliceThunk::Offset>>& offsets :
+       thunk.get_offsets()) {
+    if (!offsets.has_value()) {
+      continue;
+    }
+    for (const DynamicSliceThunk::Offset& offset : *offsets) {
+      if (std::holds_alternative<BufferAllocation::Slice>(offset)) {
+        ensure_fits(std::get<BufferAllocation::Slice>(offset));
+      }
+    }
+  }
   std::vector<BufferAllocation> buffer_allocations;
-  for (int i = 0; i < 10; ++i) {
-    buffer_allocations.push_back(BufferAllocation(
-        /*index=*/i, /*size=*/1024, /*color=*/0));
+  buffer_allocations.reserve(allocation_sizes.size());
+  for (int i = 0; i < static_cast<int>(allocation_sizes.size()); ++i) {
+    buffer_allocations.push_back(
+        BufferAllocation(/*index=*/i, allocation_sizes[i], /*color=*/0));
   }
 
   std::vector<BufferAllocation> fake_allocations_span;
@@ -2025,11 +2055,8 @@ TEST_F(DynamicSliceThunkTest,
 
   CollectiveCliqueRequests clique_requests;
   CollectiveMemoryRequests memory_requests(allocations);
-  ScratchMemoryRequests scratch_memory_requests;
-
-  Thunk::PrepareParams prepare_params{
-      &collective_params,       &clique_requests, &memory_requests,
-      &scratch_memory_requests, executor,         &allocations};
+  Thunk::PrepareParams prepare_params{&collective_params, &clique_requests,
+                                      &memory_requests, executor, &allocations};
 
   Thunk::ExecuteParams params = Thunk::ExecuteParams::Create(
       run_options, /*buffer_allocations=*/allocations, stream.get(),

@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "tensorflow/core/framework/graph.pb.h"
+#include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/path.h"
 #include "tensorflow/core/protobuf/meta_graph.pb.h"
 #include "tensorflow/core/protobuf/saved_object_graph.pb.h"
@@ -389,6 +390,30 @@ TEST(FingerprintingTest, TestHashSavedObjectGraph) {
       HashSavedObjectGraph(&saved_object_graph, chunk_metadata.message(),
                            reader, chunks_info),
       absl_testing::IsOkAndHolds(17454850744699451884U));
+}
+
+TEST(FingerprintingTest, CreateFingerprintDefCpbEmptyMetaGraphsReturnsError) {
+  const std::string temp_dir = testing::TempDir();
+  const std::string cpb_src = io::JoinPath(
+      TensorFlowSrcRoot(), "tools/proto_splitter/testdata", "many-field.cpb");
+  const std::string cpb_dst = io::JoinPath(temp_dir, "saved_model.cpb");
+  TF_ASSERT_OK(Env::Default()->CopyFile(cpb_src, cpb_dst));
+
+  absl::StatusOr<FingerprintDef> result =
+      CreateFingerprintDefCpb(temp_dir, cpb_dst);
+  EXPECT_FALSE(result.ok());
+  EXPECT_EQ(result.status().code(), absl::StatusCode::kInvalidArgument);
+  EXPECT_THAT(
+      std::string(result.status().message()),
+      ::testing::HasSubstr("SavedModel (.cpb) contains no MetaGraphs."));
+}
+
+TEST(FingerprintingTest, CreateFingerprintDefNonExistentDirectoryReturnsError) {
+  const std::string synthetic_dir =
+      "/tmp/synthetic_non_existent_model_path_12345";
+  absl::StatusOr<FingerprintDef> result =
+      CreateFingerprintDefCpb(synthetic_dir, "saved_model.cpb");
+  EXPECT_FALSE(result.ok());
 }
 
 }  // namespace

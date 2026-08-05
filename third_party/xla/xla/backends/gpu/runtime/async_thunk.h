@@ -62,6 +62,10 @@ class AsyncStartThunk : public Thunk {
   absl::Status Initialize(const InitializeParams& params) override;
   absl::Status ExecuteOnStream(const ExecuteParams& params) override;
 
+  // TODO(b/527907619): Implement this properly once we have figured out how
+  // buffer uses should look like for async thunks.
+  BufferUses buffer_uses() const override { return {}; }
+
   ExecutionStreamId execution_stream_id() const { return execution_stream_id_; }
 
   const ThunkSequence& thunks() const { return executor_.thunks(); }

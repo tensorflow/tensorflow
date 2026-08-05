@@ -37,7 +37,6 @@ limitations under the License.
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/shaped_slice.h"
 #include "xla/stream_executor/device_description.h"
-#include "xla/tsl/platform/errors.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 
@@ -89,11 +88,45 @@ absl::StatusOr<std::unique_ptr<Thunk>> InsertBufferSaverCustomCall(
   return std::unique_ptr<Thunk>(std::move(wrapped_thunk));
 }
 
+absl::Status AppendOutputBufferSaverThunks(
+    ThunkSequence& thunk_sequence, const HloModule& hlo_module,
+    const std::vector<ShapedSlice>& module_output_slices,
+    const DebugOptions& debug_options) {
+  if (!debug_options.xla_gpu_experimental_thunk_buffer_debug_module_outputs()) {
+    return absl::OkStatus();
+  }
+
+  std::string metadata_str =
+      absl::StrCat("Module ", hlo_module.name(), " Output Check");
+  std::string profile_annotation_str =
+      absl::StrCat("Buffer saver Module ", hlo_module.name(), " Output Check");
+
+  for (const ShapedSlice& shaped_slice : module_output_slices) {
+    ffi::AttributesMap attributes{
+        {"dir", ffi::Attribute{debug_options.xla_dump_to()}},
+        {"metadata", {metadata_str}}};
+
+    Thunk::ThunkInfo info;
+    info.profile_annotation = profile_annotation_str;
+
+    ASSIGN_OR_RETURN(
+        auto log_thunk,
+        CustomCallThunk::Create(
+            info, std::string{kXlaGpuAppendToFileCustomCallTag}, {shaped_slice},
+            {std::nullopt}, attributes, hlo_module.entry_computation(), "GPU",
+            stream_executor::GpuComputeCapability()));
+    thunk_sequence.push_back(std::move(log_thunk));
+  }
+
+  return absl::OkStatus();
+}
+
 }  // namespace
 
-absl::Status RunDebugSaverInserter(ThunkSequence* thunk_sequence,
-                                   const DebugOptions& debug_options,
-                                   const HloModule& hlo_module) {
+absl::Status RunDebugSaverInserter(
+    ThunkSequence* thunk_sequence, const DebugOptions& debug_options,
+    const HloModule& hlo_module,
+    const std::vector<ShapedSlice>& module_output_slices) {
   if (debug_options.xla_dump_to().empty()) {
     LOG(WARNING)
         << "Buffer saver enabled but target directory is not provided.";
@@ -109,7 +142,9 @@ absl::Status RunDebugSaverInserter(ThunkSequence* thunk_sequence,
                                        debug_options.xla_dump_to());
   };
 
-  return thunk_sequence->TransformNested(transform_callback);
+  RETURN_IF_ERROR(thunk_sequence->TransformNested(transform_callback));
+  return AppendOutputBufferSaverThunks(*thunk_sequence, hlo_module,
+                                       module_output_slices, debug_options);
 }
 
 }  // namespace xla::gpu

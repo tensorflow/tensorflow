@@ -232,7 +232,7 @@ std::string BuildHloTextGroupedConvolution2D(
 }
 
 class GroupedConvolution2DTest
-    : public HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>,
+    : public HloPjRtInterpreterReferenceMixin<HloTestBase>,
       public ::testing::WithParamInterface<
           ::testing::tuple<GroupedConvolution2DSpec, bool>> {};
 
@@ -258,8 +258,7 @@ INSTANTIATE_TEST_SUITE_P(
                        ::testing::Bool()),
     GroupedConvolution2DTestDataToString);
 
-using GroupedConvolutionTest =
-    HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>;
+using GroupedConvolutionTest = HloPjRtInterpreterReferenceMixin<HloTestBase>;
 
 TEST_F(GroupedConvolutionTest, BackwardInputConvolution) {
   auto module = ParseAndReturnVerifiedModule(R"(

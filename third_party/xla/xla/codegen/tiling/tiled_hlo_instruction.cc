@@ -34,12 +34,24 @@ limitations under the License.
 #include "xla/hlo/analysis/indexing_map.h"
 #include "xla/hlo/analysis/indexing_map_serialization.h"
 #include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/tsl/platform/errors.h"
+#include "xla/shape.h"
 #include "xla/util.h"
 
 namespace xla {
 
 namespace {
+
+const Shape& GetIndexingShape(const HloInstruction& root) {
+  if (root.shape().IsTuple()) {
+    for (const auto& subshape : root.shape().tuple_shapes()) {
+      if (subshape.IsArray() && !subshape.dimensions().empty()) {
+        return subshape;
+      }
+    }
+    return root.shape().tuple_shapes(0);
+  }
+  return root.shape();
+}
 
 // Checks the preconditions that must be fulfilled when creating a
 // `TiledHloInstruction` or derived class.
@@ -49,8 +61,9 @@ absl::Status VerifyTiledHloInstructionConstructorPreconditions(
     std::optional<IndexingMap> tile_offsets_indexing,
     const llvm::SmallVector<const TiledHloInstruction*>& runtime_variables) {
   // * Number of tile sizes, strides should match the rank of the HLO.
+  const Shape& indexing_shape = GetIndexingShape(*hlo);
   const int rank =
-      hlo->shape().IsArray() ? hlo->shape().dimensions().size() : 0;
+      indexing_shape.IsArray() ? indexing_shape.dimensions().size() : 0;
 
   if (tile_sizes.size() != rank) {
     return absl::InvalidArgumentError(
@@ -152,11 +165,10 @@ std::string TiledHloInstruction::ToString(int64_t indent) const {
   if (!regions_.empty()) {
     ss << "\n"
        << indentation << "region sizes: ("
-       << absl::StrJoin(
-              regions_, ", ",
-              [](std::string* out,
-                 const std::vector<std::unique_ptr<TiledHloInstruction>>&
-                     region) { absl::StrAppend(out, region.size()); })
+       << absl::StrJoin(regions_, ", ",
+                        [](std::string* out, const TiledHloRegion& region) {
+                          absl::StrAppend(out, region.instructions().size());
+                        })
        << ")";
   }
   return ss.str();

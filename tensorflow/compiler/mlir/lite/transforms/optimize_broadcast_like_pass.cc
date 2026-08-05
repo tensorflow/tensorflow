@@ -131,9 +131,7 @@ Value PrepareBroadcastLikeOpInput(Operation* op, PatternRewriter& rewriter) {
         RankedTensorType::get({}, elements_attr.getType().getElementType()),
         elements_attr.getSplatValue<mlir::Attribute>());
 
-    return arith::ConstantOp::create(rewriter, op->getLoc(),
-                                     scalar_elements_attr.getType(),
-                                     scalar_elements_attr);
+    return TFL::ConstOp::create(rewriter, op->getLoc(), scalar_elements_attr);
   }
   return nullptr;
 }

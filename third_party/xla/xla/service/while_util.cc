@@ -28,6 +28,7 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/functional/function_ref.h"
 #include "absl/log/check.h"
@@ -37,6 +38,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/tsl/platform/status_macros.h"
 #include "xla/comparison_util.h"
+#include "xla/frontend_attributes.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
@@ -49,8 +51,6 @@ limitations under the License.
 #include "xla/service/tuple_util.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -532,20 +532,20 @@ absl::Status WhileUtil::IncrementWhileLoopTripCount(
   for (const HloInstruction* gte :
        while_body->parameter_instruction(0)->users()) {
     if (gte->tuple_index() == induction_var->tuple_index()) {
-      if (gte->user_count() != 1) {
-        return absl::InvalidArgumentError(
-            "Loop induction variable has multiple users");
+      for (const HloInstruction* user : gte->users()) {
+        if (Match(user,
+                  match::AddAnyOrder(match::GetTupleElement().WithTupleIndex(
+                                         induction_var->tuple_index()),
+                                     match::ConstantScalar(1)))) {
+          found_induction_var = true;
+          break;
+        }
       }
-      const HloInstruction* add = gte->users()[0];
-      if (!Match(add,
-                 match::AddAnyOrder(match::GetTupleElement().WithTupleIndex(
-                                        induction_var->tuple_index()),
-                                    match::ConstantScalar(1)))) {
+      if (!found_induction_var) {
         return absl::InvalidArgumentError(
             "Loop induction variable is not being incremented exactly by one "
             "(1)");
       }
-      found_induction_var = true;
       break;
     }
   }
@@ -677,6 +677,62 @@ void AppendToWhileLoopOriginalValue(
       while_shape.tuple_shapes().size() - new_while_input_tuple_elements.size();
   append_to_original_value(while_instr->while_init(), next_index);
   append_to_original_value(while_instr, next_index);
+  append_to_original_value(while_instr->while_body()->root_instruction(),
+                           next_index);
 }
 
+bool WhileUtil::IsUpdatedBufferWriteOnly(const HloInstruction* instr) {
+  const HloComputation* computation = instr->parent();
+  if (instr == computation->root_instruction()) {
+    return true;
+  }
+  if (instr->user_count() == 0) {
+    return false;
+  }
+  for (const HloInstruction* user : instr->users()) {
+    if (user == computation->root_instruction()) {
+      continue;
+    }
+    // If it feeds another DUS as the base buffer, recursively check that DUS.
+    if (user->opcode() == HloOpcode::kDynamicUpdateSlice &&
+        user->operand(0) == instr) {
+      if (!IsUpdatedBufferWriteOnly(user)) {
+        return false;
+      }
+    } else {
+      // Any other user (e.g., a read, or being the update payload of a DUS) is
+      // unsafe.
+      return false;
+    }
+  }
+  return true;
+}
+
+/* static */
+absl::flat_hash_set<const HloComputation*>
+WhileUtil::GetCopyDisabledWhileLoopComputations(const HloModule* module) {
+  absl::flat_hash_set<const HloComputation*> disabled_comps;
+  std::vector<const HloComputation*> worklist;
+  for (const HloComputation* comp : module->computations()) {
+    for (const HloInstruction* instr : comp->instructions()) {
+      if (instr->opcode() == HloOpcode::kWhile &&
+          HasDisableWhileLoopCopiesAttr(instr)) {
+        worklist.push_back(instr->while_body());
+        worklist.push_back(instr->while_condition());
+      }
+    }
+  }
+  while (!worklist.empty()) {
+    const HloComputation* curr = worklist.back();
+    worklist.pop_back();
+    if (curr != nullptr && disabled_comps.insert(curr).second) {
+      for (const HloInstruction* instr : curr->instructions()) {
+        for (const HloComputation* called : instr->called_computations()) {
+          worklist.push_back(called);
+        }
+      }
+    }
+  }
+  return disabled_comps;
+}
 }  // namespace xla

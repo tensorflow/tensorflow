@@ -21,17 +21,38 @@ In `tensorflow/c/experimental/filesystem/filesystem_interface.h`, removed `TF_Tr
 * `tf.lite`
     * Adds support for QUI4 (Quantized Unsigned 4-bit) in Dequantize operator.
     * Adds support for FP16 and BF16 in Unpack operator.
+    * Adds support for FP16 in Transpose and DynamicUpdateSlice operator.
     * Transpose now supports up to 8D tensors.
+    * Adds support for FLOAT8_E4M3FN and FLOAT8_E5M2 data types.
 
 ### Bug Fixes and Other Changes
 
 * `BatchFunction Operator`
     * Adds the `num_warmup_batch_threads` op attribute to support a separate thread pool for processing warmup requests.
+* `TensorFlow API`
+    * Exports `__new__` in public API golden files for subclasses of `tuple` (like `tf.io.FixedLenFeature`) to fix false positives during static type checking.>
+* `tf.data`
+    * Fixes a bug in `tf.data.Dataset.scan` where the shape of the state returned by `scan_func` was not strictly validated against the initial state.
+*   `tf.experimental.numpy`
+
+    *   `tf.experimental.numpy.isclose` and `tf.experimental.numpy.allclose` now
+        apply `rtol` and `atol` to integer inputs, matching NumPy, instead of
+        comparing with pure equality. The comparison stays in integer
+        arithmetic; combining integer inputs with floating-point tolerances
+        (including the defaults) now raises an error unless automatic type
+        promotion is enabled, which keeps the cost of promotion opt-in.
+
+*   oneDNN (MKL) convolution and transpose kernels
+
+    *   Raises `InvalidArgumentError` instead of aborting the process for a
+        rank-mismatched `Conv3DBackpropFilterV2` input and for
+        `ConjugateTranspose` on a scalar. Fixes
+        [#118340](https://github.com/tensorflow/tensorflow/issues/118340) and
+        [#118345](https://github.com/tensorflow/tensorflow/issues/118345).
 
 * <SIMILAR TO ABOVE SECTION, BUT FOR OTHER IMPORTANT CHANGES / BUG FIXES>
 * <IF A CHANGE CLOSES A GITHUB ISSUE, IT SHOULD BE DOCUMENTED HERE>
 * <NOTES SHOULD BE GROUPED PER AREA>
-
 
 ## Thanks to our Contributors
 
@@ -592,6 +613,7 @@ Aiden Grossman, Akash Patel, Akhil Goel, Alexander Pivovarov, Andrew Goodbody, A
 ### Bug Fixes and Other Changes
 
 * `tf.py_function` and `tf.numpy_function` can now be used as function decorators for clearer code:
+  
    ```
    @tf.py_function(Tout=tf.float32)
    def my_fun(x):
@@ -902,6 +924,7 @@ This release contains contributions from many people at Google, as well as:
 # Release 2.11.1
 
 **Note**: TensorFlow 2.10 was the last TensorFlow release that supported GPU on native-Windows. Starting with TensorFlow 2.11, you will need to install TensorFlow in WSL2, or install tensorflow-cpu and, optionally, try the TensorFlow-DirectML-Plugin.
+
 *   Security vulnerability fixes will no longer be patched to this Tensorflow version. The latest Tensorflow version includes the security vulnerability fixes. You can update to the latest version (recommended) or patch security vulnerabilities yourself [steps](https://github.com/tensorflow/tensorflow#patching-guidelines). You can refer to the [release notes](https://github.com/tensorflow/tensorflow/releases) of the latest Tensorflow version for a list of newly fixed vulnerabilities. If you have any questions, please create a GitHub issue to let us know.
 
 This release also introduces several vulnerability fixes:
@@ -930,6 +953,7 @@ This release also introduces several vulnerability fixes:
 # Release 2.11.0
 
 ## Breaking Changes
+
 *   `tf.keras.optimizers.Optimizer` now points to the new Keras optimizer, and
     old optimizers have moved to the `tf.keras.optimizers.legacy` namespace.
     If you find your workflow failing due to this change,
@@ -1576,6 +1600,7 @@ This releases introduces several vulnerability fixes:
 # Release 2.8.3
 
 This releases introduces several vulnerability fixes:
+
 *   Fixes a `CHECK` failure in tf.reshape caused by overflows ([CVE-2022-35934](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-35934))
 *   Fixes a `CHECK` failure in `SobolSample` caused by missing validation ([CVE-2022-35935](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-35935))
 *   Fixes an OOB read in `Gather_nd` op in TF Lite ([CVE-2022-35937](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-35937))
@@ -10989,6 +11014,7 @@ answered questions, and were part of inspiring discussions.
 To help you upgrade your existing TensorFlow Python code to match the API
 changes below, we have prepared a
 [conversion script](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/tools/compatibility).
+
 * TensorFlow/models have been moved to a separate github repository. * Division
 and modulus operators (/, //, %) now match Python (flooring) semantics. This
 applies to `tf.div` and `tf.mod` as well. To obtain forced integer truncation
@@ -11005,6 +11031,7 @@ deprecated in favor of `TensorArray.stack` and `TensorArray.unstack`. * The
 following Python functions have had their arguments changed to use `axis` when
 referring to specific dimensions. We have kept the old keyword arguments for
 compatibility currently, but we will be removing them well before the final 1.0.
+
 * `tf.argmax`: `dimension` becomes `axis` * `tf.argmin`: `dimension` becomes
 `axis` * `tf.count_nonzero`: `reduction_indices` becomes `axis` *
 `tf.expand_dims`: `dim` becomes `axis` * `tf.reduce_all`: `reduction_indices`

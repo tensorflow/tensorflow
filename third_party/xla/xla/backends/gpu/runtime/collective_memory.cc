@@ -24,6 +24,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/base/casts.h"
 #include "absl/container/btree_map.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/log/log.h"
@@ -362,8 +363,8 @@ absl::StatusOr<MulticastMemoryMap> AcquireMulticastMemory(
 
       // We deterministically choose the first device to create the
       // multicast memory. We will map the rest of participants to it later.
-      auto* gpu_executor =
-          tsl::down_cast<se::gpu::GpuExecutor*>(params[0]->executor);
+      auto* gpu_executor = absl::down_cast<stream_executor::gpu::GpuExecutor*>(
+          params[0]->executor);
       if (gpu_executor == nullptr) {
         return Unimplemented("Unsupported stream executor type");
       }
@@ -394,7 +395,8 @@ absl::StatusOr<MulticastMemoryMap> AcquireMulticastMemory(
               mapped_ptrs[param->rank],
               multicast_memory->MapMemory(
                   param->buffers.GetDeviceAddress(i),
-                  tsl::down_cast<se::gpu::GpuExecutor*>(param->executor)));
+                  absl::down_cast<stream_executor::gpu::GpuExecutor*>(
+                      param->executor)));
         }
 
         VLOG(3) << absl::StrFormat(

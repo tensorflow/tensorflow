@@ -33,7 +33,6 @@ import subprocess
 import sys
 from typing import Any, ClassVar, Dict, List, Tuple
 
-
 # TODO(ddunleavy): move this to the bazelrc
 _DEFAULT_BAZEL_OPTIONS = dict(
     color="yes",
@@ -102,7 +101,7 @@ class BuildType(enum.Enum):
   XLA_LINUX_X86_GPU_L4_GITHUB_ACTIONS = enum.auto()
   XLA_LINUX_X86_GPU_8X_H100_GITHUB_ACTIONS = enum.auto()
   XLA_LINUX_X86_GPU_ONEAPI_GITHUB_ACTIONS = enum.auto()
-  XLA_LINUX_X86_GPU_ROCM_GITHUB_ACTIONS = enum.auto()
+  XLA_LINUX_X86_GPU_HERMETIC_ROCM_GITHUB_ACTIONS = enum.auto()
 
   # Presubmit builds for regression testing.
   XLA_LINUX_ARM64_CPU_48_VCPU_PRESUBMIT_GITHUB_ACTIONS = enum.auto()
@@ -396,7 +395,7 @@ Build(
         "//xla/...",
         "//build_tools/...",
         "@tsl//tsl/...",
-        "-//xla/stream_executor/tpu/...",
+        "-//xla/tpu/...",
         # mpitrampoline and gloo are not windows compatible
         "-//xla/backends/cpu/collectives:gloo_collectives_test",
         "-//xla/backends/cpu/collectives:mpi_collectives",
@@ -407,9 +406,6 @@ Build(
         "-//xla/backends/profiler/subprocess:subprocess_profiling_session_test",
         "-//xla/backends/profiler/subprocess:subprocess_registry",
         "-//xla/backends/profiler/subprocess:subprocess_registry_test",
-        "-//xla/tools/benchmarks/utils:generate_benchmark_matrices_cc",
-        "-//xla/tools/benchmarks/utils:generate_benchmark_matrices_main",
-        "-//xla/tools/benchmarks/utils:generate_benchmark_matrices_test",
         # xnnpack is not windows compatible
         "-//xla/backends/cpu/runtime/ynnpack:ynn_fusion_thunk",
         "-//xla/backends/cpu/runtime/ynnpack:ynn_interop",
@@ -488,6 +484,7 @@ oneapi_build_tag_filter = (
     "-cuda-only",
     "-rocm-only",
     "-no-oneapi",
+    "gpu",
 )
 
 oneapi_test_tag_filter = (
@@ -501,6 +498,7 @@ oneapi_test_tag_filter = (
     "-cuda-only",
     "-rocm-only",
     "-no-oneapi",
+    "gpu",
 )
 
 Build(
@@ -548,9 +546,14 @@ rocm_tag_filter = (
 )
 
 Build(
-    type_=BuildType.XLA_LINUX_X86_GPU_ROCM_GITHUB_ACTIONS,
+    type_=BuildType.XLA_LINUX_X86_GPU_HERMETIC_ROCM_GITHUB_ACTIONS,
     repo="openxla/xla",
-    configs=("warnings", "rbe_linux_cpu", "rocm_clang_hermetic"),
+    configs=(
+        "warnings",
+        "rbe_linux_cpu",
+        "rocm_clang_hermetic",
+        "rocm_ci_hermetic",
+    ),
     target_patterns=_XLA_DEFAULT_TARGET_PATTERNS,
     build_tag_filters=rocm_tag_filter,
     test_tag_filters=rocm_tag_filter,
@@ -878,7 +881,7 @@ Build(
         **_DEFAULT_BAZEL_OPTIONS,
         "@local_config_cuda//cuda:override_include_cuda_libs": True,
     },
-    repo_env={"HERMETIC_PYTHON_VERSION": "3.11"},
+    repo_env={"HERMETIC_PYTHON_VERSION": "3.12"},
     extra_setup_commands=(["nvidia-smi"],),
 )
 
@@ -915,6 +918,7 @@ Build(
         "-//tensorflow/python/kernel_tests/...",
         "-//tensorflow/python/data/...",
         "-//tensorflow/python/compiler/tensorrt/...",
+        "-//tensorflow/python/ops/numpy_ops/tests/...",
     ),
     build_tag_filters=tensorflow_cpu_tag_filters,
     test_tag_filters=tensorflow_cpu_tag_filters,
@@ -946,6 +950,7 @@ Build(
         "-//tensorflow/python/kernel_tests/...",
         "-//tensorflow/python/data/...",
         "-//tensorflow/python/compiler/tensorrt/...",
+        "-//tensorflow/python/ops/numpy_ops/tests/...",
     ),
     build_tag_filters=tensorflow_gpu_tag_filters,
     test_tag_filters=tensorflow_gpu_tag_filters,

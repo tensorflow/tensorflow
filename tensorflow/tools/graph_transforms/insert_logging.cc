@@ -81,8 +81,8 @@ absl::Status InsertLogging(const GraphDef& input_graph_def,
           suffix.substr(1, suffix.size() - 1);
       int32_t output_index;
       if (!absl::SimpleAtoi(output_index_string, &output_index)) {
-        return errors::InvalidArgument("Couldn't understand output number in ",
-                                       input);
+        return absl::InvalidArgumentError(
+            absl::StrCat("Couldn't understand output number in ", input));
       }
       node_outputs[name].insert(output_index);
     }

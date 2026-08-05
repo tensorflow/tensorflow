@@ -144,8 +144,9 @@ class AttrBuilder : public AbstractOpAttrs {
     // is specialized for them below. If we end up here, the type must be
     // among those that we store in the node_def_.
     if (!node_def_finalized_) {
-      return errors::NotFound("No attr named'", attr_name,
-                              "' found in AttrBuilder for ", op_name_);
+      return absl::NotFoundError(absl::StrCat("No attr named'", attr_name,
+                                              "' found in AttrBuilder for ",
+                                              op_name_));
     }
     return GetNodeAttr(AttrSlice(node_def_), attr_name, value);
   }

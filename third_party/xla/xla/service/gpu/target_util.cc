@@ -19,6 +19,7 @@ limitations under the License.
 
 #include <cstring>
 #include <functional>
+#include <optional>
 #include <string>
 #include <variant>
 #include <vector>
@@ -75,9 +76,12 @@ struct TargetIntrinsics {
 
 // Emits IR to call a device function named "callee_name" on the given
 // operand. Returns the IR value that represents the return value.
+// `output_type` is std::nullopt for void-returning callees (e.g. SPIR-V
+// OpControlBarrier), since PrimitiveType cannot represent void.
 llvm::CallInst* EmitDeviceFunctionCall(
     const std::string& callee_name, absl::Span<llvm::Value* const> operands,
-    absl::Span<const PrimitiveType> input_types, PrimitiveType output_type,
+    absl::Span<const PrimitiveType> input_types,
+    std::optional<PrimitiveType> output_type,
     const llvm::AttrBuilder& attributes, llvm::IRBuilderBase* b,
     absl::string_view name = "") {
   std::vector<llvm::Type*> ir_input_types;
@@ -87,22 +91,21 @@ llvm::CallInst* EmitDeviceFunctionCall(
     ir_input_types.push_back(
         llvm_ir::PrimitiveTypeToIrType(input_type, b->getContext()));
   }
-  llvm::FunctionType* callee_type = llvm::FunctionType::get(
-      llvm_ir::PrimitiveTypeToIrType(output_type,
-                                     b->getContext()),  // Return type.
-      ir_input_types,                                   // Parameter types.
-      false);  // No variadic arguments.
+  llvm::Type* return_type =
+      output_type.has_value()
+          ? llvm_ir::PrimitiveTypeToIrType(*output_type, b->getContext())
+          : llvm::Type::getVoidTy(b->getContext());
+  llvm::FunctionType* callee_type =
+      llvm::FunctionType::get(return_type, ir_input_types, /*isVarArg=*/false);
 
   // Declares the callee if it is not declared already.
   llvm::Function* callee = llvm::dyn_cast<llvm::Function>(
-      b->GetInsertBlock()
-          ->getModule()
-          ->getOrInsertFunction(callee_name, callee_type)
-          .getCallee());
+      module->getOrInsertFunction(callee_name, callee_type).getCallee());
 
   callee->addFnAttrs(attributes);
-  if (target_triple.isSPIROrSPIRV())
+  if (target_triple.isSPIROrSPIRV()) {
     callee->setCallingConv(llvm::CallingConv::SPIR_FUNC);
+  }
 
   return b->CreateCall(callee, llvm_ir::AsArrayRef(operands), name.data());
 }
@@ -192,10 +195,10 @@ struct TargetIntrinsics GetIntrinsic(TargetIntrinsicID intrin) {
               },
               llvm::Intrinsic::amdgcn_s_barrier,
               [](llvm::IRBuilderBase* b_) -> llvm::CallInst* {
+                // OpenCL barrier(CLK_LOCAL_MEM_FENCE | CLK_GLOBAL_MEM_FENCE);
+                // matches the MLIR emitter pipeline.
                 return EmitDeviceFunctionCall(
-                    "_Z22__spirv_ControlBarrierjjj",
-                    {b_->getInt32(2), b_->getInt32(2), b_->getInt32(272)},
-                    {U32, U32, U32}, U32,
+                    "_Z7barrierj", {b_->getInt32(3)}, {U32}, std::nullopt,
                     llvm::AttrBuilder(b_->getContext())
                         .addAttribute(llvm::Attribute::Convergent),
                     b_);
@@ -244,10 +247,10 @@ struct TargetIntrinsics GetIntrinsic(TargetIntrinsicID intrin) {
       return {llvm::Intrinsic::nvvm_bar_warp_sync,
               llvm::Intrinsic::amdgcn_wave_barrier,
               [](llvm::IRBuilderBase* b_) -> llvm::CallInst* {
+                // OpenCL barrier(CLK_LOCAL_MEM_FENCE | CLK_GLOBAL_MEM_FENCE);
+                // matches the MLIR emitter pipeline.
                 return EmitDeviceFunctionCall(
-                    "_Z22__spirv_ControlBarrierjjj",
-                    {b_->getInt32(2), b_->getInt32(2), b_->getInt32(272)},
-                    {U32, U32, U32}, U32,
+                    "_Z7barrierj", {b_->getInt32(3)}, {U32}, std::nullopt,
                     llvm::AttrBuilder(b_->getContext())
                         .addAttribute(llvm::Attribute::Convergent),
                     b_);
@@ -406,7 +409,7 @@ std::string ObtainDeviceFunctionName(TargetDeviceFunctionID func_id,
       LOG(FATAL) << "Unexpected type while getting device function name: "
                  << primitive_util::LowercasePrimitiveTypeName(output_type);
     }
-  } else if (target_triple.getArch() == llvm::Triple::amdgcn) {
+  } else if (target_triple.getArch() == llvm::Triple::amdgpu) {
     // TODO(b/370452608): Are there approximate functions we can use for BF16
     // and F16 types?
     if (output_type == F16 && HasF16Implementation(func_id, target_triple)) {
@@ -460,7 +463,7 @@ llvm::CallInst* EmitCallToTargetIntrinsic(
   llvm::Triple target_triple = llvm::Triple(module->getTargetTriple());
   if (target_triple.isNVPTX()) {
     llvm_intrinsic_or_function = gpu_intrinsic_id.nvptx_intrinsic_or_function;
-  } else if (target_triple.getArch() == llvm::Triple::amdgcn) {
+  } else if (target_triple.getArch() == llvm::Triple::amdgpu) {
     llvm_intrinsic_or_function = gpu_intrinsic_id.amdgpu_intrinsic_or_function;
   } else if (target_triple.isSPIROrSPIRV()) {
     llvm_intrinsic_or_function = gpu_intrinsic_id.spir_intrinsic_or_function;
@@ -488,7 +491,7 @@ void AnnotateFunctionAsGpuKernel(llvm::Module* module, llvm::Function* func,
     // Attach information so NVPTX can recognize function as a CUDA kernel.
     func->setCallingConv(llvm::CallingConv::PTX_Kernel);
 
-  } else if (target_triple.getArch() == llvm::Triple::amdgcn) {
+  } else if (target_triple.getArch() == llvm::Triple::amdgpu) {
     // Attach information so AMDGPU can recognize function as a AMDGPU kernel.
     func->setCallingConv(llvm::CallingConv::AMDGPU_KERNEL);
     func->addFnAttr("uniform-work-group-size", "true");

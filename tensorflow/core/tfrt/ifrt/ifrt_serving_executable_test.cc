@@ -53,6 +53,7 @@ limitations under the License.
 #include "xla/tsl/framework/serving_device_selector.h"
 #include "xla/tsl/framework/test_util/mock_serving_device_selector.h"
 #include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/lib/monitoring/cell_reader.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/threadpool.h"
 #include "xla/xla_data.pb.h"
@@ -79,6 +80,7 @@ using ::testing::ElementsAre;
 using ::testing::HasSubstr;
 using ::testing::NiceMock;
 using ::testing::Return;
+using ::tsl::monitoring::testing::CellReader;
 
 // Helper to set up a mock expectation for `ReserveDevice`.
 // It returns device reservations in a round-robin fashion, cycling through
@@ -171,6 +173,9 @@ class IfrtServingExecutableTest : public ::testing::TestWithParam<bool> {
   explicit IfrtServingExecutableTest() {
     helper_ = std::make_unique<test_utils::IfrtServingExecutableTestHelper>(
         &selector_);
+    ifrt_execution_count_reader_ =
+        std::make_unique<tsl::monitoring::testing::CellReader<int64_t>>(
+            "/tensorflow/tfrt/ifrt/execution_count");
   }
 
   absl::StatusOr<std::vector<tensorflow::Tensor>> Execute(
@@ -188,6 +193,8 @@ class IfrtServingExecutableTest : public ::testing::TestWithParam<bool> {
 
   tsl::test_util::MockServingDeviceSelector selector_;
   std::unique_ptr<test_utils::IfrtServingExecutableTestHelper> helper_;
+  std::unique_ptr<tsl::monitoring::testing::CellReader<int64_t>>
+      ifrt_execution_count_reader_;
 };
 
 INSTANTIATE_TEST_SUITE_P(IfrtServingExecutableTests, IfrtServingExecutableTest,
@@ -214,6 +221,9 @@ TEST_P(IfrtServingExecutableTest, Basic) {
       AsTensor<int32_t>({14}, tensorflow::TensorShape({1, 1}));
 
   EXPECT_THAT(result, ElementsAre(TensorEq(expected_out)));
+
+  EXPECT_EQ(ifrt_execution_count_reader_->Delta("test"),
+            helper_->num_cores() + 1);
 }
 
 TEST_P(IfrtServingExecutableTest, MultipleShapes) {
@@ -253,6 +263,9 @@ TEST_P(IfrtServingExecutableTest, MultipleShapes) {
   EXPECT_THAT(outputs1, ElementsAre(TensorEq(expected_out1)));
 
   EXPECT_THAT(outputs2, ElementsAre(TensorEq(expected_out2)));
+
+  EXPECT_EQ(ifrt_execution_count_reader_->Delta("test"),
+            helper_->num_cores() + 6);
 }
 
 TEST_P(IfrtServingExecutableTest, ReturnFailOnUncompiledShapeAfterFrozen) {
@@ -293,6 +306,9 @@ TEST_P(IfrtServingExecutableTest, ReturnFailOnUncompiledShapeAfterFrozen) {
 
   EXPECT_THAT(status,
               absl_testing::StatusIs(absl::StatusCode::kFailedPrecondition));
+
+  EXPECT_EQ(ifrt_execution_count_reader_->Delta("test"),
+            helper_->num_cores() + 3);
 }
 
 TEST_P(IfrtServingExecutableTest,
@@ -338,6 +354,9 @@ TEST_P(IfrtServingExecutableTest,
   EXPECT_THAT(error_message, HasSubstr("Already compiled:"));
   EXPECT_THAT(error_message, HasSubstr("[1,3]"));
   EXPECT_THAT(error_message, HasSubstr("[3,1]"));
+
+  EXPECT_EQ(ifrt_execution_count_reader_->Delta("test"),
+            helper_->num_cores() + 1);
 }
 
 TEST_P(IfrtServingExecutableTest, Spmd) {
@@ -362,6 +381,8 @@ TEST_P(IfrtServingExecutableTest, Spmd) {
       auto result, Execute(executable.get(), absl::MakeSpan(inputs), {}));
 
   EXPECT_THAT(result, ElementsAre(TensorEq(expected_out)));
+
+  EXPECT_EQ(ifrt_execution_count_reader_->Delta("test"), 1);
 }
 
 TEST_P(IfrtServingExecutableTest, SpmdTwoReturns) {
@@ -390,6 +411,8 @@ TEST_P(IfrtServingExecutableTest, SpmdTwoReturns) {
 
   EXPECT_THAT(result,
               ElementsAre(TensorEq(expected_out0), TensorEq(expected_out1)));
+
+  EXPECT_EQ(ifrt_execution_count_reader_->Delta("test"), 1);
 }
 
 TEST_P(IfrtServingExecutableTest, SpmdXlaCallModuleShardy) {
@@ -416,6 +439,8 @@ TEST_P(IfrtServingExecutableTest, SpmdXlaCallModuleShardy) {
 
   EXPECT_THAT(result,
               ElementsAre(TensorEq(expected_out0), TensorEq(expected_out1)));
+
+  EXPECT_EQ(ifrt_execution_count_reader_->Delta("test"), 1);
 }
 
 TEST_F(IfrtServingExecutableTest, EncodeLayout) {
@@ -478,6 +503,46 @@ TEST_P(IfrtServingExecutableTest, NoReturn) {
       auto result, Execute(executable.get(), absl::MakeSpan(inputs), {}));
 
   ASSERT_EQ(result.size(), 0);
+
+  EXPECT_EQ(ifrt_execution_count_reader_->Delta("test"),
+            helper_->num_cores() + 1);
+}
+
+TEST_P(IfrtServingExecutableTest, CompilationFailureFulfillsPromise) {
+  int64_t program_id = 999999;
+  SetUpMockDeviceReservation(selector_, program_id, helper_->num_cores());
+  auto executable =
+      helper_->MakeExecutable(program_id, GetMlirModulePath("executable.mlir"));
+
+  EXPECT_EQ(executable->num_executables(), 0);
+
+  // Pass FLOAT tensors to an MLIR module expecting INT32 (executable.mlir has
+  // %arg0: tensor<*xi32>, %arg1: tensor<*xi32>), causing compilation
+  // (UpdateCompileMetadata inside LookUpOrCreateExecutable) to fail cleanly.
+  auto x = AsTensor<float>({1.0f, 2.0f, 3.0f}, tensorflow::TensorShape({1, 3}));
+  auto y = AsTensor<float>({1.0f, 2.0f, 3.0f}, tensorflow::TensorShape({3, 1}));
+  std::vector<tensorflow::Tensor> inputs{x, y};
+
+  auto result = Execute(executable.get(), absl::MakeSpan(inputs), {});
+
+  // 1. Verify that the compilation error status is returned cleanly (and NOT
+  // "Promise destroyed without being set").
+  EXPECT_THAT(result, absl_testing::StatusIs(
+                          absl::StatusCode::kInvalidArgument,
+                          ::testing::HasSubstr("Dtype mismatched!")));
+
+  // 2. Verify that the failed compilation future remains cached.
+  EXPECT_EQ(executable->num_executables(), 1);
+
+  // 3. Verify that subsequent execution attempts immediately return the cleanly
+  // cached error status (and NOT "Promise destroyed without being set").
+  auto second_result = Execute(executable.get(), absl::MakeSpan(inputs), {});
+  EXPECT_THAT(second_result, absl_testing::StatusIs(
+                                 absl::StatusCode::kInvalidArgument,
+                                 ::testing::HasSubstr("Dtype mismatched!")));
+  EXPECT_EQ(executable->num_executables(), 1);
+
+  EXPECT_EQ(ifrt_execution_count_reader_->Delta("test"), 2);
 }
 
 TEST_P(IfrtServingExecutableTest, StaticShape) {
@@ -570,6 +635,9 @@ TEST_P(IfrtServingExecutableTest, StaticShape) {
   // Verify that only one executable was created, since both test cases use
   // the same `shape_tensor` for static shape.
   EXPECT_EQ(executable->num_executables(), 1);
+
+  EXPECT_EQ(ifrt_execution_count_reader_->Delta("test"),
+            helper_->num_cores() + 2);
 }
 
 TEST_P(VariableInputTest, InterleaveVariable) {

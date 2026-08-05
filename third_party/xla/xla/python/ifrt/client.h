@@ -22,10 +22,8 @@ limitations under the License.
 #include <optional>
 #include <string>
 #include <utility>
-#include <variant>
 #include <vector>
 
-#include "absl/base/macros.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
@@ -319,6 +317,9 @@ class Client : public llvm::RTTIExtends<Client, llvm::RTTIRoot> {
   // consistency with other APIs. We may change this to take a span of `Array*`
   // instead to reflect its read-only semantics.
   virtual tsl::Future<> GetReadyFuture(absl::Span<const ValueRef> values) = 0;
+
+  // Deletes the given values. See `Value::Delete()` for the semantics.
+  virtual tsl::Future<> DeleteValues(absl::Span<ValueRef> values) = 0;
 
   // Builds a tuple from a sequence of values.
   virtual absl::StatusOr<tsl::RCReference<Tuple>> MakeTuple(

@@ -118,10 +118,13 @@ using DimLevelTypeVector = absl::InlinedVector<DimLevelType, InlineRank()>;
   XLA_SCOPED_LOGGING_TIMER_HELPER2(label, level, counter, (condition))
 
 // Helper for macros above.  Don't use directly.
-#define XLA_SCOPED_LOGGING_TIMER_HELPER2(label, level, counter, condition)     \
-  static ::xla::TimerStats XLA_TimerStats##counter;                            \
-  ::xla::ScopedLoggingTimer XLA_ScopedLoggingTimerInstance##counter(           \
-      label, /*enabled=*/VLOG_IS_ON(level) && (condition), __FILE__, __LINE__, \
+#define XLA_SCOPED_LOGGING_TIMER_HELPER2(label, level, counter, condition) \
+  static ::xla::TimerStats XLA_TimerStats##counter;                        \
+  const bool XLA_TimerEnabled##counter = VLOG_IS_ON(level) && (condition); \
+  ::xla::ScopedLoggingTimer XLA_ScopedLoggingTimerInstance##counter(       \
+      XLA_TimerEnabled##counter ? ::absl::string_view(label)               \
+                                : ::absl::string_view(""),                 \
+      XLA_TimerEnabled##counter, __FILE__, __LINE__,                       \
       &XLA_TimerStats##counter);
 
 struct TimerStats {
@@ -881,8 +884,67 @@ void PackIntN(absl::Span<const char> input, absl::Span<char> output) {
   ABSL_CHECK_GE(output.size(), required_output_size)
       << "Output span too small for packed elements: " << output.size() << " < "
       << required_output_size;
+  size_t start_output_byte = 0;
+
+  if constexpr (kBitsPerElement == 4) {
+    const size_t fast_path_inputs = (input.size() / 8) * 8;
+    for (size_t i = 0; i < fast_path_inputs; i += 8) {
+      uint64_t u64;
+      std::memcpy(&u64, input.data() + i, 8);
+
+      uint64_t even = u64 & 0x000F000F000F000FU;
+      uint64_t odd = u64 & 0x0F000F000F000F00U;
+      uint64_t combined = even | (odd >> 4);
+
+      uint32_t packed =
+          (combined & 0x000000FF) | ((combined >> 8) & 0x0000FF00) |
+          ((combined >> 16) & 0x00FF0000) | ((combined >> 24) & 0xFF000000);
+
+      std::memcpy(output.data() + i / 2, &packed, 4);
+    }
+    start_output_byte = fast_path_inputs / 2;
+  } else if constexpr (kBitsPerElement == 2) {
+    const size_t fast_path_inputs = (input.size() / 8) * 8;
+    for (size_t i = 0; i < fast_path_inputs; i += 8) {
+      uint64_t u64;
+      std::memcpy(&u64, input.data() + i, 8);
+
+      uint64_t even_bytes = u64 & 0x0003000300030003U;
+      uint64_t odd_bytes = u64 & 0x0300030003000300U;
+      uint64_t part1 = even_bytes | (odd_bytes >> 6);
+
+      uint64_t even_4bit = part1 & 0x0000000F0000000FU;
+      uint64_t odd_4bit = part1 & 0x000F0000000F0000U;
+      uint64_t part2 = even_4bit | (odd_4bit >> 12);
+
+      uint16_t packed = (part2 & 0xFFU) | ((part2 >> 24) & 0xFF00U);
+      std::memcpy(output.data() + i / 4, &packed, 2);
+    }
+    start_output_byte = fast_path_inputs / 4;
+  } else if constexpr (kBitsPerElement == 1) {
+    const size_t fast_path_inputs = (input.size() / 8) * 8;
+    for (size_t i = 0; i < fast_path_inputs; i += 8) {
+      uint64_t u64;
+      std::memcpy(&u64, input.data() + i, 8);
+
+      uint64_t even_bytes = u64 & 0x0001000100010001U;
+      uint64_t odd_bytes = u64 & 0x0100010001000100U;
+      uint64_t part1 = even_bytes | (odd_bytes >> 7);
+
+      uint64_t even_2 = part1 & 0x0000000300000003U;
+      uint64_t odd_2 = part1 & 0x0003000000030000U;
+      uint64_t part2 = even_2 | (odd_2 >> 14);
+
+      uint64_t even_3 = part2 & 0x000000000000000FU;
+      uint64_t odd_3 = part2 & 0x0000000F00000000U;
+      char packed = even_3 | (odd_3 >> 28);
+      output[i / 8] = packed;
+    }
+    start_output_byte = fast_path_inputs / 8;
+  }
+
   const size_t aligned_inputs = input.size() / kElementsPerByte;
-  for (size_t i = 0; i < aligned_inputs; ++i) {
+  for (size_t i = start_output_byte; i < aligned_inputs; ++i) {
     char byte = 0;
     for (size_t j = 0; j < kElementsPerByte; ++j) {
       byte |=
@@ -933,8 +995,74 @@ void UnpackIntN(absl::Span<const char> input, absl::Span<char> output) {
   ABSL_CHECK_GE(input.size(), required_input_size)
       << "Input span too small for unpacked elements: " << input.size() << " < "
       << required_input_size;
+  size_t start_input_byte = 0;
+
+  if constexpr (kBitsPerElement == 4) {
+    const size_t fast_path_outputs = (output.size() / 8) * 8;
+    for (size_t i = 0; i < fast_path_outputs; i += 8) {
+      uint32_t packed_32;
+      std::memcpy(&packed_32, input.data() + i / 2, 4);
+      uint64_t packed = packed_32;
+
+      uint64_t expanded = (packed & 0xFFU) | ((packed & 0xFF00U) << 8) |
+                          ((packed & 0xFF0000U) << 16) |
+                          ((packed & 0xFF000000U) << 24);
+
+      uint64_t L_part = expanded & 0x000F000F000F000FU;
+      uint64_t H_part = (expanded & 0x00F000F000F000F0U) << 4;
+      uint64_t unpacked = L_part | H_part;
+
+      std::memcpy(output.data() + i, &unpacked, 8);
+    }
+    start_input_byte = fast_path_outputs / 2;
+  } else if constexpr (kBitsPerElement == 2) {
+    const size_t fast_path_outputs = (output.size() / 8) * 8;
+    for (size_t i = 0; i < fast_path_outputs; i += 8) {
+      uint16_t packed_16;
+      std::memcpy(&packed_16, input.data() + i / 4, 2);
+      uint64_t packed = packed_16;
+
+      uint64_t expanded = (packed & 0xFFU) | ((packed & 0xFF00U) << 24);
+      uint64_t replicated =
+          expanded | (expanded << 8) | (expanded << 16) | (expanded << 24);
+
+      uint64_t part_shift0 = replicated & 0x0000000300000003U;
+      uint64_t part_shift2 = (replicated & 0x00000C0000000C00U) >> 2;
+      uint64_t part_shift4 = (replicated & 0x0030000000300000U) >> 4;
+      uint64_t part_shift6 = (replicated & 0xC0000000C0000000U) >> 6;
+
+      uint64_t unpacked = part_shift0 | part_shift2 | part_shift4 | part_shift6;
+      std::memcpy(output.data() + i, &unpacked, 8);
+    }
+    start_input_byte = fast_path_outputs / 4;
+  } else if constexpr (kBitsPerElement == 1) {
+    const size_t fast_path_outputs = (output.size() / 8) * 8;
+    for (size_t i = 0; i < fast_path_outputs; i += 8) {
+      char packed_8 = input[i / 8];
+      uint64_t replicated =
+          static_cast<uint64_t>(static_cast<uint8_t>(packed_8)) *
+          0x0101010101010101U;
+
+      uint64_t mask_4_7 = 0xFFFFFFFF00000000U;
+      uint64_t step1 = (replicated & ~mask_4_7) |
+                       (((replicated & mask_4_7) >> 4) & mask_4_7);
+
+      uint64_t mask_2_3_6_7 = 0xFFFF0000FFFF0000U;
+      uint64_t step2 = (step1 & ~mask_2_3_6_7) |
+                       (((step1 & mask_2_3_6_7) >> 2) & mask_2_3_6_7);
+
+      uint64_t mask_1_3_5_7 = 0xFF00FF00FF00FF00U;
+      uint64_t step3 = (step2 & ~mask_1_3_5_7) |
+                       (((step2 & mask_1_3_5_7) >> 1) & mask_1_3_5_7);
+
+      uint64_t unpacked = step3 & 0x0101010101010101U;
+      std::memcpy(output.data() + i, &unpacked, 8);
+    }
+    start_input_byte = fast_path_outputs / 8;
+  }
+
   const size_t aligned_outputs = output.size() / kElementsPerByte;
-  for (size_t i = 0; i < aligned_outputs; ++i) {
+  for (size_t i = start_input_byte; i < aligned_outputs; ++i) {
     const char byte = input[i];
     for (int j = 0; j < kElementsPerByte; ++j) {
       output[i * kElementsPerByte + j] =

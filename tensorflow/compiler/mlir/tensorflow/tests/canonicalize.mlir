@@ -1,3 +1,17 @@
+// Copyright 2026 Google Inc. All Rights Reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// ==============================================================================
 // RUN: tf-opt %s -pass-pipeline='builtin.module(func.func(canonicalize{test-convergence}))' | FileCheck %s
 
 // CHECK-LABEL: func @tfAssertTrue
@@ -565,13 +579,29 @@ func.func @testDoubleNeg(%arg0: tensor<8x16x32x64xi32>) -> tensor<8x16x32x64xi32
 // CHECK: return %arg0
 }
 
+// Reciprocal is not an exact involution (1 / (1 / x) rounds in floating
+// point and truncates to zero for integer |x| > 1), so a Reciprocal pair
+// must not fold away.
 // CHECK-LABEL: testDoubleReciprocal
 func.func @testDoubleReciprocal(%arg0: tensor<8x16x32x64xi32>) -> tensor<8x16x32x64xi32> {
   %0 = "tf.Reciprocal"(%arg0) : (tensor<8x16x32x64xi32>) -> tensor<8x16x32x64xi32>
   %1 = "tf.Reciprocal"(%0) : (tensor<8x16x32x64xi32>) -> tensor<8x16x32x64xi32>
   func.return %1: tensor<8x16x32x64xi32>
 
-// CHECK: return %arg0
+// CHECK: %[[RECIPROCAL0:.*]] = "tf.Reciprocal"(%arg0)
+// CHECK: %[[RECIPROCAL1:.*]] = "tf.Reciprocal"(%[[RECIPROCAL0]])
+// CHECK: return %[[RECIPROCAL1]]
+}
+
+// CHECK-LABEL: testDoubleReciprocalFloat
+func.func @testDoubleReciprocalFloat(%arg0: tensor<8x16x32x64xf32>) -> tensor<8x16x32x64xf32> {
+  %0 = "tf.Reciprocal"(%arg0) : (tensor<8x16x32x64xf32>) -> tensor<8x16x32x64xf32>
+  %1 = "tf.Reciprocal"(%0) : (tensor<8x16x32x64xf32>) -> tensor<8x16x32x64xf32>
+  func.return %1: tensor<8x16x32x64xf32>
+
+// CHECK: %[[RECIPROCAL0:.*]] = "tf.Reciprocal"(%arg0)
+// CHECK: %[[RECIPROCAL1:.*]] = "tf.Reciprocal"(%[[RECIPROCAL0]])
+// CHECK: return %[[RECIPROCAL1]]
 }
 
 // CHECK-LABEL: testRedundantReshape

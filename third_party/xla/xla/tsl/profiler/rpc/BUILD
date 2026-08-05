@@ -32,7 +32,6 @@ cc_library(
     deps = [
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:env_time",
-        "//xla/tsl/platform:errors",
         "//xla/tsl/platform:logging",
         "//xla/tsl/platform:macros",
         "//xla/tsl/platform:status_macros",
@@ -44,7 +43,9 @@ cc_library(
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
+        "@tsl//tsl/platform:platform_port",
         "@tsl//tsl/profiler/lib:profiler_session",
         "@tsl//tsl/profiler/protobuf:profiler_service_cc_grpc_proto",
         "@tsl//tsl/profiler/protobuf:profiler_service_proto_cc",

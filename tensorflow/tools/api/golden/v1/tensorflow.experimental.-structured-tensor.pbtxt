@@ -4,30 +4,54 @@ tf_class {
   is_instance: "<class \'tensorflow.python.framework.extension_type.BatchableExtensionType\'>"
   is_instance: "<class \'tensorflow.python.framework.extension_type.ExtensionType\'>"
   is_instance: "<class \'tensorflow.python.framework.composite_tensor.CompositeTensor\'>"
-  is_instance: "<type \'object\'>"
+  is_instance: "<class \'object\'>"
   member {
     name: "FieldName"
     mtype: "typing.Union"
   }
   member {
     name: "Spec"
-    mtype: "<type \'type\'>"
+    mtype: "<class \'abc.ABCMeta\'>"
   }
   member {
     name: "rank"
-    mtype: "<type \'property\'>"
+    mtype: "<class \'property\'>"
   }
   member {
     name: "row_partitions"
-    mtype: "<type \'property\'>"
+    mtype: "<class \'property\'>"
   }
   member {
     name: "shape"
-    mtype: "<type \'property\'>"
+    mtype: "<class \'property\'>"
+  }
+  member_method {
+    name: "__eq__"
+    argspec: "args=[\'self\', \'other\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "__getattr__"
+    argspec: "args=[\'self\', \'name\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "__getitem__"
+    argspec: "args=[\'self\', \'key\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "__init__"
     argspec: "args=[\'self\', \'fields\', \'ragged_shape\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "__ne__"
+    argspec: "args=[\'self\', \'other\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "__tf_tracing_type__"
+    argspec: "args=[\'self\', \'context\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "__validate__"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "field_names"
@@ -40,18 +64,22 @@ tf_class {
   member_method {
     name: "from_fields"
     argspec: "args=[\'cls\', \'fields\', \'shape\', \'nrows\', \'row_partitions\', \'validate\'], varargs=None, keywords=None, defaults=[\'()\', \'None\', \'None\', \'False\'], "
+    method_kind: CLASS
   }
   member_method {
     name: "from_fields_and_rank"
     argspec: "args=[\'cls\', \'fields\', \'rank\', \'validate\', \'dtype\'], varargs=None, keywords=None, defaults=[\'False\', \'None\'], "
+    method_kind: CLASS
   }
   member_method {
     name: "from_pyval"
     argspec: "args=[\'cls\', \'pyval\', \'typespec\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    method_kind: CLASS
   }
   member_method {
     name: "from_shape"
     argspec: "args=[\'cls\', \'ragged_shape\'], varargs=None, keywords=None, defaults=None"
+    method_kind: CLASS
   }
   member_method {
     name: "merge_dims"

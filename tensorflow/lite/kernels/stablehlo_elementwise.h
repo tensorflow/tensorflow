@@ -38,21 +38,6 @@ enum class ComputationType { kAdd, kSub, kMax, kMin, kMul, kAnd };
 
 TfLiteStatus ElementwisePrepare(TfLiteContext* context, TfLiteNode* node);
 
-// A helper function that converts a tensor index into a flat array index.
-template <typename IndexType>
-static IndexType TensorIndexToFlat(const IndexType* index, const int64_t dims,
-                                   const RuntimeShape& shape) {
-  // If it's a scalar, just return the index of the first element.
-  if (dims == 0) {
-    return 0;
-  }
-  IndexType flat_index = index[0];
-  for (int64_t i = 1; i < dims; ++i) {
-    flat_index = flat_index * shape.Dims(i) + index[i];
-  }
-  return flat_index;
-}
-
 template <typename DataType, ComputationType computation_type>
 inline DataType ApplyComputation(DataType input1, DataType input2) {
   if (computation_type == ComputationType::kAnd) {
@@ -82,7 +67,6 @@ TfLiteStatus EvalWithType(TfLiteContext* context, TfLiteNode* node) {
   const TfLiteTensor* input_tensor1;
   TF_LITE_ENSURE_OK(context,
                     GetInputSafe(context, node, kInputTensor1, &input_tensor1));
-  RuntimeShape input_shape = GetTensorShape(input_tensor1);
   const DataType* input_data1 = GetTensorData<DataType>(input_tensor1);
 
   const TfLiteTensor* input_tensor2;
@@ -95,19 +79,11 @@ TfLiteStatus EvalWithType(TfLiteContext* context, TfLiteNode* node) {
                     GetOutputSafe(context, node, kOutputTensor, &output));
   DataType* output_data = GetTensorData<DataType>(output);
 
-  int input_rank = input_tensor1->dims->size;
-  std::vector<int64_t> index(input_rank, 0);
-
-  do {
-    DataType input_value1 =
-        input_data1[TensorIndexToFlat(index.data(), input_rank, input_shape)];
-    DataType input_value2 =
-        input_data2[TensorIndexToFlat(index.data(), input_rank, input_shape)];
-
-    output_data[TensorIndexToFlat(index.data(), input_rank, input_shape)] =
-        ApplyComputation<DataType, computation_type>(input_value1,
-                                                     input_value2);
-  } while (NextIndex(input_rank, input_tensor1->dims->data, index.data()));
+  const int64_t num_elements = NumElements(input_tensor1);
+  for (int64_t i = 0; i < num_elements; ++i) {
+    output_data[i] = ApplyComputation<DataType, computation_type>(
+        input_data1[i], input_data2[i]);
+  }
 
   return TfLiteStatus::kTfLiteOk;
 }
@@ -119,6 +95,17 @@ TfLiteStatus ElementwiseEval(TfLiteContext* context, TfLiteNode* node) {
                     GetInputSafe(context, node, kInputTensor1, &input_tensor1));
 
   TfLiteType data_type = input_tensor1->type;
+
+  if constexpr (computation_type == ComputationType::kAnd) {
+    if (data_type == kTfLiteFloat16 || data_type == kTfLiteFloat32 ||
+        data_type == kTfLiteFloat64) {
+      TF_LITE_KERNEL_LOG(
+          context,
+          "(Data Type: %s) is not supported for bitwise/logical AND.\n",
+          TfLiteTypeGetName(data_type));
+      return kTfLiteError;
+    }
+  }
 
   switch (data_type) {
     case kTfLiteFloat16:

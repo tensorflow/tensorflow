@@ -34,6 +34,7 @@ limitations under the License.
 #include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
+#include "xla/python/ifrt/sharding_spec.h"
 
 namespace xla {
 namespace ifrt {
@@ -66,6 +67,8 @@ class HloSharding final
   // Sharding implementation.
 
   ~HloSharding() override = default;
+
+  ShardingSpecRef sharding_spec() const override;
 
   absl::StatusOr<Shape> GetShardShape(const Shape& shape) const override;
 

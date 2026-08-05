@@ -68,15 +68,16 @@ class LuOp : public OpKernel {
   }
 
   void Compute(OpKernelContext* context) override {
-    OP_REQUIRES(context, context->num_inputs() == 1,
-                errors::InvalidArgument("Expecting exactly one input, got ",
-                                        context->num_inputs()));
+    OP_REQUIRES(
+        context, context->num_inputs() == 1,
+        absl::InvalidArgumentError(absl::StrCat(
+            "Expecting exactly one input, got ", context->num_inputs())));
 
     const Tensor& input = context->input(0);
     int input_rank = input.dims();
     OP_REQUIRES(context, input_rank >= 2,
-                errors::InvalidArgument(
-                    "Input tensor must have rank >= 2, got ", input_rank));
+                absl::InvalidArgumentError(absl::StrCat(
+                    "Input tensor must have rank >= 2, got ", input_rank)));
 
     // If the tensor rank is greater than 2, we consider the inner-most
     // dimensions as matrices, and loop over all the other outer ("batch")
@@ -92,7 +93,7 @@ class LuOp : public OpKernel {
 
     input_matrix_shape.AppendShape({num_rows, num_cols});
     OP_REQUIRES(context, TensorShapeUtils::IsSquareMatrix(input_matrix_shape),
-                errors::InvalidArgument("Input matrix must be square."));
+                absl::InvalidArgumentError("Input matrix must be square."));
 
     // packed_triangular_factors is a matrix with the same shape as the input;
     // permutation is a vector.
@@ -175,7 +176,7 @@ class LuOp : public OpKernel {
     const RealScalar min_abs_pivot =
         packed_triangular_factors.diagonal().cwiseAbs().minCoeff();
     OP_REQUIRES(context, min_abs_pivot > RealScalar(0),
-                errors::InvalidArgument("Input is not invertible."));
+                absl::InvalidArgumentError("Input is not invertible."));
   }
 };
 

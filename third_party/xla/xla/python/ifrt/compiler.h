@@ -22,7 +22,7 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "absl/strings/string_view.h"
+#include "absl/strings/cord.h"
 #include "llvm/Support/ExtensibleRTTI.h"
 #include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/executable.h"
@@ -96,7 +96,7 @@ class Compiler : public llvm::RTTIExtends<Compiler, llvm::RTTIRoot> {
   // use standard IFRT deserialization instead of this custom deserialization
   // function.
   virtual tsl::Future<LoadedExecutableRef> DeserializeLoadedExecutable(
-      absl::string_view serialized,
+      const absl::Cord& serialized,
       std::unique_ptr<DeserializeExecutableOptions> options) = 0;
 
   static char ID;  // NOLINT

@@ -2,6 +2,6 @@ path: "tensorflow.metrics.experimental"
 tf_module {
   member {
     name: "PyMetric"
-    mtype: "<type \'type\'>"
+    mtype: "<class \'abc.ABCMeta\'>"
   }
 }

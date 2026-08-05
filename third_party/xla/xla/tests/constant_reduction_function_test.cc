@@ -29,7 +29,7 @@ namespace {
 using std::nullopt;
 
 using ConstantReductionFunctionTest =
-    HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>;
+    HloPjRtInterpreterReferenceMixin<HloTestBase>;
 
 TEST_F(ConstantReductionFunctionTest, Bool) {
   const std::string& hlo_string = R"(

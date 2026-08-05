@@ -36,8 +36,10 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/types.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/kernels/op_macros.h"
+#include "tensorflow/lite/types/half.h"
 
 namespace tflite {
+
 namespace ops {
 namespace builtin {
 namespace add {
@@ -293,6 +295,12 @@ void EvalAdd(TfLiteContext* context, TfLiteNode* node, TfLiteAddParams* params,
         TF_LITE_ADD(optimized_ops, Add, float);
       }
     }
+  } else if (output->type == kTfLiteFloat16) {
+    if (need_broadcast) {
+      TF_LITE_ADD(reference_ops, BroadcastAdd6DSlow, half);
+    } else {
+      TF_LITE_ADD(reference_ops, Add, half);
+    }
   } else if (output->type == kTfLiteInt16) {
     int16_t output_activation_min, output_activation_max;
     CalculateActivationRange(params->activation, &output_activation_min,
@@ -417,8 +425,8 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_OK(context,
                     GetOutputSafe(context, node, kOutputTensor, &output));
 
-  if (output->type == kTfLiteFloat32 || output->type == kTfLiteInt32 ||
-      output->type == kTfLiteInt64 ||
+  if (output->type == kTfLiteFloat32 || output->type == kTfLiteFloat16 ||
+      output->type == kTfLiteInt32 || output->type == kTfLiteInt64 ||
       (output->quantization.type == kTfLiteNoQuantization &&
        output->type == kTfLiteInt16)) {
     EvalAdd<kernel_type>(context, node, params, data, input1, input2, output);

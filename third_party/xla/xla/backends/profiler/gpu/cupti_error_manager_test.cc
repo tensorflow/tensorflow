@@ -44,10 +44,16 @@ using xla::profiler::CuptiTracerOptions;
 using xla::profiler::CuptiWrapper;
 
 using ::testing::_;
+using ::testing::DoAll;
 using ::testing::Invoke;
 using ::testing::Return;
 using ::testing::Sequence;
+using ::testing::SetArgPointee;
 using ::testing::StrictMock;
+
+auto SetTimestampAndReturnSuccess(uint64_t timestamp) {
+  return DoAll(SetArgPointee<1>(timestamp), Return(CUPTI_SUCCESS));
+}
 
 // Needed to create different cupti tracer for each test cases.
 class TestableCuptiTracer : public CuptiTracer {
@@ -113,6 +119,14 @@ class CuptiErrorManagerTest : public ::testing::Test {
   std::unique_ptr<xla::profiler::CuptiTraceCollector> cupti_collector_;
 };
 
+class CuptiV2ActivityConfigurationErrorTest
+    : public CuptiErrorManagerTest,
+      public ::testing::WithParamInterface<CUptiResult> {};
+
+class CuptiV2ActivityRecordErrorTest
+    : public CuptiErrorManagerTest,
+      public ::testing::WithParamInterface<CUptiResult> {};
+
 // Verifies that failed EnableProfiling() does not kill an application.
 TEST_F(CuptiErrorManagerTest, GpuTraceActivityEnableTest) {
   // Enforces the order of execution below.
@@ -125,6 +139,9 @@ TEST_F(CuptiErrorManagerTest, GpuTraceActivityEnableTest) {
         *subscriber = reinterpret_cast<CUpti_SubscriberHandle>(uintptr_t{1});
         return CUPTI_SUCCESS;
       });
+  EXPECT_CALL(*mock_, GetTimestampV2(_, _))
+      .InSequence(s1)
+      .WillOnce(SetTimestampAndReturnSuccess(1));
   const int cb_enable_times = IsCudaNewEnoughForGraphTraceTest() ? 6 : 1;
   EXPECT_CALL(*mock_, EnableCallback(1, _, _, _))
       .Times(cb_enable_times)
@@ -161,6 +178,10 @@ TEST_F(CuptiErrorManagerTest, GpuTraceActivityEnableTest) {
   options.cbids_selected.push_back(CUPTI_DRIVER_TRACE_CBID_cuLaunchKernel);
   EnableProfiling(options);  // CUPTI call fails due to injected error
   EXPECT_TRUE(CuptiDisabled());
+  // Rollback already unsubscribed the handle and disabled CUPTI. Verify that a
+  // later profiling request makes no additional CUPTI calls, including a second
+  // unsubscribe.
+  EnableProfiling(options);
 
   RunGpuApp();  // Application code runs normally
 
@@ -181,6 +202,9 @@ TEST_F(CuptiErrorManagerTest, GpuTraceAutoEnableTest) {
         *subscriber = reinterpret_cast<CUpti_SubscriberHandle>(uintptr_t{1});
         return CUPTI_SUCCESS;
       });
+  EXPECT_CALL(*mock_, GetTimestampV2(_, _))
+      .InSequence(s1)
+      .WillOnce(SetTimestampAndReturnSuccess(1));
   const int cb_enable_times = IsCudaNewEnoughForGraphTraceTest() ? 5 : 0;
   if (cb_enable_times > 0) {
     EXPECT_CALL(*mock_, EnableCallback(1, _, _, _))
@@ -242,6 +266,42 @@ TEST_F(CuptiErrorManagerTest, GpuTraceAutoEnableTest) {
   DisableProfiling();  // CUPTI calls are ignored
   EXPECT_TRUE(CuptiDisabled());
 }
+
+TEST_P(CuptiV2ActivityConfigurationErrorTest, DoesNotDisableCupti) {
+  const CUptiResult result = GetParam();
+  auto* const v2_subscriber =
+      reinterpret_cast<CUpti_SubscriberHandle>(uintptr_t{1});
+  EXPECT_CALL(*mock_, ActivityUseSystemThreadIdV2(v2_subscriber))
+      .WillOnce(Return(result));
+  EXPECT_CALL(*mock_, ActivityUsePerThreadBufferV2()).WillOnce(Return(result));
+
+  EXPECT_EQ(cupti_error_manager_->ActivityUseSystemThreadIdV2(v2_subscriber),
+            result);
+  EXPECT_EQ(cupti_error_manager_->ActivityUsePerThreadBufferV2(), result);
+  EXPECT_FALSE(CuptiDisabled());
+}
+
+INSTANTIATE_TEST_SUITE_P(NonfatalErrors, CuptiV2ActivityConfigurationErrorTest,
+                         ::testing::Values(CUPTI_ERROR_NOT_SUPPORTED,
+                                           CUPTI_ERROR_NOT_COMPATIBLE));
+
+TEST_P(CuptiV2ActivityRecordErrorTest, DoesNotDisableCuptiOrUseV1Parser) {
+  const CUptiResult result = GetParam();
+  uint8_t buffer[1] = {};
+  CUpti_Activity* record = nullptr;
+  EXPECT_CALL(*mock_, ActivityGetNextRecord(_, _, _)).Times(0);
+  EXPECT_CALL(*mock_, ActivityGetNextRecordV2(_, buffer, sizeof(buffer), _))
+      .WillOnce(Return(result));
+  EXPECT_EQ(cupti_error_manager_->ActivityGetNextRecordV2(
+                /*subscriber=*/nullptr, buffer, sizeof(buffer), &record),
+            result);
+  EXPECT_EQ(record, nullptr);
+  EXPECT_FALSE(CuptiDisabled());
+}
+
+INSTANTIATE_TEST_SUITE_P(NonfatalErrors, CuptiV2ActivityRecordErrorTest,
+                         ::testing::Values(CUPTI_ERROR_NOT_SUPPORTED,
+                                           CUPTI_ERROR_UNKNOWN));
 
 }  // namespace test
 }  // namespace profiler

@@ -57,6 +57,12 @@ class CallInliner : public HloModulePass {
   static absl::StatusOr<InlinedInstructionMap> Inline(
       HloInstruction* call, bool propagate_metadata = true);
 
+  enum class FrontendInlinePolicy { kXlaEarly, kXlaLate, kAuto };
+
+  // Returns the frontend inline policy.
+  static FrontendInlinePolicy GetFrontendInlinePolicy(
+      const HloInstruction* instruction);
+
   // Returns true if the instruction is allowed to be inlined based on its
   // frontend attributes and the provided policy.
   static bool InlineInstructionAllowed(
@@ -88,14 +94,19 @@ class CallInliner : public HloModulePass {
       HloModule* module, std::optional<InlinedInstructionMap*> inline_map,
       const absl::flat_hash_set<absl::string_view>& execution_threads);
 
-  // Returns true if the instruction is a kCall operation and is eligible for
-  // inlining.
-  virtual bool IsInlineableCallOp(HloInstruction* instruction) const;
+  // Returns true if the instruction should be inlined based on the call graph
+  // and pass configuration.
+  bool ShouldInline(const CallGraph& call_graph,
+                    HloInstruction* instruction) const;
 
   // Maximum length of an op_name that can be formed during inlining.
   static constexpr int kMaxOpNameSize = 1024;
 
  protected:
+  // Returns true if the instruction is a kCall operation and is eligible for
+  // inlining.
+  virtual bool IsInlineableCallOp(HloInstruction* instruction) const;
+
   absl::StatusOr<bool> RunImpl(
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
@@ -106,8 +117,6 @@ class CallInliner : public HloModulePass {
       absl::Span<HloInstruction* const> instruction_sequence,
       std::optional<InlinedInstructionMap*> inline_map);
 
-  bool ShouldInline(const CallGraph& call_graph,
-                    HloInstruction* instruction) const;
 
   bool single_call_site_;
   bool update_domain_;

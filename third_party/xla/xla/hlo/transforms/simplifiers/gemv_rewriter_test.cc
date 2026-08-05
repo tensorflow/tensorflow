@@ -17,10 +17,12 @@ limitations under the License.
 
 #include <memory>
 #include <optional>
+#include <string>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/tsl/platform/statusor.h"
@@ -28,9 +30,19 @@ limitations under the License.
 namespace xla {
 namespace {
 
-class GemvRewriterTest : public HloHardwareIndependentTestBase {};
+class GemvRewriterTest : public HloHardwareIndependentTestBase,
+                         public ::testing::WithParamInterface<bool> {
+ protected:
+  GemvRewriterTest() {
+    is_layout_sensitive_ = GetParam();
+    reshape_or_bitcast_ = is_layout_sensitive_ ? "bitcast" : "reshape";
+  }
 
-TEST_F(GemvRewriterTest, RewriteMatrixVectorMultiplicationToGemm) {
+  bool is_layout_sensitive_;
+  const char* reshape_or_bitcast_;
+};
+
+TEST_P(GemvRewriterTest, RewriteMatrixVectorMultiplicationToGemm) {
   const char* hlo = R"(
   HloModule m
 
@@ -41,18 +53,23 @@ TEST_F(GemvRewriterTest, RewriteMatrixVectorMultiplicationToGemm) {
       lhs_contracting_dims={1}, rhs_contracting_dims={0}
   })";
 
-  const char* expected = R"()
+  // clang-format off
+  std::string expected = absl::StrCat(R"(
 // CHECK:  %[[P0:.*]] = f32[32,7]{1,0} parameter(0)
 // CHECK:  %[[P1:.*]] = f32[7]{0} parameter(1)
-// CHECK:  %[[BITCAST:.*]] = f32[7,1]{1,0} bitcast(%[[P1]])
-// CHECK:  %[[DOT:.*]] = f32[32,1]{1,0} dot(%[[P0]], %[[BITCAST]]), lhs_contracting_dims={1}, rhs_contracting_dims={0}
-// CHECK:  ROOT %[[ROOT:.*]] = f32[32]{0} bitcast(%[[DOT]])
-})";
+// CHECK:  %[[RESHAPE_OR_BITCAST:.*]] = f32[7,1]{1,0}
+// CHECK-SAME: )", reshape_or_bitcast_, R"((%[[P1]])
+// CHECK:  %[[DOT:.*]] = f32[32,1]{1,0} dot(%[[P0]], %[[RESHAPE_OR_BITCAST]]),
+// CHECK-SAME: lhs_contracting_dims={1}, rhs_contracting_dims={0}
+// CHECK:  ROOT %[[ROOT:.*]] = f32[32]{0}
+// CHECK-SAME: )", reshape_or_bitcast_, R"((%[[DOT]])
+)");
+  // clang-format on
 
-  RunAndFilecheckHloRewrite(hlo, GemvRewriter(), expected);
+  RunAndFilecheckHloRewrite(hlo, GemvRewriter(is_layout_sensitive_), expected);
 }
 
-TEST_F(GemvRewriterTest, RewriteVectorMatrixMultiplicationToGemm) {
+TEST_P(GemvRewriterTest, RewriteVectorMatrixMultiplicationToGemm) {
   const char* hlo = R"(
   HloModule m
 
@@ -63,18 +80,23 @@ TEST_F(GemvRewriterTest, RewriteVectorMatrixMultiplicationToGemm) {
       lhs_contracting_dims={0}, rhs_contracting_dims={0}
   })";
 
-  const char* expected = R"()
+  // clang-format off
+  std::string expected = absl::StrCat(R"(
 // CHECK:  %[[P0:.*]] = f32[7]{0} parameter(0)
-// CHECK:  %[[BITCAST:.*]] = f32[7,1]{1,0} bitcast(%[[P0]])
+// CHECK:  %[[RESHAPE_OR_BITCAST:.*]] = f32[7,1]{1,0}
+// CHECK-SAME: )", reshape_or_bitcast_, R"((%[[P0]])
 // CHECK:  %[[P1:.*]] = f32[7,32]{1,0} parameter(1)
-// CHECK:  %[[DOT:.*]] = f32[1,32]{1,0} dot(%[[BITCAST]], %[[P1]]), lhs_contracting_dims={0}, rhs_contracting_dims={0}
-// CHECK:  ROOT %[[ROOT:.*]].1 = f32[32]{0} bitcast(%[[DOT]])
-})";
+// CHECK:  %[[DOT:.*]] = f32[1,32]{1,0} dot(%[[RESHAPE_OR_BITCAST]], %[[P1]]),
+// CHECK-SAME: lhs_contracting_dims={0}, rhs_contracting_dims={0}
+// CHECK:  ROOT %[[ROOT:.*]].1 = f32[32]{0}
+// CHECK-SAME: )", reshape_or_bitcast_, R"((%[[DOT]])
+)");
+  // clang-format on
 
-  RunAndFilecheckHloRewrite(hlo, GemvRewriter(), expected);
+  RunAndFilecheckHloRewrite(hlo, GemvRewriter(is_layout_sensitive_), expected);
 }
 
-TEST_F(GemvRewriterTest, RewriteMatrixVectorMultiplicationWithBatch) {
+TEST_P(GemvRewriterTest, RewriteMatrixVectorMultiplicationWithBatch) {
   const char* hlo = R"(
   HloModule m
 
@@ -86,19 +108,23 @@ TEST_F(GemvRewriterTest, RewriteMatrixVectorMultiplicationWithBatch) {
       lhs_contracting_dims={3}, rhs_contracting_dims={2}
   })";
 
-  const char* expected = R"()
+  // clang-format off
+  std::string expected = absl::StrCat(R"(
 // CHECK:  %[[P0:.*]] = f32[2,5,32,7]{3,2,1,0} parameter(0)
 // CHECK:  %[[P1:.*]] = f32[2,5,7]{2,1,0} parameter(1)
-// CHECK:  %[[BITCAST:.*]] = f32[2,5,7,1]{3,2,1,0} bitcast(%[[P1]])
-// CHECK:  %[[DOT:.*]] = f32[2,5,32,1]{3,2,1,0} dot(%[[P0]], %[[BITCAST]]),
+// CHECK:  %[[RESHAPE_OR_BITCAST:.*]] = f32[2,5,7,1]{3,2,1,0}
+// CHECK-SAME: )", reshape_or_bitcast_, R"((%[[P1]])
+// CHECK:  %[[DOT:.*]] = f32[2,5,32,1]{3,2,1,0} dot(%[[P0]], %[[RESHAPE_OR_BITCAST]]),
 // CHECK-SAME: lhs_batch_dims={0,1}, lhs_contracting_dims={3}, rhs_batch_dims={0,1}, rhs_contracting_dims={2}
-// CHECK:  ROOT %[[ROOT:.*]] = f32[2,5,32]{2,1,0} bitcast(%[[DOT]])
-})";
+// CHECK:  ROOT %[[ROOT:.*]] = f32[2,5,32]{2,1,0}
+// CHECK-SAME: )", reshape_or_bitcast_, R"((%[[DOT]])
+)");
+  // clang-format on
 
-  RunAndFilecheckHloRewrite(hlo, GemvRewriter(), expected);
+  RunAndFilecheckHloRewrite(hlo, GemvRewriter(is_layout_sensitive_), expected);
 }
 
-TEST_F(GemvRewriterTest, DotNotRewriteVectorVectorMultiplication) {
+TEST_P(GemvRewriterTest, DotNotRewriteVectorVectorMultiplication) {
   const char* hlo = R"(
   HloModule m
 
@@ -109,10 +135,11 @@ TEST_F(GemvRewriterTest, DotNotRewriteVectorVectorMultiplication) {
       lhs_contracting_dims={0}, rhs_contracting_dims={0}
   })";
 
-  RunAndFilecheckHloRewrite(hlo, GemvRewriter(), /*expected=*/std::nullopt);
+  RunAndFilecheckHloRewrite(hlo, GemvRewriter(is_layout_sensitive_),
+                            /*expected=*/std::nullopt);
 }
 
-TEST_F(GemvRewriterTest, DotNotRewriteMatrixMatrixMultiplication) {
+TEST_P(GemvRewriterTest, DotNotRewriteMatrixMatrixMultiplication) {
   const char* hlo = R"(
   HloModule m
 
@@ -123,10 +150,11 @@ TEST_F(GemvRewriterTest, DotNotRewriteMatrixMatrixMultiplication) {
       lhs_contracting_dims={1}, rhs_contracting_dims={0}
   })";
 
-  RunAndFilecheckHloRewrite(hlo, GemvRewriter(), /*expected=*/std::nullopt);
+  RunAndFilecheckHloRewrite(hlo, GemvRewriter(is_layout_sensitive_),
+                            /*expected=*/std::nullopt);
 }
 
-TEST_F(GemvRewriterTest, DoNotRewriteDotsWithNonNormalizedLayout) {
+TEST_P(GemvRewriterTest, DoNotRewriteDotsWithNonNormalizedLayout) {
   const char* hlo = R"(
   HloModule m
 
@@ -140,12 +168,25 @@ TEST_F(GemvRewriterTest, DoNotRewriteDotsWithNonNormalizedLayout) {
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(hlo));
-  GemvRewriter rewriter;
+  GemvRewriter rewriter(is_layout_sensitive_);
   absl::StatusOr<bool> result = this->RunHloPass(&rewriter, module.get());
-  EXPECT_FALSE(result.ok());
-  EXPECT_THAT(result.status().message(),
-              ::testing::HasSubstr("Layout is not normalized."));
+  if (is_layout_sensitive_) {
+    EXPECT_FALSE(result.ok());
+    EXPECT_THAT(result.status().message(),
+                ::testing::HasSubstr("Layout is not normalized."));
+  } else {
+    // No rewrite when the layout is not normalized, but the pass should succeed
+    // in this configuration.
+    EXPECT_TRUE(result.ok());
+    EXPECT_FALSE(result.value());
+  }
 }
+
+INSTANTIATE_TEST_SUITE_P(
+    GemvRewriterTestSuite, GemvRewriterTest, ::testing::Values(true, false),
+    [](const ::testing::TestParamInfo<GemvRewriterTest::ParamType>& info) {
+      return info.param ? "LayoutSensitive" : "NotLayoutSensitive";
+    });
 
 }  // namespace
 }  // namespace xla

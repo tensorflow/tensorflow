@@ -51,11 +51,11 @@ absl::Status SetOutputToSizedImage(InferenceContext* c,
   } else {
     // TODO(petewarden) - Remove once we have constant evaluation in C++ only.
     if (size_tensor->dtype() != DT_INT32) {
-      return errors::InvalidArgument(
+      return absl::InvalidArgumentError(absl::StrCat(
           "Bad size input type for SetOutputToSizedImage: Expected DT_INT32 "
           "but got ",
           DataTypeString(size_tensor->dtype()), " for input #", size_input_idx,
-          " in ", c->DebugString());
+          " in ", c->DebugString()));
     }
     auto vec = size_tensor->vec<int32_t>();
     height = c->MakeDim(vec(0));
@@ -80,8 +80,8 @@ absl::StatusOr<DimensionHandle> GetChannelsDim(InferenceContext* c) {
   }
 
   if (channels < 0) {
-    return errors::InvalidArgument("channels must be non-negative, got ",
-                                   channels);
+    return absl::InvalidArgumentError(
+        absl::StrCat("channels must be non-negative, got ", channels));
   }
 
   return c->MakeDim(channels);
@@ -229,7 +229,7 @@ absl::Status CombinedNMSShapeFn(InferenceContext* c) {
   DimensionHandle class_dim = c->Dim(scores, 2);
   if (c->ValueKnown(d) && c->ValueKnown(class_dim)) {
     if (c->Value(d) != 1 && c->Value(d) != c->Value(class_dim)) {
-      return errors::InvalidArgument(
+      return absl::InvalidArgumentError(
           "third dimension of boxes must be either "
           "1 or equal to the third dimension of scores");
     }
@@ -239,7 +239,7 @@ absl::Status CombinedNMSShapeFn(InferenceContext* c) {
 
   TF_RETURN_IF_ERROR(c->MakeDimForScalarInput(3, &output_dim));
   if (c->ValueKnown(output_dim) && c->Value(output_dim) <= 0) {
-    return errors::InvalidArgument("max_total_size should be > 0 ");
+    return absl::InvalidArgumentError("max_total_size should be > 0 ");
   }
   DimensionHandle size_per_class;
   TF_RETURN_IF_ERROR(c->MakeDimForScalarInput(2, &size_per_class));
@@ -251,7 +251,7 @@ absl::Status CombinedNMSShapeFn(InferenceContext* c) {
     output_size = c->Value(output_dim);
   } else {
     if (c->ValueKnown(size_per_class) && c->Value(size_per_class) <= 0) {
-      return errors::InvalidArgument(
+      return absl::InvalidArgumentError(
           "max_output_size_per_class must be > 0 "
           "if pad_per_class is set to true ");
     }
@@ -504,8 +504,8 @@ REGISTER_OP("DecodeAndCropJpeg")
       TF_RETURN_IF_ERROR(c->GetAttr("channels", &channels));
       if (channels != 0) {
         if (channels < 0) {
-          return errors::InvalidArgument("channels must be non-negative, got ",
-                                         channels);
+          return absl::InvalidArgumentError(
+              absl::StrCat("channels must be non-negative, got ", channels));
         }
         channels_dim = c->MakeDim(channels);
       }
@@ -702,7 +702,7 @@ REGISTER_OP("DrawBoundingBoxes")
       if (c->ValueKnown(c->Dim(images, 3))) {
         int64_t depth = c->Value(c->Dim(images, 3));
         if (!(depth == 1 || depth == 3 || depth == 4)) {
-          return errors::InvalidArgument(
+          return absl::InvalidArgumentError(
               "Channel depth should be either 1 (GRY), "
               "3 (RGB), or 4 (RGBA)");
         }
@@ -872,7 +872,7 @@ REGISTER_OP("ExtractGlimpse")
       std::string noise;
       TF_RETURN_IF_ERROR(c->GetAttr("noise", &noise));
       if (uniform_noise && (!noise.empty() && noise != "uniform")) {
-        return errors::InvalidArgument(
+        return absl::InvalidArgumentError(
             "The uniform_noise should not be True when noise is not uniform");
       }
 
@@ -906,7 +906,7 @@ REGISTER_OP("ExtractGlimpseV2")
       std::string noise;
       TF_RETURN_IF_ERROR(c->GetAttr("noise", &noise));
       if (uniform_noise && (!noise.empty() && noise != "uniform")) {
-        return errors::InvalidArgument(
+        return absl::InvalidArgumentError(
             "The uniform_noise should not be True when noise is not uniform");
       }
 

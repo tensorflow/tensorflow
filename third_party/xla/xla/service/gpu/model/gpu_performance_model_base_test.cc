@@ -47,7 +47,6 @@ class GpuPerformanceModelBaseTest : public HloHardwareIndependentTestBase {
   // on A6000 by profiling the execution of the HLOs.
   se::DeviceDescription device_info_{TestGpuDeviceInfo::RTXA6000DeviceInfo()};
   std::unique_ptr<GpuHloCostAnalysis> analysis_;
-  MLIRContext mlir_context_;
 
   GpuPerformanceModelBaseTest() {
     options_.count_multiple_input_accesses = true;
@@ -238,8 +237,7 @@ ENTRY entry_computation {
   auto fusion_analysis = HloFusionAnalysis::Create(
       *module->entry_computation()->root_instruction(), device_info_);
   auto launch_dimensions =
-      GpuPerformanceModelBase::EstimateFusionLaunchDimensions(fusion_analysis,
-                                                              &mlir_context_);
+      GpuPerformanceModelBase::EstimateFusionLaunchDimensions(fusion_analysis);
 
   EXPECT_EQ(launch_dimensions.num_blocks(), 128);
   EXPECT_EQ(launch_dimensions.num_threads_per_block(), 128);
@@ -274,8 +272,7 @@ ENTRY e {
   auto fusion_analysis = HloFusionAnalysis::Create(
       *module->entry_computation()->root_instruction(), device_info_);
   auto launch_dimensions =
-      GpuPerformanceModelBase::EstimateFusionLaunchDimensions(fusion_analysis,
-                                                              &mlir_context_);
+      GpuPerformanceModelBase::EstimateFusionLaunchDimensions(fusion_analysis);
 
   EXPECT_EQ(launch_dimensions.num_blocks(), 16);
   EXPECT_EQ(launch_dimensions.num_threads_per_block(), 64);
@@ -303,8 +300,7 @@ ENTRY e {
   auto fusion_analysis = HloFusionAnalysis::Create(
       *module->entry_computation()->root_instruction(), device_info_);
   auto launch_dimensions =
-      GpuPerformanceModelBase::EstimateFusionLaunchDimensions(fusion_analysis,
-                                                              &mlir_context_);
+      GpuPerformanceModelBase::EstimateFusionLaunchDimensions(fusion_analysis);
 
   // CuNnnFusion doesn't implement KernelLaunchInsterface, so
   // EstimateFusionLaunchDimensions returns a default estimate.

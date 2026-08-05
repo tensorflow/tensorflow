@@ -788,9 +788,7 @@ class NanoTuple final : public NanoValue<NanoTuple, ifrt::Tuple> {
   }
 
   tsl::Future<> Delete() override {
-    for (auto& value : values_) {
-      value->Delete();
-    }
+    client()->DeleteValues(absl::MakeSpan(values_));
     values_.clear();
     deleted_ = true;
     return Ready();
@@ -1268,7 +1266,7 @@ class NanoCompiler final
   }
 
   tsl::Future<ifrt::LoadedExecutableRef> DeserializeLoadedExecutable(
-      absl::string_view serialized,
+      const absl::Cord& serialized,
       std::unique_ptr<ifrt::DeserializeExecutableOptions> options) override {
     return absl::UnimplementedError(
         "DeserializeLoadedExecutable is not implemented.");
@@ -1499,6 +1497,13 @@ absl::StatusOr<std::vector<xla::ifrt::ArrayRef>> NanoIfrtClient::ReshardArrays(
 
 tsl::Future<> NanoIfrtClient::GetReadyFuture(
     absl::Span<const ifrt::ValueRef> values) {
+  return Ready();
+}
+
+tsl::Future<> NanoIfrtClient::DeleteValues(absl::Span<ifrt::ValueRef> values) {
+  for (const auto& value : values) {
+    value->Delete();
+  }
   return Ready();
 }
 

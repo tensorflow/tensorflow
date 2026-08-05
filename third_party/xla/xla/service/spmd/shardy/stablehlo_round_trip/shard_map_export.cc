@@ -16,7 +16,6 @@ limitations under the License.
 #include "xla/service/spmd/shardy/stablehlo_round_trip/shard_map_export.h"
 
 #include <cassert>
-#include <cstdint>
 #include <memory>
 #include <tuple>
 #include <utility>

@@ -12,7 +12,6 @@ limitations under the License.
 #include "xla/stream_executor/rocm/hip_blas_lt.h"
 
 #include <algorithm>
-#include <any>
 #include <climits>
 #include <cstddef>
 #include <cstdint>
@@ -53,6 +52,7 @@ limitations under the License.
 #include "xla/tsl/platform/statusor.h"
 #include "xla/types.h"
 #include "xla/util.h"
+#include "xla/xla_data.pb.h"
 
 #define SET_ATTR(setter, handle, attr, value) \
   ToStatus(setter(handle, attr, &value, sizeof(decltype(value))), #setter)
@@ -313,6 +313,19 @@ auto BlasLt::RegularMatmulPlan::GetAlgorithms(size_t max_algorithm_count,
 
 absl::StatusOr<BlasLt::MatmulPlanPtr> BlasLt::GetMatmulPlan(
     const gpu::GemmConfig& cfg, Epilogue epilogue) const {
+  // hipBLASLt has no complex GEMM kernels; redirect C64/C128 to rocBLAS while
+  // still consuming the cublasLt matmul custom call emitted by GemmRewriter.
+  // TODO(magaonka-amd): Once we get a hipBLASLt that supports complex GEMMs,
+  // clean up this routing code.
+  if (cfg.output_layout.dtype == xla::C64 ||
+      cfg.output_layout.dtype == xla::C128) {
+    TF_RET_CHECK(epilogue == Epilogue::kDefault)
+        << "rocBLAS complex fallback does not support epilogues (bias, GELU, "
+           "etc.); got epilogue="
+        << static_cast<int>(epilogue);
+    return std::make_unique<RocBlasGemmPlan>(*this, cfg);
+  }
+
   auto lhs_layout = cfg.lhs_layout, rhs_layout = cfg.rhs_layout,
        output_layout = cfg.output_layout, c_layout = cfg.c_layout;
 
@@ -467,6 +480,10 @@ absl::StatusOr<BlasLt::MatmulPlanPtr> BlasLt::GetMatmulPlan(
     TYPED_MATMUL(float, HIP_R_8F_E4M3, HIP_R_8F_E5M2, HIP_R_16F, HIP_R_8F_E5M2)
     TYPED_MATMUL(float, HIP_R_8F_E4M3, HIP_R_8F_E5M2, HIP_R_16F, HIP_R_16F)
     TYPED_MATMUL(float, HIP_R_8F_E4M3, HIP_R_8F_E5M2, HIP_R_32F, HIP_R_32F)
+    TYPED_MATMUL(float, HIP_R_8F_E4M3, HIP_R_8F_E5M2, HIP_R_8F_E5M2,
+                 HIP_R_8F_E5M2)
+    TYPED_MATMUL(float, HIP_R_8F_E4M3, HIP_R_8F_E5M2, HIP_R_8F_E4M3,
+                 HIP_R_8F_E4M3)
 
     TYPED_MATMUL(float, HIP_R_8F_E5M2, HIP_R_8F_E4M3, HIP_R_16BF, HIP_R_16BF)
     TYPED_MATMUL(float, HIP_R_8F_E5M2, HIP_R_8F_E4M3, HIP_R_16BF, HIP_R_8F_E4M3)
@@ -475,6 +492,10 @@ absl::StatusOr<BlasLt::MatmulPlanPtr> BlasLt::GetMatmulPlan(
     TYPED_MATMUL(float, HIP_R_8F_E5M2, HIP_R_8F_E4M3, HIP_R_16F, HIP_R_8F_E5M2)
     TYPED_MATMUL(float, HIP_R_8F_E5M2, HIP_R_8F_E4M3, HIP_R_16F, HIP_R_16F)
     TYPED_MATMUL(float, HIP_R_8F_E5M2, HIP_R_8F_E4M3, HIP_R_32F, HIP_R_32F)
+    TYPED_MATMUL(float, HIP_R_8F_E5M2, HIP_R_8F_E4M3, HIP_R_8F_E5M2,
+                 HIP_R_8F_E5M2)
+    TYPED_MATMUL(float, HIP_R_8F_E5M2, HIP_R_8F_E4M3, HIP_R_8F_E4M3,
+                 HIP_R_8F_E4M3)
 
     // MX FP4 (F4E2M1FN) type combinations
     TYPED_MATMUL(float, HIP_R_4F_E2M1, HIP_R_4F_E2M1, HIP_R_32F, HIP_R_32F)
@@ -545,12 +566,84 @@ absl::StatusOr<BlasLt::MatmulPlanPtr> BlasLt::GetMatmulPlan(
   return plan;
 }
 
+absl::Status BlasLt::RocBlasGemmPlan::ExecuteOnStream(
+    Stream* stream, const gpu::BlasLt::MemoryArgs& args,
+    blas::ProfileResult* profile_result) const {
+  blas::BlasSupport* blas = blas_lt_.executor_->AsBlas();
+  if (blas == nullptr) {
+    return absl::InternalError(
+        "No BLAS support for stream (complex rocBLAS fallback).");
+  }
+
+  // Replicate GemmConfig::GetMatrixDescriptors so rocBLAS receives the same
+  // canonicalized (column-major output) descriptors the legacy GEMM path used.
+  gpu::MatrixLayout lhs = cfg_.lhs_layout, rhs = cfg_.rhs_layout,
+                    out = cfg_.output_layout;
+  // Broadcast batch sizes like the regular hipBLASLt plan does.
+  size_t batch_size = std::max(lhs.batch_size, rhs.batch_size);
+  lhs.batch_size = batch_size;
+  rhs.batch_size = batch_size;
+
+  DeviceAddressBase a_buf = args.a, b_buf = args.b;
+  bool must_swap_operands = gpu::MakeOutputColumnMajor(lhs, rhs, out);
+  if (must_swap_operands) {
+    std::swap(a_buf, b_buf);
+  }
+
+  auto transpose_of = [](const gpu::MatrixLayout& l) {
+    return l.order == gpu::MatrixLayout::Order::kColumnMajor
+               ? blas::Transpose::kNoTranspose
+               : blas::Transpose::kTranspose;
+  };
+  blas::Transpose trans_a = transpose_of(lhs), trans_b = transpose_of(rhs);
+
+  const uint64_t m = out.num_rows, n = out.num_cols, k = lhs.num_cols;
+  const int lda = static_cast<int>(lhs.leading_dim_stride),
+            ldb = static_cast<int>(rhs.leading_dim_stride),
+            ldc = static_cast<int>(out.leading_dim_stride);
+
+  ASSIGN_OR_RETURN(blas::DataType dtype, gpu::AsBlasDataType(out.dtype));
+
+  // rocBLAS GEMM accumulates in-place into the output buffer. When beta != 0
+  // and C and D are distinct buffers, stage C into D first.
+  DeviceAddressBase out_buf = args.d;
+  if (cfg_.beta != 0.0 && args.c.opaque() != args.d.opaque()) {
+    RETURN_IF_ERROR(stream->Memcpy(&out_buf, args.c, out_buf.size()));
+  }
+
+  const blas::CallContext context = blas::CallContext::kNone;
+  const EngineOptions engine_options{};
+
+  auto run = [&](auto alpha, auto beta) -> absl::Status {
+    if (batch_size != 1) {
+      return blas->DoBlasGemmStridedBatched(
+          stream, trans_a, trans_b, m, n, k, dtype, &alpha, a_buf, lda,
+          lhs.batch_stride, b_buf, ldb, rhs.batch_stride, &beta, &out_buf, ldc,
+          out.batch_stride, static_cast<int>(batch_size), engine_options,
+          context);
+    }
+    return blas->DoBlasGemm(stream, trans_a, trans_b, m, n, k, dtype, &alpha,
+                            a_buf, lda, b_buf, ldb, &beta, &out_buf, ldc,
+                            engine_options, context);
+  };
+
+  if (out.dtype == xla::C64) {
+    xla::complex64 alpha(static_cast<float>(cfg_.alpha.real()),
+                         static_cast<float>(cfg_.alpha.imag()));
+    xla::complex64 beta(static_cast<float>(cfg_.beta), 0.0f);
+    return run(alpha, beta);
+  }
+  xla::complex128 alpha = cfg_.alpha;
+  xla::complex128 beta(cfg_.beta, 0.0);
+  return run(alpha, beta);
+}
+
 absl::Status BlasLt::RegularMatmulPlan::ExecuteOnStream(
     Stream* stream, const gpu::BlasLt::MemoryArgs& args,
     blas::ProfileResult* profile_result) const {
   if (!algorithm_.has_value()) {
     return absl::InternalError(
-        "Algorithm must be set before calling DoMatMul!");
+        "Algorithm must be set before calling ExecuteOnStream!");
   }
   DeviceAddressBase a = args.a, b = args.b;
   DeviceAddressBase a_scale = args.a_scale, b_scale = args.b_scale;
@@ -571,7 +664,7 @@ absl::Status BlasLt::RegularMatmulPlan::ExecuteOnStream(
   }
 
   void* workspace_addr = nullptr;
-  uint64_t workspace_size = algorithm_->workspace_size;
+  uint64_t workspace_size = workspace_size_;
   if (workspace_size > 0) {
     if (args.scratch_allocator != nullptr) {
       ASSIGN_OR_RETURN(DeviceAddress<uint8_t> alloc,
@@ -585,7 +678,6 @@ absl::Status BlasLt::RegularMatmulPlan::ExecuteOnStream(
     }
   }
 
-  auto palgo = std::any_cast<hipblasLtMatmulAlgo_t>(&algorithm_->opaque_algo);
   {
     absl::MutexLock lock(blas_lt_.mu_);
     TF_RET_CHECK(blas_lt_.handle_ != nullptr);
@@ -628,23 +720,19 @@ absl::Status BlasLt::RegularMatmulPlan::ExecuteOnStream(
     std::unique_ptr<ActivateContext> activation =
         blas_lt_.executor_->Activate();
 
-    if (palgo != nullptr) {
-      SE_HIPBLAS_RETURN_IF_ERROR(hipblasLtMatmul(
-          blas_lt_.handle_.get(), op_desc_.get(), &alpha_[0], a.opaque(),
-          a_desc_.get(), b.opaque(), b_desc_.get(), &beta_[0], args.c.opaque(),
-          c_desc_.get(), args.d.opaque(), d_desc_.get(), palgo, workspace_addr,
-          workspace_size,
-          absl::bit_cast<hipStream_t>(
-              stream->platform_specific_handle().stream)));
-    } else {
-      return absl::InternalError("hipblaslt: Invalid algorithm type");
-    }
+    SE_HIPBLAS_RETURN_IF_ERROR(hipblasLtMatmul(
+        blas_lt_.handle_.get(), op_desc_.get(), &alpha_[0], a.opaque(),
+        a_desc_.get(), b.opaque(), b_desc_.get(), &beta_[0], args.c.opaque(),
+        c_desc_.get(), args.d.opaque(), d_desc_.get(), &algorithm_.value(),
+        workspace_addr, workspace_size,
+        absl::bit_cast<hipStream_t>(
+            stream->platform_specific_handle().stream)));
   }
 
   if (profile_result != nullptr) {
     ASSIGN_OR_RETURN(absl::Duration elapsed, timer->GetElapsedDuration());
     // set algorithm ID to be unique (otherwise it gets kDefaultAlgorithm ID)
-    profile_result->set_algorithm(hipblaslt_ext::getIndexFromAlgo(*palgo));
+    profile_result->set_algorithm(hipblaslt_ext::getIndexFromAlgo(*algorithm_));
     profile_result->set_is_valid(true);
     profile_result->set_elapsed_time_in_ms(absl::ToDoubleMilliseconds(elapsed));
   }
@@ -842,13 +930,9 @@ absl::Status BlasLt::GroupedMatmulPlan::ExecuteOnStream(
     blas::ProfileResult* profile_result) const {
   if (!algorithm_.has_value()) {
     return absl::InternalError(
-        "Algorithm must be set before calling DoMatMul!");
+        "Algorithm must be set before calling ExecuteOnStream!");
   }
 
-  auto palgo = std::any_cast<hipblasLtMatmulAlgo_t>(&algorithm_->opaque_algo);
-  if (palgo == nullptr) {
-    return absl::InternalError("Invalid algorithm type!");
-  }
   absl::MutexLock lock(blas_lt_.mu_);
 
   // The first chunk of the workspace is reserved for userargs.
@@ -857,7 +941,7 @@ absl::Status BlasLt::GroupedMatmulPlan::ExecuteOnStream(
         static_cast<uint8_t*>(args.workspace.opaque()) +
         sizeof(hipblaslt_ext::UserArguments) * cfg_.group_count);
     SE_HIPBLAS_RETURN_IF_ERROR(
-        grouped_gemm_->initialize(*palgo, addr_workspace));
+        grouped_gemm_->initialize(*algorithm_, addr_workspace));
     algorithm_dirty_ = false;
     saved_address_workspace_ = args.workspace;
   }
@@ -957,7 +1041,7 @@ absl::Status BlasLt::GroupedMatmulPlan::ExecuteOnStream(
   if (profile_result != nullptr) {
     ASSIGN_OR_RETURN(absl::Duration elapsed, timer->GetElapsedDuration());
     // set algorithm ID to be unique (otherwise it gets kDefaultAlgorithm ID)
-    profile_result->set_algorithm(hipblaslt_ext::getIndexFromAlgo(*palgo));
+    profile_result->set_algorithm(hipblaslt_ext::getIndexFromAlgo(*algorithm_));
     profile_result->set_is_valid(true);
     profile_result->set_elapsed_time_in_ms(absl::ToDoubleMilliseconds(elapsed));
   }

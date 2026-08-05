@@ -1,3 +1,18 @@
+# Copyright 2026 The OpenXLA Authors. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
+
 """Provides build configuration for TSL"""
 
 load("@xla//third_party/rules_python/python:py_library.bzl", "py_library")
@@ -131,13 +146,13 @@ def if_google(google_value, oss_value = []):
     _ = (google_value, oss_value)  # buildifier: disable=unused-variable
     return oss_value  # copybara:comment_replace return google_value
 
-def internal_visibility(internal_targets):
+def internal_visibility(internal_targets, or_else = ["//visibility:public"]):
     """Returns internal_targets in g3, but returns public in OSS.
 
     Useful for targets that are part of the XLA/TSL API surface but want finer-grained visibilites
     internally.
     """
-    return if_google(internal_targets, ["//visibility:public"])
+    return if_google(internal_targets, or_else)
 
 # TODO(jakeharmon): Use this to replace if_static
 # TODO(b/356020232): remove completely after migration is done
@@ -795,6 +810,10 @@ def nvtx_headers():
 
 def tsl_google_bzl_deps():
     return []
+
+def if_include_google_deps(default_deps, no_google_deps = []):
+    _ = default_deps  # buildifier: disable=unused-variable
+    return no_google_deps
 
 def tsl_extra_config_settings():
     pass

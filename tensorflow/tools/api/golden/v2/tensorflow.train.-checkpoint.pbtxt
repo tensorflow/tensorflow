@@ -3,10 +3,10 @@ tf_class {
   is_instance: "<class \'tensorflow.python.checkpoint.checkpoint.Checkpoint\'>"
   is_instance: "<class \'tensorflow.python.trackable.autotrackable.AutoTrackable\'>"
   is_instance: "<class \'tensorflow.python.trackable.base.Trackable\'>"
-  is_instance: "<type \'object\'>"
+  is_instance: "<class \'object\'>"
   member {
     name: "save_counter"
-    mtype: "<type \'property\'>"
+    mtype: "<class \'property\'>"
   }
   member_method {
     name: "__init__"

@@ -30,7 +30,7 @@ limitations under the License.
 namespace xla {
 namespace {
 
-class HloDecomposerTest : public HloPjRtTestBase {
+class HloDecomposerTest : public HloTestBase {
  protected:
   std::unique_ptr<HloModule> GetModule() {
     absl::string_view kHlo = R"(

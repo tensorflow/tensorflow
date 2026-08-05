@@ -79,6 +79,9 @@ SymbolicExpr ParseSymbolicExprAndAdvance(
     std::optional<int64_t> num_dims = std::nullopt);
 // Uses `variable_map` to resolve variable names to symbolic expressions. If a
 // variable name is found in the map, the corresponding SymbolicExpr is used.
+SymbolicExpr ParseSymbolicExpr(
+    absl::string_view expr_str, mlir::MLIRContext* mlir_context,
+    const llvm::DenseMap<llvm::StringRef, SymbolicExpr>& variable_map);
 SymbolicExpr ParseSymbolicExprAndAdvance(
     absl::string_view* expr_str, mlir::MLIRContext* mlir_context,
     const llvm::DenseMap<llvm::StringRef, SymbolicExpr>& variable_map);

@@ -61,22 +61,31 @@ void GpuPjRtCodegenTest::CompileAndOptionallyVerifyPtx(
   GpuCompiler* gpu_compiler = dynamic_cast<GpuCompiler*>(compiler());
   CHECK_NOTNULL(gpu_compiler);
 
-  std::string ptx_str;
-  gpu_compiler->SetAsmHook([&](absl::string_view ptx) {
-    ptx_str += ptx;
-  });
+  std::unique_ptr<HloModule> module = std::move(hlo_module);
 
-  auto status_or_executable =
-      CompileToExecutable(std::move(hlo_module), run_optimization_passes);
+  if (run_optimization_passes) {
+    // Run optimization passes before we set the hook so that we don't capture
+    // intermediate compilations from autotuner.
+    auto status_or_module = gpu_compiler->RunHloPasses(
+        std::move(module), /*stream_exec=*/nullptr, compile_options_);
+    ASSERT_OK(status_or_module);
+    module = std::move(*status_or_module);
+  }
+
+  std::string ptx_str;
+  gpu_compiler->SetAsmHook([&](absl::string_view ptx) { ptx_str += ptx; });
+
+  auto status_or_executable = gpu_compiler->RunBackend(
+      std::move(module), /*stream_exec=*/nullptr, compile_options_);
   gpu_compiler->RemoveAsmHook();
 
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<Executable> executable,
                        std::move(status_or_executable));
 
-  // On the ROCM platform the "ptx" string is not populated for the compiled
-  // executable, and hence the "ptx_str" will be empty. So disabling the
-  // pattern check on the ROCm platform
-  if (!is_built_with_rocm_) {
+  // On ROCM and oneAPI platforms the "ptx" string is not populated for the
+  // compiled executable, and hence the "ptx_str" will be empty. So disabling
+  // the pattern check on ROCm and oneAPI platforms
+  if (!IsBuiltWithRocm() && !IsBuiltWithOneAPI()) {
     absl::StatusOr<bool> filecheck_result = RunFileCheck(ptx_str, pattern);
     ASSERT_TRUE(filecheck_result.ok());
     EXPECT_TRUE(filecheck_result.value());
@@ -87,24 +96,24 @@ std::string GpuPjRtCodegenTest::MakePlatformSpecificLlvm(
     absl::string_view input) {
   return absl::StrReplaceAll(
       input,
-      {{"KERNEL_ANNOTATION",
-        is_built_with_rocm_ ? "amdgpu_kernel void" : "ptx_kernel void"},
-       {"BARRIER()", is_built_with_rocm_
-                         ? "@llvm.amdgcn.s.barrier()"
-                         : "@llvm.nvvm.barrier.cta.sync.aligned.all(i32 0)"},
-       {"SHUFFLE", is_built_with_rocm_ ? "i32 @llvm.amdgcn.ds.swizzle"
-                                       : "float @llvm.nvvm.shfl.sync.down.f32"},
-       {"TIDX", is_built_with_rocm_ ? "@llvm.amdgcn.workitem.id.x"
-                                    : "@llvm.nvvm.read.ptx.sreg.tid.x"},
-       {"LCAL", is_built_with_rocm_ ? "%[[LOGICAL_T1:.*]] = call { i1, i64 } "
-                                      "@llvm.amdgcn.if.i64(i1 %[[LOGICAL_T0]])"
-                                    : "0"},
+      {{"KERNEL_ANNOTATION", GpuKernelType() + " void"},
+       {"BARRIER()", GpuBarrier()},
+       {"SHUFFLE", IsBuiltWithRocm() ? "i32 @llvm.amdgcn.ds.swizzle"
+                                     : "float @llvm.nvvm.shfl.sync.down.f32"},
+       {"TIDX", IsBuiltWithRocm() ? "@llvm.amdgcn.workitem.id.x"
+                                  : "@llvm.nvvm.read.ptx.sreg.tid.x"},
+       {"LCAL", IsBuiltWithRocm() ? "%[[LOGICAL_T1:.*]] = call { i1, i64 } "
+                                    "@llvm.amdgcn.if.i64(i1 %[[LOGICAL_T0]])"
+                                  : "0"},
        {"EXTV",
-        is_built_with_rocm_
+        IsBuiltWithRocm()
             ? "%[[LOGICAL_T2:.*]] = extractvalue { i1, i64 } %[[LOGICAL_T1]], 0"
             : "0"},
-       {"BR_CAL", is_built_with_rocm_ ? "br i1 %[[LOGICAL_T2]],"
-                                      : "br i1 %[[LOGICAL_T0]]"}});
+       {"BR_CAL",
+        IsBuiltWithRocm() ? "br i1 %[[LOGICAL_T2]]," : "br i1 %[[LOGICAL_T0]]"},
+       {"STORE_v$0FLOAT", IsBuiltWithOneAPI()
+                              ? "@llvm.spv.store.v$0f32.p1(<$0 x float>"
+                              : "store <$0 x float>"}});
 }
 
 absl::StatusOr<std::unique_ptr<Executable>>
@@ -117,20 +126,23 @@ GpuPjRtCodegenTest::CompileToExecutable(std::unique_ptr<HloModule> hlo_module,
 
 absl::Status GpuPjRtCodegenTest::CompileAndVerifyIr(
     std::unique_ptr<HloModule> hlo_module, absl::string_view expected_llvm_ir,
-    bool match_optimized_ir, bool run_optimization_passes) {
+    bool match_optimized_ir, bool run_optimization_passes,
+    bool match_ir_from_hlo_passes) {
   auto llvm_compiler = absl::down_cast<LLVMCompiler*>(compiler());
-  return xla::CompileAndVerifyIr(llvm_compiler, compile_options_,
-                                 std::move(hlo_module), expected_llvm_ir,
-                                 match_optimized_ir, run_optimization_passes);
+  return xla::CompileAndVerifyIr(
+      llvm_compiler, compile_options_, std::move(hlo_module), expected_llvm_ir,
+      match_optimized_ir, run_optimization_passes, match_ir_from_hlo_passes);
 }
 
 absl::Status GpuPjRtCodegenTest::CompileAndVerifyIr(
     absl::string_view hlo_text, absl::string_view expected_llvm_ir,
-    bool match_optimized_ir, bool run_optimization_passes) {
+    bool match_optimized_ir, bool run_optimization_passes,
+    bool match_ir_from_hlo_passes) {
   ASSIGN_OR_RETURN(std::unique_ptr<HloModule> hlo_module,
                    ParseAndReturnVerifiedModule(hlo_text));
   return CompileAndVerifyIr(std::move(hlo_module), expected_llvm_ir,
-                            match_optimized_ir, run_optimization_passes);
+                            match_optimized_ir, run_optimization_passes,
+                            match_ir_from_hlo_passes);
 }
 
 }  // namespace xla::gpu

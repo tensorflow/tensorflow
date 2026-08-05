@@ -31,6 +31,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "xla/backends/cpu/codegen/target_machine_features.h"
 #include "xla/backends/cpu/codegen/target_machine_test_base.h"
+#include "xla/backends/cpu/transforms/library_fusion_kinds.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -52,6 +53,25 @@ struct DotRewriteTestSpec {
   std::string features;
   std::string fusion_mode;
 };
+
+// Returns true if oneDNN matcher is available in the library matcher list.
+// If oneDNN Graph API is not enabled, this will always return false.
+inline bool IsOneDnnMatcherRegistered() {
+  static bool kIsOneDnnMatcherRegistered = []() {
+    std::unique_ptr<TargetMachineFeatures> dummy_features;
+    tsl::protobuf::RepeatedField<int> fusion_types;
+    fusion_types.Add(DebugOptions::LIBRARY_FUSION_TYPE_DOT);
+    LibraryRewriterOptions options = {
+        /*use_onednn=*/true,
+        /*use_ynnpack=*/false,
+        /*onednn_fusion_types=*/&fusion_types,
+        /*ynn_fusion_types=*/nullptr,
+    };
+    LibraryRewriter rewriter(dummy_features.get(), options);
+    return rewriter.IsLibraryRegistered(kOneDnnFusionKind);
+  }();
+  return kIsOneDnnMatcherRegistered;
+}
 
 class CpuLibraryTest : public TargetMachineTestBase {
  protected:
@@ -194,7 +214,11 @@ TEST_P(CpuLibraryFullParamTest, AddMatMul) {
   DotRewriteTestSpec spec = GetParam();
   FusionProperties expected = {HloOpcode::kDot, 0, 0, false};
   if (IsDotEnabledOnCPU()) {
-    expected = FusionProperties{HloOpcode::kDot, 3, 6, true};
+    // {Add, Add, Dot} for XNN, {Dot} for oneDNN.
+    // TODO(Intel-tf): Update expected values when fusion is supported.
+    expected = spec.lib != "onednn"
+                   ? FusionProperties{HloOpcode::kDot, 3, 6, true}
+                   : FusionProperties{HloOpcode::kDot, 2, 3, true};
   } else if (spec.fusion_mode == "greedy") {
     expected = FusionProperties{HloOpcode::kAdd, 2, 3, true};
   }
@@ -309,10 +333,7 @@ TEST_P(CpuLibraryFullParamTest, MatMulAddSubMulSameInputs) {
   DotRewriteTestSpec spec = GetParam();
   FusionProperties expected = {HloOpcode::kMultiply, 0, 0, false};
   if (IsDotEnabledOnCPU()) {
-    // {Dot, Add, Sub, Mul} for YNN, {Dot, Add} for oneDNN.
-    expected = spec.lib == "ynn"
-                   ? FusionProperties{HloOpcode::kMultiply, 3, 7, true}
-                   : FusionProperties{HloOpcode::kAdd, 3, 5, true};
+    expected = {HloOpcode::kMultiply, 3, 7, true};
   } else if (spec.fusion_mode == "greedy") {
     // Only Add, Sub, and Mul in the fusion.
     expected = {HloOpcode::kMultiply, 2, 5, true};
@@ -340,10 +361,7 @@ TEST_P(CpuLibraryFullParamTest, MatMulAddSubMulDifferentInputs) {
   DotRewriteTestSpec spec = GetParam();
   FusionProperties expected = {HloOpcode::kMultiply, 0, 0, false};
   if (IsDotEnabledOnCPU()) {
-    // {Dot, Add, Sub, Mul} for YNN, {Dot, Add} for oneDNN.
-    expected = spec.lib == "ynn"
-                   ? FusionProperties{HloOpcode::kMultiply, 5, 9, true}
-                   : FusionProperties{HloOpcode::kAdd, 3, 5, true};
+    expected = {HloOpcode::kMultiply, 5, 9, true};
   } else if (spec.fusion_mode == "greedy") {
     // Only Add, Sub, and Mul in the fusion.
     expected = {HloOpcode::kMultiply, 4, 7, true};
@@ -379,10 +397,7 @@ TEST_P(CpuLibraryFullParamTest, MatMulAddMinExpSort) {
   DotRewriteTestSpec spec = GetParam();
   FusionProperties expected = {HloOpcode::kExp, 0, 0, false};
   if (IsDotEnabledOnCPU()) {
-    // {Dot, Add, Min, Exp} for YNN, {Dot, Add} for oneDNN.
-    expected = spec.lib == "ynn"
-                   ? FusionProperties{HloOpcode::kExp, 4, 8, true}
-                   : FusionProperties{HloOpcode::kAdd, 3, 5, true};
+    expected = {HloOpcode::kExp, 4, 8, true};
   } else if (spec.fusion_mode == "greedy") {
     // Only {Add, Min, Exp} in the fusion.
     expected = {HloOpcode::kExp, 3, 6, true};
@@ -448,12 +463,12 @@ std::vector<DotRewriteTestSpec> GetDotRewriteTestSpecs() {
   // Don't test YNNPACK if we don't build with it.
   fusion_modes["ynn"] = {"dot", "greedy"};
 
-#if XLA_ONEDNN_USE_GRAPH_API
   // Don't test oneDNN if we don't build with it.
-  dtype_map[{"onednn", "sapphirerapids"}] = {
-      {"f32", "f32"}, {"bf16", "bf16"}, {"f16", "f16"}};
-  fusion_modes["onednn"] = {"dot"};
-#endif  // XLA_ONEDNN_USE_GRAPH_API
+  if (IsOneDnnMatcherRegistered()) {
+    dtype_map[{"onednn", "sapphirerapids"}] = {
+        {"f32", "f32"}, {"bf16", "bf16"}, {"f16", "f16"}};
+    fusion_modes["onednn"] = {"dot"};
+  }
 
   std::vector<DotRewriteTestSpec> specs;
   for (auto& [lib_cpu, dtype_pairs] : dtype_map) {
@@ -595,8 +610,7 @@ TEST_P(CpuLibraryFusionTypeTest, JoiningFusions) {
   }
 }
 
-// TODO(penporn): Re-enable this test when YNNPACK supports reduce.
-TEST_P(CpuLibraryFusionTypeTest, DISABLED_Reduce) {
+TEST_P(CpuLibraryFusionTypeTest, Reduce) {
   const absl::string_view hlo_template = R"(
     HloModule reduce
 
@@ -623,6 +637,68 @@ INSTANTIATE_TEST_SUITE_P(CpuLibraryFusionTypeTestSuite,
                                               std::string("greedy"),
                                               std::string("reduce")}),
                          CpuLibraryFusionTypeTest::Name);
+
+TEST_F(CpuLibraryTest, Iota) {
+  const absl::string_view hlo_template = R"(
+    HloModule iota
+
+    ENTRY main {
+      %iota = f32[64,64] iota(), iota_dimension=1
+      %a = f32[64,64] parameter(0)
+      ROOT %add = f32[64,64] add(%iota, %a)
+    })";
+
+  DotRewriteTestSpec spec = GetDefaultTestSpec();
+  spec.fusion_mode = "greedy";
+  RunTestInternal(spec, hlo_template,
+                  FusionProperties{HloOpcode::kAdd, 1, 3, true});
+}
+
+TEST_F(CpuLibraryTest, ReduceSquare) {
+  const absl::string_view hlo_template = R"(
+    HloModule reduce_square
+
+    reducer_add {
+      lhs = $in_dtype[] parameter(0)
+      rhs = $in_dtype[] parameter(1)
+      ROOT sum = $in_dtype[] add(lhs, rhs)
+    }
+
+    ENTRY main {
+      input = $in_dtype[64,64]{1,0} parameter(0)
+      square = $in_dtype[64,64]{1,0} multiply(input, input)
+      c = $in_dtype[] constant(0)
+      ROOT output = $in_dtype[64]{0} reduce(square, c), dimensions={1}, to_apply=reducer_add
+    }
+    )";
+  DotRewriteTestSpec spec = GetDefaultTestSpec();
+  spec.fusion_mode = "reduce";
+  RunTestInternal(spec, hlo_template, {HloOpcode::kReduce, 1, 4, true});
+}
+
+TEST_F(CpuLibraryTest, ReduceSquareConvert) {
+  const absl::string_view hlo_template = R"(
+    HloModule reduce_square_convert
+
+    reducer_add {
+      lhs = f32[] parameter(0)
+      rhs = f32[] parameter(1)
+      ROOT sum = f32[] add(lhs, rhs)
+    }
+
+    ENTRY main {
+      input = bf16[64,64]{1,0} parameter(0)
+      convert = f32[64,64]{1,0} convert(input)
+      square = f32[64,64]{1,0} multiply(convert, convert)
+      c = f32[] constant(0)
+      ROOT output = f32[64]{0} reduce(square, c), dimensions={1},
+          to_apply=reducer_add
+    }
+    )";
+  DotRewriteTestSpec spec = GetDefaultTestSpec();
+  spec.fusion_mode = "reduce";
+  RunTestInternal(spec, hlo_template, {HloOpcode::kReduce, 1, 5, true});
+}
 
 TEST_F(CpuLibraryTest, RetryFusion) {
   //   p0 -> A (abs) -> B (add) -> C (dot) -> E (add)
@@ -713,38 +789,6 @@ TEST_F(CpuLibraryTest, SingleDotFusion) {
                   FusionProperties{HloOpcode::kDot, 2, 3, true});
 }
 
-TEST_F(CpuLibraryTest, NoHugeFusions) {
-  // A long chain of absolutes then a dot.
-  const absl::string_view hlo_template = R"(
-    HloModule matmul
-
-    ENTRY %main {
-      %a = $in_dtype[64,64] parameter(0)
-      %b = $in_dtype[64,64] parameter(1)
-      %abs0 = $in_dtype[64,64] abs(%a)
-      $absolutes
-      ROOT %dot = $in_dtype[64,64] dot(%abs$num_absolutes, %b),
-                  lhs_contracting_dims={1}, rhs_contracting_dims={0}
-    })";
-
-  constexpr int kNumAbsolutes = kMaxInstructionsInFusion * 2;
-  std::string absolutes = "";
-  for (int i = 1; i < kNumAbsolutes; ++i) {
-    absl::StrAppend(
-        &absolutes,
-        absl::StrFormat("%%abs%d = $in_dtype[64,64] abs(%%abs%d)\n", i, i - 1));
-  }
-
-  DotRewriteTestSpec spec = GetDefaultTestSpec();
-  spec.fusion_mode = "dot";
-  std::string hlo = absl::StrReplaceAll(
-      hlo_template, {{"$absolutes", absolutes},
-                     {"$num_absolutes", absl::StrCat(kNumAbsolutes - 1)}});
-  RunTestInternal(
-      spec, hlo,
-      FusionProperties{HloOpcode::kDot, 2, kMaxInstructionsInFusion, true});
-}
-
 TEST_F(CpuLibraryTest, DoubleUseFusion) {
   const absl::string_view hlo = R"(
     HloModule m
@@ -773,6 +817,109 @@ TEST_F(CpuLibraryTest, DoubleUseFusion) {
   spec.fusion_mode = "dot";
   RunTestInternal(spec, hlo, FusionProperties{HloOpcode::kDot, 1, 4, true});
 }
+
+class CpuLibraryFusionLimitTest
+    : public CpuLibraryTest,
+      public ::testing::WithParamInterface<DotRewriteTestSpec> {
+ public:
+  static std::string Name(
+      const ::testing::TestParamInfo<DotRewriteTestSpec>& info) {
+    return absl::StrCat(info.param.lib, "_", info.param.fusion_mode, "_",
+                        info.param.in_dtype, "_", info.param.out_dtype, "_",
+                        info.param.cpu_name);
+  }
+
+ protected:
+  void RunTest(absl::string_view hlo_template,
+               FusionProperties expected) override {
+    RunTestInternal(GetParam(), hlo_template, expected);
+  }
+};
+
+TEST_P(CpuLibraryFusionLimitTest, NoHugeFusions) {
+  // A long chain of absolutes then a dot.
+  const absl::string_view hlo_template = R"(
+    HloModule matmul
+
+    ENTRY %main {
+      %a = $in_dtype[640,640] parameter(0)
+      %b = $in_dtype[640,640] parameter(1)
+      %dot = $in_dtype[640,640] dot(%a, %b),
+             lhs_contracting_dims={1}, rhs_contracting_dims={0}
+      %abs0 = $in_dtype[640,640] abs(%dot)
+      $absolutes
+      ROOT %absout = $in_dtype[640,640] abs(%abs$num_absolutes)
+    })";
+
+  DotRewriteTestSpec spec = GetParam();
+  int lib_fusion_limit = kMaxFusionSize;
+  if (spec.lib == "onednn") {
+    lib_fusion_limit = kMaxOneDnnFusionSize;
+  }
+  int num_absolutes = lib_fusion_limit * 2;
+  std::string absolutes = "";
+  for (int i = 1; i < num_absolutes; ++i) {
+    absl::StrAppend(
+        &absolutes,
+        absl::StrFormat("%%abs%d = $in_dtype[640,640] abs(%%abs%d)\n", i,
+                        i - 1));
+  }
+
+  std::string hlo = absl::StrReplaceAll(
+      hlo_template, {{"$absolutes", absolutes},
+                     {"$num_absolutes", absl::StrCat(num_absolutes - 1)}});
+  RunTestInternal(spec, hlo,
+                  FusionProperties{HloOpcode::kAbs, 2, lib_fusion_limit, true});
+}
+
+TEST_P(CpuLibraryFusionLimitTest, MultiDotFusionHandling) {
+  DotRewriteTestSpec spec = GetParam();
+  if (spec.fusion_mode != "dot") {
+    GTEST_SKIP() << "This regression is specific to dot fusion mode.";
+  }
+
+  const absl::string_view hlo_template = R"(
+    HloModule matmul
+
+    ENTRY %main {
+      %a = $in_dtype[640,640]{1,0} parameter(0)
+      %b = $in_dtype[640,640]{1,0} parameter(1)
+      %c = $out_dtype[640,640]{1,0} parameter(2)
+      %d = $out_dtype[640,640]{1,0} parameter(3)
+      %dot1 = $out_dtype[640,640]{1,0} dot(%a, %b),
+              lhs_contracting_dims={1}, rhs_contracting_dims={0}
+      %add = $out_dtype[640,640]{1,0} add(%dot1, %c)
+      ROOT %dot2 = $out_dtype[640,640]{1,0} dot(%add, %d),
+              lhs_contracting_dims={1}, rhs_contracting_dims={0}
+    })";
+
+  // oneDNN only supports single dot in a fusion, with the above module, dot1
+  // will fuse with add, but dot2 will be in a separate fusion which is being
+  // validated in RunTestInternal.
+  FusionProperties expected =
+      (spec.lib == "onednn") ? FusionProperties{HloOpcode::kDot, 2, 3, true}
+                             : FusionProperties{HloOpcode::kDot, 4, 7, true};
+  RunTestInternal(spec, hlo_template, expected);
+}
+
+std::vector<DotRewriteTestSpec> GetFusionLimitTestSpecs() {
+  std::vector<DotRewriteTestSpec> specs;
+  specs.push_back(
+      DotRewriteTestSpec{"ynn", "f32", "f32", "znver3", "+avx,+avx2", "dot"});
+  // Don't test oneDNN if we don't build with it.
+  if (IsOneDnnMatcherRegistered()) {
+    specs.push_back(DotRewriteTestSpec{
+        "onednn", "f32", "f32", "sapphirerapids",
+        "+avx512vnni,+avx512bf16,+amx-bf16,+avx512fp16,+amx-int8,+amx-tile",
+        "dot"});
+  }
+  return specs;
+}
+
+INSTANTIATE_TEST_SUITE_P(CpuLibraryFusionLimitTestSuite,
+                         CpuLibraryFusionLimitTest,
+                         ::testing::ValuesIn(GetFusionLimitTestSpecs()),
+                         CpuLibraryFusionLimitTest::Name);
 
 }  // namespace
 }  // namespace xla::cpu

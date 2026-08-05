@@ -458,7 +458,7 @@ absl::Status BlasLt::MatmulPlan::ExecuteOnStream(
     blas::ProfileResult* profile_result) const {
   if (!algorithm_.has_value()) {
     return absl::InternalError(
-        "Algorithm must be set before calling DoMatMul!");
+        "Algorithm must be set before calling ExecuteOnStream!");
   }
   DeviceAddressBase a = args.a, b = args.b;
   DeviceAddressBase a_scale = args.a_scale, b_scale = args.b_scale;
@@ -474,21 +474,20 @@ absl::Status BlasLt::MatmulPlan::ExecuteOnStream(
   }
 
   void* workspace_addr = nullptr;
-  uint64_t workspace_size = algorithm_->workspace_size;
-  if (workspace_size > 0) {
+  uint64_t workspace_size = workspace_size_;
+  if (workspace_size_ > 0) {
     if (args.scratch_allocator != nullptr) {
       ASSIGN_OR_RETURN(DeviceAddress<uint8_t> alloc,
-                       args.scratch_allocator->AllocateBytes(workspace_size));
+                       args.scratch_allocator->AllocateBytes(workspace_size_));
       workspace_addr = gpu::GpuMemoryMutable(&alloc);
     } else {
       workspace_addr = args.workspace.opaque();
       size_t new_size = args.workspace.size();
-      TF_RET_CHECK(workspace_addr != nullptr && new_size >= workspace_size);
+      TF_RET_CHECK(workspace_addr != nullptr && new_size >= workspace_size_);
       workspace_size = new_size;
     }
   }
 
-  auto palgo = std::any_cast<cublasLtMatmulAlgo_t>(&algorithm_->opaque_algo);
   {
     absl::MutexLock lock(blas_lt_.mu_);
     TF_RET_CHECK(blas_lt_.handle_.get() != nullptr);
@@ -557,22 +556,19 @@ absl::Status BlasLt::MatmulPlan::ExecuteOnStream(
         blas_lt_.executor_->Activate();
 
     void* c_ptr = zero_beta_ ? nullptr : args.c.opaque();
-    if (palgo != nullptr) {
-      SE_CUBLAS_RETURN_IF_ERROR(cublasLtMatmul(
-          blas_lt_.handle_.get(), op_desc_.get(), &alpha_[0], a.opaque(),
-          a_desc_.get(), b.opaque(), b_desc_.get(), &beta_[0], c_ptr,
-          c_desc_.get(), args.d.opaque(), d_desc_.get(), palgo, workspace_addr,
-          workspace_size,
-          absl::bit_cast<CUstream>(stream->platform_specific_handle().stream)));
-    } else {
-      return absl::InternalError("cublaslt: Invalid algorithm type");
-    }
+    SE_CUBLAS_RETURN_IF_ERROR(cublasLtMatmul(
+        blas_lt_.handle_.get(), op_desc_.get(), &alpha_[0], a.opaque(),
+        a_desc_.get(), b.opaque(), b_desc_.get(), &beta_[0], c_ptr,
+        c_desc_.get(), args.d.opaque(), d_desc_.get(), &algorithm_.value(),
+        workspace_addr, workspace_size,
+        absl::bit_cast<CUstream>(stream->platform_specific_handle().stream)));
   }
 
   if (profile_result != nullptr) {
     ASSIGN_OR_RETURN(absl::Duration elapsed, timer->GetElapsedDuration());
     // set algorithm ID to be unique (otherwise it gets kDefaultAlgorithm ID)
-    profile_result->set_algorithm(reinterpret_cast<blas::AlgorithmType>(palgo));
+    profile_result->set_algorithm(
+        reinterpret_cast<blas::AlgorithmType>(&algorithm_.value()));
     profile_result->set_is_valid(true);
     profile_result->set_elapsed_time_in_ms(absl::ToDoubleMilliseconds(elapsed));
   }

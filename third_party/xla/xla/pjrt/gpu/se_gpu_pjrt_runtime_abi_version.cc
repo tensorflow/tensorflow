@@ -23,7 +23,7 @@ limitations under the License.
 #include "xla/tsl/platform/status_macros.h"
 #include "xla/pjrt/pjrt_abi_version.h"
 #include "xla/pjrt/proto/pjrt_abi_version.pb.h"
-#include "xla/pjrt/stream_executor_pjrt_abi_version.h"
+#include "xla/pjrt/se/stream_executor_pjrt_abi_version.h"
 #include "xla/stream_executor/abi/runtime_abi_version.h"
 #include "xla/stream_executor/abi/runtime_abi_version.pb.h"
 #include "xla/stream_executor/abi/runtime_abi_version_resolver.h"

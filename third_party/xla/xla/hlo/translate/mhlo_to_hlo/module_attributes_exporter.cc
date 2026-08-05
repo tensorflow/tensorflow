@@ -31,8 +31,6 @@ limitations under the License.
 #include "xla/mlir_hlo/utils/unregistered_attributes.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_module_config.h"
-#include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
 
 #define DEBUG_TYPE "hlo-translate"

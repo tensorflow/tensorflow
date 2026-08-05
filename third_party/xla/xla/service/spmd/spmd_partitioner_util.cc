@@ -3524,11 +3524,8 @@ DynamicUpdateSliceAnalysis AnalyzeDynamicUpdateSlice(
     }
 
     if (hlo->operand(i + 2)->IsConstant()) {
-      const PrimitiveType elemType =
-          hlo->operand(i + 2)->shape().element_type();
       int64_t start_index =
-          elemType == S64 ? hlo->operand(i + 2)->literal().Get<int64_t>({})
-                          : hlo->operand(i + 2)->literal().Get<int>({});
+          hlo->operand(i + 2)->literal().GetIntegralAsS64({}).value();
       int64_t end_index = start_index + slice_size - 1;
 
       int64_t per_partition_size =

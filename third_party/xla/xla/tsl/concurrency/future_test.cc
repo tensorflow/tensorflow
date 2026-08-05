@@ -1005,6 +1005,23 @@ TEST(FutureTest, JoinErrors) {
   EXPECT_EQ(join_two.Await(), absl::InternalError("error #0"));
 }
 
+TEST(FutureTest, JoinInvalid) {
+  auto [promise0, future0] = MakePromise();
+  auto [promise1, future1] = MakePromise();
+
+  std::vector<Future<>> futures0 = {future0, {}};
+  std::vector<Future<>> futures1 = {future0, {}, future1};
+
+  auto join_one = JoinFutures(futures0);
+  EXPECT_FALSE(join_one.IsValid());
+
+  auto join_two = JoinFutures(futures1);
+  EXPECT_FALSE(join_two.IsValid());
+
+  promise0.Set();
+  promise1.Set();
+}
+
 TEST(FutureTest, JoinCopyableFutures) {
   auto [promise0, future0] = MakePromise<int32_t>();
   auto [promise1, future1] = MakePromise<int32_t>();
@@ -1154,6 +1171,16 @@ TEST(FutureTest, JoinStaticallyError) {
   promise0.Set(absl::InternalError("error0"));
   promise1.Set(absl::InternalError("error1"));
   EXPECT_EQ(joined.Await().status(), absl::InternalError("error0"));
+}
+
+TEST(FutureTest, JoinStaticallyInvalid) {
+  auto [promise, future] = MakePromise<int32_t>();
+
+  Future<std::tuple<int32_t, int32_t>> joined =
+      JoinFutures(future, tsl::Future<int32_t>());
+  EXPECT_FALSE(joined.IsValid());
+
+  promise.Set(absl::InternalError("error0"));
 }
 
 TEST(FutureTest, JoinStaticallyToCustomType) {
@@ -1726,6 +1753,36 @@ TEST(FutureTest, DetachStatefulOnThreadPoolExecutor) {
 
   EXPECT_EQ(JoinFutures(mapped).Await(), absl::OkStatus());
   EXPECT_EQ(counter, 100);
+}
+
+TEST(PromiseOnceTest, SetMultipleTimes) {
+  auto [promise, future] = MakePromiseOnce();
+
+  EXPECT_TRUE(promise.Set(absl::OkStatus()));
+  EXPECT_FALSE(promise.Set());
+  EXPECT_FALSE(promise.Set(absl::InternalError("error")));
+
+  EXPECT_OK(future.Await());
+  EXPECT_OK(promise.future().Await());
+}
+
+TEST(PromiseOnceTest, MoveOnly) {
+  auto [promise, future] = MakePromiseOnce<std::unique_ptr<int32_t>>();
+
+  EXPECT_TRUE(promise.Set(std::make_unique<int32_t>(42)));
+  EXPECT_FALSE(promise.Set(std::make_unique<int32_t>(43)));
+
+  EXPECT_THAT(future.Await(), IsOkAndHolds(Pointee(42)));
+}
+
+TEST(PromiseOnceTest, Copyable) {
+  auto [promise, future] = MakePromiseOnce<int32_t>();
+
+  EXPECT_TRUE(promise.Set(42));
+  EXPECT_FALSE(promise.Set(43));
+
+  EXPECT_THAT(future.Await(), IsOkAndHolds(42));
+  EXPECT_THAT(promise.future().Await(), IsOkAndHolds(42));
 }
 
 //===----------------------------------------------------------------------===//

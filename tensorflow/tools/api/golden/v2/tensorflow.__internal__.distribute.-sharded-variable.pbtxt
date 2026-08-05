@@ -4,30 +4,178 @@ tf_class {
   is_instance: "<class \'tensorflow.python.distribute.sharded_variable.ShardedVariableMixin\'>"
   is_instance: "<class \'tensorflow.python.trackable.base.Trackable\'>"
   is_instance: "<class \'tensorflow.python.framework.composite_tensor.CompositeTensor\'>"
-  is_instance: "<type \'object\'>"
+  is_instance: "<class \'object\'>"
   member {
     name: "dtype"
-    mtype: "<type \'property\'>"
+    mtype: "<class \'property\'>"
   }
   member {
     name: "is_sharded_variable"
-    mtype: "<type \'property\'>"
+    mtype: "<class \'property\'>"
   }
   member {
     name: "name"
-    mtype: "<type \'property\'>"
+    mtype: "<class \'property\'>"
   }
   member {
     name: "shape"
-    mtype: "<type \'property\'>"
+    mtype: "<class \'property\'>"
   }
   member {
     name: "variables"
-    mtype: "<type \'property\'>"
+    mtype: "<class \'property\'>"
+  }
+  member_method {
+    name: "__abs__"
+    argspec: "args=[\'v\'], varargs=args, keywords=kwargs, defaults=None"
+  }
+  member_method {
+    name: "__add__"
+    argspec: "args=[\'v\'], varargs=args, keywords=kwargs, defaults=None"
+  }
+  member_method {
+    name: "__and__"
+    argspec: "args=[\'v\'], varargs=args, keywords=kwargs, defaults=None"
+  }
+  member_method {
+    name: "__div__"
+    argspec: "args=[\'v\'], varargs=args, keywords=kwargs, defaults=None"
+  }
+  member_method {
+    name: "__eq__"
+    argspec: "args=[\'v\'], varargs=args, keywords=kwargs, defaults=None"
+  }
+  member_method {
+    name: "__floordiv__"
+    argspec: "args=[\'v\'], varargs=args, keywords=kwargs, defaults=None"
+  }
+  member_method {
+    name: "__ge__"
+    argspec: "args=[\'v\'], varargs=args, keywords=kwargs, defaults=None"
+  }
+  member_method {
+    name: "__getitem__"
+    argspec: "args=[\'self\', \'slice_spec\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "__gt__"
+    argspec: "args=[\'v\'], varargs=args, keywords=kwargs, defaults=None"
   }
   member_method {
     name: "__init__"
     argspec: "args=[\'self\', \'variables\', \'name\'], varargs=None, keywords=None, defaults=[\'ShardedVariable\'], "
+  }
+  member_method {
+    name: "__invert__"
+    argspec: "args=[\'v\'], varargs=args, keywords=kwargs, defaults=None"
+  }
+  member_method {
+    name: "__iter__"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "__le__"
+    argspec: "args=[\'v\'], varargs=args, keywords=kwargs, defaults=None"
+  }
+  member_method {
+    name: "__lt__"
+    argspec: "args=[\'v\'], varargs=args, keywords=kwargs, defaults=None"
+  }
+  member_method {
+    name: "__matmul__"
+    argspec: "args=[\'v\'], varargs=args, keywords=kwargs, defaults=None"
+  }
+  member_method {
+    name: "__mod__"
+    argspec: "args=[\'v\'], varargs=args, keywords=kwargs, defaults=None"
+  }
+  member_method {
+    name: "__mul__"
+    argspec: "args=[\'v\'], varargs=args, keywords=kwargs, defaults=None"
+  }
+  member_method {
+    name: "__ne__"
+    argspec: "args=[\'v\'], varargs=args, keywords=kwargs, defaults=None"
+  }
+  member_method {
+    name: "__neg__"
+    argspec: "args=[\'v\'], varargs=args, keywords=kwargs, defaults=None"
+  }
+  member_method {
+    name: "__or__"
+    argspec: "args=[\'v\'], varargs=args, keywords=kwargs, defaults=None"
+  }
+  member_method {
+    name: "__pow__"
+    argspec: "args=[\'v\'], varargs=args, keywords=kwargs, defaults=None"
+  }
+  member_method {
+    name: "__radd__"
+    argspec: "args=[\'v\'], varargs=args, keywords=kwargs, defaults=None"
+  }
+  member_method {
+    name: "__rand__"
+    argspec: "args=[\'v\'], varargs=args, keywords=kwargs, defaults=None"
+  }
+  member_method {
+    name: "__rdiv__"
+    argspec: "args=[\'v\'], varargs=args, keywords=kwargs, defaults=None"
+  }
+  member_method {
+    name: "__rfloordiv__"
+    argspec: "args=[\'v\'], varargs=args, keywords=kwargs, defaults=None"
+  }
+  member_method {
+    name: "__rmatmul__"
+    argspec: "args=[\'v\'], varargs=args, keywords=kwargs, defaults=None"
+  }
+  member_method {
+    name: "__rmod__"
+    argspec: "args=[\'v\'], varargs=args, keywords=kwargs, defaults=None"
+  }
+  member_method {
+    name: "__rmul__"
+    argspec: "args=[\'v\'], varargs=args, keywords=kwargs, defaults=None"
+  }
+  member_method {
+    name: "__ror__"
+    argspec: "args=[\'v\'], varargs=args, keywords=kwargs, defaults=None"
+  }
+  member_method {
+    name: "__rpow__"
+    argspec: "args=[\'v\'], varargs=args, keywords=kwargs, defaults=None"
+  }
+  member_method {
+    name: "__rsub__"
+    argspec: "args=[\'v\'], varargs=args, keywords=kwargs, defaults=None"
+  }
+  member_method {
+    name: "__rtruediv__"
+    argspec: "args=[\'v\'], varargs=args, keywords=kwargs, defaults=None"
+  }
+  member_method {
+    name: "__rxor__"
+    argspec: "args=[\'v\'], varargs=args, keywords=kwargs, defaults=None"
+  }
+  member_method {
+    name: "__sub__"
+    argspec: "args=[\'v\'], varargs=args, keywords=kwargs, defaults=None"
+  }
+  member_method {
+    name: "__tf_experimental_restore_capture__"
+    argspec: "args=[\'self\', \'concrete_function\', \'internal_capture\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "__tf_tracing_type__"
+    argspec: "args=[\'self\', \'context\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "__truediv__"
+    argspec: "args=[\'v\'], varargs=args, keywords=kwargs, defaults=None"
+  }
+  member_method {
+    name: "__xor__"
+    argspec: "args=[\'v\'], varargs=args, keywords=kwargs, defaults=None"
   }
   member_method {
     name: "assign"

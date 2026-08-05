@@ -682,6 +682,12 @@ SymbolicExpr ParseSymbolicExpr(absl::string_view expr_str,
   return ParseSymbolicExprAndAdvance(&expr_str, mlir_context, num_dims);
 }
 
+SymbolicExpr ParseSymbolicExpr(
+    absl::string_view expr_str, mlir::MLIRContext* mlir_context,
+    const llvm::DenseMap<llvm::StringRef, SymbolicExpr>& variable_map) {
+  return ParseSymbolicExprAndAdvance(&expr_str, mlir_context, variable_map);
+}
+
 bool ParseSymbolicExprs(llvm::ArrayRef<std::string> dim_var_names,
                         llvm::ArrayRef<std::string> symbol_var_names,
                         llvm::ArrayRef<std::string> expr_strs,
@@ -699,9 +705,7 @@ bool ParseSymbolicExprs(llvm::ArrayRef<std::string> dim_var_names,
 
   symbolic_exprs.reserve(expr_strs.size());
   for (const auto& expr_str : expr_strs) {
-    absl::string_view str_view = expr_str;
-    SymbolicExpr expr =
-        ParseSymbolicExprAndAdvance(&str_view, mlir_context, variable_map);
+    SymbolicExpr expr = ParseSymbolicExpr(expr_str, mlir_context, variable_map);
     if (!expr) {
       llvm::errs() << "Failed to parse symbolic expression: " << expr_str
                    << "\n";

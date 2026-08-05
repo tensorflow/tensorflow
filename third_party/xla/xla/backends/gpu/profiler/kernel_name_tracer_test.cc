@@ -29,6 +29,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/ascii.h"
 #include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/gpu/runtime/command.h"
 #include "xla/backends/gpu/runtime/command_buffer_thunk.h"
@@ -184,7 +185,9 @@ void LaunchCommandBufferThunk(stream_executor::StreamExecutor* executor,
   BufferAllocations allocations({a, b, c}, 0, &allocator);
 
   Thunk::ExecuteParams params = Thunk::ExecuteParams::Create(
-      run_options, allocations, stream, stream, nullptr, nullptr, nullptr);
+      run_options, allocations, stream, stream, nullptr, nullptr, nullptr,
+      /*additional_compute_streams=*/{}, /*execution_scoped_state=*/nullptr,
+      /*persistent_alloc_indices=*/absl::Span<const BufferAllocation::Index>());
 
   // This is where we're getting the 'AddI32' kernel from.
   TF_ASSERT_OK_AND_ASSIGN(std::vector<uint8_t> fatbin,

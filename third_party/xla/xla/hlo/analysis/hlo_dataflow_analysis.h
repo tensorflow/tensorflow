@@ -109,11 +109,25 @@ class HloDataflowAnalysis {
   // shape index. CHECKs if the value set does not contain a exactly one value.
   const HloValue& GetUniqueValueAt(const HloInstruction* instruction,
                                    const ShapeIndex& index = {}) const {
-    return GetValueSet(instruction, index).GetUniqueValue();
+    const HloValueSet& value_set = GetValueSet(instruction, index);
+    if (value_set.values().size() != 1) {
+      LOG(FATAL) << "GetUniqueValueAt failed on instruction: "
+                 << instruction->name() << " at index " << index
+                 << " with value set size " << value_set.values().size() << ": "
+                 << value_set;
+    }
+    return value_set.GetUniqueValue();
   }
   HloValue& GetUniqueValueAt(const HloInstruction* instruction,
                              const ShapeIndex& index = {}) {
-    return GetValue(GetValueSet(instruction, index).GetUniqueValue().id());
+    const HloValueSet& value_set = GetValueSet(instruction, index);
+    if (value_set.values().size() != 1) {
+      LOG(FATAL) << "GetUniqueValueAt failed on instruction: "
+                 << instruction->name() << " at index " << index
+                 << " with value set size " << value_set.values().size() << ": "
+                 << value_set;
+    }
+    return GetValue(value_set.GetUniqueValue().id());
   }
 
   // Returns the HloValue with the given Id.
@@ -254,6 +268,15 @@ class HloDataflowAnalysis {
   bool UpdateAsyncStartValueSet(HloInstruction* async_start);
   bool UpdateAsyncUpdateValueSet(HloInstruction* async_update);
   bool UpdateAsyncDoneValueSet(HloInstruction* async_done);
+  // Updates the value set at `operand_index` with the value set of
+  // `operand` for the async_op in the async chain (only for
+  // async-start/async-update).
+  bool UpdateAsyncChainOperandValueSet(HloInstruction* async_op,
+                                       int64_t operand_index,
+                                       const HloInstruction* operand);
+  // Updates the value set for element {1} of the async operation's output,
+  // which corresponds to the wrapped computation's root.
+  bool UpdateAsyncChainOutputValueSet(HloInstruction* async_op);
   bool UpdateCopyStartValueSet(HloInstruction* copy_start);
   bool UpdateCopyDoneValueSet(HloInstruction* copy_done);
   bool UpdateOptimizationBarrierValueSet(HloInstruction* barrier);

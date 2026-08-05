@@ -17,7 +17,9 @@ limitations under the License.
 #define XLA_SERVICE_GPU_GPU_LATENCY_HIDING_SCHEDULER_H_
 
 #include <cstdint>
+#include <optional>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/hlo_cost_analysis.h"
@@ -46,6 +48,16 @@ bool GpuScheduleCrossesOverlapLimit(
     const DefaultSchedulerCore::SchedulingState& sched_state,
     const HloGraphNode* node);
 
+// Returns true while an async device-to-device memcpy is in flight.
+bool IsGpuD2DOverlapWindowOpen(
+    const DefaultSchedulerCore::SchedulingState& sched_state);
+
+// GPU scheduling rule that prefers compute-bound work while an async
+// device-to-device memcpy is in flight.
+std::optional<DefaultSchedulerCore::CandidateResult>
+GpuD2DOverlapSchedulingRule(DefaultSchedulerCore::ScheduleCandidate& a,
+                            DefaultSchedulerCore::ScheduleCandidate& b);
+
 // GPU specific resources for latency hiding scheduler.
 //
 // We use two different set of resources to model the scheduling of asynchronous
@@ -64,7 +76,7 @@ enum class GpuResourceType {
   kGpuAsyncStreamRecv1,        // Another resource for P2P Recv operation.
   kGpuAsyncStreamCollectives,  // The resource for collective operations.
   kGpuAsyncStreamComputes,     // The resource for async compute operations.
-  kGpuAsyncStreamMemcpy,       // The resource for host offloading operations.
+  kGpuAsyncStreamMemcpy,       // The resource for async memcpy operations.
   kGpuResourceTypeEnd,
 };
 
@@ -118,6 +130,10 @@ class GpuAsyncTracker : public GpuAsyncTrackerBase {
   // this instruction.
   int64_t GetNumResourcesPerInstruction(
       int64_t resource_type, const HloInstruction& instr) const override;
+
+  // Returns a map of resource counts used by this instruction.
+  absl::flat_hash_map<int64_t, int64_t> GetNumResourcesPerInstruction(
+      const HloInstruction& instr) const override;
 };
 
 // GPU approximate latency estimator. It is a set of hardcoded heuristics

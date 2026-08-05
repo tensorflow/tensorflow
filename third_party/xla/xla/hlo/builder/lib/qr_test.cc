@@ -28,6 +28,7 @@ limitations under the License.
 #include "xla/hlo/testlib/test.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
+#include "xla/service/hlo_runner_interface.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tests/client_library_test_runner_mixin.h"
@@ -136,7 +137,10 @@ TEST_F(QrTest, SimpleBatched) {
 }
 
 TEST_F(QrTest, SubnormalComplex) {
-  if (IsRocm()) {  // TODO: remove when hipblaslt get full support for c64
+  if (test_runner().HasProperty(
+          HloRunnerPropertyTag::kUsingGpuRocm)) {  // TODO: remove when
+                                                   // hipblaslt get full support
+                                                   // for c64
     GTEST_SKIP() << "C64 support is not yet available in ROCm";
   }
   // Verifies that we don't get NaNs in the case that the norm of a complex

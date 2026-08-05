@@ -63,6 +63,7 @@ limitations under the License.
 #include "xla/tsl/platform/env.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
+#include "triton/Version.h"
 
 namespace xla {
 namespace gpu {
@@ -264,15 +265,8 @@ TritonBackend::GetOverriddenConfigs(const HloInstruction* instr) {
 
 absl::StatusOr<std::unique_ptr<BackendConfig>> TritonBackend::GetDefaultConfig(
     const HloInstruction& instr) {
-  ASSIGN_OR_RETURN(std::vector<std::unique_ptr<BackendConfig>> configs,
-                   GetSupportedConfigs(instr));
-
-  if (configs.empty()) {
-    return absl::InvalidArgumentError(
-        absl::StrCat("TritonBackend has no supported configs for '",
-                     instr.name(), "' instruction"));
-  }
-  return std::move(configs[0]);
+  return absl::UnimplementedError(
+      "TritonBackend does not support a default config.");
 }
 
 absl::Status TritonBackend::ApplyConfig(HloInstruction& instr,
@@ -356,10 +350,14 @@ bool TritonBackend::IsSupported(const HloInstruction& instr) {
             ->config()
             .debug_options()
             .xla_gpu_experimental_enable_tiling_propagation()) {
-      std::unique_ptr<experimental::TilingSpace> ts =
+      auto ts =
           experimental::TilingSpace::Create(*fusion_adaptor, mlir_context_);
+      if (!ts.ok()) {
+        VLOG(1) << "Failed to create tiling space: " << ts.status().message();
+        return false;
+      }
       auto tiled_computation_or = experimental::TiledHloComputation::Tile(
-          *fusion_adaptor, std::move(ts));
+          *fusion_adaptor, std::move(ts.value()));
       if (!tiled_computation_or.ok()) {
         VLOG(1) << "Fusion is not tileable with experimental tiling: "
                 << tiled_computation_or.status().message();
@@ -385,6 +383,8 @@ bool TritonBackend::IsSupported(const HloInstruction& instr) {
   return backend_config.kind() == kCuDnnFusionKind ||
          backend_config.kind() == kCustomFusionKind;
 }
+
+std::string TritonBackend::version() const { return TRITON_VERSION; }
 
 }  // namespace gpu
 }  // namespace xla

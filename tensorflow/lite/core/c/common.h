@@ -356,6 +356,8 @@ typedef enum TfLiteQuantizationType {
   kTfLiteAffineQuantization = 1,
   /// Blockwise quantization.
   kTfLiteBlockwiseQuantization = 2,
+  /// Multi-axis quantization.
+  kTfLiteMultiAxisQuantization = 3,
 } TfLiteQuantizationType;
 
 /// Structure specifying the quantization used by the tensor, if-any.
@@ -394,6 +396,16 @@ typedef struct TfLiteBlockwiseQuantization {
   int32_t blocksize;
   int32_t quantized_dimension;
 } TfLiteBlockwiseQuantization;
+
+/// Parameters for multi-axis quantization. The scales and zero_points fields
+/// refer to tensor indices in the same subgraph. If zero_points is -1, zero
+/// point is assumed to be 0. For per-channel quantization, blocksize is 0.
+typedef struct TfLiteMultiAxisQuantization {
+  int32_t scales;
+  int32_t zero_points;
+  int32_t blocksize;
+  TfLiteIntArray* quantized_dimensions;
+} TfLiteMultiAxisQuantization;
 
 /// A union of pointers that points to memory for a given tensor.
 ///

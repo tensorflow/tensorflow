@@ -27,9 +27,13 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/time/time.h"
 #include "xla/tsl/platform/status_macros.h"
+#include "xla/backends/gpu/runtime/all_reduce.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/collective_utils.h"
+#include "xla/service/gpu/model/gpu_collective_performance_model.h"
+#include "xla/service/gpu/model/gpu_performance_model_base.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/stream_executor/gpu/all_reduce_kernel.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/xla.pb.h"
 
@@ -56,6 +60,11 @@ static auto& device_to_cfg =
                 absl::Microseconds(68.89f * kDefaultNcclCostModelCoeff),
                 /*gpus_per_node=*/8,
                 /*chunk_size_bytes=*/kDefaultNcclCostModelChunkSizeBytes,
+                /*partition_size=*/0,
+                // nvlink_bw_per_lane_gbps is filled dynamically in
+                // GetPlatformConfig via GetIciBandwidthPerLaneGbps.
+                /*nvlink_bw_per_lane_gbps=*/0.0,
+                /*nvlink_barrier_latency=*/absl::Nanoseconds(1500),
             },
         },
         {
@@ -71,6 +80,9 @@ static auto& device_to_cfg =
                 absl::Microseconds(46.67f * kDefaultNcclCostModelCoeff),
                 /*gpus_per_node=*/8,
                 /*chunk_size_bytes=*/kDefaultNcclCostModelChunkSizeBytes,
+                /*partition_size=*/0,
+                /*nvlink_bw_per_lane_gbps=*/0.0,
+                /*nvlink_barrier_latency=*/absl::Microseconds(1),
             },
         },
         {
@@ -86,6 +98,9 @@ static auto& device_to_cfg =
                 absl::Microseconds(68.89f * kDefaultNcclCostModelCoeff),
                 /*gpus_per_node=*/8,
                 /*chunk_size_bytes=*/kDefaultNcclCostModelChunkSizeBytes,
+                /*partition_size=*/0,
+                /*nvlink_bw_per_lane_gbps=*/0.0,
+                /*nvlink_barrier_latency=*/absl::Nanoseconds(1500),
             },
         },
     }));
@@ -99,13 +114,32 @@ int NumRounds(const SolGPUCostModel::CollectiveType& coll_type) {
 SolGPUCostModel::Config GetPlatformConfig(
     const se::DeviceDescription& device_info) {
   std::string key = device_info.name();
+  SolGPUCostModel::Config config;
   if (!device_to_cfg.contains(key)) {
     VLOG(1) << "No SoL config found for device: " << device_info.name()
             << ". Using default config.";
-    return device_to_cfg[kUnknownKey];
+    config = device_to_cfg[kUnknownKey];
+  } else {
+    VLOG(2) << "[SoL] Using config for device: " << device_info.name();
+    config = device_to_cfg[key];
   }
-  VLOG(2) << "[SoL] Using config for device: " << device_info.name();
-  return device_to_cfg[key];
+  // Populate NVLink bandwidth from CudaBandwidthSettings /
+  // RocmBandwidthSettings so that it stays consistent with the NCCL collective
+  // cost model.
+  absl::StatusOr<double> nvlink_bw =
+      GpuPerformanceWithCollectiveModel::GetIciBandwidthPerLaneGbps(
+          device_info);
+  if (nvlink_bw.ok()) {
+    config.nvlink_bw_per_lane_gbps = *nvlink_bw;
+  } else {
+    LOG(WARNING) << "[SoL] Could not determine NVLink bandwidth per lane: "
+                 << nvlink_bw.status()
+                 << ". NVLink-based cost estimates will be unavailable.";
+    config.nvlink_bw_per_lane_gbps = 0.0;
+  }
+  VLOG(2) << "[SoL] NVLink bw per lane: " << config.nvlink_bw_per_lane_gbps
+          << " GB/s, barrier: " << config.nvlink_barrier_latency;
+  return config;
 }
 
 }  // namespace
@@ -260,6 +294,67 @@ absl::StatusOr<int> SolGPUCostModel::NumGpusPerComm(
                      xla_flag_config_.gpus_per_node));
   }
   return num_nodes * xla_flag_config_.gpus_per_node / num_communicators;
+}
+
+absl::StatusOr<absl::Duration> SolGPUCostModel::IntraNodeAllReduceLatency(
+    const int64_t size_bytes, const int num_gpus,
+    const int active_nvlink_links) const {
+  if (active_nvlink_links <= 0) {
+    return absl::InvalidArgumentError(
+        "IntraNodeAllReduceLatency requires active NVLink / xGMI links "
+        "(got 0). Intra-node collective kernels use P2P symmetric memory.");
+  }
+  if (xla_flag_config_.nvlink_bw_per_lane_gbps <= 0.0) {
+    return absl::InvalidArgumentError(
+        "nvlink_bw_per_lane_gbps must be > 0 for IntraNodeAllReduceLatency.");
+  }
+
+  // Aggregate unidirectional NVLink bandwidth available to this GPU.
+  const double bw_bytes_per_sec =
+      active_nvlink_links * xla_flag_config_.nvlink_bw_per_lane_gbps * 1e9;
+
+  // Derive the strategy from the buffer size, mirroring GetAllReduceStrategy()
+  // in all_reduce.cc (thresholds: 256 KB for one-shot, 4 MB for two-shot).
+  using stream_executor::gpu::AllReduceStrategy;
+  const AllReduceStrategy strategy =
+      GetAllReduceStrategy(size_bytes, /*is_multimem_enabled=*/false);
+
+  const absl::Duration launch = GpuPerformanceModelBase::kKernelLaunchOverhead;
+  const absl::Duration barrier = xla_flag_config_.nvlink_barrier_latency;
+
+  switch (strategy) {
+    case AllReduceStrategy::kOneShot: {
+      // All GPUs simultaneously read (N-1) copies of the full buffer from
+      // peers via NVLink P2P.  The inbound traffic per GPU is:
+      //   (N-1) * size_bytes  (all in parallel)
+      const double transfer_bytes =
+          static_cast<double>(num_gpus - 1) * size_bytes;
+      const absl::Duration transfer =
+          absl::Seconds(transfer_bytes / bw_bytes_per_sec);
+      return launch + transfer + barrier;
+    }
+    case AllReduceStrategy::kTwoShot: {
+      // Two phases, each transferring (N-1)/N * size_bytes per GPU:
+      //   Phase 1 (ReduceScatter-like): each GPU reads its own shard from
+      //                                  N-1 peers.
+      //   Phase 2 (AllGather-like): each GPU reads the reduced results from
+      //                              N-1 peers.
+      const double per_phase_bytes =
+          static_cast<double>(num_gpus - 1) * size_bytes / num_gpus;
+      const absl::Duration phase_transfer =
+          absl::Seconds(per_phase_bytes / bw_bytes_per_sec);
+      return launch + 2 * (phase_transfer + barrier);
+    }
+    default:
+      // kMultimem is not yet modelled; fall back to launch overhead only.
+      LOG(WARNING)
+          << "[SoL] IntraNodeAllReduceLatency: unmodelled strategy for "
+             "size_bytes="
+          << size_bytes
+          << "; returning launch overhead only. This may cause the "
+             "scheduler to under-estimate the actual latency.";
+      return launch;
+  }
 }
 
 }  // namespace gpu

@@ -13,7 +13,7 @@
 # limitations under the License.
 
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
-load("//xla/python/ifrt_proxy/common:ifrt_proxy.bzl", "default_ifrt_proxy_visibility", "ifrt_proxy_cc_test")
+load("//xla/python/ifrt_proxy/common:ifrt_proxy.bzl", "default_ifrt_proxy_visibility", "ifrt_proxy_cc_test", "ifrt_proxy_grpc_client_visibility")
 load("//xla/tsl:tsl.bzl", "if_google", "internal_visibility")
 
 package(
@@ -425,6 +425,7 @@ ifrt_proxy_cc_test(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_matchers",
         "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:cord",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/time",
         "@com_google_googletest//:gtest_main",
@@ -550,6 +551,7 @@ cc_library(
 cc_library(
     name = "grpc_client",
     srcs = ["grpc_client.cc"],
+    visibility = internal_visibility(ifrt_proxy_grpc_client_visibility),
     deps = [
         ":client",
         ":grpc_client_session",

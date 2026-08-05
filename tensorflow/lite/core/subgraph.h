@@ -20,6 +20,7 @@ limitations under the License.
 
 #include <atomic>
 #include <cstdint>
+#include <functional>
 #include <map>
 #include <memory>
 #include <string>
@@ -536,6 +537,20 @@ class Subgraph {
     return (options_ && options_->GetDisableDelegateClustering());
   }
 
+  // WARNING: This is an experimental API and subject to change.
+  // If true, node fusion (clustering) when partitioning delegated graphs
+  // is disabled, forcing single-operator delegated subsets.
+  bool DisableDelegateNodeFusion() const {
+    return (options_ && options_->GetDisableDelegateNodeFusion());
+  }
+
+  // WARNING: This is an experimental API and subject to change.
+  // If true, force TFLite to profile delegated nodes even if the delegate
+  // supports per-operator internal profiling.
+  bool ForceDelegateNodeProfiling() const {
+    return (options_ && options_->GetForceDelegateNodeProfiling());
+  }
+
   // Retrieves the corresponding TfLiteContext of a subgraph given a subgraph
   // index and switches to the delegate context for this subgraph. If an invalid
   // subgraph index is given, returns kTfLiteError.
@@ -656,8 +671,11 @@ class Subgraph {
                                        int subgraph_index,
                                        int& last_inserted_execution_index);
 
+  using CompositeFilter =
+      std::function<bool(const TfLiteNode*, const TfLiteRegistration*)>;
+
   // Inlines the composite nodes that have not been taken by a delegate.
-  TfLiteStatus InlineCompositeNodes();
+  TfLiteStatus InlineCompositeNodes(CompositeFilter filter = nullptr);
 
  private:
 #ifndef DOXYGEN_SKIP

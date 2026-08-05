@@ -52,6 +52,7 @@ limitations under the License.
 #include "third_party/gpus/cuda/include/cuda.h"
 #include "third_party/gpus/cuda/include/cuda_runtime_api.h"
 #include "third_party/gpus/cuda/include/driver_types.h"
+#include "xla/backends/gpu/target_config/cudnn_device_props.h"
 #include "xla/stream_executor/activate_context.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/cuda/cuda_diagnostics.h"
@@ -86,6 +87,8 @@ limitations under the License.
 #include "third_party/gpus/cudnn/cudnn_graph.h"
 
 #include "third_party/cudnn_frontend/include/cudnn_frontend.h"
+#include "third_party/cudnn_frontend/include/cudnn_frontend/graph_helpers.h"
+#include "third_party/cudnn_frontend/include/cudnn_frontend_shim.h"
 #include "third_party/cudnn_frontend/include/cudnn_frontend_utils.h"
 #include "third_party/cudnn_frontend/include/cudnn_frontend_EngineConfig.h"
 #include "third_party/cudnn_frontend/include/cudnn_frontend_Errata.h"
@@ -394,6 +397,9 @@ void PreloadCudnnSubLibsHelper(dnn::ConvolutionKind kind) {
 CudnnSupport::CudnnSupport(StreamExecutor* parent) : parent_(parent) {}
 
 absl::Status CudnnSupport::Init() {
+  if (parent_ == nullptr) {
+    return absl::InternalError("No stream executor provided.");
+  }
   std::unique_ptr<ActivateContext> context = parent_->Activate();
 
   // Peek at the last error to give more information in cases of errors.
@@ -3957,7 +3963,7 @@ void FixDimsForRaggedOffset(std::vector<int64_t>& dims, int max_reg_per_batch) {
 }
 
 absl::StatusOr<CudnnGraph> GetCudnnFlashAttentionOperationGraph(
-    dnn::DnnSupport& dnn_support,
+    dnn::DnnSupport* dnn_support, const DeviceDescription& gpu_device_info,
     const dnn::MatmulTensorDescriptor& q_descriptor,
     const dnn::MatmulTensorDescriptor& k_descriptor,
     const dnn::MatmulTensorDescriptor& v_descriptor,
@@ -4198,11 +4204,13 @@ absl::StatusOr<CudnnGraph> GetCudnnFlashAttentionOperationGraph(
     offset_tensor->set_uid(next_uid());
   }
   CudnnGraph cudnnGraph(std::move(graph));
-  RETURN_IF_ERROR(cudnnGraph.Prepare(
-      dnn_support, EngineOptions{/*require_determinism=*/false,
-                                 /*allow_tf32=*/true,
-                                 /*require_command_buffer=*/false}));
-  RETURN_IF_ERROR(cudnnGraph.Build(dnn_support, /*plan_id=*/std::nullopt));
+  RETURN_IF_ERROR(
+      cudnnGraph.Prepare(dnn_support, gpu_device_info,
+                         EngineOptions{/*require_determinism=*/false,
+                                       /*allow_tf32=*/true,
+                                       /*require_command_buffer=*/false}));
+  RETURN_IF_ERROR(
+      cudnnGraph.Build(dnn_support, gpu_device_info, /*plan_id=*/std::nullopt));
 
   VLOG(4) << "\b flash attention operation graph: " << cudnnGraph.Graph();
   return cudnnGraph;
@@ -4213,7 +4221,7 @@ absl::StatusOr<CudnnGraph> GetCudnnFlashAttentionOperationGraph(
 }
 
 absl::StatusOr<CudnnGraph> GetCudnnFlashAttentionF8OperationGraph(
-    dnn::DnnSupport& dnn_support,
+    dnn::DnnSupport* dnn_support, const DeviceDescription& gpu_device_info,
     const dnn::MatmulTensorDescriptor& q_descriptor,
     const dnn::MatmulTensorDescriptor& k_descriptor,
     const dnn::MatmulTensorDescriptor& v_descriptor,
@@ -4331,11 +4339,13 @@ absl::StatusOr<CudnnGraph> GetCudnnFlashAttentionF8OperationGraph(
         .set_uid(next_uid());
   }
   CudnnGraph cudnnGraph(std::move(graph));
-  RETURN_IF_ERROR(cudnnGraph.Prepare(
-      dnn_support, EngineOptions{/*require_determinism=*/false,
-                                 /*allow_tf32=*/true,
-                                 /*require_command_buffer=*/false}));
-  RETURN_IF_ERROR(cudnnGraph.Build(dnn_support, /*plan_id=*/std::nullopt));
+  RETURN_IF_ERROR(
+      cudnnGraph.Prepare(dnn_support, gpu_device_info,
+                         EngineOptions{/*require_determinism=*/false,
+                                       /*allow_tf32=*/true,
+                                       /*require_command_buffer=*/false}));
+  RETURN_IF_ERROR(
+      cudnnGraph.Build(dnn_support, gpu_device_info, /*plan_id=*/std::nullopt));
 
   VLOG(4) << "\b workspace size:" << cudnnGraph.Graph().get_workspace_size();
   VLOG(4) << "\b flash attention operation graph: " << cudnnGraph.Graph();
@@ -4348,7 +4358,8 @@ absl::StatusOr<CudnnGraph> GetCudnnFlashAttentionF8OperationGraph(
 }
 
 absl::StatusOr<CudnnGraph> GetCudnnFlashAttentionBackwardF8OperationGraph(
-    dnn::DnnSupport& dnn_support, const dnn::MatmulTensorDescriptor& q_desc,
+    dnn::DnnSupport* dnn_support, const DeviceDescription& gpu_device_info,
+    const dnn::MatmulTensorDescriptor& q_desc,
     const dnn::MatmulTensorDescriptor& k_desc,
     const dnn::MatmulTensorDescriptor& p_desc,
     const dnn::MatmulTensorDescriptor& v_desc,
@@ -4521,11 +4532,13 @@ absl::StatusOr<CudnnGraph> GetCudnnFlashAttentionBackwardF8OperationGraph(
       .set_uid(next_uid());
 
   CudnnGraph cudnnGraph(std::move(graph));
-  RETURN_IF_ERROR(cudnnGraph.Prepare(
-      dnn_support, EngineOptions{/*require_determinism=*/false,
-                                 /*allow_tf32=*/true,
-                                 /*require_command_buffer=*/false}));
-  RETURN_IF_ERROR(cudnnGraph.Build(dnn_support, /*plan_id=*/std::nullopt));
+  RETURN_IF_ERROR(
+      cudnnGraph.Prepare(dnn_support, gpu_device_info,
+                         EngineOptions{/*require_determinism=*/false,
+                                       /*allow_tf32=*/true,
+                                       /*require_command_buffer=*/false}));
+  RETURN_IF_ERROR(
+      cudnnGraph.Build(dnn_support, gpu_device_info, /*plan_id=*/std::nullopt));
 
   VLOG(4) << "\b workspace size:" << cudnnGraph.Graph().get_workspace_size();
   VLOG(4) << "\b flash attention f8 operation backward graph: "
@@ -4539,7 +4552,8 @@ absl::StatusOr<CudnnGraph> GetCudnnFlashAttentionBackwardF8OperationGraph(
 }
 
 absl::StatusOr<CudnnGraph> GetCudnnBlockScaledDotOperationGraph(
-    dnn::DnnSupport& dnn_support, const dnn::TensorDescriptor& lhs_data,
+    dnn::DnnSupport* dnn_support, const DeviceDescription& gpu_device_info,
+    const dnn::TensorDescriptor& lhs_data,
     const dnn::TensorDescriptor& lhs_scale,
     const dnn::TensorDescriptor& rhs_data,
     const dnn::TensorDescriptor& rhs_scale, dnn::DataType result_type,
@@ -4628,11 +4642,13 @@ absl::StatusOr<CudnnGraph> GetCudnnBlockScaledDotOperationGraph(
   }
 
   CudnnGraph cudnnGraph(std::move(graph));
-  RETURN_IF_ERROR(cudnnGraph.Prepare(
-      dnn_support, EngineOptions{/*require_determinism=*/false,
-                                 /*allow_tf32=*/true,
-                                 /*require_command_buffer=*/false}));
-  RETURN_IF_ERROR(cudnnGraph.Build(dnn_support, /*plan_id=*/std::nullopt));
+  RETURN_IF_ERROR(
+      cudnnGraph.Prepare(dnn_support, gpu_device_info,
+                         EngineOptions{/*require_determinism=*/false,
+                                       /*allow_tf32=*/true,
+                                       /*require_command_buffer=*/false}));
+  RETURN_IF_ERROR(
+      cudnnGraph.Build(dnn_support, gpu_device_info, /*plan_id=*/std::nullopt));
 
   VLOG(4) << "\b workspace size:" << cudnnGraph.Graph().get_workspace_size();
   VLOG(4) << "\b block scaled dot graph: " << cudnnGraph.Graph();
@@ -4645,7 +4661,8 @@ absl::StatusOr<CudnnGraph> GetCudnnBlockScaledDotOperationGraph(
 }
 
 absl::StatusOr<CudnnGraph> GetCudnnFlashAttentionBackwardOperationGraph(
-    dnn::DnnSupport& dnn_support, const dnn::MatmulTensorDescriptor& q_desc,
+    dnn::DnnSupport* dnn_support, const DeviceDescription& gpu_device_info,
+    const dnn::MatmulTensorDescriptor& q_desc,
     const dnn::MatmulTensorDescriptor& k_desc,
     const dnn::MatmulTensorDescriptor& p_desc,
     const dnn::MatmulTensorDescriptor& v_desc,
@@ -4922,11 +4939,13 @@ absl::StatusOr<CudnnGraph> GetCudnnFlashAttentionBackwardOperationGraph(
   }
 
   CudnnGraph cudnnGraph(std::move(graph));
-  RETURN_IF_ERROR(cudnnGraph.Prepare(
-      dnn_support, EngineOptions{force_deterministic,
-                                 /*allow_tf32=*/true,
-                                 /*require_command_buffer=*/false}));
-  RETURN_IF_ERROR(cudnnGraph.Build(dnn_support, /*plan_id=*/std::nullopt));
+  RETURN_IF_ERROR(
+      cudnnGraph.Prepare(dnn_support, gpu_device_info,
+                         EngineOptions{force_deterministic,
+                                       /*allow_tf32=*/true,
+                                       /*require_command_buffer=*/false}));
+  RETURN_IF_ERROR(
+      cudnnGraph.Build(dnn_support, gpu_device_info, /*plan_id=*/std::nullopt));
 
   VLOG(4) << "\b flash attention operation backward graph: "
           << cudnnGraph.Graph();
@@ -6796,36 +6815,119 @@ absl::StatusOr<std::unique_ptr<dnn::DnnGraph>> CudnnSupport::DeserializeGraph(
   return std::make_unique<CudnnGraph>(std::move(graph));
 }
 
-absl::Status CudnnGraph::Prepare(dnn::DnnSupport& dnn_support,
-                                 const EngineOptions& engine_options) {
-  const CudnnSupport& cudnn_support = static_cast<CudnnSupport&>(dnn_support);
-  ASSIGN_OR_RETURN(auto cudnn_handle,
-                   cudnn_support.cudnn_->GetCompilationHandle());
-  RETURN_IF_CUDNN_FRONTEND_ERROR(graph_.validate());
-  RETURN_IF_CUDNN_FRONTEND_ERROR(graph_.build_operation_graph(cudnn_handle));
-  RETURN_IF_CUDNN_FRONTEND_ERROR(
-      graph_.create_execution_plans({cudnn_frontend::HeurMode_t::A}));
-  if (engine_options.require_determinism) {
-    graph_.deselect_numeric_notes(
-        {cudnn_frontend::NumericalNote_t::NONDETERMINISTIC});
-  }
-  if (engine_options.require_command_buffer) {
-    graph_.select_behavior_notes(
-        {cudnn_frontend::BehaviorNote_t::SUPPORTS_CUDA_GRAPH_NATIVE_API});
-  }
-  RETURN_CUDNN_FRONTEND_STATUS(graph_.check_support(cudnn_handle));
+bool SupportsDevicelessDeviceProperties() {
+  return cudnn_frontend::detail::get_backend_version() >= 90800;
 }
 
-absl::Status CudnnGraph::Build(dnn::DnnSupport& dnn_support,
-                               const std::optional<int64_t> plan_id) {
-  const CudnnSupport& cudnn_support = static_cast<CudnnSupport&>(dnn_support);
-  ASSIGN_OR_RETURN(auto cudnn_handle,
-                   cudnn_support.cudnn_->GetCompilationHandle());
-  if (plan_id.has_value()) {
-    RETURN_CUDNN_FRONTEND_STATUS(
-        graph_.build_plan_at_index(cudnn_handle, *plan_id));
+bool SupportsDevicelessConvGraphs(const DeviceDescription& gpu_device_info) {
+  const auto* cc =
+      gpu_device_info.gpu_compute_capability().cuda_compute_capability();
+  return cc == nullptr || cc->major < 10 ||
+         cudnn_frontend::detail::get_backend_version() >= 91900;
+}
+
+namespace {
+
+// Converts a cudnn frontend plan enumeration / support check status to an
+// absl::Status. In deviceless mode, "no engine supports this graph" codes map
+// to NotFound so support probes can tell a negative verdict from other
+// failures; all other errors (and every error when !deviceless) are Internal.
+// (error_t by value: its accessors are not const-qualified.)
+absl::Status PlanEnumerationStatus(bool deviceless,
+                                   cudnn_frontend::error_t result,
+                                   absl::string_view stage) {
+  if (result.is_good()) {
+    return absl::OkStatus();
   }
-  RETURN_CUDNN_FRONTEND_STATUS(graph_.build_plans(cudnn_handle));
+  if (deviceless) {
+    switch (result.get_code()) {
+      // No engine config passed check_support().
+      case cudnn_frontend::error_code_t::GRAPH_EXECUTION_PLAN_CREATION_FAILED:
+      // Frontend-side "graph pattern not supported" verdict.
+      case cudnn_frontend::error_code_t::GRAPH_NOT_SUPPORTED:
+      // No heuristic mode returned engines; how cuDNN reports unsupported
+      // problems (e.g. FP8 on pre-Ada GPUs).
+      case cudnn_frontend::error_code_t::HEURISTIC_QUERY_FAILED:
+        return absl::NotFoundError(
+            absl::StrCat("cuDNN reports no supported engine for the graph (",
+                         stage, "): ", result.get_message()));
+      default:
+        break;
+    }
+  }
+  return absl::InternalError(absl::StrCat("cuDNN frontend error (", stage,
+                                          "): ", result.get_message()));
+}
+
+}  // namespace
+
+absl::Status CudnnGraph::Prepare(dnn::DnnSupport* dnn_support,
+                                 const DeviceDescription& gpu_device_info,
+                                 const EngineOptions& engine_options) {
+  const bool deviceless = dnn_support == nullptr;
+  auto create_and_filter_plans = [&]() -> absl::Status {
+    RETURN_IF_ERROR(PlanEnumerationStatus(
+        deviceless,
+        graph_.create_execution_plans({cudnn_frontend::HeurMode_t::A}),
+        "create_execution_plans"));
+    if (engine_options.require_determinism) {
+      graph_.deselect_numeric_notes(
+          {cudnn_frontend::NumericalNote_t::NONDETERMINISTIC});
+    }
+    if (!engine_options.allow_tf32) {
+      graph_.deselect_numeric_notes(
+          {cudnn_frontend::NumericalNote_t::DOWN_CONVERT_INPUTS});
+    }
+    if (engine_options.require_command_buffer) {
+      graph_.select_behavior_notes(
+          {cudnn_frontend::BehaviorNote_t::SUPPORTS_CUDA_GRAPH_NATIVE_API});
+    }
+    return absl::OkStatus();
+  };
+
+  if (dnn_support) {
+    const CudnnSupport& cudnn_support =
+        static_cast<CudnnSupport&>(*dnn_support);
+    ASSIGN_OR_RETURN(auto cudnn_handle,
+                     cudnn_support.cudnn_->GetCompilationHandle());
+    RETURN_IF_CUDNN_FRONTEND_ERROR(graph_.validate());
+    RETURN_IF_CUDNN_FRONTEND_ERROR(graph_.build_operation_graph(cudnn_handle));
+    RETURN_IF_ERROR(create_and_filter_plans());
+    RETURN_CUDNN_FRONTEND_STATUS(graph_.check_support(cudnn_handle));
+  } else {
+    // Deviceless mode. No cuDNN version guard needed: DeviceProperties
+    // deserialization inside BuildDeviceProperties rejects runtimes < 9.8.
+    ASSIGN_OR_RETURN(auto device_props,
+                     xla::gpu::BuildDeviceProperties(gpu_device_info));
+    graph_.set_device_properties(device_props);
+    RETURN_IF_CUDNN_FRONTEND_ERROR(graph_.validate());
+    RETURN_IF_CUDNN_FRONTEND_ERROR(graph_.build_operation_graph());
+    RETURN_IF_ERROR(create_and_filter_plans());
+    return PlanEnumerationStatus(deviceless, graph_.check_support(),
+                                 "check_support");
+  }
+}
+
+absl::Status CudnnGraph::Build(dnn::DnnSupport* dnn_support,
+                               const DeviceDescription& gpu_device_info,
+                               const std::optional<int64_t> plan_id) {
+  if (dnn_support) {
+    const CudnnSupport& cudnn_support =
+        static_cast<CudnnSupport&>(*dnn_support);
+    ASSIGN_OR_RETURN(auto cudnn_handle,
+                     cudnn_support.cudnn_->GetCompilationHandle());
+    if (plan_id.has_value()) {
+      RETURN_CUDNN_FRONTEND_STATUS(
+          graph_.build_plan_at_index(cudnn_handle, *plan_id));
+    }
+    RETURN_CUDNN_FRONTEND_STATUS(graph_.build_plans(cudnn_handle));
+  } else {
+    // no need to set_device_properties, it is done in Prepare()
+    if (plan_id.has_value()) {
+      RETURN_CUDNN_FRONTEND_STATUS(graph_.build_plan_at_index(*plan_id));
+    }
+    RETURN_CUDNN_FRONTEND_STATUS(graph_.build_plans());
+  }
 }
 
 CudnnGraph::VariantPack CudnnGraph::PackOperands(

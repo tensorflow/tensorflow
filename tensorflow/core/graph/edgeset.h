@@ -119,11 +119,11 @@ class EdgeSet::const_iterator {
   inline void Init(const EdgeSet* e) {}
   inline void CheckNoMutations() const {}
 #else
-  inline void Init(const EdgeSet* e) {
+  void Init(const EdgeSet* e) {
     owner_ = e;
     init_mutations_ = e->mutations_;
   }
-  inline void CheckNoMutations() const {
+  void CheckNoMutations() const {
     CHECK_EQ(init_mutations_, owner_->mutations_);
   }
   const EdgeSet* owner_ = nullptr;

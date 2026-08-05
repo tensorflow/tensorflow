@@ -43,9 +43,8 @@ struct type_caster<absl::Status> {
       PyErr_Format(PyExc_RuntimeError, "absl::Status not ok: %s",
                    value.ToString().c_str());
       return nullptr;
-    } else {
-      return none().release();
     }
+    return none().release();
   }
 };
 

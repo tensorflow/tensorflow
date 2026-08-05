@@ -27,6 +27,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/base/nullability.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
@@ -40,6 +41,7 @@ limitations under the License.
 #include "xla/tsl/platform/status_macros.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/Sequence.h"
 #include "llvm/ADT/SmallVector.h"
 #include "xla/codegen/tiling/experimental/tile.h"
 #include "xla/codegen/tiling/experimental/tile_propagation.h"
@@ -59,6 +61,19 @@ namespace xla::gpu::experimental {
 using ::llvm::ArrayRef;
 using ::llvm::SmallVector;
 
+TiledHloRegion::TiledHloRegion(
+    std::vector<absl_nonnull std::unique_ptr<TiledHloInstruction>> instructions,
+    llvm::SmallVector<const TiledHloInstruction* absl_nonnull, 4> roots)
+    : instructions_(std::move(instructions)), roots_(std::move(roots)) {
+  for (const TiledHloInstruction* root : roots_) {
+    CHECK(absl::c_any_of(
+        instructions_,
+        [root](const auto& instruction) { return instruction.get() == root; }))
+        << "Root instruction " << root->ToString()
+        << " must be present in the region.";
+  }
+}
+
 std::string TiledHloInstruction::ToString(
     absl::string_view field_separator) const {
   std::stringstream ss;
@@ -66,7 +81,7 @@ std::string TiledHloInstruction::ToString(
   ss << "tile: " << tile().ToString();
   for (const auto& [index, region] : llvm::enumerate(regions_)) {
     ss << field_separator << "region #" << index << " {";
-    for (const auto& instruction : region) {
+    for (const auto& instruction : region.instructions()) {
       ss << field_separator << instruction->ToString(field_separator);
     }
     ss << field_separator << "}";
@@ -88,6 +103,7 @@ TiledHloInstruction::runtime_variables() const {
   }
   return runtime_variables;
 }
+namespace {
 
 // A hash set of unique pointers to TiledHloInstructions.
 //
@@ -100,10 +116,7 @@ TiledHloInstruction::runtime_variables() const {
 // * This set provides a convenient method to extract the unique pointers into a
 //   vector.
 // * Values are stored in the order of insertion. This is useful when we have
-//   information about the order in which we process elements. For example,
-//   during the construction of TiledHloComputation from
-//   TiledHloInstructions, we know that instruction are already sorted
-//   in def-before-use order.
+//   information about the order in which we process elements.
 class OrderedTiledHloPtrSet {
  public:
   // Inserts an element into the set.
@@ -153,8 +166,10 @@ class OrderedTiledHloPtrSet {
 };
 
 // Sorts tiled hlo instructions in def-before-use order, starting from
-// `roots_with_no_users`. If instruction is not reachable from the root then it
-// might be put in an arbitrary position.
+// `roots_with_no_users`.
+//
+// Precondition: all `tiled_hlo_instructions` are reachable from
+// `roots_with_no_users`.
 void SortTiledHloInstructionsInPostOrder(
     std::vector<std::unique_ptr<TiledHloInstruction>>& tiled_hlo_instructions,
     ArrayRef<const TiledHloInstruction*> roots_with_no_users) {
@@ -181,29 +196,110 @@ void SortTiledHloInstructionsInPostOrder(
   absl::c_sort(tiled_hlo_instructions,
                [&](const std::unique_ptr<TiledHloInstruction>& t1,
                    const std::unique_ptr<TiledHloInstruction>& t2) {
-                 return topological_order[t1.get()] <
-                        topological_order[t2.get()];
+                 auto it1 = topological_order.find(t1.get());
+                 auto it2 = topological_order.find(t2.get());
+                 CHECK(it1 != topological_order.end())
+                     << "Unexpected stray instruction: " << t1->ToString();
+                 CHECK(it2 != topological_order.end())
+                     << "Unexpected stray instruction: " << t2->ToString();
+                 return it1->second < it2->second;
                });
-  if (VLOG_IS_ON(4)) {
-    VLOG(4)
-        << "Sorted symbolic tiled HLO instructions in def-before-use order:\n"
-        << absl::StrJoin(
-               tiled_hlo_instructions, "\n",
-               [](std::string* out,
-                  const std::unique_ptr<TiledHloInstruction>& instruction) {
-                 absl::StrAppend(out, instruction->ToString("; "));
-               });
+
+  VLOG(4) << "Sorted symbolic tiled HLO instructions in def-before-use order:\n"
+          << absl::StrJoin(
+                 tiled_hlo_instructions, "\n",
+                 [](std::string* out,
+                    const std::unique_ptr<TiledHloInstruction>& instruction) {
+                   absl::StrAppend(out, instruction->ToString("; "));
+                 });
+}
+
+bool IsReductionLoopRequired(const TiledHloInstruction& tiled_hlo) {
+  const TilingSpace& tiling_space = tiled_hlo.tile().tiling_space();
+  return absl::c_any_of(
+      tiling_space.dimensions(), [&](const TilingSpace::DimensionInfo& dim) {
+        return dim.type == TilingSpace::DimensionSemantics::kSequential &&
+               dim.hlo == tiled_hlo.hlo() && dim.tile_size.has_value() &&
+               *dim.tile_size < dim.dimension_size;
+      });
+}
+
+// Defines how the operands of a TiledHloInstruction are partitioned during
+// region reconstruction.
+//
+// Examples:
+// - For a  reduction, e.g., `reduce(input, init)`, the `input` is wrapped in a
+//   nested region if and only if the reduction dimension tile sizes are
+//   symbolic or smaller than the dimension size. `init` is never wrapped in a
+//   nested region:
+//
+//   RegionSchema {
+//     region_roots = {{0}}
+//     operand_ids = {1}
+//   }
+// - For a dot product (e.g., `dot(lhs, rhs)`), both operands are grouped
+//   together as region roots to represent the sub-computation:
+//
+//   RegionSchema {
+//     region_roots = {{0, 1}}
+//     operand_ids = {}
+//   }
+struct RegionSchema {
+  using OperandIDs = llvm::SmallVector<int64_t>;
+
+  // Groups of operand indices. Each group represents the roots of a new
+  // nested HLO region (e.g., loop bodies, dot product sub-computations).
+  std::vector<OperandIDs> region_roots;
+
+  // Operand indices that are regular inputs to the instruction and should
+  // remain within the current region.
+  OperandIDs operand_ids;
+};
+
+// Determines the partitioning specification for the operands of a tiled HLO
+// instruction.
+//
+// This specification dictates the boundaries of the tiled HLO regions. Operands
+// that represent roots of nested computations (such as reduction bodies, dot
+// product inputs, or concatenate inputs) are categorized under `region_roots`
+// to initiate the creation of nested `TiledHloRegion`s. Regular operands that
+// are simply inputs to the current computation level are kept under
+// `operand_ids` to be processed in the current region.
+RegionSchema GetRegionSchema(const TiledHloInstruction& tiled_hlo,
+                             const TilingSpace& tiling_space) {
+  const HloOpcode opcode = tiled_hlo.hlo()->opcode();
+  const int64_t num_operands = tiled_hlo.hlo()->operand_count();
+
+  auto iota = [](int64_t start, int64_t end) {
+    return llvm::to_vector(llvm::seq<int64_t>(start, end));
+  };
+  switch (opcode) {
+    case HloOpcode::kDot:
+    case HloOpcode::kScaledDot: {
+      return RegionSchema{/*region_roots=*/{iota(0, num_operands)},
+                          /*operand_ids=*/{}};
+    }
+    case HloOpcode::kReduce: {
+      if (IsReductionLoopRequired(tiled_hlo)) {
+        int64_t num_inputs = num_operands / 2;
+        return RegionSchema{/*region_roots=*/{iota(0, num_inputs)},
+                            /*operand_ids=*/{iota(num_inputs, num_operands)}};
+      }
+      break;
+    }
+    case HloOpcode::kConcatenate: {
+      RegionSchema schema;
+      schema.region_roots.reserve(num_operands);
+      for (int64_t operand_id = 0; operand_id < num_operands; ++operand_id) {
+        schema.region_roots.push_back({operand_id});
+      }
+      return schema;
+    }
+    default:
+      break;
   }
-}
-
-bool IsControlFlowLoop(const TiledHloInstruction& tiled_hlo) {
-  const HloOpcode hlo_opcode = tiled_hlo.hlo()->opcode();
-  return hlo_opcode == HloOpcode::kDot || hlo_opcode == HloOpcode::kScaledDot;
-}
-
-bool IsControlFlowCondition(const TiledHloInstruction& tiled_hlo) {
-  const HloOpcode hlo_opcode = tiled_hlo.hlo()->opcode();
-  return hlo_opcode == HloOpcode::kConcatenate;
+  return RegionSchema{/*region_roots=*/{},
+                      /*operand_ids=*/iota(0, num_operands)};
 }
 
 // Recursively populates `tile_names` with unique names for `tiled_hlo` and
@@ -218,7 +314,7 @@ void PrepopulateTileNames(
     return;
   }
   for (const auto& region : tiled_hlo->hlo_regions()) {
-    for (const auto& region_instruction : region) {
+    for (const auto& region_instruction : region.instructions()) {
       PrepopulateTileNames(region_instruction.get(), name_uniquer, tile_names);
     }
   }
@@ -254,7 +350,7 @@ void PrintTiledHloInstruction(
 
   for (auto const& [i, region] : llvm::enumerate(tiled_hlo->hlo_regions())) {
     ss << indentation << "region #" << i << " {\n";
-    for (const auto& instruction : region) {
+    for (const auto& instruction : region.instructions()) {
       PrintTiledHloInstruction(instruction.get(), tile_names, ss, indent + 2);
     }
     ss << indentation << "}\n";
@@ -272,22 +368,55 @@ absl::InlinedVector<const HloInstruction*, 2> ToInstructions(
   return hlo_instructions;
 }
 
-// Returns a region with `tiled_root` and subgraph HLOs (in tiled_root.regions
-// or in the returned vector). E.g.,
-// * If tiled_root is a dot/scaled_dot/reduce
-//   returns {tiled_root}, and tiled_root has one region including all
-//   dependencies.
-// * If tiled_root is a concat,
-//   returns {tiled_root}, and tiled_root has one region per operand.
-// * Otherwise, returns a region including tiled_root and all dependencies.
-/*static*/ absl::StatusOr<TiledHloRegion> TiledHloComputation::CreateHloRegion(
-    std::unique_ptr<TiledHloInstruction> tiled_root,
+}  // namespace
+
+void TiledHloRegion::Simplify() {
+  for (auto& instruction : instructions_) {
+    Tile tile = instruction->tile();
+    tile.Simplify();
+    instruction->set_tile(std::move(tile));
+    for (auto& region : instruction->hlo_regions()) {
+      region.Simplify();
+    }
+  }
+}
+
+void TiledHloRegion::SortInstructionsPostOrder() {
+  for (auto& instruction : instructions_) {
+    for (auto& region : instruction->hlo_regions()) {
+      region.SortInstructionsPostOrder();
+    }
+  }
+  SortTiledHloInstructionsInPostOrder(instructions_, roots_);
+}
+
+// Recursively constructs a tiled HLO region starting from a set of root
+// instructions.
+//
+// Performs a backward topological traversal (from roots to parameters) within
+// the fusion boundary to reconstruct the tiled HLO dependency graph and any
+// nested computation regions (e.g., reduction bodies or dot computations).
+//
+// Instructions are not ordered.
+absl::StatusOr<TiledHloRegion> TiledHloComputation::CreateHloRegion(
+    std::vector<std::unique_ptr<TiledHloInstruction>> roots,
     const HloFusionAdaptor& fusion, TilingSpace& tiling_space,
     absl::flat_hash_map<int64_t,
                         std::pair<const TiledHloInstruction*, Interval>>&
         rt_symbol_to_tiled_hlo) {
-  std::vector<TiledHloInstruction*> worklist = {tiled_root.get()};
+  std::vector<TiledHloInstruction*> worklist;
   OrderedTiledHloPtrSet tiled_hlo_instructions_set;
+
+  llvm::SmallVector<const TiledHloInstruction*, 4> canonical_roots;
+  canonical_roots.reserve(roots.size());
+  for (auto& root : roots) {
+    auto [raw_root, inserted] =
+        tiled_hlo_instructions_set.Insert(std::move(root));
+    canonical_roots.push_back(raw_root);
+    if (inserted) {
+      worklist.push_back(raw_root);
+    }
+  }
 
   while (!worklist.empty()) {
     TiledHloInstruction* tiled_hlo = worklist.back();
@@ -301,124 +430,91 @@ absl::InlinedVector<const HloInstruction*, 2> ToInstructions(
         auto operands_tiles,
         PropagateTileToInput(tiling_space, *hlo, tiled_hlo->tile(), 0));
 
+    RegionSchema spec = GetRegionSchema(*tiled_hlo, tiling_space);
+
     HloInstructionAdaptor instruction_adaptor(*hlo, &fusion);
-    const bool hlo_is_condition = IsControlFlowCondition(*tiled_hlo);
-    for (const auto& [operand_id, tile_and_operand] : llvm::enumerate(
-             llvm::zip(operands_tiles, instruction_adaptor.GetOperands()))) {
-      auto& [tile, operand] = tile_and_operand;
-      const HloInstruction* operand_hlo = &operand.instruction();
-      auto tiled_operand =
-          std::make_unique<TiledHloInstruction>(operand_hlo, tile);
-      const bool operand_is_loop = IsControlFlowLoop(*tiled_operand);
+    std::vector<std::unique_ptr<TiledHloInstruction>> tiled_operands;
+    tiled_operands.reserve(hlo->operand_count());
+    for (const auto& [i, operand] :
+         llvm::enumerate(instruction_adaptor.GetOperands())) {
+      tiled_operands.push_back(std::make_unique<TiledHloInstruction>(
+          &operand.instruction(), operands_tiles[i]));
+    }
 
-      if (hlo_is_condition || operand_is_loop) {
-        ASSIGN_OR_RETURN(auto region,
-                         CreateHloRegion(std::move(tiled_operand), fusion,
-                                         tiling_space, rt_symbol_to_tiled_hlo));
+    std::vector<const TiledHloInstruction*> resolved_operands(
+        hlo->operand_count(), nullptr);
 
-        if (hlo_is_condition) {
-          // Case 1: HLO is a condition (e.g., concat).
-          // Each operand introduces a new branch/sub-region in `tiled_hlo`.
-          CHECK(!region.empty())
-              << "CreateHloRegion: returned empty region for "
-              << operand_hlo->ToString();
-          tiled_hlo->AddOperand(region.back().get());
-          tiled_hlo->AddHloRegion(std::move(region));
+    for (const auto& region_root_ids : spec.region_roots) {
+      std::vector<std::unique_ptr<TiledHloInstruction>> region_roots;
+      region_roots.reserve(region_root_ids.size());
+      for (int64_t id : region_root_ids) {
+        region_roots.push_back(std::move(tiled_operands[id]));
+      }
 
-        } else {
-          // Case 2: Operand is a loop (e.g., dot/scaled_dot/reduce).
-          // Operand has its loop-body as a region. Operand itself is added as a
-          // node to the current flat list.
-          CHECK(region.size() == 1)
-              << "CreateHloRegion: expected exactly 1 region for "
-              << operand_hlo->ToString() << " but got " << region.size();
-          auto [operand_tiled_hlo, inserted] =
-              tiled_hlo_instructions_set.Insert(std::move(region.back()));
-          tiled_hlo->AddOperand(operand_tiled_hlo);
-        }
+      ASSIGN_OR_RETURN(TiledHloRegion res,
+                       CreateHloRegion(std::move(region_roots), fusion,
+                                       tiling_space, rt_symbol_to_tiled_hlo));
+      for (const auto& [i, id] : llvm::enumerate(region_root_ids)) {
+        resolved_operands[id] = res.roots()[i];
+      }
 
-      } else {
-        // Case 3: No new region introduced when processing this operand.
-        auto [operand_tiled_hlo, inserted] =
-            tiled_hlo_instructions_set.Insert(std::move(tiled_operand));
-        if (inserted) {
-          worklist.push_back(operand_tiled_hlo);
-        }
-        tiled_hlo->AddOperand(operand_tiled_hlo);
-        // If the operand is a runtime variable, add it to the
-        // `rt_symbol_to_tiled_hlo` map.
-        std::optional<const TilingSpace::RTVarInfo*> rt_var_info =
-            tiling_space.GetRTVarInfo(*hlo, operand_id);
-        if (rt_var_info.has_value()) {
-          rt_symbol_to_tiled_hlo.insert(std::make_pair(
-              rt_var_info.value()->id + tiling_space.num_dimensions(),
-              std::make_pair(operand_tiled_hlo, rt_var_info.value()->bounds)));
-        }
+      tiled_hlo->AddHloRegion(std::move(res));
+    }
+
+    for (int64_t id : spec.operand_ids) {
+      auto [operand_tiled_hlo, inserted] =
+          tiled_hlo_instructions_set.Insert(std::move(tiled_operands[id]));
+      resolved_operands[id] = operand_tiled_hlo;
+      if (inserted) {
+        worklist.push_back(operand_tiled_hlo);
+      }
+
+      std::optional<const TilingSpace::RTVarInfo*> rt_var_info =
+          tiling_space.GetRTVarInfo(*hlo, id);
+      if (rt_var_info.has_value()) {
+        rt_symbol_to_tiled_hlo.insert(std::make_pair(
+            rt_var_info.value()->id + tiling_space.num_dimensions(),
+            std::make_pair(operand_tiled_hlo, rt_var_info.value()->bounds)));
       }
     }
-  }
-  TiledHloRegion tiled_hlo_instructions{
-      tiled_hlo_instructions_set.ExtractData()};
-  SortTiledHloInstructionsInPostOrder(tiled_hlo_instructions, tiled_root.get());
-  if (IsControlFlowLoop(*tiled_root)) {
-    tiled_root->AddHloRegion(std::move(tiled_hlo_instructions));
-    tiled_hlo_instructions.clear();
-  }
-  tiled_hlo_instructions.push_back(std::move(tiled_root));
-  return tiled_hlo_instructions;
-}
 
-/*static*/ absl::StatusOr<TiledHloComputation> TiledHloComputation::Tile(
-    const HloFusionAdaptor& fusion, std::unique_ptr<TilingSpace> tiling_space) {
-  SmallVector<const TiledHloInstruction*> roots;
-  SmallVector<const TiledHloInstruction*> roots_with_no_users;
-  OrderedTiledHloPtrSet tiled_hlo_instructions_set;
-
-  absl::flat_hash_map<int64_t, std::pair<const TiledHloInstruction*, Interval>>
-      rt_symbol_to_tiled_hlo;
-  for (const auto& [root, tile] :
-       llvm::zip(fusion.GetRoots(), tiling_space->tiled_roots())) {
-    auto root_tiled_hlo =
-        std::make_unique<TiledHloInstruction>(&root.instruction(), tile);
-    roots.push_back(root_tiled_hlo.get());
-    if (root.GetUsers().empty()) {
-      roots_with_no_users.push_back(root_tiled_hlo.get());
-    }
-
-    ASSIGN_OR_RETURN(TiledHloRegion region,
-                     CreateHloRegion(std::move(root_tiled_hlo), fusion,
-                                     *tiling_space, rt_symbol_to_tiled_hlo));
-    for (std::unique_ptr<TiledHloInstruction>& tiled_hlo : region) {
-      tiled_hlo_instructions_set.Insert(std::move(tiled_hlo));
+    for (int64_t i = 0; i < hlo->operand_count(); ++i) {
+      CHECK(resolved_operands[i] != nullptr);
+      tiled_hlo->AddOperand(resolved_operands[i]);
     }
   }
 
   std::vector<std::unique_ptr<TiledHloInstruction>> tiled_hlo_instructions =
       tiled_hlo_instructions_set.ExtractData();
 
-  // Order instructions in def-before-use order.
-  SortTiledHloInstructionsInPostOrder(tiled_hlo_instructions,
-                                      roots_with_no_users);
+  return TiledHloRegion{std::move(tiled_hlo_instructions),
+                        std::move(canonical_roots)};
+}
 
-  std::function<void(TiledHloInstruction*)> simplify_instruction;
-  simplify_instruction = [&](TiledHloInstruction* instruction) {
-    class Tile tile = instruction->tile();
-    tile.Simplify();
-    instruction->set_tile(std::move(tile));
-    for (const auto& region : instruction->hlo_regions()) {
-      for (const auto& nested : region) {
-        simplify_instruction(nested.get());
-      }
-    }
-  };
-  for (auto& instr : tiled_hlo_instructions) {
-    simplify_instruction(instr.get());
+/*static*/ absl::StatusOr<TiledHloComputation> TiledHloComputation::Tile(
+    const HloFusionAdaptor& fusion, std::unique_ptr<TilingSpace> tiling_space) {
+  std::vector<std::unique_ptr<TiledHloInstruction>> tiled_roots;
+  tiled_roots.reserve(fusion.GetRoots().size());
+  for (const auto& [root, tile] :
+       llvm::zip(fusion.GetRoots(), tiling_space->tiled_roots())) {
+    tiled_roots.push_back(
+        std::make_unique<TiledHloInstruction>(&root.instruction(), tile));
   }
 
-  return TiledHloComputation(std::move(tiling_space),
-                             TiledHloRegion{std::move(tiled_hlo_instructions)},
-                             std::move(roots),
+  absl::flat_hash_map<int64_t, std::pair<const TiledHloInstruction*, Interval>>
+      rt_symbol_to_tiled_hlo;
+  ASSIGN_OR_RETURN(TiledHloRegion region,
+                   CreateHloRegion(std::move(tiled_roots), fusion,
+                                   *tiling_space, rt_symbol_to_tiled_hlo));
+
+  return TiledHloComputation(std::move(tiling_space), std::move(region),
                              std::move(rt_symbol_to_tiled_hlo));
+}
+
+void TiledHloComputation::Simplify() { region_.Simplify(); }
+
+void TiledHloComputation::SortInstructionsPostOrder() {
+  region_.SortInstructionsPostOrder();
 }
 
 std::string TiledHloComputation::ToString() const {
@@ -428,12 +524,12 @@ std::string TiledHloComputation::ToString() const {
 
   NameUniquer name_uniquer("_");
   absl::flat_hash_map<const TiledHloInstruction*, std::string> tile_names;
-  for (const auto& tiled_hlo : tiled_hlo_instructions_) {
+  for (const auto& tiled_hlo : region_.instructions()) {
     PrepopulateTileNames(tiled_hlo.get(), name_uniquer, tile_names);
   }
 
   ss << "Tiled HLO:\n";
-  for (const auto& tiled_hlo : tiled_hlo_instructions_) {
+  for (const auto& tiled_hlo : region_.instructions()) {
     PrintTiledHloInstruction(tiled_hlo.get(), tile_names, ss, /*indent=*/2);
   }
   return ss.str();

@@ -155,10 +155,9 @@ absl::Status SPMDExpanderBase::ExpandOpAndSetLayout(mlir::Operation* op,
                       ExtractLayoutFromOp(op));
 
   if (computed_layout.empty() && op->getNumResults() != 0) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(
         absl::StrCat("No attached layout found for op : ", OpName(op),
-                     " This might be due to an error in layout propagation.")
-            .c_str());
+                     " This might be due to an error in layout propagation."));
   }
 
   // If op is on an XLA SPMD mesh, then set layout and skip expansion. There is
@@ -238,11 +237,11 @@ absl::Status SPMDExpanderBase::ExpandOpAndSetLayout(mlir::Operation* op,
       if (expanded_shape <= 0 || expected_shape <= 0) continue;
 
       if (expanded_shape != expected_shape) {
-        return errors::Internal(
+        return absl::InternalError(absl::StrCat(
             "SPMD expansion resulted in op output inconsistent with the "
             "provided layout. Expected shape: <",
             absl::StrJoin(expected_global_shape, ","), "> got shape: <",
-            absl::StrJoin(global_output_shapes[index], ","), ">");
+            absl::StrJoin(global_output_shapes[index], ","), ">"));
       }
     }
   }
@@ -252,7 +251,7 @@ absl::Status SPMDExpanderBase::ExpandOpAndSetLayout(mlir::Operation* op,
 
 StatusOr<llvm::DenseMap<int, Layout>> SPMDExpanderBase::ComputeLayoutForward(
     mlir::Operation* op, const llvm::DenseMap<int, Layout>& input_layouts) {
-  return errors::Unimplemented(
+  return absl::UnimplementedError(
       "ComputeLayoutForward API must be implemented via the subclass.");
 }
 
@@ -277,7 +276,7 @@ StatusOr<llvm::DenseMap<int, Layout>> SPMDExpanderBase::ComputeLayoutForward(
 
 StatusOr<llvm::DenseMap<int, Layout>> SPMDExpanderBase::ComputeLayoutBackward(
     mlir::Operation* op, const llvm::DenseMap<int, Layout>& output_layouts) {
-  return errors::Unimplemented(
+  return absl::UnimplementedError(
       "ComputeLayoutBackward API must be implemented via the subclass.");
 }
 

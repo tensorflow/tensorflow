@@ -61,6 +61,9 @@ stream_executor::cuda::NvJitLinkCompilationProvider::CompileAndLink(
   if (options.generate_debug_info) {
     asm_opts.extra_flags.push_back("--device-debug");
   }
+  asm_opts.extra_flags.insert(asm_opts.extra_flags.end(),
+                              options.additional_ptxas_flags.begin(),
+                              options.additional_ptxas_flags.end());
 
   std::vector<NvJitLinkInput> nvjitlink_inputs;
   for (const auto& input : inputs) {

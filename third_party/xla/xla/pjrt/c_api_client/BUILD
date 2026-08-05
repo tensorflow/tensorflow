@@ -97,8 +97,6 @@ cc_library(
         "//xla/pjrt/distributed/coordination:coordination_service_proto_cc",
         "//xla/pjrt/extensions/cross_host_transfers:pjrt_c_api_cross_host_transfer_extension",
         "//xla/pjrt/extensions/executable_metadata:executable_metadata_extension",
-        "//xla/pjrt/extensions/host_allocator:host_allocator_extension",
-        "//xla/pjrt/extensions/host_allocator:host_allocator_interface_impl",
         "//xla/pjrt/extensions/host_memory_allocator:host_memory_allocator_extension",
         "//xla/pjrt/extensions/host_memory_allocator:host_memory_allocator_interface_impl",
         "//xla/pjrt/proto:compile_options_proto_cc",

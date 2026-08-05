@@ -963,32 +963,24 @@ PJRT_Error* PJRT_Device_ClearMemoryStats(
 
 PJRT_Error* PJRT_Device_PoisonExecution(
     PJRT_Device_PoisonExecution_Args* args) {
-  // TODO: b/488892533 - Make this check stricter after 12week compatibility
-  // window.
   PJRT_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
       "PJRT_Device_PoisonExecution_Args",
-      PJRT_STRUCT_SIZE(PJRT_Device_PoisonExecution_Args, poisoned),
-      args->struct_size));
+      PJRT_Device_PoisonExecution_Args_STRUCT_SIZE, args->struct_size));
 
   absl::Status error = absl::Status(
       pjrt::PjrtErrorCodeToStatusCode(args->error_code),
       absl::string_view(args->error_message, args->error_message_size));
-  // TODO: b/488892533 - Make this check stricter after 12week compatibility
-  // window.
-  if (args->struct_size >=
-      PJRT_STRUCT_SIZE(PJRT_Device_PoisonExecution_Args, num_payload)) {
-    absl::flat_hash_map<std::string, xla::PjRtValueType> payload_map =
-        pjrt::ConvertFromPjRtNamedValueList(args->payload, args->num_payload);
-    // Populateing error payload map, iteration order not important.
-    for (auto& [name, value] : payload_map) {  // NOLINT
-      if (auto* string_value = std::get_if<std::string>(&value);
-          string_value != nullptr) {
-        error.SetPayload(name, absl::Cord(std::move(*string_value)));
-      } else {
-        return StatusToPjRtError(absl::InvalidArgumentError(
-            absl::StrCat("PJRT_Device_PoisonExecution error ", args->error_code,
-                         " payload is not a string")));
-      }
+  absl::flat_hash_map<std::string, xla::PjRtValueType> payload_map =
+      pjrt::ConvertFromPjRtNamedValueList(args->payload, args->num_payload);
+  // Populateing error payload map, iteration order not important.
+  for (auto& [name, value] : payload_map) {  // NOLINT
+    if (auto* string_value = std::get_if<std::string>(&value);
+        string_value != nullptr) {
+      error.SetPayload(name, absl::Cord(std::move(*string_value)));
+    } else {
+      return StatusToPjRtError(absl::InvalidArgumentError(
+          absl::StrCat("PJRT_Device_PoisonExecution error ", args->error_code,
+                       " payload is not a string")));
     }
   }
 
@@ -1329,32 +1321,25 @@ PJRT_Error* PJRT_Client_CreateUninitializedBuffer(
 
 PJRT_Error* PJRT_Client_CreateErrorBuffer(
     PJRT_Client_CreateErrorBuffer_Args* args) {
-  // TODO: b/488892533 - Make this check stricter after 12week compatibility
-  // window.
   PJRT_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
       "PJRT_Client_CreateErrorBuffer_Args",
-      PJRT_STRUCT_SIZE(PJRT_Client_CreateErrorBuffer_Args, buffer),
-      args->struct_size));
+      PJRT_Client_CreateErrorBuffer_Args_STRUCT_SIZE, args->struct_size));
 
   absl::Status error = absl::Status(
       pjrt::PjrtErrorCodeToStatusCode(args->error_code),
       absl::string_view(args->error_message, args->error_message_size));
 
-  // TODO: b/488892533 - Remove this check after 12week compatibility window.
-  if (args->struct_size >=
-      PJRT_STRUCT_SIZE(PJRT_Client_CreateErrorBuffer_Args, num_payload)) {
-    absl::flat_hash_map<std::string, xla::PjRtValueType> payload_map =
-        pjrt::ConvertFromPjRtNamedValueList(args->payload, args->num_payload);
-    // Populating error payload map, iteration order not important.
-    for (auto& [name, value] : payload_map) {  // NOLINT
-      if (auto* string_value = std::get_if<std::string>(&value);
-          string_value != nullptr) {
-        error.SetPayload(name, absl::Cord(std::move(*string_value)));
-      } else {
-        return StatusToPjRtError(absl::InvalidArgumentError(
-            absl::StrCat("PJRT_Client_CreateErrorBuffer error ",
-                         args->error_code, " payload is not a string")));
-      }
+  absl::flat_hash_map<std::string, xla::PjRtValueType> payload_map =
+      pjrt::ConvertFromPjRtNamedValueList(args->payload, args->num_payload);
+  // Populating error payload map, iteration order not important.
+  for (auto& [name, value] : payload_map) {  // NOLINT
+    if (auto* string_value = std::get_if<std::string>(&value);
+        string_value != nullptr) {
+      error.SetPayload(name, absl::Cord(std::move(*string_value)));
+    } else {
+      return StatusToPjRtError(absl::InvalidArgumentError(
+          absl::StrCat("PJRT_Client_CreateErrorBuffer error ", args->error_code,
+                       " payload is not a string")));
     }
   }
 
@@ -1730,8 +1715,11 @@ PJRT_Error* PJRT_Device_DefaultMemory(PJRT_Device_DefaultMemory_Args* args) {
 }
 
 PJRT_Error* PJRT_Device_MemoryStats(PJRT_Device_MemoryStats_Args* args) {
+  // TODO(b/374463795): Update the field in the struct after backward
+  // compatibility window.
   PJRT_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
-      "PJRT_Device_MemoryStats_Args", PJRT_Device_MemoryStats_Args_STRUCT_SIZE,
+      "PJRT_Device_MemoryStats_Args",
+      PJRT_STRUCT_SIZE(PJRT_Device_MemoryStats_Args, peak_pool_bytes_is_set),
       args->struct_size));
   PJRT_ASSIGN_OR_RETURN(tsl::AllocatorStats stats,
                         args->device->device->GetAllocatorStats());
@@ -1772,6 +1760,12 @@ PJRT_Error* PJRT_Device_MemoryStats(PJRT_Device_MemoryStats_Args* args) {
   args->peak_pool_bytes_is_set = stats.peak_pool_bytes.has_value();
   if (stats.peak_pool_bytes) {
     args->peak_pool_bytes = *stats.peak_pool_bytes;
+  }
+
+  if (args->struct_size >= PJRT_STRUCT_SIZE(PJRT_Device_MemoryStats_Args,
+                                            peak_allocated_bytes_is_set)) {
+    args->peak_allocated_bytes_is_set = true;
+    args->peak_allocated_bytes = stats.peak_allocated_bytes;
   }
 
   return nullptr;
@@ -2259,6 +2253,41 @@ static void CRecvCallbackListsToCpp(
   }
 }
 
+static xla::HloOutputCallback CHloOutputCallbackToCpp(
+    const PJRT_HloOutputCallbackInfo& c_callback) {
+  xla::HloOutputCallback cb;
+  cb.callback_id = c_callback.callback_id;
+  cb.num_operands = c_callback.num_operands;
+  cb.callback =
+      [user_arg = c_callback.user_arg, callback = c_callback.callback](
+          int64_t replica_id, int64_t partition_id,
+          absl::Span<std::shared_ptr<const xla::Literal> const> literals) {
+        for (int i = 0; i < literals.size(); ++i) {
+          const auto lit = literals[i];
+          if (lit != nullptr) {
+            absl::Span<const int64_t> dims = lit->shape().dimensions();
+            callback(replica_id, partition_id, lit->untyped_data(), dims.data(),
+                     dims.size(),
+                     pjrt::ConvertToPjRtBufferType(lit->shape().element_type()),
+                     i, user_arg);
+          } else {
+            callback(replica_id, partition_id, nullptr, nullptr, 0,
+                     PJRT_Buffer_Type::PJRT_Buffer_Type_INVALID, i, user_arg);
+          }
+        }
+      };
+  return cb;
+}
+
+static void CHloOutputCallbacksToCpp(
+    PJRT_HloOutputCallbackInfo* c_list, size_t num_callbacks,
+    std::vector<xla::HloOutputCallback>& cpp_list) {
+  cpp_list.reserve(num_callbacks);
+  for (int i = 0; i < num_callbacks; ++i) {
+    cpp_list.push_back(CHloOutputCallbackToCpp(c_list[i]));
+  }
+}
+
 static std::vector<std::vector<xla::PjRtBuffer*>> Convert2DCBuffersToCppBuffers(
     PJRT_Buffer* const* const* c_lists, size_t outer_size, size_t inner_size) {
   std::vector<std::vector<xla::PjRtBuffer*>> cpp_lists;
@@ -2353,11 +2382,23 @@ PJRT_Error* PJRT_LoadedExecutable_Execute(
     CHECK_EQ(options.recv_callbacks.size(), args->num_devices);
   }
 
+  auto cpp_hlo_output_callbacks =
+      std::make_shared<std::vector<xla::HloOutputCallback>>();
+  if (args->options->struct_size >=
+      PJRT_STRUCT_SIZE(PJRT_ExecuteOptions, num_hlo_output_callbacks)) {
+    if (args->options->num_hlo_output_callbacks > 0) {
+      CHloOutputCallbacksToCpp(args->options->hlo_output_callbacks,
+                               args->options->num_hlo_output_callbacks,
+                               *cpp_hlo_output_callbacks);
+      options.hlo_output_callbacks = *cpp_hlo_output_callbacks;
+    }
+  }
+
   if (args->execute_device == nullptr) {
     std::vector<std::vector<std::unique_ptr<xla::PjRtBuffer>>> cpp_buffer_lists;
     if (args->device_complete_events != nullptr ||
         !cpp_send_callbacks->empty() || !cpp_recv_callbacks->empty() ||
-        execute_context) {
+        !cpp_hlo_output_callbacks->empty() || execute_context) {
       std::optional<std::vector<xla::Future<>>> returned_futures;
       returned_futures.emplace();
       PJRT_ASSIGN_OR_RETURN(cpp_buffer_lists,
@@ -2369,10 +2410,10 @@ PJRT_Error* PJRT_LoadedExecutable_Execute(
       // returned_futures is destroyed first. This is true for the
       // AsyncValue-based implementation of Future.
       if (!cpp_send_callbacks->empty() || !cpp_recv_callbacks->empty() ||
-          options.context) {
+          !cpp_hlo_output_callbacks->empty() || options.context) {
         for (int i = 0; i < returned_futures->size(); ++i) {
           (*returned_futures)[i].OnReady(
-              [cpp_send_callbacks, cpp_recv_callbacks,
+              [cpp_send_callbacks, cpp_recv_callbacks, cpp_hlo_output_callbacks,
                execute_context](absl::Status status) {
                 // Keeps C++ callbacks alive until execution completes on all
                 // devices.

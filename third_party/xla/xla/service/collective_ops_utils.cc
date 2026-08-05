@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "xla/service/collective_ops_utils.h"
 
+#include <algorithm>
+#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <optional>
@@ -26,12 +28,14 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/base/optimization.h"
 #include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
+#include "json/json.h"
 #include "xla/core/collectives/reduction_kind.h"
 #include "xla/hlo/ir/collective_op_group_mode.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
@@ -45,16 +49,51 @@ limitations under the License.
 #include "xla/runtime/device_id.h"
 #include "xla/service/collective_permute_cycle.h"
 #include "xla/service/computation_placer.h"
+#include "xla/service/hlo_module_config.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/service/source_target_pairs.h"
 #include "xla/shape_util.h"
+#include "xla/side_effect_util.h"
 #include "xla/status_macros.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
 using CycleType = collective_permute_cycle::CycleType;
+
+std::optional<absl::string_view> GetCollectiveGroupKey(
+    const HloInstruction& instruction) {
+  const auto& attributes = instruction.frontend_attributes().map();
+  auto it = attributes.find(kCollectiveGroupKeyAttr);
+  if (it == attributes.end() || it->second.empty()) {
+    return std::nullopt;
+  }
+  return it->second;
+}
+
+bool HasCollectiveGroupKey(const HloInstruction& instruction) {
+  return GetCollectiveGroupKey(instruction).has_value();
+}
+
+bool HaveCompatibleCollectiveGroupKeys(const HloInstruction& lhs,
+                                       const HloInstruction& rhs) {
+  return GetCollectiveGroupKey(lhs) == GetCollectiveGroupKey(rhs);
+}
+
+void CopyCollectiveGroupKey(const HloInstruction& source,
+                            HloInstruction& destination) {
+  std::optional<std::string> value =
+      source.get_frontend_attribute(kCollectiveGroupKeyAttr);
+  if (value.has_value()) {
+    destination.set_frontend_attribute(kCollectiveGroupKeyAttr, *value);
+  } else {
+    destination.erase_frontend_attribute(kCollectiveGroupKeyAttr);
+  }
+}
+
+void ClearCollectiveGroupKey(HloInstruction& instruction) {
+  instruction.erase_frontend_attribute(kCollectiveGroupKeyAttr);
+}
 
 std::optional<ReductionKind> OpcodeToReductionKind(HloOpcode hlo_opcode,
                                                    PrimitiveType type) {
@@ -808,9 +847,8 @@ bool IsRaggedAllToAllOrAsyncDoneRaggedAllToAll(
           instruction->async_wrapped_opcode() == HloOpcode::kRaggedAllToAll);
 }
 
-bool IsOneShotZeroCopyRaggedAllToAllEnabled(const DebugOptions& opts) {
-  return opts.xla_gpu_experimental_ragged_all_to_all_use_barrier_with_nccl() &&
-         opts.xla_gpu_experimental_ragged_all_to_all_zero_copy();
+bool IsOneShotRaggedAllToAllWithNcclEnabled(const DebugOptions& opts) {
+  return opts.xla_gpu_experimental_ragged_all_to_all_use_barrier_with_nccl();
 }
 
 HloInstruction* IsOrHasCollectiveWithChannelId(HloInstruction* instruction) {
@@ -937,6 +975,257 @@ int64_t GetSubgroupSize(const HloCollectiveInstruction* hlo,
     default:
       LOG(FATAL) << "Invalid collective op group mode: " << group_mode;
   }
+}
+
+namespace {
+
+std::optional<DebugOptions::CollectiveOpType> GetCollectiveOpType(
+    const HloInstruction* instruction) {
+  if (!IsNonFusionCollective(instruction)) {
+    return std::nullopt;
+  }
+  HloOpcode opcode = instruction->opcode();
+  if (opcode == HloOpcode::kAsyncStart || opcode == HloOpcode::kAsyncDone) {
+    opcode = instruction->async_wrapped_opcode();
+  }
+  switch (opcode) {
+    case HloOpcode::kAllReduce:
+    case HloOpcode::kAllReduceStart:
+    case HloOpcode::kAllReduceDone:
+      return DebugOptions::ALLREDUCE;
+    case HloOpcode::kAllGather:
+    case HloOpcode::kAllGatherStart:
+    case HloOpcode::kAllGatherDone:
+      return DebugOptions::ALLGATHER;
+    case HloOpcode::kReduceScatter:
+      return DebugOptions::REDUCESCATTER;
+    case HloOpcode::kCollectiveBroadcast:
+      return DebugOptions::COLLECTIVEBROADCAST;
+    case HloOpcode::kAllToAll:
+      return DebugOptions::ALLTOALL;
+    case HloOpcode::kCollectivePermute:
+    case HloOpcode::kCollectivePermuteStart:
+    case HloOpcode::kCollectivePermuteDone:
+      return DebugOptions::COLLECTIVEPERMUTE;
+    case HloOpcode::kRaggedAllToAll:
+      return DebugOptions::RAGGEDALLTOALL;
+    default:
+      return std::nullopt;
+  }
+}
+
+}  // namespace
+
+NcclSymmetricBuffersSpec::NcclSymmetricBuffersSpec(
+    const DebugOptions& debug_options) {
+  for (const auto& filter_proto :
+       debug_options.xla_enable_nccl_symmetric_buffers_for_collectives()) {
+    Filter filter;
+    filter.collective = filter_proto.collective();
+    if (filter_proto.has_max_size_bytes()) {
+      filter.max_size_bytes = filter_proto.max_size_bytes();
+    }
+    if (filter_proto.has_op_type()) {
+      filter.op_type = filter_proto.op_type();
+    }
+    filters_.push_back(filter);
+  }
+}
+
+bool NcclSymmetricBuffersSpec::IsEnabled(const HloInstruction& inst) const {
+  const HloInstruction* collective = &inst;
+  if (collective->opcode() == HloOpcode::kAsyncStart ||
+      collective->opcode() == HloOpcode::kAsyncDone) {
+    collective = collective->async_wrapped_instruction();
+  }
+
+  if (collective->opcode() == HloOpcode::kAllReduceDone ||
+      collective->opcode() == HloOpcode::kAllGatherDone ||
+      collective->opcode() == HloOpcode::kCollectivePermuteDone) {
+    collective = collective->operand(0);
+  }
+
+  auto op_type_opt = GetCollectiveOpType(collective);
+  if (!op_type_opt.has_value()) {
+    return false;
+  }
+  DebugOptions::CollectiveOpType op_type = *op_type_opt;
+
+  const size_t size_in_bytes =
+      ShapeUtil::ByteSizeOfElementsRecursive(collective->shape());
+
+  std::optional<PrimitiveType> operand_type;
+  if (collective->operand_count() > 0) {
+    operand_type = collective->operand(0)->shape().element_type();
+  }
+
+  auto filter_matches = [&](const Filter& filter) {
+    bool match = true;
+    // Check the collective type.
+    if (filter.collective != DebugOptions::ALLCOLLECTIVES &&
+        filter.collective != op_type) {
+      match = false;
+    }
+    // Check the size.
+    if (filter.max_size_bytes.has_value() &&
+        size_in_bytes > filter.max_size_bytes.value_or(0)) {
+      match = false;
+    }
+    // Check the operand type.
+    if (filter.op_type.has_value()) {
+      if (!operand_type.has_value() || *operand_type != *filter.op_type) {
+        match = false;
+      }
+    }
+    return match;
+  };
+
+  if (std::any_of(filters_.begin(), filters_.end(), filter_matches)) {
+    return true;
+  }
+
+  return false;
+}
+
+bool IsNcclSymmetricBuffersEnabledForCollective(
+    const HloInstruction* instruction, const DebugOptions& opts) {
+  if (opts.xla_gpu_experimental_enable_nccl_symmetric_buffers()) {
+    return true;
+  }
+  if (opts.xla_enable_nccl_symmetric_buffers_for_collectives().empty()) {
+    return false;
+  }
+  if (instruction == nullptr) {
+    return false;
+  }
+
+  if (!IsNonFusionCollective(instruction)) {
+    return false;
+  }
+  NcclSymmetricBuffersSpec spec(opts);
+  return spec.IsEnabled(*instruction);
+}
+
+absl::StatusOr<AsyncCollectiveConfig> ParseAsyncCollectiveConfig(
+    absl::string_view config_json_str) {
+  AsyncCollectiveConfig config;
+  if (config_json_str.empty()) {
+    return config;
+  }
+  Json::Value json;
+  Json::CharReaderBuilder builder;
+  std::unique_ptr<Json::CharReader> reader(builder.newCharReader());
+  std::string errors;
+  if (!reader->parse(config_json_str.data(),
+                     config_json_str.data() + config_json_str.size(), &json,
+                     &errors)) {
+    return absl::InvalidArgumentError(
+        absl::StrCat("Failed to parse collective op config JSON: ", errors,
+                     ". JSON string: ", config_json_str));
+  }
+  if (json.isMember("replica_groups")) {
+    const Json::Value& replica_groups = json["replica_groups"];
+    TF_RET_CHECK(replica_groups.isArray());
+    for (const auto& group : replica_groups) {
+      TF_RET_CHECK(group.isArray());
+      ReplicaGroup rg;
+      for (const auto& id_json : group) {
+        rg.add_replica_ids(id_json.asInt64());
+      }
+      config.replica_groups.push_back(rg);
+    }
+  }
+  if (json.isMember("channel_id")) {
+    config.channel_id = json["channel_id"].asInt64();
+  }
+  if (json.isMember("use_global_device_ids")) {
+    config.use_global_device_ids = json["use_global_device_ids"].asBool();
+  }
+  if (json.isMember("permutation")) {
+    const Json::Value& permutation = json["permutation"];
+    TF_RET_CHECK(permutation.isArray());
+    for (const auto& pair : permutation) {
+      TF_RET_CHECK(pair.isArray() && pair.size() == 2);
+      config.permutation.push_back({pair[0].asInt64(), pair[1].asInt64()});
+    }
+  }
+  if (json.isMember("all_gather_dimension")) {
+    config.all_gather_dimension = json["all_gather_dimension"].asInt64();
+  }
+  if (json.isMember("scatter_dimension")) {
+    config.scatter_dimension = json["scatter_dimension"].asInt64();
+  }
+  if (json.isMember("tiled")) {
+    config.tiled = json["tiled"].asBool();
+  }
+  if (json.isMember("split_dimension")) {
+    config.split_dimension = json["split_dimension"].asInt64();
+  }
+  if (json.isMember("concat_dimension")) {
+    config.concat_dimension = json["concat_dimension"].asInt64();
+  }
+  if (json.isMember("split_count")) {
+    config.split_count = json["split_count"].asInt64();
+  }
+  return config;
+}
+
+std::string SerializeAsyncCollectiveConfig(
+    const AsyncCollectiveConfig& config) {
+  Json::Value json(Json::objectValue);
+  if (!config.replica_groups.empty()) {
+    Json::Value rg_json(Json::arrayValue);
+    for (const auto& rg : config.replica_groups) {
+      Json::Value group(Json::arrayValue);
+      for (int64_t id : rg.replica_ids()) {
+        group.append(static_cast<Json::Value::Int64>(id));
+      }
+      rg_json.append(group);
+    }
+    json["replica_groups"] = rg_json;
+  }
+  if (config.channel_id.has_value()) {
+    json["channel_id"] = static_cast<Json::Value::Int64>(*config.channel_id);
+  }
+  if (config.use_global_device_ids) {
+    json["use_global_device_ids"] = config.use_global_device_ids;
+  }
+  if (!config.permutation.empty()) {
+    Json::Value perm_json(Json::arrayValue);
+    for (const auto& pair : config.permutation) {
+      Json::Value pair_json(Json::arrayValue);
+      pair_json.append(static_cast<Json::Value::Int64>(pair.first));
+      pair_json.append(static_cast<Json::Value::Int64>(pair.second));
+      perm_json.append(pair_json);
+    }
+    json["permutation"] = perm_json;
+  }
+  if (config.all_gather_dimension.has_value()) {
+    json["all_gather_dimension"] =
+        static_cast<Json::Value::Int64>(*config.all_gather_dimension);
+  }
+  if (config.scatter_dimension.has_value()) {
+    json["scatter_dimension"] =
+        static_cast<Json::Value::Int64>(*config.scatter_dimension);
+  }
+  if (config.tiled.has_value()) {
+    json["tiled"] = *config.tiled;
+  }
+  if (config.split_dimension.has_value()) {
+    json["split_dimension"] =
+        static_cast<Json::Value::Int64>(*config.split_dimension);
+  }
+  if (config.concat_dimension.has_value()) {
+    json["concat_dimension"] =
+        static_cast<Json::Value::Int64>(*config.concat_dimension);
+  }
+  if (config.split_count.has_value()) {
+    json["split_count"] = static_cast<Json::Value::Int64>(*config.split_count);
+  }
+
+  Json::StreamWriterBuilder builder;
+  builder["indentation"] = "";
+  return Json::writeString(builder, json);
 }
 
 }  // end namespace xla

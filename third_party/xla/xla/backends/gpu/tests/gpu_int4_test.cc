@@ -28,8 +28,7 @@ limitations under the License.
 namespace xla::gpu {
 namespace {
 
-class GpuInt4Test
-    : public HloPjRtInterpreterReferenceMixin<GpuPjRtCodegenTest> {};
+class GpuInt4Test : public HloInterpreterReferenceMixin<GpuPjRtCodegenTest> {};
 
 TEST_F(GpuInt4Test, TestInt4ParameterSize) {
   const std::string hlo_text = R"(

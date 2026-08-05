@@ -27,12 +27,12 @@ limitations under the License.
 #include "absl/functional/function_ref.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
+#include "absl/strings/cord.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/tsl/platform/status_macros.h"
 #include "llvm/Support/ExtensibleRTTI.h"
-#include "mlir/IR/BuiltinOps.h"
 #include "xla/hlo/ir/hlo_print_options.h"
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/pjrt/maybe_owning_mlir_module.h"
@@ -56,9 +56,7 @@ limitations under the License.
 #include "xla/python/pjrt_ifrt/pjrt_client.h"
 #include "xla/python/pjrt_ifrt/pjrt_host_callback.h"
 #include "xla/python/pjrt_ifrt/xla_compiler.h"
-#include "xla/tsl/concurrency/future.h"
 #include "xla/tsl/concurrency/ref_count.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 
@@ -198,6 +196,9 @@ class PjRtExecutable final
     std::optional<std::vector<std::shared_ptr<const xla::PjRtLayout>>>
         output_layouts;
 
+    // Output bundle slice sizes.
+    std::optional<std::vector<int>> outputs_bundle_slice_sizes;
+
     // Serializes the common metadata and a `PjRtExecutable`.
     absl::StatusOr<std::string> Serialize(
         xla::PjRtExecutable* pjrt_executable) const;
@@ -206,14 +207,14 @@ class PjRtExecutable final
     // executable string in the `serialized_executable`, which can be
     // deserialized into either a `PjRtExecutable` or `PjRtLoadedExecutable` by
     // the caller.
-    static absl::StatusOr<std::pair<CommonMetadata, absl::string_view>>
-    Deserialize(absl::string_view serialized_executable,
-                absl::FunctionRef<
-                    absl::Status(const ExecutableVersion& executable_version,
-                                 const DeviceListRef& devices)>
-                    is_executable_version_compatible,
-                const XlaDeserializeExecutableOptions&
-                    xla_deserialize_executable_options);
+    static absl::StatusOr<std::pair<CommonMetadata, absl::Cord>> Deserialize(
+        const absl::Cord& serialized_executable,
+        absl::FunctionRef<
+            absl::Status(const ExecutableVersion& executable_version,
+                         const DeviceListRef& devices)>
+            is_executable_version_compatible,
+        const XlaDeserializeExecutableOptions&
+            xla_deserialize_executable_options);
   };
 
  protected:
@@ -251,6 +252,7 @@ class PjRtLoadedExecutable final
       PjRtClient* client, xla::MaybeOwningMlirModule module,
       xla::CompileOptions compile_options,
       std::vector<tsl::RCReference<LoadedHostCallback>> loaded_host_callbacks,
+      std::optional<std::vector<int>> outputs_bundle_slice_sizes,
       DeviceListRef executable_devices);
 
   // PjRtCompatibleLoadedExecutable implementation.
@@ -401,6 +403,7 @@ class PjRtLoadedExecutable final
   std::shared_ptr<std::vector<tsl::RCReference<LoadedHostCallback>>>
       all_loaded_host_callbacks_;
   std::vector<PjRtHostSendAndRecvLoadedHostCallback*> host_send_recv_callbacks_;
+  std::vector<PjRtHloOutputLoadedHostCallback*> host_hlo_output_callbacks_;
 
   PjRtExecutable::CommonMetadata common_metadata_;
   // If the executable is portable, shardings in `output_shardings_` will use an

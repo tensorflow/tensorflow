@@ -648,22 +648,16 @@ absl::StatusOr<mlir::ArrayAttr> ExtractLayoutsFromShapes(
       continue;
     }
 
-    // Only a subset of layout specification in XLA is supported in MHLO
-    // currently. The layout has to be dense, and only specify the order of
-    // dimensions. Sparse, tiled layout or non-default memory space fields
-    // cannot be expressed in MHLO layout yet.
+    // Only the dimension order (minor-to-major) of an XLA layout is encoded in
+    // the MHLO layout index tensor. Tilings and non-default memory spaces are
+    // carried separately (see ExtractTilingsFromShapes /
+    // ExtractMemorySpacesFromShapes) because the index tensor has no slot for
+    // them.
     if (!shape_and_layout.IsArray()) {
       return Unimplemented("Only dense arrays are supported.");
     }
 
     const xla::Layout& xla_layout = shape_and_layout.layout();
-    if (!xla_layout.tiles().empty()) {
-      return Unimplemented("Tiled layout is not supported yet");
-    }
-    if (xla_layout.memory_space() != xla::Layout::kDefaultMemorySpace) {
-      return Unimplemented(
-          "Layout support for non-default memory space is not yet implemented");
-    }
 
     llvm::SmallVector<int64_t> layout;
     for (int64_t dim_index : xla_layout.minor_to_major()) {
@@ -680,6 +674,80 @@ absl::StatusOr<mlir::ArrayAttr> ExtractLayoutsFromTuple(
     return InvalidArgument("Expected shape to be Tuple");
   }
   return ExtractLayoutsFromShapes(shape.tuple_shapes(), builder);
+}
+
+absl::StatusOr<mlir::ArrayAttr> ExtractTilingsFromShapes(
+    const absl::Span<const Shape> shapes_with_layouts, mlir::Builder* builder) {
+  std::vector<mlir::Attribute> tilings;
+  tilings.reserve(shapes_with_layouts.size());
+  for (auto& shape_and_layout : shapes_with_layouts) {
+    if (shape_and_layout.IsTuple()) {
+      return Unimplemented(
+          "Tiling support for nested tuples is not implemented.");
+    }
+    // XLA can have invalid layout for certain values (such as token types).
+    // These are imported as empty tiling in MHLO.
+    if (!shape_and_layout.IsArray()) {
+      tilings.push_back(builder->getArrayAttr({}));
+      continue;
+    }
+
+    const xla::Layout& xla_layout = shape_and_layout.layout();
+    std::vector<mlir::Attribute> tiles;
+    tiles.reserve(xla_layout.tiles().size());
+    for (const auto& tile : xla_layout.tiles()) {
+      tiles.push_back(builder->getIndexTensorAttr(tile.dimensions()));
+    }
+    tilings.push_back(builder->getArrayAttr(tiles));
+  }
+  return builder->getArrayAttr(tilings);
+}
+
+absl::StatusOr<mlir::ArrayAttr> ExtractTilingsFromTuple(
+    xla::Shape shape, mlir::Builder* builder) {
+  if (!shape.IsTuple()) {
+    return InvalidArgument("Expected shape to be Tuple");
+  }
+  return ExtractTilingsFromShapes(shape.tuple_shapes(), builder);
+}
+
+namespace {
+
+// Returns the memory space of a single (array) shape's layout, or the default
+// memory space for shapes without an array layout (e.g. tokens).
+int64_t GetMemorySpaceOrDefault(const Shape& shape) {
+  if (shape.IsArray() && shape.has_layout()) {
+    return shape.layout().memory_space();
+  }
+  return xla::Layout::kDefaultMemorySpace;
+}
+
+}  // namespace
+
+std::optional<mlir::DenseI64ArrayAttr> ExtractMemorySpacesFromShapes(
+    const absl::Span<const Shape> shapes_with_layouts, mlir::Builder* builder) {
+  llvm::SmallVector<int64_t> memory_spaces;
+  memory_spaces.reserve(shapes_with_layouts.size());
+  bool has_non_default = false;
+  for (const Shape& shape : shapes_with_layouts) {
+    int64_t memory_space = GetMemorySpaceOrDefault(shape);
+    has_non_default |= memory_space != xla::Layout::kDefaultMemorySpace;
+    memory_spaces.push_back(memory_space);
+  }
+  // Only emit the attribute when it carries information beyond the default, so
+  // the common (HBM-only) case keeps its existing representation.
+  if (!has_non_default) {
+    return std::nullopt;
+  }
+  return builder->getDenseI64ArrayAttr(memory_spaces);
+}
+
+std::optional<mlir::DenseI64ArrayAttr> ExtractMemorySpacesFromTuple(
+    const Shape shape, mlir::Builder* builder) {
+  if (!shape.IsTuple()) {
+    return ExtractMemorySpacesFromShapes({shape}, builder);
+  }
+  return ExtractMemorySpacesFromShapes(shape.tuple_shapes(), builder);
 }
 
 }  // namespace xla

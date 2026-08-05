@@ -34,42 +34,43 @@ class SummaryImageOp : public OpKernel {
     int64_t max_images_tmp;
     OP_REQUIRES_OK(context, context->GetAttr("max_images", &max_images_tmp));
     OP_REQUIRES(context, max_images_tmp < (1LL << 31),
-                errors::InvalidArgument("max_images must be < 2^31"));
+                absl::InvalidArgumentError("max_images must be < 2^31"));
     max_images_ = static_cast<int32_t>(max_images_tmp);
     const TensorProto* proto;
     OP_REQUIRES_OK(context, context->GetAttr("bad_color", &proto));
     OP_REQUIRES_OK(context, context->device()->MakeTensorFromProto(
                                 *proto, AllocatorAttributes(), &bad_color_));
     OP_REQUIRES(context, bad_color_.dtype() == DT_UINT8,
-                errors::InvalidArgument("bad_color must be uint8, got ",
-                                        DataTypeString(bad_color_.dtype())));
-    OP_REQUIRES(
-        context, TensorShapeUtils::IsVector(bad_color_.shape()),
-        errors::InvalidArgument("bad_color must be a vector, got shape ",
-                                bad_color_.shape().DebugString()));
+                absl::InvalidArgumentError(
+                    absl::StrCat("bad_color must be uint8, got ",
+                                 DataTypeString(bad_color_.dtype()))));
+    OP_REQUIRES(context, TensorShapeUtils::IsVector(bad_color_.shape()),
+                absl::InvalidArgumentError(
+                    absl::StrCat("bad_color must be a vector, got shape ",
+                                 bad_color_.shape().DebugString())));
   }
 
   void Compute(OpKernelContext* c) override {
     const Tensor& tags = c->input(0);
     const Tensor& tensor = c->input(1);
     OP_REQUIRES(c, TensorShapeUtils::IsScalar(tags.shape()),
-                errors::InvalidArgument("Tags must be a scalar"));
+                absl::InvalidArgumentError("Tags must be a scalar"));
     OP_REQUIRES(c,
                 tensor.dims() == 4 &&
                     (tensor.dim_size(3) == 1 || tensor.dim_size(3) == 3 ||
                      tensor.dim_size(3) == 4),
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(absl::StrCat(
                     "Tensor must be 4-D with last dim 1, 3, or 4, not ",
-                    tensor.shape().DebugString()));
+                    tensor.shape().DebugString())));
     const std::string& base_tag = tags.scalar<tstring>()();
 
-    OP_REQUIRES(c,
-                tensor.dim_size(0) < (1LL << 31) &&
-                    tensor.dim_size(1) < (1LL << 31) &&
-                    tensor.dim_size(2) < (1LL << 31) &&
-                    (tensor.dim_size(1) * tensor.dim_size(2)) < (1LL << 29),
-                errors::InvalidArgument("Tensor too large for summary ",
-                                        tensor.shape().DebugString()));
+    OP_REQUIRES(
+        c,
+        tensor.dim_size(0) < (1LL << 31) && tensor.dim_size(1) < (1LL << 31) &&
+            tensor.dim_size(2) < (1LL << 31) &&
+            (tensor.dim_size(1) * tensor.dim_size(2)) < (1LL << 29),
+        absl::InvalidArgumentError(absl::StrCat("Tensor too large for summary ",
+                                                tensor.shape().DebugString())));
 
     // The casts and h * w cannot overflow because of the limits above.
     const int batch_size = static_cast<int>(tensor.dim_size(0));
@@ -79,9 +80,9 @@ class SummaryImageOp : public OpKernel {
     const int depth = static_cast<int>(tensor.dim_size(3));
 
     OP_REQUIRES(c, hw > 0 && depth > 0,
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(absl::StrCat(
                     "input tensor must have non-zero dims. Found: [",
-                    batch_size, ", ", h, ", ", w, ", ", depth, "]."));
+                    batch_size, ", ", h, ", ", w, ", ", depth, "].")));
 
     Summary s;
     if (tensor.dtype() == DT_UINT8) {
@@ -115,9 +116,9 @@ class SummaryImageOp : public OpKernel {
                              const std::string& base_tag, Summary* s) {
     // For float and half images, nans and infs are replaced with bad_color.
     OP_REQUIRES(c, bad_color_.dim_size(0) >= depth,
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(absl::StrCat(
                     "expected depth <= bad_color.size, got depth = ", depth,
-                    ", bad_color.size = ", bad_color_.dim_size(0)));
+                    ", bad_color.size = ", bad_color_.dim_size(0))));
     auto bad_color_full = bad_color_.vec<uint8_t>();
     typename TTypes<uint8_t>::ConstVec bad_color(bad_color_full.data(), depth);
 
@@ -171,7 +172,7 @@ class SummaryImageOp : public OpKernel {
       if (!png::WriteImageToBuffer(
               image.data(), w, h, w * depth, depth, channel_bits, compression,
               si->mutable_encoded_image_string(), nullptr)) {
-        return errors::Internal("PNG encoding failed");
+        return absl::InternalError("PNG encoding failed");
       }
     }
     return absl::OkStatus();

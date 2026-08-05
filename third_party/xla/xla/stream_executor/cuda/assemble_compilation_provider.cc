@@ -152,8 +152,7 @@ AssembleCompilationProvider(const CompilationProviderOptions& options) {
   append_to_decision_log(
       absl::StrCat("Has NvPtxCompiler support: ", has_nvptxcompiler.message()));
 
-  const bool parallel_compilation_support_is_desired =
-      options.enable_llvm_module_compilation_parallelism();
+  const bool parallel_compilation_support_is_desired = false;
   append_to_decision_log(
       absl::StrCat("Parallel compilation support is desired: ",
                    parallel_compilation_support_is_desired));

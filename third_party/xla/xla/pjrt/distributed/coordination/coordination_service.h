@@ -37,7 +37,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/pjrt/distributed/coordination/coordination_service.pb.h"
 #include "xla/pjrt/distributed/coordination/key_value_store.h"
-#include "xla/service/global_device_id.h"
+#include "xla/runtime/device_id.h"
 #include "xla/tsl/platform/status.h"
 #include "xla/tsl/protobuf/coordination_config.pb.h"
 #include "tsl/platform/random.h"

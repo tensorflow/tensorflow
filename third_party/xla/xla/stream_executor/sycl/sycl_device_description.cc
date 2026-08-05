@@ -34,8 +34,10 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "xla/tsl/platform/status_macros.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/stream_executor/dnn.h"
 #include "xla/stream_executor/gpu/read_numa_node.h"
 #include "xla/stream_executor/sycl/oneapi_compute_capability.h"
+#include "xla/stream_executor/sycl/sycl_dnn.h"
 #include "xla/stream_executor/sycl/sycl_gpu_runtime.h"
 #include "xla/tsl/platform/statusor.h"
 #include "tsl/platform/numa.h"
@@ -213,6 +215,20 @@ CreateOneApiDeviceDescription(int device_ordinal) {
   desc.set_device_vendor("Intel Corporation");
 
   desc.set_oneapi_compute_capability(ip_version_ext.ipVersion);
+
+  // Get oneDNN version using OnednnSupport::GetOnednnVersion()
+  absl::StatusOr<dnn::VersionInfo> dnn_version_info =
+      OnednnSupport::GetOnednnVersion();
+  if (dnn_version_info.ok()) {
+    desc.set_dnn_version(SemanticVersion{
+        static_cast<unsigned int>(dnn_version_info->major_version()),
+        static_cast<unsigned int>(dnn_version_info->minor_version()),
+        static_cast<unsigned int>(dnn_version_info->patch())});
+  } else {
+    LOG(WARNING) << "Failed to get oneDNN version: "
+                 << dnn_version_info.status();
+    desc.set_dnn_version(SemanticVersion{0, 0, 0});
+  }
 
   SemanticVersion driver_version =
       GetOrDefaultLevelZeroDriverVersion(lz_driver);

@@ -19,7 +19,6 @@ limitations under the License.
 #include <functional>
 #include <iterator>
 #include <memory>
-#include <numeric>
 #include <optional>
 #include <string>
 #include <utility>
@@ -40,6 +39,7 @@ limitations under the License.
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinOps.h"
+#include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/SymbolTable.h"
 #include "mlir/Parser/Parser.h"
 #include "mlir/Support/LLVM.h"
@@ -63,7 +63,6 @@ limitations under the License.
 #include "xla/service/spmd/shardy/utils.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 
@@ -272,7 +271,7 @@ MeshInfo ExtractSdyMeshInfo(mlir::sdy::MeshAttr mesh_attr) {
       total_size *= size;
     }
     info.device_ids.resize(total_size);
-    std::iota(info.device_ids.begin(), info.device_ids.end(), 0);
+    absl::c_iota(info.device_ids, 0);
   }
   return info;
 }
@@ -297,7 +296,7 @@ MeshInfo ExtractStablehloMeshInfo(
       total_size *= size;
     }
     info.device_ids.resize(total_size);
-    std::iota(info.device_ids.begin(), info.device_ids.end(), 0);
+    absl::c_iota(info.device_ids, 0);
   }
   return info;
 }
@@ -311,7 +310,7 @@ xla::Mesh BuildXlaMesh(const MeshInfo& info) {
   }
 
   std::vector<int64_t> iota_ids(info.device_ids.size());
-  std::iota(iota_ids.begin(), iota_ids.end(), 0);
+  absl::c_iota(iota_ids, 0);
   if (info.device_ids == iota_ids) {
     return xla::Mesh(info.axes_sizes, axes_names_sv);
   }
@@ -451,7 +450,9 @@ absl::StatusOr<xla::PrecisionConfig::Algorithm> ConvertDotAlgorithm(
       attr.getAccumulationType(), attr.getLhsComponentCount(),
       attr.getRhsComponentCount(), attr.getNumPrimitiveOperations(),
       attr.getAllowImpreciseAccumulation());
-  if (failed(algorithm)) return Internal("Unknown dot algorithm");
+  if (failed(algorithm)) {
+    return Internal("Unknown dot algorithm");
+  }
 
   switch (algorithm.value()) {
     case mlir::hlo::detail::KnownDotAlgorithm::ANY_F8_ANY_F8_F32:
@@ -491,7 +492,9 @@ absl::StatusOr<xla::PrecisionConfig::Algorithm> ConvertDotAlgorithm(
       attr.getAccumulationType(), attr.getLhsComponentCount(),
       attr.getRhsComponentCount(), attr.getNumPrimitiveOperations(),
       attr.getAllowImpreciseAccumulation());
-  if (failed(algorithm)) return Internal("Unknown dot algorithm");
+  if (failed(algorithm)) {
+    return Internal("Unknown dot algorithm");
+  }
 
   switch (algorithm.value()) {
     case mlir::hlo::detail::KnownDotAlgorithm::ANY_F8_ANY_F8_F32:
@@ -596,12 +599,14 @@ absl::StatusOr<std::vector<ReplicaGroup>> ConvertReplicaGroupsToV1(
 // and source-target pairs are defined in HLO.
 absl::StatusOr<std::vector<std::pair<int64_t, int64_t>>> ConvertNx2Attribute(
     std::optional<mlir::DenseIntElementsAttr> optional_attr) {
-  if (!optional_attr.has_value())
+  if (!optional_attr.has_value()) {
     return std::vector<std::pair<int64_t, int64_t>>{};
+  }
   mlir::DenseIntElementsAttr attr = *optional_attr;
   auto type = mlir::dyn_cast<mlir::RankedTensorType>(attr.getType());
-  if (!type || type.getRank() != 2 || type.getShape()[1] != 2)
+  if (!type || type.getRank() != 2 || type.getShape()[1] != 2) {
     return Internal("expected Nx2 attribute to be a tensor of shape Nx2");
+  }
   auto it = attr.getValues<int64_t>().begin();
   std::vector<std::pair<int64_t, int64_t>> out(attr.getNumElements() / 2);
   for (auto& item : out) {
@@ -618,8 +623,9 @@ absl::StatusOr<TriangularSolveOptions::Transpose> ConvertTranspose(
     llvm::StringRef transpose_string) {
   std::optional<mlir::mhlo::Transpose> transpose =
       mlir::mhlo::symbolizeTranspose(transpose_string);
-  if (!transpose)
+  if (!transpose) {
     return InvalidArgument("Unknown transpose type %s", transpose_string.str());
+  }
 
   switch (*transpose) {
     case mlir::mhlo::Transpose::NO_TRANSPOSE:
@@ -691,10 +697,14 @@ absl::StatusOr<xla::CustomCallApiVersion> ConvertCustomCallApiVersion(
 
 std::optional<xla::OpSharding> ConvertSharding(llvm::StringRef sharding) {
   xla::OpSharding sharding_proto;
-  if (sharding_proto.ParseFromString(sharding.str())) return sharding_proto;
+  if (sharding_proto.ParseFromString(sharding.str())) {
+    return sharding_proto;
+  }
   absl::StatusOr<xla::HloSharding> sharding_cpp =
       xla::ParseSharding(sharding.str());
-  if (sharding_cpp.ok()) return sharding_cpp->ToProto();
+  if (sharding_cpp.ok()) {
+    return sharding_cpp->ToProto();
+  }
   return std::nullopt;
 }
 
@@ -750,7 +760,9 @@ std::optional<xla::OriginalValueProto> ConvertOriginalValue(
 
 std::optional<xla::HloInputOutputAliasProto> ConvertInputOutputAlias(
     llvm::ArrayRef<mlir::Attribute> aliasing) {
-  if (aliasing.empty()) return std::nullopt;
+  if (aliasing.empty()) {
+    return std::nullopt;
+  }
 
   xla::HloInputOutputAliasProto input_output_alias_proto;
   for (auto attr : aliasing) {
@@ -772,12 +784,13 @@ std::optional<xla::HloInputOutputAliasProto> ConvertInputOutputAlias(
                                                parameter_index.end());
     mlir::StringRef kind =
         mlir::cast<mlir::StringAttr>(alias_attr.get("kind")).getValue();
-    if (kind == "may_alias")
+    if (kind == "may_alias") {
       entry.set_kind(xla::Kind::MAY_ALIAS);
-    else if (kind == "must_alias")
+    } else if (kind == "must_alias") {
       entry.set_kind(xla::Kind::MUST_ALIAS);
-    else
+    } else {
       entry.set_kind(xla::Kind::UNDEFINED_ALIAS);
+    }
     input_output_alias_proto.add_entries()->Swap(&entry);
   }
   return input_output_alias_proto;
@@ -911,6 +924,92 @@ mlir::FailureOr<xla::Shape> ExtractXlaShape(mlir::Operation* op) {
     return xla::ShapeUtil::MakeTupleShape(subshapes);
   }
   return subshapes[0];
+}
+
+std::optional<OriginalValueProto> ProjectOriginalValueProto(
+    const std::optional<OriginalValueProto>& original_value, unsigned index,
+    unsigned num_results) {
+  if (!original_value || index >= num_results) {
+    return std::nullopt;
+  }
+
+  OriginalValueProto projected;
+  projected.set_is_synthetic_call(original_value->is_synthetic_call());
+
+  if (num_results <= 1) {
+    *projected.mutable_elements() = original_value->elements();
+    return projected;
+  }
+
+  for (const auto& element : original_value->elements()) {
+    if (element.shape_index_size() > 0 && element.shape_index(0) == index) {
+      auto* new_element = projected.add_elements();
+      for (int i = 1; i < element.shape_index_size(); ++i) {
+        new_element->add_shape_index(element.shape_index(i));
+      }
+      if (element.has_original_array()) {
+        *new_element->mutable_original_array() = element.original_array();
+      }
+    }
+  }
+
+  return projected;
+}
+
+std::optional<OriginalValueProto> ComposeOriginalValueProto(
+    llvm::ArrayRef<std::optional<OriginalValueProto>> protos) {
+  if (protos.empty()) {
+    return std::nullopt;
+  }
+
+  bool has_any_value = false;
+  for (const auto& proto : protos) {
+    if (proto) {
+      has_any_value = true;
+      break;
+    }
+  }
+  if (!has_any_value) {
+    return std::nullopt;
+  }
+
+  OriginalValueProto composed;
+  composed.set_is_synthetic_call(false);
+
+  if (protos.size() == 1) {
+    return protos[0];
+  }
+
+  for (unsigned i = 0; i < protos.size(); ++i) {
+    if (!protos[i]) {
+      continue;
+    }
+    for (const auto& element : protos[i]->elements()) {
+      auto* new_element = composed.add_elements();
+      new_element->add_shape_index(i);
+      for (int64_t idx : element.shape_index()) {
+        new_element->add_shape_index(idx);
+      }
+      if (element.has_original_array()) {
+        *new_element->mutable_original_array() = element.original_array();
+      }
+    }
+  }
+
+  return composed;
+}
+
+OriginalValueProto CreateEmptyOriginalValueProto(const Shape& shape) {
+  OriginalValueProto proto;
+  proto.set_is_synthetic_call(false);
+  ShapeUtil::ForEachLeafShape(
+      shape, [&](const Shape& /*subshape*/, const ShapeIndex& index) {
+        auto* element = proto.add_elements();
+        for (int64_t idx : index) {
+          element->add_shape_index(idx);
+        }
+      });
+  return proto;
 }
 
 }  // namespace xla

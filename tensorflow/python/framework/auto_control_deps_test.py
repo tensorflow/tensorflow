@@ -924,6 +924,73 @@ class AutomaticControlDependenciesTest(test.TestCase):
       with self.assertRaises(ValueError):
         read_op2.get_attr("_has_manual_control_dependencies")
 
+  def testReadOnlyResourceInputsUnsorted(self):
+    from tensorflow.python.framework import auto_control_deps_utils as acd_utils
+    from unittest import mock
+
+    attr = acd_utils.READ_ONLY_RESOURCE_INPUTS_ATTR
+
+    def get_attr_returning(indices):
+      def _get_attr(name):
+        if name == attr:
+          return indices
+        raise ValueError()
+
+      return _get_attr
+
+    # 1. Unsorted inputs
+    input0 = mock.MagicMock()
+    input0.dtype = dtypes.resource
+    input1 = mock.MagicMock()
+    input1.dtype = dtypes.int32
+    input2 = mock.MagicMock()
+    input2.dtype = dtypes.resource
+
+    op = mock.MagicMock()
+    op.type = "SomeOp"
+    op.inputs = [input0, input1, input2]
+    op.get_attr.side_effect = get_attr_returning([2, 0])
+
+    # _get_read_only_resource_input_indices_op returns both indices, sorted.
+    self.assertEqual(
+        acd_utils._get_read_only_resource_input_indices_op(op), [0, 2]
+    )
+
+    # get_read_write_resource_inputs marks both as reads, none as writes.
+    reads, writes = acd_utils.get_read_write_resource_inputs(op)
+    self.assertIn(input0, reads)
+    self.assertIn(input2, reads)
+    self.assertEqual(len(writes), 0)
+
+    # 2. Empty indices
+    op2 = mock.MagicMock()
+    op2.type = "SomeOp"
+    op2.inputs = [input0, input1, input2]
+    op2.get_attr.side_effect = get_attr_returning([])
+
+    self.assertEqual(
+        acd_utils._get_read_only_resource_input_indices_op(op2), []
+    )
+    reads2, writes2 = acd_utils.get_read_write_resource_inputs(op2)
+    self.assertEqual(len(reads2), 0)
+    self.assertIn(input0, writes2)
+    self.assertIn(input2, writes2)
+
+    # 3. Mixed reads and writes (index 0 is read, index 2 is write)
+    op3 = mock.MagicMock()
+    op3.type = "SomeOp"
+    op3.inputs = [input0, input1, input2]
+    op3.get_attr.side_effect = get_attr_returning([0])
+
+    self.assertEqual(
+        acd_utils._get_read_only_resource_input_indices_op(op3), [0]
+    )
+    reads3, writes3 = acd_utils.get_read_write_resource_inputs(op3)
+    self.assertIn(input0, reads3)
+    self.assertNotIn(input2, reads3)
+    self.assertIn(input2, writes3)
+    self.assertNotIn(input0, writes3)
+
 
 if __name__ == "__main__":
   ops.enable_eager_execution()

@@ -114,6 +114,9 @@ std::string HloModuleConfig::compilation_cache_key() const {
   if (partition_size() != 0) {
     StrAppend(&key, "::partition_size=", partition_size());
   }
+  if (page_size_kib() != 0) {
+    StrAppend(&key, "::page_size_kib=", page_size_kib());
+  }
   return key;
 }
 

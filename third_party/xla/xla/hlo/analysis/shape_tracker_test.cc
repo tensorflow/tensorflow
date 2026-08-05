@@ -18,12 +18,16 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
+#include "absl/types/span.h"
+#include "llvm/ADT/SmallVector.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -47,6 +51,8 @@ void ExpectStepsEqual(const std::vector<ShapeTracker::Step>& actual,
         << "Step mismatch at index " << i;
   }
 }
+
+using BufferView = ShapeTracker::BufferView;
 
 }  // namespace
 
@@ -880,4 +886,969 @@ TEST(ShapeTrackerTest, OptimizeStepsOOBWithTrailingDegenerates) {
   EXPECT_NO_FATAL_FAILURE(tracker.DebugString(true));
 }
 
+namespace {
+
+TEST(BufferViewTest, FromStridesAndExtentsSuccess1D) {
+  auto view_or = BufferView::FromStridesAndExtents({4}, {5});
+  ASSERT_TRUE(view_or.ok());
+  EXPECT_EQ(view_or->strides(), (std::vector<int64_t>{4}));
+  EXPECT_EQ(view_or->extents(), (std::vector<int64_t>{5}));
+}
+
+TEST(BufferViewTest, FromStridesAndExtentsSuccessMultiDim) {
+  auto view_or = BufferView::FromStridesAndExtents({12, 4, 1}, {2, 3, 4});
+  ASSERT_TRUE(view_or.ok());
+  EXPECT_EQ(view_or->strides(), (std::vector<int64_t>{12, 4, 1}));
+  EXPECT_EQ(view_or->extents(), (std::vector<int64_t>{2, 3, 4}));
+}
+
+TEST(BufferViewTest, FromStridesAndExtentsSizeMismatch) {
+  auto view_or = BufferView::FromStridesAndExtents({4, 1}, {5});
+  EXPECT_FALSE(view_or.ok());
+  EXPECT_EQ(view_or.status().code(), absl::StatusCode::kInvalidArgument);
+}
+
+TEST(BufferViewTest, FromStridesAndExtentsWithGaps) {
+  auto view_or = BufferView::FromStridesAndExtents({2, 5}, {2, 3});
+  ASSERT_TRUE(view_or.ok());
+  EXPECT_EQ(view_or->strides(), (std::vector<int64_t>{2, 5}));
+  EXPECT_EQ(view_or->extents(), (std::vector<int64_t>{2, 3}));
+}
+
+TEST(BufferViewTest, FromShapeScalar) {
+  Shape shape = ShapeUtil::MakeShape(F32, {});
+  BufferView view = BufferView::FromShape(shape);
+  EXPECT_EQ(view.strides(), (std::vector<int64_t>{1}));
+  EXPECT_EQ(view.extents(), (std::vector<int64_t>{1}));
+}
+
+TEST(BufferViewTest, FromShape1D) {
+  Shape shape = ShapeUtil::MakeShape(F32, {10});
+  BufferView view = BufferView::FromShape(shape);
+  EXPECT_EQ(view.strides(), (std::vector<int64_t>{1}));
+  EXPECT_EQ(view.extents(), (std::vector<int64_t>{10}));
+}
+
+TEST(BufferViewTest, ElementsIn) {
+  // Scalar
+  {
+    Shape shape = ShapeUtil::MakeShape(F32, {});
+    BufferView view = BufferView::FromShape(shape);
+    EXPECT_EQ(view.ElementsIn(), 1);
+  }
+  // 1D
+  {
+    Shape shape = ShapeUtil::MakeShape(F32, {10});
+    BufferView view = BufferView::FromShape(shape);
+    EXPECT_EQ(view.ElementsIn(), 10);
+  }
+  // Multi-dim
+  {
+    Shape shape = ShapeUtil::MakeShape(F32, {2, 3, 4});
+    BufferView view = BufferView::FromShape(shape);
+    EXPECT_EQ(view.ElementsIn(), 24);
+  }
+  // Empty view
+  {
+    auto view_or = BufferView::FromStridesAndExtents({}, {});
+    ASSERT_TRUE(view_or.ok());
+    EXPECT_EQ(view_or->ElementsIn(), 0);
+  }
+}
+
+TEST(BufferViewTest, FromShapeMultiDim) {
+  // Shape [2, 3, 4]
+  // Expected strides: [12, 4, 1]
+  // Expected extents: [2, 3, 4]
+  Shape shape = ShapeUtil::MakeShape(F32, {2, 3, 4});
+  BufferView view = BufferView::FromShape(shape);
+  EXPECT_EQ(view.strides(), (std::vector<int64_t>{12, 4, 1}));
+  EXPECT_EQ(view.extents(), (std::vector<int64_t>{2, 3, 4}));
+}
+
+TEST(BufferViewTest, PackAlreadyPacked) {
+  ASSERT_OK_AND_ASSIGN(BufferView view,
+                       BufferView::FromStridesAndExtents({3, 1}, {2, 3}));
+  BufferView expected = view;
+  view.Pack();
+  EXPECT_EQ(view, expected);
+}
+
+TEST(BufferViewTest, PackWithGaps) {
+  ASSERT_OK_AND_ASSIGN(BufferView view,
+                       BufferView::FromStridesAndExtents({8, 2}, {2, 3}));
+  view.Pack();
+  // Should compress to strides [3, 1]
+  EXPECT_EQ(view.strides(), (std::vector<int64_t>{3, 1}));
+  EXPECT_EQ(view.extents(), (std::vector<int64_t>{2, 3}));
+}
+
+TEST(BufferViewTest, TryIntersectWithStrideExtentCompatibleFull) {
+  ASSERT_OK_AND_ASSIGN(BufferView view,
+                       BufferView::FromStridesAndExtents({4}, {5}));
+  auto result = view.TryIntersectWith(4, 5);
+  ASSERT_TRUE(result.has_value());
+  EXPECT_EQ(result->strides(), (std::vector<int64_t>{4}));
+  EXPECT_EQ(result->extents(), (std::vector<int64_t>{5}));
+}
+
+TEST(BufferViewTest, TryIntersectWithStrideExtentCompatiblePartialSameStride) {
+  ASSERT_OK_AND_ASSIGN(BufferView view,
+                       BufferView::FromStridesAndExtents({4}, {5}));
+  auto result = view.TryIntersectWith(4, 3);
+  ASSERT_TRUE(result.has_value());
+  EXPECT_EQ(result->strides(), (std::vector<int64_t>{4}));
+  EXPECT_EQ(result->extents(), (std::vector<int64_t>{3}));
+}
+
+TEST(BufferViewTest,
+     TryIntersectWithStrideExtentCompatiblePartialLargerStride) {
+  ASSERT_OK_AND_ASSIGN(BufferView view,
+                       BufferView::FromStridesAndExtents({4}, {5}));
+  auto result = view.TryIntersectWith(8, 2);
+  ASSERT_TRUE(result.has_value());
+  EXPECT_EQ(result->strides(), (std::vector<int64_t>{8}));
+  EXPECT_EQ(result->extents(), (std::vector<int64_t>{2}));
+}
+
+TEST(BufferViewTest, TryIntersectWithStrideExtentIncompatible) {
+  ASSERT_OK_AND_ASSIGN(BufferView view,
+                       BufferView::FromStridesAndExtents({4}, {5}));
+  auto result = view.TryIntersectWith(3, 3);
+  EXPECT_FALSE(result.has_value());
+}
+
+TEST(BufferViewTest, TryIntersectWithNonAlignedLimit) {
+  // Strictly speaking, the intersection (if we describe it as a set of
+  // addressable elements) can be expressed as [8], [3] in this case. But that
+  // would result in non-aligned strides, we don't allow this.
+  ASSERT_OK_AND_ASSIGN(BufferView view,
+                       BufferView::FromStridesAndExtents({8}, {3}));
+  auto result = view.TryIntersectWith(4, 5);
+  EXPECT_FALSE(result.has_value());
+}
+
+TEST(BufferViewTest, TryIntersectWithOtherCompatible) {
+  ASSERT_OK_AND_ASSIGN(BufferView view1,
+                       BufferView::FromStridesAndExtents({4}, {5}));
+  ASSERT_OK_AND_ASSIGN(BufferView view2,
+                       BufferView::FromStridesAndExtents({8}, {2}));
+  auto result = view1.TryIntersectWith(view2);
+  ASSERT_TRUE(result.has_value());
+  EXPECT_EQ(*result, view2);
+}
+
+TEST(BufferViewTest, TryIntersectWithOtherIncompatible) {
+  ASSERT_OK_AND_ASSIGN(BufferView view1,
+                       BufferView::FromStridesAndExtents({4}, {5}));
+  ASSERT_OK_AND_ASSIGN(BufferView view2,
+                       BufferView::FromStridesAndExtents({3}, {3}));
+  auto result = view1.TryIntersectWith(view2);
+  EXPECT_FALSE(result.has_value());
+}
+
+TEST(BufferViewTest, TryIntersectWithOtherUpperSliceLEOutS) {
+  ASSERT_OK_AND_ASSIGN(BufferView view,
+                       BufferView::FromStridesAndExtents({2}, {3}));
+  auto result = view.TryIntersectWith(12, 2);
+  ASSERT_TRUE(result.has_value());
+  EXPECT_TRUE(result->strides().empty());
+  EXPECT_TRUE(result->extents().empty());
+}
+
+TEST(BufferViewTest, MergeAdjacentDimensionsContiguous) {
+  ASSERT_OK_AND_ASSIGN(BufferView view, BufferView::FromStridesAndExtents(
+                                            {12, 4, 1}, {2, 3, 4}));
+  view.MergeAdjacentDimensions();
+  EXPECT_EQ(view.strides(), (std::vector<int64_t>{1}));
+  EXPECT_EQ(view.extents(), (std::vector<int64_t>{24}));
+}
+
+TEST(BufferViewTest, MergeAdjacentDimensionsNonContiguous) {
+  ASSERT_OK_AND_ASSIGN(BufferView view, BufferView::FromStridesAndExtents(
+                                            {16, 4, 1}, {2, 3, 4}));
+  view.MergeAdjacentDimensions();
+  EXPECT_EQ(view.strides(), (std::vector<int64_t>{16, 1}));
+  EXPECT_EQ(view.extents(), (std::vector<int64_t>{2, 12}));
+}
+
+TEST(BufferViewTest, MergeAdjacentDimensionsMultiple) {
+  ASSERT_OK_AND_ASSIGN(BufferView view, BufferView::FromStridesAndExtents(
+                                            {48, 16, 4, 1}, {2, 3, 4, 4}));
+  view.MergeAdjacentDimensions();
+  EXPECT_EQ(view.strides(), (std::vector<int64_t>{1}));
+  EXPECT_EQ(view.extents(), (std::vector<int64_t>{96}));
+}
+
+TEST(BufferViewTest, MergeAdjacentDimensionsPartial) {
+  ASSERT_OK_AND_ASSIGN(BufferView view, BufferView::FromStridesAndExtents(
+                                            {48, 12, 4}, {2, 2, 3}));
+  view.MergeAdjacentDimensions();
+  EXPECT_EQ(view.strides(), (std::vector<int64_t>{48, 4}));
+  EXPECT_EQ(view.extents(), (std::vector<int64_t>{2, 6}));
+}
+
+TEST(BufferViewTest, TryUnflattenFlatTo3D) {
+  ASSERT_OK_AND_ASSIGN(BufferView view,
+                       BufferView::FromStridesAndExtents({1}, {24}));
+  auto result = view.TryUnflatten({2, 3, 4});
+  ASSERT_TRUE(result.has_value());
+  ASSERT_EQ(result->size(), 3);
+
+  auto expect_eq_view = [&](const BufferView& actual,
+                            absl::Span<const int64_t> strides,
+                            absl::Span<const int64_t> extents) {
+    ASSERT_OK_AND_ASSIGN(auto expected,
+                         BufferView::FromStridesAndExtents(strides, extents));
+    EXPECT_EQ(actual, expected);
+  };
+  expect_eq_view((*result)[0], {12}, {2});
+  expect_eq_view((*result)[1], {4}, {3});
+  expect_eq_view((*result)[2], {1}, {4});
+}
+
+TEST(BufferViewTest, TryUnflattenNonContiguousCompatible) {
+  ASSERT_OK_AND_ASSIGN(BufferView view,
+                       BufferView::FromStridesAndExtents({16, 1}, {2, 12}));
+  auto result = view.TryUnflatten({2, 3, 4});
+  ASSERT_TRUE(result.has_value());
+  ASSERT_EQ(result->size(), 3);
+
+  auto expect_eq_view = [&](const BufferView& actual,
+                            absl::Span<const int64_t> strides,
+                            absl::Span<const int64_t> extents) {
+    ASSERT_OK_AND_ASSIGN(auto expected,
+                         BufferView::FromStridesAndExtents(strides, extents));
+    EXPECT_EQ(actual, expected);
+  };
+  expect_eq_view((*result)[0], {16}, {2});
+  expect_eq_view((*result)[1], {4}, {3});
+  expect_eq_view((*result)[2], {1}, {4});
+}
+
+TEST(BufferViewTest, TryUnflattenIncompatible) {
+  ASSERT_OK_AND_ASSIGN(BufferView view,
+                       BufferView::FromStridesAndExtents({1}, {24}));
+  auto result = view.TryUnflatten({5, 5});
+  EXPECT_FALSE(result.has_value());
+}
+
+TEST(BufferViewTest, AsTransformationIdentity) {
+  ASSERT_OK_AND_ASSIGN(BufferView view,
+                       BufferView::FromStridesAndExtents({3, 1}, {2, 3}));
+  auto trans = view.AsTransformation();
+  EXPECT_EQ(trans.input_reshape, (llvm::SmallVector<int64_t, 6>{2, 3}));
+  EXPECT_EQ(trans.transpose, (llvm::SmallVector<int64_t, 6>{0, 1}));
+}
+
+TEST(BufferViewTest, AsTransformationPermuted) {
+  ASSERT_OK_AND_ASSIGN(BufferView view,
+                       BufferView::FromStridesAndExtents({1, 3}, {3, 2}));
+  auto trans = view.AsTransformation();
+  EXPECT_EQ(trans.input_reshape, (llvm::SmallVector<int64_t, 6>{2, 3}));
+  EXPECT_EQ(trans.transpose, (llvm::SmallVector<int64_t, 6>{1, 0}));
+}
+
+TEST(ShapeTrackerTest, Narrow1DKeep) {
+  Shape shape = ShapeUtil::MakeShape(F32, {10});
+  ShapeTracker tracker(shape);
+
+  auto narrowed_or = tracker.Narrow({0});
+  ASSERT_TRUE(narrowed_or.ok());
+  ShapeTracker narrowed = std::move(narrowed_or).value();
+
+  EXPECT_EQ(narrowed.input_shape().dimensions(), (std::vector<int64_t>{10}));
+  EXPECT_EQ(narrowed.output_shape().dimensions(), (std::vector<int64_t>{10}));
+}
+
+TEST(ShapeTrackerTest, Narrow1DDrop) {
+  Shape shape = ShapeUtil::MakeShape(F32, {10});
+  ShapeTracker tracker(shape);
+
+  auto narrowed_or = tracker.Narrow({});
+  ASSERT_TRUE(narrowed_or.ok());
+  ShapeTracker narrowed = std::move(narrowed_or).value();
+
+  EXPECT_EQ(narrowed.input_shape().dimensions(), (std::vector<int64_t>{}));
+  EXPECT_EQ(narrowed.output_shape().dimensions(), (std::vector<int64_t>{}));
+}
+
+TEST(ShapeTrackerTest, NarrowMultiDimKeepSubset) {
+  Shape shape = ShapeUtil::MakeShape(F32, {2, 3, 4});
+  ShapeTracker tracker(shape);
+
+  auto narrowed_or = tracker.Narrow({0, 2});
+  ASSERT_TRUE(narrowed_or.ok());
+  ShapeTracker narrowed = std::move(narrowed_or).value();
+
+  EXPECT_EQ(narrowed.input_shape().dimensions(), (std::vector<int64_t>{2, 4}));
+  EXPECT_EQ(narrowed.output_shape().dimensions(), (std::vector<int64_t>{2, 4}));
+  EXPECT_EQ(narrowed.DebugString(true), "[2,4]");
+}
+
+TEST(ShapeTrackerTest, NarrowTransposedShape) {
+  Shape shape = ShapeUtil::MakeShape(F32, {2, 3, 4});
+  ShapeTracker tracker(shape);
+
+  ASSERT_TRUE(tracker.AppendTranspose({2, 1, 0}).ok());
+
+  auto narrowed_or = tracker.Narrow({0, 2});
+  ASSERT_TRUE(narrowed_or.ok());
+  ShapeTracker narrowed = std::move(narrowed_or).value();
+
+  EXPECT_EQ(narrowed.input_shape().dimensions(), (std::vector<int64_t>{2, 4}));
+  EXPECT_EQ(narrowed.output_shape().dimensions(), (std::vector<int64_t>{4, 2}));
+  EXPECT_EQ(narrowed.DebugString(true), "[2,4] -> T[4,2]");
+}
+
+TEST(ShapeTrackerTest, NarrowToScalar) {
+  Shape shape = ShapeUtil::MakeShape(F32, {2, 3, 4});
+  ShapeTracker tracker(shape);
+
+  auto narrowed_or = tracker.Narrow({});
+  ASSERT_TRUE(narrowed_or.ok());
+  ShapeTracker narrowed = std::move(narrowed_or).value();
+
+  EXPECT_EQ(narrowed.input_shape().dimensions(), (std::vector<int64_t>{}));
+  EXPECT_EQ(narrowed.output_shape().dimensions(), (std::vector<int64_t>{}));
+}
+
+TEST(ShapeTrackerTest, NarrowDegenerateCollapsesOutputButPreservesInputRank) {
+  Shape shape = ShapeUtil::MakeShape(F32, {2, 1, 4});
+  ShapeTracker tracker(shape);
+
+  // Narrow keeping the degenerate dimension 1.
+  // Kept elements is 1, so it triggers the kept_elements == 1 logic.
+  auto narrowed_or = tracker.Narrow({1});
+  ASSERT_TRUE(narrowed_or.ok());
+  ShapeTracker narrowed = std::move(narrowed_or).value();
+
+  // Input shape must preserve rank 1 (corresponding to dims_to_keep).
+  EXPECT_EQ(narrowed.input_shape().dimensions(), (std::vector<int64_t>{1}));
+  // Output shape must collapse to scalar (rank 0).
+  EXPECT_EQ(narrowed.output_shape().dimensions(), (std::vector<int64_t>{}));
+}
+
+TEST(ShapeTrackerTest, NarrowTransposedShapeWithCompaction) {
+  Shape shape = ShapeUtil::MakeShape(F32, {2, 3, 4});
+  ShapeTracker tracker(shape);
+
+  // This transpose results in strides [1, 12, 4] which compacts dim 1 & 2.
+  // The compacted BufferView has rank 2: strides [1, 4], extents [4, 6].
+  ASSERT_TRUE(tracker.AppendTranspose({2, 0, 1}).ok());
+
+  // We keep dims 2 and 0 (sizes 4 and 2), dropping dim 1.
+  // If SliceProjections is implemented robustly with intersection,
+  // it handles the rank-change/compaction gracefully.
+  auto narrowed_or = tracker.Narrow({0, 2});
+  ASSERT_TRUE(narrowed_or.ok());
+  ShapeTracker narrowed = std::move(narrowed_or).value();
+
+  EXPECT_EQ(narrowed.input_shape().dimensions(), (std::vector<int64_t>{2, 4}));
+  EXPECT_EQ(narrowed.output_shape().dimensions(), (std::vector<int64_t>{4, 2}));
+  EXPECT_EQ(narrowed.DebugString(true), "[2,4] -> T[4,2]");
+}
+
+TEST(ShapeTrackerTest, NarrowValidationErrors) {
+  Shape shape = ShapeUtil::MakeShape(F32, {2, 3, 4});
+  ShapeTracker tracker(shape);
+
+  EXPECT_FALSE(tracker.Narrow({3}).ok());
+  EXPECT_FALSE(tracker.Narrow({-1}).ok());
+  EXPECT_FALSE(tracker.Narrow({0, 0}).ok());
+  EXPECT_FALSE(tracker.Narrow({2, 0, 2}).ok());
+}
+
+TEST(ShapeTrackerTest, NarrowUnsorted) {
+  Shape shape = ShapeUtil::MakeShape(F32, {2, 3, 4});
+  ShapeTracker tracker(shape);
+
+  // Narrow keeping dims 2 and 0 (sizes 4 and 2), in that order.
+  // Input to narrowed tracker should be [4, 2].
+  // Output of narrowed tracker should be [2, 4] because original was identity
+  // and we implicitly start with transpose [4, 2] -> [2, 4].
+  auto narrowed_or = tracker.Narrow({2, 0});
+  ASSERT_TRUE(narrowed_or.ok());
+  ShapeTracker narrowed = std::move(narrowed_or).value();
+
+  EXPECT_EQ(narrowed.input_shape().dimensions(), (std::vector<int64_t>{4, 2}));
+  EXPECT_EQ(narrowed.output_shape().dimensions(), (std::vector<int64_t>{2, 4}));
+  EXPECT_EQ(narrowed.DebugString(true), "[4,2] -> T[2,4]");
+}
+
+TEST(ShapeTrackerTest, NarrowWithMultipleProjections) {
+  Shape shape = ShapeUtil::MakeShape(F32, {2, 3, 4});
+  ShapeTracker tracker(shape);
+
+  ASSERT_TRUE(tracker.AppendTranspose({2, 0, 1}).ok());  // output [4, 2, 3]
+  ASSERT_TRUE(
+      tracker.AppendReshape({3, 8}).ok());  // Forces copy, output [3, 8]
+
+  auto narrowed_or = tracker.Narrow({0, 2});
+  ASSERT_TRUE(narrowed_or.ok());
+  ShapeTracker narrowed = std::move(narrowed_or).value();
+
+  EXPECT_EQ(narrowed.input_shape().dimensions(), (std::vector<int64_t>{2, 4}));
+  EXPECT_EQ(narrowed.output_shape().dimensions(), (std::vector<int64_t>{4, 2}));
+  EXPECT_EQ(narrowed.DebugString(true), "[2,4] -> T[4,2]");
+}
+
+TEST(ShapeTrackerTest, NarrowFoldsProjectionsToReshape) {
+  Shape shape = ShapeUtil::MakeShape(F32, {2, 3, 4});
+  ShapeTracker tracker(shape);
+
+  // Append transpose that compacts dims 1 and 2.
+  ASSERT_TRUE(tracker.AppendTranspose({2, 0, 1}).ok());  // output [4, 2, 3]
+  // Append reshape that forces a copy.
+  ASSERT_TRUE(tracker.AppendReshape({3, 8}).ok());  // output [3, 8]
+
+  // Verify we have multiple steps.
+  EXPECT_GT(tracker.GetSteps().size(), 1);
+
+  // Narrow keeping only input dimensions 0 and 1.
+  auto narrowed_or = tracker.Narrow({0, 1});
+  ASSERT_TRUE(narrowed_or.ok());
+  ShapeTracker narrowed = std::move(narrowed_or).value();
+
+  // The resulting tracker should have folded the projections and simplified to
+  // 1 reshape step.
+  EXPECT_EQ(narrowed.GetSteps().size(), 1);
+  EXPECT_EQ(narrowed.DebugString(true), "[2,3] -> R[6]");
+}
+
+TEST(ShapeTrackerTest, NarrowFoldsProjectionsToTranspose) {
+  Shape shape = ShapeUtil::MakeShape(F32, {2, 3, 4});
+  ShapeTracker tracker(shape);
+
+  // Append transpose that compacts dims 1 and 2.
+  ASSERT_TRUE(tracker.AppendTranspose({2, 0, 1}).ok());  // output [4, 2, 3]
+  // Append reshape that forces a copy.
+  ASSERT_TRUE(tracker.AppendReshape({3, 8}).ok());  // output [3, 8]
+
+  // Verify we have multiple steps.
+  EXPECT_GT(tracker.GetSteps().size(), 1);
+
+  // Narrow keeping only input dimensions 0 and 2.
+  auto narrowed_or = tracker.Narrow({0, 2});
+  ASSERT_TRUE(narrowed_or.ok());
+  ShapeTracker narrowed = std::move(narrowed_or).value();
+
+  // The resulting narrowed tracker should have folded the projections.
+  // If folding occurred, it should be represented by a single transpose step.
+  std::vector<ShapeTracker::Step> steps = narrowed.GetSteps();
+  ASSERT_EQ(steps.size(), 1);
+  EXPECT_EQ(steps[0].type, ShapeTracker::Step::Type::kTranspose);
+  EXPECT_EQ(steps[0].dimensions, (std::vector<int64_t>{1, 0}));
+}
+
+TEST(ShapeTrackerTest, RemappingInSliceProjectionsWorksForTransposedInput) {
+  Shape shape = ShapeUtil::MakeShape(F32, {1, 10});
+  ShapeTracker tracker(shape);
+
+  // P1 will be unflattened and permuted to strides {1, 2}, extents {2, 5}.
+  ASSERT_TRUE(tracker.AppendReshape({5, 2}).ok());
+  ASSERT_TRUE(tracker.AppendTranspose({1, 0}).ok());
+
+  // P2 will be unflattened and permuted to strides {1, 5}, extents {5, 2}.
+  ASSERT_TRUE(tracker.AppendReshape({2, 5}).ok());
+  ASSERT_TRUE(tracker.AppendTranspose({1, 0}).ok());
+
+  // P1 intersection succeeds and remapped_slice is correctly formed.
+  // P2 intersection succeeds on the remapped slice.
+  auto narrowed_or = tracker.Narrow({1});
+  ASSERT_TRUE(narrowed_or.ok());
+  ShapeTracker narrowed = std::move(narrowed_or).value();
+  EXPECT_EQ(narrowed.input_shape().dimensions(), (std::vector<int64_t>{10}));
+  EXPECT_EQ(narrowed.output_shape().dimensions(), (std::vector<int64_t>{10}));
+}
+
+TEST(ShapeTrackerTest, NarrowIncompatibleSlice) {
+  Shape shape = ShapeUtil::MakeShape(F32, {2, 5, 3});
+  ShapeTracker tracker(shape);
+
+  ASSERT_TRUE(tracker.AppendReshape({5, 6}).ok());
+  ASSERT_TRUE(tracker.AppendTranspose({1, 0}).ok());
+
+  auto narrowed_or = tracker.Narrow({1});
+  EXPECT_FALSE(narrowed_or.ok());
+  EXPECT_EQ(narrowed_or.status().code(), absl::StatusCode::kInvalidArgument);
+  EXPECT_THAT(narrowed_or.status().message(),
+              ::testing::HasSubstr("Slice is incompatible with projection"));
+}
+
+TEST(ShapeTrackerTest, NarrowSkipFirstDimensionInFind) {
+  // We want to test the case where the lambda inside absl::c_find_if evaluates
+  // to false for the first projection dimension and true for the second.
+  // This happens when the slice belongs to the inner dimension.
+  Shape shape = ShapeUtil::MakeShape(F32, {2, 10});
+  ShapeTracker tracker(shape);
+
+  // Slice that intersects only with the inner dimension.
+  // The first check in c_find_if will be `s % proj_stride == 0`
+  // -> `1 % 10 == 0`, which is false.
+  // The second check will be `1 % 1 == 0`, which is true.
+  auto narrowed_or = tracker.Narrow({1});
+  ASSERT_TRUE(narrowed_or.ok());
+
+  ShapeTracker narrowed = narrowed_or.value();
+  EXPECT_EQ(narrowed.input_shape().dimensions(), (std::vector<int64_t>{10}));
+  EXPECT_EQ(narrowed.output_shape().dimensions(), (std::vector<int64_t>{10}));
+}
+
+TEST(ShapeTrackerTest, ZipSimpleContiguous) {
+  Shape shape1 = ShapeUtil::MakeShape(F32, {2, 3});
+  ShapeTracker tracker1(shape1);
+  ASSERT_TRUE(tracker1.AppendTranspose({1, 0}).ok());
+
+  Shape shape2 = ShapeUtil::MakeShape(F32, {4});
+  ShapeTracker tracker2(shape2);
+
+  auto zipped_or = ShapeTracker::Zip({tracker1, tracker2});
+  ASSERT_TRUE(zipped_or.ok());
+  ShapeTracker zipped = std::move(zipped_or).value();
+
+  EXPECT_EQ(zipped.input_shape().dimensions(), (std::vector<int64_t>{2, 3, 4}));
+  EXPECT_EQ(zipped.output_shape().dimensions(),
+            (std::vector<int64_t>{3, 2, 4}));
+  EXPECT_EQ(zipped.DebugString(/*avoid_combining_reshapes=*/false),
+            "[2,3,4] -> T[3,2,4]");
+}
+
+TEST(ShapeTrackerTest, ZipWithPadding) {
+  Shape shape1 = ShapeUtil::MakeShape(F32, {2, 3, 4});
+  ShapeTracker tracker1(shape1);
+  // Force two projections:
+  ASSERT_TRUE(tracker1.AppendTranspose({2, 0, 1}).ok());  // output [4, 2, 3]
+  ASSERT_TRUE(
+      tracker1.AppendReshape({3, 8}).ok());  // Forces copy, output [3, 8]
+
+  Shape shape2 = ShapeUtil::MakeShape(F32, {5});
+  ShapeTracker tracker2(shape2);
+
+  auto zipped_or = ShapeTracker::Zip({tracker1, tracker2});
+  ASSERT_TRUE(zipped_or.ok());
+  ShapeTracker zipped = std::move(zipped_or).value();
+
+  EXPECT_EQ(zipped.input_shape().dimensions(),
+            (std::vector<int64_t>{2, 3, 4, 5}));
+  EXPECT_EQ(zipped.output_shape().dimensions(),
+            (std::vector<int64_t>{3, 8, 5}));
+
+  // We should have at least 2 steps representing the joint operations:
+  EXPECT_EQ(zipped.DebugString(/*avoid_combining_reshapes=*/false),
+            "[2,3,4,5] -> R[6,4,5] -> T[4,6,5] -> R[3,8,5]");
+}
+
+TEST(ShapeTrackerTest, ZipWithOneElementShape) {
+  Shape shape1 = ShapeUtil::MakeShape(F32, {1});
+  ShapeTracker tracker1(shape1);
+
+  Shape shape2 = ShapeUtil::MakeShape(F32, {2, 3});
+  ShapeTracker tracker2(shape2);
+  ASSERT_TRUE(tracker2.AppendTranspose({1, 0}).ok());
+
+  auto zipped_or = ShapeTracker::Zip({tracker1, tracker2});
+  ASSERT_TRUE(zipped_or.ok());
+  ShapeTracker zipped = std::move(zipped_or).value();
+
+  EXPECT_EQ(zipped.input_shape().dimensions(), (std::vector<int64_t>{1, 2, 3}));
+  EXPECT_EQ(zipped.output_shape().dimensions(),
+            (std::vector<int64_t>{1, 3, 2}));
+
+  std::vector<ShapeTracker::Step> steps = zipped.GetSteps();
+  ASSERT_EQ(steps.size(), 3);
+  EXPECT_EQ(steps[0].type, ShapeTracker::Step::Type::kReshape);
+  EXPECT_EQ(steps[0].dimensions, (std::vector<int64_t>{2, 3}));
+  EXPECT_EQ(steps[1].type, ShapeTracker::Step::Type::kTranspose);
+  EXPECT_EQ(steps[1].dimensions, (std::vector<int64_t>{1, 0}));
+  EXPECT_EQ(steps[2].type, ShapeTracker::Step::Type::kReshape);
+  EXPECT_EQ(steps[2].dimensions, (std::vector<int64_t>{1, 3, 2}));
+
+  EXPECT_EQ(zipped.DebugString(), "[1,2,3] -> T[3,1,2] -> R[1,3,2]");
+}
+
+TEST(ShapeTrackerTest, ZipValidationErrors) {
+  Shape shape_f32 = ShapeUtil::MakeShape(F32, {2, 3});
+  ShapeTracker tracker_f32(shape_f32);
+
+  Shape shape_s32 = ShapeUtil::MakeShape(S32, {4});
+  ShapeTracker tracker_s32(shape_s32);
+
+  // Empty list:
+  EXPECT_FALSE(ShapeTracker::Zip({}).ok());
+
+  // Element type mismatch:
+  EXPECT_FALSE(ShapeTracker::Zip({tracker_f32, tracker_s32}).ok());
+}
+
+TEST(ShapeTrackerTest, ZipTotalElementsIsOne) {
+  Shape shape1 = ShapeUtil::MakeShape(F32, {1});
+  ShapeTracker tracker1(shape1);
+
+  Shape shape2 = ShapeUtil::MakeShape(F32, {1, 1});
+  ShapeTracker tracker2(shape2);
+
+  auto zipped_or = ShapeTracker::Zip({tracker1, tracker2});
+  ASSERT_TRUE(zipped_or.ok());
+  ShapeTracker zipped = std::move(zipped_or).value();
+
+  // Since total_elements == 1, it returns early.
+  EXPECT_EQ(zipped.input_shape().dimensions(), (std::vector<int64_t>{1, 1, 1}));
+  EXPECT_EQ(zipped.output_shape().dimensions(),
+            (std::vector<int64_t>{1, 1, 1}));
+}
+
+TEST(ShapeTrackerTest, ZipPadProjections) {
+  Shape shape1 = ShapeUtil::MakeShape(F32, {2, 3});
+  ShapeTracker tracker1(shape1);
+  ASSERT_TRUE(tracker1.AppendTranspose({1, 0}).ok());
+  // AppendReshape that forces a new projection.
+  ASSERT_TRUE(tracker1.AppendReshape({6}).ok());
+
+  Shape shape2 = ShapeUtil::MakeShape(F32, {4});
+  ShapeTracker tracker2(shape2);
+  // tracker2 has 1 projection and >1 elements.
+  // max_projections will be 2 (from tracker1).
+  // tracker2 will be padded with a noop projection.
+
+  auto zipped_or = ShapeTracker::Zip({tracker1, tracker2});
+  ASSERT_TRUE(zipped_or.ok());
+  ShapeTracker zipped = std::move(zipped_or).value();
+
+  EXPECT_EQ(zipped.input_shape().dimensions(), (std::vector<int64_t>{2, 3, 4}));
+  EXPECT_EQ(zipped.output_shape().dimensions(), (std::vector<int64_t>{6, 4}));
+}
+
+TEST(ShapeTrackerTest, FromSiblingsBasic) {
+  Shape shape = ShapeUtil::MakeShape(F32, {2, 3, 4});
+  auto lca = HloInstruction::CreateParameter(0, shape, "lca");
+
+  auto t1 = HloInstruction::CreateTranspose(
+      ShapeUtil::MakeShape(F32, {4, 3, 2}), lca.get(), {2, 1, 0});
+  auto r1 = HloInstruction::CreateReshape(ShapeUtil::MakeShape(F32, {12, 2}),
+                                          t1.get());
+
+  auto t2 = HloInstruction::CreateTranspose(
+      ShapeUtil::MakeShape(F32, {3, 2, 4}), lca.get(), {1, 0, 2});
+  auto r2 = HloInstruction::CreateReshape(ShapeUtil::MakeShape(F32, {6, 4}),
+                                          t2.get());
+
+  auto tracker_or = ShapeTracker::FromSiblings(r1.get(), r2.get());
+  ASSERT_TRUE(tracker_or.ok());
+  ShapeTracker tracker = std::move(tracker_or).value();
+
+  EXPECT_EQ(tracker.input_shape().dimensions(), (std::vector<int64_t>{12, 2}));
+  EXPECT_EQ(tracker.output_shape().dimensions(), (std::vector<int64_t>{6, 4}));
+}
+
+TEST(ShapeTrackerTest, FromSiblingsAncestorAsSource) {
+  Shape shape = ShapeUtil::MakeShape(F32, {2, 3, 4});
+  auto lca = HloInstruction::CreateParameter(0, shape, "lca");
+
+  auto t2 = HloInstruction::CreateTranspose(
+      ShapeUtil::MakeShape(F32, {3, 2, 4}), lca.get(), {1, 0, 2});
+  auto r2 = HloInstruction::CreateReshape(ShapeUtil::MakeShape(F32, {6, 4}),
+                                          t2.get());
+
+  auto tracker_or = ShapeTracker::FromSiblings(lca.get(), r2.get());
+  ASSERT_TRUE(tracker_or.ok());
+  ShapeTracker tracker = std::move(tracker_or).value();
+
+  EXPECT_EQ(tracker.input_shape().dimensions(),
+            (std::vector<int64_t>{2, 3, 4}));
+  EXPECT_EQ(tracker.output_shape().dimensions(), (std::vector<int64_t>{6, 4}));
+}
+
+TEST(ShapeTrackerTest, FromSiblingsAncestorAsDestination) {
+  Shape shape = ShapeUtil::MakeShape(F32, {2, 3, 4});
+  auto lca = HloInstruction::CreateParameter(0, shape, "lca");
+
+  auto t1 = HloInstruction::CreateTranspose(
+      ShapeUtil::MakeShape(F32, {4, 3, 2}), lca.get(), {2, 1, 0});
+  auto r1 = HloInstruction::CreateReshape(ShapeUtil::MakeShape(F32, {12, 2}),
+                                          t1.get());
+
+  auto tracker_or = ShapeTracker::FromSiblings(r1.get(), lca.get());
+  ASSERT_TRUE(tracker_or.ok());
+  ShapeTracker tracker = std::move(tracker_or).value();
+
+  EXPECT_EQ(tracker.input_shape().dimensions(), (std::vector<int64_t>{12, 2}));
+  EXPECT_EQ(tracker.output_shape().dimensions(),
+            (std::vector<int64_t>{2, 3, 4}));
+}
+
+TEST(ShapeTrackerTest, FromSiblingsIdenticalNodes) {
+  Shape shape = ShapeUtil::MakeShape(F32, {2, 3, 4});
+  auto lca = HloInstruction::CreateParameter(0, shape, "lca");
+
+  auto tracker_or = ShapeTracker::FromSiblings(lca.get(), lca.get());
+  ASSERT_TRUE(tracker_or.ok());
+  ShapeTracker tracker = std::move(tracker_or).value();
+
+  EXPECT_EQ(tracker.input_shape().dimensions(),
+            (std::vector<int64_t>{2, 3, 4}));
+  EXPECT_EQ(tracker.output_shape().dimensions(),
+            (std::vector<int64_t>{2, 3, 4}));
+}
+
+TEST(ShapeTrackerTest, FromSiblingsNoCommonAncestor) {
+  Shape shape = ShapeUtil::MakeShape(F32, {2, 3, 4});
+  auto param1 = HloInstruction::CreateParameter(0, shape, "param1");
+  auto param2 = HloInstruction::CreateParameter(1, shape, "param2");
+
+  auto t1 = HloInstruction::CreateTranspose(
+      ShapeUtil::MakeShape(F32, {4, 3, 2}), param1.get(), {2, 1, 0});
+  auto t2 = HloInstruction::CreateTranspose(
+      ShapeUtil::MakeShape(F32, {3, 2, 4}), param2.get(), {1, 0, 2});
+
+  auto tracker_or = ShapeTracker::FromSiblings(t1.get(), t2.get());
+  EXPECT_FALSE(tracker_or.ok());
+  EXPECT_EQ(tracker_or.status().code(), absl::StatusCode::kInvalidArgument);
+}
+
+TEST(ShapeTrackerTest, FromSiblingsInvalidIntermediateNode) {
+  Shape shape = ShapeUtil::MakeShape(F32, {2, 3, 4});
+  auto lca = HloInstruction::CreateParameter(0, shape, "lca");
+
+  auto t1 = HloInstruction::CreateTranspose(
+      ShapeUtil::MakeShape(F32, {4, 3, 2}), lca.get(), {2, 1, 0});
+
+  auto dummy = HloInstruction::CreateParameter(
+      1, ShapeUtil::MakeShape(F32, {4, 3, 2}), "dummy");
+  auto add =
+      HloInstruction::CreateBinary(ShapeUtil::MakeShape(F32, {4, 3, 2}),
+                                   HloOpcode::kAdd, t1.get(), dummy.get());
+
+  auto r1 = HloInstruction::CreateReshape(ShapeUtil::MakeShape(F32, {12, 2}),
+                                          add.get());
+
+  auto t2 = HloInstruction::CreateTranspose(
+      ShapeUtil::MakeShape(F32, {3, 2, 4}), lca.get(), {1, 0, 2});
+
+  auto tracker_or = ShapeTracker::FromSiblings(r1.get(), t2.get());
+  EXPECT_FALSE(tracker_or.ok());
+  EXPECT_EQ(tracker_or.status().code(), absl::StatusCode::kInvalidArgument);
+}
+
+TEST(ShapeTrackerTest, FromSiblingsUnsupportedIntermediateNode) {
+  Shape shape = ShapeUtil::MakeShape(F32, {2, 3, 4});
+  auto lca = HloInstruction::CreateParameter(0, shape, "lca");
+
+  auto negate =
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, lca.get());
+  auto r1 = HloInstruction::CreateReshape(ShapeUtil::MakeShape(F32, {24}),
+                                          negate.get());
+
+  auto t2 = HloInstruction::CreateTranspose(
+      ShapeUtil::MakeShape(F32, {3, 2, 4}), lca.get(), {1, 0, 2});
+
+  auto tracker_or = ShapeTracker::FromSiblings(r1.get(), t2.get());
+  EXPECT_FALSE(tracker_or.ok());
+  EXPECT_EQ(tracker_or.status().code(), absl::StatusCode::kInvalidArgument);
+}
+
+TEST(ShapeTrackerTest, MapInputDimensionsToOutputUnorderedIdentity) {
+  Shape shape = ShapeUtil::MakeShape(F32, {2, 3});
+  ShapeTracker tracker(shape);
+
+  EXPECT_EQ(tracker.MapInputDimensionsToOutputUnordered({0}),
+            std::vector<int64_t>{0});
+  EXPECT_EQ(tracker.MapInputDimensionsToOutputUnordered({1}),
+            std::vector<int64_t>{1});
+  EXPECT_EQ(tracker.MapInputDimensionsToOutputUnordered({0, 1}),
+            (std::vector<int64_t>{0, 1}));
+  EXPECT_EQ(tracker.MapInputDimensionsToOutputUnordered({}),
+            std::vector<int64_t>{});
+}
+
+TEST(ShapeTrackerTest, MapInputDimensionsToOutputUnorderedTranspose) {
+  Shape shape = ShapeUtil::MakeShape(F32, {2, 3});
+  ShapeTracker tracker(shape);
+  ASSERT_TRUE(tracker.AppendTranspose({1, 0}).ok());  // output [3, 2]
+
+  EXPECT_EQ(tracker.MapInputDimensionsToOutputUnordered({0}),
+            std::vector<int64_t>{1});
+  EXPECT_EQ(tracker.MapInputDimensionsToOutputUnordered({1}),
+            std::vector<int64_t>{0});
+  EXPECT_EQ(tracker.MapInputDimensionsToOutputUnordered({0, 1}),
+            (std::vector<int64_t>{0, 1}));
+}
+
+TEST(ShapeTrackerTest, MapInputDimensionsToOutputUnorderedUnsortedInput) {
+  Shape shape = ShapeUtil::MakeShape(F32, {2, 3, 5});
+  ShapeTracker tracker(shape);
+  ASSERT_TRUE(tracker.AppendTranspose({2, 0, 1}).ok());  // output [5, 2, 3]
+
+  EXPECT_EQ(tracker.MapInputDimensionsToOutputUnordered({1, 0}),
+            (std::vector<int64_t>{1, 2}));
+}
+
+TEST(ShapeTrackerTest, MapInputDimensionsToOutputUnorderedReshapeSplit) {
+  Shape shape = ShapeUtil::MakeShape(F32, {6});
+  ShapeTracker tracker(shape);
+  ASSERT_TRUE(tracker.AppendReshape({2, 3}).ok());
+
+  EXPECT_EQ(tracker.MapInputDimensionsToOutputUnordered({0}),
+            (std::vector<int64_t>{0, 1}));
+  EXPECT_EQ(tracker.MapInputDimensionsToOutputUnordered({}),
+            std::vector<int64_t>{});
+}
+
+TEST(ShapeTrackerTest, MapInputDimensionsToOutputUnorderedReshapeGlue) {
+  Shape shape = ShapeUtil::MakeShape(F32, {2, 3});
+  ShapeTracker tracker(shape);
+  ASSERT_TRUE(tracker.AppendReshape({6}).ok());
+
+  EXPECT_EQ(tracker.MapInputDimensionsToOutputUnordered({0}), std::nullopt);
+  EXPECT_EQ(tracker.MapInputDimensionsToOutputUnordered({1}), std::nullopt);
+  EXPECT_EQ(tracker.MapInputDimensionsToOutputUnordered({0, 1}),
+            std::vector<int64_t>{0});
+}
+
+TEST(ShapeTrackerTest, MapInputDimensionsToOutputUnorderedDegenerate) {
+  Shape shape = ShapeUtil::MakeShape(F32, {2, 1, 3});
+  ShapeTracker tracker(shape);
+  ASSERT_TRUE(tracker.AppendTranspose({2, 1, 0}).ok());  // output [3, 1, 2]
+
+  EXPECT_EQ(tracker.MapInputDimensionsToOutputUnordered({0}),
+            std::vector<int64_t>{2});
+  EXPECT_EQ(tracker.MapInputDimensionsToOutputUnordered({1}),
+            std::vector<int64_t>{});
+  EXPECT_EQ(tracker.MapInputDimensionsToOutputUnordered({0, 1}),
+            std::vector<int64_t>{2});
+  EXPECT_EQ(tracker.MapInputDimensionsToOutputUnordered({0, 2}),
+            (std::vector<int64_t>{0, 2}));
+}
+
+TEST(ShapeTrackerTest, MapInputDimensionsToOutputUnorderedTrickyCase) {
+  Shape shape = ShapeUtil::MakeShape(F32, {3, 14, 5});
+  ShapeTracker tracker(shape);
+  ASSERT_TRUE(tracker.AppendTranspose({2, 1, 0}).ok());  // [5, 14, 3]
+  ASSERT_TRUE(tracker.AppendReshape({2, 15, 7}).ok());
+  ASSERT_TRUE(tracker.AppendTranspose({2, 0, 1}).ok());  // [7, 2, 15]
+
+  EXPECT_EQ(tracker.MapInputDimensionsToOutputUnordered({0}), std::nullopt);
+  EXPECT_EQ(tracker.MapInputDimensionsToOutputUnordered({1}), std::nullopt);
+  EXPECT_EQ(tracker.MapInputDimensionsToOutputUnordered({2}), std::nullopt);
+  EXPECT_EQ(tracker.MapInputDimensionsToOutputUnordered({0, 1, 2}),
+            (std::vector<int64_t>{0, 1, 2}));
+}
+
+TEST(ShapeTrackerTest, MapInputDimensionsToOutputUnorderedGluedSwapBack) {
+  Shape shape = ShapeUtil::MakeShape(F32, {2, 3, 5, 7});
+  ShapeTracker tracker(shape);
+  ASSERT_TRUE(tracker.AppendReshape({2, 3, 7, 5}).ok());
+  ASSERT_TRUE(tracker.AppendTranspose({1, 0, 3, 2}).ok());  // [3, 2, 5, 7]
+  ASSERT_TRUE(tracker.AppendReshape({3, 2, 7, 5}).ok());
+  ASSERT_TRUE(tracker.AppendTranspose({1, 0, 3, 2}).ok());  // [2, 3, 5, 7]
+
+  EXPECT_EQ(tracker.MapInputDimensionsToOutputUnordered({0, 1}),
+            (std::vector<int64_t>{0, 1}));
+}
+
+TEST(ShapeTrackerTest,
+     MapInputDimensionsToOutputUnorderedScalarOrDegenerateInput) {
+  Shape shape = ShapeUtil::MakeShape(F32, {1});
+  ShapeTracker tracker(shape);
+  EXPECT_EQ(tracker.MapInputDimensionsToOutputUnordered({}),
+            std::vector<int64_t>{});
+  EXPECT_EQ(tracker.MapInputDimensionsToOutputUnordered({0}),
+            std::vector<int64_t>{});
+
+  Shape shape2 = ShapeUtil::MakeShape(F32, {1, 1});
+  ShapeTracker tracker2(shape2);
+  EXPECT_EQ(tracker2.MapInputDimensionsToOutputUnordered({0, 1}),
+            std::vector<int64_t>{});
+}
+
+TEST(ShapeTrackerTest, MapInputDimensionsToOutputUnorderedIncompatibleReshape) {
+  Shape shape = ShapeUtil::MakeShape(F32, {2, 3, 4});
+  ShapeTracker tracker(shape);
+  ASSERT_TRUE(tracker.AppendTranspose({1, 0, 2}).ok());  // [3, 2, 4]
+  ASSERT_TRUE(tracker.AppendReshape({2, 12}).ok());
+
+  EXPECT_EQ(tracker.MapInputDimensionsToOutputUnordered({0}), std::nullopt);
+  EXPECT_EQ(tracker.MapInputDimensionsToOutputUnordered({1}), std::nullopt);
+  EXPECT_EQ(tracker.MapInputDimensionsToOutputUnordered({2}), std::nullopt);
+}
+
+TEST(ShapeTrackerTest, MapInputDimensionsToOutputUnorderedFractionalReshape) {
+  Shape shape = ShapeUtil::MakeShape(F32, {2, 3});
+  ShapeTracker tracker(shape);
+  ASSERT_TRUE(tracker.AppendReshape({3, 2}).ok());
+
+  EXPECT_EQ(tracker.MapInputDimensionsToOutputUnordered({0}), std::nullopt);
+  EXPECT_EQ(tracker.MapInputDimensionsToOutputUnordered({1}), std::nullopt);
+  EXPECT_EQ(tracker.MapInputDimensionsToOutputUnordered({0, 1}),
+            (std::vector<int64_t>{0, 1}));
+}
+
+TEST(ShapeTrackerTest, ZipInvertCommutativity) {
+  Shape shape1 = ShapeUtil::MakeShape(F32, {2, 3});
+  ShapeTracker t1(shape1);
+  ASSERT_TRUE(t1.AppendTranspose({1, 0}).ok());
+
+  Shape shape2 = ShapeUtil::MakeShape(F32, {4, 5});
+  ShapeTracker t2(shape2);
+  ASSERT_TRUE(t2.AppendTranspose({1, 0}).ok());
+
+  auto zipped = ShapeTracker::Zip({t1, t2});
+  ASSERT_TRUE(zipped.ok());
+  auto zipped_val = std::move(zipped).value();
+  auto zipped_inverted = zipped_val.GetInverted();
+  ASSERT_TRUE(zipped_inverted.ok());
+  auto zipped_inverted_val = std::move(zipped_inverted).value();
+
+  auto t1_inv = t1.GetInverted();
+  ASSERT_TRUE(t1_inv.ok());
+  auto t2_inv = t2.GetInverted();
+  ASSERT_TRUE(t2_inv.ok());
+  auto inverted_zipped = ShapeTracker::Zip({t1_inv.value(), t2_inv.value()});
+  ASSERT_TRUE(inverted_zipped.ok());
+  auto inverted_zipped_val = std::move(inverted_zipped).value();
+
+  EXPECT_EQ(zipped_inverted_val.input_shape(),
+            inverted_zipped_val.input_shape());
+  EXPECT_EQ(zipped_inverted_val.output_shape(),
+            inverted_zipped_val.output_shape());
+  EXPECT_EQ(zipped_inverted_val.DebugString(),
+            inverted_zipped_val.DebugString());
+  ExpectStepsEqual(zipped_inverted_val.GetSteps(),
+                   inverted_zipped_val.GetSteps());
+}
+
+TEST(ShapeTrackerTest, ZipInvertCommutativityWithReshape) {
+  Shape shape1 = ShapeUtil::MakeShape(F32, {2, 3});
+  ShapeTracker t1(shape1);
+  ASSERT_TRUE(t1.AppendReshape({6}).ok());
+
+  Shape shape2 = ShapeUtil::MakeShape(F32, {4});
+  ShapeTracker t2(shape2);
+
+  auto zipped = ShapeTracker::Zip({t1, t2});
+  ASSERT_TRUE(zipped.ok());
+  auto zipped_val = std::move(zipped).value();
+  auto zipped_inverted = zipped_val.GetInverted();
+  ASSERT_TRUE(zipped_inverted.ok());
+  auto zipped_inverted_val = std::move(zipped_inverted).value();
+
+  auto t1_inv = t1.GetInverted();
+  ASSERT_TRUE(t1_inv.ok());
+  auto t2_inv = t2.GetInverted();
+  ASSERT_TRUE(t2_inv.ok());
+  auto inverted_zipped = ShapeTracker::Zip({t1_inv.value(), t2_inv.value()});
+  ASSERT_TRUE(inverted_zipped.ok());
+  auto inverted_zipped_val = std::move(inverted_zipped).value();
+
+  EXPECT_EQ(zipped_inverted_val.input_shape(),
+            inverted_zipped_val.input_shape());
+  EXPECT_EQ(zipped_inverted_val.output_shape(),
+            inverted_zipped_val.output_shape());
+  EXPECT_EQ(zipped_inverted_val.DebugString(),
+            inverted_zipped_val.DebugString());
+  ExpectStepsEqual(zipped_inverted_val.GetSteps(),
+                   inverted_zipped_val.GetSteps());
+}
+
+}  // namespace
 }  // namespace xla

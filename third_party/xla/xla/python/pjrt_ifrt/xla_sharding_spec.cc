@@ -34,13 +34,14 @@ limitations under the License.
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/ExtensibleRTTI.h"
 #include "xla/hlo/ir/hlo_sharding.h"
+#include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/index.h"
 #include "xla/python/ifrt/index_domain.h"
+#include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding_spec.h"
+#include "xla/python/pjrt_ifrt/xla_sharding.h"
 #include "xla/shape_util.h"
-#include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 
@@ -108,6 +109,17 @@ HloShardingSpec::HloShardingSpec(int num_shards,
        num_shards_ == 1);
 }
 
+absl::StatusOr<ShardingRef> HloShardingSpec::ToSharding(
+    DeviceListRef devices, MemoryKind memory_kind) const {
+  if (devices->size() != num_shards()) {
+    return absl::InvalidArgumentError(absl::StrFormat(
+        "HloShardingSpec requires %d devices, but received %d devices",
+        num_shards(), devices->size()));
+  }
+  return HloSharding::Create(std::move(devices), memory_kind,
+                             xla_hlo_sharding());
+}
+
 absl::StatusOr<Shape> HloShardingSpec::GetShardShape(const Shape& shape) const {
   if (xla_hlo_sharding_.IsReplicatedOrSingleDevice() ||
       xla_hlo_sharding_.IsManual() || xla_hlo_sharding_.IsUnreduced() ||
@@ -115,10 +127,10 @@ absl::StatusOr<Shape> HloShardingSpec::GetShardShape(const Shape& shape) const {
     return shape;
   }
   if (shape.dims().size() != xla_hlo_sharding_.TiledDataRank()) {
-    return InvalidArgument(
+    return absl::InvalidArgumentError(absl::StrFormat(
         "Numbers of dimensions don't match. From Shape %d vs from "
         "HloSharding %d",
-        shape.dims().size(), xla_hlo_sharding_.TiledDataRank());
+        shape.dims().size(), xla_hlo_sharding_.TiledDataRank()));
   }
   const absl::Span<const int64_t> sharding_dims =
       xla_hlo_sharding_.dimensions();
@@ -200,10 +212,10 @@ HloShardingSpec::Disassemble(const Shape& shape) const {
 
 absl::StatusOr<std::vector<std::pair<DynamicShape, ShardingSpecRef>>>
 HloShardingSpec::Disassemble(const DynamicShape& dynamic_shape) const {
-  return InvalidArgument(
+  return absl::InvalidArgumentError(absl::StrFormat(
       "HloShardingSpec can only disassemble static shape, but was asked "
       "to disassemble dynamic shape %v",
-      dynamic_shape);
+      dynamic_shape));
 }
 
 absl::StatusOr<std::vector<IndexDomain>> HloShardingSpec::IndexDomains(

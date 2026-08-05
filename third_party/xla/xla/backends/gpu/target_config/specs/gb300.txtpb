@@ -236,15 +236,17 @@ gpu_device_info {
   driver_version: "13.0.0"
   runtime_version: "12.8.0"
   compile_time_toolkit_version: "12.8.0"
-  dnn_version: "9.10.0"
+  dnn_version: "9.15.0"
   cub_version: "3.1.2"
   device_interconnect_info {
     active_links: 18
   }
+  collective_memory_granularity: 2097152
 }
 platform_name: "CUDA"
 dnn_version_info {
   major: 9
   minor: 15
+  patch: 0
 }
 device_description_str: "NVIDIA GB300"

@@ -41,6 +41,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/command.h"
 #include "xla/backends/gpu/runtime/command_executor.h"
 #include "xla/backends/gpu/runtime/conditional_thunk.h"
+#include "xla/backends/gpu/runtime/dynamic_slice_fusion_v2_thunk.h"
 #include "xla/backends/gpu/runtime/sequential_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk_executor.h"
@@ -171,6 +172,18 @@ static absl::Status AppendCommands(ConversionContext& ctx,
       auto& while_thunk = static_cast<WhileThunk&>(thunk);
       RETURN_IF_ERROR(SetOrUpdateCommandBufferExecutors(while_thunk, options));
       cmd_sequence.Append(&while_thunk);
+      return absl::OkStatus();
+    }
+    case Thunk::Kind::kDynamicSliceFusion: {
+      auto& dynamic_slice_fusion_thunk =
+          static_cast<DynamicSliceFusionV2Thunk&>(thunk);
+      ASSIGN_OR_RETURN(
+          CommandExecutor cmds,
+          ConvertToCommands(dynamic_slice_fusion_thunk.thunks(), options));
+      RETURN_IF_ERROR(
+          dynamic_slice_fusion_thunk.SetOrUpdateCommandBufferExecutor(
+              std::move(cmds)));
+      cmd_sequence.Append(&dynamic_slice_fusion_thunk);
       return absl::OkStatus();
     }
     // Sequential thunk does not have any special semantics and we simply inline

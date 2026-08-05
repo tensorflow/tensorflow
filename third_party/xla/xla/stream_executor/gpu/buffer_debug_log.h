@@ -111,6 +111,12 @@ class BufferDebugLog : public BufferDebugLogBase {
     return entries;
   }
 
+  // Clears the log by resetting its header on the device.
+  absl::Status Clear(Stream& stream) {
+    return BufferDebugLogBase::CreateOnDevice(stream, memory_, sizeof(Entry))
+        .status();
+  }
+
   // Returns a view of the `BufferDebugLogHeader`.
   //
   // The returned `DeviceAddress` gets invalidated when the `BufferDebugLog` is

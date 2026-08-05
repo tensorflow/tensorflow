@@ -228,7 +228,7 @@ DeviceExecutablePersistor<ExecutableType, ClientType>::TryToReadSerializedEntry(
   }
 
   XlaSerializedCacheEntry entry;
-  TF_RETURN_IF_ERROR(ReadTextOrBinaryProto(env, file_path, &entry));
+  TF_RETURN_IF_ERROR(ReadBinaryProto(env, file_path, &entry));
   return std::optional<XlaSerializedCacheEntry>(entry);
 }
 

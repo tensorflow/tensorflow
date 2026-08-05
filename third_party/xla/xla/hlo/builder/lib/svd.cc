@@ -15,10 +15,10 @@ limitations under the License.
 #include "xla/hlo/builder/lib/svd.h"
 
 #include <cstdint>
-#include <numeric>
 #include <utility>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
@@ -36,7 +36,6 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 
@@ -141,7 +140,7 @@ absl::StatusOr<HouseHolderResult> HouseRow(
                   {num_dims - 1}));
 
   std::vector<int64_t> broadcast_dims(num_dims - 1);
-  std::iota(broadcast_dims.begin(), broadcast_dims.end(), 0);
+  absl::c_iota(broadcast_dims, 0);
   auto x_0j = DynamicSliceInMinorDims(x, {zero, j}, {1, 1});
   auto mu = Mul(sigma, Sqrt(Square(Div(x_0j, sigma, broadcast_dims)) + one),
                 broadcast_dims);
@@ -207,7 +206,7 @@ absl::StatusOr<HouseHolderResult> HouseCol(
                   {num_dims - 2}));
 
   std::vector<int64_t> broadcast_dims(num_dims - 1);
-  std::iota(broadcast_dims.begin(), broadcast_dims.end(), 0);
+  absl::c_iota(broadcast_dims, 0);
   broadcast_dims[num_dims - 2] = num_dims - 1;
   auto x_0i = DynamicSliceInMinorDims(x, {i, zero}, {1, 1});
   auto mu = Mul(sigma, Sqrt(Square(Div(x_0i, sigma, broadcast_dims)) + one),
@@ -486,7 +485,7 @@ absl::StatusOr<SVDResult> OneSidedJacobiUpdate(SVDResult svd_result, XlaOp p,
   auto pq_zeros = Broadcast(pq_zero, pq_dims);
 
   std::vector<int64_t> broadcast_dims(batch_dims.size());
-  std::iota(broadcast_dims.begin(), broadcast_dims.end(), 0);
+  absl::c_iota(broadcast_dims, 0);
   broadcast_dims.push_back(num_dims - 1);
 
   // Apply Jacobi Rotation on the left.
@@ -581,7 +580,7 @@ absl::StatusOr<XlaOp> ComputeToleranceComparison(XlaOp w, XlaOp epsilon) {
   auto diag = GetMatrixDiagonal(w_sliced);
   diag = Select(Lt(diag, ZerosLike(diag)), -diag, diag);
   std::vector<int64_t> broadcasted_dims(num_dims - 1);
-  std::iota(broadcasted_dims.begin(), broadcasted_dims.end(), 0);
+  absl::c_iota(broadcasted_dims, 0);
   auto broadcast_to_rows =
       BroadcastInDim(diag, shape.dimensions(), broadcasted_dims);
   broadcasted_dims.back() = num_dims - 1;
@@ -749,7 +748,7 @@ absl::StatusOr<SVDResult> SortBySingularValuesAndPostProcessing(
   const int64_t n = ShapeUtil::GetDimension(shape, -1);
 
   std::vector<int64_t> broadcast_dims(num_dims - 1);
-  std::iota(broadcast_dims.begin(), broadcast_dims.end(), 0);
+  absl::c_iota(broadcast_dims, 0);
   broadcast_dims[num_dims - 2] = num_dims - 1;
 
   auto d = GetMatrixDiagonal(result.d);

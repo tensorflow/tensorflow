@@ -43,7 +43,6 @@ limitations under the License.
 #include "xla/backends/cpu/codegen/dot/dot_kernel_emitter.h"
 #include "xla/backends/cpu/codegen/elemental/concatenate_kernel_emitter.h"
 #include "xla/backends/cpu/codegen/elemental/elemental_kernel_emitter.h"
-#include "xla/backends/cpu/codegen/emitters/cpu_scatter_emitter.h"
 #include "xla/backends/cpu/codegen/fusion_compiler.h"
 #include "xla/backends/cpu/codegen/fusion_emitter.h"
 #include "xla/backends/cpu/codegen/ir_compiler.h"
@@ -73,6 +72,7 @@ limitations under the License.
 #include "xla/backends/cpu/runtime/while_thunk.h"
 #include "xla/backends/cpu/runtime/ynnpack/ynn_fusion_thunk.h"
 #include "xla/backends/cpu/runtime/ynnpack/ynn_interop.h"
+#include "xla/backends/cpu/transforms/library_fusion_kinds.h"
 #include "xla/backends/cpu/ynn_emitter.h"
 #include "xla/backends/cpu/ynn_support.h"
 #include "xla/codegen/emitters/computation_fingerprint.h"
@@ -153,7 +153,8 @@ static FusionCompiler::Options FusionCompilerOptions(
       debug_options.xla_cpu_prefer_vector_width(),
       debug_options.xla_cpu_emitter_verification_level(),
       debug_options.xla_cpu_enable_fast_min_max(),
-      llvm_ir::GetCpuFastMathFlags(config)};
+      llvm_ir::GetCpuFastMathFlags(config),
+      debug_options.xla_cpu_use_new_xtile_lowering()};
 }
 
 static FusionCompiler FusionCompilerFactory(mlir::MLIRContext* context,
@@ -332,6 +333,7 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitHloInstruction(
     case HloOpcode::kCos:
     case HloOpcode::kCosh:
     case HloOpcode::kDivide:
+    case HloOpcode::kDynamicUpdateSlice:
     case HloOpcode::kErf:
     case HloOpcode::kExp:
     case HloOpcode::kExpm1:
@@ -369,9 +371,9 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitHloInstruction(
     case HloOpcode::kSinh:
     case HloOpcode::kSqrt:
     case HloOpcode::kSubtract:
-    case HloOpcode::kTranspose:
     case HloOpcode::kTan:
     case HloOpcode::kTanh:
+    case HloOpcode::kTranspose:
     case HloOpcode::kXor:
       return EmitElementalKernelThunk(instruction);
 
@@ -399,9 +401,6 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitHloInstruction(
     case HloOpcode::kSlice:
     case HloOpcode::kDynamicSlice:
       return EmitSliceThunk(instruction);
-
-    case HloOpcode::kDynamicUpdateSlice:
-      return EmitDynamicUpdateSliceThunk(instruction);
 
     case HloOpcode::kConcatenate:
       return EmitConcatenateKernelThunk(instruction);
@@ -819,33 +818,7 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitFusionKernelThunk(
     const HloInstruction* instruction) {
   auto* fusion = Cast<HloFusionInstruction>(instruction);
 
-  if (ir_emitter_.IsSupportedByFusionEmitter(fusion) &&
-      fusion->fused_expression_root()->opcode() == HloOpcode::kScatter) {
-    auto kernel_emitter = std::make_unique<CpuScatterFusion>(
-        buffer_assignment_, fusion, mlir_context_.get());
-
-    ASSIGN_OR_RETURN(KernelDefinition kernel_definition,
-                     kernel_emitter->EmitKernelDefinition());
-
-    auto kernel_spec = kernel_definition.spec();
-    auto kernel_source = std::move(kernel_definition).TakeSource();
-
-    ASSIGN_OR_RETURN(LlvmKernelSource llvm_kernel_source,
-                     fusion_compiler_.Compile(std::move(kernel_source)));
-
-    kernels_.push_back({kernel_spec.name(),
-                        std::move(llvm_kernel_source).thread_safe_module()});
-
-    return MakeKernelThunkSequence(instruction, std::move(kernel_spec),
-                                   /*min_alignment=*/MinAlign());
-  }
-
-  // We currently only support loop fusion & the dot implementation is currently
-  // not efficient compared to the legacy emitter.
-  if (hlo_module_config_.debug_options().xla_cpu_use_fusion_emitters() &&
-      options::UseExperimentalLoopFusion(hlo_module_config_) &&
-      fusion->fusion_kind() == HloFusionInstruction::FusionKind::kLoop &&
-      fusion->fused_expression_root()->opcode() != HloOpcode::kDot) {
+  if (FusionRoutesToMlirEmitter(hlo_module_config_, fusion)) {
     ASSIGN_OR_RETURN(std::string fingerprint,
                      GetFusionFingerprint(*fusion, buffer_assignment_,
                                           GetDefaultBufferAlignment()));
@@ -877,6 +850,15 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitFusionKernelThunk(
 
   return MakeKernelThunkSequence(instruction, buffers, kernel,
                                  /*min_alignment=*/MinAlign());
+}
+
+bool FusionRoutesToMlirEmitter(const HloModuleConfig& config,
+                               const HloFusionInstruction* fusion) {
+  if (fusion->fused_expression_root()->opcode() == HloOpcode::kScatter) {
+    return true;
+  }
+  return options::UseExperimentalLoopFusion(config) &&
+         fusion->fusion_kind() == HloFusionInstruction::FusionKind::kLoop;
 }
 
 absl::StatusOr<ThunkSequence> ThunkEmitter::EmitReductionKernelThunk(
@@ -1285,21 +1267,6 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitSliceThunk(
   // Thunks because it might be easier to get peak performance from hand
   // written code (Eigen slice expression for example).
   return EmitElementalKernelThunk(instruction);
-}
-
-absl::StatusOr<ThunkSequence> ThunkEmitter::EmitDynamicUpdateSliceThunk(
-    const HloInstruction* instruction) {
-  if (!ir_emitter_.CanUpdateDynamicSliceInPlace(instruction)) {
-    VLOG(2) << "Could not emit in-place dynamic-update-slice kernel: "
-            << instruction->name();
-    return EmitElementalKernelThunk(instruction);
-  }
-
-  ASSIGN_OR_RETURN(auto kernel,
-                   ir_emitter_.EmitDynamicUpdateSliceHostKernel(instruction));
-  ASSIGN_OR_RETURN(auto buffers, GetHostKernelAllocationSlices(instruction));
-
-  return MakeKernelThunkSequence(instruction, buffers, kernel);
 }
 
 // Parse the sort comparator to determine the sort direction. Comparator is

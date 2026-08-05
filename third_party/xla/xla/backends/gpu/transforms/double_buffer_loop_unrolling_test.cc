@@ -1382,8 +1382,7 @@ ENTRY main {
     // CHECK: %body {{.+}} {
     // CHECK:   %[[cp1:.+]] = {{.+}} collective-permute({{.+}}), {{.+}}
     // CHECK:   %[[out1:.+]] = {{.+}} tuple({{.*}}%[[cp1]], {{.*}})
-    // CHECK:   %[[param2:.+]] = {{.+}} get-tuple-element({{.*}}%[[out1]]), index=0
-    // CHECK:   %[[cp2:.+]] = {{.+}} collective-permute({{.*}}%[[param2]]), {{.+}}
+    // CHECK:   %[[cp2:.+]] = {{.+}} collective-permute({{.*}}%[[out1]]#0), {{.+}}
     // CHECK:   ROOT {{.+}} = {{.+}} tuple({{.*}}%[[cp2]], {{.*}})
     // CHECK: }
     // CHECK: ENTRY %main {{.+}} {
@@ -1435,8 +1434,7 @@ ENTRY main {
     // CHECK: %body
     // CHECK:   %[[cp1:.+]] = {{.+}} collective-permute({{.*}}), {{.+}}
     // CHECK:   %[[out1:.+]] = {{.+}} tuple({{.*}}%[[cp1]], {{.*}})
-    // CHECK:   %[[param2:.+]] = {{.+}} get-tuple-element({{.*}}%[[out1]])
-    // CHECK:   %[[cp2:.+]] = {{.+}} collective-permute({{.*}}), {{.+}}
+    // CHECK:   %[[cp2:.+]] = {{.+}} collective-permute({{.*}}%[[out1]]#0), {{.+}}
     // CHECK:   ROOT {{.+}} = {{.+}} tuple({{.*}}%[[cp2]], {{.*}})
     // CHECK: ENTRY %main {{.+}} {
     // CHECK:   %[[cp_peeled:.+]] = {{.+}} collective-permute({{.*}}), {{.+}}
@@ -1487,10 +1485,10 @@ ENTRY main {
 
   EXPECT_TRUE(*RunFileCheck(module->ToString(), R"(
     // CHECK: %body
-    // CHECK:   %[[cp1:.+]] = f32[] collective-permute(%param_0), {{.+}}
+    // CHECK:   %[[PARAM:.+]] = {{.+}} parameter(0)
+    // CHECK:   %[[cp1:.+]] = f32[] collective-permute(%[[PARAM]]#0), {{.+}}
     // CHECK:   %[[out1:.+]] = {{.+}} tuple({{.*}}%[[cp1]], {{.*}})
-    // CHECK:   %[[param2:.+]] = {{.+}} get-tuple-element({{.*}}%[[out1]]), index=0
-    // CHECK:   %[[cp2:.+]] = {{.+}} collective-permute({{.*}}%[[param2]]), {{.+}}
+    // CHECK:   %[[cp2:.+]] = {{.+}} collective-permute({{.*}}%[[out1]]#0), {{.+}}
     // CHECK:   ROOT {{.+}} = {{.+}} tuple({{.*}}%[[cp2]], {{.*}})
     // CHECK: ENTRY %main
     // CHECK-NOT: collective-permute
@@ -1541,8 +1539,7 @@ ENTRY main {
     // CHECK: %body
     // CHECK:   %[[cp1:.+]] = {{.+}} collective-permute({{.+}}), {{.+}}
     // CHECK:   %[[out1:.+]] = {{.+}} tuple({{.*}}%[[cp1]], {{.*}})
-    // CHECK:   %[[param2:.+]] = {{.+}} get-tuple-element({{.*}}%[[out1]]), index=0
-    // CHECK:   %[[cp2:.+]] = {{.+}} collective-permute({{.*}}%[[param2]]), {{.+}}
+    // CHECK:   %[[cp2:.+]] = {{.+}} collective-permute({{.*}}%[[out1]]#0), {{.+}}
     // CHECK:   ROOT {{.+}} = {{.+}} tuple({{.*}}%[[cp2]], {{.*}})
     // CHECK: }
     // CHECK: ENTRY %main
@@ -1598,8 +1595,7 @@ ENTRY main {
     // CHECK:   %[[cp_start1:.+]] = {{.+}} collective-permute-start({{.+}}), {{.+}}
     // CHECK:   %[[cp1:.+]] = {{.+}} collective-permute-done({{.*}}%[[cp_start1]])
     // CHECK:   %[[out1:.+]] = {{.+}} tuple({{.*}}%[[cp1]], {{.*}})
-    // CHECK:   %[[param2:.+]] = {{.+}} get-tuple-element({{.*}}%[[out1]]), index=0
-    // CHECK:   %[[cp_start2:.+]] = {{.+}} collective-permute-start({{.*}}), {{.+}}
+    // CHECK:   %[[cp_start2:.+]] = {{.+}} collective-permute-start({{.*}}%[[out1]]#0), {{.+}}
     // CHECK:   %[[cp2:.+]] = {{.+}} collective-permute-done({{.*}}%[[cp_start2]])
     // CHECK:   ROOT {{.+}} = {{.+}} tuple({{.*}}%[[cp2]], {{.*}})
     // CHECK: }
@@ -2070,7 +2066,7 @@ ENTRY main {
                   1);
         ++num_inner_whiles;
       });
-  // Outter loop should not be unrolled, the inner while count should be still
+  // Outer loop should not be unrolled, the inner while count should be still
   // be 1.
   EXPECT_EQ(num_inner_whiles, 1);
 }
@@ -2131,7 +2127,7 @@ ENTRY main {
                   5);
         ++num_inner_whiles;
       });
-  // Outter loop should not be unrolled, the inner while count should be still
+  // Outer loop should not be unrolled, the inner while count should be still
   // be 1.
   EXPECT_EQ(num_inner_whiles, 1);
 }

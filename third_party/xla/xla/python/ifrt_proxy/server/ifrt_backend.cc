@@ -106,6 +106,12 @@ absl::StatusOr<IfrtArrayRef> MakeStringArrayFromHostBuffer(
     ShardingRef sharding) {
   ASSIGN_OR_RETURN(std::vector<absl::Cord> string_host_buffer,
                    DeserializeStringHostBufferFromString(*host_buffer));
+  const int64_t num_elements = shape.num_elements();
+  if (static_cast<size_t>(num_elements) != string_host_buffer.size()) {
+    return absl::InvalidArgumentError(absl::StrCat(
+        "String host buffer has ", string_host_buffer.size(),
+        " elements but shape requires ", num_elements, " elements"));
+  }
   const void* data = string_host_buffer.data();
 
   return client->MakeArrayFromHostBuffer(
@@ -157,6 +163,12 @@ ParseMakeArraysFromHostBufferShardsSpecHostBufferProto(
   if (dtype.kind() == DType::kString) {
     ASSIGN_OR_RETURN(std::vector<absl::Cord> string_host_buffer,
                      DeserializeStringHostBufferFromString(*host_buffer));
+    const int64_t num_elements = shape.num_elements();
+    if (static_cast<size_t>(num_elements) != string_host_buffer.size()) {
+      return absl::InvalidArgumentError(absl::StrCat(
+          "String host buffer has ", string_host_buffer.size(),
+          " elements but shape requires ", num_elements, " elements"));
+    }
     data = string_host_buffer.data();
     on_done_with_host_buffer = [host_buffer = std::move(host_buffer),
                                 string_host_buffer =
@@ -954,6 +966,14 @@ IfrtBackend::HandleMakeArraysFromHostBufferShardsRequest(
   for (const auto& spec_proto : make_arrays_request->specs()) {
     xla::ifrt::Client::MakeArraysFromHostBufferShardsSpec::Buffers buffers;
     buffers.reserve(spec_proto.host_buffers_size());
+    if (spec_proto.addressable_shard_indices_size() !=
+        spec_proto.host_buffers_size()) {
+      return absl::InvalidArgumentError(
+          absl::StrCat("MakeArraysFromHostBufferShardsSpec has ",
+                       spec_proto.addressable_shard_indices_size(),
+                       " addressable_shard_indices but ",
+                       spec_proto.host_buffers_size(), " host_buffers."));
+    }
     for (int buffer_idx = 0; buffer_idx < spec_proto.host_buffers_size();
          ++buffer_idx) {
       xla::ifrt::Client::MakeArraysFromHostBufferShardsSpec::ShardIndices
@@ -1360,16 +1380,21 @@ IfrtBackend::HandleFullyReplicatedShardRequest(
 
 absl::StatusOr<BackendInterface::Response>
 IfrtBackend::HandleDeleteArrayRequest(std::unique_ptr<IfrtRequest> request) {
+  std::vector<ValueRef> to_delete;
   std::vector<uint64_t> bad_handles;
   std::vector<tsl::Future<>> deletion_futures;
 
   for (auto array_handle : request->delete_array_request().array_handle()) {
     absl::StatusOr<IfrtArrayRef> array = array_store_.Find(array_handle);
     if (array.ok()) {
-      deletion_futures.push_back(array.value()->Delete());
+      to_delete.push_back(array.value());
     } else {
       deletion_futures.push_back(tsl::Future<>(array.status()));
     }
+  }
+  if (!to_delete.empty()) {
+    deletion_futures.push_back(
+        client_->DeleteValues(absl::MakeSpan(to_delete)));
   }
 
   uint64_t future_handle = handle_generator_.GenerateAtServer();
