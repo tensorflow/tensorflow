@@ -17,7 +17,6 @@ REGULAR_HLO_FILES = [
     "dlrm_keras_jax_f32_test_step.hlo",
     "dlrm_keras_jax_f32_train_step.hlo",
     "dynamic_slice_loop_1x2048x768_bf16.hlo",
-    "gemma3_1b_flax_sample_loop.hlo",
     "in_place_dynamic_update_slice_fusion.hlo",
     "jax.b380442861.hlo",
     "jax.issue.33666.linx.frag_0100.module_0005.hlo",
@@ -45,6 +44,7 @@ REGULAR_HLO_FILES = [
 SLOW_HLO_FILES = [
     # go/keep-sorted start
     "gemma3_1b_flax_call.hlo",
+    "gemma3_1b_flax_sample_loop.hlo",
     "jax.b380427514.dynamic.hlo",
     "jax.b380427514.regular.hlo",
     # go/keep-sorted end
