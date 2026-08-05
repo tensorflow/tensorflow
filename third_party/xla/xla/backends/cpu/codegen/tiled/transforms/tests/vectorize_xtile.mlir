@@ -539,4 +539,39 @@ func.func @test_transpose_2d(%arg0: tensor<16x32xf32>) -> tensor<32x16xf32> {
 // CHECK: %[[RET:.*]] = builtin.unrealized_conversion_cast %[[TRANS]] : vector<32x16xf32> to tensor<32x16xf32>
 // CHECK: return %[[RET]]
 
+func.func @test_constant() -> tensor<8x8xf32> {
+  %0 = arith.constant dense<1.000000e+00> : tensor<8x8xf32>
+  return %0 : tensor<8x8xf32>
+}
+// CHECK-LABEL: @test_constant
+// CHECK: %[[CST:.*]] = arith.constant dense<1.000000e+00> : vector<8x8xf32>
+// CHECK: %[[RET:.*]] = builtin.unrealized_conversion_cast %[[CST]] : vector<8x8xf32> to tensor<8x8xf32>
+// CHECK: return %[[RET]]
+
+func.func @test_dot_general(%arg0: tensor<8x8xf32>, %arg1: tensor<8x8xf32>, %arg2: tensor<8x8xf32>) -> tensor<8x8xf32> {
+  %0 = stablehlo.dot_general %arg0, %arg1, contracting_dims = [1] x [0], precision = [DEFAULT, DEFAULT] : (tensor<8x8xf32>, tensor<8x8xf32>) -> tensor<8x8xf32>
+  %1 = arith.addf %0, %arg2 : tensor<8x8xf32>
+  return %1 : tensor<8x8xf32>
+}
+// CHECK-LABEL: @test_dot_general
+// CHECK-DAG: %[[LHS:.*]] = builtin.unrealized_conversion_cast %arg0 : tensor<8x8xf32> to vector<8x8xf32>
+// CHECK-DAG: %[[RHS:.*]] = builtin.unrealized_conversion_cast %arg1 : tensor<8x8xf32> to vector<8x8xf32>
+// CHECK-DAG: %[[ACC:.*]] = builtin.unrealized_conversion_cast %arg2 : tensor<8x8xf32> to vector<8x8xf32>
+// CHECK: %[[RES:.*]] = vector.contract {indexing_maps = [{{.*}}], iterator_types = ["reduction", "parallel", "parallel"], kind = #vector.kind<add>} %[[LHS]], %[[RHS]], %[[ACC]] : vector<8x8xf32>, vector<8x8xf32> into vector<8x8xf32>
+// CHECK: %[[RET:.*]] = builtin.unrealized_conversion_cast %[[RES]] : vector<8x8xf32> to tensor<8x8xf32>
+// CHECK: return %[[RET]]
+
+func.func @test_dot_general_batch(%arg0: tensor<2x8x8xf32>, %arg1: tensor<2x8x8xf32>, %arg2: tensor<2x8x8xf32>) -> tensor<2x8x8xf32> {
+  %0 = stablehlo.dot_general %arg0, %arg1, batching_dims = [0] x [0], contracting_dims = [2] x [1], precision = [DEFAULT, DEFAULT] : (tensor<2x8x8xf32>, tensor<2x8x8xf32>) -> tensor<2x8x8xf32>
+  %1 = arith.addf %0, %arg2 : tensor<2x8x8xf32>
+  return %1 : tensor<2x8x8xf32>
+}
+// CHECK-LABEL: @test_dot_general_batch
+// CHECK-DAG: %[[LHS:.*]] = builtin.unrealized_conversion_cast %arg0 : tensor<2x8x8xf32> to vector<2x8x8xf32>
+// CHECK-DAG: %[[RHS:.*]] = builtin.unrealized_conversion_cast %arg1 : tensor<2x8x8xf32> to vector<2x8x8xf32>
+// CHECK-DAG: %[[ACC:.*]] = builtin.unrealized_conversion_cast %arg2 : tensor<2x8x8xf32> to vector<2x8x8xf32>
+// CHECK: %[[RES:.*]] = vector.contract {indexing_maps = [{{.*}}], iterator_types = ["parallel", "reduction", "parallel", "parallel"], kind = #vector.kind<add>} %[[LHS]], %[[RHS]], %[[ACC]] : vector<2x8x8xf32>, vector<2x8x8xf32> into vector<2x8x8xf32>
+// CHECK: %[[RET:.*]] = builtin.unrealized_conversion_cast %[[RES]] : vector<2x8x8xf32> to tensor<2x8x8xf32>
+// CHECK: return %[[RET]]
+
 

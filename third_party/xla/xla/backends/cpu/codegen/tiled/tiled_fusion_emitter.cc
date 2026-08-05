@@ -295,6 +295,8 @@ bool IsSupportedInstruction(const HloInstruction& inst,
       return true;
     case HloOpcode::kConstant:
       return ShapeUtil::IsEffectiveScalar(inst.shape());
+    case HloOpcode::kDot:
+      return use_new_xtile_lowering;
     case HloOpcode::kBitcastConvert:
     case HloOpcode::kMap:
     case HloOpcode::kPopulationCount:
