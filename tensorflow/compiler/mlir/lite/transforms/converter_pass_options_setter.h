@@ -26,7 +26,7 @@ class OptimizePassOptions;
 class VariableFreezingPipelineOptions;
 class EmptyPassOptions;
 class OptimizeBroadcastLikePassOptions;
-class LargeConstantFoldPassOptions;
+struct LargeConstantFoldPassOptions;
 
 // PassOptionsSetter to set TFLite Converter Pass/Pipeline Options based on
 // ConverterFlags and TFL::PassConfig values.
