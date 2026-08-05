@@ -24,13 +24,10 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
 #include "xla/tsl/platform/status_macros.h"
-#include "xla/overflow_util.h"
 #include "xla/python/ifrt/serdes_version.h"
 #include "xla/python/ifrt/shape.pb.h"
-#include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/statusor.h"
-#include "xla/util.h"
 
 namespace xla {
 namespace ifrt {
@@ -58,29 +55,19 @@ absl::StatusOr<Shape> Shape::FromProto(const ShapeProto& proto) {
 
   Shape::Dimensions dims;
   dims.reserve(proto.dims_size());
-  // Detects a dimension product that overflows int64_t, reusing the same
-  // OverflowSafeMultiply utility that xla::ShapeUtil::ValidateDimensions
-  // already uses for the core XLA Shape type. This class has its own
-  // FromProto reachable independently (e.g. via ifrt_proxy's deserialized
-  // RPC request protos) and needs the equivalent check, since num_elements()
-  // below does not detect overflow itself -- an unchecked product silently
-  // wraps to a small value that undersizes any buffer computed from it.
-  int64_t product = 1;
+  int64_t num_elements = 1;
   bool overflow = false;
   for (int64_t dim : proto.dims()) {
     if (dim < 0) {
-      return InvalidArgument(
-          "Shape expects non-negative dimension sizes, but got %d", dim);
+      return absl::InvalidArgumentError(absl::StrFormat(
+          "Shape expects non-negative dimension sizes, but got %d", dim));
     }
-    const auto [new_product, this_overflowed] =
-        OverflowSafeMultiply(product, dim);
-    product = new_product;
-    overflow |= this_overflowed;
+    overflow |= __builtin_mul_overflow(num_elements, dim, &num_elements);
     dims.push_back(dim);
   }
   if (overflow) {
-    return InvalidArgument(
-        "Shape dimensions overflow int64_t when multiplied together");
+    return absl::InvalidArgumentError(
+        "Too large number of elements in a shape");
   }
   return Shape(std::move(dims));
 }
@@ -149,7 +136,7 @@ absl::StatusOr<DynamicShape> DynamicShape::Create(Shape shape,
       overloaded{
           [&](const BoundedDynamicShapeTag& tag) -> absl::Status {
             if (tag.DynamicDims().size() != shape.dims().size()) {
-              return InvalidArgument(
+              return absl::InvalidArgumentError(
                   "Shape and tag must have the same number of dimensions.");
             }
             return absl::OkStatus();
@@ -192,7 +179,7 @@ absl::StatusOr<DynamicShape> DynamicShape::FromProto(
         BoundedDynamicShapeTag::FromProto(proto.bounded_dynamic_shape_tag()));
     return DynamicShape::Create(std::move(shape), std::move(tag));
   }
-  return InvalidArgument("Only support bounded dynamic shape.");
+  return absl::InvalidArgumentError("Only support bounded dynamic shape.");
 }
 
 void DynamicShape::ToProto(DynamicShapeProto& proto,
