@@ -793,8 +793,11 @@ cc_library(
     hdrs = ["cudnn_fusion_utils.h"],
     deps = [
         "//xla:shape_util",
+        "//xla:xla_data_proto_cc",
         "//xla/hlo/analysis:hlo_reachability",
         "//xla/hlo/ir:hlo",
+        "//xla/hlo/utils:hlo_query",
+        "//xla/service/gpu:backend_configs_cc",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/functional:function_ref",
         "@com_google_absl//absl/log:check",
@@ -1076,6 +1079,7 @@ cc_library(
     ],
     deps = [
         ":block_scaling_rewriter",
+        ":cudnn_fusion_utils",
         "//xla:comparison_util",
         "//xla:shape_util",
         "//xla:status_macros",
@@ -1111,6 +1115,7 @@ cc_library(
         "@com_google_absl//absl/strings:string_view",
         "@cudnn_frontend_archive//:cudnn_frontend",
         "@local_config_cuda//cuda:cudnn_header",
+        "@tsl//tsl/platform:tensor_float_32_utils",
     ],
 )
 

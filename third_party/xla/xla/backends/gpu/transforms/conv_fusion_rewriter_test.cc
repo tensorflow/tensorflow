@@ -722,6 +722,34 @@ class ConvFusionRewriterIntegrationTest
   }
 };
 
+// TODO(b/542582954): Re-enable once cuDNN supports FP32 convolution with
+// highest precision.
+TEST_F(ConvFusionRewriterIntegrationTest,
+       DISABLED_FP32ConvolutionHighestPrecision) {
+  MAYBE_SKIP_TEST("F32");
+  const char* hlo_text = R"(
+HloModule TestModule
+
+ENTRY %conv_computation (x: f32[16,40,40,64], y: f32[3,3,64,64]) -> f32[16,40,40,64] {
+  %x = f32[16,40,40,64] parameter(0)
+  %y = f32[3,3,64,64] parameter(1)
+  ROOT %result = f32[16,40,40,64] convolution(x, y), window={size=3x3 pad=1_1x1_1}, dim_labels=b01f_01io->b01f, operand_precision={highest, highest}
+}
+)";
+
+  std::string optimized_hlo_string = GetOptimizedHlo(hlo_text);
+  EXPECT_THAT(optimized_hlo_string, HasSubstr(kCuDnnFusionKind));
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_text));
+  DebugOptions debug_opts = module->config().debug_options();
+  debug_opts.set_xla_gpu_use_runtime_fusion(true);
+  debug_opts.set_xla_gpu_experimental_enable_conv_fusion(true);
+  module->mutable_config().set_debug_options(debug_opts);
+
+  EXPECT_TRUE(RunAndCompare(std::move(module), ErrorSpec{1e-4, 1e-4}))
+      << optimized_hlo_string;
+}
+
 // TODO(b/485220832) Re-enable this test once e2e conv fusion pipeline is
 // finalized.
 TEST_F(ConvFusionRewriterIntegrationTest, DISABLED_TestConvOnly) {

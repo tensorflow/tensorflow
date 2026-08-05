@@ -261,6 +261,9 @@ absl::StatusOr<bool> RunOnInstruction(
   FusionBackendConfig* fusion_config =
       gpu_backend_config.mutable_fusion_backend_config();
   fusion_config->set_kind(kCuDnnFusionKind);
+  const auto* conv_instr = DynCast<HloConvolutionInstruction>(conv);
+  *fusion_config->mutable_cudnn_fusion_config()->mutable_precision_config() =
+      conv_instr->precision_config();
   RETURN_IF_ERROR(conv_fusion->set_backend_config(gpu_backend_config));
 
   VLOG(1) << "Replacing convolution " << conv->ToString() << " with "

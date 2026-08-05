@@ -41,6 +41,7 @@ limitations under the License.
 #include "xla/tsl/platform/status_macros.h"
 #include "third_party/gpus/cudnn/cudnn_version.h"
 #include "xla/backends/gpu/transforms/block_scaling_rewriter.h"
+#include "xla/backends/gpu/transforms/cudnn_fusion_utils.h"
 #include "xla/codegen/emitters/computation_fingerprint.h"
 #include "xla/comparison_util.h"
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
@@ -72,6 +73,7 @@ limitations under the License.
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/util.h"
+#include "tsl/platform/tensor_float_32_utils.h"
 
 namespace xla {
 namespace gpu {
@@ -1124,10 +1126,18 @@ absl::StatusOr<se::gpu::CudnnGraph> PrepareGraph(
         "crash inside the deviceless heuristics query.");
   }
   ASSIGN_OR_RETURN(se::gpu::CudnnGraph graph, HloFusionToCuDnnGraph(hlo));
+  PrecisionConfig precision_config = GetPrecisionConfig(hlo);
+
+  bool allow_tf32 =
+      tsl::tensor_float_32_execution_enabled() &&
+      absl::c_all_of(precision_config.operand_precision(), [](int precision) {
+        return precision <= PrecisionConfig::HIGH;
+      });
+
   RETURN_IF_ERROR(graph.Prepare(
       dnn_support, gpu_device_info,
       se::EngineOptions{RequireDeterminism(hlo.GetModule()->config()),
-                        /*allow_tf32=*/true,
+                        allow_tf32,
                         /*require_command_buffer=*/false}));
   return graph;
 }
@@ -1212,7 +1222,7 @@ class CuDnnFusionVisitor : public DfsHloRewriteVisitor {
                                     *DynCast<HloFusionInstruction>(hlo)));
 
       if (fusion_backend_config.has_cudnn_fusion_config() &&
-          fusion_backend_config.cudnn_fusion_config().plan_id() >= 0) {
+          fusion_backend_config.cudnn_fusion_config().has_plan_id()) {
         const int64_t plan_id =
             fusion_backend_config.cudnn_fusion_config().plan_id();
         VLOG(4) << "Plan ID: " << plan_id;
