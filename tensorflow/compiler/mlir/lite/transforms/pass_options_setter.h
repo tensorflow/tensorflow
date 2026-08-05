@@ -18,11 +18,11 @@ limitations under the License.
 
 namespace mlir::TFL {
 
-class OptimizePassOptions;
-class VariableFreezingPipelineOptions;
-class EmptyPassOptions;
-class OptimizeBroadcastLikePassOptions;
-class LargeConstantFoldPassOptions;
+struct OptimizePassOptions;
+struct VariableFreezingPipelineOptions;
+struct EmptyPassOptions;
+struct OptimizeBroadcastLikePassOptions;
+struct LargeConstantFoldPassOptions;
 
 // Interface for setting options for TFLite Converter Pass/Pipeline Options.
 class PassOptionsSetter {
