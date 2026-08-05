@@ -431,6 +431,11 @@ absl::StatusOr<std::unique_ptr<HloAliasAnalysis>> HloAliasAnalysis::Run(
   VLOG(2) << "HloAliasAnalysis::Run on module " << module->name();
   XLA_VLOG_LINES(2, module->ToString());
 
+  AliasInfo default_alias_info;
+  if (alias_info == nullptr) {
+    alias_info = &default_alias_info;
+  }
+
   auto alias_analysis = absl::WrapUnique(new HloAliasAnalysis(module));
   ABSL_ASSIGN_OR_RETURN(alias_analysis->dataflow_analysis_,
                    HloDataflowAnalysis::Run(*module, /*ssa_form=*/true,

@@ -45,7 +45,7 @@ class HloAliasAnalysis {
   // The callgraph of the given HloModule must be flattened
   // (xla::FlattenCallGraph) prior to running the analysis.
   static absl::StatusOr<std::unique_ptr<HloAliasAnalysis>> Run(
-      const HloModule* module, const AliasInfo* alias_info);
+      const HloModule* module, const AliasInfo* alias_info = nullptr);
 
   std::string ToString() const;
 

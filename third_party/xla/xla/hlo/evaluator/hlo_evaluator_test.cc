@@ -40,7 +40,7 @@ limitations under the License.
 #include "xla/comparison_util.h"
 #include "xla/debug_options_flags.h"
 #include "xla/error_spec.h"
-#include "xla/hlo/analysis/tuple_points_to_analysis.h"
+#include "xla/hlo/analysis/hlo_alias_analysis.h"
 #include "xla/hlo/builder/xla_builder.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -7094,12 +7094,11 @@ TEST_F(HloEvaluatorTest, ParameterThroughCallSucceedsWithPrecomputation) {
   ASSERT_NE(parameter_instruction, nullptr);
 
   Literal expected = LiteralUtil::CreateR0<int32_t>(42);
-  TF_ASSERT_OK_AND_ASSIGN(
-      std::unique_ptr<TuplePointsToAnalysis> tuple_points_to,
-      TuplePointsToAnalysis::Run(hlo_module.get()));
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloAliasAnalysis> alias_analysis,
+                          HloAliasAnalysis::Run(hlo_module.get()));
   TF_ASSERT_OK_AND_ASSIGN(
       Literal result,
-      evaluator_.Evaluate(parameter_instruction, {tuple_points_to.get()},
+      evaluator_.Evaluate(parameter_instruction, {alias_analysis.get()},
                           /*recursively_evaluate_nonconstant_operands=*/true));
   EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
 }
@@ -7188,14 +7187,13 @@ TEST_F(PatternMatchParseWhileLoopTest,
   )";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
                           ParseAndReturnVerifiedModule(kHloModule));
-  TF_ASSERT_OK_AND_ASSIGN(
-      std::unique_ptr<TuplePointsToAnalysis> tuple_points_to,
-      TuplePointsToAnalysis::Run(hlo_module.get()));
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloAliasAnalysis> alias_analysis,
+                          HloAliasAnalysis::Run(hlo_module.get()));
 
   HloInstruction* while_op =
       hlo_module->entry_computation()->root_instruction()->mutable_operand(0);
   std::optional<ParsedWhileLoop> parsed_while_loop =
-      PatternMatchParseWhileLoop(while_op, {tuple_points_to.get()});
+      PatternMatchParseWhileLoop(while_op, {alias_analysis.get()});
   ASSERT_TRUE(parsed_while_loop.has_value());
   EXPECT_FALSE(parsed_while_loop->is_dynamic());
   EXPECT_EQ(parsed_while_loop->static_while_loop->trip_count, 5);

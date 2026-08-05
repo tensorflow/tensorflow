@@ -54,7 +54,7 @@ limitations under the License.
 #include "xla/tsl/platform/status_macros.h"
 #include "xla/array2d.h"
 #include "xla/comparison_util.h"
-#include "xla/hlo/analysis/tuple_points_to_analysis.h"
+#include "xla/hlo/analysis/hlo_alias_analysis.h"
 #include "xla/hlo/evaluator/hlo_evaluator_typed_visitor.h"
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
@@ -72,7 +72,7 @@ limitations under the License.
 #include "xla/primitive_util.h"
 #include "xla/service/gather_scatter_utils.h"
 #include "xla/service/hlo_module_config.h"
-#include "xla/service/logical_buffer.h"
+#include "xla/service/hlo_value.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/service/shape_inference.h"
 #include "xla/shape.h"
@@ -580,6 +580,35 @@ std::optional<DynamicOrStaticInteger> EvaluateWhileLoopParamInitValue(
                                       /*precomputed_analyses=*/{});
 }
 
+std::pair<const HloInstruction*, ShapeIndex> ResolveTrivialSource(
+    const HloInstruction* instr, ShapeIndex index) {
+  if (instr->opcode() == HloOpcode::kCopy) {
+    return ResolveTrivialSource(instr->operand(0), index);
+  }
+  if (instr->opcode() == HloOpcode::kCopyDone) {
+    ShapeIndex new_index = index;
+    new_index.push_front(0);
+    return ResolveTrivialSource(instr->operand(0), new_index);
+  }
+  if (instr->opcode() == HloOpcode::kCopyStart && !index.empty() &&
+      index.front() == 0) {
+    ShapeIndex new_index = index;
+    new_index.pop_front();
+    return ResolveTrivialSource(instr->operand(0), new_index);
+  }
+  if (instr->opcode() == HloOpcode::kGetTupleElement) {
+    ShapeIndex new_index = index;
+    new_index.push_front(instr->tuple_index());
+    return ResolveTrivialSource(instr->operand(0), new_index);
+  }
+  if (instr->opcode() == HloOpcode::kTuple && !index.empty()) {
+    int64_t idx = index.front();
+    index.pop_front();
+    return ResolveTrivialSource(instr->operand(idx), index);
+  }
+  return {instr, index};
+}
+
 }  // namespace
 
 namespace internal {
@@ -981,7 +1010,7 @@ absl::StatusOr<Literal> HloEvaluator::Evaluate(
   // Reset evaluation state with the argument literals.
   ScopedEvaluateState evaluate_state(&state_, args);
 
-  tuple_points_to_analysis_cache_.reset();
+  alias_analysis_cache_.reset();
 
   // Re-seed RNG, either from the configuration's seed or a monotonic
   // per-evaluator seed (which prevents two evaluators from returning the same
@@ -1022,7 +1051,7 @@ absl::StatusOr<Literal> HloEvaluator::Evaluate(
     SetEvaluatedLiteralFor(substituted_instr, literal_value->Clone());
   }
 
-  tuple_points_to_analysis_cache_.reset();
+  alias_analysis_cache_.reset();
   auto enable_partial_evaluation_cleanup =
       absl::MakeCleanup([this] { enable_partial_evaluation_ = false; });
   enable_partial_evaluation_ = recursively_evaluate_nonconstant_operands;
@@ -1184,33 +1213,43 @@ absl::Status HloEvaluator::EvaluateParameterFromCallerArgument(
         ", which is not yet supported."));
   }
   if (computation_caller->opcode() == HloOpcode::kWhile) {
-    if (!analyses.tuple_points_to && !tuple_points_to_analysis_cache_) {
-      absl::StatusOr<std::unique_ptr<TuplePointsToAnalysis>> tuple_points_to =
-          TuplePointsToAnalysis::Run(parameter->GetModule());
-      if (!tuple_points_to.ok()) {
-        return absl::FailedPreconditionError(
-            "Failed to run TuplePointsToAnalysis.");
-      }
-      tuple_points_to_analysis_cache_ = *std::move(tuple_points_to);
-    }
-    TuplePointsToAnalysis* tuple_points_to_analysis =
-        analyses.tuple_points_to != nullptr
-            ? analyses.tuple_points_to
-            : tuple_points_to_analysis_cache_.get();
-
     HloComputation* while_body = computation_caller->while_body();
-    ABSL_ASSIGN_OR_RETURN(
-        const LogicalBuffer* logical_buffer,
-        tuple_points_to_analysis->GetBufferDefinedAt(
-            while_body->parameter_instruction(parameter->parameter_number()),
-            shape_index));
-    const TuplePointsToAnalysis::BufferAliasVector& buffer_aliases =
-        tuple_points_to_analysis->GetBufferAliases(*logical_buffer);
+    int64_t param_num = parameter->parameter_number();
+    const HloInstruction* body_param =
+        while_body->parameter_instruction(param_num);
+    const HloInstruction* body_root = while_body->root_instruction();
+
     bool unchanged_in_return = false;
-    for (const BufferAlias& buffer_alias : buffer_aliases) {
-      if (buffer_alias.instruction() == while_body->root_instruction() &&
-          buffer_alias.index() == shape_index) {
-        unchanged_in_return = true;
+    if (ResolveTrivialSource(body_root, shape_index) ==
+        std::make_pair(body_param, shape_index)) {
+      unchanged_in_return = true;
+    } else {
+      if (!analyses.alias_analysis && !alias_analysis_cache_) {
+        absl::StatusOr<std::unique_ptr<HloAliasAnalysis>> alias_analysis =
+            HloAliasAnalysis::Run(parameter->GetModule());
+        if (!alias_analysis.ok()) {
+          return absl::FailedPreconditionError(
+              "Failed to run HloAliasAnalysis.");
+        }
+        alias_analysis_cache_ = *std::move(alias_analysis);
+      }
+      HloAliasAnalysis* alias_analysis = analyses.alias_analysis != nullptr
+                                             ? analyses.alias_analysis
+                                             : alias_analysis_cache_.get();
+
+      const HloValueSet& param_value_set =
+          alias_analysis->dataflow_analysis().GetValueSet(body_param,
+                                                          shape_index);
+      const HloValueSet& root_value_set =
+          alias_analysis->dataflow_analysis().GetValueSet(body_root,
+                                                          shape_index);
+
+      if (root_value_set.values().size() == 1 &&
+          param_value_set.values().size() == 1) {
+        if (root_value_set.values()[0]->id() ==
+            param_value_set.values()[0]->id()) {
+          unchanged_in_return = true;
+        }
       }
     }
     if (!unchanged_in_return) {
