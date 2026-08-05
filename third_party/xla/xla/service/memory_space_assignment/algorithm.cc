@@ -1561,11 +1561,15 @@ bool MsaAlgorithm::IsAsyncConversionCandidate(
   if (!meets_special_preconditions) {
     return false;
   }
-  if (IsBlockPrefetchingEnabled()) {
+  if (IsBlockPrefetchingEnabled() ||
+      instruction->opcode() == HloOpcode::kDynamicUpdateSlice) {
     return true;
   }
 
   for (auto& operand : instruction->operands()) {
+    if (operand->shape().dimensions().empty()) {
+      continue;
+    }
     // TODO(b/374835319): relax the operand constraint to be able to cover
     // nested sync data movement cases.
     if (IsAsyncConversionCandidate(operand)) {
@@ -1677,7 +1681,8 @@ bool IsTrivialInstruction(const HloInstruction* instruction) {
 
 bool IsSliceLikeInstruction(const HloInstruction* instruction) {
   return instruction->opcode() == HloOpcode::kSlice ||
-         instruction->opcode() == HloOpcode::kDynamicSlice;
+         instruction->opcode() == HloOpcode::kDynamicSlice ||
+         instruction->opcode() == HloOpcode::kDynamicUpdateSlice;
 }
 
 }  // namespace
@@ -1726,17 +1731,32 @@ MsaAlgorithm::IsAsyncConversionSliceCandidate(
     return AsyncConversionResult::kFailedPrecondition;
   }
 
+  int data_operand_index =
+      (instruction->opcode() == HloOpcode::kDynamicUpdateSlice) ? 1 : 0;
   if (instruction->shape().layout().memory_space() !=
-          static_cast<int64_t>(MemorySpace::kDefault) ||
-      instruction->operand(0)->shape().layout().memory_space() !=
-          static_cast<int64_t>(MemorySpace::kDefault)) {
+      static_cast<int64_t>(MemorySpace::kDefault)) {
+    VLOG(4)
+        << "Sync slice " << instruction->ToShortString()
+        << " is not replaceable, because the output has an initial assignment.";
+    return AsyncConversionResult::kFailedPrecondition;
+  }
+  if (instruction->opcode() == HloOpcode::kDynamicUpdateSlice) {
+    if (instruction->operand(0)->shape().layout().memory_space() !=
+        static_cast<int64_t>(MemorySpace::kDefault)) {
+      VLOG(4) << "Sync slice " << instruction->ToShortString()
+              << " is not replaceable, because destination operand 0 has an "
+                 "initial assignment.";
+      return AsyncConversionResult::kFailedPrecondition;
+    }
+  } else if (instruction->operand(0)->shape().layout().memory_space() !=
+             static_cast<int64_t>(MemorySpace::kDefault)) {
     VLOG(4) << "Sync slice " << instruction->ToShortString()
-            << " is not replaceable, because the operand or output have an "
-               "initial assignment.";
+            << " is not replaceable, because the operand has an initial "
+               "assignment.";
     return AsyncConversionResult::kFailedPrecondition;
   }
   if (instruction->shape().element_type() !=
-      instruction->operand(0)->shape().element_type()) {
+      instruction->operand(data_operand_index)->shape().element_type()) {
     VLOG(4) << "Sync slice " << instruction->ToShortString()
             << " is not replaceable because the operand and output have "
                "different element types.";
@@ -1748,9 +1768,8 @@ MsaAlgorithm::IsAsyncConversionSliceCandidate(
 std::vector<const HloValue*> MsaAlgorithm::GenerateJointProcessedValues(
     const HloValue* entrance_value) {
   std::vector<const HloValue*> worklist = {entrance_value};
-  if (!IsBlockPrefetchingEnabled() &&
-      (options_.enable_sync_copy_replacement ||
-       options_.enable_sync_slice_replacement)) {
+  if (options_.enable_sync_copy_replacement ||
+      options_.enable_sync_slice_replacement) {
     // Adds the HloValue that is related to a given instruction to the worklist
     auto add_to_worklist = [&](const HloInstruction* inst) {
       const HloValue& next_value = alias_analysis_.dataflow_analysis()
@@ -1776,7 +1795,11 @@ std::vector<const HloValue*> MsaAlgorithm::GenerateJointProcessedValues(
       if (IsAsyncConversionCandidate(defining_instruction)) {
         // The first operand of slice like instruction (slice or dynamic-slice)
         // is the defining instruction.
-        add_to_worklist(defining_instruction->operand(0));
+        int operand_index =
+            (defining_instruction->opcode() == HloOpcode::kDynamicUpdateSlice)
+                ? 1
+                : 0;
+        add_to_worklist(defining_instruction->operand(operand_index));
       }
     }
     // We're sensitive to the order of the worklist.
@@ -1801,7 +1824,8 @@ void MsaAlgorithm::UpdateSyncDataMovementCandidatesForJointProcessedValues(
       }
     }
     HloInstruction* inst = value->instruction();
-    if (IsAsyncConversionCandidate(inst)) {
+    if (IsAsyncConversionCandidate(inst) &&
+        inst->opcode() != HloOpcode::kDynamicUpdateSlice) {
       replaceable_sync_instructions.insert(inst);
     }
   }
@@ -2362,7 +2386,9 @@ absl::Status MsaAlgorithm::ProcessColoredBuffers() {
     // Mark the instruction as ineligible for async conversion if it is a
     // candidate for async conversion.
     if (IsAsyncConversionCandidate(
-            first_value->defining_position().instruction)) {
+            first_value->defining_position().instruction) &&
+        first_value->defining_position().instruction->opcode() !=
+            HloOpcode::kDynamicUpdateSlice) {
       failed_async_conversions_[first_value->defining_position().instruction] =
           AsyncConversionResult::kAsyncConversionNotAllowedForColoredBuffer;
     }
@@ -3096,6 +3122,13 @@ const HloBuffer* MsaAlgorithm::GetScheduledBuffer(
 
 MsaAlgorithm::BlockPrefetchCategory MsaAlgorithm::ClassifyBlockPrefetchBuffer(
     const HloBuffer* buffer, const HloValue* first_defining_value) const {
+  if (first_defining_value && first_defining_value->instruction()->opcode() ==
+                                  HloOpcode::kDynamicUpdateSlice) {
+    if (IsAsyncConversionCandidate(first_defining_value->instruction()) &&
+        !IsNestedInsideConditional(first_defining_value->instruction())) {
+      return BlockPrefetchCategory::kAsyncConversionCandidate;
+    }
+  }
   if (IsBufferAliasedToProgramOutput(buffer)) {
     VLOG(3) << "Not block prefetching buffer aliased to program output: "
             << buffer->ToString();
@@ -3156,7 +3189,9 @@ MsaAlgorithm::ComputeBlockPrefetchingAsyncConversionMetadata(
   // candidate instruction is operand 0 at {} shape index. However, this can be
   // overridden by options_.custom_fusion_block_prefetch_operand_index_fn.
   int64_t operand_number = 0;
-  if (first_instruction->IsCustomFusion()) {
+  if (first_instruction->opcode() == HloOpcode::kDynamicUpdateSlice) {
+    operand_number = 1;
+  } else if (first_instruction->IsCustomFusion()) {
     std::optional<int64_t> custom_fusion_index =
         options_.custom_fusion_block_prefetch_operand_index_fn(
             first_instruction);
@@ -3501,7 +3536,8 @@ void MsaAlgorithm::CreatePinnedAllocationsInAltMemoryForPositions(
       pinned_allocation->AddUse(*use);
       AddOperandToAlternateMemoryMap(use->instruction, use->operand_number,
                                      use->operand_index);
-      if (IsAsyncConversionCandidate(use->instruction)) {
+      if (IsAsyncConversionCandidate(use->instruction) &&
+          use->instruction->opcode() != HloOpcode::kDynamicUpdateSlice) {
         failed_async_conversions_[use->instruction] =
             AsyncConversionResult::kSourceBufferInAlternateMemory;
       }
@@ -3556,7 +3592,8 @@ absl::Status MsaAlgorithm::CreateMirroredAllocationsInAlternateMemory(
       mirrored_allocation->AddUse(*use);
       AddOperandToAlternateMemoryMap(use->instruction, use->operand_number,
                                      use->operand_index);
-      if (IsAsyncConversionCandidate(use->instruction)) {
+      if (IsAsyncConversionCandidate(use->instruction) &&
+          use->instruction->opcode() != HloOpcode::kDynamicUpdateSlice) {
         failed_async_conversions_[use->instruction] =
             AsyncConversionResult::kSourceBufferInAlternateMemory;
       }
@@ -3725,7 +3762,9 @@ absl::StatusOr<Decision> MsaAlgorithm::BlockPrefetchBuffer(
 
   // For asynchronous conversion candidates, identify the source operand index.
   int64_t source_operand_index = 0;
-  if (sync_mem_op && sync_mem_op->IsCustomFusion()) {
+  if (sync_mem_op && sync_mem_op->opcode() == HloOpcode::kDynamicUpdateSlice) {
+    source_operand_index = 1;
+  } else if (sync_mem_op && sync_mem_op->IsCustomFusion()) {
     auto custom_fusion_index =
         options_.custom_fusion_block_prefetch_operand_index_fn(sync_mem_op);
     CHECK(custom_fusion_index.has_value());
@@ -3780,7 +3819,8 @@ absl::StatusOr<Decision> MsaAlgorithm::BlockPrefetchBuffer(
       copy_allocation->AddUse(*use);
       AddOperandToAlternateMemoryMap(use->instruction, use->operand_number,
                                      use->operand_index);
-      if (IsAsyncConversionCandidate(use->instruction)) {
+      if (IsAsyncConversionCandidate(use->instruction) &&
+          use->instruction->opcode() != HloOpcode::kDynamicUpdateSlice) {
         failed_async_conversions_[use->instruction] =
             AsyncConversionResult::kSourceBufferInAlternateMemory;
       }
@@ -5086,33 +5126,38 @@ MsaAlgorithm::GenerateAllocationSegmentContexts(
     } else {
       uses_work_list.push_back({&allocation_value.uses(), primary_use_idx,
                                 allocation_value_idx, true});
-      for (auto sync_destination_idx :
-           value_indices_by_sync_inst.at(primary_use.hlo_use.instruction)) {
-        AllocationValue& sync_destination =
-            allocation_values.at(sync_destination_idx);
-        if (sync_destination.defining_instruction() ==
-            primary_use.hlo_use.instruction) {
-          VLOG(3) << "Adding secondary uses related to allocation value "
-                  << sync_destination.ToShortString()
-                  << " to uses worklist, because the allocation value is "
-                     "defined at the copy use instruction output.";
-          for (int secondary_use_id = 0;
-               secondary_use_id < sync_destination.uses().size();
-               ++secondary_use_id) {
-            // This is an important line
-            sync_destination.uses().at(secondary_use_id).sync_mem_op_operand =
-                primary_use.hlo_use.instruction;
-            int allocation_value_to_update_idx = sync_destination_idx;
-            uses_work_list.push_back({&sync_destination.uses(),
-                                      secondary_use_id,
-                                      allocation_value_to_update_idx, false});
+      auto sync_inst_it =
+          value_indices_by_sync_inst.find(primary_use.hlo_use.instruction);
+      if (sync_inst_it != value_indices_by_sync_inst.end()) {
+        for (auto sync_destination_idx : sync_inst_it->second) {
+          AllocationValue& sync_destination =
+              allocation_values.at(sync_destination_idx);
+          if (sync_destination.defining_instruction() ==
+                  primary_use.hlo_use.instruction &&
+              primary_use.hlo_use.instruction->opcode() !=
+                  HloOpcode::kDynamicUpdateSlice) {
+            VLOG(3) << "Adding secondary uses related to allocation value "
+                    << sync_destination.ToShortString()
+                    << " to uses worklist, because the allocation value is "
+                       "defined at the copy use instruction output.";
+            for (int secondary_use_id = 0;
+                 secondary_use_id < sync_destination.uses().size();
+                 ++secondary_use_id) {
+              // This is an important line
+              sync_destination.uses().at(secondary_use_id).sync_mem_op_operand =
+                  primary_use.hlo_use.instruction;
+              int allocation_value_to_update_idx = sync_destination_idx;
+              uses_work_list.push_back({&sync_destination.uses(),
+                                        secondary_use_id,
+                                        allocation_value_to_update_idx, false});
+            }
+          } else {
+            VLOG(3) << "Skipping secondary uses related to allocation value "
+                    << sync_destination.ToShortString()
+                    << ", because the allocation value is not defined at the "
+                       "copy use instruction "
+                       "output.";
           }
-        } else {
-          VLOG(3) << "Skipping secondary uses related to allocation value "
-                  << sync_destination.ToShortString()
-                  << ", because the allocation value is not defined at the "
-                     "copy use instruction "
-                     "output.";
         }
       }
     }
@@ -5523,12 +5568,22 @@ AllocationRequest MsaAlgorithm::CreateAllocationRequest(
   HloInstruction* required_copy_allocation_for = nullptr;
   bool required_copy_for_slice = false;
   std::optional<int64_t> earliest_prefetch_time = std::nullopt;
+  HloInstruction* pending_sync_op = nullptr;
   if (use.sync_mem_op_operand &&
-      IsInstructionPendingReplacements(use.sync_mem_op_operand)) {
-    required_copy_allocation_for = use.sync_mem_op_operand;
+      IsInstructionPendingReplacements(use.sync_mem_op_operand) &&
+      use.sync_mem_op_operand->opcode() != HloOpcode::kDynamicUpdateSlice) {
+    pending_sync_op = use.sync_mem_op_operand;
+  } else if (IsInstructionPendingReplacements(use.hlo_use.instruction) &&
+             use.hlo_use.instruction->opcode() ==
+                 HloOpcode::kDynamicUpdateSlice &&
+             use.hlo_use.operand_number == 1) {
+    pending_sync_op = use.hlo_use.instruction;
+  }
+  if (pending_sync_op != nullptr) {
+    required_copy_allocation_for = pending_sync_op;
     require_copy_allocation = true;
     required_copy_for_slice =
-        (IsAsyncConversionSliceCandidate(use.sync_mem_op_operand) ==
+        (IsAsyncConversionSliceCandidate(pending_sync_op) ==
          AsyncConversionResult::kSuccess);
     // The async copy allocation can be delayed until the earliest time at which
     // the value is used in a position or the earliest use time of the updated
@@ -8183,11 +8238,59 @@ AllocationResult MsaAlgorithm::AllocateSegment(AllocationRequest& request) {
       required_memory_space_at_start != MemorySpace::kDefault &&
       required_memory_space_at_end != MemorySpace::kDefault &&
       request.allow_no_copy_alternate_mem_allocation &&
-      !request.require_copy_allocation) {
+      (!request.require_copy_allocation ||
+       (request.required_copy_allocation_for &&
+        request.required_copy_allocation_for->opcode() ==
+            HloOpcode::kDynamicUpdateSlice))) {
     CheckAndUpdateForDualLiveAllocationValues(required_assignment_at_start,
                                               request);
     allocation_result = AllocateInAlternateMemoryNoCopy(request);
     if (allocation_result == AllocationResult::kSuccess) {
+      if (request.require_copy_allocation &&
+          request.required_copy_allocation_for &&
+          request.required_copy_allocation_for->opcode() ==
+              HloOpcode::kDynamicUpdateSlice) {
+        CHECK(!request.allocation_value->allocation_sequence()->empty());
+        Allocation* prev_allocation =
+            request.allocation_value->allocation_sequence()->back().get();
+        int64_t copy_done_time = request.end_time;
+        if (!request.required_copy_allocation_for->users().empty()) {
+          copy_done_time = std::numeric_limits<int64_t>::max();
+          for (const HloInstruction* user :
+               request.required_copy_allocation_for->users()) {
+            auto it = hlo_live_range_.instruction_schedule().find(user);
+            if (it != hlo_live_range_.instruction_schedule().end()) {
+              copy_done_time = std::min(copy_done_time, it->second);
+            }
+          }
+          if (copy_done_time == std::numeric_limits<int64_t>::max() ||
+              copy_done_time <= request.end_time) {
+            copy_done_time = request.end_time;
+          }
+        }
+        if (copy_done_time - 1 > prev_allocation->end_time()) {
+          MsaBufferInterval extension_interval;
+          extension_interval.buffer = request.allocation_value->value();
+          extension_interval.size = request.size;
+          extension_interval.start = prev_allocation->end_time() + 1;
+          extension_interval.end = copy_done_time - 1;
+          AddToPendingChunks(extension_interval, prev_allocation->chunk());
+          prev_allocation->Extend(copy_done_time - 1);
+        }
+        request.required_copy_allocation_latest_time = std::max(
+            request.required_copy_allocation_latest_time, copy_done_time);
+        AddAsyncCopyOrOtherMemOp(
+            *prev_allocation, MemorySpace::kDefault, /*chunk=*/std::nullopt,
+            request.end_time - 1, copy_done_time, copy_done_time,
+            request.allocation_value->mutable_allocation_sequence(),
+            /*aliased_offset=*/nullptr, /*resource=*/0.0f,
+            /*cross_program_prefetch_index=*/std::nullopt,
+            request.required_copy_allocation_for,
+            /*async_mem_op_start=*/nullptr,
+            /*async_mem_op_done=*/nullptr, /*source_operand_index=*/1);
+        request.allocation_value->allocation_sequence()->back()->AddUse(
+            request.use->hlo_use);
+      }
       return AllocationResult::kSuccess;
     }
     // If we required alternate memory allocation, return on failure.
@@ -8196,7 +8299,12 @@ AllocationResult MsaAlgorithm::AllocateSegment(AllocationRequest& request) {
     }
   }
 
-  CHECK(!request.require_no_copy_alternate_mem_allocation);
+  if (!(request.require_copy_allocation &&
+        request.required_copy_allocation_for &&
+        request.required_copy_allocation_for->opcode() ==
+            HloOpcode::kDynamicUpdateSlice)) {
+    CHECK(!request.require_no_copy_alternate_mem_allocation);
+  }
 
   if (request.require_start_colored_in_alternate_memory) {
     // Since no-copy-allocation failed, continuous allocation is not possible in
@@ -8439,8 +8547,6 @@ void MsaAlgorithm::AddAsyncCopyOrOtherMemOp(
           << " memory in (" << exclusive_start_time << ", "
           << copy_done_schedule_before_time << "), keeping until " << end_time
           << ", estimated copy resource is " << resource;
-  CHECK_LT(exclusive_start_time, copy_done_schedule_before_time);
-
   allocations->push_back(std::make_unique<CopyAllocation>(
       prev_allocation, memory_space, chunk, exclusive_start_time,
       copy_done_schedule_before_time, end_time, cross_program_prefetch_index,

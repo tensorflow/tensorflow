@@ -659,6 +659,50 @@ TEST_F(MemorySpaceAssignmentTest, SyncSliceReplacementAfterPrefetch) {
   EXPECT_THAT(concat->operand(1), op::AsyncDone(op::AsyncStart(p0)));
 }
 
+TEST_F(MemorySpaceAssignmentTest,
+       SyncDynamicUpdateSliceReplacementAfterPrefetch) {
+  absl::string_view hlo_string = R"hlo(
+  HloModule module, is_scheduled=true
+
+  ENTRY entry {
+    p0 = f32[10,2,3]{2,1,0} parameter(0)
+    p1 = f32[1,2,3]{2,1,0} parameter(1)
+    index = s32[] parameter(2)
+    zero = s32[] constant(0)
+    negate0 = negate(p1)
+    negate1 = negate(negate0)
+    negate2 = negate(negate1)
+    negate3 = negate(negate2)
+    negate4 = negate(negate3)
+    negate5 = negate(negate4)
+    negate6 = negate(negate5)
+    negate7 = negate(negate6)
+    dynamic_update_slice = f32[10,2,3] dynamic-update-slice(p0, negate7, index, zero, zero)
+    ROOT root = negate(dynamic_update_slice)
+    }
+  )hlo";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  Options options = DefaultMemorySpaceOptions();
+  options.max_size_in_bytes = 100;
+  options.enable_sync_copy_replacement = false;
+  options.enable_sync_slice_replacement = true;
+  options.is_async_slice_implemented_fn =
+      [](const HloInstruction* instruction) { return true; };
+  AssignMemorySpace(module.get(), std::move(options));
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  ASSERT_NE(root, nullptr);
+  HloInstruction* async_done = root->mutable_operand(0);
+  ASSERT_NE(async_done, nullptr);
+  ASSERT_EQ(async_done->opcode(), HloOpcode::kAsyncDone);
+  HloInstruction* async_start = async_done->mutable_operand(0);
+  ASSERT_NE(async_start, nullptr);
+  ASSERT_EQ(async_start->opcode(), HloOpcode::kAsyncStart);
+  EXPECT_EQ(
+      async_start->async_wrapped_computation()->root_instruction()->opcode(),
+      HloOpcode::kDynamicUpdateSlice);
+}
+
 TEST_F(MemorySpaceAssignmentTest, ViewExtendedUseTimeWalksTransitiveReaders) {
   // A view (dus_view_color colored custom call) aliases its operand's storage
   // without owning any, and the read side rewrite reattaches a view colored
