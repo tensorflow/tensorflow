@@ -22,6 +22,10 @@ load("@xla//third_party/rules_python/python:py_library.bzl", "py_library")
 
 load("@xla//xla:xla.default.bzl", "xla_py_proto_library")
 load("@xla//xla/service/cpu:build_defs.bzl", "runtime_copts")
+load(
+    "@xla//xla/tsl:tsl.bzl",
+    "internal_visibility",
+)
 load("@xla//xla/tsl/mkl:build_defs.bzl", "mkl_deps")
 load("@xla//xla/tsl/platform:build_config_root.bzl", "if_static")
 load(
@@ -45,17 +49,20 @@ package(
 
 package_group(
     name = "internal",
-    packages = [
-        "//tensorflow/compiler/aot/...",
-        "//tensorflow/compiler/jit/...",
-        "//tensorflow/compiler/mlir/...",
-        "//tensorflow/compiler/tests/...",
-        "//tensorflow/compiler/tf2xla/...",
-        "//tensorflow/contrib/compiler/...",
-        "//tensorflow/core/tpu/...",
-        "//tensorflow/python/compiler/...",
-        "//tensorflow/python/util/...",
-    ],
+    packages = internal_visibility(
+        [
+            "//tensorflow/compiler/aot/...",
+            "//tensorflow/compiler/jit/...",
+            "//tensorflow/compiler/mlir/...",
+            "//tensorflow/compiler/tests/...",
+            "//tensorflow/compiler/tf2xla/...",
+            "//tensorflow/contrib/compiler/...",
+            "//tensorflow/core/tpu/...",
+            "//tensorflow/python/compiler/...",
+            "//tensorflow/python/util/...",
+        ],
+        ["public"],
+    ),
 )
 
 package_group(

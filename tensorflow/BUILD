@@ -1052,7 +1052,7 @@ package_group(
         "//third_party/py/keras/...",
         "//third_party/py/tf_keras/...",
         "//third_party/yggdrasil_decision_forests/...",
-    ],
+    ] + if_oss(["public"]),
 )
 
 package_group(
