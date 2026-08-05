@@ -29,6 +29,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/gpu/runtime/thunk.h"
+#include "xla/backends/gpu/runtime/thunk.pb.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/buffer_assignment.pb.h"
 #include "xla/shape.h"
