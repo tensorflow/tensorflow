@@ -76,16 +76,6 @@ class UnsupportedExecutorProcessControl
     llvm_unreachable("Unsupported");
   }
 
-  llvm::Expected<int32_t> runAsVoidFunction(
-      llvm::orc::ExecutorAddr VoidFnAddr) override {
-    llvm_unreachable("Unsupported");
-  }
-
-  llvm::Expected<int32_t> runAsIntFunction(llvm::orc::ExecutorAddr IntFnAddr,
-                                           int Arg) override {
-    llvm_unreachable("Unsupported");
-  }
-
   void callWrapperAsync(llvm::orc::ExecutorAddr WrapperFnAddr,
                         IncomingWFRHandler OnComplete,
                         llvm::ArrayRef<char> ArgBuffer) override {
