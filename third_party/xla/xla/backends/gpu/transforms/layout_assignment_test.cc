@@ -621,6 +621,76 @@ ENTRY entry {
   EXPECT_EQ(output_layout, LayoutUtil::GetDefaultLayoutForR3());
 }
 
+TEST_F(LayoutAssignmentTest, MoveToHostCustomCallAutoLayoutNotConstrained) {
+  const char* module_str = R"(
+HloModule TestModule
+
+ENTRY entry {
+  Arg_0 = f32[2,5,5] parameter(0)
+  custom-call.0 = f32[2,5,5] custom-call(Arg_0), custom_call_target="MoveToHost"
+  ROOT custom-call.1 = f32[2,5,5]{2, 1, 0} custom-call(custom-call.0),
+      custom_call_target="fixed_call", operand_layout_constraints={f32[2,5,5]{1,2,0}}
+}
+)";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
+                       ParseAndReturnVerifiedModule(module_str));
+  ComputationLayout computation_layout(
+      m->entry_computation()->ComputeProgramShape());
+  // Clear layouts to simulate JAX AUTO layout.
+  computation_layout.mutable_parameter_layout(0)->Clear();
+  computation_layout.mutable_result_layout()->Clear();
+
+  GpuLayoutAssignment layout_assignment(&computation_layout, default_gpu_cc_,
+                                        default_device_description_);
+
+  EXPECT_THAT(layout_assignment.Run(m.get()), absl_testing::IsOkAndHolds(true));
+
+  const HloInstruction* call_0 = FindInstruction(m.get(), "custom-call.0");
+  const Layout input_layout = call_0->operand(0)->shape().layout();
+  const Layout output_layout = call_0->shape().layout();
+
+  // Since it is AUTO layout, we should not have constrained it to default.
+  // It should have layout {1, 2, 0} propagated from custom-call.1 constraint.
+  Layout expected_layout = LayoutUtil::MakeLayout({1, 2, 0});
+  EXPECT_EQ(input_layout, expected_layout);
+  EXPECT_EQ(output_layout, expected_layout);
+}
+
+TEST_F(LayoutAssignmentTest,
+       MoveToHostCustomCallResultAutoLayoutNotConstrained) {
+  const char* module_str = R"(
+HloModule TestModule
+
+ENTRY entry {
+  Arg_0 = f32[2,5,5] parameter(0)
+  Arg_1 = f32[2,5,5]{1,2,0} parameter(1)
+  add = f32[2,5,5] add(Arg_0, Arg_1)
+  ROOT custom-call.1 = f32[2,5,5] custom-call(add), custom_call_target="MoveToHost"
+}
+)";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
+                       ParseAndReturnVerifiedModule(module_str));
+  ComputationLayout computation_layout(
+      m->entry_computation()->ComputeProgramShape(),
+      /*ignore_layouts=*/false);
+  // Clear layouts to simulate JAX AUTO layout.
+  computation_layout.mutable_parameter_layout(0)->Clear();
+  computation_layout.mutable_result_layout()->Clear();
+
+  GpuLayoutAssignment layout_assignment(&computation_layout, default_gpu_cc_,
+                                        default_device_description_);
+
+  EXPECT_THAT(layout_assignment.Run(m.get()), absl_testing::IsOkAndHolds(true));
+
+  const HloInstruction* call_1 = FindInstruction(m.get(), "custom-call.1");
+  const Layout input_layout = call_1->operand(0)->shape().layout();
+  const Layout output_layout = call_1->shape().layout();
+
+  Layout expected_layout = LayoutUtil::MakeLayout({1, 2, 0});
+  EXPECT_EQ(input_layout, expected_layout);
+  EXPECT_EQ(output_layout, expected_layout);
+}
+
 TEST_F(LayoutAssignmentTest, FP16ROCmConvolutionHasNCHWLayoutRDNA) {
   const char* hlo = R"(
 ENTRY entry {

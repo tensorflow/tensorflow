@@ -134,7 +134,18 @@ class LayoutUtil {
   // Returns whether the given shape has a layout. For tuple shapes, true is
   // returned only if all elements have layouts.
   static bool HasLayout(const Shape& shape);
+  // Returns whether the given shape has any layout. For tuple shapes, true is
+  // returned if any element has a layout.
   static bool HasAnyLayout(const Shape& shape);
+
+  // Returns whether the given shape has a minor_to_major set in its layout.
+  // For tuple shapes, true is returned only if all elements have a
+  // minor_to_major set in their layout.
+  static bool HasMinorToMajorSetInLayout(const Shape& shape);
+  // Returns whether the given shape has any minor_to_major set in its layout.
+  // For tuple shapes, true is returned if any element has a minor_to_major set
+  // in its layout.
+  static bool HasAnyMinorToMajorSetInLayout(const Shape& shape);
 
   // Returns whether all Shapes within the given ProgramShape have layouts.
   static bool HasLayout(const ProgramShape& program_shape);
