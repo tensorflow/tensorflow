@@ -175,6 +175,7 @@ cc_library(
         "//xla/pjrt:host_memory_spaces",
         "//xla/pjrt:pjrt_device_description",
         "//xla/pjrt:pjrt_layout",
+        "//xla/pjrt/plugin/xla_cpu:cpu_topology_description",
         "//xla/python/ifrt",
         "//xla/python/ifrt:attribute_map",
         "//xla/python/ifrt:basic_device_list",

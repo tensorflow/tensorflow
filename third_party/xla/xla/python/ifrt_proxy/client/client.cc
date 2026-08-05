@@ -40,6 +40,7 @@
 #include "xla/pjrt/host_memory_spaces.h"
 #include "xla/pjrt/pjrt_device_description.h"
 #include "xla/pjrt/pjrt_layout.h"
+#include "xla/pjrt/plugin/xla_cpu/cpu_topology_description.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/array_spec.h"
 #include "xla/python/ifrt/attribute_map.h"
@@ -331,9 +332,18 @@ absl::StatusOr<std::vector<xla::ifrt::ArrayRef>> Client::CopyArrays(
     auto* proxy_array = llvm::cast<xla::ifrt::proxy::Array>(arrays[i].get());
     CHECK(proxy_array != nullptr);
     std::shared_ptr<const xla::PjRtLayout> layout;
-    // "Unpinned_host" memory only supports the default layout.
-    if (!memory_kind.has_value() ||
-        memory_kind->memory_kind() != xla::UnpinnedHostMemorySpace::kKind) {
+    bool force_default_layout = false;
+    if (memory_kind.has_value() &&
+        memory_kind->memory_kind() == xla::UnpinnedHostMemorySpace::kKind) {
+      // "unpinned_host" memory only supports the default layout.
+      force_default_layout = true;
+    } else if (devices.has_value() &&
+               (*devices)->devices().front()->PlatformName() ==
+                   xla::CpuPlatformName()) {
+      // "cpu" device only supports the default layout.
+      force_default_layout = true;
+    }
+    if (!force_default_layout) {
       ASSIGN_OR_RETURN(layout, proxy_array->pjrt_layout());
     }
     uint64_t result_handle = rpc_helper_->NextHandle();
