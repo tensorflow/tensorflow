@@ -2080,7 +2080,8 @@ absl::StatusOr<bool> BufferAssigner::AssignSpecialHloBuffer(
     const HloBuffer* hlo_buffer, bool is_thread_local,
     BufferAllocationsManagerForComputationsWithoutOrdering* allocation_manager,
     BufferAssignment* assignment) {
-  // "View" buffers are pointer stand-ins that alias into another allocation, so
+  // Case 1: "View" buffers.
+  // These are pointer stand-ins that alias into another allocation, so
   // they get no allocation of their own.
   if (opts_.dus_view_color.has_value()) {
     ABSL_ASSIGN_OR_RETURN(BufferValue::Color buffer_color, hlo_buffer->color());
@@ -2092,6 +2093,11 @@ absl::StatusOr<bool> BufferAssigner::AssignSpecialHloBuffer(
 
   const int64_t buffer_size = assignment->HloBufferSize(*hlo_buffer);
   for (const HloValue* value : hlo_buffer->values()) {
+    // Case 2: Constant buffers.
+    // If we're configured to allocate buffers for constants, do so.
+    // Otherwise, we skip them since they are usually managed separately
+    // (e.g., embedded directly in the instruction stream or loaded from
+    // executable).
     if (value->instruction()->opcode() == HloOpcode::kConstant) {
       if (opts_.allocate_buffers_for_constants) {
         ABSL_ASSIGN_OR_RETURN(BufferAllocation * allocation,
@@ -2109,14 +2115,16 @@ absl::StatusOr<bool> BufferAssigner::AssignSpecialHloBuffer(
         instruction->opcode() == HloOpcode::kParameter &&
         instruction->parent() == instruction->GetModule()->entry_computation();
 
+    // Case 3: Entry parameters.
+    // Parameter values of the entry computation need dedicated allocations.
+    // We also check if this parameter is aliased (i.e. it is modified in-place
+    // and/or bound to an output buffer) to register it with the allocation
+    // manager. Note that parameters of nested/called computations do not get
+    // allocations here as they are owned by the caller.
     if (is_entry_parameter) {
       bool parameter_has_alias =
           assignment->module().input_output_alias_config().ParameterHasAlias(
               instruction->parameter_number(), value->index());
-      // If the hlo buffer is part of an external parameter, creates a new
-      // allocation and sets its parameter number. Parameters of non-entry
-      // computations do not need special allocations because they live inside
-      // callers.
       ABSL_ASSIGN_OR_RETURN(BufferAllocation * allocation,
                        assignment->NewAllocation(*hlo_buffer, buffer_size));
 
@@ -2132,6 +2140,9 @@ absl::StatusOr<bool> BufferAssigner::AssignSpecialHloBuffer(
     }
   }
 
+  // Case 4: Thread-local buffers.
+  // Thread-local computations require dedicated allocations that are marked as
+  // thread-local.
   if (is_thread_local) {
     ABSL_ASSIGN_OR_RETURN(BufferAllocation * allocation,
                      assignment->NewAllocation(*hlo_buffer, buffer_size));
@@ -2141,6 +2152,9 @@ absl::StatusOr<bool> BufferAssigner::AssignSpecialHloBuffer(
     return true;
   }
 
+  // Case 5: Tuple-shaped buffers.
+  // HloValues that are tuple-shaped require dedicated allocations, as they
+  // represent arrays of pointers to other buffers.
   for (const HloValue* value : hlo_buffer->values()) {
     if (value->shape().IsTuple()) {
       ABSL_ASSIGN_OR_RETURN(BufferAllocation * allocation,
@@ -2152,9 +2166,20 @@ absl::StatusOr<bool> BufferAssigner::AssignSpecialHloBuffer(
     }
   }
 
+  // Not a special HLO buffer.
   return false;
 }
 
+// A "temporary buffer" (or temp buffer) is a buffer that is transient and
+// internal to a computation. It is not an entry parameter, thread-local buffer,
+// constant, or tuple-shaped buffer, and it does not live out of the computation
+// (i.e., its values do not flow to the root instruction).
+//
+// If all computations associated with this buffer have a sequential instruction
+// schedule, we delay its allocation and collect it in
+// `buffers_to_assign_sequentially`. This allows the Heap Simulator to pack
+// these transient buffers tightly by reusing memory offsets based on their
+// precise liveness intervals, reducing peak memory usage.
 bool BufferAssigner::DelayTemporaryBufferAssignment(
     const HloBuffer* hlo_buffer,
     absl::flat_hash_map<const HloComputation*,
@@ -2250,33 +2275,66 @@ absl::Status BufferAssigner::AssignSingleHloBuffer(
   return absl::OkStatus();
 }
 
-absl::Status BufferAssigner::AssignBuffersForComputations(
-    const std::vector<const HloComputation*>& computations,
-    bool is_thread_local,
-    absl::flat_hash_map<const HloComputation*,
-                        absl::flat_hash_set<const HloValue*>>*
-        buffers_to_assign_sequentially,
-    BufferAssignment* assignment,
-    buffer_assignment::AssignmentAlgorithmForComputationsWithoutOrderingProto::
-        Value algorithm) {
-  if (computations.empty()) {
-    return absl::OkStatus();
+absl::StatusOr<std::vector<const HloComputation*>>
+BufferAssigner::FilterThreadLocalComputations(
+    const HloModule* module,
+    const std::vector<const HloComputation*>& thread_local_computations) {
+  std::vector<const HloComputation*> thread_local_computations_no_fusion;
+  for (auto* computation : thread_local_computations) {
+    TF_RET_CHECK(computation != module->entry_computation());
+    if (computation->IsFusionComputation()) {
+      continue;
+    }
+    thread_local_computations_no_fusion.push_back(computation);
   }
+  return thread_local_computations_no_fusion;
+}
+
+absl::Status BufferAssigner::FinalizeAllocations(const HloModule* module,
+                                                 BufferAssignment* assignment) {
+  // Mark all buffers which may be live out of the entry computation as
+  // "liveout".
+  for (const HloBuffer* buffer :
+       assignment->alias_analysis().LiveOutBuffers()) {
+    VLOG(3) << "maybe_live_out LogicalBuffer: " << *buffer;
+    if (assignment->HasAllocation(*buffer)) {
+      BufferAllocation* alloc =
+          assignment->GetMutableAssignedAllocation(*buffer);
+      alloc->set_maybe_live_out(true);
+      VLOG(3) << "maybe_live_out BufferAllocation: " << *alloc;
+    }
+  }
+
+  // Combines allocations of temporary buffers into big BufferAllocations
+  // subject to the buffer allocation size constraint. This can only be
+  // performed after all buffers have been assigned, and after maybe_live_out
+  // is marked, since it is used to determine whether an allocation contains
+  // temporary buffers or not.
+  absl::flat_hash_set<BufferValue::Color> private_stack_colors;
+  if (opts_.private_stacks) {
+    for (const auto& [color, computations] :
+         tsl::KeySortedRange(*opts_.private_stacks)) {
+      private_stack_colors.insert(color);
+    }
+  }
+
+  return assignment->CombineTempAllocations(private_stack_colors,
+                                            opts_.temp_buffer_color);
+}
+
+absl::StatusOr<std::vector<const HloBuffer*>>
+BufferAssigner::FilterBuffersForComputations(
+    const std::vector<const HloComputation*>& computations,
+    BufferAssignment* assignment,
+    absl::flat_hash_set<const HloBuffer*>* preset_assigned_buffers) {
   std::vector<const HloBuffer*> sorted_buffers;
-
-  // First assign the preset allocations.
-  absl::flat_hash_set<const HloBuffer*> preset_assigned_buffers;
-
-  ABSL_RETURN_IF_ERROR(AssignPresetBuffers(&preset_assigned_buffers, assignment));
-
   const HloAliasAnalysis& alias_analysis = assignment->alias_analysis();
 
   absl::flat_hash_set<const HloComputation*> computations_set(
       computations.begin(), computations.end());
   for (const HloBuffer& buffer : alias_analysis.buffers()) {
-    // Skip if the buffer is already assigned since it had a preset allocation.
-    if (preset_assigned_buffers.find(&buffer) !=
-        preset_assigned_buffers.end()) {
+    if (preset_assigned_buffers->find(&buffer) !=
+        preset_assigned_buffers->end()) {
       VLOG(3) << "Skip allocation for buffer: " << buffer;
       continue;
     }
@@ -2286,14 +2344,20 @@ absl::Status BufferAssigner::AssignBuffersForComputations(
       sorted_buffers.push_back(&buffer);
     }
   }
+  return sorted_buffers;
+}
 
-  // Generate a post order sort of instructions for sorting of the
-  // HloBuffers.
-  flat_hash_map<const HloInstruction*, int> post_order_position;
+absl::StatusOr<absl::flat_hash_map<const HloInstruction*, int>>
+BufferAssigner::ComputeInstructionPostOrderPositions(
+    const std::vector<const HloComputation*>& computations) {
+  absl::flat_hash_map<const HloInstruction*, int> post_order_position;
   int position = 0;
   std::vector<const HloComputation*> reverse_post_order_computations;
   std::unique_ptr<CallGraph> call_graph =
       CallGraph::Build(computations[0]->parent());
+  absl::flat_hash_set<const HloComputation*> computations_set(
+      computations.begin(), computations.end());
+
   ABSL_RETURN_IF_ERROR(call_graph->VisitNodes([&](const CallGraphNode& node) {
     if (computations_set.contains(node.computation())) {
       reverse_post_order_computations.push_back(node.computation());
@@ -2307,68 +2371,107 @@ absl::Status BufferAssigner::AssignBuffersForComputations(
       position++;
     }
   }
+  return post_order_position;
+}
 
-  for (const HloComputation* computation : computations) {
-    const HloInstructionSequence* instruction_sequence =
-        assignment->hlo_ordering().SequentialOrder(*computation);
-    const bool has_sequential_order = instruction_sequence != nullptr;
-    if (has_sequential_order && buffers_to_assign_sequentially != nullptr) {
-      // Every sequential computation must get an entry in the
-      // buffers_to_assign_sequentially map, even if we end up with an empty
-      // set of buffers. This ensures we can correctly determine whether to
-      // run whole-module heap simulation.
-      buffers_to_assign_sequentially->emplace(computation,
-                                              flat_hash_set<const HloValue*>());
-    }
-  }
-
-  using Comparator = absl::AnyInvocable<std::optional<bool>(
+BufferAssigner::BufferComparator BufferAssigner::CreateBufferComparator(
+    BufferOrder buffer_order, const HloAliasAnalysis& alias_analysis,
+    const absl::flat_hash_map<const HloInstruction*, int>& post_order_position,
+    BufferAssignment& assignment,
+    absl::flat_hash_map<const HloBuffer*, int64_t>& min_start_cache,
+    buffer_assignment::AssignmentAlgorithmForComputationsWithoutOrderingProto::
+        Value algorithm) {
+  using ElementComparator = absl::AnyInvocable<std::optional<bool>(
       const HloBuffer* a, const HloBuffer* b)>;
-  auto size_of = absl::bind_front(&BufferAssignment::HloBufferSize, assignment);
-  Comparator compare_size = absl::bind_front(CompareSize, size_of);
-  Comparator compare_live_out =
+  auto size_of =
+      absl::bind_front(&BufferAssignment::HloBufferSize, &assignment);
+  ElementComparator compare_size = absl::bind_front(CompareSize, size_of);
+  ElementComparator compare_live_out =
       absl::bind_front(CompareLiveOut, &alias_analysis);
-  Comparator compare_position =
+  ElementComparator compare_position =
       absl::bind_front(ComparePosition, &post_order_position);
-  absl::flat_hash_map<const HloBuffer*, int64_t> min_start_cache;
-  Comparator compare_live_range_start = absl::bind_front(
-      CompareLiveRangeStart, &assignment->hlo_live_range().buffer_live_ranges(),
+  ElementComparator compare_live_range_start = absl::bind_front(
+      CompareLiveRangeStart, &assignment.hlo_live_range().buffer_live_ranges(),
       &min_start_cache);
-  BufferOrder buffer_order = opts_.buffer_order;
+
   if (algorithm ==
       buffer_assignment::
           AssignmentAlgorithmForComputationsWithoutOrderingProto::FAST_MERGE) {
     buffer_order = BufferOrder::kLiveRangeStart;
   }
 
-  std::vector<Comparator> comparators;
+  struct SortingContext {
+    std::vector<ElementComparator> comparators;
+  };
+  auto context = std::make_shared<SortingContext>();
   switch (buffer_order) {
     case BufferOrder::kBiggestFirst:
-      comparators.push_back(std::move(compare_size));
-      comparators.push_back(std::move(compare_live_out));
-      comparators.push_back(std::move(compare_position));
+      context->comparators.push_back(std::move(compare_size));
+      context->comparators.push_back(std::move(compare_live_out));
+      context->comparators.push_back(std::move(compare_position));
       break;
     case BufferOrder::kTopological:
-      comparators.push_back(std::move(compare_position));
-      comparators.push_back(std::move(compare_size));
-      comparators.push_back(std::move(compare_live_out));
+      context->comparators.push_back(std::move(compare_position));
+      context->comparators.push_back(std::move(compare_size));
+      context->comparators.push_back(std::move(compare_live_out));
       break;
     case BufferOrder::kLiveRangeStart:
-      comparators.push_back(std::move(compare_live_range_start));
-      comparators.push_back(std::move(compare_size));
-      comparators.push_back(std::move(compare_live_out));
+      context->comparators.push_back(std::move(compare_live_range_start));
+      context->comparators.push_back(std::move(compare_size));
+      context->comparators.push_back(std::move(compare_live_out));
       break;
   }
 
-  absl::c_sort(sorted_buffers,
-               [&comparators](const HloBuffer* a, const HloBuffer* b) {
-                 for (Comparator& c : comparators) {
-                   if (std::optional<bool> lt = c(a, b); lt.has_value()) {
-                     return *lt;
-                   }
-                 }
-                 return a->id() < b->id();
-               });
+  return [context](const HloBuffer* a, const HloBuffer* b) {
+    for (auto& c : context->comparators) {
+      if (std::optional<bool> lt = c(a, b); lt.has_value()) {
+        return *lt;
+      }
+    }
+    return a->id() < b->id();
+  };
+}
+
+absl::Status BufferAssigner::AssignBuffersForComputations(
+    const std::vector<const HloComputation*>& computations,
+    bool is_thread_local,
+    absl::flat_hash_map<const HloComputation*,
+                        absl::flat_hash_set<const HloValue*>>*
+        buffers_to_assign_sequentially,
+    BufferAssignment* assignment,
+    buffer_assignment::AssignmentAlgorithmForComputationsWithoutOrderingProto::
+        Value algorithm) {
+  if (computations.empty()) {
+    return absl::OkStatus();
+  }
+
+  // First assign the preset allocations and filter buffers.
+  absl::flat_hash_set<const HloBuffer*> preset_assigned_buffers;
+  ABSL_RETURN_IF_ERROR(AssignPresetBuffers(&preset_assigned_buffers, assignment));
+
+  ABSL_ASSIGN_OR_RETURN(std::vector<const HloBuffer*> sorted_buffers,
+                   FilterBuffersForComputations(computations, assignment,
+                                                &preset_assigned_buffers));
+
+  // Generate a post order sort of instructions for sorting of the HloBuffers.
+  ABSL_ASSIGN_OR_RETURN(auto post_order_position,
+                   ComputeInstructionPostOrderPositions(computations));
+
+  for (const HloComputation* computation : computations) {
+    const HloInstructionSequence* instruction_sequence =
+        assignment->hlo_ordering().SequentialOrder(*computation);
+    const bool has_sequential_order = instruction_sequence != nullptr;
+    if (has_sequential_order && buffers_to_assign_sequentially != nullptr) {
+      buffers_to_assign_sequentially->emplace(computation,
+                                              flat_hash_set<const HloValue*>());
+    }
+  }
+
+  absl::flat_hash_map<const HloBuffer*, int64_t> min_start_cache;
+  auto buffer_comparator = CreateBufferComparator(
+      opts_.buffer_order, assignment->alias_analysis(), post_order_position,
+      *assignment, min_start_cache, algorithm);
+  absl::c_sort(sorted_buffers, buffer_comparator);
 
   FastMergeBufferAllocationsManagerForComputationsWithoutOrdering fast_manager(
       assignment, this);
@@ -2716,6 +2819,254 @@ absl::Status BufferAssigner::AssignPresetBuffers(
   return absl::OkStatus();
 }
 
+std::unique_ptr<HeapAlgorithm<HloValue>> BufferAssigner::SelectHeapAlgorithm(
+    int64_t alignment, LogicalBuffer::Color color,
+    const absl::flat_hash_map<const HloComputation*,
+                              absl::flat_hash_set<const HloValue*>>&
+        buffers_to_assign_sequentially,
+    buffer_assignment::BufferAssignmentAlgorithmProto::Value
+        buffer_assignment_algorithm,
+    GlobalDecreasingSizeBestFitHeap<HloValue>::BufferIntervalCompare
+        heap_buffer_interval_compare,
+    const BufferAssignment* assignment) {
+  uint64_t page_size = assignment->module().config().page_size_kib() * 1024;
+  if (page_size > 0 &&
+      (color == LogicalBuffer::Color(0) || color == LogicalBuffer::Color(1))) {
+    // Check that all buffers that are assigned fit in the page size. This is
+    // a requirement for multi-page buffer assignment.
+    absl::c_for_each(buffers_to_assign_sequentially, [&](const auto& pair) {
+      absl::c_for_each(pair.second, [&](const HloValue* hlo_value) {
+        if ((hlo_value->shape().has_layout()
+                 ? hlo_value->shape().layout().memory_space()
+                 : 0) == color &&
+            !assignment->alias_analysis().ValueLivesOut(*hlo_value)) {
+          uint64_t size = assignment->buffer_size_(*hlo_value);
+          CHECK_LE(size, page_size)
+              << "Temp buffer size " << size << " is larger than page size "
+              << page_size << " for hlo value: " << hlo_value->ToShortString();
+        }
+      });
+    });
+    VLOG(1) << "Executing multi page buffer assignment";
+    return std::make_unique<ConstrainedGlobalDecreasingSizeBestFitHeap>(
+        page_size, alignment,
+        GlobalDecreasingSizeBestFitHeap<HloValue>::kSpatial);
+  }
+
+  if (heap_buffer_interval_compare) {
+    return std::make_unique<ConstrainedGlobalDecreasingSizeBestFitHeap>(
+        assignment->multiheap_size_constraint_per_heap(), alignment,
+        GlobalDecreasingSizeBestFitHeap<HloValue>::kCustom,
+        heap_buffer_interval_compare);
+  }
+  using HeapType = GlobalDecreasingSizeBestFitHeap<HloValue>;
+
+  auto build_algorithm =
+      [alignment, assignment](
+          buffer_assignment::BufferAssignmentAlgorithmProto::Value algo)
+      -> std::unique_ptr<HeapAlgorithm<HloValue>> {
+    switch (algo) {
+      case buffer_assignment::BufferAssignmentAlgorithmProto::SPATIAL:
+        return std::make_unique<ConstrainedGlobalDecreasingSizeBestFitHeap>(
+            assignment->multiheap_size_constraint_per_heap(), alignment,
+            HeapType::kSpatial);
+      case buffer_assignment::BufferAssignmentAlgorithmProto::TEMPORAL:
+        return std::make_unique<ConstrainedGlobalDecreasingSizeBestFitHeap>(
+            assignment->multiheap_size_constraint_per_heap(), alignment,
+            HeapType::kTemporal);
+      case buffer_assignment::BufferAssignmentAlgorithmProto::FAST_MERGE:
+        return std::make_unique<ConstrainedGlobalDecreasingSizeBestFitHeap>(
+            assignment->multiheap_size_constraint_per_heap(), alignment,
+            HeapType::kFastMerge);
+      case buffer_assignment::BufferAssignmentAlgorithmProto::FAST_SPLIT:
+        return std::make_unique<ConstrainedGlobalDecreasingSizeBestFitHeap>(
+            assignment->multiheap_size_constraint_per_heap(), alignment,
+            HeapType::kFastSplit);
+      case buffer_assignment::BufferAssignmentAlgorithmProto::
+          BEST_OF_SPATIAL_TEMPORAL:
+      case buffer_assignment::BufferAssignmentAlgorithmProto::DEFAULT:
+      default: {
+        auto algorithms = std::make_unique<
+            std::vector<std::unique_ptr<HeapAlgorithm<HloValue>>>>();
+        algorithms->push_back(
+            std::make_unique<ConstrainedGlobalDecreasingSizeBestFitHeap>(
+                assignment->multiheap_size_constraint_per_heap(), alignment,
+                HeapType::kSpatial));
+        algorithms->push_back(
+            std::make_unique<ConstrainedGlobalDecreasingSizeBestFitHeap>(
+                assignment->multiheap_size_constraint_per_heap(), alignment,
+                HeapType::kTemporal));
+        return std::make_unique<ChooseBestHeapAlgorithm<HloValue>>(
+            std::move(algorithms));
+      }
+    }
+  };
+
+  buffer_assignment::BufferAssignmentAlgorithmProto::Value algo_to_use =
+      buffer_assignment_algorithm;
+  if (algo_to_use ==
+      buffer_assignment::BufferAssignmentAlgorithmProto::FAST_MERGE) {
+    if (GetMemoryLimit(*assignment, color) == 0) {
+      algo_to_use = buffer_assignment::BufferAssignmentAlgorithmProto::DEFAULT;
+    }
+  }
+  return build_algorithm(algo_to_use);
+}
+
+absl::Status BufferAssigner::AssignBuffersWithWholeModuleSimulation(
+    const absl::flat_hash_map<const HloComputation*,
+                              absl::flat_hash_set<const HloValue*>>&
+        buffers_to_assign_sequentially,
+    BufferAssignment* assignment,
+    buffer_assignment::BufferAssignmentAlgorithmProto::Value
+        buffer_assignment_algorithm,
+    const PrivateStacks& private_stacks,
+    GlobalDecreasingSizeBestFitHeap<HloValue>::BufferIntervalCompare
+        heap_buffer_interval_compare,
+    std::optional<BufferAssignment::BufferIsolationOptions> isolation_options) {
+  const HloOrdering& hlo_ordering = assignment->hlo_ordering();
+  VLOG(1) << "Running whole-module heap simulation";
+  HloSchedule schedule(&assignment->module());
+  flat_hash_set<const HloValue*> all_buffers_to_assign;
+  auto pair_cmp = [](const auto& a, const auto& b) {
+    return HloComputation::UniqueIdComparator()(a.first, b.first);
+  };
+  for (const auto& pair :
+       tsl::SortedRange(buffers_to_assign_sequentially, pair_cmp)) {
+    const HloComputation* computation = pair.first;
+    const flat_hash_set<const HloValue*>& buffers_to_assign = pair.second;
+    const HloInstructionSequence* instruction_sequence =
+        hlo_ordering.SequentialOrder(*computation);
+    CHECK(instruction_sequence != nullptr) << computation->name();
+    schedule.set_sequence(computation, *instruction_sequence);
+    all_buffers_to_assign.insert(buffers_to_assign.begin(),
+                                 buffers_to_assign.end());
+  }
+  auto color_map = SplitBuffersByColor(all_buffers_to_assign);
+  std::vector<LogicalBuffer::Color> sorted_colors = GetColors(color_map);
+  sorted_colors = SortColorsForCanUseAllocation(sorted_colors);
+
+  for (auto color : sorted_colors) {
+    // First try to place this color's buffers into the free space of already-
+    // materialized compatible allocations (earlier colors). Whatever fits is
+    // removed from color_map[color] and will not get its own allocation.
+    ABSL_ASSIGN_OR_RETURN(
+        int64_t reused_buffers,
+        ReuseCompatibleTempHeaps(&color_map[color], color, assignment));
+    VLOG(2) << "Placed " << reused_buffers << " buffers of color " << color
+            << " into existing compatible temp allocations";
+
+    // All buffers were placed into existing allocations. Nothing left to
+    // heap-simulate for this color.
+    if (color_map[color].empty()) {
+      continue;
+    }
+
+    VLOG(2) << "Simulating heap for color " << color;
+    int64_t alignment = assignment->color_alignment_(color);
+    HeapSimulator::Options options;
+    options.alloc_constants = opts_.allocate_buffers_for_constants;
+    auto private_stacks_it = private_stacks.find(color);
+    if (private_stacks_it != private_stacks.end()) {
+      // For private stack colors, we collect all of the buffers that are
+      // dominated by the private stack computation and run heap simulation on
+      // that computation. The reason why we don't perform a whole-module heap
+      // simulation is that all buffers that participate in an async operation
+      // are treated as live for the duration of the async operation in
+      // whole-module heap simulation. Performing heap simulation from the
+      // private stack computation allows better temporal reuse of buffers.
+      auto computation_map = SplitBuffersByPrivateStackComputation(
+          color_map[color], private_stacks_it->second,
+          assignment->alias_analysis().dataflow_analysis().call_graph());
+      for (const HloComputation* private_stack_computation :
+           private_stacks_it->second) {
+        VLOG(2) << "private stack computation: "
+                << private_stack_computation->name();
+        auto computation_map_it =
+            computation_map.find(private_stack_computation);
+        CHECK(computation_map_it != computation_map.end());
+        options.buffers_to_assign = &computation_map_it->second;
+        const HloInstructionSequence* instruction_sequence =
+            hlo_ordering.SequentialOrder(*private_stack_computation);
+        HeapSimulator::Result<HloValue> result;
+        ABSL_ASSIGN_OR_RETURN(
+            result, HeapSimulator::Run(
+                        SelectHeapAlgorithm(
+                            alignment, color, buffers_to_assign_sequentially,
+                            buffer_assignment_algorithm,
+                            heap_buffer_interval_compare, assignment),
+                        *private_stack_computation, *instruction_sequence,
+                        assignment->alias_analysis(), alias_info_,
+                        &assignment->buffer_size_, &schedule, options));
+        ABSL_RETURN_IF_ERROR(AssignBuffersFromHeapSimulator(
+            result, assignment, color, isolation_options));
+      }
+    } else {
+      options.buffers_to_assign = &color_map[color];
+      HeapSimulator::Result<HloValue> result;
+      ABSL_ASSIGN_OR_RETURN(
+          result,
+          HeapSimulator::Run(
+              SelectHeapAlgorithm(alignment, color,
+                                  buffers_to_assign_sequentially,
+                                  buffer_assignment_algorithm,
+                                  heap_buffer_interval_compare, assignment),
+              assignment->module(), schedule, assignment->alias_analysis(),
+              alias_info_, &assignment->buffer_size_, options));
+      ABSL_RETURN_IF_ERROR(AssignBuffersFromHeapSimulator(result, assignment, color,
+                                                     isolation_options));
+    }
+  }
+  return absl::OkStatus();
+}
+
+absl::Status BufferAssigner::AssignBuffersWithPerComputationSimulation(
+    const absl::flat_hash_map<const HloComputation*,
+                              absl::flat_hash_set<const HloValue*>>&
+        buffers_to_assign_sequentially,
+    BufferAssignment* assignment,
+    buffer_assignment::BufferAssignmentAlgorithmProto::Value
+        buffer_assignment_algorithm,
+    GlobalDecreasingSizeBestFitHeap<HloValue>::BufferIntervalCompare
+        heap_buffer_interval_compare,
+    std::optional<BufferAssignment::BufferIsolationOptions> isolation_options) {
+  const HloOrdering& hlo_ordering = assignment->hlo_ordering();
+  VLOG(1) << "Running per-computation heap simulation";
+  auto pair_cmp = [](const auto& a, const auto& b) {
+    return HloComputation::UniqueIdComparator()(a.first, b.first);
+  };
+  for (const auto& pair :
+       tsl::SortedRange(buffers_to_assign_sequentially, pair_cmp)) {
+    const HloComputation* computation = pair.first;
+    const flat_hash_set<const HloValue*>& buffers_to_assign = pair.second;
+    const HloInstructionSequence* instruction_sequence =
+        hlo_ordering.SequentialOrder(*computation);
+    CHECK(instruction_sequence != nullptr) << computation->name();
+    auto color_map = SplitBuffersByColor(buffers_to_assign);
+    std::vector<LogicalBuffer::Color> sorted_colors = GetColors(color_map);
+    absl::c_sort(sorted_colors);
+    for (auto color : sorted_colors) {
+      VLOG(2) << "Simulating heap for color " << color;
+      int64_t alignment = assignment->color_alignment_(color);
+      HeapSimulator::Options options;
+      options.buffers_to_assign = &color_map[color];
+      HeapSimulator::Result<HloValue> result;
+      ABSL_ASSIGN_OR_RETURN(
+          result,
+          HeapSimulator::Run(
+              SelectHeapAlgorithm(alignment, color,
+                                  buffers_to_assign_sequentially,
+                                  buffer_assignment_algorithm,
+                                  heap_buffer_interval_compare, assignment),
+              *computation, *instruction_sequence, assignment->alias_analysis(),
+              alias_info_, &assignment->buffer_size_, options));
+      ABSL_RETURN_IF_ERROR(AssignBuffersFromHeapSimulator(result, assignment, color,
+                                                     isolation_options));
+    }
+  }
+  return absl::OkStatus();
+}
+
 absl::Status BufferAssigner::AssignBuffersWithSequentialOrdering(
     const flat_hash_map<const HloComputation*, flat_hash_set<const HloValue*>>&
         buffers_to_assign_sequentially,
@@ -2726,218 +3077,14 @@ absl::Status BufferAssigner::AssignBuffersWithSequentialOrdering(
     GlobalDecreasingSizeBestFitHeap<HloValue>::BufferIntervalCompare
         heap_buffer_interval_compare,
     std::optional<BufferAssignment::BufferIsolationOptions> isolation_options) {
-  // Run the sequence of instructions through the heap simulator.  The
-  // heuristic that seems to give the best results is lazy-best-fit, with all
-  // runs of alloc / free calls sorted in decreasing size order.
-  const HloOrdering& hlo_ordering = assignment->hlo_ordering();
-
-  // Returns a heap algorithm that chooses the best result from several
-  // algorithms.
-  auto get_heap_algorithm = [&](int64_t alignment, LogicalBuffer::Color color)
-      -> std::unique_ptr<HeapAlgorithm<HloValue>> {
-    uint64_t page_size = assignment->module().config().page_size_kib() * 1024;
-    if (page_size > 0 && (color == LogicalBuffer::Color(0) ||
-                          color == LogicalBuffer::Color(1))) {
-      // Check that all buffers that are assigned fit in the page size. This is
-      // a requirement for multi-page buffer assignment.
-      absl::c_for_each(buffers_to_assign_sequentially, [&](const auto& pair) {
-        absl::c_for_each(pair.second, [&](const HloValue* hlo_value) {
-          if ((hlo_value->shape().has_layout()
-                   ? hlo_value->shape().layout().memory_space()
-                   : 0) == color &&
-              !assignment->alias_analysis().ValueLivesOut(*hlo_value)) {
-            uint64_t size = assignment->buffer_size_(*hlo_value);
-            CHECK_LE(size, page_size)
-                << "Temp buffer size " << size << " is larger than page size "
-                << page_size
-                << " for hlo value: " << hlo_value->ToShortString();
-          }
-        });
-      });
-      VLOG(1) << "Executing multi page buffer assignment";
-      return std::make_unique<ConstrainedGlobalDecreasingSizeBestFitHeap>(
-          page_size, alignment,
-          GlobalDecreasingSizeBestFitHeap<HloValue>::kSpatial);
-    }
-
-    if (heap_buffer_interval_compare) {
-      return std::make_unique<ConstrainedGlobalDecreasingSizeBestFitHeap>(
-          assignment->multiheap_size_constraint_per_heap(), alignment,
-          GlobalDecreasingSizeBestFitHeap<HloValue>::kCustom,
-          heap_buffer_interval_compare);
-    }
-    using HeapType = GlobalDecreasingSizeBestFitHeap<HloValue>;
-
-    auto build_algorithm =
-        [alignment, assignment](
-            buffer_assignment::BufferAssignmentAlgorithmProto::Value algo)
-        -> std::unique_ptr<HeapAlgorithm<HloValue>> {
-      switch (algo) {
-        case buffer_assignment::BufferAssignmentAlgorithmProto::SPATIAL:
-          return std::make_unique<ConstrainedGlobalDecreasingSizeBestFitHeap>(
-              assignment->multiheap_size_constraint_per_heap(), alignment,
-              HeapType::kSpatial);
-        case buffer_assignment::BufferAssignmentAlgorithmProto::TEMPORAL:
-          return std::make_unique<ConstrainedGlobalDecreasingSizeBestFitHeap>(
-              assignment->multiheap_size_constraint_per_heap(), alignment,
-              HeapType::kTemporal);
-        case buffer_assignment::BufferAssignmentAlgorithmProto::FAST_MERGE:
-          return std::make_unique<ConstrainedGlobalDecreasingSizeBestFitHeap>(
-              assignment->multiheap_size_constraint_per_heap(), alignment,
-              HeapType::kFastMerge);
-        case buffer_assignment::BufferAssignmentAlgorithmProto::FAST_SPLIT:
-          return std::make_unique<ConstrainedGlobalDecreasingSizeBestFitHeap>(
-              assignment->multiheap_size_constraint_per_heap(), alignment,
-              HeapType::kFastSplit);
-        case buffer_assignment::BufferAssignmentAlgorithmProto::
-            BEST_OF_SPATIAL_TEMPORAL:
-        case buffer_assignment::BufferAssignmentAlgorithmProto::DEFAULT:
-        default: {
-          auto algorithms = std::make_unique<
-              std::vector<std::unique_ptr<HeapAlgorithm<HloValue>>>>();
-          algorithms->push_back(
-              std::make_unique<ConstrainedGlobalDecreasingSizeBestFitHeap>(
-                  assignment->multiheap_size_constraint_per_heap(), alignment,
-                  HeapType::kSpatial));
-          algorithms->push_back(
-              std::make_unique<ConstrainedGlobalDecreasingSizeBestFitHeap>(
-                  assignment->multiheap_size_constraint_per_heap(), alignment,
-                  HeapType::kTemporal));
-          return std::make_unique<ChooseBestHeapAlgorithm<HloValue>>(
-              std::move(algorithms));
-        }
-      }
-    };
-
-    buffer_assignment::BufferAssignmentAlgorithmProto::Value algo_to_use =
-        buffer_assignment_algorithm;
-    if (algo_to_use ==
-        buffer_assignment::BufferAssignmentAlgorithmProto::FAST_MERGE) {
-      if (GetMemoryLimit(*assignment, color) == 0) {
-        algo_to_use =
-            buffer_assignment::BufferAssignmentAlgorithmProto::DEFAULT;
-      }
-    }
-    return build_algorithm(algo_to_use);
-  };
-
   if (run_whole_module_heap_simulation) {
-    // Run the heap simulation over the whole module. This reduces memory
-    // usage, since buffers for kCall, kWhile, and kConditional
-    // sub-computations are only live for the duration of their calling
-    // instructions.
-    VLOG(1) << "Running whole-module heap simulation";
-    HloSchedule schedule(&assignment->module());
-    flat_hash_set<const HloValue*> all_buffers_to_assign;
-    for (const auto& pair : buffers_to_assign_sequentially) {
-      const HloComputation* computation = pair.first;
-      const flat_hash_set<const HloValue*>& buffers_to_assign = pair.second;
-      const HloInstructionSequence* instruction_sequence =
-          hlo_ordering.SequentialOrder(*computation);
-      CHECK(instruction_sequence != nullptr) << computation->name();
-      schedule.set_sequence(computation, *instruction_sequence);
-      all_buffers_to_assign.insert(buffers_to_assign.begin(),
-                                   buffers_to_assign.end());
-    }
-    auto color_map = SplitBuffersByColor(all_buffers_to_assign);
-    std::vector<LogicalBuffer::Color> sorted_colors = GetColors(color_map);
-    sorted_colors = SortColorsForCanUseAllocation(sorted_colors);
-
-    for (auto color : sorted_colors) {
-      // First try to place this color's buffers into the free space of already-
-      // materialized compatible allocations (earlier colors). Whatever fits is
-      // removed from color_map[color] and will not get its own allocation.
-      ABSL_ASSIGN_OR_RETURN(
-          int64_t reused_buffers,
-          ReuseCompatibleTempHeaps(&color_map[color], color, assignment));
-      VLOG(2) << "Placed " << reused_buffers << " buffers of color " << color
-              << " into existing compatible temp allocations";
-
-      // All buffers were placed into existing allocations. Nothing left to
-      // heap-simulate for this color.
-      if (color_map[color].empty()) {
-        continue;
-      }
-
-      VLOG(2) << "Simulating heap for color " << color;
-      int64_t alignment = assignment->color_alignment_(color);
-      HeapSimulator::Options options;
-      options.alloc_constants = opts_.allocate_buffers_for_constants;
-      auto private_stacks_it = private_stacks.find(color);
-      if (private_stacks_it != private_stacks.end()) {
-        // For private stack colors, we collect all of the buffers that are
-        // dominated by the private stack computation and run heap simulation on
-        // that computation. The reason why we don't perform a whole-module heap
-        // simulation is that all buffers that participate in an async operation
-        // are treated as live for the duration of the async operation in
-        // whole-module heap simulation. Performing heap simulation from the
-        // private stack computation allows better temporal reuse of buffers.
-        auto computation_map = SplitBuffersByPrivateStackComputation(
-            color_map[color], private_stacks_it->second,
-            assignment->alias_analysis().dataflow_analysis().call_graph());
-        for (const HloComputation* private_stack_computation :
-             private_stacks_it->second) {
-          VLOG(2) << "private stack computation: "
-                  << private_stack_computation->name();
-          auto computation_map_it =
-              computation_map.find(private_stack_computation);
-          CHECK(computation_map_it != computation_map.end());
-          options.buffers_to_assign = &computation_map_it->second;
-          const HloInstructionSequence* instruction_sequence =
-              hlo_ordering.SequentialOrder(*private_stack_computation);
-          HeapSimulator::Result<HloValue> result;
-          ABSL_ASSIGN_OR_RETURN(
-              result, HeapSimulator::Run(
-                          get_heap_algorithm(alignment, color),
-                          *private_stack_computation, *instruction_sequence,
-                          assignment->alias_analysis(), alias_info_,
-                          &assignment->buffer_size_, &schedule, options));
-          ABSL_RETURN_IF_ERROR(AssignBuffersFromHeapSimulator(
-              result, assignment, color, isolation_options));
-        }
-      } else {
-        options.buffers_to_assign = &color_map[color];
-        HeapSimulator::Result<HloValue> result;
-        ABSL_ASSIGN_OR_RETURN(result, HeapSimulator::Run(
-                                     get_heap_algorithm(alignment, color),
-                                     assignment->module(), schedule,
-                                     assignment->alias_analysis(), alias_info_,
-                                     &assignment->buffer_size_, options));
-        ABSL_RETURN_IF_ERROR(AssignBuffersFromHeapSimulator(
-            result, assignment, color, isolation_options));
-      }
-    }
-  } else {
-    // Run the heap-simulation on a per-computation basis. Buffers for
-    // sub-computations are assigned disjoint BufferAllocations, assuming the
-    // worst-case that they may all be live concurrently.
-    VLOG(1) << "Running per-computation heap simulation";
-    for (const auto& pair : buffers_to_assign_sequentially) {
-      const HloComputation* computation = pair.first;
-      const flat_hash_set<const HloValue*>& buffers_to_assign = pair.second;
-      const HloInstructionSequence* instruction_sequence =
-          hlo_ordering.SequentialOrder(*computation);
-      CHECK(instruction_sequence != nullptr) << computation->name();
-      auto color_map = SplitBuffersByColor(buffers_to_assign);
-      std::vector<LogicalBuffer::Color> sorted_colors = GetColors(color_map);
-      absl::c_sort(sorted_colors);
-      for (auto color : sorted_colors) {
-        VLOG(2) << "Simulating heap for color " << color;
-        int64_t alignment = assignment->color_alignment_(color);
-        HeapSimulator::Options options;
-        options.buffers_to_assign = &color_map[color];
-        HeapSimulator::Result<HloValue> result;
-        ABSL_ASSIGN_OR_RETURN(
-            result, HeapSimulator::Run(
-                        get_heap_algorithm(alignment, color), *computation,
-                        *instruction_sequence, assignment->alias_analysis(),
-                        alias_info_, &assignment->buffer_size_, options));
-        ABSL_RETURN_IF_ERROR(AssignBuffersFromHeapSimulator(
-            result, assignment, color, isolation_options));
-      }
-    }
+    return AssignBuffersWithWholeModuleSimulation(
+        buffers_to_assign_sequentially, assignment, buffer_assignment_algorithm,
+        private_stacks, heap_buffer_interval_compare, isolation_options);
   }
-  return absl::OkStatus();
+  return AssignBuffersWithPerComputationSimulation(
+      buffers_to_assign_sequentially, assignment, buffer_assignment_algorithm,
+      heap_buffer_interval_compare, isolation_options);
 }
 
 namespace {
@@ -2974,7 +3121,8 @@ std::vector<const HloValue*> ComputePeakMemoryLogicalBuffers(
       num_outstanding_shared_buffers[event.buffer_id()] = 1;
       allocated_sizes[event.buffer_id()] = buffer_size;
       return buffer_size;
-    } else if (event.kind() == HeapSimulatorTrace::Event::SHARE_WITH) {
+    }
+    if (event.kind() == HeapSimulatorTrace::Event::SHARE_WITH) {
       shared_canonical_ids[event.buffer_id()] = event.share_with_canonical_id();
       if (++num_outstanding_shared_buffers[event.share_with_canonical_id()] ==
           1) {
@@ -2986,7 +3134,8 @@ std::vector<const HloValue*> ComputePeakMemoryLogicalBuffers(
       // There are multiple instances of this buffer, so return 0.
       allocated_sizes[event.buffer_id()] = 0;
       return 0;
-    } else if (event.kind() == HeapSimulatorTrace::Event::FREE) {
+    }
+    if (event.kind() == HeapSimulatorTrace::Event::FREE) {
       auto shared_canonical_id_it =
           shared_canonical_ids.find(event.buffer_id());
       // Decrement the outstanding instances of this buffer and return the
@@ -3354,9 +3503,11 @@ absl::Status BufferAssigner::RunAssignBuffers(
         sequential_algorithm,
     buffer_assignment::AssignmentAlgorithmForComputationsWithoutOrderingProto::
         Value non_sequential_algorithm) {
-  // First assign buffers for global computations. Temporary buffers for
-  // sequential computations are collected in
-  // 'buffers_to_assign_sequentially'.
+  // First assign buffers for global computations. Temporary buffers (transient
+  // buffers internal to computations that do not live out) for sequential
+  // computations are delayed and collected in 'buffers_to_assign_sequentially'
+  // (mapping each computation to the set of its delayed HloValues) to be packed
+  // tightly using the Heap Simulator afterwards.
   flat_hash_map<const HloComputation*, flat_hash_set<const HloValue*>>
       buffers_to_assign_sequentially;
   ABSL_RETURN_IF_ERROR(AssignBuffersForComputations(
@@ -3380,52 +3531,19 @@ absl::Status BufferAssigner::RunAssignBuffers(
       opts_.private_stacks ? *opts_.private_stacks : private_stacks,
       opts_.heap_buffer_interval_compare, opts_.isolation_options));
 
-  std::vector<const HloComputation*> thread_local_computations_no_fusion;
   // Now assign buffers for thread-local computations. All LogicalBuffers get
   // their own BufferAllocation.
-
-  for (auto* computation : thread_local_computations) {
-    TF_RET_CHECK(computation != module->entry_computation());
-    if (computation->IsFusionComputation()) {
-      continue;
-    }
-    thread_local_computations_no_fusion.push_back(computation);
-  }
+  ABSL_ASSIGN_OR_RETURN(
+      std::vector<const HloComputation*> thread_local_computations_no_fusion,
+      FilterThreadLocalComputations(module, thread_local_computations));
 
   ABSL_RETURN_IF_ERROR(AssignBuffersForComputations(
       thread_local_computations_no_fusion, /*is_thread_local=*/true,
       /*buffers_to_assign_sequentially=*/nullptr, assignment,
       non_sequential_algorithm));
 
-  // Mark all buffers which may be live out of the entry computation as
-  // "liveout".
-  for (const HloBuffer* buffer :
-       assignment->alias_analysis().LiveOutBuffers()) {
-    VLOG(3) << "maybe_live_out LogicalBuffer: " << *buffer;
-    if (assignment->HasAllocation(*buffer)) {
-      BufferAllocation* alloc =
-          assignment->GetMutableAssignedAllocation(*buffer);
-      alloc->set_maybe_live_out(true);
-      VLOG(3) << "maybe_live_out BufferAllocation: " << *alloc;
-    }
-  }
-
-  // Combines allocations of temporary buffers into big BufferAllocations
-  // subject to the buffer allocation size constraint. This can only be
-  // performed after all buffers have been assigned, and after maybe_live_out
-  // is marked, since it is used to determine whether an allocation contains
-  // temporary buffers or not.
-  absl::flat_hash_set<BufferValue::Color> private_stack_colors;
-  if (opts_.private_stacks) {
-    for (const auto& [color, computations] :
-         tsl::KeySortedRange(*opts_.private_stacks)) {
-      private_stack_colors.insert(color);
-    }
-  }
-
-  ABSL_RETURN_IF_ERROR(assignment->CombineTempAllocations(private_stack_colors,
-                                                     opts_.temp_buffer_color));
-  return absl::OkStatus();
+  // Mark all buffers which may be live out and combine temporary allocations.
+  return FinalizeAllocations(module, assignment);
 }
 
 namespace {
