@@ -836,7 +836,9 @@ hlo_test_suite(
 hlo_test_suite(
     name = "memory_intensive_hlo_tests",
     hlo_files = MEMORY_INTENSIVE_HLO_FILES,
-    tags = if_google([
+    tags = [
+        "no_oss",
+    ] + if_google([
         "requires-mem:24g",
     ]),
 )
@@ -845,7 +847,9 @@ hlo_test_suite(
     name = "huge_hlo_tests",
     hlo_files = HUGE_HLO_FILES,
     pkg = "//xla/backends/cpu/benchmarks/huge_hlo",
-    tags = if_google([
+    tags = [
+        "no_oss",
+    ] + if_google([
         "notap",
         "requires-mem:32g",
     ]),
