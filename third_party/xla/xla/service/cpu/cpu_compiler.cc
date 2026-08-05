@@ -1838,13 +1838,7 @@ CpuCompiler::CompileCpuExecutable(
       std::move(instruction_to_profile_idx),
       std::move(computation_to_profile_idx),
       ModuleComputationsTransitivelyContainCustomCall(*module),
-      &target_machine_features,
-#ifdef MEMORY_SANITIZER
-      /*emit_code_for_msan=*/true
-#else
-      /*emit_code_for_msan=*/false
-#endif
-  );
+      &target_machine_features, options::IsMsanEnabled(module->config()));
 
   // The thunk runtime manages large constants, therefore we only emit
   // small ones.
