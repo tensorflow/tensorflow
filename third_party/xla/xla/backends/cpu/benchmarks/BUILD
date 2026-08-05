@@ -334,6 +334,7 @@ cc_library(
         "//xla/tsl/platform:test",
         "@com_google_absl//absl/base:nullability",
         "@com_google_absl//absl/flags:flag",
+        "@com_google_absl//absl/flags:parse",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",

@@ -694,7 +694,6 @@ absl::Status LowerXTileToTriton(
     pm.enableVerifier(/*enabled=*/false);
     pm.addPass(mlir::triton::xla::createTensorLowerToTritonPass());
     pm.addPass(xtile::createStablehloLowerToArithPass());
-    pm.addPass(xtile::createStablehloLowerToXtilePass());
     pm.addPass(mlir::triton::xla::createArithFP8ConversionToTritonPass());
     pm.addPass(xtile::createLegalizeUnsignedIntegersAsSignlessPass());
     mlir::triton::xla::StableHLOLowerToTritonPassOptions stablehlo_options;

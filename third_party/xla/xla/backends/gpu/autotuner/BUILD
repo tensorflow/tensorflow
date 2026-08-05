@@ -379,7 +379,6 @@ xla_test(
         "//xla/stream_executor/cuda:cuda_compute_capability",
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:status_macros",
-        "//xla/tsl/platform:statusor",
         "//xla/tsl/testing:temporary_directory",
         "//xla/tsl/util/proto:proto_matchers",
         "@com_google_absl//absl/status",

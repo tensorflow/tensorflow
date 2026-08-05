@@ -156,12 +156,19 @@ bool IsPositive(const HloInstruction* hlo,
       }
     }
     case HloOpcode::kPower:
+      if (primitive_util::IsSignedIntegralType(hlo->shape().element_type())) {
+        return false;
+      }
+      return IsPositive(hlo->operand(0), options);
     case HloOpcode::kAbs:
     case HloOpcode::kRsqrt:
     case HloOpcode::kSqrt:
       return IsPositive(hlo->operand(0), options);
 
     case HloOpcode::kMultiply: {
+      if (primitive_util::IsSignedIntegralType(hlo->shape().element_type())) {
+        return false;
+      }
       return hlo->operand(0) == hlo->operand(1) &&
              IsPositive(hlo->operand(0), options);
     }
@@ -534,12 +541,34 @@ bool AlgebraicSimplifierVisitor::IsNonNegative(
   }
   switch (hlo->opcode()) {
     case HloOpcode::kMultiply: {
-      return hlo->operand(0) == hlo->operand(1);
+      return hlo->operand(0) == hlo->operand(1) &&
+             !primitive_util::IsSignedIntegralType(hlo->shape().element_type());
     }
-    case HloOpcode::kAbs:
-    case HloOpcode::kExp:
-    case HloOpcode::kIota: {
+    case HloOpcode::kExp: {
       return true;
+    }
+    case HloOpcode::kIota: {
+      if (!primitive_util::IsSignedIntegralType(hlo->shape().element_type())) {
+        return true;
+      }
+      const auto* iota = Cast<HloIotaInstruction>(hlo);
+      const int64_t dim_size = iota->shape().dimensions(iota->iota_dimension());
+      const int bit_width =
+          primitive_util::BitWidth(hlo->shape().element_type());
+      if (bit_width >= 64) {
+        return true;
+      }
+      // A signed b-bit iota can represent 2^(b-1) non-negative values. The
+      // 64-bit case is handled above, so this shift is at most 62 bits.
+      const uint64_t max_nonnegative_dimension_size = uint64_t{1}
+                                                      << (bit_width - 1);
+      return static_cast<uint64_t>(dim_size) <= max_nonnegative_dimension_size;
+    }
+    case HloOpcode::kAbs: {
+      if (!primitive_util::IsSignedIntegralType(hlo->shape().element_type())) {
+        return true;
+      }
+      return IsNonNegative(hlo->operand(0), options);
     }
     case HloOpcode::kBroadcast: {
       return IsNonNegative(hlo->operand(0), options);
@@ -560,7 +589,9 @@ bool AlgebraicSimplifierVisitor::IsNonNegative(
              IsNonNegative(hlo->operand(1), options);
     }
     case HloOpcode::kPower: {
-      return IsNonNegative(hlo->operand(0), options);
+      return !primitive_util::IsSignedIntegralType(
+                 hlo->shape().element_type()) &&
+             IsNonNegative(hlo->operand(0), options);
     }
     case HloOpcode::kSelect: {
       return IsNonNegative(hlo->operand(1), options) &&
