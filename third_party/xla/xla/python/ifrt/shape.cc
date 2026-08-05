@@ -24,12 +24,10 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
 #include "xla/tsl/platform/status_macros.h"
 #include "xla/python/ifrt/serdes_version.h"
 #include "xla/python/ifrt/shape.pb.h"
-#include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/statusor.h"
-#include "xla/util.h"
 
 namespace xla {
 namespace ifrt {
@@ -57,12 +55,19 @@ absl::StatusOr<Shape> Shape::FromProto(const ShapeProto& proto) {
 
   Shape::Dimensions dims;
   dims.reserve(proto.dims_size());
+  int64_t num_elements = 1;
+  bool overflow = false;
   for (int64_t dim : proto.dims()) {
     if (dim < 0) {
-      return InvalidArgument(
-          "Shape expects non-negative dimension sizes, but got %d", dim);
+      return absl::InvalidArgumentError(absl::StrFormat(
+          "Shape expects non-negative dimension sizes, but got %d", dim));
     }
+    overflow |= __builtin_mul_overflow(num_elements, dim, &num_elements);
     dims.push_back(dim);
+  }
+  if (overflow) {
+    return absl::InvalidArgumentError(
+        "Too large number of elements in a shape");
   }
   return Shape(std::move(dims));
 }
@@ -131,7 +136,7 @@ absl::StatusOr<DynamicShape> DynamicShape::Create(Shape shape,
       overloaded{
           [&](const BoundedDynamicShapeTag& tag) -> absl::Status {
             if (tag.DynamicDims().size() != shape.dims().size()) {
-              return InvalidArgument(
+              return absl::InvalidArgumentError(
                   "Shape and tag must have the same number of dimensions.");
             }
             return absl::OkStatus();
@@ -174,7 +179,7 @@ absl::StatusOr<DynamicShape> DynamicShape::FromProto(
         BoundedDynamicShapeTag::FromProto(proto.bounded_dynamic_shape_tag()));
     return DynamicShape::Create(std::move(shape), std::move(tag));
   }
-  return InvalidArgument("Only support bounded dynamic shape.");
+  return absl::InvalidArgumentError("Only support bounded dynamic shape.");
 }
 
 void DynamicShape::ToProto(DynamicShapeProto& proto,

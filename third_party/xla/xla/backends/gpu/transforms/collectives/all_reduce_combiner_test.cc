@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "xla/backends/gpu/transforms/collectives/collective_combiner_annotator.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_print_options.h"
 #include "xla/hlo/testlib/filecheck.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
@@ -424,6 +425,57 @@ TEST_F(GpuAllReduceCombinerTest,
                                          suggested_threshold_bytes);
   EXPECT_THAT(RunCombiner(module.get(), kDefaultAllReduceCombineThreshold),
               absl_testing::IsOkAndHolds(false));
+}
+
+TEST_F(GpuAllReduceCombinerTest, CollectiveGroupKeyConstrainsCombining) {
+  constexpr absl::string_view kHloString = R"(
+HloModule module
+
+add {
+  lhs = f32[] parameter(0)
+  rhs = f32[] parameter(1)
+  ROOT add = f32[] add(lhs, rhs)
+}
+
+ENTRY entry {
+  p0 = f32[32] parameter(0)
+  p1 = f32[32] parameter(1)
+  p2 = f32[32] parameter(2)
+  p3 = f32[32] parameter(3)
+  p4 = f32[32] parameter(4)
+  ar0 = f32[32] all-reduce(p0), to_apply=add, replica_groups={},
+    frontend_attributes={collective_group_key="g0"}
+  ar1 = f32[32] all-reduce(p1), to_apply=add, replica_groups={},
+    frontend_attributes={collective_group_key="g0"}
+  ar2 = f32[32] all-reduce(p2), to_apply=add, replica_groups={},
+    frontend_attributes={collective_group_key="g1"}
+  ar3 = f32[32] all-reduce(p3), to_apply=add, replica_groups={}
+  ar4 = f32[32] all-reduce(p4), to_apply=add, replica_groups={},
+    frontend_attributes={collective_group_key="g2"}
+  ROOT tuple = tuple(ar0, ar1, ar2, ar3, ar4)
+}
+)";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloString));
+  EXPECT_THAT(
+      RunCombiner(module.get(), /*combine_threshold_bytes=*/1024 * 1024),
+      absl_testing::IsOkAndHolds(true));
+
+  int all_reduce_count = 0;
+  const HloInstruction* combined = nullptr;
+  for (const HloInstruction* instruction :
+       module->entry_computation()->instructions()) {
+    if (HloPredicateIsNotOp<HloOpcode::kAllReduce>(instruction)) {
+      continue;
+    }
+    ++all_reduce_count;
+    if (instruction->operand_count() == 2) {
+      combined = instruction;
+    }
+  }
+  EXPECT_EQ(all_reduce_count, 4);
+  ASSERT_NE(combined, nullptr);
+  EXPECT_EQ(combined->get_frontend_attribute("collective_group_key"), "g0");
 }
 
 TEST_F(GpuAllReduceCombinerTest, CombinedPipelinedRetainsBackendConfig) {

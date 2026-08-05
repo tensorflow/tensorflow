@@ -104,15 +104,25 @@ absl::Status RocmMemoryReservation::SetAccess(uint64_t reservation_offset,
           !executor_->CanEnablePeerAccessTo(peer_executor_or.value())) {
         continue;
       }
+      hipMemAccessDesc desc = {};
+      desc.location.type = hipMemLocationTypeDevice;
+      desc.location.id = peer;
+      desc.flags = hipMemAccessFlagsProtReadWrite;
+      RETURN_IF_ERROR(
+          ToStatus(hipMemSetAccess(ptr_ + reservation_offset, size, &desc, 1),
+                   "hipMemSetAccess for peer device"));
     }
-    hipMemAccessDesc desc = {};
-    desc.location.type = hipMemLocationTypeDevice;
-    desc.location.id = peer;
-    desc.flags = hipMemAccessFlagsProtReadWrite;
-    RETURN_IF_ERROR(
-        ToStatus(hipMemSetAccess(ptr_ + reservation_offset, size, &desc, 1),
-                 "hipMemSetAccess for peer device"));
   }
+
+  // Grant access to the local device last to try workaround hipMemSetAccess bug
+  // on ROCm 7.14
+  hipMemAccessDesc desc = {};
+  desc.location.type = hipMemLocationTypeDevice;
+  desc.location.id = executor_->device_ordinal();
+  desc.flags = hipMemAccessFlagsProtReadWrite;
+  RETURN_IF_ERROR(
+      ToStatus(hipMemSetAccess(ptr_ + reservation_offset, size, &desc, 1),
+               "hipMemSetAccess for peer device"));
   return absl::OkStatus();
 }
 

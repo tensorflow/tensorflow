@@ -27,9 +27,11 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "llvm/Support/ExtensibleRTTI.h"
 #include "xla/hlo/ir/hlo_sharding.h"
+#include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/index_domain.h"
 #include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/shape.h"
+#include "xla/python/ifrt/sharding.h"
 #include "xla/python/ifrt/sharding_spec.h"
 
 namespace xla {
@@ -60,6 +62,9 @@ class HloShardingSpec final
   // ShardingSpec implementation.
 
   ~HloShardingSpec() override = default;
+
+  absl::StatusOr<ShardingRef> ToSharding(DeviceListRef devices,
+                                         MemoryKind memory_kind) const override;
 
   absl::StatusOr<Shape> GetShardShape(const Shape& shape) const override;
 

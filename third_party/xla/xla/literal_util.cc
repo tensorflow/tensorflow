@@ -349,15 +349,24 @@ template <typename FloatT, typename GeneratorT>
 void PopulateWithRandomFloatingPointData(
     Literal* literal, std::minstd_rand0* engine,
     std::optional<ConstraintInterval> interval) {
-  GeneratorT min = -0.1f;
-  GeneratorT max = 0.2f;
+  GeneratorT min = static_cast<GeneratorT>(-0.1);
+  GeneratorT max = static_cast<GeneratorT>(0.2);
   if (interval.has_value() && !interval->IsUnconstrained()) {
     min = interval->min == ConstraintInterval::kMin
-              ? std::numeric_limits<GeneratorT>::lowest()
-              : interval->min;
+              ? min
+              : static_cast<GeneratorT>(interval->min);
     max = interval->max == ConstraintInterval::kMax
-              ? std::numeric_limits<GeneratorT>::max()
-              : interval->max;
+              ? max
+              : static_cast<GeneratorT>(interval->max);
+
+    // Prevent Undefined Behavior by fixing inverted ranges.
+    // If a single explicit bound crossed the opposite default bound,
+    // shift the unconstrained bound to maintain a 0.3 generation spread.
+    if (interval->max == ConstraintInterval::kMax && min > max) {
+      max = min + static_cast<GeneratorT>(0.3);
+    } else if (interval->min == ConstraintInterval::kMin && max < min) {
+      min = max - static_cast<GeneratorT>(0.3);
+    }
   }
   if (min == max) {
     for (FloatT& value : literal->data<FloatT>()) {

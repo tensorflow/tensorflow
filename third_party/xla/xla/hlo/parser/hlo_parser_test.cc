@@ -3420,6 +3420,137 @@ ENTRY e {
   EXPECT_THAT(result.status().message(), HasSubstr("device_ids"));
 }
 
+TEST_F(HloParserTest, AllGatherEmptyDimensions) {
+  const std::string original = R"(HloModule m
+ENTRY e {
+  input = f32[128,32]{0,1} parameter(0)
+  ROOT ag = f32[128,128]{0,1} all-gather(input), replica_groups={}, dimensions={}
+})";
+  auto result = ParseAndReturnUnverifiedModule(original);
+  EXPECT_FALSE(result.ok());
+}
+
+TEST_F(HloParserTest, ReduceScatterEmptyDimensions) {
+  const std::string original = R"(HloModule m
+add {
+  a = f32[] parameter(0)
+  b = f32[] parameter(1)
+  ROOT s = f32[] add(a, b)
+}
+ENTRY e {
+  input = f32[8,4] parameter(0)
+  ROOT rs = f32[4,4] reduce-scatter(input), replica_groups={}, to_apply=add, dimensions={}
+})";
+  auto result = ParseAndReturnUnverifiedModule(original);
+  EXPECT_FALSE(result.ok());
+}
+
+TEST_F(HloParserTest, GetDimensionSizeEmptyDimensions) {
+  const std::string original = R"(HloModule m
+ENTRY e {
+  p = f32[2,3] parameter(0)
+  ROOT gds = get-dimension-size(p), dimensions={}
+})";
+  auto result = ParseAndReturnUnverifiedModule(original);
+  EXPECT_FALSE(result.ok());
+}
+
+TEST_F(HloParserTest, ScanDimensionOutOfRange) {
+  const std::string original = R"(HloModule m
+add {
+  x = f32[] parameter(0)
+  y = f32[] parameter(1)
+  ROOT a = f32[] add(x, y)
+}
+ENTRY main {
+  input = f32[4] parameter(0)
+  init = f32[] parameter(1)
+  ROOT scan = scan(input, init), dimensions={-1}, num_carries=0, to_apply=add
+})";
+  auto result = ParseAndReturnUnverifiedModule(original);
+  EXPECT_FALSE(result.ok());
+}
+
+TEST_F(HloParserTest, RecvNonTupleShape) {
+  const std::string original = R"(HloModule m
+ENTRY e {
+  tok = token[] after-all()
+  ROOT recv = f32[10] recv(tok)
+})";
+  auto result = ParseAndReturnUnverifiedModule(original);
+  EXPECT_FALSE(result.ok());
+}
+
+TEST_F(HloParserTest, ConditionalNoOperands) {
+  const std::string original = R"(HloModule m
+ENTRY e {
+  ROOT c = f32[] conditional()
+})";
+  auto result = ParseAndReturnUnverifiedModule(original);
+  EXPECT_FALSE(result.ok());
+}
+
+TEST_F(HloParserTest, RngBitGeneratorNoOperands) {
+  const std::string original = R"(HloModule m
+ENTRY e {
+  ROOT r = (u64[2], u32[4]) rng-bit-generator(), algorithm=rng_three_fry
+})";
+  auto result = ParseAndReturnUnverifiedModule(original);
+  EXPECT_FALSE(result.ok());
+}
+
+TEST_F(HloParserTest, ReduceWindowNoOperands) {
+  const std::string original = R"(HloModule m
+add {
+  a = f32[] parameter(0)
+  b = f32[] parameter(1)
+  ROOT s = f32[] add(a, b)
+}
+ENTRY e {
+  ROOT rw = reduce-window(), to_apply=add
+})";
+  auto result = ParseAndReturnUnverifiedModule(original);
+  EXPECT_FALSE(result.ok());
+}
+
+TEST_F(HloParserTest, ShardingDeviceCountExceedsTileAssignment) {
+  const std::string original = R"(HloModule m
+ENTRY e {
+  p = f32[4,4] parameter(0)
+  ROOT c = f32[4,4] copy(p), sharding={devices=[2,2]0,1,2,3,4,5,6,7,8,9}
+})";
+  auto result = ParseAndReturnUnverifiedModule(original);
+  EXPECT_FALSE(result.ok());
+  EXPECT_THAT(result.status().message(),
+              HasSubstr("does not match the tile assignment size"));
+}
+
+TEST_F(HloParserTest, WindowRhsReversalWrongSize) {
+  const std::string original = R"(HloModule m
+ENTRY e {
+  input = f32[1,2,2,1] parameter(0)
+  filter = f32[1,1,1,1] parameter(1)
+  ROOT conv = f32[1,2,2,1] convolution(input, filter),
+      window={size=1x1 rhs_reversal=1}, dim_labels=b01f_01io->b01f
+})";
+  auto result = ParseAndReturnUnverifiedModule(original);
+  EXPECT_FALSE(result.ok());
+  EXPECT_THAT(result.status().message(), HasSubstr("rhs_reversal"));
+}
+
+TEST_F(HloParserTest, ConvDimLabelDigitExceedsSpatialDims) {
+  const std::string original = R"(HloModule m
+ENTRY e {
+  input = f32[1,2,1] parameter(0)
+  filter = f32[1,1,1] parameter(1)
+  ROOT conv = f32[1,2,1] convolution(input, filter),
+      window={size=1}, dim_labels=9?????????_io->bf
+})";
+  auto result = ParseAndReturnUnverifiedModule(original);
+  EXPECT_FALSE(result.ok());
+  EXPECT_THAT(result.status().message(), HasSubstr("dimension numbers"));
+}
+
 TEST_F(HloParserTest, CompactGteRoundTrip) {
   const std::string original =
       R"(HloModule test, entry_computation_layout={((f32[10]{0}, f16[10]{0}))->f32[10]{0}}
@@ -4516,6 +4647,20 @@ TEST_F(HloParserTest, ParseSharding) {
   EXPECT_EQ(sharding.ToString(), original);
 }
 
+TEST_F(HloParserTest, ParseNamedShardingUnreducedMax) {
+  const std::string original = "{mesh['x'=2], [{}], unreduced=max{'x'}}";
+  ASSERT_OK_AND_ASSIGN(HloSharding sharding, ParseSharding(original));
+  EXPECT_TRUE(sharding.UseNamedShardingLeaf());
+  EXPECT_EQ(sharding.ToString(), original);
+}
+
+TEST_F(HloParserTest, ParseNamedShardingScalarUnreducedMax) {
+  const std::string original = "{mesh['x'=2,'y'=2], unreduced=max{'x', 'y'}}";
+  ASSERT_OK_AND_ASSIGN(HloSharding sharding, ParseSharding(original));
+  EXPECT_TRUE(sharding.UseNamedShardingLeaf());
+  EXPECT_EQ(sharding.ToString(), "{mesh['x'=2,'y'=2], unreduced=max}");
+}
+
 TEST_F(HloParserTest, ParseShardingPartialReplication) {
   const std::string original = "{devices=[2,2]0,1,2,3 last_tile_dim_replicate}";
   ASSERT_OK_AND_ASSIGN(HloSharding sharding, ParseSharding(original));
@@ -5140,6 +5285,18 @@ TEST(HloParserSingleOpTest, ConvolutionWithKind) {
   auto* convolution =
       Cast<HloConvolutionInstruction>(computation->root_instruction());
   EXPECT_EQ(convolution->convolution_kind(), CONVOLUTION_KIND_FPROP);
+}
+
+TEST(HloParserSingleOpTest, ConvolutionWithAlgorithm) {
+  const std::string text =
+      R"(%convolution = f32[1,2,1]{2,0,1} convolution(f32[1,2,1]{2,0,1} %copy, f32[1,1,1]{2,1,0} %filter), window={size=1}, dim_labels=b0f_0io->b0f, algorithm=dot_bf16_bf16_f32)";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(text));
+  const HloComputation* computation = module->entry_computation();
+  ASSERT_NE(computation, nullptr);
+  auto* convolution =
+      Cast<HloConvolutionInstruction>(computation->root_instruction());
+  EXPECT_EQ(convolution->precision_config().algorithm(),
+            PrecisionConfig::ALG_DOT_BF16_BF16_F32);
 }
 
 TEST(HloParserSingleOpTest, MultipleOpsProducesError) {

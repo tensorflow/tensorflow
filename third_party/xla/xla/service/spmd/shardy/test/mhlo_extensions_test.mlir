@@ -278,11 +278,13 @@ func.func @scan_2d_multi_input(%input1: tensor<2x3xf32>, %input2: tensor<2x3xf32
 
 // Shape-changing scan (output shape != input shape): falls back to the
 // conservative rule that only models the scan dim and leaves every other
-// dim with a fresh size-1 factor that nothing can propagate through.
+// dim with a fresh size-1 factor that nothing can propagate through. The
+// partitioner replicates shape-changing scans, so the scan dim needs
+// replication even though the scan is associative.
 // CHECK-LABEL: func @scan_2d_shape_changing
 func.func @scan_2d_shape_changing(%input: tensor<10xf32>, %init: tensor<f32>)
     -> tensor<10x3xf32> {
-  // CHECK: sdy.sharding_rule = #sdy.op_sharding_rule<([i], [])->([i, j], []) {i=10, j=1} permutation={i}>
+  // CHECK: sdy.sharding_rule = #sdy.op_sharding_rule<([i], [])->([i, j], []) {i=10, j=1} need_replication={i}>
   %0:2 = mhlo.scan (%input) inits (%init) dimension=0 attributes {
       is_associative = true
   } {
@@ -291,4 +293,120 @@ func.func @scan_2d_shape_changing(%input: tensor<10xf32>, %init: tensor<f32>)
     stablehlo.return %1, %carry0 : tensor<3xf32>, tensor<f32>
   } : (tensor<10xf32>, tensor<f32>) -> (tensor<10x3xf32>, tensor<f32>)
   return %0#0 : tensor<10x3xf32>
+}
+
+// An associative, shape-preserving scan whose body is not pointwise (the
+// reverse couples the slice elements): the scan dim stays partitionable,
+// since sharding it never changes the slice shapes, but the non-scan dims
+// need replication because the body cannot be evaluated on slices of them.
+// CHECK-LABEL: func @scan_2d_non_elementwise_body
+func.func @scan_2d_non_elementwise_body(%input: tensor<3x2xf32>, %init: tensor<3xf32>)
+    -> tensor<3x2xf32> {
+  // CHECK: sdy.sharding_rule = #sdy.op_sharding_rule<([i, j], [i])->([i, j], [i]) {i=3, j=2} need_replication={i} permutation={j}>
+  %0:2 = mhlo.scan (%input) inits (%init) dimension=1 attributes {
+      is_associative = true
+  } {
+  ^bb0(%input0: tensor<3xf32>, %carry0: tensor<3xf32>):
+    %1 = stablehlo.reverse %input0, dims = [0] : tensor<3xf32>
+    %2 = stablehlo.add %1, %carry0 : tensor<3xf32>
+    stablehlo.return %2, %2 : tensor<3xf32>, tensor<3xf32>
+  } : (tensor<3x2xf32>, tensor<3xf32>) -> (tensor<3x2xf32>, tensor<3xf32>)
+  return %0#0 : tensor<3x2xf32>
+}
+
+// Scalar constants and broadcasts of scalars are rebuildable alongside
+// elementwise ops, so they keep the scan partitionable.
+// CHECK-LABEL: func @scan_2d_scalar_broadcast_body
+func.func @scan_2d_scalar_broadcast_body(%input: tensor<3x2xf32>, %init: tensor<3xf32>)
+    -> tensor<3x2xf32> {
+  // CHECK: sdy.sharding_rule = #sdy.op_sharding_rule<([i, j], [i])->([i, j], [i]) {i=3, j=2} permutation={j}>
+  %0:2 = mhlo.scan (%input) inits (%init) dimension=1 attributes {
+      is_associative = true
+  } {
+  ^bb0(%input0: tensor<3xf32>, %carry0: tensor<3xf32>):
+    %cst = stablehlo.constant dense<1.0> : tensor<f32>
+    %b = stablehlo.broadcast_in_dim %cst, dims = [] : (tensor<f32>) -> tensor<3xf32>
+    %1 = stablehlo.multiply %input0, %b : tensor<3xf32>
+    %2 = stablehlo.add %1, %carry0 : tensor<3xf32>
+    stablehlo.return %2, %2 : tensor<3xf32>, tensor<3xf32>
+  } : (tensor<3x2xf32>, tensor<3xf32>) -> (tensor<3x2xf32>, tensor<3xf32>)
+  return %0#0 : tensor<3x2xf32>
+}
+
+// A constant that is not a scalar cannot be rebuilt for per-shard slice
+// shapes, so the body is not pointwise: the non-scan dim needs replication
+// while the scan dim stays partitionable.
+// CHECK-LABEL: func @scan_2d_non_scalar_constant_body
+func.func @scan_2d_non_scalar_constant_body(%input: tensor<3x2xf32>, %init: tensor<3xf32>)
+    -> tensor<3x2xf32> {
+  // CHECK: sdy.sharding_rule = #sdy.op_sharding_rule<([i, j], [i])->([i, j], [i]) {i=3, j=2} need_replication={i} permutation={j}>
+  %0:2 = mhlo.scan (%input) inits (%init) dimension=1 attributes {
+      is_associative = true
+  } {
+  ^bb0(%input0: tensor<3xf32>, %carry0: tensor<3xf32>):
+    %cst = stablehlo.constant dense<1.0> : tensor<3xf32>
+    %1 = stablehlo.add %input0, %cst : tensor<3xf32>
+    %2 = stablehlo.add %1, %carry0 : tensor<3xf32>
+    stablehlo.return %2, %2 : tensor<3xf32>, tensor<3xf32>
+  } : (tensor<3x2xf32>, tensor<3xf32>) -> (tensor<3x2xf32>, tensor<3xf32>)
+  return %0#0 : tensor<3x2xf32>
+}
+
+// A same-shape select (with its predicate) applies pointwise, matching the
+// partitioner's body analysis, so the non-scan dim stays pass-through.
+// CHECK-LABEL: func @scan_2d_select_body
+func.func @scan_2d_select_body(%input: tensor<3x2xf32>, %init: tensor<3xf32>)
+    -> tensor<3x2xf32> {
+  // CHECK: sdy.sharding_rule = #sdy.op_sharding_rule<([i, j], [i])->([i, j], [i]) {i=3, j=2} permutation={j}>
+  %0:2 = mhlo.scan (%input) inits (%init) dimension=1 attributes {
+      is_associative = true
+  } {
+  ^bb0(%input0: tensor<3xf32>, %carry0: tensor<3xf32>):
+    %cmp = stablehlo.compare GT, %input0, %carry0 : (tensor<3xf32>, tensor<3xf32>) -> tensor<3xi1>
+    %sel = stablehlo.select %cmp, %input0, %carry0 : tensor<3xi1>, tensor<3xf32>
+    stablehlo.return %sel, %sel : tensor<3xf32>, tensor<3xf32>
+  } : (tensor<3x2xf32>, tensor<3xf32>) -> (tensor<3x2xf32>, tensor<3xf32>)
+  return %0#0 : tensor<3x2xf32>
+}
+
+// Multi-input scan whose inputs have different ranks: the shape-preserving
+// mapping would index the lower-rank input out of bounds, so the rule falls
+// back to the conservative scan-dim-only form.
+// CHECK-LABEL: func @scan_multi_input_mixed_ranks
+func.func @scan_multi_input_mixed_ranks(
+    %input1: tensor<4x3x7xf32>, %input2: tensor<4x5xf32>,
+    %init1: tensor<3x7xf32>, %init2: tensor<5xf32>)
+    -> (tensor<4x3x7xf32>, tensor<4x5xf32>) {
+  // CHECK: sdy.sharding_rule = #sdy.op_sharding_rule<([i, j, k], [i, l], [m, n], [o])->([i, p, q], [i, r], [s, t], [u]) {i=4, j=1, k=1, l=1, m=1, n=1, o=1, p=1, q=1, r=1, s=1, t=1, u=1} need_replication={i}>
+  %0:4 = mhlo.scan (%input1, %input2) inits (%init1, %init2) dimension=0 attributes {
+      is_associative = true
+  } {
+  ^bb0(%in1: tensor<3x7xf32>, %in2: tensor<5xf32>, %c1: tensor<3x7xf32>, %c2: tensor<5xf32>):
+    %a = stablehlo.add %in1, %c1 : tensor<3x7xf32>
+    %b = stablehlo.add %in2, %c2 : tensor<5xf32>
+    stablehlo.return %a, %b, %a, %b : tensor<3x7xf32>, tensor<5xf32>, tensor<3x7xf32>, tensor<5xf32>
+  } : (tensor<4x3x7xf32>, tensor<4x5xf32>, tensor<3x7xf32>, tensor<5xf32>)
+   -> (tensor<4x3x7xf32>, tensor<4x5xf32>, tensor<3x7xf32>, tensor<5xf32>)
+  return %0#0, %0#1 : tensor<4x3x7xf32>, tensor<4x5xf32>
+}
+
+// Multi-input scan whose inputs have equal rank but different non-scan dim
+// sizes: mapping one factor across differently sized dims would misdescribe
+// the op, so the rule falls back to the conservative scan-dim-only form.
+// CHECK-LABEL: func @scan_multi_input_mismatched_sizes
+func.func @scan_multi_input_mismatched_sizes(
+    %input1: tensor<4x3xf32>, %input2: tensor<4x5xf32>,
+    %init1: tensor<3xf32>, %init2: tensor<5xf32>)
+    -> (tensor<4x3xf32>, tensor<4x5xf32>) {
+  // CHECK: sdy.sharding_rule = #sdy.op_sharding_rule<([i, j], [i, k], [l], [m])->([i, n], [i, o], [p], [q]) {i=4, j=1, k=1, l=1, m=1, n=1, o=1, p=1, q=1} need_replication={i}>
+  %0:4 = mhlo.scan (%input1, %input2) inits (%init1, %init2) dimension=0 attributes {
+      is_associative = true
+  } {
+  ^bb0(%in1: tensor<3xf32>, %in2: tensor<5xf32>, %c1: tensor<3xf32>, %c2: tensor<5xf32>):
+    %a = stablehlo.add %in1, %c1 : tensor<3xf32>
+    %b = stablehlo.add %in2, %c2 : tensor<5xf32>
+    stablehlo.return %a, %b, %a, %b : tensor<3xf32>, tensor<5xf32>, tensor<3xf32>, tensor<5xf32>
+  } : (tensor<4x3xf32>, tensor<4x5xf32>, tensor<3xf32>, tensor<5xf32>)
+   -> (tensor<4x3xf32>, tensor<4x5xf32>, tensor<3xf32>, tensor<5xf32>)
+  return %0#0, %0#1 : tensor<4x3xf32>, tensor<4x5xf32>
 }

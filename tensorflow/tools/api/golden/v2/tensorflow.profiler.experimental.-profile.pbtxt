@@ -3,6 +3,14 @@ tf_class {
   is_instance: "<class \'tensorflow.python.profiler.profiler_v2.Profile\'>"
   is_instance: "<class \'object\'>"
   member_method {
+    name: "__enter__"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "__exit__"
+    argspec: "args=[\'self\', \'typ\', \'value\', \'tb\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
     name: "__init__"
     argspec: "args=[\'self\', \'logdir\', \'options\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }

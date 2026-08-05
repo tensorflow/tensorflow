@@ -200,6 +200,11 @@ class CollectiveThunk : public Command {
 
   virtual bool CanUseSymmetricBuffer() const { return false; }
 
+  const absl::StatusOr<std::vector<std::vector<GlobalDeviceId>>>&
+  device_groups() const {
+    return device_groups_;
+  }
+
  private:
   // Rendezvous with other local participants before/after the first call to
   // the collective operation to avoid NCCL deadlocks. See the comment on

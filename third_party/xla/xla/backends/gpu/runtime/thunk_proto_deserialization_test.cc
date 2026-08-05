@@ -952,12 +952,14 @@ TEST(ThunkProtoDeserializationTest, CublasLtGroupedMatmulThunk) {
         }
       )pb");
 
+  // Allocation #4 must cover the grouped-matmul B operand f32[2,407,400]
+  // (2 * 407 * 400 * sizeof(float) = 1302400), not the non-grouped 651200 size.
   std::vector<BufferAllocation> allocations = {
       BufferAllocation(/*index=*/0, /*size=*/4, /*color=*/0),  // UNUSED
       BufferAllocation(/*index=*/1, /*size=*/4, /*color=*/0),  // UNUSED
       BufferAllocation(/*index=*/2, /*size=*/4, /*color=*/0),  // UNUSED
       BufferAllocation(/*index=*/3, /*size=*/164428, /*color=*/0),
-      BufferAllocation(/*index=*/4, /*size=*/651200, /*color=*/0),
+      BufferAllocation(/*index=*/4, /*size=*/1302400, /*color=*/0),
       BufferAllocation(/*index=*/5, /*size=*/161600, /*color=*/0),
       BufferAllocation(/*index=*/6, /*size=*/8, /*color=*/0),
   };

@@ -20,6 +20,7 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/strings/str_cat.h"
 #include "mlir/IR/MLIRContext.h"
 #include "xla/codegen/tiling/experimental/tiling_space.h"
 #include "xla/hlo/analysis/indexing_test_utils.h"
@@ -73,6 +74,19 @@ TEST_F(TileTest, StringFormat) {
       strides [1, 1]
       upper bounds [16, 32]
   )"));
+}
+
+TEST_F(TileTest, DimTileToString) {
+  auto c0 = CreateSymbolicConstant(0, &mlir_context_);
+  auto c4 = CreateSymbolicConstant(4, &mlir_context_);
+  auto c1 = CreateSymbolicConstant(1, &mlir_context_);
+  auto c12 = CreateSymbolicConstant(12, &mlir_context_);
+
+  DimTile dim_tile{c0, c4, c1, c12};
+  EXPECT_EQ(dim_tile.ToString(),
+            "offset [0], size [4], stride [1], upper bound [12]");
+  EXPECT_EQ(absl::StrCat(dim_tile),
+            "offset [0], size [4], stride [1], upper bound [12]");
 }
 
 }  // namespace

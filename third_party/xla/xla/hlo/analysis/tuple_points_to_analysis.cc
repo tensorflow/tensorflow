@@ -407,12 +407,23 @@ absl::Status TuplePointsToAnalysis::HandleAsyncUpdate(
   CHECK(async_update_shape.IsTuple());
   CHECK(prev_async_op_shape.IsTuple());
 
-  // 1. Get the list of explicitly aliased outputs from async-start.
-  HloInstruction* async_start =
-      Cast<HloAsyncInstruction>(async_update)->async_chain_start();
+  // 1. Get explicitly aliased outputs from async-start. When crossing loop
+  // boundaries, async_chain_start() may be null; safely return if unreachable.
+  const HloAsyncInstruction* async_update_inst =
+      (async_update != nullptr) ? DynCast<HloAsyncInstruction>(async_update)
+                                : nullptr;
+  if (async_update_inst == nullptr) {
+    return absl::OkStatus();
+  }
+  HloInstruction* async_start = async_update_inst->async_chain_start();
+  const HloAsyncStartInstruction* async_start_inst =
+      (async_start != nullptr) ? DynCast<HloAsyncStartInstruction>(async_start)
+                               : nullptr;
+  if (async_start_inst == nullptr) {
+    return absl::OkStatus();
+  }
   absl::flat_hash_set<ShapeIndex> explicitly_aliased_outputs;
-  for (const auto& pair : Cast<HloAsyncStartInstruction>(async_start)
-                              ->output_to_operand_aliasing()) {
+  for (const auto& pair : async_start_inst->output_to_operand_aliasing()) {
     explicitly_aliased_outputs.insert(pair.first);
   }
 
@@ -491,24 +502,49 @@ absl::Status TuplePointsToAnalysis::HandleAsyncUpdate(
 
 absl::Status TuplePointsToAnalysis::HandleAsyncDone(
     HloInstruction* async_done) {
-  // AsyncDone forwards its (only) the sub-tuple at index {1} to its output.
   PointsToSet& points_to_set = CreateEmptyPointsToSet(async_done);
-  const PointsToSet& operand_points_to_set =
-      GetPointsToSet(async_done->operand(0));
-  operand_points_to_set.ForEachElement(
-      [&points_to_set, &operand_points_to_set](
-          const ShapeIndex& src_index,
-          const PointsToSet::BufferList& points_to) {
-        if (!src_index.empty() && src_index.front() == 1) {
-          const ShapeIndex target_index(src_index.begin() + 1, src_index.end());
-          *points_to_set.mutable_element(target_index) = points_to;
+  const HloInstruction* async_op = async_done->operand(0);
+  const PointsToSet& operand_points_to_set = GetPointsToSet(async_op);
+  const Shape& async_op_shape = async_op->shape();
 
+  RETURN_IF_ERROR(points_to_set.ForEachMutableElementWithStatus(
+      [&](const ShapeIndex& target_index,
+          PointsToSet::BufferList* buffers) -> absl::Status {
+        ShapeIndex src_index({1});
+        src_index.insert(src_index.end(), target_index.begin(),
+                         target_index.end());
+
+        // AsyncDone forwards the result of the async operation, which is
+        // located at index {1} of the async-start/update output tuple. However,
+        // with late binding, the async operation might not bind the output
+        // (e.g., if the output is not yet known or empty), in which case index
+        // {1} of the async operation shape might be invalid or have an
+        // incompatible shape (like empty tuple ()).
+        //
+        // We only forward if the source index is valid and the shapes are
+        // compatible. Otherwise, we treat AsyncDone as defining its own new
+        // buffer.
+        if (ShapeUtil::IndexIsValid(async_op_shape, src_index) &&
+            ShapeUtil::Compatible(
+                ShapeUtil::GetSubshape(async_done->shape(), target_index),
+                ShapeUtil::GetSubshape(async_op_shape, src_index))) {
+          *buffers = operand_points_to_set.element(src_index);
           for (HloInstruction* tuple :
                operand_points_to_set.tuple_sources(src_index)) {
             points_to_set.add_tuple_source(target_index, tuple);
           }
+        } else {
+          ASSIGN_OR_RETURN(
+              LogicalBuffer * buffer,
+              logical_buffer_analysis_->GetBuffer(async_done, target_index));
+          buffers->push_back(buffer);
+          if (ShapeUtil::GetSubshape(async_done->shape(), target_index)
+                  .IsTuple()) {
+            points_to_set.add_tuple_source(target_index, async_done);
+          }
         }
-      });
+        return absl::OkStatus();
+      }));
 
   // 2. Apply deferred aliases.
   ApplyDeferredAliases(async_done, points_to_set);
@@ -927,10 +963,23 @@ void TuplePointsToAnalysis::InstructionToString(
 
 void TuplePointsToAnalysis::ApplyDeferredAliases(
     HloInstruction* current_instruction, PointsToSet& points_to_set) {
-  HloInstruction* async_start =
-      Cast<HloAsyncInstruction>(current_instruction)->async_chain_start();
-  for (const auto& pair : Cast<HloAsyncStartInstruction>(async_start)
-                              ->output_to_operand_aliasing()) {
+  // When an async instruction crosses a while loop boundary, its async-start
+  // may be null or outside scope; safely return if unreachable.
+  const HloAsyncInstruction* async_inst =
+      (current_instruction != nullptr)
+          ? DynCast<HloAsyncInstruction>(current_instruction)
+          : nullptr;
+  if (async_inst == nullptr) {
+    return;
+  }
+  HloInstruction* async_start = async_inst->async_chain_start();
+  const HloAsyncStartInstruction* async_start_inst =
+      (async_start != nullptr) ? DynCast<HloAsyncStartInstruction>(async_start)
+                               : nullptr;
+  if (async_start_inst == nullptr) {
+    return;
+  }
+  for (const auto& pair : async_start_inst->output_to_operand_aliasing()) {
     const ShapeIndex& logical_output_index = pair.first;
     int64_t operand_nr = pair.second.first;
     const ShapeIndex& logical_operand_index = pair.second.second;

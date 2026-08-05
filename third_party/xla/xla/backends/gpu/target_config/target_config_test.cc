@@ -22,6 +22,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "google/protobuf/text_format.h"
 #include "xla/stream_executor/device_description.pb.h"
+#include "xla/stream_executor/semantic_version.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/status_matchers.h"
@@ -51,6 +52,20 @@ TEST_P(GetGpuTargetConfigTest, TestProtoRetrieval) {
     ASSERT_THAT(config, absl_testing::IsOk());
     EXPECT_TRUE(config->has_gpu_device_info());
     EXPECT_GT(config->gpu_device_info().threads_per_block_limit(), 0);
+
+    stream_executor::SemanticVersion top_level_version(
+        static_cast<unsigned>(config->dnn_version_info().major()),
+        static_cast<unsigned>(config->dnn_version_info().minor()),
+        static_cast<unsigned>(config->dnn_version_info().patch()));
+
+    stream_executor::SemanticVersion device_version(0, 0, 0);
+    if (!config->gpu_device_info().dnn_version().empty()) {
+      ASSERT_OK_AND_ASSIGN(device_version,
+                           stream_executor::SemanticVersion::ParseFromString(
+                               config->gpu_device_info().dnn_version()));
+    }
+
+    EXPECT_EQ(top_level_version, device_version);
   } else {
     EXPECT_THAT(config,
                 absl_testing::StatusIs(absl::StatusCode::kNotFound,

@@ -19,6 +19,7 @@ limitations under the License.
 #include <cstdint>
 #include <limits>
 #include <memory>
+#include <optional>
 #include <utility>
 #include <variant>
 #include <vector>
@@ -31,6 +32,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "xla/tsl/platform/status_macros.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/STLExtras.h"
@@ -69,6 +71,8 @@ limitations under the License.
 #include "xla/runtime/work_dimensions.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/cpu/cpu_options.h"
+#include "xla/service/gpu/model/block_level_parameters.h"
+#include "xla/service/gpu/model/tiling_from_block_parameters.h"
 #include "xla/service/instruction_fusion.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
@@ -76,10 +80,10 @@ limitations under the License.
 #include "xla/xla_data.pb.h"
 
 namespace xla::cpu {
-
-namespace ge = ::xla::gpu::experimental;
-
 namespace {
+
+using llvm::SmallVector;
+namespace ge = ::xla::gpu::experimental;
 
 constexpr int64_t kCacheLineSize = 64;
 
@@ -207,13 +211,11 @@ int64_t EvaluateSymbolicCost(
   for (const auto* root : symbolic_computation.roots()) {
     cost_inst(*root);
   }
-
   for (const auto* inst : symbolic_computation.instructions()) {
     if (operands.contains(inst->hlo())) {
       cost_inst(*inst);
     }
   }
-
   int64_t num_output_tiles = 1;
   for (auto [index, dim] : llvm::enumerate(space.dimensions())) {
     if (dim.type == ge::TilingSpace::DimensionSemantics::kParallel) {
@@ -221,40 +223,7 @@ int64_t EvaluateSymbolicCost(
       num_output_tiles *= CeilOfRatio(dim.dimension_size, val);
     }
   }
-
   return per_tile_cost * num_output_tiles;
-}
-
-absl::StatusOr<Tiling> GetTiling(
-    mlir::MLIRContext& context, const HloFusionInstruction& fusion,
-    const SymbolicTileAnalysis& symbolic_tile_analysis) {
-  ASSIGN_OR_RETURN(std::vector<Tiling> valid_tilings,
-                   symbolic_tile_analysis.GetValidTilings());
-  if (valid_tilings.empty()) {
-    return Internal("No valid tilings found for fusion: %s", fusion.name());
-  }
-
-  const HloInstruction* root_hlo =
-      fusion.fused_instructions_computation()->root_instruction();
-  int64_t best_cost = std::numeric_limits<int64_t>::max();
-  FlatTiling best_tile_sizes;
-  absl::flat_hash_set<const HloInstruction*> operands(fusion.operands().begin(),
-                                                      fusion.operands().end());
-  for (const auto& tiling : valid_tilings) {
-    const FlatTiling& tile_sizes = tiling.tile_sizes().at(root_hlo);
-    ASSIGN_OR_RETURN(TiledHloComputation tiled_hlo_computation,
-                     symbolic_tile_analysis.ComputeTiledComputation(tiling));
-    const int64_t cost = TotalCacheLineHits(tiled_hlo_computation, operands);
-
-    if (cost < best_cost) {
-      best_cost = cost;
-      best_tile_sizes.assign(tile_sizes.begin(), tile_sizes.end());
-    }
-  }
-
-  std::vector<FlatTiling> result{best_tile_sizes};
-  Tiling::TileMapping tile_mapping{{root_hlo, best_tile_sizes}};
-  return Tiling(tile_mapping);
 }
 
 bool IsSupportedShape(const Shape& shape) {
@@ -271,9 +240,24 @@ bool IsSupportedShape(const Shape& shape) {
   return is_supported;
 }
 
-bool IsSupportedInstruction(const HloInstruction& inst) {
+bool HasComplexType(const HloInstruction& inst) {
+  if (primitive_util::IsComplexType(inst.shape().element_type())) {
+    return true;
+  }
+  for (const HloInstruction* operand : inst.operands()) {
+    if (primitive_util::IsComplexType(operand->shape().element_type())) {
+      return true;
+    }
+  }
+  return false;
+}
+
+bool IsSupportedInstruction(const HloInstruction& inst,
+                            bool use_new_xtile_lowering) {
   HloOpcode opcode = inst.opcode();
   switch (opcode) {
+    case HloOpcode::kBroadcast:
+      return use_new_xtile_lowering;
     case HloOpcode::kConvert: {
       PrimitiveType operand_type = inst.operand(0)->shape().element_type();
       PrimitiveType result_type = inst.shape().element_type();
@@ -311,11 +295,11 @@ bool IsSupportedInstruction(const HloInstruction& inst) {
       return true;
     case HloOpcode::kConstant:
       return ShapeUtil::IsEffectiveScalar(inst.shape());
+    case HloOpcode::kDot:
+      return use_new_xtile_lowering;
     case HloOpcode::kBitcastConvert:
     case HloOpcode::kMap:
     case HloOpcode::kPopulationCount:
-    case HloOpcode::kReal:
-    case HloOpcode::kImag:
     case HloOpcode::kSign:
     case HloOpcode::kRoundNearestAfz:
     case HloOpcode::kRoundNearestEven:
@@ -327,7 +311,29 @@ bool IsSupportedInstruction(const HloInstruction& inst) {
       return false;
       break;
     default:
-      return inst.IsElementwise();
+      if (inst.IsElementwise()) {
+        if (HasComplexType(inst)) {
+          switch (opcode) {
+            case HloOpcode::kAdd:
+            case HloOpcode::kSubtract:
+            case HloOpcode::kMultiply:
+            case HloOpcode::kDivide:
+            case HloOpcode::kPower:
+            case HloOpcode::kAbs:
+            case HloOpcode::kNegate:
+            case HloOpcode::kComplex:
+            case HloOpcode::kReal:
+            case HloOpcode::kImag:
+            case HloOpcode::kSelect:
+            case HloOpcode::kCompare:
+              return true;
+            default:
+              return false;
+          }
+        }
+        return true;
+      }
+      return false;
   }
 }
 
@@ -338,7 +344,6 @@ absl::Status VerifyTensorRanks(const HloFusionInstruction& fusion) {
       return Internal(
           "Unsupported fusion in EmitGeneric: tensor rank too large");
     }
-
     for (const xla::HloInstruction* operand : instruction->operands()) {
       if (operand->shape().dimensions().size() > kMaxRank) {
         return Internal(
@@ -349,39 +354,19 @@ absl::Status VerifyTensorRanks(const HloFusionInstruction& fusion) {
   return absl::OkStatus();
 }
 
-absl::StatusOr<SymbolicTileAnalysis> GetSymbolicTileAnalysis(
-    mlir::MLIRContext& context, const HloFusionInstruction& fusion) {
-  RETURN_IF_ERROR(VerifyTensorRanks(fusion));
-
-  EmitterSpecificConstraintsBuilder constraints_builder =
-      TiledEmitterConstraints::GetBuilder();
-  SymbolicTileAnalysisOrError symbolic_tile_analysis_or =
-      SymbolicTileAnalysis::AnalyzeComputation(
-          *fusion.fused_instructions_computation(), &context,
-          constraints_builder);
-  if (std::holds_alternative<FusionDecision>(symbolic_tile_analysis_or)) {
-    return Internal(
-        "Unsupported fusion in EmitGeneric: %s",
-        std::get<FusionDecision>(symbolic_tile_analysis_or).Explain());
-  }
-
-  return std::get<SymbolicTileAnalysis>(std::move(symbolic_tile_analysis_or));
-}
-
-absl::Status IsSupportedTiledFusion(const HloFusionInstruction& fusion) {
+absl::Status IsSupportedTiledFusion(const HloFusionInstruction& fusion,
+                                    bool use_new_xtile_lowering) {
   // TODO(willfroom): Support multi-output fusions.
   if (!fusion.shape().IsArray()) {
     return Internal(
         "Multi-output fusions are not supported by the tiled CPU emitter.");
   }
-
   for (const HloInstruction* operand : fusion.operands()) {
     if (!operand->shape().IsArray()) {
       return Internal(
           "Non-array operands are not supported by the tiled CPU emitter.");
     }
   }
-
   for (const HloInstruction* inst : fusion.fused_instructions()) {
     if (!IsSupportedShape(inst->shape())) {
       return Internal(
@@ -389,31 +374,21 @@ absl::Status IsSupportedTiledFusion(const HloFusionInstruction& fusion) {
           "tiled CPU emitter.",
           inst->ToString());
     }
-
-    if (!IsSupportedInstruction(*inst)) {
+    if (!IsSupportedInstruction(*inst, use_new_xtile_lowering)) {
       return Internal(
           "Instruction %s is not supported by the tiled CPU emitter.",
           inst->ToString());
     }
   }
-
   return absl::OkStatus();
 }
 
 absl::StatusOr<KernelDefinition<MlirKernelSource>> CreateTiledKernelDefinition(
     mlir::MLIRContext& context, const HloFusionInstruction& fusion,
     const BufferAssignment* buffer_assignment, absl::string_view name,
-    int64_t num_work_groups, int64_t num_tiles,
-    mlir::OwningOpRef<mlir::ModuleOp> module) {
+    int64_t num_work_groups, mlir::OwningOpRef<mlir::ModuleOp> module) {
+  VLOG(8) << "num_work_groups: " << num_work_groups;
   module->setName(absl::StrCat("__compute_module", "_", name));
-
-  int64_t tiles_per_workgroup =
-      CeilOfRatio<int64_t>(num_tiles, num_work_groups);
-  module->walk([&](xtile::EntryFuncOp op) {
-    xtile::TilingInfoAttr info = xtile::TilingInfoAttr::get(
-        op->getContext(), num_tiles, tiles_per_workgroup);
-    op->setAttr("xtile.tiling_info", info);
-  });
 
   module->getOperation()->setAttr(
       xla::CpuMemoryRegionNameAttr::name,
@@ -429,39 +404,33 @@ absl::StatusOr<KernelDefinition<MlirKernelSource>> CreateTiledKernelDefinition(
       std::move(kernel_spec), MlirKernelSource(std::move(module)));
 }
 
-absl::StatusOr<KernelDefinition<MlirKernelSource>> EmitTiledFusionKernelImpl(
-    mlir::MLIRContext& context, const HloFusionInstruction& fusion,
-    const BufferAssignment* buffer_assignment, absl::string_view name,
-    int64_t num_work_groups, const SymbolicTileAnalysis& symbolic_tile_analysis,
-    const Tiling& tiling) {
-  EmitterSpecificConstraintsBuilder constraints_builder =
-      TiledEmitterConstraints::GetBuilder();
-  ASSIGN_OR_RETURN(mlir::OwningOpRef<mlir::ModuleOp> module,
-                   xtile::EmitXTileModule(name, fusion, symbolic_tile_analysis,
-                                          tiling, context));
-
-  const HloInstruction* root = symbolic_tile_analysis.GetRoot(0);
-  int64_t num_tiles = 1;
-  for (auto [dim, tile_size] :
-       llvm::zip(root->shape().dimensions(), tiling.tile_sizes().at(root))) {
-    num_tiles *= CeilOfRatio(dim, tile_size);
-  }
-
-  return CreateTiledKernelDefinition(context, fusion, buffer_assignment, name,
-                                     num_work_groups, num_tiles,
-                                     std::move(module));
-}
-
 absl::StatusOr<ge::TiledHloComputation> GetTiledHloComputation(
-    mlir::MLIRContext& context, const HloFusionInstruction& fusion) {
+    mlir::MLIRContext& context, const HloFusionInstruction& fusion,
+    std::optional<gpu::BlockLevelParameters> block_level_parameters) {
   RETURN_IF_ERROR(VerifyTensorRanks(fusion));
 
   std::unique_ptr<HloFusionAdaptor> fusion_adaptor =
       HloFusionAdaptor::ForInstruction(&fusion);
   ASSIGN_OR_RETURN(std::unique_ptr<ge::TilingSpace> tiling_space,
                    ge::TilingSpace::Create(*fusion_adaptor, &context));
-  using ValidTilings = std::vector<llvm::SmallVector<int64_t, 4>>;
-  ASSIGN_OR_RETURN(ValidTilings candidates, tiling_space->GetValidTilings());
+  using ValidTilings = std::vector<SmallVector<int64_t, 4>>;
+  ValidTilings candidates;
+
+  const bool enable_same_shape_multi_output_fusion =
+      fusion.GetModule()
+          ->config()
+          .debug_options()
+          .xla_gpu_experimental_enable_same_shape_multi_output_fusion();
+  if (block_level_parameters.has_value()) {
+    ASSIGN_OR_RETURN(llvm::SmallVector<int64_t> tile_sizes,
+                     gpu::GetTilingSpaceConcreteSizes(
+                         *tiling_space, *block_level_parameters,
+                         enable_same_shape_multi_output_fusion));
+    candidates.push_back(
+        SmallVector<int64_t, 4>(tile_sizes.begin(), tile_sizes.end()));
+  } else {
+    ASSIGN_OR_RETURN(candidates, tiling_space->GetValidTilings());
+  }
 
   // 1. Construct the Symbolic Graph EXACTLY ONCE on the stack/heap.
   ASSIGN_OR_RETURN(
@@ -474,7 +443,7 @@ absl::StatusOr<ge::TiledHloComputation> GetTiledHloComputation(
   // 2. Evaluate all candidates by substituting concrete tile sizes into the
   // symbolic tiles of roots and operands.
   struct Candidate {
-    llvm::SmallVector<int64_t, 4> padded_tile_sizes;
+    SmallVector<int64_t, 4> padded_tile_sizes;
     int64_t cost;
   };
   std::vector<Candidate> evaluated_candidates;
@@ -513,6 +482,8 @@ absl::StatusOr<ge::TiledHloComputation> GetTiledHloComputation(
     auto tiled_computation = ge::TiledHloComputation::Tile(
         *fusion_adaptor, std::move(winning_tiling_space));
     if (tiled_computation.ok()) {
+      tiled_computation->Simplify();
+      tiled_computation->SortInstructionsPostOrder();
       VLOG(2) << "  Tiling succeeded! Winner picked.";
       return std::move(*tiled_computation);
     }
@@ -527,21 +498,25 @@ absl::StatusOr<KernelDefinition<MlirKernelSource>> EmitTiledFusionKernelImpl(
     mlir::MLIRContext& context, const HloFusionInstruction& fusion,
     const BufferAssignment* buffer_assignment, absl::string_view name,
     int64_t num_work_groups, const ge::TiledHloComputation& tiled_computation) {
+  const ge::TilingSpace& tiling_space = tiled_computation.tiling_space();
+  int64_t num_parallel_tiles = 1;
+  for (const auto& dim : tiling_space.dimensions()) {
+    if (dim.type == ge::TilingSpace::DimensionSemantics::kParallel) {
+      CHECK(dim.tile_size.has_value());
+      num_parallel_tiles *= CeilOfRatio(dim.dimension_size, *dim.tile_size);
+    }
+  }
+  VLOG(2) << "num_parallel_tiles: " << num_parallel_tiles;
+  VLOG(2) << "num_work_groups: " << num_work_groups;
   ASSIGN_OR_RETURN(
       mlir::OwningOpRef<mlir::ModuleOp> module,
-      xtile::EmitXTileModule(name, fusion, tiled_computation, context));
-
-  const ge::TiledHloInstruction* root = tiled_computation.roots().front();
-  const HloInstruction* root_hlo = root->hlo();
-  int64_t num_tiles = 1;
-  for (auto [dim, tile_size] :
-       llvm::zip(root_hlo->shape().dimensions(), root->tile_sizes())) {
-    num_tiles *= CeilOfRatio(dim, tile_size);
-  }
-
+      xtile::EmitXTileModule(name, fusion, tiled_computation, context,
+                             /*opaque_args_types=*/{},
+                             /*gpu_cc=*/std::nullopt,
+                             /*num_tiles_per_pid=*/
+                             CeilOfRatio(num_parallel_tiles, num_work_groups)));
   return CreateTiledKernelDefinition(context, fusion, buffer_assignment, name,
-                                     num_work_groups, num_tiles,
-                                     std::move(module));
+                                     num_work_groups, std::move(module));
 }
 
 }  // namespace
@@ -556,61 +531,40 @@ bool IsSupportedTilingType(PrimitiveType type) {
     return false;
   }
 
-  if (primitive_util::IsComplexType(type)) {
-    return false;
-  }
-
   // Some f8 types are not supported by the emitter, just don't support any of
   // them for now.
   if (primitive_util::IsF8Type(type) || primitive_util::IsF6Type(type) ||
       primitive_util::IsMXType(type)) {
     return false;
   }
-
   return true;
 }
 
 TiledEmissionResult EmitTiledFusionKernel(
     mlir::MLIRContext& context, const HloFusionInstruction& fusion,
     const BufferAssignment* buffer_assignment, absl::string_view name,
-    int64_t num_work_groups) {
+    int64_t num_work_groups,
+    std::optional<gpu::BlockLevelParameters> block_level_parameters) {
   VLOG(2) << "EmitTiledFusionKernel called for fusion: " << fusion.name();
-  auto supported_status = IsSupportedTiledFusion(fusion);
+  bool use_new_xtile_lowering = fusion.GetModule()
+                                    ->config()
+                                    .debug_options()
+                                    .xla_cpu_use_new_xtile_lowering();
+  auto supported_status =
+      IsSupportedTiledFusion(fusion, use_new_xtile_lowering);
   VLOG(2) << "  IsSupportedTiledFusion: " << supported_status;
   if (!supported_status.ok()) {
     return {absl::UnimplementedError(
                 "Fusion is not supported by the tiled CPU emitter."),
             /*tiling_succeeded=*/false};
   }
-
-  if (options::EnableExperimentalTiling(fusion.GetModule()->config())) {
-    VLOG(2) << "  EnableExperimentalTiling: true";
-    absl::StatusOr<ge::TiledHloComputation> tiled_computation =
-        GetTiledHloComputation(context, fusion);
-    if (!tiled_computation.ok()) {
-      return {tiled_computation.status(), /*tiling_succeeded=*/false};
-    }
-
-    return {EmitTiledFusionKernelImpl(context, fusion, buffer_assignment, name,
-                                      num_work_groups, *tiled_computation),
-            /*tiling_succeeded=*/true};
+  absl::StatusOr<ge::TiledHloComputation> tiled_computation =
+      GetTiledHloComputation(context, fusion, block_level_parameters);
+  if (!tiled_computation.ok()) {
+    return {tiled_computation.status(), /*tiling_succeeded=*/false};
   }
-
-  absl::StatusOr<SymbolicTileAnalysis> symbolic_tile_analysis =
-      GetSymbolicTileAnalysis(context, fusion);
-  if (!symbolic_tile_analysis.ok()) {
-    return {symbolic_tile_analysis.status(), /*tiling_succeeded=*/false};
-  }
-
-  absl::StatusOr<Tiling> tiling =
-      GetTiling(context, fusion, *symbolic_tile_analysis);
-  if (!tiling.ok()) {
-    return {tiling.status(), /*tiling_succeeded=*/false};
-  }
-
   return {EmitTiledFusionKernelImpl(context, fusion, buffer_assignment, name,
-                                    num_work_groups, *symbolic_tile_analysis,
-                                    *tiling),
+                                    num_work_groups, *tiled_computation),
           /*tiling_succeeded=*/true};
 }
 

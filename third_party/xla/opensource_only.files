@@ -55,6 +55,7 @@ tensorflow/tools/toolchains/win2022/20260322/BUILD:
 tensorflow/tools/toolchains/win2022/BUILD:
 tensorflow/tools/toolchains/win_1803/py38/BUILD:
 tensorflow/tools/toolchains/win_1803/py39/BUILD:
+xla/build_tools/rocm/BUILD:
 xla/third_party/absl/com_google_absl.BUILD:
 xla/third_party/clang_toolchain/cc_configure_clang.bzl:
 xla/third_party/clang_toolchain/download_clang.bzl:

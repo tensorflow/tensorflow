@@ -22,6 +22,7 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/log/check.h"
 #include "absl/status/status.h"
+#include "absl/status/status_matchers.h"
 #include "absl/strings/string_view.h"
 #include "mlir/IR/MLIRContext.h"
 #include "xla/hlo/analysis/indexing_test_utils.h"
@@ -36,7 +37,9 @@ limitations under the License.
 namespace xla::gpu::experimental {
 namespace {
 
+using ::absl_testing::StatusIs;
 using ::mlir::MLIRContext;
+using ::testing::HasSubstr;
 
 MATCHER_P(MatchString, tiling_space_string, "") {
   return ExplainMatchResult(
@@ -320,7 +323,7 @@ TEST_F(TilingSpaceTest, TwoOutputsParallelDims) {
            offsets [tid_0 * ts_0, tid_1 * ts_1] sizes [ts_0, ts_1]
            strides [1, 1] upper bounds [10, 8]
       1 root tile:
-           offsets [tid_0 * ts_2, tid_1 * ts_3] sizes [ts_2, ts_3]
+           offsets [tid_2 * ts_2, tid_3 * ts_3] sizes [ts_2, ts_3]
            strides [1, 1] upper bounds [11, 9]
   )"));
 }
@@ -348,20 +351,53 @@ TEST_F(TilingSpaceTest, TwoOutputsEqualShapesParallelDims) {
     }
   )");
   auto fusion_adaptor = HloFusionAdaptor::ForInstruction(root);
-  auto tiling_space_or = TilingSpace::Create(*fusion_adaptor, &mlir_context_);
-  EXPECT_FALSE(tiling_space_or.ok());
-  EXPECT_EQ(tiling_space_or.status().code(), absl::StatusCode::kUnimplemented);
+  EXPECT_THAT(
+      TilingSpace::Create(*fusion_adaptor, &mlir_context_),
+      StatusIs(absl::StatusCode::kUnimplemented, HasSubstr("multiple roots")));
 }
 
 class TilingSpaceSameShapeMultiOutputTest : public TilingSpaceTest {
  protected:
   DebugOptions GetDebugOptionsForTest() const override {
     DebugOptions debug_options = TilingSpaceTest::GetDebugOptionsForTest();
-    debug_options.set_xla_experimental_enable_same_shape_multi_output_fusion(
-        true);
+    debug_options
+        .set_xla_gpu_experimental_enable_same_shape_multi_output_fusion(true);
     return debug_options;
   }
 };
+
+TEST_F(TilingSpaceSameShapeMultiOutputTest,
+       TwoOutputsEqualShapesDuplicateRoots) {
+  HloInstruction* root = ParseAndGetRoot(R"(
+    HloModule m
+    f {
+      p0 = f32[10,8] parameter(0)
+      ROOT t = (f32[10,8], f32[10,8]) tuple(p0, p0)
+    }
+
+    ENTRY e {
+      p0 = f32[10,8] parameter(0)
+      ROOT fusion = (f32[10,8], f32[10,8]) fusion(p0), kind=kLoop, calls=f
+    }
+  )");
+  auto fusion_adaptor = HloFusionAdaptor::ForInstruction(root);
+  ASSERT_OK_AND_ASSIGN(auto tiling_space,
+                       TilingSpace::Create(*fusion_adaptor, &mlir_context_));
+  EXPECT_THAT(*tiling_space, MatchString(R"(
+    Dimensions:
+        0 type: parallel size: 10 dim ID:0
+          hlo: %p0 = f32[10,8]{1,0} parameter(0)
+        1 type: parallel size: 8 dim ID:1
+          hlo: %p0 = f32[10,8]{1,0} parameter(0)
+    Root tiles:
+      0 root tile:
+           offsets [tid_0 * ts_0, tid_1 * ts_1] sizes [ts_0, ts_1]
+           strides [1, 1] upper bounds [10, 8]
+      1 root tile:
+           offsets [tid_0 * ts_0, tid_1 * ts_1] sizes [ts_0, ts_1]
+           strides [1, 1] upper bounds [10, 8]
+  )"));
+}
 
 TEST_F(TilingSpaceSameShapeMultiOutputTest, TwoOutputsEqualShapesParallelDims) {
   HloInstruction* root = ParseAndGetRoot(R"(

@@ -94,6 +94,10 @@ class TFE_TensorHandleCache {
 
   void Clear();
 
+  // Maximum number of entries before the cache is cleared. Prevents unbounded
+  // growth when many distinct scalar values are created in a loop.
+  static constexpr size_t kMaxCacheSize = 1024;
+
  private:
   // TODO: b/169790439 - Instead of `TFE_Context*` key, ideally Python's context
   // object should have TFE_TensorHandleCache instance. Migrate once Python
@@ -120,22 +124,25 @@ class TFE_TensorHandleCache {
     }
   };
 
-  auto ExtractCache() {
+  using Cache = absl::flat_hash_map<Key, TFE_TensorHandle*, KeyHash, KeyEqual>;
+
+  Cache ExtractCache() {
 #ifdef Py_GIL_DISABLED
     absl::MutexLock lock(mu_);
 #endif  // Py_GIL_DISABLED
-    auto temp_cache = std::move(cache_);
+    Cache temp_cache = std::move(cache_);
     cache_.clear();
     return temp_cache;
   }
 
-  void DecrefUnrefAll() {
-    auto temp_cache = ExtractCache();
+  static void DecrefUnrefAll(Cache temp_cache) {
     for (const auto& [key, value] : temp_cache) {
       Py_DECREF(static_cast<PyObject*>(std::get<0>(key)));
       TFE_DeleteTensorHandle(value);
     }
   }
+
+  void DecrefUnrefAll() { DecrefUnrefAll(ExtractCache()); }
 
 #ifdef Py_GIL_DISABLED
   mutable absl::Mutex mu_;
@@ -143,7 +150,7 @@ class TFE_TensorHandleCache {
 
   // Under a GIL-enabled Python, guarded by the GIL. Under a no-GIL Python,
   // guarded by mu_.
-  absl::flat_hash_map<Key, TFE_TensorHandle*, KeyHash, KeyEqual> cache_;
+  Cache cache_;
 };
 
 }  // namespace tensorflow

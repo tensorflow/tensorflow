@@ -674,7 +674,7 @@ absl::StatusOr<bool> SoftmaxRewriterTriton::MaybeFuseNormalizationDiamond(
       diamond.root->GetModule()
           ->config()
           .debug_options()
-          .xla_experimental_enable_same_shape_multi_output_fusion());
+          .xla_gpu_experimental_enable_same_shape_multi_output_fusion());
 
   return MaybeFuseDiamondImpl(diamond, indexing_performance_model, device_info_,
                               shape_size_, alias_info_, mlir_context_,

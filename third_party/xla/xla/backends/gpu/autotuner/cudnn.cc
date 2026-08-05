@@ -27,6 +27,7 @@ limitations under the License.
 #include "xla/tsl/platform/status_macros.h"
 #include "xla/autotuning.pb.h"
 #include "xla/backends/autotuner/codegen_backend.h"
+#include "xla/backends/gpu/target_config/target_config.h"
 #include "xla/backends/gpu/transforms/cudnn_fusion_compiler.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -35,6 +36,7 @@ limitations under the License.
 #include "xla/hlo/utils/hlo_query.h"
 #include "xla/literal_util.h"
 #include "xla/service/algorithm_util.h"
+#include "xla/service/compiler.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/cublas_cudnn.h"
 #include "xla/service/gpu/gpu_conv_runner.h"
@@ -48,9 +50,7 @@ limitations under the License.
 #include "xla/stream_executor/engine_options.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
-#include "xla/stream_executor/stream_executor_memory_allocator.h"
-#include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/statusor.h"
+#include "xla/stream_executor/stream_executor_address_allocator.h"
 #include "xla/tsl/protobuf/dnn.pb.h"
 #include "xla/util.h"
 #include "xla/xla.pb.h"
@@ -115,7 +115,7 @@ absl::Status ApplyConfigAndUpdateWorkspaceInOutputTuple(
 }
 
 bool IsSupportedCudnnFusion(const HloInstruction& instr,
-                            se::StreamExecutor* stream_executor,
+                            const GpuTargetConfig& target_config,
                             const DebugOptions& debug_options) {
   const HloComputation* computation = instr.fused_instructions_computation();
   const HloInstruction* hero = hlo_query::GetFirstInstructionWithOpcode(
@@ -142,7 +142,7 @@ bool IsSupportedCudnnFusion(const HloInstruction& instr,
     return false;
   }
 
-  if (GetDnnVersionInfoOrDefault(stream_executor).major_version() < 9) {
+  if (target_config.device_description.dnn_version().major_version() < 9) {
     VLOG(1) << "Cudnn version is too old.";
     return false;
   }
@@ -154,7 +154,7 @@ bool IsSupportedCudnnFusion(const HloInstruction& instr,
   }
 
   stream_executor::CudaComputeCapability compute_capability =
-      stream_executor->GetDeviceDescription().cuda_compute_capability();
+      target_config.device_description.cuda_compute_capability();
   if ((compute_capability.IsAtLeastAmpere() &&
        debug_options.xla_gpu_cudnn_gemm_fusion_level() > 1) ||
       (compute_capability.IsAtLeastBlackwell() &&
@@ -246,7 +246,7 @@ absl::StatusOr<std::vector<CudnnBackendConfig>> GetAlgorithms(
 absl::StatusOr<std::vector<std::unique_ptr<BackendConfig>>>
 GetCudnnFusionConfigs(const HloInstruction& instr,
                       se::StreamExecutor* stream_executor,
-                      const Compiler::GpuTargetConfig& target_config,
+                      const GpuTargetConfig& target_config,
                       const DebugOptions& debug_options) {
   std::vector<std::unique_ptr<BackendConfig>> configs;
   bool use_deviceless = false;
@@ -269,6 +269,10 @@ GetCudnnFusionConfigs(const HloInstruction& instr,
           "Deviceless cuDNN compilation requires cuDNN >= 9.8.");
     }
     stream_executor = nullptr;
+  } else if (stream_executor == nullptr) {
+    return absl::InvalidArgumentError(
+        "Null stream executor is not supported when cuDNN deviceless "
+        "compilation is disabled.");
   }
   ASSIGN_OR_RETURN(int plan_count,
                    CuDnnFusionCompiler::GetAvailablePlanCount(
@@ -288,6 +292,9 @@ GetCudnnFusionConfigs(const HloInstruction& instr,
 absl::StatusOr<std::vector<std::unique_ptr<BackendConfig>>>
 GetConvolutionCustomCallConfigs(const HloCustomCallInstruction* instr,
                                 se::StreamExecutor* stream_executor) {
+  if (stream_executor == nullptr) {
+    return absl::InvalidArgumentError("Null stream executor is not supported.");
+  }
   ASSIGN_OR_RETURN(GpuConvConfig gpu_conv_config, GetGpuConvConfig(instr));
   se::dnn::ConvolutionKind conv_kind =
       CudnnConvKindToProto(gpu_conv_config.kind);
@@ -364,7 +371,7 @@ absl::Status ApplyConfigToCudnnCustomCall(HloInstruction& instr,
 
 bool CudnnBackend::IsSupported(const HloInstruction& instr) {
   if (instr.opcode() == HloOpcode::kFusion) {
-    return IsSupportedCudnnFusion(instr, stream_executor(), debug_options());
+    return IsSupportedCudnnFusion(instr, target_config(), debug_options());
   }
 
   if (instr.opcode() == HloOpcode::kCustomCall) {
@@ -383,9 +390,13 @@ absl::StatusOr<std::unique_ptr<BackendConfig>> CudnnBackend::GetDefaultConfig(
     config->mutable_algorithm()->set_algo_id(-1);
     return config;
   }
+  if (instr.opcode() != HloOpcode::kFusion) {
+    return absl::InvalidArgumentError(
+        "Cannot get default cuDNN config: backend only supports fusion "
+        "and custom call instructions");
+  }
 
-  if (stream_executor() != nullptr && instr.opcode() == HloOpcode::kFusion &&
-      IsSupportedCudnnFusion(instr, stream_executor(), debug_options())) {
+  if (IsSupportedCudnnFusion(instr, target_config(), debug_options())) {
     ASSIGN_OR_RETURN(std::vector<std::unique_ptr<BackendConfig>> configs,
                      GetCudnnFusionConfigs(instr, stream_executor(),
                                            target_config(), debug_options()));
@@ -395,7 +406,7 @@ absl::StatusOr<std::unique_ptr<BackendConfig>> CudnnBackend::GetDefaultConfig(
   }
 
   return absl::InvalidArgumentError(
-      "Cannot get default config for cudnn backend without device.");
+      "Cannot get default cuDNN config: not supported by cuDNN fusion.");
 }
 
 absl::StatusOr<std::vector<std::unique_ptr<BackendConfig>>>

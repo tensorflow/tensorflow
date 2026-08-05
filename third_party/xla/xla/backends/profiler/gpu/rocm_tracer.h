@@ -119,6 +119,8 @@ class RocmTracer {
   // for buffered callback services
   rocprofiler_context_id_t context_{};
   rocprofiler_buffer_id_t buffer_{};
+  // for HIP stream tracking (ROCPROFILER_CALLBACK_TRACING_HIP_STREAM)
+  rocprofiler_context_id_t hip_stream_ctx_{};
 
   // Maps & misc -------------------------------------------------------
   kernel_info_map_t kernel_info_{};

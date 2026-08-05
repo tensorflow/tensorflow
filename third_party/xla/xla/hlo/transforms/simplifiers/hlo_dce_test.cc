@@ -1127,5 +1127,41 @@ ENTRY main.6 {
                        expected_shape));
 }
 
+TEST_F(HloDceTest, DceWithDisabledWhileLoopDceAttr) {
+  constexpr absl::string_view kHloString = R"hlo(
+HloModule module_dce_disabled
+
+while_cond {
+  state = (s32[], f32[100], f32[100]) parameter(0)
+  i = s32[] get-tuple-element(state), index=0
+  limit = s32[] constant(10)
+  ROOT cond = pred[] compare(i, limit), direction=LT
+}
+
+while_body {
+  state = (s32[], f32[100], f32[100]) parameter(0)
+  i = s32[] get-tuple-element(state), index=0
+  acc = f32[100] get-tuple-element(state), index=1
+  dead = f32[100] get-tuple-element(state), index=2
+  one = s32[] constant(1)
+  next_i = s32[] add(i, one)
+  ROOT next_state = (s32[], f32[100], f32[100]) tuple(next_i, acc, dead)
+}
+
+ENTRY main {
+  base = f32[100] parameter(0)
+  input = f32[100] parameter(1)
+  i_0 = s32[] constant(0)
+  init = (s32[], f32[100], f32[100]) tuple(i_0, base, input)
+  ROOT loop = (s32[], f32[100], f32[100]) while(init), condition=while_cond, body=while_body, frontend_attributes={xla_disable_while_loop_dce="true"}
+}
+)hlo";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(kHloString));
+  HloDCE dce;
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, dce.Run(module.get()));
+  EXPECT_FALSE(changed);
+}
+
 }  // namespace
 }  // namespace xla

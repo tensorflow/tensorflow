@@ -1,0 +1,67 @@
+HloModule jit_argsort_axis, entry_computation_layout={(bf16[1024,512]{1,0})->bf16[1024,512]{1,0}}
+
+region_0.1 {
+  sort.6 = s32[] parameter(2)
+  sort.7 = s32[] parameter(3)
+  sort.4 = bf16[] parameter(0)
+  ne.2 = pred[] compare(sort.4, sort.4), direction=NE
+  constant.2 = bf16[] constant(nan)
+  constant.3 = bf16[] constant(0)
+  eq.2 = pred[] compare(sort.4, constant.3), direction=EQ
+  select_n.4 = bf16[] select(eq.2, constant.3, sort.4)
+  select_n.5 = bf16[] select(ne.2, constant.2, select_n.4)
+  sort.5 = bf16[] parameter(1)
+  ne.3 = pred[] compare(sort.5, sort.5), direction=NE
+  eq.3 = pred[] compare(sort.5, constant.3), direction=EQ
+  select_n.6 = bf16[] select(eq.3, constant.3, sort.5)
+  select_n.7 = bf16[] select(ne.3, constant.2, select_n.6)
+  ROOT lt_to.1 = pred[] compare(select_n.5, select_n.7), direction=LT, type=TOTALORDER
+}
+
+argsort.2 {
+  Arg_0.1 = bf16[1024,512]{1,0} parameter(0)
+  iota.2 = s32[512]{0} iota(), iota_dimension=0
+  iota.3 = s32[1024,512]{1,0} broadcast(iota.2), dimensions={1}
+  sort.11 = (bf16[1024,512]{1,0}, s32[1024,512]{1,0}) sort(Arg_0.1, iota.3), dimensions={1}, is_stable=true, to_apply=region_0.1
+  sort.12 = bf16[1024,512]{1,0} get-tuple-element(sort.11), index=0
+  ROOT sort.13 = s32[1024,512]{1,0} get-tuple-element(sort.11), index=1
+}
+
+region_1.3 {
+  reduce_and.3 = pred[] parameter(0)
+  reduce_and.4 = pred[] parameter(1)
+  ROOT reduce_and.5 = pred[] and(reduce_and.3, reduce_and.4)
+}
+
+take_along_axis.4 {
+  Arg_1.1 = s32[1024,512]{1,0} parameter(1)
+  constant.15 = s32[] constant(0)
+  lt.2 = s32[1024,512]{1,0} broadcast(constant.15), dimensions={}
+  lt.3 = pred[1024,512]{1,0} compare(Arg_1.1, lt.2), direction=LT
+  constant.13 = s32[] constant(512)
+  add.2 = s32[1024,512]{1,0} broadcast(constant.13), dimensions={}
+  add.3 = s32[1024,512]{1,0} add(Arg_1.1, add.2)
+  select_n.10 = s32[1024,512]{1,0} select(lt.3, add.3, Arg_1.1)
+  reshape.1 = s32[1024,512,1]{2,1,0} reshape(select_n.10)
+  constant.12 = s32[] constant(0)
+  ge.2 = s32[1024,512,1]{2,1,0} broadcast(constant.12), dimensions={}
+  ge.3 = pred[1024,512,1]{2,1,0} compare(reshape.1, ge.2), direction=GE
+  constant.11 = s32[] constant(511)
+  le.2 = s32[1024,512,1]{2,1,0} broadcast(constant.11), dimensions={}
+  le.3 = pred[1024,512,1]{2,1,0} compare(reshape.1, le.2), direction=LE
+  and.1 = pred[1024,512,1]{2,1,0} and(ge.3, le.3)
+  constant.14 = pred[] constant(true)
+  reduce_and.7 = pred[1024,512]{1,0} reduce(and.1, constant.14), dimensions={2}, to_apply=region_1.3
+  Arg_0.3 = bf16[1024,512]{1,0} parameter(0)
+  gather.1 = bf16[1024,512]{1,0} gather(Arg_0.3, reshape.1), offset_dims={}, collapsed_slice_dims={1}, start_index_map={1}, operand_batching_dims={0}, start_indices_batching_dims={0}, index_vector_dim=2, slice_sizes={1,1}
+  constant.10 = bf16[] constant(nan)
+  broadcast_in_dim.1 = bf16[1024,512]{1,0} broadcast(constant.10), dimensions={}
+  ROOT select_n.11 = bf16[1024,512]{1,0} select(reduce_and.7, gather.1, broadcast_in_dim.1)
+}
+
+ENTRY main.5 {
+  x.1 = bf16[1024,512]{1,0} parameter(0)
+  jit_argsort_.1 = s32[1024,512]{1,0} call(x.1), to_apply=argsort.2
+  ROOT jit_take_along_axis_.1 = bf16[1024,512]{1,0} call(x.1, jit_argsort_.1), to_apply=take_along_axis.4
+}
+

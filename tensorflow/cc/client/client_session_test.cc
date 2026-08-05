@@ -155,11 +155,11 @@ TEST(ClientSessionTest, MultiThreadedWithCustomThreadpool) {
   ClientSession session(root, GetSessionOptions());
 
   auto inter_op_threadpool =
-      absl::make_unique<CustomThreadPoolImpl>(num_threads);
+      std::make_unique<CustomThreadPoolImpl>(num_threads);
   ASSERT_EQ(inter_op_threadpool->GetNumScheduleCalled(), 0);
 
   auto intra_op_threadpool =
-      absl::make_unique<CustomThreadPoolImpl>(num_threads);
+      std::make_unique<CustomThreadPoolImpl>(num_threads);
   ASSERT_EQ(intra_op_threadpool->GetNumScheduleCalled(), 0);
 
   tensorflow::thread::ThreadPoolOptions threadPoolOptions;
@@ -223,11 +223,11 @@ TEST(ClientSessionTest, CallableWithCustomThreadPool) {
   std::vector<Tensor> outputs;
 
   auto inter_op_threadpool =
-      absl::make_unique<CustomThreadPoolImpl>(num_threads);
+      std::make_unique<CustomThreadPoolImpl>(num_threads);
   ASSERT_EQ(inter_op_threadpool->GetNumScheduleCalled(), 0);
 
   auto intra_op_threadpool =
-      absl::make_unique<CustomThreadPoolImpl>(num_threads);
+      std::make_unique<CustomThreadPoolImpl>(num_threads);
   ASSERT_EQ(intra_op_threadpool->GetNumScheduleCalled(), 0);
 
   tensorflow::thread::ThreadPoolOptions threadPoolOptions;

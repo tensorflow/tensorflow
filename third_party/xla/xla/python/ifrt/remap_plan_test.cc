@@ -808,6 +808,63 @@ TEST_P(RemapPlanTest, Hash) {
   EXPECT_TRUE(absl::VerifyTypeImplementsAbslHashCorrectly(plans));
 }
 
+TEST_P(RemapPlanTest, CreateOptimizedIntervalEndExceedsNumShards) {
+  ArraySpec spec{
+      /*dtype=*/DType(DType::kS32),
+      /*shape=*/Shape({4, 6}),
+      /*sharding=*/
+      ConcreteEvenSharding::Create(GetDevices({0, 1, 2, 3}), MemoryKind(),
+                                   /*shape=*/Shape({4, 6}),
+                                   /*shard_shape=*/Shape({2, 3}))};
+
+  std::vector<ArraySpec> input_specs;
+  input_specs.push_back(spec);
+  std::vector<ArraySpec> output_specs;
+  output_specs.push_back(spec);
+
+  std::vector<RemapPlan::Mapping> mappings;
+  mappings.push_back(RemapPlan::Mapping{/*in_array=*/0,
+                                        /*out_array=*/0,
+                                        /*from=*/{RemapPlan::Interval{0, 5, 2}},
+                                        /*to=*/{RemapPlan::Interval{0, 2, 1}}});
+
+  EXPECT_THAT(
+      RemapPlan::CreateOptimized(client(), std::move(input_specs),
+                                 std::move(output_specs), std::move(mappings)),
+      absl_testing::StatusIs(
+          absl::StatusCode::kInvalidArgument,
+          HasSubstr("interval addresses shard 4, which is out of "
+                    "range [0, 4)")));
+}
+
+TEST_P(RemapPlanTest, CreateOptimizedNegativeStartNoCrash) {
+  ArraySpec spec{
+      /*dtype=*/DType(DType::kS32),
+      /*shape=*/Shape({4, 6}),
+      /*sharding=*/
+      ConcreteEvenSharding::Create(GetDevices({0, 1, 2, 3}), MemoryKind(),
+                                   /*shape=*/Shape({4, 6}),
+                                   /*shard_shape=*/Shape({2, 3}))};
+
+  std::vector<ArraySpec> input_specs;
+  input_specs.push_back(spec);
+  std::vector<ArraySpec> output_specs;
+  output_specs.push_back(spec);
+
+  std::vector<RemapPlan::Mapping> mappings;
+  mappings.push_back(
+      RemapPlan::Mapping{/*in_array=*/0,
+                         /*out_array=*/0,
+                         /*from=*/{RemapPlan::Interval{-1, 0, 1}},
+                         /*to=*/{RemapPlan::Interval{0, 1, 1}}});
+
+  EXPECT_THAT(
+      RemapPlan::CreateOptimized(client(), std::move(input_specs),
+                                 std::move(output_specs), std::move(mappings)),
+      absl_testing::StatusIs(absl::StatusCode::kInvalidArgument,
+                             HasSubstr("start must be in [0, 3], but is -1")));
+}
+
 INSTANTIATE_TEST_SUITE_P(NumDevices, RemapPlanTest,
                          testing::Values(test_util::DeviceTestParam{
                              /*num_devices=*/4,

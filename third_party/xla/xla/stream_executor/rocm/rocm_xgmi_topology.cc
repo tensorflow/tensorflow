@@ -26,7 +26,7 @@ namespace stream_executor::gpu {
 XgmiTopologyInfo GetRocmXgmiTopology(absl::string_view pci_bus_id) {
   XgmiTopologyInfo info;
 
-  absl::MutexLock lock(&rocm_smi_mutex);
+  absl::MutexLock lock(rocm_smi_mutex);
 
   if (!InitRocmSmi()) return info;
 

@@ -260,26 +260,4 @@ absl::StatusOr<FingerprintDef> ReadSavedModelFingerprint(
   return fingerprint_proto;
 }
 
-std::string Singleprint(uint64_t graph_def_program_hash,
-                        uint64_t signature_def_hash,
-                        uint64_t saved_object_graph_hash,
-                        uint64_t checkpoint_hash) {
-  return std::to_string(graph_def_program_hash) + "/" +
-         std::to_string(signature_def_hash) + "/" +
-         std::to_string(saved_object_graph_hash) + "/" +
-         std::to_string(checkpoint_hash);
-}
-
-std::string Singleprint(const FingerprintDef& fingerprint) {
-  return Singleprint(
-      fingerprint.graph_def_program_hash(), fingerprint.signature_def_hash(),
-      fingerprint.saved_object_graph_hash(), fingerprint.checkpoint_hash());
-}
-
-absl::StatusOr<std::string> Singleprint(absl::string_view export_dir) {
-  TF_ASSIGN_OR_RETURN(const FingerprintDef fingerprint_def,
-                      ReadSavedModelFingerprint(export_dir));
-  return Singleprint(fingerprint_def);
-}
-
 }  // namespace tensorflow::saved_model::fingerprinting

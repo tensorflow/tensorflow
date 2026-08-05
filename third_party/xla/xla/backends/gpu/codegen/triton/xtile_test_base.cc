@@ -132,12 +132,14 @@ XTileTestBase::CreateXTileIrAndFileCheck(
             computation.parent()
                 ->config()
                 .debug_options()
-                .xla_experimental_enable_same_shape_multi_output_fusion()));
+                .xla_gpu_experimental_enable_same_shape_multi_output_fusion()));
     RETURN_IF_ERROR(tiling_space->AssignTileSizes(
         xtile::GetPaddedTileSizes(concrete_sizes)));
     ASSIGN_OR_RETURN(ge::TiledHloComputation tiled_computation,
                      ge::TiledHloComputation::Tile(*fusion_adaptor,
                                                    std::move(tiling_space)));
+    tiled_computation.Simplify();
+    tiled_computation.SortInstructionsPostOrder();
     if (Decision constraints = ge::VerifyTritonConstraints(
             tiled_computation, TestGpuDeviceInfo::RTXA6000DeviceInfo());
         !constraints) {

@@ -301,6 +301,23 @@ TEST_F(FunctionalHloRunnerTest, SingleDeviceHloThroughStableHlo) {
       {GetHloPath("single_device.hlo")}, InputFormat::kText));
 }
 
+TEST_F(FunctionalHloRunnerTest, SingleDeviceStableHloThroughStableHlo) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::PjRtClient> client,
+                       GetPjRtClient());
+
+  xla::DebugOptions debug_options;
+  FunctionalHloRunner::PreprocessingOptions preproc_options;
+  preproc_options.compile_as_stablehlo = true;
+  FunctionalHloRunner::RawCompileOptions raw_compile_options;
+  raw_compile_options.num_replicas = 1;
+  raw_compile_options.num_partitions = 1;
+  FunctionalHloRunner::RunningOptions running_options;
+
+  EXPECT_OK(FunctionalHloRunner::LoadAndRunAndDump(
+      *client, preproc_options, raw_compile_options, running_options,
+      {GetHloPath("single_device.stablehlo")}, InputFormat::kStableHlo));
+}
+
 TEST_F(FunctionalHloRunnerTest, SingleDeviceHloWithExecutionProfile) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::PjRtClient> client,
                           GetPjRtClient());
@@ -540,6 +557,7 @@ void CompileAndFilecheck(
   opts.num_partitions = num_partitions;
   opts.spmd_mode = FunctionalHloRunner::SpmdMode::kUseSpmdPartitioning;
   opts.xla_dump_to = dump_dir;
+  opts.debug_options.set_xla_dump_emitter_re(".*");
   TF_EXPECT_OK(FunctionalHloRunner::LoadAndCompile(
                    *client, preproc_options, opts, hlo_file, InputFormat::kText)
                    .status());

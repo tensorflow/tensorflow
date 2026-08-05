@@ -479,13 +479,17 @@ bool HloDataflowAnalysis::UpdateAsyncChainOutputValueSet(
       async_op->async_execution_thread(), execution_threads_);
 
   if (!is_thread_included && async_op->opcode() == HloOpcode::kAsyncStart) {
+    // AsyncStart in a non-included thread has the output values defined, no
+    // need to propagate.
     return changed;
   }
 
   if (is_thread_included) {
-    // forward from root of async_wrapped_computation
-    HloInstruction* root =
-        async_op->async_wrapped_computation()->root_instruction();
+    HloComputation* wrapped_comp = async_op->async_wrapped_computation();
+    if (wrapped_comp == nullptr) {
+      return changed;
+    }
+    HloInstruction* root = wrapped_comp->root_instruction();
     ShapeUtil::ForEachSubshape(
         root->shape(), [&](const Shape& subshape, const ShapeIndex& index) {
           if (!subshape.IsArray() && !subshape.IsToken()) {
@@ -493,11 +497,9 @@ bool HloDataflowAnalysis::UpdateAsyncChainOutputValueSet(
           }
           const HloValueSet& root_value_set = GetValueSet(root, index);
 
-          ShapeIndex output_index = {};
-          if (async_op->opcode() == HloOpcode::kAsyncStart ||
-              async_op->opcode() == HloOpcode::kAsyncUpdate) {
-            output_index.push_back(1);
-          }
+          ShapeIndex output_index = async_op->opcode() == HloOpcode::kAsyncDone
+                                        ? ShapeIndex{}
+                                        : ShapeIndex{1};
           output_index.insert(output_index.end(), index.begin(), index.end());
           if (!ShapeUtil::IndexIsValid(async_op->shape(), output_index) ||
               !ShapeUtil::Compatible(
@@ -516,7 +518,7 @@ bool HloDataflowAnalysis::UpdateAsyncChainOutputValueSet(
   } else {
     CHECK(async_op->opcode() == HloOpcode::kAsyncUpdate ||
           async_op->opcode() == HloOpcode::kAsyncDone);
-    // forward from previous async instruction in the chain
+    // Forward from previous async instruction in the chain.
     const HloInstruction* operand = async_op->operand(0);
     ShapeUtil::ForEachSubshape(operand->shape(), [&](const Shape& subshape,
                                                      const ShapeIndex& index) {
@@ -560,9 +562,21 @@ bool HloDataflowAnalysis::UpdateAsyncStartValueSet(
                                                async_start->operand(i));
   }
 
-  // AsyncStart forwards the async wrapped computation root values to element
-  // {1} of its output.
-  changed |= UpdateAsyncChainOutputValueSet(async_start);
+  bool is_dus =
+      async_start->async_wrapped_opcode() == HloOpcode::kDynamicUpdateSlice;
+  if (!is_dus) {
+    // AsyncStart forwards the async wrapped computation root values to element
+    // {1} of its output.
+    changed |= UpdateAsyncChainOutputValueSet(async_start);
+  } else if (HloInstruction::IsThreadIncluded(
+                 async_start->async_execution_thread(), execution_threads_)) {
+    const HloValueSet& operand_value_set = GetValueSet(async_start->operand(0));
+    HloValueSet& value_set = GetMutableValueSet(async_start, {1});
+    if (value_set != operand_value_set) {
+      value_set = operand_value_set;
+      changed = true;
+    }
+  }
   return changed;
 }
 
@@ -570,16 +584,60 @@ bool HloDataflowAnalysis::UpdateAsyncUpdateValueSet(
     HloInstruction* async_update) {
   CHECK_EQ(async_update->opcode(), HloOpcode::kAsyncUpdate);
   bool changed = false;
-  // 1. Update bound operands (index 0)
-  std::vector<const HloInstruction*> async_bound_operands =
-      hlo_instruction_utils::async::GetAsyncBoundOperands(
-          Cast<HloAsyncInstruction>(async_update));
-  for (int64_t i = 0; i < async_bound_operands.size(); ++i) {
-    changed |= UpdateAsyncChainOperandValueSet(async_update, i,
-                                               async_bound_operands[i]);
+  // 1. Update bound operands (index 0). Only traverse chain operands if the
+  // start is reachable in scope (not null across a while loop boundary).
+  const HloAsyncInstruction* async_update_inst =
+      (async_update != nullptr) ? DynCast<HloAsyncInstruction>(async_update)
+                                : nullptr;
+  if (async_update_inst != nullptr &&
+      async_update_inst->async_chain_start() != nullptr &&
+      DynCast<HloAsyncStartInstruction>(
+          async_update_inst->async_chain_start()) != nullptr) {
+    std::vector<const HloInstruction*> async_bound_operands =
+        hlo_instruction_utils::async::GetAsyncBoundOperands(async_update_inst);
+    for (int64_t i = 0; i < async_bound_operands.size(); ++i) {
+      changed |= UpdateAsyncChainOperandValueSet(async_update, i,
+                                                 async_bound_operands[i]);
+    }
   }
 
-  // 2. Forward other indices from operand(0)
+  bool is_loop_crossing =
+      async_update->operand(0)->opcode() == HloOpcode::kGetTupleElement ||
+      async_update->operand(0)->opcode() == HloOpcode::kTuple ||
+      async_update->operand(0)->opcode() == HloOpcode::kWhile ||
+      async_update->operand(0)->opcode() == HloOpcode::kParameter;
+  bool is_slice_or_copy =
+      is_loop_crossing &&
+      (async_update->async_wrapped_opcode() == HloOpcode::kDynamicUpdateSlice ||
+       async_update->async_wrapped_opcode() == HloOpcode::kDynamicSlice);
+
+  if (!is_slice_or_copy) {
+    // 2. Forward other indices from operand(0)
+    const HloInstruction* prev_chain = async_update->operand(0);
+    ShapeUtil::ForEachSubshape(
+        async_update->shape(),
+        [&](const Shape& subshape, const ShapeIndex& index) {
+          if (!subshape.IsArray() && !subshape.IsToken()) {
+            return;
+          }
+          if (index.empty() || index.front() <= 1) {
+            // Skip the bound operands and the output of the previous async
+            // instruction in the chain.
+            return;
+          }
+          const HloValueSet& operand_value_set = GetValueSet(prev_chain, index);
+          HloValueSet& value_set = GetMutableValueSet(async_update, index);
+          if (value_set != operand_value_set) {
+            value_set = operand_value_set;
+            changed = true;
+          }
+        });
+
+    // 3. Update the output values from wrapped computation (index 1)
+    changed |= UpdateAsyncChainOutputValueSet(async_update);
+    return changed;
+  }
+
   const HloInstruction* prev_chain = async_update->operand(0);
   ShapeUtil::ForEachSubshape(
       async_update->shape(),
@@ -587,12 +645,9 @@ bool HloDataflowAnalysis::UpdateAsyncUpdateValueSet(
         if (!subshape.IsArray() && !subshape.IsToken()) {
           return;
         }
-        if (index.empty() || index.front() <= 1) {
-          // Skip the bound operands and the output of the previous async
-          // instruction in the chain.
+        if (index.empty() || index.front() == 0) {
           return;
         }
-
         const HloValueSet& operand_value_set = GetValueSet(prev_chain, index);
         HloValueSet& value_set = GetMutableValueSet(async_update, index);
         if (value_set != operand_value_set) {
@@ -600,14 +655,43 @@ bool HloDataflowAnalysis::UpdateAsyncUpdateValueSet(
           changed = true;
         }
       });
-  // 3. Update the output values from wrapped computation (index 1)
-  changed |= UpdateAsyncChainOutputValueSet(async_update);
   return changed;
 }
 
 bool HloDataflowAnalysis::UpdateAsyncDoneValueSet(HloInstruction* async_done) {
   CHECK_EQ(async_done->opcode(), HloOpcode::kAsyncDone);
-  return UpdateAsyncChainOutputValueSet(async_done);
+  bool is_loop_crossing =
+      async_done->operand(0)->opcode() == HloOpcode::kGetTupleElement ||
+      async_done->operand(0)->opcode() == HloOpcode::kTuple ||
+      async_done->operand(0)->opcode() == HloOpcode::kWhile ||
+      async_done->operand(0)->opcode() == HloOpcode::kParameter;
+  bool is_slice_or_copy =
+      is_loop_crossing &&
+      (async_done->async_wrapped_opcode() == HloOpcode::kDynamicUpdateSlice ||
+       async_done->async_wrapped_opcode() == HloOpcode::kDynamicSlice);
+  // For loop-crossing chains where async-done wraps dynamic-slice or copy,
+  // forward the value set from operand tuple index 1 directly.
+  if (!is_slice_or_copy) {
+    return UpdateAsyncChainOutputValueSet(async_done);
+  }
+  bool changed = false;
+  ShapeUtil::ForEachSubshape(
+      async_done->operand(0)->shape(),
+      [&](const Shape& subshape, const ShapeIndex& index) {
+        if ((!subshape.IsArray() && !subshape.IsToken()) ||
+            index.front() != 1) {
+          return;
+        }
+        ShapeIndex output_index(index.begin() + 1, index.end());
+        HloValueSet& value_set = GetMutableValueSet(async_done, output_index);
+        const HloValueSet& operand_value_set =
+            GetValueSet(async_done->operand(0), index);
+        if (value_set != operand_value_set) {
+          value_set = operand_value_set;
+          changed = true;
+        }
+      });
+  return changed;
 }
 
 bool HloDataflowAnalysis::UpdateCopyStartValueSet(HloInstruction* copy_start) {
@@ -853,16 +937,42 @@ bool HloDataflowAnalysis::UpdateParameterValueSet(HloInstruction* parameter) {
     } else if (opcode == HloOpcode::kAsyncStart) {
       const HloInstruction* async_done =
           callsite.instruction()->async_chain_done();
-      CHECK(async_done != nullptr) << "Async chain done not found for "
-                                   << callsite.instruction()->ToString();
-      std::vector<const HloInstruction*> bound_operands =
-          hlo_instruction_utils::async::GetAsyncBoundOperands(
-              Cast<HloAsyncInstruction>(async_done));
+      // When an async chain crosses a while loop boundary, async_chain_done()
+      // may be null. Use bound operands from the chain if reachable, otherwise
+      // fall back to direct operands of async-start.
+      const HloAsyncInstruction* async_done_inst =
+          (async_done != nullptr) ? DynCast<HloAsyncInstruction>(async_done)
+                                  : nullptr;
+      const HloAsyncStartInstruction* async_start_inst =
+          DynCast<HloAsyncStartInstruction>(callsite.instruction());
+      if (async_done_inst != nullptr && async_start_inst != nullptr) {
+        std::vector<const HloInstruction*> bound_operands;
+        for (const HloInstruction* instr : async_start_inst->GetAsyncChain()) {
+          int start_idx = (instr->opcode() == HloOpcode::kAsyncStart) ? 0 : 1;
+          for (int i = start_idx; i < instr->operand_count(); ++i) {
+            bound_operands.push_back(instr->operand(i));
+          }
+          if (instr == async_done_inst) {
+            break;
+          }
+        }
 
-      CHECK_LT(parameter->parameter_number(), bound_operands.size());
-
-      inputs.push_back(&GetInstructionValueSet(
-          bound_operands[parameter->parameter_number()]));
+        if (!bound_operands.empty() &&
+            parameter->parameter_number() < bound_operands.size()) {
+          inputs.push_back(&GetInstructionValueSet(
+              bound_operands[parameter->parameter_number()]));
+        } else {
+          inputs.push_back(&GetInstructionValueSet(
+              callsite.instruction()->operand(parameter->parameter_number())));
+        }
+      } else {
+        inputs.push_back(&GetInstructionValueSet(
+            callsite.instruction()->operand(parameter->parameter_number())));
+      }
+    } else if (opcode == HloOpcode::kAsyncUpdate ||
+               opcode == HloOpcode::kAsyncDone) {
+      // AsyncUpdate and AsyncDone do not define input operand values for
+      // parameters of the wrapped computation.
     } else {
       LOG(FATAL) << "CallContext::kControlFlow computations should only be "
                     "called from call, while, conditional, or async-start "
@@ -871,7 +981,9 @@ bool HloDataflowAnalysis::UpdateParameterValueSet(HloInstruction* parameter) {
     }
   }
 
-  CHECK(!inputs.empty());
+  if (inputs.empty()) {
+    return false;
+  }
   if (ssa_form_ && need_phi) {
     return Phi(parameter, inputs);
   }
@@ -1204,13 +1316,14 @@ void HloDataflowAnalysis::Propagate() {
                                              execution_threads_)) {
           // For async update and async done, we cannot distinguish which
           // parameter needs to be updated so add all to the worklist.
-          for (int64_t parameter_number = 0;
-               parameter_number <
-               user->async_wrapped_computation()->num_parameters();
-               ++parameter_number) {
-            add_to_worklist(
-                user->async_wrapped_computation()->parameter_instruction(
-                    parameter_number));
+          HloComputation* wrapped_comp = user->async_wrapped_computation();
+          if (wrapped_comp != nullptr) {
+            for (int64_t parameter_number = 0;
+                 parameter_number < wrapped_comp->num_parameters();
+                 ++parameter_number) {
+              add_to_worklist(
+                  wrapped_comp->parameter_instruction(parameter_number));
+            }
           }
         }
       } else {
@@ -1714,8 +1827,12 @@ bool HloDataflowAnalysis::CanShareOperandBufferWithUser(
             std::make_pair(operand, operand_index),
             absl::flat_hash_set<HloUse>());
     if (operand_inserted) {
-      auto uses = GetUniqueValueAt(operand, operand_index).GetUses();
-      operand_it->second.insert(uses.begin(), uses.end());
+      // Iterate over all values in the value set since pipelining or loop
+      // crossing can introduce multiple values.
+      for (const HloValue* val : GetValueSet(operand, operand_index).values()) {
+        auto uses = val->GetUses();
+        operand_it->second.insert(uses.begin(), uses.end());
+      }
     }
     auto [user_it, user_inserted] = cache_share_buffer_with_user_.try_emplace(
         user, absl::flat_hash_map<ShapeIndex, std::vector<HloOperandIndex>>());
@@ -1827,8 +1944,14 @@ bool HloDataflowAnalysis::CanShareOperandBufferWithUser(
     return operand_indices.size() == 1 && user_index[0] == operand_indices[0];
   }
   if (user->opcode() == HloOpcode::kCall) {
-    // Get all uses of value defined by 'operand' at 'operand_index'.
-    auto uses = GetValueDefinedAt(operand, operand_index).GetUses();
+    // Iterate over all values in the value set since pipelining or loop
+    // crossing can introduce multiple values.
+    std::vector<HloUse> uses;
+    for (const HloValue* value : GetValueSet(operand, operand_index).values()) {
+      for (const HloUse& use : value->GetUses()) {
+        uses.push_back(use);
+      }
+    }
     // Return true iff:
     // *) There exists two uses of 'operand'.
     // *) One use is by 'user' (caller).

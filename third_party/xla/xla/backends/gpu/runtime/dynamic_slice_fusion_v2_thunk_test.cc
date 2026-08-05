@@ -143,7 +143,9 @@ Thunk::ExecuteParams MakeExecuteParams(
   return Thunk::ExecuteParams::Create(
       run_options, buffer_allocations, stream,
       /*command_buffer_trace_stream=*/nullptr, /*collective_params=*/nullptr,
-      /*collective_cliques=*/nullptr, /*collective_memory=*/nullptr);
+      /*collective_cliques=*/nullptr, /*collective_memory=*/nullptr,
+      /*additional_compute_streams=*/{}, /*execution_scoped_state=*/nullptr,
+      /*persistent_alloc_indices=*/absl::Span<const BufferAllocation::Index>());
 }
 
 TEST(DynamicSliceFusionV2ThunkTest, VerifyBufferAssignment) {

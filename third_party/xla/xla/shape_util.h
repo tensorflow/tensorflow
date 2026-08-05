@@ -309,6 +309,11 @@ class ShapeUtil {
   // ((,),)
   static bool EqualStructure(const Shape& lhs, const Shape& rhs);
 
+  // Returns whether expected_prefix shape is a prefix of shape.
+  static bool IsPrefix(const Shape& expected_prefix, const Shape& shape,
+                       absl::FunctionRef<bool(const Shape&, const Shape&)>
+                           equal_fn = Shape::Equal());
+
   // Returns the number of dimensions for which the dimension is not (trivially)
   // 1. e.g., f32[2x1x1] has a true dimensionality of 1D, the other dimensions
   // are just fluff. Note that zero dimensions are included in the true

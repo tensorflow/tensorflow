@@ -364,7 +364,9 @@ TEST_F(AttributeExporterTest,
             xla::CollectiveDeviceListVersion::kMeshAxes);
   EXPECT_EQ(device_list->ToString(),
             "mesh['replica'=1,'data'=1,'seq'=2,'model'=1] {'seq'}");
-  EXPECT_EQ(device_list->ToString(true), "{{0,1}}");
+  xla::HloPrintOptions options;
+  options.set_print_full_replica_group_list(true);
+  EXPECT_EQ(device_list->ToString(options), "{{0,1}}");
 }
 
 TEST_F(AttributeExporterTest, ConvertReplicaGroupsMhloMeshAxesMultipleMeshes) {
@@ -406,7 +408,9 @@ TEST_F(AttributeExporterTest, ConvertReplicaGroupsMhloMeshAxesMultipleMeshes) {
             xla::CollectiveDeviceListVersion::kMeshAxes);
   EXPECT_EQ(device_list->ToString(),
             "mesh['replica'=1,'data'=1,'seq'=2,'model'=1] {'seq'}");
-  EXPECT_EQ(device_list->ToString(true), "{{0,1}}");
+  xla::HloPrintOptions options;
+  options.set_print_full_replica_group_list(true);
+  EXPECT_EQ(device_list->ToString(options), "{{0,1}}");
 }
 
 TEST_F(AttributeExporterTest, ConvertOriginalValueNullAttr) {

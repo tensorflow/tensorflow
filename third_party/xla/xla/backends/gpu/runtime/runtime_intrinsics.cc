@@ -62,9 +62,9 @@ std::string GetGpuPlatformName() {
       PlatformUtil::CanonicalPlatformName("gpu").value());
 }
 
-absl::Status AssertionCustomCall(
-    se::Stream* stream, ffi::Buffer<PRED> buffer, absl::string_view error_msg,
-    xla::ffi::Result<xla::ffi::Buffer<xla::TOKEN>> res) {
+absl::Status AssertionCustomCall(se::Stream* stream, ffi::BufferR0<PRED> buffer,
+                                 absl::string_view error_msg,
+                                 ffi::Result<ffi::Token> res) {
   if (!stream) {
     return Internal("Stream is nullptr.");
   }
@@ -106,7 +106,7 @@ absl::StatusOr<Literal> ConvertToLiteral(se::Stream* stream,
 
 absl::Status DebugPrintCustomCall(se::Stream* stream, ffi::RemainingArgs args,
                                   absl::string_view format,
-                                  ffi::Result<ffi::Buffer<xla::TOKEN>> res) {
+                                  ffi::Result<ffi::Token> res) {
   if (!stream) {
     return Internal("Stream is nullptr.");
   }
@@ -151,7 +151,7 @@ std::string GetUniqueFilenameForHost() {
 absl::Status AppendToFileCustomCall(se::Stream* stream, ffi::AnyBuffer buffer,
                                     absl::string_view dir,
                                     absl::string_view metadata,
-                                    ffi::Result<ffi::Buffer<xla::TOKEN>> res) {
+                                    ffi::Result<ffi::Token> res) {
   if (!stream) {
     return Internal("Stream is nullptr.");
   }
@@ -196,7 +196,7 @@ XLA_FFI_DEFINE_HANDLER(kXlaGpuDebugPrintCustomCall, DebugPrintCustomCall,
                            .Ctx<ffi::Stream>()
                            .RemainingArgs()
                            .Attr<absl::string_view>("format")
-                           .Ret<xla::ffi::Buffer<xla::TOKEN>>());
+                           .Ret<ffi::Token>());
 
 XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), kXlaGpuDebugPrintCustomCallTag,
                          GetGpuPlatformName(), kXlaGpuDebugPrintCustomCall);
@@ -207,7 +207,7 @@ XLA_FFI_DEFINE_HANDLER(kXlaGpuAppendToFileCustomCall, AppendToFileCustomCall,
                            .Arg<ffi::AnyBuffer>()
                            .Attr<absl::string_view>("dir")
                            .Attr<absl::string_view>("metadata")
-                           .Ret<xla::ffi::Buffer<xla::TOKEN>>());
+                           .Ret<ffi::Token>());
 
 XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), kXlaGpuAppendToFileCustomCallTag,
                          GetGpuPlatformName(), kXlaGpuAppendToFileCustomCall);
@@ -215,9 +215,9 @@ XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), kXlaGpuAppendToFileCustomCallTag,
 XLA_FFI_DEFINE_HANDLER(kXlaGpuAssertCustomCall, AssertionCustomCall,
                        ffi::Ffi::Bind()
                            .Ctx<ffi::Stream>()
-                           .Arg<ffi::Buffer<xla::PRED>>()
+                           .Arg<ffi::BufferR0<xla::PRED>>()
                            .Attr<absl::string_view>("error_msg")
-                           .Ret<xla::ffi::Buffer<xla::TOKEN>>());
+                           .Ret<ffi::Token>());
 
 XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), kXlaGpuAssertCustomCallTag,
                          GetGpuPlatformName(), kXlaGpuAssertCustomCall);

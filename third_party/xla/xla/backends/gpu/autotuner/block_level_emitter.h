@@ -61,7 +61,7 @@ class BlockLevelEmitterBackend : public GpuCodegenBackend {
             shape_size_fn_, &mlir_context_,
             debug_options->xla_gpu_experimental_enable_tiling_propagation(),
             debug_options
-                ->xla_experimental_enable_same_shape_multi_output_fusion()),
+                ->xla_gpu_experimental_enable_same_shape_multi_output_fusion()),
         xla_gpu_experimental_all_fusions_with_triton_(
             debug_options->xla_gpu_experimental_all_fusions_with_triton()) {
     RegisterSymbolicExprStorage(&mlir_context_);

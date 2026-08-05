@@ -91,13 +91,14 @@ class CuDnnFusionTest
     return device_description().cuda_compute_capability();
   }
   bool IsAtLeastAmpereWithCuDnn9() {
-    se::StreamExecutor* executor = stream_executor();
     return get_cuda_cc().IsAtLeastAmpere() &&
-           GetDnnVersionInfoOrDefault(executor).major_version() >= 9;
+           gpu_target_config()
+                   .device_description.dnn_version()
+                   .major_version() >= 9;
   }
   bool IsAtLeastCuDnnVersion(int major_version, int minor_version) {
-    se::StreamExecutor* executor = stream_executor();
-    const se::dnn::VersionInfo version = GetDnnVersionInfoOrDefault(executor);
+    const se::SemanticVersion version =
+        gpu_target_config().device_description.dnn_version();
     return (version.major_version() == major_version &&
             version.minor_version() >= minor_version) ||
            version.major_version() > major_version;
@@ -1140,7 +1141,7 @@ ENTRY main {
   dout = f32[2,9,9,32] parameter(0)
   filter = f32[32,3,3,17] parameter(1)
   reverse = f32[32,3,3,17] reverse(filter), dimensions={1,2}
-  conv = f32[2,9,9,17] convolution(dout, reverse), window={size=3x3 pad=1_1x1_1}, dim_labels=b01f_i01o->b01f, feature_group_count=1, convolution_kind=dgrad
+  conv = f32[2,9,9,17] convolution(dout, reverse), window={size=3x3 pad=1_1x1_1}, dim_labels=b01f_i01o->b01f, feature_group_count=1
   ROOT relu = f32[2,9,9,17] maximum(zeros, conv)
 })";
 

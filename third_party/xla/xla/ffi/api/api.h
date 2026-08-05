@@ -27,6 +27,7 @@ limitations under the License.
 #include <initializer_list>
 #include <iostream>
 #include <iterator>
+#include <limits>
 #include <memory>
 #include <optional>
 #include <ostream>
@@ -187,6 +188,8 @@ inline std::ostream& operator<<(std::ostream& os,
       return os << "prepare";
     case XLA_FFI_ExecutionStage_INITIALIZE:
       return os << "initialize";
+    case XLA_FFI_ExecutionStage_RECORD:
+      return os << "record";
     case XLA_FFI_ExecutionStage_EXECUTE:
       return os << "execute";
   }
@@ -241,6 +244,7 @@ enum class ExecutionStage : uint8_t {
   kInstantiate = XLA_FFI_ExecutionStage_INSTANTIATE,
   kPrepare = XLA_FFI_ExecutionStage_PREPARE,
   kInitialize = XLA_FFI_ExecutionStage_INITIALIZE,
+  kRecord = XLA_FFI_ExecutionStage_RECORD,
   kExecute = XLA_FFI_ExecutionStage_EXECUTE,
 };
 
@@ -295,6 +299,9 @@ class Ffi {
 
   // Creates an empty binding for the execute stage.
   static Binding<ExecutionStage::kExecute> BindExecute();
+
+  // Creates an empty binding for the record stage.
+  static Binding<ExecutionStage::kRecord> BindRecord();
 
   // Automatic FFI binding that does binding specification inference from the
   // `fn` type signature and binds `fn` to it. This enables a more concise FFI
@@ -775,6 +782,10 @@ inline Binding<ExecutionStage::kExecute> Ffi::BindExecute() {
   return Bind<ExecutionStage::kExecute>();
 }
 
+inline Binding<ExecutionStage::kRecord> Ffi::BindRecord() {
+  return Bind<ExecutionStage::kRecord>();
+}
+
 //===----------------------------------------------------------------------===//
 // Template metaprograming to automatically infer Binding from invocable
 // object.
@@ -980,7 +991,9 @@ class Result {
  public:
   Result(T value) : value_(value) {}  // NOLINT
   T& operator*() { return value_; }
+  const T& operator*() const { return value_; }
   T* operator->() { return &value_; }
+  const T* operator->() const { return &value_; }
 
  private:
   T value_;
@@ -998,6 +1011,493 @@ class Attr {
  private:
   T value_;
 };
+
+//===----------------------------------------------------------------------===//
+// Diagnostics
+//===----------------------------------------------------------------------===//
+
+class DiagnosticEngine;
+
+// RAII wrapper around constructed, but but not yet emitted diagnostic. In
+// flight diagnostic gives an opportunity to build a diagnostic before reporting
+// it to the engine, similar to the builder pattern.
+class InFlightDiagnostic {
+ public:
+  explicit InFlightDiagnostic(DiagnosticEngine* engine, std::string s)
+      : engine_(engine) {
+    stream_ << s;
+  }
+  InFlightDiagnostic(const InFlightDiagnostic&) = delete;
+  InFlightDiagnostic& operator=(const InFlightDiagnostic&) = delete;
+
+  ~InFlightDiagnostic();
+
+  template <typename Arg>
+  InFlightDiagnostic& operator<<(Arg&& arg) {
+    stream_ << std::forward<Arg>(arg);
+    return *this;
+  }
+
+  template <typename T>
+  operator std::optional<T>() const {  // NOLINT
+    return std::nullopt;
+  }
+
+ private:
+  DiagnosticEngine* engine_;
+  std::stringstream stream_;
+};
+
+class DiagnosticEngine {
+ public:
+  DiagnosticEngine() = default;
+  DiagnosticEngine(const DiagnosticEngine&) = delete;
+  DiagnosticEngine& operator=(const DiagnosticEngine&) = delete;
+
+  InFlightDiagnostic Emit(std::string message) {
+    return InFlightDiagnostic(this, std::move(message));
+  }
+
+  std::string Result() const& { return acc_; }
+  std::string Result() && { return std::exchange(acc_, {}); }
+
+ private:
+  friend class InFlightDiagnostic;
+
+  void append(std::string s) { acc_.append(std::move(s)); }
+
+  std::string acc_;
+};
+
+inline InFlightDiagnostic::~InFlightDiagnostic() {
+  engine_->append(stream_.str());
+}
+
+//===----------------------------------------------------------------------===//
+// Buffers
+//===----------------------------------------------------------------------===//
+
+// Sentinel rank for buffers whose rank is not statically known; a dynamic-rank
+// buffer (or pattern) accepts any rank.
+inline constexpr size_t kDynamicRank = std::numeric_limits<size_t>::max();
+
+template <size_t rank, size_t... ranks>
+constexpr bool IsDynamicRank() {
+  return rank == kDynamicRank || ((ranks == kDynamicRank) || ...);
+}
+
+//===----------------------------------------------------------------------===//
+// Buffer Matching
+//===----------------------------------------------------------------------===//
+
+namespace match {
+namespace internal {
+
+// Unlike std::integer_sequence, this sequence also supports enum values.
+template <typename T, T... values>
+struct ValueSequence {
+  using ValueType = T;
+  static constexpr size_t size() { return sizeof...(values); }
+};
+
+}  // namespace internal
+
+// Type-level set of the unique dtype constraints on a pattern. The dtype enum
+// type is fixed per header (DataType or PrimitiveType), so the type system
+// enforces that all dtypes share one enum type.
+template <typename DType, DType... dtypes>
+using DTypeSet = internal::ValueSequence<DType, dtypes...>;
+
+// Type-level set of the unique rank constraints on a pattern.
+template <size_t... ranks>
+using RankSet = internal::ValueSequence<size_t, ranks...>;
+
+namespace internal {
+
+// Reinterprets a buffer as a concrete `Buffer<dtype, rank>` without any checks.
+// Defined by each FFI header as a friend of its buffer types, and only safe to
+// call once a successful match has confirmed the buffer's dtype and rank.
+struct BufferCast;
+
+// Prints a single constraint value into a diagnostic. The default uses
+// `operator<<`; FFI headers specialize it for dtype enums that lack a symbolic
+// `operator<<` (see `PrimitiveType` in `xla/ffi/ffi.h`).
+template <typename T>
+struct ValuePrinter {
+  friend std::ostream& operator<<(std::ostream& os, ValuePrinter printer) {
+    return os << printer.value;
+  }
+  T value;
+};
+
+inline constexpr char kDType[] = "dtype";
+inline constexpr char kRank[] = "rank";
+
+template <const char* name, typename Values>
+class ValueSet;
+
+template <const char* name, typename T, T... values>
+class ValueSet<name, ValueSequence<T, values...>> {
+  using Values = ValueSequence<T, values...>;
+
+ public:
+  static bool Match(T value, DiagnosticEngine& diagnostic) {
+    if (empty() ||
+        std::find(kValues.begin(), kValues.end(), value) != kValues.end()) {
+      return true;
+    }
+
+    InFlightDiagnostic error = diagnostic.Emit("expected ");
+    error << name;
+    if (kValues.size() == 1) {
+      error << " " << ValuePrinter<T>{kValues.front()} << " but got "
+            << ValuePrinter<T>{value};
+      return false;
+    }
+
+    error << " to be one of [" << ValuePrinter<T>{kValues.front()};
+    for (size_t i = 1; i < kValues.size(); ++i) {
+      error << ", " << ValuePrinter<T>{kValues[i]};
+    }
+    error << "] but got " << ValuePrinter<T>{value};
+    return false;
+  }
+
+  static std::string Describe() {
+    std::ostringstream description;
+    if (kValues.empty()) {
+      return description.str();
+    }
+    description << name;
+    if (kValues.size() == 1) {
+      description << " " << ValuePrinter<T>{kValues.front()};
+      return description.str();
+    }
+
+    description << " in [" << ValuePrinter<T>{kValues.front()};
+    for (size_t i = 1; i < kValues.size(); ++i) {
+      description << ", " << ValuePrinter<T>{kValues[i]};
+    }
+    description << "]";
+    return description.str();
+  }
+
+  static constexpr bool empty() { return Values::size() == 0; }
+
+ private:
+  static constexpr std::array<T, Values::size()> kValues = {values...};
+};
+
+template <typename Values>
+using DTypeValues =
+    ValueSet<kDType, Values>;  // NOLINT(readability-identifier-naming): alias
+                               // for internal matcher value sets
+
+template <typename Values>
+using RankValues =
+    ValueSet<kRank, Values>;  // NOLINT(readability-identifier-naming): alias
+                              // for internal matcher value sets
+
+template <typename DTypes, typename Ranks>
+class BufferPatternBase;
+
+}  // namespace internal
+
+// Matches one buffer dimension. A dimension can be unconstrained, fixed, or
+// captured.
+class DimPattern {
+ public:
+  DimPattern() = default;
+
+  template <typename T, typename = std::enable_if_t<std::is_integral_v<T>>>
+  // NOLINTNEXTLINE(google-explicit-constructor,runtime/explicit)
+  DimPattern(T value) : value_(static_cast<int64_t>(value)) {
+    static_assert(sizeof(T) <= sizeof(int64_t),
+                  "Integral dimension value must fit in 64-bit integer.");
+  }
+
+  // Intentionally implicit so that capture pointers (e.g. &rows) can be passed
+  // directly to WithDims and WithDim.
+  // NOLINTNEXTLINE(google-explicit-constructor,runtime/explicit)
+  DimPattern(int64_t* value) : value_(value) {
+    assert(value != nullptr && "dimension capture must be non-null");
+  }
+
+  bool Match(int64_t value, size_t index, DiagnosticEngine& diagnostic) const {
+    const int64_t* expected = std::get_if<int64_t>(&value_);
+    if (expected == nullptr || value == *expected) {
+      return true;
+    }
+
+    diagnostic.Emit("expected dimension ")
+        << index << " to be " << *expected << " but got " << value;
+    return false;
+  }
+
+  void Capture(int64_t value) const {
+    if (auto capture = std::get_if<int64_t*>(&value_)) {
+      **capture = value;
+    }
+  }
+
+  std::string Describe() const {
+    if (auto value = std::get_if<int64_t>(&value_)) {
+      return std::to_string(*value);
+    }
+    return std::holds_alternative<int64_t*>(value_) ? "any dimension (captured)"
+                                                    : "any dimension";
+  }
+
+ private:
+  template <typename, typename>
+  friend class internal::BufferPatternBase;
+
+  int64_t* capture() const {
+    auto capture = std::get_if<int64_t*>(&value_);
+    return capture == nullptr ? nullptr : *capture;
+  }
+
+  // Unconstrained dimension is represented by monostate, a fixed dimension size
+  // by an int64_t value, and a captured dimension by an int64_t* pointer.
+  std::variant<std::monostate, int64_t, int64_t*> value_;
+};
+
+namespace internal {
+
+// An immutable pattern for matching buffer metadata. Dtype and rank
+// constraints remain encoded in the pattern type so Match can refine an
+// AnyBuffer when both identify exactly one concrete buffer type. Patterns with
+// alternative constraints can still be used with Verify or when matching an
+// already typed Buffer.
+//
+// The concrete dtype enum (`DataType` or `PrimitiveType`) is carried by
+// `DTypes`; each FFI header exposes the pattern as its `BufferPattern` alias.
+template <typename DTypes, typename Ranks>
+class BufferPatternBase {
+  using DType = typename DTypes::ValueType;
+
+ public:
+  BufferPatternBase() = default;
+
+  template <size_t rank, size_t... ranks>
+  auto WithRank() const {
+    static_assert(!IsDynamicRank<rank, ranks...>(),
+                  "dynamic rank is represented by an empty rank set");
+    using WithRankSet = RankSet<rank, ranks...>;
+    return BufferPatternBase<DTypes, WithRankSet>(*this);
+  }
+
+  template <DType dtype, DType... dtypes>
+  auto WithDType() const {
+    using WithDTypeSet = DTypeSet<DType, dtype, dtypes...>;
+    return BufferPatternBase<WithDTypeSet, Ranks>(*this);
+  }
+
+  // Constrains the complete shape to match `buffer`.
+  template <typename Buffer>
+  auto WithShapeOf(Buffer buffer) const {
+    using Pattern = BufferPatternBase<DTypes, RankSet<>>;
+    Pattern pattern(*this);
+    auto dimensions = buffer.dimensions();
+    pattern.rank_ = dimensions.size();
+    pattern.dimensions_.assign(dimensions.begin(), dimensions.end());
+    return pattern;
+  }
+
+  // Constrains the dtype and complete shape to match `buffer`.
+  template <typename Buffer>
+  auto Like(Buffer buffer) const {
+    auto shape = WithShapeOf(buffer);
+    using Pattern = BufferPatternBase<DTypeSet<DType>, RankSet<>>;
+    Pattern pattern(shape);
+    pattern.dtype_ = buffer.element_type();
+    return pattern;
+  }
+
+  // Constrains every dimension positionally and deduces the type-level rank
+  // from the number of arguments.
+  template <typename... Args,
+            typename = std::enable_if_t<
+                (std::is_convertible_v<Args, DimPattern> && ...)>>
+  XLA_FFI_ATTRIBUTE_ALWAYS_INLINE auto WithDims(Args&&... dimensions) const {
+    using WithRank = RankSet<sizeof...(Args)>;
+    BufferPatternBase<DTypes, WithRank> pattern(*this);
+    pattern.dimensions_ = {std::forward<Args>(dimensions)...};
+    return pattern;
+  }
+
+  // Constrains a single dimension, leaving the rest (and the rank) free.
+  BufferPatternBase WithDim(size_t index, DimPattern dimension) const {
+    BufferPatternBase pattern(*this);
+    auto& dimensions = pattern.dimensions_;
+    dimensions.resize(std::max(dimensions.size(), index + 1));
+    dimensions[index] = std::move(dimension);
+    return pattern;
+  }
+
+  template <size_t index>
+  BufferPatternBase WithDim(DimPattern dimension) const {
+    return WithDim(index, std::move(dimension));
+  }
+
+  template <typename Buffer>
+  XLA_FFI_ATTRIBUTE_ALWAYS_INLINE bool Match(
+      Buffer buffer, DiagnosticEngine& diagnostic) const {
+    if (!DTypeValues<DTypes>::Match(buffer.element_type(), diagnostic)) {
+      return false;
+    }
+
+    if (dtype_.has_value() && buffer.element_type() != *dtype_) {
+      diagnostic.Emit("expected dtype ")
+          << ValuePrinter<DType>{*dtype_} << " but got "
+          << ValuePrinter<DType>{buffer.element_type()};
+      return false;
+    }
+
+    auto dimensions = buffer.dimensions();
+    if (!RankValues<Ranks>::Match(dimensions.size(), diagnostic)) {
+      return false;
+    }
+
+    if (rank_.has_value() && dimensions.size() != *rank_) {
+      diagnostic.Emit("expected rank ")
+          << *rank_ << " but got " << dimensions.size();
+      return false;
+    }
+
+    if (dimensions_.size() > dimensions.size()) {
+      diagnostic.Emit("expected dimension ")
+          << dimensions_.size() - 1 << " but buffer rank is "
+          << dimensions.size();
+      return false;
+    }
+
+    size_t count = dimensions_.size();
+    for (size_t i = 0; i < count; ++i) {
+      const DimPattern& dimension = dimensions_[i];
+      if (!dimension.Match(dimensions[i], i, diagnostic)) {
+        return false;
+      }
+
+      int64_t* capture = dimension.capture();
+      if (capture == nullptr) {
+        continue;
+      }
+      for (size_t j = 0; j < i; ++j) {
+        if (dimensions_[j].capture() != capture) {
+          continue;
+        }
+        if (dimensions[i] == dimensions[j]) {
+          break;
+        }
+        diagnostic.Emit("expected dimension ")
+            << i << " to be " << dimensions[j] << " but got " << dimensions[i];
+        return false;
+      }
+    }
+
+    return true;
+  }
+
+  template <typename Buffer>
+  void Capture(Buffer buffer) const {
+    auto dimensions = buffer.dimensions();
+    size_t count = std::min(dimensions_.size(), dimensions.size());
+    for (size_t i = 0; i < count; ++i) {
+      dimensions_[i].Capture(dimensions[i]);
+    }
+  }
+
+  std::string Describe() const {
+    std::ostringstream description;
+    description << "a buffer";
+    if (!DTypeValues<DTypes>::empty()) {
+      description << " with " << DTypeValues<DTypes>::Describe();
+    }
+    if (dtype_.has_value()) {
+      description << " with dtype " << ValuePrinter<DType>{*dtype_};
+    }
+    if (!RankValues<Ranks>::empty()) {
+      description << " with " << RankValues<Ranks>::Describe();
+    }
+    if (rank_.has_value()) {
+      description << " with rank " << *rank_;
+    }
+    if (!dimensions_.empty()) {
+      description << " with dimensions [";
+      for (size_t i = 0; i < dimensions_.size(); ++i) {
+        if (i != 0) {
+          description << ", ";
+        }
+        description << dimensions_[i].Describe();
+      }
+      description << "]";
+    }
+    return description.str();
+  }
+
+ private:
+  template <typename, typename>
+  friend class BufferPatternBase;
+
+  template <typename OtherDTypes, typename OtherRanks>
+  explicit BufferPatternBase(
+      const BufferPatternBase<OtherDTypes, OtherRanks>& other)
+      : dtype_(other.dtype_),
+        rank_(other.rank_),
+        dimensions_(other.dimensions_) {
+    // A constraint has either a type-level or runtime representation, never
+    // both. Type-changing modifiers replace the corresponding runtime value.
+    if constexpr (DTypes::size() != 0) {
+      dtype_.reset();
+    }
+    if constexpr (Ranks::size() != 0) {
+      rank_.reset();
+    }
+  }
+
+  // Runtime constraints copied from another buffer. Each is present only when
+  // the corresponding type-level set is empty.
+  std::optional<DType> dtype_;
+  std::optional<size_t> rank_;
+  // Positional dimension constraints. Unconstrained positions (the gaps left by
+  // WithDim) hold a catch-all DimPattern that matches any extent.
+  std::vector<DimPattern> dimensions_;
+};
+
+}  // namespace internal
+
+inline DimPattern Dim() { return DimPattern(); }
+
+template <typename T, typename = std::enable_if_t<std::is_integral_v<T>>>
+inline DimPattern Dim(T value) {
+  return DimPattern(value);
+}
+inline DimPattern Dim(int64_t* value) { return DimPattern(value); }
+
+}  // namespace match
+
+namespace internal {
+
+// Matches buffer metadata and emits a diagnostic on failure. Captures are
+// applied only after all constraints match.
+template <typename Buffer, typename Pattern>
+XLA_FFI_ATTRIBUTE_ALWAYS_INLINE bool MatchBuffer(std::string_view name,
+                                                 Buffer buffer,
+                                                 const Pattern& pattern,
+                                                 DiagnosticEngine& diagnostic) {
+  if (pattern.Match(buffer, diagnostic)) {
+    pattern.Capture(buffer);
+    return true;
+  }
+
+  std::string reason = std::move(diagnostic).Result();
+  diagnostic.Emit("Buffer '")
+      << name << "' failed to match " << pattern.Describe() << ": " << reason;
+  return false;
+}
+
+}  // namespace internal
 
 //===----------------------------------------------------------------------===//
 // Attributes bindings
@@ -1084,7 +1584,7 @@ struct AttrDecoding;
 //   struct CtxDecoding<MyType> {
 //    using Type = <handler argument type for context type MyType>;
 //    static std::optional<Type> Decode(const XLA_FFI_Api* api,
-//                                      XLA_FFI_ExecutionContext* ctx);
+//                                      XLA_FFI_InvokeContext* ctx);
 //   }
 //
 template <typename T>
@@ -1102,7 +1602,7 @@ struct CtxDecoding;
 //   template<ExecutionStage stage>
 //   struct ResultEncoding<stage, absl::Status> {
 //     XLA_FFI_Error* Encode(const XLA_FFI_Api* api,
-//                           XLA_FFI_ExecutionContext* ctx,
+//                           XLA_FFI_InvokeContext* ctx,
 //                           absl::Status status) {...}
 //   };
 //
@@ -1121,72 +1621,12 @@ struct CtxDecoding;
 //   template<ExecutionStage stage>
 //   struct ResultEncoding<state, xla::ffi::Future> {
 //     std::variant<XLA_FFI_Error*, XLA_FFI_Future*> Encode(
-//       const XLA_FFI_Api* api, XLA_FFI_ExecutionContext* ctx,
+//       const XLA_FFI_Api* api, XLA_FFI_InvokeContext* ctx,
 //       xla::ffi::Future future) {...}
 //   };
 //
 template <ExecutionStage stage, typename T>
 struct ResultEncoding;
-
-//===----------------------------------------------------------------------===//
-// Diagnostics
-//===----------------------------------------------------------------------===//
-
-class DiagnosticEngine;
-
-// RAII wrapper around constructed, but but not yet emitted diagnostic. In
-// flight diagnostic gives an opportunity to build a diagnostic before reporting
-// it to the engine, similar to the builder pattern.
-class InFlightDiagnostic {
- public:
-  explicit InFlightDiagnostic(DiagnosticEngine* engine, std::string s)
-      : engine_(engine) {
-    stream_ << s;
-  }
-  InFlightDiagnostic(const InFlightDiagnostic&) = delete;
-  InFlightDiagnostic& operator=(const InFlightDiagnostic&) = delete;
-
-  ~InFlightDiagnostic();
-
-  template <typename Arg>
-  InFlightDiagnostic& operator<<(Arg&& arg) {
-    stream_ << std::forward<Arg>(arg);
-    return *this;
-  }
-
-  template <typename T>
-  operator std::optional<T>() const {  // NOLINT
-    return std::nullopt;
-  }
-
- private:
-  DiagnosticEngine* engine_;
-  std::stringstream stream_;
-};
-
-class DiagnosticEngine {
- public:
-  DiagnosticEngine() = default;
-  DiagnosticEngine(const DiagnosticEngine&) = delete;
-  DiagnosticEngine& operator=(const DiagnosticEngine&) = delete;
-
-  InFlightDiagnostic Emit(std::string message) {
-    return InFlightDiagnostic(this, std::move(message));
-  }
-
-  std::string Result() const { return acc_; }
-
- private:
-  friend class InFlightDiagnostic;
-
-  void append(std::string s) { acc_.append(std::move(s)); }
-
-  std::string acc_;
-};
-
-inline InFlightDiagnostic::~InFlightDiagnostic() {
-  engine_->append(stream_.str());
-}
 
 //===----------------------------------------------------------------------===//
 // Decoding arguments and attributes
@@ -1319,7 +1759,111 @@ struct Decode<CtxTag<T>> {
   }
 };
 
+template <typename T, typename = void>
+struct HasExtensionSupport : std::false_type {};
+template <typename T>
+struct HasExtensionSupport<
+    T, std::enable_if_t<
+           std::is_same_v<decltype(T::Support), bool(int32_t, int32_t)>>>
+    : std::true_type {};
+
 }  // namespace internal
+
+//===----------------------------------------------------------------------===//
+// Decoding for Extensions
+//===----------------------------------------------------------------------===//
+
+// Type tag for decoding an Extension.
+// The type T must define the following traits:
+// - CExtension: The C API extension type. See: struct XLA_FFI_Extension.
+// - Type: The C++ type to be decoded to. Must be constructible from CExtension*
+//         using a static method Create (see below).
+// - kName: a name for the extension used for diagnostics.
+// - kExtensionType: int64 type id to identify this extension.
+// - kMajorVersion: the major version of the extension.
+// - kMinorVersion: the minor version of the extension.
+// - Create: a static method that creates the Type from the
+//     C API extension.
+// - Support: a static method that checks given a major and minor version if
+//     the extension is supported. Optional. By default, an extension is
+//     supported if both major and minor versions match.
+//     Signature: bool Support(int32_t major_version, int32_t minor_version);
+// Example:
+//   struct MyExtension {
+//     using Type = MyContext;
+//     using CExtension = XLA_FFI_MyExtension;
+//
+//     static constexpr auto kName = "MyExtension";
+//     static constexpr int64_t kExtensionType = XLA_FFI_Extension_MyExtension;
+//     static constexpr int32_t kMajorVersion =
+//         XLA_FFI_Extension_MyExtension_MajorVersion;
+//     static constexpr int32_t kMinorVersion =
+//         XLA_FFI_Extension_MyExtension_MinorVersion;
+//
+//     static Type Create(const CExtension* ext) {
+//       return MyContext(ext->some_field);
+//     }
+//   };
+// And then use it with T::Type as a value type:
+//   Ffi::Bind().Ctx<Extension<MyExtension>>()
+//                     .To([](const MyExtension::Type ext) { ... });
+template <typename T>
+struct Extension {};
+
+// Context decoding for an Extension.
+// Returned value is guaranteed to be non-null.
+template <typename T>
+struct CtxDecoding<Extension<T>> {
+  using Type = typename T::Type;
+
+  static std::optional<Type> Decode(const XLA_FFI_Api* api,
+                                    XLA_FFI_InvokeContext* ctx,
+                                    DiagnosticEngine& diagnostic) {
+    XLA_FFI_InvokeContext_FindExtension_Args args;
+    args.struct_size = XLA_FFI_InvokeContext_FindExtension_Args_STRUCT_SIZE;
+    args.extension_start = nullptr;
+    args.ctx = ctx;
+    args.extension_type = T::kExtensionType;
+    args.extension = nullptr;
+
+    XLA_FFI_Error* error = api->XLA_FFI_InvokeContext_FindExtension(&args);
+    if (error != nullptr) {
+      diagnostic.Emit("Failed to find extension ")
+          << T::kName << ": " << internal::GetErrorMessage(api, error);
+      internal::DestroyError(api, error);
+      return std::nullopt;
+    }
+
+    if (args.extension == nullptr) {
+      diagnostic.Emit("Extension ") << T::kName << " not found in context";
+      return std::nullopt;
+    }
+    const auto emit_version_mismatch = [&]() {
+      diagnostic.Emit("Extension version mismatch for ")
+          << T::kName << ": actual(" << args.extension->id.major_version << "."
+          << args.extension->id.minor_version << ") vs current("
+          << T::kMajorVersion << "." << T::kMinorVersion << ")";
+    };
+    if constexpr (internal::HasExtensionSupport<T>::value) {
+      if (!T::Support(args.extension->id.major_version,
+                      args.extension->id.minor_version)) {
+        emit_version_mismatch();
+        return std::nullopt;
+      }
+    } else {  // Default support check.
+      if (args.extension->id.major_version != T::kMajorVersion ||
+          args.extension->id.minor_version != T::kMinorVersion) {
+        emit_version_mismatch();
+        return std::nullopt;
+      }
+    }
+    return T::Create(
+        // T::kExtensionType is a contract that guarantees that the extension
+        // is of type T.
+        // NOLINTNEXTLINE
+        reinterpret_cast<const typename T::CExtension*>(args.extension));
+  }
+};
 
 //===----------------------------------------------------------------------===//
 // Type-safe wrapper for accessing a variable number of arguments.
@@ -1524,6 +2068,32 @@ struct internal::Decode<internal::AttrsTag<T>> {
 };
 
 //===----------------------------------------------------------------------===//
+// Helpers for creating and reading extensions.
+//===----------------------------------------------------------------------===//
+
+// Creates an extension header for a given extension struct.
+// Eg:
+// struct MyExtension {
+//   static constexpr int64_t kExtensionType = 1234;
+//   XLA_FFI_Extension extension_base;
+//   int32_t my_data;
+// };
+// ...
+// MyExtension ext;
+// ext.extension_base = MakeExtensionHeader<MyExtension>();
+template <typename T>
+inline XLA_FFI_Extension MakeExtensionHeader() {
+  return XLA_FFI_Extension{
+      /*.struct_size=*/sizeof(typename T::CExtension),
+      /*.id=*/
+      XLA_FFI_ExtensionId{/*extension_type=*/T::kExtensionType,
+                          /*major_version=*/T::kMajorVersion,
+                          /*minor_version=*/T::kMinorVersion},
+      /*.next=*/nullptr,
+  };
+}
+
+//===----------------------------------------------------------------------===//
 // Type-safe wrapper for accessing context.
 //===----------------------------------------------------------------------===//
 
@@ -1531,11 +2101,11 @@ namespace internal {
 
 class ContextBase {
  public:
-  ContextBase(const XLA_FFI_Api* api, XLA_FFI_ExecutionContext* ctx)
+  ContextBase(const XLA_FFI_Api* api, XLA_FFI_InvokeContext* ctx)
       : api_(api), ctx_(ctx) {}
 
   const XLA_FFI_Api* api() const { return api_; }
-  XLA_FFI_ExecutionContext* ctx() const { return ctx_; }
+  XLA_FFI_InvokeContext* ctx() const { return ctx_; }
 
  protected:
   template <typename T>
@@ -1546,7 +2116,7 @@ class ContextBase {
 
  private:
   const XLA_FFI_Api* api_;
-  XLA_FFI_ExecutionContext* ctx_;
+  XLA_FFI_InvokeContext* ctx_;
 };
 
 }  // namespace internal

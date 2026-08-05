@@ -75,6 +75,14 @@ std::unique_ptr<HloModule> CreateUnverifiedModule() {
   return std::make_unique<HloModule>("module", HloModuleConfig());
 }
 
+// Create a verifier that supports unbounded dynamic shapes for parameter ops.
+HloVerifier CreateVerifierSupportsUnboundedDynamicParameter() {
+  return HloVerifier(HloVerifierOpts{}.WithSupportedUnboundedDynamicOp(
+      [](const HloInstruction* hlo) {
+        return hlo->opcode() == HloOpcode::kParameter;
+      }));
+}
+
 class HloVerifierTest : public HloHardwareIndependentTestBase {
  public:
   HloVerifierTest()
@@ -187,48 +195,28 @@ TEST_F(HloVerifierTest, ResetsShapeVerifierState) {
 }
 
 TEST_F(HloVerifierTest, IsShapePrefix) {
-  HloVerifierOpts opts;
-  ShapeVerifier verifier(opts);
+  Shape shape_layout1 =
+      ShapeUtil::MakeShapeWithDenseLayout(F32, {4, 8}, {0, 1});
+  Shape shape_layout2 =
+      ShapeUtil::MakeShapeWithDenseLayout(F32, {4, 8}, {1, 0});
 
-  Shape f32_scalar = ShapeUtil::MakeShape(F32, {});
-  Shape s32_scalar = ShapeUtil::MakeShape(S32, {});
-  Shape f32_vector = ShapeUtil::MakeShape(F32, {4});
+  Shape tuple1 = ShapeUtil::MakeTupleShape({shape_layout1});
+  Shape tuple2 = ShapeUtil::MakeTupleShape({shape_layout2, shape_layout2});
 
-  // Same shapes
-  EXPECT_TRUE(
-      HloVerifierTestHelper::IsShapePrefix(verifier, f32_scalar, f32_scalar));
+  // When layout_sensitive is false, shapes with different layouts are
+  // prefix-compatible.
+  HloVerifierOpts opts_insensitive;
+  opts_insensitive.layout_sensitive = false;
+  ShapeVerifier verifier_insensitive(opts_insensitive);
+  EXPECT_TRUE(HloVerifierTestHelper::IsShapePrefix(verifier_insensitive, tuple1,
+                                                   tuple2));
 
-  // Different non-tuple shapes
+  // When layout_sensitive is true, layout mismatches prevent prefix matching.
+  HloVerifierOpts opts_sensitive;
+  opts_sensitive.layout_sensitive = true;
+  ShapeVerifier verifier_sensitive(opts_sensitive);
   EXPECT_FALSE(
-      HloVerifierTestHelper::IsShapePrefix(verifier, f32_scalar, s32_scalar));
-  EXPECT_FALSE(
-      HloVerifierTestHelper::IsShapePrefix(verifier, f32_scalar, f32_vector));
-
-  // Tuples
-  Shape tuple_f32_scalar = ShapeUtil::MakeTupleShape({f32_scalar});
-  Shape tuple_f32_scalar_f32_vector =
-      ShapeUtil::MakeTupleShape({f32_scalar, f32_vector});
-
-  // Prefix match
-  EXPECT_TRUE(HloVerifierTestHelper::IsShapePrefix(
-      verifier, tuple_f32_scalar, tuple_f32_scalar_f32_vector));
-
-  // Not prefix (larger)
-  EXPECT_FALSE(HloVerifierTestHelper::IsShapePrefix(
-      verifier, tuple_f32_scalar_f32_vector, tuple_f32_scalar));
-
-  // Mismatched element in tuple
-  Shape tuple_s32_scalar = ShapeUtil::MakeTupleShape({s32_scalar});
-  EXPECT_FALSE(HloVerifierTestHelper::IsShapePrefix(
-      verifier, tuple_s32_scalar, tuple_f32_scalar_f32_vector));
-
-  // Nested tuples
-  Shape nested_tuple1 = ShapeUtil::MakeTupleShape({tuple_f32_scalar});
-  Shape nested_tuple2 =
-      ShapeUtil::MakeTupleShape({tuple_f32_scalar_f32_vector});
-
-  EXPECT_TRUE(HloVerifierTestHelper::IsShapePrefix(verifier, nested_tuple1,
-                                                   nested_tuple2));
+      HloVerifierTestHelper::IsShapePrefix(verifier_sensitive, tuple1, tuple2));
 }
 
 TEST_F(HloVerifierTest, LateBindingWithCallStart_StartFromZeroOperand) {
@@ -2033,7 +2021,7 @@ TEST_F(HloVerifierTest, AsyncOpComputationNotTrivial) {
           "expected to contain only the root and parameter instructions"));
 }
 
-TEST_F(HloVerifierTest, AsyncMultiOpComputationSendRecvOnly) {
+TEST_F(HloVerifierTest, RejectsUnannotatedAsyncMultiOpComputationSendRecvOnly) {
   const char* const hlo_string = R"(
   wrapped_send_recv_1 {
     param0 = f32[] parameter(0)
@@ -2080,10 +2068,12 @@ TEST_F(HloVerifierTest, AsyncMultiOpComputationSendRecvOnly) {
     gte.3 = token[] get-tuple-element(gte.2), index=2
   }
 )";
-  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
-
-  auto status = verifier().Run(module.get()).status();
-  ASSERT_TRUE(status.ok());
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo_string));
+  EXPECT_THAT(
+      verifier().Run(module.get()).status(),
+      StatusIs(absl::StatusCode::kFailedPrecondition,
+               HasSubstr("expected to contain only the root and parameter "
+                         "instructions")));
 }
 
 TEST_F(HloVerifierTest, IotaNonArrayResult) {
@@ -4080,32 +4070,48 @@ ENTRY entry {
   ASSERT_OK(status);
 }
 
-TEST_F(HloVerifierTest, UnboundedDynamism) {
-  const char* const hlo = R"(
+TEST_F(HloVerifierTest, UnboundedDynamismDefaultRejected) {
+  const char* const hlo = R"hlo(
   HloModule Module
 
   ENTRY entry {
     ROOT param0 = f32[?,784] parameter(0)
   }
-  )";
+  )hlo";
   ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
-  auto status = verifier().Run(module.get()).status();
-  ASSERT_FALSE(status.ok());
-  EXPECT_THAT(status.message(), HasSubstr("Unbounded dynamism is disabled"));
+  EXPECT_THAT(verifier().Run(module.get()),
+              StatusIs(absl::StatusCode::kInvalidArgument,
+                       HasSubstr("Unbounded dynamism is disabled")));
 }
 
 TEST_F(HloVerifierTest, EnableUnboundedDynamism) {
-  const char* const hlo = R"(
+  const char* const hlo = R"hlo(
   HloModule Module
 
   ENTRY entry {
     ROOT param0 = f32[?,784] parameter(0)
   }
-  )";
+  )hlo";
   ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
-  HloVerifier verifier{HloVerifierOpts{}.WithAllowUnboundedDynamism(true)};
-  auto status = verifier.Run(module.get()).status();
-  ASSERT_TRUE(status.ok());
+  ASSERT_OK(
+      CreateVerifierSupportsUnboundedDynamicParameter().Run(module.get()));
+}
+
+TEST_F(HloVerifierTest, UnboundedDynamismRejectsUnsupportedOp) {
+  const char* const hlo = R"hlo(
+  HloModule Module
+
+  ENTRY entry {
+    param0 = f32[?,784] parameter(0)
+    param1 = f32[?,784] parameter(1)
+    ROOT add = f32[?,784] add(param0, param1)
+  }
+  )hlo";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
+  EXPECT_THAT(
+      CreateVerifierSupportsUnboundedDynamicParameter().Run(module.get()),
+      StatusIs(absl::StatusCode::kInvalidArgument,
+               HasSubstr("Unbounded dynamism is disabled")));
 }
 
 TEST_F(HloVerifierTestLayoutSensitive,
@@ -5301,7 +5307,8 @@ ENTRY main {
   async-comp-start = ((f32[], token[], f32[], token[], token[], token[]),
     ((f32[], u32[], token[]), (f32[], u32[], token[]), (f32[], u32[], token[]),
     (f32[], u32[], token[])), s32[]) async-start(data1, after-all1,
-    data2, after-all2, after-all1, after-all2), calls=wrapped_send_recv
+    data2, after-all2, after-all1, after-all2), calls=wrapped_send_recv,
+    frontend_attributes={_collectives_group=""}
   async-comp-done = ((f32[], u32[], token[]), (f32[], u32[], token[]),
     (f32[], u32[], token[]), (f32[], u32[], token[])) async-done(async-comp-start)
   unpack-recv-done1 = (f32[], u32[], token[]) get-tuple-element(async-comp-done), index=2
@@ -5366,7 +5373,8 @@ ENTRY main {
   async-comp-start = ((f32[], token[], f32[], token[], token[], token[]),
     ((f32[], u32[], token[]), (f32[], u32[], token[]), (f32[], u32[], token[]),
     (f32[], u32[], token[])), s32[]) async-start(data1, after-all1,
-    data2, after-all2, after-all1, after-all2), calls=wrapped_send_recv
+    data2, after-all2, after-all1, after-all2), calls=wrapped_send_recv,
+    frontend_attributes={_collectives_group=""}
   async-comp-done = ((f32[], u32[], token[]), (f32[], u32[], token[]),
     (f32[], u32[], token[]), (f32[], u32[], token[])) async-done(async-comp-start)
   bwd_recv = (f32[], u32[], token[]) recv(after-all3), channel_id=0,

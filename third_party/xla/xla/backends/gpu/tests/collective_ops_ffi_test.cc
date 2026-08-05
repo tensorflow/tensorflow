@@ -155,7 +155,8 @@ static absl::Status PrepareDeviceAllReduce(
 
   // Ask for a device communicator with 8 lsa barriers.
   CollectiveCliqueRequests::CliqueRequirements requirements;
-  requirements.dev_comm = GpuDeviceCommunicator::Requirements{8};
+  requirements.dev_comm.emplace();
+  requirements.dev_comm->lsa_barrier_count = 8;
   std::vector<GlobalDeviceId> all_device_groups;
   for (int i = 0; i < kNumReplicas; ++i) {
     all_device_groups.push_back(GlobalDeviceId(i));
@@ -284,7 +285,7 @@ static absl::Status PrepareMultiGpuBarrier(
 
   CollectiveCliqueRequests::CliqueRequirements requirements;
   requirements.barrier_reqs = CollectiveCliqueRequests::BarrierRequirements{
-      /*module_execution_barrier=*/false, /*use_cross_device_barrier=*/true};
+      /*use_cross_device_barrier=*/true};
 
   std::vector<GlobalDeviceId> all_device_groups;
   for (int i = 0; i < kNumReplicas; ++i) {
@@ -391,7 +392,8 @@ static absl::Status DeviceAllReduce(se::Stream* stream, ffi::BufferR0<U32> src,
   ASSIGN_OR_RETURN(
       GpuDeviceCommunicator * dev_comm,
       collective_cliques->GetDeviceComm(
-          clique_key, *rank, GpuDeviceCommunicator::Requirements{8}));
+          clique_key, *rank,
+          GpuDeviceCommunicator::Requirements{.lsa_barrier_count = 8}));
 
   // Load custom kernel that does device-initiated collectives.
   ASSIGN_OR_RETURN(auto kernel, se::gpu::GpuKernelRegistry::GetGlobalRegistry()
@@ -1081,6 +1083,9 @@ TEST_F(CollectiveOpsTestFFI, AllReduce) {
 
   TF_ASSERT_OK_AND_ASSIGN(
       auto module, ParseAndReturnVerifiedModule(hlo_string, kNumReplicas));
+  module->mutable_config()
+      .mutable_debug_options()
+      .set_xla_gpu_executable_num_communication_streams(2);
 
   TF_ASSERT_OK_AND_ASSIGN(
       ExecutionResult execution_result,

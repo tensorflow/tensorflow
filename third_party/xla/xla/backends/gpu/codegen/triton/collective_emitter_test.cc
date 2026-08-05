@@ -191,15 +191,8 @@ class CollectiveEmitterTest : public CollectiveBlockLevelConfigTest {
       std::string module_str, const GpuTopology& gpu_topology) const {
     ASSIGN_OR_RETURN(ModuleWithFusion module_with_fusion,
                      BuildModuleWithFusion(std::move(module_str)));
-    ASSIGN_OR_RETURN(
-        bool collective_fusion_config_set,
-        TrySetGpuBackendConfigForCollective(
-            gpu_topology, module_with_fusion.MutableFusionInstr()));
-    if (!collective_fusion_config_set) {
-      return absl::InternalError(
-          "Failed to set collective fusion config. "
-          "TrySetGpuBackendConfigForCollective returned false.");
-    }
+    RETURN_IF_ERROR(TrySetGpuBackendConfigForCollective(
+        gpu_topology, module_with_fusion.MutableFusionInstr()));
     auto result = std::make_unique<ModuleWithEmitter>(
         std::move(module_with_fusion.module));
     const se::DeviceDescription& device_info =

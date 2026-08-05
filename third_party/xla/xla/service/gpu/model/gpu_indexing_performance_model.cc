@@ -52,6 +52,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/ir/hlo_print_options.h"
 #include "xla/hlo/utils/hlo_traversal.h"
 #include "xla/service/decision.h"
 #include "xla/service/gpu/backend_configs.pb.h"
@@ -654,6 +655,8 @@ GpuPerformanceModelWithIndexingAnalysis::EstimateRunTimeForTiledFusion(
         llvm::SmallVector<int64_t> tile_sizes,
         GetTilingSpaceConcreteSizes(*tiling_space, block_level_parameters,
                                     enable_same_shape_multi_output_fusion_));
+    // Assign padded tile size as that what is a Triton emitter requirement.
+    // Symbolic analysis route hides this assumption.
     RETURN_IF_ERROR(tiling_space->AssignTileSizes(
         xla::xtile::GetPaddedTileSizes(tile_sizes)));
 
@@ -732,6 +735,13 @@ GpuPerformanceModelWithIndexingAnalysis::TryFindTopKBestTilingsForFusion(
   XLA_SCOPED_LOGGING_TIMER(
       "GpuPerformanceModelWithIndexingAnalysis::"
       "TryFindTopKBestTilingsForFusion");
+  if (!fusion_adaptor.GetRoots().empty() &&
+      fusion_adaptor.GetRoots()[0].instruction().parent() != nullptr) {
+    const HloInstruction& root = fusion_adaptor.GetRoots()[0].instruction();
+    VLOG(1) << "TryFindTopKBestTilingsForFusion adaptor root "
+            << root.ToString(HloPrintOptions::ShortParsable()) << " parent "
+            << root.parent()->name();
+  }
   absl::InlinedVector<TiledRunTimeData, 4> candidates;
 
   if (use_experimental_tiling_) {
@@ -747,26 +757,29 @@ GpuPerformanceModelWithIndexingAnalysis::TryFindTopKBestTilingsForFusion(
         tilings.size(), " tilings.");
 
     for (const llvm::SmallVector<int64_t, 4>& tiling : tilings) {
-      VLOG(2) << "Trying tiling: " << absl::StrJoin(tiling, ",");
       ASSIGN_OR_RETURN(std::unique_ptr<TilingSpace> tiling_space,
                        TilingSpace::Create(fusion_adaptor, mlir_context_));
 
-      RETURN_IF_ERROR(tiling_space->AssignTileSizes(
-          xla::xtile::GetPaddedTileSizes(tiling)));
+      // Assign padded tile size as Triton emitter will require that.
+      // Symbolic analysis route hides this assumption.
+      llvm::SmallVector<int64_t, 4> padded_tile_sizes =
+          xla::xtile::GetPaddedTileSizes(tiling);
+      RETURN_IF_ERROR(tiling_space->AssignTileSizes(padded_tile_sizes));
+      VLOG(3) << "Trying tile sizes " << absl::StrJoin(padded_tile_sizes, ",");
 
       const absl::StatusOr<TiledHloComputation> tiled_computation =
           TiledHloComputation::Tile(fusion_adaptor, std::move(tiling_space));
       if (!tiled_computation.ok()) {
         // TODO: b/511080616 - GetValidTilings() must return only tilings that
         // can be tiled and we should treat all errors here as a failure.
-        VLOG(2) << "Tiling failed for " << absl::StrJoin(tiling, ",")
+        VLOG(3) << "Tiling failed for " << absl::StrJoin(tiling, ",")
                 << " with error: " << tiled_computation.status().message();
         continue;
       }
       if (const Decision valid = experimental::VerifyTritonConstraints(
               *tiled_computation, *device_info_);
           !valid) {
-        VLOG(2) << "Triton constraints violated for tiling " << valid.Explain();
+        VLOG(3) << "Triton constraints violated for tiling " << valid.Explain();
         continue;
       }
 
@@ -778,6 +791,12 @@ GpuPerformanceModelWithIndexingAnalysis::TryFindTopKBestTilingsForFusion(
                            }));
 
       if (tiled_run_time_data.has_value()) {
+        VLOG(2) << "Accepted tile sizes ["
+                << absl::StrJoin(tiled_run_time_data->block_level_parameters
+                                     .output_tile_sizes.front(),
+                                 ",")
+                << "], exec_time "
+                << tiled_run_time_data->runtime_data.exec_time;
         candidates.push_back(*tiled_run_time_data);
       }
     }
@@ -829,13 +848,18 @@ GpuPerformanceModelWithIndexingAnalysis::TryFindTopKBestTilingsForFusion(
               }));
 
       if (tiled_run_time_data.has_value()) {
+        ASSIGN_OR_RETURN(FlatTiling flat_tiling,
+                         tiling.Flatten(analysis.GetTilingSpecification()));
+        VLOG(2) << "Accepted tile sizes [" << absl::StrJoin(flat_tiling, ",")
+                << "], exec_time "
+                << tiled_run_time_data->runtime_data.exec_time;
         candidates.push_back(*tiled_run_time_data);
       }
     }
   }
 
-  VLOG(1) << absl::StrCat("TryFindTopKBestTilingsForFusion found ",
-                          candidates.size(), " valid tiling candidates.");
+  VLOG(1) << absl::StrCat("Found ", candidates.size(),
+                          " valid tiling candidates.");
   absl::c_stable_sort(
       candidates, [](const TiledRunTimeData& a, const TiledRunTimeData& b) {
         return a.runtime_data.exec_time < b.runtime_data.exec_time;
@@ -861,6 +885,15 @@ GpuPerformanceModelWithIndexingAnalysis::TryFindBestTilingForFusion(
   if (tilings.empty()) {
     return FusionDecision::Forbid("No valid tilings found.");
   }
+  VLOG(1)
+      << "TryFindBestTilingForFusion "
+      << fusion_adaptor.GetRoots().front().instruction().ToString(
+             HloPrintOptions::ShortParsable())
+      << " best output_tile_sizes ["
+      << absl::StrJoin(
+             tilings.front().block_level_parameters.output_tile_sizes.front(),
+             ",")
+      << "], exec_time " << tilings.front().runtime_data.exec_time;
   return tilings.front();
 }
 

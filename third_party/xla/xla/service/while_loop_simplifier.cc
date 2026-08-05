@@ -32,6 +32,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/tsl/platform/status_macros.h"
 #include "xla/comparison_util.h"
+#include "xla/frontend_attributes.h"
 #include "xla/hlo/analysis/while_loop_analysis.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -352,8 +353,12 @@ bool AllWhileParamConsumersGte(const HloInstruction* while_op) {
 
 absl::StatusOr<bool> TryRemoveDeadWhileParams(HloInstruction* while_op) {
   CHECK_EQ(while_op->opcode(), HloOpcode::kWhile);
+  if (HasDisableWhileLoopDceAttr(while_op)) {
+    return false;
+  }
 
   // Don't try this transformation if the while loop isn't removable, since if
+
   // it succeeds ultimately we're going to have to replace the old while loop
   // with a new one.
   if (!while_op->parent()->IsSafelyRemovable(while_op)) {
@@ -701,8 +706,12 @@ H AbslHashValue(H h, const RepeatedWhileTupleIndicesKey& key) {
 static absl::StatusOr<bool> TryRemoveRepeatedWhileTupleIndices(
     HloInstruction* while_op) {
   CHECK_EQ(while_op->opcode(), HloOpcode::kWhile);
+  if (HasDisableWhileLoopDceAttr(while_op)) {
+    return false;
+  }
 
   // Don't try this transformation if the while loop isn't removable, since if
+
   // it succeeds ultimately we're going to have to replace the old while loop
   // with a new one.
   if (!while_op->parent()->IsSafelyRemovable(while_op)) {
@@ -793,7 +802,11 @@ static absl::StatusOr<bool> TryRemoveRepeatedWhileTupleIndices(
 // Removes each loop parameter (i.e. member of the while loop tuple) that is a
 // constant and is the same in the while loop body and the while loop init.
 static absl::StatusOr<bool> TryRemoveConstantParams(HloInstruction* while_op) {
+  if (HasDisableWhileLoopDceAttr(while_op)) {
+    return false;
+  }
   HloModule* module = while_op->GetModule();
+
   HloComputation* computation = while_op->parent();
   auto* while_init = while_op->mutable_operand(0);
   auto* while_body = while_op->while_body();
@@ -968,6 +981,9 @@ static absl::StatusOr<bool> TryRemoveConstantParams(HloInstruction* while_op) {
 //
 // Returns true if it made a change to the graph.
 static absl::StatusOr<bool> TryRemoveWhileLoop(HloInstruction* while_op) {
+  if (HasDisableWhileLoopDceAttr(while_op)) {
+    return false;
+  }
   // Cowardly refuse to remove loops that are not removable.  In practice, this
   // means that we can't remove loops that have control predecessors/successors.
   if (!while_op->parent()->IsSafelyRemovable(while_op)) {
@@ -1193,6 +1209,9 @@ static std::vector<HloInstruction*> GetFlatTupleElems(
 }
 
 static absl::StatusOr<bool> TryFlattenNestedTuples(HloInstruction* while_op) {
+  if (HasDisableWhileLoopDceAttr(while_op)) {
+    return false;
+  }
   auto flatten_original_value = [&](HloInstruction* old_instr,
                                     HloInstruction* new_instr) {
     if (old_instr->original_value()) {
@@ -1592,7 +1611,8 @@ absl::StatusOr<bool> WhileLoopSimplifier::RunImpl(
     // cleanly, but that'd require restructuring the pass, and there's no need
     // to do it right now, so just add a bail-out to be conservative.
     if (while_op->while_body()->caller_instructions().size() > 1 ||
-        while_op->while_condition()->caller_instructions().size() > 1) {
+        while_op->while_condition()->caller_instructions().size() > 1 ||
+        HasDisableWhileLoopDceAttr(while_op)) {
       continue;
     }
 

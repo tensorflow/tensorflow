@@ -20,7 +20,6 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <string>
-#include <variant>
 #include <vector>
 
 #include "absl/base/attributes.h"
@@ -32,6 +31,7 @@ limitations under the License.
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_layout.h"
 #include "xla/python/ifrt/array.h"
+#include "xla/python/ifrt/array_spec.h"
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/dtype.h"
@@ -141,38 +141,43 @@ class PjRtArray final
     return client_;
   }
 
+  const ArraySpec& array_spec() const override {
+    CHECK(dynamic_shape_ == std::nullopt);
+    return array_spec_;
+  }
+
   DType dtype() const override {
     DCHECK(this);
-    return dtype_;
+    return array_spec_.dtype;
   }
 
   bool has_dynamic_shape() const {
     DCHECK(this);
-    return std::holds_alternative<DynamicShape>(shape_);
+    return dynamic_shape_ != std::nullopt;
   }
 
   bool has_static_shape() const {
     DCHECK(this);
-    return std::holds_alternative<Shape>(shape_);
+    return dynamic_shape_ == std::nullopt;
   }
 
   const Shape& shape() const override {
     DCHECK(has_static_shape());
-    return std::get<Shape>(shape_);
+    return array_spec_.shape;
   }
 
   const DynamicShape& dynamic_shape() const {
     DCHECK(has_dynamic_shape());
-    return std::get<DynamicShape>(shape_);
+    return *dynamic_shape_;
   }
 
   const Sharding& sharding() const override {
     DCHECK(this);
-    return *sharding_;
+    return *array_spec_.sharding;
   }
   ShardingRef shared_ptr_sharding() const override {
     DCHECK(this);
-    return sharding_;
+    return array_spec_.sharding;
   }
 
   absl::StatusOr<std::shared_ptr<const xla::PjRtLayout>> pjrt_layout()
@@ -233,9 +238,8 @@ class PjRtArray final
   friend tsl::RCReference<T> tsl::MakeRef(Args&&... args);
 
   PjRtCompatibleClient* client_;
-  DType dtype_;
-  std::variant<Shape, DynamicShape> shape_;
-  ShardingRef sharding_;
+  ArraySpec array_spec_;
+  std::optional<DynamicShape> dynamic_shape_;
   PjRtBuffers pjrt_buffers_;
   std::shared_ptr<const xla::ifrt::PjRtLayout> layout_;
   const xla::ifrt::UserContextRef user_context_;

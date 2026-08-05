@@ -75,6 +75,7 @@ limitations under the License.
 #include "xla/stream_executor/device_description.h"
 #include "xla/tsl/platform/logging.h"
 #include "xla/tsl/platform/threadpool.h"
+#include "xla/util.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -213,7 +214,7 @@ class PriorityFusionQueue {
             computation->parent()
                 ->config()
                 .debug_options()
-                .xla_experimental_enable_same_shape_multi_output_fusion()),
+                .xla_gpu_experimental_enable_same_shape_multi_output_fusion()),
         fusion_process_dump_(fusion_process_dump),
         thread_pool_(thread_pool),
         fusion_analysis_cache_(fusion_analysis_cache),
@@ -1185,6 +1186,7 @@ FusionDecision PriorityFusion::CanFuseConstant(const HloInstruction* constant,
 absl::StatusOr<bool> PriorityFusion::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
+  XLA_SCOPED_LOGGING_TIMER("PriorityFusion::RunImpl");
   bool dump_enabled =
       DumpingEnabledForHloPass(name(), module->config().debug_options());
   if (dump_enabled) {

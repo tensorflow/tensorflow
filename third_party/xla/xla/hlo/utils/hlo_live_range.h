@@ -18,6 +18,7 @@ the License.
 #include <cstdint>
 #include <memory>
 #include <string>
+#include <utility>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
@@ -47,7 +48,7 @@ class HloLiveRange {
   // schedule.
   using LogicalTime = int64_t;
 
-  struct TimeBound {
+  struct LiveRangeBounds {
     LogicalTime start;
     LogicalTime end;
 
@@ -56,10 +57,10 @@ class HloLiveRange {
     // represents the last instruction that the buffer holds.
     HloPosition end_position;
 
-    bool friend operator==(const TimeBound& a, const TimeBound& b) {
+    bool friend operator==(const LiveRangeBounds& a, const LiveRangeBounds& b) {
       return a.start == b.start && a.end == b.end;
     }
-    bool friend operator!=(const TimeBound& a, const TimeBound& b) {
+    bool friend operator!=(const LiveRangeBounds& a, const LiveRangeBounds& b) {
       return !(a == b);
     }
   };
@@ -77,17 +78,17 @@ class HloLiveRange {
   }
 
   // Returns the map from a hlo value to the definition time of that hlo value.
-  const absl::flat_hash_map<const HloValue*, TimeBound>& buffer_live_ranges()
-      const {
+  const absl::flat_hash_map<const HloValue*, LiveRangeBounds>&
+  buffer_live_ranges() const {
     return buffer_live_ranges_;
   }
 
-  absl::flat_hash_map<const HloValue*, TimeBound>& buffer_live_ranges() {
+  absl::flat_hash_map<const HloValue*, LiveRangeBounds>& buffer_live_ranges() {
     return buffer_live_ranges_;
   }
 
   // Returns the map from a computation and its time span in the schedule.
-  const absl::flat_hash_map<const HloComputation*, TimeBound>&
+  const absl::flat_hash_map<const HloComputation*, LiveRangeBounds>&
   computation_span_times() const {
     return computation_span_times_;
   }
@@ -120,9 +121,10 @@ class HloLiveRange {
   absl::Status FlattenSchedule(const HloComputation& computation,
                                const HloComputation* async_context = nullptr);
 
-  // Returns the last position of a value.
-  TimeBound GetLastPosition(const HloValue& value,
-                            LogicalTime definition_end_time) const;
+  // Computes the end of the live range of an HloValue. Returns the end time and
+  // the position where the live range ends.
+  std::pair<LogicalTime, HloPosition> ComputeValueLiveRangeEnd(
+      const HloValue& value, LogicalTime defining_instruction_end_time) const;
 
   // Returns the time of the last use of a value.
   LogicalTime GetLastUsageTime(const HloValue& value) const;
@@ -219,8 +221,9 @@ class HloLiveRange {
 
   HloInstructionSequence flattened_instruction_sequence_;
   absl::flat_hash_map<const HloInstruction*, LogicalTime> instruction_schedule_;
-  absl::flat_hash_map<const HloComputation*, TimeBound> computation_span_times_;
-  absl::flat_hash_map<const HloValue*, TimeBound> buffer_live_ranges_;
+  absl::flat_hash_map<const HloComputation*, LiveRangeBounds>
+      computation_span_times_;
+  absl::flat_hash_map<const HloValue*, LiveRangeBounds> buffer_live_ranges_;
   absl::flat_hash_map<const HloComputation*, const HloComputation*>
       computations_in_async_context_;
 };

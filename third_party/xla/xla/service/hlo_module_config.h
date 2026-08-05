@@ -427,6 +427,7 @@ class HloModuleConfig {
   void SetAnalysisAllowance(absl::string_view pass_name, int64_t allowance) {
     analysis_allowance_map_[pass_name] = allowance;
   }
+  void clear_analysis_allowance_map() { analysis_allowance_map_.clear(); }
 
   PrecisionConfig::Precision matrix_unit_operand_precision() const {
     return matrix_unit_operand_precision_;

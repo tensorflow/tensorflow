@@ -4,6 +4,14 @@ tf_class {
   is_instance: "<class \'tensorflow.python.summary.writer.writer.SummaryToEventTransformer\'>"
   is_instance: "<class \'object\'>"
   member_method {
+    name: "__enter__"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "__exit__"
+    argspec: "args=[\'self\', \'unused_type\', \'unused_value\', \'unused_traceback\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
     name: "__init__"
     argspec: "args=[\'self\', \'logdir\', \'graph\', \'max_queue\', \'flush_secs\', \'graph_def\', \'filename_suffix\', \'session\'], varargs=None, keywords=None, defaults=[\'None\', \'10\', \'120\', \'None\', \'None\', \'None\'], "
   }

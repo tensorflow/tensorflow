@@ -30,6 +30,7 @@ common_patch_list = [
     "//third_party/triton:common/silence_matchAndRewrite_failures.patch",
     "//third_party/triton:common/check_null_encoding.patch",
     "//third_party/triton:common/tmemfix.patch",
+    "//third_party/triton:common/tmem_scale_padding_second_half.patch",
     "//third_party/triton:common/test_cache_determinism_fix.patch",
     "//third_party/triton:common/mig_limits_pytests.patch",
     "//third_party/triton:common/llvm_cl930478990.patch",
@@ -40,5 +41,7 @@ common_patch_list = [
     "//third_party/triton:common/convert_layout_heuristic.patch",
     "//third_party/triton:common/llvm_cl947230825.patch",
     "//third_party/triton:common/llvm_cl948082775.patch",
+    "//third_party/triton:common/sm120_fp4_non_k_fallback.patch",
+    "//third_party/triton:common/blackwell_fp4_mma_padding.patch",
     # Add new patches just above this line
 ]

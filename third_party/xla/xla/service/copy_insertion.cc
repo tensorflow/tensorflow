@@ -98,6 +98,31 @@ struct SpecialCaseCopyPolicy {
   bool copy_parameters_and_constants = false;
 };
 
+// Returns true if any conditional instruction calling `node` defines a new Phi
+// value at `index`. If the conditional simply passes through reaching values at
+// `index` without merging, no replicated root copies are needed.
+bool ShouldCopyConditionalRootAt(const CallGraphNode& node,
+                                 const HloAliasAnalysis& alias_analysis,
+                                 const ShapeIndex& index) {
+  const HloDataflowAnalysis& dataflow = alias_analysis.dataflow_analysis();
+  for (const CallSite& caller_callsite : node.caller_callsites()) {
+    if (caller_callsite.instruction()->opcode() == HloOpcode::kConditional) {
+      if (!ShapeUtil::IndexIsValid(caller_callsite.instruction()->shape(),
+                                   index)) {
+        return true;  // Conservatively copy if index is out of bounds.
+      }
+      const HloValueSet& value_set =
+          dataflow.GetValueSet(caller_callsite.instruction(), index);
+      if (absl::c_any_of(value_set.values(), [](const HloValue* value) {
+            return value->is_phi();
+          })) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
 SpecialCaseCopyPolicy GetSpecialCaseCopyPolicy(const CallGraphNode& node,
                                                HloModule* module,
                                                HloComputation* computation) {
@@ -113,6 +138,34 @@ bool ShouldCopyRootValue(const HloValue& value,
                          const SpecialCaseCopyPolicy& policy) {
   if (policy.copy_parameters_and_constants) {
     return ValueIsReadOnly(value);
+  }
+  return false;
+}
+
+bool IsWhileLoopCopyDisabled(const HloInstruction* instruction,
+                             const CallGraph& call_graph) {
+  if (instruction == nullptr || instruction->parent() == nullptr) {
+    return false;
+  }
+  absl::flat_hash_set<const HloComputation*> visited;
+  std::vector<const HloComputation*> worklist = {instruction->parent()};
+  while (!worklist.empty()) {
+    const HloComputation* curr = worklist.back();
+    worklist.pop_back();
+    if (!visited.insert(curr).second) {
+      continue;
+    }
+    const CallGraphNode& node = call_graph.GetNode(curr);
+    for (const CallSite& callsite : node.caller_callsites()) {
+      const HloInstruction* caller = callsite.instruction();
+      if (caller != nullptr && caller->opcode() == HloOpcode::kWhile &&
+          HasDisableWhileLoopCopiesAttr(caller)) {
+        return true;
+      }
+      if (caller != nullptr && caller->parent() != nullptr) {
+        worklist.push_back(caller->parent());
+      }
+    }
   }
   return false;
 }
@@ -394,6 +447,12 @@ absl::Status AddCopiesForWhile(const HloAliasAnalysis& alias_analysis,
                                HloInstruction* xla_while) {
   VLOG(2) << "Adding copies for kWhile instruction " << xla_while->name();
   TF_RET_CHECK(xla_while->opcode() == HloOpcode::kWhile);
+
+  if (HasDisableWhileLoopCopiesAttr(xla_while)) {
+    VLOG(2) << "While loop copy insertion disabled via frontend attribute for "
+            << xla_while->name();
+    return absl::OkStatus();
+  }
 
   ShapeTree<bool> indices_to_copy(xla_while->shape());
   if (!IndicesToCopyForWhile(alias_analysis.dataflow_analysis(), xla_while,
@@ -1251,7 +1310,8 @@ absl::Status CopyInsertion::AddCopiesToResolveInterference(
               absl::c_all_of(
                   instruction->operand(operand_index_in_this_intr)->users(),
                   [&instruction](const HloInstruction* user) {
-                    return user == instruction;
+                    return user == instruction ||
+                           HasDisjointReadWriteRegionsAttr(user);
                   })) {
             continue;
           }
@@ -1291,8 +1351,12 @@ absl::Status CopyInsertion::AddSpecialCaseCopies(
   // Identify which shape indices of which instructions need to be copied. Store
   // these results in 'instructions_to_copy'.
   HloInstructionMap<ShapeTree<bool>> instructions_to_copy;
-  auto add_index_to_copy = [&instructions_to_copy](HloInstruction* instruction,
-                                                   const ShapeIndex& index) {
+  auto add_index_to_copy = [&instructions_to_copy, &call_graph](
+                               HloInstruction* instruction,
+                               const ShapeIndex& index) {
+    if (IsWhileLoopCopyDisabled(instruction, call_graph)) {
+      return;
+    }
     // Buffers are non-copyable and needed copies are added to transition
     // in and out non-copyable values.
     if (ShapeUtil::GetSubshape(instruction->shape(), index).IsBuffer()) {
@@ -1384,7 +1448,6 @@ absl::Status CopyInsertion::AddSpecialCaseCopies(
       continue;
     }
     TF_RET_CHECK(node.context() == CallContext::kControlFlow);
-
     SpecialCaseCopyPolicy policy =
         GetSpecialCaseCopyPolicy(node, module, computation);
     HloInstruction* root = computation->root_instruction();
@@ -1393,6 +1456,9 @@ absl::Status CopyInsertion::AddSpecialCaseCopies(
     absl::flat_hash_map<const HloBuffer*, ShapeIndex> seen;
     ShapeUtil::ForEachSubshape(
         root->shape(), [&](const Shape& subshape, const ShapeIndex& index) {
+          bool copy_replicated =
+              policy.copy_root_replicated_buffers ||
+              ShouldCopyConditionalRootAt(node, *alias_analysis, index);
           std::vector<const HloBuffer*> buffers_at_index =
               alias_analysis->ComputeBuffersAt(root, index);
           bool buffer_seen_before = false;
@@ -1400,7 +1466,7 @@ absl::Status CopyInsertion::AddSpecialCaseCopies(
             buffer_seen_before |= !seen.emplace(buffer, index).second;
           }
 
-          if (buffer_seen_before && policy.copy_root_replicated_buffers &&
+          if (buffer_seen_before && copy_replicated &&
               computation == module->entry_computation() &&
               module->input_output_alias_config().OutputHasAlias(index) &&
               buffers_at_index.size() == 1) {
@@ -1416,7 +1482,7 @@ absl::Status CopyInsertion::AddSpecialCaseCopies(
           }
 
           if (buffers_at_index.size() > 1 ||
-              (buffer_seen_before && policy.copy_root_replicated_buffers)) {
+              (buffer_seen_before && copy_replicated)) {
             VLOG(2) << "Index " << index << " of computation "
                     << computation->name() << " (" << root->name()
                     << ") has ambiguous or non-distinct buffer. Copying.";

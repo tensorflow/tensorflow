@@ -100,13 +100,20 @@ TEST_F(GpuIndexTest, CompatibleUseLinearIndexWithReshapeAndBroadcast) {
   // the addrspace(1) attribute for the lines being checked by the following
   // patterns.
   // need to investigate why that is the case, and whether or not it is ok
+  //
+  // Set match_ir_from_hlo_passes because the AMD backend runs optimization
+  // passes only during the initial module compilation (e.g., during autotuning
+  // in HLO passes). Subsequent compilations hit the cache and skip optimization
+  // passes, so we wan to capture the IR during HLO pass execution.
   EXPECT_OK(CompileAndVerifyIr(std::move(module),
                                R"(
 ; CHECK: %[[urem1:.*]] = urem i{{[0-9]*}} %[[linear_index:.*]], 14
 ; CHECK: %[[idx1:.*]] = zext nneg i{{[0-9]*}} %[[urem1]] to i64
 ; CHECK: getelementptr inbounds{{( nuw)?}} [4 x i8], ptr{{( addrspace\(1\))?}} %[[alloc:.*]], i64 %[[idx1]]
       )",
-                               /*match_optimized_ir=*/true));
+                               /*match_optimized_ir=*/true,
+                               /*run_optimization_passes=*/true,
+                               /*match_ir_from_hlo_passes=*/true));
 }
 
 TEST_F(GpuIndexTest, CompatibleUseLinearIndexWithSizeOneDimensions) {

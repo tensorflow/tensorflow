@@ -1847,8 +1847,14 @@ absl::StatusOr<std::unique_ptr<TiledHloInstruction>> ComputeTiledHloInstruction(
     }
     std::optional<std::vector<Interval>> region_tile_dim_bounds;
     if (IsControlFlowCondition(*hlo)) {
-      region_tile_dim_bounds =
-          output_tiling_info.output_tile_offset_indexing.GetDimensionBounds();
+      if (parent_output_tile_dim_bounds) {
+        region_tile_dim_bounds =
+            std::vector<Interval>(parent_output_tile_dim_bounds->begin(),
+                                  parent_output_tile_dim_bounds->end());
+      } else {
+        region_tile_dim_bounds =
+            output_tiling_info.output_tile_offset_indexing.GetDimensionBounds();
+      }
     }
     // Tile the instructions of the regions first: we need operands to be
     // present in the region_symbolic_to_tiled_hlo.

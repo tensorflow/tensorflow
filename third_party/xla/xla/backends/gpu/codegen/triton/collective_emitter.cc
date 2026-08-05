@@ -23,6 +23,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/base/nullability.h"
 #include "absl/functional/any_invocable.h"
 #include "absl/log/check.h"
@@ -223,10 +224,12 @@ GetBlockLevelFusionConfigForAllReduce(
   }
 
   absl::StatusOr<AllReduceInfo> maybe_all_reduce_info = BuildAllReduceInfo(
-      /*is_collective_kernel_enabled=*/all_reduce->GetModule()
-          ->config()
-          .debug_options()
-          .xla_gpu_unsupported_use_all_reduce_one_shot_kernel(),
+      /*is_collective_kernel_enabled=*/absl::c_linear_search(
+          all_reduce->GetModule()
+              ->config()
+              .debug_options()
+              .xla_gpu_experimental_use_collective_kernels(),
+          static_cast<int>(DebugOptions::COLLECTIVE_KERNEL_ALL_REDUCE)),
       /*is_multimem_enabled=*/false, gpu_topology, all_reduce,
       device_assignment);
   if (absl::IsUnimplemented(maybe_all_reduce_info.status())) {
@@ -543,7 +546,9 @@ class AllReduceEmitter {
     // See fusion emitter for more details.
     if (elem_storage_type_ != elem_type_) {
       next_tile = mlir::cast<xtile::TensorValue>(
-          xtile::Cast(builder_, next_tile, elem_type_));
+          arith::TruncIOp::create(
+              builder_, next_tile.getType().clone(elem_type_), next_tile)
+              .getResult());
     }
     return next_tile;
   }
@@ -571,8 +576,9 @@ class AllReduceEmitter {
     // storage type. Downstream passes should be able to optimize this away.
     mlir::Value storage_tile = tile_to_store;
     if (elem_storage_type_ != elem_type_) {
-      storage_tile = mlir::cast<xtile::TensorValue>(
-          xtile::Cast(builder_, tile_to_store, elem_storage_type_));
+      auto shaped_type = mlir::cast<mlir::ShapedType>(tile_to_store.getType());
+      storage_tile = arith::ExtUIOp::create(
+          builder_, shaped_type.clone(elem_storage_type_), tile_to_store);
     }
     auto [ptrs, mask] = triton::CreateTensorOfPointersAndMask(
         builder_,        //
@@ -1013,17 +1019,16 @@ GetCollectiveBlockLevelFusionConfig(const GpuTopology& gpu_topology,
   }
 }
 
-absl::StatusOr<bool> TrySetGpuBackendConfigForCollective(
+absl::Status TrySetGpuBackendConfigForCollective(
     const GpuTopology& gpu_topology, HloFusionInstruction* fusion_instr,
     const DeviceAssignment* device_assignment) {
   ASSIGN_OR_RETURN(const std::optional<BlockLevelFusionConfig> block_config,
                    GetCollectiveBlockLevelFusionConfig(
                        gpu_topology, fusion_instr, device_assignment));
   if (!block_config.has_value()) {
-    VLOG(3) << "No block level fusion config calculated for collective: "
-            << fusion_instr->ToString()
-            << ". Not using Triton collective fusion.";
-    return false;
+    return absl::FailedPreconditionError(absl::StrCat(
+        "No block level fusion config calculated for collective ",
+        fusion_instr->ToString(), ". Not using Triton collective fusion."));
   }
   ASSIGN_OR_RETURN(GpuBackendConfig gpu_backend_config,
                    fusion_instr->backend_config<GpuBackendConfig>());
@@ -1033,7 +1038,7 @@ absl::StatusOr<bool> TrySetGpuBackendConfigForCollective(
        ->mutable_block_level_fusion_config() = *std::move(block_config);
   RETURN_IF_ERROR(
       fusion_instr->set_backend_config(std::move(gpu_backend_config)));
-  return true;
+  return absl::OkStatus();
 }
 
 absl::StatusOr<std::vector<Shape>> GetCollectiveUnmanagedKernelArguments(

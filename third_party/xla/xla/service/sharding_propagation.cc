@@ -273,7 +273,6 @@ const HloInstruction* PickRepresentativeOperand(
     case HloOpcode::kSin:
     case HloOpcode::kSinh:
     case HloOpcode::kTopK:
-    case HloOpcode::kScan:
     case HloOpcode::kSort:
     case HloOpcode::kSqrt:
     case HloOpcode::kCbrt:
@@ -351,6 +350,7 @@ const HloInstruction* PickRepresentativeOperand(
     case HloOpcode::kRngGetAndUpdateState:
     case HloOpcode::kRngBitGenerator:
     case HloOpcode::kScaledDot:
+    case HloOpcode::kScan:
     case HloOpcode::kScatter:
     case HloOpcode::kSelectAndScatter:
     case HloOpcode::kSend:
@@ -1381,6 +1381,65 @@ bool InferReduceShardingFromOperand(HloInstruction* instruction,
   return changed;
 }
 
+bool InferScanShardingFromOperands(HloInstruction* instruction,
+                                   bool may_combine_partial_sharding,
+                                   bool is_spmd) {
+  // A scan's result is a tuple (outputs..., final carries...): output i has
+  // input i's shape and carry i has that shape with the scan dimension
+  // removed. Propagate per tuple element: a non tuple sharding proposed for
+  // the tuple shaped scan trips IsShardingStrictlyBetter's tupleness CHECK.
+  auto* scan = Cast<HloScanInstruction>(instruction);
+  const int64_t scan_dim = scan->scan_dimension();
+  const int64_t num_inputs = scan->inputs().size();
+  const bool aggressive_resharding = ComputeNonRootUsers(instruction) == 1;
+  bool changed = false;
+  for (int64_t i = 0; i < num_inputs; ++i) {
+    const HloInstruction* input = scan->inputs()[i];
+    if (!IsSpatiallyPartitioned(input)) {
+      continue;
+    }
+    const HloSharding& input_sharding = input->sharding();
+    // Output i has the same shape as input i.
+    changed |= MaybeImproveInstructionSubSharding(
+        input_sharding, instruction, {i}, may_combine_partial_sharding,
+        /*allow_aggressive_resharding=*/aggressive_resharding);
+    // Carry i drops the scan dimension. Non-tiled shardings (manual,
+    // replicated, unknown) carry no per-dimension tiles and pass through
+    // unchanged.
+    if (!input_sharding.IsTiled()) {
+      changed |= MaybeImproveInstructionSubSharding(
+          input_sharding, instruction, {num_inputs + i},
+          may_combine_partial_sharding,
+          /*allow_aggressive_resharding=*/aggressive_resharding);
+      continue;
+    }
+    if (!is_spmd && input_sharding.dimension(scan_dim) > 1) {
+      // Replicating the sharded scan dimension is only supported in SPMD.
+      continue;
+    }
+    HloSharding carry_sharding = hlo_sharding_util::RemoveShapeDimensions(
+        hlo_sharding_util::PartiallyReplicateTiledShardingOnDims(input_sharding,
+                                                                 {scan_dim}),
+        {scan_dim});
+    changed |= MaybeImproveInstructionSubSharding(
+        std::move(carry_sharding), instruction, {num_inputs + i},
+        may_combine_partial_sharding,
+        /*allow_aggressive_resharding=*/aggressive_resharding);
+  }
+  // An init has the same shape as its carry element.
+  for (int64_t i = 0; i < scan->inits().size(); ++i) {
+    const HloInstruction* init = scan->inits()[i];
+    if (!IsSpatiallyPartitioned(init)) {
+      continue;
+    }
+    changed |= MaybeImproveInstructionSubSharding(
+        init->sharding(), instruction, {num_inputs + i},
+        may_combine_partial_sharding,
+        /*allow_aggressive_resharding=*/aggressive_resharding);
+  }
+  return changed;
+}
+
 // Remove Sharding custom-call instruction by folding the sharding attribute
 // to its operand. If the operand already has a different sharding, insert a
 // copy node for reshard.
@@ -2130,6 +2189,7 @@ bool ShardingPropagation::InferShardingFromOperands(
        instruction->sharding().IsReplicatedOrSingleDevice()) &&
       (instruction->shape().IsArray() ||
        instruction->opcode() == HloOpcode::kReduce ||
+       instruction->opcode() == HloOpcode::kScan ||
        instruction->opcode() == HloOpcode::kSort ||
        instruction->opcode() == HloOpcode::kReduceWindow ||
        custom_call_condition || async_instr_condition)) {
@@ -2473,6 +2533,10 @@ bool ShardingPropagation::InferShardingFromOperands(
         default:
           return false;
       }
+    }
+    case HloOpcode::kScan: {
+      return InferScanShardingFromOperands(
+          instruction, may_combine_partial_sharding, is_spmd_);
     }
     case HloOpcode::kSort: {
       const HloInstruction* operand = PickRepresentativeOperand(instruction);

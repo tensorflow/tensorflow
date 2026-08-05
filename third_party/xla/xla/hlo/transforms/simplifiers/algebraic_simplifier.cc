@@ -5228,10 +5228,10 @@ absl::Status AlgebraicSimplifierVisitor::HandleOr(HloInstruction* logical_or) {
 }
 
 absl::Status AlgebraicSimplifierVisitor::HandleLog(HloInstruction* log) {
-  // ln(exp(A)) => A
+  // ln(exp(A)) => A optimization is gated behind fast math flag.
   VLOG(10) << "trying transform [ln(exp(A)) => A]: " << log->ToString();
   HloInstruction *a, *b;
-  if (Match(log, m::Log(m::Exp(m::Op(&a)))) &&
+  if (options_.enable_fast_math() && Match(log, m::Log(m::Exp(m::Op(&a)))) &&
       ReplaceInstructionIfCompatible(log, a)) {
     return absl::OkStatus();
   }
@@ -7084,6 +7084,8 @@ absl::StatusOr<bool> AlgebraicSimplifierVisitor::TryToReorderSliceAndReshape(
   }
   HloInstruction* new_slice_operand = reshape->mutable_operand(0);
   int64_t slice_rank = slice->shape().dimensions().size();
+
+  // Find all dimensions of the reshape output that are actually sliced.
   std::vector<int64_t> sliced_dims;
   for (int64_t i = 0; i < slice_rank; ++i) {
     if (slice->slice_starts(i) != 0 ||
@@ -7092,32 +7094,69 @@ absl::StatusOr<bool> AlgebraicSimplifierVisitor::TryToReorderSliceAndReshape(
     }
   }
 
-  if (sliced_dims.size() == 1 && sliced_dims[0] == 0 &&
-      slice->slice_starts(0) == 0) {
+  // Currently, reordering is supported when only dimension 0 is sliced.
+  if (sliced_dims.size() == 1 && sliced_dims[0] == 0) {
     const Shape& new_slice_shape = new_slice_operand->shape();
     const int64_t rank = new_slice_shape.dimensions().size();
     std::vector<int64_t> new_slice_starts(rank, 0);
-    std::vector<int64_t> new_slice_stides(rank, 1);
+    std::vector<int64_t> new_slice_strides(rank, 1);
     std::vector<int64_t> new_slice_limits(new_slice_shape.dimensions().begin(),
                                           new_slice_shape.dimensions().end());
+
+    // Calculate the number of scalar elements per slice step along dimension 0
+    // of reshape output.
+    int64_t sub_dim_elements = 1;
+    for (int64_t i = 1; i < slice_rank; ++i) {
+      sub_dim_elements *= reshape->shape().dimensions(i);
+    }
+    int64_t start_offset = slice->slice_starts(0) * sub_dim_elements;
     int64_t slice_elements = ShapeUtil::ElementsIn(slice->shape());
+
+    // Decompose start_offset and slice_elements backwards through the operand
+    // dimensions.
     for (int64_t i = rank - 1; i >= 0; --i) {
-      if (slice_elements >= new_slice_limits[i]) {
-        if (slice_elements % new_slice_limits[i] != 0) {
+      int64_t dim_size = new_slice_shape.dimensions(i);
+      if (slice_elements >= dim_size) {
+        // If slice covers at least a full unit of this dimension, both
+        // slice_elements and start_offset must align cleanly to dim_size
+        // boundaries to avoid non-contiguous cuts.
+        if (slice_elements % dim_size != 0 || start_offset % dim_size != 0) {
           return false;
         }
-        slice_elements /= new_slice_limits[i];
+        slice_elements /= dim_size;
+        start_offset /= dim_size;
       } else {
-        new_slice_limits[i] = slice_elements;
+        // The remaining slice elements fall within a sub-range of this single
+        // dimension.
+        int64_t start_in_dim = start_offset % dim_size;
+        // Check that the sub-range does not spill across this dimension's
+        // boundary into non-contiguous memory.
+        if (start_in_dim + slice_elements > dim_size) {
+          return false;
+        }
+        new_slice_starts[i] = start_in_dim;
+        new_slice_limits[i] = start_in_dim + slice_elements;
+        start_offset /= dim_size;
         slice_elements = 1;
       }
+    }
+
+    // Check if the offset and slice elements were fully decomposed with no
+    // remaining residual.
+    if (start_offset != 0 || slice_elements != 1) {
+      return false;
+    }
+
+    std::vector<int64_t> new_slice_dims(rank);
+    for (int64_t i = 0; i < rank; ++i) {
+      new_slice_dims[i] = new_slice_limits[i] - new_slice_starts[i];
     }
     HloInstruction* new_slice =
         slice->AddInstruction(HloInstruction::CreateSlice(
             ShapeUtil::MakeShape(new_slice_shape.element_type(),
-                                 new_slice_limits),
+                                 new_slice_dims),
             new_slice_operand, new_slice_starts, new_slice_limits,
-            new_slice_stides));
+            new_slice_strides));
     simplifier_->UpdateLayout(new_slice->mutable_shape());
     RETURN_IF_ERROR(ReplaceWithNewInstruction(
         slice, HloInstruction::CreateReshape(slice->shape(), new_slice)));
@@ -9551,7 +9590,9 @@ absl::Status AlgebraicSimplifierVisitor::HandleSort(HloInstruction* sort) {
 absl::Status AlgebraicSimplifierVisitor::HandleSqrt(HloInstruction* sqrt) {
   VLOG(10) << "trying transform [sqrt(A*A) => |A|] " << sqrt->ToString();
   HloInstruction* sqrt_operand = sqrt->mutable_operand(0);
-  if (sqrt_operand->opcode() == HloOpcode::kMultiply &&
+  // sqrt(A*A) => |A| optimization is gated behind fast math flag.
+  if (options_.enable_fast_math() &&
+      sqrt_operand->opcode() == HloOpcode::kMultiply &&
       sqrt_operand->operand(0) == sqrt_operand->operand(1)) {
     PrimitiveType element_type = sqrt_operand->shape().element_type();
     // For 'A' of type C{64,128}, |A| has type F{32,64}, and the transformation
@@ -10010,6 +10051,9 @@ absl::Status AlgebraicSimplifierVisitor::HandleTranspose(
 
 absl::StatusOr<bool> AlgebraicSimplifierVisitor::FoldConvInputPad(
     HloInstruction* convolution) {
+  if (!options_.enable_folding_pad_into_convolution()) {
+    return false;
+  }
   HloInstruction *lhs, *a, *b;
   if (Match(convolution,
             m::Convolution(m::Pad(&lhs, m::Op(&a), m::ConstantScalar(0)),
@@ -10071,6 +10115,9 @@ absl::StatusOr<bool> AlgebraicSimplifierVisitor::FoldConvInputPad(
 
 absl::StatusOr<bool> AlgebraicSimplifierVisitor::FoldConvFilterPad(
     HloInstruction* convolution) {
+  if (!options_.enable_folding_pad_into_convolution()) {
+    return false;
+  }
   auto* lhs = convolution->mutable_operand(0);
   auto* rhs = convolution->mutable_operand(1);
   const ConvolutionDimensionNumbers& dnums =

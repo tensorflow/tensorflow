@@ -838,7 +838,7 @@ TensorBuffer* FromProtoField<Variant>(Allocator* a, const TensorProto& in,
       data[i] = in.variant_val(i);
       if (!DecodeUnaryVariant(&data[i])) {
         LOG(ERROR) << "Could not decode variant with type_name: \""
-                   << data[i].TypeName()
+                   << in.variant_val(i).type_name()
                    << "\".  Perhaps you forgot to register a "
                       "decoder via REGISTER_UNARY_VARIANT_DECODE_FUNCTION?";
         buf->Unref();

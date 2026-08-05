@@ -300,4 +300,31 @@ std::string RedzoneCheckStatus::RedzoneFailureMsg() const {
       buffer_name, user_buffer_address, offset, expected_value, actual_value);
 }
 
+RedzoneDeviceAddressAllocator::RedzoneDeviceAddressAllocator(
+    Stream* stream, DeviceAddressAllocator* underlying, int64_t redzone_size,
+    int64_t memory_limit)
+    : DeviceAddressAllocator(underlying->platform()),
+      underlying_(underlying),
+      rz_alloc_(stream, underlying, memory_limit, redzone_size) {}
+
+absl::StatusOr<ScopedDeviceAddress<uint8_t>>
+RedzoneDeviceAddressAllocator::Allocate(int device_ordinal, uint64_t size,
+                                        bool /*retry_on_failure*/,
+                                        int64_t /*memory_space*/) {
+  ASSIGN_OR_RETURN(DeviceAddress<uint8_t> ptr,
+                   rz_alloc_.AllocateBytes(static_cast<int64_t>(size)));
+  return ScopedDeviceAddress<uint8_t>(ptr, device_ordinal, this);
+}
+
+absl::Status RedzoneDeviceAddressAllocator::Deallocate(
+    int /*device_ordinal*/, DeviceAddressBase /*mem*/) {
+  // rz_alloc_ owns all memory; it is freed when this object is destroyed.
+  return absl::OkStatus();
+}
+
+absl::StatusOr<Stream*> RedzoneDeviceAddressAllocator::GetStream(
+    int device_ordinal) {
+  return underlying_->GetStream(device_ordinal);
+}
+
 }  // namespace stream_executor

@@ -290,7 +290,8 @@ absl::StatusOr<std::vector<TritonGemmConfig>> OptimizeConfigsWithCostModel(
   const bool use_experimental_tiling =
       debug_options.xla_gpu_experimental_enable_tiling_propagation();
   const bool enable_same_shape_multi_output_fusion =
-      debug_options.xla_experimental_enable_same_shape_multi_output_fusion();
+      debug_options
+          .xla_gpu_experimental_enable_same_shape_multi_output_fusion();
 
   std::unique_ptr<HloModule> module =
       ExtractInstructionIntoNewModule(*dot->parent()->FusionInstruction());

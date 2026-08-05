@@ -269,6 +269,9 @@ message BlockLevelFusionConfig {
 
   // Number of waves per execution unit (0 = no restriction).
   int32 waves_per_eu = 8;
+
+  // Number of tiles per pid.
+  int32 num_tiles_per_pid = 9;
 }
 
 // A backend config for dynamic-slice and dynamic-update-slice instructions

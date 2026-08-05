@@ -22,6 +22,7 @@ limitations under the License.
 #include <functional>
 #include <limits>
 #include <memory>
+#include <optional>
 #include <random>
 #include <string>
 #include <tuple>
@@ -49,6 +50,7 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_tree.h"
 #include "xla/shape_util.h"
+#include "xla/tests/constraint_state.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/logging.h"  // IWYU pragma: keep
@@ -596,7 +598,7 @@ TEST_F(LiteralUtilTest, DifferentLayoutInEquality) {
 }
 
 TEST_F(LiteralUtilTest, LogicalInequalityFastPath) {
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       Literal a,
       Literal::Make(ShapeUtil::MakeShapeWithDenseLayout(F32, {2, 2}, {1, 0})));
   a.Set<float>({0, 0}, 1.0);
@@ -604,7 +606,7 @@ TEST_F(LiteralUtilTest, LogicalInequalityFastPath) {
   a.Set<float>({1, 0}, 0.0);
   a.Set<float>({1, 1}, 4.0);
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       Literal b,
       Literal::Make(ShapeUtil::MakeShapeWithDenseLayout(F32, {2, 2}, {1, 0})));
   b.Set<float>({0, 0}, 1.0);
@@ -623,7 +625,7 @@ TEST_F(LiteralUtilTest, LogicalInequalitySlowPath) {
   // using the slow path because their layouts are different. This test ensures
   // that comparisons using the fast and slow path are equivalent.
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       Literal a,
       Literal::Make(ShapeUtil::MakeShapeWithDenseLayout(F32, {2, 2}, {0, 1})));
   a.Set<float>({0, 0}, 1.0);
@@ -631,7 +633,7 @@ TEST_F(LiteralUtilTest, LogicalInequalitySlowPath) {
   a.Set<float>({1, 0}, 0.0);
   a.Set<float>({1, 1}, 4.0);
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       Literal b,
       Literal::Make(ShapeUtil::MakeShapeWithDenseLayout(F32, {2, 2}, {1, 0})));
   b.Set<float>({0, 0}, 1.0);
@@ -655,8 +657,8 @@ TEST_F(LiteralUtilTest, MakeReturnsErrorOnHugeAllocation) {
 
 TEST_F(LiteralUtilTest, MakeUnique) {
   Shape shape = ShapeUtil::MakeShape(F32, {2, 3});
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<Literal> literal,
-                          Literal::MakeUnique(shape));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<Literal> literal,
+                       Literal::MakeUnique(shape));
   ASSERT_NE(literal, nullptr);
   EXPECT_EQ(literal->shape(), shape);
   EXPECT_TRUE(literal->IsKnown());
@@ -874,6 +876,49 @@ TEST_F(LiteralUtilTest, IsAll) {
   EXPECT_FALSE(LiteralUtil::CreateR2<uint64_t>(
                    {{uint64_max, uint64_max}, {uint64_max, uint64_max}})
                    .IsAll(-1));
+
+  // Tests for IsAll optimization (double-memcmp logic)
+  // Empty literals
+  EXPECT_TRUE(Literal::CreateFromShape(ShapeUtil::MakeShape(F32, {0}))
+                  .IsAll(LiteralUtil::CreateR0<float>(42.0f)));
+  EXPECT_TRUE(Literal::CreateFromShape(ShapeUtil::MakeShape(S32, {0}))
+                  .IsAll(LiteralUtil::CreateR0<int32_t>(42)));
+
+  // Single element
+  EXPECT_TRUE(LiteralUtil::CreateR1<float>({42.0f}).IsAll(
+      LiteralUtil::CreateR0<float>(42.0f)));
+  EXPECT_FALSE(LiteralUtil::CreateR1<float>({42.0f}).IsAll(
+      LiteralUtil::CreateR0<float>(43.0f)));
+  EXPECT_TRUE(LiteralUtil::CreateR1<int32_t>({42}).IsAll(
+      LiteralUtil::CreateR0<int32_t>(42)));
+  EXPECT_FALSE(LiteralUtil::CreateR1<int32_t>({42}).IsAll(
+      LiteralUtil::CreateR0<int32_t>(43)));
+
+  // Multi-element
+  EXPECT_TRUE(LiteralUtil::CreateR1<float>({42.0f, 42.0f, 42.0f})
+                  .IsAll(LiteralUtil::CreateR0<float>(42.0f)));
+  EXPECT_FALSE(LiteralUtil::CreateR1<float>({42.0f, 42.0f, 42.0f})
+                   .IsAll(LiteralUtil::CreateR0<float>(43.0f)));
+  EXPECT_FALSE(LiteralUtil::CreateR1<float>({42.0f, 43.0f, 42.0f})
+                   .IsAll(LiteralUtil::CreateR0<float>(42.0f)));
+  EXPECT_FALSE(LiteralUtil::CreateR1<float>({43.0f, 42.0f, 42.0f})
+                   .IsAll(LiteralUtil::CreateR0<float>(42.0f)));
+  EXPECT_FALSE(LiteralUtil::CreateR1<float>({42.0f, 42.0f, 43.0f})
+                   .IsAll(LiteralUtil::CreateR0<float>(42.0f)));
+
+  // NaNs (memcmp comparison behaves as bitwise comparison)
+  float nan_val = std::numeric_limits<float>::quiet_NaN();
+  // All elements are same NaN
+  EXPECT_TRUE(LiteralUtil::CreateR1<float>({nan_val, nan_val, nan_val})
+                  .IsAll(LiteralUtil::CreateR0<float>(nan_val)));
+  // elements are NaN but we check for non-NaN
+  EXPECT_FALSE(LiteralUtil::CreateR1<float>({nan_val, nan_val, nan_val})
+                   .IsAll(LiteralUtil::CreateR0<float>(42.0f)));
+  // Mixed elements
+  EXPECT_FALSE(LiteralUtil::CreateR1<float>({42.0f, nan_val, 42.0f})
+                   .IsAll(LiteralUtil::CreateR0<float>(42.0f)));
+  EXPECT_FALSE(LiteralUtil::CreateR1<float>({nan_val, 42.0f, nan_val})
+                   .IsAll(LiteralUtil::CreateR0<float>(nan_val)));
 }
 
 TEST_F(LiteralUtilTest, MaterializeSparseOperandValidConfigReturnsDense) {
@@ -1824,7 +1869,7 @@ TEST_F(LiteralUtilTest, ConvertR4) {
      {{26, 27, 28, 29}, {30, 31, 32, 33}},
   }}, layout_r4_dim0major_);
   // clang-format on
-  TF_ASSERT_OK_AND_ASSIGN(Literal converted, original.Convert(U32));
+  ASSERT_OK_AND_ASSIGN(Literal converted, original.Convert(U32));
 
   EXPECT_EQ(expected, converted);
 }
@@ -2135,9 +2180,9 @@ TEST_F(LiteralUtilTest, BitcastConvert) {
        absl::bit_cast<uint32_t>(100.f), 0xbeef});
   Literal expected = LiteralUtil::CreateR1<float>(
       {2.5f, -42.25f, 100.0f, absl::bit_cast<float>(0xbeef)});
-  TF_ASSERT_OK_AND_ASSIGN(Literal converted,
-                          original.BitcastConvert(ShapeUtil::ChangeElementType(
-                              original.shape(), F32)));
+  ASSERT_OK_AND_ASSIGN(Literal converted,
+                       original.BitcastConvert(ShapeUtil::ChangeElementType(
+                           original.shape(), F32)));
 }
 
 TEST_F(LiteralUtilTest, BitcastConvertBetweenInvalidTypes) {
@@ -2174,7 +2219,7 @@ TEST_F(LiteralUtilTest, CopyFromProto_Bool) {
       p.add_preds((i % 2) == (len % 2));
     }
 
-    TF_ASSERT_OK_AND_ASSIGN(Literal literal, Literal::CreateFromProto(p));
+    ASSERT_OK_AND_ASSIGN(Literal literal, Literal::CreateFromProto(p));
     ASSERT_EQ(len, literal.data<bool>().size());
     int i = 0;
     for (bool value : literal.data<bool>()) {
@@ -2194,7 +2239,7 @@ TEST_F(LiteralUtilTest, ToProto_f16) {
   EXPECT_EQ(4, m.data<half>().size());
 
   LiteralProto p = m.ToProto();
-  TF_ASSERT_OK_AND_ASSIGN(Shape shape, Shape::FromProto(p.shape()));
+  ASSERT_OK_AND_ASSIGN(Shape shape, Shape::FromProto(p.shape()));
   EXPECT_EQ(4, ShapeUtil::ElementsIn(shape));
   EXPECT_EQ(8, p.f16s().size());
   const char* d = p.f16s().data();
@@ -2221,7 +2266,7 @@ TEST_F(LiteralUtilTest, CopyFromProto_f16) {
   SetDefaultLayoutOnProto(p.mutable_shape());
   p.clear_f16s();
   p.set_f16s(half_vals, 8);
-  TF_ASSERT_OK_AND_ASSIGN(Literal literal, Literal::CreateFromProto(p));
+  ASSERT_OK_AND_ASSIGN(Literal literal, Literal::CreateFromProto(p));
   auto r = literal.data<half>();
   ASSERT_EQ(4, r.size());
   EXPECT_EQ(h1, r[0]);
@@ -2243,7 +2288,7 @@ TEST_F(LiteralUtilTest, CopyFromProto_u16) {
   SetDefaultLayoutOnProto(p.mutable_shape());
   p.clear_u16s();
   p.set_u16s(uint16_vals, 8);
-  TF_ASSERT_OK_AND_ASSIGN(Literal literal, Literal::CreateFromProto(p));
+  ASSERT_OK_AND_ASSIGN(Literal literal, Literal::CreateFromProto(p));
   auto r = literal.data<uint16_t>();
   ASSERT_EQ(4, r.size());
   EXPECT_EQ(u1, r[0]);
@@ -2795,7 +2840,7 @@ TEST_F(LiteralUtilTest, ValidProtoDynamicSizeWithinBound) {
   proto.add_f32s(4.0f);
   proto.add_dynamic_sizes(2);
 
-  TF_ASSERT_OK_AND_ASSIGN(Literal literal, Literal::CreateFromProto(proto));
+  ASSERT_OK_AND_ASSIGN(Literal literal, Literal::CreateFromProto(proto));
   EXPECT_EQ(literal.GetDynamicSize(0), 2);
   auto static_literal = literal.ToStatic();
   EXPECT_EQ(static_literal.shape(), ShapeUtil::MakeShape(F32, {2}));
@@ -2810,7 +2855,7 @@ TEST_F(LiteralUtilTest, InvalidProtoTooFewTupleElements) {
           {ShapeUtil::MakeShape(PRED, {2}), ShapeUtil::MakeShape(F32, {})})
           .ToProto();
   LiteralProto* element0 = proto.add_tuple_literals();
-  TF_ASSERT_OK_AND_ASSIGN(Shape shape, Shape::FromProto(proto.shape()));
+  ASSERT_OK_AND_ASSIGN(Shape shape, Shape::FromProto(proto.shape()));
   *element0->mutable_shape() =
       ShapeUtil::GetTupleElementShape(shape, 0).ToProto();
   element0->add_preds(false);
@@ -2829,13 +2874,13 @@ TEST_F(LiteralUtilTest, InvalidProtoTooManyTupleElements) {
           {ShapeUtil::MakeShape(PRED, {2}), ShapeUtil::MakeShape(F32, {})})
           .ToProto();
   LiteralProto* element0 = proto.add_tuple_literals();
-  TF_ASSERT_OK_AND_ASSIGN(Shape shape, Shape::FromProto(proto.shape()));
+  ASSERT_OK_AND_ASSIGN(Shape shape, Shape::FromProto(proto.shape()));
   *element0->mutable_shape() =
       ShapeUtil::GetTupleElementShape(shape, 0).ToProto();
   element0->add_preds(false);
   element0->add_preds(true);
   LiteralProto* element1 = proto.add_tuple_literals();
-  TF_ASSERT_OK_AND_ASSIGN(shape, Shape::FromProto(proto.shape()));
+  ASSERT_OK_AND_ASSIGN(shape, Shape::FromProto(proto.shape()));
   *element1->mutable_shape() =
       ShapeUtil::GetTupleElementShape(shape, 1).ToProto();
   element1->add_f32s(42.0);
@@ -2850,7 +2895,7 @@ TEST_F(LiteralUtilTest, InvalidProtoTooManyTupleElements) {
 
 TEST_F(LiteralUtilTest, BroadcastVectorToMatrix0) {
   Literal literal = LiteralUtil::CreateR1<int64_t>({1, 2});
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       Literal broadcasted_literal,
       literal.Broadcast(/*result_shape=*/ShapeUtil::MakeShape(S64, {2, 2}),
                         /*dimensions=*/{0}));
@@ -2860,7 +2905,7 @@ TEST_F(LiteralUtilTest, BroadcastVectorToMatrix0) {
 
 TEST_F(LiteralUtilTest, BroadcastVectorToMatrix1) {
   Literal literal = LiteralUtil::CreateR1<int64_t>({1, 2});
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       Literal broadcasted_literal,
       literal.Broadcast(/*result_shape=*/ShapeUtil::MakeShape(S64, {2, 2}),
                         /*dimensions=*/{1}));
@@ -2870,7 +2915,7 @@ TEST_F(LiteralUtilTest, BroadcastVectorToMatrix1) {
 
 TEST_F(LiteralUtilTest, BroadcastVectorToMatrixWithZeroDim) {
   Literal literal = LiteralUtil::CreateR1<int32_t>({1, 2});
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       Literal broadcasted_literal,
       literal.Broadcast(/*result_shape=*/ShapeUtil::MakeShape(S32, {2, 0}),
                         /*dimensions=*/{0}));
@@ -2878,7 +2923,7 @@ TEST_F(LiteralUtilTest, BroadcastVectorToMatrixWithZeroDim) {
 
 TEST_F(LiteralUtilTest, BroadcastScalarToMatrix) {
   Literal literal = LiteralUtil::CreateR0<int32_t>(9);
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       Literal broadcasted_literal,
       literal.Broadcast(/*result_shape=*/ShapeUtil::MakeShape(S32, {2, 2}),
                         /*dimensions=*/{}));
@@ -2889,7 +2934,7 @@ TEST_F(LiteralUtilTest, BroadcastScalarToMatrix) {
 TEST_F(LiteralUtilTest, DynamicBroadcast) {
   Literal literal = LiteralUtil::CreateR1<int64_t>({1, 2});
   literal.SetDynamicSize(0, 1);
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       Literal broadcasted_literal,
       literal.Broadcast(/*result_shape=*/ShapeUtil::MakeShape(S64, {2, 2}),
                         /*dimensions=*/{1}));
@@ -3408,9 +3453,9 @@ TEST_P(LiteralSerializationTest, Test) {
             },
             subshape.element_type());
       }));
-  TF_ASSERT_OK_AND_ASSIGN(std::string serialized, literal.SerializeAsString());
-  TF_ASSERT_OK_AND_ASSIGN(Literal deserialized,
-                          Literal::DeserializeFromString(serialized));
+  ASSERT_OK_AND_ASSIGN(std::string serialized, literal.SerializeAsString());
+  ASSERT_OK_AND_ASSIGN(Literal deserialized,
+                       Literal::DeserializeFromString(serialized));
   EXPECT_EQ(literal, deserialized);
 }
 
@@ -3605,8 +3650,7 @@ TEST_F(LiteralUtilTest, CopyFromProtoWithDynamicShape) {
   LiteralProto proto = literal.ToProto();
 
   // Deserialize it back.
-  TF_ASSERT_OK_AND_ASSIGN(Literal deserialized,
-                          Literal::CreateFromProto(proto));
+  ASSERT_OK_AND_ASSIGN(Literal deserialized, Literal::CreateFromProto(proto));
 
   // We expect the deserialized literal to have dynamic size 3.
   EXPECT_EQ(deserialized.GetDynamicSize(0), 3);
@@ -3627,6 +3671,68 @@ TEST_F(LiteralUtilTest, CopyFromProtoDynamicShapeMismatch) {
 
   // Deserialize it back. This should error now.
   EXPECT_FALSE(Literal::CreateFromProto(proto).ok());
+}
+
+template <typename FloatT>
+void VerifyMakeFakeLiteralInterval(const ConstraintInterval& interval,
+                                   double expected_min, double expected_max,
+                                   int64_t num_elements = 1000) {
+  std::minstd_rand0 engine(42);
+  Shape shape = ShapeUtil::MakeShape(
+      primitive_util::NativeToPrimitiveType<FloatT>(), {num_elements});
+  ASSERT_OK_AND_ASSIGN(
+      Literal literal,
+      MakeFakeLiteral(shape, &engine, /*limit=*/std::nullopt,
+                      /*is_sorted=*/false, /*no_duplicates=*/false,
+                      /*use_large_range=*/false,
+                      /*max_bits_of_precision=*/std::nullopt,
+                      /*index_alignment=*/std::nullopt,
+                      /*index_known_zeroes=*/std::nullopt,
+                      /*float_generator=*/nullptr, interval));
+  for (FloatT value : literal.data<FloatT>()) {
+    EXPECT_GE(value, static_cast<FloatT>(expected_min));
+    EXPECT_LE(value, static_cast<FloatT>(expected_max));
+  }
+}
+
+template <typename... FloatTypes>
+void VerifyIntervalAcrossTypes(const ConstraintInterval& interval,
+                               double expected_min, double expected_max) {
+  (VerifyMakeFakeLiteralInterval<FloatTypes>(interval, expected_min,
+                                             expected_max),
+   ...);
+}
+
+TEST_F(LiteralUtilTest, MakeFakeLiteralIntervalBounds) {
+  const double kMin = ConstraintInterval::kMin;
+  const double kMax = ConstraintInterval::kMax;
+
+  auto verify = [](const ConstraintInterval& interval, double min, double max) {
+    VerifyIntervalAcrossTypes<float, bfloat16, half>(interval, min, max);
+  };
+
+  // Fully unconstrained intervals -> default to [-0.1, 0.2]
+  verify(ConstraintInterval::Unconstrained(), -0.1, 0.2);
+  verify(ConstraintInterval(kMin, kMax, false), -0.1, 0.2);
+
+  // Half-unconstrained: lower bound specified, upper bound is kMax -> [min,
+  // max]
+  verify(ConstraintInterval(-4.2, kMax, false), -4.2, 0.2);
+  verify(ConstraintInterval(1.0, kMax, false), 1.0, 1.3);
+  verify(ConstraintInterval::Positive(), 0.0, 0.2);
+
+  // Half-unconstrained: upper bound specified, lower bound is kMin -> [min,
+  // max]
+  verify(ConstraintInterval(kMin, 23.0, false), -0.1, 23.0);
+  verify(ConstraintInterval(kMin, -0.5, false), -0.8, -0.5);
+  verify(ConstraintInterval::Negative(), -0.1, 0.0);
+
+  // Fully constrained intervals -> [min, max]
+  verify(ConstraintInterval(1.5, 1.6, false), 1.5, 1.6);
+
+  // Half-unconstrained: explicit bounds that cross the [-0.1, 0.2] defaults
+  verify(ConstraintInterval(1.0, kMax, false), 1.0, 1.3);
+  verify(ConstraintInterval(kMin, -5.0, false), -5.3, -5.0);
 }
 
 }  // namespace

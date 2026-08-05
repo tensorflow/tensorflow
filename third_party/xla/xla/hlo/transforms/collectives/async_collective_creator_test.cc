@@ -73,6 +73,73 @@ TEST_F(AsyncCollectiveCreatorTest, SplitsSingleAllReduce) {
   EXPECT_EQ(start->opcode(), HloOpcode::kAsyncStart);
 }
 
+TEST_F(AsyncCollectiveCreatorTest,
+       SplitsSingleAllReduceBelowThresholdWhenShouldIgnoreSizeCheck) {
+  constexpr absl::string_view hlo_string = R"(
+  HloModule test
+  add {
+    x = f32[] parameter(0)
+    y = f32[] parameter(1)
+    ROOT add = f32[] add(x, y)
+  }
+  ENTRY entry {
+    p0 = f32[100] parameter(0)
+    ROOT ar = f32[100] all-reduce(p0), to_apply=add
+  }
+  )";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
+                       ParseAndReturnVerifiedModule(hlo_string));
+  AsyncCollectiveCreator::CollectiveCreatorConfig config;
+  config.convert_all_reduce = HloPredicateTrue;
+  config.use_generic_async_start_done = true;
+  config.all_reduce_min_threshold_in_bytes = 4096;
+  config.should_ignore_size_check = HloPredicateTrue;
+  ASSERT_OK(AsyncCollectiveCreator(config).Run(hlo_module.get()).status());
+
+  HloComputation* computation = hlo_module->entry_computation();
+  ASSERT_THAT(computation, NotNull());
+  ASSERT_EQ(computation->instruction_count(), 3);
+  const HloInstruction* done = computation->root_instruction();
+  EXPECT_EQ(done->opcode(), HloOpcode::kAsyncDone);
+  ASSERT_THAT(done->operands(), SizeIs(1));
+  const HloInstruction* start = done->operand(0);
+  EXPECT_EQ(start->opcode(), HloOpcode::kAsyncStart);
+}
+
+TEST_F(AsyncCollectiveCreatorTest,
+       DoesNotSplitSingleAllReduceBelowThresholdWhenShouldNotIgnoreSizeCheck) {
+  constexpr absl::string_view hlo_string = R"(
+  HloModule test
+  add {
+    x = f32[] parameter(0)
+    y = f32[] parameter(1)
+    ROOT add = f32[] add(x, y)
+  }
+  ENTRY entry {
+    p0 = f32[100] parameter(0)
+    ROOT ar = f32[100] all-reduce(p0), to_apply=add
+  }
+  )";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
+                       ParseAndReturnVerifiedModule(hlo_string));
+  AsyncCollectiveCreator::CollectiveCreatorConfig config;
+  config.convert_all_reduce = HloPredicateTrue;
+  config.use_generic_async_start_done = true;
+  config.all_reduce_min_threshold_in_bytes = 4096;
+  config.should_ignore_size_check = HloPredicateFalse;
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       AsyncCollectiveCreator(config).Run(hlo_module.get()));
+  EXPECT_FALSE(changed);
+
+  HloComputation* computation = hlo_module->entry_computation();
+  ASSERT_THAT(computation, NotNull());
+  ASSERT_EQ(computation->instruction_count(), 2);
+  const HloInstruction* root = computation->root_instruction();
+  EXPECT_EQ(root->opcode(), HloOpcode::kAllReduce);
+}
+
 TEST_F(AsyncCollectiveCreatorTest, SplitsSingleAllGather) {
   constexpr absl::string_view hlo_string = R"(
   HloModule test

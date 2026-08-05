@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors All Rights Reserved.
+/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -15,15 +15,15 @@ limitations under the License.
 
 #include "xla/tsl/profiler/rpc/client/save_profile.h"
 
+#include <cstddef>
 #include <memory>
 #include <ostream>
 #include <sstream>
 #include <string>
 #include <type_traits>
+#include <vector>
 
 #include "absl/status/status.h"
-#include "absl/status/statusor.h"
-#include "absl/strings/cord.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
@@ -32,7 +32,7 @@ limitations under the License.
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
 #include "xla/tsl/platform/status_macros.h"
-#include "riegeli/bytes/cord_writer.h"
+#include "riegeli/bytes/fd_writer.h"
 #include "riegeli/records/record_writer.h"
 #include "xla/tsl/lib/io/zlib_compression_options.h"
 #include "xla/tsl/lib/io/zlib_outputbuffer.h"
@@ -133,40 +133,6 @@ std::string GetPlaneNames(const tensorflow::profiler::XSpace& xspace) {
       });
 }
 
-// Serializes the given XSpace proto into a Riegeli-formatted buffer.
-// Uses Brotli compression (level 6) by default.
-absl::StatusOr<absl::Cord> SerializeXSpaceToRiegeli(
-    const tensorflow::profiler::XSpace& xspace) {
-  riegeli::RecordWriterBase::Options record_options;
-  RETURN_IF_ERROR(record_options.FromString("brotli:6"));
-  SetPadding(record_options);
-  absl::Cord buffer;
-  riegeli::RecordWriter writer{riegeli::CordWriter(&buffer), record_options};
-  if (!writer.WriteRecord(xspace)) {
-    return writer.status();
-  }
-  if (!writer.Close()) {
-    return writer.status();
-  }
-  return buffer;
-}
-
-// Writes `data` to a file at `path`. If `append` is true, appends to the
-// existing file (or creates it if it doesn't exist); otherwise, overwrites
-// the file.
-absl::Status WriteOrAppendToFile(const std::string& path,
-                                 const absl::Cord& data, bool append) {
-  std::unique_ptr<WritableFile> file;
-  if (append) {
-    RETURN_IF_ERROR(Env::Default()->NewAppendableFile(path, &file));
-  } else {
-    RETURN_IF_ERROR(Env::Default()->NewWritableFile(path, &file));
-  }
-  RETURN_IF_ERROR(file->Append(data));
-  RETURN_IF_ERROR(file->Close());
-  return absl::OkStatus();
-}
-
 absl::Status GetOrCreateRunDir(const std::string& repository_root,
                                const std::string& run, std::string* run_dir,
                                std::ostream* os) {
@@ -241,16 +207,14 @@ absl::Status SaveXSpace(const std::string& repository_root,
   return WriteBinaryProto(Env::Default(), out_path, xspace);
 }
 
-absl::Status SaveXSpaceChunk(absl::string_view repository_root,
-                             absl::string_view run, absl::string_view host,
-                             int chunk_index,
-                             const tensorflow::profiler::XSpace& xspace) {
-  std::string plane_names = GetPlaneNames(xspace);
-  LOG(INFO) << "SaveXSpaceChunk index: " << chunk_index
-            << ", size: " << xspace.ByteSizeLong() << " bytes"
-            << (plane_names.empty()
-                    ? ""
-                    : absl::StrCat(" [Planes: ", plane_names, "]"));
+absl::Status SaveXSpaceChunks(
+    absl::string_view repository_root, absl::string_view run,
+    absl::string_view host,
+    std::vector<tensorflow::profiler::XSpace>& xspaces) {
+  if (xspaces.empty()) {
+    return absl::OkStatus();
+  }
+
   std::string log_dir = ProfilerJoinPath(repository_root, run);
   VLOG(1) << "Creating " << log_dir;
   RETURN_IF_ERROR(Env::Default()->RecursivelyCreateDir(log_dir));
@@ -258,18 +222,44 @@ absl::Status SaveXSpaceChunk(absl::string_view repository_root,
   std::string file_name = absl::StrCat(host, ".xplane.riegeli");
   // Windows file names do not support colons.
   absl::StrReplaceAll({{":", "_"}}, &file_name);
-
   std::string out_path = ProfilerJoinPath(log_dir, file_name);
-  ASSIGN_OR_RETURN(absl::Cord buffer, SerializeXSpaceToRiegeli(xspace));
 
-  bool append = (chunk_index > 0);
-  if (append) {
-    LOG(INFO) << "Appending chunk " << chunk_index
-              << " to Riegeli file: " << out_path;
-  } else {
-    LOG(INFO) << "Creating new Riegeli file: " << out_path;
+  VLOG(1) << "Saving " << xspaces.size()
+          << " XSpace chunks to Riegeli file: " << out_path;
+
+  riegeli::RecordWriterBase::Options record_options;
+  RETURN_IF_ERROR(record_options.FromString("brotli:6"));
+  SetPadding(record_options);
+
+  std::string temp_path =
+      absl::StrCat(out_path, ".tmp.", Env::Default()->GetProcessId(), "_",
+                   Env::Default()->NowMicros());
+  riegeli::RecordWriter writer(riegeli::FdWriter<>(temp_path), record_options);
+  for (tensorflow::profiler::XSpace& xspace : xspaces) {
+    std::string plane_names = GetPlaneNames(xspace);
+    VLOG(1) << "SaveXSpaceChunks "
+            << ", size: " << xspace.ByteSizeLong() << " bytes"
+            << (plane_names.empty()
+                    ? ""
+                    : absl::StrCat(" [Planes: ", plane_names, "]"));
+    if (!writer.WriteRecord(xspace)) {
+      break;
+    }
+    tensorflow::profiler::XSpace().Swap(&xspace);
   }
-  return WriteOrAppendToFile(out_path, buffer, append);
+  xspaces.clear();
+  if (!writer.Close()) {
+    Env::Default()->DeleteFile(temp_path).IgnoreError();
+    return writer.status();
+  }
+
+  absl::Status status =
+      Env::Default()->RenameFile(temp_path, out_path, /*overwrite=*/true);
+  if (!status.ok()) {
+    Env::Default()->DeleteFile(temp_path).IgnoreError();
+    return status;
+  }
+  return absl::OkStatus();
 }
 
 }  // namespace profiler

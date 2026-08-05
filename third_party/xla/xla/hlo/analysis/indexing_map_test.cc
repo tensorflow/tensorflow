@@ -1777,6 +1777,94 @@ TEST_F(IndexingMapTest, GetUsedParameters) {
   EXPECT_THAT(used_params.symbol_ids, ElementsAre(0));
 }
 
+TEST_F(IndexingMapTest, SimplifyMin_Adjacent) {
+  auto indexing_map = Parse(R"(
+    (d0) -> (min(d0, d0 + 1)),
+    domain:
+    d0 in [0, 10]
+  )");
+  EXPECT_TRUE(indexing_map.Simplify());
+  EXPECT_THAT(ToString(indexing_map), MatchIndexingString(R"(
+      (d0) -> (d0),
+      domain:
+      d0 in [0, 10]
+  )"));
+}
+
+TEST_F(IndexingMapTest, SimplifyMin_Constant) {
+  auto indexing_map = Parse(R"(
+    (d0) -> (min(10, d0)),
+    domain:
+    d0 in [0, 5]
+  )");
+  EXPECT_TRUE(indexing_map.Simplify());
+  EXPECT_THAT(ToString(indexing_map), MatchIndexingString(R"(
+      (d0) -> (d0),
+      domain:
+      d0 in [0, 5]
+  )"));
+}
+
+TEST_F(IndexingMapTest, SimplifyMax_Adjacent) {
+  auto indexing_map = Parse(R"(
+    (d0) -> (max(d0, d0 - 1)),
+    domain:
+    d0 in [0, 10]
+  )");
+  EXPECT_TRUE(indexing_map.Simplify());
+  EXPECT_THAT(ToString(indexing_map), MatchIndexingString(R"(
+      (d0) -> (d0),
+      domain:
+      d0 in [0, 10]
+  )"));
+}
+
+TEST_F(IndexingMapTest, SimplifyMax_Constant) {
+  auto indexing_map = Parse(R"(
+    (d0) -> (max(10, d0)),
+    domain:
+    d0 in [0, 5]
+  )");
+  EXPECT_TRUE(indexing_map.Simplify());
+  EXPECT_THAT(ToString(indexing_map), MatchIndexingString(R"(
+      (d0) -> (10),
+      domain:
+      d0 in [0, 5]
+  )"));
+}
+
+TEST_F(IndexingMapTest, SimplifyMin_Complex) {
+  auto indexing_map = Parse(R"(
+    (d0, d1) -> (min(128, d0 * 32 + d1 / 64 + 1)),
+    domain:
+    d0 in [0, 3],
+    d1 in [0, 2047]
+  )");
+  EXPECT_TRUE(indexing_map.Simplify());
+  EXPECT_THAT(ToString(indexing_map), MatchIndexingString(R"(
+      (d0, d1) -> (d0 * 32 + d1 / 64 + 1),
+      domain:
+      d0 in [0, 3],
+      d1 in [0, 2047]
+  )"));
+}
+
+TEST_F(IndexingMapTest, SimplifyMax_Complex) {
+  auto indexing_map = Parse(R"(
+    (d0, d1) -> (max(128, d0 * 32 + d1 / 64 + 1)),
+    domain:
+    d0 in [0, 3],
+    d1 in [0, 2047]
+  )");
+  EXPECT_TRUE(indexing_map.Simplify());
+  EXPECT_THAT(ToString(indexing_map), MatchIndexingString(R"(
+      (d0, d1) -> (128),
+      domain:
+      d0 in [0, 3],
+      d1 in [0, 2047]
+  )"));
+}
+
 TEST_F(IndexingMapTest, IsUndefined) {
   IndexingMap undefined_map = IndexingMap::GetUndefined();
   EXPECT_TRUE(undefined_map.IsUndefined());

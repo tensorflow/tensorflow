@@ -32,6 +32,7 @@ limitations under the License.
 #include "xla/literal.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/service/hlo_runner_interface.h"
+#include "xla/tools/hlo_dump/hlo_dump_utils.h"
 #include "xla/tools/hlo_isolation/hlo_isolation.pb.h"
 
 namespace xla {
@@ -104,6 +105,13 @@ absl::StatusOr<std::vector<HloIsolationTestResult>> RunIsolationPipeline(
     HloRunnerInterface* reference_runner, PipelineIsolationOptions options);
 
 absl::Status DefuseModule(HloModule* module);
+
+// Extracts numeric mismatch statistics from the comparison error status
+// message, enriches them with HLO module context (e.g. root instruction
+// name, reduction info), and converts them into MismatchDetails structs for
+// HLO debug visualization.
+std::vector<numerics::debug_info::MismatchDetails> ExtractMismatchDetails(
+    const HloModule& module, const absl::Status& compare_status);
 
 absl::StatusOr<std::vector<NumericMismatch>> ExtractAndEnrichTopMismatches(
     std::string error_message, const HloModule* module);

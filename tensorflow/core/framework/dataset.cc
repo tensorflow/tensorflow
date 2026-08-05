@@ -265,28 +265,28 @@ absl::Status GraphDefBuilderWrapper::AddDataset(
     const std::vector<std::pair<absl::string_view, AttrValue>>& attrs,
     bool use_dataset_name, Node** output) {
   auto& type_string = dataset->type_string();
-  auto opts = absl::make_unique<GraphDefBuilder::Options>(b_->opts());
+  auto opts = std::make_unique<GraphDefBuilder::Options>(b_->opts());
   // TODO(srbs|mrry): Not all datasets have output_types and output_shapes
   // attributes defined. It will be nice to have a consistent pattern.
   bool has_output_types_attr = HasAttr(type_string, "output_types");
   bool has_output_shapes_attr = HasAttr(type_string, "output_shapes");
   if (has_output_shapes_attr) {
-    opts = absl::make_unique<GraphDefBuilder::Options>(
+    opts = std::make_unique<GraphDefBuilder::Options>(
         opts->WithAttr("output_shapes", dataset->output_shapes()));
   }
   if (has_output_types_attr) {
-    opts = absl::make_unique<GraphDefBuilder::Options>(
+    opts = std::make_unique<GraphDefBuilder::Options>(
         opts->WithAttr("output_types", dataset->output_dtypes()));
   }
   bool has_metadata_attr = HasAttr(type_string, "metadata");
   if (has_metadata_attr) {
     std::string serialized_metadata;
     dataset->metadata().SerializeToString(&serialized_metadata);
-    opts = absl::make_unique<GraphDefBuilder::Options>(
+    opts = std::make_unique<GraphDefBuilder::Options>(
         opts->WithAttr("metadata", serialized_metadata));
   }
   for (const auto& attr : attrs) {
-    opts = absl::make_unique<GraphDefBuilder::Options>(
+    opts = std::make_unique<GraphDefBuilder::Options>(
         opts->WithAttr(attr.first, attr.second));
   }
   if (opts->HaveError()) {

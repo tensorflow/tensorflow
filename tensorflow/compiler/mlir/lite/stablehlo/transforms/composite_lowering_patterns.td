@@ -317,3 +317,9 @@ def LegalizeSoftmax : Pat<
           ConstantStrAttr<StrAttr, "odml.softmax">, $attrs, $_, $_),
         (TFL_SoftmaxOp $input, ConstF32Attr<"1.0">)>;
 
+
+def LegalizeDynamicUpdateSlice : Pat<
+        (MHLO_CompositeOp:$composite
+          (variadic $input, $update, $begin),
+          ConstantStrAttr<StrAttr, "tfl.dynamic_update_slice">, $attrs, $_, $_),
+        (TFL_DynamicUpdateSliceOp $input, $update, $begin)>;

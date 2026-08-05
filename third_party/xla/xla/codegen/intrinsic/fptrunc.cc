@@ -232,8 +232,8 @@ static llvm::Function* ExtendF8e4m3fnToF16(llvm::Module* module, Type from,
 // For debugging purposes; print floating point values to stdout.
 void EmitPrintf(llvm::Module* module, Type ty, llvm::Value* value,
                 llvm::IRBuilder<>* b) {
-  llvm::FunctionType* printf_type = llvm::FunctionType::get(
-      b->getInt32Ty(), {b->getInt8Ty()->getPointerTo()}, true);
+  llvm::FunctionType* printf_type =
+      llvm::FunctionType::get(b->getInt32Ty(), {b->getPtrTy()}, true);
   llvm::FunctionCallee printf =
       module->getOrInsertFunction("printf", printf_type);
   std::string format_str = "FpTrunc Printf " + ty.name() + " ";

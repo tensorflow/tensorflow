@@ -37,6 +37,7 @@ limitations under the License.
 #include "third_party/cudnn_frontend/include/cudnn_frontend/graph_interface.h"
 #include "third_party/cudnn_frontend/include/cudnn_frontend/graph_properties.h"
 #include "third_party/cudnn_frontend/include/cudnn_frontend_utils.h"
+#include "third_party/cudnn_frontend/include/cudnn_frontend_version.h"
 #include "xla/tsl/platform/status_macros.h"
 #include "third_party/gpus/cudnn/cudnn_version.h"
 #include "xla/backends/gpu/transforms/block_scaling_rewriter.h"
@@ -153,6 +154,8 @@ inline std::optional<fe::PointwiseMode_t> GetElementwiseMode(
 inline std::optional<fe::DataType_t> ToCudnnDataType(const PrimitiveType type) {
   using t = fe::DataType_t;
   switch (type) {
+    case PrimitiveType::F64:
+      return t::DOUBLE;
     case PrimitiveType::F32:
       return t::FLOAT;
     case PrimitiveType::F16:
@@ -511,11 +514,22 @@ class ConvDimensionAdapter {
     if (ShapeUtil::IsScalar(hlo.shape())) {
       Result result;
       // cuDNN convolution tensors have a batch and a feature dimension in
-      // addition to spatial dimensions.
-      result.sizes =
-          std::vector<int64_t>(dums_.input_spatial_dimensions_size() + 2, 1);
-      result.strides =
-          std::vector<int64_t>(dums_.input_spatial_dimensions_size() + 2, 1);
+      // addition to spatial dimensions (at least 2 spatial dimensions for
+      // cuDNN).
+      int64_t spatial_dims =
+          std::max<int64_t>(2, dums_.input_spatial_dimensions_size());
+      result.sizes = std::vector<int64_t>(spatial_dims + 2, 1);
+      result.strides = std::vector<int64_t>(spatial_dims + 2, 1);
+      return result;
+    }
+    if (hlo.shape().dimensions().size() == 1) {
+      Result result;
+      int64_t spatial_dims =
+          std::max<int64_t>(2, dums_.input_spatial_dimensions_size());
+      result.sizes = std::vector<int64_t>(spatial_dims + 2, 1);
+      result.strides = std::vector<int64_t>(spatial_dims + 2, 0);
+      result.sizes[1] = hlo.shape().dimensions(0);
+      result.strides[1] = 1;
       return result;
     }
     // Placeholder FP32 data type here, it is not used.
@@ -534,6 +548,17 @@ class ConvDimensionAdapter {
     result.sizes.push_back(logical_dims[dums_.input_feature_dimension()]);
     result.strides.push_back(logical_strides[dums_.input_batch_dimension()]);
     result.strides.push_back(logical_strides[dums_.input_feature_dimension()]);
+    // cuDNN frontend expects tensor rank to be at least 4 (2 spatial dims).
+    // Prepend dummy spatial dimensions (e.g. H=1 for 1D convs) so 1D convs
+    // are represented as (N, C, 1, W).
+    while (result.sizes.size() + dums_.input_spatial_dimensions_size() < 4) {
+      result.sizes.push_back(1);
+      int64_t dummy_stride = 1;
+      if (dums_.input_spatial_dimensions_size() > 0) {
+        dummy_stride = logical_strides[dums_.input_spatial_dimensions(0)];
+      }
+      result.strides.push_back(dummy_stride);
+    }
     for (auto i = 0; i < dums_.input_spatial_dimensions_size(); ++i) {
       result.sizes.push_back(logical_dims[dums_.input_spatial_dimensions(i)]);
       result.strides.push_back(
@@ -573,6 +598,10 @@ HandleConstantHloToCudnnGraph(const HloInstruction& hlo, graph::Graph& graph,
       return LiteralToCudnnTensor<BF16, __nv_bfloat16>(hlo, graph, rank);
     case F32:
       return LiteralToCudnnTensor<F32, float>(hlo, graph, rank);
+#if CUDNN_FRONTEND_VERSION >= 12300
+    case F64:
+      return LiteralToCudnnTensor<F64, double>(hlo, graph, rank);
+#endif
     case S32:
       return LiteralToCudnnTensor<S32, int>(hlo, graph, rank);
     case S8:
@@ -913,13 +942,34 @@ absl::StatusOr<se::gpu::CudnnGraph> HloFusionToCuDnnGraph(
           RestoreWindow(DynCast<HloConvolutionInstruction>(hlo));
       CHECK(window_opt.has_value());
       Window window = window_opt.value();
+      int64_t dims_size = window.dimensions_size();
       std::vector<int64_t> pre_padding, post_padding, stride, dilation;
+      pre_padding.reserve(dims_size);
+      post_padding.reserve(dims_size);
+      stride.reserve(dims_size);
+      dilation.reserve(dims_size);
+      bool dims_reversed =
+          dims_size > 0 && window.dimensions(0).window_reversal();
       for (int64_t i = 0; i < window.dimensions_size(); ++i) {
         const auto& dim = window.dimensions(i);
+        if (dim.window_reversal() != dims_reversed) {
+          return absl::UnimplementedError(absl::StrCat(
+              "cuDNN fusion does not support mixed window reversal: ",
+              hlo->ToString()));
+        }
         pre_padding.push_back(dim.padding_low());
         post_padding.push_back(dim.padding_high());
         stride.push_back(dim.stride());
         dilation.push_back(dim.window_dilation());
+      }
+      // cuDNN frontend expects at least 2 spatial dimensions for conv
+      // operations. Prepend dummy spatial dimensions (e.g. H=1 for 1D convs)
+      // so 1D convs are represented as (N, C, 1, W).
+      while (pre_padding.size() < 2) {
+        pre_padding.insert(pre_padding.begin(), 0);
+        post_padding.insert(post_padding.begin(), 0);
+        stride.insert(stride.begin(), 1);
+        dilation.insert(dilation.begin(), 1);
       }
       const auto compute_dtype =
           GetComputeDataType(hlo->shape().element_type());
@@ -933,10 +983,14 @@ absl::StatusOr<se::gpu::CudnnGraph> HloFusionToCuDnnGraph(
       // lower to different conv based on convolution_kind set in cudnn fusion
       // backend config
       auto set_conv_attr = [&](auto conv_attr) {
+        auto math_mode = dims_reversed
+                             ? fe::ConvolutionMode_t::CONVOLUTION
+                             : fe::ConvolutionMode_t::CROSS_CORRELATION;
         return conv_attr.set_pre_padding(pre_padding)
             .set_post_padding(post_padding)
             .set_stride(stride)
             .set_dilation(dilation)
+            .set_convolution_mode(math_mode)
             .set_compute_data_type(compute_dtype.value());
       };
       if (conv_adapter->convolution_kind_ == CONVOLUTION_KIND_FPROP) {
@@ -1059,6 +1113,16 @@ absl::StatusOr<se::gpu::CudnnGraph> PrepareGraph(
     se::dnn::DnnSupport* dnn_support,
     const se::DeviceDescription& gpu_device_info,
     const HloFusionInstruction& hlo) {
+  if (dnn_support == nullptr &&
+      hlo_query::GetFirstInstructionWithOpcode(
+          *hlo.fused_instructions_computation(), HloOpcode::kConvolution) !=
+          nullptr &&
+      !se::gpu::SupportsDevicelessConvGraphs(gpu_device_info)) {
+    return absl::FailedPreconditionError(
+        "Deviceless cuDNN preparation of convolution graphs targeting "
+        "Blackwell-generation GPUs requires cuDNN >= 9.19; older runtimes "
+        "crash inside the deviceless heuristics query.");
+  }
   ASSIGN_OR_RETURN(se::gpu::CudnnGraph graph, HloFusionToCuDnnGraph(hlo));
   RETURN_IF_ERROR(graph.Prepare(
       dnn_support, gpu_device_info,
@@ -1261,6 +1325,25 @@ absl::StatusOr<int> CuDnnFusionCompiler::GetAvailablePlanCount(
   return std::min(
       static_cast<int32_t>(graph.Graph().get_execution_plan_count()),
       hlo.GetModule()->config().debug_options().xla_gpu_cudnn_gemm_max_plans());
+}
+
+CuDnnFusionCompiler::DevicelessFusionSupport
+CuDnnFusionCompiler::SupportsFusionDeviceless(
+    const se::DeviceDescription& gpu_device_info,
+    const HloFusionInstruction& hlo) {
+  absl::StatusOr<se::gpu::CudnnGraph> graph =
+      PrepareGraph(/*dnn_support=*/nullptr, gpu_device_info, hlo);
+  if (absl::IsNotFound(graph.status())) {
+    return DevicelessFusionSupport::kUnsupported;
+  }
+  if (!graph.ok()) {
+    VLOG(1) << "Deviceless cuDNN support probe of " << hlo.name()
+            << " delivered no verdict: " << graph.status();
+    return DevicelessFusionSupport::kUnknown;
+  }
+  return graph->Graph().get_execution_plan_count() >= 1
+             ? DevicelessFusionSupport::kSupported
+             : DevicelessFusionSupport::kUnsupported;
 }
 
 }  // namespace gpu

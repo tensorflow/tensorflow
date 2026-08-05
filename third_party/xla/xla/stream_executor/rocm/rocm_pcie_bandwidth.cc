@@ -50,7 +50,7 @@ constexpr int64_t ComputePcieBandwidthFromSpeedAndWidth(
 }  // namespace
 
 std::optional<int64_t> GetRocmPcieBandwidth(absl::string_view pci_bus_id) {
-  absl::MutexLock lock(&rocm_smi_mutex);
+  absl::MutexLock lock(rocm_smi_mutex);
 
   if (!InitRocmSmi()) return std::nullopt;
 

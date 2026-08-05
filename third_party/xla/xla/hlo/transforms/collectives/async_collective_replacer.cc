@@ -23,7 +23,6 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/log/vlog_is_on.h"
 #include "absl/strings/string_view.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
@@ -45,6 +44,18 @@ bool ShouldBeReplaced(const AsyncCollectiveReplacer::Config& config,
     return config.convert_all_gather(instruction);
   }
   if (instruction->opcode() == HloOpcode::kCollectivePermuteStart) {
+    return config.convert_collective_permute(instruction);
+  }
+  if (instruction->opcode() == HloOpcode::kAsyncStart &&
+      instruction->async_wrapped_opcode() == HloOpcode::kAllReduce) {
+    return config.convert_all_reduce(instruction);
+  }
+  if (instruction->opcode() == HloOpcode::kAsyncStart &&
+      instruction->async_wrapped_opcode() == HloOpcode::kAllGather) {
+    return config.convert_all_gather(instruction);
+  }
+  if (instruction->opcode() == HloOpcode::kAsyncStart &&
+      instruction->async_wrapped_opcode() == HloOpcode::kCollectivePermute) {
     return config.convert_collective_permute(instruction);
   }
   if (instruction->opcode() == HloOpcode::kAsyncStart &&

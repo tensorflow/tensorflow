@@ -646,6 +646,51 @@ ENTRY main {
   EXPECT_FALSE(AnyValuesInSameBufferInterfere());
 }
 
+TEST_F(HloAliasAnalysisTest, WhileOperandWithMultipleValues) {
+  const char* hlo_string = R"(
+HloModule test
+
+body {
+  body_param = (f32[], f32[]) parameter(0)
+  body_element_0 = f32[] get-tuple-element(body_param), index=0
+  body_element_1 = f32[] get-tuple-element(body_param), index=1
+  add = f32[] add(body_element_0, body_element_1)
+  ROOT body_tuple = (f32[], f32[]) tuple(body_element_0, add)
+}
+
+condition {
+  cond_param = (f32[], f32[]) parameter(0)
+  ROOT cond_constant = pred[] constant(false)
+}
+
+ENTRY main {
+  c1 = f32[] constant(1.0)
+  c2 = f32[] constant(2.0)
+  tuple = (f32[], f32[]) tuple(c1, c2)
+  ROOT xla_while = (f32[], f32[]) while(tuple), condition=condition, body=body
+}
+  )";
+  ASSERT_OK_AND_ASSIGN(module_, ParseAndReturnVerifiedModule(hlo_string));
+
+  const HloAliasAnalysis& analysis = RunAnalysis();
+  HloInstruction* c1 = FindInstruction(module_.get(), "c1");
+  HloInstruction* xla_while = FindInstruction(module_.get(), "xla_while");
+  HloInstruction* body_param = FindInstruction(module_.get(), "body_param");
+  HloInstruction* cond_param = FindInstruction(module_.get(), "cond_param");
+  EXPECT_THAT(analysis.GetUniqueBufferAt(xla_while, /*index=*/{0}).values(),
+              UnorderedElementsAre(&GetValueDefinedAt(c1)));
+  EXPECT_THAT(
+      analysis.GetUniqueBufferAt(xla_while, /*index=*/{0}).ComputePositions(),
+      UnorderedElementsAre(
+          HloPosition{c1, {}},
+          HloPosition{FindInstruction(module_.get(), "tuple"), {0}},
+          HloPosition{xla_while, {0}}, HloPosition{body_param, {0}},
+          HloPosition{FindInstruction(module_.get(), "body_element_0"), {}},
+          HloPosition{cond_param, {0}},
+          HloPosition{FindInstruction(module_.get(), "body_tuple"), {0}}));
+  EXPECT_FALSE(AnyValuesInSameBufferInterfere());
+}
+
 TEST_F(HloAliasAnalysisTest, SequentialWhiles) {
   // Test sequential while instructions. The while body includes a
   // pass-through value. HLO:
