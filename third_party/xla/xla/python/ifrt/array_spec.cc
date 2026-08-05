@@ -23,13 +23,13 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "xla/tsl/platform/status_macros.h"
 #include "xla/pjrt/pjrt_layout.h"
+#include "xla/python/ifrt/abstract_array_spec.h"
 #include "xla/python/ifrt/array_spec.pb.h"
 #include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/dtype.h"
 #include "xla/python/ifrt/serdes_version.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
-#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 namespace ifrt {
@@ -75,6 +75,11 @@ absl::Status ArraySpec::ToProto(ArraySpecProto& proto,
     proto.set_layout(layout->Serialize());
   }
   return absl::OkStatus();
+}
+
+absl::StatusOr<AbstractArraySpec> ArraySpec::ToAbstractArraySpec() const {
+  return AbstractArraySpec::Create(dtype, shape, sharding->sharding_spec(),
+                                   sharding->memory_kind(), layout);
 }
 
 }  // namespace ifrt
