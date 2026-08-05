@@ -25,11 +25,24 @@ namespace ynnpack {
 
 TfLiteRegistration* Register_RuntimeBmm();
 
+enum class AttentionImpl {
+  // The attention operation ignores the current sequence length, and is
+  // implemented using standard BatchMatMul operators.
+  kFullSequence,
+  // The attention operation uses the current sequence length via
+  // odml.runtime_bmm ops, but is otherwise equivalent to kFullSequence.
+  kOdmlRuntimeBmm,
+  // The attention operation uses odml.scaled_dot_product_attention or
+  // odml.sdpa_transposed.
+  kOdmlSdpa
+};
+
 class AttentionModel : public MultiOpModel {
  public:
   AttentionModel(int b, int t, int s, int h, int n, float scale,
                  bool transpose_io, bool use_delegate,
-                 const TfLiteYNNPackDelegateOptions& delegate_options);
+                 const TfLiteYNNPackDelegateOptions& delegate_options,
+                 AttentionImpl impl);
 
   int query() const { return query_id_; }
   int key() const { return key_id_; }

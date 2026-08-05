@@ -22,6 +22,7 @@ limitations under the License.
 
 #include "ynnpack/include/ynnpack.h"  // from @XNNPACK
 #include "absl/container/flat_hash_map.h"
+#include "flatbuffers/flexbuffers.h"  // from @flatbuffers
 #include "tensorflow/lite/core/c/builtin_op_data.h"
 #include "tensorflow/lite/core/c/common.h"
 
@@ -72,6 +73,19 @@ bool IsActivationSupported(TfLiteFusedActivation activation,
                            TfLiteType output_type);
 TfLiteFusedActivation GetFusedActivation(const TfLiteRegistration* registration,
                                          const TfLiteNode* node);
+
+flexbuffers::Map GetFlexBufferMap(const TfLiteRegistration* reg,
+                                  const TfLiteNode* node);
+
+// Find a dummy input we can use for a particular runtime_bmm op. Often, many
+// runtime_bmm ops use the same params tensor, which can share a dummy input.
+TfLiteStatus GetOrCreateDummyInput(TfLiteContext* context,
+                                   ynn_subgraph_t subgraph,
+                                   uint32_t& next_external_id,
+                                   std::vector<DummyInputInfo>& dummy_inputs,
+                                   int param_tensor_index, int seq_axis,
+                                   size_t rank, const size_t* full_dims,
+                                   ynn_type type, uint32_t* dummy_val_id_out);
 
 TfLiteStatus GetTfLiteTensorValueAsDouble(TfLiteContext* context,
                                           const TfLiteTensor& tensor, int index,
