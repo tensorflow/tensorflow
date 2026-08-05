@@ -13,8 +13,9 @@ This is intentionally a **header + BUILD skeleton** — the actual shared librar
 | File | Purpose |
 |---|---|
 | `kdnn.h` | Minimal C API header (declarations only). Mirrors the public surface of KAIL's KDNN. No implementation. |
-| `build_defs.bzl` | Bazel macros: `if_enable_kdnn`, `kdnn_deps`. |
-| `BUILD` | Minimal `cc_library` rules for the header + a stubbed implementation. |
+| `build_defs.bzl` | Bazel macros: `if_enable_kdnn`, `kdnn_deps`. Loaded from BUILD files via `tensorflow/tensorflow.bzl`. |
+| `repository.bzl` | `kdnn_repository` rule (loaded only from `WORKSPACE` / `MODULE.bazel`). |
+| `BUILD` | `cc_library` rules for the header + an in-tree stub target. |
 
 ## What is NOT here
 
@@ -24,7 +25,7 @@ This is intentionally a **header + BUILD skeleton** — the actual shared librar
 
 Those are downloaded or symlinked into this tree at *build time* via the
 `KDNN_ROOT` environment variable (analogous to the existing `TF_MKL_ROOT`).
-See the `kdnn_repository` rule.
+See the `kdnn_repository` rule in `repository.bzl`.
 
 ## Build flag
 
@@ -56,3 +57,24 @@ KDNN is **not** a generic x86 backend — it is ARM-only. The existing MKL
 tree would be misleading because the activation is gated by a different
 `config_setting` (aarch64 + opt-in flag vs. x86 + default-on). Keeping it
 separate also makes it easy to backport independently of MKL.
+
+## License status (UNRESOLVED)
+
+This directory ships with `licenses(["restricted"])` in `BUILD`. Until
+that line is changed to `licenses(["notice"])`, the entire directory is
+flagged by Google's internal tooling as not safe to import. The blocker
+is independent of this code review and cannot be resolved inside this
+PR — it requires confirmation from the openEuler / KAIL BoostKit
+maintainers that libkdnn.so and kdnn.h may be redistributed under
+Apache 2.0 (or a compatible permissive license).
+
+To resolve:
+
+1. File an issue in the openEuler community tracker asking KAIL SIG
+   (kail@openeuler.org) to clarify the KDNN distribution terms.
+2. Either obtain a written license grant permitting the in-tree
+   header + dlopen() integration path used here, OR confirm KDNN is
+   released under Apache 2.0.
+3. Once confirmed, change `licenses(["restricted"])` to
+   `licenses(["notice"])` in `BUILD` and remove the corresponding
+   comment block.

@@ -7,9 +7,16 @@ if_enable_kdnn is a `select` that is true IFF:
   - --define=enable_kdnn=true was passed, AND
   - the target platform is Linux aarch64 (Kunpeng class).
 
-kdnn_deps returns the link-time dependency on libkdnn.so.
-kdnn_repository is the analog of mkl_repository: it locates the libkdnn
-install via the KDNN_ROOT environment variable.
+kdnn_deps returns the link-time dependency on libkdnn.so via the
+@kdnn repository (declared in WORKSPACE via kdnn_repository, which
+lives in the companion file repository.bzl so that loading this
+file from a BUILD graph does not transitively pull in
+`repository_rule`).
+
+The kdnn_repository rule itself is in third_party/KDNN/repository.bzl
+and is loaded only from WORKSPACE / MODULE.bazel. This split mirrors
+the modern Bazel pattern of keeping BUILD-loadable macros separate
+from WORKSPACE-loadable repository rules.
 """
 
 def if_enable_kdnn(if_true, if_false = []):
@@ -37,47 +44,22 @@ def if_enable_kdnn(if_true, if_false = []):
 def kdnn_deps():
     """Returns the link-time dependency on libkdnn.
 
+    Resolves to ["@kdnn//:kdnn"] when KDNN is enabled AND the
+    `@kdnn` repository has been declared in WORKSPACE via
+    `kdnn_repository` (from third_party/KDNN/repository.bzl). When
+    KDNN is not enabled, returns an empty list.
+
+    If the operator has not configured KDNN_ROOT and called
+    `kdnn_repository` in WORKSPACE, this macro will fail at
+    build-rule analysis time on the `@kdnn//:kdnn` label — the same
+    behaviour as `mkl_deps()` on an unconfigured TF build.
+
     Returns:
-      A select() that resolves to ["@kdnn//:kdnn"] when KDNN is enabled
-      and an empty list otherwise. Use as a `deps = [...]` entry.
+      A select() that resolves to ["@kdnn//:kdnn"] when KDNN is
+      enabled and an empty list otherwise. Use as a `deps = [...]`
+      entry.
     """
     return select({
         Label("//third_party/KDNN:enable_kdnn"): ["@kdnn//:kdnn"],
         "//conditions:default": [],
     })
-
-_KDNN_ROOT = "KDNN_ROOT"
-
-def _kdnn_autoconf_impl(repository_ctx):
-    """Implementation of the kdnn_repository rule.
-
-    Mirrors the mkl_repository pattern: if KDNN_ROOT is set, use the
-    header + lib from that directory; otherwise fail with a clear error
-    instructing the user to obtain KDNN from openEuler BoostKit.
-    """
-    if _KDNN_ROOT in repository_ctx.os.environ:
-        root = repository_ctx.os.environ[_KDNN_ROOT]
-        repository_ctx.symlink(root + "/include", "include")
-        repository_ctx.symlink(root + "/lib", "lib")
-        repository_ctx.symlink(
-            repository_ctx.attr.build_file,
-            "BUILD",
-        )
-    else:
-        # We do NOT auto-download KDNN: the upstream is gated behind
-        # openEuler's package distribution model and is not an
-        # open-source Apache repo we can clone. Fail with an actionable
-        # error message.
-        fail(
-            "KDNN_ROOT is not set. To enable KDNN, install the KAIL " +
-            "BoostKit from openEuler and set KDNN_ROOT to the install " +
-            "directory. See third_party/KDNN/README.md for details.",
-        )
-
-kdnn_repository = repository_rule(
-    implementation = _kdnn_autoconf_impl,
-    environ = [_KDNN_ROOT],
-    attrs = {
-        "build_file": attr.label(),
-    },
-)

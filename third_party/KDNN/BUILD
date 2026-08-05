@@ -1,3 +1,5 @@
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
+
 # =============================================================================
 # LICENSE STATUS: UNRESOLVED — DO NOT MERGE
 # =============================================================================
@@ -14,8 +16,14 @@
 #   * a reviewer cannot accidentally ship this code without addressing
 #     the license.
 #
-# Once the license has been confirmed (expected to be Apache 2.0, but
-# not yet verified), this block should be replaced with:
+# Action to resolve: confirmation from the openEuler / KAIL BoostKit
+# maintainers (SIG: kail@openeuler.org) that libkdnn.so and kdnn.h may
+# be redistributed under Apache 2.0 — or a written license grant
+# permitting the in-tree header + dlopen path used here. Tracked in
+# this PR's review thread.
+#
+# Once the license has been confirmed, this block should be replaced
+# with:
 #
 #     licenses(["notice"])  # Apache 2.0
 #
@@ -58,11 +66,12 @@ cc_library(
 # =============================================================================
 # Link-time stub
 # =============================================================================
-# When kdnn_repository is wired in (via third_party/KDNN/build_defs.bzl),
-# the `@kdnn//:kdnn` target provides the actual libkdnn.so. To keep the
-# skeleton buildable without a configured KDNN install, we expose a
-# BUILD-visible "kdnn" target that resolves to the header-only library.
-# A real deployment will substitute @kdnn//:kdnn in kdnn_deps().
+# When kdnn_repository is wired in WORKSPACE (via
+# third_party/KDNN/repository.bzl), the `@kdnn//:kdnn` target
+# provides the actual libkdnn.so. To keep the skeleton buildable
+# without a configured KDNN install, we expose a BUILD-visible
+# "kdnn" target that resolves to the header-only library. A real
+# deployment will substitute @kdnn//:kdnn in kdnn_deps().
 cc_library(
     name = "kdnn",
     deps = [":kdnn_header"],

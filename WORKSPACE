@@ -185,3 +185,28 @@ load(
 nvshmem_redist_init_repository(
     nvshmem_redistributions = NVSHMEM_REDISTRIBUTIONS,
 )
+
+# =============================================================================
+# KDNN (Kunpeng Deep Neural Network) — optional, opt-in via KDNN_ROOT.
+#
+# KDNN is a third-party library shipped with openEuler KAIL BoostKit,
+# targeting Kunpeng 920 (ARMv8) CPUs. It is NOT auto-downloaded — the
+# upstream distribution is gated behind openEuler's package model, so
+# operators must supply KDNN_ROOT pointing at their KAIL install.
+#
+# If KDNN_ROOT is set, @kdnn is declared via kdnn_repository (from
+# third_party/KDNN/repository.bzl). If unset, the load is wrapped in
+# `maybe(...)` so default builds are unaffected. The kernel code is
+# also gated on --define=enable_kdnn=true, so even when @kdnn is
+# declared, default TF binaries do not link against libkdnn.so.
+#
+# See third_party/KDNN/README.md for setup details.
+# =============================================================================
+load("@bazel_tools//tools/build_defs/repo:utils.bzl", "maybe")
+load("//third_party/KDNN:repository.bzl", "kdnn_repository")
+
+maybe(
+    kdnn_repository,
+    name = "kdnn",
+    build_file = "//third_party/KDNN:BUILD",
+)

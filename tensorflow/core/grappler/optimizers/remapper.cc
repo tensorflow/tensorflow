@@ -4210,6 +4210,22 @@ bool FindSigmoidToKdnn(RemapperContext* ctx, int node_index,
 }
 
 // Replace the matched Sigmoid node with _KdnnSigmoid.
+//
+// Mutation semantics: this helper accumulates the new node in the
+// shared mutation builder (`utils::Mutation*` returned by
+// `GetMutationBuilder()`) and returns WITHOUT calling
+// `mutation->Apply()`. The accumulated mutations are flushed once
+// at the end of `Remapper::Optimize()` (see the `mutation->Apply()`
+// near the bottom of the function), and again when any subsequent
+// helper in this same loop iteration needs the mutation to be
+// visible. This avoids rebuilding the graph view on every leaf
+// rewrite, which is the dominant cost of the per-helper
+// Apply()-per-call pattern that this method used initially.
+//
+// We still set `(*invalidated_nodes)[...]` so the outer loop skips
+// the matched Sigmoid on subsequent iterations, and we add the
+// matched index to `nodes_to_delete` so it is removed by the final
+// flush.
 absl::Status ReplaceSigmoidWithKdnnSigmoid(
     RemapperContext* ctx, const std::map<std::string, int>& matched_nodes_map,
     const std::set<int>& remove_node_indices,
@@ -4231,7 +4247,7 @@ absl::Status ReplaceSigmoidWithKdnnSigmoid(
   absl::Status status;
   mutation->AddNode(std::move(fused_op), &status);
   TF_RETURN_IF_ERROR(status);
-  TF_RETURN_IF_ERROR(mutation->Apply());
+  // Deferred Apply: see the comment at the top of this function.
 
   (*invalidated_nodes)[matched_nodes_map.at("sigmoid")] = true;
 

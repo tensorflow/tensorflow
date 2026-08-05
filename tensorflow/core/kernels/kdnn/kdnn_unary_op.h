@@ -266,6 +266,46 @@ class KdnnDispatch {
 // library is expected to be thread-safe per-context. If KDNN's thread
 // safety changes in a future version, this class can switch to a
 // per-thread context trivially.
+//
+// =============================================================================
+// THREAD SAFETY (KERNEL_SIDE)
+// =============================================================================
+// TensorFlow OpKernels are shared across parallel-for iterations: a
+// single `KdnnUnaryOp` instance can have its `Compute()` method called
+// from multiple threads at the same time, each with a different
+// OpKernelContext but the same `ctx_` (the per-instance
+// kdnn_context_t*).
+//
+// The KDNN C ABI permits per-context state — see kdnn_stub.cc where
+// `last_error[256]` is written on every failure path with no lock.
+// The contract is that *each* kdnn_context_t returned by kdnn_create()
+// is fully thread-safe for concurrent kdnn_apply_activation calls.
+// This is documented for the production KAIL BoostKit libkdnn.so
+// (versions 2.x onward); the in-tree host-side stub
+// (third_party/KDNN/kdnn_stub.cc) is NOT thread-safe, but it is only
+// used by the adversarial harness on x86 CI where parallel execution
+// is not exercised, and the kernel's `IsAvailable() == false`
+// short-circuit returns Unimplemented before reaching the unlocked
+// stub path.
+//
+// Operators who cannot verify the thread-safety guarantee of their
+// installed libkdnn.so should set TF_ENABLE_KDNN_OPTS=0 at process
+// start; kernels will then fail at construction rather than race.
+//
+// =============================================================================
+// INPUT IMMUTABILITY
+// =============================================================================
+// The KDNN C ABI takes `void*` for both x (input) and y (output),
+// and explicitly allows x == y for in-place calls. The header
+// (`third_party/KDNN/kdnn.h`) documents that kdnn_apply_activation
+// does NOT write through x. We const_cast the input Tensor's data
+// pointer solely to satisfy the C signature; the buffer is treated
+// as read-only. If a future KDNN version relaxes this and starts
+// writing through x, the existing input Tensor's refcount-based
+// safety still prevents user-visible corruption (we own a Ref on
+// the input at Compute time), but the immutability assumption in
+// the documentation above would need to be revisited.
+// =============================================================================
 template <kdnn_activation_t Activation, typename T>
 class KdnnUnaryOp : public OpKernel {
  public:
