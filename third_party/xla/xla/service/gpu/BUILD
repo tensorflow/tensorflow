@@ -1680,6 +1680,7 @@ cc_library(
         ":alias_info",
         "//xla:xla_proto_cc",
         "//xla/backends/gpu/transforms:conv_fusion_rewriter",
+        "//xla/backends/gpu/transforms:conv_operand_canonicalizer",
         "//xla/backends/gpu/transforms:multi_output_fusion",
         "//xla/backends/gpu/transforms:priority_fusion",
         "//xla/backends/gpu/transforms:ragged_dot_fusion_rewriter",
