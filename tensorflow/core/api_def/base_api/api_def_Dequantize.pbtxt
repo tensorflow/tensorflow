@@ -13,6 +13,17 @@ The maximum scalar value possibly produced for the input.
 END
   }
   attr {
+    name: "axis"
+    description: <<END
+The index of the input dimension along which the dequantization ranges
+vary, for per-channel dequantization. When `axis` is -1 (the default),
+dequantization is per-tensor and `min_range`/`max_range` must be scalars.
+Otherwise `min_range` and `max_range` must be 1-D tensors with as many
+elements as the input's `axis` dimension. Negative values other than -1
+are invalid.
+END
+  }
+  attr {
     name: "dtype"
     description: <<END
 Type of the output tensor. Currently Dequantize supports float and bfloat16.

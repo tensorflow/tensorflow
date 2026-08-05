@@ -97,6 +97,10 @@ class DequantizeOp : public OpKernel {
     const Tensor& input_min_tensor = ctx->input(1);
     const Tensor& input_max_tensor = ctx->input(2);
 
+    OP_REQUIRES(ctx, axis_ >= -1,
+                absl::InvalidArgumentError(absl::StrCat(
+                    "Axis must be at least -1, where -1 selects per-tensor "
+                    "dequantization, got ", axis_)));
     OP_REQUIRES(ctx, axis_ < input.dims(),
                 absl::InvalidArgumentError(
                     absl::StrCat("Axis must be less than input dimension(",
