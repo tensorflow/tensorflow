@@ -14,8 +14,6 @@
 # ==============================================================================
 """TensorFlow Lite tooling helper functionality."""
 
-# pylint: disable=line-too-long  # Required due to pre-existing legacy lines
-
 import enum
 import functools
 import pprint
@@ -754,6 +752,7 @@ class TFLiteConverterBase:
           self.representative_dataset
       )
 
+    calibrated = None
     # Add intermediate tensors to the model if needed.
     result = _calibrator.add_intermediate_tensors(result)
     calibrate_quantize = _calibrator.Calibrator(
@@ -765,20 +764,26 @@ class TFLiteConverterBase:
       )
 
     if self._experimental_calibrate_only:
-      return calibrated  # pylint: disable=possibly-used-before-assignment
+      return calibrated
     elif self.experimental_new_quantizer and (
         activations_type != _dtypes.int16
     ):
+      disable_dense = (
+          self._experimental_disable_per_channel_quantization_for_dense_layers
+      )
       return _mlir_quantize(
-          calibrated,  # pylint: disable=possibly-used-before-assignment
+          calibrated,
           self._experimental_disable_per_channel,
           input_data_type=input_type,
           output_data_type=output_type,
           enable_variable_quantization=enable_variable_quantization,
-          disable_per_channel_for_dense_layers=self._experimental_disable_per_channel_quantization_for_dense_layers,
+          disable_per_channel_for_dense_layers=disable_dense,
           debug_options_str=debug_options.SerializeToString(),
       )
     else:
+      disable_dense = (
+          self._experimental_disable_per_channel_quantization_for_dense_layers
+      )
       return calibrate_quantize.calibrate_and_quantize(
           self.representative_dataset.input_gen,
           input_type,
@@ -787,7 +792,7 @@ class TFLiteConverterBase:
           activations_type,
           bias_type,
           disable_per_channel=self._experimental_disable_per_channel,
-          disable_per_channel_quantization_for_dense_layers=self._experimental_disable_per_channel_quantization_for_dense_layers,
+          disable_per_channel_quantization_for_dense_layers=disable_dense,
       )
 
   def _is_unknown_shapes_allowed(self):
@@ -1123,7 +1128,8 @@ class TFLiteConverterBase:
 
     if quant_mode.is_quantization_aware_training():
       self._metadata.options.modelOptimizationModes.append(
-          conversion_metadata_fb.ModelOptimizationMode.QUANTIZATION_AWARE_TRAINING
+          conversion_metadata_fb.ModelOptimizationMode
+          .QUANTIZATION_AWARE_TRAINING
       )
 
   def _set_conversion_latency_metric(self, value):
@@ -1760,6 +1766,8 @@ class TFLiteKerasModelConverterV2(TFLiteConverterBaseV2):
               graph_def, input_tensors, output_tensors
           )
         except Exception as e:  # pylint: disable=broad-except
+          # We catch all exceptions (such as MLIR translation or conversion
+          # failures) to safely fall back to freezing the Keras model.
           logging.warning(
               "SavedModel conversion failed. Fallback to freezing Keras "
               "model: %s",
