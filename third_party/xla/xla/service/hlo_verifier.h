@@ -43,84 +43,84 @@ namespace xla {
 using ShapeSizeFn = std::function<int64_t(const Shape&)>;
 
 struct HloVerifierOpts {
-  HloVerifierOpts&& MakeLayoutSensitive() {
+  HloVerifierOpts&& MakeLayoutSensitive() && {
     layout_sensitive = true;
     return std::move(*this);
   }
 
-  HloVerifierOpts&& WithLayoutSensitive(bool layout_sensitive_p) {
+  HloVerifierOpts&& WithLayoutSensitive(bool layout_sensitive_p) && {
     layout_sensitive = layout_sensitive_p;
     return std::move(*this);
   }
 
-  HloVerifierOpts&& WithAllowMixedPrecision(bool allow_mixed_precision_p) {
+  HloVerifierOpts&& WithAllowMixedPrecision(bool allow_mixed_precision_p) && {
     allow_mixed_precision = allow_mixed_precision_p;
     return std::move(*this);
   }
 
-  HloVerifierOpts&& AllowMixedPrecision() {
+  HloVerifierOpts&& AllowMixedPrecision() && {
     allow_mixed_precision = true;
     return std::move(*this);
   }
 
-  HloVerifierOpts&& VerifyBroadcastDimensionsOrder() {
+  HloVerifierOpts&& VerifyBroadcastDimensionsOrder() && {
     verify_broadcast_dimensions_order = true;
     return std::move(*this);
   }
 
-  HloVerifierOpts&& VerifyReshapeIsBitcast() {
+  HloVerifierOpts&& VerifyReshapeIsBitcast() && {
     verify_reshape_is_bitcast = true;
     return std::move(*this);
   }
 
-  HloVerifierOpts&& VerifyCallNestedComputationThreadName() {
+  HloVerifierOpts&& VerifyCallNestedComputationThreadName() && {
     verify_call_nested_computation_thread_name = true;
     return std::move(*this);
   }
 
-  HloVerifierOpts&& WithAllowBitcastToHaveDifferentSize(bool allow) {
+  HloVerifierOpts&& WithAllowBitcastToHaveDifferentSize(bool allow) && {
     allow_bitcast_to_have_different_size = allow;
     return std::move(*this);
   }
 
   HloVerifierOpts&& WithInstructionCanChangeLayout(
-      const HloPredicate& instruction_can_change_layout_p) {
+      const HloPredicate& instruction_can_change_layout_p) && {
     instruction_can_change_layout = instruction_can_change_layout_p;
     return std::move(*this);
   }
 
-  HloVerifierOpts&& WithCustomShapeSize(const ShapeSizeFn& shape_size_p) {
+  HloVerifierOpts&& WithCustomShapeSize(const ShapeSizeFn& shape_size_p) && {
     shape_size = shape_size_p;
     return std::move(*this);
   }
 
-  HloVerifierOpts&& WithVerifyShardingDeviceNumbers(bool verify) {
+  HloVerifierOpts&& WithVerifyShardingDeviceNumbers(bool verify) && {
     verify_sharding_device_numbers = verify;
     return std::move(*this);
   }
 
-  HloVerifierOpts&& WithSupportedUnboundedDynamicOp(HloPredicate fn) {
+  HloVerifierOpts&& WithSupportedUnboundedDynamicOp(HloPredicate fn) && {
     supported_unbounded_dynamic_op = std::move(fn);
     return std::move(*this);
   }
 
-  HloVerifierOpts&& VerifyInstructionNameUnchanged() {
+  HloVerifierOpts&& VerifyInstructionNameUnchanged() && {
     verify_instruction_name_unchanged = true;
     return std::move(*this);
   }
 
-  HloVerifierOpts&& VerifyNoHostMemorySpace() {
+  HloVerifierOpts&& VerifyNoHostMemorySpace() && {
     verify_no_host_memory_space = true;
     return std::move(*this);
   }
 
   HloVerifierOpts&& WithVerifyNoCollectiveDeadlocks(
-      bool verify_no_collective_deadlocks_p) {
+      bool verify_no_collective_deadlocks_p) && {
     verify_no_collective_deadlocks = verify_no_collective_deadlocks_p;
     return std::move(*this);
   }
 
-  HloVerifierOpts&& WithCheckReplicaGroups(bool check_replica_groups_p) {
+  HloVerifierOpts&& WithCheckReplicaGroups(bool check_replica_groups_p) && {
     check_replica_groups = check_replica_groups_p;
     return std::move(*this);
   }
@@ -130,8 +130,6 @@ struct HloVerifierOpts {
   bool CheckForCollectiveDeadlocks() const {
     return verify_no_collective_deadlocks;
   }
-
-  bool AllowMixedPrecision() const { return allow_mixed_precision; }
 
   const HloPredicate& InstructionCanChangeLayout() const {
     return instruction_can_change_layout;
