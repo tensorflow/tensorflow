@@ -244,6 +244,12 @@ class FakeQuantWithMinMaxVarsTest(xla_test.XLATestCase):
   def testOp_with8BitsScalingAndNudgingBetween(self):
     self._TestOp(-0.1, 127.4, 8, False, 0.0, 127.5, 0.5)
 
+  def testOp_with8BitsRoundingHalfWayZeroPoint(self):
+    # Regression test for #119411. The zero point is 127.5, which must round
+    # to 128 to match the eager kernel's round-half-away-from-zero behavior.
+    step = 1.5 / 255.0
+    self._TestOp(-0.75, 0.75, 8, False, -128 * step, 127 * step, step)
+
   # 8 bits, narrow range.
   def testOp_with8BitsNarrowRangeNoScalingNoNudging(self):
     self._TestOp(0.0, 254.0, 8, True, 0.0, 254.0, 1.0)
@@ -286,16 +292,17 @@ class FakeQuantWithMinMaxVarsTest(xla_test.XLATestCase):
   def _TestOp(self, input_min, input_max, num_bits, narrow_range,
               expected_nudged_input_min, expected_nudged_input_max,
               expected_step):
+    epsilon = min(0.01, expected_step / 4)
     inputs = np.array(
         [
             expected_nudged_input_min - expected_step,
-            expected_nudged_input_min - 0.01, expected_nudged_input_min,
-            expected_nudged_input_min + 0.01,
-            expected_nudged_input_min + expected_step - 0.01,
+            expected_nudged_input_min - epsilon, expected_nudged_input_min,
+            expected_nudged_input_min + epsilon,
+            expected_nudged_input_min + expected_step - epsilon,
             expected_nudged_input_min + expected_step,
-            expected_nudged_input_min + expected_step + 0.01,
-            expected_nudged_input_max - 0.01, expected_nudged_input_max,
-            expected_nudged_input_max + 0.01,
+            expected_nudged_input_min + expected_step + epsilon,
+            expected_nudged_input_max - epsilon, expected_nudged_input_max,
+            expected_nudged_input_max + epsilon,
             expected_nudged_input_max + expected_step
         ],
         dtype=np.float32)
@@ -467,6 +474,13 @@ class FakeQuantWithMinMaxVarsPerChannelTest(xla_test.XLATestCase):
         [255.0, 127.5, 0.0, 127.5],
         [1.0, 0.5, 0.5, 0.5])
 
+  def testOp_with8BitsRoundingHalfWayZeroPoint(self):
+    # Regression test for #119411. Exercise the per-channel broadcast path
+    # with the same half-integer zero point as the per-tensor test.
+    step = 1.5 / 255.0
+    self._TestOp(
+        [-0.75], [0.75], 8, False, [-128 * step], [127 * step], [step])
+
   # 8 bits, narrow range.
   def testOp_with8BitsNarrowRange(self):
     self._TestOp(
@@ -510,17 +524,18 @@ class FakeQuantWithMinMaxVarsPerChannelTest(xla_test.XLATestCase):
       expected_nudged_input_min = expected_nudged_input_mins[i]
       expected_nudged_input_max = expected_nudged_input_maxs[i]
       expected_step = expected_steps[i]
+      epsilon = min(0.01, expected_step / 4)
 
       inputs_list.append(
           [
               expected_nudged_input_min - expected_step,
-              expected_nudged_input_min - 0.01, expected_nudged_input_min,
-              expected_nudged_input_min + 0.01,
-              expected_nudged_input_min + expected_step - 0.01,
+              expected_nudged_input_min - epsilon, expected_nudged_input_min,
+              expected_nudged_input_min + epsilon,
+              expected_nudged_input_min + expected_step - epsilon,
               expected_nudged_input_min + expected_step,
-              expected_nudged_input_min + expected_step + 0.01,
-              expected_nudged_input_max - 0.01, expected_nudged_input_max,
-              expected_nudged_input_max + 0.01,
+              expected_nudged_input_min + expected_step + epsilon,
+              expected_nudged_input_max - epsilon, expected_nudged_input_max,
+              expected_nudged_input_max + epsilon,
               expected_nudged_input_max + expected_step
           ])
       expected_list.append(

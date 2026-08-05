@@ -59,12 +59,18 @@ void XlaNudge(xla::XlaBuilder* b, const DataType data_type,
               const float quant_min_value, const float quant_max_value,
               xla::XlaOp* nudged_min, xla::XlaOp* nudged_max,
               xla::XlaOp* scale) {
-  *scale = xla::Div(xla::Sub(max, min),
-                    XlaHelpers::FloatLiteral(
-                        b, data_type, quant_max_value - quant_min_value));
+  xla::XlaOp input_range = xla::Sub(max, min);
+  xla::XlaOp quant_range = XlaHelpers::FloatLiteral(
+      b, data_type, quant_max_value - quant_min_value);
+  *scale = xla::Div(input_range, quant_range);
   xla::XlaOp quant_min =
       XlaHelpers::FloatLiteral(b, data_type, quant_min_value);
-  xla::XlaOp zero_point_from_min = xla::Sub(quant_min, xla::Div(min, *scale));
+  // Calculate the inverse scale directly from the original ranges. Deriving
+  // it from `scale` compounds rounding error and can move an exact half-way
+  // zero point just below the tie on some XLA backends.
+  xla::XlaOp inv_scale = xla::Div(quant_range, input_range);
+  xla::XlaOp zero_point_from_min =
+      xla::Sub(quant_min, xla::Mul(min, inv_scale));
   xla::XlaOp quant_max =
       XlaHelpers::FloatLiteral(b, data_type, quant_max_value);
   xla::XlaOp half = XlaHelpers::FloatLiteral(b, data_type, 0.5f);
