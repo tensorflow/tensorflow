@@ -324,46 +324,32 @@ static void DeallocateDeviceMemory(StreamExecutor* executor, void* ptr,
   }
 }
 
-namespace {
+CudaDeviceMemoryAllocation::CudaDeviceMemoryAllocation(
+    StreamExecutor* executor, void* ptr, uint64_t requested_size,
+    uint64_t padded_size, CUmemGenericAllocationHandle handle)
+    : executor_(executor),
+      ptr_(ptr),
+      requested_size_(requested_size),
+      padded_size_(padded_size),
+      handle_(handle) {}
 
-class CudaDeviceMemoryAllocation : public MemoryAllocation {
- public:
-  CudaDeviceMemoryAllocation(StreamExecutor* executor, void* ptr,
-                             uint64_t requested_size, uint64_t padded_size,
-                             CUmemGenericAllocationHandle handle)
-      : executor_(executor),
-        ptr_(ptr),
-        requested_size_(requested_size),
-        padded_size_(padded_size),
-        handle_(handle) {}
-
-  ~CudaDeviceMemoryAllocation() final {
-    if (ptr_ != nullptr) {
-      DeallocateDeviceMemory(executor_, ptr_, padded_size_, handle_);
-    }
+CudaDeviceMemoryAllocation::~CudaDeviceMemoryAllocation() {
+  if (ptr_ != nullptr) {
+    DeallocateDeviceMemory(executor_, ptr_, padded_size_, handle_);
   }
+}
 
-  DeviceAddressBase address() const final {
-    return DeviceAddressBase(ptr_, padded_size_);
-  }
+DeviceAddressBase CudaDeviceMemoryAllocation::address() const {
+  return DeviceAddressBase(ptr_, padded_size_);
+}
 
-  std::string ToString() const final {
-    return absl::StrFormat(
-        "CudaDeviceMemoryAllocation[device=%d, ptr=%p, size=%d, "
-        "padded_size=%d, handle=%llu]",
-        executor_->device_ordinal(), ptr_, requested_size_, padded_size_,
-        handle_);
-  }
-
- private:
-  StreamExecutor* executor_;
-  void* ptr_;
-  uint64_t requested_size_;
-  uint64_t padded_size_;
-  CUmemGenericAllocationHandle handle_;
-};
-
-}  // namespace
+std::string CudaDeviceMemoryAllocation::ToString() const {
+  return absl::StrFormat(
+      "CudaDeviceMemoryAllocation[device=%d, ptr=%p, size=%d, "
+      "padded_size=%d, handle=%llu]",
+      executor_->device_ordinal(), ptr_, requested_size_, padded_size_,
+      handle_);
+}
 
 CudaDeviceAllocator::CudaDeviceAllocator(StreamExecutor* executor)
     : executor_(executor) {

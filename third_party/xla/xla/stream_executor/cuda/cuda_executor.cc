@@ -33,6 +33,7 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/base/call_once.h"
 #include "absl/base/casts.h"
+#include "absl/cleanup/cleanup.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
@@ -798,6 +799,110 @@ absl::StatusOr<size_t> CudaExecutor::GetVmmGranularity() const {
   RETURN_IF_ERROR(cuda::ToStatus(cuMemGetAllocationGranularity(
       &granularity, &properties, CU_MEM_ALLOC_GRANULARITY_RECOMMENDED)));
   return granularity;
+}
+
+absl::StatusOr<DeviceAddressBase> CudaExecutor::GetAllocationRange(
+    void* ptr) const {
+  uint64_t alloc_start, alloc_size;
+  CUpointer_attribute attrs[2] = {
+      CU_POINTER_ATTRIBUTE_RANGE_START_ADDR,
+      CU_POINTER_ATTRIBUTE_RANGE_SIZE,
+  };
+  void* results[2] = {&alloc_start, &alloc_size};
+  RETURN_IF_ERROR(cuda::ToStatus(cuPointerGetAttributes(
+      2, attrs, results, reinterpret_cast<CUdeviceptr>(ptr))));
+  return DeviceAddressBase(reinterpret_cast<void*>(alloc_start), alloc_size);
+}
+
+namespace {
+
+struct __attribute__((__packed__)) FabricHandle {
+  CUmemFabricHandle handle;
+  uint64_t size;
+};
+
+}  // namespace
+
+absl::StatusOr<std::string> CudaExecutor::ExportFabricHandle(void* ptr) const {
+  ASSIGN_OR_RETURN(VmmMemoryHandle handle, RetainVmmMemoryHandle(ptr));
+
+  FabricHandle fabric_handle;
+  RETURN_IF_ERROR(cuda::ToStatus(cuMemExportToShareableHandle(
+      &fabric_handle.handle,
+      static_cast<CUmemGenericAllocationHandle>(handle.handle()),
+      CU_MEM_HANDLE_TYPE_FABRIC, 0)));
+
+  CUpointer_attribute attrs[1] = {CU_POINTER_ATTRIBUTE_RANGE_SIZE};
+  void* results[1] = {&fabric_handle.size};
+  RETURN_IF_ERROR(cuda::ToStatus(cuPointerGetAttributes(
+      1, attrs, results, reinterpret_cast<CUdeviceptr>(ptr))));
+
+  std::string serialized(sizeof(FabricHandle), '\0');
+  memcpy(&serialized[0], &fabric_handle, sizeof(FabricHandle));
+  return serialized;
+}
+
+absl::StatusOr<DeviceAddressBase> CudaExecutor::ImportFabricHandle(
+    absl::string_view serialized) {
+  if (serialized.size() != sizeof(FabricHandle)) {
+    return absl::InvalidArgumentError(
+        absl::StrFormat("Invalid fabric handle size: %d", serialized.size()));
+  }
+
+  FabricHandle fabric_handle;
+  memcpy(&fabric_handle, serialized.data(), sizeof(FabricHandle));
+
+  CUmemGenericAllocationHandle handle;
+  RETURN_IF_ERROR(cuda::ToStatus(cuMemImportFromShareableHandle(
+      &handle, &fabric_handle.handle, CU_MEM_HANDLE_TYPE_FABRIC)));
+  absl::Cleanup free_handle = [&] {
+    absl::Status status = cuda::ToStatus(cuMemRelease(handle));
+    if (!status.ok()) {
+      XLA_LOG_DEVICE(ERROR, device_ordinal())
+          << "Failed to free VMM handle during cleanup: " << status;
+    }
+  };
+
+  ASSIGN_OR_RETURN(const size_t granularity, GetVmmGranularity());
+  const size_t padded_size =
+      xla::RoundUpTo<size_t>(fabric_handle.size, granularity);
+
+  CUdeviceptr ptr;
+  RETURN_IF_ERROR(cuda::ToStatus(
+      cuMemAddressReserve(&ptr, padded_size, granularity, 0, 0)));
+  absl::Cleanup free_address = [&] {
+    absl::Status status = cuda::ToStatus(cuMemAddressFree(ptr, padded_size));
+    if (!status.ok()) {
+      XLA_LOG_DEVICE(ERROR, device_ordinal())
+          << "Failed to free VMM address during cleanup: " << status;
+    }
+  };
+
+  RETURN_IF_ERROR(cuda::ToStatus(cuMemMap(ptr, padded_size, 0, handle, 0)));
+  absl::Cleanup unmap = [&] {
+    absl::Status status = cuda::ToStatus(cuMemUnmap(ptr, padded_size));
+    if (!status.ok()) {
+      XLA_LOG_DEVICE(ERROR, device_ordinal())
+          << "Failed to unmap VMM memory during cleanup: " << status;
+    }
+  };
+
+  CUmemAccessDesc access_desc = GetVmmAccessDesc(device_);
+  RETURN_IF_ERROR(
+      cuda::ToStatus(cuMemSetAccess(ptr, padded_size, &access_desc, 1)));
+
+  XLA_VLOG_DEVICE(3, device_ordinal())
+      << "Imported ptr=" << absl::bit_cast<void*>(ptr)
+      << " requested size: " << fabric_handle.size
+      << " padded size: " << padded_size << " granularity: " << granularity;
+
+  std::move(unmap).Cancel();
+  std::move(free_address).Cancel();
+  std::move(free_handle).Cancel();
+
+  return allocation_tracker_.Track(std::make_unique<CudaDeviceMemoryAllocation>(
+      this, reinterpret_cast<void*>(ptr), fabric_handle.size, padded_size,
+      handle));
 }
 
 absl::StatusOr<std::unique_ptr<MemoryAllocator>>

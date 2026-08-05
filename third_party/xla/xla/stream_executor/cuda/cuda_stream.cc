@@ -134,6 +134,17 @@ absl::Status AsynchronousMemcpyH2D(StreamExecutor* executor,
   return absl::OkStatus();
 }
 
+bool IsFabricMemory(CUdeviceptr ptr) {
+  if (ptr == 0) {
+    return false;
+  }
+  unsigned int handle_types = 0;
+  CUresult result = cuPointerGetAttribute(
+      &handle_types, CU_POINTER_ATTRIBUTE_ALLOWED_HANDLE_TYPES, ptr);
+  return result == CUDA_SUCCESS &&
+         (handle_types & CU_MEM_HANDLE_TYPE_FABRIC) != 0;
+}
+
 absl::Status AsynchronousMemcpyD2D(StreamExecutor* executor,
                                    CUdeviceptr gpu_dst, CUdeviceptr gpu_src,
                                    uint64_t size, CUstream stream) {
@@ -143,7 +154,8 @@ absl::Status AsynchronousMemcpyD2D(StreamExecutor* executor,
   // we can always make a call to cuMemcpyDtoDAsync.
   ASSIGN_OR_RETURN(bool is_capturing, StreamIsCapturing(stream));
 
-  if ((gpu_dst == 0 || gpu_src == 0) || is_capturing) {
+  if ((gpu_dst == 0 || gpu_src == 0) || is_capturing ||
+      IsFabricMemory(gpu_dst) || IsFabricMemory(gpu_src)) {
     // GetContextMap()->GetAnyContext() doesn't work when ptr == 0.
     // This happens when the size is 0.
     RETURN_IF_ERROR(
