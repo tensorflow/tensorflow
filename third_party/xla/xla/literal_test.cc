@@ -3735,6 +3735,46 @@ TEST_F(LiteralUtilTest, MakeFakeLiteralIntervalBounds) {
   verify(ConstraintInterval(kMin, -5.0, false), -5.3, -5.0);
 }
 
+template <typename IntT>
+void VerifyMakeFakeLiteralLimit(std::pair<int64_t, int64_t> limit,
+                                IntT expected_min, IntT expected_max,
+                                int64_t num_elements = 100) {
+  std::minstd_rand0 engine;
+  Shape shape = ShapeUtil::MakeShape(
+      primitive_util::NativeToPrimitiveType<IntT>(), {num_elements});
+  ASSERT_OK_AND_ASSIGN(
+      Literal literal,
+      MakeFakeLiteral(shape, &engine, limit,
+                      /*is_sorted=*/false, /*no_duplicates=*/false,
+                      /*use_large_range=*/false,
+                      /*max_bits_of_precision=*/std::nullopt,
+                      /*index_alignment=*/std::nullopt,
+                      /*index_known_zeroes=*/std::nullopt,
+                      /*float_generator=*/nullptr));
+  for (IntT value : literal.data<IntT>()) {
+    EXPECT_GE(value, expected_min);
+    EXPECT_LE(value, expected_max);
+  }
+}
+
+TEST_F(LiteralUtilTest, MakeFakeLiteralIntegralBounds) {
+  // Unsigned 64-bit with negative lower bound and large upper bound
+  VerifyMakeFakeLiteralLimit<uint64_t>(
+      {-100, std::numeric_limits<int64_t>::max()}, 0,
+      std::numeric_limits<uint64_t>::max());
+
+  // Unsigned 32-bit with bound exceeding uint32 max
+  VerifyMakeFakeLiteralLimit<uint32_t>({5, 5000000000LL}, 5,
+                                       std::numeric_limits<uint32_t>::max());
+
+  // Signed 32-bit with int64 max
+  VerifyMakeFakeLiteralLimit<int32_t>({1, std::numeric_limits<int64_t>::max()},
+                                      1, std::numeric_limits<int32_t>::max());
+
+  // Signed 8-bit with out-of-range bounds
+  VerifyMakeFakeLiteralLimit<int8_t>({-500, 500}, -128, 127);
+}
+
 }  // namespace
 
 }  // namespace xla

@@ -506,6 +506,30 @@ void PopulateWithComplexData(
   }
 }
 
+template <typename TargetT>
+TargetT SafeClampInt64(int64_t value) {
+  static_assert(std::numeric_limits<TargetT>::is_integer,
+                "TargetT must be an integral type.");
+  if constexpr (!std::numeric_limits<TargetT>::is_signed) {
+    if (value <= 0) {
+      return TargetT{0};
+    }
+    uint64_t uval = static_cast<uint64_t>(value);
+    if (uval > static_cast<uint64_t>(std::numeric_limits<TargetT>::max())) {
+      return std::numeric_limits<TargetT>::max();
+    }
+    return static_cast<TargetT>(uval);
+  } else {
+    if (value < static_cast<int64_t>(std::numeric_limits<TargetT>::lowest())) {
+      return std::numeric_limits<TargetT>::lowest();
+    }
+    if (value > static_cast<int64_t>(std::numeric_limits<TargetT>::max())) {
+      return std::numeric_limits<TargetT>::max();
+    }
+    return static_cast<TargetT>(value);
+  }
+}
+
 // uniform_int_distribution is not defined for 8-bit integers.
 // Use 'short' for those types.
 template <typename IntT>
@@ -918,8 +942,8 @@ absl::StatusOr<Literal> MakeFakeLiteral(
             NativeT max = std::numeric_limits<NativeT>::max();
             NativeT min = std::numeric_limits<NativeT>::lowest();
             if (limit.has_value()) {
-              max = static_cast<NativeT>(limit->second);
-              min = static_cast<NativeT>(limit->first);
+              min = SafeClampInt64<NativeT>(limit->first);
+              max = SafeClampInt64<NativeT>(limit->second);
             }
             if (max_bits_of_precision.has_value()) {
               max = std::min(max,

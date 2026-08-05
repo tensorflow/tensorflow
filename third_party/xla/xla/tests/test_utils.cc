@@ -16,8 +16,10 @@ limitations under the License.
 #include "xla/tests/test_utils.h"
 
 #include <algorithm>
+#include <cmath>
 #include <cstdint>
 #include <functional>
+#include <limits>
 #include <memory>
 #include <optional>
 #include <random>
@@ -445,8 +447,40 @@ absl::StatusOr<std::vector<Literal>> MakeDataflowConstrainedArguments(
     std::optional<std::pair<int64_t, int64_t>> limit = std::nullopt;
     if (ShapeUtil::ElementIsIntegral(param_shape) &&
         !interval.IsUnconstrained() && !interval.IsEmpty()) {
-      limit = {static_cast<int64_t>(interval.min),
-               static_cast<int64_t>(interval.max)};
+      // Use exact hexadecimal floating-point literals 0x1.0p63 (2^63) and
+      // -0x1.0p63 (-2^63) for boundary comparisons. INT64_MAX (2^63 - 1)
+      // cannot be exactly represented in a 53-bit mantissa double and rounds
+      // up to 2^63 when cast. Because powers of 2 are exact in IEEE 754,
+      // comparing against 0x1.0p63 guarantees that any double strictly less
+      // than 0x1.0p63 is at most 2^63 - 2048 < INT64_MAX, safely fitting in
+      // int64_t without overflow UB.
+      constexpr double kMaxInt64AsDouble = 0x1.0p63;   // 2^63
+      constexpr double kMinInt64AsDouble = -0x1.0p63;  // -2^63
+
+      int64_t min_val = interval.min <= kMinInt64AsDouble
+                            ? std::numeric_limits<int64_t>::min()
+                            : static_cast<int64_t>(std::ceil(interval.min));
+      int64_t max_val = interval.max >= kMaxInt64AsDouble
+                            ? std::numeric_limits<int64_t>::max()
+                            : static_cast<int64_t>(std::floor(interval.max));
+
+      if (interval.exclude_zero && min_val == 0) {
+        min_val = 1;
+      }
+      if (interval.exclude_zero && max_val == 0) {
+        max_val = -1;
+      }
+
+      if (min_val > max_val) {
+        return InvalidArgument(
+            "Unsatisfiable integer constraint interval [%f, %f]%s for "
+            "parameter %s: collapsed to empty discrete range [%d, %d].",
+            interval.min, interval.max,
+            interval.exclude_zero ? " (excl 0)" : "", params[i]->name(),
+            min_val, max_val);
+      }
+
+      limit = {min_val, max_val};
     }
 
     ASSIGN_OR_RETURN(
