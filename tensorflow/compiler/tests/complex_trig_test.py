@@ -51,7 +51,7 @@ class ComplexTrigTest(xla_test.XLATestCase):
     # 88 (just inside), and 89 (just at the boundary). Include both
     # positive and negative y to cover the sign asymmetry that the buggy
     # FDiv(0.5, exp_y) exhibited (e.g. 0 - 88j used to be nan - infj).
-    imag_values = [80.0, -80.0, 88.0, -88.0]
+    imag_values = [80.0, -80.0, 88.0, -88.0, 89.0, -89.0]
     real_values = [0.0, 0.5, -1.0, 1.5]
     inputs = np.array(
         [complex(r, i) for i in imag_values for r in real_values],
@@ -64,7 +64,7 @@ class ComplexTrigTest(xla_test.XLATestCase):
       self.assertAllCloseAccordingToType(actual, expected, rtol=1e-3)
 
   def testCosComplexLargeImaginary(self):
-    imag_values = [80.0, -80.0, 88.0, -88.0]
+    imag_values = [80.0, -80.0, 88.0, -88.0, 89.0, -89.0]
     real_values = [0.0, 0.5, -1.0, 1.5]
     inputs = np.array(
         [complex(r, i) for i in imag_values for r in real_values],

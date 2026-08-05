@@ -1258,11 +1258,31 @@ absl::StatusOr<llvm::Value*> ElementalIrEmitter::EmitComplexUnaryOp(
       // representation limit, exp() will produce inf, and IEEE
       // multiplication propagates to give the correctly-signed inf
       // result (the true answer is also out of range).
+      //
+      // The IRBuilder's FastMathFlags inherit --xla_cpu_enable_fast_math
+      // at the CPU backend (AllowReassoc, ApproxFunc, ...). Without
+      // scope-guarding here, an optimizer pass that re-folds the two
+      // exp() calls back into a single reciprocal-style expression would
+      // reintroduce the very overflow we are working around. More
+      // importantly, if any future change to this block does a manual
+      // save-and-restore of FastMathFlags, an early return from
+      // ASSIGN_OR_RETURN would silently leak the cleared state to
+      // whichever Emit* call runs after. RAII guard is the safe
+      // pattern, matching xla/service/cpu/ir_emitter.cc.
+      llvm::IRBuilderBase::FastMathFlagGuard fm_flag_guard(*b_);
+      b_->setFastMathFlags(llvm::FastMathFlags());
+
       auto x = EmitExtractReal(operand_value);
       auto y = EmitExtractImag(operand_value);
       auto type = y->getType();
-      auto half = llvm::ConstantFP::get(type, 0.5);
-      ASSIGN_OR_RETURN(auto log_half, EmitLog(component_type, half));
+      // log(1/2) is the constant -ln(2). Use it directly rather than
+      // emitting a runtime log() call against the constant 0.5; this
+      // folds into a single FAdd/Sub against a ConstantFP at IR build
+      // time and saves one transcendental in the generated code.
+      // Value is the IEEE-754 double approximation of -ln(2); for
+      // float32/half IR types ConstantFP::get narrows correctly.
+      auto log_half = llvm::ConstantFP::get(
+          type, -0.6931471805599453094172321214581765680755);
       ASSIGN_OR_RETURN(auto half_e_pos,
                        EmitExp(component_type, FAdd(y, log_half), ""));
       ASSIGN_OR_RETURN(auto half_e_neg,
