@@ -56,8 +56,8 @@ class Autotuner {
   // This method extracts instructions, compiles them, profiles them,
   // and returns the selected best config for each instruction.
   absl::StatusOr<std::vector<TuningResult>> TuneConfigs(
-      const HloModule& module, const InstructionFilterFn& should_autotune,
-      bool tolerate_no_supported_configs = false) const;
+      const HloModule& module,
+      const InstructionFilterFn& should_autotune) const;
 
  private:
   Autotuner(absl_nonnull std::unique_ptr<CodegenOrchestrator> orchestrator,

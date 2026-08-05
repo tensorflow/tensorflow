@@ -277,10 +277,8 @@ absl::Status RunAutotuning(const std::vector<std::string>& hlo_files,
     LOG(INFO) << "Autotuning " << hlo_file;
     ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
                      LoadModuleFromFile(hlo_file));
-    ASSIGN_OR_RETURN(
-        std::vector<Autotuner::TuningResult> results,
-        env.autotuner->TuneConfigs(*module, should_autotune,
-                                   /*tolerate_no_supported_configs=*/true));
+    ASSIGN_OR_RETURN(std::vector<Autotuner::TuningResult> results,
+                     env.autotuner->TuneConfigs(*module, should_autotune));
     for (const auto& result : results) {
       AutotunerCacheInterface::Config cached_config;
       cached_config.codegen_backend = result.config.codegen_backend->backend();

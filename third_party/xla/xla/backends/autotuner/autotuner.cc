@@ -74,8 +74,7 @@ Autotuner::Autotuner(
       thread_pool_(thread_pool) {}
 
 absl::StatusOr<std::vector<Autotuner::TuningResult>> Autotuner::TuneConfigs(
-    const HloModule& module, const InstructionFilterFn& should_autotune,
-    bool tolerate_no_supported_configs) const {
+    const HloModule& module, const InstructionFilterFn& should_autotune) const {
   std::vector<EquivalentInstructions> instruction_groups =
       ExtractEquivalentInstructions(module, should_autotune);
   if (instruction_groups.empty()) {
@@ -107,12 +106,6 @@ absl::StatusOr<std::vector<Autotuner::TuningResult>> Autotuner::TuneConfigs(
     absl::StatusOr<Config> config_or = std::move(future_configs[i]).Await();
     if (config_or.ok()) {
       tuning_results.push_back(TuningResult{leaders[i], std::move(*config_or)});
-      continue;
-    }
-
-    if (tolerate_no_supported_configs && absl::IsNotFound(config_or.status())) {
-      VLOG(1) << "Tolerating autotuning failure for instruction group " << i
-              << ": " << config_or.status();
       continue;
     }
 
