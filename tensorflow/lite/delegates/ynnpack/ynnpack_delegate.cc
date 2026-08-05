@@ -32,6 +32,7 @@ limitations under the License.
 #include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/core/subgraph.h"
 #include "tensorflow/lite/delegates/utils/simple_delegate.h"
+#include "tensorflow/lite/delegates/ynnpack/attention.h"
 #include "tensorflow/lite/delegates/ynnpack/copy.h"
 #include "tensorflow/lite/delegates/ynnpack/dot.h"
 #include "tensorflow/lite/delegates/ynnpack/elementwise.h"
@@ -78,6 +79,8 @@ class YNNPackDelegateKernel : public SimpleDelegateKernelInterface {
     for (const auto& node : nodes_info_) {
       if (IsRuntimeBmm(context, node.node_index) && node.inputs.size() >= 3) {
         num_dummy_inputs += 2;
+      } else if (IsSdpa(context, node.node_index)) {
+        num_dummy_inputs += 4;
       }
     }
 
@@ -222,6 +225,10 @@ class YNNPackDelegateKernel : public SimpleDelegateKernelInterface {
         TF_LITE_ENSURE_STATUS(DefineRuntimeBatchedMatMulNode(
             context, subgraph_, tensor_to_value_id_, next_external_id,
             dummy_inputs_, node));
+      } else if (IsSdpa(context, node.node_index)) {
+        TF_LITE_ENSURE_STATUS(
+            DefineSdpaNode(context, subgraph_, tensor_to_value_id_,
+                           next_external_id, dummy_inputs_, node));
       } else if (node.builtin_code == kTfLiteBuiltinBatchMatmul) {
         TF_LITE_ENSURE_STATUS(DefineBatchMatMulNode(context, subgraph_,
                                                     tensor_to_value_id_, node));
@@ -513,6 +520,8 @@ class YNNPackDelegate : public SimpleDelegateInterface {
     } else if (IsRuntimeBmm(registration, node)) {
       return IsRuntimeBatchedMatMulSupported(registration, node, context) ==
              kTfLiteOk;
+    } else if (IsSdpa(registration, node)) {
+      return IsSdpaSupported(registration, node, context) == kTfLiteOk;
     }
     return false;
   }
@@ -532,6 +541,10 @@ class YNNPackDelegate : public SimpleDelegateInterface {
         if (IsRuntimeBmm(reg, node) &&
             IsRuntimeBatchedMatMulSupported(reg, node, context) == kTfLiteOk) {
           // Don't inline this supported runtime_bmm.
+          return false;
+        } else if (IsSdpa(reg, node) &&
+                   IsSdpaSupported(reg, node, context) == kTfLiteOk) {
+          // Don't inline this supported sdpa.
           return false;
         }
         return true;

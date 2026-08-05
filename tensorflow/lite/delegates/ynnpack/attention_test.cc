@@ -16,6 +16,7 @@ limitations under the License.
 #include <cmath>
 #include <cstddef>
 #include <limits>
+#include <string>
 #include <vector>
 
 #include <gtest/gtest.h>
@@ -27,8 +28,10 @@ namespace tflite {
 namespace ynnpack {
 namespace {
 
-TEST(AttentionTest, Correctness) {
-  // Small hardcoded shapes
+class AttentionTest : public ::testing::TestWithParam<AttentionImpl> {};
+
+TEST_P(AttentionTest, Correctness) {
+  AttentionImpl impl = GetParam();
   const int b = 1;
   const int t = 4;
   const int s = 8;
@@ -41,48 +44,46 @@ TEST(AttentionTest, Correctness) {
   options.num_threads = 1;
   options.static_shape = true;
 
-  // Initialize input data with some hardcoded values
   std::vector<float> q_data(b * n * t * h);
   std::vector<float> k_data(b * n * s * h);
   std::vector<float> v_data(b * n * h * s);
   std::vector<float> mask_data(b * 1 * t * s);
 
-  for (size_t i = 0; i < q_data.size(); ++i) {
-    q_data[i] = 0.1f * (i % 10);
-  }
-  for (size_t i = 0; i < k_data.size(); ++i) {
-    k_data[i] = 0.2f * (i % 10);
-  }
-  for (size_t i = 0; i < v_data.size(); ++i) {
-    v_data[i] = 0.3f * (i % 10);
-  }
+  for (size_t i = 0; i < q_data.size(); ++i) q_data[i] = 0.1f * (i % 10);
+  for (size_t i = 0; i < k_data.size(); ++i) k_data[i] = 0.2f * (i % 10);
+  for (size_t i = 0; i < v_data.size(); ++i) v_data[i] = 0.3f * (i % 10);
   for (int i = 0; i < b * t; ++i) {
     for (int j = 0; j < s; ++j) {
       mask_data[i * s + j] = (j < s_active) ? 0.0f : -1e9f;
     }
   }
 
-  // Run reference model (CPU)
+  AttentionImpl ref_impl = (impl == AttentionImpl::kOdmlSdpa)
+                               ? AttentionImpl::kOdmlRuntimeBmm
+                               : impl;
+
   AttentionModel model_ref(b, t, s, h, n, scale, /*transpose_io=*/false,
-                           /*use_delegate=*/false, options);
+                           /*use_delegate=*/false, options, ref_impl);
   model_ref.PopulateTensor(model_ref.query(), q_data);
   model_ref.PopulateTensor(model_ref.key(), k_data);
   model_ref.PopulateTensor(model_ref.value(), v_data);
-  model_ref.PopulateTensor(model_ref.runtime_bmm_params(), {s_active});
+  if (model_ref.runtime_bmm_params() != -1) {
+    model_ref.PopulateTensor(model_ref.runtime_bmm_params(), {s_active});
+  }
   model_ref.PopulateTensor(model_ref.mask(), mask_data);
   ASSERT_EQ(model_ref.Invoke(), kTfLiteOk);
 
-  // Run delegate model (YNNPACK)
   AttentionModel model(b, t, s, h, n, scale, /*transpose_io=*/false,
-                       /*use_delegate=*/true, options);
+                       /*use_delegate=*/true, options, impl);
   model.PopulateTensor(model.query(), q_data);
   model.PopulateTensor(model.key(), k_data);
   model.PopulateTensor(model.value(), v_data);
-  model.PopulateTensor(model.runtime_bmm_params(), {s_active});
+  if (model.runtime_bmm_params() != -1) {
+    model.PopulateTensor(model.runtime_bmm_params(), {s_active});
+  }
   model.PopulateTensor(model.mask(), mask_data);
   ASSERT_EQ(model.Invoke(), kTfLiteOk);
 
-  // Compare outputs
   auto out_delegate = model.ExtractVector<float>(model.output());
   auto out_ref = model_ref.ExtractVector<float>(model_ref.output());
   ASSERT_EQ(out_delegate.size(), out_ref.size());
@@ -94,8 +95,8 @@ TEST(AttentionTest, Correctness) {
   }
 }
 
-TEST(AttentionTest, CorrectnessTransposed) {
-  // Test with transpose_io = true
+TEST_P(AttentionTest, CorrectnessTransposed) {
+  AttentionImpl impl = GetParam();
   const int b = 1;
   const int t = 4;
   const int s = 8;
@@ -108,43 +109,69 @@ TEST(AttentionTest, CorrectnessTransposed) {
   options.num_threads = 1;
   options.static_shape = true;
 
-  std::vector<float> q_data(b * n * t * h);
-  std::vector<float> k_data(b * n * s * h);
-  std::vector<float> v_data(b * n * h * s);
+  std::vector<float> q_data(b * t * n * h);
+  std::vector<float> k_data(b * s * n * h);
   std::vector<float> mask_data(b * 1 * t * s);
 
-  for (size_t i = 0; i < q_data.size(); ++i) {
-    q_data[i] = 0.1f * (i % 10);
-  }
-  for (size_t i = 0; i < k_data.size(); ++i) {
-    k_data[i] = 0.2f * (i % 10);
-  }
-  for (size_t i = 0; i < v_data.size(); ++i) {
-    v_data[i] = 0.3f * (i % 10);
-  }
+  for (size_t i = 0; i < q_data.size(); ++i) q_data[i] = 0.1f * (i % 10);
+  for (size_t i = 0; i < k_data.size(); ++i) k_data[i] = 0.2f * (i % 10);
   for (int i = 0; i < b * t; ++i) {
     for (int j = 0; j < s; ++j) {
       mask_data[i * s + j] = (j < s_active) ? 0.0f : -1e9f;
     }
   }
 
-  // Run reference model (CPU)
+  AttentionImpl ref_impl = (impl == AttentionImpl::kOdmlSdpa)
+                               ? AttentionImpl::kOdmlRuntimeBmm
+                               : impl;
+
+  std::vector<float> v_data_model;
+  std::vector<float> v_data_ref;
+
+  if (impl == AttentionImpl::kOdmlSdpa) {
+    v_data_ref.resize(b * n * h * s);
+    for (size_t i = 0; i < v_data_ref.size(); ++i)
+      v_data_ref[i] = 0.3f * (i % 10);
+
+    v_data_model.resize(b * s * n * h);
+    for (int ib = 0; ib < b; ++ib) {
+      for (int is = 0; is < s; ++is) {
+        for (int in = 0; in < n; ++in) {
+          for (int ih = 0; ih < h; ++ih) {
+            int attn_idx = ((ib * h + ih) * n + in) * s + is;
+            int sdpa_idx = ((ib * s + is) * n + in) * h + ih;
+            v_data_model[sdpa_idx] = v_data_ref[attn_idx];
+          }
+        }
+      }
+    }
+  } else {
+    int size = b * n * h * s;
+    v_data_model.resize(size);
+    for (size_t i = 0; i < v_data_model.size(); ++i)
+      v_data_model[i] = 0.3f * (i % 10);
+    v_data_ref = v_data_model;
+  }
+
   AttentionModel model_ref(b, t, s, h, n, scale, /*transpose_io=*/true,
-                           /*use_delegate=*/false, options);
+                           /*use_delegate=*/false, options, ref_impl);
   model_ref.PopulateTensor(model_ref.query(), q_data);
   model_ref.PopulateTensor(model_ref.key(), k_data);
-  model_ref.PopulateTensor(model_ref.value(), v_data);
-  model_ref.PopulateTensor(model_ref.runtime_bmm_params(), {s_active});
+  model_ref.PopulateTensor(model_ref.value(), v_data_ref);
+  if (model_ref.runtime_bmm_params() != -1) {
+    model_ref.PopulateTensor(model_ref.runtime_bmm_params(), {s_active});
+  }
   model_ref.PopulateTensor(model_ref.mask(), mask_data);
   ASSERT_EQ(model_ref.Invoke(), kTfLiteOk);
 
-  // Run delegate model (YNNPACK)
   AttentionModel model(b, t, s, h, n, scale, /*transpose_io=*/true,
-                       /*use_delegate=*/true, options);
+                       /*use_delegate=*/true, options, impl);
   model.PopulateTensor(model.query(), q_data);
   model.PopulateTensor(model.key(), k_data);
-  model.PopulateTensor(model.value(), v_data);
-  model.PopulateTensor(model.runtime_bmm_params(), {s_active});
+  model.PopulateTensor(model.value(), v_data_model);
+  if (model.runtime_bmm_params() != -1) {
+    model.PopulateTensor(model.runtime_bmm_params(), {s_active});
+  }
   model.PopulateTensor(model.mask(), mask_data);
   ASSERT_EQ(model.Invoke(), kTfLiteOk);
 
@@ -159,7 +186,8 @@ TEST(AttentionTest, CorrectnessTransposed) {
   }
 }
 
-TEST(AttentionTest, LargeShapeBounds) {
+TEST_P(AttentionTest, LargeShapeBounds) {
+  AttentionImpl impl = GetParam();
   const int b = 1;
   const int t = 1;
   const int s = 4096;
@@ -189,21 +217,29 @@ TEST(AttentionTest, LargeShapeBounds) {
     }
   }
 
+  AttentionImpl ref_impl = (impl == AttentionImpl::kOdmlSdpa)
+                               ? AttentionImpl::kOdmlRuntimeBmm
+                               : impl;
+
   AttentionModel model(b, t, s, h, n, scale, /*transpose_io=*/false,
-                       /*use_delegate=*/true, options);
+                       /*use_delegate=*/true, options, impl);
   model.PopulateTensor(model.query(), q_data);
   model.PopulateTensor(model.key(), k_data);
   model.PopulateTensor(model.value(), v_data);
-  model.PopulateTensor(model.runtime_bmm_params(), {s_active});
+  if (model.runtime_bmm_params() != -1) {
+    model.PopulateTensor(model.runtime_bmm_params(), {s_active});
+  }
   model.PopulateTensor(model.mask(), mask_data);
   ASSERT_EQ(model.Invoke(), kTfLiteOk);
 
   AttentionModel model_ref(b, t, s, h, n, scale, /*transpose_io=*/false,
-                           /*use_delegate=*/false, options);
+                           /*use_delegate=*/false, options, ref_impl);
   model_ref.PopulateTensor(model_ref.query(), q_data);
   model_ref.PopulateTensor(model_ref.key(), k_data);
   model_ref.PopulateTensor(model_ref.value(), v_data);
-  model_ref.PopulateTensor(model_ref.runtime_bmm_params(), {s_active});
+  if (model_ref.runtime_bmm_params() != -1) {
+    model_ref.PopulateTensor(model_ref.runtime_bmm_params(), {s_active});
+  }
   model_ref.PopulateTensor(model_ref.mask(), mask_data);
   ASSERT_EQ(model_ref.Invoke(), kTfLiteOk);
 
@@ -217,6 +253,24 @@ TEST(AttentionTest, LargeShapeBounds) {
     EXPECT_NEAR(out_delegate[i], out_ref[i], 1e-3f);
   }
 }
+
+std::string PrintAttentionImplName(
+    const ::testing::TestParamInfo<AttentionImpl>& info) {
+  switch (info.param) {
+    case AttentionImpl::kFullSequence:
+      return "kFullSequence";
+    case AttentionImpl::kOdmlRuntimeBmm:
+      return "kOdmlRuntimeBmm";
+    case AttentionImpl::kOdmlSdpa:
+      return "kOdmlSdpa";
+  }
+}
+
+INSTANTIATE_TEST_SUITE_P(AttentionTest, AttentionTest,
+                         ::testing::Values(AttentionImpl::kFullSequence,
+                                           AttentionImpl::kOdmlRuntimeBmm,
+                                           AttentionImpl::kOdmlSdpa),
+                         PrintAttentionImplName);
 
 }  // namespace
 }  // namespace ynnpack

@@ -176,112 +176,261 @@ TfLiteRegistration* Register_RuntimeBmm() {
   return &reg;
 }
 
+TfLiteStatus DummySdpaPrepare(TfLiteContext* context, TfLiteNode* node) {
+  TF_LITE_ENSURE(context, node->inputs->size >= 1);
+  TF_LITE_ENSURE_EQ(context, node->outputs->size, 1);
+  const TfLiteTensor* q = &context->tensors[node->inputs->data[0]];
+  TfLiteTensor* output = &context->tensors[node->outputs->data[0]];
+  return context->ResizeTensor(context, output, TfLiteIntArrayCopy(q->dims));
+}
+
+TfLiteStatus DummySdpaEval(TfLiteContext* context, TfLiteNode* node) {
+  return kTfLiteOk;
+}
+
+TfLiteRegistration* Register_DummySDPA() {
+  static TfLiteRegistration reg = {
+      /*.init=*/nullptr,
+      /*.free=*/nullptr,
+      /*.prepare=*/DummySdpaPrepare,
+      /*.invoke=*/DummySdpaEval,
+      /*.profiling_string=*/nullptr,
+      /*.builtin_code=*/tflite::BuiltinOperator_CUSTOM,
+      /*.custom_name=*/"dummy_sdpa",
+      /*.version=*/1,
+  };
+  return &reg;
+}
+
 AttentionModel::AttentionModel(
     int b, int t, int s, int h, int n, float scale, bool transpose_io,
-    bool use_delegate, const TfLiteYNNPackDelegateOptions& delegate_options) {
+    bool use_delegate, const TfLiteYNNPackDelegateOptions& delegate_options,
+    AttentionImpl impl) {
   std::vector<int> query_shape = transpose_io ? std::vector<int>{b, t, n, h}
                                               : std::vector<int>{b, n, t, h};
   std::vector<int> key_shape = transpose_io ? std::vector<int>{b, s, n, h}
                                             : std::vector<int>{b, n, s, h};
-  // V shape has H and S swapped for runtime_bmm compatibility.
-  std::vector<int> value_shape = transpose_io ? std::vector<int>{b, h, n, s}
-                                              : std::vector<int>{b, n, h, s};
-  // Mask is broadcasted across heads (n), but not batch (b).
+
+  std::vector<int> value_shape;
+  if (impl == AttentionImpl::kOdmlRuntimeBmm) {
+    value_shape = transpose_io ? std::vector<int>{b, h, n, s}
+                               : std::vector<int>{b, n, h, s};
+  } else if (impl == AttentionImpl::kOdmlSdpa) {
+    value_shape = transpose_io ? std::vector<int>{b, s, n, h}
+                               : std::vector<int>{b, n, h, s};
+  } else {  // kFullSequence
+    value_shape = transpose_io ? std::vector<int>{b, s, n, h}
+                               : std::vector<int>{b, n, s, h};
+  }
+
   std::vector<int> mask_shape = transpose_io ? std::vector<int>{b, t, 1, s}
                                              : std::vector<int>{b, 1, t, s};
+  if (impl == AttentionImpl::kOdmlSdpa) {
+    mask_shape = {b, 1, t, s};
+  }
 
   query_id_ = AddInput({TensorType_FLOAT32, query_shape});
   key_id_ = AddInput({TensorType_FLOAT32, key_shape});
   value_id_ = AddInput({TensorType_FLOAT32, value_shape});
-  runtime_bmm_params_id_ = AddInput({TensorType_INT32, {1}});
+  if (impl != AttentionImpl::kFullSequence) {
+    runtime_bmm_params_id_ = AddInput({TensorType_INT32, {1}});
+  } else {
+    runtime_bmm_params_id_ = -1;
+  }
   mask_id_ = AddInput({TensorType_FLOAT32, mask_shape});
 
-  int current_query = query_id_;
-  int current_key = key_id_;
-  int current_value = value_id_;
-  int current_mask = mask_id_;
+  std::vector<int> output_shape = transpose_io ? std::vector<int>{b, t, n, h}
+                                               : std::vector<int>{b, n, t, h};
 
-  if (transpose_io) {
-    int perm_id = AddConstInput<int32_t>(TensorType_INT32, {0, 2, 1, 3}, {4});
+  if (impl == AttentionImpl::kOdmlSdpa) {
+    output_id_ = AddOutput({TensorType_FLOAT32, output_shape});
 
-    int transposed_query = AddIntermediate(TensorType_FLOAT32, {}, {});
-    AddBuiltinOp(BuiltinOperator_TRANSPOSE, BuiltinOptions_TransposeOptions,
-                 CreateTransposeOptions(builder_).Union(),
-                 {current_query, perm_id}, {transposed_query});
-    current_query = transposed_query;
-
-    int transposed_key = AddIntermediate(TensorType_FLOAT32, {}, {});
-    AddBuiltinOp(BuiltinOperator_TRANSPOSE, BuiltinOptions_TransposeOptions,
-                 CreateTransposeOptions(builder_).Union(),
-                 {current_key, perm_id}, {transposed_key});
-    current_key = transposed_key;
-
-    int transposed_value = AddIntermediate(TensorType_FLOAT32, {}, {});
-    AddBuiltinOp(BuiltinOperator_TRANSPOSE, BuiltinOptions_TransposeOptions,
-                 CreateTransposeOptions(builder_).Union(),
-                 {current_value, perm_id}, {transposed_value});
-    current_value = transposed_value;
-
-    int transposed_mask = AddIntermediate(TensorType_FLOAT32, {}, {});
-    AddBuiltinOp(BuiltinOperator_TRANSPOSE, BuiltinOptions_TransposeOptions,
-                 CreateTransposeOptions(builder_).Union(),
-                 {current_mask, perm_id}, {transposed_mask});
-    current_mask = transposed_mask;
-  }
-
-  // BMM1: Q @ K^T (is_src = false)
-  int scores_id = AddIntermediate(TensorType_FLOAT32, {}, {});
-  {
     flexbuffers::Builder fbb;
-    fbb.Map([&]() { fbb.Bool("is_src", false); });
+    fbb.Map([&]() { fbb.Float("scale", scale); });
     fbb.Finish();
-    AddCustomOp("odml.runtime_bmm", fbb.GetBuffer(), Register_RuntimeBmm,
-                {current_query, current_key, runtime_bmm_params_id_},
-                {scores_id});
+
+    const char* op_name = transpose_io ? "odml.scaled_dot_product_attention"
+                                       : "odml.sdpa_transposed";
+
+    AddCustomOp(
+        op_name, fbb.GetBuffer(), Register_DummySDPA,
+        {query_id_, key_id_, value_id_, mask_id_, runtime_bmm_params_id_},
+        {output_id_});
+
+    BuildInterpreter({query_shape, key_shape, value_shape, {1}, mask_shape}, -1,
+                     false,
+                     /*apply_delegate=*/false, /*allocate_and_delegate=*/false);
+  } else if (impl == AttentionImpl::kOdmlRuntimeBmm) {
+    int current_query = query_id_;
+    int current_key = key_id_;
+    int current_value = value_id_;
+    int current_mask = mask_id_;
+
+    if (transpose_io) {
+      int perm_id = AddConstInput<int32_t>(TensorType_INT32, {0, 2, 1, 3}, {4});
+
+      int transposed_query = AddIntermediate(TensorType_FLOAT32, {}, {});
+      AddBuiltinOp(BuiltinOperator_TRANSPOSE, BuiltinOptions_TransposeOptions,
+                   CreateTransposeOptions(builder_).Union(),
+                   {current_query, perm_id}, {transposed_query});
+      current_query = transposed_query;
+
+      int transposed_key = AddIntermediate(TensorType_FLOAT32, {}, {});
+      AddBuiltinOp(BuiltinOperator_TRANSPOSE, BuiltinOptions_TransposeOptions,
+                   CreateTransposeOptions(builder_).Union(),
+                   {current_key, perm_id}, {transposed_key});
+      current_key = transposed_key;
+
+      int transposed_value = AddIntermediate(TensorType_FLOAT32, {}, {});
+      AddBuiltinOp(BuiltinOperator_TRANSPOSE, BuiltinOptions_TransposeOptions,
+                   CreateTransposeOptions(builder_).Union(),
+                   {current_value, perm_id}, {transposed_value});
+      current_value = transposed_value;
+
+      int transposed_mask = AddIntermediate(TensorType_FLOAT32, {}, {});
+      AddBuiltinOp(BuiltinOperator_TRANSPOSE, BuiltinOptions_TransposeOptions,
+                   CreateTransposeOptions(builder_).Union(),
+                   {current_mask, perm_id}, {transposed_mask});
+      current_mask = transposed_mask;
+    }
+
+    // BMM1: Q @ K^T (is_src = false)
+    int scores_id = AddIntermediate(TensorType_FLOAT32, {}, {});
+    {
+      flexbuffers::Builder fbb;
+      fbb.Map([&]() { fbb.Bool("is_src", false); });
+      fbb.Finish();
+      AddCustomOp("odml.runtime_bmm", fbb.GetBuffer(), Register_RuntimeBmm,
+                  {current_query, current_key, runtime_bmm_params_id_},
+                  {scores_id});
+    }
+
+    // Add mask
+    int masked_scores_id = AddIntermediate(TensorType_FLOAT32, {}, {});
+    AddBuiltinOp(BuiltinOperator_ADD, BuiltinOptions_AddOptions,
+                 CreateAddOptions(builder_).Union(), {scores_id, current_mask},
+                 {masked_scores_id});
+
+    int probs_id = AddIntermediate(TensorType_FLOAT32, {}, {});
+    AddBuiltinOp(BuiltinOperator_SOFTMAX, BuiltinOptions_SoftmaxOptions,
+                 CreateSoftmaxOptions(builder_, scale).Union(),
+                 {masked_scores_id}, {probs_id});
+
+    // BMM2: Probs @ V (is_src = true)
+    int post_bmm2_id;
+    if (transpose_io) {
+      post_bmm2_id = AddIntermediate(TensorType_FLOAT32, {}, {});
+    } else {
+      post_bmm2_id = AddOutput({TensorType_FLOAT32, {}});
+    }
+    {
+      flexbuffers::Builder fbb;
+      fbb.Map([&]() { fbb.Bool("is_src", true); });
+      fbb.Finish();
+      AddCustomOp("odml.runtime_bmm", fbb.GetBuffer(), Register_RuntimeBmm,
+                  {probs_id, current_value, runtime_bmm_params_id_},
+                  {post_bmm2_id});
+    }
+
+    int current_output = post_bmm2_id;
+
+    if (transpose_io) {
+      int perm_id = AddConstInput<int32_t>(TensorType_INT32, {0, 2, 1, 3}, {4});
+      int transposed_output = AddOutput({TensorType_FLOAT32, {}});
+      AddBuiltinOp(BuiltinOperator_TRANSPOSE, BuiltinOptions_TransposeOptions,
+                   CreateTransposeOptions(builder_).Union(),
+                   {current_output, perm_id}, {transposed_output});
+      current_output = transposed_output;
+    }
+
+    output_id_ = current_output;
+
+    BuildInterpreter({query_shape, key_shape, value_shape, {1}, mask_shape}, -1,
+                     false,
+                     /*apply_delegate=*/false, /*allocate_and_delegate=*/false);
+  } else {  // kFullSequence
+    int current_query = query_id_;
+    int current_key = key_id_;
+    int current_value = value_id_;
+    int current_mask = mask_id_;
+
+    if (transpose_io) {
+      int perm_id = AddConstInput<int32_t>(TensorType_INT32, {0, 2, 1, 3}, {4});
+
+      int transposed_query = AddIntermediate(TensorType_FLOAT32, {}, {});
+      AddBuiltinOp(BuiltinOperator_TRANSPOSE, BuiltinOptions_TransposeOptions,
+                   CreateTransposeOptions(builder_).Union(),
+                   {current_query, perm_id}, {transposed_query});
+      current_query = transposed_query;
+
+      int transposed_key = AddIntermediate(TensorType_FLOAT32, {}, {});
+      AddBuiltinOp(BuiltinOperator_TRANSPOSE, BuiltinOptions_TransposeOptions,
+                   CreateTransposeOptions(builder_).Union(),
+                   {current_key, perm_id}, {transposed_key});
+      current_key = transposed_key;
+
+      int transposed_value = AddIntermediate(TensorType_FLOAT32, {}, {});
+      AddBuiltinOp(BuiltinOperator_TRANSPOSE, BuiltinOptions_TransposeOptions,
+                   CreateTransposeOptions(builder_).Union(),
+                   {current_value, perm_id}, {transposed_value});
+      current_value = transposed_value;
+
+      int transposed_mask = AddIntermediate(TensorType_FLOAT32, {}, {});
+      AddBuiltinOp(BuiltinOperator_TRANSPOSE, BuiltinOptions_TransposeOptions,
+                   CreateTransposeOptions(builder_).Union(),
+                   {current_mask, perm_id}, {transposed_mask});
+      current_mask = transposed_mask;
+    }
+
+    // BMM1: Q @ K^T
+    int scores_id = AddIntermediate(TensorType_FLOAT32, {}, {});
+    AddBuiltinOp(
+        BuiltinOperator_BATCH_MATMUL, BuiltinOptions_BatchMatMulOptions,
+        CreateBatchMatMulOptions(builder_, /*adj_x=*/false, /*adj_y=*/true)
+            .Union(),
+        {current_query, current_key}, {scores_id});
+
+    // Add mask
+    int masked_scores_id = AddIntermediate(TensorType_FLOAT32, {}, {});
+    AddBuiltinOp(BuiltinOperator_ADD, BuiltinOptions_AddOptions,
+                 CreateAddOptions(builder_).Union(), {scores_id, current_mask},
+                 {masked_scores_id});
+
+    int probs_id = AddIntermediate(TensorType_FLOAT32, {}, {});
+    AddBuiltinOp(BuiltinOperator_SOFTMAX, BuiltinOptions_SoftmaxOptions,
+                 CreateSoftmaxOptions(builder_, scale).Union(),
+                 {masked_scores_id}, {probs_id});
+
+    // BMM2: Probs @ V
+    int post_bmm2_id;
+    if (transpose_io) {
+      post_bmm2_id = AddIntermediate(TensorType_FLOAT32, {}, {});
+    } else {
+      post_bmm2_id = AddOutput({TensorType_FLOAT32, {}});
+    }
+    AddBuiltinOp(
+        BuiltinOperator_BATCH_MATMUL, BuiltinOptions_BatchMatMulOptions,
+        CreateBatchMatMulOptions(builder_, /*adj_x=*/false, /*adj_y=*/false)
+            .Union(),
+        {probs_id, current_value}, {post_bmm2_id});
+
+    int current_output = post_bmm2_id;
+
+    if (transpose_io) {
+      int perm_id = AddConstInput<int32_t>(TensorType_INT32, {0, 2, 1, 3}, {4});
+      int transposed_output = AddOutput({TensorType_FLOAT32, {}});
+      AddBuiltinOp(BuiltinOperator_TRANSPOSE, BuiltinOptions_TransposeOptions,
+                   CreateTransposeOptions(builder_).Union(),
+                   {current_output, perm_id}, {transposed_output});
+      current_output = transposed_output;
+    }
+
+    output_id_ = current_output;
+
+    BuildInterpreter({query_shape, key_shape, value_shape, mask_shape}, -1,
+                     false,
+                     /*apply_delegate=*/false, /*allocate_and_delegate=*/false);
   }
-
-  // Add mask
-  int masked_scores_id = AddIntermediate(TensorType_FLOAT32, {}, {});
-  AddBuiltinOp(BuiltinOperator_ADD, BuiltinOptions_AddOptions,
-               CreateAddOptions(builder_).Union(), {scores_id, current_mask},
-               {masked_scores_id});
-
-  int probs_id = AddIntermediate(TensorType_FLOAT32, {}, {});
-  AddBuiltinOp(BuiltinOperator_SOFTMAX, BuiltinOptions_SoftmaxOptions,
-               CreateSoftmaxOptions(builder_, scale).Union(),
-               {masked_scores_id}, {probs_id});
-
-  // BMM2: Probs @ V (is_src = true)
-  int output_id;
-  if (transpose_io) {
-    output_id = AddIntermediate(TensorType_FLOAT32, {}, {});
-  } else {
-    output_id = AddOutput({TensorType_FLOAT32, {}});
-  }
-  {
-    flexbuffers::Builder fbb;
-    fbb.Map([&]() { fbb.Bool("is_src", true); });
-    fbb.Finish();
-    AddCustomOp("odml.runtime_bmm", fbb.GetBuffer(), Register_RuntimeBmm,
-                {probs_id, current_value, runtime_bmm_params_id_}, {output_id});
-  }
-
-  int current_output = output_id;
-
-  if (transpose_io) {
-    int perm_id = AddConstInput<int32_t>(TensorType_INT32, {0, 2, 1, 3}, {4});
-    int transposed_output = AddOutput({TensorType_FLOAT32, {}});
-    AddBuiltinOp(BuiltinOperator_TRANSPOSE, BuiltinOptions_TransposeOptions,
-                 CreateTransposeOptions(builder_).Union(),
-                 {current_output, perm_id}, {transposed_output});
-    current_output = transposed_output;
-  }
-
-  output_id_ = current_output;
-
-  BuildInterpreter({query_shape, key_shape, value_shape, {1}, mask_shape}, -1,
-                   false,
-                   /*apply_delegate=*/false, /*allocate_and_delegate=*/false);
 
   if (interpreter_->AllocateTensors() != kTfLiteOk) {
     fprintf(stderr, "Failed to allocate tensors\n");

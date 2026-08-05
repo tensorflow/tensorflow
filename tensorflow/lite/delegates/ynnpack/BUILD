@@ -13,6 +13,8 @@ package(
 cc_library(
     name = "ynnpack_delegate",
     srcs = [
+        "attention.cc",
+        "attention.h",
         "copy.cc",
         "copy.h",
         "dot.cc",

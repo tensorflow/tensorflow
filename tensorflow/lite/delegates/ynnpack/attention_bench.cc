@@ -28,7 +28,8 @@ namespace ynnpack {
 namespace {
 
 void BenchAttention(benchmark::State& state, int b, int query_len = 0,
-                    bool transpose_io = false) {
+                    bool transpose_io = false,
+                    AttentionImpl impl = AttentionImpl::kOdmlRuntimeBmm) {
   const int s = state.range(0);
   const int t = query_len == 0 ? s : query_len;
   const int h = state.range(1);
@@ -55,11 +56,13 @@ void BenchAttention(benchmark::State& state, int b, int query_len = 0,
 
   // Run delegate model (YNNPACK)
   AttentionModel model(b, t, s, h, n, scale, transpose_io,
-                       /*use_delegate=*/true, options);
+                       /*use_delegate=*/true, options, impl);
   model.PopulateTensor(model.query(), q_data);
   model.PopulateTensor(model.key(), k_data);
   model.PopulateTensor(model.value(), v_data);
-  model.PopulateTensor(model.runtime_bmm_params(), {s_active});
+  if (model.runtime_bmm_params() != -1) {
+    model.PopulateTensor(model.runtime_bmm_params(), {s_active});
+  }
   model.PopulateTensor(model.mask(), mask_data);
   if (model.Invoke() != kTfLiteOk) {
     state.SkipWithError("Failed to invoke delegate interpreter (warmup)");
@@ -81,20 +84,67 @@ void BenchAttention(benchmark::State& state, int b, int query_len = 0,
                          benchmark::Counter::kIsRate);
 }
 
-void Attention(benchmark::State& state) { BenchAttention(state, /*b=*/1); }
+// BMM-based benchmarks (with dynamic slicing)
+void Attention(benchmark::State& state) {
+  BenchAttention(state, /*b=*/1, /*query_len=*/0, /*transpose_io=*/false,
+                 AttentionImpl::kOdmlRuntimeBmm);
+}
 
 void AttentionTransposed(benchmark::State& state) {
-  BenchAttention(state, /*b=*/1, /*query_len=*/0,
-                 /*transpose_io=*/true);
+  BenchAttention(state, /*b=*/1, /*query_len=*/0, /*transpose_io=*/true,
+                 AttentionImpl::kOdmlRuntimeBmm);
 }
 
 void AttentionDecodeTransposed(benchmark::State& state) {
-  BenchAttention(state, /*b=*/1, /*query_len=*/1,
-                 /*transpose_io=*/true);
+  BenchAttention(state, /*b=*/1, /*query_len=*/1, /*transpose_io=*/true,
+                 AttentionImpl::kOdmlRuntimeBmm);
 }
 
 void AttentionDecode(benchmark::State& state) {
-  BenchAttention(state, /*b=*/1, /*query_len=*/1);
+  BenchAttention(state, /*b=*/1, /*query_len=*/1, /*transpose_io=*/false,
+                 AttentionImpl::kOdmlRuntimeBmm);
+}
+
+// SDPA-based benchmarks (with dynamic slicing)
+void SdpaAttention(benchmark::State& state) {
+  BenchAttention(state, /*b=*/1, /*query_len=*/0, /*transpose_io=*/false,
+                 AttentionImpl::kOdmlSdpa);
+}
+
+void SdpaAttentionTransposed(benchmark::State& state) {
+  BenchAttention(state, /*b=*/1, /*query_len=*/0, /*transpose_io=*/true,
+                 AttentionImpl::kOdmlSdpa);
+}
+
+void SdpaAttentionDecodeTransposed(benchmark::State& state) {
+  BenchAttention(state, /*b=*/1, /*query_len=*/1, /*transpose_io=*/true,
+                 AttentionImpl::kOdmlSdpa);
+}
+
+void SdpaAttentionDecode(benchmark::State& state) {
+  BenchAttention(state, /*b=*/1, /*query_len=*/1, /*transpose_io=*/false,
+                 AttentionImpl::kOdmlSdpa);
+}
+
+// Full sequence benchmarks (standard ops, no dynamic slicing)
+void FullSequenceAttention(benchmark::State& state) {
+  BenchAttention(state, /*b=*/1, /*query_len=*/0, /*transpose_io=*/false,
+                 AttentionImpl::kFullSequence);
+}
+
+void FullSequenceAttentionTransposed(benchmark::State& state) {
+  BenchAttention(state, /*b=*/1, /*query_len=*/0, /*transpose_io=*/true,
+                 AttentionImpl::kFullSequence);
+}
+
+void FullSequenceAttentionDecodeTransposed(benchmark::State& state) {
+  BenchAttention(state, /*b=*/1, /*query_len=*/1, /*transpose_io=*/true,
+                 AttentionImpl::kFullSequence);
+}
+
+void FullSequenceAttentionDecode(benchmark::State& state) {
+  BenchAttention(state, /*b=*/1, /*query_len=*/1, /*transpose_io=*/false,
+                 AttentionImpl::kFullSequence);
 }
 
 void AttentionArguments(benchmark::Benchmark* b) {
@@ -122,11 +172,36 @@ BENCHMARK(Attention)
 BENCHMARK(AttentionTransposed)
     ->Apply(AttentionArguments)
     ->Unit(benchmark::TimeUnit::kMillisecond);
-
 BENCHMARK(AttentionDecodeTransposed)
     ->Apply(AttentionArguments)
     ->Unit(benchmark::TimeUnit::kMillisecond);
 BENCHMARK(AttentionDecode)
+    ->Apply(AttentionArguments)
+    ->Unit(benchmark::TimeUnit::kMillisecond);
+
+BENCHMARK(SdpaAttention)
+    ->Apply(AttentionArguments)
+    ->Unit(benchmark::TimeUnit::kMillisecond);
+BENCHMARK(SdpaAttentionTransposed)
+    ->Apply(AttentionArguments)
+    ->Unit(benchmark::TimeUnit::kMillisecond);
+BENCHMARK(SdpaAttentionDecodeTransposed)
+    ->Apply(AttentionArguments)
+    ->Unit(benchmark::TimeUnit::kMillisecond);
+BENCHMARK(SdpaAttentionDecode)
+    ->Apply(AttentionArguments)
+    ->Unit(benchmark::TimeUnit::kMillisecond);
+
+BENCHMARK(FullSequenceAttention)
+    ->Apply(AttentionArguments)
+    ->Unit(benchmark::TimeUnit::kMillisecond);
+BENCHMARK(FullSequenceAttentionTransposed)
+    ->Apply(AttentionArguments)
+    ->Unit(benchmark::TimeUnit::kMillisecond);
+BENCHMARK(FullSequenceAttentionDecodeTransposed)
+    ->Apply(AttentionArguments)
+    ->Unit(benchmark::TimeUnit::kMillisecond);
+BENCHMARK(FullSequenceAttentionDecode)
     ->Apply(AttentionArguments)
     ->Unit(benchmark::TimeUnit::kMillisecond);
 

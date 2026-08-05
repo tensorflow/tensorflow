@@ -25,6 +25,7 @@ limitations under the License.
 #include <vector>
 
 #include "ynnpack/include/ynnpack.h"  // from @XNNPACK
+#include "flatbuffers/flexbuffers.h"  // from @flatbuffers
 #include "tensorflow/lite/builtin_ops.h"
 #include "tensorflow/lite/core/c/builtin_op_data.h"
 #include "tensorflow/lite/core/c/common.h"
@@ -100,6 +101,8 @@ ynn_type GetYnnType(TfLiteType type) {
       return ynn_type_uint4;
     case kTfLiteInt2:
       return ynn_type_int2;
+    case kTfLiteBool:
+      return ynn_type_uint8;
     default:
       return ynn_type_invalid;
   }
@@ -298,6 +301,7 @@ size_t YnnTypeElementCount(ynn_type type) {
 }
 
 bool IsTensorSupported(const TfLiteTensor& tensor, bool allow_per_channel) {
+  if (tensor.type == kTfLiteBool) return false;
   ynn_type type = GetYnnType(tensor.type);
   if (type == ynn_type_invalid) return false;
   size_t element_count = YnnTypeElementCount(type);
@@ -729,6 +733,75 @@ TfLiteStatus DefineYnnStencil(TfLiteContext* context, ynn_subgraph_t subgraph,
       stencil_strides, stencil_dilations, input_id, padding_id, stencil_id,
       /*flags=*/0));
 
+  return kTfLiteOk;
+}
+
+flexbuffers::Map GetFlexBufferMap(const TfLiteRegistration* reg,
+                                  const TfLiteNode* node) {
+  if (node == nullptr) {
+    return flexbuffers::Map::EmptyMap();
+  }
+  if (reg != nullptr && reg->builtin_code == kTfLiteBuiltinStablehloComposite &&
+      node->builtin_data != nullptr) {
+    const auto* composite_params =
+        static_cast<const TfLiteStablehloCompositeParams*>(node->builtin_data);
+    if (composite_params->attributes != nullptr &&
+        composite_params->attributes_size > 0) {
+      return flexbuffers::GetRoot(composite_params->attributes,
+                                  composite_params->attributes_size)
+          .AsMap();
+    }
+  }
+  if (node->custom_initial_data != nullptr &&
+      node->custom_initial_data_size > 0) {
+    return flexbuffers::GetRoot(
+               reinterpret_cast<const uint8_t*>(node->custom_initial_data),
+               node->custom_initial_data_size)
+        .AsMap();
+  }
+  return flexbuffers::Map::EmptyMap();
+}
+
+// Find a dummy input we can use for a particular runtime_bmm op. Often, many
+// runtime_bmm ops use the same params tensor, which can share a dummy input.
+TfLiteStatus GetOrCreateDummyInput(TfLiteContext* context,
+                                   ynn_subgraph_t subgraph,
+                                   uint32_t& next_external_id,
+                                   std::vector<DummyInputInfo>& dummy_inputs,
+                                   int param_tensor_index, int seq_axis,
+                                   size_t rank, const size_t* full_dims,
+                                   ynn_type type, uint32_t* dummy_val_id_out) {
+  for (const auto& dummy : dummy_inputs) {
+    if (dummy.param_tensor_index == param_tensor_index &&
+        dummy.seq_axis == seq_axis && dummy.rank == rank) {
+      bool dims_match = true;
+      for (size_t i = 0; i < rank; ++i) {
+        if (dummy.full_dims[i] != full_dims[i]) {
+          dims_match = false;
+          break;
+        }
+      }
+      if (dims_match) {
+        *dummy_val_id_out = dummy.dummy_val_id;
+        return kTfLiteOk;
+      }
+    }
+  }
+
+  uint32_t dummy_val_id = next_external_id++;
+  TF_LITE_ENSURE_YNN_STATUS(ynn_define_tensor(
+      subgraph, type, rank, /*dims=*/nullptr, /*data=*/nullptr,
+      YNN_VALUE_FLAG_EXTERNAL_INPUT, &dummy_val_id));
+
+  DummyInputInfo dummy_info = {};
+  dummy_info.param_tensor_index = param_tensor_index;
+  dummy_info.dummy_val_id = dummy_val_id;
+  dummy_info.seq_axis = seq_axis;
+  dummy_info.rank = rank;
+  std::copy_n(full_dims, rank, dummy_info.full_dims);
+  dummy_inputs.push_back(dummy_info);
+
+  *dummy_val_id_out = dummy_val_id;
   return kTfLiteOk;
 }
 
