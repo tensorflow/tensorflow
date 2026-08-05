@@ -71,6 +71,7 @@ cc_library(
         ":coordination_service_proto_cc",
         "//xla/tsl/distributed_runtime:call_options",
         "//xla/tsl/platform:status",
+        "@com_google_absl//absl/status",
     ],
 )
 

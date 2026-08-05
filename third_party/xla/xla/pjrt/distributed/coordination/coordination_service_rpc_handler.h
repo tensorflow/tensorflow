@@ -16,6 +16,9 @@ limitations under the License.
 #ifndef XLA_PJRT_DISTRIBUTED_COORDINATION_COORDINATION_SERVICE_RPC_HANDLER_H_
 #define XLA_PJRT_DISTRIBUTED_COORDINATION_COORDINATION_SERVICE_RPC_HANDLER_H_
 
+#include <functional>
+
+#include "absl/status/status.h"
 #include "absl/synchronization/mutex.h"
 #include "xla/pjrt/distributed/coordination/coordination_service.h"
 #include "xla/pjrt/distributed/coordination/coordination_service.pb.h"
@@ -94,6 +97,11 @@ class CoordinationServiceRpcHandler {
   void PollForErrorAsync(const xla::coordination::PollForErrorRequest* request,
                          xla::coordination::PollForErrorResponse* response,
                          tsl::StatusCallback done);
+
+  void ReportErrorToServiceAsync(
+      const xla::coordination::ReportErrorToServiceRequest* request,
+      xla::coordination::ReportErrorToServiceResponse* response,
+      std::function<void(const absl::Status&)> done);
 
  private:
   absl::Mutex mu_;
