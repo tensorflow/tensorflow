@@ -683,5 +683,29 @@ ENTRY entry {
   EXPECT_EQ(args[1].Get<float>({}), LiteralUtil::MaxValue(F32).Get<float>({}));
 }
 
+// Tests that MakeFakeArguments succeeds when a fusion instruction has unused
+// operands (operands beyond the number of parameters in the fused computation).
+TEST_F(TestUtilsTest, FusionWithUnusedOperand) {
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+HloModule FusionWithUnusedOperandModule
+
+fused_computation (param_0: f32[4,5,128,256]) -> f32[4,5,128,256] {
+  param_0 = f32[4,5,128,256] parameter(0)
+  ROOT copy = f32[4,5,128,256] copy(param_0)
+}
+
+ENTRY entry {
+  param_0 = f32[4,5,128,256] parameter(0)
+  param_1 = f32[] parameter(1)
+  copy = f32[] copy(param_1)
+  ROOT fusion = f32[4,5,128,256] fusion(param_0, copy), kind=kOutput, calls=fused_computation
+}
+)"));
+
+  ASSERT_OK_AND_ASSIGN(std::vector<Literal> args,
+                       MakeFakeArguments(module.get()));
+  EXPECT_EQ(args.size(), 2);
+}
+
 }  // namespace
 }  // namespace xla

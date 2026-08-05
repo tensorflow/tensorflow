@@ -7580,11 +7580,15 @@ bool HloParserImpl::ParseShape(Shape* result,
       return false;
     }
     if (layout.minor_to_major().size() != result->dimensions().size()) {
-      return Error(
-          lexer_.GetLoc(),
-          StrFormat("Dimensions size is %ld, but minor to major size is %ld.",
-                    result->dimensions().size(),
-                    layout.minor_to_major().size()));
+      if (layout.minor_to_major().empty() && layout.memory_space() != 0) {
+        // AUTO layout with non-default memory space.
+      } else {
+        return Error(
+            lexer_.GetLoc(),
+            StrFormat("Dimensions size is %ld, but minor to major size is %ld.",
+                      result->dimensions().size(),
+                      layout.minor_to_major().size()));
+      }
     }
     if (layout.has_physical_shape()) {
       return Error(
@@ -9213,7 +9217,7 @@ void HloParserImpl::UpdateAsyncWrappedComputation(
     if (i < async_wrapped_computation->num_parameters()) {
       Shape* param_shape =
           async_wrapped_computation->parameter_instruction(i)->mutable_shape();
-      if (!ShapeUtil::Compatible(
+      if (!ShapeUtil::Equal(
               *param_shape,
               called_computation->parameter_instruction(i)->shape())) {
         *param_shape = called_computation->parameter_instruction(i)->shape();
@@ -9230,7 +9234,7 @@ void HloParserImpl::UpdateAsyncWrappedComputation(
   Shape* root_shape =
       async_wrapped_computation->root_instruction()->mutable_shape();
   const Shape& result_shape = called_computation->root_instruction()->shape();
-  if (!ShapeUtil::Compatible(*root_shape, result_shape)) {
+  if (!ShapeUtil::Equal(*root_shape, result_shape)) {
     *root_shape = result_shape;
   }
 }
