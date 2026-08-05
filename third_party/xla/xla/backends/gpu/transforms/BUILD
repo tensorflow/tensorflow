@@ -1665,6 +1665,7 @@ cc_library(
     deps = [
         ":dynamic_slice_fusion",
         "//xla:shape_util",
+        "//xla/hlo/analysis:hlo_dfs_reachability",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/pass:hlo_pass",
         "//xla/service/gpu:backend_configs_cc",

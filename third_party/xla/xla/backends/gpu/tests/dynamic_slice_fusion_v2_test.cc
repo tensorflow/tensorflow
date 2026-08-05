@@ -15,6 +15,7 @@ limitations under the License.
 
 #include <cstddef>
 #include <cstdint>
+#include <memory>
 #include <utility>
 
 #include <gmock/gmock.h>
@@ -28,6 +29,10 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/while_loop.h"
 #include "xla/backends/gpu/tests/hlo_pjrt_gpu_test_base.h"
 #include "xla/ffi/ffi.h"
+#include "xla/hlo/ir/hlo_computation.h"
+#include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
 #include "xla/shape_util.h"
@@ -103,6 +108,7 @@ class DynamicSliceFusionV2Test : public HloPjRtGpuTestBase {
  protected:
   DebugOptions GetDebugOptionsForTest() const override {
     DebugOptions debug_options = HloPjRtGpuTestBase::GetDebugOptionsForTest();
+    debug_options.set_xla_gpu_enable_dynamic_slice_fusion(true);
     debug_options.set_xla_gpu_experimental_dynamic_slice_fusion_verify_offsets(
         true);
     return debug_options;
@@ -170,6 +176,69 @@ TEST_F(DynamicSliceFusionV2Test, SingleOutputOneDUS) {
       Literal result, Execute(std::move(*ParseAndReturnVerifiedModule(hlo)), {},
                               /*run_hlo_passes=*/false));
   EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
+}
+
+TEST_F(DynamicSliceFusionV2Test, HeroWithExternalUserRunsOncePerIteration) {
+  // A surviving duplicate computes identical values -- a pure performance
+  // defect, visible as a second custom-call in the optimized HLO.
+  const char* hlo = R"(
+    HloModule test
+
+    body {
+      param = (s32[], f32[64], f32[4,64]) parameter(0)
+      i = s32[] get-tuple-element(param), index=0
+      res = f32[64] get-tuple-element(param), index=1
+      buf = f32[4,64] get-tuple-element(param), index=2
+      hero = f32[64] custom-call(res),
+        custom_call_target="__xla_test$$memset_const",
+        api_version=API_VERSION_TYPED_FFI,
+        backend_config="{value = 7.0 : f32}"
+      hero_2d = f32[1,64] reshape(hero)
+      zero = s32[] constant(0)
+      updated = f32[4,64] dynamic-update-slice(buf, hero_2d, i, zero)
+      new_res = f32[64] add(res, hero)
+      one = s32[] constant(1)
+      next_i = s32[] add(i, one)
+      ROOT tuple = (s32[], f32[64], f32[4,64]) tuple(next_i, new_res, updated)
+    }
+
+    cond {
+      param = (s32[], f32[64], f32[4,64]) parameter(0)
+      i = s32[] get-tuple-element(param), index=0
+      limit = s32[] constant(4)
+      ROOT cmp = pred[] compare(i, limit), direction=LT
+    }
+
+    ENTRY main {
+      zero = s32[] constant(0)
+      init_res = f32[64] broadcast(f32[] constant(0)), dimensions={}
+      init_buf = f32[4,64] broadcast(f32[] constant(0)), dimensions={}
+      init = (s32[], f32[64], f32[4,64]) tuple(zero, init_res, init_buf)
+      ROOT while = (s32[], f32[64], f32[4,64])
+        while(init), condition=cond, body=body
+    }
+  )";
+
+  ASSERT_OK_AND_ASSIGN(
+      Literal result, Execute(std::move(*ParseAndReturnVerifiedModule(hlo)), {},
+                              /*run_hlo_passes=*/true));
+
+  Literal expected = LiteralUtil::MakeTupleOwned(
+      LiteralUtil::CreateR0<int32_t>(4),
+      LiteralUtil::CreateFullWithDescendingLayout<float>({64}, 28.0f),
+      LiteralUtil::CreateFullWithDescendingLayout<float>({4, 64}, 7.0f));
+  EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> optimized,
+                       GetOptimizedModule(hlo));
+  int64_t hero_count = 0;
+  for (const HloComputation* computation : optimized->computations()) {
+    for (const HloInstruction* instr : computation->instructions()) {
+      hero_count += instr->opcode() == HloOpcode::kCustomCall &&
+                    instr->custom_call_target() == "__xla_test$$memset_const";
+    }
+  }
+  EXPECT_EQ(hero_count, 1);
 }
 
 TEST_F(DynamicSliceFusionV2Test, SingleOutputOneDUSWithOffsetExpression) {
