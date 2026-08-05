@@ -511,6 +511,14 @@ func.func @test_insert_unaligned(%arg0: tensor<8xf32>, %arg1: memref<128xf32>, %
 // CHECK:   vector.transfer_write %{{.*}}, %{{.*}}[%{{.*}}], %[[MASK]] : vector<8xf32>, memref<128xf32>
 // CHECK: }
 
+func.func @test_broadcast(%arg0: tensor<16xf32>) -> tensor<8x16xf32> {
+  %0 = stablehlo.broadcast_in_dim %arg0, dims = [1] : (tensor<16xf32>) -> tensor<8x16xf32>
+  return %0 : tensor<8x16xf32>
+}
+// CHECK-LABEL: @test_broadcast
+// CHECK: %[[SCAST:.*]] = vector.shape_cast %{{.*}}: vector<16xf32> to vector<1x16xf32>
+// CHECK: %[[BCAST:.*]] = vector.broadcast %[[SCAST]] : vector<1x16xf32> to vector<8x16xf32>
+
 func.func @test_transpose(%arg0: tensor<16x16x8xf32>) -> tensor<8x16x16xf32> {
   %0 = stablehlo.transpose %arg0, dims = [2, 0, 1] : (tensor<16x16x8xf32>) -> tensor<8x16x16xf32>
   return %0 : tensor<8x16x16xf32>

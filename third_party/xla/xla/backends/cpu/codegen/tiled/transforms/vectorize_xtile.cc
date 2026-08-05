@@ -105,11 +105,9 @@ Value GetIsInBoundsCondition(mlir::OpBuilder& builder, mlir::Location loc,
   for (Value val : apply_indexing.getResults()) {
     Value cmp =
         ma::CmpIOp::create(builder, loc, ma::CmpIPredicate::sge, val, zero);
-    if (is_in_bounds) {
-      is_in_bounds = ma::AndIOp::create(builder, loc, is_in_bounds, cmp);
-    } else {
-      is_in_bounds = cmp;
-    }
+    is_in_bounds = is_in_bounds != nullptr
+                       ? ma::AndIOp::create(builder, loc, is_in_bounds, cmp)
+                       : cmp;
   }
   return is_in_bounds;
 }
@@ -163,6 +161,24 @@ struct ConvertExtractTile
     Value pad = ma::ConstantOp::create(
         rewriter, loc, result_vector_type.getElementType(),
         rewriter.getZeroAttr(result_vector_type.getElementType()));
+
+    // 0d case.
+    if (offsets.empty()) {
+      mlir::AffineMap permutation_map =
+          mlir::vector::getTransferMinorIdentityMap(
+              mlir::cast<mlir::ShapedType>(source_memref.getType()),
+              result_vector_type);
+      mlir::AffineMapAttr permutation_map_attr =
+          mlir::AffineMapAttr::get(permutation_map);
+      mlir::ArrayAttr in_bounds_attr =
+          GetInBoundsAttr(rewriter, result_vector_type.getRank(), true);
+
+      Value read = mv::TransferReadOp::create(
+          rewriter, loc, result_vector_type, source_memref, offsets,
+          permutation_map_attr, pad, /*mask=*/Value(), in_bounds_attr);
+      rewriter.replaceOp(op, read);
+      return mlir::success();
+    }
 
     // Generate scf.if
     ms::IfOp if_op = ms::IfOp::create(rewriter, loc, result_vector_type,
@@ -258,6 +274,43 @@ struct ConvertInsertTile
   }
 };
 
+struct VectorizeBroadcastInDimOp
+    : public mlir::OpConversionPattern<shlo::BroadcastInDimOp> {
+  using OpConversionPattern::OpConversionPattern;
+
+  mlir::LogicalResult matchAndRewrite(
+      shlo::BroadcastInDimOp op, OpAdaptor adaptor,
+      mlir::ConversionPatternRewriter& rewriter) const override {
+    mlir::Type new_type = this->getTypeConverter()->convertType(op.getType());
+    if (!new_type) {
+      return mlir::failure();
+    }
+    auto result_vector_type = mlir::cast<mlir::VectorType>(new_type);
+    Value source_vector = adaptor.getOperand();
+    auto source_vector_type =
+        mlir::cast<mlir::VectorType>(source_vector.getType());
+
+    llvm::ArrayRef<int64_t> source_shape = source_vector_type.getShape();
+    llvm::ArrayRef<int64_t> broadcast_dims = op.getBroadcastDimensions();
+
+    llvm::SmallVector<int64_t> intermediate_shape(result_vector_type.getRank(),
+                                                  1);
+    for (auto [input_dim, result_dim] : llvm::enumerate(broadcast_dims)) {
+      intermediate_shape[result_dim] = source_shape[input_dim];
+    }
+
+    auto intermediate_vector_type = mlir::VectorType::get(
+        intermediate_shape, result_vector_type.getElementType());
+
+    mlir::Value intermediate_vector = mlir::vector::ShapeCastOp::create(
+        rewriter, op->getLoc(), intermediate_vector_type, source_vector);
+
+    rewriter.replaceOpWithNewOp<mv::BroadcastOp>(op, result_vector_type,
+                                                 intermediate_vector);
+    return mlir::success();
+  }
+};
+
 struct VectorizeTransposeOp
     : public mlir::OpConversionPattern<shlo::TransposeOp> {
   using OpConversionPattern::OpConversionPattern;
@@ -330,14 +383,15 @@ class VectorizeXTilePass
         ma::ArithDialect, mlir::memref::MemRefDialect, mm::MathDialect,
         ms::SCFDialect, mlir::tensor::TensorDialect, mv::VectorDialect,
         shlo::StablehloDialect, xla::XlaDialect, xtile::XTileDialect>();
-    target.addIllegalOp<shlo::TransposeOp, xtile::ExtractTileOp,
-                        xtile::InsertTileOp>();
+    target.addIllegalOp<shlo::BroadcastInDimOp, shlo::TransposeOp,
+                        xtile::ExtractTileOp, xtile::InsertTileOp>();
     target.addLegalOp<mlir::UnrealizedConversionCastOp>();
     target.addDynamicallyLegalDialect<ma::ArithDialect, mm::MathDialect>(
         [&](mlir::Operation* op) { return type_converter.isLegal(op); });
 
     mlir::RewritePatternSet patterns(context);
-    patterns.add<ConvertExtractTile, ConvertInsertTile, VectorizeTransposeOp>(
+    patterns.add<ConvertExtractTile, ConvertInsertTile,
+                 VectorizeBroadcastInDimOp, VectorizeTransposeOp>(
         type_converter, context);
     populateVectorizePatterns<
         ma::AddFOp, ma::AddIOp, ma::SubFOp, ma::SubIOp, ma::MulFOp, ma::MulIOp,

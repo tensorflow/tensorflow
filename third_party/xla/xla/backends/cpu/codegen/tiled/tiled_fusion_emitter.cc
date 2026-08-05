@@ -252,9 +252,12 @@ bool HasComplexType(const HloInstruction& inst) {
   return false;
 }
 
-bool IsSupportedInstruction(const HloInstruction& inst) {
+bool IsSupportedInstruction(const HloInstruction& inst,
+                            bool use_new_xtile_lowering) {
   HloOpcode opcode = inst.opcode();
   switch (opcode) {
+    case HloOpcode::kBroadcast:
+      return use_new_xtile_lowering;
     case HloOpcode::kConvert: {
       PrimitiveType operand_type = inst.operand(0)->shape().element_type();
       PrimitiveType result_type = inst.shape().element_type();
@@ -349,7 +352,8 @@ absl::Status VerifyTensorRanks(const HloFusionInstruction& fusion) {
   return absl::OkStatus();
 }
 
-absl::Status IsSupportedTiledFusion(const HloFusionInstruction& fusion) {
+absl::Status IsSupportedTiledFusion(const HloFusionInstruction& fusion,
+                                    bool use_new_xtile_lowering) {
   // TODO(willfroom): Support multi-output fusions.
   if (!fusion.shape().IsArray()) {
     return Internal(
@@ -368,7 +372,7 @@ absl::Status IsSupportedTiledFusion(const HloFusionInstruction& fusion) {
           "tiled CPU emitter.",
           inst->ToString());
     }
-    if (!IsSupportedInstruction(*inst)) {
+    if (!IsSupportedInstruction(*inst, use_new_xtile_lowering)) {
       return Internal(
           "Instruction %s is not supported by the tiled CPU emitter.",
           inst->ToString());
@@ -540,7 +544,12 @@ TiledEmissionResult EmitTiledFusionKernel(
     int64_t num_work_groups,
     std::optional<gpu::BlockLevelParameters> block_level_parameters) {
   VLOG(2) << "EmitTiledFusionKernel called for fusion: " << fusion.name();
-  auto supported_status = IsSupportedTiledFusion(fusion);
+  bool use_new_xtile_lowering = fusion.GetModule()
+                                    ->config()
+                                    .debug_options()
+                                    .xla_cpu_use_new_xtile_lowering();
+  auto supported_status =
+      IsSupportedTiledFusion(fusion, use_new_xtile_lowering);
   VLOG(2) << "  IsSupportedTiledFusion: " << supported_status;
   if (!supported_status.ok()) {
     return {absl::UnimplementedError(
