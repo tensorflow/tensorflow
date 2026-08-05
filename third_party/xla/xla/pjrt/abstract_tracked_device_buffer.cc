@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "xla/pjrt/abstract_tracked_device_buffer.h"
 
-#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <tuple>
@@ -34,6 +33,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/tsl/platform/status_macros.h"
 #include "xla/future.h"
+#include "xla/pjrt/c/pjrt_c_api_device_event.h"
 #include "xla/pjrt/common_pjrt_client.h"
 #include "xla/pjrt/device_event.h"
 #include "xla/pjrt/device_event_utils.h"
@@ -52,53 +52,79 @@ Future<> AbstractTrackedDeviceBuffer::GetReadyFuture(
     PjRtMemorySpace* memory_space) {
   auto* client = absl::down_cast<CommonPjRtClient*>(memory_space->client());
 
-  auto [definition_promise, definition_future] = tsl::MakePromise<void>();
-  client->TrackFuture(memory_space, "BufferDefinitionEvent", definition_future);
-
   CHECK(!usage_events_locked_);
   PjRtDeviceEventRefVector dependencies;
-  dependencies.reserve(definition_events().size() + 1);
-  bool first_event_is_buffer_alloc = false;
+  absl::Status initial_status;
+
+  PjRtDeviceEventRef alloc_event_ref;
   if (raw_buffer() && client->include_raw_buffer_in_ready_event()) {
     PjRtDeviceEventPtr alloc_event = raw_buffer()->GetRawBufferAsyncValue();
     if (alloc_event) {
-      if (!alloc_event.async_value()->IsConcrete()) {
-        first_event_is_buffer_alloc = true;
+      if (alloc_event.async_value()->IsConcrete()) {
+        if (auto error = alloc_event.GetErrorIfPresent()) {
+          initial_status.Update(absl::Status(
+              absl::StatusCode::kFailedPrecondition,
+              absl::StrCat("Error in buffer allocation: ", error->message())));
+        }
+      } else {
+        alloc_event_ref = alloc_event.CopyRef();
         dependencies.push_back(alloc_event.CopyRef());
       }
     }
   }
+
+  absl::InlinedVector<PjRtDeviceEventRef, 2> pending_definition_events;
   for (const auto& ev : definition_events()) {
-    if (!ev.async_value()->IsConcrete()) {
+    if (!ev) {
+      continue;
+    }
+    if (ev.async_value()->IsConcrete()) {
+      if (auto error = ev.GetErrorIfPresent()) {
+        initial_status.Update(*error);
+      }
+    } else {
+      pending_definition_events.push_back(ev);
       dependencies.push_back(ev);
     }
   }
+
+  if (dependencies.empty()) {
+    return Future<>(std::move(initial_status));
+  }
+
+  auto [definition_promise, definition_future] = tsl::MakePromise<void>();
+  client->TrackFuture(memory_space, "BufferDefinitionEvent", definition_future);
+
   if (client->event_tracking_enabled()) {
     client->AddEventDependencies(
         memory_space,
         PjRtDeviceEventPtr::FromAsyncValue(definition_future.async_value()),
         dependencies);
   }
+
   PjRtDeviceEventSpan deps_span(dependencies);
-  xla::RunWhenReady(deps_span, [definition_event =
+  xla::RunWhenReady(deps_span, [definition_promise =
                                     std::move(definition_promise),
-                                first_event_is_buffer_alloc,
-                                dependencies =
-                                    std::move(dependencies)]() mutable {
-    absl::Status status;
-    for (size_t i = 0; i < dependencies.size(); ++i) {
-      const auto& e = dependencies[i];
-      if (auto error = e.GetErrorIfPresent()) {
-        if (i == 0 && first_event_is_buffer_alloc) {
-          status.Update(absl::Status(
-              absl::StatusCode::kFailedPrecondition,
-              absl::StrCat("Error in buffer allocation: ", error->message())));
-        } else {
-          status.Update(*error);
-        }
+                                pending_definition_events =
+                                    std::move(pending_definition_events),
+                                alloc_event_ref = std::move(alloc_event_ref),
+                                status = std::move(initial_status)]() mutable {
+    if (alloc_event_ref) {
+      if (auto error = alloc_event_ref.GetErrorIfPresent()) {
+        status.Update(absl::Status(
+            absl::StatusCode::kFailedPrecondition,
+            absl::StrCat("Error in buffer allocation: ", error->message())));
       }
     }
-    definition_event.Set(std::move(status));
+    for (const auto& ev : pending_definition_events) {
+      if (!ev) {
+        continue;
+      }
+      if (auto error = ev.GetErrorIfPresent()) {
+        status.Update(*error);
+      }
+    }
+    definition_promise.Set(std::move(status));
   });
 
   return definition_future;
@@ -198,9 +224,8 @@ CommonPjRtBuffer::GetBufferForUsageOrExternalHoldLocked(ScopedHold::Type type) {
   CHECK_EQ(holds_[ScopedHold::kDonation], 0);
   if (device_buffer_ == nullptr) {
     return absl::InvalidArgumentError("Buffer has been deleted or donated.");
-  } else {
-    ++holds_[type];
   }
+  ++holds_[type];
   return device_buffer_.get();
 }
 
@@ -487,13 +512,17 @@ void AbstractTrackedDeviceBuffer::AddUsageEvent(PjRtDeviceEventRef event) {
   CHECK(!usage_events_locked_);
 
   if (use_stream_based_compaction_) {
-    if (event.state() == PJRT_DeviceEvent_State_Error) return;
+    if (event.state() == PJRT_DeviceEvent_State_Error) {
+      return;
+    }
 
     auto def_info = event.ptr().GetDefinitionStream();
     if (def_info.has_value()) {
       for (auto& existing : usage_events_) {
         auto existing_def_info = existing.ptr().GetDefinitionStream();
-        if (!existing_def_info.has_value()) continue;
+        if (!existing_def_info.has_value()) {
+          continue;
+        }
 
         if (existing_def_info->stream == def_info->stream) {
           if (existing_def_info->sequence_id < def_info->sequence_id) {
