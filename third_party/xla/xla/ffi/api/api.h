@@ -188,6 +188,8 @@ inline std::ostream& operator<<(std::ostream& os,
       return os << "prepare";
     case XLA_FFI_ExecutionStage_INITIALIZE:
       return os << "initialize";
+    case XLA_FFI_ExecutionStage_RECORD:
+      return os << "record";
     case XLA_FFI_ExecutionStage_EXECUTE:
       return os << "execute";
   }
@@ -242,6 +244,7 @@ enum class ExecutionStage : uint8_t {
   kInstantiate = XLA_FFI_ExecutionStage_INSTANTIATE,
   kPrepare = XLA_FFI_ExecutionStage_PREPARE,
   kInitialize = XLA_FFI_ExecutionStage_INITIALIZE,
+  kRecord = XLA_FFI_ExecutionStage_RECORD,
   kExecute = XLA_FFI_ExecutionStage_EXECUTE,
 };
 
@@ -296,6 +299,9 @@ class Ffi {
 
   // Creates an empty binding for the execute stage.
   static Binding<ExecutionStage::kExecute> BindExecute();
+
+  // Creates an empty binding for the record stage.
+  static Binding<ExecutionStage::kRecord> BindRecord();
 
   // Automatic FFI binding that does binding specification inference from the
   // `fn` type signature and binds `fn` to it. This enables a more concise FFI
@@ -774,6 +780,10 @@ inline Binding<ExecutionStage::kInitialize> Ffi::BindInitialize() {
 
 inline Binding<ExecutionStage::kExecute> Ffi::BindExecute() {
   return Bind<ExecutionStage::kExecute>();
+}
+
+inline Binding<ExecutionStage::kRecord> Ffi::BindRecord() {
+  return Bind<ExecutionStage::kRecord>();
 }
 
 //===----------------------------------------------------------------------===//
