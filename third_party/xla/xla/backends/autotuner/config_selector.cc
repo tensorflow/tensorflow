@@ -33,14 +33,20 @@ namespace xla {
 
 absl::StatusOr<ConfigRunner::ConfigProfile> PickBestConfig(
     std::vector<ConfigRunner::ConfigProfile>& results,
-    int scratch_bytes_window_size_us) {
+    int scratch_bytes_window_size_us, const HloInstruction* instr) {
   absl::Duration min_duration = absl::InfiniteDuration();
   ConfigRunner::ConfigProfile* best_result = nullptr;
   std::vector<std::string> failures;
   for (ConfigRunner::ConfigProfile& result : results) {
+    LOG(ERROR) << result.config.codegen_backend->name() << instr->opcode();
+    if (result.config.codegen_backend->name() == "HOST_OFFLOAD") {
+      LOG(ERROR) << result.ToString();
+    }
     if (result.failure.has_value()) {
       failures.push_back(result.failure->ToString());
-    } else if (result.duration < min_duration) {
+      continue;
+    }
+    if (result.duration < min_duration) {
       min_duration = result.duration;
       best_result = &result;
     }

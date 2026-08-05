@@ -164,7 +164,10 @@ absl::Status HostExecuteCallFrame::ValidateArgsAndResults(
     const ProgramShape& program_shape) {
   tsl::profiler::TraceMe trace("HostExecuteCallFrame::ValidateArgsAndResults");
   if (args.size() != program_shape.parameters_size()) {
-    return InvalidArgument("Number of arguments does not match program shape.");
+    return InvalidArgument(
+        "Number of arguments does not match program shape. provided: %d "
+        "program: %d",
+        args.size(), program_shape.parameters_size());
   }
 
   for (int i = 0; i < args.size(); ++i) {
@@ -543,19 +546,28 @@ absl::Status HostExecuteStartThunk::ExecuteOnStream(
   // for the compute stream to be used for device compute.
   se::Stream* device_to_host_stream = params.device_to_host_stream;
 
-  // Wait on the compute stream to finish before copying data to host since we
-  // might need to wait for producers to be finished.
-  RETURN_IF_ERROR(device_to_host_stream->WaitFor(compute_stream));
+  LOG(ERROR) << "YO" << device_to_host_stream;
+  if (device_to_host_stream) {
+    // Wait on the compute stream to finish before copying data to host since we
+    // might need to wait for producers to be finished.
+    RETURN_IF_ERROR(device_to_host_stream->WaitFor(compute_stream));
+  } else {
+    device_to_host_stream = compute_stream;
+  }
 
-  ASSIGN_OR_RETURN(
-      auto execute_event,
-      async_events_->CreateEvent(params.host_to_device_stream->parent(),
-                                 RunId(params.execution_id)));
+  se::Stream* host_to_device_stream = params.host_to_device_stream;
+  if (!host_to_device_stream) {
+    host_to_device_stream = compute_stream;
+  }
+
+  ASSIGN_OR_RETURN(auto execute_event,
+                   async_events_->CreateEvent(host_to_device_stream->parent(),
+                                              RunId(params.execution_id)));
 
   ASSIGN_OR_RETURN(
       auto tmp_call_frame,
       HostExecuteCallFrame::Create(
-          params.device_to_host_stream, params.host_to_device_stream,
+          device_to_host_stream, host_to_device_stream,
           params.buffer_allocations, *allocator_, absl::MakeSpan(args_),
           absl::MakeSpan(results_), executable_->program_shape()));
 
@@ -568,7 +580,8 @@ absl::Status HostExecuteStartThunk::ExecuteOnStream(
                   // We skip reference counting because destroying the event
                   // would trigger a CUDA API call which is not allowed in host
                   // callbacks.
-                  execute_event_ptr = execute_event.AsPtr()]() mutable {
+                  execute_event_ptr = execute_event.AsPtr(),
+                  host_to_device_stream]() mutable {
     tsl::profiler::TraceMe trace(
         "HostExecuteStartThunk::ExecuteOnStream::execute (host_callback)");
     HostOffloadingExecutable::ExecuteOptions execute_options{
@@ -595,8 +608,8 @@ absl::Status HostExecuteStartThunk::ExecuteOnStream(
       execute_event_ptr.SetError(publish_result_status);
       return;
     }
-    auto record_event_status = params.host_to_device_stream->RecordEvent(
-        execute_event_ptr.get().get());
+    auto record_event_status =
+        host_to_device_stream->RecordEvent(execute_event_ptr.get().get());
     if (!record_event_status.ok()) {
       execute_event_ptr.SetError(record_event_status);
       return;
@@ -674,9 +687,13 @@ absl::Status HostExecuteDoneThunk::Initialize(const InitializeParams& params) {
 
 absl::Status HostExecuteDoneThunk::ExecuteOnStream(
     const ExecuteParams& params) {
-  ASSIGN_OR_RETURN(auto event, async_events_->ExtractEvent(
-                                   params.host_to_device_stream->parent(),
-                                   RunId(params.execution_id)));
+  se::Stream* host_to_device_stream = params.host_to_device_stream;
+  if (!host_to_device_stream) {
+    host_to_device_stream = params.stream;
+  }
+  ASSIGN_OR_RETURN(auto event,
+                   async_events_->ExtractEvent(host_to_device_stream->parent(),
+                                               RunId(params.execution_id)));
 
   tsl::BlockUntilReady(event);
   if (event.IsError()) {
