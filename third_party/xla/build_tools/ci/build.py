@@ -406,9 +406,6 @@ Build(
         "-//xla/backends/profiler/subprocess:subprocess_profiling_session_test",
         "-//xla/backends/profiler/subprocess:subprocess_registry",
         "-//xla/backends/profiler/subprocess:subprocess_registry_test",
-        "-//xla/tools/benchmarks/utils:generate_benchmark_matrices_cc",
-        "-//xla/tools/benchmarks/utils:generate_benchmark_matrices_main",
-        "-//xla/tools/benchmarks/utils:generate_benchmark_matrices_test",
         # xnnpack is not windows compatible
         "-//xla/backends/cpu/runtime/ynnpack:ynn_fusion_thunk",
         "-//xla/backends/cpu/runtime/ynnpack:ynn_interop",
