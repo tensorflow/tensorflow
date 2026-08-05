@@ -235,6 +235,7 @@ cc_library(
         "//xla/pjrt:pjrt_compiler",
         "//xla/pjrt:pjrt_executable",
         "//xla/pjrt:raw_buffer",
+        "//xla/pjrt:raw_pjrt_client",
         "//xla/pjrt:semaphore",
         "//xla/pjrt:staging_buffer",
         "//xla/pjrt:thread_pool_async_work_runner",

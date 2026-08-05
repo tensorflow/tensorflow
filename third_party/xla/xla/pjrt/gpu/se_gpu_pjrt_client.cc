@@ -1979,12 +1979,14 @@ static absl::StatusOr<PjRtStreamExecutorExecutionOutput> RunGpuAsync(
     LocalExecutable& exec, PjRtDevice* device,
     absl::Span<const PjRtRawBufferRef> flat_arguments,
     absl::Span<const PjRtRawBufferRef> results,
-    ExecutableRunOptions run_options_inp, bool parameter_is_tupled_arguments,
-    absl::Span<const Shape> executable_parameter_shapes) {
+    ExecutableRunOptions run_options_inp, bool parameter_is_tupled_arguments) {
   std::vector<const Shape*> argument_shapes;
-  argument_shapes.reserve(flat_arguments.size());
-  for (const Shape& arg_shape : executable_parameter_shapes) {
-    argument_shapes.push_back(&arg_shape);
+  if (exec.executable() != nullptr) {
+    const auto& layout = exec.executable()->module().entry_computation_layout();
+    argument_shapes.reserve(layout.parameter_count());
+    for (int i = 0; i < layout.parameter_count(); ++i) {
+      argument_shapes.push_back(&layout.parameter_shape(i));
+    }
   }
 
   ASSIGN_OR_RETURN(auto options_and_stream,
