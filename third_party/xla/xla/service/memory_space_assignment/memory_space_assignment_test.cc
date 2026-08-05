@@ -7883,6 +7883,45 @@ TEST_F(MemorySpaceAssignmentTest,
   AssignMemorySpace(module.get(), std::move(options));
 }
 
+// The injected hook flags the same site on every retry. Once that site's
+// default memory requirement is committed, re-adding it is a no op, so the
+// retry cannot change anything. Finish must finalize rather than loop: before
+// the fix this test hangs.
+TEST_F(MemorySpaceAssignmentTest, InefficientAllocationRetryWithoutProgress) {
+  absl::string_view hlo_string = R"hlo(
+  HloModule module, is_scheduled=true
+
+  ENTRY entry {
+    p0 = f32[3]{0} parameter(0)
+    p1 = f32[3]{0} parameter(1)
+    negate0 = f32[3]{0} negate(p1)
+    negate1 = f32[3]{0} negate(negate0)
+    negate2 = f32[3]{0} negate(negate1)
+    negate3 = f32[3]{0} negate(negate2)
+    negate4 = f32[3]{0} negate(negate3)
+    negate5 = f32[3]{0} negate(negate4)
+    negate6 = f32[3]{0} negate(negate5)
+    ROOT add = f32[3]{0} add(negate6, p0)
+  }
+  )hlo";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  Options options = DefaultMemorySpaceOptions();
+  // The hook flags the add instruction's use of p0 as inefficient.
+  options.get_inefficient_allocation_sites_fn =
+      [&](absl::Span<HloPosition> defining_positions)
+      -> std::vector<std::variant<HloPosition, HloUse>> {
+    if (absl::c_find(defining_positions,
+                     HloPosition{FindInstruction(module.get(), "p0"), {}}) !=
+        defining_positions.end()) {
+      return {HloUse{FindInstruction(module.get(), "add"), 1}};
+    }
+    return {};
+  };
+  AssignMemorySpace(module.get(), std::move(options));
+}
+
 TEST_F(MemorySpaceAssignmentTest, DisablePrefetch) {
   absl::string_view hlo_string = R"hlo(
   HloModule module, is_scheduled=true
