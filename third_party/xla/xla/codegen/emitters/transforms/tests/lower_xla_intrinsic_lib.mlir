@@ -177,6 +177,7 @@ func.func @rsqrt_unsupported_vector_size(%arg0: vector<3xf32>) -> vector<3xf32> 
   // CHECK: return %[[RESULT]]
   return %ret : vector<3xf32>
 }
+
 // -----
 
 func.func @exp_f16(%arg0: f16) -> f16 {
@@ -244,9 +245,11 @@ module {
 }
 
 // CHECK-LABEL: @atan2_no_simplify
+// CHECK-SAME: (%[[ARG0:.*]]: f32) -> f32
 // CHECK-NOT: call @xla.atan
-// CHECK: math.atan2 %arg0, %cst : f32
-// CHECK: return
+// CHECK: %[[CST:.*]] = arith.constant 2.000000e+00 : f32
+// CHECK: %[[RESULT:.*]] = call @xla.atan2.f32.f32(%[[ARG0]], %[[CST]]) : (f32, f32) -> f32
+// CHECK: return %[[RESULT]] : f32
 
 // -----
 
@@ -309,3 +312,54 @@ module {
 // CHECK-NOT: math.atan2
 // CHECK: %[[RESULT:.*]] = call @xla.atan.v8f32(%arg0) : (vector<8xf32>) -> vector<8xf32>
 // CHECK: return %[[RESULT]] : vector<8xf32>
+
+
+// -----
+
+module {
+  func.func @atan2_f64(%arg0: f64, %arg1: f64) -> f64 {
+    %ret = math.atan2 %arg0, %arg1 : f64
+    return %ret : f64
+  }
+}
+// CHECK-LABEL: @atan2_f64
+// CHECK-SAME: (%[[ARG0:.*]]: f64, %[[ARG1:.*]]: f64) -> f64
+// CHECK: %[[RESULT:.*]] = call @xla.atan2.f64.f64(%[[ARG0]], %[[ARG1]]) : (f64, f64) -> f64
+// CHECK: return %[[RESULT]] : f64
+
+// -----
+
+module {
+  func.func @atan2_f32_vector(%arg0: vector<4xf32>, %arg1: vector<4xf32>) -> vector<4xf32> {
+    %ret = math.atan2 %arg0, %arg1 : vector<4xf32>
+    return %ret : vector<4xf32>
+  }
+}
+// CHECK-LABEL: @atan2_f32_vector
+// CHECK-SAME: (%[[ARG0:.*]]: vector<4xf32>, %[[ARG1:.*]]: vector<4xf32>) -> vector<4xf32>
+// CHECK: %[[RESULT:.*]] = call @xla.atan2.v4f32.v4f32(%[[ARG0]], %[[ARG1]]) : (vector<4xf32>, vector<4xf32>) -> vector<4xf32>
+// CHECK: return %[[RESULT]] : vector<4xf32>
+
+// -----
+
+module {
+  // Use a vector length of 3 as we know that will never be supported.
+  func.func @atan2_unsupported_vector_size(%arg0: vector<3xf32>, %arg1: vector<3xf32>) -> vector<3xf32> {
+    // CHECK-LABEL: @atan2_unsupported_vector_size
+    // CHECK-SAME: (%[[ARG0:.*]]: vector<3xf32>, %[[ARG1:.*]]: vector<3xf32>) -> vector<3xf32>
+    // CHECK: %[[L0:.*]] = vector.extract %[[ARG0]][0]
+    // CHECK: %[[R0:.*]] = vector.extract %[[ARG1]][0]
+    // CHECK: %[[ATAN2_0:.*]] = call @xla.atan2.f32.f32(%[[L0]], %[[R0]])
+    // CHECK: %[[L1:.*]] = vector.extract %[[ARG0]][1]
+    // CHECK: %[[R1:.*]] = vector.extract %[[ARG1]][1]
+    // CHECK: %[[ATAN2_1:.*]] = call @xla.atan2.f32.f32(%[[L1]], %[[R1]])
+    // CHECK: %[[L2:.*]] = vector.extract %[[ARG0]][2]
+    // CHECK: %[[R2:.*]] = vector.extract %[[ARG1]][2]
+    // CHECK: %[[ATAN2_2:.*]] = call @xla.atan2.f32.f32(%[[L2]], %[[R2]])
+    // CHECK: %[[RESULT:.*]] = vector.from_elements %[[ATAN2_0]], %[[ATAN2_1]], %[[ATAN2_2]]
+    %ret = math.atan2 %arg0, %arg1 : vector<3xf32>
+    // CHECK: return %[[RESULT]]
+    return %ret : vector<3xf32>
+  }
+}
+

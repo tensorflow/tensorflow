@@ -113,6 +113,16 @@ uint16_t __truncsfhf2(float);
 float __extendhfsf2(uint16_t a);
 #endif  // __APPLE__
 
+#if defined(__x86_64__)
+// Forward declarations of SLEEF symbols to ensure host linker preservation
+// without relying on complex SIMD conditional macros in sleef.h.
+void Sleef_atan2f4_u10();
+void Sleef_atan2f8_u10();
+void Sleef_atan2f16_u10();
+void Sleef_atan2d2_u10();
+void Sleef_atan2d4_u10();
+void Sleef_atan2d8_u10();
+#endif
 }  // extern "C"
 
 // MSVC does not have sincos[f].
@@ -266,6 +276,16 @@ static Registry CreateRegistry() {
 
 #ifdef MEMORY_SANITIZER
   registry["__msan_unpoison"] = SymbolDef(__msan_unpoison);
+#endif
+
+#if defined(__x86_64__)
+  // Register SLEEF vector functions for dynamic JIT resolution on x86_64
+  registry["Sleef_atan2f4_u10"] = SymbolDef(Sleef_atan2f4_u10);
+  registry["Sleef_atan2f8_u10"] = SymbolDef(Sleef_atan2f8_u10);
+  registry["Sleef_atan2f16_u10"] = SymbolDef(Sleef_atan2f16_u10);
+  registry["Sleef_atan2d2_u10"] = SymbolDef(Sleef_atan2d2_u10);
+  registry["Sleef_atan2d4_u10"] = SymbolDef(Sleef_atan2d4_u10);
+  registry["Sleef_atan2d8_u10"] = SymbolDef(Sleef_atan2d8_u10);
 #endif
 
   return registry;

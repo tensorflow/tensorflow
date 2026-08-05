@@ -40,6 +40,7 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 #include "xla/codegen/emitters/transforms/passes.h"
+#include "xla/codegen/intrinsic/atan2.h"
 #include "xla/codegen/intrinsic/cpp/intrinsic_declarations.h"
 #include "xla/codegen/intrinsic/erf.h"
 #include "xla/codegen/intrinsic/exp.h"
@@ -297,6 +298,68 @@ class LowerIntrinsicPattern : public mlir::OpRewritePattern<Op> {
   mlir::ModuleOp& module_op_;
 };
 
+template <typename Intrinsic, typename Op>
+class LowerBinaryIntrinsicPattern : public mlir::OpRewritePattern<Op> {
+ public:
+  LowerBinaryIntrinsicPattern(mlir::MLIRContext* context,
+                              mlir::ModuleOp& module_op)
+      : mlir::OpRewritePattern<Op>(context), module_op_(module_op) {}
+
+  mlir::LogicalResult matchAndRewrite(
+      Op op, mlir::PatternRewriter& rewriter) const override {
+    auto vec_type = mlir::dyn_cast<mlir::VectorType>(op.getType());
+    if (vec_type && vec_type.getRank() != 1) {
+      op->emitWarning() << "Missed XLA intrinsic lowering as vector rank != 1.";
+      return rewriter.notifyMatchFailure(op, "Vector rank is not 1.");
+    }
+    Type type = Type::TypeFromIrType(op.getType());
+    Type scalar_type =
+        Type::TypeFromIrType(mlir::getElementTypeOrSelf(op.getType()));
+    mlir::StringAttr features =
+        module_op_->getAttrOfType<mlir::StringAttr>("mhlo.cpu_features");
+    const std::string features_str = !features ? "" : features.getValue().str();
+    bool is_supported = Intrinsic::IsSupported(features_str, type);
+    bool scalar_supported = Intrinsic::IsSupported(features_str, scalar_type);
+    if (!is_supported && !scalar_supported) {
+      return rewriter.notifyMatchFailure(op, "unsupported type");
+    }
+
+    if (is_supported) {
+      // Pass 'type' twice to declare the correct binary signature: (type, type)
+      // -> type
+      auto intrinsic_decl = Intrinsic::GetOrInsertDeclaration(
+          static_cast<mlir::OpBuilder&>(rewriter), module_op_, type, type);
+      rewriter.replaceOpWithNewOp<mlir::func::CallOp>(op, intrinsic_decl,
+                                                      op->getOperands());
+    } else {
+      // Fallback: Decompose unsupported vector width into multiple scalar calls
+      auto intrinsic_decl = Intrinsic::GetOrInsertDeclaration(
+          static_cast<mlir::OpBuilder&>(rewriter), module_op_, scalar_type,
+          scalar_type);
+
+      llvm::SmallVector<mlir::Value> scalar_results;
+      scalar_results.reserve(vec_type.getNumElements());
+      for (int64_t idx = 0; idx != vec_type.getNumElements(); ++idx) {
+        mlir::Value lhs = mlir::vector::ExtractOp::create(
+            rewriter, op.getLoc(), op.getOperand(0), idx);
+        mlir::Value rhs = mlir::vector::ExtractOp::create(
+            rewriter, op.getLoc(), op.getOperand(1), idx);
+        mlir::Value scalar_result =
+            mlir::func::CallOp::create(rewriter, op.getLoc(), intrinsic_decl,
+                                       mlir::ValueRange{lhs, rhs})
+                .getResult(0);
+        scalar_results.push_back(scalar_result);
+      }
+      rewriter.replaceOpWithNewOp<mlir::vector::FromElementsOp>(op, vec_type,
+                                                                scalar_results);
+    }
+    return mlir::success();
+  }
+
+ private:
+  mlir::ModuleOp& module_op_;
+};
+
 class SimplifyAtan2Pattern
     : public mlir::OpRewritePattern<mlir::math::Atan2Op> {
  public:
@@ -338,8 +401,10 @@ class LowerXlaIntrinsicLibPass
         LowerIntrinsicPattern<codegen::intrinsics::Tanh, mlir::math::TanhOp>,
         LowerIntrinsicPattern<codegen::intrinsics::EigenAtan,
                               mlir::math::AtanOp>,
-        SimplifyAtan2Pattern, LowerErfPattern, LowerTruncF32BF16FPattern>(
-        &getContext(), module_op);
+        SimplifyAtan2Pattern,
+        LowerBinaryIntrinsicPattern<codegen::intrinsics::Atan2,
+                                    mlir::math::Atan2Op>,
+        LowerErfPattern, LowerTruncF32BF16FPattern>(&getContext(), module_op);
 
     if (mlir::failed(
             mlir::applyPatternsGreedily(module_op, std::move(patterns)))) {
