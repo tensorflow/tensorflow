@@ -103,6 +103,12 @@ bool ShapeLayout::LayoutIsSet() const { return LayoutUtil::HasLayout(shape_); }
 bool ShapeLayout::AnyLayoutIsSet() const {
   return LayoutUtil::HasAnyLayout(shape_);
 }
+bool ShapeLayout::NonMemorySpaceLayoutIsSet() const {
+  return LayoutUtil::HasNonMemorySpaceLayout(shape_);
+}
+bool ShapeLayout::AnyNonMemorySpaceLayoutIsSet() const {
+  return LayoutUtil::HasAnyNonMemorySpaceLayout(shape_);
+}
 
 void ShapeLayout::ResetLayout(const Layout& layout) {
   DCHECK(!shape_.IsTuple());

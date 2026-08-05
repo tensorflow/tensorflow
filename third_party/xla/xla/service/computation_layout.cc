@@ -59,6 +59,20 @@ bool ComputationLayout::AnyLayoutSet() const {
              [](const ShapeLayout& s) { return s.AnyLayoutIsSet(); }) ||
          result_layout_.AnyLayoutIsSet();
 }
+bool ComputationLayout::NonMemorySpaceLayoutIsSet() const {
+  return absl::c_all_of(parameter_layouts_,
+                        [](const ShapeLayout& s) {
+                          return s.NonMemorySpaceLayoutIsSet();
+                        }) &&
+         result_layout_.NonMemorySpaceLayoutIsSet();
+}
+bool ComputationLayout::AnyNonMemorySpaceLayoutSet() const {
+  return absl::c_any_of(parameter_layouts_,
+                        [](const ShapeLayout& s) {
+                          return s.AnyNonMemorySpaceLayoutIsSet();
+                        }) ||
+         result_layout_.AnyNonMemorySpaceLayoutIsSet();
+}
 
 absl::StatusOr<std::vector<Layout>>
 ComputationLayout::FlattenedParameterLayouts() const {

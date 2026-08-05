@@ -7490,11 +7490,15 @@ bool HloParserImpl::ParseShape(Shape* result,
       return false;
     }
     if (layout.minor_to_major().size() != result->dimensions().size()) {
-      return Error(
-          lexer_.GetLoc(),
-          StrFormat("Dimensions size is %ld, but minor to major size is %ld.",
-                    result->dimensions().size(),
-                    layout.minor_to_major().size()));
+      if (layout.minor_to_major().empty() && layout.memory_space() != 0) {
+        // AUTO layout with non-default memory space.
+      } else {
+        return Error(
+            lexer_.GetLoc(),
+            StrFormat("Dimensions size is %ld, but minor to major size is %ld.",
+                      result->dimensions().size(),
+                      layout.minor_to_major().size()));
+      }
     }
     if (layout.has_physical_shape()) {
       return Error(
