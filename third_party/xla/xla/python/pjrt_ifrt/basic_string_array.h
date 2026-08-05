@@ -33,6 +33,7 @@ limitations under the License.
 #include "llvm/Support/ExtensibleRTTI.h"
 #include "xla/pjrt/pjrt_layout.h"
 #include "xla/python/ifrt/array.h"
+#include "xla/python/ifrt/array_spec.h"
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/dtype.h"
@@ -87,24 +88,23 @@ class BasicStringArray final
     return client_;
   }
 
-  DType dtype() const override {
-    DCHECK(this);
-    return DType(DType::kString);
-  }
+  const ArraySpec& array_spec() const override { return array_spec_; }
+
+  DType dtype() const override { return array_spec_.dtype; }
 
   const Shape& shape() const override {
     DCHECK(this);
-    return shape_;
+    return array_spec_.shape;
   }
 
   const Sharding& sharding() const override {
     DCHECK(this);
-    return *sharding_;
+    return *array_spec_.sharding;
   }
 
   ShardingRef shared_ptr_sharding() const override {
     DCHECK(this);
-    return sharding_;
+    return array_spec_.sharding;
   }
 
   absl::StatusOr<std::shared_ptr<const xla::PjRtLayout>> pjrt_layout()
@@ -158,8 +158,7 @@ class BasicStringArray final
   void DeleteInternal() ABSL_LOCKS_EXCLUDED(mu_);
 
   Client* client_;
-  Shape shape_;
-  ShardingRef sharding_;
+  ArraySpec array_spec_;
   const UserContextRef user_context_;
   tsl::Future<Buffers> buffers_;
   tsl::Future<> ready_future_;

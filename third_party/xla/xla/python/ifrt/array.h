@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "llvm/Support/ExtensibleRTTI.h"
 #include "xla/pjrt/pjrt_layout.h"
+#include "xla/python/ifrt/array_spec.h"
 #include "xla/python/ifrt/dtype.h"
 #include "xla/python/ifrt/layout.h"
 #include "xla/python/ifrt/shape.h"
@@ -72,6 +73,11 @@ class Array : public llvm::RTTIExtends<Array, Value> {
   Array& operator=(const Array&) = delete;
   Array& operator=(Array&&) = delete;
 
+  // Gets dtype shape sharding layout in a single call.
+  virtual const ArraySpec& array_spec() const = 0;
+
+  // TODO(zuguang) make these methods non-virtual, the sharding and layout
+  // methods need some clean up though.
   virtual DType dtype() const = 0;
   virtual const Shape& shape() const = 0;
   virtual const Sharding& sharding() const = 0;

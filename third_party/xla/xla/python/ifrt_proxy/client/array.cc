@@ -351,7 +351,8 @@ absl::StatusOr<std::optional<int64_t>> Array::ByteSize() const {
   // locally computing it. The server-side backend may have an optimization that
   // computes the byte size efficiently, and it can be cheaper to bring the
   // calculation result to the client than to compute it on the client.
-  return xla::ifrt::Layout::ByteSize(dtype_, shape_, sharding_, layout_);
+  return xla::ifrt::Layout::ByteSize(array_spec_.dtype, array_spec_.shape,
+                                     array_spec_.sharding, layout_);
 }
 
 tsl::Future<> Array::GetReadyFuture() const {
@@ -651,10 +652,10 @@ Array::DisassembleIntoSingleDeviceArrays(
   req->set_single_device_shard_semantics(
       ToSingleDeviceShardSemanticsProto(single_device_shard_semantics));
 
-  ASSIGN_OR_RETURN(
-      auto shape_and_shardings,
-      sharding_->Disassemble(
-          shape_, xla::ifrt::SingleDeviceShardSemantics::kAllShards));
+  ASSIGN_OR_RETURN(auto shape_and_shardings,
+                   array_spec_.sharding->Disassemble(
+                       array_spec_.shape,
+                       xla::ifrt::SingleDeviceShardSemantics::kAllShards));
 
   std::vector<xla::ifrt::ArrayRef> result;
   result.reserve(shape_and_shardings.size());
@@ -662,7 +663,8 @@ Array::DisassembleIntoSingleDeviceArrays(
     uint64_t h = rpc_helper_->NextHandle();
     req->add_result_handles(h);
     result.push_back(xla::ifrt::ArrayRef(tsl::MakeRef<Array>(
-        client_, rpc_helper_, dtype_, std::move(shape_and_shardings[i].first),
+        client_, rpc_helper_, array_spec_.dtype,
+        std::move(shape_and_shardings[i].first),
         std::move(shape_and_shardings[i].second), ArrayHandle{h},
         layout_ == nullptr ? nullptr : layout_->pjrt_layout())));
   }
@@ -693,11 +695,13 @@ absl::StatusOr<xla::ifrt::ArrayRef> Array::FullyReplicatedShard(
   // request an Array to be made out of a specific single shard.
   std::unique_ptr<xla::ifrt::SingleDeviceSharding> single_device_sharding =
       xla::ifrt::SingleDeviceSharding::Create(
-          sharding_->devices()->devices().front(), sharding_->memory_kind());
+          array_spec_.sharding->devices()->devices().front(),
+          array_spec_.sharding->memory_kind());
 
   return xla::ifrt::ArrayRef(tsl::MakeRef<Array>(
-      client_, rpc_helper_, dtype_, shape_, std::move(single_device_sharding),
-      result_handle, layout_ == nullptr ? nullptr : layout_->pjrt_layout()));
+      client_, rpc_helper_, array_spec_.dtype, array_spec_.shape,
+      std::move(single_device_sharding), result_handle,
+      layout_ == nullptr ? nullptr : layout_->pjrt_layout()));
 }
 
 tsl::Future<> Array::CopyToStringHostBuffer(
@@ -723,7 +727,7 @@ tsl::Future<> Array::CopyToStringHostBuffer(
                    host_buffer_store = rpc_helper_->host_buffer_store(),
                    host_buffer_handle,
                    dst_buffer = static_cast<absl::Cord*>(data),
-                   num_elements = shape_.num_elements()](
+                   num_elements = array_spec_.shape.num_elements()](
                       absl::StatusOr<std::shared_ptr<CopyToHostBufferResponse>>
                           resp) mutable {
     if (!resp.ok()) {
@@ -763,17 +767,18 @@ tsl::Future<> Array::CopyToStringHostBuffer(
 tsl::Future<> Array::CopyToHostBuffer(
     void* data, std::optional<absl::Span<const int64_t>> byte_strides,
     ArrayCopySemantics semantics) {
-  if (dtype_.kind() == DType::kString) {
+  if (array_spec_.dtype.kind() == DType::kString) {
     return CopyToStringHostBuffer(data, byte_strides, semantics);
   }
   tsl::profiler::TraceMe traceme("IfrtProxyEntrypointCopyToHostBuffer");
 
-  if (dtype_.kind() == DType::kToken) {
+  if (array_spec_.dtype.kind() == DType::kToken) {
     return GetReadyFuture();
   }
 
   const auto mem_region = ArrayMemRegion::FromZerothElementPointer(
-      /*zeroth_element=*/data, dtype_, shape_, byte_strides);
+      /*zeroth_element=*/data, array_spec_.dtype, array_spec_.shape,
+      byte_strides);
   if (!mem_region.ok()) {
     return tsl::Future<>(mem_region.status());
   }
@@ -845,16 +850,6 @@ tsl::Future<> Array::CopyToHostBuffer(
   rpc_helper_->CopyToHostBuffer(std::move(req)).OnReady(std::move(on_ready));
   return std::move(future);
 }
-
-absl::StatusOr<std::shared_ptr<const xla::PjRtLayout>> Array::pjrt_layout()
-    const {
-  if (layout_ == nullptr) {
-    return nullptr;
-  }
-  return layout_->pjrt_layout();
-}
-
-LayoutRef Array::layout() const { return layout_; }
 
 xla::ifrt::Client* Array::client() const { return client_; }
 

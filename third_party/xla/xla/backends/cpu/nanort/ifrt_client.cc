@@ -348,8 +348,8 @@ class NanoArray final : public NanoValue<NanoArray, ifrt::Array> {
         auto one_device_sharding = ifrt::SingleDeviceSharding::Create(
             device, sharding().memory_kind());
         shards.push_back(tsl::TakeRef(
-            new NanoArray(nano_client(), dtype_, shape_, data_, owned_data_,
-                          std::move(one_device_sharding))));
+            new NanoArray(nano_client(), array_spec_.dtype, array_spec_.shape,
+                          data_, owned_data_, std::move(one_device_sharding))));
       }
       return shards;
     }
@@ -384,25 +384,26 @@ class NanoArray final : public NanoValue<NanoArray, ifrt::Array> {
   }
 
   NanoRtExecutable::Argument AsArgument() {
-    return NanoRtExecutable::Argument(
-        reinterpret_cast<std::byte*>(data_),
-        dtype_.byte_size().value() * shape_.num_elements());
+    return NanoRtExecutable::Argument(reinterpret_cast<std::byte*>(data_),
+                                      array_spec_.dtype.byte_size().value() *
+                                          array_spec_.shape.num_elements());
   }
 
   NanoRtExecutable::Result AsResult() {
-    return NanoRtExecutable::Result(
-        reinterpret_cast<std::byte*>(data_),
-        dtype_.byte_size().value() * shape_.num_elements());
+    return NanoRtExecutable::Result(reinterpret_cast<std::byte*>(data_),
+                                    array_spec_.dtype.byte_size().value() *
+                                        array_spec_.shape.num_elements());
   }
 
   std::string DebugString() const override {
-    return absl::StrCat("NanoArray(", dtype_, ", ", shape_, ", @",
+    return absl::StrCat("NanoArray(", array_spec_.dtype, ", ",
+                        array_spec_.shape, ", @",
                         reinterpret_cast<uintptr_t>(data_), ")");
   }
 
   absl::StatusOr<std::optional<int64_t>> ByteSize() const override {
-    return xla::ifrt::Layout::ByteSize(dtype_, shape_, sharding_,
-                                       ifrt::LayoutRef());
+    return xla::ifrt::Layout::ByteSize(array_spec_.dtype, array_spec_.shape,
+                                       array_spec_.sharding, ifrt::LayoutRef());
   }
 
   tsl::Future<> Delete() override {
@@ -415,13 +416,19 @@ class NanoArray final : public NanoValue<NanoArray, ifrt::Array> {
     return data_ == nullptr && owned_data_ == nullptr;
   }
 
-  ifrt::DType dtype() const override { return dtype_; }
+  const ifrt::ArraySpec& array_spec() const override { return array_spec_; }
 
-  const ifrt::Shape& shape() const override { return shape_; }
+  ifrt::DType dtype() const override { return array_spec_.dtype; }
 
-  const ifrt::Sharding& sharding() const override { return *sharding_; }
+  const ifrt::Shape& shape() const override { return array_spec_.shape; }
 
-  ifrt::ShardingRef shared_ptr_sharding() const override { return sharding_; }
+  const ifrt::Sharding& sharding() const override {
+    return *array_spec_.sharding;
+  }
+
+  ifrt::ShardingRef shared_ptr_sharding() const override {
+    return array_spec_.sharding;
+  }
 
   absl::StatusOr<std::shared_ptr<const PjRtLayout>> pjrt_layout()
       const override {
@@ -476,11 +483,9 @@ class NanoArray final : public NanoValue<NanoArray, ifrt::Array> {
   NanoArray(NanoIfrtClient* client, ifrt::DType dtype, const ifrt::Shape& shape,
             void* data, OwnedDataPtr owned_data, ifrt::ShardingRef sharding)
       : NanoValue<NanoArray, ifrt::Array>(client),
-        dtype_(dtype),
-        shape_(shape),
+        array_spec_(ifrt::ArraySpec{dtype, shape, std::move(sharding)}),
         data_(data),
-        owned_data_(std::move(owned_data)),
-        sharding_(std::move(sharding)) {
+        owned_data_(std::move(owned_data)) {
     if (owned_data_) {
       DCHECK_EQ(data_, owned_data_.get())
           << "`data_` must point to the buffer owned by `owned_data_`";
@@ -561,16 +566,13 @@ class NanoArray final : public NanoValue<NanoArray, ifrt::Array> {
     return absl::OkStatus();
   }
 
-  ifrt::DType dtype_;
-  ifrt::Shape shape_;
+  ifrt::ArraySpec array_spec_;
 
   // A pointer to the data buffer. This is either owned by `owned_data_` or
   // directly owned by the user. Owned data is null if NanoArray is a zero
   // copy view of an external array with a lifetime managed by the user.
   void* data_;
   OwnedDataPtr owned_data_;
-
-  ifrt::ShardingRef sharding_;
 };
 
 ABSL_ATTRIBUTE_UNUSED char NanoArray::ID = 'A';  // NOLINT
@@ -628,8 +630,8 @@ class ShardedNanoArray final : public NanoValue<ShardedNanoArray, ifrt::Array> {
   }
 
   absl::StatusOr<std::optional<int64_t>> ByteSize() const override {
-    return xla::ifrt::Layout::ByteSize(dtype_, shape_, sharding_,
-                                       ifrt::LayoutRef());
+    return xla::ifrt::Layout::ByteSize(array_spec_.dtype, array_spec_.shape,
+                                       array_spec_.sharding, ifrt::LayoutRef());
   }
 
   tsl::Future<> Delete() override {
@@ -643,8 +645,8 @@ class ShardedNanoArray final : public NanoValue<ShardedNanoArray, ifrt::Array> {
   bool IsDeleted() const override { return shards_.empty(); }
 
   std::string DebugString() const override {
-    auto result = absl::StrCat("ShardedNanoArray(", dtype_, ", ", shape_, ", ",
-                               sharding_);
+    auto result = absl::StrCat("ShardedNanoArray(", array_spec_.dtype, ", ",
+                               array_spec_.shape, ", ", array_spec_.sharding);
     for (const auto& shard : shards_) {
       absl::StrAppend(&result, ", ", shard->DebugString());
     }
@@ -652,13 +654,19 @@ class ShardedNanoArray final : public NanoValue<ShardedNanoArray, ifrt::Array> {
     return result;
   }
 
-  ifrt::DType dtype() const override { return dtype_; }
+  const ifrt::ArraySpec& array_spec() const override { return array_spec_; }
 
-  const ifrt::Shape& shape() const override { return shape_; }
+  ifrt::DType dtype() const override { return array_spec_.dtype; }
 
-  const ifrt::Sharding& sharding() const override { return *sharding_; }
+  const ifrt::Shape& shape() const override { return array_spec_.shape; }
 
-  ifrt::ShardingRef shared_ptr_sharding() const override { return sharding_; }
+  const ifrt::Sharding& sharding() const override {
+    return *array_spec_.sharding;
+  }
+
+  ifrt::ShardingRef shared_ptr_sharding() const override {
+    return array_spec_.sharding;
+  }
 
   absl::StatusOr<std::shared_ptr<const PjRtLayout>> pjrt_layout()
       const override {
@@ -693,9 +701,7 @@ class ShardedNanoArray final : public NanoValue<ShardedNanoArray, ifrt::Array> {
                    const ifrt::Shape& shape, ifrt::ShardingRef sharding,
                    std::vector<tsl::RCReference<NanoArray>> shards)
       : NanoValue<ShardedNanoArray, ifrt::Array>(client),
-        dtype_(dtype),
-        shape_(shape),
-        sharding_(std::move(sharding)),
+        array_spec_(ifrt::ArraySpec{dtype, shape, std::move(sharding)}),
         shards_(std::move(shards)) {}
 
   absl::StatusOr<tsl::RCReference<NanoArray>> Assemble(
@@ -756,9 +762,7 @@ class ShardedNanoArray final : public NanoValue<ShardedNanoArray, ifrt::Array> {
     return result;
   }
 
-  ifrt::DType dtype_;
-  ifrt::Shape shape_;
-  ifrt::ShardingRef sharding_;
+  ifrt::ArraySpec array_spec_;
   std::vector<tsl::RCReference<NanoArray>> shards_;
 
   absl::once_flag assemble_once_;
