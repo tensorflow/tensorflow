@@ -20,6 +20,7 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <string>
+#include <tuple>
 #include <utility>
 #include <vector>
 
@@ -30,6 +31,7 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
@@ -118,12 +120,14 @@ void VerifyNoCollectives(const HloModule* module) {
 
 class SpmdPartitioningTest
     : public HloHardwareIndependentTestBase,
-      public ::testing::WithParamInterface<ShardingFormatPicker::ShardingType> {
+      public ::testing::WithParamInterface<
+          std::tuple<ShardingFormatPicker::ShardingType, bool>> {
  public:
   absl::StatusOr<std::unique_ptr<HloModule>> PartitionComputation(
       absl::string_view hlo_module, int64_t num_devices,
       SpmdPartitionerOptions options = SpmdPartitionerOptions(),
       bool enable_enzyme_opt = false) {
+    const auto& [sharding_type, enable_rgv3] = GetParam();
     options.allow_module_signature_change = true;
     auto collective_ops_creator =
         GetDefaultCollectiveOpsCreator(num_devices, /*num_replicas=*/1);
@@ -133,15 +137,16 @@ class SpmdPartitioningTest
     config.set_num_partitions(num_devices);
     config.set_use_shardy_partitioner(true);
     config.mutable_debug_options().set_xla_enable_hlo_sharding_v3(
-        GetParam() == ShardingFormatPicker::ShardingType::kNamed);
-    config.mutable_debug_options().set_xla_enable_rgv3_materialization(true);
+        sharding_type == ShardingFormatPicker::ShardingType::kNamed);
+    config.mutable_debug_options().set_xla_enable_rgv3_materialization(
+        enable_rgv3);
     if (enable_enzyme_opt) {
       config.mutable_debug_options().set_xla_enable_enzyme_comms_opt(true);
     }
     ABSL_ASSIGN_OR_RETURN(auto module,
                      ParseAndReturnVerifiedModule(hlo_module, config));
 
-    ShardingFormatPicker format_picker(GetParam());
+    ShardingFormatPicker format_picker(sharding_type);
     ABSL_ASSIGN_OR_RETURN(bool changed, format_picker.Run(module.get()));
     if (changed) {
       VLOG(1) << "Sharding format changed: "
@@ -185,22 +190,31 @@ class SpmdPartitioningTest
 };
 
 std::string TestParamToString(
-    const ::testing::TestParamInfo<ShardingFormatPicker::ShardingType>& data) {
-  switch (data.param) {
+    const ::testing::TestParamInfo<
+        std::tuple<ShardingFormatPicker::ShardingType, bool>>& data) {
+  std::string sharding_type;
+  switch (std::get<0>(data.param)) {
     case ShardingFormatPicker::ShardingType::kV1:
-      return "V1";
+      sharding_type = "V1";
+      break;
     case ShardingFormatPicker::ShardingType::kBestEffortV2:
-      return "BestEffortV2";
+      sharding_type = "BestEffortV2";
+      break;
     case ShardingFormatPicker::ShardingType::kNamed:
-      return "Named";
+      sharding_type = "Named";
+      break;
   }
+  std::string rgv3 = std::get<1>(data.param) ? "RGV3Enabled" : "RGV3Disabled";
+  return absl::StrCat(sharding_type, "_", rgv3);
 }
 
 INSTANTIATE_TEST_SUITE_P(
     All, SpmdPartitioningTest,
-    ::testing::Values(ShardingFormatPicker::ShardingType::kV1,
-                      ShardingFormatPicker::ShardingType::kBestEffortV2,
-                      ShardingFormatPicker::ShardingType::kNamed),
+    ::testing::Combine(
+        ::testing::Values(ShardingFormatPicker::ShardingType::kV1,
+                          ShardingFormatPicker::ShardingType::kBestEffortV2,
+                          ShardingFormatPicker::ShardingType::kNamed),
+        ::testing::Bool()),
     TestParamToString);
 
 TEST_P(SpmdPartitioningTest, SingleDeviceToReplicated) {
@@ -296,7 +310,8 @@ ENTRY entry {
 }
 
 TEST_P(SpmdPartitioningTest, LayoutConstraintCustomCallUnreducedMax) {
-  if (GetParam() != ShardingFormatPicker::ShardingType::kNamed) {
+  auto sharding_type = std::get<0>(GetParam());
+  if (sharding_type != ShardingFormatPicker::ShardingType::kNamed) {
     GTEST_SKIP();
   }
   absl::string_view hlo_string = R"(
@@ -636,8 +651,9 @@ ENTRY entry {
 
 TEST_P(SpmdPartitioningTest,
        TiledToReplicatedWhenV2ShardingGeneratesReplicaGroupV2) {
+  const auto& [sharding_type, enable_rgv3] = GetParam();
   // Skip when input sharding is not V2.
-  if (GetParam() != ShardingFormatPicker::ShardingType::kBestEffortV2) {
+  if (sharding_type != ShardingFormatPicker::ShardingType::kBestEffortV2) {
     GTEST_SKIP() << "This test only runs when input sharding is in V2 format.";
   }
   absl::string_view hlo_string = R"(
@@ -660,7 +676,8 @@ ENTRY entry {
   // With RGV3 integration, this uses MeshAxesReplicaGroupList. It should be
   // equivalent to a v2 device list.
   EXPECT_EQ(all_gather->device_list()->version(),
-            CollectiveDeviceListVersion::kMeshAxes);
+            enable_rgv3 ? CollectiveDeviceListVersion::kMeshAxes
+                        : CollectiveDeviceListVersion::kIota);
   EXPECT_EQ(all_gather->device_list()->flattened_replica_groups(),
             IotaReplicaGroupList(
                 /*num_replica_groups=*/1, /*num_devices_per_group=*/4)
@@ -706,6 +723,7 @@ ENTRY entry {
 }
 
 TEST_P(SpmdPartitioningTest, MultipleSourceTargetDimsInOneAllToAll1) {
+  const auto& [sharding_type, enable_rgv3] = GetParam();
   absl::string_view hlo_string = R"(
 HloModule module
 
@@ -723,11 +741,12 @@ ENTRY entry {
   EXPECT_THAT(all_to_all, op::Shape("s32[8,32,16,32,16]"));
   EXPECT_EQ(all_to_all->replica_groups().size(), 1);
   EXPECT_EQ(all_to_all->replica_groups()[0].replica_ids_size(), 8);
-  if (GetParam() == ShardingFormatPicker::ShardingType::kBestEffortV2) {
+  if (sharding_type == ShardingFormatPicker::ShardingType::kBestEffortV2) {
     // With RGV3 integration, this uses MeshAxesReplicaGroupList. It should be
     // equivalent to a v2 device list.
     EXPECT_EQ(all_to_all->device_list()->version(),
-              CollectiveDeviceListVersion::kMeshAxes);
+              enable_rgv3 ? CollectiveDeviceListVersion::kMeshAxes
+                          : CollectiveDeviceListVersion::kIota);
     EXPECT_EQ(all_to_all->device_list()->flattened_replica_groups(),
               IotaReplicaGroupList(
                   /*num_replica_groups=*/1, /*num_devices_per_group=*/8,
@@ -2112,8 +2131,9 @@ ENTRY entry {
 
 TEST_P(SpmdPartitioningTest,
        ConvolutionLhsTiledRhsTiledWhenV2ShardingGeneratesReplicaGroupV2) {
+  const auto& [sharding_type, enable_rgv3] = GetParam();
   // Skip when input sharding is not V2.
-  if (GetParam() != ShardingFormatPicker::ShardingType::kBestEffortV2) {
+  if (sharding_type != ShardingFormatPicker::ShardingType::kBestEffortV2) {
     GTEST_SKIP() << "This test only runs when input sharding is in V2 format.";
   }
   absl::string_view hlo_string = R"(
@@ -2141,7 +2161,8 @@ ENTRY entry {
 
   // Verify all-reduce instruction contains ReplicaGroupV2.
   EXPECT_EQ((*all_reduce_instruction)->device_list()->version(),
-            CollectiveDeviceListVersion::kMeshAxes);
+            enable_rgv3 ? CollectiveDeviceListVersion::kMeshAxes
+                        : CollectiveDeviceListVersion::kIota);
   EXPECT_EQ(
       (*all_reduce_instruction)->device_list()->flattened_replica_groups(),
       IotaReplicaGroupList(
@@ -11635,6 +11656,7 @@ ENTRY entry {
 }
 
 TEST_P(SpmdPartitioningTest, TileToPartialReplicateReshardUnevenPartition) {
+  bool enable_rgv3 = std::get<1>(GetParam());
   absl::string_view hlo_string = R"(
 HloModule module
 
@@ -11661,7 +11683,8 @@ ENTRY entry {
   // With RGV3 integration, this uses MeshAxesReplicaGroupList. It should be
   // equivalent to a v2 device list.
   EXPECT_EQ(all_gather->device_list()->version(),
-            CollectiveDeviceListVersion::kMeshAxes);
+            enable_rgv3 ? CollectiveDeviceListVersion::kMeshAxes
+                        : CollectiveDeviceListVersion::kIota);
   EXPECT_EQ(all_gather->device_list()->flattened_replica_groups(),
             IotaReplicaGroupList(
                 /*num_replica_groups=*/2, /*num_devices_per_group=*/3)
@@ -12667,7 +12690,7 @@ ENTRY entry {
 }
 
 TEST_P(SpmdPartitioningTest, NoReshardOnBroadcastDims) {
-  if (GetParam() == ShardingFormatPicker::ShardingType::kNamed) {
+  if (std::get<0>(GetParam()) == ShardingFormatPicker::ShardingType::kNamed) {
     GTEST_SKIP()
         << "Skipping for V3/Named Sharding as the format picker generates "
            "shardings that would be deduped and have size 1 axes removed "
@@ -13512,6 +13535,7 @@ ENTRY %module {
 }
 
 TEST_P(SpmdPartitioningTest, GatherMergedIndexParallelAndOperandPassthrough) {
+  const auto& [sharding_type, enable_rgv3] = GetParam();
   absl::string_view hlo_string = R"(
 HloModule module
 
@@ -13541,12 +13565,13 @@ ENTRY %module {
   EXPECT_THAT(root, op::AllGather(op::AllGather(gather)));
   auto* all_to_all = FindInstruction(module.get(), "all-to-all");
   EXPECT_TRUE(all_to_all != nullptr);
-  if (GetParam() ==
+  if (sharding_type ==
       test_only::ShardingFormatPicker::ShardingType::kBestEffortV2) {
     // With RGV3 integration, this uses MeshAxesReplicaGroupList. It should be
     // equivalent to a v2 device list.
     EXPECT_EQ(all_to_all->device_list()->version(),
-              CollectiveDeviceListVersion::kMeshAxes);
+              enable_rgv3 ? CollectiveDeviceListVersion::kMeshAxes
+                          : CollectiveDeviceListVersion::kIota);
     EXPECT_EQ(all_to_all->device_list()->flattened_replica_groups(),
               IotaReplicaGroupList(
                   /*num_replica_groups=*/4, /*num_devices_per_group=*/2,
@@ -18323,6 +18348,7 @@ ENTRY entry {
 }
 
 TEST_P(SpmdPartitioningTest, V2ShardingGeneratesRGV3) {
+  const auto& [sharding_type, enable_rgv3] = GetParam();
   constexpr absl::string_view hlo_string = R"(
 HloModule module
 
@@ -18339,10 +18365,13 @@ ENTRY entry {
       FindInstruction(module.get(), HloOpcode::kAllGather);
   EXPECT_NE(all_gather, nullptr);
 
-  CollectiveDeviceListVersion expected_version =
-      GetParam() == ShardingFormatPicker::ShardingType::kV1
-          ? CollectiveDeviceListVersion::kListOfLists
-          : CollectiveDeviceListVersion::kMeshAxes;
+  CollectiveDeviceListVersion expected_version;
+  if (sharding_type == ShardingFormatPicker::ShardingType::kV1) {
+    expected_version = CollectiveDeviceListVersion::kListOfLists;
+  } else {
+    expected_version = enable_rgv3 ? CollectiveDeviceListVersion::kMeshAxes
+                                   : CollectiveDeviceListVersion::kIota;
+  }
 
   EXPECT_EQ(all_gather->device_list()->version(), expected_version);
 }
@@ -18380,7 +18409,8 @@ ENTRY %module {
 }
 
 TEST_P(SpmdPartitioningTest, V3ShardingGeneratesRGV3NamedAxisConflict) {
-  if (GetParam() != ShardingFormatPicker::ShardingType::kNamed) {
+  auto sharding_type = std::get<0>(GetParam());
+  if (sharding_type != ShardingFormatPicker::ShardingType::kNamed) {
     GTEST_SKIP() << "This test only runs for V3 shardings.";
   }
   HloModuleConfig config = GetModuleConfigForTest();
@@ -18398,7 +18428,8 @@ ENTRY entry {
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnUnverifiedModule(hlo_string, config));
 
-  TF_ASSERT_OK(ShardingFormatPicker(GetParam()).Run(module.get()).status());
+  TF_ASSERT_OK(
+      ShardingFormatPicker(std::get<0>(GetParam())).Run(module.get()).status());
   TF_ASSERT_OK(SpmdPrepare().Run(module.get()).status());
 
   module->mutable_config().set_num_partitions(8);
