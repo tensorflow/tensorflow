@@ -2137,8 +2137,8 @@ HloCallableInstruction::HloCallableInstruction(
 
 HloCallableInstruction::HloCallableInstruction(HloOpcode opcode,
                                                const Shape& shape,
-                                               const std::string& name,
-                                               const std::string& attributes,
+                                               absl::string_view name,
+                                               absl::string_view attributes,
                                                int64_t version)
     : HloInstruction(opcode, shape) {
   auto frontend_attributes =
@@ -2150,7 +2150,7 @@ HloCallableInstruction::HloCallableInstruction(HloOpcode opcode,
 HloCallableInstruction::HloCallableInstruction(
     HloOpcode opcode, const Shape& shape,
     absl::Span<HloInstruction* const> operands, HloComputation* decomposition,
-    const std::string& name, const std::string& attributes, int64_t version)
+    absl::string_view name, absl::string_view attributes, int64_t version)
     : HloInstruction(opcode, shape) {
   for (auto operand : operands) {
     AppendOperand(operand);
@@ -2850,8 +2850,8 @@ HloCallInstruction::HloCallInstruction(
 
 HloCallInstruction::HloCallInstruction(const Shape& shape,
                                        HloInstruction* decomposition_root,
-                                       const std::string& name,
-                                       const std::string& attributes,
+                                       absl::string_view name,
+                                       absl::string_view attributes,
                                        int64_t version)
     : HloCallableInstruction(HloOpcode::kCall, shape, name, attributes,
                              version) {
@@ -2859,9 +2859,10 @@ HloCallInstruction::HloCallInstruction(const Shape& shape,
   SetAndSanitizeName(HloOpcodeString(opcode()));
 
   FrontendAttributes frontend_attributes;
-  frontend_attributes.mutable_map()->insert({"composite.name", name});
   frontend_attributes.mutable_map()->insert(
-      {"composite.attributes", attributes});
+      {"composite.name", std::string(name)});
+  frontend_attributes.mutable_map()->insert(
+      {"composite.attributes", std::string(attributes)});
   frontend_attributes.mutable_map()->insert(
       {"composite.version", std::to_string(version)});
 
@@ -2873,14 +2874,15 @@ HloCallInstruction::HloCallInstruction(const Shape& shape,
 
 HloCallInstruction::HloCallInstruction(
     const Shape& shape, absl::Span<HloInstruction* const> operands,
-    HloComputation* decomposition, const std::string& name,
-    const std::string& attributes, int64_t version)
+    HloComputation* decomposition, absl::string_view name,
+    absl::string_view attributes, int64_t version)
     : HloCallableInstruction(HloOpcode::kCall, shape, operands, decomposition,
                              name, attributes, version) {
   FrontendAttributes frontend_attributes;
-  frontend_attributes.mutable_map()->insert({"composite.name", name});
   frontend_attributes.mutable_map()->insert(
-      {"composite.attributes", attributes});
+      {"composite.name", std::string(name)});
+  frontend_attributes.mutable_map()->insert(
+      {"composite.attributes", std::string(attributes)});
   frontend_attributes.mutable_map()->insert(
       {"composite.version", std::to_string(version)});
 
@@ -3077,7 +3079,7 @@ HloReducePrecisionInstruction::CloneWithNewOperandsImpl(
 
 HloInfeedInstruction::HloInfeedInstruction(const Shape& infeed_shape,
                                            HloInstruction* token_operand,
-                                           const std::string& config)
+                                           absl::string_view config)
     : HloInstruction(HloOpcode::kInfeed,
                      ShapeUtil::MakeTupleShape(
                          {infeed_shape, ShapeUtil::MakeTokenShape()})),
