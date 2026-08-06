@@ -27,10 +27,10 @@ limitations under the License.
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/IR/Types.h"
 #include "mlir/IR/Value.h"
-#include "mlir/Pass/Pass.h"
+#include "mlir/Pass/Pass.h"  // IWYU pragma: keep
 #include "mlir/Support/LLVM.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
-#include "xla/backends/gpu/codegen/triton/transforms/passes.h"
+#include "xla/backends/gpu/codegen/triton/transforms/passes.h"  // IWYU pragma: keep
 #include "xla/codegen/xtile/codegen/emitter_helpers.h"
 #include "xla/service/gpu/target_util.h"
 #include "xla/xla_data.pb.h"
@@ -66,6 +66,11 @@ struct OpInfo<mlir::math::AsinOp> {
 template <>
 struct OpInfo<mlir::math::AsinhOp> {
   static constexpr auto kFunctionID = TargetDeviceFunctionID::kAsinh;
+};
+
+template <>
+struct OpInfo<mlir::math::AtanOp> {
+  static constexpr auto kFunctionID = TargetDeviceFunctionID::kAtan;
 };
 
 template <>
@@ -266,14 +271,14 @@ class TritonXLAMathToLibdevicePass
     llvm::Triple triple(triple_string_);
 
     AddPattens<mlir::math::AcosOp, mlir::math::AcoshOp, mlir::math::AsinOp,
-               mlir::math::AsinhOp, mlir::math::Atan2Op, mlir::math::AtanhOp,
-               mlir::math::CosOp, mlir::math::CoshOp, mlir::math::ExpOp,
-               mlir::math::ErfOp, mlir::math::ExpM1Op, mlir::math::LogOp,
-               mlir::math::Log1pOp, mlir::math::PowFOp, mlir::arith::RemFOp,
-               mlir::math::RoundEvenOp, mlir::math::RsqrtOp, mlir::math::SinOp,
-               mlir::math::SinhOp, mlir::math::SqrtOp, mlir::math::TanOp,
-               mlir::math::TanhOp, mlir::math::CbrtOp>(patterns,
-                                                       libdevice_path_, triple);
+               mlir::math::AsinhOp, mlir::math::AtanOp, mlir::math::Atan2Op,
+               mlir::math::AtanhOp, mlir::math::CosOp, mlir::math::CoshOp,
+               mlir::math::ExpOp, mlir::math::ErfOp, mlir::math::ExpM1Op,
+               mlir::math::LogOp, mlir::math::Log1pOp, mlir::math::PowFOp,
+               mlir::arith::RemFOp, mlir::math::RoundEvenOp,
+               mlir::math::RsqrtOp, mlir::math::SinOp, mlir::math::SinhOp,
+               mlir::math::SqrtOp, mlir::math::TanOp, mlir::math::TanhOp,
+               mlir::math::CbrtOp>(patterns, libdevice_path_, triple);
 
     if (mlir::failed(
             mlir::applyPatternsGreedily(module, std::move(patterns)))) {
