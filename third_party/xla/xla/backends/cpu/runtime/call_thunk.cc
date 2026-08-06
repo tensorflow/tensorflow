@@ -33,7 +33,7 @@ namespace xla::cpu {
 
 absl::StatusOr<std::unique_ptr<CallThunk>> CallThunk::Create(
     Info info, ThunkSequence called_sequence) {
-  ASSIGN_OR_RETURN(auto called_executor,
+  ABSL_ASSIGN_OR_RETURN(auto called_executor,
                    ThunkExecutor::Create(std::move(called_sequence)));
   return absl::WrapUnique(
       new CallThunk(std::move(info), std::move(called_executor)));

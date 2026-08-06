@@ -23,6 +23,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/base/nullability.h"
 #include "absl/functional/any_invocable.h"
 #include "absl/log/check.h"
@@ -214,7 +215,7 @@ absl::StatusOr<std::optional<BlockLevelFusionConfig>>
 GetBlockLevelFusionConfigForAllReduce(
     const GpuTopology& gpu_topology, const HloAllReduceInstruction* all_reduce,
     const DeviceAssignment* device_assignment) {
-  ASSIGN_OR_RETURN(GpuBackendConfig gpu_config,
+  ABSL_ASSIGN_OR_RETURN(GpuBackendConfig gpu_config,
                    all_reduce->backend_config<GpuBackendConfig>());
   if (!IsTritonCollectiveKernel(
           gpu_config.collective_backend_config().kernel_strategy())) {
@@ -223,10 +224,12 @@ GetBlockLevelFusionConfigForAllReduce(
   }
 
   absl::StatusOr<AllReduceInfo> maybe_all_reduce_info = BuildAllReduceInfo(
-      /*is_collective_kernel_enabled=*/all_reduce->GetModule()
-          ->config()
-          .debug_options()
-          .xla_gpu_unsupported_use_all_reduce_one_shot_kernel(),
+      /*is_collective_kernel_enabled=*/absl::c_linear_search(
+          all_reduce->GetModule()
+              ->config()
+              .debug_options()
+              .xla_gpu_experimental_use_collective_kernels(),
+          static_cast<int>(DebugOptions::COLLECTIVE_KERNEL_ALL_REDUCE)),
       /*is_multimem_enabled=*/false, gpu_topology, all_reduce,
       device_assignment);
   if (absl::IsUnimplemented(maybe_all_reduce_info.status())) {
@@ -234,7 +237,7 @@ GetBlockLevelFusionConfigForAllReduce(
             << maybe_all_reduce_info.status();
     return std::nullopt;
   }
-  ASSIGN_OR_RETURN(AllReduceInfo all_reduce_info,
+  ABSL_ASSIGN_OR_RETURN(AllReduceInfo all_reduce_info,
                    std::move(maybe_all_reduce_info));
   const Shape& output_shape = all_reduce->shape();
   const se::DeviceDescription& device_info =
@@ -416,7 +419,7 @@ class AllReduceEmitter {
         ttir::PointerType::get(builder_.getI64Type(), kGlobalAddressSpace);
     ptr_to_elem_type_ =
         ttir::PointerType::get(elem_storage_type_, kGlobalAddressSpace);
-    ASSIGN_OR_RETURN(layout_, xtile::GetPermutationMinorToMajor(
+    ABSL_ASSIGN_OR_RETURN(layout_, xtile::GetPermutationMinorToMajor(
                                   ctx_.input_extract.getSource().getType()));
 
     const llvm::ArrayRef<int64_t>& input_tile_shape_dims =
@@ -543,7 +546,9 @@ class AllReduceEmitter {
     // See fusion emitter for more details.
     if (elem_storage_type_ != elem_type_) {
       next_tile = mlir::cast<xtile::TensorValue>(
-          xtile::Cast(builder_, next_tile, elem_type_));
+          arith::TruncIOp::create(
+              builder_, next_tile.getType().clone(elem_type_), next_tile)
+              .getResult());
     }
     return next_tile;
   }
@@ -571,8 +576,9 @@ class AllReduceEmitter {
     // storage type. Downstream passes should be able to optimize this away.
     mlir::Value storage_tile = tile_to_store;
     if (elem_storage_type_ != elem_type_) {
-      storage_tile = mlir::cast<xtile::TensorValue>(
-          xtile::Cast(builder_, tile_to_store, elem_storage_type_));
+      auto shaped_type = mlir::cast<mlir::ShapedType>(tile_to_store.getType());
+      storage_tile = arith::ExtUIOp::create(
+          builder_, shaped_type.clone(elem_storage_type_), tile_to_store);
     }
     auto [ptrs, mask] = triton::CreateTensorOfPointersAndMask(
         builder_,        //
@@ -959,7 +965,7 @@ absl::Status FlattenCollectiveFusion(
       fusion_operand->shape().element_type(), {total_elements}, {0});
   HloInstruction* bitcast_to_1d = entry_computation->AddInstruction(
       HloInstruction::CreateBitcast(flat_input_shape, fusion_operand));
-  RETURN_IF_ERROR(
+  ABSL_RETURN_IF_ERROR(
       fusion_instr->ReplaceOperandWithDifferentShape(0, bitcast_to_1d));
   HloInstruction* bitcast_to_original_shape = entry_computation->AddInstruction(
       HloInstruction::CreateBitcast(original_shape, fusion_instr));
@@ -1013,27 +1019,26 @@ GetCollectiveBlockLevelFusionConfig(const GpuTopology& gpu_topology,
   }
 }
 
-absl::StatusOr<bool> TrySetGpuBackendConfigForCollective(
+absl::Status TrySetGpuBackendConfigForCollective(
     const GpuTopology& gpu_topology, HloFusionInstruction* fusion_instr,
     const DeviceAssignment* device_assignment) {
-  ASSIGN_OR_RETURN(const std::optional<BlockLevelFusionConfig> block_config,
+  ABSL_ASSIGN_OR_RETURN(const std::optional<BlockLevelFusionConfig> block_config,
                    GetCollectiveBlockLevelFusionConfig(
                        gpu_topology, fusion_instr, device_assignment));
   if (!block_config.has_value()) {
-    VLOG(3) << "No block level fusion config calculated for collective: "
-            << fusion_instr->ToString()
-            << ". Not using Triton collective fusion.";
-    return false;
+    return absl::FailedPreconditionError(absl::StrCat(
+        "No block level fusion config calculated for collective ",
+        fusion_instr->ToString(), ". Not using Triton collective fusion."));
   }
-  ASSIGN_OR_RETURN(GpuBackendConfig gpu_backend_config,
+  ABSL_ASSIGN_OR_RETURN(GpuBackendConfig gpu_backend_config,
                    fusion_instr->backend_config<GpuBackendConfig>());
   gpu_backend_config.mutable_fusion_backend_config()->set_kind(
       kTritonCollectiveFusionKind);
   *gpu_backend_config.mutable_fusion_backend_config()
        ->mutable_block_level_fusion_config() = *std::move(block_config);
-  RETURN_IF_ERROR(
+  ABSL_RETURN_IF_ERROR(
       fusion_instr->set_backend_config(std::move(gpu_backend_config)));
-  return true;
+  return absl::OkStatus();
 }
 
 absl::StatusOr<std::vector<Shape>> GetCollectiveUnmanagedKernelArguments(
@@ -1068,7 +1073,7 @@ absl::StatusOr<int32_t> AddCollectiveMetadataArguments(
     } else if (type == S4) {
       ir_type = b.getI4Type();
     } else {
-      ASSIGN_OR_RETURN(ir_type, xtile::PrimitiveTypeToMlirType(b, type));
+      ABSL_ASSIGN_OR_RETURN(ir_type, xtile::PrimitiveTypeToMlirType(b, type));
     }
     // Also add the remote/scratch buffers for collectives.
     // !tt.ptr<!tt.ptr<type>>

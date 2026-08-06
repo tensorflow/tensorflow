@@ -75,7 +75,7 @@ class NVPTXCompilerTest : public HloPjRtGpuTestBase {
     NVPTXCompiler compiler;
     std::unique_ptr<GpuAliasInfo> alias_info =
         compiler.GetAliasInfo(gpu_device_info);
-    RETURN_IF_ERROR(ScheduleGpuModule(module, pointer_size, gpu_device_info,
+    ABSL_RETURN_IF_ERROR(ScheduleGpuModule(module, pointer_size, gpu_device_info,
                                       &mlir_context_, alias_info.get())
                         .status());
 
@@ -234,6 +234,9 @@ ENTRY main {
 }
 )";
   auto module = ParseAndReturnVerifiedModule(hlo_text).value();
+  module->mutable_config()
+      .mutable_debug_options()
+      .clear_xla_enable_nccl_symmetric_buffers_for_collectives();
   EXPECT_EQ(CountCopies(*module), 4);
 
   const HloInstruction* while_op = hlo_query::GetFirstInstructionWithOpcode(

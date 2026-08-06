@@ -1,3 +1,18 @@
+# Copyright 2026 The TensorFlow Authors. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
+
 """cc_toolchain_config rule for configuring ROCm toolchain on Linux."""
 
 load(
@@ -13,6 +28,7 @@ load(
     "with_feature_set",
 )
 load("@bazel_tools//tools/build_defs/cc:action_names.bzl", "ACTION_NAMES")
+load("@config_rocm_hipcc//rocm:build_defs.bzl", "hipcc_config")
 load("@rules_cc//cc/toolchains:cc_toolchain_config_info.bzl", "CcToolchainConfigInfo")
 
 all_compile_actions = [
@@ -251,11 +267,16 @@ def _impl(ctx):
         flag_sets = [
             flag_set(
                 actions = all_compile_actions,
-                flag_groups = ([
+                flag_groups = [
                     flag_group(
-                        flags = ctx.attr.unfiltered_compile_flags,
+                        flags = [
+                            "-DTENSORFLOW_USE_ROCM=1",
+                            "-D__HIP_PLATFORM_AMD__",
+                            "-DEIGEN_USE_HIP",
+                            "-DUSE_ROCM",
+                        ] + (ctx.attr.unfiltered_compile_flags if ctx.attr.unfiltered_compile_flags else []),
                     ),
-                ] if ctx.attr.unfiltered_compile_flags else []),
+                ],
             ),
         ],
     )
@@ -1107,6 +1128,51 @@ def _impl(ctx):
         ] if ctx.attr.clang_compiler_path else [],
     )
 
+    # ROCm HIPcc feature from hipcc_config()
+    _hipcc_config = hipcc_config()
+    # Construct full paths - config_rocm_hipcc is in external workspace
+    _workspace_prefix = "external/config_rocm_hipcc/rocm"
+    _rocm_path = _workspace_prefix + "/" + _hipcc_config.rocm_root
+
+    rocm_hipcc_feature = feature(
+        name = "rocm_hipcc",
+        enabled = True,
+        env_sets = [
+            env_set(
+                actions = all_compile_actions + all_link_actions,
+                env_entries = [
+                    env_entry(
+                        key = "HIPCC_PATH",
+                        value = _workspace_prefix + "/" + _hipcc_config.hipcc_path,
+                    ),
+                    env_entry(
+                        key = "ROCM_PATH",
+                        value = _rocm_path,
+                    ),
+                    env_entry(
+                        key = "AMDGPU_TARGETS",
+                        value = ",".join(_hipcc_config.gpu_architectures),
+                    ),
+                    env_entry(
+                        key = "HIPCC_ENV",
+                        value = _hipcc_config.hipcc_env,
+                    ),
+                ],
+            ),
+        ],
+        flag_sets = [
+            flag_set(
+                actions = all_compile_actions + all_link_actions,
+                flag_groups = [
+                    flag_group(
+                        flags = ["--rocm-path=" + _rocm_path] +
+                                ["--offload-arch=" + arch for arch in _hipcc_config.gpu_architectures],
+                    ),
+                ],
+            ),
+        ],
+    )
+
     features = [
         dependency_file_feature,
         random_seed_feature,
@@ -1137,6 +1203,7 @@ def _impl(ctx):
         supports_pic_feature,
         compiler_env_feature,
         clang_compiler_path_feature,
+        rocm_hipcc_feature,
     ] + (
         [
             supports_start_end_lib_feature,

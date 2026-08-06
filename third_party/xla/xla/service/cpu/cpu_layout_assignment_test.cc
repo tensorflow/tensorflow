@@ -305,14 +305,14 @@ static absl::StatusOr<DotOutputFusionLayoutAssignmentResult> RunDotOutputFusion(
   HloInstruction* fusion_instruction =
       module->entry_computation()->AddInstruction(HloInstruction::CreateFusion(
           dot_shape, HloInstruction::FusionKind::kOutput, add_result));
-  RETURN_IF_ERROR(
+  ABSL_RETURN_IF_ERROR(
       computation->ReplaceInstruction(add_result, fusion_instruction));
 
   HloInstruction* fused_add =
       fusion_instruction->fused_instructions_computation()->root_instruction();
   HloInstruction* fused_dot = fusion_instruction->FuseInstruction(dot_result);
 
-  RETURN_IF_ERROR(computation->RemoveInstructionAndUnusedOperands(dot_result));
+  ABSL_RETURN_IF_ERROR(computation->RemoveInstructionAndUnusedOperands(dot_result));
 
   ComputationLayout computation_layout(computation->ComputeProgramShape());
   *computation_layout.mutable_parameter_layout(0) =
@@ -335,7 +335,7 @@ static absl::StatusOr<DotOutputFusionLayoutAssignmentResult> RunDotOutputFusion(
       });
   cpu::CpuLayoutAssignment layout_assignment(&computation_layout,
                                              &target_machine_features);
-  ASSIGN_OR_RETURN(result.layout_assignment_changed_something,
+  ABSL_ASSIGN_OR_RETURN(result.layout_assignment_changed_something,
                    layout_assignment.Run(module));
 
   return result;

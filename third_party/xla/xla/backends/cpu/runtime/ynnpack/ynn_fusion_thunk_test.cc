@@ -52,7 +52,7 @@ namespace {
 static absl::StatusOr<YnnSubgraph> BuildBinaryAddSubgraph(
     absl::Span<const YnnFusionThunk::Argument> arguments,
     absl::Span<const YnnFusionThunk::Result> results) {
-  ASSIGN_OR_RETURN(YnnSubgraph subgraph,
+  ABSL_ASSIGN_OR_RETURN(YnnSubgraph subgraph,
                    CreateYnnSubgraph([&](ynn_subgraph_t* subgraph) {
                      return ynn_create_subgraph(
                          /*external_value_ids=*/3,
@@ -92,7 +92,7 @@ static absl::StatusOr<YnnSubgraph> BuildBinaryAddSubgraph(
 static absl::StatusOr<YnnSubgraph> BuildIotaSubgraph(
     absl::Span<const YnnFusionThunk::Argument> arguments,
     absl::Span<const YnnFusionThunk::Result> results) {
-  ASSIGN_OR_RETURN(YnnSubgraph subgraph,
+  ABSL_ASSIGN_OR_RETURN(YnnSubgraph subgraph,
                    CreateYnnSubgraph([&](ynn_subgraph_t* subgraph) {
                      return ynn_create_subgraph(
                          /*external_value_ids=*/1,

@@ -370,7 +370,7 @@ absl::StatusOr<ElementsAttr> ConvertTensorProto(
 
   Tensor t;
   if (!t.FromProto(input_tensor))
-    return InvalidArgument("Failed to parse input_tensor.");
+    return absl::InvalidArgumentError("Failed to parse input_tensor.");
   return ConvertTensor(t, builder, convert_to_dense_resource);
 }
 
@@ -792,7 +792,8 @@ absl::Status ConvertToTensor(const mlir::ElementsAttr attr,
   TensorProto tensor_proto;
   TF_RETURN_IF_ERROR(ConvertToTensorProto(attr, &tensor_proto));
   if (!output_tensor->FromProto(tensor_proto)) {
-    return InvalidArgument("Couldn't convert tensor proto to tensor.");
+    return absl::InvalidArgumentError(
+        "Couldn't convert tensor proto to tensor.");
   }
   return absl::OkStatus();
 }

@@ -247,7 +247,7 @@ template <typename T>
 absl::Status ScopedDeviceAddress<T>::Free() {
   if (!wrapped_.is_null()) {
     CHECK(allocator_ != nullptr) << "Owning pointer in inconsistent state";
-    RETURN_IF_ERROR(allocator_->Deallocate(device_ordinal_, wrapped_));
+    ABSL_RETURN_IF_ERROR(allocator_->Deallocate(device_ordinal_, wrapped_));
   }
   wrapped_ = DeviceAddress<T>{};
   return absl::OkStatus();

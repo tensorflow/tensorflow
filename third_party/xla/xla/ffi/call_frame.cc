@@ -229,7 +229,7 @@ CallFrame::CallFrame(std::unique_ptr<Arguments> arguments,
       attributes_(std::move(attributes)) {}
 
 XLA_FFI_CallFrame CallFrame::Build(const XLA_FFI_Api* api,
-                                   XLA_FFI_ExecutionContext* ctx,
+                                   XLA_FFI_InvokeContext* ctx,
                                    XLA_FFI_ExecutionStage stage) {
   XLA_FFI_CallFrame call_frame = {XLA_FFI_CallFrame_STRUCT_SIZE, nullptr};
   call_frame.api = api;
@@ -591,7 +591,7 @@ absl::StatusOr<CallFrame> CallFrame::CopyWithBuffers(
     absl::Span<const se::DeviceAddressBase> args,
     absl::Span<const se::DeviceAddressBase> rets) const {
   CallFrame clone(CopyArgs(*arguments_), CopyRets(*results_), attributes_);
-  RETURN_IF_ERROR(clone.UpdateWithBuffers(args, rets));
+  ABSL_RETURN_IF_ERROR(clone.UpdateWithBuffers(args, rets));
   return clone;
 }
 

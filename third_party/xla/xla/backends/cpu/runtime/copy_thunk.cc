@@ -150,8 +150,8 @@ tsl::AsyncValueRef<Thunk::ExecuteEvent> CopyThunk::Execute(
   se::DeviceAddressBase dst_data;
 
   if constexpr (ShouldCheckBufferSlices()) {
-    ASSIGN_OR_RETURN(src_data, allocations->GetDeviceAddress(src_buffer_));
-    ASSIGN_OR_RETURN(dst_data, allocations->GetDeviceAddress(dst_buffer_));
+    ABSL_ASSIGN_OR_RETURN(src_data, allocations->GetDeviceAddress(src_buffer_));
+    ABSL_ASSIGN_OR_RETURN(dst_data, allocations->GetDeviceAddress(dst_buffer_));
   } else {
     src_data = allocations->GetDeviceAddressUnchecked(src_buffer_);
     dst_data = allocations->GetDeviceAddressUnchecked(dst_buffer_);

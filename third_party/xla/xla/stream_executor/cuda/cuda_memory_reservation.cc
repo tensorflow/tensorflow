@@ -41,21 +41,21 @@ CudaMemoryReservation::Create(StreamExecutor* executor, uint64_t size) {
   std::unique_ptr<ActivateContext> activation = executor->Activate();
 
   CUdevice device;
-  RETURN_IF_ERROR(
+  ABSL_RETURN_IF_ERROR(
       cuda::ToStatus(cuDeviceGet(&device, executor->device_ordinal())));
 
-  ASSIGN_OR_RETURN(CudaDeviceAllocator::Options options,
+  ABSL_ASSIGN_OR_RETURN(CudaDeviceAllocator::Options options,
                    QueryDeviceAllocatorOptions(device));
   CUmemAllocationProp props = BuildVmmAllocationProp(device, options);
 
   size_t granularity = 0;
-  RETURN_IF_ERROR(cuda::ToStatus(cuMemGetAllocationGranularity(
+  ABSL_RETURN_IF_ERROR(cuda::ToStatus(cuMemGetAllocationGranularity(
       &granularity, &props, CU_MEM_ALLOC_GRANULARITY_RECOMMENDED)));
 
   uint64_t padded_size = xla::RoundUpTo<uint64_t>(size, granularity);
 
   CUdeviceptr ptr;
-  RETURN_IF_ERROR(cuda::ToStatus(
+  ABSL_RETURN_IF_ERROR(cuda::ToStatus(
       cuMemAddressReserve(&ptr, padded_size, granularity, 0, 0)));
 
   return std::unique_ptr<CudaMemoryReservation>(
@@ -93,7 +93,7 @@ absl::Status CudaMemoryReservation::SetAccess(uint64_t reservation_offset,
   desc.location.type = CU_MEM_LOCATION_TYPE_DEVICE;
   desc.location.id = executor_->device_ordinal();
   desc.flags = CU_MEM_ACCESS_FLAGS_PROT_READWRITE;
-  RETURN_IF_ERROR(
+  ABSL_RETURN_IF_ERROR(
       cuda::ToStatus(cuMemSetAccess(ptr_ + reservation_offset, size, &desc, 1),
                      "cuMemSetAccess for local device"));
 
@@ -101,7 +101,7 @@ absl::Status CudaMemoryReservation::SetAccess(uint64_t reservation_offset,
   // automatically inherit peer access, so NCCL collective operations using
   // NVLink to read/write peer GPU buffers will deadlock without this.
   int device_count = 0;
-  RETURN_IF_ERROR(
+  ABSL_RETURN_IF_ERROR(
       cuda::ToStatus(cudaGetDeviceCount(&device_count), "cudaGetDeviceCount"));
   for (int32_t peer = 0; peer < device_count; ++peer) {
     if (peer == executor_->device_ordinal()) {
@@ -111,7 +111,7 @@ absl::Status CudaMemoryReservation::SetAccess(uint64_t reservation_offset,
       continue;
     }
     desc.location.id = peer;
-    RETURN_IF_ERROR(cuda::ToStatus(
+    ABSL_RETURN_IF_ERROR(cuda::ToStatus(
         cuMemSetAccess(ptr_ + reservation_offset, size, &desc, 1),
         "cuMemSetAccess for peer device"));
   }

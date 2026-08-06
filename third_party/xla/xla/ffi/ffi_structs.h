@@ -66,9 +66,11 @@ struct XLA_FFI_Future {
   tsl::AsyncValueRef<tsl::Chain> async_value;
 };
 
+struct XLA_FFI_Extension;
+
 // This struct corresponds to `InvokeContext` available to XLA:FFI C++ clients,
 // the the invoke context for documentation.
-struct XLA_FFI_ExecutionContext {
+struct XLA_FFI_InvokeContext {
   struct CpuContext {
     const Eigen::ThreadPoolDevice* intra_op_thread_pool = nullptr;
   };
@@ -104,6 +106,8 @@ struct XLA_FFI_ExecutionContext {
 
   const xla::HloComputation* called_computation = nullptr;
   const xla::ffi::ExecutionContext* execution_context = nullptr;
+
+  const XLA_FFI_Extension* extension_start = nullptr;
 };
 
 #endif  // XLA_FFI_FFI_STRUCTS_H_

@@ -91,6 +91,7 @@ GpuExecutableBufferAllocator::Create(
           module_name, allocations, result_shape, debug_options,
           thunk_executor);
     case DebugOptions::SKIP_TEMP:
+    case DebugOptions::SKIP_PROFILED:
       return std::make_unique<GpuExecutableVaRemapAllocator>(
           module_name, allocations, result_shape, debug_options,
           thunk_executor);
@@ -158,7 +159,7 @@ absl::StatusOr<se::DeviceAddressBase>
 GpuExecutableBufferAllocator::ExecutionScope::AllocateTransientBuffer(
     int device_ordinal, const BufferAllocation& allocation, int64_t buffer_size,
     se::DeviceAddressAllocator* memory_allocator) {
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       se::ScopedDeviceAddress<uint8_t> buffer,
       memory_allocator->Allocate(device_ordinal, buffer_size,
                                  /*retry_on_failure=*/true,
@@ -177,7 +178,7 @@ GpuExecutableBufferAllocator::ExecutionScope::BufferForAllocation(
     return se::DeviceAddressBase{};
   }
   if (allocation.is_entry_computation_parameter()) {
-    ASSIGN_OR_RETURN(ParameterBuffer registered_buffer,
+    ABSL_ASSIGN_OR_RETURN(ParameterBuffer registered_buffer,
                      get_parameter_buffer(allocation));
     if (registered_buffer.buffer.is_null() &&
         registered_buffer.buffer.size() > 0 &&
@@ -204,7 +205,7 @@ GpuExecutableBufferAllocator::ExecutionScope::BufferForAllocation(
   int64_t buffer_size = allocation.size();
   se::DeviceAddressBase buffer_address;
   if (buffer_size > 0) {
-    ASSIGN_OR_RETURN(buffer_address,
+    ABSL_ASSIGN_OR_RETURN(buffer_address,
                      AllocateTransientBuffer(device_ordinal, allocation,
                                              buffer_size, memory_allocator));
   }
@@ -227,17 +228,17 @@ GpuExecutableBufferAllocator::ExecutionScope::GenerateBufferAllocations(
           run_options->run_options().device_assignment());
 
   const int64_t num_buffers = owner_->allocations_.size();
-  RETURN_IF_ERROR(PrepareReservation(run_options, device_ordinal));
+  ABSL_RETURN_IF_ERROR(Prepare(run_options, device_ordinal));
 
   std::vector<se::DeviceAddressBase> buffers;
   buffers.reserve(num_buffers);
   for (int64_t i = 0; i < num_buffers; ++i) {
     const BufferAllocation& allocation = *owner_->allocations_[i];
-    ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         buffers.emplace_back(),
         BufferForAllocation(get_parameter_buffer, globals, allocation,
                             memory_allocator, device_ordinal, i));
-    RETURN_IF_ERROR(CheckAlignment(allocation, buffers.back(), i));
+    ABSL_RETURN_IF_ERROR(CheckAlignment(allocation, buffers.back(), i));
   }
   return BufferAllocations(buffers, device_ordinal, memory_allocator);
 }
@@ -267,7 +268,7 @@ GpuExecutableBufferAllocator::ExecutionScope::AllocateCopyProtectedOutputBuffer(
   se::DeviceAddressBase& aliased_buffer =
       buffer_allocations.GetMutableDeviceAddress(allocation.index());
   CHECK_EQ(aliased_buffer.size(), result_buffer.size());
-  RETURN_IF_ERROR(run_options->stream()->MemcpyD2D(
+  ABSL_RETURN_IF_ERROR(run_options->stream()->MemcpyD2D(
       &result_buffer, aliased_buffer, aliased_buffer.size()));
   aliased_buffer = result_buffer;
   return result_buffer;

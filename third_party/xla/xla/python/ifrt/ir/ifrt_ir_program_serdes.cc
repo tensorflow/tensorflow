@@ -24,8 +24,6 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "xla/tsl/platform/status_macros.h"
-#include "llvm/Support/Casting.h"
-#include "llvm/Support/ExtensibleRTTI.h"
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/Bytecode/BytecodeWriter.h"
 #include "mlir/IR/BuiltinOps.h"
@@ -40,11 +38,11 @@ limitations under the License.
 #include "xla/python/ifrt/ir/support/module_parsing.h"
 #include "xla/python/ifrt/ir/transforms/passes.h"
 #include "xla/python/ifrt/ir/version.h"
+#include "xla/python/ifrt/rtti.h"
 #include "xla/python/ifrt/serdes.h"
 #include "xla/python/ifrt/serdes_version.h"
 #include "xla/python/ifrt/serdes_week_4_old_version_accessor.h"
 #include "xla/status_macros.h"
-#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 namespace ifrt {
@@ -52,8 +50,7 @@ namespace ifrt {
 namespace {
 
 // Serialization/deserialization for `IfrtIRProgram`.
-class IfrtIRProgramSerDes
-    : public llvm::RTTIExtends<IfrtIRProgramSerDes, SerDes> {
+class IfrtIRProgramSerDes : public RTTIExtends<IfrtIRProgramSerDes, SerDes> {
  public:
   absl::string_view type_name() const override {
     return IfrtIRProgram::type_name();
@@ -78,7 +75,7 @@ class IfrtIRProgramSerDes
                        " for IfrtIRProgram serialization"));
     }
 
-    const auto& program = llvm::cast<IfrtIRProgram>(serializable);
+    const auto& program = cast<IfrtIRProgram>(serializable);
     if (program.mlir_module == nullptr) {
       return absl::InvalidArgumentError("Unable to serialize null MLIR module");
     }
@@ -90,7 +87,7 @@ class IfrtIRProgramSerDes
         program.mlir_module->getContext());
 
     const auto* serialize_options =
-        llvm::dyn_cast_or_null<SerializeIfrtIRProgramOptions>(options.get());
+        dyn_cast_or_null<SerializeIfrtIRProgramOptions>(options.get());
     if (serialize_options == nullptr) {
       // Serialize to bytecode the whole program if no options are provided.
       // This is a fast path for the case where the user does not care about
@@ -160,7 +157,7 @@ class IfrtIRProgramSerDes
       const absl::Cord& serialized,
       std::unique_ptr<DeserializeOptions> options) override {
     const auto* deserialize_options =
-        llvm::dyn_cast_or_null<DeserializeIfrtIRProgramOptions>(options.get());
+        dyn_cast_or_null<DeserializeIfrtIRProgramOptions>(options.get());
     bool use_existing_context = false;
     std::unique_ptr<mlir::MLIRContext> context;
     if (!deserialize_options || !deserialize_options->context) {
@@ -182,10 +179,13 @@ class IfrtIRProgramSerDes
     if (!program_proto.ParseFromString(serialized)) {
       return absl::InvalidArgumentError("Failed to parse IfrtIrProgramProto");
     }
-    ASSIGN_OR_RETURN(
-        auto module,
-        support::ParseMlirModuleString(
-            absl::Cord(program_proto.ifrt_program()).Flatten(), *context));
+    // The MLIR Lexer (used by the text/assembly parser) assumes the input
+    // buffer is null-terminated. To avoid ASan stack-buffer-overflows when
+    // parsing text-based IFRT IR, we copy the serialized data to a
+    // `std::string` to guarantee null-termination before deserialization.
+    std::string flat_str(program_proto.ifrt_program());
+    ABSL_ASSIGN_OR_RETURN(auto module,
+                     support::ParseMlirModuleString(flat_str, *context));
 
     if (program_proto.ifrt_version().empty()) {
       // The program was not versioned on serialization. The whole IFRT IR
@@ -219,7 +219,7 @@ class IfrtIRProgramSerDes
 
 // Serialization/deserialization for `IfrtIRCompileOptions`.
 class IfrtIRCompileOptionsSerDes
-    : public llvm::RTTIExtends<IfrtIRCompileOptionsSerDes, SerDes> {
+    : public RTTIExtends<IfrtIRCompileOptionsSerDes, SerDes> {
  public:
   absl::string_view type_name() const override {
     return "xla::ifrt::IfrtIRCompileOptions";
@@ -229,9 +229,8 @@ class IfrtIRCompileOptionsSerDes
       const Serializable& serializable,
       std::unique_ptr<SerializeOptions> options) override {
     const SerDesVersion version = GetRequestedSerDesVersion(options.get());
-    const auto& compile_options =
-        llvm::cast<IfrtIRCompileOptions>(serializable);
-    ASSIGN_OR_RETURN(IfrtIrCompileOptionsProto compile_options_proto,
+    const auto& compile_options = cast<IfrtIRCompileOptions>(serializable);
+    ABSL_ASSIGN_OR_RETURN(IfrtIrCompileOptionsProto compile_options_proto,
                      compile_options.ToProto(version));
     return compile_options_proto.SerializeAsCord();
   }

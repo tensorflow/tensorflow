@@ -51,6 +51,7 @@ limitations under the License.
 #include "xla/backends/gpu/codegen/kernel_compiler.h"
 #include "xla/backends/gpu/runtime/execution_stream_id.h"
 #include "xla/backends/gpu/runtime/sequential_thunk.h"
+#include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/future.h"
 #include "xla/hlo/analysis/hlo_ordering.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -140,7 +141,7 @@ absl::Status LoadCache(IrEmitterContext& ir_emitter_context,
   }
   if (tsl::Env::Default()->FileExists(resolved_path).ok()) {
     CompilationCacheProto proto;
-    RETURN_IF_ERROR(
+    ABSL_RETURN_IF_ERROR(
         tsl::ReadBinaryProto(tsl::Env::Default(), resolved_path, &proto));
     // Register all cached kernel names with the name uniquer to avoid
     // naming conflicts.
@@ -148,7 +149,7 @@ absl::Status LoadCache(IrEmitterContext& ir_emitter_context,
       TF_RET_CHECK(ir_emitter_context.GetSanitizedUniqueName(name) == name)
           << "Failed registering " << name << "in NameUniquer.";
     }
-    RETURN_IF_ERROR(ir_emitter_context.kernel_cache().Load(proto));
+    ABSL_RETURN_IF_ERROR(ir_emitter_context.kernel_cache().Load(proto));
   } else {
     VLOG(1) << "Compilation cache file does not exist: " << resolved_path;
   }
@@ -194,7 +195,7 @@ absl::StatusOr<std::unique_ptr<BufferAssignment>> RunBufferAssignment(
       hlo_ordering =
           std::make_unique<SequentialHloOrdering>(module->schedule());
   }
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       std::unique_ptr<BufferAssignment> buffer_assignment,
       BufferAssigner::Run(
           module, std::move(hlo_ordering),
@@ -225,10 +226,10 @@ absl::StatusOr<CompileModuleResults> CompileModuleToLlvmIr(
 
   CompileModuleResults results = InitializeResults(hlo_module);
 
-  ASSIGN_OR_RETURN(results.buffer_assignment,
+  ABSL_ASSIGN_OR_RETURN(results.buffer_assignment,
                    RunBufferAssignment(hlo_module, alias_info,
                                        std::move(buffer_size_bytes_function)));
-  ASSIGN_OR_RETURN(results.output_info,
+  ABSL_ASSIGN_OR_RETURN(results.output_info,
                    GetOutputInfo(*hlo_module, *results.buffer_assignment));
 
   // capture the output shape after buffer assignment because it may change
@@ -240,7 +241,7 @@ absl::StatusOr<CompileModuleResults> CompileModuleToLlvmIr(
   VLOG(1) << "After optimization module fingerprint for " << hlo_module->name()
           << ": " << hlo_module->GetFingerprint128();
 
-  ASSIGN_OR_RETURN(BorrowedMlirContext borrowed_context,
+  ABSL_ASSIGN_OR_RETURN(BorrowedMlirContext borrowed_context,
                    mlir_context_pool->GetOrCreate());
   IrEmitterContext ir_emitter_context(
       hlo_module, results.buffer_assignment.get(),
@@ -255,21 +256,30 @@ absl::StatusOr<CompileModuleResults> CompileModuleToLlvmIr(
   uint64_t start_usecs = tsl::Env::Default()->NowMicros();
 
   if (use_cache) {
-    RETURN_IF_ERROR(
+    ABSL_RETURN_IF_ERROR(
         LoadCache(ir_emitter_context, options.xla_gpu_kernel_cache_file()));
   }
   XLA_SCOPED_LOGGING_TIMER(absl::StrCat(
       "GpuCompiler::RunBackend - IR emission for ", hlo_module->name()));
 
-  xla::Future<std::unique_ptr<SequentialThunk>> future_sequential_thunk =
+  Future<ThunkSequence> future_thunks =
       thunk_emitter.EmitHloEntryComputation(hlo_module);
 
-  ASSIGN_OR_RETURN(
-      results.constants_binary,
-      compiler->CompileToTargetBinary(thunk_emitter.ConsumeConstantsModule())
-          .Await());
-  ASSIGN_OR_RETURN(results.executable,
-                   std::move(future_sequential_thunk).Await());
+  llvm::Module* constants_module = thunk_emitter.constants_module();
+  const bool has_constants_module =
+      !constants_module->empty() || !constants_module->global_empty();
+  if (has_constants_module) {
+    ABSL_ASSIGN_OR_RETURN(
+        results.constants_binary,
+        compiler->CompileToTargetBinary(thunk_emitter.ConsumeConstantsModule())
+            .Await());
+  } else {
+    VLOG(2) << "Constants LLVM module is empty; skipping target compilation.";
+  }
+
+  ABSL_ASSIGN_OR_RETURN(ThunkSequence thunks, std::move(future_thunks).Await());
+  results.executable =
+      std::make_unique<SequentialThunk>(Thunk::ThunkInfo{}, std::move(thunks));
 
   // This won't record values for calls that error out (because if they error
   // out we have no way of telling how far through the process we got).

@@ -134,7 +134,7 @@ HloModule::~HloModule() {
 
 absl::Status HloModule::set_schedule(HloSchedule schedule) {
   TF_RET_CHECK(schedule.module() == this);
-  RETURN_IF_ERROR(schedule.Verify());
+  ABSL_RETURN_IF_ERROR(schedule.Verify());
   schedule_ = std::move(schedule);
   return absl::OkStatus();
 }
@@ -825,7 +825,7 @@ absl::StatusOr<HloModuleProto> HloModule::RemapInstructionIds(
                                     << " not found in computation proto.";
     computation_proto.set_root_id(new_root_id);
     // Fix schedule.
-    RETURN_IF_ERROR(UpdateIdsInSchedule(proto_copy, computation_proto.id(),
+    ABSL_RETURN_IF_ERROR(UpdateIdsInSchedule(proto_copy, computation_proto.id(),
                                         old_instr_id_to_new_id));
   }
   return proto_copy;
@@ -968,7 +968,7 @@ absl::StatusOr<std::unique_ptr<HloModule>> HloModule::CreateFromProto(
   // the entry parameters and root.
   TF_RET_CHECK(proto.has_host_program_shape())
       << "No program shape found in the proto";
-  ASSIGN_OR_RETURN(ProgramShape expected_program_shape,
+  ABSL_ASSIGN_OR_RETURN(ProgramShape expected_program_shape,
                    ProgramShape::FromProto(proto.host_program_shape()));
   TF_RET_CHECK(expected_program_shape.parameters_size() ==
                module_config.entry_computation_layout().parameter_count());
@@ -1010,7 +1010,7 @@ absl::StatusOr<std::unique_ptr<HloModule>> HloModule::CreateFromProto(
     // computation and potentially changed. Only used for fixing the schedule
     // or buffer assignment later.
     absl::flat_hash_map<int64_t, int64_t> id_remap_map;
-    ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         std::unique_ptr<HloComputation> computation,
         HloComputation::CreateFromProto(
             computation_proto, computation_map, prohibit_empty_literal,
@@ -1052,30 +1052,30 @@ absl::StatusOr<std::unique_ptr<HloModule>> HloModule::CreateFromProto(
                                    /*preserve_entry_layouts=*/false);
   }
   TF_RET_CHECK(module->entry_computation_ != nullptr);
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       module->input_output_alias_config_,
       HloInputOutputAliasConfig::CreateFromProto(
           entry->ComputeProgramShape().result(), proto.input_output_alias()));
-  ASSIGN_OR_RETURN(module->buffer_donor_config_,
+  ABSL_ASSIGN_OR_RETURN(module->buffer_donor_config_,
                    HloBufferDonorConfig::CreateFromProto(proto.buffer_donor()));
 
-  RETURN_IF_ERROR(
+  ABSL_RETURN_IF_ERROR(
       module->CheckUniqueNamesAndIdsForComputationsAndInstructions());
 
   if (proto.has_schedule()) {
-    ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         HloSchedule schedule,
         HloSchedule::CreateFromProto(module.get(), proto.schedule(),
                                      preserve_instruction_ids
                                          ? nullptr
                                          : &computation_id_to_id_remap_map));
-    RETURN_IF_ERROR(module->set_schedule(std::move(schedule)));
+    ABSL_RETURN_IF_ERROR(module->set_schedule(std::move(schedule)));
   }
 
   // If a pointer to a buffer assignment proto is provided, that means we need
   // to keep the HloModule and the Buffer Assignment proto consistent.
   if (buffer_assignment_needs_remap) {
-    RETURN_IF_ERROR(UpdateBufferAssignmentProto(
+    ABSL_RETURN_IF_ERROR(UpdateBufferAssignmentProto(
         buffer_assignment_proto, computation_id_to_id_remap_map));
   }
 
@@ -1093,14 +1093,14 @@ absl::StatusOr<std::unique_ptr<HloModule>> HloModule::CreateFromProto(
   }
 
   if (proto.has_spmd_output_sharding()) {
-    ASSIGN_OR_RETURN(HloSharding hlo_sharding,
+    ABSL_ASSIGN_OR_RETURN(HloSharding hlo_sharding,
                      HloSharding::FromProto(proto.spmd_output_sharding()));
     module->set_spmd_output_sharding(hlo_sharding);
   }
 
   std::vector<HloSharding> param_shardings;
   for (const auto& sharding_proto : proto.spmd_parameters_shardings()) {
-    ASSIGN_OR_RETURN(HloSharding sharding,
+    ABSL_ASSIGN_OR_RETURN(HloSharding sharding,
                      HloSharding::FromProto(sharding_proto));
     param_shardings.push_back(sharding);
   }
@@ -1115,7 +1115,7 @@ absl::StatusOr<std::unique_ptr<HloModule>> HloModule::CreateFromProto(
   }
   if (proto.has_device_assignment()) {
     if (!module->config().has_static_device_assignment()) {
-      ASSIGN_OR_RETURN(
+      ABSL_ASSIGN_OR_RETURN(
           std::unique_ptr<DeviceAssignment> device_assignment,
           DeviceAssignment::Deserialize(proto.device_assignment()));
       module->mutable_config().set_static_device_assignment(*device_assignment);
@@ -1123,10 +1123,10 @@ absl::StatusOr<std::unique_ptr<HloModule>> HloModule::CreateFromProto(
   }
 
   module->CanonicalizeStackFrameIds(proto.stack_frame_index());
-  RETURN_IF_ERROR(module->ReorderComputationsToPostOrder());
+  ABSL_RETURN_IF_ERROR(module->ReorderComputationsToPostOrder());
 
   if (proto.has_original_value_recovery_table()) {
-    ASSIGN_OR_RETURN(module->original_value_recovery_table_,
+    ABSL_ASSIGN_OR_RETURN(module->original_value_recovery_table_,
                      HloModule::OriginalValueRecoveryTable::FromProto(
                          proto.original_value_recovery_table()));
   }
@@ -1157,7 +1157,7 @@ absl::StatusOr<std::unique_ptr<HloModule>> HloModule::CreateFromProto(
 
   DeduplicateOriginalValues(module.get());
 
-  RETURN_IF_ERROR(
+  ABSL_RETURN_IF_ERROR(
       InlineMetadataPayloadsFromProtoPayloadTable(module.get(), proto));
 
   return module;
@@ -1242,7 +1242,7 @@ absl::StatusOr<HloModuleConfig> HloModule::CreateModuleConfigFromShape(
           execution_options->allow_spmd_sharding_propagation_to_output());
     }
     if (execution_options->has_device_assignment()) {
-      ASSIGN_OR_RETURN(std::unique_ptr<DeviceAssignment> device_assignment,
+      ABSL_ASSIGN_OR_RETURN(std::unique_ptr<DeviceAssignment> device_assignment,
                        DeviceAssignment::Deserialize(
                            execution_options->device_assignment()));
       module_config.set_static_device_assignment(*device_assignment);
@@ -1272,11 +1272,11 @@ absl::StatusOr<HloModuleConfig> HloModule::CreateModuleConfigFromShape(
   ComputationLayout* entry_layout =
       module_config.mutable_entry_computation_layout();
   for (int64_t i = 0; i < entry_layout->parameter_count(); ++i) {
-    RETURN_IF_ERROR(
+    ABSL_RETURN_IF_ERROR(
         entry_layout->mutable_parameter_layout(i)->CopyLayoutFromShape(
             program_shape.parameters(i)));
   }
-  RETURN_IF_ERROR(entry_layout->mutable_result_layout()->CopyLayoutFromShape(
+  ABSL_RETURN_IF_ERROR(entry_layout->mutable_result_layout()->CopyLayoutFromShape(
       program_shape.result()));
   return module_config;
 }
@@ -1288,9 +1288,9 @@ absl::StatusOr<HloModuleConfig> HloModule::CreateModuleConfigFromProto(
   if (!module.has_host_program_shape()) {
     return absl::FailedPreconditionError("No program shape found in the proto");
   }
-  ASSIGN_OR_RETURN(ProgramShape program_shape,
+  ABSL_ASSIGN_OR_RETURN(ProgramShape program_shape,
                    ProgramShape::FromProto(module.host_program_shape()));
-  ASSIGN_OR_RETURN(HloModuleConfig config,
+  ABSL_ASSIGN_OR_RETURN(HloModuleConfig config,
                    CreateModuleConfigFromShape(program_shape, debug_options,
                                                execution_options));
   if (!module.device_type().empty()) {
@@ -1299,7 +1299,7 @@ absl::StatusOr<HloModuleConfig> HloModule::CreateModuleConfigFromProto(
   if (!config.has_static_device_assignment()) {
     if (module.has_device_assignment()) {
       // Get the proto from the execution options rather than the module proto.
-      ASSIGN_OR_RETURN(
+      ABSL_ASSIGN_OR_RETURN(
           std::unique_ptr<DeviceAssignment> device_assignment,
           DeviceAssignment::Deserialize(module.device_assignment()));
       config.set_static_device_assignment(*device_assignment);
@@ -1324,7 +1324,7 @@ absl::StatusOr<std::unique_ptr<HloModule>> HloModule::CreateFromProtoWithConfig(
     bool preserve_instruction_ids,
     BufferAssignmentProto* buffer_assignment_proto) {
   const auto& hlo_module_proto = proto.hlo_module();
-  ASSIGN_OR_RETURN(std::unique_ptr<HloModuleConfig> config_ptr,
+  ABSL_ASSIGN_OR_RETURN(std::unique_ptr<HloModuleConfig> config_ptr,
                    HloModuleConfig::CreateFromProto(proto.config()));
   return HloModule::CreateFromProto(
       hlo_module_proto, *config_ptr, prohibit_empty_literal,
@@ -1758,6 +1758,12 @@ void HloModule::Clone(const std::string& suffix, HloCloneContext* context,
   for (const auto& [parameter, indices, offset] : CrossProgramPrefetches()) {
     module->AddCrossProgramPrefetch(parameter, indices, offset);
   }
+  if (has_spmd_output_sharding()) {
+    module->set_spmd_output_sharding(spmd_output_sharding());
+  }
+  if (has_spmd_parameters_shardings()) {
+    module->set_spmd_parameters_shardings(spmd_parameters_shardings());
+  }
 
   // To make clone behavior match uncloned behavior, we reorder
   // module->computations_ to match the order in computations_.
@@ -1813,7 +1819,7 @@ absl::Status HloModule::RemoveUnusedComputations() {
 
   for (auto it = computations_.begin(); it != computations_.end(); ++it) {
     if (*it != nullptr && to_remove.contains(it->get())) {
-      RETURN_IF_ERROR(RemoveEmbeddedComputation(it));
+      ABSL_RETURN_IF_ERROR(RemoveEmbeddedComputation(it));
     }
   }
   CleanupComputations();
@@ -1965,10 +1971,10 @@ HloModule::OriginalValueRecoveryTable::FromProto(
     std::unique_ptr<HloModule> recovery_module;
     if (entry.has_recovery_module()) {
       const HloModuleProto proto = entry.recovery_module();
-      ASSIGN_OR_RETURN(HloModuleConfig config,
+      ABSL_ASSIGN_OR_RETURN(HloModuleConfig config,
                        HloModule::CreateModuleConfigFromProto(
                            proto, GetDebugOptionsFromFlags()));
-      ASSIGN_OR_RETURN(recovery_module,
+      ABSL_ASSIGN_OR_RETURN(recovery_module,
                        HloModule::CreateFromProto(proto, config));
     }
     original_value_recovery_table.table_[old_original_array] =

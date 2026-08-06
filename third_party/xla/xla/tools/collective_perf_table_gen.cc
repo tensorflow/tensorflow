@@ -664,7 +664,7 @@ absl::Status CollectivePerfTableGen::Dump(
 
   DeviceHloInstructionProfiles file;
   if (tsl::Env::Default()->FileExists(config_.output).ok()) {
-    RETURN_IF_ERROR(
+    ABSL_RETURN_IF_ERROR(
         tsl::ReadTextOrBinaryProto(tsl::Env::Default(), config_.output, &file));
   }
 
@@ -676,12 +676,12 @@ absl::Status CollectivePerfTableGen::Dump(
     }
 
     if (absl::StrContains(config_.output, ".pbtxt")) {
-      RETURN_IF_ERROR(
+      ABSL_RETURN_IF_ERROR(
           tsl::WriteTextProto(tsl::Env::Default(), config_.output, file));
       continue;
     }
     if (absl::StrContains(config_.output, ".pb")) {
-      RETURN_IF_ERROR(
+      ABSL_RETURN_IF_ERROR(
           tsl::WriteBinaryProto(tsl::Env::Default(), config_.output, file));
       continue;
     }

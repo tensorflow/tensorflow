@@ -49,8 +49,8 @@ namespace {
 class CollectiveOpsTestE2EShardedUnsharded : public CollectiveOpsE2ETestBase {
  public:
   CollectiveOpsTestE2EShardedUnsharded()
-      : CollectiveOpsE2ETestBase(/*memory_size=*/64 * kMB,
-                                 /*collectives_memory_size=*/0) {}
+      : CollectiveOpsE2ETestBase(/*memory_size=*/128 * kMB,
+                                 /*collectives_memory_size=*/128 * kMB) {}
 
   void CollectiveOpsCompareShardedUnsharded(
       const std::string& hlo_text, const int64_t num_partitions = 2,
@@ -91,7 +91,7 @@ class CollectiveOpsTestE2EShardedUnsharded : public CollectiveOpsE2ETestBase {
     HloModuleConfig ref_config = GetModuleConfigForTest();
     ref_config.mutable_debug_options().set_xla_gpu_enable_triton_gemm(false);
 
-    ASSIGN_OR_RETURN(std::unique_ptr<VerifiedHloModule> ref_module,
+    ABSL_ASSIGN_OR_RETURN(std::unique_ptr<VerifiedHloModule> ref_module,
                      ParseAndReturnVerifiedModule(hlo_text_ref, ref_config));
 
     ref_module->mutable_config().set_replica_count(1);
@@ -119,7 +119,7 @@ class CollectiveOpsTestE2EShardedUnsharded : public CollectiveOpsE2ETestBase {
     if (enable_enzyme_comms_opt) {
       config.mutable_debug_options().set_xla_enable_enzyme_comms_opt(true);
     }
-    ASSIGN_OR_RETURN(std::unique_ptr<VerifiedHloModule> module,
+    ABSL_ASSIGN_OR_RETURN(std::unique_ptr<VerifiedHloModule> module,
                      ParseAndReturnVerifiedModule(hlo_text, config));
     const int64_t num_params = module->entry_computation()->num_parameters();
 

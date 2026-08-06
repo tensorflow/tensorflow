@@ -28,7 +28,6 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
-#include "xla/tsl/platform/statusor.h"
 
 namespace xla::gpu {
 namespace {
@@ -72,8 +71,8 @@ TEST_F(ExecutionStreamAssignmentTest, AsyncFusion) {
           custom_call_target="target"
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kModuleStr));
 
   ExecutionStreamAssignment assignment(
       module.get(),
@@ -112,8 +111,8 @@ TEST_F(ExecutionStreamAssignmentTest, CopyStartStreamIdTest) {
     ROOT copy-done = f32[2,3]{1,0:S(2)} copy-done(copy-start)
   }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_copy_start_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_copy_start_string));
 
   ExecutionStreamAssignment assignment(module.get());
 
@@ -145,8 +144,8 @@ TEST_F(ExecutionStreamAssignmentTest, FusionComputations) {
       ROOT done = f32[] fusion(p0), kind=kLoop, calls=fusion
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kModuleStr));
 
   ExecutionStreamAssignment assignment(module.get());
 
@@ -174,8 +173,8 @@ TEST_F(ExecutionStreamAssignmentTest, UnreachableComputation) {
       ROOT add = f32[2,2] add(p0, p0)
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kModuleStr));
 
   ExecutionStreamAssignment assignment(module.get());
 
@@ -213,8 +212,8 @@ TEST_F(ExecutionStreamAssignmentTest, ExplicitStreams) {
     ROOT %call-done-2 = f32[2048,2048]{1,0} call-done(((f32[2048,2048]{1,0}, f32[2048,2048]{1,0}), f32[2048,2048]{1,0}) %call-start.2)
 }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kModuleStr));
 
   ExecutionStreamAssignment assignment(
       module.get(),
@@ -258,8 +257,8 @@ TEST_F(ExecutionStreamAssignmentTest, AsyncCollectiveTest) {
       ROOT _ = (f32[], f32[1], f32[2]) tuple(ar-done, rs-done, add.0)
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
 
   // With 4 compute streams and 2 collective streams, ar-start and rs-start
   // get CommunicationStreamId(0) and CommunicationStreamId(1).
@@ -292,6 +291,38 @@ TEST_F(ExecutionStreamAssignmentTest, AsyncCollectiveTest) {
   EXPECT_THAT(
       assignment.GetExecutionStreamId(FindInstruction(module.get(), "ar-done")),
       absl_testing::StatusIs(absl::StatusCode::kNotFound));
+}
+
+TEST_F(ExecutionStreamAssignmentTest,
+       ExplicitCollectivesGroupUsesCommunicationStream) {
+  const char* const hlo_string = R"(
+  HloModule m
+
+  comms {
+    p0 = f32[1] parameter(0)
+    ag = f32[1] all-gather(p0), dimensions={0}
+    cp = f32[1] collective-permute(p0), source_target_pairs={{0,1}}
+    ROOT result = (f32[1], f32[1]) tuple(ag, cp)
+  }
+
+  ENTRY main {
+    p0 = f32[1] parameter(0)
+    group-start = ((f32[1]), (f32[1], f32[1])) async-start(p0),
+      calls=comms, frontend_attributes={_collectives_group=""}
+    ROOT group-done = (f32[1], f32[1]) async-done(group-start)
+  }
+  )";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
+
+  ExecutionStreamAssignment assignment(module.get());
+  EXPECT_THAT(
+      assignment.GetExecutionStreamId(
+          FindInstruction(module.get(), "group-start")),
+      absl_testing::IsOkAndHolds(ExecutionStreamId(CommunicationStreamId(0))));
+  EXPECT_THAT(assignment.GetExecutionStreamId(
+                  FindInstruction(module.get(), "group-done")),
+              absl_testing::StatusIs(absl::StatusCode::kNotFound));
 }
 
 TEST_F(ExecutionStreamAssignmentTest, PipelinedSendRecv) {
@@ -349,8 +380,8 @@ TEST_F(ExecutionStreamAssignmentTest, PipelinedSendRecv) {
       ROOT data_ = get-tuple-element(recv_done), index=0
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kModuleStr));
 
   ExecutionStreamAssignment assignment(
       module.get(), ExecutionStreamAssignment::Options{4, 4});

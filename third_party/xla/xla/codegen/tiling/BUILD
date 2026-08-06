@@ -93,6 +93,7 @@ xla_cc_test(
         ":tiled_hlo_computation",
         ":tiled_hlo_schedule",
         ":tiling_specification",
+        "//xla:xla_proto_cc",
         "//xla/hlo/analysis:symbolic_map",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
@@ -331,6 +332,7 @@ xla_cc_test(
     deps = [
         ":symbolic_tile_analysis",
         ":tiling_specification",
+        "//xla:xla_proto_cc",
         "//xla/hlo/analysis:symbolic_map",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
@@ -431,5 +433,31 @@ xla_cc_test(
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest_main",
         "@llvm-project//mlir:IR",
+    ],
+)
+
+cc_library(
+    name = "tiling_util",
+    srcs = ["tiling_util.cc"],
+    hdrs = ["tiling_util.h"],
+    deps = [
+        "//xla:shape_util",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/utils:hlo_traversal",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+xla_cc_test(
+    name = "tiling_util_test",
+    srcs = ["tiling_util_test.cc"],
+    deps = [
+        ":tiling_util",
+        "//xla:shape_util",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
+        "//xla/hlo/utils:hlo_traversal",
+        "@com_google_googletest//:gtest_main",
     ],
 )

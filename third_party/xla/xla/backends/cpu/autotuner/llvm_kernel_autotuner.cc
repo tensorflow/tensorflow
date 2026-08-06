@@ -44,14 +44,14 @@ namespace xla::cpu {
 absl::StatusOr<bool> LlvmKernelAutotuner::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
-  ASSIGN_OR_RETURN(auto compiler, CpuCodegenBackend::CreateBackendCompiler());
-  ASSIGN_OR_RETURN(auto backend, LlvmKernelBackend::Create(compiler.get()));
+  ABSL_ASSIGN_OR_RETURN(auto compiler, CpuCodegenBackend::CreateBackendCompiler());
+  ABSL_ASSIGN_OR_RETURN(auto backend, LlvmKernelBackend::Create(compiler.get()));
   std::unique_ptr<Profiler> profiler = CpuProfiler::Create(ProfileOptions());
 
   std::vector<std::unique_ptr<CodegenBackend>> codegen_backends;
   codegen_backends.push_back(std::move(backend));
 
-  ASSIGN_OR_RETURN(auto orchestrator,
+  ABSL_ASSIGN_OR_RETURN(auto orchestrator,
                    CodegenOrchestrator::Create(std::move(codegen_backends),
                                                CodegenOrchestrator::Options(),
                                                /*thread_pool=*/nullptr));
@@ -63,7 +63,7 @@ absl::StatusOr<bool> LlvmKernelAutotuner::RunImpl(
 
   auto cache = std::make_unique<NoOpAutotunerCache>();
 
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       auto config_assigner,
       ConfigAssigner::Create(assigner_options, std::move(cache),
                              std::move(orchestrator), std::move(profiler)));

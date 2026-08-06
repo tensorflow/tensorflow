@@ -162,7 +162,7 @@ static absl::StatusOr<const se::CommandBuffer::Command*> RecordNoOpCollective(
   stream_executor::DeviceAddressBase dst =
       execute_params.buffer_allocations->GetDeviceAddress(
           thunk.buffers()[0].destination_buffer.slice);
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       std::unique_ptr<se::CommandBuffer> nested_cmd,
       se::TraceCommandBufferFactory::Create(
           execute_params.stream->parent(),
@@ -174,7 +174,7 @@ static absl::StatusOr<const se::CommandBuffer::Command*> RecordNoOpCollective(
                                               create->dependencies);
   }
   if (auto* update = std::get_if<Command::RecordUpdate>(&record_action)) {
-    RETURN_IF_ERROR(
+    ABSL_RETURN_IF_ERROR(
         command_buffer->UpdateChildCommand(update->command, *nested_cmd));
     return update->command;
   }
@@ -206,6 +206,8 @@ class NoOpReduceScatterThunk : public ReduceScatterThunk {
                          std::vector<CollectiveThunk::Buffer> buffers)
       : ReduceScatterThunk(std::move(thunk_info), std::move(config),
                            std::move(buffers)) {}
+
+  using ReduceScatterThunk::CanUseSymmetricBuffer;
 
   absl::Status ExecuteOnStream(const ExecuteParams& params) override {
     return absl::OkStatus();
@@ -337,6 +339,15 @@ static NoOpReduceScatterThunk MakeNoOpReduceScatterThunk(
     int64_t length) {
   return NoOpReduceScatterThunk(Thunk::ThunkInfo(), MakeSumConfig(),
                                 {MakeNoOpBuffer(alloc_src, alloc_dst, length)});
+}
+
+TEST(ReduceScatterThunkTest, SupportsSymmetricBuffers) {
+  BufferAllocation alloc_src(/*index=*/0, /*size=*/16, /*color=*/0);
+  BufferAllocation alloc_dst(/*index=*/1, /*size=*/16, /*color=*/0);
+  NoOpReduceScatterThunk thunk =
+      MakeNoOpReduceScatterThunk(alloc_src, alloc_dst, /*length=*/4);
+
+  EXPECT_TRUE(thunk.CanUseSymmetricBuffer());
 }
 
 // Records AllReduceThunk into a primary command buffer (create phase) and

@@ -31,11 +31,13 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
 #include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/replica_group.h"
 #include "xla/runtime/device_id.h"
 #include "xla/service/collective_ops_utils.h"
@@ -269,7 +271,7 @@ absl::StatusOr<GPUCommunicationType> CommunicationType(
   }
 
   if (const auto* collective = DynCast<HloCollectiveInstruction>(&instr)) {
-    ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         CollectiveMetadata comm,
         CommunicationContext(*collective, num_devices_per_partition));
     if (IsSingleHost(comm)) {
@@ -370,6 +372,27 @@ bool IsTritonCollectiveKernel(
              CollectiveBackendConfig::KERNEL_STRATEGY_TRITON_ONE_SHOT ||
          kernel_strategy ==
              CollectiveBackendConfig::KERNEL_STRATEGY_TRITON_TWO_SHOT;
+}
+
+absl::StatusOr<absl::flat_hash_set<HloOpcode>> OpcodesForTritonCollectives(
+    const DebugOptions& debug_options) {
+  absl::flat_hash_set<HloOpcode> instructions_to_annotate;
+  for (auto collective :
+       debug_options.xla_gpu_experimental_use_collective_kernels()) {
+    switch (collective) {
+      case xla::DebugOptions::COLLECTIVE_KERNEL_ALL_REDUCE:
+        instructions_to_annotate.insert(HloOpcode::kAllReduce);
+        break;
+      case xla::DebugOptions::COLLECTIVE_KERNEL_ALL_GATHER:
+        instructions_to_annotate.insert(HloOpcode::kAllGather);
+        break;
+      default:
+        return absl::InvalidArgumentError(absl::StrFormat(
+            "Unsupported collective: %s",
+            xla::DebugOptions::CollectiveKernelType_Name(collective)));
+    }
+  }
+  return instructions_to_annotate;
 }
 
 }  // namespace gpu

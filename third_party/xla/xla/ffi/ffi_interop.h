@@ -36,6 +36,9 @@ absl::Status TakeStatus(XLA_FFI_Error* error);
 // async value.
 tsl::AsyncValueRef<tsl::Chain> TakeFuture(XLA_FFI_Future* future);
 
+// Creates an XLA FFI error from an Absl status.
+XLA_FFI_Error* CreateError(absl::Status status);
+
 }  // namespace xla::ffi
 
 #endif  // XLA_FFI_FFI_INTEROP_H_

@@ -188,37 +188,37 @@ static absl::StatusOr<Offset::Expr> BuildOffsetExpr(
   }
 
   if (auto* constant = DynCast<HloConstantInstruction>(instr)) {
-    ASSIGN_OR_RETURN(int64_t value, GetScalarIntegerLiteral(constant));
+    ABSL_ASSIGN_OR_RETURN(int64_t value, GetScalarIntegerLiteral(constant));
     return Offset::Constant(value);
   }
 
   switch (instr->opcode()) {
     case HloOpcode::kAdd: {
-      ASSIGN_OR_RETURN(auto lhs, BuildOffsetExpr(instr->operand(0)));
-      ASSIGN_OR_RETURN(auto rhs, BuildOffsetExpr(instr->operand(1)));
+      ABSL_ASSIGN_OR_RETURN(auto lhs, BuildOffsetExpr(instr->operand(0)));
+      ABSL_ASSIGN_OR_RETURN(auto rhs, BuildOffsetExpr(instr->operand(1)));
       return Offset::Add(std::move(lhs), std::move(rhs));
     }
     case HloOpcode::kSubtract: {
-      ASSIGN_OR_RETURN(auto lhs, BuildOffsetExpr(instr->operand(0)));
-      ASSIGN_OR_RETURN(auto rhs, BuildOffsetExpr(instr->operand(1)));
+      ABSL_ASSIGN_OR_RETURN(auto lhs, BuildOffsetExpr(instr->operand(0)));
+      ABSL_ASSIGN_OR_RETURN(auto rhs, BuildOffsetExpr(instr->operand(1)));
       return Offset::Subtract(std::move(lhs), std::move(rhs));
     }
     case HloOpcode::kMultiply: {
-      ASSIGN_OR_RETURN(auto lhs, BuildOffsetExpr(instr->operand(0)));
-      ASSIGN_OR_RETURN(auto rhs, BuildOffsetExpr(instr->operand(1)));
+      ABSL_ASSIGN_OR_RETURN(auto lhs, BuildOffsetExpr(instr->operand(0)));
+      ABSL_ASSIGN_OR_RETURN(auto rhs, BuildOffsetExpr(instr->operand(1)));
       return Offset::Multiply(std::move(lhs), std::move(rhs));
     }
     case HloOpcode::kCompare: {
       auto* compare = Cast<HloCompareInstruction>(instr);
-      ASSIGN_OR_RETURN(auto lhs, BuildOffsetExpr(compare->operand(0)));
-      ASSIGN_OR_RETURN(auto rhs, BuildOffsetExpr(compare->operand(1)));
+      ABSL_ASSIGN_OR_RETURN(auto lhs, BuildOffsetExpr(compare->operand(0)));
+      ABSL_ASSIGN_OR_RETURN(auto rhs, BuildOffsetExpr(compare->operand(1)));
       return Offset::Compare(compare->direction(), std::move(lhs),
                              std::move(rhs));
     }
     case HloOpcode::kSelect: {
-      ASSIGN_OR_RETURN(auto pred, BuildOffsetExpr(instr->operand(0)));
-      ASSIGN_OR_RETURN(auto on_true, BuildOffsetExpr(instr->operand(1)));
-      ASSIGN_OR_RETURN(auto on_false, BuildOffsetExpr(instr->operand(2)));
+      ABSL_ASSIGN_OR_RETURN(auto pred, BuildOffsetExpr(instr->operand(0)));
+      ABSL_ASSIGN_OR_RETURN(auto on_true, BuildOffsetExpr(instr->operand(1)));
+      ABSL_ASSIGN_OR_RETURN(auto on_false, BuildOffsetExpr(instr->operand(2)));
       return Offset::Select(std::move(pred), std::move(on_true),
                             std::move(on_false));
     }
@@ -304,28 +304,28 @@ absl::StatusOr<int64_t> DynamicSliceFusion::Evaluate(
         } else if constexpr (std::is_same_v<T, Offset::Expr::Parameter>) {
           return GetParameterValue(e.parameter_number, parameters);
         } else if constexpr (std::is_same_v<T, Offset::Expr::Add>) {
-          RETURN_IF_ERROR(VerifyArgCount(expr, e.args, 2));
-          ASSIGN_OR_RETURN(int64_t lhs, Evaluate(e.args[0], parameters));
-          ASSIGN_OR_RETURN(int64_t rhs, Evaluate(e.args[1], parameters));
+          ABSL_RETURN_IF_ERROR(VerifyArgCount(expr, e.args, 2));
+          ABSL_ASSIGN_OR_RETURN(int64_t lhs, Evaluate(e.args[0], parameters));
+          ABSL_ASSIGN_OR_RETURN(int64_t rhs, Evaluate(e.args[1], parameters));
           return lhs + rhs;
         } else if constexpr (std::is_same_v<T, Offset::Expr::Subtract>) {
-          RETURN_IF_ERROR(VerifyArgCount(expr, e.args, 2));
-          ASSIGN_OR_RETURN(int64_t lhs, Evaluate(e.args[0], parameters));
-          ASSIGN_OR_RETURN(int64_t rhs, Evaluate(e.args[1], parameters));
+          ABSL_RETURN_IF_ERROR(VerifyArgCount(expr, e.args, 2));
+          ABSL_ASSIGN_OR_RETURN(int64_t lhs, Evaluate(e.args[0], parameters));
+          ABSL_ASSIGN_OR_RETURN(int64_t rhs, Evaluate(e.args[1], parameters));
           return lhs - rhs;
         } else if constexpr (std::is_same_v<T, Offset::Expr::Multiply>) {
-          RETURN_IF_ERROR(VerifyArgCount(expr, e.args, 2));
-          ASSIGN_OR_RETURN(int64_t lhs, Evaluate(e.args[0], parameters));
-          ASSIGN_OR_RETURN(int64_t rhs, Evaluate(e.args[1], parameters));
+          ABSL_RETURN_IF_ERROR(VerifyArgCount(expr, e.args, 2));
+          ABSL_ASSIGN_OR_RETURN(int64_t lhs, Evaluate(e.args[0], parameters));
+          ABSL_ASSIGN_OR_RETURN(int64_t rhs, Evaluate(e.args[1], parameters));
           return lhs * rhs;
         } else if constexpr (std::is_same_v<T, Offset::Expr::Compare>) {
-          RETURN_IF_ERROR(VerifyArgCount(expr, e.args, 2));
-          ASSIGN_OR_RETURN(int64_t lhs, Evaluate(e.args[0], parameters));
-          ASSIGN_OR_RETURN(int64_t rhs, Evaluate(e.args[1], parameters));
+          ABSL_RETURN_IF_ERROR(VerifyArgCount(expr, e.args, 2));
+          ABSL_ASSIGN_OR_RETURN(int64_t lhs, Evaluate(e.args[0], parameters));
+          ABSL_ASSIGN_OR_RETURN(int64_t rhs, Evaluate(e.args[1], parameters));
           return evaluate_compare(e.direction, lhs, rhs);
         } else if constexpr (std::is_same_v<T, Offset::Expr::Select>) {
-          RETURN_IF_ERROR(VerifyArgCount(expr, e.args, 3));
-          ASSIGN_OR_RETURN(int64_t pred, Evaluate(e.args[0], parameters));
+          ABSL_RETURN_IF_ERROR(VerifyArgCount(expr, e.args, 3));
+          ABSL_ASSIGN_OR_RETURN(int64_t pred, Evaluate(e.args[0], parameters));
           return Evaluate(e.args[pred != 0 ? 1 : 2], parameters);
         } else {
           return Internal("Unsupported offset expression kind");
@@ -418,7 +418,7 @@ static absl::StatusOr<std::vector<Offset>> ResolveOffsets(
   offsets.reserve(instr->operand_count() - first_offset_index);
   for (int64_t i = first_offset_index; i < instr->operand_count(); ++i) {
     int64_t dim = i - first_offset_index;
-    ASSIGN_OR_RETURN(Offset::Expr expr, BuildOffsetExpr(instr->operand(i)));
+    ABSL_ASSIGN_OR_RETURN(Offset::Expr expr, BuildOffsetExpr(instr->operand(i)));
     offsets.push_back(Offset{dim, std::move(expr)});
   }
   return offsets;
@@ -452,7 +452,7 @@ ResolveOneResultChain(const HloInstruction* start, const Shape& hero_shape,
         target->ToString());
   }
 
-  ASSIGN_OR_RETURN(auto offsets, ResolveOffsets(dus, 2));
+  ABSL_ASSIGN_OR_RETURN(auto offsets, ResolveOffsets(dus, 2));
 
   return DynamicSliceFusion::Result{
       std::optional<int64_t>(target_param->parameter_number()),
@@ -499,7 +499,7 @@ DynamicSliceFusion::ResolveParameter(const HloInstruction* operand) {
 
   if (auto* ds = DynCast<HloDynamicSliceInstruction>(walk)) {
     config = ExtractDynamicSliceConfig(ds);
-    ASSIGN_OR_RETURN(offsets, ResolveOffsets(ds, 1));
+    ABSL_ASSIGN_OR_RETURN(offsets, ResolveOffsets(ds, 1));
     slice_shape = ds->shape();
     source = ds->operand(0);
   } else if (auto* slice = DynCast<HloSliceInstruction>(walk)) {
@@ -532,7 +532,7 @@ DynamicSliceFusion::ResolveParameters(const HloInstruction* hero) {
   result.reserve(hero->operand_count());
 
   for (const HloInstruction* operand : hero->operands()) {
-    ASSIGN_OR_RETURN(DynamicSliceFusion::Parameter parameter,
+    ABSL_ASSIGN_OR_RETURN(DynamicSliceFusion::Parameter parameter,
                      ResolveParameter(operand));
     result.push_back(std::move(parameter));
   }
@@ -560,7 +560,7 @@ DynamicSliceFusion::ResolveResults(const HloInstruction* hero) {
       }
 
       for (const HloInstruction* user : leaf_gte->users()) {
-        ASSIGN_OR_RETURN(auto rs,
+        ABSL_ASSIGN_OR_RETURN(auto rs,
                          ResolveOneResultChain(user, leaves[i].shape, i));
         if (rs.has_value()) {
           results[i] = *std::move(rs);
@@ -572,7 +572,7 @@ DynamicSliceFusion::ResolveResults(const HloInstruction* hero) {
 
   // Non-tuple hero: single result.
   for (const HloInstruction* user : hero->users()) {
-    ASSIGN_OR_RETURN(auto rs, ResolveOneResultChain(user, hero->shape(), 0));
+    ABSL_ASSIGN_OR_RETURN(auto rs, ResolveOneResultChain(user, hero->shape(), 0));
     if (rs.has_value()) {
       return std::vector{*std::move(rs)};
     }

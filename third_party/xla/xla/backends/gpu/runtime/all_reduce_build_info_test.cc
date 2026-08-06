@@ -89,7 +89,7 @@ class BuildAllReduceInfoTest : public HloHardwareIndependentTestBase {
         ->mutable_device_interconnect_info()
         ->set_active_links(18);
     target_config_proto.set_platform_name("CUDA");
-    ASSIGN_OR_RETURN(gpu::GpuTargetConfig target_config,
+    ABSL_ASSIGN_OR_RETURN(gpu::GpuTargetConfig target_config,
                      gpu::GpuTargetConfig::FromProto(target_config_proto));
     GpuTopology gpu_topology("platform_version", /*num_partitions=*/1,
                              /*num_hosts_per_partition=*/1,
@@ -108,7 +108,7 @@ class BuildAllReduceInfoTest : public HloHardwareIndependentTestBase {
 
     SCOPED_TRACE(testing::Message() << "module_str: " << module_str);
 
-    ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
+    ABSL_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
                      ParseAndReturnVerifiedModule(
                          module_str, num_replicas == 0 ? 1 : num_replicas));
     const HloInstruction* hlo_instr =

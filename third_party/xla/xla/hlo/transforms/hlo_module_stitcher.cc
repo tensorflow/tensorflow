@@ -81,7 +81,7 @@ absl::StatusOr<bool> HloModuleStitcher::RunImpl(
           return absl::InternalError("sub_module is null");
         }
         // Resolve all nested custom calls in the submodule first recursively.
-        RETURN_IF_ERROR(Run(sub_module).status());
+        ABSL_RETURN_IF_ERROR(Run(sub_module).status());
         HloComputation* sub_entry = sub_module->entry_computation();
 
         if (inst->operand_count() != sub_entry->num_parameters()) {
@@ -134,8 +134,8 @@ absl::StatusOr<bool> HloModuleStitcher::RunImpl(
               inst->shape(), HloOpcode::kCopy, call));
         }
 
-        RETURN_IF_ERROR(inst->ReplaceAllUsesWith(replacement));
-        RETURN_IF_ERROR(comp->RemoveInstruction(inst));
+        ABSL_RETURN_IF_ERROR(inst->ReplaceAllUsesWith(replacement));
+        ABSL_RETURN_IF_ERROR(comp->RemoveInstruction(inst));
         changed = true;
       }
     }

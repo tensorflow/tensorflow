@@ -16,11 +16,8 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_TARGET_UTIL_H_
 #define XLA_SERVICE_GPU_TARGET_UTIL_H_
 
-#include <optional>
 #include <string>
 
-#include "absl/status/statusor.h"
-#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "llvm/IR/Attributes.h"
 #include "llvm/IR/IRBuilder.h"
@@ -29,7 +26,6 @@ limitations under the License.
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Value.h"
 #include "llvm/TargetParser/Triple.h"
-#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -53,6 +49,7 @@ enum class TargetIntrinsicID {
 // Enumeration to get target specific device math function.
 enum class TargetDeviceFunctionID {
   kAtan2 = 0,
+  kAtan,
   kCbrt,
   kCos,
   kExp,

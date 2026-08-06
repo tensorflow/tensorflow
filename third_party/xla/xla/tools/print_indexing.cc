@@ -44,7 +44,7 @@ print_indexing <file.hlo> [--operand_id=0] [--output_id=0])";
 namespace xla {
 
 absl::Status Run(const std::string& filename, int operand_id, int output_id) {
-  ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
+  ABSL_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
                    LoadModuleFromFile(filename));
   auto root = module->entry_computation()->root_instruction();
   bool print_all = operand_id < 0;

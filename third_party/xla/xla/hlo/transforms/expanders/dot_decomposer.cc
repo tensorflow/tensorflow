@@ -274,7 +274,7 @@ absl::StatusOr<bool> DotDecomposer::RunImpl(
   }
   bool changed = false;
   for (auto* dot : non_canonical_dots) {
-    RETURN_IF_ERROR(CanonicalizeDot(Cast<HloDotInstruction>(dot)));
+    ABSL_RETURN_IF_ERROR(CanonicalizeDot(Cast<HloDotInstruction>(dot)));
     changed = true;
   }
   return changed;

@@ -105,7 +105,7 @@ absl::StatusOr<HloInstruction*> ConvertOperandFolding::ExpandInstruction(
   for (int i = 0; i < instruction->operand_count(); ++i) {
     auto* operand = instruction->mutable_operand(i);
     if (IsUpcastConvert(operand)) {
-      RETURN_IF_ERROR(instruction->ReplaceOperandWithDifferentShape(
+      ABSL_RETURN_IF_ERROR(instruction->ReplaceOperandWithDifferentShape(
           i, EffectiveOperand(operand)));
     }
   }

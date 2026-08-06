@@ -135,7 +135,7 @@ class NoOpCollectivePermuteThunk : public CollectivePermuteThunk {
     se::DeviceAddressBase dst =
         execute_params.buffer_allocations->GetDeviceAddress(
             buffers()[0].destination_buffer.slice);
-    ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         std::unique_ptr<se::CommandBuffer> nested_cmd,
         se::TraceCommandBufferFactory::Create(
             execute_params.stream->parent(),
@@ -147,7 +147,7 @@ class NoOpCollectivePermuteThunk : public CollectivePermuteThunk {
                                                 create->dependencies);
     }
     if (auto* update = std::get_if<RecordUpdate>(&record_action)) {
-      RETURN_IF_ERROR(
+      ABSL_RETURN_IF_ERROR(
           command_buffer->UpdateChildCommand(update->command, *nested_cmd));
       return update->command;
     }

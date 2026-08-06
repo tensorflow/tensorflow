@@ -65,9 +65,9 @@ absl::StatusOr<ThunkProto> HostToDeviceCopyThunk::ToProto() const {
   HostToDeviceCopyThunkProto* h2d_copy_thunk_proto =
       proto.mutable_host_to_device_copy_thunk();
   CopyThunkProto* copy_thunk_proto = h2d_copy_thunk_proto->mutable_copy_thunk();
-  ASSIGN_OR_RETURN(*copy_thunk_proto->mutable_source_buffer(),
+  ABSL_ASSIGN_OR_RETURN(*copy_thunk_proto->mutable_source_buffer(),
                    source().ToProto());
-  ASSIGN_OR_RETURN(*copy_thunk_proto->mutable_destination_buffer(),
+  ABSL_ASSIGN_OR_RETURN(*copy_thunk_proto->mutable_destination_buffer(),
                    destination().ToProto());
   copy_thunk_proto->set_mem_size(size_bytes());
   return proto;
@@ -77,11 +77,11 @@ absl::StatusOr<std::unique_ptr<HostToDeviceCopyThunk>>
 HostToDeviceCopyThunk::FromProto(
     ThunkInfo thunk_info, const HostToDeviceCopyThunkProto& thunk_proto,
     absl::Span<const BufferAllocation> buffer_allocations) {
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       ShapedSlice src_slice,
       ShapedSlice::FromProto(thunk_proto.copy_thunk().source_buffer(),
                              buffer_allocations));
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       ShapedSlice dst_slice,
       ShapedSlice::FromProto(thunk_proto.copy_thunk().destination_buffer(),
                              buffer_allocations));

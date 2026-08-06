@@ -49,7 +49,7 @@ std::unique_ptr<mlir::MLIRContext> CreateMlirContext() {
 absl::StatusOr<std::unique_ptr<xla::ifrt::HloProgram>> ParseHloProgramString(
     absl::string_view str) {
   auto context = CreateMlirContext();
-  ASSIGN_OR_RETURN(auto module, xla::ParseMlirModuleString(str, *context));
+  ABSL_ASSIGN_OR_RETURN(auto module, xla::ParseMlirModuleString(str, *context));
   return std::make_unique<xla::ifrt::HloProgram>(std::move(context),
                                                  std::move(module));
 }

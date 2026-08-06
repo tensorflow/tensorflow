@@ -97,12 +97,12 @@ absl::StatusOr<se::CommandBuffer*> TracedCommandBuffer::GetOrTraceCommandBuffer(
     // Create a new entry by calling a user-provided tracing function, move it
     // to front and return a pointer to cached command buffer.
     if (entries_[i].command_buffer == nullptr) {
-      ASSIGN_OR_RETURN(
+      ABSL_ASSIGN_OR_RETURN(
           entries_[i].command_buffer,
           se::TraceCommandBufferFactory::Create(executor, stream, trace));
       entries_[i].recorded_allocs.assign(allocs.begin(), allocs.end());
       if (priority != se::StreamPriority::Default) {
-        RETURN_IF_ERROR(entries_[i].command_buffer->SetPriority(priority));
+        ABSL_RETURN_IF_ERROR(entries_[i].command_buffer->SetPriority(priority));
       }
       VLOG(6) << "Command buffer trace cache create new item for command "
               << trace_cmd_->ToString(0)
@@ -117,7 +117,7 @@ absl::StatusOr<se::CommandBuffer*> TracedCommandBuffer::GetOrTraceCommandBuffer(
   VLOG(6) << "Command buffer trace cache evicting old command buffer "
           << entries_[capacity_ - 1].command_buffer.get()
           << " to make room for command " << trace_cmd_->ToString(0);
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       entries_[capacity_ - 1].command_buffer,
       se::TraceCommandBufferFactory::Create(executor, stream, trace));
   entries_[capacity_ - 1].recorded_allocs.assign(allocs.begin(), allocs.end());

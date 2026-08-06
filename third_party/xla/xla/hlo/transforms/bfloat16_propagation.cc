@@ -460,6 +460,12 @@ bool BFloat16Propagation::AllUsersConsumeBF16(const HloInstruction& hlo,
         // async-done consumes whatever async-start gives it.
         continue;
       }
+      if (use.instruction->opcode() == HloOpcode::kBitcast &&
+          use.instruction->operand(use.operand_number)
+                  ->shape()
+                  .element_type() == BF16) {
+        continue;
+      }
       if (bfloat16_support_->EffectiveOperandPrecisionIsLowPrecision(
               *use.instruction, use.operand_number)) {
         continue;
@@ -523,6 +529,10 @@ bool BFloat16Propagation::ShouldKeepPrecisionUnchanged(
         << "Non-associative kScan reached BFloat16Propagation; ScanExpander "
            "must run upstream. "
         << inst->ToString();
+  }
+  if (inst->opcode() == HloOpcode::kBitcast &&
+      UnmutatedElementType(inst) != UnmutatedElementType(inst->operand(0))) {
+    return true;
   }
   return (inst->opcode() == HloOpcode::kCustomCall &&
           !inst->IsCustomCall("AllocateBuffer")) ||
@@ -616,7 +626,9 @@ void BFloat16Propagation::DetermineInstructionPrecision(HloInstruction* hlo,
           // Since we use HloValues from the dataflow analysis, this can also
           // affect HLO instructions beyond the root, e.g., if the root is a
           // Tuple HLO, then its operands are also affected.
-          values_that_must_be_kept_as_f32_.insert(value);
+          if (value->shape().element_type() == F32) {
+            values_that_must_be_kept_as_f32_.insert(value);
+          }
         }
       });
     }
@@ -756,6 +768,9 @@ void BFloat16Propagation::AdjustCalledComputationRoot(HloInstruction* hlo) {
       if (OutputTypeAfterChange(root, index) == output_type) {
         return;
       }
+      if (output_type == BF16 && ShouldKeepPrecisionUnchanged(root)) {
+        return;
+      }
       AddToOrRemoveFromBF16ChangeSet(root, index, output_type);
       // It's possible that output_type is F32, but the root instruction's
       // type is BF16; e.g., a fusion node's output was changed to BF16
@@ -769,7 +784,9 @@ void BFloat16Propagation::AdjustCalledComputationRoot(HloInstruction* hlo) {
           // values_that_must_be_kept_as_f32_ will ensure the
           // correctness of the adjustment for HLOs that will be
           // processed later.
-          values_that_must_be_kept_as_f32_.insert(value);
+          if (value->shape().element_type() == F32) {
+            values_that_must_be_kept_as_f32_.insert(value);
+          }
         }
       }
       VLOG(2) << "Called computation root " << root->ToString()
@@ -917,6 +934,9 @@ bool BFloat16Propagation::ResolveInconsistencyOfAliasingBuffersHelper(
       auto hlo = *inst_it;
       auto adjust_hlo_output = [&](const Shape& /* subshape */,
                                    const ShapeIndex& index) {
+        if (ShouldKeepPrecisionUnchanged(hlo)) {
+          return;
+        }
         const PrimitiveType output_type = OutputTypeAfterChange(hlo, index);
         VLOG(2) << "output_type is " << ((output_type == BF16) ? "BF16" : "F32")
                 << " for :" << hlo->ToString() << "\n";
@@ -931,7 +951,6 @@ bool BFloat16Propagation::ResolveInconsistencyOfAliasingBuffersHelper(
           }
           VLOG(2) << "Adjust to F32 due to aliased dataflow value: "
                   << value->ToString() << "\n";
-          CHECK_EQ(value_type, F32);
           type = F32;
           break;
         }
@@ -956,7 +975,6 @@ bool BFloat16Propagation::ResolveInconsistencyOfAliasingBuffersHelper(
               }
               VLOG(2) << "Adjust to F32 due to InputOutPair: "
                       << value->ToString() << "\n";
-              CHECK_EQ(value_type, F32);
               type = F32;
               break;
             }
@@ -977,7 +995,9 @@ bool BFloat16Propagation::ResolveInconsistencyOfAliasingBuffersHelper(
             // topological order. Adding the value to
             // values_that_must_be_kept_as_f32_ will ensure the correctness
             // of the adjustment for HLOs that will be processed later.
-            values_that_must_be_kept_as_f32_.insert(value);
+            if (value->shape().element_type() == F32) {
+              values_that_must_be_kept_as_f32_.insert(value);
+            }
           }
         }
         if (type != output_type) {
@@ -1124,7 +1144,7 @@ absl::Status BFloat16Propagation::ResolveInconsistentFusions(
       ShapeTree<HloInstruction*> converted_outputs(hlo->shape());
       // Deep copy the fusion root, and convert a leaf node only if its shape
       // does not match the fusion output.
-      ASSIGN_OR_RETURN(
+      ABSL_ASSIGN_OR_RETURN(
           HloInstruction * copy,
           fusion_computation->DeepCopyInstructionWithCustomCopier(
               fusion_root,
@@ -1163,12 +1183,12 @@ absl::Status BFloat16Propagation::ResolveConvertedConstants(HloModule* module) {
       }
       if (!Shape::Equal().MinorToMajorOnlyInLayout()(hlo->literal().shape(),
                                                      hlo->shape())) {
-        ASSIGN_OR_RETURN(auto converted_literal,
+        ABSL_ASSIGN_OR_RETURN(auto converted_literal,
                          hlo->literal().ConvertToShape(hlo->shape()));
         auto new_constant = computation->AddInstruction(
             HloInstruction::CreateConstant(std::move(converted_literal)));
         UpdateLayout(new_constant->mutable_shape());
-        RETURN_IF_ERROR(hlo->ReplaceAllUsesWith(new_constant));
+        ABSL_RETURN_IF_ERROR(hlo->ReplaceAllUsesWith(new_constant));
       }
     }
   }
@@ -1186,7 +1206,7 @@ absl::Status BFloat16Propagation::SkipNoopConversions(HloModule* module) {
         continue;
       }
       const bool is_root = hlo == computation->root_instruction();
-      RETURN_IF_ERROR(hlo->ReplaceAllUsesWith(source));
+      ABSL_RETURN_IF_ERROR(hlo->ReplaceAllUsesWith(source));
       if (is_root) {
         computation->set_root_instruction(source);
       }
@@ -1229,7 +1249,7 @@ absl::StatusOr<bool> BFloat16Propagation::RunImpl(
       }
 
       auto operand = inst->mutable_operand(0);
-      ASSIGN_OR_RETURN(
+      ABSL_ASSIGN_OR_RETURN(
           HloInstruction * copy,
           computation->DeepCopyInstructionWithCustomCopier(
               operand, [](HloInstruction* leaf, const ShapeIndex& leaf_index,
@@ -1240,11 +1260,11 @@ absl::StatusOr<bool> BFloat16Propagation::RunImpl(
                 return comp->AddInstruction(
                     HloInstruction::CreateConvert(leaf->shape(), leaf));
               }));
-      RETURN_IF_ERROR(operand->ReplaceUseWith(inst, copy));
+      ABSL_RETURN_IF_ERROR(operand->ReplaceUseWith(inst, copy));
     }
   }
 
-  ASSIGN_OR_RETURN(dataflow_, HloDataflowAnalysis::Run(*module));
+  ABSL_ASSIGN_OR_RETURN(dataflow_, HloDataflowAnalysis::Run(*module));
 
   // The first step is a forward pass (parameters to root), where we determine
   // the potential candidate instructions to use bfloat16 in the outputs that
@@ -1294,7 +1314,7 @@ absl::StatusOr<bool> BFloat16Propagation::RunImpl(
     if (ShouldKeepPrecisionUnchanged(inst)) {
       auto users = inst->users();
       bool is_root = inst == inst->parent()->root_instruction();
-      ASSIGN_OR_RETURN(
+      ABSL_ASSIGN_OR_RETURN(
           HloInstruction * copy,
           inst->parent()->DeepCopyInstructionWithCustomCopier(
               inst, [&](HloInstruction* leaf, const ShapeIndex& leaf_index,
@@ -1311,7 +1331,7 @@ absl::StatusOr<bool> BFloat16Propagation::RunImpl(
                     HloInstruction::CreateConvert(converted_shape, leaf));
               }));
       for (auto user : users) {
-        RETURN_IF_ERROR(inst->ReplaceUseWithDifferentShape(user, copy));
+        ABSL_RETURN_IF_ERROR(inst->ReplaceUseWithDifferentShape(user, copy));
       }
       if (is_root) {
         inst->parent()->set_root_instruction(copy,
@@ -1332,24 +1352,24 @@ absl::StatusOr<bool> BFloat16Propagation::RunImpl(
   // de-aliasing copies to while loop inputs, or later when converting output
   // types.
   auto clean_up = [this, module]() -> absl::Status {
-    RETURN_IF_ERROR(SkipNoopConversions(module));
+    ABSL_RETURN_IF_ERROR(SkipNoopConversions(module));
     TupleSimplifier tuple_simplifier;
-    RETURN_IF_ERROR(tuple_simplifier.Run(module, execution_threads_).status());
+    ABSL_RETURN_IF_ERROR(tuple_simplifier.Run(module, execution_threads_).status());
     HloDCE dce;
-    RETURN_IF_ERROR(dce.Run(module, execution_threads_).status());
+    ABSL_RETURN_IF_ERROR(dce.Run(module, execution_threads_).status());
     return absl::OkStatus();
   };
 
   if (!changed_) {
-    RETURN_IF_ERROR(clean_up());
+    ABSL_RETURN_IF_ERROR(clean_up());
     return false;
   }
 
-  RETURN_IF_ERROR(ResolveInconsistentFusions(module));
-  RETURN_IF_ERROR(ResolveInconsistentScans(module));
-  RETURN_IF_ERROR(ResolveConvertedConstants(module));
+  ABSL_RETURN_IF_ERROR(ResolveInconsistentFusions(module));
+  ABSL_RETURN_IF_ERROR(ResolveInconsistentScans(module));
+  ABSL_RETURN_IF_ERROR(ResolveConvertedConstants(module));
 
-  RETURN_IF_ERROR(clean_up());
+  ABSL_RETURN_IF_ERROR(clean_up());
   return true;
 }
 
@@ -1391,7 +1411,7 @@ absl::Status BFloat16Propagation::ResolveInconsistentScans(HloModule* module) {
       // tree and swap it in as the new root. Body root tuple slot i maps to
       // scan output tuple slot i for both per-step outputs (i < num_outputs)
       // and carries (i >= num_outputs); carries simply pass through unchanged.
-      ASSIGN_OR_RETURN(
+      ABSL_ASSIGN_OR_RETURN(
           HloInstruction * new_root,
           body->DeepCopyInstructionWithCustomCopier(
               body_root, [this, &scan_shape](HloInstruction* leaf,

@@ -259,7 +259,7 @@ absl::StatusOr<std::string> CompileToSPIRV(
   const_cast<llvm::SPIRVSubtarget*>(sub_target->getSubtargetImpl())
       ->initAvailableExtensions(common_spirv_extensions);
 
-  RETURN_IF_ERROR(LinkAndOptimizeModule(
+  ABSL_RETURN_IF_ERROR(LinkAndOptimizeModule(
       module, gpu_version, debug_options, "", SPIRVTargetModuleLinker,
       default_target_triple, target_machine.get(), kDefaultInlineThreshold));
 

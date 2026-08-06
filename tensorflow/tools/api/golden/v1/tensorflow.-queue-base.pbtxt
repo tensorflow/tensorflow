@@ -53,6 +53,7 @@ tf_class {
   member_method {
     name: "from_list"
     argspec: "args=[\'index\', \'queues\'], varargs=None, keywords=None, defaults=None"
+    method_kind: STATIC
   }
   member_method {
     name: "is_closed"

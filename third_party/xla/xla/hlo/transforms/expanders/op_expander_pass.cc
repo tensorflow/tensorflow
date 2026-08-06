@@ -45,11 +45,11 @@ absl::StatusOr<bool> OpExpanderPass::RunImpl(
   }
 
   for (HloInstruction* inst : matching_instructions) {
-    ASSIGN_OR_RETURN(HloInstruction * expanded_root, ExpandInstruction(inst));
+    ABSL_ASSIGN_OR_RETURN(HloInstruction * expanded_root, ExpandInstruction(inst));
     if (expanded_root == nullptr) {
       continue;
     }
-    ASSIGN_OR_RETURN(bool changed, inst->parent()->ReplaceInstruction(
+    ABSL_ASSIGN_OR_RETURN(bool changed, inst->parent()->ReplaceInstruction(
                                        inst, expanded_root, preserve_sharding_,
                                        relay_control_dependency_));
     DCHECK(changed);

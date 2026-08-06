@@ -40,7 +40,7 @@ AsyncExecution::AsyncExecution(Backend* backend,
 
 absl::Status AsyncExecution::BlockUntilDone() const {
   for (auto& stream : streams_) {
-    RETURN_IF_ERROR(stream->BlockHostUntilDone());
+    ABSL_RETURN_IF_ERROR(stream->BlockHostUntilDone());
   }
   return absl::OkStatus();
 }

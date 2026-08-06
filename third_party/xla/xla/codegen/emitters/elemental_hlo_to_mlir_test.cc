@@ -112,13 +112,13 @@ class ElementalHloToMlirTest : public HloHardwareIndependentTestBase {
     auto& entry_pc =
         partitioned_computations.FindPartitionedComputation(entry_computation);
     auto call_targets = partitioned_computations.CreateCallTargetProvider(fns);
-    RETURN_IF_ERROR(SubgraphToMlirFunction(entry_pc, entry_pc.GetRootSubgraph(),
+    ABSL_RETURN_IF_ERROR(SubgraphToMlirFunction(entry_pc, entry_pc.GetRootSubgraph(),
                                            entry_func, call_targets,
                                            &mlir_context_));
 
     if (!partitioned_computations.epilogues().empty()) {
       const auto& epilogue = partitioned_computations.epilogues().front();
-      RETURN_IF_ERROR(SubgraphToMlirFunction(entry_pc, epilogue, fns[&epilogue],
+      ABSL_RETURN_IF_ERROR(SubgraphToMlirFunction(entry_pc, epilogue, fns[&epilogue],
                                              call_targets, &mlir_context_));
     }
 
@@ -132,7 +132,7 @@ class ElementalHloToMlirTest : public HloHardwareIndependentTestBase {
     llvm::raw_string_ostream stream(out);
     stream << module.get();
 
-    ASSIGN_OR_RETURN(auto filecheck_result, RunFileCheck(out, filecheck_str));
+    ABSL_ASSIGN_OR_RETURN(auto filecheck_result, RunFileCheck(out, filecheck_str));
     TF_RET_CHECK(filecheck_result);
     return absl::OkStatus();
   }
@@ -508,7 +508,7 @@ TEST_F(ElementalHloToMlirTest, Pad) {
     // CHECK:        %[[FROM_INPUT:.*]] = arith.andi %[[X_AND_CONSTRAINT]], %[[Y_BOUNDS]]
     // CHECK:        %[[RET:.*]] = scf.if %[[FROM_INPUT]]
     // CHECK:          %[[IN0:.*]] = xla.apply_indexing
-    // CHECK-SAME:         <"(d0) -> ((d0 - 1) / 2), domain: d0 in [1, 7]">(%[[X]])
+    // CHECK-SAME:         <"(d0) -> ((d0 + 1) / 2 - 1), domain: d0 in [1, 7]">(%[[X]])
     // CHECK:          %[[IN1:.*]] = xla.apply_indexing
     // CHECK-SAME:         <"(d0) -> (d0 - 4), domain: d0 in [4, 7]">(%[[Y]])
     // CHECK:          %[[VAL:.*]] = tensor.extract %[[ARG0]][%[[IN0]], %[[IN1]]]
@@ -550,7 +550,7 @@ TEST_F(ElementalHloToMlirTest, PadUnsigned) {
     // CHECK:        %[[FROM_INPUT:.*]] = arith.andi %[[X_AND_CONSTRAINT]], %[[Y_BOUNDS]]
     // CHECK:        %[[RET:.*]] = scf.if %[[FROM_INPUT]]
     // CHECK:          %[[IN0:.*]] = xla.apply_indexing
-    // CHECK-SAME:         <"(d0) -> ((d0 - 1) / 2), domain: d0 in [1, 7]">(%[[X]])
+    // CHECK-SAME:         <"(d0) -> ((d0 + 1) / 2 - 1), domain: d0 in [1, 7]">(%[[X]])
     // CHECK:          %[[IN1:.*]] = xla.apply_indexing
     // CHECK-SAME:         <"(d0) -> (d0 - 4), domain: d0 in [4, 7]">(%[[Y]])
     // CHECK:          %[[VAL:.*]] = tensor.extract %[[ARG0]][%[[IN0]], %[[IN1]]]

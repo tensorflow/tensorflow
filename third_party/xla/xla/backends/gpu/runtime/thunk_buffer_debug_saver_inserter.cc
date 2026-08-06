@@ -74,7 +74,7 @@ absl::StatusOr<std::unique_ptr<Thunk>> InsertBufferSaverCustomCall(
     info.profile_annotation =
         absl::StrCat("Buffer saver ", sequence[0]->profile_annotation());
 
-    ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         auto log_thunk,
         CustomCallThunk::Create(
             info, std::string{kXlaGpuAppendToFileCustomCallTag}, {output},
@@ -109,7 +109,7 @@ absl::Status AppendOutputBufferSaverThunks(
     Thunk::ThunkInfo info;
     info.profile_annotation = profile_annotation_str;
 
-    ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         auto log_thunk,
         CustomCallThunk::Create(
             info, std::string{kXlaGpuAppendToFileCustomCallTag}, {shaped_slice},
@@ -142,7 +142,7 @@ absl::Status RunDebugSaverInserter(
                                        debug_options.xla_dump_to());
   };
 
-  RETURN_IF_ERROR(thunk_sequence->TransformNested(transform_callback));
+  ABSL_RETURN_IF_ERROR(thunk_sequence->TransformNested(transform_callback));
   return AppendOutputBufferSaverThunks(*thunk_sequence, hlo_module,
                                        module_output_slices, debug_options);
 }

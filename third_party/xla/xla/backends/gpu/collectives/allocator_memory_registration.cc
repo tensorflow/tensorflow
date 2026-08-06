@@ -126,9 +126,9 @@ absl::Status AllocatorMemoryRegistration::RegisterWithClique(
         << " recorded allocations with GPU clique " << clique.key();
 
     for (Allocation& allocation : allocs) {
-      ASSIGN_OR_RETURN(std::unique_ptr<RegisteredMemory> registered,
+      ABSL_ASSIGN_OR_RETURN(std::unique_ptr<RegisteredMemory> registered,
                        gpu_comm->CreateRegisteredMemory(allocation.range));
-      ASSIGN_OR_RETURN(tsl::TiedRef<RegisteredMemory> tied,
+      ABSL_ASSIGN_OR_RETURN(tsl::TiedRef<RegisteredMemory> tied,
                        clique.Tie(std::move(registered)));
       allocation.registrations.push_back(std::move(tied));
     }

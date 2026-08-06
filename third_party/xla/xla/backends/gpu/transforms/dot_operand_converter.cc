@@ -70,7 +70,7 @@ absl::StatusOr<HloInstruction*> DotOperandConverter::ExpandInstruction(
   upcast_shape.set_element_type(desired_type);
   auto* convert_inst = instruction->AddInstruction(
       HloInstruction::CreateConvert(upcast_shape, inst_to_replace));
-  RETURN_IF_ERROR(instruction->ReplaceOperandWithDifferentShape(operand_index,
+  ABSL_RETURN_IF_ERROR(instruction->ReplaceOperandWithDifferentShape(operand_index,
                                                                 convert_inst));
   return nullptr;
 }

@@ -42,7 +42,7 @@ class GpuConvertAsyncCollectivesToSyncTest
     : public HloHardwareIndependentTestBase {
  public:
   absl::Status RunPass(HloModule* module, bool expect_change) {
-    ASSIGN_OR_RETURN(bool changed,
+    ABSL_ASSIGN_OR_RETURN(bool changed,
                      GpuConvertAsyncCollectivesToSync().Run(module));
     EXPECT_EQ(changed, expect_change);
     return absl::OkStatus();

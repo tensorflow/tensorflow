@@ -60,8 +60,8 @@ using absl_testing::StatusIs;
 using ::testing::HasSubstr;
 
 static absl::StatusOr<se::StreamExecutor*> GpuExecutor() {
-  ASSIGN_OR_RETURN(auto name, PlatformUtil::CanonicalPlatformName("gpu"));
-  ASSIGN_OR_RETURN(auto* platform, se::PlatformManager::PlatformWithName(name));
+  ABSL_ASSIGN_OR_RETURN(auto name, PlatformUtil::CanonicalPlatformName("gpu"));
+  ABSL_ASSIGN_OR_RETURN(auto* platform, se::PlatformManager::PlatformWithName(name));
   return platform->ExecutorForDevice(0);
 }
 
@@ -104,6 +104,7 @@ void Callback_WithStatusFailed(void* /*stream*/, void** /*buffers*/,
 
 XLA_REGISTER_CUSTOM_CALL_TARGET(Callback_WithStatusFailed, "CUDA");
 XLA_REGISTER_CUSTOM_CALL_TARGET(Callback_WithStatusFailed, "ROCM");
+XLA_REGISTER_CUSTOM_CALL_TARGET(Callback_WithStatusFailed, "SYCL");
 
 TEST(LegacyCustomCallThunkTest, ResolvesLegacyCustomCall) {
   ASSERT_OK_AND_ASSIGN(se::StreamExecutor * executor, GpuExecutor());

@@ -106,11 +106,11 @@ class RcclIdStore {
 
     CliqueId clique_id;
     if (process_id_ == device_to_process_.at(gpu_key->devices().front())) {
-      ASSIGN_OR_RETURN(clique_id, rccl_collectives.CreateUniqueCliqueId());
-      RETURN_IF_ERROR(
+      ABSL_ASSIGN_OR_RETURN(clique_id, rccl_collectives.CreateUniqueCliqueId());
+      ABSL_RETURN_IF_ERROR(
           kv_store_->Set(gpu_key->ToString(), clique_id.ToString()));
     } else {
-      ASSIGN_OR_RETURN(std::string id_str,
+      ABSL_ASSIGN_OR_RETURN(std::string id_str,
                        kv_store_->Get(gpu_key->ToString(), absl::Minutes(10)));
       clique_id = CliqueId(id_str);
     }
@@ -160,11 +160,11 @@ absl::Status RcclCollectives::GroupLaunch(
     }
   }
 
-  ASSIGN_OR_RETURN(bool launched, RcclGroupLaunch(group));
+  ABSL_ASSIGN_OR_RETURN(bool launched, RcclGroupLaunch(group));
   if (launched) {
     for (const GpuCommunicator* comm : comms) {
       auto* rccl_comm = absl::down_cast<const RcclCommunicator*>(comm);
-      RETURN_IF_ERROR(rccl_comm->PollUntilDone());
+      ABSL_RETURN_IF_ERROR(rccl_comm->PollUntilDone());
     }
   }
   return absl::OkStatus();
@@ -215,9 +215,14 @@ RcclCollectives::CreateCommunicatorsWithCancel(
   if (!clique_ids.has_value() || clique_ids->data().empty()) {
     return InvalidArgument("CliqueId is required to create NCCL communicators");
   }
-  if (clique_ids->data().size() != 1) {
+  int rccl_version;
+  XLA_RCCL_RETURN_IF_ERROR(ncclGetVersion(&rccl_version));
+  if (clique_ids->data().size() != 1 && rccl_version < NCCL_VERSION(2, 23, 0)) {
     return InvalidArgument(
-        "CliqueIds size must be 1 for NCCL communicator initialization");
+        "CliqueIds size must be 1 for communicator initialization for RCCL "
+        "version "
+        " lower than 2.23 (the linked RCCL version is %d.%d.%d).",
+        rccl_version / 10000, (rccl_version / 100) % 100, rccl_version % 100);
   }
   VLOG(1) << "Initialize NCCL communicator for " << ranks.size() << " devices"
           << "; fingerprint(id)=" << clique_ids->fingerprint();
@@ -241,14 +246,26 @@ RcclCollectives::CreateCommunicatorsWithCancel(
     TF_RET_CHECK(device != nullptr);
     auto activate_context = device->stream_executor()->Activate();
 
-    ASSIGN_OR_RETURN(ncclConfig_t comm_config,
+    ABSL_ASSIGN_OR_RETURN(ncclConfig_t comm_config,
                      AsRcclConfig(gpu_config, device->stream_executor()));
 
-    ASSIGN_OR_RETURN(auto nccl_unique_id, AsRcclUniqueId(clique_ids->at(0)));
+    std::vector<ncclUniqueId> rccl_unique_ids;
+    rccl_unique_ids.reserve(clique_ids->data().size());
+    for (const CliqueId& clique_id : clique_ids->data()) {
+      ABSL_ASSIGN_OR_RETURN(rccl_unique_ids.emplace_back(),
+                       AsRcclUniqueId(clique_id));
+    }
+
     ncclComm_t comm;
-    XLA_RCCL_RETURN_IF_ERROR(
-        ncclCommInitRankConfig(&comm, clique_key.num_devices(), nccl_unique_id,
-                               ranks[i].rank.value(), &comm_config));
+    if (rccl_unique_ids.size() > 1) {
+      XLA_RCCL_RETURN_IF_ERROR(ncclCommInitRankScalable(
+          &comm, clique_key.num_devices(), ranks[i].rank.value(),
+          rccl_unique_ids.size(), rccl_unique_ids.data(), &comm_config));
+    } else {
+      XLA_RCCL_RETURN_IF_ERROR(ncclCommInitRankConfig(
+          &comm, clique_key.num_devices(), rccl_unique_ids[0],
+          ranks[i].rank.value(), &comm_config));
+    }
     return comm;
   };
 
@@ -272,7 +289,7 @@ RcclCollectives::CreateCommunicatorsWithCancel(
       });
     }
   }  // pool's destructor blocks until all scheduled work is done.
-  RETURN_IF_ERROR(status);
+  ABSL_RETURN_IF_ERROR(status);
   return comms;
 }
 
@@ -303,7 +320,7 @@ RcclCollectives::SplitCommunicatorsWithCancel(
     auto* device = absl::down_cast<GpuCollectives::Device*>(ranks[i].device);
     TF_RET_CHECK(device != nullptr);
 
-    ASSIGN_OR_RETURN(ncclConfig_t comm_config,
+    ABSL_ASSIGN_OR_RETURN(ncclConfig_t comm_config,
                      AsRcclConfig(gpu_config, device->stream_executor()));
 
     VLOG(1) << "Split NCCL communicator " << comms[i] << " with color " << color
@@ -333,7 +350,7 @@ RcclCollectives::SplitCommunicatorsWithCancel(
       });
     }
   }  // pool's destructor blocks until all scheduled work is done.
-  RETURN_IF_ERROR(status);
+  ABSL_RETURN_IF_ERROR(status);
   return split_comms;
 }
 

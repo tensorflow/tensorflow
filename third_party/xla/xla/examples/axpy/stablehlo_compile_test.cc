@@ -86,7 +86,7 @@ class StableHloAxpyTest : public ::testing::Test {
 
     // Read StableHLO program to string.
     std::string program_string;
-    RETURN_IF_ERROR(tsl::ReadFileToString(
+    ABSL_RETURN_IF_ERROR(tsl::ReadFileToString(
         tsl::Env::Default(), std::string(program_path), &program_string));
 
     std::cerr << "Loaded StableHLO program from " << program_path << ":\n"

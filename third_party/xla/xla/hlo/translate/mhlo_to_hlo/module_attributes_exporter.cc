@@ -54,7 +54,7 @@ absl::Status AddLayoutToShapeProto(
   if (auto tuple_parameter_layout = dyn_cast<ArrayAttr>(parameter_layout)) {
     for (auto [i, tuple_element_parameter_layout] :
          llvm::enumerate(tuple_parameter_layout.getValue())) {
-      RETURN_IF_ERROR(AddLayoutToShapeProto(
+      ABSL_RETURN_IF_ERROR(AddLayoutToShapeProto(
           tuple_element_parameter_layout,
           host_program_shape_parameter->mutable_tuple_shapes(i),
           computation_program_shape_parameter->mutable_tuple_shapes(i)));
@@ -108,7 +108,7 @@ absl::Status AddTileToShapeProto(
         // Empty tile is invalid HLO, so assume default tile (no tile).
         continue;
       }
-      RETURN_IF_ERROR(AddTileToShapeProto(
+      ABSL_RETURN_IF_ERROR(AddTileToShapeProto(
           tuple_element_parameter_tile,
           host_program_shape_parameter->mutable_tuple_shapes(i),
           computation_program_shape_parameter->mutable_tuple_shapes(i)));
@@ -161,7 +161,7 @@ void ExportHloModuleConfig(xla::HloModuleConfig& config, ModuleOp module) {
 absl::Status ExportModuleEntryComputationParameterLayouts(
     const ArrayAttr& xla_entry_computation_parameter_layout,
     xla::HloModuleProto& hlo_module) {
-  ASSIGN_OR_RETURN(auto entry_computation, FindEntryComputation(hlo_module));
+  ABSL_ASSIGN_OR_RETURN(auto entry_computation, FindEntryComputation(hlo_module));
 
   LLVM_DEBUG(llvm::dbgs() << "Setting "
                           << xla_entry_computation_parameter_layout.size()
@@ -170,7 +170,7 @@ absl::Status ExportModuleEntryComputationParameterLayouts(
 
   for (auto [arg_i, parameter_layout] :
        llvm::enumerate(xla_entry_computation_parameter_layout)) {
-    RETURN_IF_ERROR(AddLayoutToShapeProto(
+    ABSL_RETURN_IF_ERROR(AddLayoutToShapeProto(
         parameter_layout,
         hlo_module.mutable_host_program_shape()->mutable_parameters()->Mutable(
             arg_i),
@@ -184,7 +184,7 @@ absl::Status ExportModuleEntryComputationParameterLayouts(
 absl::Status ExportModuleEntryComputationParameterTiles(
     const ArrayAttr& xla_entry_computation_parameter_tiles,
     xla::HloModuleProto& hlo_module) {
-  ASSIGN_OR_RETURN(auto entry_computation, FindEntryComputation(hlo_module));
+  ABSL_ASSIGN_OR_RETURN(auto entry_computation, FindEntryComputation(hlo_module));
 
   LLVM_DEBUG(llvm::dbgs() << "Setting "
                           << xla_entry_computation_parameter_tiles.size()
@@ -193,7 +193,7 @@ absl::Status ExportModuleEntryComputationParameterTiles(
 
   for (auto [arg_i, parameter_tile_arg] :
        llvm::enumerate(xla_entry_computation_parameter_tiles)) {
-    RETURN_IF_ERROR(AddTileToShapeProto(
+    ABSL_RETURN_IF_ERROR(AddTileToShapeProto(
         parameter_tile_arg,
         hlo_module.mutable_host_program_shape()->mutable_parameters()->Mutable(
             arg_i),
@@ -207,7 +207,7 @@ absl::Status ExportModuleEntryComputationParameterTiles(
 absl::Status ExportModuleEntryComputationResultLayout(
     const ArrayAttr& xla_entry_computation_result_layout,
     xla::HloModuleProto& hlo_module) {
-  ASSIGN_OR_RETURN(auto entry_computation, FindEntryComputation(hlo_module));
+  ABSL_ASSIGN_OR_RETURN(auto entry_computation, FindEntryComputation(hlo_module));
   return AddLayoutToShapeProto(
       (xla_entry_computation_result_layout.size() == 1)
           ? xla_entry_computation_result_layout[0]
@@ -219,7 +219,7 @@ absl::Status ExportModuleEntryComputationResultLayout(
 absl::Status ExportModuleEntryComputationResultTiles(
     const ArrayAttr& xla_entry_computation_result_tiles,
     xla::HloModuleProto& hlo_module) {
-  ASSIGN_OR_RETURN(auto entry_computation, FindEntryComputation(hlo_module));
+  ABSL_ASSIGN_OR_RETURN(auto entry_computation, FindEntryComputation(hlo_module));
   return AddTileToShapeProto(
       (xla_entry_computation_result_tiles.size() == 1)
           ? xla_entry_computation_result_tiles[0]

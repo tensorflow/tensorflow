@@ -109,12 +109,12 @@ class GpuAotCompilationResultTest : public ::testing::Test {
     thunk_info.thunk_id = 123;
 
     ThunkSequence thunk_sequence;
-    thunk_sequence.push_back(std::make_unique<KernelThunk>(
+    thunk_sequence.Emplace<KernelThunk>(
         thunk_info,
         /*kernel_name=*/"test_kernel", emitters::KernelArguments({}),
         LaunchDimensions(),
         /*cluster_dim=*/std::nullopt,
-        /*shmem_bytes=*/0, ::stream_executor::gpu::TmaMetadata()));
+        /*shmem_bytes=*/0, ::stream_executor::gpu::TmaMetadata());
     CustomKernel custom_kernel{
         "custom_kernel_name",
         stream_executor::KernelLoaderSpec::
@@ -123,8 +123,8 @@ class GpuAotCompilationResultTest : public ::testing::Test {
                 /*arity=*/42),
         stream_executor::BlockDim(), stream_executor::ThreadDim(),
         /*shared_memory_bytes=*/23};
-    thunk_sequence.push_back(std::make_unique<CustomKernelThunk>(
-        thunk_info, custom_kernel, emitters::KernelArguments({})));
+    thunk_sequence.Emplace<CustomKernelThunk>(thunk_info, custom_kernel,
+                                              emitters::KernelArguments({}));
 
     auto hlo_module = std::make_unique<HloModule>("test_module_with_shape",
                                                   HloModuleConfig());
@@ -146,7 +146,7 @@ class GpuAotCompilationResultTest : public ::testing::Test {
     params.module_name = "test_module";
     params.enable_debug_info_manager = false;
     params.allocations = {BufferAllocation(0, 1024, 0)};
-    ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         params.executable_abi_version,
         stream_executor::ExecutableAbiVersion::FromDeviceDescription(
             device_description_));
@@ -162,7 +162,7 @@ class GpuAotCompilationResultTest : public ::testing::Test {
         )pb");
     params.buffer_allocations_debug_summary = "dummy_summary";
 
-    ASSIGN_OR_RETURN(std::unique_ptr<GpuExecutable> executable,
+    ABSL_ASSIGN_OR_RETURN(std::unique_ptr<GpuExecutable> executable,
                      GpuExecutable::Create(std::move(params)));
     return executable->ToProto();
   }

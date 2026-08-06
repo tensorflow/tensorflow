@@ -183,7 +183,7 @@ static absl::StatusOr<bool> TryFoldColectivePermuteOfSelect(
   // We have to maintain integrity of relationship between the predicate, which
   // is based on partition or replica ID, and the collective mode of the
   // collective-permute op.
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       CollectiveOpGroupMode collective_mode,
       GetCollectiveOpGroupMode(cp->channel_id().has_value(),
                                /*use_global_device_ids=*/std::nullopt));
@@ -208,7 +208,7 @@ static absl::StatusOr<bool> TryFoldColectivePermuteOfSelect(
   // Fold select and forward the correct operand.
   HloInstruction* new_operand = *predicate_value ? select_match->true_operand
                                                  : select_match->false_operand;
-  RETURN_IF_ERROR(cp->ReplaceOperandWith(0, new_operand));
+  ABSL_RETURN_IF_ERROR(cp->ReplaceOperandWith(0, new_operand));
   VLOG(3) << "Successfully folded select op away";
   return true;
 }
@@ -219,7 +219,7 @@ absl::StatusOr<bool> CollectiveSelectFolder::RunImpl(
   bool changed = false;
   for (HloComputation* comp : module->computations()) {
     for (HloInstruction* inst : comp->instructions()) {
-      ASSIGN_OR_RETURN(bool local_changed,
+      ABSL_ASSIGN_OR_RETURN(bool local_changed,
                        TryFoldColectivePermuteOfSelect(inst));
       changed |= local_changed;
     }

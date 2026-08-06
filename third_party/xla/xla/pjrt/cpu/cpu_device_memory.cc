@@ -183,7 +183,7 @@ tsl::AsyncValueRef<CpuDeviceMemory> CpuDeviceMemory::CreateSlicedMemory(
 // Allocates owning memory wrapped in an available `AsyncValueRef`.
 absl::StatusOr<tsl::AsyncValueRef<CpuDeviceMemory>> CpuDeviceMemory::Allocate(
     size_t size_bytes, const Allocator& allocator) {
-  ASSIGN_OR_RETURN(std::unique_ptr<RawMemory> mem,
+  ABSL_ASSIGN_OR_RETURN(std::unique_ptr<RawMemory> mem,
                    allocator.Allocate(size_bytes, cpu::MinAlign()));
   return tsl::MakeAvailableAsyncValueRef<CpuDeviceMemoryOwned>(std::move(mem));
 }
@@ -196,7 +196,7 @@ absl::Status CpuDeviceMemory::AllocateInto(
     return Internal("Delayed memory is not a CpuDeviceMemoryOwned");
   }
 
-  ASSIGN_OR_RETURN(std::unique_ptr<RawMemory> mem,
+  ABSL_ASSIGN_OR_RETURN(std::unique_ptr<RawMemory> mem,
                    allocator.Allocate(size_bytes, cpu::MinAlign()));
   owned_memory.emplace(std::move(mem));
   return absl::OkStatus();

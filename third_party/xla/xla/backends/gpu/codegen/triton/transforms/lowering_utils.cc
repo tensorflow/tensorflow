@@ -88,7 +88,7 @@ absl::StatusOr<TensorValue> CanonicalizeDotOperand(
         "Expected dot operand tile to have exactly two non-unit tile sizes");
   }
   if (shape.size() != shape_without_unit_dims.size()) {
-    ASSIGN_OR_RETURN(operand, ::xla::xtile::EmitTiledReshape(
+    ABSL_ASSIGN_OR_RETURN(operand, ::xla::xtile::EmitTiledReshape(
                                   b, shape_without_unit_dims, operand));
   }
   int expected_contracting_dim_position = side == DotOperandSide::kLhs ? 1 : 0;
@@ -217,6 +217,15 @@ mlir::LogicalResult LowerReshape::matchAndRewrite(
   bool allow_reorder = false;
   rewriter.replaceOpWithNewOp<ttir::ReshapeOp>(op, op.getResult().getType(),
                                                op.getOperand(), allow_reorder);
+  return mlir::success();
+}
+
+mlir::LogicalResult LowerTranspose::matchAndRewrite(
+    stablehlo::TransposeOp op, mlir::PatternRewriter& rewriter) const {
+  SmallVector<int32_t> permutation =
+      llvm::to_vector_of<int32_t>(op.getPermutation());
+  rewriter.replaceOpWithNewOp<ttir::TransOp>(op, op.getResult().getType(),
+                                             op.getOperand(), permutation);
   return mlir::success();
 }
 

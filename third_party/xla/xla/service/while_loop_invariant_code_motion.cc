@@ -270,7 +270,7 @@ WhileLoopInvariantCodeMotion::TryHoistingInvariantInstructionsFromWhileBody(
     return false;
   }
 
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       WhileUtil::MakeInstructionsLiveInResult live_in_instructions_result,
       WhileUtil::MakeInstructionsLiveIn(while_instr, replacement_instructions));
 
@@ -281,7 +281,7 @@ WhileLoopInvariantCodeMotion::TryHoistingInvariantInstructionsFromWhileBody(
     HloInstruction* instruction_to_replace_in_new_while =
         FindOrDie(live_in_instructions_result.while_body_instruction_map,
                   instructions_to_replace[i]);
-    RETURN_IF_ERROR(new_while_body->ReplaceInstruction(
+    ABSL_RETURN_IF_ERROR(new_while_body->ReplaceInstruction(
         instruction_to_replace_in_new_while,
         live_in_instructions_result.while_body_live_in_values[i]));
   }
@@ -339,7 +339,7 @@ absl::StatusOr<bool> WhileLoopInvariantCodeMotion::RunImpl(
       continue;
     }
 
-    ASSIGN_OR_RETURN(bool result, TryHoistingInvariantInstructionsFromWhileBody(
+    ABSL_ASSIGN_OR_RETURN(bool result, TryHoistingInvariantInstructionsFromWhileBody(
                                       while_instr, &allowance));
     changed |= result;
   }
@@ -350,10 +350,10 @@ absl::StatusOr<bool> WhileLoopInvariantCodeMotion::RunImpl(
     // verification failures (e.g., the verifier may see multiple channel
     // instructions that have the same channel ids).
     HloDCE dce;
-    RETURN_IF_ERROR(dce.Run(module).status());
+    ABSL_RETURN_IF_ERROR(dce.Run(module).status());
     // Simplify while loops after narrowing / widening.
     TupleSimplifier tuple_simplifier;
-    RETURN_IF_ERROR(tuple_simplifier.Run(module).status());
+    ABSL_RETURN_IF_ERROR(tuple_simplifier.Run(module).status());
   }
 
   if (changed) {

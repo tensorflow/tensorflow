@@ -173,7 +173,7 @@ absl::StatusOr<std::vector<HloDotInstruction*>> GetRelevantDots(
   std::vector<HloDotInstruction*> gemms;
 
   for (HloInstruction* instr : comp->instructions()) {
-    ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         bool is_matmul,
         IsCublasSupportedMatMul(*instr,
                                 /*allow_matrix_vector_multiplication=*/false));
@@ -196,10 +196,10 @@ absl::StatusOr<bool> CublasPadForGemms::RunImpl(
   bool changed = false;
   for (HloComputation* comp :
        module->MakeNonfusionComputations(execution_threads)) {
-    ASSIGN_OR_RETURN(std::vector<HloDotInstruction*> dots,
+    ABSL_ASSIGN_OR_RETURN(std::vector<HloDotInstruction*> dots,
                      GetRelevantDots(gpu_compute_capability_, comp, datatype_));
     for (HloDotInstruction* dot : dots) {
-      ASSIGN_OR_RETURN(bool result,
+      ABSL_ASSIGN_OR_RETURN(bool result,
                        PadForGemm(dot, datatype_, pad_to_multiple_of_));
       changed |= result;
     }

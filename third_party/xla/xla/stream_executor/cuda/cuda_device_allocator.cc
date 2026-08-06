@@ -45,7 +45,7 @@ namespace {
 
 absl::StatusOr<bool> IsRdmaSupported(CUdevice device) {
   int rdma_supported = 0;
-  RETURN_IF_ERROR(cuda::ToStatus(cuDeviceGetAttribute(
+  ABSL_RETURN_IF_ERROR(cuda::ToStatus(cuDeviceGetAttribute(
       &rdma_supported,
       CU_DEVICE_ATTRIBUTE_GPU_DIRECT_RDMA_WITH_CUDA_VMM_SUPPORTED, device)));
   return rdma_supported;
@@ -65,7 +65,7 @@ absl::StatusOr<bool> IsFabricSupported(CUdevice device) {
     return false;
   }
 
-  RETURN_IF_ERROR(cuda::ToStatus(result));
+  ABSL_RETURN_IF_ERROR(cuda::ToStatus(result));
   return fabric_supported > 0;
 }
 
@@ -93,8 +93,8 @@ CUmemAllocationProp BuildVmmAllocationProp(
 
 absl::StatusOr<CudaDeviceAllocator::Options> QueryDeviceAllocatorOptions(
     CUdevice device) {
-  ASSIGN_OR_RETURN(bool rdma, IsRdmaSupported(device));
-  ASSIGN_OR_RETURN(bool fabric, IsFabricSupported(device));
+  ABSL_ASSIGN_OR_RETURN(bool rdma, IsRdmaSupported(device));
+  ABSL_ASSIGN_OR_RETURN(bool fabric, IsFabricSupported(device));
 
   bool posix_fd = true;
   size_t granularity = 0;
@@ -188,7 +188,7 @@ static absl::StatusOr<CUmemGenericAllocationHandle> CreatePhysicalAllocation(
         static_cast<CUmemAllocationHandleType>(CU_MEM_HANDLE_TYPE_NONE);
   }
 
-  RETURN_IF_ERROR(
+  ABSL_RETURN_IF_ERROR(
       cuda::ToStatus(cuMemCreate(&handle, padded_size, &properties, 0)));
   return handle;
 }
@@ -210,19 +210,19 @@ AllocateDeviceMemory(StreamExecutor* executor,
   std::unique_ptr<ActivateContext> activation = executor->Activate();
 
   CUdevice device;
-  RETURN_IF_ERROR(
+  ABSL_RETURN_IF_ERROR(
       cuda::ToStatus(cuDeviceGet(&device, executor->device_ordinal())));
 
   // Query device allocation granularity and pad size to alignment boundary.
   CUmemAllocationProp properties = BuildVmmAllocationProp(device, options);
   size_t granularity = 0;
-  RETURN_IF_ERROR(cuda::ToStatus(cuMemGetAllocationGranularity(
+  ABSL_RETURN_IF_ERROR(cuda::ToStatus(cuMemGetAllocationGranularity(
       &granularity, &properties, CU_MEM_ALLOC_GRANULARITY_RECOMMENDED)));
 
   size_t effective_alignment = std::max(options.alignment, granularity);
   uint64_t padded_size = xla::RoundUpTo<uint64_t>(size, effective_alignment);
 
-  ASSIGN_OR_RETURN(CUmemGenericAllocationHandle handle,
+  ABSL_ASSIGN_OR_RETURN(CUmemGenericAllocationHandle handle,
                    CreatePhysicalAllocation(properties, padded_size));
 
   absl::Cleanup release_handle = [&] {
@@ -235,7 +235,7 @@ AllocateDeviceMemory(StreamExecutor* executor,
 
   // Reserve virtual address range and map the physical allocation into it.
   CUdeviceptr ptr;
-  RETURN_IF_ERROR(cuda::ToStatus(
+  ABSL_RETURN_IF_ERROR(cuda::ToStatus(
       cuMemAddressReserve(&ptr, padded_size, effective_alignment, 0, 0)));
   absl::Cleanup free_address = [&] {
     absl::Status status = cuda::ToStatus(cuMemUnmap(ptr, padded_size));
@@ -249,26 +249,26 @@ AllocateDeviceMemory(StreamExecutor* executor,
           << "Failed to free VMM address during cleanup: " << status;
     }
   };
-  RETURN_IF_ERROR(cuda::ToStatus(cuMemMap(ptr, padded_size, 0, handle, 0)));
+  ABSL_RETURN_IF_ERROR(cuda::ToStatus(cuMemMap(ptr, padded_size, 0, handle, 0)));
 
   // Grant read/write access — to all peers if peer access is enabled,
   // otherwise only to the owning device.
   if (options.enable_peer_access) {
     int device_count = 0;
-    RETURN_IF_ERROR(cuda::ToStatus(cudaGetDeviceCount(&device_count)));
+    ABSL_RETURN_IF_ERROR(cuda::ToStatus(cudaGetDeviceCount(&device_count)));
     for (int peer = 0; peer < device_count; peer++) {
       if (peer == executor->device_ordinal() ||
           executor->CanEnablePeerAccessTo(peer)) {
         XLA_VLOG_DEVICE(5, executor->device_ordinal())
             << "Setting VMM access for peer device " << peer;
         CUmemAccessDesc access_desc = GetAccessDesc(peer);
-        RETURN_IF_ERROR(
+        ABSL_RETURN_IF_ERROR(
             cuda::ToStatus(cuMemSetAccess(ptr, padded_size, &access_desc, 1)));
       }
     }
   } else {
     CUmemAccessDesc access_desc = GetAccessDesc(executor->device_ordinal());
-    RETURN_IF_ERROR(
+    ABSL_RETURN_IF_ERROR(
         cuda::ToStatus(cuMemSetAccess(ptr, padded_size, &access_desc, 1)));
   }
 
@@ -324,46 +324,32 @@ static void DeallocateDeviceMemory(StreamExecutor* executor, void* ptr,
   }
 }
 
-namespace {
+CudaDeviceMemoryAllocation::CudaDeviceMemoryAllocation(
+    StreamExecutor* executor, void* ptr, uint64_t requested_size,
+    uint64_t padded_size, CUmemGenericAllocationHandle handle)
+    : executor_(executor),
+      ptr_(ptr),
+      requested_size_(requested_size),
+      padded_size_(padded_size),
+      handle_(handle) {}
 
-class CudaDeviceMemoryAllocation : public MemoryAllocation {
- public:
-  CudaDeviceMemoryAllocation(StreamExecutor* executor, void* ptr,
-                             uint64_t requested_size, uint64_t padded_size,
-                             CUmemGenericAllocationHandle handle)
-      : executor_(executor),
-        ptr_(ptr),
-        requested_size_(requested_size),
-        padded_size_(padded_size),
-        handle_(handle) {}
-
-  ~CudaDeviceMemoryAllocation() final {
-    if (ptr_ != nullptr) {
-      DeallocateDeviceMemory(executor_, ptr_, padded_size_, handle_);
-    }
+CudaDeviceMemoryAllocation::~CudaDeviceMemoryAllocation() {
+  if (ptr_ != nullptr) {
+    DeallocateDeviceMemory(executor_, ptr_, padded_size_, handle_);
   }
+}
 
-  DeviceAddressBase address() const final {
-    return DeviceAddressBase(ptr_, padded_size_);
-  }
+DeviceAddressBase CudaDeviceMemoryAllocation::address() const {
+  return DeviceAddressBase(ptr_, padded_size_);
+}
 
-  std::string ToString() const final {
-    return absl::StrFormat(
-        "CudaDeviceMemoryAllocation[device=%d, ptr=%p, size=%d, "
-        "padded_size=%d, handle=%llu]",
-        executor_->device_ordinal(), ptr_, requested_size_, padded_size_,
-        handle_);
-  }
-
- private:
-  StreamExecutor* executor_;
-  void* ptr_;
-  uint64_t requested_size_;
-  uint64_t padded_size_;
-  CUmemGenericAllocationHandle handle_;
-};
-
-}  // namespace
+std::string CudaDeviceMemoryAllocation::ToString() const {
+  return absl::StrFormat(
+      "CudaDeviceMemoryAllocation[device=%d, ptr=%p, size=%d, "
+      "padded_size=%d, handle=%llu]",
+      executor_->device_ordinal(), ptr_, requested_size_, padded_size_,
+      handle_);
+}
 
 CudaDeviceAllocator::CudaDeviceAllocator(StreamExecutor* executor)
     : executor_(executor) {
@@ -399,7 +385,7 @@ absl::StatusOr<std::unique_ptr<MemoryAllocation>> CudaDeviceAllocator::Allocate(
                                                         0, 0);
   }
 
-  ASSIGN_OR_RETURN(auto result,
+  ABSL_ASSIGN_OR_RETURN(auto result,
                    AllocateDeviceMemory(executor_, options_, size));
   auto [ptr, padded_size, handle] = result;
 

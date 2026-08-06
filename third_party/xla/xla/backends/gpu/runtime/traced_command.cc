@@ -71,7 +71,7 @@ TracedCommand::RecordTracedCommand(
             debug_options.xla_cmd_buffer_trace_cache_size());
       });
 
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       auto nested_cmd,
       traced_cmd->GetOrTraceCommandBuffer(
           execute_params.buffer_allocations, execute_params.stream->parent(),
@@ -89,7 +89,7 @@ TracedCommand::RecordTracedCommand(
     VLOG(5) << "Record traced command " << nested_cmd
             << " into parent command buffer: " << command_buffer
             << " (UpdateChildCommand)";
-    RETURN_IF_ERROR(
+    ABSL_RETURN_IF_ERROR(
         command_buffer->UpdateChildCommand(update->command, *nested_cmd));
     return update->command;
   }

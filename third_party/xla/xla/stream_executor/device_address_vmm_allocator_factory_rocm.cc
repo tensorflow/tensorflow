@@ -34,7 +34,7 @@ DeviceAddressVmmAllocator::Create(
     const Platform* platform, double memory_fraction,
     std::optional<int64_t> gpu_system_memory_size,
     absl::Span<const std::pair<StreamExecutor*, Stream*>> devices) {
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       std::unique_ptr<gpu::RocmDeviceAddressVmmAllocator> allocator,
       gpu::RocmDeviceAddressVmmAllocator::Create(
           platform, memory_fraction, gpu_system_memory_size, devices));

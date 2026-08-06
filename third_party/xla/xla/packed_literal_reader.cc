@@ -52,7 +52,7 @@ absl::StatusOr<Literal> PackedLiteralReader::Read(const Shape& shape,
           << " layout: " << (layout == nullptr ? "<none>" : layout->ToString());
   Shape literal_shape = shape;
   if (layout != nullptr) {
-    RETURN_IF_ERROR(LayoutUtil::ValidateLayoutForShape(*layout, literal_shape));
+    ABSL_RETURN_IF_ERROR(LayoutUtil::ValidateLayoutForShape(*layout, literal_shape));
     *literal_shape.mutable_layout() = *layout;
   }
 

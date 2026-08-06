@@ -86,7 +86,7 @@ absl::StatusOr<HloInstruction*> OperandUpcaster::ExpandInstruction(
     upcast_shape.set_element_type(type);
     auto* convert_inst = instruction->AddInstruction(
         HloInstruction::CreateConvert(upcast_shape, operand));
-    RETURN_IF_ERROR(
+    ABSL_RETURN_IF_ERROR(
         instruction->ReplaceOperandWithDifferentShape(i, convert_inst));
   }
   return nullptr;

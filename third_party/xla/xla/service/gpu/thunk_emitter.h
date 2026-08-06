@@ -30,12 +30,12 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "llvm/IR/Module.h"
 #include "xla/backends/gpu/runtime/async_execution.h"
-#include "xla/backends/gpu/runtime/collective_kernel_thunk.h"
 #include "xla/backends/gpu/runtime/collective_thunk.h"
 #include "xla/backends/gpu/runtime/host_send_recv_thunk.h"
 #include "xla/backends/gpu/runtime/sequential_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/codegen/llvm_kernel_source.h"
+#include "xla/future.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -50,13 +50,29 @@ limitations under the License.
 
 namespace xla::gpu {
 
-class CollectiveKernelThunk;
-struct AllReduceConfig;
-
 struct DynamicSliceCopyFusion;
 struct StaticSliceCopyFusion;
 
-// Emits Thunks for the given HLO module.
+// Lowers a scheduled HLO module to a sequence of GPU runtime thunks.
+//
+// ThunkEmitter follows the structure of the HLO program: HLO emitters create
+// thunks implementing their operation at run time. Control flow operations are
+// implemented as a composition of nested thunk sequences.
+//
+// ThunkEmitter keeps HLO semantic dispatch separate from thunk emission.
+// Dispatch* methods select a specific emitter when an HLO construct has
+// different runtime semantics based on its properties or location; Emit*
+// methods implement the selected semantics. Send/recv semantics depend on two
+// things. `is_host_transfer()` selects host-transfer or device-transfer
+// semantics; host transfers synchronize with handler completion events. For
+// device transfers, the parent computation determines whether the operation is
+// an implicit async start or a synchronous operation inside a generic async
+// computation.
+//
+// Thunk emission also records large-constant initializations in
+// `ir_emitter_context_`. Large constants do not get initializers in generated
+// code and must be initialized by XLA from the stored content. Constants with
+// initializers in generated code have empty content.
 class ThunkEmitter {
  public:
   absl::string_view platform_name() const {
@@ -67,11 +83,11 @@ class ThunkEmitter {
       IrEmitterContext* absl_nonnull ir_emitter_context,
       llvm_ir::LLVMCommandLineOptionsReleasableLock* absl_nonnull
           llvm_options_lock);
+
   ThunkEmitter(const ThunkEmitter&) = delete;
   ThunkEmitter& operator=(const ThunkEmitter&) = delete;
 
-  xla::Future<std::unique_ptr<SequentialThunk>> EmitHloEntryComputation(
-      const HloModule* module);
+  Future<ThunkSequence> EmitHloEntryComputation(const HloModule* module);
 
   llvm::Module* constants_module() { return constants_module_.get(); }
   LlvmKernelSource ConsumeConstantsModule() {
@@ -80,137 +96,221 @@ class ThunkEmitter {
   }
 
  private:
-  // Emits code for the given HLO computation.
+  //===--------------------------------------------------------------------===//
+  // Context-dependent HLO dispatch
+  //===--------------------------------------------------------------------===//
+
+  // Dispatch* methods inspect HLO properties and location and select the
+  // specific Emit* method implementing the resulting runtime semantics. They
+  // do not construct thunks directly.
+
+  // Dispatches a generic async-start based on its wrapped computation and
+  // runtime behavior. Host operations use their dedicated completion paths,
+  // synchronous collectives emit bare collective thunks, and all other
+  // operations use generic async execution.
+  Future<ThunkSequence> DispatchAsyncStart(const HloInstruction* instr);
+
+  // Dispatches legacy and generic async-done HLOs to the completion path
+  // selected by their start or wrapped operation.
+  absl::StatusOr<ThunkSequence> DispatchAsyncDone(const HloInstruction* instr);
+
+  // DispatchSend/DispatchRecv select host-transfer or device-transfer
+  // semantics using `is_host_transfer()`. Device send/recv lowering also
+  // depends on the parent computation:
   //
-  // Also populates related information to 'ir_emitter_context_' for
-  // large-constant initializations. Large constants don't get initializers in
-  // the generated code and so must be initialized by XLA. The value of these
-  // constants will be stored in 'content'. Constants with initializers in the
-  // generated code will have empty 'content'.
-  AsyncThunkSequence EmitHloComputation(const HloComputation* computation);
+  //  - Outside an async computation, send/recv implicitly starts an async
+  //    execution that is completed by the matching send/recv-done instruction.
+  //  - Inside an async computation, send/recv lowers directly to
+  //    `SendThunk`/`RecvThunk`. The enclosing generic async-start/async-done
+  //    pair owns execution and completion.
+  //
+  absl::StatusOr<ThunkSequence> DispatchSend(const HloSendInstruction* instr);
+  absl::StatusOr<ThunkSequence> DispatchSendDone(
+      const HloSendDoneInstruction* instr);
 
-  AsyncThunkSequence EmitHloInstruction(const HloInstruction* hlo,
-                                        bool emit_group_thunks = false);
+  absl::StatusOr<ThunkSequence> DispatchRecv(const HloRecvInstruction* instr);
+  absl::StatusOr<ThunkSequence> DispatchRecvDone(
+      const HloRecvDoneInstruction* instr);
 
-  // Calls the right function to emit the custom call thunk for `hlo`.
-  AsyncThunkSequence EmitCustomCallSwitch(const HloInstruction* hlo);
+  // Dispatches a custom call to specialized thunk emission when supported and
+  // falls back to generic custom-call emission.
+  Future<ThunkSequence> DispatchCustomCall(const HloInstruction* hlo);
 
-  AsyncThunkSequence EmitAsyncStart(const HloInstruction* instr);
+  // Dispatches a legacy collective-start to synchronous collective emission or
+  // generic async execution.
+  Future<ThunkSequence> DispatchLegacyCollectiveStart(
+      const HloInstruction* instr);
 
-  AsyncThunkSequence EmitCallComputation(const HloInstruction* instr);
+  //===--------------------------------------------------------------------===//
+  // Structural HLO traversal
+  //===--------------------------------------------------------------------===//
 
-  AsyncThunkSequence EmitAsyncComputation(const HloInstruction* instr);
+  // HLO traversal follows a depth-first traversal of the HLO program. Each
+  // Emit* method lowers a single HLO operation and recursively composes
+  // Dispatch* and Emit* methods for nested HLO computations. Methods return
+  // Future<ThunkSequence> when nested emission can complete asynchronously (if
+  // thunk emission is expensive, i.e. requires LLVM compilation).
 
-  AsyncThunkSequence EmitAsyncCustomCallStart(const HloInstruction* instr);
+  // Traverses `computation` in schedule order and recursively emits each
+  // instruction. This is the computation traversal primitive and is not an HLO
+  // opcode handler.
+  Future<ThunkSequence> EmitHloComputation(const HloComputation* computation);
 
-  absl::StatusOr<ThunkSequence> EmitAsyncDone(const HloInstruction* instr);
+  // Emits thunks for `hlo` by dispatching to the operation-specific Dispatch*
+  // or Emit* method. Opcode dispatch is intentionally shallow;
+  // operation-specific control flow belongs in the handler.
+  Future<ThunkSequence> EmitHloInstruction(const HloInstruction* hlo);
 
-  AsyncThunkSequence EmitCollectiveKernelThunk(
+  //===--------------------------------------------------------------------===//
+  // HLO-specific thunk emission
+  //===--------------------------------------------------------------------===//
+
+  // Registers and returns the AsyncExecution shared by an async-start/done
+  // pair.
+  absl::StatusOr<std::shared_ptr<AsyncExecution>> RegisterAsyncExecution(
+      const HloInstruction* async_start);
+
+  // Emits a generic async start by recursively emitting its wrapped
+  // computation and wrapping the resulting thunks in an AsyncStartThunk.
+  Future<ThunkSequence> EmitAsyncStart(const HloInstruction* instr);
+
+  // Emits only an AsyncStartThunk for the already emitted `thunks`, using the
+  // registered `execution`.
+  absl::StatusOr<ThunkSequence> EmitAsyncStart(
+      std::shared_ptr<AsyncExecution> execution,
+      const HloInstruction* async_start, ThunkSequence thunks);
+
+  // Emits an AsyncDoneThunk that waits for the execution started by `start`.
+  absl::StatusOr<ThunkSequence> EmitAsyncDone(const HloInstruction* done,
+                                              const HloInstruction* start);
+
+  // Emits an async start for a device send/recv outside an async computation.
+  // Pipelined starts create or reuse the execution owned by their canonical
+  // start. This is called synchronously during HLO traversal.
+  absl::StatusOr<ThunkSequence> EmitAsyncSendRecvStart(
+      const HloSendRecvInstruction* async_start, ThunkSequence thunks);
+
+  // Emits a kCall by invoking EmitHloComputation for its called computation.
+  Future<ThunkSequence> EmitCall(const HloInstruction* instr);
+
+  absl::StatusOr<ThunkSequence> EmitHostExecuteStart(
+      const HloInstruction* async_start,
+      const HloCustomCallInstruction* host_execute);
+
+  absl::StatusOr<ThunkSequence> EmitHostExecuteDone(
+      const HloInstruction* async_done,
+      const HloCustomCallInstruction* host_execute);
+
+  Future<ThunkSequence> EmitCollective(const HloInstruction* collective);
+
+  Future<ThunkSequence> EmitCollectiveGroup(const HloInstruction* instr);
+
+  Future<ThunkSequence> EmitCollectiveKernel(
       Thunk::ThunkInfo thunk_info, std::vector<CollectiveThunk::Buffer> buffers,
       const HloInstruction* instr, const CollectiveConfig& config);
-  absl::StatusOr<ThunkSequence> EmitCollectiveAsyncDone(
-      const HloInstruction* inst);
-
-  AsyncThunkSequence EmitCollectiveGroupStartThunk(const HloInstruction* instr);
-
-  // Async start is either an AsyncStart instruction or a
-  // CollectivePermuteStart.
-  absl::StatusOr<ThunkSequence> EmitCollectivePermute(
-      const HloCollectivePermuteInstruction* instr,
-      const HloInstruction* absl_nonnull async_start);
 
   template <typename CollectiveThunkType, typename HloInstType>
-  AsyncThunkSequence EmitCollectiveThunk(
-      Thunk::Kind kind, const HloInstruction* async_start,
-      const HloInstType* inst, std::optional<bool> use_global_device_ids);
+  Future<ThunkSequence> EmitCollective(
+      Thunk::Kind kind, const HloInstType* inst,
+      std::optional<bool> use_global_device_ids);
 
-  AsyncThunkSequence EmitConditional(const HloInstruction* instr);
+  template <typename HloInstType>
+  absl::StatusOr<ThunkSequence> EmitDegeneratedCollective(
+      std::vector<CollectiveThunk::Buffer>& buffers, const HloInstType* inst);
+
+  Future<ThunkSequence> EmitConditional(const HloInstruction* instr);
 
   absl::StatusOr<ThunkSequence> EmitConstant(
       const HloConstantInstruction* instr);
 
-  absl::StatusOr<ThunkSequence> EmitConvolutionReorderThunk(
+  absl::StatusOr<ThunkSequence> EmitConvolutionReorder(
       const HloCustomCallInstruction* instr);
 
-  absl::StatusOr<ThunkSequence> EmitConvolutionThunk(
+  absl::StatusOr<ThunkSequence> EmitConvolution(
       const HloCustomCallInstruction* instr);
 
   absl::StatusOr<ThunkSequence> EmitCopy(const HloInstruction* instr);
 
-  absl::StatusOr<ThunkSequence> EmitCopyStartThunk(
+  absl::StatusOr<ThunkSequence> EmitCopyStart(
       const HloCopyStartInstruction* copy_start_instr);
 
-  absl::StatusOr<ThunkSequence> EmitCopyDoneThunk(const HloInstruction* instr);
+  absl::StatusOr<ThunkSequence> EmitCopyDone(const HloInstruction* instr);
 
-  absl::StatusOr<ThunkSequence> EmitCuDnnThunk(
+  absl::StatusOr<ThunkSequence> EmitCuDnn(
       const HloCustomCallInstruction* instr);
 
-  absl::StatusOr<ThunkSequence> EmitCublasLtMatmulThunk(
+  absl::StatusOr<ThunkSequence> EmitCublasLtMatmul(
       const HloCustomCallInstruction* instr);
 
-  absl::StatusOr<ThunkSequence> EmitCublasLtMatmulThunkF8(
+  absl::StatusOr<ThunkSequence> EmitCublasLtMatmulF8(
       const HloCustomCallInstruction* instr);
 
-  absl::StatusOr<ThunkSequence> EmitCublasLtGroupedMatmulThunk(
+  absl::StatusOr<ThunkSequence> EmitCublasLtGroupedMatmul(
       const HloCustomCallInstruction* instr);
 
-  absl::StatusOr<ThunkSequence> EmitCublasLtMatmulThunkMx(
+  absl::StatusOr<ThunkSequence> EmitCublasLtMatmulMx(
       const HloCustomCallInstruction* instr);
 
-  absl::StatusOr<ThunkSequence> EmitCustomCallThunk(
+  absl::StatusOr<ThunkSequence> EmitGenericCustomCall(
       const HloCustomCallInstruction* instr);
 
-  template <typename HloInstType>
-  absl::StatusOr<ThunkSequence> EmitDegeneratedCollectiveThunk(
-      std::vector<CollectiveThunk::Buffer>& buffers,
-      const HloInstruction* async_start, const HloInstType* inst);
+  Future<ThunkSequence> EmitFusion(const HloFusionInstruction* instr);
 
-  AsyncThunkSequence EmitFusion(const HloFusionInstruction* instr);
-
-  AsyncThunkSequence EmitDynamicSliceCopyFusion(
+  Future<ThunkSequence> EmitDynamicSliceCopyFusion(
       const HloFusionInstruction* instr, DynamicSliceCopyFusion copy);
 
-  AsyncThunkSequence EmitStaticSliceCopyFusion(
+  Future<ThunkSequence> EmitStaticSliceCopyFusion(
       const HloFusionInstruction* instr, const StaticSliceCopyFusion& copy);
 
-  absl::StatusOr<ThunkSequence> EmitFftThunk(const HloFftInstruction* instr);
+  absl::StatusOr<ThunkSequence> EmitFft(const HloFftInstruction* instr);
 
   absl::StatusOr<ThunkSequence> EmitInfeed(const HloInfeedInstruction* instr);
 
-  absl::StatusOr<ThunkSequence> EmitNormThunk(
-      const HloCustomCallInstruction* instr);
+  absl::StatusOr<ThunkSequence> EmitNorm(const HloCustomCallInstruction* instr);
 
   absl::StatusOr<ThunkSequence> EmitOutfeed(const HloOutfeedInstruction* instr);
 
-  AsyncThunkSequence EmitPadToStatic(const HloCustomCallInstruction* instr);
+  Future<ThunkSequence> EmitPadToStatic(const HloCustomCallInstruction* instr);
 
   absl::StatusOr<ThunkSequence> EmitPtxCustomCall(
       const HloCustomCallInstruction* instr);
 
-  absl::StatusOr<ThunkSequence> EmitRecvDoneThunk(
+  // Emits device send/recv as synchronous operations without async wrapping.
+  // These instructions have `is_host_transfer() == false`;
+  // DispatchSend/DispatchRecv use their parent computation to decide whether
+  // to wrap the emitted thunks in an implicit async start.
+  absl::StatusOr<ThunkSequence> EmitSend(const HloSendInstruction* instr);
+  absl::StatusOr<ThunkSequence> EmitRecv(const HloRecvInstruction* instr);
+
+  // Completes an implicit async device send/recv outside an async computation.
+  absl::StatusOr<ThunkSequence> EmitSendDone(
+      const HloSendDoneInstruction* instr);
+  absl::StatusOr<ThunkSequence> EmitRecvDone(
       const HloRecvDoneInstruction* instr);
 
-  absl::StatusOr<ThunkSequence> EmitRecvThunk(const HloRecvInstruction* instr,
-                                              bool emit_group_thunks);
+  // Emits host-transfer send/recv (`is_host_transfer() == true`). Host
+  // transfers use handler completion events and are never wrapped in generic
+  // async execution.
+  absl::StatusOr<ThunkSequence> EmitHostSend(const HloSendInstruction* instr);
+  absl::StatusOr<ThunkSequence> EmitHostRecv(const HloRecvInstruction* instr);
+  absl::StatusOr<ThunkSequence> EmitHostSendDone(
+      const HloInstruction* done, const HloSendRecvInstruction* host_transfer);
+  absl::StatusOr<ThunkSequence> EmitHostRecvDone(
+      const HloInstruction* done, const HloSendRecvInstruction* host_transfer);
 
   template <typename ThunkType>
   absl::StatusOr<ThunkSequence> EmitReplicaOrPartitionId(
       const HloInstruction* instr);
 
-  absl::StatusOr<ThunkSequence> EmitRngSeedThunk(const HloInstruction* instr);
+  absl::StatusOr<ThunkSequence> EmitRngSeed(const HloInstruction* instr);
 
-  AsyncThunkSequence EmitRngGetAndUpdateState(
+  Future<ThunkSequence> EmitRngGetAndUpdateState(
       const HloRngGetAndUpdateStateInstruction* instr);
 
-  AsyncThunkSequence EmitSliceToDynamic(const HloCustomCallInstruction* instr);
+  Future<ThunkSequence> EmitSliceToDynamic(
+      const HloCustomCallInstruction* instr);
 
-  absl::StatusOr<ThunkSequence> EmitSendDoneThunk(
-      const HloSendDoneInstruction* instr);
-
-  absl::StatusOr<ThunkSequence> EmitSendThunk(const HloSendInstruction* instr,
-                                              bool emit_group_thunks);
-
-  AsyncThunkSequence EmitSort(const HloSortInstruction* sort);
+  Future<ThunkSequence> EmitSort(const HloSortInstruction* sort);
 
   absl::StatusOr<ThunkSequence> EmitTopKCustomCall(
       const HloCustomCallInstruction* instr);
@@ -218,19 +318,19 @@ class ThunkEmitter {
   absl::StatusOr<ThunkSequence> EmitTriangularSolveCustomCall(
       const HloInstruction* instr);
 
-  AsyncThunkSequence EmitTritonCustomCall(
+  Future<ThunkSequence> EmitTritonCustomCall(
       const HloCustomCallInstruction* instr);
 
-  AsyncThunkSequence EmitWhile(const HloInstruction* instr);
+  Future<ThunkSequence> EmitWhile(const HloInstruction* instr);
 
   absl::Status AssertNonDeterminismIsOkay(const std::string& op_name);
 
-  AsyncThunkSequence EmitDynamicSliceFusionV2(
+  Future<ThunkSequence> EmitDynamicSliceFusionV2(
       const HloFusionInstruction* instr);
 
   std::optional<BufferAllocation::Slice> GetAllocationOverride(
       const HloInstruction* instr, const ShapeIndex& index) const;
-  absl::StatusOr<BufferAllocation::Slice> GetAllocationSliceForHlo(
+  absl::StatusOr<BufferAllocation::Slice> GetAllocationSlice(
       const HloInstruction* instr, const ShapeIndex& index = {}) const;
   absl::StatusOr<ShapedSlice> GetShapedSliceForHlo(
       const HloInstruction* instr, const ShapeIndex& index = {}) const;
@@ -241,12 +341,13 @@ class ThunkEmitter {
   }
   IrEmitterContext* ir_emitter_context_;
 
-  // Container for async host send/recv events shared by host send/recv thunks.
+  // Completion events shared by host-transfer send/recv start and done thunks.
   std::shared_ptr<HostSendRecvAsyncEvents> send_recv_events_;
 
   // Maps async-start instructions to their AsyncExecution so that the
   // corresponding async-done can emit an AsyncDoneThunk sharing the same
-  // AsyncExecution.
+  // AsyncExecution. Registry access is confined to synchronous HLO traversal;
+  // asynchronous emission callbacks capture the registered shared pointer.
   absl::flat_hash_map<const HloInstruction*, std::shared_ptr<AsyncExecution>>
       hlo_async_executions_;
 
@@ -273,7 +374,7 @@ class ThunkEmitter {
   // dynamic-slice fusion, the hero's operands and results must map to
   // synthetic BufferAllocation::Slices (the "embedded_allocations") rather
   // than the real buffer assignment. InstallAllocationOverrides sets the map;
-  // GetAllocationSliceForHlo checks it before falling through to the normal
+  // GetAllocationSlice checks it before falling through to the normal
   // buffer assignment. The returned cleanup object restores the empty state.
   using AllocationOverrides =
       absl::flat_hash_map<const HloInstruction*,

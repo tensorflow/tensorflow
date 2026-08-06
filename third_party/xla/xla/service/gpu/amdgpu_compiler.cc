@@ -170,7 +170,7 @@ absl::Status AMDGPUCompiler::OptimizeHloConvolutionCanonicalization(
   // CudnnConvPadForTensorCores may add instructions which can be simplified
   // by constant folding.
   pipeline.AddPass<HloConstantFolding>();
-  RETURN_IF_ERROR(
+  ABSL_RETURN_IF_ERROR(
       pipeline
           .Run(hlo_module,
                /*execution_threads=*/{HloInstruction::kMainExecutionThread})
@@ -203,13 +203,13 @@ absl::Status AMDGPUCompiler::OptimizeHloPostLayoutAssignment(
 
   pre_pipeline.AddPass<DotDimensionMerger>();
 
-  RETURN_IF_ERROR(
+  ABSL_RETURN_IF_ERROR(
       pre_pipeline
           .Run(hlo_module,
                /*execution_threads=*/{HloInstruction::kMainExecutionThread})
           .status());
 
-  RETURN_IF_ERROR(GpuCompiler::OptimizeHloPostLayoutAssignment(
+  ABSL_RETURN_IF_ERROR(GpuCompiler::OptimizeHloPostLayoutAssignment(
       hlo_module, stream_exec, options, gpu_target_config, alias_info,
       thread_pool, compilation_stats, mlir_context));
 
@@ -220,7 +220,7 @@ absl::Status AMDGPUCompiler::OptimizeHloPostLayoutAssignment(
   // memory.
   post_pipeline.AddPass<TriangularSolveRewriter>();
 
-  RETURN_IF_ERROR(
+  ABSL_RETURN_IF_ERROR(
       post_pipeline
           .Run(hlo_module,
                /*execution_threads=*/{HloInstruction::kMainExecutionThread})
@@ -252,7 +252,7 @@ AMDGPUCompiler::CompileTargetBinary(
     // NODE: module_config.compilation_cache_key() is not used in the current
     // implementation of CompileToHsaco since it invalidates the persistent
     // file cache.
-    ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         hsaco_result,
         amdgpu::CompileToHsaco(llvm_module,
                                device_description.gpu_compute_capability(),

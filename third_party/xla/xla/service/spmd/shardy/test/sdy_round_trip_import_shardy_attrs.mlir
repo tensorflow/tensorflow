@@ -227,3 +227,28 @@ module @sparse_offload_unreduced_module attributes {
   }
 }
 
+// -----
+
+// CHECK-LABEL: module @sparse_offload_unreduced_max_module
+// CHECK:         sdy.mesh @mesh = <["a"=2, "b"=2]>
+module @sparse_offload_unreduced_max_module attributes {
+  mhlo.frontend_attributes = {
+    xla.sdy.meshes = "{mesh = #sdy.mesh<[\"a\"=2, \"b\"=2]>}"
+  }
+} {
+
+  // CHECK-LABEL: func private @sparse_offload_callee_unreduced_max(
+  // CHECK-SAME:      %arg0: tensor<8x8xf32>) -> tensor<8x8xf32> {
+  // CHECK:         %[[SHARDING:.*]] = stablehlo.custom_call @Sharding(%arg0) {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{}, {}], unreduced=max{"a"}>]>} : (tensor<8x8xf32>) -> tensor<8x8xf32>
+  // CHECK-NEXT:    return %[[SHARDING]] : tensor<8x8xf32>
+  // CHECK-NEXT:  }
+  func.func private @sparse_offload_callee_unreduced_max(%arg0: tensor<8x8xf32>) -> tensor<8x8xf32> {
+    %0 = stablehlo.custom_call @Sharding(%arg0) {
+      mhlo.frontend_attributes = {
+        xla.sdy.sharding = "#sdy.sharding_per_value<[<@mesh, [{}, {}], unreduced=max{\"a\"}>]>"
+      }
+    } : (tensor<8x8xf32>) -> tensor<8x8xf32>
+    return %0 : tensor<8x8xf32>
+  }
+}
+

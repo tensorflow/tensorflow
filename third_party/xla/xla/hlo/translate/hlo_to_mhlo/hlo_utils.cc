@@ -157,7 +157,7 @@ absl::StatusOr<mlir::MemRefType> ConvertTensorShapeToMemRefType(
 
 absl::StatusOr<mlir::DenseElementsAttr> CreateDenseElementsAttrFromLiteral(
     const LiteralBase& literal, Builder builder) {
-  ASSIGN_OR_RETURN(auto type, ConvertTensorShapeToType<mlir::RankedTensorType>(
+  ABSL_ASSIGN_OR_RETURN(auto type, ConvertTensorShapeToType<mlir::RankedTensorType>(
                                   literal.shape(), builder));
 
   // TODO(hinsu): Support remaining XLA primitive types.

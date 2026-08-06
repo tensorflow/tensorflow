@@ -24,7 +24,6 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "xla/tsl/platform/status_macros.h"
 #include "llvm/Support/Casting.h"
-#include "llvm/Support/ExtensibleRTTI.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/DialectRegistry.h"
 #include "mlir/IR/OwningOpRef.h"
@@ -35,6 +34,7 @@ limitations under the License.
 #include "xla/mlir_hlo/mhlo/transforms/passes.h"
 #include "xla/pjrt/mlir_to_hlo.h"
 #include "xla/python/ifrt/hlo/hlo_program.h"
+#include "xla/python/ifrt/rtti.h"
 #include "xla/python/ifrt/serdes.h"
 #include "xla/python/ifrt/serdes_version.h"
 #include "xla/python/ifrt/serdes_week_4_old_version_accessor.h"
@@ -50,16 +50,16 @@ namespace {
 //
 // Serialization:
 // ```
-// ASSIGN_OR_RETURN(Serialized serialized, Serialize(xla_program));
+// ABSL_ASSIGN_OR_RETURN(Serialized serialized, Serialize(xla_program));
 // ```
 //
 // Deserialization:
 // ```
-// ASSIGN_OR_RETURN(auto deserialized, Deserialize(serialized));
+// ABSL_ASSIGN_OR_RETURN(auto deserialized, Deserialize(serialized));
 // auto xla_program = llvm::dyn_cast<HloProgram>(deserialized);
 // ```
 
-class HloProgramSerDes : public llvm::RTTIExtends<HloProgramSerDes, SerDes> {
+class HloProgramSerDes : public RTTIExtends<HloProgramSerDes, SerDes> {
  public:
   absl::string_view type_name() const override {
     // TODO(phawkins): whenever we next break compatibility, change this to
@@ -84,7 +84,7 @@ class HloProgramSerDes : public llvm::RTTIExtends<HloProgramSerDes, SerDes> {
     // these dialects don't provide version compatibility, the following
     // converts the module into StableHLO and use its portable serialization.
 
-    const auto& program = llvm::cast<HloProgram>(serializable);
+    const auto& program = cast<HloProgram>(serializable);
     if (program.mlir_module() == nullptr) {
       return absl::InvalidArgumentError("Unable to serialize null MLIR module");
     }
@@ -95,14 +95,14 @@ class HloProgramSerDes : public llvm::RTTIExtends<HloProgramSerDes, SerDes> {
     // Allow mixed serialization for stablehlo dialects.
     std::string serialized;
     if (version.version_number() >= SerDesVersionNumber(3)) {
-      ASSIGN_OR_RETURN(serialized,
+      ABSL_ASSIGN_OR_RETURN(serialized,
                        xla::SerializeUsingVersionedStablehlo(
                            *module, xla::GetDefaultStablehloVersion(),
                            xla::GetDefaultSdyVersion(),
                            /*inplace=*/false,
                            /*allow_mixed_serialization=*/true));
     } else {
-      ASSIGN_OR_RETURN(serialized,
+      ABSL_ASSIGN_OR_RETURN(serialized,
                        xla::SerializeUsingVersionedStablehlo(
                            *module, xla::GetDefaultStablehloVersion(),
                            xla::GetDefaultSdyVersion()));
@@ -123,9 +123,13 @@ class HloProgramSerDes : public llvm::RTTIExtends<HloProgramSerDes, SerDes> {
     mlir::sdy::registerAllDialects(registry);
     context->appendDialectRegistry(registry);
 
+    // The MLIR Lexer (used by the text/assembly parser) assumes the input
+    // buffer is null-terminated. To avoid ASan stack-buffer-overflows when
+    // parsing text-based StableHLO, we copy the serialized data to a
+    // `std::string` to guarantee null-termination before deserialization.
+    std::string flat_str(serialized);
     mlir::OwningOpRef<mlir::ModuleOp> module =
-        mlir::stablehlo::deserializePortableArtifact(
-            absl::Cord(serialized).Flatten(), context.get());
+        mlir::stablehlo::deserializePortableArtifact(flat_str, context.get());
     if (!module) {
       const absl::Status status = diagnostic_handler.ConsumeStatus();
       return absl::InvalidArgumentError(

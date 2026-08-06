@@ -136,7 +136,7 @@ absl::StatusOr<std::unique_ptr<CompilationProvider>>
 AssembleCompilationProvider(const CompilationProviderOptions& options) {
   // TODO(b/381059098): Simplify this logic
 
-  RETURN_IF_ERROR(CheckIncompatibleFlagSettings(options));
+  ABSL_RETURN_IF_ERROR(CheckIncompatibleFlagSettings(options));
 
   std::string decision_log;
   const auto append_to_decision_log = [&](absl::string_view decision) {

@@ -266,7 +266,7 @@ absl::StatusOr<absl::Duration> HloOpProfiler::MeasureOpChainDuration(
       MakeModuleForMeasurements(op, data_type, chain_length);
   HloVerifier verifier(/*layout_sensitive=*/true,
                        /*allow_mixed_precision=*/false);
-  RETURN_IF_ERROR(verifier.Run(&*module).status());
+  ABSL_RETURN_IF_ERROR(verifier.Run(&*module).status());
 
   std::minstd_rand0 engine;
   // Some operations have dynamic duration that depends on the input values.
@@ -278,7 +278,7 @@ absl::StatusOr<absl::Duration> HloOpProfiler::MeasureOpChainDuration(
                                                       /*use_large_range=*/true)
                                         .value();
   const absl::Time t_compile_start = absl::Now();
-  ASSIGN_OR_RETURN(std::unique_ptr<OpaqueExecutable> ex,
+  ABSL_ASSIGN_OR_RETURN(std::unique_ptr<OpaqueExecutable> ex,
                    runner_.CreateExecutable(std::move(module),
                                             /*run_hlo_passes=*/false));
   if (absl::Now() - t_compile_start > absl::Seconds(10)) {
@@ -286,16 +286,16 @@ absl::StatusOr<absl::Duration> HloOpProfiler::MeasureOpChainDuration(
   }
 
   // Warmup.
-  RETURN_IF_ERROR(runner_.ExecuteWithExecutable(ex.get(), args_small).status());
+  ABSL_RETURN_IF_ERROR(runner_.ExecuteWithExecutable(ex.get(), args_small).status());
 
   std::unique_ptr<KernelTracer> kernel_tracer = GetKernelTracer();
   if (!kernel_tracer) {
     return FailedPrecondition("Not built with --config=cuda or --config=rocm");
   }
   for (int i = 0; i < 10; ++i) {  // Run a few times to reduce noise.
-    RETURN_IF_ERROR(
+    ABSL_RETURN_IF_ERROR(
         runner_.ExecuteWithExecutable(ex.get(), args_small).status());
-    RETURN_IF_ERROR(
+    ABSL_RETURN_IF_ERROR(
         runner_.ExecuteWithExecutable(ex.get(), args_large).status());
   }
 
@@ -335,13 +335,13 @@ absl::StatusOr<HloInstructionProfile> HloOpProfiler::MeasureClockCyclesPerOp(
       return FailedPrecondition("%s is too fast to measure",
                                 HloOpcodeString(op));
     }
-    ASSIGN_OR_RETURN(duration,
+    ABSL_ASSIGN_OR_RETURN(duration,
                      MeasureOpChainDuration(op, data_type, chain_length));
     VLOG(3) << chain_length << "\t" << duration;
     chain_length *= 2;
   } while (duration < min_duration_);
 
-  ASSIGN_OR_RETURN(absl::Duration double_duration,
+  ABSL_ASSIGN_OR_RETURN(absl::Duration double_duration,
                    MeasureOpChainDuration(op, data_type, chain_length));
   VLOG(3) << chain_length << "\t" << double_duration;
 

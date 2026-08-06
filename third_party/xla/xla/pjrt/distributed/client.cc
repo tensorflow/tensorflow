@@ -182,7 +182,7 @@ DistributedRuntimeCoordinationServiceClient::KeyValueIncrement(
 absl::StatusOr<std::vector<std::pair<std::string, std::string>>>
 DistributedRuntimeCoordinationServiceClient::KeyValueDirGet(
     absl::string_view key) {
-  ASSIGN_OR_RETURN(const auto results, coord_agent_->GetKeyValueDir(key));
+  ABSL_ASSIGN_OR_RETURN(const auto results, coord_agent_->GetKeyValueDir(key));
 
   std::vector<std::pair<std::string, std::string>> kvs;
   kvs.reserve(results.size());
@@ -239,7 +239,7 @@ DistributedRuntimeCoordinationServiceClient::GetLiveNodesWithIncarnations(
   }
 
   // Get the set of live tasks.
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       const std::vector<CoordinationServiceAgent::AliveTask> live_tasks,
       coord_agent_->GetAliveTasks(tasks));
 

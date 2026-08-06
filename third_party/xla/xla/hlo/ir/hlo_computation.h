@@ -132,7 +132,7 @@ class HloComputation {
     absl::Status ForEachInstruction(
         absl::FunctionRef<absl::Status(const HloInstruction*)> func) const {
       for (const auto& instruction : instructions_) {
-        RETURN_IF_ERROR(func(instruction.get()));
+        ABSL_RETURN_IF_ERROR(func(instruction.get()));
       }
       return absl::OkStatus();
     }
@@ -1226,7 +1226,7 @@ absl::Status HloComputation::Accept(
   for (HloInstruction* root : CollectUnreachableRoots()) {
     VLOG(3) << "Traversing unreachable root: " << root->ToString();
     // Call FinishVisit only at the end.
-    RETURN_IF_ERROR(root->Accept(visitor, /*call_finish_visit=*/false));
+    ABSL_RETURN_IF_ERROR(root->Accept(visitor, /*call_finish_visit=*/false));
   }
   // Visit the computation root instruction last.
   return root_instruction()->Accept(visitor, /*call_finish_visit=*/true);
@@ -1253,10 +1253,10 @@ absl::Status HloComputation::AcceptOrdered(
         << " appears more than once in order";
     HloInstruction* mutable_instruction =
         const_cast<HloInstruction*>(instruction);
-    RETURN_IF_ERROR(visitor->Preprocess(mutable_instruction));
-    RETURN_IF_ERROR(mutable_instruction->Visit(visitor));
+    ABSL_RETURN_IF_ERROR(visitor->Preprocess(mutable_instruction));
+    ABSL_RETURN_IF_ERROR(mutable_instruction->Visit(visitor));
     visitor->SetVisited(*mutable_instruction);
-    RETURN_IF_ERROR(visitor->Postprocess(mutable_instruction));
+    ABSL_RETURN_IF_ERROR(visitor->Postprocess(mutable_instruction));
     visited.insert(instruction);
   }
   return visitor->FinishVisit(root_instruction());

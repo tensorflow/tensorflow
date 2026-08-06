@@ -45,6 +45,8 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_schedule.h"
+#include "xla/hlo/transforms/simplifiers/memory_scheduler.pb.h"
+#include "xla/hlo/transforms/simplifiers/memory_scheduler_metrics.pb.h"
 #include "xla/service/buffer_value.h"
 #include "xla/service/heap_simulator/heap_simulator.h"
 #include "xla/service/hlo_value.h"
@@ -407,7 +409,7 @@ absl::StatusOr<HloSchedule> ComputationSchedulerAlgorithm::Run(
   for (HloComputation* computation :
        module->MakeComputationPostOrder(execution_threads)) {
     if (!computation->IsFusionComputation()) {
-      ASSIGN_OR_RETURN(HloInstructionSequence computation_sequence,
+      ABSL_ASSIGN_OR_RETURN(HloInstructionSequence computation_sequence,
                        Run(computation, points_to_analysis, alias_analysis));
       if (postprocessor_) {
         computation_sequence = postprocessor_(computation_sequence);
@@ -416,7 +418,7 @@ absl::StatusOr<HloSchedule> ComputationSchedulerAlgorithm::Run(
     }
   }
   if (peak_memory) {
-    ASSIGN_OR_RETURN(*peak_memory, HeapSimulator::MinimumMemoryForModule(
+    ABSL_ASSIGN_OR_RETURN(*peak_memory, HeapSimulator::MinimumMemoryForModule(
                                        schedule, alias_analysis, alias_info_,
                                        size_function_));
   }
@@ -486,7 +488,7 @@ absl::StatusOr<HloInstructionSequence> DFSMemoryScheduler::Run(
     return absl::OkStatus();
   });
   visitor.ReserveVisitStates(computation->instruction_count());
-  RETURN_IF_ERROR(computation->AcceptWithOperandOrder(
+  ABSL_RETURN_IF_ERROR(computation->AcceptWithOperandOrder(
       &visitor, [&stats_map](const HloInstruction* a, const HloInstruction* b) {
         auto& stats_a = stats_map.at(a);
         auto& stats_b = stats_map.at(b);
@@ -583,28 +585,45 @@ absl::StatusOr<HloSchedule> DefaultMemoryScheduler::Run(
   // - Postorder does not use any heuristics.
   // List wins for most of our benchmarks; postorder-based schedulers win for
   // some RNNs.
+  MemorySchedulerMetrics memory_scheduler_metrics;
   int64_t list_memory;
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       HloSchedule list_sequence,
       list_scheduler_.Run(module, points_to_analysis, alias_analysis,
                           execution_threads, &list_memory));
+  MetricsForSingleMemoryScheduler* list_metrics =
+      memory_scheduler_metrics.add_schedulers();
+  list_metrics->set_type(MemorySchedulerProto::LIST);
+  list_metrics->set_peak_memory(list_memory);
+  list_metrics->set_valid_schedule(true);
   VLOG(2) << "Min-memory list sequence: " << HumanReadableNumBytes(list_memory);
 
   int64_t dfs_memory;
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       HloSchedule dfs_sequence,
       dfs_scheduler_.Run(module, points_to_analysis, alias_analysis,
                          execution_threads, &dfs_memory));
+  MetricsForSingleMemoryScheduler* dfs_metrics =
+      memory_scheduler_metrics.add_schedulers();
+  dfs_metrics->set_type(MemorySchedulerProto::DFS);
+  dfs_metrics->set_peak_memory(dfs_memory);
+  dfs_metrics->set_valid_schedule(true);
   VLOG(2) << "Min-memory dfs sequence: " << HumanReadableNumBytes(dfs_memory);
 
   int64_t post_order_memory;
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       HloSchedule post_order_sequence,
       post_order_scheduler_.Run(module, points_to_analysis, alias_analysis,
                                 execution_threads, &post_order_memory));
+  MetricsForSingleMemoryScheduler* post_order_metrics =
+      memory_scheduler_metrics.add_schedulers();
+  post_order_metrics->set_type(MemorySchedulerProto::POST_ORDER);
+  post_order_metrics->set_peak_memory(post_order_memory);
+  post_order_metrics->set_valid_schedule(true);
   VLOG(2) << "Min-memory post order sequence: "
           << HumanReadableNumBytes(post_order_memory);
 
+  HloSchedule* selected_sequence;
   auto min_memory = std::min({dfs_memory, post_order_memory, list_memory});
   if (peak_memory) {
     *peak_memory = min_memory;
@@ -613,16 +632,27 @@ absl::StatusOr<HloSchedule> DefaultMemoryScheduler::Run(
   if (min_memory == list_memory) {
     VLOG(2) << "Chose min-memory list sequence: "
             << HumanReadableNumBytes(list_memory);
-    return list_sequence;
-  }
-  if (min_memory == dfs_memory) {
+    selected_sequence = &list_sequence;
+    memory_scheduler_metrics.set_selected_scheduler_idx(0);
+  } else if (min_memory == dfs_memory) {
     VLOG(2) << "Chose min-memory dfs sequence: "
             << HumanReadableNumBytes(dfs_memory);
-    return dfs_sequence;
+    selected_sequence = &dfs_sequence;
+    memory_scheduler_metrics.set_selected_scheduler_idx(1);
+  } else {
+    VLOG(2) << "Chose min-memory post_order sequence: "
+            << HumanReadableNumBytes(post_order_memory);
+    selected_sequence = &post_order_sequence;
+    memory_scheduler_metrics.set_selected_scheduler_idx(2);
   }
-  VLOG(2) << "Chose min-memory post_order sequence: "
-          << HumanReadableNumBytes(post_order_memory);
-  return post_order_sequence;
+
+  if (auto status =
+          module->metadata()->set_custom_metadata(memory_scheduler_metrics);
+      !status.ok()) {
+    LOG(WARNING) << "failed to set custom metadata: " << status;
+  }
+
+  return *selected_sequence;
 }
 
 absl::StatusOr<HloSchedule> ScheduleModule(
@@ -633,16 +663,16 @@ absl::StatusOr<HloSchedule> ScheduleModule(
     return absl::StrFormat("XlaMemoryScheduler:#module=%s,program_id=%d#",
                            module->name(), module->unique_id());
   });
-  ASSIGN_OR_RETURN(std::unique_ptr<TuplePointsToAnalysis> points_to_analysis,
+  ABSL_ASSIGN_OR_RETURN(std::unique_ptr<TuplePointsToAnalysis> points_to_analysis,
                    TuplePointsToAnalysis::Run(module));
-  ASSIGN_OR_RETURN(std::unique_ptr<HloAliasAnalysis> alias_analysis,
+  ABSL_ASSIGN_OR_RETURN(std::unique_ptr<HloAliasAnalysis> alias_analysis,
                    HloAliasAnalysis::Run(module, algorithm.alias_info()));
 
-  ASSIGN_OR_RETURN(HloSchedule schedule,
+  ABSL_ASSIGN_OR_RETURN(HloSchedule schedule,
                    algorithm.Run(module, *points_to_analysis, *alias_analysis,
                                  execution_threads, peak_memory));
 
-  RETURN_IF_ERROR(schedule.Verify());
+  ABSL_RETURN_IF_ERROR(schedule.Verify());
 
   return schedule;
 }
@@ -660,9 +690,9 @@ absl::StatusOr<HloSchedule> ScheduleModule(
 absl::StatusOr<bool> HloMemoryScheduler::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
-  ASSIGN_OR_RETURN(HloSchedule schedule,
+  ABSL_ASSIGN_OR_RETURN(HloSchedule schedule,
                    ScheduleModule(module, *algorithm_, execution_threads));
-  RETURN_IF_ERROR(module->set_schedule(std::move(schedule)));
+  ABSL_RETURN_IF_ERROR(module->set_schedule(std::move(schedule)));
   return true;
 }
 
@@ -681,10 +711,10 @@ absl::StatusOr<bool> HloTrivialScheduler::RunImpl(
             return absl::OkStatus();
           });
       visitor.ReserveVisitStates(computation->instruction_count());
-      RETURN_IF_ERROR(computation->Accept(&visitor));
+      ABSL_RETURN_IF_ERROR(computation->Accept(&visitor));
     }
   }
-  RETURN_IF_ERROR(module->set_schedule(std::move(schedule)));
+  ABSL_RETURN_IF_ERROR(module->set_schedule(std::move(schedule)));
   return true;
 }
 

@@ -258,7 +258,7 @@ static void AppendArgsFromOptions(GpuAsmOpts options,
 absl::StatusOr<cuda::Assembly> CompileGpuAsmUsingPtxAs(
     const CudaComputeCapability& cc, absl::string_view ptx, GpuAsmOpts options,
     bool cancel_if_reg_spill, bool dump_compilation_log) {
-  ASSIGN_OR_RETURN(std::string ptxas_path,
+  ABSL_ASSIGN_OR_RETURN(std::string ptxas_path,
                    FindPtxAsExecutable(options.preferred_cuda_dir));
   return CompileGpuAsmUsingPtxAs(ptxas_path, cc, ptx, options,
                                  cancel_if_reg_spill, dump_compilation_log);
@@ -268,7 +268,7 @@ absl::StatusOr<cuda::Assembly> CompileGpuAsmUsingPtxAs(
     absl::string_view ptxas_path, const CudaComputeCapability& cc,
     absl::string_view ptx, GpuAsmOpts options, bool cancel_if_reg_spill,
     bool dump_compilation_log) {
-  ASSIGN_OR_RETURN(auto version, GetToolVersion(ptxas_path));
+  ABSL_ASSIGN_OR_RETURN(auto version, GetToolVersion(ptxas_path));
   WarnIfBadPtxasVersion("ptxas", cc, version);
 
   // Write ptx into a temporary file.
@@ -360,7 +360,7 @@ absl::StatusOr<cuda::Assembly> CompileGpuAsmUsingPtxAs(
 
   // Read in the result of compilation and return it as a byte vector.
   std::string cubin;
-  RETURN_IF_ERROR(
+  ABSL_RETURN_IF_ERROR(
       tsl::ReadFileToString(tsl::Env::Default(), cubin_path, &cubin));
   std::vector<uint8_t> cubin_vector(cubin.begin(), cubin.end());
   std::optional<std::string> maybe_compilation_error_log;
@@ -373,14 +373,14 @@ absl::StatusOr<cuda::Assembly> CompileGpuAsmUsingPtxAs(
 
 absl::StatusOr<SemanticVersion> GetAsmCompilerVersion(
     absl::string_view preferred_cuda_dir) {
-  ASSIGN_OR_RETURN(std::string ptxas_path,
+  ABSL_ASSIGN_OR_RETURN(std::string ptxas_path,
                    FindPtxAsExecutable(preferred_cuda_dir));
   return GetToolVersion(ptxas_path);
 }
 
 absl::StatusOr<std::vector<uint8_t>> BundleGpuAsmUsingFatbin(
     std::vector<CubinOrPTXImage> images, GpuAsmOpts options) {
-  ASSIGN_OR_RETURN(std::string fatbinary_path,
+  ABSL_ASSIGN_OR_RETURN(std::string fatbinary_path,
                    FindCudaExecutable("fatbinary", options.preferred_cuda_dir));
 
   // Write images to temporary files.
@@ -392,7 +392,7 @@ absl::StatusOr<std::vector<uint8_t>> BundleGpuAsmUsingFatbin(
       return absl::InternalError(
           "Could not get temporary filenames for images.");
     }
-    RETURN_IF_ERROR(tsl::WriteStringToFile(
+    ABSL_RETURN_IF_ERROR(tsl::WriteStringToFile(
         env, img_path, std::string(img.bytes.begin(), img.bytes.end())));
     VLOG(2) << "image written to " << img_path;
     image_paths.push_back(std::move(img_path));
@@ -460,7 +460,7 @@ absl::StatusOr<std::vector<uint8_t>> BundleGpuAsmUsingFatbin(
 
   // Read in the result and return it as a byte vector.
   std::string result_blob;
-  RETURN_IF_ERROR(
+  ABSL_RETURN_IF_ERROR(
       tsl::ReadFileToString(tsl::Env::Default(), result_path, &result_blob));
   return std::vector<uint8_t>(result_blob.begin(), result_blob.end());
 }
@@ -478,7 +478,7 @@ absl::StatusOr<std::string> FindNvlinkExecutable(
 absl::StatusOr<SemanticVersion> GetNvLinkVersion(
     absl::string_view preferred_cuda_dir) {
   // Make sure nvlink exists and is executable.
-  ASSIGN_OR_RETURN(std::string bin_path,
+  ABSL_ASSIGN_OR_RETURN(std::string bin_path,
                    FindNvlinkExecutable(preferred_cuda_dir));
 
   return GetToolVersion(bin_path);
@@ -488,7 +488,7 @@ absl::StatusOr<std::vector<uint8_t>> LinkUsingNvlink(
     stream_executor::CudaComputeCapability cc,
     absl::string_view preferred_cuda_dir,
     absl::Span<const std::vector<uint8_t>> images) {
-  ASSIGN_OR_RETURN(std::string bin_path,
+  ABSL_ASSIGN_OR_RETURN(std::string bin_path,
                    FindNvlinkExecutable(preferred_cuda_dir));
 
   return LinkUsingNvlink(bin_path, cc, images);
@@ -514,7 +514,7 @@ absl::StatusOr<std::vector<uint8_t>> LinkUsingNvlink(
     temp_files.emplace_back();
     TF_RET_CHECK(env->LocalTempFilename(&temp_files.back()));
     temp_files.back() += ".cubin";
-    RETURN_IF_ERROR(tsl::WriteStringToFile(
+    ABSL_RETURN_IF_ERROR(tsl::WriteStringToFile(
         env, temp_files.back(),
         absl::string_view(reinterpret_cast<const char*>(images[i].data()),
                           images[i].size())));
@@ -560,7 +560,7 @@ absl::StatusOr<std::vector<uint8_t>> LinkUsingNvlink(
 
   // Read in the result of compilation and return it as a byte vector.
   std::string cubin;
-  RETURN_IF_ERROR(
+  ABSL_RETURN_IF_ERROR(
       tsl::ReadFileToString(tsl::Env::Default(), output_path, &cubin));
   std::vector<uint8_t> cubin_vector(cubin.begin(), cubin.end());
   return cubin_vector;
@@ -580,7 +580,7 @@ absl::StatusOr<std::string> FindNvdisasmExecutable(
 absl::StatusOr<SemanticVersion> GetNvdisasmVersion(
     absl::string_view preferred_cuda_dir) {
   // Make sure nvdisasm exists and is executable.
-  ASSIGN_OR_RETURN(std::string bin_path,
+  ABSL_ASSIGN_OR_RETURN(std::string bin_path,
                    FindNvdisasmExecutable(preferred_cuda_dir));
 
   return GetToolVersion(bin_path);

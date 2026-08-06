@@ -64,7 +64,7 @@ std::string TransformGraphWithStringInputs(std::string graph_def_string,
 
 }  // namespace tensorflow
 
-PYBIND11_MODULE(_pywrap_transform_graph, m, pybind11::mod_gil_not_used()) {
+PYBIND11_MODULE(_pywrap_transform_graph, m) {
   m.def(
       "TransformGraphWithStringInputs",
       [](const py::object graph_def_string, const py::object inputs_string,

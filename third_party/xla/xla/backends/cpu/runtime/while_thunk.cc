@@ -50,9 +50,9 @@ namespace xla::cpu {
 absl::StatusOr<std::unique_ptr<WhileThunk>> WhileThunk::Create(
     Info info, BufferAllocation::Slice cond_buffer, ThunkSequence cond_sequence,
     ThunkSequence body_sequence, std::optional<int64_t> trip_count) {
-  ASSIGN_OR_RETURN(ThunkExecutor cond_executor,
+  ABSL_ASSIGN_OR_RETURN(ThunkExecutor cond_executor,
                    ThunkExecutor::Create(std::move(cond_sequence)));
-  ASSIGN_OR_RETURN(ThunkExecutor body_executor,
+  ABSL_ASSIGN_OR_RETURN(ThunkExecutor body_executor,
                    ThunkExecutor::Create(std::move(body_sequence)));
 
   if (cond_buffer.size() != sizeof(bool)) {
@@ -90,7 +90,7 @@ tsl::AsyncValueRef<Thunk::ExecuteEvent> WhileThunk::Execute(
 
   se::DeviceAddressBase cond_data;
   if (ShouldCheckBufferSlices()) {
-    ASSIGN_OR_RETURN(cond_data, allocations->GetDeviceAddress(cond_buffer_));
+    ABSL_ASSIGN_OR_RETURN(cond_data, allocations->GetDeviceAddress(cond_buffer_));
   } else {
     cond_data = allocations->GetDeviceAddressUnchecked(cond_buffer_);
   }

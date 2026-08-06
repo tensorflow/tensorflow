@@ -21,6 +21,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/pattern_matcher_gmock.h"
 #include "xla/service/pattern_matcher.h"
@@ -92,7 +93,7 @@ ENTRY entry {
       ::xla::GmockMatch(m::GetTupleElement(m::CustomCall(m::Parameter(0)), 0)));
 }
 
-TEST_F(ScanRewriterTest, NonScalarInit) {
+TEST_F(ScanRewriterTest, AllZeroVectorInit) {
   const char* hlo_text = R"(
 HloModule module
 
@@ -104,11 +105,11 @@ add {
 }
 
 ENTRY entry {
-  p0 = f32[100,2] parameter(0)
+  p0 = f32[2,100]{1,0} parameter(0)
   p1 = f32[2] constant({0.0, 0.0})
-  scan = (f32[100,2], f32[2]) scan(p0, p1), 
-    dimensions={0}, num_carries=1, is_associative=true, to_apply=add
-  ROOT root = f32[100,2] get-tuple-element(scan), index=0
+  scan = (f32[2,100]{1,0}, f32[2]) scan(p0, p1), 
+    dimensions={1}, num_carries=1, is_associative=true, to_apply=add
+  ROOT root = f32[2,100]{1,0} get-tuple-element(scan), index=0
 }
 )";
   ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_text));
@@ -116,9 +117,215 @@ ENTRY entry {
   ScanRewriter pass;
   ASSERT_OK(pass.Run(module.get()));
 
-  // Check that the scan is NOT rewritten since init is not a scalar.
+  // An all zero vector init needs no seeding: plain rewrite.
+  EXPECT_THAT(
+      module->entry_computation()->root_instruction(),
+      ::xla::GmockMatch(m::GetTupleElement(m::CustomCall(m::Parameter(0)), 0)));
+}
+
+TEST_F(ScanRewriterTest, NonZeroInitAppliedAsSeed) {
+  const char* hlo_text = R"(
+HloModule module
+
+add {
+  p0 = f32[] parameter(0)
+  p1 = f32[] parameter(1)
+  add = f32[] add(p0, p1)
+  ROOT tuple = (f32[], f32[]) tuple(add, add)
+}
+
+ENTRY entry {
+  p0 = f32[100] parameter(0)
+  p1 = f32[] constant(5.0)
+  scan = (f32[100], f32[]) scan(p0, p1),
+    dimensions={0}, num_carries=1, is_associative=true, to_apply=add
+  ROOT root = f32[100] get-tuple-element(scan), index=0
+}
+)";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_text));
+
+  ScanRewriter pass;
+  ASSERT_OK(pass.Run(module.get()));
+
+  // The seed is added to the CUB result: out = cub_scan(p0) + broadcast(5).
   EXPECT_THAT(module->entry_computation()->root_instruction(),
-              ::xla::GmockMatch(m::GetTupleElement(m::Op(), 0)));
+              ::xla::GmockMatch(
+                  m::Add(m::GetTupleElement(m::CustomCall(m::Parameter(0)), 0),
+                         m::Broadcast(m::Constant()))));
+}
+
+TEST_F(ScanRewriterTest, VectorSeedFromParameter) {
+  // The form the SPMD partitioner emits for scan dim sharded scans: the per
+  // shard rerun is seeded with the neighbor shard's incoming carry.
+  const char* hlo_text = R"(
+HloModule module
+
+add {
+  p0 = s32[4] parameter(0)
+  p1 = s32[4] parameter(1)
+  add = s32[4] add(p0, p1)
+  ROOT tuple = (s32[4], s32[4]) tuple(add, add)
+}
+
+ENTRY entry {
+  p0 = s32[4,32]{1,0} parameter(0)
+  seed = s32[4] parameter(1)
+  scan = (s32[4,32]{1,0}, s32[4]) scan(p0, seed),
+    dimensions={1}, num_carries=1, is_associative=true, to_apply=add
+  ROOT root = s32[4,32]{1,0} get-tuple-element(scan), index=0
+}
+)";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_text));
+
+  ScanRewriter pass;
+  ASSERT_OK(pass.Run(module.get()));
+
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              ::xla::GmockMatch(
+                  m::Add(m::GetTupleElement(m::CustomCall(m::Parameter(0)), 0),
+                         m::Broadcast(m::Parameter(1)))));
+}
+
+TEST_F(ScanRewriterTest, LiveFinalCarry) {
+  // The form the SPMD partitioner emits for the shard totals: only the
+  // final carry is read. It is the last output element of the inclusive
+  // scan.
+  const char* hlo_text = R"(
+HloModule module
+
+add {
+  p0 = f32[] parameter(0)
+  p1 = f32[] parameter(1)
+  add = f32[] add(p0, p1)
+  ROOT tuple = (f32[], f32[]) tuple(add, add)
+}
+
+ENTRY entry {
+  p0 = f32[100] parameter(0)
+  p1 = f32[] constant(0.0)
+  scan = (f32[100], f32[]) scan(p0, p1),
+    dimensions={0}, num_carries=1, is_associative=true, to_apply=add
+  ROOT root = f32[] get-tuple-element(scan), index=1
+}
+)";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_text));
+
+  ScanRewriter pass;
+  ASSERT_OK(pass.Run(module.get()));
+
+  // The carry user is fed a slice of the CUB output directly.
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              ::xla::GmockMatch(m::Reshape(m::Slice(
+                  m::GetTupleElement(m::CustomCall(m::Parameter(0)), 0)))));
+  const HloInstruction* slice =
+      module->entry_computation()->root_instruction()->operand(0);
+  EXPECT_EQ(slice->slice_starts(0), 99);
+  EXPECT_EQ(slice->slice_limits(0), 100);
+}
+
+TEST_F(ScanRewriterTest, ReverseSeededScanLiveCarry) {
+  const char* hlo_text = R"(
+HloModule module
+
+add {
+  p0 = f32[] parameter(0)
+  p1 = f32[] parameter(1)
+  add = f32[] add(p0, p1)
+  ROOT tuple = (f32[], f32[]) tuple(add, add)
+}
+
+ENTRY entry {
+  p0 = f32[100] parameter(0)
+  seed = f32[] parameter(1)
+  scan = (f32[100], f32[]) scan(p0, seed),
+    dimensions={0}, num_carries=1, is_reverse=true, is_associative=true, to_apply=add
+  out = f32[100] get-tuple-element(scan), index=0
+  carry = f32[] get-tuple-element(scan), index=1
+  broadcast = f32[100] broadcast(carry), dimensions={}
+  ROOT root = f32[100] add(out, broadcast)
+}
+)";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_text));
+
+  ScanRewriter pass;
+  ASSERT_OK(pass.Run(module.get()));
+
+  // A reverse scan's final carry is its first output element; both users
+  // share the seed applied output.
+  const HloInstruction* root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root,
+              ::xla::GmockMatch(m::Add(
+                  m::Add(m::GetTupleElement(m::CustomCall(m::Parameter(0)), 0),
+                         m::Broadcast(m::Parameter(1))),
+                  m::Broadcast(m::Reshape(m::Slice(m::Add(
+                      m::GetTupleElement(m::CustomCall(m::Parameter(0)), 0),
+                      m::Broadcast(m::Parameter(1)))))))));
+  const HloInstruction* slice = root->operand(1)->operand(0)->operand(0);
+  EXPECT_EQ(slice->slice_starts(0), 0);
+  EXPECT_EQ(slice->slice_limits(0), 1);
+  EXPECT_EQ(slice->operand(0), root->operand(0));
+}
+
+TEST_F(ScanRewriterTest, DeadNonGetTupleElementUser) {
+  // A dead non get-tuple-element user passes IsStandardAssociativeScan; the
+  // carry liveness walk must not assume every user is a get-tuple-element.
+  const char* hlo_text = R"(
+HloModule module
+
+add {
+  p0 = f32[] parameter(0)
+  p1 = f32[] parameter(1)
+  add = f32[] add(p0, p1)
+  ROOT tuple = (f32[], f32[]) tuple(add, add)
+}
+
+ENTRY entry {
+  p0 = f32[100] parameter(0)
+  p1 = f32[] constant(0.0)
+  scan = (f32[100], f32[]) scan(p0, p1),
+    dimensions={0}, num_carries=1, is_associative=true, to_apply=add
+  dead = ((f32[100], f32[])) tuple(scan)
+  ROOT root = f32[100] get-tuple-element(scan), index=0
+}
+)";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_text));
+
+  ScanRewriter pass;
+  ASSERT_OK(pass.Run(module.get()));
+
+  EXPECT_THAT(
+      module->entry_computation()->root_instruction(),
+      ::xla::GmockMatch(m::GetTupleElement(m::CustomCall(m::Parameter(0)), 0)));
+}
+
+TEST_F(ScanRewriterTest, SkipZeroLengthScanDimension) {
+  const char* hlo_text = R"(
+HloModule module
+
+add {
+  p0 = f32[] parameter(0)
+  p1 = f32[] parameter(1)
+  add = f32[] add(p0, p1)
+  ROOT tuple = (f32[], f32[]) tuple(add, add)
+}
+
+ENTRY entry {
+  p0 = f32[0] parameter(0)
+  p1 = f32[] constant(0.0)
+  scan = (f32[0], f32[]) scan(p0, p1),
+    dimensions={0}, num_carries=1, is_associative=true, to_apply=add
+  ROOT root = f32[0] get-tuple-element(scan), index=0
+}
+)";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_text));
+
+  ScanRewriter pass;
+  ASSERT_OK(pass.Run(module.get()));
+
+  // Nothing to scan, and no boundary element for the carry: not rewritten.
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              ::xla::GmockMatch(
+                  m::GetTupleElement(m::Op().WithOpcode(HloOpcode::kScan), 0)));
 }
 
 TEST_F(ScanRewriterTest, SkipNonMinorScanDimension) {

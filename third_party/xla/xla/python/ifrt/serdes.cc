@@ -108,7 +108,7 @@ absl::Status Serialize(const Serializable& serializable,
     }
     serdes = it->second;
   }
-  ASSIGN_OR_RETURN(absl::Cord data,
+  ABSL_ASSIGN_OR_RETURN(absl::Cord data,
                    serdes->Serialize(serializable, std::move(options)));
 
   proto.Clear();
@@ -121,7 +121,7 @@ absl::StatusOr<Serialized> Serialize(
     const Serializable& serializable,
     std::unique_ptr<SerializeOptions> options) {
   Serialized serialized;
-  RETURN_IF_ERROR(Serialize(serializable, std::move(options), serialized));
+  ABSL_RETURN_IF_ERROR(Serialize(serializable, std::move(options), serialized));
   return serialized;
 }
 

@@ -116,7 +116,7 @@ class CommonAsyncHostToDeviceTransferManager
         allocation_events.push_back({});
       }
 
-      ASSIGN_OR_RETURN(
+      ABSL_ASSIGN_OR_RETURN(
           Shape device_shape,
           client->MakeDefaultShapeForMemorySpace(
               memory_space,
@@ -129,10 +129,10 @@ class CommonAsyncHostToDeviceTransferManager
                   : nullptr));
       auto shared_device_shape =
           std::make_shared<const Shape>(std::move(device_shape));
-      ASSIGN_OR_RETURN(
+      ABSL_ASSIGN_OR_RETURN(
           int64_t on_device_bytes_count,
           client->GetOnDeviceBytesCount(memory_space, *shared_device_shape));
-      ASSIGN_OR_RETURN(
+      ABSL_ASSIGN_OR_RETURN(
           auto raw_buffer,
           client->AllocateRawBuffer(memory_space, on_device_bytes_count,
                                     /*retry_on_oom=*/true, allocation_event));
@@ -142,19 +142,19 @@ class CommonAsyncHostToDeviceTransferManager
       PjRtDeviceEventPromiseRef definition_event_promise;
       PjRtDeviceEventRef definition_event;
       if (client->event_tracking_enabled()) {
-        ASSIGN_OR_RETURN(
+        ABSL_ASSIGN_OR_RETURN(
             std::tie(definition_event_promise, definition_event),
             client->CreateLinkedEventPromise(
                 memory_space,
                 absl::StrCat("AsyncHostToDeviceTransferManager Op:",
                              debug_info.value_or(""))));
       } else {
-        ASSIGN_OR_RETURN(std::tie(definition_event_promise, definition_event),
+        ABSL_ASSIGN_OR_RETURN(std::tie(definition_event_promise, definition_event),
                          client->CreateLinkedEventPromise(memory_space, ""));
       }
       definition_events.push_back(std::move(definition_event_promise));
 
-      ASSIGN_OR_RETURN(
+      ABSL_ASSIGN_OR_RETURN(
           auto buffer,
           client->DefineBuffer(shared_device_shape, memory_space, raw_buffer,
                                {std::move(definition_event)}));
@@ -260,7 +260,7 @@ class CommonAsyncHostToDeviceTransferManager
     tsl::profiler::TraceMeProducer producer("TransferLiteralToBuffer",
                                             tsl::profiler::ContextType::kPjRt);
 
-    ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         auto h2d_transfer_event,
         client_->LinearizeInto(
             literal, *device_shapes_[buffer_index],
@@ -373,7 +373,7 @@ class CommonAsyncHostToDeviceTransferManager
       --remaining_buffer_count_;
     };
 
-    ASSIGN_OR_RETURN(auto h2d_transfer_event,
+    ABSL_ASSIGN_OR_RETURN(auto h2d_transfer_event,
                      undispatched_buffer_ref->CopyRawHostToDeviceAndReturnEvent(
                          data, offset, transfer_size));
     if (client_->event_tracking_enabled()) {

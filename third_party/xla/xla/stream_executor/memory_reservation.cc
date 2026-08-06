@@ -89,7 +89,7 @@ DeviceAddressBase MemoryReservation::ScopedMapping::mapped_address() const {
 absl::StatusOr<MemoryReservation::ScopedMapping> MemoryReservation::MapTo(
     size_t reservation_offset, size_t allocation_offset, size_t size,
     MemoryAllocation& allocation) {
-  RETURN_IF_ERROR(Map(reservation_offset, allocation_offset, size, allocation));
+  ABSL_RETURN_IF_ERROR(Map(reservation_offset, allocation_offset, size, allocation));
 
   auto cleanup = absl::MakeCleanup([&] {
     absl::Status unmap_status = UnMap(reservation_offset, size);
@@ -99,7 +99,7 @@ absl::StatusOr<MemoryReservation::ScopedMapping> MemoryReservation::MapTo(
     }
   });
 
-  RETURN_IF_ERROR(SetAccess(reservation_offset, size));
+  ABSL_RETURN_IF_ERROR(SetAccess(reservation_offset, size));
 
   std::move(cleanup).Cancel();
   return ScopedMapping(this, reservation_offset, size);
@@ -136,12 +136,12 @@ absl::StatusOr<MemoryReservation::ScopedMapping> MemoryReservation::MapTo(
   });
 
   for (const MappingDescriptor& desc : mappings) {
-    RETURN_IF_ERROR(Map(desc.reservation_offset, desc.allocation_offset,
+    ABSL_RETURN_IF_ERROR(Map(desc.reservation_offset, desc.allocation_offset,
                         desc.size, *desc.allocation));
     total_size += desc.size;
   }
 
-  RETURN_IF_ERROR(SetAccess(start_offset, total_size));
+  ABSL_RETURN_IF_ERROR(SetAccess(start_offset, total_size));
 
   std::move(cleanup).Cancel();
   return ScopedMapping(this, start_offset, total_size);
@@ -206,7 +206,7 @@ absl::StatusOr<int> MemoryReservation::ScopedMapping::UnmapChangedRuns(
       ++changed_count;
       ++j;
     }
-    RETURN_IF_ERROR(reservation->UnMap(run_start, run_end - run_start));
+    ABSL_RETURN_IF_ERROR(reservation->UnMap(run_start, run_end - run_start));
     for (size_t m = k; m < j; ++m) {
       slice_mapped[m] = false;
     }
@@ -226,7 +226,7 @@ absl::Status MemoryReservation::ScopedMapping::MapChangedSlices(
       continue;
     }
     const MemoryReservation::RemappingDescriptor& dk = mappings[k];
-    RETURN_IF_ERROR(reservation->Map(
+    ABSL_RETURN_IF_ERROR(reservation->Map(
         dk.reservation_offset, dk.allocation_offset, dk.size, *dk.allocation));
     slice_mapped[k] = true;
   }
@@ -243,7 +243,7 @@ MemoryReservation::ScopedMapping::Remap(
   if (mappings.empty()) {
     return absl::InvalidArgumentError("Remap: mappings must not be empty");
   }
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       const size_t total_size,
       ValidateRemapDescriptors(mappings, reservation_offset_, size_));
 
@@ -277,13 +277,13 @@ MemoryReservation::ScopedMapping::Remap(
 
   // Phase 1: unmap the slices whose backing physical handle changed.
   const absl::Time t_unmap0 = absl::Now();
-  ASSIGN_OR_RETURN(const int changed_count,
+  ABSL_ASSIGN_OR_RETURN(const int changed_count,
                    UnmapChangedRuns(reservation, mappings, slice_mapped));
   const bool any_remapped = changed_count > 0;
 
   // Phase 2: map each changed slice to its new physical handle.
   const absl::Time t_map0 = absl::Now();
-  RETURN_IF_ERROR(MapChangedSlices(reservation, mappings, slice_mapped));
+  ABSL_RETURN_IF_ERROR(MapChangedSlices(reservation, mappings, slice_mapped));
 
   // Grant device access once over the FULL reservation range. On ROCm,
   // hipMemSetAccess for peer devices rejects any partial range (sub-range or
@@ -294,7 +294,7 @@ MemoryReservation::ScopedMapping::Remap(
   // calls.
   const absl::Time t_map1 = absl::Now();
   if (any_remapped) {
-    RETURN_IF_ERROR(reservation->SetAccess(start_offset, total_size));
+    ABSL_RETURN_IF_ERROR(reservation->SetAccess(start_offset, total_size));
   }
   const absl::Time t_sa1 = absl::Now();
   VLOG(2) << "Remap timing: slices=" << mappings.size()

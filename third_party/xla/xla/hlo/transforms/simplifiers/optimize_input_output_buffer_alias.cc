@@ -129,9 +129,9 @@ absl::StatusOr<bool> OptimizeInputOutputBufferAlias::Build(
         donee_vector_index += 1;
       } else {
         // The current donor and donee match.
-        RETURN_IF_ERROR(alias_config->SetUpAlias(
+        ABSL_RETURN_IF_ERROR(alias_config->SetUpAlias(
             donee.index, donor.param_number, donor.index));
-        RETURN_IF_ERROR(buffer_donor_config->RemoveBufferDonor(
+        ABSL_RETURN_IF_ERROR(buffer_donor_config->RemoveBufferDonor(
             donor.param_number, donor.index));
         donor_vector_index += 1;
         donee_vector_index += 1;
@@ -160,9 +160,9 @@ absl::StatusOr<bool> OptimizeInputOutputBufferAlias::RunImpl(
       &module->input_output_alias_config();
   HloBufferDonorConfig* buffer_donor_config = &module->buffer_donor_config();
 
-  ASSIGN_OR_RETURN(bool changed, Build(input_shapes, output_shape, alias_config,
+  ABSL_ASSIGN_OR_RETURN(bool changed, Build(input_shapes, output_shape, alias_config,
                                        buffer_donor_config));
-  RETURN_IF_ERROR(alias_config->Verify(*module, shape_size_fn_));
+  ABSL_RETURN_IF_ERROR(alias_config->Verify(*module, shape_size_fn_));
 
   return changed;
 }

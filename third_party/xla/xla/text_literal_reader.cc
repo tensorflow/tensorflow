@@ -74,7 +74,7 @@ absl::StatusOr<Literal> TextLiteralReader::ReadAllLines() {
   }
 
   absl::StripAsciiWhitespace(&shape_string);
-  ASSIGN_OR_RETURN(Shape shape, ParseShape(shape_string));
+  ABSL_ASSIGN_OR_RETURN(Shape shape, ParseShape(shape_string));
 
   // Sanity check to reject shapes that are obviously too large. This doesn't
   // guarantee allocation will succeed, but prevents crashes from absurdly
@@ -92,7 +92,7 @@ absl::StatusOr<Literal> TextLiteralReader::ReadAllLines() {
         ShapeUtil::HumanString(shape));
   }
 
-  ASSIGN_OR_RETURN(Literal result, Literal::Make(shape));
+  ABSL_ASSIGN_OR_RETURN(Literal result, Literal::Make(shape));
   const float fill = std::numeric_limits<float>::quiet_NaN();
   result.PopulateWithValue<float>(fill);
   std::vector<absl::string_view> pieces;

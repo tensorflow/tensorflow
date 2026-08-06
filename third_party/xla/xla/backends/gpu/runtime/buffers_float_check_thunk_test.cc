@@ -765,9 +765,9 @@ TEST_F(BuffersDebugFloatCheckThunkTest,
   };
 
   auto setup_device = [this](int device_ordinal) -> absl::StatusOr<TestDevice> {
-    ASSIGN_OR_RETURN(se::StreamExecutor * executor,
+    ABSL_ASSIGN_OR_RETURN(se::StreamExecutor * executor,
                      platform_->ExecutorForDevice(device_ordinal));
-    ASSIGN_OR_RETURN(std::unique_ptr<se::Stream> stream,
+    ABSL_ASSIGN_OR_RETURN(std::unique_ptr<se::Stream> stream,
                      executor->CreateStream());
     auto allocator =
         std::make_unique<stream_executor::StreamExecutorAddressAllocator>(

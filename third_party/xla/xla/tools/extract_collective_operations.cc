@@ -55,7 +55,7 @@ namespace xla {
 absl::Status ExtractCollectiveOperations(
     const std::string& input, const std::string& output,
     const absl::flat_hash_set<HloOpcode>& operation_types, bool return_tuple) {
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       std::unique_ptr<HloModule> test_module,
       LoadModuleFromFile(input, std::string(tsl::io::Extension(input)),
                          hlo_module_loader_details::Config(), nullptr));

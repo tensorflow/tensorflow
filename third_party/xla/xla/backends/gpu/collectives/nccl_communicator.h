@@ -63,6 +63,8 @@ using NcclSignalDesc = GpuSignalDesc;
 struct NcclCapabilities {
   bool supports_device_comm;
   bool supports_one_sided_comm;
+  bool supports_gin;
+  std::optional<int> lsa_size;
 
   // Reason one-sided comm is not supported, cached at construction. Empty
   // if one-sided comm is supported.
@@ -110,6 +112,8 @@ class NcclCommunicator : public GpuCommunicator {
   }
 
   bool SupportsDeviceComm() const final;
+  bool SupportsGin() const final;
+  std::optional<int> LsaSize() const final;
 
   GxlCommunicator* gxl_communicator() const final {
     return gxl_communicator_.get();
@@ -176,6 +180,9 @@ class NcclCommunicator : public GpuCommunicator {
 
   Future<> WaitSignal(RankId peer, int op_cnt, const SignalDesc& signal_desc,
                       const Executor& executor) final;
+
+  Future<> WaitSignals(absl::Span<const PeerWaitDesc> peer_wait_descs,
+                       const Executor& executor) final;
 
   std::string ToString() const final;
 
@@ -252,6 +259,9 @@ class NcclCommunicator : public GpuCommunicator {
   absl::Status LaunchWaitSignal(RankId peer, int op_cnt,
                                 const SignalDesc& signal_desc,
                                 const Executor& executor) final;
+
+  absl::Status LaunchWaitSignals(absl::Span<const PeerWaitDesc> peer_wait_descs,
+                                 const Executor& executor) final;
 
   absl::Status LaunchMultiGpuBarrier(const Executor& executor) final;
 

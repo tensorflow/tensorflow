@@ -120,7 +120,7 @@ LegacyCustomCallThunk::Create(ThunkInfo thunk_info, std::string target_name,
                               std::string opaque,
                               CustomCallApiVersion api_version,
                               absl::string_view platform_name) {
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       CustomCallTarget call_target,
       ResolveLegacyCustomCall(*CustomCallTargetRegistry::Global(), target_name,
                               platform_name, api_version));
@@ -188,12 +188,12 @@ absl::StatusOr<ThunkProto> LegacyCustomCallThunk::ToProto() const {
   proto.mutable_custom_call_thunk()->set_api_version(api_version_.value());
 
   for (const NullableShapedSlice& operand : operands_) {
-    ASSIGN_OR_RETURN(*proto.mutable_custom_call_thunk()->add_operands(),
+    ABSL_ASSIGN_OR_RETURN(*proto.mutable_custom_call_thunk()->add_operands(),
                      operand.ToProto());
   }
 
   for (const NullableShapedSlice& result : results_) {
-    ASSIGN_OR_RETURN(*proto.mutable_custom_call_thunk()->add_results(),
+    ABSL_ASSIGN_OR_RETURN(*proto.mutable_custom_call_thunk()->add_results(),
                      result.ToProto());
   }
 
@@ -207,13 +207,13 @@ LegacyCustomCallThunk::FromProto(
     absl::string_view platform_name) {
   std::vector<NullableShapedSlice> operands, results;
   for (const auto& operand_proto : proto.operands()) {
-    ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         NullableShapedSlice operand,
         NullableShapedSlice::FromProto(operand_proto, buffer_allocations));
     operands.push_back(std::move(operand));
   }
   for (const auto& result_proto : proto.results()) {
-    ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         NullableShapedSlice result,
         NullableShapedSlice::FromProto(result_proto, buffer_allocations));
     results.push_back(std::move(result));

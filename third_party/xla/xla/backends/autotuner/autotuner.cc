@@ -53,7 +53,7 @@ absl::StatusOr<std::unique_ptr<Autotuner>> Autotuner::Create(
       << "CodegenOrchestrator is required to create an Autotuner.";
   config_runners.reserve(profilers.size());
   for (auto& profiler : profilers) {
-    ASSIGN_OR_RETURN(auto runner,
+    ABSL_ASSIGN_OR_RETURN(auto runner,
                      ConfigRunner::Create(std::move(profiler),
                                           options.correctness_check_options));
     config_runners.push_back(std::move(runner));
@@ -74,8 +74,7 @@ Autotuner::Autotuner(
       thread_pool_(thread_pool) {}
 
 absl::StatusOr<std::vector<Autotuner::TuningResult>> Autotuner::TuneConfigs(
-    const HloModule& module, const InstructionFilterFn& should_autotune,
-    bool tolerate_no_supported_configs) const {
+    const HloModule& module, const InstructionFilterFn& should_autotune) const {
   std::vector<EquivalentInstructions> instruction_groups =
       ExtractEquivalentInstructions(module, should_autotune);
   if (instruction_groups.empty()) {
@@ -110,23 +109,17 @@ absl::StatusOr<std::vector<Autotuner::TuningResult>> Autotuner::TuneConfigs(
       continue;
     }
 
-    if (tolerate_no_supported_configs && absl::IsNotFound(config_or.status())) {
-      VLOG(1) << "Tolerating autotuning failure for instruction group " << i
-              << ": " << config_or.status();
-      continue;
-    }
-
     LOG(ERROR) << "Autotuning failed for instruction group " << i << ": "
                << config_or.status();
     combined_status.Update(config_or.status());
   }
-  RETURN_IF_ERROR(combined_status);
+  ABSL_RETURN_IF_ERROR(combined_status);
   return tuning_results;
 }
 
 tsl::Future<Autotuner::Config> Autotuner::GetTunedConfig(
     const HloInstruction* absl_nonnull instr, int runner_index) const {
-  ASSIGN_OR_RETURN(std::vector<CodegenOrchestrator::Config> supported_configs,
+  ABSL_ASSIGN_OR_RETURN(std::vector<CodegenOrchestrator::Config> supported_configs,
                    orchestrator_->GetSupportedConfigs(*instr));
   if (supported_configs.empty()) {
     return absl::NotFoundError(absl::StrCat(
@@ -154,14 +147,14 @@ tsl::Future<Autotuner::Config> Autotuner::GetTunedConfig(
           return absl::InternalError("No candidates could be compiled.");
         }
 
-        ASSIGN_OR_RETURN(
+        ABSL_ASSIGN_OR_RETURN(
             std::vector<ConfigRunner::ConfigProfile> profiles,
             runners_[runner_index]->ProfileAll(std::move(candidates), instr));
 
         TF_RET_CHECK(!profiles.empty())
             << "No configs could be profiled." << instr->ToString();
 
-        ASSIGN_OR_RETURN(
+        ABSL_ASSIGN_OR_RETURN(
             ConfigRunner::ConfigProfile best_profile,
             PickBestConfig(profiles, options_.scratch_bytes_window_size_us));
 

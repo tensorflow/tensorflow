@@ -144,7 +144,7 @@ absl::Status FixupPassThroughDomainLinks(const DomainMetadata::Domain& domain,
                                               tuple, 0));
     gte->set_sharding(sharding.NormalizeTupleSharding(gte->shape()));
     if (pass_through.user != nullptr) {
-      RETURN_IF_ERROR(
+      ABSL_RETURN_IF_ERROR(
           pass_through.operand->ReplaceUseWith(pass_through.user, gte));
     } else {
       pass_through.operand->parent()->set_root_instruction(gte);
@@ -230,7 +230,7 @@ absl::StatusOr<AssignmentKind> AssignTreeSharding(
     // TODO(b/112885211): Add ShapeTree::IsLeaf(const ShapeTreeIterator &it)
     if (rhs_tree.IsLeaf(rhs_it->first)) {
       TF_RET_CHECK(lhs_tree->IsLeaf(lhs_it->first));
-      ASSIGN_OR_RETURN(AssignmentKind sub_assigned,
+      ABSL_ASSIGN_OR_RETURN(AssignmentKind sub_assigned,
                        AssignLeafSharding(&lhs_it->second, rhs_it->second));
       if (sub_assigned == AssignmentKind::kConflict) {
         // In case of conflict we return conflict to the caller. At this point
@@ -282,7 +282,7 @@ absl::StatusOr<bool> ApplyShardingFromUsers(
       continue;
     }
     AssignmentKind sub_assigned = AssignmentKind::kUnassigned;
-    ASSIGN_OR_RETURN(ShapeTree<HloSharding> user_sharding_tree,
+    ABSL_ASSIGN_OR_RETURN(ShapeTree<HloSharding> user_sharding_tree,
                      GetShardingTreeFromUser(*instruction, *user));
     if (instruction->shape().IsTuple()) {
       // For tuple-shaped instructions collect individual tuple subshardings
@@ -294,14 +294,14 @@ absl::StatusOr<bool> ApplyShardingFromUsers(
           user->opcode() == HloOpcode::kGetTupleElement
               ? sharding_tree.find({user->tuple_index()})
               : sharding_tree.begin();
-      ASSIGN_OR_RETURN(sub_assigned,
+      ABSL_ASSIGN_OR_RETURN(sub_assigned,
                        AssignTreeSharding(&sharding_tree, sharding_tree_begin,
                                           user_sharding_tree));
     } else {
       // Non-tuple shape: assign common users sharding.
       TF_RET_CHECK(user_sharding_tree.leaf_count() == 1)
           << "Expected non-tuple user sharding";
-      ASSIGN_OR_RETURN(sub_assigned,
+      ABSL_ASSIGN_OR_RETURN(sub_assigned,
                        AssignTreeSharding(&sharding_tree, sharding_tree.begin(),
                                           user_sharding_tree));
     }
@@ -342,7 +342,7 @@ absl::StatusOr<int64_t> ApplyDomainShardingPass(
       continue;
     }
     // Take the sharding from the users.
-    ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         bool instruction_assigned,
         ApplyShardingFromUsers(instruction, domain, domain_sharding));
     if (instruction_assigned) {
@@ -366,7 +366,7 @@ absl::Status ApplyDomainSharding(const DomainMetadata::Domain& domain,
     return ApplyDomainSingleSharding(domain, *single_sharding);
   }
   VLOG(1) << "Assigning non-trivial sharding " << sharding;
-  RETURN_IF_ERROR(ApplyDomainShardingPass(domain, sharding).status());
+  ABSL_RETURN_IF_ERROR(ApplyDomainShardingPass(domain, sharding).status());
 
   int64_t unassigned = 0;
   for (HloInstruction* instruction : domain.instructions) {
@@ -460,20 +460,20 @@ ShardingMetadata::ToShardingMetadata(const DomainMetadata* metadata) {
 absl::Status ShardingMetadata::NormalizeShardingDomain(
     const DomainMetadata::Domain& domain, const DomainMetadata* metadata) {
   if (metadata != nullptr) {
-    ASSIGN_OR_RETURN(const auto& sharding_metadata,
+    ABSL_ASSIGN_OR_RETURN(const auto& sharding_metadata,
                      ToShardingMetadata(metadata));
     const HloSharding* sharding = sharding_metadata->sharding();
     if (sharding != nullptr) {
       VLOG(4) << "Normalizing sharding to " << sharding->ToString() << ":";
-      RETURN_IF_ERROR(ApplyDomainSharding(domain, *sharding));
-      RETURN_IF_ERROR(FixupPassThroughDomainLinks(domain, *sharding));
+      ABSL_RETURN_IF_ERROR(ApplyDomainSharding(domain, *sharding));
+      ABSL_RETURN_IF_ERROR(FixupPassThroughDomainLinks(domain, *sharding));
     }
   } else {
-    ASSIGN_OR_RETURN(std::shared_ptr<const HloSharding> sharding,
+    ABSL_ASSIGN_OR_RETURN(std::shared_ptr<const HloSharding> sharding,
                      ExtractOriginalCommonSharding(domain.instructions));
     if (sharding != nullptr) {
       VLOG(4) << "Normalizing sharding-less domain to " << sharding->ToString();
-      RETURN_IF_ERROR(ApplyDomainSharding(domain, *sharding));
+      ABSL_RETURN_IF_ERROR(ApplyDomainSharding(domain, *sharding));
     } else {
       VLOG(1) << "Unable to find common sharding";
     }

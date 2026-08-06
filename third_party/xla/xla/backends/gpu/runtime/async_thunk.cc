@@ -74,7 +74,7 @@ absl::Status AsyncStartThunk::Prepare(const PrepareParams& params) {
 }
 
 absl::Status AsyncStartThunk::Initialize(const InitializeParams& params) {
-  RETURN_IF_ERROR(executor_.Initialize(params));
+  ABSL_RETURN_IF_ERROR(executor_.Initialize(params));
   return async_execution_->Initialize(params.execution_scoped_state,
                                       params.executor);
 }
@@ -95,7 +95,7 @@ absl::Status AsyncStartThunk::ExecuteOnStream(const ExecuteParams& params) {
         execution_stream_id_.communication_id().value());
   };
 
-  ASSIGN_OR_RETURN(se::Stream * async_stream, std::invoke(get_async_stream));
+  ABSL_ASSIGN_OR_RETURN(se::Stream * async_stream, std::invoke(get_async_stream));
   XLA_VLOG_DEVICE(1, async_stream->parent()->device_ordinal())
       << absl::StreamFormat("Execute async for `%s`: stream_id=%v, stream=%p",
                             profile_annotation(), execution_stream_id_,
@@ -103,7 +103,7 @@ absl::Status AsyncStartThunk::ExecuteOnStream(const ExecuteParams& params) {
 
   // Execute the nested thunks on the async stream. The guard will record the
   // completion event when it goes out of scope.
-  ASSIGN_OR_RETURN(auto guard,
+  ABSL_ASSIGN_OR_RETURN(auto guard,
                    async_execution_->Start(params.execution_scoped_state,
                                            params.stream, async_stream));
   return executor_.ExecuteOnStream(params.WithComputeStream(async_stream));
@@ -185,7 +185,7 @@ absl::StatusOr<ThunkProto> AsyncStartThunk::ToProto() const {
 
   start_proto->mutable_thunks();
   for (const auto& thunk : executor_.thunks()) {
-    ASSIGN_OR_RETURN(*start_proto->mutable_thunks()->add_thunks(),
+    ABSL_ASSIGN_OR_RETURN(*start_proto->mutable_thunks()->add_thunks(),
                      thunk->ToProto());
   }
   return proto;
@@ -204,11 +204,11 @@ absl::StatusOr<std::unique_ptr<AsyncStartThunk>> AsyncStartThunk::FromProto(
         return Internal("Unknown execution stream id type in AsyncStartThunk");
     }
   };
-  ASSIGN_OR_RETURN(ExecutionStreamId execution_stream_id, make_stream_id());
+  ABSL_ASSIGN_OR_RETURN(ExecutionStreamId execution_stream_id, make_stream_id());
 
   ThunkSequence nested;
   for (const auto& thunk_proto : proto.thunks().thunks()) {
-    ASSIGN_OR_RETURN(std::unique_ptr<Thunk> thunk, deserializer(thunk_proto));
+    ABSL_ASSIGN_OR_RETURN(std::unique_ptr<Thunk> thunk, deserializer(thunk_proto));
     nested.push_back(std::move(thunk));
   }
 

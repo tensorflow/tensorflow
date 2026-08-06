@@ -96,7 +96,7 @@ class CachingHloEvaluatorTest : public ::testing::Test {
 
   absl::StatusOr<int64_t> ChildCount() const {
     std::vector<std::string> children;
-    RETURN_IF_ERROR(tsl::Env::Default()->GetChildren(cache_dir_, &children));
+    ABSL_RETURN_IF_ERROR(tsl::Env::Default()->GetChildren(cache_dir_, &children));
     return children.size();
   }
 

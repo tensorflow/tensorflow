@@ -109,7 +109,7 @@ absl::Status AttachAnnotation(
     const absl::flat_hash_set<HloInstruction*>& instructions,
     bool dry_run = false) {
   for (HloInstruction* instr : instructions) {
-    ASSIGN_OR_RETURN(std::optional<Annotation> instr_annotation,
+    ABSL_ASSIGN_OR_RETURN(std::optional<Annotation> instr_annotation,
                      GetSchedulingAnnotation(instr));
     if (instr_annotation) {
       return absl::InternalError("Trying to propagate scheduling annotation " +
@@ -121,7 +121,7 @@ absl::Status AttachAnnotation(
     LOG(INFO) << "Propagating annotation " << annotation.ToString() << " to "
               << instr->name();
     if (!dry_run) {
-      RETURN_IF_ERROR(SetSchedulingAnnotation(instr, annotation));
+      ABSL_RETURN_IF_ERROR(SetSchedulingAnnotation(instr, annotation));
     }
   }
   return absl::OkStatus();
@@ -131,14 +131,22 @@ bool ContainsOnlyFormattingOps(const HloInstruction* async_op) {
   if (async_op->opcode() == HloOpcode::kAsyncDone) {
     return ContainsOnlyFormattingOps(async_op->operand(0));
   }
-  HloInstruction* call =
-      async_op->async_wrapped_computation()->root_instruction();
-  bool result = true;
-  for (HloInstruction* instr :
-       call->called_computations().front()->instructions()) {
+
+  const HloComputation* computation = async_op->async_wrapped_computation();
+
+  // Async wrappers can nest call-like instructions. Look through the root's
+  // callee so the recursive checks below continue into the nested async.
+  const HloInstruction* root = computation->root_instruction();
+  if (!root->called_computations().empty()) {
+    computation = root->called_computations().front();
+  }
+
+  for (const HloInstruction* instr : computation->instructions()) {
     if (HloPredicateIsOp<HloOpcode::kAsyncStart, HloOpcode::kAsyncDone>(
             instr)) {
-      result &= ContainsOnlyFormattingOps(instr);
+      if (!ContainsOnlyFormattingOps(instr)) {
+        return false;
+      }
     } else if (!HloPredicateIsOp<HloOpcode::kCopy, HloOpcode::kParameter>(
                    instr)) {
       return false;
@@ -230,7 +238,7 @@ absl::StatusOr<bool> HaulAnnotationToFusionInstruction(
     changed = true;
     std::optional<Annotation> seen_annotation;
     for (HloInstruction* instr : computation->instructions()) {
-      ASSIGN_OR_RETURN(std::optional<Annotation> annotation,
+      ABSL_ASSIGN_OR_RETURN(std::optional<Annotation> annotation,
                        GetSchedulingAnnotation(instr));
       if (!annotation) {
         continue;
@@ -251,7 +259,7 @@ absl::StatusOr<bool> HaulAnnotationToFusionInstruction(
     if (!seen_annotation) {
       continue;
     }
-    RETURN_IF_ERROR(SetSchedulingAnnotation(computation->FusionInstruction(),
+    ABSL_RETURN_IF_ERROR(SetSchedulingAnnotation(computation->FusionInstruction(),
                                             seen_annotation->ToString()));
   }
   return changed;
@@ -261,7 +269,7 @@ absl::StatusOr<bool> RemoveLoopIterationAnnotation(HloModule* module) {
   bool changed = false;
   for (HloComputation* computation : module->MakeNonfusionComputations()) {
     for (HloInstruction* instr : computation->instructions()) {
-      ASSIGN_OR_RETURN(bool removed,
+      ABSL_ASSIGN_OR_RETURN(bool removed,
                        RemoveSchedulingAnnotationIterationId(instr));
       changed |= removed;
     }
@@ -508,8 +516,10 @@ bool LegalizeSchedulingAnnotations::RemoveTrivialGroups(
       }
     }
     if (!deleted_instructions.empty()) {
-      for (auto& [annotation, comp_inst_vector] : annotation_to_instruction) {
-        for (auto& [comp, annotated_instructions] : comp_inst_vector) {
+      absl::erase_if(annotation_to_instruction, [&](auto& annotation_entry) {
+        auto& [annotation, comp_inst_vector] = annotation_entry;
+        absl::erase_if(comp_inst_vector, [&](auto& comp_entry) {
+          auto& [comp, annotated_instructions] = comp_entry;
           std::vector<HloInstruction*> updated_annotated_instructions;
           for (HloInstruction* instr : annotated_instructions) {
             if (!deleted_instructions.contains(instr)) {
@@ -519,15 +529,13 @@ bool LegalizeSchedulingAnnotations::RemoveTrivialGroups(
             }
           }
           if (updated_annotated_instructions.empty()) {
-            comp_inst_vector.erase(comp);
-          } else {
-            comp_inst_vector[comp] = updated_annotated_instructions;
+            return true;
           }
-        }
-        if (comp_inst_vector.empty()) {
-          annotation_to_instruction.erase(annotation);
-        }
-      }
+          annotated_instructions = std::move(updated_annotated_instructions);
+          return false;
+        });
+        return comp_inst_vector.empty();
+      });
     }
     VLOG(3) << "Retaining nontrivial group: " << group_id;
   }
@@ -692,7 +700,7 @@ absl::StatusOr<bool> LegalizeSchedulingAnnotations::RunImpl(
     for (HloComputation* computation :
          module->MakeNonfusionComputations(execution_threads)) {
       for (HloInstruction* instr : computation->instructions()) {
-        ASSIGN_OR_RETURN(std::optional<Annotation> annotation,
+        ABSL_ASSIGN_OR_RETURN(std::optional<Annotation> annotation,
                          GetSchedulingAnnotation(instr));
         if (!annotation) {
           continue;
@@ -701,20 +709,20 @@ absl::StatusOr<bool> LegalizeSchedulingAnnotations::RunImpl(
         annotation_to_instruction[*annotation][computation].push_back(instr);
       }
     }
-    RETURN_IF_ERROR(CheckGapBetweenAnnotatedInstructions(
+    ABSL_RETURN_IF_ERROR(CheckGapBetweenAnnotatedInstructions(
         annotation_to_instruction, instruction_to_annotation));
     return false;
   }
 
   // Run verification if requested.
   if (config_.run_verification) {
-    RETURN_IF_ERROR(Verify(module));
+    ABSL_RETURN_IF_ERROR(Verify(module));
   }
 
   bool changed = false;
   // Remove loop iteration annotation if requested.
   if (config_.remove_loop_iteration_annotation_only) {
-    ASSIGN_OR_RETURN(bool removed, RemoveLoopIterationAnnotation(module));
+    ABSL_ASSIGN_OR_RETURN(bool removed, RemoveLoopIterationAnnotation(module));
     changed |= removed;
     return changed;
   }
@@ -733,7 +741,7 @@ absl::StatusOr<bool> LegalizeSchedulingAnnotations::RunImpl(
   for (HloComputation* computation :
        module->MakeNonfusionComputations(execution_threads)) {
     for (HloInstruction* instr : computation->instructions()) {
-      ASSIGN_OR_RETURN(std::optional<Annotation> annotation,
+      ABSL_ASSIGN_OR_RETURN(std::optional<Annotation> annotation,
                        GetSchedulingAnnotation(instr));
       if (!annotation) {
         continue;
@@ -746,7 +754,7 @@ absl::StatusOr<bool> LegalizeSchedulingAnnotations::RunImpl(
   // Move the annotation from inside fusion computation to the caller
   // instruction if the caller doesn't have an annotation. Return an error if
   // there are some fused instructions with different annotations.
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       bool haul_annotation_to_top_level,
       HaulAnnotationToFusionInstruction(
           module, execution_threads, annotation_to_instruction,
@@ -797,7 +805,7 @@ absl::StatusOr<bool> LegalizeSchedulingAnnotations::RunImpl(
       changed |= result.value();
     }
   } else {
-    RETURN_IF_ERROR(CheckGapBetweenAnnotatedInstructions(
+    ABSL_RETURN_IF_ERROR(CheckGapBetweenAnnotatedInstructions(
         annotation_to_instruction, instruction_to_annotation));
   }
 
@@ -811,14 +819,14 @@ absl::StatusOr<bool> CheckNoDataDependencyInSchedulingAnnotations::RunImpl(
        module->MakeNonfusionComputations(execution_threads)) {
     for (HloInstruction* instr : computation->instructions()) {
       if (HasSchedulingAnnotation(instr)) {
-        ASSIGN_OR_RETURN(std::optional<Annotation> annotation,
+        ABSL_ASSIGN_OR_RETURN(std::optional<Annotation> annotation,
                          GetSchedulingAnnotation(instr));
         if (!annotation) {
           continue;
         }
         for (HloInstruction* operand : instr->operands()) {
           if (HasSchedulingAnnotation(operand)) {
-            ASSIGN_OR_RETURN(std::optional<Annotation> operand_annotation,
+            ABSL_ASSIGN_OR_RETURN(std::optional<Annotation> operand_annotation,
                              GetSchedulingAnnotation(operand));
             if (!operand_annotation) {
               continue;

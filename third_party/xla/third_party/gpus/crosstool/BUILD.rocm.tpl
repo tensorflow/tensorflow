@@ -1,11 +1,15 @@
 # This file is expanded from a template by rocm_configure.bzl
 # Update rocm_configure.bzl#verify_build_defines when adding new variables.
 
-load(":cc_toolchain_config.bzl", "cc_toolchain_config")
+load("@config_rocm_hipcc//rocm:build_defs.bzl", "hipcc_config")
 load("@local_config_clang//:clang.bzl", "local_clang")
+load(":cc_toolchain_config.bzl", "cc_toolchain_config")
 
 # Local clang configuration for non-hermetic toolchain
 _LOCAL_CLANG = local_clang()
+
+# ROCm configuration from hermetic hipcc
+_HIPCC_CONFIG = hipcc_config()
 
 licenses(["restricted"])
 
@@ -40,9 +44,9 @@ cc_toolchain_suite(
 cc_toolchain(
     name = "cc-compiler-local",
     all_files = ":crosstool_wrapper_driver_is_not_gcc",
-    compiler_files = ":crosstool_wrapper_driver_is_not_gcc",
     ar_files = ":crosstool_wrapper_driver_is_not_gcc",
     as_files = ":crosstool_wrapper_driver_is_not_gcc",
+    compiler_files = ":crosstool_wrapper_driver_is_not_gcc",
     dwp_files = ":empty",
     linker_files = ":crosstool_wrapper_driver_is_not_gcc",
     objcopy_files = ":empty",
@@ -52,24 +56,16 @@ cc_toolchain(
     # last on the command line and contain all shared libraries to link, so all
     # regular options will be left of them.
     supports_param_files = 1,
-    toolchain_identifier = "local_linux",
     toolchain_config = ":cc-compiler-local-config",
+    toolchain_identifier = "local_linux",
 )
 
 cc_toolchain_config(
     name = "cc-compiler-local-config",
-    cpu = "local",
-    compiler = "compiler",
-    toolchain_identifier = "local_linux",
-    host_system_name = "local",
-    target_system_name = "local",
-    target_libc = "local",
-    abi_version = "local",
     abi_libc_version = "local",
-    # Include directories detected from local clang + ROCm includes
-    cxx_builtin_include_directories = _LOCAL_CLANG.include_directories + [%{cxx_builtin_include_directories}],
-    host_compiler_path = "clang/bin/crosstool_wrapper_driver_is_not_gcc",
-    host_compiler_prefix = "/usr/bin",
+    abi_version = "local",
+    # Compiler path from local_clang_info(), sets CLANG_COMPILER_PATH env var
+    clang_compiler_path = _LOCAL_CLANG.compiler_path,
     compile_flags = [
         "-U_FORTIFY_SOURCE",
         "-fstack-protector",
@@ -79,16 +75,17 @@ cc_toolchain_config(
         "-fno-omit-frame-pointer",
         "-no-canonical-prefixes",
     ],
-    opt_compile_flags = [
-        "-g0",
-        "-O2",
-        "-D_FORTIFY_SOURCE=1",
-        "-DNDEBUG",
-        "-ffunction-sections",
-        "-fdata-sections",
-    ],
-    dbg_compile_flags = ["-g"],
+    compiler = "compiler",
+    coverage_compile_flags = ["--coverage"],
+    coverage_link_flags = ["--coverage"],
+    cpu = "local",
+    # Include directories detected from local clang + ROCm includes
+    cxx_builtin_include_directories = _LOCAL_CLANG.include_directories,
     cxx_flags = ["-std=c++17"],
+    dbg_compile_flags = ["-g"],
+    host_compiler_path = "clang/bin/crosstool_wrapper_driver_is_not_gcc",
+    host_compiler_prefix = "/usr/bin",
+    host_system_name = "local",
     link_flags = [
         "-fuse-ld=lld",
         "-Wl,-no-as-needed",
@@ -99,19 +96,26 @@ cc_toolchain_config(
         "-lstdc++",
         "-lm",
     ],
+    linker_bin_path = "external/config_rocm_hipcc/rocm/" + _HIPCC_CONFIG.rocm_root + "/bin",
+    opt_compile_flags = [
+        "-g0",
+        "-O2",
+        "-D_FORTIFY_SOURCE=1",
+        "-DNDEBUG",
+        "-ffunction-sections",
+        "-fdata-sections",
+    ],
     opt_link_flags = [],
+    supports_start_end_lib = True,
+    target_libc = "local",
+    target_system_name = "local",
+    toolchain_identifier = "local_linux",
     unfiltered_compile_flags = [
         "-Wno-builtin-macro-redefined",
         "-D__DATE__=\"redacted\"",
         "-D__TIMESTAMP__=\"redacted\"",
         "-D__TIME__=\"redacted\"",
-    ] + [%{unfiltered_compile_flags}],
-    linker_bin_path = "%{linker_bin_path}",
-    coverage_compile_flags = ["--coverage"],
-    coverage_link_flags = ["--coverage"],
-    supports_start_end_lib = True,
-    # Compiler path from local_clang_info(), sets CLANG_COMPILER_PATH env var
-    clang_compiler_path = _LOCAL_CLANG.compiler_path,
+    ],
 )
 
 filegroup(
@@ -120,9 +124,9 @@ filegroup(
 )
 
 filegroup(
-  name = "crosstool_wrapper_driver_is_not_gcc",
-  srcs = [
-      ":clang/bin/crosstool_wrapper_driver_is_not_gcc", 
-      "@local_config_rocm//rocm:toolchain_data",
-  ],
+    name = "crosstool_wrapper_driver_is_not_gcc",
+    srcs = [
+        ":clang/bin/crosstool_wrapper_driver_is_not_gcc",
+        "@config_rocm_hipcc//rocm:toolchain_data",
+    ],
 )

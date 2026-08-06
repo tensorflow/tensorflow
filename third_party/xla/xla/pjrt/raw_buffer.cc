@@ -103,7 +103,7 @@ absl::StatusOr<std::vector<PjRtRawBufferRef>> PjRtRawBuffer::MultiSlice(
   std::vector<PjRtRawBufferRef> results;
   results.reserve(slices.size());
   for (const auto& slice : slices) {
-    ASSIGN_OR_RETURN(auto sub_slice, Slice(slice.offset, slice.size));
+    ABSL_ASSIGN_OR_RETURN(auto sub_slice, Slice(slice.offset, slice.size));
     results.push_back(std::move(sub_slice));
   }
   return results;
@@ -384,14 +384,14 @@ size_t PjRtRawBufferInterface::GetOnDeviceSizeInBytes() const {
 Future<> PjRtRawBufferInterface::CopyRawHostToDevice(const void* src,
                                                      int64_t offset,
                                                      int64_t transfer_size) {
-  ASSIGN_OR_RETURN(auto event, CopyRawHostToDeviceAndReturnEvent(
+  ABSL_ASSIGN_OR_RETURN(auto event, CopyRawHostToDeviceAndReturnEvent(
                                    src, offset, transfer_size));
   return ConvertEventToFuture(std::move(event));
 }
 
 Future<> PjRtRawBufferInterface::CopyRawDeviceToHost(void* dst, int64_t offset,
                                                      int64_t transfer_size) {
-  ASSIGN_OR_RETURN(auto event, CopyRawDeviceToHostAndReturnEvent(
+  ABSL_ASSIGN_OR_RETURN(auto event, CopyRawDeviceToHostAndReturnEvent(
                                    dst, offset, transfer_size));
   return ConvertEventToFuture(std::move(event));
 }
@@ -442,7 +442,7 @@ PjRtRawBufferInterface::MultiSlice(absl::Span<const SliceInfo> slices) {
   std::vector<PjRtRawBufferRef> results;
   results.reserve(slices.size());
   for (const auto& slice : slices) {
-    ASSIGN_OR_RETURN(auto sub_slice, Slice(slice.offset, slice.size));
+    ABSL_ASSIGN_OR_RETURN(auto sub_slice, Slice(slice.offset, slice.size));
     results.push_back(std::move(sub_slice));
   }
   return results;

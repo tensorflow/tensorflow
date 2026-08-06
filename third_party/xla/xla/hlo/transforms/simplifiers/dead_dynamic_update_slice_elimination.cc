@@ -138,8 +138,8 @@ absl::StatusOr<bool> ProcessDynamicUpdateSlice(HloInstruction* dus,
       });
   VLOG(2) << "  is_dus_update_unused: " << is_dus_update_unused;
   if (is_dus_update_unused) {
-    RETURN_IF_ERROR(dus->ReplaceAllUsesWith(dus->mutable_operand(0)));
-    RETURN_IF_ERROR(comp->RemoveInstruction(dus));
+    ABSL_RETURN_IF_ERROR(dus->ReplaceAllUsesWith(dus->mutable_operand(0)));
+    ABSL_RETURN_IF_ERROR(comp->RemoveInstruction(dus));
     return true;  // Changed
   }
   return false;  // Not changed
@@ -164,7 +164,7 @@ absl::StatusOr<bool> DeadDynamicUpdateSliceElimination::RunImpl(
         continue;
       }
       VLOG(2) << "Processing DUS: " << instruction->ToString();
-      ASSIGN_OR_RETURN(bool dus_changed,
+      ABSL_ASSIGN_OR_RETURN(bool dus_changed,
                        ProcessDynamicUpdateSlice(instruction, computation));
       if (dus_changed) {
         changed = true;

@@ -66,7 +66,7 @@ absl::Status CollectiveMemoryRequests::RequestSymmetricAllocationSlices(
     const GpuCliqueKey& clique,
     absl::Span<const BufferAllocation::Slice> slices) {
   for (const BufferAllocation::Slice& slice : slices) {
-    RETURN_IF_ERROR(RequestSymmetricAllocationSlice(clique, slice));
+    ABSL_RETURN_IF_ERROR(RequestSymmetricAllocationSlice(clique, slice));
   }
   return absl::OkStatus();
 }
@@ -85,7 +85,7 @@ absl::Status CollectiveMemoryRequests::RequestSymmetricAddress(
 absl::Status CollectiveMemoryRequests::RequestSymmetricAddresses(
     const GpuCliqueKey& clique, absl::Span<const se::DeviceAddressBase> addrs) {
   for (const se::DeviceAddressBase& addr : addrs) {
-    RETURN_IF_ERROR(RequestSymmetricAddress(clique, addr));
+    ABSL_RETURN_IF_ERROR(RequestSymmetricAddress(clique, addr));
   }
   return absl::OkStatus();
 }

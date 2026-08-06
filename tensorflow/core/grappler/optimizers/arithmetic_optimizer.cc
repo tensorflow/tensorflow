@@ -3549,6 +3549,12 @@ class OptimizeMaxOrMinOfMonotonicStage : public ArithmeticOptimizerStage {
     //    since we don't have MinPool operations.
     // 4. inner_functions is not a Relu node with an input from FusedBatchNorm
     //    or BiasAdd. This pattern will be fused later by remapper.
+    // 5. if reduction_node is ArgMax/ArgMin, inner_function is additionally
+    //    strictly injective over float32. Monotonic-but-saturating functions
+    //    (e.g. tanh, relu) can map distinct inputs to the same output, which
+    //    changes which index attains the extremum, so removing them from an
+    //    index-producing reduction is unsound. For value-producing reductions
+    //    (Max, Min, MaxPool) plain monotonicity is sufficient.
     auto can_be_fused_by_remapper = [](const NodeDef& consumer,
                                        const NodeDef& producer) -> bool {
       if (IsRelu(consumer) || IsRelu6(consumer)) {
@@ -3559,8 +3565,12 @@ class OptimizeMaxOrMinOfMonotonicStage : public ArithmeticOptimizerStage {
       return false;
     };
     bool is_non_decreasing = false;
+    const bool is_arg_reduction =
+        IsArgMax(*reduction_node) || IsArgMin(*reduction_node);
     if (!IsInPreserveSet(*inner_function) &&
         IsElementWiseMonotonic(*inner_function, &is_non_decreasing) &&
+        (!is_arg_reduction ||
+         IsElementWiseStrictlyInjective(*inner_function)) &&
         ctx().node_map->GetOutputs(inner_function->name()).size() == 1 &&
         (is_non_decreasing || !IsAnyMaxPool(*reduction_node)) &&
         !can_be_fused_by_remapper(*inner_function, *inner_function_input)) {

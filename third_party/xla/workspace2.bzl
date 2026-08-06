@@ -192,9 +192,9 @@ def _tf_repositories():
 
     tf_http_archive(
         name = "KleidiAI",
-        sha256 = "9b8d0df9bab42d1d19acb571337cbaa527027cae0efd361d75dfb9b10fd7dc4e",
-        strip_prefix = "kleidiai-51f7190558e51b7415d9ba24994fb477d7371446",
-        urls = tf_mirror_urls("https://github.com/ARM-software/kleidiai/archive/51f7190558e51b7415d9ba24994fb477d7371446.zip"),
+        sha256 = "6b3e6630be314a28f6ea28fed14f7109b0b7c472f1e06d2dba17ffccda3b9466",
+        strip_prefix = "kleidiai-dce86647385ab2638aa5abebcb652f3e4271970d",
+        urls = tf_mirror_urls("https://gitlab.arm.com/kleidi/kleidiai/-/archive/dce86647385ab2638aa5abebcb652f3e4271970d/kleidiai-dce86647385ab2638aa5abebcb652f3e4271970d.zip"),
     )
 
     compute_library()

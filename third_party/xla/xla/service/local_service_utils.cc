@@ -73,7 +73,7 @@ absl::StatusOr<std::unique_ptr<HloModuleConfig>> GetHloModuleConfig(
     Backend* backend) {
   const HloModuleProto& proto = computation.proto();
   TF_RET_CHECK(proto.has_host_program_shape());
-  ASSIGN_OR_RETURN(ProgramShape program_shape,
+  ABSL_ASSIGN_OR_RETURN(ProgramShape program_shape,
                    ProgramShape::FromProto(proto.host_program_shape()));
 
   // Validate incoming layouts.
@@ -85,7 +85,7 @@ absl::StatusOr<std::unique_ptr<HloModuleConfig>> GetHloModuleConfig(
 
   for (int i = 0; i < argument_layouts.size(); ++i) {
     const Shape& argument_shape = *argument_layouts[i];
-    RETURN_IF_ERROR(ShapeUtil::ValidateShapeWithOptionalLayout(argument_shape));
+    ABSL_RETURN_IF_ERROR(ShapeUtil::ValidateShapeWithOptionalLayout(argument_shape));
     if (!ShapeUtil::Compatible(argument_shape, program_shape.parameters(i))) {
       std::optional<const OpMetadata*> metadata =
           ParameterMetadata(computation, /*parameter_number=*/i);
@@ -108,7 +108,7 @@ absl::StatusOr<std::unique_ptr<HloModuleConfig>> GetHloModuleConfig(
     }
   }
   if (build_options.result_layout() != nullptr) {
-    RETURN_IF_ERROR(Service::ValidateResultShape(*build_options.result_layout(),
+    ABSL_RETURN_IF_ERROR(Service::ValidateResultShape(*build_options.result_layout(),
                                                  program_shape.result()));
   }
 

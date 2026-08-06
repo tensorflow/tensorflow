@@ -40,7 +40,7 @@ class AsyncCollectiveReplacerTest : public HloHardwareIndependentTestBase {
  public:
   absl::Status RunPass(HloModule* module, bool expect_change,
                        AsyncCollectiveReplacer::Config config) {
-    ASSIGN_OR_RETURN(bool changed, AsyncCollectiveReplacer{config}.Run(module));
+    ABSL_ASSIGN_OR_RETURN(bool changed, AsyncCollectiveReplacer{config}.Run(module));
     EXPECT_EQ(changed, expect_change);
     VLOG(1) << module->ToString();
     return absl::OkStatus();

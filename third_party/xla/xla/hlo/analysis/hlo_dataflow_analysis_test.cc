@@ -1103,6 +1103,43 @@ TEST_P(HloDataflowAnalysisTest, AsyncOps) {
                   &analysis.GetValueDefinedAt(async_wrapped_instruction, {})));
 }
 
+TEST_P(HloDataflowAnalysisTest, AsyncUpdateChainParameters) {
+  std::string hlo_str = R"(
+  HloModule module
+
+  %async_computation {
+    %async_param0 = f32[2,3] parameter(0)
+    %async_param1 = f32[2,3] parameter(1)
+    ROOT %custom = f32[2,3] add(%async_param0, %async_param1)
+  }
+
+  ENTRY entry {
+    %p0 = f32[2,3] parameter(0)
+    %p1 = f32[2,3] parameter(1)
+    %start = ((f32[2,3]), f32[2,3], u32[]) call-start(%p0), to_apply=%async_computation
+    %update = ((f32[2,3], f32[2,3]), f32[2,3], u32[]) call-update(%start, %p1)
+    ROOT %done = f32[2,3] call-done(%update)
+  }
+)";
+  ASSERT_OK_AND_ASSIGN(
+      module_, ParseAndReturnVerifiedModule(hlo_str, GetModuleConfigForTest()));
+
+  bool ssa_form = GetParam();
+  const HloDataflowAnalysis& analysis = RunAnalysis(ssa_form);
+
+  const HloInstruction* p0 = FindInstruction(module_.get(), "p0");
+  const HloInstruction* p1 = FindInstruction(module_.get(), "p1");
+  const HloInstruction* async_param0 =
+      FindInstruction(module_.get(), "async_param0");
+  const HloInstruction* async_param1 =
+      FindInstruction(module_.get(), "async_param1");
+
+  EXPECT_THAT(HloValuesAt(async_param0, {}),
+              UnorderedElementsAre(&analysis.GetValueDefinedAt(p0, {})));
+  EXPECT_THAT(HloValuesAt(async_param1, {}),
+              UnorderedElementsAre(&analysis.GetValueDefinedAt(p1, {})));
+}
+
 TEST_P(HloDataflowAnalysisTest, AsyncOpsWithTokenOutput) {
   // Test that token-typed values are correctly propagated through async
   // start/update/done. This is the pattern produced when the TPU compiler
@@ -3792,6 +3829,37 @@ ENTRY main {
   // Run Alias Analysis to trigger the crash.
   auto alias_analysis_or = HloAliasAnalysis::Run(module_.get(), &alias_info_);
   EXPECT_OK(alias_analysis_or.status());
+}
+
+TEST_F(HloDataflowAnalysisTest, DisableCallPropagationCrashesOnMixedCallers) {
+  const char* hlo_text = R"(
+HloModule module
+
+subcomp {
+  param = f32[] parameter(0)
+  ROOT add = f32[] add(param, param)
+}
+
+while_cond {
+  param = f32[] parameter(0)
+  limit = f32[] constant(10.0)
+  ROOT cond = pred[] compare(param, limit), direction=LT
+}
+
+ENTRY main {
+  p0 = f32[] parameter(0)
+  call = f32[] call(p0), to_apply=subcomp
+  ROOT while = f32[] while(call), condition=while_cond, body=subcomp
+}
+)";
+  ASSERT_OK_AND_ASSIGN(module_, ParseAndReturnVerifiedModule(
+                                    hlo_text, GetModuleConfigForTest()));
+  EXPECT_DEATH(
+      (void)HloDataflowAnalysis::Run(*module_, /*ssa_form=*/true,
+                                     /*bitcast_defines_value=*/false,
+                                     /*execution_threads=*/{},
+                                     /*disable_call_propagation=*/true),
+      "is_regular_call_computation");
 }
 
 }  // namespace

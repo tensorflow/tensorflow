@@ -58,7 +58,7 @@ class DynamicDimensionInferenceTest : public HloHardwareIndependentTestBase {
           DynamicDimensionInference::ShapeCheckMode::kIgnore,
       const DynamicDimensionInference::AssertionGenerator& assertion_generator =
           nullptr) {
-    ASSIGN_OR_RETURN(DynamicDimensionInference inference,
+    ABSL_ASSIGN_OR_RETURN(DynamicDimensionInference inference,
                      DynamicDimensionInference::Run(
                          module_.get(), op_supports_dynamism_handler, handler,
                          shape_check_mode, assertion_generator));

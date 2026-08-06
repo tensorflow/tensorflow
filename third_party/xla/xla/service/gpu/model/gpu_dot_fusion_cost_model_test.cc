@@ -45,11 +45,13 @@ using gpu_dot_fusion_cost_model::detail::CalculateLoopIterBytes;
 using gpu_dot_fusion_cost_model::detail::
     CalculatePipelinedLoopTimeWithLaunchWaves;
 using gpu_dot_fusion_cost_model::detail::CalculateSharedMemoryPerBlockBytes;
+using gpu_dot_fusion_cost_model::detail::CalculateSmOccupancy;
 using gpu_dot_fusion_cost_model::detail::DotProblemInfo;
 using gpu_dot_fusion_cost_model::detail::DotTileSize;
 using gpu_dot_fusion_cost_model::detail::GetEffectiveHbmBandwidth;
 using gpu_dot_fusion_cost_model::detail::HbmEstimates;
 using gpu_dot_fusion_cost_model::detail::kLoopLatencyTax;
+using gpu_dot_fusion_cost_model::detail::SmOccupancy;
 
 class GpuDotFusionCostModelTest : public HloHardwareIndependentTestBase {
  protected:
@@ -378,6 +380,25 @@ TEST_F(GpuDotFusionCostModelTest, CalculateSharedMemoryPerBlockBytes) {
                        dot_info_f64, dot_tile_f64_16, /*num_stages=*/1));
 }
 
+TEST_F(GpuDotFusionCostModelTest, CalculateSmOccupancy_ShmemLimited) {
+  // Large shared memory should limit the occupancy to 1 block per SM.
+  const SmOccupancy occupancy = CalculateSmOccupancy(
+      /*shared_memory_per_block_bytes=*/200000,
+      /*num_warps=*/4, ddh100_);
+  EXPECT_EQ(occupancy.active_blocks_per_sm, 1);
+  EXPECT_EQ(occupancy.active_warps_per_sm, 4);
+}
+
+TEST_F(GpuDotFusionCostModelTest, CalculateSmOccupancy_ThreadLimited) {
+  const SmOccupancy occupancy = CalculateSmOccupancy(
+      /*shared_memory_per_block_bytes=*/1024,
+      /*num_warps=*/4, ddh100_);
+  // H100 has 2048 threads per SM. 4 warps * 32 threads/warp = 128
+  // threads/block. 2048 / 128 = 16 blocks per SM maximum.
+  EXPECT_EQ(occupancy.active_blocks_per_sm, 16);
+  EXPECT_EQ(occupancy.active_warps_per_sm, 64);
+}
+
 TEST_F(GpuDotFusionCostModelTest, CalculateHardwareLaunchWaves_ZeroBlocks) {
   // Zero threadblocks should require zero waves.
   EXPECT_EQ(0,
@@ -482,6 +503,64 @@ TEST_F(GpuDotFusionCostModelTest,
 
   EXPECT_EQ(result_one_wave, result_more_blocks_still_one_wave);
   EXPECT_GT(result_many_waves, result_one_wave);
+}
+
+TEST_F(GpuDotFusionCostModelTest, CalculateComputeUtilization) {
+  EstimateRunTimeData estimates = {};
+  estimates.exec_time = absl::Seconds(4);
+
+  int64_t theoretical_ops_per_second =
+      GpuPerformanceModelBase::CalculatePeakMatrixOpsPerNs(ddh100_,
+                                                           PrimitiveType::F32) *
+      1e9;
+  // Set flops such that Compute Utilization is 0.5.
+  // 0.5 = compute_utilization = flops / (theoretical * exec_time)  =>
+  // flops = (theoretical * 4s) * 0.5  => flops = 2.0 * theoretical
+  estimates.flops = static_cast<int64_t>(2.0 * theoretical_ops_per_second);
+
+  // Compute Utilization: flops / (theoretical * exec_time(4s)) = 0.5
+  EXPECT_DOUBLE_EQ(
+      gpu_dot_fusion_cost_model::detail::CalculateComputeUtilization(
+          estimates, ddh100_, PrimitiveType::F32),
+      0.5);
+
+  estimates.exec_time = absl::ZeroDuration();
+  // We default to 0.0 compute utilization if the execution time is zero.
+  EXPECT_DOUBLE_EQ(
+      gpu_dot_fusion_cost_model::detail::CalculateComputeUtilization(
+          estimates, ddh100_, PrimitiveType::F32),
+      0.0);
+}
+
+TEST_F(GpuDotFusionCostModelTest, CalculateMemoryUtilization) {
+  EstimateRunTimeData estimates = {};
+  estimates.bytes_read = 1000;
+  estimates.bytes_written = 2000;
+  estimates.exec_time = absl::Seconds(4);
+
+  ddh100_.set_memory_bandwidth(3000);
+
+  // Memory roofline: (1000 + 2000) / 3000 B/s = 1.0s
+  // Memory Utilization: roofline (1s) / exec_time (4s) = 0.25
+  EXPECT_DOUBLE_EQ(
+      gpu_dot_fusion_cost_model::detail::CalculateMemoryUtilization(estimates,
+                                                                    ddh100_),
+      0.25);
+
+  estimates.exec_time = absl::ZeroDuration();
+  // We default to 0.0 memory utilization if the execution time is zero.
+  EXPECT_DOUBLE_EQ(
+      gpu_dot_fusion_cost_model::detail::CalculateMemoryUtilization(estimates,
+                                                                    ddh100_),
+      0.0);
+
+  estimates.exec_time = absl::Seconds(4);
+  ddh100_.set_memory_bandwidth(0);
+  // We default to 0.0 memory utilization if peak memory bandwidth is zero.
+  EXPECT_DOUBLE_EQ(
+      gpu_dot_fusion_cost_model::detail::CalculateMemoryUtilization(estimates,
+                                                                    ddh100_),
+      0.0);
 }
 
 }  // namespace

@@ -168,7 +168,7 @@ TEST_F(TiledHloInstructionTest, ToString) {
         /*parameter_number=*/number,
         ShapeUtil::MakeShape(PrimitiveType::F32, {4}),
         absl::StrCat("p", number));
-    ASSIGN_OR_RETURN(std::unique_ptr<TiledHloInstruction> tiled_hlo,
+    ABSL_ASSIGN_OR_RETURN(std::unique_ptr<TiledHloInstruction> tiled_hlo,
                      TiledHloInstruction::Create(
                          hlo.get(), /*operands=*/{},
                          /*runtime_variables=*/{},

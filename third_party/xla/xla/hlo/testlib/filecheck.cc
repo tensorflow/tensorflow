@@ -42,7 +42,7 @@ absl::StatusOr<bool> RunFileCheck(
   if (!env->LocalTempFilename(&pattern_path)) {
     return absl::InternalError("couldn't get a pattern file name");
   }
-  RETURN_IF_ERROR(tsl::WriteStringToFile(env, pattern_path, pattern));
+  ABSL_RETURN_IF_ERROR(tsl::WriteStringToFile(env, pattern_path, pattern));
   VLOG(3) << "input: " << input;
   return RunFileCheckWithPatternFile(input, pattern_path,
                                      additional_check_prefixes);

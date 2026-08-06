@@ -60,6 +60,27 @@ xla_cc_test(
 )
 
 cc_library(
+    name = "raw_pjrt_client",
+    srcs = ["raw_pjrt_client.cc"],
+    hdrs = ["raw_pjrt_client.h"],
+    visibility = internal_visibility([":friends"]),
+    deps = [
+        ":device_event",
+        ":pjrt_client",
+        ":raw_buffer",
+        "//xla:executable_run_options",
+        "//xla:future",
+        "//xla/tsl/concurrency:async_value",
+        "//xla/tsl/concurrency:ref_count",
+        "@com_google_absl//absl/functional:any_invocable",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+cc_library(
     name = "pjrt_c_api_client",
     hdrs = ["pjrt_c_api_client.h"],
     visibility = internal_visibility([":friends"]),
@@ -117,11 +138,13 @@ cc_library(
         "abstract_tracked_device_buffer.cc",
         "common_pjrt_client.cc",
         "host_to_device_transfer_manager.cc",
+        "undonatable_common_pjrt_buffer.cc",
     ],
     hdrs = [
         "abstract_tracked_device_buffer.h",
         "common_pjrt_client.h",
         "host_to_device_transfer_manager.h",
+        "undonatable_common_pjrt_buffer.h",
     ],
     visibility = internal_visibility([
         ":friends",
@@ -136,6 +159,7 @@ cc_library(
         ":pjrt_compiler",
         ":pjrt_executable",
         ":raw_buffer",
+        ":raw_pjrt_client",
         ":staging_buffer",
         ":transpose",
         ":utils",
@@ -155,6 +179,7 @@ cc_library(
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:status_macros",
         "//xla/tsl/platform:statusor",
+        "//xla/tsl/util:maybe_owning",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/base:core_headers",
@@ -172,6 +197,7 @@ cc_library(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:span",
         "@llvm-project//llvm:Support",
@@ -218,6 +244,33 @@ cc_library(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
         "@shardy//shardy/dialect/sdy/ir:dialect",
+    ],
+)
+
+xla_cc_test(
+    name = "undonatable_common_pjrt_buffer_test",
+    srcs = ["undonatable_common_pjrt_buffer_test.cc"],
+    deps = [
+        ":common_pjrt_client",
+        ":device_event",
+        ":pjrt_client",
+        ":pjrt_executable",
+        ":raw_buffer",
+        "//xla:future",
+        "//xla:shape_util",
+        "//xla:xla_data_proto_cc",
+        "//xla/hlo/builder:xla_builder",
+        "//xla/pjrt/plugin/xla_cpu:cpu_client_options",
+        "//xla/pjrt/plugin/xla_cpu:xla_cpu_pjrt_client",
+        "//xla/tsl/concurrency:async_value",
+        "//xla/tsl/concurrency:future",
+        "@com_google_absl//absl/base",
+        "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_matchers",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -493,6 +546,7 @@ cc_library(
         ":maybe_owning_mlir_module",
         ":pjrt_abi_version",
         ":pjrt_common",
+        ":pjrt_compiler_variant",
         ":pjrt_device_description",
         ":pjrt_device_dimensions",
         ":pjrt_executable",
@@ -527,6 +581,7 @@ xla_cc_test(
         ":pjrt_client",
         ":pjrt_common",
         ":pjrt_compiler",
+        ":pjrt_compiler_variant",
         ":pjrt_device_description",
         ":pjrt_executable",
         "//xla:shape_util",
@@ -541,6 +596,7 @@ xla_cc_test(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest_main",
+        "@tsl//tsl/platform:fingerprint",
     ],
 )
 
@@ -587,6 +643,7 @@ xla_cc_test(
         ":layout_mode",
         ":utils",
         "//xla:shape_util",
+        "//xla:xla_data_proto_cc",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/status:statusor",
         "@com_google_googletest//:gtest_main",
@@ -1037,6 +1094,7 @@ cc_library(
         "@com_google_absl//absl/strings:string_view",
         "@tsl//tsl/platform:path",
     ],
+    alwayslink = True,
 )
 
 cc_library(
@@ -1061,7 +1119,6 @@ cc_library(
         "//xla/stream_executor/cuda:cuda_compute_capability",
         "//xla/tsl/platform:logging",
         "//xla/tsl/platform:status_macros",
-        "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
@@ -1095,6 +1152,7 @@ cc_library(
         "@triton//third_party/nvidia:TritonNVIDIAGPUToLLVM",
         "@tsl//tsl/platform:path",
     ],
+    alwayslink = True,
 )
 
 cc_library(
@@ -1149,6 +1207,7 @@ cc_library(
         "@tsl//tsl/platform:path",
         "@tsl//tsl/platform:random",
     ],
+    alwayslink = True,
 )
 
 cc_library(
@@ -1166,6 +1225,16 @@ cc_library(
     ) + [
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:string_view",
+    ],
+)
+
+xla_cc_test(
+    name = "triton_test",
+    srcs = ["triton_test.cc"],
+    deps = [
+        ":triton",
+        "@com_google_absl//absl/status",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -1522,4 +1591,16 @@ alias(
     name = "stream_executor_executable_proto_cc",
     actual = "//xla/pjrt/se:stream_executor_executable_proto_cc",
     visibility = ["//visibility:public"],
+)
+
+cc_library(
+    name = "pjrt_compiler_variant",
+    srcs = ["pjrt_compiler_variant.cc"],
+    hdrs = ["pjrt_compiler_variant.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/strings:string_view",
+        "@tsl//tsl/platform:fingerprint",
+    ],
 )

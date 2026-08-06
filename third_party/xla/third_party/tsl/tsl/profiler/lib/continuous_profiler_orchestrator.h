@@ -40,7 +40,9 @@ namespace profiler {
 template <typename ProfilerType>
 class ContinuousProfilerOrchestrator : public ProfilerInterface {
  public:
-  static constexpr absl::Duration kDefaultPollingInterval = absl::Seconds(1);
+  static constexpr absl::Duration kDefaultPollingInterval = absl::Seconds(2);
+  static constexpr absl::Duration kMinPollingInterval = absl::Seconds(2);
+  static constexpr absl::Duration kMaxPollingInterval = absl::Seconds(5);
 
   explicit ContinuousProfilerOrchestrator(
       std::unique_ptr<ProfilerType> profiler)
@@ -101,6 +103,23 @@ class ContinuousProfilerOrchestrator : public ProfilerInterface {
     return status;
   }
 
+  std::vector<tensorflow::profiler::XSpace> SerializeChunks() {
+    std::vector<std::any> chunks = PopBuffer();
+    std::vector<tensorflow::profiler::XSpace> spaces;
+    spaces.reserve(chunks.size());
+    tensorflow::profiler::XSpace space;
+    for (auto& chunk : chunks) {
+      space.Clear();
+      absl::Status status = profiler_->Serialize(std::move(chunk), &space);
+      if (status.ok()) {
+        spaces.push_back(std::move(space));
+      } else {
+        LOG(ERROR) << "Failed to serialize profiler chunk: " << status;
+      }
+    }
+    return spaces;
+  }
+
   // Returns the current polling interval (primarily for testing).
   absl::Duration polling_interval() const {
     absl::MutexLock lock(mutex_);
@@ -125,6 +144,10 @@ class ContinuousProfilerOrchestrator : public ProfilerInterface {
   void IngestionLoop() {
     LOG(INFO) << "ContinuousProfilerOrchestrator::IngestionLoop started";
     while (true) {
+      {
+        absl::MutexLock lock(mutex_);
+        if (!is_running_) break;
+      }
       absl::StatusOr<ConsumeResult> result = profiler_->Consume();
 
       absl::MutexLock lock(mutex_);
@@ -165,10 +188,9 @@ class ContinuousProfilerOrchestrator : public ProfilerInterface {
     constexpr size_t kLowWatermark = 5 * 1024 * 1024;     // 5MB
 
     if (chunk_size_bytes > kHighWatermark) {
-      polling_interval_ =
-          std::max(polling_interval_ / 2, absl::Milliseconds(100));
+      polling_interval_ = std::max(polling_interval_ / 2, kMinPollingInterval);
     } else if (chunk_size_bytes < kLowWatermark) {
-      polling_interval_ = std::min(polling_interval_ * 2, absl::Seconds(5));
+      polling_interval_ = std::min(polling_interval_ * 2, kMaxPollingInterval);
     }
   }
 

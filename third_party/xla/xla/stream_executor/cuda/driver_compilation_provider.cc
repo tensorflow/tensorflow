@@ -135,7 +135,7 @@ absl::StatusOr<Assembly> DriverCompilationProvider::CompileAndLink(
   static_assert(sizeof(jit_options) / sizeof(jit_options[0]) ==
                 sizeof(jit_option_values) / sizeof(jit_option_values[0]));
 
-  RETURN_IF_ERROR(cuda::ToStatus(
+  ABSL_RETURN_IF_ERROR(cuda::ToStatus(
       cuLinkCreate(sizeof(jit_options) / sizeof(jit_options[0]), jit_options,
                    jit_option_values, &link_state)));
   absl::Cleanup link_state_cleaner = [&link_state] {
@@ -146,7 +146,7 @@ absl::StatusOr<Assembly> DriverCompilationProvider::CompileAndLink(
   for (const auto& input : inputs) {
     if (std::holds_alternative<RelocatableModule>(input)) {
       const RelocatableModule& module = std::get<RelocatableModule>(input);
-      RETURN_IF_ERROR(cuda::ToStatus(cuLinkAddData(
+      ABSL_RETURN_IF_ERROR(cuda::ToStatus(cuLinkAddData(
           link_state, CU_JIT_INPUT_CUBIN,
           absl::bit_cast<void*>(module.cubin.data()), module.cubin.size(),
           /*name=*/"", 0, nullptr, nullptr)));
@@ -158,7 +158,7 @@ absl::StatusOr<Assembly> DriverCompilationProvider::CompileAndLink(
       if (result != CUDA_SUCCESS) {
         CHECK(error_log_buffer_size() <= kErrorLogBufferSize);
         error_log_buffer.resize(error_log_buffer_size());
-        RETURN_IF_ERROR(cuda::ToStatus(result, error_log_buffer));
+        ABSL_RETURN_IF_ERROR(cuda::ToStatus(result, error_log_buffer));
       }
     }
   }
@@ -178,14 +178,14 @@ absl::StatusOr<Assembly> DriverCompilationProvider::CompileAndLink(
 
   // Return status can be CUDA_SUCCESS with error in the log.
   VLOG(3) << "Driver compilation error log output: " << error_log_buffer;
-  RETURN_IF_ERROR(CreateErrorFromPTXASLog(error_log_buffer, architecture,
+  ABSL_RETURN_IF_ERROR(CreateErrorFromPTXASLog(error_log_buffer, architecture,
                                           options.cancel_if_reg_spill));
   if (result != CUDA_SUCCESS) {
     return cuda::ToStatus(result, error_log_buffer);
   }
 
   VLOG(3) << "Driver compilation info log output: " << info_log_buffer;
-  RETURN_IF_ERROR(CreateErrorFromPTXASLog(info_log_buffer, architecture,
+  ABSL_RETURN_IF_ERROR(CreateErrorFromPTXASLog(info_log_buffer, architecture,
                                           options.cancel_if_reg_spill));
 
   std::vector<uint8_t> cubin(static_cast<uint8_t*>(cubin_out),

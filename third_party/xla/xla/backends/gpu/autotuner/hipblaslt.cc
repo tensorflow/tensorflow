@@ -212,23 +212,30 @@ absl::StatusOr<std::vector<std::unique_ptr<BackendConfig>>>
 HipblasLtBackend::GetSupportedConfigs(const HloInstruction& instr) {
   if (!IsSupported(instr)) {
     return std::vector<std::unique_ptr<BackendConfig>>();
-  } else if (IsCublasLtMatmul(instr) || IsCublasLtMatmulF8(instr)) {
-    ASSIGN_OR_RETURN(GpuBackendConfig gpu_config,
+  }
+
+  if (stream_executor() == nullptr) {
+    return absl::InvalidArgumentError(
+        "HipblasLtBackend cannot enumerate configs in deviceless mode.");
+  }
+
+  if (IsCublasLtMatmul(instr) || IsCublasLtMatmulF8(instr)) {
+    ABSL_ASSIGN_OR_RETURN(GpuBackendConfig gpu_config,
                      instr.backend_config<GpuBackendConfig>());
     const GemmBackendConfig& backend_config = gpu_config.gemm_backend_config();
 
-    ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         GemmConfig gemm_config,
         GemmConfig::For(
             &instr,
             target_config().device_description.gpu_compute_capability()));
 
-    ASSIGN_OR_RETURN(BlasLt::Epilogue epilogue,
+    ABSL_ASSIGN_OR_RETURN(BlasLt::Epilogue epilogue,
                      AsBlasLtEpilogue(backend_config.epilogue()));
 
-    ASSIGN_OR_RETURN(BlasLt * blas_lt, se::gpu::BlasLt::Get(stream_executor()));
+    ABSL_ASSIGN_OR_RETURN(BlasLt * blas_lt, se::gpu::BlasLt::Get(stream_executor()));
 
-    ASSIGN_OR_RETURN(BlasLt::MatmulPlanPtr plan,
+    ABSL_ASSIGN_OR_RETURN(BlasLt::MatmulPlanPtr plan,
                      blas_lt->GetMatmulPlan(gemm_config, epilogue));
 
     const Shape& output_shape = instr.shape();
@@ -240,9 +247,13 @@ HipblasLtBackend::GetSupportedConfigs(const HloInstruction& instr) {
     const int64_t workspace_size =
         ShapeUtil::ByteSizeOf(output_shape.tuple_shapes().back());
 
-    ASSIGN_OR_RETURN(
-        std::vector<BlasLt::MatmulAlgorithm> algorithms,
-        plan->GetAlgorithms(GemmConfig::kNumAlgorithms, workspace_size));
+    int max_algorithms = debug_options().xla_gpu_blas_max_algorithms();
+    if (max_algorithms <= 0) {
+      max_algorithms = GemmConfig::kNumAlgorithms;
+    }
+
+    ABSL_ASSIGN_OR_RETURN(std::vector<BlasLt::MatmulAlgorithm> algorithms,
+                     plan->GetAlgorithms(max_algorithms, workspace_size));
     int num_algorithms = algorithms.size();
     std::vector<std::unique_ptr<BackendConfig>> configs;
     configs.reserve(num_algorithms);
@@ -283,7 +294,7 @@ HipblasLtBackend::GetSupportedConfigs(const HloInstruction& instr) {
       return std::vector<std::unique_ptr<BackendConfig>>();
     }
 
-    ASSIGN_OR_RETURN(BlasLt * blas_lt, se::gpu::BlasLt::Get(stream_executor()));
+    ABSL_ASSIGN_OR_RETURN(BlasLt * blas_lt, se::gpu::BlasLt::Get(stream_executor()));
     auto plan_or =
         blas_lt->GetMatmulPlan(*gemm_config_or, BlasLt::Epilogue::kDefault);
     if (!plan_or.ok()) {
@@ -293,9 +304,12 @@ HipblasLtBackend::GetSupportedConfigs(const HloInstruction& instr) {
     }
 
     int64_t workspace_size = GemmConfig::kGFX950Workspace;
-    ASSIGN_OR_RETURN(
-        std::vector<BlasLt::MatmulAlgorithm> algorithms,
-        (*plan_or)->GetAlgorithms(GemmConfig::kNumAlgorithms, workspace_size));
+    int max_algorithms = debug_options().xla_gpu_blas_max_algorithms();
+    if (max_algorithms <= 0) {
+      max_algorithms = GemmConfig::kNumAlgorithms;
+    }
+    ABSL_ASSIGN_OR_RETURN(std::vector<BlasLt::MatmulAlgorithm> algorithms,
+                     (*plan_or)->GetAlgorithms(max_algorithms, workspace_size));
     if (algorithms.empty()) {
       LOG(WARNING) << "hipBLASLt MX: no algorithms found for scaled dot.";
       return std::vector<std::unique_ptr<BackendConfig>>();
@@ -312,10 +326,10 @@ HipblasLtBackend::GetSupportedConfigs(const HloInstruction& instr) {
     }
     return configs;
   } else if (IsCublasLtGroupedMatmul(instr)) {
-    ASSIGN_OR_RETURN(GpuBackendConfig gpu_config,
+    ABSL_ASSIGN_OR_RETURN(GpuBackendConfig gpu_config,
                      instr.backend_config<GpuBackendConfig>());
 
-    ASSIGN_OR_RETURN(BlasLt * blas_lt, se::gpu::BlasLt::Get(stream_executor()));
+    ABSL_ASSIGN_OR_RETURN(BlasLt * blas_lt, se::gpu::BlasLt::Get(stream_executor()));
 
     int64_t workspace_size;
     const GroupedGemmBackendConfig& grouped_config =
@@ -323,16 +337,16 @@ HipblasLtBackend::GetSupportedConfigs(const HloInstruction& instr) {
     const GemmBackendConfig& backend_config =
         grouped_config.gemm_backend_config();
 
-    ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         GroupedGemmConfig grouped_gemm_config,
         GroupedGemmConfig::For(
             &instr,
             target_config().device_description.gpu_compute_capability()));
 
-    ASSIGN_OR_RETURN(BlasLt::Epilogue epilogue,
+    ABSL_ASSIGN_OR_RETURN(BlasLt::Epilogue epilogue,
                      AsBlasLtEpilogue(backend_config.epilogue()));
 
-    ASSIGN_OR_RETURN(BlasLt::MatmulPlanPtr plan,
+    ABSL_ASSIGN_OR_RETURN(BlasLt::MatmulPlanPtr plan,
                      blas_lt->GetMatmulPlan(grouped_gemm_config, epilogue));
 
     const Shape& output_shape = instr.shape();
@@ -343,9 +357,13 @@ HipblasLtBackend::GetSupportedConfigs(const HloInstruction& instr) {
     }
     workspace_size = ShapeUtil::ByteSizeOf(output_shape.tuple_shapes().back());
 
-    ASSIGN_OR_RETURN(
-        std::vector<BlasLt::MatmulAlgorithm> algorithms,
-        plan->GetAlgorithms(GemmConfig::kNumAlgorithms, workspace_size));
+    int max_algorithms = debug_options().xla_gpu_blas_max_algorithms();
+    if (max_algorithms <= 0) {
+      max_algorithms = GemmConfig::kNumAlgorithms;
+    }
+
+    ABSL_ASSIGN_OR_RETURN(std::vector<BlasLt::MatmulAlgorithm> algorithms,
+                     plan->GetAlgorithms(max_algorithms, workspace_size));
     int num_algorithms = algorithms.size();
     std::vector<std::unique_ptr<BackendConfig>> configs;
     configs.reserve(num_algorithms);
@@ -383,14 +401,14 @@ absl::Status HipblasLtBackend::ApplyConfig(HloInstruction& instr,
   const AutotuneResult::GemmKey& gemm_key = config.gemm();
 
   if (IsCublasLtMatmul(instr) || IsCublasLtMatmulF8(instr)) {
-    ASSIGN_OR_RETURN(GpuBackendConfig gpu_config,
+    ABSL_ASSIGN_OR_RETURN(GpuBackendConfig gpu_config,
                      instr.backend_config<GpuBackendConfig>());
     GemmBackendConfig& backend_config =
         *gpu_config.mutable_gemm_backend_config();
     backend_config.set_selected_algorithm(gemm_key.algorithm());
     backend_config.set_autotune_workspace_size(
         gemm_key.autotune_workspace_size());
-    RETURN_IF_ERROR(instr.set_backend_config(std::move(gpu_config)));
+    ABSL_RETURN_IF_ERROR(instr.set_backend_config(std::move(gpu_config)));
 
     if (instr.shape().IsTuple() && !instr.shape().tuple_shapes().empty()) {
       Shape* workspace_shape = instr.mutable_shape()->mutable_tuple_shapes(
@@ -480,12 +498,12 @@ absl::Status HipblasLtBackend::ApplyConfig(HloInstruction& instr,
     HloInstruction* custom_call =
         parent->AddInstruction(HloInstruction::CreateCustomCall(
             output_shape, operands, kCublasLtMatmulMxCallTarget));
-    RETURN_IF_ERROR(custom_call->set_backend_config(gpu_backend_config));
+    ABSL_RETURN_IF_ERROR(custom_call->set_backend_config(gpu_backend_config));
     HloInstruction* gte = parent->AddInstruction(
         HloInstruction::CreateGetTupleElement(result_shape, custom_call, 0));
     return parent->ReplaceInstruction(&instr, gte);
   } else if (IsCublasLtGroupedMatmul(instr)) {
-    ASSIGN_OR_RETURN(GpuBackendConfig gpu_config,
+    ABSL_ASSIGN_OR_RETURN(GpuBackendConfig gpu_config,
                      instr.backend_config<GpuBackendConfig>());
     GemmBackendConfig* backend_config =
         gpu_config.mutable_grouped_gemm_backend_config()
@@ -494,7 +512,7 @@ absl::Status HipblasLtBackend::ApplyConfig(HloInstruction& instr,
     backend_config->set_selected_algorithm(gemm_key.algorithm());
     backend_config->set_autotune_workspace_size(
         gemm_key.autotune_workspace_size());
-    RETURN_IF_ERROR(instr.set_backend_config(std::move(gpu_config)));
+    ABSL_RETURN_IF_ERROR(instr.set_backend_config(std::move(gpu_config)));
     return absl::OkStatus();
   }
 

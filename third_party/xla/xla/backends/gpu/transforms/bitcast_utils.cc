@@ -413,7 +413,7 @@ absl::StatusOr<BitcastParams> CalculateBitcastOfTransposeImpl(
 // - transpose does not change layout (checks);
 absl::StatusOr<BitcastParams> CalculateBitcastOfTranspose(
     const HloTransposeInstruction* transpose, const Shape& result_shape) {
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       BitcastParams result,
       CalculateBitcastOfTransposeImpl(
           transpose, result_shape, transpose->shape(),

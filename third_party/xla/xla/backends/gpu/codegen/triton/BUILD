@@ -1,3 +1,4 @@
+load("@local_config_sycl//sycl:build_defs.bzl", "if_sycl_is_configured")
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("//xla:xla.default.bzl", "xla_cc_test")
 load("//xla/tests:build_defs.bzl", "xla_test")
@@ -102,6 +103,7 @@ cc_library(
     hdrs = ["lowering_util.h"],
     deps = [
         ":tma_utils",
+        "//xla:permutation_util",
         "//xla:util",
         "//xla/backends/gpu/codegen/triton/ir:triton_xla",
         "//xla/codegen/emitters/ir:xla",
@@ -197,7 +199,12 @@ cc_library(
         "@triton//third_party/nvidia:NVGPUToLLVM",
         "@triton//third_party/nvidia:NVHopperTransforms",
         "@triton//third_party/nvidia:TritonNVIDIAGPUToLLVM",
-    ],
+    ] + if_sycl_is_configured([
+        "@triton//third_party/intel:TritonIntelGPUToLLVM",
+        "@triton//third_party/intel:TritonIntelTransforms",
+        "@triton//third_party/intel:TritonIntelGPUTransforms",
+        "@triton//third_party/intel:TritonAnnotateModule",
+    ]),
 )
 
 xla_cc_test(
@@ -230,6 +237,7 @@ cc_library(
         ":triton_kernel_source",
         ":triton_wrapper_result",
         "//xla:autotuning_proto_cc",
+        "//xla:comparison_util",
         "//xla:frontend_attributes",
         "//xla:util",
         "//xla:xla_data_proto_cc",
@@ -238,6 +246,7 @@ cc_library(
         "//xla/backends/gpu/codegen/triton/ir:triton_xla",
         "//xla/backends/gpu/codegen/triton/transforms:passes",
         "//xla/codegen:ir_printing",
+        "//xla/codegen:llvm_kernel_source",
         "//xla/codegen/emitters/ir:xla",
         "//xla/codegen/emitters/transforms:passes",
         "//xla/codegen/tiling:symbolic_tile_analysis",
@@ -525,13 +534,13 @@ cc_library(
         "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:filecheck",
         "//xla/hlo/utils:hlo_traversal",
+        "//xla/service:decision",
         "//xla/service:instruction_fusion",
         "//xla/service/gpu:backend_configs_cc",
         "//xla/service/gpu:gpu_device_info_for_tests",
         "//xla/service/gpu/model:block_level_parameters",
         "//xla/service/gpu/model:tiling_from_block_parameters",
         "//xla/service/gpu/model:triton_emitter_constraints",
-        "//xla/tsl/platform:errors",
         "//xla/tsl/platform:status_macros",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
@@ -744,6 +753,7 @@ cc_library(
         "//xla/stream_executor:device_description",
         "//xla/stream_executor/gpu:all_reduce_kernel",
         "//xla/tsl/platform:status_macros",
+        "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base:nullability",
         "@com_google_absl//absl/functional:any_invocable",
         "@com_google_absl//absl/log",

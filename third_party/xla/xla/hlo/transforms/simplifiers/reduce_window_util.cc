@@ -120,8 +120,8 @@ absl::Status Replace1DReduceWindowWithReshape(
     CHECK_EQ(final_reshapes.size(), 1);
     result = final_reshapes[0];
   }
-  RETURN_IF_ERROR(reduce_window->ReplaceAllUsesWith(result));
-  RETURN_IF_ERROR(
+  ABSL_RETURN_IF_ERROR(reduce_window->ReplaceAllUsesWith(result));
+  ABSL_RETURN_IF_ERROR(
       new_reduce_window->parent()->RemoveInstruction(reduce_window));
 
   return absl::OkStatus();

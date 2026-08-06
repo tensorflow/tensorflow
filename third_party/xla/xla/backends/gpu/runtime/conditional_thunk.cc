@@ -23,6 +23,7 @@ limitations under the License.
 #include <variant>
 #include <vector>
 
+#include "absl/functional/function_ref.h"
 #include "absl/functional/overload.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
@@ -112,7 +113,7 @@ absl::StatusOr<const se::CommandBuffer::Command*> HandleRecordAction(
   }
 
   if (auto* update = std::get_if<Command::RecordUpdate>(&action)) {
-    RETURN_IF_ERROR(update_command(update->command));
+    ABSL_RETURN_IF_ERROR(update_command(update->command));
     return update->command;
   }
 
@@ -145,11 +146,11 @@ absl::Status ConditionalThunk::Prepare(const PrepareParams& params) {
     TF_RET_CHECK(!branch_executors_.empty());
   }
   for (auto& branch_executor : branch_executors_) {
-    RETURN_IF_ERROR(branch_executor.Prepare(params));
+    ABSL_RETURN_IF_ERROR(branch_executor.Prepare(params));
   }
   if (command_branch_executors_.has_value()) {
     for (CommandExecutor& branch_executor : *command_branch_executors_) {
-      RETURN_IF_ERROR(branch_executor.Prepare(params));
+      ABSL_RETURN_IF_ERROR(branch_executor.Prepare(params));
     }
   }
   return absl::OkStatus();
@@ -162,11 +163,11 @@ absl::Status ConditionalThunk::Initialize(const InitializeParams& params) {
     TF_RET_CHECK(!branch_executors_.empty());
   }
   for (auto& branch_executor : branch_executors_) {
-    RETURN_IF_ERROR(branch_executor.Initialize(params));
+    ABSL_RETURN_IF_ERROR(branch_executor.Initialize(params));
   }
   if (command_branch_executors_.has_value()) {
     for (CommandExecutor& branch_executor : *command_branch_executors_) {
-      RETURN_IF_ERROR(branch_executor.Initialize(params));
+      ABSL_RETURN_IF_ERROR(branch_executor.Initialize(params));
     }
   }
 
@@ -175,7 +176,7 @@ absl::Status ConditionalThunk::Initialize(const InitializeParams& params) {
   if (!host_memory_pools_.contains(params.executor)) {
     PrimitiveType type =
         branch_index_is_bool_ ? PrimitiveType::PRED : PrimitiveType::S32;
-    ASSIGN_OR_RETURN(std::unique_ptr<HostMemoryPool> pool,
+    ABSL_ASSIGN_OR_RETURN(std::unique_ptr<HostMemoryPool> pool,
                      HostMemoryPool::Create(params.executor, type));
     host_memory_pools_[params.executor] = std::move(pool);
   }
@@ -249,7 +250,7 @@ absl::Status ConditionalThunk::ExecuteOnStream(const ExecuteParams& params) {
     absl::MutexLock lock(mutex_);
     pool = host_memory_pools_.at(stream.parent()).get();
   }
-  ASSIGN_OR_RETURN(HostMemoryPool::Handle handle, pool->Acquire());
+  ABSL_ASSIGN_OR_RETURN(HostMemoryPool::Handle handle, pool->Acquire());
 
   // Copy the predicate value from device.
   auto branch_index_or_pred = [&]() -> std::variant<int32_t*, bool*> {
@@ -263,10 +264,10 @@ absl::Status ConditionalThunk::ExecuteOnStream(const ExecuteParams& params) {
       params.buffer_allocations->GetDeviceAddress(
           branch_index_buffer_index_.slice);
   if (branch_index_is_bool_) {
-    RETURN_IF_ERROR(stream.Memcpy(std::get<bool*>(branch_index_or_pred),
+    ABSL_RETURN_IF_ERROR(stream.Memcpy(std::get<bool*>(branch_index_or_pred),
                                   branch_index_address, sizeof(bool)));
   } else {
-    RETURN_IF_ERROR(stream.Memcpy(std::get<int32_t*>(branch_index_or_pred),
+    ABSL_RETURN_IF_ERROR(stream.Memcpy(std::get<int32_t*>(branch_index_or_pred),
                                   branch_index_address, sizeof(int32_t)));
   }
 
@@ -294,14 +295,14 @@ absl::Status ConditionalThunk::ExecuteOnStream(const ExecuteParams& params) {
   }
 
   // Execute the branch computation corresponding to the value of branch_index.
-  RETURN_IF_ERROR(branch_executors_[branch_index].ExecuteOnStream(params));
+  ABSL_RETURN_IF_ERROR(branch_executors_[branch_index].ExecuteOnStream(params));
 
   return absl::OkStatus();
 }
 
 absl::Status ConditionalThunk::WalkNested(Walker callback) {
   for (ThunkExecutor& branch_executor : branch_executors_) {
-    RETURN_IF_ERROR(branch_executor.thunks().WalkNested(callback));
+    ABSL_RETURN_IF_ERROR(branch_executor.thunks().WalkNested(callback));
   }
   return absl::OkStatus();
 }
@@ -311,14 +312,14 @@ absl::Status ConditionalThunk::WalkNestedCommands(CommandWalker callback) {
     return absl::OkStatus();
   }
   for (CommandExecutor& branch_executor : *command_branch_executors_) {
-    RETURN_IF_ERROR(branch_executor.Walk(callback));
+    ABSL_RETURN_IF_ERROR(branch_executor.Walk(callback));
   }
   return absl::OkStatus();
 }
 
 absl::Status ConditionalThunk::TransformNested(Transformer callback) {
   for (ThunkExecutor& branch_executor : branch_executors_) {
-    RETURN_IF_ERROR(branch_executor.thunks().TransformNested(callback));
+    ABSL_RETURN_IF_ERROR(branch_executor.thunks().TransformNested(callback));
   }
   return absl::OkStatus();
 }
@@ -328,13 +329,13 @@ absl::StatusOr<ThunkProto> ConditionalThunk::ToProto() const {
   *proto.mutable_thunk_info() = thunk_info().ToProto();
 
   auto* conditional_thunk_proto = proto.mutable_conditional_thunk();
-  ASSIGN_OR_RETURN(*conditional_thunk_proto->mutable_branch_index_buffer(),
+  ABSL_ASSIGN_OR_RETURN(*conditional_thunk_proto->mutable_branch_index_buffer(),
                    branch_index_buffer_index_.ToProto());
 
   for (const ThunkExecutor& branch_executor : branch_executors_) {
     ThunkSequenceProto thunk_sequence_proto;
     for (const std::unique_ptr<Thunk>& thunk : branch_executor.thunks()) {
-      ASSIGN_OR_RETURN(*thunk_sequence_proto.add_thunks(), thunk->ToProto());
+      ABSL_ASSIGN_OR_RETURN(*thunk_sequence_proto.add_thunks(), thunk->ToProto());
     }
     *conditional_thunk_proto->add_branch_thunks() =
         std::move(thunk_sequence_proto);
@@ -346,7 +347,7 @@ absl::StatusOr<std::unique_ptr<ConditionalThunk>> ConditionalThunk::FromProto(
     ThunkInfo thunk_info, const ConditionalThunkProto& thunk_proto,
     absl::Span<const BufferAllocation> buffer_allocations,
     const Deserializer& deserializer) {
-  ASSIGN_OR_RETURN(ShapedSlice branch_index_buffer_index,
+  ABSL_ASSIGN_OR_RETURN(ShapedSlice branch_index_buffer_index,
                    ShapedSlice::FromProto(thunk_proto.branch_index_buffer(),
                                           buffer_allocations));
 
@@ -355,7 +356,7 @@ absl::StatusOr<std::unique_ptr<ConditionalThunk>> ConditionalThunk::FromProto(
   for (const auto& thunk_sequence_proto : thunk_proto.branch_thunks()) {
     ThunkSequence thunks;
     for (const auto& proto : thunk_sequence_proto.thunks()) {
-      ASSIGN_OR_RETURN(std::unique_ptr<Thunk> thunk, deserializer(proto));
+      ABSL_ASSIGN_OR_RETURN(std::unique_ptr<Thunk> thunk, deserializer(proto));
       thunks.push_back(std::move(thunk));
     }
     branch_thunks.push_back(std::move(thunks));

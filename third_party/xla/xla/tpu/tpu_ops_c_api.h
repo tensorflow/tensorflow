@@ -176,11 +176,6 @@ TFTPU_CAPI_EXPORT void SetGlobalTPUArrayOp_DoWork(size_t tpu_topology_size,
                                                   TF_Status* status);
 TFTPU_CAPI_EXPORT void TpuConfigurationApi_FreeCharArray(char* output);
 
-TFTPU_CAPI_EXPORT void TpuConfigurationApi_TpusPerHost(int32_t* tpus,
-                                                       TF_Status* status);
-TFTPU_CAPI_EXPORT void TpuConfigurationApi_TpuMemoryLimit(int64_t* memory_limit,
-                                                          TF_Status* status);
-
 // Returns the number of available TPU core count.
 TFTPU_CAPI_EXPORT int TpuTopology_AvailableCoreCount(
     const XLA_TpuMeshState* mesh_state, TpuCoreTypeEnum tpu_core_type);
@@ -478,8 +473,6 @@ struct TfTpu_OpsApiFn {
 
   TFTPU_ADD_FN_IN_STRUCT(SetGlobalTPUArrayOp_DoWork);
   TFTPU_ADD_FN_IN_STRUCT(TpuConfigurationApi_FreeCharArray);
-  TFTPU_ADD_FN_IN_STRUCT(TpuConfigurationApi_TpusPerHost);
-  TFTPU_ADD_FN_IN_STRUCT(TpuConfigurationApi_TpuMemoryLimit);
 
   TFTPU_ADD_FN_IN_STRUCT(TpuTopology_AvailableCoreCount);
   TFTPU_ADD_FN_IN_STRUCT(TpuTopology_AvailableCoresPerChip);

@@ -4,6 +4,8 @@ load("@bazel_features//:deps.bzl", "bazel_features_deps")
 load("@bazel_skylib//lib:versions.bzl", "versions")
 load("@bazel_tools//tools/build_defs/repo:utils.bzl", "maybe")
 load("@rules_jvm_external//:defs.bzl", "maven_install")
+load("@rules_ml_toolchain//cc/llvms/local:local_clang_configure.bzl", "local_clang_configure")
+load("@rules_ml_toolchain//cc/sysroots:local_sysroot_configure.bzl", "local_sysroot_configure")
 load("@rules_ml_toolchain//gpu/rocm:hipcc_configure.bzl", "hipcc_configure")
 load("@tf_runtime//:dependencies.bzl", "tfrt_dependencies")
 load("@xla//third_party/absl:workspace.bzl", absl = "repo")
@@ -164,8 +166,14 @@ def _tf_toolchains():
     git_configure(name = "local_config_git")
     syslibs_configure(name = "local_config_syslibs")
     python_configure(name = "local_config_python")
-    hipcc_configure(name = "config_rocm_hipcc")  # Must be before rocm_configure.
     rocm_configure(name = "local_config_rocm")
+    hipcc_configure(
+        name = "config_rocm_hipcc",
+        rocm_dist = "@local_config_rocm//rocm:toolchain_data",
+    )
+
+    local_clang_configure(name = "local_config_clang")
+    local_sysroot_configure(name = "local_sysroot_config")
     sycl_configure(name = "local_config_sycl")
     remote_execution_configure(name = "local_config_remote_execution")
 
@@ -236,9 +244,9 @@ def _tf_repositories():
     # XNNPack dependency.
     tf_http_archive(
         name = "KleidiAI",
-        sha256 = "9b8d0df9bab42d1d19acb571337cbaa527027cae0efd361d75dfb9b10fd7dc4e",
-        strip_prefix = "kleidiai-51f7190558e51b7415d9ba24994fb477d7371446",
-        urls = tf_mirror_urls("https://github.com/ARM-software/kleidiai/archive/51f7190558e51b7415d9ba24994fb477d7371446.zip"),
+        sha256 = "6b3e6630be314a28f6ea28fed14f7109b0b7c472f1e06d2dba17ffccda3b9466",
+        strip_prefix = "kleidiai-dce86647385ab2638aa5abebcb652f3e4271970d",
+        urls = tf_mirror_urls("https://gitlab.arm.com/kleidi/kleidiai/-/archive/dce86647385ab2638aa5abebcb652f3e4271970d/kleidiai-dce86647385ab2638aa5abebcb652f3e4271970d.zip"),
     )
 
     FXdiv()

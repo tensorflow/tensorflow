@@ -170,7 +170,7 @@ class CpuAotCompilationResult : public CompiledModule {
   static absl::StatusOr<std::unique_ptr<CpuAotCompilationResult>> FromProto(
       CompilationResultProto proto,
       std::unique_ptr<FunctionLibrary> function_library) {
-    ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
+    ABSL_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
                      HloModule::CreateFromProtoWithConfig(proto.hlo_module()));
 
     return std::unique_ptr<CpuAotCompilationResult>(new CpuAotCompilationResult(

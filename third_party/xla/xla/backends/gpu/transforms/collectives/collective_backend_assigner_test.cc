@@ -42,7 +42,7 @@ class CollectiveBackendAssignerTest : public HloHardwareIndependentTestBase {
 
   absl::StatusOr<DebugOptions::CollectivesMode> GetCollectivesMode(
       const HloInstruction* instr) {
-    ASSIGN_OR_RETURN(GpuBackendConfig gpu_config,
+    ABSL_ASSIGN_OR_RETURN(GpuBackendConfig gpu_config,
                      instr->backend_config<GpuBackendConfig>());
     return gpu_config.collective_backend_config().collectives_mode();
   }

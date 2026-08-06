@@ -59,7 +59,7 @@ absl::StatusOr<std::vector<uint8_t>> LinkGpuAsmUsingDriver(
   static_assert(sizeof(options) / sizeof(options[0]) ==
                 sizeof(option_values) / sizeof(option_values[0]));
 
-  RETURN_IF_ERROR(
+  ABSL_RETURN_IF_ERROR(
       cuda::ToStatus(cuLinkCreate(sizeof(options) / sizeof(options[0]), options,
                                   option_values, &link_state)));
   for (const std::vector<uint8_t>& image : images) {
@@ -74,11 +74,11 @@ absl::StatusOr<std::vector<uint8_t>> LinkGpuAsmUsingDriver(
   }
   void* cubin_out;
   size_t cubin_size;
-  RETURN_IF_ERROR(
+  ABSL_RETURN_IF_ERROR(
       cuda::ToStatus(cuLinkComplete(link_state, &cubin_out, &cubin_size)));
   std::vector<uint8_t> cubin(static_cast<uint8_t*>(cubin_out),
                              static_cast<uint8_t*>(cubin_out) + cubin_size);
-  RETURN_IF_ERROR(cuda::ToStatus(cuLinkDestroy(link_state)));
+  ABSL_RETURN_IF_ERROR(cuda::ToStatus(cuLinkDestroy(link_state)));
   return cubin;
 }
 

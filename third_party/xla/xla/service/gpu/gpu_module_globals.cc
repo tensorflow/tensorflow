@@ -34,10 +34,9 @@ limitations under the License.
 #include "xla/map_util.h"
 #include "xla/service/gpu/dense_data_intermediate.h"
 #include "xla/service/gpu/gpu_executable.pb.h"
-#include "xla/stream_executor/cuda/cuda_platform_id.h"
+#include "xla/status_macros.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/module_spec.h"
-#include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/scoped_module_handle.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
@@ -69,7 +68,7 @@ GpuModuleGlobals::ConstantInfo::FromProto(
           "Instruction for ", proto.symbol_name(), " constant missing."));
     }
     const HloInstruction* instr = it->second;
-    ASSIGN_OR_RETURN(DenseDataIntermediate content,
+    ABSL_ASSIGN_OR_RETURN(DenseDataIntermediate content,
                      LiteralToXlaFormat(instr->literal()));
     return ConstantInfo{proto.symbol_name(), content,
                         static_cast<int>(proto.allocation_index())};
@@ -96,12 +95,12 @@ GpuModuleGlobals::Resolve(se::Stream* stream) {
 
   auto globals = std::make_unique<BufferAllocToDeviceMemoryMap>();
   se::ModuleHandle module_handle;
-  // The CUDA driver isn't able to load a PTX and a binary which are both empty.
-  // It's okay if we skip loading in this case; if the module isn't loaded, all
-  // symbol lookups will fail, just as they should for an empty module.
-  if (!(executor->GetPlatform()->id() == se::cuda::kCudaPlatformId &&
-        binary_.empty())) {
-    ASSIGN_OR_RETURN(module_handle, executor->LoadModule(module_spec));
+  // There is no module to load when constants compilation produced no binary.
+  if (binary_.empty()) {
+    TF_RET_CHECK(constants_.empty())
+        << "Constants metadata is present without a constants binary";
+  } else {
+    ABSL_ASSIGN_OR_RETURN(module_handle, executor->LoadModule(module_spec));
   }
 
   // A flag signalling if constant initialization submitted memcpy operations
@@ -126,7 +125,7 @@ GpuModuleGlobals::Resolve(se::Stream* stream) {
     if (!info.content.span().empty()) {
       // This means the constant did not have an initializer in the PTX and
       // therefore must be initialized by XLA here.
-      RETURN_IF_ERROR(stream->Memcpy(&global, info.content.span().data(),
+      ABSL_RETURN_IF_ERROR(stream->Memcpy(&global, info.content.span().data(),
                                      info.content.span().size()));
       submitted_mem_copies = true;
     }

@@ -183,7 +183,7 @@ absl::Status ConvertXplaneUnderLogdirToProfiledInstructionsProto(
                                    profiled_instructions_proto) {
   // Find the xplane files for each host under logdir.
   std::vector<std::string> children_path;
-  RETURN_IF_ERROR(tsl::Env::Default()->GetChildren(logdir, &children_path));
+  ABSL_RETURN_IF_ERROR(tsl::Env::Default()->GetChildren(logdir, &children_path));
   if (children_path.empty()) {
     return absl::NotFoundError(
         absl::StrCat("Could not find file under: ", logdir));
@@ -193,7 +193,7 @@ absl::Status ConvertXplaneUnderLogdirToProfiledInstructionsProto(
     if (absl::StrContains(child_path, kXPlanePb)) {
       std::string xspace_path = ProfilerJoinPath(logdir, child_path);
       tensorflow::profiler::XSpace xspace;
-      RETURN_IF_ERROR(
+      ABSL_RETURN_IF_ERROR(
           ReadBinaryProto(tsl::Env::Default(), xspace_path, &xspace));
       xspaces.push_back(xspace);
     }

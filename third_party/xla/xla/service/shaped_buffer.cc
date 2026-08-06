@@ -79,11 +79,11 @@ ShapedBuffer::~ShapedBuffer() {}
 
 absl::StatusOr<ShapedBuffer> ShapedBuffer::SubShapedBuffer(
     const ShapeIndex& index) const {
-  ASSIGN_OR_RETURN(const Shape* device_sub_shape,
+  ABSL_ASSIGN_OR_RETURN(const Shape* device_sub_shape,
                    ShapeUtil::TryGetSubshape(on_device_shape(), index));
   ShapedBuffer sub_shaped_buffer(*device_sub_shape, device_ordinal_,
                                  physical_device_ordinal_);
-  ASSIGN_OR_RETURN(ShapeTree<se::DeviceAddressBase> sub_buffers,
+  ABSL_ASSIGN_OR_RETURN(ShapeTree<se::DeviceAddressBase> sub_buffers,
                    buffers_.SubShapeTree(index));
   sub_shaped_buffer.set_buffers(std::move(sub_buffers));
   return std::move(sub_shaped_buffer);

@@ -59,7 +59,15 @@ absl::StatusOr<int64_t> NonContractingDimensionIndex(const HloInstruction& dot,
 // A class to handle the dimensions of an operand of a dot instruction.
 class DotOperandDims {
  public:
-  enum Category { kBatch, kNonContracting, kContracting };
+  // Categories of dimensions in a dot instruction operand.
+  // kInvalid (-1) serves as a sentinel for dimensions that are not assigned to
+  // batch, non-contracting, or contracting categories.
+  enum Category : int8_t {
+    kInvalid = -1,
+    kBatch = 0,
+    kNonContracting = 1,
+    kContracting = 2
+  };
 
   DotOperandDims() = default;
   DotOperandDims(Shape shape, absl::Span<const int64_t> batch_dims,

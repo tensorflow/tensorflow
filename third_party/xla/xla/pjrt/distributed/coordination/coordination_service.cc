@@ -901,7 +901,7 @@ absl::Status CoordinationService::InitializeBarrier(
   barrier->result = absl::UnknownError("Invalid barrier result.");
   barrier->initiating_task = task;
   barrier->done_callbacks.clear();
-  RETURN_IF_ERROR(InitializeTasksAtBarrier(barrier, participating_tasks));
+  ABSL_RETURN_IF_ERROR(InitializeTasksAtBarrier(barrier, participating_tasks));
 
   barrier->num_pending_tasks = barrier->tasks_at_barrier.size();
 

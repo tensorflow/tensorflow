@@ -58,7 +58,7 @@ class CpuCodegenBackend : public CodegenBackend {
     std::unique_ptr<HloModule> hlo_module =
         ExtractInstructionIntoNewModule(hlo_instruction);
 
-    RETURN_IF_ERROR(ApplyConfig(
+    ABSL_RETURN_IF_ERROR(ApplyConfig(
         *hlo_module->entry_computation()->root_instruction(), config));
 
     return compiler_->RunBackend(std::move(hlo_module),

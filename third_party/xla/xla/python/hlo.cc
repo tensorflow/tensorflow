@@ -83,7 +83,7 @@ inline Py_hash_t AbslHashToPythonHash(size_t h) {
 
 absl::StatusOr<nb::dlpack::dtype> PrimitiveTypeToNbDLDataType(
     xla::PrimitiveType type) {
-  ASSIGN_OR_RETURN(DLDataType dl_type, PrimitiveTypeToDLDataType(type));
+  ABSL_ASSIGN_OR_RETURN(DLDataType dl_type, PrimitiveTypeToDLDataType(type));
 
   nb::dlpack::dtype nb_type;
   nb_type.lanes = dl_type.lanes;
@@ -122,20 +122,20 @@ absl::StatusOr<std::shared_ptr<HloModule>> HloModuleFromSerializedProto(
   if (!proto.ParseFromString(absl::string_view(bytes.c_str(), bytes.size()))) {
     return InvalidArgument("Failed to deserialize HloModuleProto");
   }
-  ASSIGN_OR_RETURN(const HloModuleConfig module_config,
+  ABSL_ASSIGN_OR_RETURN(const HloModuleConfig module_config,
                    HloModule::CreateModuleConfigFromProto(
                        proto, GetDebugOptionsFromFlags()));
-  ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
+  ABSL_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
                    HloModule::CreateFromProto(proto, module_config));
   return std::shared_ptr<HloModule>(std::move(module));
 }
 
 absl::StatusOr<std::shared_ptr<HloModule>> GetHloModule(
     const XlaComputation& computation) {
-  ASSIGN_OR_RETURN(const HloModuleConfig module_config,
+  ABSL_ASSIGN_OR_RETURN(const HloModuleConfig module_config,
                    HloModule::CreateModuleConfigFromProto(
                        computation.proto(), GetDebugOptionsFromFlags()));
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       std::unique_ptr<HloModule> module,
       HloModule::CreateFromProto(computation.proto(), module_config));
   return std::shared_ptr<HloModule>(std::move(module));
@@ -144,7 +144,7 @@ absl::StatusOr<std::shared_ptr<HloModule>> GetHloModule(
 // Converts a computation to textual HLO form.
 absl::StatusOr<std::string> GetComputationHloText(
     const XlaComputation& computation, bool print_large_constants = false) {
-  ASSIGN_OR_RETURN(std::shared_ptr<HloModule> hlo_module,
+  ABSL_ASSIGN_OR_RETURN(std::shared_ptr<HloModule> hlo_module,
                    GetHloModule(computation));
   HloPrintOptions options;
   options = HloPrintOptions::ShortParsable();
@@ -155,7 +155,7 @@ absl::StatusOr<std::string> GetComputationHloText(
 // Converts a computation to HLO dot graph form.
 absl::StatusOr<std::string> GetComputationHloDotGraph(
     const XlaComputation& computation) {
-  ASSIGN_OR_RETURN(std::shared_ptr<HloModule> hlo_module,
+  ABSL_ASSIGN_OR_RETURN(std::shared_ptr<HloModule> hlo_module,
                    GetHloModule(computation));
   return RenderGraph(*hlo_module->entry_computation(), /*label=*/"",
                      hlo_module->config().debug_options(),
@@ -164,7 +164,7 @@ absl::StatusOr<std::string> GetComputationHloDotGraph(
 
 // Hashes the HLO module.
 absl::StatusOr<uint64_t> HashComputation(const XlaComputation& computation) {
-  ASSIGN_OR_RETURN(std::shared_ptr<HloModule> hlo_module,
+  ABSL_ASSIGN_OR_RETURN(std::shared_ptr<HloModule> hlo_module,
                    GetHloModule(computation));
   return absl::HashOf(*hlo_module);
 }
@@ -177,15 +177,15 @@ absl::StatusOr<Shape> MakeShapeWithDenseLayout(
     std::optional<const std::vector<bool>> dynamic_dimensions) {
   Shape shape;
   if (dynamic_dimensions) {
-    ASSIGN_OR_RETURN(shape,
+    ABSL_ASSIGN_OR_RETURN(shape,
                      ShapeUtil::MakeValidatedShape(element_type, dims,
                                                    dynamic_dimensions.value()));
   } else {
-    ASSIGN_OR_RETURN(shape, ShapeUtil::MakeValidatedShape(element_type, dims));
+    ABSL_ASSIGN_OR_RETURN(shape, ShapeUtil::MakeValidatedShape(element_type, dims));
   }
   if (minor_to_major) {
     *shape.mutable_layout() = LayoutUtil::MakeLayout(*minor_to_major);
-    RETURN_IF_ERROR(LayoutUtil::ValidateLayoutForShape(shape.layout(), shape));
+    ABSL_RETURN_IF_ERROR(LayoutUtil::ValidateLayoutForShape(shape.layout(), shape));
   }
 
   return shape;
@@ -1134,6 +1134,14 @@ NB_MODULE(_hlo, m) {
       .def("is_unreduced", &xla::HloSharding::IsUnreduced)
       .def("is_unknown", &xla::HloSharding::IsUnknown)
       .def("is_tiled", &xla::HloSharding::IsTiled)
+      .def("reduction_op",
+           [](const xla::HloSharding& self) -> int {
+             return static_cast<int>(self.reduction_op());
+           })
+      .def("set_reduction_op",
+           [](xla::HloSharding& self, int op) {
+             self.set_reduction_op(static_cast<xla::ReductionOp>(op));
+           })
       .def("is_maximal", &xla::HloSharding::IsReplicatedOrSingleDevice)
       .def("tile", [](const xla::HloSharding& self,
                       xla::Shape shape) { return self.TileShape(shape); })
@@ -1148,36 +1156,58 @@ NB_MODULE(_hlo, m) {
       .def(
           "num_devices",
           [](const xla::HloSharding& self) {
+            if (self.UseNamedShardingLeaf()) {
+              return self.named_sharding()
+                  .mesh()
+                  .device_assignment()
+                  .num_elements();
+            }
             return self.tile_assignment().num_elements();
           },
           nb::lock_self())
       .def(
           "num_dimensions",
           [](const xla::HloSharding& self) {
+            if (self.UseNamedShardingLeaf()) {
+              return self.named_sharding().num_dimensions();
+            }
             return self.tile_assignment().num_dimensions();
           },
           nb::lock_self())
       .def("is_tile_assignment_iota",
            [](const xla::HloSharding& self) {
+             if (self.UseNamedShardingLeaf()) {
+               return true;
+             }
              return self.tile_assignment().iota().has_value();
            })
       .def(
           "tile_assignment_dimensions",
           [](const xla::HloSharding& self) {
+            if (self.UseNamedShardingLeaf()) {
+              auto v2 = xla::HloSharding::V3ToV2Sharding(self);
+              auto dims = v2.tile_assignment().dimensions();
+              return std::vector<int64_t>(dims.begin(), dims.end());
+            }
             absl::Span<int64_t const> span =
                 self.tile_assignment().dimensions();
             CHECK(span.data());
-            return span;
+            return std::vector<int64_t>(span.begin(), span.end());
           },
           nb::lock_self())
       .def(
           "tile_assignment_devices",
           [](const xla::HloSharding& self) {
+            if (self.UseNamedShardingLeaf()) {
+              auto v2 = xla::HloSharding::V3ToV2Sharding(self);
+              auto devices = v2.tile_assignment().array();
+              return std::vector<int64_t>(devices.begin(), devices.end());
+            }
             auto span =
                 absl::MakeConstSpan(self.tile_assignment().array().data(),
                                     self.tile_assignment().num_elements());
             CHECK(span.data());
-            return span;
+            return std::vector<int64_t>(span.begin(), span.end());
           },
           nb::lock_self())
       .def("replicate_on_last_tile_dim",
@@ -1185,9 +1215,16 @@ NB_MODULE(_hlo, m) {
       .def("subgroup_types", &xla::HloSharding::subgroup_types)
       .def("__repr__",
            [](const xla::HloSharding& self) { return self.ToString(); })
+      .def("to_string", &xla::HloSharding::ToString,
+           nb::arg("include_metadata") = false)
       .def("to_proto", &xla::HloSharding::ToProto)
       .def("get_axis_sizes",
            [](const xla::HloSharding& self) {
+             if (self.UseNamedShardingLeaf()) {
+               absl::Span<const int64_t> sizes =
+                   self.named_sharding().mesh().axis_sizes();
+               return std::vector<int64_t>(sizes.begin(), sizes.end());
+             }
              // If returning the SmallVector, we encounter the error "unable to
              // convert function return value to a Python type!".
              mlir::SmallVector<int64_t> mesh_shape =
@@ -1211,7 +1248,7 @@ NB_MODULE(_hlo, m) {
                 -> absl::StatusOr<std::shared_ptr<HloModule>> {
               auto hlo_module =
                   xla::ParseAndReturnUnverifiedModule(hlo_module_text);
-              RETURN_IF_ERROR(hlo_module.status());
+              ABSL_RETURN_IF_ERROR(hlo_module.status());
               std::shared_ptr<HloModule> result(std::move(*hlo_module));
               return result;
             }));

@@ -75,7 +75,7 @@ absl::StatusOr<int32_t> CudaKernel::GetMaxOccupiedBlocksPerCore(
   std::unique_ptr<ActivateContext> activation = executor_->Activate();
 
   int max_blocks;
-  RETURN_IF_ERROR(cuda::ToStatus(
+  ABSL_RETURN_IF_ERROR(cuda::ToStatus(
       cuOccupancyMaxActiveBlocksPerMultiprocessorWithFlags(
           &max_blocks, gpu_function_, threads_per_block,
           dynamic_shared_memory_bytes, CU_OCCUPANCY_DISABLE_CACHING_OVERRIDE),
@@ -87,11 +87,11 @@ absl::StatusOr<int32_t> CudaKernel::GetMaxOccupiedBlocksPerCore(
 absl::StatusOr<KernelMetadata> CudaKernel::GetKernelMetadata() {
   KernelMetadata kernel_metadata;
   int value;
-  RETURN_IF_ERROR(
+  ABSL_RETURN_IF_ERROR(
       GetCudaAttribute(CU_FUNC_ATTRIBUTE_NUM_REGS, gpu_function_, &value));
   kernel_metadata.set_registers_per_thread(value);
 
-  RETURN_IF_ERROR(GetCudaAttribute(CU_FUNC_ATTRIBUTE_SHARED_SIZE_BYTES,
+  ABSL_RETURN_IF_ERROR(GetCudaAttribute(CU_FUNC_ATTRIBUTE_SHARED_SIZE_BYTES,
                                    gpu_function_, &value));
   kernel_metadata.set_shared_memory_bytes(value);
   return kernel_metadata;
@@ -111,10 +111,10 @@ absl::Status CudaKernel::UpdateMaxDynamicSharedMemoryBytes(
   }
 
   std::unique_ptr<ActivateContext> activation = executor_->Activate();
-  RETURN_IF_ERROR(
+  ABSL_RETURN_IF_ERROR(
       SetCudaAttribute(CU_FUNC_ATTRIBUTE_MAX_DYNAMIC_SHARED_SIZE_BYTES,
                        gpu_function_, shared_memory_bytes));
-  RETURN_IF_ERROR(cuda::ToStatus(
+  ABSL_RETURN_IF_ERROR(cuda::ToStatus(
       cuFuncSetCacheConfig(gpu_function_, CU_FUNC_CACHE_PREFER_SHARED)));
 
   max_dynamic_shared_memory_bytes_.store(shared_memory_bytes,
@@ -149,7 +149,7 @@ absl::Status CudaKernel::Launch(const ThreadDim& thread_dims,
 
     void** params = const_cast<void**>(packed.argument_addresses().data());
 
-    RETURN_IF_ERROR(
+    ABSL_RETURN_IF_ERROR(
         UpdateMaxDynamicSharedMemoryBytes(packed.number_of_shared_bytes()));
 
     return stream->LaunchKernel(thread_dims, block_dims, cluster_dims, function,
@@ -163,7 +163,7 @@ absl::Status CudaKernel::Launch(const ThreadDim& thread_dims,
     if (!pack) {
       return launch(*packed);
     }
-    ASSIGN_OR_RETURN(auto repacked, pack(*this, *packed));
+    ABSL_ASSIGN_OR_RETURN(auto repacked, pack(*this, *packed));
     return launch(*repacked);
   }
 
@@ -176,7 +176,7 @@ absl::Status CudaKernel::Launch(const ThreadDim& thread_dims,
           "memory arguments array");
     }
 
-    ASSIGN_OR_RETURN(auto packed, pack(*this, *device_mem));
+    ABSL_ASSIGN_OR_RETURN(auto packed, pack(*this, *device_mem));
     return launch(*packed);
   }
 

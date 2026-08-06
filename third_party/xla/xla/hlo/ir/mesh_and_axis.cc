@@ -489,7 +489,7 @@ absl::Status ValidateSpanOfAxes(absl::Span<const AxisRef> axes,
     return absl::OkStatus();
   }
   for (const AxisRef& axis : axes) {
-    RETURN_IF_ERROR(axis.Validate(mesh));
+    ABSL_RETURN_IF_ERROR(axis.Validate(mesh));
   }
   if (!AxesCanCoexistWithoutOverlap(axes)) {
     return absl::InvalidArgumentError("Axes cannot coexist or axes overlap.");

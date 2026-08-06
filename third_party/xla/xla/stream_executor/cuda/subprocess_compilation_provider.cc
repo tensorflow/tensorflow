@@ -81,7 +81,7 @@ absl::StatusOr<RelocatableModule>
 SubprocessCompilationProvider::CompileToRelocatableModule(
     const CudaComputeCapability& cc, absl::string_view ptx,
     const CompilationOptions& options) const {
-  ASSIGN_OR_RETURN(auto assembly,
+  ABSL_ASSIGN_OR_RETURN(auto assembly,
                    CompileHelper(path_to_ptxas_, cc, ptx, options,
                                  /*compile_to_relocatable_module=*/true));
   return RelocatableModule{std::move(assembly.cubin),
@@ -98,14 +98,14 @@ absl::StatusOr<Assembly> SubprocessCompilationProvider::CompileAndLink(
       images.push_back(std::get<RelocatableModule>(input).cubin);
     } else {
       // If we have a PTX string, we need to compile it to CUBIN first.
-      ASSIGN_OR_RETURN(
+      ABSL_ASSIGN_OR_RETURN(
           RelocatableModule module,
           CompileToRelocatableModule(cc, std::get<Ptx>(input).ptx, options));
       images.push_back(std::move(module.cubin));
     }
   }
 
-  ASSIGN_OR_RETURN(auto cubin, LinkUsingNvlink(path_to_nvlink_, cc, images));
+  ABSL_ASSIGN_OR_RETURN(auto cubin, LinkUsingNvlink(path_to_nvlink_, cc, images));
   return Assembly{std::move(cubin)};
 }
 

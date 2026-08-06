@@ -209,7 +209,7 @@ class ShardingParam {
   absl::StatusOr<ShardingParamProto> ToProto(
       SerDesVersion version = SerDesDefaultVersionAccessor::Get()) const {
     ShardingParamProto proto;
-    RETURN_IF_ERROR(ToProto(proto, version));
+    ABSL_RETURN_IF_ERROR(ToProto(proto, version));
     return proto;
   }
 

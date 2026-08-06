@@ -154,7 +154,7 @@ CreateSymmetricMemory(
 
   std::vector<std::unique_ptr<xla::SymmetricMemory>> symmetric_memory;
   for (int i = 0; i < num_devices; ++i) {
-    ASSIGN_OR_RETURN(auto mem, std::move(symmetric_memory_futures[i]).Await());
+    ABSL_ASSIGN_OR_RETURN(auto mem, std::move(symmetric_memory_futures[i]).Await());
     symmetric_memory.push_back(std::move(mem));
   }
   return symmetric_memory;

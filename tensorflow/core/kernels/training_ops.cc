@@ -4292,6 +4292,9 @@ class SparseApplyRMSPropOp : public OpKernel {
     const Tensor& epsilon = ctx->input(6);
     const Tensor& grad = ctx->input(7);
     const Tensor& indices = ctx->input(8);
+    OP_REQUIRES(ctx, grad.dims() == var.dims(),
+                absl::InvalidArgumentError("grad must have the same number of "
+                                           "dimensions as var"));
 
     OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(lr.shape()),
                 absl::InvalidArgumentError(absl::StrCat(
@@ -4433,6 +4436,9 @@ class SparseApplyCenteredRMSPropOp : public OpKernel {
     const Tensor& epsilon = ctx->input(7);
     const Tensor& grad = ctx->input(8);
     const Tensor& indices = ctx->input(9);
+    OP_REQUIRES(ctx, grad.dims() == var.dims(),
+                absl::InvalidArgumentError("grad must have the same number of "
+                                           "dimensions as var"));
 
     OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(lr.shape()),
                 absl::InvalidArgumentError(absl::StrCat(

@@ -19,13 +19,15 @@ limitations under the License.
 #include "ynnpack/include/ynnpack.h"  // from @XNNPACK
 #include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/delegates/ynnpack/utils.h"
+#include "tensorflow/lite/delegates/ynnpack/ynnpack_delegate.h"
 
 namespace tflite {
 namespace ynnpack {
 
 TfLiteStatus IsReductionSupported(const TfLiteRegistration* registration,
                                   const TfLiteNode* node,
-                                  TfLiteContext* context);
+                                  TfLiteContext* context,
+                                  const TfLiteYNNPackDelegateOptions& options);
 
 TfLiteStatus DefineReductionNode(TfLiteContext* context,
                                  ynn_subgraph_t subgraph,

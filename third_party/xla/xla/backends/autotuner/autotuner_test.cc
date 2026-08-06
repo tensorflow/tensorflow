@@ -266,7 +266,7 @@ TEST_F(AutotunerTest, AutotuneMultipleConfigsSelectsBest) {
             GetAlgorithmId("best_config"));
 }
 
-TEST_F(AutotunerTest, AutotuneToleratesOnlyNoSupportedConfigs) {
+TEST_F(AutotunerTest, AutotuneCompileErrorWithNoSupportedConfigs) {
   auto backend = std::make_unique<MockCodegenBackend>();
   EXPECT_CALL(*backend, name()).WillRepeatedly(Return("mock_backend"));
   // Return empty supported configs list showing "No supported configs found"
@@ -298,28 +298,16 @@ TEST_F(AutotunerTest, AutotuneToleratesOnlyNoSupportedConfigs) {
   )";
   ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
 
-  // Should fail by default (without tolerating the NotFound error).
+  // Should fail as there are no supported configs.
   EXPECT_FALSE(autotuner
-                   ->TuneConfigs(
-                       *module,
-                       [](const HloInstruction& instr) {
-                         return instr.opcode() == HloOpcode::kCopy;
-                       },
-                       /*tolerate_no_supported_configs=*/false)
+                   ->TuneConfigs(*module,
+                                 [](const HloInstruction& instr) {
+                                   return instr.opcode() == HloOpcode::kCopy;
+                                 })
                    .ok());
-
-  // Should succeed (returning empty results) if requested.
-  ASSERT_OK_AND_ASSIGN(auto results,
-                       autotuner->TuneConfigs(
-                           *module,
-                           [](const HloInstruction& instr) {
-                             return instr.opcode() == HloOpcode::kCopy;
-                           },
-                           /*tolerate_no_supported_configs=*/true));
-  EXPECT_TRUE(results.empty());
 }
 
-TEST_F(AutotunerTest, AutotuneCompileErrorWithNoSupportedConfigsTolerance) {
+TEST_F(AutotunerTest, AutotuneCompileErrorWithNoCompiledCandidates) {
   std::vector<std::unique_ptr<BackendConfig>> configs;
   configs.push_back(GetTestConfig("best_config"));
 
@@ -355,15 +343,11 @@ TEST_F(AutotunerTest, AutotuneCompileErrorWithNoSupportedConfigsTolerance) {
   )";
   ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
 
-  // Should fail even if tolerate_no_supported_configs is true since the
-  // failure is a compile error (InternalError), not a missing configs error.
   EXPECT_FALSE(autotuner
-                   ->TuneConfigs(
-                       *module,
-                       [](const HloInstruction& instr) {
-                         return instr.opcode() == HloOpcode::kCopy;
-                       },
-                       /*tolerate_no_supported_configs=*/true)
+                   ->TuneConfigs(*module,
+                                 [](const HloInstruction& instr) {
+                                   return instr.opcode() == HloOpcode::kCopy;
+                                 })
                    .ok());
 }
 

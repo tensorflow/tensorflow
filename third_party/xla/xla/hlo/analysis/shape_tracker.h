@@ -27,6 +27,7 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "xla/shape.h"
 #include "xla/util.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 
@@ -40,10 +41,10 @@ class HloInstruction;
 //
 // Example usage:
 //   ShapeTracker tracker(initial_shape);
-//   RETURN_IF_ERROR(tracker.AppendReshape(new_dims));
-//   RETURN_IF_ERROR(tracker.AppendTranspose(permutation));
+//   ABSL_RETURN_IF_ERROR(tracker.AppendReshape(new_dims));
+//   ABSL_RETURN_IF_ERROR(tracker.AppendTranspose(permutation));
 //   ...
-//   ASSIGN_OR_RETURN(HloInstruction* chain,
+//   ABSL_ASSIGN_OR_RETURN(HloInstruction* chain,
 //                       tracker.ToInstructionChain(base_inst));
 //
 // This class works correctly when there are degenerate dimensions (size 1), but

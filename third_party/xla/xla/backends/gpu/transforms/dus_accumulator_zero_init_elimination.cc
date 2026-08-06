@@ -183,7 +183,7 @@ absl::StatusOr<bool> FusionParamIsKilled(const HloInstruction* fusion,
   HloComputation* fc = fusion->fused_instructions_computation();
   HloInstruction* fused_param = fc->parameter_instruction(param_idx);
   bool ok = false;
-  ASSIGN_OR_RETURN(ok, AllUsersKillBuffer(fused_param, cfg));
+  ABSL_ASSIGN_OR_RETURN(ok, AllUsersKillBuffer(fused_param, cfg));
   return ok;
 }
 
@@ -193,7 +193,7 @@ absl::StatusOr<bool> AllUsersKillBuffer(const HloInstruction* buffer,
     return true;  // trivially dead
   }
   for (const HloInstruction* user : buffer->users()) {
-    ASSIGN_OR_RETURN(bool ok, UserKillsBuffer(user, buffer, cfg));
+    ABSL_ASSIGN_OR_RETURN(bool ok, UserKillsBuffer(user, buffer, cfg));
     if (!ok) {
       return false;
     }
@@ -239,7 +239,7 @@ absl::StatusOr<bool> UserKillsBuffer(const HloInstruction* user,
         flows_into_some_branch = true;
         HloComputation* branch = user->branch_computation(b);
         HloInstruction* branch_param = branch->parameter_instruction(0);
-        ASSIGN_OR_RETURN(bool branch_ok, AllUsersKillBuffer(branch_param, cfg));
+        ABSL_ASSIGN_OR_RETURN(bool branch_ok, AllUsersKillBuffer(branch_param, cfg));
         if (!branch_ok) {
           every_branch_kills = false;
           break;
@@ -286,7 +286,7 @@ absl::StatusOr<bool> SlotIsDeadInput(int64_t slot, const CandidateLoop& cfg) {
     return true;  // never read; trivially dead
   }
 
-  ASSIGN_OR_RETURN(bool all_kill, AllUsersKillBuffer(slot_gte, cfg));
+  ABSL_ASSIGN_OR_RETURN(bool all_kill, AllUsersKillBuffer(slot_gte, cfg));
   if (!all_kill) {
     return false;
   }
@@ -389,7 +389,7 @@ absl::StatusOr<bool> DusAccumulatorZeroInitElimination::RunImpl(
         continue;
       }
 
-      ASSIGN_OR_RETURN(bool dead, SlotIsDeadInput(slot, cfg));
+      ABSL_ASSIGN_OR_RETURN(bool dead, SlotIsDeadInput(slot, cfg));
       if (!dead) {
         continue;
       }
@@ -400,7 +400,7 @@ absl::StatusOr<bool> DusAccumulatorZeroInitElimination::RunImpl(
       alloc->set_metadata(init->metadata());
       alloc->set_frontend_attributes(init->frontend_attributes());
       alloc->set_statistics_viz(init->statistics_viz());
-      RETURN_IF_ERROR(init_tuple->ReplaceOperandWith(slot, alloc));
+      ABSL_RETURN_IF_ERROR(init_tuple->ReplaceOperandWith(slot, alloc));
       changed = true;
     }
   }

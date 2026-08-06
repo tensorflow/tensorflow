@@ -48,7 +48,7 @@ std::optional<ReduceScatterCombiner::GroupKey> DefaultCombinerKey(
     absl::StrAppend(&ReduceScatterCombiner::GetGroupKeyExtraArgs(*key),
                     " pipelined=true");
   }
-  AppendCombinerKeyFromFrontendAttr(
+  AppendFrontendAttributesToCombinerKey(
       instruction, ReduceScatterCombiner::GetGroupKeyExtraArgs(*key));
   return key;
 }
@@ -65,14 +65,14 @@ std::optional<ReduceScatterCombiner::GroupKey> CustomCombinerKey(
   if (IsPipelinedCollective(*instruction)) {
     absl::StrAppend(&ReduceScatterCombiner::GetGroupKeyExtraArgs(*key),
                     " pipelined=true");
-    AppendCombinerKeyFromFrontendAttr(
+    AppendFrontendAttributesToCombinerKey(
         instruction, ReduceScatterCombiner::GetGroupKeyExtraArgs(*key));
     return key;
   }
   if (IsCombinableSyncCollective(*instruction)) {
     absl::StrAppend(&ReduceScatterCombiner::GetGroupKeyExtraArgs(*key),
                     " sync=true");
-    AppendCombinerKeyFromFrontendAttr(
+    AppendFrontendAttributesToCombinerKey(
         instruction, ReduceScatterCombiner::GetGroupKeyExtraArgs(*key));
     return key;
   }
@@ -103,7 +103,7 @@ absl::StatusOr<bool> GpuReduceScatterCombiner::RunImpl(
 
   if (auto suggested_threshold = SuggestedCombinerThreshold(*module)) {
     combine_threshold_in_bytes_ = *suggested_threshold;
-    ASSIGN_OR_RETURN(bool combined,
+    ABSL_ASSIGN_OR_RETURN(bool combined,
                      RunWithKeyCombiner(module, execution_threads,
                                         CustomCombinerKey, post_combine));
     changed |= combined;
@@ -112,7 +112,7 @@ absl::StatusOr<bool> GpuReduceScatterCombiner::RunImpl(
   // Use the default combiner thresholds after we combined pipelined and
   // synchronous collectives.
   combine_threshold_in_bytes_ = default_combine_threshold_in_bytes_;
-  ASSIGN_OR_RETURN(bool combined,
+  ABSL_ASSIGN_OR_RETURN(bool combined,
                    RunWithKeyCombiner(module, execution_threads,
                                       DefaultCombinerKey, post_combine));
   changed |= combined;

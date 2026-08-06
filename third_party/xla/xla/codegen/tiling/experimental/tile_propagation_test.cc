@@ -1223,13 +1223,16 @@ TEST_F(TilePropagationTest, FailsToPropagateToConcatenateThroughBitcast) {
 
   ASSERT_EQ(tiled_operands.size(), 2);
 
-  EXPECT_THAT(PropagateTileToInput(*tiling_space, *(root->operand(1)),
-                                   tiled_operands[1], 0)
-                  .status(),
-              StatusIs(absl::StatusCode::kUnimplemented,
-                       ::testing::HasSubstr(
-                           "Multiple dimensions are partially tiled: tile_size "
-                           "[-(v1 / 256) + (v1 * 2 - 511) / 512 + 2, 2]")));
+  ASSERT_OK_AND_ASSIGN(auto output_tiles,
+                       PropagateTileToInput(*tiling_space, *(root->operand(1)),
+                                            tiled_operands[1], 0));
+  EXPECT_THAT(output_tiles, MatchToString(R"(
+    0) (tid_0, tid_1)
+         -> offsets [tid_0, tid_1 / 256 - 1, (tid_1 mod 256) * 2]
+            sizes [1, 1, 2]
+            strides [1, 1, 1]
+            upper bounds [10, tid_1 / 256, (tid_1 mod 256) * 2 + 2]
+  )"));
 }
 
 }  // namespace

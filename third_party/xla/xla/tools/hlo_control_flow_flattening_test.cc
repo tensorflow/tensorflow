@@ -61,7 +61,7 @@ class HloControlFlowFlatteningTest : public HloHardwareIndependentTestBase {
                                         options, collective_ops_creator);
     pass.AddPass<HloVerifier>(/*layout_sensitive=*/false,
                               /*allow_mixed_precision=*/false);
-    RETURN_IF_ERROR(pass.Run(hlo_module.get()).status());
+    ABSL_RETURN_IF_ERROR(pass.Run(hlo_module.get()).status());
     return absl::StatusOr<std::unique_ptr<HloModule>>(std::move(hlo_module));
   }
 };

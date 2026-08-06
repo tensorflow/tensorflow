@@ -83,7 +83,7 @@ CpuAotCompilationResult::Create(
     TargetMachineOptionsProto target_machine_options, std::string data_layout) {
   ThunkSequenceSerDesProtobuf thunk_sequence_serdes(
       hlo_module, &buffer_assignment->Allocations());
-  ASSIGN_OR_RETURN(ThunkSequenceProto thunk_proto,
+  ABSL_ASSIGN_OR_RETURN(ThunkSequenceProto thunk_proto,
                    thunk_sequence_serdes.ToProto(thunks));
 
   std::vector<cpu::BufferAllocationInfo> buffer_allocation_infos;
@@ -148,7 +148,7 @@ CpuAotCompilationResult::CpuAotCompilationResult(
 
 absl::StatusOr<std::unique_ptr<Executable>>
 CpuAotCompilationResult::LoadExecutable() && {
-  ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
+  ABSL_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
                    HloModule::CreateFromProtoWithConfig(proto_.hlo_module()));
 
   VLOG(2) << "Load XLA:CPU executable for module: " << module->name();
@@ -161,7 +161,7 @@ CpuAotCompilationResult::LoadExecutable() && {
 
   // Recreate BufferAssignment from proto.
   AliasInfo alias_info;
-  ASSIGN_OR_RETURN(std::unique_ptr<BufferAssignment> buffer_assignment,
+  ABSL_ASSIGN_OR_RETURN(std::unique_ptr<BufferAssignment> buffer_assignment,
                    BufferAssignment::FromProto(
                        proto_.buffer_assignment(), module.get(),
                        buffer_size_bytes_function_getter, &alias_info));
@@ -174,20 +174,20 @@ CpuAotCompilationResult::LoadExecutable() && {
 
   ThunkSequenceSerDesProtobuf thunk_sequence_serdes(
       module.get(), &buffer_assignment->Allocations());
-  ASSIGN_OR_RETURN(std::unique_ptr<ThunkSequence> thunks,
+  ABSL_ASSIGN_OR_RETURN(std::unique_ptr<ThunkSequence> thunks,
                    thunk_sequence_serdes.FromProto(proto_.thunk_sequence()));
 
   VLOG(3) << "Loaded " << thunks->size() << " thunks.";
 
   // Create constant allocations from the buffer assignment.
-  ASSIGN_OR_RETURN(std::vector<ConstantAllocation> constants,
+  ABSL_ASSIGN_OR_RETURN(std::vector<ConstantAllocation> constants,
                    CreateConstantAllocations(*buffer_assignment));
 
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       TargetMachineOptions target_machine_options,
       TargetMachineOptions::FromProto(proto_.target_machine_options()));
 
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       cpu_executable,
       CpuExecutable::Create(std::move(function_library_),
                             std::move(buffer_assignment), std::move(module),

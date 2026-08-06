@@ -49,12 +49,12 @@ namespace m = ::xla::match;
 class CudnnSimplifyPaddingTest : public HloHardwareIndependentTestBase {
  protected:
   absl::StatusOr<bool> RunJustThisPass(HloModule* module) {
-    ASSIGN_OR_RETURN(bool changed, RunHloPass(CudnnSimplifyPadding(), module));
+    ABSL_ASSIGN_OR_RETURN(bool changed, RunHloPass(CudnnSimplifyPadding(), module));
     VLOG(1) << "after simplify_padding:\n" << module->ToString();
 
     // I know the name says "just this pass", but you really want algsimp too,
     // otherwise the resulting patterns are ugly/hard to match.
-    RETURN_IF_ERROR(RunHloPass(HloPassFix<AlgebraicSimplifier>(
+    ABSL_RETURN_IF_ERROR(RunHloPass(HloPassFix<AlgebraicSimplifier>(
                                    AlgebraicSimplifierOptions()),
                                module)
                         .status());

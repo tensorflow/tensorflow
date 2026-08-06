@@ -106,7 +106,7 @@ static absl::StatusOr<HloComputation*> ScalarizeComputation(
     HloInstruction* new_inst = nullptr;
     switch (inst->opcode()) {
       case HloOpcode::kParameter: {
-        ASSIGN_OR_RETURN(Shape shape, get_scalar_shape(inst->shape()));
+        ABSL_ASSIGN_OR_RETURN(Shape shape, get_scalar_shape(inst->shape()));
         new_inst = builder.AddInstruction(HloInstruction::CreateParameter(
             inst->parameter_number(), shape, inst->name()));
         break;
@@ -116,7 +116,7 @@ static absl::StatusOr<HloComputation*> ScalarizeComputation(
             HloInstruction::CreateTuple(get_mapped_operands(inst)));
         break;
       case HloOpcode::kGetTupleElement: {
-        ASSIGN_OR_RETURN(Shape shape, get_scalar_shape(inst->shape()));
+        ABSL_ASSIGN_OR_RETURN(Shape shape, get_scalar_shape(inst->shape()));
         new_inst = builder.AddInstruction(HloInstruction::CreateGetTupleElement(
             shape, replacements[inst->operand(0)], inst->tuple_index()));
         break;
@@ -158,7 +158,7 @@ static absl::StatusOr<HloComputation*> ScalarizeComputation(
               absl::StrCat("Instruction is not elementwise: ",
                            HloOpcodeString(inst->opcode())));
         }
-        ASSIGN_OR_RETURN(Shape shape, get_scalar_shape(inst->shape()));
+        ABSL_ASSIGN_OR_RETURN(Shape shape, get_scalar_shape(inst->shape()));
         new_inst = builder.AddInstruction(
             inst->CloneWithNewOperands(shape, get_mapped_operands(inst)));
         break;
@@ -170,29 +170,28 @@ static absl::StatusOr<HloComputation*> ScalarizeComputation(
       builder.Build(replacements[comp->root_instruction()]));
 }
 
-static absl::StatusOr<HloInstruction*> GetScalarInitValue(
-    HloInstruction* init, HloComputation* parent) {
+// Walks through broadcasts, reshapes, and bitcasts to the value that seeds a
+// scan. Returns the scalar instruction or the uniform constant behind the
+// init, or nullptr when no scalar init value can be derived. Does not modify
+// the module.
+static HloInstruction* FindScalarInitSource(HloInstruction* init) {
   while (HloPredicateIsOp<HloOpcode::kBroadcast, HloOpcode::kReshape,
                           HloOpcode::kBitcast>(init)) {
     if (init->opcode() == HloOpcode::kBitcast &&
         init->shape().element_type() !=
             init->operand(0)->shape().element_type()) {
-      return absl::InvalidArgumentError(
-          "Bitcast changes element type, cannot extract scalar init value.");
+      // Bitcast changes element type; cannot extract a scalar init value.
+      return nullptr;
     }
     init = init->mutable_operand(0);
   }
   if (ShapeUtil::IsScalar(init->shape())) {
     return init;
   }
-  if (init->opcode() != HloOpcode::kConstant) {
-    return absl::InvalidArgumentError("Init value is not a constant.");
+  if (init->opcode() == HloOpcode::kConstant && init->literal().IsAllFirst()) {
+    return init;
   }
-  if (!init->literal().IsAllFirst()) {
-    return absl::InvalidArgumentError("Init value is a non-uniform constant.");
-  }
-  return parent->AddInstruction(HloInstruction::CreateConstant(
-      LiteralUtil::GetFirstScalarLiteral(init->literal())));
+  return nullptr;
 }
 
 static size_t FlattenShapeIndex(const ShapeIndex& shape_index) {
@@ -582,7 +581,7 @@ static absl::StatusOr<HloInstruction*> RewriteScanAsTreeReduction(
         scans.push_back(scan);
         return absl::OkStatus();
       });
-  RETURN_IF_ERROR(status);
+  ABSL_RETURN_IF_ERROR(status);
 
   HloInstruction* scan;
   if (result_shape.IsTuple()) {
@@ -654,21 +653,66 @@ static absl::StatusOr<bool> TryOptimizeCumSumOrProd(
   // We don't actually need to match the computation - this transformation will
   // work for a commutative/associative reducer, which is what we assume for
   // ReduceWindow anyway.
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       HloInstruction * scan,
       RewriteScanAsTreeReduction(
           pass, base_length, parent, sources, reduce_window->init_values(),
           reduce_window->to_apply(), reduce_window->shape(), rank, scan_dim,
           scan_length, forward_scan, is_exclusive));
-  RETURN_IF_ERROR(reduce_window->ReplaceAllUsesWith(scan));
-  RETURN_IF_ERROR(parent->RemoveInstruction(reduce_window));
+  ABSL_RETURN_IF_ERROR(reduce_window->ReplaceAllUsesWith(scan));
+  ABSL_RETURN_IF_ERROR(parent->RemoveInstruction(reduce_window));
   return true;
+}
+
+// Returns true if it is safe to rewrite the scan as a tree reduction with
+// `init_source` as the seed. RewriteScanAsTreeReduction folds the init into
+// both tree levels, which changes the result unless the extra fold is a
+// no-op: the init is the combiner's identity, or the combiner is idempotent
+// in the init (min/max), or the init is absorbing.
+static bool IsTreeRewriteSafeInit(const HloScanInstruction* scan,
+                                  const HloInstruction* init_source) {
+  const HloInstruction* root = scan->to_apply()->root_instruction();
+  if (root->opcode() != HloOpcode::kTuple || root->operand_count() != 2 ||
+      root->operand(0) != root->operand(1) ||
+      root->operand(0)->operand_count() != 2) {
+    return false;
+  }
+  switch (root->operand(0)->opcode()) {
+    case HloOpcode::kMinimum:
+    case HloOpcode::kMaximum:
+      // Idempotent: folding any init again is a no-op.
+      return true;
+    case HloOpcode::kAdd:
+    case HloOpcode::kOr:
+    case HloOpcode::kXor:
+      return init_source->IsConstant() && init_source->literal().IsAll(0);
+    case HloOpcode::kMultiply:
+      // One is the identity, zero is absorbing.
+      return init_source->IsConstant() && (init_source->literal().IsAll(1) ||
+                                           init_source->literal().IsAll(0));
+    default:
+      return false;
+  }
 }
 
 static absl::StatusOr<bool> TryOptimizeAssociativeScan(
     HloModulePass* pass, int64_t base_length, HloScanInstruction* scan) {
   if (!hlo_query::IsStandardAssociativeScan(scan)) {
     return false;
+  }
+  // The reduce-window rewrite emits a forward cumulative sum and drops the
+  // final carry, so reverse scans and scans whose carry is read keep their
+  // other lowerings. Non get-tuple-element users are dead
+  // (IsStandardAssociativeScan).
+  if (scan->is_reverse()) {
+    return false;
+  }
+  for (const HloInstruction* user : scan->users()) {
+    if (user->opcode() == HloOpcode::kGetTupleElement &&
+        user->tuple_index() == 1 &&
+        (user->user_count() > 0 || user->IsRoot())) {
+      return false;
+    }
   }
 
   const Shape& operand_shape = scan->inputs()[0]->shape();
@@ -679,10 +723,45 @@ static absl::StatusOr<bool> TryOptimizeAssociativeScan(
   VLOG(2) << "Rewriting associative scan: " << scan->ToString();
   HloComputation* parent = scan->parent();
 
-  ASSIGN_OR_RETURN(HloInstruction * init,
-                   GetScalarInitValue(scan->inits()[0], parent));
-  ASSIGN_OR_RETURN(HloComputation * scan_to_apply,
-                   ScalarizeComputation(scan->to_apply(), parent));
+  // Scans whose init is not a broadcast scalar (e.g. the vector carry seeds
+  // the SPMD partitioner builds) cannot be expressed as a reduce-window
+  // cumsum: reduce-window inits are scalars. Skip them; ScanExpander lowers
+  // them instead. This classification does not modify the module, so gate
+  // rejections below leave the module untouched.
+  HloInstruction* init_source = FindScalarInitSource(scan->inits()[0]);
+  if (init_source == nullptr) {
+    return false;
+  }
+
+  const bool use_single_reduce_window =
+      base_length == 0 || scan_length <= base_length;
+  if (!use_single_reduce_window && !IsTreeRewriteSafeInit(scan, init_source)) {
+    // The tree rewrite folds the init into both tree levels, which is only
+    // correct when the extra fold is a no-op (an identity, idempotent, or
+    // absorbing init for the combiner). A single reduce-window handles any
+    // scalar init but is quadratic in the scan length, so past base_length
+    // the scan is left to ScanExpander.
+    return false;
+  }
+
+  absl::StatusOr<HloComputation*> scan_to_apply_or =
+      ScalarizeComputation(scan->to_apply(), parent);
+  if (absl::IsInvalidArgument(scan_to_apply_or.status())) {
+    // Bodies that are not elementwise cannot be scalarized into a
+    // reduce-window combiner; leave them to ScanExpander. ScalarizeComputation
+    // does not modify the module when it fails.
+    return false;
+  }
+  ABSL_ASSIGN_OR_RETURN(HloComputation * scan_to_apply, std::move(scan_to_apply_or));
+
+  // Every gate has passed; from here on the module is modified. Materialize
+  // the scalar init: the scalar instruction itself, or a scalar constant
+  // extracted from a uniform higher-rank constant.
+  HloInstruction* init =
+      ShapeUtil::IsScalar(init_source->shape())
+          ? init_source
+          : parent->AddInstruction(HloInstruction::CreateConstant(
+                LiteralUtil::GetFirstScalarLiteral(init_source->literal())));
   HloComputation::Builder builder(
       absl::StrCat(scan_to_apply->name(), "_rw_wrapper"));
 
@@ -701,7 +780,7 @@ static absl::StatusOr<bool> TryOptimizeAssociativeScan(
 
   HloInstruction* result = nullptr;
   HloInstruction* input = scan->inputs()[0];
-  if (base_length == 0 || scan_length <= base_length) {
+  if (use_single_reduce_window) {
     Window window = window_util::MakeWindow(std::vector<int64_t>(rank, 1));
     window.mutable_dimensions(scan_dim)->set_size(scan_length);
     window.mutable_dimensions(scan_dim)->set_padding_low(scan_length - 1);
@@ -710,7 +789,7 @@ static absl::StatusOr<bool> TryOptimizeAssociativeScan(
         input->shape(), input, init, window, rw_to_apply));
   } else {
     Shape outputs_shape = scan->shape().tuple_shapes(0);
-    ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         result, RewriteScanAsTreeReduction(pass, base_length, parent, {input},
                                            {init}, rw_to_apply, outputs_shape,
                                            rank, scan_dim, scan_length,
@@ -721,7 +800,7 @@ static absl::StatusOr<bool> TryOptimizeAssociativeScan(
   // Replace carry with init value, users are guaranteed to be dead.
   HloInstruction* tuple = parent->AddInstruction(
       HloInstruction::CreateTuple({result, scan->inits()[0]}));
-  RETURN_IF_ERROR(parent->ReplaceInstruction(scan, tuple));
+  ABSL_RETURN_IF_ERROR(parent->ReplaceInstruction(scan, tuple));
 
   return true;
 }
@@ -740,14 +819,14 @@ absl::StatusOr<bool> ReduceWindowRewriter::RunImpl(
          computation->MakeInstructionPostOrder()) {
       if (auto* reduce_window =
               DynCast<HloReduceWindowInstruction>(instruction)) {
-        ASSIGN_OR_RETURN(bool result, TryOptimizeCumSumOrProd(
+        ABSL_ASSIGN_OR_RETURN(bool result, TryOptimizeCumSumOrProd(
                                           this, base_length_, reduce_window));
         if (result) {
           changed = true;
           continue;
         }
         if (reduce_window->inputs().front()->shape().dimensions().size() == 1) {
-          RETURN_IF_ERROR(reduce_window_util::Replace1DReduceWindowWithReshape(
+          ABSL_RETURN_IF_ERROR(reduce_window_util::Replace1DReduceWindowWithReshape(
               reduce_window));
           changed = true;
         }
@@ -768,7 +847,7 @@ absl::StatusOr<bool> AssociativeScanRewriter::RunImpl(
     for (HloInstruction* instruction :
          computation->MakeInstructionPostOrder()) {
       if (auto* scan = DynCast<HloScanInstruction>(instruction)) {
-        ASSIGN_OR_RETURN(bool result,
+        ABSL_ASSIGN_OR_RETURN(bool result,
                          TryOptimizeAssociativeScan(this, base_length_, scan));
         changed |= result;
       }

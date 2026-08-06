@@ -24,9 +24,11 @@ tf_class {
   member_method {
     name: "all"
     argspec: "args=[\'cls\'], varargs=None, keywords=None, defaults=None"
+    method_kind: CLASS
   }
   member_method {
     name: "validate"
     argspec: "args=[\'cls\', \'key\'], varargs=None, keywords=None, defaults=None"
+    method_kind: CLASS
   }
 }

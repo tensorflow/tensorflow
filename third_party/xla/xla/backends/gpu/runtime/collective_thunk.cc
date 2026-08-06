@@ -256,8 +256,8 @@ absl::StatusOr<std::vector<DeviceBufferPair>> ConvertToDeviceBuffers(
 absl::StatusOr<CollectiveBufferProto> CollectiveThunk::Buffer::ToProto() const {
   CollectiveBufferProto proto;
   proto.set_element_count(element_count);
-  ASSIGN_OR_RETURN(*proto.mutable_source_buffer(), source_buffer.ToProto());
-  ASSIGN_OR_RETURN(*proto.mutable_destination_buffer(),
+  ABSL_ASSIGN_OR_RETURN(*proto.mutable_source_buffer(), source_buffer.ToProto());
+  ABSL_ASSIGN_OR_RETURN(*proto.mutable_destination_buffer(),
                    destination_buffer.ToProto());
   proto.set_source_memory_space(source_memory_space);
   proto.set_destination_memory_space(destination_memory_space);
@@ -269,10 +269,10 @@ absl::StatusOr<CollectiveThunk::Buffer> CollectiveThunk::Buffer::FromProto(
     absl::Span<const BufferAllocation> buffer_allocations) {
   CollectiveThunk::Buffer res;
   res.element_count = buffer_proto.element_count();
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       res.source_buffer,
       ShapedSlice::FromProto(buffer_proto.source_buffer(), buffer_allocations));
-  ASSIGN_OR_RETURN(res.destination_buffer,
+  ABSL_ASSIGN_OR_RETURN(res.destination_buffer,
                    ShapedSlice::FromProto(buffer_proto.destination_buffer(),
                                           buffer_allocations));
   res.source_memory_space = buffer_proto.source_memory_space();
@@ -299,26 +299,26 @@ absl::Status CollectiveThunk::Prepare(const PrepareParams& params) {
     }
   });
 
-  RETURN_IF_ERROR(device_groups_.status());
+  ABSL_RETURN_IF_ERROR(device_groups_.status());
 
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       GpuCliqueKey clique_key,
       GetGpuCliqueKey(*params.collective_params, config().replica_groups,
                       config().group_mode, communication_id_));
 
-  RETURN_IF_ERROR(params.collective_clique_requests->RequestClique(
+  ABSL_RETURN_IF_ERROR(params.collective_clique_requests->RequestClique(
       clique_key, *device_groups_, GetCliqueRequirements(clique_key)));
 
   if (CanUseSymmetricBuffer() && config().use_symmetric_buffer) {
     for (const Buffer& buffer : buffers_) {
       if (buffer.source_memory_space == kCollectiveMemorySpaceColor) {
-        RETURN_IF_ERROR(
+        ABSL_RETURN_IF_ERROR(
             params.collective_memory_requests->RequestSymmetricAllocation(
                 clique_key, buffer.source_buffer.slice.index()));
       }
 
       if (buffer.destination_memory_space == kCollectiveMemorySpaceColor) {
-        RETURN_IF_ERROR(
+        ABSL_RETURN_IF_ERROR(
             params.collective_memory_requests->RequestSymmetricAllocation(
                 clique_key, buffer.destination_buffer.slice.index()));
       }
@@ -329,7 +329,7 @@ absl::Status CollectiveThunk::Prepare(const PrepareParams& params) {
 }
 
 absl::Status CollectiveThunk::Initialize(const InitializeParams& params) {
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       GpuCliqueKey clique_key,
       GetGpuCliqueKey(*params.collective_params, config().replica_groups,
                       config().group_mode, communication_id_));
@@ -376,19 +376,19 @@ absl::Status CollectiveThunk::FirstCallRendezvous(
 absl::Status CollectiveThunk::RunWithCommAndRendezvous(
     const ExecuteParams& params,
     absl::FunctionRef<absl::Status(const GpuCliqueKey&, Communicator&)> fn) {
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       GpuCliqueKey clique_key,
       GetGpuCliqueKey(*params.collective_params, config().replica_groups,
                       config().group_mode, communication_id_));
-  ASSIGN_OR_RETURN(Communicator * comm,
+  ABSL_ASSIGN_OR_RETURN(Communicator * comm,
                    params.collective_cliques->GetComm(
                        clique_key, params.collective_params->global_device_id));
   DCHECK(comm) << "Failed to get communicator for collective operation";
 
-  RETURN_IF_ERROR(FirstCallRendezvous(params, clique_key, "before",
+  ABSL_RETURN_IF_ERROR(FirstCallRendezvous(params, clique_key, "before",
                                       pre_call_rendezvous_flag_));
-  RETURN_IF_ERROR(fn(clique_key, *comm));
-  RETURN_IF_ERROR(FirstCallRendezvous(params, clique_key, "after",
+  ABSL_RETURN_IF_ERROR(fn(clique_key, *comm));
+  ABSL_RETURN_IF_ERROR(FirstCallRendezvous(params, clique_key, "after",
                                       post_call_rendezvous_flag_));
   return absl::OkStatus();
 }
@@ -407,10 +407,10 @@ absl::StatusOr<const se::CommandBuffer::Command*> CollectiveThunk::Record(
     const ExecuteParams& execute_params, const RecordParams& record_params,
     RecordAction record_action, se::CommandBuffer* command_buffer) {
   std::unique_ptr<se::CommandBuffer> nested_cmd;
-  RETURN_IF_ERROR(RunWithCommAndRendezvous(
+  ABSL_RETURN_IF_ERROR(RunWithCommAndRendezvous(
       execute_params,
       [&](const GpuCliqueKey& clique_key, Communicator& comm) -> absl::Status {
-        ASSIGN_OR_RETURN(nested_cmd,
+        ABSL_ASSIGN_OR_RETURN(nested_cmd,
                          se::TraceCommandBufferFactory::Create(
                              execute_params.stream->parent(),
                              execute_params.command_buffer_trace_stream,
@@ -421,14 +421,14 @@ absl::StatusOr<const se::CommandBuffer::Command*> CollectiveThunk::Record(
         return absl::OkStatus();
       }));
 
-  RETURN_IF_ERROR(nested_cmd->SetPriority(se::StreamPriority::Highest));
+  ABSL_RETURN_IF_ERROR(nested_cmd->SetPriority(se::StreamPriority::Highest));
 
   if (auto* create = std::get_if<RecordCreate>(&record_action)) {
     return command_buffer->CreateChildCommand(*nested_cmd,
                                               create->dependencies);
   }
   if (auto* update = std::get_if<RecordUpdate>(&record_action)) {
-    RETURN_IF_ERROR(
+    ABSL_RETURN_IF_ERROR(
         command_buffer->UpdateChildCommand(update->command, *nested_cmd));
     return update->command;
   }

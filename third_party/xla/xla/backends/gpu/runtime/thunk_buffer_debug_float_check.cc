@@ -154,19 +154,20 @@ absl::Status BackupBuffers(size_t num_buffers, se::Stream* stream,
     return absl::InternalError("Mismatch in backup buffer count");
   }
   for (size_t i = 0; i < num_buffers; ++i) {
-    ASSIGN_OR_RETURN(auto active_buf,
-                     remaining_args.get<xla::ffi::AnyBuffer>(i));
-    ASSIGN_OR_RETURN(auto backup_buf,
-                     remaining_args.get<xla::ffi::AnyBuffer>(num_buffers + i));
+    ABSL_ASSIGN_OR_RETURN(auto active_buf, remaining_args.get<ffi::BufferR1<U8>>(i));
+    ABSL_ASSIGN_OR_RETURN(auto backup_buf,
+                     remaining_args.get<ffi::BufferR1<U8>>(num_buffers + i));
+
+    ABSL_RETURN_IF_ERROR(
+        xla::ffi::Verify("backup", backup_buf,
+                         xla::ffi::match::Buffer().WithShapeOf(active_buf)));
+
     if (active_buf.size_bytes() == 0) continue;
-    if (active_buf.size_bytes() != backup_buf.size_bytes()) {
-      return absl::InternalError("Backup buffer size mismatch");
-    }
     se::DeviceMemoryBase active_ptr(
         const_cast<void*>(active_buf.untyped_data()), active_buf.size_bytes());
     se::DeviceMemoryBase backup_ptr(
         const_cast<void*>(backup_buf.untyped_data()), backup_buf.size_bytes());
-    RETURN_IF_ERROR(
+    ABSL_RETURN_IF_ERROR(
         stream->Memcpy(&backup_ptr, active_ptr, active_buf.size_bytes()));
   }
   return absl::OkStatus();
@@ -218,7 +219,7 @@ absl::Status DumpHloSnapshot(
               return absl::InternalError("Not enough operand slices");
             }
             BufferAllocation::Slice slice = operand_slices[arg_index];
-            ASSIGN_OR_RETURN(
+            ABSL_ASSIGN_OR_RETURN(
                 auto any_buf,
                 remaining_args.get<xla::ffi::AnyBuffer>(arg_index));
             arg_index++;
@@ -227,43 +228,43 @@ absl::Status DumpHloSnapshot(
             if (auto it = backup_index_map.find(slice);
                 it != backup_index_map.end()) {
               size_t backup_arg_index = it->second;
-              ASSIGN_OR_RETURN(
+              ABSL_ASSIGN_OR_RETURN(
                   auto backup_buf,
-                  remaining_args.get<xla::ffi::AnyBuffer>(backup_arg_index));
+                  remaining_args.get<ffi::BufferR1<U8>>(backup_arg_index));
               if (backup_buf.size_bytes() < any_buf.size_bytes()) {
                 return absl::InternalError("Backup buffer size mismatch");
               }
               se::DeviceMemoryBase backup_ptr(
                   const_cast<void*>(backup_buf.untyped_data()),
                   backup_buf.size_bytes());
-              RETURN_IF_ERROR(stream->Memcpy(literal.untyped_data(index),
+              ABSL_RETURN_IF_ERROR(stream->Memcpy(literal.untyped_data(index),
                                              backup_ptr, any_buf.size_bytes()));
             } else {
               se::DeviceMemoryBase active_ptr(
                   const_cast<void*>(any_buf.untyped_data()),
                   any_buf.size_bytes());
-              RETURN_IF_ERROR(stream->Memcpy(literal.untyped_data(index),
+              ABSL_RETURN_IF_ERROR(stream->Memcpy(literal.untyped_data(index),
                                              active_ptr, any_buf.size_bytes()));
             }
           }
           return absl::OkStatus();
         });
-    RETURN_IF_ERROR(status);
+    ABSL_RETURN_IF_ERROR(status);
   }
 
-  RETURN_IF_ERROR(stream->BlockHostUntilDone());
+  ABSL_RETURN_IF_ERROR(stream->BlockHostUntilDone());
   for (const Literal& literal : literals) {
     *snapshot.add_arguments() = literal.ToProto();
   }
 
   tsl::Env* env = tsl::Env::Default();
-  RETURN_IF_ERROR(env->RecursivelyCreateDir(crash_dump_dir));
+  ABSL_RETURN_IF_ERROR(env->RecursivelyCreateDir(crash_dump_dir));
   std::string filename = tsl::io::JoinPath(
       crash_dump_dir,
       absl::StrCat("dump_event_",
                    SanitizeFileName(std::string(profile_annotation)),
                    ".snapshot.pb"));
-  RETURN_IF_ERROR(
+  ABSL_RETURN_IF_ERROR(
       tsl::WriteStringToFile(env, filename, snapshot.SerializeAsString()));
 
   return absl::OkStatus();
@@ -299,13 +300,12 @@ absl::Status FloatCheckCrashDump(
         backup_index_map,
     const HloInstruction* absl_nonnull instr,
     std::vector<BufferAllocation::Slice> operand_slices, se::Stream* stream,
-    xla::ffi::Buffer<PrimitiveType::U8> log_buffer,
-    xla::ffi::RemainingArgs remaining_args) {
+    ffi::BufferR1<U8> log_buffer, xla::ffi::RemainingArgs remaining_args) {
   auto buffer_debug_log = se::gpu::BufferDebugLog<BufferDebugFloatCheckEntry>::
       FromDeviceAddressUnchecked(log_buffer.device_memory());
-  ASSIGN_OR_RETURN(std::vector<BufferDebugFloatCheckEntry> entries,
+  ABSL_ASSIGN_OR_RETURN(std::vector<BufferDebugFloatCheckEntry> entries,
                    buffer_debug_log.ReadFromDevice(*stream));
-  RETURN_IF_ERROR(buffer_debug_log.Clear(*stream));
+  ABSL_RETURN_IF_ERROR(buffer_debug_log.Clear(*stream));
 
   if (HasAnomaly(entries, instr->GetModule()->config().debug_options())) {
     const std::string& dump_to =
@@ -428,11 +428,11 @@ absl::StatusOr<std::unique_ptr<Thunk>> WrapWithSyncDumpThunk(
 
   const size_t temp_buffer_size_bytes =
       CalculateTempBufferSize(*thunk) * sizeof(xla::gpu::FloatCheckResult);
-  ASSIGN_OR_RETURN(BufferAllocation * tmp_alloc,
+  ABSL_ASSIGN_OR_RETURN(BufferAllocation * tmp_alloc,
                    allocator.NewEmptyAllocation(temp_buffer_size_bytes));
   BufferAllocation::Slice tmp_slice(tmp_alloc, 0, tmp_alloc->size());
 
-  ASSIGN_OR_RETURN(std::vector<NullableShapedSlice> operands,
+  ABSL_ASSIGN_OR_RETURN(std::vector<NullableShapedSlice> operands,
                    GetInstructionOperands(*thunk));
 
   std::vector<BufferAllocation::Slice> operand_slices;
@@ -478,13 +478,13 @@ absl::StatusOr<std::unique_ptr<Thunk>> WrapWithSyncDumpThunk(
   dump_bundle.execute =
       xla::ffi::Ffi::Bind()
           .Ctx<xla::ffi::Stream>()
-          .Arg<xla::ffi::Buffer<PrimitiveType::U8>>()
+          .Arg<ffi::BufferR1<U8>>()
           .RemainingArgs()
           .To(absl::bind_front(FloatCheckCrashDump, profile_annotation,
                                std::move(backup_index_map), instr,
                                std::move(operand_slices)));
 
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       auto dump_thunk,
       CustomCallThunk::Create(
           Thunk::ThunkInfo(), "xla_gpu_float_check_crash_dump",
@@ -512,7 +512,7 @@ absl::StatusOr<std::unique_ptr<Thunk>> WrapWithSyncDumpThunk(
           ShapedSlice{slice, Shape(PrimitiveType::U8, {slice.size()})});
     }
 
-    ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         auto backup_thunk,
         CustomCallThunk::Create(
             Thunk::ThunkInfo(), "xla_gpu_inout_buffers_backup",
@@ -554,7 +554,7 @@ absl::StatusOr<std::unique_ptr<Thunk>> WrapWithFloatCheckThunk(
 
   const size_t temp_buffer_size_bytes =
       CalculateTempBufferSize(*thunk) * sizeof(xla::gpu::FloatCheckResult);
-  ASSIGN_OR_RETURN(BufferAllocation * tmp_alloc,
+  ABSL_ASSIGN_OR_RETURN(BufferAllocation * tmp_alloc,
                    allocator.NewEmptyAllocation(temp_buffer_size_bytes));
   BufferAllocation::Slice tmp_slice(tmp_alloc, 0, tmp_alloc->size());
 
@@ -682,7 +682,7 @@ EnabledChecks GetEnabledChecks(const HloModule* absl_nonnull hlo_module) {
 absl::Status BufferDebugFloatCheck(
     std::shared_ptr<BufferDebugLogEntryMetadataStore> metadata_store,
     se::Stream* stream, const HloComputation* absl_nonnull hlo_computation,
-    xla::ffi::Buffer<PrimitiveType::U8> log_buffer) {
+    ffi::BufferR1<U8> log_buffer) {
   VLOG(1) << "HLO computation ptr: " << hlo_computation;
   const HloModule* hlo_module = hlo_computation->parent();
   VLOG(1) << "HLO module ptr: " << hlo_module;
@@ -693,7 +693,7 @@ absl::Status BufferDebugFloatCheck(
 
   auto buffer_debug_log = se::gpu::BufferDebugLog<BufferDebugFloatCheckEntry>::
       FromDeviceAddressUnchecked(log_buffer.device_memory());
-  ASSIGN_OR_RETURN(std::vector<BufferDebugFloatCheckEntry> entries,
+  ABSL_ASSIGN_OR_RETURN(std::vector<BufferDebugFloatCheckEntry> entries,
                    buffer_debug_log.ReadFromDevice(*stream));
 
   std::vector<BufferDebugLogEntryId> entry_ids;
@@ -741,15 +741,12 @@ absl::Status BufferDebugFloatCheck(
 
 XLA_FFI_DEFINE_HANDLER_SYMBOL(
     kBufferDebugFloatCheckLogInitHandler,
-    [](se::Stream* absl_nonnull stream,
-       xla::ffi::Buffer<PrimitiveType::U8> log_buffer) {
+    [](se::Stream* absl_nonnull stream, ffi::BufferR1<U8> log_buffer) {
       return se::gpu::BufferDebugLog<xla::gpu::BufferDebugFloatCheckEntry>::
           CreateOnDevice(*stream, log_buffer.device_memory())
               .status();
     },
-    xla::ffi::Ffi::Bind()
-        .Ctx<xla::ffi::Stream>()
-        .Arg<xla::ffi::Buffer<PrimitiveType::U8>>());
+    xla::ffi::Ffi::Bind().Ctx<xla::ffi::Stream>().Arg<ffi::BufferR1<U8>>());
 
 absl::StatusOr<std::unique_ptr<CustomCallThunk>> CreateDebugInitThunk(
     BufferAllocation::Slice log_slice,
@@ -783,7 +780,7 @@ CreateBufferDebugFloatCheckThunk(
       xla::ffi::Ffi::Bind()
           .Ctx<xla::ffi::Stream>()
           .Ctx<xla::ffi::CalledComputation>()
-          .Arg<xla::ffi::Buffer<PrimitiveType::U8>>()
+          .Arg<ffi::BufferR1<U8>>()
           .To(absl::bind_front(BufferDebugFloatCheck, metadata_store));
   return CustomCallThunk::Create(
       Thunk::ThunkInfo(), "xla_gpu_buffer_debug_float_check",
@@ -825,7 +822,7 @@ CreateOutputBuffersCheckThunk(
   const size_t temp_buffer_size_bytes =
       TempBufferSizeFromMaxBufferSize(max_buffer_size_bytes);
 
-  ASSIGN_OR_RETURN(BufferAllocation * tmp_alloc,
+  ABSL_ASSIGN_OR_RETURN(BufferAllocation * tmp_alloc,
                    allocator.NewEmptyAllocation(temp_buffer_size_bytes));
   BufferAllocation::Slice tmp_slice(tmp_alloc, 0, tmp_alloc->size());
 
@@ -888,11 +885,11 @@ absl::Status RunFloatCheckPassInternal(
 
   std::shared_ptr<BufferDebugLogEntryMetadataStore> metadata_store =
       std::make_shared<BufferDebugLogEntryMetadataStore>();
-  ASSIGN_OR_RETURN(BufferAllocation * log_alloc,
+  ABSL_ASSIGN_OR_RETURN(BufferAllocation * log_alloc,
                    allocator.NewEmptyAllocation(kLogSizeBytes));
   BufferAllocation::Slice log_slice(log_alloc, 0, log_alloc->size());
 
-  ASSIGN_OR_RETURN(auto buffer_debug_init_thunk,
+  ABSL_ASSIGN_OR_RETURN(auto buffer_debug_init_thunk,
                    CreateDebugInitThunk(log_slice, hlo_module));
 
   ThunkFilter thunk_filter = CreateThunkFilter(debug_options);
@@ -906,7 +903,7 @@ absl::Status RunFloatCheckPassInternal(
       }
     }
 
-    ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         BufferAllocation * global_backup_alloc,
         AllocateBufferForInputBackups(thunk_sequence, thunk_filter, allocator));
 
@@ -919,7 +916,7 @@ absl::Status RunFloatCheckPassInternal(
                                    hlo_module, allocator, hlo_instruction_map,
                                    global_backup_alloc);
     };
-    RETURN_IF_ERROR(thunk_sequence->TransformNested(transform_callback));
+    ABSL_RETURN_IF_ERROR(thunk_sequence->TransformNested(transform_callback));
 
     thunk_sequence->reserve(thunk_sequence->size() + 1);
     thunk_sequence->insert(thunk_sequence->begin(),
@@ -927,7 +924,7 @@ absl::Status RunFloatCheckPassInternal(
     return absl::OkStatus();
   }
 
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       auto buffer_debug_dump_thunk,
       CreateBufferDebugFloatCheckThunk(metadata_store, log_slice, hlo_module));
 
@@ -944,8 +941,8 @@ absl::Status RunFloatCheckPassInternal(
         allocator);
   };
 
-  RETURN_IF_ERROR(thunk_sequence->TransformNested(transform_callback));
-  ASSIGN_OR_RETURN(
+  ABSL_RETURN_IF_ERROR(thunk_sequence->TransformNested(transform_callback));
+  ABSL_ASSIGN_OR_RETURN(
       std::unique_ptr<BuffersDebugFloatCheckThunk> output_buffers_check_thunk,
       CreateOutputBuffersCheckThunk(debug_options, hlo_module,
                                     module_output_slices, log_slice,

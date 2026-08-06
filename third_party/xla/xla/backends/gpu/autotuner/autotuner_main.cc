@@ -37,9 +37,9 @@ limitations under the License.
 #include "xla/backends/autotuner/codegen_backend.h"
 #include "xla/backends/autotuner/codegen_orchestrator.h"
 #include "xla/backends/autotuner/config_assigner.h"
-#include "xla/backends/autotuner/directory_cache.h"
+#include "xla/backends/autotuner/directory_store.h"
 #include "xla/backends/autotuner/hlo_extractor.h"
-#include "xla/backends/autotuner/local_cache.h"
+#include "xla/backends/autotuner/in_memory_store.h"
 #include "xla/backends/autotuner/profiler.h"
 #include "xla/backends/autotuner/tiered_cache.h"
 #include "xla/backends/gpu/autotuner/gpu_profiler.h"
@@ -120,7 +120,7 @@ absl::StatusOr<std::vector<std::string>> GetHloFiles(
   std::vector<std::string> hlo_files;
   for (const auto& pattern : hlo_files_patterns) {
     std::vector<std::string> matched_files;
-    RETURN_IF_ERROR(
+    ABSL_RETURN_IF_ERROR(
         tsl::Env::Default()->GetMatchingPaths(pattern, &matched_files))
         << "Failed to match pattern: " << pattern;
     if (matched_files.empty()) {
@@ -134,7 +134,7 @@ absl::StatusOr<std::vector<std::string>> GetHloFiles(
 
 struct AutotunerEnvironment {
   // For codegen backends.
-  std::unique_ptr<Compiler> compiler;
+  std::unique_ptr<GpuCompiler> compiler;
   std::unique_ptr<mlir::MLIRContext> mlir_context;
   std::unique_ptr<AliasInfo> alias_info;
   std::unique_ptr<Compiler::GpuTargetConfig> target_config;
@@ -153,23 +153,24 @@ absl::StatusOr<AutotunerEnvironment> CreateAutotunerEnvironment(
       GetConfigAssignerOptions(debug_options);
   CodegenOrchestrator::Options orchestrator_options =
       GetCodegenOrchestratorOptions(debug_options);
-  ASSIGN_OR_RETURN(std::string platform_name,
+  ABSL_ASSIGN_OR_RETURN(std::string platform_name,
                    PlatformUtil::CanonicalPlatformName("gpu"));
 
-  ASSIGN_OR_RETURN(se::Platform * platform,
+  ABSL_ASSIGN_OR_RETURN(se::Platform * platform,
                    se::PlatformManager::PlatformWithName(
                        absl::AsciiStrToUpper(platform_name)));
   if (platform->VisibleDeviceCount() == 0) {
     return absl::InternalError("No devices found");
   }
 
-  ASSIGN_OR_RETURN(std::unique_ptr<Compiler> compiler,
+  ABSL_ASSIGN_OR_RETURN(std::unique_ptr<Compiler> compiler_base,
                    xla::Compiler::GetForPlatform(platform->id()));
-  ASSIGN_OR_RETURN(se::StreamExecutor * stream_executor_0,
+  auto compiler = std::unique_ptr<GpuCompiler>(
+      absl::down_cast<GpuCompiler*>(compiler_base.release()));
+  ABSL_ASSIGN_OR_RETURN(se::StreamExecutor * stream_executor_0,
                    platform->ExecutorForDevice(0));
-  auto* gpu_compiler = absl::down_cast<GpuCompiler*>(compiler.get());
   auto alias_info =
-      gpu_compiler->GetAliasInfo(stream_executor_0->GetDeviceDescription());
+      compiler->GetAliasInfo(stream_executor_0->GetDeviceDescription());
   auto target_config =
       std::make_unique<Compiler::GpuTargetConfig>(stream_executor_0);
 
@@ -189,7 +190,7 @@ absl::StatusOr<AutotunerEnvironment> CreateAutotunerEnvironment(
   autotuner_profilers.reserve(device_count);
 
   for (int i = 0; i < device_count; ++i) {
-    ASSIGN_OR_RETURN(se::StreamExecutor * stream_executor,
+    ABSL_ASSIGN_OR_RETURN(se::StreamExecutor * stream_executor,
                      platform->ExecutorForDevice(i));
     TF_RET_CHECK(stream_executor->GetDeviceDescription().name() ==
                  stream_executor_0->GetDeviceDescription().name())
@@ -204,18 +205,17 @@ absl::StatusOr<AutotunerEnvironment> CreateAutotunerEnvironment(
     autotuner_profilers.push_back(std::move(profiler));
   }
 
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       std::vector<std::unique_ptr<CodegenBackend>> autotuner_backends,
       AutotunerPass::GetGpuAutotunerBackends(
           stream_executor_0, allocator.get(), target_config.get(),
           alias_info.get(), debug_options, mlir_context.get(),
-          gpu_compiler->ShapeSizeBytesFunction(), gpu_compiler,
-          platform->id()));
+          compiler->ShapeSizeBytesFunction(), compiler.get(), platform->id()));
 
   AutotuneCacheContext ctx = AutotuneCacheContext::Create(
       target_config->device_description, autotuner_backends);
 
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       auto autotuner_orchestrator,
       CodegenOrchestrator::Create(std::move(autotuner_backends),
                                   orchestrator_options, thread_pool.get()));
@@ -230,7 +230,7 @@ absl::StatusOr<AutotunerEnvironment> CreateAutotunerEnvironment(
   autotuner_options.correctness_check_options.crash_on_failure =
       assigner_options.crash_on_check_failure;
 
-  ASSIGN_OR_RETURN(auto autotuner,
+  ABSL_ASSIGN_OR_RETURN(auto autotuner,
                    Autotuner::Create(std::move(autotuner_orchestrator),
                                      std::move(autotuner_profilers),
                                      autotuner_options, thread_pool.get()));
@@ -246,21 +246,20 @@ absl::StatusOr<AutotunerEnvironment> CreateAutotunerEnvironment(
 absl::Status RunAutotuning(const std::vector<std::string>& hlo_files,
                            const DebugOptions& debug_options,
                            absl::string_view cache_dir) {
-  ASSIGN_OR_RETURN(AutotunerEnvironment env,
+  ABSL_ASSIGN_OR_RETURN(AutotunerEnvironment env,
                    CreateAutotunerEnvironment(debug_options));
 
-  std::unique_ptr<AutotunerCacheInterface> l2_cache;
+  std::unique_ptr<AutotunerCacheInterface> autotuner_cache;
   if (!cache_dir.empty()) {
-    l2_cache = std::make_unique<DirectoryCache>(
-        env.cache_ctx, std::string(cache_dir), CacheMode::kReadWrite,
-        KeyMatchingMode::kLoose);
+    auto primary = std::make_unique<InMemoryStore>();
+    auto secondary = std::make_unique<DirectoryStore>(std::string(cache_dir),
+                                                      CacheMode::kReadWrite);
+    autotuner_cache =
+        std::make_unique<TieredCache>(env.cache_ctx, KeyMatchingMode::kLoose,
+                                      std::move(primary), std::move(secondary));
   } else {
-    l2_cache = std::make_unique<PrintingAutotunerCache>();
+    autotuner_cache = std::make_unique<PrintingAutotunerCache>();
   }
-  auto local_cache = std::make_unique<LocalCache>(
-      env.cache_ctx, l2_cache->GetKeyMatchingMode());
-  auto autotuner_cache = std::make_unique<TieredCache>(std::move(local_cache),
-                                                       std::move(l2_cache));
 
   InstructionFilterFn should_autotune_instr = GetShouldAutotuneInstructionFn(
       debug_options,
@@ -276,19 +275,18 @@ absl::Status RunAutotuning(const std::vector<std::string>& hlo_files,
 
   for (const auto& hlo_file : hlo_files) {
     LOG(INFO) << "Autotuning " << hlo_file;
-    ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
+    ABSL_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
                      LoadModuleFromFile(hlo_file));
-    ASSIGN_OR_RETURN(
-        std::vector<Autotuner::TuningResult> results,
-        env.autotuner->TuneConfigs(*module, should_autotune,
-                                   /*tolerate_no_supported_configs=*/true));
+    ABSL_ASSIGN_OR_RETURN(std::vector<Autotuner::TuningResult> results,
+                     env.autotuner->TuneConfigs(*module, should_autotune));
     for (const auto& result : results) {
       AutotunerCacheInterface::Config cached_config;
       cached_config.codegen_backend = result.config.codegen_backend->backend();
       cached_config.backend_config = *result.config.backend_config;
-      RETURN_IF_ERROR(
+      ABSL_RETURN_IF_ERROR(
           autotuner_cache->Insert(result.instruction, cached_config));
     }
+    env.compiler->ClearMlirContextPool();
   }
   return absl::OkStatus();
 }

@@ -61,7 +61,7 @@ absl::StatusOr<std::unique_ptr<HostOffloadingExecutable>> CompileFromString(
     absl::string_view str,
     HostOffloadingExecutableProto::ExecutableType executable_type) {
   HloModuleConfig config;
-  ASSIGN_OR_RETURN(auto module, ParseAndReturnUnverifiedModule(str));
+  ABSL_ASSIGN_OR_RETURN(auto module, ParseAndReturnUnverifiedModule(str));
 
   HostOffloadingExecutableProto executable_proto;
   *executable_proto.mutable_hlo_module() = module->ToProto();
@@ -71,8 +71,8 @@ absl::StatusOr<std::unique_ptr<HostOffloadingExecutable>> CompileFromString(
     case HostOffloadingExecutableProto::EXECUTABLE_TYPE_NANORT: {
       xla::cpu::NanoRtClient client;
       XlaComputation computation(module->ToProto());
-      ASSIGN_OR_RETURN(auto executable, client.Compile(computation));
-      ASSIGN_OR_RETURN(auto aot_compilation_result,
+      ABSL_ASSIGN_OR_RETURN(auto executable, client.Compile(computation));
+      ABSL_ASSIGN_OR_RETURN(auto aot_compilation_result,
                        client.Export(executable.get()));
 
       xla::cpu::CpuAotCompilationResult* cpu_aot_compilation_result =

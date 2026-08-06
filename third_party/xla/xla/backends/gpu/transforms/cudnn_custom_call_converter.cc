@@ -48,8 +48,8 @@ class CustomCallVisitor : public DfsHloRewriteVisitor {
     FusionBackendConfig &backend_config =
         *gpu_config.mutable_fusion_backend_config();
     backend_config.set_kind(hlo->custom_call_target());
-    RETURN_IF_ERROR(fusion->set_backend_config(gpu_config));
-    RETURN_IF_ERROR(ReplaceInstruction(hlo, fusion));
+    ABSL_RETURN_IF_ERROR(fusion->set_backend_config(gpu_config));
+    ABSL_RETURN_IF_ERROR(ReplaceInstruction(hlo, fusion));
     return absl::OkStatus();
   }
 };

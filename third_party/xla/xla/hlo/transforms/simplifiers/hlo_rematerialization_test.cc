@@ -2101,7 +2101,7 @@ class TestHloRematerialization : public HloRematerialization {
   absl::StatusOr<RematAlgorithmFunction> GetRematAlgorithmFunction(
       RematAlgorithm remat_algorithm) override {
     if (simulate_long_run_) {
-      ASSIGN_OR_RETURN(
+      ABSL_ASSIGN_OR_RETURN(
           RematAlgorithmFunction base_func,
           HloRematerialization::GetRematAlgorithmFunction(remat_algorithm));
       return
@@ -2236,6 +2236,39 @@ ENTRY %entry (param.0: f32[], param.1: f32[]) -> f32[1024] {
   absl::StatusOr<bool> result = remat.Run(module.get());
   EXPECT_OK(result.status());
   EXPECT_TRUE(remat.warned_too_little_progress_);
+}
+
+TEST_F(RecomputeAndCompressHloRematerializationTest,
+       EntryComputationWithExcludedExecutionThreadDoesNotCrash) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(R"(
+HloModule module, is_scheduled=true
+
+ENTRY %main {
+  %param.0 = f32[1024] parameter(0)
+  ROOT %res = f32[1024] negate(%param.0)
+}, execution_thread="host"
+)"));
+
+  int64_t memory_limit_bytes = 10000;
+  int block_size_limit = 1;
+
+  HloRematerialization::RematerializationModeConfig config(
+      /*recompute=*/true, /*compress=*/true, /*host_offload=*/false);
+  auto shape_size_func = [](const Shape& shape) { return ByteSizeOf(shape); };
+  HloCostAnalysis cost_analysis(shape_size_func);
+  HloRematerialization::Options options(
+      cost_analysis, config, memory_limit_bytes, block_size_limit,
+      /*block_rematerialization_factor=*/1, /*min_remat_size=*/0,
+      /*compact_shape_function=*/nullptr,
+      /*host_memory_offload_config=*/std::nullopt,
+      /*async_computation_parallelism=*/{},
+      /*remat_algorithm=*/
+      HloRematerialization::RematAlgorithm::kPeakPriority);
+  HloRematerialization::RematerializationSizes sizes;
+
+  HloRematerialization remat(options, sizes);
+  EXPECT_OK(remat.Run(module.get(), /*execution_threads=*/{"device"}).status());
 }
 
 }  // namespace

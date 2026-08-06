@@ -597,9 +597,7 @@ TEST_F(ArithmeticOptimizerTest, RemoveInvolutionAdjacentNodes) {
   auto c = ops::Const(s.WithOpName("c"), {1.0f, 2.0f}, {1, 2});
   auto neg1 = ops::Neg(s.WithOpName("neg1"), c);
   auto neg2 = ops::Neg(s.WithOpName("neg2"), neg1);
-  auto recip1 = ops::Reciprocal(s.WithOpName("recip1"), neg2);
-  auto recip2 = ops::Reciprocal(s.WithOpName("recip2"), recip1);
-  auto id = ops::Identity(s.WithOpName("id"), recip2);
+  auto id = ops::Identity(s.WithOpName("id"), neg2);
 
   GrapplerItem item;
   item.fetch = {"id"};
@@ -612,7 +610,7 @@ TEST_F(ArithmeticOptimizerTest, RemoveInvolutionAdjacentNodes) {
   EnableOnlyRemoveInvolution(&optimizer);
   OptimizeAndPrune(&optimizer, &item, &output);
 
-  // Negation and Reciprocal nodes cancelled each other.
+  // The two adjacent Neg nodes cancelled each other.
   ASSERT_EQ(output.node_size(), 2);
   EXPECT_EQ(output.node(1).name(), "id");
   ASSERT_EQ(output.node(1).input_size(), 1);
@@ -627,11 +625,11 @@ TEST_F(ArithmeticOptimizerTest, RemoveInvolutionAroundValuePreservingChain) {
   tensorflow::Scope s = tensorflow::Scope::NewRootScope();
 
   auto c = ops::Const(s.WithOpName("c"), {1.0f, 2.0f}, {1, 2});
-  auto recip1 = ops::Reciprocal(s.WithOpName("recip1"), c);
-  auto id1 = ops::Identity(s.WithOpName("id1"), recip1);
+  auto neg1 = ops::Neg(s.WithOpName("neg1"), c);
+  auto id1 = ops::Identity(s.WithOpName("id1"), neg1);
   auto squeeze = ops::Squeeze(s.WithOpName("squeeze"), id1);
-  auto recip2 = ops::Reciprocal(s.WithOpName("recip2"), squeeze);
-  auto id2 = ops::Identity(s.WithOpName("id2"), recip2);
+  auto neg2 = ops::Neg(s.WithOpName("neg2"), squeeze);
+  auto id2 = ops::Identity(s.WithOpName("id2"), neg2);
 
   std::vector<std::string> fetch = {"id2"};
 
@@ -646,7 +644,7 @@ TEST_F(ArithmeticOptimizerTest, RemoveInvolutionAroundValuePreservingChain) {
   EnableOnlyRemoveInvolution(&optimizer);
   OptimizeTwiceAndPrune(&optimizer, &item, &output);
 
-  // Check that Reciprocal nodes were removed from the graph.
+  // Check that the Neg nodes were removed from the graph.
   EXPECT_EQ(output.node_size(), 3);
 
   // And const directly flows into squeeze.
@@ -673,12 +671,12 @@ TEST_F(ArithmeticOptimizerTest, RemoveInvolutionSkipControlDependencies) {
   tensorflow::Scope s = tensorflow::Scope::NewRootScope();
 
   auto c = ops::Const(s.WithOpName("c"), {1.0f, 2.0f}, {1, 2});
-  auto recip1 = ops::Reciprocal(s.WithOpName("recip1"), c);
-  auto id1 = ops::Identity(s.WithOpName("id1"), recip1);
+  auto neg1 = ops::Neg(s.WithOpName("neg1"), c);
+  auto id1 = ops::Identity(s.WithOpName("id1"), neg1);
   auto squeeze = ops::Squeeze(s.WithOpName("squeeze"), id1);
-  auto recip2 = ops::Reciprocal(
-      s.WithOpName("recip2").WithControlDependencies(squeeze), c);
-  auto id2 = ops::Identity(s.WithOpName("id2"), recip2);
+  auto neg2 =
+      ops::Neg(s.WithOpName("neg2").WithControlDependencies(squeeze), c);
+  auto id2 = ops::Identity(s.WithOpName("id2"), neg2);
 
   std::vector<std::string> fetch = {"id2"};
 
@@ -700,6 +698,39 @@ TEST_F(ArithmeticOptimizerTest, RemoveInvolutionSkipControlDependencies) {
   auto tensors = EvaluateNodes(output, fetch);
   ASSERT_EQ(tensors.size(), 1);
   test::ExpectTensorNear<float>(tensors[0], tensors_expected[0], 1e-6);
+}
+
+TEST_F(ArithmeticOptimizerTest, DoNotRemoveReciprocalInvolution) {
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+
+  // reciprocal(reciprocal(x)) is not the identity in floating point: the first
+  // reciprocal is already rounded, so the second cannot recover x exactly.
+  // The two ops must therefore survive the involution removal pass.
+  auto c = ops::Const(s.WithOpName("c"), {1.0f, 2.0f, 7.0f}, {1, 3});
+  auto recip1 = ops::Reciprocal(s.WithOpName("recip1"), c);
+  auto recip2 = ops::Reciprocal(s.WithOpName("recip2"), recip1);
+  auto id = ops::Identity(s.WithOpName("id"), recip2);
+
+  GrapplerItem item;
+  item.fetch = {"id"};
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+  auto tensors_expected = EvaluateNodes(item.graph, item.fetch);
+  ASSERT_EQ(tensors_expected.size(), 1);
+
+  GraphDef output;
+  ArithmeticOptimizer optimizer;
+  EnableOnlyRemoveInvolution(&optimizer);
+  OptimizeTwice(&optimizer, &item, &output);
+
+  // Both Reciprocal nodes are preserved.
+  VerifyGraphsMatch(item.graph, output, __LINE__);
+
+  auto tensors = EvaluateNodes(output, item.fetch);
+  ASSERT_EQ(tensors.size(), 1);
+  // The graphs are identical, so the results must match bitwise. A tolerance
+  // here (e.g. 1e-6) would be looser than the ~5e-7 rounding error for 7.0f and
+  // would fail to catch the involution being incorrectly applied.
+  test::ExpectTensorEqual<float>(tensors[0], tensors_expected[0]);
 }
 
 TEST_F(ArithmeticOptimizerTest, TrivialSumsSimple) {
@@ -4040,6 +4071,230 @@ TEST_F(ArithmeticOptimizerTest, OptimizeArgMaxOrArgMinOfMonotonicElementWise) {
     }
   }
   EXPECT_EQ(required_node_count, 2);
+}
+
+// The following tests verify that ArgMax/ArgMin is not hoisted through ops
+// that are non-injective in float32.  Each op below can map two distinct
+// inputs to the same output (saturation, overflow, or clamp), so removing
+// the op from the ArgMax/ArgMin graph would change the result.  Each test
+// runs the optimizer exactly once and compares the result against the
+// untouched input graph with the name-sorted CompareGraphs helper: both the
+// optimizer itself and a follow-up ModelPruner pass topologically sort the
+// graph, which can reorder nodes and break an index-by-index comparison
+// even when no rewrite fired.
+TEST_F(ArithmeticOptimizerTest, ArgMaxOfSaturatingOpIsNotOptimized_Tanh) {
+  // tanh saturates to 1.0 in float32 for inputs >= ~9, so tanh([10, 20])
+  // produces equal outputs; the argmax of the transformed values differs
+  // from the argmax of the original values.
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+  auto x = ops::Const(s.WithOpName("x"), {10.0f, 20.0f}, {1, 2});
+  Output tanh_op = ops::Tanh(s.WithOpName("tanh"), x);
+  Output arg_max = ops::ArgMax(s.WithOpName("arg_max"), tanh_op, 1);
+  Output final_out = ops::Identity(s.WithOpName("final_out"), arg_max);
+
+  GrapplerItem item;
+  item.fetch = {"final_out"};
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+
+  GraphDef output;
+  ArithmeticOptimizer optimizer;
+  EnableOnlyOptimizeMaxOrMinOfMonotonic(&optimizer);
+  TF_EXPECT_OK(optimizer.Optimize(nullptr, item, &output));
+
+  // The graph must not be rewritten: Tanh is non-injective over float32.
+  CompareGraphs(item.graph, output);
+}
+
+TEST_F(ArithmeticOptimizerTest, ArgMaxOfSaturatingOpIsNotOptimized_Exp) {
+  // Exp overflows to +inf in float32 for inputs above ~89; two distinct
+  // large inputs produce equal +inf outputs.
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+  auto x = ops::Const(s.WithOpName("x"), {100.0f, 200.0f}, {1, 2});
+  Output exp_op = ops::Exp(s.WithOpName("exp"), x);
+  Output arg_max = ops::ArgMax(s.WithOpName("arg_max"), exp_op, 1);
+  Output final_out = ops::Identity(s.WithOpName("final_out"), arg_max);
+
+  GrapplerItem item;
+  item.fetch = {"final_out"};
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+
+  GraphDef output;
+  ArithmeticOptimizer optimizer;
+  EnableOnlyOptimizeMaxOrMinOfMonotonic(&optimizer);
+  TF_EXPECT_OK(optimizer.Optimize(nullptr, item, &output));
+
+  CompareGraphs(item.graph, output);
+}
+
+TEST_F(ArithmeticOptimizerTest, ArgMaxOfSaturatingOpIsNotOptimized_Sigmoid) {
+  // Sigmoid saturates to 1.0 in float32 for large positive inputs.
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+  auto x = ops::Const(s.WithOpName("x"), {20.0f, 40.0f}, {1, 2});
+  Output sigmoid_op = ops::Sigmoid(s.WithOpName("sigmoid"), x);
+  Output arg_max = ops::ArgMax(s.WithOpName("arg_max"), sigmoid_op, 1);
+  Output final_out = ops::Identity(s.WithOpName("final_out"), arg_max);
+
+  GrapplerItem item;
+  item.fetch = {"final_out"};
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+
+  GraphDef output;
+  ArithmeticOptimizer optimizer;
+  EnableOnlyOptimizeMaxOrMinOfMonotonic(&optimizer);
+  TF_EXPECT_OK(optimizer.Optimize(nullptr, item, &output));
+
+  CompareGraphs(item.graph, output);
+}
+
+TEST_F(ArithmeticOptimizerTest, ArgMaxOfSaturatingOpIsNotOptimized_Erf) {
+  // Erf saturates to 1.0 in float32 for inputs beyond ~3.5.
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+  auto x = ops::Const(s.WithOpName("x"), {4.0f, 8.0f}, {1, 2});
+  Output erf_op = ops::Erf(s.WithOpName("erf"), x);
+  Output arg_max = ops::ArgMax(s.WithOpName("arg_max"), erf_op, 1);
+  Output final_out = ops::Identity(s.WithOpName("final_out"), arg_max);
+
+  GrapplerItem item;
+  item.fetch = {"final_out"};
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+
+  GraphDef output;
+  ArithmeticOptimizer optimizer;
+  EnableOnlyOptimizeMaxOrMinOfMonotonic(&optimizer);
+  TF_EXPECT_OK(optimizer.Optimize(nullptr, item, &output));
+
+  CompareGraphs(item.graph, output);
+}
+
+TEST_F(ArithmeticOptimizerTest, ArgMinOfSaturatingOpIsNotOptimized_Elu) {
+  // Elu saturates to -1.0 for sufficiently large negative inputs because
+  // exp(x) underflows to 0 in float32.
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+  auto x = ops::Const(s.WithOpName("x"), {-20.0f, -100.0f}, {1, 2});
+  Output elu_op = ops::Elu(s.WithOpName("elu"), x);
+  Output arg_min = ops::ArgMin(s.WithOpName("arg_min"), elu_op, 1);
+  Output final_out = ops::Identity(s.WithOpName("final_out"), arg_min);
+
+  GrapplerItem item;
+  item.fetch = {"final_out"};
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+
+  GraphDef output;
+  ArithmeticOptimizer optimizer;
+  EnableOnlyOptimizeMaxOrMinOfMonotonic(&optimizer);
+  TF_EXPECT_OK(optimizer.Optimize(nullptr, item, &output));
+
+  CompareGraphs(item.graph, output);
+}
+
+TEST_F(ArithmeticOptimizerTest, ArgMaxOfSaturatingOpIsNotOptimized_Relu6) {
+  // Relu6 clamps all inputs above 6 to exactly 6.0.
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+  auto x = ops::Const(s.WithOpName("x"), {7.0f, 100.0f}, {1, 2});
+  Output relu6_op = ops::Relu6(s.WithOpName("relu6"), x);
+  Output arg_max = ops::ArgMax(s.WithOpName("arg_max"), relu6_op, 1);
+  Output final_out = ops::Identity(s.WithOpName("final_out"), arg_max);
+
+  GrapplerItem item;
+  item.fetch = {"final_out"};
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+
+  GraphDef output;
+  ArithmeticOptimizer optimizer;
+  EnableOnlyOptimizeMaxOrMinOfMonotonic(&optimizer);
+  TF_EXPECT_OK(optimizer.Optimize(nullptr, item, &output));
+
+  CompareGraphs(item.graph, output);
+}
+
+// Sinh overflows to +/-inf in float32 for |x| above ~89, so two distinct
+// large inputs can produce equal outputs; the op must not be removed from
+// ArgMax/ArgMin inputs.
+TEST_F(ArithmeticOptimizerTest, ArgMaxOfSaturatingOpIsNotOptimized_Sinh) {
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+  auto x = ops::Const(s.WithOpName("x"), {100.0f, 200.0f}, {1, 2});
+  Output sinh_op = ops::Sinh(s.WithOpName("sinh"), x);
+  Output arg_max = ops::ArgMax(s.WithOpName("arg_max"), sinh_op, 1);
+  Output final_out = ops::Identity(s.WithOpName("final_out"), arg_max);
+
+  GrapplerItem item;
+  item.fetch = {"final_out"};
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+
+  GraphDef output;
+  ArithmeticOptimizer optimizer;
+  EnableOnlyOptimizeMaxOrMinOfMonotonic(&optimizer);
+  TF_EXPECT_OK(optimizer.Optimize(nullptr, item, &output));
+
+  CompareGraphs(item.graph, output);
+}
+
+// For value-producing reductions such as Max, plain monotonicity is
+// sufficient: max(tanh(x)) == tanh(max(x)) holds even where tanh saturates,
+// so the rewrite must still fire for these ops.
+TEST_F(ArithmeticOptimizerTest,
+       MaxOfSaturatingMonotonicOpIsStillOptimized_Tanh) {
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+  auto x = ops::Const(s.WithOpName("x"), {1.0f, 2.0f}, {1, 2});
+  Output tanh_op = ops::Tanh(s.WithOpName("tanh"), x);
+  Output reduce_max = ops::Max(s.WithOpName("reduce_max"), tanh_op, {0});
+  Output final_out = ops::Identity(s.WithOpName("final_out"), reduce_max);
+
+  GrapplerItem item;
+  item.fetch = {"final_out"};
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+  auto tensors_expected = EvaluateNodes(item.graph, item.fetch);
+  ASSERT_EQ(tensors_expected.size(), 1);
+
+  GraphDef output;
+  ArithmeticOptimizer optimizer;
+  EnableOnlyOptimizeMaxOrMinOfMonotonic(&optimizer);
+  OptimizeAndPrune(&optimizer, &item, &output);
+  auto tensors = EvaluateNodes(output, item.fetch);
+  ASSERT_EQ(tensors.size(), 1);
+
+  test::ExpectTensorNear<float>(tensors[0], tensors_expected[0], 1e-6);
+  EXPECT_EQ(output.node_size(), item.graph.node_size());
+  // Check if the inputs are switched
+  int required_node_count = 0;
+  for (int i = 0; i < output.node_size(); ++i) {
+    const NodeDef& node = output.node(i);
+    if (node.name() == "tanh") {
+      EXPECT_EQ(node.op(), "Tanh");
+      ASSERT_EQ(node.input_size(), 1);
+      EXPECT_EQ(node.input(0), "reduce_max");
+      ++required_node_count;
+    } else if (node.name() == "reduce_max") {
+      EXPECT_EQ(node.op(), "Max");
+      ASSERT_EQ(node.input_size(), 2);
+      EXPECT_EQ(node.input(0), "x");
+      ++required_node_count;
+    }
+  }
+  EXPECT_EQ(required_node_count, 2);
+}
+
+TEST_F(ArithmeticOptimizerTest, ArgMaxOfNonInjectiveOpIsNotOptimized_Relu) {
+  // Relu maps every negative input to 0.0.  When all elements of x are
+  // negative, ArgMax(Relu(x)) returns the first index while ArgMax(x)
+  // returns the index of the least-negative element.
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+  auto x = ops::Const(s.WithOpName("x"), {-2.0f, -1.0f}, {1, 2});
+  Output relu_op = ops::Relu(s.WithOpName("relu"), x);
+  Output arg_max = ops::ArgMax(s.WithOpName("arg_max"), relu_op, 1);
+  Output final_out = ops::Identity(s.WithOpName("final_out"), arg_max);
+
+  GrapplerItem item;
+  item.fetch = {"final_out"};
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+
+  GraphDef output;
+  ArithmeticOptimizer optimizer;
+  EnableOnlyOptimizeMaxOrMinOfMonotonic(&optimizer);
+  TF_EXPECT_OK(optimizer.Optimize(nullptr, item, &output));
+
+  // The graph must not be rewritten: Relu is non-injective.
+  CompareGraphs(item.graph, output);
 }
 
 TEST_F(ArithmeticOptimizerTest,

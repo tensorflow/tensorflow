@@ -52,7 +52,7 @@ absl::StatusOr<ScopedDeviceAddress<uint8_t>>
 StreamExecutorAddressAllocator::Allocate(int device_ordinal, uint64_t size,
                                          bool retry_on_failure,
                                          int64_t memory_space) {
-  ASSIGN_OR_RETURN(StreamExecutor * executor,
+  ABSL_ASSIGN_OR_RETURN(StreamExecutor * executor,
                    GetStreamExecutor(device_ordinal));
   DeviceAddressBase result =
       executor->AllocateArray<uint8_t>(size, memory_space);
@@ -70,7 +70,7 @@ StreamExecutorAddressAllocator::Allocate(int device_ordinal, uint64_t size,
 absl::Status StreamExecutorAddressAllocator::Deallocate(int device_ordinal,
                                                         DeviceAddressBase mem) {
   if (!mem.is_null()) {
-    ASSIGN_OR_RETURN(StreamExecutor * executor,
+    ABSL_ASSIGN_OR_RETURN(StreamExecutor * executor,
                      GetStreamExecutor(device_ordinal));
     VLOG(3) << absl::StreamFormat("Freeing %p on device ordinal %d",
                                   mem.opaque(), device_ordinal);
@@ -108,11 +108,11 @@ bool StreamExecutorAddressAllocator::AllowsAsynchronousDeallocation() const {
 
 absl::StatusOr<Stream*> StreamExecutorAddressAllocator::GetStream(
     int device_ordinal) {
-  ASSIGN_OR_RETURN(StreamExecutor * executor,
+  ABSL_ASSIGN_OR_RETURN(StreamExecutor * executor,
                    GetStreamExecutor(device_ordinal));
   absl::MutexLock lock(mutex_);
   if (!streams_.count(device_ordinal)) {
-    ASSIGN_OR_RETURN(auto stream, executor->CreateStream());
+    ABSL_ASSIGN_OR_RETURN(auto stream, executor->CreateStream());
     auto stream_ptr = stream.get();
     stream_ptr->SetName("StreamExecutorAddressAllocator");
     streams_.emplace(device_ordinal, std::move(stream));

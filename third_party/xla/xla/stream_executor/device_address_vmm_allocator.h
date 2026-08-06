@@ -71,45 +71,37 @@ namespace stream_executor {
 // NOLINTBEGIN(whitespace/line_length)
 // Allowed address behavior:
 //
-// +--------------------------------------------------------+---------------------+------------+-----+-------+
-// | Address                                                | Role                | Deallocate | Map | UnMap |
-// +--------------------------------------------------------+---------------------+------------+-----+-------+
-// | Allocate() return                                      | allocator address   | yes        | yes | no    |
-// | Allocate(..., return_reservation_address=true) return  | allocator address   | yes        | yes | no    |
-// | Allocate(..., return_reservation_address=false) return | allocator address   | yes        | yes | no    |
-// | reservation slice from Allocate(..., false)            | reservation address | no         | no  | yes   |
-// | reservation slice from Map()                           | reservation address | no         | no  | yes   |
-// +--------------------------------------------------------+---------------------+------------+-----+-------+
+// +----------------------------------+---------------------+------------+-----+-------+
+// | Address                          | Role                | Deallocate | Map | UnMap |
+// +----------------------------------+---------------------+------------+-----+-------+
+// | Allocate() return                | allocator address   | yes        | yes | no    |
+// | mapped Allocate() return         | allocator address   | yes        | yes | no    |
+// | reservation slice from Map()     | reservation address | no         | no  | yes   |
+// +----------------------------------+---------------------+------------+-----+-------+
 // NOLINTEND(whitespace/line_length)
 // clang-format on
 //
 // The table uses "yes" for API calls that accept the address in that row. For
 // example, Map() takes an allocator address as its source, while UnMap() takes
 // a reservation address to tear down. Map() still requires the allocator
-// address to have no active reservation-address alias; for example, an
-// Allocate(..., return_reservation_address=false) result can be remapped only
-// after its initial reservation-address alias is released with UnMap().
+// address to have no active reservation-address alias.
 //
 // The main API flows are:
 //
 //  1. Allocate(size) creates an allocator-owned VA reservation, allocates raw
 //     physical memory, maps that memory into the owned reservation, and returns
 //     the allocator address.
-//  2. Allocate(..., return_reservation_address=true) allocates raw physical
-//     memory and maps it directly into the caller reservation. The returned VA
-//     comes from the caller reservation, but it is still the allocator address
-//     for this allocation.
-//  3. Allocate(..., return_reservation_address=false) returns a separate
-//     allocator-owned address and also maps the same raw physical allocation
-//     into the caller reservation as a reservation address.
-//  4. Map(addr, reservation, ...) maps the raw physical allocation currently
+//  2. The mapped Allocate() overload allocates raw physical memory and maps it
+//     directly into the caller reservation. The returned VA comes from the
+//     caller reservation, but it is still the allocator address for this
+//     allocation.
+//  3. Map(addr, reservation, ...) maps the raw physical allocation currently
 //     backing allocator address `addr` into one caller reservation slice.
 //     UnMap(reservation, ...) removes that reservation-address alias.
 //
 // Deallocate() accepts only allocator addresses and requires any active
 // reservation-address alias to be released with UnMap() first. UnMap() accepts
-// only reservation addresses created by Map() or by
-// Allocate(..., return_reservation_address=false). Passing an allocator address
+// only reservation addresses created by Map(). Passing an allocator address
 // to UnMap(), or a reservation address to Deallocate(), is an error.
 // Each allocator address may have at most one active reservation-address alias.
 // A reservation mapping is owned as the same full range that created it:
@@ -117,9 +109,11 @@ namespace stream_executor {
 // stale reservation mapping are rejected.
 //
 // Deallocate() and UnMap() are stream-ordered deferred operations. The
-// allocator assigns the affected address record a per-device sequence number,
-// moves it from active tracking to stale tracking, and appends a pending entry
-// with the operation kind, sequence number, and address. The stale
+// allocator assigns the affected address record a per-device batch sequence
+// number, moves it from active tracking to stale tracking, and appends a
+// pending entry with the operation kind, sequence number, and address. A
+// trailing timeline write is enqueued for the open batch when the allocator
+// needs to observe the timeline or when the batch limit is reached. The stale
 // AllocationRecord keeps the raw allocation, any allocator-owned reservation,
 // and ScopedMapping objects alive until the stream reaches that sequence
 // number, so kernels already submitted to the stream can keep using the old VA.
@@ -152,7 +146,8 @@ class DeviceAddressVmmAllocator : public DeviceAddressAllocator {
   struct DeviceConfig {
     // StreamExecutor for this device. Must outlive the allocator.
     StreamExecutor* executor;
-    // Stream used for deferred deallocation. Must outlive the allocator.
+    // Stream used for deferred deallocation. Must remain valid for allocator
+    // operations other than destruction.
     Stream* stream;
     // Maximum bytes of physical memory that may be allocated simultaneously on
     // this device. Defaults to unlimited.
@@ -182,17 +177,9 @@ class DeviceAddressVmmAllocator : public DeviceAddressAllocator {
   // MemoryReservation range.
   // `allocation_size` and `mapping_size` must be equal.
   //
-  // There are two modes:
-  //
-  //  * `return_reservation_address=true`: the mapped reservation slice is
-  //    returned and is treated as the allocator address. The caller releases it
-  //    with Deallocate(), may use it as a Map() source, and must not pass it to
-  //    UnMap().
-  //  * `return_reservation_address=false`: the allocator creates and returns a
-  //    separate allocator-owned address. The same raw physical allocation is
-  //    also mapped into the caller reservation as a reservation address. The
-  //    returned allocator address is released with Deallocate(); the
-  //    reservation-address alias may be released earlier with UnMap().
+  // The mapped reservation slice is returned and is treated as the allocator
+  // address. The caller releases it with Deallocate(), may use it as a Map()
+  // source, and must not pass it to UnMap().
   //
   // The caller owns `reservation` and must keep it alive while any mapping into
   // it is active or waiting for deferred unmap completion. Deallocate() never
@@ -200,8 +187,7 @@ class DeviceAddressVmmAllocator : public DeviceAddressAllocator {
   absl::StatusOr<ScopedDeviceAddress<uint8_t>> Allocate(
       int device_ordinal, uint64_t allocation_size, bool retry_on_failure,
       int64_t memory_space, MemoryReservation* reservation,
-      uint64_t reservation_offset, uint64_t mapping_size,
-      bool return_reservation_address);
+      uint64_t reservation_offset, uint64_t mapping_size);
 
   // Pull in two-arg overload that sets retry_on_failure to true.
   using DeviceAddressAllocator::Allocate;
@@ -222,8 +208,7 @@ class DeviceAddressVmmAllocator : public DeviceAddressAllocator {
 
   // Deallocates an allocator address asynchronously. `mem` must be an address
   // returned by Allocate(), including reservation-derived addresses returned by
-  // Allocate(..., return_reservation_address=true). Reservation addresses
-  // created by Map() or by Allocate(..., return_reservation_address=false) must
+  // the mapped Allocate() overload. Reservation addresses created by Map() must
   // not be passed to Deallocate(). If `mem` has an active reservation-address
   // alias, the caller must release that alias with UnMap() before calling
   // Deallocate(). The caller can call this function while device kernels are
@@ -236,28 +221,25 @@ class DeviceAddressVmmAllocator : public DeviceAddressAllocator {
   // `reservation` at `reservation_offset`.
   //
   // `addr` must be an active allocator address returned by this allocator,
-  // including reservation-derived addresses returned by
-  // Allocate(..., return_reservation_address=true). Non-owning reservation
-  // addresses created by Map() or by
-  // Allocate(..., return_reservation_address=false), and addresses from other
-  // allocators, are not supported. The physical allocation backing `addr` must
-  // be at least `size` bytes. Each allocator address may have at most one
-  // active reservation-address alias at a time. The caller owns `reservation`
-  // and must keep it alive until UnMap() is called and the allocator stream
-  // reaches that deferred unmap point.
+  // including reservation-derived addresses returned by the mapped Allocate()
+  // overload. Non-owning reservation addresses created by Map(), and addresses
+  // from other allocators, are not supported. The physical allocation backing
+  // `addr` must be at least `size` bytes. Each allocator address may have at
+  // most one active reservation-address alias at a time. The caller owns
+  // `reservation` and must keep it alive until UnMap() is called and the
+  // allocator stream reaches that deferred unmap point.
   absl::Status Map(int device_ordinal, DeviceAddressBase addr,
                    MemoryReservation* reservation, uint64_t reservation_offset,
                    uint64_t size);
 
-  // Defers unmapping the reservation address created by Map() or by
-  // Allocate(..., return_reservation_address=false) for the given reservation
-  // range until all previously enqueued work on the allocator stream has
-  // completed.
+  // Defers unmapping the reservation address created by Map() for the given
+  // reservation range until all previously enqueued work on the allocator
+  // stream has completed.
   // The caller must pass the same full reservation range that created the
   // mapping; partial ranges that overlap a tracked mapping are rejected.
-  // The reservation-derived allocator address returned by
-  // Allocate(..., return_reservation_address=true) is not a reservation
-  // address for this API and must be released with Deallocate() instead.
+  // The reservation-derived allocator address returned by the mapped
+  // Allocate() overload is not a reservation address for this API and must be
+  // released with Deallocate() instead.
   //
   // On success this method moves the active mapping to the deferred unmap
   // queue. On error, active bookkeeping is unchanged. Empty mappings, such as
@@ -305,8 +287,8 @@ class DeviceAddressVmmAllocator : public DeviceAddressAllocator {
     // Deferred Deallocate() of any Allocate() result. AllocationRecord::kind()
     // identifies the API mode that created the allocation.
     kAllocation,
-    // Deferred completion of a reservation alias created by Map() or mapped
-    // Allocate(). The reservation address does not own the raw allocation.
+    // Deferred completion of a reservation alias created by Map(). The
+    // reservation address does not own the raw allocation.
     kMap,
   };
 
@@ -314,16 +296,14 @@ class DeviceAddressVmmAllocator : public DeviceAddressAllocator {
   //
   // The record is owned by records_by_allocator_address while either the
   // allocator address or a reservation-address alias is active, stale, or
-  // pending completion. Active indexes are callable by public APIs. Stale
-  // indexes are no longer callable by users, but still keep mappings alive
-  // until the stream-ordered deferred operation completes or a later Allocate()
-  // or Map() reuses them.
+  // pending completion. Stale addresses are no longer callable by users, but
+  // their records keep mappings alive until the stream-ordered deferred
+  // operation completes or a later Allocate() or Map() reuses them.
   class AllocationRecord {
    public:
     enum class Kind {
       kAllocate,
-      kAllocateAndMapReturnMapAddr,
-      kAllocateAndMapReturnNewAddr,
+      kAllocateAndMap,
     };
 
     AllocationRecord(
@@ -331,11 +311,9 @@ class DeviceAddressVmmAllocator : public DeviceAddressAllocator {
         std::unique_ptr<MemoryAllocation> raw_allocation,
         std::unique_ptr<MemoryReservation> allocator_address_reservation,
         MemoryReservation::ScopedMapping allocator_address_mapping,
-        bool multi_device);
+        int64_t memory_space, bool multi_device);
     AllocationRecord(const AllocationRecord&) = delete;
     AllocationRecord& operator=(const AllocationRecord&) = delete;
-    AllocationRecord(AllocationRecord&&) = default;
-    AllocationRecord& operator=(AllocationRecord&&) = default;
 
     Kind kind() const { return kind_; }
     DeviceAddressBase allocator_address() const { return allocator_address_; }
@@ -347,10 +325,12 @@ class DeviceAddressVmmAllocator : public DeviceAddressAllocator {
     }
     uint64_t allocator_stale_seqno() const { return allocator_stale_seqno_; }
     bool multi_device() const { return multi_device_; }
+    int64_t memory_space() const { return memory_space_; }
     MemoryAllocation* raw_allocation() const { return raw_allocation_.get(); }
     MemoryReservation* allocator_address_reservation() const {
       return allocator_address_reservation_.get();
     }
+
     bool has_reservation_alias() const {
       return reservation_alias_.has_value();
     }
@@ -369,6 +349,7 @@ class DeviceAddressVmmAllocator : public DeviceAddressAllocator {
 
     void MarkAllocatorStale(uint64_t seqno);
     void ReactivateAllocator(uint64_t new_size);
+
     void AddActiveReservationAlias(
         MemoryReservation::ScopedMapping reservation_address_mapping);
     void MarkReservationStale(uint64_t seqno);
@@ -386,9 +367,10 @@ class DeviceAddressVmmAllocator : public DeviceAddressAllocator {
     DeviceAddressBase allocator_address_;
     std::unique_ptr<MemoryAllocation> raw_allocation_;
     bool multi_device_;
+    int64_t memory_space_ = 0;
 
-    // Present for Allocate() and
-    // Allocate(..., return_reservation_address=false).
+    // Present for Allocate(); the mapped Allocate() overload returns a
+    // caller-reservation address and owns no reservation.
     std::unique_ptr<MemoryReservation> allocator_address_reservation_;
     // Present for the lifetime of the allocation record.
     MemoryReservation::ScopedMapping allocator_address_mapping_;
@@ -403,12 +385,26 @@ class DeviceAddressVmmAllocator : public DeviceAddressAllocator {
   // live in AllocationRecord; this entry only says which stale address becomes
   // safe to complete when the GPU timeline reaches `seqno`.
   struct PendingDeallocation {
-    PendingDeallocationKind kind = PendingDeallocationKind::kAllocation;
+    PendingDeallocationKind kind;
     // GPU stream sequence number recorded at deallocation time. When the
     // pinned_timeline value reaches this seqno, the memory is safe to free.
-    uint64_t seqno = 0;
+    uint64_t seqno;
     // Allocator address for allocation deallocations; reservation address for
     // kMap.
+    DeviceAddressBase addr;
+    // Physical bytes released when this entry completes; 0 for kMap, which only
+    // drops a reservation alias. Stored here rather than re-derived from the
+    // AllocationRecord so that open-batch accounting reads exactly the value
+    // that was accounted when the entry was queued.
+    uint64_t reclaimable_bytes;
+  };
+
+  // Stable identity for one pending operation. A batch shares one sequence
+  // number, so the operation kind and address are also needed to select an
+  // entry after WaitUntilSeqno() temporarily releases state.mu.
+  struct PendingDeallocationKey {
+    PendingDeallocationKind kind;
+    uint64_t seqno;
     DeviceAddressBase addr;
   };
 
@@ -442,25 +438,48 @@ class DeviceAddressVmmAllocator : public DeviceAddressAllocator {
     uint64_t pa_allocated ABSL_GUARDED_BY(mu) = 0;
     // Monotonically increasing counter for timeline sequence numbers.
     uint64_t next_seqno ABSL_GUARDED_BY(mu) = 1;
+    // Open trailing batch of deferred deallocations. Pending entries in the
+    // open batch have been moved to stale state but do not have a stream
+    // timeline write yet. We batch because many Deallocate()/UnMap() calls can
+    // be issued back-to-back on the host, and one stream marker is enough to
+    // protect all stale mappings in that host-side batch. This avoids paying a
+    // GPU timeline write for every individual address.
+    //
+    // Example, starting with next_seqno=1 and no open batch:
+    //   Deallocate(A) creates open batch seqno 1, records A -> 1, next_seqno=2.
+    //   UnMap(R) reuses open batch seqno 1, records R -> 1.
+    //   Deallocate(B) also records B -> 1.
+    //   FlushOpenDeallocationBatch() enqueues one stream write for seqno 1 and
+    //   resets open_deallocation_batch_seqno to 0. A/R/B remain pending with
+    //   seqno 1 until the device timeline reaches 1.
+    //   The next deferred operation opens a new batch with seqno 2.
+    //
+    // Only the sequence number is stored. The batch's entry and byte totals are
+    // the trailing run of `pending_deallocations` carrying this seqno (entries
+    // are appended in non-decreasing seqno order, so that run is contiguous),
+    // and are computed on demand by OpenDeallocationBatchSize(). Keeping them
+    // derived means cancelling an entry -- which happens whenever a stale
+    // record is reused -- needs no batch bookkeeping at all.
+    uint64_t open_deallocation_batch_seqno ABSL_GUARDED_BY(mu) = 0;
     std::deque<PendingDeallocation> pending_deallocations ABSL_GUARDED_BY(mu);
     // Owns AllocationRecord objects. Key is the allocator address pointer
     // (`AllocationRecord::allocator_address().opaque()`), including the
-    // reservation-derived allocator address returned by
-    // Allocate(..., return_reservation_address=true). Allocator-address
-    // active/stale state is stored in
+    // reservation-derived allocator address returned by the mapped Allocate()
+    // overload. Allocator-address active/stale state is stored in
     // AllocationRecord::allocator_active()/allocator_stale().
     absl::flat_hash_map<void*, std::unique_ptr<AllocationRecord>>
         records_by_allocator_address ABSL_GUARDED_BY(mu);
 
     // Reservation-address index. Keys are reservation alias pointers
-    // (`AllocationRecord::reservation_address().opaque()`) created by Map() or
-    // by Allocate(..., return_reservation_address=false). Active/stale state is
-    // stored in the record.
+    // (`AllocationRecord::reservation_address().opaque()`) created by Map().
+    // Active/stale state is stored in the record.
     absl::flat_hash_map<void*, AllocationRecord*> reservation_records
         ABSL_GUARDED_BY(mu);
   };
 
-  explicit DeviceAddressVmmAllocator(const Platform* platform);
+  explicit DeviceAddressVmmAllocator(
+      const Platform* platform,
+      std::optional<int64_t> reclaim_exempt_memory_space = std::nullopt);
 
   // Validates no duplicate ordinals in `devices`, then iterates over each
   // device config, constructs a PerDeviceState (setting executor, stream,
@@ -471,7 +490,10 @@ class DeviceAddressVmmAllocator : public DeviceAddressAllocator {
   static absl::Status PopulateDevices(DeviceAddressVmmAllocator* allocator,
                                       absl::Span<const DeviceConfig> devices);
 
-  // Drains all pending operations for all devices.
+  // Flushes open deallocation batches and drains all pending operations for all
+  // devices. The configured streams must remain valid for this explicit
+  // synchronization. Destruction instead synchronizes each StreamExecutor and
+  // retires pending state without accessing the streams.
   absl::Status SynchronizeAllPendingOperations();
 
   // Validates device capabilities and initializes timeline fields
@@ -515,36 +537,26 @@ class DeviceAddressVmmAllocator : public DeviceAddressAllocator {
   // Records a raw allocation mapped at an owning allocator address. Takes
   // ownership of `reservation` when the allocator address was allocator-owned;
   // reservation-backed returned addresses pass nullptr here. Charges the raw
-  // allocation's committed size to the PA budget and returns the allocator VA
-  // pointer.
-  void* TrackAllocatorAddressMappedAllocation(
+  // allocation's committed size to the PA budget.
+  AllocationRecord& TrackAllocatorAddressMappedAllocation(
       PerDeviceState& state, AllocationRecord::Kind kind,
       DeviceAddressBase allocator_address,
       std::unique_ptr<MemoryAllocation> raw_allocation,
       std::unique_ptr<MemoryReservation> reservation,
-      MemoryReservation::ScopedMapping mapping, bool multi_device)
-      ABSL_EXCLUSIVE_LOCKS_REQUIRED(state.mu);
+      MemoryReservation::ScopedMapping mapping, int64_t memory_space,
+      bool multi_device) ABSL_EXCLUSIVE_LOCKS_REQUIRED(state.mu);
 
   struct MappedAllocateRequest {
     MemoryReservation* reservation;
     DeviceAddressBase reservation_address;
-    uint64_t allocation_size;
+    uint64_t size;
     uint64_t reservation_offset;
-    uint64_t mapping_size;
+    int64_t memory_space;
     bool multi_device;
   };
 
-  // Reactivates a stale mapped allocation whose returned allocator address is
-  // the requested caller-owned reservation address.
-  absl::StatusOr<std::optional<DeviceAddressBase>>
-  TryReuseMappedAllocationAtReservationAddress(
-      PerDeviceState& state, const MappedAllocateRequest& request)
-      ABSL_EXCLUSIVE_LOCKS_REQUIRED(state.mu);
-
-  // Reactivates a stale mapped allocation with both a separate allocator-owned
-  // returned address and an alias at the requested reservation address.
-  absl::StatusOr<std::optional<DeviceAddressBase>>
-  TryReuseMappedAllocationWithSeparateAddress(
+  // Reactivates a compatible stale mapped allocation.
+  std::optional<DeviceAddressBase> TryReuseMappedAllocation(
       PerDeviceState& state, const MappedAllocateRequest& request)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(state.mu);
 
@@ -554,22 +566,17 @@ class DeviceAddressVmmAllocator : public DeviceAddressAllocator {
       PerDeviceState& state, const MappedAllocateRequest& request)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(state.mu);
 
-  // Creates a mapped allocation that uses the caller-owned reservation address
-  // as its returned allocator address.
-  absl::StatusOr<DeviceAddressBase> CreateMappedAllocationAtReservationAddress(
-      PerDeviceState& state, const MappedAllocateRequest& request)
-      ABSL_EXCLUSIVE_LOCKS_REQUIRED(state.mu);
-
-  // Creates a mapped allocation with a separate allocator-owned returned
-  // address and a non-owning alias in the caller-owned reservation.
-  absl::StatusOr<DeviceAddressBase> CreateMappedAllocationWithSeparateAddress(
+  // Creates a mapped allocation with the caller-owned reservation address as
+  // its returned address.
+  absl::StatusOr<DeviceAddressBase> CreateMappedAllocation(
       PerDeviceState& state, const MappedAllocateRequest& request)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(state.mu);
 
   // Shared allocation retry policy. First calls `try_reuse` to reactivate
-  // compatible pending state without blocking, then calls `try_fresh`. On
-  // ResourceExhausted, it completes ready pending entries and, if needed, waits
-  // for enough pending frees to reclaim approximately `reclaim_size` bytes.
+  // compatible pending state without blocking, then calls `try_fresh`. A
+  // ResourceExhausted result completes ready pending entries and, if needed,
+  // waits for enough pending frees to reclaim approximately `reclaim_size`
+  // bytes.
   template <typename TryReuseFn, typename TryFreshFn>
   absl::StatusOr<DeviceAddressBase> TryWithPendingReclaim(PerDeviceState& state,
                                                           uint64_t reclaim_size,
@@ -587,10 +594,10 @@ class DeviceAddressVmmAllocator : public DeviceAddressAllocator {
       uint64_t size) const;
 
   struct OverlappingRecord {
-    AllocationRecord* record = nullptr;
+    AllocationRecord* record;
     DeviceAddressBase tracked_address;
-    bool is_allocator = false;
-    bool is_active = false;
+    bool is_allocator;
+    bool is_active;
   };
 
   enum class AddressRole { kAllocator, kReservation, kBoth };
@@ -601,9 +608,9 @@ class DeviceAddressVmmAllocator : public DeviceAddressAllocator {
   // helpers.
   struct MapRequest {
     DeviceAddressBase source_address;
-    MemoryReservation* reservation = nullptr;
-    uint64_t reservation_offset = 0;
-    uint64_t size = 0;
+    MemoryReservation* reservation;
+    uint64_t reservation_offset;
+    uint64_t size;
     DeviceAddressBase reservation_address;
   };
 
@@ -633,9 +640,41 @@ class DeviceAddressVmmAllocator : public DeviceAddressAllocator {
 
   // UnMap/deferred teardown helpers.
 
-  // Removes a pending entry when a stale record is reused.
-  void ErasePendingDeallocationAt(PerDeviceState& state,
-                                  std::deque<PendingDeallocation>::iterator it)
+  // Entry and reclaimable-byte totals of the trailing open deallocation batch.
+  struct OpenDeallocationBatchSize {
+    int64_t entries = 0;
+    // Saturating: a total that would overflow is reported as uint64 max, which
+    // still compares correctly against the byte limit.
+    uint64_t bytes = 0;
+  };
+
+  // Sums the trailing run of pending entries carrying the open batch seqno.
+  // Returns all zeroes when no batch is open. Bounded by the batch entry limit.
+  OpenDeallocationBatchSize OpenBatchSize(const PerDeviceState& state) const
+      ABSL_EXCLUSIVE_LOCKS_REQUIRED(state.mu);
+
+  // Flushes the current open deallocation batch before adding a new entry if
+  // keeping it open would exceed the configured entry or reclaimable-byte
+  // limit.
+  absl::Status FlushOpenDeallocationBatchIfNeededForEntry(
+      PerDeviceState& state, uint64_t reclaimable_bytes)
+      ABSL_EXCLUSIVE_LOCKS_REQUIRED(state.mu);
+
+  // Returns the sequence number for the current open deallocation batch,
+  // creating a new batch if necessary.
+  uint64_t GetOrCreateOpenDeallocationBatchSeqno(PerDeviceState& state)
+      ABSL_EXCLUSIVE_LOCKS_REQUIRED(state.mu);
+
+  // Enqueues one stream timeline write for the current open deallocation batch,
+  // if any pending entries remain in that batch.
+  absl::Status FlushOpenDeallocationBatch(PerDeviceState& state)
+      ABSL_EXCLUSIVE_LOCKS_REQUIRED(state.mu);
+
+  // Flushes the open deallocation batch, waits for the device timeline to reach
+  // the last pending sequence number, and completes every pending entry up to
+  // it. Shared by SynchronizePendingOperations() and, transitively,
+  // SynchronizeAllPendingOperations().
+  absl::Status DrainPendingDeallocations(PerDeviceState& state)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(state.mu);
 
   // Removes the matching pending entry when a stale record is reused.
@@ -651,7 +690,7 @@ class DeviceAddressVmmAllocator : public DeviceAddressAllocator {
   // Waits for the device timeline to reach `target_seqno`. Temporarily releases
   // and reacquires state.mu around the blocking wait. This does not complete
   // pending entries by itself.
-  void WaitUntilSeqno(PerDeviceState& state, uint64_t target_seqno)
+  absl::Status WaitUntilSeqno(PerDeviceState& state, uint64_t target_seqno)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(state.mu);
 
   // Completes ready allocator-address deallocations for PA reclaim while
@@ -669,10 +708,10 @@ class DeviceAddressVmmAllocator : public DeviceAddressAllocator {
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(state.mu);
 
   // Finds, erases, and completes the selected pending entry if it is still
-  // present. Sequence numbers uniquely identify operations on a device; another
-  // thread may already have reused or completed the entry while state.mu was
-  // released.
-  void CompletePendingDeallocationBySeqno(PerDeviceState& state, uint64_t seqno)
+  // present. Another thread may already have reused or completed the entry
+  // while state.mu was released.
+  void CompletePendingDeallocationByKey(PerDeviceState& state,
+                                        const PendingDeallocationKey& key)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(state.mu);
 
   // Device ordinal -> per-device allocator state. Populated at construction by
@@ -680,6 +719,9 @@ class DeviceAddressVmmAllocator : public DeviceAddressAllocator {
   // without an allocator-wide lock. Each PerDeviceState owns its own mutex for
   // mutable allocation and pending-deallocation state.
   absl::flat_hash_map<int, std::unique_ptr<PerDeviceState>> per_device_;
+
+  // This space is never reclaimed and is freed only at executable destruction.
+  const std::optional<int64_t> reclaim_exempt_memory_space_;
 };
 
 }  // namespace stream_executor

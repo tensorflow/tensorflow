@@ -57,7 +57,7 @@ class RocmContext : public Context {
 
   absl::Status Synchronize() override {
     ScopedActivateContext activation(this);
-    RETURN_IF_ERROR(ToStatus(hipDeviceSynchronize(),
+    ABSL_RETURN_IF_ERROR(ToStatus(hipDeviceSynchronize(),
                              "could not synchronize on ROCM device"));
     return absl::OkStatus();
   }

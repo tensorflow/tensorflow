@@ -109,7 +109,7 @@ absl::Status BackendConfigWrapper::GetProto(
     return copy_from_cache();
   }
 
-  RETURN_IF_ERROR(tsl::HumanReadableJsonToProto(raw_string_, output_proto));
+  ABSL_RETURN_IF_ERROR(tsl::HumanReadableJsonToProto(raw_string_, output_proto));
   // Cache the proto into the empty proto_.
   proto_ = CloneBackendConfigProto(output_proto);
   return absl::OkStatus();

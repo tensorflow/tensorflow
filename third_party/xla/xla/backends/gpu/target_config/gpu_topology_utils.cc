@@ -73,9 +73,9 @@ absl::StatusOr<bool> IsCompatibleWithTargetTopology(
 absl::StatusOr<bool> IsCompatibleWithTargetTopology(
     const xla::GpuTopologyProto& compiler_topology_proto,
     const xla::GpuTopologyProto& target_topology_proto) {
-  ASSIGN_OR_RETURN(std::unique_ptr<const GpuTopology> compiler_topology,
+  ABSL_ASSIGN_OR_RETURN(std::unique_ptr<const GpuTopology> compiler_topology,
                    GpuTopology::FromProto(compiler_topology_proto));
-  ASSIGN_OR_RETURN(std::unique_ptr<const GpuTopology> target_topology,
+  ABSL_ASSIGN_OR_RETURN(std::unique_ptr<const GpuTopology> target_topology,
                    GpuTopology::FromProto(target_topology_proto));
   return IsCompatibleWithTargetTopology(*compiler_topology, *target_topology);
 }

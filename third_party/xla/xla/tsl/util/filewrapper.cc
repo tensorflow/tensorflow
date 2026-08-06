@@ -173,7 +173,7 @@ absl::StatusOr<std::vector<std::string>> ExpandDirs(
       return absl::FailedPreconditionError(absl::StrCat(
           "filewrapper: refusing to process dir '", filename, "'"));
     } else if (s.ok()) {
-      RETURN_IF_ERROR(env.GetChildren(filename, &to_process));
+      ABSL_RETURN_IF_ERROR(env.GetChildren(filename, &to_process));
     } else if (absl::IsFailedPrecondition(s)) {
       allfiles.push_back(filename);
     }
@@ -559,9 +559,9 @@ absl::Status WriteCpp(tsl::Env* env, const std::string& cc_filename,
     // simple cross-platform way to truncate files, so we just read and write
     // again.
     std::string contents;
-    RETURN_IF_ERROR(tsl::ReadFileToString(env, cc_filename, &contents));
+    ABSL_RETURN_IF_ERROR(tsl::ReadFileToString(env, cc_filename, &contents));
     contents.resize(end_pos);
-    RETURN_IF_ERROR(tsl::WriteStringToFile(env, cc_filename, contents));
+    ABSL_RETURN_IF_ERROR(tsl::WriteStringToFile(env, cc_filename, contents));
   }
 
   return absl::OkStatus();

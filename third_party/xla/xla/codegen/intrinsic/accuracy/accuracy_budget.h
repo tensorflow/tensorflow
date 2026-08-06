@@ -231,6 +231,28 @@ constexpr AccuracyBudget kErfF64Budget = {
               /*subnormal=*/0},
 };
 
+// Tan
+constexpr AccuracyBudget kTanF32Budget = {
+    /*cpu=*/{/*regular=*/2, /*subnormal=*/0},
+    /*gpu=*/{/*regular=*/4, /*subnormal=*/0},
+};
+
+constexpr AccuracyBudget kTanF64Budget = {
+    /*cpu=*/{/*regular=*/1, /*subnormal=*/1},
+    /*gpu=*/{/*regular=*/4, /*subnormal=*/1},
+};
+
+// Cbrt
+constexpr AccuracyBudget kCbrtF32Budget = {
+    /*cpu=*/{/*regular=*/1, /*subnormal=*/0},
+    /*gpu=*/{/*regular=*/2, /*subnormal=*/0},
+};
+
+constexpr AccuracyBudget kCbrtF64Budget = {
+    /*cpu=*/{/*regular=*/2, /*subnormal=*/2994893752201379840LL},
+    /*gpu=*/{/*regular=*/2, /*subnormal=*/0},
+};
+
 // Sqrt
 constexpr AccuracyBudget kSqrtF32Budget = {
     /*cpu=*/{/*regular=*/1,

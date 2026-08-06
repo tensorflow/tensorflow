@@ -115,19 +115,19 @@ absl::StatusOr<std::unique_ptr<ConvolutionReorderThunk>>
 ConvolutionReorderThunk::FromProto(
     ThunkInfo thunk_info, const ConvolutionReorderThunkProto& proto,
     absl::Span<const BufferAllocation> buffer_allocations) {
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       ShapedSlice filter_input,
       ShapedSlice::FromProto(proto.filter_input(), buffer_allocations));
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       ShapedSlice filter_output,
       ShapedSlice::FromProto(proto.filter_output(), buffer_allocations));
 
   std::optional<BiasBuffers> biases;
   if (proto.has_biases()) {
-    ASSIGN_OR_RETURN(ShapedSlice bias_input,
+    ABSL_ASSIGN_OR_RETURN(ShapedSlice bias_input,
                      ShapedSlice::FromProto(proto.biases().bias_input(),
                                             buffer_allocations));
-    ASSIGN_OR_RETURN(ShapedSlice bias_output,
+    ABSL_ASSIGN_OR_RETURN(ShapedSlice bias_output,
                      ShapedSlice::FromProto(proto.biases().bias_output(),
                                             buffer_allocations));
     biases = {{bias_input, bias_output}};
@@ -144,17 +144,17 @@ absl::StatusOr<ThunkProto> ConvolutionReorderThunk::ToProto() const {
   ConvolutionReorderThunkProto* reorder_proto =
       thunk_proto.mutable_convolution_reorder_thunk();
 
-  ASSIGN_OR_RETURN(*reorder_proto->mutable_filter_input(),
+  ABSL_ASSIGN_OR_RETURN(*reorder_proto->mutable_filter_input(),
                    filter_input_.ToProto());
-  ASSIGN_OR_RETURN(*reorder_proto->mutable_filter_output(),
+  ABSL_ASSIGN_OR_RETURN(*reorder_proto->mutable_filter_output(),
                    filter_output_.ToProto());
 
   if (biases_.has_value()) {
     ConvolutionReorderBiasBuffers* biases_proto =
         reorder_proto->mutable_biases();
-    ASSIGN_OR_RETURN(*biases_proto->mutable_bias_input(),
+    ABSL_ASSIGN_OR_RETURN(*biases_proto->mutable_bias_input(),
                      biases_->bias_input.ToProto());
-    ASSIGN_OR_RETURN(*biases_proto->mutable_bias_output(),
+    ABSL_ASSIGN_OR_RETURN(*biases_proto->mutable_bias_output(),
                      biases_->bias_output.ToProto());
   }
 

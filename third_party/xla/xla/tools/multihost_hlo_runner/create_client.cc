@@ -60,7 +60,7 @@ absl::Status InitDistributedRuntimeInEnv(absl::string_view address, int node_id,
         "[::]:" + std::string(address).substr(address.rfind(':') + 1);
     xla::CoordinationServiceImpl::Options options;
     options.num_nodes = num_nodes;
-    ASSIGN_OR_RETURN(env.service, xla::GetDistributedRuntimeService(
+    ABSL_ASSIGN_OR_RETURN(env.service, xla::GetDistributedRuntimeService(
                                       coordinator_bind_address, options));
   }
   xla::DistributedRuntimeClient::Options options;
@@ -78,7 +78,7 @@ absl::Status InitDistributedRuntimeInEnv(absl::string_view address, int node_id,
 
 absl::StatusOr<PjRtEnvironment> GetPjRtEnvironmentForHostCpu() {
   PjRtEnvironment env;
-  ASSIGN_OR_RETURN(env.client, CreateHostClient());
+  ABSL_ASSIGN_OR_RETURN(env.client, CreateHostClient());
   return env;
 }
 
@@ -99,7 +99,7 @@ absl::StatusOr<PjRtEnvironment> GetPjRtEnvironmentForGpu(
     CHECK_GT(gpu_options.num_nodes, 1);
   }
 
-  ASSIGN_OR_RETURN(env.client, CreateGpuClient(gpu_options));
+  ABSL_ASSIGN_OR_RETURN(env.client, CreateGpuClient(gpu_options));
   return env;
 }
 

@@ -31,6 +31,13 @@ class ChildFastModule(FastModuleType):
     return 3
 
 
+class ChildFastModuleWithProperty(FastModuleType):
+
+  @property
+  def read_only(self):
+    return 42
+
+
 class EarlyAttrAccessModule(FastModuleType):
 
   def __init__(self, name):
@@ -101,6 +108,30 @@ class FastModuleTypeTest(test.TestCase):
     # After _fastdict_insert() the attribute is added.
     self.assertTrue(module._fastdict_key_in("bar"))
     self.assertEqual(1, module.bar)
+
+  def testAttributeDeletion(self):
+    module = ChildFastModule("test")
+    module.foo = 1
+    self.assertEqual(1, module.foo)
+    self.assertTrue(module._fastdict_key_in("foo"))
+
+    del module.foo
+    self.assertFalse(module._fastdict_key_in("foo"))
+
+    with self.assertRaises(AttributeError):
+      _ = module.foo
+
+    with self.assertRaises(AttributeError):
+      del module.bar
+
+  def testCacheConsistencyOnSettingError(self):
+    module = ChildFastModuleWithProperty("test")
+
+    with self.assertRaises(AttributeError):
+      module.read_only = 1
+
+    self.assertFalse(module._fastdict_key_in("read_only"))
+    self.assertEqual(42, module.read_only)
 
 
 if __name__ == "__main__":

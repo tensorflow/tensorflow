@@ -26,7 +26,7 @@ namespace xla {
 namespace gpu {
 
 absl::Status Run(const std::string& filename) {
-  ASSIGN_OR_RETURN(auto module, LoadTestModule(filename));
+  ABSL_ASSIGN_OR_RETURN(auto module, LoadTestModule(filename));
   llvm::outs() << module->ToString();
   return absl::OkStatus();
 }

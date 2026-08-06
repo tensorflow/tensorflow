@@ -16,10 +16,9 @@ limitations under the License.
 #ifndef TENSORFLOW_CC_SAVED_MODEL_FINGERPRINTING_H_
 #define TENSORFLOW_CC_SAVED_MODEL_FINGERPRINTING_H_
 
-#include <string>
-
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "tensorflow/cc/saved_model/singleprint.h"  // IWYU pragma: keep. Used for Singleprint().
 #include "tensorflow/core/protobuf/fingerprint.pb.h"
 
 namespace tensorflow::saved_model::fingerprinting {
@@ -33,14 +32,6 @@ absl::StatusOr<FingerprintDef> CreateFingerprintDef(
 // none.
 absl::StatusOr<FingerprintDef> ReadSavedModelFingerprint(
     absl::string_view export_dir);
-
-// Canonical fingerprinting ID for a SavedModel.
-std::string Singleprint(uint64_t graph_def_program_hash,
-                        uint64_t signature_def_hash,
-                        uint64_t saved_object_graph_hash,
-                        uint64_t checkpoint_hash);
-std::string Singleprint(const FingerprintDef& fingerprint);
-absl::StatusOr<std::string> Singleprint(absl::string_view export_dir);
 
 }  // namespace tensorflow::saved_model::fingerprinting
 

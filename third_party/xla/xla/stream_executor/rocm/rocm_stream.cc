@@ -121,11 +121,11 @@ absl::StatusOr<hipStream_t> CreateStream(StreamExecutor* executor,
   std::unique_ptr<ActivateContext> activation = executor->Activate();
   hipStream_t stream;
   if (priority == 0) {
-    RETURN_IF_ERROR(ToStatus(
+    ABSL_RETURN_IF_ERROR(ToStatus(
         hipStreamCreateWithFlags(&stream, hipStreamDefault),
         "Failed to create stream"));  // switch to hipStreamNonBlocking?
   } else {
-    RETURN_IF_ERROR(ToStatus(
+    ABSL_RETURN_IF_ERROR(ToStatus(
         hipStreamCreateWithPriority(&stream, hipStreamDefault, priority),
         "Failed to create stream"));  // switch to hipStreamNonBlocking?
   }
@@ -157,7 +157,7 @@ absl::Status RecordEvent(StreamExecutor* executor, hipEvent_t event,
 absl::Status WaitStreamOnEvent(StreamExecutor* executor, hipStream_t stream,
                                hipEvent_t event) {
   std::unique_ptr<ActivateContext> activation = executor->Activate();
-  RETURN_IF_ERROR(ToStatus(hipStreamWaitEvent(stream, event, 0 /* = flags */),
+  ABSL_RETURN_IF_ERROR(ToStatus(hipStreamWaitEvent(stream, event, 0 /* = flags */),
                            "could not wait stream on event"));
   return absl::OkStatus();
 }
@@ -166,7 +166,7 @@ absl::Status AsynchronousMemcpyD2H(StreamExecutor* executor, void* host_dst,
                                    hipDeviceptr_t gpu_src, uint64_t size,
                                    hipStream_t stream) {
   std::unique_ptr<ActivateContext> activation = executor->Activate();
-  RETURN_IF_ERROR(ToStatus(
+  ABSL_RETURN_IF_ERROR(ToStatus(
       hipMemcpyDtoHAsync(host_dst, gpu_src, size, stream),
       absl::StrFormat(
           "failed to enqueue async memcpy from device to host: host dst: %p; "
@@ -184,7 +184,7 @@ absl::Status AsynchronousMemcpyH2D(StreamExecutor* executor,
                                    hipDeviceptr_t gpu_dst, const void* host_src,
                                    uint64_t size, hipStream_t stream) {
   std::unique_ptr<ActivateContext> activation = executor->Activate();
-  RETURN_IF_ERROR(ToStatus(
+  ABSL_RETURN_IF_ERROR(ToStatus(
       hipMemcpyHtoDAsync(gpu_dst, const_cast<void*>(host_src), size, stream),
       absl::StrFormat(
           "failed to enqueue async memcpy from host to device: Gpu dst: %p; "
@@ -203,7 +203,7 @@ absl::Status AsynchronousMemcpyD2D(StreamExecutor* executor,
                                    hipDeviceptr_t gpu_src, uint64_t size,
                                    hipStream_t stream) {
   std::unique_ptr<ActivateContext> activation = executor->Activate();
-  RETURN_IF_ERROR(ToStatus(
+  ABSL_RETURN_IF_ERROR(ToStatus(
       hipMemcpyDtoDAsync(gpu_dst, gpu_src, size, stream),
       absl::StrFormat("failed to enqueue async memcpy from device to device: "
                       "Gpu dst: %p ; Gpu src: %p ; size: %llu=0x%llx",
@@ -219,7 +219,7 @@ absl::Status AsynchronousMemcpyD2D(StreamExecutor* executor,
 
 absl::Status SynchronizeStream(StreamExecutor* executor, hipStream_t stream) {
   std::unique_ptr<ActivateContext> activation = executor->Activate();
-  RETURN_IF_ERROR(ToStatus(hipStreamSynchronize(stream),
+  ABSL_RETURN_IF_ERROR(ToStatus(hipStreamSynchronize(stream),
                            "Could not synchronize on ROCM stream"));
   VLOG(2) << "successfully synchronized stream " << stream << " on device "
           << executor->device_ordinal();
@@ -238,9 +238,9 @@ absl::StatusOr<std::unique_ptr<RocmStream>> RocmStream::Create(
     return executor->GetGpuStreamPriority(
         std::get<StreamPriority>(priority.value_or(StreamPriority::Default)));
   }();
-  ASSIGN_OR_RETURN(auto stream_handle, CreateStream(executor, stream_priority));
+  ABSL_ASSIGN_OR_RETURN(auto stream_handle, CreateStream(executor, stream_priority));
 
-  ASSIGN_OR_RETURN(auto completed_event,
+  ABSL_ASSIGN_OR_RETURN(auto completed_event,
                    RocmEvent::Create(executor,
                                      /*allow_timing=*/false));
 
@@ -251,7 +251,7 @@ absl::StatusOr<std::unique_ptr<RocmStream>> RocmStream::Create(
 absl::Status RocmStream::WaitFor(Stream* other) {
   RocmStream* other_stream = static_cast<RocmStream*>(other);
 
-  RETURN_IF_ERROR(other_stream->RecordCompletedEvent());
+  ABSL_RETURN_IF_ERROR(other_stream->RecordCompletedEvent());
 
   return WaitStreamOnEvent(executor_, stream_handle_,
                            other_stream->completed_event_.GetHandle());
@@ -433,7 +433,7 @@ absl::Status LaunchRocmKernel(
   auto res = hipModuleLaunchKernel(
       function, grid_dim_x, grid_dim_y, grid_dim_z, block_dim_x, block_dim_y,
       block_dim_z, shared_mem_bytes, stream, kernel_params, extra);
-  RETURN_IF_ERROR(ToStatus(
+  ABSL_RETURN_IF_ERROR(ToStatus(
       res, absl::StrCat("Failed to launch ROCm kernel: ", kernel_name,
                         "; grid: ", grid_dim_x, "x", grid_dim_y, "x",
                         grid_dim_z, "; block: ", block_dim_x, "x", block_dim_y,

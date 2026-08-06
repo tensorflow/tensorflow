@@ -1,3 +1,18 @@
+# Copyright 2026 The TensorFlow Runtime Authors. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
+
 load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library", "td_library")
 load("//tensorflow:tensorflow.bzl", "tf_cc_binary")
 load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
@@ -29,6 +44,34 @@ cc_library(
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
+    ],
+    alwayslink = 1,
+)
+
+cc_library(
+    name = "drop_shape_assertions",
+    srcs = [
+        "transforms/drop_shape_assertions.cc",
+    ],
+    hdrs = [
+        "transforms/stablehlo_passes.h",
+        "transforms/stablehlo_passes.h.inc",
+    ],
+    copts = [
+        "-Ithird_party",
+    ],
+    deps = [
+        ":passes_inc_gen",
+        "@com_google_absl//absl/strings",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:TransformUtils",
+        "@llvm-project//mlir:Transforms",
+        "@stablehlo//:stablehlo_ops",
+        "@stablehlo//:vhlo_ops",
     ],
     alwayslink = 1,
 )
@@ -135,6 +178,7 @@ cc_library(
     ],
     deps = [
         ":drop_savedmodel_semantics",
+        ":drop_shape_assertions",
         ":legalize_stablehlo_custom_call_to_composite",
         ":legalize_tf_xla_call_module_to_stablehlo_pass",
         ":optimize",
@@ -888,6 +932,7 @@ tf_cc_binary(
     tags = ["hostonly"],
     deps = [
         ":compose_uniform_quantized_type_pass",
+        ":drop_shape_assertions",
         ":legalize_stablehlo_composite_to_tfl_custom",
         ":legalize_stablehlo_custom_call_to_composite",
         ":legalize_stablehlo_to_vhlo_pass",

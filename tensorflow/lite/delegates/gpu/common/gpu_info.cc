@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/gpu_info.h"
 
 #include <algorithm>
+#include <cstdint>
 #include <map>
 #include <string>
 #include <utility>

@@ -91,7 +91,7 @@ absl::StatusOr<int64_t> WhileLoopAnalysisTest::MakeWhileLoopAndGetTripCount(
                            {"{{STEP}}", absl::StrCat(step)},
                            {"{{COMP_DIR}}", ComparisonDirectionToString(dir)}});
 
-  ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
+  ABSL_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
                    ParseAndReturnVerifiedModule(hlo_string));
 
   HloInstruction* while_op = module->entry_computation()->root_instruction();
@@ -143,7 +143,7 @@ absl::StatusOr<Range> WhileLoopAnalysisTest::MakeWhileLoopAndGetRange(
                            {"{{STEP}}", absl::StrCat(step)},
                            {"{{COMP_DIR}}", ComparisonDirectionToString(dir)}});
 
-  ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
+  ABSL_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
                    ParseAndReturnVerifiedModule(hlo_string));
 
   HloInstruction* while_op = module->entry_computation()->root_instruction();

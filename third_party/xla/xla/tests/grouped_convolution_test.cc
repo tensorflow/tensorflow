@@ -246,7 +246,7 @@ TEST_P(GroupedConvolution2DTest, DoIt) {
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{0.01, 0.01},
                             [](HloModule* module) -> absl::Status {
                               BFloat16MixedPrecisionRemoval remover;
-                              RETURN_IF_ERROR(remover.Run(module).status());
+                              ABSL_RETURN_IF_ERROR(remover.Run(module).status());
                               Despecializer despecializer;
                               return despecializer.Run(module).status();
                             }));

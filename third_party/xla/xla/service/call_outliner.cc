@@ -33,11 +33,41 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/shape.h"
+#include "xla/shape_util.h"
 #include "xla/status_macros.h"
 #include "xla/tsl/platform/logging.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace {
+
+// Recursively casts `inst` to `target_shape`. If `inst` is a tuple, it
+// recursively applies the cast to each element.
+HloInstruction* CastToShape(HloComputation* computation, HloInstruction* inst,
+                            const Shape& target_shape) {
+  if (inst->shape().IsToken()) {
+    return inst;
+  }
+  if (inst->shape().IsArray()) {
+    if (ShapeUtil::Compatible(inst->shape(), target_shape)) {
+      return computation->AddInstruction(
+          HloInstruction::CreateUnary(target_shape, HloOpcode::kCopy, inst));
+    }
+    return computation->AddInstruction(
+        HloInstruction::CreateBitcast(target_shape, inst));
+  }
+  CHECK(inst->shape().IsTuple());
+  std::vector<HloInstruction*> elements;
+  elements.reserve(target_shape.tuple_shapes_size());
+  for (int i = 0; i < target_shape.tuple_shapes_size(); ++i) {
+    HloInstruction* gte = computation->AddInstruction(
+        HloInstruction::CreateGetTupleElement(inst, i));
+    elements.push_back(
+        CastToShape(computation, gte, target_shape.tuple_shapes(i)));
+  }
+  return computation->AddInstruction(HloInstruction::CreateTuple(elements));
+}
 
 // Extracts the original computation name from the frontend attributes.
 std::string GetMarkedComputationName(const HloInstruction* instruction) {
@@ -125,16 +155,16 @@ absl::Status RestoreMetadataAndDependencies(HloInstruction* call_instruction,
   std::vector<HloInstruction*> before_predecessors =
       innermost_before->control_predecessors();
   for (HloInstruction* pred : before_predecessors) {
-    RETURN_IF_ERROR(pred->AddControlDependencyTo(call_instruction));
-    RETURN_IF_ERROR(pred->RemoveControlDependencyTo(innermost_before));
+    ABSL_RETURN_IF_ERROR(pred->AddControlDependencyTo(call_instruction));
+    ABSL_RETURN_IF_ERROR(pred->RemoveControlDependencyTo(innermost_before));
   }
 
   // Restore control successors from the 'after' marker.
   std::vector<HloInstruction*> after_successors =
       innermost_after->control_successors();
   for (HloInstruction* succ : after_successors) {
-    RETURN_IF_ERROR(call_instruction->AddControlDependencyTo(succ));
-    RETURN_IF_ERROR(innermost_after->RemoveControlDependencyTo(succ));
+    ABSL_RETURN_IF_ERROR(call_instruction->AddControlDependencyTo(succ));
+    ABSL_RETURN_IF_ERROR(innermost_after->RemoveControlDependencyTo(succ));
   }
 
   return absl::OkStatus();
@@ -259,7 +289,7 @@ absl::StatusOr<HloInstruction*> CallOutliner::OutlineAndReplaceBlock(
   HloInstruction* innermost_after = block.after;
 
   std::vector<HloInstruction*> call_operands;
-  ASSIGN_OR_RETURN(HloComputation * outlined_computation,
+  ABSL_ASSIGN_OR_RETURN(HloComputation * outlined_computation,
                    BuildOutlinedComputation(module, block, call_operands));
   std::string original_computation_name = GetMarkedComputationName(block.after);
   if (!original_computation_name.empty()) {
@@ -271,13 +301,20 @@ absl::StatusOr<HloInstruction*> CallOutliner::OutlineAndReplaceBlock(
 
   HloInstruction* call_instruction =
       computation->AddInstruction(HloInstruction::CreateCall(
-          innermost_after->shape(), call_operands, outlined_computation));
+          outlined_computation->root_instruction()->shape(), call_operands,
+          outlined_computation));
 
-  RETURN_IF_ERROR(RestoreMetadataAndDependencies(
+  ABSL_RETURN_IF_ERROR(RestoreMetadataAndDependencies(
       call_instruction, innermost_before, innermost_after));
 
+  HloInstruction* replacement = call_instruction;
+  if (!ShapeUtil::Equal(innermost_after->shape(), call_instruction->shape())) {
+    replacement =
+        CastToShape(computation, call_instruction, innermost_after->shape());
+  }
+
   // Replace _after marker uses with the new call result.
-  RETURN_IF_ERROR(innermost_after->ReplaceAllUsesWith(call_instruction));
+  ABSL_RETURN_IF_ERROR(innermost_after->ReplaceAllUsesWith(replacement));
 
   // Replace _before marker uses.
   if (innermost_before->shape().IsTuple()) {
@@ -286,15 +323,15 @@ absl::StatusOr<HloInstruction*> CallOutliner::OutlineAndReplaceBlock(
     for (HloInstruction* use : before_uses) {
       if (use->opcode() == HloOpcode::kGetTupleElement) {
         int index = use->tuple_index();
-        RETURN_IF_ERROR(
+        ABSL_RETURN_IF_ERROR(
             use->ReplaceAllUsesWith(innermost_before->mutable_operand(index)));
-        RETURN_IF_ERROR(computation->RemoveInstruction(use));
+        ABSL_RETURN_IF_ERROR(computation->RemoveInstruction(use));
       }
     }
   }
 
   if (!innermost_before->IsDead()) {
-    RETURN_IF_ERROR(ReplaceMarkerWithOperands(computation, innermost_before));
+    ABSL_RETURN_IF_ERROR(ReplaceMarkerWithOperands(computation, innermost_before));
   }
 
   // Verify that markers are dead before removal.
@@ -304,11 +341,11 @@ absl::StatusOr<HloInstruction*> CallOutliner::OutlineAndReplaceBlock(
 
   // Cleanup markers.
   if (innermost_after->parent()) {
-    RETURN_IF_ERROR(
+    ABSL_RETURN_IF_ERROR(
         computation->RemoveInstructionAndUnusedOperands(innermost_after));
   }
   if (innermost_before->parent()) {
-    RETURN_IF_ERROR(
+    ABSL_RETURN_IF_ERROR(
         computation->RemoveInstructionAndUnusedOperands(innermost_before));
   }
 
@@ -363,7 +400,7 @@ absl::StatusOr<bool> CallOutliner::HandleAfterMarker(
   block.after = instruction;
 
   // Outline the block.
-  ASSIGN_OR_RETURN(HloInstruction * call_instruction,
+  ABSL_ASSIGN_OR_RETURN(HloInstruction * call_instruction,
                    OutlineAndReplaceBlock(module, computation, block));
 
   // The new call instruction is added to the parent block's body if any.
@@ -415,7 +452,7 @@ absl::StatusOr<bool> CallOutliner::OutlineComputation(
     if (IsBeforeMarker(instruction)) {
       HandleBeforeMarker(instruction);
     } else if (IsAfterMarker(instruction)) {
-      ASSIGN_OR_RETURN(bool outlined,
+      ABSL_ASSIGN_OR_RETURN(bool outlined,
                        HandleAfterMarker(module, computation, instruction));
       mutated |= outlined;
     } else {
@@ -463,7 +500,7 @@ absl::StatusOr<bool> CallOutliner::RunImpl(
   // conditional branches) or due to partial inlining, any of which may contain
   // call markers.
   for (HloComputation* computation : computations) {
-    ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         bool computation_mutated,
         OutlineComputation(module, computation, execution_threads));
     mutated |= computation_mutated;

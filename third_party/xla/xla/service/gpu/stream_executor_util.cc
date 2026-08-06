@@ -80,25 +80,6 @@ using tsl::profiler::TraceMeLevel;
 namespace xla {
 namespace gpu {
 
-absl::StatusOr<se::dnn::VersionInfo> GetDnnVersionInfo(
-    stream_executor::StreamExecutor* stream_exec) {
-  if (!stream_exec) {
-    return absl::InvalidArgumentError("StreamExecutor is null");
-  }
-  stream_executor::dnn::DnnSupport* dnn = stream_exec->AsDnn();
-  if (!dnn) {
-    return absl::FailedPreconditionError(
-        "DNN library initialization failed. Look at the errors above for more "
-        "details.");
-  }
-  return dnn->GetVersion();
-}
-
-se::dnn::VersionInfo GetDnnVersionInfoOrDefault(
-    stream_executor::StreamExecutor* stream_exec,
-    se::dnn::VersionInfo fallback_version) {
-  return GetDnnVersionInfo(stream_exec).value_or(fallback_version);
-}
 
 namespace {
 
@@ -162,11 +143,11 @@ absl::StatusOr<std::tuple<Layout, Layout, Layout>>
 StreamExecutorConvLayoutsToXlaLayouts(const ConvolutionDimensionNumbers& dnums,
                                       DataLayout input, FilterLayout filter,
                                       DataLayout output) {
-  ASSIGN_OR_RETURN(Layout input_layout,
+  ABSL_ASSIGN_OR_RETURN(Layout input_layout,
                    DataLayoutToXlaLayout(input, dnums.input_batch_dimension(),
                                          dnums.input_feature_dimension(),
                                          dnums.input_spatial_dimensions()));
-  ASSIGN_OR_RETURN(Layout output_layout,
+  ABSL_ASSIGN_OR_RETURN(Layout output_layout,
                    DataLayoutToXlaLayout(input, dnums.output_batch_dimension(),
                                          dnums.output_feature_dimension(),
                                          dnums.output_spatial_dimensions()));
@@ -382,7 +363,7 @@ absl::StatusOr<std::unique_ptr<se::Kernel>> CreateKernel(
       se::KernelLoaderSpec::CreateCudaPtxInMemorySpec(
           ptx, std::move(kernel_name), num_args);
 
-  ASSIGN_OR_RETURN(std::unique_ptr<se::Kernel> kernel,
+  ABSL_ASSIGN_OR_RETURN(std::unique_ptr<se::Kernel> kernel,
                    stream_exec->LoadKernel(loader_spec));
 
   se::KernelMetadata m;
@@ -400,7 +381,7 @@ absl::StatusOr<std::unique_ptr<se::Kernel>> CreateKernel(
       se::KernelLoaderSpec::CreateCudaCubinInMemorySpec(
           cubin_data, std::move(kernel_name), num_args);
 
-  ASSIGN_OR_RETURN(std::unique_ptr<se::Kernel> kernel,
+  ABSL_ASSIGN_OR_RETURN(std::unique_ptr<se::Kernel> kernel,
                    stream_exec->LoadKernel(loader_spec));
 
   se::KernelMetadata m;
@@ -424,7 +405,7 @@ absl::Status ExecuteKernelOnStream(
           return TraceMeEncode("ExecuteKernelOnStream/PackKernelArgs", {});
         },
         /*level=*/TraceMeLevel::kVerbose);
-    ASSIGN_OR_RETURN(kernel_args, se::PackKernelArgs(args, kernel.metadata()));
+    ABSL_ASSIGN_OR_RETURN(kernel_args, se::PackKernelArgs(args, kernel.metadata()));
   }
 
   return kernel.Launch(dims.thread_counts_per_block(), dims.block_counts(),

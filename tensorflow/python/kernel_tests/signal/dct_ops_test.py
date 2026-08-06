@@ -163,8 +163,6 @@ class DCTOpsTest(parameterized.TestCase, test.TestCase):
       scipy_idct = fftpack.idct(signals, type=dct_type, norm=norm)
       self.assertAllClose(scipy_idct, tf_idct, atol=atol, rtol=rtol)
     # Verify inverse(forward(s)) == s, up to a normalization factor.
-    # Since `n` is not implemented for IDCT operation, re-calculating tf_dct
-    # without n.
     tf_dct = dct_ops.dct(signals, type=dct_type, norm=norm)
     tf_idct_dct = dct_ops.idct(tf_dct, type=dct_type, norm=norm)
     tf_dct_idct = dct_ops.dct(tf_idct, type=dct_type, norm=norm)
@@ -233,6 +231,12 @@ class DCTOpsTest(parameterized.TestCase, test.TestCase):
     # DCT-I requires at least two inputs.
     with self.assertRaises(ValueError):
       dct_ops.dct(np.random.rand(1), type=1)
+    # DCT-I requires n to be greater than one, since truncating the input
+    # to length one would violate the same requirement.
+    with self.assertRaises(ValueError):
+      dct_ops.dct(signals, type=1, n=1)
+    with self.assertRaises(ValueError):
+      dct_ops.idct(signals, type=1, n=1)
     # Unknown normalization.
     with self.assertRaises(ValueError):
       dct_ops.dct(signals, norm="bad")
@@ -267,6 +271,40 @@ class DCTOpsTest(parameterized.TestCase, test.TestCase):
     # Ensures the docstring stays in sync with the runtime contract
     # (regression for the pure-doc issue tracked in #102418).
     self.assertNotIn("Must be `None`", dct_ops.idct.__doc__)
+
+  @parameterized.parameters(
+      itertools.product([1, 2, 3, 4], [None, "ortho"], [np.float32, np.float64])
+  )
+  def test_idct_n_truncation(self, dct_type, norm, dtype):
+    """idct with n < signal length uses only the first n elements."""
+    # "ortho" normalization is not implemented for type I.
+    if dct_type == 1 and norm == "ortho":
+      return
+    with self.session():
+      tol = 5e-4 if dtype == np.float32 else 1e-7
+      signals = np.linspace(0.0, 1.0, 20, endpoint=False).astype(dtype)
+      n = 8
+      np_idct = NP_IDCT[dct_type](signals, n=n, norm=norm)
+      tf_idct = dct_ops.idct(signals, type=dct_type, n=n, norm=norm)
+      self.assertEqual(tf_idct.dtype.as_numpy_dtype, dtype)
+      self.assertAllClose(np_idct, tf_idct, atol=tol, rtol=tol)
+
+  @parameterized.parameters(
+      itertools.product([1, 2, 3, 4], [None, "ortho"], [np.float32, np.float64])
+  )
+  def test_idct_n_padding(self, dct_type, norm, dtype):
+    """idct with n > signal length zero-pads the input before the transform."""
+    # "ortho" normalization is not implemented for type I.
+    if dct_type == 1 and norm == "ortho":
+      return
+    with self.session():
+      tol = 5e-4 if dtype == np.float32 else 1e-7
+      signals = np.linspace(0.0, 1.0, 10, endpoint=False).astype(dtype)
+      n = 20
+      np_idct = NP_IDCT[dct_type](signals, n=n, norm=norm)
+      tf_idct = dct_ops.idct(signals, type=dct_type, n=n, norm=norm)
+      self.assertEqual(tf_idct.dtype.as_numpy_dtype, dtype)
+      self.assertAllClose(np_idct, tf_idct, atol=tol, rtol=tol)
 
 
 if __name__ == "__main__":

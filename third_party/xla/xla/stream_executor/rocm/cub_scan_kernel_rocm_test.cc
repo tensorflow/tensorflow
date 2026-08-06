@@ -109,7 +109,7 @@ class CubScanKernelRocmTest
       }
     }
 
-    ASSIGN_OR_RETURN(size_t temp_bytes,
+    ABSL_ASSIGN_OR_RETURN(size_t temp_bytes,
                      CubScanGetScratchSize(type, vector_length, row_length,
                                            col_length, kind, is_reverse));
 
@@ -123,17 +123,17 @@ class CubScanKernelRocmTest
         absl::MakeCleanup([&]() { executor_->Deallocate(&device_temp); });
 
     size_t size_bytes = num_elements * sizeof(T);
-    RETURN_IF_ERROR(
+    ABSL_RETURN_IF_ERROR(
         stream_->Memcpy(&device_data, host_data.data(), size_bytes));
 
-    RETURN_IF_ERROR(CubScanLaunchKernel(
+    ABSL_RETURN_IF_ERROR(CubScanLaunchKernel(
         type, device_temp.opaque(), temp_bytes, device_data.opaque(),
         device_data.opaque(), vector_length, row_length, col_length, kind,
         is_reverse,
         static_cast<hipStream_t>(stream_->platform_specific_handle().stream)));
 
-    RETURN_IF_ERROR(stream_->BlockHostUntilDone());
-    RETURN_IF_ERROR(stream_->Memcpy(host_data.data(), device_data, size_bytes));
+    ABSL_RETURN_IF_ERROR(stream_->BlockHostUntilDone());
+    ABSL_RETURN_IF_ERROR(stream_->Memcpy(host_data.data(), device_data, size_bytes));
 
     if constexpr (std::is_same_v<T, float>) {
       EXPECT_THAT(host_data,
@@ -174,7 +174,7 @@ class CubScanKernelRocmTest
       }
     }
 
-    ASSIGN_OR_RETURN(size_t temp_bytes,
+    ABSL_ASSIGN_OR_RETURN(size_t temp_bytes,
                      CubScanGetScratchSize(type, vector_length, row_length,
                                            col_length, kind, is_reverse));
 
@@ -188,17 +188,17 @@ class CubScanKernelRocmTest
         absl::MakeCleanup([&]() { executor_->Deallocate(&device_temp); });
 
     size_t size_bytes = num_elements * sizeof(hip_bfloat16);
-    RETURN_IF_ERROR(
+    ABSL_RETURN_IF_ERROR(
         stream_->Memcpy(&device_data, host_data.data(), size_bytes));
 
-    RETURN_IF_ERROR(CubScanLaunchKernel(
+    ABSL_RETURN_IF_ERROR(CubScanLaunchKernel(
         type, device_temp.opaque(), temp_bytes, device_data.opaque(),
         device_data.opaque(), vector_length, row_length, col_length, kind,
         is_reverse,
         static_cast<hipStream_t>(stream_->platform_specific_handle().stream)));
 
-    RETURN_IF_ERROR(stream_->BlockHostUntilDone());
-    RETURN_IF_ERROR(stream_->Memcpy(host_data.data(), device_data, size_bytes));
+    ABSL_RETURN_IF_ERROR(stream_->BlockHostUntilDone());
+    ABSL_RETURN_IF_ERROR(stream_->Memcpy(host_data.data(), device_data, size_bytes));
 
     for (size_t i = 0; i < num_elements; ++i) {
       EXPECT_FLOAT_EQ(Bf16ToFloat(host_data[i]), expected_f[i]);
@@ -228,7 +228,7 @@ class CubScanKernelRocmTest
       }
     }
 
-    ASSIGN_OR_RETURN(size_t temp_bytes,
+    ABSL_ASSIGN_OR_RETURN(size_t temp_bytes,
                      CubScanGetScratchSize(type, vector_length, row_length,
                                            col_length, kind, is_reverse));
 
@@ -242,17 +242,17 @@ class CubScanKernelRocmTest
         absl::MakeCleanup([&]() { executor_->Deallocate(&device_temp); });
 
     size_t size_bytes = num_elements * sizeof(__half);
-    RETURN_IF_ERROR(
+    ABSL_RETURN_IF_ERROR(
         stream_->Memcpy(&device_data, host_data.data(), size_bytes));
 
-    RETURN_IF_ERROR(CubScanLaunchKernel(
+    ABSL_RETURN_IF_ERROR(CubScanLaunchKernel(
         type, device_temp.opaque(), temp_bytes, device_data.opaque(),
         device_data.opaque(), vector_length, row_length, col_length, kind,
         is_reverse,
         static_cast<hipStream_t>(stream_->platform_specific_handle().stream)));
 
-    RETURN_IF_ERROR(stream_->BlockHostUntilDone());
-    RETURN_IF_ERROR(stream_->Memcpy(host_data.data(), device_data, size_bytes));
+    ABSL_RETURN_IF_ERROR(stream_->BlockHostUntilDone());
+    ABSL_RETURN_IF_ERROR(stream_->Memcpy(host_data.data(), device_data, size_bytes));
 
     for (size_t i = 0; i < num_elements; ++i) {
       EXPECT_FLOAT_EQ(__half2float(host_data[i]), expected_f[i]);

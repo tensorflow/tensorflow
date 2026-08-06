@@ -108,7 +108,7 @@ absl::StatusOr<bool> SmallWhileLoopHoistingPass::RunImpl(
       continue;
     }
 
-    ASSIGN_OR_RETURN(bool is_small_call_site, IsSmall(while_instr));
+    ABSL_ASSIGN_OR_RETURN(bool is_small_call_site, IsSmall(while_instr));
     if (!is_small_call_site) {
       continue;
     }
@@ -118,7 +118,7 @@ absl::StatusOr<bool> SmallWhileLoopHoistingPass::RunImpl(
     std::vector<HloInstruction*> parameters;
     parameters.reserve(while_instr->operand_count());
     for (HloInstruction* operand : while_instr->operands()) {
-      ASSIGN_OR_RETURN(HloInstruction * parameter,
+      ABSL_ASSIGN_OR_RETURN(HloInstruction * parameter,
                        builder.AddParameter(HloInstruction::CreateParameter(
                            while_instr->operand_index(operand),
                            operand->shape(), operand->name())));
@@ -133,9 +133,9 @@ absl::StatusOr<bool> SmallWhileLoopHoistingPass::RunImpl(
             module->AddEmbeddedComputation(builder.Build())));
     call_instruction->add_frontend_attribute("xla_cpu_small_call", "true");
 
-    RETURN_IF_ERROR(while_instr->ReplaceAllUsesWith(call_instruction));
-    RETURN_IF_ERROR(while_instr->SafelyDropAllControlDependencies());
-    RETURN_IF_ERROR(while_instr->parent()->RemoveInstruction(while_instr));
+    ABSL_RETURN_IF_ERROR(while_instr->ReplaceAllUsesWith(call_instruction));
+    ABSL_RETURN_IF_ERROR(while_instr->SafelyDropAllControlDependencies());
+    ABSL_RETURN_IF_ERROR(while_instr->parent()->RemoveInstruction(while_instr));
 
     changed = true;
   }
@@ -146,7 +146,7 @@ absl::StatusOr<bool> SmallWhileLoopHoistingPass::RunImpl(
 absl::StatusOr<bool> SmallWhileLoopHoistingPass::IsSmall(
     const HloInstruction* instr) {
   HloCostAnalysis cost_analysis(&CpuExecutable::ShapeSizeBytes);
-  RETURN_IF_ERROR(cost_analysis.RevisitInstruction(instr));
+  ABSL_RETURN_IF_ERROR(cost_analysis.RevisitInstruction(instr));
   return cost_analysis.bytes_accessed(*instr) < small_buffer_access_size_;
 }
 

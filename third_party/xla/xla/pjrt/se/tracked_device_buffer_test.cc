@@ -86,10 +86,10 @@ class TestDevice : public PjRtDevice {
 absl::StatusOr<tsl::AsyncValueRef<RawSEDeviceMemory>> MakeArray(
     const Shape& shape, LocalClient* client) {
   std::vector<tsl::AsyncValueRef<RawSEDeviceMemory>> device_buffers;
-  RETURN_IF_ERROR(ShapeUtil::ForEachSubshapeWithStatus(
+  ABSL_RETURN_IF_ERROR(ShapeUtil::ForEachSubshapeWithStatus(
       client->backend().transfer_manager()->HostShapeToDeviceShape(shape),
       [&](const Shape& subshape, const ShapeIndex&) -> absl::Status {
-        ASSIGN_OR_RETURN(
+        ABSL_ASSIGN_OR_RETURN(
             se::ScopedDeviceAddress<uint8_t> device_memory,
             client->backend().memory_allocator()->Allocate(
                 /*device_ordinal=*/0,

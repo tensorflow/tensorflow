@@ -184,7 +184,7 @@ absl::StatusOr<bool> ReplaceGetSize(
   }
   HloComputation* computation = instr->parent();
 
-  ASSIGN_OR_RETURN(auto legal_shape,
+  ABSL_ASSIGN_OR_RETURN(auto legal_shape,
                    ShapeInference::InferGetDimensionSizeShape(
                        instr->operand(0)->shape(), instr->dimension()));
   TF_RET_CHECK(ShapeUtil::Equal(instr->shape(), legal_shape))
@@ -196,7 +196,7 @@ absl::StatusOr<bool> ReplaceGetSize(
   HloInstruction* dynamic_size =
       dynamic_dimension_inference->GetDynamicSize(operand, {}, dim);
   if (dynamic_size != nullptr) {
-    RETURN_IF_ERROR(instr->ReplaceAllUsesWith(dynamic_size));
+    ABSL_RETURN_IF_ERROR(instr->ReplaceAllUsesWith(dynamic_size));
     // The dependency between a instruction and its dynamic dimensions is not
     // modeled in the IR. As instr is being replaced by dynamic_size, also tell
     // dynamic dimension inference that the instruction is being replaced.
@@ -206,7 +206,7 @@ absl::StatusOr<bool> ReplaceGetSize(
     int32_t size = instr->operand(0)->shape().dimensions(dim);
     HloInstruction* new_instr = computation->AddInstruction(
         HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32_t>(size)));
-    RETURN_IF_ERROR(instr->ReplaceAllUsesWith(new_instr));
+    ABSL_RETURN_IF_ERROR(instr->ReplaceAllUsesWith(new_instr));
     dynamic_dimension_inference->ReplaceAllDynamicDimensionUsesWith(instr,
                                                                     new_instr);
   }
@@ -224,7 +224,7 @@ absl::StatusOr<bool> ReplaceSetSize(HloInstruction* instr) {
       << "instruction operand shape " << instr->operand(0)->shape();
   HloInstruction* operand = instr->mutable_operand(0);
 
-  RETURN_IF_ERROR(instr->ReplaceAllUsesWith(operand));
+  ABSL_RETURN_IF_ERROR(instr->ReplaceAllUsesWith(operand));
   return true;
 }
 
@@ -240,7 +240,7 @@ absl::StatusOr<bool> ReplaceSetBound(HloInstruction* instr) {
       << "instruction operand shape " << instr->operand(0)->shape();
   HloInstruction* operand = instr->mutable_operand(0);
 
-  RETURN_IF_ERROR(instr->ReplaceAllUsesWith(operand));
+  ABSL_RETURN_IF_ERROR(instr->ReplaceAllUsesWith(operand));
   return true;
 }
 
@@ -588,7 +588,7 @@ absl::StatusOr<bool> RewriteDynamicReshapeSplitInput(
 
   // Step 4: Feed gather input to original reshape.
 
-  RETURN_IF_ERROR(reshape->ReplaceOperandWith(0, gather));
+  ABSL_RETURN_IF_ERROR(reshape->ReplaceOperandWith(0, gather));
 
   HloInstruction* reshape_dynamic = reshape;
 
@@ -607,9 +607,9 @@ absl::StatusOr<bool> RewriteDynamicReshapeSplitInput(
   }
 
   for (auto* user : users) {
-    RETURN_IF_ERROR(reshape->ReplaceUseWith(user, reshape_dynamic));
+    ABSL_RETURN_IF_ERROR(reshape->ReplaceUseWith(user, reshape_dynamic));
   }
-  RETURN_IF_ERROR(dynamic_dimension_inference->ForwardDynamicSize(
+  ABSL_RETURN_IF_ERROR(dynamic_dimension_inference->ForwardDynamicSize(
       reshape, reshape_dynamic, {}));
 
   return true;
@@ -779,7 +779,7 @@ absl::StatusOr<bool> RewriteDynamicReshapeCombineInput(
   for (auto* user : users) {
     // Avoid cycles by not replacing the static reshape and get_dimension_size.
     if (user != reshape_static && user != output_dynamic_size) {
-      RETURN_IF_ERROR(reshape->ReplaceUseWith(user, gather));
+      ABSL_RETURN_IF_ERROR(reshape->ReplaceUseWith(user, gather));
     }
   }
 
@@ -787,7 +787,7 @@ absl::StatusOr<bool> RewriteDynamicReshapeCombineInput(
     reshape->parent()->set_root_instruction(gather);
   }
 
-  RETURN_IF_ERROR(
+  ABSL_RETURN_IF_ERROR(
       dynamic_dimension_inference->ForwardDynamicSize(reshape, gather, {}));
 
   return true;
@@ -915,9 +915,9 @@ absl::StatusOr<bool> RewriteReverse(
   HloInstruction* dynamic_reverse =
       reverse->AddInstruction(HloInstruction::CreateDynamicSlice(
           reverse_shape, pad, start_indices, reverse_shape.dimensions()));
-  RETURN_IF_ERROR(dynamic_dimension_inference->ForwardDynamicSize(
+  ABSL_RETURN_IF_ERROR(dynamic_dimension_inference->ForwardDynamicSize(
       reverse, dynamic_reverse, {}));
-  RETURN_IF_ERROR(reverse->ReplaceAllUsesWith(dynamic_reverse));
+  ABSL_RETURN_IF_ERROR(reverse->ReplaceAllUsesWith(dynamic_reverse));
   return true;
 }
 
@@ -1048,8 +1048,8 @@ absl::StatusOr<bool> RewriteDynamicConvolutionInputGrad(
           custom_call_conv->batch_group_count(), window,
           custom_call_conv->convolution_dimension_numbers(),
           custom_call_conv->precision_config()));
-  RETURN_IF_ERROR(custom_call_conv->ReplaceAllUsesWith(static_conv));
-  RETURN_IF_ERROR(dynamic_dimension_inference->ForwardDynamicSize(
+  ABSL_RETURN_IF_ERROR(custom_call_conv->ReplaceAllUsesWith(static_conv));
+  ABSL_RETURN_IF_ERROR(dynamic_dimension_inference->ForwardDynamicSize(
       custom_call_conv, static_conv, {}));
   return true;
 }
@@ -1107,8 +1107,8 @@ absl::StatusOr<bool> RewriteDynamicConvolutionForward(
           custom_call_conv->batch_group_count(), window,
           custom_call_conv->convolution_dimension_numbers(),
           custom_call_conv->precision_config()));
-  RETURN_IF_ERROR(custom_call_conv->ReplaceAllUsesWith(static_conv));
-  RETURN_IF_ERROR(dynamic_dimension_inference->ForwardDynamicSize(
+  ABSL_RETURN_IF_ERROR(custom_call_conv->ReplaceAllUsesWith(static_conv));
+  ABSL_RETURN_IF_ERROR(dynamic_dimension_inference->ForwardDynamicSize(
       custom_call_conv, static_conv, {}));
   return true;
 }
@@ -1191,8 +1191,8 @@ absl::StatusOr<bool> RewriteDynamicConvolutionKernelGrad(
           custom_call_conv->batch_group_count(), window,
           custom_call_conv->convolution_dimension_numbers(),
           custom_call_conv->precision_config()));
-  RETURN_IF_ERROR(custom_call_conv->ReplaceAllUsesWith(static_conv));
-  RETURN_IF_ERROR(dynamic_dimension_inference->ForwardDynamicSize(
+  ABSL_RETURN_IF_ERROR(custom_call_conv->ReplaceAllUsesWith(static_conv));
+  ABSL_RETURN_IF_ERROR(dynamic_dimension_inference->ForwardDynamicSize(
       custom_call_conv, static_conv, {}));
   return true;
 }
@@ -1236,8 +1236,8 @@ absl::StatusOr<bool> RewriteDynamicReduceWindowSamePadding(
   HloInstruction* rewritten =
       hlo->AddInstruction(HloInstruction::CreateReduceWindow(
           hlo->shape(), input, init, window, hlo->called_computations()[0]));
-  RETURN_IF_ERROR(hlo->ReplaceAllUsesWith(rewritten));
-  RETURN_IF_ERROR(
+  ABSL_RETURN_IF_ERROR(hlo->ReplaceAllUsesWith(rewritten));
+  ABSL_RETURN_IF_ERROR(
       dynamic_dimension_inference->ForwardDynamicSize(hlo, rewritten, {}));
   return true;
 }
@@ -1248,7 +1248,7 @@ absl::StatusOr<bool> RewriteDynamicSelectAndScatterSamePadding(
   HloInstruction* input = hlo->mutable_operand(0);
   HloInstruction* source = hlo->mutable_operand(1);
   HloInstruction* init = hlo->mutable_operand(2);
-  ASSIGN_OR_RETURN(HloInstruction * input_padding_value,
+  ABSL_ASSIGN_OR_RETURN(HloInstruction * input_padding_value,
                    ChooseIdentityValue(hlo, /*operand_number=*/0));
   int64_t rank = hlo->shape().dimensions().size();
   Window window = hlo->window();
@@ -1314,8 +1314,8 @@ absl::StatusOr<bool> RewriteDynamicSelectAndScatterSamePadding(
   HloInstruction* padded = MakePadHlo(rewritten, init, padding_configs).value();
   rewritten = hlo->AddInstruction(HloInstruction::CreateDynamicSlice(
       hlo->shape(), padded, start_indices, hlo->shape().dimensions()));
-  RETURN_IF_ERROR(hlo->ReplaceAllUsesWith(rewritten));
-  RETURN_IF_ERROR(
+  ABSL_RETURN_IF_ERROR(hlo->ReplaceAllUsesWith(rewritten));
+  ABSL_RETURN_IF_ERROR(
       dynamic_dimension_inference->ForwardDynamicSize(hlo, rewritten, {}));
   return true;
 }
@@ -1386,8 +1386,8 @@ absl::StatusOr<bool> RewriteDynamicConcat(
           dynamic_size));
     }
   }
-  RETURN_IF_ERROR(concat->ReplaceUsesWith(prev_users, rewritten_concat));
-  RETURN_IF_ERROR(dynamic_dimension_inference->ForwardDynamicSize(
+  ABSL_RETURN_IF_ERROR(concat->ReplaceUsesWith(prev_users, rewritten_concat));
+  ABSL_RETURN_IF_ERROR(dynamic_dimension_inference->ForwardDynamicSize(
       concat, rewritten_concat, {}));
   return true;
 }
@@ -1469,9 +1469,9 @@ absl::StatusOr<bool> RewriteDynamicSort(
     auto rewritten_sort = hlo->AddInstruction(
         HloInstruction::CreateGetTupleElement(sort->shape(), sort_clone, 0));
     for (HloInstruction* user : sort_users) {
-      RETURN_IF_ERROR(sort->ReplaceUseWith(user, rewritten_sort));
+      ABSL_RETURN_IF_ERROR(sort->ReplaceUseWith(user, rewritten_sort));
     }
-    RETURN_IF_ERROR(dynamic_dimension_inference->ForwardDynamicSize(
+    ABSL_RETURN_IF_ERROR(dynamic_dimension_inference->ForwardDynamicSize(
         sort, rewritten_sort, {}));
     if (hlo->parent()->root_instruction() == sort) {
       hlo->parent()->set_root_instruction(rewritten_sort);
@@ -1587,8 +1587,8 @@ absl::StatusOr<bool> RewriteDynamicBinaryOp(
     }
   }
   if (changed) {
-    RETURN_IF_ERROR(binary->ReplaceOperandWith(0, operand_0));
-    RETURN_IF_ERROR(binary->ReplaceOperandWith(1, operand_1));
+    ABSL_RETURN_IF_ERROR(binary->ReplaceOperandWith(0, operand_0));
+    ABSL_RETURN_IF_ERROR(binary->ReplaceOperandWith(1, operand_1));
   }
   return changed;
 }
@@ -1690,7 +1690,7 @@ absl::StatusOr<bool> RewriteDynamicUpdateSlice(
           update->shape(), HloOpcode::kSelect, pred, update, base_slice));
     }
   }
-  RETURN_IF_ERROR(dus->ReplaceOperandWith(1, update));
+  ABSL_RETURN_IF_ERROR(dus->ReplaceOperandWith(1, update));
 
   return true;
 }
@@ -1798,19 +1798,19 @@ absl::StatusOr<bool> RewriteDynamicReshape(
     HloInstruction* unflatten = reshape->parent()->AddInstruction(
         HloInstruction::CreateReshape(unflattened_shape, flatten),
         absl::StrCat(reshape->name(), ".unflatten"));
-    RETURN_IF_ERROR(dynamic_dimension_inference->ForwardDynamicSize(
+    ABSL_RETURN_IF_ERROR(dynamic_dimension_inference->ForwardDynamicSize(
         reshape, unflatten, {}));
 
-    ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         bool changed_unused,
         RewriteDynamicReshape(flatten, dynamic_dimension_inference));
-    ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         changed_unused,
         RewriteDynamicReshape(unflatten, dynamic_dimension_inference));
 
-    RETURN_IF_ERROR(dynamic_dimension_inference->ForwardDynamicSize(
+    ABSL_RETURN_IF_ERROR(dynamic_dimension_inference->ForwardDynamicSize(
         reshape, unflatten, {}));
-    RETURN_IF_ERROR(reshape->ReplaceAllUsesWith(unflatten));
+    ABSL_RETURN_IF_ERROR(reshape->ReplaceAllUsesWith(unflatten));
 
     return true;
   }
@@ -1841,7 +1841,7 @@ absl::StatusOr<bool> RewriteDynamicReshape(
           reshape->ToString());
     }
 
-    ASSIGN_OR_RETURN(bool c, RewriteDynamicReshapeSingleGroup(
+    ABSL_ASSIGN_OR_RETURN(bool c, RewriteDynamicReshapeSingleGroup(
                                  reshape, input_dims, output_dims,
                                  absl::MakeSpan(input_dynamic_dims),
                                  absl::MakeSpan(output_dynamic_dims),
@@ -1853,8 +1853,8 @@ absl::StatusOr<bool> RewriteDynamicReshape(
     auto* static_reshape =
         reshape->AddInstruction(HloInstruction::CreateReshape(
             reshape->shape(), reshape->mutable_operand(0)));
-    RETURN_IF_ERROR(reshape->ReplaceAllUsesWith(static_reshape));
-    RETURN_IF_ERROR(dynamic_dimension_inference->ForwardDynamicSize(
+    ABSL_RETURN_IF_ERROR(reshape->ReplaceAllUsesWith(static_reshape));
+    ABSL_RETURN_IF_ERROR(dynamic_dimension_inference->ForwardDynamicSize(
         reshape, static_reshape, {}));
     changed = true;
   }
@@ -1915,13 +1915,13 @@ class DynamicShapeRemovingVisitor : public DfsHloRewriteVisitor {
     DynamicShapeRemovingVisitor visitor(op_supports_dynamism_handler,
                                         dynamic_shape_inference,
                                         execution_threads);
-    RETURN_IF_ERROR(computation->Accept(&visitor));
+    ABSL_RETURN_IF_ERROR(computation->Accept(&visitor));
     // If the outputs is required to be dynamic form, insert static to dynamic
     // conversion as root.
     if (require_dynamic_output) {
       HloInstruction* root = computation->root_instruction();
       if (dynamic_shape_inference->HasDynamicDimension(root)) {
-        ASSIGN_OR_RETURN(HloInstruction * new_root,
+        ABSL_ASSIGN_OR_RETURN(HloInstruction * new_root,
                          visitor.ConvertToDynamic(root));
         computation->set_root_instruction(new_root);
       }
@@ -1988,9 +1988,9 @@ absl::Status DynamicShapeRemovingVisitor::ConvertOperandsToDynamic(
   for (int64_t i = 0; i < inst->operand_count(); ++i) {
     auto operand = inst->mutable_operand(i);
     if (dynamic_dimension_inference_->HasDynamicDimension(operand)) {
-      ASSIGN_OR_RETURN(auto dynamic_operand,
+      ABSL_ASSIGN_OR_RETURN(auto dynamic_operand,
                        ConvertToDynamic(inst->mutable_operand(i)));
-      RETURN_IF_ERROR(inst->ReplaceOperandWith(i, dynamic_operand));
+      ABSL_RETURN_IF_ERROR(inst->ReplaceOperandWith(i, dynamic_operand));
       MarkAsChanged();
     }
   }
@@ -2133,22 +2133,22 @@ absl::StatusOr<bool> DynamicPadder::RunImpl(
 
   // TODO(b/419842730): Support dynamic padder for graphs with complex CFGs.
   FlattenCallGraph flatten_call_graph;
-  ASSIGN_OR_RETURN(bool changed,
+  ABSL_ASSIGN_OR_RETURN(bool changed,
                    flatten_call_graph.Run(module, execution_threads));
   CallInliner call_inliner(
       /*single_call_site=*/false,
       /*update_domain=*/false);
-  ASSIGN_OR_RETURN(bool inliner_changed,
+  ABSL_ASSIGN_OR_RETURN(bool inliner_changed,
                    call_inliner.Run(module, execution_threads));
   changed |= inliner_changed;
 
   // Run DCE before inference, in case earlier passes left dead instructions
   // that could cause us to insert PadToStatic when it isn't desired.
   HloDCE dce;
-  ASSIGN_OR_RETURN(bool dce_changed, dce.Run(module, execution_threads));
+  ABSL_ASSIGN_OR_RETURN(bool dce_changed, dce.Run(module, execution_threads));
   changed |= dce_changed;
 
-  ASSIGN_OR_RETURN(DynamicDimensionInference dynamic_dimension_inference,
+  ABSL_ASSIGN_OR_RETURN(DynamicDimensionInference dynamic_dimension_inference,
                    DynamicDimensionInference::Run(
                        module, options_.op_supports_dynamism_handler,
                        options_.custom_call_handler, options_.shape_check_mode,
@@ -2169,26 +2169,26 @@ absl::StatusOr<bool> DynamicPadder::RunImpl(
         continue;
       }
       if (inst->opcode() == HloOpcode::kConcatenate) {
-        ASSIGN_OR_RETURN(
+        ABSL_ASSIGN_OR_RETURN(
             bool c, RewriteDynamicConcat(inst, &dynamic_dimension_inference));
         changed |= c;
         continue;
       }
       if (inst->opcode() == HloOpcode::kReverse) {
-        ASSIGN_OR_RETURN(bool c,
+        ABSL_ASSIGN_OR_RETURN(bool c,
                          RewriteReverse(inst, &dynamic_dimension_inference));
         changed |= c;
         continue;
       }
       if (inst->opcode() == HloOpcode::kSort) {
-        ASSIGN_OR_RETURN(
+        ABSL_ASSIGN_OR_RETURN(
             bool c, RewriteDynamicSort(inst, &dynamic_dimension_inference));
         changed |= c;
         continue;
       }
       if (inst->opcode() == HloOpcode::kReshape ||
           inst->opcode() == HloOpcode::kDynamicReshape) {
-        ASSIGN_OR_RETURN(
+        ABSL_ASSIGN_OR_RETURN(
             bool c, RewriteDynamicReshape(inst, &dynamic_dimension_inference));
         changed |= c;
         continue;
@@ -2197,49 +2197,49 @@ absl::StatusOr<bool> DynamicPadder::RunImpl(
       // Elementwise binary with dynamic shapes have implicit broadcast
       // semantics.
       if (inst->IsElementwiseBinary()) {
-        ASSIGN_OR_RETURN(
+        ABSL_ASSIGN_OR_RETURN(
             bool c, RewriteDynamicBinaryOp(inst, &dynamic_dimension_inference));
         changed |= c;
         continue;
       }
 
       if (inst->opcode() == HloOpcode::kDynamicUpdateSlice) {
-        ASSIGN_OR_RETURN(bool c, RewriteDynamicUpdateSlice(
+        ABSL_ASSIGN_OR_RETURN(bool c, RewriteDynamicUpdateSlice(
                                      inst, &dynamic_dimension_inference));
         changed |= c;
         continue;
       }
 
       if (inst->IsCustomCall("DynamicConvolutionInputGrad")) {
-        ASSIGN_OR_RETURN(bool c, RewriteDynamicConvolutionInputGrad(
+        ABSL_ASSIGN_OR_RETURN(bool c, RewriteDynamicConvolutionInputGrad(
                                      inst, &dynamic_dimension_inference));
         changed |= c;
         continue;
       }
 
       if (inst->IsCustomCall("DynamicConvolutionForward")) {
-        ASSIGN_OR_RETURN(bool c, RewriteDynamicConvolutionForward(
+        ABSL_ASSIGN_OR_RETURN(bool c, RewriteDynamicConvolutionForward(
                                      inst, &dynamic_dimension_inference));
         changed |= c;
         continue;
       }
 
       if (inst->IsCustomCall("DynamicConvolutionKernelGrad")) {
-        ASSIGN_OR_RETURN(bool c, RewriteDynamicConvolutionKernelGrad(
+        ABSL_ASSIGN_OR_RETURN(bool c, RewriteDynamicConvolutionKernelGrad(
                                      inst, &dynamic_dimension_inference));
         changed |= c;
         continue;
       }
 
       if (inst->IsCustomCall("DynamicReduceWindowSamePadding")) {
-        ASSIGN_OR_RETURN(bool c, RewriteDynamicReduceWindowSamePadding(
+        ABSL_ASSIGN_OR_RETURN(bool c, RewriteDynamicReduceWindowSamePadding(
                                      inst, &dynamic_dimension_inference));
         changed |= c;
         continue;
       }
 
       if (inst->IsCustomCall("DynamicSelectAndScatterSamePadding")) {
-        ASSIGN_OR_RETURN(bool c, RewriteDynamicSelectAndScatterSamePadding(
+        ABSL_ASSIGN_OR_RETURN(bool c, RewriteDynamicSelectAndScatterSamePadding(
                                      inst, &dynamic_dimension_inference));
         changed |= c;
         continue;
@@ -2269,7 +2269,7 @@ absl::StatusOr<bool> DynamicPadder::RunImpl(
             continue;
           }
 
-          ASSIGN_OR_RETURN(HloInstruction * identity_value,
+          ABSL_ASSIGN_OR_RETURN(HloInstruction * identity_value,
                            ChooseIdentityValue(inst, operand_num));
           if (identity_value == nullptr) {
             continue;
@@ -2277,7 +2277,7 @@ absl::StatusOr<bool> DynamicPadder::RunImpl(
 
           HloInstruction* padded = PadWithScalar(
               operand, input_dim, operand_dynamic_size, identity_value);
-          RETURN_IF_ERROR(inst->ReplaceOperandWith(operand_num, padded));
+          ABSL_RETURN_IF_ERROR(inst->ReplaceOperandWith(operand_num, padded));
           operand = inst->mutable_operand(operand_num);
           changed = true;
         }
@@ -2305,7 +2305,7 @@ absl::StatusOr<bool> DynamicPadder::RunImpl(
     // the output tensor to be in dynamic form.
     bool require_dynamic_output = options_.slice_dynamic_output &&
                                   computation == module->entry_computation();
-    ASSIGN_OR_RETURN(bool c,
+    ABSL_ASSIGN_OR_RETURN(bool c,
                      DynamicShapeRemovingVisitor::Run(
                          computation, options_.op_supports_dynamism_handler,
                          &dynamic_dimension_inference, execution_threads,
@@ -2323,7 +2323,7 @@ absl::StatusOr<bool> DynamicPadder::RunImpl(
       continue;
     }
     for (auto instruction : computation->MakeInstructionPostOrder()) {
-      ASSIGN_OR_RETURN(
+      ABSL_ASSIGN_OR_RETURN(
           bool c, ReplaceGetSize(instruction, &dynamic_dimension_inference));
       changed |= c;
     }
@@ -2334,17 +2334,17 @@ absl::StatusOr<bool> DynamicPadder::RunImpl(
       continue;
     }
     for (auto instruction : computation->MakeInstructionPostOrder()) {
-      ASSIGN_OR_RETURN(bool c, ReplaceSetSize(instruction));
+      ABSL_ASSIGN_OR_RETURN(bool c, ReplaceSetSize(instruction));
       changed |= c;
 
-      ASSIGN_OR_RETURN(c, ReplaceSetBound(instruction));
+      ABSL_ASSIGN_OR_RETURN(c, ReplaceSetBound(instruction));
       changed |= c;
     }
   }
 
   if (changed) {
     HloDCE dce;
-    ASSIGN_OR_RETURN(bool c, dce.Run(module, execution_threads));
+    ABSL_ASSIGN_OR_RETURN(bool c, dce.Run(module, execution_threads));
     changed |= c;
   }
 

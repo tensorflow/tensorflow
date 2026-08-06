@@ -2141,7 +2141,7 @@ class XlaBuilder {
   // absl::StatusOr similar to absl::StatusOr.
   template <typename InstructionType>
   absl::StatusOr<InstructionType> LookUpInstructionInternal(XlaOp op) const {
-    RETURN_IF_ERROR(CheckOpBuilder(op));
+    ABSL_RETURN_IF_ERROR(CheckOpBuilder(op));
     return LookUpInstructionByHandleInternal<InstructionType>(op.handle());
   }
 

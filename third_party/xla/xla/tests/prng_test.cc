@@ -309,7 +309,7 @@ TEST_F(PrngTest, MapUsingRng) {
 
 absl::StatusOr<Literal> FirstResult(
     absl::StatusOr<std::vector<Literal>> results) {
-  RETURN_IF_ERROR(results.status());
+  ABSL_RETURN_IF_ERROR(results.status());
   if (results->size() != 1) {
     return absl::InvalidArgumentError(
         absl::StrCat("Expected 1 result but got ", results->size()));

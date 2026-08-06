@@ -143,7 +143,7 @@ TEST(IrCompilerTest, OverrideIrCompilerCompileOptions) {
   auto add_module_with_options =
       [&](absl::string_view ir, absl::string_view name,
           const LlvmKernelOptions& options) -> absl::Status {
-    ASSIGN_OR_RETURN(modules.emplace_back(), ParseModule(*context, ir, name));
+    ABSL_ASSIGN_OR_RETURN(modules.emplace_back(), ParseModule(*context, ir, name));
 
     auto llvm_module = modules.back().get();
     SetXlaCpuBackendOptions(*llvm_module, options);

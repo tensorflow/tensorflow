@@ -29,7 +29,7 @@ class SyclGpuRuntimeTest : public ::testing::Test {
 
  protected:
   absl::StatusOr<void*> AllocateHostBuffer(int count) {
-    ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         void* buf, SyclMallocHost(kDefaultDeviceOrdinal, sizeof(int) * count));
     if (buf == nullptr) {
       return absl::InternalError(
@@ -41,7 +41,7 @@ class SyclGpuRuntimeTest : public ::testing::Test {
 
   absl::StatusOr<void*> AllocateDeviceBuffer(
       int count, int device_ordinal = kDefaultDeviceOrdinal) {
-    ASSIGN_OR_RETURN(void* buf,
+    ABSL_ASSIGN_OR_RETURN(void* buf,
                      SyclMallocDevice(device_ordinal, sizeof(int) * count));
     if (buf == nullptr) {
       return absl::InternalError(
@@ -59,7 +59,7 @@ class SyclGpuRuntimeTest : public ::testing::Test {
   }
 
   absl::StatusOr<void*> AllocateAndInitHostBuffer(int count, int value) {
-    ASSIGN_OR_RETURN(void* buf, AllocateHostBuffer(count));
+    ABSL_ASSIGN_OR_RETURN(void* buf, AllocateHostBuffer(count));
     for (int i = 0; i < count; ++i) {
       static_cast<int*>(buf)[i] = value;
     }
@@ -68,8 +68,8 @@ class SyclGpuRuntimeTest : public ::testing::Test {
 
   absl::StatusOr<void*> AllocateAndInitDeviceBuffer(
       int count, int value, int device_ordinal = kDefaultDeviceOrdinal) {
-    ASSIGN_OR_RETURN(void* buf, AllocateDeviceBuffer(count));
-    RETURN_IF_ERROR(SyclMemfillDevice(device_ordinal, buf, value, count));
+    ABSL_ASSIGN_OR_RETURN(void* buf, AllocateDeviceBuffer(count));
+    ABSL_RETURN_IF_ERROR(SyclMemfillDevice(device_ordinal, buf, value, count));
     if (buf == nullptr) {
       return absl::InternalError(
           "SyclGpuRuntimeTest::AllocateAndInitDeviceBuffer: Failed to fill "

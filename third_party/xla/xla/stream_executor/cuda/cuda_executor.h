@@ -134,6 +134,7 @@ class CudaExecutor : public GpuExecutor {
 
   bool HostMemoryRegister(void* location, uint64_t size) override;
   bool HostMemoryUnregister(void* location) override;
+  bool IsHostMemoryPinned(const void* ptr, uint64_t size) override;
 
   bool IsVmmMemory(const DeviceAddressBase& address) override;
 
@@ -234,6 +235,14 @@ class CudaExecutor : public GpuExecutor {
   bool is_fabric_supported() const {
     return device_allocator_options_.enable_fabric_handle;
   }
+
+  absl::StatusOr<DeviceAddressBase> GetAllocationRange(
+      void* ptr) const override;
+
+  absl::StatusOr<std::string> ExportFabricHandle(void* ptr) const override;
+
+  absl::StatusOr<DeviceAddressBase> ImportFabricHandle(
+      absl::string_view serialized) override;
 
  private:
   // Allocates memory using the given allocator and tracks the resulting

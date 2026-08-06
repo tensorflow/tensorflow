@@ -26,10 +26,10 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/cord.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/tsl/platform/status_macros.h"
-#include "llvm/Support/Casting.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/OwningOpRef.h"
@@ -48,6 +48,7 @@ limitations under the License.
 #include "xla/python/ifrt/hlo/hlo_program.h"
 #include "xla/python/ifrt/layout.h"
 #include "xla/python/ifrt/memory.h"
+#include "xla/python/ifrt/rtti.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
 #include "xla/python/ifrt/test_util.h"
@@ -143,7 +144,7 @@ absl::StatusOr<LoadedExecutableRef> CompileOnDevices(
     absl::Span<Device* const> devices, bool replicated, bool serialize,
     std::optional<std::vector<int>> outputs_bundle_slice_sizes = std::nullopt) {
   mlir::MLIRContext context;
-  ASSIGN_OR_RETURN(mlir::OwningOpRef<mlir::ModuleOp> module,
+  ABSL_ASSIGN_OR_RETURN(mlir::OwningOpRef<mlir::ModuleOp> module,
                    xla::ParseMlirModuleString(mlir_module_str, context));
 
   xla::CompileOptions compile_options;
@@ -152,7 +153,7 @@ absl::StatusOr<LoadedExecutableRef> CompileOnDevices(
   DeviceListRef device_list;
   if (devices.empty()) {
     compile_options.compile_portable_executable = true;
-    ASSIGN_OR_RETURN(device_list, client->MakeDeviceList(
+    ABSL_ASSIGN_OR_RETURN(device_list, client->MakeDeviceList(
                                       {client->addressable_devices().front()}));
   } else {
     if (devices.size() == 1) {
@@ -180,13 +181,13 @@ absl::StatusOr<LoadedExecutableRef> CompileOnDevices(
       }
       build_options.set_device_assignment(device_assignment);
     }
-    ASSIGN_OR_RETURN(device_list, client->MakeDeviceList(devices));
+    ABSL_ASSIGN_OR_RETURN(device_list, client->MakeDeviceList(devices));
   }
   auto xla_compile_options =
       std::make_unique<XlaCompileOptions>(compile_options, device_list);
   xla_compile_options->outputs_bundle_slice_sizes =
       std::move(outputs_bundle_slice_sizes);
-  ASSIGN_OR_RETURN(auto loaded_executable,
+  ABSL_ASSIGN_OR_RETURN(auto loaded_executable,
                    compiler
                        ->CompileAndLoad(std::make_unique<HloProgram>(*module),
                                         std::move(xla_compile_options))
@@ -194,12 +195,12 @@ absl::StatusOr<LoadedExecutableRef> CompileOnDevices(
   if (!serialize) {
     return loaded_executable;
   }
-  ASSIGN_OR_RETURN(auto serialized_executable, loaded_executable->Serialize());
+  ABSL_ASSIGN_OR_RETURN(auto serialized_executable, loaded_executable->Serialize());
   auto options = std::make_unique<XlaDeserializeExecutableOptions>();
   options->devices = std::move(device_list);
   return compiler
-      ->DeserializeLoadedExecutable(std::move(serialized_executable),
-                                    std::move(options))
+      ->DeserializeLoadedExecutable(
+          absl::Cord(std::move(serialized_executable)), std::move(options))
       .Await();
 }
 
@@ -474,7 +475,7 @@ TEST_P(LoadedExecutableImplTest,
   ASSERT_THAT(retrieved_outputs, SizeIs(3));
 
   for (int i = 0; i < 3; ++i) {
-    auto* out_array = llvm::dyn_cast<Array>(retrieved_outputs[i].get());
+    auto* out_array = dyn_cast<Array>(retrieved_outputs[i].get());
     ASSERT_NE(out_array, nullptr);
 
     std::vector<float> out_data(6);
@@ -572,7 +573,7 @@ TEST_P(LoadedExecutableImplTest,
   all_outputs.push_back(retrieved_outputs1[0]);
 
   for (int i = 0; i < 3; ++i) {
-    auto* out_array = llvm::dyn_cast<Array>(all_outputs[i].get());
+    auto* out_array = dyn_cast<Array>(all_outputs[i].get());
     ASSERT_NE(out_array, nullptr);
 
     std::vector<float> out_data(6);
@@ -1094,11 +1095,12 @@ TEST(ExecutableTest, ExecutableSerialization) {
                           client->MakeDeviceList(devices));
   auto options = std::make_unique<xla::ifrt::XlaDeserializeExecutableOptions>();
   options->devices = device_list;
-  TF_ASSERT_OK_AND_ASSIGN(auto deserialized_executable,
-                          client->GetDefaultCompiler()
-                              ->DeserializeLoadedExecutable(
-                                  *serialized_executable, std::move(options))
-                              .Await());
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto deserialized_executable,
+      client->GetDefaultCompiler()
+          ->DeserializeLoadedExecutable(absl::Cord(*serialized_executable),
+                                        std::move(options))
+          .Await());
 
   TF_ASSERT_OK_AND_ASSIGN(auto loaded_output_layouts,
                           loaded_executable->GetOutputLayouts());

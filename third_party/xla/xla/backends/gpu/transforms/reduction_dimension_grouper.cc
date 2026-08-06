@@ -116,7 +116,7 @@ class ReduceDimensionGroupVisitor : public DfsHloRewriteVisitor {
 absl::StatusOr<bool> ReductionDimensionGrouper::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
-  ASSIGN_OR_RETURN(bool changed, ReduceDimensionGroupVisitor().RunOnModule(
+  ABSL_ASSIGN_OR_RETURN(bool changed, ReduceDimensionGroupVisitor().RunOnModule(
                                      module, execution_threads));
   return changed;
 }

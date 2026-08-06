@@ -424,7 +424,7 @@ absl::StatusOr<ShapeTracker> ShapeTracker::FromProducerConsumer(
   ShapeTracker tracker(producer->shape());
   absl::c_reverse(chain);
   for (const auto* inst : chain) {
-    RETURN_IF_ERROR(tracker.AppendInstruction(inst));
+    ABSL_RETURN_IF_ERROR(tracker.AppendInstruction(inst));
   }
   return tracker;
 }
@@ -466,11 +466,11 @@ absl::StatusOr<ShapeTracker> ShapeTracker::FromSiblings(
                      " and ", destination->name()));
   }
 
-  ASSIGN_OR_RETURN(ShapeTracker tracker1, FromProducerConsumer(lca, source));
-  ASSIGN_OR_RETURN(ShapeTracker tracker2,
+  ABSL_ASSIGN_OR_RETURN(ShapeTracker tracker1, FromProducerConsumer(lca, source));
+  ABSL_ASSIGN_OR_RETURN(ShapeTracker tracker2,
                    FromProducerConsumer(lca, destination));
-  RETURN_IF_ERROR(tracker1.Invert());
-  RETURN_IF_ERROR(tracker1.ConcatenateFrom(tracker2));
+  ABSL_RETURN_IF_ERROR(tracker1.Invert());
+  ABSL_RETURN_IF_ERROR(tracker1.ConcatenateFrom(tracker2));
   return tracker1;
 }
 
@@ -570,7 +570,7 @@ absl::Status ShapeTracker::AppendBitcast(const xla::Shape& src_shape,
     return AppendReshape(dst_shape.dimensions());
   }
 
-  ASSIGN_OR_RETURN(std::vector<PhysicalDimension> dims,
+  ABSL_ASSIGN_OR_RETURN(std::vector<PhysicalDimension> dims,
                    BuildPhysicalDimensions(src_shape, dst_shape));
   absl::c_stable_sort(
       dims, [](const PhysicalDimension& a, const PhysicalDimension& b) {
@@ -588,7 +588,7 @@ absl::Status ShapeTracker::AppendBitcast(const xla::Shape& src_shape,
   }
   // Decompose bitcast into reshape-transpose-reshape:
   // 1. Reshape to physical dimensions.
-  RETURN_IF_ERROR(AppendReshape(sizes));
+  ABSL_RETURN_IF_ERROR(AppendReshape(sizes));
 
   absl::c_sort(dims, [](const PhysicalDimension& a,
                         const PhysicalDimension& b) { return a.idx < b.idx; });
@@ -602,9 +602,9 @@ absl::Status ShapeTracker::AppendBitcast(const xla::Shape& src_shape,
     permutation.push_back(dim.src_expanded_idx);
   }
   // 2. Transpose to match destination physical layout.
-  RETURN_IF_ERROR(AppendTranspose(permutation));
+  ABSL_RETURN_IF_ERROR(AppendTranspose(permutation));
   // 3. Reshape to final destination shape.
-  RETURN_IF_ERROR(AppendReshape(dst_shape.dimensions()));
+  ABSL_RETURN_IF_ERROR(AppendReshape(dst_shape.dimensions()));
 
   return absl::OkStatus();
 }
@@ -667,10 +667,10 @@ absl::Status ShapeTracker::ConcatenateFrom(const ShapeTracker& other) {
   for (const auto& step : other.GetSteps()) {
     switch (step.type) {
       case Step::Type::kReshape:
-        RETURN_IF_ERROR(AppendReshape(step.dimensions));
+        ABSL_RETURN_IF_ERROR(AppendReshape(step.dimensions));
         break;
       case Step::Type::kTranspose:
-        RETURN_IF_ERROR(AppendTranspose(step.dimensions));
+        ABSL_RETURN_IF_ERROR(AppendTranspose(step.dimensions));
         break;
     }
   }
@@ -731,23 +731,23 @@ absl::StatusOr<ShapeTracker> ShapeTracker::GetInverted() const {
           transformation.input_reshape[transformation.transpose[i]];
     }
 
-    RETURN_IF_ERROR(inverted.AppendReshape(transposed_dims));
+    ABSL_RETURN_IF_ERROR(inverted.AppendReshape(transposed_dims));
 
     std::vector<int64_t> inv_transpose(transformation.transpose.size());
     for (size_t i = 0; i < transformation.transpose.size(); ++i) {
       inv_transpose[transformation.transpose[i]] = i;
     }
 
-    RETURN_IF_ERROR(inverted.AppendTranspose(inv_transpose));
+    ABSL_RETURN_IF_ERROR(inverted.AppendTranspose(inv_transpose));
   }
 
-  RETURN_IF_ERROR(inverted.AppendReshape(input_shape_.dimensions()));
+  ABSL_RETURN_IF_ERROR(inverted.AppendReshape(input_shape_.dimensions()));
 
   return inverted;
 }
 
 absl::Status ShapeTracker::Invert() {
-  ASSIGN_OR_RETURN(ShapeTracker inverted, GetInverted());
+  ABSL_ASSIGN_OR_RETURN(ShapeTracker inverted, GetInverted());
   *this = std::move(inverted);
   return absl::OkStatus();
 }
@@ -761,25 +761,25 @@ absl::Status ShapeTracker::PrependTranspose(
   for (size_t i = 0; i < permutation.size(); ++i) {
     inv_perm[permutation[i]] = i;
   }
-  RETURN_IF_ERROR(Invert());
-  RETURN_IF_ERROR(AppendTranspose(inv_perm));
-  RETURN_IF_ERROR(Invert());
+  ABSL_RETURN_IF_ERROR(Invert());
+  ABSL_RETURN_IF_ERROR(AppendTranspose(inv_perm));
+  ABSL_RETURN_IF_ERROR(Invert());
   return absl::OkStatus();
 }
 
 absl::Status ShapeTracker::PrependReshape(
     absl::Span<const int64_t> dimensions) {
-  RETURN_IF_ERROR(Invert());
-  RETURN_IF_ERROR(AppendReshape(dimensions));
-  RETURN_IF_ERROR(Invert());
+  ABSL_RETURN_IF_ERROR(Invert());
+  ABSL_RETURN_IF_ERROR(AppendReshape(dimensions));
+  ABSL_RETURN_IF_ERROR(Invert());
   return absl::OkStatus();
 }
 
 absl::Status ShapeTracker::PrependBitcast(const xla::Shape& src_shape,
                                           const xla::Shape& dst_shape) {
-  RETURN_IF_ERROR(Invert());
-  RETURN_IF_ERROR(AppendBitcast(dst_shape, src_shape));
-  RETURN_IF_ERROR(Invert());
+  ABSL_RETURN_IF_ERROR(Invert());
+  ABSL_RETURN_IF_ERROR(AppendBitcast(dst_shape, src_shape));
+  ABSL_RETURN_IF_ERROR(Invert());
   return absl::OkStatus();
 }
 
@@ -1114,7 +1114,7 @@ absl::StatusOr<SlicePropagationResult> SliceProjectionChain(
     TryFoldProjections(sliced_projections);
     sliced_projections.back().Pack();
 
-    ASSIGN_OR_RETURN(current_slice,
+    ABSL_ASSIGN_OR_RETURN(current_slice,
                      ShapeTracker::BufferView::FromStridesAndExtents(
                          next_slice_strides, next_slice_extents));
   }
@@ -1155,7 +1155,7 @@ absl::StatusOr<ShapeTracker> ShapeTracker::Narrow(
   if (absl::c_all_of(dims_to_keep, [this](int64_t dim) {
         return input_shape_.dimensions(dim) == 1;
       })) {
-    RETURN_IF_ERROR(sliced_tracker.AppendReshape({}));
+    ABSL_RETURN_IF_ERROR(sliced_tracker.AppendReshape({}));
     return sliced_tracker;
   }
 
@@ -1167,7 +1167,7 @@ absl::StatusOr<ShapeTracker> ShapeTracker::Narrow(
     absl::c_sort(perm, [&](int64_t a, int64_t b) {
       return dims_to_keep[a] < dims_to_keep[b];
     });
-    RETURN_IF_ERROR(sliced_tracker.PrependTranspose(perm));
+    ABSL_RETURN_IF_ERROR(sliced_tracker.PrependTranspose(perm));
   }
 
   // Build the current slice to keep.
@@ -1178,11 +1178,11 @@ absl::StatusOr<ShapeTracker> ShapeTracker::Narrow(
     keep_strides.push_back(input_view.strides()[dim]);
     keep_extents.push_back(input_view.extents()[dim]);
   }
-  ASSIGN_OR_RETURN(BufferView keep_view, BufferView::FromStridesAndExtents(
+  ABSL_ASSIGN_OR_RETURN(BufferView keep_view, BufferView::FromStridesAndExtents(
                                              keep_strides, keep_extents));
 
   // Slice the projections, and pack them.
-  ASSIGN_OR_RETURN(SlicePropagationResult propagation_result,
+  ABSL_ASSIGN_OR_RETURN(SlicePropagationResult propagation_result,
                    SliceProjectionChain(projections_, keep_view));
 
   // Append rather than assign, for the case the tracker has an initial

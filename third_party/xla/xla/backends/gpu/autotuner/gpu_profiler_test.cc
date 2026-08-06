@@ -46,6 +46,7 @@ limitations under the License.
 #include "xla/service/shaped_buffer.h"
 #include "xla/service/transfer_manager.h"
 #include "xla/shape_util.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/device_address_allocator.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream_executor.h"
@@ -67,10 +68,12 @@ constexpr absl::string_view kGemmBackendConfig =
 class MockExecutable : public Executable {
  public:
   explicit MockExecutable(std::shared_ptr<HloModule> module, int duration_ns,
-                          bool should_fail = false)
+                          bool should_fail = false,
+                          bool write_past_allocated_buffer = false)
       : Executable(module),
         duration_ns_(duration_ns),
-        should_fail_(should_fail) {}
+        should_fail_(should_fail),
+        write_past_allocated_buffer_(write_past_allocated_buffer) {}
   absl::StatusOr<ExecutionOutput> ExecuteAsyncOnStream(
       const ServiceExecutableRunOptions* run_options,
       std::vector<ExecutionInput> arguments) override {
@@ -81,6 +84,9 @@ class MockExecutable : public Executable {
     if (profile != nullptr) {
       profile->set_compute_time_ns(duration_ns_);
     }
+    if (write_past_allocated_buffer_) {
+      ABSL_RETURN_IF_ERROR(WriteOutOfBounds(*run_options));
+    }
     const Shape& result_shape =
         module().entry_computation()->root_instruction()->shape();
     return ExecutionOutput(result_shape, result_shape,
@@ -89,21 +95,45 @@ class MockExecutable : public Executable {
   }
 
  private:
+  // Simulates a kernel that writes past the end of an allocated buffer:
+  // allocates a buffer through the run's allocator and then writes a few
+  // bytes past the end of it. When the allocator handed to us is a
+  // redzone-wrapping allocator (as GpuProfiler::Profile uses during its
+  // warm-up run when ProfileOptions.redzone_padding_bytes > 0), this lands
+  // in the mapped post-redzone instead of faulting, so it can be detected by
+  // CheckRedzones() instead of crashing the process.
+  absl::Status WriteOutOfBounds(
+      const ServiceExecutableRunOptions& run_options) {
+    constexpr int64_t kBufferBytes = 1024;
+    constexpr int64_t kOverrunBytes = 64;
+    se::DeviceAddressAllocator* allocator =
+        run_options.run_options().allocator();
+    ABSL_ASSIGN_OR_RETURN(
+        se::ScopedDeviceAddress<uint8_t> buffer,
+        allocator->Allocate(run_options.run_options().device_ordinal(),
+                            kBufferBytes));
+    se::DeviceAddressBase oob_region(
+        static_cast<char*>(buffer->opaque()) + kBufferBytes, kOverrunBytes);
+    return run_options.run_options().stream()->MemZero(&oob_region,
+                                                       kOverrunBytes);
+  }
+
   int duration_ns_;
   bool should_fail_;
+  bool write_past_allocated_buffer_;
 };
 
 absl::StatusOr<ScopedShapedBuffer> CreateTestBuffer(
     se::DeviceAddressAllocator* allocator, se::StreamExecutor* stream_exec,
     se::Stream* stream, int32_t value) {
   Shape test_shape = ShapeUtil::MakeShape(S32, {});
-  ASSIGN_OR_RETURN(auto* transfer_manager,
+  ABSL_ASSIGN_OR_RETURN(auto* transfer_manager,
                    TransferManager::GetForPlatform(stream_exec->GetPlatform()));
-  ASSIGN_OR_RETURN(ScopedShapedBuffer output,
+  ABSL_ASSIGN_OR_RETURN(ScopedShapedBuffer output,
                    transfer_manager->AllocateScopedShapedBuffer(
                        test_shape, allocator, stream_exec->device_ordinal()));
   Literal literal = LiteralUtil::CreateR0<int32_t>(value);
-  RETURN_IF_ERROR(
+  ABSL_RETURN_IF_ERROR(
       transfer_manager->TransferLiteralToDevice(stream, literal, output));
   return output;
 }
@@ -113,16 +143,16 @@ absl::StatusOr<ScopedShapedBuffer> CreateTupleTestBuffer(
     se::Stream* stream, int32_t value1, int32_t value2) {
   Shape test_shape = ShapeUtil::MakeShape(S32, {});
   Shape test_shape_tuple = ShapeUtil::MakeTupleShape({test_shape, test_shape});
-  ASSIGN_OR_RETURN(auto* transfer_manager,
+  ABSL_ASSIGN_OR_RETURN(auto* transfer_manager,
                    TransferManager::GetForPlatform(stream_exec->GetPlatform()));
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       ScopedShapedBuffer output,
       transfer_manager->AllocateScopedShapedBuffer(
           test_shape_tuple, allocator, stream_exec->device_ordinal()));
   Literal literal1 = LiteralUtil::CreateR0<int32_t>(value1);
   Literal literal2 = LiteralUtil::CreateR0<int32_t>(value2);
   Literal tuple_literal = LiteralUtil::MakeTuple({&literal1, &literal2});
-  RETURN_IF_ERROR(
+  ABSL_RETURN_IF_ERROR(
       transfer_manager->TransferLiteralToDevice(stream, tuple_literal, output));
   return output;
 }
@@ -141,19 +171,19 @@ class GpuProfilerTest : public HloHardwareIndependentTestBase {
 
   absl::StatusOr<int64_t> GetScratchBytes(absl::string_view hlo_text) {
     NVPTXCompiler compiler;
-    ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
+    ABSL_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
                      ParseAndReturnVerifiedModule(hlo_text));
     module->mutable_config()
         .mutable_debug_options()
         .clear_xla_gpu_enable_command_buffer();
-    ASSIGN_OR_RETURN(auto gpu_executable,
+    ABSL_ASSIGN_OR_RETURN(auto gpu_executable,
                      compiler.RunBackend(std::move(module), stream_exec_,
                                          GpuCompiler::CompileOptions()));
     auto profiler =
         GpuProfiler::Create(stream_exec_, ProfileOptions(), allocator_.get());
-    ASSIGN_OR_RETURN(std::unique_ptr<InputBuffers> buffers,
+    ABSL_ASSIGN_OR_RETURN(std::unique_ptr<InputBuffers> buffers,
                      profiler->CreateInputBuffers(gpu_executable.get()));
-    ASSIGN_OR_RETURN(ProfileResult profile,
+    ABSL_ASSIGN_OR_RETURN(ProfileResult profile,
                      profiler->Profile(gpu_executable.get(), *buffers));
     return profile.scratch_bytes;
   }
@@ -182,6 +212,29 @@ TEST_F(GpuProfilerTest, CreateInputBuffersAndProfile) {
   EXPECT_EQ(profile.output_buffer->on_device_shape(),
             ShapeUtil::MakeShape(S32, {}));
   EXPECT_EQ(profile.scratch_bytes, 0);
+}
+
+TEST_F(GpuProfilerTest, RejectsCandidateThatWritesPastAllocatedBuffer) {
+  constexpr absl::string_view kHloModule = R"(
+    HloModule module
+    ENTRY main {
+      ROOT c = s32[] constant(1)
+    }
+  )";
+  ASSERT_OK_AND_ASSIGN(std::shared_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHloModule));
+  MockExecutable mock_executable(module, /*duration_ns=*/1000,
+                                 /*should_fail=*/false,
+                                 /*write_past_allocated_buffer=*/true);
+
+  ProfileOptions options;
+  options.redzone_padding_bytes = 1024;
+  auto profiler = GpuProfiler::Create(stream_exec_, options, allocator_.get());
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<InputBuffers> buffers,
+                       profiler->CreateInputBuffers(&mock_executable));
+  EXPECT_THAT(profiler->Profile(&mock_executable, *buffers),
+              StatusIs(absl::StatusCode::kInternal,
+                       ::testing::HasSubstr("Redzone mismatch")));
 }
 
 TEST_F(GpuProfilerTest, FailingExecutablesReturnStatus) {

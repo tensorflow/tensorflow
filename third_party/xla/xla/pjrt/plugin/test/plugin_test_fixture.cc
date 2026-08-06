@@ -26,7 +26,7 @@ limitations under the License.
 namespace xla {
 
 absl::StatusOr<std::string> GetRegisteredPluginName() {
-  ASSIGN_OR_RETURN(std::vector<std::string> pjrt_apis,
+  ABSL_ASSIGN_OR_RETURN(std::vector<std::string> pjrt_apis,
                    pjrt::GetRegisteredPjrtApis());
   if (pjrt_apis.size() != 1) {
     return absl::InvalidArgumentError(

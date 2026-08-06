@@ -76,10 +76,10 @@ absl::StatusOr<bool> ReduceScatterDecomposer::RunImpl(
 
       // Create start indices for a dynamic slice to decompose the all-reduce
       // results.
-      ASSIGN_OR_RETURN(CollectiveOpGroupMode group_mode,
+      ABSL_ASSIGN_OR_RETURN(CollectiveOpGroupMode group_mode,
                        GetCollectiveOpGroupMode(rs->channel_id().has_value(),
                                                 rs->use_global_device_ids()));
-      ASSIGN_OR_RETURN(
+      ABSL_ASSIGN_OR_RETURN(
           std::vector<HloInstruction*> start_indices,
           CreateStartIndicesForCollectiveDecomposition(
               group_mode, rs->replica_groups(), rs->shape(),
@@ -89,8 +89,8 @@ absl::StatusOr<bool> ReduceScatterDecomposer::RunImpl(
           computation->AddInstruction(HloInstruction::CreateDynamicSlice(
               rs->shape(), ar, start_indices, rs->shape().dimensions()));
 
-      RETURN_IF_ERROR(rs->ReplaceAllUsesWith(ds));
-      RETURN_IF_ERROR(computation->RemoveInstruction(rs));
+      ABSL_RETURN_IF_ERROR(rs->ReplaceAllUsesWith(ds));
+      ABSL_RETURN_IF_ERROR(computation->RemoveInstruction(rs));
       changed = true;
     }
   }

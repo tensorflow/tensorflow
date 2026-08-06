@@ -561,7 +561,7 @@ absl::StatusOr<uint64_t> DotOpEmitter::Emit() {
     // If the operands are scalar, don't emit any loops.
     TF_RET_CHECK(ShapeUtil::IsScalar(lhs_shape) &&
                  ShapeUtil::IsScalar(rhs_shape));
-    RETURN_IF_ERROR(EmitScalarDot());
+    ABSL_RETURN_IF_ERROR(EmitScalarDot());
     return 1;
   }
 
@@ -580,7 +580,7 @@ absl::StatusOr<uint64_t> DotOpEmitter::Emit() {
       return 1;
 
     case DotImplementationStrategy::kEigen:
-      RETURN_IF_ERROR(EmitCallToRuntime());
+      ABSL_RETURN_IF_ERROR(EmitCallToRuntime());
       return 1;
   }
 }
@@ -1128,7 +1128,7 @@ absl::StatusOr<DotOpWorkGroupDim> EmitNonBatchDotOperation(
                            hlo_module_config, target_machine_features,
                            allow_runtime_calls, allow_parallelism);
 
-  ASSIGN_OR_RETURN(uint64_t x, dot_emitter.Emit());
+  ABSL_ASSIGN_OR_RETURN(uint64_t x, dot_emitter.Emit());
   return DotOpWorkGroupDim{x};
 }
 
@@ -1261,7 +1261,7 @@ absl::StatusOr<DotOpWorkGroupDim> EmitBatchDotOperation(
     llvm::IRBuilderBase* b, const HloModuleConfig& hlo_module_config,
     const TargetMachineFeatures& target_machine_features,
     bool allow_runtime_calls, bool allow_parallelism) {
-  RETURN_IF_ERROR(ValidateDotDimensionNumbers(dot.dot_dimension_numbers()));
+  ABSL_RETURN_IF_ERROR(ValidateDotDimensionNumbers(dot.dot_dimension_numbers()));
 
   // first check if the batch can be rendered directly by the runtime
   // otherwise lower it to a sequence of non-batch dot operations
@@ -1277,7 +1277,7 @@ absl::StatusOr<DotOpWorkGroupDim> EmitBatchDotOperation(
                              hlo_module_config, target_machine_features,
                              allow_runtime_calls, allow_parallelism);
 
-    RETURN_IF_ERROR(dot_emitter.EmitBatch());
+    ABSL_RETURN_IF_ERROR(dot_emitter.EmitBatch());
     return DotOpWorkGroupDim{1, 1};
 
   } else {
@@ -1349,7 +1349,7 @@ absl::StatusOr<DotOpWorkGroupDim> EmitBatchDotOperation(
     static constexpr int64_t kParallelLoopThreshold = 32768;
     if (allow_parallelism && (lhs_size > kParallelLoopThreshold ||
                               rhs_size > kParallelLoopThreshold)) {
-      ASSIGN_OR_RETURN(auto inner_dims, inner_dot(work_group_id.x));
+      ABSL_ASSIGN_OR_RETURN(auto inner_dims, inner_dot(work_group_id.x));
       DCHECK_EQ(inner_dims.y, 1);
       return DotOpWorkGroupDim{static_cast<uint64_t>(batch_count),
                                inner_dims.x};
@@ -1358,10 +1358,10 @@ absl::StatusOr<DotOpWorkGroupDim> EmitBatchDotOperation(
     // Emit sequential loop over the batch dimension, but still might decide to
     // parallelize the inner loop.
     DotOpWorkGroupDim inner_dims;
-    RETURN_IF_ERROR(ksl.ForWithStatus(
+    ABSL_RETURN_IF_ERROR(ksl.ForWithStatus(
         llvm_ir::IrName(&dot, "bdot"), /*start=*/0, /*end=*/batch_count,
         /*step=*/1, [&](llvm::Value* indvar) {
-          ASSIGN_OR_RETURN(inner_dims, inner_dot(indvar));
+          ABSL_ASSIGN_OR_RETURN(inner_dims, inner_dot(indvar));
           return absl::OkStatus();
         }));
     return DotOpWorkGroupDim{1, inner_dims.x};

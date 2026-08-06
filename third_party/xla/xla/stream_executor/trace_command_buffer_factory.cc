@@ -33,7 +33,7 @@ TraceCommandBufferFactory::Create(
     StreamExecutor* executor,
     absl::AnyInvocable<absl::Status(Stream*)> function,
     CommandBuffer::Mode mode) {
-  ASSIGN_OR_RETURN(auto stream, executor->CreateStream());
+  ABSL_ASSIGN_OR_RETURN(auto stream, executor->CreateStream());
   stream->SetName("Command buffer tracer");
   return TraceCommandBufferFactory::Create(executor, stream.get(),
                                            std::move(function), mode);
@@ -55,7 +55,7 @@ TraceCommandBufferFactory::Create(
                << command_buffer_or.status();
     return command_buffer_or.status();
   }
-  ASSIGN_OR_RETURN(std::unique_ptr<CommandBuffer> command_buffer,
+  ABSL_ASSIGN_OR_RETURN(std::unique_ptr<CommandBuffer> command_buffer,
                    std::move(command_buffer_or));
 
   // Trace and finalize the command buffer.

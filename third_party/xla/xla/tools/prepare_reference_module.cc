@@ -53,10 +53,10 @@ absl::StatusOr<std::unique_ptr<HloModule>> PrepareReferenceModule(
   std::unique_ptr<HloModule> reference_module =
       test_module.Clone("reference", reference_config);
   if (module_modifier_hook) {
-    RETURN_IF_ERROR(
+    ABSL_RETURN_IF_ERROR(
         module_modifier_hook(test_module, test_runner, reference_module.get()));
   } else if (!skip_despecialization) {
-    RETURN_IF_ERROR(Despecializer().Run(reference_module.get()).status());
+    ABSL_RETURN_IF_ERROR(Despecializer().Run(reference_module.get()).status());
   }
   return std::move(reference_module);
 }

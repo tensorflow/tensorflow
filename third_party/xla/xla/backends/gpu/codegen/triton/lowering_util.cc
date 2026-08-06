@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/backends/gpu/codegen/triton/lowering_util.h"
 
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <string>
@@ -46,6 +47,7 @@ limitations under the License.
 #include "xla/hlo/analysis/indexing_map.h"
 #include "xla/hlo/analysis/interval.h"
 #include "xla/hlo/analysis/symbolic_map.h"
+#include "xla/permutation_util.h"
 #include "xla/stream_executor/gpu/tma_metadata.h"
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/tsl/platform/statusor.h"
@@ -134,7 +136,7 @@ absl::StatusOr<stream_executor::gpu::TmaMetadata> ExtractTmaMetadata(
     if (auto attr =
             func_op.getArgAttrOfType<mlir::triton::xla::TmaDescriptorAttr>(
                 idx, "tt.tma_descriptor")) {
-      ASSIGN_OR_RETURN(
+      ABSL_ASSIGN_OR_RETURN(
           auto tma_desc,
           CreateTmaDescriptor(attr.getGlobalShape(), attr.getTileShape(),
                               attr.getTileStrides(), attr.getLayout(),
@@ -170,6 +172,30 @@ llvm::SmallVector<int64_t> ComputeStrides(llvm::ArrayRef<int64_t> shape,
     stride *= shape[dim];
   }
   return result;
+}
+
+bool IsMajorToMinorLayout(llvm::ArrayRef<int64_t> layout) {
+  for (auto [i, value] : llvm::enumerate(layout)) {
+    if (value != layout.size() - 1 - i) {
+      return false;
+    }
+  }
+  return true;
+}
+
+llvm::SmallVector<mlir::Value> GetMajorToMinorOrder(
+    mlir::ValueRange values, llvm::ArrayRef<int64_t> layout) {
+  return GetMajorToMinorOrder(
+      llvm::ArrayRef<mlir::Value>(llvm::to_vector(values)), layout);
+}
+
+llvm::SmallVector<int32_t> GetInverseLayoutPermutation(
+    llvm::ArrayRef<int64_t> layout) {
+  auto reversed_layout = llvm::to_vector(layout);
+  std::reverse(reversed_layout.begin(), reversed_layout.end());
+  auto permutation =
+      llvm::to_vector_of<int32_t>(::xla::InversePermutation(reversed_layout));
+  return llvm::SmallVector<int32_t>(permutation.begin(), permutation.end());
 }
 
 llvm::SmallVector<unsigned> GetRetainedDims(

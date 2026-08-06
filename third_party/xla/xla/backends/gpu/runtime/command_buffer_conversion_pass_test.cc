@@ -194,10 +194,9 @@ std::unique_ptr<DynamicSliceFusionV2Thunk> CreateDynamicSliceFusionV2Thunk(
   Shape src_shape = ShapeUtil::MakeShape(S32, {16});
   Shape slice_shape = ShapeUtil::MakeShape(S32, {4});
 
-  ThunkSequence embedded_thunks;
-  embedded_thunks.push_back(std::make_unique<DeviceToDeviceCopyThunk>(
+  ThunkSequence embedded_thunks = ThunkSequence::Of<DeviceToDeviceCopyThunk>(
       Thunk::ThunkInfo(), ShapedSlice{embedded_src, slice_shape},
-      ShapedSlice{embedded_dst, slice_shape}, kSliceBytes));
+      ShapedSlice{embedded_dst, slice_shape}, kSliceBytes);
 
   return std::make_unique<DynamicSliceFusionV2Thunk>(
       Thunk::ThunkInfo(),
@@ -1237,8 +1236,7 @@ TEST(CommandBufferConversionPassTest, ConvertAsyncStartDonePair) {
   thunks.push_back(std::move(start_thunk));
 
   // Create AsyncDoneThunk paired with the start thunk.
-  thunks.push_back(
-      std::make_unique<AsyncDoneThunk>(Thunk::ThunkInfo(), async_execution));
+  thunks.Emplace<AsyncDoneThunk>(Thunk::ThunkInfo(), async_execution);
 
   se::DeviceDescription device_info = TestGpuDeviceInfo::CudaOrRocmDeviceInfo();
   DebugOptions debug_options;
@@ -1268,8 +1266,7 @@ TEST(CommandBufferConversionPassTest,
   thunks.push_back(CreateCopyThunk(alloc0));
 
   // Create AsyncDoneThunk paired with the start thunk.
-  thunks.push_back(
-      std::make_unique<AsyncDoneThunk>(Thunk::ThunkInfo(), async_execution));
+  thunks.Emplace<AsyncDoneThunk>(Thunk::ThunkInfo(), async_execution);
 
   se::DeviceDescription device_info = TestGpuDeviceInfo::CudaOrRocmDeviceInfo();
   DebugOptions debug_options;

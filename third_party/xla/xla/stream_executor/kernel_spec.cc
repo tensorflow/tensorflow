@@ -113,7 +113,7 @@ absl::StatusOr<KernelLoaderSpecProto> KernelLoaderSpec::ToProto() const {
         has_in_process_symbol());
 
   if (std::holds_alternative<KernelArgsPackingSpec>(kernel_args_packing_)) {
-    ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         *proto.mutable_kernel_args_packing_spec(),
         std::get<KernelArgsPackingSpec>(kernel_args_packing_).ToProto());
   }
@@ -126,7 +126,7 @@ absl::StatusOr<KernelLoaderSpec> KernelLoaderSpec::FromProto(
     std::optional<SymbolResolver> symbol_resolver) {
   KernelArgsPacking kernel_args_packing;
   if (proto.has_kernel_args_packing_spec()) {
-    ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         kernel_args_packing,
         KernelArgsPackingSpec::FromProto(proto.kernel_args_packing_spec()));
   }
@@ -157,7 +157,7 @@ absl::StatusOr<KernelLoaderSpec> KernelLoaderSpec::FromProto(
             "persistent name has been provided.");
       }
 
-      ASSIGN_OR_RETURN(
+      ABSL_ASSIGN_OR_RETURN(
           void* symbol,
           (*symbol_resolver)(proto.in_process_symbol().persistent_name()));
       return KernelLoaderSpec::CreateSerializableInProcessSymbolSpec(

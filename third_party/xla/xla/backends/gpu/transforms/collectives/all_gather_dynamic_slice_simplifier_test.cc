@@ -50,7 +50,7 @@ class AllGatherDynamicSliceSimplifierTest
         /*replica_count=*/num_replicas,
         /*num_partitions=*/num_partitions);
     config.set_use_spmd_partitioning(num_partitions > 1);
-    ASSIGN_OR_RETURN(auto module,
+    ABSL_ASSIGN_OR_RETURN(auto module,
                      ParseAndReturnVerifiedModule(hlo_module, config));
     AllGatherDynamicSliceSimplifier::Config pass_config;
     pass_config.allow_multiple_users = allow_multiple_users;

@@ -74,16 +74,6 @@ class UnsupportedExecutorProcessControl
     llvm_unreachable("Unsupported");
   }
 
-  llvm::Expected<int32_t> runAsVoidFunction(
-      llvm::orc::ExecutorAddr VoidFnAddr) override {
-    llvm_unreachable("Unsupported");
-  }
-
-  llvm::Expected<int32_t> runAsIntFunction(llvm::orc::ExecutorAddr IntFnAddr,
-                                           int Arg) override {
-    llvm_unreachable("Unsupported");
-  }
-
   void callWrapperAsync(llvm::orc::ExecutorAddr WrapperFnAddr,
                         IncomingWFRHandler OnComplete,
                         llvm::ArrayRef<char> ArgBuffer) override {
@@ -155,7 +145,7 @@ absl::Status ObjectLoader::AddObjFile(
                         "Failed to create memory buffer");
   }
 
-  ASSIGN_OR_RETURN(llvm::orc::JITDylib * dylib,
+  ABSL_ASSIGN_OR_RETURN(llvm::orc::JITDylib * dylib,
                    execution_engine_->dylib(dylib_index));
   if (auto err =
           execution_engine_->object_layer()->add(*dylib, std::move(obj_file))) {
@@ -195,7 +185,7 @@ absl::StatusOr<llvm::orc::SymbolMap> ObjectLoader::LookupSymbols(
   // Build a search order for the dynamic libraries.
   llvm::orc::JITDylibSearchOrder search_order(num_dylibs());
   for (size_t i = 0; i < num_dylibs(); ++i) {
-    ASSIGN_OR_RETURN(llvm::orc::JITDylib * dylib, execution_engine_->dylib(i));
+    ABSL_ASSIGN_OR_RETURN(llvm::orc::JITDylib * dylib, execution_engine_->dylib(i));
     search_order[i] = std::make_pair(
         dylib, llvm::orc::JITDylibLookupFlags::MatchExportedSymbolsOnly);
   }
@@ -235,7 +225,7 @@ ObjectLoader::CreateFunctionLibrary(absl::Span<const Symbol> symbols,
 
 absl::StatusOr<std::unique_ptr<FunctionLibrary>> ObjectLoader::Load(
     absl::Span<const Symbol> symbols) && {
-  ASSIGN_OR_RETURN(auto symbol_map, LookupSymbols(symbols));
+  ABSL_ASSIGN_OR_RETURN(auto symbol_map, LookupSymbols(symbols));
   return std::move(*this).CreateFunctionLibrary(symbols, symbol_map);
 }
 

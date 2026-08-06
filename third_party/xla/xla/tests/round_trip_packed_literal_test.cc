@@ -42,7 +42,7 @@ class RoundTripPackedLiteralTest : public LocalClientTestBase {
  protected:
   // Sends the literal to the server and retrieves it back.
   absl::StatusOr<Literal> RoundTripToServer(const Literal& original) {
-    ASSIGN_OR_RETURN(std::unique_ptr<GlobalData> data,
+    ABSL_ASSIGN_OR_RETURN(std::unique_ptr<GlobalData> data,
                      local_client_->TransferToServer(original));
     return local_client_->Transfer(*data);
   }

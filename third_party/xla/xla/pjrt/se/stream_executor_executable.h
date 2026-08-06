@@ -23,10 +23,14 @@ limitations under the License.
 #include <variant>
 #include <vector>
 
+#include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/cord.h"
 #include "absl/strings/string_view.h"
+#include "absl/synchronization/mutex.h"
+#include "riegeli/bytes/reader.h"
 #include "xla/client/local_client.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/pjrt/pjrt_abi_version.h"
@@ -40,16 +44,25 @@ namespace xla {
 
 class StreamExecutorExecutable : public PjRtExecutable {
  public:
+  // Deprecated: use single unique_ptr<CompiledModule> overload instead.
   StreamExecutorExecutable(
       PjRtPlatformId platform_id, const CompileOptions& compile_options,
       std::vector<std::unique_ptr<CompiledModule>> executables,
       int num_replicas, int num_partitions, absl::string_view name,
       absl::string_view fingerprint, absl::string_view default_memory_kind);
 
+  StreamExecutorExecutable(PjRtPlatformId platform_id,
+                           const CompileOptions& compile_options,
+                           std::unique_ptr<CompiledModule> executable,
+                           int num_replicas, int num_partitions,
+                           absl::string_view name,
+                           absl::string_view fingerprint,
+                           absl::string_view default_memory_kind);
+
   StreamExecutorExecutable(
       PjRtPlatformId platform_id, const CompileOptions& compile_options,
       std::optional<HloModuleProto> unoptimized_hlo_module_proto,
-      std::vector<std::unique_ptr<LocalExecutable>> local_executables,
+      std::shared_ptr<LocalExecutable> local_executable,
       LocalClient* local_client, int num_replicas, int num_partitions,
       absl::string_view name, absl::string_view fingerprint,
       absl::string_view default_memory_kind);
@@ -64,11 +77,13 @@ class StreamExecutorExecutable : public PjRtExecutable {
   }
   absl::StatusOr<std::vector<std::shared_ptr<HloModule>>> GetHloModules()
       const override {
-    if (!hlo_modules_.has_value()) {
-      return absl::UnimplementedError("GetHloModules is not supported.");
+    if (hlo_module_ == nullptr) {
+      return std::vector<std::shared_ptr<HloModule>>{};
     }
-    return *hlo_modules_;
+    return std::vector<std::shared_ptr<HloModule>>{hlo_module_};
   }
+
+  const std::shared_ptr<HloModule>& hlo_module() const { return hlo_module_; }
 
   absl::StatusOr<CompiledMemoryStats> GetCompiledMemoryStats() const override;
 
@@ -85,11 +100,8 @@ class StreamExecutorExecutable : public PjRtExecutable {
 
   const CompileOptions& compile_options() const { return compile_options_; }
 
-  absl::StatusOr<std::unique_ptr<LocalExecutable>> ConsumeExecutable(
-      LocalClient* client, const CompileOptions& compile_options);
-
-  absl::StatusOr<LocalExecutable*> GetOrLoadExecutable(
-      LocalClient* client, const CompileOptions& compile_options);
+  absl::StatusOr<std::shared_ptr<LocalExecutable>> GetOrLoadExecutable(
+      LocalClient* client);
 
   absl::StatusOr<std::string> FingerprintExecutable() const override {
     return fingerprint_;
@@ -103,17 +115,21 @@ class StreamExecutorExecutable : public PjRtExecutable {
       const override;
 
  private:
+  int64_t SizeOfGeneratedCodeInBytesLocked() const
+      ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
+
   PjRtPlatformId platform_id_;
 
   CompileOptions compile_options_;
   // The unoptimized HLO module proto is necessary for HLO debug dumping. It is
   // not available for deserialized executables.
   std::optional<HloModuleProto> unoptimized_hlo_module_proto_;
-  std::variant<std::vector<std::unique_ptr<CompiledModule>>,
-               std::vector<std::unique_ptr<LocalExecutable>>>
-      executables_;
+  mutable absl::Mutex mu_;
+  std::variant<std::unique_ptr<CompiledModule>,
+               std::shared_ptr<LocalExecutable>>
+      executables_ ABSL_GUARDED_BY(mu_);
   LocalClient* local_client_ = nullptr;
-  std::optional<std::vector<std::shared_ptr<HloModule>>> hlo_modules_;
+  std::shared_ptr<HloModule> hlo_module_;
   int num_replicas_;
   int num_partitions_;
   std::string name_;
@@ -123,6 +139,17 @@ class StreamExecutorExecutable : public PjRtExecutable {
   absl::StatusOr<stream_executor::ExecutableAbiVersion>
   ExtractExecutableAbiVersion() const;
 };
+
+// Reads a serialized ExecutableAndOptionsProto from a string. GPU executables
+// are serialized as a custom format that supports executables larger than 2GB
+// (unlike regular protos).
+absl::StatusOr<ExecutableAndOptionsProto> SerializedGpuExecutableFromReader(
+    std::unique_ptr<riegeli::Reader> reader);
+absl::StatusOr<ExecutableAndOptionsProto> SerializedGpuExecutableFromString(
+    absl::string_view serialized);
+absl::StatusOr<ExecutableAndOptionsProto> SerializedGpuExecutableFromString(
+    const absl::Cord& serialized);
+
 }  // namespace xla
 
 #endif  // XLA_PJRT_SE_STREAM_EXECUTOR_EXECUTABLE_H_

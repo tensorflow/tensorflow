@@ -23,13 +23,13 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "xla/tsl/platform/status_macros.h"
 #include "xla/pjrt/pjrt_layout.h"
+#include "xla/python/ifrt/abstract_array_spec.h"
 #include "xla/python/ifrt/array_spec.pb.h"
 #include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/dtype.h"
 #include "xla/python/ifrt/serdes_version.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
-#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 namespace ifrt {
@@ -42,13 +42,13 @@ absl::StatusOr<ArraySpec> ArraySpec::FromProto(Client* client,
         "Unsupported ", version_number, " for ArraySpec deserialization"));
   }
 
-  ASSIGN_OR_RETURN(auto dtype, DType::FromProto(proto.dtype()));
-  ASSIGN_OR_RETURN(auto shape, Shape::FromProto(proto.shape()));
-  ASSIGN_OR_RETURN(auto sharding,
+  ABSL_ASSIGN_OR_RETURN(auto dtype, DType::FromProto(proto.dtype()));
+  ABSL_ASSIGN_OR_RETURN(auto shape, Shape::FromProto(proto.shape()));
+  ABSL_ASSIGN_OR_RETURN(auto sharding,
                    Sharding::FromProto(client, proto.sharding()));
   std::shared_ptr<const xla::PjRtLayout> layout;
   if (proto.has_layout()) {
-    ASSIGN_OR_RETURN(layout, xla::PjRtLayout::Deserialize(proto.layout()));
+    ABSL_ASSIGN_OR_RETURN(layout, xla::PjRtLayout::Deserialize(proto.layout()));
   }
   return ArraySpec{
       /*dtype=*/dtype,
@@ -70,11 +70,16 @@ absl::Status ArraySpec::ToProto(ArraySpecProto& proto,
   proto.set_version_number(SerDesVersionNumber(0).value());
   dtype.ToProto(*proto.mutable_dtype(), version);
   shape.ToProto(*proto.mutable_shape(), version);
-  ASSIGN_OR_RETURN(*proto.mutable_sharding(), sharding->ToProto(version));
+  ABSL_ASSIGN_OR_RETURN(*proto.mutable_sharding(), sharding->ToProto(version));
   if (layout != nullptr) {
     proto.set_layout(layout->Serialize());
   }
   return absl::OkStatus();
+}
+
+absl::StatusOr<AbstractArraySpec> ArraySpec::ToAbstractArraySpec() const {
+  return AbstractArraySpec::Create(dtype, shape, sharding->sharding_spec(),
+                                   sharding->memory_kind(), layout);
 }
 
 }  // namespace ifrt

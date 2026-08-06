@@ -3393,6 +3393,16 @@ func.func @fuseUnpackAndConcatToReshape(%arg0: tensor<1x3x2xf32>) -> tensor<1x6x
   // CHECK: return %[[RES]]
 }
 
+// CHECK-LABEL: noFuseUnpackAndConcatToReshapeWhenAxesDiffer
+func.func @noFuseUnpackAndConcatToReshapeWhenAxesDiffer(%arg0: tensor<4x3x1xf32>) -> tensor<12x1xf32> {
+  %0:3 = "tfl.unpack"(%arg0) {axis = 1 : i32, num = 3 : i32} : (tensor<4x3x1xf32>) -> (tensor<4x1xf32>, tensor<4x1xf32>, tensor<4x1xf32>)
+  %1 = "tfl.concatenation"(%0#0, %0#1, %0#2) {axis = 0 : i32, fused_activation_function = "NONE"} : (tensor<4x1xf32>, tensor<4x1xf32>, tensor<4x1xf32>) -> tensor<12x1xf32>
+  func.return %1 : tensor<12x1xf32>
+  // CHECK-NOT: tfl.reshape
+  // CHECK: tfl.unpack
+  // CHECK: tfl.concatenation
+}
+
 // CHECK-LABEL: replaceReshapeEqualWithOneHotSingleDim
 func.func @replaceReshapeEqualWithOneHotSingleDim(%arg: tensor<1xi32>) -> tensor<3xi1> {
   %cst = arith.constant dense<[0, 1, 2]> : tensor<3xi32>

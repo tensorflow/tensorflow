@@ -185,8 +185,6 @@ ThunkKindProto Thunk::KindToProto(Kind kind) {
       return THUNK_KIND_CUSTOM_CALL;
     case kCustomKernel:
       return THUNK_KIND_CUSTOM_KERNEL;
-    case kDynamicSlice:
-      return THUNK_KIND_DYNAMIC_SLICE;
     case kDynamicSliceFusion:
       return THUNK_KIND_DYNAMIC_SLICE_FUSION;
     case kFft:
@@ -286,8 +284,6 @@ absl::StatusOr<Thunk::Kind> Thunk::KindFromProto(ThunkKindProto kind) {
       return kCustomCall;
     case THUNK_KIND_CUSTOM_KERNEL:
       return kCustomKernel;
-    case THUNK_KIND_DYNAMIC_SLICE:
-      return kDynamicSlice;
     case THUNK_KIND_DYNAMIC_SLICE_FUSION:
       return kDynamicSliceFusion;
     case THUNK_KIND_FFT:
@@ -374,7 +370,6 @@ absl::StatusOr<Thunk::Kind> Thunk::KindFromProto(ThunkKindProto kind) {
     CASE(kCublasLtMatmul);
     CASE(kCustomCall);
     CASE(kCustomKernel);
-    CASE(kDynamicSlice);
     CASE(kDynamicSliceFusion);
     CASE(kFft);
     CASE(kGemm);
@@ -508,24 +503,40 @@ static std::optional<int64_t> NextDep(
   return std::nullopt;
 }
 
+ThunkSequence::ThunkSequence(int64_t len)
+    : std::vector<std::unique_ptr<Thunk>>(len) {}
+
+ThunkSequence::ThunkSequence(std::vector<std::unique_ptr<Thunk>> thunks)
+    : std::vector<std::unique_ptr<Thunk>>(std::move(thunks)) {}
+
+void ThunkSequence::Append(std::unique_ptr<Thunk> thunk) {
+  push_back(std::move(thunk));
+}
+
+ThunkSequence ThunkSequence::Of(std::unique_ptr<Thunk> thunk) {
+  ThunkSequence thunks;
+  thunks.Append(std::move(thunk));
+  return thunks;
+}
+
 absl::Status ThunkSequence::WalkNested(Thunk::Walker callback) {
   for (auto& thunk : *this) {
-    RETURN_IF_ERROR(thunk->Walk(callback));
+    ABSL_RETURN_IF_ERROR(thunk->Walk(callback));
   }
   return absl::OkStatus();
 }
 
 absl::Status ThunkSequence::WalkNested(Thunk::ConstWalker callback) const {
   for (const auto& thunk : *this) {
-    RETURN_IF_ERROR(thunk->Walk(callback));
+    ABSL_RETURN_IF_ERROR(thunk->Walk(callback));
   }
   return absl::OkStatus();
 }
 
 absl::Status ThunkSequence::TransformNested(Thunk::Transformer callback) {
   for (std::unique_ptr<Thunk>& thunk : *this) {
-    RETURN_IF_ERROR(thunk->TransformNested(callback));
-    ASSIGN_OR_RETURN(thunk, callback(std::move(thunk)));
+    ABSL_RETURN_IF_ERROR(thunk->TransformNested(callback));
+    ABSL_ASSIGN_OR_RETURN(thunk, callback(std::move(thunk)));
   }
   return absl::OkStatus();
 }
