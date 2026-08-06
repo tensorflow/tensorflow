@@ -54,5 +54,14 @@ function resultstore_extract {
 }
 
 if grep -q "Streaming build results to" "$TFCI_OUTPUT_DIR/script.log"; then
-  resultstore_extract || resultstore_extract_fallback
+  # Both branches below can fail for reasons unrelated to the build itself
+  # (e.g. extract_resultstore_links.py raises on a script.log format
+  # variant; resultstore_extract_fallback's awk | uniq pipeline can fail
+  # if $TFCI_OUTPUT_DIR/script.log was rotated between grep and awk).
+  # Under `set -e -o pipefail`, an unhandled failure here propagates
+  # through the EXIT trap set in setup.sh and turns a successful Bazel
+  # invocation into a GitHub Actions job exit 1. Swallow the failure
+  # explicitly: the build's own exit status has already been recorded,
+  # and a missing summary should never overwrite it.
+  resultstore_extract || resultstore_extract_fallback || true
 fi
