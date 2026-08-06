@@ -2052,5 +2052,30 @@ TEST_F(MatmulTest, BiasAlongNonLastDimShouldNotFuseAsBias) {
   MatchOptimizedHlo(matmul_module_str, fused_matmul_binary_add_);
 }
 
+// Exercises the BINARY_ADD operand rank reconciliation in the rewriter.
+// The dot output is rank 4 ([4,8,128,128]), but it is reshaped to rank 3
+// ([32,128,128]) before the add, whose addend broadcasts a [128,128] constant.
+// After shape adjustment the fused addend stays rank 3 ([1,128,128]) while the
+// custom-call output is the rank-4 dot shape, so the rewriter must prepend a
+// leading size-1 dimension to the addend (yielding rank 4) before oneDNN sees
+// it. Without that, oneDNN aborts with a dst/bin_po src1 dimension mismatch.
+TEST_F(MatmulTest, BinaryAddAddendLowerRankThanOutput) {
+  const char* matmul_module_str = R"(
+  HloModule matmul.binary_add.rank.test.f32
+
+  ENTRY matmul.binary_add.rank.test.f32 {
+    arg0.1 = f32[4,8,128,64] parameter(0)
+    arg0.2 = f32[4,8,64,128] parameter(1)
+    dot.0 = f32[4,8,128,128] dot(arg0.1, arg0.2), lhs_batch_dims={0,1}, lhs_contracting_dims={3}, rhs_batch_dims={0,1}, rhs_contracting_dims={2}
+    reshape.0 = f32[32,128,128] reshape(dot.0)
+    const.0 = f32[128,128] constant({...})
+    broadcast.0 = f32[32,128,128] broadcast(const.0), dimensions={1,2}
+    ROOT add.0 = f32[32,128,128] add(reshape.0, broadcast.0)
+  })";
+
+  EXPECT_TRUE(RunAndCompare(matmul_module_str, ErrorSpec{1e-4, 1e-4}));
+  MatchOptimizedHlo(matmul_module_str, fused_matmul_binary_add_);
+}
+
 }  // namespace cpu
 }  // namespace xla

@@ -982,6 +982,21 @@ class OneDnnContractionRewriteVisitor : public DfsHloRewriteVisitor {
       // Alias output buffers to addend for in-place accumulation
       if (kind == OneDnnFusionConfig::SUM) {
         custom_call->set_output_to_operand_aliasing({{{}, {addend_idx, {}}}});
+      } else if (kind == OneDnnFusionConfig::BINARY_ADD) {
+        // oneDNN's binary post-op operand must match the output rank. Expand a
+        // lower-rank addend with leading size-1 dimensions via a Bitcast.
+        const Shape& out_shape = contraction->shape();
+        int64_t missed_rank =
+            out_shape.dimensions().size() - addend->shape().dimensions().size();
+        if (missed_rank > 0) {
+          std::vector<int64_t> ones(missed_rank, 1);
+          Shape expanded_shape =
+              ShapeUtil::InsertDimensionsAtIndex(addend->shape(), 0, ones);
+          auto* expanded_addend = custom_call->AddInstruction(
+              HloInstruction::CreateBitcast(expanded_shape, addend));
+          ABSL_RETURN_IF_ERROR(custom_call->ReplaceOperandWithDifferentShape(
+              addend_idx, expanded_addend));
+        }
       }
 
       fusions_config->add_ops(kind);
