@@ -821,6 +821,10 @@ class Interpreter:
   def get_output_details(self):
     """Gets model output tensor details.
 
+    The list order may differ from the return order of the original TensorFlow
+    function or the output order in a model signature. For models with
+    signatures, use `get_signature_runner()` to access outputs by name.
+
     Returns:
       A list in which each item is a dictionary with details about
       an output tensor. The dictionary contains the same fields as
