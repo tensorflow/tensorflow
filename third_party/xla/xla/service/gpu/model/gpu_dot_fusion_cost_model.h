@@ -158,6 +158,17 @@ absl::StatusOr<ComputeAndFlops> CalculateComputeTimeWithTileAndWaveQuantization(
     const DotProblemInfo& dot, const DotTileSize& dot_tile,
     const se::DeviceDescription& device_info);
 
+// Calculates Compute Utilization. Expected to be in the range [0.0, 1.0], but
+// may exceed 1.0 if the underlying time estimates are inaccurate.
+double CalculateComputeUtilization(const EstimateRunTimeData& estimates,
+                                   const se::DeviceDescription& device_info,
+                                   PrimitiveType output_element_type);
+
+// Calculates Memory Utilization. Expected to be in the range [0.0, 1.0], but
+// may exceed 1.0 if the underlying time estimates are inaccurate.
+double CalculateMemoryUtilization(const EstimateRunTimeData& estimates,
+                                  const se::DeviceDescription& device_info);
+
 }  // namespace detail
 
 }  // namespace xla::gpu::gpu_dot_fusion_cost_model

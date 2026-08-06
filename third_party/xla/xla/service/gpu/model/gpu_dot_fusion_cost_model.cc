@@ -450,6 +450,55 @@ int64_t CalculateSharedMemoryPerBlockBytes(const DotProblemInfo& dot_info,
   return (lhs_tile_bytes + rhs_tile_bytes) * num_stages;
 }
 
+double CalculateComputeUtilization(const EstimateRunTimeData& estimates,
+                                   const se::DeviceDescription& device_info,
+                                   xla::PrimitiveType output_element_type) {
+  const double total_estimated_sec = absl::ToDoubleSeconds(estimates.exec_time);
+  constexpr double kNsPerSecond = 1e9;
+  const double theoretical_flops_per_sec =
+      GpuPerformanceModelBase::CalculatePeakMatrixOpsPerNs(
+          device_info, output_element_type) *
+      kNsPerSecond;
+
+  if (total_estimated_sec == 0.0 || theoretical_flops_per_sec == 0.0) {
+    VLOG(2) << "Returning 0.0 compute utilization: total_estimated_sec="
+            << total_estimated_sec
+            << ", theoretical_flops_per_sec=" << theoretical_flops_per_sec;
+    return 0.0;
+  }
+  double utilization = (static_cast<double>(estimates.flops) /
+                        (theoretical_flops_per_sec * total_estimated_sec));
+
+  if (utilization > 1.0) {
+    VLOG(2) << "Compute utilization exceeded 1.0 in dot fusion cost model: "
+            << utilization;
+  }
+  return utilization;
+}
+
+double CalculateMemoryUtilization(const EstimateRunTimeData& estimates,
+                                  const se::DeviceDescription& device_info) {
+  const double total_estimated_sec = absl::ToDoubleSeconds(estimates.exec_time);
+  const double dram_bytes =
+      static_cast<double>(estimates.bytes_read + estimates.bytes_written);
+  const double peak_memory_bandwidth = device_info.memory_bandwidth();
+
+  if (total_estimated_sec == 0.0 || peak_memory_bandwidth == 0.0) {
+    VLOG(2) << "Returning 0.0 memory utilization: total_estimated_sec="
+            << total_estimated_sec
+            << ", peak_memory_bandwidth=" << peak_memory_bandwidth;
+    return 0.0;
+  }
+  double utilization =
+      dram_bytes / (peak_memory_bandwidth * total_estimated_sec);
+
+  if (utilization > 1.0) {
+    VLOG(2) << "Memory utilization exceeded 1.0 in dot fusion cost model: "
+            << utilization;
+  }
+  return utilization;
+}
+
 }  // namespace detail
 
 absl::Status IsSupported(const HloDotInstruction* dot) {
@@ -600,6 +649,10 @@ absl::StatusOr<EstimateRunTimeData> EstimateRunTimeForDotOpWithBlockParameters(
   // Assuming perfect overlap between compute and memory for the rest,
   // but main loop is now modeled precisely.
   estimates.exec_time = std::max({pipelined_loop_time, l2_time});
+  estimates.compute_utilization = detail::CalculateComputeUtilization(
+      estimates, device_info, dot_info.output_element_type);
+  estimates.memory_utilization =
+      detail::CalculateMemoryUtilization(estimates, device_info);
 
   return estimates;
 }
