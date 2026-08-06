@@ -83,6 +83,12 @@ class RaggedAllToAllTestBase : public CollectiveOpsWithFlagsBase {
            collectives_mode_ == DebugOptions::COLLECTIVES_SYMMETRIC_MEMORY;
   }
 
+  bool RequiresSymmetricMemory() const {
+    return IsSymmetricNcclPath() ||
+           impl_type_ == RaggedAllToAllImplType::kDeviceKernel ||
+           collectives_mode_ == DebugOptions::COLLECTIVES_SYMMETRIC_MEMORY;
+  }
+
   // Creates random test data for a ragged-all-to-all.
   //
   // Ragged tensors which are ragged (have various size) along the second most
@@ -242,10 +248,9 @@ class RaggedAllToAllTestBase : public CollectiveOpsWithFlagsBase {
     if (device_count() < 2) {
       GTEST_SKIP() << "Test requires at least 2 devices.";
     }
-    if (IsSymmetricNcclPath() &&
-        !Capability().cuda_compute_capability()->IsAtLeastHopper()) {
-      GTEST_SKIP() << "NCCL backend is only supported on Hopper architecture "
-                      "and above.";
+    if (RequiresSymmetricMemory() && !IsHopperAndHigher()) {
+      GTEST_SKIP() << "Symmetric memory is only supported on Hopper "
+                      "architecture and above.";
     }
   }
 
