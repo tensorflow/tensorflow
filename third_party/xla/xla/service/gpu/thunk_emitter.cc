@@ -80,7 +80,6 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/conditional_thunk.h"
 #include "xla/backends/gpu/runtime/convolution_reorder_thunk.h"
 #include "xla/backends/gpu/runtime/convolution_thunk.h"
-#include "xla/backends/gpu/runtime/copy_thunk.h"
 #include "xla/backends/gpu/runtime/cudnn_thunk.h"
 #include "xla/backends/gpu/runtime/custom_call_thunk.h"
 #include "xla/backends/gpu/runtime/custom_kernel_thunk.h"
@@ -1519,11 +1518,6 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitTopKCustomCall(
 
   // Enable RAFT if TopK is_stable = false.
   bool use_raft = !hlo_instruction_utils::IsTopKStable(instr);
-  // TODO(b/473829358): Remove use_raft_select_k flag after transition period.
-  // Enable RAFT if explicitly flagged.
-  const DebugOptions& options = instr->GetModule()->config().debug_options();
-  // NOLINTNEXTLINE(clang-diagnostic-deprecated-declarations)
-  use_raft |= options.xla_gpu_experimental_use_raft_select_k();
 
   if (is_cuda && use_raft) {
     // The heuristic for deciding when to use TopK Custom Kernel versus
