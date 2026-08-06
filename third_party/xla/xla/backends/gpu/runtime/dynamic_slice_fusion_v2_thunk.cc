@@ -518,14 +518,6 @@ Thunk::BufferUses DynamicSliceFusionV2Thunk::buffer_uses() const {
   return uses;
 }
 
-absl::Status DynamicSliceFusionV2Thunk::WalkNested(Walker callback) {
-  return executor_.thunks().WalkNested(callback);
-}
-
-absl::Status DynamicSliceFusionV2Thunk::TransformNested(Transformer callback) {
-  return executor_.thunks().TransformNested(callback);
-}
-
 //===----------------------------------------------------------------------===//
 // Serialization
 //===----------------------------------------------------------------------===//
