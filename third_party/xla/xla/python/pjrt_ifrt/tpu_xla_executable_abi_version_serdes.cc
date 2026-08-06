@@ -56,7 +56,7 @@ class TpuXlaExecutableAbiVersionSerDes
     const auto& version =
         ifrt::cast<xla::ifrt::XlaExecutableAbiVersion>(serializable);
 
-    ASSIGN_OR_RETURN(xla::PjRtExecutableAbiVersionProto proto,
+    ABSL_ASSIGN_OR_RETURN(xla::PjRtExecutableAbiVersionProto proto,
                      version.ExecutableAbiVersion().ToProto());
     absl::Cord executable_abi_version;
     if (!proto.SerializeToString(&executable_abi_version)) {
@@ -74,7 +74,7 @@ class TpuXlaExecutableAbiVersionSerDes
       return absl::InvalidArgumentError(
           "Failed to parse PjRtExecutableAbiVersion from string.");
     }
-    ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         std::unique_ptr<xla::PjRtExecutableAbiVersion> runtime_abi_version,
         tpu_xla_executable_abi_version_serdes::
             PjRtExecutableAbiVersionFromProto(proto));

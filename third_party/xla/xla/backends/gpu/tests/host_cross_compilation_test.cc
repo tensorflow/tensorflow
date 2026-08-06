@@ -46,7 +46,7 @@ namespace {
 using ::absl_testing::StatusIs;
 
 absl::StatusOr<std::unique_ptr<Compiler>> GetGpuCompiler() {
-  ASSIGN_OR_RETURN(stream_executor::PlatformId platform_id,
+  ABSL_ASSIGN_OR_RETURN(stream_executor::PlatformId platform_id,
                    PlatformUtil::GetPlatformIdFromCanonicalName("CUDA"));
   return Compiler::GetForPlatform(platform_id);
 }
@@ -63,7 +63,7 @@ absl::StatusOr<std::unique_ptr<HloModule>> GetHloModule() {
     )"};
   auto hlo_module = std::make_unique<VerifiedHloModule>("m", HloModuleConfig(),
                                                         false, false, nullptr);
-  RETURN_IF_ERROR(hlo_module->ParseHloStringAndVerifyModule(hlo_text));
+  ABSL_RETURN_IF_ERROR(hlo_module->ParseHloStringAndVerifyModule(hlo_text));
   return hlo_module;
 }
 

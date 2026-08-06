@@ -138,7 +138,7 @@ using StatusReturningFunction = std::function<absl::Status()>;
 
 absl::StatusOr<int> CallStatusReturningFunction(
     const StatusReturningFunction& func) {
-  RETURN_IF_ERROR(func());
+  ABSL_RETURN_IF_ERROR(func());
   return 42;
 }
 
@@ -156,7 +156,7 @@ TEST(StatusMacros, ReturnIfErrorOnError) {
 
 TEST(StatusMacros, AssignOrReturnSuccessfully) {
   absl::Status status = []() {
-    ASSIGN_OR_RETURN(int value, CreateIntSuccessfully());
+    ABSL_ASSIGN_OR_RETURN(int value, CreateIntSuccessfully());
     EXPECT_EQ(value, 42);
     return absl::OkStatus();
   }();
@@ -165,7 +165,7 @@ TEST(StatusMacros, AssignOrReturnSuccessfully) {
 
 TEST(StatusMacros, AssignOrReturnUnsuccessfully) {
   absl::Status status = []() {
-    ASSIGN_OR_RETURN(int value, CreateIntUnsuccessfully());
+    ABSL_ASSIGN_OR_RETURN(int value, CreateIntUnsuccessfully());
     (void)value;
     return absl::OkStatus();
   }();

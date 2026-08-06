@@ -156,7 +156,7 @@ static std::vector<float> ExpectedValues(int device_ordinal, int phase) {
 static absl::Status WriteBuffer(se::Stream& stream,
                                 se::DeviceAddressBase buffer,
                                 const std::vector<int64_t>& data) {
-  RETURN_IF_ERROR(
+  ABSL_RETURN_IF_ERROR(
       stream.Memcpy(&buffer, data.data(), data.size() * sizeof(int64_t)));
   return absl::OkStatus();
 }
@@ -164,17 +164,17 @@ static absl::Status WriteBuffer(se::Stream& stream,
 static absl::Status PrepareInputs(
     se::Stream& stream, absl::Span<const se::DeviceAddressBase> buffers,
     int device_ordinal, int phase) {
-  RETURN_IF_ERROR(
+  ABSL_RETURN_IF_ERROR(
       FillDeviceBuffer(stream, buffers[0], InputValues(device_ordinal, phase)));
-  RETURN_IF_ERROR(FillDeviceBuffer(stream, buffers[1],
+  ABSL_RETURN_IF_ERROR(FillDeviceBuffer(stream, buffers[1],
                                    std::vector<float>(kNumElements, -1.0f)));
-  RETURN_IF_ERROR(
+  ABSL_RETURN_IF_ERROR(
       WriteBuffer(stream, buffers[2], std::vector<int64_t>{0, 1, 2, 3}));
-  RETURN_IF_ERROR(
+  ABSL_RETURN_IF_ERROR(
       WriteBuffer(stream, buffers[3], std::vector<int64_t>{1, 1, 1, 1}));
-  RETURN_IF_ERROR(
+  ABSL_RETURN_IF_ERROR(
       WriteBuffer(stream, buffers[4], OutputOffsets(device_ordinal)));
-  RETURN_IF_ERROR(
+  ABSL_RETURN_IF_ERROR(
       WriteBuffer(stream, buffers[5], std::vector<int64_t>{1, 1, 1, 1}));
   return stream.BlockHostUntilDone();
 }
@@ -182,7 +182,7 @@ static absl::Status PrepareInputs(
 static absl::Status VerifyOutput(se::Stream& stream,
                                  se::DeviceAddressBase buffer,
                                  int device_ordinal, int phase) {
-  ASSIGN_OR_RETURN(std::vector<float> output,
+  ABSL_ASSIGN_OR_RETURN(std::vector<float> output,
                    ReadDeviceBuffer(stream, buffer, kNumElements));
   std::vector<float> expected = ExpectedValues(device_ordinal, phase);
   for (int i = 0; i < output.size(); ++i) {
@@ -207,12 +207,12 @@ static absl::Status RunExecuteOnStreamPhase(DeviceTestSlot& slot,
                                             RaggedAllToAllThunk& thunk,
                                             BufferAllocations& allocations,
                                             int device_ordinal, int phase) {
-  RETURN_IF_ERROR(
+  ABSL_RETURN_IF_ERROR(
       PrepareInputs(*slot.stream, slot.create_buffers, device_ordinal, phase));
 
   Thunk::ExecuteParams execute_params = MakeExecuteParams(slot, allocations);
 
-  RETURN_IF_ERROR(ExecuteOnStreamAndBlock(thunk, execute_params));
+  ABSL_RETURN_IF_ERROR(ExecuteOnStreamAndBlock(thunk, execute_params));
   return VerifyOutput(*slot.stream, slot.create_buffers[1], device_ordinal,
                       phase);
 }
@@ -221,17 +221,17 @@ static absl::Status RunCreatePhase(DeviceTestSlot& slot,
                                    RaggedAllToAllThunk& thunk,
                                    BufferAllocations& allocations,
                                    int device_ordinal, int phase) {
-  RETURN_IF_ERROR(
+  ABSL_RETURN_IF_ERROR(
       PrepareInputs(*slot.stream, slot.create_buffers, device_ordinal, phase));
 
   Thunk::ExecuteParams execute_params = MakeExecuteParams(slot, allocations);
 
-  RETURN_IF_ERROR(ExecuteOnStreamAndBlock(thunk, execute_params));
-  RETURN_IF_ERROR(
+  ABSL_RETURN_IF_ERROR(ExecuteOnStreamAndBlock(thunk, execute_params));
+  ABSL_RETURN_IF_ERROR(
       PrepareInputs(*slot.stream, slot.create_buffers, device_ordinal, phase));
 
-  RETURN_IF_ERROR(RecordCommandBufferCreate(slot, thunk, execute_params));
-  RETURN_IF_ERROR(SubmitCommandBuffer(slot));
+  ABSL_RETURN_IF_ERROR(RecordCommandBufferCreate(slot, thunk, execute_params));
+  ABSL_RETURN_IF_ERROR(SubmitCommandBuffer(slot));
   return VerifyOutput(*slot.stream, slot.create_buffers[1], device_ordinal,
                       phase);
 }
@@ -240,14 +240,14 @@ static absl::Status RunUpdatePhase(DeviceTestSlot& slot,
                                    RaggedAllToAllThunk& thunk,
                                    BufferAllocations& allocations,
                                    int device_ordinal, int phase) {
-  RETURN_IF_ERROR(
+  ABSL_RETURN_IF_ERROR(
       PrepareInputs(*slot.stream, slot.update_buffers, device_ordinal, phase));
 
   Thunk::ExecuteParams execute_params = MakeExecuteParams(slot, allocations);
 
-  RETURN_IF_ERROR(RecordCommandBufferUpdate(slot, thunk, execute_params,
+  ABSL_RETURN_IF_ERROR(RecordCommandBufferUpdate(slot, thunk, execute_params,
                                             AllAllocationIndices()));
-  RETURN_IF_ERROR(SubmitCommandBuffer(slot));
+  ABSL_RETURN_IF_ERROR(SubmitCommandBuffer(slot));
   return VerifyOutput(*slot.stream, slot.update_buffers[1], device_ordinal,
                       phase);
 }
@@ -267,7 +267,7 @@ TEST(RaggedAllToAllThunkMultiGpuTest, ExecuteOnStream) {
 
   ASSERT_OK(
       RunOnDevices(kNumDevices, "ragged_execute", [&](int d) -> absl::Status {
-        RETURN_IF_ERROR(SetupDeviceSlot(d, slots[d], thunk, device_assignment));
+        ABSL_RETURN_IF_ERROR(SetupDeviceSlot(d, slots[d], thunk, device_assignment));
         allocs[d] = std::make_unique<BufferAllocations>(
             MakeBufferAllocations(slots[d], slots[d].create_buffers));
         return RunExecuteOnStreamPhase(slots[d], thunk, *allocs[d], d,
@@ -293,7 +293,7 @@ TEST(RaggedAllToAllThunkMultiGpuTest, RecordCommandBufferCreate) {
 
   ASSERT_OK(
       RunOnDevices(kNumDevices, "ragged_create", [&](int d) -> absl::Status {
-        RETURN_IF_ERROR(SetupDeviceSlot(d, slots[d], thunk, device_assignment));
+        ABSL_RETURN_IF_ERROR(SetupDeviceSlot(d, slots[d], thunk, device_assignment));
         allocs[d] = std::make_unique<BufferAllocations>(
             MakeBufferAllocations(slots[d], slots[d].create_buffers));
         return RunCreatePhase(slots[d], thunk, *allocs[d], d, /*phase=*/1);
@@ -319,7 +319,7 @@ TEST(RaggedAllToAllThunkMultiGpuTest, RecordCommandBufferUpdate) {
 
   ASSERT_OK(
       RunOnDevices(kNumDevices, "ragged_create", [&](int d) -> absl::Status {
-        RETURN_IF_ERROR(SetupDeviceSlot(d, slots[d], thunk, device_assignment));
+        ABSL_RETURN_IF_ERROR(SetupDeviceSlot(d, slots[d], thunk, device_assignment));
         create_allocs[d] = std::make_unique<BufferAllocations>(
             MakeBufferAllocations(slots[d], slots[d].create_buffers));
         return RunCreatePhase(slots[d], thunk, *create_allocs[d], d,

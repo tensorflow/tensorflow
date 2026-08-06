@@ -103,7 +103,7 @@ constexpr absl::string_view kMlirProgramWithAutoLayout = R"mlir(
 
 absl::StatusOr<xla::XlaComputation> GetXlaComputation(
     absl::string_view program) {
-  ASSIGN_OR_RETURN(auto hlo_module,
+  ABSL_ASSIGN_OR_RETURN(auto hlo_module,
                    xla::ParseAndReturnUnverifiedModule(program, {}));
 
   return XlaComputation(hlo_module->ToProto());
@@ -437,9 +437,9 @@ TEST(StreamExecutorGpuCompilerTest, CrossCompilation) {
 }
 
 absl::StatusOr<std::shared_ptr<GpuTopology>> GetSampleH100basedGpuTopology() {
-  ASSIGN_OR_RETURN(auto gpu_target_config_proto,
+  ABSL_ASSIGN_OR_RETURN(auto gpu_target_config_proto,
                    gpu::GetGpuTargetConfig(gpu::GpuModel::H100_SXM));
-  ASSIGN_OR_RETURN(auto gpu_target_config,
+  ABSL_ASSIGN_OR_RETURN(auto gpu_target_config,
                    gpu::GpuTargetConfig::FromProto(gpu_target_config_proto));
   cpu::TargetMachineOptions host_target_machine_options(
       "some_triple", "some_cpu", "+some_feature,-some_other_feature");

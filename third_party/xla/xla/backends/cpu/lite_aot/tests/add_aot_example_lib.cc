@@ -48,7 +48,7 @@ std::string GetRootDir() {
 
 absl::StatusOr<std::unique_ptr<XlaAotFunction>> GetAddAotFunction() {
   CompilationResultProto proto;
-  RETURN_IF_ERROR(tsl::ReadBinaryProto(
+  ABSL_RETURN_IF_ERROR(tsl::ReadBinaryProto(
       tsl::Env::Default(), tsl::io::JoinPath(GetRootDir(), "add_aot"), &proto));
   return XlaAotFunction::Create(std::move(proto));
 }

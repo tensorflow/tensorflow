@@ -128,7 +128,7 @@ absl::StatusOr<Assembly> CachingCompilationProvider::CompileAndLink(
     if (std::holds_alternative<RelocatableModule>(input)) {
       modules.push_back(std::get<RelocatableModule>(input));
     } else {
-      ASSIGN_OR_RETURN(
+      ABSL_ASSIGN_OR_RETURN(
           RelocatableModule relocatable_module,
           CompileToRelocatableModule(cc, std::get<Ptx>(input).ptx, options));
       modules.push_back(std::move(relocatable_module));

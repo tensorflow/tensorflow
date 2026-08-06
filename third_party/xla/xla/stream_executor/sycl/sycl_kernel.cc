@@ -108,7 +108,7 @@ absl::Status SyclKernel::Launch(const ThreadDim& thread_dims,
     if (!pack || !dynamic_cast<const PackableKernelArgs*>(packed)) {
       return launch(*packed);
     }
-    ASSIGN_OR_RETURN(auto repacked, pack(*this, *packed));
+    ABSL_ASSIGN_OR_RETURN(auto repacked, pack(*this, *packed));
     return launch(*repacked);
   }
 
@@ -121,7 +121,7 @@ absl::Status SyclKernel::Launch(const ThreadDim& thread_dims,
           "memory arguments array");
     }
 
-    ASSIGN_OR_RETURN(auto packed, pack(*this, *device_mem));
+    ABSL_ASSIGN_OR_RETURN(auto packed, pack(*this, *device_mem));
     return launch(*packed);
   }
 

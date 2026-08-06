@@ -300,7 +300,7 @@ absl::StatusOr<HloInstruction*> MakeR1ConstantHlo(
     absl::Span<const NativeT> values) {
   Literal literal = LiteralUtil::CreateR1<NativeT>(values);
   if (literal.shape().element_type() != type) {
-    ASSIGN_OR_RETURN(literal, literal.Convert(type));
+    ABSL_ASSIGN_OR_RETURN(literal, literal.Convert(type));
   }
   return computation->AddInstruction(
       HloInstruction::CreateConstant(std::move(literal)));

@@ -44,9 +44,9 @@ class DevicelessEstimateCubSortScratchSizeTest
  protected:
   absl::StatusOr<int64_t> RunPassAndExtractScratchSize(
       absl::string_view hlo_text, DevicelessEstimateCubSortScratchSize& pass) {
-    ASSIGN_OR_RETURN(auto module, ParseAndReturnVerifiedModule(hlo_text));
+    ABSL_ASSIGN_OR_RETURN(auto module, ParseAndReturnVerifiedModule(hlo_text));
 
-    ASSIGN_OR_RETURN(bool changed, RunHloPass(&pass, module.get()));
+    ABSL_ASSIGN_OR_RETURN(bool changed, RunHloPass(&pass, module.get()));
     if (!changed) {
       return absl::InternalError("Pass did not change the module");
     }

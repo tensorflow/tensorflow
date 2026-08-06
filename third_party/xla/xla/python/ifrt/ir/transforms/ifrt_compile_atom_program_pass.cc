@@ -162,7 +162,7 @@ IfrtCompileAtomProgramPass::GetXlaCompileOptions(CallOp call_op,
   // compile options.
   if (auto compile_options_key =
           call_op->getAttrOfType<mlir::StringAttr>(kIfrtCompileOptionsKey)) {
-    ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         std::optional<xla::CompileOptions> compile_options_override,
         GetModuleXlaCompileOverrides(compile_options_key,
                                      compile_options_overrides_));
@@ -179,7 +179,7 @@ IfrtCompileAtomProgramPass::GetXlaCompileOptions(CallOp call_op,
 
 absl::StatusOr<AtomProgramCompileResult> IfrtCompileAtomProgramPass::CompileXla(
     CallOp call_op, mlir::ModuleOp module_op) {
-  ASSIGN_OR_RETURN(xla::CompileOptions compile_options,
+  ABSL_ASSIGN_OR_RETURN(xla::CompileOptions compile_options,
                    GetXlaCompileOptions(call_op, module_op));
   // In order to be able to compile multiple XLA computations in parallel, we
   // need to:
@@ -190,7 +190,7 @@ absl::StatusOr<AtomProgramCompileResult> IfrtCompileAtomProgramPass::CompileXla(
   //    because MLIR printing takes different paths depending on if a ModuleOp
   //    has a parent or not. Thus, by cloning the module we ensure that the
   //    module's string representation is maintained.
-  ASSIGN_OR_RETURN(mlir::OwningOpRef<mlir::ModuleOp> cloned_module,
+  ABSL_ASSIGN_OR_RETURN(mlir::OwningOpRef<mlir::ModuleOp> cloned_module,
                    CloneModuleIntoContext(module_op, *hlo_program_context_));
   auto hlo_program = std::make_unique<HloProgram>(hlo_program_context_,
                                                   std::move(cloned_module));
@@ -220,7 +220,7 @@ IfrtCompileAtomProgramPass::CompileMpmdReshard(mlir::ModuleOp module_op) {
   out_arrays_types.reserve(main_func.getResultTypes().size());
   for (const mlir::Type arg_type : main_func.getArgumentTypes()) {
     IfrtArrayType array_type = GetArrayType(arg_type);
-    ASSIGN_OR_RETURN(DType dtype,
+    ABSL_ASSIGN_OR_RETURN(DType dtype,
                      ToIfrtDType(array_type.getShape().getElementType()));
     dtypes.push_back(std::move(dtype));
     shapes.push_back(Shape(array_type.getShape().getShape()));

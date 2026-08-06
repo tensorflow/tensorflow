@@ -1170,7 +1170,7 @@ absl::StatusOr<std::unique_ptr<HloValueTracing>> HloValueTracing::Run(
   auto hlo_value_tracing =
       absl::WrapUnique(new HloValueTracing(module, execution_threads));
 
-  RETURN_IF_ERROR(hlo_value_tracing->InitializeInstructionValueSets());
+  ABSL_RETURN_IF_ERROR(hlo_value_tracing->InitializeInstructionValueSets());
   hlo_value_tracing->Propagate();
 
   // Delete all values marked for deletion.

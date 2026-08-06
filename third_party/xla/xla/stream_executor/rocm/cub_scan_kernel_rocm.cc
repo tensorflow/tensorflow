@@ -42,7 +42,7 @@ absl::Status CubScanLaunchKernelFfiHandler(
     ffi::Result<ffi::BufferR1<xla::U8>> d_temp_storage, int64_t vector_length,
     int64_t row_length, int64_t column_length, CubScanKind kind,
     bool is_reverse, hipStream_t stream) {
-  RETURN_IF_ERROR(
+  ABSL_RETURN_IF_ERROR(
       ffi::Verify("output", *d_out, ffi::match::Buffer().Like(d_in)));
 
   return CubScanLaunchKernel(
@@ -54,7 +54,7 @@ absl::Status CubScanLaunchKernelFfiHandler(
 absl::StatusOr<std::unique_ptr<int64_t>> CubScanGetScratchSizeFfiHandler(
     xla::PrimitiveType element_type, int64_t vector_length, int64_t row_length,
     int64_t column_length, CubScanKind kind, bool is_reverse) {
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       size_t temp_bytes,
       CubScanGetScratchSize(element_type, vector_length, row_length,
                             column_length, kind, is_reverse));

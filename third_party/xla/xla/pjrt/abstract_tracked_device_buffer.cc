@@ -152,7 +152,7 @@ absl::Status AbstractTrackedDeviceBuffer::WaitUntilBufferReadyOnStream(
     PjRtMemorySpace* memory_space, std::intptr_t stream) {
   auto* client = absl::down_cast<CommonPjRtClient*>(memory_space->client());
   for (const auto& event : definition_events()) {
-    RETURN_IF_ERROR(client->WaitOnStream(memory_space, event, stream));
+    ABSL_RETURN_IF_ERROR(client->WaitOnStream(memory_space, event, stream));
   }
   return absl::OkStatus();
 }
@@ -459,7 +459,7 @@ absl::Status CommonPjRtBuffer::AcquireScopedRawBuffer(
     definition_events.push_back(ev);
   }
 
-  ASSIGN_OR_RETURN(auto device_event, std::move(scoped_acquire)(
+  ABSL_ASSIGN_OR_RETURN(auto device_event, std::move(scoped_acquire)(
                                           device_buffer.buffer()->raw_buffer(),
                                           std::move(definition_events)));
   device_buffer.ConvertUsageHold(std::move(device_event));
@@ -470,7 +470,7 @@ absl::StatusOr<CommonPjRtBuffer::RawBufferForUsage>
 CommonPjRtBuffer::GetRawBufferForUsage(const char* caller_name) {
   xla::PjRtRawBufferRef raw_buffer;
   xla::PjRtDeviceEventPromiseRef usage_done_promise;
-  RETURN_IF_ERROR(AcquireScopedRawBuffer(
+  ABSL_RETURN_IF_ERROR(AcquireScopedRawBuffer(
       [&](xla::PjRtRawBufferRef raw_buffer_ref,
           xla::PjRtDeviceEventRefVector definition_events)
           -> absl::StatusOr<xla::PjRtDeviceEventRef> {
@@ -480,7 +480,7 @@ CommonPjRtBuffer::GetRawBufferForUsage(const char* caller_name) {
         xla::PjRtDeviceEventRef usage_event;
         auto* client =
             absl::down_cast<CommonPjRtClient*>(memory_space_->client());
-        ASSIGN_OR_RETURN(std::tie(usage_done_promise, usage_event),
+        ABSL_ASSIGN_OR_RETURN(std::tie(usage_done_promise, usage_event),
                          client->CreateLinkedEventPromise(
                              memory_space_, "GetRawBufferForUsage"));
         return usage_event;

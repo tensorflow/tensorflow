@@ -57,7 +57,7 @@ absl::StatusOr<std::unique_ptr<HloModule>> MultiModuleDriver::Compile(
     const Compiler::CompileOptions& options) const {
   compile_count_++;
   xla::HloModuleSplitter splitter;
-  ASSIGN_OR_RETURN(bool changed, splitter.Run(module.get()));
+  ABSL_ASSIGN_OR_RETURN(bool changed, splitter.Run(module.get()));
   if (!changed) {
     return module;
   }
@@ -96,20 +96,20 @@ absl::StatusOr<std::unique_ptr<HloModule>> MultiModuleDriver::Compile(
     counter.Wait();
   }
 
-  ASSIGN_OR_RETURN(module, std::move(results[0]));
+  ABSL_ASSIGN_OR_RETURN(module, std::move(results[0]));
   std::vector<std::unique_ptr<HloModule>> optimized_submodules;
   optimized_submodules.reserve(results.size() - 1);
   absl::flat_hash_map<std::string, HloModule*> optimized_modules_map;
   optimized_modules_map.reserve(results.size() - 1);
   for (size_t i = 1; i < results.size(); ++i) {
-    ASSIGN_OR_RETURN(auto opt_submod, std::move(results[i]));
+    ABSL_ASSIGN_OR_RETURN(auto opt_submod, std::move(results[i]));
     optimized_submodules.push_back(std::move(opt_submod));
     optimized_modules_map[optimized_submodules.back()->name()] =
         optimized_submodules.back().get();
   }
 
   xla::HloModuleStitcher stitcher(optimized_modules_map);
-  RETURN_IF_ERROR(stitcher.Run(module.get()).status());
+  ABSL_RETURN_IF_ERROR(stitcher.Run(module.get()).status());
 
   return module;
 }

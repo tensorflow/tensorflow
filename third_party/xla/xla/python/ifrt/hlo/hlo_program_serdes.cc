@@ -50,12 +50,12 @@ namespace {
 //
 // Serialization:
 // ```
-// ASSIGN_OR_RETURN(Serialized serialized, Serialize(xla_program));
+// ABSL_ASSIGN_OR_RETURN(Serialized serialized, Serialize(xla_program));
 // ```
 //
 // Deserialization:
 // ```
-// ASSIGN_OR_RETURN(auto deserialized, Deserialize(serialized));
+// ABSL_ASSIGN_OR_RETURN(auto deserialized, Deserialize(serialized));
 // auto xla_program = llvm::dyn_cast<HloProgram>(deserialized);
 // ```
 
@@ -95,14 +95,14 @@ class HloProgramSerDes : public RTTIExtends<HloProgramSerDes, SerDes> {
     // Allow mixed serialization for stablehlo dialects.
     std::string serialized;
     if (version.version_number() >= SerDesVersionNumber(3)) {
-      ASSIGN_OR_RETURN(serialized,
+      ABSL_ASSIGN_OR_RETURN(serialized,
                        xla::SerializeUsingVersionedStablehlo(
                            *module, xla::GetDefaultStablehloVersion(),
                            xla::GetDefaultSdyVersion(),
                            /*inplace=*/false,
                            /*allow_mixed_serialization=*/true));
     } else {
-      ASSIGN_OR_RETURN(serialized,
+      ABSL_ASSIGN_OR_RETURN(serialized,
                        xla::SerializeUsingVersionedStablehlo(
                            *module, xla::GetDefaultStablehloVersion(),
                            xla::GetDefaultSdyVersion()));

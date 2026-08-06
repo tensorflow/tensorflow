@@ -50,7 +50,7 @@ namespace ifrt {
 absl::StatusOr<std::optional<int64_t>> PjRtTuple::ByteSize() const {
   int64_t byte_size = 0;
   for (const auto& value : values_) {
-    ASSIGN_OR_RETURN(std::optional<int64_t> element_byte_size,
+    ABSL_ASSIGN_OR_RETURN(std::optional<int64_t> element_byte_size,
                      value->ByteSize());
     if (!element_byte_size.has_value()) {
       return std::nullopt;

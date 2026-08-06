@@ -68,7 +68,7 @@ GpuModuleGlobals::ConstantInfo::FromProto(
           "Instruction for ", proto.symbol_name(), " constant missing."));
     }
     const HloInstruction* instr = it->second;
-    ASSIGN_OR_RETURN(DenseDataIntermediate content,
+    ABSL_ASSIGN_OR_RETURN(DenseDataIntermediate content,
                      LiteralToXlaFormat(instr->literal()));
     return ConstantInfo{proto.symbol_name(), content,
                         static_cast<int>(proto.allocation_index())};
@@ -100,7 +100,7 @@ GpuModuleGlobals::Resolve(se::Stream* stream) {
     TF_RET_CHECK(constants_.empty())
         << "Constants metadata is present without a constants binary";
   } else {
-    ASSIGN_OR_RETURN(module_handle, executor->LoadModule(module_spec));
+    ABSL_ASSIGN_OR_RETURN(module_handle, executor->LoadModule(module_spec));
   }
 
   // A flag signalling if constant initialization submitted memcpy operations
@@ -125,7 +125,7 @@ GpuModuleGlobals::Resolve(se::Stream* stream) {
     if (!info.content.span().empty()) {
       // This means the constant did not have an initializer in the PTX and
       // therefore must be initialized by XLA here.
-      RETURN_IF_ERROR(stream->Memcpy(&global, info.content.span().data(),
+      ABSL_RETURN_IF_ERROR(stream->Memcpy(&global, info.content.span().data(),
                                      info.content.span().size()));
       submitted_mem_copies = true;
     }

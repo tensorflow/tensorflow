@@ -89,7 +89,7 @@ mlir::LogicalResult MlirHloToHloTranslateFunction(mlir::ModuleOp module,
 absl::StatusOr<std::unique_ptr<HloModule>> HloModuleFromProto(
     const HloProto& hlo_proto) {
   const HloModuleProto& module_proto = hlo_proto.hlo_module();
-  ASSIGN_OR_RETURN(const HloModuleConfig module_config,
+  ABSL_ASSIGN_OR_RETURN(const HloModuleConfig module_config,
                    HloModule::CreateModuleConfigFromProto(
                        module_proto, GetDebugOptionsFromFlags()));
   return HloModule::CreateFromProto(module_proto, module_config);
@@ -124,7 +124,7 @@ absl::Status ConvertMlirHloToHloViaBuilder(
   }
 
   std::vector<xla::XlaOp> returns(1);
-  RETURN_IF_ERROR(
+  ABSL_RETURN_IF_ERROR(
       mlir::BuildHloFromMlirHlo(module, builder, xla_params, returns, options));
 
   xla::XlaOp return_value;
@@ -134,7 +134,7 @@ absl::Status ConvertMlirHloToHloViaBuilder(
     return_value = xla::Tuple(&builder, returns);
   }
 
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       xla::XlaComputation computation,
       return_value.valid() ? builder.Build(return_value) : builder.Build());
 

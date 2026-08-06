@@ -71,12 +71,12 @@ static HloComputation* WrapMultipleSendRecvInstructions(
 static absl::Status UpdateControlDependencies(HloInstruction* old_instruction,
                                               HloInstruction* new_instruction) {
   for (HloInstruction* predecessor : old_instruction->control_predecessors()) {
-    RETURN_IF_ERROR(predecessor->RemoveControlDependencyTo(old_instruction));
-    RETURN_IF_ERROR(predecessor->AddControlDependencyTo(new_instruction));
+    ABSL_RETURN_IF_ERROR(predecessor->RemoveControlDependencyTo(old_instruction));
+    ABSL_RETURN_IF_ERROR(predecessor->AddControlDependencyTo(new_instruction));
   }
   for (HloInstruction* successor : old_instruction->control_successors()) {
-    RETURN_IF_ERROR(old_instruction->RemoveControlDependencyTo(successor));
-    RETURN_IF_ERROR(new_instruction->AddControlDependencyTo(successor));
+    ABSL_RETURN_IF_ERROR(old_instruction->RemoveControlDependencyTo(successor));
+    ABSL_RETURN_IF_ERROR(new_instruction->AddControlDependencyTo(successor));
   }
   return absl::OkStatus();
 }
@@ -139,16 +139,16 @@ static absl::Status CreateAsyncStartAndAsyncDone(
     for (HloInstruction* instruction_user : instruction->users()) {
       if (HloPredicateIsOp<HloOpcode::kSendDone, HloOpcode::kRecvDone>(
               instruction_user)) {
-        RETURN_IF_ERROR(UpdateControlDependencies(instruction, async_start));
-        RETURN_IF_ERROR(UpdateControlDependencies(instruction_user,
+        ABSL_RETURN_IF_ERROR(UpdateControlDependencies(instruction, async_start));
+        ABSL_RETURN_IF_ERROR(UpdateControlDependencies(instruction_user,
                                                   replacement_async_done));
-        RETURN_IF_ERROR(
+        ABSL_RETURN_IF_ERROR(
             instruction_user->ReplaceAllUsesWith(replacement_async_done));
-        RETURN_IF_ERROR(computation->RemoveInstruction(instruction_user));
+        ABSL_RETURN_IF_ERROR(computation->RemoveInstruction(instruction_user));
         changed = true;
       }
     }
-    RETURN_IF_ERROR(computation->RemoveInstruction(instruction));
+    ABSL_RETURN_IF_ERROR(computation->RemoveInstruction(instruction));
   }
   return absl::OkStatus();
 }
@@ -195,7 +195,7 @@ absl::StatusOr<bool> CollectiveSendRecvCombiner::RunImpl(
     HloComputation* async_computation = WrapMultipleSendRecvInstructions(
         send_recv_instructions, async_start_inputs, async_start_input_shapes,
         builder, module);
-    RETURN_IF_ERROR(CreateAsyncStartAndAsyncDone(
+    ABSL_RETURN_IF_ERROR(CreateAsyncStartAndAsyncDone(
         send_recv_instructions, async_computation, computation, module,
         async_start_inputs, async_start_input_shapes, changed));
   }

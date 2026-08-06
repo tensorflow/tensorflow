@@ -1083,7 +1083,7 @@ absl::StatusOr<PreparedCrossHostTransferTest> PrepareCrossHostTransferTest(
   // other via the distributed runtime (port chosen arbitrarily).
   if (rank_id == 0) {
     LOG(INFO) << log_prefix << ": creating coordination service";
-    ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         prepared_test.service,
         xla::GetDistributedRuntimeService(
             "127.0.0.1:12347",
@@ -1111,7 +1111,7 @@ absl::StatusOr<PreparedCrossHostTransferTest> PrepareCrossHostTransferTest(
   options.allowed_devices = {rank_id};
 
   LOG(INFO) << log_prefix << ": creating PjRtClient";
-  ASSIGN_OR_RETURN(prepared_test.client, GetStreamExecutorGpuClient(options));
+  ABSL_ASSIGN_OR_RETURN(prepared_test.client, GetStreamExecutorGpuClient(options));
   LOG(INFO) << log_prefix << ": PjRtClient created";
 
   return prepared_test;
@@ -1121,7 +1121,7 @@ absl::Status SuccessfulCrossHostSendReceiveTestBody(bool is_sender,
                                                     int num_arrays) {
   std::string log_prefix = is_sender ? "sender" : "receiver";
 
-  ASSIGN_OR_RETURN(PreparedCrossHostTransferTest prepared_test,
+  ABSL_ASSIGN_OR_RETURN(PreparedCrossHostTransferTest prepared_test,
                    PrepareCrossHostTransferTest(is_sender ? 0 : 1, log_prefix));
 
   std::unique_ptr<PjRtClient> client = std::move(prepared_test.client);
@@ -1137,10 +1137,10 @@ absl::Status SuccessfulCrossHostSendReceiveTestBody(bool is_sender,
       std::vector<int32_t> data(256);
       absl::c_iota(data, 1000 * i);
 
-      ASSIGN_OR_RETURN(
+      ABSL_ASSIGN_OR_RETURN(
           auto* memory_space,
           client->addressable_devices()[0]->default_memory_space());
-      ASSIGN_OR_RETURN(
+      ABSL_ASSIGN_OR_RETURN(
           std::unique_ptr<PjRtBuffer> buffer,
           client->BufferFromHostBuffer(
               data.data(), shape.element_type(), shape.dimensions(),
@@ -1148,7 +1148,7 @@ absl::Status SuccessfulCrossHostSendReceiveTestBody(bool is_sender,
               PjRtClient::HostBufferSemantics::kImmutableOnlyDuringCall,
               nullptr, memory_space,
               /*device_layout=*/nullptr));
-      RETURN_IF_ERROR(buffer->GetReadyFuture().Await());
+      ABSL_RETURN_IF_ERROR(buffer->GetReadyFuture().Await());
       buffers.push_back(std::move(buffer));
     }
 
@@ -1164,14 +1164,14 @@ absl::Status SuccessfulCrossHostSendReceiveTestBody(bool is_sender,
       transfer_keys.push_back(CrossHostTransferKey(i));
     };
 
-    ASSIGN_OR_RETURN(std::vector<Future<>> send_futures,
+    ABSL_ASSIGN_OR_RETURN(std::vector<Future<>> send_futures,
                      client->CrossHostSendBuffers(raw_buffers, dst_device_ids,
                                                   std::move(transfer_keys)));
 
     EXPECT_EQ(send_futures.size(), num_arrays);
     for (int i = 0; i < num_arrays; ++i) {
       LOG(INFO) << log_prefix << ": waiting for send " << i << " to complete";
-      RETURN_IF_ERROR(send_futures[i].Await());
+      ABSL_RETURN_IF_ERROR(send_futures[i].Await());
       LOG(INFO) << log_prefix << ": send " << i << " completed";
     }
   } else {
@@ -1186,7 +1186,7 @@ absl::Status SuccessfulCrossHostSendReceiveTestBody(bool is_sender,
     }
 
     LOG(INFO) << log_prefix << ": calling CrossHostReceiveBuffers";
-    ASSIGN_OR_RETURN(std::vector<std::unique_ptr<PjRtBuffer>> receive_buffers,
+    ABSL_ASSIGN_OR_RETURN(std::vector<std::unique_ptr<PjRtBuffer>> receive_buffers,
                      client->CrossHostReceiveBuffers(
                          client->addressable_devices()[0], shapes,
                          src_device_ids, std::move(transfer_keys)));
@@ -1203,10 +1203,10 @@ absl::Status SuccessfulCrossHostSendReceiveTestBody(bool is_sender,
 
       LOG(INFO) << log_prefix << ": waiting for receive " << i
                 << " to complete";
-      RETURN_IF_ERROR(receive_buffers[i]->GetReadyFuture().Await());
+      ABSL_RETURN_IF_ERROR(receive_buffers[i]->GetReadyFuture().Await());
       LOG(INFO) << log_prefix << ": receive " << i << " completed";
 
-      ASSIGN_OR_RETURN(std::shared_ptr<xla::Literal> recv_literal,
+      ABSL_ASSIGN_OR_RETURN(std::shared_ptr<xla::Literal> recv_literal,
                        receive_buffers[i]->ToLiteral().Await());
 
       EXPECT_TRUE(LiteralTestUtil::Equal(expected_literal, *recv_literal));
@@ -1332,7 +1332,7 @@ absl::Status SuccessfulCrossHostTransferTestBody(int rank_id,
   std::string log_prefix = rank_id == 0 ? "rank_0" : "rank_1";
   const int num_transfers = num_rank_0_to_rank_1 + num_rank_1_to_rank_0;
 
-  ASSIGN_OR_RETURN(PreparedCrossHostTransferTest prepared_test,
+  ABSL_ASSIGN_OR_RETURN(PreparedCrossHostTransferTest prepared_test,
                    PrepareCrossHostTransferTest(rank_id, log_prefix));
   std::unique_ptr<PjRtClient> client = std::move(prepared_test.client);
 
@@ -1360,7 +1360,7 @@ absl::Status SuccessfulCrossHostTransferTestBody(int rank_id,
     transferred_data.push_back(std::move(curr_data));
   }
   Shape shape = ShapeUtil::MakeShape(S32, {256});
-  ASSIGN_OR_RETURN(PjRtMemorySpace * default_memory_space,
+  ABSL_ASSIGN_OR_RETURN(PjRtMemorySpace * default_memory_space,
                    client->addressable_devices()[0]->default_memory_space());
 
   // Initial values that will be populated in receive buffers (all zeros).
@@ -1390,7 +1390,7 @@ absl::Status SuccessfulCrossHostTransferTestBody(int rank_id,
     bool is_sender = rank_id == src_global_device_id;
 
     // Initialize a send / receive buffer.
-    ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         std::unique_ptr<PjRtBuffer> buffer,
         client->BufferFromHostBuffer(
             /*data=*/is_sender ? transferred_data[i].data()
@@ -1403,7 +1403,7 @@ absl::Status SuccessfulCrossHostTransferTestBody(int rank_id,
     // Create a usage event for the transfer of this buffer.
     PjRtDeviceEventPromiseRef usage_event_promise;
     PjRtDeviceEventRef usage_event;
-    ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         std::tie(usage_event_promise, usage_event),
         absl::down_cast<CommonPjRtClient*>(client.get())
             ->CreateLinkedEventPromise(default_memory_space,
@@ -1412,7 +1412,7 @@ absl::Status SuccessfulCrossHostTransferTestBody(int rank_id,
 
     // Get a raw buffer.
     PjRtRawBufferRef raw_buffer;
-    RETURN_IF_ERROR(
+    ABSL_RETURN_IF_ERROR(
         absl::down_cast<CommonPjRtBufferImpl*>(buffer.get())
             ->AcquireScopedRawBuffer(
                 [&](PjRtRawBufferRef buf_raw_buffer,
@@ -1440,7 +1440,7 @@ absl::Status SuccessfulCrossHostTransferTestBody(int rank_id,
 
   // Perform transfers.
   LOG(INFO) << log_prefix << ": enqueuing transfers";
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       PjRtDeviceEventRefVector usage_events,
       absl::down_cast<CommonPjRtClient*>(client.get())
           ->CrossHostTransferBuffers(std::move(transfer_dependencies),
@@ -1462,7 +1462,7 @@ absl::Status SuccessfulCrossHostTransferTestBody(int rank_id,
   // Verify we received the correct data, and that the data we sent is
   // uncorrupted.
   for (int i = 0; i < num_transfers; ++i) {
-    ASSIGN_OR_RETURN(std::shared_ptr<xla::Literal> buffer_literal,
+    ABSL_ASSIGN_OR_RETURN(std::shared_ptr<xla::Literal> buffer_literal,
                      owned_buffers[i]->ToLiteral().Await());
     auto expected_literal = LiteralUtil::CreateR1<int32_t>(transferred_data[i]);
     EXPECT_TRUE(LiteralTestUtil::Equal(expected_literal, *buffer_literal));
@@ -1569,7 +1569,7 @@ absl::Status ShardedAutotuningWorksTestBody(const int node_id,
                                             absl::string_view cache_dir) {
   std::unique_ptr<xla::DistributedRuntimeService> service;
   if (node_id == 0) {
-    ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         service,
         xla::GetDistributedRuntimeService(
             "[::]:12345", xla::CoordinationServiceImpl::Options{
@@ -1588,14 +1588,14 @@ absl::Status ShardedAutotuningWorksTestBody(const int node_id,
   options.num_nodes = ShardedAutotuningTest::kNumNodes;
   options.kv_store = GetDistributedKeyValueStore(distributed_client,
                                                  /*key_prefix=*/"gpu:");
-  ASSIGN_OR_RETURN(std::unique_ptr<PjRtClient> client,
+  ABSL_ASSIGN_OR_RETURN(std::unique_ptr<PjRtClient> client,
                    GetStreamExecutorGpuClient(options));
   TF_RET_CHECK(client->platform_name() == xla::CudaName() ||
                client->platform_name() == xla::RocmName() ||
                client->platform_name() == xla::OneapiName());
   if (client->platform_name() == xla::CudaName()) {
 #if GOOGLE_CUDA
-    ASSIGN_OR_RETURN(se::CudaComputeCapability cc,
+    ABSL_ASSIGN_OR_RETURN(se::CudaComputeCapability cc,
                      se::CudaComputeCapability::FromString(
                          std::get<std::string>(client->addressable_devices()
                                                    .front()
@@ -1636,14 +1636,14 @@ absl::Status ShardedAutotuningWorksTestBody(const int node_id,
     }
   )";
 
-  ASSIGN_OR_RETURN(auto hlo_module, ParseAndReturnUnverifiedModule(kHlo, {}));
+  ABSL_ASSIGN_OR_RETURN(auto hlo_module, ParseAndReturnUnverifiedModule(kHlo, {}));
   xla::XlaComputation computation(hlo_module->ToProto());
 
   std::unique_ptr<PjRtLoadedExecutable> executable;
-  ASSIGN_OR_RETURN(executable,
+  ABSL_ASSIGN_OR_RETURN(executable,
                    client->CompileAndLoad(computation, compile_options));
 
-  ASSIGN_OR_RETURN(auto hlo_modules,
+  ABSL_ASSIGN_OR_RETURN(auto hlo_modules,
                    executable->GetExecutable()->GetHloModules());
   const std::string optimized_hlo = hlo_modules.front()->ToString();
   TF_RET_CHECK(absl::StrContains(optimized_hlo, "triton_gemm") ||

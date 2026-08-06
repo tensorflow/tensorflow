@@ -64,16 +64,16 @@ absl::Status SetFileContent(absl::string_view path, absl::string_view content) {
         absl::StrCat("Unable to create tempfile name for :", path));
   }
   bool has_atomic_move;
-  RETURN_IF_ERROR(env->HasAtomicMove(tmppath, &has_atomic_move));
+  ABSL_RETURN_IF_ERROR(env->HasAtomicMove(tmppath, &has_atomic_move));
   if (!has_atomic_move) {
     return absl::InternalError(
         absl::StrCat("Atomic move is not supported for :", path));
   }
 
   std::unique_ptr<tsl::WritableFile> file;
-  RETURN_IF_ERROR(env->NewWritableFile(tmppath, &file));
-  RETURN_IF_ERROR(file->Append(content));
-  RETURN_IF_ERROR(file->Close());
+  ABSL_RETURN_IF_ERROR(env->NewWritableFile(tmppath, &file));
+  ABSL_RETURN_IF_ERROR(file->Append(content));
+  ABSL_RETURN_IF_ERROR(file->Close());
 
   return env->RenameFile(tmppath, std::string(path));
 }
@@ -158,7 +158,7 @@ absl::Status UpdateDiskKernelCache(absl::string_view path, const bool do_append,
                                    const CompilationCacheProto& current_cache) {
   CompilationCacheProto disk_cache;
   if (do_append) {
-    RETURN_IF_ERROR(tsl::ReadBinaryProto(tsl::Env::Default(), std::string(path),
+    ABSL_RETURN_IF_ERROR(tsl::ReadBinaryProto(tsl::Env::Default(), std::string(path),
                                          &disk_cache));
     if (disk_cache.compatibility_version() != kCacheCompatibilityVersion) {
       LOG(WARNING) << "Provided CompilationCacheProto contains no longer "
@@ -183,7 +183,7 @@ absl::Status UpdateDiskKernelCache(absl::string_view path, const bool do_append,
 
   disk_cache.set_compatibility_version(kCacheCompatibilityVersion);
   if (stored_kernel_count) {
-    RETURN_IF_ERROR(gpu::SetFileContent(path, disk_cache.SerializeAsString()));
+    ABSL_RETURN_IF_ERROR(gpu::SetFileContent(path, disk_cache.SerializeAsString()));
     VLOG(2) << "Stored " << stored_kernel_count
             << " kernels in the cache file.";
   }

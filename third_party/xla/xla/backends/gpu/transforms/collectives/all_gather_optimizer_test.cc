@@ -46,7 +46,7 @@ class GpuAllGatherOptimizerTest : public HloHardwareIndependentTestBase {
         /*replica_count=*/num_replicas,
         /*num_partitions=*/num_partitions);
     config.set_use_spmd_partitioning(num_partitions > 1);
-    ASSIGN_OR_RETURN(auto module,
+    ABSL_ASSIGN_OR_RETURN(auto module,
                      ParseAndReturnVerifiedModule(hlo_module, config));
 
     auto changed = AllGatherOptimizer().Run(module.get());

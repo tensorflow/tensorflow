@@ -59,7 +59,7 @@ absl::StatusOr<int32_t> RocmKernel::GetMaxOccupiedBlocksPerCore(
   std::unique_ptr<ActivateContext> activation = executor_->Activate();
 
   int max_blocks = 0;
-  RETURN_IF_ERROR(ToStatus(hipModuleOccupancyMaxActiveBlocksPerMultiprocessor(
+  ABSL_RETURN_IF_ERROR(ToStatus(hipModuleOccupancyMaxActiveBlocksPerMultiprocessor(
                                &max_blocks, rocm_function_, threads_per_block,
                                dynamic_shared_memory_bytes),
                            "Failed to calculate maximal active blocks per SM"));
@@ -69,11 +69,11 @@ absl::StatusOr<int32_t> RocmKernel::GetMaxOccupiedBlocksPerCore(
 absl::StatusOr<KernelMetadata> RocmKernel::GetKernelMetadata() {
   KernelMetadata kernel_metadata;
   int value = 0;
-  RETURN_IF_ERROR(
+  ABSL_RETURN_IF_ERROR(
       FuncGetAttribute(HIP_FUNC_ATTRIBUTE_NUM_REGS, rocm_function_, &value));
   kernel_metadata.set_registers_per_thread(value);
 
-  RETURN_IF_ERROR(FuncGetAttribute(HIP_FUNC_ATTRIBUTE_SHARED_SIZE_BYTES,
+  ABSL_RETURN_IF_ERROR(FuncGetAttribute(HIP_FUNC_ATTRIBUTE_SHARED_SIZE_BYTES,
                                    rocm_function_, &value));
   kernel_metadata.set_shared_memory_bytes(value);
   return kernel_metadata;
@@ -110,7 +110,7 @@ absl::Status RocmKernel::Launch(const ThreadDim& thread_dims,
     if (!pack) {
       return launch(*packed);
     }
-    ASSIGN_OR_RETURN(auto repacked, pack(*this, *packed));
+    ABSL_ASSIGN_OR_RETURN(auto repacked, pack(*this, *packed));
 
     return launch(*repacked);
   }
@@ -124,7 +124,7 @@ absl::Status RocmKernel::Launch(const ThreadDim& thread_dims,
           "memory arguments array");
     }
 
-    ASSIGN_OR_RETURN(auto packed, pack(*this, *device_mem));
+    ABSL_ASSIGN_OR_RETURN(auto packed, pack(*this, *device_mem));
     return launch(*packed);
   }
 

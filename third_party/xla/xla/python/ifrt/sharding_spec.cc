@@ -627,7 +627,7 @@ bool ShardingParamShardingSpec::HasSamePartitioning(
 
 absl::StatusOr<std::vector<std::pair<Shape, ShardingSpecRef>>>
 ShardingParamShardingSpec::Disassemble(const Shape& shape) const {
-  ASSIGN_OR_RETURN(Shape local_shape, GetShardShape(shape));
+  ABSL_ASSIGN_OR_RETURN(Shape local_shape, GetShardShape(shape));
   std::vector<std::pair<Shape, ShardingSpecRef>> result;
   result.reserve(num_shards_);
   for (int i = 0; i < num_shards_; ++i) {
@@ -648,7 +648,7 @@ ShardingParamShardingSpec::Disassemble(
 absl::StatusOr<std::vector<IndexDomain>>
 ShardingParamShardingSpec::IndexDomains(const Shape& shape) const {
   // Calculate the origins of tiles, ignoring device assignments.
-  ASSIGN_OR_RETURN(Shape local_shape, GetShardShape(shape));
+  ABSL_ASSIGN_OR_RETURN(Shape local_shape, GetShardShape(shape));
   std::vector<Index> tile_indices =
       GetTileIndices(sharding_param_.dim_shards());
   std::vector<Index> origins;

@@ -101,7 +101,7 @@ static absl::StatusOr<dnnl::graph::logical_tensor> FindLogicalTensor(
 
 static absl::StatusOr<dnnl::graph::logical_tensor> CreateLogicalTensor(
     size_t tensor_id, const Shape& shape) {
-  ASSIGN_OR_RETURN(auto type, OneDnnDatatype(shape.element_type()));
+  ABSL_ASSIGN_OR_RETURN(auto type, OneDnnDatatype(shape.element_type()));
 
   dnnl::graph::logical_tensor::dims dims = OneDnnDimensions(shape);
   dnnl::graph::logical_tensor::dims strides = OneDnnStrides(shape);
@@ -123,13 +123,13 @@ static absl::StatusOr<dnnl::graph::logical_tensor> DefineUnaryOp(
   VLOG(3) << absl::StreamFormat("Define logical tensor value for unary op: %s",
                                 instr->ToString());
 
-  ASSIGN_OR_RETURN(auto unary_op, OneDnnUnaryOperator(instr->opcode()));
+  ABSL_ASSIGN_OR_RETURN(auto unary_op, OneDnnUnaryOperator(instr->opcode()));
 
-  ASSIGN_OR_RETURN(auto input,
+  ABSL_ASSIGN_OR_RETURN(auto input,
                    FindLogicalTensor(logical_tensors, instr->operand(0)));
 
   size_t output_id = logical_tensors.size();
-  ASSIGN_OR_RETURN(auto output, CreateLogicalTensor(output_id, instr->shape()));
+  ABSL_ASSIGN_OR_RETURN(auto output, CreateLogicalTensor(output_id, instr->shape()));
 
   VLOG(3) << absl::StreamFormat("  tensors: input=%d, output=%d",
                                 input.get_id(), output.get_id());
@@ -146,15 +146,15 @@ static absl::StatusOr<dnnl::graph::logical_tensor> DefineBinaryOp(
   VLOG(3) << absl::StreamFormat("Define logical tensor value for binary op: %s",
                                 instr->ToString());
 
-  ASSIGN_OR_RETURN(auto binary_op, OneDnnBinaryOperator(instr->opcode()));
+  ABSL_ASSIGN_OR_RETURN(auto binary_op, OneDnnBinaryOperator(instr->opcode()));
 
-  ASSIGN_OR_RETURN(auto lhs,
+  ABSL_ASSIGN_OR_RETURN(auto lhs,
                    FindLogicalTensor(logical_tensors, instr->operand(0)));
-  ASSIGN_OR_RETURN(auto rhs,
+  ABSL_ASSIGN_OR_RETURN(auto rhs,
                    FindLogicalTensor(logical_tensors, instr->operand(1)));
 
   size_t output_id = logical_tensors.size();
-  ASSIGN_OR_RETURN(auto output, CreateLogicalTensor(output_id, instr->shape()));
+  ABSL_ASSIGN_OR_RETURN(auto output, CreateLogicalTensor(output_id, instr->shape()));
 
   VLOG(3) << absl::StreamFormat("  tensors: lhs=%d, rhs=%d, output=%d",
                                 lhs.get_id(), rhs.get_id(), output.get_id());
@@ -172,7 +172,7 @@ static absl::StatusOr<dnnl::graph::logical_tensor> DefineMatMul(
   const DotDimensionNumbers& dnums = instr->dot_dimension_numbers();
   const Shape& lhs_shape = instr->operand(0)->shape();
   const Shape& rhs_shape = instr->operand(1)->shape();
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       bool is_supported,
       IsDotSupportedByOneDnn(dnums, lhs_shape, rhs_shape, instr->shape()));
 
@@ -184,23 +184,23 @@ static absl::StatusOr<dnnl::graph::logical_tensor> DefineMatMul(
   VLOG(3) << absl::StreamFormat("Define logical tensor value for MatMul: %s",
                                 instr->ToString());
 
-  ASSIGN_OR_RETURN(auto matmul_op, OneDnnBinaryOperator(instr->opcode()));
-  ASSIGN_OR_RETURN(auto lhs,
+  ABSL_ASSIGN_OR_RETURN(auto matmul_op, OneDnnBinaryOperator(instr->opcode()));
+  ABSL_ASSIGN_OR_RETURN(auto lhs,
                    FindLogicalTensor(logical_tensors, instr->operand(0)));
-  ASSIGN_OR_RETURN(auto rhs,
+  ABSL_ASSIGN_OR_RETURN(auto rhs,
                    FindLogicalTensor(logical_tensors, instr->operand(1)));
 
   size_t output_id = logical_tensors.size();
-  ASSIGN_OR_RETURN(auto output, CreateLogicalTensor(output_id, instr->shape()));
+  ABSL_ASSIGN_OR_RETURN(auto output, CreateLogicalTensor(output_id, instr->shape()));
 
   VLOG(3) << absl::StreamFormat("  tensors: lhs=%d, rhs=%d, output=%d",
                                 lhs.get_id(), rhs.get_id(), output.get_id());
 
   dnnl::graph::op op(op_id, matmul_op, {lhs, rhs}, {output});
 
-  ASSIGN_OR_RETURN(DotShape dot_shape,
+  ABSL_ASSIGN_OR_RETURN(DotShape dot_shape,
                    GetDotShape(dnums, lhs_shape, rhs_shape, instr->shape()));
-  ASSIGN_OR_RETURN(DotCanonicalDims dot_canonical_dims,
+  ABSL_ASSIGN_OR_RETURN(DotCanonicalDims dot_canonical_dims,
                    GetDotCanonicalDims(dnums, dot_shape));
 
   if (!dot_canonical_dims.lhs_canonical) {
@@ -235,7 +235,7 @@ static absl::StatusOr<OneDnnFusion> EmitOneDnnFusion(
   for (const HloInstruction* instr : instructions) {
     switch (instr->opcode()) {
       case HloOpcode::kParameter: {
-        ASSIGN_OR_RETURN(logical_tensors[instr],
+        ABSL_ASSIGN_OR_RETURN(logical_tensors[instr],
                          DefineParameter(logical_tensors, instr));
       } break;
 
@@ -245,7 +245,7 @@ static absl::StatusOr<OneDnnFusion> EmitOneDnnFusion(
       case HloOpcode::kLog:
       case HloOpcode::kSqrt:
       case HloOpcode::kTanh: {
-        ASSIGN_OR_RETURN(logical_tensors[instr],
+        ABSL_ASSIGN_OR_RETURN(logical_tensors[instr],
                          DefineUnaryOp(graph, op_id++, logical_tensors, instr));
       } break;
 
@@ -256,13 +256,13 @@ static absl::StatusOr<OneDnnFusion> EmitOneDnnFusion(
       case HloOpcode::kMinimum:
       case HloOpcode::kMultiply:
       case HloOpcode::kSubtract: {
-        ASSIGN_OR_RETURN(
+        ABSL_ASSIGN_OR_RETURN(
             logical_tensors[instr],
             DefineBinaryOp(graph, op_id++, logical_tensors, instr));
       } break;
 
       case HloOpcode::kDot: {
-        ASSIGN_OR_RETURN(logical_tensors[instr],
+        ABSL_ASSIGN_OR_RETURN(logical_tensors[instr],
                          DefineMatMul(graph, op_id++, logical_tensors, instr));
       } break;
 

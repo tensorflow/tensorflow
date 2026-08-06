@@ -95,7 +95,7 @@ static absl::StatusOr<bool> AsynchronizeInstruction(HloInstruction* instr) {
   }
   ClearSchedulingAnnotations(instr);
 
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       HloInstruction * done,
       computation->CreateAsyncInstructions(
           instr, {}, ExplicitStreamAnnotationAsyncWrapper::kMainExecutionThread,
@@ -103,12 +103,12 @@ static absl::StatusOr<bool> AsynchronizeInstruction(HloInstruction* instr) {
   // Replace the original attributes after creating the async pair.
   done->set_frontend_attributes(original_attributes);
   done->mutable_operand(0)->set_frontend_attributes(original_attributes);
-  ASSIGN_OR_RETURN(GpuBackendConfig gpu_config,
+  ABSL_ASSIGN_OR_RETURN(GpuBackendConfig gpu_config,
                    done->backend_config<GpuBackendConfig>());
   // Set earliest schedule of done op to be false so it can be scheduled
   // far apart from start.
   gpu_config.set_force_earliest_schedule(false);
-  RETURN_IF_ERROR(done->set_backend_config(gpu_config));
+  ABSL_RETURN_IF_ERROR(done->set_backend_config(gpu_config));
   VLOG(5) << "Created async instruction: " << done->ToString();
   return true;
 }
@@ -128,7 +128,7 @@ absl::StatusOr<bool> ExplicitStreamAnnotationAsyncWrapper::RunImpl(
       continue;
     }
     for (HloInstruction* instr : (*it)->instructions()) {
-      ASSIGN_OR_RETURN(bool result, AsynchronizeInstruction(instr));
+      ABSL_ASSIGN_OR_RETURN(bool result, AsynchronizeInstruction(instr));
       changed |= result;
     }
   }

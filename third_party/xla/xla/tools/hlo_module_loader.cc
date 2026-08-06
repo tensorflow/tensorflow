@@ -131,13 +131,13 @@ absl::StatusOr<std::unique_ptr<HloModule>> LoadModuleFromData(
     std::string hlo_string = StripLogHeaders(data);
     HloModuleConfig config;
     config.set_debug_options(debug_options);
-    RETURN_IF_ERROR(OverrideConfig(ovr_config, &config));
+    ABSL_RETURN_IF_ERROR(OverrideConfig(ovr_config, &config));
     if (config_modifier_hook) {
       config_modifier_hook(&config);
     }
     HloParserOptions options;
     options.set_fill_missing_layouts(fill_missing_layouts);
-    ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         module, ParseAndReturnUnverifiedModule(hlo_string, config, options));
   } else {
     HloSnapshot proto;
@@ -164,7 +164,7 @@ absl::StatusOr<std::unique_ptr<HloModule>> LoadModuleFromData(
         return InvalidArgument("Failed to parse input as HLO protobuf text");
       }
     } else if (format == "riegeli") {
-      RETURN_IF_ERROR(ReadSplitProto(
+      ABSL_RETURN_IF_ERROR(ReadSplitProto(
           std::make_unique<riegeli::StringReader<absl::string_view>>(data),
           *proto.mutable_hlo()));
       if (buffer_assignment_proto != nullptr) {
@@ -181,14 +181,14 @@ absl::StatusOr<std::unique_ptr<HloModule>> LoadModuleFromData(
           "stablehlo, mhlo, pb, pbtxt, or riegeli",
           format);
     }
-    ASSIGN_OR_RETURN(HloModuleConfig config,
+    ABSL_ASSIGN_OR_RETURN(HloModuleConfig config,
                      HloModule::CreateModuleConfigFromProto(
                          proto.hlo().hlo_module(), debug_options));
-    RETURN_IF_ERROR(OverrideConfig(ovr_config, &config));
+    ABSL_RETURN_IF_ERROR(OverrideConfig(ovr_config, &config));
     if (config_modifier_hook) {
       config_modifier_hook(&config);
     }
-    ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         module, HloModule::CreateFromProto(proto.hlo().hlo_module(), config));
   }
   return std::move(module);
@@ -203,7 +203,7 @@ absl::StatusOr<std::unique_ptr<HloModule>> LoadModuleFromFile(
   if (format.empty()) {
     format = std::string(tsl::io::Extension(path));
   }
-  RETURN_IF_ERROR(tsl::ReadFileToString(tsl::Env::Default(), path, &data));
+  ABSL_RETURN_IF_ERROR(tsl::ReadFileToString(tsl::Env::Default(), path, &data));
   return LoadModuleFromData(data, format, ovr_config, config_modifier_hook,
                             buffer_assignment_proto, fill_missing_layouts);
 }
@@ -245,7 +245,7 @@ LoadInputFromFile(const std::string& path, std::string format) {
   if (format.empty()) {
     format = std::string(tsl::io::Extension(path));
   }
-  RETURN_IF_ERROR(tsl::ReadFileToString(tsl::Env::Default(), path, &data));
+  ABSL_RETURN_IF_ERROR(tsl::ReadFileToString(tsl::Env::Default(), path, &data));
   return LoadInputFromData(data, format);
 }
 

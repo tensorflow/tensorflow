@@ -78,7 +78,7 @@ char BasicBundle::ID = 0;
 
 absl::StatusOr<BundleRef> BasicBundle::Create(absl::Span<ValueRef> values,
                                               ArrayCopySemantics semantics) {
-  RETURN_IF_ERROR(ValidateArrayCopySemantics(semantics));
+  ABSL_RETURN_IF_ERROR(ValidateArrayCopySemantics(semantics));
 
   if (values.empty()) {
     return tsl::TakeRef<BasicBundle>(new BasicBundle(nullptr, {}));
@@ -104,7 +104,7 @@ absl::StatusOr<BundleRef> BasicBundle::Create(absl::Span<ValueRef> values,
 
 absl::StatusOr<BundleRef> BasicBundle::ConcatBundles(
     absl::Span<BundleRef> bundles, ArrayCopySemantics semantics) {
-  RETURN_IF_ERROR(ValidateArrayCopySemantics(semantics));
+  ABSL_RETURN_IF_ERROR(ValidateArrayCopySemantics(semantics));
 
   if (bundles.empty()) {
     return tsl::TakeRef<BasicBundle>(new BasicBundle(nullptr, {}));
@@ -180,7 +180,7 @@ std::string BasicBundle::DebugString() const {
 
 absl::StatusOr<std::vector<ValueRef>> BasicBundle::GetValues(
     ArrayCopySemantics semantics) {
-  RETURN_IF_ERROR(ValidateArrayCopySemantics(semantics));
+  ABSL_RETURN_IF_ERROR(ValidateArrayCopySemantics(semantics));
   return values_;
 }
 
@@ -192,7 +192,7 @@ absl::StatusOr<absl::Span<const ArraySpec>> BasicBundle::GetArraySpecs() const {
       array_specs.reserve(values_.size());
       for (const ValueRef& value : values_) {
         if (auto* array = dyn_cast_or_null<Array>(value.get())) {
-          ASSIGN_OR_RETURN(std::shared_ptr<const xla::PjRtLayout> layout,
+          ABSL_ASSIGN_OR_RETURN(std::shared_ptr<const xla::PjRtLayout> layout,
                            array->pjrt_layout());
           array_specs.push_back(ArraySpec{
               /*dtype=*/array->dtype(),
@@ -213,8 +213,8 @@ absl::StatusOr<absl::Span<const ArraySpec>> BasicBundle::GetArraySpecs() const {
 
 absl::StatusOr<std::vector<BundleRef>> BasicBundle::Slice(
     absl::Span<const int> slice_sizes, ArrayCopySemantics semantics) {
-  RETURN_IF_ERROR(ValidateSliceSizes(values_.size(), slice_sizes));
-  RETURN_IF_ERROR(ValidateArrayCopySemantics(semantics));
+  ABSL_RETURN_IF_ERROR(ValidateSliceSizes(values_.size(), slice_sizes));
+  ABSL_RETURN_IF_ERROR(ValidateArrayCopySemantics(semantics));
 
   std::vector<BundleRef> slices;
   slices.reserve(slice_sizes.size());
@@ -236,7 +236,7 @@ absl::StatusOr<std::vector<BundleRef>> BasicBundle::Slice(
 absl::StatusOr<BundleRef> BasicBundle::CopyArrays(
     absl::Span<const int> slice_sizes, absl::Span<const CopySpec> copy_specs,
     ArrayCopySemantics semantics) {
-  RETURN_IF_ERROR(ValidateSliceSizes(values_.size(), slice_sizes));
+  ABSL_RETURN_IF_ERROR(ValidateSliceSizes(values_.size(), slice_sizes));
 
   std::vector<ValueRef> new_values;
   new_values.reserve(values_.size());
@@ -254,7 +254,7 @@ absl::StatusOr<BundleRef> BasicBundle::CopyArrays(
       ++offset;
     }
 
-    ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         std::vector<ArrayRef> copied_arrays,
         client_->CopyArrays(absl::MakeSpan(arrays), copy_specs[i].devices,
                             copy_specs[i].memory_kind, semantics));
@@ -292,7 +292,7 @@ absl::StatusOr<BundleRef> BasicBundle::ReshardArrays(
     }
   }
 
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       std::vector<ArrayRef> resharded_arrays,
       client_->ReshardArrays(absl::MakeSpan(arrays), array_specs, semantics));
 

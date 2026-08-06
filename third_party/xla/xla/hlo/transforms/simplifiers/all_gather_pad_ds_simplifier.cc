@@ -972,7 +972,7 @@ absl::StatusOr<bool> AllGatherPadDsSimplifier::RunImpl(
   for (HloComputation* computation :
        module->MakeNonfusionComputations(execution_threads)) {
     AllGatherPadDsSimplifierVisitor visitor;
-    RETURN_IF_ERROR(computation->Accept(&visitor));
+    ABSL_RETURN_IF_ERROR(computation->Accept(&visitor));
     changed |= visitor.changed();
   }
   return changed;

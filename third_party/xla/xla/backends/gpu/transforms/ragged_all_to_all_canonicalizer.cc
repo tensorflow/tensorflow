@@ -69,8 +69,8 @@ absl::StatusOr<bool> CanonicalizeRaggedAllToAll(
           /*channel_id=*/ragged_all_to_all->channel_id()));
   new_ragged_all_to_all->set_frontend_attributes(
       ragged_all_to_all->frontend_attributes());
-  RETURN_IF_ERROR(ragged_all_to_all->ReplaceAllUsesWith(new_ragged_all_to_all));
-  RETURN_IF_ERROR(
+  ABSL_RETURN_IF_ERROR(ragged_all_to_all->ReplaceAllUsesWith(new_ragged_all_to_all));
+  ABSL_RETURN_IF_ERROR(
       computation->RemoveInstructionAndUnusedOperands(ragged_all_to_all));
   return true;
 }
@@ -82,7 +82,7 @@ absl::StatusOr<bool> RaggedAllToAllCanonicalizer::RunImpl(
 
   for (auto computation : module->computations(execution_threads)) {
     for (auto hlo : computation->MakeInstructionPostOrder()) {
-      ASSIGN_OR_RETURN(bool canonicalized,
+      ABSL_ASSIGN_OR_RETURN(bool canonicalized,
                        CanonicalizeRaggedAllToAll(hlo, computation, module));
       changed |= canonicalized;
     }

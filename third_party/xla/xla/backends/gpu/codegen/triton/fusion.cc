@@ -106,7 +106,7 @@ xla::Future<TritonWrapperResult> TritonFusion::GenerateTritonKernelAndWrapper(
   BlockLevelParameters block_level_parameters =
       BlockLevelParameters::FromBlockLevelFusionConfig(
           analysis_.fusion_backend_config().block_level_fusion_config());
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       TritonKernelSource kernel_source,
       CreateTritonModule(impl_fn_name, fusion, device_info,
                          block_level_parameters, **borrowed_context));
@@ -132,7 +132,7 @@ AsyncThunkSequence TritonFusion::Emit(
       .Map(
           [thunk_info = std::move(thunk_info)](
               EmitResult result) -> absl::StatusOr<ThunkSequence> {
-            ASSIGN_OR_RETURN(
+            ABSL_ASSIGN_OR_RETURN(
                 CustomKernel custom_kernel,
                 kernel::CreateOwnedCubinCustomKernel(
                     result.entry.kernel_name, result.entry.binary,
@@ -153,7 +153,7 @@ xla::Future<TritonFusion::EmitResult> TritonFusion::Emit(
     absl::Span<const Shape> unmanaged_arguments) const {
   std::string suggested_kernel_name = std::string(fusion.name());
   VLOG(3) << fusion.ToString();
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       emitters::KernelArguments kernel_arguments,
       emitters::KernelArguments::Create(
           ir_emitter_context.buffer_assignment(), GetDefaultBufferAlignment(),
@@ -190,7 +190,7 @@ xla::Future<TritonFusion::EmitResult> TritonFusion::Emit(
           auto local_module = std::move(triton_wrapper_result.kernel_source)
                                   .thread_safe_module();
 
-          ASSIGN_OR_RETURN(GpuBackendConfig gpu_backend_config,
+          ABSL_ASSIGN_OR_RETURN(GpuBackendConfig gpu_backend_config,
                            fusion->backend_config<GpuBackendConfig>());
           absl::string_view fusion_kind =
               gpu_backend_config.fusion_backend_config().kind();
@@ -228,7 +228,7 @@ xla::Future<TritonFusion::EmitResult> TritonFusion::Emit(
           CHECK(launch_config.has_value());
           launch_dimensions = std::move(launch_config->launch_dimensions);
 
-          ASSIGN_OR_RETURN(
+          ABSL_ASSIGN_OR_RETURN(
               llvm::Function * kernel,
               RemoveUnusedTritonAbiArguments(local_module.getModuleUnlocked(),
                                              sanitized_kernel_name,
@@ -239,7 +239,7 @@ xla::Future<TritonFusion::EmitResult> TritonFusion::Emit(
           PopulateNvvmAnnotations(local_module.getModuleUnlocked(), kernel,
                                   triton_wrapper_result);
 
-          RETURN_IF_ERROR(AnnotateKernelLaunchDimensions(
+          ABSL_RETURN_IF_ERROR(AnnotateKernelLaunchDimensions(
               gpu_device_info, launch_dimensions, kernel,
               local_module.getModuleUnlocked()));
 

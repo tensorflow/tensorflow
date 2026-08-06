@@ -269,7 +269,7 @@ absl::StatusOr<GPUCommunicationType> CommunicationType(
   }
 
   if (const auto* collective = DynCast<HloCollectiveInstruction>(&instr)) {
-    ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         CollectiveMetadata comm,
         CommunicationContext(*collective, num_devices_per_partition));
     if (IsSingleHost(comm)) {

@@ -189,7 +189,7 @@ static absl::StatusOr<Attribute> ConvertDenseElementsAttr(
 
 static absl::StatusOr<Attribute> ConvertDictionaryAttr(
     absl::string_view name, mlir::DictionaryAttr dict) {
-  ASSIGN_OR_RETURN(auto attrs, BuildAttributesMap(dict));
+  ABSL_ASSIGN_OR_RETURN(auto attrs, BuildAttributesMap(dict));
   return AttributesDictionary{
       std::make_shared<AttributesMap>(std::move(attrs))};
 }
@@ -203,12 +203,12 @@ absl::StatusOr<AttributesMap> BuildAttributesMap(mlir::DictionaryAttr dict) {
     // Wraps attribute conversion function into callable object.
     auto convert_with = [&](auto converter_fn) {
       return [&, fn = converter_fn](auto attr) -> absl::Status {
-        ASSIGN_OR_RETURN(attributes[name], fn(name, attr));
+        ABSL_ASSIGN_OR_RETURN(attributes[name], fn(name, attr));
         return absl::OkStatus();
       };
     };
 
-    RETURN_IF_ERROR((
+    ABSL_RETURN_IF_ERROR((
         llvm::TypeSwitch<mlir::Attribute, absl::Status>(value)
             .Case<mlir::BoolAttr>(convert_with(ConvertBoolAttr))
             .Case<mlir::IntegerAttr>(convert_with(ConvertIntegerAttr))
@@ -236,7 +236,7 @@ AttributesMapProto AttributesDictionary::ToProto() const {
 
 absl::StatusOr<AttributesDictionary> AttributesDictionary::FromProto(
     const AttributesMapProto& proto) {
-  ASSIGN_OR_RETURN(auto attrs, AttributesMap::FromProto(proto));
+  ABSL_ASSIGN_OR_RETURN(auto attrs, AttributesMap::FromProto(proto));
   return AttributesDictionary{std::make_shared<AttributesMap>(attrs)};
 }
 
@@ -252,7 +252,7 @@ absl::StatusOr<AttributesMap> AttributesMap::FromProto(
     const AttributesMapProto& proto) {
   AttributesMap result;
   for (const auto& [key, value] : proto.attrs()) {
-    ASSIGN_OR_RETURN(result[key], Attribute::FromProto(value));
+    ABSL_ASSIGN_OR_RETURN(result[key], Attribute::FromProto(value));
   }
   return result;
 }
@@ -515,7 +515,7 @@ absl::StatusOr<FlatAttributesMap> FlatAttributesMap::FromProto(
     const FlatAttributesMapProto& proto) {
   FlatAttributesMap result;
   for (const auto& [key, value] : proto.attrs()) {
-    ASSIGN_OR_RETURN(result[key], FlatAttribute::FromProto(value));
+    ABSL_ASSIGN_OR_RETURN(result[key], FlatAttribute::FromProto(value));
   }
   return result;
 }

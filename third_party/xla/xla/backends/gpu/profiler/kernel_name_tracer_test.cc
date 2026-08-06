@@ -66,7 +66,7 @@ using ::testing::ElementsAre;
 using ::testing::IsEmpty;
 
 absl::StatusOr<stream_executor::Platform*> GetPlatform() {
-  ASSIGN_OR_RETURN(std::string name,
+  ABSL_ASSIGN_OR_RETURN(std::string name,
                    PlatformUtil::CanonicalPlatformName("gpu"));
   return stream_executor::PlatformManager::PlatformWithName(
       absl::AsciiStrToUpper(name));

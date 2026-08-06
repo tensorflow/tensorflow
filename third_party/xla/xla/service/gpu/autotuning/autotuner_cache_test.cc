@@ -152,7 +152,7 @@ ENTRY e {
 
   absl::Status PopulateResultCache() {
     EXPECT_TRUE(AutotunerCache::ResultCacheIsEmpty());
-    RETURN_IF_ERROR(AutotunerCache::LoadAutotuneResults(kResultText, true));
+    ABSL_RETURN_IF_ERROR(AutotunerCache::LoadAutotuneResults(kResultText, true));
     EXPECT_FALSE(AutotunerCache::ResultCacheIsEmpty());
     return absl::OkStatus();
   }

@@ -34,7 +34,7 @@ namespace xla::cpu {
 
 absl::Status Run(const std::string& filename) {
   auto mlir_context = FusionCompiler::CreateContext();
-  ASSIGN_OR_RETURN(auto module, LoadTestModule(filename));
+  ABSL_ASSIGN_OR_RETURN(auto module, LoadTestModule(filename));
   auto* inst = module->entry_computation()->root_instruction();
   while (inst && (inst->opcode() == HloOpcode::kTuple ||
                   inst->opcode() == HloOpcode::kGetTupleElement)) {
@@ -42,7 +42,7 @@ absl::Status Run(const std::string& filename) {
   }
   auto fusion = DynCast<HloFusionInstruction>(inst);
   fusion->SetAndSanitizeName("main");
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       KernelDefinition kernel_definition,
       EmitFusionKernel(*mlir_context, *fusion, nullptr, false, false));
   llvm::outs() << kernel_definition.source().ToString();

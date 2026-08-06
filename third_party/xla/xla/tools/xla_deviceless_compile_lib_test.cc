@@ -65,7 +65,7 @@ absl::StatusOr<Compiler::GpuTargetConfig> GetGpuTargetConfig() {
       tsl::io::JoinPath(tsl::testing::XlaSrcRoot(),
                         "backends/gpu/target_config/specs", spec_file);
   stream_executor::GpuTargetConfigProto target_config_proto;
-  RETURN_IF_ERROR(tsl::ReadTextProto(tsl::Env::Default(), target_config_path,
+  ABSL_RETURN_IF_ERROR(tsl::ReadTextProto(tsl::Env::Default(), target_config_path,
                                      &target_config_proto));
   return Compiler::GpuTargetConfig::FromProto(target_config_proto);
 }

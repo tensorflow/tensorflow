@@ -156,12 +156,12 @@ class RaggedAllToAllTestBase : public CollectiveOpsWithFlagsBase {
             {i, 0, 0});
       }
 
-      RETURN_IF_ERROR(CreateRandomTestDataForReplicaGroup(
+      ABSL_RETURN_IF_ERROR(CreateRandomTestDataForReplicaGroup(
           module, input_sizes_per_replica_group, output_init_data,
           replica_group));
     }
 
-    ASSIGN_OR_RETURN(output_init_,
+    ABSL_ASSIGN_OR_RETURN(output_init_,
                      LiteralUtil::CreateFromArrayWithLayout(
                          output_init_data, output_param->shape().layout())
                          .Convert(output_param->shape().element_type()));
@@ -196,28 +196,28 @@ class RaggedAllToAllTestBase : public CollectiveOpsWithFlagsBase {
     // Create literals from array data.
     for (int64_t i = 0; i < num_replicas; ++i) {
       int64_t replica_id = replica_group.replica_ids(i);
-      ASSIGN_OR_RETURN(inputs_[replica_id],
+      ABSL_ASSIGN_OR_RETURN(inputs_[replica_id],
                        LiteralUtil::CreateFromArrayWithLayout(
                            input_data[i], input_param->shape().layout())
                            .Convert(input_param->shape().element_type()));
 
-      ASSIGN_OR_RETURN(expected_outputs_[replica_id],
+      ABSL_ASSIGN_OR_RETURN(expected_outputs_[replica_id],
                        LiteralUtil::CreateFromArrayWithLayout(
                            output_data[i], output_param->shape().layout())
                            .Convert(output_param->shape().element_type()));
 
-      ASSIGN_OR_RETURN(
+      ABSL_ASSIGN_OR_RETURN(
           input_offsets_[replica_id],
           GetParameterLiteral(module, /*parameter_index=*/2, i, input_offsets));
 
-      ASSIGN_OR_RETURN(
+      ABSL_ASSIGN_OR_RETURN(
           input_sizes_[replica_id],
           GetParameterLiteral(module, /*parameter_index=*/3, i, input_sizes));
 
-      ASSIGN_OR_RETURN(output_offsets_[replica_id],
+      ABSL_ASSIGN_OR_RETURN(output_offsets_[replica_id],
                        GetParameterLiteral(module, /*parameter_index=*/4, i,
                                            output_offsets));
-      ASSIGN_OR_RETURN(
+      ABSL_ASSIGN_OR_RETURN(
           output_sizes_[replica_id],
           GetParameterLiteral(module, /*parameter_index=*/5, i, output_sizes));
     }

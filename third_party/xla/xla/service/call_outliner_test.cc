@@ -46,18 +46,18 @@ class CallOutlinerTest : public HloHardwareIndependentTestBase {
   // Helper to parse, run marker, inliner, and outliner.
   absl::StatusOr<std::unique_ptr<HloModule>> ParseInlineAndOutline(
       absl::string_view hlo_string) {
-    ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
+    ABSL_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
                      ParseAndReturnVerifiedModule(hlo_string));
     CallInliner call_inliner;
     CallMarker call_marker(call_inliner);
-    ASSIGN_OR_RETURN(bool marked, call_marker.Run(module.get()));
+    ABSL_ASSIGN_OR_RETURN(bool marked, call_marker.Run(module.get()));
     EXPECT_TRUE(marked);
 
-    ASSIGN_OR_RETURN(bool inlined, call_inliner.Run(module.get()));
+    ABSL_ASSIGN_OR_RETURN(bool inlined, call_inliner.Run(module.get()));
     EXPECT_TRUE(inlined);
 
     CallOutliner call_outliner;
-    ASSIGN_OR_RETURN(bool outlined, call_outliner.Run(module.get()));
+    ABSL_ASSIGN_OR_RETURN(bool outlined, call_outliner.Run(module.get()));
     EXPECT_TRUE(outlined);
     return module;
   }
@@ -65,10 +65,10 @@ class CallOutlinerTest : public HloHardwareIndependentTestBase {
   // Helper to parse and run outliner only (for pre-marked modules).
   absl::StatusOr<std::unique_ptr<HloModule>> OutlineModule(
       absl::string_view hlo_string) {
-    ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
+    ABSL_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
                      ParseAndReturnVerifiedModule(hlo_string));
     CallOutliner call_outliner;
-    ASSIGN_OR_RETURN(bool outlined, call_outliner.Run(module.get()));
+    ABSL_ASSIGN_OR_RETURN(bool outlined, call_outliner.Run(module.get()));
     EXPECT_TRUE(outlined);
     return module;
   }

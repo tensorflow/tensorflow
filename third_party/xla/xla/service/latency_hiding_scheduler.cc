@@ -2446,7 +2446,7 @@ absl::Status DefaultSchedulerCore::ScheduleAnnotation(
     }());
     VLOG(2) << "Current time: " << sched_state->current_time;
     // Find the best annotated node to schedule.
-    ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         HloGraphNode * node,
         FindAndExtractBestAnnotatedNode(
             *sched_state, scheduling_instruction_crosses_overlap_limit_,
@@ -2478,7 +2478,7 @@ absl::Status DefaultSchedulerCore::ScheduleAnnotation(
     sched_state->ready_set.pop_back();
 
     // Schedule the node.
-    ASSIGN_OR_RETURN(sched_state->current_time,
+    ABSL_ASSIGN_OR_RETURN(sched_state->current_time,
                      ScheduleNode(node, sched_state));
     num_scheduled++;
     VLOG(2) << "Scheduled annotated node (" << num_scheduled << "/"
@@ -3518,11 +3518,11 @@ absl::Status DefaultSchedulerCore::SchedulingStep(
     SchedulingState* sched_state) {
   // Get the first available node for scheduling that is the node that
   // satisfies our ready heuristic the best.
-  ASSIGN_OR_RETURN(HloGraphNode * node,
+  ABSL_ASSIGN_OR_RETURN(HloGraphNode * node,
                    FindAndExtractBestNodeAvailable(
                        *sched_state, /*should_skip_node=*/nullptr));
   CHECK(node != nullptr);
-  ASSIGN_OR_RETURN(sched_state->current_time, ScheduleNode(node, sched_state));
+  ABSL_ASSIGN_OR_RETURN(sched_state->current_time, ScheduleNode(node, sched_state));
   VLOG(1) << "Scheduled: " << node->GetInstr().name();
   XLA_VLOG_LINES(5, node->ToString());
   return absl::OkStatus();
@@ -3656,7 +3656,7 @@ absl::StatusOr<bool> DefaultSchedulerCore::TryScheduleOneAnnotationGroup(
     sched_state->ready_annotations.pop_back();
     VLOG(2) << "------- BEGIN ANNOTATION: " << annotation << " -------";
     sched_state->ongoing_annotation = annotation;
-    RETURN_IF_ERROR(ScheduleAnnotation(computation, annotation, sched_state));
+    ABSL_RETURN_IF_ERROR(ScheduleAnnotation(computation, annotation, sched_state));
     VLOG(2) << "-------  END ANNOTATION: " << annotation << " --------";
     sched_state->ongoing_annotation = -1;
     return true;
@@ -3698,7 +3698,7 @@ DefaultSchedulerCore::MakeSchedulingState(const HloComputation* computation) {
 
 absl::StatusOr<std::vector<HloInstruction*>>
 DefaultSchedulerCore::ScheduleComputation(const HloComputation* computation) {
-  ASSIGN_OR_RETURN(auto sched_state, MakeSchedulingState(computation));
+  ABSL_ASSIGN_OR_RETURN(auto sched_state, MakeSchedulingState(computation));
   // Activate the log filter for this computation.
   ScopedVlogFilter filter_guard(computation->name(),
                                 config_.log_computation_re);
@@ -3754,7 +3754,7 @@ DefaultSchedulerCore::ScheduleComputation(
           .live_ids_at_bottom);
 
   if (graph_processing_hook_) {
-    RETURN_IF_ERROR(graph_processing_hook_(sched_state->sched_graph.get()));
+    ABSL_RETURN_IF_ERROR(graph_processing_hook_(sched_state->sched_graph.get()));
   }
 
   VLOG(5) << "Just built graph:";
@@ -4174,17 +4174,17 @@ LatencyHidingScheduler::ScheduleWithPreferences(
     HloModule* module, const std::vector<double>& preferences,
     const HloComputation* computation,
     std::shared_ptr<SchedulerCore::SchedulingState> sched_state) {
-  RETURN_IF_ERROR(scheduler_core_->ResetScheduler(module));
+  ABSL_RETURN_IF_ERROR(scheduler_core_->ResetScheduler(module));
   auto set_preferences = [&](HloScheduleGraph* graph) -> absl::Status {
     VLOG(3) << "Setting scheduling preferences.";
     graph->SetPreferences(preferences);
     return absl::OkStatus();
   };
-  RETURN_IF_ERROR(scheduler_core_->SetGraphProcessingHook(set_preferences));
+  ABSL_RETURN_IF_ERROR(scheduler_core_->SetGraphProcessingHook(set_preferences));
   absl::Cleanup clear_hook = [&] {
     scheduler_core_->SetGraphProcessingHook(nullptr).IgnoreError();
   };
-  ASSIGN_OR_RETURN(auto new_schedule, scheduler_core_->ScheduleComputation(
+  ABSL_ASSIGN_OR_RETURN(auto new_schedule, scheduler_core_->ScheduleComputation(
                                           computation, sched_state));
 
   // Save the old schedule.
@@ -4257,10 +4257,10 @@ absl::StatusOr<bool> LatencyHidingScheduler::RunImpl(
   if (computations_to_schedule_.empty()) {
     return false;
   }
-  RETURN_IF_ERROR(scheduler_core_->InitializeScheduler(module));
+  ABSL_RETURN_IF_ERROR(scheduler_core_->InitializeScheduler(module));
   const auto& debug_options = module->config().debug_options();
   if (debug_options.xla_dump_latency_hiding_schedule()) {
-    RETURN_IF_ERROR(scheduler_core_->CaptureScheduleProto());
+    ABSL_RETURN_IF_ERROR(scheduler_core_->CaptureScheduleProto());
   }
   if (VLOG_IS_ON(1)) {
     // Log the statistics before scheduling. We batch the per-computation
@@ -4278,7 +4278,7 @@ absl::StatusOr<bool> LatencyHidingScheduler::RunImpl(
     }
   }
   for (HloComputation* computation : computations_to_schedule_) {
-    ASSIGN_OR_RETURN(std::vector<HloInstruction*> new_schedule,
+    ABSL_ASSIGN_OR_RETURN(std::vector<HloInstruction*> new_schedule,
                      scheduler_core_->ScheduleComputation(computation));
     // Update target specific states that may include altering the
     // computation.
@@ -4307,10 +4307,10 @@ absl::StatusOr<bool> LatencyHidingScheduler::RunImpl(
               << " bytes, does not fit in initial limit: "
               << initial_memory_limit << ". Setting the new limit to "
               << static_cast<uint64_t>(scheduler_core_->GetMemoryLimit() * 0.9);
-    RETURN_IF_ERROR(scheduler_core_->InitializeScheduler(module));
+    ABSL_RETURN_IF_ERROR(scheduler_core_->InitializeScheduler(module));
     scheduler_core_->SetMemoryLimit(scheduler_core_->GetMemoryLimit() * 0.9);
     for (HloComputation* computation : computations_to_schedule_) {
-      ASSIGN_OR_RETURN(std::vector<HloInstruction*> new_schedule,
+      ABSL_ASSIGN_OR_RETURN(std::vector<HloInstruction*> new_schedule,
                        scheduler_core_->ScheduleComputation(computation));
       scheduling_context_->GetAsyncTracker()->UpdateTargetDefinedStates(
           computation);
@@ -4348,7 +4348,7 @@ absl::StatusOr<bool> LatencyHidingScheduler::RunImpl(
     }
   }
   if (debug_options.xla_dump_latency_hiding_schedule()) {
-    ASSIGN_OR_RETURN(ScheduleProto proto,
+    ABSL_ASSIGN_OR_RETURN(ScheduleProto proto,
                      scheduler_core_->GetCapturedScheduleProto());
     const std::string filename = absl::StrFormat("%s.schedule", module->name());
     DumpProtobufToFile(proto, debug_options, filename);

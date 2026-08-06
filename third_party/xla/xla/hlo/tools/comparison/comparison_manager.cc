@@ -291,7 +291,7 @@ absl::Status ComparisonManager::RegisterHloModule(ComparisonVariant variant,
   absl::string_view module_name = module.name();
   auto [other_pair, inserted] =
       hlo_module_map_.try_emplace(module_name, &module, variant);
-  RETURN_IF_ERROR(DumpHloModule(module, variant, hlo_module_dump_dir_));
+  ABSL_RETURN_IF_ERROR(DumpHloModule(module, variant, hlo_module_dump_dir_));
   if (inserted) {
     // If insertion is successful, it means the other HLO module is not added
     // yet. So we just return and the next add would trigger the comparison.
@@ -315,7 +315,7 @@ absl::Status ComparisonManager::RegisterHloModule(ComparisonVariant variant,
   }
   hlo_module_map_.erase(module_name);
 
-  ASSIGN_OR_RETURN(hlo_diff::HloGumgraphDiffResults diff_results,
+  ABSL_ASSIGN_OR_RETURN(hlo_diff::HloGumgraphDiffResults diff_results,
                    hlo_diff::ComputeDiff(*baseline_module, *target_module));
 
   auto& state = comparison_states_[module_name];

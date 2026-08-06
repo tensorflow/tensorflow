@@ -88,7 +88,7 @@ absl::StatusOr<TensorValue> CanonicalizeDotOperand(
         "Expected dot operand tile to have exactly two non-unit tile sizes");
   }
   if (shape.size() != shape_without_unit_dims.size()) {
-    ASSIGN_OR_RETURN(operand, ::xla::xtile::EmitTiledReshape(
+    ABSL_ASSIGN_OR_RETURN(operand, ::xla::xtile::EmitTiledReshape(
                                   b, shape_without_unit_dims, operand));
   }
   int expected_contracting_dim_position = side == DotOperandSide::kLhs ? 1 : 0;

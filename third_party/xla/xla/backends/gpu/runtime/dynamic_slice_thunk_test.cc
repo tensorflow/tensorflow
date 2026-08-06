@@ -156,7 +156,7 @@ void CheckProtoRoundTrip(const DynamicSliceThunk& thunk,
       -> absl::StatusOr<std::unique_ptr<Thunk>> {
     ThunkSequenceProto thunk_sequence_proto;
     *thunk_sequence_proto.add_thunks() = thunk_proto;
-    ASSIGN_OR_RETURN(ThunkSequence sequence,
+    ABSL_ASSIGN_OR_RETURN(ThunkSequence sequence,
                      DeserializeThunkSequenceProto(
                          thunk_sequence_proto, fake_allocations_span,
                          /*hlo_module=*/nullptr,
@@ -255,7 +255,7 @@ absl::StatusOr<std::unique_ptr<DynamicSliceThunk>> CreateSlicedGemmThunk(
   Shape lhs_shape = ShapeUtil::MakeShape(PrimitiveType::F32, {1, 3});
   Shape rhs_shape = ShapeUtil::MakeShape(PrimitiveType::F32, {3, 1});
   Shape output_shape = ShapeUtil::MakeShape(PrimitiveType::F32, {1, 1});
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       GemmConfig config,
       GemmConfig::For(
           lhs_shape, {}, {1}, rhs_shape, {}, {0}, output_shape, 1.0, 0.0, 0.0,
@@ -431,7 +431,7 @@ CreateMultipleSlicedOperandsGemmThunk(
   Shape lhs_shape = ShapeUtil::MakeShape(PrimitiveType::F32, {1, 3});
   Shape rhs_shape = ShapeUtil::MakeShape(PrimitiveType::F32, {3, 1});
   Shape output_shape = ShapeUtil::MakeShape(PrimitiveType::F32, {1, 1});
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       GemmConfig config,
       GemmConfig::For(
           lhs_shape, {}, {1}, rhs_shape, {}, {0}, output_shape, 1.0, 0.0, 0.0,
@@ -982,7 +982,7 @@ CreateSlicedGemmArbitraryArgumentOrderThunk(
   Shape lhs_shape = ShapeUtil::MakeShape(PrimitiveType::F32, {1, 3});
   Shape rhs_shape = ShapeUtil::MakeShape(PrimitiveType::F32, {3, 1});
   Shape output_shape = ShapeUtil::MakeShape(PrimitiveType::F32, {1, 1});
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       GemmConfig config,
       GemmConfig::For(
           lhs_shape, {}, {1}, rhs_shape, {}, {0}, output_shape, 1.0, 0.0, 0.0,
@@ -1164,7 +1164,7 @@ CreateSlicedGemmArbitraryNumberOfArgumentsThunk(
   Shape lhs_shape = ShapeUtil::MakeShape(PrimitiveType::F32, {1, 3});
   Shape rhs_shape = ShapeUtil::MakeShape(PrimitiveType::F32, {3, 1});
   Shape output_shape = ShapeUtil::MakeShape(PrimitiveType::F32, {1, 1});
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       GemmConfig config,
       GemmConfig::For(
           lhs_shape, {}, {1}, rhs_shape, {}, {0}, output_shape, 1.0, 0.0, 0.0,
@@ -1337,7 +1337,7 @@ CreateSlicedTupledOperandGemmThunk(
   Shape lhs_shape = ShapeUtil::MakeShape(PrimitiveType::F32, {1, 3});
   Shape rhs_shape = ShapeUtil::MakeShape(PrimitiveType::F32, {3, 1});
   Shape output_shape = ShapeUtil::MakeShape(PrimitiveType::F32, {1, 1});
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       GemmConfig config,
       GemmConfig::For(
           lhs_shape, {}, {1}, rhs_shape, {}, {0}, output_shape, 1.0, 0.0, 0.0,
@@ -1723,7 +1723,7 @@ CreateSlicedOperandsSameBufferGemmThunk(
   Shape lhs_shape = ShapeUtil::MakeShape(PrimitiveType::F32, {1, 3});
   Shape rhs_shape = ShapeUtil::MakeShape(PrimitiveType::F32, {3, 1});
   Shape output_shape = ShapeUtil::MakeShape(PrimitiveType::F32, {1, 1});
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       GemmConfig config,
       GemmConfig::For(
           lhs_shape, {}, {1}, rhs_shape, {}, {0}, output_shape, 1.0, 0.0, 0.0,
@@ -1864,7 +1864,7 @@ CreateHostInductionVariableAndOffsetEvaluationThunk(
       ROOT select = s32[] select(compare, add, p0)
     }
   )";
-  ASSIGN_OR_RETURN(auto offset_module, ParseAndReturnUnverifiedModule(offset));
+  ABSL_ASSIGN_OR_RETURN(auto offset_module, ParseAndReturnUnverifiedModule(offset));
   offset_modules.emplace_back(std::move(offset_module));
   HloModule* offset_module_ptr = offset_modules.back().get();
   const char* indvar_init = R"(
@@ -1873,7 +1873,7 @@ CreateHostInductionVariableAndOffsetEvaluationThunk(
       ROOT c0 = s32[] constant(0)
     }
   )";
-  ASSIGN_OR_RETURN(auto indvar_init_module,
+  ABSL_ASSIGN_OR_RETURN(auto indvar_init_module,
                    ParseAndReturnUnverifiedModule(indvar_init));
   const char* indvar_update = R"(
     HloModule indvar_update
@@ -1883,7 +1883,7 @@ CreateHostInductionVariableAndOffsetEvaluationThunk(
       ROOT add = s32[] add(p0, c1)
     }
   )";
-  ASSIGN_OR_RETURN(auto indvar_update_module,
+  ABSL_ASSIGN_OR_RETURN(auto indvar_update_module,
                    ParseAndReturnUnverifiedModule(indvar_update));
   se::StreamExecutor* executor = GpuExecutor();
 
@@ -1926,7 +1926,7 @@ CreateHostInductionVariableAndOffsetEvaluationThunk(
   Shape rhs_shape = ShapeUtil::MakeShape(PrimitiveType::F32, {4, 1});
   Shape output_shape = ShapeUtil::MakeShape(PrimitiveType::F32, {1, 1});
 
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       GemmConfig config,
       GemmConfig::For(
           /*lhs_shape=*/lhs_shape,

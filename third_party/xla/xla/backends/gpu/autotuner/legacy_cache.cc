@@ -88,7 +88,7 @@ absl::StatusOr<std::string> LegacyCache::Serialize(
   }
 
   AutotuneResults results;
-  RETURN_IF_ERROR(
+  ABSL_RETURN_IF_ERROR(
       AutotunerCache::SerializeAutotuneResults(&results, keys_to_send));
   return AutotuneResultsToString(results, true);
 }

@@ -56,8 +56,8 @@ absl::StatusOr<bool> RemoveSurroundingMoveCustomCalls(
       CHECK_EQ(operand->operands().size(), 1);
       VLOG(1) << "Replacing " << operand->ToString() << " with "
               << operand->operands().at(0)->ToString();
-      RETURN_IF_ERROR(operand->ReplaceAllUsesWith(operand->mutable_operand(0)));
-      RETURN_IF_ERROR(async_start->parent()->RemoveInstruction(operand));
+      ABSL_RETURN_IF_ERROR(operand->ReplaceAllUsesWith(operand->mutable_operand(0)));
+      ABSL_RETURN_IF_ERROR(async_start->parent()->RemoveInstruction(operand));
       removed = true;
     }
   }
@@ -90,7 +90,7 @@ absl::StatusOr<bool> ElideMoveCustomCalls(HloModule* module) {
         VLOG(2) << "Found async start of host computation: "
                 << instruction->ToString() << " done must be "
                 << instruction->users().at(0)->ToString();
-        ASSIGN_OR_RETURN(bool removed,
+        ABSL_ASSIGN_OR_RETURN(bool removed,
                          RemoveSurroundingMoveCustomCalls(instruction));
         changed = changed || removed;
       }
@@ -131,14 +131,14 @@ absl::StatusOr<bool> ConvertToCustomCall(HloModule* module) {
             call_start->async_wrapped_computation();
         async_computation->set_root_instruction(
             async_computation->AddInstruction(std::move(custom_call)));
-        RETURN_IF_ERROR(async_computation->RemoveInstruction(call));
+        ABSL_RETURN_IF_ERROR(async_computation->RemoveInstruction(call));
 
         changed = true;
       }
     }
   }
   if (changed && module->has_schedule()) {
-    RETURN_IF_ERROR(module->schedule().Update());
+    ABSL_RETURN_IF_ERROR(module->schedule().Update());
   }
   return changed;
 }

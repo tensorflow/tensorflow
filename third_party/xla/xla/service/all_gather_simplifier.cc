@@ -47,7 +47,7 @@ absl::StatusOr<bool> AllGatherSimplifier::CancelSingleDynamicSliceFromAllGather(
   HloComputation* computation = inst->parent();
 
   if (ShapeUtil::Compatible(inst->shape(), inst->operand(0)->shape())) {
-    RETURN_IF_ERROR(
+    ABSL_RETURN_IF_ERROR(
         computation->ReplaceInstruction(inst, inst->mutable_operand(0)));
     return true;
   }
@@ -69,8 +69,8 @@ absl::StatusOr<bool> AllGatherSimplifier::CancelSingleDynamicSliceFromAllGather(
     if (!ShapeUtil::Compatible(ds->shape(), ag_operand->shape())) {
       return false;
     }
-    RETURN_IF_ERROR(ds->ReplaceAllUsesWith(ag_operand));
-    RETURN_IF_ERROR(computation->RemoveInstructionAndUnusedOperands(ds));
+    ABSL_RETURN_IF_ERROR(ds->ReplaceAllUsesWith(ag_operand));
+    ABSL_RETURN_IF_ERROR(computation->RemoveInstructionAndUnusedOperands(ds));
     return true;
   }
 
@@ -83,7 +83,7 @@ absl::StatusOr<bool> AllGatherSimplifier::RunImpl(
   bool changed = false;
   for (auto computation : module->computations(execution_threads)) {
     for (HloInstruction* inst : computation->MakeInstructionPostOrder()) {
-      ASSIGN_OR_RETURN(bool local_changed,
+      ABSL_ASSIGN_OR_RETURN(bool local_changed,
                        CancelSingleDynamicSliceFromAllGather(module, inst));
       changed |= local_changed;
     }

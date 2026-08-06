@@ -70,12 +70,12 @@ CollectivePermuteThunk::CollectivePermuteThunk(
 
 tsl::AsyncValueRef<CollectivePermuteThunk::ExecuteEvent>
 CollectivePermuteThunk::Execute(const ExecuteParams& params) {
-  ASSIGN_OR_RETURN(OpDeviceMemory data, GetOpDeviceMemory(params));
+  ABSL_ASSIGN_OR_RETURN(OpDeviceMemory data, GetOpDeviceMemory(params));
 
   Thunk::CollectiveExecuteParams* collective_params = params.collective_params;
   TF_RET_CHECK(collective_params) << "Collectives parameters are not set";
 
-  ASSIGN_OR_RETURN(DeviceAssignment::LogicalID logical_id,
+  ABSL_ASSIGN_OR_RETURN(DeviceAssignment::LogicalID logical_id,
                    collective_params->device_assignment->LogicalIdForDevice(
                        collective_params->global_device_id));
 

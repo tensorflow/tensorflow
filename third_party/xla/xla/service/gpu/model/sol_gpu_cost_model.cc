@@ -214,7 +214,7 @@ absl::Duration SolGPUCostModel::TransferDuration(
 absl::StatusOr<absl::Duration> SolGPUCostModel::RingLatency(
     const int64_t buff_size_bytes, const int num_nodes,
     const CollectiveType& coll_type, const int num_communicators) const {
-  ASSIGN_OR_RETURN(int num_gpus,
+  ABSL_ASSIGN_OR_RETURN(int num_gpus,
                    NumGpusPerComm(num_nodes, coll_type, num_communicators));
 
   int64_t per_gpu_msg_size_bytes;
@@ -262,7 +262,7 @@ absl::StatusOr<absl::Duration> SolGPUCostModel::RingLatency(
 absl::StatusOr<absl::Duration> SolGPUCostModel::AllToAllLatency(
     const int64_t buff_size_bytes, const int num_nodes,
     const int num_communicators) const {
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       int num_gpus,
       NumGpusPerComm(num_nodes, SolGPUCostModel::CollectiveType::kAllToAll,
                      num_communicators));

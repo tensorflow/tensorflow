@@ -170,7 +170,7 @@ class PjRtExecutable final
   }
 
   absl::StatusOr<xla::ifrt::AttributeMap> GetCostAnalysis() const override {
-    ASSIGN_OR_RETURN(auto result, pjrt_executable_->GetCostAnalysis());
+    ABSL_ASSIGN_OR_RETURN(auto result, pjrt_executable_->GetCostAnalysis());
     return xla::ifrt::FromPjRtAttributeMap(std::move(result));
   }
 
@@ -312,7 +312,7 @@ class PjRtLoadedExecutable final
   absl::StatusOr<std::string> Serialize() const override;
 
   absl::StatusOr<std::string> GetHumanReadableProgramText() const override {
-    ASSIGN_OR_RETURN(auto hlo_modules,
+    ABSL_ASSIGN_OR_RETURN(auto hlo_modules,
                      pjrt_loaded_executable_->GetHloModules());
     return absl::StrJoin(
         hlo_modules, "\n\n", [](std::string* out, const auto& hlo_module) {
@@ -373,7 +373,7 @@ class PjRtLoadedExecutable final
   }
 
   absl::StatusOr<xla::ifrt::AttributeMap> GetCostAnalysis() const override {
-    ASSIGN_OR_RETURN(auto result, pjrt_loaded_executable_->GetCostAnalysis());
+    ABSL_ASSIGN_OR_RETURN(auto result, pjrt_loaded_executable_->GetCostAnalysis());
     return xla::ifrt::FromPjRtAttributeMap(std::move(result));
   }
 

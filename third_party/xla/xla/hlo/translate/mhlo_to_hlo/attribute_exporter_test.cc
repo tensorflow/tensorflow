@@ -71,7 +71,7 @@ class AttributeExporterTest : public ::testing::Test {
     mlir::BaseScopedDiagnosticHandler diagnostic_handler(context_.get());
     auto module =
         mlir::parseSourceString<mlir::ModuleOp>(mlir_source, context_.get());
-    RETURN_IF_ERROR(diagnostic_handler.ConsumeStatus());
+    ABSL_RETURN_IF_ERROR(diagnostic_handler.ConsumeStatus());
     return module;
   }
 

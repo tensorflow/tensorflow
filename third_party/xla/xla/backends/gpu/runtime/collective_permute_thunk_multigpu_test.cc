@@ -113,13 +113,13 @@ static absl::Status FillDestinationBuffer(se::Stream& stream,
 static absl::Status PrepareInputs(
     se::Stream& stream, absl::Span<const se::DeviceAddressBase> buffers,
     int device_ordinal, int phase) {
-  RETURN_IF_ERROR(FillSourceBuffer(stream, buffers[0], device_ordinal, phase));
+  ABSL_RETURN_IF_ERROR(FillSourceBuffer(stream, buffers[0], device_ordinal, phase));
   return FillDestinationBuffer(stream, buffers[1], -1.0f);
 }
 
 static absl::Status VerifyOutput(se::Stream& stream, se::DeviceAddressBase dst,
                                  int device_ordinal, int phase) {
-  ASSIGN_OR_RETURN(std::vector<float> output,
+  ABSL_ASSIGN_OR_RETURN(std::vector<float> output,
                    ReadDeviceBuffer(stream, dst, kLength));
   int expected_source_rank = 1 - device_ordinal;
   std::vector<float> expected = SourceValues(expected_source_rank, phase);
@@ -144,14 +144,14 @@ static absl::Status SetupDeviceSlot(int device_ordinal, DeviceTestSlot& slot,
 static absl::Status RunExecuteOnStreamPhase(DeviceTestSlot& slot,
                                             CollectivePermuteThunk& thunk,
                                             int device_ordinal, int phase) {
-  RETURN_IF_ERROR(
+  ABSL_RETURN_IF_ERROR(
       PrepareInputs(*slot.stream, slot.create_buffers, device_ordinal, phase));
 
   BufferAllocations allocations =
       MakeBufferAllocations(slot, slot.create_buffers);
   Thunk::ExecuteParams execute_params = MakeExecuteParams(slot, allocations);
 
-  RETURN_IF_ERROR(ExecuteOnStreamAndBlock(thunk, execute_params));
+  ABSL_RETURN_IF_ERROR(ExecuteOnStreamAndBlock(thunk, execute_params));
   return VerifyOutput(*slot.stream, slot.create_buffers[1], device_ordinal,
                       phase);
 }
@@ -159,7 +159,7 @@ static absl::Status RunExecuteOnStreamPhase(DeviceTestSlot& slot,
 static absl::Status RunCreatePhase(DeviceTestSlot& slot,
                                    CollectivePermuteThunk& thunk,
                                    int device_ordinal, int phase) {
-  RETURN_IF_ERROR(
+  ABSL_RETURN_IF_ERROR(
       PrepareInputs(*slot.stream, slot.create_buffers, device_ordinal, phase));
 
   BufferAllocations allocations =
@@ -168,12 +168,12 @@ static absl::Status RunCreatePhase(DeviceTestSlot& slot,
 
   // Warm up NCCL outside stream capture. Reset destination buffers afterward so
   // correctness is verified from command-buffer execution, not from warm-up.
-  RETURN_IF_ERROR(ExecuteOnStreamAndBlock(thunk, execute_params));
-  RETURN_IF_ERROR(
+  ABSL_RETURN_IF_ERROR(ExecuteOnStreamAndBlock(thunk, execute_params));
+  ABSL_RETURN_IF_ERROR(
       FillDestinationBuffer(*slot.stream, slot.create_buffers[1], -1.0f));
 
-  RETURN_IF_ERROR(RecordCommandBufferCreate(slot, thunk, execute_params));
-  RETURN_IF_ERROR(SubmitCommandBuffer(slot));
+  ABSL_RETURN_IF_ERROR(RecordCommandBufferCreate(slot, thunk, execute_params));
+  ABSL_RETURN_IF_ERROR(SubmitCommandBuffer(slot));
   return VerifyOutput(*slot.stream, slot.create_buffers[1], device_ordinal,
                       phase);
 }
@@ -181,16 +181,16 @@ static absl::Status RunCreatePhase(DeviceTestSlot& slot,
 static absl::Status RunUpdatePhase(DeviceTestSlot& slot,
                                    CollectivePermuteThunk& thunk,
                                    int device_ordinal, int phase) {
-  RETURN_IF_ERROR(
+  ABSL_RETURN_IF_ERROR(
       PrepareInputs(*slot.stream, slot.update_buffers, device_ordinal, phase));
 
   BufferAllocations allocations =
       MakeBufferAllocations(slot, slot.update_buffers);
   Thunk::ExecuteParams execute_params = MakeExecuteParams(slot, allocations);
 
-  RETURN_IF_ERROR(
+  ABSL_RETURN_IF_ERROR(
       RecordCommandBufferUpdate(slot, thunk, execute_params, {0, 1}));
-  RETURN_IF_ERROR(SubmitCommandBuffer(slot));
+  ABSL_RETURN_IF_ERROR(SubmitCommandBuffer(slot));
   return VerifyOutput(*slot.stream, slot.update_buffers[1], device_ordinal,
                       phase);
 }
@@ -208,7 +208,7 @@ TEST(CollectivePermuteThunkMultiGpuTest, ExecuteOnStream) {
 
   ASSERT_OK(RunOnDevices(
       kNumDevices, "collective_permute_execute", [&](int d) -> absl::Status {
-        RETURN_IF_ERROR(SetupDeviceSlot(d, slots[d], thunk, device_assignment));
+        ABSL_RETURN_IF_ERROR(SetupDeviceSlot(d, slots[d], thunk, device_assignment));
         return RunExecuteOnStreamPhase(slots[d], thunk, d, /*phase=*/1);
       }));
 }
@@ -229,7 +229,7 @@ TEST(CollectivePermuteThunkMultiGpuTest, RecordCommandBufferCreate) {
 
   ASSERT_OK(RunOnDevices(
       kNumDevices, "collective_permute_create", [&](int d) -> absl::Status {
-        RETURN_IF_ERROR(SetupDeviceSlot(d, slots[d], thunk, device_assignment));
+        ABSL_RETURN_IF_ERROR(SetupDeviceSlot(d, slots[d], thunk, device_assignment));
         return RunCreatePhase(slots[d], thunk, d, /*phase=*/2);
       }));
 }
@@ -250,7 +250,7 @@ TEST(CollectivePermuteThunkMultiGpuTest, RecordCommandBufferUpdate) {
 
   ASSERT_OK(RunOnDevices(
       kNumDevices, "collective_permute_create", [&](int d) -> absl::Status {
-        RETURN_IF_ERROR(SetupDeviceSlot(d, slots[d], thunk, device_assignment));
+        ABSL_RETURN_IF_ERROR(SetupDeviceSlot(d, slots[d], thunk, device_assignment));
         return RunCreatePhase(slots[d], thunk, d, /*phase=*/2);
       }));
 

@@ -229,7 +229,7 @@ void ShardingParam::PrintV2(mlir::AsmPrinter& ods_printer,
 }
 
 absl::Status ShardingParam::verify() const {
-  RETURN_IF_ERROR(minor_to_major().verify());
+  ABSL_RETURN_IF_ERROR(minor_to_major().verify());
   const int axis_size = minor_to_major().axis_sizes.size();
   absl::flat_hash_set<int> unreduced_set;
   for (const int unreduced : unreduced_axes()) {

@@ -107,7 +107,7 @@ absl::StatusOr<bool> DuplicateConstantExpressionPerUser(
     cloned_instr->clear_sharding();
     cloned_instructions_map[i] = cloned_instr;
     if (i == to_clone) {
-      RETURN_IF_ERROR(to_clone->ReplaceUseWith(user, cloned_instr));
+      ABSL_RETURN_IF_ERROR(to_clone->ReplaceUseWith(user, cloned_instr));
       changed = true;
     }
   }
@@ -208,7 +208,7 @@ absl::StatusOr<bool> HloConstantSplitter::RunImpl(
         }
       }
       for (auto* u : users) {
-        ASSIGN_OR_RETURN(bool duplicated, DuplicateConstantExpressionPerUser(
+        ABSL_ASSIGN_OR_RETURN(bool duplicated, DuplicateConstantExpressionPerUser(
                                               computation, instruction, u));
         changed |= duplicated;
       }

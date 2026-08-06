@@ -61,7 +61,7 @@ CreateCommunicators(se::StreamExecutor* executor0,
 
   GpuCollectives* collectives = GpuCollectives::Default("CUDA");
 
-  ASSIGN_OR_RETURN(CliqueId clique_id, collectives->CreateUniqueCliqueId());
+  ABSL_ASSIGN_OR_RETURN(CliqueId clique_id, collectives->CreateUniqueCliqueId());
   CliqueIds clique_ids(clique_id);
 
   GpuCliqueKey clique_key({GlobalDeviceId(0), GlobalDeviceId(1)},
@@ -70,7 +70,7 @@ CreateCommunicators(se::StreamExecutor* executor0,
   Collectives::DeviceRank rank0(&device0, RankId(0));
   Collectives::DeviceRank rank1(&device1, RankId(1));
 
-  ASSIGN_OR_RETURN(auto comms, collectives->CreateCommunicators(
+  ABSL_ASSIGN_OR_RETURN(auto comms, collectives->CreateCommunicators(
                                    clique_key, clique_ids, {rank0, rank1},
                                    GpuCollectives::Config{}));
   CHECK_EQ(comms.size(), 2);

@@ -184,7 +184,7 @@ HloShardingSpec::Disassemble(const Shape& shape) const {
   }
 
   if (is_even_sharding) {
-    ASSIGN_OR_RETURN(Shape shard_shape, GetShardShape(shape));
+    ABSL_ASSIGN_OR_RETURN(Shape shard_shape, GetShardShape(shape));
     std::vector<std::pair<Shape, ShardingSpecRef>> result;
     result.reserve(num_shards_);
     for (int i = 0; i < num_shards_; ++i) {
@@ -196,7 +196,7 @@ HloShardingSpec::Disassemble(const Shape& shape) const {
     return result;
   }
 
-  ASSIGN_OR_RETURN(std::vector<IndexDomain> index_domains, IndexDomains(shape));
+  ABSL_ASSIGN_OR_RETURN(std::vector<IndexDomain> index_domains, IndexDomains(shape));
   CHECK_EQ(index_domains.size(), num_shards_);
   std::vector<std::pair<Shape, ShardingSpecRef>> result;
   result.reserve(num_shards_);
@@ -251,11 +251,11 @@ absl::StatusOr<std::vector<IndexDomain>> HloShardingSpec::IndexDomains(
                         xla_hlo_sharding_.ToString()));
   }
 
-  ASSIGN_OR_RETURN(Shape tile_shape, GetShardShape(shape));
+  ABSL_ASSIGN_OR_RETURN(Shape tile_shape, GetShardShape(shape));
 
   const absl::Span<const int64_t> shape_dims = shape.dims();
   std::vector<std::optional<IndexDomain>> all(num_shards_);
-  RETURN_IF_ERROR(xla_hlo_sharding_.EachTile(
+  ABSL_RETURN_IF_ERROR(xla_hlo_sharding_.EachTile(
       shape_dims, [shape_dims, &all](int device_index,
                                      absl::Span<const int64_t> tile_offset,
                                      absl::Span<const int64_t> tile_limit) {

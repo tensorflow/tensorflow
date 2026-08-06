@@ -44,12 +44,12 @@ absl::StatusOr<bool> DynamicSliceAnnotator::RunImpl(
         continue;
       }
 
-      ASSIGN_OR_RETURN(auto descriptor, AnalyzeDynamicSlice(instr));
+      ABSL_ASSIGN_OR_RETURN(auto descriptor, AnalyzeDynamicSlice(instr));
       if (!descriptor) {
         continue;
       }
 
-      ASSIGN_OR_RETURN(auto backend_config,
+      ABSL_ASSIGN_OR_RETURN(auto backend_config,
                        instr->backend_config<GpuBackendConfig>());
       auto* ds_config = backend_config.mutable_dynamic_slice_config();
       if (descriptor->loop_index.has_value()) {
@@ -57,7 +57,7 @@ absl::StatusOr<bool> DynamicSliceAnnotator::RunImpl(
       }
       ds_config->set_byte_offset(descriptor->byte_offset);
       ds_config->set_byte_stride(descriptor->byte_stride);
-      RETURN_IF_ERROR(instr->set_backend_config(backend_config));
+      ABSL_RETURN_IF_ERROR(instr->set_backend_config(backend_config));
 
       VLOG(2) << "Annotated " << instr->name() << " with DynamicSliceConfig:"
               << " loop_index="

@@ -55,8 +55,8 @@ absl::StatusOr<HloInstructionProfileList> CollectProfiles(
     const se::DeviceDescription& device_info) {
   DeviceHloInstructionProfiles profile;
 
-  RETURN_IF_ERROR(tsl::Env::Default()->FileExists(perf_table_path));
-  RETURN_IF_ERROR(tsl::ReadTextOrBinaryProto(tsl::Env::Default(),
+  ABSL_RETURN_IF_ERROR(tsl::Env::Default()->FileExists(perf_table_path));
+  ABSL_RETURN_IF_ERROR(tsl::ReadTextOrBinaryProto(tsl::Env::Default(),
                                              perf_table_path, &profile));
   std::string key = HloOpProfiles::GetDeviceSpecificProfileName(device_info);
 
@@ -68,7 +68,7 @@ absl::StatusOr<HloInstructionProfileList> CollectProfiles(
 
 absl::Status SetReificationCost(HloInstruction& instr, absl::Duration exec_time,
                                 absl::string_view reification_name) {
-  ASSIGN_OR_RETURN(GpuBackendConfig gpu_config,
+  ABSL_ASSIGN_OR_RETURN(GpuBackendConfig gpu_config,
                    instr.backend_config<GpuBackendConfig>());
   ReificationCost& reification_cost = *gpu_config.add_reification_cost();
   reification_cost.set_exec_time_us(absl::ToDoubleMicroseconds(exec_time));
@@ -97,9 +97,9 @@ absl::Status MaybeRecordPerfTablesForDotsAndCustomCalls(
 absl::StatusOr<bool> MatmulPerfTableStatsCollection::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
-  ASSIGN_OR_RETURN(HloInstructionProfileList profiles,
+  ABSL_ASSIGN_OR_RETURN(HloInstructionProfileList profiles,
                    CollectProfiles(perf_table_path_, device_info_));
-  ASSIGN_OR_RETURN(std::unique_ptr<MatmulInterpolator> interpolator,
+  ABSL_ASSIGN_OR_RETURN(std::unique_ptr<MatmulInterpolator> interpolator,
                    MatmulInterpolator::Create(profiles, device_info_));
 
   hlo_query::ForEachInstructionWithPred(

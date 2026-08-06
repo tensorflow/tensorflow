@@ -95,7 +95,7 @@ inline XlaOp Dequantize(XlaOp input, const QuantizedRange& range,
                std::numeric_limits<T>::min() + 1) /
                   2.0f;
     const int64_t unpack_size = sizeof(uint32_t) / sizeof(T);
-    ASSIGN_OR_RETURN(Shape shape, builder->GetShape(input));
+    ABSL_ASSIGN_OR_RETURN(Shape shape, builder->GetShape(input));
 
     auto element_type = shape.element_type();
     if (element_type != U32) {

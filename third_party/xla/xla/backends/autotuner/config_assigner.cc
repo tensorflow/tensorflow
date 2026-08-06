@@ -124,7 +124,7 @@ absl::StatusOr<std::unique_ptr<ConfigAssigner>> ConfigAssigner::Create(
     correctness_check_options.enable_correctness_check = options.check_buffers;
     correctness_check_options.relative_tolerance = options.relative_tolerance;
     correctness_check_options.crash_on_failure = options.crash_on_check_failure;
-    ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         config_runner,
         ConfigRunner::Create(std::move(profiler), correctness_check_options));
   }
@@ -144,21 +144,21 @@ absl::Status ConfigAssigner::AssignConfigs(
   VLOG(1) << "Finding configs for " << instruction_groups.size()
           << " unique instructions.";
 
-  ASSIGN_OR_RETURN(std::vector<Config> configs,
+  ABSL_ASSIGN_OR_RETURN(std::vector<Config> configs,
                    GetConfigsForAll(instruction_groups));
 
   for (int i = 0; i < instruction_groups.size(); i++) {
     auto& instructions = instruction_groups[i];
     Config config = std::move(configs[i]);
     if (options_.dump_hlos) {
-      RETURN_IF_ERROR(DumpHlo(*instructions[0], config));
+      ABSL_RETURN_IF_ERROR(DumpHlo(*instructions[0], config));
     }
     for (auto* instr : instructions) {
-      RETURN_IF_ERROR(orchestrator_->ApplyConfig(*instr, config));
+      ABSL_RETURN_IF_ERROR(orchestrator_->ApplyConfig(*instr, config));
     }
   }
   if (config_runner_ != nullptr) {
-    RETURN_IF_ERROR(DumpTuningLogs());
+    ABSL_RETURN_IF_ERROR(DumpTuningLogs());
   }
   return absl::OkStatus();
 }
@@ -204,7 +204,7 @@ absl::Status ConfigAssigner::AssignConfigs(
           << ": finding configs for " << instruction_groups.size() << "/"
           << all_instruction_groups.size() << " unique instructions ";
 
-  ASSIGN_OR_RETURN(std::vector<Config> configs,
+  ABSL_ASSIGN_OR_RETURN(std::vector<Config> configs,
                    GetConfigsForAll(instruction_groups));
 
   std::vector<const HloInstruction*> autotuned_instructions;
@@ -213,7 +213,7 @@ absl::Status ConfigAssigner::AssignConfigs(
     autotuned_instructions.push_back(instruction_groups[i][0]);
   }
   if (config_runner_ != nullptr) {
-    RETURN_IF_ERROR(DumpTuningLogs());
+    ABSL_RETURN_IF_ERROR(DumpTuningLogs());
   }
 
   // 4. Store the results for this shard as a serialized string to the KV store.
@@ -222,7 +222,7 @@ absl::Status ConfigAssigner::AssignConfigs(
       GetKvStoreKey(module, my_shard_index, orchestrator_->codegen_backends());
   std::string local_results;
   if (!autotuned_instructions.empty()) {
-    ASSIGN_OR_RETURN(local_results,
+    ABSL_ASSIGN_OR_RETURN(local_results,
                      optimal_config_cache_->Serialize(autotuned_instructions));
   }
   absl::StatusOr<std::string> stored_result = kv_store.TryGet(local_key);
@@ -256,10 +256,10 @@ absl::Status ConfigAssigner::AssignConfigs(
             << i << " / " << total_shards << " at " << remote_key;
     // TODO(b/361009609): reset to infinite duration once issue with MPI is
     // fixed. https://github.com/google/jax/issues/22995.
-    ASSIGN_OR_RETURN(std::string remote_results,
+    ABSL_ASSIGN_OR_RETURN(std::string remote_results,
                      kv_store.Get(remote_key, absl::Hours(24)));
     if (!remote_results.empty()) {
-      RETURN_IF_ERROR(optimal_config_cache_->Deserialize(remote_results));
+      ABSL_RETURN_IF_ERROR(optimal_config_cache_->Deserialize(remote_results));
     }
   }
 
@@ -275,10 +275,10 @@ absl::Status ConfigAssigner::AssignConfigs(
           "across all shards."));
     }
     if (options_.dump_hlos) {
-      RETURN_IF_ERROR(DumpHlo(*instruction_group[0], *cached_config));
+      ABSL_RETURN_IF_ERROR(DumpHlo(*instruction_group[0], *cached_config));
     }
     for (auto* instr : instruction_group) {
-      RETURN_IF_ERROR(orchestrator_->ApplyConfig(*instr, *cached_config));
+      ABSL_RETURN_IF_ERROR(orchestrator_->ApplyConfig(*instr, *cached_config));
     }
   }
 
@@ -286,13 +286,13 @@ absl::Status ConfigAssigner::AssignConfigs(
 }
 
 absl::Status ConfigAssigner::AssignConfig(HloInstruction* instr) {
-  ASSIGN_OR_RETURN(Config config, GetConfig(instr).Await());
+  ABSL_ASSIGN_OR_RETURN(Config config, GetConfig(instr).Await());
   if (options_.dump_hlos) {
-    RETURN_IF_ERROR(DumpHlo(*instr, config));
+    ABSL_RETURN_IF_ERROR(DumpHlo(*instr, config));
   }
-  RETURN_IF_ERROR(orchestrator_->ApplyConfig(*instr, config));
+  ABSL_RETURN_IF_ERROR(orchestrator_->ApplyConfig(*instr, config));
   if (config_runner_ != nullptr) {
-    RETURN_IF_ERROR(DumpTuningLogs());
+    ABSL_RETURN_IF_ERROR(DumpTuningLogs());
   }
   return absl::OkStatus();
 }
@@ -357,7 +357,7 @@ tsl::Future<ConfigAssigner::Config> ConfigAssigner::GetConfig(
   VLOG(1) << "Getting tuned config for HLO: " << instr->ToString();
   return GetTunedConfig(instr).Map(
       [this, instr](Config config) -> absl::StatusOr<Config> {
-        RETURN_IF_ERROR(Insert(instr, config));
+        ABSL_RETURN_IF_ERROR(Insert(instr, config));
         return std::move(config);
       });
 }
@@ -367,7 +367,7 @@ tsl::Future<ConfigAssigner::Config> ConfigAssigner::GetConfig(
 tsl::Future<ConfigAssigner::Config> ConfigAssigner::GetTunedConfig(
     const HloInstruction* instr) {
   CHECK(config_runner_ != nullptr);
-  ASSIGN_OR_RETURN(std::vector<CodegenOrchestrator::Config> supported_configs,
+  ABSL_ASSIGN_OR_RETURN(std::vector<CodegenOrchestrator::Config> supported_configs,
                    orchestrator_->GetSupportedConfigs(*instr));
   TF_RET_CHECK(!supported_configs.empty())
       << "Autotuning failed for HLO: " << instr->ToString()
@@ -421,7 +421,7 @@ tsl::Future<ConfigAssigner::Config> ConfigAssigner::GetTunedConfig(
           return std::move(candidates[0].config);
         }
 
-        ASSIGN_OR_RETURN(
+        ABSL_ASSIGN_OR_RETURN(
             std::vector<ConfigRunner::ConfigProfile> profiles,
             config_runner_->ProfileAll(std::move(candidates), instr));
 
@@ -430,7 +430,7 @@ tsl::Future<ConfigAssigner::Config> ConfigAssigner::GetTunedConfig(
             << ". No configs could be profiled.";
 
         LogConfigProfiles(*instr, profiles, compilation_failures);
-        ASSIGN_OR_RETURN(
+        ABSL_ASSIGN_OR_RETURN(
             ConfigRunner::ConfigProfile best_profile,
             PickBestConfig(profiles, options_.scratch_bytes_window_size_us));
         return std::move(best_profile.config);
@@ -504,7 +504,7 @@ ConfigAssigner::GetConfigsForAll(
             " instructions. See logs for all failures. Example failure: \n",
             combined_status.message()));
   }
-  RETURN_IF_ERROR(combined_status);
+  ABSL_RETURN_IF_ERROR(combined_status);
 
   std::vector<Config> configs;
   for (auto& config_or : status_or_configs) {
@@ -525,7 +525,7 @@ absl::Status ConfigAssigner::DumpHlo(const HloInstruction& instr,
   DumpToFileInDirOrStdout(*parent_module, "", absl::StrCat(id, ".before.txt"),
                           module->ToString());
   HloInstruction* root = module->entry_computation()->root_instruction();
-  RETURN_IF_ERROR(orchestrator_->ApplyConfig(*root, config));
+  ABSL_RETURN_IF_ERROR(orchestrator_->ApplyConfig(*root, config));
   DumpToFileInDirOrStdout(*parent_module, "", absl::StrCat(id, ".after.txt"),
                           module->ToString());
   return absl::OkStatus();
@@ -563,7 +563,7 @@ absl::Status ConfigAssigner::DumpTuningLogs() {
   std::string textproto;
   tsl::protobuf::TextFormat::PrintToString(logs_, &textproto);
 
-  RETURN_IF_ERROR(tsl::AppendStringToFile(tsl::Env::Default(),
+  ABSL_RETURN_IF_ERROR(tsl::AppendStringToFile(tsl::Env::Default(),
                                           options_.dump_logs_to, textproto));
   VLOG(1) << "Autotune logs appended to file: " << options_.dump_logs_to;
   logs_.Clear();

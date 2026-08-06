@@ -119,7 +119,7 @@ absl::StatusOr<const PJRT_Api*> LoadPjrtPlugin(absl::string_view device_type,
   LOG(INFO) << "GetPjrtApi was found for " << device_type << " at "
             << library_path;
   const PJRT_Api* api = init_fn();
-  RETURN_IF_ERROR(SetPjrtApi(device_type, api));
+  ABSL_RETURN_IF_ERROR(SetPjrtApi(device_type, api));
   return api;
 #endif
 }

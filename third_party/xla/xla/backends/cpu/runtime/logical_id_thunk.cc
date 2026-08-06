@@ -83,7 +83,7 @@ absl::StatusOr<int32_t> LogicalIdThunk<logical_id_kind>::GetIdForDevice(
 template <LogicalIdKind logical_id_kind>
 tsl::AsyncValueRef<typename LogicalIdThunk<logical_id_kind>::ExecuteEvent>
 LogicalIdThunk<logical_id_kind>::Execute(const ExecuteParams& params) {
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       se::DeviceAddressBase logical_id_data,
       params.buffer_allocations->GetDeviceAddress(logical_id_buffer_));
 
@@ -93,7 +93,7 @@ LogicalIdThunk<logical_id_kind>::Execute(const ExecuteParams& params) {
   TF_RET_CHECK(params.collective_params)
       << ToString<logical_id_kind>() << " id requires collective params";
 
-  ASSIGN_OR_RETURN(int32_t logical_id,
+  ABSL_ASSIGN_OR_RETURN(int32_t logical_id,
                    GetIdForDevice(params.collective_params->device_assignment,
                                   params.collective_params->global_device_id));
 

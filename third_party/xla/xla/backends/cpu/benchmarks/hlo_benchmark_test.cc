@@ -97,7 +97,7 @@ absl::Status RunBenchmark(benchmark::State* absl_nullable state,
                                       ? GetAotCompilationOptions()
                                       : nullptr;
 
-  ASSIGN_OR_RETURN(auto module_and_iteration_literals,
+  ABSL_ASSIGN_OR_RETURN(auto module_and_iteration_literals,
                    LoadHloModuleAndMaybeIterationLiterals(hlo_abs_path));
 
   std::unique_ptr<HloModule> hlo_module =
@@ -106,7 +106,7 @@ absl::Status RunBenchmark(benchmark::State* absl_nullable state,
   std::vector<Literal> args;
   args.reserve(module_and_iteration_literals.second->arguments_size());
   for (const auto& arg : module_and_iteration_literals.second->arguments()) {
-    ASSIGN_OR_RETURN(args.emplace_back(), Literal::CreateFromProto(arg));
+    ABSL_ASSIGN_OR_RETURN(args.emplace_back(), Literal::CreateFromProto(arg));
   }
 
   std::vector<Literal*> arg_ptrs;

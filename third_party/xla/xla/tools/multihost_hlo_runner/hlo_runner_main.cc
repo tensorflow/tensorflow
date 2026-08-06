@@ -177,7 +177,7 @@ PreprocessingOptionsFromFlags(const HloRunnerConfig& opts) {
 static absl::StatusOr<FunctionalHloRunner::RunningOptions>
 RunningOptionsFromFlags(const HloRunnerConfig& opts) {
   FunctionalHloRunner::RunningOptions out;
-  ASSIGN_OR_RETURN(out.module_argument_mode,
+  ABSL_ASSIGN_OR_RETURN(out.module_argument_mode,
                    ArgumentModeFromString(opts.hlo_argument_mode));
   std::string error;
   if (!FunctionalHloRunner::AbslParseFlag(opts.output_mode_str,
@@ -211,7 +211,7 @@ RawCompileOptionsFromFlags(const HloRunnerConfig& opts,
                  : FunctionalHloRunner::SpmdMode::kUseSpmdPartitioning)
           : FunctionalHloRunner::SpmdMode::kNotUseSpmdPartitioning;
   if (!opts.execution_options_path.empty()) {
-    ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         out.execution_options,
         FunctionalHloRunner::LoadExecutionOptions(opts.execution_options_path));
   }
@@ -316,7 +316,7 @@ static absl::Status RunMultihostHloRunner(int argc, char** argv,
     opts.task_id = opts.run_single_shard_id;
 
     std::string hlo_file = (argc > 1) ? argv[1] : "";
-    ASSIGN_OR_RETURN(auto resolve_result,
+    ABSL_ASSIGN_OR_RETURN(auto resolve_result,
                      FunctionalHloRunner::ResolveTopology(
                          opts.num_replicas, opts.num_partitions, hlo_file,
                          opts.input_format));
@@ -331,14 +331,14 @@ static absl::Status RunMultihostHloRunner(int argc, char** argv,
     debug_options.set_xla_gpu_shard_autotuning(false);
   }
 
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       xla::FunctionalHloRunner::PreprocessingOptions preproc_options,
       PreprocessingOptionsFromFlags(opts));
   preproc_options.annotate_while_loop_trip_count = true;
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       xla::FunctionalHloRunner::RawCompileOptions raw_compile_options,
       RawCompileOptionsFromFlags(opts, debug_options));
-  ASSIGN_OR_RETURN(xla::FunctionalHloRunner::RunningOptions running_options,
+  ABSL_ASSIGN_OR_RETURN(xla::FunctionalHloRunner::RunningOptions running_options,
                    RunningOptionsFromFlags(opts));
 
   // tsl::Flags::Parse() leaves unknown flags in argv, we assume that those are
@@ -363,22 +363,22 @@ static absl::Status RunMultihostHloRunner(int argc, char** argv,
     gpu_options.num_nodes = opts.num_nodes;
     gpu_options.enable_mock_nccl = opts.enable_mock_nccl;
     gpu_options.allocator_config.memory_fraction = opts.gpu_client_mem_fraction;
-    ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         env, xla::GetPjRtEnvironmentForGpu(
                  opts.address_str, gpu_options,
                  absl::Seconds(opts.gpu_client_initialization_timeout_sec)));
     // Create a GPURunnerProfiler to profile GPU executions to save xspace data
     // to disk.
     if (env.client != nullptr && !opts.xla_gpu_dump_xspace_to.empty()) {
-      ASSIGN_OR_RETURN(hlo_runner_profiler,
+      ABSL_ASSIGN_OR_RETURN(hlo_runner_profiler,
                        HLORunnerProfiler::Create(opts.xla_gpu_dump_xspace_to,
                                                  /*keep_xspace=*/false));
       running_options.profiler = hlo_runner_profiler.get();
     }
   } else if (opts.device_type_str == "host") {
-    ASSIGN_OR_RETURN(env, xla::GetPjRtEnvironmentForHostCpu());
+    ABSL_ASSIGN_OR_RETURN(env, xla::GetPjRtEnvironmentForHostCpu());
     if (env.client != nullptr && !opts.xla_gpu_dump_xspace_to.empty()) {
-      ASSIGN_OR_RETURN(hlo_runner_profiler,
+      ABSL_ASSIGN_OR_RETURN(hlo_runner_profiler,
                        HLORunnerProfiler::Create(opts.xla_gpu_dump_xspace_to,
                                                  /*keep_xspace=*/false));
       running_options.profiler = hlo_runner_profiler.get();
@@ -405,13 +405,13 @@ static absl::Status RunMultihostHloRunner(int argc, char** argv,
     execution_profiles.clear();
     if (opts.should_run && !opts.compile_only) {
       std::cout << "\n** Running " << hlo_file << " **\n";
-      RETURN_IF_ERROR(xla::FunctionalHloRunner::LoadAndRunAndDump(
+      ABSL_RETURN_IF_ERROR(xla::FunctionalHloRunner::LoadAndRunAndDump(
           *env.client, preproc_options, raw_compile_options, running_options,
           hlo_file, opts.input_format, opts.dump_output_literal_to,
           opts.task_id, opts.num_nodes, env.kv_store, engine.get()));
     } else {
       std::cout << "\n** Compiling " << hlo_file << " **\n";
-      RETURN_IF_ERROR(FunctionalHloRunner::LoadAndCompile(
+      ABSL_RETURN_IF_ERROR(FunctionalHloRunner::LoadAndCompile(
                           *env.client, preproc_options, raw_compile_options,
                           argv[c], opts.input_format, opts.task_id)
                           .status());

@@ -96,27 +96,27 @@ class GpuOptProvider : public CompiledOptProvider {
   absl::StatusOr<std::optional<std::string>> GenerateStage(
       std::unique_ptr<HloModule> module, absl::string_view s) override {
     if (s == "llvm-before-optimizations") {
-      ASSIGN_OR_RETURN(std::string llvm_ir,
+      ABSL_ASSIGN_OR_RETURN(std::string llvm_ir,
                        LlvmIrFor(std::move(module), false));
       return llvm_ir;
     }
     if (s == "llvm" || s == "llvm-after-optimizations") {
-      ASSIGN_OR_RETURN(std::string llvm_ir, LlvmIrFor(std::move(module), true));
+      ABSL_ASSIGN_OR_RETURN(std::string llvm_ir, LlvmIrFor(std::move(module), true));
       return llvm_ir;
     }
     if (s == "ptx") {
-      ASSIGN_OR_RETURN(std::string ptx, PtxFor(std::move(module)));
+      ABSL_ASSIGN_OR_RETURN(std::string ptx, PtxFor(std::move(module)));
       return ptx;
     }
     if (s == "buffer-assignment") {
-      ASSIGN_OR_RETURN(std::unique_ptr<Executable> executable,
+      ABSL_ASSIGN_OR_RETURN(std::unique_ptr<Executable> executable,
                        GetExecutable(std::move(module)));
       auto gpu_executable = static_cast<gpu::GpuExecutable*>(executable.get());
       return gpu_executable->buffer_allocations_debug_summary();
     }
     {
       // Delegate to base class.
-      ASSIGN_OR_RETURN(
+      ABSL_ASSIGN_OR_RETURN(
           std::optional<std::string> out,
           CompiledOptProvider::GenerateStage(std::move(module), s));
       return out;
@@ -199,7 +199,7 @@ class GpuOptProvider : public CompiledOptProvider {
  private:
   absl::StatusOr<se::DeviceDescription> GetDeviceDescription(
       const HloModule* module) {
-    ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         gpu::GpuTargetConfig target_config,
         gpu::GetTargetConfigFromFile(
             module->config().debug_options().xla_gpu_target_config_filename()));
@@ -209,10 +209,10 @@ class GpuOptProvider : public CompiledOptProvider {
   absl::StatusOr<std::string> LlvmIrFor(std::unique_ptr<HloModule> input_module,
                                         bool optimized) {
     Compiler::CompileOptions opts;
-    ASSIGN_OR_RETURN(std::unique_ptr<HloModule> optimized_module,
+    ABSL_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> optimized_module,
                      GetOptimizedHlo(std::move(input_module)));
-    ASSIGN_OR_RETURN(se::StreamExecutor * executor, GetExecutor());
-    ASSIGN_OR_RETURN(std::unique_ptr<Compiler> compiler, GetCompiler());
+    ABSL_ASSIGN_OR_RETURN(se::StreamExecutor * executor, GetExecutor());
+    ABSL_ASSIGN_OR_RETURN(std::unique_ptr<Compiler> compiler, GetCompiler());
 
     LLVMCompiler* llvm_compiler =
         absl::down_cast<LLVMCompiler*>(compiler.get());
@@ -229,7 +229,7 @@ class GpuOptProvider : public CompiledOptProvider {
       });
     }
 
-    ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         std::unique_ptr<Executable> executable,
         compiler->RunBackend(std::move(optimized_module), executor, opts));
 
@@ -247,10 +247,10 @@ class GpuOptProvider : public CompiledOptProvider {
 
   absl::StatusOr<std::string> PtxFor(std::unique_ptr<HloModule> input_module) {
     Compiler::CompileOptions opts;
-    ASSIGN_OR_RETURN(std::unique_ptr<HloModule> optimized_module,
+    ABSL_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> optimized_module,
                      GetOptimizedHlo(std::move(input_module)));
-    ASSIGN_OR_RETURN(se::StreamExecutor * executor, GetExecutor());
-    ASSIGN_OR_RETURN(std::unique_ptr<Compiler> compiler, GetCompiler());
+    ABSL_ASSIGN_OR_RETURN(se::StreamExecutor * executor, GetExecutor());
+    ABSL_ASSIGN_OR_RETURN(std::unique_ptr<Compiler> compiler, GetCompiler());
 
     gpu::GpuCompiler* gpu_compiler =
         absl::down_cast<gpu::GpuCompiler*>(compiler.get());
@@ -258,7 +258,7 @@ class GpuOptProvider : public CompiledOptProvider {
     std::string ptx_str = "// GPU Executable\n";
     gpu_compiler->SetAsmHook([&](absl::string_view ptx) { ptx_str += ptx; });
 
-    ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         std::unique_ptr<Executable> executable,
         compiler->RunBackend(std::move(optimized_module), executor, opts));
 

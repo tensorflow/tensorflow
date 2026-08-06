@@ -69,7 +69,7 @@ absl::StatusOr<bool> RcclGroupEnd() {
 bool IsInsideRcclGroupLaunch() { return rccl_group_nesting > 0; }
 
 absl::StatusOr<bool> RcclGroupLaunch(absl::FunctionRef<absl::Status()> group) {
-  RETURN_IF_ERROR(RcclGroupStart());
+  ABSL_RETURN_IF_ERROR(RcclGroupStart());
   absl::Status group_status = group();
   absl::StatusOr<bool> launched = RcclGroupEnd();
   if (!group_status.ok()) {

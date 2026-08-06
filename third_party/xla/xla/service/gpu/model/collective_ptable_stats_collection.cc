@@ -52,8 +52,8 @@ absl::StatusOr<HloInstructionProfileList> CollectProfiles(
     const se::DeviceDescription& device_info) {
   DeviceHloInstructionProfiles profile;
 
-  RETURN_IF_ERROR(tsl::Env::Default()->FileExists(perf_table_path));
-  RETURN_IF_ERROR(tsl::ReadTextOrBinaryProto(tsl::Env::Default(),
+  ABSL_RETURN_IF_ERROR(tsl::Env::Default()->FileExists(perf_table_path));
+  ABSL_RETURN_IF_ERROR(tsl::ReadTextOrBinaryProto(tsl::Env::Default(),
                                              perf_table_path, &profile));
   std::string key = HloOpProfiles::GetDeviceSpecificProfileName(device_info);
 
@@ -68,9 +68,9 @@ absl::StatusOr<HloInstructionProfileList> CollectProfiles(
 absl::StatusOr<bool> CollectivePerfTableStatsCollection::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
-  ASSIGN_OR_RETURN(HloInstructionProfileList profiles,
+  ABSL_ASSIGN_OR_RETURN(HloInstructionProfileList profiles,
                    CollectProfiles(perf_table_path_, device_info_));
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       std::unique_ptr<CollectiveInterpolator> interpolator,
       CollectiveInterpolator::Create(
           SolGPUCostModel::GetConfig(module, device_info_).gpus_per_node,

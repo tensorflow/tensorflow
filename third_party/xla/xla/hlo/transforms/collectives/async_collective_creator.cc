@@ -129,7 +129,7 @@ absl::StatusOr<ReplacedAsync> CreateAsyncCollectivePermute(
 absl::StatusOr<ReplacedAsync> CreateAsyncStartDone(
     HloInstruction* instruction, absl::Span<const Shape> context_shapes) {
   HloComputation* computation = instruction->parent();
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       HloInstruction * done,
       computation->CreateAsyncInstructions(instruction, context_shapes,
                                            HloInstruction::kMainExecutionThread,
@@ -278,13 +278,13 @@ absl::StatusOr<bool> AsyncCollectiveCreator::ReplaceCollectives(
     }
   };
   for (HloInstruction* instruction : supported_collectives) {
-    ASSIGN_OR_RETURN(auto maybe_async_pair,
+    ABSL_ASSIGN_OR_RETURN(auto maybe_async_pair,
                      handle_legacy_async_conversion(instruction));
     ReplacedAsync async_pair;
     if (maybe_async_pair.has_value()) {
       async_pair = *maybe_async_pair;
     } else {
-      ASSIGN_OR_RETURN(
+      ABSL_ASSIGN_OR_RETURN(
           async_pair,
           CreateAsyncStartDone(instruction,
                                config_.get_context_shapes(instruction)));
@@ -298,9 +298,9 @@ absl::StatusOr<bool> AsyncCollectiveCreator::ReplaceCollectives(
     }
 
     // Update control dependencies if present.
-    RETURN_IF_ERROR(
+    ABSL_RETURN_IF_ERROR(
         instruction->CopyAllControlDepsTo(async_pair.start, async_pair.done));
-    RETURN_IF_ERROR(instruction->DropAllControlDeps());
+    ABSL_RETURN_IF_ERROR(instruction->DropAllControlDeps());
 
     TF_RETURN_WITH_CONTEXT_IF_ERROR(
         computation->ReplaceInstruction(instruction, async_pair.done),
@@ -350,7 +350,7 @@ absl::StatusOr<bool> AsyncCollectiveCreator::RunImpl(
     if (supported_collectives.empty()) {
       continue;
     }
-    ASSIGN_OR_RETURN(bool comp_changed,
+    ABSL_ASSIGN_OR_RETURN(bool comp_changed,
                      ReplaceCollectives(computation, supported_collectives));
     collectives_replaced += supported_collectives.size();
     changed |= comp_changed;

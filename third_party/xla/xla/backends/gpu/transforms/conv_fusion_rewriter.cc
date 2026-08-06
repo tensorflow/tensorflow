@@ -264,17 +264,17 @@ absl::StatusOr<bool> RunOnInstruction(
   const auto* conv_instr = DynCast<HloConvolutionInstruction>(conv);
   *fusion_config->mutable_cudnn_fusion_config()->mutable_precision_config() =
       conv_instr->precision_config();
-  RETURN_IF_ERROR(conv_fusion->set_backend_config(gpu_backend_config));
+  ABSL_RETURN_IF_ERROR(conv_fusion->set_backend_config(gpu_backend_config));
 
   VLOG(1) << "Replacing convolution " << conv->ToString() << " with "
           << conv_fusion->ToString();
   if (fusion_outputs.size() == 1) {
-    RETURN_IF_ERROR(
+    ABSL_RETURN_IF_ERROR(
         conv->parent()->ReplaceInstruction(fusion_outputs[0], conv_fusion));
   } else {
     for (int idx = 0; idx < fusion_outputs.size(); ++idx) {
       HloInstruction* output = fusion_outputs[idx];
-      RETURN_IF_ERROR(conv->parent()->ReplaceInstruction(
+      ABSL_RETURN_IF_ERROR(conv->parent()->ReplaceInstruction(
           output,
           conv->parent()->AddInstruction(
               HloInstruction::CreateGetTupleElement(conv_fusion, idx))));
@@ -294,7 +294,7 @@ absl::StatusOr<bool> RunOnComputation(
 
   bool changed = false;
   for (HloInstruction* conv : convs) {
-    ASSIGN_OR_RETURN(bool result, RunOnInstruction(conv, device_info));
+    ABSL_ASSIGN_OR_RETURN(bool result, RunOnInstruction(conv, device_info));
     changed |= result;
   }
   return changed;
@@ -309,7 +309,7 @@ absl::StatusOr<bool> ConvFusionRewriter::RunImpl(
   bool changed = false;
   for (HloComputation* computation :
        module->MakeNonfusionComputations(execution_threads)) {
-    ASSIGN_OR_RETURN(bool result, RunOnComputation(computation, device_info_));
+    ABSL_ASSIGN_OR_RETURN(bool result, RunOnComputation(computation, device_info_));
     changed |= result;
   }
   XLA_VLOG_LINES(2, "ConvFusionRewriter::Run(), after:\n" + module->ToString());

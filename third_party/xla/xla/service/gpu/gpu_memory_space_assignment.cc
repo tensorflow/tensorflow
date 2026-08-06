@@ -109,7 +109,7 @@ ParseIndexMemorySpacePairs(absl::string_view str) {
                           &memory_space)) {
       return InvalidArgument("Failed to parse integers in pair: %s", pair);
     }
-    ASSIGN_OR_RETURN(MemorySpaceColor color, AsMemorySpaceColor(memory_space));
+    ABSL_ASSIGN_OR_RETURN(MemorySpaceColor color, AsMemorySpaceColor(memory_space));
     result.emplace_back(index, color);
   }
 
@@ -216,7 +216,7 @@ static absl::StatusOr<MemorySpaceColor> GetCustomCallOperandMemorySpace(
     return MemorySpaceColor::kDefault;
   }
 
-  ASSIGN_OR_RETURN(auto pairs, ParseIndexMemorySpacePairs(*attr));
+  ABSL_ASSIGN_OR_RETURN(auto pairs, ParseIndexMemorySpacePairs(*attr));
   for (auto [index, memory_space] : pairs) {
     if (index == use.operand_number) {
       return memory_space;
@@ -263,7 +263,7 @@ static absl::StatusOr<MemorySpaceColor> GetCustomCallResultMemorySpace(
     return MemorySpaceColor::kDefault;
   }
 
-  ASSIGN_OR_RETURN(auto pairs, ParseIndexMemorySpacePairs(*attr));
+  ABSL_ASSIGN_OR_RETURN(auto pairs, ParseIndexMemorySpacePairs(*attr));
   const ShapeIndex& idx = value.defining_index();
   for (auto [index, memory_space] : pairs) {
     if (instr->shape().IsTuple() ? (idx.size() == 1 && idx[0] == index)
@@ -298,7 +298,7 @@ absl::StatusOr<BufferValue::Color> DetermineBufferColor(
 
     // Check if this value is a custom call result with a requested memory
     // space.
-    ASSIGN_OR_RETURN(MemorySpaceColor result_ms,
+    ABSL_ASSIGN_OR_RETURN(MemorySpaceColor result_ms,
                      GetCustomCallResultMemorySpace(*value));
     if (result_ms != MemorySpaceColor::kDefault) {
       candidates.push_back(static_cast<BufferValue::Color>(result_ms));
@@ -307,7 +307,7 @@ absl::StatusOr<BufferValue::Color> DetermineBufferColor(
     // Check if any use of this alias is a custom call operand with a
     // requested memory space.
     for (const HloUse& use : value->GetUses()) {
-      ASSIGN_OR_RETURN(MemorySpaceColor operand_ms,
+      ABSL_ASSIGN_OR_RETURN(MemorySpaceColor operand_ms,
                        GetCustomCallOperandMemorySpace(use));
       if (operand_ms != MemorySpaceColor::kDefault) {
         candidates.push_back(static_cast<BufferValue::Color>(operand_ms));
@@ -371,7 +371,7 @@ absl::Status AssignColors(const DebugOptions& option,
                           HloAliasAnalysis* alias_analysis) {
   HloDataflowAnalysis& dataflow_analysis = alias_analysis->dataflow_analysis();
   for (const HloBuffer& buffer : alias_analysis->buffers()) {
-    ASSIGN_OR_RETURN(BufferValue::Color color,
+    ABSL_ASSIGN_OR_RETURN(BufferValue::Color color,
                      DetermineBufferColor(buffer, option));
     // Apply buffer color to all values in the buffer.
     for (const HloValue* const_value : buffer.values()) {

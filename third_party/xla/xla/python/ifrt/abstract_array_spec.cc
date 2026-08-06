@@ -118,7 +118,7 @@ uint64_t AbstractArraySpec::Hash() const {
 
 absl::StatusOr<ArraySpec> AbstractArraySpec::ToArraySpec(
     DeviceListRef devices) const {
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       ShardingRef sharding,
       rep_->sharding_spec->ToSharding(std::move(devices), rep_->memory_kind));
   return ArraySpec{
@@ -138,9 +138,9 @@ absl::StatusOr<AbstractArraySpec> AbstractArraySpec::FromProto(
                      " for AbstractArraySpec deserialization"));
   }
 
-  ASSIGN_OR_RETURN(DType dtype, DType::FromProto(proto.dtype()));
-  ASSIGN_OR_RETURN(Shape shape, Shape::FromProto(proto.shape()));
-  ASSIGN_OR_RETURN(ShardingSpecRef sharding_spec,
+  ABSL_ASSIGN_OR_RETURN(DType dtype, DType::FromProto(proto.dtype()));
+  ABSL_ASSIGN_OR_RETURN(Shape shape, Shape::FromProto(proto.shape()));
+  ABSL_ASSIGN_OR_RETURN(ShardingSpecRef sharding_spec,
                    ShardingSpec::FromProto(proto.sharding_spec()));
   MemoryKind memory_kind;
   if (!proto.memory_kind().empty()) {
@@ -148,7 +148,7 @@ absl::StatusOr<AbstractArraySpec> AbstractArraySpec::FromProto(
   }
   absl_nullable std::shared_ptr<const xla::PjRtLayout> layout;
   if (proto.has_layout()) {
-    ASSIGN_OR_RETURN(layout, xla::PjRtLayout::Deserialize(proto.layout()));
+    ABSL_ASSIGN_OR_RETURN(layout, xla::PjRtLayout::Deserialize(proto.layout()));
   }
   return AbstractArraySpec::Create(dtype, std::move(shape),
                                    std::move(sharding_spec), memory_kind,
@@ -167,7 +167,7 @@ absl::Status AbstractArraySpec::ToProto(AbstractArraySpecProto& proto,
   proto.set_version_number(SerDesVersionNumber(5).value());
   dtype().ToProto(*proto.mutable_dtype(), version);
   shape().ToProto(*proto.mutable_shape(), version);
-  ASSIGN_OR_RETURN(*proto.mutable_sharding_spec(),
+  ABSL_ASSIGN_OR_RETURN(*proto.mutable_sharding_spec(),
                    sharding_spec()->ToProto(version));
   if (memory_kind().memory_kind().has_value()) {
     // NOLINTNEXTLINE(*-readability-redundant-string-conversions)

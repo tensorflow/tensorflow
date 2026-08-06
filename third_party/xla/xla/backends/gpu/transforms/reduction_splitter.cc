@@ -135,7 +135,7 @@ class ReductionSplitterVisitor : public DfsHloRewriteVisitor {
 absl::StatusOr<bool> ReductionSplitter::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
-  ASSIGN_OR_RETURN(bool changed, ReductionSplitterVisitor(device_description_,
+  ABSL_ASSIGN_OR_RETURN(bool changed, ReductionSplitterVisitor(device_description_,
                                                           ignore_small_dims_)
                                      .RunOnModule(module, execution_threads));
   return changed;

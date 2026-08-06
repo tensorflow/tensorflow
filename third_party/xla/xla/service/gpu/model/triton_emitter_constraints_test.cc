@@ -341,11 +341,11 @@ class VerifyTritonConstraintsTest : public HloHardwareIndependentTestBase {
     HloInstruction* root = module->entry_computation()->root_instruction();
     std::unique_ptr<HloFusionAdaptor> fusion_adaptor =
         HloFusionAdaptor::ForInstruction(root);
-    ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         std::unique_ptr<experimental::TilingSpace> tiling_space,
         experimental::TilingSpace::Create(*fusion_adaptor, &mlir_context_));
-    RETURN_IF_ERROR(tiling_space->AssignTileSizes(tile_sizes));
-    ASSIGN_OR_RETURN(experimental::TiledHloComputation tiled_comp,
+    ABSL_RETURN_IF_ERROR(tiling_space->AssignTileSizes(tile_sizes));
+    ABSL_ASSIGN_OR_RETURN(experimental::TiledHloComputation tiled_comp,
                      experimental::TiledHloComputation::Tile(
                          *fusion_adaptor, std::move(tiling_space)));
     tiled_comp.Simplify();

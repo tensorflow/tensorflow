@@ -112,12 +112,12 @@ const std::string& CudaPlatform::Name() const { return name_; }
 
 absl::StatusOr<std::unique_ptr<DeviceDescription>>
 CudaPlatform::DescriptionForDevice(int ordinal) const {
-  RETURN_IF_ERROR(PlatformInitialize());
+  ABSL_RETURN_IF_ERROR(PlatformInitialize());
   return CudaExecutor::CreateDeviceDescription(ordinal);
 }
 
 absl::StatusOr<StreamExecutor*> CudaPlatform::ExecutorForDevice(int ordinal) {
-  RETURN_IF_ERROR(PlatformInitialize());
+  ABSL_RETURN_IF_ERROR(PlatformInitialize());
   return executor_cache_.GetOrCreate(
       ordinal, [this, ordinal]() { return GetUncachedExecutor(ordinal); });
 }
@@ -129,7 +129,7 @@ absl::StatusOr<StreamExecutor*> CudaPlatform::FindExisting(int ordinal) {
 absl::StatusOr<std::unique_ptr<StreamExecutor>>
 CudaPlatform::GetUncachedExecutor(int ordinal) {
   auto executor = std::make_unique<CudaExecutor>(this, ordinal);
-  RETURN_IF_ERROR(executor->Init());
+  ABSL_RETURN_IF_ERROR(executor->Init());
   return std::move(executor);
 }
 

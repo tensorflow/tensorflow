@@ -62,7 +62,7 @@ absl::StatusOr<std::optional<HloInstruction*>> UpdateLayoutForCudnnConvolution(
       hlo->shape().IsTuple() ? hlo->shape().tuple_shapes(0) : hlo->shape();
 
   Shape input_shape, filter_shape, output_shape;
-  ASSIGN_OR_RETURN(gpu::CudnnConvKind conv_kind,
+  ABSL_ASSIGN_OR_RETURN(gpu::CudnnConvKind conv_kind,
                    gpu::GetCudnnConvKind(Cast<HloCustomCallInstruction>(hlo)));
   switch (conv_kind) {
     case gpu::CudnnConvKind::kForward:
@@ -170,7 +170,7 @@ absl::StatusOr<std::optional<HloInstruction*>> UpdateLayoutForCudnnConvolution(
         normalized_conv->shape().tuple_shapes().size());
 
     for (int i = 0; i < normalized_conv->shape().tuple_shapes().size(); ++i) {
-      ASSIGN_OR_RETURN(HloInstruction * normalized_out,
+      ABSL_ASSIGN_OR_RETURN(HloInstruction * normalized_out,
                        MakeGetTupleElementHlo(normalized_conv, i));
       tuple_elements[i] =
           MakeBitcastHlo(normalized_out, hlo->shape().tuple_shapes(i));
@@ -187,7 +187,7 @@ absl::StatusOr<std::optional<HloInstruction*>> UpdateLayoutForCudnnConvolution(
 absl::StatusOr<std::optional<HloInstruction*>> NormalizeLayoutForGpuCustomCalls(
     HloCustomCallInstruction* hlo) {
   if (IsCustomCallToDnnConvolution(*hlo)) {
-    ASSIGN_OR_RETURN(std::optional<HloInstruction*> bc_to_orig,
+    ABSL_ASSIGN_OR_RETURN(std::optional<HloInstruction*> bc_to_orig,
                      UpdateLayoutForCudnnConvolution(hlo));
     return bc_to_orig;
   }

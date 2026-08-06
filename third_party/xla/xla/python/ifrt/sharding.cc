@@ -806,7 +806,7 @@ ShardingParamSharding::Disassemble(
     const Shape& shape,
     SingleDeviceShardSemantics single_device_shard_semantics) const {
   DCHECK(this);
-  ASSIGN_OR_RETURN(Shape local_shape, GetShardShape(shape));
+  ABSL_ASSIGN_OR_RETURN(Shape local_shape, GetShardShape(shape));
 
   std::vector<std::pair<Shape, ShardingRef>> result;
   if (single_device_shard_semantics == SingleDeviceShardSemantics::kAllShards) {
@@ -907,7 +907,7 @@ absl::StatusOr<std::vector<IndexDomain>> ShardingParamSharding::IndexDomains(
   }
 
   // Calculate the origins of tiles, ignoring device assignments.
-  ASSIGN_OR_RETURN(Shape local_shape, GetShardShape(shape));
+  ABSL_ASSIGN_OR_RETURN(Shape local_shape, GetShardShape(shape));
   std::vector<Index> tile_indices =
       GetTileIndices(sharding_param_.dim_shards());
   std::vector<Index> origins;

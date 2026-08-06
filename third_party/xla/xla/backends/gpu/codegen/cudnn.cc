@@ -36,7 +36,7 @@ AsyncThunkSequence CuDnnFusion::Emit(IrEmitterContext& ir_emitter_context,
                                      const HloFusionInstruction& fusion) const {
   VLOG(3) << fusion.ToString();
 
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       auto kernel_arguments,
       emitters::KernelArguments::Create(ir_emitter_context.buffer_assignment(),
                                         GetDefaultBufferAlignment(), &fusion));

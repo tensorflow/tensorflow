@@ -85,7 +85,7 @@ class MockExecutable : public Executable {
       profile->set_compute_time_ns(duration_ns_);
     }
     if (write_past_allocated_buffer_) {
-      RETURN_IF_ERROR(WriteOutOfBounds(*run_options));
+      ABSL_RETURN_IF_ERROR(WriteOutOfBounds(*run_options));
     }
     const Shape& result_shape =
         module().entry_computation()->root_instruction()->shape();
@@ -108,7 +108,7 @@ class MockExecutable : public Executable {
     constexpr int64_t kOverrunBytes = 64;
     se::DeviceAddressAllocator* allocator =
         run_options.run_options().allocator();
-    ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         se::ScopedDeviceAddress<uint8_t> buffer,
         allocator->Allocate(run_options.run_options().device_ordinal(),
                             kBufferBytes));
@@ -127,13 +127,13 @@ absl::StatusOr<ScopedShapedBuffer> CreateTestBuffer(
     se::DeviceAddressAllocator* allocator, se::StreamExecutor* stream_exec,
     se::Stream* stream, int32_t value) {
   Shape test_shape = ShapeUtil::MakeShape(S32, {});
-  ASSIGN_OR_RETURN(auto* transfer_manager,
+  ABSL_ASSIGN_OR_RETURN(auto* transfer_manager,
                    TransferManager::GetForPlatform(stream_exec->GetPlatform()));
-  ASSIGN_OR_RETURN(ScopedShapedBuffer output,
+  ABSL_ASSIGN_OR_RETURN(ScopedShapedBuffer output,
                    transfer_manager->AllocateScopedShapedBuffer(
                        test_shape, allocator, stream_exec->device_ordinal()));
   Literal literal = LiteralUtil::CreateR0<int32_t>(value);
-  RETURN_IF_ERROR(
+  ABSL_RETURN_IF_ERROR(
       transfer_manager->TransferLiteralToDevice(stream, literal, output));
   return output;
 }
@@ -143,16 +143,16 @@ absl::StatusOr<ScopedShapedBuffer> CreateTupleTestBuffer(
     se::Stream* stream, int32_t value1, int32_t value2) {
   Shape test_shape = ShapeUtil::MakeShape(S32, {});
   Shape test_shape_tuple = ShapeUtil::MakeTupleShape({test_shape, test_shape});
-  ASSIGN_OR_RETURN(auto* transfer_manager,
+  ABSL_ASSIGN_OR_RETURN(auto* transfer_manager,
                    TransferManager::GetForPlatform(stream_exec->GetPlatform()));
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       ScopedShapedBuffer output,
       transfer_manager->AllocateScopedShapedBuffer(
           test_shape_tuple, allocator, stream_exec->device_ordinal()));
   Literal literal1 = LiteralUtil::CreateR0<int32_t>(value1);
   Literal literal2 = LiteralUtil::CreateR0<int32_t>(value2);
   Literal tuple_literal = LiteralUtil::MakeTuple({&literal1, &literal2});
-  RETURN_IF_ERROR(
+  ABSL_RETURN_IF_ERROR(
       transfer_manager->TransferLiteralToDevice(stream, tuple_literal, output));
   return output;
 }
@@ -171,19 +171,19 @@ class GpuProfilerTest : public HloHardwareIndependentTestBase {
 
   absl::StatusOr<int64_t> GetScratchBytes(absl::string_view hlo_text) {
     NVPTXCompiler compiler;
-    ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
+    ABSL_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
                      ParseAndReturnVerifiedModule(hlo_text));
     module->mutable_config()
         .mutable_debug_options()
         .clear_xla_gpu_enable_command_buffer();
-    ASSIGN_OR_RETURN(auto gpu_executable,
+    ABSL_ASSIGN_OR_RETURN(auto gpu_executable,
                      compiler.RunBackend(std::move(module), stream_exec_,
                                          GpuCompiler::CompileOptions()));
     auto profiler =
         GpuProfiler::Create(stream_exec_, ProfileOptions(), allocator_.get());
-    ASSIGN_OR_RETURN(std::unique_ptr<InputBuffers> buffers,
+    ABSL_ASSIGN_OR_RETURN(std::unique_ptr<InputBuffers> buffers,
                      profiler->CreateInputBuffers(gpu_executable.get()));
-    ASSIGN_OR_RETURN(ProfileResult profile,
+    ABSL_ASSIGN_OR_RETURN(ProfileResult profile,
                      profiler->Profile(gpu_executable.get(), *buffers));
     return profile.scratch_bytes;
   }

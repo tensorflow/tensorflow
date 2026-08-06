@@ -675,6 +675,20 @@ class Interpreter {
   TfLiteStatus ModifyGraphWithDelegate(TfLiteDelegate* delegate);
   TfLiteStatus ModifyGraphWithDelegate(TfLiteOpaqueDelegateStruct* delegate);
 
+  /// \brief Applies a delegate only to the specified active subgraphs.
+  ///
+  /// The complete index list is validated before any subgraph is modified.
+  /// Duplicate indices are ignored and subgraphs are visited in model order.
+  /// The caller is responsible for including any required callee subgraphs;
+  /// this method does not perform transitive dependency discovery.
+  /// \warning This is an experimental API and subject to change. \n
+  TfLiteStatus ModifyGraphWithDelegate(
+      TfLiteDelegate* delegate,
+      const std::vector<int>& active_subgraph_indices);
+  TfLiteStatus ModifyGraphWithDelegate(
+      TfLiteOpaqueDelegateStruct* delegate,
+      const std::vector<int>& active_subgraph_indices);
+
   // Owning handle to a TfLiteDelegate instance.
   using TfLiteDelegatePtr =
       std::unique_ptr<TfLiteDelegate, void (*)(TfLiteDelegate*)>;
@@ -937,6 +951,9 @@ class Interpreter {
   // interpreter.cc rather than in interpreter_experimental.cc, so it can be
   // used to implement other non-experimental methods.
   TfLiteStatus ModifyGraphWithDelegateImpl(TfLiteDelegate* delegate);
+  TfLiteStatus ModifyGraphWithDelegateImpl(
+      TfLiteDelegate* delegate,
+      const std::vector<int>& active_subgraph_indices);
 
   // Same as ModifyGraphWithDelegateImpl except that it takes ownership of the
   // delegate.

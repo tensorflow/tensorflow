@@ -205,8 +205,8 @@ absl::StatusOr<bool> AllGatherBroadcastReorder::RunImpl(
             HloInstruction::CreateReshape(ag->shape(), bcast));
       }
 
-      RETURN_IF_ERROR(ag->ReplaceAllUsesWith(replacement));
-      RETURN_IF_ERROR(computation->RemoveInstructionAndUnusedOperands(ag));
+      ABSL_RETURN_IF_ERROR(ag->ReplaceAllUsesWith(replacement));
+      ABSL_RETURN_IF_ERROR(computation->RemoveInstructionAndUnusedOperands(ag));
       changed = true;
     }
   }

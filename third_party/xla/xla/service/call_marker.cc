@@ -122,16 +122,16 @@ absl::Status PopulateMetadataAndDependencies(HloInstruction* call,
   std::vector<HloInstruction*> control_predecessors =
       call->control_predecessors();
   for (HloInstruction* predecessor : control_predecessors) {
-    RETURN_IF_ERROR(predecessor->AddControlDependencyTo(call_before));
-    RETURN_IF_ERROR(predecessor->RemoveControlDependencyTo(call));
+    ABSL_RETURN_IF_ERROR(predecessor->AddControlDependencyTo(call_before));
+    ABSL_RETURN_IF_ERROR(predecessor->RemoveControlDependencyTo(call));
   }
 
   // Move control successors of the call to the 'after' marker so they
   // execute after the outlined block ends.
   std::vector<HloInstruction*> control_successors = call->control_successors();
   for (HloInstruction* successor : control_successors) {
-    RETURN_IF_ERROR(call_after->AddControlDependencyTo(successor));
-    RETURN_IF_ERROR(call->RemoveControlDependencyTo(successor));
+    ABSL_RETURN_IF_ERROR(call_after->AddControlDependencyTo(successor));
+    ABSL_RETURN_IF_ERROR(call->RemoveControlDependencyTo(successor));
   }
 
   return absl::OkStatus();
@@ -146,14 +146,14 @@ absl::Status WrapCallWithCustomCall(HloInstruction* instruction) {
     HloInstruction* gte = instruction->parent()->AddInstruction(
         HloInstruction::CreateGetTupleElement(
             call_before->shape().tuple_shapes(i), call_before, i));
-    RETURN_IF_ERROR(instruction->ReplaceOperandWith(i, gte));
+    ABSL_RETURN_IF_ERROR(instruction->ReplaceOperandWith(i, gte));
   }
 
   // Replace the original call with the custom call.
   HloInstruction* call_after = InsertCallMarkerAfter(instruction);
-  RETURN_IF_ERROR(instruction->ReplaceAllUsesWith(call_after));
+  ABSL_RETURN_IF_ERROR(instruction->ReplaceAllUsesWith(call_after));
 
-  RETURN_IF_ERROR(
+  ABSL_RETURN_IF_ERROR(
       PopulateMetadataAndDependencies(instruction, call_before, call_after));
 
   return absl::OkStatus();
@@ -185,7 +185,7 @@ absl::StatusOr<bool> CallMarker::RunImpl(
   }
 
   for (HloInstruction* instruction : inlineable_calls) {
-    RETURN_IF_ERROR(WrapCallWithCustomCall(instruction));
+    ABSL_RETURN_IF_ERROR(WrapCallWithCustomCall(instruction));
   }
 
   return true;

@@ -97,16 +97,16 @@ absl::StatusOr<bool> TryAnnotateAllReduce(HloInstruction* instr,
             << instr->name() << ": " << maybe_info.status();
     return false;
   }
-  ASSIGN_OR_RETURN(AllReduceInfo info, std::move(maybe_info));
+  ABSL_ASSIGN_OR_RETURN(AllReduceInfo info, std::move(maybe_info));
 
   CollectiveBackendConfig::CollectiveKernelStrategy proto_strategy =
       ToProtoStrategy(info.all_reduce_strategy);
 
-  ASSIGN_OR_RETURN(GpuBackendConfig gpu_config,
+  ABSL_ASSIGN_OR_RETURN(GpuBackendConfig gpu_config,
                    instr->backend_config<GpuBackendConfig>());
   gpu_config.mutable_collective_backend_config()->set_kernel_strategy(
       proto_strategy);
-  RETURN_IF_ERROR(instr->set_backend_config(gpu_config));
+  ABSL_RETURN_IF_ERROR(instr->set_backend_config(gpu_config));
 
   VLOG(3) << "[CollectiveKernelStrategyAnnotator] Annotated " << instr->name()
           << " with kernel strategy "
@@ -149,11 +149,11 @@ absl::StatusOr<bool> TryAnnotateAllGather(HloInstruction* instr,
     return false;
   }
 
-  ASSIGN_OR_RETURN(GpuBackendConfig gpu_config,
+  ABSL_ASSIGN_OR_RETURN(GpuBackendConfig gpu_config,
                    instr->backend_config<GpuBackendConfig>());
   gpu_config.mutable_collective_backend_config()->set_kernel_strategy(
       CollectiveBackendConfig::KERNEL_STRATEGY_TRITON_ONE_SHOT);
-  RETURN_IF_ERROR(instr->set_backend_config(gpu_config));
+  ABSL_RETURN_IF_ERROR(instr->set_backend_config(gpu_config));
 
   VLOG(3) << "[CollectiveKernelStrategyAnnotator] Annotated AllGather "
           << instr->name() << " with KERNEL_STRATEGY_TRITON_ONE_SHOT";
@@ -184,12 +184,12 @@ absl::StatusOr<bool> CollectiveKernelStrategyAnnotator::RunImpl(
 
     for (HloInstruction* instr : computation->instructions()) {
       if (instr->opcode() == HloOpcode::kAllReduce) {
-        ASSIGN_OR_RETURN(
+        ABSL_ASSIGN_OR_RETURN(
             bool annotated,
             TryAnnotateAllReduce(instr, gpu_topology_, is_multimem_enabled_));
         changed |= annotated;
       } else if (instr->opcode() == HloOpcode::kAllGather) {
-        ASSIGN_OR_RETURN(bool annotated,
+        ABSL_ASSIGN_OR_RETURN(bool annotated,
                          TryAnnotateAllGather(instr, gpu_topology_));
         changed |= annotated;
       }

@@ -34,7 +34,7 @@ bool RegisterTpuVariantPicker() {
   PjRtRegisterCompilerVariantPicker(
       "tpu",
       []() -> absl::StatusOr<std::string> {
-        ASSIGN_OR_RETURN(PjRtCompilerVariant variant, PickTpuCompilerVariant(),
+        ABSL_ASSIGN_OR_RETURN(PjRtCompilerVariant variant, PickTpuCompilerVariant(),
                          _);
         std::string compiler_variant = CompilerVariantToString(variant);
         return compiler_variant == kLinkedVariant ? "" : compiler_variant;

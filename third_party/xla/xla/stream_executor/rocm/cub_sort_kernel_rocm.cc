@@ -130,9 +130,9 @@ absl::Status VerifySortKeysBuffers(ffi::AnyBuffer keys,
 absl::Status VerifySortPairsBuffers(ffi::AnyBuffer keys, ffi::AnyBuffer values,
                                     ffi::Result<ffi::AnyBuffer> keys_out,
                                     ffi::Result<ffi::AnyBuffer> values_out) {
-  RETURN_IF_ERROR(ffi::Verify("values input", values,
+  ABSL_RETURN_IF_ERROR(ffi::Verify("values input", values,
                               ffi::match::Buffer().WithShapeOf(keys)));
-  RETURN_IF_ERROR(
+  ABSL_RETURN_IF_ERROR(
       ffi::Verify("keys output", *keys_out, ffi::match::Buffer().Like(keys)));
   return ffi::Verify("values output", *values_out,
                      ffi::match::Buffer().Like(values));
@@ -143,7 +143,7 @@ absl::Status VerifySortPairsBuffers(ffi::AnyBuffer keys, ffi::AnyBuffer values,
 absl::StatusOr<int64_t> ComputeScratchSize(SortKeysFn fn, int64_t num_items,
                                            int64_t batch_size) {
   size_t temp_bytes = 0;
-  RETURN_IF_ERROR(fn(nullptr, temp_bytes, nullptr, nullptr, num_items, false,
+  ABSL_RETURN_IF_ERROR(fn(nullptr, temp_bytes, nullptr, nullptr, num_items, false,
                      batch_size, nullptr));
   int64_t scratch_size = temp_bytes;
   if (batch_size > 1) {
@@ -156,7 +156,7 @@ absl::StatusOr<int64_t> ComputeScratchSize(SortKeysFn fn, int64_t num_items,
 absl::StatusOr<int64_t> ComputeScratchSize(SortPairsFn fn, int64_t num_items,
                                            int64_t batch_size) {
   size_t temp_bytes = 0;
-  RETURN_IF_ERROR(fn(nullptr, temp_bytes, nullptr, nullptr, nullptr, nullptr,
+  ABSL_RETURN_IF_ERROR(fn(nullptr, temp_bytes, nullptr, nullptr, nullptr, nullptr,
                      num_items, false, batch_size, nullptr));
   int64_t scratch_size = temp_bytes;
   if (batch_size > 1) {
@@ -200,11 +200,11 @@ absl::StatusOr<std::unique_ptr<int64_t>> CubSortKeysInstantiate(
     ffi::AnyBuffer d_keys_in, ffi::Result<ffi::AnyBuffer> d_keys_out,
     ffi::Result<ffi::BufferR1<xla::U8>> d_temp_storage, bool descending,
     int64_t batch_size) {
-  RETURN_IF_ERROR(VerifySortKeysBuffers(d_keys_in, d_keys_out));
+  ABSL_RETURN_IF_ERROR(VerifySortKeysBuffers(d_keys_in, d_keys_out));
 
-  ASSIGN_OR_RETURN(auto fn, GetSortKeysFn(d_keys_in.element_type()));
+  ABSL_ASSIGN_OR_RETURN(auto fn, GetSortKeysFn(d_keys_in.element_type()));
   int64_t num_items = d_keys_in.element_count();
-  ASSIGN_OR_RETURN(int64_t scratch_size,
+  ABSL_ASSIGN_OR_RETURN(int64_t scratch_size,
                    ComputeScratchSize(fn, num_items, batch_size));
   return std::make_unique<int64_t>(scratch_size);
 }
@@ -213,13 +213,13 @@ absl::Status CubSortKeysExecute(
     ffi::AnyBuffer d_keys_in, ffi::Result<ffi::AnyBuffer> d_keys_out,
     ffi::Result<ffi::BufferR1<xla::U8>> d_temp_storage, bool descending,
     int64_t batch_size, hipStream_t stream) {
-  RETURN_IF_ERROR(VerifySortKeysBuffers(d_keys_in, d_keys_out));
+  ABSL_RETURN_IF_ERROR(VerifySortKeysBuffers(d_keys_in, d_keys_out));
 
-  ASSIGN_OR_RETURN(auto fn, GetSortKeysFn(d_keys_in.element_type()));
+  ABSL_ASSIGN_OR_RETURN(auto fn, GetSortKeysFn(d_keys_in.element_type()));
   size_t num_items = d_keys_in.element_count();
   size_t temp_bytes = d_temp_storage->size_bytes();
   if (batch_size > 1) {
-    RETURN_IF_ERROR(CopyOffsets(d_temp_storage->untyped_data(), temp_bytes,
+    ABSL_RETURN_IF_ERROR(CopyOffsets(d_temp_storage->untyped_data(), temp_bytes,
                                 batch_size, num_items / batch_size, stream));
     temp_bytes -= GetOffsetsSize(batch_size);
   }
@@ -266,14 +266,14 @@ absl::StatusOr<std::unique_ptr<int64_t>> CubSortPairsInstantiate(
     ffi::Result<ffi::AnyBuffer> d_values_out,
     ffi::Result<ffi::BufferR1<xla::U8>> d_temp_storage, bool descending,
     int64_t batch_size) {
-  RETURN_IF_ERROR(
+  ABSL_RETURN_IF_ERROR(
       VerifySortPairsBuffers(d_keys_in, d_values_in, d_keys_out, d_values_out));
 
-  ASSIGN_OR_RETURN(auto fn, GetSortPairsFn(d_keys_in.element_type(),
+  ABSL_ASSIGN_OR_RETURN(auto fn, GetSortPairsFn(d_keys_in.element_type(),
                                            xla::primitive_util::BitWidth(
                                                d_values_in.element_type())));
   int64_t num_items = d_keys_in.element_count();
-  ASSIGN_OR_RETURN(int64_t scratch_size,
+  ABSL_ASSIGN_OR_RETURN(int64_t scratch_size,
                    ComputeScratchSize(fn, num_items, batch_size));
   return std::make_unique<int64_t>(scratch_size);
 }
@@ -284,16 +284,16 @@ absl::Status CubSortPairsExecute(
     ffi::Result<ffi::AnyBuffer> d_values_out,
     ffi::Result<ffi::BufferR1<xla::U8>> d_temp_storage, bool descending,
     int64_t batch_size, hipStream_t stream) {
-  RETURN_IF_ERROR(
+  ABSL_RETURN_IF_ERROR(
       VerifySortPairsBuffers(d_keys_in, d_values_in, d_keys_out, d_values_out));
 
-  ASSIGN_OR_RETURN(auto fn, GetSortPairsFn(d_keys_in.element_type(),
+  ABSL_ASSIGN_OR_RETURN(auto fn, GetSortPairsFn(d_keys_in.element_type(),
                                            xla::primitive_util::BitWidth(
                                                d_values_in.element_type())));
   size_t num_items = d_keys_in.element_count();
   size_t temp_bytes = d_temp_storage->size_bytes();
   if (batch_size > 1) {
-    RETURN_IF_ERROR(CopyOffsets(d_temp_storage->untyped_data(), temp_bytes,
+    ABSL_RETURN_IF_ERROR(CopyOffsets(d_temp_storage->untyped_data(), temp_bytes,
                                 batch_size, num_items / batch_size, stream));
     temp_bytes -= GetOffsetsSize(batch_size);
   }

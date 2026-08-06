@@ -120,7 +120,7 @@ Value EmitClampedIndex(mlir::ImplicitLocOpBuilder& b, Value value,
 absl::StatusOr<SmallVector<Value>> ComputeOffsetsForTile(
     mlir::ImplicitLocOpBuilder& b, Value pid, ValueRange runtime_values,
     const TiledHloInstruction& tiled_hlo) {
-  ASSIGN_OR_RETURN(IndexingMap tile_offsets_indexing,
+  ABSL_ASSIGN_OR_RETURN(IndexingMap tile_offsets_indexing,
                    tiled_hlo.tile_offsets_indexing());
   const std::vector<IndexingMap::Variable>& rt_vars =
       tile_offsets_indexing.GetRTVars();
@@ -278,7 +278,7 @@ absl::StatusOr<SmallVector<int64_t>> GetStorageShape(
         absl::StrCat("Packed storage dimension is out of bounds for shape ",
                      logical_shape.ToString()));
   }
-  ASSIGN_OR_RETURN(int64_t elements_per_byte,
+  ABSL_ASSIGN_OR_RETURN(int64_t elements_per_byte,
                    PackedElementsPerByte(logical_shape.element_type()));
   if (storage_shape[packed_dim] % elements_per_byte != 0) {
     return absl::InvalidArgumentError(
@@ -306,7 +306,7 @@ absl::StatusOr<SmallVector<Value>> GetStorageOffsets(
         absl::StrCat("Packed storage dimension is out of bounds for shape ",
                      logical_shape.ToString()));
   }
-  ASSIGN_OR_RETURN(int64_t elements_per_byte,
+  ABSL_ASSIGN_OR_RETURN(int64_t elements_per_byte,
                    PackedElementsPerByte(logical_shape.element_type()));
   // Packed storage is byte-addressed along the layout-minor dimension, so the
   // logical offset must be aligned before converting it to a byte offset.
@@ -659,7 +659,7 @@ absl::StatusOr<Value> EmitElementwise(mlir::ImplicitLocOpBuilder& b,
           hlo.shape().element_type() == U8) {
         return absl::InvalidArgumentError("Unsupported PRED to U8 conversion.");
       }
-      ASSIGN_OR_RETURN(Type dst_ty,
+      ABSL_ASSIGN_OR_RETURN(Type dst_ty,
                        PrimitiveTypeToMlirType(b, hlo.shape().element_type()));
       return Cast(b, inputs[0], dst_ty);
     }
@@ -765,7 +765,7 @@ absl::StatusOr<Value> EmitElementwise(mlir::ImplicitLocOpBuilder& b,
 absl::StatusOr<mlir::TypedValue<mlir::RankedTensorType>> EmitConstant(
     mlir::ImplicitLocOpBuilder& b, const HloInstruction& constant,
     std::optional<llvm::ArrayRef<int64_t>> tile_shape) {
-  ASSIGN_OR_RETURN(Type ty,
+  ABSL_ASSIGN_OR_RETURN(Type ty,
                    PrimitiveTypeToMlirType(b, constant.shape().element_type()));
   llvm::SmallVector<int64_t> shape;
   if (tile_shape.has_value()) {
@@ -801,15 +801,15 @@ Value Bitcast(mlir::ImplicitLocOpBuilder& b, Value value, Type type) {
     const TiledHloInstruction& tiled_hlo) {
   const Shape& logical_shape = tiled_hlo.hlo()->shape();
   auto logical_tile_strides = tiled_hlo.tile_strides();
-  ASSIGN_OR_RETURN(SmallVector<int64_t> storage_tile_strides,
+  ABSL_ASSIGN_OR_RETURN(SmallVector<int64_t> storage_tile_strides,
                    GetStorageTileStrides(logical_tile_strides, logical_shape));
-  ASSIGN_OR_RETURN(IndexingMap logical_tile_offsets_indexing,
+  ABSL_ASSIGN_OR_RETURN(IndexingMap logical_tile_offsets_indexing,
                    tiled_hlo.tile_offsets_indexing());
   auto logical_tile_offsets =
       logical_tile_offsets_indexing.GetSymbolicMap().GetResults();
-  ASSIGN_OR_RETURN(SmallVector<Value> logical_offsets,
+  ABSL_ASSIGN_OR_RETURN(SmallVector<Value> logical_offsets,
                    ComputeOffsetsForTile(b, pid, runtime_values, tiled_hlo));
-  ASSIGN_OR_RETURN(SmallVector<Value> storage_offsets,
+  ABSL_ASSIGN_OR_RETURN(SmallVector<Value> storage_offsets,
                    GetStorageOffsets(b, logical_shape, logical_tile_offsets,
                                      std::move(logical_offsets)));
 
@@ -818,12 +818,12 @@ Value Bitcast(mlir::ImplicitLocOpBuilder& b, Value value, Type type) {
       GetPaddedTileSizes(tiled_hlo.tile_sizes());
   SmallVector<int64_t> logical_shape_dims(logical_shape.dimensions().begin(),
                                           logical_shape.dimensions().end());
-  ASSIGN_OR_RETURN(SmallVector<int64_t> storage_shape,
+  ABSL_ASSIGN_OR_RETURN(SmallVector<int64_t> storage_shape,
                    GetStorageShape(logical_shape_dims, logical_shape));
-  ASSIGN_OR_RETURN(SmallVector<int64_t> padded_storage_tile_sizes,
+  ABSL_ASSIGN_OR_RETURN(SmallVector<int64_t> padded_storage_tile_sizes,
                    GetStorageShape(padded_logical_tile_sizes, logical_shape));
 
-  ASSIGN_OR_RETURN(Type expected_element_type,
+  ABSL_ASSIGN_OR_RETURN(Type expected_element_type,
                    PrimitiveTypeToMlirType(b, logical_shape.element_type()));
   auto storage_type = StorageType(expected_element_type);
 
@@ -839,32 +839,32 @@ Value Bitcast(mlir::ImplicitLocOpBuilder& b, Value value, Type type) {
 /*static */ absl::StatusOr<TileInfo> TileInfo::Construct(
     EmitterContext& emitter_ctx, const ge::TiledHloInstruction& tiled_hlo) {
   const Shape& logical_shape = tiled_hlo.hlo()->shape();
-  ASSIGN_OR_RETURN(SmallVector<int64_t> logical_tile_strides,
+  ABSL_ASSIGN_OR_RETURN(SmallVector<int64_t> logical_tile_strides,
                    tiled_hlo.tile().GetStaticTileStrides());
-  ASSIGN_OR_RETURN(SmallVector<int64_t> storage_tile_strides,
+  ABSL_ASSIGN_OR_RETURN(SmallVector<int64_t> storage_tile_strides,
                    GetStorageTileStrides(logical_tile_strides, logical_shape));
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       SmallVector<Value> logical_offsets,
       emitter_ctx.EvaluateTilingParameters(tiled_hlo.tile().offsets()));
-  ASSIGN_OR_RETURN(SmallVector<Value> storage_offsets,
+  ABSL_ASSIGN_OR_RETURN(SmallVector<Value> storage_offsets,
                    GetStorageOffsets(emitter_ctx.b(), logical_shape,
                                      tiled_hlo.tile().offsets(),
                                      std::move(logical_offsets)));
 
   // Triton requires that all block dimensions are a power of 2.
-  ASSIGN_OR_RETURN(SmallVector<int64_t> logical_tile_sizes,
+  ABSL_ASSIGN_OR_RETURN(SmallVector<int64_t> logical_tile_sizes,
                    tiled_hlo.tile().GetStaticTileSizes());
   DCHECK(ArePowersOfTwo(logical_tile_sizes))
       << "Tile sizes must be a power of 2.";
 
   SmallVector<int64_t> logical_shape_dims(logical_shape.dimensions().begin(),
                                           logical_shape.dimensions().end());
-  ASSIGN_OR_RETURN(SmallVector<int64_t> storage_shape,
+  ABSL_ASSIGN_OR_RETURN(SmallVector<int64_t> storage_shape,
                    GetStorageShape(logical_shape_dims, logical_shape));
-  ASSIGN_OR_RETURN(SmallVector<int64_t> storage_tile_sizes,
+  ABSL_ASSIGN_OR_RETURN(SmallVector<int64_t> storage_tile_sizes,
                    GetStorageShape(logical_tile_sizes, logical_shape));
 
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       Type expected_element_type,
       PrimitiveTypeToMlirType(emitter_ctx.b(), logical_shape.element_type()));
   auto storage_type = StorageType(expected_element_type);
@@ -882,9 +882,9 @@ Value Bitcast(mlir::ImplicitLocOpBuilder& b, Value value, Type type) {
       offset_exprs.push_back(replica_id.offset);
       bound_exprs.push_back(replica_id.upper_bound);
     }
-    ASSIGN_OR_RETURN(mlir::SmallVector<mlir::Value> evaluated_offsets,
+    ABSL_ASSIGN_OR_RETURN(mlir::SmallVector<mlir::Value> evaluated_offsets,
                      emitter_ctx.EvaluateTilingParameters(offset_exprs));
-    ASSIGN_OR_RETURN(mlir::SmallVector<mlir::Value> evaluated_bounds,
+    ABSL_ASSIGN_OR_RETURN(mlir::SmallVector<mlir::Value> evaluated_bounds,
                      emitter_ctx.EvaluateTilingParameters(bound_exprs));
     replica_id_offsets = std::move(evaluated_offsets);
     replica_id_bounds = std::move(evaluated_bounds);
@@ -918,7 +918,7 @@ absl::StatusOr<TensorValue> EmitParameterExtract(mlir::ImplicitLocOpBuilder& b,
     const int num_replica_dims = replica_id_offsets.size();
     for (int i = 0; i < num_replica_dims - 1; ++i) {
       mlir::Value replica_id = replica_id_offsets[i];
-      ASSIGN_OR_RETURN(int64_t next_bound,
+      ABSL_ASSIGN_OR_RETURN(int64_t next_bound,
                        GetConstantIntValue(replica_id_bounds[i + 1]));
       mlir::Type next_buffer_type =
           mlir::MemRefType::get({next_bound}, b.getI64Type());
@@ -927,12 +927,12 @@ absl::StatusOr<TensorValue> EmitParameterExtract(mlir::ImplicitLocOpBuilder& b,
     }
     // Final selection to obtain the spatial buffer
     mlir::Value replica_id = replica_id_offsets.back();
-    ASSIGN_OR_RETURN(PrimitiveType element_type,
+    ABSL_ASSIGN_OR_RETURN(PrimitiveType element_type,
                      GetPrimitiveType(tile_info.storage_type()));
     xla::Shape spatial_shape = xla::ShapeUtil::MakeShapeWithDenseLayout(
         element_type, tile_info.storage_shape(),
         tile_info.minor_to_major_layout());
-    ASSIGN_OR_RETURN(mlir::MemRefType spatial_memref_type,
+    ABSL_ASSIGN_OR_RETURN(mlir::MemRefType spatial_memref_type,
                      GetMemRefType(spatial_shape, tile_info.storage_type()));
     source_buffer = b.create<xtile::SelectBufferOp>(spatial_memref_type,
                                                     source_buffer, replica_id);
@@ -968,7 +968,7 @@ absl::StatusOr<TensorValue> EmitScope(
           "Broadcast is not yet supported in EmitScope().");
     }
     if (hlo->opcode() == HloOpcode::kConstant) {
-      ASSIGN_OR_RETURN(result,
+      ABSL_ASSIGN_OR_RETURN(result,
                        EmitConstant(b, *hlo, /*tile_shape=*/std::nullopt));
     } else if (HloInstruction::IsOpElementwise(hlo->opcode())) {
       std::vector<Value> operands;
@@ -976,7 +976,7 @@ absl::StatusOr<TensorValue> EmitScope(
       for (const HloInstruction* operand : hlo->operands()) {
         operands.push_back(values[operand]);
       }
-      ASSIGN_OR_RETURN(Value elementwise_result,
+      ABSL_ASSIGN_OR_RETURN(Value elementwise_result,
                        EmitElementwise(b, *hlo, operands));
       result = mlir::cast<TensorValue>(elementwise_result);
     } else if (hlo->opcode() == HloOpcode::kTuple) {
@@ -992,7 +992,7 @@ absl::StatusOr<TensorValue> EmitScope(
       result = values[hlo->operand(0)];
     } else if (hlo->opcode() == HloOpcode::kFusion) {
       const auto* fusion_instruction = ::xla::Cast<HloFusionInstruction>(hlo);
-      ASSIGN_OR_RETURN(result,
+      ABSL_ASSIGN_OR_RETURN(result,
                        EmitNestedFusion(b, *fusion_instruction, values));
     } else {
       return absl::InvalidArgumentError(
@@ -1092,7 +1092,7 @@ absl::StatusOr<mlir::MemRefType> GetMemRefType(const Shape& shape,
   mlir::Type storage_type = StorageType(element_type);
   SmallVector<int64_t> logical_shape(shape.dimensions().begin(),
                                      shape.dimensions().end());
-  ASSIGN_OR_RETURN(SmallVector<int64_t> storage_shape,
+  ABSL_ASSIGN_OR_RETURN(SmallVector<int64_t> storage_shape,
                    GetStorageShape(logical_shape, shape));
 
   // Don't add any attribute for default layouts as it adds a lot of noise to
@@ -1127,9 +1127,9 @@ absl::StatusOr<SmallVector<Type>> GetFnArgTypes(
   auto hlo_computation = fusion.fused_instructions_computation();
   // Add parameter types.
   for (HloInstruction* p : hlo_computation->parameter_instructions()) {
-    ASSIGN_OR_RETURN(Type ir_type,
+    ABSL_ASSIGN_OR_RETURN(Type ir_type,
                      GetMlirType(b, p->shape().element_type(), gpu_cc));
-    ASSIGN_OR_RETURN(SmallVector<int64_t> replica_id_bounds,
+    ABSL_ASSIGN_OR_RETURN(SmallVector<int64_t> replica_id_bounds,
                      tile_requirements_visitor.RequiredReplicaIdBounds(*p));
     if (!replica_id_bounds.empty()) {
       // Nested pointer schema for replica dimensions.
@@ -1139,7 +1139,7 @@ absl::StatusOr<SmallVector<Type>> GetFnArgTypes(
       fn_arg_types.push_back(
           mlir::MemRefType::get({replica_id_bounds.front()}, b.getI64Type()));
     } else {
-      ASSIGN_OR_RETURN(mlir::MemRefType memref_type,
+      ABSL_ASSIGN_OR_RETURN(mlir::MemRefType memref_type,
                        GetMemRefType(p->shape(), ir_type));
       fn_arg_types.push_back(memref_type);
     }
@@ -1147,9 +1147,9 @@ absl::StatusOr<SmallVector<Type>> GetFnArgTypes(
 
   // Add result types.
   for (const auto& [index, shape] : ShapeUtil::GetLeafShapes(fusion.shape())) {
-    ASSIGN_OR_RETURN(Type ir_type,
+    ABSL_ASSIGN_OR_RETURN(Type ir_type,
                      PrimitiveTypeToMlirType(b, shape.element_type(), gpu_cc));
-    ASSIGN_OR_RETURN(mlir::MemRefType memref_type,
+    ABSL_ASSIGN_OR_RETURN(mlir::MemRefType memref_type,
                      GetMemRefType(shape, ir_type));
     fn_arg_types.push_back(memref_type);
   }
@@ -1228,7 +1228,7 @@ absl::Status EmitReduceComputation(mlir::ImplicitLocOpBuilder& b,
                                    const HloInstruction* hlo_reduction,
                                    const HloComputation* reduction_computation,
                                    mlir::Operation* reduction) {
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       Type result_ty,
       PrimitiveTypeToMlirType(b, hlo_reduction->shape().element_type()));
   result_ty = mlir::RankedTensorType::get({}, result_ty);
@@ -1260,7 +1260,7 @@ absl::Status EmitReduceComputation(mlir::ImplicitLocOpBuilder& b,
 
   TF_RET_CHECK(!to_emit.empty());
 
-  ASSIGN_OR_RETURN(TensorValue result, EmitScope(b, to_emit, region_values));
+  ABSL_ASSIGN_OR_RETURN(TensorValue result, EmitScope(b, to_emit, region_values));
   mlir::stablehlo::ReturnOp::create(b, SmallVector<Value>({result}));
   b.setInsertionPointAfter(reduction);
   return absl::OkStatus();

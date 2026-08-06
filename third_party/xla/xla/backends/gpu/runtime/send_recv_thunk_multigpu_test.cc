@@ -118,7 +118,7 @@ static absl::Status FillDeviceBufferWithValue(se::Stream& stream,
 static absl::Status PreparePhaseInputs(
     DeviceTestSlot& slot, int device_ordinal, int phase,
     absl::Span<const se::DeviceAddressBase> buffers) {
-  RETURN_IF_ERROR(FillDeviceBuffer(*slot.stream, buffers[0],
+  ABSL_RETURN_IF_ERROR(FillDeviceBuffer(*slot.stream, buffers[0],
                                    SourceValues(device_ordinal, phase)));
   return FillDeviceBufferWithValue(*slot.stream, buffers[1], -1.0f);
 }
@@ -126,7 +126,7 @@ static absl::Status PreparePhaseInputs(
 static absl::Status VerifyRecvOutput(DeviceTestSlot& slot, int device_ordinal,
                                      int phase,
                                      se::DeviceAddressBase recv_dst) {
-  ASSIGN_OR_RETURN(std::vector<float> output,
+  ABSL_ASSIGN_OR_RETURN(std::vector<float> output,
                    ReadDeviceBuffer(*slot.stream, recv_dst, kLength));
   std::vector<float> expected = ExpectedRecvValues(device_ordinal, phase);
   for (int i = 0; i < kLength; ++i) {
@@ -153,8 +153,8 @@ static absl::Status ExecuteSendRecv(DeviceTestSlot& slot, SendThunk& send_thunk,
                                     RecvThunk& recv_thunk,
                                     BufferAllocations& allocations) {
   Thunk::ExecuteParams execute_params = MakeExecuteParams(slot, allocations);
-  RETURN_IF_ERROR(send_thunk.ExecuteOnStream(execute_params));
-  RETURN_IF_ERROR(recv_thunk.ExecuteOnStream(execute_params));
+  ABSL_RETURN_IF_ERROR(send_thunk.ExecuteOnStream(execute_params));
+  ABSL_RETURN_IF_ERROR(recv_thunk.ExecuteOnStream(execute_params));
   return slot.stream->BlockHostUntilDone();
 }
 
@@ -163,11 +163,11 @@ static absl::Status RunExecuteOnStreamPhase(int device_ordinal,
                                             SendThunk& send_thunk,
                                             RecvThunk& recv_thunk) {
   constexpr int kPhase = 1;
-  RETURN_IF_ERROR(
+  ABSL_RETURN_IF_ERROR(
       PreparePhaseInputs(slot, device_ordinal, kPhase, slot.create_buffers));
   BufferAllocations allocations =
       MakeBufferAllocations(slot, slot.create_buffers);
-  RETURN_IF_ERROR(ExecuteSendRecv(slot, send_thunk, recv_thunk, allocations));
+  ABSL_RETURN_IF_ERROR(ExecuteSendRecv(slot, send_thunk, recv_thunk, allocations));
   return VerifyRecvOutput(slot, device_ordinal, kPhase, slot.create_buffers[1]);
 }
 
@@ -175,21 +175,21 @@ static absl::Status RunCreatePhase(int device_ordinal, DeviceTestSlot& slot,
                                    SendThunk& send_thunk,
                                    RecvThunk& recv_thunk) {
   constexpr int kPhase = 1;
-  RETURN_IF_ERROR(
+  ABSL_RETURN_IF_ERROR(
       PreparePhaseInputs(slot, device_ordinal, kPhase, slot.create_buffers));
 
   BufferAllocations allocations =
       MakeBufferAllocations(slot, slot.create_buffers);
-  RETURN_IF_ERROR(ExecuteSendRecv(slot, send_thunk, recv_thunk, allocations));
-  RETURN_IF_ERROR(
+  ABSL_RETURN_IF_ERROR(ExecuteSendRecv(slot, send_thunk, recv_thunk, allocations));
+  ABSL_RETURN_IF_ERROR(
       FillDeviceBufferWithValue(*slot.stream, slot.create_buffers[1], -1.0f));
 
   Thunk::ExecuteParams execute_params = MakeExecuteParams(slot, allocations);
-  ASSIGN_OR_RETURN(slot.command_buffer, slot.executor->CreateCommandBuffer(
+  ABSL_ASSIGN_OR_RETURN(slot.command_buffer, slot.executor->CreateCommandBuffer(
                                             se::CommandBuffer::Mode::kPrimary));
 
   Command::RecordParams record_params = {slot.state_manager};
-  ASSIGN_OR_RETURN(slot.send_command,
+  ABSL_ASSIGN_OR_RETURN(slot.send_command,
                    send_thunk.Record(execute_params, record_params,
                                      Command::RecordCreate{/*dependencies=*/{}},
                                      slot.command_buffer.get()));
@@ -198,7 +198,7 @@ static absl::Status RunCreatePhase(int device_ordinal, DeviceTestSlot& slot,
   if (slot.send_command != nullptr) {
     dependencies.push_back(slot.send_command);
   }
-  ASSIGN_OR_RETURN(slot.recv_command,
+  ABSL_ASSIGN_OR_RETURN(slot.recv_command,
                    recv_thunk.Record(execute_params, record_params,
                                      Command::RecordCreate{dependencies},
                                      slot.command_buffer.get()));
@@ -206,8 +206,8 @@ static absl::Status RunCreatePhase(int device_ordinal, DeviceTestSlot& slot,
     return absl::InternalError("RecvThunk returned null command node");
   }
 
-  RETURN_IF_ERROR(slot.command_buffer->Finalize());
-  RETURN_IF_ERROR(SubmitCommandBuffer(slot));
+  ABSL_RETURN_IF_ERROR(slot.command_buffer->Finalize());
+  ABSL_RETURN_IF_ERROR(SubmitCommandBuffer(slot));
   return VerifyRecvOutput(slot, device_ordinal, kPhase, slot.create_buffers[1]);
 }
 
@@ -215,7 +215,7 @@ static absl::Status RunUpdatePhase(int device_ordinal, DeviceTestSlot& slot,
                                    SendThunk& send_thunk,
                                    RecvThunk& recv_thunk) {
   constexpr int kPhase = 2;
-  RETURN_IF_ERROR(
+  ABSL_RETURN_IF_ERROR(
       PreparePhaseInputs(slot, device_ordinal, kPhase, slot.update_buffers));
 
   BufferAllocations allocations =
@@ -225,8 +225,8 @@ static absl::Status RunUpdatePhase(int device_ordinal, DeviceTestSlot& slot,
       slot.state_manager,
       /*updated_allocs=*/std::vector<BufferAllocation::Index>{0, 1}};
 
-  RETURN_IF_ERROR(slot.command_buffer->Update());
-  ASSIGN_OR_RETURN(const se::CommandBuffer::Command* updated_send_command,
+  ABSL_RETURN_IF_ERROR(slot.command_buffer->Update());
+  ABSL_ASSIGN_OR_RETURN(const se::CommandBuffer::Command* updated_send_command,
                    send_thunk.Record(execute_params, record_params,
                                      Command::RecordUpdate{slot.send_command},
                                      slot.command_buffer.get()));
@@ -234,7 +234,7 @@ static absl::Status RunUpdatePhase(int device_ordinal, DeviceTestSlot& slot,
     return absl::InternalError("SendThunk update returned a new command node");
   }
 
-  ASSIGN_OR_RETURN(const se::CommandBuffer::Command* updated_recv_command,
+  ABSL_ASSIGN_OR_RETURN(const se::CommandBuffer::Command* updated_recv_command,
                    recv_thunk.Record(execute_params, record_params,
                                      Command::RecordUpdate{slot.recv_command},
                                      slot.command_buffer.get()));
@@ -242,8 +242,8 @@ static absl::Status RunUpdatePhase(int device_ordinal, DeviceTestSlot& slot,
     return absl::InternalError("RecvThunk update returned a new command node");
   }
 
-  RETURN_IF_ERROR(slot.command_buffer->Finalize());
-  RETURN_IF_ERROR(SubmitCommandBuffer(slot));
+  ABSL_RETURN_IF_ERROR(slot.command_buffer->Finalize());
+  ABSL_RETURN_IF_ERROR(SubmitCommandBuffer(slot));
   return VerifyRecvOutput(slot, device_ordinal, kPhase, slot.update_buffers[1]);
 }
 
@@ -261,7 +261,7 @@ TEST(SendRecvThunkMultiGpuTest, ExecuteOnStream) {
 
   ASSERT_OK(
       RunOnDevices(kNumDevices, "sendrecv_execute", [&](int d) -> absl::Status {
-        RETURN_IF_ERROR(SetupDeviceSlot(d, slots[d], send_thunk, recv_thunk,
+        ABSL_RETURN_IF_ERROR(SetupDeviceSlot(d, slots[d], send_thunk, recv_thunk,
                                         device_assignment));
         return RunExecuteOnStreamPhase(d, slots[d], send_thunk, recv_thunk);
       }));
@@ -284,7 +284,7 @@ TEST(SendRecvThunkMultiGpuTest, RecordCommandBufferCreate) {
 
   ASSERT_OK(
       RunOnDevices(kNumDevices, "sendrecv_create", [&](int d) -> absl::Status {
-        RETURN_IF_ERROR(SetupDeviceSlot(d, slots[d], send_thunk, recv_thunk,
+        ABSL_RETURN_IF_ERROR(SetupDeviceSlot(d, slots[d], send_thunk, recv_thunk,
                                         device_assignment));
         return RunCreatePhase(d, slots[d], send_thunk, recv_thunk);
       }));
@@ -307,7 +307,7 @@ TEST(SendRecvThunkMultiGpuTest, RecordCommandBufferUpdate) {
 
   ASSERT_OK(
       RunOnDevices(kNumDevices, "sendrecv_create", [&](int d) -> absl::Status {
-        RETURN_IF_ERROR(SetupDeviceSlot(d, slots[d], send_thunk, recv_thunk,
+        ABSL_RETURN_IF_ERROR(SetupDeviceSlot(d, slots[d], send_thunk, recv_thunk,
                                         device_assignment));
         return RunCreatePhase(d, slots[d], send_thunk, recv_thunk);
       }));

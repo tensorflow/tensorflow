@@ -67,7 +67,7 @@ absl::StatusOr<bool> WholeGraphManualPass::RunImpl(
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;
   for (auto* comp : module->computations()) {
-    ASSIGN_OR_RETURN(bool comp_changed, RunOnComputation(comp));
+    ABSL_ASSIGN_OR_RETURN(bool comp_changed, RunOnComputation(comp));
     changed |= comp_changed;
   }
   return changed;

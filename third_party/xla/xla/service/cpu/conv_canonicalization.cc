@@ -146,7 +146,7 @@ absl::StatusOr<bool> ConvCanonicalization::RunImpl(
               hlo->precision_config()));
 
       // Reshape the output back to the shape of the original convolution.
-      RETURN_IF_ERROR(module->entry_computation()->ReplaceWithNewInstruction(
+      ABSL_RETURN_IF_ERROR(module->entry_computation()->ReplaceWithNewInstruction(
           hlo, HloInstruction::CreateTranspose(
                    hlo->shape(), new_conv,
                    InversePermutation(new_output_dim_order))));

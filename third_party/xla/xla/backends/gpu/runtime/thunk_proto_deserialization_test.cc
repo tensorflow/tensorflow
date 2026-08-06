@@ -74,7 +74,7 @@ absl::StatusOr<std::unique_ptr<Thunk>> DeserializeThunkProto(
         symbol_resolver = std::nullopt) {
   ThunkSequenceProto thunk_sequence_proto;
   *thunk_sequence_proto.add_thunks() = thunk_proto;
-  ASSIGN_OR_RETURN(ThunkSequence sequence,
+  ABSL_ASSIGN_OR_RETURN(ThunkSequence sequence,
                    DeserializeThunkSequenceProto(
                        thunk_sequence_proto, buffer_allocations, hlo_module,
                        platform_name, gpu_compute_capability, symbol_resolver));

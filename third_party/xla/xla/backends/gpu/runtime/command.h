@@ -225,7 +225,7 @@ std::invoke_result_t<F, Command*> Command::Walk(F&& callback) {
       return (f(command), absl::OkStatus());
     }).IgnoreError();  // Error can never happen here.
   } else {
-    RETURN_IF_ERROR(callback(this));
+    ABSL_RETURN_IF_ERROR(callback(this));
     return WalkNestedCommands([&callback](Command* command) -> absl::Status {
       return callback(command);
     });
@@ -310,14 +310,14 @@ class CommandSequence : public std::vector<Command*> {
   absl::Status Walk(
       absl::FunctionRef<absl::Status(const Command*)> callback) const {
     for (Command* cmd : *this) {
-      RETURN_IF_ERROR(cmd->Walk(callback));
+      ABSL_RETURN_IF_ERROR(cmd->Walk(callback));
     }
     return absl::OkStatus();
   }
 
   absl::Status Walk(absl::FunctionRef<absl::Status(Command*)> callback) {
     for (Command* cmd : *this) {
-      RETURN_IF_ERROR(cmd->Walk(callback));
+      ABSL_RETURN_IF_ERROR(cmd->Walk(callback));
     }
     return absl::OkStatus();
   }

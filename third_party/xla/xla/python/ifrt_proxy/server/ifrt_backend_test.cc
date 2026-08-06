@@ -339,7 +339,7 @@ class IfrtBackendHandlerTest : public IfrtBackendTest {
     auto ifrt_request = NewIfrtRequest(NewOpId());
     {
       const uint64_t host_buffer_handle = NewHostBufferHandle();
-      RETURN_IF_ERROR(
+      ABSL_RETURN_IF_ERROR(
           host_buffer_store_->Store(host_buffer_handle, "01234567"));
 
       auto* make_array =
@@ -348,15 +348,15 @@ class IfrtBackendHandlerTest : public IfrtBackendTest {
       make_array->mutable_shape()->add_dims(2);
       make_array->set_host_buffer_handle(host_buffer_handle);
 
-      ASSIGN_OR_RETURN(auto* device, mock_client_->LookupDevice(DeviceId(1)));
-      RETURN_IF_ERROR(SingleDeviceSharding::Create(device, MemoryKind())
+      ABSL_ASSIGN_OR_RETURN(auto* device, mock_client_->LookupDevice(DeviceId(1)));
+      ABSL_RETURN_IF_ERROR(SingleDeviceSharding::Create(device, MemoryKind())
                           ->ToProto(*make_array->mutable_sharding(),
                                     ifrt_serdes_version()));
     }
-    ASSIGN_OR_RETURN(auto make_array_response,
+    ABSL_ASSIGN_OR_RETURN(auto make_array_response,
                      CallBackend(std::move(ifrt_request)));
 
-    RETURN_IF_ERROR(tsl::StatusFromProto(
+    ABSL_RETURN_IF_ERROR(tsl::StatusFromProto(
         make_array_response->response_metadata().status()));
     return make_array_response->make_array_from_host_buffer_response()
         .array_handle();
@@ -370,14 +370,14 @@ class IfrtBackendHandlerTest : public IfrtBackendTest {
     {
       auto serialize_options =
           std::make_unique<SerializeOptions>(ifrt_serdes_version());
-      ASSIGN_OR_RETURN(*compile_request->mutable_program(),
+      ABSL_ASSIGN_OR_RETURN(*compile_request->mutable_program(),
                        Serialize(program, std::move(serialize_options)));
     }
     {
       TestCompileOptions compile_options;
       auto serialize_options =
           std::make_unique<SerializeOptions>(ifrt_serdes_version());
-      ASSIGN_OR_RETURN(
+      ABSL_ASSIGN_OR_RETURN(
           *compile_request->mutable_compile_options(),
           Serialize(compile_options, std::move(serialize_options)));
     }
@@ -386,7 +386,7 @@ class IfrtBackendHandlerTest : public IfrtBackendTest {
         .WillOnce(Return(tsl::Future<xla::ifrt::LoadedExecutableRef>(
             std::move(loaded_executable))));
 
-    ASSIGN_OR_RETURN(std::shared_ptr<IfrtResponse> response,
+    ABSL_ASSIGN_OR_RETURN(std::shared_ptr<IfrtResponse> response,
                      CallBackend(std::move(request)));
 
     TF_RET_CHECK(response->has_compile_response());
@@ -399,7 +399,7 @@ class IfrtBackendHandlerTest : public IfrtBackendTest {
     }
     auto request = NewIfrtRequest(NewOpId());
     request->mutable_check_future_request()->set_future_handle(handle);
-    ASSIGN_OR_RETURN(std::shared_ptr<IfrtResponse> response,
+    ABSL_ASSIGN_OR_RETURN(std::shared_ptr<IfrtResponse> response,
                      CallBackend(std::move(request)));
     return tsl::StatusFromProto(response->response_metadata().status());
   }
@@ -410,7 +410,7 @@ class IfrtBackendHandlerTest : public IfrtBackendTest {
     }
     auto request = NewIfrtRequest(NewOpId());
     request->mutable_check_value_ready_request()->add_value_handles(handle);
-    ASSIGN_OR_RETURN(std::shared_ptr<IfrtResponse> response,
+    ABSL_ASSIGN_OR_RETURN(std::shared_ptr<IfrtResponse> response,
                      CallBackend(std::move(request)));
     return tsl::StatusFromProto(response->response_metadata().status());
   }
@@ -1464,7 +1464,7 @@ TEST_P(IfrtBackendHandlerTest, LoadedExecutableExecute) {
       auto request = NewIfrtRequest(NewOpId());
       request->mutable_loaded_executable_fetch_execute_result_request()
           ->set_result_status_handle(handle);
-      ASSIGN_OR_RETURN(std::shared_ptr<IfrtResponse> response,
+      ABSL_ASSIGN_OR_RETURN(std::shared_ptr<IfrtResponse> response,
                        CallBackend(std::move(request)));
       return tsl::StatusFromProto(response->response_metadata().status());
     } else {

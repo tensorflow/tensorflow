@@ -446,7 +446,7 @@ absl::StatusOr<std::vector<PJRT_NamedValue>> ConvertToPjRtNamedValueList(
   std::vector<PJRT_NamedValue> c_value_list;
   c_value_list.reserve(cpp_value_map.size());
   for (const auto& [name, value] : cpp_value_map) {
-    ASSIGN_OR_RETURN(PJRT_NamedValue c_value,
+    ABSL_ASSIGN_OR_RETURN(PJRT_NamedValue c_value,
                      ConvertToPjRtNamedValue(name, value));
     c_value_list.push_back(c_value);
   }
@@ -526,7 +526,7 @@ absl::Status ValidateCreateOptions(
       return absl::InvalidArgumentError(absl::StrCat(
           "Unexpected option name passed to PJRT_Client_Create: ", name));
     }
-    ASSIGN_OR_RETURN(PJRT_NamedValue_Type type, GetPjrtNamedValueType(value));
+    ABSL_ASSIGN_OR_RETURN(PJRT_NamedValue_Type type, GetPjrtNamedValueType(value));
     if (type != it->second) {
       return absl::InvalidArgumentError(
           absl::StrCat("Option passed to PJRT_Client_Create with name ", name,
@@ -973,18 +973,18 @@ absl::StatusOr<xla::Shape> BuildXlaShapeFromC(
       switch (layout->type) {
         case PJRT_Buffer_MemoryLayout_Type::
             PJRT_Buffer_MemoryLayout_Type_Tiled: {
-          ASSIGN_OR_RETURN(cpp_layout, ConvertToLayout(layout->tiled));
+          ABSL_ASSIGN_OR_RETURN(cpp_layout, ConvertToLayout(layout->tiled));
           break;
         }
         case PJRT_Buffer_MemoryLayout_Type::
             PJRT_Buffer_MemoryLayout_Type_Strides: {
-          RETURN_IF_ERROR(absl::InvalidArgumentError(
+          ABSL_RETURN_IF_ERROR(absl::InvalidArgumentError(
               "PJRT_Buffer_MemoryLayout_Type_Strides is not supported to be "
               "converted to a xla::Shape"));
           break;
         }
         default: {
-          RETURN_IF_ERROR(absl::InvalidArgumentError(
+          ABSL_RETURN_IF_ERROR(absl::InvalidArgumentError(
               absl::StrCat("Unexpected PJRT_Buffer_MemoryLayout_Type type: ",
                            layout->type)));
         }

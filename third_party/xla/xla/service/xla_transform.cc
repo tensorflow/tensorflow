@@ -126,7 +126,7 @@ absl::StatusOr<bool> ApplyXlaTransforms::RunImpl(
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   VLOG(1) << "ApplyXlaTransforms ENTRY";
   XLA_VLOG_LINES(1, module->ToString());
-  ASSIGN_OR_RETURN(bool changed, ApplyXlaTransformsToModule(stage_, module));
+  ABSL_ASSIGN_OR_RETURN(bool changed, ApplyXlaTransformsToModule(stage_, module));
   if (changed) {
     HloVerifier verifier(/*layout_sensitive=*/false,
                          /*allow_mixed_precision=*/true);
@@ -142,7 +142,7 @@ absl::StatusOr<bool> ApplyXlaTransforms::RunImpl(
 
 absl::Status UpdateHloModuleFromProto(HloModule* module,
                                       const HloModuleProto& transformed_proto) {
-  ASSIGN_OR_RETURN(auto temp_module, HloModule::CreateFromProto(
+  ABSL_ASSIGN_OR_RETURN(auto temp_module, HloModule::CreateFromProto(
                                          transformed_proto, module->config()));
 
   // Capture schedule from temp_module if it has one.
@@ -167,7 +167,7 @@ absl::Status UpdateHloModuleFromProto(HloModule* module,
       temp_module->input_output_alias_config());
   module->set_buffer_donor_config(temp_module->buffer_donor_config());
 
-  RETURN_IF_ERROR(module->RemoveUnusedComputations());
+  ABSL_RETURN_IF_ERROR(module->RemoveUnusedComputations());
 
   // Restore schedule if we captured one.
   if (!comp_to_sequence.empty()) {
@@ -180,7 +180,7 @@ absl::Status UpdateHloModuleFromProto(HloModule* module,
         new_schedule.set_sequence(comp, std::move(sequence));
       }
     }
-    RETURN_IF_ERROR(module->set_schedule(std::move(new_schedule)));
+    ABSL_RETURN_IF_ERROR(module->set_schedule(std::move(new_schedule)));
   }
 
   return absl::OkStatus();

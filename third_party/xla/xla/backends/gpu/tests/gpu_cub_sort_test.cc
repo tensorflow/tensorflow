@@ -56,7 +56,7 @@ class CubSortTestBase
   }
 
   absl::StatusOr<bool> IsRewrittenToUseCubSort(absl::string_view hlo_text) {
-    ASSIGN_OR_RETURN(std::unique_ptr<HloModule> optimized_module,
+    ABSL_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> optimized_module,
                      GetOptimizedModule(hlo_text));
 
     for (const auto& pass_metadata :

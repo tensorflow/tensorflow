@@ -188,7 +188,7 @@ absl::StatusOr<ScopedDeviceAddress<uint8_t>> MultiDeviceAdapter::Allocate(
         device_ordinal, " and memory space ", memory_space));
   }
 
-  ASSIGN_OR_RETURN(auto result,
+  ABSL_ASSIGN_OR_RETURN(auto result,
                    it->second[device_ordinal]->Allocate(
                        device_ordinal, size, retry_on_failure, memory_space));
 
@@ -224,7 +224,7 @@ absl::Status MultiDeviceAdapter::Deallocate(int device_ordinal,
       // this case we are falling back to the first allocator to deallocate
       // the memory.
       // See b/325527293 for more details.
-      ASSIGN_OR_RETURN(auto allocator, GetDefaultAllocator(device_ordinal));
+      ABSL_ASSIGN_OR_RETURN(auto allocator, GetDefaultAllocator(device_ordinal));
       return allocator->Deallocate(device_ordinal, mem);
     }
     memory_space = it->second;
@@ -244,13 +244,13 @@ absl::Status MultiDeviceAdapter::Deallocate(int device_ordinal,
 }
 
 absl::StatusOr<Stream*> MultiDeviceAdapter::GetStream(int device_ordinal) {
-  ASSIGN_OR_RETURN(auto allocator, GetDefaultAllocator(device_ordinal));
+  ABSL_ASSIGN_OR_RETURN(auto allocator, GetDefaultAllocator(device_ordinal));
   return allocator->GetStream(device_ordinal);
 }
 
 absl::StatusOr<tsl::Allocator*> MultiDeviceAdapter::GetAllocator(
     int device_ordinal) {
-  ASSIGN_OR_RETURN(auto allocator, GetDefaultAllocator(device_ordinal));
+  ABSL_ASSIGN_OR_RETURN(auto allocator, GetDefaultAllocator(device_ordinal));
   return allocator->GetAllocator(device_ordinal);
 }
 

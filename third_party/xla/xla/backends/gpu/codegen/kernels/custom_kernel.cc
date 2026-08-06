@@ -86,7 +86,7 @@ std::string CustomKernel::ToString() const {
 absl::StatusOr<CustomKernelProto> CustomKernel::ToProto() const {
   CustomKernelProto proto;
   proto.set_name(name_);
-  ASSIGN_OR_RETURN(*proto.mutable_kernel_spec(), kernel_spec_.ToProto());
+  ABSL_ASSIGN_OR_RETURN(*proto.mutable_kernel_spec(), kernel_spec_.ToProto());
   *proto.mutable_block_dims() = block_dims_.ToProto();
   *proto.mutable_thread_dims() = thread_dims_.ToProto();
   if (cluster_dims_.has_value()) {
@@ -100,15 +100,15 @@ absl::StatusOr<CustomKernel> CustomKernel::FromProto(
     const CustomKernelProto& proto,
     const std::optional<se::KernelLoaderSpec::SymbolResolver>&
         symbol_resolver) {
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       se::KernelLoaderSpec kernel_spec,
       se::KernelLoaderSpec::FromProto(proto.kernel_spec(), symbol_resolver));
-  ASSIGN_OR_RETURN(se::BlockDim block_dims,
+  ABSL_ASSIGN_OR_RETURN(se::BlockDim block_dims,
                    se::BlockDim::FromProto(proto.block_dims()));
-  ASSIGN_OR_RETURN(se::ThreadDim thread_dims,
+  ABSL_ASSIGN_OR_RETURN(se::ThreadDim thread_dims,
                    se::ThreadDim::FromProto(proto.thread_dims()));
   if (proto.has_cluster_dim()) {
-    ASSIGN_OR_RETURN(se::ClusterDim cluster_dims,
+    ABSL_ASSIGN_OR_RETURN(se::ClusterDim cluster_dims,
                      se::ClusterDim::FromProto(proto.cluster_dim()));
     return CustomKernel(proto.name(), std::move(kernel_spec), block_dims,
                         thread_dims, cluster_dims, proto.shared_memory_bytes());

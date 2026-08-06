@@ -122,12 +122,12 @@ absl::StatusOr<bool> ReduceScatterCreator::RunImpl(
       // Note that RemoveInstructionAndUnusedOperands may not always remove the
       // all-reduce operand of the dynamic-slice, so remove all the dead
       // instructions manually.
-      RETURN_IF_ERROR(ds->ReplaceAllUsesWith(result));
-      RETURN_IF_ERROR(computation->RemoveInstruction(ds));
+      ABSL_RETURN_IF_ERROR(ds->ReplaceAllUsesWith(result));
+      ABSL_RETURN_IF_ERROR(computation->RemoveInstruction(ds));
       if (reshape) {
-        RETURN_IF_ERROR(computation->RemoveInstruction(reshape));
+        ABSL_RETURN_IF_ERROR(computation->RemoveInstruction(reshape));
       }
-      RETURN_IF_ERROR(computation->RemoveInstructionAndUnusedOperands(ar));
+      ABSL_RETURN_IF_ERROR(computation->RemoveInstructionAndUnusedOperands(ar));
       changed = true;
     }
   }

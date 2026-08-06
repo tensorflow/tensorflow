@@ -69,7 +69,7 @@ AllReduceThunk::AllReduceThunk(Info info, ReductionKind reduction_kind,
 
 tsl::AsyncValueRef<AllReduceThunk::ExecuteEvent> AllReduceThunk::Execute(
     const ExecuteParams& params) {
-  ASSIGN_OR_RETURN(OpDeviceMemory data, GetOpDeviceMemory(params));
+  ABSL_ASSIGN_OR_RETURN(OpDeviceMemory data, GetOpDeviceMemory(params));
 
   VLOG(3) << absl::StreamFormat(
       "AllReduce: #source_buffers=%d, #destination_buffers=%d, "

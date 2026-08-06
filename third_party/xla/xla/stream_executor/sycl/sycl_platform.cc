@@ -68,7 +68,7 @@ absl::StatusOr<StreamExecutor*> SyclPlatform::FindExisting(int ordinal) {
 absl::StatusOr<std::unique_ptr<StreamExecutor>>
 SyclPlatform::GetUncachedExecutor(int ordinal) {
   auto executor = std::make_unique<SyclExecutor>(this, ordinal);
-  RETURN_IF_ERROR(executor->Init());
+  ABSL_RETURN_IF_ERROR(executor->Init());
   return std::move(executor);
 }
 

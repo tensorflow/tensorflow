@@ -217,7 +217,7 @@ absl::StatusOr<std::unique_ptr<ConfigAssigner>> CreateConfigAssigner(
     std::unique_ptr<AutotunerCacheInterface> cache,
     tsl::thread::ThreadPool* thread_pool = nullptr,
     CodegenOrchestrator::Options orchestrator_options = {}) {
-  ASSIGN_OR_RETURN(auto orchestrator, CodegenOrchestrator::Create(
+  ABSL_ASSIGN_OR_RETURN(auto orchestrator, CodegenOrchestrator::Create(
                                           std::move(codegen_backends),
                                           orchestrator_options, thread_pool));
 

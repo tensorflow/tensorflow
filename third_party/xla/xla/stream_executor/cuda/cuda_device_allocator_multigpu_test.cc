@@ -36,9 +36,9 @@ namespace stream_executor::gpu {
 namespace {
 
 absl::StatusOr<StreamExecutor*> GetGpuExecutor(int64_t device_ordinal) {
-  ASSIGN_OR_RETURN(Platform * platform,
+  ABSL_ASSIGN_OR_RETURN(Platform * platform,
                    PlatformManager::PlatformWithName(GpuPlatformName()));
-  ASSIGN_OR_RETURN(StreamExecutor * executor,
+  ABSL_ASSIGN_OR_RETURN(StreamExecutor * executor,
                    platform->ExecutorForDevice(device_ordinal));
   return executor;
 }

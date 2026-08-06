@@ -50,7 +50,7 @@ namespace {
 absl::StatusOr<std::optional<CudnnConvKind>> GetCudnnConvKindForInstruction(
     const HloInstruction* instr) {
   if (instr->opcode() == HloOpcode::kCustomCall) {
-    ASSIGN_OR_RETURN(CudnnConvKind kind,
+    ABSL_ASSIGN_OR_RETURN(CudnnConvKind kind,
                      GetCudnnConvKind(Cast<HloCustomCallInstruction>(instr)));
     return std::make_optional(kind);
   }
@@ -516,7 +516,7 @@ absl::StatusOr<bool> ConvPaddingLegalization::RunOnComputation(
     }
   }
   for (HloInstruction* instruction : convs) {
-    ASSIGN_OR_RETURN(auto kind_opt,
+    ABSL_ASSIGN_OR_RETURN(auto kind_opt,
                      GetCudnnConvKindForInstruction(instruction));
     if (!kind_opt.has_value()) {
       continue;
@@ -544,7 +544,7 @@ absl::StatusOr<bool> ConvPaddingLegalization::RunImpl(
   bool changed = false;
   for (HloComputation* computation :
        module->MakeNonfusionComputations(execution_threads)) {
-    ASSIGN_OR_RETURN(bool result, RunOnComputation(computation));
+    ABSL_ASSIGN_OR_RETURN(bool result, RunOnComputation(computation));
     changed |= result;
   }
   return changed;

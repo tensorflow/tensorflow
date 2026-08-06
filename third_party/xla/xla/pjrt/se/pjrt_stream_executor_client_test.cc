@@ -123,8 +123,8 @@ MakeTestPjRtStreamExecutorClient(
 
 absl::StatusOr<std::unique_ptr<PjRtStreamExecutorClient>> GetClient() {
   LocalClient* local_client = xla::ClientLibrary::LocalClientOrDie();
-  ASSIGN_OR_RETURN(se::Platform * platform, PlatformUtil::GetPlatform("Host"));
-  ASSIGN_OR_RETURN(se::StreamExecutor * executor,
+  ABSL_ASSIGN_OR_RETURN(se::Platform * platform, PlatformUtil::GetPlatform("Host"));
+  ABSL_ASSIGN_OR_RETURN(se::StreamExecutor * executor,
                    platform->ExecutorForDevice(0));
   auto device_state = std::make_unique<LocalDeviceState>(
       executor, local_client, LocalDeviceState::kSynchronous,
@@ -160,7 +160,7 @@ absl::StatusOr<std::unique_ptr<PjRtStreamExecutorClient>> GetClient() {
 absl::StatusOr<std::unique_ptr<PjRtStreamExecutorClient>> GetClientWithDevices(
     int num_devices) {
   LocalClient* local_client = xla::ClientLibrary::LocalClientOrDie();
-  ASSIGN_OR_RETURN(se::Platform * platform, PlatformUtil::GetPlatform("Host"));
+  ABSL_ASSIGN_OR_RETURN(se::Platform * platform, PlatformUtil::GetPlatform("Host"));
   if (local_client->device_count() < num_devices) {
     return absl::FailedPreconditionError(absl::StrFormat(
         "LocalClient has %d Host devices, need %d; set "
@@ -172,7 +172,7 @@ absl::StatusOr<std::unique_ptr<PjRtStreamExecutorClient>> GetClientWithDevices(
   std::vector<std::unique_ptr<PjRtMemorySpace>> memory_spaces;
   memory_spaces.reserve(num_devices);
   for (int i = 0; i < num_devices; ++i) {
-    ASSIGN_OR_RETURN(se::StreamExecutor * executor,
+    ABSL_ASSIGN_OR_RETURN(se::StreamExecutor * executor,
                      platform->ExecutorForDevice(i));
     auto device_state = std::make_unique<LocalDeviceState>(
         executor, local_client, LocalDeviceState::kSynchronous,
@@ -208,9 +208,9 @@ absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> ToyExecutable(
   auto d = Add(c, c);
   Tuple(&builder, {c, d});
   set_up_aliases(builder);
-  ASSIGN_OR_RETURN(auto computation,
+  ABSL_ASSIGN_OR_RETURN(auto computation,
                    builder.Build(/*remove_dynamic_dimensions=*/true));
-  ASSIGN_OR_RETURN(auto executable,
+  ABSL_ASSIGN_OR_RETURN(auto executable,
                    client.CompileAndLoad(computation, compile_options));
   return executable;
 }
@@ -218,12 +218,12 @@ absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> ToyExecutable(
 absl::Status ExecuteWithSameInputBuffer(
     absl::AnyInvocable<void(XlaBuilder&)> set_up_aliases) {
   auto shape = xla::ShapeUtil::MakeScalarShape(xla::F32);
-  ASSIGN_OR_RETURN(auto client, GetClient());
+  ABSL_ASSIGN_OR_RETURN(auto client, GetClient());
   TF_RET_CHECK(!client->addressable_devices().empty());
   auto* device0 = client->addressable_devices().front();
-  ASSIGN_OR_RETURN(auto buffer, client->CreateUninitializedBuffer(
+  ABSL_ASSIGN_OR_RETURN(auto buffer, client->CreateUninitializedBuffer(
                                     shape, *device0->default_memory_space()));
-  ASSIGN_OR_RETURN(auto executable,
+  ABSL_ASSIGN_OR_RETURN(auto executable,
                    ToyExecutable(*client, shape, std::move(set_up_aliases)));
   xla::ExecuteOptions options;
   return executable->Execute({{buffer.get(), buffer.get()}}, options).status();

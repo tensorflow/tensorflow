@@ -68,9 +68,9 @@ static absl::Status ScaledMemset(se::Stream* stream, ffi::RemainingArgs inputs,
 
   float iter = static_cast<float>(state->loop_iteration);
   for (size_t j = 0; j < outputs.size(); ++j) {
-    ASSIGN_OR_RETURN(auto out, outputs.get<ffi::AnyBuffer>(j));
+    ABSL_ASSIGN_OR_RETURN(auto out, outputs.get<ffi::AnyBuffer>(j));
     se::DeviceAddressBase dst = out->device_memory();
-    RETURN_IF_ERROR(stream->Memset32(
+    ABSL_RETURN_IF_ERROR(stream->Memset32(
         &dst, absl::bit_cast<uint32_t>(iter * scales[j]), dst.size()));
   }
 

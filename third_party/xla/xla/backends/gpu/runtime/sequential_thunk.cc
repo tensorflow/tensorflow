@@ -70,7 +70,7 @@ absl::StatusOr<ThunkProto> SequentialThunk::ToProto() const {
   // empty.
   proto.mutable_sequential_thunk();
   for (const auto& thunk : executor_.thunks()) {
-    ASSIGN_OR_RETURN(*proto.mutable_sequential_thunk()->add_thunks(),
+    ABSL_ASSIGN_OR_RETURN(*proto.mutable_sequential_thunk()->add_thunks(),
                      thunk->ToProto());
   }
   return proto;
@@ -81,7 +81,7 @@ absl::StatusOr<std::unique_ptr<SequentialThunk>> SequentialThunk::FromProto(
     const Deserializer& deserializer) {
   ThunkSequence thunk_sequence;
   for (const auto& sub_thunk_proto : thunk_proto.thunks()) {
-    ASSIGN_OR_RETURN(std::unique_ptr<Thunk> sub_thunk,
+    ABSL_ASSIGN_OR_RETURN(std::unique_ptr<Thunk> sub_thunk,
                      deserializer(sub_thunk_proto));
     thunk_sequence.push_back(std::move(sub_thunk));
   }

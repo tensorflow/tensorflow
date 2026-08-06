@@ -154,7 +154,7 @@ absl::StatusOr<std::unique_ptr<CustomCallThunk>> CustomCallThunk::Create(
     const se::GpuComputeCapability& gpu_compute_capability,
     std::unique_ptr<ffi::ExecutionState> execution_state,
     std::optional<xla::cpu::TargetMachineOptions> cpu_target_machine_options) {
-  ASSIGN_OR_RETURN(ffi::HandlerRegistration registration,
+  ABSL_ASSIGN_OR_RETURN(ffi::HandlerRegistration registration,
                    ffi::FindHandler(target_name, platform_name));
 
   return Create(thunk_info, std::move(target_name),
@@ -178,7 +178,7 @@ absl::StatusOr<std::unique_ptr<CustomCallThunk>> CustomCallThunk::Create(
     if (bundle.instantiate) {
       // Build a call frame with placeholder buffers so the instantiate handler
       // can read operand/result types and shapes. Data pointers are nullptr.
-      ASSIGN_OR_RETURN(CallFrame call_frame,
+      ABSL_ASSIGN_OR_RETURN(CallFrame call_frame,
                        BuildCallFramePrototype(operands, results, attributes));
 
       if (!cpu_target_machine_options.has_value()) {
@@ -187,13 +187,13 @@ absl::StatusOr<std::unique_ptr<CustomCallThunk>> CustomCallThunk::Create(
       InvokeContext call_options = BuildInstantiateInvokeContext(
           execution_state.get(), &gpu_compute_capability,
           &*cpu_target_machine_options);
-      RETURN_IF_ERROR(Invoke(ffi::GetXlaFfiApi(), bundle.instantiate,
+      ABSL_RETURN_IF_ERROR(Invoke(ffi::GetXlaFfiApi(), bundle.instantiate,
                              call_frame, call_options,
                              XLA_FFI_ExecutionStage_INSTANTIATE));
     }
   }
 
-  ASSIGN_OR_RETURN(CallFrame call_frame,
+  ABSL_ASSIGN_OR_RETURN(CallFrame call_frame,
                    BuildCallFramePrototype(operands, results, attributes));
   return absl::WrapUnique(new CustomCallThunk(
       thunk_info, std::move(target_name), std::move(bundle),
@@ -220,7 +220,7 @@ absl::StatusOr<std::unique_ptr<CustomCallThunk>> CustomCallThunk::Create(
   if (bundle.instantiate) {
     // Build a call frame with placeholder buffers so the instantiate handler
     // can read operand/result types and shapes. Data pointers are nullptr.
-    ASSIGN_OR_RETURN(CallFrame call_frame,
+    ABSL_ASSIGN_OR_RETURN(CallFrame call_frame,
                      BuildCallFramePrototype(operands, results, attributes));
 
     if (!cpu_target_machine_options.has_value()) {
@@ -229,11 +229,11 @@ absl::StatusOr<std::unique_ptr<CustomCallThunk>> CustomCallThunk::Create(
     InvokeContext context = BuildInstantiateInvokeContext(
         execution_state.get(), &gpu_compute_capability,
         &*cpu_target_machine_options);
-    RETURN_IF_ERROR(Invoke(ffi::GetXlaFfiApi(), *bundle.instantiate, call_frame,
+    ABSL_RETURN_IF_ERROR(Invoke(ffi::GetXlaFfiApi(), *bundle.instantiate, call_frame,
                            context, xla::ffi::ExecutionStage::kInstantiate));
   }
 
-  ASSIGN_OR_RETURN(CallFrame call_frame,
+  ABSL_ASSIGN_OR_RETURN(CallFrame call_frame,
                    BuildCallFramePrototype(operands, results, attributes));
   return absl::WrapUnique(new CustomCallThunk(
       thunk_info, std::move(target_name), std::move(bundle),
@@ -291,8 +291,8 @@ CustomCallThunk::BuildCallFrame(
     }
   }
 
-  ASSIGN_OR_RETURN(auto call_frame, call_frames_->GetOrCreate());
-  RETURN_IF_ERROR(call_frame->UpdateWithBuffers(arguments, results));
+  ABSL_ASSIGN_OR_RETURN(auto call_frame, call_frames_->GetOrCreate());
+  ABSL_RETURN_IF_ERROR(call_frame->UpdateWithBuffers(arguments, results));
   return call_frame;
 }
 
@@ -373,7 +373,7 @@ absl::Status CustomCallThunk::ExecuteFfiHandler(
     return absl::InternalError("buffer allocations and stream are required");
   }
 
-  ASSIGN_OR_RETURN(auto call_frame, BuildCallFrame(buffer_allocations));
+  ABSL_ASSIGN_OR_RETURN(auto call_frame, BuildCallFrame(buffer_allocations));
   InvokeContext context = BuildInvokeContext(
       run_id, stream, execution_scoped_state, buffer_allocations,
       collective_params, collective_clique_requests, collective_memory_requests,
@@ -398,7 +398,7 @@ absl::Status CustomCallThunk::ExecuteFfiHandler(
     return absl::InternalError("buffer allocations and stream are required");
   }
 
-  ASSIGN_OR_RETURN(auto call_frame, BuildCallFrame(buffer_allocations));
+  ABSL_ASSIGN_OR_RETURN(auto call_frame, BuildCallFrame(buffer_allocations));
   InvokeContext context = BuildInvokeContext(
       run_id, stream, execution_scoped_state, buffer_allocations,
       collective_params, collective_clique_requests, collective_memory_requests,
@@ -519,12 +519,12 @@ absl::StatusOr<ThunkProto> CustomCallThunk::ToProto() const {
   }
 
   for (const NullableShapedSlice& operand : operands_) {
-    ASSIGN_OR_RETURN(*proto.mutable_custom_call_thunk()->add_operands(),
+    ABSL_ASSIGN_OR_RETURN(*proto.mutable_custom_call_thunk()->add_operands(),
                      operand.ToProto());
   }
 
   for (const NullableShapedSlice& result : results_) {
-    ASSIGN_OR_RETURN(*proto.mutable_custom_call_thunk()->add_results(),
+    ABSL_ASSIGN_OR_RETURN(*proto.mutable_custom_call_thunk()->add_results(),
                      result.ToProto());
   }
 
@@ -534,7 +534,7 @@ absl::StatusOr<ThunkProto> CustomCallThunk::ToProto() const {
   }
 
   if (execution_state_ && execution_state_->IsSerializable()) {
-    ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         *proto.mutable_custom_call_thunk()->mutable_execution_state(),
         execution_state_->ToProto());
   }
@@ -555,19 +555,19 @@ absl::StatusOr<std::unique_ptr<CustomCallThunk>> CustomCallThunk::FromProto(
 
   std::vector<NullableShapedSlice> operands, results;
   for (const auto& operand_proto : proto.operands()) {
-    ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         NullableShapedSlice operand,
         NullableShapedSlice::FromProto(operand_proto, buffer_allocations));
     operands.push_back(std::move(operand));
   }
   for (const auto& result_proto : proto.results()) {
-    ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         NullableShapedSlice result,
         NullableShapedSlice::FromProto(result_proto, buffer_allocations));
     results.push_back(std::move(result));
   }
 
-  ASSIGN_OR_RETURN(ffi::AttributesMap attributes,
+  ABSL_ASSIGN_OR_RETURN(ffi::AttributesMap attributes,
                    ffi::AttributesMap::FromProto(proto.attributes()));
 
   HloComputation* called_computation = nullptr;

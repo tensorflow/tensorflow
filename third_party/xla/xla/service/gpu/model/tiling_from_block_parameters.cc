@@ -72,7 +72,7 @@ absl::StatusOr<Tiling> TilingFromAnnotatedFusion(
               "Dot instruction ", hlo->name(),
               " does not have a backend config for tile sizes set."));
         }
-        ASSIGN_OR_RETURN(Tile tile_config, hlo->backend_config<Tile>());
+        ABSL_ASSIGN_OR_RETURN(Tile tile_config, hlo->backend_config<Tile>());
         if (tile_config.sizes().empty()) {
           return absl::FailedPreconditionError(
               absl::StrCat("Dot instruction ", hlo->name(),
@@ -155,7 +155,7 @@ absl::StatusOr<llvm::SmallVector<int64_t>> GetTilingSpaceConcreteSizes(
         break;
       case DimensionSemantics::kSequential: {
         if (dim.hlo->has_backend_config()) {
-          ASSIGN_OR_RETURN(Tile config, dim.hlo->backend_config<Tile>());
+          ABSL_ASSIGN_OR_RETURN(Tile config, dim.hlo->backend_config<Tile>());
           if (config.sizes_size() != 1) {
             return Internal(
                 "Only single-reduction operations are supported "

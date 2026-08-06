@@ -751,7 +751,7 @@ ENTRY main.1 {
          absl::Span<const Literal> input_data,
          const RunModuleOptions& run_opts) -> absl::StatusOr<Literal> {
     const bool should_inject = (m->name() == "sine_abs_fusion");
-    ASSIGN_OR_RETURN(Literal output,
+    ABSL_ASSIGN_OR_RETURN(Literal output,
                      RunModule(std::move(m), runner, input_data, run_opts));
     if (should_inject) {
       // Flip an exponent bit in the first element to guarantee a mismatch.

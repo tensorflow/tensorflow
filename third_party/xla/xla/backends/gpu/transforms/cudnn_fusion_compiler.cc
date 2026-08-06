@@ -321,7 +321,7 @@ class GemmDimensionAdapter {
       VLOG(3) << "Non-default algorithm is not supported.";
       return std::nullopt;
     }
-    ASSIGN_OR_RETURN(auto analysis, TritonFusionAnalysis::Execute(computation));
+    ABSL_ASSIGN_OR_RETURN(auto analysis, TritonFusionAnalysis::Execute(computation));
     return GemmDimensionAdapter{*dot, std::move(analysis)};
   }
 
@@ -694,11 +694,11 @@ absl::StatusOr<se::gpu::CudnnGraph> HloFusionToCuDnnGraph(
   absl::flat_hash_map<const HloInstruction*,
                       std::shared_ptr<graph::Tensor_attributes>>
       hlo_to_cudnn;
-  ASSIGN_OR_RETURN(std::optional<GemmDimensionAdapter> gemm_adapter,
+  ABSL_ASSIGN_OR_RETURN(std::optional<GemmDimensionAdapter> gemm_adapter,
                    GemmDimensionAdapter::Create(computation));
-  ASSIGN_OR_RETURN(std::optional<ConvDimensionAdapter> conv_adapter,
+  ABSL_ASSIGN_OR_RETURN(std::optional<ConvDimensionAdapter> conv_adapter,
                    ConvDimensionAdapter::Create(fusion, computation));
-  ASSIGN_OR_RETURN(std::optional<RaggedDotDimensionAdapter> ragged_dot_adapter,
+  ABSL_ASSIGN_OR_RETURN(std::optional<RaggedDotDimensionAdapter> ragged_dot_adapter,
                    RaggedDotDimensionAdapter::Create(fusion, computation));
   if (!gemm_adapter.has_value() && !conv_adapter.has_value() &&
       !ragged_dot_adapter.has_value()) {
@@ -743,7 +743,7 @@ absl::StatusOr<se::gpu::CudnnGraph> HloFusionToCuDnnGraph(
         return absl::UnimplementedError(absl::StrCat(
             "Unsupported dimensions for parameter: ", parameter->ToString()));
       }
-      RETURN_IF_ERROR(add_parameter(*parameter, *dims));
+      ABSL_RETURN_IF_ERROR(add_parameter(*parameter, *dims));
     }
   } else if (ragged_dot_adapter.has_value()) {
     for (const HloInstruction* parameter :
@@ -755,7 +755,7 @@ absl::StatusOr<se::gpu::CudnnGraph> HloFusionToCuDnnGraph(
         return absl::UnimplementedError(absl::StrCat(
             "Unsupported dimensions for parameter: ", parameter->ToString()));
       }
-      RETURN_IF_ERROR(add_parameter(*parameter, *dims));
+      ABSL_RETURN_IF_ERROR(add_parameter(*parameter, *dims));
     }
   } else {
     // dot and scale dot
@@ -779,7 +779,7 @@ absl::StatusOr<se::gpu::CudnnGraph> HloFusionToCuDnnGraph(
           return absl::UnimplementedError(absl::StrCat(
               "Unsupported dimensions for parameter: ", parameter->ToString()));
         }
-        RETURN_IF_ERROR(add_parameter(*parameter, *dims));
+        ABSL_RETURN_IF_ERROR(add_parameter(*parameter, *dims));
       }
     }
   }
@@ -817,7 +817,7 @@ absl::StatusOr<se::gpu::CudnnGraph> HloFusionToCuDnnGraph(
       }
       continue;
     } else if (HloPredicateIsOp<HloOpcode::kConstant>(hlo)) {
-      ASSIGN_OR_RETURN(hlo_to_cudnn[hlo],
+      ABSL_ASSIGN_OR_RETURN(hlo_to_cudnn[hlo],
                        HandleConstantHloToCudnnGraph(*hlo, graph));
     } else if (HloPredicateIsOp<HloOpcode::kReshape, HloOpcode::kBitcast,
                                 HloOpcode::kTranspose, HloOpcode::kCopy,
@@ -826,7 +826,7 @@ absl::StatusOr<se::gpu::CudnnGraph> HloFusionToCuDnnGraph(
       hlo_to_cudnn[hlo] = operand(0);
     } else if (HloPredicateIsOp<HloOpcode::kBroadcast>(hlo)) {
       if (hlo->operand(0)->opcode() == HloOpcode::kConstant) {
-        ASSIGN_OR_RETURN(
+        ABSL_ASSIGN_OR_RETURN(
             hlo_to_cudnn[hlo],
             HandleConstantHloToCudnnGraph(*hlo->operand(0), graph,
                                           hlo->shape().dimensions().size()));
@@ -843,11 +843,11 @@ absl::StatusOr<se::gpu::CudnnGraph> HloFusionToCuDnnGraph(
                          " in instruction: ", hlo->ToString()));
       }
       if (HloPredicateIsOp<HloOpcode::kClamp>(hlo)) {
-        ASSIGN_OR_RETURN(hlo_to_cudnn[hlo],
+        ABSL_ASSIGN_OR_RETURN(hlo_to_cudnn[hlo],
                          HandleClampToCudnnGraph(*hlo, graph, hlo_to_cudnn,
                                                  compute_dtype.value()));
       } else if (HloPredicateIsOp<HloOpcode::kExpm1>(hlo)) {
-        ASSIGN_OR_RETURN(hlo_to_cudnn[hlo],
+        ABSL_ASSIGN_OR_RETURN(hlo_to_cudnn[hlo],
                          HandleExpMinusOneToCudnnGraph(
                              *hlo, graph, hlo_to_cudnn, compute_dtype.value()));
       } else {
@@ -1125,7 +1125,7 @@ absl::StatusOr<se::gpu::CudnnGraph> PrepareGraph(
         "Blackwell-generation GPUs requires cuDNN >= 9.19; older runtimes "
         "crash inside the deviceless heuristics query.");
   }
-  ASSIGN_OR_RETURN(se::gpu::CudnnGraph graph, HloFusionToCuDnnGraph(hlo));
+  ABSL_ASSIGN_OR_RETURN(se::gpu::CudnnGraph graph, HloFusionToCuDnnGraph(hlo));
   PrecisionConfig precision_config = GetPrecisionConfig(hlo);
 
   bool allow_tf32 =
@@ -1134,7 +1134,7 @@ absl::StatusOr<se::gpu::CudnnGraph> PrepareGraph(
         return precision <= PrecisionConfig::HIGH;
       });
 
-  RETURN_IF_ERROR(graph.Prepare(
+  ABSL_RETURN_IF_ERROR(graph.Prepare(
       dnn_support, gpu_device_info,
       se::EngineOptions{RequireDeterminism(hlo.GetModule()->config()),
                         allow_tf32,
@@ -1160,7 +1160,7 @@ absl::StatusOr<HloInstruction*> AddWorkspace(HloInstruction& fusion,
     operands.push_back(custom_call);
     output_tuple =
         computation->AddInstruction(HloInstruction::CreateTuple(operands));
-    RETURN_IF_ERROR(computation->ReplaceInstructionWithDifferentShape(
+    ABSL_RETURN_IF_ERROR(computation->ReplaceInstructionWithDifferentShape(
         computation->root_instruction(), output_tuple));
   } else {
     output_tuple = computation->AddInstruction(HloInstruction::CreateTuple(
@@ -1169,15 +1169,15 @@ absl::StatusOr<HloInstruction*> AddWorkspace(HloInstruction& fusion,
   computation->set_root_instruction(output_tuple, true);
   HloInstruction* new_fusion = fusion.parent()->AddInstruction(
       fusion.CloneWithNewShape(output_tuple->shape()));
-  RETURN_IF_ERROR(new_fusion->CopyAllControlDepsFrom(&fusion));
-  RETURN_IF_ERROR(fusion.DropAllControlDeps());
+  ABSL_RETURN_IF_ERROR(new_fusion->CopyAllControlDepsFrom(&fusion));
+  ABSL_RETURN_IF_ERROR(fusion.DropAllControlDeps());
   if (is_tuple_output) {
-    RETURN_IF_ERROR(fusion.parent()->ReplaceInstructionWithDifferentShape(
+    ABSL_RETURN_IF_ERROR(fusion.parent()->ReplaceInstructionWithDifferentShape(
         &fusion, new_fusion));
   } else {
-    RETURN_IF_ERROR(fusion.ReplaceAllUsesWith(fusion.parent()->AddInstruction(
+    ABSL_RETURN_IF_ERROR(fusion.ReplaceAllUsesWith(fusion.parent()->AddInstruction(
         HloInstruction::CreateGetTupleElement(new_fusion, 0))));
-    RETURN_IF_ERROR(fusion.parent()->RemoveInstruction(&fusion));
+    ABSL_RETURN_IF_ERROR(fusion.parent()->RemoveInstruction(&fusion));
   }
   return new_fusion;
 }
@@ -1192,7 +1192,7 @@ class CuDnnFusionVisitor : public DfsHloRewriteVisitor {
         compilation_results_(compilation_results) {}
 
   absl::Status HandleFusion(HloInstruction* hlo) override {
-    ASSIGN_OR_RETURN(auto gpu_config, hlo->backend_config<GpuBackendConfig>());
+    ABSL_ASSIGN_OR_RETURN(auto gpu_config, hlo->backend_config<GpuBackendConfig>());
     const FusionBackendConfig& fusion_backend_config =
         gpu_config.fusion_backend_config();
     if (fusion_backend_config.kind() != kCuDnnFusionKind) {
@@ -1217,7 +1217,7 @@ class CuDnnFusionVisitor : public DfsHloRewriteVisitor {
         gpu_config.fusion_backend_config();
 
     auto compile_graph = [&]() -> absl::StatusOr<se::gpu::CudnnGraph> {
-      ASSIGN_OR_RETURN(se::gpu::CudnnGraph graph,
+      ABSL_ASSIGN_OR_RETURN(se::gpu::CudnnGraph graph,
                        PrepareGraph(dnn_support_, gpu_device_info_,
                                     *DynCast<HloFusionInstruction>(hlo)));
 
@@ -1230,7 +1230,7 @@ class CuDnnFusionVisitor : public DfsHloRewriteVisitor {
         if (plan_id >= graph.Graph().get_execution_plan_count()) {
           return absl::InternalError("cuDNN graph plan does not exist.");
         }
-        RETURN_IF_ERROR(graph.Build(dnn_support_, gpu_device_info_, plan_id));
+        ABSL_RETURN_IF_ERROR(graph.Build(dnn_support_, gpu_device_info_, plan_id));
       } else {
         // Build plans one by one till first successful when no plan_id was
         // provided.
@@ -1249,7 +1249,7 @@ class CuDnnFusionVisitor : public DfsHloRewriteVisitor {
             gpu_config.mutable_fusion_backend_config()
                 ->mutable_cudnn_fusion_config();
         cudnn_config->set_plan_id(plan_id);
-        RETURN_IF_ERROR(hlo->set_backend_config(gpu_config));
+        ABSL_RETURN_IF_ERROR(hlo->set_backend_config(gpu_config));
       }
       return graph;
     };
@@ -1268,8 +1268,8 @@ class CuDnnFusionVisitor : public DfsHloRewriteVisitor {
           hlo->fused_instructions_computation(), {});
       if (auto it = compilation_results_.find(fingerprint);
           it == compilation_results_.cend()) {
-        ASSIGN_OR_RETURN(const se::gpu::CudnnGraph graph, compile_graph());
-        ASSIGN_OR_RETURN(const std::string serialized, serialize_graph(graph));
+        ABSL_ASSIGN_OR_RETURN(const se::gpu::CudnnGraph graph, compile_graph());
+        ABSL_ASSIGN_OR_RETURN(const std::string serialized, serialize_graph(graph));
         compilation_results_.insert(it, {fingerprint, serialized});
       }
       return absl::OkStatus();
@@ -1277,7 +1277,7 @@ class CuDnnFusionVisitor : public DfsHloRewriteVisitor {
 
     auto add_workspace = [&](const int64_t workspace_size) {
       if (workspace_size > 0) {
-        ASSIGN_OR_RETURN(hlo, AddWorkspace(*hlo, workspace_size));
+        ABSL_ASSIGN_OR_RETURN(hlo, AddWorkspace(*hlo, workspace_size));
         SetVisited(*hlo);
       }
       return absl::OkStatus();
@@ -1290,17 +1290,17 @@ class CuDnnFusionVisitor : public DfsHloRewriteVisitor {
     auto workspace_size_it =
         workspace_sizes_.find(fingerprint_without_workspace);
     if (workspace_size_it == workspace_sizes_.cend()) {
-      ASSIGN_OR_RETURN(const se::gpu::CudnnGraph graph, compile_graph());
+      ABSL_ASSIGN_OR_RETURN(const se::gpu::CudnnGraph graph, compile_graph());
       const int64_t workspace_size = graph.Graph().get_workspace_size();
       workspace_sizes_.insert(workspace_size_it,
                               {fingerprint_without_workspace, workspace_size});
-      RETURN_IF_ERROR(add_workspace(workspace_size));
-      ASSIGN_OR_RETURN(const std::string serialized, serialize_graph(graph));
+      ABSL_RETURN_IF_ERROR(add_workspace(workspace_size));
+      ABSL_ASSIGN_OR_RETURN(const std::string serialized, serialize_graph(graph));
       compilation_results_[emitters::GetComputationFingerprint(
           hlo->fused_instructions_computation(), {})] = serialized;
     } else {
       VLOG(4) << "Cache hit.";
-      RETURN_IF_ERROR(add_workspace(workspace_size_it->second));
+      ABSL_RETURN_IF_ERROR(add_workspace(workspace_size_it->second));
     }
 
     MarkAsChanged();
@@ -1331,7 +1331,7 @@ absl::StatusOr<int> CuDnnFusionCompiler::GetAvailablePlanCount(
     const se::DeviceDescription& gpu_device_info,
     const HloFusionInstruction& hlo) {
   se::dnn::DnnSupport* dnn = stream_exec ? stream_exec->AsDnn() : nullptr;
-  ASSIGN_OR_RETURN(auto graph, PrepareGraph(dnn, gpu_device_info, hlo));
+  ABSL_ASSIGN_OR_RETURN(auto graph, PrepareGraph(dnn, gpu_device_info, hlo));
   return std::min(
       static_cast<int32_t>(graph.Graph().get_execution_plan_count()),
       hlo.GetModule()->config().debug_options().xla_gpu_cudnn_gemm_max_plans());

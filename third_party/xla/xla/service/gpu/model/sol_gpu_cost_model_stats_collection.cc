@@ -105,7 +105,7 @@ absl::StatusOr<bool> SolGpuCostModelStatsCollection::RunImpl(
       module->config()
           .debug_options()
           .xla_gpu_experimental_parallel_async_compute_limit());
-  ASSIGN_OR_RETURN(std::unique_ptr<SolLatencyEstimator> estimator,
+  ABSL_ASSIGN_OR_RETURN(std::unique_ptr<SolLatencyEstimator> estimator,
                    SolLatencyEstimator::Create(
                        scheduler_config,
                        std::make_unique<GpuLatencyEstimator>(pointer_size_),

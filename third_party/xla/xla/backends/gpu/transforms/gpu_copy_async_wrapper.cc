@@ -102,7 +102,7 @@ absl::StatusOr<bool> GpuCopyAsyncWrapper::RunImpl(
         continue;
       }
 
-      RETURN_IF_ERROR(computation
+      ABSL_RETURN_IF_ERROR(computation
                           ->CreateAsyncInstructions(
                               instr, {ShapeUtil::MakeScalarShape(U32)})
                           .status());

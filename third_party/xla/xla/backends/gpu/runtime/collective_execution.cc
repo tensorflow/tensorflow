@@ -69,7 +69,7 @@ absl::StatusOr<GpuCliqueKey> GetGpuCliqueKey(
 
   // Get the list of all devices that are participating in the collective
   // operation.
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       std::vector<GlobalDeviceId> devices,
       GetParticipatingDevices(global_device_id, *params.device_assn,
                               replica_groups, group_mode));

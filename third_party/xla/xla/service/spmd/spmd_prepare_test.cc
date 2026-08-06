@@ -43,11 +43,11 @@ class SpmdPrepareTest : public HloHardwareIndependentTestBase {
  public:
   absl::StatusOr<std::unique_ptr<HloModule>> RunPass(
       absl::string_view hlo_module, int64_t distance_threshold = 100) {
-    ASSIGN_OR_RETURN(auto module, ParseAndReturnVerifiedModule(
+    ABSL_ASSIGN_OR_RETURN(auto module, ParseAndReturnVerifiedModule(
                                       hlo_module, GetModuleConfigForTest()));
     HloPassPipeline pipeline("spmd-prepare");
     pipeline.AddPass<SpmdPrepare>();
-    RETURN_IF_ERROR(pipeline.Run(module.get()).status());
+    ABSL_RETURN_IF_ERROR(pipeline.Run(module.get()).status());
     return absl::StatusOr<std::unique_ptr<HloModule>>(std::move(module));
   }
 };

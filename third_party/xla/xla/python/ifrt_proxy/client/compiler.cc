@@ -73,7 +73,7 @@ tsl::Future<xla::ifrt::LoadedExecutableRef> Compiler::CompileAndLoad(
     tsl::profiler::TraceMe traceme("IfrtProxyProgramSerialize");
     auto serialize_options = std::make_unique<xla::ifrt::SerializeOptions>(
         rpc_helper_->ifrt_serdes_version());
-    ASSIGN_OR_RETURN(*request->mutable_program(),
+    ABSL_ASSIGN_OR_RETURN(*request->mutable_program(),
                      Serialize(*program, std::move(serialize_options)));
   }
   tsl::profiler::TraceMe traceme_ifrt_entrypoint(
@@ -107,7 +107,7 @@ tsl::Future<xla::ifrt::LoadedExecutableRef> Compiler::CompileAndLoad(
       auto remote_loaded_host_callback = tsl::MakeRef<RemoteLoadedHostCallback>(
           client_, xla_host_callback.operands, xla_host_callback.results,
           /*queue=*/nullptr);
-      ASSIGN_OR_RETURN(*request->add_host_callbacks(),
+      ABSL_ASSIGN_OR_RETURN(*request->add_host_callbacks(),
                        remote_loaded_host_callback->Serialize());
     }
 
@@ -124,14 +124,14 @@ tsl::Future<xla::ifrt::LoadedExecutableRef> Compiler::CompileAndLoad(
     // both should be set at the proxy client.
     auto& build_options = xla_options->compile_options.executable_build_options;
     *build_options.mutable_debug_options() = xla::GetDebugOptionsFromFlags();
-    RETURN_IF_ERROR(
+    ABSL_RETURN_IF_ERROR(
         build_options.mutable_comp_envs()->InitializeAllKnownEnvs());
 #endif
   }
 
   auto serialize_options = std::make_unique<xla::ifrt::SerializeOptions>(
       rpc_helper_->ifrt_serdes_version());
-  ASSIGN_OR_RETURN(*request->mutable_compile_options(),
+  ABSL_ASSIGN_OR_RETURN(*request->mutable_compile_options(),
                    Serialize(*options, std::move(serialize_options)));
 
   xla::ifrt::UserContextRef user_context =
@@ -154,7 +154,7 @@ Compiler::CreateExecutableFromResponse(
   std::vector<xla::ifrt::Device*> addressable_devices;
   addressable_devices.reserve(response->addressable_device_ids_size());
   for (const int32_t device_id : response->addressable_device_ids()) {
-    ASSIGN_OR_RETURN(xla::ifrt::Device* const device,
+    ABSL_ASSIGN_OR_RETURN(xla::ifrt::Device* const device,
                      client_->LookupDevice(DeviceId(device_id)));
     addressable_devices.push_back(device);
   }
@@ -174,7 +174,7 @@ Compiler::CreateExecutableFromResponse(
 
       for (const auto& device_id :
            devices_proto.mpmd_addressable_device_ids()) {
-        ASSIGN_OR_RETURN(xla::ifrt::Device* const device,
+        ABSL_ASSIGN_OR_RETURN(xla::ifrt::Device* const device,
                          client_->LookupDevice(DeviceId(device_id)));
         current_devices.push_back(device);
       }
@@ -211,21 +211,21 @@ Compiler::CreateExecutableFromResponse(
   if (rpc_helper_->protocol_version() < protocol_version::kExecutableDevices) {
     devices.reserve(response->addressable_device_ids_size());
     for (const int32_t device_id : response->addressable_device_ids()) {
-      ASSIGN_OR_RETURN(xla::ifrt::Device* const device,
+      ABSL_ASSIGN_OR_RETURN(xla::ifrt::Device* const device,
                        client_->LookupDevice(DeviceId(device_id)));
       devices.push_back(device);
     }
   } else {
     devices.reserve(response->device_ids_size());
     for (const int32_t device_id : response->device_ids()) {
-      ASSIGN_OR_RETURN(xla::ifrt::Device* const device,
+      ABSL_ASSIGN_OR_RETURN(xla::ifrt::Device* const device,
                        client_->LookupDevice(DeviceId(device_id)));
       devices.push_back(device);
     }
   }
   std::optional<DeviceListRef> device_list;
   if (!devices.empty()) {
-    ASSIGN_OR_RETURN(device_list, client_->MakeDeviceList(devices));
+    ABSL_ASSIGN_OR_RETURN(device_list, client_->MakeDeviceList(devices));
   }
 
   if (is_mpmd_executable) {

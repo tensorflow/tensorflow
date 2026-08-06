@@ -603,7 +603,7 @@ class UpdateHloModuleFromProtoTest : public XlaTransformTest {
         ROOT neg = f32[2,3] negate(p0)
       }
     )";
-    ASSIGN_OR_RETURN(auto module, ParseAndReturnUnverifiedModule(hlo_text));
+    ABSL_ASSIGN_OR_RETURN(auto module, ParseAndReturnUnverifiedModule(hlo_text));
     Shape non_default_shape = NonDefaultShape();
     *module->mutable_entry_computation_layout()->mutable_parameter_layout(0) =
         ShapeLayout(non_default_shape);
@@ -613,7 +613,7 @@ class UpdateHloModuleFromProtoTest : public XlaTransformTest {
   }
 
   absl::StatusOr<HloModuleProto> HloTextToProto(absl::string_view hlo_text) {
-    ASSIGN_OR_RETURN(auto module, ParseAndReturnUnverifiedModule(hlo_text));
+    ABSL_ASSIGN_OR_RETURN(auto module, ParseAndReturnUnverifiedModule(hlo_text));
     return module->ToProto();
   }
 

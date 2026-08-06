@@ -159,7 +159,7 @@ absl::Status SuccessfulCrossHostTransferTestBody(bool is_sender,
   // other via the distributed runtime (port chosen arbitrarily).
   std::unique_ptr<xla::DistributedRuntimeService> service;
   if (is_sender) {
-    ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         service, xla::GetDistributedRuntimeService(
                      "127.0.0.1:12347",
                      xla::CoordinationServiceImpl::Options{/*num_nodes=*/2}));
@@ -193,9 +193,9 @@ absl::Status SuccessfulCrossHostTransferTestBody(bool is_sender,
       {"num_nodes", static_cast<int64_t>(2)},
       {"node_id", static_cast<int64_t>(node_id)},
       {"visible_devices", std::vector<int64_t>({node_id})}};
-  ASSIGN_OR_RETURN(std::vector<PJRT_NamedValue> c_options,
+  ABSL_ASSIGN_OR_RETURN(std::vector<PJRT_NamedValue> c_options,
                    ::pjrt::ConvertToPjRtNamedValueList(options));
-  ASSIGN_OR_RETURN(PJRT_Client_Create_Args create_arg,
+  ABSL_ASSIGN_OR_RETURN(PJRT_Client_Create_Args create_arg,
                    BuildCreateArg(kv_callback_data.get(), c_options));
   std::unique_ptr<PJRT_Error, ::pjrt::PJRT_ErrorDeleter> error(
       api->PJRT_Client_Create(&create_arg), ::pjrt::MakeErrorDeleter(api));
@@ -333,8 +333,8 @@ absl::Status SuccessfulCrossHostTransferTestBody(bool is_sender,
         ->PJRT_Transfers_PJRT_Client_CrossHostReceiveBuffers(&recv_args);
 
     for (int i = 0; i < num_arrays; ++i) {
-      RETURN_IF_ERROR(recv_args.buffers[i]->buffer->GetReadyFuture().Await());
-      ASSIGN_OR_RETURN(std::shared_ptr<xla::Literal> recv_literal,
+      ABSL_RETURN_IF_ERROR(recv_args.buffers[i]->buffer->GetReadyFuture().Await());
+      ABSL_ASSIGN_OR_RETURN(std::shared_ptr<xla::Literal> recv_literal,
                        recv_args.buffers[i]->buffer->ToLiteral().Await());
 
       TF_RET_CHECK(

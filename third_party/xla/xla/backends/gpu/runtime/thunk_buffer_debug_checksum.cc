@@ -151,7 +151,7 @@ absl::Status DumpBufferDebugChecksumLog(
   auto buffer_debug_log =
       se::gpu::BufferDebugLog<BufferDebugLogEntry>::FromDeviceAddressUnchecked(
           log_buffer.device_memory());
-  ASSIGN_OR_RETURN(std::vector<BufferDebugLogEntry> log_entries,
+  ABSL_ASSIGN_OR_RETURN(std::vector<BufferDebugLogEntry> log_entries,
                    buffer_debug_log.ReadFromDevice(*stream));
   BufferDebugLogProto buffer_debug_log_proto =
       metadata_store->EntriesToProto(log_entries);
@@ -222,14 +222,14 @@ absl::Status RunChecksumPassInternal(
   std::shared_ptr<BufferDebugLogEntryMetadataStore> metadata_store =
       std::make_shared<BufferDebugLogEntryMetadataStore>();
 
-  ASSIGN_OR_RETURN(BufferAllocation * log_alloc,
+  ABSL_ASSIGN_OR_RETURN(BufferAllocation * log_alloc,
                    allocator.NewEmptyAllocation(kLogSizeBytes));
   BufferAllocation::Slice log_slice(log_alloc, 0, log_alloc->size());
 
-  ASSIGN_OR_RETURN(auto buffer_debug_init_thunk,
+  ABSL_ASSIGN_OR_RETURN(auto buffer_debug_init_thunk,
                    CreateDebugInitThunk(log_slice, hlo_module));
 
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       auto buffer_debug_dump_thunk,
       CreateBufferDebugDumpThunk(metadata_store, log_slice, hlo_module));
 
@@ -246,7 +246,7 @@ absl::Status RunChecksumPassInternal(
                                  metadata_store);
   };
 
-  RETURN_IF_ERROR(thunk_sequence->TransformNested(transform_callback));
+  ABSL_RETURN_IF_ERROR(thunk_sequence->TransformNested(transform_callback));
 
   std::unique_ptr<BuffersDebugChecksumThunk> output_buffers_check_thunk;
   if (debug_options.xla_gpu_experimental_thunk_buffer_debug_module_outputs() &&

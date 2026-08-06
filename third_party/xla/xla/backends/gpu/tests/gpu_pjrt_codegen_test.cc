@@ -144,7 +144,7 @@ absl::Status GpuPjRtCodegenTest::CompileAndVerifyIr(
     absl::string_view hlo_text, absl::string_view expected_llvm_ir,
     bool match_optimized_ir, bool run_optimization_passes,
     bool match_ir_from_hlo_passes) {
-  ASSIGN_OR_RETURN(std::unique_ptr<HloModule> hlo_module,
+  ABSL_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> hlo_module,
                    ParseAndReturnVerifiedModule(hlo_text));
   return CompileAndVerifyIr(std::move(hlo_module), expected_llvm_ir,
                             match_optimized_ir, run_optimization_passes,

@@ -77,7 +77,7 @@ class CudnnFusionCompilerDevicelessTest
   // checked-in target-config spec (no StreamExecutor / GPU required).
   static absl::StatusOr<GpuTargetConfig> DevicelessTargetConfig(
       GpuModel model) {
-    ASSIGN_OR_RETURN(stream_executor::GpuTargetConfigProto proto,
+    ABSL_ASSIGN_OR_RETURN(stream_executor::GpuTargetConfigProto proto,
                      GetGpuTargetConfig(model));
     return GpuTargetConfig::FromProto(proto);
   }
@@ -89,13 +89,13 @@ class CudnnFusionCompilerDevicelessTest
   absl::StatusOr<std::unique_ptr<VerifiedHloModule>> BuildConvFusionModule(
       absl::string_view hlo_text, const se::DeviceDescription& device_info,
       se::dnn::VersionInfo dnn_version, ConvolutionKind expected_kind) {
-    ASSIGN_OR_RETURN(std::unique_ptr<VerifiedHloModule> module,
+    ABSL_ASSIGN_OR_RETURN(std::unique_ptr<VerifiedHloModule> module,
                      ParseAndReturnVerifiedModule(hlo_text));
     ConvKindAssignment kind_assignment(device_info.gpu_compute_capability(),
                                        dnn_version);
-    RETURN_IF_ERROR(RunHloPass(&kind_assignment, module.get()).status());
+    ABSL_RETURN_IF_ERROR(RunHloPass(&kind_assignment, module.get()).status());
     ConvFusionRewriter rewriter(device_info);
-    RETURN_IF_ERROR(RunHloPass(&rewriter, module.get()).status());
+    ABSL_RETURN_IF_ERROR(RunHloPass(&rewriter, module.get()).status());
 
     const HloFusionInstruction* fusion = FindCudnnFusion(*module);
     if (fusion == nullptr) {

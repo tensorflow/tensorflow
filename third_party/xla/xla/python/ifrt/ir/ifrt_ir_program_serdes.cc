@@ -184,7 +184,7 @@ class IfrtIRProgramSerDes : public RTTIExtends<IfrtIRProgramSerDes, SerDes> {
     // parsing text-based IFRT IR, we copy the serialized data to a
     // `std::string` to guarantee null-termination before deserialization.
     std::string flat_str(program_proto.ifrt_program());
-    ASSIGN_OR_RETURN(auto module,
+    ABSL_ASSIGN_OR_RETURN(auto module,
                      support::ParseMlirModuleString(flat_str, *context));
 
     if (program_proto.ifrt_version().empty()) {
@@ -230,7 +230,7 @@ class IfrtIRCompileOptionsSerDes
       std::unique_ptr<SerializeOptions> options) override {
     const SerDesVersion version = GetRequestedSerDesVersion(options.get());
     const auto& compile_options = cast<IfrtIRCompileOptions>(serializable);
-    ASSIGN_OR_RETURN(IfrtIrCompileOptionsProto compile_options_proto,
+    ABSL_ASSIGN_OR_RETURN(IfrtIrCompileOptionsProto compile_options_proto,
                      compile_options.ToProto(version));
     return compile_options_proto.SerializeAsCord();
   }

@@ -138,7 +138,7 @@ class ShardingSpec : public RTTIExtends<ShardingSpec, Serializable> {
   absl::StatusOr<ShardingSpecProto> ToProto(
       SerDesVersion version = SerDesDefaultVersionAccessor::Get()) const {
     ShardingSpecProto proto;
-    RETURN_IF_ERROR(ToProto(proto, version));
+    ABSL_RETURN_IF_ERROR(ToProto(proto, version));
     return proto;
   }
 

@@ -208,9 +208,9 @@ TEST(CustomKernelThunkTest, FromProto) {
 //===----------------------------------------------------------------------===//
 
 static absl::StatusOr<se::StreamExecutor*> GpuExecutor() {
-  ASSIGN_OR_RETURN(std::string name,
+  ABSL_ASSIGN_OR_RETURN(std::string name,
                    PlatformUtil::CanonicalPlatformName("gpu"));
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       se::Platform * platform,
       se::PlatformManager::PlatformWithName(absl::AsciiStrToUpper(name)));
   return platform->ExecutorForDevice(0);
@@ -224,7 +224,7 @@ static absl::StatusOr<std::unique_ptr<CustomKernelThunk>>
 MakeAddI32CustomKernelThunk(const std::vector<BufferAllocation>& allocs) {
   absl::string_view ptx =
       se::gpu::GetAddI32PtxKernelSpec().cuda_ptx_in_memory().value().ptx;
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       CustomKernel kernel,
       kernel::GetPtxCustomKernel(/*kernel_name=*/"AddI32", ptx, /*num_args=*/3,
                                  /*block_dim=*/se::BlockDim(1, 1, 1),

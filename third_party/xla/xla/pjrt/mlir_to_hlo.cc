@@ -116,7 +116,7 @@ absl::Status MlirToXlaComputation(
       // disable it.
       exec_build_options->mutable_debug_options()
           ->set_xla_enable_hlo_sharding_v3(false);
-      RETURN_IF_ERROR(ExportShardyForGSPMD(module));
+      ABSL_RETURN_IF_ERROR(ExportShardyForGSPMD(module));
     }
 
     // Export a StableHLO + Shardy module into a pure StableHLO module, to
@@ -172,7 +172,7 @@ absl::Status MlirToXlaComputation(
     use_tuple_args = false;
   }
 
-  ASSIGN_OR_RETURN(std::unique_ptr<HloModule> hlo_module,
+  ABSL_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> hlo_module,
                    xla::ConvertStablehloToHloWithOptions(module, use_tuple_args,
                                                          return_tuple));
 
@@ -201,7 +201,7 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ParseMlirModuleString(
     return diagnostic_handler.ConsumeStatus();
   }
 
-  RETURN_IF_ERROR(UpgradeVersionedStablehlo(*module));
+  ABSL_RETURN_IF_ERROR(UpgradeVersionedStablehlo(*module));
   return std::move(module);
 }
 
@@ -209,7 +209,7 @@ absl::Status ParseMlirModuleStringAndConvertToXlaComputation(
     absl::string_view mlir_module_str, XlaComputation& xla_computation,
     bool use_tuple_args, bool return_tuple) {
   mlir::MLIRContext context;
-  ASSIGN_OR_RETURN(mlir::OwningOpRef<mlir::ModuleOp> module,
+  ABSL_ASSIGN_OR_RETURN(mlir::OwningOpRef<mlir::ModuleOp> module,
                    xla::ParseMlirModuleString(mlir_module_str, context));
   return xla::MlirToXlaComputation(*module, xla_computation, use_tuple_args,
                                    return_tuple,
@@ -296,7 +296,7 @@ absl::StatusOr<std::string> SerializeUsingVersionedStablehlo(
   // Usually the plugin is older than the framework, but occasionally a plugin's
   // nightly build will use the latest public release of a framework. Serialize
   // using the framework's version in these cases.
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       std::string target,
       ExpectSuccess(mlir::stablehlo::getSmallerVersion(
                         requested_target, mlir::stablehlo::getCurrentVersion()),

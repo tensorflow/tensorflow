@@ -53,7 +53,7 @@ absl::StatusOr<std::vector<autotuner::AutotuneEntry>> DirectoryStore::Read(
   }
 
   std::string content;
-  RETURN_IF_ERROR(tsl::ReadFileToString(env, path, &content));
+  ABSL_RETURN_IF_ERROR(tsl::ReadFileToString(env, path, &content));
 
   autotuner::AutotuneEntry entry;
   if (!entry.ParseFromString(content)) {
@@ -73,7 +73,7 @@ absl::Status DirectoryStore::Write(const autotuner::AutotuneEntry& entry) {
   tsl::Env* env = tsl::Env::Default();
 
   std::string dir(tsl::io::Dirname(path));
-  RETURN_IF_ERROR(env->RecursivelyCreateDir(dir));
+  ABSL_RETURN_IF_ERROR(env->RecursivelyCreateDir(dir));
 
   std::string content;
   if (!entry.SerializeToString(&content)) {
@@ -83,11 +83,11 @@ absl::Status DirectoryStore::Write(const autotuner::AutotuneEntry& entry) {
   // Rename trick: Write to a temporary file, then rename it to the final file
   // to avoid mingled files when multiple threads are writing to the same file.
   std::string tmp_dir = tsl::io::JoinPath(directory_path_, "tmp");
-  RETURN_IF_ERROR(env->RecursivelyCreateDir(tmp_dir));
+  ABSL_RETURN_IF_ERROR(env->RecursivelyCreateDir(tmp_dir));
   std::string tmp_path = tsl::io::JoinPath(
       tmp_dir, absl::StrCat("tmp_", absl::GetCurrentTimeNanos()));
 
-  RETURN_IF_ERROR(tsl::WriteStringToFile(env, tmp_path, content));
+  ABSL_RETURN_IF_ERROR(tsl::WriteStringToFile(env, tmp_path, content));
   return env->RenameFile(tmp_path, path);
 }
 

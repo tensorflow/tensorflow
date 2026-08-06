@@ -50,7 +50,7 @@ absl::Status CreateCubSortCustomCall(HloCustomCallInstruction* custom_call,
                       descending ? "true" : "false", batch_size);
   new_custom_call->set_raw_backend_config_string(backend_config);
   new_custom_call->SetupDerivedInstruction(custom_call);
-  RETURN_IF_ERROR(custom_call->parent()->ReplaceInstructionWithDifferentShape(
+  ABSL_RETURN_IF_ERROR(custom_call->parent()->ReplaceInstructionWithDifferentShape(
       custom_call, new_custom_call));
   return absl::OkStatus();
 }

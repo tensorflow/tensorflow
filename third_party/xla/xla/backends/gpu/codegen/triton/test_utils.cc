@@ -108,7 +108,7 @@ absl::Status CreateTritonIrAndFileCheck(
       Cast<HloFusionInstruction>(computation.FusionInstruction());
 
   mlir::MLIRContext mlir_context;
-  ASSIGN_OR_RETURN(TritonKernelSource triton_source,
+  ABSL_ASSIGN_OR_RETURN(TritonKernelSource triton_source,
                    CreateTritonModule("triton_fn", *fusion,
                                       TestGpuDeviceInfo::RTXA6000DeviceInfo(),
                                       block_level_parameters, mlir_context));
@@ -116,7 +116,7 @@ absl::Status CreateTritonIrAndFileCheck(
   std::string out;
   llvm::raw_string_ostream os(out);
   triton_source.module()->print(os);
-  ASSIGN_OR_RETURN(bool succeeded, RunFileCheck(out, filecheck_pattern));
+  ABSL_ASSIGN_OR_RETURN(bool succeeded, RunFileCheck(out, filecheck_pattern));
   if (!succeeded) {
     return absl::InternalError("FileCheck failed.");
   }

@@ -65,11 +65,11 @@ template <typename ElementT>
 static absl::StatusOr<bool> DeviceCompare(const ComparisonParams& params) {
   se::StreamExecutor* executor = params.stream->parent();
 
-  ASSIGN_OR_RETURN(std::unique_ptr<se::MemoryAllocation> allocation,
+  ABSL_ASSIGN_OR_RETURN(std::unique_ptr<se::MemoryAllocation> allocation,
                    executor->HostMemoryAllocate(sizeof(uint64_t)));
   se::DeviceAddressBase out_addr = allocation->address();
 
-  RETURN_IF_ERROR(params.stream->MemZero(&out_addr, sizeof(uint64_t)));
+  ABSL_RETURN_IF_ERROR(params.stream->MemZero(&out_addr, sizeof(uint64_t)));
   if (params.current.size() != params.expected.size()) {
     return Internal("Mismatched buffer size: %d bytes vs. %d bytes",
                     params.current.size(), params.expected.size());
@@ -79,7 +79,7 @@ static absl::StatusOr<bool> DeviceCompare(const ComparisonParams& params) {
   se::DeviceAddress<ElementT> expected_typed(params.expected);
   uint64_t buffer_size = current_typed.ElementCount();
 
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       auto comparison_kernel,
       stream_executor::gpu::GpuKernelRegistry::GetGlobalRegistry()
           .LoadKernel<stream_executor::gpu::BufferComparatorKernel<ElementT>>(
@@ -100,15 +100,15 @@ static absl::StatusOr<bool> DeviceCompare(const ComparisonParams& params) {
       dim.thread_counts_per_block());
 
   se::DeviceAddress<uint64_t> as_uint64(out_addr);
-  RETURN_IF_ERROR(comparison_kernel.Launch(
+  ABSL_RETURN_IF_ERROR(comparison_kernel.Launch(
       dim.thread_counts_per_block(), dim.block_counts(), params.stream,
       current_typed, expected_typed, static_cast<float>(params.relative_tol),
       buffer_size, as_uint64));
 
   uint64_t result = -1;
   CHECK_EQ(out_addr.size(), sizeof(result));
-  RETURN_IF_ERROR(params.stream->Memcpy(&result, out_addr, sizeof(result)));
-  RETURN_IF_ERROR(params.stream->BlockHostUntilDone());
+  ABSL_RETURN_IF_ERROR(params.stream->Memcpy(&result, out_addr, sizeof(result)));
+  ABSL_RETURN_IF_ERROR(params.stream->BlockHostUntilDone());
   return result == 0;
 }
 
@@ -120,11 +120,11 @@ template <typename ElementType, typename ComparisonType>
 static absl::StatusOr<bool> HostCompare(const ComparisonParams& params) {
   int64_t n = params.current.size() / sizeof(ElementType);
   std::vector<ElementType> host_current(n), host_expected(n);
-  RETURN_IF_ERROR(params.stream->Memcpy(host_current.data(), params.current,
+  ABSL_RETURN_IF_ERROR(params.stream->Memcpy(host_current.data(), params.current,
                                         params.current.size()));
-  RETURN_IF_ERROR(params.stream->Memcpy(host_expected.data(), params.expected,
+  ABSL_RETURN_IF_ERROR(params.stream->Memcpy(host_expected.data(), params.expected,
                                         params.expected.size()));
-  RETURN_IF_ERROR(params.stream->BlockHostUntilDone());
+  ABSL_RETURN_IF_ERROR(params.stream->BlockHostUntilDone());
 
   const auto canonicalize = [](ComparisonType a) -> ComparisonType {
     if (std::is_same<ElementType, Eigen::half>::value && a) {
@@ -174,11 +174,11 @@ template <typename ElementT, typename ComparisonT>
 static absl::StatusOr<bool> CompareEqualParameterized(
     const ComparisonParams& params) {
   XLA_SCOPED_LOGGING_TIMER("BufferComparator::CompareEqual");
-  ASSIGN_OR_RETURN(bool result, DeviceCompare<ElementT>(params));
+  ABSL_ASSIGN_OR_RETURN(bool result, DeviceCompare<ElementT>(params));
   if (result) return true;
   if (!params.run_host_compare) return false;
 
-  ASSIGN_OR_RETURN(bool host_return,
+  ABSL_ASSIGN_OR_RETURN(bool host_return,
                    (HostCompare<ElementT, ComparisonT>(params)));
   CHECK_EQ(host_return, result)
       << "Host comparison succeeded even though GPU comparison failed.";

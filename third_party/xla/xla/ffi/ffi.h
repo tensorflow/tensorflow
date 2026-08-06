@@ -331,7 +331,7 @@ absl::StatusOr<Buffer<dtype, rank>> Match(
     absl::string_view name, AnyBuffer buffer,
     const match::BufferPattern<match::DTypeSet<PrimitiveType, dtype>,
                                match::RankSet<rank>>& pattern) {
-  RETURN_IF_ERROR(Verify(name, buffer, pattern));
+  ABSL_RETURN_IF_ERROR(Verify(name, buffer, pattern));
   return match::internal::BufferCast::Cast<Buffer<dtype, rank>>(buffer);
 }
 
@@ -339,7 +339,7 @@ template <PrimitiveType dtype, size_t rank, typename DTypes, typename Ranks>
 absl::StatusOr<Buffer<dtype, rank>> Match(
     absl::string_view name, Buffer<dtype, rank> buffer,
     const match::BufferPattern<DTypes, Ranks>& pattern) {
-  RETURN_IF_ERROR(Verify(name, buffer, pattern));
+  ABSL_RETURN_IF_ERROR(Verify(name, buffer, pattern));
   return buffer;
 }
 
@@ -347,7 +347,7 @@ namespace internal {
 
 template <typename Buffer>
 absl::StatusOr<Result<Buffer>> WrapResult(absl::StatusOr<Buffer> buffer) {
-  ASSIGN_OR_RETURN(Buffer matched, std::move(buffer));
+  ABSL_ASSIGN_OR_RETURN(Buffer matched, std::move(buffer));
   return Result<Buffer>(std::move(matched));
 }
 

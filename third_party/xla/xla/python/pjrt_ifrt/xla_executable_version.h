@@ -52,7 +52,7 @@ struct XlaExecutableVersion
   absl::StatusOr<SerializedXlaExecutableVersion> ToProto(
       SerDesVersion version = SerDesVersion::current()) const {
     SerializedXlaExecutableVersion proto;
-    RETURN_IF_ERROR(ToProto(proto, version));
+    ABSL_RETURN_IF_ERROR(ToProto(proto, version));
     return proto;
   }
 

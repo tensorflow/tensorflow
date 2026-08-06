@@ -21,7 +21,7 @@ namespace stream_executor::sycl {
 
 absl::StatusOr<std::unique_ptr<SyclContext>> SyclContext::Create(
     int device_ordinal) {
-  ASSIGN_OR_RETURN(::sycl::context sycl_context,
+  ABSL_ASSIGN_OR_RETURN(::sycl::context sycl_context,
                    SyclDevicePool::GetDeviceContext());
   return std::make_unique<SyclContext>(sycl_context, device_ordinal);
 }

@@ -49,7 +49,7 @@ absl::Status CheckRuntimeVersion(const DeviceDescription& device_description) {
 absl::StatusOr<GraphNodeHandle> CudaCommandBuffer::CreateMovedChildNodeImpl(
     absl::Span<const GraphNodeHandle> dependencies,
     stream_executor::CommandBuffer* nested) {
-  RETURN_IF_ERROR(CheckRuntimeVersion(stream_exec_->GetDeviceDescription()));
+  ABSL_RETURN_IF_ERROR(CheckRuntimeVersion(stream_exec_->GetDeviceDescription()));
   auto* child_command_buffer = absl::down_cast<CudaCommandBuffer*>(nested);
   CHECK_EQ(child_command_buffer->parent_, nullptr)
       << "Nested command buffer's parent is not null";
@@ -67,7 +67,7 @@ absl::StatusOr<GraphNodeHandle> CudaCommandBuffer::CreateMovedChildNodeImpl(
   nodeParams.graph.ownership = CU_GRAPH_CHILD_GRAPH_OWNERSHIP_MOVE;
 
   CUgraphNode node_handle;
-  RETURN_IF_ERROR(cuda::ToStatus(
+  ABSL_RETURN_IF_ERROR(cuda::ToStatus(
       cuGraphAddNode_v2(&node_handle, graph_, deps.data(),
                         /*dependencyData=*/nullptr, deps.size(), &nodeParams),
       "Failed to create a child graph node and add it to a CUDA graph"));

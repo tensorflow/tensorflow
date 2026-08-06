@@ -187,7 +187,7 @@ absl::StatusOr<MatrixLayout> MatrixLayout::FromProto(
       return absl::InvalidArgumentError("Invalid matrix layout order");
   }
 
-  ASSIGN_OR_RETURN(blas::Transpose transpose,
+  ABSL_ASSIGN_OR_RETURN(blas::Transpose transpose,
                    blas::FromProto(proto.transpose()));
   return MatrixLayout(proto.dtype(), proto.num_rows(), proto.num_cols(), order,
                       proto.batch_size(), proto.leading_dim_stride(),
@@ -315,7 +315,7 @@ absl::Status BlasLt::MatmulPlan::SetCachedAlgorithm(size_t algorithm_idx,
   if (cached_algorithms_.empty() ||
       cached_algorithm_count_ != max_algorithm_count ||
       cached_workspace_size_ != max_workspace_size) {
-    ASSIGN_OR_RETURN(cached_algorithms_,
+    ABSL_ASSIGN_OR_RETURN(cached_algorithms_,
                      GetAlgorithms(max_algorithm_count, max_workspace_size));
     cached_algorithm_count_ = max_algorithm_count;
     cached_workspace_size_ = max_workspace_size;
@@ -343,11 +343,11 @@ absl::StatusOr<BlasLt::MatmulPlan*> BlasLt::GetOrCreateMatmulPlanWithAlgorithm(
   // this is used by command_buffer_thunk test.
   if (res.second || key.empty()) {
     VLOG(2) << "Creating a plan for: " << key;
-    ASSIGN_OR_RETURN(res.first->second, create());
+    ABSL_ASSIGN_OR_RETURN(res.first->second, create());
     VLOG(2) << "Plan created: cache size: " << plan_cache_.size();
   }
   auto plan = res.first->second.get();
-  RETURN_IF_ERROR(plan->SetCachedAlgorithm(algorithm_idx, num_algorithms,
+  ABSL_RETURN_IF_ERROR(plan->SetCachedAlgorithm(algorithm_idx, num_algorithms,
                                            max_workspace_size));
   return plan;
 }
@@ -364,13 +364,13 @@ size_t BlasLt::GetMatmulPlanCacheSize() const {
 
 absl::StatusOr<GemmConfig> GemmConfig::FromProto(
     const xla::GemmConfigProto& proto) {
-  ASSIGN_OR_RETURN(MatrixLayout lhs_layout,
+  ABSL_ASSIGN_OR_RETURN(MatrixLayout lhs_layout,
                    MatrixLayout::FromProto(proto.lhs_layout()));
-  ASSIGN_OR_RETURN(MatrixLayout rhs_layout,
+  ABSL_ASSIGN_OR_RETURN(MatrixLayout rhs_layout,
                    MatrixLayout::FromProto(proto.rhs_layout()));
-  ASSIGN_OR_RETURN(MatrixLayout c_layout,
+  ABSL_ASSIGN_OR_RETURN(MatrixLayout c_layout,
                    MatrixLayout::FromProto(proto.c_layout()));
-  ASSIGN_OR_RETURN(MatrixLayout output_layout,
+  ABSL_ASSIGN_OR_RETURN(MatrixLayout output_layout,
                    MatrixLayout::FromProto(proto.output_layout()));
   std::optional<blas::ComputationType> compute_type =
       blas::FromProto(proto.compute_type());
@@ -417,14 +417,14 @@ absl::StatusOr<GroupedGemmConfig> GroupedGemmConfig::FromProto(
     const xla::GroupedGemmConfigProto& proto) {
   std::optional<blas::ComputationType> compute_type =
       blas::FromProto(proto.compute_type());
-  ASSIGN_OR_RETURN(blas::DataType typeA, AsBlasDataType(proto.type_a()));
-  ASSIGN_OR_RETURN(blas::DataType typeB, AsBlasDataType(proto.type_b()));
-  ASSIGN_OR_RETURN(blas::DataType typeC, AsBlasDataType(proto.type_c()));
-  ASSIGN_OR_RETURN(blas::DataType typeD, AsBlasDataType(proto.type_d()));
-  ASSIGN_OR_RETURN(RaggedDotMode ragged_mode,
+  ABSL_ASSIGN_OR_RETURN(blas::DataType typeA, AsBlasDataType(proto.type_a()));
+  ABSL_ASSIGN_OR_RETURN(blas::DataType typeB, AsBlasDataType(proto.type_b()));
+  ABSL_ASSIGN_OR_RETURN(blas::DataType typeC, AsBlasDataType(proto.type_c()));
+  ABSL_ASSIGN_OR_RETURN(blas::DataType typeD, AsBlasDataType(proto.type_d()));
+  ABSL_ASSIGN_OR_RETURN(RaggedDotMode ragged_mode,
                    RaggedDotModeFromProto(proto.ragged_mode()));
-  ASSIGN_OR_RETURN(blas::Transpose trans_a, blas::FromProto(proto.trans_a()));
-  ASSIGN_OR_RETURN(blas::Transpose trans_b, blas::FromProto(proto.trans_b()));
+  ABSL_ASSIGN_OR_RETURN(blas::Transpose trans_a, blas::FromProto(proto.trans_a()));
+  ABSL_ASSIGN_OR_RETURN(blas::Transpose trans_b, blas::FromProto(proto.trans_b()));
   return GroupedGemmConfig{proto.m(),
                            proto.n(),
                            proto.k(),

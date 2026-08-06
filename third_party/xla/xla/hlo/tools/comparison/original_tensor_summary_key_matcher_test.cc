@@ -78,7 +78,7 @@ class OriginalTensorSummaryKeyMatcherTest : public ::testing::Test {
       absl::Span<const RecoveredTensorSummaryProto> target_summaries) {
     CHECK_OK(WriteSummaries(baseline_file_, baseline_summaries));
     CHECK_OK(WriteSummaries(target_file_, target_summaries));
-    ASSIGN_OR_RETURN(matcher_, OriginalTensorSummaryKeyMatcher::Create(
+    ABSL_ASSIGN_OR_RETURN(matcher_, OriginalTensorSummaryKeyMatcher::Create(
                                    bimap_, baseline_file_, target_file_));
     return absl::OkStatus();
   }

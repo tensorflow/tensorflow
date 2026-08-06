@@ -1228,7 +1228,7 @@ absl::Status MsaAlgorithm::OptimizeMemoryBoundLoop(int loop_start_idx,
   const int iteration_start_idx = loop_start_idx + loop_size;
   const int iteration_end_idx = iteration_start_idx + loop_size;
 
-  ASSIGN_OR_RETURN(std::unique_ptr<MemoryBoundLoopOptimizer> optimizer,
+  ABSL_ASSIGN_OR_RETURN(std::unique_ptr<MemoryBoundLoopOptimizer> optimizer,
                    MemoryBoundLoopOptimizer::Create(
                        iteration_start_idx, iteration_end_idx, hlo_live_range_,
                        alias_analysis_, options_));
@@ -2204,7 +2204,7 @@ MsaAlgorithm::GetAltMemoryColoredIntervalsForBuffer(
     const std::vector<BufferColoring>& buffer_colorings) {
   std::vector<TimeInterval> default_mem_intervals;
   std::vector<TimeInterval> alternate_mem_intervals;
-  ASSIGN_OR_RETURN(std::vector<TimeInterval> contiguous_live_ranges,
+  ABSL_ASSIGN_OR_RETURN(std::vector<TimeInterval> contiguous_live_ranges,
                    GetContiguousLiveRangesForBuffer(buffer));
 
   auto disallow_async_conversion_if_conversion_candidate =
@@ -2216,7 +2216,7 @@ MsaAlgorithm::GetAltMemoryColoredIntervalsForBuffer(
       };
 
   for (const auto& buffer_coloring : buffer_colorings) {
-    ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         const MemorySpace memory_space_enum,
         GetMemorySpaceEnum(buffer_coloring.memory_space, options_));
     HloInstruction* coloring_site;
@@ -2263,11 +2263,11 @@ MsaAlgorithm::GetAltMemoryColoredIntervalsForBuffer(
                                  contiguous_live_ranges);
     }
   }
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       std::vector<TimeInterval> merged_default_mem_intervals,
       SortAndMergeTimeIntervals(default_mem_intervals,
                                 /*allow_overlapping_intervals=*/true));
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       std::vector<TimeInterval> merged_alternate_mem_intervals,
       SortAndMergeTimeIntervals(alternate_mem_intervals,
                                 /*allow_overlapping_intervals=*/true));
@@ -2278,7 +2278,7 @@ MsaAlgorithm::GetAltMemoryColoredIntervalsForBuffer(
           << merged_alternate_mem_intervals.size()
           << " alternate memory intervals.";
 
-  RETURN_IF_ERROR(CheckForConflictingColoringRequirements(
+  ABSL_RETURN_IF_ERROR(CheckForConflictingColoringRequirements(
       buffer, merged_default_mem_intervals, merged_alternate_mem_intervals));
 
   // Update the default memory coloring requirements for the buffer and return
@@ -2368,7 +2368,7 @@ absl::Status MsaAlgorithm::ProcessColoredBuffers() {
     // Find the intervals that are colored in alternate memory space and reserve
     // the memory for them in the alternate memory space.
     std::vector<TimeInterval> alternate_memory_space_intervals;
-    ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         alternate_memory_space_intervals,
         GetAltMemoryColoredIntervalsForBuffer(buffer, buffer_colorings));
     for (const auto& alt_memory_space_interval :
@@ -3797,7 +3797,7 @@ absl::StatusOr<Decision> MsaAlgorithm::BlockPrefetchBuffer(
       chunk_candidate, position_to_live_range, position_to_uses,
       async_conv_candidate_instructions, allocations, colocations);
 
-  RETURN_IF_ERROR(CreateMirroredAllocationsInAlternateMemory(
+  ABSL_RETURN_IF_ERROR(CreateMirroredAllocationsInAlternateMemory(
       non_trivial_positions_for_mirrored_allocations, calculator,
       instruction_schedule, position_to_uses, async_conv_candidate_instructions,
       allocations));
@@ -3862,7 +3862,7 @@ absl::Status MsaAlgorithm::CreateNewBlockPrefetches(
               .non_trivial_source_position;
     }
 
-    ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         Decision decision,
         BlockPrefetchBuffer(
             buffer, first_defining_value, is_async_conversion_candidate,
@@ -4134,7 +4134,7 @@ absl::Status MsaAlgorithm::PinScalarBuffersInAlternateMemory(
       sorted_scalar_buffers,
       [](const HloBuffer* a, const HloBuffer* b) { return a->id() < b->id(); });
   for (const HloBuffer* buffer : sorted_scalar_buffers) {
-    RETURN_IF_ERROR(PinScalarBufferInAlternateMemory(buffer, program_end_time,
+    ABSL_RETURN_IF_ERROR(PinScalarBufferInAlternateMemory(buffer, program_end_time,
                                                      instruction_schedule));
   }
   return absl::OkStatus();
@@ -4250,7 +4250,7 @@ absl::Status MsaAlgorithm::PinScalarBufferInAlternateMemory(
 
   // Create mirrored allocations in alternate memory for the remaining
   // positions.
-  RETURN_IF_ERROR(CreateMirroredAllocationsInAlternateMemory(
+  ABSL_RETURN_IF_ERROR(CreateMirroredAllocationsInAlternateMemory(
       non_trivial_positions_for_mirrored_allocations, calculator,
       instruction_schedule, outer_positions_to_uses,
       /*async_conv_candidate_instructions=*/{}, allocations));
@@ -4285,15 +4285,15 @@ absl::StatusOr<HeapSimulator::Result<HloValue>> MsaAlgorithm::Finish() {
   int64_t max_scoped_memory_size =
       ReserveAlternateMemoryForScopedMemoryAllocations();
 
-  RETURN_IF_ERROR(
+  ABSL_RETURN_IF_ERROR(
       AllocateAndScheduleExistingBlockPrefetches(max_scoped_memory_size));
-  RETURN_IF_ERROR(CreateNewBlockPrefetches(max_scoped_memory_size));
+  ABSL_RETURN_IF_ERROR(CreateNewBlockPrefetches(max_scoped_memory_size));
 
   // Free the alternate memory reserved for scoped memory allocations before
   // allocating the scoped memory allocations.
   FreeAlternateMemoryForScopedMemoryAllocations(max_scoped_memory_size);
   AllocateReservedScopedAllocations();
-  RETURN_IF_ERROR(ProcessColoredBuffers());
+  ABSL_RETURN_IF_ERROR(ProcessColoredBuffers());
 
   std::vector<MsaBufferInterval> sorted_buffer_intervals =
       GetPostProcessedSortedBufferIntervals();
@@ -4372,7 +4372,7 @@ absl::StatusOr<HeapSimulator::Result<HloValue>> MsaAlgorithm::Finish() {
 
   absl::flat_hash_set<const HloBuffer*> scalar_buffers_to_pin_in_alt_mem =
       GetScalarBuffersPinnedToAltMemory(sorted_buffer_intervals);
-  RETURN_IF_ERROR(
+  ABSL_RETURN_IF_ERROR(
       PinScalarBuffersInAlternateMemory(scalar_buffers_to_pin_in_alt_mem));
 
   VLOG(2) << "Total reserved bytes = " << reserved_in_bytes_;
@@ -4399,7 +4399,7 @@ absl::StatusOr<HeapSimulator::Result<HloValue>> MsaAlgorithm::Finish() {
             colocated_intervals);
       }
       options_.prefetch_interval_picker->SetRetryNumber(retry_number);
-      ASSIGN_OR_RETURN(
+      ABSL_ASSIGN_OR_RETURN(
           AllocationResult result,
           AllocateAllocationValues(absl::MakeSpan(proposal.allocation_values)));
       VLOG(2) << "Allocation result = " << ResultToString(result);
@@ -4647,7 +4647,7 @@ absl::StatusOr<HeapSimulator::Result<HloValue>> MsaAlgorithm::Finish() {
 
         VLOG(3) << "Running post allocation transformation on: \n"
                 << instr->ToString();
-        ASSIGN_OR_RETURN(PostAllocationTransformationUpdate changes,
+        ABSL_ASSIGN_OR_RETURN(PostAllocationTransformationUpdate changes,
                          options_.post_allocation_transformation_fn(instr));
         if (!changes.to_be_removed.empty()) {
           VLOG(3) << "Post allocation transformation info: \n"
@@ -8850,7 +8850,7 @@ absl::Status MsaAlgorithm::WindowPrefetch() {
   }
 
   // Propagate the memory space to the cloned fusion computations.
-  ASSIGN_OR_RETURN(auto dataflow_analysis,
+  ABSL_ASSIGN_OR_RETURN(auto dataflow_analysis,
                    HloDataflowAnalysis::Run(*module_, /*ssa_form=*/false,
                                             /*bitcast_defines_value=*/true));
   MemorySpacePropagation memory_space_propagation(std::move(dataflow_analysis));

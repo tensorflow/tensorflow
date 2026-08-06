@@ -83,7 +83,7 @@ class TestNumberSerDes : public RTTIExtends<TestNumberSerDes, SerDes> {
       std::unique_ptr<SerializeOptions> options) override {
     if (options != nullptr) {
       auto* serialize_options = cast<TestNumberSerializeOptions>(options.get());
-      RETURN_IF_ERROR(serialize_options->injected_failure);
+      ABSL_RETURN_IF_ERROR(serialize_options->injected_failure);
     }
     const TestNumber& obj = cast<TestNumber>(serializable);
     return absl::Cord(absl::StrCat(obj.number));
@@ -95,7 +95,7 @@ class TestNumberSerDes : public RTTIExtends<TestNumberSerDes, SerDes> {
     if (options != nullptr) {
       auto* deserialize_options =
           cast<TestNumberDeserializeOptions>(options.get());
-      RETURN_IF_ERROR(deserialize_options->injected_failure);
+      ABSL_RETURN_IF_ERROR(deserialize_options->injected_failure);
     }
 
     int number;

@@ -44,7 +44,7 @@ absl::Status AppendPipelinedInstruction(HloInstruction* instr,
   if (!IsCollective(instr)) {
     return absl::OkStatus();
   }
-  ASSIGN_OR_RETURN(auto config, instr->backend_config<gpu::GpuBackendConfig>());
+  ABSL_ASSIGN_OR_RETURN(auto config, instr->backend_config<gpu::GpuBackendConfig>());
   config.mutable_collective_backend_config()->set_is_pipelined(true);
   return instr->set_backend_config(config);
 }
@@ -98,7 +98,7 @@ bool EnableHeuristicCollectiveCombining(
 
 absl::Status MergeCollectiveBackendConfig(
     absl::Span<HloInstruction* const> to_combine, HloInstruction* combined) {
-  ASSIGN_OR_RETURN(auto config,
+  ABSL_ASSIGN_OR_RETURN(auto config,
                    combined->backend_config<gpu::GpuBackendConfig>());
   bool any_pipelined = false;
   bool any_spmd_generated = false;

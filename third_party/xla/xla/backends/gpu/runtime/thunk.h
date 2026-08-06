@@ -590,7 +590,7 @@ std::invoke_result_t<F, Thunk*> Thunk::Walk(F&& callback) {
       return (f(thunk), absl::OkStatus());
     }).IgnoreError();  // Error can never happen here.
   } else {
-    RETURN_IF_ERROR(callback(this));
+    ABSL_RETURN_IF_ERROR(callback(this));
     return WalkNested(Walker([&](Thunk* thunk) { return callback(thunk); }));
   }
 }

@@ -50,7 +50,7 @@ RngGetAndUpdateStateThunk::RngGetAndUpdateStateThunk(
 
 tsl::AsyncValueRef<Thunk::ExecuteEvent> RngGetAndUpdateStateThunk::Execute(
     const ExecuteParams& params) {
-  ASSIGN_OR_RETURN(se::DeviceAddressBase state_data,
+  ABSL_ASSIGN_OR_RETURN(se::DeviceAddressBase state_data,
                    params.buffer_allocations->GetDeviceAddress(state_buffer_));
 
   if (state_data.size() != sizeof(absl::int128)) {

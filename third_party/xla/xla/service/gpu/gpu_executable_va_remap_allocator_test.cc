@@ -269,16 +269,16 @@ class GpuExecutableVaRemapAllocatorTest : public ::testing::Test {
       absl::Span<const BufferAllocation* const> allocations_to_tear_down = {}) {
     GpuExecutableBufferAllocator::BufferAllocToDeviceMemoryMap globals;
     ExecutionResult result;
-    ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         std::unique_ptr<GpuExecutableBufferAllocator::ExecutionScope> scope,
         allocator.CreateExecutionScope(&service_run_options_, vmm_allocator,
                                        /*device_ordinal=*/0));
     result.va_remap_enabled = scope->va_remap_enabled();
-    ASSIGN_OR_RETURN(BufferAllocations buffer_allocations,
+    ABSL_ASSIGN_OR_RETURN(BufferAllocations buffer_allocations,
                      scope->GenerateBufferAllocations(
                          &service_run_options_, get_parameter_buffer, &globals,
                          vmm_allocator, /*device_ordinal=*/0));
-    RETURN_IF_ERROR(scope->ExecuteWithBufferAllocations(
+    ABSL_RETURN_IF_ERROR(scope->ExecuteWithBufferAllocations(
         buffer_allocations, /*device_ordinal=*/0,
         [&](const BufferAllocations& execution_buffers,
             std::optional<absl::Span<const BufferAllocation::Index>>
@@ -294,7 +294,7 @@ class GpuExecutableVaRemapAllocatorTest : public ::testing::Test {
         buffer_allocations.GetDeviceAddress(0);
     if (!allocations_to_tear_down.empty()) {
       std::set<se::DeviceAddressBase> no_live_addresses;
-      RETURN_IF_ERROR(buffer_allocations.TearDown(no_live_addresses,
+      ABSL_RETURN_IF_ERROR(buffer_allocations.TearDown(no_live_addresses,
                                                   allocations_to_tear_down));
     }
     return result;

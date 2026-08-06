@@ -219,7 +219,7 @@ Layout& Layout::operator=(Layout&& other) = default;
     layout.add_minor_to_major(dimension);
   }
   for (const TileProto& tile_proto : proto.tiles()) {
-    ASSIGN_OR_RETURN(*layout.add_tiles(), Tile::FromProto(tile_proto));
+    ABSL_ASSIGN_OR_RETURN(*layout.add_tiles(), Tile::FromProto(tile_proto));
   }
   // If the proto does not have tail_padding_alignment_in_elements set, or have
   // it set to 0, we treat it as 1.
@@ -236,7 +236,7 @@ Layout& Layout::operator=(Layout&& other) = default;
     layout.add_split_configs(SplitConfig::CreateFromProto(split_config_proto));
   }
   if (proto.has_physical_shape()) {
-    ASSIGN_OR_RETURN(*layout.mutable_physical_shape(),
+    ABSL_ASSIGN_OR_RETURN(*layout.mutable_physical_shape(),
                      Shape::FromProto(proto.physical_shape()));
   }
   layout.set_dynamic_shape_metadata_prefix_bytes(

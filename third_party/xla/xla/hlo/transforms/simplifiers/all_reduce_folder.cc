@@ -241,9 +241,9 @@ absl::StatusOr<bool> AllReduceFolder::RunImpl(
         ClearCollectiveGroupKey(*new_ar);
       }
 
-      RETURN_IF_ERROR(ar1->ReplaceAllUsesWith(new_ar));
-      RETURN_IF_ERROR(computation->RemoveInstruction(ar1));
-      RETURN_IF_ERROR(computation->RemoveInstruction(ar0));
+      ABSL_RETURN_IF_ERROR(ar1->ReplaceAllUsesWith(new_ar));
+      ABSL_RETURN_IF_ERROR(computation->RemoveInstruction(ar1));
+      ABSL_RETURN_IF_ERROR(computation->RemoveInstruction(ar0));
       changed = true;
     }
   }

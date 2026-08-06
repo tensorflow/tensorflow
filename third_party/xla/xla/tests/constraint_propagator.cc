@@ -172,7 +172,7 @@ ConstraintPropagator::Run(
   ConstraintPropagator propagator(get_index_known_zeroes);
   auto computations = module.MakeComputationPostOrder();
   for (HloComputation* computation : computations) {
-    RETURN_IF_ERROR(propagator.Propagate(computation));
+    ABSL_RETURN_IF_ERROR(propagator.Propagate(computation));
   }
 
   // Extract only the parameters
@@ -186,12 +186,12 @@ ConstraintPropagator::Run(
 
 absl::Status ConstraintPropagator::Propagate(
     const HloComputation* computation) {
-  RETURN_IF_ERROR(SeedConstraints(computation));
-  RETURN_IF_ERROR(PropagateSeedConstraints(computation));
+  ABSL_RETURN_IF_ERROR(SeedConstraints(computation));
+  ABSL_RETURN_IF_ERROR(PropagateSeedConstraints(computation));
   absl::flat_hash_map<const HloInstruction*, ConstraintState> before;
   do {
     before = states_;
-    RETURN_IF_ERROR(PropagateConstraints(computation));
+    ABSL_RETURN_IF_ERROR(PropagateConstraints(computation));
   } while (before != states_);
   return absl::OkStatus();
 }
@@ -818,7 +818,7 @@ absl::Status ConstraintPropagator::PropagateSeedConstraints(
   auto instructions = computation->MakeInstructionPostOrder();
   for (auto it = instructions.rbegin(); it != instructions.rend(); ++it) {
     const HloInstruction* inst = *it;
-    RETURN_IF_ERROR(PropagateConstraintsExact(inst));
+    ABSL_RETURN_IF_ERROR(PropagateConstraintsExact(inst));
   }
   return absl::OkStatus();
 }
@@ -828,8 +828,8 @@ absl::Status ConstraintPropagator::PropagateConstraints(
   auto instructions = computation->MakeInstructionPostOrder();
   for (auto it = instructions.rbegin(); it != instructions.rend(); ++it) {
     const HloInstruction* inst = *it;
-    RETURN_IF_ERROR(PropagateConstraintsExact(inst));
-    RETURN_IF_ERROR(PropagateConstraintsApprox(inst));
+    ABSL_RETURN_IF_ERROR(PropagateConstraintsExact(inst));
+    ABSL_RETURN_IF_ERROR(PropagateConstraintsApprox(inst));
   }
   return absl::OkStatus();
 }

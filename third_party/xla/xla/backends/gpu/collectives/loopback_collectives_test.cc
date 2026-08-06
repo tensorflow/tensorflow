@@ -52,7 +52,7 @@ static absl::StatusOr<std::vector<se::StreamExecutor*>> CreateExecutors(
     se::Platform* platform, size_t n) {
   std::vector<se::StreamExecutor*> executors(n);
   for (size_t d = 0; d < n; ++d) {
-    ASSIGN_OR_RETURN(executors[d], platform->ExecutorForDevice(d));
+    ABSL_ASSIGN_OR_RETURN(executors[d], platform->ExecutorForDevice(d));
   }
   return executors;
 }
@@ -74,14 +74,14 @@ CreateCommunicators(LoopbackCollectives* collectives,
     device_ranks.emplace_back(&devices[i], RankId(i));
   }
 
-  ASSIGN_OR_RETURN(CliqueId clique_id, collectives->CreateUniqueCliqueId());
+  ABSL_ASSIGN_OR_RETURN(CliqueId clique_id, collectives->CreateUniqueCliqueId());
   CliqueIds clique_ids;
   clique_ids.Add(clique_id);
 
   GpuCliqueKey clique_key(device_ids, executors.size());
   GpuCollectives::Config config;
 
-  ASSIGN_OR_RETURN(auto comms,
+  ABSL_ASSIGN_OR_RETURN(auto comms,
                    collectives->CreateCommunicators(clique_key, clique_ids,
                                                     device_ranks, config));
 
@@ -121,7 +121,7 @@ SplitCommunicators(
 
   GpuCollectives::Config config;
 
-  ASSIGN_OR_RETURN(auto comms, collectives->SplitCommunicators(
+  ABSL_ASSIGN_OR_RETURN(auto comms, collectives->SplitCommunicators(
                                    existing_comms_ptrs, /*color=*/0, keys,
                                    config, device_ranks));
 

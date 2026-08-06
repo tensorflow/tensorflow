@@ -100,7 +100,7 @@ absl::StatusOr<bool> AllGatherDynamicSlicePermutedOffsetSimplifier::RunImpl(
   for (HloComputation* computation :
        module->MakeNonfusionComputations(execution_threads)) {
     AllGatherDynamicSlicePermutedOffsetSimplifierVisitor visitor;
-    RETURN_IF_ERROR(computation->Accept(&visitor));
+    ABSL_RETURN_IF_ERROR(computation->Accept(&visitor));
     changed |= visitor.changed();
   }
   return changed;

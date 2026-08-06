@@ -97,14 +97,14 @@ absl::Status CuDnnThunk::Initialize(const InitializeParams& params) {
 absl::Status CuDnnThunk::ExecuteOnStream(const ExecuteParams& params) {
   InitializeParams initialize_params;
   initialize_params.stream = params.stream;
-  RETURN_IF_ERROR(Initialize(initialize_params));
+  ABSL_RETURN_IF_ERROR(Initialize(initialize_params));
   std::vector<se::DeviceAddressBase> buffer_args;
   buffer_args.reserve(args_.size());
   for (const ShapedSlice& arg : args_) {
     auto addr = params.buffer_allocations->GetDeviceAddress(arg.slice);
     if (output_args_[buffer_args.size()]) {
       if (should_memzero_) {
-        RETURN_IF_ERROR(params.stream->MemZero(&addr, addr.size()));
+        ABSL_RETURN_IF_ERROR(params.stream->MemZero(&addr, addr.size()));
       }
       tsl::profiler::MarkMemoryInitialized(
           addr.opaque(), addr.size(),
@@ -132,7 +132,7 @@ absl::StatusOr<const se::CommandBuffer::Command*> CuDnnThunk::Record(
     operands.push_back(buf);
   }
 
-  ASSIGN_OR_RETURN(const bool supports_explicit,
+  ABSL_ASSIGN_OR_RETURN(const bool supports_explicit,
                    graph_->get()->SupportsExplicitCommandBufferConstruction());
   if (supports_explicit) {
     if (auto* create = std::get_if<RecordCreate>(&record_action)) {
@@ -141,7 +141,7 @@ absl::StatusOr<const se::CommandBuffer::Command*> CuDnnThunk::Record(
           absl::Span<se::DeviceAddressBase>(operands), create->dependencies);
     }
     if (auto* update = std::get_if<RecordUpdate>(&record_action)) {
-      RETURN_IF_ERROR(command_buffer->UpdateDnnGraphCommand(
+      ABSL_RETURN_IF_ERROR(command_buffer->UpdateDnnGraphCommand(
           update->command, *graph_->get(), *execute_params.stream,
           absl::Span<se::DeviceAddressBase>(operands)));
       return update->command;
@@ -163,7 +163,7 @@ absl::StatusOr<ThunkProto> CuDnnThunk::ToProto() const {
   proto.mutable_cudnn_thunk()->set_fingerprint(fingerprint_);
 
   for (const ShapedSlice& arg : args_) {
-    ASSIGN_OR_RETURN(*proto.mutable_cudnn_thunk()->add_args(), arg.ToProto());
+    ABSL_ASSIGN_OR_RETURN(*proto.mutable_cudnn_thunk()->add_args(), arg.ToProto());
   }
   for (const bool is_output : output_args_) {
     proto.mutable_cudnn_thunk()->add_output_args(is_output);
@@ -182,7 +182,7 @@ absl::StatusOr<std::unique_ptr<CuDnnThunk>> CuDnnThunk::FromProto(
   std::vector<ShapedSlice> args;
   args.reserve(proto.args_size());
   for (const ShapedSliceProto& arg : proto.args()) {
-    ASSIGN_OR_RETURN(args.emplace_back(),
+    ABSL_ASSIGN_OR_RETURN(args.emplace_back(),
                      ShapedSlice::FromProto(arg, buffer_allocations));
   }
   std::vector<bool> output_args;

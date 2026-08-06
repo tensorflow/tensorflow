@@ -88,7 +88,7 @@ HloInstruction* AllGatherDecomposer::TranslateAllGatherToAllReducePerOperand(
 
 absl::Status AllGatherDecomposer::DecomposeAllGather(
     HloAllGatherInstruction* ag, HloComputation* comp) {
-  ASSIGN_OR_RETURN(CollectiveOpGroupMode group_mode,
+  ABSL_ASSIGN_OR_RETURN(CollectiveOpGroupMode group_mode,
                    GetCollectiveOpGroupMode(ag->channel_id().has_value(),
                                             ag->use_global_device_ids()));
   if (ag->operand_count() > 1) {
@@ -102,14 +102,14 @@ absl::Status AllGatherDecomposer::DecomposeAllGather(
       tuple_inputs.push_back(ar);
     }
     auto tup = comp->AddInstruction(HloInstruction::CreateTuple(tuple_inputs));
-    RETURN_IF_ERROR(ag->ReplaceAllUsesWith(tup));
+    ABSL_RETURN_IF_ERROR(ag->ReplaceAllUsesWith(tup));
   } else {
     auto* ar = TranslateAllGatherToAllReducePerOperand(
         group_mode, *ag, ag->shape(), ag->mutable_operand(0), comp,
         ag->all_gather_dimension());
-    RETURN_IF_ERROR(ag->ReplaceAllUsesWith(ar));
+    ABSL_RETURN_IF_ERROR(ag->ReplaceAllUsesWith(ar));
   }
-  RETURN_IF_ERROR(comp->RemoveInstructionAndUnusedOperands(ag));
+  ABSL_RETURN_IF_ERROR(comp->RemoveInstructionAndUnusedOperands(ag));
   return absl::OkStatus();
 }
 
@@ -124,7 +124,7 @@ absl::StatusOr<bool> AllGatherDecomposer::RunImpl(
       }
       auto ag = Cast<HloAllGatherInstruction>(hlo);
       if (ShouldDecompose(*ag)) {
-        RETURN_IF_ERROR(DecomposeAllGather(ag, comp));
+        ABSL_RETURN_IF_ERROR(DecomposeAllGather(ag, comp));
         changed = true;
       }
     }

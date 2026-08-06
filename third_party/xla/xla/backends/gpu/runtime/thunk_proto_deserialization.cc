@@ -115,7 +115,7 @@ absl::StatusOr<std::unique_ptr<Thunk>> DeserializeThunkProtoImpl(
         symbol_resolver,
     const std::optional<xla::cpu::TargetMachineOptions>&
         cpu_target_machine_options) {
-  ASSIGN_OR_RETURN(Thunk::ThunkInfo thunk_info,
+  ABSL_ASSIGN_OR_RETURN(Thunk::ThunkInfo thunk_info,
                    Thunk::ThunkInfo::FromProto(thunk_proto.thunk_info()));
   auto deserializer = [&](const ThunkProto& thunk_proto) {
     return DeserializeThunkProtoImpl(
@@ -370,7 +370,7 @@ absl::StatusOr<ThunkSequence> DeserializeThunkSequenceProto(
   AsyncExecutionMap async_execution_map;
   ThunkSequence sequence;
   for (const ThunkProto& thunk_proto : thunk_sequence_proto.thunks()) {
-    ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         std::unique_ptr<Thunk> thunk,
         DeserializeThunkProtoImpl(
             thunk_proto, buffer_allocations, hlo_module, platform_name,

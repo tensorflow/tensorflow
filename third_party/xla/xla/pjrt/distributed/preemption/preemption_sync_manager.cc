@@ -83,7 +83,7 @@ absl::Status PreemptionSyncManager::Initialize(
 absl::Status PreemptionSyncManager::Initialize(
     CoordinationServiceAgent* agent,
     const std::string& preemption_notifier_type) {
-  ASSIGN_OR_RETURN(tsl::Env * env, agent->GetEnv());
+  ABSL_ASSIGN_OR_RETURN(tsl::Env * env, agent->GetEnv());
   return Initialize(agent, PreemptionNotifier::CreatePreemptionNotifier(
                                preemption_notifier_type, env));
 }
@@ -96,7 +96,7 @@ absl::Status PreemptionSyncManager::Initialize(
     CHECK(!shut_down_);
   }
 
-  ASSIGN_OR_RETURN(tsl::Env * env, agent->GetEnv());
+  ABSL_ASSIGN_OR_RETURN(tsl::Env * env, agent->GetEnv());
   env_ = env;
   agent_ = agent;
   preemption_notifier_ = std::move(notifier);

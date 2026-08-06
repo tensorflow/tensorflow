@@ -122,7 +122,7 @@ static absl::StatusOr<ifrt::LoadedExecutableRef> CompileAndLoad(
   mlir::MLIRContext context;
   auto module = xla::ParseMlirModuleString(program, context);
 
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       xla::ifrt::DeviceListRef devices,
       client->MakeDeviceList({client->addressable_devices().at(0)}));
   auto compile_options = std::make_unique<ifrt::XlaCompileOptions>(

@@ -89,7 +89,7 @@ class AbstractArraySpec {
   absl::StatusOr<AbstractArraySpecProto> ToProto(
       SerDesVersion version = SerDesVersion::current()) const {
     AbstractArraySpecProto proto;
-    RETURN_IF_ERROR(ToProto(proto, version));
+    ABSL_RETURN_IF_ERROR(ToProto(proto, version));
     return proto;
   }
 

@@ -153,7 +153,7 @@ absl::StatusOr<HloInstruction*> StableSortExpander::ExpandInstruction(
   // If there is currently no iota operand which we could use for making the
   // sort stable, we will have to add a new such operand.
   if (iota_index == -1) {
-    ASSIGN_OR_RETURN(auto result, AddIotaAndExpand(sort));
+    ABSL_ASSIGN_OR_RETURN(auto result, AddIotaAndExpand(sort));
     comparator = result.comparator;
     new_root = result.new_root;
     iota_index = sort->operand_count();

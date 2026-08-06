@@ -156,7 +156,7 @@ SemanticVersion CompileTimeToolkitVersion() { return SemanticVersion{0, 0, 0}; }
 
 absl::StatusOr<std::unique_ptr<DeviceDescription>>
 CreateOneApiDeviceDescription(int device_ordinal) {
-  ASSIGN_OR_RETURN(::sycl::device sycl_device,
+  ABSL_ASSIGN_OR_RETURN(::sycl::device sycl_device,
                    SyclDevicePool::GetDevice(device_ordinal));
   ze_device_handle_t lz_device =
       ::sycl::get_native<::sycl::backend::ext_oneapi_level_zero>(sycl_device);

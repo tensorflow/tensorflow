@@ -1006,14 +1006,14 @@ static absl::Status AddOne(se::Stream* stream, ffi::AnyBuffer src,
 
   int32_t data[2];
   se::DeviceAddressBase buffer_mem = ret->device_memory();
-  RETURN_IF_ERROR(stream->Memcpy(data, buffer_mem, sizeof(data)));
-  RETURN_IF_ERROR(stream->BlockHostUntilDone());
+  ABSL_RETURN_IF_ERROR(stream->Memcpy(data, buffer_mem, sizeof(data)));
+  ABSL_RETURN_IF_ERROR(stream->BlockHostUntilDone());
 
   data[0] += 1;
   data[1] += 1;
 
-  RETURN_IF_ERROR(stream->Memcpy(&buffer_mem, data, sizeof(data)));
-  RETURN_IF_ERROR(stream->BlockHostUntilDone());
+  ABSL_RETURN_IF_ERROR(stream->Memcpy(&buffer_mem, data, sizeof(data)));
+  ABSL_RETURN_IF_ERROR(stream->BlockHostUntilDone());
 
   return absl::OkStatus();
 }
@@ -1134,14 +1134,14 @@ absl::Status UpdateBufferImpl(se::Stream* stream, ffi::AnyBuffer src,
   }
   int32_t data[4];
   se::DeviceAddressBase buffer_mem = ret->device_memory();
-  RETURN_IF_ERROR(stream->Memcpy(data, buffer_mem, sizeof(data)));
-  RETURN_IF_ERROR(stream->BlockHostUntilDone());
+  ABSL_RETURN_IF_ERROR(stream->Memcpy(data, buffer_mem, sizeof(data)));
+  ABSL_RETURN_IF_ERROR(stream->BlockHostUntilDone());
 
   data[offset] += 1;
   data[offset + 1] += 1;
 
-  RETURN_IF_ERROR(stream->Memcpy(&buffer_mem, data, sizeof(data)));
-  RETURN_IF_ERROR(stream->BlockHostUntilDone());
+  ABSL_RETURN_IF_ERROR(stream->Memcpy(&buffer_mem, data, sizeof(data)));
+  ABSL_RETURN_IF_ERROR(stream->BlockHostUntilDone());
 
   return absl::OkStatus();
 }

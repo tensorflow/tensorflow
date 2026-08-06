@@ -147,14 +147,14 @@ YnnFusionThunk::CreateYnnExecutable(
   executable.captured_arguments = CaptureArguments(arguments_buffers);
 
   if (builder_) {
-    ASSIGN_OR_RETURN(executable.subgraph, builder_(arguments_, results_));
+    ABSL_ASSIGN_OR_RETURN(executable.subgraph, builder_(arguments_, results_));
   } else {
-    ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         executable.subgraph,
         capturing_builder_(arguments_, results_, arguments_buffers));
   }
 
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       executable.runtime, CreateYnnRuntime([&](ynn_runtime_t* runtime) {
         uint32_t ynn_flags = 0;
         return ynn_create_runtime(
@@ -187,15 +187,15 @@ absl::Status YnnFusionThunk::UpdateYnnExecutable(
   VLOG(3) << absl::StreamFormat("Update YNN executable for `%s` operation",
                                 info().op_name);
 
-  RETURN_IF_ERROR(executable.Reset());
+  ABSL_RETURN_IF_ERROR(executable.Reset());
 
   // Keep track of the updated arguments captured by value.
   executable.captured_arguments = std::move(capture_arguments);
 
-  ASSIGN_OR_RETURN(executable.subgraph,
+  ABSL_ASSIGN_OR_RETURN(executable.subgraph,
                    capturing_builder_(arguments_, results_, arguments_buffers));
 
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       executable.runtime, CreateYnnRuntime([&](ynn_runtime_t* runtime) {
         uint32_t ynn_flags = 0;
         return ynn_create_runtime(
@@ -305,7 +305,7 @@ tsl::AsyncValueRef<YnnFusionThunk::ExecuteEvent> YnnFusionThunk::Execute(
   for (size_t i = 0; i < arguments_.size(); ++i) {
     Argument& argument = arguments_[i];
 
-    ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         arguments_buffers[i],
         params.buffer_allocations->GetDeviceAddress(argument.slice));
 
@@ -321,7 +321,7 @@ tsl::AsyncValueRef<YnnFusionThunk::ExecuteEvent> YnnFusionThunk::Execute(
   for (size_t i = 0; i < results_.size(); ++i) {
     Result& result = results_[i];
 
-    ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         results_buffers[i],
         params.buffer_allocations->GetDeviceAddress(results_[i].slice));
 
@@ -346,7 +346,7 @@ tsl::AsyncValueRef<YnnFusionThunk::ExecuteEvent> YnnFusionThunk::Execute(
   };
 
   // Borrow YnnExecutable from the pool.
-  ASSIGN_OR_RETURN(auto executable,
+  ABSL_ASSIGN_OR_RETURN(auto executable,
                    ynn_executable_pool_.GetOrCreate(GetYnnThreadpool(params),
                                                     arguments_buffers));
 
@@ -374,7 +374,7 @@ tsl::AsyncValueRef<YnnFusionThunk::ExecuteEvent> YnnFusionThunk::Execute(
   }
 
   // Otherwise reset YnnExecutable to capture new arguments buffers.
-  RETURN_IF_ERROR(UpdateYnnExecutable(GetYnnThreadpool(params), *executable,
+  ABSL_RETURN_IF_ERROR(UpdateYnnExecutable(GetYnnThreadpool(params), *executable,
                                       arguments_buffers));
   return invoke(std::move(executable));
 }

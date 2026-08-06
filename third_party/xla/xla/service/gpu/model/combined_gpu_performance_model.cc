@@ -93,7 +93,7 @@ absl::StatusOr<CombinedGpuPerformanceModel::RunTimes>
 CombinedGpuPerformanceModel::EstimateRunTimes(
     const HloInstruction* producer, const GpuHloCostAnalysis* cost_analysis,
     absl::Span<const HloInstruction* const> fused_consumers) {
-  ASSIGN_OR_RETURN(EstimateRunTimeData producer_runtime,
+  ABSL_ASSIGN_OR_RETURN(EstimateRunTimeData producer_runtime,
                    EstimateRunTimeForInstruction(producer, cost_analysis));
 
   absl::Duration time_unfused =
@@ -103,7 +103,7 @@ CombinedGpuPerformanceModel::EstimateRunTimes(
   absl::Duration time_fused = kKernelLaunchOverhead * fused_consumers.size();
 
   for (auto fused_consumer : fused_consumers) {
-    ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         EstimateRunTimeData consumer_runtime,
         EstimateRunTimeForInstruction(fused_consumer, cost_analysis));
 
@@ -234,9 +234,9 @@ absl::StatusOr<CombinedGpuPerformanceModel::RunTimes>
 CombinedGpuPerformanceModel::EstimateRunTimesForMultiOutput(
     const HloInstruction* producer, const HloInstruction* consumer,
     const GpuHloCostAnalysis* cost_analysis) {
-  ASSIGN_OR_RETURN(EstimateRunTimeData producer_runtime,
+  ABSL_ASSIGN_OR_RETURN(EstimateRunTimeData producer_runtime,
                    EstimateRunTimeForInstruction(producer, cost_analysis));
-  ASSIGN_OR_RETURN(EstimateRunTimeData consumer_runtime,
+  ABSL_ASSIGN_OR_RETURN(EstimateRunTimeData consumer_runtime,
                    EstimateRunTimeForInstruction(consumer, cost_analysis));
 
   absl::Duration time_unfused = 2 * kKernelLaunchOverhead +

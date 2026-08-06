@@ -146,7 +146,7 @@ class GpuAotCompilationResultTest : public ::testing::Test {
     params.module_name = "test_module";
     params.enable_debug_info_manager = false;
     params.allocations = {BufferAllocation(0, 1024, 0)};
-    ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         params.executable_abi_version,
         stream_executor::ExecutableAbiVersion::FromDeviceDescription(
             device_description_));
@@ -162,7 +162,7 @@ class GpuAotCompilationResultTest : public ::testing::Test {
         )pb");
     params.buffer_allocations_debug_summary = "dummy_summary";
 
-    ASSIGN_OR_RETURN(std::unique_ptr<GpuExecutable> executable,
+    ABSL_ASSIGN_OR_RETURN(std::unique_ptr<GpuExecutable> executable,
                      GpuExecutable::Create(std::move(params)));
     return executable->ToProto();
   }

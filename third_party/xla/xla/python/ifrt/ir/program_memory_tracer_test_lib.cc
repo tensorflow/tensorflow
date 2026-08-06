@@ -79,7 +79,7 @@ class ProgramMemoryTracerTest
       mlir::ModuleOp mlir_module, DeviceListRef devices) {
     auto program = std::make_unique<IfrtIRProgram>(mlir_module);
     auto options = CreateCompileOptions(devices);
-    ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         LoadedExecutableRef executable,
         client_->GetDefaultCompiler()
             ->CompileAndLoad(std::move(program), std::move(options))

@@ -71,7 +71,7 @@ class AllReduceSplitterFilecheckTest : public AllReduceSplitterTest {
  public:
   absl::Status FileCheck(const std::string& hlo_text,
                          absl::string_view pattern) {
-    ASSIGN_OR_RETURN(bool matched, RunFileCheck(hlo_text, pattern));
+    ABSL_ASSIGN_OR_RETURN(bool matched, RunFileCheck(hlo_text, pattern));
     if (!matched) {
       return absl::InternalError("Filecheck failed.");
     }

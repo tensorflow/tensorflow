@@ -371,15 +371,15 @@ absl::StatusOr<Value> LowerConvert(ImplicitLocOpBuilder& builder, Location loc,
           mlir::stablehlo::RealOp::create(builder, loc, real_src_ty, value);
       Value imag_input =
           mlir::stablehlo::ImagOp::create(builder, loc, real_src_ty, value);
-      ASSIGN_OR_RETURN(Value real_part, LowerConvert(builder, loc, real_input,
+      ABSL_ASSIGN_OR_RETURN(Value real_part, LowerConvert(builder, loc, real_input,
                                                      real_src_ty, real_ty));
-      ASSIGN_OR_RETURN(Value imag_part, LowerConvert(builder, loc, imag_input,
+      ABSL_ASSIGN_OR_RETURN(Value imag_part, LowerConvert(builder, loc, imag_input,
                                                      real_src_ty, real_ty));
       return mlir::stablehlo::ComplexOp::create(builder, loc, dst_ty, real_part,
                                                 imag_part)
           .getResult();
     }
-    ASSIGN_OR_RETURN(Value real_part,
+    ABSL_ASSIGN_OR_RETURN(Value real_part,
                      LowerConvert(builder, loc, value, src_ty, real_ty));
     Value imag_part = ZerosLike(builder, real_part);
     return mlir::stablehlo::ComplexOp::create(builder, loc, dst_ty, real_part,

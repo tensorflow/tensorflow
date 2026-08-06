@@ -63,7 +63,7 @@ absl::StatusOr<bool> NcclGroupEnd() {
 bool IsInsideNcclGroupLaunch() { return nccl_group_nesting > 0; }
 
 absl::StatusOr<bool> NcclGroupLaunch(absl::FunctionRef<absl::Status()> group) {
-  RETURN_IF_ERROR(NcclGroupStart());
+  ABSL_RETURN_IF_ERROR(NcclGroupStart());
   absl::Status group_status = group();
   absl::StatusOr<bool> launched = NcclGroupEnd();
   if (!group_status.ok()) {

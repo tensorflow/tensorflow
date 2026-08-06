@@ -24,7 +24,7 @@ limitations under the License.
 #include "tsl/platform/errors.h"
 
 #define SE_CUBLAS_RETURN_IF_ERROR(expr) \
-  RETURN_IF_ERROR(::stream_executor::cuda::ToStatus(expr, #expr))
+  ABSL_RETURN_IF_ERROR(::stream_executor::cuda::ToStatus(expr, #expr))
 
 namespace stream_executor {
 namespace cuda {

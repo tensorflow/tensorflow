@@ -538,7 +538,7 @@ class OperandsMustBeTheSameLayoutAssignment : public LayoutAssignment {
           operand->shape().dimensions().size()) {
         continue;
       }
-      RETURN_IF_ERROR(SetArrayOperandLayout(buffer_constraint.layout(),
+      ABSL_RETURN_IF_ERROR(SetArrayOperandLayout(buffer_constraint.layout(),
                                             instruction, operand_no,
                                             /*mandatory=*/true));
     }

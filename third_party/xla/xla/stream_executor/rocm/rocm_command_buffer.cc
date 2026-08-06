@@ -54,7 +54,7 @@ namespace {
 absl::StatusOr<hipGraph_t> CreateGraph() {
   VLOG(2) << "Create new HIP graph";
   hipGraph_t graph;
-  RETURN_IF_ERROR(ToStatus(hipGraphCreate(&graph, /*flags=*/0),
+  ABSL_RETURN_IF_ERROR(ToStatus(hipGraphCreate(&graph, /*flags=*/0),
                            "Failed to create HIP graph"));
   VLOG(2) << "Created HIP graph " << graph;
   return graph;
@@ -94,7 +94,7 @@ GraphNodeHandle FromHipGraphHandle(hipGraphNode_t handle) {
 
 absl::StatusOr<std::unique_ptr<RocmCommandBuffer>> RocmCommandBuffer::Create(
     Mode mode, StreamExecutor* executor) {
-  ASSIGN_OR_RETURN(hipGraph_t graph, CreateGraph());
+  ABSL_ASSIGN_OR_RETURN(hipGraph_t graph, CreateGraph());
   return std::unique_ptr<RocmCommandBuffer>(
       new RocmCommandBuffer(mode, executor, graph, /*is_owned_graph=*/true));
 }
@@ -155,7 +155,7 @@ absl::StatusOr<GraphNodeHandle> RocmCommandBuffer::CreateMemsetNode(
   std::vector<hipGraphNode_t> deps = ToHipGraphHandles(dependencies);
 
   hipGraphNode_t node_handle = nullptr;
-  RETURN_IF_ERROR(
+  ABSL_RETURN_IF_ERROR(
       ToStatus(hipGraphAddMemsetNode(&node_handle, graph_, deps.data(),
                                      deps.size(), &params),
                "Failed to add memset node to a HIP graph"));
@@ -194,7 +194,7 @@ absl::StatusOr<GraphNodeHandle> RocmCommandBuffer::CreateMemcpyD2DNode(
   std::vector<hipGraphNode_t> deps = ToHipGraphHandles(dependencies);
 
   hipGraphNode_t node_handle = nullptr;
-  RETURN_IF_ERROR(ToStatus(
+  ABSL_RETURN_IF_ERROR(ToStatus(
       hipGraphAddMemcpyNode1D(&node_handle, graph_, deps.data(), deps.size(),
                               AsDevicePtr(destination), AsDevicePtr(source),
                               size, hipMemcpyDeviceToDevice),
@@ -232,7 +232,7 @@ absl::StatusOr<GraphNodeHandle> RocmCommandBuffer::CreateClonedChildNode(
   std::vector<hipGraphNode_t> deps = ToHipGraphHandles(dependencies);
 
   hipGraphNode_t node_handle = nullptr;
-  RETURN_IF_ERROR(ToStatus(
+  ABSL_RETURN_IF_ERROR(ToStatus(
       hipGraphAddChildGraphNode(&node_handle, graph_, deps.data(), deps.size(),
                                 child_graph),
       "Failed to create a child graph node and add it to a HIP graph"));
@@ -274,7 +274,7 @@ absl::StatusOr<GraphNodeHandle> RocmCommandBuffer::CreateKernelNode(
   std::unique_ptr<KernelArgsPackedArrayBase> repacked;
   const KernelArgsPackedArrayBase* packed_args;
   if (kernel.args_packing()) {
-    ASSIGN_OR_RETURN(repacked, kernel.args_packing()(kernel, args));
+    ABSL_ASSIGN_OR_RETURN(repacked, kernel.args_packing()(kernel, args));
     packed_args = repacked.get();
   } else {
     packed_args = &args;
@@ -296,7 +296,7 @@ absl::StatusOr<GraphNodeHandle> RocmCommandBuffer::CreateKernelNode(
   params.extra = nullptr;
 
   if (shared_mem_bytes != 0) {
-    RETURN_IF_ERROR(
+    ABSL_RETURN_IF_ERROR(
         ToStatus(hipFuncSetAttribute(function,
                                      hipFuncAttributeMaxDynamicSharedMemorySize,
                                      shared_mem_bytes),
@@ -306,7 +306,7 @@ absl::StatusOr<GraphNodeHandle> RocmCommandBuffer::CreateKernelNode(
   std::vector<hipGraphNode_t> deps = ToHipGraphHandles(dependencies);
 
   hipGraphNode_t node_handle = nullptr;
-  RETURN_IF_ERROR(
+  ABSL_RETURN_IF_ERROR(
       ToStatus(hipGraphAddKernelNode(&node_handle, graph_, deps.data(),
                                      deps.size(), &params),
                "Failed to add kernel node to a HIP graph"));
@@ -329,7 +329,7 @@ absl::Status RocmCommandBuffer::UpdateKernelNode(
   std::unique_ptr<KernelArgsPackedArrayBase> repacked;
   const KernelArgsPackedArrayBase* packed_args;
   if (kernel.args_packing()) {
-    ASSIGN_OR_RETURN(repacked, kernel.args_packing()(kernel, args));
+    ABSL_ASSIGN_OR_RETURN(repacked, kernel.args_packing()(kernel, args));
     packed_args = repacked.get();
   } else {
     packed_args = &args;
@@ -351,7 +351,7 @@ absl::Status RocmCommandBuffer::UpdateKernelNode(
   params.extra = nullptr;
 
   if (shared_mem_bytes != 0) {
-    RETURN_IF_ERROR(
+    ABSL_RETURN_IF_ERROR(
         ToStatus(hipFuncSetAttribute(function,
                                      hipFuncAttributeMaxDynamicSharedMemorySize,
                                      shared_mem_bytes),
@@ -371,7 +371,7 @@ absl::StatusOr<GraphNodeHandle> RocmCommandBuffer::CreateEmptyNode(
   std::vector<hipGraphNode_t> deps = ToHipGraphHandles(dependencies);
 
   hipGraphNode_t node_handle = nullptr;
-  RETURN_IF_ERROR(ToStatus(
+  ABSL_RETURN_IF_ERROR(ToStatus(
       hipGraphAddEmptyNode(&node_handle, graph_, deps.data(), deps.size()),
       "Failed to add empty node to a HIP graph"));
 
@@ -380,8 +380,8 @@ absl::StatusOr<GraphNodeHandle> RocmCommandBuffer::CreateEmptyNode(
 
 absl::Status RocmCommandBuffer::Trace(
     Stream* stream, absl::AnyInvocable<absl::Status(Stream* stream)> function) {
-  RETURN_IF_ERROR(CheckNotFinalized());
-  ASSIGN_OR_RETURN(size_t count, GetNodeCount());
+  ABSL_RETURN_IF_ERROR(CheckNotFinalized());
+  ABSL_ASSIGN_OR_RETURN(size_t count, GetNodeCount());
   if (count != 0 || !is_owned_graph_)
     return absl::InternalError(
         "Stream can't be traced on non empty command buffer");
@@ -394,7 +394,7 @@ absl::Status RocmCommandBuffer::Trace(
 
   // Switch stream into the capture mode.
   uint64_t start_nanos = tsl::Env::Default()->NowNanos();
-  RETURN_IF_ERROR(ToStatus(
+  ABSL_RETURN_IF_ERROR(ToStatus(
       hipStreamBeginCapture(stream_handle, hipStreamCaptureModeThreadLocal),
       "Failed to begin stream capture"));
   auto traced = function(stream);
@@ -402,9 +402,9 @@ absl::Status RocmCommandBuffer::Trace(
   // Always stop capturing the stream before checking `traced` result.
   VLOG(5) << "End stream " << stream << " capture";
   hipGraph_t captured_graph;
-  RETURN_IF_ERROR(ToStatus(hipStreamEndCapture(stream_handle, &captured_graph),
+  ABSL_RETURN_IF_ERROR(ToStatus(hipStreamEndCapture(stream_handle, &captured_graph),
                            "Failed to end stream capture"));
-  RETURN_IF_ERROR(
+  ABSL_RETURN_IF_ERROR(
       ToStatus(hipGraphDestroy(std::exchange(graph_, captured_graph)),
                "Failed to destroy HIP graph"));
   uint64_t end_nanos = tsl::Env::Default()->NowNanos();
@@ -417,13 +417,13 @@ absl::Status RocmCommandBuffer::Trace(
           << (end_nanos - start_nanos) / 1000 << " μs)";
 
   size_t num_root_nodes = 0;
-  RETURN_IF_ERROR(
+  ABSL_RETURN_IF_ERROR(
       ToStatus(hipGraphGetRootNodes(graph_, nullptr, &num_root_nodes),
                "Failed to get HIP graph root node count"));
 
   if (num_root_nodes == 0) {
     VLOG(5) << "Traced HIP graph is empty; adding an empty node";
-    ASSIGN_OR_RETURN(auto* empty, CreateEmptyCmd({}, StreamPriority::Default));
+    ABSL_ASSIGN_OR_RETURN(auto* empty, CreateEmptyCmd({}, StreamPriority::Default));
     (void)empty;
   }
 
@@ -440,7 +440,7 @@ absl::Status RocmCommandBuffer::LaunchGraph(Stream* stream) {
 }
 absl::StatusOr<size_t> RocmCommandBuffer::GetNodeCount() const {
   size_t numNodes;
-  RETURN_IF_ERROR(
+  ABSL_RETURN_IF_ERROR(
       ToStatus(hipGraphGetNodes(graph_, /*nodes=*/nullptr, &numNodes),
                "Failed to get HIP graph node count"));
 
@@ -448,7 +448,7 @@ absl::StatusOr<size_t> RocmCommandBuffer::GetNodeCount() const {
 }
 
 absl::Status RocmCommandBuffer::PrepareFinalization() {
-  ASSIGN_OR_RETURN(auto node_count, GetNodeCount());
+  ABSL_ASSIGN_OR_RETURN(auto node_count, GetNodeCount());
   if (node_count > 0) {
     return absl::OkStatus();
   }
@@ -457,7 +457,7 @@ absl::Status RocmCommandBuffer::PrepareFinalization() {
   // graphs. Insert an empty node so the graph is non-empty, analogous to
   // CUDA's NoOp kernel insertion for the same case.
   hipGraphNode_t node_handle = nullptr;
-  RETURN_IF_ERROR(ToStatus(hipGraphAddEmptyNode(&node_handle, graph_,
+  ABSL_RETURN_IF_ERROR(ToStatus(hipGraphAddEmptyNode(&node_handle, graph_,
                                                 /*pDependencies=*/nullptr,
                                                 /*numDependencies=*/0),
                            "Failed to add empty node in PrepareFinalization"));

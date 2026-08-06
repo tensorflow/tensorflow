@@ -109,7 +109,7 @@ absl::StatusOr<std::vector<std::unique_ptr<MemoryAllocation>>> AllocateBuffers(
   std::vector<std::unique_ptr<MemoryAllocation>> buffers;
   buffers.reserve(num_devices);
   for (int i = 0; i < num_devices; ++i) {
-    ASSIGN_OR_RETURN(std::unique_ptr<MemoryAllocation> buffer,
+    ABSL_ASSIGN_OR_RETURN(std::unique_ptr<MemoryAllocation> buffer,
                      allocators[i]->Allocate(buffer_size));
     buffers.push_back(std::move(buffer));
   }
@@ -135,7 +135,7 @@ CreateSymmetricMemory(
 
   std::vector<std::unique_ptr<xla::SymmetricMemory>> symmetric_memory;
   for (int i = 0; i < num_devices; ++i) {
-    ASSIGN_OR_RETURN(auto mem, std::move(symmetric_memory_futures[i]).Await());
+    ABSL_ASSIGN_OR_RETURN(auto mem, std::move(symmetric_memory_futures[i]).Await());
     symmetric_memory.push_back(std::move(mem));
   }
   return symmetric_memory;
@@ -146,9 +146,9 @@ absl::StatusOr<std::vector<T>> CopyToHost(Stream* stream,
                                           DeviceAddressBase device_address,
                                           int64_t num_elements) {
   std::vector<T> host_buffer(num_elements);
-  RETURN_IF_ERROR(stream->Memcpy(host_buffer.data(), device_address,
+  ABSL_RETURN_IF_ERROR(stream->Memcpy(host_buffer.data(), device_address,
                                  num_elements * sizeof(T)));
-  RETURN_IF_ERROR(stream->BlockHostUntilDone());
+  ABSL_RETURN_IF_ERROR(stream->BlockHostUntilDone());
   return host_buffer;
 }
 

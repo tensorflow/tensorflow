@@ -146,7 +146,7 @@ absl::StatusOr<KernelSpec> ParallelFusionEmitter::AddFusion(
   // returned immediately, we have to do it in the main thread. This can be
   // fixed but will require a rework of the ThunkEmitter.
   auto compiler_instance = fusion_compiler_pool_->GetInstance();
-  ASSIGN_OR_RETURN(KernelDefinition mlir_kernel_definition,
+  ABSL_ASSIGN_OR_RETURN(KernelDefinition mlir_kernel_definition,
                    EmitFusionKernel(*compiler_instance->mlir_context, *fusion,
                                     buffer_assignment_, use_unique_c_name_,
                                     enable_tiled_emitter_));

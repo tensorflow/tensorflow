@@ -90,12 +90,12 @@ const std::string& ROCmPlatform::Name() const { return name_; }
 
 absl::StatusOr<std::unique_ptr<DeviceDescription>>
 ROCmPlatform::DescriptionForDevice(int ordinal) const {
-  RETURN_IF_ERROR(PlatformInitialize());
+  ABSL_RETURN_IF_ERROR(PlatformInitialize());
   return RocmExecutor::CreateDeviceDescription(ordinal);
 }
 
 absl::StatusOr<StreamExecutor*> ROCmPlatform::ExecutorForDevice(int ordinal) {
-  RETURN_IF_ERROR(PlatformInitialize());
+  ABSL_RETURN_IF_ERROR(PlatformInitialize());
   return executor_cache_.GetOrCreate(
       ordinal, [this, ordinal]() { return GetUncachedExecutor(ordinal); });
 }
@@ -107,7 +107,7 @@ absl::StatusOr<StreamExecutor*> ROCmPlatform::FindExisting(int ordinal) {
 absl::StatusOr<std::unique_ptr<StreamExecutor>>
 ROCmPlatform::GetUncachedExecutor(int ordinal) {
   auto executor = std::make_unique<RocmExecutor>(this, ordinal);
-  RETURN_IF_ERROR(executor->Init());
+  ABSL_RETURN_IF_ERROR(executor->Init());
   return std::move(executor);
 }
 

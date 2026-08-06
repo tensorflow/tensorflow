@@ -64,10 +64,10 @@ absl::Status GenericTransferManager::WriteSingleTupleIndexTable(
   for (const se::DeviceAddressBase& element : elements) {
     element_pointers->push_back(element.opaque());
   }
-  RETURN_IF_ERROR(TransferBufferToDevice(stream, GetByteSizeRequirement(shape),
+  ABSL_RETURN_IF_ERROR(TransferBufferToDevice(stream, GetByteSizeRequirement(shape),
                                          element_pointers->data(), region));
   // Ensure the buffer is transferred before we destroy element_pointers.
-  RETURN_IF_ERROR(
+  ABSL_RETURN_IF_ERROR(
       stream->DoHostCallback([element_pointers{std::move(element_pointers)}]() {
         /* holds reference to element_pointers in closure */
       }));
@@ -86,7 +86,7 @@ void GenericTransferManager::TransferLiteralFromDevice(
     TF_RET_CHECK(stream->parent()->device_ordinal() ==
                  device_buffer.physical_device_ordinal());
 
-    RETURN_IF_ERROR(ShapeUtil::ForEachSubshapeWithStatus(
+    ABSL_RETURN_IF_ERROR(ShapeUtil::ForEachSubshapeWithStatus(
         device_buffer.on_device_shape(),
         [&](const Shape& subshape, const ShapeIndex& index) -> absl::Status {
           if (subshape.IsArray()) {
@@ -103,7 +103,7 @@ void GenericTransferManager::TransferLiteralFromDevice(
                   /*num_elements=*/ShapeUtil::ElementsIn(subshape),
                   /*destination=*/literal.untyped_data(index));
             } else {
-              RETURN_IF_ERROR(TransferBufferFromDevice(
+              ABSL_RETURN_IF_ERROR(TransferBufferFromDevice(
                   stream,
                   /*source=*/device_buffer.buffer(index),
                   // With bounded dynamic shapes, the shape of the device buffer
@@ -158,7 +158,7 @@ absl::Status GenericTransferManager::TransferLiteralToDeviceAsync(
   TF_RET_CHECK(stream->parent()->device_ordinal() ==
                device_buffer.physical_device_ordinal());
 
-  RETURN_IF_ERROR(WriteTupleIndexTablesAsync(stream, device_buffer));
+  ABSL_RETURN_IF_ERROR(WriteTupleIndexTablesAsync(stream, device_buffer));
 
   return ShapeUtil::ForEachSubshapeWithStatus(
       device_buffer.on_device_shape(),
@@ -197,9 +197,9 @@ absl::Status GenericTransferManager::TransferLiteralToDeviceAsync(
             // Relayout data before transferring.
             auto relaid_out = std::make_shared<Literal>(
                 subliteral.Relayout(device_subshape.layout()));
-            RETURN_IF_ERROR(TransferBuffer(relaid_out->untyped_data()));
+            ABSL_RETURN_IF_ERROR(TransferBuffer(relaid_out->untyped_data()));
             // Ensure the buffer is transferred before we destroy it.
-            RETURN_IF_ERROR(stream->DoHostCallback(
+            ABSL_RETURN_IF_ERROR(stream->DoHostCallback(
                 [keep_alive = std::move(relaid_out)] {}));
           }
         }
@@ -255,9 +255,9 @@ absl::Status GenericTransferManager::TransferIntNArrayFromDevice(
   int64_t elements_per_byte = 8 / bit_width;
   int64_t packed_size = CeilOfRatio(num_elements, elements_per_byte);
   auto packed_dst_data = std::make_unique<std::vector<char>>(packed_size);
-  RETURN_IF_ERROR(TransferBufferFromDevice(stream, source, packed_size,
+  ABSL_RETURN_IF_ERROR(TransferBufferFromDevice(stream, source, packed_size,
                                            packed_dst_data->data()));
-  RETURN_IF_ERROR(
+  ABSL_RETURN_IF_ERROR(
       stream->DoHostCallback([destination, bit_width, num_elements,
                               packed_dst_data = std::move(packed_dst_data)]() {
         UnpackIntN(
@@ -278,7 +278,7 @@ absl::Status GenericTransferManager::TransferIntNArrayToDevice(
            absl::MakeSpan(static_cast<const char*>(source), num_elements),
            absl::MakeSpan(*packed_src_data));
   TF_RET_CHECK(packed_src_data->size() == destination->size());
-  RETURN_IF_ERROR(TransferBufferToDevice(stream, packed_src_data->size(),
+  ABSL_RETURN_IF_ERROR(TransferBufferToDevice(stream, packed_src_data->size(),
                                          packed_src_data->data(), destination));
   return stream->DoHostCallback([keep_alive = std::move(packed_src_data)] {});
 }

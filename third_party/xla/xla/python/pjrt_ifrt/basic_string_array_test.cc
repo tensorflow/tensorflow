@@ -114,7 +114,7 @@ CreateNonReadyTestArray(
   Shape shape({1});
   ShardingRef sharding = SingleDeviceSharding::Create(device, MemoryKind());
 
-  ASSIGN_OR_RETURN(auto array,
+  ABSL_ASSIGN_OR_RETURN(auto array,
                    BasicStringArray::Create(client, shape, sharding,
                                             std::move(buffers_future),
                                             std::move(on_done_with_buffer)));
@@ -423,14 +423,14 @@ absl::StatusOr<ArrayRef> MakeShardedStringTestArray(
         "Test client has too few devices. Need 4, got:", devices.size()));
   }
 
-  ASSIGN_OR_RETURN(DeviceListRef device_list, client->MakeDeviceList(devices));
+  ABSL_ASSIGN_OR_RETURN(DeviceListRef device_list, client->MakeDeviceList(devices));
   ShardingRef sharding = ConcreteEvenSharding::Create(
       std::move(device_list), MemoryKind(), Shape({2, 1}), Shape({1}),
       is_fully_replicated);
 
   std::vector<ArrayRef> arrays;
   for (int i = 0; i < 2; ++i) {
-    ASSIGN_OR_RETURN(auto array, MakeSingleDeviceStringTestArray(
+    ABSL_ASSIGN_OR_RETURN(auto array, MakeSingleDeviceStringTestArray(
                                      {data[i]}, client, devices[i]));
     arrays.push_back(std::move(array));
   }

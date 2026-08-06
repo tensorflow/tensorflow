@@ -75,7 +75,7 @@ absl::Status XlaExecutableVersion::ToProto(
   executable_version_proto.set_version_number(SerDesVersionNumber(0).value());
   executable_version_proto.set_platform_id(platform_id);
   if (abi_version) {
-    ASSIGN_OR_RETURN(xla::ifrt::Serialized executable_abi_version_proto,
+    ABSL_ASSIGN_OR_RETURN(xla::ifrt::Serialized executable_abi_version_proto,
                      xla::ifrt::Serialize(
                          *abi_version,
                          std::make_unique<xla::ifrt::SerializeOptions>(
@@ -110,7 +110,7 @@ XlaExecutableVersion::FromProto(const SerializedXlaExecutableVersion& proto) {
     return absl::InvalidArgumentError(
         "Failed to parse XlaExecutableAbiVersion from string.");
   }
-  ASSIGN_OR_RETURN(std::unique_ptr<XlaExecutableAbiVersion>
+  ABSL_ASSIGN_OR_RETURN(std::unique_ptr<XlaExecutableAbiVersion>
                        xla_executable_runtime_abi_version,
                    xla::ifrt::Deserialize<XlaExecutableAbiVersion>(
                        executable_abi_version_proto,

@@ -105,9 +105,9 @@ absl::StatusOr<int64_t> ContractingDimensionIndex(const HloInstruction& dot,
 
 absl::StatusOr<int64_t> NonContractingDimensionIndex(const HloInstruction& dot,
                                                      const int operand_number) {
-  ASSIGN_OR_RETURN(int64_t contracting_dim,
+  ABSL_ASSIGN_OR_RETURN(int64_t contracting_dim,
                    ContractingDimensionIndex(dot, operand_number));
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       std::vector<int64_t> non_contracting_dims,
       GetNonContractingDims(dot.operand(operand_number)->shape(),
                             BatchDimensionsForOperand(dot, operand_number),
@@ -130,23 +130,23 @@ DotOperandDims::DotOperandDims(Shape shape,
 
 absl::StatusOr<std::array<DotOperandDims, 2>> DotOperandDims::FromDot(
     const HloInstruction* dot) {
-  ASSIGN_OR_RETURN(auto lhs_dims, FromDotOperand(dot, 0));
-  ASSIGN_OR_RETURN(auto rhs_dims, FromDotOperand(dot, 1));
+  ABSL_ASSIGN_OR_RETURN(auto lhs_dims, FromDotOperand(dot, 0));
+  ABSL_ASSIGN_OR_RETURN(auto rhs_dims, FromDotOperand(dot, 1));
   return std::array<DotOperandDims, 2>{lhs_dims, rhs_dims};
 }
 
 absl::StatusOr<std::array<DotOperandDims, 4>> DotOperandDims::FromScaledDot(
     const HloInstruction* scaled_dot) {
-  ASSIGN_OR_RETURN(auto lhs_dims, FromDotOperand(scaled_dot, 0));
+  ABSL_ASSIGN_OR_RETURN(auto lhs_dims, FromDotOperand(scaled_dot, 0));
   DotOperandDims lhs_scale_dims;
   if (!ShapeUtil::IsScalar(scaled_dot->operand(2)->shape())) {
-    ASSIGN_OR_RETURN(lhs_scale_dims, FromDotOperand(scaled_dot, 2));
+    ABSL_ASSIGN_OR_RETURN(lhs_scale_dims, FromDotOperand(scaled_dot, 2));
   }
 
-  ASSIGN_OR_RETURN(auto rhs_dims, FromDotOperand(scaled_dot, 1));
+  ABSL_ASSIGN_OR_RETURN(auto rhs_dims, FromDotOperand(scaled_dot, 1));
   DotOperandDims rhs_scale_dims;
   if (!ShapeUtil::IsScalar(scaled_dot->operand(3)->shape())) {
-    ASSIGN_OR_RETURN(rhs_scale_dims, FromDotOperand(scaled_dot, 3));
+    ABSL_ASSIGN_OR_RETURN(rhs_scale_dims, FromDotOperand(scaled_dot, 3));
   }
 
   return std::array<DotOperandDims, 4>{lhs_dims, rhs_dims, lhs_scale_dims,
@@ -159,7 +159,7 @@ absl::StatusOr<DotOperandDims> DotOperandDims::FromDotOperand(
   const auto& batch_dims = BatchDimensionsForOperand(*dot, operand_number);
   const auto& contracting_dims =
       ContractingDimensionsForOperand(*dot, operand_number);
-  ASSIGN_OR_RETURN(std::vector<int64_t> non_contracting_dims,
+  ABSL_ASSIGN_OR_RETURN(std::vector<int64_t> non_contracting_dims,
                    GetNonContractingDims(shape, batch_dims, contracting_dims));
   return DotOperandDims(shape, batch_dims, non_contracting_dims,
                         contracting_dims);
@@ -320,7 +320,7 @@ std::string DotOperandDims::ToString() const {
 absl::Status DotOperandDims::RemoveDegenerateDimensions() {
   for (int64_t i = shape_.dimensions().size() - 1; i >= 0; --i) {
     if (shape_.dimensions(i) == 1) {
-      RETURN_IF_ERROR(EraseDimensions(i, i + 1));
+      ABSL_RETURN_IF_ERROR(EraseDimensions(i, i + 1));
     }
   }
   return absl::OkStatus();
@@ -336,7 +336,7 @@ absl::Status DotOperandDims::MergeAdjacentDimensions() {
       const int64_t dim_idx = dims[i - 1];
       shape_.set_dimensions(
           dim_idx, shape_.dimensions(dim_idx) * shape_.dimensions(dim_idx + 1));
-      RETURN_IF_ERROR(EraseDimensions(dim_idx + 1, dim_idx + 2));
+      ABSL_RETURN_IF_ERROR(EraseDimensions(dim_idx + 1, dim_idx + 2));
     }
   }
   return absl::OkStatus();
@@ -409,8 +409,8 @@ absl::StatusOr<std::optional<DotOperandDims>> DotOperandDims::Reshape(
   }
 
   DotOperandDims merged_dims = *this;
-  RETURN_IF_ERROR(merged_dims.RemoveDegenerateDimensions());
-  RETURN_IF_ERROR(merged_dims.MergeAdjacentDimensions());
+  ABSL_RETURN_IF_ERROR(merged_dims.RemoveDegenerateDimensions());
+  ABSL_RETURN_IF_ERROR(merged_dims.MergeAdjacentDimensions());
 
   // If the source contains just one element (e.g. scalar), and the target is
   // something like [1, 1, 1], assign all dimensions to non-contracting.

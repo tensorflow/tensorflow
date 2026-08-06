@@ -132,7 +132,7 @@ void BoundedDynamicShapeTag::ToProto(BoundedDynamicShapeTagProto& proto,
 
 absl::StatusOr<DynamicShape> DynamicShape::Create(Shape shape,
                                                   DynamicShapeTag tag) {
-  RETURN_IF_ERROR(std::visit(
+  ABSL_RETURN_IF_ERROR(std::visit(
       overloaded{
           [&](const BoundedDynamicShapeTag& tag) -> absl::Status {
             if (tag.DynamicDims().size() != shape.dims().size()) {
@@ -172,9 +172,9 @@ absl::StatusOr<DynamicShape> DynamicShape::FromProto(
         "Unsupported ", version_number, " for DynamicShape deserialization"));
   }
 
-  ASSIGN_OR_RETURN(Shape shape, Shape::FromProto(proto.shape()));
+  ABSL_ASSIGN_OR_RETURN(Shape shape, Shape::FromProto(proto.shape()));
   if (proto.has_bounded_dynamic_shape_tag()) {
-    ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         BoundedDynamicShapeTag tag,
         BoundedDynamicShapeTag::FromProto(proto.bounded_dynamic_shape_tag()));
     return DynamicShape::Create(std::move(shape), std::move(tag));

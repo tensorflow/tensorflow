@@ -384,7 +384,7 @@ absl::StatusOr<ifrt::DType> DtypeToIfRtDType(const nb_dtype& dtype) {
   if (dtype.kind() == 'T') {
     return ifrt::DType(ifrt::DType::kString);
   }
-  ASSIGN_OR_RETURN(auto primitive_type, DtypeToPrimitiveType(dtype));
+  ABSL_ASSIGN_OR_RETURN(auto primitive_type, DtypeToPrimitiveType(dtype));
   return ifrt::ToDType(primitive_type);
 }
 
@@ -539,7 +539,7 @@ absl::StatusOr<nb::object> LiteralToPython(
     std::vector<Literal> elems = m.DecomposeTuple();
     std::vector<nb::object> arrays(elems.size());
     for (int i = 0; i < elems.size(); ++i) {
-      ASSIGN_OR_RETURN(
+      ABSL_ASSIGN_OR_RETURN(
           arrays[i],
           LiteralToPython(std::make_unique<Literal>(std::move(elems[i]))));
     }
@@ -552,7 +552,7 @@ absl::StatusOr<nb::object> LiteralToPython(
   TF_RET_CHECK(m.shape().IsArray());
 
   nb::object literal_object = nb::cast(literal);
-  ASSIGN_OR_RETURN(nb_dtype dtype,
+  ABSL_ASSIGN_OR_RETURN(nb_dtype dtype,
                    PrimitiveTypeToNbDtype(m.shape().element_type()));
   return nb_numpy_ndarray(dtype, m.shape().dimensions(),
                           ByteStridesForShape(m.shape()), m.untyped_data(),

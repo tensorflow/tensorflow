@@ -40,11 +40,11 @@ absl::StatusOr<bool> AsyncCollectiveAnnotator::RunImpl(
       if (!hlo_query::IsAsyncCollectiveStartOp(instruction)) {
         continue;
       }
-      ASSIGN_OR_RETURN(GpuBackendConfig gpu_config,
+      ABSL_ASSIGN_OR_RETURN(GpuBackendConfig gpu_config,
                        instruction->backend_config<GpuBackendConfig>());
       gpu_config.mutable_collective_backend_config()->set_is_sync(
           !is_collective_async_(instruction));
-      RETURN_IF_ERROR(instruction->set_backend_config(gpu_config));
+      ABSL_RETURN_IF_ERROR(instruction->set_backend_config(gpu_config));
       changed = true;
     }
   }

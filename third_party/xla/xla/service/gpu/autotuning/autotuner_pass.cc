@@ -399,7 +399,7 @@ AutotunerPass::GetGpuAutotunerBackends(
       autotune_backends.end());
 
   auto& registry = stream_executor::PlatformObjectRegistry::GetGlobalRegistry();
-  ASSIGN_OR_RETURN(const GetCodegenBackends::Type& get_codegen_backends,
+  ABSL_ASSIGN_OR_RETURN(const GetCodegenBackends::Type& get_codegen_backends,
                    registry.FindObject<GetCodegenBackends>(platform_id));
   std::vector<std::unique_ptr<CodegenBackend>> backends = get_codegen_backends(
       stream_exec, device_allocator, &debug_options, compiler, target_config,
@@ -418,7 +418,7 @@ absl::StatusOr<std::unique_ptr<AutotunerPass>> AutotunerPass::Create(
     HloCostAnalysis::ShapeSizeFunction shape_size_fn,
     se::DeviceAddressAllocator* allocator,
     MultiProcessKeyValueStore key_value_store) {
-  ASSIGN_OR_RETURN(std::vector<std::unique_ptr<CodegenBackend>> backends,
+  ABSL_ASSIGN_OR_RETURN(std::vector<std::unique_ptr<CodegenBackend>> backends,
                    get_backends_fn());
 
   InstructionFilterFn should_autotune =
@@ -449,11 +449,11 @@ absl::StatusOr<std::unique_ptr<AutotunerPass>> AutotunerPass::Create(
   std::unique_ptr<AutotunerCacheInterface> cache =
       CreateAutotunerCache(debug_options, *target_config, backends);
 
-  ASSIGN_OR_RETURN(auto orchestrator,
+  ABSL_ASSIGN_OR_RETURN(auto orchestrator,
                    CodegenOrchestrator::Create(
                        std::move(backends), orchestrator_options, thread_pool));
 
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       auto config_assigner,
       ConfigAssigner::Create(assigner_options, std::move(cache),
                              std::move(orchestrator), std::move(profiler)));
@@ -472,10 +472,10 @@ absl::StatusOr<bool> AutotunerPass::RunImpl(
   bool shard_autotuning =
       enable_sharding_ && key_value_store_.process_count > 1;
   if (shard_autotuning) {
-    RETURN_IF_ERROR(config_assigner_->AssignConfigs(module, should_autotune_,
+    ABSL_RETURN_IF_ERROR(config_assigner_->AssignConfigs(module, should_autotune_,
                                                     key_value_store_));
   } else {
-    RETURN_IF_ERROR(config_assigner_->AssignConfigs(module, should_autotune_));
+    ABSL_RETURN_IF_ERROR(config_assigner_->AssignConfigs(module, should_autotune_));
   }
   VLOG(1) << "Autotuner cache stats: hits="
           << config_assigner_->GetCacheStats().hits

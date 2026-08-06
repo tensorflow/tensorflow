@@ -39,17 +39,17 @@ struct FileEntry {
 absl::StatusOr<std::string> GenerateZip(absl::string_view output_path,
                                         const std::vector<FileEntry>& entries) {
   std::unique_ptr<tsl::WritableFile> file;
-  RETURN_IF_ERROR(
+  ABSL_RETURN_IF_ERROR(
       tsl::Env::Default()->NewWritableFile(std::string(output_path), &file));
 
-  ASSIGN_OR_RETURN(tsl::io::ZipWriter writer,
+  ABSL_ASSIGN_OR_RETURN(tsl::io::ZipWriter writer,
                    tsl::io::ZipWriter::Create(std::move(file)));
 
   for (const auto& entry : entries) {
-    RETURN_IF_ERROR(writer.AddFile(entry.name, entry.content));
+    ABSL_RETURN_IF_ERROR(writer.AddFile(entry.name, entry.content));
   }
 
-  RETURN_IF_ERROR(std::move(writer).Finish());
+  ABSL_RETURN_IF_ERROR(std::move(writer).Finish());
   return std::string(output_path);
 }
 

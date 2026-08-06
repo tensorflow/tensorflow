@@ -88,9 +88,9 @@ void CompilationProviderTest::SetUp() {
 absl::StatusOr<std::unique_ptr<CompilationProvider>>
 CompilationProviderTest::CreateCompilationProvider(absl::string_view name) {
   if (name == kSubprocessCompilationProviderName) {
-    ASSIGN_OR_RETURN(auto ptxas,
+    ABSL_ASSIGN_OR_RETURN(auto ptxas,
                      FindCudaExecutable("ptxas", "/does/not/exist"));
-    ASSIGN_OR_RETURN(auto nvlink,
+    ABSL_ASSIGN_OR_RETURN(auto nvlink,
                      FindCudaExecutable("nvlink", "/does/not/exist"));
     return std::make_unique<SubprocessCompilationProvider>(ptxas, nvlink);
   }
@@ -104,9 +104,9 @@ CompilationProviderTest::CreateCompilationProvider(absl::string_view name) {
   }
 
   if (name == kDriverCompilationProviderName) {
-    ASSIGN_OR_RETURN(stream_executor::Platform * platform,
+    ABSL_ASSIGN_OR_RETURN(stream_executor::Platform * platform,
                      PlatformManager::PlatformWithId(kCudaPlatformId));
-    ASSIGN_OR_RETURN(stream_executor::StreamExecutor * executor,
+    ABSL_ASSIGN_OR_RETURN(stream_executor::StreamExecutor * executor,
                      platform->ExecutorForDevice(0));
     return std::make_unique<DriverCompilationProvider>(executor);
   }

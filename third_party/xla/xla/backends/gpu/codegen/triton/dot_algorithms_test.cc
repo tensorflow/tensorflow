@@ -103,7 +103,7 @@ class AlgorithmTest : public HloInterpreterReferenceMixin<GpuPjRtCodegenTest> {
   absl::Status CreateTritonIrFromHloTextAndFileCheckForDot(
       absl::string_view hlo_text, absl::string_view triton_fusion_name,
       absl::string_view filecheck_pattern) {
-    ASSIGN_OR_RETURN(std::unique_ptr<VerifiedHloModule> module,
+    ABSL_ASSIGN_OR_RETURN(std::unique_ptr<VerifiedHloModule> module,
                      ParseAndReturnVerifiedModule(hlo_text));
     return CreateTritonIrAndFileCheckForDot(module.get(), triton_fusion_name,
                                             filecheck_pattern);
@@ -1844,7 +1844,7 @@ class PrecisionTests
 
   absl::Status CheckGemmPattern(const HloModule& module,
                                 absl::string_view pattern) {
-    ASSIGN_OR_RETURN(bool ok, RunFileCheck(module.ToString(), pattern));
+    ABSL_ASSIGN_OR_RETURN(bool ok, RunFileCheck(module.ToString(), pattern));
     if (!ok) {
       return absl::InternalError(
           absl::StrCat("The module does not contain the pattern: ", pattern));
@@ -1878,13 +1878,13 @@ class PrecisionTests
       return absl::InvalidArgumentError("Invalid backend");
     }
     config.set_debug_options(debug_options);
-    ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
+    ABSL_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
                      GetOptimizedModule(hlo_text, config));
     if (backend == Backend::kTriton) {
-      RETURN_IF_ERROR(CheckGemmPattern(
+      ABSL_RETURN_IF_ERROR(CheckGemmPattern(
           *module, "CHECK: {{__triton_gemm|__triton_nested_gemm_fusion}}"));
     } else if (backend == Backend::kBlas) {
-      RETURN_IF_ERROR(
+      ABSL_RETURN_IF_ERROR(
           CheckGemmPattern(*module, "CHECK: __cublas${{gemm|lt\\$matmul}}"));
     } else {
       return absl::InvalidArgumentError("Invalid backend");

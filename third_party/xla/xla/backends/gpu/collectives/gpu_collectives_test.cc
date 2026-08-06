@@ -166,13 +166,13 @@ TEST(GpuCollectivesTest, GroupLaunchMultipleCommunicators) {
     GpuCollectives::Executor executor2(streams[2].get());
     GpuCollectives::Executor executor3(streams[3].get());
 
-    RETURN_IF_ERROR(comms01[0]->LaunchAllReduce(send_buffers[0],
+    ABSL_RETURN_IF_ERROR(comms01[0]->LaunchAllReduce(send_buffers[0],
                                                 recv_buffers[0], F32, kCount,
                                                 ReductionKind::SUM, executor0));
-    RETURN_IF_ERROR(comms01[1]->LaunchAllReduce(send_buffers[1],
+    ABSL_RETURN_IF_ERROR(comms01[1]->LaunchAllReduce(send_buffers[1],
                                                 recv_buffers[1], F32, kCount,
                                                 ReductionKind::SUM, executor1));
-    RETURN_IF_ERROR(comms23[0]->LaunchAllReduce(send_buffers[2],
+    ABSL_RETURN_IF_ERROR(comms23[0]->LaunchAllReduce(send_buffers[2],
                                                 recv_buffers[2], F32, kCount,
                                                 ReductionKind::SUM, executor2));
     return comms23[1]->LaunchAllReduce(send_buffers[3], recv_buffers[3], F32,
@@ -482,7 +482,7 @@ TEST(GpuCollectivesTest, PutAndWaitSignal) {
 
   auto f0 = MakeFutureOn<void>(exec, [&]() -> absl::Status {
     GpuCollectives::Executor gpu_exec(stream0.get());
-    RETURN_IF_ERROR(comms[0]
+    ABSL_RETURN_IF_ERROR(comms[0]
                         ->Put(send0_addr, symm_recv[0].get(), 0, kNumBytes,
                               RankId(1), gpu_exec)
                         .Await());
@@ -491,7 +491,7 @@ TEST(GpuCollectivesTest, PutAndWaitSignal) {
 
   auto f1 = MakeFutureOn<void>(exec, [&]() -> absl::Status {
     GpuCollectives::Executor gpu_exec(stream1.get());
-    RETURN_IF_ERROR(comms[1]
+    ABSL_RETURN_IF_ERROR(comms[1]
                         ->Put(send1_addr, symm_recv[1].get(), 0, kNumBytes,
                               RankId(0), gpu_exec)
                         .Await());

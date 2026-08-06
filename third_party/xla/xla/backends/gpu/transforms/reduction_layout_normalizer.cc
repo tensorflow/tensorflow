@@ -148,7 +148,7 @@ class EnforceMinorToMajorReduceOpVisitor : public DfsHloRewriteVisitor {
       }
     }
 
-    ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         auto new_reduce_shape,
         ShapeUtil::MakeValidatedMaybeTupleShape(new_reduce_shapes));
 
@@ -187,7 +187,7 @@ class EnforceMinorToMajorReduceOpVisitor : public DfsHloRewriteVisitor {
 absl::StatusOr<bool> ReductionLayoutNormalizer::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
-  ASSIGN_OR_RETURN(bool changed,
+  ABSL_ASSIGN_OR_RETURN(bool changed,
                    EnforceMinorToMajorReduceOpVisitor().RunOnModule(
                        module, execution_threads));
   return changed;

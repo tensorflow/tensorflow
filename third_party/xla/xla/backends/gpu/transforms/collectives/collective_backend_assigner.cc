@@ -59,9 +59,9 @@ absl::StatusOr<bool> AssignCollectivesMode(
         continue;
       }
 
-      ASSIGN_OR_RETURN(auto config, instr->backend_config<GpuBackendConfig>());
+      ABSL_ASSIGN_OR_RETURN(auto config, instr->backend_config<GpuBackendConfig>());
       config.mutable_collective_backend_config()->set_collectives_mode(mode);
-      RETURN_IF_ERROR(instr->set_backend_config(config));
+      ABSL_RETURN_IF_ERROR(instr->set_backend_config(config));
       changed = true;
     }
   }
@@ -75,7 +75,7 @@ absl::StatusOr<bool> CollectiveBackendAssigner::RunImpl(
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;
 
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       bool permute_mode_changed,
       AssignCollectivesMode(
           module,
@@ -83,7 +83,7 @@ absl::StatusOr<bool> CollectiveBackendAssigner::RunImpl(
           IsCollectivePermuteOp));
   changed |= permute_mode_changed;
 
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       bool all_gather_mode_changed,
       AssignCollectivesMode(
           module, module->config().debug_options().xla_gpu_all_gather_mode(),

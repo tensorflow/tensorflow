@@ -318,7 +318,7 @@ absl::StatusOr<bool> DecomposeDispatchRaggedAllToAll(
           std::make_shared<CollectiveDeviceList>(intra_host_replica_groups),
           /*channel_id=*/ragged_all_to_all->channel_id()));
 
-  RETURN_IF_ERROR(computation->ReplaceInstruction(ragged_all_to_all,
+  ABSL_RETURN_IF_ERROR(computation->ReplaceInstruction(ragged_all_to_all,
                                                   new_ragged_all_to_all));
 
   return true;
@@ -495,7 +495,7 @@ absl::StatusOr<bool> DecomposeCombineRaggedAllToAll(
           std::make_shared<CollectiveDeviceList>(degenerated_replica_groups),
           /*channel_id=*/ragged_all_to_all->channel_id()));
 
-  RETURN_IF_ERROR(computation->ReplaceInstruction(ragged_all_to_all,
+  ABSL_RETURN_IF_ERROR(computation->ReplaceInstruction(ragged_all_to_all,
                                                   local_ragged_all_to_all));
 
   return true;
@@ -636,7 +636,7 @@ absl::StatusOr<bool> RaggedAllToAllMultiHostDecomposer::RunImpl(
             "`ragged-all-to-all-canonicalizer` pass executed?");
       }
 
-      ASSIGN_OR_RETURN(bool result,
+      ABSL_ASSIGN_OR_RETURN(bool result,
                        DecomposeRaggedAllToAll(hlo, computation, module,
                                                fast_interconnect_slice_size_));
       changed |= result;

@@ -64,15 +64,15 @@ absl::Status ConvolutionThunkToProto(const Thunk& thunk, ThunkProto& proto) {
   const ConvolutionSlices& convolution_slices =
       convolution_thunk.convolution_slices();
 
-  RETURN_IF_ERROR(SerializeSliceShapeIntoProto(
+  ABSL_RETURN_IF_ERROR(SerializeSliceShapeIntoProto(
       convolution_slices.input_buffer, convolution_slices.input_shape,
       convolution_thunk_proto->mutable_input_buffer_shape()));
 
-  RETURN_IF_ERROR(SerializeSliceShapeIntoProto(
+  ABSL_RETURN_IF_ERROR(SerializeSliceShapeIntoProto(
       convolution_slices.output_buffer, convolution_slices.output_shape,
       convolution_thunk_proto->mutable_output_buffer_shape()));
 
-  RETURN_IF_ERROR(SerializeSliceShapeIntoProto(
+  ABSL_RETURN_IF_ERROR(SerializeSliceShapeIntoProto(
       convolution_slices.kernel_buffer, convolution_slices.kernel_shape,
       convolution_thunk_proto->mutable_kernel_buffer_shape()));
 
@@ -87,7 +87,7 @@ absl::StatusOr<std::unique_ptr<Thunk>> ConvolutionThunkFromProto(
     const std::vector<BufferAllocation>& buffer_allocations,
     const HloModule* hlo_module,
     const std::vector<std::shared_ptr<Resource>>* resources) {
-  ASSIGN_OR_RETURN(Thunk::Info info, ThunkInfoFromProto(proto.info()));
+  ABSL_ASSIGN_OR_RETURN(Thunk::Info info, ThunkInfoFromProto(proto.info()));
 
   // Parse options.
   ConvolutionThunk::Options options;
@@ -103,15 +103,15 @@ absl::StatusOr<std::unique_ptr<Thunk>> ConvolutionThunkFromProto(
   // Feature group count.
   int64_t feature_group_count = proto.convolution_thunk().feature_group_count();
 
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       auto input_slice_shape,
       DeserializeSliceShapeFromProto(
           proto.convolution_thunk().input_buffer_shape(), buffer_allocations));
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       auto kernel_slice_shape,
       DeserializeSliceShapeFromProto(
           proto.convolution_thunk().kernel_buffer_shape(), buffer_allocations));
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       auto output_slice_shape,
       DeserializeSliceShapeFromProto(
           proto.convolution_thunk().output_buffer_shape(), buffer_allocations));

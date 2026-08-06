@@ -64,7 +64,7 @@ SendThunk::SendThunk(ThunkInfo thunk_info, const P2PConfig& config,
       hlo_name_(instr_name) {}
 
 absl::Status SendThunk::Initialize(const InitializeParams& params) {
-  RETURN_IF_ERROR(CollectiveThunk::Initialize(params));
+  ABSL_RETURN_IF_ERROR(CollectiveThunk::Initialize(params));
   return absl::OkStatus();
 }
 
@@ -76,7 +76,7 @@ absl::StatusOr<const se::CommandBuffer::Command*> SendThunk::Record(
         "SendThunk requires collective parameters");
   }
 
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       const int64_t current_id,
       GetCollectiveCurrentId(execute_params.collective_params, config_));
   const P2PConfig::SourceTargetMapEntry source_target =
@@ -95,7 +95,7 @@ absl::StatusOr<const se::CommandBuffer::Command*> SendThunk::Record(
 absl::StatusOr<std::unique_ptr<SendThunk>> SendThunk::FromProto(
     ThunkInfo thunk_info, const SendThunkProto& thunk_proto,
     absl::Span<const BufferAllocation> buffer_allocations) {
-  ASSIGN_OR_RETURN(CollectiveThunk::Buffer buffer,
+  ABSL_ASSIGN_OR_RETURN(CollectiveThunk::Buffer buffer,
                    CollectiveThunk::Buffer::FromProto(thunk_proto.buffer(),
                                                       buffer_allocations));
 
@@ -122,7 +122,7 @@ absl::StatusOr<ThunkProto> SendThunk::ToProto() const {
   SendThunkProto* thunk_proto = proto.mutable_send_thunk();
 
   *thunk_proto->mutable_collective_config() = config_.config.ToProto();
-  ASSIGN_OR_RETURN(*thunk_proto->mutable_buffer(), buffer().ToProto());
+  ABSL_ASSIGN_OR_RETURN(*thunk_proto->mutable_buffer(), buffer().ToProto());
   std::vector<SourceTarget> sorted_pairs =
       GetSortedSourceTargetPairs(config_.id_to_source_target);
   thunk_proto->mutable_source_target_pairs()->Assign(sorted_pairs.begin(),
@@ -148,7 +148,7 @@ absl::Status RunSend(DeviceBufferPair& buffer, se::Stream& stream,
       << absl::StreamFormat("target_id = %d, call comm.Send()", target_id);
   auto future = comm.Send(src_addr, buffer.element_type, buffer.element_count,
                           RankId(target_id), GpuCollectives::On(stream));
-  RETURN_IF_ERROR(future.Await());
+  ABSL_RETURN_IF_ERROR(future.Await());
   return absl::OkStatus();
 }
 
@@ -166,7 +166,7 @@ absl::Status SendThunk::RunCollective(const ExecuteParams& params,
       send_buffer.source_memory_space,
       send_buffer.destination_memory_space};
 
-  ASSIGN_OR_RETURN(const int64_t current_id,
+  ABSL_ASSIGN_OR_RETURN(const int64_t current_id,
                    GetCollectiveCurrentId(params.collective_params, config_));
   std::string device_string = GetDeviceString(*params.collective_params);
 

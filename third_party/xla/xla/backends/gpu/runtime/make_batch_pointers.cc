@@ -44,7 +44,7 @@ absl::Status MakeBatchPointers(se::Stream* stream,
     return 128;
   }();
 
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       auto kernel,
       stream_executor::gpu::GpuKernelRegistry::GetGlobalRegistry()
           .LoadKernel<stream_executor::gpu::MakeBatchPointersKernel>(executor));

@@ -49,7 +49,7 @@ namespace xla::gpu {
 namespace {
 
 absl::Status RealMain(absl::string_view input_file) {
-  ASSIGN_OR_RETURN(std::unique_ptr<HloModule> hlo_module,
+  ABSL_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> hlo_module,
                    xla::LoadModuleFromFile(std::string(input_file)));
 
   HloInstruction* fusion = hlo_module->entry_computation()->root_instruction();
@@ -57,7 +57,7 @@ absl::Status RealMain(absl::string_view input_file) {
     return absl::InvalidArgumentError("Instruction is not a custom fusion.");
   }
 
-  ASSIGN_OR_RETURN(auto gpu_config, fusion->backend_config<GpuBackendConfig>());
+  ABSL_ASSIGN_OR_RETURN(auto gpu_config, fusion->backend_config<GpuBackendConfig>());
   const HloFusionInstruction* fusion_instr = Cast<HloFusionInstruction>(fusion);
   const FusionBackendConfig& backend_config =
       gpu_config.fusion_backend_config();
@@ -74,7 +74,7 @@ absl::Status RealMain(absl::string_view input_file) {
   const std::string& target_config_filename =
       hlo_module->config().debug_options().xla_gpu_target_config_filename();
   if (!target_config_filename.empty()) {
-    ASSIGN_OR_RETURN(auto target_config,
+    ABSL_ASSIGN_OR_RETURN(auto target_config,
                      GetTargetConfigFromFile(target_config_filename));
     device_info = target_config.device_description;
   }

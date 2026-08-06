@@ -241,7 +241,7 @@ absl::StatusOr<MlirKernelSource> MlirKernelEmitter::Emit(
     mlir::MLIRContext* mlir_context, const HloFusionInstruction& fusion,
     const std::string& entry_function_name,
     const BufferAssignment* buffer_assignment) const {
-  ASSIGN_OR_RETURN(mlir::OwningOpRef<mlir::ModuleOp> module,
+  ABSL_ASSIGN_OR_RETURN(mlir::OwningOpRef<mlir::ModuleOp> module,
                    CreateMLIRModule(*mlir_context, fusion, entry_function_name,
                                     buffer_assignment));
   return MlirKernelSource(nullptr, std::move(module));
@@ -349,10 +349,10 @@ MlirKernelFusion::EmitLlvmModule(const HloFusionInstruction& fusion,
 
         llvm::IRBuilder<> builder(module->getContext());
         AnnotateFunctionAsGpuKernel(module, kernel_func, &builder);
-        RETURN_IF_ERROR(AnnotateKernelLaunchDimensions(
+        ABSL_RETURN_IF_ERROR(AnnotateKernelLaunchDimensions(
             gpu_device_info, launch_dims, kernel_func, module));
 
-        ASSIGN_OR_RETURN(
+        ABSL_ASSIGN_OR_RETURN(
             KernelSpec kernel_spec,
             emitters::GetKernelSpec(kernel_name, *fusion, buffer_assignment,
                                     launch_dims.AsWorkDimensions()));
@@ -365,7 +365,7 @@ AsyncThunkSequence MlirKernelFusion::Emit(
     IrEmitterContext& ir_emitter_context,
     const HloFusionInstruction& fusion) const {
   VLOG(4) << "Fusion: " << fusion.fused_instructions_computation()->ToString();
-  ASSIGN_OR_RETURN(auto args, emitters::KernelArguments::Create(
+  ABSL_ASSIGN_OR_RETURN(auto args, emitters::KernelArguments::Create(
                                   ir_emitter_context.buffer_assignment(),
                                   GetDefaultBufferAlignment(), &fusion));
   auto [future_entry, cached] = ir_emitter_context.kernel_cache().GetWithStatus(
@@ -380,7 +380,7 @@ AsyncThunkSequence MlirKernelFusion::Emit(
                      KernelDefinition<LlvmKernelSource> kernel_def) mutable
                      -> xla::Future<KernelReuseCache::Entry> {
               KernelSpec spec = kernel_def.spec();
-              ASSIGN_OR_RETURN(
+              ABSL_ASSIGN_OR_RETURN(
                   LaunchDimensions launch_dims,
                   LaunchDimensions::FromWorkDimensions(spec.work_dimensions()));
 
@@ -412,7 +412,7 @@ AsyncThunkSequence MlirKernelFusion::Emit(
     if (kernel_cached) {
       VLOG(3) << "Reuse: " << fusion.name() << " -> " << entry->kernel_name;
     }
-    ASSIGN_OR_RETURN(CustomKernel custom_kernel,
+    ABSL_ASSIGN_OR_RETURN(CustomKernel custom_kernel,
                      kernel::CreateOwnedCubinCustomKernel(
                          entry->kernel_name, entry->binary, args.args().size(),
                          entry->launch_dimensions.block_counts(),
@@ -434,7 +434,7 @@ xla::Future<LlvmKernelSource> MlirKernelFusion::CreateLLVMModule(
   mlir_context->appendDialectRegistry(MlirKernelEmitter::GetDialectRegistry());
   mlir_context->loadAllAvailableDialects();
 
-  ASSIGN_OR_RETURN(MlirKernelSource source,
+  ABSL_ASSIGN_OR_RETURN(MlirKernelSource source,
                    emitter_->Emit(mlir_context, fusion, entry_function_name,
                                   buffer_assignment));
 
@@ -457,13 +457,13 @@ MlirKernelEmitter::CreateMLIRModule(
   auto loc = mlir::NameLoc::get(builder.getStringAttr(fusion.name()));
   mlir::OwningOpRef<mlir::ModuleOp> module = llvm_ir::CreateMlirModuleOp(loc);
 
-  ASSIGN_OR_RETURN(mlir::func::FuncOp entry_func,
+  ABSL_ASSIGN_OR_RETURN(mlir::func::FuncOp entry_func,
                    emitters::EmitKernelApi(*module, fusion, buffer_assignment,
                                            GetDefaultBufferAlignment(),
                                            entry_function_name));
   SetBackendKind(&mlir_context, entry_func, BackendKind::kGpu);
 
-  RETURN_IF_ERROR(EmitMlir(module.get(), entry_func, fusion, mlir_context));
+  ABSL_RETURN_IF_ERROR(EmitMlir(module.get(), entry_func, fusion, mlir_context));
   return module;
 }
 
@@ -537,7 +537,7 @@ absl::Status MlirKernelEmitter::EmitMlir(mlir::ModuleOp module,
   emitters::PartitionedComputations computations(
       fusion.fused_instructions_computation(), &mlir_context, epilogues);
 
-  ASSIGN_OR_RETURN(auto call_targets,
+  ABSL_ASSIGN_OR_RETURN(auto call_targets,
                    emitters::EmitPartitionedComputations(module, computations));
 
   emitters::SetIndexDataLayout(module, fusion);
@@ -679,7 +679,7 @@ absl::StatusOr<LlvmKernelSource> CompileMlirToLlvm(
   }
   AddLoweringPasses(pm, device);
 
-  RETURN_IF_ERROR(
+  ABSL_RETURN_IF_ERROR(
       RunPassPipeline(module.get(), hlo_module, pm, entry_function_name));
 
   auto llvm_module = mlir::translateModuleToLLVMIR(module.get(), *llvm_context);

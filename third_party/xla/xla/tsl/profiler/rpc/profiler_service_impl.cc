@@ -97,7 +97,7 @@ absl::Status CollectData(const ProfileRequest& request,
                          ProfilerSession* profiler, ProfileResponse* response) {
   response->set_empty_trace(true);
   if (profiler->IsContinuousProfilingEnabled()) {
-    RETURN_IF_ERROR(profiler->Stop());
+    ABSL_RETURN_IF_ERROR(profiler->Stop());
     std::vector<tensorflow::profiler::XSpace> xspaces =
         profiler->SerializeChunks();
     VLOG(3) << "Collected " << xspaces.size() << " XSpace chunks to "
@@ -128,7 +128,7 @@ absl::Status CollectData(const ProfileRequest& request,
   tensorflow::profiler::XSpace xspace;
   tensorflow::profiler::XSpace* xspace_ptr =
       request.emit_xspace() ? response->mutable_xspace() : &xspace;
-  RETURN_IF_ERROR(profiler->CollectData(xspace_ptr));
+  ABSL_RETURN_IF_ERROR(profiler->CollectData(xspace_ptr));
   VLOG(3) << "Collected XSpace to "
           << (request.emit_xspace() ? "response" : "repository") << ".";
   response->set_empty_trace(IsEmpty(*xspace_ptr));

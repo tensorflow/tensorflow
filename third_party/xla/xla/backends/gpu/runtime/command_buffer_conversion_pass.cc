@@ -544,7 +544,7 @@ ConvertThunksToCommandBuffer(
     CommandExecutor::SynchronizationMode synchronization_mode,
     const DebugOptions& debug_options) {
   bool enable_loop_unroll = debug_options.xla_gpu_command_buffer_unroll_loops();
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       CommandExecutor cmd_executor,
       ConvertToCommands(
           thunks_to_convert,
@@ -606,7 +606,7 @@ absl::Status FlushCommandBuffer(
     return absl::OkStatus();
   }
 
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       auto cmd_buffer_thunk,
       ConvertThunksToCommandBuffer(std::move(current_command_buffer_thunks),
                                    synchronization_mode, debug_options));
@@ -659,7 +659,7 @@ absl::StatusOr<bool> CommandBufferConversionPass::Run(
       GetCommandBufferConfig(debug_options, device_info, hlo_module);
   VLOG(1) << "Module " << module_name_
           << " CommandBufferConfig: " << config.ToString();
-  ASSIGN_OR_RETURN(CommandExecutor::SynchronizationMode synchronization_mode,
+  ABSL_ASSIGN_OR_RETURN(CommandExecutor::SynchronizationMode synchronization_mode,
                    GetSynchronizationMode(
                        debug_options.xla_gpu_command_buffer_scheduling_mode()));
 
@@ -705,7 +705,7 @@ absl::StatusOr<bool> CommandBufferConversionPass::Run(
       // If a `WhileThunk` itself is not eligible for conversion into a
       // command buffer, we attempt to convert thunks within its body
       auto while_thunk = static_cast<WhileThunk*>(thunk.get());
-      ASSIGN_OR_RETURN(bool changed_in_body,
+      ABSL_ASSIGN_OR_RETURN(bool changed_in_body,
                        Run(&while_thunk->body_executor().thunks(),
                            debug_options, hlo_module, device_info, allocator));
       changed |= changed_in_body;
@@ -714,7 +714,7 @@ absl::StatusOr<bool> CommandBufferConversionPass::Run(
       // command buffer, we attempt to convert thunks within its branches.
       auto conditional_thunk = static_cast<ConditionalThunk*>(thunk.get());
       for (auto& branch_executor : conditional_thunk->branch_executors()) {
-        ASSIGN_OR_RETURN(bool changed_in_branch,
+        ABSL_ASSIGN_OR_RETURN(bool changed_in_branch,
                          Run(&branch_executor.thunks(), debug_options,
                              hlo_module, device_info, allocator));
         changed |= changed_in_branch;
@@ -724,12 +724,12 @@ absl::StatusOr<bool> CommandBufferConversionPass::Run(
     // If the current thunk is not convertible, flush collected eligible thunk
     // to a command buffer thunk and add it to the processed sequence. Then add
     // non-convertible thunk to the sequence.
-    RETURN_IF_ERROR(flush_command_buffer());
+    ABSL_RETURN_IF_ERROR(flush_command_buffer());
     new_thunks.push_back(std::move(thunk));
   }
 
   // Flush the last command buffer.
-  RETURN_IF_ERROR(flush_command_buffer());
+  ABSL_RETURN_IF_ERROR(flush_command_buffer());
 
   *thunk_sequence = std::move(new_thunks);
   return changed;

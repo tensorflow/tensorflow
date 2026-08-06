@@ -55,7 +55,7 @@ absl::StatusOr<EstimateRunTimeData> MaybeGetGemmCostModelForGemmTritonFusion(
     return absl::FailedPreconditionError("Not a custom fusion.");
   }
 
-  ASSIGN_OR_RETURN(GpuBackendConfig config,
+  ABSL_ASSIGN_OR_RETURN(GpuBackendConfig config,
                    fusion->backend_config<GpuBackendConfig>());
   if (config.fusion_backend_config().kind() != kTritonNestedGemmFusionKind) {
     return absl::FailedPreconditionError("Not a Triton GeMM fusion.");
@@ -94,7 +94,7 @@ absl::StatusOr<EstimateRunTimeData> MaybeGetGemmCostModelForGemmTritonFusion(
 // with non-trivial operations on dot operands might not be fully accounted for.
 absl::Status RecordGemmCostModelEstimateIfApplicable(
     const se::DeviceDescription& device_info, HloInstruction& instruction) {
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       EstimateRunTimeData runtime,
       MaybeGetGemmCostModelForGemmTritonFusion(device_info, instruction));
 
@@ -104,7 +104,7 @@ absl::Status RecordGemmCostModelEstimateIfApplicable(
 
   VLOG(1) << "Adding GeMM fusion cost model estimate: " << cost.DebugString();
 
-  ASSIGN_OR_RETURN(GpuBackendConfig gpu_config,
+  ABSL_ASSIGN_OR_RETURN(GpuBackendConfig gpu_config,
                    instruction.backend_config<GpuBackendConfig>());
   *gpu_config.add_reification_cost() = cost;
   return instruction.set_backend_config(gpu_config);
@@ -120,7 +120,7 @@ absl::StatusOr<EstimateRunTimeData> MaybeGetIndexingCostModelForFusion(
     return absl::FailedPreconditionError("Not a custom fusion.");
   }
 
-  ASSIGN_OR_RETURN(GpuBackendConfig config,
+  ABSL_ASSIGN_OR_RETURN(GpuBackendConfig config,
                    fusion->backend_config<GpuBackendConfig>());
 
   if (config.fusion_backend_config().has_block_level_fusion_config()) {
@@ -136,7 +136,7 @@ absl::StatusOr<EstimateRunTimeData> MaybeGetIndexingCostModelForFusion(
 absl::Status RecordIndexingPerformanceModelEstimateIfApplicable(
     GpuPerformanceModelWithIndexingAnalysis& perf_model,
     const se::DeviceDescription& device_info, HloInstruction& instruction) {
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       EstimateRunTimeData runtime,
       MaybeGetIndexingCostModelForFusion(perf_model, device_info, instruction));
 
@@ -147,7 +147,7 @@ absl::Status RecordIndexingPerformanceModelEstimateIfApplicable(
   VLOG(1) << "Adding indexing performance model estimate: "
           << cost.DebugString();
 
-  ASSIGN_OR_RETURN(GpuBackendConfig gpu_config,
+  ABSL_ASSIGN_OR_RETURN(GpuBackendConfig gpu_config,
                    instruction.backend_config<GpuBackendConfig>());
   *gpu_config.add_reification_cost() = cost;
   return instruction.set_backend_config(gpu_config);

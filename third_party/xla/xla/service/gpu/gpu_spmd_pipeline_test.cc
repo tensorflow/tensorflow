@@ -53,7 +53,7 @@ class GpuSpmdPartitioningTest : public HloHardwareIndependentTestBase,
         /*replica_count=*/1, /*num_partitions=*/num_devices);
     config.set_num_partitions(num_devices);
     config.set_use_shardy_partitioner(UseShardy());
-    ASSIGN_OR_RETURN(auto module,
+    ABSL_ASSIGN_OR_RETURN(auto module,
                      ParseAndReturnVerifiedModule(hlo_module, config));
     if (UseShardy()) {
       module->add_frontend_attribute(
@@ -67,7 +67,7 @@ class GpuSpmdPartitioningTest : public HloHardwareIndependentTestBase,
     // tensorflow/compiler/xla/backends/gpu/target_config/specs/.
     AddSPMDPasses(module.get(), alg_simplifier_options, ampere, spmd_pipeline,
                   std::nullopt);
-    RETURN_IF_ERROR(spmd_pipeline.Run(module.get()).status());
+    ABSL_RETURN_IF_ERROR(spmd_pipeline.Run(module.get()).status());
     XLA_VLOG_LINES(10, module->ToString());
     return module;
   }

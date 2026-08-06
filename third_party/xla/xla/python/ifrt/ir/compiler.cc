@@ -75,10 +75,10 @@ IfrtIrProgramCompiler::Compile(std::unique_ptr<Program> program,
     return absl::InvalidArgumentError(
         "IFRT IR compiler requires an IFRT IR program");
   }
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       std::unique_ptr<IfrtIRCompileOptions> ifrt_ir_compile_options,
       GetIfrtIRCompileOptions(std::move(options)));
-  ASSIGN_OR_RETURN(std::unique_ptr<AtomProgramCompiler> atom_program_compiler,
+  ABSL_ASSIGN_OR_RETURN(std::unique_ptr<AtomProgramCompiler> atom_program_compiler,
                    atom_program_compiler_factory_(*ifrt_ir_compile_options));
 
   auto [promise, future] =
@@ -169,7 +169,7 @@ IfrtIrProgramCompiler::DeserializeLoadedExecutable(
     }
   }
 
-  ASSIGN_OR_RETURN(DeserializedIfrtIRProgram deserialized_ifrt_executable,
+  ABSL_ASSIGN_OR_RETURN(DeserializedIfrtIRProgram deserialized_ifrt_executable,
                    DeserializeIfrtIrExecutable(client_, serialized,
                                                std::move(deserialize_options)));
 

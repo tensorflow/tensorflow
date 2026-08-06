@@ -141,7 +141,7 @@ template <typename InterfaceType>
 absl::StatusOr<std::unique_ptr<InterfaceType>> Deserialize(
     const Serialized& serialized,
     std::unique_ptr<typename InterfaceType::DeserializeOptions> options) {
-  ASSIGN_OR_RETURN(auto result, serdes_internal::DeserializeUnchecked(
+  ABSL_ASSIGN_OR_RETURN(auto result, serdes_internal::DeserializeUnchecked(
                                     serialized, std::move(options)));
   if (!isa<InterfaceType>(result.get())) {
     return absl::InternalError(

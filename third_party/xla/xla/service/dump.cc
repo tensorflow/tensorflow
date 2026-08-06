@@ -188,19 +188,19 @@ static absl::Status WriteStringToFile(tsl::Env* env, const std::string& fname,
                                       DataProducer& data_producer,
                                       bool compressed) {
   std::unique_ptr<tsl::WritableFile> file;
-  RETURN_IF_ERROR(env->NewWritableFile(fname, &file));
+  ABSL_RETURN_IF_ERROR(env->NewWritableFile(fname, &file));
   if (compressed) {
     auto gz_opts = tsl::io::ZlibCompressionOptions::GZIP();
     tsl::io::ZlibOutputBuffer gz_file(file.get(), gz_opts.input_buffer_size,
                                       gz_opts.output_buffer_size, gz_opts);
-    RETURN_IF_ERROR(gz_file.Init());
+    ABSL_RETURN_IF_ERROR(gz_file.Init());
     while (auto next_producer = data_producer.Next()) {
-      RETURN_IF_ERROR(gz_file.Append(next_producer()));
+      ABSL_RETURN_IF_ERROR(gz_file.Append(next_producer()));
     }
     return gz_file.Close();
   }
   while (auto next_producer = data_producer.Next()) {
-    RETURN_IF_ERROR(file->Append(next_producer()));
+    ABSL_RETURN_IF_ERROR(file->Append(next_producer()));
   }
   return file->Close();
 }
@@ -211,12 +211,12 @@ static absl::Status WriteStringToFile(tsl::Env* env, const std::string& fname,
     return tsl::WriteStringToFile(env, fname, data);
   }
   std::unique_ptr<tsl::WritableFile> file;
-  RETURN_IF_ERROR(env->NewWritableFile(fname, &file));
+  ABSL_RETURN_IF_ERROR(env->NewWritableFile(fname, &file));
   auto gz_opts = tsl::io::ZlibCompressionOptions::GZIP();
   tsl::io::ZlibOutputBuffer gz_file(file.get(), gz_opts.input_buffer_size,
                                     gz_opts.output_buffer_size, gz_opts);
-  RETURN_IF_ERROR(gz_file.Init());
-  RETURN_IF_ERROR(gz_file.Append(data));
+  ABSL_RETURN_IF_ERROR(gz_file.Init());
+  ABSL_RETURN_IF_ERROR(gz_file.Append(data));
   return gz_file.Close();
 }
 
@@ -1163,8 +1163,8 @@ absl::Status DumpProtoToDirectory(const tsl::protobuf::Message& message,
                                   absl::string_view file_name,
                                   std::string* full_path) {
   tsl::Env* env = tsl::Env::Default();
-  RETURN_IF_ERROR(env->RecursivelyCreateDir(directory));
-  RETURN_IF_ERROR(CreateDirIfNeeded(directory, env));
+  ABSL_RETURN_IF_ERROR(env->RecursivelyCreateDir(directory));
+  ABSL_RETURN_IF_ERROR(CreateDirIfNeeded(directory, env));
   std::string safe_file_name = SanitizeFileName(std::string(file_name)) + ".pb";
   std::string full_path_impl;
   if (!full_path) {

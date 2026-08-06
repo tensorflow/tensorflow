@@ -91,7 +91,7 @@ absl::StatusOr<CollectiveParams> CollectiveParams::Create(
                            ? &*gpu_options->incarnations()
                            : nullptr;
 
-  ASSIGN_OR_RETURN(GlobalDeviceId global_device_id,
+  ABSL_ASSIGN_OR_RETURN(GlobalDeviceId global_device_id,
                    GetGlobalDeviceId(device_id_map, local_device_id));
 
   return CollectiveParams(

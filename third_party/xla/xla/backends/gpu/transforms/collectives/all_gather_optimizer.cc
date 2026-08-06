@@ -167,10 +167,10 @@ absl::StatusOr<bool> AllGatherOptimizer::RunImpl(
 
       std::array<HloInstruction*, 2> all_gathers = {left_all_gather,
                                                     right_all_gather};
-      RETURN_IF_ERROR(
+      ABSL_RETURN_IF_ERROR(
           MergeCollectiveBackendConfig(all_gathers, combined.get()));
 
-      RETURN_IF_ERROR(computation->ReplaceWithNewInstruction(
+      ABSL_RETURN_IF_ERROR(computation->ReplaceWithNewInstruction(
           instruction, std::move(combined),
           /*preserve_sharding=*/false,
           /*relay_control_dependency=*/false,

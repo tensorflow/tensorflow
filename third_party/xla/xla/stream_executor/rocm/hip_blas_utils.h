@@ -30,7 +30,7 @@ namespace stream_executor {
 namespace rocm {
 
 #define SE_HIPBLAS_RETURN_IF_ERROR(expr) \
-  RETURN_IF_ERROR(::stream_executor::rocm::ToStatus(expr, #expr))
+  ABSL_RETURN_IF_ERROR(::stream_executor::rocm::ToStatus(expr, #expr))
 
 absl::Status ToStatus(hipblasStatus_t status, const char* prefix);
 hipDataType AsHipblasDataType(blas::DataType type);

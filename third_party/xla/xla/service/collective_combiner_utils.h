@@ -191,7 +191,7 @@ absl::StatusOr<bool> CombineInstructionsByKey(
     }
 
     if (to_combine.size() > 1) {
-      RETURN_IF_ERROR(combine_fn(to_combine));
+      ABSL_RETURN_IF_ERROR(combine_fn(to_combine));
       changed = true;
     }
   }

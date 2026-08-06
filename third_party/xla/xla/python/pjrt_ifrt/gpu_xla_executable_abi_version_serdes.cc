@@ -43,7 +43,7 @@ absl::StatusOr<absl::Cord> GpuXlaExecutableAbiVersionSerDes::Serialize(
   const auto& version =
       ifrt::cast<xla::ifrt::XlaExecutableAbiVersion>(serializable);
 
-  ASSIGN_OR_RETURN(xla::PjRtExecutableAbiVersionProto proto,
+  ABSL_ASSIGN_OR_RETURN(xla::PjRtExecutableAbiVersionProto proto,
                    version.ExecutableAbiVersion().ToProto());
   absl::Cord executable_abi_version;
   if (!proto.SerializeToString(&executable_abi_version)) {
@@ -62,7 +62,7 @@ GpuXlaExecutableAbiVersionSerDes::Deserialize(
     return absl::InvalidArgumentError(
         "Failed to parse PjRtExecutableAbiVersion from string.");
   }
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       std::unique_ptr<xla::PjRtExecutableAbiVersion> runtime_abi_version,
       factory_function_(proto));
   return std::make_unique<GpuXlaExecutableAbiVersion>(
@@ -76,7 +76,7 @@ namespace {
 absl::StatusOr<std::unique_ptr<xla::PjRtExecutableAbiVersion>>
 CApiPjRtExecutableAbiVersionFromProto(
     const xla::PjRtExecutableAbiVersionProto& proto) {
-  ASSIGN_OR_RETURN(const PJRT_Api* c_api, pjrt::PjrtApi(kGpuPjrtName));
+  ABSL_ASSIGN_OR_RETURN(const PJRT_Api* c_api, pjrt::PjrtApi(kGpuPjrtName));
   return pjrt::CApiExecutableAbiVersionFromProto(proto, c_api);
 }
 

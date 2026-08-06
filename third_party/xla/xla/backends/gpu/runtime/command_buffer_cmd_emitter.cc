@@ -120,10 +120,10 @@ static absl::Status AppendCommands(ConversionContext& ctx,
 static absl::Status SetOrUpdateCommandBufferExecutors(
     WhileThunk& thunk, const ConvertToCommandsOptions& options) {
   VLOG(1) << "WhileThunk: " << thunk.profile_annotation();
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       CommandExecutor cond_cmds,
       ConvertToCommands(thunk.condition_executor().thunks(), options));
-  ASSIGN_OR_RETURN(CommandExecutor body_cmds,
+  ABSL_ASSIGN_OR_RETURN(CommandExecutor body_cmds,
                    ConvertToCommands(thunk.body_executor().thunks(), options));
 
   return thunk.SetOrUpdateCommandBufferExecutors(
@@ -138,15 +138,15 @@ static absl::Status SetOrUpdateCommandBufferBranchExecutors(
     // For boolean predicates, we need to convert the branches in reverse order
     // because the first branch is the "false" branch and the second is "true"
     CHECK_EQ(thunk.branch_executors().size(), 2);
-    ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         branch_cmds.emplace_back(),
         ConvertToCommands(thunk.branch_executors()[1].thunks(), options));
-    ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         branch_cmds.emplace_back(),
         ConvertToCommands(thunk.branch_executors()[0].thunks(), options));
   } else {
     for (const ThunkExecutor& branch_thunk : thunk.branch_executors()) {
-      ASSIGN_OR_RETURN(CommandExecutor cmds,
+      ABSL_ASSIGN_OR_RETURN(CommandExecutor cmds,
                        ConvertToCommands(branch_thunk.thunks(), options));
       branch_cmds.emplace_back(std::move(cmds));
     }
@@ -160,7 +160,7 @@ static absl::Status AppendCommands(ConversionContext& ctx,
   switch (thunk.kind()) {
     case Thunk::Kind::kConditional: {
       auto& conditional_thunk = static_cast<ConditionalThunk&>(thunk);
-      RETURN_IF_ERROR(
+      ABSL_RETURN_IF_ERROR(
           SetOrUpdateCommandBufferBranchExecutors(conditional_thunk, options));
       cmd_sequence.Append(&conditional_thunk);
       return absl::OkStatus();
@@ -170,17 +170,17 @@ static absl::Status AppendCommands(ConversionContext& ctx,
       return absl::OkStatus();
     case Thunk::Kind::kWhile: {
       auto& while_thunk = static_cast<WhileThunk&>(thunk);
-      RETURN_IF_ERROR(SetOrUpdateCommandBufferExecutors(while_thunk, options));
+      ABSL_RETURN_IF_ERROR(SetOrUpdateCommandBufferExecutors(while_thunk, options));
       cmd_sequence.Append(&while_thunk);
       return absl::OkStatus();
     }
     case Thunk::Kind::kDynamicSliceFusion: {
       auto& dynamic_slice_fusion_thunk =
           static_cast<DynamicSliceFusionV2Thunk&>(thunk);
-      ASSIGN_OR_RETURN(
+      ABSL_ASSIGN_OR_RETURN(
           CommandExecutor cmds,
           ConvertToCommands(dynamic_slice_fusion_thunk.thunks(), options));
-      RETURN_IF_ERROR(
+      ABSL_RETURN_IF_ERROR(
           dynamic_slice_fusion_thunk.SetOrUpdateCommandBufferExecutor(
               std::move(cmds)));
       cmd_sequence.Append(&dynamic_slice_fusion_thunk);
@@ -473,7 +473,7 @@ absl::Status AppendScheduledConcurrentRegionCommands(
         concurrent_region_schedules.emplace_back(absl::MakeSpan(region.thunks));
     for (Thunk* thunk : scheduler.scheduled_thunks()) {
       const int64_t command_index = cmd_sequence.size();
-      RETURN_IF_ERROR(AppendCommands(ctx, cmd_sequence, *thunk, options));
+      ABSL_RETURN_IF_ERROR(AppendCommands(ctx, cmd_sequence, *thunk, options));
       TF_RET_CHECK(cmd_sequence.size() == command_index + 1)
           << "Concurrent region thunk must append exactly one command: "
           << Thunk::KindToString(thunk->kind()) << " ("
@@ -526,12 +526,12 @@ absl::Status AppendCommandsInConcurrentRegions(
     ConversionContext& ctx, CommandSequence& cmd_sequence,
     const ThunkSequence& sequence, const ConvertToCommandsOptions& options,
     std::optional<uint64_t> inherited_region_id) {
-  ASSIGN_OR_RETURN(std::vector<ConcurrentRegion> concurrent_regions,
+  ABSL_ASSIGN_OR_RETURN(std::vector<ConcurrentRegion> concurrent_regions,
                    CollectConcurrentRegions(sequence, inherited_region_id));
 
   std::vector<ConcurrentRegionScheduler> concurrent_region_schedules;
   absl::flat_hash_map<const Thunk*, int64_t> thunk_to_index;
-  RETURN_IF_ERROR(AppendScheduledConcurrentRegionCommands(
+  ABSL_RETURN_IF_ERROR(AppendScheduledConcurrentRegionCommands(
       ctx, cmd_sequence, concurrent_regions, options,
       concurrent_region_schedules, thunk_to_index));
 
@@ -558,7 +558,7 @@ static absl::Status AppendCommands(ConversionContext& ctx,
                                              options, std::nullopt);
   }
   for (const std::unique_ptr<Thunk>& thunk : sequence) {
-    RETURN_IF_ERROR(AppendCommands(ctx, cmd_sequence, *thunk, options));
+    ABSL_RETURN_IF_ERROR(AppendCommands(ctx, cmd_sequence, *thunk, options));
   }
 
   return absl::OkStatus();
@@ -571,7 +571,7 @@ absl::StatusOr<CommandExecutor> ConvertToCommands(
       options.synchronization_mode);
   ConversionContext ctx;
   CommandSequence cmd_sequence;
-  RETURN_IF_ERROR(AppendCommands(ctx, cmd_sequence, sequence, options));
+  ABSL_RETURN_IF_ERROR(AppendCommands(ctx, cmd_sequence, sequence, options));
   return CommandExecutor::Create(std::move(cmd_sequence),
                                  options.synchronization_mode,
                                  std::move(ctx.extra_resources));

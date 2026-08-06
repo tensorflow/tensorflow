@@ -148,11 +148,11 @@ void GatherFusionInstructions(
 
 /* static */ absl::StatusOr<std::unique_ptr<TuplePointsToAnalysis>>
 TuplePointsToAnalysis::Run(const HloModule* module) {
-  ASSIGN_OR_RETURN(auto logical_buffer_analysis,
+  ABSL_ASSIGN_OR_RETURN(auto logical_buffer_analysis,
                    LogicalBufferAnalysis::Run(module));
   std::unique_ptr<TuplePointsToAnalysis> analysis(
       new TuplePointsToAnalysis(module, std::move(logical_buffer_analysis)));
-  RETURN_IF_ERROR(analysis->Analyze());
+  ABSL_RETURN_IF_ERROR(analysis->Analyze());
   return analysis;
 }
 
@@ -172,8 +172,8 @@ absl::Status TuplePointsToAnalysis::Analyze() {
 
   std::vector<HloInstruction*> fusion_instructions;
   for (auto* computation : module_->MakeNonfusionComputations()) {
-    RETURN_IF_ERROR(computation->Accept(this));
-    RETURN_IF_ERROR(
+    ABSL_RETURN_IF_ERROR(computation->Accept(this));
+    ABSL_RETURN_IF_ERROR(
         PopulateDefinedBuffersAndAliases(computation->instructions()));
     for (auto* instruction : computation->instructions()) {
       if (instruction->opcode() == HloOpcode::kFusion) {
@@ -183,9 +183,9 @@ absl::Status TuplePointsToAnalysis::Analyze() {
   }
   // Run points-to analysis on fusion instructions in 'computation'.
   for (auto* instruction : fusion_instructions) {
-    RETURN_IF_ERROR(
+    ABSL_RETURN_IF_ERROR(
         instruction->fused_instructions_computation()->Accept(this));
-    RETURN_IF_ERROR(
+    ABSL_RETURN_IF_ERROR(
         PopulateDefinedBuffersAndAliases(instruction->fused_instructions()));
   }
 
@@ -199,7 +199,7 @@ absl::Status TuplePointsToAnalysis::PopulateDefinedBuffersAndAliases(
                        .instructions())& instructions) {
   for (auto* instruction : instructions) {
     PerInstruction* pi = PerInst(instruction);
-    RETURN_IF_ERROR(GatherBuffersDefinedByInstruction(
+    ABSL_RETURN_IF_ERROR(GatherBuffersDefinedByInstruction(
         instruction, &pi->instruction_defined_buffers));
 
     const PointsToSet& points_to_set = GetPointsToSet(instruction);
@@ -222,11 +222,11 @@ absl::Status TuplePointsToAnalysis::DefaultAction(
   // contains a single element LogicalBuffer(hlo_instruction, i). This indicates
   // that this instruction is the source of all buffers in its own output.
   PointsToSet& points_to_set = CreateEmptyPointsToSet(hlo_instruction);
-  RETURN_IF_ERROR(points_to_set.ForEachMutableElementWithStatus(
+  ABSL_RETURN_IF_ERROR(points_to_set.ForEachMutableElementWithStatus(
       [this, hlo_instruction](
           const ShapeIndex& index,
           PointsToSet::BufferList* buffers) -> absl::Status {
-        ASSIGN_OR_RETURN(
+        ABSL_ASSIGN_OR_RETURN(
             LogicalBuffer * buffer,
             logical_buffer_analysis_->GetBuffer(hlo_instruction, index));
         buffers->push_back(buffer);
@@ -281,7 +281,7 @@ absl::Status TuplePointsToAnalysis::HandleCopy(HloInstruction* copy) {
   // tuple shape) come from the operand
   PointsToSet& points_to_set = CreateCopiedPointsToSet(copy, copy->operand(0));
   points_to_set.mutable_element(/*index=*/{})->clear();
-  ASSIGN_OR_RETURN(LogicalBuffer * buffer,
+  ABSL_ASSIGN_OR_RETURN(LogicalBuffer * buffer,
                    logical_buffer_analysis_->GetBuffer(copy, /*index=*/{}));
   points_to_set.AddPointedToBuffer(*buffer, /*index=*/{});
 
@@ -315,11 +315,11 @@ absl::Status TuplePointsToAnalysis::HandleRecvDone(HloInstruction* recv_done) {
   // RecvDone aliases its input (Recv) tuple element {0} to element {0} of its
   // output. The other indices ({} and {1}) define their own buffers.
   PointsToSet& points_to_set = CreateEmptyPointsToSet(recv_done);
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       LogicalBuffer * buffer_0,
       logical_buffer_analysis_->GetBuffer(recv_done, /*index=*/{}));
   points_to_set.AddPointedToBuffer(*buffer_0, /*index=*/{});
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       LogicalBuffer * buffer_1,
       logical_buffer_analysis_->GetBuffer(recv_done, /*index=*/{1}));
   points_to_set.AddPointedToBuffer(*buffer_1, /*index=*/{1});
@@ -354,7 +354,7 @@ absl::Status TuplePointsToAnalysis::HandleAsyncStart(
                               ->output_to_operand_aliasing()) {
     aliased_outputs.insert(pair);
   }
-  RETURN_IF_ERROR(points_to_set.ForEachMutableElementWithStatus(
+  ABSL_RETURN_IF_ERROR(points_to_set.ForEachMutableElementWithStatus(
       [&](const ShapeIndex& target_index,
           PointsToSet::BufferList* buffers) -> absl::Status {
         auto it = aliased_outputs.find(target_index);
@@ -390,7 +390,7 @@ absl::Status TuplePointsToAnalysis::HandleAsyncStart(
           }
         }
         if (!has_implicit_alias && !has_explicit_alias) {
-          ASSIGN_OR_RETURN(
+          ABSL_ASSIGN_OR_RETURN(
               LogicalBuffer * buffer,
               logical_buffer_analysis_->GetBuffer(async_start, target_index));
           buffers->push_back(buffer);
@@ -433,7 +433,7 @@ absl::Status TuplePointsToAnalysis::HandleAsyncUpdate(
     explicitly_aliased_outputs.insert(pair.first);
   }
 
-  RETURN_IF_ERROR(points_to_set.ForEachMutableElementWithStatus(
+  ABSL_RETURN_IF_ERROR(points_to_set.ForEachMutableElementWithStatus(
       [&](const ShapeIndex& index,
           PointsToSet::BufferList* buffers) -> absl::Status {
         const Shape& new_subshape =
@@ -489,7 +489,7 @@ absl::Status TuplePointsToAnalysis::HandleAsyncUpdate(
           // active.
         } else {
           // New output or new tuple container.
-          ASSIGN_OR_RETURN(
+          ABSL_ASSIGN_OR_RETURN(
               LogicalBuffer * buffer,
               logical_buffer_analysis_->GetBuffer(async_update, index));
           buffers->push_back(buffer);
@@ -513,7 +513,7 @@ absl::Status TuplePointsToAnalysis::HandleAsyncDone(
   const PointsToSet& operand_points_to_set = GetPointsToSet(async_op);
   const Shape& async_op_shape = async_op->shape();
 
-  RETURN_IF_ERROR(points_to_set.ForEachMutableElementWithStatus(
+  ABSL_RETURN_IF_ERROR(points_to_set.ForEachMutableElementWithStatus(
       [&](const ShapeIndex& target_index,
           PointsToSet::BufferList* buffers) -> absl::Status {
         ShapeIndex src_index({1});
@@ -540,7 +540,7 @@ absl::Status TuplePointsToAnalysis::HandleAsyncDone(
             points_to_set.add_tuple_source(target_index, tuple);
           }
         } else {
-          ASSIGN_OR_RETURN(
+          ABSL_ASSIGN_OR_RETURN(
               LogicalBuffer * buffer,
               logical_buffer_analysis_->GetBuffer(async_done, target_index));
           buffers->push_back(buffer);
@@ -565,13 +565,13 @@ absl::Status TuplePointsToAnalysis::HandleCopyStart(
   const PointsToSet& operand_points_to_set =
       GetPointsToSet(copy_start->operand(0));
 
-  RETURN_IF_ERROR(points_to_set.ForEachMutableElementWithStatus(
+  ABSL_RETURN_IF_ERROR(points_to_set.ForEachMutableElementWithStatus(
       [&](const ShapeIndex& target_index,
           PointsToSet::BufferList* buffers) -> absl::Status {
         if (target_index == ShapeIndex({1})) {
           *buffers = operand_points_to_set.element(/*index=*/{});
         } else {
-          ASSIGN_OR_RETURN(
+          ABSL_ASSIGN_OR_RETURN(
               LogicalBuffer * buffer,
               logical_buffer_analysis_->GetBuffer(copy_start, target_index));
           buffers->push_back(buffer);
@@ -616,18 +616,18 @@ absl::Status TuplePointsToAnalysis::HandleSend(HloInstruction* send) {
 
   // Creates the points to set for the tuple and its element at {1}.
   auto top_buffer = points_to_set.mutable_element(ShapeIndex({}));
-  ASSIGN_OR_RETURN(LogicalBuffer * buffer_0,
+  ABSL_ASSIGN_OR_RETURN(LogicalBuffer * buffer_0,
                    logical_buffer_analysis_->GetBuffer(send, ShapeIndex({})));
   top_buffer->push_back(buffer_0);
   points_to_set.add_tuple_source({}, send);
 
   auto context_buffer = points_to_set.mutable_element(ShapeIndex({1}));
-  ASSIGN_OR_RETURN(LogicalBuffer * buffer_1,
+  ABSL_ASSIGN_OR_RETURN(LogicalBuffer * buffer_1,
                    logical_buffer_analysis_->GetBuffer(send, ShapeIndex({1})));
   context_buffer->push_back(buffer_1);
 
   auto token_buffer = points_to_set.mutable_element(ShapeIndex({2}));
-  ASSIGN_OR_RETURN(LogicalBuffer * buffer_2,
+  ABSL_ASSIGN_OR_RETURN(LogicalBuffer * buffer_2,
                    logical_buffer_analysis_->GetBuffer(send, ShapeIndex({2})));
   token_buffer->push_back(buffer_2);
 
@@ -656,7 +656,7 @@ absl::Status TuplePointsToAnalysis::ConstructPointsToSetByAggregatingOperands(
     HloInstruction* instruction) {
   absl::Span<HloInstruction* const> operands(instruction->operands());
   PointsToSet& points_to_set = CreateEmptyPointsToSet(instruction);
-  ASSIGN_OR_RETURN(LogicalBuffer * buffer, logical_buffer_analysis_->GetBuffer(
+  ABSL_ASSIGN_OR_RETURN(LogicalBuffer * buffer, logical_buffer_analysis_->GetBuffer(
                                                instruction, /*index=*/{}));
   points_to_set.AddPointedToBuffer(*buffer, /*index=*/{});
 
@@ -725,12 +725,12 @@ absl::Status TuplePointsToAnalysis::HandleCustomCall(
   for (const auto& pair : ccall->output_to_operand_aliasing()) {
     aliased_outputs.emplace(pair.first, pair.second);
   }
-  RETURN_IF_ERROR(points_to_set.ForEachMutableElementWithStatus(
+  ABSL_RETURN_IF_ERROR(points_to_set.ForEachMutableElementWithStatus(
       [&](const ShapeIndex& index,
           PointsToSet::BufferList* buffers) -> absl::Status {
         auto it = aliased_outputs.find(index);
         if (it == aliased_outputs.end() || !alias_buffer_across_dataflow_) {
-          ASSIGN_OR_RETURN(
+          ABSL_ASSIGN_OR_RETURN(
               LogicalBuffer * buffer,
               logical_buffer_analysis_->GetBuffer(custom_call, index));
           points_to_set.AddPointedToBuffer(*buffer, index);
@@ -764,12 +764,12 @@ absl::Status TuplePointsToAnalysis::HandleFusion(HloInstruction* fusion) {
   for (const auto& pair : cfusion->output_to_operand_aliasing()) {
     aliased_outputs.emplace(pair.first, pair.second);
   }
-  RETURN_IF_ERROR(points_to_set.ForEachMutableElementWithStatus(
+  ABSL_RETURN_IF_ERROR(points_to_set.ForEachMutableElementWithStatus(
       [&](const ShapeIndex& index,
           PointsToSet::BufferList* buffers) -> absl::Status {
         auto it = aliased_outputs.find(index);
         if (it == aliased_outputs.end()) {
-          ASSIGN_OR_RETURN(LogicalBuffer * buffer,
+          ABSL_ASSIGN_OR_RETURN(LogicalBuffer * buffer,
                            logical_buffer_analysis_->GetBuffer(fusion, index));
           points_to_set.AddPointedToBuffer(*buffer, index);
         } else {

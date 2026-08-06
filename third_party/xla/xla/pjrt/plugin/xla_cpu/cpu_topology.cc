@@ -38,7 +38,7 @@ absl::StatusOr<std::unique_ptr<const CpuTopology>> CpuTopology::FromProto(
                                 cpu_device_proto.local_hardware_id()});
   }
 
-  ASSIGN_OR_RETURN(auto target_machine_options,
+  ABSL_ASSIGN_OR_RETURN(auto target_machine_options,
                    cpu::TargetMachineOptions::FromProto(
                        cpu_topology_proto.target_machine_options()));
 

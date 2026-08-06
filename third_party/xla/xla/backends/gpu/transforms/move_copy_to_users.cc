@@ -43,14 +43,14 @@ class MoveCopyToUsersVisitor : public DfsHloRewriteVisitor {
     HloInstruction* c = hlo->mutable_operand(1);
     if (HloPredicateIsOp<HloOpcode::kCopy>(operand)) {
       HloInstruction* copied = operand->mutable_operand(0);
-      ASSIGN_OR_RETURN(
+      ABSL_ASSIGN_OR_RETURN(
           HloInstruction * earlier_pad,
           MakePadHlo(copied, c, hlo->padding_config(), &hlo->metadata()));
       // MakePadHlo fails to propagate layout.
       *earlier_pad->mutable_shape()->mutable_layout() =
           copied->shape().layout();
       HloInstruction* later_copy = MakeCopyHlo(earlier_pad, hlo->shape());
-      RETURN_IF_ERROR(ReplaceInstruction(hlo, later_copy));
+      ABSL_RETURN_IF_ERROR(ReplaceInstruction(hlo, later_copy));
     }
     return absl::OkStatus();
   }
@@ -60,14 +60,14 @@ class MoveCopyToUsersVisitor : public DfsHloRewriteVisitor {
     HloInstruction* operand = hlo->mutable_operand(0);
     if (HloPredicateIsOp<HloOpcode::kCopy>(operand)) {
       HloInstruction* copied = operand->mutable_operand(0);
-      ASSIGN_OR_RETURN(
+      ABSL_ASSIGN_OR_RETURN(
           HloInstruction * earlier_slice,
           MakeSliceHlo(copied, hlo->slice_starts(), hlo->slice_limits(),
                        hlo->slice_strides(), &hlo->metadata()));
       *earlier_slice->mutable_shape()->mutable_layout() =
           copied->shape().layout();
       HloInstruction* later_copy = MakeCopyHlo(earlier_slice, hlo->shape());
-      RETURN_IF_ERROR(ReplaceInstruction(hlo, later_copy));
+      ABSL_RETURN_IF_ERROR(ReplaceInstruction(hlo, later_copy));
     }
     return absl::OkStatus();
   }
@@ -78,7 +78,7 @@ class MoveCopyToUsersVisitor : public DfsHloRewriteVisitor {
     HloInstruction* operand = hlo->mutable_operand(0);
     if (HloPredicateIsOp<HloOpcode::kCopy>(operand)) {
       HloInstruction* copied = operand->mutable_operand(0);
-      ASSIGN_OR_RETURN(
+      ABSL_ASSIGN_OR_RETURN(
           HloInstruction * earlier_slice,
           MakeDynamicSliceHlo(
               copied,
@@ -87,7 +87,7 @@ class MoveCopyToUsersVisitor : public DfsHloRewriteVisitor {
       *earlier_slice->mutable_shape()->mutable_layout() =
           copied->shape().layout();
       HloInstruction* later_copy = MakeCopyHlo(earlier_slice, hlo->shape());
-      RETURN_IF_ERROR(ReplaceInstruction(hlo, later_copy));
+      ABSL_RETURN_IF_ERROR(ReplaceInstruction(hlo, later_copy));
     }
     return absl::OkStatus();
   }
@@ -103,7 +103,7 @@ class MoveCopyToUsersVisitor : public DfsHloRewriteVisitor {
     HloInstruction* operand = hlo->mutable_operand(0);
     if (HloPredicateIsOp<HloOpcode::kCopy>(operand)) {
       HloInstruction* copied = operand->mutable_operand(0);
-      ASSIGN_OR_RETURN(
+      ABSL_ASSIGN_OR_RETURN(
           HloInstruction * earlier_reduce_window,
           MakeReduceWindowHlo(copied, hlo->mutable_operand(1), hlo->window(),
                               hlo->called_computations()[0], &hlo->metadata()));
@@ -111,7 +111,7 @@ class MoveCopyToUsersVisitor : public DfsHloRewriteVisitor {
           copied->shape().layout();
       HloInstruction* later_copy =
           MakeCopyHlo(earlier_reduce_window, hlo->shape());
-      RETURN_IF_ERROR(ReplaceInstruction(hlo, later_copy));
+      ABSL_RETURN_IF_ERROR(ReplaceInstruction(hlo, later_copy));
     }
     return absl::OkStatus();
   }
@@ -124,7 +124,7 @@ class MoveCopyToUsersVisitor : public DfsHloRewriteVisitor {
       HloInstruction* new_reduce = hlo->AddInstruction(
           hlo->CloneWithNewOperands(hlo->shape(), {operand->mutable_operand(0),
                                                    hlo->mutable_operand(1)}));
-      RETURN_IF_ERROR(ReplaceInstruction(hlo, new_reduce));
+      ABSL_RETURN_IF_ERROR(ReplaceInstruction(hlo, new_reduce));
     }
     return absl::OkStatus();
   }
@@ -142,11 +142,11 @@ class MoveCopyToUsersVisitor : public DfsHloRewriteVisitor {
     }
     if (HloPredicateIsOp<HloOpcode::kCopy>(operand)) {
       HloInstruction* copied = operand->mutable_operand(0);
-      ASSIGN_OR_RETURN(HloInstruction * earlier_elementwise,
+      ABSL_ASSIGN_OR_RETURN(HloInstruction * earlier_elementwise,
                        MakeUnaryHlo(hlo->opcode(), copied, &hlo->metadata()));
       HloInstruction* later_copy =
           MakeCopyHlo(earlier_elementwise, hlo->shape());
-      RETURN_IF_ERROR(ReplaceInstruction(hlo, later_copy));
+      ABSL_RETURN_IF_ERROR(ReplaceInstruction(hlo, later_copy));
     }
     return absl::OkStatus();
   }
@@ -156,11 +156,11 @@ class MoveCopyToUsersVisitor : public DfsHloRewriteVisitor {
     HloInstruction* operand = hlo->mutable_operand(0);
     if (HloPredicateIsOp<HloOpcode::kCopy>(operand)) {
       HloInstruction* copied = operand->mutable_operand(0);
-      ASSIGN_OR_RETURN(
+      ABSL_ASSIGN_OR_RETURN(
           HloInstruction * earlier_reverse,
           MakeReverseHlo(copied, hlo->dimensions(), &hlo->metadata()));
       HloInstruction* later_copy = MakeCopyHlo(earlier_reverse, hlo->shape());
-      RETURN_IF_ERROR(ReplaceInstruction(hlo, later_copy));
+      ABSL_RETURN_IF_ERROR(ReplaceInstruction(hlo, later_copy));
     }
     return absl::OkStatus();
   }
@@ -179,7 +179,7 @@ class MoveCopyToUsersVisitor : public DfsHloRewriteVisitor {
       HloInstruction* earlier_convert = MakeConvertToHlo(
           copied, hlo->shape().element_type(), &hlo->metadata());
       HloInstruction* later_copy = MakeCopyHlo(earlier_convert, hlo->shape());
-      RETURN_IF_ERROR(ReplaceInstruction(hlo, later_copy));
+      ABSL_RETURN_IF_ERROR(ReplaceInstruction(hlo, later_copy));
     }
     return absl::OkStatus();
   }
@@ -195,17 +195,17 @@ class MoveCopyToUsersVisitor : public DfsHloRewriteVisitor {
       if (copied_a->shape() == copied_b->shape()) {
         HloInstruction* earlier_elementwise;
         if (HloPredicateIsOp<HloOpcode::kCompare>(hlo)) {
-          ASSIGN_OR_RETURN(earlier_elementwise,
+          ABSL_ASSIGN_OR_RETURN(earlier_elementwise,
                            MakeCompareHlo(hlo->comparison_direction(), copied_a,
                                           copied_b, &hlo->metadata()));
         } else {
-          ASSIGN_OR_RETURN(earlier_elementwise,
+          ABSL_ASSIGN_OR_RETURN(earlier_elementwise,
                            MakeBinaryHlo(hlo->opcode(), copied_a, copied_b,
                                          &hlo->metadata()));
         }
         HloInstruction* later_copy =
             MakeCopyHlo(earlier_elementwise, hlo->shape());
-        RETURN_IF_ERROR(ReplaceInstruction(hlo, later_copy));
+        ABSL_RETURN_IF_ERROR(ReplaceInstruction(hlo, later_copy));
       }
     }
     return absl::OkStatus();
@@ -232,12 +232,12 @@ class MoveCopyToUsersVisitor : public DfsHloRewriteVisitor {
       new_operands.push_back(op->mutable_operand(0));
     }
 
-    ASSIGN_OR_RETURN(HloInstruction * new_concat,
+    ABSL_ASSIGN_OR_RETURN(HloInstruction * new_concat,
                      MakeConcatHlo(new_operands, hlo->concatenate_dimension()));
     *new_concat->mutable_shape()->mutable_layout() = inner_op_layout;
 
     HloInstruction* new_copy = MakeCopyHlo(new_concat, hlo->shape());
-    RETURN_IF_ERROR(ReplaceInstruction(hlo, new_copy));
+    ABSL_RETURN_IF_ERROR(ReplaceInstruction(hlo, new_copy));
     return absl::OkStatus();
   }
 };

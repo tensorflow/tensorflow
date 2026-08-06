@@ -169,7 +169,7 @@ class PriorityFusionQueue {
     auto cost_analysis = std::make_unique<GpuHloCostAnalysis>(
         cost_analysis_options, *device_info);
     VLOG(2) << "Running full HLO cost analysis for " << computation->name();
-    RETURN_IF_ERROR(computation->Accept(cost_analysis.get()));
+    ABSL_RETURN_IF_ERROR(computation->Accept(cost_analysis.get()));
 
     auto queue = std::make_unique<PriorityFusionQueue>(
         computation, std::move(cost_analysis), cost_analysis_options,
@@ -179,7 +179,7 @@ class PriorityFusionQueue {
 
     std::vector<HloInstruction*> instructions;
     for (auto* instruction : computation->MakeInstructionPostOrder()) {
-      RETURN_IF_ERROR(queue->UpdatePerformanceModelCache(instruction));
+      ABSL_RETURN_IF_ERROR(queue->UpdatePerformanceModelCache(instruction));
       if (HloPredicateIsOp<HloOpcode::kParameter>(instruction) ||
           instruction->user_count() == 0 || !instruction->IsFusible() ||
           HloPredicateIsOp<HloOpcode::kTuple, HloOpcode::kGetTupleElement>(
@@ -189,7 +189,7 @@ class PriorityFusionQueue {
       instructions.push_back(instruction);
     }
 
-    RETURN_IF_ERROR(queue->ComputeAndSetPriorities(std::move(instructions)));
+    ABSL_RETURN_IF_ERROR(queue->ComputeAndSetPriorities(std::move(instructions)));
 
     return queue;
   }
@@ -231,7 +231,7 @@ class PriorityFusionQueue {
 
   absl::Status ComputeAndSetPriorities(
       const std::vector<HloInstruction*>& instructions) {
-    ASSIGN_OR_RETURN(std::vector<Priority> priorities,
+    ABSL_ASSIGN_OR_RETURN(std::vector<Priority> priorities,
                      ComputePriorities(instructions));
 
     for (auto [instruction, priority] : llvm::zip(instructions, priorities)) {
@@ -292,7 +292,7 @@ class PriorityFusionQueue {
 
     std::vector<Priority> priorities(instructions.size());
     for (size_t i = 0; i < instructions.size(); ++i) {
-      ASSIGN_OR_RETURN(priorities[i], priorities_or_status[i]);
+      ABSL_ASSIGN_OR_RETURN(priorities[i], priorities_or_status[i]);
     }
     return priorities;
   }
@@ -356,13 +356,13 @@ class PriorityFusionQueue {
     // Revisit costs of all updated ops. It's important to update cost analysis
     // before recalculating priorities.
     for (auto instruction : to_update_priority_) {
-      RETURN_IF_ERROR(cost_analysis_->RevisitInstruction(instruction));
+      ABSL_RETURN_IF_ERROR(cost_analysis_->RevisitInstruction(instruction));
     }
     for (auto producer : to_update_priority_) {
-      RETURN_IF_ERROR(UpdatePerformanceModelCache(producer));
+      ABSL_RETURN_IF_ERROR(UpdatePerformanceModelCache(producer));
     }
 
-    RETURN_IF_ERROR(ComputeAndSetPriorities(std::vector<HloInstruction*>{
+    ABSL_RETURN_IF_ERROR(ComputeAndSetPriorities(std::vector<HloInstruction*>{
         to_update_priority_.begin(), to_update_priority_.end()}));
 
     to_update_priority_.clear();
@@ -612,7 +612,7 @@ class PriorityFusionQueue {
           FindPossibleConsumersForTritonMultiOutputFusion(producer);
       if (CanFuseTritonMultiOutputWithSingleUser(producer,
                                                  possible_consumers)) {
-        ASSIGN_OR_RETURN(CombinedGpuPerformanceModel::RunTimes run_times,
+        ABSL_ASSIGN_OR_RETURN(CombinedGpuPerformanceModel::RunTimes run_times,
                          combined_gpu_performance_model_.EstimateRunTimes(
                              producer, cost_analysis_.get(),
                              /*fused_consumers=*/possible_consumers));
@@ -647,7 +647,7 @@ class PriorityFusionQueue {
             : absl::MakeConstSpan(producer->users());
     // Note that `gpu_performance_model_cache_` may contain a runtime estimate
     // from the Triton cost model.
-    ASSIGN_OR_RETURN(CombinedGpuPerformanceModel::RunTimes run_times,
+    ABSL_ASSIGN_OR_RETURN(CombinedGpuPerformanceModel::RunTimes run_times,
                      combined_gpu_performance_model_.EstimateRunTimes(
                          producer, cost_analysis_.get(), fused_consumers));
     Priority current_priority;
@@ -1220,7 +1220,7 @@ absl::StatusOr<bool> PriorityFusion::RunImpl(
   for (auto* computation : fusible_computations) {
     CHECK(!computation->IsFusionComputation());
 
-    ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         std::unique_ptr<PriorityFusionQueue> fusion_queue,
         PriorityFusionQueue::Create(
             computation, cost_analysis_options_, &device_info_,
@@ -1265,7 +1265,7 @@ absl::StatusOr<bool> PriorityFusion::RunImpl(
             Fuse(producer, consumer, use_multi_output_fusion);
         auto backend_config_it = block_level_parameters_map.find(consumer);
         if (backend_config_it != block_level_parameters_map.end()) {
-          RETURN_IF_ERROR(fusion_instruction->set_backend_config(
+          ABSL_RETURN_IF_ERROR(fusion_instruction->set_backend_config(
               GetTritonGpuBackendConfig(backend_config_it->second)));
           fusion_instruction->set_fusion_kind(
               HloInstruction::FusionKind::kCustom);
@@ -1286,7 +1286,7 @@ absl::StatusOr<bool> PriorityFusion::RunImpl(
         // have been removed already.
         if (!use_multi_output_fusion) {
           producer->DetachFromOperandsAndUsers();
-          RETURN_IF_ERROR(computation->RemoveInstruction(producer));
+          ABSL_RETURN_IF_ERROR(computation->RemoveInstruction(producer));
         }
       }
 
@@ -1296,7 +1296,7 @@ absl::StatusOr<bool> PriorityFusion::RunImpl(
       for (auto consumer_id : pre_fusion_consumer_ids) {
         fusion_analysis_cache_.Invalidate(consumer_id);
       }
-      RETURN_IF_ERROR(fusion_queue->UpdatePriorities());
+      ABSL_RETURN_IF_ERROR(fusion_queue->UpdatePriorities());
     }
 
     // Fuse all constants.

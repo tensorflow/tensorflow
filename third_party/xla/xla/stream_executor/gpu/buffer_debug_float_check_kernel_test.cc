@@ -109,23 +109,23 @@ class FloatCheckKernelTest : public ::testing::Test {
     // Load kernel
     gpu::GpuKernelRegistry registry =
         gpu::GpuKernelRegistry::GetGlobalRegistry();
-    ASSIGN_OR_RETURN(auto check_kernel,
+    ABSL_ASSIGN_OR_RETURN(auto check_kernel,
                      registry.LoadKernel<CheckKernel>(executor_));
-    ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         auto reduce_kernel,
         registry
             .LoadKernel<gpu::BufferDebugAppendReducedFloatCheckResultsKernel>(
                 executor_));
 
     // Setup device buffers
-    ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         se::DeviceAddress<InputType> device_input,
         CheckNotNull(executor_->AllocateArray<InputType>(input.size()),
                      "input"));
     auto cleanup_input =
         absl::MakeCleanup([&]() { executor_->Deallocate(&device_input); });
 
-    ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         se::DeviceAddress<xla::gpu::FloatCheckResult> device_tmp,
         CheckNotNull(executor_->AllocateArray<xla::gpu::FloatCheckResult>(
                          temp_buffer_size_elements),
@@ -136,18 +136,18 @@ class FloatCheckKernelTest : public ::testing::Test {
     const se::ThreadDim thread_dim(1024, 1, 1);
 
     // Call kernel
-    RETURN_IF_ERROR(stream_->Memcpy(&device_input, input.data(),
+    ABSL_RETURN_IF_ERROR(stream_->Memcpy(&device_input, input.data(),
                                     input.size() * sizeof(input[0])));
-    RETURN_IF_ERROR(check_kernel.Launch(
+    ABSL_RETURN_IF_ERROR(check_kernel.Launch(
         thread_dim, block_dim, stream_.get(), device_input,
         device_input.ElementCount(), device_tmp, device_tmp.ElementCount()));
-    RETURN_IF_ERROR(reduce_kernel.Launch(
+    ABSL_RETURN_IF_ERROR(reduce_kernel.Launch(
         thread_dim, se::BlockDim(1, 1, 1), stream_.get(), device_tmp,
         std::min(device_tmp.ElementCount(),
                  block_dim.x * block_dim.y * block_dim.z),
         entry_id, buffer_debug_log.GetDeviceHeader(),
         buffer_debug_log.GetDeviceEntries()));
-    RETURN_IF_ERROR(stream_->BlockHostUntilDone());
+    ABSL_RETURN_IF_ERROR(stream_->BlockHostUntilDone());
 
     // The result gets stored in `buffer_debug_log`.
     return absl::OkStatus();

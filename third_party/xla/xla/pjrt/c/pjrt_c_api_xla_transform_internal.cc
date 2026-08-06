@@ -103,7 +103,7 @@ class CApiXlaTransformAdapter : public HloXlaTransform {
       args.header.cleanup_fn(args.header.data);
     }
 
-    RETURN_IF_ERROR(status);
+    ABSL_RETURN_IF_ERROR(status);
     return changed;
   }
 

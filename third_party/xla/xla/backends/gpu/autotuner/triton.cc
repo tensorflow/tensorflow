@@ -117,7 +117,7 @@ TritonBackend::GetSupportedConfigs(const HloInstruction& instr) {
   if (!IsSupported(instr)) {
     return std::vector<std::unique_ptr<BackendConfig>>();
   }
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       std::vector<std::unique_ptr<BackendConfig>> overridden_configs,
       GetOverriddenConfigs(&instr));
   if (!overridden_configs.empty()) {
@@ -167,7 +167,7 @@ TritonBackend::GetSupportedConfigsForDot(const HloInstruction* instr) {
     if (!debug_options()
              .xla_gpu_experimental_cost_model_gemm_tiling_options()
              .empty()) {
-      ASSIGN_OR_RETURN(gemm_configs, OptimizeConfigsWithCostModel(
+      ABSL_ASSIGN_OR_RETURN(gemm_configs, OptimizeConfigsWithCostModel(
                                          dot, all_configs, gemm_configs,
                                          target_config().device_description,
                                          debug_options(), mlir_context_));
@@ -237,7 +237,7 @@ TritonBackend::GetOverriddenConfigs(const HloInstruction* instr) {
       debug_options().xla_gpu_gemm_autotuner_override_file();
   if (!override_file.empty()) {
     std::string file_content;
-    RETURN_IF_ERROR(tsl::ReadFileToString(tsl::Env::Default(), override_file,
+    ABSL_RETURN_IF_ERROR(tsl::ReadFileToString(tsl::Env::Default(), override_file,
                                           &file_content));
     TritonGemmConfigsProto gemm_configs;
     if (!tsl::protobuf::TextFormat::ParseFromString(file_content,
@@ -281,17 +281,17 @@ absl::Status TritonBackend::ApplyConfig(HloInstruction& instr,
   }
   const AutotuneResult::TritonGemmKey& triton_config_proto = config.triton();
 
-  ASSIGN_OR_RETURN(GpuBackendConfig gpu_config,
+  ABSL_ASSIGN_OR_RETURN(GpuBackendConfig gpu_config,
                    instr.backend_config<GpuBackendConfig>());
   FusionBackendConfig& backend_config =
       *gpu_config.mutable_fusion_backend_config();
 
   backend_config.set_kind(kTritonGemmFusionKind);
   *backend_config.mutable_triton_gemm_config() = triton_config_proto;
-  RETURN_IF_ERROR(instr.set_backend_config(gpu_config));
+  ABSL_RETURN_IF_ERROR(instr.set_backend_config(gpu_config));
 
   // FromProto has validation checks, that's why we call it here.
-  RETURN_IF_ERROR(TritonGemmConfig::FromProto(triton_config_proto).status());
+  ABSL_RETURN_IF_ERROR(TritonGemmConfig::FromProto(triton_config_proto).status());
   if (triton_config_proto.split_k() > 1) {
     return absl::InvalidArgumentError(
         "TritonBackend no longer supports split-k (split_k > 1).");
@@ -309,7 +309,7 @@ absl::StatusOr<std::unique_ptr<HloModule>> TritonBackend::RunHloPasses(
     GpuFloatSupport float_support(gpu_device_info.gpu_compute_capability(),
                                   type);
     FloatNormalization float_normalization(&float_support);
-    RETURN_IF_ERROR(float_normalization.Run(hlo_module.get()).status());
+    ABSL_RETURN_IF_ERROR(float_normalization.Run(hlo_module.get()).status());
   }
 
   HloCostAnalysis::Options priority_fusion_options;
@@ -317,15 +317,15 @@ absl::StatusOr<std::unique_ptr<HloModule>> TritonBackend::RunHloPasses(
   PriorityFusion priority_fusion(
       /*thread_pool=*/nullptr, gpu_device_info, alias_info_,
       priority_fusion_options, mlir_context_);
-  RETURN_IF_ERROR(priority_fusion.Run(hlo_module.get()).status());
+  ABSL_RETURN_IF_ERROR(priority_fusion.Run(hlo_module.get()).status());
 
   // If the priority fusion pass above skipped some instructions, turn them
   // into fusions.
   FusionWrapper fusion_wrapper(gpu_device_info);
-  RETURN_IF_ERROR(fusion_wrapper.Run(hlo_module.get()).status());
+  ABSL_RETURN_IF_ERROR(fusion_wrapper.Run(hlo_module.get()).status());
   ConvertTritonGemmConfig convert_triton_gemm_config(gpu_device_info,
                                                      mlir_context_);
-  RETURN_IF_ERROR(convert_triton_gemm_config.Run(hlo_module.get()).status());
+  ABSL_RETURN_IF_ERROR(convert_triton_gemm_config.Run(hlo_module.get()).status());
   return hlo_module;
 }
 

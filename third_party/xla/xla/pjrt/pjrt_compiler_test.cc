@@ -63,7 +63,7 @@ std::string CompilerVariantToString(PjRtCompilerVariant variant) {
 namespace {
 bool RegisterTestVariantPicker() {
   PjRtRegisterCompilerVariantPicker("tpu", []() -> absl::StatusOr<std::string> {
-    ASSIGN_OR_RETURN(PjRtCompilerVariant variant, PickTpuCompilerVariant());
+    ABSL_ASSIGN_OR_RETURN(PjRtCompilerVariant variant, PickTpuCompilerVariant());
     return CompilerVariantToString(variant);
   });
   return true;

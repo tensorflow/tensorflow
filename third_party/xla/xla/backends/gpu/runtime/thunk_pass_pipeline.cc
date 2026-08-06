@@ -38,7 +38,7 @@ absl::StatusOr<bool> ThunkPassPipeline::Run(
   bool changed = false;
   for (const auto& pass : passes_) {
     VLOG(1) << "Running ThunkPass: " << pass->name();
-    ASSIGN_OR_RETURN(bool pass_changed,
+    ABSL_ASSIGN_OR_RETURN(bool pass_changed,
                      pass->Run(thunk_sequence, debug_options, hlo_module,
                                device_info, allocator));
     changed |= pass_changed;

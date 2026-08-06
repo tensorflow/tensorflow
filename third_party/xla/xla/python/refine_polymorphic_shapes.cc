@@ -321,8 +321,8 @@ absl::Status RefinePolymorphicShapes(llvm::StringRef module_str,
     return absl::InvalidArgumentError("Cannot parse module.");
   }
 
-  RETURN_IF_ERROR(RefinePolymorphicShapes(*module, enable_shape_assertions));
-  if (validate_static_shapes) RETURN_IF_ERROR(ValidateStaticShapes(*module));
+  ABSL_RETURN_IF_ERROR(RefinePolymorphicShapes(*module, enable_shape_assertions));
+  if (validate_static_shapes) ABSL_RETURN_IF_ERROR(ValidateStaticShapes(*module));
   if (mlir::failed(mlir::writeBytecodeToFile(*module, os))) {
     return absl::InternalError("Cannot serialize module.");
   }

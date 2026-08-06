@@ -165,7 +165,7 @@ CpuTopologyDescription::FromProto(
   }
   CpuTopologyProto cpu_topology_proto;
   proto.platform_specific_topology().UnpackTo(&cpu_topology_proto);
-  ASSIGN_OR_RETURN(auto cpu_topology,
+  ABSL_ASSIGN_OR_RETURN(auto cpu_topology,
                    CpuTopology::FromProto(cpu_topology_proto));
   std::vector<xla::CpuTopology::CpuDevice> cpu_devices;
   return std::make_unique<CpuTopologyDescription>(

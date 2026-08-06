@@ -85,7 +85,7 @@ absl::StatusOr<std::string> LLVMToPTX(mlir::ModuleOp module,
     return absl::InternalError("Failed to emit LLVM IR");
   }
 
-  ASSIGN_OR_RETURN(auto cuda_cc,
+  ABSL_ASSIGN_OR_RETURN(auto cuda_cc,
                    se::CudaComputeCapability::FromString(arch_name));
   // Hopper and Blackwell require accelerated features ("a" suffix) for TMA and
   // other advanced instructions.
@@ -142,7 +142,7 @@ absl::StatusOr<CompilationResult> Compile(absl::string_view module,
 
   mlir::PassManager pm(&context);
   pm.enableVerifier();
-  ASSIGN_OR_RETURN(auto cuda_cc,
+  ABSL_ASSIGN_OR_RETURN(auto cuda_cc,
                    se::CudaComputeCapability::FromString(arch_name));
 
   gpu::CreateTritonPipeline(&pm, se::GpuComputeCapability(cuda_cc), num_warps,
@@ -183,7 +183,7 @@ absl::StatusOr<CompilationResult> Compile(absl::string_view module,
     cluster_dim_x = attr.getInt();
   }
 
-  ASSIGN_OR_RETURN(auto ptx, LLVMToPTX(*module_op, arch_name));
+  ABSL_ASSIGN_OR_RETURN(auto ptx, LLVMToPTX(*module_op, arch_name));
 
   return CompilationResult{
       AsmText{ptx},  shared_mem_bytes, global_scratch_size,

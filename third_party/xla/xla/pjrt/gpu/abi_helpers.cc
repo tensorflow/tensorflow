@@ -30,14 +30,14 @@ namespace xla::gpu {
 
 absl::StatusOr<std::unique_ptr<xla::PjRtRuntimeAbiVersion>>
 PjRtRuntimeAbiVersionFromProto(const xla::PjRtRuntimeAbiVersionProto& proto) {
-  ASSIGN_OR_RETURN(const PJRT_Api* c_api, pjrt::PjrtApi(kGpuPjrtName));
+  ABSL_ASSIGN_OR_RETURN(const PJRT_Api* c_api, pjrt::PjrtApi(kGpuPjrtName));
   return pjrt::CApiRuntimeAbiVersionFromProto(proto, c_api);
 }
 
 absl::StatusOr<std::unique_ptr<xla::PjRtExecutableAbiVersion>>
 PjRtExecutableAbiVersionFromProto(
     const xla::PjRtExecutableAbiVersionProto& proto) {
-  ASSIGN_OR_RETURN(const PJRT_Api* c_api, pjrt::PjrtApi(kGpuPjrtName));
+  ABSL_ASSIGN_OR_RETURN(const PJRT_Api* c_api, pjrt::PjrtApi(kGpuPjrtName));
   return pjrt::CApiExecutableAbiVersionFromProto(proto, c_api);
 }
 

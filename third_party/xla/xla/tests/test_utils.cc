@@ -383,7 +383,7 @@ absl::StatusOr<std::vector<Literal>> MakeFakeArguments(
     std::optional<int64_t> max_bits_of_precision,
     bool generate_aligned_ds_indices,
     GetIndexKnownZeroesFn get_index_known_zeroes) {
-  ASSIGN_OR_RETURN(auto dataflow, HloDataflowAnalysis::Run(*module));
+  ABSL_ASSIGN_OR_RETURN(auto dataflow, HloDataflowAnalysis::Run(*module));
   const auto params = module->entry_computation()->parameter_instructions();
   std::vector<Literal> arguments(params.size());
   for (int i = 0; i < params.size(); ++i) {
@@ -398,7 +398,7 @@ absl::StatusOr<std::vector<Literal>> MakeFakeArguments(
                                          .shape()
                                    : params[i]->shape();
 
-    ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         arguments[i],
         MakeConstrainedArgument(
             *dataflow, *params[i], param_shape, engine, use_large_range,
@@ -419,7 +419,7 @@ absl::StatusOr<std::vector<Literal>> MakeDataflowConstrainedArguments(
     engine = default_engine.get();
   }
 
-  ASSIGN_OR_RETURN(auto constraint_states,
+  ABSL_ASSIGN_OR_RETURN(auto constraint_states,
                    ConstraintPropagator::Run(*module, get_index_known_zeroes));
 
   const auto params = module->entry_computation()->parameter_instructions();
@@ -483,7 +483,7 @@ absl::StatusOr<std::vector<Literal>> MakeDataflowConstrainedArguments(
       limit = {min_val, max_val};
     }
 
-    ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         arguments[i],
         MakeFakeLiteral(param_shape, engine, limit,
                         structure.needs_sorted_indices, structure.no_duplicates,

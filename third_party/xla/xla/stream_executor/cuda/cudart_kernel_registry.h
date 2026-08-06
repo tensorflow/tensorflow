@@ -47,7 +47,7 @@ absl::StatusOr<CudaRuntimeKernel> FindCudaRuntimeKernel(const void* host_fun);
 template <typename ReturnT, typename... Args>
 absl::StatusOr<KernelLoaderSpec> FindCudaRuntimeKernel(
     ReturnT (*host_fun)(Args...)) {
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       CudaRuntimeKernel kernel,
       FindCudaRuntimeKernel(absl::bit_cast<const void*>(host_fun)));
   return KernelLoaderSpec::CreateCudaCubinInMemorySpec(

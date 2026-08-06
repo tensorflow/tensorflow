@@ -290,9 +290,9 @@ TEST_P(TritonBackendTest, VerifyHopperConfigsAreDifferentFromBlackwell) {
     target_config_.device_description.set_gpu_compute_capability(
         se::GpuComputeCapability{cap});
 
-    ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
+    ABSL_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
                      ParseAndReturnVerifiedModule(kSimpleGemmFusionHlo));
-    ASSIGN_OR_RETURN(std::vector<std::unique_ptr<BackendConfig>> configs,
+    ABSL_ASSIGN_OR_RETURN(std::vector<std::unique_ptr<BackendConfig>> configs,
                      backend_.GetSupportedConfigs(
                          *(module->entry_computation()->root_instruction())));
 

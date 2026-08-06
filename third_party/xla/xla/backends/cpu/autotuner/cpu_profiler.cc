@@ -83,14 +83,14 @@ absl::StatusOr<ProfileResult> CpuProfiler::Profile(
       absl::down_cast<const LiteralBackedCpuBuffers&>(buffers);
   {
     // Warm up run.
-    RETURN_IF_ERROR(Execute(executable, literal_backed_buffers.buffers,
+    ABSL_RETURN_IF_ERROR(Execute(executable, literal_backed_buffers.buffers,
                             /*profile=*/nullptr));
   }
 
   ExecutionProfile profile;
   profile.set_warmup_run_executed(true);
 
-  RETURN_IF_ERROR(
+  ABSL_RETURN_IF_ERROR(
       Execute(executable, literal_backed_buffers.buffers, &profile));
 
   return ProfileResult{absl::Nanoseconds(profile.compute_time_ns())};
@@ -105,7 +105,7 @@ absl::Status CpuProfiler::Execute(
 
   CpuExecutable* cpu_executable = absl::down_cast<CpuExecutable*>(executable);
 
-  RETURN_IF_ERROR(cpu_executable->ExecuteThunks(&run_options, buffers));
+  ABSL_RETURN_IF_ERROR(cpu_executable->ExecuteThunks(&run_options, buffers));
 
   return absl::OkStatus();
 }

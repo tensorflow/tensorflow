@@ -97,17 +97,17 @@ CublasLtBackend::GetSupportedConfigs(const HloInstruction& instr) {
       instr.backend_config<GpuBackendConfig>().value();
   const GemmBackendConfig& backend_config = gpu_config.gemm_backend_config();
 
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       GemmConfig gemm_config,
       GemmConfig::For(
           &instr, target_config().device_description.gpu_compute_capability()));
 
-  ASSIGN_OR_RETURN(BlasLt::Epilogue epilogue,
+  ABSL_ASSIGN_OR_RETURN(BlasLt::Epilogue epilogue,
                    AsBlasLtEpilogue(backend_config.epilogue()));
 
-  ASSIGN_OR_RETURN(BlasLt * blas_lt, se::gpu::BlasLt::Get(stream_executor()));
+  ABSL_ASSIGN_OR_RETURN(BlasLt * blas_lt, se::gpu::BlasLt::Get(stream_executor()));
 
-  ASSIGN_OR_RETURN(std::unique_ptr<BlasLt::MatmulPlan> plan,
+  ABSL_ASSIGN_OR_RETURN(std::unique_ptr<BlasLt::MatmulPlan> plan,
                    blas_lt->GetMatmulPlan(gemm_config, epilogue));
 
   const Shape& output_shape = instr.shape();
@@ -124,7 +124,7 @@ CublasLtBackend::GetSupportedConfigs(const HloInstruction& instr) {
     max_algorithms = GemmConfig::kNumAlgorithms;
   }
 
-  ASSIGN_OR_RETURN(std::vector<BlasLt::MatmulAlgorithm> algorithms,
+  ABSL_ASSIGN_OR_RETURN(std::vector<BlasLt::MatmulAlgorithm> algorithms,
                    plan->GetAlgorithms(max_algorithms, workspace_size));
   int num_algorithms = algorithms.size();
   std::vector<std::unique_ptr<BackendConfig>> configs;
@@ -163,13 +163,13 @@ absl::Status CublasLtBackend::ApplyConfig(HloInstruction& instr,
         "Expected GemmKey config for CublasLtBackend.");
   }
   const AutotuneResult::GemmKey& gemm_key = config.gemm();
-  ASSIGN_OR_RETURN(GpuBackendConfig gpu_config,
+  ABSL_ASSIGN_OR_RETURN(GpuBackendConfig gpu_config,
                    instr.backend_config<GpuBackendConfig>());
   GemmBackendConfig& backend_config = *gpu_config.mutable_gemm_backend_config();
   backend_config.set_selected_algorithm(gemm_key.algorithm());
   backend_config.set_autotune_workspace_size(
       gemm_key.autotune_workspace_size());
-  RETURN_IF_ERROR(instr.set_backend_config(std::move(gpu_config)));
+  ABSL_RETURN_IF_ERROR(instr.set_backend_config(std::move(gpu_config)));
 
   if (instr.shape().IsTuple() && !instr.shape().tuple_shapes().empty()) {
     Shape* workspace_shape = instr.mutable_shape()->mutable_tuple_shapes(

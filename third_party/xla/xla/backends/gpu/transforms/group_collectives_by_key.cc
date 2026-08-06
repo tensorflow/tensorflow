@@ -331,10 +331,10 @@ absl::Status CreateCollectivesGroup(
     }
     // Control predecessors of the member gate the whole group's start; control
     // successors wait on the group's done.
-    RETURN_IF_ERROR(c->CopyAllControlDepsTo(async_start, async_done));
-    RETURN_IF_ERROR(c->DropAllControlDeps());
-    RETURN_IF_ERROR(c->ReplaceAllUsesWith(replacement));
-    RETURN_IF_ERROR(computation->RemoveInstruction(c));
+    ABSL_RETURN_IF_ERROR(c->CopyAllControlDepsTo(async_start, async_done));
+    ABSL_RETURN_IF_ERROR(c->DropAllControlDeps());
+    ABSL_RETURN_IF_ERROR(c->ReplaceAllUsesWith(replacement));
+    ABSL_RETURN_IF_ERROR(computation->RemoveInstruction(c));
   }
 
   return absl::OkStatus();
@@ -493,14 +493,14 @@ absl::StatusOr<bool> GroupCollectivesInComputation(
     groups_to_form.push_back({key, std::move(collectives)});
   }
 
-  RETURN_IF_ERROR(ValidateGroupGraphIsAcyclic(groups_to_form, *reachability,
+  ABSL_RETURN_IF_ERROR(ValidateGroupGraphIsAcyclic(groups_to_form, *reachability,
                                               computation->name()));
 
   // Phase two: every group validated against a consistent, mutation-free map,
   // so it is now safe to form them.
   bool changed = false;
   for (const CollectiveGroup& group : groups_to_form) {
-    RETURN_IF_ERROR(CreateCollectivesGroup(computation, group.collectives,
+    ABSL_RETURN_IF_ERROR(CreateCollectivesGroup(computation, group.collectives,
                                            execution_thread));
     changed = true;
   }
@@ -521,7 +521,7 @@ absl::StatusOr<bool> GroupCollectivesByKey::RunImpl(
     if (comp->IsAsyncComputation()) {
       continue;
     }
-    ASSIGN_OR_RETURN(bool comp_changed,
+    ABSL_ASSIGN_OR_RETURN(bool comp_changed,
                      GroupCollectivesInComputation(comp, predicate_,
                                                    comp->execution_thread()));
     changed |= comp_changed;

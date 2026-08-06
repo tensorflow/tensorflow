@@ -37,8 +37,8 @@ absl::StatusOr<IndexDomain> IndexDomain::FromProto(
         "Unsupported ", version_number, " for IndexDomain deserialization"));
   }
 
-  ASSIGN_OR_RETURN(Index origin_val, Index::FromProto(proto.origin()));
-  ASSIGN_OR_RETURN(Shape shape_val, Shape::FromProto(proto.shape()));
+  ABSL_ASSIGN_OR_RETURN(Index origin_val, Index::FromProto(proto.origin()));
+  ABSL_ASSIGN_OR_RETURN(Shape shape_val, Shape::FromProto(proto.shape()));
 
   return IndexDomain(std::move(origin_val), std::move(shape_val));
 }

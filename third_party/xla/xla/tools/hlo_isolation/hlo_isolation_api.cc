@@ -537,7 +537,7 @@ absl::StatusOr<Literal> RunModule(std::unique_ptr<HloModule> module,
                                   absl::Span<const Literal> input_data,
                                   const RunModuleOptions& options) {
   if (!options.run_hlo_passes && !module->has_schedule()) {
-    RETURN_IF_ERROR(HloTrivialScheduler().Run(module.get()).status());
+    ABSL_RETURN_IF_ERROR(HloTrivialScheduler().Run(module.get()).status());
   }
 
   absl::FlagSaver flag_saver;
@@ -559,7 +559,7 @@ absl::StatusOr<Literal> RunModule(std::unique_ptr<HloModule> module,
         module.get(), options.eval_literal_mutator);
   }
 
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       std::unique_ptr<OpaqueExecutable> executable,
       runner->CreateExecutable(std::move(module), options.run_hlo_passes));
 
@@ -575,7 +575,7 @@ absl::StatusOr<Literal> RunModule(std::unique_ptr<HloModule> module,
   auto results_or =
       runner->ExecuteReplicatedWithExecutable(executable.get(), exec_options);
 
-  ASSIGN_OR_RETURN(auto results, std::move(results_or));
+  ABSL_ASSIGN_OR_RETURN(auto results, std::move(results_or));
   if (results.empty()) {
     return absl::InternalError(
         "No results returned from ExecuteReplicatedWithExecutable");
@@ -592,11 +592,11 @@ absl::StatusOr<HloIsolationTestResult> RunIsolationTestOnModule(
   result.set_module_contains_constant_inf_or_nan(
       ModuleContainsConstantInfOrNan(module));
 
-  RETURN_IF_ERROR(InitIsolatorOptions(options));
+  ABSL_RETURN_IF_ERROR(InitIsolatorOptions(options));
 
   std::vector<Literal> local_inputs;
   if (input_data.empty()) {
-    ASSIGN_OR_RETURN(local_inputs, options.make_fake_arguments_fn(module));
+    ABSL_ASSIGN_OR_RETURN(local_inputs, options.make_fake_arguments_fn(module));
     input_data = local_inputs;
   }
 
@@ -634,7 +634,7 @@ absl::StatusOr<HloIsolationTestResult> RunIsolationTestOnModule(
 
   // Run defused test runner.
   std::unique_ptr<HloModule> defused_module = module.Clone("defused");
-  RETURN_IF_ERROR(DefuseModule(defused_module.get()));
+  ABSL_RETURN_IF_ERROR(DefuseModule(defused_module.get()));
   absl::StatusOr<Literal> defused_output =
       run_module(std::move(defused_module), test_runner, input_data);
   if (!defused_output.ok()) {
@@ -674,7 +674,7 @@ absl::StatusOr<HloIsolationTestResult> RunIsolationTestOnModule(
     std::unique_ptr<HloModule> despecialized_module =
         module.Clone("despecialized");
     Despecializer despecializer;
-    RETURN_IF_ERROR(despecializer.Run(despecialized_module.get()).status());
+    ABSL_RETURN_IF_ERROR(despecializer.Run(despecialized_module.get()).status());
     std::string despecialized_module_name = despecialized_module->name();
 
     // Run the reference runner.
@@ -704,7 +704,7 @@ absl::StatusOr<HloIsolationTestResult> RunIsolationTestOnModule(
     // binaries.
     std::unique_ptr<HloModule> debug_despecialized_module =
         module.Clone("despecialized");
-    RETURN_IF_ERROR(
+    ABSL_RETURN_IF_ERROR(
         despecializer.Run(debug_despecialized_module.get()).status());
     std::string debug_despecialized_module_name =
         debug_despecialized_module->name();
@@ -766,10 +766,10 @@ absl::StatusOr<HloIsolationTestResult> RunIsolationTestOnModule(
 absl::StatusOr<std::vector<HloIsolationTestResult>> RunIsolationPipeline(
     const HloModule& input_module, HloRunnerInterface* test_runner,
     HloRunnerInterface* reference_runner, PipelineIsolationOptions options) {
-  RETURN_IF_ERROR(ValidatePipelineOptions(options));
-  RETURN_IF_ERROR(InitIsolatorOptions(options.module_options));
+  ABSL_RETURN_IF_ERROR(ValidatePipelineOptions(options));
+  ABSL_RETURN_IF_ERROR(InitIsolatorOptions(options.module_options));
 
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       std::vector<std::unique_ptr<HloModule>> modules,
       DecomposeHloModule(input_module, /*deduplicate_modules=*/true));
 
@@ -911,7 +911,7 @@ absl::StatusOr<std::vector<HloIsolationTestResult>> RunIsolationPipeline(
 absl::StatusOr<std::vector<HloIsolationTestResult>> RunIsolationPipeline(
     const std::string& input_path, HloRunnerInterface* test_runner,
     HloRunnerInterface* reference_runner, PipelineIsolationOptions options) {
-  ASSIGN_OR_RETURN(std::unique_ptr<HloModule> loaded_module,
+  ABSL_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> loaded_module,
                    LoadModuleFromFile(input_path));
   return RunIsolationPipeline(*loaded_module, test_runner, reference_runner,
                               options);
@@ -1049,7 +1049,7 @@ absl::StatusOr<std::vector<NumericMismatch>> ExtractTopMismatches(
 
 absl::StatusOr<NumericMismatch> ExtractTopRelativeErrorMismatch(
     std::string error_message) {
-  ASSIGN_OR_RETURN(std::vector<NumericMismatch> mismatches,
+  ABSL_ASSIGN_OR_RETURN(std::vector<NumericMismatch> mismatches,
                    ExtractTopMismatches(error_message, false));
   if (mismatches.empty()) {
     return absl::NotFoundError(
@@ -1073,7 +1073,7 @@ absl::StatusOr<std::vector<bool>> DetectReducesInModuleOutput(
   }
   std::vector<bool> reduce_in_output(num_outputs, false);
   std::unique_ptr<HloModule> defused_module = module->Clone("defused");
-  RETURN_IF_ERROR(DefuseModule(defused_module.get()));
+  ABSL_RETURN_IF_ERROR(DefuseModule(defused_module.get()));
 
   auto bfs = [&reduce_in_output](HloModule* module,
                                  int64_t output_index) -> void {
@@ -1174,9 +1174,9 @@ absl::StatusOr<std::vector<NumericMismatch>> ExtractAndEnrichTopMismatches(
   int64_t num_outputs =
       is_tuple ? module->result_shape().tuple_shapes().size() : 1;
 
-  ASSIGN_OR_RETURN(std::vector<NumericMismatch> mismatches,
+  ABSL_ASSIGN_OR_RETURN(std::vector<NumericMismatch> mismatches,
                    ExtractTopMismatches(error_message, is_tuple));
-  ASSIGN_OR_RETURN(std::vector<bool> reduce_in_output,
+  ABSL_ASSIGN_OR_RETURN(std::vector<bool> reduce_in_output,
                    DetectReducesInModuleOutput(module));
   for (NumericMismatch& mismatch : mismatches) {
     int output_index = mismatch.output_shape_index();

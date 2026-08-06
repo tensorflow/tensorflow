@@ -48,13 +48,13 @@ ENTRY main {
 )hlo";
 
 absl::Status CompileAndWriteExecutable(absl::string_view output_path) {
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       stream_executor::GpuTargetConfigProto gpu_target_config_proto,
       GetGpuTargetConfig(GpuModel::H100_SXM));
-  ASSIGN_OR_RETURN(GpuTargetConfig gpu_target_config,
+  ABSL_ASSIGN_OR_RETURN(GpuTargetConfig gpu_target_config,
                    GpuTargetConfig::FromProto(gpu_target_config_proto));
 
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       std::unique_ptr<Compiler> compiler,
       Compiler::GetForPlatform(stream_executor::cuda::kCudaPlatformId));
 
@@ -62,14 +62,14 @@ absl::Status CompileAndWriteExecutable(absl::string_view output_path) {
   aot_options.set_gpu_topology(
       GetSingleDeviceGpuTopology(CudaName(), gpu_target_config));
 
-  ASSIGN_OR_RETURN(std::unique_ptr<HloModule> hlo_module,
+  ABSL_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> hlo_module,
                    ParseAndReturnUnverifiedModule(kHloText, {}));
 
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       std::vector<std::unique_ptr<CompiledModule>> aot_results,
       compiler->CompileAheadOfTime(std::move(hlo_module), aot_options));
 
-  ASSIGN_OR_RETURN(std::string serialized_executable,
+  ABSL_ASSIGN_OR_RETURN(std::string serialized_executable,
                    aot_results[0]->SerializeAsString());
 
   return tsl::WriteStringToFile(tsl::Env::Default(), output_path,

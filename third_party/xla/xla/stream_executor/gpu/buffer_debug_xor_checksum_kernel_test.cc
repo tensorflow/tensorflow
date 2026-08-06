@@ -96,12 +96,12 @@ class ChecksumKernelTest : public ::testing::Test {
     // Load kernel
     gpu::GpuKernelRegistry registry =
         gpu::GpuKernelRegistry::GetGlobalRegistry();
-    ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         auto kernel,
         registry.LoadKernel<gpu::BufferDebugXorChecksumKernel>(executor_));
 
     // Setup device buffers
-    ASSIGN_OR_RETURN(se::DeviceAddress<uint8_t> device_input,
+    ABSL_ASSIGN_OR_RETURN(se::DeviceAddress<uint8_t> device_input,
                      CheckNotNull(executor_->AllocateArray<uint8_t>(
                                       input.size() * sizeof(input[0])),
                                   "input"));
@@ -109,14 +109,14 @@ class ChecksumKernelTest : public ::testing::Test {
         absl::MakeCleanup([&]() { executor_->Deallocate(&device_input); });
 
     // Call kernel
-    RETURN_IF_ERROR(stream_->Memcpy(&device_input, input.data(),
+    ABSL_RETURN_IF_ERROR(stream_->Memcpy(&device_input, input.data(),
                                     input.size() * sizeof(input[0])));
-    RETURN_IF_ERROR(kernel.Launch(dim, stream_executor::BlockDim(1, 1, 1),
+    ABSL_RETURN_IF_ERROR(kernel.Launch(dim, stream_executor::BlockDim(1, 1, 1),
                                   stream_.get(), entry_id, device_input,
                                   device_input.ElementCount(),
                                   buffer_debug_log.GetDeviceHeader(),
                                   buffer_debug_log.GetDeviceEntries()));
-    RETURN_IF_ERROR(stream_->BlockHostUntilDone());
+    ABSL_RETURN_IF_ERROR(stream_->BlockHostUntilDone());
 
     // The result gets stored in `buffer_debug_log`.
     return absl::OkStatus();

@@ -79,7 +79,7 @@ absl::Status InlineFissionedComputation(HloInstruction* fusion_instr,
   }
   HloInstruction* new_root =
       cloned_instructions.at(fissioned_computation->root_instruction());
-  ASSIGN_OR_RETURN(bool replaced,
+  ABSL_ASSIGN_OR_RETURN(bool replaced,
                    parent_computation->ReplaceInstruction(
                        fusion_instr, new_root, /*preserve_sharding=*/false,
                        /*relay_control_dependency=*/true));
@@ -97,7 +97,7 @@ FissionBackend::GetSupportedConfigs(const HloInstruction& instr) {
             << instr.ToString();
     return std::vector<std::unique_ptr<BackendConfig>>();
   }
-  ASSIGN_OR_RETURN(std::unique_ptr<HloModule> hlo_module,
+  ABSL_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> hlo_module,
                    GetFissionedAndRewrittenModule(instr));
   absl::StatusOr<std::vector<HloInstruction*>> supported_instrs =
       FindSupportedInstructions(hlo_module.get());
@@ -106,7 +106,7 @@ FissionBackend::GetSupportedConfigs(const HloInstruction& instr) {
             << instr.ToString();
     return std::vector<std::unique_ptr<BackendConfig>>();
   }
-  RETURN_IF_ERROR(supported_instrs.status());
+  ABSL_RETURN_IF_ERROR(supported_instrs.status());
   return codegen_backend_->GetSupportedConfigs(*(*supported_instrs)[0]);
 }
 
@@ -130,20 +130,20 @@ absl::Status FissionBackend::RunPriorityFusion(HloModule* module) {
 absl::StatusOr<std::unique_ptr<HloModule>> FissionBackend::RunHloPasses(
     std::unique_ptr<HloModule> hlo_module,
     const Compiler::CompileOptions& options) {
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       std::unique_ptr<HloModule> module,
       codegen_backend_->RunHloPasses(std::move(hlo_module), options));
 
-  RETURN_IF_ERROR(RunPriorityFusion(module.get()));
+  ABSL_RETURN_IF_ERROR(RunPriorityFusion(module.get()));
   return module;
 }
 
 absl::Status FissionBackend::ApplyConfig(HloInstruction& instr,
                                          const BackendConfig& config) {
   HloModule* module = instr.GetModule();
-  ASSIGN_OR_RETURN(std::unique_ptr<HloModule> hlo_module,
+  ABSL_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> hlo_module,
                    GetFissionedAndRewrittenModule(instr));
-  ASSIGN_OR_RETURN(std::vector<HloInstruction*> supported_instrs,
+  ABSL_ASSIGN_OR_RETURN(std::vector<HloInstruction*> supported_instrs,
                    FindSupportedInstructions(hlo_module.get()));
 
   for (size_t i = 0; i < supported_instrs.size(); ++i) {
@@ -163,14 +163,14 @@ absl::Status FissionBackend::ApplyConfig(HloInstruction& instr,
             "compatible shapes, but found incompatible shapes.");
       }
     }
-    RETURN_IF_ERROR(codegen_backend_->ApplyConfig(*supported_instr, config));
+    ABSL_RETURN_IF_ERROR(codegen_backend_->ApplyConfig(*supported_instr, config));
   }
 
   // Given that the autotuner runs post fusion, we have to run priority fusion
   // again to fuse the epilogue and prologues.
-  RETURN_IF_ERROR(RunPriorityFusion(hlo_module.get()));
+  ABSL_RETURN_IF_ERROR(RunPriorityFusion(hlo_module.get()));
 
-  RETURN_IF_ERROR(
+  ABSL_RETURN_IF_ERROR(
       InlineFissionedComputation(&instr, hlo_module->entry_computation()));
   return module->RemoveUnusedComputations();
 }
@@ -194,7 +194,7 @@ FissionBackend::GetFissionedAndRewrittenModule(
   DebugOptions options = debug_options();
   AdjustDebugOptionsForAutotuning(options);
   hlo_module->mutable_config().set_debug_options(options);
-  RETURN_IF_ERROR(rewriter_pipeline_->Run(hlo_module.get()).status());
+  ABSL_RETURN_IF_ERROR(rewriter_pipeline_->Run(hlo_module.get()).status());
   return hlo_module;
 }
 

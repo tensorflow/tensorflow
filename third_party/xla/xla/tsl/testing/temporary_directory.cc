@@ -36,7 +36,7 @@ absl::StatusOr<TemporaryDirectory> TemporaryDirectory::CreateForTestcase(
   std::string path =
       tsl::io::JoinPath(::testing::TempDir(), "xla_testing_tmp",
                         test_info.test_suite_name(), test_info.name());
-  RETURN_IF_ERROR(tsl::Env::Default()->RecursivelyCreateDir(path));
+  ABSL_RETURN_IF_ERROR(tsl::Env::Default()->RecursivelyCreateDir(path));
   return TemporaryDirectory(std::move(path));
 }
 

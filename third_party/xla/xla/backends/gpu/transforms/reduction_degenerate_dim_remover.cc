@@ -88,7 +88,7 @@ class ReductionDegenerateDimRemoverVisitor : public DfsHloRewriteVisitor {
       canonical_reduce_shapes.push_back(canonical_reduce_shape);
     }
 
-    ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         auto canonical_reduce_shape,
         ShapeUtil::MakeValidatedMaybeTupleShape(canonical_reduce_shapes));
     const Shape &orig_reduce_shape = instr->shape();
@@ -123,7 +123,7 @@ class ReductionDegenerateDimRemoverVisitor : public DfsHloRewriteVisitor {
 absl::StatusOr<bool> ReductionDegenerateDimRemover::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
-  ASSIGN_OR_RETURN(bool changed,
+  ABSL_ASSIGN_OR_RETURN(bool changed,
                    ReductionDegenerateDimRemoverVisitor().RunOnModule(
                        module, execution_threads));
   return changed;

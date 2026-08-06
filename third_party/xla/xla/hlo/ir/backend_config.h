@@ -47,7 +47,7 @@ using EnableIfProto = typename std::enable_if_t<
 // This is morally equivalent to:
 //
 //   HloInstruction instr;
-//   RETURN_IF_ERROR(instr.set_backend_config(proto));
+//   ABSL_RETURN_IF_ERROR(instr.set_backend_config(proto));
 //   return instr.raw_backend_config_string();
 //
 absl::StatusOr<std::string> BackendConfigToRawString(

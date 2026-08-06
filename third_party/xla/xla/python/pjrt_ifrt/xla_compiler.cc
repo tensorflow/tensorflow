@@ -68,7 +68,7 @@ class XlaCompileOptionsSerDes
     } else {
       proto.set_version_number(SerDesVersionNumber(0).value());
     }
-    ASSIGN_OR_RETURN(*proto.mutable_compile_options(),
+    ABSL_ASSIGN_OR_RETURN(*proto.mutable_compile_options(),
                      xla_compile_options.compile_options.ToProto());
     if (!xla_compile_options.loaded_host_callbacks.empty()) {
       return absl::UnimplementedError(
@@ -105,7 +105,7 @@ class XlaCompileOptionsSerDes
     }
 
     auto options = std::make_unique<XlaCompileOptions>();
-    ASSIGN_OR_RETURN(options->compile_options,
+    ABSL_ASSIGN_OR_RETURN(options->compile_options,
                      xla::CompileOptions::FromProto(proto.compile_options()));
     if (version_number >= SerDesVersionNumber(4)) {
       if (!proto.outputs_bundle_slice_sizes().empty()) {
@@ -160,7 +160,7 @@ absl::StatusOr<xla::ifrt::DeviceListRef> GetDeviceListFromDeviceAssignment(
                   device_assignment.computation_count());
   for (int64_t i = 0; i < device_assignment.replica_count(); ++i) {
     for (int64_t j = 0; j < device_assignment.computation_count(); ++j) {
-      ASSIGN_OR_RETURN(xla::ifrt::Device * device,
+      ABSL_ASSIGN_OR_RETURN(xla::ifrt::Device * device,
                        ifrt_client->LookupDevice(
                            xla::ifrt::DeviceId(device_assignment(i, j))));
       devices.push_back(device);
@@ -183,16 +183,16 @@ absl::StatusOr<xla::ifrt::DeviceListRef> GetDeviceListFromXlaCompileOptions(
   }
   auto& build_options = compile_options.executable_build_options;
   if (build_options.device_ordinal() >= 0) {
-    ASSIGN_OR_RETURN(xla::ifrt::Device * device,
+    ABSL_ASSIGN_OR_RETURN(xla::ifrt::Device * device,
                      ifrt_client->LookupDevice(
                          xla::ifrt::DeviceId(build_options.device_ordinal())));
     return ifrt_client->MakeDeviceList({device});
   }
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       xla::DeviceAssignment default_da,
       ifrt_client->GetDefaultDeviceAssignment(build_options.num_replicas(),
                                               build_options.num_partitions()));
-  ASSIGN_OR_RETURN(xla::ifrt::DeviceListRef devices,
+  ABSL_ASSIGN_OR_RETURN(xla::ifrt::DeviceListRef devices,
                    GetDeviceListFromDeviceAssignment(ifrt_client, default_da));
   return devices;
 }

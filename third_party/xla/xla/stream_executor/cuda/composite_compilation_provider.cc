@@ -115,7 +115,7 @@ absl::StatusOr<int> CompositeCompilationProvider::GetLatestPtxIsaVersion()
     const {
   std::optional<int> latest_supported_version;
   for (const auto& provider : providers_) {
-    ASSIGN_OR_RETURN(int provider_version, provider->GetLatestPtxIsaVersion());
+    ABSL_ASSIGN_OR_RETURN(int provider_version, provider->GetLatestPtxIsaVersion());
     if (!latest_supported_version.has_value()) {
       latest_supported_version = provider_version;
       continue;

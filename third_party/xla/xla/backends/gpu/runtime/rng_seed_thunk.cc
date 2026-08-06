@@ -58,7 +58,7 @@ absl::Status RngSeedThunk::ExecuteOnStream(const Thunk::ExecuteParams& params) {
   uint32_t seed_low = static_cast<uint32_t>(seed & 0xFFFFFFFF);
   uint32_t seed_high = static_cast<uint32_t>(seed >> 32);
   auto dest_high = dest_addr.GetByteSlice(4, 4);
-  RETURN_IF_ERROR(params.stream->Memset32(&dest_addr, seed_low, 4));
+  ABSL_RETURN_IF_ERROR(params.stream->Memset32(&dest_addr, seed_low, 4));
   return params.stream->Memset32(&dest_high, seed_high, 4);
 }
 
@@ -67,7 +67,7 @@ absl::StatusOr<ThunkProto> RngSeedThunk::ToProto() const {
   *proto.mutable_thunk_info() = thunk_info().ToProto();
 
   auto* rng_seed_thunk_proto = proto.mutable_rng_seed_thunk();
-  ASSIGN_OR_RETURN(*rng_seed_thunk_proto->mutable_dest_buffer(),
+  ABSL_ASSIGN_OR_RETURN(*rng_seed_thunk_proto->mutable_dest_buffer(),
                    dest().ToProto());
   return proto;
 }
@@ -75,7 +75,7 @@ absl::StatusOr<ThunkProto> RngSeedThunk::ToProto() const {
 absl::StatusOr<std::unique_ptr<RngSeedThunk>> RngSeedThunk::FromProto(
     ThunkInfo thunk_info, const RngSeedThunkProto& thunk_proto,
     absl::Span<const BufferAllocation> buffer_allocations) {
-  ASSIGN_OR_RETURN(BufferAllocation::Slice dest,
+  ABSL_ASSIGN_OR_RETURN(BufferAllocation::Slice dest,
                    BufferAllocation::Slice::FromProto(thunk_proto.dest_buffer(),
                                                       buffer_allocations));
   return std::make_unique<RngSeedThunk>(std::move(thunk_info), dest);

@@ -105,7 +105,7 @@ InPlaceDynamicUpdateSliceFusion::CreateMLIRModule(
       GetDefaultBufferAlignment(), GetWorkDimensions(), entry_function_name,
       BackendKind::kGpu);
 
-  ASSIGN_OR_RETURN(auto kernel_definition, emitter.EmitKernelDefinition());
+  ABSL_ASSIGN_OR_RETURN(auto kernel_definition, emitter.EmitKernelDefinition());
   return std::move(kernel_definition).TakeSource().TakeModule();
 }
 

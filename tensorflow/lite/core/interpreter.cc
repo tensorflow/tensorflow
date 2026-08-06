@@ -404,8 +404,39 @@ TfLiteStatus Interpreter::ApplyLazyDelegateProviders() {
 
 TfLiteStatus Interpreter::ModifyGraphWithDelegateImpl(
     TfLiteDelegate* delegate) {
+  std::vector<int> all_subgraph_indices(subgraphs_.size());
+  for (int i = 0; i < subgraphs_.size(); ++i) {
+    all_subgraph_indices[i] = i;
+  }
+  return ModifyGraphWithDelegateImpl(delegate, all_subgraph_indices);
+}
+
+TfLiteStatus Interpreter::ModifyGraphWithDelegateImpl(
+    TfLiteDelegate* delegate, const std::vector<int>& active_subgraph_indices) {
+  if (active_subgraph_indices.empty()) {
+    TF_LITE_REPORT_ERROR(error_reporter_,
+                         "Active subgraph indices must not be empty.");
+    return kTfLiteApplicationError;
+  }
+
+  std::vector<bool> active_subgraphs(subgraphs_.size(), false);
+  for (int subgraph_index : active_subgraph_indices) {
+    if (subgraph_index < 0 || subgraph_index >= subgraphs_.size()) {
+      TF_LITE_REPORT_ERROR(error_reporter_,
+                           "Active subgraph index %d is out of range.",
+                           subgraph_index);
+      return kTfLiteApplicationError;
+    }
+    active_subgraphs[subgraph_index] = true;
+  }
+
   TfLiteStatus status = kTfLiteOk;
-  for (auto& subgraph : subgraphs_) {
+  for (int subgraph_index = 0; subgraph_index < subgraphs_.size();
+       ++subgraph_index) {
+    if (!active_subgraphs[subgraph_index]) {
+      continue;
+    }
+    auto& subgraph = subgraphs_[subgraph_index];
     if (IsValidationSubgraph(subgraph->GetName().c_str()) ||
         subgraph->IsDelegationSkippable()) {
       TFLITE_LOG(TFLITE_LOG_INFO,

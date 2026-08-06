@@ -132,9 +132,9 @@ TEST(JitCompilerTest, Compile) {
 
   auto add_module = [&](absl::string_view ir, absl::string_view name,
                         size_t dylib_index) -> absl::Status {
-    ASSIGN_OR_RETURN(llvm::orc::ThreadSafeModule tsm,
+    ABSL_ASSIGN_OR_RETURN(llvm::orc::ThreadSafeModule tsm,
                      ParseModule(tsc, ir, name));
-    RETURN_IF_ERROR(compiler.AddModule(std::move(tsm), dylib_index));
+    ABSL_RETURN_IF_ERROR(compiler.AddModule(std::move(tsm), dylib_index));
     return absl::OkStatus();
   };
 

@@ -56,7 +56,7 @@ absl::StatusOr<bool> AliasPassthroughParams::RunImpl(
         continue;
       }
 
-      RETURN_IF_ERROR(module->input_output_alias_config().SetUpAlias(
+      ABSL_RETURN_IF_ERROR(module->input_output_alias_config().SetUpAlias(
           /*output_index=*/{i},
           /*param_number=*/root->operand(i)->parameter_number(),
           /*param_index=*/{}));

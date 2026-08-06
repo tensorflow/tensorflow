@@ -60,7 +60,7 @@ class BufferComparatorTest : public testing::Test {
   absl::StatusOr<bool> CompareEqualBuffersInternal(
       absl::Span<const ElementType> current,
       absl::Span<const ElementType> expected, double tolerance) {
-    ASSIGN_OR_RETURN(std::unique_ptr<se::Stream> stream,
+    ABSL_ASSIGN_OR_RETURN(std::unique_ptr<se::Stream> stream,
                      stream_exec_->CreateStream());
 
     se::DeviceAddressHandle current_buffer(
@@ -69,12 +69,12 @@ class BufferComparatorTest : public testing::Test {
         stream_exec_,
         stream_exec_->AllocateArray<ElementType>(expected.size()));
 
-    RETURN_IF_ERROR(stream->Memcpy(current_buffer.address_ptr(), current.data(),
+    ABSL_RETURN_IF_ERROR(stream->Memcpy(current_buffer.address_ptr(), current.data(),
                                    current_buffer.address().size()));
-    RETURN_IF_ERROR(stream->Memcpy(expected_buffer.address_ptr(),
+    ABSL_RETURN_IF_ERROR(stream->Memcpy(expected_buffer.address_ptr(),
                                    expected.data(),
                                    expected_buffer.address().size()));
-    RETURN_IF_ERROR(stream->BlockHostUntilDone());
+    ABSL_RETURN_IF_ERROR(stream->BlockHostUntilDone());
 
     BufferComparator comparator(
         ShapeUtil::MakeShape(
@@ -116,18 +116,18 @@ class BufferComparatorTest : public testing::Test {
   absl::StatusOr<bool> CompareEqualScalarInternal(
       const ElementType& current, const ElementType& expected,
       double tolerance = kDefaultTolerance) {
-    ASSIGN_OR_RETURN(std::unique_ptr<se::Stream> stream,
+    ABSL_ASSIGN_OR_RETURN(std::unique_ptr<se::Stream> stream,
                      stream_exec_->CreateStream());
     se::DeviceAddressHandle current_buffer(
         stream_exec_, stream_exec_->AllocateScalar<ElementType>());
     se::DeviceAddressHandle expected_buffer(
         stream_exec_, stream_exec_->AllocateScalar<ElementType>());
 
-    RETURN_IF_ERROR(stream->Memcpy(current_buffer.address_ptr(), &current,
+    ABSL_RETURN_IF_ERROR(stream->Memcpy(current_buffer.address_ptr(), &current,
                                    current_buffer.address().size()));
-    RETURN_IF_ERROR(stream->Memcpy(expected_buffer.address_ptr(), &expected,
+    ABSL_RETURN_IF_ERROR(stream->Memcpy(expected_buffer.address_ptr(), &expected,
                                    expected_buffer.address().size()));
-    RETURN_IF_ERROR(stream->BlockHostUntilDone());
+    ABSL_RETURN_IF_ERROR(stream->BlockHostUntilDone());
 
     BufferComparator comparator(
         ShapeUtil::MakeShape(

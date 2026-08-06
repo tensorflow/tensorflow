@@ -269,7 +269,7 @@ CreateIrEmitterForConstantEmissionTests(HloModule& module,
       IrCompiler::Create(target_options, std::move(ir_compiler_options),
                          IrCompiler::CompilationHooks());
 
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       JitCompiler jit_compiler,
       JitCompiler::Create(std::move(jit_compiler_options),
                           std::move(ir_compiler), compilation_task_runner));
@@ -285,14 +285,14 @@ CreateIrEmitterForConstantEmissionTests(HloModule& module,
                              std::make_unique<BFScheduler>(
                                  &alias_info, buffer_size_bytes_function));
 
-  ASSIGN_OR_RETURN(HloSchedule schedule, ScheduleModule(&module, *scheduler));
-  RETURN_IF_ERROR(module.set_schedule(schedule));
+  ABSL_ASSIGN_OR_RETURN(HloSchedule schedule, ScheduleModule(&module, *scheduler));
+  ABSL_RETURN_IF_ERROR(module.set_schedule(schedule));
 
   auto memory_alignment = [](LogicalBuffer::Color) { return MinAlign(); };
   // Run buffer allocation on the HLO graph.
   BufferAssigner::Options opts;
   opts.allocate_buffers_for_constants = true;
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       std::unique_ptr<BufferAssignment> assignment,
       BufferAssigner::Run(&module,
                           std::make_unique<SequentialHloOrdering>(schedule),

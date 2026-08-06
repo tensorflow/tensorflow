@@ -84,8 +84,8 @@ class IfrtIrLoadedExecutableTest
   // Returns true if the test runs on TPU v4. This is a helper method called
   // from tests that require TPU v4.
   absl::StatusOr<bool> IsUsingTpuV4() {
-    ASSIGN_OR_RETURN(DeviceListRef devices, PickDevices(1));
-    ASSIGN_OR_RETURN(std::shared_ptr<Topology> topology,
+    ABSL_ASSIGN_OR_RETURN(DeviceListRef devices, PickDevices(1));
+    ABSL_ASSIGN_OR_RETURN(std::shared_ptr<Topology> topology,
                      client_->GetTopologyForDevices(devices));
     return topology->DeviceDescriptions().front()->device_kind() == "TPU v4";
   }

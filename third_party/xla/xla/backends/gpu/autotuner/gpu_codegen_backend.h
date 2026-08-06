@@ -99,7 +99,7 @@ class GpuCodegenBackend : public CodegenBackend {
       hlo_module = ExtractInstructionIntoNewModule(hlo_instruction);
       instruction_to_tune = hlo_module->entry_computation()->root_instruction();
     }
-    RETURN_IF_ERROR(ApplyConfig(*instruction_to_tune, config));
+    ABSL_RETURN_IF_ERROR(ApplyConfig(*instruction_to_tune, config));
 
     hlo_module->mutable_config().set_debug_options(debug_options_);
     AdjustDebugOptionsForAutotuning(
@@ -108,7 +108,7 @@ class GpuCodegenBackend : public CodegenBackend {
     Compiler::CompileOptions options;
     options.gpu_topology = GetSingleDeviceGpuTopology("", target_config_);
     options.embed_hlo_module = false;
-    ASSIGN_OR_RETURN(auto optimized_module,
+    ABSL_ASSIGN_OR_RETURN(auto optimized_module,
                      RunHloPasses(std::move(hlo_module), options));
     return compiler_->RunBackend(std::move(optimized_module), stream_executor_,
                                  options);

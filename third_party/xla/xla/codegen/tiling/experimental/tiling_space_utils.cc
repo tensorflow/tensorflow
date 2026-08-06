@@ -56,7 +56,7 @@ absl::StatusOr<std::vector<FlatTiling>> GetFlatTilingsForInputSpace(
   std::vector<FlatTiling> flat_tilings;
   flat_tilings.push_back({});
   for (int64_t parameter_size : input_space) {
-    ASSIGN_OR_RETURN(std::vector<int64_t> possible_tile_sizes,
+    ABSL_ASSIGN_OR_RETURN(std::vector<int64_t> possible_tile_sizes,
                      PossibleTileSizesForOneDimension(parameter_size));
     std::vector<FlatTiling> extended_tilings;
     extended_tilings.reserve(flat_tilings.size() * possible_tile_sizes.size());

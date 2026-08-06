@@ -85,7 +85,7 @@ class TopkSplitterVisitor : public DfsHloRewriteVisitor {
     // Split the input into B batches and compute TopK over the batched arrays.
     Shape split_input_shape =
         ShapeUtil::MakeShape(data_shape.element_type(), {new_batch, new_n});
-    ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         HloInstruction * reshaped,
         MakeReshapeHlo(split_input_shape, topk->mutable_operand(0)));
     Shape batch_topk_shape = ShapeUtil::MakeTupleShape(
@@ -96,18 +96,18 @@ class TopkSplitterVisitor : public DfsHloRewriteVisitor {
             batch_topk_shape, {reshaped}, topk->to_apply(), "TopK",
             /*opaque=*/""));
     // Fix indices, adding j*split_N to the j-th batch of indices.
-    ASSIGN_OR_RETURN(HloInstruction * indices,
+    ABSL_ASSIGN_OR_RETURN(HloInstruction * indices,
                      MakeGetTupleElementHlo(batch_topk, 1));
-    ASSIGN_OR_RETURN(HloInstruction * values,
+    ABSL_ASSIGN_OR_RETURN(HloInstruction * values,
                      MakeGetTupleElementHlo(batch_topk, 0));
     Shape iota_shape = ShapeUtil::MakeShape(S32, {new_batch});
-    ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         HloInstruction * fix,
         MakeBinaryHlo(
             HloOpcode::kMultiply, MakeIotaHlo(comp, iota_shape, 0),
             MakeBroadcastHlo(MakeR0ConstantHlo<int32_t>(comp, new_n),
                              /*broadcast_dimensions=*/{}, iota_shape)));
-    ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         indices, MakeBinaryHlo(HloOpcode::kAdd, indices,
                                MakeBroadcastHlo(fix, {0}, indices->shape())));
     // With the indices restored, compute a final top-k. Since this topk uses

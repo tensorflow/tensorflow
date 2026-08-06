@@ -60,23 +60,23 @@ class Gb200CrossCompilationTest : public HloTestBase {
       }
     )hlo";
 
-    ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
+    ABSL_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
                      ParseAndReturnVerifiedModule(hlo_string));
 
-    ASSIGN_OR_RETURN(std::string name,
+    ABSL_ASSIGN_OR_RETURN(std::string name,
                      PlatformUtil::CanonicalPlatformName("gpu"));
     name = absl::AsciiStrToUpper(name);
-    ASSIGN_OR_RETURN(se::Platform * platform,
+    ABSL_ASSIGN_OR_RETURN(se::Platform * platform,
                      se::PlatformManager::PlatformWithName(name));
-    ASSIGN_OR_RETURN(std::unique_ptr<Compiler> compiler,
+    ABSL_ASSIGN_OR_RETURN(std::unique_ptr<Compiler> compiler,
                      Compiler::GetForPlatform(platform->id()));
-    ASSIGN_OR_RETURN(se::StreamExecutor * stream_exec,
+    ABSL_ASSIGN_OR_RETURN(se::StreamExecutor * stream_exec,
                      platform->ExecutorForDevice(0));
 
     // Create a different gpu_topology.
-    ASSIGN_OR_RETURN(stream_executor::GpuTargetConfigProto target_proto,
+    ABSL_ASSIGN_OR_RETURN(stream_executor::GpuTargetConfigProto target_proto,
                      GetGpuTargetConfig(gpu_model));
-    ASSIGN_OR_RETURN(Compiler::GpuTargetConfig gpu_target_config,
+    ABSL_ASSIGN_OR_RETURN(Compiler::GpuTargetConfig gpu_target_config,
                      Compiler::GpuTargetConfig::FromProto(target_proto));
 
     // Set options to cross compilation but attach the local executor for
@@ -90,7 +90,7 @@ class Gb200CrossCompilationTest : public HloTestBase {
     debug_options.set_xla_gpu_autotune_level(4);
     module->mutable_config().set_debug_options(debug_options);
 
-    ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         std::vector<std::unique_ptr<CompiledModule>> results,
         compiler->CompileAheadOfTime(std::move(module), aot_options));
 

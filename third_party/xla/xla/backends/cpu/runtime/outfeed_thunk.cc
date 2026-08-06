@@ -65,7 +65,7 @@ tsl::AsyncValueRef<Thunk::ExecuteEvent> OutfeedThunk::Execute(
   int64_t outfeed_num = 0;
 
   for (OutfeedBuffer& outfeed_buffer : outfeed_buffers_) {
-    ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         se::DeviceAddressBase outfeed_data,
         params.buffer_allocations->GetDeviceAddress(outfeed_buffer.slice));
 

@@ -51,7 +51,7 @@ class AllGatherPermutedDsSimplifierTest
     HloModuleConfig config =
         GetModuleConfigForTest(num_replicas, num_partitions);
     config.set_use_spmd_partitioning(num_partitions > 1);
-    ASSIGN_OR_RETURN(std::unique_ptr<VerifiedHloModule> module,
+    ABSL_ASSIGN_OR_RETURN(std::unique_ptr<VerifiedHloModule> module,
                      ParseAndReturnVerifiedModule(hlo_module, config));
     absl::StatusOr<bool> changed =
         AllGatherDynamicSlicePermutedOffsetSimplifier().Run(module.get(), {});

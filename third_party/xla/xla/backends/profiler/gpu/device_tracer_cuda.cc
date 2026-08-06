@@ -116,7 +116,7 @@ absl::Status GpuTracer::DoStart() {
   // TODO: Add a test to verify that the options are set correctly and
   // collectors are generating correct data once ProfileData is
   // available(b/399675726).
-  RETURN_IF_ERROR(UpdateCuptiTracerOptionsFromProfilerOptions(
+  ABSL_RETURN_IF_ERROR(UpdateCuptiTracerOptionsFromProfilerOptions(
       profile_options_, options_, collector_options));
 
   if (collector_options.num_gpus <= 0 ||
@@ -131,7 +131,7 @@ absl::Status GpuTracer::DoStart() {
   }
 
   // A fresh V2 subscriber must exist before its timestamp API can be used.
-  RETURN_IF_ERROR(cupti_tracer_->PrepareForProfilerStart(options_));
+  ABSL_RETURN_IF_ERROR(cupti_tracer_->PrepareForProfilerStart(options_));
   uint64_t start_gputime_ns = cupti_tracer_->GetTimestampForSubscriber();
   uint64_t start_walltime_ns = tsl::profiler::GetCurrentTimeNanos();
   cupti_collector_ = CreateCuptiCollector(collector_options, start_walltime_ns,
@@ -141,7 +141,7 @@ absl::Status GpuTracer::DoStart() {
   for (int i = 0; i < collector_options.num_gpus; ++i) {
     xplanes_.push_back(std::make_unique<tensorflow::profiler::XPlane>());
   }
-  RETURN_IF_ERROR(
+  ABSL_RETURN_IF_ERROR(
       cupti_tracer_->Enable(options_, cupti_collector_.get(), xplanes_));
   AddGpuMetadata();
   return absl::OkStatus();

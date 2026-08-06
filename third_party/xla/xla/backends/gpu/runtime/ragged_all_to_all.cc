@@ -53,7 +53,7 @@ absl::Status LaunchTypedKernel(se::Stream* stream,
                                int64_t num_row_elements) {
   using KernelTrait = se::gpu::RaggedAllToAllKernel<kVectorSize>;
 
-  ASSIGN_OR_RETURN(auto kernel, se::gpu::GpuKernelRegistry::GetGlobalRegistry()
+  ABSL_ASSIGN_OR_RETURN(auto kernel, se::gpu::GpuKernelRegistry::GetGlobalRegistry()
                                     .LoadKernel<KernelTrait>(stream->parent()));
 
   return kernel.Launch(thread_dims, block_dims, stream, input_buffer,
@@ -74,7 +74,7 @@ absl::Status LaunchTypedKernelWithSymmetricMemory(
   using KernelTrait =
       se::gpu::RaggedAllToAllWithSymmetricMemoryKernel<kVectorSize>;
 
-  ASSIGN_OR_RETURN(auto kernel, se::gpu::GpuKernelRegistry::GetGlobalRegistry()
+  ABSL_ASSIGN_OR_RETURN(auto kernel, se::gpu::GpuKernelRegistry::GetGlobalRegistry()
                                     .LoadKernel<KernelTrait>(stream->parent()));
 
   return kernel.Launch(thread_dims, block_dims, stream, input_buffer,
@@ -227,7 +227,7 @@ absl::Status LaunchDeviceKernel(
     int64_t input_buffer_offset_bytes, int64_t output_buffer_offset_bytes) {
   using KernelTrait = se::gpu::RaggedAllToAllDeviceKernel<kVectorSize>;
 
-  ASSIGN_OR_RETURN(auto kernel, se::gpu::GpuKernelRegistry::GetGlobalRegistry()
+  ABSL_ASSIGN_OR_RETURN(auto kernel, se::gpu::GpuKernelRegistry::GetGlobalRegistry()
                                     .LoadKernel<KernelTrait>(executor));
 
   return kernel.Launch(thread_dims, block_dims, stream, dev_comm, send_win,

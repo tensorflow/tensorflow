@@ -53,9 +53,9 @@ absl::StatusOr<SemanticVersion> SemanticVersion::ParseFromString(
   }
 
   SemanticVersion result{0, 0, 0};
-  ASSIGN_OR_RETURN(result.major_version(), ParseUnsignedNumber(components[0]));
-  ASSIGN_OR_RETURN(result.minor_version(), ParseUnsignedNumber(components[1]));
-  ASSIGN_OR_RETURN(result.patch_version(), ParseUnsignedNumber(components[2]));
+  ABSL_ASSIGN_OR_RETURN(result.major_version(), ParseUnsignedNumber(components[0]));
+  ABSL_ASSIGN_OR_RETURN(result.minor_version(), ParseUnsignedNumber(components[1]));
+  ABSL_ASSIGN_OR_RETURN(result.patch_version(), ParseUnsignedNumber(components[2]));
   return result;
 }
 
