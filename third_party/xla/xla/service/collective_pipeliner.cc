@@ -2092,7 +2092,7 @@ absl::StatusOr<HloInstruction*> TransformLoopForward(
                                             /*ssa_form=*/true,
                                             /*bitcast_defines_value=*/false,
                                             /*execution_threads=*/{},
-                                            /*disable_call_propagation=*/true));
+                                            /*propagate_through_calls=*/false));
   WhileLoopAnalysis new_loop_analysis(
       new_while_loop, loop_analysis.GetMaxPipeliningPerLoop(),
       pipeline_use_tree, process_different_sized_ops,
@@ -3484,7 +3484,7 @@ absl::StatusOr<bool> CollectivePipeliner::RunPipeliner(
                    HloDataflowAnalysis::Run(*module, /*ssa_form=*/true,
                                             /*bitcast_defines_value=*/false,
                                             /*execution_threads=*/{},
-                                            /*disable_call_propagation=*/true));
+                                            /*propagate_through_calls=*/false));
 
   std::vector<std::pair<HloInstruction*, std::unique_ptr<WhileLoopAnalysis>>>
       loop_analyses;

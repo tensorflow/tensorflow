@@ -3858,7 +3858,7 @@ ENTRY main {
       (void)HloDataflowAnalysis::Run(*module_, /*ssa_form=*/true,
                                      /*bitcast_defines_value=*/false,
                                      /*execution_threads=*/{},
-                                     /*disable_call_propagation=*/true),
+                                     /*propagate_through_calls=*/false),
       "is_regular_call_computation");
 }
 
