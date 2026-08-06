@@ -105,6 +105,18 @@ discussion, and please direct specific questions to
 The TensorFlow project strives to abide by generally accepted best practices in
 open-source software development.
 
+## Getting Help
+
+If you're new to TensorFlow or need assistance:
+
+* **Start with the official [TensorFlow Tutorials](https://www.tensorflow.org/tutorials/)** - Perfect for beginners, with hands-on examples
+* **Join [TensorFlow Forum](https://discuss.tensorflow.org/)** - Ask questions, share projects, and connect with the community
+* **Search [Stack Overflow](https://stackoverflow.com/questions/tagged/tensorflow)** - Thousands of answered TensorFlow questions
+* **Check the [TensorFlow YouTube Channel](https://www.youtube.com/channel/UC0rqucBdTuFTjJiefW5t-IQ)** - Video tutorials and conference talks
+* **Read the [TensorFlow Blog](https://blog.tensorflow.org)** - Latest updates, techniques, and use cases
+
+For bugs and feature requests, please use [GitHub Issues](https://github.com/tensorflow/tensorflow/issues) after checking existing issues first.
+
 ## Patching guidelines
 
 Follow these steps to patch a specific version of TensorFlow, for example, to
