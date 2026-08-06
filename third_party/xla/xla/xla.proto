@@ -1757,6 +1757,10 @@ message DebugOptions {
   // ragged-all-to-all. Requires NCCL >= 2.29.
   optional bool xla_gpu_experimental_ragged_all_to_all_use_device_kernel = 521;
 
+  // If true, allow fallback to NCCL (Send/Recv or Put/Signal) path for
+  // ragged-all-to-all.
+  optional bool xla_gpu_allow_ragged_all_to_all_nccl_send_recv_fallback = 532;
+
   // Minimum transfer size (in bytes) for a device-to-device copy to be
   // converted to an async copy-start/copy-done pair by GpuCopyAsyncWrapper.
   // Smaller copies remain synchronous to avoid stream-synchronization
@@ -1789,7 +1793,7 @@ message DebugOptions {
   // Note: when adding a new flag, please add it to one of the hardware-specific
   // or hardware-agnostic sections at the top of this proto message.
 
-  // Next id: 532
+  // Next id: 533
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.

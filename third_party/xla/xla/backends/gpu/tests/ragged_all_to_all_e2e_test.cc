@@ -54,7 +54,7 @@ namespace {
 using ::testing::NotNull;
 
 enum class RaggedAllToAllImplType {
-  kNccl,
+  kNcclFallback,
   kDecomposer,
   kOneShotWithMultiGpuBarrier,
   kOneShotWithMultiGpuBarrierWithNccl,
@@ -79,7 +79,7 @@ class RaggedAllToAllTestBase : public CollectiveOpsWithFlagsBase {
         collectives_mode_(collectives_mode) {}
 
   bool IsSymmetricNcclPath() const {
-    return impl_type_ == RaggedAllToAllImplType::kNccl &&
+    return impl_type_ == RaggedAllToAllImplType::kNcclFallback &&
            collectives_mode_ == DebugOptions::COLLECTIVES_SYMMETRIC_MEMORY;
   }
 
@@ -262,6 +262,9 @@ class RaggedAllToAllTestBase : public CollectiveOpsWithFlagsBase {
     // Requires symmetric memory.
     opts.set_xla_gpu_experimental_ragged_all_to_all_use_barrier_with_nccl(
         false);
+    if (impl_type_ == RaggedAllToAllImplType::kNcclFallback) {
+      opts.set_xla_gpu_allow_ragged_all_to_all_nccl_send_recv_fallback(true);
+    }
     if (IsSymmetricNcclPath()) {
       opts.set_xla_gpu_unsupported_use_ragged_all_to_all_one_shot_kernel(false);
     }
@@ -1023,8 +1026,8 @@ TEST_P(RaggedAllToAllTest, RaggedAllToAll_8GPUs_4ReplicasPerGroups) {
 std::string RaggedAllToAllImplTypeName(
     RaggedAllToAllImplType ragged_all_to_all_impl_type) {
   switch (ragged_all_to_all_impl_type) {
-    case RaggedAllToAllImplType::kNccl:
-      return "nccl";
+    case RaggedAllToAllImplType::kNcclFallback:
+      return "nccl_fallback";
     case RaggedAllToAllImplType::kDecomposer:
       return "decomposer";
     case RaggedAllToAllImplType::kOneShotWithMultiGpuBarrier:
@@ -1065,7 +1068,8 @@ BuildRaggedAllToAllTestParams() {
          {DebugOptions::COLLECTIVES_PRIVATE_MEMORY,
           DebugOptions::COLLECTIVES_SYMMETRIC_MEMORY,
           DebugOptions::COLLECTIVES_PEER_MEMORY}) {
-      params.emplace_back(enable_async, RaggedAllToAllImplType::kNccl, mode);
+      params.emplace_back(enable_async, RaggedAllToAllImplType::kNcclFallback,
+                          mode);
     }
     for (RaggedAllToAllImplType impl_type :
          {RaggedAllToAllImplType::kDecomposer,
@@ -1336,6 +1340,58 @@ INSTANTIATE_TEST_SUITE_P(
       return absl::StrCat("dispatch_", std::get<0>(info.param), "_",
                           std::get<1>(info.param));
     });
+
+class RaggedAllToAllFallbackTest : public RaggedAllToAllTestBase {
+ public:
+  RaggedAllToAllFallbackTest()
+      : RaggedAllToAllTestBase(
+            /*enable_async=*/false,
+            /*impl_type=*/RaggedAllToAllImplType::kNcclFallback,
+            /*collectives_mode=*/DebugOptions::COLLECTIVES_PRIVATE_MEMORY) {}
+
+ protected:
+  DebugOptions GetDebugOptionsForTest() const override {
+    DebugOptions opts = RaggedAllToAllTestBase::GetDebugOptionsForTest();
+    opts.set_xla_gpu_unsupported_use_ragged_all_to_all_one_shot_kernel(false);
+    opts.set_xla_gpu_allow_ragged_all_to_all_nccl_send_recv_fallback(false);
+    return opts;
+  }
+};
+
+TEST_F(RaggedAllToAllFallbackTest, FailsWhenFallbackIsDisabled) {
+  absl::string_view kModuleReplicatedStr = R"(
+  HloModule module, num_partitions=1
+
+  ENTRY entry {
+    input = f32[4] parameter(0)
+    output = f32[4] parameter(1)
+    input_offsets = s32[2] parameter(2)
+    send_sizes = s32[2] parameter(3)
+    output_offsets = s32[2] parameter(4)
+    recv_sizes = s32[2] parameter(5)
+    ROOT ra2a = f32[4] ragged-all-to-all(input, output, input_offsets,
+    send_sizes, output_offsets, recv_sizes), replica_groups={{0,1}}
+  })";
+
+  const int64_t kNumReplicas = 2;
+  ASSERT_GE(device_count(), kNumReplicas)
+      << "Test requires at least " << kNumReplicas << " devices ("
+      << device_count() << " available)";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(
+                                        kModuleReplicatedStr, kNumReplicas));
+
+  ASSERT_OK(CreateRandomTestData(module.get(),
+                                 /*input_sizes=*/{/*replica_0=*/{1, 1},
+                                                  /*replica_1=*/{3, 1}}));
+
+  absl::StatusOr<ExecutionResult> execution_result =
+      ExecuteReplicated(std::move(module), GetInputLiteralPtrs());
+  EXPECT_FALSE(execution_result.ok());
+  EXPECT_THAT(
+      execution_result.status().message(),
+      ::testing::HasSubstr("RaggedAllToAll fallback to NCCL is not allowed"));
+}
 
 }  // namespace
 }  // namespace xla
