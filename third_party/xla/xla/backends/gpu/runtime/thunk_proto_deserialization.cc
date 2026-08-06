@@ -49,7 +49,6 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/device_to_device_copy_thunk.h"
 #include "xla/backends/gpu/runtime/device_to_host_copy_thunk.h"
 #include "xla/backends/gpu/runtime/dynamic_slice_fusion_v2_thunk.h"
-#include "xla/backends/gpu/runtime/dynamic_slice_thunk.h"
 #include "xla/backends/gpu/runtime/fft_thunk.h"
 #include "xla/backends/gpu/runtime/gemm_thunk.h"
 #include "xla/backends/gpu/runtime/gpublas_lt_matmul_thunk.h"
@@ -206,21 +205,6 @@ absl::StatusOr<std::unique_ptr<Thunk>> DeserializeThunkProtoImpl(
       return Memset32BitValueThunk::FromProto(
           std::move(thunk_info), thunk_proto.memset32bit_value_thunk(),
           buffer_allocations);
-    case ThunkProto::kDynamicSliceThunk: {
-      auto deserializer =
-          [&](const ThunkProto& thunk_proto,
-              absl::Span<const BufferAllocation> custom_allocations) {
-            return DeserializeThunkProtoImpl(
-                thunk_proto, custom_allocations, hlo_module, platform_name,
-                host_executable_async_events_map,
-                host_send_recv_async_events_map, async_execution_map,
-                gpu_compute_capability, symbol_resolver,
-                cpu_target_machine_options);
-          };
-      return DynamicSliceThunk::FromProto(std::move(thunk_info),
-                                          thunk_proto.dynamic_slice_thunk(),
-                                          buffer_allocations, deserializer);
-    }
     case ThunkProto::kDynamicSliceFusionThunk: {
       auto deserializer =
           [&](const ThunkProto& thunk_proto,

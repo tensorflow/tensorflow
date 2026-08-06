@@ -114,7 +114,6 @@ class Thunk {
     kCublasLtMatmul,
     kCustomCall,
     kCustomKernel,
-    kDynamicSlice,
     kDynamicSliceFusion,
     kFft,
     kGemm,

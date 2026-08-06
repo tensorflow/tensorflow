@@ -325,7 +325,6 @@ bool IsContainerThunk(ImplCase impl_case) {
     case ThunkProto::kConditionalThunk:
     case ThunkProto::kAsyncStartThunk:
     case ThunkProto::kCollectiveGroupThunk:
-    case ThunkProto::kDynamicSliceThunk:
     case ThunkProto::kDynamicSliceFusionThunk:
       return true;
     default:
@@ -404,12 +403,6 @@ void ProcessNestedThunks(const ThunkProto& thunk,
     case ThunkProto::kCollectiveGroupThunk:
       for (const ThunkProto& inner_thunk :
            thunk.collective_group_thunk().thunks()) {
-        CollectThunkInfo(inner_thunk, thunk_counts);
-      }
-      break;
-    case ThunkProto::kDynamicSliceThunk:
-      for (const ThunkProto& inner_thunk :
-           thunk.dynamic_slice_thunk().embedded_thunk().thunks()) {
         CollectThunkInfo(inner_thunk, thunk_counts);
       }
       break;

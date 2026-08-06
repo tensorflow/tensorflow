@@ -46,7 +46,6 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/custom_call_thunk.h"
 #include "xla/backends/gpu/runtime/device_to_device_copy_thunk.h"
 #include "xla/backends/gpu/runtime/dynamic_slice_fusion_v2_thunk.h"
-#include "xla/backends/gpu/runtime/dynamic_slice_thunk.h"
 #include "xla/backends/gpu/runtime/ragged_all_to_all_thunk.h"
 #include "xla/backends/gpu/runtime/sequential_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
@@ -209,8 +208,6 @@ std::optional<DebugOptions::CommandBufferCmdType> GetCommandBufferCmdType(
       return DebugOptions::CUSTOM_CALL;
     case Thunk::kCublasLtMatmul:
       return DebugOptions::CUBLASLT;
-    case Thunk::kDynamicSlice:
-      return DebugOptions::DYNAMIC_SLICE_FUSION;
     case Thunk::kDynamicSliceFusion:
       return DebugOptions::DYNAMIC_SLICE_FUSION;
     default:
@@ -337,16 +334,6 @@ bool IsConvertible(const RaggedAllToAllThunk& ra2a_thunk,
   return true;
 }
 
-// Returns true if the DynamicSliceThunk is convertible to a command buffer
-// operation. This requires that all embedded thunks are also convertible,
-// e.g. a DynamicSliceThunk wrapping a collective is not convertible if
-// collectives are not enabled for command buffer capture.
-static bool IsConvertible(const DynamicSliceThunk& dynamic_slice_thunk,
-                          const CommandBufferConfig& config) {
-  return ThunkSequenceIsConvertible(
-      dynamic_slice_thunk.get_embedded_executor().thunks(), config);
-}
-
 // Returns true if the DynamicSliceFusionV2Thunk is convertible to a command
 // buffer operation. Runtime offset verification performs synchronous D2H copies
 // and is intentionally unsupported for command buffer lowering.
@@ -424,10 +411,6 @@ bool IsConvertible(const Thunk& thunk, const CommandBufferConfig& config) {
     }
     // Legacy custom calls are not command-buffer compatible.
     return false;
-  }
-
-  if (thunk.kind() == Thunk::kDynamicSlice) {
-    return IsConvertible(static_cast<const DynamicSliceThunk&>(thunk), config);
   }
 
   if (thunk.kind() == Thunk::kDynamicSliceFusion) {

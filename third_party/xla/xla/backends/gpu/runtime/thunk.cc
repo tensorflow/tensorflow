@@ -185,8 +185,6 @@ ThunkKindProto Thunk::KindToProto(Kind kind) {
       return THUNK_KIND_CUSTOM_CALL;
     case kCustomKernel:
       return THUNK_KIND_CUSTOM_KERNEL;
-    case kDynamicSlice:
-      return THUNK_KIND_DYNAMIC_SLICE;
     case kDynamicSliceFusion:
       return THUNK_KIND_DYNAMIC_SLICE_FUSION;
     case kFft:
@@ -286,8 +284,6 @@ absl::StatusOr<Thunk::Kind> Thunk::KindFromProto(ThunkKindProto kind) {
       return kCustomCall;
     case THUNK_KIND_CUSTOM_KERNEL:
       return kCustomKernel;
-    case THUNK_KIND_DYNAMIC_SLICE:
-      return kDynamicSlice;
     case THUNK_KIND_DYNAMIC_SLICE_FUSION:
       return kDynamicSliceFusion;
     case THUNK_KIND_FFT:
@@ -374,7 +370,6 @@ absl::StatusOr<Thunk::Kind> Thunk::KindFromProto(ThunkKindProto kind) {
     CASE(kCublasLtMatmul);
     CASE(kCustomCall);
     CASE(kCustomKernel);
-    CASE(kDynamicSlice);
     CASE(kDynamicSliceFusion);
     CASE(kFft);
     CASE(kGemm);
