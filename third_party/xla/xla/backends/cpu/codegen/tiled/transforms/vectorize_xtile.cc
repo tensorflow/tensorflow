@@ -551,6 +551,22 @@ struct VectorizeTransposeOp
   }
 };
 
+struct VectorizeReshapeOp : public mlir::OpConversionPattern<shlo::ReshapeOp> {
+  using OpConversionPattern::OpConversionPattern;
+
+  mlir::LogicalResult matchAndRewrite(
+      shlo::ReshapeOp op, OpAdaptor adaptor,
+      mlir::ConversionPatternRewriter& rewriter) const override {
+    mlir::Type new_type = this->getTypeConverter()->convertType(op.getType());
+    if (!new_type) {
+      return mlir::failure();
+    }
+    rewriter.replaceOpWithNewOp<mv::ShapeCastOp>(op, new_type,
+                                                 adaptor.getOperand());
+    return mlir::success();
+  }
+};
+
 struct VectorizeConstantOp : public mlir::OpConversionPattern<ma::ConstantOp> {
   using OpConversionPattern::OpConversionPattern;
 
@@ -689,10 +705,11 @@ class VectorizeXTilePass
         ma::ArithDialect, mlir::memref::MemRefDialect, mm::MathDialect,
         ms::SCFDialect, mlir::tensor::TensorDialect, mv::VectorDialect,
         shlo::StablehloDialect, xla::XlaDialect, xtile::XTileDialect>();
-    target.addIllegalOp<shlo::BroadcastInDimOp, shlo::DotGeneralOp,
-                        shlo::IotaOp, shlo::ReduceOp, shlo::TransposeOp,
-                        mlir::tensor::ExtractOp, mlir::tensor::FromElementsOp,
-                        xtile::ExtractTileOp, xtile::InsertTileOp>();
+    target
+        .addIllegalOp<shlo::BroadcastInDimOp, shlo::DotGeneralOp, shlo::IotaOp,
+                      shlo::ReduceOp, shlo::ReshapeOp, shlo::TransposeOp,
+                      mlir::tensor::ExtractOp, mlir::tensor::FromElementsOp,
+                      xtile::ExtractTileOp, xtile::InsertTileOp>();
     target.addLegalOp<mlir::UnrealizedConversionCastOp>();
     target.addDynamicallyLegalDialect<ma::ArithDialect, mm::MathDialect>(
         [&](mlir::Operation* op) { return type_converter.isLegal(op); });
@@ -702,7 +719,7 @@ class VectorizeXTilePass
         .add<ConvertExtractTile, ConvertInsertTile, VectorizeBroadcastInDimOp,
              VectorizeConstantOp, VectorizeDotGeneralOp, VectorizeExtractOp,
              VectorizeFromElementsOp, VectorizeIotaOp, VectorizeReduceOp,
-             VectorizeTransposeOp>(type_converter, context);
+             VectorizeReshapeOp, VectorizeTransposeOp>(type_converter, context);
     populateVectorizePatterns<
         ma::AddFOp, ma::AddIOp, ma::SubFOp, ma::SubIOp, ma::MulFOp, ma::MulIOp,
         ma::DivFOp, ma::DivSIOp, ma::DivUIOp, ma::RemFOp, ma::RemSIOp,

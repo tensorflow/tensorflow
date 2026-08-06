@@ -638,4 +638,15 @@ func.func @test_reduce_1d_0d(%arg0: tensor<8xf32>, %arg1: tensor<f32>) -> tensor
 // CHECK: %[[RET:.*]] = builtin.unrealized_conversion_cast %[[BCAST]] : vector<f32> to tensor<f32>
 // CHECK: return %[[RET]]
 
+func.func @test_reshape(%arg0: tensor<16x32xf32>) -> tensor<512xf32> {
+  %0 = stablehlo.reshape %arg0 : (tensor<16x32xf32>) -> tensor<512xf32>
+  return %0 : tensor<512xf32>
+}
+// CHECK-LABEL: @test_reshape
+// CHECK: %[[CAST:.*]] = builtin.unrealized_conversion_cast %arg0 : tensor<16x32xf32> to vector<16x32xf32>
+// CHECK: %[[RESHAPE:.*]] = vector.shape_cast %[[CAST]] : vector<16x32xf32> to vector<512xf32>
+// CHECK: %[[RET:.*]] = builtin.unrealized_conversion_cast %[[RESHAPE]] : vector<512xf32> to tensor<512xf32>
+// CHECK: return %[[RET]]
+
+
 
