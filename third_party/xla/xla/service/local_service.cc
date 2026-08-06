@@ -100,8 +100,7 @@ LocalService::CompileExecutables(
       /*cpu_target_config=*/{},
       /*key_value_store=*/
       {build_options.key_value_store(), build_options.process_index(),
-       build_options.process_count()},
-      build_options.slice_size()};
+       build_options.process_count()}};
   if (build_options.num_partitions() == 1) {
     ABSL_ASSIGN_OR_RETURN(
         std::unique_ptr<Executable> executable,
