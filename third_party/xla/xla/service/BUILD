@@ -1915,6 +1915,7 @@ cc_library(
     hdrs = ["compiler.h"],
     visibility = internal_visibility([
         "//xla/internal:hwi_internal",
+        "//xla/backends/gpu/ffi:__pkg__",
         "//xla/backends/gpu/runtime:__subpackages__",
         "//xla/backends/gpu/tests:__pkg__",
         "//xla/backends/gpu/transforms:__subpackages__",
