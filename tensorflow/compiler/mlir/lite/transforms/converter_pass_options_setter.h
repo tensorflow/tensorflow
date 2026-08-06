@@ -30,6 +30,20 @@ class OptimizeBroadcastLikePassOptions;
 
 // PassOptionsSetter to set TFLite Converter Pass/Pipeline Options based on
 // ConverterFlags and TFL::PassConfig values.
+//
+// INVARIANT: the SetOptions overloads declared below MUST match the
+// definitions in converter_pass_options_setter.cc EXACTLY (same parameter
+// types, same constness, same override). The Windows link invokes
+// `lld-link`, which fails hard if any caller references an overload
+// declared here that lacks a corresponding definition. If you add an
+// overload, add it in both places.
+//
+// If the Windows build fails with "undefined symbol:
+// ?SetOptions@ConverterPassOptionsSetter@..." pointing at an overload
+// that exists in this header, the most likely cause is a stale Bazel
+// cache: run `bazel clean --expunge` on the Windows runner before
+// suspecting source. The next-most-likely cause is that tf_tfl_passes.cc
+// was built from a different source tree than this header.
 class ConverterPassOptionsSetter : public PassOptionsSetter {
  public:
   explicit ConverterPassOptionsSetter(
