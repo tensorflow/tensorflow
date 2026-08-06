@@ -3321,6 +3321,10 @@ absl::Status BufferAssigner::RunAssignBuffersWithFallback(
                   << " bytes). Triggering in-place fallback to DEFAULT.";
           break;
         }
+        VLOG(1)
+            << "Primary BufferAssignment did not exceed memory limit for color "
+            << color << " (" << total_allocated_bytes << " bytes vs limit of "
+            << adjusted_limit << " bytes).";
       }
     }
   }
