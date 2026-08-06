@@ -68,6 +68,7 @@ cc_library(
         "//xla/service:logical_buffer",
         "//xla/service:time_utils",
         "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:logging",
         "//xla/tsl/platform:status_macros",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/algorithm:container",

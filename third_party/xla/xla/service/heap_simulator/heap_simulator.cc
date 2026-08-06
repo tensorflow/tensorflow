@@ -67,6 +67,7 @@ limitations under the License.
 #include "xla/service/logical_buffer.h"
 #include "xla/service/time_utils.h"
 #include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/logging.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 
@@ -260,9 +261,13 @@ absl::StatusOr<HeapSimulator::Result<HloValue>> HeapSimulator::Run(
   ASSIGN_OR_RETURN(
       std::unique_ptr<HloLiveRange> hlo_live_range,
       HloLiveRange::Run(schedule, alias_analysis, entry_computation));
+
+  // Step 1: Run the sequential simulation of Alloc and Free events.
   RETURN_IF_ERROR(heap.RunComputation(*entry_computation, instruction_sequence,
                                       alias_analysis, alias_info,
                                       hlo_live_range.get()));
+
+  // Step 2: Finalize the heap simulation and run the offline allocation solver.
   return heap.Finish();
 }
 
@@ -305,8 +310,11 @@ absl::StatusOr<HeapSimulator::Result<HloValue>> HeapSimulator::Run(
   return heap.Finish();
 }
 
-// Runs a heap simulation for the given 'computation', assuming the given
-// 'instruction_sequence'.
+// Runs the sequential heap simulation for the given computation. Walks
+// through the topologically-sorted instruction sequence, replaying buffer
+// define (Alloc) and free (Free) events at each time step. Leverages
+// HeapAlgorithm callbacks (Alloc, Free, ShareWith) to record intervals,
+// and recursively processes nested control-flow computations.
 absl::Status HeapSimulator::RunComputation(
     const HloComputation& computation,
     const HloInstructionSequence& instruction_sequence,
@@ -584,6 +592,12 @@ int64_t HeapSimulator::GetBufferSize(const HloValue* buffer) const {
   return it->second.Get();
 }
 
+// Completes the simulation and executes the final offline allocation solver
+// pass. Invokes Finish() on the underlying HeapAlgorithm (which, in
+// MsaAlgorithm, sorts buffer intervals by benefit/size, packs them into
+// memory offsets using a 2D interval tree, and handles OOM repacking).
+// Then, post-processes the result trace to assign offsets to shared aliasing
+// buffers, verifying bounds before exporting the final simulator result.
 absl::StatusOr<HeapSimulator::Result<HloValue>> HeapSimulator::Finish() {
   ASSIGN_OR_RETURN(Result<HloValue> result, algorithm_->Finish());
 

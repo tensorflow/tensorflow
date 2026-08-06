@@ -362,8 +362,9 @@ class MemorySpaceAssignment {
   RunMemorySpaceAssignment(const HloLiveRange& hlo_live_range,
                            const HloAliasAnalysis& alias_analysis);
 
-  // Finds an AllocationSequence for placing buffers in alternate memory using
-  // the MsaAlgorithm algorithm. Must be set before Process() is called.
+  // Finds the AllocationSequence for placing buffers in alternate memory by
+  // executing the MsaAlgorithm. This method must be called to populate the
+  // sequence (allocations_) before Process() is executed.
   virtual absl::Status FindAllocationSequence(
       const HloLiveRange& hlo_live_range,
       const HloAliasAnalysis& alias_analysis);
@@ -390,6 +391,13 @@ class MemorySpaceAssignment {
     }
   }
 
+  // Holds the timeline of determined alternate memory allocations.
+  // This sequence is populated in-place by MsaAlgorithm (initialized with a
+  // raw pointer to this member) during HeapSimulator::Run inside the
+  // FindAllocationSequence() pass.
+  // Later in RunMemorySpaceAssignment, this timeline is processed, converted
+  // into graph-mutating asynchronous copies, mapped to HLO buffer colors, and
+  // exported into preset_assignments_.
   AllocationSequence allocations_;
 
   HloModule* module() { return module_; }
