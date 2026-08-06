@@ -3831,5 +3831,36 @@ ENTRY main {
   EXPECT_OK(alias_analysis_or.status());
 }
 
+TEST_F(HloDataflowAnalysisTest, DisableCallPropagationCrashesOnMixedCallers) {
+  const char* hlo_text = R"(
+HloModule module
+
+subcomp {
+  param = f32[] parameter(0)
+  ROOT add = f32[] add(param, param)
+}
+
+while_cond {
+  param = f32[] parameter(0)
+  limit = f32[] constant(10.0)
+  ROOT cond = pred[] compare(param, limit), direction=LT
+}
+
+ENTRY main {
+  p0 = f32[] parameter(0)
+  call = f32[] call(p0), to_apply=subcomp
+  ROOT while = f32[] while(call), condition=while_cond, body=subcomp
+}
+)";
+  ASSERT_OK_AND_ASSIGN(module_, ParseAndReturnVerifiedModule(
+                                    hlo_text, GetModuleConfigForTest()));
+  EXPECT_DEATH(
+      (void)HloDataflowAnalysis::Run(*module_, /*ssa_form=*/true,
+                                     /*bitcast_defines_value=*/false,
+                                     /*execution_threads=*/{},
+                                     /*disable_call_propagation=*/true),
+      "is_regular_call_computation");
+}
+
 }  // namespace
 }  // namespace xla

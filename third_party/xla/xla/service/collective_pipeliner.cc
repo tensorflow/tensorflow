@@ -2089,7 +2089,10 @@ absl::StatusOr<HloInstruction*> TransformLoopForward(
   // except some new scalar unused parameters added at the end.
   ASSIGN_OR_RETURN(std::unique_ptr<HloDataflowAnalysis> new_dataflow_analysis,
                    HloDataflowAnalysis::Run(*(new_while_loop->GetModule()),
-                                            /*ssa_form=*/true));
+                                            /*ssa_form=*/true,
+                                            /*bitcast_defines_value=*/false,
+                                            /*execution_threads=*/{},
+                                            /*disable_call_propagation=*/true));
   WhileLoopAnalysis new_loop_analysis(
       new_while_loop, loop_analysis.GetMaxPipeliningPerLoop(),
       pipeline_use_tree, process_different_sized_ops,
@@ -3478,7 +3481,10 @@ absl::StatusOr<bool> CollectivePipeliner::RunPipeliner(
       std::unique_ptr<TuplePointsToAnalysis> tuple_points_to_analysis,
       TuplePointsToAnalysis::Run(module));
   ASSIGN_OR_RETURN(std::unique_ptr<HloDataflowAnalysis> dataflow_analysis,
-                   HloDataflowAnalysis::Run(*module, /*ssa_form=*/true));
+                   HloDataflowAnalysis::Run(*module, /*ssa_form=*/true,
+                                            /*bitcast_defines_value=*/false,
+                                            /*execution_threads=*/{},
+                                            /*disable_call_propagation=*/true));
 
   std::vector<std::pair<HloInstruction*, std::unique_ptr<WhileLoopAnalysis>>>
       loop_analyses;

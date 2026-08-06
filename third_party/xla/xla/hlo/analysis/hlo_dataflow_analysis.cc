@@ -106,11 +106,13 @@ using absl::StrCat;
 
 HloDataflowAnalysis::HloDataflowAnalysis(
     const HloModule& module, bool ssa_form, bool bitcast_defines_value,
-    absl::flat_hash_set<absl::string_view> execution_threads)
+    absl::flat_hash_set<absl::string_view> execution_threads,
+    bool disable_call_propagation)
     : module_(module),
       execution_threads_(std::move(execution_threads)),
       ssa_form_(ssa_form),
       bitcast_defines_value_(bitcast_defines_value),
+      disable_call_propagation_(disable_call_propagation),
       call_graph_(CallGraph::Build(&module)) {}
 
 bool HloDataflowAnalysis::AreTransitiveUsesElementwiseOrTuple(
@@ -744,6 +746,9 @@ bool HloDataflowAnalysis::UpdateRecvDoneValueSet(HloInstruction* recv_done) {
 }
 
 bool HloDataflowAnalysis::UpdateCallValueSet(HloInstruction* call) {
+  if (disable_call_propagation_) {
+    return false;
+  }
   CHECK_EQ(call->opcode(), HloOpcode::kCall);
   if (!HloInstruction::IsThreadIncluded(call->to_apply()->execution_thread(),
                                         execution_threads_)) {
@@ -895,8 +900,10 @@ bool HloDataflowAnalysis::UpdateParameterValueSet(HloInstruction* parameter) {
     if (opcode == HloOpcode::kCall) {
       // The operand values of a call instruction are forwarded to the
       // respective parameter instruction of the subcomputation.
-      inputs.push_back(&GetInstructionValueSet(
-          callsite.instruction()->operand(parameter->parameter_number())));
+      if (!disable_call_propagation_) {
+        inputs.push_back(&GetInstructionValueSet(
+            callsite.instruction()->operand(parameter->parameter_number())));
+      }
     } else if (opcode == HloOpcode::kWhile) {
       // In a while instruction, the while operand (ie, the init value) and the
       // backedge are dataflow inputs to the parameter instruction. This is the
@@ -1350,6 +1357,10 @@ void HloDataflowAnalysis::Propagate() {
       const CallGraphNode& call_graph_node =
           call_graph_->GetNode(instruction->parent());
       for (const CallSite& callsite : call_graph_node.caller_callsites()) {
+        if (disable_call_propagation_ &&
+            callsite.instruction()->opcode() == HloOpcode::kCall) {
+          continue;
+        }
         if (callsite.instruction()->opcode() == HloOpcode::kWhile) {
           // Add the while itself, and the body and condition parameters.
           add_to_worklist(callsite.instruction());
@@ -1382,6 +1393,20 @@ InstructionValueSet& HloDataflowAnalysis::GetInstructionValueSet(
   return *value_sets_.find(instruction)->second;
 }
 
+namespace {
+bool IsRegularCallComputation(const CallGraphNode& node) {
+  bool is_regular_call_computation =
+      absl::c_any_of(node.caller_callsites(), [](const CallSite& cs) {
+        return cs.instruction()->opcode() == HloOpcode::kCall;
+      });
+  CHECK(!is_regular_call_computation ||
+        absl::c_all_of(node.caller_callsites(), [](const CallSite& cs) {
+          return cs.instruction()->opcode() == HloOpcode::kCall;
+        }));
+  return is_regular_call_computation;
+}
+}  // namespace
+
 absl::Status HloDataflowAnalysis::InitializeInstructionValueSets() {
   for (const HloComputation* computation : module_.MakeComputationPostOrder()) {
     if (!HloInstruction::IsThreadIncluded(computation->execution_thread(),
@@ -1389,6 +1414,8 @@ absl::Status HloDataflowAnalysis::InitializeInstructionValueSets() {
       continue;
     }
     const CallGraphNode& call_graph_node = call_graph_->GetNode(computation);
+    const bool is_regular_call_computation =
+        IsRegularCallComputation(call_graph_node);
     for (HloInstruction* instruction :
          computation->MakeInstructionPostOrder()) {
       // Create an empty shape tree.
@@ -1425,9 +1452,13 @@ absl::Status HloDataflowAnalysis::InitializeInstructionValueSets() {
             define_all_values();
           }
           break;
+        case HloOpcode::kCall:
+          if (disable_call_propagation_) {
+            define_all_values();
+          }
+          break;
         case HloOpcode::kAddDependency:
         case HloOpcode::kWhile:
-        case HloOpcode::kCall:
         case HloOpcode::kConditional:
         case HloOpcode::kGetTupleElement:
         case HloOpcode::kDomain:
@@ -1435,7 +1466,7 @@ absl::Status HloDataflowAnalysis::InitializeInstructionValueSets() {
           // These instructions define no values. The values in their output
           // flow from their operands or from cross computation dataflow.
           break;
-        case HloOpcode::kParameter:
+        case HloOpcode::kParameter: {
           if (call_graph_node.context() == CallContext::kBoth) {
             // We do not support a subcomputation that is called from both a
             // parallel and sequential context. In this case, the parameter
@@ -1448,7 +1479,8 @@ absl::Status HloDataflowAnalysis::InitializeInstructionValueSets() {
                 computation->name());
           }
           if (call_graph_node.caller_callsites().empty() ||
-              call_graph_node.context() == CallContext::kEmbedded) {
+              call_graph_node.context() == CallContext::kEmbedded ||
+              (disable_call_propagation_ && is_regular_call_computation)) {
             // Parameters of computations called in a parallel context (eg, map
             // and reduce) as well as parameters of dead computations define all
             // values in their output. Otherwise the values of the parameter
@@ -1456,6 +1488,7 @@ absl::Status HloDataflowAnalysis::InitializeInstructionValueSets() {
             define_all_values();
           }
           break;
+        }
         case HloOpcode::kCopy:
         case HloOpcode::kTuple:
           // These instructions only define their top-level values. Any other
@@ -1638,12 +1671,14 @@ void HloDataflowAnalysis::OptimizePhiValues() {
 /* static */
 absl::StatusOr<std::unique_ptr<HloDataflowAnalysis>> HloDataflowAnalysis::Run(
     const HloModule& module, bool ssa_form, bool bitcast_defines_value,
-    absl::flat_hash_set<absl::string_view> execution_threads) {
+    absl::flat_hash_set<absl::string_view> execution_threads,
+    bool disable_call_propagation) {
   VLOG(1) << "HloDataflowAnalysis::Run on module " << module.name();
   XLA_VLOG_LINES(2, module.ToString());
 
-  auto dataflow_analysis = absl::WrapUnique(new HloDataflowAnalysis(
-      module, ssa_form, bitcast_defines_value, execution_threads));
+  auto dataflow_analysis = absl::WrapUnique(
+      new HloDataflowAnalysis(module, ssa_form, bitcast_defines_value,
+                              execution_threads, disable_call_propagation));
   RETURN_IF_ERROR(dataflow_analysis->RunImpl());
   return dataflow_analysis;
 }
