@@ -24,6 +24,7 @@ limitations under the License.
 
 #include "absl/base/nullability.h"
 #include "absl/flags/flag.h"
+#include "absl/flags/parse.h"
 #include "absl/log/check.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
@@ -178,6 +179,7 @@ GTEST_API_ int main(int argc, char** argv) {
   tsl::testing::InstallStacktraceHandler();
   ::benchmark::Initialize(&argc, argv);
   testing::InitGoogleTest(&argc, argv);
+  absl::ParseCommandLine(argc, argv);
   xla::cpu::Set_XLA_FLAGS();
   xla::cpu::RegisterBenchmarks();
   if (::benchmark::GetBenchmarkFilter().empty()) {
