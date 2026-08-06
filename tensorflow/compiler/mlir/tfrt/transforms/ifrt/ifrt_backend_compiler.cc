@@ -136,6 +136,23 @@ absl::Status CompileTensorflowForIfrtServing(
       ifrt_model_context.enable_propagate_static_shapes_pass(),
       enable_async_ifrt));
 
+  // Collect the assigned-variable report emitted by
+  // SinkVariableAsNamedArrayPass. The union of these reports across all
+  // compiled modules identifies host-needed variables for
+  // IfrtModelContext::Freeze() (freeze-time host variable mode). This is
+  // only complete if every signature is compiled before Freeze() is called.
+  if (auto assigned = module->getAttrOfType<mlir::ArrayAttr>(
+          "tf_ifrt.assigned_variable_names")) {
+    std::vector<std::string> names;
+    names.reserve(assigned.size());
+    for (mlir::Attribute attr : assigned) {
+      if (auto name = mlir::dyn_cast<mlir::StringAttr>(attr)) {
+        names.push_back(name.str());
+      }
+    }
+    ifrt_model_context.AddAssignedVariableNames(std::move(names));
+  }
+
   TF_ASSIGN_OR_RETURN(
       auto handles,
       CompileAndRegisterIfrtPrograms(model_name, module, ifrt_model_context));

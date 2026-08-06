@@ -15,6 +15,7 @@ limitations under the License.
 
 #include <memory>
 #include <numeric>
+#include <set>
 #include <string>
 #include <type_traits>
 #include <vector>
@@ -66,6 +67,32 @@ class SinkVariableAsNamedArrayPass
   void runOnOperation() override {
     mlir::ModuleOp module = getOperation();
     mlir::OpBuilder builder(&getContext());
+
+    // Record, as a module attribute, the runtime names of variables that are
+    // assigned in this module. The runtime uses the union of these reports
+    // across all compiled modules to classify host-needed variables at
+    // IfrtModelContext::Freeze() time (freeze-time host variable mode). The
+    // name format must match GetRuntimeNameFromVarHandle:
+    // "<container>__<shared_name>".
+    {
+      std::set<std::string> assigned_names;
+      module.walk([&](mlir::TF::VarHandleOp var_handle) {
+        for (mlir::Operation* user : var_handle->getUsers()) {
+          if (llvm::isa<mlir::TF::AssignVariableOp>(user)) {
+            assigned_names.insert(
+                absl::StrCat(var_handle.getContainer().str(), "__",
+                             var_handle.getSharedName().str()));
+            break;
+          }
+        }
+      });
+      if (!assigned_names.empty()) {
+        llvm::SmallVector<llvm::StringRef> refs(assigned_names.begin(),
+                                                assigned_names.end());
+        module->setAttr("tf_ifrt.assigned_variable_names",
+                        builder.getStrArrayAttr(refs));
+      }
+    }
 
     // Rewrite ReadVariableOp with IfrtLoadVariableOp
     llvm::SmallDenseMap<mlir::TF::ReadVariableOp, mlir::TF::IfrtLoadVariableOp>
