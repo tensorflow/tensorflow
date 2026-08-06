@@ -314,8 +314,12 @@ ProfileOptions GetProfileOptions(
     const DebugOptions& debug_options,
     const ConfigAssigner::Options& config_assigner_options) {
   ProfileOptions profile_options;
-  profile_options.redzone_padding_bytes =
-      debug_options.xla_gpu_redzone_padding_bytes();
+  if (config_assigner_options.check_buffers) {
+    profile_options.redzone_padding_bytes =
+        debug_options.xla_gpu_redzone_padding_bytes();
+  } else {
+    profile_options.redzone_padding_bytes = 0;
+  }
   profile_options.should_init_buffers = config_assigner_options.check_buffers;
   return profile_options;
 }
