@@ -19,6 +19,7 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 #include <utility>
+#include <vector>
 
 #include "tensorflow/lite/core/api/profiler.h"
 #include "tensorflow/lite/core/async/async_signature_runner.h"
@@ -84,6 +85,18 @@ TfLiteStatus Interpreter::ModifyGraphWithDelegate(
     TfLiteOpaqueDelegateStruct* delegate) {
   return ModifyGraphWithDelegateImpl(
       reinterpret_cast<TfLiteDelegate*>(delegate));
+}
+
+TfLiteStatus Interpreter::ModifyGraphWithDelegate(
+    TfLiteDelegate* delegate, const std::vector<int>& active_subgraph_indices) {
+  return ModifyGraphWithDelegateImpl(delegate, active_subgraph_indices);
+}
+
+TfLiteStatus Interpreter::ModifyGraphWithDelegate(
+    TfLiteOpaqueDelegateStruct* delegate,
+    const std::vector<int>& active_subgraph_indices) {
+  return ModifyGraphWithDelegateImpl(
+      reinterpret_cast<TfLiteDelegate*>(delegate), active_subgraph_indices);
 }
 
 bool Interpreter::HasDelegates() { return primary_subgraph().HasDelegates(); }

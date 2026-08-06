@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/backends/gpu/autotuner/triton/cost_model_config_optimization.h"
 
+#include <algorithm>
 #include <cstdint>
 #include <memory>
 #include <optional>
@@ -26,12 +27,14 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
 #include "absl/time/time.h"
+#include "absl/types/span.h"
 #include "xla/tsl/platform/status_macros.h"
 #include "mlir/IR/MLIRContext.h"
 #include "xla/backends/gpu/transforms/convert_triton_gemm_config.h"
@@ -97,9 +100,8 @@ absl::StatusOr<absl::Duration> EstimateRunTimeWithConfig(
 
 absl::StatusOr<OrderedEstimatesAndConfigs> EstimateConfigs(
     const EstimationContext& context,
-    const std::vector<TritonGemmConfig>& configs,
-    mlir::MLIRContext* mlir_context, bool use_experimental_tiling,
-    bool enable_same_shape_multi_output_fusion) {
+    absl::Span<const TritonGemmConfig> configs, mlir::MLIRContext* mlir_context,
+    bool use_experimental_tiling, bool enable_same_shape_multi_output_fusion) {
   HloFusionAnalysisCache fusion_analysis_cache{context.device_description};
   GpuPerformanceModelWithIndexingAnalysis cost_model{
       &context.device_description,       &fusion_analysis_cache,
@@ -277,6 +279,60 @@ absl::StatusOr<CostModelGemmTilingOptions> ParseCostModelGemmTilingOptions(
   return parsed_options;
 }
 
+// Bundles an extracted HloModule with its corresponding EstimationContext.
+// The module must be kept alive for the lifetime of EstimationContext since
+// the context holds non-owning pointers to instructions within the module.
+struct ExtractedModuleAndContext {
+  std::unique_ptr<HloModule> module;
+  EstimationContext context;
+};
+
+// Extracts the fusion computation containing `dot` into a standalone HloModule
+// and constructs an EstimationContext for cost model evaluation.
+ExtractedModuleAndContext CreateEstimationContext(
+    const HloDotInstruction* dot,
+    const se::DeviceDescription& device_description,
+    const DebugOptions& debug_options) {
+  CHECK(dot != nullptr && dot->IsFused())
+      << "Dot instruction must be enclosed within a fusion computation";
+  std::unique_ptr<HloModule> module =
+      ExtractInstructionIntoNewModule(*dot->parent()->FusionInstruction());
+  module->mutable_config().set_debug_options(debug_options);
+
+  HloFusionInstruction* extracted_fusion = Cast<HloFusionInstruction>(
+      module->entry_computation()->root_instruction());
+  HloDotInstruction* extracted_dot =
+      Cast<HloDotInstruction>(hlo_query::FindInstruction(
+          extracted_fusion->fused_instructions_computation(), HloOpcode::kDot));
+
+  return {std::move(module), EstimationContext{extracted_fusion, extracted_dot,
+                                               device_description}};
+}
+
+// Extracts a vector of TritonGemmConfig from the ordered estimates set.
+// If `original_configs` is provided, any configs from `original_configs` that
+// are not already present in the result will be appended at the end, preserving
+// their original order.
+std::vector<TritonGemmConfig> FillConfigListFromEstimates(
+    const OrderedEstimatesAndConfigs& estimated_configs,
+    absl::Span<const TritonGemmConfig> original_configs = {}) {
+  std::vector<TritonGemmConfig> result;
+  result.reserve(std::max(estimated_configs.size(), original_configs.size()));
+  for (const auto& [estimated_runtime, config] : estimated_configs) {
+    result.push_back(config);
+  }
+  if (!original_configs.empty()) {
+    absl::flat_hash_set<TritonGemmConfig> result_set(result.begin(),
+                                                     result.end());
+    for (const TritonGemmConfig& config : original_configs) {
+      if (result_set.insert(config).second) {
+        result.push_back(config);
+      }
+    }
+  }
+  return result;
+}
+
 }  // namespace cost_model_config_optimization_detail
 
 absl::StatusOr<std::vector<TritonGemmConfig>> OptimizeConfigsWithCostModel(
@@ -293,18 +349,9 @@ absl::StatusOr<std::vector<TritonGemmConfig>> OptimizeConfigsWithCostModel(
       debug_options
           .xla_gpu_experimental_enable_same_shape_multi_output_fusion();
 
-  std::unique_ptr<HloModule> module =
-      ExtractInstructionIntoNewModule(*dot->parent()->FusionInstruction());
-  module->mutable_config().set_debug_options(debug_options);
-
-  auto extracted_fusion = Cast<HloFusionInstruction>(
-      module->entry_computation()->root_instruction());
-  HloDotInstruction* extracted_dot =
-      Cast<HloDotInstruction>(hlo_query::FindInstruction(
-          extracted_fusion->fused_instructions_computation(), HloOpcode::kDot));
-
-  detail::EstimationContext context{extracted_fusion, extracted_dot,
-                                    device_description};
+  detail::ExtractedModuleAndContext extracted =
+      detail::CreateEstimationContext(dot, device_description, debug_options);
+  const detail::EstimationContext& context = extracted.context;
 
   ASSIGN_OR_RETURN(
       detail::CostModelGemmTilingOptions options,
@@ -396,27 +443,30 @@ absl::StatusOr<std::vector<TritonGemmConfig>> OptimizeConfigsWithCostModel(
             << current_set.rbegin()->first;
   }
 
-  std::vector<TritonGemmConfig> result;
-  result.reserve(current_set.size());
-  for (const auto& pair : current_set) {
-    result.push_back(pair.second);
-  }
+  return detail::FillConfigListFromEstimates(
+      current_set, must_keep_original_configs
+                       ? optimized_configs
+                       : absl::Span<const TritonGemmConfig>());
+}
 
-  if (must_keep_original_configs) {
-    // Add configs from the original optimized set if they are missing.
-    // They might have been omitted from the estimates if they e.g. could not
-    // be estimated by the model or do not satisfy the tiling constraints.
-    absl::flat_hash_set<TritonGemmConfig> result_set(result.begin(),
-                                                     result.end());
-    for (const TritonGemmConfig& config : optimized_configs) {
-      if (result_set.insert(config).second) {
-        result.push_back(config);
-      }
-    }
-  }
+absl::StatusOr<std::vector<TritonGemmConfig>> SortConfigsWithCostModel(
+    const HloDotInstruction* dot, absl::Span<const TritonGemmConfig> configs,
+    const se::DeviceDescription& device_description,
+    const DebugOptions& debug_options, mlir::MLIRContext* mlir_context) {
+  namespace detail = cost_model_config_optimization_detail;
 
-  VLOG(1) << "Returning " << result.size() << " processed configs";
-  return result;
+  detail::ExtractedModuleAndContext extracted =
+      detail::CreateEstimationContext(dot, device_description, debug_options);
+
+  ASSIGN_OR_RETURN(
+      detail::OrderedEstimatesAndConfigs estimated_configs,
+      detail::EstimateConfigs(
+          extracted.context, configs, mlir_context,
+          debug_options.xla_gpu_experimental_enable_tiling_propagation(),
+          debug_options
+              .xla_gpu_experimental_enable_same_shape_multi_output_fusion()));
+
+  return detail::FillConfigListFromEstimates(estimated_configs, configs);
 }
 
 }  // namespace xla::gpu

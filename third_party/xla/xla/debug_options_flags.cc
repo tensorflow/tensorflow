@@ -417,6 +417,20 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
 
   opts.set_xla_gpu_collective_inflation_factor(1);
 
+  constexpr int64_t kSymmetricBuffersThreshold = 8 * 1024 * 1024;
+  auto* all_reduce_filter =
+      opts.add_xla_enable_nccl_symmetric_buffers_for_collectives();
+  all_reduce_filter->set_collective(DebugOptions::ALLREDUCE);
+  all_reduce_filter->set_max_size_bytes(kSymmetricBuffersThreshold);
+  auto* all_gather_filter =
+      opts.add_xla_enable_nccl_symmetric_buffers_for_collectives();
+  all_gather_filter->set_collective(DebugOptions::ALLGATHER);
+  all_gather_filter->set_max_size_bytes(kSymmetricBuffersThreshold);
+  auto* reduce_scatter_filter =
+      opts.add_xla_enable_nccl_symmetric_buffers_for_collectives();
+  reduce_scatter_filter->set_collective(DebugOptions::REDUCESCATTER);
+  reduce_scatter_filter->set_max_size_bytes(kSymmetricBuffersThreshold);
+
   opts.set_xla_gpu_exhaustive_tiling_search(false);
 
   opts.set_xla_gpu_experimental_enable_triton_heroless_priority_fusion(false);

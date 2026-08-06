@@ -234,6 +234,9 @@ ENTRY main {
 }
 )";
   auto module = ParseAndReturnVerifiedModule(hlo_text).value();
+  module->mutable_config()
+      .mutable_debug_options()
+      .clear_xla_enable_nccl_symmetric_buffers_for_collectives();
   EXPECT_EQ(CountCopies(*module), 4);
 
   const HloInstruction* while_op = hlo_query::GetFirstInstructionWithOpcode(
