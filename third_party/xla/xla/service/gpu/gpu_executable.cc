@@ -71,7 +71,6 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/pjrt/proto/compile_options.pb.h"
 #include "xla/runtime/device_id.h"
-#include "xla/runtime/hang_watchdog.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/dump.h"
@@ -79,6 +78,7 @@ limitations under the License.
 #include "xla/service/gpu/alias_info.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/buffer_allocations.h"
+#include "xla/service/gpu/execution_watchdog.h"
 #include "xla/service/gpu/gpu_executable.pb.h"
 #include "xla/service/gpu/gpu_executable_buffer_allocator.h"
 #include "xla/service/gpu/gpu_executable_run_options.h"
@@ -568,7 +568,8 @@ absl::Status GpuExecutable::ExecuteThunksImpl(
         persistent_alloc_indices,
     GpuExecutable::NumAdditionalStreams num_additional_streams,
     CollectiveMemoryCache& collective_memory_cache,
-    bool collective_use_minimal_resource) {
+    bool collective_use_minimal_resource,
+    ExecutionWatchdogScope* absl_nullable execution_watchdog) {
   bool mock_collectives =
       run_options->run_options().gpu_executable_run_options()
           ? run_options->run_options()
@@ -608,33 +609,14 @@ absl::Status GpuExecutable::ExecuteThunksImpl(
     ABSL_ASSIGN_OR_RETURN(tracker, InstallProgressTracker(executor, thunk_executor));
   }
 
-  // Maybe add a watch guard for this execution.
-  absl::Duration watchdog_timeout = absl::InfiniteDuration();
-  if (debug_options &&
-      !debug_options->xla_gpu_execution_terminate_timeout().empty()) {
-    TF_RET_CHECK(absl::ParseDuration(
-        debug_options->xla_gpu_execution_terminate_timeout(),
-        &watchdog_timeout))
-        << "Failed to parse XLA execution terminate timeout";
-  }
-
-  std::shared_ptr<HangWatchdog::Guard> guard = nullptr;
-  if (watchdog_timeout < absl::InfiniteDuration()) {
-    int32_t device_ordinal = executor->device_ordinal();
-    std::string watchdog_name = absl::StrFormat("[%d] XLA GPU execution `%s`",
-                                                device_ordinal, module_name);
-
-    // If we have installed progress tracker, log how far thunk execution
-    // progressed before getting stuck. This is helpful for identifying kernels
-    // that never finish and stall the stream execution.
+  if (execution_watchdog != nullptr) {
     HangWatchdog::CancelCallback pre_abort;
     if (tracker.has_value()) {
-      pre_abort = [&tracker, progress_tracking_n, device_ordinal] {
+      pre_abort = [&tracker, progress_tracking_n,
+                   device_ordinal = executor->device_ordinal()] {
         auto log_progress = [&](auto label, auto thunks) {
           LOG(ERROR) << absl::StreamFormat("[%d] %s: size=%d", device_ordinal,
                                            label, thunks.size());
-          // We want to report all thunks in chronological order for
-          // readability according to the time they were executed.
           absl::c_sort(thunks, [](const auto& a, const auto& b) {
             return a.executed < b.executed;
           });
@@ -671,11 +653,7 @@ absl::Status GpuExecutable::ExecuteThunksImpl(
                      tracker->LastPendingThunks(progress_tracking_n));
       };
     }
-
-    guard = HangWatchdog::Global().Watch(
-        watchdog_name, watchdog_timeout,
-        HangWatchdog::Abort(watchdog_name, watchdog_timeout,
-                            std::move(pre_abort)));
+    execution_watchdog->Arm(std::move(pre_abort));
   }
 
   // Borrow stream for tracing command buffers.
@@ -1226,12 +1204,26 @@ absl::Status GpuExecutable::ExecuteThunks(
       "ExecuteThunks: persistent_alloc_indices.size()=%d",
       buffer_allocator_->command_buffer_allocation_count());
 
-  return ExecuteThunksImpl(
+  const gpu::GpuExecutableRunOptions* gpu_run_options =
+      run_options->run_options().gpu_executable_run_options();
+  ABSL_ASSIGN_OR_RETURN(
+      std::optional<ExecutionWatchdogScope> execution_watchdog,
+      ExecutionWatchdogScope::Create(
+          has_module() ? &module_config().debug_options() : nullptr,
+          module_name_, executor->device_ordinal(), gpu_run_options,
+          run_options->stream(), block_host_until_done));
+  ExecutionWatchdogScope* execution_watchdog_ptr =
+      execution_watchdog.has_value() ? &execution_watchdog.value() : nullptr;
+
+  // Keep execution_watchdog alive across ExecuteThunksImpl so HangWatchdog
+  // outlives async thunk enqueue when block_host_until_done is false.
+  ABSL_RETURN_IF_ERROR(ExecuteThunksImpl(
       has_module() ? &module_config().debug_options() : nullptr, module_name_,
       unique_id, *thunk_executor_, executable_source, run_options,
       buffer_allocations, block_host_until_done, persistent_alloc_indices,
       num_additional_streams_, collective_memory_cache_,
-      collective_use_minimal_resource_);
+      collective_use_minimal_resource_, execution_watchdog_ptr));
+  return absl::OkStatus();
 }
 
 int64_t GpuExecutable::SizeOfGeneratedCodeInBytes() const {

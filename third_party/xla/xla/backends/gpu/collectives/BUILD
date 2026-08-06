@@ -236,6 +236,42 @@ cc_library(
     ],
 )
 
+xla_cc_test(
+    name = "abort_collectives_on_task_failure_test",
+    srcs = ["abort_collectives_on_task_failure_test.cc"],
+    tags = [
+        "cuda-only",
+        "gpu",
+    ],
+    deps = [
+        ":gpu_clique",
+        ":gpu_clique_key",
+        ":gpu_cliques",
+        ":gpu_collectives",
+        ":nccl_or_rccl_collectives",  # fixdeps: keep
+        "//xla:executable_run_options",
+        "//xla:future",
+        "//xla/core/collectives:clique_id",
+        "//xla/core/collectives:clique_key",
+        "//xla/core/collectives:rank_id",
+        "//xla/pjrt/distributed/coordination:coordination_service_proto_cc",
+        "//xla/runtime:device_id",
+        "//xla/stream_executor:platform",
+        "//xla/stream_executor:platform_manager",
+        "//xla/stream_executor:stream_executor_h",
+        "//xla/stream_executor/cuda:cuda_platform",  # fixdeps: keep
+        "//xla/tsl/concurrency:executor",
+        "//xla/tsl/platform:env",
+        "//xla/tsl/platform:status_macros",
+        "@com_google_absl//absl/cleanup",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_matchers",
+        "@com_google_absl//absl/types:span",
+        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
 xla_test(
     name = "gpu_cliques_test",
     srcs = ["gpu_cliques_test.cc"],
