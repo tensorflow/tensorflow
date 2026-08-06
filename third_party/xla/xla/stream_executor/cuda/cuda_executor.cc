@@ -1700,9 +1700,9 @@ CudaExecutor::CreateDeviceDescription(int device_ordinal) {
     desc.set_mem_clock_ghz(static_cast<float>(mem_clock_khz.value()) / 1e6);
   }
 
-  if (absl::StatusOr<nvmlDevice_t> device = GetNvmlDevice(pci_bus_id);
-      device.ok()) {
-    absl::StatusOr<int64_t> bandwidth = GetDevicePcieBandwidth(*device);
+  if (absl::StatusOr<nvmlDevice_t> nvml_device = GetNvmlDevice(pci_bus_id);
+      nvml_device.ok()) {
+    absl::StatusOr<int64_t> bandwidth = GetDevicePcieBandwidth(*nvml_device);
     if (bandwidth.ok()) {
       desc.set_pcie_bandwidth(*bandwidth);
     } else {
@@ -1712,7 +1712,7 @@ CudaExecutor::CreateDeviceDescription(int device_ordinal) {
     }
 
     absl::StatusOr<int64_t> p2p_link_count =
-        GetNumberOfActiveP2PNvlinks(*device);
+        GetNumberOfActiveP2PNvlinks(*nvml_device);
     DeviceInterconnectInfo info;
     if (p2p_link_count.ok()) {
       XLA_VLOG_DEVICE(3, device_ordinal)
@@ -1723,10 +1723,13 @@ CudaExecutor::CreateDeviceDescription(int device_ordinal) {
     }
     // nvmlDeviceGetGpuFabricInfoV is only available in driver r545+
     if (desc.kernel_mode_driver_version().major_version() >= 545) {  // NOLINT
-      absl::StatusOr<FabricInfo> fabric_info = GetDeviceFabricInfo(*device);
-      if (fabric_info.ok()) {
-        info.cluster_uuid = fabric_info->cluster_uuid;
-        info.clique_id = fabric_info->clique_id;
+      if (IsFabricSupported(device).value_or(false)) {
+        absl::StatusOr<FabricInfo> fabric_info =
+            GetDeviceFabricInfo(*nvml_device);
+        if (fabric_info.ok()) {
+          info.cluster_uuid = fabric_info->cluster_uuid;
+          info.clique_id = fabric_info->clique_id;
+        }
       }
     } else {
       VLOG(1) << "Skipping GPU Fabric info retrieval; NVIDIA driver r545+ "

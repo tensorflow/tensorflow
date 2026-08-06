@@ -51,6 +51,8 @@ absl::StatusOr<bool> IsRdmaSupported(CUdevice device) {
   return rdma_supported;
 }
 
+}  // namespace
+
 absl::StatusOr<bool> IsFabricSupported(CUdevice device) {
   int fabric_supported = 0;
   CUresult result = cuDeviceGetAttribute(
@@ -68,8 +70,6 @@ absl::StatusOr<bool> IsFabricSupported(CUdevice device) {
   RETURN_IF_ERROR(cuda::ToStatus(result));
   return fabric_supported > 0;
 }
-
-}  // namespace
 
 CUmemAllocationProp BuildVmmAllocationProp(
     CUdevice device, const CudaDeviceAllocator::Options& options) {
