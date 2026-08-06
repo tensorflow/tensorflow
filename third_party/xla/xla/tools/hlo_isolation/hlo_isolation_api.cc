@@ -589,6 +589,8 @@ absl::StatusOr<HloIsolationTestResult> RunIsolationTestOnModule(
     absl::Span<const Literal> input_data) {
   HloIsolationTestResult result;
   result.set_module_name(module.name());
+  result.set_module_contains_constant_inf_or_nan(
+      ModuleContainsConstantInfOrNan(module));
 
   RETURN_IF_ERROR(InitIsolatorOptions(options));
 
@@ -879,6 +881,10 @@ absl::StatusOr<std::vector<HloIsolationTestResult>> RunIsolationPipeline(
         fusion_result.set_reason("NUMERIC_MISMATCH");
         if (main_result.has_shard_index()) {
           fusion_result.set_shard_index(main_result.shard_index());
+        }
+        if (main_result.has_module_contains_constant_inf_or_nan()) {
+          fusion_result.set_module_contains_constant_inf_or_nan(
+              main_result.module_contains_constant_inf_or_nan());
         }
 
         NumericCheck* new_check = fusion_result.add_numeric_checks();
@@ -1260,11 +1266,14 @@ bool LiteralContainsInfOrNan(const LiteralSlice& literal) {
             return false;
           }
           bool found = false;
-          literal.EachCell<NativeT>(
-              [&](absl::Span<const int64_t> /*indices*/, const NativeT& value) {
+          literal.EachCellUntilFailure<NativeT>(
+              [&](absl::Span<const int64_t> /*indices*/,
+                  NativeT value) -> bool {
                 if (std::isinf(value) || std::isnan(value)) {
                   found = true;
+                  return false;  // Abort iteration early.
                 }
+                return true;
               });
           return found;
         }
@@ -1272,6 +1281,18 @@ bool LiteralContainsInfOrNan(const LiteralSlice& literal) {
       },
       literal.shape().element_type());
   return contains_inf_or_nan;
+}
+
+bool ModuleContainsConstantInfOrNan(const HloModule& module) {
+  for (const HloComputation* comp : module.computations()) {
+    for (const HloInstruction* instr : comp->instructions()) {
+      if (instr->opcode() == HloOpcode::kConstant &&
+          LiteralContainsInfOrNan(instr->literal())) {
+        return true;
+      }
+    }
+  }
+  return false;
 }
 
 }  // namespace hlo_isolation
