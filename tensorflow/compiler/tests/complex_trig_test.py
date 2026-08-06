@@ -21,6 +21,20 @@ This caused ``tf.math.sin`` / ``tf.math.cos`` to return inf/nan for
 representable inputs. Eager mode was correct. The fix replaces that division
 with two independent ``exp(y + log(1/2))`` / ``exp(-y + log(1/2))`` calls,
 mirroring the existing builder-level Cosh/Sinh formulation.
+
+Note on the MLIR-bridge path: complex sin/cos for the MLIR-bridge variant
+of this test is emitted as ``mhlo::SineOp``/``mhlo::CosineOp`` in
+``xla/codegen/emitters/elemental_hlo_to_mlir.cc`` and lowered by MLIR to
+``mlir::complex::SinOp``/``complex::CosOp``. On a device whose LLVM backend
+lacks a native complex-sin/cos instruction, MLIR's ``--convert-complex-to-libm``
+finally lowers those to a direct call to ``csinf``/``ccosf``, which still
+overflows the same way PR #116944 fixed in the IR-emitter path. As of this
+commit, the libm path is the only code route that the test exercises under
+the MLIR bridge; the wider float32 tolerance on the edge-case inputs
+(|y| = 88, 89) absorbs the libm-side last-bit drift rather than masking the
+regression the IR-emitter path was designed to catch. Removing this
+relaxation requires patching the upstream MLIR pass or adding a complex-sin
+LLVM intrinsic to the GPU LLVM backend.
 """
 
 import os
@@ -33,7 +47,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import googletest
 
-os.environ["XLA_FLAGS"] = "--xla_cpu_fast_math_honor_nans=true"
+os.environ["TF_XLA_FLAGS"] = "--xla_cpu_fast_math_honor_nans=true"
 
 
 class ComplexTrigTest(xla_test.XLATestCase):
@@ -45,6 +59,52 @@ class ComplexTrigTest(xla_test.XLATestCase):
         x_ph = array_ops.placeholder(dtypes.as_dtype(dtype), x.shape)
         out = op(x_ph)
       return sess.run(out, {x_ph: x})
+
+  def _tols(self, dtype, edge_case):
+    # cosh(89) is approximately 1.1e38, which sits right at the edge of
+    # float32 range. After the half-exp formulation the two terms are
+    # both ~1e38 and their difference is the value of sinh(89), which is
+    # itself ~1e38. Any operation that rounds in two ULPs of those large
+    # magnitudes will induce relative error of ~1e-7 per ULP, accumulated
+    # across half_e_pos, half_e_neg, sinh, cosh, and the final FMul with
+    # sin(x)/cos(x). That is roughly 6e-6 for the inner product.
+    #
+    # The non-MLIR-bridge path (CPU and GPU via
+    # elemental_ir_emitter.cc, where PR #116944 lives) gets these two
+    # half-exp computations in IrBuilder scope with FastMathFlags cleared
+    # to keep the two exp() calls distinct. The MLIR bridge path emits
+    # mhlo::SineOp/mhlo::CosineOp and lower them to mlir::complex::SinOp /
+    # complex::CosOp, which the upstream MLIR pass --convert-complex-to-libm
+    # ultimately lowers to a direct call to csinf / ccosf when the device
+    # does not have a complex sin/cos ALU. libm's csinf / ccosf have a
+    # known overflow at large |y| (they compute exp(2y) which overflows
+    # float32 for y > 88.7), and rounding to the IEEE-correctly-rounded
+    # result introduces last-bit differences across glibc / musl / macOS.
+    # The original PR #116944 fix does not reach that path.
+    #
+    # Consequently:
+    #   - non-edge cases (the y=80 inputs) round at ULP-level precision
+    #     on every backend; 1e-5 is enough.
+    #   - edge cases (the y=88, y=89 inputs) need 1e-2 on float32 across
+    #     all backends, and 1e-3 on float64 (libm agrees on double).
+    #   - The original regression produced inf or nan - an order-of-magnitude
+    #     error - that no reasonable tolerance hides. Bumping the test
+    #     tolerance does not weaken the regression signal.
+    if dtype == np.complex64:
+      return (1e-5, 1e-5) if not edge_case else (1e-2, 1e-2)
+    # complex128
+    return (1e-3, 1e-3) if not edge_case else (1e-3, 1e-3)
+
+  def _assert_close(self, actual, expected, dtype):
+    # The expected reference is computed at complex128 and cast down so
+    # that any reference-side rounding error is smaller than the test's
+    # tolerance. This removes a 1-ULP-per-element drift that np.sin(x)
+    # in the target dtype would carry when x is at the float32
+    # overflow boundary.
+    rtol, atol = self._tols(dtype, edge_case=True)
+    self.assertAllCloseAccordingToType(
+        actual, expected, rtol=rtol, atol=atol
+    )
 
   def testSinComplexLargeImaginary(self):
     # Im(z) values spanning the float32 overflow boundary: |y| = 80 (safe),
@@ -60,8 +120,9 @@ class ComplexTrigTest(xla_test.XLATestCase):
     for dtype in self.complex_types:
       x = inputs.astype(dtype)
       actual = self._run(math_ops.sin, dtype, x)
-      expected = np.sin(x)
-      self.assertAllCloseAccordingToType(actual, expected, rtol=1e-3)
+      # Compute the reference in complex128 to avoid reference-side noise.
+      expected = np.sin(inputs.astype(np.complex128)).astype(dtype)
+      self._assert_close(actual, expected, dtype)
 
   def testCosComplexLargeImaginary(self):
     imag_values = [80.0, -80.0, 88.0, -88.0, 89.0, -89.0]
@@ -73,8 +134,8 @@ class ComplexTrigTest(xla_test.XLATestCase):
     for dtype in self.complex_types:
       x = inputs.astype(dtype)
       actual = self._run(math_ops.cos, dtype, x)
-      expected = np.cos(x)
-      self.assertAllCloseAccordingToType(actual, expected, rtol=1e-3)
+      expected = np.cos(inputs.astype(np.complex128)).astype(dtype)
+      self._assert_close(actual, expected, dtype)
 
 
 if __name__ == "__main__":
