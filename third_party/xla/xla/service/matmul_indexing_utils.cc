@@ -229,7 +229,7 @@ int64_t DotOperandDims::TotalSize(Category category) const {
 
 std::vector<DotOperandDims::Category> DotOperandDims::Categories() const {
   std::vector<Category> categories(shape_.dimensions().size(),
-                                   static_cast<Category>(-1));
+                                   Category::kInvalid);
   for (Category category : {kBatch, kNonContracting, kContracting}) {
     for (int64_t dim : Indices(category)) {
       categories[dim] = category;
