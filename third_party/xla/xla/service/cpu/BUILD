@@ -705,7 +705,6 @@ cc_library(
         ":elemental_ir_emitter",
         ":ir_emission_utils",
         ":ir_function",
-        ":parallel_loop_emitter",
         "//xla:literal",
         "//xla:shape_util",
         "//xla:status_macros",

@@ -178,9 +178,7 @@ absl::StatusOr<IrEmitter2::KernelInfo> IrEmitter2::EmitPadHostKernel(
   auto builder_overwrite = nested_ir_emitter_->WithBuilder(b);
 
   nested_ir_emitter_->PushComputeFunction(
-      &b, module_,
-      /*num_dynamic_loop_bounds=*/0, kernel_prototype.function,
-      /*dynamic_loop_bounds_arg=*/nullptr, kernel_prototype.return_block);
+      &b, module_, kernel_prototype.function, kernel_prototype.return_block);
 
   RETURN_IF_ERROR(nested_ir_emitter_->HandlePad(
       const_cast<HloInstruction*>(pad), operand_array, padvalue_array,
