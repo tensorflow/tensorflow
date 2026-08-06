@@ -14,7 +14,8 @@
 # ==============================================================================
 """Operations that generate constants.
 
-See the [constants guide](https://tensorflow.org/api_guides/python/constant_op).
+See the [constants guide](https://www.tensorflow.org/api_docs/python/tf/constant)
+for more information.
 """
 
 # Must be separate from array_ops to avoid a cyclic dependency.
