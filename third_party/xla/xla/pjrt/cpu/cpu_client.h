@@ -546,12 +546,7 @@ class PjRtCpuExecutable final : public PjRtExecutable {
 
 class PjRtCpuLoadedExecutable final : public CommonPjRtLoadedExecutable {
  public:
-  PjRtCpuLoadedExecutable(
-      std::shared_ptr<PjRtCpuExecutable> executable,
-      std::shared_ptr<DeviceAssignment> device_assignment,
-      std::vector<LogicalDeviceIds> addressable_device_logical_ids,
-      std::vector<PjRtDevice*> addressable_devices, PjRtCpuClient* client,
-      tsl::RCReference<PjRtExecutableLoadState> load_state);
+  using CommonPjRtLoadedExecutable::CommonPjRtLoadedExecutable;
 
   ~PjRtCpuLoadedExecutable() override = default;
 
@@ -560,7 +555,10 @@ class PjRtCpuLoadedExecutable final : public CommonPjRtLoadedExecutable {
         CommonPjRtLoadedExecutable::GetExecutable());
   }
 
-  PjRtCpuClient* client() const override { return client_; }
+  PjRtCpuClient* client() const override {
+    return absl::down_cast<PjRtCpuClient*>(
+        CommonPjRtLoadedExecutable::client());
+  }
 
   using PjRtLoadedExecutable::Execute;
   absl::StatusOr<std::vector<std::vector<std::unique_ptr<PjRtBuffer>>>> Execute(
@@ -585,19 +583,6 @@ class PjRtCpuLoadedExecutable final : public CommonPjRtLoadedExecutable {
         ->cpu_executable_->module()
         .input_output_alias_config();
   }
-
- private:
-  friend class PjRtCpuClient;
-  friend class CpuPjRtRawLoadedExecutable;
-
-  absl::Status SetUpDonation(bool tuple_inputs);
-
-  absl::StatusOr<Result> ExecuteHelper(
-      absl::Span<PjRtBuffer* const> argument_handles, int replica,
-      int partition, const RunId& run_id, const ExecuteOptions& options,
-      bool fill_future, PjRtCpuDevice* device = nullptr) const;
-
-  PjRtCpuClient* client_;
 };
 
 absl::StatusOr<std::unique_ptr<PjRtClient>> ABSL_DEPRECATED(

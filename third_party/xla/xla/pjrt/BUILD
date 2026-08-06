@@ -173,6 +173,7 @@ cc_library(
         "//xla/hlo/ir:hlo",
         "//xla/pjrt/c:pjrt_c_api_device_event_hdrs",
         "//xla/runtime:device_id",
+        "//xla/service:dump",
         "//xla/tsl/concurrency:async_value",
         "//xla/tsl/concurrency:future",
         "//xla/tsl/concurrency:ref_count",

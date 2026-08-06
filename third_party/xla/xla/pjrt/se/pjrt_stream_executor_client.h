@@ -759,85 +759,11 @@ class PjRtStreamExecutorRawLoadedExecutable : public PjRtRawLoadedExecutable {
 // the build options).
 class PjRtStreamExecutorLoadedExecutable : public CommonPjRtLoadedExecutable {
  public:
-  PjRtStreamExecutorLoadedExecutable(
-      std::shared_ptr<PjRtExecutable> pjrt_executable,
-      bool parameter_is_tupled_arguments,
-      std::shared_ptr<DeviceAssignment> device_assignment,
-      std::vector<LogicalDeviceIds> addressable_device_logical_ids,
-      std::vector<PjRtDevice*> addressable_devices,
-      PjRtStreamExecutorClient* client, std::vector<Shape> parameter_shapes,
-      xla::Shape result_shape, std::vector<int> parameter_memory_space_kind_ids,
-      std::vector<int> output_memory_space_kind_ids,
-      tsl::RCReference<PjRtExecutableLoadState> load_state);
+  using CommonPjRtLoadedExecutable::CommonPjRtLoadedExecutable;
 
   ~PjRtStreamExecutorLoadedExecutable() override = default;
 
-  PjRtStreamExecutorClient* client() const override { return client_; }
-
   const HloInputOutputAliasConfig& input_output_alias_config() const override;
-
-  using PjRtLoadedExecutable::Execute;
-  absl::StatusOr<std::vector<std::vector<std::unique_ptr<PjRtBuffer>>>> Execute(
-      absl::Span<const std::vector<PjRtBuffer*>> argument_handles,
-      const ExecuteOptions& options,
-      std::optional<std::vector<Future<>>>& returned_futures) const override;
-
-  using PjRtLoadedExecutable::ExecuteSharded;
-  absl::StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>> ExecuteSharded(
-      absl::Span<PjRtBuffer* const> argument_handles, PjRtDevice* device,
-      const ExecuteOptions& options, std::optional<Future<>>& returned_future,
-      bool fill_future) const override;
-
-  using PjRtLoadedExecutable::ExecutePortable;
-  absl::StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>> ExecutePortable(
-      absl::Span<PjRtBuffer* const> argument_handles, PjRtDevice* device,
-      const ExecuteOptions& options, std::optional<Future<>>& returned_future,
-      bool fill_future) const override;
-
-  absl::StatusOr<std::shared_ptr<LocalExecutable>> GetLocalExecutable() const;
-
-  struct InputHloSnapshotBits {
-    HloModuleProto hlo_module;
-    DebugOptions debug_options;
-  };
-
-  void SetInputHloSnapshotBits(HloModuleProto hlo_module,
-                               DebugOptions debug_options) {
-    input_hlo_snapshot_bits_ = std::make_optional<InputHloSnapshotBits>(
-        InputHloSnapshotBits{std::move(hlo_module), std::move(debug_options)});
-  }
-
-  const std::optional<InputHloSnapshotBits>& input_hlo_snapshot_bits() const {
-    return input_hlo_snapshot_bits_;
-  }
-
-  absl::StatusOr<std::unique_ptr<PjRtExecutableAbiVersion>> GetAbiVersion()
-      const override;
-
-  bool parameter_is_tupled_arguments() const {
-    return parameter_is_tupled_arguments_;
-  }
-
- private:
-  friend class PjRtStreamExecutorClient;
-  friend class PjRtTpuClient;
-  friend class InternalPjRtTpuClient;
-  friend class StreamExecutorGpuClient;
-  // Initializes information about which arguments to which executables must be
-  // donated due to aliases that were specified by the computation.
-  absl::Status SetUpDonation(bool tuple_inputs);
-
-  // Create shared pointers so we can free them after the execution: with
-  // asynchronous execution, the process being executed can outlive the
-  // executable itself.
-  PjRtStreamExecutorClient* const client_;
-
-  // True if the executables were compiled expecting arguments in a single
-  // tuple.
-  const bool parameter_is_tupled_arguments_;
-
-  // The unoptimized (unsharded) HloModule. Primarily used for debugging.
-  std::optional<InputHloSnapshotBits> input_hlo_snapshot_bits_;
 };
 
 }  // namespace xla

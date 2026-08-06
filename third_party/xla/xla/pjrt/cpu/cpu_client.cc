@@ -769,9 +769,20 @@ PjRtCpuClient::LoadInternal(
   }
   auto load_state = tsl::MakeRef<CpuExecutableLoadState>(this);
   return std::make_unique<PjRtCpuLoadedExecutable>(
-      std::move(cpu_executable), std::move(device_assignment),
-      std::move(addressable_device_logical_ids), std::move(addressable_devices),
-      this, std::move(load_state));
+      this, tsl::MakeAvailableAsyncValueRef(cpu_executable),
+      CommonPjRtLoadedExecutable::DispatchInfo{
+          cpu_executable->parameter_device_shapes_,
+          std::make_shared<const Shape>(
+              cpu_executable->cpu_executable_->result_shape()),
+          std::vector<int>(),
+          cpu_executable->output_memory_space_kind_ids_,
+          std::move(addressable_devices),
+          std::move(addressable_device_logical_ids),
+          std::move(device_assignment),
+          cpu_executable->parameters_that_must_be_donated_,
+          cpu_executable->input_buffer_sizes_in_bytes_,
+      },
+      std::move(load_state));
 }
 
 static absl::StatusOr<std::unique_ptr<xla::Executable>> JitCompile(
@@ -1451,30 +1462,6 @@ PjRtCpuExecutable::PjRtCpuExecutable(
       tsl::Fingerprint128(fingerprint_),
       tsl::Fingerprint128(cpu_executable_->module().ToString()));
   fingerprint_ = absl::StrCat(fingerprint.low64, fingerprint.high64);
-}
-
-PjRtCpuLoadedExecutable::PjRtCpuLoadedExecutable(
-    std::shared_ptr<PjRtCpuExecutable> executable,
-    std::shared_ptr<DeviceAssignment> device_assignment,
-    std::vector<LogicalDeviceIds> addressable_device_logical_ids,
-    std::vector<PjRtDevice*> addressable_devices, PjRtCpuClient* client,
-    tsl::RCReference<PjRtExecutableLoadState> load_state)
-    : CommonPjRtLoadedExecutable(
-          tsl::MakeAvailableAsyncValueRef(executable),
-          executable->parameter_device_shapes_,
-          std::make_shared<const Shape>(
-              executable->cpu_executable_->result_shape()),
-          std::vector<int>(), executable->output_memory_space_kind_ids_,
-          addressable_devices, addressable_device_logical_ids,
-          std::move(device_assignment), std::move(load_state)),
-      client_(client) {
-  input_buffer_sizes_in_bytes_ = executable->input_buffer_sizes_in_bytes_;
-  parameters_that_must_be_donated_ =
-      executable->parameters_that_must_be_donated_;
-}
-
-absl::Status PjRtCpuLoadedExecutable::SetUpDonation(bool tuple_inputs) {
-  return GetExecutable()->SetUpDonation(tuple_inputs);
 }
 
 absl::Status PjRtCpuExecutable::SetUpDonation(bool tuple_inputs) {

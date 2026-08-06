@@ -499,8 +499,6 @@ class CommonPjRtClient : public PjRtClient {
       TransposePlanCache(1024);
 };
 
-
-
 class CommonPjRtLoadedExecutable : public PjRtLoadedExecutable {
  public:
   struct DispatchInfo {
@@ -529,13 +527,19 @@ class CommonPjRtLoadedExecutable : public PjRtLoadedExecutable {
       absl::StatusOr<std::string> fingerprint;
       HloInputOutputAliasConfig input_output_alias_config;
     };
+    struct InputHloSnapshotBits {
+      xla::HloModuleProto hlo_module;
+      xla::DebugOptions debug_options;
+    };
+    std::unique_ptr<InputHloSnapshotBits> input_hlo_snapshot_bits;
     std::unique_ptr<Extras> extras;
   };
 
   CommonPjRtLoadedExecutable(
-      tsl::AsyncValueRef<PjRtExecutable> executable, DispatchInfo info,
-      tsl::RCReference<PjRtExecutableLoadState> load_state)
-      : parameter_device_shapes_(std::move(info.parameter_device_shapes)),
+      CommonPjRtClient* client, tsl::AsyncValueRef<PjRtExecutable> executable,
+      DispatchInfo info, tsl::RCReference<PjRtExecutableLoadState> load_state)
+      : client_(client),
+        parameter_device_shapes_(std::move(info.parameter_device_shapes)),
         parameters_that_must_be_donated_(
             std::move(info.parameters_that_must_be_donated)),
         output_device_shape_(std::move(info.output_device_shape)),
@@ -550,32 +554,11 @@ class CommonPjRtLoadedExecutable : public PjRtLoadedExecutable {
             std::move(info.addressable_device_logical_ids)),
         device_assignment_(std::move(info.device_assignment)),
         extras_(std::move(info.extras)),
+        input_hlo_snapshot_bits_(std::move(info.input_hlo_snapshot_bits)),
         executable_(std::move(executable)),
         load_state_(std::move(load_state)) {}
 
-  CommonPjRtLoadedExecutable(
-      tsl::AsyncValueRef<PjRtExecutable> executable,
-      std::vector<Shape> parameter_device_shapes,
-      std::shared_ptr<const Shape> output_device_shape,
-      std::vector<int> parameter_memory_space_kind_ids,
-      std::vector<int> output_memory_space_kind_ids,
-      std::vector<PjRtDevice*> addressable_devices,
-      std::vector<LogicalDeviceIds> addressable_device_logical_ids,
-      std::shared_ptr<DeviceAssignment> device_assignment,
-      tsl::RCReference<PjRtExecutableLoadState> load_state)
-      : parameter_device_shapes_(std::move(parameter_device_shapes)),
-        output_device_shape_(std::move(output_device_shape)),
-        parameter_memory_space_kind_ids_(
-            std::move(parameter_memory_space_kind_ids)),
-        output_memory_space_kind_ids_(std::move(output_memory_space_kind_ids)),
-        addressable_devices_(std::move(addressable_devices)),
-        addressable_device_logical_ids_(
-            std::move(addressable_device_logical_ids)),
-        device_assignment_(std::move(device_assignment)),
-        executable_(std::move(executable)),
-        load_state_(std::move(load_state)) {}
-
-  CommonPjRtClient* client() const override = 0;
+  CommonPjRtClient* client() const override { return client_; }
 
   absl::Span<PjRtDevice* const> addressable_devices() const override {
     return addressable_devices_;
@@ -728,6 +711,15 @@ class CommonPjRtLoadedExecutable : public PjRtLoadedExecutable {
     execute_launch_hook_ = std::move(hook);
   }
 
+  absl::StatusOr<std::unique_ptr<PjRtExecutableAbiVersion>> GetAbiVersion()
+      const {
+    return GetExecutable()->GetAbiVersion();
+  }
+
+  const DispatchInfo::InputHloSnapshotBits* input_hlo_snapshot_bits() const {
+    return input_hlo_snapshot_bits_.get();
+  }
+
  protected:
   // Execute is split into Prepare and Launch.
   // Prepare can fail and be retried, while Launch is guaranteed to succeed.
@@ -794,6 +786,7 @@ class CommonPjRtLoadedExecutable : public PjRtLoadedExecutable {
   absl::StatusOr<Result> ExecuteLaunch(ExecuteLaunchArgs& launch_args,
                                        bool fill_future) const;
 
+  CommonPjRtClient* client_;
   // Parameter shapes.
   std::vector<Shape> parameter_device_shapes_;
   // A sorted vector of parameters that have any aliased buffers and thus must
@@ -826,6 +819,8 @@ class CommonPjRtLoadedExecutable : public PjRtLoadedExecutable {
   std::unique_ptr<DispatchInfo::Extras> extras_;
 
   std::function<void(PjRtDevice*)> execute_launch_hook_;
+
+  std::unique_ptr<DispatchInfo::InputHloSnapshotBits> input_hlo_snapshot_bits_;
 
   tsl::AsyncValueRef<PjRtExecutable> executable_;
   tsl::RCReference<PjRtExecutableLoadState> load_state_;

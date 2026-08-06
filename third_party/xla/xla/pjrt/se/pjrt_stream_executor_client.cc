@@ -1013,95 +1013,10 @@ bool IsAllZeros(const DeviceAssignment& assignment) {
 
 }  // namespace
 
-PjRtStreamExecutorLoadedExecutable::PjRtStreamExecutorLoadedExecutable(
-    std::shared_ptr<PjRtExecutable> pjrt_executable,
-    bool parameter_is_tupled_arguments,
-    std::shared_ptr<DeviceAssignment> device_assignment,
-    std::vector<LogicalDeviceIds> addressable_device_logical_ids,
-    std::vector<PjRtDevice*> addressable_devices,
-    PjRtStreamExecutorClient* client, std::vector<Shape> parameter_shapes,
-    xla::Shape result_shape, std::vector<int> parameter_memory_space_kind_ids,
-    std::vector<int> output_memory_space_kind_ids,
-    tsl::RCReference<PjRtExecutableLoadState> load_state)
-    : CommonPjRtLoadedExecutable(
-          tsl::MakeAvailableAsyncValueRef(
-              std::static_pointer_cast<StreamExecutorExecutable>(
-                  pjrt_executable)),
-          [&parameter_shapes]() -> std::vector<Shape> {
-            if (parameter_shapes.size() == 1 && parameter_shapes[0].IsTuple()) {
-              std::vector<Shape> flat_parameter_shapes;
-              for (const Shape& shape : parameter_shapes[0].tuple_shapes()) {
-                flat_parameter_shapes.push_back(shape);
-              }
-              return flat_parameter_shapes;
-            }
-            return parameter_shapes;
-          }(),
-          std::make_shared<const Shape>(std::move(result_shape)),
-          std::move(parameter_memory_space_kind_ids),
-          std::move(output_memory_space_kind_ids),
-          std::move(addressable_devices),
-          std::move(addressable_device_logical_ids),
-          std::move(device_assignment), std::move(load_state)),
-      client_(client),
-      parameter_is_tupled_arguments_(parameter_is_tupled_arguments) {
-  int num_partitions;
-  if (device_assignment_ == nullptr) {
-    VLOG(3) << "PjRtStreamExecutorLoadedExecutable portable single-core";
-    num_partitions = 1;
-    CHECK(addressable_devices_.empty());
-  } else {
-    VLOG(3) << "PjRtStreamExecutorLoadedExecutable device_assignment:\n"
-            << device_assignment_->ToString();
-
-    if ((device_assignment_->replica_count() > 1 ||
-         device_assignment_->computation_count() > 1) &&
-        IsAllZeros(*device_assignment_)) {
-      // This code path should only be triggered when we intentionally compile
-      // an HLO without having enough devices to actually run it. See the
-      // "--compile_only=true" option in
-      // tensorflow/compiler/xla/tools/multihost_hlo_runner/hlo_runner_main.cc.
-      // That will help us debug the XLA compiler locally.
-      LOG(INFO)
-          << "A workaround is in effect to allow compiling multi-device "
-             "HLOs on machines with fewer devices. Don't run this executable.";
-    } else {
-      CHECK_LE(addressable_devices_.size(), client_->addressable_device_count())
-          << "Inconsistent local device count.";
-    }
-
-    num_partitions = device_assignment_->computation_count();
-  }
-
-  TransferManager* transfer_manager =
-      client_->client()->backend().transfer_manager();
-  input_buffer_sizes_in_bytes_.reserve(parameter_device_shapes_.size());
-  for (const Shape& shape : parameter_device_shapes_) {
-    DCHECK(!shape.IsTuple());
-    input_buffer_sizes_in_bytes_.push_back(
-        transfer_manager->GetByteSizeRequirement(shape));
-  }
-}
-
-absl::StatusOr<std::shared_ptr<LocalExecutable>>
-PjRtStreamExecutorLoadedExecutable::GetLocalExecutable() const {
-  auto se_exec = static_cast<StreamExecutorExecutable*>(GetExecutable());
-  return se_exec->GetOrLoadExecutable(client_->client());
-}
-
 const HloInputOutputAliasConfig&
 PjRtStreamExecutorLoadedExecutable::input_output_alias_config() const {
   auto se_exec = static_cast<StreamExecutorExecutable*>(GetExecutable());
   return se_exec->hlo_module()->input_output_alias_config();
-}
-
-absl::Status PjRtStreamExecutorLoadedExecutable::SetUpDonation(
-    bool tuple_inputs) {
-  ABSL_ASSIGN_OR_RETURN(auto local_exec, GetLocalExecutable());
-  ABSL_ASSIGN_OR_RETURN(parameters_that_must_be_donated_,
-                   ComputeParametersThatMustBeDonated(
-                       local_exec->executable()->module(), tuple_inputs));
-  return absl::OkStatus();
 }
 
 template <typename T>
@@ -2005,56 +1920,6 @@ void PjRtStreamExecutorClient::LaunchOnDevice(
       tsl::WithCurrentContext(std::move(execute_fn)));
 }
 
-absl::StatusOr<std::vector<std::vector<std::unique_ptr<PjRtBuffer>>>>
-PjRtStreamExecutorLoadedExecutable::Execute(
-    absl::Span<const std::vector<PjRtBuffer*>> argument_handles,
-    const ExecuteOptions& options,
-    std::optional<std::vector<Future<>>>& returned_futures) const {
-  if (device_assignment_ == nullptr) {
-    return InvalidArgument("Execute expects a non-null device_assignment");
-  }
-  if (input_hlo_snapshot_bits_.has_value()) {
-    HloUnoptimizedSnapshot hlo_snapshot;
-    *hlo_snapshot.mutable_hlo_module() = input_hlo_snapshot_bits_->hlo_module;
-    for (const auto& argument_handle : argument_handles) {
-      HloInputs hlo_inputs;
-      for (const auto& buffer : argument_handle) {
-        ABSL_ASSIGN_OR_RETURN(auto literal, buffer->ToLiteral().Await());
-        *hlo_inputs.add_arguments() = literal->ToProto();
-      }
-      *hlo_snapshot.add_partitions() = std::move(hlo_inputs);
-    }
-    DumpHloUnoptimizedSnapshotIfEnabled(
-        hlo_snapshot, input_hlo_snapshot_bits_->debug_options);
-  }
-  return CommonPjRtLoadedExecutable::Execute(argument_handles, options,
-                                             returned_futures);
-}
-
-absl::StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>>
-PjRtStreamExecutorLoadedExecutable::ExecuteSharded(
-    absl::Span<PjRtBuffer* const> argument_handles, PjRtDevice* device,
-    const ExecuteOptions& options, std::optional<Future<>>& returned_future,
-    bool fill_future) const {
-  if (device_assignment_ == nullptr) {
-    return InvalidArgument("ExecuteShard expects a non-null device_assignment");
-  }
-  return CommonPjRtLoadedExecutable::ExecuteSharded(
-      argument_handles, device, options, returned_future, fill_future);
-}
-
-absl::StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>>
-PjRtStreamExecutorLoadedExecutable::ExecutePortable(
-    absl::Span<PjRtBuffer* const> argument_handles, PjRtDevice* device,
-    const ExecuteOptions& options, std::optional<Future<>>& returned_future,
-    bool fill_future) const {
-  if (device_assignment_ != nullptr) {
-    return InvalidArgument("ExecutePortable gets a non-portable executable");
-  }
-  return CommonPjRtLoadedExecutable::ExecutePortable(
-      argument_handles, device, options, returned_future, fill_future);
-}
-
 namespace {
 
 absl::StatusOr<absl::string_view> MemoryKindFromSimpleShape(
@@ -2648,20 +2513,81 @@ PjRtStreamExecutorClient::LoadInternal(
   }
   auto load_state =
       tsl::MakeRef<PjRtStreamExecutorExecutableLoadState>(raw_client());
-  auto loaded_executable = std::make_unique<PjRtStreamExecutorLoadedExecutable>(
-      std::move(executable), compile_options.parameter_is_tupled_arguments,
-      std::move(device_assignment), std::move(addressable_device_logical_ids),
-      std::move(addressable_devices), this, std::move(parameter_shapes),
-      result_shape, std::move(parameter_memory_space_kind_ids),
-      std::move(output_memory_space_kind_ids), std::move(load_state));
-  ABSL_RETURN_IF_ERROR(loaded_executable->SetUpDonation(
-      compile_options.parameter_is_tupled_arguments));
+  ABSL_ASSIGN_OR_RETURN(
+      auto parameters_that_must_be_donated,
+      ComputeParametersThatMustBeDonated(
+          *tensorflow::down_cast<StreamExecutorExecutable*>(executable.get())
+               ->hlo_module(),
+          compile_options.parameter_is_tupled_arguments));
+  std::vector<int64_t> input_buffer_sizes_in_bytes;
+  {
+    if (device_assignment == nullptr) {
+      VLOG(3) << "PjRtStreamExecutorLoadedExecutable portable single-core";
+      CHECK(addressable_devices.empty());
+    } else {
+      VLOG(3) << "PjRtStreamExecutorLoadedExecutable device_assignment:\n"
+              << device_assignment->ToString();
+
+      if ((device_assignment->replica_count() > 1 ||
+           device_assignment->computation_count() > 1) &&
+          IsAllZeros(*device_assignment)) {
+        // This code path should only be triggered when we intentionally compile
+        // an HLO without having enough devices to actually run it. See the
+        // "--compile_only=true" option in
+        // tensorflow/compiler/xla/tools/multihost_hlo_runner/hlo_runner_main.cc.
+        // That will help us debug the XLA compiler locally.
+        LOG(INFO)
+            << "A workaround is in effect to allow compiling multi-device "
+               "HLOs on machines with fewer devices. Don't run this "
+               "executable.";
+      } else {
+        CHECK_LE(addressable_devices.size(), addressable_device_count())
+            << "Inconsistent local device count.";
+      }
+    }
+    if (parameter_shapes.size() == 1 && parameter_shapes[0].IsTuple()) {
+      std::vector<Shape> flat_parameter_shapes;
+      flat_parameter_shapes.reserve(parameter_shapes[0].tuple_shapes().size());
+      for (const Shape& shape : parameter_shapes[0].tuple_shapes()) {
+        flat_parameter_shapes.push_back(shape);
+      }
+      std::swap(flat_parameter_shapes, parameter_shapes);
+    }
+    TransferManager* transfer_manager = client()->backend().transfer_manager();
+    input_buffer_sizes_in_bytes.reserve(parameter_shapes.size());
+    for (const Shape& shape : parameter_shapes) {
+      DCHECK(!shape.IsTuple());
+      input_buffer_sizes_in_bytes.push_back(
+          transfer_manager->GetByteSizeRequirement(shape));
+    }
+  }
+  using InputHloSnapshotBits =
+      CommonPjRtLoadedExecutable::DispatchInfo::InputHloSnapshotBits;
+  std::unique_ptr<InputHloSnapshotBits> input_hlo_snapshot_bits;
   if (xla_dump_hlo_unoptimized_snapshots &&
       unoptimized_hlo_module_proto.has_value()) {
-    loaded_executable->SetInputHloSnapshotBits(
-        std::move(*unoptimized_hlo_module_proto),
-        compile_options.executable_build_options.debug_options());
+    input_hlo_snapshot_bits =
+        std::make_unique<InputHloSnapshotBits>(InputHloSnapshotBits{
+            std::move(*unoptimized_hlo_module_proto),
+            compile_options.executable_build_options.debug_options()});
   }
+  auto loaded_executable = std::make_unique<PjRtStreamExecutorLoadedExecutable>(
+      this,
+      tsl::MakeAvailableAsyncValueRef(
+          std::static_pointer_cast<StreamExecutorExecutable>(executable)),
+      CommonPjRtLoadedExecutable::DispatchInfo{
+          std::move(parameter_shapes),
+          std::make_shared<const Shape>(result_shape),
+          std::move(parameter_memory_space_kind_ids),
+          std::move(output_memory_space_kind_ids),
+          std::move(addressable_devices),
+          std::move(addressable_device_logical_ids),
+          std::move(device_assignment),
+          std::move(parameters_that_must_be_donated),
+          std::move(input_buffer_sizes_in_bytes),
+          std::move(input_hlo_snapshot_bits),
+      },
+      std::move(load_state));
   return std::unique_ptr<PjRtLoadedExecutable>(std::move(loaded_executable));
 }
 
@@ -2686,14 +2612,6 @@ bool PjRtStreamExecutorClient::IsHostMemoryPinned(const void* ptr,
       ->compute_stream()
       ->parent()
       ->IsHostMemoryPinned(ptr, size);
-}
-
-absl::StatusOr<std::unique_ptr<PjRtExecutableAbiVersion>>
-PjRtStreamExecutorLoadedExecutable::GetAbiVersion() const {
-  if (GetExecutable() == nullptr) {
-    return absl::InternalError("Executable is null.");
-  }
-  return GetExecutable()->GetAbiVersion();
 }
 
 absl::Status PjRtStreamExecutorClient::WaitOnStream(
