@@ -1569,8 +1569,28 @@ class GroupConnectedBoundaries {
     return reuses;
   }
 
-  int64_t ReusesAfterBoundary(HloInstruction* user, int64_t tuple_idx = -1) {
+  // Depth cap for `ReusesAfterBoundary`. The walk is forward-only along user
+  // edges of a DAG, so it always terminates -- but the bound is the length of
+  // the longest single-consumer chain in the computation, and on a large decode
+  // program that is deep enough to exhaust the C++ stack (~160 bytes/frame)
+  // before it ends. Observed as a SIGSEGV with several hundred
+  // `ReusesAfterBoundary` frames while compiling a conditional emitted by
+  // `lax.cond`.
+  //
+  // Truncating is safe: this whole function is a heuristic benefit ESTIMATE
+  // feeding a cost model, and bailing out returns 0, the same conservative
+  // "found no reuse" answer the other early-outs above return. It can only make
+  // the pass decline to move a boundary it might otherwise have moved.
+  static constexpr int64_t kMaxReuseAnalysisDepth = 1000;
+
+  int64_t ReusesAfterBoundary(HloInstruction* user, int64_t tuple_idx = -1,
+                              int64_t depth = 0) {
     CHECK(user != nullptr);
+    if (depth > kMaxReuseAnalysisDepth) {
+      VLOG(2) << "Reuse analysis hit the depth cap at: " << user->ToString()
+              << "\n";
+      return 0;
+    }
     if (user->opcode() == HloOpcode::kConstant) {
       return 0;
     }
@@ -1634,9 +1654,9 @@ class GroupConnectedBoundaries {
           }
         } else if (op->opcode() == HloOpcode::kTuple) {
           VLOG(2) << "new tuple index = " << op->operand_index(user);
-          return ReusesAfterBoundary(op, op->operand_index(user));
+          return ReusesAfterBoundary(op, op->operand_index(user), depth + 1);
         } else {
-          return ReusesAfterBoundary(op, tuple_idx);
+          return ReusesAfterBoundary(op, tuple_idx, depth + 1);
         }
       } else if (op ==
                  conditional_->branch_computation(0)->root_instruction()) {
