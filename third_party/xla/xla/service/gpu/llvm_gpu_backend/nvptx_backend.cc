@@ -239,9 +239,9 @@ std::vector<std::string> GetNVPTXBackendOptions(
 }
 
 constexpr se::CudaComputeCapability kSupportedVersions[] = {
-    {12, 1}, {12, 0}, {11, 0}, {10, 3}, {10, 0}, {9, 0}, {8, 9}, {8, 7},
-    {8, 6},  {8, 0},  {7, 5},  {7, 2},  {7, 0},  {6, 2}, {6, 1}, {6, 0},
-    {5, 3},  {5, 2},  {5, 0},  {3, 7},  {3, 5},  {3, 2}, {3, 0}};
+    {12, 1}, {12, 0}, {11, 0}, {10, 7}, {10, 3}, {10, 0}, {9, 0}, {8, 9},
+    {8, 7},  {8, 6},  {8, 0},  {7, 5},  {7, 2},  {7, 0},  {6, 2}, {6, 1},
+    {6, 0},  {5, 3},  {5, 2},  {5, 0},  {3, 7},  {3, 5},  {3, 2}, {3, 0}};
 
 se::CudaComputeCapability ResolveSupportedComputeCapability(
     se::CudaComputeCapability compute_capability) {
