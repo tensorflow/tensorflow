@@ -1062,6 +1062,43 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
       absl::flat_hash_map<const HloComputation*, AliasedOffset*>&
           preferred_offset_for_computation);
 
+  // Returns true if a buffer is allocated in the alternate memory space
+  // throughout the live range of a conditional and used in the conditional.
+  // The uses inside the conditional read the buffer from mirrored
+  // allocation.
+  bool NeedsMirroredAllocation(
+      const AllocationValue& allocation_value,
+      const AllocationValue::Use& current_use,
+      // We check if the previous use is a conditional operand.
+      const AllocationValue::Use* previous_use) const;
+
+  // If a buffer is allocated in the alternate memory space throughout the live
+  // range of a conditional, the uses of the buffer inside the conditional
+  // should read the buffer from a mirrored allocation.
+  void CreateMirroredAllocations(
+      AllocationValue& allocation_value,
+      const AllocationValue::Use& current_use,
+      // We check if the previous use is a conditional operand.
+      const AllocationValue::Use* previous_use,
+      absl::Span<AllocationValue> allocation_values,
+      // A set of allocation values inside the conditional, that may get a
+      // mirrored allocation that points to a real allocation outside the
+      // conditional, that is live throughout the conditional. We maintain
+      // this set to avoid re-processing these allocation values.
+      absl::flat_hash_set<AllocationValue*>&
+          already_processed_allocation_values_inside_a_conditional);
+
+  // Returns true, if the previous use is a conditional operand in the alternate
+  // memory, and, an eviction is required before the conditional. We check if
+  // all the buffer positions and uses inside the conditional are allowed in
+  // alternate memory and if the jointly processed allocation values can be
+  // processed without imposing infeasible constraints. We require an eviction
+  // if these conditions are not met.
+  bool IsEvictionRequiredForPreviousUseAtConditional(
+      AllocationValue& allocation_value, const AllocationValue::Use& use,
+      const AllocationValue::Use* previous_use,
+      absl::Span<AllocationValue> allocation_values);
+
   // Creates a detailed memory allocation request for a given use of an
   // allocation value. Analyzes the usage pattern of the use to determine if it
   // can be placed in alternate memory, considering the restrictions for loops
@@ -1087,6 +1124,7 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
       const std::vector<int64_t>& all_use_times,
       bool only_extend_existing_allocation,
       absl::Span<AllocationValue> processed_allocation_values,
+      absl::Span<AllocationValue> all_allocation_values,
       std::optional<Shape> shape_override);
 
   // Returns true, if the allocation value requires a pinned allocation in the

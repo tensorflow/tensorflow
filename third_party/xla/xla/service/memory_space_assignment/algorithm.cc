@@ -1869,10 +1869,11 @@ void MsaAlgorithm::ColorColocatedIntervalsToAlternate(
 
 void MsaAlgorithm::CreateAllocationValuesForJointProcessedValues(
     JointAllocationProposal& proposal) {
-  for (auto& interval_hlo : proposal.values) {
-    auto& interval = buffer_intervals_.at(interval_hlo);
+  for (const HloValue* interval_hlo_value : proposal.values) {
+    const MsaBufferInterval& interval =
+        buffer_intervals_.at(interval_hlo_value);
 
-    if (IsValueFinalized(interval_hlo)) {
+    if (IsValueFinalized(interval_hlo_value)) {
       VLOG(3) << "Skip " << interval.buffer->ToShortString()
               << " because it is already processed.";
       continue;
@@ -1925,7 +1926,8 @@ void MsaAlgorithm::CreateAllocationValuesForJointProcessedValues(
       }
     }
 
-    auto colocated_intervals = GetSortedColocatedIntervals(interval);
+    std::vector<const MsaBufferInterval*> colocated_intervals =
+        GetSortedColocatedIntervals(interval);
     if (AreIntervalsReservedInAlternateMemory(colocated_intervals)) {
       VLOG(3) << "Interval " << interval.buffer->ToShortString()
               << " is reserved in the alternate memory.";
@@ -4935,7 +4937,7 @@ void MsaAlgorithm::CreateAllocationValuesFromColocatedIntervals(
     std::vector<AllocationValue>& allocation_values) {
   std::vector<AllocationValue> new_allocation_values;
   // Create AllocationValues for all the colocated intervals.
-  for (const auto& colocated_interval : colocated_intervals) {
+  for (const MsaBufferInterval* colocated_interval : colocated_intervals) {
     CreateAllocationValues(*colocated_interval, new_allocation_values);
   }
   // Go through the AllocationValues and delete the ones that have the identical
@@ -5227,6 +5229,13 @@ absl::StatusOr<AllocationResult> MsaAlgorithm::AllocateAllocationValues(
   absl::flat_hash_map<const AllocationValue*, int64_t>
       definition_time_for_allocation_value;
 
+  // These are allocation values inside a conditional that have already been
+  // processed. They may get an allocation in the alternate memory that mirrors
+  // a real allocation outside the conditional, that is live throughout the
+  // conditional.
+  absl::flat_hash_set<AllocationValue*>
+      already_processed_allocation_values_inside_a_conditional;
+
   AllocationResult result = AllocationResult::kSuccess;
   for (int alloc_value_idx = 0; alloc_value_idx < allocation_values.size();
        ++alloc_value_idx) {
@@ -5300,32 +5309,43 @@ absl::StatusOr<AllocationResult> MsaAlgorithm::AllocateAllocationValues(
           definition_time_for_allocation_value.at(&allocation_value_to_update),
           RequiresNoCopyAlternateMemAllocation(allocation_value_to_update),
           all_use_times, entry.only_extend_existing_allocation,
-          allocation_values.subspan(0, alloc_value_idx),
+          allocation_values.subspan(0, alloc_value_idx), allocation_values,
           /*shape_override=*/std::nullopt);
       if (options_.allocation_request_modifier_testing_fn) {
         options_.allocation_request_modifier_testing_fn(request);
       }
+      bool is_processed_allocation_value_live_throughout_a_conditional =
+          already_processed_allocation_values_inside_a_conditional.contains(
+              &allocation_value);
       // Bitcasts don't define buffers and don't directly consume buffers.
       // Skip allocating buffers for bitcast uses (unless they are the root
       // instruction). The uses that feed from bitcasts will be handled
       // specially.
-      if (use.hlo_use.instruction->opcode() != HloOpcode::kBitcast ||
-          use.hlo_use.instruction ==
-              use.hlo_use.instruction->parent()->root_instruction()) {
+      if ((use.hlo_use.instruction->opcode() != HloOpcode::kBitcast ||
+           use.hlo_use.instruction ==
+               use.hlo_use.instruction->parent()->root_instruction()) &&
+          !is_processed_allocation_value_live_throughout_a_conditional) {
         UpdateRequestWithAlternateMemoryColoringRequirements(request);
         UpdateRequestWithDefaultMemoryColoringRequirements(request);
         AllocationResult allocate_segment_result = AllocateSegment(request);
         VLOG(2) << "AllocateSegment result: "
                 << ResultToString(allocate_segment_result);
         result_mark(allocate_segment_result, result);
+        AllocationSequence* allocation_sequence =
+            allocation_value_to_update.mutable_allocation_sequence();
         if (options_.allocation_result_modifier_testing_fn) {
           options_.allocation_result_modifier_testing_fn(
               request, result,
               options_.prefetch_interval_picker->retry_number());
         }
+        if (allocate_segment_result == AllocationResult::kSuccess &&
+            NeedsMirroredAllocation(allocation_value_to_update, use,
+                                    previous_use)) {
+          CreateMirroredAllocations(
+              allocation_value_to_update, use, previous_use, allocation_values,
+              already_processed_allocation_values_inside_a_conditional);
+        }
         if (request.require_copy_allocation) {
-          auto allocation_sequence =
-              allocation_value_to_update.mutable_allocation_sequence();
           auto it = std::find_if(
               allocation_sequence->begin(), allocation_sequence->end(),
               [&](const std::unique_ptr<
@@ -5494,6 +5514,7 @@ AllocationRequest MsaAlgorithm::CreateAllocationRequest(
     const std::vector<int64_t>& all_use_times,
     bool only_extend_existing_allocation,
     absl::Span<AllocationValue> processed_allocation_values,
+    absl::Span<AllocationValue> all_allocation_values,
     std::optional<Shape> shape_override) {
   const HloUse& hlo_use = use.hlo_use;
   const auto& instruction_schedule = hlo_live_range_.instruction_schedule();
@@ -5640,24 +5661,15 @@ AllocationRequest MsaAlgorithm::CreateAllocationRequest(
                             hlo_use.instruction, MemorySpace::kDefault,
                             use_time, source);
     }
-  } else if (previous_use != nullptr) {
-    // We allow buffers in alternate memory that are passed into
-    // conditionals to give up their alternate memory allocation inside the
-    // called computation. This means that if a conditional operator has an
-    // alternate memory allocation, subsequent uses cannot use the same
-    // alternate memory allocation in order not to clobber data. So we force
-    // default memory allocation for these subsequent uses.
-    if (previous_use->hlo_use.instruction->opcode() ==
-            HloOpcode::kConditional &&
-        previous_use->hlo_use.instruction != hlo_use.instruction) {
-      allow_no_copy_alternate_mem_allocation = false;
-      earliest_prefetch_time =
-          instruction_schedule.at(previous_use->hlo_use.instruction);
-      VLOG(3) << "Previous use (" << previous_use->hlo_use.ToString()
-              << ") of use (" << hlo_use.ToString()
-              << ") is a conditional, so this use will need to evict. "
-              << "Earliest prefetch time = " << *earliest_prefetch_time;
-    }
+  } else if (IsEvictionRequiredForPreviousUseAtConditional(
+                 allocation_value, use, previous_use, all_allocation_values)) {
+    allow_no_copy_alternate_mem_allocation = false;
+    earliest_prefetch_time =
+        instruction_schedule.at(previous_use->hlo_use.instruction);
+    VLOG(3) << "Previous use (" << previous_use->hlo_use.ToString()
+            << ") of use (" << hlo_use.ToString()
+            << ") is a conditional, the operand requires eviction. "
+            << "Earliest prefetch time = " << *earliest_prefetch_time;
   }
 
   AllocationRequest request;
@@ -5955,6 +5967,288 @@ void MsaAlgorithm::MaybeCreateMirroredParentAllocationForWhileUse(
   // other offsets: remember the preferred offset for the while loop body.
   preferred_offset_for_computation[hlo_use.instruction->while_body()] =
       GetAliasedOffset(*aliased_allocation);
+}
+
+bool MsaAlgorithm::NeedsMirroredAllocation(
+    const AllocationValue& allocation_value,
+    const AllocationValue::Use& current_use,
+    const AllocationValue::Use* previous_use) const {
+  // We create mirrored allocations for allocation values, inside
+  // conditional branches, by verifying that all of the following conditions
+  // are met:
+  // 1. The previous use is a conditional and the current use is strictly after
+  //    the conditional.
+  // 2. The last allocation in the AllocationSequence is in the alternate
+  //    memory.
+  // 3. The last allocation serves the previous use and the current use.
+  // 4. The last allocation extends throughout the conditional live range.
+
+  // Check conditions 1 and 2.
+  const AllocationSequence* allocation_sequence =
+      allocation_value.allocation_sequence();
+  if (previous_use == nullptr ||
+      previous_use->hlo_use.instruction->opcode() != HloOpcode::kConditional ||
+      current_use.hlo_use.instruction == previous_use->hlo_use.instruction ||
+      allocation_sequence->empty() ||
+      allocation_sequence->back()->memory_space() != MemorySpace::kAlternate) {
+    return false;
+  }
+  // Check condition 3.
+  const Allocation* last_allocation = allocation_sequence->back().get();
+  if (!absl::c_linear_search(last_allocation->uses(), previous_use->hlo_use)) {
+    return false;
+  }
+  // Check condition 4.
+  int64_t conditional_start_time = GetCorrectedUseTime(previous_use->hlo_use);
+  int64_t conditional_end_time = hlo_live_range_.instruction_schedule().at(
+      previous_use->hlo_use.instruction);
+  int64_t current_use_time = GetCorrectedUseTime(current_use.hlo_use);
+  bool last_allocation_covers_conditional_live_range =
+      last_allocation->earliest_available_time() <= conditional_start_time &&
+      conditional_end_time <= current_use_time &&
+      current_use_time <= last_allocation->end_time();
+  return last_allocation_covers_conditional_live_range;
+}
+
+void MsaAlgorithm::CreateMirroredAllocations(
+    AllocationValue& allocation_value, const AllocationValue::Use& current_use,
+    const AllocationValue::Use* previous_use,
+    absl::Span<AllocationValue> allocation_values,
+    absl::flat_hash_set<AllocationValue*>&
+        already_processed_allocation_values_inside_a_conditional) {
+  CHECK_NE(previous_use, nullptr);
+  const Allocation* last_allocation =
+      allocation_value.allocation_sequence()->back().get();
+  int64_t conditional_start_time = GetCorrectedUseTime(previous_use->hlo_use);
+  int64_t conditional_end_time = hlo_live_range_.instruction_schedule().at(
+      previous_use->hlo_use.instruction);
+
+  const HloBuffer* buffer_in_alt_mem = &alias_analysis_.GetUniqueBufferAt(
+      allocation_value.value()->defining_instruction(),
+      allocation_value.value()->defining_position().index);
+
+  // Find allocations of the same buffer that lie within the conditional live
+  // range, create mirrored allocations in alternate memory, and add them to the
+  // set of processed allocation values throughout conditionals, to avoid
+  // re-processing.
+  for (AllocationValue& allocation_val : allocation_values) {
+    // 1. Find allocation values whose defining positions lie inside the live
+    //    range of the conditional.
+    int64_t position_time = hlo_live_range_.instruction_schedule().at(
+        allocation_val.defining_instruction());
+    int64_t last_use_time = position_time;
+    for (const AllocationValue::Use& use : allocation_val.uses()) {
+      last_use_time = std::max(
+          last_use_time,
+          hlo_live_range_.instruction_schedule().at(use.hlo_use.instruction));
+    }
+    if (position_time < conditional_start_time ||
+        position_time >= conditional_end_time) {
+      continue;
+    }
+    CHECK(conditional_start_time <= last_use_time &&
+          last_use_time <= conditional_end_time)
+        << "last_use_time: " << last_use_time
+        << ", conditional_start_time: " << conditional_start_time
+        << ", conditional_end_time: " << conditional_end_time
+        << "\n allocation_val: " << allocation_val.ToString()
+        << "\n allocation_value: " << allocation_value.ToString()
+        << "\n previous_use: " << previous_use->hlo_use.ToString()
+        << "\n current use: " << current_use.hlo_use.ToString();
+
+    // 2. Add the allocation value to the set of allocation values that are
+    //    live throughout a conditional and processed, so we do not process them
+    //    again, later.
+    already_processed_allocation_values_inside_a_conditional.insert(
+        &allocation_val);
+
+    // 3. If the allocation value is an async conversion candidate, create an
+    //    allocation in default memory to avoid a copy from alternate memory
+    //    to alternate memory. Additionally, we check if the source buffer of
+    //    the async conversion candidate is the same as the buffer in alternate
+    //    memory.
+    HloInstruction* allocation_value_instruction =
+        allocation_val.value()->defining_instruction();
+    if (IsAsyncConversionCandidate(allocation_value_instruction)) {
+      const HloBuffer* source_buffer = &alias_analysis_.GetUniqueBufferAt(
+          allocation_value_instruction->mutable_operand(0), {});
+      CHECK_EQ(source_buffer, buffer_in_alt_mem)
+          << "Source buffer mismatch for async conversion candidate: "
+          << allocation_value_instruction->ToString()
+          << " \n with buffer: " << buffer_in_alt_mem->ToString();
+      VLOG(3)
+          << "Skipping async conversion candidate because the source buffer is "
+             "in alternate memory and a successful async conversion would "
+             "result in a copy from alternate memory to alternate memory."
+          << allocation_val.ToString();
+      allocation_val.mutable_allocation_sequence()->push_back(
+          std::make_unique<PinnedAllocation>(allocation_val.defining_position(),
+                                             MemorySpace::kDefault, kDummyChunk,
+                                             position_time, last_use_time));
+      for (const AllocationValue::Use& use : allocation_val.uses()) {
+        allocation_val.mutable_allocation_sequence()->back()->AddUse(
+            use.hlo_use);
+      }
+      continue;
+    }
+
+    VLOG(3) << "Conditional operand: " << previous_use->hlo_use.ToString()
+            << " is in alternate memory throughout the conditional, adding a"
+               " mirrored allocation for pre-allocated allocation_value: "
+            << allocation_val.ToString();
+
+    // 4. We create a mirrored allocation in the alternate memory for the
+    //    allocation value.
+    allocation_val.mutable_allocation_sequence()->push_back(
+        std::make_unique<MirroredAllocation>(allocation_val.defining_position(),
+                                             *last_allocation, position_time,
+                                             last_use_time));
+    for (const AllocationValue::Use& use : allocation_val.uses()) {
+      allocation_val.mutable_allocation_sequence()->back()->AddUse(use.hlo_use);
+    }
+    MaybeCreateOrAddToAliasedOffset(
+        *allocation_val.mutable_allocation_sequence()->back(),
+        /*aliased_offset=*/nullptr);
+  }
+}
+
+bool MsaAlgorithm::IsEvictionRequiredForPreviousUseAtConditional(
+    AllocationValue& allocation_value, const AllocationValue::Use& use,
+    const AllocationValue::Use* previous_use,
+    absl::Span<AllocationValue> allocation_values) {
+  if (previous_use == nullptr ||
+      previous_use->hlo_use.instruction->opcode() != HloOpcode::kConditional ||
+      use.hlo_use.instruction == previous_use->hlo_use.instruction) {
+    return false;
+  }
+
+  int64_t conditional_end_time = hlo_live_range_.instruction_schedule().at(
+      previous_use->hlo_use.instruction);
+  int64_t current_use_time = GetCorrectedUseTime(use.hlo_use);
+
+  if (conditional_end_time > current_use_time) {
+    return false;
+  }
+
+  const HloBuffer* buffer_in_alt_mem = &alias_analysis_.GetUniqueBufferAt(
+      allocation_value.value()->defining_instruction(),
+      allocation_value.value()->defining_position().index);
+  int64_t conditional_start_time = GetCorrectedUseTime(previous_use->hlo_use);
+
+  for (AllocationValue& allocation_val : allocation_values) {
+    int64_t position_time = hlo_live_range_.instruction_schedule().at(
+        allocation_val.defining_instruction());
+    int64_t last_use_time = position_time;
+    for (const AllocationValue::Use& use : allocation_val.uses()) {
+      last_use_time = std::max(
+          last_use_time,
+          hlo_live_range_.instruction_schedule().at(use.hlo_use.instruction));
+    }
+    if (position_time < conditional_start_time ||
+        position_time >= conditional_end_time) {
+      continue;
+    }
+    CHECK(conditional_start_time <= last_use_time &&
+          last_use_time <= conditional_end_time)
+        << "last_use_time: " << last_use_time
+        << ", conditional_start_time: " << conditional_start_time
+        << ", conditional_end_time: " << conditional_end_time
+        << "\n allocation_val: " << allocation_val.ToString()
+        << "\n allocation_value: " << allocation_value.ToString()
+        << "\n previous_use: " << previous_use->hlo_use.ToString()
+        << "\n current use: " << use.hlo_use.ToString();
+
+    if (IsAsyncConversionCandidate(
+            allocation_val.value()->defining_instruction())) {
+      // Check the jointly processed allocation values within the conditional
+      // live range. Allow processing without eviction, if and only if, all
+      // the jointly processed async conversion candidates have the source
+      // buffer as the buffer in alternate memory. We will handle this case by
+      // forcing the async conversion candidate to be in default memory. We
+      // force all other kinds of jointly processed allocation values that
+      // come from async conversion candidates to require an eviction because
+      // async copying to and from the same memory space is not allowed.
+      // Trying to satisfy this restriction might impose infeasible
+      // constraints on how other buffers must get allocated.
+      const HloBuffer* source_buffer_of_copy =
+          &alias_analysis_.GetUniqueBufferAt(
+              allocation_val.value()->defining_instruction()->mutable_operand(
+                  0),
+              {});
+      if (source_buffer_of_copy == buffer_in_alt_mem) {
+        VLOG(3)
+            << "Source buffer is the same as the buffer in alternate memory: "
+            << allocation_val.ToString();
+        continue;
+      }
+      return true;
+    }
+
+    // Require eviction if the set of allocation values jointly processed
+    // within the conditional live range span across different buffers.
+    const HloBuffer* destination_buffer = &alias_analysis_.GetUniqueBufferAt(
+        allocation_val.defining_position().instruction,
+        allocation_val.defining_position().index);
+    if (buffer_in_alt_mem != destination_buffer) {
+      CHECK(!IsAsyncConversionCandidate(
+          allocation_val.value()->defining_instruction()));
+      return true;
+    }
+
+    for (const AllocationValue::Use& use : allocation_val.uses()) {
+      if (!IsUseAllowedInAlternateMemory(use.hlo_use) ||
+          !IsConditionalUseBeneficialInAlternateMemory(allocation_val,
+                                                       use.hlo_use)) {
+        VLOG(3) << "Use not allowed in alternate memory: "
+                << use.hlo_use.ToString()
+                << " requiring eviction for allocation_val: "
+                << allocation_val.ToString()
+                << " at conditional use: " << previous_use->hlo_use.ToString();
+        return true;
+      };
+      std::optional<RequiredMemoryAssignment> required_assignment_for_use =
+          RequiredAssignmentForUse(use);
+      if (required_assignment_for_use.has_value() &&
+          required_assignment_for_use.value().memory_space ==
+              MemorySpace::kDefault) {
+        VLOG(3) << "Required assignment: "
+                << required_assignment_for_use.value().ToString()
+                << " for use: " << use.hlo_use.ToString()
+                << " in default memory, requiring eviction for allocation_val: "
+                << allocation_val.ToString()
+                << " at conditional use: " << previous_use->hlo_use.ToString();
+        return true;
+      }
+      std::optional<RequiredMemoryAssignment> aliased_required_assignment =
+          AliasedRequiredAssignmentForUse(use);
+      if (aliased_required_assignment.has_value() &&
+          aliased_required_assignment.value().memory_space ==
+              MemorySpace::kDefault) {
+        VLOG(3) << "Aliased required assignment: "
+                << aliased_required_assignment.value().ToString()
+                << " for use: " << use.hlo_use.ToString()
+                << " in default memory, requiring eviction for allocation_val: "
+                << allocation_val.ToString()
+                << " at conditional use: " << previous_use->hlo_use.ToString();
+        return true;
+      }
+      std::optional<RequiredMemoryAssignment>
+          required_assignment_at_defining_instruction =
+              RequiredMemoryAssignmentAt(allocation_val.value(), position_time);
+      if (required_assignment_at_defining_instruction.has_value() &&
+          required_assignment_at_defining_instruction.value().memory_space ==
+              MemorySpace::kDefault) {
+        VLOG(3)
+            << "Required assignment at defining instruction: "
+            << required_assignment_at_defining_instruction.value().ToString()
+            << " for allocation_val: " << allocation_val.ToString()
+            << " requiring eviction at conditional use: "
+            << previous_use->hlo_use.ToString();
+        return true;
+      }
+    }
+  }
+  return false;
 }
 
 bool operator<(const AsynchronousCopy& a, const AsynchronousCopy& b) {
@@ -8717,6 +9011,7 @@ void MsaAlgorithm::WindowPrefetchOperand(const HloUse& use, int64_t bytes) {
       /*all_use_times=*/all_use_times,
       /*only_extend_existing_allocation=*/false,
       /*processed_allocation_values=*/{},
+      /*all_allocation_values=*/{},
       /*shape_override=*/
       ShapeUtil::MakeValidatedShape(U8, {bytes}).value());
 
