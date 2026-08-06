@@ -41,9 +41,9 @@ TEST(FfiTest, RecordStage) {
         EXPECT_EQ(ctx.action(), RecordAction::kCreate);
         EXPECT_EQ(ctx.commands().capacity(), 10);
         EXPECT_EQ(ctx.commands().size(), 0);
-        auto cmd = ctx.CreateLaunch("test", nullptr, 0, SourceFormat::kPtx,
-                                    {{1, 1, 1}, {1, 1, 1}}, 0,
-                                    std::vector<KernelArg>{});
+        auto cmd = ctx.CreateLaunch(
+            "test", nullptr, 0, SourceFormat::kPtx, {{1, 1, 1}, {1, 1, 1}}, 0,
+            /*uses_pdl=*/false, std::vector<KernelArg>{});
         return Error::Success();
       });
 

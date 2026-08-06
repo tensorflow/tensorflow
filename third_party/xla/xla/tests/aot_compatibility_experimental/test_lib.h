@@ -38,8 +38,11 @@ struct AotTestParam {
   }
 };
 
-// Returns the path to the executables directory for the current test target.
-std::string GetExecutablesDirectory(absl::string_view target_name);
+// Returns the path to the executables directory for the current test target and
+// platform (defaults to GPU for backwards compatibility with existing callers).
+std::string GetExecutablesDirectory(
+    absl::string_view target_name,
+    AOTTestPlatform platform = AOTTestPlatform::kGpu);
 
 // Gets the list of AOT test parameters for testing backwards compatibility
 // boundaries.
@@ -47,12 +50,16 @@ std::string GetExecutablesDirectory(absl::string_view target_name);
 // and the (maximum - 1) versions to verify the boundaries of our compatibility
 // guarantees. Set XLA_AOT_TEST_ALL_VERSIONS to test all versions.
 absl::StatusOr<std::vector<AotTestParam>>
-GetAotTestParamsForBackwardsCompatibility(absl::string_view target_name);
+GetAotTestParamsForBackwardsCompatibility(
+    absl::string_view target_name,
+    AOTTestPlatform platform = AOTTestPlatform::kGpu);
 
 // Returns the latest version of the AOT dumped artifact, wrapped in a list for
 // test parameterization.
 absl::StatusOr<std::vector<AotTestParam>>
-GetAotTestParamsForGoldenFileVerification(absl::string_view target_name);
+GetAotTestParamsForGoldenFileVerification(
+    absl::string_view target_name,
+    AOTTestPlatform platform = AOTTestPlatform::kGpu);
 
 // A parameterized test fixture base class for AOT compatibility tests.
 class AotCompatibilityTest : public HloTestBase {
