@@ -341,9 +341,10 @@ absl::Status WhileThunk::ExecuteOnStream(const ExecuteParams& params) {
   return absl::OkStatus();
 }
 
-absl::Status WhileThunk::WalkNested(Walker callback) {
-  ABSL_RETURN_IF_ERROR(condition_executor_.thunks().WalkNested(callback));
-  return body_executor_.thunks().WalkNested(callback);
+absl::Status WhileThunk::WalkNested(Walker pre_order, Walker post_order) {
+  ABSL_RETURN_IF_ERROR(
+      condition_executor_.thunks().WalkNested(pre_order, post_order));
+  return body_executor_.thunks().WalkNested(pre_order, post_order);
 }
 
 absl::Status WhileThunk::WalkNestedCommands(CommandWalker callback) {

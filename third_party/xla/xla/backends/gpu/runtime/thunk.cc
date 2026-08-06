@@ -449,6 +449,12 @@ bool Thunk::IsCollective() const {
   }
 }
 
+absl::Status Thunk::WalkNested(Walker, Walker) { return absl::OkStatus(); }
+
+absl::Status Thunk::WalkNested(ConstWalker, ConstWalker) const {
+  return absl::OkStatus();
+}
+
 ThunkMetadataProto Thunk::ToMetadataProto() const {
   ThunkMetadataProto metadata_proto;
   *metadata_proto.mutable_thunk_info() = thunk_info_.ToProto();
@@ -529,6 +535,22 @@ absl::Status ThunkSequence::WalkNested(Thunk::Walker callback) {
 absl::Status ThunkSequence::WalkNested(Thunk::ConstWalker callback) const {
   for (const auto& thunk : *this) {
     ABSL_RETURN_IF_ERROR(thunk->Walk(callback));
+  }
+  return absl::OkStatus();
+}
+
+absl::Status ThunkSequence::WalkNested(Thunk::Walker pre_order,
+                                       Thunk::Walker post_order) {
+  for (auto& thunk : *this) {
+    ABSL_RETURN_IF_ERROR(thunk->Walk(pre_order, post_order));
+  }
+  return absl::OkStatus();
+}
+
+absl::Status ThunkSequence::WalkNested(Thunk::ConstWalker pre_order,
+                                       Thunk::ConstWalker post_order) const {
+  for (const auto& thunk : *this) {
+    ABSL_RETURN_IF_ERROR(thunk->Walk(pre_order, post_order));
   }
   return absl::OkStatus();
 }

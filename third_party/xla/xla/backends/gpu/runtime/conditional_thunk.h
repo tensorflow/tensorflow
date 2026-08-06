@@ -81,7 +81,7 @@ class ConditionalThunk : public Command {
     return branch_index_buffer_index_;
   }
 
-  absl::Status WalkNested(Walker callback) override;
+  absl::Status WalkNested(Walker pre_order, Walker post_order) override;
   absl::Status TransformNested(Transformer callback) override;
 
   bool branch_index_is_bool() const { return branch_index_is_bool_; }

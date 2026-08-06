@@ -300,9 +300,9 @@ absl::Status ConditionalThunk::ExecuteOnStream(const ExecuteParams& params) {
   return absl::OkStatus();
 }
 
-absl::Status ConditionalThunk::WalkNested(Walker callback) {
+absl::Status ConditionalThunk::WalkNested(Walker pre_order, Walker post_order) {
   for (ThunkExecutor& branch_executor : branch_executors_) {
-    ABSL_RETURN_IF_ERROR(branch_executor.thunks().WalkNested(callback));
+    ABSL_RETURN_IF_ERROR(branch_executor.thunks().WalkNested(pre_order, post_order));
   }
   return absl::OkStatus();
 }
