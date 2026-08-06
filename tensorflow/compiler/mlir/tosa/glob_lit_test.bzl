@@ -114,7 +114,7 @@ def glob_lit_tests(
 
         # Instantiate this test with updated parameters.
         _run_lit_test(
-            name = final_test_name + ".test",
+            name = curr_test + ".test",
             data = data + [curr_test] +
                    per_test_extra_data.get(curr_test, []),
             size = size_override.get(curr_test, default_size),
