@@ -1204,7 +1204,7 @@ absl::Status CpuCompiler::RunHloPasses(HloModule* module, bool is_aot_compile,
 namespace {
 
 // Align buffers to XLA:CPU minimal alignment.
-int64_t memory_alignment(LogicalBuffer::Color) { return MinAlign(); }
+int64_t memory_alignment(HloValue::Color) { return MinAlign(); }
 
 std::pair<LLVMCompiler::ModuleHook, LLVMCompiler::ModuleHook> GetIRModuleHooks(
     const HloModule& hlo_module,

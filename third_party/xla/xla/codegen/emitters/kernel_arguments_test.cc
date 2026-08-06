@@ -74,7 +74,7 @@ TEST_F(KernelArgumentsTest, GetArgumentBufferSlices) {
       std::unique_ptr<BufferAssignment> assignment,
       BufferAssigner::Run(
           module.get(), std::make_unique<DependencyHloOrdering>(module.get()),
-          &BufferSizeBytes, &alias_info, [](LogicalBuffer::Color) { return 0; },
+          &BufferSizeBytes, &alias_info, [](HloValue::Color) { return 0; },
           std::move(opts)));
 
   // Three allocations: one for each parameter, plus one for the output.
@@ -132,8 +132,7 @@ ENTRY main {
           [](const BufferValue& buffer) {
             return ShapeUtil::ByteSizeOf(buffer.shape(), sizeof(void*));
           },
-          &alias_info, [](LogicalBuffer::Color) { return 1; },
-          std::move(opts)));
+          &alias_info, [](HloValue::Color) { return 1; }, std::move(opts)));
 
   KernelArguments::BufferAlignment buffer_alignment;
   buffer_alignment.entry_parameter_align_bytes = 1;
@@ -197,7 +196,7 @@ ENTRY main {
       std::unique_ptr<BufferAssignment> buffer_assignment,
       BufferAssigner::Run(
           module.get(), std::make_unique<DependencyHloOrdering>(module.get()),
-          &BufferSizeBytes, &alias_info, [](LogicalBuffer::Color) { return 1; },
+          &BufferSizeBytes, &alias_info, [](HloValue::Color) { return 1; },
           std::move(opts)));
 
   KernelArguments::BufferAlignment buffer_alignment;
@@ -267,7 +266,7 @@ ENTRY main {
       std::unique_ptr<BufferAssignment> buffer_assignment,
       BufferAssigner::Run(
           module.get(), std::make_unique<DependencyHloOrdering>(module.get()),
-          &BufferSizeBytes, &alias_info, [](LogicalBuffer::Color) { return 1; },
+          &BufferSizeBytes, &alias_info, [](HloValue::Color) { return 1; },
           std::move(opts)));
 
   KernelArguments::BufferAlignment buffer_alignment;
@@ -307,7 +306,7 @@ ENTRY main {
       std::unique_ptr<BufferAssignment> buffer_assignment,
       BufferAssigner::Run(
           module.get(), std::make_unique<DependencyHloOrdering>(module.get()),
-          &BufferSizeBytes, &alias_info, [](LogicalBuffer::Color) { return 1; },
+          &BufferSizeBytes, &alias_info, [](HloValue::Color) { return 1; },
           std::move(opts)));
 
   KernelArguments::BufferAlignment buffer_alignment;
@@ -348,7 +347,7 @@ TEST_F(KernelArgumentsTest, UnmanagedArguments) {
       std::unique_ptr<BufferAssignment> assignment,
       BufferAssigner::Run(
           module.get(), std::make_unique<DependencyHloOrdering>(module.get()),
-          &BufferSizeBytes, &alias_info, [](LogicalBuffer::Color) { return 0; },
+          &BufferSizeBytes, &alias_info, [](HloValue::Color) { return 0; },
           std::move(opts)));
   // Input and output buffers are managed.
   EXPECT_THAT(assignment->Allocations(), SizeIs(3));
@@ -400,7 +399,7 @@ TEST_F(KernelArgumentsTest,
       std::unique_ptr<BufferAssignment> assignment,
       BufferAssigner::Run(
           module.get(), std::make_unique<DependencyHloOrdering>(module.get()),
-          &BufferSizeBytes, &alias_info, [](LogicalBuffer::Color) { return 0; },
+          &BufferSizeBytes, &alias_info, [](HloValue::Color) { return 0; },
           BufferAssigner::Options{.allocate_buffers_for_constants = true}));
 
   ASSERT_OK_AND_ASSIGN(

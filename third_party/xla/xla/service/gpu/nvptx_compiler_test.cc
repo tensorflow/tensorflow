@@ -88,7 +88,7 @@ class NVPTXCompilerTest : public HloPjRtGpuTestBase {
         module, std::make_unique<SequentialHloOrdering>(module->schedule()),
         buffer_size_bytes_function, alias_info.get(),
         /*color_alignment=*/
-        [](LogicalBuffer::Color) { return kXlaAllocatedBufferAlignBytes; },
+        [](HloValue::Color) { return kXlaAllocatedBufferAlignBytes; },
         BufferAssigner::Options{});
   }
 

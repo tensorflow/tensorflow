@@ -154,7 +154,7 @@ TEST(DumpHloModule, WithBufferAssignment) {
             return ShapeUtil::ByteSizeOf(buffer.shape(), sizeof(void*));
           },
           &alias_info,
-          /*color_alignment=*/[](LogicalBuffer::Color) -> int64_t { return 1; },
+          /*color_alignment=*/[](HloValue::Color) -> int64_t { return 1; },
           /*opts=*/std::move(opts))
           .value();
   std::string dump_name = "dump";
@@ -212,7 +212,7 @@ TEST(DumpHloModule, DumpRiegeli) {
             return ShapeUtil::ByteSizeOf(buffer.shape(), sizeof(void*));
           },
           &alias_info,
-          /*color_alignment=*/[](LogicalBuffer::Color) -> int64_t { return 1; },
+          /*color_alignment=*/[](HloValue::Color) -> int64_t { return 1; },
           /*opts=*/std::move(opts))
           .value();
   std::string dump_name = "dump";

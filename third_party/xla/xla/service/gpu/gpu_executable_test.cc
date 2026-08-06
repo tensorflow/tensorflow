@@ -451,7 +451,7 @@ absl::StatusOr<ScopedBufferAssignment> MakeNonEmptyBufferAssignment() {
           [](const BufferValue& buffer) {
             return ShapeUtil::ByteSizeOf(buffer.shape(), sizeof(void*));
           },
-          &alias_info, [](LogicalBuffer::Color) { return /*alignment=*/1; },
+          &alias_info, [](HloValue::Color) { return /*alignment=*/1; },
           BufferAssigner::Options{}));
   EXPECT_FALSE(holder.buffer_assignment->Allocations().empty());
   return holder;

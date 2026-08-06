@@ -118,7 +118,7 @@ TEST_F(IrEmitterTest, ComputeFuncStack) {
           [](const BufferValue& buffer) {
             return ShapeUtil::ByteSizeOf(buffer.shape(), sizeof(void*));
           },
-          &alias_info, [](LogicalBuffer::Color) { return /*alignment=*/1; },
+          &alias_info, [](HloValue::Color) { return /*alignment=*/1; },
           BufferAssigner::Options{}));
 
   TargetMachineFeaturesStub target_machine([](int64_t size) { return 1; });
@@ -288,7 +288,7 @@ CreateIrEmitterForConstantEmissionTests(HloModule& module,
   ABSL_ASSIGN_OR_RETURN(HloSchedule schedule, ScheduleModule(&module, *scheduler));
   ABSL_RETURN_IF_ERROR(module.set_schedule(schedule));
 
-  auto memory_alignment = [](LogicalBuffer::Color) { return MinAlign(); };
+  auto memory_alignment = [](HloValue::Color) { return MinAlign(); };
   // Run buffer allocation on the HLO graph.
   BufferAssigner::Options opts;
   opts.allocate_buffers_for_constants = true;

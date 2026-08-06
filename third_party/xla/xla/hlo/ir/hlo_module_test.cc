@@ -1587,7 +1587,7 @@ TEST(HloModuleTest, TestCreateFromProtoUpdatesBufferAssignment) {
           std::make_unique<DependencyHloOrdering>(module.get()),
           /*buffer_size=*/std::move(buffer_size_func),
           /*alias_info=*/&alias_info,
-          /*color_alignment=*/[](LogicalBuffer::Color) -> int64_t { return 1; },
+          /*color_alignment=*/[](HloValue::Color) -> int64_t { return 1; },
           /*opts=*/std::move(opts)));
 
   BufferAssignmentProto buffer_assignment_proto = buffer_assignment->ToProto();

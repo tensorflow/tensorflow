@@ -37,7 +37,7 @@ namespace llvm_ir {
 // alias_scope_metadata_ and noalias_metadata_.
 static const BufferAllocation* const kParameterAllocation =
     new BufferAllocation(
-        /*index=*/-1, /*size=*/0, LogicalBuffer::Color(0));
+        /*index=*/-1, /*size=*/0, HloValue::Color(0));
 
 void AliasAnalysis::AddAliasingInformationToIrArray(const HloInstruction& hlo,
                                                     llvm_ir::IrArray* array,
