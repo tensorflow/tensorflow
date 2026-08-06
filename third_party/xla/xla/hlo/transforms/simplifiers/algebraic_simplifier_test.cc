@@ -6210,6 +6210,107 @@ TEST_F(AlgebraicSimplifierTest, OrFalse2) {
   EXPECT_EQ(root, param0);
 }
 
+// Test that A ^ A is simplified to 0 for predicates.
+TEST_F(AlgebraicSimplifierTest, XorSamePred) {
+  constexpr absl::string_view kModuleStr = R"(
+    HloModule m
+    test {
+      p0 = pred[2] parameter(0)
+      ROOT xor = pred[2] xor(p0, p0)
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).value());
+  EXPECT_THAT(m->entry_computation()->root_instruction(),
+              GmockMatch(m::Broadcast(m::ConstantScalar(0))));
+}
+
+// Test that A ^ A is simplified to 0 for integers.
+TEST_F(AlgebraicSimplifierTest, XorSameInt) {
+  constexpr absl::string_view kModuleStr = R"(
+    HloModule m
+    test {
+      p0 = s32[2] parameter(0)
+      ROOT xor = s32[2] xor(p0, p0)
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).value());
+  EXPECT_THAT(m->entry_computation()->root_instruction(),
+              GmockMatch(m::Broadcast(m::ConstantScalar(0))));
+}
+
+// Test that xor of two distinct but identical instructions is simplified to
+// 0 (the form CSE would produce, but before CSE has run).
+TEST_F(AlgebraicSimplifierTest, XorIdenticalOperands) {
+  constexpr absl::string_view kModuleStr = R"(
+    HloModule m
+    test {
+      p0 = s32[2] parameter(0)
+      z = s32[] constant(0)
+      b = s32[2] broadcast(z), dimensions={}
+      ne1 = pred[2] compare(p0, b), direction=NE
+      ne2 = pred[2] compare(p0, b), direction=NE
+      ROOT xor = pred[2] xor(ne1, ne2)
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).value());
+  EXPECT_THAT(m->entry_computation()->root_instruction(),
+              GmockMatch(m::Broadcast(m::ConstantScalar(0))));
+}
+
+// Test that xor of two identically-configured rng instructions is NOT
+// simplified: they produce different values.
+TEST_F(AlgebraicSimplifierTest, XorOfRngsNotSimplified) {
+  constexpr absl::string_view kModuleStr = R"(
+    HloModule m
+    test {
+      lo = s32[] constant(0)
+      hi = s32[] constant(100)
+      rng1 = s32[2] rng(lo, hi), distribution=rng_uniform
+      rng2 = s32[2] rng(lo, hi), distribution=rng_uniform
+      ROOT xor = s32[2] xor(rng1, rng2)
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  EXPECT_FALSE(AlgebraicSimplifier(default_options_).Run(m.get()).value());
+}
+
+// Test that A ^ False is simplified to A.
+TEST_F(AlgebraicSimplifierTest, XorFalse) {
+  constexpr absl::string_view kModuleStr = R"(
+    HloModule m
+    test {
+      p0 = pred[2] parameter(0)
+      f = pred[] constant(false)
+      b = pred[2] broadcast(f), dimensions={}
+      ROOT xor = pred[2] xor(p0, b)
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).value());
+  EXPECT_THAT(m->entry_computation()->root_instruction(),
+              GmockMatch(m::Parameter(0)));
+}
+
+// Test that False ^ A is simplified to A.
+TEST_F(AlgebraicSimplifierTest, XorFalse2) {
+  constexpr absl::string_view kModuleStr = R"(
+    HloModule m
+    test {
+      p0 = s32[2] parameter(0)
+      z = s32[] constant(0)
+      b = s32[2] broadcast(z), dimensions={}
+      ROOT xor = s32[2] xor(b, p0)
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).value());
+  EXPECT_THAT(m->entry_computation()->root_instruction(),
+              GmockMatch(m::Parameter(0)));
+}
+
 // Used for TEST_Ps that test merging (or not) of a kPad instruction into a
 // convolution's Window.
 struct ConvPaddingTestcase {

@@ -19,6 +19,7 @@ limitations under the License.
 #include <array>
 #include <cmath>
 #include <cstdint>
+#include <functional>
 #include <iterator>
 #include <limits>
 #include <memory>
@@ -5221,6 +5222,41 @@ absl::Status AlgebraicSimplifierVisitor::HandleOr(HloInstruction* logical_or) {
   // False || A => A and 0 | A => A
   VLOG(10) << "trying transform [False || A => A]: " << logical_or->ToString();
   if (IsAll(lhs, 0) && ReplaceInstructionIfCompatible(logical_or, rhs)) {
+    return absl::OkStatus();
+  }
+
+  return absl::OkStatus();
+}
+
+absl::Status AlgebraicSimplifierVisitor::HandleXor(
+    HloInstruction* logical_xor) {
+  HloInstruction *lhs, *rhs;
+  CHECK(Match(logical_xor, m::Xor(m::Op(&lhs), m::Op(&rhs))));
+
+  // A ^ A => 0. Identical() also catches operands that are distinct but
+  // equivalent instructions (e.g. two identical compares of the same inputs)
+  // before CSE has merged them; with the guards below this folds only what
+  // CSE itself would be allowed to merge: no side effects (rng and
+  // friends), and layout- and sharding-sensitive comparison.
+  VLOG(10) << "Trying transform [A ^ A => 0]: " << logical_xor->ToString();
+  if (lhs == rhs ||
+      (!lhs->HasSideEffect() &&
+       lhs->Identical(*rhs, std::equal_to<const HloInstruction*>(),
+                      std::equal_to<const HloComputation*>(),
+                      /*layout_sensitive=*/true,
+                      /*sharding_sensitive=*/true))) {
+    return ReplaceInstruction(logical_xor, MakeScalarLike(logical_xor, 0));
+  }
+
+  // A ^ False => A and A ^ 0 => A
+  VLOG(10) << "trying transform [A ^ False => A]: " << logical_xor->ToString();
+  if (IsAll(rhs, 0) && ReplaceInstructionIfCompatible(logical_xor, lhs)) {
+    return absl::OkStatus();
+  }
+
+  // False ^ A => A and 0 ^ A => A
+  VLOG(10) << "trying transform [False ^ A => A]: " << logical_xor->ToString();
+  if (IsAll(lhs, 0) && ReplaceInstructionIfCompatible(logical_xor, rhs)) {
     return absl::OkStatus();
   }
 
