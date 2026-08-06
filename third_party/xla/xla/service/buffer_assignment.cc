@@ -2601,12 +2601,17 @@ absl::StatusOr<int64_t> BufferAssigner::ReuseCompatibleTempHeaps(
   // `other_value`. If so, they cannot occupy overlapping storage.
   auto candidate_interferes_with = [&](const ReuseCandidate& candidate,
                                        const HloValue* other_value) {
-    auto& other_range = live_ranges.at(other_value);
-    return absl::c_any_of(
-        candidate.hlo_buffer->values(), [&](const HloValue* value) {
-          return LiveRangeInterferes(value, live_ranges.at(value), other_value,
-                                     other_range, assignment);
-        });
+    const auto& other_range = live_ranges.at(other_value);
+    return absl::c_any_of(candidate.hlo_buffer->values(),
+                          [&](const HloValue* value) {
+                            const auto& candidate_range = live_ranges.at(value);
+                            // LiveRangeInterferes allows touching operand/user
+                            // ranges for exact in-place sharing. This best-fit
+                            // placer does not preserve the operand's exact
+                            // chunk, so touching ranges must block placement.
+                            return !(candidate_range.start > other_range.end ||
+                                     other_range.start > candidate_range.end);
+                          });
   };
 
   // Finds the best-fit free gap into which `candidate` fits inside
