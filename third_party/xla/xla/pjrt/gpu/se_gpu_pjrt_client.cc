@@ -1731,7 +1731,7 @@ absl::StatusOr<DeviceTopologyPair> BuildDistributedDevices(
         desc->shared_memory_per_block_optin());
     device_proto->set_numa_node(desc->numa_node());
     const se::DeviceInterconnectInfo& info = desc->device_interconnect_info();
-    if (!info.cluster_uuid.empty() && !info.clique_id.empty()) {
+    if (info.is_in_cluster() && !info.clique_id.empty()) {
       device_proto->set_fabric_uuid(
           absl::StrCat(info.cluster_uuid, "/", info.clique_id));
     }
@@ -2183,6 +2183,10 @@ static std::vector<std::unique_ptr<PjRtStreamExecutorDevice>> BuildLocalDevices(
         ordinal_and_device.second->executor()->GetDeviceDescription();
     const se::DeviceInterconnectInfo& info = desc.device_interconnect_info();
     int local_device_id = ordinal_and_device.second->local_device_id().value();
+    std::string fabric_uuid;
+    if (info.is_in_cluster() && !info.clique_id.empty()) {
+      fabric_uuid = absl::StrCat(info.cluster_uuid, "/", info.clique_id);
+    }
     auto device = std::make_unique<StreamExecutorGpuDevice>(
         /*id=*/ordinal_and_device.first,
         /*local_device_state=*/std::move(ordinal_and_device.second),
@@ -2197,7 +2201,7 @@ static std::vector<std::unique_ptr<PjRtStreamExecutorDevice>> BuildLocalDevices(
         /*process_index_in_partition=*/0,
         /*partition_index=*/0,
         /*numa_node=*/desc.numa_node(),
-        /*fabric_uuid=*/absl::StrCat(info.cluster_uuid, "/", info.clique_id));
+        /*fabric_uuid=*/std::move(fabric_uuid));
     devices.push_back(std::move(device));
   }
   return devices;
