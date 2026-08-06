@@ -837,7 +837,7 @@ message RunOptions {
   //
   // Example usage in Python:
   //   run_options = tf.compat.v1.RunOptions(timeout_in_ms=5000)
-  //   output = sess.run(fetches, options=run_options)
+  //   output = session.run(fetches, options=run_options)
   int64 timeout_in_ms = 2;
 
   // The thread pool to use, if session_inter_op_thread_pool is configured.
@@ -864,7 +864,7 @@ message RunOptions {
   // Example usage in Python:
   //   run_options = tf.compat.v1.RunOptions(
   //       report_tensor_allocations_upon_oom=True)
-  //   output = sess.run(fetches, options=run_options)
+  //   output = session.run(fetches, options=run_options)
   bool report_tensor_allocations_upon_oom = 7;
 
   // Everything inside Experimental is subject to change and is not subject
