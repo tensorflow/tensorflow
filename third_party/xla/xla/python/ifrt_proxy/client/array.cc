@@ -38,7 +38,6 @@
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/tsl/platform/status_macros.h"
-#include "llvm/Support/Casting.h"
 #include "google/protobuf/repeated_field.h"
 #include "xla/pjrt/pjrt_layout.h"
 #include "xla/python/ifrt/array.h"
@@ -47,6 +46,7 @@
 #include "xla/python/ifrt/dtype.h"
 #include "xla/python/ifrt/layout.h"
 #include "xla/python/ifrt/remap_plan.h"
+#include "xla/python/ifrt/rtti.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
 #include "xla/python/ifrt/value.h"
@@ -451,7 +451,7 @@ absl::StatusOr<xla::ifrt::ArrayRef> Array::AssembleArrayFromSingleDeviceArrays(
       ToSingleDeviceShardSemanticsProto(single_device_shard_semantics));
   dtype.ToProto(*req->mutable_dtype(), rpc_helper->ifrt_serdes_version());
   for (const xla::ifrt::ArrayRef& rcref : arrays) {
-    Array* array = llvm::dyn_cast<Array>(rcref.get());
+    Array* array = dyn_cast<Array>(rcref.get());
     if (array == nullptr) {
       return absl::InvalidArgumentError(absl::Substitute(
           "Array at $0 supplied to AssembleArrayFromSingleDeviceArrays() is "
@@ -470,7 +470,7 @@ absl::StatusOr<xla::ifrt::ArrayRef> Array::AssembleArrayFromSingleDeviceArrays(
 
   // We assume that all shards have the same layout.
   const xla::ifrt::ArrayRef& rcref = arrays[0];
-  Array* array = llvm::cast<Array>(rcref.get());
+  Array* array = cast<Array>(rcref.get());
   ASSIGN_OR_RETURN(std::shared_ptr<const xla::PjRtLayout> layout,
                    array->pjrt_layout());
   return xla::ifrt::ArrayRef(tsl::MakeRef<Array>(
@@ -503,7 +503,7 @@ absl::StatusOr<std::vector<xla::ifrt::ArrayRef>> Array::RemapArrays(
   req->set_copy_semantics(ToArrayCopySemanticsProto(semantics));
   for (int i = 0; i < num_inputs; ++i) {
     const xla::ifrt::ArrayRef& rcref = arrays[i];
-    Array* array = llvm::dyn_cast<Array>(rcref.get());
+    Array* array = dyn_cast<Array>(rcref.get());
     if (array == nullptr) {
       return absl::InvalidArgumentError(
           absl::Substitute("Array at $0 supplied to RemapArrays() is "
@@ -546,7 +546,7 @@ absl::StatusOr<std::vector<xla::ifrt::ArrayRef>> Array::RemapArrays(
   for (const auto& mapping : plan.mappings()) {
     if (output_layouts[mapping.out_array] == nullptr) {
       const xla::ifrt::ArrayRef& rcref = arrays[mapping.in_array];
-      Array* array = llvm::cast<Array>(rcref.get());
+      Array* array = cast<Array>(rcref.get());
       ASSIGN_OR_RETURN(std::shared_ptr<const xla::PjRtLayout> layout,
                        array->pjrt_layout());
       output_layouts[mapping.out_array] = std::move(layout);
@@ -627,8 +627,7 @@ absl::StatusOr<::google::protobuf::RepeatedField<uint64_t>> Array::GetHandles(
   ::google::protobuf::RepeatedField<uint64_t> handles;
   handles.Reserve(arrays.size());
   for (const auto& array : arrays) {
-    if (auto* proxy_array =
-            llvm::dyn_cast<xla::ifrt::proxy::Array>(array.get())) {
+    if (auto* proxy_array = dyn_cast<xla::ifrt::proxy::Array>(array.get())) {
       ASSIGN_OR_RETURN(ArrayHandle handle, proxy_array->GetHandle(semantics));
       handles.Add(handle.handle);
     } else {

@@ -24,7 +24,6 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "xla/tsl/platform/status_macros.h"
 #include "llvm/Support/Casting.h"
-#include "llvm/Support/ExtensibleRTTI.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/DialectRegistry.h"
 #include "mlir/IR/OwningOpRef.h"
@@ -35,6 +34,7 @@ limitations under the License.
 #include "xla/mlir_hlo/mhlo/transforms/passes.h"
 #include "xla/pjrt/mlir_to_hlo.h"
 #include "xla/python/ifrt/hlo/hlo_program.h"
+#include "xla/python/ifrt/rtti.h"
 #include "xla/python/ifrt/serdes.h"
 #include "xla/python/ifrt/serdes_version.h"
 #include "xla/python/ifrt/serdes_week_4_old_version_accessor.h"
@@ -59,7 +59,7 @@ namespace {
 // auto xla_program = llvm::dyn_cast<HloProgram>(deserialized);
 // ```
 
-class HloProgramSerDes : public llvm::RTTIExtends<HloProgramSerDes, SerDes> {
+class HloProgramSerDes : public RTTIExtends<HloProgramSerDes, SerDes> {
  public:
   absl::string_view type_name() const override {
     // TODO(phawkins): whenever we next break compatibility, change this to
@@ -84,7 +84,7 @@ class HloProgramSerDes : public llvm::RTTIExtends<HloProgramSerDes, SerDes> {
     // these dialects don't provide version compatibility, the following
     // converts the module into StableHLO and use its portable serialization.
 
-    const auto& program = llvm::cast<HloProgram>(serializable);
+    const auto& program = cast<HloProgram>(serializable);
     if (program.mlir_module() == nullptr) {
       return absl::InvalidArgumentError("Unable to serialize null MLIR module");
     }

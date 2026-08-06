@@ -25,7 +25,6 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "xla/tsl/platform/status_macros.h"
-#include "llvm/Support/Casting.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/array_spec.h"
 #include "xla/python/ifrt/client.h"
@@ -34,6 +33,7 @@ limitations under the License.
 #include "xla/python/ifrt/dtype.h"
 #include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/remap_plan.h"
+#include "xla/python/ifrt/rtti.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
 #include "xla/python/ifrt/test_util.h"
@@ -155,7 +155,7 @@ void AssertArrayContent(Client* client, Array* array,
   EXPECT_EQ(array->dtype(), expected_dtype);
   EXPECT_EQ(array->shape(), expected_shape);
   const auto* actual_sharding =
-      llvm::dyn_cast<ConcreteEvenSharding>(array->shared_ptr_sharding().get());
+      dyn_cast<ConcreteEvenSharding>(array->shared_ptr_sharding().get());
   ASSERT_NE(actual_sharding, nullptr);
   EXPECT_EQ(actual_sharding->shape(), expected_shape);
   EXPECT_EQ(actual_sharding->shard_shape(), expected_shard_shape);
@@ -168,8 +168,8 @@ void AssertArrayContent(Client* client, Array* array,
   for (int i = 0; i < shards.size(); ++i) {
     EXPECT_EQ(shards[i]->dtype(), expected_dtype);
     EXPECT_EQ(shards[i]->shape(), expected_shard_shape);
-    const auto* actual_shard_sharding = llvm::dyn_cast<SingleDeviceSharding>(
-        shards[i]->shared_ptr_sharding().get());
+    const auto* actual_shard_sharding =
+        dyn_cast<SingleDeviceSharding>(shards[i]->shared_ptr_sharding().get());
     ASSERT_NE(actual_shard_sharding, nullptr);
     Device* expected_device =
         client->addressable_devices().at(device_indices[i]);

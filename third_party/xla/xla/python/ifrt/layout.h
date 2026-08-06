@@ -28,9 +28,9 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "xla/tsl/platform/status_macros.h"
-#include "llvm/Support/ExtensibleRTTI.h"
 #include "xla/python/ifrt/dtype.h"
 #include "xla/python/ifrt/layout.pb.h"
+#include "xla/python/ifrt/rtti.h"
 #include "xla/python/ifrt/serdes.h"
 #include "xla/python/ifrt/serdes_default_version_accessor.h"
 #include "xla/python/ifrt/serdes_version.h"
@@ -66,7 +66,7 @@ using CustomLayoutRef = absl_nonnull std::shared_ptr<const Layout>;
 //
 // Note that within-element layouts such as big/little endian are not expressed
 // through `Layout`. They may be expressed through `DType`.
-class Layout : public llvm::RTTIExtends<Layout, Serializable> {
+class Layout : public RTTIExtends<Layout, Serializable> {
  public:
   Layout(const Layout&) = delete;
   Layout& operator=(const Layout&) = delete;
@@ -132,7 +132,7 @@ class Layout : public llvm::RTTIExtends<Layout, Serializable> {
 // Concrete layout that expresses a compact layout using major-to-minor order of
 // dimensions. There is no padding or gaps between elements. Sub-byte `DType`s
 // such as `DType::kS4` use a packed layout.
-class CompactLayout final : public llvm::RTTIExtends<CompactLayout, Layout> {
+class CompactLayout final : public RTTIExtends<CompactLayout, Layout> {
  public:
   static absl::StatusOr<absl_nonnull std::unique_ptr<CompactLayout>> Create(
       absl::Span<const int> major_to_minor);

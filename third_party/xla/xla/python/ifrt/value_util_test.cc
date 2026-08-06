@@ -23,9 +23,9 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
-#include "llvm/Support/ExtensibleRTTI.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/mock.h"
+#include "xla/python/ifrt/rtti.h"
 #include "xla/python/ifrt/user_context.h"
 #include "xla/python/ifrt/value.h"
 #include "xla/tsl/concurrency/future.h"
@@ -36,7 +36,7 @@ namespace xla {
 namespace ifrt {
 namespace {
 
-class NonArrayValue final : public llvm::RTTIExtends<NonArrayValue, Value> {
+class NonArrayValue final : public RTTIExtends<NonArrayValue, Value> {
  public:
   Client* client() const final { return nullptr; }
   UserContextRef user_context() const final { return UserContextRef(); }

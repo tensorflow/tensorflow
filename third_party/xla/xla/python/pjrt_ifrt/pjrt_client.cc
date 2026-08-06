@@ -46,7 +46,6 @@ limitations under the License.
 #include "absl/time/time.h"
 #include "absl/types/span.h"
 #include "xla/tsl/platform/status_macros.h"
-#include "llvm/Support/Casting.h"
 #include "xla/future.h"
 #include "xla/layout.h"
 #include "xla/layout_util.h"
@@ -78,6 +77,7 @@ limitations under the License.
 #include "xla/python/ifrt/layout.h"
 #include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/remap_plan.h"
+#include "xla/python/ifrt/rtti.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
 #include "xla/python/ifrt/topology.h"
@@ -722,7 +722,7 @@ absl::StatusOr<ArrayRef> AssembleStringArrayFromSingleDeviceStringArrays(
   };
 
   for (int i = 0; i < arrays.size(); ++i) {
-    auto basic_string_array = llvm::dyn_cast<BasicStringArray>(arrays[i].get());
+    auto basic_string_array = dyn_cast<BasicStringArray>(arrays[i].get());
     if (!basic_string_array) {
       return absl::InvalidArgumentError(
           "All single device arrays must be BasicStringArrays");
@@ -757,7 +757,7 @@ CopyPjRtBuffersToLocalDevice(int index, absl::Span<ArrayRef> arrays,
   std::vector<std::shared_ptr<PjRtBuffer>> buffers;
   buffers.reserve(arrays.size());
   for (ArrayRef& array : arrays) {
-    if (auto* const pjrt_array = llvm::dyn_cast<PjRtArray>(array.get());
+    if (auto* const pjrt_array = dyn_cast<PjRtArray>(array.get());
         pjrt_array != nullptr) {
       ASSIGN_OR_RETURN(std::shared_ptr<PjRtBuffer> buffer,
                        pjrt_array->CopySinglePjRtBuffer(
@@ -1050,7 +1050,7 @@ absl::StatusOr<ArrayRef> PjRtClient::MakeArrayFromHostBuffer(
                                          sharding, semantics,
                                          on_done_with_host_buffer);
   }
-  if (!llvm::isa<const SingleDeviceSharding>(sharding.get()) &&
+  if (!isa<const SingleDeviceSharding>(sharding.get()) &&
       !sharding->IsFullyReplicated()) {
     return InvalidArgument(
         "Only SingleDeviceSharding or fully-replicated sharding is supported: "
@@ -1216,8 +1216,7 @@ absl::StatusOr<ArrayRef> PjRtClient::AssembleArrayFromSingleDeviceArrays(
     ArrayCopySemantics array_copy_semantics,
     SingleDeviceShardSemantics single_device_shard_semantics) {
   DCHECK(this);
-  if (!arrays.empty() &&
-      llvm::isa<const SingleDeviceSharding>(sharding.get())) {
+  if (!arrays.empty() && isa<const SingleDeviceSharding>(sharding.get())) {
     // Assemble with SingleDeviceSharding is No-op.
     if (arrays.size() != 1) {
       return InvalidArgument(
@@ -1226,9 +1225,9 @@ absl::StatusOr<ArrayRef> PjRtClient::AssembleArrayFromSingleDeviceArrays(
           arrays.size());
     }
     return arrays[0];
-  } else if (!llvm::isa<const SingleDeviceSharding, const OpaqueSharding,
-                        const ConcreteSharding, const ConcreteEvenSharding,
-                        const ShardingParamSharding, const HloSharding>(
+  } else if (!isa<const SingleDeviceSharding, const OpaqueSharding,
+                  const ConcreteSharding, const ConcreteEvenSharding,
+                  const ShardingParamSharding, const HloSharding>(
                  sharding.get())) {
     return InvalidArgument(
         "Only SingleDeviceSharding, OpaqueSharding, ConcreteSharding, "
@@ -1257,7 +1256,7 @@ absl::StatusOr<ArrayRef> PjRtClient::AssembleArrayFromSingleDeviceArrays(
   PjRtArray::PjRtBuffers buffers;
   buffers.reserve(arrays.size());
   for (int i = 0; i < arrays.size(); ++i) {
-    if (!llvm::isa<PjRtCompatibleArray>(arrays[i].get())) {
+    if (!isa<PjRtCompatibleArray>(arrays[i].get())) {
       return InvalidArgument(
           "Only PjRtCompatibleArray is supported: arrays[%d]=%s", i,
           arrays[i]->DebugString());
@@ -1341,11 +1340,11 @@ absl::StatusOr<std::vector<ArrayRef>> PjRtClient::CopyArrays(
     std::vector<ArrayRef> new_arrays;
     new_arrays.reserve(arrays.size());
     for (const ArrayRef& array : arrays) {
-      if (auto* const pjrt_array = llvm::dyn_cast<PjRtArray>(array.get())) {
+      if (auto* const pjrt_array = dyn_cast<PjRtArray>(array.get())) {
         ASSIGN_OR_RETURN(new_arrays.emplace_back(),
                          pjrt_array->Copy(devices, memory_kind, semantics));
       } else if (auto* const string_array =
-                     llvm::dyn_cast<BasicStringArray>(array.get())) {
+                     dyn_cast<BasicStringArray>(array.get())) {
         ASSIGN_OR_RETURN(new_arrays.emplace_back(),
                          string_array->Copy(devices, memory_kind, semantics));
       } else {
@@ -1404,7 +1403,7 @@ PjRtClient::CopyArraysForCrossHost(absl::Span<ArrayRef> arrays,
       std::vector<PjRtBuffer*> send_buffers;
       send_buffers.reserve(arrays.size());
       for (ArrayRef& array : arrays) {
-        if (auto* const pjrt_array = llvm::dyn_cast<PjRtArray>(array.get())) {
+        if (auto* const pjrt_array = dyn_cast<PjRtArray>(array.get())) {
           auto buffers = pjrt_array->pjrt_buffers();
           send_buffers.push_back(buffers[j].get());
         } else {
@@ -1453,7 +1452,7 @@ PjRtClient::CopyArraysForCrossHost(absl::Span<ArrayRef> arrays,
       std::vector<xla::Shape> recv_shapes;
       recv_shapes.reserve(arrays.size());
       for (const ArrayRef& array : arrays) {
-        if (auto* const pjrt_array = llvm::dyn_cast<PjRtArray>(array.get())) {
+        if (auto* const pjrt_array = dyn_cast<PjRtArray>(array.get())) {
           ASSIGN_OR_RETURN(xla::PrimitiveType dtype,
                            ToPrimitiveType(pjrt_array->dtype()));
           ASSIGN_OR_RETURN(
@@ -1774,7 +1773,7 @@ absl::StatusOr<std::vector<xla::ifrt::ArrayRef>> PjRtClient::BitcastArrays(
   std::vector<ArrayRef> new_arrays;
   new_arrays.reserve(arrays.size());
   for (int i = 0; i < arrays.size(); ++i) {
-    auto* pjrt_array = llvm::dyn_cast<PjRtArray>(arrays[i].get());
+    auto* pjrt_array = dyn_cast<PjRtArray>(arrays[i].get());
     if (pjrt_array == nullptr) {
       return absl::InvalidArgumentError(
           absl::StrFormat("Array %d is not a PjRtArray", i));
@@ -1821,7 +1820,7 @@ tsl::Future<std::vector<uint64_t>> PjRtClient::HashValues(
   }
   int total_num_buffers = 0;
   for (int i = 0; i < values.size(); ++i) {
-    auto* pjrt_array = llvm::dyn_cast<PjRtCompatibleArray>(values[i].get());
+    auto* pjrt_array = dyn_cast<PjRtCompatibleArray>(values[i].get());
     if (pjrt_array == nullptr) {
       return absl::UnimplementedError(
           "PjRtClient::HashValues requires PjRtCompatibleArray");
@@ -1847,7 +1846,7 @@ tsl::Future<std::vector<uint64_t>> PjRtClient::HashValues(
 
   for (int i = 0; i < values.size(); ++i) {
     // We have verified that all values are `PjRtCompatibleArray`.
-    auto* pjrt_array = llvm::cast<PjRtCompatibleArray>(values[i].get());
+    auto* pjrt_array = cast<PjRtCompatibleArray>(values[i].get());
 
     ASSIGN_OR_RETURN(
         std::vector<IndexDomain> index_domains,

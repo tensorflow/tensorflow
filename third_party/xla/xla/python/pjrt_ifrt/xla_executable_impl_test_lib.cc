@@ -30,7 +30,6 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/tsl/platform/status_macros.h"
-#include "llvm/Support/Casting.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/OwningOpRef.h"
@@ -49,6 +48,7 @@ limitations under the License.
 #include "xla/python/ifrt/hlo/hlo_program.h"
 #include "xla/python/ifrt/layout.h"
 #include "xla/python/ifrt/memory.h"
+#include "xla/python/ifrt/rtti.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
 #include "xla/python/ifrt/test_util.h"
@@ -475,7 +475,7 @@ TEST_P(LoadedExecutableImplTest,
   ASSERT_THAT(retrieved_outputs, SizeIs(3));
 
   for (int i = 0; i < 3; ++i) {
-    auto* out_array = llvm::dyn_cast<Array>(retrieved_outputs[i].get());
+    auto* out_array = dyn_cast<Array>(retrieved_outputs[i].get());
     ASSERT_NE(out_array, nullptr);
 
     std::vector<float> out_data(6);
@@ -573,7 +573,7 @@ TEST_P(LoadedExecutableImplTest,
   all_outputs.push_back(retrieved_outputs1[0]);
 
   for (int i = 0; i < 3; ++i) {
-    auto* out_array = llvm::dyn_cast<Array>(all_outputs[i].get());
+    auto* out_array = dyn_cast<Array>(all_outputs[i].get());
     ASSERT_NE(out_array, nullptr);
 
     std::vector<float> out_data(6);

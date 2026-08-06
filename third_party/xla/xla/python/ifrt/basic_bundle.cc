@@ -29,13 +29,13 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/tsl/platform/status_macros.h"
-#include "llvm/Support/Casting.h"
 #include "xla/pjrt/pjrt_layout.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/array_spec.h"
 #include "xla/python/ifrt/bundle.h"
 #include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/device.h"
+#include "xla/python/ifrt/rtti.h"
 #include "xla/python/ifrt/user_context.h"
 #include "xla/python/ifrt/value.h"
 #include "xla/python/ifrt/value_util.h"
@@ -113,7 +113,7 @@ absl::StatusOr<BundleRef> BasicBundle::ConcatBundles(
   Client* const client = bundles.front()->client();
   int total_size = 0;
   for (const BundleRef& bundle : bundles) {
-    auto* basic_bundle = llvm::dyn_cast_or_null<BasicBundle>(bundle.get());
+    auto* basic_bundle = dyn_cast_or_null<BasicBundle>(bundle.get());
     if (basic_bundle == nullptr) {
       return absl::InvalidArgumentError(
           "`Bundle::ConcatBundles()` expects `BasicBundle`s");
@@ -126,7 +126,7 @@ absl::StatusOr<BundleRef> BasicBundle::ConcatBundles(
   std::vector<ValueRef> new_values;
   new_values.reserve(total_size);
   for (const BundleRef& bundle : bundles) {
-    absl::c_copy(llvm::cast<BasicBundle>(bundle.get())->values_,
+    absl::c_copy(cast<BasicBundle>(bundle.get())->values_,
                  std::back_inserter(new_values));
   }
   return tsl::TakeRef<BasicBundle>(
@@ -191,7 +191,7 @@ absl::StatusOr<absl::Span<const ArraySpec>> BasicBundle::GetArraySpecs() const {
       std::vector<ArraySpec> array_specs;
       array_specs.reserve(values_.size());
       for (const ValueRef& value : values_) {
-        if (auto* array = llvm::dyn_cast_or_null<Array>(value.get())) {
+        if (auto* array = dyn_cast_or_null<Array>(value.get())) {
           ASSIGN_OR_RETURN(std::shared_ptr<const xla::PjRtLayout> layout,
                            array->pjrt_layout());
           array_specs.push_back(ArraySpec{
@@ -245,7 +245,7 @@ absl::StatusOr<BundleRef> BasicBundle::CopyArrays(
     std::vector<ArrayRef> arrays;
     arrays.reserve(slice_sizes[i]);
     for (int j = 0; j < slice_sizes[i]; ++j) {
-      if (auto* array = llvm::dyn_cast_or_null<Array>(values_[offset].get())) {
+      if (auto* array = dyn_cast_or_null<Array>(values_[offset].get())) {
         arrays.push_back(tsl::FormRef(array));
       } else {
         return absl::InvalidArgumentError(
@@ -284,7 +284,7 @@ absl::StatusOr<BundleRef> BasicBundle::ReshardArrays(
   std::vector<ArrayRef> arrays;
   arrays.reserve(values_.size());
   for (const ValueRef& value : values_) {
-    if (auto* array = llvm::dyn_cast_or_null<Array>(value.get())) {
+    if (auto* array = dyn_cast_or_null<Array>(value.get())) {
       arrays.push_back(tsl::FormRef(array));
     } else {
       return absl::InvalidArgumentError(

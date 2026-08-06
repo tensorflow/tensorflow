@@ -28,12 +28,12 @@ limitations under the License.
 #include "absl/hash/hash.h"
 #include "absl/log/check.h"
 #include "xla/tsl/platform/status_macros.h"
-#include "llvm/Support/ExtensibleRTTI.h"
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/index_domain.h"
 #include "xla/python/ifrt/ir/sharding_param.h"
 #include "xla/python/ifrt/memory.h"
+#include "xla/python/ifrt/rtti.h"
 #include "xla/python/ifrt/serdes.h"
 #include "xla/python/ifrt/serdes_default_version_accessor.h"
 #include "xla/python/ifrt/serdes_version.h"
@@ -83,7 +83,7 @@ enum class SingleDeviceShardSemantics : int {
 // common that an operation preserves the logical partitioning and only updates
 // devices (e.g., "copy to devices" and portable execution). This fine-grained
 // sharding design may help reduce overhead around these operations.
-class Sharding : public llvm::RTTIExtends<Sharding, Serializable> {
+class Sharding : public RTTIExtends<Sharding, Serializable> {
  public:
   using DeserializeOptions = DeserializeShardingOptions;
 
@@ -221,7 +221,7 @@ std::ostream& operator<<(std::ostream& os, const Sharding& sharding);
 // large quantity. It may be useful for performance optimization to special-case
 // this sharding type rather than expressing it as a general `Sharding`.
 class SingleDeviceSharding final
-    : public llvm::RTTIExtends<SingleDeviceSharding, Sharding> {
+    : public RTTIExtends<SingleDeviceSharding, Sharding> {
  public:
   // Creates a single-device sharding.
   static std::unique_ptr<SingleDeviceSharding> Create(Device* device,
@@ -268,7 +268,7 @@ class SingleDeviceSharding final
 
 // Opaque sharding that does not define a fixed semantics for conversion between
 // a logical shape and per-device shapes, and device placements.
-class OpaqueSharding : public llvm::RTTIExtends<OpaqueSharding, Sharding> {
+class OpaqueSharding : public RTTIExtends<OpaqueSharding, Sharding> {
  public:
   // Creates an opaque sharding. `Disassemble()` will fail.
   // REQUIRES: !devices.empty()
@@ -317,7 +317,7 @@ class OpaqueSharding : public llvm::RTTIExtends<OpaqueSharding, Sharding> {
 // a logical shape and shard shapes, and device placements. It can disassemble a
 // certain shape into shard shapes that may not be identical. It is advised to
 // use `ConcreteEvenSharding` if all shard shapes are identical.
-class ConcreteSharding : public llvm::RTTIExtends<ConcreteSharding, Sharding> {
+class ConcreteSharding : public RTTIExtends<ConcreteSharding, Sharding> {
  public:
   // Creates a concrete sharding that may contain non-identical shard shapes.
   // REQUIRES: devices->AddressableDeviceList()->size() == shard_shapes.size()
@@ -430,7 +430,7 @@ class ConcreteSharding : public llvm::RTTIExtends<ConcreteSharding, Sharding> {
 // a logical shape and shard shapes, and device placements. It can disassemble a
 // certain shape into shard shapes that are identical.
 class ConcreteEvenSharding
-    : public llvm::RTTIExtends<ConcreteEvenSharding, Sharding> {
+    : public RTTIExtends<ConcreteEvenSharding, Sharding> {
  public:
   // Creates a concrete even sharding.
   // TODO(hyeontaek): Remove the default value of `is_fully_replicated` once all
@@ -494,7 +494,7 @@ class ConcreteEvenSharding
 
 // Sharding derived from an IR ShardingParam.
 class ShardingParamSharding
-    : public llvm::RTTIExtends<ShardingParamSharding, Sharding> {
+    : public RTTIExtends<ShardingParamSharding, Sharding> {
  public:
   // REQUIRES: !devices.empty()
   static absl::StatusOr<std::unique_ptr<ShardingParamSharding>> Create(
@@ -543,7 +543,7 @@ class ShardingParamSharding
 // Options for deserializing shardings. Function referenced by `lookup_device`
 // must remain valid during deserialization.
 struct DeserializeShardingOptions
-    : llvm::RTTIExtends<DeserializeShardingOptions, DeserializeOptions> {
+    : RTTIExtends<DeserializeShardingOptions, DeserializeOptions> {
   explicit DeserializeShardingOptions(Client* client) : client(client) {}
 
   static char ID;  // NOLINT

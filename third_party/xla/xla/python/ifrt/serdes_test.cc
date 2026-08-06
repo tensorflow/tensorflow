@@ -29,8 +29,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "xla/tsl/platform/status_macros.h"
-#include "llvm/Support/Casting.h"
-#include "llvm/Support/ExtensibleRTTI.h"
+#include "xla/python/ifrt/rtti.h"
 #include "xla/python/ifrt/serdes.pb.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
@@ -42,7 +41,7 @@ namespace {
 struct TestNumberSerializeOptions;
 struct TestNumberDeserializeOptions;
 
-struct TestNumber : llvm::RTTIExtends<TestNumber, Serializable> {
+struct TestNumber : RTTIExtends<TestNumber, Serializable> {
   using SerializeOptions = TestNumberSerializeOptions;
   using DeserializeOptions = TestNumberDeserializeOptions;
 
@@ -56,7 +55,7 @@ struct TestNumber : llvm::RTTIExtends<TestNumber, Serializable> {
 [[maybe_unused]] char TestNumber::ID = 0;  // NOLINT
 
 struct TestNumberSerializeOptions
-    : llvm::RTTIExtends<TestNumberSerializeOptions, SerializeOptions> {
+    : RTTIExtends<TestNumberSerializeOptions, SerializeOptions> {
   absl::Status injected_failure;
 
   static char ID;  // NOLINT
@@ -65,7 +64,7 @@ struct TestNumberSerializeOptions
 [[maybe_unused]] char TestNumberSerializeOptions::ID = 0;  // NOLINT
 
 struct TestNumberDeserializeOptions
-    : llvm::RTTIExtends<TestNumberDeserializeOptions, DeserializeOptions> {
+    : RTTIExtends<TestNumberDeserializeOptions, DeserializeOptions> {
   absl::Status injected_failure;
 
   static char ID;  // NOLINT
@@ -73,7 +72,7 @@ struct TestNumberDeserializeOptions
 
 [[maybe_unused]] char TestNumberDeserializeOptions::ID = 0;  // NOLINT
 
-class TestNumberSerDes : public llvm::RTTIExtends<TestNumberSerDes, SerDes> {
+class TestNumberSerDes : public RTTIExtends<TestNumberSerDes, SerDes> {
  public:
   absl::string_view type_name() const override {
     return "xla::ifrt::TestNumber";
@@ -83,11 +82,10 @@ class TestNumberSerDes : public llvm::RTTIExtends<TestNumberSerDes, SerDes> {
       const Serializable& serializable,
       std::unique_ptr<SerializeOptions> options) override {
     if (options != nullptr) {
-      auto* serialize_options =
-          llvm::cast<TestNumberSerializeOptions>(options.get());
+      auto* serialize_options = cast<TestNumberSerializeOptions>(options.get());
       RETURN_IF_ERROR(serialize_options->injected_failure);
     }
-    const TestNumber& obj = llvm::cast<TestNumber>(serializable);
+    const TestNumber& obj = cast<TestNumber>(serializable);
     return absl::Cord(absl::StrCat(obj.number));
   }
 
@@ -96,7 +94,7 @@ class TestNumberSerDes : public llvm::RTTIExtends<TestNumberSerDes, SerDes> {
       std::unique_ptr<DeserializeOptions> options) override {
     if (options != nullptr) {
       auto* deserialize_options =
-          llvm::cast<TestNumberDeserializeOptions>(options.get());
+          cast<TestNumberDeserializeOptions>(options.get());
       RETURN_IF_ERROR(deserialize_options->injected_failure);
     }
 

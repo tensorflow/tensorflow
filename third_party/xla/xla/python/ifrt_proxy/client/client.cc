@@ -36,7 +36,6 @@
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/tsl/platform/status_macros.h"
-#include "llvm/Support/Casting.h"
 #include "xla/pjrt/host_memory_spaces.h"
 #include "xla/pjrt/pjrt_device_description.h"
 #include "xla/pjrt/pjrt_layout.h"
@@ -52,6 +51,7 @@
 #include "xla/python/ifrt/layout.h"
 #include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/remap_plan.h"
+#include "xla/python/ifrt/rtti.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
 #include "xla/python/ifrt/value.h"
@@ -282,7 +282,7 @@ absl::StatusOr<std::vector<xla::ifrt::ArrayRef>> Client::CopyArrays(
   }
 
   for (const auto& array : arrays) {
-    if (!llvm::isa<xla::ifrt::proxy::Array>(array.get())) {
+    if (!isa<xla::ifrt::proxy::Array>(array.get())) {
       return absl::InvalidArgumentError(
           "CopyArrays only supports source arrays "
           "that are instances of xla::ifrt::proxy::Array");
@@ -290,7 +290,7 @@ absl::StatusOr<std::vector<xla::ifrt::ArrayRef>> Client::CopyArrays(
   }
 
   if (devices.has_value() && !(*devices)->empty()) {
-    if (!llvm::isa<xla::ifrt::proxy::Device>((*devices)->devices().front())) {
+    if (!isa<xla::ifrt::proxy::Device>((*devices)->devices().front())) {
       return absl::InvalidArgumentError(
           "CopyArrays only supports devices that are instances of "
           "xla::ifrt::proxy::Device");
@@ -329,7 +329,7 @@ absl::StatusOr<std::vector<xla::ifrt::ArrayRef>> Client::CopyArrays(
     ASSIGN_OR_RETURN(
         auto new_sharding,
         arrays[i]->sharding().WithDeviceAssignment(devices, memory_kind));
-    auto* proxy_array = llvm::cast<xla::ifrt::proxy::Array>(arrays[i].get());
+    auto* proxy_array = cast<xla::ifrt::proxy::Array>(arrays[i].get());
     CHECK(proxy_array != nullptr);
     std::shared_ptr<const xla::PjRtLayout> layout;
     bool force_default_layout = false;
@@ -423,8 +423,7 @@ tsl::Future<> Client::GetReadyFuture(
   for (const auto& value : values) {
     // TODO(b/261991179): IFRT Proxy currently supports Arrays as the only value
     // type, but this may be extended later to other types such as Tuples.
-    if (auto proxy_array =
-            llvm::dyn_cast<xla::ifrt::proxy::Array>(value.get())) {
+    if (auto proxy_array = dyn_cast<xla::ifrt::proxy::Array>(value.get())) {
       absl::StatusOr<ArrayHandle> handle =
           proxy_array->GetHandle(ArrayCopySemantics::kAlwaysCopy);
       if (!handle.ok()) {
@@ -491,11 +490,10 @@ Client::GetDefaultPjRtLayout(xla::ifrt::DType dtype,
       "IfrtProxyEntrypointGetDefaultLayout");
   auto req = std::make_unique<GetDefaultLayoutRequest>();
 
-  LayoutKey key{
-      /*dtype=*/dtype,
-      /*dims=*/std::vector<int64_t>(dims.begin(), dims.end()),
-      /*memory_kind=*/memory_kind,
-      /*device_summary=*/device_summary(llvm::dyn_cast<Device>(device))};
+  LayoutKey key{/*dtype=*/dtype,
+                /*dims=*/std::vector<int64_t>(dims.begin(), dims.end()),
+                /*memory_kind=*/memory_kind,
+                /*device_summary=*/device_summary(dyn_cast<Device>(device))};
 
   {
     absl::MutexLock l(mu_);

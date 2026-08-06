@@ -35,7 +35,6 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/tsl/platform/status_macros.h"
 #include "llvm/ADT/STLExtras.h"
-#include "llvm/Support/Casting.h"
 #include "mlir/IR/OperationSupport.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/pjrt/compiled_memory_stats.h"
@@ -55,6 +54,7 @@ limitations under the License.
 #include "xla/python/ifrt/ir/utils.h"
 #include "xla/python/ifrt/ir/version.h"
 #include "xla/python/ifrt/memory.h"
+#include "xla/python/ifrt/rtti.h"
 #include "xla/python/ifrt/user_context.h"
 #include "xla/python/pjrt_ifrt/xla_sharding.h"
 #include "xla/util.h"
@@ -216,8 +216,8 @@ IfrtIrLoadedExecutable::GetParameterShardings() const {
       []() { return "IfrtIrLoadedExecutable::GetParameterShardings"; });
   std::vector<xla::OpSharding> parameter_shardings;
   for (const auto& [idx, spec] : llvm::enumerate(program_->in_specs)) {
-    if (auto hlo_sharding = llvm::dyn_cast_or_null<xla::ifrt::HloSharding>(
-            spec.sharding.get())) {
+    if (auto hlo_sharding =
+            dyn_cast_or_null<xla::ifrt::HloSharding>(spec.sharding.get())) {
       parameter_shardings.push_back(hlo_sharding->xla_hlo_sharding().ToProto());
     } else {
       LOG(ERROR) << "Failed to get sharding of parameter #" << idx
@@ -235,8 +235,8 @@ IfrtIrLoadedExecutable::GetOutputShardings() const {
       []() { return "IfrtIrLoadedExecutable::GetOutputShardings"; });
   std::vector<xla::OpSharding> output_shardings;
   for (const auto& [idx, spec] : llvm::enumerate(program_->out_specs)) {
-    if (auto hlo_sharding = llvm::dyn_cast_or_null<xla::ifrt::HloSharding>(
-            spec.sharding.get())) {
+    if (auto hlo_sharding =
+            dyn_cast_or_null<xla::ifrt::HloSharding>(spec.sharding.get())) {
       output_shardings.push_back(hlo_sharding->xla_hlo_sharding().ToProto());
     } else {
       LOG(ERROR) << "Failed to get sharding of output #" << idx

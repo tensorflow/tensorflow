@@ -24,8 +24,8 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "xla/tsl/platform/status_macros.h"
-#include "llvm/Support/Casting.h"
 #include "xla/python/ifrt/executable.h"
+#include "xla/python/ifrt/rtti.h"
 #include "xla/python/ifrt/serdes.h"
 #include "xla/python/ifrt/serdes.pb.h"
 #include "xla/python/ifrt/serdes_version.h"
@@ -49,7 +49,7 @@ absl::Status XlaExecutableVersion::IsCompatibleWith(
     return absl::OkStatus();
   }
   if (auto* other_xla_executable_version =
-          llvm::dyn_cast<XlaExecutableVersion>(&other)) {
+          dyn_cast<XlaExecutableVersion>(&other)) {
     if (platform_id != other_xla_executable_version->platform_id) {
       return absl::InvalidArgumentError(
           "Executable version is not compatible with current version");
@@ -126,7 +126,7 @@ ToXlaExecutableVersion(
   if (!executable_version) {
     return absl::InvalidArgumentError("executable_version is null");
   }
-  if (llvm::isa_and_nonnull<XlaExecutableVersion>(executable_version.get())) {
+  if (isa_and_nonnull<XlaExecutableVersion>(executable_version.get())) {
     return std::static_pointer_cast<const XlaExecutableVersion>(
         executable_version);
   }

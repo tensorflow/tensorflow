@@ -31,14 +31,13 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/types/span.h"
 #include "xla/tsl/platform/status_macros.h"
-#include "llvm/Support/Casting.h"
-#include "llvm/Support/ExtensibleRTTI.h"
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/index.h"
 #include "xla/python/ifrt/index_domain.h"
 #include "xla/python/ifrt/memory.h"
+#include "xla/python/ifrt/rtti.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
 #include "xla/python/ifrt/sharding_spec.h"
@@ -114,7 +113,7 @@ std::unique_ptr<HloSharding> HloSharding::Create(
 
 HloSharding::HloSharding(DeviceListRef devices, MemoryKind memory_kind,
                          xla::HloSharding xla_hlo_sharding)
-    : llvm::RTTIExtends<HloSharding, XlaCompatibleSharding>(
+    : RTTIExtends<HloSharding, XlaCompatibleSharding>(
           std::move(devices), memory_kind,
           // Computed in the constructor because it needs to access `devices` or
           // `devices_`; this access would be unsafe unless `device` is not
@@ -166,7 +165,7 @@ bool HloSharding::HasSamePartitioning(const Sharding& other) const {
   if (devices()->size() != other.devices()->size()) {
     return false;
   }
-  const auto* other_hlo_sharding = llvm::dyn_cast<HloSharding>(&other);
+  const auto* other_hlo_sharding = dyn_cast<HloSharding>(&other);
   if (!other_hlo_sharding) {
     return false;
   }

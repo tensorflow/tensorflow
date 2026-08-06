@@ -24,12 +24,12 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "xla/tsl/platform/status_macros.h"
-#include "llvm/Support/Casting.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_layout.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/dtype.h"
 #include "xla/python/ifrt/remap_plan.h"
+#include "xla/python/ifrt/rtti.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/pjrt_ifrt/pjrt_array.h"
 #include "xla/tsl/concurrency/ref_count.h"
@@ -55,7 +55,7 @@ PjRtCompatibleClientRemapArrays(PjRtCompatibleClient* client,
                            num_inputs, num_actual_inputs);
   }
   for (int i = 0; i < num_inputs; ++i) {
-    if (!llvm::isa<PjRtCompatibleArray>(arrays[i].get())) {
+    if (!isa<PjRtCompatibleArray>(arrays[i].get())) {
       return InvalidArgument(
           "Only PjRtCompatibleArray is supported, but input#%d is %s", i,
           arrays[i]->DebugString());

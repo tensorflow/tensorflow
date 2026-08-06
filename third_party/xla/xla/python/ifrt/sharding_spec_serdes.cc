@@ -23,9 +23,8 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "xla/tsl/platform/status_macros.h"
-#include "llvm/Support/Casting.h"
-#include "llvm/Support/ExtensibleRTTI.h"
 #include "xla/python/ifrt/ir/sharding_param.h"
+#include "xla/python/ifrt/rtti.h"
 #include "xla/python/ifrt/serdes.h"
 #include "xla/python/ifrt/serdes_version.h"
 #include "xla/python/ifrt/shape.h"
@@ -41,7 +40,7 @@ namespace {
 
 // Serialization/deserialization for `SingleDeviceShardingSpec`.
 class SingleDeviceShardingSpecSerDes
-    : public llvm::RTTIExtends<SingleDeviceShardingSpecSerDes, SerDes> {
+    : public RTTIExtends<SingleDeviceShardingSpecSerDes, SerDes> {
  public:
   absl::string_view type_name() const override {
     return "xla::ifrt::SingleDeviceShardingSpec";
@@ -83,7 +82,7 @@ class SingleDeviceShardingSpecSerDes
 
 // Serialization/deserialization for `OpaqueShardingSpec`.
 class OpaqueShardingSpecSerDes
-    : public llvm::RTTIExtends<OpaqueShardingSpecSerDes, SerDes> {
+    : public RTTIExtends<OpaqueShardingSpecSerDes, SerDes> {
  public:
   absl::string_view type_name() const override {
     return "xla::ifrt::OpaqueShardingSpec";
@@ -99,7 +98,7 @@ class OpaqueShardingSpecSerDes
                        " for OpaqueShardingSpec serialization"));
     }
     const OpaqueShardingSpec& sharding_spec =
-        llvm::cast<OpaqueShardingSpec>(serializable);
+        cast<OpaqueShardingSpec>(serializable);
     OpaqueShardingSpecProto proto;
     proto.set_version_number(SerDesVersionNumber(0).value());
     proto.set_num_shards(sharding_spec.num_shards());
@@ -128,7 +127,7 @@ class OpaqueShardingSpecSerDes
 
 // Serialization/deserialization for `ConcreteShardingSpec`.
 class ConcreteShardingSpecSerDes
-    : public llvm::RTTIExtends<ConcreteShardingSpecSerDes, SerDes> {
+    : public RTTIExtends<ConcreteShardingSpecSerDes, SerDes> {
  public:
   absl::string_view type_name() const override {
     return "xla::ifrt::ConcreteShardingSpec";
@@ -144,7 +143,7 @@ class ConcreteShardingSpecSerDes
                        " for ConcreteShardingSpec serialization"));
     }
     const ConcreteShardingSpec& sharding_spec =
-        llvm::cast<ConcreteShardingSpec>(serializable);
+        cast<ConcreteShardingSpec>(serializable);
     if (sharding_spec.index_domains().has_value()) {
       return absl::UnimplementedError(
           "Index domains are not yet supported in ConcreteShardingSpec "
@@ -215,7 +214,7 @@ class ConcreteShardingSpecSerDes
 
 // Serialization/deserialization for `ConcreteEvenShardingSpec`.
 class ConcreteEvenShardingSpecSerDes
-    : public llvm::RTTIExtends<ConcreteEvenShardingSpecSerDes, SerDes> {
+    : public RTTIExtends<ConcreteEvenShardingSpecSerDes, SerDes> {
  public:
   absl::string_view type_name() const override {
     return "xla::ifrt::ConcreteEvenShardingSpec";
@@ -231,7 +230,7 @@ class ConcreteEvenShardingSpecSerDes
                        " for ConcreteEvenShardingSpec serialization"));
     }
     const ConcreteEvenShardingSpec& sharding_spec =
-        llvm::cast<ConcreteEvenShardingSpec>(serializable);
+        cast<ConcreteEvenShardingSpec>(serializable);
     ConcreteEvenShardingSpecProto proto;
     proto.set_version_number(SerDesVersionNumber(0).value());
     proto.set_num_shards(sharding_spec.num_shards());
@@ -266,7 +265,7 @@ class ConcreteEvenShardingSpecSerDes
 };
 
 class ShardingParamShardingSpecSerDes
-    : public llvm::RTTIExtends<ShardingParamShardingSpecSerDes, SerDes> {
+    : public RTTIExtends<ShardingParamShardingSpecSerDes, SerDes> {
  public:
   absl::string_view type_name() const override {
     return "xla::ifrt::ShardingParamShardingSpec";
@@ -282,7 +281,7 @@ class ShardingParamShardingSpecSerDes
                        " for ShardingParamShardingSpec serialization"));
     }
     const ShardingParamShardingSpec& sharding_spec =
-        llvm::cast<ShardingParamShardingSpec>(serializable);
+        cast<ShardingParamShardingSpec>(serializable);
     ShardingParamShardingSpecProto proto;
     proto.set_version_number(SerDesVersionNumber(0).value());
     RETURN_IF_ERROR(sharding_spec.sharding_param().ToProto(

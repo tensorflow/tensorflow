@@ -27,7 +27,6 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
 #include "xla/tsl/platform/status_macros.h"
-#include "llvm/Support/Casting.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/array_spec.h"
 #include "xla/python/ifrt/bundle.h"
@@ -35,6 +34,7 @@ limitations under the License.
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/executable.h"
 #include "xla/python/ifrt/layout.h"
+#include "xla/python/ifrt/rtti.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
 #include "xla/python/ifrt/value.h"
@@ -233,7 +233,7 @@ LoadedExecutableExecuteBundle(
     ASSIGN_OR_RETURN(std::vector<ValueRef> values,
                      bundle->GetValues(ArrayCopySemantics::kReuseInput));
     for (const ValueRef& value : values) {
-      if (auto* array = llvm::dyn_cast<Array>(value.get())) {
+      if (auto* array = dyn_cast<Array>(value.get())) {
         arg_arrays.push_back(tsl::FormRef(array));
       } else {
         return absl::InvalidArgumentError(

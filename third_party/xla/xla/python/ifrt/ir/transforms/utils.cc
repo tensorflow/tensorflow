@@ -65,6 +65,7 @@ limitations under the License.
 #include "xla/python/ifrt/ir/ifrt_ops.h"
 #include "xla/python/ifrt/ir/support/module_parsing.h"
 #include "xla/python/ifrt/ir/support/sharding_conversions.h"
+#include "xla/python/ifrt/rtti.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
 #include "xla/python/pjrt_ifrt/pjrt_dtype.h"
@@ -353,8 +354,8 @@ absl::StatusOr<std::optional<xla::CompileOptions>> GetModuleXlaCompileOverrides(
     if (auto option_override =
             compile_options_overrides->find(compile_options_key.str());
         option_override != compile_options_overrides->end()) {
-      if (auto xla_options = llvm::dyn_cast<XlaCompileOptions>(
-              option_override->second.get())) {
+      if (auto xla_options =
+              dyn_cast<XlaCompileOptions>(option_override->second.get())) {
         compile_options = xla_options->compile_options;
       } else {
         return absl::InvalidArgumentError(absl::StrCat(

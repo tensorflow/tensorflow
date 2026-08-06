@@ -23,14 +23,13 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "xla/tsl/platform/status_macros.h"
-#include "llvm/Support/Casting.h"
-#include "llvm/Support/ExtensibleRTTI.h"
 #include "xla/python/ifrt/array_spec.h"
 #include "xla/python/ifrt/array_spec.pb.h"
 #include "xla/python/ifrt/custom_call_program.h"
 #include "xla/python/ifrt/custom_call_program.pb.h"
 #include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/program_serdes.h"
+#include "xla/python/ifrt/rtti.h"
 #include "xla/python/ifrt/serdes.h"
 #include "xla/python/ifrt/serdes_version.h"
 #include "xla/python/ifrt/sharding.pb.h"
@@ -42,7 +41,7 @@ namespace {
 
 // Serialization/deserialization for `CustomCallProgram`.
 class CustomCallProgramSerDes
-    : public llvm::RTTIExtends<CustomCallProgramSerDes, SerDes> {
+    : public RTTIExtends<CustomCallProgramSerDes, SerDes> {
  public:
   absl::string_view type_name() const override {
     return "xla::ifrt::CustomCallProgram";
@@ -58,8 +57,7 @@ class CustomCallProgramSerDes
                        " for CustomCallProgram serialization"));
     }
 
-    const CustomCallProgram& program =
-        llvm::cast<CustomCallProgram>(serializable);
+    const CustomCallProgram& program = cast<CustomCallProgram>(serializable);
     CustomCallProgramProto proto;
     proto.set_version_number(SerDesVersionNumber(0).value());
     proto.set_type(program.type);
@@ -82,7 +80,7 @@ class CustomCallProgramSerDes
       const absl::Cord& serialized,
       std::unique_ptr<DeserializeOptions> options) override {
     const auto* deserialize_program_options =
-        llvm::dyn_cast_or_null<DeserializeProgramOptions>(options.get());
+        dyn_cast_or_null<DeserializeProgramOptions>(options.get());
     if (deserialize_program_options == nullptr) {
       return absl::InvalidArgumentError(
           "DeserializeProgramOptions must be provided");
@@ -136,7 +134,7 @@ class CustomCallProgramSerDes
 
 // Serialization/deserialization for `CustomCallCompileOptions`.
 class CustomCallCompileOptionsSerDes
-    : public llvm::RTTIExtends<CustomCallCompileOptionsSerDes, SerDes> {
+    : public RTTIExtends<CustomCallCompileOptionsSerDes, SerDes> {
  public:
   absl::string_view type_name() const override {
     return "xla::ifrt::CustomCallCompileOptions";
@@ -151,8 +149,7 @@ class CustomCallCompileOptionsSerDes
           absl::StrCat("Unsupported ", version.version_number(),
                        " for CustomCallCompileOptions serialization"));
     }
-    const auto& compile_options =
-        llvm::cast<CustomCallCompileOptions>(serializable);
+    const auto& compile_options = cast<CustomCallCompileOptions>(serializable);
 
     if (version.version_number() >= SerDesVersionNumber(4)) {
       CustomCallCompileOptionsProto proto;

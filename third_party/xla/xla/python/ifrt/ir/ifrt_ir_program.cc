@@ -33,7 +33,6 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "xla/tsl/platform/status_macros.h"
 #include "llvm/ADT/StringRef.h"
-#include "llvm/Support/Casting.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/raw_ostream.h"
 #include "xla/pjrt/pjrt_executable.h"
@@ -44,6 +43,7 @@ limitations under the License.
 #include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/executable.h"
 #include "xla/python/ifrt/ir/ifrt_ir_compile_options.pb.h"
+#include "xla/python/ifrt/rtti.h"
 #include "xla/python/ifrt/serdes_version.h"
 #include "xla/python/pjrt_ifrt/xla_compiler.h"
 #include "tsl/platform/human_readable_json.h"
@@ -58,7 +58,7 @@ char IfrtIRCompileOptions::ID = 0;
 
 absl::StatusOr<std::unique_ptr<IfrtIRCompileOptions>> GetIfrtIRCompileOptions(
     std::unique_ptr<CompileOptions> options) {
-  if (!llvm::isa<IfrtIRCompileOptions>(options.get())) {
+  if (!isa<IfrtIRCompileOptions>(options.get())) {
     return absl::InvalidArgumentError("options must be IfrtIRCompileOptions");
   }
   return std::unique_ptr<IfrtIRCompileOptions>(
@@ -142,7 +142,7 @@ absl::Status IfrtIRCompileOptions::ToProto(IfrtIrCompileOptionsProto& proto,
   }
   if (compile_options_overrides != nullptr) {
     for (const auto& [id, compile_options] : *compile_options_overrides) {
-      if (!llvm::isa<XlaCompileOptions>(compile_options)) {
+      if (!isa<XlaCompileOptions>(compile_options)) {
         return absl::InvalidArgumentError(
             "compile_options must be XlaCompileOptions");
       }

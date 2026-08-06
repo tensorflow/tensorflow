@@ -32,7 +32,6 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/tsl/platform/status_macros.h"
 #include "llvm/ADT/STLExtras.h"
-#include "llvm/Support/Casting.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/OwningOpRef.h"
 #include "xla/pjrt/pjrt_compiler.h"
@@ -49,6 +48,7 @@ limitations under the License.
 #include "xla/python/ifrt/ir/ifrt_ir_program.h"
 #include "xla/python/ifrt/ir/version.h"
 #include "xla/python/ifrt/memory.h"
+#include "xla/python/ifrt/rtti.h"
 #include "xla/python/ifrt/serdes.h"
 #include "xla/python/ifrt/serdes.pb.h"
 #include "xla/python/ifrt/shape.h"
@@ -2775,7 +2775,7 @@ module {
                        retrieved_outputs1.end());
 
     for (int i = 0; i < 3; ++i) {
-      auto* out_array = llvm::dyn_cast<Array>(all_outputs[i].get());
+      auto* out_array = dyn_cast<Array>(all_outputs[i].get());
       ASSERT_NE(out_array, nullptr);
       ArrayRef out_array_ref = tsl::FormRef(out_array);
 
@@ -2836,7 +2836,7 @@ module {
                        retrieved_outputs1.end());
 
     for (int i = 0; i < 3; ++i) {
-      auto* out_array = llvm::dyn_cast<Array>(all_outputs[i].get());
+      auto* out_array = dyn_cast<Array>(all_outputs[i].get());
       ASSERT_NE(out_array, nullptr);
       ArrayRef out_array_ref = tsl::FormRef(out_array);
 

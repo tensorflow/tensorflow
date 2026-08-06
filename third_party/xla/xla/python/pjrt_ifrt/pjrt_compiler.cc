@@ -27,7 +27,6 @@ limitations under the License.
 #include "absl/strings/cord.h"
 #include "absl/strings/string_view.h"
 #include "xla/tsl/platform/status_macros.h"
-#include "llvm/Support/Casting.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_executable.h"
@@ -37,6 +36,7 @@ limitations under the License.
 #include "xla/python/ifrt/executable.h"
 #include "xla/python/ifrt/hlo/hlo_program.h"
 #include "xla/python/ifrt/program.h"
+#include "xla/python/ifrt/rtti.h"
 #include "xla/python/ifrt/topology.h"
 #include "xla/python/pjrt_ifrt/pjrt_client.h"
 #include "xla/python/pjrt_ifrt/pjrt_executable.h"
@@ -96,11 +96,11 @@ tsl::Future<LoadedExecutableRef> PjRtCompiler::CompileAndLoad(
         "PjRtCompiler must be constructed with a Client to call "
         "CompileAndLoad.");
   }
-  if (!llvm::isa_and_nonnull<HloProgram>(program.get())) {
+  if (!isa_and_nonnull<HloProgram>(program.get())) {
     return absl::InvalidArgumentError("PjRtCompiler requires an HloProgram");
   }
   std::unique_ptr<HloProgram> xla_program =
-      llvm::cast<HloProgram>(std::move(program));
+      cast<HloProgram>(std::move(program));
   ASSIGN_OR_RETURN(auto xla_compile_options,
                    GetXlaCompileOptions(std::move(options)));
   RETURN_IF_ERROR(
@@ -117,14 +117,14 @@ tsl::Future<ExecutableRef> PjRtCompiler::Compile(
     std::unique_ptr<Program> program, const Topology& topology,
     std::unique_ptr<CompileOptions> options) {
   DCHECK(this);
-  if (!llvm::isa_and_nonnull<HloProgram>(program.get())) {
+  if (!isa_and_nonnull<HloProgram>(program.get())) {
     return absl::InvalidArgumentError("PjRtCompiler requires an HloProgram");
   }
   std::unique_ptr<HloProgram> xla_program =
-      llvm::cast<HloProgram>(std::move(program));
+      cast<HloProgram>(std::move(program));
   ASSIGN_OR_RETURN(auto xla_compile_options,
                    GetXlaCompileOptions(std::move(options)));
-  const auto* pjrt_topology = llvm::dyn_cast<PjRtTopology>(&topology);
+  const auto* pjrt_topology = dyn_cast<PjRtTopology>(&topology);
   if (pjrt_topology == nullptr) {
     return absl::InvalidArgumentError("PjRtCompiler requires a PjRtTopology");
   }

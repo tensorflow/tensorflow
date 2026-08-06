@@ -349,7 +349,7 @@ GatherHostSendAndRecvCallbacks(
   // guarantee the liveliness of host callbacks during executions.
   for (auto& loaded_host_callback : loaded_host_callbacks) {
     auto* host_send_and_recv_callback =
-        llvm::dyn_cast<PjRtHostSendAndRecvLoadedHostCallback>(
+        dyn_cast<PjRtHostSendAndRecvLoadedHostCallback>(
             loaded_host_callback.get());
     if (host_send_and_recv_callback != nullptr) {
       host_send_and_recv_callbacks.push_back(host_send_and_recv_callback);
@@ -366,8 +366,8 @@ std::vector<PjRtHloOutputLoadedHostCallback*> GatherHloOutputCallbacks(
   std::vector<PjRtHloOutputLoadedHostCallback*> hlo_output_callbacks;
   hlo_output_callbacks.reserve(loaded_host_callbacks.size());
   for (auto& loaded_host_callback : loaded_host_callbacks) {
-    auto* hlo_output_callback = llvm::dyn_cast<PjRtHloOutputLoadedHostCallback>(
-        loaded_host_callback.get());
+    auto* hlo_output_callback =
+        dyn_cast<PjRtHloOutputLoadedHostCallback>(loaded_host_callback.get());
     if (hlo_output_callback != nullptr) {
       hlo_output_callbacks.push_back(hlo_output_callback);
     }
@@ -689,8 +689,7 @@ PjRtExecutable::CommonMetadata::Deserialize(
     }
     if (output_spec.has_layout()) {
       ASSIGN_OR_RETURN(auto layout, Layout::FromProto(output_spec.layout()));
-      output_layouts->push_back(
-          llvm::cast<PjRtLayout>(layout.get())->pjrt_layout());
+      output_layouts->push_back(cast<PjRtLayout>(layout.get())->pjrt_layout());
     } else {
       output_layouts->push_back(nullptr);
     }
@@ -866,8 +865,7 @@ PjRtLoadedExecutable::Execute(absl::Span<ArrayRef> args,
     argument_handles[i].reserve(args.size());
   }
   for (int i = 0; i < args.size(); ++i) {
-    auto* pjrt_array =
-        llvm::dyn_cast_or_null<PjRtCompatibleArray>(args[i].get());
+    auto* pjrt_array = dyn_cast_or_null<PjRtCompatibleArray>(args[i].get());
     if (!pjrt_array) {
       return InvalidArgument(
           "Only PjRtCompatibleArray is supported, but argument %d is %s", i,
@@ -924,7 +922,7 @@ PjRtLoadedExecutable::Execute(absl::Span<ArrayRef> args,
       platform_id == RocmId() || platform_id == OneapiId()) {
     for (const auto& loaded_host_callback : *all_loaded_host_callbacks_) {
       auto* ffi_loaded_host_callback =
-          llvm::dyn_cast<PjRtFfiLoadedHostCallback>(loaded_host_callback.get());
+          dyn_cast<PjRtFfiLoadedHostCallback>(loaded_host_callback.get());
       if (ffi_loaded_host_callback != nullptr) {
         void* callback = ffi_loaded_host_callback->callable();
         callbacks->push_back(callback);

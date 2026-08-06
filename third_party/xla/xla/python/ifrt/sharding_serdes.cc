@@ -24,13 +24,12 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "xla/tsl/platform/status_macros.h"
-#include "llvm/Support/Casting.h"
-#include "llvm/Support/ExtensibleRTTI.h"
 #include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/ir/sharding_param.h"
 #include "xla/python/ifrt/memory.h"
+#include "xla/python/ifrt/rtti.h"
 #include "xla/python/ifrt/serdes.h"
 #include "xla/python/ifrt/serdes_version.h"
 #include "xla/python/ifrt/shape.h"
@@ -49,7 +48,7 @@ namespace {
 
 // Serialization/deserialization for `SingleDeviceSharding`.
 class SingleDeviceShardingSerDes
-    : public llvm::RTTIExtends<SingleDeviceShardingSerDes, SerDes> {
+    : public RTTIExtends<SingleDeviceShardingSerDes, SerDes> {
  public:
   absl::string_view type_name() const override {
     return "xla::ifrt::SingleDeviceSharding";
@@ -65,7 +64,7 @@ class SingleDeviceShardingSerDes
                        " for SingleDeviceSharding serialization"));
     }
     const SingleDeviceSharding& sharding =
-        llvm::cast<SingleDeviceSharding>(serializable);
+        cast<SingleDeviceSharding>(serializable);
     SingleDeviceShardingProto proto;
     proto.set_version_number(SerDesVersionNumber(0).value());
     proto.set_device_id(sharding.devices()->devices().front()->Id().value());
@@ -79,7 +78,7 @@ class SingleDeviceShardingSerDes
       const absl::Cord& serialized,
       std::unique_ptr<DeserializeOptions> options) override {
     const auto* deserialize_sharding_options =
-        llvm::dyn_cast_or_null<DeserializeShardingOptions>(options.get());
+        dyn_cast_or_null<DeserializeShardingOptions>(options.get());
     if (deserialize_sharding_options == nullptr) {
       return absl::InvalidArgumentError(
           "DeserializeShardingOptions must be provided");
@@ -110,8 +109,7 @@ class SingleDeviceShardingSerDes
 };
 
 // Serialization/deserialization for `OpaqueSharding`.
-class OpaqueShardingSerDes
-    : public llvm::RTTIExtends<OpaqueShardingSerDes, SerDes> {
+class OpaqueShardingSerDes : public RTTIExtends<OpaqueShardingSerDes, SerDes> {
  public:
   absl::string_view type_name() const override {
     return "xla::ifrt::OpaqueSharding";
@@ -126,7 +124,7 @@ class OpaqueShardingSerDes
           absl::StrCat("Unsupported ", version.version_number(),
                        " for OpaqueSharding serialization"));
     }
-    const OpaqueSharding& sharding = llvm::cast<OpaqueSharding>(serializable);
+    const OpaqueSharding& sharding = cast<OpaqueSharding>(serializable);
     OpaqueShardingProto proto;
     proto.set_version_number(SerDesVersionNumber(0).value());
     sharding.devices()->ToProto(*proto.mutable_devices(), version);
@@ -140,7 +138,7 @@ class OpaqueShardingSerDes
       const absl::Cord& serialized,
       std::unique_ptr<DeserializeOptions> options) override {
     const auto* deserialize_sharding_options =
-        llvm::dyn_cast_or_null<DeserializeShardingOptions>(options.get());
+        dyn_cast_or_null<DeserializeShardingOptions>(options.get());
     if (deserialize_sharding_options == nullptr) {
       return absl::InvalidArgumentError(
           "DeserializeShardingOptions must be provided");
@@ -172,7 +170,7 @@ class OpaqueShardingSerDes
 
 // Serialization/deserialization for `ConcreteSharding`.
 class ConcreteShardingSerDes
-    : public llvm::RTTIExtends<ConcreteShardingSerDes, SerDes> {
+    : public RTTIExtends<ConcreteShardingSerDes, SerDes> {
  public:
   absl::string_view type_name() const override {
     return "xla::ifrt::ConcreteSharding";
@@ -187,8 +185,7 @@ class ConcreteShardingSerDes
           absl::StrCat("Unsupported ", version.version_number(),
                        " for ConcreteSharding serialization"));
     }
-    const ConcreteSharding& sharding =
-        llvm::cast<ConcreteSharding>(serializable);
+    const ConcreteSharding& sharding = cast<ConcreteSharding>(serializable);
     ConcreteShardingProto proto;
     proto.set_version_number(SerDesVersionNumber(0).value());
     sharding.devices()->ToProto(*proto.mutable_devices(), version);
@@ -214,7 +211,7 @@ class ConcreteShardingSerDes
       const absl::Cord& serialized,
       std::unique_ptr<DeserializeOptions> options) override {
     const auto* deserialize_sharding_options =
-        llvm::dyn_cast_or_null<DeserializeShardingOptions>(options.get());
+        dyn_cast_or_null<DeserializeShardingOptions>(options.get());
     if (deserialize_sharding_options == nullptr) {
       return absl::InvalidArgumentError(
           "DeserializeShardingOptions must be provided");
@@ -273,7 +270,7 @@ class ConcreteShardingSerDes
 
 // Serialization/deserialization for `ConcreteEvenSharding`.
 class ConcreteEvenShardingSerDes
-    : public llvm::RTTIExtends<ConcreteEvenShardingSerDes, SerDes> {
+    : public RTTIExtends<ConcreteEvenShardingSerDes, SerDes> {
  public:
   absl::string_view type_name() const override {
     return "xla::ifrt::ConcreteEvenSharding";
@@ -289,7 +286,7 @@ class ConcreteEvenShardingSerDes
                        " for ConcreteEvenSharding serialization"));
     }
     const ConcreteEvenSharding& sharding =
-        llvm::cast<ConcreteEvenSharding>(serializable);
+        cast<ConcreteEvenSharding>(serializable);
     ConcreteEvenShardingProto proto;
     proto.set_version_number(SerDesVersionNumber(0).value());
     sharding.devices()->ToProto(*proto.mutable_devices(), version);
@@ -306,7 +303,7 @@ class ConcreteEvenShardingSerDes
       const absl::Cord& serialized,
       std::unique_ptr<DeserializeOptions> options) override {
     const auto* deserialize_sharding_options =
-        llvm::dyn_cast_or_null<DeserializeShardingOptions>(options.get());
+        dyn_cast_or_null<DeserializeShardingOptions>(options.get());
     if (deserialize_sharding_options == nullptr) {
       return absl::InvalidArgumentError(
           "DeserializeShardingOptions must be provided");
@@ -341,7 +338,7 @@ class ConcreteEvenShardingSerDes
 };
 
 class ShardingParamShardingSerDes
-    : public llvm::RTTIExtends<ShardingParamShardingSerDes, SerDes> {
+    : public RTTIExtends<ShardingParamShardingSerDes, SerDes> {
  public:
   absl::string_view type_name() const override {
     return "xla::ifrt::ShardingParamSharding";
@@ -357,7 +354,7 @@ class ShardingParamShardingSerDes
                        " for ShardingParamSharding serialization"));
     }
     const ShardingParamSharding& sharding =
-        llvm::cast<ShardingParamSharding>(serializable);
+        cast<ShardingParamSharding>(serializable);
     ShardingParamShardingProto proto;
     proto.set_version_number(SerDesVersionNumber(0).value());
     sharding.devices()->ToProto(*proto.mutable_devices(), version);
@@ -373,7 +370,7 @@ class ShardingParamShardingSerDes
       const absl::Cord& serialized,
       std::unique_ptr<DeserializeOptions> options) override {
     const auto* deserialize_sharding_options =
-        llvm::dyn_cast_or_null<DeserializeShardingOptions>(options.get());
+        dyn_cast_or_null<DeserializeShardingOptions>(options.get());
     if (deserialize_sharding_options == nullptr) {
       return absl::InvalidArgumentError(
           "DeserializeShardingOptions must be provided");

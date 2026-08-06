@@ -23,9 +23,8 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "xla/tsl/platform/status_macros.h"
-#include "llvm/Support/Casting.h"
-#include "llvm/Support/ExtensibleRTTI.h"
 #include "xla/hlo/ir/hlo_sharding.h"
+#include "xla/python/ifrt/rtti.h"
 #include "xla/python/ifrt/serdes.h"
 #include "xla/python/ifrt/serdes_version.h"
 #include "xla/python/pjrt_ifrt/xla_sharding_spec.h"
@@ -39,7 +38,7 @@ namespace {
 
 // Serialization/deserialization for `HloShardingSpec`.
 class HloShardingSpecSerDes
-    : public llvm::RTTIExtends<HloShardingSpecSerDes, SerDes> {
+    : public RTTIExtends<HloShardingSpecSerDes, SerDes> {
  public:
   absl::string_view type_name() const override {
     return "xla::ifrt::HloShardingSpec";
@@ -55,8 +54,7 @@ class HloShardingSpecSerDes
                        " for HloShardingSpec serialization"));
     }
 
-    const HloShardingSpec& sharding_spec =
-        llvm::cast<HloShardingSpec>(serializable);
+    const HloShardingSpec& sharding_spec = cast<HloShardingSpec>(serializable);
     HloShardingSpecProto proto;
     proto.set_version_number(SerDesVersionNumber(0).value());
     *proto.mutable_xla_op_sharding() =

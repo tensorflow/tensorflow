@@ -24,11 +24,10 @@ limitations under the License.
 #include "absl/base/call_once.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/types/span.h"
-#include "llvm/Support/Casting.h"
-#include "llvm/Support/ExtensibleRTTI.h"
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/device.pb.h"
 #include "xla/python/ifrt/device_list.h"
+#include "xla/python/ifrt/rtti.h"
 #include "xla/tsl/concurrency/ref_count.h"
 
 namespace xla {
@@ -44,7 +43,7 @@ namespace ifrt {
 //
 // Note for IFRT API users: This class is primarily intended for IFRT
 // implementations. Please use `Client::MakeDeviceList()` instead.
-class BasicDeviceList : public llvm::RTTIExtends<BasicDeviceList, DeviceList> {
+class BasicDeviceList : public RTTIExtends<BasicDeviceList, DeviceList> {
  public:
   // Number of devices to inline in `Devices`.
   static constexpr int kInlineDeviceSize = 1;
@@ -68,8 +67,7 @@ class BasicDeviceList : public llvm::RTTIExtends<BasicDeviceList, DeviceList> {
     if (this == &other) {
       return true;
     }
-    const auto* other_basic_device_list =
-        llvm::dyn_cast<BasicDeviceList>(&other);
+    const auto* other_basic_device_list = dyn_cast<BasicDeviceList>(&other);
     if (other_basic_device_list == nullptr) {
       return false;
     }

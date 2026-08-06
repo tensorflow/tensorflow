@@ -42,7 +42,6 @@ limitations under the License.
 #include "third_party/gloop/strings/cord_bytestream.h"
 #endif
 #include "xla/tsl/platform/status_macros.h"
-#include "llvm/Support/Casting.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/layout.h"
 #include "xla/pjrt/host_callback.h"
@@ -59,6 +58,7 @@ limitations under the License.
 #include "xla/python/ifrt/dtype.h"
 #include "xla/python/ifrt/executable.h"
 #include "xla/python/ifrt/host_callback.h"
+#include "xla/python/ifrt/rtti.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
 #include "xla/python/ifrt/user_context.h"
@@ -113,8 +113,7 @@ absl::StatusOr<absl::Cord> ExecuteLoadedHostCallback(
     absl::Cord operand_buffer) {
 #if defined(PLATFORM_GOOGLE)
   auto* pjrt_host_callback =
-      llvm::dyn_cast<PjRtHostSendAndRecvLoadedHostCallback>(
-          loaded_host_callback);
+      dyn_cast<PjRtHostSendAndRecvLoadedHostCallback>(loaded_host_callback);
   if (pjrt_host_callback == nullptr) {
     return absl::UnimplementedError(
         "Non-PjRt host callbacks cannot be executed");
@@ -719,7 +718,7 @@ LoadedExecutable::Execute(absl::Span<xla::ifrt::ArrayRef> args,
   ASSIGN_OR_RETURN(auto info, metadata_future_.Await());
   for (int i = 0; i < args.size(); ++i) {
     xla::ifrt::ArrayRef& arg = args[i];
-    auto* array = llvm::dyn_cast_or_null<Array>(arg.get());
+    auto* array = dyn_cast_or_null<Array>(arg.get());
     if (array == nullptr) {
       return absl::InvalidArgumentError(
           "Invalid IFRT array type provided to `LoadedExecutable::Execute`");

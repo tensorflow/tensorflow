@@ -26,14 +26,13 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "xla/tsl/platform/status_macros.h"
-#include "llvm/Support/Casting.h"
-#include "llvm/Support/ExtensibleRTTI.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/compiler.h"
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/executable_serdes.h"
+#include "xla/python/ifrt/rtti.h"
 #include "xla/python/ifrt/serdes.h"
 #include "xla/python/ifrt/serdes_version.h"
 #include "xla/python/pjrt_ifrt/xla_compiler.pb.h"
@@ -46,7 +45,7 @@ namespace ifrt {
 namespace {
 
 class XlaCompileOptionsSerDes
-    : public llvm::RTTIExtends<XlaCompileOptionsSerDes, SerDes> {
+    : public RTTIExtends<XlaCompileOptionsSerDes, SerDes> {
  public:
   absl::string_view type_name() const override {
     return "xla::ifrt::XlaCompileOptions";
@@ -61,8 +60,7 @@ class XlaCompileOptionsSerDes
           absl::StrCat("Unsupported ", version.version_number(),
                        " for XlaCompileOptions serialization"));
     }
-    const auto& xla_compile_options =
-        llvm::cast<XlaCompileOptions>(serializable);
+    const auto& xla_compile_options = cast<XlaCompileOptions>(serializable);
 
     XlaCompileOptionsProto proto;
     if (version.version_number() >= SerDesVersionNumber(4)) {
@@ -136,7 +134,7 @@ char XlaDeserializeExecutableOptions::ID = 0;
 
 absl::StatusOr<std::unique_ptr<XlaCompileOptions>> GetXlaCompileOptions(
     std::unique_ptr<CompileOptions> options) {
-  if (!llvm::isa<XlaCompileOptions>(options.get())) {
+  if (!isa<XlaCompileOptions>(options.get())) {
     return xla::InvalidArgument("options must be XlaCompileOptions");
   }
   return std::unique_ptr<XlaCompileOptions>(
@@ -146,7 +144,7 @@ absl::StatusOr<std::unique_ptr<XlaCompileOptions>> GetXlaCompileOptions(
 absl::StatusOr<std::unique_ptr<XlaDeserializeExecutableOptions>>
 GetXlaDeserializeExecutableOptions(
     std::unique_ptr<DeserializeExecutableOptions> options) {
-  if (!llvm::isa<XlaDeserializeExecutableOptions>(options.get())) {
+  if (!isa<XlaDeserializeExecutableOptions>(options.get())) {
     return xla::InvalidArgument(
         "options must be XlaDeserializeExecutableOptions");
   }

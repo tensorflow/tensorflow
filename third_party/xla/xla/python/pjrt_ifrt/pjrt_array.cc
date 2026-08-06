@@ -30,7 +30,6 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "absl/types/span.h"
 #include "xla/tsl/platform/status_macros.h"
-#include "llvm/Support/Casting.h"
 #include "xla/future.h"
 #include "xla/layout.h"
 #include "xla/literal.h"
@@ -46,6 +45,7 @@ limitations under the License.
 #include "xla/python/ifrt/dtype.h"
 #include "xla/python/ifrt/layout.h"
 #include "xla/python/ifrt/memory.h"
+#include "xla/python/ifrt/rtti.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
 #include "xla/python/ifrt/user_context.h"
@@ -91,7 +91,7 @@ absl::Status ValidateArrayCreationInput(
       CanonicalizeMemoryKind(sharding->memory_kind(), sharding_devices.front());
   for (int i = 0; i < sharding_devices.size(); ++i) {
     PjRtCompatibleDevice* device =
-        llvm::dyn_cast<PjRtCompatibleDevice>(sharding_devices[i]);
+        dyn_cast<PjRtCompatibleDevice>(sharding_devices[i]);
     if (!device) {
       return InvalidArgument("Sharding device %d is not a PjRtDevice", i);
     }
@@ -509,7 +509,7 @@ absl::StatusOr<std::shared_ptr<PjRtBuffer>> PjRtArray::CopySinglePjRtBuffer(
       case ArrayCopySemantics::kAlwaysCopy: {
         ASSIGN_OR_RETURN(Memory * memory, GetMemorySpaceFromMemoryKind(
                                               dst_device, *dst_memory_kind));
-        PjRtMemory* pjrt_memory = llvm::dyn_cast<PjRtMemory>(memory);
+        PjRtMemory* pjrt_memory = dyn_cast<PjRtMemory>(memory);
         return pjrt_buffers_[index]->CopyToMemorySpace(
             pjrt_memory->pjrt_memory());
       }
@@ -522,7 +522,7 @@ absl::StatusOr<std::shared_ptr<PjRtBuffer>> PjRtArray::CopySinglePjRtBuffer(
     }
   } else {
     PjRtCompatibleDevice* pjrt_device =
-        llvm::dyn_cast<PjRtCompatibleDevice>(dst_device);
+        dyn_cast<PjRtCompatibleDevice>(dst_device);
     if (!pjrt_device) {
       return InvalidArgument(
           "The destination device is owned by a non-PjRt-compatible client. "
@@ -538,7 +538,7 @@ absl::StatusOr<std::shared_ptr<PjRtBuffer>> PjRtArray::CopySinglePjRtBuffer(
     if (dst_has_memory_kind) {
       ASSIGN_OR_RETURN(auto memory, GetMemorySpaceFromMemoryKind(
                                         dst_device, *dst_memory_kind));
-      PjRtMemory* pjrt_memory = llvm::dyn_cast<PjRtMemory>(memory);
+      PjRtMemory* pjrt_memory = dyn_cast<PjRtMemory>(memory);
       TF_RET_CHECK(pjrt_memory != nullptr);
       pjrt_memory_space = pjrt_memory->pjrt_memory();
     } else {
@@ -593,10 +593,9 @@ absl::StatusOr<ArrayRef> PjRtArray::Copy(
     buffers.push_back(std::move(copied_buffer));
     if (new_client == nullptr) {
       PjRtCompatibleDevice* pjrt_device =
-          llvm::dyn_cast<PjRtCompatibleDevice>(new_sharding_devices[i]);
+          dyn_cast<PjRtCompatibleDevice>(new_sharding_devices[i]);
       if (pjrt_device != nullptr) {
-        new_client =
-            llvm::dyn_cast<PjRtCompatibleClient>(pjrt_device->client());
+        new_client = dyn_cast<PjRtCompatibleClient>(pjrt_device->client());
       }
     }
   }

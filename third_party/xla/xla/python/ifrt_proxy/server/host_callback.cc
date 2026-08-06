@@ -31,10 +31,10 @@
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/tsl/platform/status_macros.h"
-#include "llvm/Support/ExtensibleRTTI.h"
 #include "xla/pjrt/host_callback.h"
 #include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/host_callback.h"
+#include "xla/python/ifrt/rtti.h"
 #include "xla/python/ifrt_proxy/common/proto_util.h"
 #include "xla/python/pjrt_ifrt/pjrt_host_callback.h"
 #include "xla/python/pjrt_ifrt/xla_host_callback.pb.h"
@@ -124,8 +124,8 @@ RemoteLoadedHostCallback::RemoteLoadedHostCallback(
     xla::ifrt::Client* client, std::vector<xla::HostCallbackArgInfo> operands,
     std::vector<xla::HostCallbackArgInfo> results,
     std::shared_ptr<RemoteLoadedHostCallbackQueue> queue)
-    : llvm::RTTIExtends<RemoteLoadedHostCallback,
-                        PjRtHostSendAndRecvLoadedHostCallback>(
+    : RTTIExtends<RemoteLoadedHostCallback,
+                  PjRtHostSendAndRecvLoadedHostCallback>(
           client,
           [&]() {
             auto xla_host_callback = std::make_unique<xla::HostCallback>();

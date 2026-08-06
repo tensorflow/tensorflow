@@ -32,7 +32,6 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/tsl/platform/status_macros.h"
-#include "llvm/Support/ExtensibleRTTI.h"
 #include "xla/hlo/ir/hlo_print_options.h"
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/pjrt/maybe_owning_mlir_module.h"
@@ -49,6 +48,7 @@ limitations under the License.
 #include "xla/python/ifrt/executable.h"
 #include "xla/python/ifrt/host_callback.h"
 #include "xla/python/ifrt/memory.h"
+#include "xla/python/ifrt/rtti.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
 #include "xla/python/ifrt/user_context.h"
@@ -65,7 +65,7 @@ namespace ifrt {
 
 // PjRt-compatible `Executable` interface.
 class PjRtCompatibleExecutable
-    : public llvm::RTTIExtends<PjRtCompatibleExecutable, Executable> {
+    : public RTTIExtends<PjRtCompatibleExecutable, Executable> {
  public:
   // APIs that allow direct access to `xla::PjRtExecutable` for PjRt-only
   // operations.
@@ -76,8 +76,7 @@ class PjRtCompatibleExecutable
 
 // PjRt-compatible `LoadedExecutable` interface.
 class PjRtCompatibleLoadedExecutable
-    : public llvm::RTTIExtends<PjRtCompatibleLoadedExecutable,
-                               LoadedExecutable> {
+    : public RTTIExtends<PjRtCompatibleLoadedExecutable, LoadedExecutable> {
  public:
   // Key for the call location attribute in the custom_options attribute map.
   static constexpr absl::string_view kCallLocation = "call_location";
@@ -93,7 +92,7 @@ class PjRtCompatibleLoadedExecutable
 
 // `Executable` implementation that wraps a `xla::PjRtExecutable`.
 class PjRtExecutable final
-    : public llvm::RTTIExtends<PjRtExecutable, PjRtCompatibleExecutable> {
+    : public RTTIExtends<PjRtExecutable, PjRtCompatibleExecutable> {
  public:
   // Creates PjRtExecutable from an MLIR module. Internally, it compiles the
   // provided MLIR module into an `xla::PjRtExecutable`. When `compile_client`
@@ -229,8 +228,7 @@ class PjRtExecutable final
 
 // `LoadedExecutable` implementation that wraps a `xla::PjRtLoadedExecutable`.
 class PjRtLoadedExecutable final
-    : public llvm::RTTIExtends<PjRtLoadedExecutable,
-                               PjRtCompatibleLoadedExecutable> {
+    : public RTTIExtends<PjRtLoadedExecutable, PjRtCompatibleLoadedExecutable> {
  public:
   using LoadedExecutable::ExecuteOptions;
   using LoadedExecutable::ExecuteResult;

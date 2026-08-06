@@ -28,7 +28,6 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/tsl/platform/status_macros.h"
-#include "llvm/Support/ExtensibleRTTI.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/pjrt_layout.h"
@@ -38,6 +37,7 @@ limitations under the License.
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/execute_options.pb.h"
+#include "xla/python/ifrt/rtti.h"
 #include "xla/python/ifrt/serdes.h"
 #include "xla/python/ifrt/serdes_default_version_accessor.h"
 #include "xla/python/ifrt/serdes_version.h"
@@ -53,7 +53,7 @@ class Client;
 struct CompileOptions;
 struct DeserializeExecutableOptions;
 
-struct ExecutableVersion : llvm::RTTIExtends<ExecutableVersion, Serializable> {
+struct ExecutableVersion : RTTIExtends<ExecutableVersion, Serializable> {
   // Returns OK iff this version is compatible with `other`. The logic for
   // checking the version compatibility is an implementation detail of
   // `ExecutableVersion` subclasses.
@@ -64,7 +64,7 @@ struct ExecutableVersion : llvm::RTTIExtends<ExecutableVersion, Serializable> {
 };
 
 // Wraps a computation that has been partially compiled and can be loaded.
-class Executable : public llvm::RTTIExtends<Executable, llvm::RTTIRoot> {
+class Executable : public RTTIExtends<Executable, RTTIRoot> {
  public:
   using DeserializeOptions = DeserializeExecutableOptions;
 
@@ -167,8 +167,7 @@ struct ExecuteOptions {
 };
 
 // Wraps a computation that has been fully compiled and loaded for execution.
-class LoadedExecutable
-    : public llvm::RTTIExtends<LoadedExecutable, llvm::RTTIRoot> {
+class LoadedExecutable : public RTTIExtends<LoadedExecutable, RTTIRoot> {
  public:
   virtual Client* client() const = 0;
 

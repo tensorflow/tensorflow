@@ -28,7 +28,6 @@
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/tsl/platform/status_macros.h"
-#include "llvm/Support/Casting.h"
 #include "xla/debug_options_flags.h"
 #include "xla/pjrt/host_callback.h"
 #include "xla/python/ifrt/client.h"
@@ -38,6 +37,7 @@
 #include "xla/python/ifrt/executable.h"
 #include "xla/python/ifrt/host_callback.h"
 #include "xla/python/ifrt/program.h"
+#include "xla/python/ifrt/rtti.h"
 #include "xla/python/ifrt/serdes.h"
 #include "xla/python/ifrt/topology.h"
 #include "xla/python/ifrt/user_context.h"
@@ -89,11 +89,11 @@ tsl::Future<xla::ifrt::LoadedExecutableRef> Compiler::CompileAndLoad(
   std::vector<tsl::RCReference<xla::ifrt::LoadedHostCallback>>
       loaded_host_callbacks;
   if (auto* xla_options =
-          llvm::dyn_cast<xla::ifrt::XlaCompileOptions>(options.get())) {
+          dyn_cast<xla::ifrt::XlaCompileOptions>(options.get())) {
     for (const auto& loaded_host_callback :
          xla_options->loaded_host_callbacks) {
       auto* pjrt_host_callback =
-          llvm::dyn_cast<xla::ifrt::PjRtHostSendAndRecvLoadedHostCallback>(
+          dyn_cast<xla::ifrt::PjRtHostSendAndRecvLoadedHostCallback>(
               loaded_host_callback.get());
       if (pjrt_host_callback == nullptr) {
         return absl::UnimplementedError("Unsupported host callback type");

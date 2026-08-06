@@ -43,7 +43,6 @@
 #include "absl/time/time.h"
 #include "absl/types/span.h"
 #include "xla/tsl/platform/status_macros.h"
-#include "llvm/Support/Casting.h"
 #include "xla/future.h"
 #include "xla/layout.h"
 #include "xla/pjrt/pjrt_layout.h"
@@ -64,6 +63,7 @@
 #include "xla/python/ifrt/program.h"
 #include "xla/python/ifrt/program_serdes.h"
 #include "xla/python/ifrt/remap_plan.h"
+#include "xla/python/ifrt/rtti.h"
 #include "xla/python/ifrt/serdes.h"
 #include "xla/python/ifrt/serdes_any_version_accessor.h"
 #include "xla/python/ifrt/serdes_version.h"
@@ -1476,7 +1476,7 @@ tsl::Future<BackendInterface::Response> IfrtBackend::HandleCompileRequest(
       }
       if (!loaded_host_callbacks.empty()) {
         if (auto xla_options =
-                llvm::dyn_cast<xla::ifrt::XlaCompileOptions>(options.get())) {
+                dyn_cast<xla::ifrt::XlaCompileOptions>(options.get())) {
           xla_options->loaded_host_callbacks = std::move(loaded_host_callbacks);
         } else {
           return absl::UnimplementedError(
@@ -1487,7 +1487,7 @@ tsl::Future<BackendInterface::Response> IfrtBackend::HandleCompileRequest(
     }
 
     if (auto xla_options =
-            llvm::dyn_cast<xla::ifrt::XlaCompileOptions>(options.get())) {
+            dyn_cast<xla::ifrt::XlaCompileOptions>(options.get())) {
       // TODO(emilyaf): Devices should be plumbed through or serialized to
       // support MPMD parallelism, which allows executables with empty device
       // assignments. In the meantime, devices are obtained from the device
@@ -1538,8 +1538,7 @@ tsl::Future<BackendInterface::Response> IfrtBackend::HandleCompileRequest(
       compile_resp->set_fingerprint_value(std::move(fingerprint)->value());
     }
     if (protocol_version() >= protocol_version::kMpmdLoadedExecutableMethods) {
-      auto* mpmd_executable =
-          llvm::dyn_cast<MpmdLoadedExecutable>(executable.get());
+      auto* mpmd_executable = dyn_cast<MpmdLoadedExecutable>(executable.get());
       // Only populate MPMD addressable devices for MPMD executables.
       if (mpmd_executable != nullptr) {
         auto mpmd_addressable_devices =
@@ -1725,7 +1724,7 @@ IfrtBackend::HandleLoadedExecutableMpmdMetadataRequest(
     const std::shared_ptr<xla::ifrt::LoadedExecutable>& base_executable =
         executable_info->executable;
     auto* mpmd_executable =
-        llvm::dyn_cast<MpmdLoadedExecutable>(base_executable.get());
+        dyn_cast<MpmdLoadedExecutable>(base_executable.get());
 
     if (mpmd_executable == nullptr) {
       *metadata_resp->mutable_mpmd_compiled_memory_stats_error() =
@@ -1798,8 +1797,7 @@ IfrtBackend::HandleLoadedExecutableMpmdCostAnalysisRequest(
   const std::shared_ptr<xla::ifrt::LoadedExecutable>& base_executable =
       (*executable_info)->executable;
 
-  auto* mpmd_executable =
-      llvm::dyn_cast<MpmdLoadedExecutable>(base_executable.get());
+  auto* mpmd_executable = dyn_cast<MpmdLoadedExecutable>(base_executable.get());
   if (mpmd_executable == nullptr) {
     return tsl::Future<BackendInterface::Response>(absl::InvalidArgumentError(
         "LoadedExecutable is not an MPMD executable"));

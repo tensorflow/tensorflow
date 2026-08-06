@@ -30,11 +30,11 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "absl/types/span.h"
 #include "xla/tsl/platform/status_macros.h"
-#include "llvm/Support/Casting.h"
 #include "xla/pjrt/pjrt_layout.h"
 #include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/dtype.h"
 #include "xla/python/ifrt/layout.pb.h"
+#include "xla/python/ifrt/rtti.h"
 #include "xla/python/ifrt/serdes.h"
 #include "xla/python/ifrt/serdes_version.h"
 #include "xla/python/ifrt/shape.h"
@@ -142,7 +142,7 @@ bool CompactLayout::operator==(const Layout& other) const {
   if (this == &other) {
     return true;
   }
-  if (const auto* other_compact = llvm::dyn_cast<CompactLayout>(&other);
+  if (const auto* other_compact = dyn_cast<CompactLayout>(&other);
       other_compact != nullptr) {
     return major_to_minor_ == other_compact->major_to_minor_;
   }

@@ -31,13 +31,12 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/types/span.h"
 #include "xla/tsl/platform/status_macros.h"
-#include "llvm/Support/Casting.h"
-#include "llvm/Support/ExtensibleRTTI.h"
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/index.h"
 #include "xla/python/ifrt/index_domain.h"
 #include "xla/python/ifrt/memory.h"
+#include "xla/python/ifrt/rtti.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding_spec.h"
 #include "xla/python/pjrt_ifrt/xla_sharding.h"
@@ -100,7 +99,7 @@ std::unique_ptr<HloShardingSpec> HloShardingSpec::Create(
 
 HloShardingSpec::HloShardingSpec(int num_shards,
                                  xla::HloSharding xla_hlo_sharding)
-    : llvm::RTTIExtends<HloShardingSpec, XlaCompatibleShardingSpec>(
+    : RTTIExtends<HloShardingSpec, XlaCompatibleShardingSpec>(
           num_shards, /*is_fully_replicated=*/false),
       xla_hlo_sharding_(std::move(xla_hlo_sharding)) {
   is_fully_replicated_ =
@@ -149,7 +148,7 @@ bool HloShardingSpec::HasSamePartitioning(const ShardingSpec& other) const {
   if (num_shards() != other.num_shards()) {
     return false;
   }
-  const auto* other_hlo_sharding_spec = llvm::dyn_cast<HloShardingSpec>(&other);
+  const auto* other_hlo_sharding_spec = dyn_cast<HloShardingSpec>(&other);
   if (!other_hlo_sharding_spec) {
     return false;
   }

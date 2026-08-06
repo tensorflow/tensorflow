@@ -36,8 +36,6 @@ limitations under the License.
 #include "xla/tsl/platform/status_macros.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
-#include "llvm/Support/Casting.h"
-#include "llvm/Support/ExtensibleRTTI.h"
 #include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/device_list.h"
@@ -45,6 +43,7 @@ limitations under the License.
 #include "xla/python/ifrt/index_domain.h"
 #include "xla/python/ifrt/ir/sharding_param.h"
 #include "xla/python/ifrt/memory.h"
+#include "xla/python/ifrt/rtti.h"
 #include "xla/python/ifrt/serdes.h"
 #include "xla/python/ifrt/serdes_version.h"
 #include "xla/python/ifrt/shape.h"
@@ -217,7 +216,7 @@ std::unique_ptr<SingleDeviceSharding> SingleDeviceSharding::Create(
 
 SingleDeviceSharding::SingleDeviceSharding(DeviceListRef device_list,
                                            MemoryKind memory_kind)
-    : llvm::RTTIExtends<SingleDeviceSharding, Sharding>(
+    : RTTIExtends<SingleDeviceSharding, Sharding>(
           std::move(device_list), memory_kind,
           /*is_fully_replicated=*/true) {}
 
@@ -234,7 +233,7 @@ bool SingleDeviceSharding::HasSamePartitioning(const Sharding& other) const {
   if (this == &other) {
     return true;
   }
-  return llvm::isa<SingleDeviceSharding>(&other);
+  return isa<SingleDeviceSharding>(&other);
 }
 
 absl::StatusOr<std::unique_ptr<Sharding>>
@@ -314,8 +313,8 @@ std::unique_ptr<OpaqueSharding> OpaqueSharding::Create(DeviceListRef devices,
 }
 
 OpaqueSharding::OpaqueSharding(DeviceListRef devices, MemoryKind memory_kind)
-    : llvm::RTTIExtends<OpaqueSharding, Sharding>(
-          std::move(devices), memory_kind, /*is_fully_replicated=*/false) {}
+    : RTTIExtends<OpaqueSharding, Sharding>(std::move(devices), memory_kind,
+                                            /*is_fully_replicated=*/false) {}
 
 ShardingSpecRef OpaqueSharding::sharding_spec() const {
   return OpaqueShardingSpec::Create(devices_->size());
@@ -406,8 +405,8 @@ ConcreteSharding::ConcreteSharding(
     DeviceListRef devices, MemoryKind memory_kind, Shape shape,
     std::vector<Shape> shard_shapes,
     std::optional<std::vector<xla::ifrt::IndexDomain>> index_domains)
-    : llvm::RTTIExtends<ConcreteSharding, Sharding>(
-          std::move(devices), memory_kind, /*is_fully_replicated=*/false),
+    : RTTIExtends<ConcreteSharding, Sharding>(std::move(devices), memory_kind,
+                                              /*is_fully_replicated=*/false),
       shape_(std::move(shape)),
       shard_shapes_(std::move(shard_shapes)),
       index_domains_(std::move(index_domains)) {
@@ -432,8 +431,8 @@ ConcreteSharding::ConcreteSharding(
 ConcreteSharding::ConcreteSharding(
     DeviceListRef devices, MemoryKind memory_kind, DynamicShape dynamic_shape,
     std::vector<DynamicShape> shard_dynamic_shapes)
-    : llvm::RTTIExtends<ConcreteSharding, Sharding>(
-          std::move(devices), memory_kind, /*is_fully_replicated=*/false),
+    : RTTIExtends<ConcreteSharding, Sharding>(std::move(devices), memory_kind,
+                                              /*is_fully_replicated=*/false),
       shape_(std::move(dynamic_shape)),
       shard_shapes_(std::move(shard_dynamic_shapes)) {}
 
@@ -458,8 +457,7 @@ bool ConcreteSharding::HasSamePartitioning(const Sharding& other) const {
   if (this == &other) {
     return true;
   }
-  const auto* other_concrete_sharding =
-      llvm::dyn_cast<ConcreteSharding>(&other);
+  const auto* other_concrete_sharding = dyn_cast<ConcreteSharding>(&other);
   if (!other_concrete_sharding) {
     return false;
   }
@@ -650,7 +648,7 @@ ConcreteEvenSharding::ConcreteEvenSharding(DeviceListRef devices,
                                            MemoryKind memory_kind, Shape shape,
                                            Shape shard_shape,
                                            bool is_fully_replicated)
-    : llvm::RTTIExtends<ConcreteEvenSharding, Sharding>(
+    : RTTIExtends<ConcreteEvenSharding, Sharding>(
           std::move(devices), memory_kind, is_fully_replicated),
       shape_(std::move(shape)),
       shard_shape_(std::move(shard_shape)) {}
@@ -676,7 +674,7 @@ bool ConcreteEvenSharding::HasSamePartitioning(const Sharding& other) const {
     return true;
   }
   const auto* other_concrete_even_sharding =
-      llvm::dyn_cast<ConcreteEvenSharding>(&other);
+      dyn_cast<ConcreteEvenSharding>(&other);
   if (!other_concrete_even_sharding) {
     return false;
   }
@@ -794,7 +792,7 @@ ShardingParamSharding::Create(ShardingParam sharding_param,
 ShardingParamSharding::ShardingParamSharding(ShardingParam sharding_param,
                                              DeviceListRef devices,
                                              MemoryKind memory_kind)
-    : llvm::RTTIExtends<ShardingParamSharding, Sharding>(
+    : RTTIExtends<ShardingParamSharding, Sharding>(
           std::move(devices), memory_kind,
           ComputeIsFullyReplicated(sharding_param)),
       sharding_param_(sharding_param) {}
@@ -855,7 +853,7 @@ bool ShardingParamSharding::HasSamePartitioning(const Sharding& other) const {
     return true;
   }
   const auto* other_sharding_param_sharding =
-      llvm::dyn_cast<ShardingParamSharding>(&other);
+      dyn_cast<ShardingParamSharding>(&other);
   if (!other_sharding_param_sharding) {
     return false;
   }
