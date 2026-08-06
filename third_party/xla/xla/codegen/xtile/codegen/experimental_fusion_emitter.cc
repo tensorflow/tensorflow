@@ -1003,9 +1003,10 @@ absl::StatusOr<TensorValue> EmitCombinerStep(
 // performing a final reduction on the accumulated tile.
 absl::StatusOr<TensorValue> EmitReduceWithRegion(
     EmitterContext& emitter_ctx, const ge::TiledHloInstruction& tiled_hlo) {
-  TF_RET_CHECK(!tiled_hlo.hlo_regions().empty())
-      << "Expected non-empty HLO regions in tiled reduction instruction: "
+  TF_RET_CHECK(tiled_hlo.hlo_regions().size() == 1)
+      << "Expected exactly one HLO region in tiled reduction instruction: "
       << tiled_hlo.hlo()->ToString();
+
   auto& b = emitter_ctx.b();
   const HloReduceInstruction& reduce_hlo =
       *::xla::Cast<HloReduceInstruction>(tiled_hlo.hlo());
@@ -1034,56 +1035,75 @@ absl::StatusOr<TensorValue> EmitReduceWithRegion(
   ABSL_ASSIGN_OR_RETURN(
       SmallVector<int64_t> loop_iteration_counts,
       GetSequentialLoopIterationCounts(tiled_hlo, sequential_dim_ids));
-  TF_RET_CHECK(loop_iteration_counts.size() == 1)
-      << "Expected exactly one loop iteration count for reduce";
+  TF_RET_CHECK(!loop_iteration_counts.empty())
+      << "Expected at least one loop iteration count for reduce";
 
-  auto for_op = mlir::scf::ForOp::create(
-      b,
-      /*lowerBound=*/MakeIndex(b, 0),
-      /*upperBound=*/MakeIndex(b, loop_iteration_counts.front()),
-      /*step=*/MakeIndex(b, 1), accumulator);
-
-  {  // Loop body.
-    mlir::OpBuilder::InsertionGuard g(b);
-    b.setInsertionPointToStart(for_op.getBody());
-    Value iv = for_op.getInductionVar();
-    Value iv_i32 = Cast(b, iv, b.getI32Type());
-
-    const ge::TilingSpace::DimensionInfo& dim_info =
-        tiled_hlo.tile().tiling_space().GetDimensionInfo(
-            *tiled_hlo.hlo(), sequential_dim_ids.front());
-    TF_RET_CHECK(emitter_ctx.MapSymbolIdToSequentialDimValue(
-        dim_info.id, iv, Interval{0, loop_iteration_counts.front() - 1}));
-
-    TF_RET_CHECK(!tiled_hlo.hlo_regions().empty())
-        << "Expected non-empty HLO regions in tiled reduction instruction: "
-        << tiled_hlo.hlo()->ToString();
-    ABSL_ASSIGN_OR_RETURN(
-        std::vector<TensorValue> results,
-        EmitTiledComputation(emitter_ctx, tiled_hlo.hlo_regions().front(),
-                             {tiled_input}));
-    TF_RET_CHECK(!results.empty())
-        << "Expected non-empty results from emitting tiled computation: "
-        << tiled_hlo.hlo()->ToString();
-    TensorValue input_tile = results[0];
-
-    TF_RET_CHECK(!reduce_hlo.dimensions().empty())
-        << "Expected non-empty reduction dimensions in HLO: "
-        << reduce_hlo.ToString();
-    int64_t reduce_dim = reduce_hlo.dimensions()[0];
-    ABSL_ASSIGN_OR_RETURN(
-        input_tile, MaskOperand(b, *tiled_input, input_tile, iv_i32, reduce_dim,
-                                neutral_value));
-
-    ABSL_ASSIGN_OR_RETURN(
-        TensorValue combine_result,
-        EmitCombinerStep(b, reduce_hlo, for_op.getRegionIterArgs().front(),
-                         input_tile));
-
-    mlir::scf::YieldOp::create(b, combine_result);
+  SmallVector<mlir::Value> lbs, ubs, steps;
+  lbs.reserve(sequential_dim_ids.size());
+  ubs.reserve(sequential_dim_ids.size());
+  steps.reserve(sequential_dim_ids.size());
+  for (int64_t count : loop_iteration_counts) {
+    lbs.push_back(MakeIndex(b, 0));
+    ubs.push_back(MakeIndex(b, count));
+    steps.push_back(MakeIndex(b, 1));
   }
 
-  Value loop_result = for_op.getResult(0);
+  absl::Status loop_nest_status = absl::OkStatus();
+  mlir::scf::LoopNest loop_nest = mlir::scf::buildLoopNest(
+      b, b.getLoc(), lbs, ubs, steps,
+      /*iterArgs=*/mlir::ValueRange{accumulator},
+      [&](mlir::OpBuilder& loop_builder, mlir::Location loc,
+          mlir::ValueRange ivs,
+          mlir::ValueRange iter_args) -> mlir::scf::ValueVector {
+        auto body = [&]() -> absl::StatusOr<mlir::scf::ValueVector> {
+          mlir::ImplicitLocOpBuilder nested_b(loc, loop_builder);
+
+          for (int i = 0; i < sequential_dim_ids.size(); ++i) {
+            const ge::TilingSpace::DimensionInfo& dim_info =
+                tiled_hlo.tile().tiling_space().GetDimensionInfo(
+                    *tiled_hlo.hlo(), sequential_dim_ids[i]);
+            TF_RET_CHECK(emitter_ctx.MapSymbolIdToSequentialDimValue(
+                dim_info.id, ivs[i], Interval{0, loop_iteration_counts[i] - 1}))
+                << "MapSymbolIdToSequentialDimValue failed for symbolic "
+                   "dimension";
+          }
+
+          ABSL_ASSIGN_OR_RETURN(
+              std::vector<TensorValue> results,
+              EmitTiledComputation(emitter_ctx, tiled_hlo.hlo_regions().front(),
+                                   {tiled_input}));
+          TF_RET_CHECK(!results.empty())
+              << "EmitTiledComputation returned no results";
+          TensorValue input_tile = results[0];
+
+          for (int i = 0; i < sequential_dim_ids.size(); ++i) {
+            int64_t reduce_dim = reduce_hlo.dimensions()[i];
+            mlir::Value iv_i32 = Cast(nested_b, ivs[i], nested_b.getI32Type());
+            ABSL_ASSIGN_OR_RETURN(input_tile,
+                             MaskOperand(nested_b, *tiled_input, input_tile,
+                                         iv_i32, reduce_dim, neutral_value));
+          }
+
+          ABSL_ASSIGN_OR_RETURN(TensorValue combine_result,
+                           EmitCombinerStep(nested_b, reduce_hlo,
+                                            iter_args.front(), input_tile));
+
+          return mlir::scf::ValueVector{combine_result};
+        };
+
+        absl::StatusOr<mlir::scf::ValueVector> result = body();
+        if (!result.ok()) {
+          loop_nest_status.Update(result.status());
+          return mlir::scf::ValueVector(iter_args.begin(), iter_args.end());
+        }
+        return *result;
+      });
+
+  ABSL_RETURN_IF_ERROR(loop_nest_status);
+  TF_RET_CHECK(!loop_nest.results.empty())
+      << "Loop nest builder for reduce did not return any results";
+  TensorValue loop_result = mlir::cast<TensorValue>(loop_nest.results.front());
+
   stablehlo::ReduceOp reduction = stablehlo::ReduceOp::create(
       b, loop_result, init_value, reduce_hlo.dimensions());
   ABSL_RETURN_IF_ERROR(
@@ -1091,18 +1111,16 @@ absl::StatusOr<TensorValue> EmitReduceWithRegion(
   return mlir::cast<TensorValue>(reduction.getResult(0));
 }
 
-// Emits a tiled reduction instruction.
+// Emits a tiled reduction instruction, dispatching to loop-tiled reduction or
+// flat (untiled) reduction based on region configuration.
 absl::StatusOr<TensorValue> EmitReduce(
     EmitterContext& emitter_ctx, const ge::TiledHloInstruction& tiled_hlo) {
-  if (tiled_hlo.hlo()->dimensions().size() != 1 ||
-      tiled_hlo.hlo()->operand_count() != 2) {
-    // Currently we only support reduce on a single dimension on one input.
-    // TODO(b/525358513): Add support for multi-dimensional reduce.
+  if (tiled_hlo.hlo()->operand_count() != 2) {
+    // Currently we only support reduce on one input.
     // TODO(b/525357362): Add variadic support.
-    return absl::InvalidArgumentError(absl::StrCat(
-        "Only reduce with one dimension and two operands is supported. Got ",
-        tiled_hlo.hlo()->dimensions().size(), " dimensions and ",
-        tiled_hlo.hlo()->operand_count(), " operands."));
+    return absl::InvalidArgumentError(
+        absl::StrCat("Only reduce with two operands is supported. Got ",
+                     tiled_hlo.hlo()->operand_count(), " operands."));
   }
   return tiled_hlo.hlo_regions().empty()
              ? EmitReduceWithNoRegion(emitter_ctx, tiled_hlo)

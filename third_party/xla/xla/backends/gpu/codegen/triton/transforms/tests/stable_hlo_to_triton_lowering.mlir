@@ -119,16 +119,17 @@ func.func @reduce_to_scalar_followed_by_extract(%arg0: tensor<16xf32>) -> f32 {
   return %extract : f32
 }
 
-// CHECK: func @reduce_over_multiple_dimensions_falls_back_to_stablehlo(%[[ARG0:.*]]: tensor<16x8x4xf32>) -> tensor<4xf32>
-func.func @reduce_over_multiple_dimensions_falls_back_to_stablehlo(%arg0: tensor<16x8x4xf32>) -> tensor<4xf32> {
+// CHECK: func @reduce_over_multiple_dimensions(%[[ARG0:.*]]: tensor<16x8x4xf32>) -> tensor<4xf32>
+func.func @reduce_over_multiple_dimensions(%arg0: tensor<16x8x4xf32>) -> tensor<4xf32> {
   %0 = stablehlo.constant dense<0.000000e+00> : tensor<f32>
-  // CHECK: %[[RES:.*]] = stablehlo.reduce(%[[ARG0]] init: %{{.*}}) across dimensions = [0, 1] : (tensor<16x8x4xf32>, tensor<f32>) -> tensor<4xf32>
+  // CHECK: %[[REDUCE1:.*]] = "tt.reduce"(%[[ARG0]]) <{axis = 1 : i32}>
+  // CHECK: %[[REDUCE0:.*]] = "tt.reduce"(%[[REDUCE1]]) <{axis = 0 : i32}>
   %1 = "stablehlo.reduce"(%arg0, %0) ({
   ^bb0(%arg1: tensor<f32>, %arg2: tensor<f32>):
     %add = arith.addf %arg1, %arg2 : tensor<f32>
     stablehlo.return %add : tensor<f32>
   }) {dimensions = array<i64: 0, 1>} : (tensor<16x8x4xf32>, tensor<f32>) -> tensor<4xf32>
-  // CHECK: return %[[RES]] : tensor<4xf32>
+  // CHECK: return %[[REDUCE0]] : tensor<4xf32>
   return %1 : tensor<4xf32>
 }
 
