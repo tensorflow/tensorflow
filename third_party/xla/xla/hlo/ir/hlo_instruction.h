@@ -2581,7 +2581,7 @@ class HloInstruction {
 
   // TODO(phui): reimplement this method
   void DetachFromOperands() {
-    for (HloInstruction* operand : operands_) {
+    for (HloInstruction* operand : unique_operands()) {
       operand->RemoveUser(this);
     }
     RemoveAllOperands();
