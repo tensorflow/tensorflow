@@ -574,4 +574,34 @@ func.func @test_dot_general_batch(%arg0: tensor<2x8x8xf32>, %arg1: tensor<2x8x8x
 // CHECK: %[[RET:.*]] = builtin.unrealized_conversion_cast %[[RES]] : vector<2x8x8xf32> to tensor<2x8x8xf32>
 // CHECK: return %[[RET]]
 
+func.func @test_iota() -> tensor<8xi32> {
+  %0 = stablehlo.iota dim = 0 : tensor<8xi32>
+  return %0 : tensor<8xi32>
+}
+// CHECK-LABEL: @test_iota
+// CHECK: %[[CST:.*]] = arith.constant dense<[0, 1, 2, 3, 4, 5, 6, 7]> : vector<8xi32>
+// CHECK: %[[RET:.*]] = builtin.unrealized_conversion_cast %[[CST]] : vector<8xi32> to tensor<8xi32>
+// CHECK: return %[[RET]]
+
+func.func @test_iota_f32() -> tensor<8xf32> {
+  %0 = stablehlo.iota dim = 0 : tensor<8xf32>
+  return %0 : tensor<8xf32>
+}
+// CHECK-LABEL: @test_iota_f32
+// CHECK: %[[CST:.*]] = arith.constant dense<[0, 1, 2, 3, 4, 5, 6, 7]> : vector<8xi32>
+// CHECK: %[[CONV:.*]] = arith.sitofp %[[CST]] : vector<8xi32> to vector<8xf32>
+// CHECK: %[[RET:.*]] = builtin.unrealized_conversion_cast %[[CONV]] : vector<8xf32> to tensor<8xf32>
+// CHECK: return %[[RET]]
+
+func.func @test_iota_2d() -> tensor<4x8xi32> {
+  %0 = stablehlo.iota dim = 1 : tensor<4x8xi32>
+  return %0 : tensor<4x8xi32>
+}
+// CHECK-LABEL: @test_iota_2d
+// CHECK: %[[CST:.*]] = arith.constant dense<[0, 1, 2, 3, 4, 5, 6, 7]> : vector<8xi32>
+// CHECK: %[[CAST:.*]] = vector.shape_cast %[[CST]] : vector<8xi32> to vector<1x8xi32>
+// CHECK: %[[BCAST:.*]] = vector.broadcast %[[CAST]] : vector<1x8xi32> to vector<4x8xi32>
+// CHECK: %[[RET:.*]] = builtin.unrealized_conversion_cast %[[BCAST]] : vector<4x8xi32> to tensor<4x8xi32>
+// CHECK: return %[[RET]]
+
 

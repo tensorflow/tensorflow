@@ -62,14 +62,205 @@ using ::mlir::Type;
 using ::mlir::UnrealizedConversionCastOp;
 using ::mlir::Value;
 
-Value GetConstant(ImplicitLocOpBuilder& builder, Type src_ty,
-                  Type dst_element_ty, int64_t x) {
-  if (auto src_shaped_ty = mlir::dyn_cast<ShapedType>(src_ty)) {
-    return ::xla::xtile::CreateConst(builder, dst_element_ty, x,
-                                     src_shaped_ty.getShape());
+Value LowerFloatToFloatConvert(ImplicitLocOpBuilder& builder, Location loc,
+                               Value value, FloatType src_fp_element_ty,
+                               FloatType dst_fp_element_ty, Type dst_ty) {
+  Type fp16_ty = builder.getF16Type();
+
+  if (auto dst_shaped_ty = mlir::dyn_cast<ShapedType>(dst_ty)) {
+    fp16_ty =
+        dst_shaped_ty.clone(dst_shaped_ty.getShape(), builder.getF16Type());
   }
-  return ::xla::xtile::CreateConst(builder, dst_element_ty, x);
+
+  if (src_fp_element_ty.getIntOrFloatBitWidth() == 8 &&
+      dst_fp_element_ty.getIntOrFloatBitWidth() == 8) {
+    // FP8 <-> FP8 conversion needs to go through FP16
+    auto fp16_value = mlir::arith::ExtFOp::create(builder, loc, fp16_ty, value);
+    return mlir::arith::TruncFOp::create(builder, loc, dst_ty, fp16_value);
+  }
+
+  if (src_fp_element_ty.getFPMantissaWidth() >
+      dst_fp_element_ty.getFPMantissaWidth()) {
+    return mlir::arith::TruncFOp::create(builder, loc, dst_ty, value);
+  }
+  return mlir::arith::ExtFOp::create(builder, loc, dst_ty, value);
 }
+
+Value LowerIntegerToIntegerConvert(ImplicitLocOpBuilder& builder, Location loc,
+                                   Value value, IntegerType src_element_ty,
+                                   IntegerType dst_element_ty, Type dst_ty) {
+  bool is_src_unsigned = src_element_ty.isUnsignedInteger();
+  if (is_src_unsigned) {
+    value = UnsignedIntegerToSignlessInteger(builder, value);
+  }
+
+  Type signless_dst_ty = dst_ty;
+  if (dst_element_ty.isUnsignedInteger()) {
+    Type signless_elem_ty = IntegerType::get(
+        builder.getContext(), dst_element_ty.getIntOrFloatBitWidth(),
+        IntegerType::SignednessSemantics::Signless);
+    if (auto shaped_ty = mlir::dyn_cast<ShapedType>(dst_ty)) {
+      signless_dst_ty = shaped_ty.clone(signless_elem_ty);
+    } else {
+      signless_dst_ty = signless_elem_ty;
+    }
+  }
+
+  Value result;
+  if (src_element_ty.getIntOrFloatBitWidth() <
+      dst_element_ty.getIntOrFloatBitWidth()) {
+    if (is_src_unsigned || src_element_ty.isInteger(1)) {
+      result =
+          mlir::arith::ExtUIOp::create(builder, loc, signless_dst_ty, value);
+    } else {
+      result =
+          mlir::arith::ExtSIOp::create(builder, loc, signless_dst_ty, value);
+    }
+  } else if (dst_element_ty.isInteger(1)) {
+    // int => bool is always value != 0.
+    result = mlir::arith::CmpIOp::create(
+        builder, loc, mlir::arith::CmpIPredicate::ne, value,
+        ::xla::xtile::ZerosLike(builder, value));
+  } else {
+    result =
+        mlir::arith::TruncIOp::create(builder, loc, signless_dst_ty, value);
+  }
+
+  if (dst_element_ty.isUnsignedInteger() && !dst_element_ty.isInteger(1)) {
+    result = UnrealizedConversionCastOp::create(builder, loc, dst_ty, result)
+                 .getResult(0);
+  }
+  return result;
+}
+
+Value LowerFloatToIntegerConvert(ImplicitLocOpBuilder& builder, Location loc,
+                                 Value value, FloatType src_fp_element_ty,
+                                 IntegerType dst_element_ty, Type src_ty,
+                                 Type dst_ty) {
+  return ::xla::emitters::EmitFloatToIntConvertWithClamping(
+      builder, value, src_fp_element_ty, dst_element_ty, src_ty, dst_ty);
+}
+
+Value LowerIntegerToFloatConvert(ImplicitLocOpBuilder& builder, Location loc,
+                                 Value value, IntegerType src_element_ty,
+                                 Type dst_ty) {
+  if (src_element_ty.isInteger(1)) {
+    return mlir::arith::UIToFPOp::create(builder, loc, dst_ty, value);
+  }
+  if (src_element_ty.isUnsignedInteger()) {
+    value = UnsignedIntegerToSignlessInteger(builder, value);
+    return mlir::arith::UIToFPOp::create(builder, loc, dst_ty, value);
+  }
+  return mlir::arith::SIToFPOp::create(builder, loc, dst_ty, value);
+}
+
+}  // namespace
+
+absl::StatusOr<Value> LowerConvert(ImplicitLocOpBuilder& builder, Location loc,
+                                   Value value, Type src_ty, Type dst_ty) {
+  Type src_element_ty = getElementTypeOrSelf(src_ty);
+  Type fp32_ty = builder.getF32Type();
+  Type dst_element_ty = getElementTypeOrSelf(dst_ty);
+
+  if (src_element_ty == dst_element_ty) {
+    return value;
+  }
+
+  if (auto src_shaped_ty = mlir::dyn_cast<ShapedType>(src_ty)) {
+    fp32_ty =
+        src_shaped_ty.clone(src_shaped_ty.getShape(), builder.getF32Type());
+  }
+
+  // All operations on bf16 are done through f32.
+  if (src_element_ty.isBF16()) {
+    return ::xla::xtile::Cast(
+        builder, mlir::arith::ExtFOp::create(builder, loc, fp32_ty, value),
+        dst_element_ty);
+  }
+  if (dst_element_ty.isBF16()) {
+    // S8 -> BF16 is directly supported and doesn't need to go through f32.
+    if (!src_element_ty.isInteger(8)) {
+      return mlir::arith::TruncFOp::create(
+          builder, loc, dst_ty,
+          ::xla::xtile::Cast(builder, value, builder.getF32Type()));
+    }
+  }
+
+  // float => float
+  auto src_fp_element_ty = mlir::dyn_cast<mlir::FloatType>(src_element_ty);
+  auto dst_fp_element_ty = mlir::dyn_cast<mlir::FloatType>(dst_element_ty);
+  if (src_fp_element_ty && dst_fp_element_ty) {
+    return LowerFloatToFloatConvert(builder, loc, value, src_fp_element_ty,
+                                    dst_fp_element_ty, dst_ty);
+  }
+  // int => int
+  auto src_int_element_ty = mlir::dyn_cast<mlir::IntegerType>(src_element_ty);
+  auto dst_int_element_ty = mlir::dyn_cast<mlir::IntegerType>(dst_element_ty);
+  if (src_int_element_ty && dst_int_element_ty) {
+    return LowerIntegerToIntegerConvert(builder, loc, value, src_int_element_ty,
+                                        dst_int_element_ty, dst_ty);
+  }
+  // int => float
+  if (src_int_element_ty && dst_fp_element_ty) {
+    return LowerIntegerToFloatConvert(builder, loc, value, src_int_element_ty,
+                                      dst_ty);
+  }
+  // float => int
+  if (src_fp_element_ty && dst_int_element_ty) {
+    return LowerFloatToIntegerConvert(builder, loc, value, src_fp_element_ty,
+                                      dst_int_element_ty, src_ty, dst_ty);
+  }
+  auto GetRealType = [](Type type, Type element_type) -> Type {
+    if (auto shaped_ty = mlir::dyn_cast<ShapedType>(type)) {
+      return shaped_ty.clone(element_type);
+    }
+    return element_type;
+  };
+
+  // => complex
+  auto dst_complex_element_ty =
+      mlir::dyn_cast<mlir::ComplexType>(dst_element_ty);
+  if (dst_complex_element_ty) {
+    Type real_ty = GetRealType(dst_ty, dst_complex_element_ty.getElementType());
+    if (auto src_complex_elem_ty =
+            mlir::dyn_cast<mlir::ComplexType>(src_element_ty)) {
+      Type real_src_ty =
+          GetRealType(src_ty, src_complex_elem_ty.getElementType());
+      Value real_input =
+          mlir::stablehlo::RealOp::create(builder, loc, real_src_ty, value);
+      Value imag_input =
+          mlir::stablehlo::ImagOp::create(builder, loc, real_src_ty, value);
+      ASSIGN_OR_RETURN(Value real_part, LowerConvert(builder, loc, real_input,
+                                                     real_src_ty, real_ty));
+      ASSIGN_OR_RETURN(Value imag_part, LowerConvert(builder, loc, imag_input,
+                                                     real_src_ty, real_ty));
+      return mlir::stablehlo::ComplexOp::create(builder, loc, dst_ty, real_part,
+                                                imag_part)
+          .getResult();
+    }
+    ASSIGN_OR_RETURN(Value real_part,
+                     LowerConvert(builder, loc, value, src_ty, real_ty));
+    Value imag_part = ZerosLike(builder, real_part);
+    return mlir::stablehlo::ComplexOp::create(builder, loc, dst_ty, real_part,
+                                              imag_part)
+        .getResult();
+  }
+  // complex => non-complex
+  auto src_complex_element_ty =
+      mlir::dyn_cast<mlir::ComplexType>(src_element_ty);
+  if (src_complex_element_ty) {
+    Type real_ty = GetRealType(src_ty, src_complex_element_ty.getElementType());
+    Value real_part =
+        mlir::stablehlo::RealOp::create(builder, loc, real_ty, value);
+    return LowerConvert(builder, loc, real_part, real_ty, dst_ty);
+  }
+
+  return absl::UnimplementedError(absl::StrCat(
+      "Type conversion from ", ::xla::llvm_ir::DumpToString(src_ty), " to ",
+      ::xla::llvm_ir::DumpToString(dst_ty), " not supported"));
+}
+
+namespace {
 
 class LowerConvertOp
     : public mlir::OpRewritePattern<mlir::stablehlo::ConvertOp> {
@@ -98,205 +289,6 @@ class LowerConvertOp
 
     rewriter.replaceOp(op, converted_value_or_status.value());
     return mlir::success();
-  }
-
-  absl::StatusOr<Value> LowerConvert(ImplicitLocOpBuilder& builder,
-                                     Location loc, Value value, Type src_ty,
-                                     Type dst_ty) const {
-    Type src_element_ty = getElementTypeOrSelf(src_ty);
-    Type fp32_ty = builder.getF32Type();
-    Type dst_element_ty = getElementTypeOrSelf(dst_ty);
-
-    if (auto src_shaped_ty = mlir::dyn_cast<ShapedType>(src_ty)) {
-      fp32_ty =
-          src_shaped_ty.clone(src_shaped_ty.getShape(), builder.getF32Type());
-    }
-
-    // All operations on bf16 are done through f32.
-    if (src_element_ty.isBF16()) {
-      return ::xla::xtile::Cast(
-          builder, mlir::arith::ExtFOp::create(builder, loc, fp32_ty, value),
-          dst_element_ty);
-    }
-    if (dst_element_ty.isBF16()) {
-      // S8 -> BF16 is directly supported and doesn't need to go through f32.
-      if (!src_element_ty.isInteger(8)) {
-        return mlir::arith::TruncFOp::create(
-            builder, loc, dst_ty,
-            ::xla::xtile::Cast(builder, value, builder.getF32Type()));
-      }
-    }
-
-    // float => float
-    auto src_fp_element_ty = mlir::dyn_cast<mlir::FloatType>(src_element_ty);
-    auto dst_fp_element_ty = mlir::dyn_cast<mlir::FloatType>(dst_element_ty);
-    if (src_fp_element_ty && dst_fp_element_ty) {
-      return LowerFloatToFloatConvert(builder, loc, value, src_fp_element_ty,
-                                      dst_fp_element_ty, dst_ty);
-    }
-    // int => int
-    auto src_int_element_ty = mlir::dyn_cast<mlir::IntegerType>(src_element_ty);
-    auto dst_int_element_ty = mlir::dyn_cast<mlir::IntegerType>(dst_element_ty);
-    if (src_int_element_ty && dst_int_element_ty) {
-      return LowerIntegerToIntegerConvert(
-          builder, loc, value, src_int_element_ty, dst_int_element_ty, dst_ty);
-    }
-    // int => float
-    if (src_int_element_ty && dst_fp_element_ty) {
-      return LowerIntegerToFloatConvert(builder, loc, value, src_int_element_ty,
-                                        dst_ty);
-    }
-    // float => int
-    if (src_fp_element_ty && dst_int_element_ty) {
-      return LowerFloatToIntConvert(builder, loc, value, src_fp_element_ty,
-                                    dst_int_element_ty, src_ty, dst_ty);
-    }
-    auto GetRealType = [](Type type, Type element_type) -> Type {
-      if (auto shaped_ty = mlir::dyn_cast<ShapedType>(type)) {
-        return shaped_ty.clone(element_type);
-      }
-      return element_type;
-    };
-
-    // => complex
-    auto dst_complex_element_ty =
-        mlir::dyn_cast<mlir::ComplexType>(dst_element_ty);
-    if (dst_complex_element_ty) {
-      Type real_ty =
-          GetRealType(dst_ty, dst_complex_element_ty.getElementType());
-      if (auto src_complex_elem_ty =
-              mlir::dyn_cast<mlir::ComplexType>(src_element_ty)) {
-        Type real_src_ty =
-            GetRealType(src_ty, src_complex_elem_ty.getElementType());
-        Value real_input =
-            mlir::stablehlo::RealOp::create(builder, loc, real_src_ty, value);
-        Value imag_input =
-            mlir::stablehlo::ImagOp::create(builder, loc, real_src_ty, value);
-        ASSIGN_OR_RETURN(Value real_part, LowerConvert(builder, loc, real_input,
-                                                       real_src_ty, real_ty));
-        ASSIGN_OR_RETURN(Value imag_part, LowerConvert(builder, loc, imag_input,
-                                                       real_src_ty, real_ty));
-        return mlir::stablehlo::ComplexOp::create(builder, loc, dst_ty,
-                                                  real_part, imag_part)
-            .getResult();
-      }
-      ASSIGN_OR_RETURN(Value real_part,
-                       LowerConvert(builder, loc, value, src_ty, real_ty));
-      Value imag_part = ZerosLike(builder, real_part);
-      return mlir::stablehlo::ComplexOp::create(builder, loc, dst_ty, real_part,
-                                                imag_part)
-          .getResult();
-    }
-    // complex => non-complex
-    auto src_complex_element_ty =
-        mlir::dyn_cast<mlir::ComplexType>(src_element_ty);
-    if (src_complex_element_ty) {
-      Type real_ty =
-          GetRealType(src_ty, src_complex_element_ty.getElementType());
-      Value real_part =
-          mlir::stablehlo::RealOp::create(builder, loc, real_ty, value);
-      return LowerConvert(builder, loc, real_part, real_ty, dst_ty);
-    }
-
-    return absl::UnimplementedError(absl::StrCat(
-        "Type conversion from ", ::xla::llvm_ir::DumpToString(src_ty), " to ",
-        ::xla::llvm_ir::DumpToString(dst_ty), " not supported"));
-  }
-
-  Value LowerFloatToFloatConvert(ImplicitLocOpBuilder& builder, Location loc,
-                                 Value value, FloatType src_fp_element_ty,
-                                 FloatType dst_fp_element_ty,
-                                 Type dst_ty) const {
-    Type fp16_ty = builder.getF16Type();
-
-    if (auto dst_shaped_ty = mlir::dyn_cast<ShapedType>(dst_ty)) {
-      fp16_ty =
-          dst_shaped_ty.clone(dst_shaped_ty.getShape(), builder.getF16Type());
-    }
-
-    if (src_fp_element_ty.getIntOrFloatBitWidth() == 8 &&
-        dst_fp_element_ty.getIntOrFloatBitWidth() == 8) {
-      // FP8 <-> FP8 conversion needs to go through FP16
-      auto fp16_value =
-          mlir::arith::ExtFOp::create(builder, loc, fp16_ty, value);
-      return mlir::arith::TruncFOp::create(builder, loc, dst_ty, fp16_value);
-    }
-
-    if (src_fp_element_ty.getFPMantissaWidth() >
-        dst_fp_element_ty.getFPMantissaWidth()) {
-      return mlir::arith::TruncFOp::create(builder, loc, dst_ty, value);
-    }
-    return mlir::arith::ExtFOp::create(builder, loc, dst_ty, value);
-  }
-
-  Value LowerIntegerToIntegerConvert(ImplicitLocOpBuilder& builder,
-                                     Location loc, Value value,
-                                     IntegerType src_element_ty,
-                                     IntegerType dst_element_ty,
-                                     Type dst_ty) const {
-    bool is_src_unsigned = src_element_ty.isUnsignedInteger();
-    if (is_src_unsigned) {
-      value = UnsignedIntegerToSignlessInteger(builder, value);
-    }
-
-    Type signless_dst_ty = dst_ty;
-    if (dst_element_ty.isUnsignedInteger()) {
-      Type signless_elem_ty = IntegerType::get(
-          builder.getContext(), dst_element_ty.getIntOrFloatBitWidth(),
-          IntegerType::SignednessSemantics::Signless);
-      if (auto shaped_ty = mlir::dyn_cast<ShapedType>(dst_ty)) {
-        signless_dst_ty = shaped_ty.clone(signless_elem_ty);
-      } else {
-        signless_dst_ty = signless_elem_ty;
-      }
-    }
-
-    Value result;
-    if (src_element_ty.getIntOrFloatBitWidth() <
-        dst_element_ty.getIntOrFloatBitWidth()) {
-      if (is_src_unsigned || src_element_ty.isInteger(1)) {
-        result =
-            mlir::arith::ExtUIOp::create(builder, loc, signless_dst_ty, value);
-      } else {
-        result =
-            mlir::arith::ExtSIOp::create(builder, loc, signless_dst_ty, value);
-      }
-    } else if (dst_element_ty.isInteger(1)) {
-      // int => bool is always value != 0.
-      result = mlir::arith::CmpIOp::create(
-          builder, loc, mlir::arith::CmpIPredicate::ne, value,
-          ::xla::xtile::ZerosLike(builder, value));
-    } else {
-      result =
-          mlir::arith::TruncIOp::create(builder, loc, signless_dst_ty, value);
-    }
-
-    if (dst_element_ty.isUnsignedInteger() && !dst_element_ty.isInteger(1)) {
-      result = UnrealizedConversionCastOp::create(builder, loc, dst_ty, result)
-                   .getResult(0);
-    }
-    return result;
-  }
-
-  Value LowerFloatToIntConvert(ImplicitLocOpBuilder& builder, Location loc,
-                               Value value, FloatType src_fp_element_ty,
-                               IntegerType dst_element_ty, Type src_ty,
-                               Type dst_ty) const {
-    return ::xla::emitters::EmitFloatToIntConvertWithClamping(
-        builder, value, src_fp_element_ty, dst_element_ty, src_ty, dst_ty);
-  }
-
-  Value LowerIntegerToFloatConvert(ImplicitLocOpBuilder& builder, Location loc,
-                                   Value value, IntegerType src_element_ty,
-                                   Type dst_ty) const {
-    if (src_element_ty.isInteger(1)) {
-      return mlir::arith::UIToFPOp::create(builder, loc, dst_ty, value);
-    }
-    if (src_element_ty.isUnsignedInteger()) {
-      value = UnsignedIntegerToSignlessInteger(builder, value);
-      return mlir::arith::UIToFPOp::create(builder, loc, dst_ty, value);
-    }
-    return mlir::arith::SIToFPOp::create(builder, loc, dst_ty, value);
   }
 };
 
@@ -406,5 +398,4 @@ struct StablehloLowerToXtilePass
 };
 
 }  // namespace
-
 }  // namespace xla::xtile

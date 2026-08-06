@@ -22,6 +22,7 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
 #include "llvm/ADT/STLExtras.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Linalg/Transforms/Transforms.h"
@@ -47,6 +48,7 @@ limitations under the License.
 #include "xla/backends/cpu/codegen/tiled/transforms/lowering_utils.h"
 #include "xla/codegen/emitters/ir/xla_dialect.h"
 #include "xla/codegen/emitters/ir/xla_ops.h"
+#include "xla/codegen/xtile/ir/transforms/passes.h"
 #include "xla/codegen/xtile/ir/xtile_dialect.h"
 #include "xla/codegen/xtile/ir/xtile_ops.h"
 #include "xla/hlo/analysis/indexing_map.h"
@@ -289,6 +291,16 @@ struct VectorizeBroadcastInDimOp
       return mlir::failure();
     }
     auto result_vector_type = mlir::cast<mlir::VectorType>(new_type);
+    // When broadcasting a tensor.from_elements(scalar), we can directly
+    // broadcast the source scalar.
+    if (auto from_elements =
+            op.getOperand().getDefiningOp<mlir::tensor::FromElementsOp>()) {
+      if (from_elements.getElements().size() == 1) {
+        rewriter.replaceOpWithNewOp<mv::BroadcastOp>(
+            op, result_vector_type, from_elements.getElements().front());
+        return mlir::success();
+      }
+    }
     Value source_vector = adaptor.getOperand();
     auto source_vector_type =
         mlir::cast<mlir::VectorType>(source_vector.getType());
@@ -436,6 +448,67 @@ struct VectorizeConstantOp : public mlir::OpConversionPattern<ma::ConstantOp> {
   }
 };
 
+struct VectorizeIotaOp : public mlir::OpConversionPattern<shlo::IotaOp> {
+  using OpConversionPattern::OpConversionPattern;
+
+  mlir::LogicalResult matchAndRewrite(
+      shlo::IotaOp op, OpAdaptor adaptor,
+      mlir::ConversionPatternRewriter& rewriter) const override {
+    if (mlir::isa<mlir::ComplexType>(op.getType().getElementType())) {
+      return rewriter.notifyMatchFailure(
+          op, "complex types are not supported by vector operations");
+    }
+    int64_t iota_dim = op.getIotaDimension();
+    mlir::Type new_type = this->getTypeConverter()->convertType(op.getType());
+    if (!new_type) {
+      return mlir::failure();
+    }
+    auto result_vector_type = mlir::cast<mlir::VectorType>(new_type);
+    int64_t iota_size = result_vector_type.getShape()[iota_dim];
+    auto i32_1d_vector_type =
+        mlir::VectorType::get({iota_size}, rewriter.getI32Type());
+
+    llvm::SmallVector<mlir::Attribute> iota_values(iota_size);
+    for (int idx = 0; idx != iota_size; ++idx) {
+      iota_values[idx] = rewriter.getI32IntegerAttr(idx);
+    }
+
+    mlir::Value iota_const = ma::ConstantOp::create(
+        rewriter, op->getLoc(),
+        mlir::DenseElementsAttr::get(i32_1d_vector_type, iota_values));
+
+    auto i32_result_vector_type = mlir::VectorType::get(
+        result_vector_type.getShape(), rewriter.getI32Type());
+
+    if (result_vector_type.getRank() > 1) {
+      llvm::SmallVector<int64_t> intermediate_shape(
+          result_vector_type.getRank(), 1);
+      intermediate_shape[iota_dim] = iota_size;
+      auto intermediate_vector_type =
+          mlir::VectorType::get(intermediate_shape, rewriter.getI32Type());
+
+      mlir::Value intermediate_vector = mlir::vector::ShapeCastOp::create(
+          rewriter, op->getLoc(), intermediate_vector_type, iota_const);
+
+      iota_const = mlir::vector::BroadcastOp::create(
+          rewriter, op->getLoc(), i32_result_vector_type, intermediate_vector);
+    }
+
+    mlir::ImplicitLocOpBuilder builder(op->getLoc(), rewriter);
+    auto converted_or =
+        xtile::LowerConvert(builder, op->getLoc(), iota_const,
+                            i32_result_vector_type, result_vector_type);
+    if (!converted_or.ok()) {
+      return rewriter.notifyMatchFailure(
+          op, absl::StrCat("Type conversion not supported: ",
+                           converted_or.status().message()));
+    }
+
+    rewriter.replaceOp(op, converted_or.value());
+    return mlir::success();
+  }
+};
+
 template <typename OpTy>
 struct VectorizeElementwiseOp : public mlir::OpConversionPattern<OpTy> {
   using mlir::OpConversionPattern<OpTy>::OpConversionPattern;
@@ -492,17 +565,17 @@ class VectorizeXTilePass
         ms::SCFDialect, mlir::tensor::TensorDialect, mv::VectorDialect,
         shlo::StablehloDialect, xla::XlaDialect, xtile::XTileDialect>();
     target.addIllegalOp<shlo::BroadcastInDimOp, shlo::DotGeneralOp,
-                        shlo::TransposeOp, xtile::ExtractTileOp,
+                        shlo::IotaOp, shlo::TransposeOp, xtile::ExtractTileOp,
                         xtile::InsertTileOp>();
     target.addLegalOp<mlir::UnrealizedConversionCastOp>();
     target.addDynamicallyLegalDialect<ma::ArithDialect, mm::MathDialect>(
         [&](mlir::Operation* op) { return type_converter.isLegal(op); });
 
     mlir::RewritePatternSet patterns(context);
-    patterns
-        .add<ConvertExtractTile, ConvertInsertTile, VectorizeBroadcastInDimOp,
-             VectorizeConstantOp, VectorizeDotGeneralOp, VectorizeTransposeOp>(
-            type_converter, context);
+    patterns.add<ConvertExtractTile, ConvertInsertTile,
+                 VectorizeBroadcastInDimOp, VectorizeConstantOp,
+                 VectorizeDotGeneralOp, VectorizeIotaOp, VectorizeTransposeOp>(
+        type_converter, context);
     populateVectorizePatterns<
         ma::AddFOp, ma::AddIOp, ma::SubFOp, ma::SubIOp, ma::MulFOp, ma::MulIOp,
         ma::DivFOp, ma::DivSIOp, ma::DivUIOp, ma::RemFOp, ma::RemSIOp,

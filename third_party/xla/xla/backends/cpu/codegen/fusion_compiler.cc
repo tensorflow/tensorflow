@@ -405,6 +405,7 @@ void AddNewXtileToVectorPasses(mlir::OpPassManager& pm) {
   emitters::RegisterOptimizationPasses(pm);
 
   pm.addPass(xtile::createStablehloLowerToArithPass());
+  pm.addPass(xtile::createStablehloLowerToXtilePass());
   pm.addPass(cpu::createVectorizeXTilePass());
 
   pm.addPass(cpu::createLowerXTileEntryPass());
