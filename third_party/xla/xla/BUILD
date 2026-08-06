@@ -1595,7 +1595,6 @@ bzl_library(
         "@bazel_skylib//lib:paths",
         "//xla/tsl:package_groups_bzl",
         "//xla/tsl:tsl_bzl",
-        "//xla/tsl:tsl_default_bzl",
         "//xla/tsl/platform/default:cuda_build_defs_bzl",
     ],
 )

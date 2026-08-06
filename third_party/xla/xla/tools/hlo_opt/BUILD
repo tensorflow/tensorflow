@@ -23,7 +23,6 @@ load(
 )
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("//xla:lit.bzl", "enforce_glob", "lit_test_suite")
-load("//xla/backends/gpu/tests:helper.bzl", "get_canonical_repo_name")
 load(
     "//xla/stream_executor:build_defs.bzl",
     "if_gpu_is_configured",
@@ -271,7 +270,6 @@ lit_test_suite(
     cfg = "//xla:lit.cfg.py",
     data = [":test_utilities"],
     default_tags = ["gpu"],  # Needs to run in a build with a gpu configured.
-    hermetic_cuda_data_dir = "%S/../../../../../" + get_canonical_repo_name("cuda_nvcc"),
     tags_override = {
         "tests/gpu_hlo_ptx.hlo": ["cuda-only"],
     },
