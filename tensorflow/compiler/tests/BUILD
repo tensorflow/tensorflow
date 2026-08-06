@@ -450,6 +450,30 @@ tf_xla_py_strict_test(
 )
 
 tf_xla_py_strict_test(
+    name = "complex_trig_test",
+    size = "small",
+    srcs = ["complex_trig_test.py"],
+    enabled_backends = [
+        "cpu",
+        "gpu",
+        "gpu_a100",
+        "gpu_h100",
+    ],
+    tags = [
+        "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
+        "notap",
+    ],
+    deps = [
+        ":xla_test",
+        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/ops:array_ops",
+        "//tensorflow/python/ops:math_ops",
+        "//tensorflow/python/platform:test",
+        "//third_party/py/numpy",
+    ],
+)
+
+tf_xla_py_strict_test(
     name = "bucketize_op_test",
     size = "small",
     srcs = ["bucketize_op_test.py"],

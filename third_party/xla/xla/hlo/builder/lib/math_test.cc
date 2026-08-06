@@ -394,6 +394,49 @@ TEST_F(MathTest, SinhSmallValues) {
   ComputeAndCompareR1<float>(&builder, expected, {}, kErrorSpec);
 }
 
+// Regression test for https://github.com/tensorflow/tensorflow/issues/116944:
+// XLA's compiled Sin/Cos used to return inf/nan for complex inputs with large
+// imaginary part because the elemental IR emitter computed half_exp_neg_y via
+// FDiv(0.5, exp_y), which overflows when exp_y underflows to 0. The fix uses
+// exp(y + log(1/2)) and exp(-y + log(1/2)) independently. These tests cover
+// both the sign asymmetry (positive vs negative imaginary) and the boundary
+// at |Im(z)| ~ 88 (the float32 exp overflow threshold).
+TEST_F(MathTest, SinComplexLargeImaginary) {
+  XlaBuilder builder(TestName());
+  auto x = ConstantR1<std::complex<float>>(
+      &builder, {{0, 80}, {0, -80}, {0, 88}, {0, -88}, {1, 88}, {-1, 88}});
+  Sin(x);
+  std::vector<std::complex<float>> expected = {
+      {0.f,                         std::sinh(80.f)},
+      {0.f,                        -std::sinh(80.f)},
+      {0.f,                         std::sinh(88.f)},
+      {0.f,                        -std::sinh(88.f)},
+      {std::sin(1.f)  * std::cosh(88.f), std::cos(1.f)  * std::sinh(88.f)},
+      {std::sin(-1.f) * std::cosh(88.f), std::cos(-1.f) * std::sinh(88.f)},
+  };
+  // Use a relative-error spec: at |y|~88 the magnitudes reach ~1e38, where a
+  // 1e-3 relative error is appropriate for float32 exp/sin/cos chains.
+  ComputeAndCompareR1<std::complex<float>>(
+      &builder, expected, {}, ErrorSpec{0., 1e-3});
+}
+
+TEST_F(MathTest, CosComplexLargeImaginary) {
+  XlaBuilder builder(TestName());
+  auto x = ConstantR1<std::complex<float>>(
+      &builder, {{0, 80}, {0, -80}, {0, 88}, {0, -88}, {1, 88}, {-1, 88}});
+  Cos(x);
+  std::vector<std::complex<float>> expected = {
+      {std::cosh(80.f),   0.f},
+      {std::cosh(80.f),   0.f},  // cosh(-y) = cosh(y)
+      {std::cosh(88.f),   0.f},
+      {std::cosh(88.f),   0.f},
+      {std::cos(1.f)  * std::cosh(88.f), -std::sin(1.f)  * std::sinh(88.f)},
+      {std::cos(-1.f) * std::cosh(88.f), -std::sin(-1.f) * std::sinh(88.f)},
+  };
+  ComputeAndCompareR1<std::complex<float>>(
+      &builder, expected, {}, ErrorSpec{0., 1e-3});
+}
+
 TEST_F(MathTest, AsinhSmallValues) {
   XlaBuilder builder(TestName());
   auto x = ConstantR1<float>(&builder, {1e-3, 1e-5, 1e-7, 1e-9, 1e-11});
