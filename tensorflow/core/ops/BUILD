@@ -7,6 +7,7 @@ load(
 )
 load(
     "//tensorflow:tensorflow.bzl",
+    "if_enable_kdnn",
     "tf_cc_test",
 )
 load(
