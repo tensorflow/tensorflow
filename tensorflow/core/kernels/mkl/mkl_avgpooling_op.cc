@@ -249,10 +249,13 @@ class MklAvgPoolingGradOp : public MklPoolingBackwardOpBase<T> {
 
       // Validate grad tensor rank before accessing its dimensions.
       // For 2D pooling, grad must be 4D; for 3D pooling, grad must be 5D.
-      OP_REQUIRES(context, grad_tensor.dims() == expected_grad_rank,
-                  absl::InvalidArgumentError(absl::StrCat(
-                      "Expected grad to be rank ", expected_grad_rank,
-                      " but got rank ", grad_tensor.dims())));
+      if (!grad_mkl_shape.IsMklTensor()) {
+        OP_REQUIRES(context, grad_tensor.dims() == expected_rank,
+                    absl::InvalidArgumentError(absl::StrCat(
+                        "Expected grad tensor to be ",
+                        expected_rank, "D, but got a ",
+                        grad_tensor.dims(), "D tensor.")));
+      }
 
       // For empty tensor, avg_pool_3d_grad in oneDNN doesn't handle this case.
       // Follow what native TF does in this case.
