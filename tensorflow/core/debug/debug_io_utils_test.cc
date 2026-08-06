@@ -15,9 +15,16 @@ limitations under the License.
 
 #include "tensorflow/core/debug/debug_io_utils.h"
 
+#include <cstdio>
 #include <cstdlib>
 #include <memory>
 #include <unordered_set>
+
+#if defined(PLATFORM_WINDOWS)
+#include <direct.h>
+#else
+#include <unistd.h>
+#endif
 
 #include "absl/synchronization/notification.h"
 #include "tensorflow/core/debug/debug_callback_registry.h"
@@ -32,10 +39,40 @@ limitations under the License.
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/util/event.pb.h"
 
 namespace tensorflow {
 namespace {
+
+#if defined(PLATFORM_WINDOWS)
+#define TFDBG_GETCWD _getcwd
+#define TFDBG_CHDIR _chdir
+#else
+#define TFDBG_GETCWD getcwd
+#define TFDBG_CHDIR chdir
+#endif
+
+// Temporarily changes the process's current working directory for the
+// lifetime of this object, then restores the original directory. Used by
+// tests that must exercise a bare relative (slash-less) path argument, which
+// otherwise depends on whatever the test runner's ambient CWD happens to be.
+class ScopedChdir {
+ public:
+  explicit ScopedChdir(const std::string& new_dir) {
+    char buf[FILENAME_MAX];
+    CHECK(TFDBG_GETCWD(buf, sizeof(buf)) != nullptr);
+    old_dir_ = buf;
+    CHECK_EQ(0, TFDBG_CHDIR(new_dir.c_str()));
+  }
+  ~ScopedChdir() { (void)TFDBG_CHDIR(old_dir_.c_str()); }
+
+ private:
+  std::string old_dir_;
+};
+
+#undef TFDBG_GETCWD
+#undef TFDBG_CHDIR
 
 class DebugIOUtilsTest : public ::testing::Test {
  public:
@@ -153,6 +190,10 @@ TEST_F(DebugIOUtilsTest, DumpFloatTensorToFileSunnyDay) {
 
 TEST_F(DebugIOUtilsTest, DumpTensorToDirWithRelativeDumpRootSunnyDay) {
   Initialize();
+  // Run inside a directory guaranteed to be writable, so the relative-path
+  // dump below doesn't depend on whatever the test runner's ambient current
+  // working directory happens to be.
+  ScopedChdir scoped_chdir(testing::TmpDir());
 
   // A relative directory with no path separator at all. io::Dirname() on a
   // path like this returns "", and DebugFileIO::RecursiveCreateDir used to
