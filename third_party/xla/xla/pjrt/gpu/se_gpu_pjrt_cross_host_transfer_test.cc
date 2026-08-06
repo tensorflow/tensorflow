@@ -194,8 +194,11 @@ TEST(StreamExecutorGpuClientTest, CrossHostTransferPartialCancellation) {
   EXPECT_OK(cancel_result);
 
   ASSERT_EQ(buffers.size(), 2);
-  EXPECT_THAT(buffers[0]->ToLiteral().Await().status(),
-              StatusIs(absl::StatusCode::kCancelled));
+
+  ASSERT_OK_AND_ASSIGN(std::shared_ptr<Literal> recv_literal0,
+                       buffers[0]->ToLiteral().Await());
+  EXPECT_TRUE(LiteralTestUtil::Equal(input_literal, *recv_literal0));
+
   EXPECT_THAT(buffers[1]->ToLiteral().Await().status(),
               StatusIs(absl::StatusCode::kCancelled));
 }

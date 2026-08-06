@@ -972,8 +972,8 @@ class CrossHostRecvState {
         cancellation_statuses_(num_buffers) {}
 
   // Waits until all transfers in the batch are complete or cancelled. Returns
-  // OK if all transfers are complete, or an arbitrary cancellation status.
-  absl::Status Wait(se::Stream* stream) {
+  // a list of cancellations statuses, one for each buffer.
+  absl::StatusOr<std::vector<absl::Status>> Wait(se::Stream* stream) {
     static constexpr absl::Duration kInitialDelay = absl::Microseconds(2);
     static constexpr absl::Duration kPeriod = absl::Microseconds(10);
 
@@ -1026,12 +1026,7 @@ class CrossHostRecvState {
     }
 
     absl::MutexLock l(mu_);
-    for (const auto& status : cancellation_statuses_) {
-      if (!status.ok()) {
-        return status;
-      }
-    }
-    return absl::OkStatus();
+    return cancellation_statuses_;
   }
 
   // Cancels the transfer associated with the given serialized descriptor. Per
@@ -1117,8 +1112,12 @@ StreamExecutorGpuRawClient::CrossHostReceiveBuffersInto(
       raw_buffers[0]->down_cast<PjRtStreamExecutorRawBuffer>()->local_device();
   se::Stream* stream = local_device->GetDeviceToDeviceStream();
 
-  BufferSequencingEventRef definition_event =
-      BufferSequencingEvent::Create(this->async_work_runner());
+  std::vector<BufferSequencingEventRef> buffer_sequencing_events;
+  buffer_sequencing_events.reserve(buffers.size());
+  for (int i = 0; i < buffers.size(); ++i) {
+    buffer_sequencing_events.push_back(
+        BufferSequencingEvent::Create(this->async_work_runner()));
+  }
 
   // Allocate a `uint32_t` flag per buffer. The sender flips the flags from 0 to
   // 1 to signal transfer completion. Uses uint32_t because that's the smallest
@@ -1129,9 +1128,9 @@ StreamExecutorGpuRawClient::CrossHostReceiveBuffersInto(
                         /*retry_on_oom=*/true, {}));
 
   auto recv = [this, raw_buffers = std::move(raw_buffers),
-               flag_buffer = std::move(flag_buffer), definition_event,
+               flag_buffer = std::move(flag_buffer), buffer_sequencing_events,
                notifier = std::move(notifier), local_device, stream]() mutable {
-    auto status = [&]() -> absl::Status {
+    auto results = [&]() -> absl::StatusOr<std::vector<absl::Status>> {
       auto* executor =
           absl::down_cast<se::gpu::GpuExecutor*>(local_device->executor());
 
@@ -1145,7 +1144,9 @@ StreamExecutorGpuRawClient::CrossHostReceiveBuffersInto(
         flag_address = flag_mem->mem();
 
         // Keep flags alive until the transfer is done.
-        definition_event.AndThen([flag_mem]() {});
+        for (const auto& buffer_sequencing_event : buffer_sequencing_events) {
+          buffer_sequencing_event.AndThen([flag_mem]() {});
+        }
       }
 
       // Set all flags to 0 before starting the transfer.
@@ -1176,7 +1177,7 @@ StreamExecutorGpuRawClient::CrossHostReceiveBuffersInto(
         RETURN_IF_ERROR(WaitForAllocation(stream, *raw_buffers[i]));
 
         // Keep mem alive until the Recv has finished executing.
-        definition_event.AndThen([mem]() {});
+        buffer_sequencing_events[i].AndThen([mem]() {});
 
         // Export the buffer/flag fabric handles and use them as descriptors to
         // be sent to the sender.
@@ -1213,27 +1214,36 @@ StreamExecutorGpuRawClient::CrossHostReceiveBuffersInto(
           absl::bind_front(&CrossHostRecvState::NotifyCancellation, state),
       });
 
-      // Wait for transfer completion or cancellation. Since all buffers in a
-      // batch share the same definition event, `Wait()` waits for the entire
-      // batch to complete.
       VLOG(3) << "Waiting for cross-host recv completion";
-      RETURN_IF_ERROR(state->Wait(stream));
-      VLOG(3) << "Cross-host recv completed";
-
-      // Set definition event.
-      return AllocateAndRecordEvent(definition_event, local_device, stream,
-                                    "CrossHostReceiveBuffersInto");
+      return state->Wait(stream);
     }();
-    if (!status.ok()) {
-      VLOG(2) << "CrossHostReceiveBuffersInto failed: " << status;
-      SetEventAsError(definition_event, status);
+    if (!results.ok()) {
+      VLOG(2) << "CrossHostReceiveBuffersInto failed: " << results.status();
+      for (const auto& buffer_sequencing_event : buffer_sequencing_events) {
+        SetEventAsError(buffer_sequencing_event, results.status());
+      }
+      return;
+    }
+
+    VLOG(3) << "Cross-host recv completed";
+    CHECK_EQ(results->size(), buffer_sequencing_events.size());
+    for (int i = 0; i < buffer_sequencing_events.size(); ++i) {
+      absl::Status status = (*results)[i];
+      if (status.ok()) {
+        status =
+            AllocateAndRecordEvent(buffer_sequencing_events[i], local_device,
+                                   stream, "CrossHostReceiveBuffersInto");
+      }
+      if (!status.ok()) {
+        SetEventAsError(buffer_sequencing_events[i], status);
+      }
     }
   };
   async_work_runner()->Execute(std::move(recv));
 
   PjRtDeviceEventRefVector definition_events;
-  for (int i = 0; i < buffers.size(); ++i) {
-    definition_events.push_back(PjRtDeviceEventRef(definition_event));
+  for (const auto& buffer_sequencing_event : buffer_sequencing_events) {
+    definition_events.push_back(PjRtDeviceEventRef(buffer_sequencing_event));
   }
   return definition_events;
 }
