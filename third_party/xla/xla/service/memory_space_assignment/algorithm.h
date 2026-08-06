@@ -1109,6 +1109,14 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
 
   bool VerifyAllConversionsAreSuccessful();
 
+  // Validates the async copy allocation found for the request and records
+  // the result in failed_async_conversions_ or
+  // not_finalized_async_conversions_.
+  // Updates the result if validation fails.
+  void ValidateRequiredCopyAllocation(
+      const AllocationRequest& request,
+      const AllocationSequence& allocation_sequence, AllocationResult& result);
+
   // Finds allocations for allocation values generated from colocated intervals.
   // All of the allocation values have a must-alias relationship with each
   // other. Returns either kSuccess if all of the sites could be placed in the
@@ -1563,6 +1571,14 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
                               absl::string_view producer_name,
                               ShapeIndex producer_shape_index,
                               absl::string_view consumer_name) const;
+
+  // Finds the matching AllocationValue for a given HloUse. Returns nullptr if
+  // no matching AllocationValue is found.
+  // REQUIRES: candidate_allocation_values must be sorted by the definition time
+  // of their defining instruction.
+  AllocationValue* FindAllocationValueForUse(
+      const HloUse& use,
+      absl::Span<AllocationValue> candidate_allocation_values) const;
 
   // Takes a group of allocation values and splits them if they can be split on
   // the same dimension.
