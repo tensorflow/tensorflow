@@ -171,6 +171,12 @@ TritonBackend::GetSupportedConfigsForDot(const HloInstruction* instr) {
                                          dot, all_configs, gemm_configs,
                                          target_config().device_description,
                                          debug_options(), mlir_context_));
+    } else if (debug_options()
+                   .xla_gpu_experimental_cost_model_gemm_tiling_default()) {
+      ABSL_ASSIGN_OR_RETURN(gemm_configs, SortConfigsWithCostModel(
+                                         dot, gemm_configs,
+                                         target_config().device_description,
+                                         debug_options(), mlir_context_));
     }
   }
   configs.reserve(gemm_configs.size());
