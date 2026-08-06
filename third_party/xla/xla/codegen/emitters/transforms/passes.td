@@ -210,6 +210,7 @@ def SimplifyArithPass : Pass<"xla-simplify-arith", "mlir::func::FuncOp"> {
   let dependentDialects = [
     "mlir::arith::ArithDialect",
     "mlir::func::FuncDialect",
+    "mlir::math::MathDialect",
   ];
 
   let options = [
