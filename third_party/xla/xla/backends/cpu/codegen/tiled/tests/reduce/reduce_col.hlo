@@ -1,0 +1,45 @@
+// RUN: fusion_to_xtile %s --xla_cpu_use_new_xtile_lowering | fusion_compiler_opt \
+// RUN:   --stablehlo-lower-to-arith --xtile-cpu-vectorize-xtile --xtile-cpu-lower-xtile-entry --xla-simplify-arith \
+// RUN:   | FileCheck %s --check-prefix=NEW-VECTOR
+// RUN: test_correctness %s --xla_cpu_use_new_xtile_lowering --abs_error_bound=1e-5
+
+add {
+  x = f32[] parameter(0)
+  y = f32[] parameter(1)
+  ROOT add = f32[] add(x, y)
+}
+
+fusion {
+  p0 = f32[128,256] parameter(0)
+  c0 = f32[] constant(0)
+  ROOT reduce = f32[256] reduce(p0, c0), dimensions={0}, to_apply=add,
+   backend_config={sizes:[16]}
+}
+
+// NEW-VECTOR: func.func @wrapped_fusion_impl
+
+// NEW-VECTOR-DAG: %[[C0:.*]] = arith.constant 0 : index
+// NEW-VECTOR-DAG: %[[C1:.*]] = arith.constant 1 : index
+// NEW-VECTOR-DAG: %[[C8:.*]] = arith.constant 8 : index
+// NEW-VECTOR-DAG: %[[CST:.*]] = arith.constant dense<0.000000e+00> : vector<8xf32>
+// NEW-VECTOR-DAG: %[[CST_0:.*]] = arith.constant dense<0.000000e+00> : vector<16x8xf32>
+
+// NEW-VECTOR: scf.for %[[IV0:.*]] = %[[C0]] to %{{.*}} step %[[C1]] {
+// NEW-VECTOR:   %[[LOOP_RES:.*]] = scf.for %[[IV1:.*]] = %[[C0]] to %[[C8]] step %[[C1]] iter_args(%[[ACC:.*]] = %[[CST_0]]) -> (vector<16x8xf32>) {
+// NEW-VECTOR:     %[[IF_RES:.*]] = scf.if %{{.*}} -> (vector<16x8xf32>)
+// NEW-VECTOR:     %[[ACC_NEXT:.*]] = arith.addf %[[ACC]], %[[IF_RES]] : vector<16x8xf32>
+// NEW-VECTOR:     scf.yield %[[ACC_NEXT]] : vector<16x8xf32>
+// NEW-VECTOR:   vector.multi_reduction <add>, %[[LOOP_RES]], %[[CST]] [0] : vector<16x8xf32> to vector<8xf32>
+
+ENTRY main {
+  p0 = f32[128,256] parameter(0)
+  ROOT fusion = f32[256] fusion(p0), kind=kLoop, calls=fusion,
+    backend_config={
+      "fusion_backend_config":{
+        "block_level_fusion_config":{
+          "output_tiles":[{"sizes":["8"]}],
+          "num_ctas":"1"
+        }
+      }
+    }
+}
