@@ -7112,6 +7112,20 @@ absl::StatusOr<bool> AlgebraicSimplifierVisitor::TryToReorderSliceAndReshape(
     int64_t start_offset = slice->slice_starts(0) * sub_dim_elements;
     int64_t slice_elements = ShapeUtil::ElementsIn(slice->shape());
 
+    // Slicing before reshape is only beneficial if start_offset and
+    // slice_elements align cleanly with the sub-dimension boundaries of the
+    // operand. Otherwise, reordering would slice an interior dimension of the
+    // operand, creating strided memory access and complex index decomposition.
+    int64_t operand_sub_dim_elements = 1;
+    for (int64_t i = 1; i < rank; ++i) {
+      operand_sub_dim_elements *= new_slice_shape.dimensions(i);
+    }
+    if (operand_sub_dim_elements == 0 ||
+        start_offset % operand_sub_dim_elements != 0 ||
+        slice_elements % operand_sub_dim_elements != 0) {
+      return false;
+    }
+
     // Decompose start_offset and slice_elements backwards through the operand
     // dimensions.
     for (int64_t i = rank - 1; i >= 0; --i) {
