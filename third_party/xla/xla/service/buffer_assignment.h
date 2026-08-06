@@ -50,7 +50,6 @@ limitations under the License.
 #include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_buffer.h"
 #include "xla/service/hlo_value.h"
-#include "xla/service/logical_buffer.h"
 #include "xla/service/memory_space_assignment/memory_space_assignment.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
@@ -84,7 +83,7 @@ class BufferAllocation {
   // contiguously and can be used as array indexes.
   using Index = int64_t;
 
-  BufferAllocation(Index index, int64_t size, LogicalBuffer::Color color)
+  BufferAllocation(Index index, int64_t size, BufferValue::Color color)
       : index_(index),
         size_(size),
         color_(color),
@@ -178,9 +177,9 @@ class BufferAllocation {
 
   // Returns the color of the allocation. Only logical buffers with a matching
   // color can reside in this allocation.
-  LogicalBuffer::Color color() const { return color_; }
+  BufferValue::Color color() const { return color_; }
 
-  void set_color(LogicalBuffer::Color color) { color_ = color; }
+  void set_color(BufferValue::Color color) { color_ = color; }
   struct OffsetSize {
     int64_t offset = 0;
     int64_t size = 0;
@@ -411,7 +410,7 @@ class BufferAllocation {
   int64_t size_;
 
   // Color of the allocation.
-  LogicalBuffer::Color color_;
+  BufferValue::Color color_;
 
   // The page id of the allocation, indicating in which page of a multi-page
   // assignment this allocation is located. Only set for multi-page buffer
@@ -695,8 +694,7 @@ class BufferAssignment {
 
   // Creates and returns a new BufferAllocation, with no assigned
   // LogicalBuffers. Ownership is maintained internally.
-  BufferAllocation* NewEmptyAllocation(int64_t size,
-                                       LogicalBuffer::Color color);
+  BufferAllocation* NewEmptyAllocation(int64_t size, BufferValue::Color color);
 
   int64_t HloBufferSize(const HloBuffer& buffer) {
     auto [it, inserted] = cached_buffer_sizes_.try_emplace(buffer.id());
@@ -719,7 +717,7 @@ class BufferAssignment {
   BufferAssignment(const HloModule* module,
                    std::unique_ptr<HloOrdering> hlo_ordering,
                    BufferValue::SizeFunction buffer_size,
-                   LogicalBuffer::AlignmentFunction color_alignment,
+                   BufferValue::AlignmentFunction color_alignment,
                    std::unique_ptr<HloAliasAnalysis> alias_analysis,
                    std::unique_ptr<HloLiveRange> hlo_live_range)
       : module_(module),
@@ -788,7 +786,7 @@ class BufferAssignment {
   BufferValue::SizeFunction buffer_size_;
 
   // Function which returns the alignment for a given logical buffer color.
-  LogicalBuffer::AlignmentFunction color_alignment_;
+  BufferValue::AlignmentFunction color_alignment_;
 
   std::unique_ptr<HloAliasAnalysis> alias_analysis_;
 
@@ -946,7 +944,7 @@ class BufferAssigner {
     // Optional callback to return the memory limit for a given buffer color.
     // If set and returns > 0, the returned limit is used instead of the
     // default module config's device memory size.
-    std::function<int64_t(LogicalBuffer::Color)> color_memory_limit;
+    std::function<int64_t(BufferValue::Color)> color_memory_limit;
   };
 
   static std::unique_ptr<BufferAllocationsManagerForComputationsWithoutOrdering>
@@ -996,7 +994,7 @@ class BufferAssigner {
   static absl::StatusOr<std::unique_ptr<BufferAssignment>> Run(
       const HloModule* module, std::unique_ptr<HloOrdering> hlo_ordering,
       BufferValue::SizeFunction buffer_size, const AliasInfo* alias_info,
-      LogicalBuffer::AlignmentFunction color_alignment, Options opts);
+      BufferValue::AlignmentFunction color_alignment, Options opts);
 
   BufferAssigner(const AliasInfo* alias_info, Options opts);
   virtual ~BufferAssigner() = default;
@@ -1005,7 +1003,7 @@ class BufferAssigner {
   absl::StatusOr<std::unique_ptr<BufferAssignment>> CreateAssignment(
       const HloModule* module, std::unique_ptr<HloOrdering> hlo_ordering,
       BufferValue::SizeFunction buffer_size,
-      LogicalBuffer::AlignmentFunction color_alignment);
+      HloValue::AlignmentFunction color_alignment);
 
   // Tries to assign the given instruction to the given buffer. Returns if the
   // assignment was successful.
@@ -1016,7 +1014,7 @@ class BufferAssigner {
   // Returns the memory limit for a given color. If no limit is configured,
   // returns 0, indicating that fallback or FastMerge bounds don't apply.
   int64_t GetMemoryLimit(const BufferAssignment& assignment,
-                         LogicalBuffer::Color color) const;
+                         BufferValue::Color color) const;
 
  private:
   absl::Status RunAssignBuffers(
@@ -1113,8 +1111,8 @@ class BufferAssigner {
   // heap be available for opportunistic reuse before A's remaining buffers are
   // heap-simulated. Colors with no directional relation are ordered by numeric
   // color for stability.
-  std::vector<LogicalBuffer::Color> SortColorsForCanUseAllocation(
-      absl::Span<const LogicalBuffer::Color> colors) const;
+  std::vector<BufferValue::Color> SortColorsForCanUseAllocation(
+      absl::Span<const BufferValue::Color> colors) const;
 
   // Tries to place whole buffers of `buffer_color` into the free space of
   // already-materialized compatible temp allocations (those of a different
@@ -1127,28 +1125,27 @@ class BufferAssigner {
   // placed.
   absl::StatusOr<int64_t> ReuseCompatibleTempHeaps(
       absl::flat_hash_set<const HloValue*>* values,
-      LogicalBuffer::Color buffer_color, BufferAssignment* assignment);
+      BufferValue::Color buffer_color, BufferAssignment* assignment);
 
   // Isolates the buffers packed by heap simulator using the provided isolation
   // options. Please see the documentation for BufferIsolationConfig for more
   // details.
   void IsolateHeapBuffers(
       std::optional<BufferAssignment::BufferIsolationOptions> isolation_options,
-      const BufferAssignment* assignment, LogicalBuffer::Color color,
+      const BufferAssignment* assignment, BufferValue::Color color,
       HeapSimulator::Result<HloValue>& result) const;
 
   // Uses the results of the heap simulator to create a single allocation, with
   // LogicalBuffers packed to specific offsets.
   absl::Status AssignBuffersFromHeapSimulator(
       HeapSimulator::Result<HloValue>& result, BufferAssignment* assignment,
-      LogicalBuffer::Color color,
+      BufferValue::Color color,
       std::optional<BufferAssignment::BufferIsolationOptions>
           isolation_options);
 
   // Split a set of buffers into several sets, each of which contains buffers
   // colored with the same color.
-  absl::flat_hash_map<LogicalBuffer::Color,
-                      absl::flat_hash_set<const HloValue*>>
+  absl::flat_hash_map<BufferValue::Color, absl::flat_hash_set<const HloValue*>>
   SplitBuffersByColor(
       const absl::flat_hash_set<const HloValue*>& buffers) const;
 

@@ -107,13 +107,12 @@ BufferLiveRange GetHloBufferLiveRange(
   return result;
 }
 
-std::vector<LogicalBuffer::Color> GetColors(
-    const absl::flat_hash_map<LogicalBuffer::Color,
-                              absl::flat_hash_set<const HloValue*>>&
-        color_map) {
-  std::vector<LogicalBuffer::Color> colors;
+std::vector<BufferValue::Color> GetColors(
+    const absl::flat_hash_map<
+        BufferValue::Color, absl::flat_hash_set<const HloValue*>>& color_map) {
+  std::vector<BufferValue::Color> colors;
   colors.reserve(color_map.size());
-  for (const std::pair<const LogicalBuffer::Color,
+  for (const std::pair<const BufferValue::Color,
                        absl::flat_hash_set<const HloValue*>>& pair :
        tsl::KeySortedRange(color_map)) {
     colors.push_back(pair.first);
@@ -299,7 +298,7 @@ class FastMergeBufferAllocationsManagerForComputationsWithoutOrdering
                       std::greater<ActiveAllocation>>
       active_allocations_;
   absl::flat_hash_map<
-      LogicalBuffer::Color,
+      BufferValue::Color,
       absl::btree_set<std::pair<int64_t, BufferAllocation::Index>>>
       free_pool_;
   std::vector<BufferAllocation::Index> allocation_indices_;
@@ -1023,7 +1022,7 @@ BufferAssignment::GetUniqueTopLevelOutputSlice() const {
 }
 
 BufferAllocation* BufferAssignment::NewEmptyAllocation(
-    int64_t size, LogicalBuffer::Color color) {
+    int64_t size, BufferValue::Color color) {
   BufferAllocation::Index index = allocations_.size();
   allocations_.emplace_back(index, size, color);
   BufferAllocation* allocation = &allocations_.back();
@@ -1824,7 +1823,7 @@ BufferAssigner::BufferAssigner(const AliasInfo* alias_info, Options opts)
     : alias_info_(alias_info), opts_(std::move(opts)) {}
 
 int64_t BufferAssigner::GetMemoryLimit(const BufferAssignment& assignment,
-                                       LogicalBuffer::Color color) const {
+                                       BufferValue::Color color) const {
   if (opts_.color_memory_limit) {
     int64_t limit = opts_.color_memory_limit(color);
     return limit > 0 ? limit : 0;
@@ -1836,7 +1835,7 @@ int64_t BufferAssigner::GetMemoryLimit(const BufferAssignment& assignment,
 absl::StatusOr<std::unique_ptr<BufferAssignment>> BufferAssigner::Run(
     const HloModule* module, std::unique_ptr<HloOrdering> hlo_ordering,
     BufferValue::SizeFunction buffer_size, const AliasInfo* alias_info,
-    LogicalBuffer::AlignmentFunction color_alignment, Options opts) {
+    BufferValue::AlignmentFunction color_alignment, Options opts) {
   BufferAssigner assigner(alias_info, std::move(opts));
   return assigner.CreateAssignment(module, std::move(hlo_ordering),
                                    std::move(buffer_size),
@@ -2376,7 +2375,7 @@ absl::Status BufferAssigner::AssignBuffersForComputations(
   DefaultBufferAllocationsManagerForComputationsWithoutOrdering default_manager(
       assignment, this);
 
-  auto get_manager = [&](LogicalBuffer::Color color)
+  auto get_manager = [&](BufferValue::Color color)
       -> BufferAllocationsManagerForComputationsWithoutOrdering* {
     if (algorithm ==
         buffer_assignment::
@@ -2408,10 +2407,10 @@ absl::Status BufferAssigner::AssignBuffersForComputations(
   return absl::OkStatus();
 }
 
-flat_hash_map<LogicalBuffer::Color, flat_hash_set<const HloValue*>>
+flat_hash_map<BufferValue::Color, flat_hash_set<const HloValue*>>
 BufferAssigner::SplitBuffersByColor(
     const flat_hash_set<const HloValue*>& buffers) const {
-  flat_hash_map<LogicalBuffer::Color, flat_hash_set<const HloValue*>> color_map;
+  flat_hash_map<BufferValue::Color, flat_hash_set<const HloValue*>> color_map;
   for (auto buffer : buffers) {
     color_map[buffer->color()].insert(buffer);
   }
@@ -2440,16 +2439,16 @@ BufferAssigner::SplitBuffersByPrivateStackComputation(
   return computation_map;
 }
 
-std::vector<LogicalBuffer::Color> BufferAssigner::SortColorsForCanUseAllocation(
-    absl::Span<const LogicalBuffer::Color> colors) const {
-  std::vector<LogicalBuffer::Color> sorted(colors.begin(), colors.end());
+std::vector<BufferValue::Color> BufferAssigner::SortColorsForCanUseAllocation(
+    absl::Span<const BufferValue::Color> colors) const {
+  std::vector<BufferValue::Color> sorted(colors.begin(), colors.end());
 
   // If buffers of color A can use allocations of color B (but not the reverse),
   // process B first so that B's fixed-size heap is materialized and available
   // for opportunistic reuse before A's buffers are heap-simulated. When the
   // predicate is symmetric (same group) or unrelated in both directions, fall
   // back to a stable order by numeric color.
-  absl::c_sort(sorted, [&](LogicalBuffer::Color a, LogicalBuffer::Color b) {
+  absl::c_sort(sorted, [&](BufferValue::Color a, BufferValue::Color b) {
     const bool a_uses_b = opts_.can_use_allocation(a, b);
     const bool b_uses_a = opts_.can_use_allocation(b, a);
     // If the relation is asymmetric, the color that can use the other's
@@ -2522,7 +2521,7 @@ std::optional<ReusePlacement> FindBestFitGap(
 
 absl::StatusOr<int64_t> BufferAssigner::ReuseCompatibleTempHeaps(
     absl::flat_hash_set<const HloValue*>* values,
-    LogicalBuffer::Color buffer_color, BufferAssignment* assignment) {
+    BufferValue::Color buffer_color, BufferAssignment* assignment) {
   // Opportunistically packs whole buffers of `buffer_color` into the free space
   // of allocations already materialized for a *different*, compatible color,
   // WITHOUT growing those allocations. This is what lets GPU S(0) temps live in
@@ -2673,11 +2672,10 @@ absl::Status BufferAssigner::AssignPresetBuffers(
   }
 
   // Create an allocation for each preset color.
-  absl::flat_hash_map<LogicalBuffer::Color, BufferAllocation*>
-      preset_allocations;
+  absl::flat_hash_map<BufferValue::Color, BufferAllocation*> preset_allocations;
   for (auto& color_and_info :
        opts_.preset_assignments->assignment_informations()) {
-    LogicalBuffer::Color color(color_and_info.first);
+    BufferValue::Color color(color_and_info.first);
     auto inserted = preset_allocations.emplace(
         color,
         assignment->NewEmptyAllocation(color_and_info.second.size, color));
@@ -2734,11 +2732,11 @@ absl::Status BufferAssigner::AssignBuffersWithSequentialOrdering(
 
   // Returns a heap algorithm that chooses the best result from several
   // algorithms.
-  auto get_heap_algorithm = [&](int64_t alignment, LogicalBuffer::Color color)
+  auto get_heap_algorithm = [&](int64_t alignment, BufferValue::Color color)
       -> std::unique_ptr<HeapAlgorithm<HloValue>> {
     uint64_t page_size = assignment->module().config().page_size_kib() * 1024;
-    if (page_size > 0 && (color == LogicalBuffer::Color(0) ||
-                          color == LogicalBuffer::Color(1))) {
+    if (page_size > 0 &&
+        (color == BufferValue::Color(0) || color == BufferValue::Color(1))) {
       // Check that all buffers that are assigned fit in the page size. This is
       // a requirement for multi-page buffer assignment.
       absl::c_for_each(buffers_to_assign_sequentially, [&](const auto& pair) {
@@ -2841,7 +2839,7 @@ absl::Status BufferAssigner::AssignBuffersWithSequentialOrdering(
                                    buffers_to_assign.end());
     }
     auto color_map = SplitBuffersByColor(all_buffers_to_assign);
-    std::vector<LogicalBuffer::Color> sorted_colors = GetColors(color_map);
+    std::vector<BufferValue::Color> sorted_colors = GetColors(color_map);
     sorted_colors = SortColorsForCanUseAllocation(sorted_colors);
 
     for (auto color : sorted_colors) {
@@ -2920,7 +2918,7 @@ absl::Status BufferAssigner::AssignBuffersWithSequentialOrdering(
           hlo_ordering.SequentialOrder(*computation);
       CHECK(instruction_sequence != nullptr) << computation->name();
       auto color_map = SplitBuffersByColor(buffers_to_assign);
-      std::vector<LogicalBuffer::Color> sorted_colors = GetColors(color_map);
+      std::vector<BufferValue::Color> sorted_colors = GetColors(color_map);
       absl::c_sort(sorted_colors);
       for (auto color : sorted_colors) {
         VLOG(2) << "Simulating heap for color " << color;
@@ -3068,7 +3066,7 @@ std::vector<const HloValue*> ComputePeakMemoryLogicalBuffers(
 
 void BufferAssigner::IsolateHeapBuffers(
     std::optional<BufferAssignment::BufferIsolationOptions> isolation_options,
-    const BufferAssignment* assignment, LogicalBuffer::Color color,
+    const BufferAssignment* assignment, BufferValue::Color color,
     HeapSimulator::Result<HloValue>& result) const {
   if (!isolation_options) {
     return;
@@ -3174,7 +3172,7 @@ absl::StatusOr<std::unique_ptr<BufferAssignment>>
 BufferAssigner::CreateAssignment(
     const HloModule* module, std::unique_ptr<HloOrdering> hlo_ordering,
     BufferValue::SizeFunction buffer_size,
-    LogicalBuffer::AlignmentFunction color_alignment) {
+    BufferValue::AlignmentFunction color_alignment) {
   ABSL_ASSIGN_OR_RETURN(std::unique_ptr<HloAliasAnalysis> alias_analysis,
                    HloAliasAnalysis::Run(module, alias_info_));
 
@@ -3277,7 +3275,7 @@ absl::Status BufferAssigner::RunAssignBuffersWithFallback(
     // Aggregate total allocated bytes across all allocations by color.
     // Ensure we account for alignment fragmentation exactly the way
     // CombineTempAllocations will.
-    absl::btree_map<LogicalBuffer::Color, int64_t> allocated_bytes_by_color;
+    absl::btree_map<BufferValue::Color, int64_t> allocated_bytes_by_color;
     absl::flat_hash_set<BufferValue::Color> private_stack_colors;
     if (opts_.private_stacks) {
       for (const auto& [color, computations] :
@@ -3287,7 +3285,7 @@ absl::Status BufferAssigner::RunAssignBuffersWithFallback(
     }
 
     for (const BufferAllocation& alloc : assignment->Allocations()) {
-      LogicalBuffer::Color color = alloc.color();
+      BufferValue::Color color = alloc.color();
       if (alloc.IsPreallocatedTempBuffer()) {
         int64_t alignment = assignment->color_alignment_(color);
         int64_t base;
