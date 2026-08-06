@@ -341,19 +341,6 @@ StreamExecutorGpuClient::GetDefaultDeviceAssignment(int num_replicas,
                                                               num_partitions);
 }
 
-absl::Status StreamExecutorGpuClient::UpdateCompileOptionsInternal(
-    CompileOptions* options, ExecutableExtras* returned_extras,
-    bool lookup_addressable_devices) {
-  ABSL_RETURN_IF_ERROR(PjRtStreamExecutorClient::UpdateCompileOptionsInternal(
-      options, returned_extras, lookup_addressable_devices));
-  options->executable_build_options.set_slice_size(
-      tensorflow::down_cast<const StreamExecutorGpuTopologyDescription*>(
-          topology())
-          ->gpu_topology()
-          .slice_size());
-  return absl::OkStatus();
-}
-
 // ==== Start cross-host transfer implementations ==== //
 
 // Anonymous namespace for se_gpu_pjrt_client.cc internal cross-host transfer

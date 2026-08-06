@@ -210,10 +210,6 @@ class StreamExecutorGpuClient : public xla::PjRtStreamExecutorClient {
 
   void RecordMemoryStats();
 
-  absl::Status UpdateCompileOptionsInternal(
-      CompileOptions* options, ExecutableExtras* returned_extras,
-      bool lookup_addressable_devices) override;
-
   absl::StatusOr<std::unique_ptr<PjRtRuntimeAbiVersion>> RuntimeAbiVersion()
       const override;
 

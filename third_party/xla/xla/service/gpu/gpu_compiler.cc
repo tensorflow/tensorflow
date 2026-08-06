@@ -1041,7 +1041,7 @@ static HloPredicate CollectivePipeliningPredicate(
 }
 
 absl::Status RunCollectiveOptimizationPasses(
-    HloModule* hlo_module, const GpuCompiler::CompileOptions& options,
+    HloModule* hlo_module, const GpuTopology& gpu_topology,
     const AlgebraicSimplifierOptions& layout_insensitive_algsimp_opts,
     se::GpuComputeCapability gpu_version, int64_t pointer_size,
     CompilationStats* compilation_stats) {
@@ -1064,12 +1064,12 @@ absl::Status RunCollectiveOptimizationPasses(
       return debug_options
           .xla_gpu_unsupported_override_fast_interconnect_slice_size();
     }
-    return options.slice_size;
+    return static_cast<int64_t>(gpu_topology.slice_size());
   }();
 
-  // `fast_interconnect_slice_size` can be 0 if CompileOptions were not set up
-  // by the runner and the override flag is not set. In this case, we should not
-  // run the RaggedAllToAllMultiHostDecomposer.
+  // `fast_interconnect_slice_size` can be 0 if the slice size is 0 and the
+  // override flag is not set. In this case, we should not run the
+  // RaggedAllToAllMultiHostDecomposer.
   if (debug_options
           .xla_gpu_unsupported_enable_ragged_all_to_all_multi_host_decomposer() &&  // NOLINT
       fast_interconnect_slice_size > 0) {
@@ -1472,7 +1472,7 @@ void AddCollectiveCombinerPasses(
   const DebugOptions& opts = module.config().debug_options();
 
   if (EnableHeuristicCollectiveCombining(module.config(), device_description,
-                                         options.slice_size)) {
+                                         gpu_topology.slice_size())) {
     pipeline.AddPass<CollectiveCombinerAnnotator>(
         device_description, alias_info, pointer_size, mlir_context);
   }
@@ -1861,10 +1861,11 @@ absl::Status GpuCompiler::OptimizeHloModule(
   // Set max_windowed_einsum_iteration to slice_size, as there will be
   // significant overhead when scaled beyond the maximum size of the
   // fast-interconnect domain.
-  ABSL_RETURN_IF_ERROR(RunSPMDPasses(
-      hlo_module, gpu_topology.gpu_target_config(), alias_info,
-      layout_insensitive_algsimp_opts,
-      /*max_windowed_einsum_iteration=*/options.slice_size, compilation_stats));
+  ABSL_RETURN_IF_ERROR(
+      RunSPMDPasses(hlo_module, gpu_topology.gpu_target_config(), alias_info,
+                    layout_insensitive_algsimp_opts,
+                    /*max_windowed_einsum_iteration=*/gpu_topology.slice_size(),
+                    compilation_stats));
 
   {
     HloPassPipeline pipeline("host-compute", compilation_stats);
@@ -1886,7 +1887,7 @@ absl::Status GpuCompiler::OptimizeHloModule(
   se::GpuComputeCapability gpu_version =
       device_description.gpu_compute_capability();
   ABSL_RETURN_IF_ERROR(RunCollectiveOptimizationPasses(
-      hlo_module, options, layout_insensitive_algsimp_opts, gpu_version,
+      hlo_module, gpu_topology, layout_insensitive_algsimp_opts, gpu_version,
       pointer_size_, compilation_stats));
 
   // Run target-specific HLO optimization passes for convolution
@@ -2291,11 +2292,6 @@ absl::Status GpuCompiler::OptimizeHloPostLayoutAssignment(
 absl::StatusOr<std::unique_ptr<HloModule>> GpuCompiler::RunHloPasses(
     std::unique_ptr<HloModule> module, se::StreamExecutor* stream_exec,
     const CompileOptions& options) {
-  // TODO rename slice_size to partition_size in CompileOptions
-  if (options.slice_size > 0) {
-    module->mutable_config().set_partition_size(options.slice_size);
-  }
-
   const DebugOptions debug_opts = module->config().debug_options();
   ABSL_RETURN_IF_ERROR(LoadAutotuneResultsFromFile(debug_opts));
 
@@ -2309,6 +2305,9 @@ absl::StatusOr<std::unique_ptr<HloModule>> GpuCompiler::RunHloPasses(
   ABSL_ASSIGN_OR_RETURN(GpuTopology gpu_topology,
                    InferGpuTopology(module->config(), stream_exec, options,
                                     debug_opts, platform_id_));
+  if (gpu_topology.slice_size() > 0) {
+    module->mutable_config().set_partition_size(gpu_topology.slice_size());
+  }
   const std::optional<std::string> unoptimized_fingerprint =
       MaybeUploadUnoptimizedGpuSymbols(
           module.get(), gpu_topology.gpu_target_config().ToProto());
