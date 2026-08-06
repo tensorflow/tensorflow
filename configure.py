@@ -1314,7 +1314,6 @@ def main():
         clang_version = retrieve_clang_version(clang_compiler_path)
         if is_s390x():
           write_to_bazelrc('build --linkopt=-rtlib=compiler-rt')
-          write_to_bazelrc('build --host_linkopt=-rtlib=compiler-rt')
         disable_clang_offsetof_extension(clang_version)
     if is_windows():
       environ_cp['TF_NEED_CLANG'] = str(choose_compiler_Win(environ_cp))
