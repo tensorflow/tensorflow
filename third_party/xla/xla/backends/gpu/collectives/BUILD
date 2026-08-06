@@ -1152,6 +1152,32 @@ cc_library(
 )
 
 cc_library(
+    name = "rccl_registered_memory",
+    srcs = ["rccl_registered_memory.cc"],
+    hdrs = ["rccl_registered_memory.h"],
+    tags = [
+        "gpu",
+        "no-oneapi",
+        "rocm-only",
+    ],
+    visibility = [
+        "//xla/backends/gpu/runtime:__subpackages__",
+    ],
+    deps = [
+        ":rccl_errors",
+        "//xla:util",
+        "//xla/core/collectives:registered_memory",
+        "//xla/stream_executor:device_address",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:str_format",
+        "@local_config_rocm//rocm:rccl",  # buildcleaner: keep
+        "@local_config_rocm//rocm:rocm_headers",
+    ],
+)
+
+cc_library(
     name = "rccl_communicator",
     srcs = ["rccl_communicator.cc"],
     hdrs = ["rccl_communicator.h"],
@@ -1167,6 +1193,7 @@ cc_library(
         ":gpu_communicator",
         ":rccl_errors",
         ":rccl_group",
+        ":rccl_registered_memory",
         ":rccl_symmetric_memory",
         ":rccl_types",
         ":single_threaded_executor",
@@ -1177,6 +1204,7 @@ cc_library(
         "//xla/core/collectives:communicator",
         "//xla/core/collectives:rank_id",
         "//xla/core/collectives:reduction_kind",
+        "//xla/core/collectives:registered_memory",
         "//xla/stream_executor:device_address",
         "//xla/stream_executor:stream",
         "//xla/stream_executor:stream_executor_h",

@@ -429,8 +429,13 @@ TEST(GpuCollectivesTest, PutAndWaitSignal) {
   if (!executors[0]->CanEnablePeerAccessTo(executors[1])) {
     GTEST_SKIP() << "Test requires peer access between devices";
   }
-  if (auto cc = executors[0]->GetDeviceDescription().gpu_compute_capability();
-      cc.IsCuda() && !cc.cuda_compute_capability()->IsAtLeastHopper()) {
+
+  // TODO(rocm): API available in RCCL 2.30, should be enabled in the future
+  auto cc = executors[0]->GetDeviceDescription().gpu_compute_capability();
+  if (!cc.IsCuda()) {
+    GTEST_SKIP() << "Test requires CUDA";
+  }
+  if (!cc.cuda_compute_capability()->IsAtLeastHopper()) {
     GTEST_SKIP() << "Test requires at least Hopper architecture";
   }
 
