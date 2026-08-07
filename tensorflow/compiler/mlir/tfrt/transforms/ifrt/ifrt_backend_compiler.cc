@@ -18,6 +18,7 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 #include <optional>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -29,6 +30,7 @@ limitations under the License.
 #include "llvm/ADT/APInt.h"
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
+#include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
@@ -36,6 +38,7 @@ limitations under the License.
 #include "mlir/IR/OwningOpRef.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/IR/Verifier.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/utils/dump_mlir_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
@@ -136,6 +139,23 @@ absl::Status CompileTensorflowForIfrtServing(
       module, model_name,
       ifrt_model_context.enable_propagate_static_shapes_pass(),
       enable_async_ifrt));
+
+  // Collect the assigned-variable report emitted by
+  // SinkVariableAsNamedArrayPass. The union of these reports across all
+  // compiled modules identifies host-needed variables for
+  // IfrtModelContext::Freeze() (freeze-time host variable mode). This is
+  // only complete if every signature is compiled before Freeze() is called.
+  if (auto assigned = module->getAttrOfType<mlir::ArrayAttr>(
+          "tf_ifrt.assigned_variable_names")) {
+    std::vector<std::string> names;
+    names.reserve(assigned.size());
+    for (mlir::Attribute attr : assigned) {
+      if (auto name = mlir::dyn_cast<mlir::StringAttr>(attr)) {
+        names.push_back(name.str());
+      }
+    }
+    ifrt_model_context.AddAssignedVariableNames(std::move(names));
+  }
 
   TF_ASSIGN_OR_RETURN(
       auto handles,

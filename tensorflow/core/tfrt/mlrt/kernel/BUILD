@@ -90,6 +90,7 @@ cc_library(
         "//tensorflow/core/framework:attr_value_proto_cc",
         "//tensorflow/core/framework:types_proto_cc",
         "//tensorflow/core/platform:protobuf",
+        "//tensorflow/core/platform:refcount",
         "//tensorflow/core/tfrt/ifrt:checkpoint_loader",
         "//tensorflow/core/tfrt/ifrt:ifrt_config_proto_cc",
         "//tensorflow/core/tfrt/ifrt:ifrt_executable_registry",

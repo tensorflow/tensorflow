@@ -16,6 +16,9 @@ limitations under the License.
 
 #include "tensorflow/core/tfrt/ifrt/ifrt_model_context.h"
 
+#include <cstddef>
+
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/threadpool.h"
@@ -28,11 +31,18 @@ tsl::thread::ThreadPool& IfrtModelContext::GetThreadPool() const {
 }
 
 absl::Status IfrtModelContext::Freeze() {
+  LOG(INFO) << "IfrtModelContext::Freeze: Freezing restore tensor registry, "
+               "loaded variable registry, and "
+            << handles_.size() << " program handles.";
   restore_tensor_registry_.Freeze();
-  for (auto& program_handle : handles_) {
-    TF_RETURN_IF_ERROR(program_handle.Freeze());
+  loaded_variable_registry_.Freeze();
+  for (size_t i = 0; i < handles_.size(); ++i) {
+    LOG(INFO) << "IfrtModelContext::Freeze: Freezing program handle " << i
+              << " of " << handles_.size();
+    TF_RETURN_IF_ERROR(handles_[i].Freeze());
   }
   frozen_ = true;
+  LOG(INFO) << "IfrtModelContext::Freeze: Model context successfully frozen.";
   return absl::OkStatus();
 }
 

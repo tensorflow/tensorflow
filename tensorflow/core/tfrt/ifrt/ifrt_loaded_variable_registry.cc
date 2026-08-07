@@ -15,9 +15,11 @@ limitations under the License.
 
 #include "tensorflow/core/tfrt/ifrt/ifrt_loaded_variable_registry.h"
 
+#include <string>
 #include <utility>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -49,6 +51,24 @@ IfrtLoadedVariableRegistry::GetLoadedVariable(KeyView key_view) const {
         absl::StrCat("Variable '", key_view.input_name, "' not found."));
   }
   return it->second;
+}
+
+absl::flat_hash_set<std::string>
+IfrtLoadedVariableRegistry::GetLoadedVariableNames() const {
+  absl::MutexLock lock(&mutex_);
+  absl::flat_hash_set<std::string> names;
+  for (const auto& [key, _] : loaded_variable_map_) {
+    names.insert(key.input_name);
+  }
+  return names;
+}
+
+void IfrtLoadedVariableRegistry::Freeze() {
+  absl::MutexLock lock(mutex_);
+  LOG(INFO) << "IfrtLoadedVariableRegistry::Freeze: Clearing "
+            << loaded_variable_map_.size()
+            << " loaded variables from registry.";
+  loaded_variable_map_.clear();
 }
 
 }  // namespace ifrt_serving

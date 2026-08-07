@@ -15,9 +15,11 @@ limitations under the License.
 
 #include "tensorflow/core/tfrt/ifrt/ifrt_restore_tensor_registry.h"
 
+#include <string>
 #include <utility>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -73,14 +75,25 @@ absl::Status IfrtRestoreTensorRegistry::SetUsedByHost(absl::string_view name) {
 void IfrtRestoreTensorRegistry::Freeze() {
   absl::MutexLock lock(mutex_);
   tsl::Future<tensorflow::Tensor> release_tensor_future(
-      absl::UnavailableError("Tensor is already release."));
+      absl::UnavailableError("Tensor is already released."));
   for (auto& [name, info] : restored_tensors_) {
-    if (!info.used_by_host) {
-      // Release the tensor by replacing the future containing the tensor with
-      // an future containing a status.
-      info.tensor_future = release_tensor_future;
+    // Release the tensor by replacing the future containing the tensor with
+    // a future containing an unavailable status. Host variables will be read
+    // from ResourceManager during serving.
+    info.tensor_future = release_tensor_future;
+  }
+}
+
+absl::flat_hash_set<std::string> IfrtRestoreTensorRegistry::GetUsedByHostNames()
+    const {
+  absl::MutexLock lock(mutex_);
+  absl::flat_hash_set<std::string> result;
+  for (const auto& [name, info] : restored_tensors_) {
+    if (info.used_by_host) {
+      result.insert(name);
     }
   }
+  return result;
 }
 
 absl::StatusOr<DtypeAndShape> IfrtRestoreTensorRegistry::GetDtypeAndShape(

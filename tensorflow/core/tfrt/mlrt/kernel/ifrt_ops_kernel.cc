@@ -36,6 +36,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/platform/protobuf.h"  // IWYU pragma: keep
+#include "tensorflow/core/platform/refcount.h"
 #include "tensorflow/core/tfrt/ifrt/checkpoint_loader.h"
 #include "tensorflow/core/tfrt/ifrt/ifrt_config.pb.h"
 #include "tensorflow/core/tfrt/ifrt/ifrt_executable_registry.h"
@@ -301,6 +302,11 @@ absl::Status MlrtIfrtLoadVariableKernel::InvokeHelper() {
       return absl::FailedPreconditionError(
           "LoadVariableOp: failed to fetch IfrtModelContext: ");
     }
+    auto* resource_manager = context()
+                                 .fallback_request_state()
+                                 .device_manager()
+                                 .HostCPU()
+                                 ->resource_manager();
     ifrt_serving::IfrtRestoreTensorRegistry& ifrt_restore_tensor_registry =
         (*ifrt_model_context)->GetRestoreTensorRegistry();
     if (ifrt_restore_tensor_registry.SetUsedByHost(runtime_name).ok()) {
@@ -308,27 +314,41 @@ absl::Status MlrtIfrtLoadVariableKernel::InvokeHelper() {
           ifrt_restore_tensor_registry.GetRestoredTensor(runtime_name);
 
       restored_tensor_future.OnReady(
-          [tensor_promise = std::move(tensor_promise)](
+          [tensor_promise = std::move(tensor_promise), resource_handle,
+           resource_manager](
               absl::StatusOr<tensorflow::Tensor> restored_tensor) mutable {
-            if (!restored_tensor.ok()) {
-              std::move(tensor_promise).SetError(restored_tensor.status());
+            if (restored_tensor.ok()) {
+              std::move(tensor_promise)
+                  .Set<tensorflow::tfrt_stub::FallbackTensor>(
+                      tensorflow::tfrt_stub::FallbackTensor(*restored_tensor));
               return;
             }
-            std::move(tensor_promise)
-                .Set<tensorflow::tfrt_stub::FallbackTensor>(
-                    tensorflow::tfrt_stub::FallbackTensor(*restored_tensor));
+            // If the tensor in IfrtRestoreTensorRegistry was released/frozen,
+            // fall back to looking up the variable in ResourceManager.
+            Var* raw_var = nullptr;
+            if (resource_manager &&
+                resource_manager
+                    ->Lookup(resource_handle.container(),
+                             resource_handle.name(), &raw_var)
+                    .ok()) {
+              core::RefCountPtr<Var> variable(raw_var);
+              if (variable != nullptr && variable->tensor() != nullptr) {
+                std::move(tensor_promise)
+                    .Set<tensorflow::tfrt_stub::FallbackTensor>(
+                        tensorflow::tfrt_stub::FallbackTensor(
+                            *variable->tensor()));
+                return;
+              }
+            }
+            std::move(tensor_promise).SetError(restored_tensor.status());
           });
     } else {
       // If not at IfrtRestoreTensorRegistry, try ResourceManager
-      auto resource_manager = context()
-                                  .fallback_request_state()
-                                  .device_manager()
-                                  .HostCPU()
-                                  ->resource_manager();
       DCHECK(resource_manager);
-      Var* variable;
+      Var* raw_var = nullptr;
       TF_RETURN_IF_ERROR(resource_manager->Lookup(
-          resource_handle.container(), resource_handle.name(), &variable));
+          resource_handle.container(), resource_handle.name(), &raw_var));
+      core::RefCountPtr<Var> variable(raw_var);
       if (tensorflow::Tensor* t = variable->tensor(); t != nullptr) {
         std::move(tensor_promise)
             .Set<tensorflow::tfrt_stub::FallbackTensor>(
