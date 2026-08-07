@@ -33,6 +33,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "mlir/IR/MLIRContext.h"
 #include "xla/backends/autotuner/autotune_cache_store.h"
+#include "xla/backends/autotuner/autotuner.h"
 #include "xla/backends/autotuner/autotuner_cache_interface.h"
 #include "xla/backends/autotuner/backends.pb.h"
 #include "xla/backends/autotuner/codegen_backend.h"
@@ -269,11 +270,6 @@ std::unique_ptr<AutotunerCacheInterface> CreateAutotunerCache(
 ConfigAssigner::Options GetConfigAssignerOptions(
     const DebugOptions& debug_options, bool is_deviceless) {
   ConfigAssigner::Options options;
-  options.check_buffers = debug_options.xla_gpu_autotune_level() >= 4;
-  options.relative_tolerance = debug_options.xla_gpu_autotune_gemm_rtol();
-  options.crash_on_check_failure =
-      debug_options.xla_gpu_crash_on_verification_failures();
-  options.dump_logs_to = debug_options.xla_gpu_dump_autotune_logs_to();
   options.select_first_config =
       debug_options.xla_gpu_deterministic_ops() ||
       debug_options.xla_gpu_exclude_nondeterministic_ops() ||
@@ -310,18 +306,33 @@ CodegenOrchestrator::Options GetCodegenOrchestratorOptions(
   return options;
 }
 
-ProfileOptions GetProfileOptions(
-    const DebugOptions& debug_options,
-    const ConfigAssigner::Options& config_assigner_options) {
+ProfileOptions GetProfileOptions(const DebugOptions& debug_options,
+                                 bool is_buffer_check_supported) {
   ProfileOptions profile_options;
-  if (config_assigner_options.check_buffers) {
+  bool check_buffers =
+      is_buffer_check_supported && debug_options.xla_gpu_autotune_level() >= 4;
+  if (check_buffers) {
     profile_options.redzone_padding_bytes =
         debug_options.xla_gpu_redzone_padding_bytes();
   } else {
     profile_options.redzone_padding_bytes = 0;
   }
-  profile_options.should_init_buffers = config_assigner_options.check_buffers;
+  profile_options.should_init_buffers = check_buffers;
   return profile_options;
+}
+
+Autotuner::Options GetAutotunerOptions(const DebugOptions& debug_options,
+                                       bool is_buffer_check_supported) {
+  Autotuner::Options autotuner_options;
+  autotuner_options.correctness_check_options.enable_correctness_check =
+      is_buffer_check_supported && debug_options.xla_gpu_autotune_level() >= 4;
+  autotuner_options.correctness_check_options.relative_tolerance =
+      debug_options.xla_gpu_autotune_gemm_rtol();
+  autotuner_options.correctness_check_options.crash_on_failure =
+      debug_options.xla_gpu_crash_on_verification_failures();
+  autotuner_options.dump_logs_to =
+      debug_options.xla_gpu_dump_autotune_logs_to();
+  return autotuner_options;
 }
 
 InstructionFilterFn GetShouldAutotuneInstructionFn(
@@ -429,23 +440,6 @@ absl::StatusOr<std::unique_ptr<AutotunerPass>> AutotunerPass::Create(
       GetConfigAssignerOptions(debug_options, is_deviceless);
   CodegenOrchestrator::Options orchestrator_options =
       GetCodegenOrchestratorOptions(debug_options);
-
-  std::unique_ptr<Profiler> profiler = nullptr;
-  if (!is_deviceless) {
-    if (stream_executor->GetPlatform()->id() ==
-        stream_executor::sycl::kSyclPlatformId) {
-      // TODO(intel-tf): Enable buffer checking for SYCL once
-      // BufferComparatorKernel and RedzoneAllocatorKernel are registered for
-      // SYCL platform.
-      assigner_options.check_buffers = false;
-    }
-    profiler = GpuProfiler::Create(
-        stream_executor, GetProfileOptions(debug_options, assigner_options),
-        allocator);
-  }
-
-  VLOG(1) << "ConfigAssigner options: " << assigner_options.ToString();
-
   std::unique_ptr<AutotunerCacheInterface> cache =
       CreateAutotunerCache(debug_options, *target_config, backends);
 
@@ -453,10 +447,34 @@ absl::StatusOr<std::unique_ptr<AutotunerPass>> AutotunerPass::Create(
                    CodegenOrchestrator::Create(
                        std::move(backends), orchestrator_options, thread_pool));
 
+  std::unique_ptr<Autotuner> autotuner = nullptr;
+  if (!is_deviceless) {
+      // TODO(intel-tf): Enable buffer checking for SYCL once
+      // BufferComparatorKernel and RedzoneAllocatorKernel are registered for
+      // SYCL platform.
+      bool is_buffer_check_supported = stream_executor->GetPlatform()->id() !=
+                                       stream_executor::sycl::kSyclPlatformId;
+      std::unique_ptr<Profiler> profiler = GpuProfiler::Create(
+          stream_executor,
+          GetProfileOptions(debug_options, is_buffer_check_supported),
+          allocator);
+      Autotuner::Options autotuner_options =
+          GetAutotunerOptions(debug_options, is_buffer_check_supported);
+
+      std::vector<std::unique_ptr<Profiler>> profilers;
+      profilers.push_back(std::move(profiler));
+
+      ABSL_ASSIGN_OR_RETURN(autotuner,
+                       Autotuner::Create(*orchestrator, std::move(profilers),
+                                         autotuner_options));
+  }
+
+  VLOG(1) << "ConfigAssigner options: " << assigner_options.ToString();
+
   ABSL_ASSIGN_OR_RETURN(
       auto config_assigner,
       ConfigAssigner::Create(assigner_options, std::move(cache),
-                             std::move(orchestrator), std::move(profiler)));
+                             std::move(orchestrator), std::move(autotuner)));
 
   return absl::WrapUnique(new AutotunerPass(
       std::move(config_assigner), std::move(should_autotune),

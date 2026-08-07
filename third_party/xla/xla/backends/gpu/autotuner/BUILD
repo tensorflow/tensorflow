@@ -991,7 +991,6 @@ xla_test(
         "//xla/backends/autotuner:autotuner_cache_interface",
         "//xla/backends/autotuner:codegen_backend",
         "//xla/backends/autotuner:codegen_orchestrator",
-        "//xla/backends/autotuner:config_assigner",
         "//xla/backends/autotuner:directory_store",
         "//xla/backends/autotuner:hlo_extractor",
         "//xla/backends/autotuner:in_memory_store",

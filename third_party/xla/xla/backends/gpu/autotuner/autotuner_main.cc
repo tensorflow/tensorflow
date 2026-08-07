@@ -36,7 +36,6 @@ limitations under the License.
 #include "xla/backends/autotuner/autotuner_cache_interface.h"
 #include "xla/backends/autotuner/codegen_backend.h"
 #include "xla/backends/autotuner/codegen_orchestrator.h"
-#include "xla/backends/autotuner/config_assigner.h"
 #include "xla/backends/autotuner/directory_store.h"
 #include "xla/backends/autotuner/hlo_extractor.h"
 #include "xla/backends/autotuner/in_memory_store.h"
@@ -149,8 +148,6 @@ struct AutotunerEnvironment {
 
 absl::StatusOr<AutotunerEnvironment> CreateAutotunerEnvironment(
     const DebugOptions& debug_options) {
-  ConfigAssigner::Options assigner_options =
-      GetConfigAssignerOptions(debug_options);
   CodegenOrchestrator::Options orchestrator_options =
       GetCodegenOrchestratorOptions(debug_options);
   ABSL_ASSIGN_OR_RETURN(std::string platform_name,
@@ -197,8 +194,8 @@ absl::StatusOr<AutotunerEnvironment> CreateAutotunerEnvironment(
         << "Devices are not the same: device 0 is "
         << stream_executor_0->GetDeviceDescription().name() << ", device " << i
         << " is " << stream_executor->GetDeviceDescription().name();
-    auto profiler = GpuProfiler::Create(
-        stream_executor, GetProfileOptions(debug_options, assigner_options));
+    auto profiler =
+        GpuProfiler::Create(stream_executor, GetProfileOptions(debug_options));
     TF_RET_CHECK(profiler != nullptr)
         << "Failed to create profiler for device " << i;
 
@@ -220,16 +217,7 @@ absl::StatusOr<AutotunerEnvironment> CreateAutotunerEnvironment(
       CodegenOrchestrator::Create(std::move(autotuner_backends),
                                   orchestrator_options, thread_pool.get()));
 
-  Autotuner::Options autotuner_options;
-  autotuner_options.scratch_bytes_window_size_us =
-      assigner_options.scratch_bytes_window_size_us;
-  autotuner_options.correctness_check_options.enable_correctness_check =
-      assigner_options.check_buffers;
-  autotuner_options.correctness_check_options.relative_tolerance =
-      assigner_options.relative_tolerance;
-  autotuner_options.correctness_check_options.crash_on_failure =
-      assigner_options.crash_on_check_failure;
-
+  Autotuner::Options autotuner_options = GetAutotunerOptions(debug_options);
   ABSL_ASSIGN_OR_RETURN(auto autotuner,
                    Autotuner::Create(std::move(autotuner_orchestrator),
                                      std::move(autotuner_profilers),

@@ -62,6 +62,8 @@ int64_t GetAlgorithmId(absl::string_view name) {
           {"best_config", 1},
           {"another_config", 2},
           {"only_config", 3},
+          {"some_config", 4},
+          {"some_other_config", 5},
       });
   if (auto it = kConfigMap->find(name); it != kConfigMap->end()) {
     return it->second;
@@ -153,21 +155,7 @@ TEST_F(AutotunerTest, AutotuneSingleSupportedConfig) {
   EXPECT_CALL(*backend, name()).WillRepeatedly(Return("mock_backend"));
   EXPECT_CALL(*backend, GetSupportedConfigs)
       .WillOnce(Return(std::move(configs)));
-  EXPECT_CALL(*backend, Compile(_, _)).WillOnce([] {
-    return std::unique_ptr<Executable>();
-  });
-
   auto profiler = std::make_unique<MockProfiler>();
-  EXPECT_CALL(*profiler, CreateInputBuffers(_, _)).WillOnce([] {
-    return std::make_unique<InputBuffers>();
-  });
-  Shape shape = ShapeUtil::MakeShape(F32, {});
-  EXPECT_CALL(*profiler, Profile(_, _)).WillOnce([shape] {
-    ProfileResult result;
-    result.duration = absl::Microseconds(100);
-    result.output_buffer = ScopedShapedBuffer(shape, nullptr, 0);
-    return result;
-  });
 
   std::vector<std::unique_ptr<CodegenBackend>> backends;
   backends.push_back(std::move(backend));
@@ -310,6 +298,7 @@ TEST_F(AutotunerTest, AutotuneCompileErrorWithNoSupportedConfigs) {
 TEST_F(AutotunerTest, AutotuneCompileErrorWithNoCompiledCandidates) {
   std::vector<std::unique_ptr<BackendConfig>> configs;
   configs.push_back(GetTestConfig("best_config"));
+  configs.push_back(GetTestConfig("another_config"));
 
   auto backend = std::make_unique<MockCodegenBackend>();
   EXPECT_CALL(*backend, name()).WillRepeatedly(Return("mock_backend"));
@@ -354,9 +343,11 @@ TEST_F(AutotunerTest, AutotuneCompileErrorWithNoCompiledCandidates) {
 TEST_F(AutotunerTest, AutotuneMultipleDevicesRoundRobin) {
   std::vector<std::unique_ptr<BackendConfig>> configs0;
   configs0.push_back(GetTestConfig("best_config"));
+  configs0.push_back(GetTestConfig("some_config"));
 
   std::vector<std::unique_ptr<BackendConfig>> configs1;
   configs1.push_back(GetTestConfig("another_config"));
+  configs1.push_back(GetTestConfig("some_other_config"));
 
   auto backend = std::make_unique<MockCodegenBackend>();
   EXPECT_CALL(*backend, name()).WillRepeatedly(Return("mock_backend"));
@@ -371,7 +362,7 @@ TEST_F(AutotunerTest, AutotuneMultipleDevicesRoundRobin) {
   EXPECT_CALL(*profiler0, CreateInputBuffers(_, _)).WillOnce([] {
     return std::make_unique<InputBuffers>();
   });
-  EXPECT_CALL(*profiler0, Profile(_, _)).WillOnce([] {
+  EXPECT_CALL(*profiler0, Profile(_, _)).Times(2).WillRepeatedly([] {
     ProfileResult result;
     result.duration = absl::Microseconds(100);
     result.output_buffer =
@@ -383,7 +374,7 @@ TEST_F(AutotunerTest, AutotuneMultipleDevicesRoundRobin) {
   EXPECT_CALL(*profiler1, CreateInputBuffers(_, _)).WillOnce([] {
     return std::make_unique<InputBuffers>();
   });
-  EXPECT_CALL(*profiler1, Profile(_, _)).WillOnce([] {
+  EXPECT_CALL(*profiler1, Profile(_, _)).Times(2).WillRepeatedly([] {
     ProfileResult result;
     result.duration = absl::Microseconds(200);
     result.output_buffer =

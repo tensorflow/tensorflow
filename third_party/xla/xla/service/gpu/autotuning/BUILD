@@ -280,6 +280,7 @@ cc_library(
     deps = [
         "//xla:util",
         "//xla:xla_proto_cc",
+        "//xla/backends/autotuner",
         "//xla/backends/autotuner:autotune_cache_store",
         "//xla/backends/autotuner:autotuner_cache_interface",
         "//xla/backends/autotuner:backends_proto_cc",

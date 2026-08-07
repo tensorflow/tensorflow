@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "xla/backends/autotuner/autotuner.h"
 #include "xla/backends/autotuner/autotuner_cache_interface.h"
 #include "xla/backends/autotuner/codegen_backend.h"
 #include "xla/backends/autotuner/codegen_orchestrator.h"
@@ -56,17 +57,25 @@ absl::StatusOr<bool> LlvmKernelAutotuner::RunImpl(
                                                CodegenOrchestrator::Options(),
                                                /*thread_pool=*/nullptr));
 
-  ConfigAssigner::Options assigner_options;
-  if (profiler != nullptr) {
-    assigner_options.check_buffers = false;
-  }
-
   auto cache = std::make_unique<NoOpAutotunerCache>();
+
+  std::unique_ptr<Autotuner> autotuner = nullptr;
+  if (profiler != nullptr) {
+    Autotuner::Options autotuner_options;
+    autotuner_options.correctness_check_options.enable_correctness_check =
+        false;
+    std::vector<std::unique_ptr<Profiler>> profilers;
+    profilers.push_back(std::move(profiler));
+
+    ABSL_ASSIGN_OR_RETURN(autotuner,
+                     Autotuner::Create(*orchestrator, std::move(profilers),
+                                       autotuner_options));
+  }
 
   ABSL_ASSIGN_OR_RETURN(
       auto config_assigner,
-      ConfigAssigner::Create(assigner_options, std::move(cache),
-                             std::move(orchestrator), std::move(profiler)));
+      ConfigAssigner::Create(ConfigAssigner::Options(), std::move(cache),
+                             std::move(orchestrator), std::move(autotuner)));
 
   bool hlo_changed = false;
   for (HloComputation* computation : module->computations()) {
