@@ -28,9 +28,9 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/cleanup/cleanup.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "rocm/include/hip/amd_detail/amd_hip_bfloat16.h"
 #include "rocm/include/hip/amd_detail/amd_hip_fp16.h"
 #include "rocm/include/hip/hip_runtime.h"

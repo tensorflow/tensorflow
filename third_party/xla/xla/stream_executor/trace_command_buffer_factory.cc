@@ -21,8 +21,8 @@ limitations under the License.
 #include "absl/functional/any_invocable.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/stream_executor/command_buffer.h"
 #include "xla/stream_executor/stream_executor.h"
 

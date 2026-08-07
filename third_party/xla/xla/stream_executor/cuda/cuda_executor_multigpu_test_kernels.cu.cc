@@ -15,7 +15,7 @@ limitations under the License.
 
 #include "xla/stream_executor/cuda/cuda_executor_multigpu_test_kernels.h"
 
-#include "xla/tsl/platform/status_macros.h"
+#include "absl/status/status_macros.h"
 #include "xla/stream_executor/cuda/cuda_status.h"
 #include "xla/tsl/platform/errors.h"
 

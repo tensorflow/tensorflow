@@ -19,7 +19,7 @@ limitations under the License.
 #include <string>
 
 #include "absl/status/status.h"
-#include "xla/tsl/platform/status_macros.h"
+#include "absl/status/status_macros.h"
 #include "rocm/include/hipblas/hipblas.h"
 #include "rocm/include/hipblaslt/hipblaslt.h"
 #include "rocm/rocm_config.h"

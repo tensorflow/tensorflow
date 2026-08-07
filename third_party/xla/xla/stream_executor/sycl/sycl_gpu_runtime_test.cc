@@ -15,8 +15,8 @@ limitations under the License.
 #include "xla/stream_executor/sycl/sycl_gpu_runtime.h"
 
 #include <gtest/gtest.h>
+#include "absl/status/status_macros.h"
 #include "absl/status/status_matchers.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/errors.h"
 
