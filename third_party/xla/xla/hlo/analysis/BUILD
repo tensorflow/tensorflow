@@ -157,7 +157,6 @@ cc_library(
         "//xla/service:hlo_module_config",
         "//xla/service:pattern_matcher",
         "//xla/service:value_range",
-        "//xla/tools:hlo_extractor",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/container:flat_hash_map",
