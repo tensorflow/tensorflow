@@ -183,14 +183,21 @@ class EluGradOpTest(test.TestCase):
 
   @test_util.run_in_graph_and_eager_modes
   def testEluGradPreservesSmallNegativeValues(self):
-    inputs = constant_op.constant(-40.0, dtype=dtypes.float64)
-    with backprop.GradientTape() as tape:
-      tape.watch(inputs)
-      elu = gen_nn_ops.elu(inputs)
+    test_cases = (
+        (dtypes.float32, -20.0, 1e-6),
+        (dtypes.float64, -40.0, 1e-14),
+    )
+    for dtype, value, rtol in test_cases:
+      with self.subTest(dtype=dtype.name):
+        inputs = constant_op.constant(value, dtype=dtype)
+        with backprop.GradientTape() as tape:
+          tape.watch(inputs)
+          elu = gen_nn_ops.elu(inputs)
 
-    elu_grad = tape.gradient(elu, inputs)
-    self.assertAllClose(
-        np.exp(-40.0), self.evaluate(elu_grad), rtol=1e-14, atol=0)
+        elu_grad = tape.gradient(elu, inputs)
+        expected = np.exp(dtype.as_numpy_dtype(value))
+        self.assertAllClose(
+            expected, self.evaluate(elu_grad), rtol=rtol, atol=0)
 
   @test_util.run_deprecated_v1
   def testEluGradGradWRTgrad_ys(self):

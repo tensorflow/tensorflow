@@ -461,7 +461,7 @@ def _EluGrad(op: ops.Operation, grad):
   x = op.inputs[0]
   # Computing the gradient from the ELU output loses precision when exp(x) is
   # too small to affect -1. Compute it directly from the input instead.
-  return grad * math_ops.exp(math_ops.minimum(x, 0))
+  return grad * math_ops.exp(math_ops.minimum(x, 0.0))
 
 
 @ops.RegisterGradient("Selu")
