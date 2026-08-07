@@ -100,6 +100,16 @@ class CommonAsyncHostToDeviceTransferManager
     allocation_events.reserve(shape_specs.size());
     definition_events.reserve(shape_specs.size());
     device_shapes.reserve(shape_specs.size());
+
+    // If we return early with an error, discard the definition events.
+    absl::Cleanup discard_definition_events = [&definition_events] {
+      for (PjRtDeviceEventPromiseRef& event : definition_events) {
+        event.SetError(
+            absl::InternalError("Definition event destroyed before creating "
+                                "CommonAsyncHostToDeviceTransferManager"));
+      }
+    };
+
     for (int i = 0; i < shape_specs.size(); ++i) {
       const PjRtClient::ShapeSpec& shape_spec = shape_specs[i];
       if (shape_spec.element_type == TUPLE) {
@@ -163,6 +173,8 @@ class CommonAsyncHostToDeviceTransferManager
       undispatched_buffer_refs.push_back(raw_buffer);
       buffer_sizes.push_back(on_device_bytes_count);
     }
+
+    std::move(discard_definition_events).Cancel();
 
     return std::unique_ptr<CommonAsyncHostToDeviceTransferManager>(
         new CommonAsyncHostToDeviceTransferManager(
