@@ -48,6 +48,7 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/side_effect_util.h"
+#include "xla/stream_executor/device_description.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/xla.pb.h"
@@ -1515,6 +1516,22 @@ TEST_F(IsNcclSymmetricBuffersEnabledForCollectiveTest,
   }
   EXPECT_TRUE(IsNcclSymmetricBuffersEnabledForCollective(ar_f32_1024_, opts));
   EXPECT_TRUE(IsNcclSymmetricBuffersEnabledForCollective(ar_f32_2048_, opts));
+}
+
+TEST_F(IsNcclSymmetricBuffersEnabledForCollectiveTest,
+       GpuVersionCudaEnablesAndRocmDisables) {
+  DebugOptions opts;
+  opts.set_xla_gpu_experimental_enable_nccl_symmetric_buffers(true);
+
+  stream_executor::GpuComputeCapability cuda_version(
+      stream_executor::CudaComputeCapability{9, 0});
+  stream_executor::GpuComputeCapability rocm_version(
+      stream_executor::RocmComputeCapability("gfx90a"));
+
+  EXPECT_TRUE(IsNcclSymmetricBuffersEnabledForCollective(ar_f32_1024_, opts,
+                                                         &cuda_version));
+  EXPECT_FALSE(IsNcclSymmetricBuffersEnabledForCollective(ar_f32_1024_, opts,
+                                                          &rocm_version));
 }
 
 TEST(CollectiveOpsUtilsTest, ParseAndSerializeAsyncCollectiveConfig) {

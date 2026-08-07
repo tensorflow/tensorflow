@@ -125,6 +125,7 @@ cc_library(
         "//xla/service:collective_ops_utils",
         "//xla/service:hlo_buffer",
         "//xla/service:hlo_value",
+        "//xla/stream_executor:device_description",
         "@com_google_absl//absl/base:no_destructor",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/container:inlined_vector",
