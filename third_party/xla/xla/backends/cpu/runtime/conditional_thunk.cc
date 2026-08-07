@@ -24,10 +24,10 @@ limitations under the License.
 
 #include "absl/log/log.h"
 #include "absl/memory/memory.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/cpu/runtime/thunk.h"
 #include "xla/backends/cpu/runtime/thunk_executor.h"
 #include "xla/runtime/buffer_use.h"

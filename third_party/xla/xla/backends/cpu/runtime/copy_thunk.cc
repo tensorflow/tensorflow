@@ -16,7 +16,7 @@ limitations under the License.
 #include "xla/backends/cpu/runtime/copy_thunk.h"
 
 #include "absl/log/vlog_is_on.h"
-#include "xla/tsl/platform/status_macros.h"
+#include "absl/status/status_macros.h"
 
 #define EIGEN_USE_THREADS
 

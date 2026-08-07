@@ -22,11 +22,11 @@ limitations under the License.
 
 #include "absl/container/inlined_vector.h"
 #include "absl/memory/memory.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "ducc/google/fft.h"
 #include "Eigen/ThreadPool"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/cpu/runtime/thunk.h"
 #include "xla/layout_util.h"
 #include "xla/runtime/buffer_use.h"
