@@ -648,5 +648,20 @@ func.func @test_reshape(%arg0: tensor<16x32xf32>) -> tensor<512xf32> {
 // CHECK: %[[RET:.*]] = builtin.unrealized_conversion_cast %[[RESHAPE]] : vector<512xf32> to tensor<512xf32>
 // CHECK: return %[[RET]]
 
+func.func @test_mask(%arg0: tensor<4x8xf32>, %arg1: f32) -> tensor<4x8xf32> {
+  %0 = xtile.mask %arg0 bounds [3, 6], %arg1 : tensor<4x8xf32>
+  return %0 : tensor<4x8xf32>
+}
+// CHECK-LABEL: @test_mask
+// CHECK: %[[SRC:.*]] = builtin.unrealized_conversion_cast %arg0 : tensor<4x8xf32> to vector<4x8xf32>
+// CHECK-DAG: %[[C3:.*]] = arith.constant 3 : index
+// CHECK-DAG: %[[C6:.*]] = arith.constant 6 : index
+// CHECK: %[[MASK:.*]] = vector.create_mask %[[C3]], %[[C6]] : vector<4x8xi1>
+// CHECK: %[[BCAST:.*]] = vector.broadcast %arg1 : f32 to vector<4x8xf32>
+// CHECK: %[[SELECT:.*]] = arith.select %[[MASK]], %[[SRC]], %[[BCAST]] : vector<4x8xi1>, vector<4x8xf32>
+// CHECK: %[[RET:.*]] = builtin.unrealized_conversion_cast %[[SELECT]] : vector<4x8xf32> to tensor<4x8xf32>
+// CHECK: return %[[RET]]
+
+
 
 

@@ -1,5 +1,5 @@
 // RUN: fusion_to_xtile %s --xla_cpu_use_new_xtile_lowering | fusion_compiler_opt \
-// RUN:   --stablehlo-lower-to-arith --xtile-cpu-vectorize-xtile --xtile-cpu-lower-xtile-entry --xla-simplify-arith \
+// RUN:   --xtile-cpu-new-xtile-to-vector --xla-simplify-arith \
 // RUN:   | FileCheck %s --check-prefix=NEW-VECTOR
 // RUN: test_correctness %s --xla_cpu_use_new_xtile_lowering --abs_error_bound=1e-5
 
@@ -30,7 +30,7 @@ fusion {
 // NEW-VECTOR:    %[[MASK_SLICE:.*]] = scf.if %{{.*}} -> (vector<32xf32>)
 // NEW-VECTOR:    %[[ACC_NEXT:.*]] = arith.addf %[[ACC]], %[[MASK_SLICE]] : vector<32xf32>
 // NEW-VECTOR:    scf.yield %[[ACC_NEXT]] : vector<32xf32>
-// NEW-VECTOR:  vector.multi_reduction <add>, %[[LOOP_RES]], %[[CST_0]] [0] : vector<32xf32> to f32
+// NEW-VECTOR:  vector.reduction <add>, %[[LOOP_RES]], %[[CST_0]]
 
 ENTRY main {
   p0 = f32[100] parameter(0)

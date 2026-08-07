@@ -290,6 +290,42 @@ struct ConvertInsertTile
   }
 };
 
+struct VectorizeMaskOp : public mlir::OpConversionPattern<xtile::MaskOp> {
+  using OpConversionPattern::OpConversionPattern;
+
+  mlir::LogicalResult matchAndRewrite(
+      xtile::MaskOp op, OpAdaptor adaptor,
+      mlir::ConversionPatternRewriter& rewriter) const override {
+    mlir::Type new_type = getTypeConverter()->convertType(op.getType());
+    if (!new_type) {
+      return mlir::failure();
+    }
+    auto vector_type = mlir::cast<mlir::VectorType>(new_type);
+    if (vector_type.getRank() == 0) {
+      rewriter.replaceOp(op, adaptor.getSource());
+      return mlir::success();
+    }
+
+    mlir::Location loc = op.getLoc();
+    llvm::SmallVector<Value> mask_dims;
+    mask_dims.reserve(vector_type.getRank());
+    for (int64_t bound : op.getBounds()) {
+      mask_dims.push_back(ma::ConstantIndexOp::create(rewriter, loc, bound));
+    }
+
+    auto mask_type =
+        mlir::VectorType::get(vector_type.getShape(), rewriter.getI1Type());
+    Value mask = mv::CreateMaskOp::create(rewriter, loc, mask_type, mask_dims);
+
+    Value passthrough =
+        mv::BroadcastOp::create(rewriter, loc, vector_type, adaptor.getValue());
+
+    rewriter.replaceOpWithNewOp<ma::SelectOp>(op, mask, adaptor.getSource(),
+                                              passthrough);
+    return mlir::success();
+  }
+};
+
 struct VectorizeBroadcastInDimOp
     : public mlir::OpConversionPattern<shlo::BroadcastInDimOp> {
   using OpConversionPattern::OpConversionPattern;
@@ -705,11 +741,11 @@ class VectorizeXTilePass
         ma::ArithDialect, mlir::memref::MemRefDialect, mm::MathDialect,
         ms::SCFDialect, mlir::tensor::TensorDialect, mv::VectorDialect,
         shlo::StablehloDialect, xla::XlaDialect, xtile::XTileDialect>();
-    target
-        .addIllegalOp<shlo::BroadcastInDimOp, shlo::DotGeneralOp, shlo::IotaOp,
-                      shlo::ReduceOp, shlo::ReshapeOp, shlo::TransposeOp,
-                      mlir::tensor::ExtractOp, mlir::tensor::FromElementsOp,
-                      xtile::ExtractTileOp, xtile::InsertTileOp>();
+    target.addIllegalOp<shlo::BroadcastInDimOp, shlo::DotGeneralOp,
+                        shlo::IotaOp, shlo::ReduceOp, shlo::ReshapeOp,
+                        shlo::TransposeOp, mlir::tensor::ExtractOp,
+                        mlir::tensor::FromElementsOp, xtile::ExtractTileOp,
+                        xtile::InsertTileOp, xtile::MaskOp>();
     target.addLegalOp<mlir::UnrealizedConversionCastOp>();
     target.addDynamicallyLegalDialect<ma::ArithDialect, mm::MathDialect>(
         [&](mlir::Operation* op) { return type_converter.isLegal(op); });
@@ -718,8 +754,9 @@ class VectorizeXTilePass
     patterns
         .add<ConvertExtractTile, ConvertInsertTile, VectorizeBroadcastInDimOp,
              VectorizeConstantOp, VectorizeDotGeneralOp, VectorizeExtractOp,
-             VectorizeFromElementsOp, VectorizeIotaOp, VectorizeReduceOp,
-             VectorizeReshapeOp, VectorizeTransposeOp>(type_converter, context);
+             VectorizeFromElementsOp, VectorizeIotaOp, VectorizeMaskOp,
+             VectorizeReduceOp, VectorizeReshapeOp, VectorizeTransposeOp>(
+            type_converter, context);
     populateVectorizePatterns<
         ma::AddFOp, ma::AddIOp, ma::SubFOp, ma::SubIOp, ma::MulFOp, ma::MulIOp,
         ma::DivFOp, ma::DivSIOp, ma::DivUIOp, ma::RemFOp, ma::RemSIOp,

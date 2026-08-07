@@ -1,5 +1,5 @@
 // RUN: fusion_to_xtile %s --xla_cpu_use_new_xtile_lowering | fusion_compiler_opt \
-// RUN:   --stablehlo-lower-to-arith --xtile-cpu-vectorize-xtile --xtile-cpu-lower-xtile-entry --xla-simplify-arith \
+// RUN:   --xtile-cpu-new-xtile-to-vector --xla-simplify-arith \
 // RUN:   | FileCheck %s --check-prefix=NEW-VECTOR
 // RUN: test_correctness %s --xla_cpu_use_new_xtile_lowering --abs_error_bound=1e-5
 
@@ -26,10 +26,11 @@ fusion {
 
 // NEW-VECTOR: scf.for %[[IV0:.*]] = %[[C0]] to %{{.*}} step %[[C1]] {
 // NEW-VECTOR:   %[[LOOP_RES:.*]] = scf.for %[[IV1:.*]] = %[[C0]] to %[[C8]] step %[[C1]] iter_args(%[[ACC:.*]] = %[[CST_0]]) -> (vector<1x32xf32>) {
-// NEW-VECTOR:     %[[IF_RES:.*]] = scf.if %{{.*}} -> (vector<1x32xf32>)
-// NEW-VECTOR:     %[[ACC_NEXT:.*]] = arith.addf %[[ACC]], %[[IF_RES]] : vector<1x32xf32>
+// NEW-VECTOR:     %[[READ:.*]] = vector.transfer_read %arg0[%[[IV0]], %{{.*}}], %{{.*}} {in_bounds = [true, true]} : memref<128x256xf32>, vector<1x32xf32>
+// NEW-VECTOR:     %[[ACC_NEXT:.*]] = arith.addf %[[ACC]], %[[READ]] : vector<1x32xf32>
 // NEW-VECTOR:     scf.yield %[[ACC_NEXT]] : vector<1x32xf32>
-// NEW-VECTOR:   vector.multi_reduction <add>, %[[LOOP_RES]], %[[CST]] [1] : vector<1x32xf32> to vector<1xf32>
+// NEW-VECTOR:   %[[TRANSPOSE:.*]] = vector.transpose %[[LOOP_RES]], [1, 0] : vector<1x32xf32> to vector<32x1xf32>
+// NEW-VECTOR:   vector.extract %[[TRANSPOSE]][0] : vector<1xf32> from vector<32x1xf32>
 
 ENTRY main {
   p0 = f32[128,256] parameter(0)
