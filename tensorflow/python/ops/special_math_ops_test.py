@@ -415,6 +415,26 @@ class BesselTest(test.TestCase, parameterized.TestCase):
         np.isnan(self.evaluate(special_math_ops.bessel_i1e(np.nan))))
 
   @test_util.run_in_graph_and_eager_modes
+  def test_bessel_i0_avoids_intermediate_overflow(self):
+    # Regression for https://github.com/tensorflow/tensorflow/issues/124772
+    # Eigen's i0 = exp(|x|)*i0e(x) overflows exp(|x|) while the product is still
+    # finite. Reference values from high-precision I0 rounded to the dtype.
+    x64 = np.array([713.0, -713.0], dtype=np.float64)
+    y64 = self.evaluate(special_math_ops.bessel_i0(x64))
+    self.assertTrue(np.all(np.isfinite(y64)))
+    truth64 = 6.705128263670996e307
+    self.assertAllClose(y64, [truth64, truth64], rtol=1e-12, atol=0.0)
+
+    # float32: exp overflows near ~88.7; I0(90) remains finite (~5.14e37).
+    x32 = np.array([90.0, -90.0], dtype=np.float32)
+    y32 = self.evaluate(special_math_ops.bessel_i0(x32))
+    self.assertTrue(np.all(np.isfinite(y32)))
+    # Stable reference: exp(|x| + log(i0e(x))) evaluated in float64.
+    i0e32 = self.evaluate(special_math_ops.bessel_i0e(x32)).astype(np.float64)
+    truth32 = np.exp(np.abs(x32.astype(np.float64)) + np.log(i0e32))
+    self.assertAllClose(y32, truth32.astype(np.float32), rtol=1e-5, atol=0.0)
+
+  @test_util.run_in_graph_and_eager_modes
   def test_besselj_boundary(self):
     self.assertAllClose(1., special_math_ops.bessel_j0(0.))
     self.assertAllClose(0., special_math_ops.bessel_j1(0.))

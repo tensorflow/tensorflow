@@ -659,6 +659,38 @@ struct spence_op {
   }
 };
 
+// Overflow-safe modified Bessel I0.
+//
+// Eigen's scalar_bessel_i0_op computes exp(|x|) * i0e(x). For large |x| the
+// intermediate exp(|x|) overflows to +inf even when the product is still
+// representable (e.g. float64 x=713, true I0 ≈ 6.705e307). Compose in log
+// space when exp(|x|) would overflow: exp(|x| + log(i0e(x))).
+template <typename Scalar>
+struct bessel_i0_stable_op {
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE Scalar
+  operator()(const Scalar& x) const {
+    using numext::abs;
+    using numext::bessel_i0e;
+    using numext::exp;
+    using numext::log;
+
+    const Scalar ax = abs(x);
+    const Scalar i0e = bessel_i0e(x);
+    // log(highest) is the largest finite value of exp(); beyond this, the
+    // naive exp(ax)*i0e path overflows intermediate results.
+    const Scalar log_max = log(NumTraits<Scalar>::highest());
+    // NaN-safe: (ax >= log_max) is false when ax is NaN, so we keep the
+    // product path which propagates NaN.
+    if (!(ax >= log_max)) {
+      return exp(ax) * i0e;
+    }
+    if (i0e == Scalar(0)) {
+      return NumTraits<Scalar>::infinity();
+    }
+    return exp(ax + log(i0e));
+  }
+};
+
 }  // end namespace internal
 }  // end namespace Eigen
 
@@ -682,8 +714,9 @@ struct spence : base<T, Eigen::internal::spence_op<T>> {};
 
 // Bessel Functions
 
+// Use overflow-safe I0 (see Eigen::internal::bessel_i0_stable_op).
 template <typename T>
-struct bessel_i0 : base<T, Eigen::internal::scalar_bessel_i0_op<T>> {};
+struct bessel_i0 : base<T, Eigen::internal::bessel_i0_stable_op<T>> {};
 
 template <typename T>
 struct bessel_i0e : base<T, Eigen::internal::scalar_bessel_i0e_op<T>> {};
