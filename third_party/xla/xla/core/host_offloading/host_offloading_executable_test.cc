@@ -69,7 +69,7 @@ absl::StatusOr<std::unique_ptr<HostOffloadingExecutable>> CompileFromString(
 
   switch (executable_type) {
     case HostOffloadingExecutableProto::EXECUTABLE_TYPE_NANORT: {
-      xla::cpu::NanoRtClient client;
+      xla::cpu::NanoRtClient client(SetHostOffloadingHloModuleConfig);
       XlaComputation computation(module->ToProto());
       ABSL_ASSIGN_OR_RETURN(auto executable, client.Compile(computation));
       ABSL_ASSIGN_OR_RETURN(auto aot_compilation_result,
@@ -508,6 +508,33 @@ TEST_P(HostOffloadingRuntimeExecutableTest, GetHloModuleConfigs) {
   ASSERT_EQ(module_configs.size(), 1);
   EXPECT_EQ(module_configs[0].entry_computation_layout().result_shape(),
             ShapeUtil::MakeShape(xla::PrimitiveType::F32, {4}));
+}
+
+TEST_P(HostOffloadingRuntimeExecutableTest, IsHostOffloadSet) {
+  std::string str = R"(
+    HloModule add
+
+    ENTRY %main {
+      %p0 = f32[4] parameter(0)
+      ROOT %add = f32[4] add(%p0, %p0)
+    }
+  )";
+  HostOffloadingExecutableProto::ExecutableType
+      host_offloading_executable_type = GetParam();
+
+  ASSERT_OK_AND_ASSIGN(auto computation,
+                       CompileFromString(str, host_offloading_executable_type));
+
+  HostOffloadingExecutable* executable = computation.get();
+  ASSERT_NE(executable, nullptr);
+  ASSERT_OK_AND_ASSIGN(std::vector<HloModuleConfig> module_configs,
+                       executable->GetHloModuleConfigs());
+  ASSERT_EQ(module_configs.size(), 1);
+  const auto& extra_options =
+      module_configs[0].debug_options().xla_backend_extra_options();
+  auto it = extra_options.find("xla_is_host_offload");
+  ASSERT_NE(it, extra_options.end());
+  EXPECT_EQ(it->second, "true");
 }
 
 INSTANTIATE_TEST_SUITE_P(

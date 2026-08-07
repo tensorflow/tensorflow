@@ -16,20 +16,25 @@ limitations under the License.
 #ifndef XLA_BACKENDS_CPU_NANORT_NANORT_CLIENT_H_
 #define XLA_BACKENDS_CPU_NANORT_NANORT_CLIENT_H_
 
+#include <functional>
 #include <memory>
+#include <utility>
 
 #include "absl/status/statusor.h"
 #include "xla/backends/cpu/nanort/nanort_executable.h"
 #include "xla/client/executable_build_options.h"
 #include "xla/hlo/builder/xla_computation.h"
 #include "xla/service/compiler.h"
+#include "xla/service/hlo_module_config.h"
 
 namespace xla::cpu {
 
 // A client for compiling XLA programs to executables using the XLA:CPU backend.
 class NanoRtClient {
  public:
-  NanoRtClient() = default;
+  explicit NanoRtClient(std::function<void(HloModuleConfig&)>
+                            customize_hlo_module_config = nullptr)
+      : customize_hlo_module_config_(std::move(customize_hlo_module_config)) {}
 
   // Compiles the given XLA computation to a NanoRtExecutable using the XLA:CPU
   // backend.
@@ -42,6 +47,9 @@ class NanoRtClient {
   // Exports the given NanoRtExecutable to an AotCompilationResult.
   absl::StatusOr<std::unique_ptr<CompiledModule>> Export(
       NanoRtExecutable* executable);
+
+ private:
+  std::function<void(HloModuleConfig&)> customize_hlo_module_config_;
 };
 
 }  // namespace xla::cpu

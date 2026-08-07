@@ -106,16 +106,6 @@ absl::Status VerifyBufferAliasing(
   return absl::OkStatus();
 }
 
-// Sets up host offloading specific options in HLO module config.
-void SetHostOffloadingHloModuleConfig(HloModuleConfig& config) {
-  auto& debug_options = config.mutable_debug_options();
-  debug_options.set_xla_cpu_copy_insertion_use_region_analysis(true);
-  // TODO(b/374556751): Megascale custom calls do not have correct data
-  // dependencies and can be scheduled in wrong order.
-  debug_options.set_xla_cpu_scheduler_type(
-      DebugOptions::CPU_SCHEDULER_TYPE_MEMORY_OPTIMIZED);
-}
-
 // A mutex for a global PJRT CPU client initialization.
 ABSL_CONST_INIT absl::Mutex host_offloading_client_mutex(absl::kConstInit);
 
@@ -129,7 +119,7 @@ absl::StatusOr<PjRtClient*> GetHostOffloadingPjRtClient() {
   }
 
   xla::CpuClientOptions options;
-  options.customize_hlo_module_config = SetHostOffloadingHloModuleConfig;
+  options.customize_hlo_module_config = xla::SetHostOffloadingHloModuleConfig;
 
   VLOG(1) << "Create host offloading PjRt client for a current process";
   ABSL_ASSIGN_OR_RETURN(auto owned_client,

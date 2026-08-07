@@ -4600,6 +4600,7 @@ xla_test(
         "//xla/backends/cpu:alignment",
         "//xla/backends/cpu/nanort:nanort_client",
         "//xla/backends/cpu/nanort:nanort_executable",
+        "//xla/core/host_offloading:host_offloading_executable",
         "//xla/hlo/builder:xla_computation",
         "//xla/hlo/parser:hlo_parser",
         "//xla/service:buffer_assignment",

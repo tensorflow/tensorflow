@@ -34,6 +34,7 @@ limitations under the License.
 #include "xla/backends/cpu/nanort/nanort_client.h"
 #include "xla/backends/cpu/nanort/nanort_executable.h"
 #include "xla/backends/gpu/runtime/thunk.h"
+#include "xla/core/host_offloading/host_offloading_executable.h"
 #include "xla/executable_run_options.h"
 #include "xla/hlo/builder/xla_computation.h"
 #include "xla/hlo/parser/hlo_parser.h"
@@ -78,7 +79,7 @@ CreateHostExecuteStartThunk(
   host_offloading_executable_proto.set_executable_type(
       HostOffloadingExecutableProto::EXECUTABLE_TYPE_NANORT);
 
-  xla::cpu::NanoRtClient client;
+  xla::cpu::NanoRtClient client(xla::SetHostOffloadingHloModuleConfig);
   XlaComputation host_computation(
       *host_offloading_executable_proto.mutable_hlo_module());
 
@@ -702,6 +703,36 @@ TEST(HostExecuteThunkTest, ProtoRoundTripPairing) {
   EXPECT_EQ(async_events_map.size(), 1);
   EXPECT_EQ(start_thunk->GetAsyncEventsUniqueId(),
             done_thunk->GetAsyncEventsUniqueId());
+}
+
+TEST(HostExecuteStartThunkTest, IsHostOffloadSet) {
+  static constexpr char const* kHloModule = R"(
+    HloModule module
+    ENTRY add_inplace {
+      p0 = s32[] parameter(0)
+      ROOT add = s32[] add(p0, p0)
+    }
+  )";
+
+  ASSERT_OK_AND_ASSIGN(auto hlo_module,
+                       ParseAndReturnUnverifiedModule(kHloModule, {}));
+
+  ASSERT_OK_AND_ASSIGN(
+      auto thunk,
+      CreateHostExecuteStartThunk(Thunk::ThunkInfo(), *hlo_module, {}, {}));
+
+  const auto& proto = thunk->executable_proto();
+  ASSERT_TRUE(proto.has_aot_compilation_result());
+  const auto& aot_result = proto.aot_compilation_result();
+  ASSERT_TRUE(aot_result.has_hlo_module());
+  const auto& config = aot_result.hlo_module().config();
+  ASSERT_TRUE(config.has_debug_options());
+  const auto& debug_options = config.debug_options();
+
+  const auto& extra_options = debug_options.xla_backend_extra_options();
+  auto it = extra_options.find("xla_is_host_offload");
+  ASSERT_NE(it, extra_options.end());
+  EXPECT_EQ(it->second, "true");
 }
 
 }  // namespace

@@ -154,6 +154,7 @@ limitations under the License.
 #include "xla/backends/gpu/transforms/windowed_einsum_handler.h"
 #include "xla/core/host_offloading/hlo_host_device_type_call_wrapper.h"
 #include "xla/core/host_offloading/host_compute_asyncifier.h"
+#include "xla/core/host_offloading/host_offloading_executable.h"
 #include "xla/ffi/ffi_registry.h"
 #include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/analysis/hlo_alias_analysis.h"
@@ -2757,7 +2758,7 @@ namespace {
 absl::StatusOr<xla::cpu::CompilationResultProto> GetCpuCompilationResult(
     const HloModuleProto& hlo_proto,
     xla::cpu::TargetMachineOptions cpu_target_machine_options) {
-  xla::cpu::NanoRtClient client;
+  xla::cpu::NanoRtClient client(xla::SetHostOffloadingHloModuleConfig);
   XlaComputation computation(hlo_proto);
   Compiler::CompileOptions cpu_compile_options;
   cpu_compile_options.cpu_target_config.emplace(

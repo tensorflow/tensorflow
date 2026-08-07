@@ -132,7 +132,7 @@ absl::StatusOr<xla::cpu::NanoRtClient*> GetHostOffloadingNanoRtClient() {
   }
 
   VLOG(1) << "Create host offloading NanoRt client for a current process";
-  client = new xla::cpu::NanoRtClient();
+  client = new xla::cpu::NanoRtClient(SetHostOffloadingHloModuleConfig);
   return client;
 }
 

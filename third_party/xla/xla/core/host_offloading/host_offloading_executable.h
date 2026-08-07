@@ -41,6 +41,18 @@ limitations under the License.
 
 namespace xla {
 
+// Sets up host-offloading-specific options in HLO module config.
+inline void SetHostOffloadingHloModuleConfig(HloModuleConfig& config) {
+  auto& debug_options = config.mutable_debug_options();
+  debug_options.set_xla_cpu_copy_insertion_use_region_analysis(true);
+  // TODO(b/374556751): Megascale custom calls do not have correct data
+  // dependencies and can be scheduled in wrong order.
+  debug_options.set_xla_cpu_scheduler_type(
+      DebugOptions::CPU_SCHEDULER_TYPE_MEMORY_OPTIMIZED);
+  debug_options.mutable_xla_backend_extra_options()->insert(
+      {"xla_is_host_offload", "true"});
+}
+
 // Host offloading executable is a base class for executables that can be
 // invoked by a TPU program on a host attached to a device. It can wrap
 // arbitrary function that reads arguments from host memory and writes results
@@ -98,6 +110,7 @@ class HostOffloadingExecutable {
 
   virtual bool needs_layout_conversion() const { return false; }
 };
+
 }  // namespace xla
 
 #endif  // XLA_CORE_HOST_OFFLOADING_HOST_OFFLOADING_EXECUTABLE_H_

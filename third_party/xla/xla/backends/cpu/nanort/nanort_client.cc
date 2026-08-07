@@ -56,6 +56,9 @@ absl::StatusOr<std::unique_ptr<NanoRtExecutable>> NanoRtClient::Compile(
 
   HloModuleConfig hlo_module_config(program_shape, /*ignore_layouts=*/false);
   hlo_module_config.set_debug_options(GetDebugOptionsFromFlags());
+  if (customize_hlo_module_config_) {
+    customize_hlo_module_config_(hlo_module_config);
+  }
 
   ABSL_ASSIGN_OR_RETURN(
       std::unique_ptr<HloModule> hlo_module,
