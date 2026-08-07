@@ -15,8 +15,8 @@ limitations under the License.
 
 #include "xla/backends/gpu/runtime/custom_call_thunk.h"
 
+#include <algorithm>
 #include <cstdint>
-#include <functional>
 #include <memory>
 #include <optional>
 #include <string>
@@ -26,7 +26,8 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/base/nullability.h"
-#include "absl/container/inlined_vector.h"
+#include "absl/container/flat_hash_map.h"
+#include "absl/debugging/symbolize.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/memory/memory.h"
@@ -41,17 +42,22 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/collective_cliques.h"
 #include "xla/backends/gpu/runtime/collective_params.h"
 #include "xla/backends/gpu/runtime/command.h"
+#include "xla/backends/gpu/runtime/command_state.h"
+#include "xla/backends/gpu/runtime/record_ffi.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
 #include "xla/backends/gpu/runtime/traced_command.h"
 #include "xla/executable_run_options.h"
 #include "xla/ffi/api/c_api.h"
+#include "xla/ffi/api/record_api.h"
+#include "xla/ffi/api/record_c_api.h"
 #include "xla/ffi/attribute_map.h"
 #include "xla/ffi/call_frame.h"
 #include "xla/ffi/execution_state.h"
 #include "xla/ffi/ffi.h"
 #include "xla/ffi/ffi_registry.h"
 #include "xla/ffi/invoke.h"
+#include "xla/ffi/record_ffi.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/primitive_util.h"
 #include "xla/runtime/object_pool.h"
@@ -59,16 +65,32 @@ limitations under the License.
 #include "xla/service/gpu/buffer_allocations.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/shaped_slice.h"
+#include "xla/status_macros.h"
+#include "xla/stream_executor/command_buffer.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/device_address_allocator.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/stream_executor/kernel_spec.h"
 #include "xla/stream_executor/stream.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/util/unique_any.h"
 #include "xla/util.h"
-#include "tsl/platform/platform.h"
 
 namespace xla::gpu {
+namespace {
+
+std::string GetSymbolName(const void* ptr) {
+  char buf[512];
+  if (absl::Symbolize(ptr, buf, sizeof(buf))) {
+    return std::string(buf);
+  }
+  return "unknown";
+}
+
+struct CustomCallRecordState : public CommandState {
+  std::vector<const XLA_FFI_Command*> commands;
+};
+
+}  // namespace
 
 using xla::ffi::CallFrame;
 using xla::ffi::CallFrameBuilder;
@@ -153,7 +175,8 @@ absl::StatusOr<std::unique_ptr<CustomCallThunk>> CustomCallThunk::Create(
     const HloComputation* called_computation, absl::string_view platform_name,
     const se::GpuComputeCapability& gpu_compute_capability,
     std::unique_ptr<ffi::ExecutionState> execution_state,
-    std::optional<xla::cpu::TargetMachineOptions> cpu_target_machine_options) {
+    std::optional<xla::cpu::TargetMachineOptions> cpu_target_machine_options,
+    bool use_pdl) {
   ABSL_ASSIGN_OR_RETURN(ffi::HandlerRegistration registration,
                    ffi::FindHandler(target_name, platform_name));
 
@@ -161,7 +184,7 @@ absl::StatusOr<std::unique_ptr<CustomCallThunk>> CustomCallThunk::Create(
                 std::move(registration.bundle), std::move(operands),
                 std::move(results), std::move(attributes), called_computation,
                 gpu_compute_capability, std::move(execution_state),
-                std::move(cpu_target_machine_options));
+                std::move(cpu_target_machine_options), use_pdl);
 }
 
 absl::StatusOr<std::unique_ptr<CustomCallThunk>> CustomCallThunk::Create(
@@ -171,7 +194,13 @@ absl::StatusOr<std::unique_ptr<CustomCallThunk>> CustomCallThunk::Create(
     const HloComputation* called_computation,
     const se::GpuComputeCapability& gpu_compute_capability,
     std::unique_ptr<ffi::ExecutionState> execution_state,
-    std::optional<xla::cpu::TargetMachineOptions> cpu_target_machine_options) {
+    std::optional<xla::cpu::TargetMachineOptions> cpu_target_machine_options,
+    bool use_pdl) {
+  VLOG(1) << "CustomCallThunk::Create called for: " << target_name
+          << ", execution_state is "
+          << (execution_state == nullptr ? "NULL" : "NON-NULL")
+          << ", bundle.instantiate is "
+          << (bundle.instantiate == nullptr ? "NULL" : "NON-NULL");
   // Initialize FFI handler state if it has an instantiate callback.
   if (execution_state == nullptr) {
     execution_state = std::make_unique<ffi::ExecutionState>();
@@ -199,7 +228,7 @@ absl::StatusOr<std::unique_ptr<CustomCallThunk>> CustomCallThunk::Create(
       thunk_info, std::move(target_name), std::move(bundle),
       std::move(operands), std::move(results), std::move(call_frame),
       std::move(attributes), std::move(execution_state), called_computation,
-      cpu_target_machine_options));
+      cpu_target_machine_options, use_pdl));
 }
 
 absl::StatusOr<std::unique_ptr<CustomCallThunk>> CustomCallThunk::Create(
@@ -250,12 +279,14 @@ CustomCallThunk::CustomCallThunk(
     ffi::AttributesMap attributes,
     std::unique_ptr<ffi::ExecutionState> execution_state,
     const HloComputation* called_computation,
-    std::optional<xla::cpu::TargetMachineOptions> cpu_target_machine_options)
+    std::optional<xla::cpu::TargetMachineOptions> cpu_target_machine_options,
+    bool use_pdl)
     : TracedCommand(Thunk::kCustomCall, thunk_info),
       target_name_(std::move(target_name)),
       operands_(std::move(operands)),
       results_(std::move(results)),
       bundle_(std::move(bundle)),
+      use_pdl_(use_pdl),
       attributes_(std::move(attributes)),
       call_frame_(std::move(call_frame)),
       call_frames_([this] { return call_frame_->Copy(); }),
@@ -364,7 +395,8 @@ absl::Status CustomCallThunk::ExecuteFfiHandler(
     CollectiveMemoryRequests* absl_nullable collective_memory_requests,
     const CollectiveCliques* absl_nullable collective_cliques,
     const CollectiveMemory* absl_nullable collective_memory,
-    absl::Span<se::Stream* const> computation_streams) {
+    absl::Span<se::Stream* const> computation_streams,
+    const XLA_FFI_Extension* extension_start) {
   if (handler == nullptr) {
     return absl::InternalError("FFI execute handler is not set");
   }
@@ -379,6 +411,7 @@ absl::Status CustomCallThunk::ExecuteFfiHandler(
       collective_params, collective_clique_requests, collective_memory_requests,
       collective_cliques, collective_memory, execution_context,
       computation_streams);
+  context.extension_start = extension_start;
   return Invoke(ffi::GetXlaFfiApi(), handler, *call_frame, context, stage);
 }
 
@@ -392,7 +425,8 @@ absl::Status CustomCallThunk::ExecuteFfiHandler(
     CollectiveMemoryRequests* absl_nullable collective_memory_requests,
     const CollectiveCliques* absl_nullable collective_cliques,
     const CollectiveMemory* absl_nullable collective_memory,
-    absl::Span<se::Stream* const> computation_streams) {
+    absl::Span<se::Stream* const> computation_streams,
+    const XLA_FFI_Extension* extension_start) {
   if (stage != xla::ffi::ExecutionStage::kPrepare &&
       !(buffer_allocations && stream)) {
     return absl::InternalError("buffer allocations and stream are required");
@@ -404,6 +438,7 @@ absl::Status CustomCallThunk::ExecuteFfiHandler(
       collective_params, collective_clique_requests, collective_memory_requests,
       collective_cliques, collective_memory, execution_context,
       computation_streams);
+  context.extension_start = extension_start;
   return Invoke(ffi::GetXlaFfiApi(), handler, *call_frame, context, stage);
 }
 
@@ -507,6 +542,115 @@ absl::Status CustomCallThunk::ExecuteOnStream(const ExecuteParams& params) {
   return absl::InternalError("No FFI handler bundle set");
 }
 
+absl::StatusOr<const se::CommandBuffer::Command*> CustomCallThunk::Record(
+    const Thunk::ExecuteParams& execute_params,
+    const RecordParams& record_params, RecordAction record_action,
+    se::CommandBuffer* command_buffer) {
+  se::StreamExecutor* executor = execute_params.stream->parent();
+  ABSL_ASSIGN_OR_RETURN(auto call_frame,
+                   BuildCallFrame(execute_params.buffer_allocations));
+
+  // Retrieve or create the state for recording.
+  auto* state = record_params.state.GetOrCreate<CustomCallRecordState>(
+      this, command_buffer);
+
+  constexpr int64_t kMaxCommands = 16;
+  const XLA_FFI_Command* commands_storage[kMaxCommands] = {nullptr};
+  int64_t num_commands = 0;
+
+  const bool is_record_create =
+      std::holds_alternative<RecordCreate>(record_action);
+  const bool is_record_update =
+      std::holds_alternative<RecordUpdate>(record_action);
+  if (is_record_update) {  // Copy over commands from state to inline storage.
+    TF_RET_CHECK(state->commands.size() <= kMaxCommands)
+        << "Too many commands to fit in inline storage";
+    std::copy(state->commands.begin(), state->commands.end(), commands_storage);
+    num_commands = state->commands.size();
+  }
+
+  XLA_FFI_RecordAction action_to_pass = is_record_create
+                                            ? XLA_FFI_RecordAction_Create
+                                            : XLA_FFI_RecordAction_Update;
+
+  // Record directly into the primary command buffer.
+  std::vector<const se::CommandBuffer::Command*> deps;
+  if (is_record_create) {
+    auto record_create = std::get<RecordCreate>(record_action);
+    deps.assign(record_create.dependencies.begin(),
+                record_create.dependencies.end());
+  }
+  XLA_FFI_RecordContext record_ctx = {command_buffer, executor, std::move(deps),
+                                      use_pdl_};
+
+  XLA_FFI_RecordFrame record_frame{&record_ctx,    GetXlaFfiRecordApi(),
+                                   action_to_pass, commands_storage,
+                                   &num_commands,  kMaxCommands};
+  ffi::RecordExtension::CExtension record_extension =
+      ffi::BuildRecordCExtension(&record_frame);
+
+  const RunId run_id = execute_params.collective_params
+                           ? execute_params.collective_params->run_id
+                           : RunId{-1};
+
+  // Invoke FFI handler
+  bool attempted_record = false;
+  auto const execute_handler = [&](auto& handler, auto stage) {
+    return ExecuteFfiHandler(
+        run_id, handler, stage, execute_params.stream,
+        /*execution_scoped_state=*/nullptr,
+        execute_params.ffi_execution_context, execute_params.buffer_allocations,
+        execute_params.collective_params,
+        /*collective_clique_requests=*/nullptr,
+        /*collective_memory_requests=*/nullptr,
+        execute_params.collective_cliques, execute_params.collective_memory,
+        execute_params.additional_compute_streams,
+        &record_extension.extension_base);
+  };
+  absl::Status status = absl::OkStatus();
+  if (const auto* c_bundle = std::get_if<XLA_FFI_Handler_Bundle>(&bundle_);
+      c_bundle && c_bundle->record != nullptr) {
+    attempted_record = true;
+    VLOG(5) << "CustomCallThunk::Record: c_bundle->record symbol: "
+            << GetSymbolName(reinterpret_cast<const void*>(c_bundle->record));
+    status = execute_handler(c_bundle->record, XLA_FFI_ExecutionStage_RECORD);
+  } else if (const auto* owned_bundle =
+                 std::get_if<OwnedHandlerBundle>(&bundle_)) {
+    if (owned_bundle->record) {
+      attempted_record = true;
+      status = execute_handler(*owned_bundle->record,
+                               xla::ffi::ExecutionStage::kRecord);
+    }
+  }
+  ABSL_RETURN_IF_ERROR(status);
+
+  // Fallback to tracing if requested or if no record handler was present
+  if (!attempted_record || record_ctx.stream_capture_requested) {
+    VLOG(3) << "FFI handler requested or required fallback to stream capture.";
+    TF_RET_CHECK(num_commands == 0)
+        << "Stream capture requested but commands were recorded.";
+    return TracedCommand::Record(execute_params, record_params, record_action,
+                                 command_buffer);
+  }
+
+  // Save newly recorded commands to state if this is the Create action
+  // Must be done after returning from the FFI handler.
+  if (is_record_create) {
+    state->commands.assign(commands_storage, commands_storage + num_commands);
+  }
+
+  // Return the last command in the chain for dependency tracking.
+  // If more than one command was recorded, and they are independent, a dummy
+  // node must be added to the command graph by the FFI client so that XLA
+  // can track a single dependency for the entire chain.
+  if (num_commands > 0 && commands_storage[num_commands - 1] != nullptr) {
+    return reinterpret_cast<const se::CommandBuffer::Command*>(
+        commands_storage[num_commands - 1]);
+  }
+  // No commands were recorded.
+  return nullptr;
+}
+
 absl::StatusOr<ThunkProto> CustomCallThunk::ToProto() const {
   ThunkProto proto;
   *proto.mutable_thunk_info() = thunk_info().ToProto();
@@ -538,6 +682,7 @@ absl::StatusOr<ThunkProto> CustomCallThunk::ToProto() const {
         *proto.mutable_custom_call_thunk()->mutable_execution_state(),
         execution_state_->ToProto());
   }
+  proto.mutable_custom_call_thunk()->set_use_pdl(use_pdl_);
   return proto;
 }
 
@@ -599,7 +744,7 @@ absl::StatusOr<std::unique_ptr<CustomCallThunk>> CustomCallThunk::FromProto(
       std::move(thunk_info), proto.target_name(), std::move(operands),
       std::move(results), std::move(attributes), called_computation,
       platform_name, gpu_compute_capability, std::move(execution_state),
-      std::move(cpu_target_machine_options));
+      std::move(cpu_target_machine_options), proto.use_pdl());
 }
 
 }  // namespace xla::gpu
