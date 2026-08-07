@@ -2501,6 +2501,64 @@ ENTRY CollectiveBroadcast {
 )",
 /*replica_count=*/4,
 },
+// collective-reduce
+{
+"CollectiveReduce",
+R"(HloModule CR, entry_computation_layout={(f32[8]{0})->f32[8]{0}}, replica_count=4
+
+add {
+  lhs = f32[] parameter(0)
+  rhs = f32[] parameter(1)
+  ROOT add = f32[] add(lhs, rhs)
+}
+
+ENTRY CR {
+  input = f32[8]{0} parameter(0)
+  ROOT cr = f32[8]{0} collective-reduce(input), replica_groups={{0,1},{2,3}}, has_dynamic_root=false, to_apply=add
+}
+
+)",
+/*replica_count=*/4,
+},
+// collective-reduce with channel_id and use_global_device_ids
+{
+"CollectiveReduceWithChannelId",
+R"(HloModule CR, entry_computation_layout={(f32[8]{0})->f32[8]{0}}, replica_count=2
+
+add {
+  lhs = f32[] parameter(0)
+  rhs = f32[] parameter(1)
+  ROOT add = f32[] add(lhs, rhs)
+}
+
+ENTRY CR {
+  input = f32[8]{0} parameter(0)
+  ROOT cr = f32[8]{0} collective-reduce(input), channel_id=1, replica_groups={{0,1}}, use_global_device_ids=true, has_dynamic_root=false, to_apply=add
+}
+
+)",
+/*replica_count=*/2,
+},
+// collective-reduce with has_dynamic_root (single data operand)
+{
+"CollectiveReduceDynamicRoot",
+R"(HloModule CR, entry_computation_layout={(f32[8]{0}, s32[1]{0})->f32[8]{0}}, replica_count=4
+
+add {
+  lhs = f32[] parameter(0)
+  rhs = f32[] parameter(1)
+  ROOT add = f32[] add(lhs, rhs)
+}
+
+ENTRY CR {
+  input = f32[8]{0} parameter(0)
+  root = s32[1]{0} parameter(1)
+  ROOT cr = f32[8]{0} collective-reduce(input, root), replica_groups={{0,1},{2,3}}, has_dynamic_root=true, to_apply=add
+}
+
+)",
+/*replica_count=*/4,
+},
 // collective-permute
 {
 "CollectivePermute",
