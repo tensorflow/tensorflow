@@ -458,7 +458,10 @@ def _LeakyReluGradGrad(op: ops.Operation, grad):
 
 @ops.RegisterGradient("Elu")
 def _EluGrad(op: ops.Operation, grad):
-  return gen_nn_ops.elu_grad(grad, op.outputs[0])
+  x = op.inputs[0]
+  # Computing the gradient from the ELU output loses precision when exp(x) is
+  # too small to affect -1. Compute it directly from the input instead.
+  return grad * math_ops.exp(math_ops.minimum(x, 0))
 
 
 @ops.RegisterGradient("Selu")

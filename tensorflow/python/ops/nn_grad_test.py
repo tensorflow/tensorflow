@@ -181,6 +181,17 @@ class DepthwiseConv2dTest(test.TestCase):
 
 class EluGradOpTest(test.TestCase):
 
+  @test_util.run_in_graph_and_eager_modes
+  def testEluGradPreservesSmallNegativeValues(self):
+    inputs = constant_op.constant(-40.0, dtype=dtypes.float64)
+    with backprop.GradientTape() as tape:
+      tape.watch(inputs)
+      elu = gen_nn_ops.elu(inputs)
+
+    elu_grad = tape.gradient(elu, inputs)
+    self.assertAllClose(
+        np.exp(-40.0), self.evaluate(elu_grad), rtol=1e-14, atol=0)
+
   @test_util.run_deprecated_v1
   def testEluGradGradWRTgrad_ys(self):
     inputs = constant_op.constant(
