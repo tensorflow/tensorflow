@@ -15,7 +15,7 @@ limitations under the License.
 
 #include "xla/service/gpu/intel_gpu_compiler.h"
 
-#include "xla/tsl/platform/status_macros.h"
+#include "absl/status/status_macros.h"
 #include "xla/service/dump.h"
 #include "xla/service/gpu/llvm_gpu_backend/spirv_backend.h"
 #include "xla/service/gpu/target_constants.h"
