@@ -28,7 +28,6 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/time/time.h"
-#include "mlir/IR/MLIRContext.h"
 #include "xla/backends/gpu/codegen/fusion_emitter.h"
 #include "xla/backends/gpu/codegen/fusions.h"
 #include "xla/backends/gpu/codegen/triton/fusion.h"
@@ -359,6 +358,34 @@ int64_t GpuPerformanceModelBase::CalculateEffectiveFlopsPerNs(
 
   double flop_per_ns_per_fpu = gpu_device_info.clock_rate_ghz() * /*fma:*/ 2;
   return flop_per_ns_per_fpu * fpu_count;
+}
+
+/*static*/
+int64_t GpuPerformanceModelBase::CalculateEffectiveAluOpsPerNs(
+    const se::DeviceDescription& gpu_device_info, int64_t num_blocks,
+    int64_t num_threads_per_block) {
+  const se::ExecutionUnitDescription* scalar_units =
+      gpu_device_info.scalar_unit_description();
+  std::optional<se::ExecutionUnitDescription::RateInfo> rate_info =
+      scalar_units ? scalar_units->GetRateInfo(PrimitiveType::S32)
+                   : std::nullopt;
+
+  if (!rate_info.has_value() || rate_info->units_per_core <= 0 ||
+      rate_info->ops_per_clock <= 0) {
+    LOG_FIRST_N(WARNING, 1) << "GPU scalar unit description unavailable. Using "
+                               "FLOPS estimation for ALU ops.";
+    return CalculateEffectiveFlopsPerNs(gpu_device_info, num_blocks,
+                                        num_threads_per_block);
+  }
+
+  int64_t num_active_units_per_core =
+      std::min<int64_t>(num_threads_per_block, rate_info->units_per_core);
+  int64_t num_active_cores =
+      std::min<int64_t>(num_blocks, gpu_device_info.core_count());
+  int64_t unit_count = num_active_cores * num_active_units_per_core;
+  double ops_per_ns_per_unit =
+      rate_info->clock_rate_ghz * rate_info->ops_per_clock;
+  return static_cast<int64_t>(ops_per_ns_per_unit * unit_count);
 }
 
 /*static*/

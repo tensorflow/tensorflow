@@ -29,6 +29,7 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"
 #include "xla/codegen/tiling/experimental/tiled_hlo.h"
 #include "xla/codegen/tiling/experimental/tiling_space.h"
+#include "xla/codegen/tiling/experimental/tiling_space_utils.h"
 #include "xla/codegen/tiling/symbolic_tile_analysis.h"
 #include "xla/codegen/tiling/tiled_hlo_computation.h"
 #include "xla/codegen/tiling/tiling_specification.h"
@@ -450,6 +451,39 @@ ENTRY entry_computation {
   // TODO(b/390559452): Currently, the number of warps is 4, but should actually
   // be 32, as it would improve the performance significantly.
   // EXPECT_EQ(tiled_runtime_data.block_level_parameters.num_warps, 32);
+}
+
+TEST_P(GpuIndexingPerformanceModelTest, EstimateBestTiling_Transpose) {
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+HloModule m
+
+triton_transpose_computation {
+  p0 = f32[4096,4096]{1,0} parameter(0)
+  ROOT transpose = f32[4096,4096]{1,0} transpose(p0), dimensions={1,0}
+}
+
+ENTRY main {
+  p0 = f32[4096,4096]{1,0} parameter(0)
+  ROOT fusion = f32[4096,4096]{1,0} fusion(p0), kind=kCustom,
+    calls=triton_transpose_computation,
+    backend_config={"fusion_backend_config": {"kind":"__triton"}}
+}
+)"));
+  auto fusion_adaptor = HloFusionAdaptor::ForInstruction(
+      module->entry_computation()->root_instruction());
+
+  ASSERT_OK_AND_ASSIGN(
+      TiledRunTimeDataOrError tiling_result,
+      indexing_cost_model_.TryFindBestTilingForFusion(*fusion_adaptor));
+
+  ASSERT_TRUE(std::holds_alternative<TiledRunTimeData>(tiling_result));
+
+  auto tiled_runtime_data = std::get<TiledRunTimeData>(tiling_result);
+
+  EXPECT_FALSE(
+      tiled_runtime_data.block_level_parameters.output_tile_sizes.front()
+          .empty());
+  EXPECT_GT(tiled_runtime_data.block_level_parameters.num_warps, 0);
 }
 
 TEST_P(GpuIndexingPerformanceModelTest, EstimateBestTiling_MultioutputFusion) {
@@ -1067,9 +1101,9 @@ class FlopsPerElementTest : public GpuIndexingPerformanceModelTest {
     ASSERT_OK_AND_ASSIGN(auto module,
                          ParseAndReturnVerifiedModule(hlo_module_string));
 
-    GpuHloCostAnalysis cost_analysis(
-        GpuHloCostAnalysis::Options{.count_multiple_input_accesses = true},
-        device_info_);
+    GpuHloCostAnalysis::Options options;
+    options.count_multiple_input_accesses = true;
+    GpuHloCostAnalysis cost_analysis(options, device_info_);
 
     EXPECT_OK(module->entry_computation()->Accept(&cost_analysis));
     auto instr = module->entry_computation()->root_instruction();

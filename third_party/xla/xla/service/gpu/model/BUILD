@@ -346,7 +346,6 @@ cc_library(
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/time",
-        "@llvm-project//mlir:IR",
     ],
 )
 
@@ -579,6 +578,7 @@ cc_library(
         "//xla/codegen/tiling:tiling_specification",
         "//xla/codegen/tiling/experimental:tile",
         "//xla/codegen/tiling/experimental:tiled_hlo",
+        "//xla/codegen/tiling/experimental:tiling_space_utils",
         "//xla/codegen/xtile/codegen:emitter_helpers",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/utils:hlo_traversal",
@@ -623,6 +623,7 @@ xla_cc_test(
         "//xla/codegen/tiling:tiling_specification",
         "//xla/codegen/tiling/experimental:tile",
         "//xla/codegen/tiling/experimental:tiled_hlo",
+        "//xla/codegen/tiling/experimental:tiling_space_utils",
         "//xla/codegen/xtile/codegen:emitter_helpers",
         "//xla/hlo/analysis:symbolic_map",
         "//xla/hlo/ir:hlo",
