@@ -707,11 +707,12 @@ void DumpPerModuleProtobufToFile(const HloModule& module,
                                  absl::AnyInvocable<absl::StatusOr<std::string>(
                                      tsl::Env*, const tsl::protobuf::Message&)>
                                      text_formatter) {
-  if (!DumpingEnabledForHloModule(module)) {
+  DumpOptions opts = GetDumpOptions(module.name(), debug_options);
+  if (!opts.should_dump_module(module.name())) {
     return;
   }
-  const std::string filename = FilenameFor(module, TimestampFor(module), name);
-  DumpOptions opts = GetDumpOptions(module.name(), debug_options);
+  const std::string filename =
+      FilenameFor(module, TimestampFor(module, &debug_options), name);
   DumpProtobufToFile(proto, debug_options, filename, std::move(text_formatter),
                      &opts);
 }
