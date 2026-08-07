@@ -160,6 +160,7 @@ cc_library(
         ":api",
         ":execution_context",
         ":execution_state",
+        ":ffi_interop",
         ":type_registry",
         "//xla:executable_run_options",
         "//xla:shape_util",
@@ -254,8 +255,6 @@ cc_library(
         ":api",
         ":ffi",
         "//xla/ffi/api:c_api",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/strings:string_view",
     ],
 )
 

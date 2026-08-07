@@ -59,7 +59,7 @@ enum class RecordAction {
 };
 
 namespace internal {
-template <typename Converter>
+template <typename ErrorPolicy>
 class RecordContextBase;
 }  // namespace internal
 
@@ -116,7 +116,7 @@ Overload(Ts...) -> Overload<Ts...>;
 // C++ wrapper for the XLA FFI Record extension API.
 // Unified implementation for statically linked and dynamically linked FFI
 // modules.
-template <typename Converter>
+template <typename ErrorPolicy>
 class RecordContextBase {
  private:
   // Converts a span of `KernelArg` or `void*` to a vector of
@@ -151,20 +151,18 @@ class RecordContextBase {
   }
 
  public:
-  using StatusOrT = decltype(Converter::ToStatusOr(
-      std::declval<const XLA_FFI_Command*>(), std::declval<XLA_FFI_Error*>()));
-  using StatusT = decltype(Converter::ToStatus(std::declval<XLA_FFI_Error*>()));
-  // The constructor takes the main API and the frame directly. (The main API
-  // is passed by CtxDecoding but can be ignored since the frame provides the
-  // RecordContext).
-  explicit RecordContextBase(const XLA_FFI_RecordFrame* frame)
-      : frame_(frame) {}
+  using Status = typename ErrorPolicy::Status;
+  template <typename T>
+  using StatusOr = typename ErrorPolicy::template StatusOr<T>;
+
+  RecordContextBase(const XLA_FFI_Api* api, const XLA_FFI_RecordFrame* frame)
+      : api_(api), frame_(frame) {}
 
   RecordAction action() const {
     return static_cast<RecordAction>(frame_->action);
   }
 
-  // Instantiate a used facing comamnd wrapper for convenience.
+  // Instantiate a user-facing command wrapper for convenience.
   BoundedCommandVector commands() const {
     return BoundedCommandVector(frame_->commands, frame_->num_commands,
                                 frame_->max_commands);
@@ -174,11 +172,11 @@ class RecordContextBase {
   // void* const> for args)
   template <typename KernelArgSpan,
             typename DepSpan = std::initializer_list<const XLA_FFI_Command*>>
-  StatusOrT CreateLaunch(const char* kernel_name, const void* kernel_data,
-                         size_t kernel_size, SourceFormat format,
-                         XLA_FFI_LaunchDims launch_dims,
-                         uint32_t shared_mem_bytes, KernelArgSpan args,
-                         DepSpan dependencies = {}) {
+  StatusOr<const XLA_FFI_Command*> CreateLaunch(
+      const char* kernel_name, const void* kernel_data, size_t kernel_size,
+      SourceFormat format, XLA_FFI_LaunchDims launch_dims,
+      uint32_t shared_mem_bytes, KernelArgSpan args,
+      DepSpan dependencies = {}) {
     std::vector<XLA_FFI_KernelArg> raw_args = ConvertArgs(args);
     XLA_FFI_KernelArgs ffi_args{raw_args.data(),
                                 static_cast<int64_t>(raw_args.size())};
@@ -191,48 +189,16 @@ class RecordContextBase {
         std::size(dependencies), &out_command);
 
     if (err) {
-      return Converter::ToStatusOr(out_command, err);
+      return ErrorPolicy::TakeError(api_, err);
     }
     if (!out_command) {
-      return Converter::ToError(XLA_FFI_Error_Code_INTERNAL,
-                                "out_command is null but no error was returned "
-                                "during create_launch.");
+      return ErrorPolicy::FromErrorCode(
+          XLA_FFI_Error_Code_INTERNAL,
+          "out_command is null but no error was returned during "
+          "create_launch.");
     }
     if (!commands().push_back(out_command)) {
-      return Converter::ToError(
-          XLA_FFI_Error_Code_RESOURCE_EXHAUSTED,
-          "Maximum number of commands that can be "
-          "recorded per FFI::Record call has been reached.");
-    }
-    return out_command;
-  }
-
-  template <typename KernelArgSpan>
-  StatusT UpdateLaunch(const XLA_FFI_Command* command, KernelArgSpan args) {
-    std::vector<XLA_FFI_KernelArg> raw_args = ConvertArgs(args);
-    XLA_FFI_KernelArgs ffi_args{raw_args.data(),
-                                static_cast<int64_t>(raw_args.size())};
-    XLA_FFI_Error* err =
-        frame_->api->update_launch(frame_->record_ctx, command, &ffi_args);
-    return Converter::ToStatus(err);
-  }
-
-  template <typename DepSpan = std::initializer_list<const XLA_FFI_Command*>>
-  StatusOrT CreateEmptyCommand(DepSpan dependencies = {}) {
-    const XLA_FFI_Command* out_command = nullptr;
-    XLA_FFI_Error* err = frame_->api->create_empty_command(
-        frame_->record_ctx, std::data(dependencies), std::size(dependencies),
-        &out_command);
-    if (err) {
-      return Converter::ToStatusOr(out_command, err);
-    }
-    if (!out_command) {
-      return Converter::ToError(XLA_FFI_Error_Code_INTERNAL,
-                                "out_command is null but no error was returned "
-                                "during create_empty_command.");
-    }
-    if (!commands().push_back(out_command)) {
-      return Converter::ToError(
+      return ErrorPolicy::FromErrorCode(
           XLA_FFI_Error_Code_RESOURCE_EXHAUSTED,
           "Maximum number of commands that can be recorded per FFI::Record "
           "call has been reached.");
@@ -240,30 +206,73 @@ class RecordContextBase {
     return out_command;
   }
 
-  StatusT RequestStreamCapture() {
+  template <typename KernelArgSpan>
+  Status UpdateLaunch(const XLA_FFI_Command* command, KernelArgSpan args) {
+    std::vector<XLA_FFI_KernelArg> raw_args = ConvertArgs(args);
+    XLA_FFI_KernelArgs ffi_args{raw_args.data(),
+                                static_cast<int64_t>(raw_args.size())};
     XLA_FFI_Error* err =
-        frame_->api->request_stream_capture(frame_->record_ctx);
-    return Converter::ToStatus(err);
+        frame_->api->update_launch(frame_->record_ctx, command, &ffi_args);
+    if (err) {
+      return ErrorPolicy::TakeError(api_, err);
+    }
+    return ErrorPolicy::Ok();
   }
 
   template <typename DepSpan = std::initializer_list<const XLA_FFI_Command*>>
-  StatusOrT CreateMemcpyD2D(void* dst, void* src, size_t size,
-                            DepSpan dependencies = {}) {
+  StatusOr<const XLA_FFI_Command*> CreateEmptyCommand(
+      DepSpan dependencies = {}) {
+    const XLA_FFI_Command* out_command = nullptr;
+    XLA_FFI_Error* err = frame_->api->create_empty_command(
+        frame_->record_ctx, std::data(dependencies), std::size(dependencies),
+        &out_command);
+    if (err) {
+      return ErrorPolicy::TakeError(api_, err);
+    }
+    if (!out_command) {
+      return ErrorPolicy::FromErrorCode(
+          XLA_FFI_Error_Code_INTERNAL,
+          "out_command is null but no error was returned during "
+          "create_empty_command.");
+    }
+    if (!commands().push_back(out_command)) {
+      return ErrorPolicy::FromErrorCode(
+          XLA_FFI_Error_Code_RESOURCE_EXHAUSTED,
+          "Maximum number of commands that can be recorded per FFI::Record "
+          "call has been reached.");
+    }
+    return out_command;
+  }
+
+  Status RequestStreamCapture() {
+    XLA_FFI_Error* err =
+        frame_->api->request_stream_capture(frame_->record_ctx);
+    if (err) {
+      return ErrorPolicy::TakeError(api_, err);
+    }
+    return ErrorPolicy::Ok();
+  }
+
+  template <typename DepSpan = std::initializer_list<const XLA_FFI_Command*>>
+  StatusOr<const XLA_FFI_Command*> CreateMemcpyD2D(void* dst, void* src,
+                                                   size_t size,
+                                                   DepSpan dependencies = {}) {
     const XLA_FFI_Command* out_command = nullptr;
     XLA_FFI_Error* err = frame_->api->create_memcpy_d2d(
         frame_->record_ctx, dst, src, size, std::data(dependencies),
         std::size(dependencies), &out_command);
 
     if (err) {
-      return Converter::ToStatusOr(out_command, err);
+      return ErrorPolicy::TakeError(api_, err);
     }
     if (!out_command) {
-      return Converter::ToError(XLA_FFI_Error_Code_INTERNAL,
-                                "out_command is null but no error was returned "
-                                "during create_memcpy_d2d.");
+      return ErrorPolicy::FromErrorCode(
+          XLA_FFI_Error_Code_INTERNAL,
+          "out_command is null but no error was returned during "
+          "create_memcpy_d2d.");
     }
     if (!commands().push_back(out_command)) {
-      return Converter::ToError(
+      return ErrorPolicy::FromErrorCode(
           XLA_FFI_Error_Code_RESOURCE_EXHAUSTED,
           "Maximum number of commands that can be recorded per FFI::Record "
           "call has been reached.");
@@ -271,14 +280,18 @@ class RecordContextBase {
     return out_command;
   }
 
-  StatusT UpdateMemcpyD2D(const XLA_FFI_Command* command, void* dst, void* src,
-                          size_t size) {
+  Status UpdateMemcpyD2D(const XLA_FFI_Command* command, void* dst, void* src,
+                         size_t size) {
     XLA_FFI_Error* err = frame_->api->update_memcpy_d2d(
         frame_->record_ctx, command, dst, src, size);
-    return Converter::ToStatus(err);
+    if (err) {
+      return ErrorPolicy::TakeError(api_, err);
+    }
+    return ErrorPolicy::Ok();
   }
 
  private:
+  const XLA_FFI_Api* api_;
   const XLA_FFI_RecordFrame* frame_;
 };
 
@@ -297,8 +310,8 @@ struct RecordExtensionBase {
       XLA_FFI_Extension_Record_MinorVersion;
 
   // Builds a context from the extension.
-  static RecordContextT Create(const CExtension* ext) {
-    return RecordContextT(ext->record_frame);
+  static RecordContextT Create(const XLA_FFI_Api* api, const CExtension* ext) {
+    return RecordContextT(api, ext->record_frame);
   }
 };
 

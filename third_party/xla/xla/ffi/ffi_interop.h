@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_FFI_FFI_INTEROP_H_
 #define XLA_FFI_FFI_INTEROP_H_
 
+#include "absl/base/macros.h"
 #include "absl/status/status.h"
 #include "xla/ffi/api/c_api.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
@@ -29,7 +30,12 @@ namespace xla::ffi {
 
 // Takes ownership of the XLA FFI error and returns underlying status. Frees
 // `error` if it's not nullptr. If `error` is nullptr, returns OkStatus.
-absl::Status TakeStatus(XLA_FFI_Error* error);
+absl::Status TakeError(XLA_FFI_Error* error);
+
+ABSL_DEPRECATE_AND_INLINE()
+inline absl::Status TakeStatus(XLA_FFI_Error* error) {
+  return TakeError(error);
+}
 
 // Takes ownership of the XLA FFI future and returns underlying AsyncValue.
 // Frees `future` if it's not nullptr. If `future` is nullptr, returns available
