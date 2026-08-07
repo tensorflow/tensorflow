@@ -1602,6 +1602,15 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
                               ShapeIndex producer_shape_index,
                               absl::string_view consumer_name) const;
 
+  // Finds the matching AllocationValue for a given HloUse. Returns nullptr if
+  // no matching AllocationValue is found.
+  // REQUIRES: candidate_allocation_values must be sorted by the definition time
+  // of their defining instruction.
+  AllocationValue* FindAllocationValueForUse(
+      const HloUse& use,
+      absl::Span<AllocationValue> candidate_allocation_values,
+      int64_t use_time) const;
+
   // Takes a group of allocation values and splits them if they can be split on
   // the same dimension.
   void MaybeSplitAllocationValues(

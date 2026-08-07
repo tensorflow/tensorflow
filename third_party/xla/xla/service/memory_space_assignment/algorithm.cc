@@ -561,6 +561,61 @@ MsaAlgorithm::MsaAlgorithm(HloModule* module, AllocationSequence* allocations,
   eviction_async_copy_resource_ = AsynchronousCopyResource(initial_resources);
 }
 
+// Finds the matching AllocationValue for a given HloUse.
+AllocationValue* MsaAlgorithm::FindAllocationValueForUse(
+    const HloUse& use, absl::Span<AllocationValue> candidate_allocation_values,
+    int64_t use_time) const {
+  if ((HloDataflowAnalysis::IsAsynchronousOperationDone(
+           use.instruction->opcode()) ||
+       use.instruction->opcode() == HloOpcode::kAsyncUpdate) &&
+      use.operand_number == 0) {
+    // Case A: uses in an async-chain: Find the AllocationValue
+    // defined by the previous async instruction in the chain.
+    for (AllocationValue& allocation_value : candidate_allocation_values) {
+      if (allocation_value.defining_instruction() ==
+              use.instruction->operand(0) &&
+          use.operand_index == allocation_value.defining_position().index) {
+        // Since defining_position() is unique among the candidates, there is
+        // at most one unique match, so we can return immediately.
+        return &allocation_value;
+      }
+    }
+  } else {
+    // Case B: uses outside async-chains.
+    // Find the latest valid AllocationValue before
+    // this use. Since AllocationValues in candidate_allocation_values are
+    // sorted by definition time, we iterate backwards.
+    HloComputation* use_computation = use.instruction->parent();
+    const absl::flat_hash_map<const HloInstruction*, int64_t>&
+        instruction_schedule = hlo_live_range_.instruction_schedule();
+
+    for (auto it = candidate_allocation_values.rbegin();
+         it != candidate_allocation_values.rend(); ++it) {
+      AllocationValue* allocation_value = &(*it);
+      int64_t definition_time = instruction_schedule.at(
+          allocation_value->defining_position().instruction);
+      // Skip definitions that are after the use.
+      if (definition_time >= use_time) {
+        continue;
+      }
+      // Skip definitions from async-start, async-update
+      if (HloDataflowAnalysis::IsAsynchronousOperationStart(
+              allocation_value->defining_instruction()->opcode()) ||
+          allocation_value->defining_instruction()->opcode() ==
+              HloOpcode::kAsyncUpdate) {
+        continue;
+      }
+      // Skip definitions from different computations.
+      if (allocation_value->computation() != use_computation) {
+        continue;
+      }
+      // Pick the closest allocation value preceding the use
+      return allocation_value;
+    }
+  }
+  return nullptr;
+}
+
 void MsaAlgorithm::CreateAllocationValues(
     const MsaBufferInterval& buffer_interval,
     std::vector<AllocationValue>& allocation_values) const {
@@ -610,42 +665,16 @@ void MsaAlgorithm::CreateAllocationValues(
   // that when we insert CopyStart/CopyDone in CopyAllocation::Process, they
   // point to the latest position. We then replace the operand of the use with
   // CopyStart/CopyDone with an operand of the latest position.
+  absl::Span<AllocationValue> candidate_allocation_values =
+      absl::MakeSpan(allocation_values).subspan(beginning_idx);
   for (const HloUse& use : uses) {
     int64_t use_time = instruction_schedule.at(use.instruction);
-    HloComputation* use_computation = use.instruction->parent();
+    AllocationValue* allocation_value_for_use =
+        FindAllocationValueForUse(use, candidate_allocation_values, use_time);
 
-    AllocationValue* last_allocation_value = nullptr;
-    for (int i = beginning_idx; i < allocation_values.size(); ++i) {
-      AllocationValue* allocation_value = &allocation_values.at(i);
-      if ((HloDataflowAnalysis::IsAsynchronousOperationDone(
-               use.instruction->opcode()) ||
-           use.instruction->opcode() == HloOpcode::kAsyncUpdate) &&
-          use.operand_number == 0) {
-        // Case A: uses in an async-chain: Find the AllocationValue
-        // defined by the previous async instruction in the chain.
-        if (allocation_value->defining_instruction() ==
-                use.instruction->operand(0) &&
-            use.operand_index == allocation_value->defining_position().index) {
-          last_allocation_value = allocation_value;
-        }
-      } else if (!HloDataflowAnalysis::IsAsynchronousOperationStart(
-                     allocation_value->defining_instruction()->opcode()) &&
-                 allocation_value->defining_instruction()->opcode() !=
-                     HloOpcode::kAsyncUpdate &&
-                 allocation_value->computation() == use_computation &&
-                 instruction_schedule.at(
-                     allocation_value->defining_position().instruction) <
-                     use_time) {
-        // Case B: uses outside async-chains.
-        // Find the latest valid AllocationValue before
-        // this use, skipping allocation values with positions in async
-        // instructions
-        last_allocation_value = allocation_value;
-      }
-    }
-    CHECK(last_allocation_value != nullptr)
+    CHECK(allocation_value_for_use != nullptr)
         << "Failed to find AllocationValue for use: " << use.ToString();
-    last_allocation_value->AddUse(use, use_time);
+    allocation_value_for_use->AddUse(use, use_time);
   }
 
   // This loop marks allocation values as contiguous, if they are part of async
