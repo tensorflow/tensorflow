@@ -230,9 +230,9 @@ class BooleanMaskTest(test_util.TensorFlowTestCase):
   def testConcurrentEagerBooleanMaskOnGpu(self):
     thread_count = 8
     barrier = threading.Barrier(thread_count)
-    tensor_shape = (64, 64, 64, 4)
+    input_shape = (64, 64, 64, 4)
     tensor_value = np.arange(
-        np.prod(tensor_shape), dtype=np.float32).reshape(tensor_shape)
+        np.prod(input_shape), dtype=np.float32).reshape(input_shape)
     expected = tensor_value[tensor_value >= tensor_value.size // 2]
 
     def apply_mask(_):
