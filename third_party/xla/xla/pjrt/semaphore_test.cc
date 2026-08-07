@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "xla/pjrt/semaphore.h"
 
+#include <utility>
+
 #include <gtest/gtest.h>
 #include "absl/synchronization/notification.h"
 #include "xla/hlo/testlib/test.h"
@@ -78,6 +80,33 @@ TEST(SemaphoreTest, ConcurrentTest) {
   EXPECT_FALSE(a_done.HasBeenNotified());
   semaphore.Release(1);
   a_done.WaitForNotification();
+}
+
+TEST(SemaphoreTest, MoveAssignment) {
+  Semaphore semaphore(2);
+  // Test 1: Move assignment overwrites existing reservation.
+  {
+    auto r1 = semaphore.ScopedAcquire(1);
+    EXPECT_EQ(semaphore.value(), 1);
+    auto r2 = semaphore.ScopedAcquire(1);
+    EXPECT_EQ(semaphore.value(), 0);
+    r1 = std::move(r2);
+    // Original reservation held by r1 must be released immediately.
+    EXPECT_EQ(semaphore.value(), 1);
+    EXPECT_EQ(r1.amount(), 1);
+  }
+  EXPECT_EQ(semaphore.value(), 2);
+
+  // Test 2: Self-move assignment is a no-op.
+  {
+    auto r1 = semaphore.ScopedAcquire(1);
+    EXPECT_EQ(semaphore.value(), 1);
+    Semaphore::ScopedReservation* p = &r1;
+    r1 = std::move(*p);
+    EXPECT_EQ(semaphore.value(), 1);
+    EXPECT_EQ(r1.amount(), 1);
+  }
+  EXPECT_EQ(semaphore.value(), 2);
 }
 
 }  // namespace

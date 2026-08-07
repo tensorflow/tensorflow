@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/pjrt/semaphore.h"
 
 #include <cstdint>
+#include <utility>
 
 #include "absl/log/check.h"
 #include "absl/synchronization/mutex.h"
@@ -67,17 +68,19 @@ Semaphore::ScopedReservation::~ScopedReservation() {
 }
 
 Semaphore::ScopedReservation::ScopedReservation(
-    ScopedReservation&& other) noexcept {
-  semaphore_ = other.semaphore_;
-  amount_ = other.amount_;
-  other.semaphore_ = nullptr;
-}
+    ScopedReservation&& other) noexcept
+    : semaphore_(std::exchange(other.semaphore_, nullptr)),
+      amount_(std::exchange(other.amount_, 0)) {}
 
 Semaphore::ScopedReservation& Semaphore::ScopedReservation::operator=(
     ScopedReservation&& other) noexcept {
-  semaphore_ = other.semaphore_;
-  amount_ = other.amount_;
-  other.semaphore_ = nullptr;
+  if (this != &other) {
+    if (semaphore_) {
+      semaphore_->Release(amount_);
+    }
+    semaphore_ = std::exchange(other.semaphore_, nullptr);
+    amount_ = std::exchange(other.amount_, 0);
+  }
   return *this;
 }
 
