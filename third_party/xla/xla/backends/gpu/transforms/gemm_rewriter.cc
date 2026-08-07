@@ -17,6 +17,7 @@ limitations under the License.
 #include "xla/backends/gpu/transforms/gemm_rewriter.h"
 
 #include <math.h>
+
 #include <algorithm>
 #include <array>
 #include <cmath>
@@ -36,10 +37,10 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/evaluator/hlo_evaluator.h"
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"

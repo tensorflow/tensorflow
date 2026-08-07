@@ -16,9 +16,9 @@ limitations under the License.
 #include "xla/backends/gpu/transforms/pgle_accuracy_checker.h"
 
 #include "absl/container/flat_hash_set.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/tsl/platform/errors.h"
 

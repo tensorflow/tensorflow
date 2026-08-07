@@ -21,9 +21,9 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "llvm/ADT/bit.h"
 #include "llvm/Support/Alignment.h"
 #include "xla/backends/gpu/runtime/collective_params.h"
