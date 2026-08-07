@@ -212,6 +212,42 @@ diff --ruN a/stablehlo/stablehlo/tests/TestUtils.cpp b/stablehlo/stablehlo/tests
      patterns_ = std::move(patterns);
      return success();
    }
+diff --ruN a/stablehlo/stablehlo/tests/chlo/chlo_legalize_to_stablehlo.mlir b/stablehlo/stablehlo/tests/chlo/chlo_legalize_to_stablehlo.mlir
+--- stablehlo/stablehlo/tests/chlo/chlo_legalize_to_stablehlo.mlir
++++ stablehlo/stablehlo/tests/chlo/chlo_legalize_to_stablehlo.mlir
+@@ -5282,6 +5282,32 @@
+ 
+ // -----
+ 
++// CHECK-LABEL:   func.func @ragged_dot_mode_2_rank_lhs_lt_rhs(
++// CHECK-SAME:      %[[ARG0:.*]]: tensor<2x3xf32>,
++// CHECK-SAME:      %[[ARG1:.*]]: tensor<2x3x4xf32>,
++// CHECK-SAME:      %[[ARG2:.*]]: tensor<2xi64>) -> tensor<2x3x3x4xf32> {
++// CHECK:           %[[DOT_GENERAL_0:.*]] = stablehlo.dot_general %{{.*}}, %[[ARG1]], contracting_dims = [0] x [0], precision = [DEFAULT, DEFAULT] : (tensor<2x3xf32>, tensor<2x3x4xf32>) -> tensor<3x3x4xf32>
++// CHECK:           %[[DOT_GENERAL_1:.*]] = stablehlo.dot_general %{{.*}}, %[[ARG1]], contracting_dims = [0] x [0], precision = [DEFAULT, DEFAULT] : (tensor<2x3xf32>, tensor<2x3x4xf32>) -> tensor<3x3x4xf32>
++// CHECK:           %[[CONCATENATE_0:.*]] = stablehlo.concatenate{{.*}}dim = 0 : (tensor<1x3x3x4xf32>, tensor<1x3x3x4xf32>) -> tensor<2x3x3x4xf32>
++// CHECK:           return %[[CONCATENATE_0]] : tensor<2x3x3x4xf32>
++// CHECK:         }
++func.func @ragged_dot_mode_2_rank_lhs_lt_rhs(%lhs : tensor<2x3xf32>, %rhs : tensor<2x3x4xf32>, %group_sizes : tensor<2xi64>) -> tensor<2x3x3x4xf32> {
++  %0 = "chlo.ragged_dot"(%lhs, %rhs, %group_sizes) {
++    ragged_dot_dimension_numbers = #chlo.ragged_dot<
++      lhs_batching_dimensions = [],
++      rhs_batching_dimensions = [],
++      lhs_contracting_dimensions = [0],
++      rhs_contracting_dimensions = [0],
++      lhs_ragged_dimensions = [0],
++      rhs_group_dimensions = []
++    >,
++    precision_config = [#chlo<precision DEFAULT>, #chlo<precision DEFAULT>]
++  } : (tensor<2x3xf32>, tensor<2x3x4xf32>, tensor<2xi64>) -> tensor<2x3x3x4xf32>
++  func.return %0 : tensor<2x3x3x4xf32>
++}
++
++// -----
++
+ // CHECK-LABEL:   func.func @ragged_dot_mode_3(
+ // CHECK-SAME:      %[[ARG0:.*]]: tensor<2x3x5xf32>,
+ // CHECK-SAME:      %[[ARG1:.*]]: tensor<2x5x7xf32>,
 diff --ruN a/stablehlo/stablehlo/tests/interpret/printing.mlir b/stablehlo/stablehlo/tests/interpret/printing.mlir
 --- stablehlo/stablehlo/tests/interpret/printing.mlir
 +++ stablehlo/stablehlo/tests/interpret/printing.mlir
@@ -457,7 +493,39 @@ diff --ruN a/stablehlo/stablehlo/tests/transforms/stablehlo_legalize_quant_to_in
 diff --ruN a/stablehlo/stablehlo/transforms/ChloLegalizeToStablehlo.cpp b/stablehlo/stablehlo/transforms/ChloLegalizeToStablehlo.cpp
 --- stablehlo/stablehlo/transforms/ChloLegalizeToStablehlo.cpp
 +++ stablehlo/stablehlo/transforms/ChloLegalizeToStablehlo.cpp
-@@ -3260,8 +3260,7 @@
+@@ -2752,13 +2752,25 @@
+   LogicalResult matchAndRewrite(
+       mlir::chlo::RaggedDotOp op, OpAdaptor,
+       ConversionPatternRewriter& rewriter) const override {
+-    if (op.getLhs().getType().getRank() < op.getRhs().getType().getRank()) {
++    chlo::RaggedDotDimensionNumbersAttr raggedDotDimensionNumbers =
++        op.getRaggedDotDimensionNumbers();
++    ArrayRef<int64_t> lhsRaggedDimensions =
++        raggedDotDimensionNumbers.getLhsRaggedDimensions();
++    if (lhsRaggedDimensions.empty()) {
++      return rewriter.notifyMatchFailure(
++          op, "lhs_ragged_dimensions must not be empty");
++    }
++    const int64_t lhsRaggedDim = lhsRaggedDimensions[0];
++    if (llvm::is_contained(
++            raggedDotDimensionNumbers.getLhsContractingDimensions(),
++            lhsRaggedDim)) {
++      return handleRaggedDotMode2(op, rewriter);
++    } else if (llvm::is_contained(
++                   raggedDotDimensionNumbers.getLhsBatchingDimensions(),
++                   lhsRaggedDim)) {
++      return handleRaggedDotMode3(op, rewriter);
++    } else {
+       return handleRaggedDotMode1(op, rewriter);
+-    } else if (op.getLhs().getType().getRank() <
+-               op.getResult().getType().getRank()) {
+-      return handleRaggedDotMode2(op, rewriter);
+-    } else {
+-      return handleRaggedDotMode3(op, rewriter);
+     }
+   }
+ };
+@@ -3260,8 +3272,7 @@
      Type elementType = operandType.getElementType();
      mlir::stablehlo::SortOp sortOp =
          createSortOp(&rewriter, op.getLoc(), {op.getOperand(), iotaOp},
