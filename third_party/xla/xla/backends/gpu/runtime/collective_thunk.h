@@ -298,6 +298,12 @@ absl::StatusOr<std::vector<DeviceBufferPair>> ConvertToDeviceBuffers(
     const BufferAllocations* buffer_allocations,
     const std::vector<CollectiveThunk::Buffer>& buffers,
     const std::vector<PrimitiveType>& element_types);
+
+// Builds the buffers for the given collective instruction.
+absl::StatusOr<std::vector<CollectiveThunk::Buffer>> GetCollectiveBuffers(
+    const BufferAssignment& buffer_assignment, const HloInstruction* inst,
+    Thunk::Kind kind, bool has_dynamic_root);
+
 }  // namespace xla::gpu
 
 #endif  // XLA_BACKENDS_GPU_RUNTIME_COLLECTIVE_THUNK_H_

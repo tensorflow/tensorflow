@@ -26,10 +26,10 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/tsl/platform/status_macros.h"
-#include "llvm/ADT/STLExtras.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/Metadata.h"
 #include "llvm/IR/Module.h"
@@ -37,36 +37,97 @@ limitations under the License.
 #include "llvm/TargetParser/Triple.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/Support/LLVM.h"
-#include "xla/backends/gpu/codegen/fusion_emitter.h"
 #include "xla/backends/gpu/codegen/kernel_compiler.h"
 #include "xla/backends/gpu/codegen/kernels/custom_kernel.h"
 #include "xla/backends/gpu/codegen/kernels/ptx_custom_kernel.h"
+#include "xla/backends/gpu/codegen/triton/collective_emitter.h"
 #include "xla/backends/gpu/codegen/triton/triton_kernel_source.h"
 #include "xla/backends/gpu/codegen/triton/xtile_compiler.h"
+#include "xla/backends/gpu/runtime/collective_kernel_thunk.h"
+#include "xla/backends/gpu/runtime/collective_params.h"
+#include "xla/backends/gpu/runtime/collective_thunk.h"
 #include "xla/backends/gpu/runtime/custom_kernel_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/codegen/emitters/kernel_arguments.h"
-#include "xla/codegen/llvm_kernel_source.h"
 #include "xla/frontend_attributes.h"
 #include "xla/future.h"
-#include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/utils/hlo_traversal.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/gpu_constants.h"
+#include "xla/service/gpu/hlo_fusion_analysis.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/ir_emitter_context.h"
 #include "xla/service/gpu/kernel_reuse_cache.h"
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/gpu/model/block_level_parameters.h"
 #include "xla/shape.h"
+#include "xla/status_macros.h"
 #include "xla/stream_executor/device_description.h"
-#include "xla/stream_executor/launch_dim.h"
 #include "xla/util.h"
 
 namespace xla {
 namespace gpu {
+
+namespace {
+bool IsGPUSyncCollective(const HloInstruction& instr) {
+  auto backend_config = instr.backend_config<GpuBackendConfig>();
+  if (!backend_config.ok()) {
+    return false;
+  }
+  return backend_config->collective_backend_config().is_sync();
+}
+
+struct EmitArgs {
+  TritonFusion::EmitThunk emit_thunk;
+  std::vector<Shape> unmanaged_arguments;
+};
+
+absl::StatusOr<EmitArgs> EmitCollectiveFusion(
+    Thunk::ThunkInfo info, const HloFusionAnalysis& analysis,
+    IrEmitterContext& ir_emitter_context, const HloFusionInstruction& fusion) {
+  VLOG(5) << "EmitCollectiveFusion: " << info.profile_annotation;
+  TF_RET_CHECK(analysis.fusion_heroes().size() == 1)
+      << "EmitCollectiveFusion: Expected exactly one hero in a collective "
+         "fusion. Found: "
+      << analysis.fusion_heroes().size() << " for: " << fusion.ToString();
+
+  const HloInstructionAdaptor collective_hero = analysis.fusion_hero(0);
+
+  bool use_global_device_ids = collective_hero.use_global_device_ids();
+
+  CollectiveConfig config = GetCollectiveConfig(&collective_hero.instruction(),
+                                                use_global_device_ids);
+  const HloFusionInstruction* fusion_instr = &fusion;
+  std::vector<CollectiveThunk::Buffer> buffers;
+  ABSL_ASSIGN_OR_RETURN(buffers, GetCollectiveBuffers(
+                                ir_emitter_context.buffer_assignment(),
+                                fusion_instr, Thunk::Kind::kCollectiveKernel,
+                                /*has_dynamic_root=*/false));
+  const bool is_async = !IsGPUSyncCollective(*fusion_instr);
+
+  TritonFusion::EmitThunk make_thunk =
+      [info = std::move(info), buffers = std::move(buffers), config,
+       fusion_instr, is_async](TritonFusion::EmitResult result) mutable
+      -> absl::StatusOr<ThunkSequence> {
+    ABSL_ASSIGN_OR_RETURN(CollectiveKernelSpec kernel_spec,
+                     CreateCollectiveKernelSpec(
+                         fusion_instr, result.entry.launch_dimensions));
+    auto cubin = result.entry.binary.empty()
+                     ? std::nullopt
+                     : std::make_optional(std::move(result.entry.binary));
+    return ThunkSequence::Of<CollectiveKernelThunk>(
+        std::move(info), config, std::move(kernel_spec), is_async,
+        std::move(buffers), /*is_collective_kernel_enabled=*/true,
+        result.entry.kernel_name, result.entry.launch_dimensions,
+        result.entry.shmem_bytes, std::move(cubin), result.entry.use_pdl);
+  };
+  ABSL_ASSIGN_OR_RETURN(std::vector<Shape> unmanaged_arguments,
+                   GetCollectiveUnmanagedKernelArguments(fusion_instr));
+  return EmitArgs{std::move(make_thunk), std::move(unmanaged_arguments)};
+}
+}  // namespace
 
 // Since we are creating the kernel and splicing the impl_fn into it, we
 // need to manually annotate the kernel with the nvvm.annotations.
@@ -128,23 +189,37 @@ AsyncThunkSequence TritonFusion::Emit(
     const HloFusionInstruction& fusion) const {
   Thunk::ThunkInfo thunk_info = Thunk::ThunkInfo::WithProfileAnnotation(
       &fusion, ir_emitter_context.GetNextThunkId());
-  return Emit(ir_emitter_context, fusion, nullptr, {})
-      .Map(
-          [thunk_info = std::move(thunk_info)](
-              EmitResult result) -> absl::StatusOr<ThunkSequence> {
-            ABSL_ASSIGN_OR_RETURN(
-                CustomKernel custom_kernel,
-                kernel::CreateOwnedCubinCustomKernel(
-                    result.entry.kernel_name, result.entry.binary,
-                    result.kernel_arguments.args().size(),
-                    result.entry.launch_dimensions.block_counts(),
-                    result.entry.launch_dimensions.thread_counts_per_block(),
-                    result.entry.shmem_bytes));
-            return ThunkSequence::Of<CustomKernelThunk>(
-                thunk_info, std::move(custom_kernel), result.kernel_arguments,
-                result.entry.use_pdl, std::vector<int64_t>{},
-                result.entry.tma_metadata);
-          });
+  VLOG(5) << "TritonFusion::Emit: " << thunk_info.profile_annotation;
+  EmitArgs emit_args;
+  if (analysis_.fusion_backend_config().kind() == kTritonCollectiveFusionKind) {
+    ABSL_ASSIGN_OR_RETURN(emit_args,
+                     EmitCollectiveFusion(std::move(thunk_info), analysis_,
+                                          ir_emitter_context, fusion));
+  } else {
+    EmitThunk make_thunk =
+        [thunk_info = std::move(thunk_info)](
+            EmitResult result) -> absl::StatusOr<ThunkSequence> {
+      ABSL_ASSIGN_OR_RETURN(
+          CustomKernel custom_kernel,
+          kernel::CreateOwnedCubinCustomKernel(
+              result.entry.kernel_name, result.entry.binary,
+              result.kernel_arguments.args().size(),
+              result.entry.launch_dimensions.block_counts(),
+              result.entry.launch_dimensions.thread_counts_per_block(),
+              result.entry.shmem_bytes));
+      return ThunkSequence::Of<CustomKernelThunk>(
+          thunk_info, std::move(custom_kernel), result.kernel_arguments,
+          result.entry.use_pdl, std::vector<int64_t>{},
+          result.entry.tma_metadata);
+    };
+    emit_args = {
+        std::move(make_thunk),
+        /*unmanaged_arguments=*/{},
+    };
+  }
+  return Emit(ir_emitter_context, fusion, nullptr,
+              std::move(emit_args.unmanaged_arguments))
+      .Map(std::move(emit_args.emit_thunk));
 }
 
 xla::Future<TritonFusion::EmitResult> TritonFusion::Emit(

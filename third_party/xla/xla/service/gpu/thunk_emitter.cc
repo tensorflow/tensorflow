@@ -61,20 +61,15 @@ limitations under the License.
 #include "xla/backends/gpu/codegen/kernels/custom_kernel.h"
 #include "xla/backends/gpu/codegen/kernels/ptx_custom_kernel.h"
 #include "xla/backends/gpu/codegen/llvm/llvm_emitter.h"
-#include "xla/backends/gpu/codegen/triton/collective_emitter.h"
-#include "xla/backends/gpu/codegen/triton/fusion.h"
 #include "xla/backends/gpu/codegen/triton/triton_kernel_source.h"
 #include "xla/backends/gpu/codegen/triton/xtile_compiler.h"
 #include "xla/backends/gpu/runtime/all_gather_thunk.h"
-#include "xla/backends/gpu/runtime/all_reduce.h"
 #include "xla/backends/gpu/runtime/all_reduce_thunk.h"
 #include "xla/backends/gpu/runtime/all_to_all_thunk.h"
 #include "xla/backends/gpu/runtime/async_execution.h"
 #include "xla/backends/gpu/runtime/async_thunk.h"
 #include "xla/backends/gpu/runtime/collective_broadcast_thunk.h"
 #include "xla/backends/gpu/runtime/collective_group_thunk.h"
-#include "xla/backends/gpu/runtime/collective_kernel_thunk.h"
-#include "xla/backends/gpu/runtime/collective_params.h"
 #include "xla/backends/gpu/runtime/collective_permute_thunk.h"
 #include "xla/backends/gpu/runtime/collective_thunk.h"
 #include "xla/backends/gpu/runtime/conditional_thunk.h"
@@ -136,7 +131,6 @@ limitations under the License.
 #include "xla/service/call_graph.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/collective_opt_utils.h"
-#include "xla/service/computation_placer.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/cublas_cudnn.h"
 #include "xla/service/gpu/custom_kernel_emitter.h"
@@ -156,9 +150,7 @@ limitations under the License.
 #include "xla/service/gpu/model/block_level_parameters.h"
 #include "xla/service/gpu/stream_executor_util.h"
 #include "xla/service/gpu/triton_call.h"
-#include "xla/service/gpu_topology.h"
 #include "xla/service/hlo.pb.h"
-#include "xla/service/hlo_creation_utils.h"
 #include "xla/service/llvm_ir/buffer_assignment_util.h"
 #include "xla/service/llvm_ir/llvm_command_line_options.h"
 #include "xla/service/shaped_slice.h"
@@ -167,7 +159,6 @@ limitations under the License.
 #include "xla/side_effect_util.h"
 #include "xla/status_macros.h"
 #include "xla/stream_executor/device_description.h"
-#include "xla/stream_executor/gpu/all_reduce_kernel.h"
 #include "xla/stream_executor/gpu/gpu_blas_lt.h"
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/memory_space.h"
@@ -214,25 +205,6 @@ bool IsHostExecuteCustomCall(const HloInstruction& hlo) {
          hlo.custom_call_target() ==
              "HostExecute";  // TODO: this constant string should be shared with
                              // the TPU one
-}
-
-ShapeIndex GetCollectiveResultShapeIndex(const HloInstruction* collective,
-                                         int64_t operand_index) {
-  const bool has_nested_result =
-      HloPredicateIsOp<HloOpcode::kAllGatherStart,
-                       HloOpcode::kCollectivePermuteStart>(collective);
-  const Shape& result_shape = has_nested_result
-                                  ? collective->shape().tuple_shapes(1)
-                                  : collective->shape();
-
-  ShapeIndex result_index;
-  if (has_nested_result) {
-    result_index.push_back(1);
-  }
-  if (result_shape.IsTuple()) {
-    result_index.push_back(operand_index);
-  }
-  return result_index;
 }
 
 bool IsImplicitAsyncSendRecvStart(const HloInstruction* instr) {
@@ -520,91 +492,6 @@ ThunkEmitter::RegisterAsyncExecution(const HloInstruction* async_start) {
                     async_start->ToString());
   }
   return execution;
-}
-
-Future<ThunkSequence> ThunkEmitter::EmitCollectiveKernel(
-    Thunk::ThunkInfo info, std::vector<CollectiveThunk::Buffer> buffers,
-    const HloInstruction* instr, const CollectiveConfig& config) {
-  std::unique_ptr<HloModule> fused_module =
-      NewModuleWithFusion(instr, HloInstruction::FusionKind::kLoop);
-  HloFusionInstruction* fusion_instr = Cast<HloFusionInstruction>(
-      fused_module->entry_computation()->root_instruction());
-  // For both AllReduce and AllGather the kernel strategy is determined by the
-  // annotation written by CollectiveKernelStrategyAnnotator before scheduling.
-  // Reading the annotation uniformly avoids direct flag checks in the emitter.
-  const HloOpcode opcode = instr->opcode();
-  bool should_flatten = false;
-  bool is_collective_kernel_enabled = false;
-  if (auto gpu_config = instr->backend_config<GpuBackendConfig>();
-      gpu_config.ok()) {
-    is_collective_kernel_enabled = IsTritonCollectiveKernel(
-        gpu_config->collective_backend_config().kernel_strategy());
-  }
-  // For AllReduce two-shot, the fused module must be flattened to 1-D so
-  // Triton can assign contiguous subtiles to each rank.
-  if (opcode == HloOpcode::kAllReduce && is_collective_kernel_enabled) {
-    static constexpr bool kMultimemDisabled = false;
-    const int64_t size_bytes =
-        ShapeUtil::ElementsIn(instr->shape()) *
-        primitive_util::ByteWidth(instr->shape().element_type());
-    const bool has_rank_higher_than_1 =
-        instr->shape().IsArray() && instr->shape().dimensions().size() > 1;
-    should_flatten = has_rank_higher_than_1 &&
-                     GetAllReduceStrategy(size_bytes, kMultimemDisabled) ==
-                         se::gpu::AllReduceStrategy::kTwoShot;
-  }
-  if (is_collective_kernel_enabled && should_flatten) {
-    ABSL_RETURN_IF_ERROR(FlattenCollectiveFusion(fusion_instr));
-  }
-  const auto make_thunk =
-      [info = std::move(info), buffers = std::move(buffers), config,
-       fusion_instr, is_async = !IsGPUSyncCollective(*instr),
-       is_collective_kernel_enabled](
-          absl::string_view kernel_name, int32_t shmem_bytes,
-          LaunchDimensions launch_dimensions, const std::vector<uint8_t>& cubin,
-          bool use_pdl) mutable
-      -> absl::StatusOr<std::unique_ptr<CollectiveKernelThunk>> {
-    ABSL_ASSIGN_OR_RETURN(
-        CollectiveKernelSpec kernel_spec,
-        CreateCollectiveKernelSpec(fusion_instr, launch_dimensions));
-    return std::make_unique<CollectiveKernelThunk>(
-        std::move(info), config, std::move(kernel_spec), is_async,
-        std::move(buffers), is_collective_kernel_enabled, kernel_name,
-        launch_dimensions, shmem_bytes,
-        !cubin.empty() ? std::make_optional(cubin) : std::nullopt, use_pdl);
-  };
-  const GpuTopology& gpu_topology = ir_emitter_context_->gpu_topology();
-  const DeviceAssignment* device_assignment = nullptr;
-  if (ir_emitter_context_->hlo_module()
-          .config()
-          .has_static_device_assignment()) {
-    device_assignment =
-        &ir_emitter_context_->hlo_module().config().static_device_assignment();
-  }
-  ABSL_RETURN_IF_ERROR(TrySetGpuBackendConfigForCollective(
-      gpu_topology, fusion_instr, device_assignment));
-  analysis_garbage_collector_.push_back(
-      std::make_unique<HloFusionAnalysis>(HloFusionAnalysis::Create(
-          *fusion_instr, ir_emitter_context_->gpu_device_info())));
-  auto emitter =
-      std::make_unique<TritonFusion>(*analysis_garbage_collector_.back());
-
-  ABSL_ASSIGN_OR_RETURN(std::vector<Shape> unmanaged_arguments,
-                   GetCollectiveUnmanagedKernelArguments(fusion_instr));
-  return emitter
-      ->Emit(*ir_emitter_context_, *fusion_instr,
-             /*instr_override=*/instr, unmanaged_arguments)
-      .Map([make_thunk = std::move(make_thunk),
-            fused_module = std::move(fused_module)](
-               TritonFusion::EmitResult result) mutable
-               -> absl::StatusOr<ThunkSequence> {
-        ABSL_ASSIGN_OR_RETURN(
-            std::unique_ptr<CollectiveKernelThunk> thunk,
-            make_thunk(result.entry.kernel_name, result.entry.shmem_bytes,
-                       result.entry.launch_dimensions,
-                       std::move(result.entry.binary), result.entry.use_pdl));
-        return ThunkSequence::Of(std::move(thunk));
-      });
 }
 
 void AppendThunkSequence(ThunkSequence& thunks,
@@ -2135,11 +2022,13 @@ Future<ThunkSequence> ThunkEmitter::EmitCollective(
 
   // A collective-broadcast may select its root rank at runtime, in which case
   // the last operand is a root-rank vector rather than data to broadcast.
-  bool has_dynamic_root = false;
-  if constexpr (std::is_same_v<HloInstType,
-                               HloCollectiveBroadcastInstruction>) {
-    has_dynamic_root = inst->has_dynamic_root();
-  }
+  const bool has_dynamic_root = [](const HloInstType* inst) {
+    if constexpr (std::is_same_v<HloInstType,
+                                 HloCollectiveBroadcastInstruction>) {
+      return inst->has_dynamic_root();
+    }
+    return false;
+  }(inst);
 
   // CollectivePermuteThunk has its own degeneracy predicate and a different
   // constructor that requires replica/partition counts and permute options.
@@ -2148,68 +2037,10 @@ Future<ThunkSequence> ThunkEmitter::EmitCollective(
 
   // Stash relevant information in CollectiveThunk::Buffer even if
   // we may not generate a CollectiveThunk.
-  std::vector<CollectiveThunk::Buffer> buffers;
-  buffers.reserve(operand_count);
-
-  // Adds a source and destination buffers pair to `buffers`.
-  auto add_buffer = [&](const HloInstruction* src, const HloInstruction* dst,
-                        const ShapeIndex& dst_shape_index) -> absl::Status {
-    const Shape& src_shape = src->shape();
-    const Shape& dst_shape =
-        ShapeUtil::GetSubshape(dst->shape(), dst_shape_index);
-    ABSL_ASSIGN_OR_RETURN(auto src_slice, GetAllocationSlice(src));
-    ABSL_ASSIGN_OR_RETURN(auto dst_slice, GetAllocationSlice(dst, dst_shape_index));
-
-    buffers.push_back(CollectiveThunk::Buffer{
-        /*element_count=*/ShapeUtil::ElementsIn(src_shape),
-        /*source_buffer=*/{src_slice, src_shape},
-        /*destination_buffer=*/{dst_slice, dst_shape},
-        /*source_memory_space=*/src_shape.layout().memory_space(),
-        /*destination_memory_space=*/dst_shape.layout().memory_space()});
-    return absl::OkStatus();
-  };
-
-  if (kind == Thunk::Kind::kAllGather) {
-    // Start operations return a tuple of (<<inputs>>, <<outputs>>)
-    // where outputs can be a tuple itself (if operation has
-    // multiple operands).
-    for (int64_t i = 0; i < operand_count; i++) {
-      ShapeIndex idx = GetCollectiveResultShapeIndex(inst, i);
-      ABSL_RETURN_IF_ERROR(add_buffer(inst->operand(i), inst, idx));
-    }
-  } else if (kind == Thunk::Kind::kRaggedAllToAll) {
-    // RaggedAllToAll operation has 6 operands: input, output,
-    // input_offset, send_size, output_offset, recv_size. `output`
-    // operand is aliased with the instruction result. All other
-    // operands are not aliased.
-    ABSL_RETURN_IF_ERROR(
-        add_buffer(inst->operand(0), inst->operand(0), ShapeIndex({})));
-    ABSL_RETURN_IF_ERROR(add_buffer(inst->operand(1), inst,
-                               GetCollectiveResultShapeIndex(inst, 0)));
-
-    for (int64_t i = 2; i < operand_count; i++) {
-      ABSL_RETURN_IF_ERROR(
-          add_buffer(inst->operand(i), inst->operand(i), ShapeIndex({})));
-    }
-  } else {
-    // For other operations simply zip operands with results.
-    //
-    // A collective-broadcast with a dynamic root carries an extra trailing
-    // operand: a 1-D S32 vector holding the runtime-selected root rank for each
-    // data operand. That operand has no corresponding output, so it is not
-    // zipped with a result; instead it is mapped to its own allocation and
-    // consumed separately by the thunk.
-    int64_t num_data_operands =
-        has_dynamic_root ? operand_count - 1 : operand_count;
-    for (int64_t i = 0; i < num_data_operands; i++) {
-      ShapeIndex idx = GetCollectiveResultShapeIndex(inst, i);
-      ABSL_RETURN_IF_ERROR(add_buffer(inst->operand(i), inst, idx));
-    }
-    if (has_dynamic_root) {
-      const HloInstruction* roots = inst->operand(operand_count - 1);
-      ABSL_RETURN_IF_ERROR(add_buffer(roots, roots, ShapeIndex({})));
-    }
-  }
+  ABSL_ASSIGN_OR_RETURN(
+      std::vector<CollectiveThunk::Buffer> buffers,
+      GetCollectiveBuffers(ir_emitter_context_->buffer_assignment(), inst, kind,
+                           has_dynamic_root));
 
   // A given collective op can be degenerate if across all groups
   // formed by it are singleton. In such a case, we don't need to do
@@ -2245,52 +2076,35 @@ Future<ThunkSequence> ThunkEmitter::EmitCollective(
   auto info = Thunk::ThunkInfo::WithProfileAnnotation(
       inst, ir_emitter_context_->GetNextThunkId());
   Future<ThunkSequence> thunks;
-  bool use_triton = false;
-  if constexpr (!is_collective_permute) {
-    auto gpu_config_status = inst->template backend_config<GpuBackendConfig>();
-    if (gpu_config_status.ok()) {
-      use_triton = IsTritonCollectiveKernel(
-          gpu_config_status->collective_backend_config().kernel_strategy());
-    }
-  }
   // For AllGather the strategy is now determined by the annotation written
   // by CollectiveKernelStrategyAnnotator.
   // `use_triton` was already set above by reading the backend_config
   // annotation.
-  if (use_triton) {
-    CollectiveConfig collective_config =
-        GetCollectiveConfig(inst, use_global_device_ids);
-    thunks =
-        EmitCollectiveKernel(std::move(info), buffers, inst, collective_config);
+  if constexpr (is_collective_permute) {
+    thunks = ThunkSequence::Of<CollectivePermuteThunk>(
+        info, inst, replica_count, partition_count, std::move(buffers),
+        ir_emitter_context_->debug_options().xla_gpu_collective_permute_mode(),
+        ir_emitter_context_->debug_options()
+            .xla_gpu_collective_permute_connected_components());
+  } else if constexpr (std::is_same_v<CollectiveThunkType,
+                                      CollectiveBroadcastThunk>) {
+    // CollectiveBroadcastThunk needs the dynamic-root flag so it can treat
+    // the trailing root-rank buffer specially at run time.
+    thunks = ThunkSequence::Of<CollectiveThunkType>(
+        info, inst, /*buffers=*/std::move(buffers),
+        ir_emitter_context_->debug_options().xla_gpu_use_memcpy_local_p2p(),
+        has_dynamic_root);
+  } else if constexpr (std::is_constructible_v<
+                           CollectiveThunkType, Thunk::ThunkInfo,
+                           decltype(inst),
+                           std::vector<CollectiveThunk::Buffer>>) {
+    thunks = ThunkSequence::Of<CollectiveThunkType>(
+        info, inst, /*buffers=*/std::move(buffers));
   } else {
-    if constexpr (is_collective_permute) {
-      thunks = ThunkSequence::Of<CollectivePermuteThunk>(
-          info, inst, replica_count, partition_count, std::move(buffers),
-          ir_emitter_context_->debug_options()
-              .xla_gpu_collective_permute_mode(),
-          ir_emitter_context_->debug_options()
-              .xla_gpu_collective_permute_connected_components());
-    } else if constexpr (std::is_same_v<CollectiveThunkType,
-                                        CollectiveBroadcastThunk>) {
-      // CollectiveBroadcastThunk needs the dynamic-root flag so it can treat
-      // the trailing root-rank buffer specially at run time.
-      thunks = ThunkSequence::Of<CollectiveThunkType>(
-          info, inst, /*buffers=*/std::move(buffers),
-          ir_emitter_context_->debug_options().xla_gpu_use_memcpy_local_p2p(),
-          has_dynamic_root);
-    } else if constexpr (std::is_constructible_v<
-                             CollectiveThunkType, Thunk::ThunkInfo,
-                             decltype(inst),
-                             std::vector<CollectiveThunk::Buffer>>) {
-      thunks = ThunkSequence::Of<CollectiveThunkType>(
-          info, inst, /*buffers=*/std::move(buffers));
-    } else {
-      thunks = ThunkSequence::Of<CollectiveThunkType>(
-          info, inst, /*buffers=*/std::move(buffers),
-          ir_emitter_context_->debug_options().xla_gpu_use_memcpy_local_p2p());
-    }
+    thunks = ThunkSequence::Of<CollectiveThunkType>(
+        info, inst, /*buffers=*/std::move(buffers),
+        ir_emitter_context_->debug_options().xla_gpu_use_memcpy_local_p2p());
   }
-
   return thunks;
 }
 

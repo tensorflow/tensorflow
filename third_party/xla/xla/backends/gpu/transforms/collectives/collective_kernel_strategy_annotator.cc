@@ -27,6 +27,7 @@ limitations under the License.
 #include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/gpu/runtime/all_gather.h"
 #include "xla/backends/gpu/runtime/all_reduce.h"
+#include "xla/backends/gpu/transforms/collectives/collective_ops_utils.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -132,16 +133,9 @@ absl::StatusOr<bool> TryAnnotateAllGather(HloInstruction* instr,
         &instr->GetModule()->config().static_device_assignment();
   }
 
-  const bool is_collective_kernel_enabled = absl::c_linear_search(
-      instr->GetModule()
-          ->config()
-          .debug_options()
-          .xla_gpu_experimental_use_collective_kernels(),
-      static_cast<int>(DebugOptions::COLLECTIVE_KERNEL_ALL_GATHER));
-
   absl::StatusOr<AllGatherInfo> maybe_info =
-      BuildAllGatherInfo(is_collective_kernel_enabled, gpu_topology, all_gather,
-                         device_assignment);
+      BuildAllGatherInfo(/*is_collective_kernel_enabled=*/true, gpu_topology,
+                         all_gather, device_assignment);
   if (!maybe_info.ok()) {
     VLOG(3) << "[CollectiveKernelStrategyAnnotator] Collective kernel not "
                "supported for AllGather "
@@ -169,6 +163,12 @@ CollectiveKernelStrategyAnnotator::CollectiveKernelStrategyAnnotator(
 absl::StatusOr<bool> CollectiveKernelStrategyAnnotator::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
+  ABSL_ASSIGN_OR_RETURN(
+      absl::flat_hash_set<HloOpcode> instructions_to_annotate,
+      OpcodesForTritonCollectives(module->config().debug_options()));
+  if (instructions_to_annotate.empty()) {
+    return false;  // No instructions to annotate.
+  }
   TF_RET_CHECK(gpu_topology_.has_gpu_target_config())
       << "GpuTopology must have a target config for the strategy annotator.";
   bool changed = false;
@@ -181,8 +181,10 @@ absl::StatusOr<bool> CollectiveKernelStrategyAnnotator::RunImpl(
                        HasCollectivesGroupAttribute)) {
       continue;
     }
-
     for (HloInstruction* instr : computation->instructions()) {
+      if (!instructions_to_annotate.contains(instr->opcode())) {
+        continue;
+      }
       if (instr->opcode() == HloOpcode::kAllReduce) {
         ABSL_ASSIGN_OR_RETURN(
             bool annotated,

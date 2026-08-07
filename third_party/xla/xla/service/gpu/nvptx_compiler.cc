@@ -87,6 +87,7 @@ limitations under the License.
 #include "xla/service/gpu/nvptx_alias_info.h"
 #include "xla/service/gpu/ptx_compile_options_from_debug_options.h"
 #include "xla/service/gpu/target_constants.h"
+#include "xla/service/gpu_topology.h"
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/hlo_verifier.h"
@@ -299,11 +300,12 @@ bool NVPTXCompiler::IsScaledDotSupportedByBackend(
 
 absl::Status NVPTXCompiler::OptimizeHloPostLayoutAssignment(
     HloModule* hlo_module, se::StreamExecutor* stream_exec,
-    const CompileOptions& options, const GpuTargetConfig& gpu_target_config,
+    const CompileOptions& options, const GpuTopology& gpu_topology,
     const GpuAliasInfo* alias_info, tsl::thread::ThreadPool* thread_pool,
     CompilationStats* compilation_stats, mlir::MLIRContext* mlir_context) {
   // This needs to run before GemmRewriter, which is part of
   // OptimizeHloPostLayoutAssignment().
+  const GpuTargetConfig& gpu_target_config = gpu_topology.gpu_target_config();
   auto* cuda_compute_capability =
       gpu_target_config.device_description.gpu_compute_capability()
           .cuda_compute_capability();
@@ -329,8 +331,8 @@ absl::Status NVPTXCompiler::OptimizeHloPostLayoutAssignment(
           .status());
 
   ABSL_RETURN_IF_ERROR(GpuCompiler::OptimizeHloPostLayoutAssignment(
-      hlo_module, stream_exec, options, gpu_target_config, alias_info,
-      thread_pool, compilation_stats, mlir_context));
+      hlo_module, stream_exec, options, gpu_topology, alias_info, thread_pool,
+      compilation_stats, mlir_context));
 
   HloPassPipeline post_pipeline("nvptx post-layout_assignment part 2",
                                 compilation_stats);

@@ -205,10 +205,6 @@ class ThunkEmitter {
 
   Future<ThunkSequence> EmitCollectiveGroup(const HloInstruction* instr);
 
-  Future<ThunkSequence> EmitCollectiveKernel(
-      Thunk::ThunkInfo thunk_info, std::vector<CollectiveThunk::Buffer> buffers,
-      const HloInstruction* instr, const CollectiveConfig& config);
-
   template <typename CollectiveThunkType, typename HloInstType>
   Future<ThunkSequence> EmitCollective(
       Thunk::Kind kind, const HloInstType* inst,
