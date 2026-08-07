@@ -32,6 +32,7 @@ limitations under the License.
 #include "xla/core/host_offloading/host_offloading_allocator.h"
 #include "xla/core/host_offloading/host_offloading_buffer.h"
 #include "xla/pjrt/pjrt_executable.h"
+#include "xla/service/hlo_module_config.h"
 #include "xla/shape.h"
 #include "xla/shape_tree.h"
 #include "xla/shape_util.h"
@@ -84,6 +85,10 @@ class HostOffloadingExecutable {
       absl::Span<const ShapeTree<HostOffloadingBuffer>> parameters,
       const ShapeTree<HostOffloadingBuffer>& result,
       const ExecuteOptions& execute_options) = 0;
+
+  // HLO module configs of the executable.
+  virtual absl::StatusOr<std::vector<HloModuleConfig>>
+  GetHloModuleConfigs() = 0;
 
   // Host offloading executable name (for debugging and tracing).
   virtual absl::string_view name() const = 0;

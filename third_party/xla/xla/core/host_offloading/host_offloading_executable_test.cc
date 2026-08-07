@@ -487,6 +487,29 @@ TEST_P(HostOffloadingRuntimeExecutableTest, Int4) {
               ElementsAreArray({(2 << 4) | 2, (2 << 4) | 2}));
 }
 
+TEST_P(HostOffloadingRuntimeExecutableTest, GetHloModuleConfigs) {
+  std::string str = R"(
+    HloModule add
+
+    ENTRY %main {
+      %p0 = f32[4] parameter(0)
+      ROOT %add = f32[4] add(%p0, %p0)
+    }
+  )";
+
+  HostOffloadingExecutableProto::ExecutableType
+      host_offloading_executable_type = GetParam();
+
+  ASSERT_OK_AND_ASSIGN(auto computation,
+                       CompileFromString(str, host_offloading_executable_type));
+
+  ASSERT_OK_AND_ASSIGN(std::vector<HloModuleConfig> module_configs,
+                       computation->GetHloModuleConfigs());
+  ASSERT_EQ(module_configs.size(), 1);
+  EXPECT_EQ(module_configs[0].entry_computation_layout().result_shape(),
+            ShapeUtil::MakeShape(xla::PrimitiveType::F32, {4}));
+}
+
 INSTANTIATE_TEST_SUITE_P(
     HostOffloadingRuntimeExecutableParameters,
     HostOffloadingRuntimeExecutableTest,
