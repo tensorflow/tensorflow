@@ -312,6 +312,8 @@ class NearestNeighborsOp : public OpKernel {
         absl::InvalidArgumentError("Input centers should be a matrix."));
     OP_REQUIRES(context, TensorShapeUtils::IsScalar(k_tensor.shape()),
                 absl::InvalidArgumentError("Input k should be a scalar."));
+    OP_REQUIRES(context, k_tensor.scalar<int64_t>()() >= 0,
+                absl::InvalidArgumentError("k must be non-negative."));
 
     const int64_t num_points = points_tensor.dim_size(0);
     const int64_t point_dimensions = points_tensor.dim_size(1);

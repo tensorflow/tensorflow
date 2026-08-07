@@ -16,6 +16,7 @@
 
 import numpy as np
 
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import clustering_ops
 from tensorflow.python.platform import test
@@ -141,6 +142,12 @@ class NearestCentersTest(test.TestCase):
                                                               self._centers, 2)
       self.assertAllClose(indices, [[0, 1], [0, 1], [1, 0], [4, 3]])
       self.assertAllClose(distances, [[0., 2.], [5., 5.], [1., 5.], [0., 2.]])
+
+  def testNegativeK(self):
+    with self.cached_session():
+      with self.assertRaises((errors.InvalidArgumentError, ValueError)):
+        self.evaluate(
+            clustering_ops.nearest_neighbors(self._points, self._centers, -1))
 
 
 @test_util.run_all_in_graph_and_eager_modes
