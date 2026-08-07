@@ -159,6 +159,24 @@ class MathTest(test.TestCase, parameterized.TestCase):
   def testSqrt(self):
     self._testUnaryOp(np_math_ops.sqrt, np.sqrt, 'sqrt')
 
+  def testHypot(self):
+    self._testBinaryOp(np_math_ops.hypot, np.hypot, 'hypot')
+
+  def testHypotLargeFiniteNoOverflow(self):
+    # Regression for large finite float64 inputs that overflow the naive
+    # sqrt(x*x + y*y) formulation (tensorflow/tensorflow#124774).
+    x = np.array(
+        [1e200, 1e300, 1e308, 1e200, 0.0, -1e200], dtype=np.float64
+    )
+    y = np.array(
+        [1e200, 1e300, 1e308, 1.0, 1e300, -1e200], dtype=np.float64
+    )
+    actual = np_math_ops.hypot(x, y)
+    expected = np.hypot(x, y)
+    self.assertTrue(np.all(np.isfinite(actual)))
+    self.assertTrue(np.all(np.isfinite(expected)))
+    self.match(actual, expected, msg='hypot large finite')
+
   def match(self, actual, expected, msg='', check_dtype=True):
     self.assertIsInstance(actual, np_arrays.ndarray)
     if check_dtype:
