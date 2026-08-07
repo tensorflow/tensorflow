@@ -346,11 +346,10 @@ absl::Status StreamExecutorGpuClient::UpdateCompileOptionsInternal(
     bool lookup_addressable_devices) {
   ABSL_RETURN_IF_ERROR(PjRtStreamExecutorClient::UpdateCompileOptionsInternal(
       options, returned_extras, lookup_addressable_devices));
-  options->executable_build_options.set_slice_size(
+  options->executable_build_options.set_gpu_topology(
       tensorflow::down_cast<const StreamExecutorGpuTopologyDescription*>(
           topology())
-          ->gpu_topology()
-          .slice_size());
+          ->gpu_topology());
   return absl::OkStatus();
 }
 

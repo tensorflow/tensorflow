@@ -96,12 +96,11 @@ LocalService::CompileExecutables(
       build_options.device_allocator(),
       build_options.compile_thread_pool(),
       build_options.layout_canonicalization_callback(),
-      /*gpu_target_config=*/{},
+      /*gpu_topology=*/build_options.gpu_topology(),
       /*cpu_target_config=*/{},
       /*key_value_store=*/
       {build_options.key_value_store(), build_options.process_index(),
-       build_options.process_count()},
-      build_options.slice_size()};
+       build_options.process_count()}};
   if (build_options.num_partitions() == 1) {
     ABSL_ASSIGN_OR_RETURN(
         std::unique_ptr<Executable> executable,
@@ -146,7 +145,9 @@ LocalService::CompileAotResults(
       &computation.proto(), std::move(module_config), execute_backend_.get(),
       {executors},
       Compiler::CompileOptions{build_options.device_allocator(),
-                               build_options.compile_thread_pool()},
+                               build_options.compile_thread_pool(),
+                               build_options.layout_canonicalization_callback(),
+                               build_options.gpu_topology()},
       build_options.run_backend_only());
 }
 

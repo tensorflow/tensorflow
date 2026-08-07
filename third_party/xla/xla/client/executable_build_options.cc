@@ -31,6 +31,7 @@ limitations under the License.
 #include "xla/pjrt/proto/compile_options.pb.h"
 #include "xla/service/compilation_environments.h"
 #include "xla/service/computation_placer.h"
+#include "xla/service/gpu_topology.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/platform/statusor.h"
@@ -203,7 +204,9 @@ absl::StatusOr<ExecutableBuildOptionsProto> ExecutableBuildOptions::ToProto()
   output.set_use_shardy_partitioner(use_shardy_partitioner());
   output.set_process_index(process_index());
   output.set_process_count(process_count());
-  output.set_slice_size(slice_size());
+  if (gpu_topology().has_value()) {
+    *output.mutable_gpu_topology() = gpu_topology()->ToProto();
+  }
   return output;
 }
 
@@ -260,7 +263,11 @@ absl::StatusOr<ExecutableBuildOptions> ExecutableBuildOptionsFromProto(
   output.set_use_shardy_partitioner(input.use_shardy_partitioner());
   output.set_process_index(input.process_index());
   output.set_process_count(input.process_count());
-  output.set_slice_size(input.slice_size());
+  if (input.has_gpu_topology()) {
+    ABSL_ASSIGN_OR_RETURN(std::unique_ptr<const GpuTopology> gpu_topology,
+                     GpuTopology::FromProto(input.gpu_topology()));
+    output.set_gpu_topology(*gpu_topology);
+  }
   return output;
 }
 
