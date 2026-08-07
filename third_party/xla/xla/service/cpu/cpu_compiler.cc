@@ -477,6 +477,13 @@ void AddHloVerifier(HloPassPipeline* pipeline, HloVerifierOpts&& opts = {},
   }
 }
 
+bool IsHostOffload(const HloModule* module) {
+  const auto& extra_options =
+      module->config().debug_options().xla_backend_extra_options();
+  auto it = extra_options.find("xla_is_host_offload");
+  return it != extra_options.end() && it->second == "true";
+}
+
 std::unique_ptr<HloPassFix<HloPassPipeline>> CreateSimplificationPipeline(
     absl::string_view name, HloModule* module, bool use_onednn_custom_call) {
   // Run the following passes to a fixed point.
@@ -509,7 +516,8 @@ std::unique_ptr<HloPassFix<HloPassPipeline>> CreateSimplificationPipeline(
   // Conversion to MLIR only works with simplified gathers.
   pipeline->AddPass<GatherSimplifier>();
 
-  if (absl::c_contains(module->config()
+  if (!IsHostOffload(module) &&
+      absl::c_contains(module->config()
                            .debug_options()
                            .xla_cpu_experimental_ynn_fusion_type(),
                        DebugOptions::LIBRARY_FUSION_TYPE_REDUCE)) {
@@ -551,9 +559,13 @@ std::unique_ptr<HloPassFix<HloPassPipeline>> CreateSimplificationPipeline(
 
 auto LibrarySupportsConvolution(
     HloModule* module, TargetMachineFeatures* target_machine_features) {
-  const bool ynnpack_convolution_enabled = absl::c_linear_search(
-      module->config().debug_options().xla_cpu_experimental_ynn_fusion_type(),
-      DebugOptions::LIBRARY_FUSION_TYPE_INDIVIDUAL_CONVOLUTION);
+  const bool ynnpack_convolution_enabled =
+      !IsHostOffload(module) &&
+      absl::c_linear_search(
+          module->config()
+              .debug_options()
+              .xla_cpu_experimental_ynn_fusion_type(),
+          DebugOptions::LIBRARY_FUSION_TYPE_INDIVIDUAL_CONVOLUTION);
   return [=](const HloInstruction& instr) {
     return ynnpack_convolution_enabled && IsInstructionPreferredByYnn(&instr) &&
            IsConvolutionOpSupportedByYnn(&instr);
@@ -562,9 +574,12 @@ auto LibrarySupportsConvolution(
 
 auto LibrarySupportsDot(HloModule* module,
                         TargetMachineFeatures* target_machine_features) {
-  const bool ynnpack_dot_enabled = absl::c_linear_search(
-      module->config().debug_options().xla_cpu_experimental_ynn_fusion_type(),
-      DebugOptions::LIBRARY_FUSION_TYPE_INDIVIDUAL_DOT);
+  const bool ynnpack_dot_enabled =
+      !IsHostOffload(module) &&
+      absl::c_linear_search(module->config()
+                                .debug_options()
+                                .xla_cpu_experimental_ynn_fusion_type(),
+                            DebugOptions::LIBRARY_FUSION_TYPE_INDIVIDUAL_DOT);
   return [=](const HloInstruction& instr) {
     if (ynnpack_dot_enabled && IsInstructionPreferredByYnn(&instr) &&
         IsDotSupportedByYnn(&instr).value_or(false)) {
@@ -587,6 +602,7 @@ absl::Status CpuCompiler::RunHloPassesThroughLayoutAssn(
       xla::DebugOptions::CPU_OPT_PRESET_FAST_COMPILE;
   const bool flatten_before_fusion =
       !options::FlattenAfterFusion(module->config()) && !fast_compile;
+  const bool is_host_offload = IsHostOffload(module);
 
   // Replace asynchronous collectives with synchronous ones.
   HloPassPipeline async_collective_pipeline("async-collective");
@@ -686,6 +702,9 @@ absl::Status CpuCompiler::RunHloPassesThroughLayoutAssn(
       LibrarySupportsConvolution(module, target_machine_features);
 
   auto call_library_for_instruction = [&](const HloInstruction& instr) {
+    if (is_host_offload) {
+      return false;
+    }
     switch (instr.opcode()) {
       case HloOpcode::kDot: {
         auto dot_strategy = GetDotImplementationStrategy(
@@ -754,6 +773,7 @@ absl::Status CpuCompiler::RunHloPassesThroughLayoutAssn(
 
   // Rewrite to custom calls with target as oneDNN library calls.
   bool use_onednn_custom_call =
+      !is_host_offload &&
       module->config()
           .debug_options()
           .xla_cpu_experimental_onednn_custom_call() &&
@@ -779,6 +799,7 @@ absl::Status CpuCompiler::RunHloPassesThroughLayoutAssn(
   CpuFloatSupport bf16_support(BF16, call_library_for_instruction);
 #ifdef XLA_ONEDNN
   bool use_onednn_graph =
+      !is_host_offload &&
       module->config().debug_options().xla_cpu_use_onednn() &&
       IsOneDnnCompatible(is_aot_compile);
   OneDnnFloatSupport onednn_bf16_support(BF16, call_library_for_instruction);
@@ -977,6 +998,8 @@ absl::Status CpuCompiler::RunHloPassesAfterLayoutAssn(
     TargetMachineFeatures* target_machine_features,
     const CompileOptions& compile_options) {
   const auto& debug_options = module->config().debug_options();
+  const bool is_host_offload = IsHostOffload(module);
+
   bool flatten_after_fusion = options::FlattenAfterFusion(module->config());
   if (debug_options.xla_cpu_opt_preset() ==
       xla::DebugOptions::CPU_OPT_PRESET_FAST_COMPILE) {
@@ -1005,6 +1028,7 @@ absl::Status CpuCompiler::RunHloPassesAfterLayoutAssn(
           : tsl::port::NumSchedulableCPUs();
 
   bool use_onednn_custom_call =
+      !is_host_offload &&
       debug_options.xla_cpu_experimental_onednn_custom_call() &&
       IsOneDnnCompatible(is_aot_compile);
 
@@ -1017,7 +1041,7 @@ absl::Status CpuCompiler::RunHloPassesAfterLayoutAssn(
       pipeline.AddPass<SimplifyFPConversions>();
     }
     bool use_onednn_graph =
-        debug_options.xla_cpu_use_onednn() &&
+        !is_host_offload && debug_options.xla_cpu_use_onednn() &&
         (!debug_options.xla_cpu_experimental_onednn_fusion_type().empty());
     pipeline.AddPass<OneDnnContractionRewriter>(
         max_parallelism, compile_options.thread_pool, use_onednn_graph);
@@ -1036,9 +1060,12 @@ absl::Status CpuCompiler::RunHloPassesAfterLayoutAssn(
   // so until another solution is developed the passes creating XNNPACK fusions
   // have to run after layout assignment.
   const bool use_ynnpack =
+      !is_host_offload &&
       !debug_options.xla_cpu_experimental_ynn_fusion_type().empty();
+  const bool use_onednn =
+      !is_host_offload && debug_options.xla_cpu_use_onednn();
   LibraryRewriterOptions options = {
-      /*use_onednn=*/debug_options.xla_cpu_use_onednn(),
+      /*use_onednn=*/use_onednn,
       /*use_ynnpack=*/use_ynnpack,
       /*onednn_fusion_types=*/
       &debug_options.xla_cpu_experimental_onednn_fusion_type(),
