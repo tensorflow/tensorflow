@@ -27,7 +27,7 @@ namespace gpu {
 class GPUModuleOp;
 }  // namespace gpu
 namespace amdgpu {
-class Chipset;
+struct Chipset;
 }
 #define GEN_PASS_DECL
 #include "transforms/gpu_passes.h.inc"

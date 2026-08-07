@@ -27,6 +27,7 @@ limitations under the License.
 #include "xla/hlo/builder/xla_builder.h"
 #include "xla/hlo/builder/xla_computation.h"
 #include "xla/xla_data.pb.h"
+#include "tensorflow/core/framework/op_kernel.h"
 
 namespace tensorflow {
 
@@ -57,6 +58,17 @@ std::function<float(float)> GetCombinerScaleContributionFunction(
 std::function<float(float)> GetCombinerScaleTransformFunction(
     absl::string_view combiner);
 
+// Parses the quantization config attributes from the op kernel context into the
+// given mutable optional arguments.
+// Returns true if the quantization config attributes are fully present, or if
+// none of the quantization config attributes are present. Otherwise, returns
+// false.
+bool ParseQuantizationConfigs(
+    OpKernelConstruction* ctx,
+    std::optional<int>& quantization_config_num_buckets,
+    std::optional<float>& quantization_config_low,
+    std::optional<float>& quantization_config_high);
+
 // Stacks tables, so long as table have the same 'group' index. We assume that
 // all tables with a given group index have the same width. Returns a list of
 // list of table names, in alphabetical order.
@@ -74,6 +86,10 @@ bool GetDisableTableStacking();
 int64_t GetXlaSparseCoreStackingMemLimit();
 
 int64_t GetXlaSparseCoreStackingTableShardLimit();
+
+int64_t GetPerSparseCorePreservedBufferSize(
+    int64_t max_ids_per_partition, int64_t max_unique_ids_per_partition,
+    int32_t num_logical_devices, int32_t num_sparse_cores_per_logical_device);
 
 absl::Status GetMaxIdsAndUniquesExternal(const std::string& program_key,
                                          const std::string& table_name,
