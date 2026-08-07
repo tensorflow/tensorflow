@@ -18,8 +18,8 @@ limitations under the License.
 #include <string>
 
 #include "absl/base/attributes.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_compiler_variant.h"
 

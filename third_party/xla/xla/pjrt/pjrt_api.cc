@@ -35,7 +35,7 @@ limitations under the License.
 #if !defined(PLATFORM_WINDOWS)
 #include <dlfcn.h>
 
-#include "xla/tsl/platform/status_macros.h"
+#include "absl/status/status_macros.h"
 #endif
 
 namespace pjrt {

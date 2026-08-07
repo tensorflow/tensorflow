@@ -136,8 +136,8 @@ limitations under the License.
 #include "tsl/profiler/lib/traceme.h"
 
 #define EIGEN_USE_THREADS
+#include "absl/status/status_macros.h"
 #include "unsupported/Eigen/CXX11/Tensor"
-#include "xla/tsl/platform/status_macros.h"
 
 namespace xla {
 
