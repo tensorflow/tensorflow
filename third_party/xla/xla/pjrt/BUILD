@@ -53,9 +53,9 @@ xla_cc_test(
     deps = [
         ":worker_thread",
         "//xla/hlo/testlib:test",
-        "//xla/tsl/platform:env",
         "@com_google_absl//absl/synchronization",
         "@com_google_googletest//:gtest_main",
+        "@tsl//tsl/platform:env",
     ],
 )
 
