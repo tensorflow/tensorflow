@@ -109,8 +109,8 @@ absl::Status AsyncStartThunk::ExecuteOnStream(const ExecuteParams& params) {
   return executor_.ExecuteOnStream(params.WithComputeStream(async_stream));
 }
 
-absl::Status AsyncStartThunk::WalkNested(Walker callback) {
-  return executor_.thunks().WalkNested(callback);
+absl::Status AsyncStartThunk::WalkNested(Walker pre_order, Walker post_order) {
+  return executor_.thunks().WalkNested(pre_order, post_order);
 }
 
 absl::Status AsyncStartThunk::TransformNested(Transformer callback) {

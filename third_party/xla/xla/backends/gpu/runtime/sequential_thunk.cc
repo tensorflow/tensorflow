@@ -54,8 +54,8 @@ absl::Status SequentialThunk::ExecuteOnStream(const ExecuteParams& params) {
   return executor_.ExecuteOnStream(params);
 }
 
-absl::Status SequentialThunk::WalkNested(Walker callback) {
-  return executor_.thunks().WalkNested(callback);
+absl::Status SequentialThunk::WalkNested(Walker pre_order, Walker post_order) {
+  return executor_.thunks().WalkNested(pre_order, post_order);
 }
 
 absl::Status SequentialThunk::TransformNested(Transformer callback) {

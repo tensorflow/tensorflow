@@ -457,9 +457,10 @@ void CommandBufferThunk::EvictCommandBuffers() {
   }
 }
 
-absl::Status CommandBufferThunk::WalkNested(Walker callback) {
+absl::Status CommandBufferThunk::WalkNested(Walker pre_order,
+                                            Walker post_order) {
   if (thunks_ != nullptr) {
-    ABSL_RETURN_IF_ERROR(thunks_->Walk(callback));
+    ABSL_RETURN_IF_ERROR(thunks_->Walk(pre_order, post_order));
   }
   return absl::OkStatus();
 }
