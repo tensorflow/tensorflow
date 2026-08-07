@@ -1243,6 +1243,7 @@ ConvertToListOfSparseCoreCooTensorsOp::ConvertToListOfSparseCoreCooTensorsOp(
       absl::InvalidArgumentError(absl::StrCat("num_sc_shards ", num_sc_shards_,
                                               " is not a power of two.")));
 
+<<<<<<< dest:             bf2943f3afdf - speech-platforms-service-testing: Su...
   OP_REQUIRES(ctx, num_sc_per_chip_ > 0,
               absl::InvalidArgumentError(absl::StrCat(
                   "num_sc_per_chip must be > 0, got ", num_sc_per_chip_)));
@@ -1257,6 +1258,35 @@ ConvertToListOfSparseCoreCooTensorsOp::ConvertToListOfSparseCoreCooTensorsOp(
                   " is not divisible by the number of sparsecores per chip ",
                   num_sc_per_chip_)));
 
+||||||| parent of source: fdf115d79248 - carlows: Add HSA consumer policies f...
+=======
+  OP_REQUIRES(
+      ctx, num_sc_per_chip_ > 0,
+      absl::InvalidArgumentError(absl::StrCat(
+          "num_sc_per_chip must be positive, but got ", num_sc_per_chip_, ".")));
+  OP_REQUIRES(
+      ctx, sample_count_ >= num_sc_per_chip_,
+      absl::InvalidArgumentError(absl::StrCat(
+          "sample_count (", sample_count_,
+          ") must be greater than or equal to num_sc_per_chip (",
+          num_sc_per_chip_, ").")));
+  OP_REQUIRES(
+      ctx, sample_count_ % num_sc_per_chip_ == 0,
+      absl::InvalidArgumentError(absl::StrCat(
+          "sample_count (", sample_count_,
+          ") must be divisible by num_sc_per_chip (", num_sc_per_chip_, ").")));
+  OP_REQUIRES(
+      ctx, stacked_table_sample_count_ % num_sc_per_chip_ == 0,
+      absl::InvalidArgumentError(absl::StrCat(
+          "stacked_table_sample_count (", stacked_table_sample_count_,
+          ") must be divisible by num_sc_per_chip (", num_sc_per_chip_, ").")));
+  OP_REQUIRES(
+      ctx, row_offset_ % num_sc_per_chip_ == 0,
+      absl::InvalidArgumentError(absl::StrCat(
+          "row_offset (", row_offset_,
+          ") must be divisible by num_sc_per_chip (", num_sc_per_chip_, ").")));
+
+>>>>>>> source:           a172c60107d8 - huayi: Fix integer division by zero ...
   int32_t num_sc_shards_bit = std::log2(num_sc_shards_);
   num_sc_shards_bit_mod_ = (1 << num_sc_shards_bit) - 1;
   num_sc_shards_bit_mod_inv_ = ~num_sc_shards_bit_mod_;
