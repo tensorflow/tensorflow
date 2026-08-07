@@ -158,6 +158,8 @@ XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), kReturnErrorCustomCallName,
                          "CUDA", kReturnError);
 XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), kReturnErrorCustomCallName,
                          "ROCM", kReturnError);
+XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), kReturnErrorCustomCallName,
+                         "SYCL", kReturnError);
 
 TEST(CustomCallThunkTest, ResolvesFFICustomCall) {
   ASSERT_OK_AND_ASSIGN(se::StreamExecutor * executor, GpuExecutor());
@@ -634,6 +636,11 @@ XLA_FFI_REGISTER_HANDLER(
     {kVerifyCpuTargetMachineOptionsInstantiate, nullptr, nullptr,
      kVerifyCpuTargetMachineOptionsExecute},
     static_cast<uint32_t>(ffi::Traits::kCmdBufferCompatible));
+XLA_FFI_REGISTER_HANDLER(
+    ffi::GetXlaFfiApi(), kVerifyCpuTargetMachineOptionsCustomCallName, "SYCL",
+    {kVerifyCpuTargetMachineOptionsInstantiate, nullptr, nullptr,
+     kVerifyCpuTargetMachineOptionsExecute},
+    static_cast<uint32_t>(ffi::Traits::kCmdBufferCompatible));
 
 TEST(CustomCallThunkTest, PassesCpuTargetMachineOptionsToInstantiate) {
   ASSERT_OK_AND_ASSIGN(se::StreamExecutor * executor, GpuExecutor());
@@ -704,6 +711,8 @@ XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), kCmdBufferMemcpyCustomCallName,
                          "CUDA", kCmdBufferMemcpy);
 XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), kCmdBufferMemcpyCustomCallName,
                          "ROCM", kCmdBufferMemcpy);
+XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), kCmdBufferMemcpyCustomCallName,
+                         "SYCL", kCmdBufferMemcpy);
 
 // Builds a CustomCallThunk that copies operand 0 into result 0.
 static absl::StatusOr<std::unique_ptr<CustomCallThunk>> MakeMemcpyCustomCall(
