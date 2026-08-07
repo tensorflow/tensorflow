@@ -23,6 +23,7 @@ limitations under the License.
 
 #include "absl/memory/memory.h"
 #include "absl/strings/str_join.h"
+#include "absl/strings/numbers.h"
 #include "absl/time/time.h"
 #include "absl/types/optional.h"
 #include "tensorflow/core/activity_watcher/activity.h"
@@ -86,6 +87,36 @@ limitations under the License.
 namespace tensorflow {
 
 namespace {
+
+#if defined(__aarch64__) && defined(__linux__)
+// Returns a fixed-point scale factor to convert CNTVCT_EL0 virtual timer
+// cycles to x86-TSC-equivalent cycles.  The factor has 16 fractional bits,
+// so the hot-path update uses (elapsed * factor) >> 16.
+// Computed once per process and cached in a static local.
+inline uint64_t GetAarch64CycleScaleFixed() {
+  static const uint64_t scale_fixed = []() -> uint64_t {
+    uint64_t cntfrq;
+    asm volatile("mrs %0, cntfrq_el0" : "=r"(cntfrq));
+    if (cntfrq == 0) return 1 << 16;
+    std::string freq_str;
+    if (!tensorflow::ReadFileToString(
+            Env::Default(),
+            "/sys/devices/system/cpu/cpu0/cpufreq/cpuinfo_max_freq",
+            &freq_str)
+             .ok()) {
+      return 1 << 16;
+    }
+    int64_t cpu_freq_khz;
+    if (!absl::SimpleAtoi(freq_str, &cpu_freq_khz) || cpu_freq_khz <= 0) {
+      return 1 << 16;
+    }
+    uint64_t sf =
+        (static_cast<uint64_t>(cpu_freq_khz) * 1000 << 16) / cntfrq;
+    return sf > 0 ? sf : (1 << 16);
+  }();
+  return scale_fixed;
+}
+#endif  // defined(__aarch64__) && defined(__linux__)
 
 // 1-D, 0 element tensor.
 static const Tensor* const kEmptyTensor = new Tensor;
@@ -168,32 +199,6 @@ class ExecutorImpl : public Executor {
 
     void Initialize(const GraphView& gview) {
       is_expensive_.resize(gview.num_nodes());
-#if defined(__aarch64__) && defined(__linux__)
-      // Auto-detect cycle scale factor.
-      // On ARM Linux, GetCurrentClockCycle() reads CNTVCT_EL0 (virtual timer
-      // counter), which runs at a fixed frequency independent of the CPU core.
-      // The scale factor converts timer cycles to x86-TSC-equivalent cycles.
-      {
-        uint64_t cntfrq;
-        asm volatile("mrs %0, cntfrq_el0" : "=r"(cntfrq));
-        if (cntfrq > 0) {
-          std::string freq_str;
-          if (tensorflow::ReadFileToString(
-              Env::Default(),
-              "/sys/devices/system/cpu/cpu0/cpufreq/cpuinfo_max_freq",
-              &freq_str)
-              .ok()) {
-            int64_t cpu_freq_khz;
-            if (absl::SimpleAtoi(freq_str, &cpu_freq_khz) && cpu_freq_khz > 0) {
-              uint64_t scale = (static_cast<uint64_t>(cpu_freq_khz) * 1000) / cntfrq;
-              if (scale > 0) {
-                aarch64_cycle_scale_ = scale;
-              }
-            }
-          }
-        }
-      }
-#endif
       cost_estimates_ =
           std::make_unique<std::atomic_uint_fast64_t[]>(gview.num_nodes());
       for (int32_t i = 0; i < gview.num_nodes(); ++i) {
@@ -231,7 +236,9 @@ class ExecutorImpl : public Executor {
       auto prev_estimate = cost_estimate.load(std::memory_order_relaxed);
 #if defined(__aarch64__) && defined(__linux__)
       uint64_t new_estimate =
-          ((kCostDecay - 1) * prev_estimate + elapsed_cycles * aarch64_cycle_scale_) / kCostDecay;
+          ((kCostDecay - 1) * prev_estimate +
+           ((elapsed_cycles * GetAarch64CycleScaleFixed()) >> 16)) /
+          kCostDecay;
 #else
       uint64_t new_estimate =
           ((kCostDecay - 1) * prev_estimate + elapsed_cycles) / kCostDecay;
@@ -247,9 +254,6 @@ class ExecutorImpl : public Executor {
     static constexpr uint64_t kInitialCostEstimateCycles = 100 * 1000 * 1000;
     static constexpr uint64_t kOpIsExpensiveThresholdCycles = 8000;
     static constexpr uint64_t kCostDecay = 10;
-#if defined(__aarch64__) && defined(__linux__)
-    uint64_t aarch64_cycle_scale_ = 1;
-#endif
     std::vector<bool> is_expensive_;
     // std::unique_ptr<std::atomic<bool>[]> is_expensive_;
     std::unique_ptr<std::atomic_uint_fast64_t[]> cost_estimates_;
