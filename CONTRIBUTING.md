@@ -146,9 +146,9 @@ TensorFlow coding style.
     airtime before a decision is made regarding whether they are to be migrated
     to the core.
 *   As every PR requires several CPU/GPU hours of CI testing, we discourage
-    submitting PRs to fix one typo, one warning,etc. We recommend fixing the
-    same issue at the file level at least (e.g.: fix all typos in a file, fix
-    all compiler warnings in a file, etc.)
+    submitting PRs to fix one typo, one warning, etc. We recommend fixing the
+    same issue at the file level at least (e.g., fix all typos in a file, fix
+    all compiler warnings in a file, etc.).
 *   Tests should follow the
     [testing best practices](https://www.tensorflow.org/community/contribute/tests)
     guide.
