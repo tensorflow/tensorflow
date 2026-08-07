@@ -1545,6 +1545,9 @@ def batch_normalization(x,
   Returns:
     the normalized, scaled, offset tensor.
 
+  Raises:
+    ValueError: If scalar `variance_epsilon` is negative.
+
   References:
     Batch Normalization - Accelerating Deep Network Training by Reducing
     Internal Covariate Shift:
@@ -1556,10 +1559,11 @@ def batch_normalization(x,
       raise ValueError(
           f'variance_epsilon must be non-negative, got {variance_epsilon}'
       )
-    elif variance_epsilon == 0.0:
+    if variance_epsilon == 0.0:
       warnings.warn(
           'variance_epsilon is set to 0.0, which may cause division by zero.'
-          ' Consider using a small positive value instead.'
+          ' Consider using a small positive value instead.',
+          stacklevel=2,
       )
   with ops.name_scope(name, "batchnorm", [x, mean, variance, scale, offset]):
     if tensor_util.is_tf_type(variance_epsilon):
