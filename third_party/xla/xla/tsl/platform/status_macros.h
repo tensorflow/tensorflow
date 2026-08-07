@@ -16,6 +16,6 @@ limitations under the License.
 #ifndef XLA_TSL_PLATFORM_STATUS_MACROS_H_
 #define XLA_TSL_PLATFORM_STATUS_MACROS_H_
 
-#include "absl/status/status_macros.h"  // IWYU pragma: export
+#include "absl/status/status_macros.h"  // INLINER_FORWARD_TO
 
 #endif  // XLA_TSL_PLATFORM_STATUS_MACROS_H_
