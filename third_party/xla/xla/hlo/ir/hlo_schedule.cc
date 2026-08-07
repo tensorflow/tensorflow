@@ -480,7 +480,9 @@ std::string HloSchedule::ToString() const {
         pieces.push_back(absl::StrCat("  ", id));
       }
     } else {
-      pieces.push_back(absl::StrFormat("computation %s:", computation->name()));
+      pieces.push_back(
+          absl::StrFormat("computation %s (thread %s):", computation->name(),
+                          computation->execution_thread()));
       for (const HloInstruction* instruction : sequence.instructions()) {
         pieces.push_back(absl::StrCat("  ", instruction->name()));
       }
