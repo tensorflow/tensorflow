@@ -20,14 +20,12 @@ sdy.mesh @mesh_1 = <["x"=8, "y"=4]>
 sdy.mesh @unused_mesh = <["axis_0"=16]>
 
 // CHECK-NOT: sdy.mesh @mesh
-// CHECK-V3-NOT: module attributes {mhlo.frontend_attributes = {
-
-// CHECK-V2: module attributes {mhlo.frontend_attributes = {
-// CHECK-V2-SAME: xla.sdy.meshes = "{
-// CHECK-V2-SAME: maximal_mesh_5 = #sdy.mesh<[], device_ids=[5]>,
-// CHECK-V2-SAME: mesh = #sdy.mesh<[\22axis_0\22=2, \22axis_1\22=4, \22axis_2\22=4]>,
-// CHECK-V2-SAME: mesh_0 = #sdy.mesh<[\22a\22=2, \22b\22=2]>
-// CHECK-V2-SAME: unused_mesh = #sdy.mesh<[\22axis_0\22=16]>}"}} {
+// CHECK: module attributes {mhlo.frontend_attributes = {
+// CHECK-SAME: xla.sdy.meshes = "{
+// CHECK-SAME: maximal_mesh_5 = #sdy.mesh<[], device_ids=[5]>,
+// CHECK-SAME: mesh = #sdy.mesh<[\22axis_0\22=2, \22axis_1\22=4, \22axis_2\22=4]>,
+// CHECK-SAME: mesh_0 = #sdy.mesh<[\22a\22=2, \22b\22=2]>
+// CHECK-SAME: unused_mesh = #sdy.mesh<[\22axis_0\22=16]>}"}} {
 
 // CHECK-LABEL: func @multiple_shardings(
 // CHECK-V2-SAME:      %arg0: tensor<8x8xf32> {mhlo.frontend_attributes = {xla.sdy.sharding = "#sdy.sharding<@mesh, [{\22axis_2\22}, {\22axis_0\22, \22axis_1\22}]>"}, mhlo.sharding =
