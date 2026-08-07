@@ -1168,7 +1168,7 @@ absl::Status HloModule::UpdateBufferAssignmentProto(
     BufferAssignmentProto* buffer_assignment_proto,
     const absl::flat_hash_map<int64_t, absl::flat_hash_map<int64_t, int64_t>>&
         computation_id_to_id_remap_map) {
-  for (xla::LogicalBufferProto& logical_buffer :
+  for (xla::BufferValueProto& logical_buffer :
        *buffer_assignment_proto->mutable_logical_buffers()) {
     int64_t computation_id = HloInstruction::CalculateParentId(
         logical_buffer.defined_at().instruction_id());

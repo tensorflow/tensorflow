@@ -36,20 +36,20 @@ std::ostream& operator<<(std::ostream& out, const BufferValue& buffer) {
   return out;
 }
 
-/*static*/ LogicalBufferProto::Location BufferValue::ToLocationProto(
+/*static*/ BufferValueProto::Location BufferValue::ToLocationProto(
     const HloInstruction& instruction, const ShapeIndex& index) {
-  LogicalBufferProto::Location proto;
+  BufferValueProto::Location proto;
   proto.set_instruction_id(instruction.unique_id());
   absl::c_copy(index, tsl::protobuf::RepeatedFieldBackInserter(
                           proto.mutable_shape_index()));
   return proto;
 }
 
-LogicalBufferProto BufferValue::ToProto(const SizeFunction& size_fn) const {
-  LogicalBufferProto proto;
+BufferValueProto BufferValue::ToProto(const SizeFunction& size_fn) const {
+  BufferValueProto proto;
   proto.set_id(id());
   proto.set_size(size_fn(*this));
-  LogicalBufferProto::Location proto_location =
+  BufferValueProto::Location proto_location =
       ToLocationProto(*instruction(), index());
   proto.mutable_defined_at()->Swap(&proto_location);
   if (has_color()) {
