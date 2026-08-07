@@ -20,7 +20,6 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core/kernels:cpu_op",
         "//tensorflow/core/kernels:ops_util",
     ],
 )
@@ -34,7 +33,31 @@ cc_library(
         "//third_party/KDNN:kdnn",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
-        "//tensorflow/core/kernels:cpu_op",
+        "//tensorflow/core/util:port",
+    ],
+)
+
+# Microbenchmark comparing _KdnnSigmoid to default CPU Sigmoid. Intended to
+# be run on aarch64 + libkdnn.so to collect the speedup figures referenced
+# in PR #124543 review feedback. On every other platform the benchmark is
+# a no-op that reports "KDNN unavailable on this platform" and exits
+# cleanly, so it is safe to keep this target in the default build graph.
+#
+# We use `cc_test` rather than `cc_library` because GoogleTest's BENCHMARK()
+# macro registers a TEST() entry point at static init time; the registered
+# test binary is what `bazel test` discovers.
+cc_test(
+    name = "kdnn_sigmoid_benchmark_test",
+    size = "small",
+    srcs = ["kdnn_sigmoid_benchmark.cc"],
+    deps = [
+        ":kdnn_sigmoid_op",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
         "//tensorflow/core/util:port",
     ],
 )

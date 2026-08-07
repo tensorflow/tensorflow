@@ -16,6 +16,8 @@ This is intentionally a **header + BUILD skeleton** — the actual shared librar
 | `build_defs.bzl` | Bazel macros: `if_enable_kdnn`, `kdnn_deps`. Loaded from BUILD files via `tensorflow/tensorflow.bzl`. |
 | `repository.bzl` | `kdnn_repository` rule (loaded only from `WORKSPACE` / `MODULE.bazel`). |
 | `BUILD` | `cc_library` rules for the header + an in-tree stub target. |
+| `HARDWARE_VERIFICATION.md` | Step-by-step recipe for end-to-end verification on Kunpeng 920 + libkdnn.so. See "Hardware verification" below. |
+| `kdnn_e2e_smoke.py` | Step-7 of the recipe: builds a Sigmoid graph, runs Grappler, asserts `_KdnnSigmoid` appears and matches eager numerically. |
 
 ## What is NOT here
 
@@ -78,3 +80,30 @@ To resolve:
 3. Once confirmed, change `licenses(["restricted"])` to
    `licenses(["notice"])` in `BUILD` and remove the corresponding
    comment block.
+
+## Hardware verification
+
+The skeleton PR has been authored without access to Kunpeng 920 hardware,
+so it cannot ship benchmark numbers or end-to-end execution evidence. To
+unblock the "Hardware Verification" and "Benchmark Results" action items
+in the review thread, this directory ships:
+
+* **`HARDWARE_VERIFICATION.md`** — a 7-step recipe that takes a reviewer
+  from a fresh KAIL BoostKit install to a populated PR comment with
+  numbers. Designed to be runnable in under 30 minutes by anyone with
+  Kunpeng 920 access.
+* **`tensorflow/core/kernels/kdnn/kdnn_sigmoid_benchmark.cc`** — a
+  microbenchmark target (`//tensorflow/core/kernels/kdnn:kdnn_sigmoid_benchmark_test`)
+  that compares `_KdnnSigmoid` against the default CPU `Sigmoid`. On
+  non-KDNN platforms it is a no-op that reports "KDNN unavailable on
+  this platform" and exits cleanly, so it is safe to keep in the default
+  build graph.
+* **`kdnn_e2e_smoke.py`** — Step 7 of the recipe. Builds a small
+  Sigmoid graph, runs Grappler, asserts the rewrite to `_KdnnSigmoid`
+  fires and the rewritten op executes without numerical drift.
+
+When the PR author (or a reviewer with hardware access) runs the recipe,
+the resulting numbers and pass/fail lines should be pasted back into the
+PR thread. Until then, this directory explicitly does **not** claim
+performance figures; the placeholder numbers in
+`kdnn_sigmoid_benchmark.cc` are illustrative format markers only.
