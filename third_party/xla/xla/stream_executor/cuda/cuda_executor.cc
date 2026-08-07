@@ -666,6 +666,20 @@ absl::StatusOr<int> GetNumberOfActiveP2PNvlinks(nvmlDevice_t nvml_device) {
   return p2p_links;
 }
 
+absl::StatusOr<bool> IsMigDevice(nvmlDevice_t device) {
+  unsigned int current_mig_mode = 0;
+  unsigned int pending_mig_mode = 0;
+  nvmlReturn_t result =
+      nvmlDeviceGetMigMode(device, &current_mig_mode, &pending_mig_mode);
+  if (result == NVML_SUCCESS && current_mig_mode == NVML_DEVICE_MIG_ENABLE) {
+    return true;
+  }
+  if (result != NVML_SUCCESS && result != NVML_ERROR_NOT_SUPPORTED) {
+    ABSL_RETURN_IF_ERROR(ToStatus(result));
+  }
+  return false;
+}
+
 struct FabricInfo {
   std::string cluster_uuid;
   std::string clique_id;
@@ -673,6 +687,13 @@ struct FabricInfo {
 
 absl::StatusOr<FabricInfo> GetDeviceFabricInfo(nvmlDevice_t device) {
 #if CUDA_VERSION >= 12040
+  ABSL_ASSIGN_OR_RETURN(bool is_mig_device, IsMigDevice(device));
+  if (is_mig_device) {
+    // Multi-node NVLink is not supported on MIG. See
+    // https://docs.nvidia.com/datacenter/tesla/mig-user-guide/deployment-considerations.html
+    return absl::InternalError("Fabric support is disabled on MIG GPU");
+  }
+
   nvmlGpuFabricInfoV_t fabricInfo{nvmlGpuFabricInfo_v2};
   fabricInfo.state = NVML_GPU_FABRIC_STATE_NOT_SUPPORTED;
 
