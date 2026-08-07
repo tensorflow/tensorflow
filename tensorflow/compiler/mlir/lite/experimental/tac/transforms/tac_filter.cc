@@ -262,6 +262,7 @@ void PrintTacFilterResult(Location module_loc, const TacFilter& tac_filter,
 
 void TacFilterPass::runOnOperation() {
   TacFilters test_tac_filters;
+  TacFilters* active_tac_filters = tac_filters_;
   if (use_test_setting_) {
     // Sets up the test config used in the mlir LIT test.
     google::protobuf::TextFormat::ParseFromString(R"(
@@ -283,17 +284,17 @@ void TacFilterPass::runOnOperation() {
       }
     )",
                                         &test_tac_filters);
-    tac_filters_ = &test_tac_filters;
+    active_tac_filters = &test_tac_filters;
   }
 
-  if (!tac_filters_) {
+  if (!active_tac_filters) {
     return;
   }
 
   ModuleOp module = getOperation();
   OpBuilder builder(module);
-  std::sort(tac_filters_->mutable_tac_filters()->pointer_begin(),
-            tac_filters_->mutable_tac_filters()->pointer_end(),
+  std::sort(active_tac_filters->mutable_tac_filters()->pointer_begin(),
+            active_tac_filters->mutable_tac_filters()->pointer_end(),
             [](const TacFilter* a, const TacFilter* b) {
               const bool a_is_function_filter = a->has_function_filter();
               const bool b_is_function_filter = b->has_function_filter();
@@ -318,7 +319,8 @@ void TacFilterPass::runOnOperation() {
               return a_is_function_exclude > b_is_function_exclude;
             });
 
-  for (const auto& tac_filter : llvm::enumerate(tac_filters_->tac_filters())) {
+  for (const auto& tac_filter :
+       llvm::enumerate(active_tac_filters->tac_filters())) {
     SmallVector<Operation*> filtered_ops;
     ApplyTacFilter(module, tac_filter.value(), filtered_ops, builder,
                    custom_options_callback_);
