@@ -682,8 +682,7 @@ CollectiveKernelThunk::FromProto(
   }
 
   return std::make_unique<CollectiveKernelThunk>(
-      thunk_info, collective_config, std::move(kernel_spec),
-      thunk_proto.is_async(), std::move(buffers),
+      thunk_info, collective_config, std::move(kernel_spec), std::move(buffers),
       thunk_proto.collective_kernel_enabled(), thunk_proto.kernel_name(),
       launch_dimensions, thunk_proto.shmem_bytes(), std::move(cubin),
       thunk_proto.use_pdl());
@@ -736,7 +735,6 @@ absl::StatusOr<ThunkProto> CollectiveKernelThunk::ToProto() const {
   }
   proto_spec->set_invocation_count_increment(kernel_spec_.sync_count_increment);
 
-  thunk_proto->set_is_async(is_async_);
   for (const CollectiveThunk::Buffer& buffer : buffers_) {
     ABSL_ASSIGN_OR_RETURN(*thunk_proto->add_buffers(), buffer.ToProto());
   }
