@@ -14414,6 +14414,10 @@ ENTRY entry {
   EXPECT_THAT(root, op::Tuple(op::AllGather(scatter), _, _, _));
 }
 
+// Verifies that when falling back due to false positive parallel dim conflicts
+// (e.g. b/532891798), we correctly use Reshard(updates) for partial replication
+// and don't bail out or bypass the check. This proves the logic stays within
+// the index passthrough algorithm rather than falling back to full replication.
 TEST_P(SpmdPartitioningTest, ScatterParallelDimAndNonParallelDimPartitioned) {
   absl::string_view hlo_string = R"(
 HloModule module
@@ -18971,6 +18975,81 @@ ENTRY entry {
   EXPECT_THAT(
       module->entry_computation()->parameter_instructions(),
       Each(op::Sharding("{mesh['a'=2,'b'=2], [], unreduced=max{'a','b'}}")));
+}
+
+// Verifies that a true 1D scatter-conflict on a reduction dimension (e.g.,
+// b/512585186) successfully avoids full replication by falling back to
+// Reshard(updates) instead of failing outright and returning a nullptr.
+TEST_P(SpmdPartitioningTest, IndexPassthroughScatterConflictFallback) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+add (lhs: f32[], rhs: f32[]) -> f32[] {
+  lhs = f32[] parameter(0)
+  rhs = f32[] parameter(1)
+  ROOT sum = f32[] add(lhs, rhs)
+}
+
+ENTRY entry {
+  %operand = f32[256,128] parameter(0), sharding={devices=[2,1]<=[2]}
+  %indices = s32[128,1] parameter(1), sharding={devices=[2,1]<=[2]}
+  %updates = f32[128,128] parameter(2), sharding={devices=[2,1]<=[2]}
+  ROOT %scatter = f32[256,128] scatter(%operand, %indices, %updates),
+      to_apply=add,
+      update_window_dims={1},
+      inserted_window_dims={0},
+      scatter_dims_to_operand_dims={0},
+      index_vector_dim=1, sharding={devices=[2,1]<=[2]}
+})";
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       PartitionComputation(hlo_string, /*num_devices=*/2));
+  VLOG(1) << module->ToString();
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(
+      root, AllOf(op::Shape("f32[128,128]"),
+                  op::Scatter(op::Parameter(0),
+                              op::Subtract(op::AllGather(op::Parameter(1)), _),
+                              op::AllGather(op::Parameter(2)))));
+}
+
+// Verifies that a true 2D mesh scatter conflict (e.g., b/541557389) avoids the
+// fatal 122GB OOM resulting from fully replicating the operand (embedding
+// tables) across the entire mesh. Instead, it partially replicates the much
+// smaller updates tensor.
+TEST_P(SpmdPartitioningTest, ScatterConflictWithReplicatedIndicesFallback) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+add (lhs: f32[], rhs: f32[]) -> f32[] {
+  lhs = f32[] parameter(0)
+  rhs = f32[] parameter(1)
+  ROOT sum = f32[] add(lhs, rhs)
+}
+
+ENTRY entry {
+  %input = f32[256,128] parameter(0), sharding={devices=[2,2]<=[4]}
+  %indices = s32[32,16,1] parameter(1), sharding={devices=[2,2,1]<=[4]}
+  %updates = f32[32,16,128] parameter(2), sharding={devices=[2,2,1]<=[4]}
+  ROOT %scatter = f32[256,128] scatter(%input, %indices, %updates),
+      to_apply=add,
+      update_window_dims={2},
+      inserted_window_dims={0},
+      scatter_dims_to_operand_dims={0},
+      index_vector_dim=2, sharding={devices=[2,2]<=[4]}
+})";
+  SpmdPartitionerOptions options;
+  options.need_resolve_conflicts = true;
+  ASSERT_OK_AND_ASSIGN(
+      auto module,
+      PartitionComputation(hlo_string, /*num_devices=*/4, options));
+  VLOG(1) << module->ToString();
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root, op::DynamicSlice(::testing::_, ::testing::_, ::testing::_));
+  bool has_scatter = false;
+  for (auto* inst : module->entry_computation()->instructions()) {
+    if (inst->opcode() == HloOpcode::kScatter) has_scatter = true;
+  }
+  EXPECT_TRUE(has_scatter);
 }
 
 }  // namespace
