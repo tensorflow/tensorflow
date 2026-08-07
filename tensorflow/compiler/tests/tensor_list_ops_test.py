@@ -165,6 +165,36 @@ class ListOpsTest(parameterized.TestCase, xla_test.XLATestCase):
       t = list_ops.tensor_list_stack(l, element_dtype=dtypes.float32)
       self.assertAllEqual(t, [[3.0, 4.0], [0., 0.]])
 
+  def testStackReservedMismatchedElementDtype(self):
+    # Regression test for GitHub issue 124872. A list reserved with an unknown
+    # element shape is uninitialized, so its buffer is built from the first
+    # element written to it. Writing an element whose dtype disagrees with the
+    # list's declared element_dtype produced a buffer of the element's dtype;
+    # reading it back as the declared, wider dtype reinterpreted the buffer's
+    # bytes and read past its end, returning uninitialized memory instead of
+    # raising the error the non-XLA kernels raise.
+    with self.session(), self.test_scope():
+      l = list_ops.tensor_list_reserve(
+          element_dtype=dtypes.int64, element_shape=None, num_elements=2)
+      l = list_ops.tensor_list_set_item(
+          l, 0, constant_op.constant([1, 2], dtype=dtypes.int32))
+      with self.assertRaisesRegex(errors.InvalidArgumentError,
+                                  "Invalid data types"):
+        self.evaluate(
+            list_ops.tensor_list_stack(l, element_dtype=dtypes.int64))
+
+  def testGetItemReservedMismatchedElementDtype(self):
+    # Companion to the above for the TensorListGetItem read path.
+    with self.session(), self.test_scope():
+      l = list_ops.tensor_list_reserve(
+          element_dtype=dtypes.int64, element_shape=None, num_elements=2)
+      l = list_ops.tensor_list_set_item(
+          l, 0, constant_op.constant([1, 2], dtype=dtypes.int32))
+      with self.assertRaisesRegex(errors.InvalidArgumentError,
+                                  "Invalid data types"):
+        self.evaluate(
+            list_ops.tensor_list_get_item(l, 0, element_dtype=dtypes.int64))
+
   def testPushInEmptyListWithUnknownElementShape(self):
     with self.session(), self.test_scope():
       l = list_ops.empty_tensor_list(
