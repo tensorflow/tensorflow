@@ -45,8 +45,6 @@ limitations under the License.
 #include "xla/core/collectives/rank_id.h"
 #include "xla/debug_options_flags.h"
 #include "xla/hlo/ir/collective_op_group_mode.h"
-#include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/primitive_util.h"
 #include "xla/runtime/buffer_use.h"
 #include "xla/runtime/device_id.h"
@@ -57,13 +55,13 @@ limitations under the License.
 #include "xla/service/rendezvous.h"
 #include "xla/service/shaped_slice.h"
 #include "xla/shape.h"
-#include "xla/shape_util.h"
 #include "xla/status_macros.h"
 #include "xla/stream_executor/command_buffer.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/stream_executor/trace_command_buffer_factory.h"
+#include "xla/tsl/platform/errors.h"
 #include "xla/util.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
@@ -103,25 +101,6 @@ bool IsTypeSupportedBy(PrimitiveType element_type, Thunk::Kind reduction_op) {
     default:
       return false;
   }
-}
-
-ShapeIndex GetCollectiveResultShapeIndex(const HloInstruction* collective,
-                                         int64_t operand_index) {
-  const bool has_nested_result =
-      HloPredicateIsOp<HloOpcode::kAllGatherStart,
-                       HloOpcode::kCollectivePermuteStart>(collective);
-  const Shape& result_shape = has_nested_result
-                                  ? collective->shape().tuple_shapes(1)
-                                  : collective->shape();
-
-  ShapeIndex result_index;
-  if (has_nested_result) {
-    result_index.push_back(1);
-  }
-  if (result_shape.IsTuple()) {
-    result_index.push_back(operand_index);
-  }
-  return result_index;
 }
 
 }  // namespace
@@ -272,78 +251,6 @@ absl::StatusOr<std::vector<DeviceBufferPair>> ConvertToDeviceBuffers(
         buffers[i].source_memory_space, buffers[i].destination_memory_space});
   }
   return device_buffers;
-}
-
-absl::StatusOr<std::vector<CollectiveThunk::Buffer>> GetCollectiveBuffers(
-    const BufferAssignment& buffer_assignment, const HloInstruction* inst,
-    Thunk::Kind kind, const bool has_dynamic_root) {
-  int64_t operand_count = inst->operand_count();
-  std::vector<CollectiveThunk::Buffer> buffers;
-  buffers.reserve(operand_count);
-
-  // Adds a source and destination buffers pair to `buffers`.
-  auto add_buffer = [&](const HloInstruction* src, const HloInstruction* dst,
-                        const ShapeIndex& dst_shape_index) -> absl::Status {
-    const Shape& src_shape = src->shape();
-    const Shape& dst_shape =
-        ShapeUtil::GetSubshape(dst->shape(), dst_shape_index);
-
-    ABSL_ASSIGN_OR_RETURN(auto src_slice,
-                     buffer_assignment.GetUniqueSlice(src, /*index=*/{}));
-    ABSL_ASSIGN_OR_RETURN(auto dst_slice,
-                     buffer_assignment.GetUniqueSlice(dst, dst_shape_index));
-
-    buffers.push_back(CollectiveThunk::Buffer{
-        /*element_count=*/ShapeUtil::ElementsIn(src_shape),
-        /*source_buffer=*/{src_slice, src_shape},
-        /*destination_buffer=*/{dst_slice, dst_shape},
-        /*source_memory_space=*/src_shape.layout().memory_space(),
-        /*destination_memory_space=*/dst_shape.layout().memory_space()});
-    return absl::OkStatus();
-  };
-
-  if (kind == Thunk::Kind::kAllGather) {
-    // Start operations return a tuple of (<<inputs>>, <<outputs>>)
-    // where outputs can be a tuple itself (if operation has
-    // multiple operands).
-    for (int64_t i = 0; i < operand_count; i++) {
-      ShapeIndex idx = GetCollectiveResultShapeIndex(inst, i);
-      ABSL_RETURN_IF_ERROR(add_buffer(inst->operand(i), inst, idx));
-    }
-  } else if (kind == Thunk::Kind::kRaggedAllToAll) {
-    // RaggedAllToAll operation has 6 operands: input, output,
-    // input_offset, send_size, output_offset, recv_size. `output`
-    // operand is aliased with the instruction result. All other
-    // operands are not aliased.
-    ABSL_RETURN_IF_ERROR(
-        add_buffer(inst->operand(0), inst->operand(0), ShapeIndex({})));
-    ABSL_RETURN_IF_ERROR(add_buffer(inst->operand(1), inst,
-                               GetCollectiveResultShapeIndex(inst, 0)));
-
-    for (int64_t i = 2; i < operand_count; i++) {
-      ABSL_RETURN_IF_ERROR(
-          add_buffer(inst->operand(i), inst->operand(i), ShapeIndex({})));
-    }
-  } else {
-    // For other operations simply zip operands with results.
-    //
-    // A collective-broadcast with a dynamic root carries an extra trailing
-    // operand: a 1-D S32 vector holding the runtime-selected root rank for each
-    // data operand. That operand has no corresponding output, so it is not
-    // zipped with a result; instead it is mapped to its own allocation and
-    // consumed separately by the thunk.
-    int64_t num_data_operands =
-        has_dynamic_root ? operand_count - 1 : operand_count;
-    for (int64_t i = 0; i < num_data_operands; i++) {
-      ShapeIndex idx = GetCollectiveResultShapeIndex(inst, i);
-      ABSL_RETURN_IF_ERROR(add_buffer(inst->operand(i), inst, idx));
-    }
-    if (has_dynamic_root) {
-      const HloInstruction* roots = inst->operand(operand_count - 1);
-      ABSL_RETURN_IF_ERROR(add_buffer(roots, roots, ShapeIndex({})));
-    }
-  }
-  return buffers;
 }
 
 absl::StatusOr<CollectiveBufferProto> CollectiveThunk::Buffer::ToProto() const {

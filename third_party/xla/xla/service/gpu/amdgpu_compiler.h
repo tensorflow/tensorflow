@@ -27,7 +27,6 @@ limitations under the License.
 #include "xla/service/compiler.h"
 #include "xla/service/gpu/alias_info.h"
 #include "xla/service/gpu/gpu_compiler.h"
-#include "xla/service/gpu_topology.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/dnn.h"
@@ -56,7 +55,7 @@ class AMDGPUCompiler : public GpuCompiler {
 
   absl::Status OptimizeHloPostLayoutAssignment(
       HloModule* hlo_module, se::StreamExecutor* stream_exec,
-      const CompileOptions& options, const GpuTopology& gpu_topology,
+      const CompileOptions& options, const GpuTargetConfig& gpu_target_config,
       const GpuAliasInfo* alias_info, tsl::thread::ThreadPool* thread_pool,
       CompilationStats* compilation_stats,
       mlir::MLIRContext* mlir_context) override;

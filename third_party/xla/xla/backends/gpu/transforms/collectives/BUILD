@@ -756,7 +756,6 @@ cc_library(
     srcs = ["collective_kernel_strategy_annotator.cc"],
     hdrs = ["collective_kernel_strategy_annotator.h"],
     deps = [
-        ":collective_ops_utils",
         "//xla:side_effect_util",
         "//xla:status_macros",
         "//xla:xla_proto_cc",

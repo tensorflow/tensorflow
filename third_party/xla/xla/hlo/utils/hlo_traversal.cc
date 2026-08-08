@@ -30,10 +30,8 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/memory/memory.h"
 #include "absl/types/span.h"
-#include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 
 namespace xla {
@@ -543,19 +541,6 @@ absl::InlinedVector<HloInstructionAdaptor, 2> HloInstructionAdaptor::GetUsers()
   }
 
   return users;
-}
-
-bool HloInstructionAdaptor::use_global_device_ids() const {
-  switch (opcode()) {
-    case HloOpcode::kAllGather:
-      return Cast<HloAllGatherInstruction>(instruction_)
-          ->use_global_device_ids();
-    case HloOpcode::kAllReduce:
-      return Cast<HloAllReduceInstruction>(instruction_)
-          ->use_global_device_ids();
-    default:
-      return false;
-  }
 }
 
 bool operator==(const HloInstructionAdaptor& lhs,

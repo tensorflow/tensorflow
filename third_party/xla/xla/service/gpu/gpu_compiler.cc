@@ -88,7 +88,6 @@ limitations under the License.
 #include "xla/backends/gpu/transforms/collectives/all_reduce_splitter.h"
 #include "xla/backends/gpu/transforms/collectives/collective_backend_assigner.h"
 #include "xla/backends/gpu/transforms/collectives/collective_combiner_annotator.h"
-#include "xla/backends/gpu/transforms/collectives/collective_fusion.h"
 #include "xla/backends/gpu/transforms/collectives/collective_kernel_strategy_annotator.h"
 #include "xla/backends/gpu/transforms/collectives/collective_permute_cycle_decomposer.h"
 #include "xla/backends/gpu/transforms/collectives/collective_pipelining_analyzer.h"
@@ -1501,6 +1500,26 @@ void AddCollectiveCombinerPasses(
   // Assign collective backends after combining, so that combined collectives
   // get the correct backend config.
   pipeline.AddPass<CollectiveBackendAssigner>();
+
+  // Annotate AllReduce ops with the Triton kernel strategy (one-shot /
+  // two-shot) that will be used at runtime. This annotation is consumed by
+  // SolLatencyEstimator to apply the correct NVLink-based cost model instead
+  // of the NCCL ring model.  Only added when the Triton collective kernel flag
+  // is enabled; when the flag is off all collectives keep
+  // KERNEL_STRATEGY_DEFAULT.
+  // Run the annotator if any collective kernel type is enabled.
+  // It annotates AllReduce and AllGather instructions with the
+  // kernel strategy determined at compile time (before scheduling),
+  // so that SolLatencyEstimator and the thunk emitter can consume it.
+  if (absl::c_linear_search(
+          opts.xla_gpu_experimental_use_collective_kernels(),
+          static_cast<int>(DebugOptions::COLLECTIVE_KERNEL_ALL_REDUCE)) ||
+      absl::c_linear_search(
+          opts.xla_gpu_experimental_use_collective_kernels(),
+          static_cast<int>(DebugOptions::COLLECTIVE_KERNEL_ALL_GATHER))) {
+    pipeline.AddPass<CollectiveKernelStrategyAnnotator>(
+        gpu_topology, /*is_multimem_enabled=*/false);
+  }
 }
 
 absl::Status RunPostFusionPasses(
@@ -1895,8 +1914,8 @@ absl::Status GpuCompiler::OptimizeHloModule(
 
   // Run target-specific HLO optimization passes after layout assignment.
   ABSL_RETURN_IF_ERROR(OptimizeHloPostLayoutAssignment(
-      hlo_module, stream_exec, options, gpu_topology, alias_info,
-      thread_pool.get_mutable(), compilation_stats, mlir_context));
+      hlo_module, stream_exec, options, gpu_topology.gpu_target_config(),
+      alias_info, thread_pool.get_mutable(), compilation_stats, mlir_context));
 
   // This is a "low effort, high impact" fusion that should be run first.
   ABSL_RETURN_IF_ERROR(RunDynamicSliceFusionPasses(
@@ -2002,12 +2021,11 @@ void AddGemmRewriterPasses(HloPassPipeline& pipeline,
 
 absl::Status GpuCompiler::OptimizeHloPostLayoutAssignment(
     HloModule* hlo_module, se::StreamExecutor* stream_exec,
-    const CompileOptions& options, const GpuTopology& gpu_topology,
+    const CompileOptions& options, const GpuTargetConfig& gpu_target_config,
     const GpuAliasInfo* alias_info, tsl::thread::ThreadPool* thread_pool,
     CompilationStats* compilation_stats, mlir::MLIRContext* mlir_context) {
   // Constants:
   const DebugOptions& debug_options = hlo_module->config().debug_options();
-  const GpuTargetConfig& gpu_target_config = gpu_topology.gpu_target_config();
   const se::GpuComputeCapability gpu_version =
       gpu_target_config.device_description.gpu_compute_capability();
   const AlgebraicSimplifierOptions simplifier_options =
@@ -2083,22 +2101,6 @@ absl::Status GpuCompiler::OptimizeHloPostLayoutAssignment(
     // AlgebraicSimplifier will simplify it away again.
     // TODO(b/375566188): Figure out whether we can get rid of this pass.
     pipeline.AddPass<DotNormalizer>();
-    // Pattern based Collective fusion passes.
-    {
-      // Annotate collective ops with the Triton kernel strategy (one-shot /
-      // two-shot) that will be used at runtime. This annotation is consumed by
-      // SolLatencyEstimator to apply the correct NVLink-based cost model
-      // instead of the NCCL ring model.  Only added when the Triton collective
-      // kernel flag is enabled; when the flag is off all collectives keep
-      // KERNEL_STRATEGY_DEFAULT.
-      // Run the annotator if any collective kernel type is enabled.
-      // It annotates AllReduce and AllGather instructions with the
-      // kernel strategy determined at compile time (before scheduling),
-      // so that SolLatencyEstimator and the thunk emitter can consume it.
-      pipeline.AddPass<CollectiveKernelStrategyAnnotator>(
-          gpu_topology, /*is_multimem_enabled=*/false);
-      pipeline.AddPass<CollectiveFusion>(gpu_topology);
-    }
     if (IsTritonGemmEnabled(debug_options, gpu_version)) {
       pipeline.AddPass<DotDimensionNormalizer>(
           /*normalize_noncontracting_dimensions=*/!debug_options

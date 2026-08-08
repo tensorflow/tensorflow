@@ -59,7 +59,6 @@ class HloInstructionAdaptor {
   // Use sparingly; prefer extending the interface.
   const HloInstruction& instruction() const { return *instruction_; }
   const HloFusionAdaptor& parent() const { return *parent_; }
-  bool use_global_device_ids() const;
 
  private:
   const HloInstruction* instruction_;
