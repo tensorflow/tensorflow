@@ -1242,15 +1242,24 @@ def logical_not(x):
 def linspace(  # pylint: disable=missing-docstring
     start, stop, num=50, endpoint=True, retstep=False, dtype=float, axis=0
 ):
-  if dtype:
-    # In numpy 2.x, the result type of np.linspace is based off of `start` and
-    # `end`. We mimic the behavior.
-    if np.lib.NumpyVersion(np.__version__) >= '2.0.0.dev0':
-      dtype = np_utils.result_type([start * 1.0, stop * 1.0])
-    else:
-      dtype = np_utils.result_type(dtype)
-  start = np_array_ops.array(start, dtype=dtype)
-  stop = np_array_ops.array(stop, dtype=dtype)
+  # numpy computes the samples in a floating point type derived from `start`
+  # and `stop`, and only casts them to `dtype` as a final step. `dtype` must
+  # therefore not be used as the computation type, otherwise e.g. an integer
+  # `dtype` would truncate the samples before they are even computed.
+  # The default value of `dtype` plays the role of numpy's `dtype=None`, i.e.
+  # "infer the output type", so it is not treated as an explicit request.
+  if dtype is float or dtype is None:
+    dtype = None
+  else:
+    dtype = np_utils.result_type(dtype)
+  # In numpy 2.x, the result type of np.linspace is based off of `start` and
+  # `end`. We mimic the behavior.
+  if np.lib.NumpyVersion(np.__version__) >= '2.0.0.dev0':
+    computation_dtype = np_utils.result_type([start * 1.0, stop * 1.0])
+  else:
+    computation_dtype = np_utils.result_type(float)
+  start = np_array_ops.array(start, dtype=computation_dtype)
+  stop = np_array_ops.array(stop, dtype=computation_dtype)
   if num < 0:
     raise ValueError(
         'Argument `num` (number of samples) must be a non-negative integer. '
@@ -1272,7 +1281,7 @@ def linspace(  # pylint: disable=missing-docstring
       result = math_ops.linspace(start, new_stop, num, axis=axis)
     else:
       result = math_ops.linspace(start, stop, num, axis=axis)
-  if dtype:
+  if dtype is not None:
     if dtype.is_integer:
       # Since numpy 1.20, linspace's rounding is towards -inf instead of 0
       result = math_ops.floor(result)
@@ -1286,18 +1295,13 @@ def linspace(  # pylint: disable=missing-docstring
 @tf_export.tf_export('experimental.numpy.logspace', v1=[])
 @np_utils.np_doc('logspace')
 def logspace(start, stop, num=50, endpoint=True, base=10.0, dtype=None, axis=0):
-  # In numpy 2.x, the result type of np.logspace is based off of `start` and
-  # `end`. We mimic the behavior.
-  if np.lib.NumpyVersion(np.__version__) >= '2.0.0.dev0':
-    dtype = np_utils.result_type([start * 1.0, stop * 1.0])
-  else:
-    dtype = np_utils.result_type(start, stop, dtype)
-  result = linspace(
-      start, stop, num=num, endpoint=endpoint, dtype=dtype, axis=axis
-  )
+  # Like numpy, the exponents are computed in the floating point type derived
+  # from `start` and `stop` (which `linspace` takes care of), and `dtype` only
+  # determines the type the final result is cast to.
+  result = linspace(start, stop, num=num, endpoint=endpoint, axis=axis)
   result = math_ops.pow(math_ops.cast(base, result.dtype), result)
-  if dtype:
-    result = math_ops.cast(result, dtype)
+  if dtype is not None:
+    result = math_ops.cast(result, np_utils.result_type(dtype))
   return result
 
 
