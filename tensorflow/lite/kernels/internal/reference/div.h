@@ -16,6 +16,8 @@ limitations under the License.
 #define TENSORFLOW_LITE_KERNELS_INTERNAL_REFERENCE_DIV_H_
 
 #include <algorithm>
+#include <limits>
+#include <type_traits>
 
 #include "tensorflow/lite/kernels/internal/common.h"
 
@@ -218,34 +220,23 @@ void BroadcastDivSlow(const ArithmeticParams& params,
   T output_activation_max;
   GetActivationParams(params, &output_activation_min, &output_activation_max);
 
-  TFLITE_DCHECK_LE(unextended_input1_shape.DimensionsCount(), N);
-  TFLITE_DCHECK_LE(unextended_input2_shape.DimensionsCount(), N);
-  TFLITE_DCHECK_LE(unextended_output_shape.DimensionsCount(), N);
-
-  NdArrayDesc<N> desc1;
-  NdArrayDesc<N> desc2;
-  NdArrayDesc<N> output_desc;
-  NdArrayDescsForElementwiseBroadcast(unextended_input1_shape,
-                                      unextended_input2_shape, &desc1, &desc2);
-  CopyDimsToDesc(RuntimeShape::ExtendedShape(N, unextended_output_shape),
-                 &output_desc);
-
-  // In Tensorflow, the dimensions are canonically named (batch_number, row,
-  // col, channel), with extents (batches, height, width, depth), with the
-  // trailing dimension changing most rapidly (channels has the smallest
-  // stride, typically 1 element).
-  //
-  // In generated C code, we store arrays with the dimensions reversed. The
-  // first dimension has smallest stride.
-
-  auto div_func = [&](int indexes[N]) {
-    output_data[SubscriptToIndex(output_desc, indexes)] =
-        ActivationFunctionWithMinMax(
-            input1_data[SubscriptToIndex(desc1, indexes)] /
-                input2_data[SubscriptToIndex(desc2, indexes)],
-            output_activation_min, output_activation_max);
+  auto op = [output_activation_min, output_activation_max](T a, T b) {
+    T div_result;
+    // Guard against signed integer overflow: INT_MIN / -1 is undefined
+    // behavior in C++. Saturate to T::max() instead.
+    if (std::is_integral<T>::value && std::is_signed<T>::value &&
+        b == static_cast<T>(-1) &&
+        a == std::numeric_limits<T>::min()) {
+      div_result = std::numeric_limits<T>::max();
+    } else {
+      div_result = a / b;
+    }
+    return ActivationFunctionWithMinMax(div_result, output_activation_min,
+                                        output_activation_max);
   };
-  NDOpsHelper<N>(output_desc, div_func);
+  BroadcastBinaryOpSimple(unextended_input1_shape, input1_data,
+                          unextended_input2_shape, input2_data,
+                          unextended_output_shape, output_data, op);
 }
 
 template <typename T>
@@ -260,9 +251,18 @@ inline void Div(const ArithmeticParams& params,
   const int flat_size =
       MatchingElementsSize(input1_shape, input2_shape, output_shape);
   for (int i = 0; i < flat_size; ++i) {
+    T div_result;
+    // Guard against signed integer overflow: INT_MIN / -1 is undefined
+    // behavior in C++. Saturate to T::max() instead.
+    if (std::is_integral<T>::value && std::is_signed<T>::value &&
+        input2_data[i] == static_cast<T>(-1) &&
+        input1_data[i] == std::numeric_limits<T>::min()) {
+      div_result = std::numeric_limits<T>::max();
+    } else {
+      div_result = input1_data[i] / input2_data[i];
+    }
     output_data[i] = ActivationFunctionWithMinMax(
-        input1_data[i] / input2_data[i], output_activation_min,
-        output_activation_max);
+        div_result, output_activation_min, output_activation_max);
   }
 }
 

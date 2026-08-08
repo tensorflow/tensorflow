@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include <stdint.h>
 
+#include <limits>
 #include <vector>
 
 #include <gmock/gmock.h>
@@ -396,6 +397,50 @@ TEST(QuantizedDivOpTest, QuantizedWithBroadcastInt8) {
 TEST(QuantizedDivOpTest, QuantizedWithBroadcastInt16) {
   QuantizedWithBroadcast<TensorType_INT16, int16_t>();
 }
+
+// Tests for signed integer overflow guard (INT32_MIN / -1).
+// This exercises the fix for https://github.com/tensorflow/tensorflow/issues/124409
+
+TEST(IntegerDivOpTest, Int32MinDivNegOne_Saturates) {
+  // INT32_MIN / -1 would overflow to +2147483648 which can't fit in int32.
+  // The fix saturates this to INT32_MAX (2147483647).
+  IntegerDivOpModel m({TensorType_INT32, {1, 1, 4, 1}},
+                      {TensorType_INT32, {1, 1, 4, 1}}, {TensorType_INT32, {}},
+                      ActivationFunctionType_NONE);
+  const int32_t int32_min = std::numeric_limits<int32_t>::min();  // -2147483648
+  const int32_t int32_max = std::numeric_limits<int32_t>::max();  //  2147483647
+  m.PopulateTensor<int32_t>(m.input1(), {int32_min, int32_min, -10, 10});
+  m.PopulateTensor<int32_t>(m.input2(), {-1, 1, -1, -1});
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(m.GetOutput(),
+              ElementsAreArray({int32_max, int32_min, 10, -10}));
+}
+
+TEST(IntegerDivOpTest, Int32MinDivNegOne_Broadcast) {
+  // Test the broadcast path with INT32_MIN / -1.
+  IntegerDivOpModel m({TensorType_INT32, {1, 1, 4, 1}},
+                      {TensorType_INT32, {}},  // scalar broadcast
+                      {TensorType_INT32, {}}, ActivationFunctionType_NONE);
+  const int32_t int32_min = std::numeric_limits<int32_t>::min();
+  const int32_t int32_max = std::numeric_limits<int32_t>::max();
+  m.PopulateTensor<int32_t>(m.input1(), {int32_min, -100, 0, 100});
+  m.PopulateTensor<int32_t>(m.input2(), {-1});
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray({int32_max, 100, 0, -100}));
+}
+
+TEST(IntegerDivOpTest, NormalNegOneDivision) {
+  // Verify that dividing normal values by -1 still works correctly.
+  IntegerDivOpModel m({TensorType_INT32, {1, 2, 2, 1}},
+                      {TensorType_INT32, {1, 2, 2, 1}}, {TensorType_INT32, {}},
+                      ActivationFunctionType_NONE);
+  m.PopulateTensor<int32_t>(m.input1(), {-100, 50, 0, 2147483647});
+  m.PopulateTensor<int32_t>(m.input2(), {-1, -1, -1, -1});
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray({100, -50, 0, -2147483647}));
+}
+
+// END overflow guard tests
 
 }  // namespace
 }  // namespace tflite
