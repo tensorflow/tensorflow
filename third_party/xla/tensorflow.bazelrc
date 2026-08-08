@@ -332,6 +332,8 @@ common:windows --host_copt=/W0
 
 # Linux ARM64 specific options
 common:linux_arm64 --copt="-mtune=generic" --copt="-march=armv8-a" --copt="-O3"
+common:linux_arm64 --define=ynn_enable_arm64_neonfp8=false
+
 
 
 # On Windows, `__cplusplus` is wrongly defined without this switch
