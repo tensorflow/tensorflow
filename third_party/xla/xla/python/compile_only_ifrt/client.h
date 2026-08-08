@@ -30,7 +30,6 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/tsl/platform/status_macros.h"
-#include "llvm/Support/ExtensibleRTTI.h"
 #include "xla/layout.h"
 #include "xla/layout_util.h"
 #include "xla/pjrt/host_memory_spaces.h"
@@ -50,6 +49,7 @@ limitations under the License.
 #include "xla/python/ifrt/layout.h"
 #include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/remap_plan.h"
+#include "xla/python/ifrt/rtti.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
 #include "xla/python/ifrt/topology.h"
@@ -70,7 +70,7 @@ limitations under the License.
 namespace xla {
 
 class CompileOnlyMemory
-    : public llvm::RTTIExtends<CompileOnlyMemory, ifrt::Memory> {
+    : public xla::ifrt::RTTIExtends<CompileOnlyMemory, ifrt::Memory> {
  public:
   explicit CompileOnlyMemory(
       int id, const PjRtMemorySpaceDescription* memory_description,
@@ -102,7 +102,7 @@ class CompileOnlyMemory
 };
 
 class CompileOnlyDevice
-    : public llvm::RTTIExtends<CompileOnlyDevice, ifrt::Device> {
+    : public xla::ifrt::RTTIExtends<CompileOnlyDevice, ifrt::Device> {
  public:
   explicit CompileOnlyDevice(const PjRtDeviceDescription* description,
                              absl::string_view platform_name)
@@ -165,7 +165,7 @@ class CompileOnlyDevice
 };
 
 class CompileOnlyIfRtClient final
-    : public llvm::RTTIExtends<CompileOnlyIfRtClient, ifrt::Client> {
+    : public xla::ifrt::RTTIExtends<CompileOnlyIfRtClient, ifrt::Client> {
  public:
   explicit CompileOnlyIfRtClient(std::shared_ptr<ifrt::PjRtTopology> topology)
       : topology_(std::move(topology)),

@@ -35,7 +35,6 @@ limitations under the License.
 #include "absl/time/time.h"
 #include "absl/types/span.h"
 #include "xla/tsl/platform/status_macros.h"
-#include "llvm/Support/Casting.h"
 #include "xla/layout.h"
 #include "xla/pjrt/distributed/key_value_store_interface.h"
 #include "xla/pjrt/pjrt_client.h"
@@ -44,6 +43,7 @@ limitations under the License.
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/memory.h"
+#include "xla/python/ifrt/rtti.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/pjrt_ifrt/pjrt_array.h"
 #include "xla/python/pjrt_ifrt/pjrt_client.h"
@@ -193,7 +193,8 @@ absl::Status PjRtTransferServer::CrossHostAwaitPull(
   std::vector<aux::PjRtBufferEntry::BufferRef> refs;
   refs.reserve(buffer_idxs.size() * arrays.size());
   for (xla::ifrt::ArrayRef& arr : arrays) {
-    auto* pjrt_arr = llvm::dyn_cast_or_null<xla::ifrt::PjRtArray>(arr.get());
+    auto* pjrt_arr =
+        xla::ifrt::dyn_cast_or_null<xla::ifrt::PjRtArray>(arr.get());
     if (pjrt_arr == nullptr) {
       return absl::InvalidArgumentError(
           "Cannot remote transfer non-pjrt arrays.");

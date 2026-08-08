@@ -36,6 +36,7 @@ limitations under the License.
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/raw_buffer.h"
 #include "xla/python/ifrt/array.h"
+#include "xla/python/ifrt/rtti.h"
 #include "xla/python/ifrt/test_util.h"
 #include "xla/python/pjrt_ifrt/pjrt_array.h"
 #include "xla/python/pjrt_ifrt/pjrt_client.h"
@@ -56,17 +57,17 @@ namespace {
 
 xla::ifrt::PjRtDevice* GetOtherDevice(xla::ifrt::ArrayRef arr) {
   auto* ifrt_client =
-      llvm::dyn_cast_or_null<xla::ifrt::PjRtClient>(arr->client());
-  return llvm::dyn_cast<xla::ifrt::PjRtDevice>(ifrt_client->devices()[1]);
+      xla::ifrt::dyn_cast_or_null<xla::ifrt::PjRtClient>(arr->client());
+  return xla::ifrt::dyn_cast<xla::ifrt::PjRtDevice>(ifrt_client->devices()[1]);
 }
 
 xla::ifrt::PjRtClient* GetIfrtClient(xla::ifrt::ArrayRef arr) {
-  return llvm::dyn_cast_or_null<xla::ifrt::PjRtClient>(arr->client());
+  return xla::ifrt::dyn_cast_or_null<xla::ifrt::PjRtClient>(arr->client());
 }
 
 xla::Shape ShapeFromIfrt(xla::ifrt::ArrayRef arr) {
   auto* pjrt_arr =
-      llvm::dyn_cast_or_null<xla::ifrt::PjRtCompatibleArray>(arr.get());
+      xla::ifrt::dyn_cast_or_null<xla::ifrt::PjRtCompatibleArray>(arr.get());
   auto buffer = pjrt_arr->pjrt_buffers()[0].get();
   return buffer->on_device_shape();
 }

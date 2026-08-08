@@ -45,8 +45,6 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "llvm/Support/Casting.h"
-#include "llvm/Support/ExtensibleRTTI.h"
 #include "xla/backends/cpu/alignment.h"
 #include "xla/backends/cpu/nanort/nanort_executable.h"
 #include "xla/hlo/builder/xla_computation.h"
@@ -78,6 +76,7 @@ limitations under the License.
 #include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/program.h"
 #include "xla/python/ifrt/remap_plan.h"
+#include "xla/python/ifrt/rtti.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
 #include "xla/python/ifrt/topology.h"
@@ -122,7 +121,7 @@ tsl::Future<> Ready(absl::Status status = absl::OkStatus()) {
 // implements some virtual methods that have the same implementation for all
 // NanoRT value types.
 template <typename Self, typename Base>
-class NanoValue : public llvm::RTTIExtends<Self, Base> {
+class NanoValue : public xla::ifrt::RTTIExtends<Self, Base> {
  public:
   explicit NanoValue(NanoIfrtClient* client)
       : client_(client), user_context_(ifrt::UserContextScope::current()) {}
@@ -843,12 +842,12 @@ ABSL_ATTRIBUTE_UNUSED char NanoTuple::ID = 'T';  // NOLINT
 
 // Executable implementation.
 class NanoExecutable final
-    : public llvm::RTTIExtends<NanoExecutable, ifrt::LoadedExecutable> {
+    : public xla::ifrt::RTTIExtends<NanoExecutable, ifrt::LoadedExecutable> {
  public:
   // Creates a NanoExecutable from an ifrt::Program.
   static absl::StatusOr<std::unique_ptr<NanoExecutable>> Create(
       NanoIfrtClient* client, std::unique_ptr<ifrt::Program> program) {
-    auto* xla_program = llvm::dyn_cast<ifrt::HloProgram>(program.get());
+    auto* xla_program = xla::ifrt::dyn_cast<ifrt::HloProgram>(program.get());
     if (xla_program == nullptr) {
       return InvalidArgument("NanoRT requires an HloProgram");
     }
@@ -1209,11 +1208,11 @@ class NanoExecutable final
     nano_args.reserve(args.size());
 
     for (int i = 0; i < args.size(); ++i) {
-      auto* nano_array = llvm::dyn_cast_or_null<NanoArray>(args[i].get());
+      auto* nano_array = xla::ifrt::dyn_cast_or_null<NanoArray>(args[i].get());
       if (ABSL_PREDICT_FALSE(nano_array == nullptr)) {
         // The input isn't a nano array, so it must be a sharded array.
         auto* sharded_array =
-            llvm::dyn_cast_or_null<ShardedNanoArray>(args[i].get());
+            xla::ifrt::dyn_cast_or_null<ShardedNanoArray>(args[i].get());
         if (sharded_array == nullptr) {
           return InvalidArgument(
               "Argument is not a NanoArray or ShardedNanoArray: %s",
@@ -1245,7 +1244,7 @@ ABSL_ATTRIBUTE_UNUSED char NanoExecutable::ID = 'E';  // NOLINT
 
 // Compiler implementation.
 class NanoCompiler final
-    : public llvm::RTTIExtends<NanoCompiler, ifrt::Compiler> {
+    : public xla::ifrt::RTTIExtends<NanoCompiler, ifrt::Compiler> {
  public:
   explicit NanoCompiler(NanoIfrtClient* client) : client_(client) {}
 
@@ -1285,7 +1284,8 @@ ABSL_ATTRIBUTE_UNUSED char NanoCompiler::ID = 'C';  // NOLINT
 
 // Memory implementation. There is only one address space so this doesn't do
 // much.
-class NanoMemory final : public llvm::RTTIExtends<NanoMemory, ifrt::Memory> {
+class NanoMemory final
+    : public xla::ifrt::RTTIExtends<NanoMemory, ifrt::Memory> {
  public:
   explicit NanoMemory(NanoIfrtClient* client) : client_(client) {}
 
@@ -1313,7 +1313,8 @@ class NanoMemory final : public llvm::RTTIExtends<NanoMemory, ifrt::Memory> {
 ABSL_ATTRIBUTE_UNUSED char NanoMemory::ID = 'M';  // NOLINT
 
 // Device implementation. There is only one device so this doesn't do much.
-class NanoDevice final : public llvm::RTTIExtends<NanoDevice, ifrt::Device> {
+class NanoDevice final
+    : public xla::ifrt::RTTIExtends<NanoDevice, ifrt::Device> {
  public:
   NanoDevice(NanoIfrtClient* client, ifrt::DeviceId id, ifrt::Memory* memory)
       : client_(client), id_(id), memory_(memory) {}
@@ -1426,7 +1427,7 @@ NanoIfrtClient::AssembleArrayFromSingleDeviceArrays(
   std::vector<tsl::RCReference<NanoArray>> nano_arrays;
   nano_arrays.reserve(arrays.size());
   for (const auto& array : arrays) {
-    auto* nano_array = llvm::dyn_cast_or_null<NanoArray>(array.get());
+    auto* nano_array = xla::ifrt::dyn_cast_or_null<NanoArray>(array.get());
     if (nano_array == nullptr) {
       return InvalidArgument("Array is not a NanoArray: %s",
                              array->DebugString());
@@ -1448,12 +1449,12 @@ absl::StatusOr<std::vector<ifrt::ArrayRef>> NanoIfrtClient::CopyArrays(
     ifrt::ArrayRef copy;
     ABSL_ASSIGN_OR_RETURN(auto sharding, array->sharding().WithDeviceAssignment(
                                         devices, memory_kind));
-    if (auto nano_array = llvm::dyn_cast_or_null<NanoArray>(array.get())) {
+    if (auto nano_array = xla::ifrt::dyn_cast_or_null<NanoArray>(array.get())) {
       copy = tsl::TakeRef(new NanoArray(
           this, nano_array->dtype(), nano_array->shape(), nano_array->data(),
           nano_array->owned_data(), std::move(sharding)));
     } else if (auto sharded_nano_array =
-                   llvm::dyn_cast_or_null<ShardedNanoArray>(array.get())) {
+                   xla::ifrt::dyn_cast_or_null<ShardedNanoArray>(array.get())) {
       std::vector<tsl::RCReference<NanoArray>> shards_copy;
       shards_copy.reserve(sharded_nano_array->shards().size());
       for (const auto& shard : sharded_nano_array->shards()) {
