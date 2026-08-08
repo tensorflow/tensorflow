@@ -2135,8 +2135,16 @@ def tuple(tensors, name=None, control_inputs=None):  # pylint: disable=redefined
     ValueError: If `tensors` does not contain any `Tensor` or `IndexedSlices`.
     TypeError: If `control_inputs` is not a list of `Operation` or `Tensor`
       objects.
+    TypeError: If `tensors` contains a nested list, tuple, or dict instead of
+      a flat sequence of `Tensor`, `IndexedSlices`, `Operation`, or `None`.
 
   """
+  if any(nest.is_nested(t) for t in tensors):
+    raise TypeError(
+        "'tensors' must be a flat list of Tensor, IndexedSlices, Operation, "
+        "or None. tf.tuple() does not flatten nested structures. "
+        f"Received: {tensors}"
+    )
   if context.executing_eagerly():
     return tensors
   with ops.name_scope(name, "tuple", tensors) as name:
