@@ -2097,7 +2097,6 @@ absl::Status GpuCompiler::OptimizeHloPostLayoutAssignment(
       // so that SolLatencyEstimator and the thunk emitter can consume it.
       pipeline.AddPass<CollectiveKernelStrategyAnnotator>(
           gpu_topology, /*is_multimem_enabled=*/false);
-      pipeline.AddPass<CollectiveFusion>(gpu_topology);
     }
     if (IsTritonGemmEnabled(debug_options, gpu_version)) {
       pipeline.AddPass<DotDimensionNormalizer>(
