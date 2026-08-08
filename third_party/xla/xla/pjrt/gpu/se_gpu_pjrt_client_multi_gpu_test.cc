@@ -943,8 +943,6 @@ TEST(StreamExecutorGpuClientTest, NonZeroGPUDeviceTimeMeasurementMultiGPU) {
   options.executable_build_options.set_num_partitions(8)
       .set_use_spmd_partitioning(true)
       .set_allow_spmd_sharding_propagation_to_output({true});
-  options.executable_build_options.mutable_debug_options()
-      ->clear_xla_enable_nccl_symmetric_buffers_for_collectives();
   ASSERT_OK_AND_ASSIGN(
       auto executable,
       client->CompileAndLoad(

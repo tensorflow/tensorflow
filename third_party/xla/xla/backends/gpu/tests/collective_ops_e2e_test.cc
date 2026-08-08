@@ -3275,8 +3275,7 @@ TEST_F(CollectiveOpsTestE2E, OptimizedSubByteAllGatherOnDim0OutputIsCorrect) {
 
   const HloModule* module = execution_result.optimized_module;
   EXPECT_THAT(module->entry_computation()->root_instruction(),
-              GmockMatch(m::Copy(
-                  m::Bitcast(m::AllGatherDone().WithShape(S8, {4, 2})))));
+              GmockMatch(m::Bitcast(m::AllGatherDone().WithShape(S8, {4, 2}))));
 
   const Literal expected_result =
       LiteralUtil::CreateR2<s4>({{s4(0), s4(1), s4(2), s4(3)},
@@ -3352,8 +3351,8 @@ TEST_F(CollectiveOpsTestE2E, AllGatherOnChangedDimensionIsCorrect) {
                           test_runner().HloModuleFromWrapped(executable.get()));
   const HloInstruction* root = module->entry_computation()->root_instruction();
 
-  EXPECT_THAT(root, GmockMatch(m::Fusion(m::AllGatherDone(m::AllGatherStart(
-                        m::Bitcast(m::Copy(m::Constant())))))));
+  EXPECT_THAT(root, GmockMatch(m::Fusion(m::AllGatherDone(
+                        m::AllGatherStart(m::Bitcast(m::Constant()))))));
   EXPECT_THAT(root->fused_expression_root(),
               GmockMatch(m::Transpose(m::Bitcast(m::Parameter()))));
 

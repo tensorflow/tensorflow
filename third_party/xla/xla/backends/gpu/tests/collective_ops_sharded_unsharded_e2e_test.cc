@@ -49,8 +49,8 @@ namespace {
 class CollectiveOpsTestE2EShardedUnsharded : public CollectiveOpsE2ETestBase {
  public:
   CollectiveOpsTestE2EShardedUnsharded()
-      : CollectiveOpsE2ETestBase(/*memory_size=*/128 * kMB,
-                                 /*collectives_memory_size=*/128 * kMB) {}
+      : CollectiveOpsE2ETestBase(/*memory_size=*/64 * kMB,
+                                 /*collectives_memory_size=*/0) {}
 
   void CollectiveOpsCompareShardedUnsharded(
       const std::string& hlo_text, const int64_t num_partitions = 2,

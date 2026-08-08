@@ -109,7 +109,6 @@ TEST_P(GpuCollectiveMemorySpaceAssignmentTest,
   HloModuleConfig config = GetModuleConfigForTest();
   DebugOptions debug_options = config.debug_options();
   debug_options.set_xla_gpu_enable_nccl_user_buffers(UseNcclUserBuffers());
-  debug_options.clear_xla_enable_nccl_symmetric_buffers_for_collectives();
   if (UseNcclSymmetricBuffers()) {
     auto* filter =
         debug_options.add_xla_enable_nccl_symmetric_buffers_for_collectives();
@@ -200,7 +199,6 @@ TEST_F(GpuMemorySpaceAssignmentTest,
 
   HloModuleConfig config = GetModuleConfigForTest();
   DebugOptions debug_options = config.debug_options();
-  debug_options.clear_xla_enable_nccl_symmetric_buffers_for_collectives();
 
   // Enable symmetric buffers only for AllReduce F32 up to 4096 bytes.
   auto* filter =
@@ -265,7 +263,6 @@ TEST_F(GpuMemorySpaceAssignmentTest,
 
   HloModuleConfig config = GetModuleConfigForTest();
   DebugOptions debug_options = config.debug_options();
-  debug_options.clear_xla_enable_nccl_symmetric_buffers_for_collectives();
 
   // Enable symmetric buffers for ALL collectives F32 up to 4096 bytes.
   auto* filter =
@@ -328,7 +325,6 @@ TEST_F(GpuMemorySpaceAssignmentTest,
 
   HloModuleConfig config = GetModuleConfigForTest();
   DebugOptions debug_options = config.debug_options();
-  debug_options.clear_xla_enable_nccl_symmetric_buffers_for_collectives();
 
   // Filter 1: AllReduce F32
   {
@@ -393,7 +389,6 @@ TEST_F(GpuMemorySpaceAssignmentTest,
 
   HloModuleConfig config = GetModuleConfigForTest();
   DebugOptions debug_options = config.debug_options();
-  debug_options.clear_xla_enable_nccl_symmetric_buffers_for_collectives();
 
   // Filter 1: AllReduce F32 up to 4096 bytes
   {
