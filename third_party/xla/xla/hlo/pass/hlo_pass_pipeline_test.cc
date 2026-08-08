@@ -34,8 +34,10 @@ limitations under the License.
 #include "xla/hlo/pass/hlo_pass_interface.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/test_helpers.h"
+#include "xla/service/dump.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 
@@ -517,6 +519,68 @@ ENTRY main {
     EXPECT_EQ(module->entry_computation()->root_instruction()->name(),
               "foo_A2_B_C_D");
   }
+}
+
+TEST_F(HloPassPipelineTest, AsyncHloDump) {
+  const std::string module_str = R"(
+HloModule AsyncHloDump
+
+ENTRY main {
+  a = f32[] parameter(0)
+  b = f32[] parameter(1)
+  ROOT foo = f32[] multiply(a, b)
+}
+)";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(module_str));
+
+  auto env = tsl::Env::Default();
+  std::string dump_dir;
+  ASSERT_TRUE(env->LocalTempFilename(&dump_dir));
+
+  DebugOptions& debug_options =
+      module->mutable_config().mutable_debug_options();
+  debug_options.set_xla_dump_to(dump_dir);
+  debug_options.set_xla_dump_hlo_as_text(true);
+  debug_options.set_xla_dump_hlo_pass_re(".*");
+  debug_options.set_xla_async_hlo_dump(true);
+
+  bool changed = false;
+  {
+    HloPassPipeline pipeline(TestName());
+    pipeline.AddPass<ReverseStringModulePass>();
+    pipeline.AddPass<ReverseStringModulePass>();
+    ASSERT_OK_AND_ASSIGN(changed, pipeline.Run(module.get()));
+  }
+  EXPECT_TRUE(changed);
+  xla::WaitForAllAsyncDumps();
+
+  const HloModuleMetadataProto& metadata = module->metadata()->proto();
+  EXPECT_EQ(metadata.canonical_module_id(), module->unique_id());
+
+  ASSERT_THAT(metadata.pass_metadata(), SizeIs(3));
+
+  std::vector<std::string> expected_pass_names = {"pipeline-start", "reverse",
+                                                  "reverse"};
+  for (int i = 0; i < 3; ++i) {
+    const auto& pass_metadata = metadata.pass_metadata(i);
+    EXPECT_EQ(pass_metadata.pass_name(), expected_pass_names[i]);
+    EXPECT_THAT(pass_metadata.dump_filenames(), SizeIs(1));
+    std::string filename = pass_metadata.dump_filenames(0);
+
+    std::string expected_step_str = absl::StrFormat(".%04d.", i);
+    EXPECT_THAT(filename, ::testing::HasSubstr(expected_step_str));
+
+    uint64 file_size;
+    EXPECT_OK(env->GetFileSize(filename, &file_size));
+    EXPECT_GT(file_size, 0);
+  }
+
+  // Clean up.
+  int64_t undeleted_files = 0;
+  int64_t undeleted_dirs = 0;
+  ASSERT_OK(
+      env->DeleteRecursively(dump_dir, &undeleted_files, &undeleted_dirs));
 }
 
 }  // namespace

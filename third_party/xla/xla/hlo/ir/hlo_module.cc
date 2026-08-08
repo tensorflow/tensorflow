@@ -1729,6 +1729,15 @@ void HloModule::Clone(const std::string& suffix, HloCloneContext* context,
   module->set_hlo_passes_started(hlo_passes_started());
   module->set_frontend_attributes(frontend_attributes());
   *module->metadata() = metadata();
+  module->hlo_dump_step_number_.store(
+      hlo_dump_step_number_.load(std::memory_order_relaxed),
+      std::memory_order_relaxed);
+  module->hlo_dump_timestamp_.store(
+      hlo_dump_timestamp_.load(std::memory_order_relaxed),
+      std::memory_order_relaxed);
+  module->hlo_dump_execution_count_.store(
+      hlo_dump_execution_count_.load(std::memory_order_relaxed),
+      std::memory_order_relaxed);
   // The canonical module id should be the same as the unique id from the
   // module. We don't want to copy the id from the other metadata.
   module->metadata()->set_canonical_module_id(module->unique_id());
@@ -2092,6 +2101,18 @@ void HloModule::OriginalValueRecoveryTable::BuildAndAddRecoveryComputation(
         recovery_module->AddEntryComputation(builder.Build(*root_instruction));
         return recovery_module;
       });
+}
+
+uint64_t HloModule::GetDumpTimestamp() const {
+  uint64_t ts = hlo_dump_timestamp_.load(std::memory_order_relaxed);
+  if (ts == 0) {
+    uint64_t new_ts = tsl::Env::Default()->NowMicros();
+    if (hlo_dump_timestamp_.compare_exchange_strong(
+            ts, new_ts, std::memory_order_relaxed)) {
+      ts = new_ts;
+    }
+  }
+  return ts;
 }
 
 /* static */ std::atomic<int> HloModule::next_unique_module_id_(0);

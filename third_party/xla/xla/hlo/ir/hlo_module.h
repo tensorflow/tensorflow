@@ -155,6 +155,7 @@ class HloModule {
 
   const std::string& name() const { return name_; }
   void set_name(std::string name) { name_ = std::move(name); }
+  void set_unique_id(int id) { unique_id_ = id; }
 
   // Move computations from the input module to this one, while ensuring that
   // the names of instructions within the computations are unchanged.
@@ -672,6 +673,14 @@ class HloModule {
   // the lifetime of this process.
   int unique_id() const { return unique_id_; }
 
+  int64_t NextDumpStepNumber() const {
+    return hlo_dump_step_number_.fetch_add(1, std::memory_order_relaxed);
+  }
+  uint64_t GetDumpTimestamp() const;
+  int64_t NextDumpExecutionCount() const {
+    return hlo_dump_execution_count_.fetch_add(1, std::memory_order_relaxed);
+  }
+
   // Sets the schedule of the module to the given schedule.
   absl::Status set_schedule(HloSchedule schedule);
 
@@ -992,7 +1001,7 @@ class HloModule {
     return next_unique_computation_id_;
   }
   // A unique id to label modules with.
-  const int unique_id_;
+  int unique_id_;
 
   // The HloSchedule of the module. The schedule if it exists contains a
   // sequential order of instructions for each non-fusion computation in the
@@ -1235,6 +1244,10 @@ class HloModule {
   absl::flat_hash_map<tsl::Fprint128, std::shared_ptr<CacheEntry>,
                       tsl::Fprint128Hasher>
       cache_ ABSL_GUARDED_BY(cache_mutex_);
+
+  mutable std::atomic<int64_t> hlo_dump_step_number_{0};
+  mutable std::atomic<uint64_t> hlo_dump_timestamp_{0};
+  mutable std::atomic<int64_t> hlo_dump_execution_count_{0};
 };
 
 using OriginalValueRecoveryTable = HloModule::OriginalValueRecoveryTable;
