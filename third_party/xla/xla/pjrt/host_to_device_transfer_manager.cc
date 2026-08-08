@@ -109,6 +109,14 @@ class CommonAsyncHostToDeviceTransferManager
     allocation_events.reserve(shape_specs.size());
     definition_events.reserve(shape_specs.size());
     device_shapes.reserve(shape_specs.size());
+
+    absl::Cleanup fail_definitions = [&] {
+      for (PjRtDeviceEventPromiseRef& definition_promise : definition_events) {
+        definition_promise.SetError(absl::UnknownError(
+            "Failed to create host to device transfer manager."));
+      }
+    };
+
     for (int i = 0; i < shape_specs.size(); ++i) {
       const PjRtClient::ShapeSpec& shape_spec = shape_specs[i];
       if (shape_spec.element_type == TUPLE) {
@@ -186,6 +194,7 @@ class CommonAsyncHostToDeviceTransferManager
       buffer_sizes.push_back(on_device_bytes_count);
     }
 
+    std::move(fail_definitions).Cancel();
     return std::unique_ptr<CommonAsyncHostToDeviceTransferManager>(
         new CommonAsyncHostToDeviceTransferManager(
             std::move(buffers), std::move(undispatched_buffer_refs),
