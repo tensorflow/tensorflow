@@ -311,8 +311,8 @@ class BinaryOpTest(test.TestCase):
     # P(a, x) is undefined for a <= 0; x == 0 short-circuits before the domain
     # check in Eigen, so the kernel must return NaN for those inputs explicitly.
     for dtype in [np.float32, np.float64]:
-      a_vals = np.array([-0.1, -1.0, 0.0], dtype=dtype)
-      x_vals = np.array([0.0, 0.0, 0.0], dtype=dtype)
+      a_vals = np.array([-0.1, -1.0, 0.0, np.nan], dtype=dtype)
+      x_vals = np.array([0.0, 0.0, 0.0, 0.0], dtype=dtype)
       with self.cached_session():
         result = math_ops.igamma(
             constant_op.constant(a_vals),

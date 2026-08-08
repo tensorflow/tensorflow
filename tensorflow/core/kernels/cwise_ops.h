@@ -852,7 +852,7 @@ template <typename Scalar>
 struct igamma_op {
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE Scalar
   operator()(const Scalar& a, const Scalar& x) const {
-    if (x == Scalar(0) && a <= Scalar(0)) {
+    if (x == Scalar(0) && !(a > Scalar(0))) {
       return Eigen::NumTraits<Scalar>::quiet_NaN();
     }
     return Eigen::internal::scalar_igamma_op<Scalar>()(a, x);
@@ -862,8 +862,8 @@ struct igamma_op {
   packetOp(const Packet& a, const Packet& x) const {
     Packet zeros = pzero(x);
     Packet x_is_zero = pcmp_eq(x, zeros);
-    Packet a_le_zero = por(pcmp_lt(a, zeros), pcmp_eq(a, zeros));
-    Packet domain_error = pand(x_is_zero, a_le_zero);
+    Packet a_gt_zero = pcmp_gt(a, zeros);
+    Packet domain_error = pandnot(x_is_zero, a_gt_zero);
     Packet nan = pset1<Packet>(Eigen::NumTraits<Scalar>::quiet_NaN());
     Packet igamma_val =
         Eigen::internal::scalar_igamma_op<Scalar>().packetOp(a, x);
