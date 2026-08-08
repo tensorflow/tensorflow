@@ -29,7 +29,6 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/functional/any_invocable.h"
 #include "absl/status/status.h"
-#include "absl/status/status_macros.h"
 #include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
@@ -55,6 +54,7 @@ limitations under the License.
 #include "xla/pjrt/plugin/xla_cpu/cpu_topology_description.h"
 #include "xla/pjrt/se/local_device_state.h"
 #include "xla/pjrt/thread_pool_async_work_runner.h"
+#include "xla/runtime/device_id.h"
 #include "xla/service/computation_placer.h"
 #include "xla/service/platform_util.h"
 #include "xla/shape.h"
@@ -150,28 +150,31 @@ absl::StatusOr<std::unique_ptr<PjRtStreamExecutorClient>> GetClient() {
       /*gpu_run_options=*/nullptr);
 }
 
-// Variant of GetClient() that creates `num_devices` Host-platform devices, so
-// multi-device code paths in CommonPjRtLoadedExecutable::Execute can be
-// exercised without accelerator hardware. The client's allocator is
+// Variant of GetClient() that creates `num_addressable_devices` Host-platform
+// devices and optional `num_non_addressable_devices` non-addressable devices,
+// so multi-device and cross-host code paths can be exercised without
+// accelerator hardware. The client's allocator is
 // `local_client->backend().memory_allocator()`, which only knows the
 // device ordinals PlatformUtil enumerated for the LocalClient's Backend —
 // on Host that is `xla_force_host_platform_device_count` (set via XLA_FLAGS
 // on this test target), not VisibleDeviceCount().
 absl::StatusOr<std::unique_ptr<PjRtStreamExecutorClient>> GetClientWithDevices(
-    int num_devices) {
+    int num_addressable_devices, int num_non_addressable_devices = 0) {
   LocalClient* local_client = xla::ClientLibrary::LocalClientOrDie();
   ABSL_ASSIGN_OR_RETURN(se::Platform * platform, PlatformUtil::GetPlatform("Host"));
-  if (local_client->device_count() < num_devices) {
-    return absl::FailedPreconditionError(absl::StrFormat(
-        "LocalClient has %d Host devices, need %d; set "
-        "--xla_force_host_platform_device_count=%d",
-        local_client->device_count(), num_devices, num_devices));
+  if (local_client->device_count() < num_addressable_devices) {
+    return absl::FailedPreconditionError(
+        absl::StrFormat("LocalClient has %d Host devices, need %d; set "
+                        "--xla_force_host_platform_device_count=%d",
+                        local_client->device_count(), num_addressable_devices,
+                        num_addressable_devices));
   }
+  int total_devices = num_addressable_devices + num_non_addressable_devices;
   std::vector<std::unique_ptr<PjRtStreamExecutorDevice>> devices;
-  devices.reserve(num_devices);
+  devices.reserve(total_devices);
   std::vector<std::unique_ptr<PjRtMemorySpace>> memory_spaces;
-  memory_spaces.reserve(num_devices);
-  for (int i = 0; i < num_devices; ++i) {
+  memory_spaces.reserve(num_addressable_devices);
+  for (int i = 0; i < num_addressable_devices; ++i) {
     ABSL_ASSIGN_OR_RETURN(se::StreamExecutor * executor,
                      platform->ExecutorForDevice(i));
     auto device_state = std::make_unique<LocalDeviceState>(
@@ -186,6 +189,12 @@ absl::StatusOr<std::unique_ptr<PjRtStreamExecutorClient>> GetClientWithDevices(
         i, devices.back().get(), "cpu", 0));
     devices.back()->AttachMemorySpace(memory_spaces.back().get(),
                                       /*is_default=*/true);
+  }
+  for (int i = num_addressable_devices; i < total_devices; ++i) {
+    devices.emplace_back(std::make_unique<PjRtStreamExecutorDevice>(
+        i, /*local_device_state=*/nullptr, /*local_device_id=*/-1,
+        /*process_index=*/1, /*process_index_in_partition=*/0,
+        /*partition_index=*/0, "cpu"));
   }
   auto topology = CreateCpuTopologyDescription(devices.size());
   return MakeTestPjRtStreamExecutorClient(
@@ -554,6 +563,75 @@ TEST(PjRtStreamExecutorClientTest, TwoPhaseExecutePrepareFailureSkipsLaunch) {
       << " device(s) across " << kIterations
       << " iterations despite a peer Prepare failure; the two-phase barrier "
          "let a succeeding device past before the failure was recorded.";
+}
+
+TEST(PjRtStreamExecutorClientTest, CrossHostSendBuffersCleanupAfterFailure) {
+  ASSERT_OK_AND_ASSIGN(auto client,
+                       GetClientWithDevices(/*num_addressable_devices=*/1,
+                                            /*num_non_addressable_devices=*/1));
+
+  Shape shape = ShapeUtil::MakeShape(S32, {256});
+  std::vector<int32_t> data(256, 1);
+  auto* memory_space = client->memory_spaces()[0];
+
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<PjRtBuffer> buffer0,
+      client->BufferFromHostBuffer(
+          data.data(), shape.element_type(), shape.dimensions(),
+          /*byte_strides=*/std::nullopt,
+          PjRtClient::HostBufferSemantics::kImmutableOnlyDuringCall, nullptr,
+          /*memory_space=*/memory_space,
+          /*device_layout=*/nullptr));
+
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<PjRtBuffer> buffer1,
+      client->BufferFromHostBuffer(
+          data.data(), shape.element_type(), shape.dimensions(),
+          /*byte_strides=*/std::nullopt,
+          PjRtClient::HostBufferSemantics::kImmutableOnlyDuringCall, nullptr,
+          /*memory_space=*/memory_space,
+          /*device_layout=*/nullptr));
+
+  // Delete buffer1 so that AcquireScopedRawBuffer fails on it mid-loop in
+  // CrossHostSendBuffers.
+  buffer1->Delete();
+
+  std::vector<PjRtBuffer*> buffers = {buffer0.get(), buffer1.get()};
+  std::vector<GlobalDeviceId> dst_device_ids = {GlobalDeviceId(1),
+                                                GlobalDeviceId(1)};
+  std::vector<CrossHostTransferKey> transfer_keys = {CrossHostTransferKey(0),
+                                                     CrossHostTransferKey(1)};
+
+  EXPECT_THAT(
+      client->CrossHostSendBuffers(buffers, dst_device_ids, transfer_keys),
+      absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
+
+  // Verify buffer0 can be deleted cleanly without hanging on unfulfilled usage
+  // event promise.
+  buffer0->Delete();
+  EXPECT_TRUE(buffer0->IsDeleted());
+}
+
+TEST(PjRtStreamExecutorClientTest, CrossHostReceiveBuffersCleanupAfterFailure) {
+  ASSERT_OK_AND_ASSIGN(auto client,
+                       GetClientWithDevices(/*num_addressable_devices=*/1,
+                                            /*num_non_addressable_devices=*/1));
+
+  Shape valid_shape = ShapeUtil::MakeShapeWithDescendingLayout(S32, {256});
+  Shape invalid_shape = ShapeUtil::MakeTupleShape({});
+  std::vector<Shape> shapes = {valid_shape, invalid_shape};
+  std::vector<GlobalDeviceId> src_device_ids = {GlobalDeviceId(1),
+                                                GlobalDeviceId(1)};
+  std::vector<CrossHostTransferKey> transfer_keys = {CrossHostTransferKey(0),
+                                                     CrossHostTransferKey(1)};
+
+  // Iteration 0 succeeds in DefineBuffer, iteration 1 fails mid-loop.
+  // Buffers created in iteration 0 must be destroyed without deadlocking on
+  // unfulfilled definition event.
+  EXPECT_THAT(
+      client->CrossHostReceiveBuffers(client->addressable_devices()[0], shapes,
+                                      src_device_ids, transfer_keys),
+      absl_testing::StatusIs(absl::StatusCode::kFailedPrecondition));
 }
 
 }  // namespace

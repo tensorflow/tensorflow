@@ -32,6 +32,7 @@ limitations under the License.
 #include "absl/base/casts.h"
 #include "absl/base/nullability.h"
 #include "absl/base/thread_annotations.h"
+#include "absl/cleanup/cleanup.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
@@ -1624,6 +1625,13 @@ absl::StatusOr<std::vector<Future<>>> CommonPjRtClient::CrossHostSendBuffers(
   std::vector<PjRtDeviceEventPromiseRef> usage_event_promises;
   usage_event_promises.reserve(buffers.size());
 
+  absl::Cleanup fail_usage_promises = [&] {
+    for (auto& promise : usage_event_promises) {
+      promise.SetError(
+          absl::InternalError("CrossHostSendBuffers failed mid-loop."));
+    }
+  };
+
   for (int i = 0; i < buffers.size(); ++i) {
     PjRtDeviceEventPromiseRef usage_event_promise;
     PjRtDeviceEventRef usage_event;
@@ -1668,6 +1676,7 @@ absl::StatusOr<std::vector<Future<>>> CommonPjRtClient::CrossHostSendBuffers(
         /*src_global_device_id=*/buffers[i]->device()->global_device_id(),
         dst_global_device_ids[i], std::move(raw_buffers[i])});
   }
+  std::move(fail_usage_promises).Cancel();
 
   // Schedule sends.
   absl::StatusOr<PjRtDeviceEventRefVector> usage_events_or =
@@ -1747,6 +1756,11 @@ CommonPjRtClient::CrossHostReceiveBuffers(
       CreateLinkedEventPromise(memory_space,
                                absl::StrFormat("CrossHostReceiveBuffers")));
 
+  absl::Cleanup fail_definition = [&] {
+    definition_event_promise.SetError(
+        absl::UnknownError("Failed to create cross-host receive buffers."));
+  };
+
   // Build output receive buffers, collect their allocation events, and form
   // their transfer specs.
   PjRtDeviceEventRefVector allocation_events;
@@ -1782,6 +1796,7 @@ CommonPjRtClient::CrossHostReceiveBuffers(
                                                    std::move(raw_buffer)});
     buffers.push_back(std::move(buffer));
   }
+  std::move(fail_definition).Cancel();
 
   // Schedule receives.
   absl::StatusOr<PjRtDeviceEventRefVector> definition_events_or =
@@ -2490,7 +2505,8 @@ CommonPjRtBufferImpl::CopyToCpuMemorySpace(xla::Shape dst_shape,
             PjRtClient::HostBufferSemantics::kImmutableUntilTransferCompletes,
             dst_raw_buffer);
         if (!status_or_h2d_transfer_event.ok()) {
-          definition_event_promise.SetError(status);
+          definition_event_promise.SetError(
+              status_or_h2d_transfer_event.status());
         } else {
           status_or_h2d_transfer_event.value().AndThen(
               [literal = std::move(literal)] {});
