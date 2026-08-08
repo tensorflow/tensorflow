@@ -1165,5 +1165,18 @@ class TensorArrayTest(xla_test.XLATestCase):
       self.assertEqual(size0_v, 2)
       self.assertEqual(size1_v, 4)
 
+  def testTensorArrayUnstackScalarRaisesError(self):
+    with self.session(), self.test_scope():
+      ta = tensor_array_ops.TensorArray(dtype=dtypes.float32, size=3)
+      scalar = constant_op.constant(1.0)
+
+      def fn():
+        return ta.unstack(scalar)
+
+      with self.assertRaisesRegex(
+          (errors.InvalidArgumentError, ValueError),
+          "scatter/unstack requires value to have rank >= 1, got scalar"):
+        self.evaluate(xla.compile(fn))
+
 if __name__ == "__main__":
   test.main()
