@@ -45,19 +45,19 @@ module {
 
 module {
   func.func @conv(%arg0: tensor<1x2x2x3xf32>) -> (tensor<*xf32>, tensor<*xf32>) {
-    %weight = "tf.Const"() {value = dense<2.000000e+00> : tensor<2x3x3x2xf32>} : () -> tensor<2x3x3x2xf32>
-    %1 = "tf.PartitionedCall"(%arg0, %weight) {_tfl_quant_trait = "fully_quantizable", config = "", config_proto = "", executor_type = "", f = @composite_conv2d_fn_1} : (tensor<1x2x2x3xf32>, tensor<2x3x3x2xf32>) -> tensor<*xf32>
-    %2 = "tf.PartitionedCall"(%arg0, %weight) {_tfl_quant_trait = "fully_quantizable", config = "", config_proto = "", executor_type = "", f = @composite_conv2d_fn_2} : (tensor<1x2x2x3xf32>, tensor<2x3x3x2xf32>) -> tensor<*xf32>
+    %weight = "tf.Const"() {value = dense<2.000000e+00> : tensor<2x2x3x2xf32>} : () -> tensor<2x2x3x2xf32>
+    %1 = "tf.PartitionedCall"(%arg0, %weight) {_tfl_quant_trait = "fully_quantizable", config = "", config_proto = "", executor_type = "", f = @composite_conv2d_fn_1} : (tensor<1x2x2x3xf32>, tensor<2x2x3x2xf32>) -> tensor<*xf32>
+    %2 = "tf.PartitionedCall"(%arg0, %weight) {_tfl_quant_trait = "fully_quantizable", config = "", config_proto = "", executor_type = "", f = @composite_conv2d_fn_2} : (tensor<1x2x2x3xf32>, tensor<2x2x3x2xf32>) -> tensor<*xf32>
     func.return %1, %2 : tensor<*xf32>, tensor<*xf32>
   }
 
-  func.func private @composite_conv2d_fn_1(%arg0: tensor<1x2x2x3xf32>, %arg1: tensor<2x3x3x2xf32>) -> tensor<*xf32> attributes {tf_quant.composite_function} {
-    %conv = "tf.Conv2D"(%arg0, %arg1) {attr_map = "0:strides,1:use_cudnn_on_gpu,2:padding,3:explicit_paddings,4:dilations", data_format = "NHWC", device = "", dilations = [1, 2, 2, 1], explicit_paddings = [], padding = "SAME", strides = [1, 1, 2, 1], use_cudnn_on_gpu = true} : (tensor<1x2x2x3xf32>, tensor<2x3x3x2xf32>) -> tensor<*xf32>
+  func.func private @composite_conv2d_fn_1(%arg0: tensor<1x2x2x3xf32>, %arg1: tensor<2x2x3x2xf32>) -> tensor<*xf32> attributes {tf_quant.composite_function} {
+    %conv = "tf.Conv2D"(%arg0, %arg1) {attr_map = "0:strides,1:use_cudnn_on_gpu,2:padding,3:explicit_paddings,4:dilations", data_format = "NHWC", device = "", dilations = [1, 2, 2, 1], explicit_paddings = [], padding = "SAME", strides = [1, 1, 2, 1], use_cudnn_on_gpu = true} : (tensor<1x2x2x3xf32>, tensor<2x2x3x2xf32>) -> tensor<*xf32>
     return %conv : tensor<*xf32>
   }
 
-  func.func private @composite_conv2d_fn_2(%arg0: tensor<1x2x2x3xf32>, %arg1: tensor<2x3x3x2xf32>) -> tensor<*xf32> attributes {tf_quant.composite_function} {
-    %conv = "tf.Conv2D"(%arg0, %arg1) {attr_map = "0:strides,1:use_cudnn_on_gpu,2:padding,3:explicit_paddings,4:dilations", data_format = "NHWC", device = "", dilations = [1, 2, 2, 1], explicit_paddings = [], padding = "VALID", strides = [1, 1, 2, 1], use_cudnn_on_gpu = true} : (tensor<1x2x2x3xf32>, tensor<2x3x3x2xf32>) -> tensor<*xf32>
+  func.func private @composite_conv2d_fn_2(%arg0: tensor<1x2x2x3xf32>, %arg1: tensor<2x2x3x2xf32>) -> tensor<*xf32> attributes {tf_quant.composite_function} {
+    %conv = "tf.Conv2D"(%arg0, %arg1) {attr_map = "0:strides,1:use_cudnn_on_gpu,2:padding,3:explicit_paddings,4:dilations", data_format = "NHWC", device = "", dilations = [1, 2, 2, 1], explicit_paddings = [], padding = "VALID", strides = [1, 1, 2, 1], use_cudnn_on_gpu = true} : (tensor<1x2x2x3xf32>, tensor<2x2x3x2xf32>) -> tensor<*xf32>
     return %conv : tensor<*xf32>
   }
 
@@ -65,8 +65,8 @@ module {
 // CHECK-DAG: %[[q_w:.*]] = "tf.Const"() <{value = #tf_type<tensor_proto : "0x746674
 // CHECK-DAG: %[[w_scale:.*]] = "tf.Const"() <{value = dense<0.0157480314> : tensor<f32>}> : () -> tensor<f32>
 // CHECK-DAG: %[[w_zp:.*]] = "tf.Const"() <{value = dense<0> : tensor<i32>}> : () -> tensor<i32>
-// CHECK: %[[quantize_1:.*]] = "tf.PartitionedCall"(%arg0, %[[q_w]], %[[w_scale]], %[[w_zp]]) <{config = "", config_proto = "", executor_type = "", f = @quantized_conv2d_fn_1}> : (tensor<1x2x2x3xf32>, tensor<2x3x3x2x!tf_type.qint8>, tensor<f32>, tensor<i32>) -> tensor<*xf32>
-// CHECK: %[[quantize_2:.*]] = "tf.PartitionedCall"(%arg0, %[[q_w]], %[[w_scale]], %[[w_zp]]) <{config = "", config_proto = "", executor_type = "", f = @quantized_conv2d_fn_0}> : (tensor<1x2x2x3xf32>, tensor<2x3x3x2x!tf_type.qint8>, tensor<f32>, tensor<i32>) -> tensor<*xf32>
+// CHECK: %[[quantize_1:.*]] = "tf.PartitionedCall"(%arg0, %[[q_w]], %[[w_scale]], %[[w_zp]]) <{config = "", config_proto = "", executor_type = "", f = @quantized_conv2d_fn_1}> : (tensor<1x2x2x3xf32>, tensor<2x2x3x2x!tf_type.qint8>, tensor<f32>, tensor<i32>) -> tensor<*xf32>
+// CHECK: %[[quantize_2:.*]] = "tf.PartitionedCall"(%arg0, %[[q_w]], %[[w_scale]], %[[w_zp]]) <{config = "", config_proto = "", executor_type = "", f = @quantized_conv2d_fn_0}> : (tensor<1x2x2x3xf32>, tensor<2x2x3x2x!tf_type.qint8>, tensor<f32>, tensor<i32>) -> tensor<*xf32>
 // CHECK: return %[[quantize_1]], %[[quantize_2]]
 
 // CHECK-LABEL: func private @quantized_conv2d_fn_0
@@ -82,7 +82,7 @@ module {
 // CHECK-SAME: rhs_quantization_max_val = 127 : i64
 // CHECK-SAME: rhs_quantization_min_val = -128 : i64
 // CHECK-SAME: window_strides = [1, 2]
-// CHECK-SAME: (tensor<1x2x2x3xf32>, tensor<2x3x3x2x!tf_type.qint8>, tensor<f32>, tensor<i32>) -> tensor<*xf32>
+// CHECK-SAME: (tensor<1x2x2x3xf32>, tensor<2x2x3x2x!tf_type.qint8>, tensor<f32>, tensor<i32>) -> tensor<*xf32>
 
 // CHECK-LABEL: func private @quantized_conv2d_fn_1
 // CHECK:      %[[CONV2D_0:.*]] = "tf.UniformQuantizedConvolutionHybrid"

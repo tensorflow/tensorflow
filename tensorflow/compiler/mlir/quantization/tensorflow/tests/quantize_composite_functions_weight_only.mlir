@@ -48,40 +48,40 @@ module {
 
 module {
   func.func @conv(%arg0: tensor<1x2x2x3xf32>) -> (tensor<*xf32>, tensor<*xf32>) {
-    %weight = "tf.Const"() {value = dense<2.000000e+00> : tensor<2x3x3x2xf32>} : () -> tensor<2x3x3x2xf32>
-    %1 = "tf.PartitionedCall"(%arg0, %weight) {_tfl_quant_trait = "fully_quantizable", config = "", config_proto = "", executor_type = "", f = @composite_conv2d_fn_1} : (tensor<1x2x2x3xf32>, tensor<2x3x3x2xf32>) -> tensor<*xf32>
-    %2 = "tf.PartitionedCall"(%arg0, %weight) {_tfl_quant_trait = "fully_quantizable", config = "", config_proto = "", executor_type = "", f = @composite_conv2d_fn_2} : (tensor<1x2x2x3xf32>, tensor<2x3x3x2xf32>) -> tensor<*xf32>
+    %weight = "tf.Const"() {value = dense<2.000000e+00> : tensor<2x2x3x2xf32>} : () -> tensor<2x2x3x2xf32>
+    %1 = "tf.PartitionedCall"(%arg0, %weight) {_tfl_quant_trait = "fully_quantizable", config = "", config_proto = "", executor_type = "", f = @composite_conv2d_fn_1} : (tensor<1x2x2x3xf32>, tensor<2x2x3x2xf32>) -> tensor<*xf32>
+    %2 = "tf.PartitionedCall"(%arg0, %weight) {_tfl_quant_trait = "fully_quantizable", config = "", config_proto = "", executor_type = "", f = @composite_conv2d_fn_2} : (tensor<1x2x2x3xf32>, tensor<2x2x3x2xf32>) -> tensor<*xf32>
     func.return %1, %2 : tensor<*xf32>, tensor<*xf32>
   }
 
-  func.func private @composite_conv2d_fn_1(%arg0: tensor<1x2x2x3xf32>, %arg1: tensor<2x3x3x2xf32>) -> tensor<*xf32> attributes {tf_quant.composite_function} {
-    %conv = "tf.Conv2D"(%arg0, %arg1) {attr_map = "0:strides,1:use_cudnn_on_gpu,2:padding,3:explicit_paddings,4:dilations", data_format = "NHWC", device = "", dilations = [1, 2, 2, 1], explicit_paddings = [], padding = "SAME", strides = [1, 1, 2, 1], use_cudnn_on_gpu = true} : (tensor<1x2x2x3xf32>, tensor<2x3x3x2xf32>) -> tensor<*xf32>
+  func.func private @composite_conv2d_fn_1(%arg0: tensor<1x2x2x3xf32>, %arg1: tensor<2x2x3x2xf32>) -> tensor<*xf32> attributes {tf_quant.composite_function} {
+    %conv = "tf.Conv2D"(%arg0, %arg1) {attr_map = "0:strides,1:use_cudnn_on_gpu,2:padding,3:explicit_paddings,4:dilations", data_format = "NHWC", device = "", dilations = [1, 2, 2, 1], explicit_paddings = [], padding = "SAME", strides = [1, 1, 2, 1], use_cudnn_on_gpu = true} : (tensor<1x2x2x3xf32>, tensor<2x2x3x2xf32>) -> tensor<*xf32>
     return %conv : tensor<*xf32>
   }
 
-  func.func private @composite_conv2d_fn_2(%arg0: tensor<1x2x2x3xf32>, %arg1: tensor<2x3x3x2xf32>) -> tensor<*xf32> attributes {tf_quant.composite_function} {
-    %conv = "tf.Conv2D"(%arg0, %arg1) {attr_map = "0:strides,1:use_cudnn_on_gpu,2:padding,3:explicit_paddings,4:dilations", data_format = "NHWC", device = "", dilations = [1, 2, 2, 1], explicit_paddings = [], padding = "VALID", strides = [1, 1, 2, 1], use_cudnn_on_gpu = true} : (tensor<1x2x2x3xf32>, tensor<2x3x3x2xf32>) -> tensor<*xf32>
+  func.func private @composite_conv2d_fn_2(%arg0: tensor<1x2x2x3xf32>, %arg1: tensor<2x2x3x2xf32>) -> tensor<*xf32> attributes {tf_quant.composite_function} {
+    %conv = "tf.Conv2D"(%arg0, %arg1) {attr_map = "0:strides,1:use_cudnn_on_gpu,2:padding,3:explicit_paddings,4:dilations", data_format = "NHWC", device = "", dilations = [1, 2, 2, 1], explicit_paddings = [], padding = "VALID", strides = [1, 1, 2, 1], use_cudnn_on_gpu = true} : (tensor<1x2x2x3xf32>, tensor<2x2x3x2xf32>) -> tensor<*xf32>
     return %conv : tensor<*xf32>
   }
 
 // PerTensor-LABEL: func @conv
-// PerTensor-DAG: %[[q_w:.*]] = "tf.Const"() <{value = dense<{{[0-9]+}}> : tensor<2x3x3x2xi8>}> : () -> tensor<2x3x3x2xi8>
+// PerTensor-DAG: %[[q_w:.*]] = "tf.Const"() <{value = dense<{{[0-9]+}}> : tensor<2x2x3x2xi8>}> : () -> tensor<2x2x3x2xi8>
 // PerTensor-DAG: %[[scale:.*]] = "tf.Const"() <{value = dense<{{[0-9\.Ee\+\-]+}}> : tensor<f32>}> : () -> tensor<f32>
 // PerTensor-DAG: %[[zp:.*]] = "tf.Const"() <{value = dense<{{[0-9]+}}> : tensor<i32>}> : () -> tensor<i32>
 // PerTensor: %[[out_1:.*]] = "tf.PartitionedCall"(%arg0, %[[q_w]], %[[scale]], %[[zp]]) <{config = "", config_proto = "", executor_type = "",
-// PerTensor-SAME: f = @quantized_conv2d_fn_1}> : (tensor<1x2x2x3xf32>, tensor<2x3x3x2xi8>, tensor<f32>, tensor<i32>) -> tensor<*xf32>
+// PerTensor-SAME: f = @quantized_conv2d_fn_1}> : (tensor<1x2x2x3xf32>, tensor<2x2x3x2xi8>, tensor<f32>, tensor<i32>) -> tensor<*xf32>
 // PerTensor: %[[out_2:.*]] = "tf.PartitionedCall"(%arg0, %[[q_w]], %[[scale]], %[[zp]]) <{config = "", config_proto = "", executor_type = "",
-// PerTensor-SAME: f = @quantized_conv2d_fn_0}> : (tensor<1x2x2x3xf32>, tensor<2x3x3x2xi8>, tensor<f32>, tensor<i32>) -> tensor<*xf32>
+// PerTensor-SAME: f = @quantized_conv2d_fn_0}> : (tensor<1x2x2x3xf32>, tensor<2x2x3x2xi8>, tensor<f32>, tensor<i32>) -> tensor<*xf32>
 // PerTensor: return %[[out_1]], %[[out_2]]
 
 // PerChannel-LABEL: func @conv
-// PerChannel-DAG: %[[q_w:.*]] = "tf.Const"() <{value = dense<{{[0-9]+}}> : tensor<2x3x3x2xi8>}> : () -> tensor<2x3x3x2xi8>
+// PerChannel-DAG: %[[q_w:.*]] = "tf.Const"() <{value = dense<{{[0-9]+}}> : tensor<2x2x3x2xi8>}> : () -> tensor<2x2x3x2xi8>
 // PerChannel-DAG: %[[scale:.*]] = "tf.Const"() <{value = dense<{{[0-9\.Ee\+\-]+}}> : tensor<2xf32>}> : () -> tensor<2xf32>
 // PerChannel-DAG: %[[zp:.*]] = "tf.Const"() <{value = dense<{{[0-9]+}}> : tensor<2xi32>}> : () -> tensor<2xi32>
 // PerChannel: %[[out_1:.*]] = "tf.PartitionedCall"(%arg0, %[[q_w]], %[[scale]], %[[zp]]) <{config = "", config_proto = "", executor_type = "",
-// PerChannel-SAME: f = @quantized_conv2d_fn_1}> : (tensor<1x2x2x3xf32>, tensor<2x3x3x2xi8>, tensor<2xf32>, tensor<2xi32>) -> tensor<*xf32>
+// PerChannel-SAME: f = @quantized_conv2d_fn_1}> : (tensor<1x2x2x3xf32>, tensor<2x2x3x2xi8>, tensor<2xf32>, tensor<2xi32>) -> tensor<*xf32>
 // PerChannel: %[[out_2:.*]] = "tf.PartitionedCall"(%arg0, %[[q_w]], %[[scale]], %[[zp]]) <{config = "", config_proto = "", executor_type = "",
-// PerChannel-SAME: f = @quantized_conv2d_fn_0}> : (tensor<1x2x2x3xf32>, tensor<2x3x3x2xi8>, tensor<2xf32>, tensor<2xi32>) -> tensor<*xf32>
+// PerChannel-SAME: f = @quantized_conv2d_fn_0}> : (tensor<1x2x2x3xf32>, tensor<2x2x3x2xi8>, tensor<2xf32>, tensor<2xi32>) -> tensor<*xf32>
 // PerChannel: return %[[out_1]], %[[out_2]]
 
 }
