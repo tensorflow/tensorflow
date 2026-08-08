@@ -22,6 +22,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/memory/memory.h"
+#include "absl/strings/ascii.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/numbers.h"
 #include "absl/time/time.h"
@@ -107,7 +108,9 @@ inline uint64_t GetAarch64CycleScaleFixed() {
       return 1 << 16;
     }
     int64_t cpu_freq_khz;
-    if (!absl::SimpleAtoi(freq_str, &cpu_freq_khz) || cpu_freq_khz <= 0) {
+    if (!absl::SimpleAtoi(absl::StripTrailingAsciiWhitespace(freq_str),
+                          &cpu_freq_khz) ||
+        cpu_freq_khz <= 0) {
       return 1 << 16;
     }
     uint64_t sf =
