@@ -216,8 +216,6 @@ DimensionSharding DimensionSharding::FromProto(
 }
 
 std::string NamedSharding::ToString(bool include_metadata) const {
-  std::string result = "{";
-
   std::string metadata_str;
   if (include_metadata && !metadata_.empty()) {
     metadata_str = ", metadata={";
@@ -230,53 +228,38 @@ std::string NamedSharding::ToString(bool include_metadata) const {
     absl::StrAppend(&metadata_str, "}");
   }
 
-  absl::StrAppend(&result, mesh_.ToString());
-
-  // Special cases.
+  // Special cases: fully replicated, manual, or unreduced shardings do not
+  // require meshes in their string representation.
   if (IsReplicated() && num_dimensions() == 0 && replicated_axes_.empty()) {
-    absl::StrAppend(&result, ", replicated");
-    absl::StrAppend(&result, metadata_str);
-    absl::StrAppend(&result, "}");
-    return result;
+    return absl::StrCat("{replicated", metadata_str, "}");
   }
 
-  if (IsSingleDevice()) {
-    absl::StrAppend(&result, metadata_str);
-    absl::StrAppend(&result, "}");
-    return result;
+  if (IsManual() && num_dimensions() == 0) {
+    return absl::StrCat("{manual", metadata_str, "}");
   }
 
   if (IsUnreduced() && num_dimensions() == 0) {
-    absl::StrAppend(&result, ", unreduced");
+    std::string unreduced_str = "unreduced";
     if (reduction_op_ != ReductionOp::kSum) {
-      absl::StrAppend(&result, "=");
+      absl::StrAppend(&unreduced_str, "=");
       switch (reduction_op_) {
         case ReductionOp::kMax:
-          absl::StrAppend(&result, "max");
+          absl::StrAppend(&unreduced_str, "max");
           break;
         case ReductionOp::kMin:
-          absl::StrAppend(&result, "min");
+          absl::StrAppend(&unreduced_str, "min");
           break;
         default:
           break;
       }
     }
-    if (!unreduced_axes_.empty() && unreduced_axes_.size() < mesh_.num_axes()) {
-      absl::StrAppend(&result, "{");
-      absl::StrAppend(
-          &result, absl::StrJoin(unreduced_axes_, ", ",
-                                 [&](std::string* out, const AxisRef& axis) {
-                                   absl::StrAppend(out, axis.ToString(&mesh_));
-                                 }));
-      absl::StrAppend(&result, "}");
-    }
-    absl::StrAppend(&result, metadata_str);
-    absl::StrAppend(&result, "}");
-    return result;
+    return absl::StrCat("{", unreduced_str, metadata_str, "}");
   }
 
-  if (IsManual() && num_dimensions() == 0) {
-    absl::StrAppend(&result, ", manual");
+  std::string result = "{";
+  absl::StrAppend(&result, mesh_.ToString());
+
+  if (IsSingleDevice()) {
     absl::StrAppend(&result, metadata_str);
     absl::StrAppend(&result, "}");
     return result;

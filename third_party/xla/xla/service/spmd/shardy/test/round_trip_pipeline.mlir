@@ -262,13 +262,13 @@ func.func @main(%arg0: tensor<8x8xf32>) -> tensor<8x8xf32> {
 // CHECK-NOT: xla.sdy.sharding
 
 // CHECK-V2: sdy.mesh @mesh_2 = <["x"=8, "y"=4]>
-// CHECK-V3: sdy.mesh @mesh = <["x"=8, "y"=4]>
+// CHECK-V3: sdy.mesh @mesh_2 = <["x"=8, "y"=4]>
 sdy.mesh @mesh_2 = <["x"=8, "y"=4]>
 
 // CHECK-LABEL: func @main
 func.func @main(
   // CHECK-V2: %arg0: tensor<8x16xf32>) -> (tensor<8x16xf32> {sdy.sharding = #sdy.sharding<@mesh_2, [{"x", ?}, {"y"}p4]>}, tensor<8x16xf32> {sdy.sharding = #sdy.sharding<@mesh_2, [{?}, {"y"}p4]>}, tensor<8x16xf32> {sdy.sharding = #sdy.sharding<@mesh_2, [{"x"}, {"y"}p1]>}) {
-  // CHECK-V3: %arg0: tensor<8x16xf32>) -> (tensor<8x16xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"x", ?}, {"y"}]>}, tensor<8x16xf32> {sdy.sharding = #sdy.sharding<@mesh, [{?}, {"y"}]>}, tensor<8x16xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"x"}, {"y"}]>}) {
+  // CHECK-V3: %arg0: tensor<8x16xf32>) -> (tensor<8x16xf32> {sdy.sharding = #sdy.sharding<@mesh_2, [{"x", ?}, {"y"}]>}, tensor<8x16xf32> {sdy.sharding = #sdy.sharding<@mesh_2, [{?}, {"y"}]>}, tensor<8x16xf32> {sdy.sharding = #sdy.sharding<@mesh_2, [{"x"}, {"y"}]>}) {
   %arg0: tensor<8x16xf32>) ->           (tensor<8x16xf32> {sdy.sharding = #sdy.sharding<@mesh_2, [{"x", ?}, {"y"}p4]>}, tensor<8x16xf32> {sdy.sharding = #sdy.sharding<@mesh_2, [{?}, {"y"}p4]>}, tensor<8x16xf32> {sdy.sharding = #sdy.sharding<@mesh_2, [{"x"}, {"y"}p1]>}) {
   // CHECK-NEXT: %[[ADD:.*]] = stablehlo.add %arg0, %arg0 : tensor<8x16xf32>
   %0 = stablehlo.add %arg0, %arg0 : tensor<8x16xf32>

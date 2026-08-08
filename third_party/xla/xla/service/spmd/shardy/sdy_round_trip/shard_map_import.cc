@@ -71,6 +71,7 @@ using ::mlir::WalkOrder;
 using ::mlir::WalkResult;
 using ::mlir::func::CallOp;
 using ::mlir::func::FuncOp;
+using ::mlir::sdy::kShardingAttr;
 using ::mlir::stablehlo::CustomCallOp;
 
 namespace sdy = ::mlir::sdy;
@@ -150,12 +151,30 @@ mlir::LogicalResult rewriteManualComputation(
     if (!customCallOp) {
       return;
     }
-    if (mlir::DictionaryAttr frontendAttrs = getFrontendAttrs(customCallOp)) {
-      shardings = parseStringAttr<sdy::TensorShardingPerValueAttr>(
-          frontendAttrs, shardingAttrName);
+    bool hasSharding = false;
+    bool hasManualAxes = false;
+    if (customCallOp->hasAttr(kShardingAttr)) {
+      shardings = customCallOp->getAttrOfType<sdy::TensorShardingPerValueAttr>(
+          kShardingAttr);
+      hasSharding = true;
+    }
+    if (customCallOp->hasAttr(kManualAxes)) {
       if (manualAxes.empty()) {
         manualAxes =
-            parseStringAttr<sdy::ManualAxesAttr>(frontendAttrs, kManualAxes);
+            customCallOp->getAttrOfType<sdy::ManualAxesAttr>(kManualAxes);
+      }
+      hasManualAxes = true;
+    }
+    if (!hasSharding || !hasManualAxes) {
+      if (mlir::DictionaryAttr frontendAttrs = getFrontendAttrs(customCallOp)) {
+        if (!hasSharding) {
+          shardings = parseStringAttr<sdy::TensorShardingPerValueAttr>(
+              frontendAttrs, shardingAttrName);
+        }
+        if (!hasManualAxes && manualAxes.empty()) {
+          manualAxes =
+              parseStringAttr<sdy::ManualAxesAttr>(frontendAttrs, kManualAxes);
+        }
       }
     }
   };

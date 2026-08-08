@@ -40,6 +40,7 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"
 #include "mlir/Support/TypeID.h"
 #include "mlir/Transforms/DialectConversion.h"
+#include "shardy/dialect/sdy/ir/constants.h"
 #include "shardy/dialect/sdy/ir/dialect.h"
 #include "shardy/dialect/sdy/ir/utils.h"
 #include "stablehlo/dialect/StablehloOps.h"
@@ -101,10 +102,14 @@ class SdyRoundTripShardMapExportPass
             manualComputation.getInShardings();
         if (enableHloShardingV3) {
           inShardings = sdy::inlineMesh(symbolTable, inShardings);
+          globalToLocalShape->setAttr(sdy::kShardingAttr, inShardings);
+          globalToLocalShape->setAttr(kManualAxes,
+                                      manualComputation.getManualAxesAttr());
+        } else {
+          setFrontendAttribute(globalToLocalShape, kInShardings, inShardings);
+          setFrontendAttribute(globalToLocalShape, kManualAxes,
+                               manualComputation.getManualAxesAttr());
         }
-        setFrontendAttribute(globalToLocalShape, kInShardings, inShardings);
-        setFrontendAttribute(globalToLocalShape, kManualAxes,
-                             manualComputation.getManualAxesAttr());
         operands = globalToLocalShape->getResults();
       }
 
@@ -126,10 +131,14 @@ class SdyRoundTripShardMapExportPass
             manualComputation.getOutShardings();
         if (enableHloShardingV3) {
           outShardings = sdy::inlineMesh(symbolTable, outShardings);
+          localToGlobalShape->setAttr(sdy::kShardingAttr, outShardings);
+          localToGlobalShape->setAttr(kManualAxes,
+                                      manualComputation.getManualAxesAttr());
+        } else {
+          setFrontendAttribute(localToGlobalShape, kOutShardings, outShardings);
+          setFrontendAttribute(localToGlobalShape, kManualAxes,
+                               manualComputation.getManualAxesAttr());
         }
-        setFrontendAttribute(localToGlobalShape, kOutShardings, outShardings);
-        setFrontendAttribute(localToGlobalShape, kManualAxes,
-                             manualComputation.getManualAxesAttr());
         results = localToGlobalShape->getResults();
       }
       sdy::inlineRegionAndConvertTerminatorOp<mlir::func::ReturnOp>(
