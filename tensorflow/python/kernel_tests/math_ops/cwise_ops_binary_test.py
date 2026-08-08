@@ -306,6 +306,30 @@ class BinaryOpTest(test.TestCase):
     except ImportError as e:
       tf_logging.warn("Cannot test special functions: %s" % str(e))
 
+  @test_util.run_deprecated_v1
+  def testIgammaDomainEdgeCases(self):
+    # P(a, x) is undefined for a <= 0; x == 0 short-circuits before the domain
+    # check in Eigen, so the kernel must return NaN for those inputs explicitly.
+    for dtype in [np.float32, np.float64]:
+      a_vals = np.array([-0.1, -1.0, 0.0], dtype=dtype)
+      x_vals = np.array([0.0, 0.0, 0.0], dtype=dtype)
+      with self.cached_session():
+        result = math_ops.igamma(
+            constant_op.constant(a_vals),
+            constant_op.constant(x_vals))
+        result_np = self.evaluate(result)
+        self.assertTrue(
+            np.all(np.isnan(result_np)),
+            "Expected NaN for out-of-domain (a<=0, x==0), got %s" % result_np)
+      # P(a, 0) == 0 for a > 0; the fix must not disturb this identity.
+      a_pos = np.array([0.5, 1.0, 2.0], dtype=dtype)
+      x_zero = np.array([0.0, 0.0, 0.0], dtype=dtype)
+      with self.cached_session():
+        result_pos = math_ops.igamma(
+            constant_op.constant(a_pos),
+            constant_op.constant(x_zero))
+        self.assertAllEqual(self.evaluate(result_pos), np.zeros(3, dtype=dtype))
+
   def testBfloat16Basic(self):
     bf16_np = dtypes_lib.bfloat16.as_numpy_dtype
     x = np.linspace(-5, 20, 15).reshape(1, 3, 5).astype(bf16_np)  # pylint: disable=too-many-function-args
