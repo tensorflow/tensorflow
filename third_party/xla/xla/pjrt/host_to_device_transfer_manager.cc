@@ -65,12 +65,21 @@ class CommonAsyncHostToDeviceTransferManager
       std::unique_ptr<PjRtClient::AsyncHostToDeviceTransferManager>>
   Create(absl::Span<const PjRtClient::ShapeSpec> shape_specs,
          std::optional<absl::Span<const std::optional<Layout>>> device_layouts,
-         PjRtMemorySpace* memory_space) {
+         PjRtMemorySpace* memory_space,
+         std::optional<absl::Span<PjRtRawBufferRef>> donated_buffer_refs =
+             std::nullopt) {
     if (device_layouts.has_value() &&
         device_layouts->size() != shape_specs.size()) {
       return InvalidArgument(
           "Number of layouts %d does not match the number of shapes %d",
           device_layouts->size(), shape_specs.size());
+    }
+    if (donated_buffer_refs.has_value() &&
+        donated_buffer_refs->size() != shape_specs.size()) {
+      return InvalidArgument(
+          "Number of donated buffer refs %d does not match the number of "
+          "shapes %d",
+          donated_buffer_refs->size(), shape_specs.size());
     }
 
     auto* client = absl::down_cast<CommonPjRtClient*>(memory_space->client());
@@ -132,10 +141,23 @@ class CommonAsyncHostToDeviceTransferManager
       ABSL_ASSIGN_OR_RETURN(
           int64_t on_device_bytes_count,
           client->GetOnDeviceBytesCount(memory_space, *shared_device_shape));
-      ABSL_ASSIGN_OR_RETURN(
-          auto raw_buffer,
-          client->AllocateRawBuffer(memory_space, on_device_bytes_count,
-                                    /*retry_on_oom=*/true, allocation_event));
+      PjRtRawBufferRef raw_buffer;
+      if (donated_buffer_refs.has_value()) {
+        raw_buffer = (*donated_buffer_refs)[i];
+        if (!raw_buffer) {
+          return InvalidArgument("Donated buffer ref at index %d is null", i);
+        }
+        if (raw_buffer->GetOnDeviceSizeInBytes() != on_device_bytes_count) {
+          return InvalidArgument(
+              "Donated buffer size %d does not match target buffer size %d",
+              raw_buffer->GetOnDeviceSizeInBytes(), on_device_bytes_count);
+        }
+      } else {
+        ABSL_ASSIGN_OR_RETURN(
+            raw_buffer,
+            client->AllocateRawBuffer(memory_space, on_device_bytes_count,
+                                      /*retry_on_oom=*/true, allocation_event));
+      }
 
       // We make an event that will become available when the final transfer
       // is complete.
@@ -566,9 +588,10 @@ absl::StatusOr<std::unique_ptr<PjRtClient::AsyncHostToDeviceTransferManager>>
 CreateAsyncHostToDeviceTransferManager(
     absl::Span<const PjRtClient::ShapeSpec> shape_specs,
     std::optional<absl::Span<const std::optional<Layout>>> device_layouts,
-    PjRtMemorySpace* memory_space) {
+    PjRtMemorySpace* memory_space,
+    std::optional<absl::Span<PjRtRawBufferRef>> donated_buffer_refs) {
   return CommonAsyncHostToDeviceTransferManager::Create(
-      shape_specs, device_layouts, memory_space);
+      shape_specs, device_layouts, memory_space, donated_buffer_refs);
 }
 
 }  // namespace xla

@@ -300,6 +300,7 @@ xla_cc_test(
         "//xla/hlo/builder:xla_computation",
         "//xla/hlo/parser:hlo_parser",
         "//xla/mlir_hlo",
+        "//xla/pjrt:common_pjrt_client",
         "//xla/pjrt:host_memory_spaces",
         "//xla/pjrt:maybe_owning_mlir_module",
         "//xla/pjrt:pjrt_client",
