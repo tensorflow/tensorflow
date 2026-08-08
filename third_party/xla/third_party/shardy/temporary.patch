@@ -1,15 +1,472 @@
+diff --git a/shardy/dialect/sdy/ir/utils.cc b/shardy/dialect/sdy/ir/utils.cc
+index 4cdf5867..78f812a9 100644
+--- a/shardy/dialect/sdy/ir/utils.cc
++++ b/shardy/dialect/sdy/ir/utils.cc
+@@ -1433,90 +1433,6 @@ LogicalResult verifyUnreducedAxesTransition(
+   return success();
+ }
+ 
+-namespace {
+-
+-struct AxisStrideInfo {
+-  AxisRefAttr axis;
+-  double stride;
+-  int64_t prefixSize;
+-  int64_t dimSize;
+-};
+-
+-int64_t getPrefixSize(RankedTensorType type, int64_t dim) {
+-  int64_t size = 1;
+-  for (int64_t d = 0; d < dim; ++d) {
+-    size *= type.getDimSize(d);
+-  }
+-  return size;
+-}
+-
+-// Calculates linear stride for every axis in the sharding.
+-SmallVector<AxisStrideInfo> getAxisStrides(TensorShardingAttr sharding,
+-                                           RankedTensorType type, MeshAttr mesh,
+-                                           bool allowNonDivisible) {
+-  SmallVector<AxisStrideInfo> axisStrides;
+-  double cumulativeDimSize = 1.0;
+-  for (int64_t i = type.getRank() - 1; i >= 0; --i) {
+-    ArrayRef<AxisRefAttr> axes = sharding.getDimShardings()[i].getAxes();
+-    int64_t totalAxesSize = 1;
+-    for (AxisRefAttr axis : axes) {
+-      totalAxesSize *= axis.getSize(mesh);
+-    }
+-    double currentAxisStride =
+-        cumulativeDimSize *
+-        (allowNonDivisible
+-             ? static_cast<double>(type.getDimSize(i)) / totalAxesSize
+-             : static_cast<double>(
+-                   llvm::divideCeil(type.getDimSize(i), totalAxesSize)));
+-    int64_t basePrefixSize = getPrefixSize(type, i);
+-    int64_t precedingAxesSize = totalAxesSize;
+-    for (int64_t j = static_cast<int64_t>(axes.size()) - 1; j >= 0; --j) {
+-      precedingAxesSize /= axes[j].getSize(mesh);
+-      axisStrides.push_back({axes[j], currentAxisStride,
+-                             basePrefixSize * precedingAxesSize,
+-                             type.getDimSize(i)});
+-      currentAxisStride *= axes[j].getSize(mesh);
+-    }
+-    cumulativeDimSize *= type.getDimSize(i);
+-  }
+-  llvm::stable_sort(axisStrides, [](const auto& a, const auto& b) {
+-    return a.stride < b.stride;
+-  });
+-  SmallVector<AxisStrideInfo> merged;
+-  for (const auto& entry : axisStrides) {
+-    if (!merged.empty()) {
+-      auto& back = merged.back();
+-      AxisRefAttr prevAxis = back.axis;
+-      AxisRefAttr currAxis = entry.axis;
+-      if (prevAxis.getName() == currAxis.getName() &&
+-          currAxis.getSubAxisPreSize() * currAxis.getSize(mesh) ==
+-              prevAxis.getSubAxisPreSize() &&
+-          (allowNonDivisible
+-               ? (back.prefixSize == entry.prefixSize ||
+-                  (back.prefixSize == entry.prefixSize * entry.dimSize &&
+-                   entry.axis.getSize(mesh) == entry.dimSize))
+-               : isNear(entry.stride, back.stride * prevAxis.getSize(mesh)))) {
+-        int64_t minPreSize = std::min(prevAxis.getSubAxisPreSize(),
+-                                      currAxis.getSubAxisPreSize());
+-        int64_t size = prevAxis.getSize(mesh) * currAxis.getSize(mesh);
+-        int64_t fullSize = mesh.getAxisSize(prevAxis.getName());
+-        AxisRefAttr combined =
+-            (minPreSize == 1 && size == fullSize)
+-                ? AxisRefAttr::get(mesh.getContext(), prevAxis.getName())
+-                : AxisRefAttr::get(mesh.getContext(), prevAxis.getName(),
+-                                   minPreSize, size);
+-        back.axis = combined;
+-        back.prefixSize = std::min(back.prefixSize, entry.prefixSize);
+-        continue;
+-      }
+-    }
+-    merged.push_back(entry);
+-  }
+-  return merged;
+-}
+-
+-}  // namespace
+-
+ bool isShardingEquivalentAcrossReshapes(TensorShardingAttr s1, Type t1,
+                                         TensorShardingAttr s2, Type t2,
+                                         Operation* op, bool allowNonDivisible) {
+@@ -1547,8 +1463,85 @@ bool isShardingEquivalentAcrossReshapes(TensorShardingAttr s1, Type t1,
+     return false;
+   }
+ 
+-  auto strides1 = getAxisStrides(s1, rt1, mesh, allowNonDivisible);
+-  auto strides2 = getAxisStrides(s2, rt2, mesh, allowNonDivisible);
++  auto getPrefixSize = [](RankedTensorType type, int64_t dim) {
++    int64_t size = 1;
++    for (int64_t d = 0; d < dim; ++d) {
++      size *= type.getDimSize(d);
++    }
++    return size;
++  };
++
++  struct AxisStrideInfo {
++    AxisRefAttr axis;
++    double stride;
++    int64_t prefixSize;
++    int64_t dimSize;
++  };
++
++  // Calculates linear stride for every axis in the sharding.
++  auto getAxisStrides = [&](TensorShardingAttr sharding,
++                            RankedTensorType type) {
++    SmallVector<AxisStrideInfo> axisStrides;
++    double cumulativeDimSize = 1.0;
++    for (int64_t i = type.getRank() - 1; i >= 0; --i) {
++      ArrayRef<AxisRefAttr> axes = sharding.getDimShardings()[i].getAxes();
++      int64_t totalAxesSize = 1;
++      for (AxisRefAttr axis : axes) {
++        totalAxesSize *= axis.getSize(mesh);
++      }
++      double currentAxisStride =
++          cumulativeDimSize *
++          (allowNonDivisible
++               ? static_cast<double>(type.getDimSize(i)) / totalAxesSize
++               : static_cast<double>(
++                     llvm::divideCeil(type.getDimSize(i), totalAxesSize)));
++      int64_t prefixSize = getPrefixSize(type, i);
++      for (int64_t j = static_cast<int64_t>(axes.size()) - 1; j >= 0; --j) {
++        axisStrides.push_back(
++            {axes[j], currentAxisStride, prefixSize, type.getDimSize(i)});
++        currentAxisStride *= axes[j].getSize(mesh);
++      }
++      cumulativeDimSize *= type.getDimSize(i);
++    }
++    llvm::stable_sort(axisStrides, [](const auto& a, const auto& b) {
++      return a.stride < b.stride;
++    });
++    SmallVector<AxisStrideInfo> merged;
++    for (const auto& entry : axisStrides) {
++      if (!merged.empty()) {
++        auto& back = merged.back();
++        AxisRefAttr prevAxis = back.axis;
++        AxisRefAttr currAxis = entry.axis;
++        if (prevAxis.getName() == currAxis.getName() &&
++            currAxis.getSubAxisPreSize() * currAxis.getSize(mesh) ==
++                prevAxis.getSubAxisPreSize() &&
++            (allowNonDivisible
++                 ? (back.prefixSize == entry.prefixSize ||
++                    (back.prefixSize == entry.prefixSize * entry.dimSize &&
++                     entry.axis.getSize(mesh) == entry.dimSize))
++                 : isNear(entry.stride,
++                          back.stride * prevAxis.getSize(mesh)))) {
++          int64_t minPreSize = std::min(prevAxis.getSubAxisPreSize(),
++                                        currAxis.getSubAxisPreSize());
++          int64_t size = prevAxis.getSize(mesh) * currAxis.getSize(mesh);
++          int64_t fullSize = mesh.getAxisSize(prevAxis.getName());
++          AxisRefAttr combined =
++              (minPreSize == 1 && size == fullSize)
++                  ? AxisRefAttr::get(mesh.getContext(), prevAxis.getName())
++                  : AxisRefAttr::get(mesh.getContext(), prevAxis.getName(),
++                                     minPreSize, size);
++          back.axis = combined;
++          back.prefixSize = std::min(back.prefixSize, entry.prefixSize);
++          continue;
++        }
++      }
++      merged.push_back(entry);
++    }
++    return merged;
++  };
++
++  auto strides1 = getAxisStrides(s1, rt1);
++  auto strides2 = getAxisStrides(s2, rt2);
+   if (strides1.size() != strides2.size()) {
+     return false;
+   }
+diff --git a/shardy/dialect/sdy/ir/utils_test.cc b/shardy/dialect/sdy/ir/utils_test.cc
+index e270a0ed..29200d1f 100644
+--- a/shardy/dialect/sdy/ir/utils_test.cc
++++ b/shardy/dialect/sdy/ir/utils_test.cc
+@@ -941,34 +941,6 @@ module {
+       getArgSharding(10), getType(10), getArgSharding(11), getType(11), func,
+       /*allowNonDivisible=*/true));
+ }
+-
+-TEST_F(UtilsTest, IsShardingEquivalentAcrossReshapes_MultiAxisPrefixSize) {
+-  auto module = mlir::parseSourceString<ModuleOp>(R"mlir(
+-module {
+-  sdy.mesh @mesh_xy = <["x"=2, "y"=2]>
+-  func.func @test(
+-      %arg0: tensor<4x4xi32> {sdy.sharding = #sdy.sharding<@mesh_xy, [{"x", "y"}, {}]>},
+-      %arg1: tensor<2x2x4xi32> {sdy.sharding = #sdy.sharding<@mesh_xy, [{"x"}, {"y"}, {}]>},
+-      %arg2: tensor<2x2x4xi32> {sdy.sharding = #sdy.sharding<@mesh_xy, [{"y"}, {"x"}, {}]>}) {
+-    return
+-  }
+-}
+-)mlir",
+-                                                  &context);
+-  auto func = cast<func::FuncOp>(module->lookupSymbol("test"));
+-  auto getArgSharding = [&](int idx) {
+-    return getSharding(func.getArgument(idx));
+-  };
+-  auto getType = [&](int idx) { return func.getArgument(idx).getType(); };
+-
+-  // Matching axis order and prefix sizes (x:1, y:2 -> x:1, y:2): true
+-  EXPECT_TRUE(isShardingEquivalentAcrossReshapes(
+-      getArgSharding(0), getType(0), getArgSharding(1), getType(1), func));
+-
+-  // Swapped axis order (x:1, y:2 -> y:1, x:2): false
+-  EXPECT_FALSE(isShardingEquivalentAcrossReshapes(
+-      getArgSharding(0), getType(0), getArgSharding(2), getType(2), func));
+-}
+ }  // namespace
+ 
+ }  // namespace sdy
+diff --git a/third_party/llvm/generated.patch b/third_party/llvm/generated.patch
+index 9a42ef6f..509398da 100644
+--- a/third_party/llvm/generated.patch
++++ b/third_party/llvm/generated.patch
+@@ -1,32 +1 @@
+ Auto generated patch. Do not edit or delete it, even if empty.
+-diff -ruN --strip-trailing-cr a/llvm/lib/IR/Verifier.cpp b/llvm/lib/IR/Verifier.cpp
+---- a/llvm/lib/IR/Verifier.cpp
+-+++ b/llvm/lib/IR/Verifier.cpp
+-@@ -3925,10 +3925,8 @@
+-   Check(!Attrs.hasFnAttr(Attribute::DenormalFPEnv),
+-         "denormal_fpenv attribute may not apply to call sites", Call);
+- 
+--  Check(!Attrs.hasFnAttr(Attribute::StrictFP) ||
+--            Call.getFunction()->isStrictFP(),
+--        "call site marked strictfp without caller function marked strictfp",
+--        Call);
+-+  // FIXME: Missing verifier check to forbid a call site marked strictfp without
+-+  // caller function marked strictfp.
+- 
+-   // Verify call attributes.
+-   verifyFunctionAttrs(FTy, Attrs, &Call, IsIntrinsic, Call.isInlineAsm());
+-diff -ruN --strip-trailing-cr a/llvm/unittests/IR/VerifierTest.cpp b/llvm/unittests/IR/VerifierTest.cpp
+---- a/llvm/unittests/IR/VerifierTest.cpp
+-+++ b/llvm/unittests/IR/VerifierTest.cpp
+-@@ -817,9 +817,7 @@
+- 
+-   std::string Error;
+-   raw_string_ostream ErrorOS(Error);
+--  EXPECT_TRUE(verifyModule(M, &ErrorOS));
+--  EXPECT_TRUE(StringRef(Error).starts_with(
+--      "call site marked strictfp without caller function marked strictfp"))
+--      << Error;
+-+  // FIXME: Missing verifier check for strictfp.
+-+  EXPECT_FALSE(verifyModule(M, &ErrorOS));
+- }
+- } // end anonymous namespace
+diff --git a/third_party/llvm/setup.bzl b/third_party/llvm/setup.bzl
+index 3914dee1..b08994a9 100644
+--- a/third_party/llvm/setup.bzl
++++ b/third_party/llvm/setup.bzl
+@@ -1,18 +1,3 @@
+-# Copyright 2026 The OpenXLA Authors. All Rights Reserved.
+-#
+-# Licensed under the Apache License, Version 2.0 (the "License");
+-# you may not use this file except in compliance with the License.
+-# You may obtain a copy of the License at
+-#
+-#     http://www.apache.org/licenses/LICENSE-2.0
+-#
+-# Unless required by applicable law or agreed to in writing, software
+-# distributed under the License is distributed on an "AS IS" BASIS,
+-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+-# See the License for the specific language governing permissions and
+-# limitations under the License.
+-# =============================================================================
+-
+ """TensorFlow workspace initialization. Consult the WORKSPACE on how to use it."""
+ 
+ load("@llvm-raw//utils/bazel:configure.bzl", "llvm_configure")
 diff --git a/third_party/llvm/workspace.bzl b/third_party/llvm/workspace.bzl
-index dbcd4e35..d40a47b3 100644
+index b1538df3..2722f73d 100644
 --- a/third_party/llvm/workspace.bzl
 +++ b/third_party/llvm/workspace.bzl
-@@ -4,8 +4,8 @@ load("//third_party:repo.bzl", "tf_http_archive")
+@@ -1,26 +1,11 @@
+-# Copyright 2026 The OpenXLA Authors. All Rights Reserved.
+-#
+-# Licensed under the Apache License, Version 2.0 (the "License");
+-# you may not use this file except in compliance with the License.
+-# You may obtain a copy of the License at
+-#
+-#     http://www.apache.org/licenses/LICENSE-2.0
+-#
+-# Unless required by applicable law or agreed to in writing, software
+-# distributed under the License is distributed on an "AS IS" BASIS,
+-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+-# See the License for the specific language governing permissions and
+-# limitations under the License.
+-# =============================================================================
+-
+ """Provides the repository macro to import LLVM."""
+ 
+ load("//third_party:repo.bzl", "tf_http_archive")
  
  def repo(name):
      """Imports LLVM."""
--    LLVM_COMMIT = "2697ad154734e49f15f787c180fde969433f2968"
--    LLVM_SHA256 = "61cd10f4fae65914e9773d082d1398fa83535fde26142ab411d3d9d3f0bc6f57"
-+    LLVM_COMMIT = "0220c07a94012b9dce9250addac6a8ee1f674b21"
-+    LLVM_SHA256 = "0a3d6f9fc738b3aecfa6944f9db2d0c9f6bebd7b93c7a2670bb0fc29c97b6c01"
+-    LLVM_COMMIT = "084f6484d76625b995c07f512a323ab7cdc5351d"
+-    LLVM_SHA256 = "1c5d4569335226713428bd8fa57dc0d57f0c117020adcf30c30b779e7d7a7535"
++    LLVM_COMMIT = "0c27a66627a5077c52e549dae787294c4570d4d0"
++    LLVM_SHA256 = "002cf01eb94c8216804f4d5e0c4c75e7b5869dc2c41fcaaa4212fc54b6153e1c"
  
      tf_http_archive(
          name = name,
+diff --git a/third_party/remote_config/common.bzl b/third_party/remote_config/common.bzl
+index 740f8058..88b806c4 100644
+--- a/third_party/remote_config/common.bzl
++++ b/third_party/remote_config/common.bzl
+@@ -1,18 +1,3 @@
+-# Copyright 2026 The OpenXLA Authors. All Rights Reserved.
+-#
+-# Licensed under the Apache License, Version 2.0 (the "License");
+-# you may not use this file except in compliance with the License.
+-# You may obtain a copy of the License at
+-#
+-#     http://www.apache.org/licenses/LICENSE-2.0
+-#
+-# Unless required by applicable law or agreed to in writing, software
+-# distributed under the License is distributed on an "AS IS" BASIS,
+-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+-# See the License for the specific language governing permissions and
+-# limitations under the License.
+-# =============================================================================
+-
+ """Functions common across configure rules."""
+ 
+ BAZEL_SH = "BAZEL_SH"
+diff --git a/third_party/remote_config/remote_platform_configure.bzl b/third_party/remote_config/remote_platform_configure.bzl
+index 59ce05ab..068e09ed 100644
+--- a/third_party/remote_config/remote_platform_configure.bzl
++++ b/third_party/remote_config/remote_platform_configure.bzl
+@@ -1,18 +1,3 @@
+-# Copyright 2026 The OpenXLA Authors. All Rights Reserved.
+-#
+-# Licensed under the Apache License, Version 2.0 (the "License");
+-# you may not use this file except in compliance with the License.
+-# You may obtain a copy of the License at
+-#
+-#     http://www.apache.org/licenses/LICENSE-2.0
+-#
+-# Unless required by applicable law or agreed to in writing, software
+-# distributed under the License is distributed on an "AS IS" BASIS,
+-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+-# See the License for the specific language governing permissions and
+-# limitations under the License.
+-# =============================================================================
+-
+ """Repository rule to create a platform for a docker image to be used with RBE."""
+ 
+ def _remote_platform_configure_impl(repository_ctx):
+diff --git a/third_party/stablehlo/temporary.patch b/third_party/stablehlo/temporary.patch
+index f32070c5..061ec2a8 100644
+--- a/third_party/stablehlo/temporary.patch
++++ b/third_party/stablehlo/temporary.patch
+@@ -212,42 +212,6 @@ diff --ruN a/stablehlo/stablehlo/tests/TestUtils.cpp b/stablehlo/stablehlo/tests
+      patterns_ = std::move(patterns);
+      return success();
+    }
+-diff --ruN a/stablehlo/stablehlo/tests/chlo/chlo_legalize_to_stablehlo.mlir b/stablehlo/stablehlo/tests/chlo/chlo_legalize_to_stablehlo.mlir
+---- stablehlo/stablehlo/tests/chlo/chlo_legalize_to_stablehlo.mlir
+-+++ stablehlo/stablehlo/tests/chlo/chlo_legalize_to_stablehlo.mlir
+-@@ -5282,6 +5282,32 @@
+- 
+- // -----
+- 
+-+// CHECK-LABEL:   func.func @ragged_dot_mode_2_rank_lhs_lt_rhs(
+-+// CHECK-SAME:      %[[ARG0:.*]]: tensor<2x3xf32>,
+-+// CHECK-SAME:      %[[ARG1:.*]]: tensor<2x3x4xf32>,
+-+// CHECK-SAME:      %[[ARG2:.*]]: tensor<2xi64>) -> tensor<2x3x3x4xf32> {
+-+// CHECK:           %[[DOT_GENERAL_0:.*]] = stablehlo.dot_general %{{.*}}, %[[ARG1]], contracting_dims = [0] x [0], precision = [DEFAULT, DEFAULT] : (tensor<2x3xf32>, tensor<2x3x4xf32>) -> tensor<3x3x4xf32>
+-+// CHECK:           %[[DOT_GENERAL_1:.*]] = stablehlo.dot_general %{{.*}}, %[[ARG1]], contracting_dims = [0] x [0], precision = [DEFAULT, DEFAULT] : (tensor<2x3xf32>, tensor<2x3x4xf32>) -> tensor<3x3x4xf32>
+-+// CHECK:           %[[CONCATENATE_0:.*]] = stablehlo.concatenate{{.*}}dim = 0 : (tensor<1x3x3x4xf32>, tensor<1x3x3x4xf32>) -> tensor<2x3x3x4xf32>
+-+// CHECK:           return %[[CONCATENATE_0]] : tensor<2x3x3x4xf32>
+-+// CHECK:         }
+-+func.func @ragged_dot_mode_2_rank_lhs_lt_rhs(%lhs : tensor<2x3xf32>, %rhs : tensor<2x3x4xf32>, %group_sizes : tensor<2xi64>) -> tensor<2x3x3x4xf32> {
+-+  %0 = "chlo.ragged_dot"(%lhs, %rhs, %group_sizes) {
+-+    ragged_dot_dimension_numbers = #chlo.ragged_dot<
+-+      lhs_batching_dimensions = [],
+-+      rhs_batching_dimensions = [],
+-+      lhs_contracting_dimensions = [0],
+-+      rhs_contracting_dimensions = [0],
+-+      lhs_ragged_dimensions = [0],
+-+      rhs_group_dimensions = []
+-+    >,
+-+    precision_config = [#chlo<precision DEFAULT>, #chlo<precision DEFAULT>]
+-+  } : (tensor<2x3xf32>, tensor<2x3x4xf32>, tensor<2xi64>) -> tensor<2x3x3x4xf32>
+-+  func.return %0 : tensor<2x3x3x4xf32>
+-+}
+-+
+-+// -----
+-+
+- // CHECK-LABEL:   func.func @ragged_dot_mode_3(
+- // CHECK-SAME:      %[[ARG0:.*]]: tensor<2x3x5xf32>,
+- // CHECK-SAME:      %[[ARG1:.*]]: tensor<2x5x7xf32>,
+ diff --ruN a/stablehlo/stablehlo/tests/interpret/printing.mlir b/stablehlo/stablehlo/tests/interpret/printing.mlir
+ --- stablehlo/stablehlo/tests/interpret/printing.mlir
+ +++ stablehlo/stablehlo/tests/interpret/printing.mlir
+@@ -493,39 +457,7 @@ diff --ruN a/stablehlo/stablehlo/tests/transforms/stablehlo_legalize_quant_to_in
+ diff --ruN a/stablehlo/stablehlo/transforms/ChloLegalizeToStablehlo.cpp b/stablehlo/stablehlo/transforms/ChloLegalizeToStablehlo.cpp
+ --- stablehlo/stablehlo/transforms/ChloLegalizeToStablehlo.cpp
+ +++ stablehlo/stablehlo/transforms/ChloLegalizeToStablehlo.cpp
+-@@ -2752,13 +2752,25 @@
+-   LogicalResult matchAndRewrite(
+-       mlir::chlo::RaggedDotOp op, OpAdaptor,
+-       ConversionPatternRewriter& rewriter) const override {
+--    if (op.getLhs().getType().getRank() < op.getRhs().getType().getRank()) {
+-+    chlo::RaggedDotDimensionNumbersAttr raggedDotDimensionNumbers =
+-+        op.getRaggedDotDimensionNumbers();
+-+    ArrayRef<int64_t> lhsRaggedDimensions =
+-+        raggedDotDimensionNumbers.getLhsRaggedDimensions();
+-+    if (lhsRaggedDimensions.empty()) {
+-+      return rewriter.notifyMatchFailure(
+-+          op, "lhs_ragged_dimensions must not be empty");
+-+    }
+-+    const int64_t lhsRaggedDim = lhsRaggedDimensions[0];
+-+    if (llvm::is_contained(
+-+            raggedDotDimensionNumbers.getLhsContractingDimensions(),
+-+            lhsRaggedDim)) {
+-+      return handleRaggedDotMode2(op, rewriter);
+-+    } else if (llvm::is_contained(
+-+                   raggedDotDimensionNumbers.getLhsBatchingDimensions(),
+-+                   lhsRaggedDim)) {
+-+      return handleRaggedDotMode3(op, rewriter);
+-+    } else {
+-       return handleRaggedDotMode1(op, rewriter);
+--    } else if (op.getLhs().getType().getRank() <
+--               op.getResult().getType().getRank()) {
+--      return handleRaggedDotMode2(op, rewriter);
+--    } else {
+--      return handleRaggedDotMode3(op, rewriter);
+-     }
+-   }
+- };
+-@@ -3260,8 +3272,7 @@
++@@ -3260,8 +3260,7 @@
+      Type elementType = operandType.getElementType();
+      mlir::stablehlo::SortOp sortOp =
+          createSortOp(&rewriter, op.getLoc(), {op.getOperand(), iotaOp},
+diff --git a/third_party/stablehlo/workspace.bzl b/third_party/stablehlo/workspace.bzl
+index 3cae5ea9..a224101a 100644
+--- a/third_party/stablehlo/workspace.bzl
++++ b/third_party/stablehlo/workspace.bzl
+@@ -1,18 +1,3 @@
+-# Copyright 2026 The OpenXLA Authors. All Rights Reserved.
+-#
+-# Licensed under the Apache License, Version 2.0 (the "License");
+-# you may not use this file except in compliance with the License.
+-# You may obtain a copy of the License at
+-#
+-#     http://www.apache.org/licenses/LICENSE-2.0
+-#
+-# Unless required by applicable law or agreed to in writing, software
+-# distributed under the License is distributed on an "AS IS" BASIS,
+-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+-# See the License for the specific language governing permissions and
+-# limitations under the License.
+-# =============================================================================
+-
+ """Provides the repository macro to import StableHLO."""
+ 
+ load("//third_party:repo.bzl", "tf_http_archive", "tf_mirror_urls")
