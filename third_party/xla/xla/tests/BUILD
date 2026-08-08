@@ -83,6 +83,7 @@ cc_library(
     ],
     deps = [
         ":constraint_state",
+        "//xla:comparison_util",
         "//xla:literal",
         "//xla:shape_util",
         "//xla:types",
@@ -3632,11 +3633,10 @@ xla_test(
     deps = [
         ":constraint_propagator",
         ":constraint_state",
-        ":hlo_pjrt_test_base",
+        ":hlo_test_base",
         ":xla_internal_test_main",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:test",
-        "//xla/tsl/platform:statusor",
     ],
 )
 

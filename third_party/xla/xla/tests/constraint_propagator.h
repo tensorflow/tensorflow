@@ -79,6 +79,10 @@ class ConstraintPropagator {
   // sqrt(x) => x >= 0
   absl::Status SeedConstraints(const HloComputation* computation);
 
+  // Seeds constraints from domain-specific high-level ML patterns and idioms
+  // (e.g. guarded division for gradient/activation threshold clipping).
+  absl::Status SeedMLPatternsConstraints(const HloComputation* computation);
+
   // Propagates constraints from the seed constraints backwards with exact
   // propagation to avoid introducing approximations.
   absl::Status PropagateSeedConstraints(const HloComputation* computation);

@@ -20,8 +20,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/testlib/test.h"
 #include "xla/tests/constraint_state.h"
-#include "xla/tests/hlo_pjrt_test_base.h"
-#include "xla/tsl/platform/statusor.h"
+#include "xla/tests/hlo_test_base.h"
 
 namespace xla {
 namespace {
@@ -133,8 +132,8 @@ ENTRY main {
   ROOT root = f32[] sqrt(sub)
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
-  TF_ASSERT_OK_AND_ASSIGN(auto states, ConstraintPropagator::Run(*module));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(auto states, ConstraintPropagator::Run(*module));
 
   auto x_int = states[module->entry_computation()->parameter_instruction(0)]
                    .GetConstraintInterval();
@@ -159,8 +158,8 @@ ENTRY main {
   ROOT root = f32[] sqrt(negx)
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
-  TF_ASSERT_OK_AND_ASSIGN(auto states, ConstraintPropagator::Run(*module));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(auto states, ConstraintPropagator::Run(*module));
 
   auto x_int = states[module->entry_computation()->parameter_instruction(0)]
                    .GetConstraintInterval();
@@ -187,8 +186,8 @@ ENTRY main {
   ROOT root = (f32[], f32[]) tuple(log, rsqrt)
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
-  TF_ASSERT_OK_AND_ASSIGN(auto states, ConstraintPropagator::Run(*module));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(auto states, ConstraintPropagator::Run(*module));
 
   auto x_int = states[module->entry_computation()->parameter_instruction(0)]
                    .GetConstraintInterval();
@@ -215,8 +214,8 @@ ENTRY main {
   ROOT root = f32[] log(div_a) 
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
-  TF_ASSERT_OK_AND_ASSIGN(auto states, ConstraintPropagator::Run(*module));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(auto states, ConstraintPropagator::Run(*module));
 
   auto b_int = states[module->entry_computation()->parameter_instruction(1)]
                    .GetConstraintInterval();
@@ -240,15 +239,15 @@ ENTRY main {
   ROOT root = f32[] divide(x, add)
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
-  TF_ASSERT_OK_AND_ASSIGN(auto states, ConstraintPropagator::Run(*module));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(auto states, ConstraintPropagator::Run(*module));
 
   auto y_int = states[module->entry_computation()->parameter_instruction(1)]
                    .GetConstraintInterval();
   auto z_int = states[module->entry_computation()->parameter_instruction(2)]
                    .GetConstraintInterval();
 
-  // add != 0 => y and z cant both be 0 and must have the same sign to avoid
+  // add != 0 => y and z can't both be 0 and must have the same sign to avoid
   // zero-crossing.
   EXPECT_EQ(y_int.exclude_zero, true);
   EXPECT_EQ(z_int.exclude_zero, true);
@@ -270,8 +269,8 @@ ENTRY main {
   ROOT rsqrt = f32[2048,4] rsqrt(add)
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
-  TF_ASSERT_OK_AND_ASSIGN(auto states, ConstraintPropagator::Run(*module));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(auto states, ConstraintPropagator::Run(*module));
   auto p0_int = states[module->entry_computation()->parameter_instruction(0)]
                     .GetConstraintInterval();
   EXPECT_TRUE(p0_int.IsPositive());
@@ -293,8 +292,8 @@ ENTRY main {
   ROOT bitcast_2 = f32[2048,4] bitcast(rsqrt)
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
-  TF_ASSERT_OK_AND_ASSIGN(auto states, ConstraintPropagator::Run(*module));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(auto states, ConstraintPropagator::Run(*module));
 
   auto p0_int = states[module->entry_computation()->parameter_instruction(0)]
                     .GetConstraintInterval();
@@ -318,8 +317,8 @@ ENTRY main {
   ROOT sqrt = f32[4]{0} sqrt(div)
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
-  TF_ASSERT_OK_AND_ASSIGN(auto states, ConstraintPropagator::Run(*module));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(auto states, ConstraintPropagator::Run(*module));
 
   auto p0_int = states[module->entry_computation()->parameter_instruction(0)]
                     .GetConstraintInterval();
@@ -387,6 +386,41 @@ ENTRY main {
   EXPECT_TRUE(p1_int.IsPositiveStrict());
 }
 
+// Tests guarded division clipping: where(select_val > threshold, threshold /
+// select_val, 1.0) with masked inputs select_val = where(mask, x, 0.0). On
+// masked lanes (mask == false), select_val evaluates to 0.0. For the guard
+// condition (0.0 > threshold) to evaluate to false (avoiding division by zero
+// threshold / 0.0), threshold must be strictly positive (threshold > 0).
+TEST_F(ConstraintPropagatorTest, GuardedDivideThresholdPositive) {
+  const char* hlo = R"(
+HloModule direct_compare_select_divide_fusion_8x128
+ENTRY main {
+  param_0 = f32[] parameter(0)
+  param_1 = pred[8,128] parameter(1)
+  param_2 = f32[8,128] parameter(2)
+  c_zero = f32[] constant(0)
+  b_zero = f32[8,128] broadcast(c_zero), dimensions={}
+  select_val = f32[8,128] select(param_1, param_2, b_zero)
+  b_threshold = f32[8,128] broadcast(param_0), dimensions={}
+  cmp = pred[8,128] compare(select_val, b_threshold), direction=GT
+  div = f32[8,128] divide(b_threshold, select_val)
+  c_one = f32[] constant(1)
+  b_one = f32[8,128] broadcast(c_one), dimensions={}
+  ROOT select_n = f32[8,128] select(cmp, div, b_one)
+}
+)";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(auto states, ConstraintPropagator::Run(*module));
+
+  auto p0_int = states[module->entry_computation()->parameter_instruction(0)]
+                    .GetConstraintInterval();
+  EXPECT_TRUE(p0_int.IsPositiveStrict());
+
+  auto p2_int = states[module->entry_computation()->parameter_instruction(2)]
+                    .GetConstraintInterval();
+  EXPECT_TRUE(p2_int.exclude_zero);
+}
+
 TEST_F(ConstraintPropagatorTest, SqrtConvert) {
   const char* hlo = R"(
 HloModule TestModule
@@ -418,8 +452,8 @@ ENTRY main {
   ROOT root = (f32[], f32[]) tuple(log1, log2)
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
-  TF_ASSERT_OK_AND_ASSIGN(auto states, ConstraintPropagator::Run(*module));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(auto states, ConstraintPropagator::Run(*module));
 
   auto x_int = states[module->entry_computation()->parameter_instruction(0)]
                    .GetConstraintInterval();
